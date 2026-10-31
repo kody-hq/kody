@@ -1,4 +1,6 @@
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import { unmappableCredentialGrantWarnings } from '#mcp/capabilities/access/unmappable-credential-warnings.ts'
+import { resolveGrantPermissions } from '@kody-internal/shared/grant-presets.ts'
 import { loadCollaboratorsScope } from '#app/handlers/package-collaborators.ts'
 import {
 	inviteLinkUrl,
@@ -191,6 +193,18 @@ export async function createPackageInviteLink(
 			expiresAt,
 			audit: orgAuditWriterFromRequest(env, user.request),
 		})
+		const warnings = await unmappableCredentialGrantWarnings({
+			env,
+			orgId: scope.org.id,
+			resourceType: 'package',
+			resourceId: scope.savedPackage.id,
+			permissions: resolveGrantPermissions({
+				family: 'package',
+				preset,
+				permissions: null,
+			}),
+			changesAllowed: false,
+		})
 		return operationResult({
 			ok: true,
 			inviteLink: {
@@ -200,6 +214,7 @@ export async function createPackageInviteLink(
 				preset,
 				url: inviteLinkUrl(request, token),
 			},
+			...(warnings.length ? { warnings } : {}),
 		})
 	} catch (error) {
 		return operationResult(

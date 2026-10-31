@@ -244,3 +244,18 @@ export const iconWellCss: CSSObject = {
 	color: colors.textMuted,
 	backgroundColor: colors.background,
 }
+
+export const unmappableWarningCss: CSSObject = {
+	margin: 0,
+	color: colors.warningText,
+	fontSize: '0.875rem',
+	lineHeight: 1.45,
+}
+
+export const unmappableAllowCss: CSSObject = {
+	display: 'inline-flex',
+	alignItems: 'center',
+	gap: '0.5rem',
+	fontSize: '0.875rem',
+	color: colors.text,
+}

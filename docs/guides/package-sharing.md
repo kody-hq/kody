@@ -5,7 +5,9 @@ summary:
   Give a person or team Read, Use, Contribute, or Manage on one package with a
   grant, invite someone who is not in your organization yet, share private
   source with one person (Read, then they fork it), and know what each side can
-  run, read, and pay for.
+  run, read, and pay for. Also covers unmappable credentials: share-time
+  warnings, the owner-only change lock, and the per-grant "allow changes
+  despite unmappable credentials" option.
 category: platform
 audience: agents
 ---
@@ -209,6 +211,49 @@ Personal orgs can still grant Use/Contribute/Manage on packages via
 The web Grants page is aimed at team orgs. In a personal org, invite and remove
 collaborators from the package's [Collaborators tab](#on-the-web), or use those
 capabilities.
+
+## Unmappable credentials
+
+A credential is **unmappable** when nobody who runs or visits the package can
+swap in their own, so it always acts as the owning org. A package has one while
+its published version declares a need with `supplier: "publisher"` (while the
+`package-credential-suppliers` flag is on) or `ownerCredentialForVisitors: true`
+(see [Credentials](./credentials.md#choose-who-supplies-a-package-credential)).
+Anyone who can change or publish such a package could make its code use those
+credentials however they like, so Kody surfaces and guards it:
+
+- **Share-time warning.** Granting a preset that can change or publish the
+  package (Contribute or Manage, or a custom list with `package:write` or
+  `package:publish`) still succeeds, and returns a warning that names each
+  credential (by name and need key, never values or ids) and says the grantee
+  could make the package's code use them. It shows in the Collaborators tab on
+  the web, after `kody package grant`, and in the `warnings` field of
+  `packageCollaboratorSet`, `accessGrant`, `inviteCreate`, and
+  `inviteLinkCreate`. The Collaborators tab also shows it on each existing grant
+  it affects.
+- **Owner-only changes.** While the package has unmappable credentials, only org
+  Owners (the owner of a personal org) can push, publish, or otherwise change
+  its code or manifest. Existing collaborators are locked too, with no
+  grandfathering, and the lock applies as soon as a credential becomes
+  unmappable. Read and Use are unaffected: collaborators keep running it.
+  Denials have code `unmappable_credentials`, name the credentials, and say how
+  an Owner can allow the collaborator.
+- **Allow one collaborator anyway.** An org Owner can let one person or team
+  change it despite the risk, per grant: the **Allow changes despite unmappable
+  credentials** checkbox on their row in the Collaborators tab,
+  `kody package grant <package> --user <name> --preset contribute --allow-changes-despite-unmappable-credentials`
+  (`--disallow-changes-despite-unmappable-credentials` turns it off), or
+  `allow_changes_despite_unmappable_credentials: true` on
+  `packageCollaboratorSet` or `accessGrant`. Omitting it keeps the grant's
+  current choice. It is not available on everyone-in-org or profile grants.
+- **Owner notice.** Owners see a notice explaining the lock on the package page,
+  the Collaborators tab (`unmappable_credentials` on `packageCollaboratorList`),
+  `kody dev check` / `packageCheck` (`notices`), and publish output
+  (`unmappable_credentials_notice`). No email is sent.
+- **Profiles.** The check uses the acting principal through the profile chain. A
+  profile acting for an Owner changes the package only when every layer of its
+  chain holds the permission; a profile acting for a collaborator follows that
+  collaborator's grant, including its allow option.
 
 ## What a collaborator can do
 

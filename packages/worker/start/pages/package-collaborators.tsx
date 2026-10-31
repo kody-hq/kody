@@ -72,6 +72,8 @@ import {
 	rowNameCss,
 	rowTextCss,
 	selectCss,
+	unmappableAllowCss,
+	unmappableWarningCss,
 } from './package-collaborators-parts.tsx'
 
 export function PackageCollaboratorsRoute({
@@ -90,6 +92,7 @@ export function PackageCollaboratorsRoute({
 	const [confirmed, setConfirmed] = useState<string | null>(null)
 	const [message, setMessage] = useState<string | null>(null)
 	const [messageTone, setMessageTone] = useState<'info' | 'error'>('info')
+	const [warnings, setWarnings] = useState<Array<string>>([])
 	const [teamId, setTeamId] = useState('')
 	const [memberId, setMemberId] = useState('')
 	const [teamPreset, setTeamPreset] = useState<PackageCollaboratorPreset>('use')
@@ -138,6 +141,12 @@ export function PackageCollaboratorsRoute({
 								subjectId: input.change.subjectId,
 								preset: input.change.preset,
 								permissions: input.change.permissions,
+								...(input.change.allowUnmappableCredentialChanges === undefined
+									? {}
+									: {
+											allowUnmappableCredentialChanges:
+												input.change.allowUnmappableCredentialChanges,
+										}),
 							},
 						})
 					case 'revoke':
@@ -164,11 +173,13 @@ export function PackageCollaboratorsRoute({
 		const isCurrent = captureSubmitter()
 		inFlight.current = true
 		setMessage(null)
+		setWarnings([])
 		try {
 			const result = await mutation.mutateAsync({ key, change })
 			if (!isCurrent()) return null
 			setMessage(success)
 			setMessageTone('info')
+			setWarnings(result?.warnings ?? [])
 			return result
 		} catch (error) {
 			if (!isCurrent()) return null
@@ -352,6 +363,67 @@ export function PackageCollaboratorsRoute({
 		)
 	}
 
+	async function setAllowUnmappableChanges(
+		collaborator: PackageCollaboratorView,
+		allow: boolean,
+	) {
+		const name = collaboratorName(collaborator)
+		await postChange(
+			`allow-unmappable:${collaborator.grantId}`,
+			{
+				intent: 'grant',
+				subjectType: collaborator.subjectType,
+				subjectId: collaborator.subjectId,
+				...(collaborator.preset
+					? { preset: collaborator.preset }
+					: {
+							preset: null,
+							permissions:
+								collaborator.permissions as Array<PackageCollaboratorPermission>,
+						}),
+				allowUnmappableCredentialChanges: allow,
+			},
+			allow
+				? `${name} can now change this package despite its unmappable credentials.`
+				: `Changes by ${name} are owner-only again while this package has unmappable credentials.`,
+		)
+	}
+
+	function renderUnmappableAllow(collaborator: PackageCollaboratorView) {
+		if (!collaborator.unmappableCredentialWarning) return null
+		const canAllow =
+			view?.unmappableCredentials?.canAllowChanges === true &&
+			(collaborator.subjectType === 'user' ||
+				collaborator.subjectType === 'team')
+		return (
+			<>
+				<span
+					css={unmappableWarningCss}
+					data-testid="package-collaborator-unmappable-warning"
+				>
+					{collaborator.unmappableCredentialWarning}
+				</span>
+				{canAllow ? (
+					<label css={unmappableAllowCss}>
+						<input
+							type="checkbox"
+							data-testid="package-collaborator-allow-unmappable"
+							checked={collaborator.allowUnmappableCredentialChanges === true}
+							disabled={busy !== null}
+							onChange={(event) => {
+								void setAllowUnmappableChanges(
+									collaborator,
+									event.currentTarget.checked,
+								)
+							}}
+						/>
+						Allow changes despite unmappable credentials
+					</label>
+				) : null}
+			</>
+		)
+	}
+
 	function renderCollaborator(collaborator: PackageCollaboratorView) {
 		const checkKey = collaborator.grantId
 		const name = collaboratorName(collaborator)
@@ -382,6 +454,7 @@ export function PackageCollaboratorsRoute({
 				<span css={rowTextCss}>
 					<span css={rowNameCss}>{name}</span>
 					<span css={rowDetailCss}>{collaboratorDetail(collaborator)}</span>
+					{renderUnmappableAllow(collaborator)}
 				</span>
 				<span css={rowActionsCss}>
 					{collaborator.kind === 'outside' ? (
@@ -693,6 +766,29 @@ export function PackageCollaboratorsRoute({
 					<AccountManagementMessage tone={messageTone}>
 						{message}
 					</AccountManagementMessage>
+				) : null}
+				{warnings.map((warning) => (
+					<p
+						key={warning}
+						role="status"
+						css={unmappableWarningCss}
+						data-testid="package-collaborators-share-warning"
+					>
+						{warning}
+					</p>
+				))}
+				{view?.unmappableCredentials ? (
+					<AccountManagementPanel
+						title="Changes are owner-only"
+						description="This package has unmappable credentials."
+					>
+						<p
+							css={unmappableWarningCss}
+							data-testid="package-unmappable-credentials-notice"
+						>
+							{view.unmappableCredentials.notice}
+						</p>
+					</AccountManagementPanel>
 				) : null}
 				{view ? (
 					<>

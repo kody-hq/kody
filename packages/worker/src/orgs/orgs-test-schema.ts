@@ -154,7 +154,8 @@ export async function ensureOrgsTestSchema(db: D1Database) {
 				updated_at TEXT NOT NULL,
 				deleted_at TEXT,
 				origin TEXT NOT NULL DEFAULT 'manual',
-				expires_at TEXT
+				expires_at TEXT,
+				allow_unmappable_credential_changes INTEGER NOT NULL DEFAULT 0
 			)`,
 		)
 		.run()

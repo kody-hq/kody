@@ -66,6 +66,11 @@ export type CompiledAccess = {
 	 */
 	resourcePermissions: ReadonlyMap<string, ReadonlySet<OrgPermission>>
 	/**
+	 * Resource keys where one of the actor's grants allows changes despite
+	 * unmappable credentials. Absent on caches written before the column.
+	 */
+	unmappableChangesAllowed?: ReadonlySet<string>
+	/**
 	 * The earliest expiry among the grants this compile used (ISO), or null
 	 * when none expires. The compile is stale from that moment.
 	 */
@@ -92,6 +97,7 @@ type GrantRow = {
 	resource_id: string
 	permission: string
 	expires_at: string | null
+	allow_unmappable_credential_changes?: number | null
 }
 
 type AccessCacheRow = {
@@ -114,6 +120,7 @@ function parseCompiledJson(
 		isOwner?: unknown
 		orgPermissions?: unknown
 		resourcePermissions?: unknown
+		unmappableChangesAllowed?: unknown
 	}
 	if (typeof record.isOwner !== 'boolean') return null
 	if (!Array.isArray(record.orgPermissions)) return null
@@ -138,10 +145,17 @@ function parseCompiledJson(
 		}
 		resourcePermissions.set(key, set)
 	}
+	const unmappableChangesAllowed = new Set<string>()
+	if (Array.isArray(record.unmappableChangesAllowed)) {
+		for (const key of record.unmappableChangesAllowed) {
+			if (typeof key === 'string') unmappableChangesAllowed.add(key)
+		}
+	}
 	return {
 		isOwner: record.isOwner,
 		orgPermissions: orgPerms,
 		resourcePermissions,
+		unmappableChangesAllowed,
 	}
 }
 
@@ -156,6 +170,9 @@ function serializeCompiled(
 		isOwner: compiled.isOwner,
 		orgPermissions: [...compiled.orgPermissions].sort(),
 		resourcePermissions,
+		unmappableChangesAllowed: [
+			...(compiled.unmappableChangesAllowed ?? []),
+		].sort(),
 	})
 }
 
@@ -228,7 +245,8 @@ async function loadLiveGrantRows(
 			`SELECT g.resource_type AS resource_type,
 			        g.resource_id AS resource_id,
 			        gp.permission AS permission,
-			        g.expires_at AS expires_at
+			        g.expires_at AS expires_at,
+			        g.allow_unmappable_credential_changes AS allow_unmappable_credential_changes
 			 FROM grants g
 			 INNER JOIN grant_permissions gp ON gp.grant_id = g.id
 			 WHERE g.org_id = ?
@@ -376,6 +394,17 @@ function compileFromRoleAndGrants(input: {
 	const resourcePermissions = new Map<string, Set<OrgPermission>>()
 	applyGrantRows(input.grantRows, input.orgId, orgPerms, resourcePermissions)
 	applyAdHocRule(orgPerms, resourcePermissions)
+	const unmappableChangesAllowed = new Set<string>()
+	for (const row of input.grantRows) {
+		if (row.allow_unmappable_credential_changes !== 1) continue
+		if (row.resource_type === 'org') continue
+		unmappableChangesAllowed.add(
+			resourceGrantKey(
+				row.resource_type as OrgGrantResourceType,
+				row.resource_id,
+			),
+		)
+	}
 	let validUntil: string | null = null
 	for (const row of input.grantRows) {
 		if (
@@ -391,6 +420,7 @@ function compileFromRoleAndGrants(input: {
 		isOwner: false,
 		orgPermissions: orgPerms,
 		resourcePermissions,
+		unmappableChangesAllowed,
 		validUntil,
 	}
 }

@@ -2270,6 +2270,11 @@ export type AccountPackageDetail = AccountPackageListItem & {
 	 * or empty when the package has none.
 	 */
 	customDomains?: Array<PackageAppCustomDomainView>
+	/**
+	 * Owner notice: the package has unmappable credentials, so changes and
+	 * publishes are owner-only unless a grant allows them (manager view only).
+	 */
+	unmappableCredentialsNotice?: string
 	/** Recent package-app cookie HttpOnly warnings (owner view only). */
 	cookieWarnings?: Array<{
 		cookieName: string

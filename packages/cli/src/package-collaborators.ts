@@ -30,7 +30,13 @@ export function isPackageCollaboratorAction(
 
 export const packageCollaboratorUsage = [
 	'Usage: kody package collaborators <@owner/leaf|kody_id|package_id> [--org <slug>] [--json]',
-	'       kody package grant <package> (--team <slug> | --user <username>) [--preset read|use|contribute|manage] [--org <slug>] [--json]',
+	'       kody package grant <package> (--team <slug> | --user <username>) [--preset read|use|contribute|manage] [--allow-changes-despite-unmappable-credentials | --disallow-changes-despite-unmappable-credentials] [--org <slug>] [--json]',
+	'',
+	'While a package has unmappable credentials (publisher-supplied, or shared with app visitors),',
+	'only org Owners can push, publish, or change it. Contribute or Manage grants still save, with a',
+	'warning naming those credentials. An Owner can pass --allow-changes-despite-unmappable-credentials',
+	'to let that one person or team change it anyway (they could make its code use the credentials);',
+	'--disallow-changes-despite-unmappable-credentials turns it back off.',
 	'       kody package revoke <package> (--team <slug> | --user <username> | --grant <grant_id>) [--org <slug>] [--json]',
 ].join('\n')
 
@@ -45,6 +51,8 @@ export type PackageCollaboratorPlan =
 			packageId: string
 			subject: Subject
 			preset: PackageCollaboratorPreset
+			/** Omitted keeps the grant's current choice. */
+			allowUnmappableCredentialChanges?: boolean
 	  }
 	| {
 			action: 'revoke'
@@ -57,6 +65,22 @@ type FlagValues = {
 	user?: unknown
 	preset?: unknown
 	grant?: unknown
+	'allow-changes-despite-unmappable-credentials'?: unknown
+	'disallow-changes-despite-unmappable-credentials'?: unknown
+}
+
+function readAllowUnmappable(values: FlagValues): boolean | undefined {
+	const allow = values['allow-changes-despite-unmappable-credentials'] === true
+	const disallow =
+		values['disallow-changes-despite-unmappable-credentials'] === true
+	if (allow && disallow) {
+		throw new Error(
+			`Pass only one of --allow-changes-despite-unmappable-credentials or --disallow-changes-despite-unmappable-credentials.\n${packageCollaboratorUsage}`,
+		)
+	}
+	if (allow) return true
+	if (disallow) return false
+	return undefined
 }
 
 function readFlag(value: unknown, name: string): string | undefined {
@@ -108,14 +132,23 @@ export function parsePackageCollaboratorCommand(input: {
 		case 'grant': {
 			const subject = readSubject(input.values, false)
 			if (subject.kind === 'grant') throw new Error(packageCollaboratorUsage)
+			const allow = readAllowUnmappable(input.values)
 			return {
 				action: 'grant',
 				packageId,
 				subject,
 				preset: readPreset(input.values.preset),
+				...(allow === undefined
+					? {}
+					: { allowUnmappableCredentialChanges: allow }),
 			}
 		}
 		case 'revoke':
+			if (readAllowUnmappable(input.values) !== undefined) {
+				throw new Error(
+					`--allow-changes-despite-unmappable-credentials and --disallow-changes-despite-unmappable-credentials are only for grant.\n${packageCollaboratorUsage}`,
+				)
+			}
 			if (input.values.preset !== undefined) {
 				throw new Error(
 					`--preset is only for grant.\n${packageCollaboratorUsage}`,
@@ -145,6 +178,8 @@ export type PackageCollaborator = {
 	preset: PackageCollaboratorPreset | null
 	permissions: Array<string>
 	created_at: string
+	allow_changes_despite_unmappable_credentials?: boolean
+	unmappable_credential_warning?: string | null
 }
 
 type PackageSummary = { id: string; kody_id: string; name: string }
@@ -152,6 +187,11 @@ type PackageSummary = { id: string; kody_id: string; name: string }
 type CollaboratorList = {
 	package: PackageSummary
 	collaborators: Array<PackageCollaborator>
+	unmappable_credentials?: { notice: string } | null
+}
+
+function formatWarnings(warnings: ReadonlyArray<string> | undefined) {
+	return (warnings ?? []).map((warning) => `Warning: ${warning}\n`).join('')
 }
 
 export type CallOperation = (
@@ -187,14 +227,24 @@ function presetLabel(collaborator: PackageCollaborator) {
 
 /** Plain-text table for `kody package collaborators`. */
 export function formatCollaboratorList(list: CollaboratorList): string {
-	const header = `${list.package.name} (${list.package.id})`
+	const header = `${list.package.name} (${list.package.id})${
+		list.unmappable_credentials
+			? `\nNotice: ${list.unmappable_credentials.notice}`
+			: ''
+	}`
 	if (list.collaborators.length === 0) {
 		return `${header}\nNo collaborators. Org owners always have full access.\n`
 	}
 	const rows = list.collaborators.map((collaborator) => [
 		collaborator.kind,
 		collaboratorLabel(collaborator),
-		presetLabel(collaborator),
+		`${presetLabel(collaborator)}${
+			collaborator.unmappable_credential_warning
+				? collaborator.allow_changes_despite_unmappable_credentials
+					? ' (changes allowed despite unmappable credentials)'
+					: ' (changes locked: unmappable credentials)'
+				: ''
+		}`,
 		collaborator.grant_id,
 	])
 	const widths = [0, 1, 2].map((column) =>
@@ -250,10 +300,20 @@ export async function runPackageCollaboratorPlan(input: {
 					? { team_slug: plan.subject.slug }
 					: { username: plan.subject.username }),
 				preset: plan.preset,
-			})) as { package: PackageSummary; collaborator: PackageCollaborator }
+				...(plan.allowUnmappableCredentialChanges === undefined
+					? {}
+					: {
+							allow_changes_despite_unmappable_credentials:
+								plan.allowUnmappableCredentialChanges,
+						}),
+			})) as {
+				package: PackageSummary
+				collaborator: PackageCollaborator
+				warnings?: Array<string>
+			}
 			return print(
 				result,
-				`${collaboratorLabel(result.collaborator)} now has ${presetLabel(result.collaborator)} on ${result.package.name} (grant ${result.collaborator.grant_id}).\n`,
+				`${collaboratorLabel(result.collaborator)} now has ${presetLabel(result.collaborator)} on ${result.package.name} (grant ${result.collaborator.grant_id}).\n${formatWarnings(result.warnings)}`,
 			)
 		}
 		case 'revoke': {

@@ -26,6 +26,14 @@ import {
 	loadProfileGrants as loadProfileSnapshotGrants,
 } from '#worker/profiles/store.ts'
 import { memberCreationKindFor } from './member-creation-permissions.ts'
+import {
+	describeUnmappableCredentials,
+	isUnmappableCredentialLockedPermission,
+	loadPackageUnmappableCredentials,
+	unmappableCredentialAllowHint,
+	unmappableCredentialLockedPermissions,
+	type UnmappableCredential,
+} from '#worker/credentials/package-unmappable-credentials.ts'
 
 /** A concrete org resource a permission is checked on. */
 export type OrgResource = {
@@ -56,6 +64,14 @@ export type EffectivePermissions = {
 	profileChain?: ProfileChainAccess | null
 	/** Earliest grant expiry the compile used; stale from then on. */
 	validUntil?: string | null
+	/**
+	 * Packages (keyed `package:${id}`) where a non-Owner's write or publish
+	 * grant is locked by unmappable credentials. Absent means none.
+	 */
+	unmappableCredentialLocks?: ReadonlyMap<
+		string,
+		ReadonlyArray<UnmappableCredential>
+	> | null
 }
 
 export type ProfileChainLayer = {
@@ -88,6 +104,7 @@ export type AuthorizationDenialCode =
 	| 'credential_scope'
 	| 'profile_inactive'
 	| 'profile_grant'
+	| 'unmappable_credentials'
 
 /**
  * A request lacks a permission. Callers can clear it (sign in, use another
@@ -224,9 +241,11 @@ function toEffective(
 		chain: ProfileChainAccess
 		validUntil: string | null
 	} | null = null,
+	unmappableCredentialLocks: EffectivePermissions['unmappableCredentialLocks'] = null,
 ): EffectivePermissions {
 	return {
 		...(profile ? { profileChain: profile.chain } : {}),
+		...(unmappableCredentialLocks?.size ? { unmappableCredentialLocks } : {}),
 		orgId: compiled.orgId,
 		permissions: compiled.orgPermissions,
 		isOwner: compiled.isOwner,
@@ -238,6 +257,71 @@ function toEffective(
 			? earliest(compiled.validUntil, profile.validUntil)
 			: compiled.validUntil,
 	}
+}
+
+/**
+ * Unmappable-credential locks on the packages a non-Owner may write or
+ * publish by grant, read live so a credential that becomes unmappable locks
+ * existing collaborators at once. Grants that allow changes are skipped.
+ * Non-Owners never hold `package:write` or `package:publish` org-wide.
+ */
+async function loadUnmappableCredentialLocks(
+	env: Env,
+	compiled: CompiledAccess,
+	request: RequestContext,
+): Promise<Map<string, ReadonlyArray<UnmappableCredential>> | null> {
+	if (compiled.isOwner) return null
+	const packageIds: Array<string> = []
+	for (const [key, granted] of compiled.resourcePermissions) {
+		if (!key.startsWith('package:')) continue
+		if (compiled.unmappableChangesAllowed?.has(key)) continue
+		if (
+			!unmappableCredentialLockedPermissions.some((permission) =>
+				granted.has(permission),
+			)
+		) {
+			continue
+		}
+		packageIds.push(key.slice('package:'.length))
+	}
+	if (packageIds.length === 0) return null
+	const locks = await loadPackageUnmappableCredentials({
+		env,
+		orgId: compiled.orgId,
+		packageIds,
+		request,
+	})
+	return new Map(
+		[...locks].map(([id, credentials]) => [
+			resourceGrantKey('package', id),
+			credentials,
+		]),
+	)
+}
+
+function unmappableCredentialLock(
+	access: EffectivePermissions,
+	permission: OrgPermission,
+	resource: OrgResource | undefined,
+) {
+	if (access.isOwner || resource?.type !== 'package') return null
+	if (!isUnmappableCredentialLockedPermission(permission)) return null
+	return (
+		access.unmappableCredentialLocks?.get(
+			resourceGrantKey('package', resource.id),
+		) ?? null
+	)
+}
+
+function unmappableCredentialDenialMessage(
+	permission: OrgPermission,
+	resource: OrgResource | undefined,
+	credentials: ReadonlyArray<UnmappableCredential>,
+) {
+	const target = resource
+		? describeResource(resource, permission)
+		: 'This package'
+	return `Blocked: ${permission} on ${target} is owner-only while it has unmappable credentials: ${describeUnmappableCredentials(credentials)}. They always act as the owning org, so anyone who can change or publish the package's code could make it use them. ${unmappableCredentialAllowHint}`
 }
 
 const effectivePermissionsByRequest = new WeakMap<
@@ -272,8 +356,11 @@ function loadEffectivePermissions(input: {
 			db: input.env.APP_DB,
 			request: input.request,
 		})
-		const profile = await loadProfileChainAccess(input.env, input.request)
-		return toEffective(compiled, input.request, profile)
+		const [profile, locks] = await Promise.all([
+			loadProfileChainAccess(input.env, input.request),
+			loadUnmappableCredentialLocks(input.env, compiled, input.request),
+		])
+		return toEffective(compiled, input.request, profile, locks)
 	})()
 	effectivePermissionsByRequest.set(input.request, promise)
 	promise.catch(() => {
@@ -354,6 +441,9 @@ function denialCode(
 	}
 	const blocked = profileChainBlock(access, permission, resource)
 	if (blocked) return blocked.code
+	if (unmappableCredentialLock(access, permission, resource)) {
+		return 'unmappable_credentials'
+	}
 	if (access.credentialScopes && !access.credentialScopes.has(permission)) {
 		return 'credential_scope'
 	}
@@ -465,6 +555,8 @@ function denialMessage(
 		case 'profile_inactive':
 		case 'profile_grant':
 			return `This profile cannot use ${permission}${target}.`
+		case 'unmappable_credentials':
+			return unmappableCredentialDenialMessage(permission, resource, [])
 		default: {
 			const exhaustive: never = code
 			throw new Error(`Unhandled denial code: ${String(exhaustive)}`)
@@ -491,7 +583,13 @@ export function checkPermission(
 		message:
 			(code === 'profile_inactive' || code === 'profile_grant'
 				? profileDenialMessage(access, permission, resource)
-				: null) ??
+				: code === 'unmappable_credentials'
+					? unmappableCredentialDenialMessage(
+							permission,
+							resource,
+							unmappableCredentialLock(access, permission, resource) ?? [],
+						)
+					: null) ??
 			denialMessage(
 				code,
 				permission,
@@ -575,16 +673,30 @@ export function resourceListScope(
 			if (!personAll && !access.resourcePermissions.get(key)?.has(permission)) {
 				continue
 			}
+			if (unmappableLockedKey(access, permission, key)) continue
 			ids.add(key.slice(prefix.length))
 		}
 		return { kind: 'granted', ids }
 	}
 	for (const [key, granted] of access.resourcePermissions) {
 		if (key.startsWith(prefix) && granted.has(permission)) {
+			if (unmappableLockedKey(access, permission, key)) continue
 			ids.add(key.slice(prefix.length))
 		}
 	}
 	return { kind: 'granted', ids }
+}
+
+function unmappableLockedKey(
+	access: EffectivePermissions,
+	permission: OrgPermission,
+	key: string,
+) {
+	return (
+		!access.isOwner &&
+		isUnmappableCredentialLockedPermission(permission) &&
+		(access.unmappableCredentialLocks?.has(key) ?? false)
+	)
 }
 
 export function listScopeIncludes(scope: ResourceListScope, id: string) {

@@ -1,3 +1,4 @@
+import type * as UnmappableCredentialsModule from '#worker/credentials/package-unmappable-credentials.ts'
 import { orgPermissions } from '@kody-internal/shared/org-permissions.ts'
 import {
 	ownerIdFromStored,
@@ -34,7 +35,20 @@ import {
 
 const mocks = vi.hoisted(() => ({
 	compileAccessForRequest: vi.fn(),
+	loadPackageUnmappableCredentials: vi.fn(async () => new Map()),
 }))
+
+vi.mock(
+	'#worker/credentials/package-unmappable-credentials.ts',
+	async (importOriginal) => {
+		const actual = await importOriginal<typeof UnmappableCredentialsModule>()
+		return {
+			...actual,
+			loadPackageUnmappableCredentials: (...args: Array<unknown>) =>
+				mocks.loadPackageUnmappableCredentials(...(args as [])),
+		}
+	},
+)
 
 vi.mock('./access-compile.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('./access-compile.ts')>()
@@ -509,4 +523,122 @@ test('deep call sites read the permissions bound for the request', async () => {
 			getRequestPermissions(),
 		),
 	).resolves.toBeUndefined()
+})
+
+const prodDb = [
+	{
+		needKey: 'rooms-db',
+		credentialName: 'Prod DB',
+		reason: 'publisher' as const,
+	},
+]
+
+function collaboratorAccess(overrides: Partial<EffectivePermissions> = {}) {
+	return access({
+		isOwner: false,
+		permissions: new Set(['org:read', 'member:read']),
+		resourcePermissions: new Map([
+			[
+				'package:pkg-1',
+				new Set([
+					'package:read',
+					'package:execute',
+					'package:write',
+					'package:publish',
+				]),
+			],
+		]),
+		unmappableCredentialLocks: new Map([['package:pkg-1', prodDb]]),
+		...overrides,
+	})
+}
+
+test('unmappable credentials make write and publish owner-only; execute is unaffected', () => {
+	const locked = collaboratorAccess()
+	for (const permission of ['package:write', 'package:publish'] as const) {
+		const error = denial(checkPermission(locked, permission, packageResource()))
+		expect(error.code).toBe('unmappable_credentials')
+		expect(error.message).toContain('"Prod DB" (need "rooms-db")')
+		expect(error.message).toContain('owner-only')
+		expect(error.message).toContain(
+			'--allow-changes-despite-unmappable-credentials',
+		)
+	}
+	expect(
+		checkPermission(locked, 'package:execute', packageResource()).allowed,
+	).toBe(true)
+	expect(
+		checkPermission(locked, 'package:read', packageResource()).allowed,
+	).toBe(true)
+	expect(
+		checkPermission(
+			collaboratorAccess({ unmappableCredentialLocks: undefined }),
+			'package:write',
+			packageResource(),
+		).allowed,
+	).toBe(true)
+})
+
+test('locks load live for non-Owner write grants, skip allowed grants, and never apply to Owners', async () => {
+	const memberRequest = () =>
+		deriveRequestContext({
+			user: { userId: personIdFromStored('user-2') },
+			source: { kind: 'mcp-oauth' },
+			orgBinding: {
+				org: { id: ownerIdFromStored('org-1'), slug: 'org-1' },
+				role: 'member',
+			},
+		})
+	const request = memberRequest()
+	const resource = {
+		type: 'package' as const,
+		id: 'pkg-1',
+		orgId: request.org.id,
+	}
+	const compiled = {
+		orgId: request.org.id,
+		epoch: 0,
+		isOwner: false,
+		orgPermissions: new Set(['org:read']),
+		resourcePermissions: new Map([
+			['package:pkg-1', new Set(['package:read', 'package:write'])],
+			['package:pkg-2', new Set(['package:read', 'package:execute'])],
+		]),
+	}
+	mocks.compileAccessForRequest.mockResolvedValue(compiled)
+	mocks.loadPackageUnmappableCredentials.mockResolvedValue(
+		new Map([['pkg-1', prodDb]]),
+	)
+	await expect(
+		authorize({ env, request: memberRequest() }, 'package:write', resource),
+	).rejects.toMatchObject({ code: 'unmappable_credentials' })
+	expect(mocks.loadPackageUnmappableCredentials).toHaveBeenLastCalledWith(
+		expect.objectContaining({ packageIds: ['pkg-1'] }),
+	)
+
+	mocks.loadPackageUnmappableCredentials.mockClear()
+	mocks.compileAccessForRequest.mockResolvedValue({
+		...compiled,
+		unmappableChangesAllowed: new Set(['package:pkg-1']),
+	})
+	await expect(
+		authorize({ env, request: memberRequest() }, 'package:write', resource),
+	).resolves.toBeUndefined()
+	expect(mocks.loadPackageUnmappableCredentials).not.toHaveBeenCalled()
+
+	mocks.compileAccessForRequest.mockResolvedValue({
+		...compiled,
+		isOwner: true,
+		orgPermissions: new Set(orgPermissions),
+	})
+	await expect(
+		authorize({ env, request: memberRequest() }, 'package:publish', resource),
+	).resolves.toBeUndefined()
+	expect(mocks.loadPackageUnmappableCredentials).not.toHaveBeenCalled()
+	mocks.loadPackageUnmappableCredentials.mockResolvedValue(new Map())
+})
+
+test('a locked package drops out of write-scoped lists but stays in execute lists', () => {
+	const locked = collaboratorAccess()
+	expect(canSeeResource(locked, packageResource())).toBe(true)
 })

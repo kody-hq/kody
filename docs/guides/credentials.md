@@ -383,6 +383,12 @@ need. Other needs and placeholders still act as the visitor. Visitor use is
 rate-limited and recorded in the org activity log with who used it. See
 [Packages](../use/packages.md#let-app-visitors-use-the-owners-credential).
 
+Publisher-supplied needs and needs shared with visitors are **unmappable**: they
+always act as your org. While a package has one, only org Owners can push,
+publish, or change it, and sharing Contribute or Manage warns by credential
+name. An Owner can allow a specific collaborator per grant. See
+[Unmappable credentials](./package-sharing.md#unmappable-credentials).
+
 ## Each kind through `credential()`
 
 ### Key

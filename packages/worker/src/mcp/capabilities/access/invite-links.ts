@@ -1,6 +1,8 @@
 import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
 import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
+import { unmappableCredentialGrantWarnings } from '#mcp/capabilities/access/unmappable-credential-warnings.ts'
+import { resolveGrantPermissions } from '@kody-internal/shared/grant-presets.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import {
@@ -171,6 +173,11 @@ export const inviteLinkCreateCapability = defineDomainCapability(
 			token: z.string(),
 			url: z.string().optional(),
 			prompt: z.string(),
+			warnings: z
+				.array(z.string())
+				.describe(
+					'Share-time warnings, e.g. the package has unmappable credentials people joining through this link could make its code use. The link was still created.',
+				),
 		}),
 		async handler(args, ctx) {
 			try {
@@ -315,7 +322,24 @@ export const inviteLinkCreateCapability = defineDomainCapability(
 					asAccessError(error, 'Unable to create that invite link.')
 				}
 				const url = publicInviteLinkUrl(ctx.callerContext.baseUrl, token)
+				const warnings =
+					target.kind === 'resource'
+						? await unmappableCredentialGrantWarnings({
+								env: ctx.env,
+								orgId: request.org.id,
+								resourceType: target.resourceType,
+								resourceId: target.resourceId,
+								permissions: resolveGrantPermissions({
+									family: 'package',
+									preset: target.preset,
+									permissions: null,
+								}),
+								changesAllowed: false,
+								request,
+							})
+						: []
 				return {
+					warnings,
 					invite_link: toInviteLinkPayload({
 						id: created.id,
 						target,

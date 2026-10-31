@@ -70,7 +70,7 @@ Usage:
   kody api <operationId> [--org <slug>] [--params <json>] [--token <token>] [--api-url <url>] [--json]
   kody package publish [<@owner/leaf|package_id>] [--org <slug>] [--params <json>] [--token <token>] [--api-url <url>] [--json]
   kody package collaborators <package> [--org <slug>] [--json] [--token <token>] [--api-url <url>]
-  kody package grant <package> (--team <slug> | --user <username>) [--preset read|use|contribute|manage] [--org <slug>] [--json]
+  kody package grant <package> (--team <slug> | --user <username>) [--preset read|use|contribute|manage] [--allow-changes-despite-unmappable-credentials | --disallow-changes-despite-unmappable-credentials] [--org <slug>] [--json]
   kody package revoke <package> (--team <slug> | --user <username> | --grant <grant_id>) [--org <slug>] [--json]
   kody execute [--org <slug>] [--invoke <ref> | --code <esm> | --file <path>] [--params <json>] [--conversation-id <id>] [--json]
   kody context register --name <name> [--org <slug>] | kody context list [--json]

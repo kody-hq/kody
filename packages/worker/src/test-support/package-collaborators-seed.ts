@@ -40,6 +40,12 @@ export async function seedPackageCollaborators() {
 	const sqlite = new DatabaseSync(':memory:')
 	const db = createD1FromSqlite(sqlite)
 	await ensureOrgsTestSchema(db)
+	// Read by the unmappable-credential lock; empty means no package is locked.
+	sqlite.exec(
+		`CREATE TABLE IF NOT EXISTS saved_packages (
+		   id TEXT PRIMARY KEY, user_id TEXT NOT NULL, source_id TEXT, deleted_at TEXT
+		 )`,
+	)
 	await ensureUsersTestSchema({ db, columns: ['avatar_key'] })
 	for (const [username, person] of Object.entries(collaboratorPeople)) {
 		sqlite

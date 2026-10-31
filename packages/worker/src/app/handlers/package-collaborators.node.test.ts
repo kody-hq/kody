@@ -1,3 +1,5 @@
+import type * as UnmappableCredentialsModule from '#worker/credentials/package-unmappable-credentials.ts'
+import type * as PackageRegistryRepoModule from '#worker/package-registry/repo.ts'
 import {
 	grantPackageCollaboratorInput,
 	revokePackageCollaboratorInput,
@@ -26,7 +28,45 @@ const mocks = vi.hoisted(() => ({
 	resolveSavedPackage: vi.fn(),
 	failListReads: false,
 	listReads: 0,
+	unmappableLocked: new Set<string>(),
 }))
+
+const prodDb = [
+	{
+		needKey: 'rooms-db',
+		credentialName: 'Prod DB',
+		reason: 'publisher' as const,
+	},
+]
+
+vi.mock('#worker/package-registry/repo.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof PackageRegistryRepoModule>()),
+	getSavedPackageById: async (_db: unknown, input: { packageId: string }) => ({
+		id: input.packageId,
+		name: 'demo-package',
+	}),
+}))
+
+vi.mock(
+	'#worker/credentials/package-unmappable-credentials.ts',
+	async (importOriginal) => {
+		const actual = await importOriginal<typeof UnmappableCredentialsModule>()
+		return {
+			...actual,
+			loadPackageUnmappableCredentials: async (input: {
+				packageIds: ReadonlyArray<string>
+			}) =>
+				new Map(
+					input.packageIds
+						.filter((id) => mocks.unmappableLocked.has(id))
+						.map((id) => [id, prodDb]),
+				),
+			loadOnePackageUnmappableCredentials: async (input: {
+				packageId: string
+			}) => (mocks.unmappableLocked.has(input.packageId) ? prodDb : []),
+		}
+	},
+)
 
 vi.mock('#worker/orgs/package-collaborators.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof PackageCollaboratorsRepo>()
@@ -68,6 +108,7 @@ beforeEach(async () => {
 	seed = await seedPackageCollaborators()
 	mocks.failListReads = false
 	mocks.listReads = 0
+	mocks.unmappableLocked = new Set()
 	mocks.resolveSavedPackage.mockReset()
 	mocks.resolveSavedPackage.mockImplementation(
 		async (input: { userId: string; packageIdOrKodyId: string }) =>
@@ -763,4 +804,63 @@ test('pending package invites exclude expired, accepted, revoked, foreign and no
 	expect(pending[0]).not.toHaveProperty('token_hash')
 	expect(pending[0]).not.toHaveProperty('prompt')
 	expect(JSON.stringify(pending)).not.toContain('secret-hash')
+})
+
+test('sharing a package with unmappable credentials warns, locks changes, and an Owner can allow one collaborator', async () => {
+	mocks.unmappableLocked = new Set(['pkg-1'])
+	const granted = acknowledgement(
+		await call('ada', {
+			intent: 'grant',
+			subjectType: 'user',
+			subjectId: collaboratorPeople.bob.personId,
+			preset: 'contribute',
+		}),
+	)
+	expect(granted.warnings).toHaveLength(1)
+	expect(granted.warnings?.[0]).toContain('"Prod DB"')
+	expect(granted.warnings?.[0]).toContain(
+		"could make the package's code use them",
+	)
+
+	const locked = view(await call('ada'))
+	expect(locked.unmappableCredentials).toMatchObject({
+		credentials: [{ needKey: 'rooms-db', credentialName: 'Prod DB' }],
+		canAllowChanges: true,
+	})
+	expect(locked.unmappableCredentials?.notice).toContain(
+		'changes are owner-only',
+	)
+	const bob = locked.collaborators.find((row) => row.username === 'bob')
+	expect(bob?.unmappableCredentialWarning).toContain('cannot push, publish')
+	expect(bob?.allowUnmappableCredentialChanges).toBe(false)
+
+	acknowledgement(
+		await call('ada', {
+			intent: 'grant',
+			subjectType: 'user',
+			subjectId: collaboratorPeople.bob.personId,
+			preset: 'contribute',
+			allowUnmappableCredentialChanges: true,
+		}),
+	)
+	const allowed = view(await call('ada'))
+	const allowedBob = allowed.collaborators.find((row) => row.username === 'bob')
+	expect(allowedBob?.allowUnmappableCredentialChanges).toBe(true)
+	expect(allowedBob?.unmappableCredentialWarning).toContain(
+		'This grant allows changes',
+	)
+})
+
+test('a package without unmappable credentials shows no notice or warnings', async () => {
+	const granted = acknowledgement(
+		await call('ada', {
+			intent: 'grant',
+			subjectType: 'user',
+			subjectId: collaboratorPeople.bob.personId,
+			preset: 'manage',
+		}),
+	)
+	expect(granted.warnings ?? []).toEqual([])
+	const read = view(await call('ada'))
+	expect(read.unmappableCredentials ?? null).toBeNull()
 })
