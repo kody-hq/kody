@@ -50,7 +50,7 @@
       ],
       "entitlements": "assets/entitlements.mac.plist",
       "extendInfo": {
-        "NSAppleEventsUsageDescription": "Kody lets your agents use local apps, including sending messages you explicitly approve."
+        "NSAppleEventsUsageDescription": "When you grant host-command access, your agents can control local apps, including sending messages."
       }
     },
     "win": {

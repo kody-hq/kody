@@ -288,3 +288,10 @@ macOS can ask before Kody controls apps such as Messages. The user must grant
 that Automation permission. Full Disk Access is separate and is required for
 reading the local Messages database. Release verification checks these values on
 the signed app, alongside its signature and notarization ticket.
+
+These app permissions apply to the runner launched by Kody Desktop. When the app
+adopts an existing CLI service or terminal daemon, that process keeps its own
+macOS permissions. Grant Full Disk Access to its responsible launcher and
+approve its separate Automation prompt. Kody Desktop's permissions do not
+transfer to an adopted runner. If macOS denies automation without prompting,
+check the responsible launcher's signing entitlements and permission setup.
