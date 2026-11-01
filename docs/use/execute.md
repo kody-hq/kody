@@ -248,8 +248,8 @@ on, it can run on your own machine instead: pass `context` (with optional
 `fallback: "chain"`), a per-run `chain`, or `requires: ["fs" | "lan"]`, or let
 your default chain decide. Every routed result carries `ranOn`. `workerUnits` is
 0 on a context and, on Kody cloud, 1 only the first time that worker runs that
-UTC day. An in-progress cloud response omits `workerUnits` until `runGet`.
-Credentials stay in Kody cloud. See the
+UTC day. An in-progress cloud response omits `workerUnits`. `runGet`
+`metadata.ranOn` does not include it. Credentials stay in Kody cloud. See the
 [Execution contexts guide](../guides/execution-contexts.md) and the
 [field reference](./execution-contexts.md); turn the experiment on at
 [`/account/experiments`](https://kody.codes/account/experiments) or with

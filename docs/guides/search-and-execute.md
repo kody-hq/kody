@@ -133,7 +133,8 @@ and a text line names it with friendly names only, plus the Worker compute units
 the call charged, such as `Ran on Kody cloud, 1 worker unit.` or
 `Ran on build-box (your machine), 0 worker units.` Runs on an execution context
 are always 0; a cloud run is 1 only the first time its worker runs that UTC day.
-`runGet` shows the same `metadata.ranOn`. See
+An in-progress cloud response omits `workerUnits`. `runGet` `metadata.ranOn` is
+the same shape without `workerUnits`. See
 [execution contexts](./execution-contexts.md) (internals:
 [architecture](../contributing/architecture/execution-contexts.md)).
 

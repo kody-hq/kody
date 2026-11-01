@@ -19,7 +19,7 @@ Execution contexts are an experiment. Turn them on at
   `{ target, name?, outcome, reason? }` for each skipped entry (`offline`,
   `busy`, `rejected`, …). `workerUnits` is 0 on a context and, on Kody cloud, 1
   only the first time that worker runs that UTC day. An in-progress cloud
-  response omits it until `runGet`. See
+  response omits it. `runGet` `metadata.ranOn` does not include it. See
   [Search and execute](../guides/search-and-execute.md).
 - Automations take `execution` with the same shape plus
   `whenOffline: "fail" | "queue"` and `queueMinutes` (default 60, max 1440).
