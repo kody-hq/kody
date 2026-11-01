@@ -33,10 +33,11 @@ export function isRepoCheckResourceLimitMessage(message: string) {
  */
 export function isolatedRunnerResourceLimitAdvice() {
 	return (
-		'This usually means the npm dependency graph — not just the package ' +
-		'source — is too large to bundle inside a Worker isolate. Shrink the ' +
-		'graph, or keep the Kody package as a thin orchestrator and offload ' +
-		'the heavy work to a process you operate. Load ' +
+		'This step bundles the modules reachable from the package exports, ' +
+		'jobs, and handlers, plus any npm dependencies they import, so its ' +
+		'cost grows with that import graph. Split very large entrypoints, ' +
+		'drop heavy dependencies, or keep the Kody package as a thin ' +
+		'orchestrator and offload the heavy work to a process you operate. Load ' +
 		`\`search({ entity: "guide:${heavyWorkOffloadGuideId}" })\`.`
 	)
 }
@@ -79,12 +80,14 @@ export function isRepoCheckStep(value: unknown): value is RepoCheckStep {
 }
 
 const sourceTreeAdvice =
-	'This step reads every non-test .js/.ts module under the package source ' +
-	'root, so its cost grows with the total source size even when the ' +
-	'runtime code is small. Move scripts, fixtures, generated or vendored ' +
-	'code, and examples out of the package source root, list them in a ' +
-	'`.kodyignore` file next to package.json, or name test-only modules ' +
-	'*.test.ts, then run `kody dev check` again.'
+	'The checks read every file under the package source root that ' +
+	'`.kodyignore` does not exclude (code, tests, and docs), and typecheck ' +
+	'and bundle what the package exports, jobs, and handlers import, so ' +
+	'their cost grows with that source even when the runtime code is small. ' +
+	'Move scripts, fixtures, generated or vendored code, and examples out of ' +
+	'the package source root or list them in a `.kodyignore` file next to ' +
+	'package.json (never README.md or AGENTS.md, which publish requires), ' +
+	'then run `kody dev check` again.'
 
 /**
  * Isolate memory and CPU use is not exactly repeatable: garbage collection
