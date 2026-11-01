@@ -14,6 +14,7 @@ import {
 	getPlatformFeedbackSubmissionQuota,
 	listPlatformFeedbackForAdmin,
 	listPlatformFeedbackForSubmitter,
+	recordPlatformFeedbackFollowUpForAdmin,
 	submitPlatformFeedback,
 	updatePlatformFeedbackForAdmin,
 } from './service.ts'
@@ -793,8 +794,8 @@ test('triage and terminal no-ops ignore invalid resolution fields without valida
 		feedbackId: submitted.id,
 		reviewerUserId: 'admin-b',
 		action: 'resolve',
-		resolutionNote: 'x'.repeat(2_001),
-		resolutionPrUrls: ['ftp://example.com/nope'],
+		resolutionNote: 'Shipped.',
+		resolutionPrUrls: ['https://example.com/pull/1'],
 	})
 	expect(noop).toMatchObject({
 		didChangeStatus: false,
@@ -804,6 +805,120 @@ test('triage and terminal no-ops ignore invalid resolution fields without valida
 			resolutionPrUrls: ['https://example.com/pull/1'],
 		},
 	})
+	await expect(
+		updatePlatformFeedbackForAdmin({
+			db,
+			feedbackId: submitted.id,
+			reviewerUserId: 'admin-b',
+			action: 'resolve',
+			resolutionNote: 'A different note.',
+		}),
+	).rejects.toThrow(/already resolved.*follow_up/)
+	await expect(
+		updatePlatformFeedbackForAdmin({
+			db,
+			feedbackId: submitted.id,
+			reviewerUserId: 'admin-b',
+			action: 'resolve',
+			resolutionPrUrls: ['https://example.com/pull/2'],
+		}),
+	).rejects.toThrow(/already resolved.*follow_up/)
+	await expect(
+		updatePlatformFeedbackForAdmin({
+			db,
+			feedbackId: submitted.id,
+			reviewerUserId: 'admin-b',
+			action: 'resolve',
+			resolutionNote: 'x'.repeat(2_001),
+		}),
+	).rejects.toThrow(/at most 2000/)
+	const unchanged = await getPlatformFeedbackForAdmin({
+		db,
+		feedbackId: submitted.id,
+	})
+	expect(unchanged).toMatchObject({
+		resolutionNote: 'Shipped.',
+		resolutionPrUrls: ['https://example.com/pull/1'],
+		resolutionHistory: [],
+	})
+})
+
+test('follow-ups store a new outcome note on closed feedback and keep history', async () => {
+	const { db } = createPlatformFeedbackDb()
+	const submitted = await submit(db, 'user-a')
+	await expect(
+		recordPlatformFeedbackFollowUpForAdmin({
+			db,
+			feedbackId: submitted.id,
+			reviewerUserId: 'admin-a',
+			resolutionNote: 'Too early.',
+		}),
+	).rejects.toThrow(/status "open".*Resolve or dismiss it first/)
+	const resolved = await review(
+		db,
+		submitted.id,
+		'admin-a',
+		'resolve',
+		undefined,
+		{
+			resolutionNote: 'Shipped.',
+			resolutionPrUrls: ['https://example.com/pull/1'],
+		},
+	)
+	await expect(
+		recordPlatformFeedbackFollowUpForAdmin({
+			db,
+			feedbackId: submitted.id,
+			reviewerUserId: 'admin-a',
+			resolutionNote: '   ',
+		}),
+	).rejects.toThrow(/non-empty user_message/)
+	const first = await recordPlatformFeedbackFollowUpForAdmin({
+		db,
+		feedbackId: submitted.id,
+		reviewerUserId: 'admin-b',
+		resolutionNote: 'Follow-up: also fixed on mobile.',
+	})
+	expect(first).toMatchObject({
+		didChange: true,
+		feedback: {
+			status: 'resolved',
+			reviewedByUserId: 'admin-b',
+			resolutionNote: 'Follow-up: also fixed on mobile.',
+			resolutionPrUrls: ['https://example.com/pull/1'],
+			resolutionHistory: [
+				{
+					note: 'Shipped.',
+					prUrls: ['https://example.com/pull/1'],
+					recordedAt: resolved.feedback.reviewedAt,
+				},
+			],
+		},
+	})
+	const retry = await recordPlatformFeedbackFollowUpForAdmin({
+		db,
+		feedbackId: submitted.id,
+		reviewerUserId: 'admin-b',
+		resolutionNote: 'Follow-up: also fixed on mobile.',
+	})
+	expect(retry.didChange).toBe(false)
+	expect(retry.feedback.updatedAt).toBe(first.feedback.updatedAt)
+	expect(retry.feedback.resolutionHistory).toHaveLength(1)
+	const second = await recordPlatformFeedbackFollowUpForAdmin({
+		db,
+		feedbackId: submitted.id,
+		reviewerUserId: 'admin-b',
+		resolutionNote: 'Follow-up two.',
+		resolutionPrUrls: [],
+	})
+	expect(second.feedback).toMatchObject({
+		resolutionNote: 'Follow-up two.',
+		resolutionPrUrls: [],
+	})
+	expect(second.feedback.resolutionHistory.map((entry) => entry.note)).toEqual([
+		'Shipped.',
+		'Follow-up: also fixed on mobile.',
+	])
 })
 
 test('resolution PR URL validation rejects non-https, oversize lists, and overlong entries', async () => {

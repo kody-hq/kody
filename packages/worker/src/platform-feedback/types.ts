@@ -31,6 +31,25 @@ export const platformFeedbackActions = ['triage', 'resolve', 'dismiss'] as const
 
 export type PlatformFeedbackAction = (typeof platformFeedbackActions)[number]
 
+/**
+ * Admin update actions: status transitions plus `follow_up`, which stores a
+ * new submitter-visible note on resolved/dismissed feedback and emails it.
+ */
+export const platformFeedbackAdminActions = [
+	...platformFeedbackActions,
+	'follow_up',
+] as const
+
+export type PlatformFeedbackAdminAction =
+	(typeof platformFeedbackAdminActions)[number]
+
+/** One superseded submitter-visible outcome (note + PR URLs). */
+export type PlatformFeedbackResolutionHistoryEntry = {
+	note: string | null
+	prUrls: Array<string>
+	recordedAt: string
+}
+
 export type PlatformFeedbackRow = {
 	id: string
 	submitter_user_id: string
@@ -45,6 +64,7 @@ export type PlatformFeedbackRow = {
 	admin_note: string | null
 	resolution_note: string | null
 	resolution_pr_urls: string | null
+	resolution_history?: string | null
 	created_at: string
 	updated_at: string
 }
@@ -65,6 +85,8 @@ export type PlatformFeedbackRecord = {
 	resolutionNote: string | null
 	/** Submitter-visible https PR URLs from the outcome; empty when none. */
 	resolutionPrUrls: Array<string>
+	/** Earlier outcome notes replaced by follow-ups, oldest first. */
+	resolutionHistory: Array<PlatformFeedbackResolutionHistoryEntry>
 	createdAt: string
 	updatedAt: string
 }
@@ -86,6 +108,7 @@ export type PlatformFeedbackListItem = Omit<
 	| 'adminNote'
 	| 'resolutionNote'
 	| 'resolutionPrUrls'
+	| 'resolutionHistory'
 	| 'submitterUsername'
 	| 'submitterEmail'
 >

@@ -1,9 +1,11 @@
 import {
+	platformFeedbackResolutionHistoryMaxEntries,
 	platformFeedbackResolutionNoteMaxLength,
 	platformFeedbackResolutionPrUrlMaxCount,
 	platformFeedbackResolutionPrUrlMaxLength,
 	platformFeedbackResolutionPrUrlsJsonMaxLength,
 } from './limits.ts'
+import { type PlatformFeedbackResolutionHistoryEntry } from './types.ts'
 
 /**
  * Normalize an optional submitter-visible resolution note (same text as the
@@ -94,6 +96,52 @@ export function parsePlatformFeedbackResolutionPrUrls(
 			(entry): entry is string =>
 				typeof entry === 'string' && entry.trim().length > 0,
 		)
+	} catch {
+		return []
+	}
+}
+
+/** Serialize resolution history (newest kept when over the cap), or null when empty. */
+export function serializePlatformFeedbackResolutionHistory(
+	entries: ReadonlyArray<PlatformFeedbackResolutionHistoryEntry>,
+): string | null {
+	const kept = entries.slice(-platformFeedbackResolutionHistoryMaxEntries)
+	if (kept.length === 0) return null
+	return JSON.stringify(
+		kept.map((entry) => ({
+			note: entry.note,
+			pr_urls: entry.prUrls,
+			recorded_at: entry.recordedAt,
+		})),
+	)
+}
+
+/** Parse stored resolution history; corrupt values become []. */
+export function parsePlatformFeedbackResolutionHistory(
+	value: unknown,
+): Array<PlatformFeedbackResolutionHistoryEntry> {
+	if (typeof value !== 'string' || value.length < 1) return []
+	try {
+		const parsed: unknown = JSON.parse(value)
+		if (!Array.isArray(parsed)) return []
+		return parsed.flatMap((entry) => {
+			if (!entry || typeof entry !== 'object') return []
+			const record = entry as Record<string, unknown>
+			const recordedAt =
+				typeof record['recorded_at'] === 'string' ? record['recorded_at'] : ''
+			if (!recordedAt) return []
+			return [
+				{
+					note: typeof record['note'] === 'string' ? record['note'] : null,
+					prUrls: Array.isArray(record['pr_urls'])
+						? record['pr_urls'].filter(
+								(url): url is string => typeof url === 'string',
+							)
+						: [],
+					recordedAt,
+				},
+			]
+		})
 	} catch {
 		return []
 	}

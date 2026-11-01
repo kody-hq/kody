@@ -827,8 +827,12 @@ export function buildPlatformFeedbackOutcomeEmail(input: {
 	summary: string
 	userMessage?: string
 	prUrls?: Array<string>
+	/** Follow-up note on feedback that was already resolved or dismissed. */
+	followUp?: boolean
 }) {
-	const copy = platformFeedbackOutcomeCopy(input.status)
+	const copy = input.followUp
+		? platformFeedbackFollowUpCopy
+		: platformFeedbackOutcomeCopy(input.status)
 	const userMessage = input.userMessage?.trim()
 	const prUrls = (input.prUrls ?? [])
 		.map((url) => url.trim())
@@ -850,6 +854,13 @@ export function buildPlatformFeedbackOutcomeEmail(input: {
 		],
 		footnote: "You're receiving this because you sent Kody platform feedback.",
 	})
+}
+
+const platformFeedbackFollowUpCopy = {
+	subject: 'A follow-up on your Kody feedback',
+	preheader: 'Thanks for telling us — here is a follow-up.',
+	decision: (summary: string) =>
+		`Here is a follow-up on your feedback about "${summary}".`,
 }
 
 function platformFeedbackOutcomeCopy(status: PlatformFeedbackOutcomeStatus) {

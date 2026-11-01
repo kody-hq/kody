@@ -4,6 +4,7 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import type * as PlatformFeedbackOutcomeEmail from '#worker/platform-feedback/outcome-email.ts'
 import type * as PlatformFeedbackService from '#worker/platform-feedback/service.ts'
+import type * as PlatformFeedbackSubmitterMail from '#worker/platform-feedback/submitter-mail.ts'
 import { expect, test, vi } from 'vitest'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
@@ -39,6 +40,8 @@ const mockModule = vi.hoisted(() => ({
 	listPlatformFeedbackForAdmin: vi.fn(),
 	listPlatformFeedbackForSubmitter: vi.fn(),
 	queueSend: vi.fn(),
+	readPlatformFeedbackSubmitterContact: vi.fn(),
+	recordPlatformFeedbackFollowUpForAdmin: vi.fn(),
 	sendPlatformFeedbackOutcomeEmail: vi.fn(),
 	submitPlatformFeedback: vi.fn(),
 	updatePlatformFeedbackForAdmin: vi.fn(),
@@ -69,6 +72,28 @@ vi.mock(
 	},
 )
 
+vi.mock(
+	'#worker/platform-feedback/submitter-mail.ts',
+	async (importOriginal) => {
+		const actual = await importOriginal<typeof PlatformFeedbackSubmitterMail>()
+		return {
+			...actual,
+			readPlatformFeedbackSubmitterContact: async (...args: Array<unknown>) =>
+				(await mockModule.readPlatformFeedbackSubmitterContact(...args)) ?? {
+					reachable: true,
+					emailVerified: true,
+					unreachableReason: null,
+				},
+		}
+	},
+)
+
+const reachableContact = {
+	reachable: true,
+	emailVerified: true,
+	unreachableReason: null,
+}
+
 vi.mock('#worker/platform-feedback/service.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof PlatformFeedbackService>()
 	return {
@@ -83,6 +108,8 @@ vi.mock('#worker/platform-feedback/service.ts', async (importOriginal) => {
 			mockModule.listPlatformFeedbackForSubmitter(...args),
 		submitPlatformFeedback: (...args: Array<unknown>) =>
 			mockModule.submitPlatformFeedback(...args),
+		recordPlatformFeedbackFollowUpForAdmin: (...args: Array<unknown>) =>
+			mockModule.recordPlatformFeedbackFollowUpForAdmin(...args),
 		updatePlatformFeedbackForAdmin: (...args: Array<unknown>) =>
 			mockModule.updatePlatformFeedbackForAdmin(...args),
 	}
@@ -102,6 +129,7 @@ const openFeedback = {
 	adminNote: null,
 	resolutionNote: null,
 	resolutionPrUrls: [] as Array<string>,
+	resolutionHistory: [],
 	createdAt: '2026-07-19T00:00:00.000Z',
 	updatedAt: '2026-07-19T00:00:00.000Z',
 }
@@ -415,6 +443,10 @@ test('admin platform feedback capabilities enforce role access, redact lists, pa
 })
 
 test('admin platform feedback resolve and dismiss email the submitter without failing the update', async () => {
+	mockModule.readPlatformFeedbackSubmitterContact.mockResolvedValue(
+		reachableContact,
+	)
+	mockModule.sendPlatformFeedbackOutcomeEmail.mockResolvedValue({ sent: true })
 	const reviewed = {
 		reviewedByUserId: 'admin-1',
 		reviewedAt: '2026-07-19T01:00:00.000Z',
@@ -457,6 +489,13 @@ test('admin platform feedback resolve and dismiss email the submitter without fa
 		},
 		adminContext,
 	)
+	expect(resolved.outcome_email).toEqual({ sent: true, reason: null })
+	expect(resolved.submitter_contact).toEqual({
+		reachable: true,
+		email_verified: true,
+		unreachable_reason: null,
+	})
+	expect(JSON.stringify(resolved)).not.toContain('@example.com')
 	expect(resolved.feedback).toMatchObject({
 		status: 'resolved',
 		admin_note: 'Internal only.',
@@ -486,11 +525,15 @@ test('admin platform feedback resolve and dismiss email the submitter without fa
 		previousStatus: 'resolved',
 		didChangeStatus: false,
 	})
-	await adminPlatformFeedbackUpdateCapability.handler(
+	const noop = await adminPlatformFeedbackUpdateCapability.handler(
 		{ id: 'feedback-1', action: 'resolve' },
 		adminContext,
 	)
 	expect(mockModule.sendPlatformFeedbackOutcomeEmail).not.toHaveBeenCalled()
+	expect(noop.outcome_email).toEqual({
+		sent: false,
+		reason: expect.stringContaining('follow_up'),
+	})
 
 	mockModule.updatePlatformFeedbackForAdmin.mockResolvedValueOnce({
 		feedback: dismissedFeedback,
@@ -526,6 +569,10 @@ test('admin platform feedback resolve and dismiss email the submitter without fa
 	)
 	expect(stillUpdated.feedback.id).toBe('feedback-3')
 	expect(stillUpdated.feedback.status).toBe('dismissed')
+	expect(stillUpdated.outcome_email).toEqual({
+		sent: false,
+		reason: 'the email provider request failed',
+	})
 	expect(consoleWarn).toHaveBeenCalledWith(
 		'platform-feedback-outcome-email-failed',
 		{
@@ -534,6 +581,129 @@ test('admin platform feedback resolve and dismiss email the submitter without fa
 			error: expect.any(Error),
 		},
 	)
+})
+
+test('admin platform feedback follow_up stores and emails a new note on closed feedback, failing loudly otherwise', async () => {
+	const base = createCapabilityContext({
+		userId: ownerIdFromStored('admin-1'),
+		roles: ['admin'],
+	})
+	const adminContext = {
+		...base,
+		env: {
+			...base.env,
+			APP_BASE_URL: 'https://heykody.dev',
+			BUNDLE_ARTIFACTS_KV: {},
+		} as unknown as Env,
+	}
+	const resolvedFeedback = {
+		...openFeedback,
+		status: 'resolved' as const,
+		reviewedByUserId: 'admin-1',
+		reviewedAt: '2026-07-19T01:00:00.000Z',
+		resolutionNote: 'Shipped.',
+		updatedAt: '2026-07-19T01:00:00.000Z',
+	}
+	const followedUp = {
+		...resolvedFeedback,
+		resolutionNote: 'Also fixed on mobile.',
+		resolutionHistory: [
+			{
+				note: 'Shipped.',
+				prUrls: [],
+				recordedAt: '2026-07-19T01:00:00.000Z',
+			},
+		],
+		updatedAt: '2026-07-20T00:00:00.000Z',
+	}
+	mockModule.getPlatformFeedbackForAdmin.mockResolvedValue(resolvedFeedback)
+	mockModule.readPlatformFeedbackSubmitterContact.mockResolvedValue(
+		reachableContact,
+	)
+	mockModule.recordPlatformFeedbackFollowUpForAdmin.mockResolvedValue({
+		feedback: followedUp,
+		didChange: true,
+	})
+	mockModule.sendPlatformFeedbackOutcomeEmail.mockReset()
+	mockModule.sendPlatformFeedbackOutcomeEmail.mockResolvedValueOnce({
+		sent: true,
+	})
+	const result = await adminPlatformFeedbackUpdateCapability.handler(
+		{
+			id: 'feedback-1',
+			action: 'follow_up',
+			user_message: 'Also fixed on mobile.',
+		},
+		adminContext,
+	)
+	expect(result.outcome_email).toEqual({ sent: true, reason: null })
+	expect(result.feedback).toMatchObject({
+		status: 'resolved',
+		resolution_note: 'Also fixed on mobile.',
+		resolution_history: [{ note: 'Shipped.', pr_urls: [] }],
+	})
+	expect(mockModule.sendPlatformFeedbackOutcomeEmail).toHaveBeenCalledWith({
+		env: adminContext.env,
+		feedback: followedUp,
+		status: 'resolved',
+		userMessage: 'Also fixed on mobile.',
+		prUrls: [],
+		followUpVersion: '2026-07-20T00:00:00.000Z',
+	})
+
+	mockModule.sendPlatformFeedbackOutcomeEmail.mockResolvedValueOnce({
+		sent: false,
+		reason: 'send_not_delivered',
+	})
+	await expect(
+		adminPlatformFeedbackUpdateCapability.handler(
+			{
+				id: 'feedback-1',
+				action: 'follow_up',
+				user_message: 'Also fixed on mobile.',
+			},
+			adminContext,
+		),
+	).rejects.toThrow(/Stored the follow-up note.*email was not sent/)
+
+	mockModule.recordPlatformFeedbackFollowUpForAdmin.mockClear()
+	mockModule.readPlatformFeedbackSubmitterContact.mockResolvedValueOnce({
+		reachable: false,
+		emailVerified: false,
+		unreachableReason: 'account_suspended',
+	})
+	await expect(
+		adminPlatformFeedbackUpdateCapability.handler(
+			{ id: 'feedback-1', action: 'follow_up', user_message: 'Hello again.' },
+			adminContext,
+		),
+	).rejects.toThrow(/suspended\. Nothing was stored or emailed/)
+	await expect(
+		adminPlatformFeedbackUpdateCapability.handler(
+			{ id: 'feedback-1', action: 'follow_up', user_message: 'Hello again.' },
+			{ ...adminContext, env: base.env },
+		),
+	).rejects.toThrow(/not configured.*Nothing was stored or emailed/)
+	await expect(
+		adminPlatformFeedbackUpdateCapability.handler(
+			{ id: 'feedback-1', action: 'follow_up' },
+			adminContext,
+		),
+	).rejects.toThrow(/non-empty user_message/)
+	mockModule.getPlatformFeedbackForAdmin.mockResolvedValueOnce(openFeedback)
+	await expect(
+		adminPlatformFeedbackUpdateCapability.handler(
+			{ id: 'feedback-1', action: 'follow_up', user_message: 'Hello again.' },
+			adminContext,
+		),
+	).rejects.toSatisfy(
+		(error: unknown) =>
+			error instanceof McpCallerError && /status "open"/.test(error.message),
+	)
+	expect(
+		mockModule.recordPlatformFeedbackFollowUpForAdmin,
+	).not.toHaveBeenCalled()
+	mockModule.getPlatformFeedbackForAdmin.mockReset()
 })
 
 test('meta platform feedback get and list scope to the signed-in submitter and redact reviewer fields', async () => {

@@ -44,6 +44,14 @@ export class PlatformFeedbackConcurrentUpdateError extends Error {
 	}
 }
 
+/** A follow-up outcome note was requested but cannot be stored as asked. */
+export class PlatformFeedbackFollowUpError extends Error {
+	constructor(message: string) {
+		super(message)
+		this.name = 'PlatformFeedbackFollowUpError'
+	}
+}
+
 const platformFeedbackUrgentSupportNote =
 	'For urgent issues, email support@kody.codes.'
 
@@ -78,6 +86,7 @@ export type PlatformFeedbackDomainError =
 	| PlatformFeedbackNotFoundError
 	| PlatformFeedbackInvalidTransitionError
 	| PlatformFeedbackConcurrentUpdateError
+	| PlatformFeedbackFollowUpError
 	| PlatformFeedbackSubmissionRateLimitError
 	| PlatformFeedbackActiveQueueLimitError
 	| PlatformFeedbackSubmissionConflictError
@@ -89,6 +98,7 @@ export function isPlatformFeedbackDomainError(
 		error instanceof PlatformFeedbackNotFoundError ||
 		error instanceof PlatformFeedbackInvalidTransitionError ||
 		error instanceof PlatformFeedbackConcurrentUpdateError ||
+		error instanceof PlatformFeedbackFollowUpError ||
 		error instanceof PlatformFeedbackSubmissionRateLimitError ||
 		error instanceof PlatformFeedbackActiveQueueLimitError ||
 		error instanceof PlatformFeedbackSubmissionConflictError

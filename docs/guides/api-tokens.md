@@ -63,7 +63,13 @@ capability.
 
 Kody's MCP server advertises `search`, `execute`, and `api` to every signed-in
 account on every plan; nothing gates `api` by tier, scope, or client. If your
-agent only sees `search` and `execute`, its MCP client is showing a tool list
-cached from an earlier connection. Refresh the Kody server's tools in the client
-(reconnect it, or restart the client) and `api` appears. Until then, use the CLI
-commands above.
+agent only sees `search` and `execute`, its MCP client has not picked up the
+current tool list.
+
+- **ChatGPT:** Kody's tool updates are not currently being picked up in ChatGPT,
+  so reconnecting does not add `api`. Add Kody manually in developer mode (see
+  [Connect your agent](../use/connect-your-agent.md)), or use the Kody CLI:
+  `npx @kodycodes/cli api tokenList` and
+  `npx @kodycodes/cli api tokenRevoke --params '{"token_id":"<id>"}'`.
+- **Other clients:** refresh the Kody server's tools (reconnect it, or restart
+  the client) and `api` appears. Until then, use the CLI commands above.

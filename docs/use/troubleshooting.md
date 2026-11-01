@@ -189,6 +189,17 @@ Cloudflare Tunnel and Access, also see
 [Connect a home MCP server](../guides/local-mcp-tunnels.md) and
 [home-mcp-starter](https://github.com/kody-bot/home-mcp-starter).
 
+## The `api` tool is missing (only `search` and `execute`)
+
+- **ChatGPT:** Kody's tool updates are not currently being picked up in ChatGPT.
+  If `api` is missing, add Kody manually in developer mode (see
+  [Connect your agent](./connect-your-agent.md)), or use the Kody CLI, for
+  example `npx @kodycodes/cli api tokenList` and
+  `npx @kodycodes/cli api tokenRevoke --params '{"token_id":"<id>"}'`.
+- **Other clients:** refresh the Kody server's tools (reconnect, or restart the
+  client). Until then, use `npx @kodycodes/cli api <operationId>`. See
+  [API tokens](../guides/api-tokens.md).
+
 ## Search returns no good matches
 
 - **Rephrase the query** using domain vocabulary from the search tool’s domain

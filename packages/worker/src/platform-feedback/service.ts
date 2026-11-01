@@ -1,6 +1,7 @@
 import {
 	PlatformFeedbackActiveQueueLimitError,
 	PlatformFeedbackConcurrentUpdateError,
+	PlatformFeedbackFollowUpError,
 	PlatformFeedbackInvalidTransitionError,
 	PlatformFeedbackNotFoundError,
 	PlatformFeedbackSubmissionConflictError,
@@ -26,6 +27,7 @@ import {
 import {
 	normalizePlatformFeedbackResolutionNote,
 	normalizePlatformFeedbackResolutionPrUrls,
+	serializePlatformFeedbackResolutionHistory,
 	serializePlatformFeedbackResolutionPrUrls,
 } from './resolution.ts'
 import {
@@ -344,6 +346,7 @@ export async function submitPlatformFeedback(input: {
 		adminNote: row.admin_note,
 		resolutionNote: row.resolution_note,
 		resolutionPrUrls: [],
+		resolutionHistory: [],
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	}
@@ -448,12 +451,15 @@ export async function updatePlatformFeedbackForAdmin(input: {
 	/**
 	 * Submitter-visible outcome note. Stored as `resolution_note` when this
 	 * update transitions into resolved/dismissed (same text mailed as
-	 * `user_message`). Ignored for triage and no-op terminal updates.
+	 * `user_message`). Ignored for triage. On a terminal no-op (resolve on
+	 * resolved), a different note throws: use
+	 * `recordPlatformFeedbackFollowUpForAdmin` instead.
 	 */
 	resolutionNote?: string
 	/**
 	 * Optional https PR URLs stored as `resolution_pr_urls` on the same
-	 * outcome transition. Ignored for triage and no-op terminal updates.
+	 * outcome transition. Ignored for triage; a different list on a terminal
+	 * no-op throws like `resolutionNote`.
 	 */
 	resolutionPrUrls?: Array<string>
 }): Promise<PlatformFeedbackAdminUpdate> {
@@ -495,6 +501,14 @@ export async function updatePlatformFeedbackForAdmin(input: {
 		const nextResolutionPrUrlsJson = storeOutcomeFields
 			? serializePlatformFeedbackResolutionPrUrls(resolutionPrUrls ?? null)
 			: undefined
+		if (nextStatus === null && isOutcomeAction(input.action)) {
+			assertNoNewOutcomeFieldsOnTerminalNoop({
+				feedbackId: input.feedbackId,
+				existing,
+				resolutionNote: input.resolutionNote,
+				resolutionPrUrls: input.resolutionPrUrls,
+			})
+		}
 		if (nextStatus === null && !adminNoteChanged && !storeOutcomeFields) {
 			return {
 				feedback: toPlatformFeedbackRecord(existing),
@@ -526,6 +540,131 @@ export async function updatePlatformFeedbackForAdmin(input: {
 			feedback: toPlatformFeedbackRecord(feedback),
 			previousStatus: existing.status,
 			didChangeStatus: nextStatus !== null,
+		}
+	}
+	throw new PlatformFeedbackConcurrentUpdateError(input.feedbackId)
+}
+
+function sameStringList(a: ReadonlyArray<string>, b: ReadonlyArray<string>) {
+	return a.length === b.length && a.every((value, index) => value === b[index])
+}
+
+/**
+ * Same-status resolve/dismiss stays an idempotent no-op, but only when it
+ * would not silently drop a new submitter-visible note or PR list.
+ */
+function assertNoNewOutcomeFieldsOnTerminalNoop(input: {
+	feedbackId: string
+	existing: PlatformFeedbackRecordWithRevision
+	resolutionNote: string | undefined
+	resolutionPrUrls: Array<string> | undefined
+}) {
+	const noteChanged =
+		input.resolutionNote !== undefined &&
+		(normalizePlatformFeedbackResolutionNote(input.resolutionNote) ?? null) !==
+			input.existing.resolutionNote
+	const prUrlsChanged =
+		input.resolutionPrUrls !== undefined &&
+		!sameStringList(
+			normalizePlatformFeedbackResolutionPrUrls(input.resolutionPrUrls) ?? [],
+			input.existing.resolutionPrUrls,
+		)
+	if (!noteChanged && !prUrlsChanged) return
+	throw new PlatformFeedbackFollowUpError(
+		`Platform feedback "${input.feedbackId}" is already ${input.existing.status}, so a new user_message or pr_urls would not be stored or emailed. Use action "follow_up" to store and email a follow-up outcome note.`,
+	)
+}
+
+/**
+ * Store a new submitter-visible outcome note on resolved/dismissed feedback
+ * without changing status. The replaced note and PR URLs move into
+ * `resolution_history`. Re-sending the stored note and PR URLs is a no-op
+ * (`didChange: false`) so retries do not duplicate history.
+ */
+export async function recordPlatformFeedbackFollowUpForAdmin(input: {
+	db: D1Database
+	feedbackId: string
+	reviewerUserId: string
+	adminNote?: string
+	resolutionNote: string | undefined
+	/** Omit to keep the stored PR URLs; pass [] to clear them. */
+	resolutionPrUrls?: Array<string>
+}): Promise<{ feedback: PlatformFeedbackRecord; didChange: boolean }> {
+	const reviewerUserId = normalizeRequiredText(input.reviewerUserId, {
+		field: 'reviewerUserId',
+		maxLength: 1_000,
+	})
+	const adminNote = normalizeAdminNote(input.adminNote)
+	const resolutionNote = normalizePlatformFeedbackResolutionNote(
+		input.resolutionNote,
+	)
+	if (!resolutionNote) {
+		throw new PlatformFeedbackFollowUpError(
+			'A follow-up needs a non-empty user_message to store and email.',
+		)
+	}
+	const resolutionPrUrls =
+		input.resolutionPrUrls === undefined
+			? undefined
+			: (normalizePlatformFeedbackResolutionPrUrls(input.resolutionPrUrls) ??
+				[])
+	for (let attempt = 0; attempt < 2; attempt += 1) {
+		const existing = await getPlatformFeedbackByIdForAdmin(
+			input.db,
+			input.feedbackId,
+		)
+		if (!existing) {
+			throw new PlatformFeedbackNotFoundError(input.feedbackId)
+		}
+		if (!isOutcomeStatus(existing.status)) {
+			throw new PlatformFeedbackFollowUpError(
+				`Cannot send a follow-up on platform feedback "${input.feedbackId}" with status "${existing.status}". Resolve or dismiss it first (that update stores and emails user_message).`,
+			)
+		}
+		const nextPrUrls = resolutionPrUrls ?? existing.resolutionPrUrls
+		const outcomeChanged =
+			resolutionNote !== existing.resolutionNote ||
+			!sameStringList(nextPrUrls, existing.resolutionPrUrls)
+		const adminNoteChanged =
+			adminNote !== undefined && adminNote !== existing.adminNote
+		if (!outcomeChanged && !adminNoteChanged) {
+			return { feedback: toPlatformFeedbackRecord(existing), didChange: false }
+		}
+		const reviewedAt = new Date().toISOString()
+		const updated = await updatePlatformFeedbackStatusForAdmin(input.db, {
+			feedbackId: input.feedbackId,
+			expectedStatus: existing.status,
+			expectedRevision: existing.revision,
+			status: existing.status,
+			reviewedByUserId: reviewerUserId,
+			reviewedAt,
+			adminNote,
+			resolutionNote: outcomeChanged ? resolutionNote : undefined,
+			resolutionPrUrlsJson: outcomeChanged
+				? serializePlatformFeedbackResolutionPrUrls(nextPrUrls)
+				: undefined,
+			resolutionHistoryJson: outcomeChanged
+				? serializePlatformFeedbackResolutionHistory([
+						...existing.resolutionHistory,
+						{
+							note: existing.resolutionNote,
+							prUrls: existing.resolutionPrUrls,
+							recordedAt: existing.reviewedAt ?? existing.updatedAt,
+						},
+					])
+				: undefined,
+		})
+		if (!updated) continue
+		const feedback = await getPlatformFeedbackByIdForAdmin(
+			input.db,
+			input.feedbackId,
+		)
+		if (!feedback) {
+			throw new PlatformFeedbackNotFoundError(input.feedbackId)
+		}
+		return {
+			feedback: toPlatformFeedbackRecord(feedback),
+			didChange: outcomeChanged,
 		}
 	}
 	throw new PlatformFeedbackConcurrentUpdateError(input.feedbackId)

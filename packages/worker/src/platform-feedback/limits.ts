@@ -27,3 +27,6 @@ export const platformFeedbackResolutionPrUrlsJsonMaxLength =
 	platformFeedbackResolutionPrUrlMaxCount *
 		(platformFeedbackResolutionPrUrlMaxLength + 3) +
 	2
+
+/** Max superseded outcome notes kept in `resolution_history` (oldest dropped). */
+export const platformFeedbackResolutionHistoryMaxEntries = 10

@@ -5,6 +5,10 @@ import {
 	type PlatformFeedbackListItem,
 	type PlatformFeedbackRecord,
 } from '#worker/platform-feedback/types.ts'
+import {
+	platformFeedbackSubmitterUnreachableReasons,
+	type PlatformFeedbackSubmitterContact,
+} from '#worker/platform-feedback/submitter-mail.ts'
 export { platformFeedbackContentWarning } from '#worker/platform-feedback/content-warning.ts'
 
 export const platformFeedbackCategorySchema = z.enum(platformFeedbackCategories)
@@ -47,7 +51,47 @@ export const adminPlatformFeedbackRecordSchema =
 			.describe(
 				'Submitter-visible https PR URLs stored on resolve/dismiss. Empty when none.',
 			),
+		resolution_history: z
+			.array(
+				z.object({
+					note: z.string().nullable(),
+					pr_urls: z.array(z.string()),
+					recorded_at: z.string(),
+				}),
+			)
+			.describe(
+				'Earlier submitter-visible outcomes replaced by follow_up updates, oldest first. Empty when none.',
+			),
 	})
+
+export const adminPlatformFeedbackSubmitterContactSchema = z
+	.object({
+		reachable: z
+			.boolean()
+			.describe(
+				'True when Kody can email the submitter (account exists, has an email, not suspended or outbound-paused).',
+			),
+		email_verified: z
+			.boolean()
+			.describe('True when the submitter verified their account email.'),
+		unreachable_reason: z
+			.enum(platformFeedbackSubmitterUnreachableReasons)
+			.nullable()
+			.describe('Why the submitter cannot be emailed; null when reachable.'),
+	})
+	.describe(
+		'Whether outcome emails can reach the submitter. The address itself is never returned.',
+	)
+
+export function formatAdminPlatformFeedbackSubmitterContact(
+	contact: PlatformFeedbackSubmitterContact,
+) {
+	return {
+		reachable: contact.reachable,
+		email_verified: contact.emailVerified,
+		unreachable_reason: contact.unreachableReason,
+	}
+}
 
 export function formatAdminPlatformFeedbackListItem(
 	feedback: PlatformFeedbackListItem,
@@ -74,5 +118,10 @@ export function formatAdminPlatformFeedbackRecord(
 		admin_note: feedback.adminNote,
 		resolution_note: feedback.resolutionNote,
 		resolution_pr_urls: feedback.resolutionPrUrls,
+		resolution_history: feedback.resolutionHistory.map((entry) => ({
+			note: entry.note,
+			pr_urls: entry.prUrls,
+			recorded_at: entry.recordedAt,
+		})),
 	}
 }

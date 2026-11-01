@@ -1,6 +1,7 @@
 /**
  * Mirrors the `platform_feedback` schema in
- * `packages/worker/migrations/0001-squashed-init.sql` for `*.node.test.ts`
+ * `packages/worker/migrations/0001-squashed-init.sql` plus later
+ * platform_feedback migrations (0234 resolution_history) for `*.node.test.ts`
  * suites that build their sqlite fixture by hand.
  */
 export const platformFeedbackTestSchemaSql = `
@@ -29,6 +30,9 @@ CREATE TABLE IF NOT EXISTS "platform_feedback" (
 	),
 	resolution_pr_urls TEXT CHECK (
 		resolution_pr_urls IS NULL OR length(resolution_pr_urls) <= 12000
+	),
+	resolution_history TEXT CHECK (
+		resolution_history IS NULL OR length(resolution_history) <= 200000
 	),
 	acknowledgement_message_id TEXT CHECK (
 		acknowledgement_message_id IS NULL OR (

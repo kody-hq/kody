@@ -1,4 +1,7 @@
-import { parsePlatformFeedbackResolutionPrUrls } from './resolution.ts'
+import {
+	parsePlatformFeedbackResolutionHistory,
+	parsePlatformFeedbackResolutionPrUrls,
+} from './resolution.ts'
 import {
 	type PlatformFeedbackCategory,
 	type PlatformFeedbackListItem,
@@ -11,8 +14,8 @@ import {
 
 const platformFeedbackFullColumns = `id, submitter_user_id, submitter_username,
 	submitter_email, category, summary, details, status, reviewed_by_user_id,
-	reviewed_at, admin_note, resolution_note, resolution_pr_urls, revision,
-	created_at, updated_at`
+	reviewed_at, admin_note, resolution_note, resolution_pr_urls,
+	resolution_history, revision, created_at, updated_at`
 
 const platformFeedbackListColumns = `id, submitter_user_id, category, summary,
 	status, reviewed_by_user_id, reviewed_at, created_at, updated_at`
@@ -45,6 +48,9 @@ function mapPlatformFeedbackRow(
 			row['resolution_note'] == null ? null : String(row['resolution_note']),
 		resolutionPrUrls: parsePlatformFeedbackResolutionPrUrls(
 			row['resolution_pr_urls'],
+		),
+		resolutionHistory: parsePlatformFeedbackResolutionHistory(
+			row['resolution_history'],
 		),
 		revision: Number(row['revision']),
 		createdAt: String(row['created_at']),
@@ -420,6 +426,7 @@ export async function updatePlatformFeedbackStatusForAdmin(
 		adminNote: string | null | undefined
 		resolutionNote: string | null | undefined
 		resolutionPrUrlsJson: string | null | undefined
+		resolutionHistoryJson?: string | null
 	},
 ): Promise<boolean> {
 	const result = await db
@@ -429,6 +436,7 @@ export async function updatePlatformFeedbackStatusForAdmin(
 				admin_note = CASE WHEN ? = 1 THEN ? ELSE admin_note END,
 				resolution_note = CASE WHEN ? = 1 THEN ? ELSE resolution_note END,
 				resolution_pr_urls = CASE WHEN ? = 1 THEN ? ELSE resolution_pr_urls END,
+				resolution_history = CASE WHEN ? = 1 THEN ? ELSE resolution_history END,
 				updated_at = ?, revision = revision + 1
 			WHERE id = ? AND status = ? AND revision = ?`,
 		)
@@ -442,6 +450,8 @@ export async function updatePlatformFeedbackStatusForAdmin(
 			input.resolutionNote ?? null,
 			input.resolutionPrUrlsJson === undefined ? 0 : 1,
 			input.resolutionPrUrlsJson ?? null,
+			input.resolutionHistoryJson === undefined ? 0 : 1,
+			input.resolutionHistoryJson ?? null,
 			input.reviewedAt,
 			input.feedbackId,
 			input.expectedStatus,

@@ -35,6 +35,7 @@ const feedback: PlatformFeedbackRecord = {
 	adminNote: 'platform-feedback-triage shipped: do not mail this',
 	resolutionNote: null,
 	resolutionPrUrls: [],
+	resolutionHistory: [],
 	createdAt: '2026-07-19T00:00:00.000Z',
 	updatedAt: '2026-07-19T01:00:00.000Z',
 }
@@ -114,14 +115,21 @@ function send(
 		id?: string
 		status?: 'resolved' | 'dismissed'
 		userMessage?: string
+		followUpVersion?: string
 	} = {},
 ) {
-	const { id = feedback.id, status = 'resolved', userMessage } = input
+	const {
+		id = feedback.id,
+		status = 'resolved',
+		userMessage,
+		followUpVersion,
+	} = input
 	return sendPlatformFeedbackOutcomeEmail({
 		env,
 		feedback: { ...feedback, id, status },
 		status,
 		...(userMessage ? { userMessage } : {}),
+		...(followUpVersion ? { followUpVersion } : {}),
 	})
 }
 
@@ -149,12 +157,12 @@ test('platform feedback outcome emails send once per terminal status, escape sum
 		),
 	).toEqual([])
 
-	expect(await send(createEnv())).toBe(false)
+	expect(await send(createEnv())).toMatchObject({ sent: false })
 	expect(sendCloudflareEmail).not.toHaveBeenCalled()
 
 	const { kv, store, puts } = createKv()
 	const env = createEnv({ kv })
-	expect(await send(env)).toBe(true)
+	expect(await send(env)).toEqual({ sent: true })
 	expect(sendCloudflareEmail).toHaveBeenCalledTimes(1)
 	const resolvedEmail = lastSentEmail()
 	expect(resolvedEmail.to).toBe('ada@example.com')
@@ -175,12 +183,25 @@ test('platform feedback outcome emails send once per terminal status, escape sum
 
 	const userMessage = 'We shipped a clearer setup path.'
 	sendCloudflareEmail.mockClear()
-	expect(await send(env, { userMessage })).toBe(false)
+	expect(await send(env, { userMessage })).toEqual({
+		sent: false,
+		reason: 'already_sent',
+	})
 	expect(sendCloudflareEmail).not.toHaveBeenCalled()
+
+	const followUp = { userMessage: 'Follow-up note.', followUpVersion: 'v2' }
+	expect(await send(env, followUp)).toEqual({ sent: true })
+	expect(lastSentEmail().text).toContain('Here is a follow-up on your feedback')
+	expect(lastSentEmail().text).toContain('Follow-up note.')
+	expect(await send(env, followUp)).toEqual({
+		sent: false,
+		reason: 'already_sent',
+	})
+	sendCloudflareEmail.mockClear()
 
 	expect(
 		await send(env, { id: 'feedback-2', status: 'dismissed', userMessage }),
-	).toBe(true)
+	).toEqual({ sent: true })
 	const dismissedEmail = lastSentEmail()
 	expect(dismissedEmail.subject).toContain('update')
 	expect(dismissedEmail.headers).toBeUndefined()
@@ -203,9 +224,9 @@ test('platform feedback outcome emails send once per terminal status, escape sum
 		},
 	]
 	for (const { id, row } of skippedRecipients) {
-		expect(await send(createEnv({ kv, db: createUserDb(row) }), { id })).toBe(
-			false,
-		)
+		expect(
+			await send(createEnv({ kv, db: createUserDb(row) }), { id }),
+		).toMatchObject({ sent: false })
 	}
 	expect(sendCloudflareEmail).toHaveBeenCalledTimes(1)
 })
@@ -220,7 +241,7 @@ test('platform feedback outcome emails thread to the acknowledgement Message-ID 
 		db: createUserDb({}, { acknowledgementMessageId: ackId }),
 	})
 
-	expect(await send(env, { id: 'feedback-threaded' })).toBe(true)
+	expect(await send(env, { id: 'feedback-threaded' })).toEqual({ sent: true })
 	const threaded = lastSentEmail()
 	expect(threaded.subject).toBe('Re: We got your Kody feedback')
 	expect(threaded.headers).toEqual({
@@ -240,7 +261,9 @@ test('platform feedback outcome emails reserve the KV claim before sending and r
 	})
 	consoleWarn.mockImplementation(() => {})
 
-	expect(await send(createEnv({ kv }), { id: 'feedback-claim' })).toBe(false)
+	expect(await send(createEnv({ kv }), { id: 'feedback-claim' })).toMatchObject(
+		{ sent: false },
+	)
 	expect(order).toEqual(['put', 'send'])
 	expect(consoleWarn).toHaveBeenCalledWith(
 		'platform-feedback-outcome-email-send-failed',
