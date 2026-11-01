@@ -82,6 +82,7 @@ import {
 	activeWorkflowStatusValues,
 	terminalWorkflowStatusValues,
 	type WorkflowRunStatus,
+	terminalInlineWorkflowErrorPrefix,
 } from './workflow-statuses.ts'
 import { applyDynamicWorkflowSentryScope } from './package-workflows-sentry.ts'
 
@@ -2152,7 +2153,16 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				if (isTransientDurableObjectResetError(result.error)) {
 					throw new Error(getErrorMessage(result.error))
 				}
-				throw new UserCodeError(getErrorMessage(result.error))
+				const message = getErrorMessage(result.error)
+				const terminalIndex = message.indexOf(terminalInlineWorkflowErrorPrefix)
+				if (terminalIndex !== -1) {
+					throw terminalWorkflowStepError(
+						message.slice(
+							terminalIndex + terminalInlineWorkflowErrorPrefix.length,
+						),
+					)
+				}
+				throw new UserCodeError(message)
 			}
 			const value = toJsonSafeValue(result.result) as JsonValue
 			await finishRunRecord({
@@ -2171,7 +2181,7 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				logs,
 				error,
 			})
-			if (!isAccountSuspendedError(error)) {
+			if (!isAccountSuspendedError(error) && !isNonRetryableError(error)) {
 				await this.markRetryableWorkflowRunIgnored({
 					userId: payload.userId,
 					runId: runHandle?.id,

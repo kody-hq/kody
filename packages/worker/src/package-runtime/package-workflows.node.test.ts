@@ -596,6 +596,45 @@ test('suspended owners fail inline and package workflow steps once without retri
 	}
 })
 
+test('inline code that throws a kody-terminal error fails its step once with that reason', async () => {
+	runRecordMocks.resetProjections()
+	const { step, attempts } = createRetryingStep()
+	const { created, run } = await queueWorkflow(
+		{
+			code: 'export default async function main() { return null }',
+			runAt,
+			idempotencyKey: 'terminal-inline',
+		},
+		null,
+		{ step },
+	)
+	invocationMocks.runModuleWithRegistry.mockReset()
+	invocationMocks.runModuleWithRegistry.mockResolvedValue({
+		result: undefined,
+		error:
+			'Error: kody-terminal: packagePublishExternalPush returned checks_failed: bundle: too big',
+		logs: [],
+	})
+
+	await expect(run()).rejects.toSatisfy(
+		(error: unknown) =>
+			error instanceof NonRetryableError &&
+			error.message ===
+				'packagePublishExternalPush returned checks_failed: bundle: too big',
+	)
+	expect(attempts.get('execute inline workflow code')).toBe(1)
+	expect(findRun(created.id)).toMatchObject({
+		status: 'errored',
+		lastError:
+			'packagePublishExternalPush returned checks_failed: bundle: too big',
+	})
+	const [finish] = runRecordMocks.finishRunRecord.mock.lastCall as unknown as [
+		FinishArgs,
+	]
+	expect(finish).toMatchObject({ status: 'error' })
+	invocationMocks.runModuleWithRegistry.mockReset()
+})
+
 test('package and inline workflows each record exactly one workflow run with workflowId', async () => {
 	runRecordMocks.resetProjections()
 	const packageRun = await queueWorkflow({

@@ -98,6 +98,7 @@ const { publishExternalPushCapability } =
 
 const defaultPublishIdempotencyParts = [
 	'packagePublishExternalPush',
+	'v2',
 	'{"allowForce":false,"destructiveOverwriteConfirmed":false,"newCommit":"commit-new","ownerUserId":"user-1","packageId":"package-1"}',
 ]
 const moduleTarget = {
@@ -490,7 +491,6 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 			}),
 		],
 		manifest: {},
-		run_id: expect.any(String),
 	})
 
 	setupDefaultMocks({
@@ -511,7 +511,6 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 			}),
 		],
 		manifest: null,
-		run_id: expect.any(String),
 	})
 })
 
@@ -552,7 +551,9 @@ test('ineligible publishes return structured results without durable escalation 
 	}
 	setupDefaultMocks({ publish: checksFailed })
 
-	expect(await publish()).toEqual(checksFailed)
+	// The RepoSession check-attempt id is not a runGet run, so it is dropped.
+	const { run_id: _checkAttemptId, ...expected } = checksFailed
+	expect(await publish()).toEqual(expected)
 	// RunLog workflow projections are scoped by acting userId; parts keep full
 	// semantic input.
 	expect(mockModule.runWithDurableEscalation.mock.calls).toEqual([
@@ -887,4 +888,44 @@ test('publishExternalPush returns locked with pending_commit and an approval URL
 			'Package "@kentcdodds/demo-package" is locked. Publishes require approval at https://kody.test/@user/demo-package/approve-publish?commit=commit-new.',
 	})
 	expect(mockModule.rebuildPublishedPackageArtifact).not.toHaveBeenCalled()
+})
+
+test('durable publish code fails the run for any outcome that did not publish', async () => {
+	const { durablePublishWorkflowCode } =
+		await import('./publish-external-push.ts')
+	const runDurable = async (result: unknown) => {
+		const source = durablePublishWorkflowCode.replace(
+			"import { kody } from 'kody:runtime'",
+			'const kody = { packagePublishExternalPush: async () => globalThis.__durablePublishResult }',
+		)
+		;(
+			globalThis as { __durablePublishResult?: unknown }
+		).__durablePublishResult = result
+		const module = (await import(
+			`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
+		)) as { default: (params?: unknown) => Promise<unknown> }
+		return await module.default({})
+	}
+	const published = { status: 'published', published_commit: 'commit-new' }
+	await expect(runDurable(published)).resolves.toEqual(published)
+	await expect(
+		runDurable({ status: 'already_published', published_commit: 'c' }),
+	).resolves.toMatchObject({ status: 'already_published' })
+	await expect(
+		runDurable({
+			status: 'checks_failed',
+			failed_checks: [
+				{ kind: 'typecheck', ok: true, message: 'fine' },
+				{ kind: 'bundle', ok: false, message: 'ran out of memory' },
+			],
+			manifest: null,
+		}),
+	).rejects.toThrow(
+		'kody-terminal: packagePublishExternalPush returned checks_failed: bundle: ran out of memory',
+	)
+	await expect(
+		runDurable({ status: 'not_fast_forward', message: 'not a descendant' }),
+	).rejects.toThrow(
+		'kody-terminal: packagePublishExternalPush returned not_fast_forward: not a descendant',
+	)
 })
