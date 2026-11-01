@@ -81,9 +81,6 @@ test('org grants carry read-only resource permissions and nothing that writes', 
 
 test('read is package-only and grants package:read alone', () => {
 	expect(permissionsForGrantPreset('package', 'read')).toEqual(['package:read'])
-	expect(permissionsForGrantPreset('package', 'read')).not.toContain(
-		'package:execute',
-	)
 	expect(() => permissionsForGrantPreset('app', 'read')).toThrow(
 		/Read preset does not apply/,
 	)

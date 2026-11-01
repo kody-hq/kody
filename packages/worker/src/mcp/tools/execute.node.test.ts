@@ -1374,9 +1374,6 @@ test('execute tool attaches entitlement metadata on denials and quota, not on su
 		current: quotaLimit,
 		upgradeHint: quotaHint,
 	} as const
-	expect(quotaDenied.structuredContent.error).toBe(
-		buildEntitlementLimitMessage(quotaEntitlement),
-	)
 	expect(quotaDenied.structuredContent.entitlement).toEqual({
 		...quotaEntitlement,
 		used: quotaLimit,

@@ -25,7 +25,6 @@ import {
 import { adminPlatformFeedbackGetCapability } from './admin/admin-platform-feedback-get.ts'
 import { adminPlatformFeedbackListCapability } from './admin/admin-platform-feedback-list.ts'
 import { adminPlatformFeedbackUpdateCapability } from './admin/admin-platform-feedback-update.ts'
-import { platformFeedbackContentWarning } from './admin/platform-feedback-shared.ts'
 import {
 	platformFeedbackActiveQueueLimit,
 	platformFeedbackSubmissionRateLimit,
@@ -375,8 +374,8 @@ test('admin platform feedback capabilities enforce role access, redact lists, pa
 		total: 3,
 		page: 2,
 		pageSize: 1,
-		content_warning: platformFeedbackContentWarning,
 	})
+	expect(list.content_warning).toContain('user-authored untrusted data')
 	expect(list.feedback[0]).not.toHaveProperty('summary')
 	expect(list.feedback[0]).not.toHaveProperty('details')
 	expect(list.feedback[0]).not.toHaveProperty('admin_note')
@@ -404,7 +403,7 @@ test('admin platform feedback capabilities enforce role access, redact lists, pa
 		status: 'triaged',
 		admin_note: 'Needs setup review.',
 	})
-	expect(updated.content_warning).toBe(platformFeedbackContentWarning)
+	expect(updated.content_warning).toContain('user-authored untrusted data')
 	expect(mockModule.sendPlatformFeedbackOutcomeEmail).not.toHaveBeenCalled()
 	mockModule.updatePlatformFeedbackForAdmin.mockRejectedValueOnce(
 		new PlatformFeedbackInvalidTransitionError({

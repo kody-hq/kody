@@ -72,6 +72,6 @@ test('claim key is per org and per UTC month', () => {
 		computeIncludeHeadsUpKvKey('org-1', new Date('2026-11-01T00:00:00Z')),
 	)
 	expect(
-		computeIncludeHeadsUpKvKey('org-1', new Date('2026-10-01T00:00:00Z')),
-	).toBe(computeIncludeHeadsUpKvKey('org-1', new Date('2026-10-31T00:00:00Z')))
+		computeIncludeHeadsUpKvKey('org-1', new Date('2026-10-15T12:00:00Z')),
+	).toBe('execute-compute-include-heads-up:v1:org-1:2026-10')
 })
