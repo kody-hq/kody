@@ -101,6 +101,12 @@ caches come in two tiers with different correctness arguments (see
   refresh / delete invalidates eagerly, so it observes the change immediately.
   Cache misses (unknown package) are never retained, so a just-saved package is
   visible on the next lookup.
+- **Approved commit** — the commit an internet-visible app may serve
+  anonymously, same 15 s tier. Publish finalize runs the lookup itself
+  (`warmInternetVisibleApprovedCommit`), so a republish whose capability set the
+  owner already approved is accepted and pinned before the first visitor instead
+  of on that visitor's request. Every approval write drops the entry; anonymous
+  serve still refuses a live commit that differs from it.
 - **Commit tier** — manifest and prepared bundle artifact, keyed by
   `published_commit` taken from the freshness tier. A commit's artifacts are
   immutable, so these entries are never a staleness source; their TTL only

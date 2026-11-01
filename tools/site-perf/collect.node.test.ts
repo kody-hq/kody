@@ -122,7 +122,7 @@ test('collectSitePerf keeps homepage classify when extra landing probes fail', a
 		const report = await collectSitePerf({
 			url: 'https://kody.codes/',
 			budget,
-			packageAppUrl: null,
+			packageAppId: null,
 		})
 		expect(report.packageApp).toBeNull()
 		expect(report.pages).toEqual([
@@ -141,37 +141,49 @@ test('collectSitePerf keeps homepage classify when extra landing probes fail', a
 	}
 })
 
-test('collectSitePerf probes the hello-world package app without changing the verdict', async () => {
-	let appRequests = 0
-	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-		const url = new URL(String(input))
-		if (url.hostname === 'kentcdodds.kody.run') {
-			appRequests += 1
-			return new Response('ok', {
-				headers: {
-					'Server-Timing': `credentialSuppliers;dur=${appRequests === 1 ? 40 : 0}, entrypoint;dur=3, total;dur=${appRequests === 1 ? 90 : 20}`,
-				},
-			})
-		}
-		if (url.pathname === '/') {
-			return new Response(healthyHtml, {
-				headers: {
-					'Cache-Control': 'public, max-age=60, stale-while-revalidate=300',
-					Vary: 'Cookie',
-					'Server-Timing': 'session;dur=1, ssr;dur=4',
-				},
-			})
-		}
-		throw new Error(`unexpected probe: ${url}`)
+const landingResponse = () =>
+	new Response(healthyHtml, {
+		headers: {
+			'Cache-Control': 'public, max-age=60, stale-while-revalidate=300',
+			Vary: 'Cookie',
+			'Server-Timing': 'session;dur=1, ssr;dur=4',
+		},
 	})
+
+test('collectSitePerf probes the hello-world package app via packageAppFetch without changing the verdict', async () => {
+	let appRequests = 0
+	const appRequestInits: Array<RequestInit | undefined> = []
+	const fetchMock = vi.fn(
+		async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = new URL(String(input))
+			if (url.hostname === 'api.kody.codes') {
+				appRequests += 1
+				appRequestInits.push(init)
+				return Response.json({
+					status: 200,
+					headers: {
+						'server-timing': `credentialSuppliers;dur=${appRequests === 1 ? 40 : 0}, entrypoint;dur=3`,
+					},
+					body: 'ok',
+					truncated: false,
+				})
+			}
+			if (url.pathname === '/') return landingResponse()
+			throw new Error(`unexpected probe: ${url}`)
+		},
+	)
 	vi.stubGlobal('fetch', fetchMock)
 	try {
 		const report = await collectSitePerf({
 			url: 'https://kody.codes/',
 			budget,
+			apiToken: 'kody_at_test',
 		})
 		expect(report.packageApp?.url).toBe(
-			'https://kentcdodds.kody.run/perf-hello/',
+			'https://api.kody.codes/v1/packages/app-fetch',
+		)
+		expect(report.packageApp?.packageId).toBe(
+			'87aebd1f-9589-4c5a-b34e-40f191413564',
 		)
 		expect(report.packageApp?.samples).toHaveLength(3)
 		expect(report.packageApp?.samples[0]).toEqual({
@@ -180,12 +192,15 @@ test('collectSitePerf probes the hello-world package app without changing the ve
 			serverTiming: [
 				{ name: 'credentialSuppliers', durationMs: 40 },
 				{ name: 'entrypoint', durationMs: 3 },
-				{ name: 'total', durationMs: 90 },
 			],
 		})
-		expect(report.packageApp?.samples[2]?.serverTiming).toContainEqual({
-			name: 'total',
-			durationMs: 20,
+		expect(appRequestInits[0]).toMatchObject({
+			method: 'POST',
+			headers: { Authorization: 'Bearer kody_at_test' },
+			body: JSON.stringify({
+				package_id: '87aebd1f-9589-4c5a-b34e-40f191413564',
+				path: '/',
+			}),
 		})
 		expect(report.verdict).toBe('ok')
 	} finally {
@@ -193,52 +208,56 @@ test('collectSitePerf probes the hello-world package app without changing the ve
 	}
 })
 
-test('collectSitePerf omits a package-app probe that cannot connect', async () => {
-	vi.stubGlobal(
-		'fetch',
-		vi.fn(async (input: RequestInfo | URL) => {
-			const url = new URL(String(input))
-			if (url.hostname === 'kentcdodds.kody.run') throw new Error('offline')
-			if (url.pathname === '/') {
-				return new Response(healthyHtml, {
-					headers: {
-						'Cache-Control': 'public, max-age=60, stale-while-revalidate=300',
-						Vary: 'Cookie',
-						'Server-Timing': 'session;dur=1, ssr;dur=4',
-					},
-				})
-			}
-			throw new Error(`unexpected probe: ${url}`)
-		}),
-	)
+test('collectSitePerf skips the package-app probe without an API token', async () => {
+	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+		const url = new URL(String(input))
+		if (url.pathname === '/') return landingResponse()
+		throw new Error(`unexpected probe: ${url}`)
+	})
+	vi.stubGlobal('fetch', fetchMock)
 	try {
-		const report = await collectSitePerf({ url: 'https://kody.codes/', budget })
+		const report = await collectSitePerf({
+			url: 'https://kody.codes/',
+			budget,
+		})
 		expect(report.packageApp).toBeNull()
-		expect(report.verdict).toBe('ok')
+		expect(
+			fetchMock.mock.calls.some(([input]) =>
+				String(input).includes('api.kody.codes'),
+			),
+		).toBe(false)
 	} finally {
 		vi.unstubAllGlobals()
 	}
 })
 
-test('collectSitePerf marks a partial package-app series', async () => {
+test('collectSitePerf reports a rejected token or partial package-app series', async () => {
 	let appRequests = 0
 	vi.stubGlobal(
 		'fetch',
 		vi.fn(async (input: RequestInfo | URL) => {
 			const url = new URL(String(input))
-			if (url.hostname === 'kentcdodds.kody.run') {
+			if (url.hostname === 'api.kody.codes') {
 				appRequests += 1
-				if (appRequests > 1) throw new Error('reset')
-				return new Response('ok')
+				if (appRequests > 1) {
+					return new Response('{"error":"invalid token"}', { status: 401 })
+				}
+				return Response.json({ status: 200, headers: {}, body: 'ok' })
 			}
 			if (url.pathname === '/') return new Response(healthyHtml)
 			throw new Error(`unexpected probe: ${url}`)
 		}),
 	)
 	try {
-		const report = await collectSitePerf({ url: 'https://kody.codes/', budget })
+		const report = await collectSitePerf({
+			url: 'https://kody.codes/',
+			budget,
+			apiToken: 'kody_at_test',
+		})
 		expect(report.packageApp?.samples).toHaveLength(1)
-		expect(report.packageApp?.error).toBe('sample 2 of 3 failed: reset')
+		expect(report.packageApp?.error).toBe(
+			'sample 2 of 3 failed: packageAppFetch HTTP 401: {"error":"invalid token"}',
+		)
 	} finally {
 		vi.unstubAllGlobals()
 	}

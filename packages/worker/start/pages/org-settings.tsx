@@ -45,6 +45,7 @@ import {
 } from '../components/org-visibility-fieldset.tsx'
 import { OrgSettingsCustomDomains } from './org-settings-custom-domains.tsx'
 import { OrgSettingsMemberCreation } from './org-settings-member-creation.tsx'
+import { OrgSettingsUsageWarnings } from './org-settings-usage-warnings.tsx'
 import {
 	AccountManagementMessage,
 	AccountManagementPanel,
@@ -187,6 +188,11 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 					</AccountManagementPanel>
 					<OrgSettingsCustomDomains
 						key={data.org.slug}
+						data={data}
+						queryKey={queryKey}
+					/>
+					<OrgSettingsUsageWarnings
+						key={`usage-warnings:${data.org.slug}`}
 						data={data}
 						queryKey={queryKey}
 					/>
@@ -335,6 +341,11 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 					/>
 					<OrgSettingsCustomDomains
 						key={data.org.slug}
+						data={data}
+						queryKey={queryKey}
+					/>
+					<OrgSettingsUsageWarnings
+						key={`usage-warnings:${data.org.slug}`}
 						data={data}
 						queryKey={queryKey}
 					/>

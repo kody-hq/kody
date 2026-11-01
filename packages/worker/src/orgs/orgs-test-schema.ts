@@ -35,6 +35,7 @@ export async function ensureOrgsTestSchema(db: D1Database) {
 				access_epoch INTEGER NOT NULL DEFAULT 0,
 				members_can_create_packages INTEGER NOT NULL DEFAULT 0,
 				members_can_create_credentials INTEGER NOT NULL DEFAULT 1,
+				usage_warnings_enabled INTEGER NOT NULL DEFAULT 1,
 				created_by_user_id TEXT,
 				created_at TEXT NOT NULL,
 				updated_at TEXT NOT NULL
@@ -53,6 +54,7 @@ export async function ensureOrgsTestSchema(db: D1Database) {
 	for (const column of [
 		'members_can_create_packages INTEGER NOT NULL DEFAULT 0',
 		'members_can_create_credentials INTEGER NOT NULL DEFAULT 1',
+		'usage_warnings_enabled INTEGER NOT NULL DEFAULT 1',
 	]) {
 		try {
 			await db.prepare(`ALTER TABLE orgs ADD COLUMN ${column}`).run()

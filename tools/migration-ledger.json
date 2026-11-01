@@ -837,6 +837,10 @@
 			"sha256": "9a05ec582c855d33c266744379531016a09559cba9214447f4432dd6b0c0c163"
 		},
 		{
+			"filename": "0234-org-usage-warnings.sql",
+			"sha256": "850080fa50e86191269ae003a96197c6a5c9835a5ce7a4de9e902d0c68616037"
+		},
+		{
 			"filename": "0235-platform-feedback-resolution-history.sql",
 			"sha256": "74639db5cc16bae52c6b49835ce86c611d29a04dc51d965054af5658d2431270"
 		}

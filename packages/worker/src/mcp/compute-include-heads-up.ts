@@ -44,7 +44,7 @@ export function formatComputeIncludeHeadsUp(input: {
 		past,
 		'Runs on an execution context (your machine) use none; reusing the same code and passing params reuses its worker for the day.',
 		`See which packages and connections start the most workers: ${input.usageUrl}#where-it-went (or call usageByPackageGet).`,
-		'Shown once a month.',
+		'Shown once a month; an Owner can turn usage warnings off with orgUpdate usage_warnings: false.',
 	].join(' ')
 }
 

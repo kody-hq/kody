@@ -431,6 +431,9 @@ The schema is defined by migrations in `packages/worker/migrations/`:
   avatar are visible outside the org (set at create and in org Settings /
   `orgUpdate`); personal orgs follow `users.profile_visibility` instead
   ([decision 0088](../decisions/0088-public-team-org-pages.md)).
+  `usage_warnings_enabled` (0234, default 1) gates the 80% / 100% usage emails
+  and the execute usage heads-up for personal and team orgs (`orgUpdate`
+  `usage_warnings`).
 - `handles` (0086): the username namespace. Handles are permanent (no username
   or org slug renames); rows left by pre-rule renames stay reserved.
 - `org_memberships` (0086): `(org_id, user_id)` with role `owner`, `member`, or

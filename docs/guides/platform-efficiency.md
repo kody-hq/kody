@@ -57,6 +57,20 @@ one-time usage heads-up in `warnings` (and its text), once per workspace per UTC
 month. It goes with the 80% and 100% warning emails rather than replacing them;
 Free and other plans without a credit wallet do not get it.
 
+### Usage warnings
+
+The 80% and 100% usage emails and the execute heads-up are on by default. An
+Owner can turn all of them off for an org (personal or team) in **Organization
+settings**, **Usage warnings**, with `orgUpdate` (`PATCH /v1/orgs`), or from the
+CLI:
+
+```sh
+kody api orgUpdate --params '{"usage_warnings":false}'
+```
+
+Turning them off stops only the warnings. Limits, credits, and the usage page
+(`usageByPackageGet`) are unchanged, and Kody admins still see the crossings.
+
 To see what starts the most workers, open **Where it went** on the usage page or
 call `usageByPackageGet`. Packages are ranked by credits. The Ad hoc row also
 lists which connection (MCP agent, Kody CLI, API token, Automation) started the

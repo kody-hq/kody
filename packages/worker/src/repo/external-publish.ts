@@ -1,3 +1,5 @@
+import { warmInternetVisibleApprovedCommit } from '#app/package-app-internet-visible.ts'
+import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { assertProfileCanPublishImports } from '#worker/profiles/publish-imports.ts'
 import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
@@ -272,6 +274,9 @@ export async function finalizePublishedEntitySource(
 		}
 		throw projectionError
 	}
+	if (previousPublishedCommit !== input.publishedCommit) {
+		await warmApprovedCommitAfterPublish(input)
+	}
 	const listingBaseUrl = input.baseUrl ?? input.source.source_root
 	// Best-effort: an active community listing must follow the runtime pin.
 	// Failures must not unwind an otherwise successful publish — the scheduled
@@ -332,6 +337,33 @@ export async function finalizePublishedEntitySource(
 			env: input.env,
 			sourceId: input.source.id,
 			publishedCommit: input.publishedCommit,
+		})
+	}
+}
+
+/**
+ * An internet-visible app's republish is accepted here when the owner already
+ * approved its capability set, so the first visitor after a publish does not
+ * pay for the capability check. Best-effort: the first request retries it.
+ */
+async function warmApprovedCommitAfterPublish(
+	input: FinalizePublishedSourceInput,
+) {
+	try {
+		const savedPackage = await getSavedPackageById(input.env.APP_DB, {
+			userId: input.source.user_id,
+			packageId: input.source.entity_id,
+		})
+		if (!savedPackage?.hasApp || !savedPackage.isInternetVisible) return
+		await warmInternetVisibleApprovedCommit({
+			env: input.env,
+			savedPackage,
+			requestUrl: getAppBaseUrl({ env: input.env }),
+		})
+	} catch (error) {
+		console.warn('approved-commit-publish-warm-failed', {
+			packageId: input.source.entity_id,
+			error: error instanceof Error ? error.message : String(error),
 		})
 	}
 }

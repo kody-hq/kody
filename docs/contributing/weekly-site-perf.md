@@ -31,17 +31,30 @@ on `/` is a finding (TanStack Highlight belongs on guides and onboarding, not
 the landing entry). The collector then classifies against
 [`tools/site-perf/budget.json`](../../tools/site-perf/budget.json).
 
-It also requests the hello-world package app
-`https://kentcdodds.kody.run/perf-hello/` (`@kentcdodds/perf-hello`, an
-internet-visible app whose `fetch` returns `ok`) three times back to back and
-records `packageApp.samples` (status, TTFB, `Server-Timing` phases, including
-`total`). The first sample may be cold; later ones show the warm path. That
-timing is Kody's platform overhead on package-app requests (budget: tens of ms,
-see
+It also runs the hello-world package app `@kentcdodds/perf-hello` (package id
+`87aebd1f-9589-4c5a-b34e-40f191413564`, whose `fetch` returns `ok`) three times
+back to back through Open API `packageAppFetch`
+(`POST https://api.kody.codes/v1/packages/app-fetch`) and records
+`packageApp.samples` (status, API round trip as `ttfbMs`, and the app's
+`Server-Timing` serve phases such as `manifest`, `usageGate`, `appLoader`, and
+`entrypoint`). The first sample may be cold; later ones show the warm path. The
+serve phases are Kody's platform overhead on package-app requests (budget: tens
+of ms, see
 [invocation overhead guardrails](./architecture/invocation-overhead-guardrails.md)).
-The probe is observational and never changes the verdict; a probe that cannot
-connect is omitted. `--package-app-url <url>` points it elsewhere and
-`--no-package-app` skips it. Keep `@kentcdodds/perf-hello` a pure hello world.
+The call authenticates with `KODY_API_TOKEN`, so the app does not need to be
+internet-visible. It measures the signed-in serve path; the hosted-host phases
+(`appSession`, `appTicket`, `retiredSlug`) are not in it. The probe is
+observational and never changes the verdict. Without a token it is skipped; a
+rejected token or failed sample is recorded in `packageApp.error`.
+`--package-app-id <id>` points it at another app and `--no-package-app` skips
+it. Keep `@kentcdodds/perf-hello` a pure hello world.
+
+The workflow reads the token from the repository secret
+`KODY_SITE_PERF_API_TOKEN`. Mint it with `tokenCreate` (scopes
+`["app:execute", "package:read"]`, `idle_ttl_seconds: 1209600`,
+`max_lifetime_seconds: 7776000`; 90 days is the maximum), then set the GitHub
+secret. Rotate it with `tokenRotate` before it expires; an expired token shows
+up as a `packageAppFetch HTTP 401` in `packageApp.error`.
 
 [`.github/workflows/weekly-site-perf.yml`](../../.github/workflows/weekly-site-perf.yml)
 runs that collector on Mondays at 14:17 UTC and on `workflow_dispatch`.

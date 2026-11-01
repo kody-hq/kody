@@ -1,3 +1,4 @@
+import { approvedCommitCache } from './approved-commit-cache.ts'
 import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { computePackageCapabilitySet } from './compute-package-capability-set.ts'
@@ -227,6 +228,7 @@ export async function approvePackageCapabilitySet(input: {
 	if (!approval) {
 		throw new CapabilityApprovalError('Could not record capability approval.')
 	}
+	approvedCommitCache.delete(input.savedPackage.id)
 
 	// Going public pauses on the shared approval queue (`went_public`). The
 	// owner Approves that request to flip internet-visible. Re-approving an
@@ -275,6 +277,7 @@ export async function clearInternetVisible(input: {
 			resolvedByUserId: input.actorUserId ?? null,
 		})
 	}
+	approvedCommitCache.delete(input.packageId)
 	const live = await getSavedPackageById(input.env.APP_DB, {
 		userId: input.ownerUserId,
 		packageId: input.packageId,

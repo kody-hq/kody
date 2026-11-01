@@ -1,4 +1,5 @@
 import { ExecutionContextError } from '#worker/execution-contexts/errors.ts'
+import { loadOrgUsageWarningsEnabled } from '#worker/orgs/usage-warnings.ts'
 import {
 	computeIncludeHeadsUpClaimTtlSeconds,
 	computeIncludeHeadsUpKvKey,
@@ -1686,6 +1687,9 @@ async function resolveComputeIncludeHeadsUp(input: {
 		const now = input.claimed?.claimedAt ?? new Date()
 		const key = computeIncludeHeadsUpKvKey(ownerId, now)
 		if (await kv.get(key)) return []
+		if (!(await loadOrgUsageWarningsEnabled(input.env.APP_DB, ownerId))) {
+			return []
+		}
 		const [entitlement, usage] = await Promise.all([
 			getCachedUserEntitlement(input.env.APP_DB, {
 				userId: ownerId,

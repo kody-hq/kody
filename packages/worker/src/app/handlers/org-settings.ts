@@ -1,4 +1,8 @@
 import { operationResult } from '../operation-result.ts'
+import {
+	loadOrgUsageWarningsEnabled,
+	updateOrgUsageWarnings,
+} from '#worker/orgs/usage-warnings.ts'
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	orgHasPermission,
@@ -102,6 +106,10 @@ export async function loadOrgSettingsData(input: {
 		memberCreation: teamOrg
 			? await loadOrgMemberCreation(input.env.APP_DB, input.org.id)
 			: null,
+		usageWarnings: await loadOrgUsageWarningsEnabled(
+			input.env.APP_DB,
+			input.org.id,
+		),
 	}
 }
 
@@ -207,6 +215,38 @@ export async function updateOrganizationMemberCreation(
 		)
 	}
 	return operationResult({ ok: true, memberCreation: updated.settings })
+}
+
+/**
+ * Owners turn the org's usage warnings on or off: the 80% and 100% usage
+ * emails and the monthly heads-up on hosted execute responses.
+ */
+export async function updateOrganizationUsageWarnings(
+	input: OrganizationWriteContext & { enabled: boolean },
+) {
+	const { env, request, user } = input
+	const access = await resolveOrgManagementAccess({
+		request,
+		env,
+		user,
+		orgSlug: input.orgSlug,
+		permission: 'org:write',
+	})
+	if (!access.ok) {
+		return operationResult({ ok: false, error: access.error }, access.status)
+	}
+	const updated = await updateOrgUsageWarnings(env.APP_DB, {
+		orgId: access.org.id,
+		enabled: input.enabled,
+		audit: orgAuditWriterFromRequest(env, user.request),
+	})
+	if (!updated.ok) {
+		return operationResult(
+			{ ok: false, error: updated.error },
+			updated.code === 'not_found' ? 404 : 409,
+		)
+	}
+	return operationResult({ ok: true, usageWarnings: updated.enabled })
 }
 
 export async function removeOrganizationPhoto(input: OrganizationWriteContext) {

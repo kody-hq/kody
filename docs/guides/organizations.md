@@ -50,6 +50,11 @@ To let only some people or teams create, leave a setting off and use **Grants**,
 `permissions: ["package:create"]`, `["secret:create"]`, or
 `["integration:create"]`). Those grants still apply when a setting is off.
 
+Owners can also turn off
+[usage warnings](/docs/platform-efficiency#usage-warnings) (the 80% and 100%
+usage emails and the monthly execute heads-up) with `orgUpdate`
+`{ "usage_warnings": false }` or **Organization settings**, **Usage warnings**.
+
 ## Org-wide read access
 
 To let a Member read everything of one kind without making them an Owner, an
