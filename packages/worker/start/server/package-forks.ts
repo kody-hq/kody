@@ -2,9 +2,10 @@ import { createServerFn } from '@tanstack/react-start'
 import { notFound, redirect } from '@tanstack/react-router'
 import { packageAccessInput } from '#universal/package-access-mutations.ts'
 import { type PackageForksLoaderData } from '#universal/package-forks.ts'
+import { parseRouteInput } from './route-input.ts'
 
 export const loadPackageForks = createServerFn({ method: 'GET' })
-	.validator(packageAccessInput)
+	.validator((data: unknown) => parseRouteInput(packageAccessInput, data))
 	.handler(async ({ data }) => {
 		const [
 			{ getRequest, setResponseHeader, setResponseStatus },

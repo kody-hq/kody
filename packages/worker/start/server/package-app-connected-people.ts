@@ -8,9 +8,12 @@ import {
 	packageAppConnectedPeopleHref,
 	type PackageAppConnectedPeopleLoaderData,
 } from '#universal/package-app-connected-people.ts'
+import { parseRouteInput } from './route-input.ts'
 
 export const loadPackageAppConnectedPeople = createServerFn({ method: 'GET' })
-	.validator(packageAppConnectedPeopleInput)
+	.validator((data: unknown) =>
+		parseRouteInput(packageAppConnectedPeopleInput, data),
+	)
 	.handler(async ({ data }) => {
 		const [
 			{ withWebsiteRead, WebsiteAuthenticationError },
