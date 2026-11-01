@@ -36,6 +36,7 @@ import {
 	normalizeUsername,
 } from '#worker/identity/username.ts'
 import { normalizeEmailAddress } from '#worker/email/address.ts'
+import { FreeOrgLimitError } from '#worker/orgs/billing.ts'
 import {
 	isGrantResourceType,
 	type GrantResourceType,
@@ -169,7 +170,8 @@ export function rethrowAccessError(error: unknown): never {
 	if (error instanceof McpCallerError) throw error
 	if (
 		error instanceof OrgSlugValidationError ||
-		error instanceof GrantSubjectScopeError
+		error instanceof GrantSubjectScopeError ||
+		error instanceof FreeOrgLimitError
 	) {
 		throw new McpCallerError(error.message)
 	}
