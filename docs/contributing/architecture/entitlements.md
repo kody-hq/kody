@@ -391,9 +391,10 @@ auto-refilled, hit the monthly cap (once per month), and balance at or below $5
 
 **Admin grants.** The Credits panel on `/admin/orgs/$orgSlug` and
 `adminOrgCreditGrant` add house-funded credits to any organization, including
-the calling admin's, without a Stripe charge. Each grant writes a ledger row
-with `granted_by_user_id`, amount, recipient, time, and optional note, plus an
-admin audit event. `adminOrgGet` reads the wallet and recent ledger. Leftover
+the calling admin's, without a Stripe charge. Each grant requires a nonempty
+reason, stored as the ledger note, and writes a ledger row with
+`granted_by_user_id`, amount, recipient, time, and that note, plus an admin
+audit event. `adminOrgGet` reads the wallet and recent ledger. Leftover
 `adminCreditGrant` and `adminCreditWalletGet` still forward to the personal org.
 
 **Signup welcome credits.** Every newly created person account (password signup,
