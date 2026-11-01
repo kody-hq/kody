@@ -292,11 +292,7 @@ const installStripCss = {
 	gap: '0.75rem',
 } satisfies CSSObject
 
-/* The prototype's smaller `.account-form .button` sizing. */
-const smallGhostButtonCss = mergeCss(getGhostButtonCss(), {
-	fontSize: '0.95rem',
-	padding: '0.75rem 1.3rem',
-})
+const smallGhostButtonCss = getGhostButtonCss({ size: 'sm' })
 
 const nextStepsCardCss = mergeCss(getSurfaceCardCss(), {
 	marginTop: '1.2rem',

@@ -45,6 +45,7 @@ export function CopyCard(props: CopyCardProps) {
 						value={props.value}
 						idleLabel={props.copyLabel}
 						variant={props.variant ?? 'ghost'}
+						size={props.signalsConnectAction ? 'md' : 'sm'}
 						signalsConnectAction={props.signalsConnectAction}
 					/>
 				</div>

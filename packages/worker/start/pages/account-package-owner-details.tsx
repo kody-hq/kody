@@ -389,7 +389,7 @@ export function AccountPackageOwnerDetails(props: {
 									? 'package-make-public'
 									: 'package-make-private'
 							}
-							css={getGhostButtonCss()}
+							css={getGhostButtonCss({ size: 'sm' })}
 							onClick={() =>
 								void submitVisibility(
 									packageDetail,
@@ -466,7 +466,7 @@ export function AccountPackageOwnerDetails(props: {
 										? 'package-internet-visible-off'
 										: 'package-internet-visible-on'
 								}
-								css={getGhostButtonCss()}
+								css={getGhostButtonCss({ size: 'sm' })}
 								onClick={() =>
 									void submitInternetVisible(
 										packageDetail,

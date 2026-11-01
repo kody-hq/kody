@@ -13,8 +13,8 @@ import {
 } from '#universal/credential-contracts.ts'
 import { credentialRefLabel } from '#universal/package-credentials-page.ts'
 import {
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
+	getPillButtonCss,
+	getGhostButtonCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
@@ -34,8 +34,8 @@ import {
 	type MappingCellInput,
 	renderStored,
 } from './package-credentials-tabs.tsx'
-const primaryButtonCss = getPrimaryButtonCss({ weight: 'semibold' })
-const secondaryButtonCss = getSecondaryButtonCss({ weight: 'semibold' })
+const primaryButtonCss = getPillButtonCss({ size: 'sm' })
+const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
 const linkButtonCss = {
 	padding: 0,
 	border: 'none',
@@ -201,6 +201,8 @@ export function usePackageMappingEditor(
 						message: state.messages.map((message) => message.text).join(' '),
 					})}
 					idleLabel="Copy prompt for your agent"
+					variant="ghost"
+					size="sm"
 				/>
 			</div>
 		)

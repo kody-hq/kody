@@ -116,7 +116,10 @@ export function AccountEmailMissingGrant({
 					inbox. An org Owner can grant it org-wide on the Grants page.
 				</AccountManagementMessage>
 				<p css={{ margin: 0 }}>
-					<SiteLink href={orgGrantsPath(orgSlug)} css={getGhostButtonCss()}>
+					<SiteLink
+						href={orgGrantsPath(orgSlug)}
+						css={getGhostButtonCss({ size: 'sm' })}
+					>
 						Open Grants
 					</SiteLink>
 				</p>

@@ -11,7 +11,7 @@ import { accountDisclosureCss } from './account-management-components.tsx'
 import {
 	fieldCss,
 	fieldLabelCss,
-	getSecondaryButtonCss,
+	getGhostButtonCss,
 	inputCss,
 	textareaCss,
 } from '#universal/styles/style-primitives.ts'
@@ -219,7 +219,7 @@ export function SecretEditorFields(props: SecretEditorFieldsProps) {
 	)
 }
 
-const secondaryButtonCss = getSecondaryButtonCss()
+const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
 
 const advancedDetailsCss: CSSObject = {
 	...accountDisclosureCss,

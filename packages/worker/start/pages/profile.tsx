@@ -23,7 +23,7 @@ import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	fieldCss,
 	fieldLabelCss,
-	getPrimaryButtonCss,
+	getPillButtonCss,
 } from '#universal/styles/style-primitives.ts'
 export function ProfileRoute({
 	data: savedData,
@@ -112,7 +112,7 @@ export function ProfileRoute({
 				</label>
 				<button
 					type="submit"
-					css={{ ...getPrimaryButtonCss(), alignSelf: 'end' }}
+					css={{ ...getPillButtonCss({ size: 'sm' }), alignSelf: 'end' }}
 				>
 					Search
 				</button>

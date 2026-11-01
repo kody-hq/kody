@@ -155,7 +155,7 @@ export function PackageSecurityAuditField({
 									<button
 										type="button"
 										data-testid="package-security-audit-close"
-										css={getGhostButtonCss()}
+										css={getGhostButtonCss({ size: 'sm' })}
 										onClick={closeDialog}
 									>
 										Close
@@ -185,7 +185,7 @@ export function PackageSecurityAuditField({
 									<button
 										type="button"
 										data-testid="package-security-audit-close"
-										css={getGhostButtonCss()}
+										css={getGhostButtonCss({ size: 'sm' })}
 										onClick={closeDialog}
 									>
 										Close

@@ -181,7 +181,7 @@ export function renderAccountEmailDestinationsPanel(
 						type="submit"
 						disabled={isSending || draftEmail.trim().length === 0}
 						css={{
-							...getPillButtonCss({ mobileFullWidth: true }),
+							...getPillButtonCss({ size: 'sm', mobileFullWidth: true }),
 							justifySelf: 'start',
 						}}
 					>

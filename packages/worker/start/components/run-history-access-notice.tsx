@@ -49,7 +49,10 @@ export function RunHistoryAccessNotice({
 				page. It's read-only: you won't be able to run, change, or triage
 				anything.
 			</p>
-			<SiteLink href={orgGrantsPath(orgSlug)} css={getPillButtonCss()}>
+			<SiteLink
+				href={orgGrantsPath(orgSlug)}
+				css={getPillButtonCss({ size: 'sm' })}
+			>
 				Open Grants
 			</SiteLink>
 		</section>

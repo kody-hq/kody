@@ -80,13 +80,13 @@ export function renderProfileIdentity(
 						<SiteLink
 							href={orgHomeHref}
 							data-testid="profile-org-home"
-							css={getGhostButtonCss()}
+							css={getGhostButtonCss({ size: 'sm' })}
 						>
 							Organization home
 						</SiteLink>
 						<SiteLink
 							href={workspaceLandingItem(shell.username).href}
-							css={getGhostButtonCss()}
+							css={getGhostButtonCss({ size: 'sm' })}
 						>
 							Workspace
 						</SiteLink>
@@ -97,11 +97,14 @@ export function renderProfileIdentity(
 						<SiteLink
 							href={workspaceLandingItem(workspaceSlug).href}
 							data-testid="profile-workspace"
-							css={getGhostButtonCss()}
+							css={getGhostButtonCss({ size: 'sm' })}
 						>
 							Workspace
 						</SiteLink>
-						<SiteLink href={routes.account.href()} css={getGhostButtonCss()}>
+						<SiteLink
+							href={routes.account.href()}
+							css={getGhostButtonCss({ size: 'sm' })}
+						>
 							Account settings
 						</SiteLink>
 					</div>
@@ -146,7 +149,7 @@ export function renderOrgIdentity(input: {
 						<SiteLink
 							href={input.publicPageHref}
 							data-testid="org-public-page"
-							css={getGhostButtonCss()}
+							css={getGhostButtonCss({ size: 'sm' })}
 						>
 							View public page
 						</SiteLink>

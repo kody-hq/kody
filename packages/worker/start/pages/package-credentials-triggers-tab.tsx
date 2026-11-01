@@ -23,7 +23,7 @@ import {
 import {
 	cardCss,
 	cardTitleCss,
-	getSecondaryButtonCss,
+	getGhostButtonCss,
 } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
@@ -42,7 +42,7 @@ import {
 	tableCss,
 } from './package-credentials-tabs.tsx'
 
-const secondaryButtonCss = getSecondaryButtonCss({ weight: 'semibold' })
+const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
 
 const switchTrackCss = {
 	appearance: 'none' as const,

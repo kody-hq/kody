@@ -135,9 +135,8 @@ export function getDangerButtonCss(options?: ButtonCssOptions) {
 type PillButtonCssOptions = {
 	mobileFullWidth?: boolean
 	/**
-	 * `sm` is the prototype's `.account-actions .button` — the size the
-	 * in-page actions of the account and admin areas use, so their rows stay
-	 * proportionate to body copy. `md` (default) is the marketing CTA size.
+	 * `sm` is the 36px squircle for ordinary content and settings actions.
+	 * `md` (default) keeps the larger pill for prominent calls to action.
 	 */
 	size?: 'md' | 'sm'
 }
@@ -148,10 +147,25 @@ function getBasePillButtonCss(options: PillButtonCssOptions = {}) {
 		display: 'inline-flex',
 		alignItems: 'center',
 		justifyContent: 'center',
-		gap: '0.5rem',
-		font: `650 ${small ? '0.95rem' : '1rem'}/1 ${typography.fontFamilyDisplay}`,
-		borderRadius: radius.full,
-		padding: small ? '0.75rem 1.3rem' : '0.95rem 1.7rem',
+		gap: small ? '0.375rem' : '0.5rem',
+		font: `650 ${small ? '0.875rem/1.25rem' : '1rem/1'} ${typography.fontFamilyDisplay}`,
+		borderRadius: small ? '0.625rem' : radius.full,
+		padding: small ? '0.5rem 0.875rem' : '0.95rem 1.7rem',
+		...(small
+			? {
+					boxSizing: 'border-box' as const,
+					minHeight: '2.25rem',
+					// Equal corner radii keep the curve independent of label width.
+					// Older browsers retain the rounded-rectangle base above.
+					'@supports (corner-shape: squircle)': {
+						borderRadius: '1.125rem',
+						cornerShape: 'squircle',
+					},
+					'@media (pointer: coarse)': {
+						minHeight: '2.75rem',
+					},
+				}
+			: {}),
 		cursor: 'pointer',
 		textDecoration: 'none',
 		whiteSpace: 'nowrap' as const,

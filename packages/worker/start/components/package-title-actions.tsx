@@ -542,6 +542,7 @@ function compactActionCss<
 		...copyPromptTooltipCss,
 		...edgeAnchoredTooltipCss,
 		position: 'relative' as const,
+		minHeight: '1.875rem',
 		padding: '0.5rem 0.95rem',
 		font: `650 0.875rem/1 ${typography.fontFamilyDisplay}`,
 		// Preserve action contrast after applying shared tooltip styles.

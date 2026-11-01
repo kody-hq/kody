@@ -286,7 +286,7 @@ export function AutomationExecutionSettings(props: {
 			<div css={rowCss}>
 				<button
 					type="button"
-					css={getPillButtonCss()}
+					css={getPillButtonCss({ size: 'sm' })}
 					disabled={saving || !setting.contextRunnable}
 					onClick={() => {
 						const execution = automationExecutionFromForm(form)
@@ -305,7 +305,7 @@ export function AutomationExecutionSettings(props: {
 				{setting.override ? (
 					<button
 						type="button"
-						css={getGhostButtonCss()}
+						css={getGhostButtonCss({ size: 'sm' })}
 						disabled={saving}
 						onClick={() => void save(null)}
 					>

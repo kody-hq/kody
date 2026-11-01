@@ -83,10 +83,13 @@ export function PackageNoAccessPage(props: PackageNoAccessPageProps) {
 					variant="pill"
 					ariaLabel="Copy an access request message for the package owner"
 				/>
-				<SiteLink href={sharingDocsHref} css={getPillButtonCss()}>
+				<SiteLink href={sharingDocsHref} css={getPillButtonCss({ size: 'sm' })}>
 					How sharing works
 				</SiteLink>
-				<SiteLink href={routes.home.href()} css={getGhostButtonCss()}>
+				<SiteLink
+					href={routes.home.href()}
+					css={getGhostButtonCss({ size: 'sm' })}
+				>
 					Go home
 				</SiteLink>
 			</nav>

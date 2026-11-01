@@ -45,10 +45,16 @@ export function NotFoundPage() {
 				<SiteLink href={routes.home.href()} css={getPillButtonCss()}>
 					Go home
 				</SiteLink>
-				<SiteLink href={routes.docs.href()} css={getGhostButtonCss()}>
+				<SiteLink
+					href={routes.docs.href()}
+					css={getGhostButtonCss({ size: 'sm' })}
+				>
 					Search the docs
 				</SiteLink>
-				<SiteLink href={routes.community.href()} css={getGhostButtonCss()}>
+				<SiteLink
+					href={routes.community.href()}
+					css={getGhostButtonCss({ size: 'sm' })}
+				>
 					Browse packages
 				</SiteLink>
 			</nav>

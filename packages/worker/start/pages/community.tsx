@@ -18,7 +18,6 @@ import {
 	getPillButtonCss,
 	visuallyHiddenCss,
 } from '#universal/styles/style-primitives.ts'
-import { mergeCss } from '../components/merge-css.ts'
 import { EntityExplainer, resolveEntityExplainer } from './entity-explainer.tsx'
 import { CommunityListingsContent } from '../components/community-listings-content.tsx'
 import { SiteLink } from '../components/site-link.tsx'
@@ -104,7 +103,7 @@ export function CommunityRoute({ data }: { data: CommunityIndexLoaderData }) {
 						{installOrg ? (
 							<input type="hidden" name="org" value={installOrg} />
 						) : null}
-						<button type="submit" css={getPillButtonCss()}>
+						<button type="submit" css={getPillButtonCss({ size: 'sm' })}>
 							Search
 						</button>
 					</form>
@@ -287,7 +286,4 @@ const communityCloseCss = {
 	},
 } satisfies CSSObject
 
-const closeButtonCss = mergeCss(getGhostButtonCss(), {
-	fontSize: '0.95rem',
-	padding: '0.8rem 1.35rem',
-})
+const closeButtonCss = getGhostButtonCss({ size: 'sm' })

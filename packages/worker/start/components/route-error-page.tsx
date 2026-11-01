@@ -72,16 +72,25 @@ export function PermissionDeniedPage({
 			<nav aria-label="What to try next" css={illustratedErrorActionsCss}>
 				{orgSlug ? (
 					permission ? (
-						<SiteLink href={orgGrantsPath(orgSlug)} css={getPillButtonCss()}>
+						<SiteLink
+							href={orgGrantsPath(orgSlug)}
+							css={getPillButtonCss({ size: 'sm' })}
+						>
 							Open Grants
 						</SiteLink>
 					) : (
-						<SiteLink href={orgMembersPath(orgSlug)} css={getPillButtonCss()}>
+						<SiteLink
+							href={orgMembersPath(orgSlug)}
+							css={getPillButtonCss({ size: 'sm' })}
+						>
 							See members
 						</SiteLink>
 					)
 				) : null}
-				<SiteLink href={routes.home.href()} css={getGhostButtonCss()}>
+				<SiteLink
+					href={routes.home.href()}
+					css={getGhostButtonCss({ size: 'sm' })}
+				>
 					Go home
 				</SiteLink>
 			</nav>

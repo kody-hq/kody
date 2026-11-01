@@ -24,7 +24,6 @@ import {
 import {
 	getGhostButtonCss,
 	getPillButtonCss,
-	getSecondaryButtonCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, radius, spacing } from '#universal/styles/tokens.ts'
 import { formatTimestamp } from '../components/local-timestamp.tsx'
@@ -401,7 +400,7 @@ export function ExecutionChainPanel(props: {
 							<div css={actionsCss}>
 								<button
 									type="button"
-									css={[getSecondaryButtonCss(), targetCss]}
+									css={getGhostButtonCss({ size: 'sm' })}
 									disabled={index === 0}
 									data-chain-focus={`${entry.id}|up`}
 									aria-label={`Move ${nameFor(entry.id)} up`}
@@ -411,7 +410,7 @@ export function ExecutionChainPanel(props: {
 								</button>
 								<button
 									type="button"
-									css={[getSecondaryButtonCss(), targetCss]}
+									css={getGhostButtonCss({ size: 'sm' })}
 									disabled={index === contextEntries.length - 1}
 									data-chain-focus={`${entry.id}|down`}
 									aria-label={`Move ${nameFor(entry.id)} down`}
@@ -421,7 +420,7 @@ export function ExecutionChainPanel(props: {
 								</button>
 								<button
 									type="button"
-									css={[getGhostButtonCss({ size: 'sm' }), targetCss]}
+									css={getGhostButtonCss({ size: 'sm' })}
 									aria-label={`Remove ${nameFor(entry.id)} from your chain`}
 									onClick={() =>
 										persist(
@@ -479,7 +478,7 @@ export function ExecutionChainPanel(props: {
 									</span>
 									<button
 										type="button"
-										css={[getSecondaryButtonCss(), targetCss]}
+										css={getGhostButtonCss({ size: 'sm' })}
 										onClick={() => {
 											setConfirmStrict(false)
 											persist(
@@ -497,7 +496,7 @@ export function ExecutionChainPanel(props: {
 									</button>
 									<button
 										type="button"
-										css={[getGhostButtonCss({ size: 'sm' }), targetCss]}
+										css={getGhostButtonCss({ size: 'sm' })}
 										onClick={() => setConfirmStrict(false)}
 									>
 										Keep it
@@ -506,7 +505,7 @@ export function ExecutionChainPanel(props: {
 							) : (
 								<button
 									type="button"
-									css={[getGhostButtonCss({ size: 'sm' }), targetCss]}
+									css={getGhostButtonCss({ size: 'sm' })}
 									onClick={() => setConfirmStrict(true)}
 								>
 									Remove Kody cloud
@@ -527,7 +526,7 @@ export function ExecutionChainPanel(props: {
 				{hasCloud ? null : (
 					<button
 						type="button"
-						css={[getPillButtonCss({ size: 'sm' }), targetCss]}
+						css={getPillButtonCss({ size: 'sm' })}
 						onClick={() =>
 							persist(
 								{ ...chain, entries: [...entries, { kind: 'cloud' }] },
@@ -564,7 +563,7 @@ export function ExecutionChainPanel(props: {
 						</label>
 						<button
 							type="button"
-							css={[getSecondaryButtonCss(), targetCss]}
+							css={getGhostButtonCss({ size: 'sm' })}
 							disabled={full || !addId}
 							onClick={() => {
 								const context = byId.get(addId)

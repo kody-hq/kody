@@ -49,7 +49,10 @@ export function InternalErrorPage() {
 				<a href={retryHref} css={getPillButtonCss()}>
 					Try again
 				</a>
-				<SiteLink href={routes.home.href()} css={getGhostButtonCss()}>
+				<SiteLink
+					href={routes.home.href()}
+					css={getGhostButtonCss({ size: 'sm' })}
+				>
 					Go home
 				</SiteLink>
 			</nav>

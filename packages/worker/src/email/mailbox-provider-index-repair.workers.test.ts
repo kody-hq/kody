@@ -30,6 +30,9 @@ test('accepted terminal persists repair, alarm repairs D1, and replay never rese
 			direction: 'outbound',
 			processingStatus: 'stored',
 			rawMimeKey: null,
+			receivedAt: acceptedAt,
+			createdAt: acceptedAt,
+			updatedAt: acceptedAt,
 		}),
 	})
 	const terminal = {
@@ -56,8 +59,16 @@ test('accepted terminal persists repair, alarm repairs D1, and replay never rese
 			createdAt: acceptedAt,
 		},
 	}
-	await mailbox.commitOutboundTerminal(terminal)
-	await mailbox.commitOutboundTerminal(terminal)
+	await expect(mailbox.commitOutboundTerminal(terminal)).resolves.toMatchObject(
+		{
+			eventInserted: true,
+		},
+	)
+	await expect(mailbox.commitOutboundTerminal(terminal)).resolves.toMatchObject(
+		{
+			eventInserted: false,
+		},
+	)
 	await expect(
 		mailbox.getOutboundProviderIndexRepairStatus({ ownerId: userId }),
 	).resolves.toMatchObject({ pendingCount: 1 })

@@ -12,7 +12,7 @@ import {
 	getDangerPillCss,
 	getPillButtonCss,
 	getSelectCss,
-	getSecondaryButtonCss,
+	getGhostButtonCss,
 } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
@@ -386,7 +386,7 @@ export function OrgMembersInviteLinks({
 						<button
 							type="button"
 							disabled={creating}
-							css={getSecondaryButtonCss()}
+							css={getGhostButtonCss({ size: 'sm' })}
 							onClick={closeForm}
 						>
 							Cancel
