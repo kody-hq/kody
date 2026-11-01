@@ -27,6 +27,8 @@ import {
 import {
 	normalizePlatformFeedbackResolutionNote,
 	normalizePlatformFeedbackResolutionPrUrls,
+	parsePlatformFeedbackResolutionHistory,
+	platformFeedbackFollowUpVersion,
 	serializePlatformFeedbackResolutionHistory,
 	serializePlatformFeedbackResolutionPrUrls,
 } from './resolution.ts'
@@ -589,7 +591,15 @@ export async function recordPlatformFeedbackFollowUpForAdmin(input: {
 	resolutionNote: string | undefined
 	/** Omit to keep the stored PR URLs; pass [] to clear them. */
 	resolutionPrUrls?: Array<string>
-}): Promise<{ feedback: PlatformFeedbackRecord; didChange: boolean }> {
+}): Promise<{
+	feedback: PlatformFeedbackRecord
+	didChange: boolean
+	/**
+	 * The outcome this call wrote (or found already stored), independent of
+	 * any later concurrent write; `version` is its email claim version.
+	 */
+	followUp: { note: string; prUrls: Array<string>; version: string }
+}> {
 	const reviewerUserId = normalizeRequiredText(input.reviewerUserId, {
 		field: 'reviewerUserId',
 		maxLength: 1_000,
@@ -627,8 +637,33 @@ export async function recordPlatformFeedbackFollowUpForAdmin(input: {
 			!sameStringList(nextPrUrls, existing.resolutionPrUrls)
 		const adminNoteChanged =
 			adminNote !== undefined && adminNote !== existing.adminNote
+		const writtenHistory = outcomeChanged
+			? parsePlatformFeedbackResolutionHistory(
+					serializePlatformFeedbackResolutionHistory([
+						...existing.resolutionHistory,
+						{
+							note: existing.resolutionNote,
+							prUrls: existing.resolutionPrUrls,
+							recordedAt: existing.reviewedAt ?? existing.updatedAt,
+						},
+					]),
+				)
+			: existing.resolutionHistory
+		const followUp = {
+			note: resolutionNote,
+			prUrls: nextPrUrls,
+			version: await platformFeedbackFollowUpVersion({
+				note: resolutionNote,
+				prUrls: nextPrUrls,
+				history: writtenHistory,
+			}),
+		}
 		if (!outcomeChanged && !adminNoteChanged) {
-			return { feedback: toPlatformFeedbackRecord(existing), didChange: false }
+			return {
+				feedback: toPlatformFeedbackRecord(existing),
+				didChange: false,
+				followUp,
+			}
 		}
 		const reviewedAt = new Date().toISOString()
 		const updated = await updatePlatformFeedbackStatusForAdmin(input.db, {
@@ -644,14 +679,7 @@ export async function recordPlatformFeedbackFollowUpForAdmin(input: {
 				? serializePlatformFeedbackResolutionPrUrls(nextPrUrls)
 				: undefined,
 			resolutionHistoryJson: outcomeChanged
-				? serializePlatformFeedbackResolutionHistory([
-						...existing.resolutionHistory,
-						{
-							note: existing.resolutionNote,
-							prUrls: existing.resolutionPrUrls,
-							recordedAt: existing.reviewedAt ?? existing.updatedAt,
-						},
-					])
+				? serializePlatformFeedbackResolutionHistory(writtenHistory)
 				: undefined,
 		})
 		if (!updated) continue
@@ -665,6 +693,7 @@ export async function recordPlatformFeedbackFollowUpForAdmin(input: {
 		return {
 			feedback: toPlatformFeedbackRecord(feedback),
 			didChange: outcomeChanged,
+			followUp,
 		}
 	}
 	throw new PlatformFeedbackConcurrentUpdateError(input.feedbackId)

@@ -146,3 +146,26 @@ export function parsePlatformFeedbackResolutionHistory(
 		return []
 	}
 }
+
+/**
+ * Stable id for one stored follow-up outcome, used as its email claim
+ * version. Derived from the written note, PR URLs, and history so retries
+ * and internal admin-note edits reuse it while each new follow-up differs.
+ */
+export async function platformFeedbackFollowUpVersion(input: {
+	note: string
+	prUrls: ReadonlyArray<string>
+	history: ReadonlyArray<PlatformFeedbackResolutionHistoryEntry>
+}): Promise<string> {
+	const bytes = new TextEncoder().encode(
+		JSON.stringify([
+			input.note,
+			input.prUrls,
+			serializePlatformFeedbackResolutionHistory(input.history),
+		]),
+	)
+	const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
+	return Array.from(digest.slice(0, 12), (byte) =>
+		byte.toString(16).padStart(2, '0'),
+	).join('')
+}

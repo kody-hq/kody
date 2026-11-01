@@ -446,6 +446,7 @@ test('admin platform feedback resolve and dismiss email the submitter without fa
 	mockModule.readPlatformFeedbackSubmitterContact.mockResolvedValue(
 		reachableContact,
 	)
+	mockModule.getPlatformFeedbackForAdmin.mockResolvedValue(openFeedback)
 	mockModule.sendPlatformFeedbackOutcomeEmail.mockResolvedValue({ sent: true })
 	const reviewed = {
 		reviewedByUserId: 'admin-1',
@@ -594,6 +595,8 @@ test('admin platform feedback follow_up stores and emails a new note on closed f
 			...base.env,
 			APP_BASE_URL: 'https://heykody.dev',
 			BUNDLE_ARTIFACTS_KV: {},
+			CLOUDFLARE_API_TOKEN: 'test-token',
+			CLOUDFLARE_ACCOUNT_ID: 'test-account',
 		} as unknown as Env,
 	}
 	const resolvedFeedback = {
@@ -621,8 +624,15 @@ test('admin platform feedback follow_up stores and emails a new note on closed f
 		reachableContact,
 	)
 	mockModule.recordPlatformFeedbackFollowUpForAdmin.mockResolvedValue({
-		feedback: followedUp,
+		// A concurrent later follow-up may already show in the re-read record;
+		// the email must still carry the note this call wrote.
+		feedback: { ...followedUp, resolutionNote: 'A later admin note.' },
 		didChange: true,
+		followUp: {
+			note: 'Also fixed on mobile.',
+			prUrls: [],
+			version: 'follow-up-v1',
+		},
 	})
 	mockModule.sendPlatformFeedbackOutcomeEmail.mockReset()
 	mockModule.sendPlatformFeedbackOutcomeEmail.mockResolvedValueOnce({
@@ -639,17 +649,16 @@ test('admin platform feedback follow_up stores and emails a new note on closed f
 	expect(result.outcome_email).toEqual({ sent: true, reason: null })
 	expect(result.feedback).toMatchObject({
 		status: 'resolved',
-		resolution_note: 'Also fixed on mobile.',
 		resolution_history: [{ note: 'Shipped.', pr_urls: [] }],
 	})
-	expect(mockModule.sendPlatformFeedbackOutcomeEmail).toHaveBeenCalledWith({
-		env: adminContext.env,
-		feedback: followedUp,
-		status: 'resolved',
-		userMessage: 'Also fixed on mobile.',
-		prUrls: [],
-		followUpVersion: '2026-07-20T00:00:00.000Z',
-	})
+	expect(mockModule.sendPlatformFeedbackOutcomeEmail).toHaveBeenCalledWith(
+		expect.objectContaining({
+			status: 'resolved',
+			userMessage: 'Also fixed on mobile.',
+			prUrls: [],
+			followUpVersion: 'follow-up-v1',
+		}),
+	)
 
 	mockModule.sendPlatformFeedbackOutcomeEmail.mockResolvedValueOnce({
 		sent: false,
@@ -682,6 +691,15 @@ test('admin platform feedback follow_up stores and emails a new note on closed f
 		adminPlatformFeedbackUpdateCapability.handler(
 			{ id: 'feedback-1', action: 'follow_up', user_message: 'Hello again.' },
 			{ ...adminContext, env: base.env },
+		),
+	).rejects.toThrow(/not configured.*Nothing was stored or emailed/)
+	await expect(
+		adminPlatformFeedbackUpdateCapability.handler(
+			{ id: 'feedback-1', action: 'follow_up', user_message: 'Hello again.' },
+			{
+				...adminContext,
+				env: { ...adminContext.env, CLOUDFLARE_API_TOKEN: '' } as Env,
+			},
 		),
 	).rejects.toThrow(/not configured.*Nothing was stored or emailed/)
 	await expect(

@@ -1,7 +1,7 @@
 /**
  * Mirrors the `platform_feedback` schema in
  * `packages/worker/migrations/0001-squashed-init.sql` plus later
- * platform_feedback migrations (0234 resolution_history) for `*.node.test.ts`
+ * platform_feedback migrations (0235 resolution_history) for `*.node.test.ts`
  * suites that build their sqlite fixture by hand.
  */
 export const platformFeedbackTestSchemaSql = `

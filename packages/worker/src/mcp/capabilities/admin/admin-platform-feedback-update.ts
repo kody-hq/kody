@@ -188,7 +188,7 @@ async function runFollowUp(input: {
 			unreachableFollowUpMessage(input.feedbackId, contact),
 		)
 	}
-	const { feedback } = await recordPlatformFeedbackFollowUpForAdmin({
+	const { feedback, followUp } = await recordPlatformFeedbackFollowUpForAdmin({
 		db: input.env.APP_DB,
 		feedbackId: input.feedbackId,
 		reviewerUserId: input.reviewerUserId,
@@ -205,9 +205,9 @@ async function runFollowUp(input: {
 		env: input.env,
 		feedback,
 		status: feedback.status,
-		userMessage: feedback.resolutionNote ?? undefined,
-		prUrls: feedback.resolutionPrUrls,
-		followUpVersion: feedback.updatedAt,
+		userMessage: followUp.note,
+		prUrls: followUp.prUrls,
+		followUpVersion: followUp.version,
 	})
 	if (!email.sent) {
 		throw new McpCallerError(
@@ -261,6 +261,17 @@ export const adminPlatformFeedbackUpdateCapability = defineDomainCapability(
 								content_warning: platformFeedbackContentWarning,
 							}
 						}
+						const existing = await getPlatformFeedbackForAdmin({
+							db: ctx.env.APP_DB,
+							feedbackId: args.id,
+						})
+						if (!existing) throw new PlatformFeedbackNotFoundError(args.id)
+						// Read before writing so a lookup failure cannot mask a stored
+						// (and possibly emailed) outcome.
+						const contact = await readPlatformFeedbackSubmitterContact({
+							db: ctx.env.APP_DB,
+							stableUserId: existing.submitterUserId,
+						})
 						const { feedback, didChangeStatus } =
 							await updatePlatformFeedbackForAdmin({
 								db: ctx.env.APP_DB,
@@ -292,10 +303,6 @@ export const adminPlatformFeedbackUpdateCapability = defineDomainCapability(
 											sent: false,
 											reason: `feedback was already ${feedback.status}; use action "follow_up" to email a new note`,
 										}
-						const contact = await readPlatformFeedbackSubmitterContact({
-							db: ctx.env.APP_DB,
-							stableUserId: feedback.submitterUserId,
-						})
 						return {
 							feedback: formatAdminPlatformFeedbackRecord(feedback),
 							outcome_email: outcomeEmail,

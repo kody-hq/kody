@@ -95,10 +95,13 @@ export function shouldSendPlatformFeedbackOutcomeEmail(input: {
 	return input.didChangeStatus && isPlatformFeedbackOutcomeStatus(input.status)
 }
 
-/** True when outcome email can be sent at all (claim KV and sender config). */
+/** True when outcome email can be sent at all (claim KV, sender, and API credentials). */
 export function isPlatformFeedbackOutcomeEmailConfigured(env: Env): boolean {
 	return Boolean(
-		env.BUNDLE_ARTIFACTS_KV && resolveTransactionalEmailConfig({ env }),
+		env.BUNDLE_ARTIFACTS_KV &&
+		resolveTransactionalEmailConfig({ env }) &&
+		env.CLOUDFLARE_API_TOKEN?.trim() &&
+		env.CLOUDFLARE_ACCOUNT_ID?.trim(),
 	)
 }
 

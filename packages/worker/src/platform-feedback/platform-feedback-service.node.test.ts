@@ -903,6 +903,16 @@ test('follow-ups store a new outcome note on closed feedback and keep history', 
 	})
 	expect(retry.didChange).toBe(false)
 	expect(retry.feedback.updatedAt).toBe(first.feedback.updatedAt)
+	expect(retry.followUp).toEqual(first.followUp)
+	const adminNoteOnly = await recordPlatformFeedbackFollowUpForAdmin({
+		db,
+		feedbackId: submitted.id,
+		reviewerUserId: 'admin-b',
+		adminNote: 'Internal only.',
+		resolutionNote: 'Follow-up: also fixed on mobile.',
+	})
+	expect(adminNoteOnly.feedback.adminNote).toBe('Internal only.')
+	expect(adminNoteOnly.followUp.version).toBe(first.followUp.version)
 	expect(retry.feedback.resolutionHistory).toHaveLength(1)
 	const second = await recordPlatformFeedbackFollowUpForAdmin({
 		db,
@@ -915,6 +925,11 @@ test('follow-ups store a new outcome note on closed feedback and keep history', 
 		resolutionNote: 'Follow-up two.',
 		resolutionPrUrls: [],
 	})
+	expect(second.followUp).toMatchObject({
+		note: 'Follow-up two.',
+		prUrls: [],
+	})
+	expect(second.followUp.version).not.toBe(first.followUp.version)
 	expect(second.feedback.resolutionHistory.map((entry) => entry.note)).toEqual([
 		'Shipped.',
 		'Follow-up: also fixed on mobile.',
