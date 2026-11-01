@@ -29,11 +29,15 @@ export type SitePerfPageProbe = {
 
 /**
  * A hello-world package app: every request returns `ok`, so its timing is
- * Kody's platform overhead on the package-app path. Requests run back to
- * back; the first may be cold, later ones show the warm path.
+ * Kody's platform overhead on the package-app serve path. The probe calls
+ * Open API `packageAppFetch` with `KODY_API_TOKEN`, so the app needs no
+ * anonymous internet access. Requests run back to back; the first may be
+ * cold, later ones show the warm path. `ttfbMs` is the API round trip;
+ * `serverTiming` is the app serve phases.
  */
 export type SitePerfPackageAppProbe = {
 	url: string
+	packageId: string
 	/** Set when a sample after the first failed, so the series is partial. */
 	error?: string
 	samples: Array<{
@@ -43,8 +47,11 @@ export type SitePerfPackageAppProbe = {
 	}>
 }
 
-export const defaultPackageAppProbeUrl =
-	'https://kentcdodds.kody.run/perf-hello/'
+/** `@kentcdodds/perf-hello`. */
+export const defaultPackageAppProbePackageId =
+	'87aebd1f-9589-4c5a-b34e-40f191413564'
+export const defaultPackageAppFetchUrl =
+	'https://api.kody.codes/v1/packages/app-fetch'
 const packageAppProbeSamples = 3
 const packageAppProbeTimeoutMs = 15_000
 
@@ -234,44 +241,66 @@ async function probePage(url: string): Promise<SitePerfPageProbe | null> {
 	}
 }
 
-async function probePackageApp(
-	url: string,
-): Promise<SitePerfPackageAppProbe | null> {
+type PackageAppFetchResult = {
+	status?: number
+	headers?: Record<string, string>
+}
+
+async function probePackageApp(input: {
+	packageId: string
+	apiToken: string
+	url?: string
+}): Promise<SitePerfPackageAppProbe | null> {
+	const url = input.url ?? defaultPackageAppFetchUrl
 	const samples: SitePerfPackageAppProbe['samples'] = []
 	try {
 		for (let index = 0; index < packageAppProbeSamples; index += 1) {
 			const startedAt = performance.now()
 			const response = await fetch(url, {
-				redirect: 'manual',
+				method: 'POST',
+				headers: {
+					Authorization: `Bearer ${input.apiToken}`,
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({ package_id: input.packageId, path: '/' }),
 				signal: AbortSignal.timeout(packageAppProbeTimeoutMs),
 			})
 			const ttfbMs = Math.round(performance.now() - startedAt)
-			await response.arrayBuffer()
+			const text = await response.text()
+			if (!response.ok) {
+				throw new Error(
+					`packageAppFetch HTTP ${response.status}: ${text.slice(0, 200)}`,
+				)
+			}
+			const result = JSON.parse(text) as PackageAppFetchResult
 			samples.push({
-				status: response.status,
+				status: result.status ?? 0,
 				ttfbMs,
 				serverTiming: parseServerTimingHeader(
-					response.headers.get('Server-Timing'),
+					result.headers?.['server-timing'] ?? null,
 				),
 			})
 		}
 	} catch (error) {
-		if (samples.length === 0) return null
+		const message = error instanceof Error ? error.message : String(error)
 		return {
 			url,
-			error: `sample ${samples.length + 1} of ${packageAppProbeSamples} failed: ${error instanceof Error ? error.message : String(error)}`,
+			packageId: input.packageId,
+			error: `sample ${samples.length + 1} of ${packageAppProbeSamples} failed: ${message}`,
 			samples,
 		}
 	}
-	return { url, samples }
+	return { url, packageId: input.packageId, samples }
 }
 
 export async function collectSitePerf(input: {
 	url: string
 	budget?: SitePerfBudget
 	now?: Date
-	/** Hello-world package app to probe; null skips it. */
-	packageAppUrl?: string | null
+	/** Hello-world package app id to probe; null skips it. */
+	packageAppId?: string | null
+	/** Open API token for `packageAppFetch`; without one the probe is skipped. */
+	apiToken?: string | null
 }): Promise<SitePerfReport> {
 	const budget = input.budget ?? (await loadSitePerfBudget())
 	const startedAt = performance.now()
@@ -296,11 +325,15 @@ export async function collectSitePerf(input: {
 					)
 				).filter((page): page is SitePerfPageProbe => page !== null)
 			: []
-	const packageAppUrl =
-		input.packageAppUrl === undefined
-			? defaultPackageAppProbeUrl
-			: input.packageAppUrl
-	const packageApp = packageAppUrl ? await probePackageApp(packageAppUrl) : null
+	const packageAppId =
+		input.packageAppId === undefined
+			? defaultPackageAppProbePackageId
+			: input.packageAppId
+	const apiToken = input.apiToken?.trim()
+	const packageApp =
+		packageAppId && apiToken
+			? await probePackageApp({ packageId: packageAppId, apiToken })
+			: null
 	const scriptHrefs = hrefsMatching(html, /<script[^>]+src=["']([^"']+)["']/gi)
 	const preloadHrefs = hrefsMatching(
 		html,
@@ -352,15 +385,15 @@ function parseArgs(argv: Array<string>) {
 	let url = 'https://kody.codes/'
 	let json = false
 	let exitZero = false
-	let packageAppUrl: string | null | undefined
+	let packageAppId: string | null | undefined
 	for (let index = 0; index < argv.length; index += 1) {
 		const arg = argv[index]
 		if (arg === '--json') json = true
-		else if (arg === '--no-package-app') packageAppUrl = null
-		else if (arg === '--package-app-url') {
+		else if (arg === '--no-package-app') packageAppId = null
+		else if (arg === '--package-app-id') {
 			const value = argv[index + 1]
-			if (!value) throw new Error('--package-app-url requires a value')
-			packageAppUrl = value
+			if (!value) throw new Error('--package-app-id requires a value')
+			packageAppId = value
 			index += 1
 		} else if (arg === '--exit-zero') exitZero = true
 		else if (arg === '--url') {
@@ -370,12 +403,18 @@ function parseArgs(argv: Array<string>) {
 			index += 1
 		}
 	}
-	return { url, json, exitZero, packageAppUrl }
+	return { url, json, exitZero, packageAppId }
 }
 
 export async function main(argv = process.argv.slice(2)) {
-	const { url, json, exitZero, packageAppUrl } = parseArgs(argv)
-	const report = await collectSitePerf({ url, packageAppUrl })
+	const { url, json, exitZero, packageAppId } = parseArgs(argv)
+	const apiToken = process.env.KODY_API_TOKEN?.trim()
+	if (packageAppId !== null && !apiToken) {
+		process.stderr.write(
+			'KODY_API_TOKEN is not set; skipping the package-app probe.\n',
+		)
+	}
+	const report = await collectSitePerf({ url, packageAppId, apiToken })
 	if (json) {
 		process.stdout.write(`${JSON.stringify(report, null, 2)}\n`)
 	} else {
@@ -384,12 +423,12 @@ export async function main(argv = process.argv.slice(2)) {
 		)
 		if (report.packageApp?.error) {
 			process.stdout.write(
-				`package-app ${report.packageApp.url} partial: ${report.packageApp.error}\n`,
+				`package-app ${report.packageApp.packageId} partial: ${report.packageApp.error}\n`,
 			)
 		}
 		for (const sample of report.packageApp?.samples ?? []) {
 			process.stdout.write(
-				`package-app ${report.packageApp?.url} status=${sample.status} ttfb=${sample.ttfbMs} ${sample.serverTiming.map((entry) => `${entry.name}=${entry.durationMs}`).join(' ')}\n`,
+				`package-app ${report.packageApp?.packageId} status=${sample.status} ttfb=${sample.ttfbMs} ${sample.serverTiming.map((entry) => `${entry.name}=${entry.durationMs}`).join(' ')}\n`,
 			)
 		}
 		for (const finding of report.findings) {

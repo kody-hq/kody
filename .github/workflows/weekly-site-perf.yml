@@ -26,6 +26,8 @@ jobs:
           node-version: 26
 
       - name: 📏 Collect
+        env:
+          KODY_API_TOKEN: ${{ secrets.KODY_SITE_PERF_API_TOKEN }}
         run: >
           node tools/site-perf/collect.ts --url https://kody.codes/ --json
           --exit-zero > site-perf-report.json

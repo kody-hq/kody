@@ -1,7 +1,3 @@
-import {
-	invokeContractFreshnessCacheLimit,
-	invokeContractFreshnessTtlMs,
-} from '#worker/package-invocations/invoke-contract-cache.ts'
 import { type resolveSavedPackageForPackageAppSlug } from '#worker/package-invocations/module-artifacts.ts'
 import { getLatestPackageCapabilityApproval } from '#worker/package-capabilities/capability-approvals-repo.ts'
 import {
@@ -9,23 +5,12 @@ import {
 	loadCapabilityApprovalSummary,
 } from '#worker/package-capabilities/capability-approval-service.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
-import { PromiseLruCache } from '#worker/package-registry/published-package-cache.ts'
+import { approvedCommitCache } from '#worker/package-capabilities/approved-commit-cache.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 
 type PackageAppSlugLookup = Awaited<
 	ReturnType<typeof resolveSavedPackageForPackageAppSlug>
 >
-
-/**
- * Per-isolate cache of the commit anonymous visitors may run per app, same
- * 15 s freshness tier as the slug lookup it pairs with. Serve still refuses
- * anonymous requests whose live published commit differs, so a stale entry
- * never widens what anonymous visitors run.
- */
-const approvedCommitCache = new PromiseLruCache<string | null>({
-	ttlMs: invokeContractFreshnessTtlMs,
-	limit: invokeContractFreshnessCacheLimit,
-})
 
 /**
  * The published commit an internet-visible app may serve to anonymous
@@ -48,6 +33,36 @@ export async function resolveInternetVisibleApprovedCommit(input: {
 				requestUrl: input.requestUrl,
 			}),
 	})
+}
+
+/**
+ * Run the approved-commit lookup at publish time, so a republish whose
+ * capability set the owner already approved is accepted (and its pin written)
+ * before the first visitor arrives instead of on that visitor's request.
+ * Best-effort: on failure the first request runs the same lookup.
+ */
+export async function warmInternetVisibleApprovedCommit(input: {
+	env: Env
+	savedPackage: SavedPackageRecord
+	requestUrl: string
+}): Promise<string | null> {
+	const { savedPackage } = input
+	if (!savedPackage.hasApp || !savedPackage.isInternetVisible) return null
+	const pending = loadApprovedCommit(input)
+	approvedCommitCache.set(savedPackage.id, pending)
+	try {
+		const commit = await pending
+		// Accepting a republish writes an approval, which drops the entry.
+		if (!approvedCommitCache.get(savedPackage.id)) {
+			approvedCommitCache.set(savedPackage.id, Promise.resolve(commit))
+		}
+		return commit
+	} catch (error) {
+		if (approvedCommitCache.get(savedPackage.id) === pending) {
+			approvedCommitCache.delete(savedPackage.id)
+		}
+		throw error
+	}
 }
 
 async function loadApprovedCommit(input: {
