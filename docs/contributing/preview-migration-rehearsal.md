@@ -229,8 +229,9 @@ org with an Owner). Use this rehearsal path for data migrations.
 - Scripts: `tools/preview-rehearsal/run.ts` (`--help` via no arguments),
   `seal.ts`, `seed.ts`, `json-snapshot.ts`, `d1-rehearsal.ts`.
 - Mock routes: `/__mocks/rehearsal/echo` (SHA-256 of `x-rehearsal-secret` and
-  `Authorization`) and `/__mocks/rehearsal/oauth/token`, on the preview's
-  `-mock-cloudflare` worker
+  `Authorization`), `/__mocks/rehearsal/oauth/authorize` (authorization-code
+  redirect with a mock `code` and incoming `state`), and
+  `/__mocks/rehearsal/oauth/token`, on the preview's `-mock-cloudflare` worker
   (`packages/mock-servers/cloudflare/src/rehearsal-routes.ts`).
 - Preview resources and isolation:
   [preview deploys](./setup/preview-deploys.md).
