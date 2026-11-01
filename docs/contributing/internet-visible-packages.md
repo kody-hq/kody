@@ -116,8 +116,9 @@ approves going public again (turn internet-visible off, then on).
 ## Publisher-supplied credentials in apps
 
 Package apps resolve publisher-supplied `kody.credentials` needs as the
-publisher (ADR 0068). Executor-supplied needs use the visitor's pick via
-`credential.visitor`. `ownerCredentialForVisitors: true` still parses as a
+publisher (ADR 0068). In a package-app visitor run, executor-supplied needs use
+the visitor's pick via `credential.visitor`; direct and trigger runs keep their
+existing resolution order. `ownerCredentialForVisitors: true` still parses as a
 leftover alias for `supplier: "publisher"` and stays in the capability
 fingerprint so existing approvals stay stable. Omit it on new packages. See
 [Packages](../use/packages.md#publisher-supplied-credentials-in-apps).
