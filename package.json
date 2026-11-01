@@ -110,7 +110,7 @@
     "nx:show-projects": "nx show projects",
     "audit:prod": "node tools/ci/audit-gate.ts",
     "soft-delete-read-filter:check": "node tools/soft-delete-read-filter.ts",
-    "typecheck:start": "tsc -p packages/worker/tsconfig-start-server.json && tsc -p packages/worker/tsconfig-start.json && tsc -p packages/worker/tsconfig-start-tests.json && tsc -p packages/worker/tsconfig-start-server-tests.json",
+    "typecheck:start": "node tools/run-tsc.ts -p packages/worker/tsconfig-start-server.json && node tools/run-tsc.ts -p packages/worker/tsconfig-start.json && node tools/run-tsc.ts -p packages/worker/tsconfig-start-tests.json && node tools/run-tsc.ts -p packages/worker/tsconfig-start-server-tests.json",
     "desktop:dev": "npm run build --workspace @kodycodes/cli && npm start --workspace @kodycodes/desktop",
     "desktop:pack": "npm run build --workspace @kodycodes/cli && npm run pack --workspace @kodycodes/desktop",
     "desktop:validate": "npm run validate --workspace @kodycodes/desktop"
