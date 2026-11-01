@@ -85,8 +85,12 @@ only.
 `orgs.plan` is a NOT NULL TEXT column with DDL default `'free'` and a CHECK
 constraint for the registered names (squashed baseline plus
 `0002-restructure-plan-tiers.sql`). Plan, ladder, Stripe, gift, and
-credit-eligibility columns live only on `orgs` (personal orgs reuse
-`users.stable_user_id` as `orgs.id`). Entitlement reads and writers use the org
+credit-eligibility columns live only on `orgs`. A personal org's `orgs.id` is
+`users.personal_org_id` when that column is set (newer accounts); otherwise it
+falls back to `users.stable_user_id`. Admin user lookup joins that way
+(`COALESCE(NULLIF(TRIM(u.personal_org_id), ''), u.stable_user_id)`), so callers
+of `adminOrgPlanSet` and related org billing tools must use the resolved org id,
+not assume it equals the person id. Entitlement reads and writers use the org
 row. **Live DDL defaults and writers always persist a known plan name (never
 NULL); normal creation and reset paths default to `free`.**
 
