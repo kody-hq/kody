@@ -113,13 +113,13 @@ credential-need enforcement does not limit (`secretJwtSign`,
 later, and whether or not credential-need enforcement is on, until the owner
 approves going public again (turn internet-visible off, then on).
 
-## Owner credentials for visitors
+## Publisher-supplied credentials in apps
 
-`ownerCredentialForVisitors` is deprecated and ignored. Package apps already
-resolve `kody.credentials` needs as the publisher (ADR 0068 amendment
-2026-10-24). Manifests that still declare the flag keep parsing. The field still
-enters the capability fingerprint so existing approvals stay stable. See
-[Packages](../use/packages.md#let-app-visitors-use-the-owners-credential).
+Package apps resolve `kody.credentials` needs as the publisher (ADR 0068).
+`ownerCredentialForVisitors: true` still parses as a leftover alias for
+`supplier: "publisher"` and stays in the capability fingerprint so existing
+approvals stay stable. Omit it on new packages. See
+[Packages](../use/packages.md#publisher-supplied-credentials-in-apps).
 
 ## ADR 0001 exception
 

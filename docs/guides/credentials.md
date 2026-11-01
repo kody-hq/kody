@@ -350,12 +350,12 @@ The older `ownerCredentialForVisitors: true` setting keeps its meaning as a
 publisher-supplied alias. A need with no supplier keeps the existing package
 behavior.
 
-### Let app visitors use your credential
+### Publisher-supplied credentials in apps
 
-Deprecated. Package apps already use the publisher's credentials for every
-visitor. `ownerCredentialForVisitors: true` still parses on a need as a legacy
-alias for `supplier: "publisher"`. Omit it on new packages. See
-[Packages](../use/packages.md#let-app-visitors-use-the-owners-credential).
+Package apps use the publisher's credentials for every visitor.
+`ownerCredentialForVisitors: true` still parses on a need as a leftover alias
+for `supplier: "publisher"`. Omit it on new packages. See
+[Packages](../use/packages.md#publisher-supplied-credentials-in-apps).
 
 Publisher-supplied needs and needs shared with visitors are **unmappable**: they
 always act as your org. While a package has one, only org Owners can push,

@@ -329,7 +329,7 @@ await resend.fetch('/emails', { method: 'POST', body: JSON.stringify(email) })
   See the
   [local credential runtime contract](../contributing/contracts/cli-local-credential-runtime.md).
 
-#### Let app visitors use the owner's credential
+#### Publisher-supplied credentials in apps
 
 Package apps run as their runs-as person (the publisher, unless an Owner picks
 someone else); see

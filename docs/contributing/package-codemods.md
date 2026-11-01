@@ -585,8 +585,8 @@ in the linked #3836 cleanup issue.
 ### `0017-detect-package-app-visitor-authority`
 
 Detect only (writes nothing). Package apps run as their publisher (ADR 0068),
-capped to `kody.app.capabilities`. This scan finds published apps that will fail
-or change now that the visitor-authority path is gone:
+capped to `kody.app.capabilities`. This scan finds published apps that fail or
+change because they still assume visitor authority:
 
 - `undeclared capability` / `computed capability`: a `kody.<name>()` call
   missing from `kody.app.capabilities`, or a name picked at run time. The scan
