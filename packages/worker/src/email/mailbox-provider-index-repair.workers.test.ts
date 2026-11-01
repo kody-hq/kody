@@ -20,7 +20,8 @@ test('accepted terminal persists repair, alarm repairs D1, and replay never rese
 	const userId = uniqueUserId('provider-repair')
 	const messageId = 'provider-repair-message'
 	const providerMessageId = 'provider-repair-id'
-	const acceptedAt = '2026-08-03T00:00:00.000Z'
+	// Recent so delivery-event retention (90 days) does not prune it.
+	const acceptedAt = new Date(Date.now() - 60_000).toISOString()
 	const mailbox = rpcFor(userId)
 	await mailbox.upsertMessageGraph({
 		ownerId: userId,
