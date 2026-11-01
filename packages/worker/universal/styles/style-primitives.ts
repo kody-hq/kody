@@ -161,7 +161,7 @@ function getBasePillButtonCss(options: PillButtonCssOptions = {}) {
 						borderRadius: '1.125rem',
 						cornerShape: 'squircle',
 					},
-					'@media (pointer: coarse)': {
+					'@media (any-pointer: coarse)': {
 						minHeight: '2.75rem',
 					},
 				}
@@ -243,7 +243,10 @@ export function getDangerPillCss(options?: PillButtonCssOptions) {
 		border: 'none',
 		backgroundColor: 'transparent',
 		color: colors.danger,
-		boxShadow: `inset 0 0 0 1.5px oklch(from ${colors.danger} l c h / 0.45)`,
+		boxShadow: `inset 0 0 0 1.5px ${colors.danger}`,
+		'@supports (color: oklch(from red l c h / 0.45))': {
+			boxShadow: `inset 0 0 0 1.5px oklch(from ${colors.danger} l c h / 0.45)`,
+		},
 		[hoverMq]: {
 			'&:not(:disabled):hover': {
 				backgroundColor: `oklch(from ${colors.danger} l c h / 0.12)`,
