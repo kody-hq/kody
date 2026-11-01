@@ -9,9 +9,10 @@ import {
 	type PackageAppConnectedPeopleLoaderData,
 } from '#universal/package-app-connected-people.ts'
 import { parseRouteInput } from './route-input.ts'
+import { type z } from 'zod'
 
 export const loadPackageAppConnectedPeople = createServerFn({ method: 'GET' })
-	.validator((data: unknown) =>
+	.validator((data: z.input<typeof packageAppConnectedPeopleInput>) =>
 		parseRouteInput(packageAppConnectedPeopleInput, data),
 	)
 	.handler(async ({ data }) => {

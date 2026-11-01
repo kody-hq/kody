@@ -48,7 +48,9 @@ const profileInput = z.object({
 })
 
 export const loadProfile = createServerFn({ method: 'GET' })
-	.validator((data: unknown) => parseRouteInput(profileInput, data))
+	.validator((data: z.input<typeof profileInput>) =>
+		parseRouteInput(profileInput, data),
+	)
 	.handler(async ({ data }) => {
 		const [
 			{ env },

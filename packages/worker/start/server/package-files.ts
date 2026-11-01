@@ -39,7 +39,9 @@ const packageFilesInput = z.object({
 })
 
 export const loadPackageFiles = createServerFn({ method: 'GET' })
-	.validator((data: unknown) => parseRouteInput(packageFilesInput, data))
+	.validator((data: z.input<typeof packageFilesInput>) =>
+		parseRouteInput(packageFilesInput, data),
+	)
 	.handler(async ({ data }) => {
 		const [
 			{ env },

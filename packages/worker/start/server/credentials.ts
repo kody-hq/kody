@@ -70,7 +70,7 @@ const credentialApprovalPageInput = z.object({
 })
 
 export const loadCredentialApprovalPage = createServerFn({ method: 'GET' })
-	.validator((data: unknown) =>
+	.validator((data: z.input<typeof credentialApprovalPageInput>) =>
 		parseRouteInput(credentialApprovalPageInput, data),
 	)
 	.handler(async ({ data }) => {
@@ -140,7 +140,7 @@ const packageCredentialsPageInput = z.object({
 })
 
 export const loadPackageCredentialsPage = createServerFn({ method: 'GET' })
-	.validator((data: unknown) =>
+	.validator((data: z.input<typeof packageCredentialsPageInput>) =>
 		parseRouteInput(packageCredentialsPageInput, data),
 	)
 	.handler(async ({ data }) => {

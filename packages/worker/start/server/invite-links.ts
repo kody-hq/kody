@@ -49,7 +49,9 @@ export const revokeTeamInviteLink = createServerFn({ method: 'POST' })
 	})
 
 export const loadPackageInviteLinks = createServerFn({ method: 'GET' })
-	.validator((data: unknown) => parseRouteInput(packageAccessInput, data))
+	.validator((data: z.input<typeof packageAccessInput>) =>
+		parseRouteInput(packageAccessInput, data),
+	)
 	.handler(async ({ data }) => {
 		const { withWebsiteRead } = await import('./mutation-context.ts')
 		const { readPackageInviteLinks } =
