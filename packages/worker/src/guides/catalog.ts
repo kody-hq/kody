@@ -14,6 +14,7 @@ import {
 import accountSecretSetup from '../../../../docs/guides/account-secret-setup.md'
 import adminEvents from '../../../../docs/guides/admin-events.md'
 import connectYourAgent from '../../../../docs/guides/connect-your-agent.md'
+import museChat from '../../../../docs/guides/muse-chat.md'
 import firstWin from '../../../../docs/guides/first-win.md'
 import flakeHunter from '../../../../docs/guides/flake-hunter.md'
 import sentryIssues from '../../../../docs/guides/sentry-issues.md'
@@ -93,6 +94,7 @@ const guideSources: Array<{ slug: string; raw: string }> = [
 	{ slug: 'how-kody-works', raw: howKodyWorks },
 	{ slug: 'kody-factory', raw: kodyFactory },
 	{ slug: 'connect-your-agent', raw: connectYourAgent },
+	{ slug: 'muse-chat', raw: museChat },
 	{ slug: 'onboarding', raw: onboarding },
 	{ slug: 'quick-example', raw: quickExample },
 	{ slug: 'portability', raw: portability },

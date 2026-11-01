@@ -65,6 +65,7 @@ export const docsNav: ReadonlyArray<DocsNavSection> = [
 			'Connect the agent you already use, make one useful thing, then reuse it from a second agent.',
 		items: [
 			{ slug: 'connect-your-agent', label: 'Connect your agent' },
+			{ slug: 'muse-chat', label: 'Connect Muse chat' },
 			{ slug: 'onboarding', label: 'First run (agent playbook)' },
 			{ slug: 'quick-example', label: 'First build (agent playbook)' },
 			{ slug: 'portability', label: 'Second agent (agent playbook)' },
