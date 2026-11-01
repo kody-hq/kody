@@ -75,9 +75,9 @@ pushes. See the [setup index](./index.md) for the other setup pages.
   six copies of setup. Node remains sharded: its pruned full suite still took
   ~379s locally (versus ~479s before pruning). These are local estimates, not
   new CI percentiles. Heavy Validate jobs use
-  `runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}` (set repo
-  variable `CI_RUNNER=ubuntu-latest` to drop WarpBuild in one place); the final
-  ✅ Validate gate always runs on GitHub-hosted `ubuntu-latest`. If
+  `runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}` (set repo variable
+  `CI_RUNNER` to another runner label to move them in one place); the final ✅
+  Validate gate always runs on GitHub-hosted `ubuntu-latest`. If
   `npm run validate` passes locally, CI will pass. Trusted writers (Cloud Agent
   environments, and same-repo validate) set `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`
   and the write token so Nx uploads task artifacts to

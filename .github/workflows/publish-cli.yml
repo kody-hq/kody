@@ -21,7 +21,7 @@ jobs:
   publish:
     # npm --provenance rejects self-hosted runners ("Unsupported GitHub
     # Actions runner environment: self-hosted"). Keep this job on
-    # GitHub-hosted ubuntu-latest even though Validate/Deploy use Warp.
+    # GitHub-hosted ubuntu-latest even if vars.CI_RUNNER points elsewhere.
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

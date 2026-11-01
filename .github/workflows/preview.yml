@@ -59,7 +59,7 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     name: 🔎 Deploy Preview Resources
     # Includes room for deploy retries, healthchecks, and failed-deploy
     # cleanup (150s budget). Raised from 15 so a healthy origin/platform/runtime
@@ -1219,7 +1219,7 @@ jobs:
       sha: ${{ github.sha }}
 
   cleanup:
-    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     name: 🧹 Cleanup Preview Resources
     timeout-minutes: 4
     permissions:

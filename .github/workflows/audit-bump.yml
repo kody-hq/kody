@@ -29,7 +29,7 @@ concurrency:
 jobs:
   bump:
     if: github.repository == 'kody-hq/kody'
-    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     name: 🔐 Audit bump PR
     timeout-minutes: 15
     permissions:

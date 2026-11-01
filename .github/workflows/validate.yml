@@ -19,13 +19,11 @@ on:
       runner:
         description: >
           Runner label for every heavy Validate job on this manual run. Leave as
-          "(repo default)" to use vars.CI_RUNNER (else WarpBuild), matching
-          push/PR. Choose ubuntu-latest for a GitHub-hosted comparison. The
-          final ✅ Validate gate always runs on ubuntu-latest.
+          "(repo default)" to use vars.CI_RUNNER (else ubuntu-latest), matching
+          push/PR. The final ✅ Validate gate always runs on ubuntu-latest.
         type: choice
         options:
           - (repo default)
-          - warp-ubuntu-latest-x64-4x
           - ubuntu-latest
         default: (repo default)
       no_cache:
@@ -40,8 +38,7 @@ on:
   workflow_call:
     inputs:
       runner:
-        description:
-          Runner label (e.g. ubuntu-latest or warp-ubuntu-latest-x64-4x)
+        description: Runner label (e.g. ubuntu-latest)
         type: string
         required: false
         default: ubuntu-latest
@@ -76,11 +73,11 @@ env:
   CI: '1'
   VALIDATE_NO_CACHE: ${{ inputs.no_cache == true && 'true' || 'false' }}
   # Same expression as heavy-job runs-on. Push/PR leave inputs.runner empty and
-  # use vars.CI_RUNNER (else WarpBuild); workflow_call always sets it (default
+  # use vars.CI_RUNNER (else ubuntu-latest); workflow_call always sets it (default
   # ubuntu-latest). The final gate job ignores this and stays on ubuntu-latest.
   VALIDATE_RUNNER:
     ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
-    inputs.runner) || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
+    inputs.runner) || vars.CI_RUNNER || 'ubuntu-latest' }}
   VALIDATE_ITERATION: ${{ inputs.iteration || 0 }}
   NX_SKIP_NX_CACHE: ${{ inputs.no_cache == true && 'true' || '' }}
   NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN: >-
@@ -98,9 +95,10 @@ env:
 # run stays in progress and GitHub replaces the pending one with the newest
 # push; deploy.yml's sha-guard can deploy any completed run that is ahead of
 # production, though its own queue may replace an older pending deploy.
-# Runner / no_cache / iteration keep bench matrix cells and ubuntu-vs-warp
+# Runner / no_cache / iteration keep bench matrix cells and per-runner
 # dispatches from cancelling each other. The runner segment is the label
-# jobs actually use (inputs.runner, or WarpBuild when that input is absent).
+# jobs actually use (inputs.runner, or vars.CI_RUNNER / ubuntu-latest when
+# that input is absent).
 # Manual / validate-bench runs (caller event is workflow_dispatch; reusable
 # workflows inherit that name, not workflow_call) also key on run_id so two
 # overlapping uncached benches on the same runner do not cancel matching
@@ -109,9 +107,9 @@ concurrency:
   group: >-
     validate-${{ github.event_name }}-${{ github.event.pull_request.number ||
     github.ref }}-${{ (inputs.runner != '' && inputs.runner != '(repo default)'
-    && inputs.runner) || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x'
-    }}-nocache-${{ inputs.no_cache || false }}-iter-${{ inputs.iteration || 0
-    }}${{ github.event_name == 'workflow_dispatch' && format('-run-{0}',
+    && inputs.runner) || vars.CI_RUNNER || 'ubuntu-latest' }}-nocache-${{
+    inputs.no_cache || false }}-iter-${{ inputs.iteration || 0 }}${{
+    github.event_name == 'workflow_dispatch' && format('-run-{0}',
     github.run_id) || '' }}
   cancel-in-progress: ${{ github.event_name != 'push' }}
 
@@ -123,7 +121,7 @@ jobs:
   static:
     runs-on:
       ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
-      inputs.runner) || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
+      inputs.runner) || vars.CI_RUNNER || 'ubuntu-latest' }}
     name: 🧹 Static
     timeout-minutes: 10
     permissions:
@@ -326,7 +324,7 @@ jobs:
   node:
     runs-on:
       ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
-      inputs.runner) || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
+      inputs.runner) || vars.CI_RUNNER || 'ubuntu-latest' }}
     name: 🧪 Node (${{ matrix.shard }}/2)
     strategy:
       fail-fast: false
@@ -398,7 +396,7 @@ jobs:
   workers:
     runs-on:
       ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
-      inputs.runner) || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
+      inputs.runner) || vars.CI_RUNNER || 'ubuntu-latest' }}
     name: ☁️ Workers (${{ matrix.shard }}/2)
     strategy:
       fail-fast: false
@@ -531,7 +529,7 @@ jobs:
   mcp:
     runs-on:
       ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
-      inputs.runner) || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
+      inputs.runner) || vars.CI_RUNNER || 'ubuntu-latest' }}
     name: 🔌 MCP
     timeout-minutes: 10
     if: >-
@@ -572,7 +570,7 @@ jobs:
   e2e:
     runs-on:
       ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
-      inputs.runner) || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
+      inputs.runner) || vars.CI_RUNNER || 'ubuntu-latest' }}
     name: 🎭 E2E (${{ matrix.shard }}/2)
     # Each shard owns its own runner (and D1 file), so shards never share
     # SQLITE_BUSY. Keep workers: 1 inside a shard (playwright.config.ts).
@@ -775,7 +773,7 @@ jobs:
   cli:
     runs-on:
       ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
-      inputs.runner) || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
+      inputs.runner) || vars.CI_RUNNER || 'ubuntu-latest' }}
     name: 🧰 CLI
     timeout-minutes: 20
     if: >-
@@ -864,8 +862,8 @@ jobs:
         run: npm run desktop:validate
 
   validate:
-    # Final merge gate stays on GitHub-hosted ubuntu-latest so a green
-    # ✅ Validate check does not wait on a Warp machine (~10s) for a 3–4s job.
+    # Final merge gate stays on GitHub-hosted ubuntu-latest even when
+    # vars.CI_RUNNER points heavy jobs at a different runner.
     runs-on: ubuntu-latest
     name: ✅ Validate
     timeout-minutes: 2

@@ -27,7 +27,7 @@ jobs:
     if: >
       github.event_name == 'pull_request_target' && github.event.action !=
       'closed'
-    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     name: ✍️ CLA
     timeout-minutes: 5
     permissions:
@@ -181,7 +181,7 @@ jobs:
       (contains(github.event.comment.body, 'I hereby sign the CLA') ||
       (github.event.action == 'edited' &&
       contains(github.event.changes.body.from, 'I hereby sign the CLA')))
-    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     name: 📝 Record CLA
     timeout-minutes: 5
     permissions:
@@ -292,7 +292,7 @@ jobs:
       (github.event_name == 'pull_request_target' &&
       github.event.pull_request.merged == true) || github.event_name ==
       'workflow_dispatch'
-    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     name: 📝 Record CLA after merge
     timeout-minutes: 15
     concurrency:

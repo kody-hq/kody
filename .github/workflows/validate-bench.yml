@@ -11,7 +11,6 @@ on:
         type: choice
         options:
           - ubuntu-latest
-          - warp-ubuntu-latest-x64-4x
         default: ubuntu-latest
       iterations:
         description: >
@@ -255,7 +254,7 @@ jobs:
               lines.append("")
               lines.append(
                   "_No timings.json artifacts found. Leaf Validate jobs may still "
-                  "be queued (e.g. WarpBuild runner not attached)._"
+                  "be queued (e.g. runner label not available)._"
               )
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as fh:
               fh.write("\n".join(lines) + "\n")
