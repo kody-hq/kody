@@ -29,3 +29,8 @@ test('profile filtering remains local until a limit is requested', () => {
 	).toEqual({ username: 'owner', query: 'tools', limit: 20 })
 	expect(profileReadInput('owner', '?limit=-1').limit).toBeUndefined()
 })
+test('empty profile username from `/@` resolves as not-found', () => {
+	expect(() => profileReadInput('', '')).toThrow(
+		expect.objectContaining({ isNotFound: true }),
+	)
+})
