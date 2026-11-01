@@ -10,8 +10,11 @@ vi.mock('@tanstack/react-start', () => ({
 	createServerFn: () => {
 		let validate = (data: unknown) => data
 		const builder = {
-			validator(next: { parse: (data: unknown) => unknown }) {
-				validate = next.parse
+			validator(
+				next: ((data: unknown) => unknown) | { parse(data: unknown): unknown },
+			) {
+				validate =
+					typeof next === 'function' ? next : (data) => next.parse(data)
 				return builder
 			},
 			handler(run: (input: { data: unknown }) => Promise<unknown>) {

@@ -9,15 +9,18 @@ const state = vi.hoisted(() => ({
 }))
 vi.mock('@tanstack/react-start', () => ({
 	createServerFn: () => {
-		let validator: { parse: (data: unknown) => unknown }
+		let validate = (data: unknown) => data
 		const builder = {
-			validator(value: typeof validator) {
-				validator = value
+			validator(
+				next: ((data: unknown) => unknown) | { parse(data: unknown): unknown },
+			) {
+				validate =
+					typeof next === 'function' ? next : (data) => next.parse(data)
 				return builder
 			},
 			handler(run: (input: { data: unknown }) => Promise<unknown>) {
 				return async (input: { data: unknown }) =>
-					run({ data: validator.parse(input.data) })
+					run({ data: validate(input.data) })
 			},
 		}
 		return builder
