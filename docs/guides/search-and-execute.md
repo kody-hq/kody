@@ -134,7 +134,8 @@ the call charged, such as `Ran on Kody cloud, 1 worker unit.` or
 `Ran on build-box (your machine), 0 worker units.` Runs on an execution context
 are always 0; a cloud run is 1 only the first time its worker runs that UTC day.
 An in-progress cloud response omits `workerUnits`. `runGet` `metadata.ranOn` is
-the same shape without `workerUnits`. See
+the same shape without `workerUnits`, or `null` when the final routing attempt
+has outcome `expired` (a queued context run that never started). See
 [execution contexts](./execution-contexts.md) (internals:
 [architecture](../contributing/architecture/execution-contexts.md)).
 
