@@ -4,6 +4,7 @@ import {
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { z } from 'zod'
+import { terminalInlineWorkflowErrorPrefix } from '#worker/package-runtime/workflow-statuses.ts'
 import { repoCheckKinds } from '#worker/repo/checks.ts'
 import { canonicalJsonStringify } from '@kody-internal/shared/canonical-json.ts'
 import { resolveHostedPackageAppUrl } from '@kody-internal/shared/public-urls.ts'
@@ -131,9 +132,28 @@ const inputSchema = z.object({
 
 const externalPublishRetryDelaysMs = [100, 500] as const
 
-const durablePublishWorkflowCode = `import { kody } from 'kody:runtime'
+const publishedExternalPushStatuses = ['published', 'already_published']
+
+// A durable publish that did not publish fails its run once (no step retries)
+// with the reason as last_error, so the run is not recorded as a success and
+// its idempotency key is released for the next attempt.
+export const durablePublishWorkflowCode = `import { kody } from 'kody:runtime'
+const publishedStatuses = ${JSON.stringify(publishedExternalPushStatuses)}
 export default async function main(params = {}) {
-	return await kody.packagePublishExternalPush(params)
+	const result = await kody.packagePublishExternalPush(params)
+	const status = result && typeof result === 'object' ? result.status : null
+	if (publishedStatuses.includes(status)) return result
+	const failedChecks = Array.isArray(result?.failed_checks)
+		? result.failed_checks
+				.filter((check) => check && check.ok === false)
+				.map((check) => String(check.kind) + ': ' + String(check.message ?? '').slice(0, 600))
+				.join('; ')
+		: ''
+	const detail = failedChecks || String(result?.message ?? '').slice(0, 1200)
+	throw new Error(
+		${JSON.stringify(terminalInlineWorkflowErrorPrefix)} +
+			'packagePublishExternalPush returned ' + String(status) + (detail ? ': ' + detail : ''),
+	)
 }`
 
 function throwIfExternalPublishResourceLimit(
@@ -533,7 +553,12 @@ const outputSchema = z.discriminatedUnion('status', [
 			.describe(
 				'Parsed package.json when available; null when the manifest itself failed validation or was missing.',
 			),
-		run_id: z.string(),
+		run_id: z
+			.string()
+			.optional()
+			.describe(
+				'Deprecated and no longer returned: it was an internal check-attempt id that runGet cannot load. Use workflowRunList for a dispatched publish.',
+			),
 	}),
 	z.object({
 		status: z.literal('published'),
@@ -881,11 +906,18 @@ export function buildExternalPublishIdempotencyParts(
 	// published_commit already matches HEAD is idempotent (no D1 tip write).
 	// The capability remaps that RepoSession already_published to published
 	// when the tip moved relative to the pre-request baseline so agents do
-	// not treat a real tip advance as a no-op. Active and succeeded durable
-	// runs still dedupe on this key; a terminal failure releases it so the
-	// same commit can publish again (for example after a Durable Object
-	// reset mid-run).
-	return ['packagePublishExternalPush', canonicalJsonStringify(input)] as const
+	// not treat a real tip advance as a no-op. Active and published durable
+	// runs still dedupe on this key; a terminal failure (including a durable
+	// run whose publish did not publish) releases it so the same commit can
+	// publish again.
+	// `v2`: runs from before non-published outcomes failed the workflow were
+	// recorded complete even when checks failed, so they must not keep
+	// deduping a retry of the same commit.
+	return [
+		'packagePublishExternalPush',
+		'v2',
+		canonicalJsonStringify(input),
+	] as const
 }
 
 function shouldEscalateExternalPublish(executionOrigin: string | undefined) {
@@ -1035,7 +1067,6 @@ async function runExternalPublishAttempt(input: {
 						status: 'checks_failed' as const,
 						failed_checks: [rebuildOutcome.failedCheck],
 						manifest: null,
-						run_id: crypto.randomUUID(),
 					}
 				}
 				const artifactsRebuilt =
@@ -1225,6 +1256,10 @@ async function runExternalPublishAttempt(input: {
 					),
 				}
 			}
+			if (result.status === 'checks_failed') {
+				const { run_id: _checkAttemptId, ...checksFailed } = result
+				return checksFailed
+			}
 			if (result.status !== 'published') {
 				return result
 			}
@@ -1268,7 +1303,6 @@ async function runExternalPublishAttempt(input: {
 					status: 'checks_failed' as const,
 					failed_checks: [rebuildOutcome.failedCheck],
 					manifest: result.manifest ?? null,
-					run_id: crypto.randomUUID(),
 				}
 			}
 			const { durationMs: dependentsMs, value: publishedExtras } =
@@ -1423,7 +1457,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 		contextRuns: 'deny',
 		orgPermission: 'package:write',
 		description:
-			'Publish the current Artifacts git HEAD for a saved package after a packageGetGitRemote clone/edit/push workflow and server-side checks pass. Non-fast-forward publishes require explicit destructive overwrite confirmation and a verified restorable backup snapshot. Full check-time esbuild is deferred to the published artifact rebuild so callable and importable targets are bundled once; unchanged targets are copied from the previous published commit when their reachable inputs match, and a rebuild failure returns checks_failed with a bundle check. Published and already_published responses include hosted_app_url when the package declares an app, plus bounded static dependent metadata so agents can decide whether stale kody:@ bundled snapshots need inspection or dependent republish; Kody does not republish dependents automatically. already_published means the package tip already matched HEAD before this request began; a true no-op (same checker version, prior success) skips checks, while a missing or older stored checker version re-runs checks, refreshes the stamp, and sets checks_rerun true with a message. It still runs the artifact rebuild and sets artifacts_rebuilt true when any target needed rebuild or a forced snapshot repair ran. If published_commit moved relative to that pre-request tip — including durable re-entry after an overlapping inline attempt advanced the tip — the status is published with previous_commit set to the baseline tip, even when RepoSession reported tip==HEAD. Those success results also include phase_timings with optional millisecond fields clone_ms, checks_typecheck_ms, checks_bundle_ms, rebuild_ms, dependents_ms, and total_ms — omitted keys did not run; checks_bundle_ms is omitted when bundle validation is deferred to rebuild; checks_bundle_ms and rebuild_ms stay separate. Common cases return the full synchronous result. If the publish exceeds the inline budget (~35s), the work is dispatched once to a durable workflow (idempotent per acting caller plus the full semantic publish input, including force/overwrite flags) and this capability returns status dispatched with a workflow_id to poll via workflowRunList instead of hanging until an opaque execute timeout. Active and succeeded durable runs still dedupe; a terminal failure (for example Durable Object reset because its code was updated) releases the idempotency key so the same commit can be published again. dispatched includes phase_timings.total_ms as time-to-dispatch.',
+			'Publish the current Artifacts git HEAD for a saved package after a packageGetGitRemote clone/edit/push workflow and server-side checks pass. Non-fast-forward publishes require explicit destructive overwrite confirmation and a verified restorable backup snapshot. Full check-time esbuild is deferred to the published artifact rebuild so callable and importable targets are bundled once; unchanged targets are copied from the previous published commit when their reachable inputs match, and a rebuild failure returns checks_failed with a bundle check. Published and already_published responses include hosted_app_url when the package declares an app, plus bounded static dependent metadata so agents can decide whether stale kody:@ bundled snapshots need inspection or dependent republish; Kody does not republish dependents automatically. already_published means the package tip already matched HEAD before this request began; a true no-op (same checker version, prior success) skips checks, while a missing or older stored checker version re-runs checks, refreshes the stamp, and sets checks_rerun true with a message. It still runs the artifact rebuild and sets artifacts_rebuilt true when any target needed rebuild or a forced snapshot repair ran. If published_commit moved relative to that pre-request tip — including durable re-entry after an overlapping inline attempt advanced the tip — the status is published with previous_commit set to the baseline tip, even when RepoSession reported tip==HEAD. Those success results also include phase_timings with optional millisecond fields clone_ms, checks_typecheck_ms, checks_bundle_ms, rebuild_ms, dependents_ms, and total_ms — omitted keys did not run; checks_bundle_ms is omitted when bundle validation is deferred to rebuild; checks_bundle_ms and rebuild_ms stay separate. Common cases return the full synchronous result. If the publish exceeds the inline budget (~35s), the work is dispatched once to a durable workflow (idempotent per acting caller plus the full semantic publish input, including force/overwrite flags) and this capability returns status dispatched with a workflow_id to poll via workflowRunList instead of hanging until an opaque execute timeout. Active and published durable runs still dedupe. A durable run whose publish did not publish (checks_failed, not_fast_forward, locked, approval_required) ends errored with the reason in workflowRunList last_error, and like any terminal failure (for example a Durable Object reset because its code was updated) it releases the idempotency key so retrying the same commit starts a fresh attempt. dispatched includes phase_timings.total_ms as time-to-dispatch.',
 		keywords: ['package', 'publish', 'git', 'artifacts', 'external', 'push'],
 		readOnly: false,
 		idempotent: true,

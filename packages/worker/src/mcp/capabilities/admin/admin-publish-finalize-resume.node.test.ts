@@ -219,3 +219,47 @@ test('dry-run reports complete only once sealed, jobs attributed, note attached,
 		publishNoteFound: true,
 	})
 })
+
+test('apply on a sealed, attributed, noted commit only rebuilds artifacts and names failed checks otherwise', async () => {
+	mocks.publishedPublishChecksAreCurrent.mockResolvedValue(true)
+	mocks.listJobsForUser.mockResolvedValue([
+		{ source_id: 'source-1', record: { publishedCommit: 'commit-new' } },
+	])
+	mocks.readPublishGitNoteFromArtifactsRepo.mockResolvedValue({ found: true })
+	const sealed = await adminPublishFinalizeResumeCapability.handler(
+		{ packageIds: ['package-1'], dryRun: false },
+		createContext(['admin']),
+	)
+	expect(sealed.outcomes[0]).toMatchObject({
+		outcome: 'resumed',
+		rebuiltTargetCount: 3,
+	})
+	expect(mocks.publishFromExternalRef).not.toHaveBeenCalled()
+	expect(
+		mocks.rebuildPublishedPackageArtifactsViaRepoSession,
+	).toHaveBeenCalledWith(
+		expect.objectContaining({
+			sourceId: 'source-1',
+			publishedCommit: 'commit-new',
+		}),
+	)
+
+	mocks.publishedPublishChecksAreCurrent.mockResolvedValue(false)
+	mocks.publishFromExternalRef.mockResolvedValue({
+		status: 'checks_failed',
+		failed_checks: [
+			{ kind: 'typecheck', ok: true, message: 'ok' },
+			{ kind: 'bundle', ok: false, message: 'ran out of CPU' },
+		],
+		manifest: null,
+		run_id: 'attempt-1',
+	})
+	const failed = await adminPublishFinalizeResumeCapability.handler(
+		{ packageIds: ['package-1'], dryRun: false },
+		createContext(['admin']),
+	)
+	expect(failed.outcomes[0]).toMatchObject({
+		outcome: 'failed',
+		error: 'Resume returned checks_failed: bundle: ran out of CPU',
+	})
+})
