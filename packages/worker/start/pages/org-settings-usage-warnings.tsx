@@ -153,8 +153,8 @@ export function OrgSettingsUsageWarnings({
 				</form>
 			) : (
 				<p css={mutedCopyCss} data-testid="org-settings-usage-warnings-value">
-					{usageWarningsLabel}: {saved ? 'On' : 'Off'}. Only an owner can
-					change this.
+					{usageWarningsLabel}: {saved ? 'On' : 'Off'}. Only an owner can change
+					this.
 				</p>
 			)}
 		</AccountManagementPanel>

@@ -835,6 +835,10 @@
 		{
 			"filename": "0233-email-mailbox-delivery-cursors.sql",
 			"sha256": "9a05ec582c855d33c266744379531016a09559cba9214447f4432dd6b0c0c163"
+		},
+		{
+			"filename": "0234-org-usage-warnings.sql",
+			"sha256": "850080fa50e86191269ae003a96197c6a5c9835a5ce7a4de9e902d0c68616037"
 		}
 	]
 }
