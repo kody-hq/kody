@@ -156,6 +156,13 @@ boundaries deterministically. Byte ceilings live in
 `tools/worker-startup-bundle-budget.json`. Append measured notes to
 `tools/worker-startup-bundle-notes.md` instead of rewriting the checker.
 
+`patches/wrangler+<version>.patch` raises Wrangler's hard-coded 10s
+`STARTUP_PROFILE_TIMEOUT_MS` to 60s. That timer covers Miniflare boot, and the
+origin snapshot (~1,500 modules) takes ~20s to boot on a 4-vCPU GitHub-hosted
+runner before any sampled CPU is measured. The budget still compares active CPU,
+so the longer boot allowance does not loosen it. Refresh the patch when bumping
+Wrangler.
+
 Byte overages against the reviewed ceiling **warn and open/update a GitHub
 issue** on main CI (`Startup budget overage: <worker>`, marker
 `<!-- kody-startup-bundle-overage:<worker> -->`, `friction` label). They do

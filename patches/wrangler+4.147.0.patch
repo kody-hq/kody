@@ -1,0 +1,13 @@
+diff --git a/node_modules/wrangler/wrangler-dist/cli.js b/node_modules/wrangler/wrangler-dist/cli.js
+index 5ebc007..05cae67 100644
+--- a/node_modules/wrangler/wrangler-dist/cli.js
++++ b/node_modules/wrangler/wrangler-dist/cli.js
+@@ -169447,7 +169447,7 @@ var init_startup_profile = __esm({
+     import_undici9 = __toESM(require_undici());
+     init_wrapper();
+     init_create_worker_upload_form();
+-    STARTUP_PROFILE_TIMEOUT_MS = 1e4;
++    STARTUP_PROFILE_TIMEOUT_MS = 6e4;
+     MODULE_TYPE_TO_MINIFLARE_TYPE = {
+       esm: "ESModule",
+       commonjs: "CommonJS",
