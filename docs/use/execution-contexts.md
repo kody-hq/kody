@@ -14,9 +14,12 @@ Execution contexts are an experiment. Turn them on at
 - `execute` takes `context` (id or name), `fallback: "chain"`, `chain` (up to 3
   contexts, `"cloud"` only last), and `requires: ["fs" | "lan"]`. See
   [Execute and workflows](./execute.md#execution-contexts).
-- Results carry `ranOn`: `{ kind, id, name, attempts, fellBackToCloud }`.
-  `attempts[]` is `{ target, name?, outcome, reason? }` for each skipped entry
-  (`offline`, `busy`, `rejected`, …).
+- Results carry `ranOn`:
+  `{ kind, id, name, attempts, fellBackToCloud, workerUnits }`. `attempts[]` is
+  `{ target, name?, outcome, reason? }` for each skipped entry (`offline`,
+  `busy`, `rejected`, …). `workerUnits` is 0 on a context and, on Kody cloud, 1
+  only the first time that worker runs that UTC day. See
+  [Search and execute](../guides/search-and-execute.md).
 - Automations take `execution` with the same shape plus
   `whenOffline: "fail" | "queue"` and `queueMinutes` (default 60, max 1440).
   Read and set overrides with `automationExecutionGet` /
