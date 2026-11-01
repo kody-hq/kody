@@ -573,6 +573,8 @@ error, so the request stops. See [MCP context](#mcp-context).
 | `GET /admin/users`                     | `requireUserWithRole('admin')`                     |
 | `GET /admin/users.json`                | `requireUserWithPermission('read:user:any')`       |
 | `POST /admin/users.json` (roles, plan) | `requireUserWithPermission('update:user:any')`     |
+| `GET /admin/orgs`                      | admin role via `readAdminPageContext`              |
+| `GET /admin/orgs/$orgSlug`             | admin role via `readAdminPageContext`              |
 | `GET /admin/roles`                     | `requireUserWithRole('admin')`                     |
 | `GET /admin/roles.json`                | `requireUserWithPermission('read:role:any')`       |
 | `GET /admin/system-email`              | `requireUserWithRole('admin')`                     |
@@ -580,6 +582,7 @@ error, so the request stops. See [MCP context](#mcp-context).
 | `POST /admin/system-email.json`        | `requireUserWithRole('admin')`                     |
 
 Handlers: `packages/worker/src/admin/users-operations.ts`,
+`packages/worker/start/server/admin-orgs.ts`,
 `packages/worker/start/server/admin-roles.ts`.
 
 The users list accepts `q` (username/email substring), `role`, and
@@ -588,10 +591,11 @@ send is still `accepted` after 60 minutes). Stall is derived from the user row;
 it is not a stored delivery status.
 
 `POST /admin/users.json` dispatches on an `action` field: `assign_role`,
-`remove_role`, `update_plan` (set or clear — `plan: null` — a user's entitlement
-plan; see [Entitlements](./entitlements.md)), and `create_user` (pre-verified
-account plus a password-setup link). Those mutations emit audit events via
-`logAuditEvent` with category `admin`.
+`remove_role`, `update_plan` (forwards to the user's personal org — `plan: null`
+maps to `free`; see [Entitlements](./entitlements.md)), and `create_user`
+(pre-verified account plus a password-setup link). Those mutations emit audit
+events via `logAuditEvent` with category `admin`. Plan, credits, and limit
+overrides are edited on `/admin/orgs/$orgSlug`.
 
 ### Last-admin guardrail
 
@@ -741,9 +745,10 @@ present, activation first-seen timestamps (email verified, first MCP connection,
 first execute, first saved package, first secret, first integration, first job),
 MCP client name when known, last-active stamps, `created_at`, `updated_at`, and
 role assignments. The plan is account metadata (it drives quota enforcement),
-not user content, and admins can change it via `/admin/users` or the
-`adminUserUpdate` MCP capability. Admins can mark an account email verified or
-mint a one-time verify URL via `/admin/users` or `adminUserVerify`.
+not user content, and admins can change it on `/admin/orgs/$orgSlug` (Plan
+panel) or with `adminOrgPlanSet`. Leftover `adminUserUpdate` still forwards to
+the personal org. Admins can mark an account email verified or mint a one-time
+verify URL via `/admin/users` or `adminUserVerify`.
 
 **Admins can see and triage user-approved platform feedback.** The submit
 capability requires `user_confirmed: true` and accepts submissions only from an

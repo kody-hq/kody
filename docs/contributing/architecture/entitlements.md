@@ -133,7 +133,8 @@ reserve, job interval floors) resolves limits through that pair.
 Stripe; otherwise the higher-ranked of the two is returned. Unknown or null
 `stripe_plan` values contribute nothing. Admin user list/get (page and MCP)
 expose the grant, Stripe tier, effective plan, and whether a Stripe customer is
-linked. `plan` on those records remains the grant that Manage plan edits.
+linked. `plan` on those records is the manual grant that the org admin Plan
+panel and `adminOrgPlanSet` edit.
 
 ### Second-agent Pro gift
 
@@ -388,12 +389,12 @@ and refill number.
 auto-refilled, hit the monthly cap (once per month), and balance at or below $5
 (only while auto-refill is off, once per crossing).
 
-**Admin grants.** `POST /admin/users/credits.json` (admin users page) and the
-`adminCreditGrant` capability add house-funded credits to any account, including
-the calling admin, without a Stripe charge. Each grant writes a ledger row with
-`granted_by_user_id`, amount, recipient, time, and optional note, plus an admin
-audit event. `adminCreditWalletGet` and `GET /admin/users/credits.json` read the
-balance and recent ledger.
+**Admin grants.** The Credits panel on `/admin/orgs/$orgSlug` and
+`adminOrgCreditGrant` add house-funded credits to any organization, including
+the calling admin's, without a Stripe charge. Each grant writes a ledger row
+with `granted_by_user_id`, amount, recipient, time, and optional note, plus an
+admin audit event. `adminOrgGet` reads the wallet and recent ledger. Leftover
+`adminCreditGrant` and `adminCreditWalletGet` still forward to the personal org.
 
 **Signup welcome credits.** Every newly created person account (password signup,
 OAuth signup, admin-created) receives a one-shot house grant of
@@ -413,10 +414,10 @@ that flag is set. When Stripe later flips `stripe_credits_eligible` on,
 usage above the Pro include is not charged against the welcome balance.
 
 **Admin eligibility.** To give an account the wallet without a Stripe checkout,
-set its manual plan to `pro` (`adminUserUpdate`), fund it (`adminCreditGrant`),
-and call `adminCreditEligibilitySet` with the target (`stableUserId`, `email`,
-or `username`), `creditsEligible: true`, and an optional `note`. It writes an
-admin audit event (target, new and previous value, note), never creates Stripe
+set its personal organization's manual plan to `pro` (`adminOrgPlanSet`), fund
+it (`adminOrgCreditGrant`), and call `adminOrgCreditEligibilitySet` with the org
+handle, `creditsEligible: true`, and a required `reason`. It writes an admin
+audit event (target, new and previous value, reason), never creates Stripe
 customers or subscriptions. The steps work in either order: whichever write
 (eligibility or the manual plan) unlocks the wallet first calls
 `forgiveCreditUsageBeforeUnlock`, which advances debit progress to the unlocked
@@ -888,26 +889,29 @@ plan-column history lives only in Git.
 
 New accounts start with `orgs.plan = 'free'`. Password and social signup write
 that default via `resolvePlanWrite`. Admin-created accounts and seed SQL follow
-the same `resolvePlanWrite` default. Admins assign or reset plans on existing
-users from `/admin/users` (validated with strict `parsePlanName`).
+the same `resolvePlanWrite` default. Admins assign or reset the manual plan
+grant on `/admin/orgs/$orgSlug` (validated with strict `parsePlanName`).
 
-Admins also assign or reset plans on existing users through two audited,
-admin-only surfaces, both backed by `updateAdminUserPlan` in
-`packages/worker/src/admin/users-data.ts`:
+Admins assign or reset that grant through two audited, admin-only surfaces, both
+writing `orgs.plan`:
 
-- **Admin UI** — the "Manage plan" panel on `/admin/users` posts
-  `{ action: 'update_plan', userId, plan }` to `POST /admin/users.json` (guarded
-  by `update:user:any`). `plan: null` maps to `free` (writers never persist
-  NULL); unknown plan strings are rejected with `400` rather than coerced.
-- **MCP** — the `adminUserUpdate` capability (`requiredRole: 'admin'`) updates
-  one user by `id` or `email` and accepts `plan: PlanName | null` (null maps to
-  `free`).
+- **Admin UI** — the Plan panel on `/admin/orgs/$orgSlug` submits
+  `setAdminOrgPlan` (`packages/worker/start/server/admin-controls.ts`). User
+  detail (`/admin/users/:id`) links to the personal org and has no billing
+  forms.
+- **MCP** — `adminOrgPlanSet` (`requiredRole: 'admin'`) updates one organization
+  by `orgId` or handle. A downgrade to free is blocked when it exceeds an
+  owner's two-free-organization cap.
 
-Both paths validate against the plan registry (`parsePlanName` / `planNames`)
-and write an `admin`-category audit event with reason `target_user_id=…;plan=…`.
-Daily counters accumulate for every user regardless of plan, so assigning a
-recognized plan later binds immediately against the usage already counted that
-day.
+Leftover `POST /admin/users.json` `update_plan` and `adminUserUpdate` still
+forward to the personal org (`updateAdminUserPlan` in
+`packages/worker/src/admin/users-data.ts`). `plan: null` maps to `free`; unknown
+plan strings are rejected with `400` rather than coerced.
+
+Org and leftover paths validate against the plan registry (`parsePlanName` /
+`planNames`) and write an `admin`-category audit event. Daily counters
+accumulate for every user regardless of plan, so assigning a recognized plan
+later binds immediately against the usage already counted that day.
 
 Paid upgrades via Stripe write `orgs.stripe_plan` (not `orgs.plan`); see
 [Billing](#billing). Effective entitlement uses the higher-ranked of the two
@@ -972,8 +976,9 @@ binds on the next counted check everywhere, with no TTL that can hide it.
   wallet with a required reason; clawbacks are not supported.
 - `adminOrgCreditEligibilitySet` — change one organization's admin credit
   eligibility with a required reason.
-- `GET` / `POST /admin/orgs/limits.json` and the "Limit overrides" panel on
-  `/admin/users` (personal orgs).
+- `/admin/orgs/$orgSlug` — Plan, Credits, and Limit overrides panels (TanStack
+  server functions in `packages/worker/start/server/admin-controls.ts`). User
+  detail links "Open personal organization" and has no billing forms.
 
 Every set, change, or remove writes an org audit event (`limit_override.set` /
 `.changed` / `.removed`, `resource_type` `limit_override`, `resource_id` the

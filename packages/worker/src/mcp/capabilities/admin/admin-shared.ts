@@ -76,7 +76,7 @@ export const adminUserMetadataSchema = z.object({
 		.nullable()
 		.describe('Raw users.email_verified_at timestamp, or null if unverified.'),
 	plan: planNameSchema.describe(
-		'Manual entitlement grant (orgs.plan on the personal org). Manage plan writes this column. Ordinary Stripe subscribers keep this as free.',
+		'Manual entitlement grant (orgs.plan on the personal org). The org admin Plan panel and adminOrgPlanSet write this column. Ordinary Stripe subscribers keep this as free.',
 	),
 	manualPlan: planNameSchema.describe(
 		'Same as plan: the admin/manual grant on orgs.plan.',
