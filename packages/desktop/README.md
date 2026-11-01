@@ -307,3 +307,12 @@ have Kody.app send Apple Events instead, remove a CLI service with
 `kody daemon` owns the runner, stop it with `kody daemon stop`. Then leave
 **This machine** resumed; the app runs the runner itself. See
 [macOS app control](../../docs/use/execution-contexts.md#macos-app-control).
+
+### Contacts access
+
+Desktop 0.1.5 includes the Contacts entitlement and purpose string. Packages can
+use the built-in Contacts framework to resolve names, phone numbers, and email
+addresses. macOS still requires the user's Contacts consent, separately from
+Full Disk Access and Messages Automation. These permissions belong to the app's
+own runner, not an adopted CLI service or terminal daemon. Release verification
+checks the Contacts entitlement and purpose string on the signed app.
