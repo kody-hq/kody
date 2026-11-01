@@ -461,9 +461,11 @@ npx @kodycodes/cli execute --local --invoke kody:@scope/pkg/export --params '{"n
   (no filesystem graph to follow).
 - **Runtime:** a pinned [workerd](https://github.com/cloudflare/workerd)
   release, downloaded once from GitHub, sha256-verified, and cached under
-  `~/.cache/kody` (Linux, or `$XDG_CACHE_HOME/kody`) or `~/Library/Caches/kody`
-  (macOS). Override with `KODY_CACHE_DIR`, or point `KODY_WORKERD_PATH` at your
-  own binary. No Docker required. Linux and macOS (x64/arm64) only for now.
+  `~/.cache/kody` (Linux, or `$XDG_CACHE_HOME/kody`), `~/Library/Caches/kody`
+  (macOS), or `%LOCALAPPDATA%\kody\cache` (Windows). Override with
+  `KODY_CACHE_DIR`, or point `KODY_WORKERD_PATH` at your own binary. No Docker
+  required. Linux, macOS, and Windows (x64/arm64; Windows on Arm uses the x64
+  workerd build).
 - **API:** `https://api.kody.codes` by default (`--api-url` or `KODY_API_URL` to
   override). The CLI calls `POST /v1/local-execute/package-graph` before
   starting workerd (it authenticates the bearer and, when the module imports
