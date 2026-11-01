@@ -1319,6 +1319,7 @@ async function resolveAndWait(
 		if (!snapshot.previewUrl) {
 			throw new PreviewManualTestError(notReadyMessage(snapshot))
 		}
+		warnIfMissingExpectedSha(snapshot, deps)
 		return snapshot
 	}
 
@@ -2026,9 +2027,12 @@ function waitStatusMessage(
 		return `Waiting for preview workflow (${snapshot.workflowStatus ?? 'unknown'}${snapshot.workflowConclusion ? `/${snapshot.workflowConclusion}` : ''})${snapshot.workflowUrl ? `: ${snapshot.workflowUrl}` : ''}`
 	}
 	if (snapshot.previewUrl) {
-		return snapshot.expectedSha
-			? `Waiting for /health to serve ${snapshot.expectedSha} (exact or merge commit) at ${snapshot.previewUrl}`
-			: `Waiting for a healthy /health at ${snapshot.previewUrl}`
+		if (!snapshot.expectedSha) {
+			return `Waiting for a healthy /health at ${snapshot.previewUrl}`
+		}
+		// Direct `--url` skips gh parent lookup, so only an exact /health match counts.
+		const matchRule = snapshot.headSha ? 'exact or merge commit' : 'exact match'
+		return `Waiting for /health to serve ${snapshot.expectedSha} (${matchRule}) at ${snapshot.previewUrl}`
 	}
 	if (snapshot.workflowUrl) {
 		return `Waiting for preview workflow (${snapshot.workflowStatus ?? 'unknown'}): ${snapshot.workflowUrl}`
