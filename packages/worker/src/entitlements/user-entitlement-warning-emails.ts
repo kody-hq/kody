@@ -1,6 +1,7 @@
 import { utcDayKey, utcMonthKey } from '@kody-internal/shared/date-keys.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import { loadOrgUsageWarningsEnabled } from '#worker/orgs/usage-warnings.ts'
 import { sendGatedTransactionalEmail } from '#worker/email/transactional-send-policy.ts'
 import {
 	buildUserEntitlementWarningEmail,
@@ -388,6 +389,9 @@ async function sendThresholdEmailIfNeeded(input: {
 	now: Date
 }): Promise<boolean> {
 	if (input.warnings.length === 0) return false
+	if (!(await loadOrgUsageWarningsEnabled(input.env.APP_DB, input.ownerId))) {
+		return false
+	}
 
 	const creditsUrl = new URL(
 		accountCreditsPath,

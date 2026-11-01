@@ -277,6 +277,7 @@ export function buildUserEntitlementWarningEmail(input: {
 		action: { label: 'Add credits', url: input.creditsUrl },
 		afterAction: [
 			`You can also see every limit on your usage page: ${input.usageUrl}`,
+			`To stop these emails, an Owner can turn off Usage warnings in Organization settings: ${new URL('/docs/platform-efficiency#usage-warnings', input.appBaseUrl).toString()}`,
 		],
 		footnote: copy.footnote,
 	})

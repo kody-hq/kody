@@ -1369,6 +1369,8 @@ export type OrgSettingsLoaderData = {
 	customDomains: OrgSettingsCustomDomainsView | null
 	/** What every Member may create without a grant; null for personal orgs. */
 	memberCreation: { packages: boolean; credentials: boolean } | null
+	/** Usage emails and the execute heads-up; personal and team orgs alike. */
+	usageWarnings: boolean
 }
 
 export type OrgMemberView = {

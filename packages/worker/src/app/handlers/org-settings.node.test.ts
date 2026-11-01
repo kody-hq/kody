@@ -745,6 +745,7 @@ test('owners set member permissions on a team org; members and personal orgs can
 		(await readSettings(env, { request: get } as never)).data,
 	).toMatchObject({
 		memberCreation: { packages: false, credentials: true },
+		usageWarnings: true,
 	})
 
 	expect((await writeAs('ada', 'zeta-co', { packages: true })).status).toBe(200)

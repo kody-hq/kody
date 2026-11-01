@@ -112,6 +112,7 @@ function createDb(
 		computeDorowsUsers?: Array<TestUser>
 		activeUsers?: Array<TestUser>
 		creditBalanceMicroUsd?: number
+		usageWarningsEnabled?: boolean
 	} = {},
 ) {
 	let boundParams: Array<unknown> = []
@@ -124,6 +125,11 @@ function createDb(
 					return this
 				},
 				async first<T>() {
+					if (normalized.includes('select usage_warnings_enabled from orgs')) {
+						return options.usageWarningsEnabled === false
+							? ({ usage_warnings_enabled: 0 } as T)
+							: null
+					}
 					if (normalized.includes('from credit_wallets')) {
 						return {
 							balance_micro_usd: options.creditBalanceMicroUsd ?? 0,
@@ -696,4 +702,31 @@ test('an immediate execute warning mails once and the hourly sweep then skips th
 		status: 'no_warnings',
 	})
 	expect(sendCloudflareEmail).not.toHaveBeenCalled()
+})
+
+test('an org that turned usage warnings off gets no warning email', async () => {
+	const now = new Date('2026-07-25T12:00:00.000Z')
+	const { kv, store } = createKv()
+	const env = {
+		...createEnv({ users: [freeUser('jelias@example.com')], kv }),
+	} as Env
+	env.APP_DB = createDb([freeUser('jelias@example.com')], [], {
+		usageWarningsEnabled: false,
+	})
+	sendCloudflareEmail.mockClear()
+	expect(
+		await sendEntitlementWarningNow({
+			env,
+			ownerId: ownerIdFromStored(stableUserId),
+			kind: 'approaching',
+			warning: row('execute_unique_workers_per_day', 120, 150),
+			now,
+		}),
+	).toBe(false)
+	expect(sendCloudflareEmail).not.toHaveBeenCalled()
+	expect(
+		store.has(
+			instanceKey('approaching', 'execute_unique_workers_per_day', now),
+		),
+	).toBe(false)
 })
