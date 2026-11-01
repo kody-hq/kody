@@ -1,6 +1,6 @@
 {
   "name": "@kodycodes/desktop",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "description": "Kody desktop shell and local execution runner",
   "main": "main.cjs",
@@ -50,7 +50,8 @@
       ],
       "entitlements": "assets/entitlements.mac.plist",
       "extendInfo": {
-        "NSAppleEventsUsageDescription": "When you grant host-command access, your agents can control local apps, including sending messages."
+        "NSAppleEventsUsageDescription": "When you grant host-command access, your agents can control local apps, including sending messages.",
+        "NSContactsUsageDescription": "Kody uses contact names, phone numbers, and email addresses to identify people in your messages."
       }
     },
     "win": {

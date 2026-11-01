@@ -144,6 +144,9 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.automation.apple-events' "$RUNNER_TEMP/desktop-entitlements.plist")" = true
           automation_purpose=$(/usr/libexec/PlistBuddy -c 'Print :NSAppleEventsUsageDescription' "$bundle/Contents/Info.plist")
           test -n "$automation_purpose"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.personal-information.addressbook' "$RUNNER_TEMP/desktop-entitlements.plist")" = true
+          contacts_purpose=$(/usr/libexec/PlistBuddy -c 'Print :NSContactsUsageDescription' "$bundle/Contents/Info.plist")
+          test -n "$contacts_purpose"
           xcrun stapler validate "$bundle"
           spctl --assess --type execute --verbose "$bundle"
       - name: Verify Windows signatures
