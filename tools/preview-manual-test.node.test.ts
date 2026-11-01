@@ -847,6 +847,45 @@ test('preview briefing prints the API host the CLI needs for auth bootstrap and 
 	})
 })
 
+test('preview --url skips gh even when --pr is set', async () => {
+	await using server = await createPreviewFixtureServer()
+	let ghCalls = 0
+	const { exitCode, result } = await runPreviewManualTest(
+		[
+			'--pr',
+			'4510',
+			'--url',
+			server.origin,
+			'--no-wait',
+			'--request',
+			'GET /session',
+			'--json',
+		],
+		createSilentDeps({
+			logs: [],
+			execGh: async () => {
+				ghCalls += 1
+				return {
+					status: 1,
+					stdout: '',
+					stderr: 'To get started with GitHub CLI, please run: gh auth login',
+				}
+			},
+		}),
+	)
+	expect(ghCalls).toBe(0)
+	expect(exitCode).toBe(0)
+	expect(result?.ok).toBe(true)
+	expect(result?.snapshot).toMatchObject({
+		prNumber: 4510,
+		previewUrl: server.origin,
+		headSha: null,
+	})
+	expect(result?.smoke?.checks.map((check) => check.name)).toContain(
+		'GET /session (2xx)',
+	)
+})
+
 test('preview manual test treats merge-commit /health as ready when it contains the PR head', async () => {
 	await using server = await createPreviewFixtureServer('mergesha')
 	const logs: Array<string> = []

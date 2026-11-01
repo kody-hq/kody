@@ -32,7 +32,7 @@ const usageLines = [
 	'',
 	'Options:',
 	'  --pr <n>            PR number (default: gh pr view)',
-	'  --url <url>         Skip GitHub discovery; smoke this preview URL',
+	'  --url <url>         Skip GitHub discovery (even with --pr); smoke this URL',
 	'  --sha <sha>         Expected /health commitSha (default: PR head',
 	'                      SHA from gh; /health may be the merge commit — see docs)',
 	'  --no-wait           Fail immediately if the preview is not ready',
@@ -1351,7 +1351,7 @@ async function resolveAndWait(
 }
 
 function skipPreviewWorkflowGate(options: PreviewManualTestOptions) {
-	return Boolean(options.previewUrl) && options.prNumber === null
+	return Boolean(options.previewUrl)
 }
 
 function previewWorkflowReady(
@@ -1379,58 +1379,56 @@ function warnIfMissingExpectedSha(
 	}
 }
 
+function snapshotFromPreviewUrl(
+	options: PreviewManualTestOptions,
+): PreviewSnapshot {
+	const previewUrl = options.previewUrl
+	if (!previewUrl) {
+		throw new PreviewManualTestError('--url is required for this snapshot.')
+	}
+	const workerName = workerNameFromPreviewUrl(previewUrl)
+	const runtimeWorkerName = workerName ? `${workerName}-runtime` : null
+	const platformWorkerName = workerName ? `${workerName}-platform` : null
+	const apiWorkerName = workerName ? `${workerName}-api` : null
+	return {
+		prNumber: options.prNumber,
+		prUrl: null,
+		isDraft: false,
+		headSha: options.expectedSha,
+		previewUrl,
+		workerName,
+		runtimeWorkerName,
+		runtimeUrl:
+			workerName && runtimeWorkerName
+				? deriveSiblingWorkerUrl(previewUrl, workerName, runtimeWorkerName)
+				: null,
+		platformWorkerName,
+		platformUrl:
+			workerName && platformWorkerName
+				? deriveSiblingWorkerUrl(previewUrl, workerName, platformWorkerName)
+				: null,
+		apiWorkerName,
+		apiUrl:
+			workerName && apiWorkerName
+				? deriveSiblingWorkerUrl(previewUrl, workerName, apiWorkerName)
+				: null,
+		d1DatabaseName: null,
+		oauthKvTitle: null,
+		mocks: [],
+		expectedSha: options.expectedSha,
+		workflowUrl: null,
+		workflowStatus: null,
+		workflowConclusion: null,
+		workflowHeadSha: null,
+	}
+}
+
 async function loadSnapshot(
 	options: PreviewManualTestOptions,
 	deps: PreviewManualTestDeps,
 ): Promise<PreviewSnapshot> {
-	if (options.previewUrl && options.prNumber === null) {
-		const workerName = workerNameFromPreviewUrl(options.previewUrl)
-		const runtimeWorkerName = workerName ? `${workerName}-runtime` : null
-		const platformWorkerName = workerName ? `${workerName}-platform` : null
-		const apiWorkerName = workerName ? `${workerName}-api` : null
-		return {
-			prNumber: null,
-			prUrl: null,
-			isDraft: false,
-			headSha: null,
-			previewUrl: options.previewUrl,
-			workerName,
-			runtimeWorkerName,
-			runtimeUrl:
-				workerName && runtimeWorkerName
-					? deriveSiblingWorkerUrl(
-							options.previewUrl,
-							workerName,
-							runtimeWorkerName,
-						)
-					: null,
-			platformWorkerName,
-			platformUrl:
-				workerName && platformWorkerName
-					? deriveSiblingWorkerUrl(
-							options.previewUrl,
-							workerName,
-							platformWorkerName,
-						)
-					: null,
-			apiWorkerName,
-			apiUrl:
-				workerName && apiWorkerName
-					? deriveSiblingWorkerUrl(
-							options.previewUrl,
-							workerName,
-							apiWorkerName,
-						)
-					: null,
-			d1DatabaseName: null,
-			oauthKvTitle: null,
-			mocks: [],
-			expectedSha: options.expectedSha,
-			workflowUrl: null,
-			workflowStatus: null,
-			workflowConclusion: null,
-			workflowHeadSha: null,
-		}
+	if (options.previewUrl) {
+		return snapshotFromPreviewUrl(options)
 	}
 
 	const pr = await loadPullRequest(options, deps)
