@@ -1333,7 +1333,8 @@ async function resolveAndWait(
 			)
 		}
 		const healthReady =
-			Boolean(snapshot.previewUrl) && (await previewHealthReady(snapshot, deps))
+			Boolean(snapshot.previewUrl) &&
+			(await previewHealthReady(snapshot, deps, Boolean(options.previewUrl)))
 		const workflowReady = previewWorkflowReady(snapshot, options)
 		if (healthReady && workflowReady) {
 			warnIfMissingExpectedSha(snapshot, deps)
@@ -1394,7 +1395,7 @@ function snapshotFromPreviewUrl(
 		prNumber: options.prNumber,
 		prUrl: null,
 		isDraft: false,
-		headSha: options.expectedSha,
+		headSha: null,
 		previewUrl,
 		workerName,
 		runtimeWorkerName,
@@ -1557,6 +1558,7 @@ async function loadPreviewWorkflow(
 async function previewHealthReady(
 	snapshot: PreviewSnapshot,
 	deps: PreviewManualTestDeps,
+	skipGhParents = false,
 ): Promise<boolean> {
 	if (!snapshot.previewUrl) return false
 	try {
@@ -1569,6 +1571,7 @@ async function previewHealthReady(
 			evaluateAppHealth,
 			response.body,
 			snapshot.expectedSha,
+			skipGhParents,
 		)
 		return healthEval.ok
 	} catch {
@@ -1585,9 +1588,11 @@ async function evaluateFetchedHealth(
 	) => { ok: boolean; commitSha: string | null; detail: string },
 	body: unknown,
 	expectedSha: string | null,
+	skipGhParents = false,
 ) {
 	const first = evaluate(body, expectedSha)
-	if (first.ok || !first.commitSha || !expectedSha) return first
+	if (first.ok || !first.commitSha || !expectedSha || skipGhParents)
+		return first
 	const parents = await loadCommitParents(deps, first.commitSha)
 	if (!parents) return first
 	return evaluate(body, expectedSha, parents)
@@ -1660,6 +1665,7 @@ async function runSmokeChecks(
 			evaluateAppHealth,
 			health.body,
 			snapshot.expectedSha,
+			Boolean(options.previewUrl),
 		)
 		commitSha = healthEval.commitSha
 		checks.push({
@@ -1731,6 +1737,7 @@ async function runSmokeChecks(
 				evaluateRuntimeHealth,
 				runtimeHealth.body,
 				snapshot.expectedSha,
+				Boolean(options.previewUrl),
 			)
 			runtimeCommitSha = runtimeEval.commitSha
 			checks.push({
@@ -1761,6 +1768,7 @@ async function runSmokeChecks(
 				evaluatePlatformHealth,
 				platformHealth.body,
 				snapshot.expectedSha,
+				Boolean(options.previewUrl),
 			)
 			platformCommitSha = platformEval.commitSha
 			checks.push({

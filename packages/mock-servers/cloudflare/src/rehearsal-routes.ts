@@ -126,12 +126,21 @@ function handleAuthorizationRedirect(url: URL) {
 	const clientId = url.searchParams.get('client_id')?.trim()
 	const redirectUri = url.searchParams.get('redirect_uri')?.trim()
 	const state = url.searchParams.get('state')
-	const responseType = url.searchParams.get('response_type')?.trim() ?? 'code'
+	const responseType = url.searchParams.get('response_type')?.trim()
 	if (!clientId) {
 		return Response.json(
 			{
 				error: 'invalid_request',
 				error_description: 'client_id is required.',
+			},
+			{ status: 400 },
+		)
+	}
+	if (!responseType) {
+		return Response.json(
+			{
+				error: 'invalid_request',
+				error_description: 'response_type is required.',
 			},
 			{ status: 400 },
 		)

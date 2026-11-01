@@ -1,13 +1,20 @@
 import { spawn } from 'node:child_process'
-import {
-	envWithNodeHeapFloor,
-	isExecutedDirectly,
-	resolveLocalBinary,
-} from './node-runtime.ts'
+import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
+import { envWithNodeHeapFloor, isExecutedDirectly } from './node-runtime.ts'
 
 export type TscRunResult = {
 	status: number
 	env: NodeJS.ProcessEnv
+}
+
+// Running tsc's JS entry with node avoids the Windows `tsc.cmd` shim, which
+// needs a shell (same reason `tools/run-nx.ts` uses `process.execPath`).
+function resolveTscEntry() {
+	const require = createRequire(import.meta.url)
+	const packageJsonPath = require.resolve('typescript/package.json')
+	const { bin } = require(packageJsonPath) as { bin: { tsc: string } }
+	return join(dirname(packageJsonPath), bin.tsc)
 }
 
 /**
@@ -22,7 +29,7 @@ export function spawnTsc(
 	const childEnv = envWithNodeHeapFloor(env)
 	const inherit = isExecutedDirectly(import.meta.url)
 	return new Promise((resolve) => {
-		const child = spawn(resolveLocalBinary('tsc'), [...args], {
+		const child = spawn(process.execPath, [resolveTscEntry(), ...args], {
 			env: childEnv,
 			stdio: inherit ? 'inherit' : 'ignore',
 		})

@@ -91,7 +91,10 @@ HTTP, use `control-kody request` with the same `--origin` (and `--dump` /
 `--contains` for HTML). Do not `cat` the session cookie into `curl` or Python.
 
 `--no-wait` fails immediately if the preview is not up. `--url` skips GitHub
-discovery, including when `--pr` is also set. `--help` lists the rest.
+discovery, including when `--pr` is also set. Without `--sha`, `--url` accepts
+any healthy `/health` and does not check freshness against a PR head. Pass
+`--sha` with the `/health` `commitSha` (often the merge commit) when you need
+that match. `--help` lists the rest.
 
 On medium or high risk, running only the default smoke (health + empty login) is
 not enough. Add `--request` / `--check` for the flows this PR changes, or run
@@ -260,8 +263,9 @@ Do not point Playwright at the preview for the repo E2E suite. Local E2E
   until the new 🔎 Preview deploy finishes. The script waits until the workflow
   run for this PR head is `completed`/`success` (unless you pass `--url`) and
   `/health` matches the expected SHA (PR head, or a merge commit that has that
-  head as a parent, or `--sha`). Do not treat a healthy worker as the new commit
-  until that happens.
+  head as a parent, or `--sha`). With `--url` and no `--sha`, any healthy
+  `/health` is accepted. Do not treat a healthy worker as the new commit until
+  that happens.
 
 Do not `gh workflow run preview.yml` with `target=pr` to "force" a PR preview.
 That dispatch checks out the workflow's ref (usually `main`), not the PR head.
