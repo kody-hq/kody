@@ -3,7 +3,10 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
+import type * as publishedRuntimeArtifacts from '#worker/package-runtime/published-runtime-artifacts.ts'
+import type * as artifactFile from '#worker/repo/artifact-file.ts'
+import type * as artifacts from '#worker/repo/artifacts.ts'
 import { accessGrantCapability } from '#mcp/capabilities/access/access-grants.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
@@ -15,13 +18,53 @@ import { createAuditTestDb } from '#worker/test-support/create-audit-db.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
+import { CommunityActionError } from './errors.ts'
 import { insertCommunityFork } from './repo.ts'
 import {
 	findExistingPrivatePackageFork,
 	forkPrivatePackage,
 	loadReadablePrivateForkSource,
+	preparePrivatePackageFork,
 	privatePackageForkNotFoundMessage,
 } from './service.ts'
+
+// Production storage stand-ins: HEAD, the publish-time KV snapshot, and the
+// Artifacts git tree. The local snapshot API stays off, as in production.
+const storage = vi.hoisted(() => ({
+	head: 'commit-1' as string | null,
+	publishedFiles: new Map<string, Record<string, string>>(),
+	treeFiles: new Map<string, Record<string, string>>(),
+	treeReads: [] as Array<string>,
+}))
+
+vi.mock('#worker/repo/artifacts.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof artifacts>()),
+	resolveArtifactSourceHead: async () => ({
+		branch: 'main',
+		commit: storage.head,
+	}),
+}))
+
+vi.mock(
+	'#worker/package-runtime/published-runtime-artifacts.ts',
+	async (importOriginal) => ({
+		...(await importOriginal<typeof publishedRuntimeArtifacts>()),
+		readPublishedSourceSnapshot: async (input: {
+			publishedCommit: string | null
+		}) => {
+			const files = storage.publishedFiles.get(input.publishedCommit ?? '')
+			return files ? { files } : null
+		},
+	}),
+)
+
+vi.mock('#worker/repo/artifact-file.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof artifactFile>()),
+	readArtifactTreeAtCommit: async (input: { commit: string }) => {
+		storage.treeReads.push(input.commit)
+		return storage.treeFiles.get(input.commit) ?? null
+	},
+}))
 
 const migrationsDirectory = new URL('../../migrations/', import.meta.url)
 
@@ -225,4 +268,51 @@ test('a Read grantee can clone the private package; a stranger cannot see it', a
 		})
 	expect(await clone('reader')).not.toBeNull()
 	expect(await clone('stranger')).toBeNull()
+})
+
+test('a Read grantee forks the default-branch HEAD with the snapshot API off', async () => {
+	const { env, people, sourcePackage, viewer } = await seed()
+	expect(env.CLOUDFLARE_API_SOURCE_SNAPSHOTS).toBeUndefined()
+	const packageJson = (version: string) =>
+		JSON.stringify({
+			name: '@pf-owner/notes',
+			version,
+			kody: { id: 'notes', description: 'Notes' },
+		})
+	const prepare = () =>
+		preparePrivatePackageFork({
+			env,
+			baseUrl: 'https://heykody.dev',
+			userId: ownerIdFromStored(people.reader),
+			expectedPackageScope: 'pf-reader',
+			sourcePackage,
+			reader: viewer('reader'),
+			actor: 'human',
+		})
+	storage.publishedFiles.set('commit-1', {
+		'package.json': packageJson('1.0.0'),
+	})
+	storage.treeReads.length = 0
+
+	// HEAD is the published commit: the publish snapshot, no git read.
+	storage.head = 'commit-1'
+	const atPublished = await prepare()
+	expect(atPublished.originCommit).toBe('commit-1')
+	expect(atPublished.files['package.json']).toContain('1.0.0')
+	expect(storage.treeReads).toEqual([])
+
+	// A push landed after publish: HEAD's files come from the git tree.
+	storage.head = 'commit-2'
+	storage.treeFiles.set('commit-2', { 'package.json': packageJson('2.0.0') })
+	const ahead = await prepare()
+	expect(ahead.originCommit).toBe('commit-2')
+	expect(ahead.files['package.json']).toContain('2.0.0')
+	expect(storage.treeReads).toEqual(['commit-2'])
+
+	storage.head = 'commit-3'
+	const missing = await prepare().catch((error: unknown) => error)
+	expect(missing).toBeInstanceOf(CommunityActionError)
+	expect((missing as Error).message).toMatch(
+		/no files to fork at commit commit-/,
+	)
 })

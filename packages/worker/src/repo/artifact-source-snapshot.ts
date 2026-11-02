@@ -9,8 +9,9 @@ import {
  * Whole-tree snapshot of an Artifacts repo at one commit.
  *
  * Cloudflare's API has no endpoint for this: production reads published trees
- * from the KV snapshots written at publish time and never calls here for real
- * data. A local Cloudflare API stand-in can serve trees for repos that have no
+ * from the KV snapshots written at publish time and any other commit through
+ * `readArtifactTreeAtCommit`, and never calls here for real data. Production
+ * callers must not depend on this returning files. A local Cloudflare API stand-in can serve trees for repos that have no
  * git remote, and `CLOUDFLARE_API_SOURCE_SNAPSHOTS=true` (set by the dev CLI
  * next to `CLOUDFLARE_API_BASE_URL`) opts a runtime into asking it. With the
  * flag unset, reads return `null` without a request, so a KV miss in production

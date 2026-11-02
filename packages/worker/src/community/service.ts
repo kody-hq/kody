@@ -35,7 +35,7 @@ import {
 	deleteEntitySource,
 	getEntitySourceById,
 } from '#worker/repo/entity-sources.ts'
-import { readArtifactSourceSnapshot } from '#worker/repo/artifact-source-snapshot.ts'
+import { readArtifactTreeAtCommit } from '#worker/repo/artifact-file.ts'
 import {
 	buildEntityRepoId,
 	resolveArtifactSourceHead,
@@ -1429,32 +1429,18 @@ export async function prepareCommunityFork(
 	let filesCommit = listing.pinnedCommit
 	if (source && originCommit) {
 		try {
-			const published = await readPublishedSourceSnapshot({
+			const originFiles = await readForkOriginFiles({
 				env: input.env,
 				sourceId: listing.sourceId,
-				publishedCommit: originCommit,
+				repoId: source.repo_id,
+				commit: originCommit,
 			})
-			if (published?.files) {
-				files = published.files
+			if (originFiles) {
+				files = originFiles
 				filesCommit = originCommit
 			}
 		} catch {
-			// Fall through to git snapshot / listing pin.
-		}
-		if (files === snapshot?.files || files == null) {
-			try {
-				const treeSnapshot = await readArtifactSourceSnapshot({
-					env: input.env,
-					repoId: source.repo_id,
-					commit: originCommit,
-				})
-				if (treeSnapshot?.files) {
-					files = treeSnapshot.files
-					filesCommit = originCommit
-				}
-			} catch {
-				// Fall through to listing pin snapshot.
-			}
+			// Fall through to the listing pin snapshot.
 		}
 	}
 	if (!files) {
@@ -1492,6 +1478,32 @@ export async function prepareCommunityFork(
 				userId: input.userId,
 			}),
 	})
+}
+
+/**
+ * Files a fork copies at `commit` (origin default-branch HEAD). The publish
+ * KV snapshot only exists for published commits, and pushes land before
+ * `kody package publish`, so HEAD past `published_commit` reads the
+ * Artifacts tree. Null when that commit has no files.
+ */
+async function readForkOriginFiles(input: {
+	env: Env
+	sourceId: string
+	repoId: string
+	commit: string
+}): Promise<Record<string, string> | null> {
+	const published = await readPublishedSourceSnapshot({
+		env: input.env,
+		sourceId: input.sourceId,
+		publishedCommit: input.commit,
+	}).catch(() => null)
+	if (published?.files) return published.files
+	const tree = await readArtifactTreeAtCommit({
+		env: input.env,
+		repoId: input.repoId,
+		commit: input.commit,
+	})
+	return tree && Object.keys(tree).length > 0 ? tree : null
 }
 
 type ForkLineage = Pick<
@@ -2096,7 +2108,8 @@ export async function loadReadablePrivateForkSource(input: {
 /**
  * Prepare a fork of a package the reader may read but that has no community
  * listing (private, or never listed). Files come from the source
- * default-branch HEAD, the same tree `git clone` returns with `package:read`.
+ * default-branch HEAD, the same tree `git clone` returns with `package:read`,
+ * even when HEAD is ahead of `published_commit`.
  */
 export async function preparePrivatePackageFork(
 	input: PreparePrivatePackageForkInput,
@@ -2137,19 +2150,30 @@ export async function preparePrivatePackageFork(
 			'This package changed after you opened it. Reload the page and try again.',
 		)
 	}
-	const snapshot = await readArtifactSourceSnapshot({
+	const files = await readForkOriginFiles({
 		env: input.env,
+		sourceId: source.id,
 		repoId: source.repo_id,
 		commit: originCommit,
+	}).catch((error: unknown) => {
+		// A gone repo or commit is the owner's to fix; other Artifacts
+		// failures stay errors so they still reach Sentry.
+		if (
+			error instanceof Error &&
+			/not found|could not find/i.test(error.message)
+		) {
+			return null
+		}
+		throw error
 	})
-	if (!snapshot?.files) {
-		throw new Error(
-			`Source snapshot for package "${saved.id}" at ${originCommit} was not found.`,
+	if (!files) {
+		throw new CommunityActionError(
+			`This package has no files to fork at commit ${originCommit.slice(0, 7)}. Ask the owner to push it again, then retry the fork.`,
 		)
 	}
 	return await prepareForkFromOriginFiles({
 		input,
-		files: snapshot.files,
+		files,
 		originCommit,
 		originName: saved.name,
 		originKodyId: saved.kodyId,

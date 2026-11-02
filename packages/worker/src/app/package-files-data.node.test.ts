@@ -24,7 +24,6 @@ import type * as packageSource from '#worker/package-registry/source.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import type * as artifactFile from '#worker/repo/artifact-file.ts'
 import type * as artifactHeadCache from '#worker/repo/artifact-head-cache.ts'
-import type * as artifactSourceSnapshot from '#worker/repo/artifact-source-snapshot.ts'
 import type * as entitySources from '#worker/repo/entity-sources.ts'
 import { type EntitySourceRow } from '#worker/repo/types.ts'
 import { type AccountPackageDetail } from '#universal/loader-data.ts'
@@ -41,8 +40,6 @@ const mockModule = vi.hoisted(() => ({
 		vi.fn<typeof artifactHeadCache.resolveCachedArtifactSourceHead>(),
 	readPublishedSourceSnapshot:
 		vi.fn<typeof publishedRuntimeArtifacts.readPublishedSourceSnapshot>(),
-	readArtifactSourceSnapshot:
-		vi.fn<typeof artifactSourceSnapshot.readArtifactSourceSnapshot>(),
 	readCommunitySnapshot:
 		vi.fn<typeof communitySnapshot.readCommunitySnapshot>(),
 	readAuthenticatedAppUser:
@@ -100,14 +97,6 @@ vi.mock('#worker/repo/artifact-head-cache.ts', () => ({
 	) => mockModule.resolveArtifactSourceHead(...args),
 }))
 
-vi.mock('#worker/repo/artifact-source-snapshot.ts', () => ({
-	readArtifactSourceSnapshot: (
-		...args: Parameters<
-			typeof artifactSourceSnapshot.readArtifactSourceSnapshot
-		>
-	) => mockModule.readArtifactSourceSnapshot(...args),
-}))
-
 vi.mock('#worker/package-runtime/published-runtime-artifacts.ts', () => ({
 	readPublishedSourceSnapshot: (
 		...args: Parameters<
@@ -163,7 +152,6 @@ const {
 	loadCommunityPackageFileRaw,
 	loadCommunityPackageFilesData,
 	loadOwnerPackageReadme,
-	loadPlainRepoFilesData,
 	resolvePackagePageReadmeImageBaseHref,
 } = await import('./package-files-data.ts')
 
@@ -299,7 +287,7 @@ function publishListing({
 	mockModule.readPublishedSourceSnapshot.mockResolvedValue(
 		files && publishedSnapshot(files),
 	)
-	mockModule.readArtifactSourceSnapshot.mockResolvedValue(null)
+	mockModule.readArtifactTreeAtCommit.mockResolvedValue(null)
 	mockModule.readAuthenticatedAppUser.mockResolvedValue(
 		viewerUserId ? viewer(viewerUserId) : null,
 	)
@@ -404,10 +392,7 @@ function publishPlainRepo({
 		commit: headCommit,
 	})
 	mockModule.readPublishedSourceSnapshot.mockResolvedValue(null)
-	mockModule.readArtifactSourceSnapshot.mockResolvedValue({
-		published_commit: headCommit,
-		files,
-	})
+	mockModule.readArtifactTreeAtCommit.mockResolvedValue(files)
 	mockModule.readAuthenticatedAppUser.mockResolvedValue(
 		viewerIsOwner ? viewer('owner-1') : null,
 	)
@@ -578,44 +563,6 @@ test('plain repo tree loads live HEAD via entity_sources.repo_id for guests', as
 		env,
 		'artifacts-repo-1',
 		expect.anything(),
-	)
-	expect(mockModule.readArtifactSourceSnapshot).toHaveBeenCalledWith(
-		expect.objectContaining({
-			repoId: 'artifacts-repo-1',
-			commit: 'headlive1',
-		}),
-	)
-})
-
-test('plain repo files fall back to Artifacts HEAD tree when publish snapshots are empty', async () => {
-	publishPlainRepo()
-	mockModule.readPublishedSourceSnapshot.mockResolvedValue(null)
-	mockModule.readArtifactSourceSnapshot.mockResolvedValue(null)
-	mockModule.readArtifactTreeAtCommit.mockResolvedValue({
-		'README.md': '# From HEAD\n',
-		'package.json': '{"name":"notes"}\n',
-	})
-	const data = await loadPlainRepoFilesData({
-		env,
-		request: new Request('https://example.com/@kentcdodds/notes/tree/main'),
-		ownerUserId: 'owner-1',
-		username: 'kentcdodds',
-		kodyId: 'notes',
-		repoId: 'user-repo-1',
-		sourceId: 'src-plain-1',
-		isPrivate: false,
-		description: 'Plain notes repo',
-		selectedPath: '',
-		ref: 'main',
-	})
-	expect(data).toMatchObject({
-		ok: true,
-		hasPackage: false,
-		iconUrl: '/@kentcdodds/notes/icon/idxabc1',
-		imageBaseHref: null,
-	})
-	expect(data?.paths).toEqual(
-		expect.arrayContaining(['README.md', 'package.json']),
 	)
 	expect(mockModule.readArtifactTreeAtCommit).toHaveBeenCalledWith(
 		expect.objectContaining({

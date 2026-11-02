@@ -54,7 +54,6 @@ import {
 import { plainHighlightedCode } from '#universal/highlighted-code.ts'
 import { type ServerTimingEntry } from '#worker/server-timing.ts'
 import { resolveCachedArtifactSourceHead } from '#worker/repo/artifact-head-cache.ts'
-import { readArtifactSourceSnapshot } from '#worker/repo/artifact-source-snapshot.ts'
 import { recordServerTiming } from '#worker/request-context.ts'
 import {
 	getEntitySourceByEntity,
@@ -361,15 +360,16 @@ async function loadPublicTreeFilesUncached(input: {
 			// Fall through to git / listing snapshot.
 		}
 	}
+	// Unpublished HEAD has no KV snapshot; read the Artifacts tree.
 	if (input.sourceRepoId && commit) {
 		try {
-			const treeSnapshot = await readArtifactSourceSnapshot({
+			const tree = await readArtifactTreeAtCommit({
 				env: input.env,
 				repoId: input.sourceRepoId,
 				commit,
 			})
-			if (treeSnapshot?.files) {
-				return { files: treeSnapshot.files, fromListingSnapshot: false }
+			if (tree && Object.keys(tree).length > 0) {
+				return { files: tree, fromListingSnapshot: false }
 			}
 		} catch {
 			// Fall through to the listing pin snapshot.
@@ -605,23 +605,8 @@ export async function loadPlainRepoFilesData(input: {
 		commit: resolved.commit,
 		pinnedCommit: liveCommit,
 	})
-	// Plain repos are live-at-HEAD and usually have no publish KV snapshot.
-	// When the public tree path is empty, shallow-fetch the Artifacts commit.
-	let files = loaded.files
-	if (Object.keys(files).length === 0 && resolved.commit) {
-		try {
-			const tree = await readArtifactTreeAtCommit({
-				env: input.env,
-				repoId: source.repo_id,
-				commit: resolved.commit,
-			})
-			if (tree) files = tree
-		} catch {
-			files = {}
-		}
-	}
 	const view = buildPackageFilesView({
-		files,
+		files: loaded.files,
 		selectedPath: input.selectedPath,
 	})
 	if (!view) return null
@@ -1015,17 +1000,8 @@ async function loadOwnerPackageReadmeFromArtifactsHead(input: {
 			commit: resolved.commit,
 			pinnedCommit: liveCommit,
 		})
-		let files = loaded.files
-		if (Object.keys(files).length === 0) {
-			const tree = await readArtifactTreeAtCommit({
-				env: input.env,
-				repoId: source.repo_id,
-				commit: resolved.commit,
-			})
-			if (tree) files = tree
-		}
 		return {
-			content: readmeFromFiles(files),
+			content: readmeFromFiles(loaded.files),
 			commit: resolved.commit,
 		}
 	} catch {
@@ -1233,22 +1209,9 @@ export async function loadPlainRepoFileRaw(input: {
 		commit: resolved.commit,
 		pinnedCommit: liveCommit,
 	})
-	let files = loaded.files
-	if (Object.keys(files).length === 0 && resolved.commit) {
-		try {
-			const tree = await readArtifactTreeAtCommit({
-				env: input.env,
-				repoId: source.repo_id,
-				commit: resolved.commit,
-			})
-			if (tree) files = tree
-		} catch {
-			files = {}
-		}
-	}
 	const raw = await readPackageFileRawBytes({
 		env: input.env,
-		files,
+		files: loaded.files,
 		filePath: input.selectedPath,
 		sourceRepoId: source.repo_id,
 		commit: resolved.commit,
