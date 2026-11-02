@@ -784,7 +784,6 @@ test('fetch gateway bulk host approval uses the secret scope, not the package ru
 	expect(approvals?.bulkApprovalUrl).toBe(
 		'https://example.com/connect/secrets?names=accessToken%2CrefreshToken&hosts=api.example.com',
 	)
-	expect(approvals?.bulkApprovalUrl).not.toContain('scope=package')
 	expect(approvals?.entries[0]?.approvalUrl).not.toContain('scope=package')
 })
 
@@ -1544,7 +1543,6 @@ test('leak: a substituted secret the remote echoes back is redacted before the c
 	expect(basicBody).toBe(
 		'{"you_sent":"[REDACTED SECRET]","credential":"[REDACTED SECRET]"}',
 	)
-	expect(basicBody).not.toContain(btoa('client-id:client-secret'))
 
 	// Without a substituted secret the response passes through untouched.
 	const plainResponse = new Response('sk_live_echo_123456')

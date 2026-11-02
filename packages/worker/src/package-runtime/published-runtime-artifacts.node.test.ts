@@ -103,8 +103,6 @@ test('readPublishedBundleArtifact returns an app-client bundle with a free fetch
 	})
 	const served = artifact?.modules['client.abcdefghijklmnop.js']
 	expect(served).toBe(clientSource)
-	expect(served).not.toContain('.__kody_virtual__/runtime.js')
-	expect(served).not.toContain('__kodyPreBindingBoundFetch')
 })
 
 test('readPublishedBundleArtifact still binds a pre-fix server bundle fetch to its package', async () => {
