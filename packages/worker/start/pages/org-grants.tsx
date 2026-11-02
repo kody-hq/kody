@@ -13,6 +13,12 @@ import {
 	orgCreateAccessOptions,
 } from '#universal/org-create-access.ts'
 import {
+	heldOrgWideManageOptions,
+	orgWideManageAccessLabel,
+	orgWideManageAccessOptions,
+	orgWideManagePermissionsFor,
+} from '#universal/org-wide-manage-access.ts'
+import {
 	getDangerPillCss,
 	getPillButtonCss,
 } from '#universal/styles/style-primitives.ts'
@@ -40,6 +46,7 @@ import {
 } from './account-management-components.tsx'
 import {
 	grantOrganizationCreateAccess,
+	grantOrganizationManageAccess,
 	grantOrganizationReadAccess,
 	revokeOrganizationGrant,
 } from '#start/server/org-mutations'
@@ -60,11 +67,22 @@ function grantDetail(grant: OrgGrantView) {
 	const creates = grant.permissions.flatMap(
 		(permission) => orgCreateAccessLabel(permission) ?? [],
 	)
+	const manages = orgWideManageAccessOptions
+		.filter((option) =>
+			heldOrgWideManageOptions(grant.permissions).includes(option.permission),
+		)
+		.map((option) => option.label)
 	const other = grant.permissions.filter(
 		(permission) =>
-			!orgWideReadAccessLabel(permission) && !orgCreateAccessLabel(permission),
+			!orgWideReadAccessLabel(permission) &&
+			!orgCreateAccessLabel(permission) &&
+			!(
+				orgWideManageAccessLabel(permission) &&
+				manages.includes(orgWideManageAccessLabel(permission) ?? '')
+			),
 	)
 	const parts = [
+		...(manages.length > 0 ? [`Manage: ${manages.join(', ')}`] : []),
 		...(creates.length > 0 ? [`Create: ${creates.join(', ')}`] : []),
 		...(reads.length > 0 ? [`Read: ${reads.join(', ')}`] : []),
 		...other,
@@ -237,6 +255,13 @@ function OrgGrantsContent({
 			{data?.ok && data.orgWideRead ? (
 				<>
 					<OrgWideAccessForm
+						kind="manage"
+						orgSlug={data.org.slug}
+						subjects={data.orgWideRead.subjects}
+						queryKey={queryKey}
+						canEdit={data.org.role === 'owner'}
+					/>
+					<OrgWideAccessForm
 						kind="create"
 						orgSlug={data.org.slug}
 						subjects={data.orgWideRead.subjects}
@@ -266,6 +291,8 @@ const orgWideAccessForms = {
 		legend: 'Can read',
 		options: orgWideReadAccessOptions,
 		held: (subject: OrgWideAccessSubject) => subject.reads,
+		toPermissions: (selected: ReadonlyArray<string>) => [...selected],
+		ownerOnlyNote: null,
 		testId: 'org-wide-read',
 		save: 'Save read access',
 		saved: (label: string) => `Read access saved for ${label}.`,
@@ -278,10 +305,28 @@ const orgWideAccessForms = {
 		legend: 'Can create',
 		options: orgCreateAccessOptions,
 		held: (subject: OrgWideAccessSubject) => subject.creates,
+		toPermissions: (selected: ReadonlyArray<string>) => [...selected],
+		ownerOnlyNote: null,
 		testId: 'org-create-access',
 		save: 'Save create access',
 		saved: (label: string) => `Create access saved for ${label}.`,
 		send: grantOrganizationCreateAccess,
+	},
+	manage: {
+		title: 'Manage every package and app',
+		description:
+			'Let a member or team run, change, publish, delete, and share every package and app in this organization, including ones created later, without granting each one. Changes to a package with unmappable credentials stay owner-only unless an Owner allows them on that package.',
+		legend: 'Can manage',
+		options: orgWideManageAccessOptions,
+		held: (subject: OrgWideAccessSubject) =>
+			heldOrgWideManageOptions(subject.manages),
+		toPermissions: orgWideManagePermissionsFor,
+		ownerOnlyNote:
+			'Only an Owner can change manage access for the whole organization.',
+		testId: 'org-wide-manage',
+		save: 'Save manage access',
+		saved: (label: string) => `Manage access saved for ${label}.`,
+		send: grantOrganizationManageAccess,
 	},
 } as const
 
@@ -290,11 +335,13 @@ function OrgWideAccessForm({
 	orgSlug,
 	subjects,
 	queryKey,
+	canEdit = true,
 }: {
 	kind: keyof typeof orgWideAccessForms
 	orgSlug: string
 	subjects: ReadonlyArray<OrgWideAccessSubject>
 	queryKey: QueryKey
+	canEdit?: boolean
 }) {
 	const form = orgWideAccessForms[kind]
 	const capture = useSubmitterScope()
@@ -329,7 +376,11 @@ function OrgWideAccessForm({
 						const isCurrent = capture()
 						setMessage(null)
 						mutation.mutate(
-							{ orgSlug, subject: subject.key, permissions: selected },
+							{
+								orgSlug,
+								subject: subject.key,
+								permissions: form.toPermissions(selected),
+							},
 							{
 								onSuccess: () => {
 									if (!isCurrent()) return
@@ -390,7 +441,10 @@ function OrgWideAccessForm({
 							member gets through a team is set on that team.
 						</p>
 					</label>
-					<fieldset css={fieldsetCss} disabled={!subject || mutation.isPending}>
+					<fieldset
+						css={fieldsetCss}
+						disabled={!canEdit || !subject || mutation.isPending}
+					>
 						<legend css={accountFieldLabelCss}>{form.legend}</legend>
 						{form.options.map((option) => {
 							const checked = selected.includes(option.permission)
@@ -425,6 +479,14 @@ function OrgWideAccessForm({
 							)
 						})}
 					</fieldset>
+					{!canEdit && form.ownerOnlyNote ? (
+						<p
+							css={accountFieldNoteCss}
+							data-testid={`${form.testId}-owner-only`}
+						>
+							{form.ownerOnlyNote}
+						</p>
+					) : null}
 					{message ? (
 						<AccountManagementMessage tone={message.tone}>
 							{message.text}
@@ -434,7 +496,7 @@ function OrgWideAccessForm({
 						<button
 							type="submit"
 							data-testid={`${form.testId}-save`}
-							disabled={!subject || unchanged || mutation.isPending}
+							disabled={!canEdit || !subject || unchanged || mutation.isPending}
 							css={getPillButtonCss({ size: 'sm' })}
 						>
 							{renderIcon('check', { size: '1.05rem' })}

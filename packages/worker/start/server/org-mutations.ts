@@ -13,6 +13,7 @@ import {
 	revokeOrganizationGrantSchema,
 	grantOrganizationReadAccessSchema,
 	grantOrganizationCreateAccessSchema,
+	grantOrganizationManageAccessSchema,
 } from '#universal/org-people-mutations.ts'
 export const setOrganizationMemberRole = createServerFn({ method: 'POST' })
 	.validator(
@@ -233,6 +234,27 @@ export const grantOrganizationCreateAccess = createServerFn({ method: 'POST' })
 			async (context) =>
 				requireOperationResult(
 					await grantOrganizationCreateAccess({ ...context, ...data }),
+				),
+		)
+	})
+
+export const grantOrganizationManageAccess = createServerFn({ method: 'POST' })
+	.validator(
+		grantOrganizationManageAccessSchema.extend({
+			orgSlug: z.string().regex(/^[a-zA-Z0-9_-]+$/),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const { withWebsiteMutation } = await import('./mutation-context.ts')
+		const { grantOrganizationManageAccess } =
+			await import('../../src/app/handlers/org-grants.ts')
+		const { requireOperationResult } =
+			await import('../../src/app/operation-result.ts')
+		return withWebsiteMutation(
+			{ scope: { orgSlug: data.orgSlug } },
+			async (context) =>
+				requireOperationResult(
+					await grantOrganizationManageAccess({ ...context, ...data }),
 				),
 		)
 	})

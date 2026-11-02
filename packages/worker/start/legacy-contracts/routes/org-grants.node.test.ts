@@ -124,6 +124,7 @@ test('the read access form lists members and teams with read-only options', asyn
 					label: '@casey',
 					reads: [],
 					creates: [],
+					manages: [],
 				},
 				{
 					key: 'team:t-1',
@@ -131,6 +132,7 @@ test('the read access form lists members and teams with read-only options', asyn
 					label: 'Support (@support)',
 					reads: ['job:read'],
 					creates: [],
+					manages: [],
 				},
 			],
 		},

@@ -36,6 +36,7 @@ import {
 const mocks = vi.hoisted(() => ({
 	compileAccessForRequest: vi.fn(),
 	loadPackageUnmappableCredentials: vi.fn(async () => new Map()),
+	listLiveOrgPackageIds: vi.fn(async () => [] as Array<string>),
 }))
 
 vi.mock(
@@ -46,6 +47,8 @@ vi.mock(
 			...actual,
 			loadPackageUnmappableCredentials: (...args: Array<unknown>) =>
 				mocks.loadPackageUnmappableCredentials(...(args as [])),
+			listLiveOrgPackageIds: (...args: Array<unknown>) =>
+				mocks.listLiveOrgPackageIds(...(args as [])),
 		}
 	},
 )
@@ -154,7 +157,8 @@ test('a member holds only the role basics', async () => {
 	expect(error).toMatchObject({
 		code: 'missing_permission',
 		permission: 'package:write',
-		message: 'Missing package:write. An org Owner can grant it.',
+		message:
+			'Missing package:write. An org Owner can grant it org-wide on the Grants page or with accessGrant resource_type org.',
 	})
 })
 
@@ -635,6 +639,97 @@ test('locks load live for non-Owner write grants, skip allowed grants, and never
 		authorize({ env, request: memberRequest() }, 'package:publish', resource),
 	).resolves.toBeUndefined()
 	expect(mocks.loadPackageUnmappableCredentials).not.toHaveBeenCalled()
+	mocks.loadPackageUnmappableCredentials.mockResolvedValue(new Map())
+})
+
+test('an org-wide manage grant runs and publishes any package, except one locked by unmappable credentials', async () => {
+	const memberRequest = () =>
+		deriveRequestContext({
+			user: { userId: personIdFromStored('user-2') },
+			source: { kind: 'mcp-oauth' },
+			orgBinding: {
+				org: { id: ownerIdFromStored('org-1'), slug: 'org-1' },
+				role: 'member',
+			},
+		})
+	const onPackage = (id: string) => ({
+		type: 'package' as const,
+		id,
+		orgId: ownerIdFromStored('org-1'),
+	})
+	const compiled = {
+		orgId: ownerIdFromStored('org-1'),
+		epoch: 0,
+		isOwner: false,
+		orgPermissions: new Set([
+			'org:read',
+			'package:read',
+			'package:execute',
+			'package:write',
+			'package:publish',
+			'app:execute',
+		]),
+		resourcePermissions: new Map(),
+	}
+	mocks.compileAccessForRequest.mockResolvedValue(compiled)
+	mocks.listLiveOrgPackageIds.mockResolvedValue(['made-by-ada', 'locked'])
+	mocks.loadPackageUnmappableCredentials.mockResolvedValue(
+		new Map([['locked', prodDb]]),
+	)
+	for (const permission of [
+		'package:execute',
+		'package:write',
+		'package:publish',
+	] as const) {
+		await expect(
+			authorize(
+				{ env, request: memberRequest() },
+				permission,
+				onPackage('made-by-ada'),
+			),
+		).resolves.toBeUndefined()
+	}
+	await expect(
+		authorize({ env, request: memberRequest() }, 'app:execute', {
+			type: 'app',
+			id: 'made-by-ada',
+			orgId: ownerIdFromStored('org-1'),
+		}),
+	).resolves.toBeUndefined()
+	expect(mocks.loadPackageUnmappableCredentials).toHaveBeenLastCalledWith(
+		expect.objectContaining({ packageIds: ['made-by-ada', 'locked'] }),
+	)
+	for (const permission of ['package:write', 'package:publish'] as const) {
+		await expect(
+			authorize(
+				{ env, request: memberRequest() },
+				permission,
+				onPackage('locked'),
+			),
+		).rejects.toMatchObject({ code: 'unmappable_credentials' })
+	}
+	await expect(
+		authorize(
+			{ env, request: memberRequest() },
+			'package:execute',
+			onPackage('locked'),
+		),
+	).resolves.toBeUndefined()
+
+	mocks.loadPackageUnmappableCredentials.mockClear()
+	mocks.compileAccessForRequest.mockResolvedValue({
+		...compiled,
+		unmappableChangesAllowed: new Set(['package:locked']),
+	})
+	await authorize(
+		{ env, request: memberRequest() },
+		'package:write',
+		onPackage('made-by-ada'),
+	)
+	expect(mocks.loadPackageUnmappableCredentials).toHaveBeenLastCalledWith(
+		expect.objectContaining({ packageIds: ['made-by-ada'] }),
+	)
+	mocks.listLiveOrgPackageIds.mockResolvedValue([])
 	mocks.loadPackageUnmappableCredentials.mockResolvedValue(new Map())
 })
 

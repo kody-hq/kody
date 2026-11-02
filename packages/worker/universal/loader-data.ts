@@ -1582,6 +1582,8 @@ export type OrgWideReadSubjectView = {
 	reads: Array<string>
 	/** Create permissions this subject's own organization grant holds. */
 	creates: Array<string>
+	/** Org-wide package and app manage permissions this subject's own organization grant holds. */
+	manages: Array<string>
 }
 
 export type OrgCollaboratorView = {

@@ -34,6 +34,7 @@ vi.mock('#app/page-auth.ts', () => ({
 const { loadOrgCollaboratorsData } = await import('./org-collaborators.ts')
 const {
 	grantOrganizationCreateAccess,
+	grantOrganizationManageAccess,
 	grantOrganizationReadAccess,
 	testOrgGrantsApiHandler,
 	testOrgGrantsRevokePostHandler,
@@ -437,6 +438,7 @@ test('an owner grants a member org-wide read access; no write comes with it', as
 			label: '@bob',
 			reads: [],
 			creates: [],
+			manages: [],
 		},
 	])
 	expect(await bobOrgPermissions()).not.toContain('job:read')
@@ -635,4 +637,89 @@ test('an owner grants and revokes create access without touching read access', a
 		).status,
 	).toBe(403)
 	expect((await bobOrgPermissions()).has('package:create')).toBe(false)
+})
+
+async function grantManages(
+	env: Env,
+	person: Person,
+	fields: { subject: string; permissions: Array<string> },
+) {
+	const request = new Request('https://kody.test/@zeta-co/-/grants', {
+		method: 'POST',
+	})
+	await signIn(person, request)
+	const user = await mocks.readAuthenticatedAppUser(request, env)
+	return await grantOrganizationManageAccess({
+		request,
+		env,
+		user,
+		orgSlug: 'zeta-co',
+		...fields,
+	})
+}
+
+test('only an owner grants org-wide manage, which brings reads and stays when other forms save', async () => {
+	const env = createEnv()
+	const subject = `user:${people.bob.personId}`
+	expect(
+		(
+			await grantManages(env, 'bob', {
+				subject,
+				permissions: ['package:write'],
+			})
+		).status,
+	).toBe(403)
+
+	const saved = await grantManages(env, 'ada', {
+		subject,
+		permissions: ['package:execute', 'package:publish', 'app:execute'],
+	})
+	expect(saved.status).toBe(200)
+	let permissions = await bobOrgPermissions()
+	for (const permission of [
+		'package:read',
+		'package:execute',
+		'package:publish',
+		'app:read',
+		'app:execute',
+	]) {
+		expect(permissions.has(permission as never)).toBe(true)
+	}
+	expect(permissions.has('package:delete')).toBe(false)
+
+	expect(
+		(
+			await grantReads(env, 'ada', {
+				subject,
+				permissions: ['package:read', 'app:read', 'job:read'],
+			})
+		).status,
+	).toBe(200)
+	expect((await bobOrgPermissions()).has('package:publish')).toBe(true)
+	const listReq = new Request('https://kody.test/@zeta-co/-/grants')
+	await signIn('ada', listReq)
+	const listed = (
+		await testOrgGrantsApiHandler(env).execute({ request: listReq } as never)
+	).data as {
+		orgWideRead: { subjects: Array<{ manages: Array<string> }> }
+	}
+	expect([...listed.orgWideRead.subjects[0]!.manages].sort()).toEqual([
+		'app:execute',
+		'package:execute',
+		'package:publish',
+	])
+
+	for (const refused of [['job:write'], ['package:read'], ['secret:use']]) {
+		expect(
+			(await grantManages(env, 'ada', { subject, permissions: refused }))
+				.status,
+		).toBe(400)
+	}
+	expect(
+		(await grantManages(env, 'ada', { subject, permissions: [] })).status,
+	).toBe(200)
+	permissions = await bobOrgPermissions()
+	expect(permissions.has('package:publish')).toBe(false)
+	expect(permissions.has('package:read')).toBe(true)
+	expect(permissions.has('job:read')).toBe(true)
 })

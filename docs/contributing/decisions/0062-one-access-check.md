@@ -54,6 +54,14 @@ read-only resource permissions (`package:read`, `app:read`, `job:read`,
 Owner. No write, execute, use, or `manage_access` permission is grantable on the
 org. See [Authorization](../architecture/authorization.md#org-access).
 
+**Amended (org-wide package and app manage, 2026-11-02):** organization grants
+may also carry the package and app Manage permissions (`package:execute`,
+`package:write`, `package:publish`, `package:delete`, `package:manage_access`,
+`app:execute`, `app:write`, `app:delete`, `app:manage_access`) for a member or
+team, so an Owner stops granting each package. Only an Owner adds them, and
+unmappable-credential locks still make package changes owner-only unless a grant
+on that package allows them. Other families stay read-only org-wide.
+
 ## Consequences
 
 A capability without a permission does not compile. Handlers that touch a

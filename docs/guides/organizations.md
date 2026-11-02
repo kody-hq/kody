@@ -90,6 +90,53 @@ These are read only. Running, editing, triaging runs, sharing, and using a
 credential still need their own grant. Secret values and memories are never
 grantable org-wide.
 
+## Org-wide manage for packages and apps
+
+To let a member or team run, change, publish, delete, and share every package
+and app in the organization, including ones created later, an Owner grants
+manage on the organization: **Grants** page, **Manage every package and app**,
+or `accessGrant` with `resource_type: "org"`:
+
+```json
+{
+	"resource_type": "org",
+	"resource_id": "<org id>",
+	"subject_type": "team",
+	"team_slug": "platform",
+	"permissions": [
+		"package:read",
+		"package:execute",
+		"package:write",
+		"package:publish",
+		"package:delete",
+		"package:manage_access",
+		"app:read",
+		"app:execute",
+		"app:write",
+		"app:delete",
+		"app:manage_access"
+	]
+}
+```
+
+Any subset works, for example only `package:execute` and `app:execute` to run
+everything. The grant resolves live, so a package created tomorrow is covered at
+once and revoking the grant removes access everywhere.
+
+- **Owner only.** A member with `member:write` can manage read and create access
+  but cannot add these, the same as `org:write`.
+- **Members and teams only.** Everyone in the organization
+  (`subject_type: "org"`) and agent profiles cannot hold them org-wide; share
+  one package with everyone instead.
+- **Unmappable credentials still lock changes.** On a package whose credentials
+  cannot be mapped in this organization, `package:write` and `package:publish`
+  stay owner-only even with this grant. Running it still works. An Owner unlocks
+  changes per package with a grant on that package that sets
+  `allow_changes_despite_unmappable_credentials: true`. See
+  [Package sharing](./package-sharing.md).
+- Secrets, connections, jobs, and email are not covered. Grant those per
+  resource.
+
 ## Personal vs team
 
 |                    | Personal                                                | Team                                                                                                                                                                                                                                                               |

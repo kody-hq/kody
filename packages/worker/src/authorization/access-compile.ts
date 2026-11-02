@@ -202,12 +202,16 @@ function applyGrantRows(
 	}
 }
 
-/** Ad-hoc rule: package:execute somewhere ⇒ org:execute for ad-hoc code. */
+/** Ad-hoc rule: package:execute somewhere (or org-wide) ⇒ org:execute for ad-hoc code. */
 function applyAdHocRule(
 	orgPermissionsOut: Set<OrgPermission>,
 	resourcePermissions: ReadonlyMap<string, ReadonlySet<OrgPermission>>,
 ) {
 	if (orgPermissionsOut.has('org:execute')) return
+	if (orgPermissionsOut.has('package:execute')) {
+		orgPermissionsOut.add('org:execute')
+		return
+	}
 	for (const [key, permissions] of resourcePermissions) {
 		if (!key.startsWith('package:')) continue
 		if (permissions.has('package:execute')) {

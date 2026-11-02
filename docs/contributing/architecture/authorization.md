@@ -114,12 +114,26 @@ check (`canReadOrgRunHistory`): the Activity page and the Overview's run
 summary, charts, and recent runs need org-wide `job:read`, and without it they
 show a permission state that links to Grants. A job-scoped grant still reads
 that one job's runs (`runList` with `job_id`, the job's page). Nothing else
-rides along: `use`, `execute`, `write`, `delete`, `publish`, and `manage_access`
-are never grantable on the org, so triage (`runUpdate`), edits, and runs still
-need their own permission. `secret:read` (reveals values), `memory:read`
-(memories are personal, ADR 0072), and `execution_context:read` (machines are
-listed per share) are left out. Owners set these from the Grants page or with
-`accessGrant` (`resource_type: "org"`); a denial for one of them says so.
+rides along: outside packages and apps, `use`, `execute`, `write`, `delete`,
+`publish`, and `manage_access` are never grantable on the org, so triage
+(`runUpdate`), edits, and runs still need their own permission. `secret:read`
+(reveals values), `memory:read` (memories are personal, ADR 0072), and
+`execution_context:read` (machines are listed per share) are left out. Owners
+set these from the Grants page or with `accessGrant` (`resource_type: "org"`); a
+denial for one of them says so.
+
+**Org-wide package and app manage.** An `org` grant may also carry
+`orgWideManagePermissions` (`packages/shared/src/grant-presets.ts`): the
+non-read permissions of the package and app Manage presets. They compile into
+org-level permissions like the reads, so they cover every current and future
+package and app. Only an Owner may add them (`ownerOnlyOrgGrantPermissions`),
+the org rejects `subject_type: "org"` grants, and profiles cannot hold them
+(`profileOrgLevelAllowlist`). Org-wide `package:execute` also yields
+`org:execute` for ad-hoc code, like a package-scoped one. Unmappable-credential
+locks still apply: when a non-Owner holds org-wide `package:write` or
+`package:publish`, `loadUnmappableCredentialLocks` checks every live package in
+the org, and a locked package needs a grant on that package with
+`allow_unmappable_credential_changes` before those two pass.
 
 A surface check without a resource (capability `orgPermission`, Open API
 `x-kody-permission`) passes when the permission is held at org level **or on any

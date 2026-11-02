@@ -77,9 +77,8 @@ const manageExtraByType: Record<
  * Read-only resource permissions an `org` grant may carry, so a Member can read
  * every resource of that type without Owner. None of them writes, runs, or
  * reveals a secret value. Left out: `secret:read` (reveals values),
- * `memory:read` (memories are personal, ADR 0072), `execution_context:read`
- * (machines are listed per share, not org-wide), and every `use`,
- * `execute`, `write`, `delete`, `publish`, and `manage_access` action.
+ * `memory:read` (memories are personal, ADR 0072), and `execution_context:read`
+ * (machines are listed per share, not org-wide).
  */
 export const orgWideReadPermissions = [
 	'package:read',
@@ -97,9 +96,38 @@ export function isOrgWideReadPermission(
 	return (orgWideReadPermissions as ReadonlyArray<unknown>).includes(value)
 }
 
+/**
+ * Manage permissions an `org` grant may carry for every package and package
+ * app in the org, current and future. Only an Owner may add them. They stay
+ * subject to unmappable-credential locks: `package:write` and
+ * `package:publish` on a package with unmappable credentials need a grant on
+ * that package that allows changes. No other family is grantable org-wide
+ * beyond its reads.
+ */
+export const orgWideManagePermissions = [
+	'package:execute',
+	'package:write',
+	'package:publish',
+	'package:delete',
+	'package:manage_access',
+	'app:execute',
+	'app:write',
+	'app:delete',
+	'app:manage_access',
+] as const satisfies ReadonlyArray<OrgPermission>
+
+export type OrgWideManagePermission = (typeof orgWideManagePermissions)[number]
+
+export function isOrgWideManagePermission(
+	value: unknown,
+): value is OrgWideManagePermission {
+	return (orgWideManagePermissions as ReadonlyArray<unknown>).includes(value)
+}
+
 /** Org-level permissions that may appear on an `org` resource grant. */
 const orgResourceGrantable: ReadonlyArray<OrgPermission> = [
 	...orgWideReadPermissions,
+	...orgWideManagePermissions,
 	'org:read',
 	'org:write',
 	'org:delete',

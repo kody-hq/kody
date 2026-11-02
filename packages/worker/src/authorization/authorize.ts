@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import {
 	isGrantablePermission,
+	isOrgWideManagePermission,
 	isOrgWideReadPermission,
 } from '@kody-internal/shared/grant-presets.ts'
 import {
@@ -29,6 +30,7 @@ import { memberCreationKindFor } from './member-creation-permissions.ts'
 import {
 	describeUnmappableCredentials,
 	isUnmappableCredentialLockedPermission,
+	listLiveOrgPackageIds,
 	loadPackageUnmappableCredentials,
 	unmappableCredentialAllowHint,
 	unmappableCredentialLockedPermissions,
@@ -262,8 +264,9 @@ function toEffective(
 /**
  * Unmappable-credential locks on the packages a non-Owner may write or
  * publish by grant, read live so a credential that becomes unmappable locks
- * existing collaborators at once. Grants that allow changes are skipped.
- * Non-Owners never hold `package:write` or `package:publish` org-wide.
+ * existing collaborators at once. Grants that allow changes are skipped. An
+ * org-wide `package:write` or `package:publish` grant reaches every live
+ * package in the org, so every one of them is checked.
  */
 async function loadUnmappableCredentialLocks(
 	env: Env,
@@ -271,10 +274,9 @@ async function loadUnmappableCredentialLocks(
 	request: RequestContext,
 ): Promise<Map<string, ReadonlyArray<UnmappableCredential>> | null> {
 	if (compiled.isOwner) return null
-	const packageIds: Array<string> = []
+	const packageIds = new Set<string>()
 	for (const [key, granted] of compiled.resourcePermissions) {
 		if (!key.startsWith('package:')) continue
-		if (compiled.unmappableChangesAllowed?.has(key)) continue
 		if (
 			!unmappableCredentialLockedPermissions.some((permission) =>
 				granted.has(permission),
@@ -282,13 +284,29 @@ async function loadUnmappableCredentialLocks(
 		) {
 			continue
 		}
-		packageIds.push(key.slice('package:'.length))
+		packageIds.add(key.slice('package:'.length))
 	}
-	if (packageIds.length === 0) return null
+	if (
+		unmappableCredentialLockedPermissions.some((permission) =>
+			compiled.orgPermissions.has(permission),
+		)
+	) {
+		for (const id of await listLiveOrgPackageIds(env.APP_DB, compiled.orgId)) {
+			packageIds.add(id)
+		}
+	}
+	for (const id of packageIds) {
+		if (
+			compiled.unmappableChangesAllowed?.has(resourceGrantKey('package', id))
+		) {
+			packageIds.delete(id)
+		}
+	}
+	if (packageIds.size === 0) return null
 	const locks = await loadPackageUnmappableCredentials({
 		env,
 		orgId: compiled.orgId,
-		packageIds,
+		packageIds: [...packageIds],
 		request,
 	})
 	return new Map(
@@ -527,7 +545,10 @@ function ownerCanGrant(
 				: 'Members can create credentials'
 		return `An org Owner controls this: they can turn on "${setting}" in organization settings, or grant ${permission} to you or your team on the Grants page.`
 	}
-	if (isOrgWideReadPermission(permission)) {
+	if (
+		isOrgWideReadPermission(permission) ||
+		isOrgWideManagePermission(permission)
+	) {
 		return 'An org Owner can grant it org-wide on the Grants page or with accessGrant resource_type org.'
 	}
 	if (isGrantablePermission('org', permission)) {
