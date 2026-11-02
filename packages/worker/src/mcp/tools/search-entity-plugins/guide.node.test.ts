@@ -4,6 +4,8 @@ import { getStaticRegistry } from '#mcp/capabilities/registry.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { importGuideCatalog } from '#worker/guide-catalog-modules.ts'
 
+import { guideSearchBodyBudget } from '../guide-search-budget.ts'
+import { maxChars } from '../search-constants.ts'
 import { searchUnified } from '../search-core.ts'
 import { buildSearchableEntityDescriptors } from '../search-descriptors.ts'
 import { formatEntityDetailMarkdown } from '../search-format-detail.ts'
@@ -178,6 +180,22 @@ test('searchUnified ranks advertised guides for doc queries and keeps them out o
 
 test('guide entity detail returns full bodies, a TOC for oversized guides, and focused sections', () => {
 	const authoring = guides.find((guide) => guide.id === 'package_authoring')!
+	const authoringBudget = guideSearchBodyBudget({
+		id: authoring.id,
+		description: authoring.summary,
+		category: authoring.category,
+		slug: authoring.slug,
+		provider: authoring.provider,
+		lastVerified: authoring.lastVerified,
+		maxChars,
+	})
+	const authoringOverflow = authoring.body.length - authoringBudget
+	expect(
+		authoringOverflow,
+		authoringOverflow > 0
+			? `package_authoring is ${authoringOverflow} characters over guideSearchBodyBudget (${authoringBudget}). Split the guide or open a heading with \`guide:package_authoring#{slug}\` instead of growing the full body.`
+			: `package_authoring full-body headroom is ${-authoringOverflow} characters.`,
+	).toBeLessThanOrEqual(0)
 	const detail = guideDetail('package_authoring')
 	expect(detail.markdown).toContain(authoring.body.slice(0, 40))
 	expect(detail.structured).toMatchObject({
