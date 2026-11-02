@@ -49,3 +49,20 @@ test('formatLargestNonRuntimePaths names the files and .kodyignore', () => {
 	expect(message).toContain('`fixtures/sample.json` (2 KiB)')
 	expect(message).toContain('`.kodyignore`')
 })
+
+test('largestNonRuntimePaths never suggests ignoring the docs publish requires', () => {
+	const files = {
+		'package.json': JSON.stringify({
+			name: '@example/docs',
+			exports: { '.': './src/index.ts' },
+		}),
+		'src/index.ts': 'export default async () => null',
+		'README.md': 'r'.repeat(9000),
+		'AGENTS.md': 'a'.repeat(8000),
+		'docs/guide.md': 'g'.repeat(3000),
+	}
+
+	expect(largestNonRuntimePaths({ files })).toEqual([
+		{ path: 'docs/guide.md', bytes: 3000 },
+	])
+})

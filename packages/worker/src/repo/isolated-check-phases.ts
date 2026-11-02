@@ -60,6 +60,9 @@ export const isolatedBundleChunkSize = 4
  */
 export const isolatedBundleChunkConcurrency = 2
 
+/** Typecheck targets per throwaway isolate (see runChunkedTypecheck). */
+export const isolatedTypecheckChunkSize = 20
+
 export type IsolatedCheckPhaseRequest =
 	| {
 			phase: 'bundle-chunk'

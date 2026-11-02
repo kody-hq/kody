@@ -1,4 +1,5 @@
 import { shouldStoreArtifactBlobAsLatin1 } from '#universal/package-file-media.ts'
+import { requiredPackageDocNames } from './required-package-docs.ts'
 import { kodyIgnoreFileName, omitKodyIgnoredFiles } from './kodyignore.ts'
 
 export type LargePathHint = { path: string; bytes: number }
@@ -75,6 +76,10 @@ function resolveRelativeModule(
  * (no parsing, so it is safe to run after an isolate reset), so a file that
  * is only reached through a computed import can be listed.
  */
+const requiredRootDocPaths = new Set<string>(
+	requiredPackageDocNames.map((name) => name.toLowerCase()),
+)
+
 export function largestNonRuntimePaths(input: {
 	files: Record<string, string>
 	sourceRoot?: string
@@ -122,6 +127,8 @@ export function largestNonRuntimePaths(input: {
 	for (const [path, content] of Object.entries(packageFiles)) {
 		if (reachable.has(path)) continue
 		if (path === 'package.json' || path === kodyIgnoreFileName) continue
+		// Publish requires these, so never suggest ignoring them.
+		if (requiredRootDocPaths.has(path.toLowerCase())) continue
 		// Binary snapshot files are Latin-1 strings: one char per byte.
 		const bytes = shouldStoreArtifactBlobAsLatin1(path)
 			? content.length

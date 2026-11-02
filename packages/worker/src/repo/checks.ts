@@ -59,6 +59,7 @@ import {
 	createIsolatedCheckPhaseRunner,
 	isolatedBundleChunkConcurrency,
 	isolatedBundleChunkSize,
+	isolatedTypecheckChunkSize,
 	type IsolatedCheckPhaseRunner,
 } from './isolated-check-phases.ts'
 import {
@@ -1480,6 +1481,57 @@ async function runChunkedBundleValidation(input: {
 }
 
 /**
+ * One language service over every target of a large package can use most of
+ * an isolate's CPU budget, so a tree near the limit passes or fails from run
+ * to run. Each chunk typechecks only the files its own targets reach, in its
+ * own throwaway isolate.
+ */
+async function runChunkedTypecheck(input: {
+	runner: IsolatedCheckPhaseRunner
+	stagingKey: string
+	userId: string
+	targets: Array<PackageTypecheckTarget>
+}) {
+	const chunks: Array<Array<PackageTypecheckTarget>> = []
+	for (
+		let start = 0;
+		start < input.targets.length;
+		start += isolatedTypecheckChunkSize
+	) {
+		chunks.push(input.targets.slice(start, start + isolatedTypecheckChunkSize))
+	}
+	if (chunks.length <= 1) {
+		return await input.runner.run({
+			phase: 'typecheck',
+			stagingKey: input.stagingKey,
+			userId: input.userId,
+			typecheckTargets: input.targets,
+		})
+	}
+	const outcomes = await mapPool(
+		chunks,
+		isolatedBundleChunkConcurrency,
+		(typecheckTargets) =>
+			input.runner.run({
+				phase: 'typecheck',
+				stagingKey: input.stagingKey,
+				userId: input.userId,
+				typecheckTargets,
+			}),
+	)
+	const failures = outcomes
+		.filter((outcome) => !outcome.ok)
+		.map((outcome) => outcome.message)
+	return {
+		ok: failures.length === 0,
+		message:
+			failures.length === 0
+				? `No semantic diagnostics for ${input.targets.length} package runtime entrypoint(s), typechecked in ${chunks.length} chunk(s).`
+				: Array.from(new Set(failures)).join('\n'),
+	}
+}
+
+/**
  * `kody.credentials` needs (ADR 0068): a key the package and a dependency
  * declare with a different kind or provider fails; keys that are not
  * provider slugs get an informational note. Null when there is nothing to
@@ -2124,11 +2176,11 @@ export async function runRepoChecks(input: {
 					}
 					const outcome =
 						isolatedRunner && stagingKey && bundleContext
-							? await isolatedRunner.run({
-									phase: 'typecheck',
+							? await runChunkedTypecheck({
+									runner: isolatedRunner,
 									stagingKey,
 									userId: bundleContext.userId,
-									typecheckTargets,
+									targets: typecheckTargets,
 								})
 							: await runPackageTypecheckLanguageService({
 									sourceFiles,
