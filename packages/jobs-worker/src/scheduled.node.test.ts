@@ -175,6 +175,67 @@ test('retryable D1 lock contention is distinguished from ordinary failures', asy
 	}
 })
 
+test('drill lane platform OOM gets the drill fingerprint with source and phase from JobsHost', async () => {
+	consoleError.mockImplementation(() => {})
+	const scope = {
+		setTag: vi.fn(),
+		setContext: vi.fn(),
+		setLevel: vi.fn(),
+		setFingerprint: vi.fn(),
+	}
+	const withScope = vi
+		.spyOn(Sentry, 'withScope')
+		.mockImplementation(((callback: (value: typeof scope) => void) =>
+			callback(scope)) as never)
+	const captureException = vi
+		.spyOn(Sentry, 'captureException')
+		.mockImplementation(() => '')
+	const readD1PacedRestoreDrillCheckpoint = vi.fn().mockResolvedValue({
+		day: '2026-10-31',
+		source: 'kody',
+		table: 'audit_events',
+		phase: 'base',
+	})
+	const env = createEnv({
+		HOST: {
+			runScheduledLane: vi
+				.fn()
+				.mockRejectedValue(new Error('Worker exceeded memory limit.')),
+			readD1PacedRestoreDrillCheckpoint,
+		},
+	})
+	await expect(
+		runScheduledLaneWithFailureIsolation({
+			env,
+			message: message('dr_d1_paced_restore_drill'),
+		}),
+	).resolves.toBe('failed')
+	expect(readD1PacedRestoreDrillCheckpoint).toHaveBeenCalledOnce()
+	expect(scope.setFingerprint).toHaveBeenCalledWith([
+		'dr-d1-paced-restore-drill',
+		'oom',
+		'kody',
+	])
+	expect(scope.setLevel).toHaveBeenCalledWith('fatal')
+	expect(scope.setTag).toHaveBeenCalledWith('dr.drill.phase', 'base')
+	expect(scope.setContext).toHaveBeenCalledWith(
+		'dr_paced_restore_drill',
+		expect.objectContaining({ source: 'kody', table: 'audit_events' }),
+	)
+	expect(captureException).toHaveBeenCalledOnce()
+
+	scope.setFingerprint.mockClear()
+	await runScheduledLaneWithFailureIsolation({
+		env: createEnv({
+			HOST: { runScheduledLane: vi.fn().mockRejectedValue(new Error('boom')) },
+		}),
+		message: message('retention'),
+	})
+	expect(scope.setFingerprint).not.toHaveBeenCalled()
+	withScope.mockRestore()
+	captureException.mockRestore()
+})
+
 test('queue consumer acks completed and terminal work, retries lock contention with backoff, and preserves scheduledTime', async () => {
 	silenceExpectedConsoleWarns([
 		'scheduled_lane_d1_lock_contention lane=retention',

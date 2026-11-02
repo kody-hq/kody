@@ -192,15 +192,28 @@ Contract: `packages/shared/src/backup-staging.ts`.
    `daily/d1-paced/{databaseId}/{day}/` (weekdays) or
    `weekly/d1-paced/{databaseId}/{day}/` (Sunday UTC full bases). Tick writers
    flush TSV parts at 4 MiB and stop a tick at 8 MiB emitted so peak heap stays
-   under the isolate limit. The weekly Sunday 07:00 drill rebuilds from the
-   sealed chain and compares counts; a mismatch throws so the scheduled lane
-   pages Sentry. This lane does not feed the admin UI drill or graduated
+   under the isolate limit. The weekly Sunday drill (07:00–08:59 UTC) verifies
+   each table's tip checksum from the sealed chain, streaming one part body at a
+   time and keeping only the rowids touched by deltas since the last `full`
+   base. It is resumable: each tick holds a D1 lease, drills the next unfinished
+   source for up to 4 minutes, and checkpoints every table in APP_DB
+   (`dr_paced_restore_drill_runs` / `dr_paced_restore_drill_sources`). A tick
+   that dies mid-table (OOM, CPU, wall) leaves an active marker; the next tick
+   reports it and retries, and a second death fails that table. Ticks from 08:50
+   fail unfinished sources (`deadline-exceeded`). Drill failures get their own
+   Sentry fingerprint `dr-d1-paced-restore-drill / <kind> / <source>` (kind
+   `oom`, `timeout`, `interrupted`, `deadline`, `mismatch`, `error`) at level
+   `fatal` with `dr.drill.source` / `dr.drill.phase` tags, so a platform reset
+   never folds into a generic (possibly ignored) OOM issue; the jobs worker asks
+   `JobsHost.readD1PacedRestoreDrillCheckpoint` for the source and phase when
+   the RPC itself dies. This lane does not feed the admin UI drill or graduated
    production restore — those stay on the REST SQL objects (APP_DB and JOBS_DB
    only; AUDIT_DB is paced-only). `GET`/`POST /__maintenance/dr-paced-status`
    (bearer `DR_RESTORE_SECRET`, optional `?day=YYYY-MM-DD`) reports
-   staging/sealed presence per source. `DR_D1_PACED_SOURCES` commits APP_DB +
-   AUDIT_DB + JOBS_DB (deploy still expands live D1 UUIDs from resource
-   bindings).
+   staging/sealed presence per source plus `restoreDrill`: the latest drill run
+   with per-source status, active table/phase, interruption count, and per-table
+   results. `DR_D1_PACED_SOURCES` commits APP_DB + AUDIT_DB + JOBS_DB (deploy
+   still expands live D1 UUIDs from resource bindings).
 2. **Other canonical stores (production worker)** — When
    `DR_EXPORT_ENABLED=true` and DR S3 credentials are set, nightly ticks
    (`packages/worker/src/dr/exporter.ts`) stage:
@@ -739,7 +752,7 @@ the correctness spec and incident-only fallback:
 | Every 5 min outside 00:30–06:10 | Production worker | Paced D1 catch-up: resume the oldest incomplete paced night (today − ≤14 days)                                                                                                                                                                                                 |
 | 06:15                           | Production worker | Paced D1 watchdog: tonight's paced staging/sealed manifests still missing → Sentry                                                                                                                                                                                             |
 | Hourly `:45`                    | Production worker | Paced D1 freshness: sealed paced night for yesterday (or today after 06:15) must exist for every bound source                                                                                                                                                                  |
-| Sunday 07:00–07:19              | Production worker | Paced D1 restore drill: rebuild sealed chain, compare counts; mismatch → Sentry                                                                                                                                                                                                |
+| Sunday 07:00–08:59              | Production worker | Paced D1 restore drill: resumable per source, verify tip checksums; failure → Sentry                                                                                                                                                                                           |
 
 ### Stranded staging days (manual finish)
 

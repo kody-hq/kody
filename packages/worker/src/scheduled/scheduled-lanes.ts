@@ -1,5 +1,10 @@
 import { reconcileSecondAgentStandardGifts } from '#worker/entitlements/second-agent-gift-reconciliation.ts'
 import * as Sentry from '@sentry/cloudflare'
+import {
+	applyPacedRestoreDrillSentryScope,
+	classifyPacedRestoreDrillFailure,
+	pacedRestoreDrillLane,
+} from '@kody-internal/shared/backup-d1-paced-drill-alert.ts'
 import { checkAuthDenialBurstAndNotify } from '#app/auth-denial-alerts.ts'
 import { checkEmailDeliveryBurstAndNotify } from '#app/email-delivery-alerts.ts'
 import { checkEmailVerificationStallsAndNotify } from '#app/email-verification-stall-alerts.ts'
@@ -20,7 +25,10 @@ import {
 	runD1PacedBackupWatchdogTick,
 	runD1PacedFreshnessTick,
 } from '#worker/dr/d1-paced-backup.ts'
-import { runD1PacedRestoreDrillTick } from '#worker/dr/d1-paced-restore-drill.ts'
+import {
+	D1PacedRestoreDrillError,
+	runD1PacedRestoreDrillTick,
+} from '#worker/dr/d1-paced-restore-drill.ts'
 import {
 	runDrExportTick,
 	runDrExportWatchdogTick,
@@ -399,6 +407,16 @@ export async function runScheduledLaneWithFailureIsolation(input: {
 				scheduledTime: scheduledAt.toISOString(),
 				cron: input.message.cron,
 			})
+			if (input.message.lane === pacedRestoreDrillLane) {
+				applyPacedRestoreDrillSentryScope(scope, {
+					kind:
+						error instanceof D1PacedRestoreDrillError
+							? error.kind
+							: classifyPacedRestoreDrillFailure(error),
+					checkpoint:
+						error instanceof D1PacedRestoreDrillError ? error.checkpoint : null,
+				})
+			}
 			Sentry.captureException(error)
 		})
 		return 'failed'

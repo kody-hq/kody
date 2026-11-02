@@ -1,4 +1,8 @@
 import {
+	readLatestD1PacedRestoreDrill,
+	type D1PacedRestoreDrillProgress,
+} from '#worker/dr/d1-paced-restore-drill-progress.ts'
+import {
 	pacedD1RetentionTierForDay,
 	pacedD1SealedManifestKey,
 	pacedD1StagingManifestKey,
@@ -37,6 +41,8 @@ export type D1PacedStatusPayload = {
 	stagingPresentCount: number
 	sealedPresentCount: number
 	boundCount: number
+	/** Latest weekly restore drill run with per-source progress (APP_DB). */
+	restoreDrill: D1PacedRestoreDrillProgress | null
 }
 
 function formatUtcDay(date: Date) {
@@ -70,6 +76,7 @@ export async function collectD1PacedStatus(input: {
 			stagingPresentCount: 0,
 			sealedPresentCount: 0,
 			boundCount: 0,
+			restoreDrill: null,
 		}
 	}
 	const config = readDrBackupS3Config(input.env)
@@ -83,6 +90,7 @@ export async function collectD1PacedStatus(input: {
 			stagingPresentCount: 0,
 			sealedPresentCount: 0,
 			boundCount: 0,
+			restoreDrill: null,
 		}
 	}
 	const sources = parseD1PacedSources(input.env.DR_D1_PACED_SOURCES)
@@ -122,6 +130,16 @@ export async function collectD1PacedStatus(input: {
 		stagingPresentCount,
 		sealedPresentCount,
 		boundCount,
+		restoreDrill: await readRestoreDrillProgress(input.env),
+	}
+}
+
+async function readRestoreDrillProgress(env: Env) {
+	try {
+		return await readLatestD1PacedRestoreDrill(env.APP_DB)
+	} catch (error) {
+		console.warn('dr_paced_status_restore_drill_read_failed', error)
+		return null
 	}
 }
 

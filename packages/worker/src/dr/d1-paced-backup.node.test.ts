@@ -1,4 +1,6 @@
+import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
+import * as Sentry from '@sentry/cloudflare'
 import { expect, test, vi } from 'vitest'
 import {
 	pacedD1RetentionTierForDay,
@@ -30,7 +32,15 @@ import {
 	shouldRunD1PacedRestoreDrillCron,
 } from '#worker/dr/d1-paced-backup.ts'
 import { sealPacedD1SourceNight } from '#worker/dr/d1-paced-backup-seal.ts'
-import { runD1PacedRestoreDrillTick } from '#worker/dr/d1-paced-restore-drill.ts'
+import {
+	D1PacedRestoreDrillError,
+	runD1PacedRestoreDrillTick,
+} from '#worker/dr/d1-paced-restore-drill.ts'
+import {
+	ensureD1PacedRestoreDrillRun,
+	readLatestD1PacedRestoreDrill,
+	setD1PacedRestoreDrillSourceActive,
+} from '#worker/dr/d1-paced-restore-drill-progress.ts'
 import { collectD1PacedStatus } from '#worker/dr/d1-paced-status.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 
@@ -163,6 +173,11 @@ test('paced backup cron windows match the DR export nightly window', () => {
 		shouldRunD1PacedRestoreDrillCron(new Date('2026-10-25T07:05:00.000Z')),
 	).toBe(true) // Sunday
 	expect(shouldRunD1PacedRestoreDrillCron(at('07:05'))).toBe(false) // Saturday
+	expect(
+		['06:55', '08:55', '09:00'].map((time) =>
+			shouldRunD1PacedRestoreDrillCron(new Date(`2026-10-25T${time}:00.000Z`)),
+		),
+	).toEqual([false, true, false])
 })
 
 test('parseD1PacedSources requires UUID ids and known bindings', () => {
@@ -709,15 +724,62 @@ test('catch-up reseals a day that has staging but no sealed manifest', async () 
 	expect(objects.has(sealedKey)).toBe(true)
 })
 
+function applyDrillProgressMigration(sqlite: DatabaseSync) {
+	sqlite.exec(
+		readFileSync(
+			new URL(
+				'../../migrations/0237-dr-paced-restore-drill-progress.sql',
+				import.meta.url,
+			),
+			'utf8',
+		),
+	)
+}
+
+/** APP + AUDIT sources sealed for `day`, with drill progress tables in APP_DB. */
+async function sealTwoSourcesForDrill() {
+	const { client } = createMemoryS3()
+	const appSqlite = seedSqlite()
+	const env = createEnv({
+		APP_DB: createD1FromSqlite(appSqlite),
+		DR_D1_PACED_SOURCES: sourcesJson([
+			{ binding: 'APP_DB', name: 'kody', id: appId },
+			{ binding: 'AUDIT_DB', name: 'kody-audit', id: auditId },
+		]),
+	})
+	for (const time of ['01:00', '01:05', '01:10', '01:15']) {
+		await runD1PacedBackupTick({
+			env,
+			now: at(time),
+			s3: client,
+			walkerOpts: fastWalker,
+		})
+	}
+	const tier = pacedD1RetentionTierForDay(day)
+	for (const id of [appId, auditId]) {
+		expect(
+			await client.head(pacedD1SealedManifestKey(tier, id, day)),
+		).toMatchObject({
+			exists: true,
+		})
+	}
+	applyDrillProgressMigration(appSqlite)
+	return { client, env, appSqlite }
+}
+
+const sundayAt = (time: string) => new Date(`2026-10-25T${time}:00.000Z`)
+
 test('restore drill verifies sealed night against live counts', async () => {
 	const { client } = createMemoryS3()
-	const env = createEnv()
+	const appSqlite = seedSqlite()
+	const env = createEnv({ APP_DB: createD1FromSqlite(appSqlite) })
 	await runD1PacedBackupTick({
 		env,
 		now: at('01:00'),
 		s3: client,
 		walkerOpts: fastWalker,
 	})
+	applyDrillProgressMigration(appSqlite)
 	const drill = await runD1PacedRestoreDrillTick({
 		env,
 		now: new Date('2026-10-25T07:05:00.000Z'),
@@ -726,6 +788,7 @@ test('restore drill verifies sealed night against live counts', async () => {
 	})
 	expect(drill).toMatchObject({
 		skipped: false,
+		complete: true,
 		sourcesChecked: 1,
 		sourcesOk: 1,
 	})
@@ -742,6 +805,162 @@ test('restore drill verifies sealed night against live counts', async () => {
 	const report = await client.getText(drill.reportKey!)
 	expect(report?.text).toContain('"kind": "paced-d1-restore-drill-report"')
 	expect(report?.text).toContain('"sourcesOk": 1')
+})
+
+test('restore drill drills one source per tick and resumes from APP_DB progress', async () => {
+	const { client, env } = await sealTwoSourcesForDrill()
+	const first = await runD1PacedRestoreDrillTick({
+		env,
+		now: sundayAt('07:00'),
+		s3: client,
+	})
+	expect(first).toMatchObject({
+		day,
+		complete: false,
+		reason: 'in-progress',
+		sourcesChecked: 2,
+		sourcesOk: 1,
+	})
+	expect(first.sources.map((source) => source.databaseName)).toEqual(['kody'])
+	expect(
+		await client.head(`staging/${day}/d1-paced/restore-drill-report.json`),
+	).toMatchObject({ exists: false })
+
+	const status = await collectD1PacedStatus({ env, s3: client, day })
+	expect(status.restoreDrill?.run).toMatchObject({ day, status: 'running' })
+	expect(
+		status.restoreDrill?.sources.map((source) => [
+			source.databaseName,
+			source.status,
+		]),
+	).toEqual(
+		expect.arrayContaining([
+			['kody', 'passed'],
+			['kody-audit', 'pending'],
+		]),
+	)
+
+	const second = await runD1PacedRestoreDrillTick({
+		env,
+		now: sundayAt('07:05'),
+		s3: client,
+	})
+	expect(second).toMatchObject({
+		complete: true,
+		sourcesChecked: 2,
+		sourcesOk: 2,
+		reportKey: `staging/${day}/d1-paced/restore-drill-report.json`,
+	})
+	const progress = await readLatestD1PacedRestoreDrill(env.APP_DB)
+	expect(progress?.run).toMatchObject({
+		day,
+		status: 'passed',
+		sourcesOk: 2,
+		sourcesTotal: 2,
+	})
+	expect(progress?.sources.every((source) => source.tables.length > 0)).toBe(
+		true,
+	)
+
+	const getBytesSpy = vi.spyOn(client, 'getBytes')
+	const third = await runD1PacedRestoreDrillTick({
+		env,
+		now: sundayAt('07:10'),
+		s3: client,
+	})
+	expect(third).toMatchObject({ skipped: true, reason: 'already-finished' })
+	expect(getBytesSpy).not.toHaveBeenCalled()
+})
+
+test('restore drill reports a tick that died mid-phase with source and phase, then fails the table on a repeat', async () => {
+	const { client, env, appSqlite } = await sealTwoSourcesForDrill()
+	const captureMessage = vi.spyOn(Sentry, 'captureMessage')
+	const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+	await ensureD1PacedRestoreDrillRun(env.APP_DB, {
+		day,
+		sources: [
+			{ id: appId, name: 'kody' },
+			{ id: auditId, name: 'kody-audit' },
+		],
+		nowIso: sundayAt('07:00').toISOString(),
+	})
+	// Simulate an isolate that OOMed in the base pass of `items` (marker left
+	// behind, lease expired).
+	await setD1PacedRestoreDrillSourceActive(env.APP_DB, {
+		day,
+		databaseId: appId,
+		table: 'items',
+		phase: 'base',
+		nowIso: sundayAt('07:00').toISOString(),
+	})
+	// An earlier death on a different table does not use up this table's retry.
+	appSqlite
+		.prepare(
+			`UPDATE dr_paced_restore_drill_sources SET interrupted_count = 1, last_interrupted_table = 'earlier_table' WHERE database_id = ?`,
+		)
+		.run(appId)
+	const resumed = await runD1PacedRestoreDrillTick({
+		env,
+		now: sundayAt('07:05'),
+		s3: client,
+	})
+	expect(captureMessage).toHaveBeenCalledWith(
+		'paced D1 restore drill interrupted: kody base items',
+		'fatal',
+	)
+	// First interruption retries the table, so the source still passes.
+	expect(resumed.sources[0]).toMatchObject({ databaseName: 'kody', ok: true })
+
+	await setD1PacedRestoreDrillSourceActive(env.APP_DB, {
+		day,
+		databaseId: auditId,
+		table: 'items',
+		phase: 'deltas',
+		nowIso: sundayAt('07:05').toISOString(),
+	})
+	appSqlite
+		.prepare(
+			`UPDATE dr_paced_restore_drill_sources SET interrupted_count = 1, last_interrupted_table = 'items' WHERE database_id = ?`,
+		)
+		.run(auditId)
+	const failure = await runD1PacedRestoreDrillTick({
+		env,
+		now: sundayAt('07:10'),
+		s3: client,
+	}).catch((error: unknown) => error)
+	expect(failure).toBeInstanceOf(D1PacedRestoreDrillError)
+	expect(failure).toMatchObject({
+		kind: 'mismatch',
+		checkpoint: { day, source: 'kody-audit', table: 'items', phase: 'verify' },
+	})
+	const progress = await readLatestD1PacedRestoreDrill(env.APP_DB)
+	const audit = progress?.sources.find(
+		(source) => source.databaseName === 'kody-audit',
+	)
+	expect(audit).toMatchObject({ status: 'failed', interruptedCount: 2 })
+	expect(audit?.tables.find((table) => table.table === 'items')).toMatchObject({
+		ok: false,
+		error: 'interrupted-deltas',
+	})
+	expect(progress?.run.status).toBe('failed')
+	captureMessage.mockRestore()
+	consoleError.mockRestore()
+})
+
+test('restore drill fails unfinished sources once the Sunday window deadline passes', async () => {
+	const { client, env } = await sealTwoSourcesForDrill()
+	const failure = await runD1PacedRestoreDrillTick({
+		env,
+		now: sundayAt('08:50'),
+		s3: client,
+	}).catch((error: unknown) => error)
+	expect(failure).toBeInstanceOf(D1PacedRestoreDrillError)
+	expect(failure).toMatchObject({ kind: 'deadline' })
+	const progress = await readLatestD1PacedRestoreDrill(env.APP_DB)
+	expect(progress?.sources.map((source) => source.error)).toEqual([
+		'deadline-exceeded',
+		'deadline-exceeded',
+	])
 })
 
 test('restore drill exits cheaply when DR_D1_PACED_RESTORE_DRILL_ENABLED is off', async () => {
@@ -773,7 +992,9 @@ test('restore drill exits cheaply when DR_D1_PACED_RESTORE_DRILL_ENABLED is off'
 
 test('paced status reports staging and sealed presence', async () => {
 	const { client } = createMemoryS3()
-	const env = createEnv()
+	const appSqlite = seedSqlite()
+	applyDrillProgressMigration(appSqlite)
+	const env = createEnv({ APP_DB: createD1FromSqlite(appSqlite) })
 	expect(
 		await collectD1PacedStatus({ env, now: at('01:00'), s3: client }),
 	).toMatchObject({
@@ -798,6 +1019,7 @@ test('paced status reports staging and sealed presence', async () => {
 		stagingPresentCount: 1,
 		sealedPresentCount: 1,
 		boundCount: 1,
+		restoreDrill: null,
 	})
 	expect(status.sources[0]).toMatchObject({
 		name: 'kody',

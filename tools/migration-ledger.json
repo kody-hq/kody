@@ -847,6 +847,10 @@
 		{
 			"filename": "0236-users-lower-email-index.sql",
 			"sha256": "0c47ed03cd606deb9717d746378aec452e4c45777799716df99c05def9b71591"
+		},
+		{
+			"filename": "0237-dr-paced-restore-drill-progress.sql",
+			"sha256": "a8b07e35ed972099642d244fef52c0a39e1571426948c7500a24717fd1b5b70b"
 		}
 	]
 }
