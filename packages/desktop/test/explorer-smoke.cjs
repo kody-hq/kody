@@ -110,7 +110,7 @@ async function smoke() {
 		})
 		if (process.platform === 'darwin') {
 			assert.equal(layout.dragWidth, layout.viewportWidth)
-			assert.equal(layout.dragHeight, 16)
+			assert.equal(layout.dragHeight, 35)
 		}
 		assert.ok(
 			layout.cornerWidth < layout.viewportWidth / 2,

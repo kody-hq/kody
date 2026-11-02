@@ -76,7 +76,7 @@ export function DesktopNavigation({ homeHref }: { homeHref: string }) {
 						position: 'fixed',
 						top: 0,
 						insetInline: 0,
-						height: 16,
+						height: 35,
 						zIndex: 99,
 						WebkitAppRegion: 'drag',
 						pointerEvents: 'none',
