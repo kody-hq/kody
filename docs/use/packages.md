@@ -110,8 +110,8 @@ Important fields:
   [Credential slots](#credential-slots-kodycredentials))
 - `kody.secretMounts` — optional secret mount declarations kept so stale static
   dependents that bundled `packageSecrets.get` still resolve. See
-  [Leftover secret mounts](../guides/credentials.md#leftover-secret-mounts). New
-  code uses `kody.credentials`, not `packageSecrets.get`.
+  [Secret mounts for bundled dependents](../guides/credentials.md#secret-mounts-for-bundled-dependents).
+  New code uses `kody.credentials`, not `packageSecrets.get`.
 - `kody.secretProvider` — optional `{ id }` declaring this package can serve
   that external secret provider. Metadata alone does not bind the provider; see
   [Custom secret providers](../guides/secret-providers.md)

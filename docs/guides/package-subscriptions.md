@@ -112,26 +112,19 @@ publish to verify handler wiring without waiting for production fan-out.
 Package reuse is a static `import … from 'kody:@scope/pkg/export'` (declare
 `kody.dependencies`). See [Package reuse](../use/packages.md#package-reuse).
 
-Reuse the scoped `name` from `packageSubscriptionsList` as `kody_id`.
+Look up the package with the scoped `@owner/leaf` name from
+`packageSubscriptionsList` (or `package_id` when the name is not known). See
+[Synthetic event dispatch](../use/synthetic-event-dispatch.md) for the fields.
 
 ```json
 {
-	"kody_id": "@owner/email-automation",
+	"package_id": "550e8400-e29b-41d4-a716-446655440000",
 	"topic": "email.message.received",
 	"params": {}
 }
 ```
 
-For stored inbound mail, replay with `email_message_id` instead of `params`:
-
-```json
-{
-	"kody_id": "@owner/email-automation",
-	"topic": "email.message.received",
-	"email_message_id": "00000000000000000000000000000001"
-}
-```
-
+For stored inbound mail, replay with `email_message_id` instead of `params`.
 Pass exactly one of `params` or `email_message_id`. There is no caller
 `idempotency_key` — the platform generates internal idempotency keys.
 

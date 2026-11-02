@@ -158,8 +158,7 @@ When a normal filesystem and git client are available:
    package, pass `create: true`, `name` set to the `@owner/leaf` name (or the
    name leaf), and `description` (at most 200 characters; a short public
    tagline); for an existing package, omit `create` and pass `name` or
-   `package_id` when the name is not known. Leftover `kody_id` still accepts the
-   same values.
+   `package_id` when the name is not known.
 2. Run the returned setup commands and clone into a temporary directory. Those
    commands set local git `user.email` and `user.name` from `git_author` (the
    signed-in Kody account). Do not invent a git identity.
@@ -168,9 +167,13 @@ When a normal filesystem and git client are available:
 4. Commit and push the package repository.
 5. Publish the pushed head with `packagePublishExternalPush`. That call runs the
    server-side publish checks (manifest, docs, bundle, typecheck, lint,
-   credentials). Do **not** open a repo session to run `repoRunChecks` on the
-   pushed tree — `repoOpenSession` refuses unpublished HEAD, so the session
-   cannot see that commit.
+   credentials). When the publish exceeds the inline budget it returns
+   `dispatched` with a `workflow_id`; poll `workflowRunList` until the run is
+   terminal. A durable run that does not publish ends `errored` and frees a
+   retry for the same commit. See [Packages](../use/packages.md) for the
+   statuses. Do **not** open a repo session to run `repoRunChecks` on the pushed
+   tree — `repoOpenSession` refuses unpublished HEAD, so the session cannot see
+   that commit.
 
 This lane supports binary assets, multi-file changes, local tests, and normal
 git review.

@@ -173,10 +173,16 @@ Messages database (`~/Library/Messages/chat.db`) needs Full Disk Access. macOS
 asks once per target app; after you allow it, runs with host commands on can use
 that app without asking you again.
 
+Desktop 0.1.5 and later also include a Contacts entitlement. Packages that use
+the macOS Contacts framework to resolve names, phone numbers, or email addresses
+get a separate Contacts prompt. That consent belongs to the desktop app's own
+runner, not an adopted CLI service or terminal daemon.
+
 macOS checks the app that runs the daemon:
 
 - **Kody desktop app runs the runner** (no CLI service or terminal daemon):
-  macOS asks for **Kody**. Use desktop 0.1.4 or later.
+  macOS asks for **Kody**. Use desktop 0.1.4 or later for Messages Automation,
+  and 0.1.5 or later for Contacts.
 - **CLI service** (`kody daemon install`, a LaunchAgent) or **`kody daemon` in a
   terminal**: macOS checks that `node` binary or the terminal app, not Kody,
   even when the desktop app shows the runner as adopted. It may deny control
@@ -193,9 +199,9 @@ If a terminal `kody daemon` owns the runner instead, stop it with
 `kody daemon stop`. This also keeps the registration.
 
 Then open **This machine** in the desktop app and resume it if paused. Allow
-**Kody** when macOS asks to control Messages, and grant Full Disk Access to Kody
-in System Settings › Privacy & Security if the run reads `chat.db`. The runner
-then stops when you quit the app.
+**Kody** when macOS asks to control Messages, grant Full Disk Access to Kody in
+System Settings › Privacy & Security if the run reads `chat.db`, and allow
+Contacts if the run looks up names. The runner then stops when you quit the app.
 
 **Fields.**
 
