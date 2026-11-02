@@ -346,6 +346,25 @@ test('hosted package apps move to the owner subdomain behind a single-use handof
 		'Cross-origin mutating requests',
 	)
 
+	// CORS does not cover WebSockets, so a cross-origin realtime upgrade that
+	// carries the Lax session cookie is refused like a mutating request.
+	const crossOriginUpgrade = await workerFetch(
+		new URL('/demo/ws', cleanLocation),
+		withPackageSession({
+			Upgrade: 'websocket',
+			Origin: 'https://other-user.packages.isolated.test',
+		}),
+	)
+	expect(crossOriginUpgrade.status).toBe(403)
+	await expect(crossOriginUpgrade.text()).resolves.toContain(
+		'Cross-origin mutating requests',
+	)
+	const sameOriginUpgrade = await workerFetch(
+		new URL('/demo/ws', cleanLocation),
+		withPackageSession({ Upgrade: 'websocket', Origin: ownerPackageAppOrigin }),
+	)
+	expect(sameOriginUpgrade.status).toBe(404)
+
 	// 4. The package-app session is re-checked against the account on every
 	// request, so suspension and password changes revoke package-app access too.
 	const ownerStableUserId = testStableUserIdFromEmail(ownerEmail)
