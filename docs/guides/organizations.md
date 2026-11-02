@@ -92,12 +92,12 @@ grantable org-wide.
 
 ## Personal vs team
 
-|                    | Personal                                             | Team                                                                                                                                                                                            |
-| ------------------ | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Created            | At signup (slug = username)                          | `orgCreate` or Create organization                                                                                                                                                              |
-| Members / teams    | No. Create a team org to invite people or group them | Yes                                                                                                                                                                                             |
-| Package grants     | `accessGrant` / grant invites / package invite links | Same, plus the Grants web page                                                                                                                                                                  |
-| Resource web pages | Secrets, jobs, repositories, agents, and the rest    | Every resource page reads the org. Agents lists connections approved for that org; **Repositories** lists packages you can see plus every plain repo the org owns (API/CLI still say `package`) |
+|                    | Personal                                                | Team                                                                                                                                                                                                                                                               |
+| ------------------ | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Created            | At signup (slug = username)                             | `orgCreate` or Create organization                                                                                                                                                                                                                                 |
+| Members / teams    | No. Create a team org to invite people or group them    | Yes                                                                                                                                                                                                                                                                |
+| Package grants     | `accessGrant` / grant invites / package invite links    | Same, plus the Grants web page                                                                                                                                                                                                                                     |
+| Resource web pages | Secrets, jobs, repositories, apps, agents, and the rest | Every resource page reads the org. Agents lists connections approved for that org; **Repositories** lists packages you can see plus every plain repo the org owns (API/CLI still say `package`); **Apps** (`/@<slug>/-/apps`) lists packages with `kody.app.entry` |
 
 Switch orgs from the workspace name at the top of the workspace rail (it keeps
 the section you are on), from the avatar menu's Manage group, or pick the org at
@@ -115,6 +115,7 @@ is reserved, so no person or org can claim that handle.
 Handy settings links: [`/@me/-/settings`](https://kody.codes/@me/-/settings),
 [`/@me/-/secrets`](https://kody.codes/@me/-/secrets),
 [`/@me/-/agents`](https://kody.codes/@me/-/agents),
+[`/@me/-/apps`](https://kody.codes/@me/-/apps),
 [`/@me/-/email`](https://kody.codes/@me/-/email),
 [`/@me/-/jobs`](https://kody.codes/@me/-/jobs),
 [`/@me/-/activity`](https://kody.codes/@me/-/activity), and

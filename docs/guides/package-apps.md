@@ -38,6 +38,14 @@ To serve an app on a domain you own (for example `apps.example.com`), see
 [Custom domains](./package-app-custom-domains.md)
 (`guide:package_app_custom_domains`).
 
+## Browse apps in the workspace
+
+Open **Apps** in the workspace sidebar (`/@<slug>/-/apps`) to browse hosted apps
+in that org. Search, visibility, and sort apply to packages you can read; icon,
+card, and list views keep their URL. Packages without `kody.app.entry` appear
+only on **Repositories**. Opening an app uses the same
+[session handoff](#session-handoff) as **Open app**.
+
 > [!WATCH] https://www.youtube.com/watch?v=WjogtbCssZc Watch: Build a Software
 > Pipeline: Help your agent help you
 
@@ -97,20 +105,20 @@ A one-file fetch handler is a complete app (see
 ## Session handoff
 
 Production-hosted apps live at `https://{username}.kody.run/<package-name>/…`
-(and on verified custom domains). That URL is the app.
-`/packages/<package-name>/…` on the same host resolves to the same app.
-`https://kody.codes/@{username}/packages/…` is not the hosted origin: visitors
-who may run the app hand off to it; everyone else stays on the package page (or
-a same-origin landing).
+(`username` is the org handle: personal username or team slug) and on verified
+custom domains. That URL is the app. `/packages/<package-name>/…` on the same
+host resolves to the same app. `https://kody.codes/@{username}/packages/…` is
+not the hosted origin: visitors who may run the app hand off to it; everyone
+else stays on the package page (or a same-origin landing).
 
 **Open app** is one control. For someone who may run the app it goes to
 `/@{username}/packages/<name>/open` on kody.codes, which mints a short-lived
 handoff token and redirects to the hosted origin (`*.kody.run` or a verified
-custom domain). Bare `/@{username}/packages/<name>` still hands off for old
-links when the visitor may run the app. Approved internet-visible apps can also
-be opened at the hosted origin without a session. Prefer the OAuth helper below
-for in-app Sign in / Sign out. A direct visit to `*.kody.run` or a custom domain
-does not see the kody.codes session cookie.
+custom domain). Bare `/@{username}/packages/<name>` also hands off when the
+visitor may run the app. Approved internet-visible apps can also be opened at
+the hosted origin without a session. Prefer the OAuth helper below for in-app
+Sign in / Sign out. A direct visit to `*.kody.run` or a custom domain does not
+see the kody.codes session cookie.
 
 ### Auth with Kody (OAuth)
 

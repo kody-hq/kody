@@ -3,8 +3,9 @@
 **Public / private** is repo visibility. **Community** is the catalog
 (`/community`, `/@handle`) and the official Discord server — not a second kind
 of package. A listing is the catalog row for a public package. Your own packages
-live on the workspace **Repositories** page with plain repos; this catalog is
-only published public listings (see
+live on the workspace **Repositories** page with plain repos; hosted apps also
+appear on **Apps** (`/@slug/-/apps`). This catalog is only published public
+listings (see
 [Packages](./packages.md#repositories-page-vs-package-in-the-api)).
 
 Public **packages** appear in that catalog. Visibility lives on the **repo
