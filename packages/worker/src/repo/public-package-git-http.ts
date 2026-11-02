@@ -34,6 +34,7 @@ import {
 	type UploadPackRequestSummary,
 } from '#worker/repo/git-pkt-line.ts'
 import { resolveGitHttpTargetAccess } from '#worker/repo/git-http-target.ts'
+import { proxyPlainRepoReceivePack } from '#worker/repo/plain-repo-git-http.ts'
 
 const gitUploadPackService = 'git-upload-pack'
 const gitReceivePackService = 'git-receive-pack'
@@ -614,6 +615,8 @@ type ProxiedGitTarget = {
 	agent: string
 	canWrite: boolean
 	resourceKind: 'package' | 'repo' | 'public'
+	/** Plain repos only: pushes go through the push queue and record `git_push`. */
+	plainRepo: { sourceId: string; ownerId: string } | null
 }
 
 function toProxiedPublicTarget(
@@ -629,6 +632,7 @@ function toProxiedPublicTarget(
 		agent: publicGitProxyAgent,
 		canWrite: false,
 		resourceKind: 'public',
+		plainRepo: null,
 	}
 }
 
@@ -1135,6 +1139,10 @@ async function resolveAuthenticatedGitTarget(input: {
 			agent: authenticatedGitProxyAgent,
 			canWrite: access.canWrite,
 			resourceKind: access.resourceKind,
+			plainRepo:
+				access.resourceKind === 'repo'
+					? { sourceId: access.sourceId, ownerId: access.resourceOrgId }
+					: null,
 		},
 	}
 }
@@ -1317,6 +1325,17 @@ export async function handlePublicPackageGitHttpRequest(
 		if (early) return early
 		if (resolved.kind !== 'ok') return notFoundResponse()
 		try {
+			const { plainRepo } = resolved.target
+			if (plainRepo) {
+				return await proxyPlainRepoReceivePack({
+					env,
+					sourceId: plainRepo.sourceId,
+					ownerId: plainRepo.ownerId,
+					remote: resolved.target.remote,
+					request,
+					token: resolved.target.tokenPlaintext,
+				})
+			}
 			return await proxyArtifactsReceivePack({
 				target: resolved.target,
 				request,
