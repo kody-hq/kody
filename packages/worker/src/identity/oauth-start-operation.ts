@@ -1,7 +1,8 @@
 import { authOperationResult } from './auth-operation-result.ts'
 import { getCallbackRedirectUri } from './oauth-provider-redirect.ts'
 import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
-import { readAuthSessionResult, isSecureRequest } from '#app/auth-session.ts'
+import { isSecureRequest } from '#app/auth-session.ts'
+import { readLiveAuthSession } from '#app/request-auth-cache.ts'
 import {
 	parseFirstTouchAttribution,
 	hasFirstTouchAttribution,
@@ -40,7 +41,7 @@ export async function startWebsiteOAuth({
 		searchParams: url.searchParams,
 		body: null,
 	})
-	const { session } = await readAuthSessionResult(request)
+	const session = (await readLiveAuthSession(request, env)).parsed?.session
 
 	if (!session) {
 		const protection = await checkPublicFormProtection({

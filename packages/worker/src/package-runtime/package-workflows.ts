@@ -23,7 +23,11 @@ import { NonRetryableError } from 'cloudflare:workflows'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { backgroundExecutorTimeoutMs } from '#mcp/executor-budgets.ts'
-import { type RequestLineage } from '@kody-internal/shared/request-context.ts'
+import {
+	type OrgRole,
+	type RequestLineage,
+} from '@kody-internal/shared/request-context.ts'
+import { loadLiveOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import {
 	parseRequestLineage,
 	type RequestSource,
@@ -287,14 +291,56 @@ const packageWorkflowTokenId = 'internal:package-workflows'
 
 /**
  * Instances created before payloads carried lineage have no person behind
- * them, so they hold no permissions.
+ * them, so they hold no permissions. The starter's stored role is a snapshot
+ * from enqueue time, so each step re-reads their live membership (like jobs
+ * and enablements): a starter who lost access to the org runs nothing, and a
+ * demoted one never exceeds their current role.
  */
-function workflowRequestSource(
+async function workflowRequestSource(
+	db: D1Database,
 	payload: DynamicCallableWorkflowPayload,
-): RequestSource {
-	return payload.lineage
-		? { kind: 'inherited', lineage: payload.lineage }
-		: { kind: 'platform-event', sourceId: packageWorkflowTokenId }
+): Promise<RequestSource> {
+	const lineage = payload.lineage
+	if (!lineage) {
+		return { kind: 'platform-event', sourceId: packageWorkflowTokenId }
+	}
+	const actorId = lineage.actor ? String(lineage.actor.userId) : null
+	const orgId = String(payload.userId)
+	// Legacy equal-id personal orgs are owned by the person themself, and a
+	// lineage from another org carries no role here (inheritedMembership).
+	if (
+		!actorId ||
+		actorId === orgId ||
+		String(lineage.credential.orgId) !== orgId
+	) {
+		return { kind: 'inherited', lineage }
+	}
+	const binding = await loadLiveOrgBindingForOrg(db, actorId, orgId)
+	if (!binding) {
+		throw terminalWorkflowStepError(
+			`Workflow "${payload.workflowName}" cannot run: the person who started it no longer has access to its organization.`,
+		)
+	}
+	return {
+		kind: 'inherited',
+		lineage: {
+			...lineage,
+			membership: liveStarterMembership(lineage.membership, binding.role),
+		},
+	}
+}
+
+/** The stored role narrowed to the live one; never raised above enqueue time. */
+function liveStarterMembership(
+	stored: RequestLineage['membership'],
+	liveRole: OrgRole | null,
+): RequestLineage['membership'] {
+	if (!stored) return stored
+	if (!liveRole) return null
+	if (stored.role === liveRole || liveRole === 'owner') return stored
+	if (stored.role === 'owner') return { role: liveRole }
+	// Member and Billing do not cover each other: keep only live grants.
+	return null
 }
 
 /** Person + client from the starter lineage; null for legacy payloads. */
@@ -1987,7 +2033,7 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 					userId: payload.userId,
 					packageId: payload.packageId,
 					exportNames: [payload.exportName],
-					request: workflowRequestSource(payload),
+					request: await workflowRequestSource(this.env.APP_DB, payload),
 				},
 				request: {
 					packageIdOrKodyId: payload.packageId,
@@ -2113,7 +2159,7 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 						storageId: null,
 					}
 				: null,
-			source: workflowRequestSource(payload),
+			source: await workflowRequestSource(this.env.APP_DB, payload),
 		})
 		const runHandle = beginRunRecord({
 			env: this.env,

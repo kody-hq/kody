@@ -1052,6 +1052,43 @@ test('signed-in users link and disconnect providers from their account', async (
 	expect(countRows(sqlite, 'oauth_connections')).toBe(0)
 })
 
+test('a session cookie revoked by a password change cannot link a provider', async () => {
+	const { sqlite, db } = createMigratedDb()
+	const env = createAppEnv(db, {
+		GITHUB_CLIENT_ID: 'MOCK_GITHUB_CLIENT_ID',
+		GITHUB_CLIENT_SECRET: 'MOCK_GITHUB_CLIENT_SECRET',
+	})
+	await seedUser(sqlite, {
+		id: 31,
+		email: 'revoked-linker@example.com',
+		username: 'revoked-linker',
+		emailVerified: true,
+	})
+	const cookie = getCookiePair(
+		await createAuthCookie(
+			{
+				stableUserId: testStableUserIdFromEmail('revoked-linker@example.com'),
+				email: 'revoked-linker@example.com',
+				rememberMe: false,
+			},
+			false,
+			Date.now() - 60_000,
+		),
+	)
+	sqlite
+		.prepare(`UPDATE users SET password_changed_at = ? WHERE id = 31`)
+		.run(new Date().toISOString())
+
+	const { response } = await completeProviderFlow(env, 'github', {
+		cookie,
+		mockMode: true,
+	})
+	expect(new Headers(response.headers).get('Location')).not.toContain(
+		'oauthLinked',
+	)
+	expect(countRows(sqlite, 'oauth_connections', 'WHERE user_id = 31')).toBe(0)
+})
+
 test('MOCK_ client ids run the whole flow in-worker and refuse disconnecting the only sign-in method', async () => {
 	const { sqlite, db } = createMigratedDb()
 	// onUnhandledFrame: 'error' in the shared MSW server means any real

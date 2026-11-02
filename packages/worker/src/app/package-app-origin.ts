@@ -102,6 +102,7 @@ import {
 	recordPackageAppLegacyMountHit,
 } from '#worker/package-runtime/package-app-legacy-mount.ts'
 import { buildUnmatchedPackageAppOriginPathMessage } from '#worker/package-runtime/package-app-synthetic.ts'
+import { isWebSocketUpgradeRequest } from '#worker/package-runtime/websocket-upgrade.ts'
 import {
 	pushServerTiming,
 	type ServerTimingEntry,
@@ -1357,6 +1358,10 @@ async function servePackageAppForSession(input: {
  * OPTIONS is the CORS preflight and is not a mutation. It is forwarded to
  * the app, which answers with its own headers, or with a platform 204 when
  * the handler throws.
+ *
+ * A WebSocket upgrade is a GET, but CORS does not cover WebSockets: a
+ * cross-origin page would get a full read/write socket. Upgrades get the same
+ * Origin check as mutating methods.
  */
 function rejectCrossOriginMutatingPackageAppRequest(input: {
 	request: Request
@@ -1364,7 +1369,8 @@ function rejectCrossOriginMutatingPackageAppRequest(input: {
 	message: string
 }): Response | null {
 	if (
-		input.request.method === 'GET' ||
+		(input.request.method === 'GET' &&
+			!isWebSocketUpgradeRequest(input.request)) ||
 		input.request.method === 'HEAD' ||
 		input.request.method === 'OPTIONS'
 	) {

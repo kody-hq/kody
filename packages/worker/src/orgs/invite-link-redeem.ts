@@ -94,8 +94,7 @@ async function claimInviteLinkUse(input: {
 
 /**
  * A link keeps working only while its creator could still make it. A
- * membership link needs the creator to still be a member (its original rule).
- * A team link needs team:write and member:write. A package link needs Manage
+ * membership link needs member:write. A team link needs team:write and member:write. A package link needs Manage
  * on that package, which an outside collaborator can hold through a grant.
  */
 export async function inviteLinkCreatorStillValid(
@@ -105,8 +104,11 @@ export async function inviteLinkCreatorStillValid(
 	const role = await liveMembershipRole(db, link.orgId, link.createdByUserId)
 	const target = link.target
 	switch (target.kind) {
-		case 'membership':
-			return role != null
+		case 'membership': {
+			if (role == null) return false
+			const access = await creatorAccess(db, link, role)
+			return access.isOwner || access.orgPermissions.has('member:write')
+		}
 		case 'team': {
 			if (role == null) return false
 			const access = await creatorAccess(db, link, role)

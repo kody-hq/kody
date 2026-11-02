@@ -7,9 +7,9 @@ import {
 import {
 	createAuthCookie,
 	isSecureRequest,
-	readAuthSessionResult,
 	setAuthSessionSecret,
 } from '#app/auth-session.ts'
+import { readLiveAuthSession } from '#app/request-auth-cache.ts'
 import { isNonProductionRuntime } from '#app/deployment-env.ts'
 import {
 	notifyFormerAddressOfEmailChange,
@@ -88,7 +88,7 @@ export async function executeVerifyEmailChange({
 		}
 	}
 
-	const { session } = await readAuthSessionResult(request)
+	const session = (await readLiveAuthSession(request, env)).parsed?.session
 	const setCookie =
 		session?.stableUserId === result.stableUserId
 			? await createAuthCookie(

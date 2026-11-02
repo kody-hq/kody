@@ -63,8 +63,59 @@ function decodeData(data: unknown) {
 	return bytes
 }
 
+/**
+ * Paths are checked as strings, so a rename landing between a check and its fs
+ * call could swap in an escaping symlink. Renames run alone (process-wide, as
+ * runs share mounts); every other op shares the lock and still runs in
+ * parallel. Waiting renames block new ops so they cannot starve.
+ */
+const hostFsLock = {
+	readers: 0,
+	renaming: false,
+	queue: [] as Array<{ exclusive: boolean; start: () => void }>,
+}
+
+function startQueuedHostFsOps() {
+	while (hostFsLock.queue.length > 0 && !hostFsLock.renaming) {
+		const next = hostFsLock.queue[0]!
+		if (next.exclusive) {
+			if (hostFsLock.readers > 0) return
+			hostFsLock.queue.shift()
+			hostFsLock.renaming = true
+			next.start()
+			return
+		}
+		hostFsLock.queue.shift()
+		hostFsLock.readers += 1
+		next.start()
+	}
+}
+
+async function withHostFsLock<T>(exclusive: boolean, run: () => Promise<T>) {
+	await new Promise<void>((start) => {
+		hostFsLock.queue.push({ exclusive, start })
+		startQueuedHostFsOps()
+	})
+	try {
+		return await run()
+	} finally {
+		if (exclusive) hostFsLock.renaming = false
+		else hostFsLock.readers -= 1
+		startQueuedHostFsOps()
+	}
+}
+
 /** Runs one fs call from a run's workerd against the effective host mounts. */
 export async function handleHostFsRequest(
+	effective: EffectiveFs,
+	request: HostFsRequest,
+): Promise<unknown> {
+	return await withHostFsLock(request.op === 'rename', () =>
+		runHostFsRequest(effective, request),
+	)
+}
+
+async function runHostFsRequest(
 	effective: EffectiveFs,
 	request: HostFsRequest,
 ): Promise<unknown> {

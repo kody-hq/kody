@@ -448,7 +448,7 @@ export const tokenOperationDefinitions: Record<
 					status: 403,
 					code: 'insufficient_scope',
 					message:
-						'An org-bound API token cannot mint a user-owned token. Use an MCP session, cliCredentialBootstrap, or a user-owned parent token.',
+						'An org-bound API token cannot mint a user-owned token. Use an MCP session (cliCredentialBootstrap) or a user-owned parent token.',
 				})
 			}
 			return mintApiToken({

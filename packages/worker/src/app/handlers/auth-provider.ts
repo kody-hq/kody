@@ -5,8 +5,8 @@ import {
 	createAuthCookie,
 	destroyAuthCookie,
 	isSecureRequest,
-	readAuthSessionResult,
 } from '#app/auth-session.ts'
+import { readLiveAuthSession } from '#app/request-auth-cache.ts'
 import { clearedFactorsAuditReason } from '#app/clear-account-factors.ts'
 import {
 	destroyOauthLoginStateCookie,
@@ -215,7 +215,9 @@ export function createAuthProviderCallbackHandler(env: Env) {
 		const requestIp = getRequestIp(request) ?? undefined
 		const loginState = await readOauthLoginState(request)
 		const redirectTo = normalizeRedirectTo(loginState?.redirectTo ?? null)
-		const { session } = await readAuthSessionResult(request)
+		// Signed in means a live session: an expired or password-revoked cookie
+		// must not link a provider to the account it names.
+		const session = (await readLiveAuthSession(request, env)).parsed?.session
 
 		function fail(code: OauthLoginErrorCode, reason: string) {
 			void logAuditEvent({

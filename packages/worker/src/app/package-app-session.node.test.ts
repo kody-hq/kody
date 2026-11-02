@@ -169,3 +169,47 @@ test('destroying a per-app session also clears the legacy host-wide cookie', asy
 		cleared.some((header) => header.startsWith('__Host-kody_pkg_session=')),
 	).toBe(true)
 })
+
+test('secure requests ignore unprefixed session cookie names a sibling subdomain could toss', async () => {
+	resetPackageAppSessionCookieForTests()
+	const env = createTestEnv()
+	const now = 1_700_000_000_000
+	const expiresAt = now + 60 * 60 * 1000
+	const session = { stableUserId, username: 'owner' }
+	const [secureSetCookie] = await createPackageAppSessionCookie({
+		env,
+		session,
+		slug: 'notes',
+		secure: true,
+		expiresAt,
+		now,
+	})
+	const securePair = secureSetCookie?.split(';')[0] ?? ''
+	const separator = securePair.indexOf('=')
+	const secureName = securePair.slice(0, separator)
+	const signedValue = securePair.slice(separator + 1)
+	const unprefixedName = secureName.replace(/^__Host-/, '')
+	expect(unprefixedName).toMatch(/^kody_pkg_session_[\w-]+$/)
+	const read = (url: string, cookie: string) =>
+		readPackageAppSession({
+			request: new Request(url, { headers: { Cookie: cookie } }),
+			env,
+			slug: 'notes',
+			now,
+		})
+
+	for (const name of [unprefixedName, 'kody_pkg_session']) {
+		await expect(
+			read('https://owner.kody.run/notes', `${name}=${signedValue}`),
+		).resolves.toBeNull()
+		await expect(
+			read('http://owner.packages.localhost/notes', `${name}=${signedValue}`),
+		).resolves.toMatchObject({ session })
+	}
+	await expect(
+		read('https://owner.kody.run/notes', securePair),
+	).resolves.toMatchObject({ session })
+	await expect(
+		read('http://owner.packages.localhost/notes', securePair),
+	).resolves.toBeNull()
+})

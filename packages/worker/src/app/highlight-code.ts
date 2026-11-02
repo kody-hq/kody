@@ -1,6 +1,9 @@
 import { parseKodyMarkdown } from '#universal/markdown.ts'
 import { type BlockNode } from '@tanstack/markdown'
-import { highlightCacheHeaderName } from '#universal/highlight-cache-header.ts'
+import {
+	highlightCacheHeaderName,
+	highlightServiceOrigin,
+} from '#universal/highlight-cache-header.ts'
 import { highlightBatchCacheRequest } from '#universal/highlight-cache-request.ts'
 import {
 	highlightSnippetKey,
@@ -33,7 +36,6 @@ function recordHighlight(
 	})
 }
 
-const highlightOrigin = 'https://highlight.internal'
 const originCacheOrigin = 'https://highlight-origin.local'
 const originHighlightCacheName = 'kody-highlight-origin'
 
@@ -117,11 +119,14 @@ export async function highlightSnippets(
 	}
 
 	try {
-		const response = await highlight.fetch(`${highlightOrigin}/highlight`, {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ snippets }),
-		})
+		const response = await highlight.fetch(
+			`${highlightServiceOrigin}/highlight`,
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ snippets }),
+			},
+		)
 		if (!response.ok) {
 			throw new Error(`highlight worker ${response.status}`)
 		}

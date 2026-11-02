@@ -34,6 +34,25 @@ export async function ensureRbacTestSchema(db: D1Database) {
 		)
 		.run()
 	await db
+		.prepare(
+			`CREATE TABLE IF NOT EXISTS permissions (
+				id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+				action TEXT NOT NULL,
+				entity TEXT NOT NULL,
+				access TEXT NOT NULL
+			)`,
+		)
+		.run()
+	await db
+		.prepare(
+			`CREATE TABLE IF NOT EXISTS role_permissions (
+				role_id INTEGER NOT NULL,
+				permission_id INTEGER NOT NULL,
+				PRIMARY KEY (role_id, permission_id)
+			)`,
+		)
+		.run()
+	await db
 		.prepare(`INSERT OR IGNORE INTO roles (name) VALUES ('user'), ('admin')`)
 		.run()
 }
