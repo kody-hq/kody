@@ -372,11 +372,13 @@ test('kody.dev.prebuild runs before every build, without retriggering itself', a
 				),
 			)
 
+			// The gen.sh edit is the only trigger: a second edit (e.g. to
+			// message.ts) can land after this build fails, and its deferred
+			// rebuild is a real save, not a prebuild echo.
 			await writeFile(
 				join(root, 'gen.sh'),
 				'echo "boom from prebuild" >&2\nexit 3\n',
 			)
-			await writeMessage(`export const message = 'v2'\n`)
 			const failed = await waitFor(async () => {
 				const response = await server.fetchPath('/')
 				return response.status === 500 ? response : undefined
