@@ -208,10 +208,18 @@ test('collectSitePerf probes the hello-world package app via packageAppFetch wit
 	}
 })
 
-test('collectSitePerf skips the package-app probe without an API token', async () => {
+test('collectSitePerf probes the hosted app anonymously without an API token', async () => {
 	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
 		const url = new URL(String(input))
-		if (url.pathname === '/') return landingResponse()
+		if (url.hostname === 'kody.codes' && url.pathname === '/') {
+			return landingResponse()
+		}
+		if (url.href === 'https://kentcdodds.kody.run/perf-hello/') {
+			return new Response('ok', {
+				headers: { 'Server-Timing': 'appSession;dur=2, entrypoint;dur=5' },
+			})
+		}
+		if (url.hostname === 'kody.codes') return new Response('', { status: 404 })
 		throw new Error(`unexpected probe: ${url}`)
 	})
 	vi.stubGlobal('fetch', fetchMock)
@@ -220,12 +228,43 @@ test('collectSitePerf skips the package-app probe without an API token', async (
 			url: 'https://kody.codes/',
 			budget,
 		})
-		expect(report.packageApp).toBeNull()
+		expect(report.packageApp?.url).toBe(
+			'https://kentcdodds.kody.run/perf-hello/',
+		)
+		expect(report.packageApp?.error).toBeUndefined()
+		expect(report.packageApp?.samples).toHaveLength(3)
+		expect(report.packageApp?.samples[0]?.serverTiming).toEqual([
+			{ name: 'appSession', durationMs: 2 },
+			{ name: 'entrypoint', durationMs: 5 },
+		])
 		expect(
 			fetchMock.mock.calls.some(([input]) =>
 				String(input).includes('api.kody.codes'),
 			),
 		).toBe(false)
+	} finally {
+		vi.unstubAllGlobals()
+	}
+})
+
+test('collectSitePerf skips a non-default package app without an API token', async () => {
+	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+		const url = new URL(String(input))
+		if (url.hostname === 'kody.codes') {
+			return url.pathname === '/'
+				? landingResponse()
+				: new Response('', { status: 404 })
+		}
+		throw new Error(`unexpected probe: ${url}`)
+	})
+	vi.stubGlobal('fetch', fetchMock)
+	try {
+		const report = await collectSitePerf({
+			url: 'https://kody.codes/',
+			budget,
+			packageAppId: 'other-package',
+		})
+		expect(report.packageApp).toBeNull()
 	} finally {
 		vi.unstubAllGlobals()
 	}

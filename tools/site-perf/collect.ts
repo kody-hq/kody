@@ -29,11 +29,12 @@ export type SitePerfPageProbe = {
 
 /**
  * A hello-world package app: every request returns `ok`, so its timing is
- * Kody's platform overhead on the package-app serve path. The probe calls
- * Open API `packageAppFetch` with `KODY_API_TOKEN`, so the app needs no
- * anonymous internet access. Requests run back to back; the first may be
- * cold, later ones show the warm path. `ttfbMs` is the API round trip;
- * `serverTiming` is the app serve phases.
+ * Kody's platform overhead on the package-app serve path. With
+ * `KODY_API_TOKEN` the probe calls Open API `packageAppFetch` (no internet
+ * visibility needed); without one it fetches the internet-visible hosted URL
+ * anonymously. Requests run back to back; the first may be cold, later ones
+ * show the warm path. `ttfbMs` is the round trip; `serverTiming` is the app
+ * serve phases.
  */
 export type SitePerfPackageAppProbe = {
 	url: string
@@ -52,6 +53,9 @@ export const defaultPackageAppProbePackageId =
 	'87aebd1f-9589-4c5a-b34e-40f191413564'
 export const defaultPackageAppFetchUrl =
 	'https://api.kody.codes/v1/packages/app-fetch'
+/** Anonymous hosted URL for `@kentcdodds/perf-hello` (internet-visible). */
+export const defaultPackageAppHostedUrl =
+	'https://kentcdodds.kody.run/perf-hello/'
 const packageAppProbeSamples = 3
 const packageAppProbeTimeoutMs = 15_000
 
@@ -246,6 +250,44 @@ type PackageAppFetchResult = {
 	headers?: Record<string, string>
 }
 
+async function probeHostedPackageApp(input: {
+	packageId: string
+	url: string
+}): Promise<SitePerfPackageAppProbe> {
+	const { url } = input
+	const samples: SitePerfPackageAppProbe['samples'] = []
+	try {
+		for (let index = 0; index < packageAppProbeSamples; index += 1) {
+			const startedAt = performance.now()
+			const response = await fetch(url, {
+				redirect: 'manual',
+				signal: AbortSignal.timeout(packageAppProbeTimeoutMs),
+			})
+			const ttfbMs = Math.round(performance.now() - startedAt)
+			await response.arrayBuffer()
+			if (!response.ok) {
+				throw new Error(`hosted app HTTP ${response.status}`)
+			}
+			samples.push({
+				status: response.status,
+				ttfbMs,
+				serverTiming: parseServerTimingHeader(
+					response.headers.get('Server-Timing'),
+				),
+			})
+		}
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error)
+		return {
+			url,
+			packageId: input.packageId,
+			error: `sample ${samples.length + 1} of ${packageAppProbeSamples} failed: ${message}`,
+			samples,
+		}
+	}
+	return { url, packageId: input.packageId, samples }
+}
+
 async function probePackageApp(input: {
 	packageId: string
 	apiToken: string
@@ -299,8 +341,10 @@ export async function collectSitePerf(input: {
 	now?: Date
 	/** Hello-world package app id to probe; null skips it. */
 	packageAppId?: string | null
-	/** Open API token for `packageAppFetch`; without one the probe is skipped. */
+	/** Open API token for `packageAppFetch`; without one the probe is anonymous. */
 	apiToken?: string | null
+	/** Anonymous fallback URL; only used for the default package app. */
+	packageAppHostedUrl?: string | null
 }): Promise<SitePerfReport> {
 	const budget = input.budget ?? (await loadSitePerfBudget())
 	const startedAt = performance.now()
@@ -330,10 +374,22 @@ export async function collectSitePerf(input: {
 			? defaultPackageAppProbePackageId
 			: input.packageAppId
 	const apiToken = input.apiToken?.trim()
-	const packageApp =
-		packageAppId && apiToken
+	const hostedUrl =
+		input.packageAppHostedUrl === undefined
+			? packageAppId === defaultPackageAppProbePackageId
+				? defaultPackageAppHostedUrl
+				: null
+			: input.packageAppHostedUrl
+	const packageApp = !packageAppId
+		? null
+		: apiToken
 			? await probePackageApp({ packageId: packageAppId, apiToken })
-			: null
+			: hostedUrl
+				? await probeHostedPackageApp({
+						packageId: packageAppId,
+						url: hostedUrl,
+					})
+				: null
 	const scriptHrefs = hrefsMatching(html, /<script[^>]+src=["']([^"']+)["']/gi)
 	const preloadHrefs = hrefsMatching(
 		html,
@@ -411,7 +467,7 @@ export async function main(argv = process.argv.slice(2)) {
 	const apiToken = process.env.KODY_API_TOKEN?.trim()
 	if (packageAppId !== null && !apiToken) {
 		process.stderr.write(
-			'KODY_API_TOKEN is not set; skipping the package-app probe.\n',
+			'KODY_API_TOKEN is not set; probing the package app anonymously.\n',
 		)
 	}
 	const report = await collectSitePerf({ url, packageAppId, apiToken })
