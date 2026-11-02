@@ -423,12 +423,19 @@ async function setOrganizationAccess(
 		subjectType: subject.type,
 		subjectId: subject.id,
 	})
-	const kept = existing
-		.flatMap((grant) => grant.permissions)
-		.filter(
-			(permission): permission is OrgPermission =>
-				isOrgPermission(permission) && !config.allows(permission),
-		)
+	const keptFrom = (grants: typeof existing) =>
+		grants
+			.flatMap((grant) => grant.permissions)
+			.filter(
+				(permission): permission is OrgPermission =>
+					isOrgPermission(permission) && !config.allows(permission),
+			)
+	const kept = keptFrom(existing)
+	// Saving clears a past expiry, so only a live grant's permissions skip the Owner check.
+	const now = new Date().toISOString()
+	const liveKept = keptFrom(
+		existing.filter((grant) => !grant.expiresAt || grant.expiresAt > now),
+	)
 	const permissions = [
 		...new Set([
 			...kept,
@@ -456,7 +463,7 @@ async function setOrganizationAccess(
 		const resolved = await resolveAuthorizedGrantPermissions(ctx, {
 			family: 'org',
 			permissions,
-			alreadyHeld: kept,
+			alreadyHeld: liveKept,
 		})
 		await upsertGrant({
 			db: env.APP_DB,

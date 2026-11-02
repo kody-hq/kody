@@ -767,3 +767,60 @@ test('a member:write delegate edits read access for a subject holding Owner-gran
 	expect(added.status).toBe(400)
 	expect((await bobOrgPermissions()).has('app:execute')).toBe(false)
 })
+
+test('a delegate saving reads cannot revive an expired Owner-only grant', async () => {
+	const env = createEnv()
+	const now = '2026-01-01T00:00:00.000Z'
+	sqlite
+		.prepare(
+			`INSERT INTO teams (id, org_id, slug, name, created_at, updated_at)
+			 VALUES ('team-delegates', ?, 'delegates', 'Delegates', ?, ?)`,
+		)
+		.run(acmeId, now, now)
+	sqlite
+		.prepare(
+			`INSERT INTO team_members (team_id, user_id, created_at)
+			 VALUES ('team-delegates', ?, ?)`,
+		)
+		.run(people.bob.personId, now)
+	const insertGrant = sqlite.prepare(
+		`INSERT INTO grants (
+		   id, org_id, resource_type, resource_id, subject_type, subject_id,
+		   created_by_user_id, created_at, updated_at, expires_at
+		 ) VALUES (?, ?, 'org', ?, ?, ?, ?, ?, ?, ?)`,
+	)
+	const insertPermission = sqlite.prepare(
+		`INSERT INTO grant_permissions (grant_id, permission) VALUES (?, ?)`,
+	)
+	insertGrant.run(
+		'grant-team-delegate',
+		acmeId,
+		acmeId,
+		'team',
+		'team-delegates',
+		people.ada.personId,
+		now,
+		now,
+		null,
+	)
+	insertPermission.run('grant-team-delegate', 'member:write')
+	insertGrant.run(
+		'grant-bob-expired',
+		acmeId,
+		acmeId,
+		'user',
+		people.bob.personId,
+		people.ada.personId,
+		now,
+		now,
+		'2026-01-02T00:00:00.000Z',
+	)
+	insertPermission.run('grant-bob-expired', 'package:publish')
+
+	const refused = await grantReads(env, 'bob', {
+		subject: `user:${people.bob.personId}`,
+		permissions: ['job:read'],
+	})
+	expect(refused.status).toBe(400)
+	expect((await bobOrgPermissions()).has('package:publish')).toBe(false)
+})
