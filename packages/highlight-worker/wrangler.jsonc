@@ -1,7 +1,8 @@
 {
 	"$schema": "../../node_modules/wrangler/config-schema.json",
 	// Syntax-highlight worker: TanStack Highlight lives only here. Origin reaches it
-	// through the HIGHLIGHT service binding (no public hostname).
+	// through the HIGHLIGHT service binding. The workers.dev URL stays on for the
+	// deploy /health probe; /highlight refuses any host but the binding origin.
 	"name": "kody-highlight",
 	"main": "./src/index.ts",
 	"compatibility_date": "2026-04-16",
