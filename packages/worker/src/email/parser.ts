@@ -3,7 +3,13 @@ import {
 	type PostalMimeAddress as PostalAddress,
 	type PostalMimeAttachment as PostalAttachment,
 } from '#worker/postal-mime-load.ts'
-import { normalizeEmailAddress, parseHeaderAddressList } from './address.ts'
+import {
+	normalizeAddrSpec,
+	normalizeEmailAddress,
+	normalizeHeaderMailbox,
+	parseHeaderAddressList,
+	parseHeaderEmailAddressList,
+} from './address.ts'
 import {
 	maxKeptInboundRawBytes,
 	maxSurvivableInboundRawBytes,
@@ -50,7 +56,7 @@ function flattenPostalAddresses(
 	for (const address of input) {
 		if ('group' in address && Array.isArray(address.group)) {
 			for (const groupAddress of address.group) {
-				const normalized = normalizeEmailAddress(groupAddress.address)
+				const normalized = normalizeAddrSpec(groupAddress.address)
 				if (normalized) {
 					out.push({ name: groupAddress.name || null, address: normalized })
 				}
@@ -58,7 +64,7 @@ function flattenPostalAddresses(
 			continue
 		}
 		if (!address.address) continue
-		const normalized = normalizeEmailAddress(address.address)
+		const normalized = normalizeAddrSpec(address.address)
 		if (normalized)
 			out.push({ name: address.name || null, address: normalized })
 	}
@@ -191,15 +197,27 @@ export async function parseForwardableEmailRawMime(
 		name: header.originalKey || header.key,
 		value: header.value,
 	}))
-	const headerFrom = flattenPostalAddresses(parsed.from)
-	const headerFromFallback = parseHeaderAddressList(
-		getHeader(message.headers, 'From'),
-	)[0]
-	const fromAddress =
-		headerFrom[0]?.address ??
-		headerFromFallback?.address ??
-		normalizeEmailAddress(message.from) ??
-		null
+	// The From address decides who the message runs as, so it is never read
+	// out of a larger, malformed value (e.g. a quoted local part holding `@`)
+	// or picked from a From header that names several mailboxes. postal-mime
+	// keeps only the first mailbox of a From list, so the raw header is
+	// counted too.
+	const postalFrom = parsed.from
+		? 'group' in parsed.from && Array.isArray(parsed.from.group)
+			? parsed.from.group
+			: [parsed.from]
+		: []
+	const rawHeaderFrom = getHeader(message.headers, 'From')
+	const headerFromAddress =
+		postalFrom.length > 1 ||
+		parseHeaderEmailAddressList(rawHeaderFrom).length > 1
+			? null
+			: postalFrom.length === 1
+				? normalizeAddrSpec(postalFrom[0]?.address)
+				: rawHeaderFrom
+					? normalizeHeaderMailbox(rawHeaderFrom)
+					: null
+	const fromAddress = headerFromAddress ?? normalizeAddrSpec(message.from)
 	const normalizedEnvelopeTo = normalizeEmailAddress(message.to)
 	const toAddresses = dedupeMailboxes([
 		...(normalizedEnvelopeTo
@@ -219,7 +237,7 @@ export async function parseForwardableEmailRawMime(
 	const inReplyToHeader =
 		parsed.inReplyTo ?? getPostalHeader(parsed.headers, 'in-reply-to')
 	return {
-		envelopeFrom: normalizeEmailAddress(message.from) ?? message.from,
+		envelopeFrom: normalizeAddrSpec(message.from) ?? message.from,
 		envelopeTo: normalizeEmailAddress(message.to) ?? message.to,
 		headerFrom: fromAddress,
 		to: toAddresses,

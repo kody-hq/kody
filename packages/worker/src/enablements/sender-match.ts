@@ -1,4 +1,7 @@
-import { normalizeEmailAddress } from '#worker/email/address.ts'
+import {
+	normalizeEmailAddress,
+	normalizeHeaderMailbox,
+} from '#worker/email/address.ts'
 import { type InboundEmailSender } from '#worker/request-context/request-context.ts'
 import { type EnablementSenderKind } from './types.ts'
 
@@ -13,7 +16,7 @@ export type InboundSenderMatch = {
 }
 
 function fromDomain(fromAddress: string | null) {
-	const normalized = fromAddress ? normalizeEmailAddress(fromAddress) : null
+	const normalized = fromAddress ? normalizeHeaderMailbox(fromAddress) : null
 	if (!normalized) return null
 	const at = normalized.lastIndexOf('@')
 	return at === -1 ? null : normalized.slice(at + 1)
@@ -99,7 +102,7 @@ export function enablementMatchesInboundSender(input: {
 		case 'address': {
 			if (!match.authenticated || !senderValue) return false
 			const from = match.fromAddress
-				? normalizeEmailAddress(match.fromAddress)
+				? normalizeHeaderMailbox(match.fromAddress)
 				: null
 			const expected = normalizeEmailAddress(senderValue)
 			return from !== null && expected !== null && from === expected

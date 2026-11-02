@@ -766,3 +766,50 @@ test('classification reads live account state for the inbox org', async () => {
 		}),
 	).resolves.toMatchObject({ kind: 'inbox-owner' })
 })
+
+test('DMARC pass authenticates From only for the domain the stamp evaluated', async () => {
+	const t = await setup()
+	const classify = (input: {
+		fromAddress: string
+		envelopeFrom: string
+		authResults: string
+	}) => classifyInboundEmailSender({ db: t.db, orgId: t.orgId, message: input })
+
+	// A From that parsed to a member address, while DMARC evaluated the
+	// sender's own domain, is not the member.
+	await expect(
+		classify({
+			fromAddress: 'bea@acme.example',
+			envelopeFrom: 'bounce@evil.example',
+			authResults:
+				'mx.cloudflare.net; spf=pass smtp.mailfrom=evil.example; dkim=pass header.d=evil.example; dmarc=pass header.from=evil.example',
+		}),
+	).resolves.toMatchObject({ kind: 'unverified' })
+	await expect(
+		classify({
+			fromAddress: 'receipts@shop.example',
+			envelopeFrom: 'bounce@evil.example',
+			authResults:
+				'mx.cloudflare.net; spf=pass smtp.mailfrom=evil.example; dkim=pass header.d=evil.example; dmarc=pass header.from=evil.example',
+		}),
+	).resolves.toMatchObject({ kind: 'unverified' })
+	// An envelope that only looks like it is in the From domain is not aligned.
+	await expect(
+		classify({
+			fromAddress: 'bea@acme.example',
+			envelopeFrom: '"bea@acme.example"@evil.example',
+			authResults:
+				'mx.cloudflare.net; spf=pass smtp.mailfrom=evil.example; dmarc=pass header.from=evil.example',
+		}),
+	).resolves.toMatchObject({ kind: 'unverified' })
+
+	// DMARC pass for the From domain authenticates without an aligned envelope.
+	await expect(
+		classify({
+			fromAddress: 'bea@acme.example',
+			envelopeFrom: 'bounce@mailer.example',
+			authResults:
+				'mx.cloudflare.net; spf=pass smtp.mailfrom=mailer.example; dkim=pass header.d=acme.example; dmarc=pass header.from=ACME.example',
+		}),
+	).resolves.toMatchObject({ kind: 'member', actor: { userId: t.beaId } })
+})

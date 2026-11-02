@@ -20,7 +20,7 @@ import {
 	type RequestSource,
 } from '#worker/request-context/request-context.ts'
 import { type CloudflareEmailDeliveryEvent } from './delivery-events.ts'
-import { normalizeEmailAddress } from './address.ts'
+import { normalizeHeaderMailbox } from './address.ts'
 import { resolveInboundEmailAuthVerdict } from './auth-verdict.ts'
 import {
 	authenticatesFromAddress,
@@ -245,7 +245,7 @@ export async function dispatchInboundEmailSubscriptionEvents(input: {
 			topic,
 		})
 	const fromAddress = input.message.fromAddress
-		? normalizeEmailAddress(input.message.fromAddress)
+		? normalizeHeaderMailbox(input.message.fromAddress)
 		: null
 	const inboundFromAuthenticated = fromAddress
 		? authenticatesFromAddress({
