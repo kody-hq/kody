@@ -11,9 +11,10 @@ test('preview-flag labels become allowlisted seed flag keys', () => {
 			'friction',
 			'preview-flag:execution-contexts',
 			'preview-flag:demo-indicator',
+			'preview-flag:mcp-events-extension',
 			'preview-flag:execution-contexts',
 		]),
-	).toEqual(['execution-contexts', 'demo-indicator'])
+	).toEqual(['execution-contexts', 'demo-indicator', 'mcp-events-extension'])
 	expect(previewSeedFlagKeysFromLabels(['bug'])).toEqual([])
 })
 

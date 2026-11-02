@@ -10,6 +10,7 @@ import { type FeatureFlagKey } from '#universal/feature-flags/registry.ts'
 export const previewSeedFlagAllowlist = [
 	'demo-indicator',
 	'execution-contexts',
+	'mcp-events-extension',
 	'package-credential-suppliers',
 	'repo-push-queue',
 ] as const satisfies ReadonlyArray<FeatureFlagKey>
