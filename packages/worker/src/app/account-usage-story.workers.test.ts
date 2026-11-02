@@ -77,13 +77,12 @@ async function loadStoryAndCredits(userId: number) {
 		env,
 		userId,
 		orgId: row.stable_user_id,
-		personal: true,
 		now,
 	})
 	if (!user) throw new Error('seeded user missing')
 	const computeOverage = await readAccountComputeOverage({
 		db: env.APP_DB,
-		stableUserId: user.stableUserId,
+		stableUserId: user.orgId,
 		plan: user.entitlement.plan,
 		ladder: user.entitlement.ladder,
 		creditWallet: user.entitlement.creditWallet,
@@ -91,7 +90,7 @@ async function loadStoryAndCredits(userId: number) {
 	})
 	const { credits, wallet } = await loadAccountUsageCredits({
 		env,
-		stableUserId: user.stableUserId,
+		stableUserId: user.orgId,
 		entitlement: user.entitlement,
 		canBuyCredits: user.canBuyCredits,
 		hasPaidProSubscription: user.canBuyCredits,
@@ -101,7 +100,7 @@ async function loadStoryAndCredits(userId: number) {
 	})
 	const story = await loadAccountUsageStory({
 		db: env.APP_DB,
-		stableUserId: user.stableUserId,
+		stableUserId: user.orgId,
 		plan: user.entitlement.plan,
 		creditWallet: user.entitlement.creditWallet,
 		canBuyCredits: user.canBuyCredits,

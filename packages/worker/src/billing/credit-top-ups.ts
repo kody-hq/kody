@@ -46,14 +46,15 @@ export function creditTopUpSuccessUrl(creditsUrl: string): string {
 
 export async function startCreditTopUpCheckout(input: {
 	env: Env
-	stableUserId: string
+	/** `orgs.id` whose wallet the top-up credits. */
+	orgId: string
 	stripeCustomerId: string
 	amountCents: number
 	creditsUrl: string
 }): Promise<{ url: string }> {
 	const clientReferenceId = await createBillingLinkReference(
 		input.env,
-		input.stableUserId,
+		input.orgId,
 	)
 	const session = await createCreditTopUpCheckoutSession(input.env, {
 		customerId: input.stripeCustomerId,
@@ -63,10 +64,37 @@ export async function startCreditTopUpCheckout(input: {
 		cancelUrl: input.creditsUrl,
 		metadata: {
 			[creditTopUpMetadataKey]: '1',
-			...buildOrgBillingMetadata(input.stableUserId),
+			...buildOrgBillingMetadata(input.orgId),
 		},
 	})
 	return { url: session.url }
+}
+
+/**
+ * Wallet org for a top-up stamped with `stampedId`: the org id itself when
+ * that org exists (a converted team keeps its owner's `stable_user_id`), or —
+ * for sessions started before checkout stamped `orgs.id` — a person's
+ * `users.stable_user_id`, mapped to their `users.personal_org_id`. Orgs
+ * mid-delete (`deleting_at`) resolve to null the same way credit debit skips
+ * them — a Stripe return during delete must not refill a wallet about to
+ * vanish.
+ */
+async function resolveCreditTopUpOrgId(
+	db: D1Database,
+	stampedId: string,
+): Promise<string | null> {
+	const org = await db
+		.prepare(
+			`SELECT id FROM orgs
+			 WHERE id = CASE
+				WHEN EXISTS (SELECT 1 FROM orgs WHERE id = ?1) THEN ?1
+				ELSE (SELECT NULLIF(TRIM(personal_org_id), '') FROM users
+				 WHERE stable_user_id = ?1${andLiveDeletedAtSql()})
+			 END AND deleting_at IS NULL${andLiveDeletedAtSql()}`,
+		)
+		.bind(stampedId)
+		.first<{ id: string }>()
+	return org?.id ?? null
 }
 
 /**
@@ -79,9 +107,10 @@ export async function startCreditTopUpCheckout(input: {
 export async function applyCreditTopUpFromCheckoutSession(input: {
 	env: Env
 	sessionId: string
-	expectedStableUserId?: string
+	/** Org the signed-in caller is completing for; the session must credit it. */
+	expectedOrgId?: string
 	now: Date
-}): Promise<CreditTopUpResult & { stableUserId: string }> {
+}): Promise<CreditTopUpResult & { orgId: string }> {
 	if (!isBillingConfigured(input.env)) {
 		throw new CreditTopUpError(
 			'billing_not_configured',
@@ -109,11 +138,13 @@ export async function applyCreditTopUpFromCheckoutSession(input: {
 	) {
 		throw new CreditTopUpError('not_paid', 'That top-up has not been paid.')
 	}
-	const stableUserId =
-		input.expectedStableUserId ??
+	// `client_reference_id` is the signed reference for the id checkout start
+	// stamped into metadata (the org id, or a legacy personal stable_user_id).
+	const stampedId =
 		resolveOrgIdFromStripeMetadata(session.metadata ?? undefined) ??
+		input.expectedOrgId ??
 		''
-	if (!stableUserId) {
+	if (!stampedId) {
 		throw new CreditTopUpError(
 			'user_not_found',
 			'No Kody account matched this top-up.',
@@ -121,7 +152,7 @@ export async function applyCreditTopUpFromCheckoutSession(input: {
 	}
 	const expectedReference = await createBillingLinkReference(
 		input.env,
-		stableUserId,
+		stampedId,
 	)
 	if (session.client_reference_id !== expectedReference) {
 		throw new CreditTopUpError(
@@ -129,30 +160,27 @@ export async function applyCreditTopUpFromCheckoutSession(input: {
 			'This top-up does not belong to your account.',
 		)
 	}
-	// Wallets are keyed by org id (personal or team). Metadata stores orgs.id —
-	// for personal orgs that is users.personal_org_id when set, else
-	// users.stable_user_id — so look up the org row by that id, not by person id.
-	// Skip orgs mid-delete (`deleting_at`) the same way credit debit does —
-	// a Stripe return during delete must not refill a wallet about to vanish.
-	const org = await input.env.APP_DB.prepare(
-		`SELECT id FROM orgs WHERE id = ? AND deleting_at IS NULL${andLiveDeletedAtSql()}`,
-	)
-		.bind(stableUserId)
-		.first<{ id: string }>()
-	if (!org) {
+	const orgId = await resolveCreditTopUpOrgId(input.env.APP_DB, stampedId)
+	if (!orgId) {
 		throw new CreditTopUpError(
 			'user_not_found',
 			'No Kody account matched this top-up.',
 		)
 	}
+	if (input.expectedOrgId !== undefined && orgId !== input.expectedOrgId) {
+		throw new CreditTopUpError(
+			'client_reference_mismatch',
+			'This top-up does not belong to your account.',
+		)
+	}
 	const result = await applyCreditPayment({
 		db: input.env.APP_DB,
-		userId: stableUserId,
+		userId: orgId,
 		kind: 'top_up',
 		amountCents,
 		stripeReference: session.id,
 		paymentMethodId: session.payment_intent?.payment_method ?? null,
 		now: input.now,
 	})
-	return { ...result, stableUserId }
+	return { ...result, orgId }
 }

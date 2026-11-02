@@ -109,7 +109,7 @@ export async function completeOrgCreditTopUp(input: {
 		await applyCreditTopUpFromCheckoutSession({
 			env,
 			sessionId: input.sessionId.trim(),
-			expectedStableUserId: access.org.id,
+			expectedOrgId: access.org.id,
 			now: new Date(),
 		})
 		query = { credits: 'added' }
