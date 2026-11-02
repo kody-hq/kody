@@ -699,13 +699,26 @@ jobs:
       - name: 📥 Install Dependencies
         run: npm ci
 
+      # actions/download-artifact stream-unzips with unzip-stream, which
+      # rejects some valid archives ("unexpected end of file"); gh reads the
+      # zip central directory instead.
       - name: 📥 Download blob reports
-        uses: actions/download-artifact@v4
-        with:
-          pattern: playwright-blob-report-*
-          path: all-blob-reports
-          merge-multiple: true
-          if-no-files-found: ignore
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p all-blob-reports
+          if ! out=$(gh run download "$RUN_ID" --pattern 'playwright-blob-report-*' --dir blob-artifacts 2>&1); then
+            if grep -qE 'no artifact matches|no valid artifacts found' <<<"$out"; then
+              echo "::warning::No Playwright blob report artifacts found."
+              exit 0
+            fi
+            echo "$out" >&2
+            exit 1
+          fi
+          find blob-artifacts -type f -name '*.zip' -exec mv -t all-blob-reports {} +
 
       - name: 🧩 Merge Playwright reports
         run: |
