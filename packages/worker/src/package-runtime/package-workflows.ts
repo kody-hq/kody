@@ -27,7 +27,7 @@ import {
 	type OrgRole,
 	type RequestLineage,
 } from '@kody-internal/shared/request-context.ts'
-import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
+import { loadLiveOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import {
 	parseRequestLineage,
 	type RequestSource,
@@ -315,7 +315,7 @@ async function workflowRequestSource(
 	) {
 		return { kind: 'inherited', lineage }
 	}
-	const binding = await loadOrgBindingForOrg(db, actorId, orgId)
+	const binding = await loadLiveOrgBindingForOrg(db, actorId, orgId)
 	if (!binding) {
 		throw terminalWorkflowStepError(
 			`Workflow "${payload.workflowName}" cannot run: the person who started it no longer has access to its organization.`,
