@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 import {
 	cliBaselineVersion,
+	cliPathAffectsPublishedPackage,
 	planCliRelease,
 	type ReleaseCommit,
 } from './cli-release-plan.ts'
@@ -58,12 +59,29 @@ test('shared spec commits publish only when the generated client changes', () =>
 	).toEqual({ version: '1.27.0' })
 })
 
+test('the unpublished CLI README is not a publish-affecting path', () => {
+	expect(cliPathAffectsPublishedPackage('packages/cli/README.md')).toBe(false)
+	expect(cliPathAffectsPublishedPackage('packages/cli/src/cli.ts')).toBe(true)
+	expect(cliPathAffectsPublishedPackage('packages/cli/skills/login.md')).toBe(
+		true,
+	)
+	expect(
+		planCliRelease({
+			currentVersion: cliBaselineVersion,
+			generatedClientChanged: false,
+			commits: [commit({ subject: 'docs(cli): readme', touchesCli: false })],
+		}),
+	).toBeNull()
+})
+
 test('docs and other non-fix/feat types patch-bump when they touch the CLI', () => {
 	expect(
 		planCliRelease({
 			currentVersion: cliBaselineVersion,
 			generatedClientChanged: false,
-			commits: [commit({ subject: 'docs(cli): readme', touchesCli: true })],
+			commits: [
+				commit({ subject: 'docs(cli): document a flag', touchesCli: true }),
+			],
 		}),
 	).toEqual({ version: '1.26.4' })
 	expect(

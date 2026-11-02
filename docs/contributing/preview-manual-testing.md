@@ -209,8 +209,9 @@ ready for review, add or remove a `preview-flag:` label, or re-run the
 workflow). The seed step fails closed for any other key, and `--enable-flag`
 with `--remote` refuses every wrangler env except `preview`.
 
-`execution-contexts` is on the allowlist. Label
-`preview-flag:execution-contexts` makes the seed step run:
+`execution-contexts` and `mcp-events-extension` are on the allowlist. Label
+`preview-flag:execution-contexts` or `preview-flag:mcp-events-extension` makes
+the seed step run the matching `--enable-flag`. For execution contexts:
 
 ```bash
 node tools/seed-test-data.ts --remote --config "$WRANGLER_CONFIG" \

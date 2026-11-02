@@ -37,8 +37,9 @@ function bumpForCommit(commit: ReleaseCommit): ReleaseBump {
 	}
 	if (breaking) return 'major'
 	// docs / chore / ci / test / build / style / refactor: patch when they
-	// touch packages/cli so help and other CLI-facing source still publishes
-	// (#3975). feat stays minor; fix / perf / revert stay patch via releasableTypes.
+	// touch published CLI paths so help and other CLI-facing source still
+	// publishes (#3975). README-only edits do not set touchesCli (#4607).
+	// feat stays minor; fix / perf / revert stay patch via releasableTypes.
 	if (!releasableTypes.has(match.groups.type)) {
 		return commit.touchesCli ? 'patch' : 'none'
 	}
@@ -92,12 +93,22 @@ function nextVersion(current: string, bump: ReleaseBump): string | null {
 }
 
 /**
+ * Paths under `packages/cli` that should start a CLI release. npm still
+ * includes the root README in the tarball, but a README-only docs edit
+ * must not patch-bump or publish (#4607).
+ */
+export function cliPathAffectsPublishedPackage(path: string): boolean {
+	return path.startsWith('packages/cli/') && path !== 'packages/cli/README.md'
+}
+
+/**
  * Publish when a commit touches the CLI (`feat` → minor; `fix` / `perf` /
  * `revert` → patch; `docs` / `chore` / `ci` / `test` / `build` / `style` /
  * `refactor` → patch per #3975; a subject without a conventional prefix →
  * patch per #4363), or when the generated route table changed (spec/shared
  * input) even if those commits are not `feat`/`fix`. Commits that do not
- * touch the CLI (and do not change the generated client) do not publish.
+ * touch published CLI paths (and do not change the generated client) do
+ * not publish. Callers set `touchesCli` from `cliPathAffectsPublishedPackage`.
  */
 export function planCliRelease(input: {
 	currentVersion: string

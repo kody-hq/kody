@@ -62,15 +62,20 @@ const genericWriters = new Set([
 ])
 const genericWritePattern = /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+\$\{/
 
+function isAccessEpochInventorySource(file: string) {
+	const normalized = file.replaceAll('\\', '/')
+	return (
+		normalized.endsWith('.ts') &&
+		!normalized.endsWith('.test.ts') &&
+		!normalized.endsWith('.test-support.ts') &&
+		!normalized.startsWith('test-support/') &&
+		!normalized.endsWith('-test-schema.ts')
+	)
+}
+
 function sourceFiles() {
 	return readdirSync(workerSrc, { recursive: true, encoding: 'utf8' })
-		.filter(
-			(file) =>
-				file.endsWith('.ts') &&
-				!file.endsWith('.test.ts') &&
-				!file.startsWith('test-support/') &&
-				!file.endsWith('-test-schema.ts'),
-		)
+		.filter(isAccessEpochInventorySource)
 		.sort()
 }
 
@@ -82,6 +87,16 @@ function accessWritesIn(source: string) {
 	}
 	return tables
 }
+
+test('colocated test-support fixtures are not scanned as production writers', () => {
+	expect(
+		isAccessEpochInventorySource('credentials/example.test-support.ts'),
+	).toBe(false)
+	expect(isAccessEpochInventorySource('test-support\\fixture.ts')).toBe(false)
+	expect(isAccessEpochInventorySource('credentials/credential-client.ts')).toBe(
+		true,
+	)
+})
 
 test('every module that writes an access table is a known writer with a documented invalidation', () => {
 	const found = new Map<string, Set<string>>()
@@ -99,7 +114,7 @@ test('every module that writes an access table is a known writer with a document
 	const unexpected = [...found.keys()].filter((file) => !(file in writers))
 	expect(
 		unexpected,
-		`New access-table writer(s). Bump access_epoch in the same batch and register the file in access-epoch-write-guard.node.test.ts: ${unexpected
+		`New access-table writer(s). Production writers must bump access_epoch in the same batch and register the file here. Test-only fixtures belong in *.test-support.ts or packages/worker/src/test-support/: ${unexpected
 			.map((file) => `${file} (${[...found.get(file)!].join(', ')})`)
 			.join('; ')}`,
 	).toEqual([])

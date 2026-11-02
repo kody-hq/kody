@@ -610,21 +610,23 @@ test('CapabilityProxy insufficient_scope prints the platform mint scopes as comm
 			},
 			403,
 		)) as typeof fetch
-	await assert.rejects(
-		() =>
-			openCapabilityProxySession({
-				apiUrl: 'https://api.kody.codes',
-				token: 'kody_at_x',
-				fetchFn,
-			}),
-		(error: Error) => {
-			assert.ok(
-				error.message.includes(
-					'npx @kodycodes/cli auth bootstrap --lifetime short --scopes org:execute,package:write',
-				),
-				error.message,
-			)
-			return true
-		},
-	)
+	await withCliEnv(fetchFn, async () => {
+		await assert.rejects(
+			() =>
+				openCapabilityProxySession({
+					apiUrl,
+					token: 'kody_at_x',
+					fetchFn,
+				}),
+			(error: Error) => {
+				assert.ok(
+					error.message.includes(
+						'npx @kodycodes/cli auth bootstrap --lifetime short --scopes org:execute,package:write',
+					),
+					error.message,
+				)
+				return true
+			},
+		)
+	})
 })

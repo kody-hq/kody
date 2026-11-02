@@ -1,3 +1,4 @@
+import { type CSSObject } from '@emotion/react'
 import { surfaceCardCss } from './surface.ts'
 import {
 	colors,
@@ -663,7 +664,9 @@ type SurfaceCardCssOptions = {
 	interactive?: boolean
 }
 
-export function getSurfaceCardCss(options: SurfaceCardCssOptions = {}) {
+export function getSurfaceCardCss(
+	options: SurfaceCardCssOptions = {},
+): CSSObject {
 	return {
 		...surfaceCardCss,
 		...(options.interactive
@@ -790,7 +793,7 @@ export const pageDescriptionCss = {
 	color: colors.textMuted,
 }
 
-export const cardCss = {
+export const cardCss: CSSObject = {
 	...surfaceCardCss,
 	padding: spacing.lg,
 	display: 'grid',
