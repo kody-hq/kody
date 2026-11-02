@@ -46,8 +46,11 @@ export async function listenDevServer(
 			await listenOnce(server, input.host, port)
 			return (server.address() as AddressInfo).port
 		} catch (error) {
-			if (!isAddressInUse(error)) throw error
-			if (input.explicit) throw portInUseError(input.host, port)
+			if (input.explicit) {
+				if (isAddressInUse(error)) throw portInUseError(input.host, port)
+				throw error
+			}
+			if (!isAddressInUse(error) && !isPortReserved(error)) throw error
 		}
 	}
 	throw new StructuredCliError({
@@ -87,4 +90,9 @@ function listenOnce(server: Server, host: string, port: number): Promise<void> {
 
 function isAddressInUse(error: unknown): boolean {
 	return (error as NodeJS.ErrnoException | undefined)?.code === 'EADDRINUSE'
+}
+
+/** Windows answers EACCES for ports inside an excluded (reserved) range. */
+function isPortReserved(error: unknown): boolean {
+	return (error as NodeJS.ErrnoException | undefined)?.code === 'EACCES'
 }

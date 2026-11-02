@@ -127,6 +127,49 @@ test('listenDevServer walks to the next free port unless the port is explicit', 
 	}
 })
 
+test('listenDevServer skips a reserved port (EACCES) unless the port is explicit', async () => {
+	const fakeServer = (reserved: number) => {
+		const server = createServer()
+		let bound = 0
+		server.listen = ((port: number) => {
+			queueMicrotask(() => {
+				if (port === reserved) {
+					server.emit(
+						'error',
+						Object.assign(new Error(`listen EACCES ${port}`), {
+							code: 'EACCES',
+						}),
+					)
+					return
+				}
+				bound = port
+				server.emit('listening')
+			})
+			return server
+		}) as Server['listen']
+		server.address = () => ({
+			address: '127.0.0.1',
+			family: 'IPv4',
+			port: bound,
+		})
+		return server
+	}
+	const bound = await listenDevServer(fakeServer(4200), {
+		host: '127.0.0.1',
+		port: 4200,
+		explicit: false,
+	})
+	assert.equal(bound, 4201)
+	await assert.rejects(
+		listenDevServer(fakeServer(4200), {
+			host: '127.0.0.1',
+			port: 4200,
+			explicit: true,
+		}),
+		/EACCES/,
+	)
+})
+
 test('dev asset paths are decoded and never escape the assets dir', () => {
 	assert.equal(parseDevAssetPath('/_assets/app.css'), 'app.css')
 	assert.equal(parseDevAssetPath('/_assets/a%20b.png'), 'a b.png')
