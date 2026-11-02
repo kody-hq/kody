@@ -131,11 +131,11 @@ const pickerSentenceCss = {
 const nativeSelectCss = {
 	appearance: 'none' as const,
 	WebkitAppearance: 'none' as const,
-	paddingRight: '1.35em',
-	backgroundImage: 'var(--select-chevron)',
+	paddingRight: 'calc(0.5em + 16px)',
+	backgroundImage: 'var(--select-caret)',
 	backgroundRepeat: 'no-repeat',
-	backgroundPosition: 'right 0.35em center',
-	backgroundSize: '0.75em',
+	backgroundPosition: 'right 0.5em center',
+	backgroundSize: '8px 5px',
 } satisfies CSSObject
 
 const optionMarkCss = {
