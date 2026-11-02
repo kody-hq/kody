@@ -5,6 +5,7 @@ import {
 	cliBaselineTag,
 	cliBaselineVersion,
 	cliPackageName,
+	cliPathAffectsPublishedPackage,
 	planCliRelease,
 	type ReleaseCommit,
 } from './cli-release-plan.ts'
@@ -51,6 +52,21 @@ function commitTouches(sha: string, path: string): boolean {
 	return diff.length > 0
 }
 
+function commitTouchesPublishedCli(sha: string): boolean {
+	const diff = git([
+		'diff-tree',
+		'--no-commit-id',
+		'--name-only',
+		'-r',
+		sha,
+		'--',
+		'packages/cli',
+	])
+	return diff
+		.split('\n')
+		.some((path) => path.length > 0 && cliPathAffectsPublishedPackage(path))
+}
+
 function generatedClientChanged(from: string): boolean {
 	try {
 		const diff = git([
@@ -79,7 +95,7 @@ function commitsSince(from: string): Array<ReleaseCommit> {
 		commits.push({
 			subject,
 			body,
-			touchesCli: commitTouches(sha, 'packages/cli'),
+			touchesCli: commitTouchesPublishedCli(sha),
 			touchesClientInputs:
 				commitTouches(sha, 'packages/worker/src/open-api') ||
 				commitTouches(sha, 'packages/shared') ||
