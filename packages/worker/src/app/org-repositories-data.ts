@@ -109,11 +109,16 @@ export async function loadOrgRepositoriesData(input: {
 			const canOpenDetail =
 				checkPermission(access, 'package:read', resource).allowed ||
 				Boolean(pkg.communityListingId)
-			return toPublicProfilePackageItem(pkg, {
+			const item = toPublicProfilePackageItem(pkg, {
 				includeOwnerVisibility: true,
 				username: slug,
 				canOpenDetail,
 			})
+			// Private and hidden package icons require package read access. App-only
+			// viewers still get a monogram instead of an inaccessible image.
+			return !canOpenDetail && (pkg.isPrivate || pkg.hidden)
+				? { ...item, iconUrl: null }
+				: item
 		}),
 		activity: null,
 		query: query || null,
