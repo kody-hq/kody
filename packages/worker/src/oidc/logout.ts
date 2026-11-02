@@ -112,6 +112,13 @@ export async function handleOidcLogoutRequest(request: Request, env: Env) {
 	}
 
 	if (params.postLogoutRedirectUri) {
+		// RP-Initiated Logout: only redirect for an RP that proves it holds an
+		// id_token we issued; a bare client_id is not proof (DCR is open).
+		if (!params.idTokenHint) {
+			return new Response('post_logout_redirect_uri requires id_token_hint', {
+				status: 400,
+			})
+		}
 		let allowed = false
 		if (clientId) {
 			const helpers = await resolveOAuthHelpers<LogoutOAuthHelpers>(
