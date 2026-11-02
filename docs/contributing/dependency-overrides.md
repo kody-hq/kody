@@ -363,3 +363,46 @@ The floor is `5.0.12` for:
   uncontrolled recursion in `parseCommaParts` (`<5.0.10`)
 
 The upper bound `<6.0.0` keeps the override within the same major version.
+
+### `axios` → `>=1.21.0 <2.0.0`
+
+Keeps the `axios` copy reached through `nx` at or above the current advisory
+floor. Upstream `nx@23.2.1` pins `axios@1.18.1` exactly, so this override cannot
+be removed until an `nx` release depends on `axios@>=1.20.0`.
+
+The floor covers advisories fixed in `1.20.0`, including:
+
+- [GHSA-vh66-26gq-q6x8](https://github.com/advisories/GHSA-vh66-26gq-q6x8) —
+  prototype pollution gadget in the fetch adapter (`>=1.7.0 <1.20.0`)
+- [GHSA-j8rh-479h-cp32](https://github.com/advisories/GHSA-j8rh-479h-cp32) —
+  header injection via inherited headers (`>=1.0.0 <1.20.0`)
+
+The upper bound `<2.0.0` keeps the override within the same major version.
+
+### `follow-redirects` → `>=1.16.2 <2.0.0`
+
+Keeps the `follow-redirects` copy (via `nx` and its `axios`) at or above the
+current advisory floor. `nx@23.2.1` pins `follow-redirects@1.16.0` exactly, so
+this override cannot be removed yet.
+
+- [GHSA-q3jh-wrc6-jgq8](https://github.com/advisories/GHSA-q3jh-wrc6-jgq8) —
+  array-form headers bypass cross-origin credential stripping
+  (`>=1.16.0 <1.16.1`)
+- [GHSA-mrwp-f3q8-3g9p](https://github.com/advisories/GHSA-mrwp-f3q8-3g9p) —
+  cross-realm `sensitiveHeaders` arrays are discarded (`>=1.16.0 <=1.16.1`)
+
+The upper bound `<2.0.0` keeps the override within the same major version.
+
+### `tinypool` → `>=2.2.0 <3.0.0`
+
+Keeps the `tinypool` copy reached through `oxfmt` at or above the current
+advisory floor. `oxfmt@0.66.0` pins `tinypool@2.1.0` exactly; remove this
+override when `oxfmt` is upgraded to a release that depends on a fixed
+`tinypool`.
+
+- [GHSA-5gmw-xhrv-c9v3](https://github.com/advisories/GHSA-5gmw-xhrv-c9v3) —
+  prototype pollution gadget in worker options (`<=2.1.0`)
+- [GHSA-85c8-ppgw-ccpr](https://github.com/advisories/GHSA-85c8-ppgw-ccpr) —
+  prototype pollution gadget in `run()` options (`<2.1.2`)
+
+The upper bound `<3.0.0` keeps the override within the same major version.
