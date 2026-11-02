@@ -44,7 +44,7 @@ export function IdentityIconMark(props: IdentityIconMarkProps) {
 					aria-hidden="true"
 					width={isDetail ? 88 : 56}
 					height={isDetail ? 88 : 56}
-					loading={isDetail ? 'eager' : 'lazy'}
+					loading={size === 'detail' ? 'eager' : 'lazy'}
 					css={{
 						display: 'block',
 						width: '100%',

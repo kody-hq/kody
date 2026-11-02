@@ -353,12 +353,14 @@ export const loadOrgApps = createServerFn({ method: 'GET' })
 			{ loadOrgRepositoriesData },
 			{ loadProfileData },
 			{ resolvePackageAppLinks },
+			{ mapWithConcurrency },
 		] = await Promise.all([
 			import('../../src/app/org-request-binding.ts'),
 			import('../../src/orgs/personal-org-id.ts'),
 			import('../../src/app/org-repositories-data.ts'),
 			import('../../src/app/profile-data.ts'),
 			import('../../src/app/package-repo-actions.ts'),
+			import('../../src/webhooks/delivery-outcomes.ts'),
 		])
 		if (orgSectionDenial(input.binding, 'apps')) throw notFound()
 		const payload =
@@ -373,22 +375,22 @@ export const loadOrgApps = createServerFn({ method: 'GET' })
 				: await loadOrgRepositoriesData({ ...input, query: '' })
 		if (!payload) throw notFound()
 		const username = payload.profile.username
-		const apps = await Promise.all(
-			payload.packages
-				.filter((pkg) => pkg.hasApp)
-				.map(async (pkg) => {
-					const links = await resolvePackageAppLinks({
-						env: input.env,
-						username,
-						kodyId: pkg.kodyId,
-						viewer: input.user.mcpUser,
-						ownerUserId: input.binding.org.id,
-						hasPackage: true,
-						hasApp: true,
-						requestUrl: input.request.url,
-					})
-					return { ...pkg, appHref: links?.packageAppHref ?? null }
-				}),
+		const apps = await mapWithConcurrency(
+			payload.packages.filter((pkg) => pkg.hasApp),
+			6,
+			async (pkg) => {
+				const links = await resolvePackageAppLinks({
+					env: input.env,
+					username,
+					kodyId: pkg.kodyId,
+					viewer: input.user.mcpUser,
+					ownerUserId: input.binding.org.id,
+					hasPackage: true,
+					hasApp: true,
+					requestUrl: input.request.url,
+				})
+				return { ...pkg, appHref: links?.packageAppHref ?? null }
+			},
 		)
 		return { username, apps }
 	})
