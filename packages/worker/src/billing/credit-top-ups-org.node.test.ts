@@ -54,12 +54,15 @@ function createEnv() {
 			('org-acme', 'acme'),
 			('person-ada', 'ada'),
 			('org-bea', 'bea'),
-			('org-gone', 'gone');
+			('org-gone', 'gone'),
+			('person-cy', 'cy-team'),
+			('org-cy', 'cy');
 		UPDATE orgs SET deleting_at = '2026-01-01T00:00:00.000Z' WHERE id = 'org-gone';
 		INSERT INTO users (stable_user_id, personal_org_id) VALUES
 			('person-ada', 'person-ada'),
 			('person-bea', 'org-bea'),
-			('person-gus', 'org-gone');
+			('person-gus', 'org-gone'),
+			('person-cy', 'org-cy');
 	`)
 	return { APP_DB: createD1FromSqlite(sqlite) } as unknown as Env
 }
@@ -146,6 +149,21 @@ test('an in-flight session stamped with the legacy stable_user_id credits the pe
 	)
 	expect(mocks.applyCreditPayment).not.toHaveBeenCalledWith(
 		expect.objectContaining({ userId: 'person-bea' }),
+	)
+})
+
+test('a converted team keeps top-ups stamped with its org id', async () => {
+	paidSessionStampedWith('person-cy')
+
+	const result = await applyCreditTopUpFromCheckoutSession({
+		env: createEnv(),
+		sessionId: 'cs_paid',
+		now,
+	})
+
+	expect(result.orgId).toBe('person-cy')
+	expect(mocks.applyCreditPayment).toHaveBeenCalledWith(
+		expect.objectContaining({ userId: 'person-cy' }),
 	)
 })
 

@@ -71,7 +71,8 @@ export async function startCreditTopUpCheckout(input: {
 }
 
 /**
- * Wallet org for a top-up stamped with `stampedId`: the org id itself, or —
+ * Wallet org for a top-up stamped with `stampedId`: the org id itself when
+ * that org exists (a converted team keeps its owner's `stable_user_id`), or —
  * for sessions started before checkout stamped `orgs.id` — a person's
  * `users.stable_user_id`, mapped to their `users.personal_org_id`. Orgs
  * mid-delete (`deleting_at`) resolve to null the same way credit debit skips
@@ -85,11 +86,11 @@ async function resolveCreditTopUpOrgId(
 	const org = await db
 		.prepare(
 			`SELECT id FROM orgs
-			 WHERE id = COALESCE(
-				(SELECT NULLIF(TRIM(personal_org_id), '') FROM users
-				 WHERE stable_user_id = ?1${andLiveDeletedAtSql()}),
-				?1
-			 ) AND deleting_at IS NULL${andLiveDeletedAtSql()}`,
+			 WHERE id = CASE
+				WHEN EXISTS (SELECT 1 FROM orgs WHERE id = ?1) THEN ?1
+				ELSE (SELECT NULLIF(TRIM(personal_org_id), '') FROM users
+				 WHERE stable_user_id = ?1${andLiveDeletedAtSql()})
+			 END AND deleting_at IS NULL${andLiveDeletedAtSql()}`,
 		)
 		.bind(stampedId)
 		.first<{ id: string }>()
