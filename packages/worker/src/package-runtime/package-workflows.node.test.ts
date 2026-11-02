@@ -2,6 +2,10 @@ import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { type WorkflowStep } from 'cloudflare:workers'
 import { NonRetryableError } from 'cloudflare:workflows'
 import { expect, test, vi } from 'vitest'
+import {
+	type OrgRole,
+	type RequestLineage,
+} from '@kody-internal/shared/request-context.ts'
 import { sessionRequestLineage } from '#worker/test-support/request-context.ts'
 import type * as PackageInvocationsService from '#worker/package-invocations/service.ts'
 import type * as RunKodyRegistry from '#mcp/run-kody-registry.ts'
@@ -197,7 +201,11 @@ async function queueWorkflow(
 		kodyId: string
 		sourceId: string
 	} | null = null,
-	options: { publishedCommit?: string; step?: WorkflowStep } = {},
+	options: {
+		publishedCommit?: string
+		step?: WorkflowStep
+		lineage?: RequestLineage
+	} = {},
 ) {
 	const binding = createStatefulWorkflowBinding()
 	const env = createWorkflowEnv(
@@ -207,7 +215,7 @@ async function queueWorkflow(
 	const created = await createDynamicCallableWorkflow({
 		env,
 		userId: ownerIdFromStored('user-1'),
-		lineage: sessionRequestLineage('user-1'),
+		lineage: options.lineage ?? sessionRequestLineage('user-1'),
 		packageContext,
 		body: body as never,
 	})
@@ -777,6 +785,107 @@ test('workflow steps inherit the request that started the workflow', async () =>
 		undefined,
 		expect.anything(),
 	)
+})
+
+/** `person-2` started a workflow in team org `user-1` while holding `role`. */
+function teamStarterLineage(role: OrgRole): RequestLineage {
+	const base = sessionRequestLineage('person-2')
+	return {
+		...base,
+		credential: { ...base.credential, orgId: ownerIdFromStored('user-1') },
+		membership: { role },
+	}
+}
+
+async function seedTeamOrg(db: D1Database, starterRole: OrgRole | null) {
+	const now = '2026-05-03T00:00:00.000Z'
+	await db
+		.prepare(
+			`INSERT INTO orgs (id, slug, plan, created_at, updated_at)
+			 VALUES ('user-1', 'team', 'free', ?, ?)`,
+		)
+		.bind(now, now)
+		.run()
+	if (starterRole) {
+		await db
+			.prepare(
+				`INSERT INTO org_memberships (org_id, user_id, role, created_at)
+				 VALUES ('user-1', 'person-2', ?, ?)`,
+			)
+			.bind(starterRole, now)
+			.run()
+	}
+}
+
+test('workflow steps use the live org role of their starter, not the enqueue snapshot', async () => {
+	const bodies = [
+		{
+			code: 'export default async function main() { return { ok: true } }',
+			idempotencyKey: 'live-role-inline',
+		},
+		{ ...packageBody, idempotencyKey: 'live-role-package' },
+	]
+	const requestOf = () =>
+		invocationMocks.invokePackageExport.mock.lastCall?.[0].token.request ?? null
+	for (const body of bodies) {
+		for (const [liveRole, expected] of [
+			['owner', { role: 'owner' }],
+			['member', { role: 'member' }],
+		] as const) {
+			runRecordMocks.resetProjections()
+			invocationMocks.runModuleWithRegistry.mockReset()
+			invocationMocks.invokePackageExport.mockReset()
+			invocationMocks.runModuleWithRegistry.mockResolvedValueOnce({
+				result: { ok: true },
+				logs: [],
+			})
+			invocationMocks.invokePackageExport.mockResolvedValueOnce({
+				status: 200,
+				body: { result: { ok: true } },
+			})
+			const { env, run } = await queueWorkflow({ ...body, runAt }, null, {
+				lineage: teamStarterLineage('owner'),
+			})
+			await seedTeamOrg(env.APP_DB, liveRole)
+			await run()
+			if ('code' in body) {
+				expect(
+					invocationMocks.runModuleWithRegistry.mock.lastCall?.[1],
+				).toMatchObject({ request: { membership: expected } })
+			} else {
+				expect(requestOf()).toMatchObject({
+					kind: 'inherited',
+					lineage: { membership: expected },
+				})
+			}
+		}
+
+		runRecordMocks.resetProjections()
+		invocationMocks.runModuleWithRegistry.mockReset()
+		invocationMocks.invokePackageExport.mockReset()
+		const { step, attempts } = createRetryingStep()
+		const { env, created, run } = await queueWorkflow(
+			{ ...body, runAt },
+			null,
+			{ step, lineage: teamStarterLineage('owner') },
+		)
+		await seedTeamOrg(env.APP_DB, null)
+		await expect(run()).rejects.toSatisfy(
+			(error: unknown) =>
+				error instanceof NonRetryableError &&
+				error.message.includes('no longer has access'),
+		)
+		expect(invocationMocks.runModuleWithRegistry).not.toHaveBeenCalled()
+		expect(invocationMocks.invokePackageExport).not.toHaveBeenCalled()
+		expect(
+			attempts.get(
+				'code' in body
+					? 'execute inline workflow code'
+					: 'invoke saved package workflow export',
+			),
+		).toBe(1)
+		expect(findRun(created.id)).toMatchObject({ status: 'errored' })
+	}
 })
 
 type InvokeInput = Parameters<
