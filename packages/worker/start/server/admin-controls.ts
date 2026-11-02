@@ -193,9 +193,7 @@ export const setAdminOrgCreditEligibility = createServerFn({ method: 'POST' })
 	})
 
 export const readAdminUsersPage = createServerFn({ method: 'GET' })
-	.validator(
-		adminUsersReadInput.extend({ page: z.number().int().positive() }),
-	)
+	.validator(adminUsersReadInput.extend({ page: z.number().int().positive() }))
 	.handler(async ({ data }) => {
 		const { env } = await adminContext('read:user:any')
 		const { readAdminUsersData } = await import('../../src/admin/users-data.ts')
