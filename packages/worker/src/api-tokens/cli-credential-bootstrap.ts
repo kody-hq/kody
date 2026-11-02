@@ -452,7 +452,7 @@ export async function redeemCliCredentialBootstrap(input: {
 			consumed_at: string | null
 		}>()
 
-	if (!row || !timingSafeEqualString(row.code_hash, codeHash)) {
+	if (!row || !(await timingSafeEqualString(row.code_hash, codeHash))) {
 		throw new McpCallerError('Invalid CLI bootstrap code.')
 	}
 	if (row.consumed_at) {
