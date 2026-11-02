@@ -5,7 +5,7 @@ import { identityIconMonogramLetter } from '#universal/identity-icon-leaf.ts'
 import { getLogoWellCss } from '#universal/styles/style-primitives.ts'
 import { colors } from '#universal/styles/tokens.ts'
 
-type IdentityIconMarkSize = 'card' | 'starter' | 'detail'
+type IdentityIconMarkSize = 'card' | 'starter' | 'detail' | 'app'
 
 type IdentityIconMarkProps = {
 	name: string
@@ -18,6 +18,7 @@ const iconWellBySize = {
 	card: { size: '2.4rem', radius: '10px', borderWidth: '1px' },
 	starter: { size: '3.2rem', radius: '12px', borderWidth: '1px' },
 	detail: { size: '3.6rem', radius: '14px', borderWidth: '1.5px' },
+	app: { size: '5rem', radius: '20px', borderWidth: '1.5px' },
 } as const
 
 /**
@@ -27,7 +28,7 @@ const iconWellBySize = {
 export function IdentityIconMark(props: IdentityIconMarkProps) {
 	const { name, iconUrl, size, testId } = props
 	const well = iconWellBySize[size]
-	const isDetail = size === 'detail'
+	const isDetail = size === 'detail' || size === 'app'
 	return (
 		<span
 			css={{

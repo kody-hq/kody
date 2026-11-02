@@ -221,3 +221,16 @@ test('Execution contexts sits right after Jobs in Build, marked as an experiment
 		'execution-contexts',
 	)
 })
+
+test('Apps is available in personal and team workspace navigation', () => {
+	for (const [groups, slug] of [
+		[rails.personal, 'jane'],
+		[rails.team, 'acme'],
+	] as const) {
+		expect(items(groups).find((item) => item.id === 'apps')).toMatchObject({
+			label: 'Apps',
+			icon: 'apps',
+			href: `/@${slug}/-/apps`,
+		})
+	}
+})

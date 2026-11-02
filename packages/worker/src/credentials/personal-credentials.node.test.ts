@@ -421,12 +421,14 @@ test('expired secrets, package secrets, and suspended personal orgs are not pers
 		},
 		audit: null,
 	})
-	const packageTokenId = (
-		await findCredentialIdsByLegacyName(t.db, t.annOrgId, {
-			type: 'secret',
-			name: 'annPackageToken',
-		})
-	)[0]!
+	const packageToken = await t.db
+		.prepare(`SELECT e.id FROM secret_entries e
+			JOIN secret_buckets b ON b.id = e.bucket_id
+			WHERE b.user_id = ? AND b.scope = 'package' AND e.name = ?`)
+		.bind(t.annOrgId, 'annPackageToken')
+		.first<{ id: string }>()
+	expect(packageToken).not.toBeNull()
+	const packageTokenId = packageToken!.id
 	await expect(
 		grantPersonalCredentialToOrg({
 			db: t.db,

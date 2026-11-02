@@ -34,6 +34,7 @@ export type PageNavigation = {
 		| 'profiles'
 		| 'provider-marks'
 		| 'public-profile'
+		| 'apps'
 		| 'repositories'
 		| 'reserved-usernames'
 		| 'roles'

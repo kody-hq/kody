@@ -342,3 +342,53 @@ export const loadOrgRepositories = createServerFn({ method: 'GET' })
 		if (!payload) throw notFound()
 		return payload
 	})
+
+export const loadOrgApps = createServerFn({ method: 'GET' })
+	.validator(slugInput)
+	.handler(async ({ data }) => {
+		const input = await orgContext(data.slug, 'apps')
+		const [
+			{ orgSectionDenial },
+			{ personalOrgIdForPerson },
+			{ loadOrgRepositoriesData },
+			{ loadProfileData },
+			{ resolvePackageAppLinks },
+		] = await Promise.all([
+			import('../../src/app/org-request-binding.ts'),
+			import('../../src/orgs/personal-org-id.ts'),
+			import('../../src/app/org-repositories-data.ts'),
+			import('../../src/app/profile-data.ts'),
+			import('../../src/app/package-repo-actions.ts'),
+		])
+		if (orgSectionDenial(input.binding, 'apps')) throw notFound()
+		const payload =
+			input.binding.org.id === personalOrgIdForPerson(input.user.mcpUser)
+				? await loadProfileData(
+						input.env,
+						input.request,
+						input.user.username,
+						undefined,
+						{ query: '' },
+					)
+				: await loadOrgRepositoriesData({ ...input, query: '' })
+		if (!payload) throw notFound()
+		const username = payload.profile.username
+		const apps = await Promise.all(
+			payload.packages
+				.filter((pkg) => pkg.hasApp)
+				.map(async (pkg) => {
+					const links = await resolvePackageAppLinks({
+						env: input.env,
+						username,
+						kodyId: pkg.kodyId,
+						viewer: input.user.mcpUser,
+						ownerUserId: input.binding.org.id,
+						hasPackage: true,
+						hasApp: true,
+						requestUrl: input.request.url,
+					})
+					return { ...pkg, appHref: links?.packageAppHref ?? null }
+				}),
+		)
+		return { username, apps }
+	})
