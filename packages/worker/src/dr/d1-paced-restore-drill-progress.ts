@@ -42,6 +42,8 @@ export type D1PacedRestoreDrillSourceRow = {
 	activeTable: string | null
 	activePhase: string | null
 	interruptedCount: number
+	/** Table (or `(chain)`) the most recent dead tick was on. */
+	lastInterruptedTable: string | null
 	tables: Array<D1PacedRestoreDrillTableProgress>
 	/** Final source result JSON (set when the source finishes). */
 	result: unknown
@@ -71,6 +73,7 @@ type SourceDbRow = {
 	active_table: string | null
 	active_phase: string | null
 	interrupted_count: number
+	last_interrupted_table: string | null
 	tables_json: string
 	result_json: string | null
 	error: string | null
@@ -122,6 +125,7 @@ function toSource(row: SourceDbRow): D1PacedRestoreDrillSourceRow {
 		activeTable: row.active_table,
 		activePhase: row.active_phase,
 		interruptedCount: Number(row.interrupted_count),
+		lastInterruptedTable: row.last_interrupted_table,
 		tables: parseTables(row.tables_json),
 		result: parseResult(row.result_json),
 		error: row.error,
@@ -273,7 +277,9 @@ export async function recordD1PacedRestoreDrillInterruption(
 	await db
 		.prepare(
 			`UPDATE dr_paced_restore_drill_sources
-			SET interrupted_count = interrupted_count + 1, active_table = NULL,
+			SET interrupted_count = interrupted_count + 1,
+				last_interrupted_table = COALESCE(active_table, '(chain)'),
+				active_table = NULL,
 				active_phase = NULL, updated_at = ?
 			WHERE day = ? AND database_id = ?`,
 		)

@@ -417,6 +417,22 @@ async function drillOneTable(input: {
 		}
 	}
 
+	// Progress-store failures (D1 busy, lease renew) are not table verdicts:
+	// rethrow them so the tick fails and the marker is retried next tick.
+	const progressFailure: { error?: unknown } = {}
+	const trackProgress =
+		<Args extends Array<unknown>>(write: (...args: Args) => Promise<void>) =>
+		async (...args: Args) => {
+			try {
+				await write(...args)
+			} catch (error) {
+				progressFailure.error = error
+				throw error
+			}
+		}
+	const onPhase = trackProgress(input.onPhase)
+	const onPart = input.onPart ? trackProgress(input.onPart) : undefined
+
 	try {
 		// A night that omits the table drops it, so only the trailing run of
 		// nights that include it matters; its last `full` night is the base.
@@ -431,7 +447,7 @@ async function drillOneTable(input: {
 			}
 		}
 
-		await input.onPhase('deltas')
+		await onPhase('deltas')
 		const touched = new Map<number, bigint | null>()
 		const deltaStart = baseIndex >= 0 ? baseIndex + 1 : segmentStart
 		for (let index = deltaStart; index < input.chain.length; index += 1) {
@@ -446,11 +462,11 @@ async function drillOneTable(input: {
 					const { rowid, hash } = readCompactLine(line)
 					touched.set(rowid, hash)
 				},
-				onPart: input.onPart,
+				onPart,
 			})
 		}
 
-		await input.onPhase('base')
+		await onPhase('base')
 		let sum = 0n
 		let restoredCount = 0
 		if (baseIndex >= 0) {
@@ -472,7 +488,7 @@ async function drillOneTable(input: {
 					sum = (sum + hash) & checksumMask
 					restoredCount += 1
 				},
-				onPart: input.onPart,
+				onPart,
 			})
 		}
 		for (const hash of touched.values()) {
@@ -484,7 +500,7 @@ async function drillOneTable(input: {
 		const tableOk =
 			restoredCount === tipManifest.count && checksum === tipManifest.checksum
 
-		await input.onPhase('live-count')
+		await onPhase('live-count')
 		const liveCount = await countLiveTable(
 			input.db,
 			input.table,
@@ -499,6 +515,7 @@ async function drillOneTable(input: {
 			error: tableOk ? undefined : 'restore-checksum-mismatch',
 		}
 	} catch (error) {
+		if ('error' in progressFailure) throw progressFailure.error
 		return {
 			table: input.table,
 			manifestCount: tipManifest.count,
@@ -857,7 +874,8 @@ export async function runD1PacedRestoreDrillTick(input: {
 				databaseId: row.databaseId,
 				nowIso: nowIso(),
 			})
-			if (row.interruptedCount + 1 < 2) continue
+			// Retry once per table: fail only a repeat death on the same table.
+			if (row.lastInterruptedTable !== (row.activeTable ?? '(chain)')) continue
 			const error = `interrupted-${row.activePhase}`
 			if (row.activeTable === null) {
 				await finishD1PacedRestoreDrillSource(progressDb, {
@@ -967,17 +985,17 @@ export async function runD1PacedRestoreDrillTick(input: {
 			nowIso: nowIso(),
 		})
 		console.info('dr_d1_paced_restore_drill', JSON.stringify(drillResult))
-		const firstFailed = failedSources[0]
+		// A real mismatch outranks a deadline miss for grouping.
+		const firstFailed =
+			failedSources.find((result) => result.error !== 'deadline-exceeded') ??
+			failedSources[0]
 		if (firstFailed) {
 			const failedTable = firstFailed.tables.find((table) => !table.ok)
 			throw new D1PacedRestoreDrillError(
 				`paced D1 restore drill failed for ${day}: ${failedSummary} (${drillResult.sourcesOk}/${bound.length} ok)`,
 				{
-					kind: failedSources.some(
-						(result) => result.error === 'deadline-exceeded',
-					)
-						? 'deadline'
-						: 'mismatch',
+					kind:
+						firstFailed.error === 'deadline-exceeded' ? 'deadline' : 'mismatch',
 					checkpoint: {
 						day,
 						source: firstFailed.databaseName,

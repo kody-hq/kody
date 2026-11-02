@@ -893,6 +893,12 @@ test('restore drill reports a tick that died mid-phase with source and phase, th
 		phase: 'base',
 		nowIso: sundayAt('07:00').toISOString(),
 	})
+	// An earlier death on a different table does not use up this table's retry.
+	appSqlite
+		.prepare(
+			`UPDATE dr_paced_restore_drill_sources SET interrupted_count = 1, last_interrupted_table = 'earlier_table' WHERE database_id = ?`,
+		)
+		.run(appId)
 	const resumed = await runD1PacedRestoreDrillTick({
 		env,
 		now: sundayAt('07:05'),
@@ -914,7 +920,7 @@ test('restore drill reports a tick that died mid-phase with source and phase, th
 	})
 	appSqlite
 		.prepare(
-			`UPDATE dr_paced_restore_drill_sources SET interrupted_count = 1 WHERE database_id = ?`,
+			`UPDATE dr_paced_restore_drill_sources SET interrupted_count = 1, last_interrupted_table = 'items' WHERE database_id = ?`,
 		)
 		.run(auditId)
 	const failure = await runD1PacedRestoreDrillTick({

@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS dr_paced_restore_drill_sources (
 	active_table TEXT,
 	active_phase TEXT,
 	interrupted_count INTEGER NOT NULL DEFAULT 0,
+	last_interrupted_table TEXT,
 	tables_json TEXT NOT NULL DEFAULT '[]',
 	result_json TEXT,
 	error TEXT,
