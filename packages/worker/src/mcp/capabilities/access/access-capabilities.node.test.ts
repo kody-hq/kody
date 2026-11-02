@@ -2,7 +2,6 @@ import { McpCallerError } from '#mcp/caller-error.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { compileAccessForRequest } from '#worker/authorization/access-compile.ts'
 import { LivePersonRequiredError } from '#worker/authorization/authorize.ts'
-import { FREE_ORG_LIMIT_MESSAGE } from '#worker/orgs/billing.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
 import {
@@ -444,7 +443,7 @@ test('orgCreate surfaces the free-org cap instead of Access change failed', asyn
 	await orgCreateCapability.handler({ slug: 'capped-team' }, ctx)
 	await expect(
 		orgCreateCapability.handler({ slug: 'capped-overflow' }, ctx),
-	).rejects.toThrow(FREE_ORG_LIMIT_MESSAGE)
+	).rejects.toThrow('You already own 2 free organizations')
 	await expect(
 		orgCreateCapability.handler({ slug: 'capped-overflow' }, ctx),
 	).rejects.toBeInstanceOf(McpCallerError)

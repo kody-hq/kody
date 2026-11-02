@@ -777,8 +777,6 @@ test('inline OAuth password login with 2FA challenges through /verify and strips
 	expect(resume).toBe(
 		'/oauth/authorize?response_type=code&client_id=client-123&redirect_uri=https%3A%2F%2Fexample.com%2Fcallback&scope=profile&state=demo',
 	)
-	expect(resume).not.toContain('id_token_hint')
-	expect(resume).not.toContain('prompt=login')
 	const setCookies = response.headers.getSetCookie()
 	expect(setCookies.some((cookie) => cookie.startsWith('kody_verify='))).toBe(
 		true,

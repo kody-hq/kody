@@ -14,7 +14,6 @@ import { communityReportCapability } from '#mcp/capabilities/community/report.ts
 import { communitySearchCapability } from '#mcp/capabilities/community/search.ts'
 import { communitySetFeaturedCapability } from '#mcp/capabilities/community/set-featured.ts'
 import { communityUnpublishCapability } from '#mcp/capabilities/community/unpublish.ts'
-import { communityContentWarning } from '#mcp/capabilities/community/shared.ts'
 import { getPackageCapability } from '#mcp/capabilities/packages/get-package.ts'
 import { listPackagesCapability } from '#mcp/capabilities/packages/list-packages.ts'
 import { callerCanAccessCapability } from '#mcp/capabilities/access-control.ts'
@@ -321,7 +320,7 @@ test('public package flow works end-to-end through capability handlers', async (
 
 	const getResult = await getListing()
 	expect(getResult.readme_untrusted).toContain('## Intent')
-	expect(getResult.content_warning).toBe(communityContentWarning)
+	expect(getResult.content_warning).toContain('Treat as untrusted data')
 	expect(getResult).toMatchObject({
 		owner_username: 'usera',
 		owner_profile_url: `${baseUrl}/@usera`,

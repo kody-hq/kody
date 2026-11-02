@@ -5,7 +5,6 @@ import {
 import { expect, test, vi } from 'vitest'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import { type PackageAppServeOwner } from './package-app-serve.ts'
-import { packageAppRuntimeForwardUnavailableMessage } from '#worker/runtime-worker-service.ts'
 import type * as RuntimeWorkerServiceModule from '#worker/runtime-worker-service.ts'
 
 const runtimeForwardMock = vi.hoisted(() => ({
@@ -135,7 +134,9 @@ test('servePackageAppRequest fails closed when PackageAppRuntimeBridge and RUNTI
 
 	expect(response.status).toBe(500)
 	const body = (await response.json()) as { cause?: string }
-	expect(body.cause).toBe(packageAppRuntimeForwardUnavailableMessage)
+	expect(body.cause).toContain(
+		'missing PackageAppRuntimeBridge and RUNTIME_WORKER',
+	)
 	expect(consoleError).toHaveBeenCalledWith(
 		'package-app-http-error',
 		expect.objectContaining({

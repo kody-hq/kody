@@ -233,5 +233,4 @@ test('summarizeRunError keeps the first non-empty line and redacts Kody tokens',
 		errorMessage: `Unauthorized with ${token}`,
 	})
 	expect(redacted).toBe('Unauthorized with kody_at_[redacted]')
-	expect(redacted).not.toContain('B'.repeat(43))
 })

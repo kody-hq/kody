@@ -372,7 +372,6 @@ test('in-band HTTP 200 busy (sideband fatal pkt-line) is retried inside the queu
 	expect(response.status).toBe(200)
 	const text = await response.text()
 	expect(text).toBe('000eunpack ok\n0000')
-	expect(text).not.toContain('artifacts_git_receive_pack_busy')
 	expect(response.headers.get(repoPushQueueAttemptsHeader)).toBe('4')
 })
 
