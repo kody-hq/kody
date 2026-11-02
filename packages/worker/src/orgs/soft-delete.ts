@@ -1027,19 +1027,14 @@ export async function restoreUserAccount(input: {
 	}
 
 	const deletedOrgs = await input.env.APP_DB.prepare(
-		`SELECT id FROM orgs WHERE deleted_at = ?`,
+		`SELECT o.id FROM orgs o
+		 INNER JOIN org_memberships m ON m.org_id = o.id
+		 WHERE o.deleted_at = ? AND m.user_id = ? AND m.deleted_at = ?`,
 	)
-		.bind(deletedAt)
+		.bind(deletedAt, input.userId, deletedAt)
 		.all<{ id: OwnerId }>()
 	const restoredOrgIds: Array<string> = []
 	for (const row of deletedOrgs.results ?? []) {
-		const membership = await input.env.APP_DB.prepare(
-			`SELECT 1 AS ok FROM org_memberships
-			 WHERE org_id = ? AND user_id = ? AND deleted_at = ?`,
-		)
-			.bind(row.id, input.userId, deletedAt)
-			.first<{ ok: number }>()
-		if (!membership) continue
 		await restoreOrg({
 			env: input.env,
 			orgId: row.id,

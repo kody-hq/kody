@@ -18,10 +18,6 @@ vi.mock('@tanstack/react-start', () => ({
 				schema = value
 				return builder
 			},
-			inputValidator(value: (input: unknown) => unknown) {
-				schema = { parse: value }
-				return builder
-			},
 			handler(fn: (input: { data: unknown }) => unknown) {
 				return (input: { data: unknown }) =>
 					fn({ data: schema.parse(input.data) })

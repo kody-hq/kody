@@ -4,7 +4,7 @@ import { credentialFillPlacementViewSchema } from '#universal/credential-fill-pl
 import { placementApprovalParts } from '#universal/credential-placement-approval.ts'
 
 export const saveCredentialPlacement = createServerFn({ method: 'POST' })
-	.inputValidator(
+	.validator(
 		z.object({
 			orgSlug: z.string().regex(/^[a-zA-Z0-9_-]+$/),
 			credentialId: z.string().min(1),
@@ -35,7 +35,7 @@ export const saveCredentialPlacement = createServerFn({ method: 'POST' })
 export const approveCredentialPlacementRequest = createServerFn({
 	method: 'POST',
 })
-	.inputValidator(
+	.validator(
 		z.object({
 			orgSlug: z
 				.string()

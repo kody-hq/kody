@@ -2,7 +2,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { redirect } from '@tanstack/react-router'
 
 export const redirectCredentialEntry = createServerFn({ method: 'GET' })
-	.inputValidator((href: string) => {
+	.validator((href: string) => {
 		if (
 			typeof href !== 'string' ||
 			!/^\/(connect\/credential|account\/credentials)(?:\?[^#]*)?$/.test(href)

@@ -10,7 +10,7 @@ vi.mock('@tanstack/react-start', () => ({
 	createServerFn: () => {
 		let parse = (data: unknown) => data
 		const builder = {
-			inputValidator(schema: { parse: (data: unknown) => unknown }) {
+			validator(schema: { parse: (data: unknown) => unknown }) {
 				parse = schema.parse.bind(schema)
 				return builder
 			},

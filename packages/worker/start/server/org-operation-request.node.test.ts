@@ -20,9 +20,6 @@ vi.mock('@tanstack/react-start', () => ({
 					typeof schema === 'function' ? schema : (data) => schema.parse(data)
 				return builder
 			},
-			inputValidator(schema: { parse: (data: unknown) => unknown }) {
-				return builder.validator(schema)
-			},
 			handler(run: (input: { data: unknown }) => unknown) {
 				return (input: { data: unknown }) => run({ data: validate(input.data) })
 			},

@@ -13,7 +13,7 @@ const target = z.object({
 const orgInput = z.object({ orgSlug })
 
 export const loadOrgFollows = createServerFn({ method: 'GET' })
-	.inputValidator(orgInput)
+	.validator(orgInput)
 	.handler(async ({ data }) => {
 		const [
 			{ loadScopedCollection },
@@ -44,7 +44,7 @@ export const loadOrgFollows = createServerFn({ method: 'GET' })
 	})
 
 export const loadPackageFollow = createServerFn({ method: 'GET' })
-	.inputValidator(
+	.validator(
 		z.object({
 			username: z.string().trim().min(1),
 			kodyId: z.string().trim().min(1),
@@ -120,7 +120,7 @@ async function write(
 }
 
 export const followTarget = createServerFn({ method: 'POST' })
-	.inputValidator(
+	.validator(
 		target.extend({
 			orgSlug,
 			events: z.array(z.enum(['published', 'pushed'])).optional(),
@@ -136,7 +136,7 @@ export const followTarget = createServerFn({ method: 'POST' })
 	)
 
 export const resumeFollow = createServerFn({ method: 'POST' })
-	.inputValidator(orgInput.extend({ id: z.string().trim().min(1) }))
+	.validator(orgInput.extend({ id: z.string().trim().min(1) }))
 	.handler(({ data }) =>
 		write(data.orgSlug, async (context) =>
 			(await import('#app/follows-web.ts')).resumeOrgFollow({
@@ -147,7 +147,7 @@ export const resumeFollow = createServerFn({ method: 'POST' })
 	)
 
 export const unfollowTarget = createServerFn({ method: 'POST' })
-	.inputValidator(
+	.validator(
 		z.union([
 			orgInput.extend({ id: z.string().trim().min(1) }),
 			target.extend({ orgSlug }),

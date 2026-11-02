@@ -2,7 +2,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
 const orgSlug = z.string().min(1)
 export const updateOrganizationProfile = createServerFn({ method: 'POST' })
-	.inputValidator(
+	.validator(
 		z.object({
 			orgSlug,
 			displayName: z.string().optional(),
@@ -27,7 +27,7 @@ export const updateOrganizationProfile = createServerFn({ method: 'POST' })
 export const updateOrganizationMemberCreation = createServerFn({
 	method: 'POST',
 })
-	.inputValidator(
+	.validator(
 		z.object({
 			orgSlug,
 			packages: z.boolean().optional(),
@@ -51,7 +51,7 @@ export const updateOrganizationMemberCreation = createServerFn({
 export const updateOrganizationUsageWarnings = createServerFn({
 	method: 'POST',
 })
-	.inputValidator(z.object({ orgSlug, enabled: z.boolean() }))
+	.validator(z.object({ orgSlug, enabled: z.boolean() }))
 	.handler(async ({ data }) => {
 		const { withWebsiteMutation } = await import('./mutation-context.ts')
 		const { updateOrganizationUsageWarnings } =
@@ -67,7 +67,7 @@ export const updateOrganizationUsageWarnings = createServerFn({
 		)
 	})
 export const deleteOrganization = createServerFn({ method: 'POST' })
-	.inputValidator(z.object({ orgSlug, confirmation: z.string() }))
+	.validator(z.object({ orgSlug, confirmation: z.string() }))
 	.handler(async ({ data }) => {
 		const { withWebsiteMutation } = await import('./mutation-context.ts')
 		const { deleteOrganization } =
@@ -83,7 +83,7 @@ export const deleteOrganization = createServerFn({ method: 'POST' })
 		)
 	})
 export const removeOrganizationPhoto = createServerFn({ method: 'POST' })
-	.inputValidator(z.object({ orgSlug }))
+	.validator(z.object({ orgSlug }))
 	.handler(async ({ data }) => {
 		const { withWebsiteMutation } = await import('./mutation-context.ts')
 		const { removeOrganizationPhoto } =
@@ -99,7 +99,7 @@ export const removeOrganizationPhoto = createServerFn({ method: 'POST' })
 		)
 	})
 export const addOrganizationDomain = createServerFn({ method: 'POST' })
-	.inputValidator(
+	.validator(
 		z.object({
 			orgSlug,
 			hostname: z.string(),
@@ -123,7 +123,7 @@ export const addOrganizationDomain = createServerFn({ method: 'POST' })
 		)
 	})
 export const syncOrganizationDomain = createServerFn({ method: 'POST' })
-	.inputValidator(
+	.validator(
 		z.object({
 			orgSlug,
 			hostname: z.string().optional(),
@@ -145,7 +145,7 @@ export const syncOrganizationDomain = createServerFn({ method: 'POST' })
 		)
 	})
 export const deleteOrganizationDomain = createServerFn({ method: 'POST' })
-	.inputValidator(
+	.validator(
 		z.object({
 			orgSlug,
 			hostname: z.string().optional(),
@@ -167,7 +167,7 @@ export const deleteOrganizationDomain = createServerFn({ method: 'POST' })
 		)
 	})
 export const saveOrganizationAvatar = createServerFn({ method: 'POST' })
-	.inputValidator((data: FormData) => {
+	.validator((data: FormData) => {
 		if (!(data instanceof FormData)) throw new Error('Invalid avatar form')
 		orgSlug.parse(data.get('orgSlug'))
 		return data
