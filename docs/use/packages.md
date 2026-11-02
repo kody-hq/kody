@@ -16,9 +16,11 @@ It shows plain repositories and packages together. A **repository** is the git
 home; a **package** is a repository with a Kody package manifest. The API, CLI,
 and ids keep names like `packageList`, `packageSave`, and
 `guide:package_authoring`. Looking for Packages in the UI? Open
-**Repositories**. The public catalog at `/community` is titled **Public
-packages**; back links name that page when you leave someone else's listing.
-Your own package pages link back to **Repositories**.
+**Repositories**. Hosted apps (`kody.app.entry`) also appear on **Apps**
+(`/@slug/-/apps`); packages without an app stay on Repositories only. The public
+catalog at `/community` is titled **Public packages**; back links name that page
+when you leave someone else's listing. Your own package pages link back to
+**Repositories**.
 
 Packages are not integrations or MCP servers. See
 [Packages, integrations, and MCP servers](../guides/packages-integrations-mcp.md)
@@ -108,8 +110,8 @@ Important fields:
   [Credential slots](#credential-slots-kodycredentials))
 - `kody.secretMounts` — optional secret mount declarations kept so stale static
   dependents that bundled `packageSecrets.get` still resolve. See
-  [Leftover secret mounts](../guides/credentials.md#leftover-secret-mounts). New
-  code uses `kody.credentials`, not `packageSecrets.get`.
+  [Secret mounts for bundled dependents](../guides/credentials.md#secret-mounts-for-bundled-dependents).
+  New code uses `kody.credentials`, not `packageSecrets.get`.
 - `kody.secretProvider` — optional `{ id }` declaring this package can serve
   that external secret provider. Metadata alone does not bind the provider; see
   [Custom secret providers](../guides/secret-providers.md)

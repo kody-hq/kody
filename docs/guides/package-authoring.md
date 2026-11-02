@@ -478,10 +478,11 @@ irreversible-side-effect guard when a smoke test should stay safe.
    `kody:@scope/package/export` from `execute` against a read-only export or
    package-supported dry-run input that exercises approved secrets (see
    [Secret-using packages](#secret-using-packages) above).
-3. **Package apps** — `packageAppFetch` with `package_id` or leftover `kody_id`
-   (the scoped name), plus the path, method, and body your handler needs.
-   Confirm `{ status, headers, body, truncated }` and any `packageStorage()`
-   side effects. See [Package app fetch](../use/package-app-fetch.md) and the
+3. **Package apps** — `packageAppFetch` with the scoped name or `package_id`
+   when the name is not known, plus the path, method, and body your handler
+   needs. Confirm `{ status, headers, body, truncated }` and any
+   `packageStorage()` side effects. See
+   [Package app fetch](../use/package-app-fetch.md) and the
    [Package apps](./package-apps.md) playbook (`guide:package_apps`).
 4. **Subscriptions** — from interactive MCP, `packageSubscriptionDispatch` with
    the scoped name (or `package_id` when the name is not known), `topic`, and

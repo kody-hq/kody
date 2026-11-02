@@ -804,17 +804,17 @@ it and revokes it with the provider where the provider supports that. See
 - Declaring OAuth scopes on a need. A missing scope shows up as a 401 or 403
   with `x-kody-credential-hint`.
 
-## Leftover secret mounts
+## Secret mounts for bundled dependents
 
-Older packages declared `kody.secretMounts` and read them with
-`packageSecrets.get`. That call returns an opaque `{{secret:…}}` ref. A
-dependent that statically imported the package bundled that call. The bundled
-copy still resolves the alias against the dependency's **current** published
-manifest, not the commit it was built from.
+Packages that declare `kody.secretMounts` and read them with
+`packageSecrets.get` get an opaque `{{secret:…}}` ref. A dependent that
+statically imported the package bundled that call. The bundled copy still
+resolves the alias against the dependency's **current** published manifest, not
+the commit it was built from.
 
 Publish may keep those mount declarations when the package's own source uses
-`kody.credentials` and does not call `packageSecrets.get`. Keeping a mount is a
-compatibility lane for those stale bundles. It grants nothing new:
+`kody.credentials` and does not call `packageSecrets.get`. A kept mount grants
+nothing new:
 
 - Resolution still reads only the mounts on the current manifest. There is no
   alias fallback, no history of old mounts, and no commit-pinned lookup.

@@ -319,9 +319,10 @@ recorded. See [Host commands](../use/execution-contexts.md#host-commands) for
 the security trade-off in plain words.
 
 On macOS, commands that control other apps (Messages via `osascript`) need
-Automation permission for the process running the daemon. Only the desktop app's
-own runner gets Kody's permission; a CLI service or terminal daemon does not,
-even when the desktop app adopts it. See
+Automation permission for the process running the daemon. Contacts lookups
+through the macOS Contacts framework need a separate Contacts prompt (desktop
+0.1.5 or later). Only the desktop app's own runner gets Kody's permission; a CLI
+service or terminal daemon does not, even when the desktop app adopts it. See
 [macOS app control](../use/execution-contexts.md#macos-app-control).
 
 ## Sharing a context
