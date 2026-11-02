@@ -843,9 +843,10 @@ routed from `packages/worker/src/index.ts`.
   (`kid` = `OIDC_SIGNING_KEY_ID`). Discovery:
   `/.well-known/openid-configuration`; JWKS: `/.well-known/jwks.json`; UserInfo:
   `/oauth/userinfo` (Bearer access token; fail-closed when email is unverified).
-  RP-Initiated Logout: `/oauth/logout`. RFC 7009 revocation is the token
-  endpoint (`/oauth/token`); both `/.well-known/openid-configuration` and
-  `/.well-known/oauth-authorization-server` advertise that URL as
+  RP-Initiated Logout: `/oauth/logout` (`post_logout_redirect_uri` needs a valid
+  `id_token_hint` and an exact registered redirect URI). RFC 7009 revocation is
+  the token endpoint (`/oauth/token`); both `/.well-known/openid-configuration`
+  and `/.well-known/oauth-authorization-server` advertise that URL as
   `revocation_endpoint`. OpenID Connect discovery also lists
   `revocation_endpoint_auth_methods_supported` matching
   `token_endpoint_auth_methods_supported` (`none`, `client_secret_basic`,
