@@ -312,7 +312,9 @@ name per package leaf; hash is `sha256(leaf)[0:12]`); plain HTTP local dev uses
 origins. The `__Host-` prefix requires `Secure`, `Path=/`, and no `Domain`
 attribute, so browsers reject any variant with a `Domain` — this blocks
 cross-subdomain cookie tossing even before the package-app domain is on the
-Public Suffix List. Serving additionally requires the resolved session account's
+Public Suffix List. `readPackageAppSession` only reads the names for the
+request's scheme, so on HTTPS an unprefixed name tossed from a sibling subdomain
+is ignored. Serving additionally requires the resolved session account's
 username, the subdomain label, and the path's owner username to all match
 (`servePackageAppRequest` in
 `packages/worker/src/package-runtime/package-app-serve.ts`), so a handoff minted
@@ -379,7 +381,9 @@ to the app. If the app handler throws on `OPTIONS`, the platform answers `204`
 instead of the package-entrypoint crash page. Same-site credentialed GETs remain
 possible until the PSL entry lands; package apps must not mutate on GET, which
 HTTP already demands. Cross-origin `POST`, `PUT`, `PATCH`, and `DELETE` stay
-`403`.
+`403`. A WebSocket upgrade is a `GET`, but CORS does not cover WebSockets, so a
+cross-origin page would get a full read/write realtime socket: upgrades get the
+same `Origin` check and a cross-origin upgrade is `403` too.
 
 - **No redirect cycle:** the app origin only ever redirects _to_ a package-app
   subdomain, the apex only redirects to a subdomain or the app origin, and a
