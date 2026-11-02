@@ -18,6 +18,7 @@ import {
 	resolveHostPath,
 } from '../src/execution-context/fs-access.js'
 import { runExecutionContextCommand } from '../src/execution-context/commands.js'
+import { handleHostFsRequest } from '../src/execution-context/host-fs-bridge.js'
 
 function sandbox() {
 	// .native expands Windows 8.3 names (RUNNER~1) like the code under test.
@@ -265,4 +266,48 @@ test('kody context policy show, allow, and remove edit the file under the CLI co
 			else process.env[key] = value
 		}
 	}
+})
+
+test('renames cannot swap an escaping symlink in between a path check and its read', async () => {
+	const { dir } = sandbox()
+	const mount = dir('mount')
+	const outside = dir('outside')
+	writeFileSync(join(outside, 'x'), 'SECRET')
+	mkdirSync(join(mount, 'd'))
+	writeFileSync(join(mount, 'd', 'x'), 'inside')
+	symlinkSync(outside, join(mount, 'link'))
+	const effective = await effectiveFs(
+		[{ path: mount, mode: 'rw' }],
+		[{ path: mount, mode: 'rw' }],
+	)
+	const rename = (from: string, to: string) =>
+		handleHostFsRequest(effective, {
+			op: 'rename',
+			path: join(mount, from),
+			dest: join(mount, to),
+		})
+	let swapping = true
+	const leaks: Array<string> = []
+	const reader = async () => {
+		while (swapping) {
+			const data = await handleHostFsRequest(effective, {
+				op: 'readFile',
+				path: join(mount, 'd', 'x'),
+			}).catch(() => null)
+			if (typeof data === 'string') {
+				const text = Buffer.from(data, 'base64').toString()
+				if (text !== 'inside') leaks.push(text)
+			}
+		}
+	}
+	const readers = Array.from({ length: 4 }, reader)
+	for (let round = 0; round < 300; round += 1) {
+		await rename('d', 'd2')
+		await rename('link', 'd')
+		await rename('d', 'link')
+		await rename('d2', 'd')
+	}
+	swapping = false
+	await Promise.all(readers)
+	assert.deepEqual(leaks, [])
 })
