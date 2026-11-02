@@ -1,3 +1,5 @@
+import { notFound } from '@tanstack/react-router'
+
 function optionalLimit(value: string | null) {
 	const parsed = Number.parseInt(value ?? '', 10)
 	return Number.isFinite(parsed) && parsed > 0
@@ -14,7 +16,12 @@ export function communityReadInput(search: string) {
 		installOrg: params.get('org')?.trim() || null,
 	}
 }
+/**
+ * `/@` matches the optional `@{$username}` segment with an empty string.
+ * Resolve it as not-found before it reaches loadProfile's validator.
+ */
 export function profileReadInput(username: string, search: string) {
+	if (!username) throw notFound()
 	const params = new URLSearchParams(search)
 	return {
 		username,
