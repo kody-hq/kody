@@ -13,6 +13,7 @@ vi.mock('#app/authenticated-user.ts', () => ({
 }))
 
 const { loadOrgRepositoriesData } = await import('../org-repositories-data.ts')
+const { resolvePackageAppLinks } = await import('../package-repo-actions.ts')
 const { loadOrgBindingForSlug } = await import('#worker/orgs/repo.ts')
 
 const ownerId = 'person-owner'
@@ -304,11 +305,34 @@ test('app inventory includes an app-only grant without exposing the package link
 	expect(
 		ownerApps.packages.find((pkg) => pkg.kodyId === 'secret')?.iconUrl,
 	).toBeTruthy()
-	expect(apps.packages.find((pkg) => pkg.kodyId === 'secret')).toMatchObject({
+	const secretApp = apps.packages.find((pkg) => pkg.kodyId === 'secret')
+	expect(secretApp).toMatchObject({
 		hasApp: true,
 		canOpenDetail: false,
 		iconUrl: null,
 	})
+	// Same enrichment `loadOrgApps` applies: app:execute without package:read
+	// still gets a direct Open link, while the package detail stays closed.
+	const envWithAppOrigin = {
+		...env,
+		PACKAGE_APP_BASE_URL: 'https://packages.isolated.test',
+		APP_BASE_URL: 'https://kody.test',
+	} as unknown as Env
+	await expect(
+		resolvePackageAppLinks({
+			env: envWithAppOrigin,
+			username: 'acme',
+			kodyId: 'secret',
+			viewer: { userId: memberId as never, username: 'member' },
+			ownerUserId: teamId,
+			hasPackage: true,
+			hasApp: true,
+			requestUrl: 'https://kody.test/@acme/-/apps',
+		}),
+	).resolves.toMatchObject({
+		packageAppHref: '/@acme/packages/secret/open',
+	})
+	expect(secretApp?.canOpenDetail).toBe(false)
 	await env.APP_DB.prepare(
 		`UPDATE saved_packages SET is_private = 0 WHERE id = ?`,
 	)

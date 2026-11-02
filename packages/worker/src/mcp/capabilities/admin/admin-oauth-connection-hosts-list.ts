@@ -12,7 +12,9 @@ const inputSchema = z
 	.object({
 		orgId: stableUserIdSchema
 			.optional()
-			.describe('Org id (orgs.id; a personal org id equals stable_user_id).'),
+			.describe(
+				'Org id (orgs.id). A personal org uses users.personal_org_id when set, otherwise users.stable_user_id — they are not always equal.',
+			),
 		org: z
 			.string()
 			.min(1)
