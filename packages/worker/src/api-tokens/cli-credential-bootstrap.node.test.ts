@@ -232,6 +232,35 @@ test('bootstrap rejects idle or max lifetime values above the policy caps', asyn
 	).rejects.toThrow(/max_lifetime_seconds/)
 })
 
+test('bootstrap redeem rejects a code whose secret does not match', async () => {
+	const { db } = createDb()
+	const minted = await mintCliCredentialBootstrap({
+		db,
+		userId,
+		lifetime: 'short',
+		now: start,
+	})
+	const parsed = parseCliBootstrapCode(minted.bootstrap_code)
+	if (!parsed) throw new Error('Expected a parseable bootstrap code.')
+	const wrongSecret = `${cliBootstrapCodePrefix}${parsed.codeId}_${'A'.repeat(32)}`
+	expect(wrongSecret).not.toBe(minted.bootstrap_code)
+	await expect(
+		redeemCliCredentialBootstrap({
+			db,
+			code: wrongSecret,
+			lifetime: 'short',
+			now: start,
+		}),
+	).rejects.toThrow('Invalid CLI bootstrap code.')
+	const redeemed = await redeemCliCredentialBootstrap({
+		db,
+		code: minted.bootstrap_code,
+		lifetime: 'short',
+		now: start,
+	})
+	expect(redeemed.token.created_via).toBe('cli-bootstrap')
+})
+
 test('bootstrap redeem rejects expired codes', async () => {
 	const { db } = createDb()
 	const minted = await mintCliCredentialBootstrap({
