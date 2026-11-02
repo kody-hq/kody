@@ -17,6 +17,7 @@ import {
 	isAuthSessionExpired,
 	isSecureRequest,
 	readParsedAuthSession,
+	type ParsedAuthSession,
 } from '#app/auth-session.ts'
 import { createDb, usersTable } from '#worker/db.ts'
 import {
@@ -293,6 +294,25 @@ export function loadResolvedRequestAuth(
 		requestAuthStore.set(request, promise)
 	}
 	return promise
+}
+
+/**
+ * The parsed `kody_session` only when `resolveRequestAuth` accepts it (not
+ * expired, live users row, not revoked by a password change). Use this, not
+ * `readParsedAuthSession`, wherever the cookie's identity authorizes an action.
+ * A rejected cookie returns `parsed: null` and a `setCookie` that clears it.
+ */
+export async function readLiveAuthSession(
+	request: Request,
+	env: Env,
+): Promise<{ parsed: ParsedAuthSession | null; setCookie: string | null }> {
+	const parsed = await readParsedAuthSession(request)
+	if (!parsed) return { parsed: null, setCookie: null }
+	const resolved = await loadResolvedRequestAuth(request, env)
+	if (!resolved.user) {
+		return { parsed: null, setCookie: resolved.setCookie ?? null }
+	}
+	return { parsed, setCookie: parsed.setCookie }
 }
 
 /**

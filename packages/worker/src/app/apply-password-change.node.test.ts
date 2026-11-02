@@ -134,3 +134,31 @@ test('password change drops every MCP event subscription for the user with the g
 			.map((row) => row['id']),
 	).toEqual(['sub_someone_else'])
 })
+
+test('password change cancels pending email changes for the user only', async () => {
+	const { sqlite, d1, db, stableUserId } = await seedUserWithFactors()
+	sqlite.exec(`
+		INSERT INTO users (id, username, email, stable_user_id, password_hash)
+		VALUES (2, 'bystander', 'bystander@example.com', 'bystander-stable', 'x');
+		INSERT INTO pending_email_changes (user_id, new_email, token_hash, expires_at)
+		VALUES
+			(1, 'moved@example.com', 'pending-hash', ${Date.now() + 60_000}),
+			(2, 'bystander-new@example.com', 'bystander-hash', ${Date.now() + 60_000});
+	`)
+
+	const result = await applyPasswordChange({
+		db,
+		d1,
+		helpers,
+		userId: 1,
+		stableUserId: ownerIdFromStored(stableUserId),
+		password: 'brand-new-password',
+	})
+	expect(result.ok).toBe(true)
+	expect(
+		sqlite
+			.prepare(`SELECT user_id FROM pending_email_changes ORDER BY user_id`)
+			.all()
+			.map((row) => row['user_id']),
+	).toEqual([2])
+})

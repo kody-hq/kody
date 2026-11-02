@@ -15,10 +15,9 @@ import {
 	createAuthCookie,
 	destroyAuthCookie,
 	isSecureRequest,
-	readAuthSessionResult,
-	readParsedAuthSession,
 	setAuthSessionSecret,
 } from '#app/auth-session.ts'
+import { readLiveAuthSession } from '#app/request-auth-cache.ts'
 import {
 	createVerifySessionCookie,
 	setVerifySessionSecret,
@@ -967,7 +966,8 @@ async function resolveSessionEmail(request: Request, env: Env) {
 	try {
 		const appEnv = getEnv(env)
 		setAuthSessionSecret(appEnv.COOKIE_SECRET)
-		const { session, setCookie } = await readAuthSessionResult(request)
+		const { parsed, setCookie } = await readLiveAuthSession(request, env)
+		const session = parsed?.session ?? null
 		const email = session?.email?.trim()
 		return {
 			session,
@@ -987,14 +987,14 @@ async function resolveAuthorizeSession(request: Request, env: Env) {
 	try {
 		const appEnv = getEnv(env)
 		setAuthSessionSecret(appEnv.COOKIE_SECRET)
-		const parsed = await readParsedAuthSession(request)
+		const { parsed, setCookie } = await readLiveAuthSession(request, env)
 		if (!parsed) {
 			return {
 				session: null,
 				email: null,
 				stableUserId: null,
 				issuedAt: undefined,
-				setCookie: null,
+				setCookie,
 			}
 		}
 		const email = parsed.session.email.trim().toLowerCase()
@@ -1003,7 +1003,7 @@ async function resolveAuthorizeSession(request: Request, env: Env) {
 			email,
 			stableUserId: parsed.session.stableUserId,
 			issuedAt: parsed.issuedAt,
-			setCookie: parsed.setCookie,
+			setCookie,
 		}
 	} catch {
 		return {

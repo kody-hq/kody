@@ -264,3 +264,42 @@ test('a stalled security notice send does not hold up the success response', asy
 	expect(deferredWork).toHaveLength(1)
 	deferredWork.splice(0)
 })
+
+test('a session cookie revoked by a password change is not refreshed', async () => {
+	mockSendCloudflareEmail.mockClear()
+	const { sqlite, db } = createMigratedDb()
+	const oldEmail = 'revoked-cookie@example.com'
+	const newEmail = 'revoked-cookie-new@example.com'
+	const stableUserId = await seedVerifiedUser(sqlite, {
+		id: 1,
+		email: oldEmail,
+		username: 'revoked-cookie',
+	})
+	const token = 'd'.repeat(64)
+	const tokenHash = await hashVerificationToken(token)
+	sqlite.exec(`
+		INSERT INTO pending_email_changes (user_id, new_email, token_hash, expires_at)
+		VALUES (1, ${quoteSqlString(newEmail)}, ${quoteSqlString(tokenHash)}, ${Date.now() + 60_000});
+	`)
+	const cookie = await createAuthCookie(
+		{ stableUserId, email: oldEmail, rememberMe: false },
+		false,
+		Date.now() - 60_000,
+	)
+	sqlite
+		.prepare(`UPDATE users SET password_changed_at = ? WHERE id = 1`)
+		.run(new Date().toISOString())
+
+	const result = await executeVerifyEmailChange({
+		request: new Request(
+			`https://kody.codes/verify-email-change?token=${token}`,
+			{ headers: { Cookie: cookie } },
+		),
+		env: createEnv(db),
+		token,
+	})
+	await flushDeferredWork()
+
+	expect(result).toMatchObject({ ok: true })
+	expect('setCookie' in result ? result.setCookie : undefined).toBeUndefined()
+})

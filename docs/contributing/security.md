@@ -758,7 +758,11 @@ change to these decisions here so future agents do not relitigate them.
   stays the OAuth provider TTLs. A signed-in password change re-issues the
   current browser cookie so that tab stays signed in; every other session still
   dies. Reclaiming an unverified account on a provider-verified social match
-  uses the same `password_changed_at` lockout.
+  uses the same `password_changed_at` lockout. Every password change also
+  deletes the user's `pending_email_changes`. Code that acts on the cookie's
+  identity (OAuth authorize, provider linking, email-change re-mint, social
+  start) reads it through `readLiveAuthSession`, never the signature-only
+  `readParsedAuthSession`, so a rejected cookie counts as signed out.
 - **OAuth authorize client reset is grant-scoped.** A signed-in user can reset a
   mismatched DCR client for **their** grants only. `deleteClient` runs only when
   `user_mcp_oauth_clients` shows they own that registration. Shared host clients
