@@ -129,6 +129,7 @@ test('resolveInboundEmailAuthVerdict parses Authentication-Results into auth/sus
 		spf: 'pass',
 		dkim: 'pass',
 		dmarc: 'pass',
+		dmarcHeaderFrom: 'example.com',
 		authenticated: true,
 		suspect: false,
 		reason: null,
@@ -226,9 +227,37 @@ test('resolveInboundEmailAuthVerdict parses Authentication-Results into auth/sus
 			spf: 'unknown',
 			dkim: 'unknown',
 			dmarc: 'unknown',
+			dmarcHeaderFrom: null,
 			authenticated: false,
 			suspect: false,
 			reason: null,
 		})
 	}
+})
+
+test('resolveInboundEmailAuthVerdict keeps the header.from domain of the passing DMARC clause', () => {
+	expect(
+		resolveInboundEmailAuthVerdict(
+			'mx.cloudflare.net; dkim=pass header.d=evil.example; dmarc=pass (p=reject) header.from=Evil.Example policy.dmarc=reject; spf=pass smtp.mailfrom=evil.example',
+		).dmarcHeaderFrom,
+	).toBe('evil.example')
+	expect(
+		resolveInboundEmailAuthVerdict(
+			'mx.cloudflare.net; dmarc=pass header.from="example.com"',
+		).dmarcHeaderFrom,
+	).toBe('example.com')
+	expect(
+		resolveInboundEmailAuthVerdict(
+			'mx.cloudflare.net; dmarc=fail header.from=other.example; dmarc=pass header.from=example.com',
+		).dmarcHeaderFrom,
+	).toBe('example.com')
+	expect(
+		resolveInboundEmailAuthVerdict('mx.cloudflare.net; dmarc=pass')
+			.dmarcHeaderFrom,
+	).toBeNull()
+	expect(
+		resolveInboundEmailAuthVerdict(
+			'mx.cloudflare.net; dmarc=fail header.from=example.com',
+		).dmarcHeaderFrom,
+	).toBeNull()
 })

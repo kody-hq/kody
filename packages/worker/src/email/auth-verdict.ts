@@ -15,6 +15,12 @@ export type EmailAuthVerdict = {
 	spf: EmailAuthMethodResult
 	dkim: EmailAuthMethodResult
 	dmarc: EmailAuthMethodResult
+	/**
+	 * Lowercased `header.from=` domain of the DMARC clause that passed: the
+	 * RFC 5322 From domain the authserv evaluated. Null when DMARC did not
+	 * pass or the stamp did not name it.
+	 */
+	dmarcHeaderFrom: string | null
 	authenticated: boolean
 	suspect: boolean
 	reason: string | null
@@ -24,6 +30,7 @@ export type EmailAuthVerdict = {
 export const failedSenderAuthenticationReason = 'Failed sender authentication.'
 
 const methodClausePattern = /^(spf|dkim|dmarc)=([^\s(;]+)/i
+const headerFromPropertyPattern = /(?:^|\s)header\.from=("?)([^\s;()"]+)\1/i
 
 const knownMethodResults = new Set<string>(emailAuthMethodResults)
 
@@ -48,12 +55,14 @@ function parseAuthMethodResults(authResults: string | null): {
 	spf: EmailAuthMethodResult
 	dkim: EmailAuthMethodResult
 	dmarc: EmailAuthMethodResult
+	dmarcHeaderFrom: string | null
 } {
 	let spf: EmailAuthMethodResult = 'unknown'
 	let dkim: EmailAuthMethodResult = 'unknown'
 	let dmarc: EmailAuthMethodResult = 'unknown'
+	let dmarcHeaderFrom: string | null = null
 	if (!authResults?.trim()) {
-		return { spf, dkim, dmarc }
+		return { spf, dkim, dmarc, dmarcHeaderFrom }
 	}
 
 	for (const clause of authResults.split(';')) {
@@ -66,11 +75,15 @@ function parseAuthMethodResults(authResults: string | null): {
 		} else if (method === 'dkim') {
 			dkim = mergeMethodResult(dkim, result)
 		} else if (method === 'dmarc') {
+			if (result === 'pass' && dmarc !== 'pass') {
+				dmarcHeaderFrom =
+					clause.match(headerFromPropertyPattern)?.[2]?.toLowerCase() ?? null
+			}
 			dmarc = mergeMethodResult(dmarc, result)
 		}
 	}
 
-	return { spf, dkim, dmarc }
+	return { spf, dkim, dmarc, dmarcHeaderFrom }
 }
 
 function methodFailed(result: EmailAuthMethodResult): boolean {
@@ -173,13 +186,15 @@ export function resolveInboundEmailAuthVerdict(
 	const singleStamp = authResults
 		? (leftmostAuthResultsStamp(authResults) ?? authResults)
 		: null
-	const { spf, dkim, dmarc } = parseAuthMethodResults(singleStamp)
+	const { spf, dkim, dmarc, dmarcHeaderFrom } =
+		parseAuthMethodResults(singleStamp)
 
 	if (spf === 'unknown' && dkim === 'unknown' && dmarc === 'unknown') {
 		return {
 			spf,
 			dkim,
 			dmarc,
+			dmarcHeaderFrom,
 			authenticated: false,
 			suspect: false,
 			reason: null,
@@ -200,6 +215,7 @@ export function resolveInboundEmailAuthVerdict(
 		spf,
 		dkim,
 		dmarc,
+		dmarcHeaderFrom,
 		authenticated,
 		suspect,
 		reason: suspect ? failedSenderAuthenticationReason : null,
