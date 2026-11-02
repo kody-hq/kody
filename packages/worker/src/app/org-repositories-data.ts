@@ -25,6 +25,7 @@ export async function loadOrgRepositoriesData(input: {
 	limit?: number
 	user: { mcpUser: McpUserContext }
 	binding: OrgBinding
+	includeAppGrants?: boolean
 }): Promise<ProfileLoaderData> {
 	const orgId = input.binding.org.id
 	const slug = input.binding.org.slug ?? ''
@@ -60,9 +61,17 @@ export async function loadOrgRepositoriesData(input: {
 	])
 	const allVisible = repositories.filter((pkg) => {
 		if (!pkg.hasPackage) return true
-		return canSeeResource(
-			access,
-			packageResource({ id: pkg.packageId, userId: orgId, label: pkg.name }),
+		return (
+			canSeeResource(
+				access,
+				packageResource({ id: pkg.packageId, userId: orgId, label: pkg.name }),
+			) ||
+			(Boolean(input.includeAppGrants && pkg.hasApp) &&
+				checkPermission(access, 'app:execute', {
+					type: 'app',
+					id: pkg.packageId,
+					orgId,
+				}).allowed)
 		)
 	})
 	const visible = limit == null ? allVisible : allVisible.slice(0, limit)
@@ -100,11 +109,16 @@ export async function loadOrgRepositoriesData(input: {
 			const canOpenDetail =
 				checkPermission(access, 'package:read', resource).allowed ||
 				Boolean(pkg.communityListingId)
-			return toPublicProfilePackageItem(pkg, {
+			const item = toPublicProfilePackageItem(pkg, {
 				includeOwnerVisibility: true,
 				username: slug,
 				canOpenDetail,
 			})
+			// Private and hidden package icons require package read access. App-only
+			// viewers still get a monogram instead of an inaccessible image.
+			return !canOpenDetail && (pkg.isPrivate || pkg.hidden)
+				? { ...item, iconUrl: null }
+				: item
 		}),
 		activity: null,
 		query: query || null,

@@ -525,6 +525,13 @@ function workspaceResourceGroups(
 		{
 			label: 'Build',
 			items: [
+				{
+					href: orgSectionHref(orgSlug, 'apps'),
+					id: 'apps',
+					label: 'Apps',
+					icon: 'apps',
+					description: 'Apps hosted in this workspace.',
+				},
 				repositoriesRailItem(orgSlug),
 				jobsRailItem(orgSlug),
 				executionContextsRailItem(orgSlug, executionContexts),

@@ -10,6 +10,7 @@ import { type OrgRole } from '@kody-internal/shared/request-context.ts'
 const orgOwnedAccountSections = [
 	'activity',
 	'agents',
+	'apps',
 	'credentials',
 	'email',
 	'execution-contexts',
@@ -37,6 +38,7 @@ const orgOwnedSectionSet: ReadonlySet<string> = new Set(orgOwnedAccountSections)
  * Other nested paths stay on other routes.
  */
 const exactOrgSections: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+	['apps', new Set<string>()],
 	['follows', new Set<string>()],
 	['repositories', new Set(['new'])],
 	['webhooks', new Set<string>()],

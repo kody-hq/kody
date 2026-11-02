@@ -234,3 +234,94 @@ test('team repositories list what each member role can see', async () => {
 		error: 'Not found.',
 	})
 })
+
+test('app inventory includes an app-only grant without exposing the package link', async () => {
+	const env = createEnv()
+	await env.APP_DB.prepare(
+		`UPDATE saved_packages SET has_app = 1, is_private = 1 WHERE id = ?`,
+	)
+		.bind('pkg-secret')
+		.run()
+	await env.APP_DB.prepare(
+		`INSERT INTO entity_sources (id, user_id, entity_kind, entity_id, repo_id, published_commit, created_at, updated_at) VALUES (?, ?, 'package', ?, ?, ?, ?, ?)`,
+	)
+		.bind(
+			'src-2',
+			teamId,
+			'pkg-secret',
+			'repo-secret',
+			'published-commit',
+			now,
+			now,
+		)
+		.run()
+	await env.APP_DB.prepare(
+		`INSERT INTO grants (id, org_id, resource_type, resource_id, subject_type, subject_id, preset, created_by_user_id, created_at, updated_at) VALUES (?, ?, 'app', ?, 'user', ?, 'use', ?, ?, ?)`,
+	)
+		.bind('grant-app-only', teamId, 'pkg-secret', memberId, ownerId, now, now)
+		.run()
+	await env.APP_DB.prepare(
+		`INSERT INTO grant_permissions (grant_id, permission) VALUES (?, 'app:execute')`,
+	)
+		.bind('grant-app-only')
+		.run()
+	const binding = await loadOrgBindingForSlug(
+		env.APP_DB,
+		memberId as never,
+		'acme',
+	)
+	if (!binding) throw new Error('Missing test membership')
+	const user = { mcpUser: { userId: memberId, username: 'member' } } as never
+	const repositories = await loadOrgRepositoriesData({
+		env,
+		user,
+		binding,
+		query: '',
+	})
+	expect(repositories.packages.some((pkg) => pkg.kodyId === 'secret')).toBe(
+		false,
+	)
+	const apps = await loadOrgRepositoriesData({
+		env,
+		user,
+		binding,
+		query: '',
+		includeAppGrants: true,
+	})
+	const ownerBinding = await loadOrgBindingForSlug(
+		env.APP_DB,
+		ownerId as never,
+		'acme',
+	)
+	if (!ownerBinding) throw new Error('Missing owner membership')
+	const ownerApps = await loadOrgRepositoriesData({
+		env,
+		user: { mcpUser: { userId: ownerId, username: 'owner' } } as never,
+		binding: ownerBinding,
+		query: '',
+		includeAppGrants: true,
+	})
+	expect(
+		ownerApps.packages.find((pkg) => pkg.kodyId === 'secret')?.iconUrl,
+	).toBeTruthy()
+	expect(apps.packages.find((pkg) => pkg.kodyId === 'secret')).toMatchObject({
+		hasApp: true,
+		canOpenDetail: false,
+		iconUrl: null,
+	})
+	await env.APP_DB.prepare(
+		`UPDATE saved_packages SET is_private = 0 WHERE id = ?`,
+	)
+		.bind('pkg-secret')
+		.run()
+	const publicApps = await loadOrgRepositoriesData({
+		env,
+		user,
+		binding,
+		query: '',
+		includeAppGrants: true,
+	})
+	expect(
+		publicApps.packages.find((pkg) => pkg.kodyId === 'secret')?.iconUrl,
+	).toBeTruthy()
+})

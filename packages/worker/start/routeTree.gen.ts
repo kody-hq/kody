@@ -175,6 +175,7 @@ import { Route as AtChar123usernameChar125KodyIdAssetsSplatRouteImport } from '.
 import { Route as AtChar123usernameChar125KodyIdIconIconCommitRouteImport } from './routes/@{$username}_.$kodyId_.icon_.$iconCommit'
 import { Route as AppAtChar123orgSlugChar125ActivityRouteImport } from './routes/_app.@{$orgSlug}_.-.activity'
 import { Route as AppAtChar123orgSlugChar125AgentsRouteImport } from './routes/_app.@{$orgSlug}_.-.agents'
+import { Route as AppAtChar123orgSlugChar125AppsRouteImport } from './routes/_app.@{$orgSlug}_.-.apps'
 import { Route as AppAtChar123orgSlugChar125BillingRouteImport } from './routes/_app.@{$orgSlug}_.-.billing'
 import { Route as AppAtChar123orgSlugChar125CollaboratorsRouteImport } from './routes/_app.@{$orgSlug}_.-.collaborators'
 import { Route as AppAtChar123orgSlugChar125CredentialsRouteImport } from './routes/_app.@{$orgSlug}_.-.credentials'
@@ -1148,6 +1149,12 @@ const AppAtChar123orgSlugChar125AgentsRoute =
     path: '/@{$orgSlug}/-/agents',
     getParentRoute: () => AppRoute,
   } as any)
+const AppAtChar123orgSlugChar125AppsRoute =
+  AppAtChar123orgSlugChar125AppsRouteImport.update({
+    id: '/@{$orgSlug}_/-/apps',
+    path: '/@{$orgSlug}/-/apps',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAtChar123orgSlugChar125BillingRoute =
   AppAtChar123orgSlugChar125BillingRouteImport.update({
     id: '/@{$orgSlug}_/-/billing',
@@ -1966,6 +1973,7 @@ export interface FileRoutesByFullPath {
   '/@{$username}/$kodyId/icon/$iconCommit': typeof AtChar123usernameChar125KodyIdIconIconCommitRoute
   '/@{$orgSlug}/-/activity': typeof AppAtChar123orgSlugChar125ActivityRoute
   '/@{$orgSlug}/-/agents': typeof AppAtChar123orgSlugChar125AgentsRoute
+  '/@{$orgSlug}/-/apps': typeof AppAtChar123orgSlugChar125AppsRoute
   '/@{$orgSlug}/-/billing': typeof AppAtChar123orgSlugChar125BillingRoute
   '/@{$orgSlug}/-/collaborators': typeof AppAtChar123orgSlugChar125CollaboratorsRoute
   '/@{$orgSlug}/-/credentials': typeof AppAtChar123orgSlugChar125CredentialsRoute
@@ -2241,6 +2249,7 @@ export interface FileRoutesByTo {
   '/@{$username}/$kodyId/icon/$iconCommit': typeof AtChar123usernameChar125KodyIdIconIconCommitRoute
   '/@{$orgSlug}/-/activity': typeof AppAtChar123orgSlugChar125ActivityRoute
   '/@{$orgSlug}/-/agents': typeof AppAtChar123orgSlugChar125AgentsRoute
+  '/@{$orgSlug}/-/apps': typeof AppAtChar123orgSlugChar125AppsRoute
   '/@{$orgSlug}/-/billing': typeof AppAtChar123orgSlugChar125BillingRoute
   '/@{$orgSlug}/-/collaborators': typeof AppAtChar123orgSlugChar125CollaboratorsRoute
   '/@{$orgSlug}/-/credentials': typeof AppAtChar123orgSlugChar125CredentialsRoute
@@ -2519,6 +2528,7 @@ export interface FileRoutesById {
   '/@{$username}_/$kodyId_/icon_/$iconCommit': typeof AtChar123usernameChar125KodyIdIconIconCommitRoute
   '/_app/@{$orgSlug}_/-/activity': typeof AppAtChar123orgSlugChar125ActivityRoute
   '/_app/@{$orgSlug}_/-/agents': typeof AppAtChar123orgSlugChar125AgentsRoute
+  '/_app/@{$orgSlug}_/-/apps': typeof AppAtChar123orgSlugChar125AppsRoute
   '/_app/@{$orgSlug}_/-/billing': typeof AppAtChar123orgSlugChar125BillingRoute
   '/_app/@{$orgSlug}_/-/collaborators': typeof AppAtChar123orgSlugChar125CollaboratorsRoute
   '/_app/@{$orgSlug}_/-/credentials': typeof AppAtChar123orgSlugChar125CredentialsRoute
@@ -2797,6 +2807,7 @@ export interface FileRouteTypes {
     | '/@{$username}/$kodyId/icon/$iconCommit'
     | '/@{$orgSlug}/-/activity'
     | '/@{$orgSlug}/-/agents'
+    | '/@{$orgSlug}/-/apps'
     | '/@{$orgSlug}/-/billing'
     | '/@{$orgSlug}/-/collaborators'
     | '/@{$orgSlug}/-/credentials'
@@ -3072,6 +3083,7 @@ export interface FileRouteTypes {
     | '/@{$username}/$kodyId/icon/$iconCommit'
     | '/@{$orgSlug}/-/activity'
     | '/@{$orgSlug}/-/agents'
+    | '/@{$orgSlug}/-/apps'
     | '/@{$orgSlug}/-/billing'
     | '/@{$orgSlug}/-/collaborators'
     | '/@{$orgSlug}/-/credentials'
@@ -3349,6 +3361,7 @@ export interface FileRouteTypes {
     | '/@{$username}_/$kodyId_/icon_/$iconCommit'
     | '/_app/@{$orgSlug}_/-/activity'
     | '/_app/@{$orgSlug}_/-/agents'
+    | '/_app/@{$orgSlug}_/-/apps'
     | '/_app/@{$orgSlug}_/-/billing'
     | '/_app/@{$orgSlug}_/-/collaborators'
     | '/_app/@{$orgSlug}_/-/credentials'
@@ -4750,6 +4763,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAtChar123orgSlugChar125AgentsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/@{$orgSlug}_/-/apps': {
+      id: '/_app/@{$orgSlug}_/-/apps'
+      path: '/@{$orgSlug}/-/apps'
+      fullPath: '/@{$orgSlug}/-/apps'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125AppsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/@{$orgSlug}_/-/billing': {
       id: '/_app/@{$orgSlug}_/-/billing'
       path: '/@{$orgSlug}/-/billing'
@@ -5578,6 +5598,7 @@ interface AppRouteChildren {
   AppAdminIndexRoute: typeof AppAdminIndexRoute
   AppAtChar123orgSlugChar125ActivityRoute: typeof AppAtChar123orgSlugChar125ActivityRoute
   AppAtChar123orgSlugChar125AgentsRoute: typeof AppAtChar123orgSlugChar125AgentsRoute
+  AppAtChar123orgSlugChar125AppsRoute: typeof AppAtChar123orgSlugChar125AppsRoute
   AppAtChar123orgSlugChar125BillingRoute: typeof AppAtChar123orgSlugChar125BillingRoute
   AppAtChar123orgSlugChar125CollaboratorsRoute: typeof AppAtChar123orgSlugChar125CollaboratorsRoute
   AppAtChar123orgSlugChar125CredentialsRoute: typeof AppAtChar123orgSlugChar125CredentialsRoute
@@ -5726,6 +5747,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAtChar123orgSlugChar125ActivityRoute:
     AppAtChar123orgSlugChar125ActivityRoute,
   AppAtChar123orgSlugChar125AgentsRoute: AppAtChar123orgSlugChar125AgentsRoute,
+  AppAtChar123orgSlugChar125AppsRoute: AppAtChar123orgSlugChar125AppsRoute,
   AppAtChar123orgSlugChar125BillingRoute:
     AppAtChar123orgSlugChar125BillingRoute,
   AppAtChar123orgSlugChar125CollaboratorsRoute:

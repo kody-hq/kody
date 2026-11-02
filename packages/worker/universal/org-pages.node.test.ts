@@ -217,6 +217,7 @@ test('credits paths bind to the organization in the URL', () => {
 test('every org-bound URL names its section, or none for billing and management', () => {
 	expect(orgOwnedSectionForPath('/@acme/-/memories/m-1')).toBe('memories')
 	expect(orgOwnedSectionForPath('/@acme/-/repositories')).toBe('repositories')
+	expect(orgOwnedSectionForPath('/@acme/-/apps')).toBe('apps')
 	expect(orgOwnedSectionForPath('/account/workflows.json')).toBeNull()
 	expect(orgOwnedSectionForPath('/account/memories-export.json')).toBe(
 		'memories',

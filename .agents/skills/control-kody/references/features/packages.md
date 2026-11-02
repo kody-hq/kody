@@ -17,6 +17,14 @@ npm run control-kody -- request GET /account/packages.json --contains 'packages'
 not `npm run dev`, when proving create/publish. See cloud-agents local
 limitations.
 
+## Apps
+
+Create a package with `kody.app.entry` using `control-kody execute`, then open
+`/@{$orgSlug}/-/apps` as the workspace member. Check the app opens, search,
+visibility and sort filters work, and icon, card, and list views retain their
+URL state. Reload a bare Apps URL after choosing a view to verify the device
+preference. A package without an app must not appear.
+
 ## Assert
 
 - Profile / detail: `/@{$username}`, `/@{$username}/$kodyId`,
