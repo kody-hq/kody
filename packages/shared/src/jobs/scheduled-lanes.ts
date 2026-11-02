@@ -277,11 +277,21 @@ export function shouldRunD1PacedFreshnessCron(now: Date) {
 	return now.getUTCMinutes() === 45
 }
 
-/** Weekly restore drill: Sunday 07:00–07:19 UTC. */
+/**
+ * Weekly restore drill: Sunday 07:00–08:59 UTC. The drill resumes across ticks
+ * (one source slice per tick), so the window must fit every source.
+ */
 export function shouldRunD1PacedRestoreDrillCron(now: Date) {
 	if (now.getUTCDay() !== 0) return false
 	const minutes = now.getUTCHours() * 60 + now.getUTCMinutes()
-	return minutes >= 7 * 60 && minutes < 7 * 60 + 20
+	return minutes >= 7 * 60 && minutes < 9 * 60
+}
+
+/** Sunday ticks from 08:50 UTC fail any unfinished drill sources (deadline). */
+export function isPastD1PacedRestoreDrillDeadline(now: Date) {
+	if (now.getUTCDay() !== 0) return false
+	const minutes = now.getUTCHours() * 60 + now.getUTCMinutes()
+	return minutes >= 8 * 60 + 50
 }
 
 export const jobScheduleWatchdogIntervalMinutes = 15

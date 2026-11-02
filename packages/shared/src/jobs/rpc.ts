@@ -1,3 +1,4 @@
+import { type PacedRestoreDrillCheckpoint } from '../backup-d1-paced-drill-alert.ts'
 import { type McpCallerContext } from '../chat.ts'
 import { type OwnerId } from '../owner-person-ids.ts'
 import { type JobManagerDebugState } from './manager-debug.ts'
@@ -87,4 +88,9 @@ export type JobsHostContract = {
 	}): Promise<RunJobNowResult>
 	/** Execute one platform scheduled lane with failure isolation. */
 	runScheduledLane(message: ScheduledLaneMessage): Promise<ScheduledLaneOutcome>
+	/**
+	 * Where the weekly paced D1 restore drill is (or died), so the jobs worker
+	 * can tag a platform OOM/timeout of that lane with source and phase.
+	 */
+	readD1PacedRestoreDrillCheckpoint(): Promise<PacedRestoreDrillCheckpoint | null>
 }

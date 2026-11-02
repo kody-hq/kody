@@ -7,11 +7,16 @@ import {
 	type SettleHungDueJobsResult,
 } from '@kody-internal/shared/jobs/rpc.ts'
 import { type ScheduledLaneMessage } from '@kody-internal/shared/jobs/scheduled-lanes.ts'
+import { type PacedRestoreDrillCheckpoint } from '@kody-internal/shared/backup-d1-paced-drill-alert.ts'
 import * as Sentry from '@sentry/cloudflare'
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import { getWorkerSentryOptions } from '#worker/sentry-options.ts'
 import { runScheduledLaneWithFailureIsolation } from '#worker/scheduled/scheduled-lanes.ts'
 import { runWithDynamicWorkerEvaluationBudget } from '#worker/dynamic-worker-evaluation-budget.ts'
+import {
+	pacedRestoreDrillCheckpointFromProgress,
+	readLatestD1PacedRestoreDrill,
+} from '#worker/dr/d1-paced-restore-drill-progress.ts'
 import {
 	runDueJobsForUser,
 	runJobNow,
@@ -88,6 +93,12 @@ class JobsHostEntrypoint
 					env: this.env,
 					message,
 				}),
+		)
+	}
+
+	async readD1PacedRestoreDrillCheckpoint(): Promise<PacedRestoreDrillCheckpoint | null> {
+		return pacedRestoreDrillCheckpointFromProgress(
+			await readLatestD1PacedRestoreDrill(this.env.APP_DB),
 		)
 	}
 }
