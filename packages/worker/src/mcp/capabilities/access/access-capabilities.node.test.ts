@@ -524,7 +524,14 @@ test('org grants that hand out Owner-held permissions require an Owner', async (
 		org: { ...org, role: null },
 	})
 	const otherId = testStableUserIdFromEmail('other@example.com')
-	for (const permission of ['member:write', 'member:delete'] as const) {
+	for (const permission of [
+		'member:write',
+		'member:delete',
+		'package:write',
+		'package:publish',
+		'app:execute',
+		'app:manage_access',
+	] as const) {
 		for (const subjectId of [delegateId, otherId]) {
 			await expect(
 				accessGrantCapability.handler(
@@ -723,7 +730,7 @@ test('member and billing grant changes need a live person; other grants do not',
 	).resolves.toMatchObject({ revoked: true })
 })
 
-test('org grants carry read-only resource permissions but refuse writes', async () => {
+test('org grants carry read-only resource permissions but refuse writes outside packages and apps', async () => {
 	const db = await createDb()
 	const ownerId = testStableUserIdFromEmail('owner-read@example.com')
 	await provisionPersonalOrg(db, {
@@ -767,7 +774,6 @@ test('org grants carry read-only resource permissions but refuse writes', async 
 	for (const permission of [
 		'job:write',
 		'job:execute',
-		'package:write',
 		'secret:use',
 		'secret:read',
 		'memory:read',

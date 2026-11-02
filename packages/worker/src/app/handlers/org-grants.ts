@@ -35,7 +35,9 @@ import {
 import { listOrgMembers } from '#worker/orgs/org-members-list.ts'
 import { listTeams } from '#worker/orgs/org-teams-list.ts'
 import {
+	isOrgWideManagePermission,
 	isOrgWideReadPermission,
+	orgWideManagePermissions,
 	orgWideReadPermissions,
 } from '@kody-internal/shared/grant-presets.ts'
 import {
@@ -210,6 +212,7 @@ async function listOrgWideReadSubjects(
 ): Promise<Array<OrgWideReadSubjectView>> {
 	const readsBySubject = new Map<string, Array<string>>()
 	const createsBySubject = new Map<string, Array<string>>()
+	const managesBySubject = new Map<string, Array<string>>()
 	for (const grant of grants) {
 		if (grant.resourceType !== 'org' || grant.resourceId !== orgId) continue
 		const key = subjectKey({ type: grant.subjectType, id: grant.subjectId })
@@ -220,6 +223,10 @@ async function listOrgWideReadSubjects(
 		createsBySubject.set(key, [
 			...(createsBySubject.get(key) ?? []),
 			...grant.permissions.filter(isOrgCreatePermission),
+		])
+		managesBySubject.set(key, [
+			...(managesBySubject.get(key) ?? []),
+			...grant.permissions.filter(isOrgWideManagePermission),
 		])
 	}
 	const [members, teams] = await Promise.all([
@@ -236,6 +243,7 @@ async function listOrgWideReadSubjects(
 			label: memberLabel(member),
 			reads: readsBySubject.get(key) ?? [],
 			creates: createsBySubject.get(key) ?? [],
+			manages: managesBySubject.get(key) ?? [],
 		})
 	}
 	for (const team of teams) {
@@ -246,6 +254,7 @@ async function listOrgWideReadSubjects(
 			label: `${team.name} (@${team.slug})`,
 			reads: readsBySubject.get(key) ?? [],
 			creates: createsBySubject.get(key) ?? [],
+			manages: managesBySubject.get(key) ?? [],
 		})
 	}
 	return subjects
@@ -281,7 +290,7 @@ async function resolveOrgWideReadSubject(
 	return null
 }
 
-type OrganizationAccessKind = 'read' | 'create'
+type OrganizationAccessKind = 'read' | 'create' | 'manage'
 
 const organizationAccessKinds = {
 	read: {
@@ -297,6 +306,13 @@ const organizationAccessKinds = {
 		personalError:
 			'A personal organization has no members to grant create access to.',
 		emptyError: 'Pick at least one kind of create access.',
+	},
+	manage: {
+		allows: isOrgWideManagePermission,
+		onlyError: `Only manage access can be granted here: ${orgWideManagePermissions.join(', ')}.`,
+		personalError:
+			'A personal organization has no members to grant org-wide manage access to.',
+		emptyError: 'Pick at least one kind of manage access.',
 	},
 } satisfies Record<
 	OrganizationAccessKind,
@@ -329,6 +345,18 @@ export async function grantOrganizationCreateAccess(
 	input: OrganizationAccessInput,
 ) {
 	return setOrganizationAccess(input, 'create')
+}
+
+/**
+ * Set which org-wide package and app manage permissions a member or team
+ * holds. Only an Owner may add them. Each saved kind also gets its read
+ * permission, which stays when manage is removed. Other permissions on that
+ * subject's organization grant are kept as they are.
+ */
+export async function grantOrganizationManageAccess(
+	input: OrganizationAccessInput,
+) {
+	return setOrganizationAccess(input, 'manage')
 }
 
 type OrganizationAccessInput = {
@@ -395,13 +423,26 @@ async function setOrganizationAccess(
 		subjectType: subject.type,
 		subjectId: subject.id,
 	})
-	const kept = existing
-		.flatMap((grant) => grant.permissions)
-		.filter(
-			(permission): permission is OrgPermission =>
-				isOrgPermission(permission) && !config.allows(permission),
-		)
-	const permissions = [...new Set([...kept, ...chosen])]
+	const keptFrom = (grants: typeof existing) =>
+		grants
+			.flatMap((grant) => grant.permissions)
+			.filter(
+				(permission): permission is OrgPermission =>
+					isOrgPermission(permission) && !config.allows(permission),
+			)
+	const kept = keptFrom(existing)
+	// Saving clears a past expiry, so only a live grant's permissions skip the Owner check.
+	const now = new Date().toISOString()
+	const liveKept = keptFrom(
+		existing.filter((grant) => !grant.expiresAt || grant.expiresAt > now),
+	)
+	const permissions = [
+		...new Set([
+			...kept,
+			...chosen,
+			...(kind === 'manage' ? orgWideReadsFor(chosen) : []),
+		]),
+	]
 	if (permissions.length === 0 && existing.length === 0) {
 		return operationResult({ ok: false, error: config.emptyError }, 400)
 	}
@@ -422,6 +463,7 @@ async function setOrganizationAccess(
 		const resolved = await resolveAuthorizedGrantPermissions(ctx, {
 			family: 'org',
 			permissions,
+			alreadyHeld: liveKept,
 		})
 		await upsertGrant({
 			db: env.APP_DB,
@@ -445,4 +487,15 @@ async function setOrganizationAccess(
 		throw error
 	}
 	return operationResult({ ok: true as const, permissions: chosen })
+}
+
+/** The read permission each org-wide manage permission's kind needs. */
+function orgWideReadsFor(permissions: ReadonlyArray<OrgPermission>) {
+	return [
+		...new Set(
+			permissions.map((permission): OrgPermission =>
+				permission.startsWith('app:') ? 'app:read' : 'package:read',
+			),
+		),
+	]
 }

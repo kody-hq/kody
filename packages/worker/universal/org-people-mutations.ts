@@ -46,6 +46,9 @@ export const grantOrganizationReadAccessSchema = z.object({
 export const grantOrganizationCreateAccessSchema =
 	grantOrganizationReadAccessSchema
 
+export const grantOrganizationManageAccessSchema =
+	grantOrganizationReadAccessSchema
+
 export const revokeOrganizationMemberInviteSchema = z.object({
 	inviteId: z.string().trim().min(1),
 })

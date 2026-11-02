@@ -78,6 +78,17 @@ async function loadPackageRows(
 	return rows
 }
 
+/** Every live package id in the org, for an org-wide write or publish grant. */
+export async function listLiveOrgPackageIds(db: D1Database, orgId: string) {
+	const result = await db
+		.prepare(
+			`SELECT id FROM saved_packages WHERE user_id = ?${andLiveDeletedAtSql()}`,
+		)
+		.bind(orgId)
+		.all<{ id: string }>()
+	return (result.results ?? []).map((row) => row.id)
+}
+
 async function describePackage(input: {
 	env: Env
 	orgId: string

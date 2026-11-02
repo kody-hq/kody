@@ -1,6 +1,7 @@
 import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
 import {
 	grantPresets,
+	orgWideManagePermissions,
 	resolveGrantPermissions,
 	type GrantPreset,
 } from '@kody-internal/shared/grant-presets.ts'
@@ -379,8 +380,10 @@ async function authorizeGrantChange(
  * Org-level permissions only an Owner may put on an org grant. org:write and
  * org:delete would let a delegate elevate past Owner; member:write would let a
  * delegate re-delegate; member:delete is an Owner-held control a member:write
- * holder must not hand out (to anyone, including themselves). billing:* never
- * appears here because it is not grantable on an org grant at all.
+ * holder must not hand out (to anyone, including themselves). The org-wide
+ * package and app manage permissions reach every package anyone in the org
+ * made, so only an Owner hands them out. billing:* never appears here because
+ * it is not grantable on an org grant at all.
  */
 const ownerOnlyOrgGrantPermissions: ReadonlySet<OrgPermission> =
 	new Set<OrgPermission>([
@@ -388,6 +391,7 @@ const ownerOnlyOrgGrantPermissions: ReadonlySet<OrgPermission> =
 		'org:write',
 		'member:write',
 		'member:delete',
+		...orgWideManagePermissions,
 	])
 
 /**
@@ -416,6 +420,8 @@ export async function resolveAuthorizedGrantPermissions(
 		family: OrgResourceType | 'org'
 		preset?: GrantPreset | null
 		permissions: Array<OrgPermission> | null
+		/** Already on this subject's grant; keeping them needs no Owner. */
+		alreadyHeld?: ReadonlyArray<OrgPermission>
 	},
 ) {
 	let permissions: ReadonlyArray<OrgPermission>
@@ -431,8 +437,10 @@ export async function resolveAuthorizedGrantPermissions(
 		)
 	}
 	if (input.family !== 'org') return permissions
-	const ownerOnly = permissions.filter((permission) =>
-		ownerOnlyOrgGrantPermissions.has(permission),
+	const ownerOnly = permissions.filter(
+		(permission) =>
+			ownerOnlyOrgGrantPermissions.has(permission) &&
+			!input.alreadyHeld?.includes(permission),
 	)
 	if (ownerOnly.length === 0) return permissions
 	const request = requireMcpRequest(ctx.callerContext)
