@@ -372,7 +372,11 @@ export const loadOrgApps = createServerFn({ method: 'GET' })
 						undefined,
 						{ query: '' },
 					)
-				: await loadOrgRepositoriesData({ ...input, query: '' })
+				: await loadOrgRepositoriesData({
+						...input,
+						query: '',
+						includeAppGrants: true,
+					})
 		if (!payload) throw notFound()
 		const username = payload.profile.username
 		const apps = await mapWithConcurrency(
