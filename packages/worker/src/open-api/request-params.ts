@@ -1,4 +1,5 @@
 import { isRecord } from '@kody-internal/shared/is-record.ts'
+import { readRequestBodyUpTo } from '#worker/read-request-body-up-to.ts'
 import { invalidRequest } from './errors.ts'
 
 type JsonSchema = Record<string, unknown>
@@ -84,18 +85,11 @@ export function readQueryParams(
 }
 
 export async function readJsonBody(request: Request) {
-	const declaredLength = Number(request.headers.get('Content-Length') ?? '0')
-	if (declaredLength > maxApiRequestBodyBytes) {
-		return {
-			kind: 'too_large' as const,
-			byteLength: declaredLength,
-		}
+	const read = await readRequestBodyUpTo(request, maxApiRequestBodyBytes)
+	if (!read.ok) {
+		return { kind: 'too_large' as const, byteLength: read.byteLength }
 	}
-	const text = await request.text()
-	const byteLength = new TextEncoder().encode(text).byteLength
-	if (byteLength > maxApiRequestBodyBytes) {
-		return { kind: 'too_large' as const, byteLength }
-	}
+	const text = new TextDecoder().decode(read.bytes)
 	if (!text.trim()) return { kind: 'ok' as const, body: {} }
 	const contentType = request.headers.get('Content-Type') ?? ''
 	if (!/^application\/(?:[\w.+-]+\+)?json\b/i.test(contentType.trim())) {

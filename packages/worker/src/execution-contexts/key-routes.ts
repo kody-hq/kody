@@ -15,6 +15,7 @@ import { authorizeOrgWide } from '#worker/authorization/authorize.ts'
 import { isExecutionContextsEnabledFor } from './flag.ts'
 import { authenticateApiRequest } from '#worker/open-api/authenticate.ts'
 import { ApiError, invalidRequest } from '#worker/open-api/errors.ts'
+import { readRequestBodyUpTo } from '#worker/read-request-body-up-to.ts'
 import { registrationAuthorizationError } from './errors.ts'
 import productionServerKeys from './server-keys.production.json'
 import testServerKeys from './server-keys.local.json'
@@ -97,15 +98,15 @@ export function serverKeySetDocument(env: Pick<Env, 'ECP_FRAME_SIGNING_KEYS'>) {
 }
 
 async function readBody(request: Request) {
-	const bytes = new Uint8Array(await request.arrayBuffer())
-	if (bytes.byteLength > maxRegisterBodyBytes) {
+	const body = await readRequestBodyUpTo(request, maxRegisterBodyBytes)
+	if (!body.ok) {
 		throw new ApiError({
 			status: 413,
 			code: 'payload_too_large',
 			message: 'Request body is too large.',
 		})
 	}
-	return bytes
+	return body.bytes
 }
 
 function signatureError(code: string, status = 401) {

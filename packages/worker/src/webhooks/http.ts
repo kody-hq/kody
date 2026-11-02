@@ -1,5 +1,6 @@
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
+import { readRequestBodyUpTo } from '#worker/read-request-body-up-to.ts'
 import {
 	AccountDeletionInProgressError,
 	assertAccountWritable,
@@ -370,26 +371,15 @@ async function readBodyWithCap(
 	| { ok: true; bytes: Uint8Array }
 	| { ok: false; response: Response; payloadBytes: number }
 > {
-	const contentLengthHeader = request.headers.get('content-length')
-	if (contentLengthHeader) {
-		const contentLength = Number(contentLengthHeader)
-		if (Number.isFinite(contentLength) && contentLength > maxBytes) {
-			return {
-				ok: false,
-				response: tooLargeResponse(),
-				payloadBytes: contentLength,
-			}
-		}
-	}
-	const buffer = await request.arrayBuffer()
-	if (buffer.byteLength > maxBytes) {
+	const read = await readRequestBodyUpTo(request, maxBytes)
+	if (!read.ok) {
 		return {
 			ok: false,
 			response: tooLargeResponse(),
-			payloadBytes: buffer.byteLength,
+			payloadBytes: read.byteLength,
 		}
 	}
-	return { ok: true, bytes: new Uint8Array(buffer) }
+	return { ok: true, bytes: read.bytes }
 }
 
 async function runWithTimeout<T>(
