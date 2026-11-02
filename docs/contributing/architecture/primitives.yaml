@@ -220,7 +220,7 @@ primitives:
       - packages/worker/src/discord/guild-membership.ts
       - packages/worker/src/app/oauth-
       - packages/worker/src/app/handlers/verify
-      - packages/worker/src/app/handlers/pending-verification.ts
+      - packages/worker/start/server/pending-verification.ts
       - packages/worker/src/identity/webauthn-operations.ts
       - packages/worker/src/app/handlers/account-two-factor.ts
       - packages/worker/src/app/handlers/account-passkeys.ts
