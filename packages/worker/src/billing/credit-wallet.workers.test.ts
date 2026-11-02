@@ -1033,7 +1033,6 @@ test('admin eligibility unlocks a manual Pro wallet without Stripe, survives Str
 				env,
 				userId: account?.id ?? 0,
 				orgId: userId,
-				personal: true,
 				now,
 			})
 		)?.canBuyCredits,
@@ -1258,7 +1257,6 @@ test('gift and referral Pro overlays keep retired Pro ceilings without a wallet'
 			env,
 			userId: row?.id ?? 0,
 			orgId: stableUserId,
-			personal: true,
 			now,
 		})
 	}

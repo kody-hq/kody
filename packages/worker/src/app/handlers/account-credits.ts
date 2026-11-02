@@ -174,7 +174,6 @@ export async function startWebsiteCreditTopUp(input: {
 		env,
 		userId: user.userId,
 		orgId: access.org.id,
-		personal: access.org.personal,
 		now,
 	})
 	if (!creditsUser?.canBuyCredits || !creditsUser.stripeCustomerId) {
@@ -190,14 +189,14 @@ export async function startWebsiteCreditTopUp(input: {
 	}
 	await ensureCreditWallet({
 		db: env.APP_DB,
-		userId: creditsUser.stableUserId,
+		userId: creditsUser.orgId,
 		entitlement: creditsUser.entitlement,
 		now,
 	})
 	try {
 		const checkout = await startCreditTopUpCheckout({
 			env,
-			stableUserId: creditsUser.stableUserId,
+			orgId: creditsUser.orgId,
 			stripeCustomerId: creditsUser.stripeCustomerId,
 			amountCents: amount.cents,
 			creditsUrl: new URL(
@@ -270,7 +269,6 @@ export async function saveWebsiteCreditSettings(input: {
 		env,
 		userId: user.userId,
 		orgId: access.org.id,
-		personal: access.org.personal,
 		now,
 	})
 	if (!creditsUser?.canBuyCredits) {
@@ -286,13 +284,13 @@ export async function saveWebsiteCreditSettings(input: {
 	}
 	await ensureCreditWallet({
 		db: env.APP_DB,
-		userId: creditsUser.stableUserId,
+		userId: creditsUser.orgId,
 		entitlement: creditsUser.entitlement,
 		now,
 	})
 	await updateCreditWalletSettings({
 		db: env.APP_DB,
-		userId: creditsUser.stableUserId,
+		userId: creditsUser.orgId,
 		autoRefill: autoRefill.value,
 		notify,
 		now,

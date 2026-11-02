@@ -316,7 +316,7 @@ test('a confirmed Stripe return lands on the Credits section with the added noti
 	expect(mocks.applyCreditTopUpFromCheckoutSession).toHaveBeenCalledWith(
 		expect.objectContaining({
 			sessionId: 'cs_123',
-			expectedStableUserId: ownerIdFromStored('person-ada'),
+			expectedOrgId: ownerIdFromStored('person-ada'),
 		}),
 	)
 	expect(response.status).toBe(302)
