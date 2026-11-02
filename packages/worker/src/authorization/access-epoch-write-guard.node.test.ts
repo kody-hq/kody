@@ -63,12 +63,13 @@ const genericWriters = new Set([
 const genericWritePattern = /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+\$\{/
 
 function isAccessEpochInventorySource(file: string) {
+	const normalized = file.replaceAll('\\', '/')
 	return (
-		file.endsWith('.ts') &&
-		!file.endsWith('.test.ts') &&
-		!file.endsWith('.test-support.ts') &&
-		!file.startsWith('test-support/') &&
-		!file.endsWith('-test-schema.ts')
+		normalized.endsWith('.ts') &&
+		!normalized.endsWith('.test.ts') &&
+		!normalized.endsWith('.test-support.ts') &&
+		!normalized.startsWith('test-support/') &&
+		!normalized.endsWith('-test-schema.ts')
 	)
 }
 
@@ -91,6 +92,7 @@ test('colocated test-support fixtures are not scanned as production writers', ()
 	expect(
 		isAccessEpochInventorySource('credentials/example.test-support.ts'),
 	).toBe(false)
+	expect(isAccessEpochInventorySource('test-support\\fixture.ts')).toBe(false)
 	expect(isAccessEpochInventorySource('credentials/credential-client.ts')).toBe(
 		true,
 	)

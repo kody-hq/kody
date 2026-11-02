@@ -57,13 +57,14 @@ function commitTouchesPublishedCli(sha: string): boolean {
 		'diff-tree',
 		'--no-commit-id',
 		'--name-only',
+		'-z',
 		'-r',
 		sha,
 		'--',
 		'packages/cli',
 	])
 	return diff
-		.split('\n')
+		.split('\0')
 		.some((path) => path.length > 0 && cliPathAffectsPublishedPackage(path))
 }
 

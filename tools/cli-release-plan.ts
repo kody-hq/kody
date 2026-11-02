@@ -93,9 +93,9 @@ function nextVersion(current: string, bump: ReleaseBump): string | null {
 }
 
 /**
- * Paths under `packages/cli` that belong on the published npm tarball or
- * its build inputs. The package `files` field ships `dist` and `skills`
- * only, so the root README is not a release trigger (#4607).
+ * Paths under `packages/cli` that should start a CLI release. npm still
+ * includes the root README in the tarball, but a README-only docs edit
+ * must not patch-bump or publish (#4607).
  */
 export function cliPathAffectsPublishedPackage(path: string): boolean {
 	return path.startsWith('packages/cli/') && path !== 'packages/cli/README.md'
