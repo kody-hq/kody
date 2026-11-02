@@ -723,3 +723,47 @@ test('only an owner grants org-wide manage, which brings reads and stays when ot
 	expect(permissions.has('package:read')).toBe(true)
 	expect(permissions.has('job:read')).toBe(true)
 })
+
+test('a member:write delegate edits read access for a subject holding Owner-granted manage', async () => {
+	const env = createEnv()
+	const now = '2026-01-01T00:00:00.000Z'
+	sqlite
+		.prepare(
+			`INSERT INTO grants (
+			   id, org_id, resource_type, resource_id, subject_type, subject_id,
+			   created_by_user_id, created_at, updated_at
+			 ) VALUES ('grant-bob-delegate', ?, 'org', ?, 'user', ?, ?, ?, ?)`,
+		)
+		.run(acmeId, acmeId, people.bob.personId, people.ada.personId, now, now)
+	sqlite
+		.prepare(
+			`INSERT INTO grant_permissions (grant_id, permission)
+			 VALUES ('grant-bob-delegate', 'member:write')`,
+		)
+		.run()
+	const subject = `user:${people.bob.personId}`
+	expect(
+		(
+			await grantManages(env, 'ada', {
+				subject,
+				permissions: ['package:execute', 'package:publish'],
+			})
+		).status,
+	).toBe(200)
+
+	expect(
+		(await grantReads(env, 'bob', { subject, permissions: ['job:read'] }))
+			.status,
+	).toBe(200)
+	const permissions = await bobOrgPermissions()
+	expect(permissions.has('job:read')).toBe(true)
+	expect(permissions.has('package:publish')).toBe(true)
+	expect(permissions.has('member:write')).toBe(true)
+
+	const added = await grantManages(env, 'bob', {
+		subject,
+		permissions: ['package:execute', 'package:publish', 'app:execute'],
+	})
+	expect(added.status).toBe(400)
+	expect((await bobOrgPermissions()).has('app:execute')).toBe(false)
+})

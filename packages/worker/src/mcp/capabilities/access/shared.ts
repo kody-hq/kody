@@ -420,6 +420,8 @@ export async function resolveAuthorizedGrantPermissions(
 		family: OrgResourceType | 'org'
 		preset?: GrantPreset | null
 		permissions: Array<OrgPermission> | null
+		/** Already on this subject's grant; keeping them needs no Owner. */
+		alreadyHeld?: ReadonlyArray<OrgPermission>
 	},
 ) {
 	let permissions: ReadonlyArray<OrgPermission>
@@ -435,8 +437,10 @@ export async function resolveAuthorizedGrantPermissions(
 		)
 	}
 	if (input.family !== 'org') return permissions
-	const ownerOnly = permissions.filter((permission) =>
-		ownerOnlyOrgGrantPermissions.has(permission),
+	const ownerOnly = permissions.filter(
+		(permission) =>
+			ownerOnlyOrgGrantPermissions.has(permission) &&
+			!input.alreadyHeld?.includes(permission),
 	)
 	if (ownerOnly.length === 0) return permissions
 	const request = requireMcpRequest(ctx.callerContext)

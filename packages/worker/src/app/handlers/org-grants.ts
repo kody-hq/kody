@@ -456,6 +456,7 @@ async function setOrganizationAccess(
 		const resolved = await resolveAuthorizedGrantPermissions(ctx, {
 			family: 'org',
 			permissions,
+			alreadyHeld: kept,
 		})
 		await upsertGrant({
 			db: env.APP_DB,
