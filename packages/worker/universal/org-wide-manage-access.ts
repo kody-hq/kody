@@ -52,11 +52,22 @@ export function heldOrgWideManageOptions(held: ReadonlyArray<string>) {
 		.map((option) => option.permission)
 }
 
-/** Manage permissions for the chosen options; the server adds each read. */
-export function orgWideManagePermissionsFor(options: ReadonlyArray<string>) {
-	return orgWideManageAccessOptions
-		.filter((option) => options.includes(option.permission))
-		.flatMap((option) => [...option.permissions])
+/**
+ * Manage permissions to save for the chosen options; the server adds each
+ * read. An unchosen option keeps what `held` has of it unless `held` had all
+ * of it, so saving one kind never drops a partial grant on the other.
+ */
+export function orgWideManagePermissionsFor(
+	options: ReadonlyArray<string>,
+	held: ReadonlyArray<string> = [],
+) {
+	return orgWideManageAccessOptions.flatMap((option) => {
+		if (options.includes(option.permission)) return [...option.permissions]
+		const partial = option.permissions.filter((permission) =>
+			held.includes(permission),
+		)
+		return partial.length === option.permissions.length ? [] : partial
+	})
 }
 
 export function orgWideManageAccessLabel(permission: string) {

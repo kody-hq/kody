@@ -291,7 +291,10 @@ const orgWideAccessForms = {
 		legend: 'Can read',
 		options: orgWideReadAccessOptions,
 		held: (subject: OrgWideAccessSubject) => subject.reads,
-		toPermissions: (selected: ReadonlyArray<string>) => [...selected],
+		toPermissions: (
+			selected: ReadonlyArray<string>,
+			_subject: OrgWideAccessSubject,
+		) => [...selected],
 		ownerOnlyNote: null,
 		testId: 'org-wide-read',
 		save: 'Save read access',
@@ -305,7 +308,10 @@ const orgWideAccessForms = {
 		legend: 'Can create',
 		options: orgCreateAccessOptions,
 		held: (subject: OrgWideAccessSubject) => subject.creates,
-		toPermissions: (selected: ReadonlyArray<string>) => [...selected],
+		toPermissions: (
+			selected: ReadonlyArray<string>,
+			_subject: OrgWideAccessSubject,
+		) => [...selected],
 		ownerOnlyNote: null,
 		testId: 'org-create-access',
 		save: 'Save create access',
@@ -320,7 +326,10 @@ const orgWideAccessForms = {
 		options: orgWideManageAccessOptions,
 		held: (subject: OrgWideAccessSubject) =>
 			heldOrgWideManageOptions(subject.manages),
-		toPermissions: orgWideManagePermissionsFor,
+		toPermissions: (
+			selected: ReadonlyArray<string>,
+			subject: OrgWideAccessSubject,
+		) => orgWideManagePermissionsFor(selected, subject.manages),
 		ownerOnlyNote:
 			'Only an Owner can change manage access for the whole organization.',
 		testId: 'org-wide-manage',
@@ -379,7 +388,7 @@ function OrgWideAccessForm({
 							{
 								orgSlug,
 								subject: subject.key,
-								permissions: form.toPermissions(selected),
+								permissions: form.toPermissions(selected, subject),
 							},
 							{
 								onSuccess: () => {
