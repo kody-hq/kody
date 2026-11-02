@@ -41,15 +41,17 @@ back to back through Open API `packageAppFetch`
 serve phases are Kody's platform overhead on package-app requests (budget: tens
 of ms, see
 [invocation overhead guardrails](./architecture/invocation-overhead-guardrails.md)).
-The call authenticates with `KODY_API_TOKEN`, so the app does not need to be
-internet-visible. It measures the signed-in serve path; the hosted-host phases
-(`appSession`, `appTicket`, `retiredSlug`) are not in it. The probe is
-observational and never changes the verdict. Without a token it is skipped; a
-rejected token or failed sample is recorded in `packageApp.error`.
+With `KODY_API_TOKEN` the call authenticates, so the app does not need to be
+internet-visible; it measures the signed-in serve path, without the hosted-host
+phases (`appSession`, `appTicket`, `retiredSlug`). Without a token it fetches
+the internet-visible hosted URL `https://kentcdodds.kody.run/perf-hello/`
+anonymously (default app only; another `--package-app-id` is skipped), which
+includes those phases. The probe is observational and never changes the verdict;
+a rejected token or failed sample is recorded in `packageApp.error`.
 `--package-app-id <id>` points it at another app and `--no-package-app` skips
 it. Keep `@kentcdodds/perf-hello` a pure hello world.
 
-The workflow reads the token from the repository secret
+The workflow reads the optional token from the repository secret
 `KODY_SITE_PERF_API_TOKEN`. Mint it with `tokenCreate` (scopes
 `["app:execute", "package:read"]`, `idle_ttl_seconds: 1209600`,
 `max_lifetime_seconds: 7776000`; 90 days is the maximum), then set the GitHub
