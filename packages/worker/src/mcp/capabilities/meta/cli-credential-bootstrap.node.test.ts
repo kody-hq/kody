@@ -1,7 +1,26 @@
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
+import { type ApiTokenRecord } from '#worker/api-tokens/service.ts'
 import { cliCredentialBootstrapCapability } from './cli-credential-bootstrap.ts'
+
+const mintCliCredentialBootstrap = vi.hoisted(() =>
+	vi.fn(async (_input: Record<string, unknown>) => ({
+		bootstrap_code: 'kody_bc_test',
+		expires_at: '2030-01-01T00:00:00.000Z',
+		cli_command: 'npx @kodycodes/cli auth bootstrap',
+		name: 'cli',
+		scopes: ['package:read'],
+		idle_ttl_seconds: 3600,
+		max_lifetime_seconds: 86400,
+	})),
+)
+vi.mock('#worker/api-tokens/cli-credential-bootstrap.ts', async (original) => ({
+	...(await original<
+		typeof import('#worker/api-tokens/cli-credential-bootstrap.ts')
+	>()),
+	mintCliCredentialBootstrap,
+}))
 
 function mcpCaller() {
 	return createMcpCallerContext({
@@ -71,4 +90,50 @@ test('cliCredentialBootstrap rejects saved-package and app runtime contexts', as
 			/cannot run inside saved-package, job, webhook, or app runtimes/,
 		)
 	}
+})
+
+test('cliCredentialBootstrap from an org-bound parent token stays bound to that org', async () => {
+	mintCliCredentialBootstrap.mockClear()
+	const token = {
+		id: 'tok-1',
+		user_id: 'user-1',
+		org_id: 'org-team',
+		org_binding: 'org',
+		scopes: ['package:read'],
+		max_expires_at: null,
+	} as unknown as ApiTokenRecord
+	await cliCredentialBootstrapCapability.handler(
+		{ lifetime: 'short' },
+		{
+			env: { APP_DB: {} } as unknown as Env,
+			callerContext: mcpCaller(),
+			openApiPrincipal: { kind: 'token', token },
+		},
+	)
+	expect(mintCliCredentialBootstrap).toHaveBeenCalledWith(
+		expect.objectContaining({ orgBinding: 'org', orgId: 'org-team' }),
+	)
+})
+
+test('cliCredentialBootstrap from a user-owned parent token stays user-owned', async () => {
+	mintCliCredentialBootstrap.mockClear()
+	const token = {
+		id: 'tok-2',
+		user_id: 'user-1',
+		org_id: 'user-1',
+		org_binding: 'user',
+		scopes: ['package:read'],
+		max_expires_at: null,
+	} as unknown as ApiTokenRecord
+	await cliCredentialBootstrapCapability.handler(
+		{ lifetime: 'short' },
+		{
+			env: { APP_DB: {} } as unknown as Env,
+			callerContext: mcpCaller(),
+			openApiPrincipal: { kind: 'token', token },
+		},
+	)
+	expect(mintCliCredentialBootstrap.mock.calls[0]?.[0]).not.toHaveProperty(
+		'orgBinding',
+	)
 })

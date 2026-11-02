@@ -151,19 +151,27 @@ export const cliCredentialBootstrapCapability = defineDomainCapability(
 					'cliCredentialBootstrap is not available to a profile. Mint a profile token with tokenCreate (profile_id) or profileHandoff instead.',
 				)
 			}
-			const parent =
+			const parentToken =
 				ctx.openApiPrincipal?.kind === 'token'
-					? {
-							scopes: ctx.openApiPrincipal.token.scopes,
-							maxExpiresAt: ctx.openApiPrincipal.token.max_expires_at,
-						}
+					? ctx.openApiPrincipal.token
 					: undefined
+			const parent = parentToken
+				? {
+						scopes: parentToken.scopes,
+						maxExpiresAt: parentToken.max_expires_at,
+					}
+				: undefined
+			// An org-bound parent token must not widen into a user-owned child.
+			const orgBoundParent =
+				parentToken?.org_binding === 'org' ? parentToken : undefined
 			return mintCliCredentialBootstrap({
 				db: ctx.env.APP_DB,
 				// person-keyed (not personal org): api_tokens.user_id is the person
 				userId: personalOrgId(user.userId),
-				orgId:
-					ctx.callerContext.request?.org.id ?? personalOrgIdForPerson(user),
+				orgId: orgBoundParent
+					? orgBoundParent.org_id
+					: (ctx.callerContext.request?.org.id ?? personalOrgIdForPerson(user)),
+				...(orgBoundParent ? { orgBinding: 'org' as const } : {}),
 				...(input.name === undefined ? {} : { name: input.name }),
 				...(input.scopes === undefined ? {} : { scopes: input.scopes }),
 				...(input.lifetime === undefined ? {} : { lifetime: input.lifetime }),

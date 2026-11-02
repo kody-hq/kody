@@ -543,6 +543,30 @@ test('links stop working when their creator can no longer share', async () => {
 	})
 })
 
+test('a membership link stops working when its creator loses member:write', async () => {
+	const membership = await createLink(teamOrgId, {
+		kind: 'membership',
+		role: 'member',
+	})
+	await recordInviteLinkPending({
+		db,
+		linkId: membership.id,
+		userId: joiner.personId,
+	})
+	demoteOwnerToMember()
+
+	expect(await redeemAsJoiner(membership.tokenHash)).toMatchObject({
+		ok: false,
+		reason: 'inviter_gone',
+	})
+	expect(
+		await listPendingInviteLinksForPerson(db, {
+			userId: joiner.personId,
+			now: new Date().toISOString(),
+		}),
+	).toEqual([])
+})
+
 test('a failed access write gives the link use back', async () => {
 	const { tokenHash } = await createLink(
 		teamOrgId,
