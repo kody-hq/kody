@@ -110,7 +110,7 @@ test('missing worker maps fail the pipeline instead of silently skipping', async
 	expect(plan.error).toContain('sibling deploys still use')
 })
 
-test('isRetryableSentryUploadFailure matches 5xx and timeouts only', () => {
+test('isRetryableSentryUploadFailure matches 5xx, timeouts, and DNS failures only', () => {
 	expect(
 		isRetryableSentryUploadFailure(
 			'sentry reported an error: request failure (http status: 504)\nObject {"detail": String("Downstream timeout")}',
@@ -128,6 +128,11 @@ test('isRetryableSentryUploadFailure matches 5xx and timeouts only', () => {
 		true,
 	)
 	expect(isRetryableSentryUploadFailure('socket hang up')).toBe(true)
+	expect(
+		isRetryableSentryUploadFailure(
+			'error: API request failed\n\nCaused by:\n    [6] Could not resolve hostname (Could not resolve host: sentry.io)',
+		),
+	).toBe(true)
 	expect(
 		isRetryableSentryUploadFailure('request failure (http status: 401)'),
 	).toBe(false)
