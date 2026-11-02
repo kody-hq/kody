@@ -171,7 +171,7 @@ export const deleteAdminPlatformIntegration = createServerFn({ method: 'POST' })
 	})
 
 export const dismissAdminCommunityReport = createServerFn({ method: 'POST' })
-	.inputValidator(
+	.validator(
 		z.object({ reportId: z.string().min(1), note: z.string().optional() }),
 	)
 	.handler(async ({ data }) => {
@@ -183,7 +183,7 @@ export const dismissAdminCommunityReport = createServerFn({ method: 'POST' })
 		})
 	})
 export const delistAdminCommunityReport = createServerFn({ method: 'POST' })
-	.inputValidator(
+	.validator(
 		z.object({ reportId: z.string().min(1), note: z.string().optional() }),
 	)
 	.handler(async ({ data }) => {
@@ -195,7 +195,7 @@ export const delistAdminCommunityReport = createServerFn({ method: 'POST' })
 		})
 	})
 export const deleteAdminCommunityReport = createServerFn({ method: 'POST' })
-	.inputValidator(
+	.validator(
 		z.object({ reportId: z.string().min(1), note: z.string().optional() }),
 	)
 	.handler(async ({ data }) => {
@@ -207,7 +207,7 @@ export const deleteAdminCommunityReport = createServerFn({ method: 'POST' })
 		})
 	})
 export const banAdminReportReporter = createServerFn({ method: 'POST' })
-	.inputValidator(
+	.validator(
 		z.object({ reportId: z.string().min(1), note: z.string().optional() }),
 	)
 	.handler(async ({ data }) => {
@@ -219,7 +219,7 @@ export const banAdminReportReporter = createServerFn({ method: 'POST' })
 		})
 	})
 export const banAdminReportOwner = createServerFn({ method: 'POST' })
-	.inputValidator(
+	.validator(
 		z.object({ reportId: z.string().min(1), note: z.string().optional() }),
 	)
 	.handler(async ({ data }) => {
@@ -231,7 +231,7 @@ export const banAdminReportOwner = createServerFn({ method: 'POST' })
 		})
 	})
 export const deleteAdminSystemEmail = createServerFn({ method: 'POST' })
-	.inputValidator(z.object({ messageId: z.string() }))
+	.validator(z.object({ messageId: z.string() }))
 	.handler(async ({ data }) => {
 		const { withWebsiteMutation } = await import('./mutation-context.ts')
 		const { deleteAdminSystemEmail } =
@@ -241,7 +241,7 @@ export const deleteAdminSystemEmail = createServerFn({ method: 'POST' })
 		})
 	})
 export const classifyAdminSystemEmail = createServerFn({ method: 'POST' })
-	.inputValidator(
+	.validator(
 		z
 			.object({
 				messageId: z.string(),
@@ -263,7 +263,7 @@ export const classifyAdminSystemEmail = createServerFn({ method: 'POST' })
 		})
 	})
 export const blockAdminSystemEmailSender = createServerFn({ method: 'POST' })
-	.inputValidator(z.object({ messageId: z.string() }))
+	.validator(z.object({ messageId: z.string() }))
 	.handler(async ({ data }) => {
 		const { withWebsiteMutation } = await import('./mutation-context.ts')
 		const { blockAdminSystemEmailSender } =
@@ -273,7 +273,7 @@ export const blockAdminSystemEmailSender = createServerFn({ method: 'POST' })
 		})
 	})
 export const assignAdminUserRole = createServerFn({ method: 'POST' })
-	.inputValidator(assignAdminUserRoleSchema)
+	.validator(assignAdminUserRoleSchema)
 	.handler(async ({ data }) => {
 		const { withWebsiteMutation } = await import('./mutation-context.ts')
 		const { assignAdminUserRole } =
@@ -283,7 +283,7 @@ export const assignAdminUserRole = createServerFn({ method: 'POST' })
 		})
 	})
 export const removeAdminUserRole = createServerFn({ method: 'POST' })
-	.inputValidator(removeAdminUserRoleSchema)
+	.validator(removeAdminUserRoleSchema)
 	.handler(async ({ data }) => {
 		const { withWebsiteMutation } = await import('./mutation-context.ts')
 		const { removeAdminUserRole } =
@@ -293,7 +293,7 @@ export const removeAdminUserRole = createServerFn({ method: 'POST' })
 		})
 	})
 export const suspendAdminUser = createServerFn({ method: 'POST' })
-	.inputValidator(suspendAdminUserSchema)
+	.validator(suspendAdminUserSchema)
 	.handler(async ({ data }) => {
 		const { withWebsiteMutation } = await import('./mutation-context.ts')
 		const { setAdminUserSuspension } =
@@ -308,7 +308,7 @@ export const suspendAdminUser = createServerFn({ method: 'POST' })
 		})
 	})
 export const unsuspendAdminUser = createServerFn({ method: 'POST' })
-	.inputValidator(unsuspendAdminUserSchema)
+	.validator(unsuspendAdminUserSchema)
 	.handler(async ({ data }) => {
 		const { withWebsiteMutation } = await import('./mutation-context.ts')
 		const { setAdminUserSuspension } =
@@ -323,7 +323,7 @@ export const unsuspendAdminUser = createServerFn({ method: 'POST' })
 		})
 	})
 export const resumeAdminUserEmail = createServerFn({ method: 'POST' })
-	.inputValidator(resumeAdminUserEmailSchema)
+	.validator(resumeAdminUserEmailSchema)
 	.handler(async ({ data }) => {
 		const { withWebsiteMutation } = await import('./mutation-context.ts')
 		const { resumeAdminUserEmail } =
@@ -333,7 +333,7 @@ export const resumeAdminUserEmail = createServerFn({ method: 'POST' })
 		})
 	})
 export const verifyAdminUserEmail = createServerFn({ method: 'POST' })
-	.inputValidator(verifyAdminUserEmailSchema)
+	.validator(verifyAdminUserEmailSchema)
 	.handler(async ({ data }) => {
 		const { withWebsiteMutation } = await import('./mutation-context.ts')
 		const { verifyAdminUserEmail } =
@@ -343,7 +343,7 @@ export const verifyAdminUserEmail = createServerFn({ method: 'POST' })
 		})
 	})
 export const mintAdminUserVerificationUrl = createServerFn({ method: 'POST' })
-	.inputValidator(mintAdminUserVerificationUrlSchema)
+	.validator(mintAdminUserVerificationUrlSchema)
 	.handler(async ({ data }) => {
 		const { withWebsiteMutation } = await import('./mutation-context.ts')
 		const { mintAdminUserVerificationUrl } =
@@ -355,7 +355,7 @@ export const mintAdminUserVerificationUrl = createServerFn({ method: 'POST' })
 export const verifyAdminUserEmailDestination = createServerFn({
 	method: 'POST',
 })
-	.inputValidator(verifyAdminUserEmailDestinationSchema)
+	.validator(verifyAdminUserEmailDestinationSchema)
 	.handler(async ({ data }) => {
 		const { withWebsiteMutation } = await import('./mutation-context.ts')
 		const { verifyAdminUserEmailDestination } =
@@ -365,7 +365,7 @@ export const verifyAdminUserEmailDestination = createServerFn({
 		})
 	})
 export const createAdminUser = createServerFn({ method: 'POST' })
-	.inputValidator(createAdminUserSchema)
+	.validator(createAdminUserSchema)
 	.handler(async ({ data }) => {
 		const { withWebsiteMutation } = await import('./mutation-context.ts')
 		const { createAdminUser } =
@@ -375,7 +375,7 @@ export const createAdminUser = createServerFn({ method: 'POST' })
 		})
 	})
 export const adminCodemodRun = createServerFn({ method: 'POST' })
-	.inputValidator(adminCodemodRunInputSchema)
+	.validator(adminCodemodRunInputSchema)
 	.handler(async ({ data }) => {
 		const [{ withWebsiteMutation }, { adminCodemodsRun }] = await Promise.all([
 			import('./mutation-context.ts'),
@@ -392,7 +392,7 @@ export const adminCodemodRun = createServerFn({ method: 'POST' })
 	})
 
 export const adminCodemodRunStop = createServerFn({ method: 'POST' })
-	.inputValidator(z.record(z.string(), z.unknown()))
+	.validator(z.record(z.string(), z.unknown()))
 	.handler(async ({ data }) => {
 		const [{ withWebsiteMutation }, { adminCodemodsRunStop }] =
 			await Promise.all([

@@ -28,7 +28,7 @@ async function adminContext(permission?: 'read:user:any' | 'update:user:any') {
 }
 
 export const readAdminOrgLimits = createServerFn({ method: 'GET' })
-	.inputValidator(z.object({ orgId: z.string().min(1) }))
+	.validator(z.object({ orgId: z.string().min(1) }))
 	.handler(async ({ data }) => {
 		const { env } = await adminContext()
 		const { loadAdminOrgLimits } =
@@ -37,7 +37,7 @@ export const readAdminOrgLimits = createServerFn({ method: 'GET' })
 	})
 
 export const updateAdminOrgLimits = createServerFn({ method: 'POST' })
-	.inputValidator(
+	.validator(
 		z.object({
 			orgId: z.string().min(1),
 			changes: z.array(
@@ -81,7 +81,7 @@ export const updateAdminOrgLimits = createServerFn({ method: 'POST' })
 	})
 
 export const setAdminOrgPlan = createServerFn({ method: 'POST' })
-	.inputValidator(
+	.validator(
 		z.object({
 			orgId: z.string().min(1),
 			plan: z.enum(planNames),
@@ -117,7 +117,7 @@ export const setAdminOrgPlan = createServerFn({ method: 'POST' })
 	})
 
 export const grantAdminCreditsToOrg = createServerFn({ method: 'POST' })
-	.inputValidator(
+	.validator(
 		z.object({
 			orgId: z.string().min(1),
 			amountCents: z.number(),
@@ -157,7 +157,7 @@ export const grantAdminCreditsToOrg = createServerFn({ method: 'POST' })
 	})
 
 export const setAdminOrgCreditEligibility = createServerFn({ method: 'POST' })
-	.inputValidator(
+	.validator(
 		z.object({
 			orgId: z.string().min(1),
 			creditsEligible: z.boolean(),
@@ -193,9 +193,7 @@ export const setAdminOrgCreditEligibility = createServerFn({ method: 'POST' })
 	})
 
 export const readAdminUsersPage = createServerFn({ method: 'GET' })
-	.inputValidator(
-		adminUsersReadInput.extend({ page: z.number().int().positive() }),
-	)
+	.validator(adminUsersReadInput.extend({ page: z.number().int().positive() }))
 	.handler(async ({ data }) => {
 		const { env } = await adminContext('read:user:any')
 		const { readAdminUsersData } = await import('../../src/admin/users-data.ts')
@@ -203,7 +201,7 @@ export const readAdminUsersPage = createServerFn({ method: 'GET' })
 	})
 
 export const readAdminUserUsage = createServerFn({ method: 'GET' })
-	.inputValidator(z.object({ stableUserId: z.string().min(1) }))
+	.validator(z.object({ stableUserId: z.string().min(1) }))
 	.handler(async ({ data }) => {
 		const { env } = await adminContext('read:user:any')
 		const [{ loadAdminUserUsageData }, { parsePersonId }] = await Promise.all([
@@ -218,7 +216,7 @@ export const readAdminUserUsage = createServerFn({ method: 'GET' })
 	})
 
 export const readAdminCodemodItems = createServerFn({ method: 'GET' })
-	.inputValidator(
+	.validator(
 		z.object({
 			runId: z.string().min(1),
 			afterId: z.string().nullable().optional(),

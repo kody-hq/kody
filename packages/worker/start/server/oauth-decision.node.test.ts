@@ -15,7 +15,7 @@ vi.mock('@tanstack/react-start', () => ({
 	createServerFn: () => {
 		let validate: { parse: (value: unknown) => unknown }
 		const builder = {
-			inputValidator(schema: typeof validate) {
+			validator(schema: typeof validate) {
 				validate = schema
 				return builder
 			},

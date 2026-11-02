@@ -843,6 +843,10 @@
 		{
 			"filename": "0235-platform-feedback-resolution-history.sql",
 			"sha256": "74639db5cc16bae52c6b49835ce86c611d29a04dc51d965054af5658d2431270"
+		},
+		{
+			"filename": "0236-users-lower-email-index.sql",
+			"sha256": "0c47ed03cd606deb9717d746378aec452e4c45777799716df99c05def9b71591"
 		}
 	]
 }

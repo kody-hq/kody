@@ -255,7 +255,7 @@ export const removeExecutionContextShare = createServerFn({ method: 'POST' })
 	})
 
 export const redirectExecutionContextsEntry = createServerFn({ method: 'GET' })
-	.inputValidator((href: string) => {
+	.validator((href: string) => {
 		if (
 			typeof href !== 'string' ||
 			!/^\/account\/execution-contexts(?:\?[^#]*)?$/.test(href)

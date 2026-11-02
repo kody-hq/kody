@@ -9,11 +9,6 @@ export function createTestServerFn() {
 			validate = typeof fn === 'function' ? fn : (data) => fn.parse(data)
 			return builder
 		},
-		inputValidator(
-			fn: ((data: unknown) => unknown) | { parse: (data: unknown) => unknown },
-		) {
-			return builder.validator(fn)
-		},
 		handler(fn: (input: { data: unknown }) => unknown) {
 			return (input: { data?: unknown } = {}) =>
 				fn({ data: validate(input.data) })

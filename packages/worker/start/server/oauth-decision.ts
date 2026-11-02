@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { type OAuthDecisionData } from '../../src/oauth-handlers.ts'
 
 export const submitOAuthDecision = createServerFn({ method: 'POST' })
-	.inputValidator(
+	.validator(
 		z
 			.object({
 				search: z

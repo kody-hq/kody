@@ -26,7 +26,7 @@ function actorFromUser(user: AuthenticatedAppUser) {
 }
 
 export const readAdminAccountDeletionSummary = createServerFn({ method: 'GET' })
-	.inputValidator(stableUserIdSchema)
+	.validator(stableUserIdSchema)
 	.handler(async ({ data }) => {
 		const { withWebsiteRead } = await import('./mutation-context.ts')
 		const { readAdminAccountDeletionSummaryForActor } =
@@ -41,7 +41,7 @@ export const readAdminAccountDeletionSummary = createServerFn({ method: 'GET' })
 	})
 
 export const deleteAdminUserAccount = createServerFn({ method: 'POST' })
-	.inputValidator(deleteSchema)
+	.validator(deleteSchema)
 	.handler(async ({ data }) => {
 		const { withWebsiteMutation } = await import('./mutation-context.ts')
 		const { deleteAdminUserAccount } =
@@ -60,7 +60,7 @@ export const deleteAdminUserAccount = createServerFn({ method: 'POST' })
 export const loadAdminAccountDeletionApproval = createServerFn({
 	method: 'GET',
 })
-	.inputValidator(
+	.validator(
 		z.object({
 			approvalId: z.string().uuid(),
 			returnTo: z
@@ -99,7 +99,7 @@ export const loadAdminAccountDeletionApproval = createServerFn({
 	})
 
 export const approveAdminAccountDeletion = createServerFn({ method: 'POST' })
-	.inputValidator(approveSchema)
+	.validator(approveSchema)
 	.handler(async ({ data }) => {
 		const { withWebsiteMutation } = await import('./mutation-context.ts')
 		const { approveAdminAccountDeletionForActor } =
