@@ -129,8 +129,9 @@ export async function applyCreditTopUpFromCheckoutSession(input: {
 			'This top-up does not belong to your account.',
 		)
 	}
-	// Wallets are keyed by org id (personal org id equals the person id).
-	// Team top-ups must match a live org row, not a users.stable_user_id.
+	// Wallets are keyed by org id (personal or team). Metadata stores orgs.id —
+	// for personal orgs that is users.personal_org_id when set, else
+	// users.stable_user_id — so look up the org row by that id, not by person id.
 	// Skip orgs mid-delete (`deleting_at`) the same way credit debit does —
 	// a Stripe return during delete must not refill a wallet about to vanish.
 	const org = await input.env.APP_DB.prepare(

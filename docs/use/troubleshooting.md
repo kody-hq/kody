@@ -218,8 +218,9 @@ hit the limit:
 
 - **Typecheck, lint, source walk, and package checks** read every file under the
   source root that `.kodyignore` does not exclude. List scripts, fixtures,
-  generated code, and examples in `.kodyignore`, but never `README.md` or
-  `AGENTS.md`, which publish requires.
+  generated code, and examples in `.kodyignore` when no check and no reachable
+  bundle entrypoint imports them — excluding an imported file fails bundle
+  validation. Never exclude `README.md` or `AGENTS.md`, which publish requires.
 - **Bundle validation and artifact rebuild** grow with the import graph from
   exports, jobs, and handlers (including npm dependencies). Keep the package as
   a thin orchestrator and run the heavy work in a process the owner operates.
