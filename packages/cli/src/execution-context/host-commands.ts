@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { stat } from 'node:fs/promises'
+import { realpath, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { isAbsolute } from 'node:path'
 import {
@@ -9,6 +9,7 @@ import {
 	windowsShellLaunch,
 	type WindowsShell,
 } from './windows-command.ts'
+import { credentialDenylist, isDeniedPath } from './fs-access.js'
 
 /**
  * Host commands (`kody.command.*`, ADR 0093): real OS processes on the
@@ -269,6 +270,20 @@ export type HostCommandsOptions = {
 	/** This machine's local opt-in (`kody context commands on`). */
 	localEnabled?: boolean
 	platform?: NodeJS.Platform
+	/** Folders a command may not use as its cwd; defaults to the credential denylist. */
+	deniedPaths?: ReadonlyArray<string>
+}
+
+/**
+ * The daemon's environment minus `KODY_*` variables (the CLI token, the
+ * context key passphrase), so a command cannot read them from its env.
+ */
+export function inheritedCommandEnv(
+	env: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+	return Object.fromEntries(
+		Object.entries(env).filter(([key]) => !/^KODY_/i.test(key)),
+	)
 }
 
 export class HostCommands {
@@ -287,10 +302,12 @@ export class HostCommands {
 	/** The server grant's commands flag (off from website/API/CLI). */
 	#grantEnabled = false
 	readonly #platform: NodeJS.Platform
+	readonly #deniedPaths: ReadonlyArray<string>
 
 	constructor(options: HostCommandsOptions = {}) {
 		this.#localEnabled = options.localEnabled === true
 		this.#platform = options.platform ?? process.platform
+		this.#deniedPaths = options.deniedPaths ?? credentialDenylist()
 	}
 
 	/** Both layers allow commands. */
@@ -427,6 +444,16 @@ export class HostCommands {
 				`cwd ${cwd} is not a folder on this machine.`,
 			)
 		}
+		const realCwd = await realpath(cwd).catch(() => cwd)
+		if (
+			isDeniedPath(cwd, this.#deniedPaths, this.#platform) ||
+			isDeniedPath(realCwd, this.#deniedPaths, this.#platform)
+		) {
+			throw new HostCommandError(
+				'invalid_request',
+				`cwd ${cwd} holds credentials (the Kody CLI login and context keys, SSH, git, cloud or package-manager logins, or the OS keyring), so commands cannot run there.`,
+			)
+		}
 		const extraEnv = spec.env ?? {}
 		if (
 			typeof extraEnv !== 'object' ||
@@ -478,7 +505,7 @@ export class HostCommands {
 				"`shell` goes with `command` and is 'powershell' or 'cmd' (Windows only).",
 			)
 		}
-		const env = { ...process.env, ...extraEnv }
+		const env = { ...inheritedCommandEnv(), ...extraEnv }
 		const launch =
 			this.#platform !== 'win32'
 				? {

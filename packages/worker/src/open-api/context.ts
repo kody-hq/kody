@@ -6,6 +6,7 @@ import {
 } from '#mcp/capabilities/access-control.ts'
 import type { ApiTokenRecord } from '#worker/api-tokens/service.ts'
 import type { CapabilityOpenApiPrincipal } from '#mcp/capabilities/types.ts'
+import type { CredentialCallMap } from '#worker/credentials/credential-call-map.ts'
 
 /**
  * Who is calling the Open API.
@@ -43,6 +44,8 @@ export type ApiPrincipal =
 			runtime: EcpGrant['runtime']
 			/** The requester operates the context: cloud-equivalent Kody access. */
 			byOperator: boolean
+			/** The run's credential call map from its lease (never from the machine). */
+			callMap?: CredentialCallMap | null
 	  }
 
 export function toCapabilityOpenApiPrincipal(

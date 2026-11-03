@@ -8,6 +8,7 @@ import {
 	ecpProtocolVersion,
 	importEd25519PublicKey,
 	ecpDefaultGrant,
+	ecpHostOperatorOnlyFeature,
 	publishedKeyJwk,
 	signFrame,
 	verifyFrame,
@@ -158,6 +159,7 @@ function grantFsOf(grant: unknown) {
 
 const layerLabel = {
 	server_grant: 'server grant',
+	credential_denylist: 'credential denylist',
 	local_policy: 'local policy',
 }
 
@@ -222,7 +224,11 @@ export async function runDaemonConnection(input: DaemonInput) {
 			...input.extraCapabilities?.(),
 			maxConcurrent,
 			features: [
-				...base.filter((feature) => feature !== 'fs'),
+				...base.filter(
+					(feature) =>
+						feature !== 'fs' && feature !== ecpHostOperatorOnlyFeature,
+				),
+				ecpHostOperatorOnlyFeature,
 				...fsFeatures(hostFs),
 			],
 		}
@@ -362,12 +368,16 @@ export async function runDaemonConnection(input: DaemonInput) {
 		let result: Awaited<ReturnType<ContextRunExecutor>>
 		try {
 			if (input.fs) hostFs = await effectiveFsNow()
+			// Host folders and commands are for the operator's own runs only.
+			const operatorRun = run.request.sharedRun !== true
 			result = await input.execute({
 				request: run.request,
 				// A getter, so a grant.update or policy change narrows runs already in flight.
-				...(input.fs ? { hostFs: () => hostFs } : {}),
+				...(input.fs && operatorRun ? { hostFs: () => hostFs } : {}),
 				signal: run.abort.signal,
-				...(input.hostCommands ? { hostCommands: input.hostCommands } : {}),
+				...(input.hostCommands && operatorRun
+					? { hostCommands: input.hostCommands }
+					: {}),
 				egress: grantEgress,
 				fetchFn: runScopedFetch({
 					apiUrl: input.apiUrl,

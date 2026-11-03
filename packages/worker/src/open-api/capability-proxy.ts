@@ -331,6 +331,26 @@ async function callKodyPath(input: {
 	return invokeCapability(() => tool(args[0]))
 }
 
+/**
+ * Local runs send their own call map. A context run's map comes from its
+ * lease: Kody stored it when it routed the run, so the machine cannot pick
+ * different credentials for the requester.
+ */
+export function capabilityProxyCallMap(
+	ctx: Pick<ApiInvocationContext, 'principal'>,
+	credentials: CapabilityProxyCallInput['credentials'],
+): CredentialCallMap | null {
+	if (ctx.principal.kind !== 'execution-context-run') {
+		return normalizeCredentialCallMap(credentials)
+	}
+	if (credentials !== undefined && credentials !== null) {
+		throw invalidRequest(
+			'Execution context runs cannot send `credentials`: Kody applies the credential picks the run was started with.',
+		)
+	}
+	return ctx.principal.callMap ?? null
+}
+
 async function dispatchCapabilityProxyCall(input: {
 	ctx: ApiInvocationContext
 	call: CapabilityProxyCallInput
@@ -350,7 +370,7 @@ async function dispatchCapabilityProxyCall(input: {
 			path: call.path,
 			args: call.args,
 			redactor,
-			callMap: normalizeCredentialCallMap(call.credentials),
+			callMap: capabilityProxyCallMap(ctx, call.credentials),
 		})
 	}
 	if (root === 'workflows' && name === 'create' && call.path.length === 2) {

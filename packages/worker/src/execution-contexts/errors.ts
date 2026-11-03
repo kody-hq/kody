@@ -16,6 +16,7 @@ export const executionContextErrorCodes = [
 	'execution_context_access_lost',
 	'context_not_revoked',
 	'commands_opt_in_local',
+	'commands_operator_only',
 	'execution_context_commands_off',
 	'execution_context_command_not_granted',
 	'execution_context_command_requires_context',

@@ -11,6 +11,7 @@ import {
 	markQueuedAttemptRan,
 	planTargets,
 	withRunTiming,
+	sharedRunHostRefusal,
 } from './routing.ts'
 import type { ExecutionContextRow } from './store.ts'
 
@@ -106,6 +107,7 @@ test('requires fs needs both a server grant folder and an advertised local mount
 		grantRefusal({
 			grant,
 			requires: ['fs'],
+			sharedRun: false,
 			capabilities: {},
 		}),
 	).toBe('no_local_fs')
@@ -113,6 +115,7 @@ test('requires fs needs both a server grant folder and an advertised local mount
 		grantRefusal({
 			grant,
 			requires: ['fs'],
+			sharedRun: false,
 			capabilities: { features: ['fs'] },
 		}),
 	).toBeNull()
@@ -120,6 +123,7 @@ test('requires fs needs both a server grant folder and an advertised local mount
 		grantRefusal({
 			grant: ecpDefaultGrant,
 			requires: ['fs'],
+			sharedRun: false,
 			capabilities: { features: ['fs'] },
 		}),
 	).toBe('no_fs')
@@ -128,6 +132,7 @@ test('requires fs needs both a server grant folder and an advertised local mount
 test('a grant refuses runs it cannot serve', () => {
 	expect(
 		grantRefusal({
+			sharedRun: false,
 			capabilities: {},
 			grant: ecpDefaultGrant,
 			requires: ['fs'],
@@ -135,6 +140,7 @@ test('a grant refuses runs it cannot serve', () => {
 	).toBe('no_fs')
 	expect(
 		grantRefusal({
+			sharedRun: false,
 			capabilities: {},
 			grant: ecpDefaultGrant,
 			requires: ['lan'],
@@ -144,6 +150,7 @@ test('a grant refuses runs it cannot serve', () => {
 		grantRefusal({
 			grant: ecpDefaultGrant,
 			requires: [],
+			sharedRun: false,
 			capabilities: {},
 		}),
 	).toBeNull()
@@ -416,4 +423,61 @@ test('every credential kind needs execution_context:execute to reach a context',
 	).toBe(true)
 	// Unscoped credentials (a signed-in browser session) keep full access.
 	expect(hasContextScope({ request: { scopes: null } })).toBe(true)
+})
+
+test('host folders stay with the operator: shared runs skip fs and outdated daemons with folders', () => {
+	const withFs = {
+		...ecpDefaultGrant,
+		fs: [{ path: '/Users/k/Desktop', mode: 'rw' as const }],
+	}
+	const current = { features: ['host-operator-only', 'fs'] }
+	expect(
+		sharedRunHostRefusal({
+			grant: withFs,
+			requires: ['fs'],
+			capabilities: current,
+			sharedRun: false,
+		}),
+	).toBeNull()
+	expect(
+		sharedRunHostRefusal({
+			grant: withFs,
+			requires: ['fs'],
+			capabilities: current,
+			sharedRun: true,
+		}),
+	).toBe('fs_operator_only')
+	expect(
+		sharedRunHostRefusal({
+			grant: withFs,
+			requires: [],
+			capabilities: { features: ['fs'] },
+			sharedRun: true,
+		}),
+	).toBe('fs_daemon_outdated')
+	// The queue drain on reconnect checks the same rule through grantRefusal.
+	expect(
+		grantRefusal({
+			grant: withFs,
+			requires: [],
+			capabilities: { features: ['fs'] },
+			sharedRun: true,
+		}),
+	).toBe('fs_daemon_outdated')
+	expect(
+		sharedRunHostRefusal({
+			grant: withFs,
+			requires: [],
+			capabilities: current,
+			sharedRun: true,
+		}),
+	).toBeNull()
+	expect(
+		sharedRunHostRefusal({
+			grant: ecpDefaultGrant,
+			requires: [],
+			capabilities: {},
+			sharedRun: true,
+		}),
+	).toBeNull()
 })

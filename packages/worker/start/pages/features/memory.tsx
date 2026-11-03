@@ -10,6 +10,7 @@ import {
 	type MemoryNoteId,
 } from './memory-scenes.tsx'
 import { BuildWithAgentButton } from '../../components/build-with-agent-button.tsx'
+import { FeatureCtaLink } from './feature-cta.tsx'
 const notes: ReadonlyArray<MemoryNote> = [
 	{
 		id: 'writing',
@@ -72,9 +73,7 @@ export function MemoryFeature() {
 						Save the facts and preferences you keep repeating. Bring them to
 						your next connected agent.
 					</p>
-					<SiteLink className="action" href="/onboarding">
-						Connect your agent
-					</SiteLink>
+					<FeatureCtaLink href="/onboarding">Connect your agent</FeatureCtaLink>
 					<div className="controls" aria-label="Example agent">
 						<button
 							type="button"

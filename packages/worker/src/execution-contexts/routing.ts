@@ -5,8 +5,12 @@ import {
 	type EcpPublishBuildSource,
 	type EcpRunRequestBody,
 	sha256Base64Url,
+	ecpHostOperatorOnlyFeature,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
-import type { CredentialCallMap } from '#worker/credentials/credential-call-map.ts'
+import {
+	credentialCallMapToJson,
+	type CredentialCallMap,
+} from '#worker/credentials/credential-call-map.ts'
 import type { RunRecordHandle } from '#worker/run-records/types.ts'
 import {
 	checkPermission,
@@ -295,14 +299,40 @@ export function requirementRefusal(
 	return null
 }
 
+/**
+ * Host folders are for the operator's own runs only. A shared run cannot
+ * require them, and skips a context with host folders whose daemon predates
+ * that rule (it would still mount them for every run).
+ */
+export function sharedRunHostRefusal(input: {
+	grant: EcpGrant
+	requires: ReadonlyArray<ExecuteRequirement>
+	capabilities: EcpCapabilities
+	sharedRun: boolean
+}): string | null {
+	if (!input.sharedRun) return null
+	if (input.requires.includes('fs')) return 'fs_operator_only'
+	if (input.grant.fs.length === 0) return null
+	return (input.capabilities.features ?? []).includes(
+		ecpHostOperatorOnlyFeature,
+	)
+		? null
+		: 'fs_daemon_outdated'
+}
+
 /** Why a context cannot take this run, or null when it can. */
 export function grantRefusal(input: {
 	grant: EcpGrant
 	requires: ReadonlyArray<ExecuteRequirement>
 	/** What the daemon advertised; `fs` means its effective mount set is non-empty. */
 	capabilities: EcpCapabilities
+	/** The requester is not the operator (see {@link sharedRunHostRefusal}). */
+	sharedRun: boolean
 }): string | null {
-	return requirementRefusal(input.grant, input.requires, input.capabilities)
+	return (
+		requirementRefusal(input.grant, input.requires, input.capabilities) ??
+		sharedRunHostRefusal(input)
+	)
 }
 
 function noContext(attempts: Array<RoutingAttempt>, message: string): never {
@@ -490,7 +520,12 @@ export async function routeExecute(input: {
 		}
 		const grant = parseGrant(row)
 		const sharedRun = row.operator_user_id !== input.request.userId
-		const refusal = requirementRefusal(grant, requires, parseCapabilities(row))
+		const refusal = grantRefusal({
+			grant,
+			requires,
+			capabilities: parseCapabilities(row),
+			sharedRun,
+		})
 		if (refusal) {
 			skip(refusal)
 			continue
@@ -521,6 +556,7 @@ export async function routeExecute(input: {
 			runtime: grant.runtime,
 			deadline,
 			sharedRun,
+			credentials: credentialCallMapToJson(input.credentials),
 		}
 		const request: EcpRunRequestBody = {
 			runId: input.runId,
@@ -728,6 +764,12 @@ const contextReasonText: Record<string, string> = {
 	no_fs: 'no_fs: its server grant lists no host folders (grant.fs)',
 	no_local_fs:
 		"no_local_fs: its server grant lists host folders, but the machine's local policy allows none of them (`kody context policy allow <folder>`)",
+	fs_operator_only:
+		"fs_operator_only: host folders are only for the operator's own runs",
+	fs_daemon_outdated:
+		"fs_daemon_outdated: it has host folders and its daemon is too old to keep them to the operator's runs; the operator can update it with `kody daemon update`",
+	operator_left:
+		'operator_left: the person who runs this machine is no longer a member of this org',
 }
 
 function describeAttempts(attempts: ReadonlyArray<RoutingAttempt>) {

@@ -1,7 +1,7 @@
 import { publicAsset } from '../../public-assets.ts'
 import { useState } from 'react'
 import { SiteLink } from '../../components/site-link.tsx'
-import { BuildWithAgentButton } from '../../components/build-with-agent-button.tsx'
+import { FeatureCtaActions, FeatureCtaLink } from './feature-cta.tsx'
 import { FeatureRelated } from './feature-related.tsx'
 import {
 	TriggerHeroScene,
@@ -55,9 +55,7 @@ export function TriggersFeature() {
 						A purchase lands. An issue opens. An email arrives. Your package
 						runs, even when the chat is closed.
 					</p>
-					<SiteLink className="action" href="/onboarding">
-						Connect your agent
-					</SiteLink>
+					<FeatureCtaLink href="/onboarding">Connect your agent</FeatureCtaLink>
 					<div className="controls trg-examples" aria-label="Example trigger">
 						<button
 							type="button"
@@ -307,12 +305,7 @@ export function TriggersFeature() {
 						<SiteLink href="/docs/triggers">Read the guide</SiteLink>
 					</p>
 				</div>
-				<div className="controls">
-					<SiteLink className="action" href="/onboarding">
-						Connect your agent
-					</SiteLink>
-					<BuildWithAgentButton />
-				</div>
+				<FeatureCtaActions href="/onboarding" label="Connect your agent" />
 			</div>
 		</div>
 	)

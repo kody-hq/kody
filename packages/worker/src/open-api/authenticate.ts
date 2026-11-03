@@ -48,6 +48,7 @@ import {
 	sessionStub,
 } from '#worker/execution-contexts/store.ts'
 import { isOperatorContextRun } from '#worker/execution-contexts/credential-grant.ts'
+import { credentialCallMapFromJson } from '#worker/credentials/credential-call-map.ts'
 
 type McpOauthGrantProps = {
 	userId?: unknown
@@ -511,6 +512,7 @@ async function authenticateWithExecutionContextLease(input: {
 			scopes: lease.callerScopes,
 			runtime: lease.runtime,
 			byOperator,
+			callMap: credentialCallMapFromJson(lease.credentials),
 		},
 		waitUntil: input.waitUntil,
 	})

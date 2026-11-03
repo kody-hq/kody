@@ -28,26 +28,27 @@ export function BuildWithAgentButton({
 				icons ? (
 					<span
 						css={{
-							display: 'inline-flex',
+							display: 'flex',
 							alignItems: 'center',
-							gap: '0.65rem',
+							gap: '0.6rem',
 						}}
 					>
 						<span
 							aria-hidden="true"
-							css={{ display: 'inline-flex', gap: '0.3rem' }}
+							css={{ display: 'inline-flex', gap: '0.25rem' }}
 						>
 							{['claudecode', 'codex', 'cursor'].map((icon) => (
 								<img
 									key={icon}
 									src={publicAsset(`/images/icons/${icon}.svg`)}
 									alt=""
-									width={18}
-									height={18}
+									width={16}
+									height={16}
 									css={{
+										display: 'block',
 										background: '#fff',
 										borderRadius: '3px',
-										padding: '2px',
+										padding: '1.5px',
 									}}
 								/>
 							))}

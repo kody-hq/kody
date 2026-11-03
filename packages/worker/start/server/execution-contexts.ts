@@ -223,7 +223,6 @@ export const shareExecutionContext = createServerFn({ method: 'POST' })
 				}),
 			]),
 			preset: z.enum(['use', 'contribute', 'manage']),
-			commands: z.boolean().optional(),
 		}),
 	)
 	.handler(async ({ data }) => {
@@ -235,7 +234,6 @@ export const shareExecutionContext = createServerFn({ method: 'POST' })
 				contextId: data.contextId,
 				subject: data.subject,
 				preset: data.preset,
-				commands: data.commands === true,
 			}),
 		)
 	})

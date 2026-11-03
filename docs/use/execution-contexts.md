@@ -132,11 +132,11 @@ install software, read, change, or delete your files, and use your network.
 Commands run as the user who runs `kody daemon` (or the Kody desktop app), never
 as root; `sudo` behaves like it does in your own terminal (it prompts and fails,
 because nobody is there to type a password). Only you get the command grant on
-your own machine. People you share the machine with get it only if you share it
-with `commands: true`. Every command is recorded in the machine's audit log with
-the command, folder, exit code, and who ran it. Environment variable values are
-never recorded, only their names, so pass secrets in `env`, never in the command
-text (the command text is recorded as written).
+your own machine. People you share the machine with never get it, and their runs
+get no host folders either. Every command is recorded in the machine's audit log
+with the command, folder, exit code, and who ran it. Environment variable values
+are never recorded, only their names, so pass secrets in `env`, never in the
+command text (the command text is recorded as written).
 
 **Turn them on (on the machine itself).**
 
@@ -213,9 +213,11 @@ Contacts if the run looks up names. The runner then stops when you quit the app.
 - Grant: `grant.commands: { enabled, enabledAt }` on `executionContextGet`.
   `executionContextUpdate` accepts only `enabled: false`; `enabled: true` fails
   with `commands_opt_in_local`.
-- Permission: `execution_context:command`. The operator has it on their own
-  context. `executionContextShareSet` with `commands: true` adds it to a share;
-  presets and everyone-in-the-org sharing never include it.
+- Permission: `execution_context:command`. Only the operator has it, on their
+  own context. `executionContextShareSet` with `commands: true` fails with
+  `commands_operator_only`, and command shares made before that confer nothing.
+  Commands get the daemon's environment without `KODY_*` variables and cannot
+  use a credential folder as `cwd`.
 - Errors: `execution_context_commands_off` (the machine has not opted in),
   `execution_context_command_not_granted` (the caller lacks the command grant),
   `execution_context_command_requires_context` (the run is in Kody cloud or a
