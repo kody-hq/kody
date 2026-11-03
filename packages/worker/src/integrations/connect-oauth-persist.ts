@@ -20,7 +20,6 @@ import {
 } from '#mcp/capabilities/integrations/integration-shared.ts'
 import {
 	assertScopesAllowedForPlatformApp,
-	findOauthAppForProviderSetup,
 	getJoinedIntegration,
 	upsertIntegration,
 	upsertPlatformIntegration,
@@ -175,14 +174,16 @@ export async function persistConnectOauthTokens(
 		userId: ownerId,
 		name: integrationName,
 	})
-	if (!input.platformApp) {
-		const clientSecret = await resolveConnectClientSecret({
+	if (!input.platformApp && connected?.lane === 'user') {
+		const clientSecret = await resolveTokenEndpointClientSecret({
 			env: input.env,
 			userId: ownerId,
 			provider: integrationName,
+			clientId: connected.app.clientId,
+			tokenUrl: connected.app.tokenUrl,
 			clientSecret: input.clientSecret,
 		})
-		if (clientSecret && connected?.lane === 'user') {
+		if (clientSecret) {
 			await persistUserOauthAppClientSecret({
 				env: input.env,
 				userId: ownerId,
@@ -232,26 +233,6 @@ export async function persistConnectOauthTokens(
 		hostApprovalLinks,
 		nextSteps,
 	}
-}
-
-export async function resolveConnectClientSecret(input: {
-	env: Env
-	userId: OwnerId
-	provider: string
-	clientSecret?: string | null
-}): Promise<string | null> {
-	const inline = input.clientSecret?.trim()
-	if (inline) return inline
-	const slugs = await listConnectClientSecretSlugs(input)
-	for (const slug of slugs) {
-		const fromApp = await resolveUserOauthAppClientSecret({
-			env: input.env,
-			userId: input.userId,
-			slug,
-		})
-		if (fromApp) return fromApp
-	}
-	return null
 }
 
 /**
@@ -347,32 +328,6 @@ async function saveIntegrationConfig(input: {
 		liveConnectionGuard: input.liveConnectionGuard,
 	})
 	return integration.name
-}
-
-async function listConnectClientSecretSlugs(input: {
-	env: Env
-	userId: OwnerId
-	provider: string
-}): Promise<Array<string>> {
-	const slugs: Array<string> = []
-	const add = (slug: string | null | undefined) => {
-		const normalized = slug?.trim()
-		if (normalized && !slugs.includes(normalized)) slugs.push(normalized)
-	}
-	add(canonicalIntegrationName(input.provider))
-	const joined = await getJoinedIntegration({
-		env: input.env,
-		userId: input.userId,
-		name: input.provider,
-	})
-	if (joined?.lane === 'user') add(joined.app.slug)
-	const setup = await findOauthAppForProviderSetup({
-		env: input.env,
-		userId: input.userId,
-		name: input.provider,
-	})
-	add(setup?.slug)
-	return slugs
 }
 
 export async function emitConnectOauthAuthSucceeded(input: {

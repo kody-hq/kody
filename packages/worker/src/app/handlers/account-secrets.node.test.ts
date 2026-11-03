@@ -6,6 +6,7 @@ import type * as CredentialFields from '#worker/credentials/credential-fields.ts
 import type * as IntegrationsCredentials from '#worker/integrations/credentials.ts'
 import type * as packageSubscriptions from '#worker/integrations/package-subscriptions.ts'
 import type * as platformApps from '#worker/integrations/platform-apps.ts'
+import type * as IntegrationsRepo from '#worker/integrations/repo.ts'
 import type * as IntegrationsService from '#worker/integrations/service.ts'
 import type * as packageRepo from '#worker/package-registry/repo.ts'
 import { sessionRequestContext } from '#worker/test-support/request-context.ts'
@@ -429,6 +430,11 @@ vi.mock('#worker/integrations/credentials.ts', async (importOriginal) => {
 		) => mockModule.resolveUserOauthAppClientSecret(...args),
 	}
 })
+
+vi.mock('#worker/integrations/repo.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof IntegrationsRepo>()),
+	listOauthAppsByTokenEndpoint: async () => [],
+}))
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
 	listSavedPackagesByUserId: (

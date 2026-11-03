@@ -389,6 +389,17 @@ export async function countConnectionsForApp(input: {
 	return Number(row?.count ?? 0)
 }
 
+/**
+ * A stored client secret belongs to the client id and token URL it was saved
+ * with; changing either drops it so it can never reach another endpoint.
+ */
+const keepSecretWhenSameEndpointSql = `CASE
+	WHEN user_oauth_apps.client_id = excluded.client_id
+		AND user_oauth_apps.token_url = excluded.token_url
+	THEN user_oauth_apps.client_secret_encrypted
+	ELSE NULL
+END`
+
 export async function upsertOauthApp(input: {
 	db: D1Database
 	row: Omit<
@@ -415,6 +426,7 @@ export async function upsertOauthApp(input: {
 			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(user_id, slug)
 			DO UPDATE SET
+				client_secret_encrypted = ${keepSecretWhenSameEndpointSql},
 				provider = excluded.provider,
 				label = excluded.label,
 				client_id = excluded.client_id,
@@ -460,11 +472,16 @@ export async function updateOauthAppClientCredentials(input: {
 	const result = await input.db
 		.prepare(
 			`UPDATE user_oauth_apps
-			SET client_id = ?,
+			SET client_secret_encrypted = CASE
+					WHEN client_id = ? THEN client_secret_encrypted
+					ELSE NULL
+				END,
+				client_id = ?,
 				updated_at = ?
 			WHERE user_id = ? AND slug = ?${andLiveDeletedAtSql()}`,
 		)
 		.bind(
+			input.clientId,
 			input.clientId,
 			input.updatedAt ?? new Date().toISOString(),
 			input.userId,

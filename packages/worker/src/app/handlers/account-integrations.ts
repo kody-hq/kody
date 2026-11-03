@@ -200,6 +200,14 @@ export async function rotateAccountOauthAppCredentials(
 	const nextClientId = input.clientId?.trim() || existing.clientId
 
 	try {
+		// Rotation drops a secret saved for the old client id, so a new one is
+		// written after it.
+		let rotated = await rotateOauthAppClientCredentials({
+			env: input.env,
+			userId,
+			slug: existing.slug,
+			clientId: nextClientId,
+		})
 		if (input.clientSecret) {
 			await persistUserOauthAppClientSecret({
 				env: input.env,
@@ -207,14 +215,8 @@ export async function rotateAccountOauthAppCredentials(
 				slug: existing.slug,
 				value: input.clientSecret,
 			})
+			rotated = { ...rotated, hasClientSecret: true }
 		}
-
-		const rotated = await rotateOauthAppClientCredentials({
-			env: input.env,
-			userId,
-			slug: existing.slug,
-			clientId: nextClientId,
-		})
 		const joined = await listJoinedIntegrations({
 			env: input.env,
 			userId,

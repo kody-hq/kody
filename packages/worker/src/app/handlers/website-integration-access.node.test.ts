@@ -31,10 +31,7 @@ import {
 	loadDevicePendingSession,
 	storeDevicePendingSession,
 } from '#worker/integrations/device-flow.ts'
-import {
-	resolveConnectClientSecret,
-	resolveTokenEndpointClientSecret,
-} from '#worker/integrations/connect-oauth-persist.ts'
+import { resolveTokenEndpointClientSecret } from '#worker/integrations/connect-oauth-persist.ts'
 import { createMemoryKvNamespace } from '#worker/test-support/memory-kv.ts'
 import { updateOrgMemberCreation } from '#worker/orgs/member-creation.ts'
 import {
@@ -404,10 +401,12 @@ test('a device poll does not write a start-time app secret over a rotated one', 
 		fields: { sessionId },
 	})
 	expect(
-		await resolveConnectClientSecret({
+		await resolveTokenEndpointClientSecret({
 			env,
 			userId: teamId,
 			provider: 'github',
+			clientId: githubApp.clientId,
+			tokenUrl: githubApp.tokenUrl,
 		}),
 	).toBe(githubApp.clientSecret)
 })
@@ -531,4 +530,126 @@ test('a stored client secret only resolves for its own client id and token URL',
 		githubApp.clientSecret,
 	)
 	expect(await resolve({ clientSecret: 'inline-secret' })).toBe('inline-secret')
+})
+
+const otherTokenUrl = 'https://elsewhere.example/token'
+const { clientSecret: _githubSecret, ...githubAppWithoutSecret } = githubApp
+
+async function setupStoredSecret() {
+	const ctx = await setup()
+	const secretFor = (tokenUrl: string, clientId = githubApp.clientId) =>
+		resolveTokenEndpointClientSecret({
+			env: ctx.env,
+			userId: ctx.teamId,
+			provider: 'github',
+			clientId,
+			tokenUrl,
+		})
+	const save = async (fields: Record<string, unknown>) =>
+		(
+			await saveAccountOAuthApp({
+				env: ctx.env,
+				user: ctx.teamOwner,
+				fields: fields as never,
+			})
+		).data
+	const connect = async (fields: Record<string, unknown>) =>
+		(
+			await connectAccountOAuth({
+				request: new Request('https://kody.local/connect/oauth'),
+				refresh: {} as never,
+				env: ctx.env,
+				user: ctx.teamOwner,
+				fields: {
+					...githubAppWithoutSecret,
+					allowedHosts: ['api.github.com'],
+					scopes: ['repo'],
+					tokenPayload: { access_token: 'owner-access-token' },
+					...fields,
+				} as never,
+			})
+		).data
+	const rotate = async (fields: { clientId: string; clientSecret?: string }) =>
+		(
+			await rotateAccountOauthAppCredentials({
+				env: ctx.env,
+				user: ctx.teamOwner,
+				appSlug: 'github',
+				confirm: true,
+				...fields,
+			})
+		).data
+	expect(await save(githubApp)).toMatchObject({ ok: true })
+	return { secretFor, save, connect, rotate }
+}
+
+test('re-saving an unchanged OAuth app keeps its stored client secret', async () => {
+	const { secretFor, save } = await setupStoredSecret()
+	expect(await save(githubAppWithoutSecret)).toMatchObject({
+		ok: true,
+		app: { slug: 'github', hasClientSecret: true },
+	})
+	expect(await secretFor(githubApp.tokenUrl)).toBe(githubApp.clientSecret)
+})
+
+test('changing a saved app token URL drops its stored secret until it is entered again', async () => {
+	const { secretFor, save } = await setupStoredSecret()
+	expect(
+		await save({ ...githubAppWithoutSecret, tokenUrl: otherTokenUrl }),
+	).toMatchObject({ ok: true, app: { slug: 'github', hasClientSecret: false } })
+	expect(await secretFor(otherTokenUrl)).toBe(null)
+
+	expect(await save(githubApp)).toMatchObject({
+		ok: true,
+		app: { slug: 'github', hasClientSecret: true },
+	})
+	expect(await secretFor(githubApp.tokenUrl)).toBe(githubApp.clientSecret)
+})
+
+test('a new app saved under a provider name does not inherit another app secret', async () => {
+	const { secretFor, save, connect } = await setupStoredSecret()
+	expect(await connect({})).toMatchObject({ ok: true })
+	expect(
+		await save({
+			...githubAppWithoutSecret,
+			tokenUrl: otherTokenUrl,
+			replaceLiveConnection: true,
+		}),
+	).toMatchObject({ ok: true, app: { hasClientSecret: false } })
+	expect(await secretFor(otherTokenUrl)).toBe(null)
+	expect(await secretFor(githubApp.tokenUrl)).toBe(githubApp.clientSecret)
+})
+
+test('connecting through another token URL does not copy a stored secret onto that app', async () => {
+	const { secretFor, connect } = await setupStoredSecret()
+	expect(await connect({})).toMatchObject({ ok: true })
+	expect(await connect({ provider: 'github-two' })).toMatchObject({ ok: true })
+	expect(
+		await connect({ tokenUrl: otherTokenUrl, replaceLiveConnection: true }),
+	).toMatchObject({ ok: true })
+	expect(await secretFor(otherTokenUrl)).toBe(null)
+	expect(await secretFor(githubApp.tokenUrl)).toBe(githubApp.clientSecret)
+})
+
+test('rotating an app client id keeps only a secret entered with it', async () => {
+	const { secretFor, rotate } = await setupStoredSecret()
+	expect(await rotate({ clientId: 'rotated-github-client' })).toMatchObject({
+		ok: true,
+		app: { clientId: 'rotated-github-client', hasClientSecret: false },
+	})
+	expect(await secretFor(githubApp.tokenUrl, 'rotated-github-client')).toBe(
+		null,
+	)
+	expect(
+		await rotate({
+			clientId: 'next-github-client',
+			clientSecret: 'next-github-secret',
+		}),
+	).toMatchObject({
+		ok: true,
+		app: { clientId: 'next-github-client', hasClientSecret: true },
+	})
+	expect(await secretFor(githubApp.tokenUrl, 'next-github-client')).toBe(
+		'next-github-secret',
+	)
 })
