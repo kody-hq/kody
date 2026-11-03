@@ -16,6 +16,11 @@ export const entitySourceRowSchema = z.object({
 	entity_id: z.string(),
 	repo_id: z.string(),
 	published_commit: z.string().nullable(),
+	/**
+	 * Last published commit whose every bundle artifact target is saved.
+	 * Runtime readers serve this commit; see `toServingSourceView`.
+	 */
+	serving_commit: z.string().nullable().optional(),
 	indexed_commit: z.string().nullable(),
 	manifest_path: z.string(),
 	source_root: z.string(),

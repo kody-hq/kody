@@ -1,3 +1,4 @@
+import { toServingSourceView } from '#worker/repo/serving-commit.ts'
 import { snapshotStringToBytes } from '#universal/package-file-media.ts'
 import {
 	getPackageAppAssetsDirectory,
@@ -109,7 +110,7 @@ async function loadFreshPersistablePackageSource(input: {
 	if (!source || source.user_id !== input.userId) {
 		throw new Error(`Saved package source "${input.sourceId}" was not found.`)
 	}
-	return source
+	return toServingSourceView(source)
 }
 
 /**
@@ -164,6 +165,7 @@ async function resolvePackageAppClientArtifactUncached(input: {
 			kind: 'app-client',
 			artifactName: null,
 			entryPoint: input.clientEntry,
+			commit: input.savedPackage.publishedCommit,
 		})
 		if (
 			loaded?.artifact &&

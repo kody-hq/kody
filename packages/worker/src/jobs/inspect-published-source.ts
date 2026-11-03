@@ -1,3 +1,5 @@
+import { toServingSourceView } from '#worker/repo/serving-commit.ts'
+import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import {
 	normalizePackageWorkspacePath,
 	parseAuthoredPackageJson,
@@ -31,10 +33,12 @@ export async function resolvePublishedJobSource(input: {
 	if (!input.job.sourceId) {
 		throw new Error('Repo-backed job source is missing.')
 	}
+	const row = await getEntitySourceById(input.env.APP_DB, input.job.sourceId)
 	const published = await loadPublishedEntitySource({
 		env: input.env,
 		userId: input.userId,
 		sourceId: input.job.sourceId,
+		...(row ? { source: toServingSourceView(row) } : {}),
 	})
 	const publishedSource = published.source
 	if (!publishedSource) {

@@ -1,3 +1,7 @@
+import {
+	servingCommitForSource,
+	toServingSourceView,
+} from '#worker/repo/serving-commit.ts'
 import { publishedArtifactNeedsPackageBindingRebuild } from '#worker/package-runtime/pre-binding-artifact-repair.ts'
 import {
 	changedJobFields,
@@ -271,7 +275,8 @@ async function persistPublishedJobBundleArtifact(input: {
 		sourceId: string
 	} | null
 }) {
-	const source = await getEntitySourceById(input.env.APP_DB, input.sourceId)
+	const row = await getEntitySourceById(input.env.APP_DB, input.sourceId)
+	const source = row ? toServingSourceView(row) : null
 	if (!source?.published_commit) {
 		return null
 	}
@@ -391,12 +396,13 @@ async function executePublishedJobArtifact(input: {
 	runRecordHandle?: RunRecordHandle | null
 	idempotencyKey?: string | null
 }): Promise<ExecuteResult> {
-	const source = await getEntitySourceById(
+	const row = await getEntitySourceById(
 		input.env.APP_DB,
 		input.job.sourceId,
 	).catch((error: unknown) => {
 		throw markPreExecutionTransientError(error)
 	})
+	const source = row ? toServingSourceView(row) : null
 	const callerContext = createMcpCallerContext({
 		...input.callerContext,
 		source: input.source,
@@ -1362,6 +1368,7 @@ async function runRepoBackedJob(input: {
 		kind: 'job',
 		artifactName: resolved.artifactName,
 		entryPoint: resolved.entryPoint,
+		commit: resolved.source.published_commit,
 	}).catch((error: unknown) => {
 		throw markPreExecutionTransientError(error)
 	})
@@ -1396,25 +1403,39 @@ async function runRepoBackedJob(input: {
 		return await executeArtifact(loadedArtifact.artifact)
 	}
 	// npm dependencies are only installed by publish, so the job cannot be
-	// rebuilt here. `published_commit` moves before publish finishes building
-	// every target (and stays moved if that build fails), so keep running the
-	// last complete bundle for this job until publish replaces it.
+	// rebuilt here. A source without a serving pointer yet (publish has not
+	// completed a rebuild since it was added) serves `published_commit`, which
+	// moves before its targets are built: keep running the last saved bundle
+	// for this job until publish replaces it.
 	const missingDependencies = listMissingPublishedSourceInstalledDependencies(
 		resolved.files,
 	)
 	if (missingDependencies.length > 0) {
-		if (loadedArtifact?.artifact) {
+		const lastSavedArtifact =
+			loadedArtifact?.artifact == null && resolved.source.serving_commit == null
+				? await loadPublishedBundleArtifactByIdentity({
+						env: input.env,
+						userId: input.job.userId,
+						sourceId: input.job.sourceId,
+						kind: 'job',
+						artifactName: resolved.artifactName,
+						entryPoint: resolved.entryPoint,
+					}).catch((error: unknown) => {
+						throw markPreExecutionTransientError(error)
+					})
+				: loadedArtifact
+		if (lastSavedArtifact?.artifact) {
 			logJobSchedulerEvent({
 				event: 'job_bundle_previous_commit_served',
 				userId: input.job.userId,
 				jobId: input.job.id,
 				sourceId: input.job.sourceId,
-				artifactEntryPoint: loadedArtifact.row.entryPoint,
+				artifactEntryPoint: lastSavedArtifact.row.entryPoint,
 				artifactCacheHit: true,
-				artifactPublishedCommit: loadedArtifact.artifact.publishedCommit,
+				artifactPublishedCommit: lastSavedArtifact.artifact.publishedCommit,
 				reason: 'bundle_pending_for_published_commit',
 			})
-			return await executeArtifact(loadedArtifact.artifact)
+			return await executeArtifact(lastSavedArtifact.artifact)
 		}
 		throw pendingPublishedJobBundleError({
 			entryPoint: resolved.entryPoint,
@@ -1536,7 +1557,9 @@ async function resolveScheduledJobRunAttribution(input: {
 		userId: input.job.userId,
 	})
 	const publishedCommit =
-		source?.published_commit ?? input.job.publishedCommit ?? null
+		(source ? servingCommitForSource(source) : null) ??
+		input.job.publishedCommit ??
+		null
 	if (source?.entity_kind !== 'package' || source.entity_id !== packageId) {
 		return {
 			sourceId: input.job.sourceId,

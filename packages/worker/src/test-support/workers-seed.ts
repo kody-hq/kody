@@ -99,6 +99,7 @@ export async function ensurePackageSubscriptionTestSchema(db: D1Database) {
 			entity_id TEXT NOT NULL,
 			repo_id TEXT NOT NULL,
 			published_commit TEXT,
+			serving_commit TEXT,
 			indexed_commit TEXT,
 			manifest_path TEXT NOT NULL,
 			source_root TEXT NOT NULL,

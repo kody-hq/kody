@@ -1,3 +1,5 @@
+import { toServingSourceView } from '#worker/repo/serving-commit.ts'
+
 import {
 	isUnrepairablePreBindingArtifact,
 	publishedArtifactNeedsPackageBindingRebuild,
@@ -6,7 +8,8 @@ import { resolveSavedPackageRef } from '#worker/package-registry/repo.ts'
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import {
 	loadPackageManifestForSource,
-	loadPackageSourceBySourceId,
+	type loadPackageSourceBySourceId,
+	loadServingPackageSourceBySourceId,
 	loadPackageSourceRowForUser,
 	type LoadedPackageManifest,
 } from '#worker/package-registry/source.ts'
@@ -143,7 +146,7 @@ export async function loadInvokeManifestBySourceId(input: {
 	return await loadPackageManifestForSource({
 		env: input.env,
 		userId: input.userId,
-		source,
+		source: toServingSourceView(source),
 	})
 }
 
@@ -205,6 +208,7 @@ async function ensureModuleArtifactUncached(input: {
 		kind: 'module',
 		artifactName: resolution.artifactName,
 		entryPoint: resolution.entryPoint,
+		commit: packageManifest.source.published_commit,
 	})
 	const currentPublishedCommit = packageManifest.source.published_commit
 	const currentArtifact =
@@ -224,7 +228,7 @@ async function ensureModuleArtifactUncached(input: {
 			entryPoint: resolution.entryPoint,
 		}
 	}
-	const packageSource = await loadPackageSourceBySourceId({
+	const packageSource = await loadServingPackageSourceBySourceId({
 		env: input.env,
 		baseUrl: input.baseUrl,
 		userId: input.userId,
@@ -327,6 +331,7 @@ async function ensureModuleArtifactUncached(input: {
 		kind: 'module',
 		artifactName: freshResolution.artifactName,
 		entryPoint: freshResolution.entryPoint,
+		commit: packageSource.source.published_commit,
 	})
 	if (!rebuilt?.artifact) {
 		const moduleLabel =

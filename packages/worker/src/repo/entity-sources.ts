@@ -26,6 +26,8 @@ function mapEntitySourceRow(row: Record<string, unknown>): EntitySourceRow {
 		repo_id: String(row['repo_id']),
 		published_commit:
 			row['published_commit'] == null ? null : String(row['published_commit']),
+		serving_commit:
+			row['serving_commit'] == null ? null : String(row['serving_commit']),
 		indexed_commit:
 			row['indexed_commit'] == null ? null : String(row['indexed_commit']),
 		manifest_path: String(row['manifest_path']),
@@ -248,6 +250,38 @@ export async function updateEntitySource(
 			WHERE id = ? AND user_id = ?${andLiveDeletedAtSql()}`,
 			)
 			.bind(...values, input.id, input.userId)
+			.run(),
+	)
+	return (result.meta.changes ?? 0) > 0
+}
+
+/**
+ * Compare-and-set the serving pointer to `commit` once every artifact target
+ * for it is saved. Succeeds only while `commit` is still the published
+ * commit, so a stale rebuild cannot move serving to a superseded commit.
+ */
+export async function advanceEntitySourceServingCommit(
+	db: D1Database,
+	input: {
+		id: string
+		userId: OwnerId
+		commit: string
+	},
+): Promise<boolean> {
+	const result = await runD1WithRetry(() =>
+		db
+			.prepare(
+				`UPDATE entity_sources
+			SET serving_commit = ?, updated_at = ?
+			WHERE id = ? AND user_id = ? AND published_commit = ?${andLiveDeletedAtSql()}`,
+			)
+			.bind(
+				input.commit,
+				new Date().toISOString(),
+				input.id,
+				input.userId,
+				input.commit,
+			)
 			.run(),
 	)
 	return (result.meta.changes ?? 0) > 0

@@ -7,6 +7,7 @@ import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 
 export const packageInvocationsRepoMockModule = (() => {
 	const loadPackageManifestBySourceId = vi.fn()
+	const loadPackageSourceBySourceId = vi.fn()
 	return {
 		getSavedPackageById: vi.fn(),
 		resolveSavedPackageRef: vi.fn(),
@@ -61,7 +62,15 @@ export const packageInvocationsRepoMockModule = (() => {
 			}
 			return byId
 		}),
-		loadPackageSourceBySourceId: vi.fn(),
+		loadPackageSourceBySourceId,
+		// Runtime readers load at the serving commit; tests drive both through
+		// the same per-test mocks.
+		loadServingPackageSourceBySourceId: vi.fn<
+			typeof packageSourceModule.loadServingPackageSourceBySourceId
+		>(async (input) => await loadPackageSourceBySourceId(input)),
+		loadServingPackageManifestBySourceId: vi.fn<
+			typeof packageSourceModule.loadServingPackageManifestBySourceId
+		>(async (input) => await loadPackageManifestBySourceId(input)),
 		getEntitySourceById: vi.fn(),
 		loadPublishedBundleArtifactByIdentity: vi.fn(),
 		persistPublishedBundleArtifact: vi.fn(),

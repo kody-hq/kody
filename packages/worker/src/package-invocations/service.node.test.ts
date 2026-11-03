@@ -40,7 +40,11 @@ vi.mock('#worker/package-registry/repo.ts', () => ({
 vi.mock('#worker/package-registry/source.ts', () => ({
 	loadPackageManifestBySourceId: (...args: Array<unknown>) =>
 		repoMockModule.loadPackageManifestBySourceId(...args),
+	loadServingPackageManifestBySourceId: (...args: Array<unknown>) =>
+		repoMockModule.loadPackageManifestBySourceId(...args),
 	loadPackageSourceBySourceId: (...args: Array<unknown>) =>
+		repoMockModule.loadPackageSourceBySourceId(...args),
+	loadServingPackageSourceBySourceId: (...args: Array<unknown>) =>
 		repoMockModule.loadPackageSourceBySourceId(...args),
 	loadPackageSourceRowForUser: (
 		...args: Parameters<typeof packageSourceModule.loadPackageSourceRowForUser>
