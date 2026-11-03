@@ -587,7 +587,7 @@ test('secretJwtSign warns and counts an any-host JWT before 2026-12-02 and refus
 		jwtSignCapability.handler(anyHostInput, counted),
 	).rejects.toSatisfy(
 		(error: unknown) =>
-			isMcpCallerError(error) &&
+			error instanceof McpCallerError &&
 			/^secretJwtSign needs send_to_host .*Since 2026-12-02/.test(
 				error.message,
 			),
