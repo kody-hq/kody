@@ -239,3 +239,51 @@ test('migration 0092 restores local-execute parity on org:execute tokens', () =>
 		),
 	).toEqual(['org:execute', 'org:read', 'package:execute'])
 })
+
+test('migration 0238 lets a deleted team slug be reused', () => {
+	const migrationsDirectory = new URL('../../migrations/', import.meta.url)
+	const sqlite = new DatabaseSync(':memory:')
+	sqlite.exec(`
+		CREATE TABLE teams (
+			id TEXT PRIMARY KEY NOT NULL,
+			org_id TEXT NOT NULL,
+			slug TEXT NOT NULL,
+			name TEXT NOT NULL,
+			description TEXT,
+			parent_team_id TEXT CHECK (parent_team_id IS NULL),
+			created_by_user_id TEXT,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			deleted_at TEXT,
+			UNIQUE (org_id, slug)
+		);
+		INSERT INTO teams (id, org_id, slug, name, created_at, updated_at, deleted_at)
+		VALUES
+			('t-1', 'org-1', 'core', 'Core', 'now', 'now', 'gone'),
+			('t-2', 'org-1', 'ops', 'Ops', 'now', 'now', NULL);
+	`)
+	sqlite.exec(
+		readFileSync(
+			new URL('0238-teams-live-slug-unique.sql', migrationsDirectory),
+			'utf8',
+		),
+	)
+	expect(
+		sqlite.prepare(`SELECT id, deleted_at FROM teams ORDER BY id`).all(),
+	).toEqual([
+		{ id: 't-1', deleted_at: 'gone' },
+		{ id: 't-2', deleted_at: null },
+	])
+	const insert = sqlite.prepare(
+		`INSERT INTO teams (id, org_id, slug, name, created_at, updated_at)
+		 VALUES (?, 'org-1', ?, 'X', 'now', 'now')`,
+	)
+	insert.run('t-3', 'core')
+	expect(() => insert.run('t-4', 'core')).toThrow(/UNIQUE constraint failed/)
+	expect(() => insert.run('t-5', 'ops')).toThrow(/UNIQUE constraint failed/)
+	expect(
+		sqlite
+			.prepare(`SELECT COUNT(*) AS n FROM sqlite_master WHERE name = ?`)
+			.get('__migration_assertions'),
+	).toEqual({ n: 0 })
+})

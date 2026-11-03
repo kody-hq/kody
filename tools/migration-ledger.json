@@ -851,6 +851,10 @@
 		{
 			"filename": "0237-dr-paced-restore-drill-progress.sql",
 			"sha256": "a8b07e35ed972099642d244fef52c0a39e1571426948c7500a24717fd1b5b70b"
+		},
+		{
+			"filename": "0238-teams-live-slug-unique.sql",
+			"sha256": "7110e99f6a79e625a6d1ecb4b6c0fb960d49a6d8d9bc7d60caa993c354a42073"
 		}
 	]
 }

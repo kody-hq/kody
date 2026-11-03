@@ -33,6 +33,7 @@ import {
 } from './package-collaborators.ts'
 import {
 	teamCreateCapability,
+	teamDeleteCapability,
 	teamListCapability,
 	teamMemberAddCapability,
 	teamMemberRemoveCapability,
@@ -76,5 +77,6 @@ export const accessDomain = defineDomain({
 		teamCreateCapability,
 		teamMemberAddCapability,
 		teamMemberRemoveCapability,
+		teamDeleteCapability,
 	],
 })

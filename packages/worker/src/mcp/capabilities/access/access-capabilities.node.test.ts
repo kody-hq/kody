@@ -2,12 +2,14 @@ import { McpCallerError } from '#mcp/caller-error.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { compileAccessForRequest } from '#worker/authorization/access-compile.ts'
 import { LivePersonRequiredError } from '#worker/authorization/authorize.ts'
+import { orgEpochFromRow } from '#worker/mcp-auth-cache.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
 import {
 	deriveRequestContext,
 	type RequestSource,
 } from '#worker/request-context/request-context.ts'
+import { silenceExpectedConsoleErrors } from '#worker/test-support/console-spies.ts'
 import { createAuditTestDb } from '#worker/test-support/create-audit-db.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
@@ -25,7 +27,12 @@ import {
 } from './access-grants.ts'
 import { inviteAcceptCapability, inviteCreateCapability } from './invites.ts'
 import { orgCreateCapability, orgMemberListCapability } from './org-members.ts'
-import { teamCreateCapability } from './teams.ts'
+import {
+	teamCreateCapability,
+	teamDeleteCapability,
+	teamListCapability,
+	teamMemberAddCapability,
+} from './teams.ts'
 
 async function createDb() {
 	const sqlite = new DatabaseSync(':memory:')
@@ -818,4 +825,211 @@ test('org grants carry read-only resource permissions but refuse writes outside 
 	] as const) {
 		expect(compiled.orgPermissions.has(permission)).toBe(false)
 	}
+})
+
+test('teamDelete soft-deletes, keeps grants inert, and frees the slug', async () => {
+	// This schema has no execution_contexts table, so ending leases logs.
+	silenceExpectedConsoleErrors(['execution-context-member-lease-end-failed'])
+	const db = await createDb()
+	const auditDb = createAuditTestDb()
+	const ownerId = testStableUserIdFromEmail('owner-team-delete@example.com')
+	await insertPerson(db, {
+		personId: ownerId,
+		username: 'teamdeleteowner',
+		email: 'owner-team-delete@example.com',
+	})
+	await provisionPersonalOrg(db, {
+		stableUserId: ownerId,
+		username: 'teamdeleteowner',
+	})
+	const created = await orgCreateCapability.handler(
+		{ slug: 'deleteco' },
+		capabilityContext({
+			db,
+			userId: ownerId,
+			email: 'owner-team-delete@example.com',
+			username: 'teamdeleteowner',
+		}),
+	)
+	const org = { id: created.org.id, slug: created.org.slug }
+	const owner = capabilityContext({
+		db,
+		userId: ownerId,
+		email: 'owner-team-delete@example.com',
+		username: 'teamdeleteowner',
+		org: { ...org, role: 'owner' },
+		auditDb,
+	})
+	const people = {
+		seat: {
+			id: testStableUserIdFromEmail('seat@example.com'),
+			username: 'seatuser',
+			email: 'seat@example.com',
+		},
+		writer: {
+			id: testStableUserIdFromEmail('writer@example.com'),
+			username: 'writeruser',
+			email: 'writer@example.com',
+		},
+	}
+	for (const person of Object.values(people)) {
+		await insertPerson(db, {
+			personId: person.id,
+			username: person.username,
+			email: person.email,
+		})
+		await db
+			.prepare(
+				`INSERT INTO org_memberships (org_id, user_id, role, created_at)
+				 VALUES (?, ?, 'member', ?)`,
+			)
+			.bind(org.id, person.id, new Date().toISOString())
+			.run()
+	}
+	const asPerson = (person: (typeof people)['seat']) =>
+		capabilityContext({
+			db,
+			userId: person.id,
+			email: person.email,
+			username: person.username,
+			org: { ...org, role: 'member' },
+			auditDb,
+		})
+
+	const team = await teamCreateCapability.handler(
+		{ slug: 'core', name: 'Core' },
+		owner,
+	)
+	await teamMemberAddCapability.handler(
+		{ team_slug: 'core', user_id: people.seat.id },
+		owner,
+	)
+	const packageId = crypto.randomUUID()
+	await accessGrantCapability.handler(
+		{
+			resource_type: 'package',
+			resource_id: packageId,
+			subject_type: 'team',
+			subject_id: team.team.id,
+			preset: 'use',
+		},
+		owner,
+	)
+	const seatRequest = deriveRequestContext({
+		user: {
+			userId: personIdFromStored(people.seat.id),
+			username: people.seat.username,
+		},
+		source: { kind: 'session' },
+		orgBinding: {
+			org: { id: ownerIdFromStored(org.id), slug: org.slug },
+			role: 'member',
+		},
+	})
+	const before = await compileAccessForRequest({ db, request: seatRequest })
+	expect(
+		before.resourcePermissions
+			.get(`package:${packageId}`)
+			?.has('package:execute'),
+	).toBe(true)
+
+	expect(teamDeleteCapability.contextRuns).toBe('deny')
+	expect(teamDeleteCapability.orgPermission).toBe('team:write')
+	expect(teamDeleteCapability.destructive).toBe(true)
+
+	await expect(
+		teamDeleteCapability.handler(
+			{ team_slug: 'core' },
+			asPerson(people.writer),
+		),
+	).rejects.toThrow(/team:write/)
+
+	await accessGrantCapability.handler(
+		{
+			resource_type: 'org',
+			resource_id: org.id,
+			subject_type: 'user',
+			subject_id: people.writer.id,
+			permissions: ['team:write'],
+		},
+		owner,
+	)
+	const epochBefore = orgEpochFromRow(
+		await db
+			.prepare(`SELECT access_epoch, suspended_at FROM orgs WHERE id = ?`)
+			.bind(org.id)
+			.first(),
+	)
+	const deleted = await teamDeleteCapability.handler(
+		{ team_slug: 'core' },
+		asPerson(people.writer),
+	)
+	expect(deleted).toEqual({
+		team_id: team.team.id,
+		slug: 'core',
+		deleted: true,
+	})
+	const epochAfter = orgEpochFromRow(
+		await db
+			.prepare(`SELECT access_epoch, suspended_at FROM orgs WHERE id = ?`)
+			.bind(org.id)
+			.first(),
+	)
+	expect(epochAfter).toBeGreaterThan(epochBefore ?? 0)
+	expect(before.epoch).toBeLessThan(epochAfter ?? 0)
+
+	const row = await db
+		.prepare(`SELECT deleted_at FROM teams WHERE id = ?`)
+		.bind(team.team.id)
+		.first<{ deleted_at: string | null }>()
+	expect(row?.deleted_at).toBeTruthy()
+	const kept = await db
+		.prepare(
+			`SELECT COUNT(*) AS n FROM grants
+			 WHERE subject_type = 'team' AND subject_id = ? AND deleted_at IS NULL`,
+		)
+		.bind(team.team.id)
+		.first<{ n: number }>()
+	expect(kept?.n).toBe(1)
+
+	const audit = await auditDb
+		.prepare(
+			`SELECT action, resource_id FROM org_audit_events
+			 WHERE org_id = ? AND action = 'team.deleted'`,
+		)
+		.bind(org.id)
+		.all<{ action: string; resource_id: string }>()
+	expect(audit.results).toEqual([
+		{ action: 'team.deleted', resource_id: team.team.id },
+	])
+
+	const after = await compileAccessForRequest({ db, request: seatRequest })
+	expect(after.epoch).toBe(epochAfter)
+	expect(after.resourcePermissions.has(`package:${packageId}`)).toBe(false)
+
+	const listed = await teamListCapability.handler({}, owner)
+	expect(listed.teams.map((t: { slug: string }) => t.slug)).not.toContain(
+		'core',
+	)
+	await expect(
+		teamMemberAddCapability.handler(
+			{ team_slug: 'core', user_id: people.writer.id },
+			owner,
+		),
+	).rejects.toThrow(/not found/i)
+	await expect(
+		teamDeleteCapability.handler({ team_id: team.team.id }, owner),
+	).rejects.toThrow(/not found/i)
+
+	const recreated = await teamCreateCapability.handler(
+		{ slug: 'core', name: 'Core again' },
+		owner,
+	)
+	expect(recreated.team.id).not.toBe(team.team.id)
+	await teamMemberAddCapability.handler(
+		{ team_slug: 'core', user_id: people.seat.id },
+		owner,
+	)
+	const reborn = await compileAccessForRequest({ db, request: seatRequest })
+	expect(reborn.resourcePermissions.has(`package:${packageId}`)).toBe(false)
 })

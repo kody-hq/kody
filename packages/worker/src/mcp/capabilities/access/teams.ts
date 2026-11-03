@@ -10,6 +10,7 @@ import {
 import {
 	addTeamMember,
 	createTeam,
+	deleteTeam,
 	removeTeamMember,
 } from '#worker/orgs/access-writes.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
@@ -82,7 +83,7 @@ export const teamCreateCapability = defineDomainCapability(
 		contextRuns: 'deny',
 		orgPermission: 'team:write',
 		description:
-			'Create a team in the organization this request is bound to. The slug is a handle unique inside the organization.',
+			"Create a team in the organization this request is bound to. The slug is a handle unique among live teams in the organization; a deleted team's slug can be reused, and the new team starts with no grants.",
 		keywords: ['team', 'create', 'group'],
 		readOnly: false,
 		idempotent: false,
@@ -236,6 +237,60 @@ export const teamMemberRemoveCapability = defineDomainCapability(
 					userId,
 				})
 				return { team_id: teamId, user_id: userId, removed: true as const }
+			} catch (error) {
+				rethrowAccessError(error)
+			}
+		},
+	},
+)
+
+export const teamDeleteCapability = defineDomainCapability(
+	capabilityDomainNames.access,
+	{
+		name: 'teamDelete',
+		contextRuns: 'deny',
+		orgPermission: 'team:write',
+		requiresLivePerson: true,
+		description:
+			'Delete a team in the organization this request is bound to (soft delete, audited). Pass team_id or team_slug. Its members stay organization members but lose every grant held through the team at once; the grant rows stay for history and never apply to a new team. The slug can then be reused by teamCreate.',
+		keywords: ['team', 'delete', 'remove', 'group'],
+		readOnly: false,
+		idempotent: false,
+		destructive: true,
+		inputSchema: z.object({
+			team_id: z.string().min(1).optional(),
+			team_slug: z.string().min(1).optional(),
+		}),
+		outputSchema: z.object({
+			team_id: z.string(),
+			slug: z.string(),
+			deleted: z.literal(true),
+		}),
+		async handler(args, ctx) {
+			try {
+				const { request, db } = await requireOrgPermission(ctx, 'team:write')
+				await assertTeamOrg(db, request.org.id)
+				const teamId = await resolveTeamId(db, request.org.id, {
+					teamId: args.team_id,
+					teamSlug: args.team_slug,
+				})
+				const deleted = await deleteTeam({
+					db,
+					orgId: request.org.id,
+					teamId,
+					audit: orgAuditWriterFromRequest(ctx.env, request),
+				})
+				for (const userId of deleted.memberUserIds) {
+					await endMemberExecutionContextLeases(ctx.env, {
+						orgId: request.org.id,
+						userId,
+					})
+				}
+				return {
+					team_id: deleted.id,
+					slug: deleted.slug,
+					deleted: true as const,
+				}
 			} catch (error) {
 				rethrowAccessError(error)
 			}
