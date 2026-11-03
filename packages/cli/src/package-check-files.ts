@@ -2,9 +2,9 @@
  * Collect a local package tree for `packageCheck` (the server publish checks
  * `kody dev check` runs). Uses the files git tracks or would add (not
  * ignored) when the package is in a git checkout, otherwise walks the package
- * root. Binary files are sent by path and byte size only: publish checks read
- * source text, but binaries still count toward size limits and
- * `kody.app.assets` (a PNG-only assets directory must not look empty).
+ * root. Binary files are sent with their bytes (base64) so the server checks
+ * the same snapshot a git-push publish clones, plus their byte sizes for
+ * servers that predate binary contents.
  */
 
 import { execFile } from 'node:child_process'
@@ -20,6 +20,8 @@ export type PackageCheckFiles = {
 	files: Record<string, string>
 	/** Files that are not UTF-8 text: relative path to byte size. */
 	binaryFiles: Record<string, number>
+	/** The same binary files: relative path to base64 contents. */
+	binaryContents: Record<string, string>
 }
 
 async function listGitFiles(root: string): Promise<Array<string> | null> {
@@ -113,6 +115,7 @@ export async function collectPackageCheckFiles(
 	const paths = await listPackageCheckPaths(root)
 	const files: Record<string, string> = {}
 	const binaryFiles: Record<string, number> = {}
+	const binaryContents: Record<string, string> = {}
 	for (const path of paths) {
 		let bytes: Buffer
 		try {
@@ -125,7 +128,8 @@ export async function collectPackageCheckFiles(
 			files[path] = utf8.decode(bytes)
 		} catch {
 			binaryFiles[path] = bytes.byteLength
+			binaryContents[path] = bytes.toString('base64')
 		}
 	}
-	return { files, binaryFiles }
+	return { files, binaryFiles, binaryContents }
 }

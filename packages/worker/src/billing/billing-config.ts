@@ -59,7 +59,6 @@ export function subscriptionHasPrice(
 /** Stripe metadata that marks a subscription as Kody-owned. */
 export const kodySubscriptionMetadataKeys = [
 	'kody_org_id',
-	'kody_stable_user_id',
 	'kody_plan',
 ] as const
 

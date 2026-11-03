@@ -1,4 +1,11 @@
+import { waitUntil } from 'cloudflare:workers'
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	accountDeviceApproveRateLimit,
+	describeAccountDeviceRequest,
+	notifyAccountDeviceSignInApproved,
+	type AccountDeviceVerificationRequest,
+} from '#app/account-device-sign-in.ts'
 import {
 	auditDatabaseFromEnv,
 	getRequestIp,
@@ -24,6 +31,7 @@ import {
 	normalizeUserCode,
 } from './device-grant.ts'
 import {
+	decideAccountDeviceAuthorization,
 	decideDeviceAuthorization,
 	findPendingDeviceAuthorizationByUserCode,
 	type DeviceAuthorizationRow,
@@ -73,13 +81,22 @@ export type DeviceLookupResult =
 	| { kind: 'found'; request: DeviceVerificationRequest }
 	/** A package-app visitor sign-in; approve it on the app's consent page. */
 	| { kind: 'package_app'; userCode: string }
+	/** A browser asking to sign in to this person's full Kody account. */
+	| { kind: 'account'; request: AccountDeviceVerificationRequest }
 	| { kind: 'invalid_code' }
 	| { kind: 'not_found' }
 	| { kind: 'rate_limited'; retryAfterSeconds: number }
 
 export type DeviceDecisionResult =
-	| { kind: 'approved' | 'denied' }
-	| { kind: 'invalid_code' | 'not_found' | 'email_unverified' }
+	| { kind: 'approved' | 'denied'; account?: true }
+	| {
+			kind:
+				| 'invalid_code'
+				| 'not_found'
+				| 'email_unverified'
+				/** Full-account approval needs its explicit confirmation. */
+				| 'confirm_required'
+	  }
 	| { kind: 'org_error'; message: string }
 	| { kind: 'rate_limited'; retryAfterSeconds: number }
 
@@ -138,6 +155,7 @@ async function findPendingForPerson(input: {
 	const admitted =
 		row &&
 		(row.kind === 'package_app' ||
+			row.kind === 'account' ||
 			deviceGrantClientIds(appOrigin).includes(row.client_id))
 	if (!row || !admitted) {
 		void logAuditEvent({
@@ -175,6 +193,15 @@ export async function lookupDeviceAuthorization(input: {
 	const { row } = found
 	if (row.kind === 'package_app') {
 		return { kind: 'package_app', userCode: formatUserCode(row.user_code) }
+	}
+	if (row.kind === 'account') {
+		return {
+			kind: 'account',
+			request: describeAccountDeviceRequest({
+				row,
+				approverRequest: input.request,
+			}),
+		}
 	}
 	const appOrigin = getAppBaseUrl({
 		env: input.env,
@@ -218,10 +245,15 @@ export async function decideDeviceAuthorizationForPerson(input: {
 	userCode: string | null
 	decision: 'approve' | 'deny'
 	orgSlug: string | null
+	/** The approver ticked "I am signing a browser in to my full account". */
+	confirmFullAccount?: boolean
 }): Promise<DeviceDecisionResult> {
 	const found = await findPendingForPerson(input)
 	if (found.kind !== 'found') return found
 	const { row } = found
+	if (row.kind === 'account') {
+		return decideAccountDeviceSignIn({ ...input, row })
+	}
 	// Package-app visitor sign-ins are decided on the app's consent page.
 	if (row.kind !== 'cli') return { kind: 'not_found' }
 	const personId = personIdFromStored(input.user.personId)
@@ -305,6 +337,78 @@ export async function decideDeviceAuthorizationForPerson(input: {
 		...(approved ? {} : { reason: 'not_pending' }),
 	})
 	return approved ? { kind: 'approved' } : { kind: 'not_found' }
+}
+
+/**
+ * Approve or deny a full-account sign-in (ADR 0094). Approving needs the
+ * explicit confirmation, a verified email, and a slot in the per-person
+ * approval limit, and always emails the account.
+ */
+async function decideAccountDeviceSignIn(input: {
+	request: Request
+	env: Env
+	user: DeviceVerificationUser
+	decision: 'approve' | 'deny'
+	confirmFullAccount?: boolean
+	row: DeviceAuthorizationRow
+}): Promise<DeviceDecisionResult> {
+	const { env, row } = input
+	const personId = personIdFromStored(input.user.personId)
+	const ip = getRequestIp(input.request) ?? undefined
+	const audit = (result: 'success' | 'failure', reason?: string) =>
+		void logAuditEvent({
+			db: auditDatabaseFromEnv(env),
+			category: 'auth',
+			action: 'account_device_verify',
+			result,
+			email: input.user.email,
+			ip,
+			...(reason ? { reason } : {}),
+		})
+	if (input.decision === 'deny') {
+		const denied = await decideAccountDeviceAuthorization(env.APP_DB, {
+			id: row.id,
+			decision: 'denied',
+			userId: personId,
+		})
+		audit('success', 'denied')
+		return denied ? { kind: 'denied', account: true } : { kind: 'not_found' }
+	}
+	if (input.confirmFullAccount !== true) return { kind: 'confirm_required' }
+	const verified = await isAccountEmailVerified({
+		db: env.APP_DB,
+		email: input.user.email,
+		stableUserId: personId,
+	})
+	if (!verified) return { kind: 'email_unverified' }
+	const limit = await checkRateLimit(
+		env.APP_DB,
+		`oauth-device:account-approve:person:${personId}`,
+		accountDeviceApproveRateLimit,
+	)
+	if (!limit.allowed) {
+		audit('failure', 'rate_limited')
+		return {
+			kind: 'rate_limited',
+			retryAfterSeconds: limit.retryAfterSeconds ?? 60,
+		}
+	}
+	const approved = await decideAccountDeviceAuthorization(env.APP_DB, {
+		id: row.id,
+		decision: 'approved',
+		userId: personId,
+	})
+	audit(approved ? 'success' : 'failure', approved ? undefined : 'not_pending')
+	if (!approved) return { kind: 'not_found' }
+	waitUntil(
+		notifyAccountDeviceSignInApproved({
+			env,
+			requestUrl: input.request.url,
+			email: input.user.email,
+			row,
+		}),
+	)
+	return { kind: 'approved', account: true }
 }
 
 /**

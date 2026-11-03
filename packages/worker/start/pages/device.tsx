@@ -45,6 +45,8 @@ function deviceErrorText(error: DevicePageError | null) {
 			return 'Verify your account email before approving a device. Open the link from your inbox, then come back to this page.'
 		case 'org_error':
 			return 'Choose an organization this account can use for this sign-in.'
+		case 'confirm_required':
+			return 'Tick the confirmation to approve: you are signing a browser in to your full Kody account.'
 		default: {
 			const exhaustive: never = error
 			return exhaustive
@@ -76,6 +78,8 @@ function deviceTitle(data: DevicePageData) {
 			return 'Sign in on a device'
 		case 'consent':
 			return 'Approve this device?'
+		case 'account_consent':
+			return 'Sign a browser in to your account?'
 		case 'done':
 			return data.result === 'approved' ? 'Device approved' : 'Sign-in denied'
 	}
@@ -89,13 +93,20 @@ function deviceLead(data: DevicePageData) {
 			return 'Enter the code shown in your terminal or on your device.'
 		case 'consent':
 			return `${data.request.clientName} is asking to sign in to your Kody account.`
+		case 'account_consent':
+			return 'A browser is asking to sign in to your whole Kody account, as you.'
 		case 'done':
 			if (data.result !== 'approved') {
 				return 'Nothing was shared with that device. You can close this tab.'
 			}
-			return data.packageApp
-				? 'The other device is finishing signing in to the app. It continues on its own within a few seconds; you can close this tab.'
-				: 'Your device is finishing the sign-in. Return to your terminal; you can close this tab.'
+			switch (data.target) {
+				case 'package_app':
+					return 'The other device is finishing signing in to the app. It continues on its own within a few seconds; you can close this tab.'
+				case 'account':
+					return 'The other browser signs in to your Kody account within a few seconds. We emailed you a record of this sign-in. You can close this tab.'
+				case 'cli':
+					return 'Your device is finishing the sign-in. Return to your terminal; you can close this tab.'
+			}
 	}
 }
 
@@ -107,6 +118,8 @@ function renderDeviceBody(data: DevicePageData) {
 			return <CodeEntryCard data={data} />
 		case 'consent':
 			return <ConsentCard data={data} />
+		case 'account_consent':
+			return <AccountConsentCard data={data} />
 		case 'done':
 			return null
 	}
@@ -291,12 +304,134 @@ function ConsentCard(props: {
 	)
 }
 
+function formatRequestedAt(epochSeconds: number) {
+	return `${new Date(epochSeconds * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC`
+}
+
+function formatMinutesAgo(minutes: number) {
+	if (minutes < 1) return 'just now'
+	return minutes === 1 ? '1 minute ago' : `${minutes} minutes ago`
+}
+
+function AccountConsentCard(props: {
+	data: Extract<DevicePageData, { kind: 'account_consent' }>
+}) {
+	const { request, account } = props.data
+	const error = deviceErrorText(props.data.error)
+	return (
+		<>
+			<section css={cardCss} data-testid="account-device-grant">
+				<h2 css={sectionTitleCss}>This gives a browser your full account</h2>
+				<p css={descriptionCss}>
+					Approving signs the browser below in to your Kody account as you, just
+					like signing in there with your password. It can use your packages,
+					memories, secrets, email, connected services, billing, and account
+					settings until it signs out or you reset your password.
+				</p>
+				<div css={codeMatchCss}>
+					<span css={fieldLabelCss}>Code on that browser</span>
+					<code css={bigCodeCss} data-testid="device-user-code">
+						{request.userCode}
+					</code>
+				</div>
+				<dl css={factsCss} data-testid="account-device-request">
+					<dt>Browser</dt>
+					<dd data-testid="account-device-requester">{request.requester}</dd>
+					<dt>Approximate location</dt>
+					<dd data-testid="account-device-location">
+						{request.location ?? 'Unknown'}
+					</dd>
+					<dt>Requested</dt>
+					<dd data-testid="account-device-requested-at">
+						{formatRequestedAt(request.requestedAt)} (
+						{formatMinutesAgo(request.requestedMinutesAgo)})
+					</dd>
+				</dl>
+				<p css={descriptionCss}>
+					Location comes from the browser's network address and can be off by a
+					city or more. The browser name is what that browser says it is.
+				</p>
+			</section>
+			{request.differentCountry ? (
+				<p
+					role="alert"
+					css={getAlertCardCss('error')}
+					data-testid="account-device-different-country"
+				>
+					That browser looks like it is in a different country from you. If you
+					are not holding it right now, deny.
+				</p>
+			) : null}
+			<p
+				role="note"
+				css={getAlertCardCss('error')}
+				data-testid="device-anti-phishing"
+			>
+				Only approve a browser you are holding right now. Kody never asks you to
+				approve a code someone sent you, read to you, or showed you on a
+				website.
+			</p>
+			<section css={insetCardCss}>
+				<p css={signedInCss}>Signed in as {account.displayName}</p>
+				<p css={descriptionCss}>{account.email}</p>
+			</section>
+			{error ? (
+				<p role="alert" css={getAlertCardCss('error')}>
+					{error}
+				</p>
+			) : null}
+			<form
+				method="post"
+				action="/device"
+				css={cardCss}
+				data-testid="account-device-consent-form"
+			>
+				<input type="hidden" name="user_code" value={request.userCode} />
+				<label css={confirmCss}>
+					<input
+						type="checkbox"
+						name="confirm"
+						value="full_account"
+						required
+						data-testid="account-device-confirm"
+					/>
+					<span>
+						I understand: I am signing a browser in to my full Kody account.
+					</span>
+				</label>
+				<div css={actionsCss}>
+					<button
+						type="submit"
+						name="decision"
+						value="approve"
+						css={primaryButtonCss}
+					>
+						Sign that browser in
+					</button>
+					<button
+						type="submit"
+						name="decision"
+						value="deny"
+						formNoValidate
+						css={secondaryButtonCss}
+					>
+						Deny
+					</button>
+				</div>
+			</form>
+		</>
+	)
+}
+
 const pageCss = {
 	...stackedPageCss,
 	maxWidth: '28rem',
 	margin: '0 auto',
 }
-const primaryButtonCss = getPrimaryButtonCss({ size: 'lg', weight: 'semibold' })
+const primaryButtonCss = getPrimaryButtonCss({
+	size: 'lg',
+	weight: 'semibold',
+})
 const secondaryButtonCss = getSecondaryButtonCss({
 	size: 'lg',
 	weight: 'semibold',
@@ -351,4 +486,21 @@ const signedInCss = {
 	margin: 0,
 	fontWeight: typography.fontWeight.medium,
 	color: colors.text,
+}
+const factsCss = {
+	margin: 0,
+	display: 'grid',
+	gridTemplateColumns: 'auto 1fr',
+	columnGap: spacing.md,
+	rowGap: spacing.xs,
+	color: colors.text,
+	'& dt': { color: colors.textMuted },
+	'& dd': { margin: 0, overflowWrap: 'anywhere' as const },
+}
+const confirmCss = {
+	display: 'flex',
+	alignItems: 'flex-start',
+	gap: spacing.sm,
+	color: colors.text,
+	fontWeight: typography.fontWeight.medium,
 }
