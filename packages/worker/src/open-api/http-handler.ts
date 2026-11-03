@@ -17,6 +17,10 @@ import {
 } from '#worker/execution-contexts/key-routes.ts'
 import type { ApiInvocationContext } from './context.ts'
 import {
+	handlePublishBuildRoute,
+	isPublishBuildRoute,
+} from '#worker/publish-offload/http.ts'
+import {
 	buildOpenApiDocument,
 	kodyApiVersion,
 	resolveApiOperation,
@@ -477,6 +481,9 @@ export async function handleOpenApiRequest(input: {
 		}
 		if (isExecutionContextKeyRoute(input.request.method, url.pathname)) {
 			return await handleExecutionContextKeyRoute({ ...input, url })
+		}
+		if (isPublishBuildRoute(input.request.method, url.pathname)) {
+			return await handlePublishBuildRoute({ ...input, url })
 		}
 		return await handleOperation({ ...input, url })
 	} catch (error) {

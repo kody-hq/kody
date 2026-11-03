@@ -1,3 +1,5 @@
+import { showBuildOrigin } from '#worker/publish-offload/policy.ts'
+import { getCommittedPublishBuildOrigin } from '#worker/publish-offload/store.ts'
 import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
@@ -126,7 +128,23 @@ export const getPackageCapability = defineDomainCapability(
 				packageId: saved.id,
 				supplierSemanticsEnabled: suppliersEnabled,
 			})
+			const publishedCommit = loaded.source.published_commit ?? null
+			const outsideBuild = showBuildOrigin
+				? await getCommittedPublishBuildOrigin({
+						db: ctx.env.APP_DB,
+						sourceId: saved.sourceId,
+						commit: publishedCommit,
+					})
+				: null
 			return {
+				...(showBuildOrigin
+					? {
+							build_origin: {
+								origin: outsideBuild?.origin ?? ('cloud' as const),
+								context_name: outsideBuild?.context_name ?? null,
+							},
+						}
+					: {}),
 				package_id: saved.id,
 				kody_id: saved.kodyId,
 				slug: saved.kodyId,

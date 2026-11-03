@@ -1,4 +1,5 @@
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { PersistUploadedPublishBuildResult } from '#worker/publish-offload/types.ts'
 import type { ArtifactBootstrapAccess } from './artifacts.ts'
 import type { PublishedPackageArtifactBuildTarget } from '#worker/package-runtime/published-bundle-artifacts.ts'
 import { repoSessionDurableObjectName } from '#worker/user-scoped-durable-object-name.ts'
@@ -204,6 +205,16 @@ export type RepoSessionRpc = {
 	runIsolatedArtifactRebuild: (
 		payload: IsolatedArtifactRebuildRequest,
 	) => Promise<IsolatedArtifactRebuildOutcome>
+	persistUploadedPublishBuild: (payload: {
+		sessionId?: string
+		sourceId: string
+		userId: string
+		publishedCommit: string
+		buildId: string
+		writablePackageIds: Array<string>
+		communityListed: boolean
+		baseUrl?: string
+	}) => Promise<PersistUploadedPublishBuildResult>
 	rebuildPublishedPackageArtifact: (payload: {
 		sessionId?: string
 		sourceId?: string
@@ -251,6 +262,7 @@ export type RepoSessionRpc = {
 		credentialNeedsApproved?: boolean
 		requestedByUserId?: string | null
 		deferBundleCheckToRebuild?: boolean
+		typecheckRanOffWorker?: boolean
 		resumeFinalize?: boolean
 		publisherRequest?: RequestContext | null
 	}) => Promise<RepoExternalPublishResult>

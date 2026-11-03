@@ -1752,6 +1752,12 @@ export async function runRepoChecks(input: {
 	 */
 	deferBundleCheckToRebuild?: boolean
 	/**
+	 * Publish offload: the builder already typechecked this exact tree (the
+	 * server verifies the tree by file hash). Typecheck is a quality gate,
+	 * not a security one, so the worker skips its heavy language service.
+	 */
+	typecheckRanOffWorker?: boolean
+	/**
 	 * Publish and `repoRunChecks` require non-empty root README.md +
 	 * AGENTS.md. Community install and platform codemods skip this so
 	 * existing listings stay forkable and migratable.
@@ -2159,7 +2165,9 @@ export async function runRepoChecks(input: {
 		? createIsolatedCheckPhaseRunner(bundleContext.env)
 		: null
 	const wantsLanguageServiceTypecheck =
-		missingTypecheckTargets.length === 0 && typecheckTargets.length > 0
+		input.typecheckRanOffWorker !== true &&
+		missingTypecheckTargets.length === 0 &&
+		typecheckTargets.length > 0
 	const wantsFullBundleValidation =
 		input.deferBundleCheckToRebuild !== true &&
 		bundleContext !== null &&
@@ -2186,6 +2194,14 @@ export async function runRepoChecks(input: {
 			const { value } = await timePublishExternalPushPhase(
 				{ phase: 'checks/typecheck', timings: input.phaseTimings },
 				async () => {
+					if (input.typecheckRanOffWorker === true) {
+						return {
+							kind: 'typecheck' as const,
+							ok: true,
+							message:
+								'Typecheck ran on the publish builder for this exact tree.',
+						}
+					}
 					if (missingTypecheckTargets.length > 0) {
 						return {
 							kind: 'typecheck' as const,

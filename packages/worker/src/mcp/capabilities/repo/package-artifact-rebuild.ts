@@ -648,7 +648,39 @@ export async function rebuildPublishedPackageArtifactsViaRepoSession(input: {
 	force?: boolean
 	/** Rebuild at most this many unbuilt targets per call (resumable). */
 	maxTargets?: number
+	/**
+	 * Publish offload: persist this verified upload (every target, checked
+	 * against the tree and a server rebuild sample) instead of building.
+	 */
+	uploadedBuild?: {
+		buildId: string
+		writablePackageIds: Array<string>
+		communityListed: boolean
+	}
 }): Promise<RebuildPublishedPackageArtifactsResult> {
+	if (input.uploadedBuild) {
+		const persisted = await repoSessionRpc(
+			input.env,
+			input.rpcSessionId,
+		).persistUploadedPublishBuild({
+			...(input.repoSessionId ? { sessionId: input.repoSessionId } : {}),
+			sourceId: input.sourceId,
+			userId: input.userId,
+			publishedCommit: input.publishedCommit,
+			buildId: input.uploadedBuild.buildId,
+			writablePackageIds: input.uploadedBuild.writablePackageIds,
+			communityListed: input.uploadedBuild.communityListed,
+			baseUrl: input.baseUrl,
+		})
+		if (!persisted.ok) throw new UserCodeError(persisted.message)
+		// Every target is written: the commit is complete enough to serve.
+		await advanceEntitySourceServingCommit(input.env.APP_DB, {
+			id: input.sourceId,
+			userId: input.userId,
+			commit: input.publishedCommit,
+		})
+		return { rebuiltTargetCount: persisted.targetCount }
+	}
 	let lastTransientError: unknown = null
 	let attempt = 0
 	for (;;) {

@@ -354,6 +354,15 @@ export const packageCredentialNeedSchema = z.object({
 
 export const packageDetailSchema =
 	packageSummaryWithCommunityProvenanceSchema.extend({
+		build_origin: z
+			.object({
+				origin: z.enum(['cloud', 'cli', 'context']),
+				context_name: z.string().nullable(),
+			})
+			.optional()
+			.describe(
+				"Where the published version was built: Kody cloud, the publisher's CLI (--build local), or one of their execution contexts (--build context).",
+			),
 		published_commit: z
 			.string()
 			.nullable()

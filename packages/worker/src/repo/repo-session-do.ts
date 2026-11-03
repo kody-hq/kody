@@ -1,4 +1,7 @@
 import { assertProfileCanPublishImports } from '#worker/profiles/publish-imports.ts'
+import { createIsolatedArtifactRebuildRunner } from '#worker/repo/isolated-artifact-rebuild.ts'
+import type { PersistUploadedPublishBuildResult } from '#worker/publish-offload/types.ts'
+import { hashWorkerLoaderModules } from '#worker/publish-offload/module-hashes.ts'
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
@@ -3196,6 +3199,9 @@ class RepoSessionBase extends DurableObject<Env> {
 			...(input.deferBundleCheckToRebuild === true
 				? { deferBundleCheckToRebuild: true }
 				: {}),
+			...(input.typecheckRanOffWorker === true
+				? { typecheckRanOffWorker: true }
+				: {}),
 			...(staged.kodyIgnoredDeclarationFiles?.length
 				? { kodyIgnoredDeclarationFiles: staged.kodyIgnoredDeclarationFiles }
 				: {}),
@@ -3605,6 +3611,116 @@ class RepoSessionBase extends DurableObject<Env> {
 		}
 	}
 
+	/**
+	 * Publish offload commit step: verify a sealed upload against this
+	 * published commit and write its targets like a rebuild would. See
+	 * `#worker/publish-offload/persist-uploaded.ts`.
+	 */
+	async persistUploadedPublishBuild(input: {
+		sessionId?: string
+		sourceId: string
+		userId: OwnerId
+		publishedCommit: string
+		buildId: string
+		writablePackageIds: Array<string>
+		communityListed: boolean
+		baseUrl?: string
+	}): Promise<PersistUploadedPublishBuildResult> {
+		const source = await this.resolvePublishSource(input)
+		if (source.entity_kind !== 'package') {
+			return { ok: false, message: 'Only packages can publish a build.' }
+		}
+		this.assertPublishedCommitUnchanged({
+			source,
+			publishedCommit: input.publishedCommit,
+		})
+		const savedPackage = await getSavedPackageById(this.env.APP_DB, {
+			userId: input.userId,
+			packageId: source.entity_id,
+		})
+		if (!savedPackage) {
+			throw new Error(`Saved package "${source.entity_id}" was not found.`)
+		}
+		const sourceAtCommit = {
+			...source,
+			published_commit: input.publishedCommit,
+		}
+		const sourceFiles =
+			await this.collectSourceFilesForPublishedArtifactRebuild(
+				source,
+				input.publishedCommit,
+			)
+		const targets =
+			await this.listPackageArtifactTargetsForSource(sourceAtCommit)
+		const baseUrl = input.baseUrl ?? source.source_root
+		const { persistUploadedPublishBuild } =
+			await import('#worker/publish-offload/persist-uploaded.ts')
+		return await persistUploadedPublishBuild({
+			env: this.env,
+			buildId: input.buildId,
+			writablePackageIds: input.writablePackageIds,
+			communityListed: input.communityListed,
+			baseUrl,
+			userId: input.userId,
+			source: sourceAtCommit,
+			savedPackage,
+			publishedCommit: input.publishedCommit,
+			sourceFiles,
+			targets,
+			rebuildSample: async (sampleTargets) => {
+				if (sampleTargets.length === 0) return []
+				const runner = createIsolatedArtifactRebuildRunner(this.env)
+				if (runner) {
+					const stagingKey = await runner.stage({
+						userId: input.userId,
+						sourceFiles,
+					})
+					try {
+						const outcome = await runner.buildCheck({
+							stagingKey,
+							userId: input.userId,
+							baseUrl,
+							rootPackageId: savedPackage.id,
+							targets: sampleTargets,
+							includeModuleHashes: true,
+						})
+						return sampleTargets.map((_, index) => {
+							const result = outcome.results[index]
+							return result?.ok && result.built
+								? result.built
+								: new Error(result?.message ?? outcome.message)
+						})
+					} finally {
+						await runner.discard(stagingKey).catch(() => {})
+					}
+				}
+				const builders = await this.publishedPackageArtifactBuilders({
+					userId: input.userId,
+					baseUrl,
+					sourceFiles,
+					rootPackageId: savedPackage.id,
+					prepareCache: new Map(),
+				})
+				const results = []
+				for (const target of sampleTargets) {
+					try {
+						const bundle = await buildPublishedPackageArtifactTargetBundle({
+							...builders,
+							target,
+						})
+						results.push({
+							mainModule: bundle.mainModule,
+							moduleHashes: await hashWorkerLoaderModules(bundle.modules),
+						})
+					} catch (error) {
+						results.push(new Error(getErrorMessage(error)))
+					}
+				}
+				return results
+			},
+		})
+	}
+
 	async rebuildPublishedPackageArtifact(input: {
 		sessionId?: string
 		sourceId?: string
@@ -3810,8 +3926,23 @@ class RepoSessionBase extends DurableObject<Env> {
 		const results: Array<IsolatedArtifactRebuildTargetResult> = []
 		for (const target of input.targets) {
 			try {
-				await buildPublishedPackageArtifactTargetBundle({ ...builders, target })
-				results.push({ ok: true, message: 'Built.', target })
+				const bundle = await buildPublishedPackageArtifactTargetBundle({
+					...builders,
+					target,
+				})
+				results.push({
+					ok: true,
+					message: 'Built.',
+					...(input.includeModuleHashes
+						? {
+								built: {
+									mainModule: bundle.mainModule,
+									moduleHashes: await hashWorkerLoaderModules(bundle.modules),
+								},
+							}
+						: {}),
+					target,
+				})
 			} catch (error) {
 				results.push({
 					ok: false,
@@ -4738,6 +4869,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		requestedByUserId?: string | null
 		publisherRequest?: RequestContext | null
 		deferBundleCheckToRebuild?: boolean
+		typecheckRanOffWorker?: boolean
 		resumeFinalize?: boolean
 	}): Promise<RepoExternalPublishResult> {
 		const source = await getEntitySourceById(this.env.APP_DB, input.sourceId)
@@ -4798,6 +4930,9 @@ class RepoSessionBase extends DurableObject<Env> {
 				...(recordCheckStep ? { onCheckStep: recordCheckStep } : {}),
 				...(input.deferBundleCheckToRebuild
 					? { deferBundleCheckToRebuild: true }
+					: {}),
+				...(input.typecheckRanOffWorker === true
+					? { typecheckRanOffWorker: true }
 					: {}),
 				...(input.resumeFinalize ? { resumeFinalize: true } : {}),
 			}).finally(() => this.clearCheckStep())
