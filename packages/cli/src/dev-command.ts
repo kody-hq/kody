@@ -711,7 +711,7 @@ function formatPublishChecksRunFailure(error: unknown): string {
  * pushed commit from Artifacts. Everything after the clone runs as publish
  * runs it (see docs/use/packages.md, "What kody dev check runs").
  */
-export const devCheckCloneGapDetail =
+const devCheckCloneGapDetail =
 	'checked the working tree as a git-push publish snapshot. Not run: cloning the pushed commit from Artifacts (push and pack limits apply at `git push`), and the rebuilt artifacts are not saved.'
 
 const devCheckOfflineDetail =

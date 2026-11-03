@@ -1157,9 +1157,25 @@ absorb next step. Full workflow:
 
 ## Package size limits and `.kodyignore`
 
-Publish and `kody dev check` run the same checks (including lint, bundle
-validation, and typecheck) in the same kind of throwaway isolate with the same
-limits, so a dev check result is the best predictor of a publish:
+`kody dev check` checks your working tree the way a `git push` publish checks
+the commit it clones, so a dev check result is the best predictor of a publish:
+
+- **Same snapshot.** The CLI sends every file `git` would commit, binary files
+  included byte for byte. `.kodyignore` is applied first, then the checked-out
+  tree cap below.
+- **Same checks and limits.** Lint, credential stamp scan, docs, dependencies,
+  and typecheck run in the same kind of throwaway isolate with the same limits.
+- **Same bundling.** Like a `git push` publish, the checks only do the cheap
+  bundle pre-check; every runtime artifact (app, client, exports, importable
+  modules, jobs, subscriptions) is then built the way the publish rebuild builds
+  it: the same targets and builders, 4 targets per throwaway isolate, 2 isolates
+  at a time, stopping after a failed wave. Nothing is saved.
+
+What a dev check cannot run, and says so in its output: cloning the pushed
+commit from Artifacts. `git push` (and the Artifacts push limit) happens before
+publish, and the clone only reads what was pushed, so commit and push to catch
+pack-size or history problems. The CLI sends the package root; a `git push`
+publish also counts the rest of the checked-out repo toward the 32 MiB cap.
 
 | Limit                                     | Value                       |
 | ----------------------------------------- | --------------------------- |
