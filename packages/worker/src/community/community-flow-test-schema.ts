@@ -61,6 +61,7 @@ export async function ensureCommunityFlowSchema(db: D1Database) {
 			entity_id TEXT NOT NULL,
 			repo_id TEXT NOT NULL,
 			published_commit TEXT,
+			serving_commit TEXT,
 			indexed_commit TEXT,
 			manifest_path TEXT NOT NULL DEFAULT 'package.json',
 			source_root TEXT NOT NULL DEFAULT '/',
