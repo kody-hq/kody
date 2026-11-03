@@ -32,6 +32,10 @@ import {
 import { EncodedPlaceholderError } from '#mcp/secrets/encoded-placeholder.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
+	gatewayErrorResponse,
+	withoutForgedGatewayErrorHeader,
+} from '#mcp/sandbox-rpc-outcome.ts'
+import {
 	createHostSecretAccessDeniedBatchMessage,
 	createMissingSecretMessage,
 	fetchSecretAuthRequiredMessage,
@@ -316,14 +320,29 @@ async function applyPackageAppVisitTicketToGateway(input: {
 }
 
 export class KodyFetchGateway extends WorkerEntrypoint<Env, FetchGatewayProps> {
+	/** Refusals come back as a marked response; see `sandbox-rpc-outcome.ts`. */
 	async fetch(request: Request) {
-		return executeGatewayFetch({
-			env: this.env,
-			props: this.ctx.props,
-			request,
-			waitUntil: (promise) => this.ctx.waitUntil(promise),
-		})
+		try {
+			return withoutForgedGatewayErrorHeader(
+				await executeGatewayFetch({
+					env: this.env,
+					props: this.ctx.props,
+					request,
+					waitUntil: (promise) => this.ctx.waitUntil(promise),
+				}),
+			)
+		} catch (error) {
+			return gatewayErrorResponse(error)
+		}
 	}
+}
+
+export const gatewayWithoutRunContextMessage =
+	'Outbound fetch has no run context: fetch() was called outside the run that owns it (for example from a detached callback or inside AsyncLocalStorage.run(null)), so it was refused.'
+
+/** The executor's shared `globalOutbound` gateway is minted with empty props. */
+function hasRunContext(props: FetchGatewayProps | undefined) {
+	return typeof props?.baseUrl === 'string'
 }
 
 export async function executeGatewayFetch(input: {
@@ -337,6 +356,9 @@ export async function executeGatewayFetch(input: {
 	/** Override {@link outboundFetchIdleTimeoutMs}. Tests use short values. */
 	idleTimeoutMs?: number
 }): Promise<Response> {
+	if (!hasRunContext(input.props)) {
+		throw new Error(gatewayWithoutRunContextMessage)
+	}
 	return await runInFeatureFlagExecution(input.props.executionId, () =>
 		fetchThroughGateway(input),
 	)
