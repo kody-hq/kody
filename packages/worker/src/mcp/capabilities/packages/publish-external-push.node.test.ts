@@ -24,6 +24,15 @@ const mockModule = vi.hoisted(() => ({
 	clearPublishedPublishChecksVersion: vi.fn(
 		async (..._args: Array<unknown>) => {},
 	),
+	revertEntitySourcePublishedCommit: vi.fn(
+		async (..._args: Array<unknown>) => true,
+	),
+	refreshSavedPackageProjection: vi.fn(async (..._args: Array<unknown>) => {}),
+}))
+
+vi.mock('#worker/package-registry/service.ts', () => ({
+	refreshSavedPackageProjection: (...args: Array<unknown>) =>
+		mockModule.refreshSavedPackageProjection(...args),
 }))
 
 vi.mock(
@@ -51,6 +60,8 @@ vi.mock('#worker/repo/entity-sources.ts', () => ({
 	advanceEntitySourceServingCommit: async () => true,
 	getEntitySourceByIdForUser: (...args: Array<unknown>) =>
 		mockModule.getEntitySourceByIdForUser(...args),
+	revertEntitySourcePublishedCommit: (...args: Array<unknown>) =>
+		mockModule.revertEntitySourcePublishedCommit(...args),
 }))
 
 vi.mock('#worker/repo/artifacts.ts', () => ({
@@ -511,6 +522,23 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 	expect(mockModule.clearPublishedPublishChecksVersion).toHaveBeenCalledWith(
 		expect.objectContaining({ publishedCommit: 'commit-new' }),
 	)
+	// The pointer, projection, and job pins go back to the last good commit.
+	expect(mockModule.revertEntitySourcePublishedCommit).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({
+			id: 'source-1',
+			failedCommit: 'commit-new',
+			restoreCommit: 'commit-old',
+		}),
+	)
+	expect(mockModule.refreshSavedPackageProjection).toHaveBeenCalledWith(
+		expect.objectContaining({
+			packageId: 'package-1',
+			sourceId: 'source-1',
+			rebuildArtifacts: false,
+			audit: null,
+		}),
+	)
 
 	setupDefaultMocks({
 		head: 'commit-old',
@@ -534,6 +562,9 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 	expect(mockModule.clearPublishedPublishChecksVersion).toHaveBeenCalledWith(
 		expect.objectContaining({ publishedCommit: 'commit-old' }),
 	)
+	// A true no-op retry did not move the tip, so there is nothing to restore.
+	expect(mockModule.revertEntitySourcePublishedCommit).not.toHaveBeenCalled()
+	expect(mockModule.refreshSavedPackageProjection).not.toHaveBeenCalled()
 })
 
 test('force publish passes destructive confirmation through and refuses without allow_force', async () => {

@@ -12,6 +12,7 @@ import {
 	listEntitySourcesByIdsForUser,
 	listEntitySourcesForExternalReconcile,
 	markEntitySourcePendingExternalReconcile,
+	revertEntitySourcePublishedCommit,
 } from './entity-sources.ts'
 
 function catalogSessionRow(
@@ -301,4 +302,46 @@ test('listEntitySourcesByIdsForUser scopes by user_id and skips other users', as
 		queries.filter((query) => query.includes('WHERE user_id = ? AND id IN ('))
 			.length,
 	).toBe(3)
+})
+
+test('reverting a failed publish only moves the pointer while the failed commit still holds it', async () => {
+	const sqlite = entitySourcesSqlite()
+	sqlite.exec(`
+		INSERT INTO entity_sources (
+			id, user_id, entity_kind, entity_id, repo_id, published_commit,
+			manifest_path, source_root, created_at, updated_at
+		) VALUES (
+			'source-1', 'user-1', 'package', 'package-1', 'repo-1', 'commit-failed',
+			'package.json', '/', '2026-06-24T19:00:00.000Z', '2026-06-24T19:00:00.000Z'
+		);
+	`)
+	const db = createD1FromSqlite(sqlite)
+	const userId = ownerIdFromStored('user-1')
+	const readPointer = () =>
+		(
+			sqlite
+				.prepare(`SELECT published_commit FROM entity_sources WHERE id = ?`)
+				.get('source-1') as { published_commit: string }
+		).published_commit
+
+	// A newer publish already owns the pointer: leave it alone.
+	expect(
+		await revertEntitySourcePublishedCommit(db, {
+			id: 'source-1',
+			userId,
+			failedCommit: 'commit-other',
+			restoreCommit: 'commit-good',
+		}),
+	).toBe(false)
+	expect(readPointer()).toBe('commit-failed')
+
+	expect(
+		await revertEntitySourcePublishedCommit(db, {
+			id: 'source-1',
+			userId,
+			failedCommit: 'commit-failed',
+			restoreCommit: 'commit-good',
+		}),
+	).toBe(true)
+	expect(readPointer()).toBe('commit-good')
 })

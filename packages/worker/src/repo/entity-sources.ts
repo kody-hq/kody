@@ -256,6 +256,39 @@ export async function updateEntitySource(
 }
 
 /**
+ * Move `published_commit` back from a publish that did not succeed. Guarded by
+ * compare-and-set on the failed commit so a newer publish that already won the
+ * pointer is never clobbered.
+ */
+export async function revertEntitySourcePublishedCommit(
+	db: D1Database,
+	input: {
+		id: string
+		userId: OwnerId
+		failedCommit: string
+		restoreCommit: string
+	},
+): Promise<boolean> {
+	const result = await runD1WithRetry(() =>
+		db
+			.prepare(
+				`UPDATE entity_sources
+			SET published_commit = ?, updated_at = ?
+			WHERE id = ? AND user_id = ? AND published_commit = ?${andLiveDeletedAtSql()}`,
+			)
+			.bind(
+				input.restoreCommit,
+				new Date().toISOString(),
+				input.id,
+				input.userId,
+				input.failedCommit,
+			)
+			.run(),
+	)
+	return (result.meta.changes ?? 0) > 0
+}
+
+/**
  * Compare-and-set the serving pointer to `commit` once every artifact target
  * for it is saved. Succeeds only while `commit` is still the published
  * commit, so a stale rebuild cannot move serving to a superseded commit.
