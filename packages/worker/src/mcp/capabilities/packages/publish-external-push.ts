@@ -69,6 +69,7 @@ import {
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
 import { resolveArtifactSourceHead } from '#worker/repo/artifacts.ts'
 import { rebuildPublishedPackageArtifactsViaRepoSession } from '#mcp/capabilities/repo/package-artifact-rebuild.ts'
+import { clearPublishedPublishChecksVersion } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import {
 	mergePublishPhaseTimings,
 	timePublishExternalPushPhase,
@@ -1063,6 +1064,11 @@ async function runExternalPublishAttempt(input: {
 						},
 					)
 				if (!rebuildOutcome.ok) {
+					await clearPublishedPublishChecksVersion({
+						env: input.env,
+						sourceId: input.source.id,
+						publishedCommit,
+					})
 					return {
 						status: 'checks_failed' as const,
 						failed_checks: [rebuildOutcome.failedCheck],
@@ -1299,6 +1305,13 @@ async function runExternalPublishAttempt(input: {
 					},
 				)
 			if (!rebuildOutcome.ok) {
+				// RepoSession sealed this tip before the rebuild ran; a failed
+				// rebuild is not a successful publish, so a retry must re-run.
+				await clearPublishedPublishChecksVersion({
+					env: input.env,
+					sourceId: input.source.id,
+					publishedCommit: result.published_commit,
+				})
 				return {
 					status: 'checks_failed' as const,
 					failed_checks: [rebuildOutcome.failedCheck],
