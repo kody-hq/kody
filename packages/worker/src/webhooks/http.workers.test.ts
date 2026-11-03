@@ -40,6 +40,7 @@ import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.t
 import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
 
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import { communityForksTableSql } from '#worker/community/community-forks-test-schema.ts'
 const mocks = vi.hoisted(() => ({
 	enqueueWebhookDispatch: vi.fn(),
 	invokePackageExport: vi.fn(),
@@ -213,25 +214,7 @@ async function ensureSchema(db: D1Database) {
 			)`,
 		)
 		.run()
-	await db
-		.prepare(
-			`CREATE TABLE IF NOT EXISTS community_forks (
-				id TEXT PRIMARY KEY NOT NULL,
-				listing_id TEXT, upstream_owner_id TEXT, upstream_package_id TEXT,
-				forker_user_id TEXT NOT NULL,
-				origin_commit TEXT NOT NULL,
-				forked_package_id TEXT NOT NULL,
-				forked_source_id TEXT NOT NULL,
-				target_kody_id TEXT NOT NULL,
-				listing_name TEXT,
-				listing_kody_id TEXT,
-				created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
-				adopted_at TEXT,
-				adoption_note TEXT,
-				actor TEXT
-			)`,
-		)
-		.run()
+	await db.prepare(communityForksTableSql).run()
 	await ensureSoftDeleteTestColumns(db)
 }
 

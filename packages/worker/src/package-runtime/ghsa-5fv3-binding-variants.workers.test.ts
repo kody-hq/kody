@@ -29,6 +29,7 @@ import { ensureSoftDeleteTestColumns } from '#worker/soft-delete/test-schema.ts'
 import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
 import { buildPackageStorageId } from '#worker/storage-ids.ts'
 import { storageRunnerRpc } from '#worker/storage-runner.ts'
+import { communityForksTableSql } from '#worker/community/community-forks-test-schema.ts'
 
 /**
  * GHSA-5fv3 trusted per-package binding: related variants found while
@@ -111,21 +112,7 @@ async function ensureSecretAuthorityTestSchema() {
 		updated_at TEXT NOT NULL
 	)`)
 	await ensureSecretBucketsTestSchema(env.APP_DB)
-	await runSql(`CREATE TABLE IF NOT EXISTS community_forks (
-		id TEXT PRIMARY KEY NOT NULL,
-		listing_id TEXT, upstream_owner_id TEXT, upstream_package_id TEXT,
-		forker_user_id TEXT NOT NULL,
-		origin_commit TEXT NOT NULL,
-		forked_package_id TEXT NOT NULL,
-		forked_source_id TEXT NOT NULL,
-		target_kody_id TEXT NOT NULL,
-		listing_name TEXT,
-		listing_kody_id TEXT,
-		adopted_at TEXT,
-		adoption_note TEXT,
-		actor TEXT,
-		created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
-	)`)
+	await runSql(communityForksTableSql)
 	await ensureSoftDeleteTestColumns(env.APP_DB)
 }
 

@@ -6,6 +6,7 @@ import {
 	listPrivateCommunityForkCandidatesForPerson,
 	listPublicCommunityForks,
 } from './repo.ts'
+import { communityForksTableSql } from '#worker/community/community-forks-test-schema.ts'
 
 function createSeededDb() {
 	const sqlite = new DatabaseSync(':memory:')
@@ -35,11 +36,7 @@ function createSeededDb() {
 			id TEXT PRIMARY KEY, user_id TEXT NOT NULL, published_commit TEXT,
 			deleted_at TEXT
 		);
-		CREATE TABLE community_forks (
-			id TEXT PRIMARY KEY, listing_id TEXT, upstream_owner_id TEXT, upstream_package_id TEXT,
-			forker_user_id TEXT NOT NULL, forked_package_id TEXT NOT NULL,
-			created_at TEXT NOT NULL
-		);
+		${communityForksTableSql};
 		INSERT INTO orgs (id, slug, display_name, suspended_at) VALUES
 			('org-pub', 'alice', 'Alice', NULL),
 			('org-priv', 'bob', NULL, NULL),
@@ -59,13 +56,13 @@ function createSeededDb() {
 			('pkg-suspended', 'org-suspended', 'ship-pr', 'src-suspended', 0, 0, NULL);
 		INSERT INTO entity_sources (id, user_id, published_commit) VALUES
 			('src-public', 'org-pub', 'abc123');
-		INSERT INTO community_forks (id, listing_id, forker_user_id, forked_package_id, created_at) VALUES
-			('fork-public', 'listing-1', 'org-pub', 'pkg-public', '2026-10-01'),
-			('fork-private', 'listing-1', 'org-priv', 'pkg-private', '2026-10-02'),
-			('fork-hidden', 'listing-1', 'org-team', 'pkg-hidden', '2026-10-03'),
-			('fork-deleted', 'listing-1', 'org-pub', 'pkg-deleted', '2026-10-04'),
-			('fork-suspended', 'listing-1', 'org-suspended', 'pkg-suspended', '2026-10-05'),
-			('fork-inert', 'listing-1', 'org-pub', 'pkg-not-published', '2026-10-06');
+		INSERT INTO community_forks (id, listing_id, forker_user_id, forked_package_id, created_at, origin_commit, forked_source_id, target_kody_id) VALUES
+			('fork-public', 'listing-1', 'org-pub', 'pkg-public', '2026-10-01', 'c', 's', 'k'),
+			('fork-private', 'listing-1', 'org-priv', 'pkg-private', '2026-10-02', 'c', 's', 'k'),
+			('fork-hidden', 'listing-1', 'org-team', 'pkg-hidden', '2026-10-03', 'c', 's', 'k'),
+			('fork-deleted', 'listing-1', 'org-pub', 'pkg-deleted', '2026-10-04', 'c', 's', 'k'),
+			('fork-suspended', 'listing-1', 'org-suspended', 'pkg-suspended', '2026-10-05', 'c', 's', 'k'),
+			('fork-inert', 'listing-1', 'org-pub', 'pkg-not-published', '2026-10-06', 'c', 's', 'k');
 	`)
 	return createD1FromSqlite(sqlite)
 }

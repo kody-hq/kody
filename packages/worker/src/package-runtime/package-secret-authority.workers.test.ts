@@ -32,6 +32,7 @@ import {
 } from './published-runtime-artifacts.ts'
 import { ensureSecretBucketsTestSchema } from '#worker/secrets-test-schema.ts'
 import { ensureSoftDeleteTestColumns } from '#worker/soft-delete/test-schema.ts'
+import { communityForksTableSql } from '#worker/community/community-forks-test-schema.ts'
 
 async function runSql(sql: string, ...values: Array<unknown>) {
 	await env.APP_DB.prepare(sql)
@@ -104,21 +105,7 @@ async function ensureSecretAuthorityTestSchema() {
 		created_at TEXT NOT NULL,
 		PRIMARY KEY (credential_id, org_id)
 	)`)
-	await runSql(`CREATE TABLE IF NOT EXISTS community_forks (
-		id TEXT PRIMARY KEY NOT NULL,
-		listing_id TEXT, upstream_owner_id TEXT, upstream_package_id TEXT,
-		forker_user_id TEXT NOT NULL,
-		origin_commit TEXT NOT NULL,
-		forked_package_id TEXT NOT NULL,
-		forked_source_id TEXT NOT NULL,
-		target_kody_id TEXT NOT NULL,
-		listing_name TEXT,
-		listing_kody_id TEXT,
-		adopted_at TEXT,
-		adoption_note TEXT,
-		actor TEXT,
-		created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
-	)`)
+	await runSql(communityForksTableSql)
 	await ensureSoftDeleteTestColumns(env.APP_DB)
 }
 
