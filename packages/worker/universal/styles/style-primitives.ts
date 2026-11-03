@@ -975,30 +975,25 @@ export function getAuthInputCss(options: AuthInputCssOptions = {}) {
 
 /**
  * `<select>` in the redesign's field vocabulary: the same box as
- * `getAuthInputCss` with the platform chevron replaced by our own, so every
- * dropdown in the app reads identically instead of inheriting whatever the OS
- * draws. The chevron is a background image inset by the field's own padding —
- * the text gets matching room on the right so a long option never runs under
- * it. A background image cannot read `currentColor`, so the chevron's stroke
- * is baked into a themed `--select-chevron` token (see `public/styles.css`)
- * rather than picked as one compromise gray for both themes.
+ * `getAuthInputCss` with a small solid caret. The themed background image is
+ * inset from the right edge, with an extra 8px gap between text and caret.
  *
  * Markup contract: same as `getAuthInputCss` — put `data-field-ring` on the
  * element so the global `:focus-visible` outline stands down for the field's
  * own green ring.
  */
 export function getSelectCss(options: AuthInputCssOptions = {}) {
-	const chevronInset = 'var(--control-padding-x, 1.05rem)'
+	const caretInset = 'var(--control-padding-x, 1.05rem)'
 	return {
 		...getAuthInputCss(options),
 		appearance: 'none' as const,
 		WebkitAppearance: 'none' as const,
 		cursor: 'pointer',
-		paddingRight: `calc(${chevronInset} * 2 + 16px)`,
-		backgroundImage: 'var(--select-chevron)',
+		paddingRight: `calc(${caretInset} + 16px)`,
+		backgroundImage: 'var(--select-caret)',
 		backgroundRepeat: 'no-repeat',
-		backgroundPosition: `right ${chevronInset} center`,
-		backgroundSize: '16px 16px',
+		backgroundPosition: `right ${caretInset} center`,
+		backgroundSize: '8px 5px',
 	}
 }
 

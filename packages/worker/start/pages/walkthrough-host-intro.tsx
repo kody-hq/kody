@@ -131,11 +131,10 @@ const pickerSentenceCss = {
 const nativeSelectCss = {
 	appearance: 'none' as const,
 	WebkitAppearance: 'none' as const,
-	paddingRight: '1.35em',
-	backgroundImage: 'var(--select-chevron)',
+	backgroundImage: 'var(--select-caret)',
 	backgroundRepeat: 'no-repeat',
-	backgroundPosition: 'right 0.35em center',
-	backgroundSize: '0.75em',
+	backgroundPosition: 'right 0.5em center',
+	backgroundSize: '8px 5px',
 } satisfies CSSObject
 
 const optionMarkCss = {
@@ -161,7 +160,7 @@ const selectCss = {
 	maxWidth: '100%',
 	minHeight: '24px',
 	margin: '0 0.15em',
-	padding: '0.15em 1.35em 0.15em 1.65em',
+	padding: '0.15em calc(0.5em + 16px) 0.15em 1.65em',
 	border: `1px solid ${colors.border}`,
 	borderRadius: radius.full,
 	backgroundColor: colors.surface,

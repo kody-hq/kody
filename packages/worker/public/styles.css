@@ -213,12 +213,10 @@
 	   Lossless WebP: Fathom visitors are Chrome/Firefox/Safari/Edge/Opera. */
 	--kody-pattern: url('/images/kody-pattern.webp');
 
-	/* Select chevron (see `getSelectCss`). A data-URI background image cannot
-	   read `currentColor`, so the stroke is baked in and the token is themed
-	   instead. Each value is its theme's muted-text color, which clears the
-	   3:1 non-text contrast minimum on both that theme's surfaces. */
-	--select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234e535a' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
-	--select-chevron-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a0a5ab' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+	/* Select caret (see `getSelectCss`). Data-URI background images cannot
+	   read `currentColor`, so each theme supplies its own solid fill. */
+	--select-caret: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 5' fill='%23000'%3E%3Cpath d='M0 0h8L4 5z'/%3E%3C/svg%3E");
+	--select-caret-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 5' fill='%23fff'%3E%3Cpath d='M0 0h8L4 5z'/%3E%3C/svg%3E");
 
 	/* Responsive spacing - used for page-level padding */
 	--spacing-page: var(--spacing-2xl);
@@ -314,7 +312,7 @@
 		--primitive-integrations: var(--primitive-integrations-dark);
 		--primitive-apps: var(--primitive-apps-dark);
 		--primitive-text-l: var(--primitive-text-l-dark);
-		--select-chevron: var(--select-chevron-dark);
+		--select-caret: var(--select-caret-dark);
 		--line-height-body: var(--line-height-body-dark);
 
 		/* Dark mode shadows - lighter for visibility */
