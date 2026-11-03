@@ -325,8 +325,13 @@ export function grantRefusal(input: {
 	requires: ReadonlyArray<ExecuteRequirement>
 	/** What the daemon advertised; `fs` means its effective mount set is non-empty. */
 	capabilities: EcpCapabilities
+	/** The requester is not the operator (see {@link sharedRunHostRefusal}). */
+	sharedRun: boolean
 }): string | null {
-	return requirementRefusal(input.grant, input.requires, input.capabilities)
+	return (
+		requirementRefusal(input.grant, input.requires, input.capabilities) ??
+		sharedRunHostRefusal(input)
+	)
 }
 
 function noContext(attempts: Array<RoutingAttempt>, message: string): never {
@@ -503,10 +508,12 @@ export async function routeExecute(input: {
 		}
 		const grant = parseGrant(row)
 		const sharedRun = row.operator_user_id !== input.request.userId
-		const capabilities = parseCapabilities(row)
-		const refusal =
-			requirementRefusal(grant, requires, capabilities) ??
-			sharedRunHostRefusal({ grant, requires, capabilities, sharedRun })
+		const refusal = grantRefusal({
+			grant,
+			requires,
+			capabilities: parseCapabilities(row),
+			sharedRun,
+		})
 		if (refusal) {
 			skip(refusal)
 			continue

@@ -1333,6 +1333,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			grant,
 			requires,
 			capabilities: parseCapabilities(row),
+			sharedRun: lease.sharedRun,
 		})
 		if (refusal) {
 			return await fail(

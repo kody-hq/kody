@@ -107,6 +107,7 @@ test('requires fs needs both a server grant folder and an advertised local mount
 		grantRefusal({
 			grant,
 			requires: ['fs'],
+			sharedRun: false,
 			capabilities: {},
 		}),
 	).toBe('no_local_fs')
@@ -114,6 +115,7 @@ test('requires fs needs both a server grant folder and an advertised local mount
 		grantRefusal({
 			grant,
 			requires: ['fs'],
+			sharedRun: false,
 			capabilities: { features: ['fs'] },
 		}),
 	).toBeNull()
@@ -121,6 +123,7 @@ test('requires fs needs both a server grant folder and an advertised local mount
 		grantRefusal({
 			grant: ecpDefaultGrant,
 			requires: ['fs'],
+			sharedRun: false,
 			capabilities: { features: ['fs'] },
 		}),
 	).toBe('no_fs')
@@ -129,6 +132,7 @@ test('requires fs needs both a server grant folder and an advertised local mount
 test('a grant refuses runs it cannot serve', () => {
 	expect(
 		grantRefusal({
+			sharedRun: false,
 			capabilities: {},
 			grant: ecpDefaultGrant,
 			requires: ['fs'],
@@ -136,6 +140,7 @@ test('a grant refuses runs it cannot serve', () => {
 	).toBe('no_fs')
 	expect(
 		grantRefusal({
+			sharedRun: false,
 			capabilities: {},
 			grant: ecpDefaultGrant,
 			requires: ['lan'],
@@ -145,6 +150,7 @@ test('a grant refuses runs it cannot serve', () => {
 		grantRefusal({
 			grant: ecpDefaultGrant,
 			requires: [],
+			sharedRun: false,
 			capabilities: {},
 		}),
 	).toBeNull()
@@ -429,6 +435,15 @@ test('host folders stay with the operator: shared runs skip fs and outdated daem
 	).toBe('fs_operator_only')
 	expect(
 		sharedRunHostRefusal({
+			grant: withFs,
+			requires: [],
+			capabilities: { features: ['fs'] },
+			sharedRun: true,
+		}),
+	).toBe('fs_daemon_outdated')
+	// The queue drain on reconnect checks the same rule through grantRefusal.
+	expect(
+		grantRefusal({
 			grant: withFs,
 			requires: [],
 			capabilities: { features: ['fs'] },
