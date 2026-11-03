@@ -70,6 +70,8 @@ import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
 import { resolveArtifactSourceHead } from '#worker/repo/artifacts.ts'
 import { rebuildPublishedPackageArtifactsViaRepoSession } from '#mcp/capabilities/repo/package-artifact-rebuild.ts'
 import { clearPublishedPublishChecksVersion } from '#worker/package-runtime/published-runtime-artifacts.ts'
+import { refreshSavedPackageProjection } from '#worker/package-registry/service.ts'
+import { revertEntitySourcePublishedCommit } from '#worker/repo/entity-sources.ts'
 import {
 	mergePublishPhaseTimings,
 	timePublishExternalPushPhase,
@@ -477,6 +479,64 @@ const alreadyPublishedMessageSchema = z
  * advanced D1 before durable re-entry, so RepoSession tip==HEAD alone is not
  * enough to call the result a no-op.
  */
+/**
+ * RepoSession promotes and seals the tip (pointer, projection, job pins)
+ * before the artifact rebuild runs. When that rebuild fails the publish did
+ * not succeed: drop the seal so a retry re-runs it, and move the pointer,
+ * projection, and job pins back to the last good commit so nothing points at
+ * a commit whose artifacts never finished. A first publish has no earlier
+ * commit to restore, so only its seal is dropped.
+ */
+async function settleFailedPublishRebuild(input: {
+	env: Env
+	baseUrl: string
+	ownerUserId: OwnerId
+	packageId: string
+	sourceId: string
+	failedCommit: string
+	restoreCommit: string | null
+}) {
+	await clearPublishedPublishChecksVersion({
+		env: input.env,
+		sourceId: input.sourceId,
+		publishedCommit: input.failedCommit,
+	})
+	const restoreCommit = input.restoreCommit
+	if (restoreCommit == null || restoreCommit === input.failedCommit) return
+	const reverted = await revertEntitySourcePublishedCommit(input.env.APP_DB, {
+		id: input.sourceId,
+		userId: input.ownerUserId,
+		failedCommit: input.failedCommit,
+		restoreCommit,
+	})
+	// A newer publish already moved the pointer; its own finalize owns the
+	// projection now.
+	if (!reverted) return
+	try {
+		await refreshSavedPackageProjection({
+			env: input.env,
+			baseUrl: input.baseUrl,
+			userId: input.ownerUserId,
+			packageId: input.packageId,
+			sourceId: input.sourceId,
+			rebuildArtifacts: false,
+			audit: null,
+		})
+	} catch (error) {
+		Sentry.captureException(error, {
+			tags: {
+				scope: 'packagePublishExternalPush.restore-after-rebuild-failure',
+			},
+			extra: {
+				sourceId: input.sourceId,
+				failedCommit: input.failedCommit,
+				restoreCommit,
+			},
+		})
+		throw error
+	}
+}
+
 export function publishTipMovedRelativeToBaseline(input: {
 	baselinePublishedCommit: string | null | undefined
 	publishedCommit: string
@@ -1064,10 +1124,15 @@ async function runExternalPublishAttempt(input: {
 						},
 					)
 				if (!rebuildOutcome.ok) {
-					await clearPublishedPublishChecksVersion({
+					await settleFailedPublishRebuild({
 						env: input.env,
+						baseUrl: input.baseUrl,
+						ownerUserId: input.ownerUserId,
+						packageId: input.packageId,
 						sourceId: input.source.id,
-						publishedCommit,
+						failedCommit: publishedCommit,
+						// Only a tip this request advanced is rolled back.
+						restoreCommit: tipMoved ? input.baselinePublishedCommit : null,
 					})
 					return {
 						status: 'checks_failed' as const,
@@ -1305,12 +1370,14 @@ async function runExternalPublishAttempt(input: {
 					},
 				)
 			if (!rebuildOutcome.ok) {
-				// RepoSession sealed this tip before the rebuild ran; a failed
-				// rebuild is not a successful publish, so a retry must re-run.
-				await clearPublishedPublishChecksVersion({
+				await settleFailedPublishRebuild({
 					env: input.env,
+					baseUrl: input.baseUrl,
+					ownerUserId: input.ownerUserId,
+					packageId: input.packageId,
 					sourceId: input.source.id,
-					publishedCommit: result.published_commit,
+					failedCommit: result.published_commit,
+					restoreCommit: input.baselinePublishedCommit,
 				})
 				return {
 					status: 'checks_failed' as const,

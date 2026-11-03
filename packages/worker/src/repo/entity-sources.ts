@@ -253,6 +253,39 @@ export async function updateEntitySource(
 	return (result.meta.changes ?? 0) > 0
 }
 
+/**
+ * Move `published_commit` back from a publish that did not succeed. Guarded by
+ * compare-and-set on the failed commit so a newer publish that already won the
+ * pointer is never clobbered.
+ */
+export async function revertEntitySourcePublishedCommit(
+	db: D1Database,
+	input: {
+		id: string
+		userId: OwnerId
+		failedCommit: string
+		restoreCommit: string
+	},
+): Promise<boolean> {
+	const result = await runD1WithRetry(() =>
+		db
+			.prepare(
+				`UPDATE entity_sources
+			SET published_commit = ?, updated_at = ?
+			WHERE id = ? AND user_id = ? AND published_commit = ?${andLiveDeletedAtSql()}`,
+			)
+			.bind(
+				input.restoreCommit,
+				new Date().toISOString(),
+				input.id,
+				input.userId,
+				input.failedCommit,
+			)
+			.run(),
+	)
+	return (result.meta.changes ?? 0) > 0
+}
+
 export async function upsertEntitySource(
 	db: D1Database,
 	row: EntitySourceRow,
