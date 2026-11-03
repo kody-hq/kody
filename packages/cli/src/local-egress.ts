@@ -4,7 +4,7 @@
  * the policy does not allow with a plain explanation instead of workerd's
  * opaque `internal error; reference = …`.
  */
-export type LocalEgressMode = 'public' | 'public-and-lan' | 'allowlist' | 'none'
+type LocalEgressMode = 'public' | 'public-and-lan' | 'allowlist' | 'none'
 
 export type LocalEgressPolicy = {
 	mode: LocalEgressMode

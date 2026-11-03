@@ -19,7 +19,7 @@ export type CliTokenLifetimeAlias = 'short' | 'long'
 const shortAbsoluteLifetimeMs = 24 * 60 * 60 * 1000
 
 /** Platform tracking for login OAuth as CapabilityProxy / package-graph Bearer. */
-export const localExecuteOauthPlatformIssueUrl =
+const localExecuteOauthPlatformIssueUrl =
 	'https://github.com/kody-hq/kody/issues/2812'
 
 export type ResolveScopedApiTokenInput = {
@@ -132,7 +132,7 @@ export function isScopedApiToken(token: string): boolean {
  * How to mint a scoped token for CI/headless. Interactive agents on MCP should
  * prefer `cliCredentialBootstrap` → run returned `cli_command` instead.
  */
-export function apiTokenMintInstructions(): string {
+function apiTokenMintInstructions(): string {
 	return `For CI/headless only: mint with the Kody MCP \`api\` tool \`tokenCreate\` (include \`org:execute\` plus the capability scopes this command needs, e.g. \`package:execute\` / \`integration:read\`) and set ${apiTokenEnvVar} (prefer env over --token).`
 }
 
@@ -140,7 +140,7 @@ export function apiTokenMintInstructions(): string {
  * Shared guidance for every missing or invalid CLI auth failure. Agents hit
  * this wall; put the MCP bootstrap path first and never ask a human for a token.
  */
-export function notAuthenticatedGuidance(
+function notAuthenticatedGuidance(
 	lifetime: CliTokenLifetimeAlias = 'short',
 ): string {
 	return (
@@ -211,14 +211,14 @@ export function inferCliTokenLifetimeAlias(
 }
 
 /** `--lifetime short|long` fragment for auth bootstrap hint commands. */
-export function cliBootstrapLifetimeFlags(
+function cliBootstrapLifetimeFlags(
 	lifetime: CliTokenLifetimeAlias = 'short',
 ): string {
 	return `--lifetime ${lifetime}`
 }
 
 /** `{ lifetime: "short"|"long" }` for cliCredentialBootstrap hint calls. */
-export function cliBootstrapLifetimeMintFields(
+function cliBootstrapLifetimeMintFields(
 	lifetime: CliTokenLifetimeAlias = 'short',
 ): Record<string, string | number> {
 	return { lifetime }
@@ -421,9 +421,4 @@ export function requireApiToken(
 	})
 	if (!token) throw new Error(notAuthenticatedMessage(purpose))
 	return token
-}
-
-/** True when the user passed `--token` (not only the env var). */
-export function hasExplicitTokenFlag(values: { token?: string }): boolean {
-	return typeof values.token === 'string' && values.token.trim().length > 0
 }

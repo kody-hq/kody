@@ -50,11 +50,10 @@ import { readPackageVersion } from './package-info.js'
  * 401 means the token is expired/revoked (or MCP OAuth until the platform
  * accepts it); 403 `feature_disabled` means the `local-execute` flag is off.
  */
-export const capabilityProxySessionPath = 'v1/capability-proxy/session'
-export const capabilityProxyCallPath = 'v1/capability-proxy/call'
+const capabilityProxySessionPath = 'v1/capability-proxy/session'
+const capabilityProxyCallPath = 'v1/capability-proxy/call'
 /** Streaming ambient/secret fetch hop (raw body; not JSON `/call`). */
-export const capabilityProxyGatewayFetchPath =
-	'v1/capability-proxy/gateway-fetch'
+const capabilityProxyGatewayFetchPath = 'v1/capability-proxy/gateway-fetch'
 
 /** Allowlisted metadata headers for {@link capabilityProxyGatewayFetchPath}. */
 export const gatewayFetchUrlHeaderName = 'X-Kody-Gateway-Url'
@@ -123,7 +122,7 @@ function toCapabilityProxyTransportError(
 	)
 }
 /** Bound DNS / TCP / TLS before the idle timer (undici Agent default was 10s). */
-export const capabilityProxyConnectTimeoutMs = 10_000
+const capabilityProxyConnectTimeoutMs = 10_000
 
 /**
  * Node routes global fetch through `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`
@@ -417,7 +416,7 @@ export function capabilityProxyUrl(apiUrl: string, path: string): URL {
 }
 
 /** Attach `?org=` for user-owned tokens without clobbering other query params. */
-export function withOrgQuery(url: URL, org?: string): URL {
+function withOrgQuery(url: URL, org?: string): URL {
 	if (org) url.searchParams.set('org', org)
 	return url
 }
@@ -673,7 +672,7 @@ async function sendGatewayFetchWithFetchFn(
 }
 
 /** Convert a Node response into a streaming Web `Response`. */
-export function nodeIncomingToWebResponse(response: IncomingMessage): Response {
+function nodeIncomingToWebResponse(response: IncomingMessage): Response {
 	const headers = new Headers()
 	for (const [name, value] of Object.entries(response.headers)) {
 		if (Array.isArray(value)) {

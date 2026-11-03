@@ -12,7 +12,7 @@ import { appLogMarker } from './dev-protocol.js'
 
 export type DevRequestTag = { id: string; method: string; path: string }
 
-export type DevLogLevel = 'log' | 'info' | 'warn' | 'error' | 'debug'
+type DevLogLevel = 'log' | 'info' | 'warn' | 'error' | 'debug'
 
 export type DevEvent =
 	| { type: 'rebuild_start'; files: Array<string> }
@@ -116,7 +116,7 @@ export function runtimeErrorFix(message: string): string | undefined {
 	return undefined
 }
 
-export function formatRequestTag(request: DevRequestTag | null): string {
+function formatRequestTag(request: DevRequestTag | null): string {
 	return request
 		? `[${request.method} ${request.path} #${request.id}]`
 		: '[app]'

@@ -45,7 +45,7 @@ export function lockPathFor(statePath: string) {
 	return statePath.replace(/daemon\.json$/, 'daemon.lock')
 }
 
-export function isAlive(pid: number) {
+function isAlive(pid: number) {
 	if (!Number.isInteger(pid) || pid <= 0) return false
 	try {
 		process.kill(pid, 0)
@@ -80,10 +80,7 @@ export type HolderCheck = {
  * crashes, so a live pid alone is not enough: the pid may now belong to an
  * unrelated process. It must have started after boot and still be a daemon.
  */
-export function isLiveHolder(
-	holder: RunnerLockHolder,
-	check: HolderCheck = {},
-) {
+function isLiveHolder(holder: RunnerLockHolder, check: HolderCheck = {}) {
 	if (!(check.isAlive ?? isAlive)(holder.pid)) return false
 	if (holder.pid === process.pid) return true
 	const startedAt = Date.parse(holder.startedAt)
@@ -227,7 +224,7 @@ export function acquireRunnerLock(
 	throw new Error(`Could not take the runner lock ${path}.`)
 }
 
-export function describeLauncher(launcher: RunnerLauncher | undefined) {
+function describeLauncher(launcher: RunnerLauncher | undefined) {
 	if (launcher === 'systemd') return 'the systemd service'
 	if (launcher === 'launchd') return 'the launchd service'
 	if (launcher === 'taskscheduler') return 'the Task Scheduler task'

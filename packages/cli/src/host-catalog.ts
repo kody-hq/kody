@@ -37,7 +37,7 @@ export const hostIds = [
 
 export type HostId = (typeof hostIds)[number]
 
-export type HostKind = 'file' | 'command' | 'manual'
+type HostKind = 'file' | 'command' | 'manual'
 
 export type HostDefinition = {
 	id: HostId
@@ -68,7 +68,7 @@ function isClaudeDesktop(process: ProcessInfo): boolean {
 	return raw === 'Claude' || raw.startsWith('Claude ')
 }
 
-export function isHostId(value: string): value is HostId {
+function isHostId(value: string): value is HostId {
 	return (hostIds as ReadonlyArray<string>).includes(value)
 }
 
@@ -324,7 +324,7 @@ export function hostById(id: HostId): HostDefinition {
 	return host
 }
 
-export function configHome(
+function configHome(
 	home: string,
 	platform: NodeJS.Platform = process.platform,
 ): string {
@@ -333,7 +333,7 @@ export function configHome(
 		: join(home, '.config')
 }
 
-export function applicationSupport(
+function applicationSupport(
 	home: string,
 	app: string,
 	platform: NodeJS.Platform = process.platform,
@@ -486,7 +486,7 @@ export function hostConfigPath(input: {
 	}
 }
 
-export function encodeBase64Url(value: string): string {
+function encodeBase64Url(value: string): string {
 	return Buffer.from(value)
 		.toString('base64')
 		.replaceAll('+', '-')

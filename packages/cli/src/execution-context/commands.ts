@@ -1,10 +1,4 @@
-import {
-	appendFileSync,
-	readFileSync,
-	rmSync,
-	unwatchFile,
-	watchFile,
-} from 'node:fs'
+import { appendFileSync, rmSync, unwatchFile, watchFile } from 'node:fs'
 import { cpus, platform, totalmem } from 'node:os'
 import {
 	ed25519JwkThumbprint,
@@ -112,7 +106,7 @@ export type ExecutionContextCommandInput = {
 	service?: Partial<ServiceCommandEnv>
 }
 
-export const defaultMaxConcurrentRuns = 2
+const defaultMaxConcurrentRuns = 2
 
 /** `--max-concurrent` or KODY_CONTEXT_MAX_CONCURRENT, 1..ecpMaxConcurrentRunsCap. */
 export function maxConcurrentRuns(
@@ -132,9 +126,7 @@ export function maxConcurrentRuns(
 	return parsed
 }
 
-export function localCapabilities(
-	maxConcurrent: number = defaultMaxConcurrentRuns,
-) {
+function localCapabilities(maxConcurrent: number = defaultMaxConcurrentRuns) {
 	return {
 		runtime: 'workerd',
 		node: process.versions.node,
@@ -919,10 +911,6 @@ function describeChain(
 	})
 	if (chain.strict) lines.push('Strict: Kody cloud is not in this chain.')
 	return lines.join('\n') || 'Empty chain.'
-}
-
-export function readCodeFile(path: string) {
-	return readFileSync(path, 'utf8')
 }
 
 const policyUsage =

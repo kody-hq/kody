@@ -47,7 +47,7 @@ function quote(path: string): string {
 }
 
 /** Plain-language steps to make the credential folder writable again. */
-export function credentialDirFixSteps(
+function credentialDirFixSteps(
 	dir: string,
 	platform: NodeJS.Platform = process.platform,
 ): string {

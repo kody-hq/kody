@@ -34,7 +34,7 @@ function credentialJson(
  * stored API token outranks a login, say so plainly: `kody login` does not
  * replace it.
  */
-export function formatShadowedCredentials(input: {
+function formatShadowedCredentials(input: {
 	credential: CliCredential
 	/** Who `search` / cloud execute use, when it differs. */
 	session: CliCredentialCandidate | null

@@ -28,10 +28,9 @@ export const keyringService = 'kody.codes'
 export const loginTimeoutMs = 15 * 60 * 1000
 export const accessTokenSkewMs = 60_000
 export const cliName = '@kodycodes/cli'
-export const cliClientUri = 'https://github.com/kody-hq/kody'
 /** Fixed loopback port so CIMD can list an exact redirect URI. */
-export const oauthCallbackPort = 43742
-export const cliClientIdMetadataPath = '/oauth/cli-client-metadata.json'
+const oauthCallbackPort = 43742
+const cliClientIdMetadataPath = '/oauth/cli-client-metadata.json'
 
 export function cliClientMetadataUrl(mcpUrl: string): string {
 	return new URL(cliClientIdMetadataPath, mcpUrl).href
@@ -41,7 +40,7 @@ export function cliRedirectUrl(port: number = oauthCallbackPort): URL {
 	return new URL(`http://127.0.0.1:${port}/callback`)
 }
 
-export const onboardingPath = '/onboarding'
+const onboardingPath = '/onboarding'
 
 export function onboardingUrl(mcpUrl: string): string {
 	return new URL(onboardingPath, mcpUrl).href

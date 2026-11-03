@@ -1,5 +1,5 @@
 /** Local execute shells out to workerd; this CLI supports that only on Node 22+. */
-export const minimumLocalExecuteNodeMajor = 22
+const minimumLocalExecuteNodeMajor = 22
 
 /**
  * Refuse `execute --local` before workerd download or spawn when Node is too old.

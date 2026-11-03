@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { userCacheDir } from '../workerd-binary.js'
 
-export type MockStorageBucket = {
+type MockStorageBucket = {
 	/** Arbitrary JSON-serializable rows keyed by string id. */
 	rows: Record<string, unknown>
 }
@@ -46,7 +46,7 @@ export type MockSessionState = {
 
 const mockStateFile = 'state.json'
 
-export function mockSessionRoot(
+function mockSessionRoot(
 	sessionId: string,
 	env: NodeJS.ProcessEnv = process.env,
 ): string {

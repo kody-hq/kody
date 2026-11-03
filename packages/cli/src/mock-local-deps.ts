@@ -26,10 +26,10 @@ import {
 	type KodyPackageManifest,
 } from './package-manifest.js'
 
-export type LocalDepMap = Record<string, string>
+type LocalDepMap = Record<string, string>
 
 /** Relative path for the optional local-deps map file. */
-export const localDepsRelativePath = '.kody/deps.json'
+const localDepsRelativePath = '.kody/deps.json'
 
 /**
  * Parse `kody:@scope/name/export` → `{ packageName: '@scope/name', exportKey }`.
@@ -60,9 +60,7 @@ export function parseKodyPackageSpecifier(specifier: string): {
 	}
 }
 
-export async function loadLocalDepMap(
-	packageRoot: string,
-): Promise<LocalDepMap> {
+async function loadLocalDepMap(packageRoot: string): Promise<LocalDepMap> {
 	const fromFile = await readDepsJson(join(packageRoot, localDepsRelativePath))
 	const fromManifest = await readDepsFromPackageJson(packageRoot)
 	return { ...fromManifest, ...fromFile }
