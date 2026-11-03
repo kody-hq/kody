@@ -5,7 +5,7 @@
  */
 
 import { spawn } from 'node:child_process'
-import { type Readable } from 'node:stream'
+import type { Readable } from 'node:stream'
 import { apiTokenEnvVar } from '../defaults.js'
 
 const outputTailLines = 20

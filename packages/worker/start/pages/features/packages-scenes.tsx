@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSProperties } from 'react'
+import type { CSSProperties } from 'react'
 import {
 	at,
 	PrimitiveWidgetFrame,

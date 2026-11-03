@@ -7,8 +7,8 @@ import {
 	readPreExecutionPackageInvocationInfrastructureCode,
 } from '#worker/package-invocations/admin-package-subscriptions.ts'
 import { invokePackageSubscription } from '#worker/package-invocations/service.ts'
-import { type EnablementAudience } from '#worker/enablements/run-gate.ts'
-import { type RunLogRowInput } from './run-log-do.ts'
+import type { EnablementAudience } from '#worker/enablements/run-gate.ts'
+import type { RunLogRowInput } from './run-log-do.ts'
 
 export const runErrorRecordedTopic = 'run.error.recorded'
 

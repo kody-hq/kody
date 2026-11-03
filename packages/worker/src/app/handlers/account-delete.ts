@@ -1,4 +1,4 @@
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { destroyAuthCookie, isSecureRequest } from '#app/auth-session.ts'
 import { isAccountDeletionConfirmation } from '#universal/account-deletion-confirmation.ts'
 import {

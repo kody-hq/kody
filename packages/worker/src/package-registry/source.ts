@@ -3,7 +3,7 @@ import {
 	getEntitySourceById,
 	listEntitySourcesByIds,
 } from '#worker/repo/entity-sources.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 import {
 	loadPublishedEntityManifest,
 	loadPublishedEntitySource,
@@ -13,7 +13,7 @@ import {
 	PromiseLruCache,
 } from './published-package-cache.ts'
 import { parseAuthoredPackageJson } from './manifest.ts'
-import { type AuthoredPackageJson } from './types.ts'
+import type { AuthoredPackageJson } from './types.ts'
 
 export type LoadedPackageSource = {
 	source: EntitySourceRow

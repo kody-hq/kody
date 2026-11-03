@@ -2,8 +2,8 @@ import {
 	checkPermission,
 	computeEffectivePermissions,
 } from '#worker/authorization/authorize.ts'
-import { type ApiInvocationContext } from '#worker/open-api/context.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { ApiInvocationContext } from '#worker/open-api/context.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { maxAuditDetailChars } from './audit-detail.ts'
 import { ExecutionContextError } from './errors.ts'
 import {

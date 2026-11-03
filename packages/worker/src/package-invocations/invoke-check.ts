@@ -1,10 +1,10 @@
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
-import {
-	type PackageInvokeCheckResult,
-	type PackageInvokeContract,
-	type PackageInvokeInput,
+import type {
+	PackageInvokeCheckResult,
+	PackageInvokeContract,
+	PackageInvokeInput,
 } from '#mcp/run-kody-registry.ts'
-import { type PackageExportProjection } from '#worker/package-registry/manifest.ts'
+import type { PackageExportProjection } from '#worker/package-registry/manifest.ts'
 import { normalizeExportName } from './common.ts'
 import {
 	buildNormalizedPackageInvokeInput,

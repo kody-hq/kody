@@ -1,7 +1,7 @@
 import { parseListingOwnerUsername } from '#universal/community-links.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { deliverCommunityForkUpstreamUpdatedAlias } from '#worker/community/fork-upstream-updated-package-subscriptions.ts'
-import { type CommunityListingRelease } from '#worker/community/fork-upstream-updated-subscription-event.ts'
+import type { CommunityListingRelease } from '#worker/community/fork-upstream-updated-subscription-event.ts'
 import { getCommunityPackageHref } from '#worker/community/package-url.ts'
 import {
 	getActiveCommunityListingWithPublisherUsername,
@@ -28,7 +28,7 @@ import {
 	markFollowDeliverySkip,
 	pauseFollow,
 } from './repo.ts'
-import { type FollowRecentUpdateDetail } from '#universal/follows.ts'
+import type { FollowRecentUpdateDetail } from '#universal/follows.ts'
 import {
 	followPublishedTopic,
 	followPushedTopic,

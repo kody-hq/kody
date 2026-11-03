@@ -1,6 +1,6 @@
 import { buildPackageJobId } from '@kody-internal/shared/jobs/package-job-id.ts'
-import { type JobRow } from '@kody-internal/shared/jobs/repo.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { JobRow } from '@kody-internal/shared/jobs/repo.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { beforeEach, expect, test, vi } from 'vitest'
 import {

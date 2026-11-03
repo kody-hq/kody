@@ -3,7 +3,7 @@
  * integration's hosts are checked before the token is read, so a refused
  * host never triggers a token refresh.
  */
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import {
 	createMissingIntegrationAccessTokenMessage,
@@ -15,7 +15,7 @@ import { getIntegrationFillPlacement } from '#worker/integrations/repo.ts'
 import { getJoinedIntegration } from '#worker/integrations/service.ts'
 import { refreshIntegrationTokens } from '#worker/integrations/token-refresh.ts'
 import { assertIntegrationAllowsHost } from '#mcp/execute-modules/integration-host-allowlist.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
 	assertActorScopeAllowsCredential,
 	authorizeActorUse,

@@ -1,7 +1,7 @@
 import { bytesToBase64Url } from '@kody-internal/shared/base64.ts'
 import { sha256Base64Url } from '@kody-internal/shared/sha256.ts'
-import { type StorageContext } from '#mcp/storage.ts'
-import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import type { StorageContext } from '#mcp/storage.ts'
+import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 
 export const dynamicWorkerIdPrefix = 'kody-'
 

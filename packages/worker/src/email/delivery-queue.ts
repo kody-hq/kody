@@ -6,7 +6,7 @@ import { processCloudflareEmailDeliveryEvent } from './delivery-events.ts'
 import { applyOutboundEmailAbusePause } from './outbound-abuse.ts'
 import { applyOutboundConsecutiveFailureTracking } from './outbound-consecutive-failures.ts'
 import { dispatchEmailDeliverySubscriptionEvents } from './package-subscriptions.ts'
-import { type EmailReportingEnv } from './reporting-events.ts'
+import type { EmailReportingEnv } from './reporting-events.ts'
 import { notifyAdminsOfVerificationDeliveryFailure } from './verification-delivery-notify.ts'
 import { transactionalEmailVerificationKind } from './verification-delivery.ts'
 

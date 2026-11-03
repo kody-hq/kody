@@ -1,5 +1,5 @@
 import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
-import { type PackageFilesLoaderData } from '#universal/loader-data.ts'
+import type { PackageFilesLoaderData } from '#universal/loader-data.ts'
 import {
 	type SkillReadResource,
 	issueSkillReadReceipt,
@@ -9,7 +9,7 @@ import {
 import { readAuthenticatedAppUser } from './authenticated-user.ts'
 import { loadPackagePage } from './package-page.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 
 export async function packageSkillReadReceipt(
 	env: Env,

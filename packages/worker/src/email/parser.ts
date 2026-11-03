@@ -17,10 +17,10 @@ import {
 	type PreparedInboundRawMime,
 } from './skinny-inbound-mime.ts'
 import { selectTrustedCloudflareAuthResults } from './auth-verdict.ts'
-import {
-	type EmailAttachmentMetadata,
-	type EmailMailbox,
-	type ParsedInboundEmail,
+import type {
+	EmailAttachmentMetadata,
+	EmailMailbox,
+	ParsedInboundEmail,
 } from './types.ts'
 
 /**

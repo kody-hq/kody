@@ -1,7 +1,7 @@
 import { getDiscoverablePlatformOauthApp } from '#worker/integrations/platform-apps.ts'
-import { type PackageCredentialKind } from '#worker/package-registry/types.ts'
+import type { PackageCredentialKind } from '#worker/package-registry/types.ts'
 import { buildCredentialCreateUrl } from '#universal/credential-contracts.ts'
-import { type SavedCredentialNeed } from './credential-needs.ts'
+import type { SavedCredentialNeed } from './credential-needs.ts'
 
 const providerSlugPattern = /^[a-z0-9-]+$/
 

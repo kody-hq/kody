@@ -1,5 +1,5 @@
 import { utcDayKey, utcMonthKey } from '@kody-internal/shared/date-keys.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { loadOrgUsageWarningsEnabled } from '#worker/orgs/usage-warnings.ts'
 import { sendGatedTransactionalEmail } from '#worker/email/transactional-send-policy.ts'

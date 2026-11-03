@@ -132,14 +132,16 @@ non-library caller to find which of our modules imported it.
    the same lane. `patches/acorn+8.17.0.patch` marks acorn side-effect free so
    esbuild drops it once `normalizeCode` is off the graph; refresh that patch
    when codemode bumps acorn.
-8. **Type deferred packages with `typeof import(...)` queries.** esbuild walks
-   `import type` and `import { type … }` edges into Wrangler main, and keeps the
-   target package's side-effecting module code. The lint autofix rewrites
-   `import type` to the inline form. Export the types from the loader as type
-   queries instead (see `postal-mime-load.ts`). The same trap applies to in-repo
-   modules: a type-only import of a module whose top level builds something
-   heavy (for example a validator instance) still evaluates it at startup, so
-   keep such modules free of top-level work.
+8. **Type deferred packages with `typeof import(...)` queries.** With
+   `verbatimModuleSyntax`, `import { type X }` compiles to a bare
+   `import 'pkg'`, so the target module and its side effects stay in Wrangler
+   main. A top-level `import type` is erased. The
+   `kody-custom/no-inline-type-only-import` lint rule rewrites type-only
+   specifier lists to `import type`. For deferred packages, still export the
+   types from the loader as type queries (see `postal-mime-load.ts`) so the
+   loader is the only place that names the package. A value import of a module
+   whose top level builds something heavy (for example a validator instance)
+   still evaluates it at startup, so keep such modules free of top-level work.
 
 ## CI tripwire
 

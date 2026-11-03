@@ -4,7 +4,7 @@ import {
 	type OauthProviderEnv,
 } from '#app/oauth-providers.ts'
 import { getTurnstileSiteKey } from '#app/public-form-protection.ts'
-import { type AuthProvidersLoaderData } from '#universal/loader-data.ts'
+import type { AuthProvidersLoaderData } from '#universal/loader-data.ts'
 
 type PublicAuthProvidersEnv = OauthProviderEnv &
 	Pick<Env, 'TURNSTILE_SITE_KEY' | 'TURNSTILE_SECRET_KEY'>

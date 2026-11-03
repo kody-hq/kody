@@ -16,7 +16,7 @@ import {
 	recordFeatureFlagExposures,
 	type FeatureFlagExposureEnv,
 } from './exposure.ts'
-import { type FeatureFlagEvaluation } from './service.ts'
+import type { FeatureFlagEvaluation } from './service.ts'
 
 export type McpEventsClientsExposureInput = {
 	env: FeatureFlagExposureEnv

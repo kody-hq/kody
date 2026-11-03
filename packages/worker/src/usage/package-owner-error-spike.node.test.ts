@@ -1,8 +1,8 @@
 import { expect, test, vi } from 'vitest'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
-import {
-	type PackageOwnerSpikeState,
-	type PackageOwnerSpikeWindow,
+import type {
+	PackageOwnerSpikeState,
+	PackageOwnerSpikeWindow,
 } from './package-owner-error-spike.ts'
 
 const queryAnalyticsEngineSql = vi.fn()

@@ -4,9 +4,9 @@
  * mint responses and refused deliveries point to.
  */
 import { buildCredentialApprovalHref } from '#universal/credential-contracts.ts'
-import { type EnablementRunPlan } from '#worker/enablements/run-gate.ts'
+import type { EnablementRunPlan } from '#worker/enablements/run-gate.ts'
 import { getOrgById } from '#worker/orgs/repo.ts'
-import { type WebhookEndpointRecord } from './types.ts'
+import type { WebhookEndpointRecord } from './types.ts'
 
 /** Absolute approval page URL that turns the webhook on; null without a slug. */
 export function buildWebhookApprovalUrl(input: {

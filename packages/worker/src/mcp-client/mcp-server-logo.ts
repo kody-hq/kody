@@ -12,7 +12,7 @@ import {
 	type ServedFittedLogo,
 } from '#worker/integrations/platform-app-logo.ts'
 import { getMcpServerSettingRowById } from './settings-repo.ts'
-import { type McpServerLogoSource } from './settings-types.ts'
+import type { McpServerLogoSource } from './settings-types.ts'
 
 export const mcpServerLogoR2KeyPrefix = 'user-mcp-server-logos/'
 const mcpServerLogoCacheControl = 'private, no-store'

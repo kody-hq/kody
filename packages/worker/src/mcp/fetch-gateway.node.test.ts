@@ -27,7 +27,7 @@ import {
 } from '#worker/test-support/org-binding-query.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 import * as packageRepo from '#worker/package-registry/repo.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import * as integrationCredentials from '#worker/integrations/credentials.ts'
 import * as integrationPackageAccess from '#worker/integrations/package-access.ts'
 import * as integrationService from '#worker/integrations/service.ts'

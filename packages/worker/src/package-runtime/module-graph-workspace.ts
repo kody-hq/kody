@@ -7,9 +7,9 @@ import {
 	parseAuthoredPackageJson,
 	resolvePackageExportPath,
 } from '#worker/package-registry/manifest.ts'
-import {
-	type AuthoredPackageJson,
-	type SavedPackageRecord,
+import type {
+	AuthoredPackageJson,
+	SavedPackageRecord,
 } from '#worker/package-registry/types.ts'
 import {
 	buildPlainRepoPromotionErrorMessage,
@@ -30,7 +30,7 @@ import {
 	type ModuleImportNodesCache,
 } from './import-specifiers.ts'
 import { declaredCapabilitiesOf } from './package-app-effective-capabilities.ts'
-import { type BundleArtifactDependency } from './published-runtime-artifacts.ts'
+import type { BundleArtifactDependency } from './published-runtime-artifacts.ts'
 import {
 	dirname,
 	joinPath,

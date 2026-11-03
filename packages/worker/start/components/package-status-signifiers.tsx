@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 
 /** @jsxRuntime automatic */
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 
 import { renderIcon, type IconName } from './icon.tsx'
 import { colors } from '#universal/styles/tokens.ts'

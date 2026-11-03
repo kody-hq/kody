@@ -1,12 +1,12 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import {
 	collectUserSecretRefsFromPackageSource,
 	toSecretMountsFromUserRefs,
 } from './collect-package-secret-refs.ts'
 import { buildSecretPackageBulkApprovalUrlIfNeeded } from './package-approval-url.ts'
 import { findMissingPackageApprovals } from './package-access.ts'
-import { type SecretScope } from './types.ts'
+import type { SecretScope } from './types.ts'
 
 export type PendingPackageSecretApproval = {
 	secret_name: string

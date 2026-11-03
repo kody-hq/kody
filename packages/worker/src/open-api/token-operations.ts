@@ -19,14 +19,14 @@ import {
 	type ApiTokenOrgBinding,
 } from '#worker/api-tokens/service.ts'
 import { redeemCliCredentialBootstrap } from '#worker/api-tokens/cli-credential-bootstrap.ts'
-import { type ApiInvocationContext } from './context.ts'
+import type { ApiInvocationContext } from './context.ts'
 import { ApiError, invalidRequest, notFound } from './errors.ts'
 import {
 	parseNativeInput,
 	requireTokenPrincipal,
 	type NativeApiOperationDefinition,
 } from './native-operation-helpers.ts'
-import { type NativeApiOperationId } from './operations.ts'
+import type { NativeApiOperationId } from './operations.ts'
 import {
 	ProfileTokenError,
 	resolveProfileTokenTarget,
@@ -37,7 +37,7 @@ import {
 	requireProfilesCaller,
 	revokeProfile,
 } from '#worker/profiles/service.ts'
-import { type RequestedProfileGrant } from '#worker/profiles/rules.ts'
+import type { RequestedProfileGrant } from '#worker/profiles/rules.ts'
 import {
 	isOrgPermission,
 	type OrgPermission,

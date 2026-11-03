@@ -6,7 +6,7 @@ import {
 	primitiveCards,
 	primitiveFeatureHref,
 } from '#universal/primitive-cards.ts'
-import { type LandingPrimitiveId } from '#universal/landing-lantern.ts'
+import type { LandingPrimitiveId } from '#universal/landing-lantern.ts'
 import { LandingPrimitives } from '../../components/landing-primitives.tsx'
 import { OverviewWidget } from './overview-widgets.tsx'
 

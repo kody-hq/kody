@@ -37,7 +37,7 @@
  * run is bounded; `credit_debit_cursor` keeps the keyset position so the
  * next run continues past the last wallet this one reached.
  */
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { computeMonthlyOverage } from '#universal/compute-overage.ts'
 import {
 	creditDebitCostMicroUsd,
@@ -45,7 +45,7 @@ import {
 	crossedCreditLowBalance,
 	type CreditDebitMeter,
 } from '#universal/credits.ts'
-import { type UserEntitlement } from '#universal/plans.ts'
+import type { UserEntitlement } from '#universal/plans.ts'
 import {
 	isPayingForCreditsPro,
 	resolveUserEntitlementFromRow,

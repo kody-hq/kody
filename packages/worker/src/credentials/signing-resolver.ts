@@ -14,15 +14,15 @@ import {
 	type SignJwtWithSecretInput,
 } from '#mcp/capabilities/secrets/jwt-signing.ts'
 import { computeWebhookHmacSignature } from '#worker/webhooks/crypto.ts'
-import {
-	type WebhookHmacAlgorithm,
-	type WebhookSignatureEncoding,
+import type {
+	WebhookHmacAlgorithm,
+	WebhookSignatureEncoding,
 } from '#worker/webhooks/types.ts'
 import {
 	credentialHostsAllow,
 	CredentialRequestRefusedError,
 } from './credential-request.ts'
-import { type CredentialResolver } from './credential-resolver.ts'
+import type { CredentialResolver } from './credential-resolver.ts'
 import {
 	authorizeStoredCredential,
 	findStoredCredential,

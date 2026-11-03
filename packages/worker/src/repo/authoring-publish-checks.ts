@@ -1,11 +1,11 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	createSnapshotFilesWorkspace,
 	runRepoChecks,
 	type RepoCheckRunResult,
 } from './checks.ts'
-import { type RepoCheckStep } from './isolated-runner-limit-message.ts'
-import { type PublishPhaseTimings } from './publish-phase-timing.ts'
+import type { RepoCheckStep } from './isolated-runner-limit-message.ts'
+import type { PublishPhaseTimings } from './publish-phase-timing.ts'
 
 /**
  * The one `runRepoChecks` call an authoring publish makes. Every path that

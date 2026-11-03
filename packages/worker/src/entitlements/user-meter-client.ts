@@ -1,6 +1,6 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { userMeterDurableObjectName } from '#worker/user-scoped-durable-object-name.ts'
-import { type UserMeterRpc } from './user-meter-do.ts'
+import type { UserMeterRpc } from './user-meter-do.ts'
 
 export type UserMeterEnv = {
 	USER_METER?: DurableObjectNamespace

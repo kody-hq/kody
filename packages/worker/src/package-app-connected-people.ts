@@ -1,4 +1,4 @@
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { packageAppOauthOwnerClaimLabels } from '#app/package-app-oauth-consent-copy.ts'
 import {
 	findLivePackageAppOauthGrantForApp,

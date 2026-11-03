@@ -1,11 +1,11 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { bytesToBase64Url } from '@kody-internal/shared/base64.ts'
 import { sha256Hex } from '@kody-internal/shared/sha256.ts'
 import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
 import { isCredentialInvalidatedByStoredPasswordChange } from '#worker/password-change-lockout.ts'
-import { type UserMeterEnv } from '#worker/entitlements/user-meter-client.ts'
+import type { UserMeterEnv } from '#worker/entitlements/user-meter-client.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { localExecuteOrgPermissions } from './legacy-scope-rewrite.ts'
 import {

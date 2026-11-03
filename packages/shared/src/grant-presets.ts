@@ -6,7 +6,7 @@
  * Presets are keyed by permission family. A credential grant uses the family
  * of its credential's kind (`secret` or `integration`).
  */
-import { type OrgPermission, type OrgResourceType } from './org-permissions.ts'
+import type { OrgPermission, OrgResourceType } from './org-permissions.ts'
 
 export const grantPresets = ['read', 'use', 'contribute', 'manage'] as const
 

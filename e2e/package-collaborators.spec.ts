@@ -1,4 +1,4 @@
-import { type Route } from '@playwright/test'
+import type { Route } from '@playwright/test'
 import { seedStableUserIdFromEmail } from '../tools/seed-sql.ts'
 import { executeE2eD1Command } from './d1-utils.ts'
 import { expect, test, waitForClientHydration } from './playwright-utils.ts'

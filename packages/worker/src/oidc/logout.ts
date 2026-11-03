@@ -1,4 +1,4 @@
-import { type ClientInfo } from '@cloudflare/workers-oauth-provider'
+import type { ClientInfo } from '@cloudflare/workers-oauth-provider'
 import {
 	destroyAuthCookie,
 	isSecureRequest,

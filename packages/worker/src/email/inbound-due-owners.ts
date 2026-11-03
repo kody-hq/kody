@@ -1,5 +1,5 @@
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { systemEmailOwnerId } from './email-owner.ts'
 
 export const inboundDueOwnerBatchSize = 25

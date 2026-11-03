@@ -1,4 +1,4 @@
-import { type ErrorEvent, type EventHint } from '@sentry/browser'
+import type { ErrorEvent, EventHint } from '@sentry/browser'
 import { afterEach, expect, test, vi } from 'vitest'
 
 const init = vi.hoisted(() => vi.fn())

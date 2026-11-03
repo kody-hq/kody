@@ -1,6 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import { type MailboxBlobReference } from '#worker/email/mailbox-types.ts'
+import type { MailboxBlobReference } from '#worker/email/mailbox-types.ts'
 import type * as MailboxInternalReadModule from '#worker/email/mailbox-internal-read.ts'
 
 const mocks = vi.hoisted(() => ({

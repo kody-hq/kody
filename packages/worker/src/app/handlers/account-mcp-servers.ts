@@ -1,5 +1,5 @@
 import { buildMcpServerAuthorizeUrl } from '#worker/mcp-client/authorize-consent.ts'
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { operationResult } from '#app/operation-result.ts'
 import { requireAuthenticatedPageUser } from '#app/page-auth.ts'
 import { callCapabilityAsWebsite } from '#app/website-capability.ts'
@@ -30,9 +30,9 @@ import {
 	setMcpServerPreRegisteredOAuthClient,
 	setMcpServerUsage,
 } from '#worker/mcp-client/settings-service.ts'
-import {
-	type McpServerConnectResult,
-	type McpServerLastError,
+import type {
+	McpServerConnectResult,
+	McpServerLastError,
 } from '#worker/mcp-client/types.ts'
 import {
 	orgAuditWriterFromRequest,
@@ -42,7 +42,7 @@ import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { waitUntil } from 'cloudflare:workers'
 
 type AuthenticatedUser = NonNullable<

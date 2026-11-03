@@ -20,11 +20,11 @@ import {
 	compactCapabilityInputTypeDefinition,
 	getPrimaryPackageActionFunction,
 } from './search-format-helpers.ts'
-import {
-	type JevSearchRerankOutcome,
-	type SearchMatch,
+import type {
+	JevSearchRerankOutcome,
+	SearchMatch,
 } from './search-format-types.ts'
-import { type SearchCandidate } from './search-types.ts'
+import type { SearchCandidate } from './search-types.ts'
 
 function isDefaultExportName(name: string) {
 	return name === 'default' || name === 'home'

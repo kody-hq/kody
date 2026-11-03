@@ -1,5 +1,5 @@
 import { systemEmailOwnerId } from './email-owner.ts'
-import { type MailboxProviderIndexRepairStatus } from './mailbox-provider-index-repair.ts'
+import type { MailboxProviderIndexRepairStatus } from './mailbox-provider-index-repair.ts'
 
 export async function syncProviderIndexRepairOwnerHealth(input: {
 	db: D1Database

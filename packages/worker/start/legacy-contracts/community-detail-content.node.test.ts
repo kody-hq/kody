@@ -10,7 +10,7 @@ const renderCommunityDetailContentHtml = async (
 		/<!-- -->/g,
 		'',
 	)
-import { type PublicCommunityListing } from '#universal/community-public-types.ts'
+import type { PublicCommunityListing } from '#universal/community-public-types.ts'
 
 const sampleListing = {
 	id: 'listing-1',

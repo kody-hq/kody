@@ -10,7 +10,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { request as httpRequest, type IncomingMessage } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { type Readable } from 'node:stream'
+import type { Readable } from 'node:stream'
 import { setTimeout as delay } from 'node:timers/promises'
 import {
 	assertTokenSafeApiUrl,
@@ -53,8 +53,8 @@ import {
 	type PackageLocalContext,
 } from './package-local-runtime-source.js'
 import { redact } from './redact.js'
-import { type KodyTarget } from './target.js'
-import { type ToolCallResult } from './tool-result.js'
+import type { KodyTarget } from './target.js'
+import type { ToolCallResult } from './tool-result.js'
 import { ensureWorkerdBinary } from './workerd-binary.js'
 
 export type LocalPackageRunInput = {

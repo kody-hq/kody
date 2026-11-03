@@ -1,8 +1,8 @@
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import {
-	type JobManagerDebugState,
-	type JobManagerDebugStatus,
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type {
+	JobManagerDebugState,
+	JobManagerDebugStatus,
 } from '@kody-internal/shared/jobs/manager-debug.ts'
 import {
 	optionalOrgAuditWriter,
@@ -15,7 +15,7 @@ import {
 	logJobSchedulerEvent,
 	schedulerErrorFields,
 } from './scheduler-logging.ts'
-import { type JobRepoCheckPolicy } from './types.ts'
+import type { JobRepoCheckPolicy } from './types.ts'
 
 export { type JobManagerDebugState, type JobManagerDebugStatus }
 

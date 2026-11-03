@@ -7,7 +7,7 @@ import {
 	acceptPendingInviteLink,
 	declinePendingInviteLink,
 } from '#start/server/account-invites'
-import { type AccountPendingInvite } from '#universal/loader-data.ts'
+import type { AccountPendingInvite } from '#universal/loader-data.ts'
 import {
 	getGhostButtonCss,
 	getPillButtonCss,

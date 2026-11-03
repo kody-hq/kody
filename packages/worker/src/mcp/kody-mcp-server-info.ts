@@ -1,4 +1,4 @@
-import { type Implementation } from '@modelcontextprotocol/sdk/types.js'
+import type { Implementation } from '@modelcontextprotocol/sdk/types.js'
 import { buildKodyToolIcons } from './tools/tool-icons.ts'
 
 /**

@@ -1,5 +1,5 @@
 import { permissionsForGrantPreset } from '@kody-internal/shared/grant-presets.ts'
-import { type CreatedResource } from '#worker/orgs/creator-access.ts'
+import type { CreatedResource } from '#worker/orgs/creator-access.ts'
 import { profileStatus } from './rules.ts'
 import { loadProfileChain } from './store.ts'
 

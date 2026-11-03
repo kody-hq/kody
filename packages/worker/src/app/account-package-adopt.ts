@@ -1,4 +1,4 @@
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { viewerIsSavedPackageOrgOwner } from '#app/package-viewer-access.ts'
 import { CommunityActionError } from '#worker/community/errors.ts'
 import { adoptCommunityFork } from '#worker/community/service.ts'

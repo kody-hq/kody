@@ -15,7 +15,7 @@ import {
 	packageScopeFromNameOrOwner,
 } from '#universal/community-links.ts'
 import { plainHighlightedCode } from '#universal/highlighted-code.ts'
-import { type AccountJobDetail } from '#universal/loader-data.ts'
+import type { AccountJobDetail } from '#universal/loader-data.ts'
 import { relocateAccountHref } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
 import {

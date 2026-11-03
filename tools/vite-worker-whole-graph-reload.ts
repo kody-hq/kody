@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { type EnvironmentModuleNode, type Plugin } from 'vite'
+import type { EnvironmentModuleNode, Plugin } from 'vite'
 
 /**
  * Reloads a Worker environment's whole module graph when an HMR update touches

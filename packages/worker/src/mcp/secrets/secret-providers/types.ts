@@ -1,4 +1,4 @@
-import { type CredentialFillPlacement } from '#worker/credentials/fill-placement.ts'
+import type { CredentialFillPlacement } from '#worker/credentials/fill-placement.ts'
 
 export type SecretProviderBindingRecord = {
 	/** Stable credential id, assigned by the database on insert. */

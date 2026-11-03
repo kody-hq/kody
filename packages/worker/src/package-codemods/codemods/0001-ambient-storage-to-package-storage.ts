@@ -1,9 +1,9 @@
 import { parseModuleSource, type ModuleAstNode } from '#worker/module-source.ts'
 import { collectAmbientStorageImportFiles } from '#worker/repo/checks.ts'
-import {
-	type PackageCodemod,
-	type PackageCodemodFinding,
-	type PackageCodemodTransformResult,
+import type {
+	PackageCodemod,
+	PackageCodemodFinding,
+	PackageCodemodTransformResult,
 } from '../types.ts'
 
 export const ambientStorageToPackageStorageCodemodId =

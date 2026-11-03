@@ -2,7 +2,7 @@
 import { deletePackage } from '#start/server/package-mutations'
 import { usePackageMutation } from '../package-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import {
 	useState,
 	useRef,
@@ -38,7 +38,7 @@ import {
 	accountFieldNoteCss,
 	accountInputCss,
 } from './account-management-components.tsx'
-import { type AccountPackageDetail } from '#universal/loader-data.ts'
+import type { AccountPackageDetail } from '#universal/loader-data.ts'
 
 type DeleteStatus = 'idle' | 'deleting'
 

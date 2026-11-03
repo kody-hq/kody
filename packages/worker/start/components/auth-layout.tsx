@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { type ReactNode, type CSSProperties } from 'react'
-import { type CSSObject } from '@emotion/react'
+import type { ReactNode, CSSProperties } from 'react'
+import type { CSSObject } from '@emotion/react'
 import { colors } from '#universal/styles/tokens.ts'
 import {
 	renderLoginVisualPanel,

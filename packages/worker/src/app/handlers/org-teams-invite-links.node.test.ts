@@ -1,6 +1,6 @@
 import type * as InviteLinks from '#worker/orgs/invite-links.ts'
 import { expect, test, vi } from 'vitest'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 const mocks = vi.hoisted(() => ({
 	read: vi.fn(async () => {
 		throw new Error('Teams unavailable')

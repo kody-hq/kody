@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { createElement as jsx } from 'react'
 import { renderStartPage as renderToString } from './test-support/render-start-page.ts'
-import { type OrganizationSummary } from '#universal/org-pages.ts'
+import type { OrganizationSummary } from '#universal/org-pages.ts'
 import {
 	WorkspaceSwitcher,
 	type WorkspaceSwitcherData,

@@ -1,4 +1,4 @@
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 
 export type ListedOrgMember = {
 	userId: string

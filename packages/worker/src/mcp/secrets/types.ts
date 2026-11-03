@@ -1,6 +1,6 @@
-import { type StorageContext } from '#mcp/storage.ts'
-import { type CredentialFillPlacement } from '#worker/credentials/fill-placement.ts'
-import { type CredentialPlacementOrigin } from '#worker/credentials/placement-origin.ts'
+import type { StorageContext } from '#mcp/storage.ts'
+import type { CredentialFillPlacement } from '#worker/credentials/fill-placement.ts'
+import type { CredentialPlacementOrigin } from '#worker/credentials/placement-origin.ts'
 
 export const secretScopeValues = ['session', 'package', 'user'] as const
 

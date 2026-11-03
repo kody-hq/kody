@@ -9,7 +9,7 @@
  */
 import * as Sentry from '@sentry/cloudflare'
 import { isPackageCredentialSuppliersEnabled } from '#worker/credentials/credential-suppliers-flag.ts'
-import { type CredentialNeed } from '#worker/credentials/credential-needs.ts'
+import type { CredentialNeed } from '#worker/credentials/credential-needs.ts'
 import { getLatestPackageCapabilityApproval } from '#worker/package-capabilities/capability-approvals-repo.ts'
 import { visitorCredentialIdsByNeedKey } from '#worker/package-capabilities/capability-set.ts'
 // Type-only and erased: repo/types.ts pulls in Workers-only modules at runtime.

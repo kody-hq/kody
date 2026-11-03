@@ -4,7 +4,7 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { McpCallerError } from '#mcp/caller-error.ts'
-import { type PackageOwnerContext } from '#worker/package-registry/package-owner.ts'
+import type { PackageOwnerContext } from '#worker/package-registry/package-owner.ts'
 import { KODY_DESCRIPTION_MAX_LENGTH } from '#worker/package-registry/types.ts'
 
 const mockModule = vi.hoisted(() => ({

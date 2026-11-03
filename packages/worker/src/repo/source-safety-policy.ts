@@ -16,7 +16,7 @@ import {
 	resolveExistingArtifactSourceRepo,
 } from './artifacts.ts'
 import { isArtifactsGitTimeoutError } from './artifacts-git-retry.ts'
-import { type EntitySourceRow } from './types.ts'
+import type { EntitySourceRow } from './types.ts'
 
 export const productionPackageSourceSafetyPolicy =
 	'Production package source safety policy: never replace source history, force publish, or packageSave over an existing package unless Kody has created a restorable backup snapshot and the user explicitly approved destructive overwrite. If existing source cannot be cloned or verified, stop and report the source recovery problem.'

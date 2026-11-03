@@ -1,5 +1,5 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	decryptWebhookHmacSecret,
@@ -9,7 +9,7 @@ import {
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { attestedPackageStamp } from '#worker/credentials/package-stamp.ts'
 import { resolveCredential } from '#worker/credentials/resolve-credential.ts'
-import { type PackageWebhookHmacVerificationEntry } from '#worker/package-registry/manifest.ts'
+import type { PackageWebhookHmacVerificationEntry } from '#worker/package-registry/manifest.ts'
 import { generateWebhookUrlSecret } from './crypto.ts'
 import {
 	decryptWebhookVerificationSnapshot,

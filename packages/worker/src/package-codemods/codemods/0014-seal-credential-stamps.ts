@@ -9,11 +9,11 @@ import {
 	applyCredentialStampSealPlan,
 	planCredentialStampSeal,
 } from '#worker/credentials/credential-stamp.ts'
-import {
-	type PackageCodemod,
-	type PackageCodemodContext,
-	type PackageCodemodFinding,
-	type PackageCodemodTransformResult,
+import type {
+	PackageCodemod,
+	PackageCodemodContext,
+	PackageCodemodFinding,
+	PackageCodemodTransformResult,
 } from '../types.ts'
 
 export const sealCredentialStampsCodemodId = '0014-seal-credential-stamps'

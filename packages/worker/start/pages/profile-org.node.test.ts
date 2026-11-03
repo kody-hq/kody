@@ -1,6 +1,6 @@
 import { createElement } from 'react'
 import { expect, test } from 'vitest'
-import { type ProfileLoaderData } from '#universal/loader-data.ts'
+import type { ProfileLoaderData } from '#universal/loader-data.ts'
 import { renderStartPage } from '../test-support/render-start-page.ts'
 import { OrgHomePage } from './org-home.tsx'
 import { ProfileRoute } from './profile.tsx'

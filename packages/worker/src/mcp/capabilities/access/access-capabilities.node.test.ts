@@ -16,7 +16,7 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
 import {

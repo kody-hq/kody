@@ -4,7 +4,7 @@
  * checks. No stamp, a missing KV binding, or a missing publish keeps the
  * legacy credential path. A stored blob that is not a valid stamp fail-closes.
  */
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { getSavedPackageByIdInAnyOrg } from '#worker/package-registry/repo.ts'
 import {
 	hasPublishedRuntimeArtifacts,

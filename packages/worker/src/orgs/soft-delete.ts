@@ -49,7 +49,7 @@ import {
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import { onMemberSoftRemoved } from '#worker/orgs/member-offboarding.ts'
 import { resolveOAuthHelpers } from '#worker/oauth-helpers.ts'
-import { type OAuthGrantHelpers } from '#worker/oauth-grants.ts'
+import type { OAuthGrantHelpers } from '#worker/oauth-grants.ts'
 import { revokeOAuthGrantsForOrg } from '#worker/orgs/offboarding.ts'
 
 export { AccountDeletionWritersActiveError }

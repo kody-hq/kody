@@ -7,11 +7,7 @@ import {
 	type PublishedEntitySource,
 } from '#worker/repo/published-source.ts'
 import { formatJobError } from './schedule.ts'
-import {
-	type JobRecord,
-	type JobSourceInspection,
-	type JobView,
-} from './types.ts'
+import type { JobRecord, JobSourceInspection, JobView } from './types.ts'
 
 export type PublishedJobSourceResolution = {
 	source: NonNullable<PublishedEntitySource['source']>

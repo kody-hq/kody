@@ -1,11 +1,11 @@
-import {
-	type RepoSessionIndexCleanupResult,
-	type RepoSessionIndexExportResult,
-	type RepoSessionIndexRpc,
-	type RepoSessionIndexUpdateInput,
+import type {
+	RepoSessionIndexCleanupResult,
+	RepoSessionIndexExportResult,
+	RepoSessionIndexRpc,
+	RepoSessionIndexUpdateInput,
 } from '#worker/repo/repo-session-index-do.ts'
 import { isRepoSessionDue } from '#worker/repo/repo-session-due.ts'
-import { type RepoSessionRow } from '#worker/repo/types.ts'
+import type { RepoSessionRow } from '#worker/repo/types.ts'
 
 /**
  * In-memory RepoSessionIndex stub keyed by `idFromName` (stable userId) for

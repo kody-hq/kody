@@ -1,6 +1,6 @@
-import {
-	type SkillReadEvent,
-	type SkillReadSummary,
+import type {
+	SkillReadEvent,
+	SkillReadSummary,
 } from '#universal/skill-metrics.ts'
 import {
 	initializeSkillReads,
@@ -8,7 +8,7 @@ import {
 	summarizeSkillReads,
 	exportSkillReads,
 } from './skill-reads.ts'
-import { type WorkspaceRunBucket } from '#universal/workspace-charts.ts'
+import type { WorkspaceRunBucket } from '#universal/workspace-charts.ts'
 import * as Sentry from '@sentry/cloudflare'
 import { DurableObject } from 'cloudflare:workers'
 import {
@@ -26,7 +26,7 @@ import {
 	terminalWorkflowStatusValues,
 } from '#worker/package-runtime/workflow-statuses.ts'
 import { buildSentryOptions } from '#worker/sentry-options.ts'
-import { type RunLogAdminInsightsSnapshot } from './admin-insights-snapshot.ts'
+import type { RunLogAdminInsightsSnapshot } from './admin-insights-snapshot.ts'
 import {
 	emptyRunLogFailureCounts,
 	headerOnlyPlacementRefusalMarkers,
@@ -41,10 +41,10 @@ import {
 	type PackageRunSuccessRecord,
 	countsTowardPackageActivation,
 } from './package-activation-state.ts'
-import {
-	type JobRunObservabilityRecord,
-	type JobRunObservabilityStatus,
-	type JobRunObservabilityUpsertInput,
+import type {
+	JobRunObservabilityRecord,
+	JobRunObservabilityStatus,
+	JobRunObservabilityUpsertInput,
 } from './job-run-observability.ts'
 import {
 	type WorkflowProjectionRecord,

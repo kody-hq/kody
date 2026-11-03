@@ -1,4 +1,4 @@
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	followAccessFromPermissions,

@@ -6,7 +6,7 @@
  * caller's Use and never carry values.
  */
 import * as Sentry from '@sentry/cloudflare'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
 	listUsableCredentials,
 	resolveNeedCandidates,

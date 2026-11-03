@@ -2,14 +2,14 @@ import { env } from 'cloudflare:workers'
 import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test'
 import { expect, test, vi } from 'vitest'
 import { checkRateLimit } from '#app/rate-limit.ts'
-import { type PackageInvocationRequest } from '#worker/package-invocations/common.ts'
+import type { PackageInvocationRequest } from '#worker/package-invocations/common.ts'
 import {
 	createRequestHash,
 	resolveExistingInvocation,
 	type ResolvableInvocationRecord,
 } from '#worker/package-invocations/idempotency.ts'
 import type * as PackageInvocationServiceModule from '#worker/package-invocations/service.ts'
-import { type PackageWebhookManifestEntry } from '#worker/package-registry/manifest.ts'
+import type { PackageWebhookManifestEntry } from '#worker/package-registry/manifest.ts'
 import { clearRunRecords, listRunRecords } from '#worker/run-records/service.ts'
 import {
 	buildWebhookTimestampBodyPayload,

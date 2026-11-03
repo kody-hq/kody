@@ -4,7 +4,7 @@ import {
 	buildKodyToolContext,
 	createWorkflowTools,
 } from '#mcp/run-kody-registry.ts'
-import { type CredentialClientToolOptions } from '#mcp/runtime-helper-manifest.ts'
+import type { CredentialClientToolOptions } from '#mcp/runtime-helper-manifest.ts'
 import {
 	createExecutionSecretRedactor,
 	type ExecutionSecretRedactor,

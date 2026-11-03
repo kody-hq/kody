@@ -1,6 +1,6 @@
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
-import { type AccountMcpServersLoaderData } from '#universal/loader-data.ts'
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AccountMcpServersLoaderData } from '#universal/loader-data.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	buildMcpServerStatusView,
 	loadMcpClientHubReadSnapshotOrNull,

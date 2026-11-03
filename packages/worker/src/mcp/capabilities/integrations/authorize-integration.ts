@@ -1,4 +1,4 @@
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import {
 	authorize,
 	authorizeOrgWide,
@@ -11,7 +11,7 @@ import {
 import { findIntegrationCredentialId } from '#worker/integrations/credentials.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { requireMcpRequest } from '#mcp/capabilities/meta/require-user.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 
 type IntegrationPermission = Extract<OrgPermission, `integration:${string}`>
 

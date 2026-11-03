@@ -1,8 +1,8 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { beforeEach, expect, test, vi } from 'vitest'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	followOrgTarget,
 	unfollowOrgTarget,
@@ -10,7 +10,7 @@ import {
 	followOperationStatus,
 } from '#app/follows-web.ts'
 import { resourceGrantKey } from '#worker/authorization/access-compile.ts'
-import { type EffectivePermissions } from '#worker/authorization/authorize.ts'
+import type { EffectivePermissions } from '#worker/authorization/authorize.ts'
 import { ensureFollowTables, getFollowByTarget } from '#worker/follow/repo.ts'
 import { consumeFollowCreateSlot } from '#worker/follow/service.ts'
 import { followCreateMaxPerHour } from '#worker/follow/types.ts'

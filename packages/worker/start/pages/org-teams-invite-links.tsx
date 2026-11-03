@@ -15,9 +15,9 @@ import { teamInviteMutationOptions } from './org-team-invite-mutation.ts'
 import { DetailParts } from '../components/detail-parts.tsx'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
 import { renderIcon } from '../components/icon.tsx'
-import {
-	type OrgTeamView,
-	type ScopedInviteLinkView,
+import type {
+	OrgTeamView,
+	ScopedInviteLinkView,
 } from '#universal/loader-data.ts'
 import {
 	getDangerPillCss,

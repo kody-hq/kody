@@ -1,4 +1,4 @@
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import {
 	grantPresets,
 	orgWideManagePermissions,
@@ -10,12 +10,12 @@ import {
 	type OrgPermission,
 	type OrgResourceType,
 } from '@kody-internal/shared/org-permissions.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { sha256Hex } from '@kody-internal/shared/sha256.ts'
 import { toHex } from '@kody-internal/shared/hex.ts'
 import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import {
 	requireMcpRequest,
 	requireMcpUser,

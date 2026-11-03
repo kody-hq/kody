@@ -1,4 +1,4 @@
-import { type DomainSpec } from './types.ts'
+import type { DomainSpec } from './types.ts'
 import { assertKodyRuntimeIdentifier } from './runtime-identifier.ts'
 
 export function defineDomain(spec: DomainSpec): DomainSpec {

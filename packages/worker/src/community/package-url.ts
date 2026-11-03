@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { routes } from '#universal/routes.ts'
 import { findPublicOwnerIdentityByHandle } from '#worker/identity/user-lookup.ts'
 import { normalizeUsername } from '#worker/identity/username.ts'

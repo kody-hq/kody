@@ -1,7 +1,7 @@
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import {
-	type RuntimePackageAppIdentity,
-	type RuntimePackageAppVisitor,
+import type {
+	RuntimePackageAppIdentity,
+	RuntimePackageAppVisitor,
 } from '@kody-internal/shared/runtime-worker.ts'
 import { html } from 'remix/html-template'
 import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
@@ -31,10 +31,10 @@ import {
 	lookupVerifiedOrgCustomHostnameForPackage,
 	normalizeCustomHostname,
 } from '#worker/package-app-custom-hostnames/lookup.ts'
-import {
-	type VerifiedAppCustomHostname,
-	type VerifiedOrgCustomHostname,
-	type VerifiedPackageAppCustomHostname,
+import type {
+	VerifiedAppCustomHostname,
+	VerifiedOrgCustomHostname,
+	VerifiedPackageAppCustomHostname,
 } from '#worker/package-app-custom-hostnames/types.ts'
 import { resolveSavedPackageForPackageAppSlug } from '#worker/package-invocations/module-artifacts.ts'
 import { getCommunityListingByOwnerAndPackage } from '#worker/community/repo.ts'
@@ -84,7 +84,7 @@ import {
 	parsePackageAppSubdomainPath,
 	servePackageAppRequest,
 } from '#app/handlers/package-app.ts'
-import { type PackageAppServeOwner } from '#worker/package-runtime/package-app-serve.ts'
+import type { PackageAppServeOwner } from '#worker/package-runtime/package-app-serve.ts'
 import { resolveInternetVisibleApprovedCommit } from '#app/package-app-internet-visible.ts'
 import {
 	mintPackageAppTicketCookie,

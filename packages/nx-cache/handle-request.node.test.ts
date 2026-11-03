@@ -2,7 +2,7 @@ import { expect, test } from 'vitest'
 
 import { handleNxCacheRequest, parseCacheHash } from './handle-request.ts'
 import { createMemoryCacheStore } from './memory-store.ts'
-import { type NxCacheEnv } from './nx-cache-types.ts'
+import type { NxCacheEnv } from './nx-cache-types.ts'
 
 const ACCESS_TOKEN = 'test-nx-cache-token'
 const READ_TOKEN = 'test-nx-cache-read-token'

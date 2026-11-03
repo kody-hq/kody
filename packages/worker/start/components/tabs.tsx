@@ -9,7 +9,7 @@ import {
 	type ComponentProps,
 	type ReactNode,
 } from 'react'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 type TabsSize = 'md' | 'lg'
 type ContextValue = {
 	id: string

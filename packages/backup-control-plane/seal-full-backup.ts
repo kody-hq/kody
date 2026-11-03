@@ -33,7 +33,7 @@ import {
 	safeLog,
 	utcDay,
 } from './backup-policy.ts'
-import { type BackupEnvironment } from './backup-types.ts'
+import type { BackupEnvironment } from './backup-types.ts'
 import {
 	signBackupFullManifest,
 	verifyBackupFullManifestSignature,

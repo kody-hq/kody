@@ -1,4 +1,4 @@
-import { type PacedRestoreDrillCheckpoint } from '@kody-internal/shared/backup-d1-paced-drill-alert.ts'
+import type { PacedRestoreDrillCheckpoint } from '@kody-internal/shared/backup-d1-paced-drill-alert.ts'
 
 /**
  * D1 (APP_DB) progress rows for the weekly paced restore drill. Each tick

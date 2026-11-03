@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	computeMailboxRetentionReschedule,
 	deleteMailboxRetentionCandidate,
@@ -19,8 +19,8 @@ import {
 	replaceInboundDueOwnerHint,
 } from './inbound-due-owners.ts'
 import { syncProviderIndexRepairOwnerHealth } from './provider-index-repair-health.ts'
-import { type MailboxStore } from './mailbox-store.ts'
-import { type MailboxRunRetentionNowResult } from './mailbox-types.ts'
+import type { MailboxStore } from './mailbox-store.ts'
+import type { MailboxRunRetentionNowResult } from './mailbox-types.ts'
 
 export class MailboxMaintenanceCommands {
 	private alarmArmed = false

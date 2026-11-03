@@ -1,4 +1,4 @@
-import { type CommunityListingCategory } from '#universal/community-categories.ts'
+import type { CommunityListingCategory } from '#universal/community-categories.ts'
 
 /**
  * Signed-in viewer's existing fork/install of a community listing. Present

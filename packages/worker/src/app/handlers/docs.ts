@@ -25,10 +25,10 @@ import {
 } from '#app/highlight-code.ts'
 import { collectGoogleOauthSnippets } from '#universal/google-oauth-transcript.ts'
 import { collectHowKodyWorksSnippets } from '#universal/how-kody-works-transcript.ts'
-import { type DocDetailLoaderData } from '#universal/loader-data.ts'
+import type { DocDetailLoaderData } from '#universal/loader-data.ts'
 import { pickWalkthroughHosts } from '#universal/walkthrough-hosts.ts'
-import { type Guide } from '#worker/guides/parse-frontmatter.ts'
-import { type ServerTimingEntry } from '#worker/server-timing.ts'
+import type { Guide } from '#worker/guides/parse-frontmatter.ts'
+import type { ServerTimingEntry } from '#worker/server-timing.ts'
 
 function appendDocMarkdownLinks(
 	lines: Array<string>,

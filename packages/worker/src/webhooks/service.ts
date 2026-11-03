@@ -1,5 +1,5 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	credentialPlacementRefusedCode,
@@ -29,7 +29,7 @@ import {
 import { resolveSavedPackage } from '#worker/package-invocations/module-artifacts.ts'
 import { listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'
 import { loadPackageManifestBySourceId } from '#worker/package-registry/source.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
 	dispatchWebhookUrlApply,
 	type WebhookUrlApplyDestination,

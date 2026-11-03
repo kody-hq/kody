@@ -5,7 +5,7 @@
  * the ones already opted in), in the same audited batch. Only the website
  * calls this; agents can only build the link.
  */
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { operationResult } from '#app/operation-result.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { normalizeBulkPackageSecretApprovalNames } from '#mcp/secrets/package-approval-url.ts'
@@ -27,7 +27,7 @@ import {
 	type FillPlacementOptIn,
 	readFillPlacementOptIn,
 } from '#worker/credentials/fill-placement-opt-ins.ts'
-import { type CredentialFillPlacement } from '#worker/credentials/fill-placement.ts'
+import type { CredentialFillPlacement } from '#worker/credentials/fill-placement.ts'
 import { orgAuditWriterFromRequest } from '#worker/orgs/org-audit.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import {

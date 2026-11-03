@@ -8,7 +8,7 @@ import {
 	listInboundMcpConnectionLastUsed,
 	recordInboundMcpConnectionLastUsed,
 } from '#worker/inbound-mcp-connection-last-used.ts'
-import { type OAuthGrantHelpers } from '#worker/oauth-grants.ts'
+import type { OAuthGrantHelpers } from '#worker/oauth-grants.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 
 type TestGrant = {

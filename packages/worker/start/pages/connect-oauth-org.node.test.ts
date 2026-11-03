@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { type OrganizationSummary } from '#universal/org-pages.ts'
+import type { OrganizationSummary } from '#universal/org-pages.ts'
 import {
 	connectOauthTargetOrg,
 	orderConnectOauthOrgs,

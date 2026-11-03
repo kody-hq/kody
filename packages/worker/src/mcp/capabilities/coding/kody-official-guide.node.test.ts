@@ -1,7 +1,7 @@
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
-import { type CapabilityContext } from '../types.ts'
+import type { CapabilityContext } from '../types.ts'
 import { kodyOfficialGuideCapability } from './kody-official-guide.ts'
 import { guides } from '#worker/guides/catalog.ts'
 

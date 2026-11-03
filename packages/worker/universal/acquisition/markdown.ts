@@ -1,5 +1,5 @@
 import { acquisitionPages } from './catalog.ts'
-import { type AcquisitionPage } from './types.ts'
+import type { AcquisitionPage } from './types.ts'
 
 export function acquisitionMarkdown(page: AcquisitionPage): string {
 	const lines = [

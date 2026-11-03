@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import {
 	assertAccountWritableDb,
@@ -15,7 +15,7 @@ import {
 	handleExecutionContextKeyRoute,
 	isExecutionContextKeyRoute,
 } from '#worker/execution-contexts/key-routes.ts'
-import { type ApiInvocationContext } from './context.ts'
+import type { ApiInvocationContext } from './context.ts'
 import {
 	buildOpenApiDocument,
 	kodyApiVersion,

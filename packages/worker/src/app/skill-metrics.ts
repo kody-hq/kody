@@ -4,13 +4,13 @@ import {
 	packageResource,
 } from '#worker/authorization/authorize.ts'
 import { listSavedPackagesWithCommunityProvenanceByUserId } from '#worker/package-registry/repo.ts'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import {
 	type CallerSkillsCatalog,
 	loadCallerSkillsCatalog,
 } from '#mcp/skills/skills-catalog.ts'
 import { runLogRpc } from '#worker/run-records/service.ts'
-import { type SkillMetrics } from '#universal/skill-metrics.ts'
+import type { SkillMetrics } from '#universal/skill-metrics.ts'
 
 export async function loadSkillMetrics(input: {
 	env: Env

@@ -3,7 +3,7 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { expect, test, vi } from 'vitest'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
 import { upsertGrant } from '#worker/orgs/access-writes.ts'
@@ -25,7 +25,7 @@ import {
 	CredentialRequestRefusedError,
 } from './credential-request.ts'
 import { resolveCredential } from './resolve-credential.ts'
-import { type SigningOperation } from './signing-resolver.ts'
+import type { SigningOperation } from './signing-resolver.ts'
 
 vi.mock(
 	'#worker/test-support/apply-all-migrations.ts',

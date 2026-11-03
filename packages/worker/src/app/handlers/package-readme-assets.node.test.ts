@@ -9,7 +9,7 @@ import type * as ArtifactFile from '#worker/repo/artifact-file.ts'
 import type * as EntitySources from '#worker/repo/entity-sources.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import { tinyPngBytes } from '#worker/test-support/images-binding.ts'
-import { type CommunityListingRecord } from '#worker/community/types.ts'
+import type { CommunityListingRecord } from '#worker/community/types.ts'
 import { bytesToLatin1String } from '#universal/package-file-media.ts'
 
 const mocks = vi.hoisted(() => ({

@@ -1,4 +1,4 @@
-import { type StoredCredentials } from './store.js'
+import type { StoredCredentials } from './store.js'
 
 export { orgSlugFromFlag } from './org-slug.js'
 

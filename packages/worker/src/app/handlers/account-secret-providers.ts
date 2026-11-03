@@ -1,4 +1,4 @@
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { operationResult } from '#app/operation-result.ts'
 import {
 	bindSecretProvider,

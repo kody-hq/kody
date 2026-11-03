@@ -6,7 +6,7 @@ import {
 	requireMcpRequest,
 	requireMcpUser,
 } from '#mcp/capabilities/meta/require-user.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { authorizePackageWrite } from '#worker/authorization/authorize.ts'
 import { assertWithinEntitlement } from '#worker/entitlements/service.ts'
 import {

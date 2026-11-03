@@ -1,7 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { countConnectedAgentEcosystems } from '#universal/onboarding-agent-ecosystems.ts'
 import { loadInboundMcpConnectionState } from '#worker/connected-mcp-agents.ts'
-import { type OAuthGrantListHelpers } from '#worker/oauth-grants.ts'
+import type { OAuthGrantListHelpers } from '#worker/oauth-grants.ts'
 import { resolveOAuthHelpers } from '#worker/oauth-helpers.ts'
 import { joinOrgsOnPersonalOrgIdSql } from '#worker/orgs/personal-org-sql.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'

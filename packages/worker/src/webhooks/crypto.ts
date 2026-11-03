@@ -5,10 +5,10 @@ import {
 import { toHex } from '@kody-internal/shared/hex.ts'
 import { sha256Hex } from '@kody-internal/shared/sha256.ts'
 import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
-import {
-	type WebhookHmacAlgorithm,
-	type WebhookSignatureEncoding,
-	type WebhookTimestampFormat,
+import type {
+	WebhookHmacAlgorithm,
+	WebhookSignatureEncoding,
+	WebhookTimestampFormat,
 } from './types.ts'
 
 const urlSecretBytes = 32

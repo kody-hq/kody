@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { SiteLink } from '../components/site-link.tsx'
 import { colors, spacing } from '#universal/styles/tokens.ts'
-import { type AccountRailTab } from '#client/routes/account-rail.ts'
+import type { AccountRailTab } from '#client/routes/account-rail.ts'
 
 /**
  * Sibling pages of one rail item (Activity → Workflows, Waiting), as

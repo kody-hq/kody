@@ -1,12 +1,12 @@
-import { type getCapabilityRegistryForContext } from '#mcp/capabilities/registry.ts'
+import type { getCapabilityRegistryForContext } from '#mcp/capabilities/registry.ts'
 
-import { type SearchMatch } from './search-format-types.ts'
+import type { SearchMatch } from './search-format-types.ts'
 import {
 	buildMcpServerSearchMatch,
 	listSynthesizedMcpServers,
 	queryMatchesSynthesizedMcpServer,
 } from './search-mcp-servers.ts'
-import { type SearchCandidate } from './search-types.ts'
+import type { SearchCandidate } from './search-types.ts'
 
 export function queryMatchesSynthesizedProvider(input: {
 	query: string

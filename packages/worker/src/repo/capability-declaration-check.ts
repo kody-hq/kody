@@ -16,7 +16,7 @@ import {
 	type ClosurePackageLoader,
 	scanPackageAppImportClosure,
 } from '#worker/package-codemods/package-app-capability-closure.ts'
-import { type AuthoredPackageJson } from '#worker/package-registry/types.ts'
+import type { AuthoredPackageJson } from '#worker/package-registry/types.ts'
 import { declaredCapabilitiesOf } from '#worker/package-runtime/package-app-effective-capabilities.ts'
 
 type CapabilityDeclarationFinding =

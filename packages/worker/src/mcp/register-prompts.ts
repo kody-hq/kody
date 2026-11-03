@@ -4,7 +4,7 @@ import {
 	buildOnboardingSetupPrompt,
 	buildPersistFirstPackagePrompt,
 } from '#worker/onboarding-prompts.ts'
-import { type McpRegistrationAgent } from './mcp-registration-agent.ts'
+import type { McpRegistrationAgent } from './mcp-registration-agent.ts'
 
 function textPromptResult(input: { description: string; text: string }) {
 	return {

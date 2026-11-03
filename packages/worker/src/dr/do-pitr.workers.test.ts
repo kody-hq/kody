@@ -2,8 +2,8 @@ import { runInDurableObject } from 'cloudflare:test'
 import { env } from 'cloudflare:workers'
 import { expect, test } from 'vitest'
 import { type DurableObjectPitrRpc, pitrUnavailableCode } from './do-pitr.ts'
-import { type RunLog } from '#worker/run-records/run-log-do.ts'
-import { type StorageRunner } from '#worker/storage-runner.ts'
+import type { RunLog } from '#worker/run-records/run-log-do.ts'
+import type { StorageRunner } from '#worker/storage-runner.ts'
 import {
 	mailboxDurableObjectName,
 	runLogDurableObjectName,

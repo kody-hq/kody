@@ -14,7 +14,7 @@ import {
 	featureFlagKeys,
 	type FeatureFlagKey,
 } from '#universal/feature-flags/registry.ts'
-import { type OrganizationSummary } from '#universal/org-pages.ts'
+import type { OrganizationSummary } from '#universal/org-pages.ts'
 
 export type SessionInfo = {
 	email: string

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveDevAuth } from '../src/dev-command.js'
-import { type DevEvent } from '../src/dev/dev-events.js'
+import type { DevEvent } from '../src/dev/dev-events.js'
 import {
 	startPackageAppDev,
 	type PackageAppDevOptions,

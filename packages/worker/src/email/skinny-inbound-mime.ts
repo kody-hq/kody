@@ -1,6 +1,6 @@
 import { maxPlanEmailLimits } from '#universal/plans.ts'
 import { toHex } from '@kody-internal/shared/hex.ts'
-import { type EmailAttachmentMetadata } from './types.ts'
+import type { EmailAttachmentMetadata } from './types.ts'
 
 /** Cloudflare Email Routing inbound hard cap. */
 export const maxSurvivableInboundRawBytes = 25 * 1024 * 1024

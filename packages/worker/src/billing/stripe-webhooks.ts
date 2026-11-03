@@ -5,7 +5,7 @@
  * (handlers are idempotent), then records the event id so later deliveries can
  * short-circuit as duplicates. Failures do not insert, so Stripe can retry.
  */
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { releasePromoReservationForCheckoutSession } from './checkout-promo.ts'
 import {
 	any,

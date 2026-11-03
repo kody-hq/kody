@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import {
 	checkPermission,
@@ -14,12 +14,12 @@ import {
 	readPreExecutionPackageInvocationInfrastructureCode,
 } from '#worker/package-invocations/admin-package-subscriptions.ts'
 import { invokePackageSubscription } from '#worker/package-invocations/service.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
 	deriveRequestContext,
 	type RequestSource,
 } from '#worker/request-context/request-context.ts'
-import { type CloudflareEmailDeliveryEvent } from './delivery-events.ts'
+import type { CloudflareEmailDeliveryEvent } from './delivery-events.ts'
 import { normalizeHeaderMailbox } from './address.ts'
 import { resolveInboundEmailAuthVerdict } from './auth-verdict.ts'
 import {
@@ -28,7 +28,7 @@ import {
 } from './inbound-sender.ts'
 import { listInternalEmailAttachmentsForMessage } from './mailbox-internal-read.ts'
 import { listSystemEmailAttachments } from './system-email-graph-store.ts'
-import { type EmailAttachmentRecord, type EmailMessageRecord } from './types.ts'
+import type { EmailAttachmentRecord, EmailMessageRecord } from './types.ts'
 
 export const inboundEmailReceiptTopic = 'email.message.received'
 export const inboundEmailQuarantinedTopic = 'email.message.quarantined'

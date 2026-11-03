@@ -10,8 +10,8 @@ import {
 } from './artifacts-git-retry.ts'
 import { createEphemeralGitWorkspace } from './ephemeral-git-workspace.ts'
 import { loadIsomorphicGit } from './isomorphic-git-lazy.ts'
-import { type RepoPublishWorkspace } from './external-publish.ts'
-import { type PublishGitNoteFileSystem } from './publish-git-notes.ts'
+import type { RepoPublishWorkspace } from './external-publish.ts'
+import type { PublishGitNoteFileSystem } from './publish-git-notes.ts'
 import { unknownRequestedCommitError } from './requested-commit-error.ts'
 
 /**

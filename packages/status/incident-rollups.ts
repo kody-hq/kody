@@ -4,7 +4,7 @@
  */
 
 import { incidentMinutesForDay, type IncidentSpan } from './day-bars.ts'
-import { type ComponentDayStat } from './status-types.ts'
+import type { ComponentDayStat } from './status-types.ts'
 
 export const nonIncidentFailuresRetiredMetaKey =
 	'non_incident_daily_failures_retired'

@@ -1,6 +1,6 @@
-import {
-	type SecretProviderBindingRecord,
-	type SecretProviderGrantRecord,
+import type {
+	SecretProviderBindingRecord,
+	SecretProviderGrantRecord,
 } from './types.ts'
 
 import { credentialGrantCleanupStatements } from '#worker/credentials/credential-grant-cleanup.ts'

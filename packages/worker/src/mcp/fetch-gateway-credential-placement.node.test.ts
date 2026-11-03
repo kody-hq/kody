@@ -5,7 +5,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { expandSecretPlaceholders } from '#mcp/fetch-gateway.ts'
-import { type ResolvedSecret } from '#mcp/secrets/service.ts'
+import type { ResolvedSecret } from '#mcp/secrets/service.ts'
 import * as credentialResolution from '#worker/credentials/resolve-credential.ts'
 import { sessionRequestContext } from '#worker/test-support/request-context.ts'
 

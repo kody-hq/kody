@@ -1,5 +1,5 @@
-import { type McpCallerContext, type McpUserContext } from '../chat.ts'
-import { type OwnerId } from '../owner-person-ids.ts'
+import type { McpCallerContext, McpUserContext } from '../chat.ts'
+import type { OwnerId } from '../owner-person-ids.ts'
 
 export type JobSchedule =
 	| {

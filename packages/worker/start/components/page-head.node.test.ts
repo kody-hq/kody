@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { type RouterManagedTag } from '@tanstack/react-router'
+import type { RouterManagedTag } from '@tanstack/react-router'
 import { mergePageHeadTags } from './page-head.tsx'
 
 it('replaces content metadata while retaining Router assets, nonce, identity and structured data', () => {

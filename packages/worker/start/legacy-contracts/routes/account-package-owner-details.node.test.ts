@@ -4,7 +4,7 @@ import { renderStartPage as renderToString } from '../../test-support/render-sta
 import { expect, test } from 'vitest'
 import { PackageSettingsRoute } from '../../pages/package-settings.tsx'
 import { AccountPackageOwnerDetails } from '../../pages/account-package-owner-details.tsx'
-import { type AccountPackageDetail } from '#universal/loader-data.ts'
+import type { AccountPackageDetail } from '#universal/loader-data.ts'
 
 function packageDetail(
 	overrides: Partial<AccountPackageDetail> = {},

@@ -4,8 +4,8 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 
 const mockModule = vi.hoisted(() => ({
 	checkPermission: vi.fn(),

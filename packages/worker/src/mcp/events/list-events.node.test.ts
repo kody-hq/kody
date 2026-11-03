@@ -6,7 +6,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { parseAuthoredPackageJson } from '#worker/package-registry/manifest.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { listMcpEventSources } from './list-events.ts'
 

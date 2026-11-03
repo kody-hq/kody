@@ -7,7 +7,7 @@ import {
 } from '#worker/package-runtime/bare-package-import-declarations.ts'
 import { isUserCodeError, UserCodeError } from '#worker/user-code-error.ts'
 import { filterUserCodeErrorSentryEvent } from '#worker/sentry-options.ts'
-import { type AuthoredPackageJson } from '#worker/package-registry/types.ts'
+import type { AuthoredPackageJson } from '#worker/package-registry/types.ts'
 
 const mockModule = vi.hoisted(() => ({
 	createFileSystemSnapshot: vi.fn(),

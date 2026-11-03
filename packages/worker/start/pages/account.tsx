@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { listenForAvatarFileDrop } from '#client/listen-for-avatar-file-drop.ts'
-import { type AccountPagePayloads } from '#client/routes/account-page-data.ts'
+import type { AccountPagePayloads } from '#client/routes/account-page-data.ts'
 import {
 	interpretAccountProfileSave,
 	readProfileFormValues,
@@ -8,7 +8,7 @@ import {
 import { shouldShowOnboardingChecklist } from '#universal/onboarding-checklist.ts'
 import { toast } from '#client/toast.ts'
 import { saveProfile, updateAvatar } from '#start/server/account-mutations'
-import { type ProfileVisibility } from '#universal/loader-data.ts'
+import type { ProfileVisibility } from '#universal/loader-data.ts'
 import {
 	getGhostButtonCss,
 	mutedLinkCss,

@@ -1,7 +1,7 @@
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { getSecretBindingKey } from '#mcp/secrets/secret-bindings.ts'
-import { type SecretScope } from '#mcp/secrets/types.ts'
-import { type StorageContext } from '#mcp/storage.ts'
+import type { SecretScope } from '#mcp/secrets/types.ts'
+import type { StorageContext } from '#mcp/storage.ts'
 
 /**
  * Thrown before `authorizeSecretSet` / `secret:write` so local execute (and

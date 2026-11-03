@@ -1,7 +1,7 @@
 import { FetchInterceptor } from '@mswjs/interceptors/fetch'
 import { defineNetwork, InterceptorSource } from 'msw/experimental'
-import { type HttpHandler } from 'msw'
-import { type MswNodeServerOptions } from './msw-node-server.ts'
+import type { HttpHandler } from 'msw'
+import type { MswNodeServerOptions } from './msw-node-server.ts'
 
 export function createMswWorkerServer(
 	handlers: Array<HttpHandler> = [],

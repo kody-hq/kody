@@ -4,7 +4,7 @@
  * Purge scans and claims unverified person accounts, including rows already
  * soft-deleted or mid-deletion.
  */
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { invalidatePackageAppOwnerCacheForDbUserId } from '#app/package-app-owner.ts'
 import { personalOrgIdFromUserRow } from '#worker/orgs/personal-org-id.ts'
 import * as Sentry from '@sentry/cloudflare'

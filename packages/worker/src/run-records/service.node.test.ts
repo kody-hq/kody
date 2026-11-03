@@ -1,7 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
-import { type RunRecordHandle } from './types.ts'
+import type { RunRecordHandle } from './types.ts'
 
 const mocks = vi.hoisted(() => ({
 	dispatchRunErrorSubscriptionEvents: vi.fn(async () => []),

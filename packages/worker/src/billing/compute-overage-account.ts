@@ -10,13 +10,13 @@ import {
 	resolvePastIncludeStopLimits,
 	type ComputeOverageWarningResource,
 } from '#universal/compute-overage.ts'
-import {
-	type CreditWalletState,
-	type EntitlementLadder,
-	type LimitOverride,
-	type PlanName,
+import type {
+	CreditWalletState,
+	EntitlementLadder,
+	LimitOverride,
+	PlanName,
 } from '#universal/plans.ts'
-import { type AccountUsageComputeOverage } from '#universal/loader-data.ts'
+import type { AccountUsageComputeOverage } from '#universal/loader-data.ts'
 import { computeIncludeWarningPutsAccessAtRisk } from '#universal/usage-presentation.ts'
 import { readMonthlyComputeUsage } from './compute-overage-usage.ts'
 

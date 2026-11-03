@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { type Plugin } from 'vite'
+import type { Plugin } from 'vite'
 
 /**
  * Load `.md` files as default-exported strings so vitest/node can import the

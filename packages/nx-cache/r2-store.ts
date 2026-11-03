@@ -1,4 +1,4 @@
-import { type NxCacheObject, type NxCacheStore } from './nx-cache-types.ts'
+import type { NxCacheObject, NxCacheStore } from './nx-cache-types.ts'
 
 const OBJECT_PREFIX = 'v1/'
 

@@ -1,4 +1,4 @@
-import { type McpUserContext } from '@kody-internal/shared/chat.ts'
+import type { McpUserContext } from '@kody-internal/shared/chat.ts'
 import { toPublicProfilePackageItem } from '#app/community-public.ts'
 import {
 	canSeeResource,
@@ -8,9 +8,9 @@ import {
 } from '#worker/authorization/authorize.ts'
 import { listProfileRepositories } from '#worker/community/profile-service.ts'
 import { buildOrgAvatarUrl } from '#worker/orgs/org-avatar.ts'
-import { type OrgBinding } from '#worker/orgs/repo.ts'
+import type { OrgBinding } from '#worker/orgs/repo.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
-import { type ProfileLoaderData } from '#universal/loader-data.ts'
+import type { ProfileLoaderData } from '#universal/loader-data.ts'
 
 /**
  * Repositories owned by a team org (`saved_packages` and `user_repos` with

@@ -1,4 +1,4 @@
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import {
 	authorize,
@@ -10,10 +10,10 @@ import {
 	missingCredentialResource,
 } from '#worker/credentials/credential-ids.ts'
 import { requireMcpRequest } from '#mcp/capabilities/meta/require-user.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { findSecret } from '#mcp/secrets/service.ts'
-import { type SecretScope } from '#mcp/secrets/types.ts'
-import { type StorageContext } from '#mcp/storage.ts'
+import type { SecretScope } from '#mcp/secrets/types.ts'
+import type { StorageContext } from '#mcp/storage.ts'
 
 type SecretPermission = Extract<OrgPermission, `secret:${string}`>
 

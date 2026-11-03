@@ -11,7 +11,7 @@ import {
 } from './network-error.js'
 import { readPackageVersion } from './package-info.js'
 import { saveStoredApiToken, type StoredApiToken } from './api-token-store.js'
-import { type SecretBackend, type StoreResolution } from './store.js'
+import type { SecretBackend, StoreResolution } from './store.js'
 
 /** ADR 0056 one-shot bootstrap code prefix (`kody_bc_…`). */
 const cliBootstrapCodePrefix = 'kody_bc_'

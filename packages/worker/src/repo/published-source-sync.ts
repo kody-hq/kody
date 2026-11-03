@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { snapshotStringToBytes } from '#universal/package-file-media.ts'
 import {

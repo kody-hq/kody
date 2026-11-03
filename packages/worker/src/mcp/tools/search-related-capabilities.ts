@@ -1,4 +1,4 @@
-import { type getCapabilityRegistryForContext } from '#mcp/capabilities/registry.ts'
+import type { getCapabilityRegistryForContext } from '#mcp/capabilities/registry.ts'
 
 import {
 	maxRelatedCapabilityOperations,

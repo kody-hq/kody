@@ -1,5 +1,5 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type z } from 'zod'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { resolveOwnedPackageSource } from '#mcp/capabilities/packages/resolve-package-source.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
@@ -7,12 +7,12 @@ import {
 	getEntitySourceByEntity,
 	getEntitySourceByIdForUser,
 } from '#worker/repo/entity-sources.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 import { getUserRepoById, getUserRepoByName } from '#worker/repo/user-repos.ts'
-import {
-	type repoOpenSessionInputSchema,
-	type repoResolvedTargetSchema,
-	type repoTargetSchema,
+import type {
+	repoOpenSessionInputSchema,
+	repoResolvedTargetSchema,
+	repoTargetSchema,
 } from './repo-shared.ts'
 
 type RepoTarget = z.infer<typeof repoTargetSchema>

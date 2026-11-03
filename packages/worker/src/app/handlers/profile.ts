@@ -2,7 +2,7 @@ import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { bytesToBase64 } from '@kody-internal/shared/base64.ts'
 import { getUserAvatarObject } from '#worker/community/avatar.ts'
 import { getCommunityProfileByUsername } from '#worker/community/profile-service.ts'
-import { type CommunityProfileRecord } from '#worker/community/types.ts'
+import type { CommunityProfileRecord } from '#worker/community/types.ts'
 import { listOrganizationsForPerson } from '#worker/orgs/repo.ts'
 import { parseOgTheme } from '#worker/og/palette.ts'
 

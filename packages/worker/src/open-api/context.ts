@@ -1,11 +1,11 @@
-import { type EcpGrant } from '@kody-internal/shared/execution-context-protocol/index.ts'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { EcpGrant } from '@kody-internal/shared/execution-context-protocol/index.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import {
 	resolveCallerFeatureFlags,
 	type CallerFeatureFlags,
 } from '#mcp/capabilities/access-control.ts'
-import { type ApiTokenRecord } from '#worker/api-tokens/service.ts'
-import { type CapabilityOpenApiPrincipal } from '#mcp/capabilities/types.ts'
+import type { ApiTokenRecord } from '#worker/api-tokens/service.ts'
+import type { CapabilityOpenApiPrincipal } from '#mcp/capabilities/types.ts'
 
 /**
  * Who is calling the Open API.

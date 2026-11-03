@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { d1ContainsLikePattern } from '#worker/d1-like-pattern.ts'
 import { chunkArray } from '@kody-internal/shared/chunk.ts'
 import { parseTagsJson } from '@kody-internal/shared/tags-json.ts'
@@ -17,24 +17,24 @@ import {
 import { liveGrantForPersonSql } from '#worker/orgs/repo.ts'
 import { CommunityForkClaimLostError } from './errors.ts'
 import { normalizePackageManifestVersion } from './package-version.ts'
-import {
-	type CommunityActivityKind,
-	type CommunityActivityRecord,
-	type CommunityBanRecord,
-	type CommunityBanRow,
-	type CommunityForkRecord,
-	type ListingCommunityForkRecord,
-	type CommunityForkActor,
-	type CommunityForkRow,
-	type CommunityListingRecord,
-	type CommunityListingRow,
-	type CommunityListingStatus,
-	type CommunityRatingAggregate,
-	type CommunityRatingRecord,
-	type CommunityRatingRow,
-	type CommunityReportRecord,
-	type CommunityReportRow,
-	type CommunityReportStatus,
+import type {
+	CommunityActivityKind,
+	CommunityActivityRecord,
+	CommunityBanRecord,
+	CommunityBanRow,
+	CommunityForkRecord,
+	ListingCommunityForkRecord,
+	CommunityForkActor,
+	CommunityForkRow,
+	CommunityListingRecord,
+	CommunityListingRow,
+	CommunityListingStatus,
+	CommunityRatingAggregate,
+	CommunityRatingRecord,
+	CommunityRatingRow,
+	CommunityReportRecord,
+	CommunityReportRow,
+	CommunityReportStatus,
 } from './types.ts'
 
 export function mapCommunityListingRow(

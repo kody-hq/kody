@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 import { storePublishedCredentialStamp } from './credential-stamp-store.ts'
 
 const mockModule = vi.hoisted(() => ({

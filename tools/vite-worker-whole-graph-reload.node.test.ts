@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest'
-import { type EnvironmentModuleNode, type HotUpdateOptions } from 'vite'
+import type { EnvironmentModuleNode, HotUpdateOptions } from 'vite'
 import {
 	touchesComponentBoundary,
 	workerWholeGraphReload,

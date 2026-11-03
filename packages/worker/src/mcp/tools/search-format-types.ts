@@ -1,9 +1,9 @@
-import { type IntegrationConfig } from '#mcp/capabilities/integrations/integration-shared.ts'
-import { type CapabilitySpec } from '#mcp/capabilities/types.ts'
-import { type SecretSearchRow } from '#mcp/secrets/types.ts'
-import {
-	type AuthoredPackageJson,
-	type SavedPackageRecord,
+import type { IntegrationConfig } from '#mcp/capabilities/integrations/integration-shared.ts'
+import type { CapabilitySpec } from '#mcp/capabilities/types.ts'
+import type { SecretSearchRow } from '#mcp/secrets/types.ts'
+import type {
+	AuthoredPackageJson,
+	SavedPackageRecord,
 } from '#worker/package-registry/types.ts'
 
 export const searchEntityRefTypes = [

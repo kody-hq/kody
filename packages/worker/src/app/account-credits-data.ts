@@ -1,9 +1,9 @@
 import { utcMonthKey } from '@kody-internal/shared/date-keys.ts'
-import {
-	type AccountCreditsDebitMeter,
-	type AccountCreditsLimit,
-	type AccountUsageComputeOverage,
-	type AccountUsageCredits,
+import type {
+	AccountCreditsDebitMeter,
+	AccountCreditsLimit,
+	AccountUsageComputeOverage,
+	AccountUsageCredits,
 } from '#universal/loader-data.ts'
 import {
 	creditAutoRefillMinThresholdCents,
@@ -14,7 +14,7 @@ import {
 	creditTopUpPackCents,
 } from '#universal/credits.ts'
 import { isCustomerFacingComputeMeter } from '#universal/compute-overage.ts'
-import { type CreditsAlarmAutoRefill } from '#universal/usage-presentation.ts'
+import type { CreditsAlarmAutoRefill } from '#universal/usage-presentation.ts'
 import {
 	creditsUnlockedResources,
 	entitlementResourceLabels,

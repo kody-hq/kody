@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { maxConcurrentRuns } from '../src/execution-context/commands.ts'
 import { createPackageGraphCache } from '../src/execution-context/package-graph-cache.ts'
-import { type LocalPackageGraph } from '../src/local-package-graph.ts'
+import type { LocalPackageGraph } from '../src/local-package-graph.ts'
 
 const graph = (tag: string) =>
 	({

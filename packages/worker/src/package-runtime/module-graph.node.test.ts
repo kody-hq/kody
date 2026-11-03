@@ -11,7 +11,7 @@ import {
 	createLoadedPackageSource,
 	type RuntimeModule,
 } from '#worker/test-support/module-graph.ts'
-import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 
 vi.mock('#worker/worker-bundler-modules.ts', () => ({
 	importWorkerBundler: async () => ({

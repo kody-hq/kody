@@ -6,33 +6,30 @@
  * `apply`, which is the one step that reads credential material. The door
  * writes the audit row for every outcome from the resolver's audit subject.
  */
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
-import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import {
 	AuthorizationError,
 	authorize,
 } from '#worker/authorization/authorize.ts'
-import { type IntegrationTokenRefreshResult } from '#worker/integrations/token-refresh.ts'
-import { type ResolvedProviderSecret } from '#mcp/secrets/secret-providers/types.ts'
-import { type ResolvedSecret } from '#mcp/secrets/service.ts'
-import { type SecretScope } from '#mcp/secrets/types.ts'
-import { type StorageContext } from '#mcp/storage.ts'
-import { type CredentialAuditSubject } from './credential-resolution-audit.ts'
+import type { IntegrationTokenRefreshResult } from '#worker/integrations/token-refresh.ts'
+import type { ResolvedProviderSecret } from '#mcp/secrets/secret-providers/types.ts'
+import type { ResolvedSecret } from '#mcp/secrets/service.ts'
+import type { SecretScope } from '#mcp/secrets/types.ts'
+import type { StorageContext } from '#mcp/storage.ts'
+import type { CredentialAuditSubject } from './credential-resolution-audit.ts'
 import {
 	credentialResource,
 	missingCredentialResource,
 } from './credential-ids.ts'
-import { type CredentialFillSite } from './fill-placement.ts'
-import { type PackageStamp } from './package-stamp.ts'
-import { type ResolvedLoginSession } from './login-resolver.ts'
-import {
-	type SigningOperation,
-	type SigningResult,
-} from './signing-resolver.ts'
-import { type ResolvedCredentialUrl } from './url-resolver.ts'
+import type { CredentialFillSite } from './fill-placement.ts'
+import type { PackageStamp } from './package-stamp.ts'
+import type { ResolvedLoginSession } from './login-resolver.ts'
+import type { SigningOperation, SigningResult } from './signing-resolver.ts'
+import type { ResolvedCredentialUrl } from './url-resolver.ts'
 
 /** Where a scoped client places a value on one request. */
 export type ClientPlacement =

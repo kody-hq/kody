@@ -1,14 +1,14 @@
 /** @jsxImportSource @emotion/react */
 import { continueMcpAuthorization } from '#start/server/account-mutations'
-import { type McpServerAuthorizeLoaderData } from '#universal/loader-data.ts'
+import type { McpServerAuthorizeLoaderData } from '#universal/loader-data.ts'
 import {
 	getGhostButtonCss,
 	getPillButtonCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, typography } from '#universal/styles/tokens.ts'
-import { type McpOAuthClientMode } from '@kody-internal/shared/mcp-servers.ts'
+import type { McpOAuthClientMode } from '@kody-internal/shared/mcp-servers.ts'
 import { useMutation } from '@tanstack/react-query'
-import { type FormEvent } from 'react'
+import type { FormEvent } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import {
 	accountActionsCss,

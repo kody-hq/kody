@@ -4,7 +4,7 @@ import {
 	personIdFromStored,
 	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { expect, test, vi } from 'vitest'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { listPackagesCapability } from '#mcp/capabilities/packages/list-packages.ts'
@@ -23,7 +23,7 @@ import { insertSavedPackage } from '#worker/package-registry/repo.ts'
 import { insertEntitySource } from '#worker/repo/entity-sources.ts'
 import { insertRepoSession } from '#worker/repo/repo-sessions.ts'
 import { insertUserRepo } from '#worker/repo/user-repos.ts'
-import { type RepoSessionInfoResult } from '#worker/repo/types.ts'
+import type { RepoSessionInfoResult } from '#worker/repo/types.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createTestOrgAuditWriter } from '#worker/test-support/create-audit-db.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'

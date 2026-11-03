@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
 
 export const storageIdSchema = z.object({

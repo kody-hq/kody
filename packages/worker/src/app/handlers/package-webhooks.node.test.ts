@@ -11,9 +11,9 @@ import {
 import { logAuditEventSpy } from '#worker/test-support/audit-log-spy.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
-import {
-	type PackageWebhooksActionPayload,
-	type PackageWebhooksLoaderData,
+import type {
+	PackageWebhooksActionPayload,
+	PackageWebhooksLoaderData,
 } from '#universal/loader-data.ts'
 import { sessionRequestContext } from '#worker/test-support/request-context.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'

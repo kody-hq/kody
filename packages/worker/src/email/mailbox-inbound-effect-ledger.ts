@@ -7,7 +7,7 @@
  * `mailbox-inbound-ledger.ts`.
  */
 
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { assertMailboxNonEmptyString } from './mailbox-types.ts'
 import { mapMailboxDeliveryEventRow } from './mailbox-mappers.ts'
 import {

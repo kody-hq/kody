@@ -7,7 +7,7 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { createOrganization } from '#worker/orgs/create-organization.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'

@@ -1,5 +1,5 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type WebhookExportParams } from './types.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { WebhookExportParams } from './types.ts'
 
 // Cloudflare Queues caps a message (body + metadata) at 128,000 bytes. Keep
 // enough headroom for transport metadata and structured-clone framing.

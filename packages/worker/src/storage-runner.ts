@@ -1,6 +1,6 @@
 import { getSecretAuthorityScope } from '#mcp/secrets/secret-authority.ts'
 import * as Sentry from '@sentry/cloudflare'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { DurableObject } from 'cloudflare:workers'
 import { getRecoveryBookmark, restoreToBookmark } from '#worker/dr/do-pitr.ts'
 import { buildSentryOptions } from '#worker/sentry-options.ts'

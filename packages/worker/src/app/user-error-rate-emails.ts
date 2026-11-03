@@ -11,7 +11,7 @@ import { routes } from '#universal/routes.ts'
 import { observeOnlyUsageEventTypes } from '#universal/usage-event-types.ts'
 import { getSavedPackageByIdInAnyOrg } from '#worker/package-registry/repo.ts'
 import { listRunRecords } from '#worker/run-records/service.ts'
-import { type RunRecord } from '#worker/run-records/types.ts'
+import type { RunRecord } from '#worker/run-records/types.ts'
 import { personalOrgIdSql } from '#worker/orgs/personal-org-sql.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 

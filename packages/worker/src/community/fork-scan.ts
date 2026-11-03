@@ -1,5 +1,5 @@
 import { listKodyPackageDependencyNames } from '#worker/package-registry/types.ts'
-import { type CrossScopeReference } from './types.ts'
+import type { CrossScopeReference } from './types.ts'
 
 const kodyImportPattern = /kody:@([a-z0-9][a-z0-9._-]*)\//g
 const scopedPackageNamePattern = /^@([a-z0-9][a-z0-9._-]*)\//

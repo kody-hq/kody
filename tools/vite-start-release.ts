@@ -1,6 +1,6 @@
 import { mkdir, readdir, rename } from 'node:fs/promises'
 import path from 'node:path'
-import { type Plugin } from 'vite'
+import type { Plugin } from 'vite'
 
 /** A release namespace is an immutable full Git object ID. */
 export function startReleaseBase(release: string | undefined): string {

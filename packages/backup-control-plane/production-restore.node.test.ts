@@ -22,7 +22,7 @@ import {
 	bindSourceDatabase,
 	objectKeyForBookmark,
 } from './backup-policy.ts'
-import { type BackupEnvironment } from './backup-types.ts'
+import type { BackupEnvironment } from './backup-types.ts'
 import { d1ImportForeignKeysOffPrefix } from './d1-import-api.ts'
 import { signBackupFullManifest } from './full-manifest-signing.ts'
 import { putImmutableManifest } from './immutable-storage.ts'

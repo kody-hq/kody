@@ -14,9 +14,9 @@ import type * as EntitySources from './entity-sources.ts'
 import type * as ExternalPublishClone from './external-publish-clone.ts'
 import type * as RepoSessions from './repo-sessions.ts'
 import type * as PublishedRuntimeArtifacts from '#worker/package-runtime/published-runtime-artifacts.ts'
-import {
-	type PublishedSourceManifestSnapshot,
-	type PublishedSourceSnapshot,
+import type {
+	PublishedSourceManifestSnapshot,
+	PublishedSourceSnapshot,
 } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import type * as PublishedBundleArtifactsModule from '#worker/package-runtime/published-bundle-artifacts.ts'
 import type * as SavedPackageRepo from '#worker/package-registry/repo.ts'

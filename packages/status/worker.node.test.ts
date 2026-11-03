@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { statusFaviconPath } from './favicon.ts'
-import { type StatusWorkerEnv } from './status-store.ts'
+import type { StatusWorkerEnv } from './status-store.ts'
 import worker from './worker.ts'
 
 type StatusFetch = NonNullable<ExportedHandler<StatusWorkerEnv>['fetch']>

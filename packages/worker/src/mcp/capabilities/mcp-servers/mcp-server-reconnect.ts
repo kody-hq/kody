@@ -4,7 +4,7 @@ import { defineDomainCapability } from '#mcp/capabilities/define-domain-capabili
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
 import { authorizeMcpServer } from '#mcp/capabilities/integrations/authorize-integration.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { createMcpClientHubClient } from '#worker/mcp-client/hub-client.ts'
 import { mcpOAuthAttemptActorFromIds } from '#worker/mcp-client/oauth-attempt.ts'
 import { buildMcpServerAuthorizeUrl } from '#worker/mcp-client/authorize-consent.ts'

@@ -9,7 +9,7 @@ import {
 	type FollowEvent,
 	type FollowRecentUpdate,
 } from '#universal/follows.ts'
-import { type FollowRecentUpdateRecord } from './types.ts'
+import type { FollowRecentUpdateRecord } from './types.ts'
 
 /**
  * Follow events no package subscription in the org handles with an `on`

@@ -31,7 +31,7 @@ import {
 	topicForArtifactsRepoEvent,
 } from './artifacts-events.ts'
 import { getEntitySourceByRepoId } from './entity-sources.ts'
-import { type EntitySourceRow } from './types.ts'
+import type { EntitySourceRow } from './types.ts'
 import { getUserRepoById } from './user-repos.ts'
 
 export type RepoSubscriptionEntity = {

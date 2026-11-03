@@ -1,9 +1,9 @@
 import { afterEach, expect, test, vi } from 'vitest'
-import {
-	type CredentialRef,
-	type PackageCredentialNeedView,
-	type PackageCredentialsView,
-	type PackageTriggerView,
+import type {
+	CredentialRef,
+	PackageCredentialNeedView,
+	PackageCredentialsView,
+	PackageTriggerView,
 } from '#universal/credential-contracts.ts'
 import {
 	canEditTrigger,

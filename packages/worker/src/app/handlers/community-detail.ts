@@ -1,7 +1,7 @@
 import { personalOrgId } from '@kody-internal/shared/owner-person-ids.ts'
 import { z } from 'zod'
 import { toPublicCommunityListing } from '#app/community-public.ts'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { operationResult } from '../operation-result.ts'
 import { bytesToBase64 } from '@kody-internal/shared/base64.ts'
 import { CommunityActionError } from '#worker/community/errors.ts'
@@ -14,7 +14,7 @@ import {
 	getCommunityListingWithAggregates,
 	reportCommunityListing,
 } from '#worker/community/service.ts'
-import { type CommunityListingRecord } from '#worker/community/types.ts'
+import type { CommunityListingRecord } from '#worker/community/types.ts'
 import { parseOgTheme } from '#worker/og/palette.ts'
 
 const reportReasonSchema = z

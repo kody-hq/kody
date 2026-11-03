@@ -1,4 +1,4 @@
-import { type AppEnv } from './src/env-schema.ts'
+import type { AppEnv } from './src/env-schema.ts'
 
 declare global {
 	interface Env extends AppEnv {}

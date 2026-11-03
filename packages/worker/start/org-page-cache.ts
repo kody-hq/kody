@@ -1,5 +1,5 @@
 import { scopedPageResource, type PageOrgScope } from './page-query-scope.ts'
-import { type QueryClient } from '@tanstack/react-query'
+import type { QueryClient } from '@tanstack/react-query'
 
 /** A mutation carries its initiating workspace even after navigation. */
 export const orgPageFilters = scopedPageResource

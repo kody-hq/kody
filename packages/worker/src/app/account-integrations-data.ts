@@ -1,17 +1,17 @@
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
-import {
-	type AccountIntegrationListItem,
-	type AccountOauthAppListItem,
-	type ConnectOauthExistingConnection,
+import type {
+	AccountIntegrationListItem,
+	AccountOauthAppListItem,
+	ConnectOauthExistingConnection,
 } from '#universal/loader-data.ts'
-import { type PlatformIntegrationCatalogItem } from '#universal/oauth-connect.ts'
+import type { PlatformIntegrationCatalogItem } from '#universal/oauth-connect.ts'
 import { loadPlatformIntegrationCatalog } from '#app/platform-integration-catalog.ts'
 import {
 	normalizeProviderKey,
 	safeParseHost,
 } from '@kody-internal/shared/url-hosts.ts'
 import { defaultScopesForAuthorizeHost } from '#universal/oauth-authorize-scopes.ts'
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { toOauthAppPublic } from '#mcp/capabilities/integrations/oauth-app-shared.ts'
 import { canonicalIntegrationName } from '#mcp/capabilities/integrations/integration-shared.ts'
 import {
@@ -34,7 +34,7 @@ import {
 	attachCatalogLogoPath,
 	listPlatformProviderMarks,
 } from '#worker/integrations/provider-marks.ts'
-import { type JoinedIntegration } from '#worker/integrations/types.ts'
+import type { JoinedIntegration } from '#worker/integrations/types.ts'
 import { getOauthAppClientSecretCiphertext } from '#worker/integrations/repo.ts'
 import { listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'
 

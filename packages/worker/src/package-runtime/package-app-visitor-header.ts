@@ -1,6 +1,6 @@
-import {
-	type RuntimePackageAppIdentity,
-	type RuntimePackageAppVisitor,
+import type {
+	RuntimePackageAppIdentity,
+	RuntimePackageAppVisitor,
 } from '@kody-internal/shared/runtime-worker.ts'
 
 /**

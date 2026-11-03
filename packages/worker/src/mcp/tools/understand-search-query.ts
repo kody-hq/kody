@@ -1,4 +1,4 @@
-import { type SearchEntityType } from './search-format-types.ts'
+import type { SearchEntityType } from './search-format-types.ts'
 
 const searchTokenPattern = /[a-z0-9]+/g
 const trivialSearchStopwords = new Set([

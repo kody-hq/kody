@@ -4,11 +4,11 @@
  * to. Team-org `mcp_memories` rows are legacy: readable until cleanup, not
  * writable.
  */
-import {
-	type OwnerId,
-	type PersonId,
+import type {
+	OwnerId,
+	PersonId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'

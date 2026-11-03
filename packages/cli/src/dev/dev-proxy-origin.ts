@@ -6,7 +6,7 @@
  * port. Forwarding headers are overwritten the same way.
  */
 
-import { type IncomingHttpHeaders } from 'node:http'
+import type { IncomingHttpHeaders } from 'node:http'
 import { runSecretHeader } from '../local-runtime-source.js'
 import { devRequestIdHeader } from './dev-protocol.js'
 

@@ -4,7 +4,7 @@
  * CapabilityProxy session for CLI `--local`) and return structured errors as
  * values, so the sandbox can rebuild them with `code` and `retryWith`.
  */
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import {
 	callToolWithCredentialClient,
 	openCredentialClient,
@@ -17,9 +17,9 @@ import {
 	type CredentialClientContext,
 } from '#worker/credentials/credential-client.ts'
 import { credentialClientToolNames } from './execute-modules/credential-client-source.ts'
-import {
-	type AdditionalKodyTools,
-	type CredentialClientToolOptions,
+import type {
+	AdditionalKodyTools,
+	CredentialClientToolOptions,
 } from './runtime-helper-manifest.ts'
 
 function readArgs(args: unknown): Record<string, unknown> {

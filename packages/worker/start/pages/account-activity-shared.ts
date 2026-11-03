@@ -1,13 +1,13 @@
 import { createListDetailLinks } from '#client/list-detail-route.ts'
-import {
-	type AccountActivityStatusFilter,
-	type AccountActivitySurfaceFilter,
-	type AccountActivityTriageFilter,
-	type AccountActivityViewFilter,
+import type {
+	AccountActivityStatusFilter,
+	AccountActivitySurfaceFilter,
+	AccountActivityTriageFilter,
+	AccountActivityViewFilter,
 } from '#universal/account-activity-filters.ts'
-import {
-	type AccountActivityRunDetail,
-	type AccountActivityRunListItem,
+import type {
+	AccountActivityRunDetail,
+	AccountActivityRunListItem,
 } from '#universal/loader-data.ts'
 import { colors } from '#universal/styles/tokens.ts'
 

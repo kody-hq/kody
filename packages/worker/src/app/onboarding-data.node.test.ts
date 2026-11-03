@@ -5,9 +5,9 @@ import {
 	loadOnboardingData,
 	loadPublicOnboardingData,
 } from '#app/onboarding-data.ts'
-import {
-	type OAuthGrantListHelpers,
-	type OAuthGrantListItem,
+import type {
+	OAuthGrantListHelpers,
+	OAuthGrantListItem,
 } from '#worker/oauth-grants.ts'
 
 type OnboardingInput = Parameters<typeof loadOnboardingData>[0]

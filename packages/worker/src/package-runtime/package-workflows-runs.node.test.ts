@@ -1,5 +1,5 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type WorkflowEvent, type WorkflowStep } from 'cloudflare:workers'
+import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 import { expect, test, vi } from 'vitest'
 import { sessionRequestLineage } from '#worker/test-support/request-context.ts'
 import type * as PackageInvocationsService from '#worker/package-invocations/service.ts'
@@ -9,7 +9,7 @@ import { isEntitlementLimitError } from '#worker/entitlements/errors.ts'
 import { planLimits } from '#universal/plans.ts'
 import { activeWorkflowStatusValues } from '#worker/package-runtime/workflow-statuses.ts'
 import { creatingWorkflowProjectionStatus } from '#worker/run-records/workflow-projection.ts'
-import { type WorkflowProjectionUpsertInput } from '#worker/run-records/service.ts'
+import type { WorkflowProjectionUpsertInput } from '#worker/run-records/service.ts'
 import {
 	DynamicCallableWorkflowBase,
 	cancelWorkflowRunForUser,

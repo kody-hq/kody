@@ -1,6 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import { type CommunityProfileRecord } from '#worker/community/types.ts'
+import type { CommunityProfileRecord } from '#worker/community/types.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import { createProfileOgImageHandler } from './profile.ts'
 

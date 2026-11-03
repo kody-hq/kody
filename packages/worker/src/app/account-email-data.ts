@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { authorize } from '#worker/authorization/authorize.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import {
@@ -6,7 +6,7 @@ import {
 	ownerIdFromCaller,
 } from '#worker/request-context/owner-id.ts'
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	emailVerificationRequiredMessage,
 	isAccountEmailVerified,
@@ -28,13 +28,13 @@ import {
 	listEmailInboxAddressesForUser,
 	listEmailInboxesForUser,
 } from '#worker/email/repo.ts'
-import {
-	type EmailClassification,
-	type EmailDeliveryStatus,
-	type EmailDirection,
-	type EmailMessageRecord,
-	type EmailMessageView,
-	type EmailProcessingStatus,
+import type {
+	EmailClassification,
+	EmailDeliveryStatus,
+	EmailDirection,
+	EmailMessageRecord,
+	EmailMessageView,
+	EmailProcessingStatus,
 } from '#worker/email/types.ts'
 import { readEmailMessageViewParam } from '#universal/email-message-view.ts'
 import { orgResourcePath } from '#universal/org-pages.ts'
