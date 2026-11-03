@@ -132,11 +132,11 @@ install software, read, change, or delete your files, and use your network.
 Commands run as the user who runs `kody daemon` (or the Kody desktop app), never
 as root; `sudo` behaves like it does in your own terminal (it prompts and fails,
 because nobody is there to type a password). Only you get the command grant on
-your own machine. People you share the machine with get it only if you share it
-with `commands: true`. Every command is recorded in the machine's audit log with
-the command, folder, exit code, and who ran it. Environment variable values are
-never recorded, only their names, so pass secrets in `env`, never in the command
-text (the command text is recorded as written).
+your own machine. People you share the machine with never get it, and their runs
+get no host folders either. Every command is recorded in the machine's audit log
+with the command, folder, exit code, and who ran it. Environment variable values
+are never recorded, only their names, so pass secrets in `env`, never in the
+command text (the command text is recorded as written).
 
 **Turn them on (on the machine itself).**
 
