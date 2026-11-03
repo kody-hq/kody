@@ -215,7 +215,10 @@ function isWranglerCrashAfterSubdomainRace(output: string) {
  * version id (code 100146); the same id deploys on a later attempt.
  */
 function isRetryableVersionNotFoundRace(output: string) {
-	return /\[code:\s*100146\]/.test(output)
+	return (
+		/\[code:\s*100146\]/.test(output) &&
+		!isPermanentCloudflareAuthFailure(output)
+	)
 }
 
 export function isRetryableWranglerDeployFailure(output: string) {

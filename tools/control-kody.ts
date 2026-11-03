@@ -551,10 +551,11 @@ function parseSharedFlags(
 				if (
 					options.command !== 'execute' &&
 					options.command !== 'search' &&
+					options.command !== 'api' &&
 					options.command !== 'package-create'
 				) {
 					throw new ControlKodyError(
-						'--org is only valid for execute, search, and package-create',
+						'--org is only valid for execute, search, api, and package-create',
 					)
 				}
 				options.orgSlug = parseOrgSlug(requireValue(argv[index + 1], '--org'))

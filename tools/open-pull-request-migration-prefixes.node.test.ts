@@ -254,7 +254,7 @@ test('a pull request too large to list is skipped by itself and the rest are sti
 			[7],
 		),
 	).toBe(
-		'Open pull request migration prefix scan skipped #7: more than 1000 changed files; other open pull requests were checked',
+		'Open pull request migration prefix scan skipped #7 (more than 1000 changed files).',
 	)
 })
 

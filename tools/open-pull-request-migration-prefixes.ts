@@ -327,7 +327,7 @@ export function formatOversizedPullRequestsWarning(
 	pullNumbers: ReadonlyArray<number> = [],
 ) {
 	if (pullNumbers.length === 0) return null
-	return `${label} scan skipped ${pullNumbers.map((number) => `#${String(number)}`).join(', ')}: more than ${String(pullFilesMaxPages * pullFilesPageSize)} changed files; other open pull requests were checked`
+	return `${label} scan skipped ${pullNumbers.map((number) => `#${String(number)}`).join(', ')} (more than ${String(pullFilesMaxPages * pullFilesPageSize)} changed files).`
 }
 
 async function listOpenPullRequests(input: {
@@ -374,7 +374,8 @@ async function listClaimedFilenames(input: {
 	signal: AbortSignal
 }) {
 	const filenames: Array<string> = []
-	for (let page = 1; page <= pullFilesMaxPages; page += 1) {
+	// One page past the cap tells "exactly at the cap" apart from "over it".
+	for (let page = 1; page <= pullFilesMaxPages + 1; page += 1) {
 		const url = new URL(
 			`https://api.github.com/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.repo)}/pulls/${String(input.pullNumber)}/files`,
 		)
@@ -387,6 +388,7 @@ async function listClaimedFilenames(input: {
 			signal: input.signal,
 		})
 		const files = parsePullFiles(payload, input.pullNumber)
+		if (page > pullFilesMaxPages && files.length > 0) return null
 		for (const file of files) {
 			const basename = basenameInDirectory(file.filename, input.directory)
 			if (
