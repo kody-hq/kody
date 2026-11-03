@@ -983,17 +983,19 @@ matching delete action on `/admin/system-email`), which removes the message row,
 attachments, delivery-event rows, blobs, and an empty parent thread — never
 user-owned mailbox content. Admins can also **send** from those reserved
 addresses with `adminSystemEmailSend` (also audit logged, with redacted
-recipients): that channel speaks for the platform, so it uses no user mailbox,
-sender identity, or plan entitlement, and it never reads or writes user-owned
-mail. Stored system mail also fans out metadata (never bodies or attachment
-bytes) on the `email.system-message.received` package subscription topic, and
-only to packages saved by users who hold the admin role at dispatch time — a
-non-admin subscriber never receives the event, and revoking admin stops delivery
-immediately. Successful reserved-sender sends fan `email.system-message.sent`
-the same admin-only way. That outbound topic includes the sent correspondence
-(recipients, subject, and bodies) because those sends are not written to the
-dedicated inbound graph (the graph refuses provider-message-id rows). It does
-not include user-owned mailbox content.
+recipients) and list or clear hard-bounce suppressions of system mail with
+`adminEmailSuppressionList` / `adminEmailSuppressionClear` (clears are audit
+logged with redacted recipients): that channel speaks for the platform, so it
+uses no user mailbox, sender identity, or plan entitlement, and it never reads
+or writes user-owned mail. Stored system mail also fans out metadata (never
+bodies or attachment bytes) on the `email.system-message.received` package
+subscription topic, and only to packages saved by users who hold the admin role
+at dispatch time — a non-admin subscriber never receives the event, and revoking
+admin stops delivery immediately. Successful reserved-sender sends fan
+`email.system-message.sent` the same admin-only way. That outbound topic
+includes the sent correspondence (recipients, subject, and bodies) because those
+sends are not written to the dedicated inbound graph (the graph refuses
+provider-message-id rows). It does not include user-owned mailbox content.
 
 This boundary is enforced structurally:
 

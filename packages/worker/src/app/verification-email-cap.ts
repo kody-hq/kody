@@ -10,7 +10,7 @@ import { parseAccountEmail } from '#worker/identity/account-email-policy.ts'
 import {
 	loadVerificationRecipientHardBounce,
 	verificationHardBounceMessage,
-} from '#worker/email/verification-recipient-suppression.ts'
+} from '#worker/email/recipient-suppression.ts'
 
 export const verificationEmailCapMax = 5
 const verificationEmailCapWindowSeconds = 24 * 60 * 60

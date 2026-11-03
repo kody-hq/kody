@@ -86,9 +86,13 @@ function createEnv(
 						options.queries?.push(query)
 						if (
 							options.hardBounce &&
-							query.includes('email_verification_hard_bounces')
+							query.includes('email_recipient_suppressions')
 						) {
-							return { recipient: args[0], status: 'bounced' }
+							return {
+								recipient: args[0],
+								verification_suppressed_at: '2026-01-01T00:00:00.000Z',
+								last_status: 'bounced',
+							}
 						}
 						return null
 					},

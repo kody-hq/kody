@@ -20,9 +20,16 @@ import {
 	transactionalDeliveryCursorMatches,
 } from './verification-delivery.ts'
 import {
-	clearVerificationRecipientHardBounce,
+	clearRecipientSuppression,
 	recordVerificationRecipientHardBounce,
-} from './verification-recipient-suppression.ts'
+} from './recipient-suppression.ts'
+
+export type DeliveryCursorGuard = {
+	/** The cursor still names this event. */
+	ownsEvent: () => Promise<boolean>
+	/** A `delivered` event holds the cursor. */
+	deliveredWon: () => Promise<boolean>
+}
 
 export const deliverabilityEffectsClaimMs = 2 * 60 * 1000
 
@@ -286,18 +293,34 @@ export async function applyDeliverabilitySideEffects(input: {
 		status: string
 		at: string
 	}
+	/** Same contract as `confirmCursor` for a cursor stored elsewhere. */
+	cursorGuard?: DeliveryCursorGuard
 	now?: Date
 	fetchImpl?: typeof fetch
 }): Promise<void> {
 	const now = input.now ?? new Date()
+	const confirmCursor = input.confirmCursor
+	const guard: DeliveryCursorGuard | undefined =
+		input.cursorGuard ??
+		(confirmCursor
+			? {
+					ownsEvent: () =>
+						transactionalDeliveryCursorMatches({
+							db: input.db,
+							providerMessageId: confirmCursor.providerMessageId,
+							status: confirmCursor.status,
+							at: confirmCursor.at,
+						}),
+					deliveredWon: () =>
+						transactionalDeliveryCursorIsDelivered({
+							db: input.db,
+							providerMessageId: confirmCursor.providerMessageId,
+						}),
+				}
+			: undefined)
 	const cursorStillOwnsEvent = async () => {
-		if (!input.confirmCursor) return true
-		return await transactionalDeliveryCursorMatches({
-			db: input.db,
-			providerMessageId: input.confirmCursor.providerMessageId,
-			status: input.confirmCursor.status,
-			at: input.confirmCursor.at,
-		})
+		if (!guard) return true
+		return await guard.ownsEvent()
 	}
 	try {
 		if (!(await cursorStillOwnsEvent())) return
@@ -313,7 +336,7 @@ export async function applyDeliverabilitySideEffects(input: {
 				now,
 				fetchImpl: input.fetchImpl,
 			})
-			await clearVerificationRecipientHardBounce({
+			await clearRecipientSuppression({
 				db: input.db,
 				recipient: input.recipient,
 			})
@@ -353,12 +376,9 @@ export async function applyDeliverabilitySideEffects(input: {
 		// writing failure holds. Only undo when delivered won — a newer
 		// bounce/failed claim must keep its own holds.
 		if (
-			input.confirmCursor &&
+			guard &&
 			!(await cursorStillOwnsEvent()) &&
-			(await transactionalDeliveryCursorIsDelivered({
-				db: input.db,
-				providerMessageId: input.confirmCursor.providerMessageId,
-			}))
+			(await guard.deliveredWon())
 		) {
 			await clearEmailRecipientCooldown({
 				db: input.db,
@@ -370,7 +390,7 @@ export async function applyDeliverabilitySideEffects(input: {
 				now,
 				fetchImpl: input.fetchImpl,
 			})
-			await clearVerificationRecipientHardBounce({
+			await clearRecipientSuppression({
 				db: input.db,
 				recipient: input.recipient,
 			})

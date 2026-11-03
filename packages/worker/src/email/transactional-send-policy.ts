@@ -18,7 +18,11 @@ import {
 	emailProviderHoldMessage,
 	findActiveRejectingProviderForRecipient,
 } from './rejecting-providers.ts'
-import { loadVerificationRecipientHardBounce } from './verification-recipient-suppression.ts'
+import {
+	loadRecipientSuppression,
+	recipientSuppressedMessage,
+} from './recipient-suppression.ts'
+import { recordSystemEmailSends } from './system-email-sends.ts'
 import {
 	transactionalPasswordResetConfirmedKind,
 	transactionalPasswordResetKind,
@@ -47,6 +51,7 @@ export const essentialTransactionalEmailKinds = [
 	'org_budget_hit',
 	'platform_feedback_acknowledgement',
 	'platform_feedback_outcome',
+	'package_owner_notice',
 ] as const
 
 export const holdableTransactionalEmailKinds = [
@@ -83,11 +88,17 @@ export function categoryForTransactionalEmailKind(
 	return 'holdable'
 }
 
+export type TransactionalSendHoldCode =
+	| 'recipient_cooldown'
+	| 'provider_hold'
+	| 'recipient_hard_bounce'
+	| 'recipient_suppressed'
+
 export type TransactionalSendGateResult =
 	| { allowed: true }
 	| {
 			allowed: false
-			code: 'recipient_cooldown' | 'provider_hold' | 'recipient_hard_bounce'
+			code: TransactionalSendHoldCode
 			message: string
 			providerKey?: string
 			cooldownUntil?: string
@@ -111,18 +122,28 @@ export async function gateTransactionalSend(input: {
 	// Fail open when policy tables are missing or the lookup errors: a broken
 	// gate must not take down essential or holdable transactional mail.
 	try {
-		if (isPasswordResetKind(input.kind)) {
-			const hardBounce = await loadVerificationRecipientHardBounce({
-				db: input.db,
-				recipient: input.recipient,
-			})
-			if (hardBounce) {
-				return {
-					allowed: false,
-					code: 'recipient_hard_bounce',
-					message:
-						'Password reset email was not sent because this address previously hard-bounced.',
-				}
+		const suppression = await loadRecipientSuppression({
+			db: input.db,
+			recipient: input.recipient,
+		})
+		if (suppression?.scope === 'all') {
+			return {
+				allowed: false,
+				code: 'recipient_suppressed',
+				message: recipientSuppressedMessage,
+			}
+		}
+		// Signup verification reads the same row through the verification
+		// send block (verification-email-cap.ts), which returns its own 409.
+		if (
+			suppression?.scope === 'verification' &&
+			isPasswordResetKind(input.kind)
+		) {
+			return {
+				allowed: false,
+				code: 'recipient_hard_bounce',
+				message:
+					'Password reset email was not sent because this address previously hard-bounced.',
 			}
 		}
 
@@ -188,14 +209,15 @@ export type GatedTransactionalSendResult =
 			skipped: true
 			hold: true
 			error: string
-			code: 'recipient_cooldown' | 'provider_hold' | 'recipient_hard_bounce'
+			code: TransactionalSendHoldCode
 			providerKey?: string
 			cooldownUntil?: string
 	  }
 
 /**
- * Run the transactional send gate, then Cloudflare Email Sending. Hold and
- * cooldown outcomes look like a skipped send so callers that already treat
+ * Run the transactional send gate for every recipient, then Cloudflare Email
+ * Sending. One held recipient holds the whole message. Hold and cooldown
+ * outcomes look like a skipped send so callers that already treat
  * `ok: false` as non-throwing keep working.
  */
 export async function sendGatedTransactionalEmail(input: {
@@ -208,25 +230,26 @@ export async function sendGatedTransactionalEmail(input: {
 	now?: Date
 	fetchImpl?: typeof fetch
 }): Promise<GatedTransactionalSendResult> {
-	const recipient = Array.isArray(input.message.to)
-		? input.message.to[0]
-		: input.message.to
-	if (!recipient) {
+	const recipients = (
+		Array.isArray(input.message.to) ? input.message.to : [input.message.to]
+	).filter(Boolean)
+	if (recipients.length === 0) {
 		return {
 			ok: false,
 			error: 'Transactional email requires a recipient.',
 		}
 	}
 
-	const gate = await gateTransactionalSend({
-		db: input.db,
-		recipient,
-		category: input.category,
-		kind: input.kind,
-		now: input.now,
-		fetchImpl: input.fetchImpl,
-	})
-	if (!gate.allowed) {
+	for (const recipient of recipients) {
+		const gate = await gateTransactionalSend({
+			db: input.db,
+			recipient,
+			category: input.category,
+			kind: input.kind,
+			now: input.now,
+			fetchImpl: input.fetchImpl,
+		})
+		if (gate.allowed) continue
 		console.info('transactional-email-held', {
 			kind: input.kind,
 			code: gate.code,
@@ -243,7 +266,18 @@ export async function sendGatedTransactionalEmail(input: {
 		}
 	}
 
-	return await sendCloudflareEmail(input.config, input.message)
+	const result = await sendCloudflareEmail(input.config, input.message)
+	if (result.ok) {
+		await recordSystemEmailSends({
+			db: input.db,
+			providerMessageId: result.messageId,
+			recipients,
+			sender: input.message.from,
+			kind: input.kind,
+			now: input.now,
+		})
+	}
+	return result
 }
 
 export { emailProviderHoldMessage, emailRecipientCooldownBlockedMessage }

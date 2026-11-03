@@ -21,9 +21,10 @@ authorization. Open the verification link sent at signup, or sign in and use
 authorize page. Resend is limited to 3 requests every 15 minutes for the account
 and 5 verification emails every 24 hours for that address. Password resets do
 not count toward that cap. A hard bounce stops further verification mail and
-password-reset mail to the address; use a different address or contact support.
-A password-reset request still shows the same generic success message. Keep an
-open `/oauth/authorize` tab so you can continue the same OAuth request after
+password-reset mail to the address, and repeated hard bounces stop all Kody
+email to it; use a different address or contact support. A password-reset
+request still shows the same generic success message. Keep an open
+`/oauth/authorize` tab so you can continue the same OAuth request after
 verifying in another tab, then reconnect or approve again.
 
 ## Codex keeps asking for `codex mcp login kody`

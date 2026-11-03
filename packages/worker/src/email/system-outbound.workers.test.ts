@@ -233,3 +233,56 @@ test('a failed provider call refunds the daily send budget and the cap blocks fu
 			.first(),
 	).toBeNull()
 })
+
+test('sendSystemEmail records each recipient for delivery reports and refuses suppressed recipients', async () => {
+	await ensureEmailTestSchema(env.APP_DB)
+	const now = new Date('2026-03-06T05:06:07.000Z')
+	let sends = 0
+	using _server = createMswWorkerServer(
+		[
+			http.post(cloudflareEmailApi, () => {
+				sends += 1
+				return HttpResponse.json({
+					success: true,
+					result: { message_id: 'system-message-recorded' },
+				})
+			}),
+		],
+		mswOptions,
+	)
+
+	await send({ to: ['first@example.com', 'Second@Example.com'], now })
+	const { results } = await env.APP_DB.prepare(
+		`SELECT recipient, sender, kind FROM system_email_sends
+		WHERE provider_message_id = 'system-message-recorded'
+		ORDER BY recipient`,
+	).all()
+	expect(results).toEqual([
+		{
+			recipient: 'first@example.com',
+			sender: 'kody@kody.example.com',
+			kind: 'operator',
+		},
+		{
+			recipient: 'second@example.com',
+			sender: 'kody@kody.example.com',
+			kind: 'operator',
+		},
+	])
+
+	await env.APP_DB.prepare(
+		`INSERT INTO email_recipient_suppressions (
+			recipient, hard_bounce_count, suppressed_at, verification_suppressed_at,
+			last_status, last_detail, last_hard_bounce_at, created_at, updated_at
+		) VALUES ('gone@example.com', 2, ?1, NULL, 'bounced', NULL, ?1, ?1, ?1)
+		ON CONFLICT(recipient) DO NOTHING`,
+	)
+		.bind(now.toISOString())
+		.run()
+	const before = await readSendCounter('kody', now)
+	await expect(
+		send({ to: ['ok@example.com', 'gone@example.com'], now }),
+	).rejects.toThrow('gone@example.com: Email was not sent')
+	expect(sends).toBe(1)
+	expect(await readSendCounter('kody', now)).toBe(before)
+})

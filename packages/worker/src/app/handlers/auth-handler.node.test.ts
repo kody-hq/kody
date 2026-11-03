@@ -272,11 +272,15 @@ function createTestDb(
 						all: executeAll,
 						async first() {
 							if (
-								normalizedQuery.includes('from email_verification_hard_bounces')
+								normalizedQuery.includes('from email_recipient_suppressions')
 							) {
 								const recipient = String(params[0] ?? '').toLowerCase()
 								return options.hardBouncedEmail?.toLowerCase() === recipient
-									? { recipient, status: 'bounced' }
+									? {
+											recipient,
+											verification_suppressed_at: '2026-01-01T00:00:00.000Z',
+											last_status: 'bounced',
+										}
 									: null
 							}
 							if (

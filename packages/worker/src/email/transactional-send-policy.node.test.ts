@@ -113,8 +113,12 @@ test('password reset kinds stop on a hard bounce and do not read the verificatio
 				bind() {
 					return {
 						async first() {
-							if (sql.includes('email_verification_hard_bounces')) {
-								return { recipient: 'ada@example.com', status: 'bounced' }
+							if (sql.includes('email_recipient_suppressions')) {
+								return {
+									recipient: 'ada@example.com',
+									verification_suppressed_at: '2026-01-01T00:00:00.000Z',
+									last_status: 'bounced',
+								}
 							}
 							return null
 						},
@@ -164,7 +168,7 @@ test('password reset hard-bounce lookup fails open when the table is missing', a
 				bind() {
 					return {
 						async first() {
-							throw new Error('no such table: email_verification_hard_bounces')
+							throw new Error('no such table: email_recipient_suppressions')
 						},
 					}
 				},

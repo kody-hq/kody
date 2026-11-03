@@ -37,9 +37,15 @@ function applyMigrationFile(db: DatabaseSync, sql: string) {
 	}
 }
 
-export function applyAllMigrations(db: DatabaseSync, migrationsDirectory: URL) {
+/** `before` stops at the first file whose name sorts at or after it. */
+export function applyAllMigrations(
+	db: DatabaseSync,
+	migrationsDirectory: URL,
+	options: { before?: string } = {},
+) {
 	for (const fileName of readdirSync(migrationsDirectory)
 		.filter((file) => file.endsWith('.sql'))
+		.filter((file) => !options.before || file < options.before)
 		.sort()) {
 		applyMigrationFile(
 			db,
