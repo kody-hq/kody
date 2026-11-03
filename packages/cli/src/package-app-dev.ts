@@ -10,7 +10,7 @@
  */
 
 import { randomBytes } from 'node:crypto'
-import { rmSync } from 'node:fs'
+import { rmSync, statSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import {
 	createServer,
@@ -19,7 +19,7 @@ import {
 	type Server,
 	type ServerResponse,
 } from 'node:http'
-import { type AddressInfo } from 'node:net'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, relative, resolve, sep } from 'node:path'
 import {
@@ -117,7 +117,7 @@ import {
 	resolvePackagePath,
 } from './package-manifest.js'
 import { redact } from './redact.js'
-import { type KodyTarget } from './target.js'
+import type { KodyTarget } from './target.js'
 import { ensureWorkerdBinary } from './workerd-binary.js'
 
 export type PackageAppDevOptions = {
@@ -415,6 +415,17 @@ export async function startPackageAppDev(
 	let prebuildSettledAt = 0
 	/** `performance.now()` until which onChange ignores events (failed-prebuild absorb). */
 	let ignoreWatcherUntil = 0
+	/** Files the current build was triggered by (watcher paths). */
+	let currentBuildFiles: Array<string> = []
+	/**
+	 * Trigger files of the last failed prebuild and its wall-clock start. A
+	 * late watcher event for one of them whose mtime predates that start is an
+	 * echo of the edit the failed build already consumed, not a new save.
+	 */
+	let failedPrebuildTrigger: {
+		startedAtMs: number
+		paths: Set<string>
+	} | null = null
 	let prebuildAbort: AbortController | undefined
 	const workerdEnv: NodeJS.ProcessEnv = {
 		...process.env,
@@ -444,6 +455,7 @@ export async function startPackageAppDev(
 
 	async function buildOnce(files: Array<string>): Promise<void> {
 		const started = performance.now()
+		currentBuildFiles = files
 		emit({
 			type: 'rebuild_start',
 			files: files.map((file) => relative(root, file) || file),
@@ -543,7 +555,19 @@ export async function startPackageAppDev(
 
 	let clearWatcherPending: (() => void) | null = null
 
+	function isFailedPrebuildEcho(path: string): boolean {
+		const trigger = failedPrebuildTrigger
+		if (!trigger?.paths.has(path)) return false
+		try {
+			return statSync(path).mtimeMs < trigger.startedAtMs
+		} catch {
+			return false
+		}
+	}
+
 	async function runPrebuildStep(command: string): Promise<void> {
+		const startedAtMs = Date.now()
+		failedPrebuildTrigger = null
 		prebuildRunning = true
 		prebuildAbort = new AbortController()
 		let failed = false
@@ -580,6 +604,10 @@ export async function startPackageAppDev(
 				rebuildAgain = false
 				clearWatcherPending?.()
 				ignoreWatcherUntil = performance.now() + failedPrebuildAbsorbMs
+				failedPrebuildTrigger = {
+					startedAtMs,
+					paths: new Set(currentBuildFiles),
+				}
 			}
 		}
 	}
@@ -1016,6 +1044,9 @@ export async function startPackageAppDev(
 							if (now < ignoreWatcherUntil) {
 								return false
 							}
+							// Late echo of the failed build's own trigger (slow CI
+							// watchers can deliver it after the absorb window).
+							if (isFailedPrebuildEcho(path)) return
 							// Fold mid-build watcher events into the active loop
 							// (including another save of a file already building).
 							// Debouncing them instead schedules a second rebuild

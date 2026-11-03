@@ -26,7 +26,7 @@ import { createDynamicWorkerCompatibilityOptions } from '#worker/dynamic-worker-
 import { PackageSecretMountError } from '#mcp/secrets/package-access.ts'
 import { secretAuthorityArgName } from '#mcp/secrets/secret-authority.ts'
 import * as credentialDoor from '#worker/credentials/resolve-credential.ts'
-import { type JobRecord } from '#worker/jobs/types.ts'
+import type { JobRecord } from '#worker/jobs/types.ts'
 import { createD1JobsStore } from '@kody-internal/shared/jobs/store.ts'
 import {
 	createFakeRunLogNamespace,

@@ -7,7 +7,7 @@ import { safeParseHost } from '@kody-internal/shared/url-hosts.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { normalizeAllowedHosts } from '#mcp/secrets/allowed-hosts.ts'
 import { classifyApprovalHosts } from '#mcp/secrets/approval-host-shape.ts'
-import { type CredentialHostSettings } from '#universal/credentials-list.ts'
+import type { CredentialHostSettings } from '#universal/credentials-list.ts'
 import {
 	type OrgAuditWriter,
 	runAppDbBatchWithOrgAudit,

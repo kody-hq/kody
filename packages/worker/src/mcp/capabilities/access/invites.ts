@@ -3,12 +3,12 @@ import {
 	type GrantPreset,
 	resolveGrantPermissions,
 } from '@kody-internal/shared/grant-presets.ts'
-import {
-	type OrgPermission,
-	type OrgResourceType,
+import type {
+	OrgPermission,
+	OrgResourceType,
 } from '@kody-internal/shared/org-permissions.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { unmappableCredentialGrantWarnings } from '#mcp/capabilities/access/unmappable-credential-warnings.ts'

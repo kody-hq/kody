@@ -1,6 +1,6 @@
 import { createElement } from 'react'
 import { expect, test } from 'vitest'
-import { type ProfilesPageData } from '#universal/profiles.ts'
+import type { ProfilesPageData } from '#universal/profiles.ts'
 import { renderStartPage } from '../test-support/render-start-page.ts'
 import { profilesPageFixture } from '../test-support/profiles-fixtures.ts'
 import { ProfilesRoute } from './profiles.tsx'

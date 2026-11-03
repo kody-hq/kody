@@ -1,6 +1,6 @@
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
-import { type PackageMappingScope } from '#worker/credentials/package-credential-mappings.ts'
+import type { PackageMappingScope } from '#worker/credentials/package-credential-mappings.ts'
 import { loadPackageMappingScopeForRequest } from '#worker/credentials/package-mapping-scope-access.ts'
 import { loadOrgBindingForSlug } from '#worker/orgs/repo.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'

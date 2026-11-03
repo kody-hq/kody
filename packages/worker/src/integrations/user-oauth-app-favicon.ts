@@ -8,7 +8,7 @@ import {
 import { sniffPlatformOauthAppLogoFormat } from './platform-app-logo.ts'
 import { getOauthAppBySlug } from './repo.ts'
 import { setUserOauthAppLogo } from './user-oauth-app-logo.ts'
-import { type UserOauthApp } from './types.ts'
+import type { UserOauthApp } from './types.ts'
 
 const maxFaviconSourceBytes = 1_000_000
 const maxHtmlBytes = 512_000

@@ -1,5 +1,5 @@
-import { type CloudflareOptions } from '@sentry/cloudflare'
-import { type ErrorEvent, type EventHint } from '@sentry/core'
+import type { CloudflareOptions } from '@sentry/cloudflare'
+import type { ErrorEvent, EventHint } from '@sentry/core'
 import { redactKodyCredentials } from '@kody-internal/shared/api-token-format.ts'
 import { getErrorCauseChain } from '@kody-internal/shared/error-message.ts'
 import { isRetryableD1LockSentryEvent } from './d1-retry.ts'
@@ -785,4 +785,15 @@ export function getWorkerSentryOptions(
 ): CloudflareOptions | undefined {
 	const options = buildSentryOptions(env)
 	return options.dsn ? options : undefined
+}
+
+/**
+ * Options for `Sentry.withSentry` on a `WorkerEntrypoint` class. RPC methods
+ * on a bare entrypoint run with no Sentry client, so throws and
+ * `captureException` inside them are dropped. No DSN (including tests) must
+ * stay disabled: `undefined` would let the SDK fall back to
+ * `env.SENTRY_DSN` without our filters.
+ */
+export function getWorkerEntrypointSentryOptions(env: Env): CloudflareOptions {
+	return getWorkerSentryOptions(env) ?? { enabled: false }
 }

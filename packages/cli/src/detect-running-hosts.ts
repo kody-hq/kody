@@ -1,6 +1,6 @@
 import psList from 'ps-list'
 import { hostCatalog, type HostDefinition } from './host-catalog.js'
-import { type ProcessInfo } from './process-info.js'
+import type { ProcessInfo } from './process-info.js'
 
 export async function listRunningProcesses(): Promise<Array<ProcessInfo>> {
 	const processes = await psList()

@@ -1,4 +1,4 @@
-import { type CommunityActivityEventType } from '#universal/community-public-types.ts'
+import type { CommunityActivityEventType } from '#universal/community-public-types.ts'
 import { formatCommunityPublishedDate } from '#universal/community-display.ts'
 
 export function communityActivityVerb(

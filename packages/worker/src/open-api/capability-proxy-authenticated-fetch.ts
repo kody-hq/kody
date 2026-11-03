@@ -9,7 +9,7 @@ import { buildKodyFns } from '#mcp/run-kody-registry.ts'
 import { secretAuthorityHeaderName } from '#mcp/secrets/secret-authority.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { authorizeLocalExecutePackageBinding } from './capability-proxy-package-grants.ts'
-import { type ApiInvocationContext } from './context.ts'
+import type { ApiInvocationContext } from './context.ts'
 import { invalidRequest } from './errors.ts'
 
 /**

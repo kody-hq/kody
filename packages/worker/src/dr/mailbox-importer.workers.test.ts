@@ -21,21 +21,21 @@ import {
 	emailRawMimeKey,
 } from '#worker/email/blob-keys.ts'
 import { mailboxRpc } from '#worker/email/mailbox-client.ts'
-import {
-	type MailboxDeliveryEventRecord,
-	type MailboxExportRow,
-	type MailboxMessageInput,
-	type MailboxMessageRecord,
-	type MailboxThreadRecord,
+import type {
+	MailboxDeliveryEventRecord,
+	MailboxExportRow,
+	MailboxMessageInput,
+	MailboxMessageRecord,
+	MailboxThreadRecord,
 } from '#worker/email/mailbox-types.ts'
 import {
 	mailboxImportDrillOwnerPrefix,
 	mailboxImportReplaceConfirmation,
 	runMailboxImportTick,
 } from '#worker/dr/mailbox-importer.ts'
-import {
-	type DrBackupS3Client,
-	type DrBackupS3PutOptions,
+import type {
+	DrBackupS3Client,
+	DrBackupS3PutOptions,
 } from '#worker/dr/backup-s3.ts'
 import { sha256Hex } from '#worker/dr/sha256.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'

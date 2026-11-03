@@ -6,7 +6,7 @@ import {
 import { expect, test } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
-import { type RequestSource } from '#worker/request-context/request-context.ts'
+import type { RequestSource } from '#worker/request-context/request-context.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { metaGetCurrentUserCapability } from './meta-get-current-user.ts'
 

@@ -5,7 +5,7 @@
 
 import { spawn, type ChildProcess } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import { type Readable } from 'node:stream'
+import type { Readable } from 'node:stream'
 import { redact } from '../redact.js'
 
 const workerdStartTimeoutMs = 30_000
@@ -127,7 +127,7 @@ function waitForListen(
 	})
 }
 
-export function parseListenPort(line: string): number | null {
+function parseListenPort(line: string): number | null {
 	if (!line.trim()) return null
 	try {
 		const event = JSON.parse(line) as {

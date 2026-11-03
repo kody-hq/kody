@@ -1,5 +1,5 @@
 import { guideMetadata } from './generated/guide-metadata.mjs'
-import { type Guide, type GuideMetadata } from './guides/guide-types.ts'
+import type { Guide, GuideMetadata } from './guides/guide-types.ts'
 
 /**
  * Lazy access to the full guide catalog, generated from `docs/guides/` by

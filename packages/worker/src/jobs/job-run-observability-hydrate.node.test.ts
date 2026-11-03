@@ -5,7 +5,7 @@ import {
 	hydrateJobViewFromRunLog,
 	hydrateJobViewsFromRunLog,
 } from './job-run-observability-hydrate.ts'
-import { type JobView } from './types.ts'
+import type { JobView } from './types.ts'
 
 const getJobRunObservability = vi.hoisted(() => vi.fn())
 const getJobRunObservabilityBatch = vi.hoisted(() => vi.fn())

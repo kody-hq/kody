@@ -1,8 +1,8 @@
 import { redirect } from '@tanstack/react-router'
-import { type QueryClient } from '@tanstack/react-query'
+import type { QueryClient } from '@tanstack/react-query'
 import { loadOnboarding } from '#start/server/onboarding'
 import { createPageQuery, ensurePageQuery } from './page-query.ts'
-import { type OnboardingPayload } from '#universal/onboarding-types.ts'
+import type { OnboardingPayload } from '#universal/onboarding-types.ts'
 import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
 import {
 	onboardingIndexRedirectHref,

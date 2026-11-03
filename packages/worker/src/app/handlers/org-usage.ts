@@ -1,8 +1,8 @@
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
-import { type BillingPageOrg } from '#app/account-billing-data.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { BillingPageOrg } from '#app/account-billing-data.ts'
 import { loadAccountUsageData } from '#app/account-usage-data.ts'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	authorize,
 	AuthorizationError,

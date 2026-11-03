@@ -4,8 +4,8 @@
  * Shared by `/account/secrets.json` (`device_start` / `device_poll`) and MCP
  * `integrationDeviceConnectStart` / `integrationDeviceConnectPoll`.
  */
-import { type McpUserContext } from '@kody-internal/shared/chat.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { McpUserContext } from '@kody-internal/shared/chat.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { safeParseHost } from '@kody-internal/shared/url-hosts.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { normalizeAllowedHosts } from '#worker/secrets/allowed-hosts.ts'
@@ -14,10 +14,10 @@ import {
 	getAvailablePlatformApp,
 } from '#worker/integrations/service.ts'
 import { getPlatformOauthAppClientSecret } from '#worker/integrations/platform-apps.ts'
-import { type buildConnectOauthNextSteps } from '#worker/integrations/connect-oauth-next-steps.ts'
+import type { buildConnectOauthNextSteps } from '#worker/integrations/connect-oauth-next-steps.ts'
 import {
 	persistConnectOauthTokens,
-	resolveConnectClientSecret,
+	resolveTokenEndpointClientSecret,
 	type ConnectOauthHostApprovalLink,
 } from '#worker/integrations/connect-oauth-persist.ts'
 import {
@@ -182,10 +182,12 @@ export async function startIntegrationDeviceConnect(
 			slug: platformApp.slug,
 		})
 	} else {
-		clientSecret = await resolveConnectClientSecret({
+		clientSecret = await resolveTokenEndpointClientSecret({
 			env: input.env,
 			userId: ownerId,
 			provider,
+			clientId,
+			tokenUrl,
 			clientSecret: input.clientSecret,
 		})
 	}

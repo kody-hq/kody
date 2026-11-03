@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { type RepositoryOwnerOption } from '#universal/repository-create.ts'
+import type { RepositoryOwnerOption } from '#universal/repository-create.ts'
 import { loadCommunityInstallOrgs } from '#start/server/community-mutations'
 import { useMatchedPageScope } from './use-matched-page-scope.ts'
 

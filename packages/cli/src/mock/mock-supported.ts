@@ -16,7 +16,7 @@ export const mockOpenApiOperationIds = [
 ] as const
 
 /** CapabilityProxy `path` joins (dot form) the mock answers under kody.*. */
-export const mockCapabilityPaths = [
+const mockCapabilityPaths = [
 	'kody.metaGetCurrentUser',
 	'kody.search',
 	'kody.execute',

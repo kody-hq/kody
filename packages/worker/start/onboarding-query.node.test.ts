@@ -3,7 +3,7 @@ import { QueryClient, QueryObserver } from '@tanstack/react-query'
 import { loadOnboarding } from '#start/server/onboarding'
 import { loadOnboardingRoute, onboardingQuery } from './onboarding-query.ts'
 import { canonicalOnboardingAgentChooser } from '#universal/onboarding-mcp-clients.ts'
-import { type OnboardingPayload } from '#universal/onboarding-types.ts'
+import type { OnboardingPayload } from '#universal/onboarding-types.ts'
 
 vi.mock('#start/server/onboarding', () => ({ loadOnboarding: vi.fn() }))
 

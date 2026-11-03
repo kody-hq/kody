@@ -94,6 +94,7 @@ import { adminCreatorAccessBackfillCapability } from './admin-creator-access-bac
 import { adminPreBindingArtifactRebuildCapability } from './admin-pre-binding-artifact-rebuild.ts'
 import { adminPackageAppCapabilityMigrationReportCapability } from './admin-package-app-capability-migration-report.ts'
 import { adminPackageCredentialSupplierReportCapability } from './admin-package-credential-supplier-report.ts'
+import { adminPackageScopedSecretReportCapability } from './admin-package-scoped-secret-report.ts'
 import { adminUnmappableCredentialLockReportCapability } from './admin-unmappable-credential-lock-report.ts'
 import { adminCredentialBackfillCapability } from './admin-credential-backfill.ts'
 import { adminCredentialStampBackfillCapability } from './admin-credential-stamp-backfill.ts'
@@ -222,6 +223,7 @@ export const adminDomain = defineDomain({
 		adminCreatorAccessBackfillCapability,
 		adminPackageAppCapabilityMigrationReportCapability,
 		adminPackageCredentialSupplierReportCapability,
+		adminPackageScopedSecretReportCapability,
 		adminUnmappableCredentialLockReportCapability,
 		adminCredentialBackfillCapability,
 		adminCredentialStampBackfillCapability,

@@ -1,5 +1,5 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type CommunityListingCategory } from '#universal/community-categories.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { CommunityListingCategory } from '#universal/community-categories.ts'
 
 export type CommunityListingStatus = 'active' | 'delisted'
 

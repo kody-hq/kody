@@ -3,7 +3,6 @@ import { toolCliEntryFiles } from './tools/knip-tool-entries.ts'
 
 export default defineConfig({
 	include: ['files', 'exports', 'types'],
-	ignore: ['packages/cli/**'],
 	workspaces: {
 		'.': {
 			entry: [
@@ -19,6 +18,17 @@ export default defineConfig({
 				'vitest*.ts',
 			],
 			project: ['tools/**/*.{ts,js,mjs,cjs}', '*.ts', 'e2e/**/*.ts'],
+		},
+		'packages/cli': {
+			entry: [
+				'src/bin.ts',
+				'src/cli.ts',
+				'src/skill-refresh.ts',
+				'scripts/build.mjs',
+				'scripts/bench.mjs',
+				'test/**/*.ts',
+			],
+			project: ['src/**/*.ts', 'scripts/**/*.mjs', 'test/**/*.ts'],
 		},
 		'packages/desktop': {
 			entry: [
@@ -77,6 +87,9 @@ export default defineConfig({
 			project: ['src/**/*.ts'],
 		},
 		'packages/mock-servers/cloudflare': {
+			project: ['src/**/*.ts'],
+		},
+		'packages/mock-servers/oauth': {
 			project: ['src/**/*.ts'],
 		},
 	},

@@ -2,11 +2,11 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type EnablementSkip } from '#worker/enablements/run-gate.ts'
-import { type EnablementRun } from '#worker/request-context/request-context.ts'
+import type { EnablementSkip } from '#worker/enablements/run-gate.ts'
+import type { EnablementRun } from '#worker/request-context/request-context.ts'
 import { expect, test, vi } from 'vitest'
 import { consoleInfo, consoleWarn } from '#worker/test-support/console-spies.ts'
-import { type JobRecord } from './types.ts'
+import type { JobRecord } from './types.ts'
 import { TransientJobExecutionError } from './execution-safety.ts'
 import type * as JobsRepo from '@kody-internal/shared/jobs/repo.ts'
 import type * as RunRecordsServiceModule from '#worker/run-records/service.ts'

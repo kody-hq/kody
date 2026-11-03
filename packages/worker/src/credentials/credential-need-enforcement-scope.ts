@@ -3,7 +3,7 @@ import {
 	maxD1BoundParameters,
 } from '@kody-internal/shared/chunk.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 
 /**
  * The codemod run filter that keeps a fleet run to packages the

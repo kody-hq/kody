@@ -1,8 +1,5 @@
 import { searchText } from './filter-search.ts'
-import {
-	type AdminOrgKind,
-	type AdminOrgStatus,
-} from '#worker/admin/orgs-data.ts'
+import type { AdminOrgKind, AdminOrgStatus } from '#worker/admin/orgs-data.ts'
 
 export function adminOrgReturnTo(location: {
 	pathname: string

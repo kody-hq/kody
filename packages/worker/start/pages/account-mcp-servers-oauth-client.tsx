@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { PasswordRevealInput } from '../components/password-reveal-input.tsx'
 import { accountInputCss } from './account-management-components.tsx'
-import { type McpServerListItem } from './account-mcp-servers-shared.tsx'
+import type { McpServerListItem } from './account-mcp-servers-shared.tsx'
 import {
 	colors,
 	radius,

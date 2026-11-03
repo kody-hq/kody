@@ -1,4 +1,4 @@
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	callCapabilityAsWebsite,
 	websiteCapabilityContext,
@@ -6,7 +6,7 @@ import {
 import { isMcpCallerError } from '#mcp/caller-error.ts'
 import { resolvePersonId } from '#mcp/capabilities/access/shared.ts'
 import { getStaticRegistry } from '#mcp/capabilities/registry.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { isFeatureEnabled } from '#worker/feature-flags/service.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import {
@@ -16,7 +16,7 @@ import {
 	type OrgBinding,
 } from '#worker/orgs/repo.ts'
 import { listTeams } from '#worker/orgs/org-teams-list.ts'
-import { type AutomationExecutionSettingView } from '#universal/automation-execution.ts'
+import type { AutomationExecutionSettingView } from '#universal/automation-execution.ts'
 import { executionContextsFlagKey } from '#universal/feature-flags/registry.ts'
 import {
 	type ExecutionChain,

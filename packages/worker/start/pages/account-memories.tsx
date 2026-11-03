@@ -3,9 +3,9 @@ import { createListDetailLinks } from '#client/list-detail-route.ts'
 import { matchesSearchQuery } from '#client/search-filter.ts'
 import { toast } from '#client/toast.ts'
 import { deleteAccountMemory } from '#start/server/account-mutations'
-import {
-	type AccountMemoriesLoaderData,
-	type AccountMemoryListItem,
+import type {
+	AccountMemoriesLoaderData,
+	AccountMemoryListItem,
 } from '#universal/loader-data.ts'
 import { buildMemoriesExportFilename } from '#universal/memory-export.ts'
 import { relocateAccountHref } from '#universal/org-pages.ts'

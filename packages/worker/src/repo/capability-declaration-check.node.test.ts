@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
-import { type ClosurePackage } from '#worker/package-codemods/package-app-capability-closure.ts'
-import { type AuthoredPackageJson } from '#worker/package-registry/types.ts'
+import type { ClosurePackage } from '#worker/package-codemods/package-app-capability-closure.ts'
+import type { AuthoredPackageJson } from '#worker/package-registry/types.ts'
 import {
 	buildCapabilityDeclarationCheck,
 	computeCapabilityClosure,

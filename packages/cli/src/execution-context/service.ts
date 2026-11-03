@@ -51,16 +51,16 @@ export function isServiceManager(value: unknown): value is ServiceManager {
 export const unsupportedPlatformMessage =
 	'Running kody daemon as a background service is supported on Linux (systemd), macOS (launchd), and Windows (Task Scheduler). Keep `kody daemon` running in a terminal on this machine instead.'
 
-export function serviceName(ecid: string) {
+function serviceName(ecid: string) {
 	return `kody-daemon-${ecid}`
 }
 
-export function launchdLabel(ecid: string) {
+function launchdLabel(ecid: string) {
 	return `codes.kody.daemon.${ecid}`
 }
 
 /** The task's full Task Scheduler name, in a `\\Kody\\` folder of its own. */
-export function scheduledTaskName(ecid: string) {
+function scheduledTaskName(ecid: string) {
 	return `\\Kody\\${serviceName(ecid)}`
 }
 
@@ -168,10 +168,7 @@ function daemonArgs(input: UnitInput) {
 }
 
 /** Services do not see the login shell's PATH; give them a fixed one. */
-export function servicePath(input: {
-	node: string
-	platform?: NodeJS.Platform
-}) {
+function servicePath(input: { node: string; platform?: NodeJS.Platform }) {
 	const platform = input.platform ?? process.platform
 	const dirs = [
 		dirname(input.node),
@@ -439,7 +436,7 @@ export type CommandRunner = (
 	args: Array<string>,
 ) => { ok: boolean; stdout: string; stderr: string }
 
-export const runCommand: CommandRunner = (command, args) => {
+const runCommand: CommandRunner = (command, args) => {
 	try {
 		const stdout = execFileSync(command, args, {
 			encoding: 'utf8',
@@ -477,7 +474,7 @@ export type ServiceRuntimeState = {
 	startedAt: string
 }
 
-export type StoppedState = { reason: string; at: string }
+type StoppedState = { reason: string; at: string }
 
 function readJson<T>(path: string): T | null {
 	try {
@@ -492,7 +489,7 @@ export function writeJson(path: string, value: unknown) {
 	writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 })
 }
 
-export type ServiceProblem = {
+type ServiceProblem = {
 	code:
 		| 'unsupported-platform'
 		| 'running-as-root'
@@ -529,7 +526,7 @@ export type ServiceStatus = {
 	problems: Array<ServiceProblem>
 }
 
-export function lingerCommand(user = userInfo().username) {
+function lingerCommand(user = userInfo().username) {
 	return `sudo loginctl enable-linger ${user}`
 }
 

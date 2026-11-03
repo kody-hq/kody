@@ -1,4 +1,4 @@
-import { type ErrorEvent, type EventHint } from '@sentry/core'
+import type { ErrorEvent, EventHint } from '@sentry/core'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import {
 	isBareRetryableD1LockSentryEvent,

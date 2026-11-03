@@ -189,13 +189,13 @@ test('guide entity detail returns full bodies, a TOC for oversized guides, and f
 		lastVerified: authoring.lastVerified,
 		maxChars,
 	})
-	const authoringOverflow = authoring.body.length - authoringBudget
+	// Keep room for a short clarifying paragraph in this START HERE guide.
+	const authoringMinimumHeadroom = 256
+	const authoringHeadroom = authoringBudget - authoring.body.length
 	expect(
-		authoringOverflow,
-		authoringOverflow > 0
-			? `package_authoring is ${authoringOverflow} characters over guideSearchBodyBudget (${authoringBudget}). Split the guide or open a heading with \`guide:package_authoring#{slug}\` instead of growing the full body.`
-			: `package_authoring full-body headroom is ${-authoringOverflow} characters.`,
-	).toBeLessThanOrEqual(0)
+		authoringHeadroom,
+		`package_authoring full-body headroom is ${authoringHeadroom} characters (budget ${authoringBudget}, minimum ${authoringMinimumHeadroom}). Tighten the summary, move detail to a linked guide, or open a heading with \`guide:package_authoring#{slug}\` instead of growing the full body.`,
+	).toBeGreaterThanOrEqual(authoringMinimumHeadroom)
 	const detail = guideDetail('package_authoring')
 	expect(detail.markdown).toContain(authoring.body.slice(0, 40))
 	expect(detail.structured).toMatchObject({

@@ -9,7 +9,7 @@ import {
 	normalizeJobExpiresAt,
 	normalizeJobSchedule,
 } from './schedule.ts'
-import { type JobRecord } from './types.ts'
+import type { JobRecord } from './types.ts'
 
 test('job schedule helpers normalize schedules and compute the next run time', () => {
 	expect(

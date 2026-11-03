@@ -5,7 +5,7 @@ import {
 	banAdminReportReporter,
 	banAdminReportOwner,
 } from '#worker/admin/community-reports-operations.ts'
-import { type CommunityReportRecord } from '#worker/community/types.ts'
+import type { CommunityReportRecord } from '#worker/community/types.ts'
 import { adminOperationOutcome } from '#worker/test-support/admin-operation-outcome.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'

@@ -1,4 +1,4 @@
-import { type BackupManifest } from '@kody-internal/shared/backup-manifest.ts'
+import type { BackupManifest } from '@kody-internal/shared/backup-manifest.ts'
 
 import { canonicalJson, sha256 } from './canonical-json.ts'
 import {

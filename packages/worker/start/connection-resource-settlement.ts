@@ -1,4 +1,4 @@
-import { type QueryClient } from '@tanstack/react-query'
+import type { QueryClient } from '@tanstack/react-query'
 import { orgPageFilters } from './org-page-cache.ts'
 
 /** Confirm the initiating workspace after every outcome, including lost responses.

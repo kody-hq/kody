@@ -1,5 +1,5 @@
 import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { refreshSavedPackageProjection } from '#worker/package-registry/service.ts'
 import {
 	createSnapshotFilesWorkspace,
@@ -17,10 +17,10 @@ import {
 	runIdempotentPrivatePackageFork,
 	runIdempotentCommunityFork,
 } from './service.ts'
-import {
-	type CommunityForkActor,
-	type CommunityForkRecord,
-	type CrossScopeReference,
+import type {
+	CommunityForkActor,
+	CommunityForkRecord,
+	CrossScopeReference,
 } from './types.ts'
 
 type InstallProgressUpdate = {

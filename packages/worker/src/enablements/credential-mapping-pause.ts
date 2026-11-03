@@ -9,7 +9,7 @@
  * the run ignores it. Default layers are not checked: an unusable default
  * falls through, as the run's own resolution does.
  */
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
 	listUsableCredentials,
 	liveUsableCredentials,
@@ -25,8 +25,8 @@ import {
 } from '#worker/credentials/credential-need-fit.ts'
 import { isPackageCredentialSuppliersEnabled } from '#worker/credentials/credential-suppliers-flag.ts'
 import { enablementMappingPauseResourceType } from '#universal/credential-contracts.ts'
-import { type EnablementPauseInput } from './repo.ts'
-import { type EnablementPause, type EnablementRecord } from './types.ts'
+import type { EnablementPauseInput } from './repo.ts'
+import type { EnablementPause, EnablementRecord } from './types.ts'
 
 /** A pause on a stored trigger pick resumes by re-checking the mapping. */
 export function isEnablementMappingPause(pause: EnablementPause | null) {

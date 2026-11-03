@@ -9,7 +9,7 @@ import {
 	credentialHostsAllow,
 	CredentialRequestRefusedError,
 } from './credential-request.ts'
-import { type CredentialResolver } from './credential-resolver.ts'
+import type { CredentialResolver } from './credential-resolver.ts'
 import {
 	authorizeStoredCredential,
 	findStoredCredential,

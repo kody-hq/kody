@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { spacing } from '#universal/styles/tokens.ts'
 import {
 	accountFieldLabelCss,

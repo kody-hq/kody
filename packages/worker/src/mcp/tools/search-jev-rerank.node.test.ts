@@ -18,7 +18,7 @@ import {
 	understandSearchQuery,
 	type SearchIntent,
 } from './understand-search-query.ts'
-import { type SearchCandidate } from './search-types.ts'
+import type { SearchCandidate } from './search-types.ts'
 
 function makeCandidate(
 	overrides: Partial<SearchCandidate> & {

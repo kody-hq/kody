@@ -41,6 +41,7 @@
 		"kody-custom/enforce-import-boundaries": "error",
 		"kody-custom/user-meter-budget-check-via-helper": "error",
 		"kody-custom/no-example-identifier": "error",
+		"kody-custom/no-inline-type-only-import": "error",
 		"kody-custom/no-literal-frame-src": "error",
 		"kody-custom/no-nonretryable-error-name": "error",
 		"kody-custom/no-oversized-guide-section": "error",

@@ -15,7 +15,7 @@ import {
 	listPinnedConnectionsForOrg,
 	planPinnedConnectionWipes,
 } from '#worker/integrations/pinned-connections.ts'
-import { type OrgTransferEffects } from './apply.ts'
+import type { OrgTransferEffects } from './apply.ts'
 import { writeOrgTransferBackup } from './backup.ts'
 import { runOrgTransferPostCommit } from './post-commit.ts'
 import { resealOrgTransferSecrets } from './reencrypt.ts'

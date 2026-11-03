@@ -1,10 +1,13 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset } from '../public-assets.ts'
-import { type ReactNode, type CSSProperties } from 'react'
+import type { ReactNode, CSSProperties } from 'react'
 import { usePrimitiveWidgetMotion } from './primitive-widget-motion.ts'
-import { type PrimitiveWidgetId } from '#universal/primitive-cards.ts'
+import type { PrimitiveWidgetId } from '#universal/primitive-cards.ts'
 
 type PrimitiveWidgetSize = 'full' | 'mini'
+
+/** Container widths, in px, that `styles.css` has stack rules for. */
+type PrimitiveWidgetStackWidth = 420 | 520
 
 export function PrimitiveWidgetFrame({
 	id,
@@ -12,6 +15,7 @@ export function PrimitiveWidgetFrame({
 	height,
 	className,
 	stack,
+	stackWidth = 520,
 	children,
 }: {
 	id: PrimitiveWidgetId
@@ -19,6 +23,8 @@ export function PrimitiveWidgetFrame({
 	height?: number
 	className?: string
 	stack?: boolean
+	/** Stack the scene once its container is narrower than this. */
+	stackWidth?: PrimitiveWidgetStackWidth
 	children?: ReactNode
 }) {
 	const motion = usePrimitiveWidgetMotion()
@@ -35,7 +41,10 @@ export function PrimitiveWidgetFrame({
 			}
 			ref={motion}
 		>
-			<div className="pw-stage" data-stack={stack ? '' : undefined}>
+			<div
+				className="pw-stage"
+				data-stack={stack ? String(stackWidth) : undefined}
+			>
 				{children}
 			</div>
 		</div>

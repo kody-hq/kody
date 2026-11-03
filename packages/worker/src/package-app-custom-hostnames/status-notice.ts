@@ -15,7 +15,7 @@ import {
 	isPackageAppCustomDomainFailedStatus,
 } from '#universal/package-app-custom-domain-status.ts'
 import { routes } from '#universal/routes.ts'
-import { type PackageAppCustomHostnameRow } from '#worker/package-app-custom-hostnames/types.ts'
+import type { PackageAppCustomHostnameRow } from '#worker/package-app-custom-hostnames/types.ts'
 
 export type CustomHostnameStatusNoticeEvent = 'active' | 'needs_attention'
 

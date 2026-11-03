@@ -1,9 +1,9 @@
 import { parseJsonWithFallback } from '../json-parsing.ts'
-import { type OwnerId } from '../owner-person-ids.ts'
+import type { OwnerId } from '../owner-person-ids.ts'
 import { requirePackageIdFromJobId } from './package-job-id.ts'
 import { jobExpiredDisabledReason } from './disabled-reason.ts'
 import { createJobStorageId } from './storage-id.ts'
-import { type JobRecord, type PersistedJobCallerContext } from './types.ts'
+import type { JobRecord, PersistedJobCallerContext } from './types.ts'
 
 type JobRowRecord = {
 	id: string

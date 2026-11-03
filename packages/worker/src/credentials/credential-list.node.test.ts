@@ -4,7 +4,7 @@ import {
 	personalOrgId,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { expect, test, vi } from 'vitest'
 import { createOrganization } from '#worker/orgs/create-organization.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
@@ -15,7 +15,7 @@ import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.t
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 import { saveSecret } from '#mcp/secrets/service.ts'
-import { type CredentialListItem } from '#universal/credential-contracts.ts'
+import type { CredentialListItem } from '#universal/credential-contracts.ts'
 import { findCredentialIdsByLegacyName } from './credential-ids.ts'
 import { listCredentialsForViewer } from './credential-list.ts'
 import { grantPersonalCredentialToOrg } from './personal-credentials.ts'

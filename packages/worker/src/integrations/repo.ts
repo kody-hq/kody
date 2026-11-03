@@ -32,13 +32,13 @@ import {
 	serializeCredentialFillPlacement,
 } from '#worker/credentials/fill-placement.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
-import {
-	type JoinedIntegration,
-	type UserIntegrationConnection,
-	type UserIntegrationRow,
-	type UserOauthApp,
-	type UserOauthAppRow,
-	type UserOauthAppWithConnectionCount,
+import type {
+	JoinedIntegration,
+	UserIntegrationConnection,
+	UserIntegrationRow,
+	UserOauthApp,
+	UserOauthAppRow,
+	UserOauthAppWithConnectionCount,
 } from './types.ts'
 
 type NullablePrefixed<TRow, TPrefix extends string> = {
@@ -265,6 +265,27 @@ export async function findOauthAppByClientCredentials(input: {
 		.bind(input.userId, input.clientId)
 		.first<UserOauthAppRow>()
 	return row ? mapOauthAppRow(row) : null
+}
+
+/** Apps whose token endpoint and client id both match: who a stored secret may go to. */
+export async function listOauthAppsByTokenEndpoint(input: {
+	db: D1Database
+	userId: string
+	clientId: string
+	tokenUrl: string
+}): Promise<Array<UserOauthApp>> {
+	const result = await input.db
+		.prepare(
+			`SELECT ${appSelectColumns}
+			FROM user_oauth_apps
+			WHERE user_id = ?
+				AND client_id = ?
+				AND token_url = ?${andLiveDeletedAtSql()}
+			ORDER BY slug ASC`,
+		)
+		.bind(input.userId, input.clientId, input.tokenUrl)
+		.all<UserOauthAppRow>()
+	return (result.results ?? []).map(mapOauthAppRow)
 }
 
 /** Match an app only when the full app-level tuple agrees (not just credentials). */

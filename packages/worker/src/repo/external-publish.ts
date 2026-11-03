@@ -1,9 +1,9 @@
 import { warmInternetVisibleApprovedCommit } from '#app/package-app-internet-visible.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { assertProfileCanPublishImports } from '#worker/profiles/publish-imports.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RepoCheckStep } from './isolated-runner-limit-message.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { RepoCheckStep } from './isolated-runner-limit-message.ts'
 import * as Sentry from '@sentry/cloudflare'
 import { omitKodyIgnoredFiles } from './kodyignore.ts'
 import { refreshCommunityIconForPackagePublish } from '#worker/community/community-icon.ts'
@@ -20,13 +20,11 @@ import {
 	publishedPublishChecksAreCurrent,
 	writePublishedPublishChecksVersion,
 } from '#worker/package-runtime/published-runtime-artifacts.ts'
+import { repoRelativeSourceFiles } from './published-source-files.ts'
 import { getEntitySourceById, updateEntitySource } from './entity-sources.ts'
 import { runAuthoringPublishChecks } from './authoring-publish-checks.ts'
-import { type PublishPhaseTimings } from './publish-phase-timing.ts'
-import {
-	type EntitySourceRow,
-	type RepoExternalPublishResult,
-} from './types.ts'
+import type { PublishPhaseTimings } from './publish-phase-timing.ts'
+import type { EntitySourceRow, RepoExternalPublishResult } from './types.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import {
@@ -566,7 +564,8 @@ export async function publishFromExternalRef(input: {
 	})
 	// input.files (clone collectFiles) is keyed relative to the repo, while
 	// input.sourceRoot is workspace-prefixed, so scope clone maps by the stored
-	// repo-relative root. checks.sourceFiles is already package-relative.
+	// repo-relative root. checks.sourceFiles is package-relative, so re-key it
+	// from the repo root: every published file set has one key shape.
 	const work =
 		input.work ??
 		createInlinePublishHeavyWork({
@@ -574,12 +573,11 @@ export async function publishFromExternalRef(input: {
 			userId: input.userId,
 			publishedFiles: input.files
 				? omitKodyIgnoredFiles(input.files, source.source_root)
-				: 'sourceFiles' in checks
-					? checks.sourceFiles
-					: {},
-			...(input.files != null
-				? { publishedFilesSourceRoot: source.source_root }
-				: {}),
+				: repoRelativeSourceFiles({
+						source,
+						files: 'sourceFiles' in checks ? checks.sourceFiles : {},
+					}),
+			publishedFilesSourceRoot: source.source_root,
 		})
 	const { secretMountCompat, allowedPackagesPublishNotice } =
 		await work.loadNotices({

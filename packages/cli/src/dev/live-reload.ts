@@ -5,8 +5,8 @@
  * the page from the new build.
  */
 
-import { type IncomingMessage, type ServerResponse } from 'node:http'
-import { type DevErrorView } from './error-page.js'
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { DevErrorView } from './error-page.js'
 
 export const liveReloadEventsPath = '/__kody/dev/events'
 export const liveReloadClientPath = '/__kody/dev/client.js'
@@ -15,7 +15,7 @@ export const liveReloadScriptTag = `<script type="module" src="${liveReloadClien
 
 const keepAliveMs = 15_000
 
-export type LiveReloadMessage =
+type LiveReloadMessage =
 	| { event: 'reload'; data: { buildId: number } }
 	| { event: 'build_error'; data: DevErrorView }
 	| { event: 'runtime_error'; data: DevErrorView }

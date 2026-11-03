@@ -1,5 +1,5 @@
 import * as Sentry from '@sentry/cloudflare'
-import { type JobsWorkerEnv } from './env.ts'
+import type { JobsWorkerEnv } from './env.ts'
 import { handleJobsHealthRequest } from './health.ts'
 import { JobManager } from './manager-do.ts'
 import {

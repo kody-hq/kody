@@ -1,4 +1,4 @@
-import { type ViteBuilder } from 'vite'
+import type { ViteBuilder } from 'vite'
 import { expect, test } from 'vitest'
 import { startReleaseBase } from './vite-start-release.ts'
 

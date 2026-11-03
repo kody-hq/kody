@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { css } from '@emotion/react'
 import { SiteLink } from '../components/site-link.tsx'
 import { shortCommunityCommit } from '#universal/community-display.ts'
@@ -9,7 +9,7 @@ import {
 	getPillButtonCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-import { type AccountPackageDetail } from '#universal/loader-data.ts'
+import type { AccountPackageDetail } from '#universal/loader-data.ts'
 
 function hasUnpublishedPackageCommit(packageDetail: AccountPackageDetail) {
 	if (!packageDetail.pendingCommitKnown) return false

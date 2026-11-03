@@ -12,6 +12,7 @@ import {
 	forEachScannableModule,
 	getNodeName,
 	parseModule,
+	readModuleParseError,
 	resolveStringExpression,
 	scannableModuleFilePattern,
 	unwrapExpression,
@@ -26,7 +27,7 @@ import {
 	normalizeSecretProviderNeedId,
 	secretProviderSlotExample,
 } from '#worker/credentials/credential-needs.ts'
-import { type ResolvedSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
+import type { ResolvedSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
 import {
 	getPackageAppClientEntryPath,
 	getPackageAppEntryPath,
@@ -659,6 +660,25 @@ function scanUnparsedCredentialKeys(source: string, scan: KeyScan) {
 	for (const match of source.matchAll(textCredentialCallPattern)) {
 		if (match[2] == null) scan.computed()
 		else scan.key(match[2])
+	}
+}
+
+const unparsedCredentialMentionPattern = /\b(?:credentials?|kody)\b/
+
+/**
+ * A server-runtime module the parser rejects could alias or pass credential
+ * around unseen, so it fails closed when it mentions credential or kody.
+ */
+function unparsedServerModuleFailure(
+	path: string,
+	source: string,
+): CredentialStampGateFailure | null {
+	if (!unparsedCredentialMentionPattern.test(source)) return null
+	const parseError = readModuleParseError(source) ?? 'unknown parse error'
+	return {
+		code: 'non_literal',
+		path,
+		message: `${path}: server-runtime module could not be parsed (${parseError}), so publish cannot check how it uses credential, credentials, or kody. Fix the syntax error, or rewrite the module in syntax TypeScript accepts.`,
 	}
 }
 
@@ -1726,7 +1746,12 @@ export function scanCredentialStamp(
 	}
 	failures.push(...(options.secretProviders?.failures ?? []))
 
+	const serverPaths = collectServerRuntimeModulePaths(files)
 	forEachScannableModule(files, (path, parsed, constants) => {
+		if (!parsed && serverPaths.has(path)) {
+			const failure = unparsedServerModuleFailure(path, files[path]!)
+			if (failure) failures.push(failure)
+		}
 		const keyScan: KeyScan = {
 			key: (key) => {
 				if (packageCredentialSlotNamePattern.test(key)) keys.add(key)
@@ -1782,9 +1807,7 @@ export function scanCredentialStamp(
 		})
 	}
 
-	failures.push(
-		...scanServerEvalFailures(files, collectServerRuntimeModulePaths(files)),
-	)
+	failures.push(...scanServerEvalFailures(files, serverPaths))
 
 	const sortedKeys = [...keys].sort()
 	const staleManifestKeys = Object.keys(slots)

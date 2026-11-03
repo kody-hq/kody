@@ -6,12 +6,12 @@
  * the actor can Use right now.
  */
 import { maxD1BoundParameters } from '@kody-internal/shared/chunk.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
 	bumpCredentialMappingGeneration,
 	credentialMappingGenerationOf,
 } from './credential-read-generation.ts'
-import { type UsableCredential } from './credential-candidates.ts'
+import type { UsableCredential } from './credential-candidates.ts'
 
 export { bumpCredentialMappingGeneration }
 

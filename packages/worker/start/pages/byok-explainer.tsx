@@ -4,7 +4,7 @@ import {
 	publicAsset,
 	publicAssetSrcSet,
 } from '../public-assets.ts'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import {
 	colors,
 	mq,

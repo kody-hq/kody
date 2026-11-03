@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers'
 import { runInDurableObject } from 'cloudflare:test'
 import { expect, test } from 'vitest'
-import { type Mailbox } from './mailbox-do.ts'
+import type { Mailbox } from './mailbox-do.ts'
 import {
 	baseDeliveryEvent,
 	baseMessage,

@@ -1,6 +1,6 @@
-import {
-	type OrgWideManagePermission,
-	type OrgWideReadPermission,
+import type {
+	OrgWideManagePermission,
+	OrgWideReadPermission,
 } from '@kody-internal/shared/grant-presets.ts'
 
 /**

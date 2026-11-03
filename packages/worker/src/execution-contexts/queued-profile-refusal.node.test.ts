@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest'
-import { type EffectivePermissions } from '#worker/authorization/authorize.ts'
+import type { EffectivePermissions } from '#worker/authorization/authorize.ts'
 import { queuedProfileRefusal } from './routing.ts'
 
 const state = vi.hoisted(() => ({

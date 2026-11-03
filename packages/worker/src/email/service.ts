@@ -1,5 +1,5 @@
 import { bytesToBase64 } from '@kody-internal/shared/base64.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { isoTimestampDayKey } from '@kody-internal/shared/date-keys.ts'
 import { loadPostalMime } from '#worker/postal-mime-load.ts'
 import {
@@ -7,8 +7,8 @@ import {
 	RetryableInboundStorageError,
 } from './email-raw-mime-store.ts'
 import { resolveInboundEmailClassification } from './inbound-classification.ts'
-import { type InboundDelivery } from './inbound-delivery.ts'
-import { type UserInboundDeliveryAuthority } from './inbound-delivery-authority.ts'
+import type { InboundDelivery } from './inbound-delivery.ts'
+import type { UserInboundDeliveryAuthority } from './inbound-delivery-authority.ts'
 import { mailboxRpc, type MailboxEnv } from './mailbox-client.ts'
 import { mailboxMessageToEmailMessageRecord } from './mailbox-record-mappers.ts'
 import {
@@ -29,13 +29,13 @@ import {
 	listSystemEmailAttachments,
 	updateSystemEmailMessageClassification,
 } from './system-email-graph-store.ts'
-import {
-	type EmailAttachmentRecord,
-	type EmailClassification,
-	type EmailDeliveryEventRecord,
-	type EmailDeliveryStatus,
-	type EmailMessageRecord,
-	type ParsedInboundEmail,
+import type {
+	EmailAttachmentRecord,
+	EmailClassification,
+	EmailDeliveryEventRecord,
+	EmailDeliveryStatus,
+	EmailMessageRecord,
+	ParsedInboundEmail,
 } from './types.ts'
 
 export { RetryableInboundStorageError }

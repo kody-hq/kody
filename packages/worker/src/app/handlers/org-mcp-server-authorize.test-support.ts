@@ -1,5 +1,5 @@
 import { operationResult } from '#app/operation-result.ts'
-import { type McpServerAuthorizeContinueResponse } from '#universal/loader-data.ts'
+import type { McpServerAuthorizeContinueResponse } from '#universal/loader-data.ts'
 import {
 	continueMcpServerAuthorization,
 	isConsentRefusal,

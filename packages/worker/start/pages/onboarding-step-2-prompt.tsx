@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 
 import { SiteLink } from '../components/site-link.tsx'
 import { CopyCard } from './onboarding-mcp-client-cards.tsx'

@@ -3,7 +3,7 @@ import {
 	estimateDynamicWorkerUsd,
 	fleetDynamicWorkerCostAlertUsd,
 } from '#universal/dynamic-worker-cost.ts'
-import { type AdminUsageEntitlementResource } from '#universal/loader-data.ts'
+import type { AdminUsageEntitlementResource } from '#universal/loader-data.ts'
 import {
 	fleetRuntimeDurationAlertThresholdMs,
 	loadFleetEntitlementCrossingSnapshots,

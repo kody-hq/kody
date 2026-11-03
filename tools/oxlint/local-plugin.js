@@ -524,11 +524,62 @@ const userMeterBudgetCheckViaHelperRule = {
 	},
 }
 
+const noInlineTypeOnlyImportRule = {
+	meta: {
+		type: 'problem',
+		fixable: 'code',
+		docs: {
+			description:
+				'Require `import type` when every specifier is type-only, so the module stays off the Worker startup graph.',
+		},
+		schema: [],
+		messages: {
+			inlineTypeOnly:
+				'Every specifier is type-only. Use `import type { ... }`: with verbatimModuleSyntax, `import { type X }` compiles to a side-effect import that keeps the module on the Worker startup graph.',
+		},
+	},
+	createOnce(context) {
+		return {
+			ImportDeclaration(node) {
+				if (node.importKind === 'type') return
+				const specifiers = node.specifiers
+				if (specifiers.length === 0) return
+				const allInlineTypes = specifiers.every(
+					(specifier) =>
+						specifier.type === 'ImportSpecifier' &&
+						specifier.importKind === 'type',
+				)
+				if (!allInlineTypes) return
+				context.report({
+					node,
+					messageId: 'inlineTypeOnly',
+					fix(fixer) {
+						const importKeywordEnd = node.range[0] + 'import'.length
+						return [
+							fixer.insertTextAfterRange(
+								[node.range[0], importKeywordEnd],
+								' type',
+							),
+							...specifiers.map((specifier) =>
+								fixer.removeRange([
+									specifier.range[0],
+									specifier.imported.range[0],
+								]),
+							),
+						]
+					},
+				})
+			},
+		}
+	},
+}
+
 const plugin = {
 	meta: { name: 'kody-custom' },
 	rules: {
 		'enforce-import-boundaries': enforceImportBoundariesRule,
 		'no-example-identifier': noExampleIdentifierRule,
+		'no-inline-type-only-import': noInlineTypeOnlyImportRule,
 		'no-literal-frame-src': noLiteralFrameSrcRule,
 		'no-nonretryable-error-name': noNonRetryableErrorNameRule,
 		'no-oversized-guide-section': noOversizedGuideSectionRule,

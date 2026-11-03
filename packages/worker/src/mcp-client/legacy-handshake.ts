@@ -1,6 +1,6 @@
 import { isIncompleteDiscoverState } from './oauth-settle-error.ts'
-import { type McpVersionNegotiationMode } from './reconnect.ts'
-import { type McpServerConnectionState } from './types.ts'
+import type { McpVersionNegotiationMode } from './reconnect.ts'
+import type { McpServerConnectionState } from './types.ts'
 
 export const mcpLegacyHandshakeStoragePrefix = 'mcp-legacy-handshake/'
 export const mcpLegacyHandshakeFallback = 'catalog-timeout' as const

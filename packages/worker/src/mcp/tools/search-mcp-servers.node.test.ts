@@ -9,7 +9,7 @@ import {
 	listSynthesizedMcpServers,
 } from './search-mcp-servers.ts'
 import { searchUnified } from './search.ts'
-import { type PackageSearchRow } from './search-types.ts'
+import type { PackageSearchRow } from './search-types.ts'
 
 function createHomeRegistry() {
 	const homeServer = {

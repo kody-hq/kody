@@ -1,12 +1,12 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	chunkArray,
 	maxD1BoundParameters,
 } from '@kody-internal/shared/chunk.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
-import {
-	type McpMemoryConversationSuppressionRow,
-	type McpMemoryRow,
+import type {
+	McpMemoryConversationSuppressionRow,
+	McpMemoryRow,
 } from './types.ts'
 
 function mapMemoryRow(row: Record<string, unknown>): McpMemoryRow {

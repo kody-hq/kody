@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { staleInboundDeliveryAgeMs } from './inbound-delivery.ts'
 import { reconcileInboundDeliveryEffectsForUser } from './inbound-effects.ts'
 import {

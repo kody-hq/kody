@@ -11,7 +11,7 @@ import {
 	runNxWithRemoteCacheFallback,
 	spawnNx,
 } from './run-nx.ts'
-import { type probeNxRemoteCache } from './nx-remote-cache-probe.ts'
+import type { probeNxRemoteCache } from './nx-remote-cache-probe.ts'
 
 const cacheTransportFailure = `
  NX  Successfully ran target test-node for project worker

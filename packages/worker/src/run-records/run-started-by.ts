@@ -9,9 +9,9 @@
  * name), and the actor person id/username.
  */
 
-import {
-	type RequestContext,
-	type RequestCredentialKind,
+import type {
+	RequestContext,
+	RequestCredentialKind,
 } from '@kody-internal/shared/request-context.ts'
 
 /**

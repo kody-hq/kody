@@ -7,9 +7,9 @@ import {
 	createPackageCollaboratorInviteInput,
 	revokePackageCollaboratorInviteInput,
 } from '#universal/package-access-mutations.ts'
-import { type PackageCollaboratorsLoaderData } from '#universal/package-collaborators.ts'
+import type { PackageCollaboratorsLoaderData } from '#universal/package-collaborators.ts'
 import { parseRouteInput } from './route-input.ts'
-import { type z } from 'zod'
+import type { z } from 'zod'
 
 export const loadPackageCollaborators = createServerFn({ method: 'GET' })
 	.validator((data: z.input<typeof packageAccessInput>) =>

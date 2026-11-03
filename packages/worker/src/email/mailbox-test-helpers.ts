@@ -7,12 +7,12 @@ import { expect } from 'vitest'
 import { mailboxDurableObjectName } from '#worker/user-scoped-durable-object-name.ts'
 import { emailAttachmentBlobKey, emailRawMimeKey } from './blob-keys.ts'
 import { mailboxRpc } from './mailbox-client.ts'
-import {
-	type Mailbox,
-	type MailboxAttachmentInput,
-	type MailboxDeliveryEventInput,
-	type MailboxMessageInput,
-	type MailboxThreadInput,
+import type {
+	Mailbox,
+	MailboxAttachmentInput,
+	MailboxDeliveryEventInput,
+	MailboxMessageInput,
+	MailboxThreadInput,
 } from './mailbox-do.ts'
 
 export function mailboxEnv(): { MAILBOX: DurableObjectNamespace<Mailbox> } {

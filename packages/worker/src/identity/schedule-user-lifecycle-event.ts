@@ -6,7 +6,7 @@ import {
 	type UserCreatedSource,
 	type UserLifecycleIdentity,
 } from './user-lifecycle-subscription-event.ts'
-import { type FirstTouchAttribution } from '#universal/first-touch-attribution.ts'
+import type { FirstTouchAttribution } from '#universal/first-touch-attribution.ts'
 
 type UserLifecycleScheduleEnv = Pick<
 	Env,

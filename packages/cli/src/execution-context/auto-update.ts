@@ -26,8 +26,8 @@ import { cliConfigDir } from '../store.js'
  * app), so they all converge on the same version.
  */
 
-export const packageName = '@kodycodes/cli'
-export const registryUrl = 'https://registry.npmjs.org'
+const packageName = '@kodycodes/cli'
+const registryUrl = 'https://registry.npmjs.org'
 /** A daemon exits with this to ask its supervisor to relaunch it (newer CLI). */
 export const relaunchExitCode = 75
 /**
@@ -39,20 +39,20 @@ export const startupRefusedExitCode = 76
 /** Set on a daemon started by a supervisor; it exits instead of supervising. */
 export const supervisedEnvVar = 'KODY_DAEMON_SUPERVISED'
 /** `0`, `off`, or `false` turns auto-update off regardless of the policy file. */
-export const autoUpdateEnvVar = 'KODY_DAEMON_AUTO_UPDATE'
-export const checkIntervalMs = 4 * 60 * 60_000
-export const checkJitterMs = 30 * 60_000
+const autoUpdateEnvVar = 'KODY_DAEMON_AUTO_UPDATE'
+const checkIntervalMs = 4 * 60 * 60_000
+const checkJitterMs = 30 * 60_000
 /** A newer version waits at most this long for runs and background commands. */
-export const maxIdleWaitMs = 24 * 60 * 60_000
+const maxIdleWaitMs = 24 * 60 * 60_000
 const maxTarballBytes = 64 * 1024 * 1024
 /** A relaunched daemon that exits on its own within this window failed to start. */
-export const healthyAfterMs = 60_000
+const healthyAfterMs = 60_000
 
 // --- versions -----------------------------------------------------------
 
 const versionPattern = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+.*)?$/
 
-export function parseVersion(value: string) {
+function parseVersion(value: string) {
 	const match = versionPattern.exec(value.trim())
 	if (!match) return null
 	return {
@@ -127,7 +127,7 @@ export type CurrentVersion = {
 	installedAt: string
 }
 
-export type UpdateEvent = {
+type UpdateEvent = {
 	at: string
 	from: string
 	to: string
@@ -183,7 +183,7 @@ export function readUpdateState(store = cliStoreDir()): UpdateState {
 	return readJsonFile<UpdateState>(join(store, 'update-state.json')) ?? {}
 }
 
-export function updateState(
+function updateState(
 	store: string,
 	change: (state: UpdateState) => UpdateState,
 ) {
@@ -192,7 +192,7 @@ export function updateState(
 	return next
 }
 
-export function recordEvent(store: string, event: UpdateEvent) {
+function recordEvent(store: string, event: UpdateEvent) {
 	updateState(store, (state) => ({
 		...state,
 		history: [...(state.history ?? []), event].slice(-20),
@@ -203,7 +203,7 @@ export function recordEvent(store: string, event: UpdateEvent) {
  * A relaunched version that exited on its own right away: back off from it,
  * and after three such starts never launch it again.
  */
-export function recordFailedStart(
+function recordFailedStart(
 	store: string,
 	version: string,
 	from: string,
@@ -308,7 +308,7 @@ export type PublishedVersion = {
 }
 
 /** The `latest` dist-tag, checked for a sha512 integrity and an npm-hosted tarball. */
-export async function fetchLatestVersion(input: {
+async function fetchLatestVersion(input: {
 	fetchFn?: typeof fetch
 	registry?: string
 	timeoutMs?: number
@@ -346,7 +346,7 @@ export async function fetchLatestVersion(input: {
 }
 
 /** Downloads the tarball and checks it against the registry's sha512 integrity. */
-export async function downloadVerified(input: {
+async function downloadVerified(input: {
 	published: PublishedVersion
 	fetchFn?: typeof fetch
 }) {
@@ -435,7 +435,7 @@ type PackageJson = {
 }
 
 /** The installed @kodycodes/cli package folder that `entry` belongs to. */
-export function packageRootOf(entry: string) {
+function packageRootOf(entry: string) {
 	let dir = dirname(entry)
 	while (dir !== dirname(dir)) {
 		const pkg = readJsonFile<PackageJson>(join(dir, 'package.json'))
@@ -450,7 +450,7 @@ export function packageRootOf(entry: string) {
  * versions still satisfy its ranges (they only ship native code and rarely
  * change). Throws when they do not, so the caller falls back to npm.
  */
-export function linkDependenciesFrom(input: {
+function linkDependenciesFrom(input: {
 	runningPackageRoot: string
 	newPackage: PackageJson
 	nodeModules: string
@@ -508,7 +508,7 @@ export function linkDependenciesFrom(input: {
 }
 
 /** npm next to node, on PATH, or in the usual install folders. */
-export function findNpm(env: NodeJS.ProcessEnv = process.env) {
+function findNpm(env: NodeJS.ProcessEnv = process.env) {
 	const bin = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 	const dirs = [
 		...(process.versions.electron ? [] : [dirname(process.execPath)]),
@@ -720,7 +720,7 @@ export async function installVersion(input: {
 }
 
 /** Keeps the three newest versions (other daemons may still run one) and anything in `keep`. */
-export function pruneVersions(store: string, keep: Array<string>) {
+function pruneVersions(store: string, keep: Array<string>) {
 	const versionsDir = join(store, 'versions')
 	let names: Array<string>
 	try {
@@ -749,7 +749,7 @@ export function pruneVersions(store: string, keep: Array<string>) {
 }
 
 /** One installer at a time per machine; a lock older than 15 minutes is stale. */
-export function withStoreLock<T>(store: string, run: () => Promise<T>) {
+function withStoreLock<T>(store: string, run: () => Promise<T>) {
 	const lock = join(store, '.update.lock')
 	mkdirSync(store, { recursive: true, mode: 0o700 })
 	try {
@@ -890,7 +890,7 @@ export async function checkForUpdate(input: {
 }
 
 /** First check a minute or so after start, then every ~4h with jitter. */
-export function nextCheckDelay(first: boolean, random = Math.random) {
+function nextCheckDelay(first: boolean, random = Math.random) {
 	if (first) return 30_000 + Math.floor(random() * 90_000)
 	return checkIntervalMs + Math.floor((random() * 2 - 1) * checkJitterMs)
 }

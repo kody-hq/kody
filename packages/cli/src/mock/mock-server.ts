@@ -10,7 +10,7 @@ import {
 	type Server,
 	type ServerResponse,
 } from 'node:http'
-import { type AddressInfo } from 'node:net'
+import type { AddressInfo } from 'node:net'
 import {
 	notImplementedInMock,
 	StructuredCliError,
@@ -56,7 +56,7 @@ export type MockServer = {
 
 const mockTokenPrefix = 'kody_mock_'
 
-export function isMockApiToken(token: string): boolean {
+function isMockApiToken(token: string): boolean {
 	return token.startsWith(mockTokenPrefix) || token === 'mock'
 }
 

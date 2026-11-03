@@ -13,7 +13,7 @@
  * them.
  */
 
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { softDeletePurgeCutoffIso } from '#worker/soft-delete/window.ts'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
 import { shouldRunRetentionCron } from '@kody-internal/shared/jobs/scheduled-lanes.ts'

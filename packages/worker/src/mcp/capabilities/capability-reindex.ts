@@ -6,7 +6,7 @@ import {
 	type VectorReindexSweepResult,
 } from '#worker/vectorize/reindex-sweep.ts'
 import { BUILTIN_VECTOR_NAMESPACE } from '#worker/vectorize/vector-namespaces.ts'
-import { type CapabilitySpec } from './types.ts'
+import type { CapabilitySpec } from './types.ts'
 
 export async function reindexCapabilityVectors(
 	env: Env,

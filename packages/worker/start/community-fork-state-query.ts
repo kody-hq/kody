@@ -1,5 +1,5 @@
 import { queryOptions } from '@tanstack/react-query'
-import { type CommunityForkState } from '#universal/community-public-types.ts'
+import type { CommunityForkState } from '#universal/community-public-types.ts'
 import { loadCommunityForkState } from '#start/server/community-mutations'
 
 /** How often to re-read a fork that is still being created. */

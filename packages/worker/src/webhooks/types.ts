@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	webhookDefaultRateLimitPerMinute as defaultRateLimitPerMinute,
 	webhookMaxRateLimitPerMinute as maxRateLimitPerMinute,

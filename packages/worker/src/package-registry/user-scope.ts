@@ -1,4 +1,4 @@
-import { type McpUserContext } from '@kody-internal/shared/chat.ts'
+import type { McpUserContext } from '@kody-internal/shared/chat.ts'
 import {
 	getUsernameFormatValidationError,
 	normalizeUsername,

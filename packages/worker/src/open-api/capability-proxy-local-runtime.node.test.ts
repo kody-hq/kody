@@ -1,7 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { afterEach, expect, test, vi } from 'vitest'
 import { ApiError } from './errors.ts'
-import { type ApiInvocationContext } from './context.ts'
+import type { ApiInvocationContext } from './context.ts'
 import { runCapabilityProxyCall } from './capability-proxy.ts'
 import { bytesToBase64 } from '@kody-internal/shared/base64.ts'
 

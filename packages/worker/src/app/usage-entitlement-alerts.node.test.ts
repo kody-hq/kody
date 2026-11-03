@@ -1,12 +1,12 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
-import { type FleetEntitlementCrossingSnapshot } from '#worker/admin/fleet-usage-insights.ts'
+import type { FleetEntitlementCrossingSnapshot } from '#worker/admin/fleet-usage-insights.ts'
 import {
 	consoleWarn,
 	silenceExpectedConsoleWarns,
 } from '#worker/test-support/console-spies.ts'
-import { type FleetEntitlementCrossedEvent } from '#worker/usage/fleet-entitlement-crossing-subscription-event.ts'
+import type { FleetEntitlementCrossedEvent } from '#worker/usage/fleet-entitlement-crossing-subscription-event.ts'
 import type * as fleetEntitlementCrossingSubscriptions from '#worker/usage/fleet-entitlement-crossing-subscriptions.ts'
 
 const loadFleetEntitlementCrossingSnapshots =

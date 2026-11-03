@@ -2,7 +2,7 @@ import {
 	buildMcpServerLastError,
 	sanitizePublicUrl,
 } from './oauth-settle-error.ts'
-import { type McpServerLastError } from './types.ts'
+import type { McpServerLastError } from './types.ts'
 
 export const mcpOAuthTokenRecoveryStoragePrefix = 'mcp-oauth-token-recovery/'
 export const mcpOAuthRefreshTokenStoragePrefix = 'mcp-oauth-refresh-token/'

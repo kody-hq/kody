@@ -18,7 +18,7 @@ import {
 	type RequestSentStatus,
 } from './network-error.js'
 import { bakedOpenApiRoutes } from './generated/openapi-routes.js'
-import { type ToolCallResult } from './tool-result.js'
+import type { ToolCallResult } from './tool-result.js'
 import { readPackageVersion } from './package-info.js'
 import { userCacheDir } from './workerd-binary.js'
 
@@ -111,7 +111,7 @@ export class OpenApiError extends Error {
 }
 
 /** Path to the live OpenAPI document on the Kody API origin. */
-export const openApiDocumentPath = 'openapi.json'
+const openApiDocumentPath = 'openapi.json'
 
 /**
  * Bootstrap redeem returns a `kody_at_…` once. Agents must use
@@ -316,7 +316,7 @@ export async function openApiRequest(
 }
 
 /** Response header naming one API request (set by the `api.kody.codes` edge). */
-export const apiRequestIdHeader = 'x-kody-request-id'
+const apiRequestIdHeader = 'x-kody-request-id'
 
 /**
  * Call one Open API operation by `operationId` + flat `params`, matching the
@@ -418,7 +418,7 @@ export function buildOpenApiHttpRequest(input: {
 	}
 }
 
-export function apiOperationUsesQueryInputs(method: string): boolean {
+function apiOperationUsesQueryInputs(method: string): boolean {
 	const upper = method.toUpperCase()
 	return upper === 'GET' || upper === 'DELETE'
 }
@@ -589,7 +589,7 @@ export async function searchWithApiToken(
 	return toolResultFromHttpBody(body)
 }
 
-export function toolResultFromHttpBody(payload: unknown): ToolCallResult {
+function toolResultFromHttpBody(payload: unknown): ToolCallResult {
 	if (isRecord(payload) && Array.isArray(payload.content)) {
 		return {
 			content: payload.content as ToolCallResult['content'],

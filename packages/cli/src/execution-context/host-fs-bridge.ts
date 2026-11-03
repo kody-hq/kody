@@ -13,7 +13,7 @@ import {
 	unlink,
 	writeFile,
 } from 'node:fs/promises'
-import { type Stats } from 'node:fs'
+import type { Stats } from 'node:fs'
 import {
 	type EffectiveFs,
 	FsAccessError,
@@ -21,7 +21,7 @@ import {
 } from './fs-access.js'
 
 /** Largest file one host-folder read or write moves through the bridge. */
-export const hostFsMaxBytes = 32 * 1024 * 1024
+const hostFsMaxBytes = 32 * 1024 * 1024
 
 export type HostFsRequest = {
 	op: string

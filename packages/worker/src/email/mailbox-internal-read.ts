@@ -1,22 +1,22 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { isSystemEmailOwner } from './email-owner.ts'
 import { mailboxRpc, type MailboxEnv } from './mailbox-client.ts'
 import {
 	mailboxAttachmentToEmailAttachmentRecord,
 	mailboxMessageToEmailMessageRecord,
 } from './mailbox-record-mappers.ts'
-import {
-	type MailboxBlobReferencePage,
-	type MailboxCountMessagesInput,
-	type MailboxCountResult,
-	type MailboxExportResult,
+import type {
+	MailboxBlobReferencePage,
+	MailboxCountMessagesInput,
+	MailboxCountResult,
+	MailboxExportResult,
 } from './mailbox-types.ts'
 import {
 	countSystemEmailMessages,
 	getSystemEmailMessageById,
 	listSystemEmailAttachments,
 } from './system-email-graph-store.ts'
-import { type EmailAttachmentRecord, type EmailMessageRecord } from './types.ts'
+import type { EmailAttachmentRecord, EmailMessageRecord } from './types.ts'
 
 /**
  * Internal product-reader chokepoint.

@@ -26,7 +26,7 @@ import {
 import { isAccountEmailLabel } from './account-identity.ts'
 import { getPlatformOauthAppClientSecret } from './platform-apps.ts'
 import { getJoinedIntegration } from './service.ts'
-import { type JoinedIntegration } from './types.ts'
+import type { JoinedIntegration } from './types.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 /**

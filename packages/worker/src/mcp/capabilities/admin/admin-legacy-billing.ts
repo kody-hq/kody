@@ -11,7 +11,7 @@ import {
 	resolveActingAdminPerson,
 	type ActingAdminPerson,
 } from './admin-shared.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 
 export function legacyReason(
 	capabilityName: string,

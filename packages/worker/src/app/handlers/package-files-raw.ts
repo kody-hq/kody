@@ -6,7 +6,7 @@ import {
 	type PackageFileRawResult,
 } from '#app/package-files-data.ts'
 import { resolvePackageFileRawViewer } from '#app/package-files-raw-viewer.ts'
-import { type ApiError } from '#worker/open-api/errors.ts'
+import type { ApiError } from '#worker/open-api/errors.ts'
 import { normalizePackageFilesPath } from '#universal/package-files.ts'
 
 // Raw bytes share the app origin. `sandbox` keeps anything a browser does

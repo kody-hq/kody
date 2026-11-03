@@ -17,10 +17,7 @@ import {
 	isLockStale,
 	guideCatalogLockPath,
 } from './build-guide-catalog-modules.ts'
-import {
-	type Guide,
-	type GuideMetadata,
-} from '#worker/guides/parse-frontmatter.ts'
+import type { Guide, GuideMetadata } from '#worker/guides/parse-frontmatter.ts'
 import { guides as webGuides } from '#worker/guides/catalog.ts'
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url))

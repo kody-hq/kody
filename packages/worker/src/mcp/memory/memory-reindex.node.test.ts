@@ -4,7 +4,7 @@ import {
 	d1LockRetryMaxAttempts,
 } from '#worker/d1-retry.ts'
 import { reindexMemoryVectors } from './memory-reindex.ts'
-import { type McpMemoryRow } from './types.ts'
+import type { McpMemoryRow } from './types.ts'
 
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 const mockModule = vi.hoisted(() => ({

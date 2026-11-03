@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type CredentialPermissionFamily } from '@kody-internal/shared/org-permissions.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { CredentialPermissionFamily } from '@kody-internal/shared/org-permissions.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { authorizeCredentialScope } from '#worker/authorization/authorize.ts'
 import {
 	credentialPermissionFamily,
@@ -22,7 +22,7 @@ import { getOrgById, getOrgBySlug } from '#worker/orgs/repo.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { requireMcpRequest } from '#mcp/capabilities/meta/require-user.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { resolveCallerSecretAuthority } from '#mcp/secrets/secret-authority.ts'
 

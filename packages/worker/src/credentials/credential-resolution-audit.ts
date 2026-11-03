@@ -1,6 +1,6 @@
 import { waitUntil } from 'cloudflare:workers'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { auditDatabaseFromEnv } from '#worker/audit-log.ts'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
 import { IntegrationPackageAccessDeniedError } from '#worker/integrations/package-access.ts'
@@ -18,7 +18,7 @@ import {
 	CredentialRequestRefusedError,
 } from './credential-request.ts'
 import { CredentialNeedUndeclaredError } from './credential-need-enforcement.ts'
-import { type PackageStamp } from './package-stamp.ts'
+import type { PackageStamp } from './package-stamp.ts'
 import { reportOrgAuditWriteFailure } from './report-org-audit-write-failure.ts'
 
 export const credentialResolveAuditAction = 'credential.resolve'

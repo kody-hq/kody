@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { type APIRequestContext } from '@playwright/test'
+import type { APIRequestContext } from '@playwright/test'
 import { expect, test, waitForClientHydration } from './playwright-utils.ts'
 import { completeUsernameChoice } from './complete-username-choice.ts'
 import {

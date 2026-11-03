@@ -25,7 +25,7 @@ export type LoadedPackageMocks = {
 	handlers: Array<unknown>
 }
 
-export async function resolvePackageMocksPath(
+async function resolvePackageMocksPath(
 	packageRoot: string,
 ): Promise<string | null> {
 	const path = join(packageRoot, packageMocksRelativePath)

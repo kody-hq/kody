@@ -9,7 +9,7 @@ import {
 	runArtifactsGitWithRetry,
 	wrapArtifactsGitHttpError,
 } from './artifacts-git-retry.ts'
-import { type EntityKind } from './types.ts'
+import type { EntityKind } from './types.ts'
 import { loadIsomorphicGit } from './isomorphic-git-lazy.ts'
 
 export type ArtifactToken = {

@@ -1,6 +1,6 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
-import { type CommunityForkRecord } from './types.ts'
+import type { CommunityForkRecord } from './types.ts'
 
 const mocks = vi.hoisted(() => ({
 	invokePackageSubscription: vi.fn(),

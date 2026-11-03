@@ -2,27 +2,32 @@ import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import {
 	clearFeatureFlagRepoOverride,
 	evaluateRepoFeatureFlag,
 	listFeatureFlagRepoOverrides,
 	setFeatureFlagRepoOverride,
 } from '#worker/feature-flags/repo-flags.ts'
-import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
+import {
+	getEntitySourceById,
+	getEntitySourceByEntity,
+} from '#worker/repo/entity-sources.ts'
+import { getUserRepoByIdInAnyOrg } from '#worker/repo/user-repos.ts'
 import {
 	adminCapabilityAccess,
 	adminMutationCapabilityAccess,
 	auditAdminCapabilityInvocation,
 	resolveActingAdminPerson,
 } from './admin-shared.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 import { assertFeatureFlagKey } from './feature-flag-shared.ts'
 
 const sourceIdSchema = z
 	.string()
-	.uuid()
+	.min(1)
 	.describe(
-		'Repo source id (entity_sources.id): the {id} in a /git/sources/{id}.git remote.',
+		'Repo source id (entity_sources.id, the {id} in a /git/sources/{id}.git remote) or the repo_id from repoList. Either resolves to the same live repo.',
 	)
 
 const repoOverrideSchema = z.object({
@@ -38,10 +43,27 @@ const repoEvaluationSchema = z.object({
 	repoOverride: z.boolean(),
 })
 
-async function requireLiveSource(db: D1Database, sourceId: string) {
-	const source = await getEntitySourceById(db, sourceId)
+async function getRepoSourceByRepoId(db: D1Database, repoId: string) {
+	const repo = await getUserRepoByIdInAnyOrg(db, repoId)
+	if (!repo) return null
+	return await getEntitySourceByEntity(db, {
+		userId: repo.userId,
+		entityKind: 'repo',
+		entityId: repo.id,
+	})
+}
+
+function repoIdForSource(source: EntitySourceRow) {
+	return source.entity_kind === 'repo' ? source.entity_id : null
+}
+
+async function requireLiveSource(db: D1Database, id: string) {
+	const source =
+		(await getEntitySourceById(db, id)) ?? (await getRepoSourceByRepoId(db, id))
 	if (!source) {
-		throw new McpCallerError(`No live repo source with id ${sourceId}.`)
+		throw new McpCallerError(
+			`No live repo source with source id or repo_id ${id}.`,
+		)
 	}
 	return source
 }
@@ -89,7 +111,7 @@ export const adminFeatureFlagRepoOverrideCapability = defineDomainCapability(
 		name: 'adminFeatureFlagRepoOverride',
 		contextRuns: 'deny',
 		description:
-			'Set or clear a per-repo feature flag allowlist row (repo-scoped flags such as repo-push-queue) by repo source id. The repo row wins over owner overrides, rollout, and audience. Returns the repo evaluation and the flag repo allowlist. Admin-only; never returns user content.',
+			'Set or clear a per-repo feature flag allowlist row (repo-scoped flags such as repo-push-queue) by repo source id or repo_id (output echoes both). The repo row wins over owner overrides, rollout, and audience. Returns the repo evaluation and the flag repo allowlist. Admin-only; never returns user content.',
 		keywords: [
 			'admin',
 			'feature flags',
@@ -104,6 +126,7 @@ export const adminFeatureFlagRepoOverrideCapability = defineDomainCapability(
 		outputSchema: z.object({
 			key: z.string(),
 			sourceId: z.string(),
+			repoId: z.string().nullable(),
 			cleared: z.boolean(),
 			evaluation: repoEvaluationSchema,
 			repoOverrides: z.array(repoOverrideSchema),
@@ -139,6 +162,7 @@ export const adminFeatureFlagRepoOverrideCapability = defineDomainCapability(
 					return {
 						key,
 						sourceId: source.id,
+						repoId: repoIdForSource(source),
 						cleared: clear,
 						evaluation: await evaluateRepoFeatureFlag(db, key, {
 							sourceId: source.id,
@@ -163,7 +187,7 @@ export const adminFeatureFlagRepoCheckCapability = defineDomainCapability(
 		name: 'adminFeatureFlagRepoCheck',
 		contextRuns: 'deny',
 		description:
-			'Evaluate a repo-scoped feature flag (such as repo-push-queue) for one repo source id and list the flag repo allowlist. Shows whether the repo is on and which rule decided it (override, global, rollout, default). Admin-only; never returns user content.',
+			'Evaluate a repo-scoped feature flag (such as repo-push-queue) for one repo (source id or repo_id; output echoes both) and list the flag repo allowlist. Shows whether the repo is on and which rule decided it (override, global, rollout, default). Admin-only; never returns user content.',
 		keywords: [
 			'admin',
 			'feature flags',
@@ -184,6 +208,7 @@ export const adminFeatureFlagRepoCheckCapability = defineDomainCapability(
 		outputSchema: z.object({
 			key: z.string(),
 			sourceId: z.string(),
+			repoId: z.string().nullable(),
 			evaluation: repoEvaluationSchema,
 			repoOverrides: z.array(repoOverrideSchema),
 		}),
@@ -198,6 +223,7 @@ export const adminFeatureFlagRepoCheckCapability = defineDomainCapability(
 					return {
 						key,
 						sourceId: source.id,
+						repoId: repoIdForSource(source),
 						evaluation: await evaluateRepoFeatureFlag(db, key, {
 							sourceId: source.id,
 							ownerId: source.user_id,

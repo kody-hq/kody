@@ -203,8 +203,17 @@ notifications do not reset that clock. Before that client deadline, hosted
 **execute** returns `inProgress: true` with **`runId`** and **`idempotencyKey`**
 instead of letting the timeout look like a failed mutation with nothing to
 follow. The sandbox keeps running. Poll **`runGet({ run_id: runId })`** with
-that `runId`. Retry **execute** with the same `idempotencyKey` to read the
-in-progress or retained result. Do not start a second mutation.
+that `runId`; once the run finishes, its **`result`** field holds the return
+value (capped at 4 KiB). Retry **execute** with the same `idempotencyKey` to
+read the in-progress or retained result. Do not start a second mutation.
+
+After that follow response, the run has about **20s** more to finish (about 65s
+in total) on hosted MCP and Open API execute, because the Worker only keeps work
+alive briefly once the response is sent. A run still going then stops with
+`Execution timed out after …s` on its run record, so `runGet` and keyed retries
+report that outcome right away. The CLI's cloud execute (`POST /v1/execute`)
+waits out the whole sandbox budget instead of returning a follow handle. Work
+that needs longer belongs in a workflow, a job, or `execute --local`.
 
 You can omit **`idempotencyKey`**. When Kody can record the run, it assigns one
 (`execute:…`) and returns it on that follow response. Pass your own key (string,

@@ -3,12 +3,12 @@
  * reads this instead of fanning out per-user Durable Object RPCs.
  */
 
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RunLogAdminInsightsSnapshot } from '#worker/run-records/admin-insights-snapshot.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { RunLogAdminInsightsSnapshot } from '#worker/run-records/admin-insights-snapshot.ts'
 import { getAdminInsightsSnapshot } from '#worker/run-records/service.ts'
-import {
-	type AdminInsightsRunLogCompleteness,
-	type AdminInsightsWorkflowStatus,
+import type {
+	AdminInsightsRunLogCompleteness,
+	AdminInsightsWorkflowStatus,
 } from '#universal/loader-data.ts'
 
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'

@@ -2,7 +2,7 @@ import { resolveHostedPackageAppUrl } from '@kody-internal/shared/public-urls.ts
 import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { callerHasRole } from '#mcp/capabilities/access-control.ts'
-import { type McpRegistrationAgent } from '#mcp/mcp-registration-agent.ts'
+import type { McpRegistrationAgent } from '#mcp/mcp-registration-agent.ts'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
 import { importGuideCatalog } from '#worker/guide-catalog-modules.ts'
 import {
@@ -29,7 +29,7 @@ import {
 	mcpServerUsage,
 } from './search-mcp-servers.ts'
 import { countRelatedCapabilityOperations } from './search-related-capabilities.ts'
-import { type SearchRowsAndRegistry } from './search-types.ts'
+import type { SearchRowsAndRegistry } from './search-types.ts'
 
 export async function resolveEntityDetail(input: {
 	agent: McpRegistrationAgent

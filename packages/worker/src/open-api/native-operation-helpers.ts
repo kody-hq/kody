@@ -1,5 +1,5 @@
-import { type z } from 'zod'
-import { type ApiInvocationContext, type ApiPrincipal } from './context.ts'
+import type { z } from 'zod'
+import type { ApiInvocationContext, ApiPrincipal } from './context.ts'
 import { ApiError, invalidRequest } from './errors.ts'
 
 export type NativeApiOperationDefinition = {

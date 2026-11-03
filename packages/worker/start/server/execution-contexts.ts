@@ -2,7 +2,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { notFound, redirect } from '@tanstack/react-router'
 import { z } from 'zod'
 import { routes } from '#universal/routes.ts'
-import { type loadExecutionContextsScope } from '#app/handlers/execution-contexts.ts'
+import type { loadExecutionContextsScope } from '#app/handlers/execution-contexts.ts'
 
 const orgSlug = z.string().regex(/^[a-zA-Z0-9_-]+$/)
 const segment = z

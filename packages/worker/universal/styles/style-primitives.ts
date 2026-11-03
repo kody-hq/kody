@@ -1,4 +1,4 @@
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { surfaceCardCss } from './surface.ts'
 import {
 	colors,
@@ -28,6 +28,7 @@ function getBaseButtonCss(options: ButtonCssOptions = {}) {
 	return {
 		padding: `${spacing.sm} ${size === 'lg' ? spacing.lg : spacing.md}`,
 		borderRadius: radius.full,
+		fontFamily: typography.fontFamilyDisplay,
 		fontSize: typography.fontSize.base,
 		fontWeight: typography.fontWeight[weight],
 		cursor: 'pointer',

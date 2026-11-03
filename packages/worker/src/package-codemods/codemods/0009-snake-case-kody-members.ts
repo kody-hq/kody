@@ -1,9 +1,9 @@
 import { parseModuleSource, type ModuleAstNode } from '#worker/module-source.ts'
 import { snakeToCamelIdentifier } from '#mcp/capabilities/runtime-identifier.ts'
-import {
-	type PackageCodemod,
-	type PackageCodemodFinding,
-	type PackageCodemodTransformResult,
+import type {
+	PackageCodemod,
+	PackageCodemodFinding,
+	PackageCodemodTransformResult,
 } from '../types.ts'
 
 export const snakeCaseKodyMembersCodemodId = '0009-snake-case-kody-members'

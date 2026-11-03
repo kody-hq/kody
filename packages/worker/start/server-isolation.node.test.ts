@@ -84,3 +84,21 @@ test('Start preserves each provider binding object across overlapping requests',
 		expect(call?.[1].context.env).toBe(bindings[index])
 	}
 })
+
+test('documents report the ssr phase and loader phases in Server-Timing', async () => {
+	const { recordServerTiming } = await import('../src/request-context.ts')
+	renderStart.mockImplementationOnce(async (request: Request) => {
+		await recordServerTiming('session', async () => null, request)
+		return new Response('<html></html>', {
+			headers: { 'Content-Type': 'text/html' },
+		})
+	})
+	const response = await handleRequest(new Request('https://kody.test/'), {
+		COOKIE_SECRET: 'test-only',
+		WRANGLER_IS_LOCAL_DEV: 'true',
+	} as Env)
+	const names = (response.headers.get('Server-Timing') ?? '')
+		.split(',')
+		.map((entry) => entry.trim().split(';')[0])
+	expect(names).toEqual(['session', 'ssr'])
+})

@@ -32,12 +32,12 @@ import { isCredentialInvalidatedByStoredPasswordChange } from '#worker/password-
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { personalOrgIdFromUserRow } from '#worker/orgs/personal-org-id.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
-import { type McpUserContext } from '@kody-internal/shared/chat.ts'
+import type { McpUserContext } from '@kody-internal/shared/chat.ts'
 import {
 	parseEmailVerificationDelivery,
 	type EmailVerificationDelivery,
 } from '#universal/email-verification-delivery.ts'
-import { type PermissionString, type RoleName } from '#universal/permissions.ts'
+import type { PermissionString, RoleName } from '#universal/permissions.ts'
 
 type AuthUserRow = {
 	id: number

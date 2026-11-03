@@ -11,21 +11,21 @@ import {
 	type Server,
 	type ServerResponse,
 } from 'node:http'
-import { type AddressInfo } from 'node:net'
+import type { AddressInfo } from 'node:net'
 import { Readable } from 'node:stream'
 import { redact } from './redact.js'
 import { runSecretHeader } from './local-runtime-source.js'
 
-export const localBridgeCallPath = '/call'
+const localBridgeCallPath = '/call'
 export const localBridgeGatewayFetchPath = '/gateway-fetch'
-export const localBridgeHostFsPath = '/fs'
+const localBridgeHostFsPath = '/fs'
 
 export type LocalRuntimeBridge = {
 	port: number
 	close: () => Promise<void>
 }
 
-export type LocalRuntimeBridgeCall = {
+type LocalRuntimeBridgeCall = {
 	path: Array<string>
 	args: Array<unknown>
 }
@@ -160,7 +160,7 @@ export async function startLocalRuntimeBridge(
 	}
 }
 
-export function parseBridgeCall(body: string): LocalRuntimeBridgeCall {
+function parseBridgeCall(body: string): LocalRuntimeBridgeCall {
 	const parsed = JSON.parse(body) as { path?: unknown; args?: unknown }
 	if (
 		!Array.isArray(parsed.path) ||
@@ -175,7 +175,7 @@ export function parseBridgeCall(body: string): LocalRuntimeBridgeCall {
 	}
 }
 
-export async function readBodyText(stream: IncomingMessage): Promise<string> {
+async function readBodyText(stream: IncomingMessage): Promise<string> {
 	const chunks: Array<Buffer> = []
 	for await (const chunk of stream) {
 		chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))

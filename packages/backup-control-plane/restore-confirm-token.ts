@@ -5,7 +5,7 @@ import {
 import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
 
 import { BackupError } from './backup-policy.ts'
-import { type BackupEnvironment } from './backup-types.ts'
+import type { BackupEnvironment } from './backup-types.ts'
 
 const RESTORE_CONFIRM_TTL_MS = 10 * 60 * 1000
 

@@ -1,4 +1,4 @@
-import { type McpServerConnectionState } from './types.ts'
+import type { McpServerConnectionState } from './types.ts'
 
 export const mcpServerDisconnectedTopic = 'mcp.server.disconnected'
 export const mcpServerReconnectedTopic = 'mcp.server.reconnected'

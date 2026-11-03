@@ -4,9 +4,9 @@ import {
 	createPublishedPackageCacheKey,
 	createPublishedPackagePromiseCache,
 } from '#worker/package-registry/published-package-cache.ts'
-import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import { importWorkerBundler } from '#worker/worker-bundler-modules.ts'
-import { type RuntimeBundle } from './runtime-bundle-types.ts'
+import type { RuntimeBundle } from './runtime-bundle-types.ts'
 import {
 	createRelativeImportSpecifier,
 	joinPath,

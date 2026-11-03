@@ -1,8 +1,9 @@
 /** @jsxImportSource @emotion/react */
 import { useState, type FormEvent } from 'react'
-import { useInviteHandoff } from '../use-invite-handoff.ts'
+import { parkInviteHandoff, useInviteHandoff } from '../use-invite-handoff.ts'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { SiteLink } from '../components/site-link.tsx'
+import { DetailParts } from '../components/detail-parts.tsx'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
 import {
 	AccountManagementPanel,
@@ -58,17 +59,23 @@ type PostChange = (
 	key: string,
 	change: PackageCollaboratorsChange,
 	success: string,
+	onSaved?: (result: PackageCollaboratorsWriteResult) => void,
 ) => Promise<PackageCollaboratorsWriteResult | null>
 
-/** One-time invite messages stay local to the submitted actor and package. */
+/**
+ * One-time invite messages stay local to the submitted actor and package
+ * (`handoffKey`), including an invite that settles after navigating away.
+ */
 export function PackageCollaboratorInvites({
 	view,
 	busyKey,
 	postChange,
+	handoffKey,
 }: {
 	view: PackageCollaboratorsView
 	busyKey: string | null
 	postChange: PostChange
+	handoffKey: string
 }) {
 	const [invitee, setInvitee] = useState('')
 	const [preset, setPreset] = useState<PackageCollaboratorPreset>('use')
@@ -76,7 +83,7 @@ export function PackageCollaboratorInvites({
 		Array<PackageCollaboratorPermission>
 	>([])
 	const [created, setCreated] =
-		useInviteHandoff<PackageCollaboratorInviteCreated>(view.invites)
+		useInviteHandoff<PackageCollaboratorInviteCreated>(view.invites, handoffKey)
 	const [confirmed, setConfirmed] = useState<string | null>(null)
 	const busy = busyKey !== null
 	async function submit(event: FormEvent<HTMLFormElement>) {
@@ -90,6 +97,9 @@ export function PackageCollaboratorInvites({
 				...presetOrPermissions(preset, permissions),
 			},
 			'Invite created.',
+			(saved) => {
+				if (saved.invite) parkInviteHandoff(handoffKey, saved.invite)
+			},
 		)
 		if (result?.invite) {
 			setInvitee('')
@@ -265,12 +275,14 @@ export function PackageCollaboratorInvites({
 										{packageCollaboratorInviteeLabel(invite)}
 									</span>
 									<span css={rowDetailCss}>
-										{[
-											invite.preset
-												? packageCollaboratorPresetLabel(invite.preset)
-												: 'Custom access',
-											`Expires ${formatTimestampDate(invite.expiresAt)}`,
-										].join(' · ')}
+										<DetailParts
+											parts={[
+												invite.preset
+													? packageCollaboratorPresetLabel(invite.preset)
+													: 'Custom access',
+												<>Expires {formatTimestampDate(invite.expiresAt)}</>,
+											]}
+										/>
 									</span>
 								</span>
 								<span css={rowActionsCss}>

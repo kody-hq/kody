@@ -6,7 +6,7 @@ import {
 import { captureClientException } from '#client/sentry-client.ts'
 import { inviteLinkOfferCopy } from '#universal/invite-link-offer-copy.ts'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { isRedirect, useRouter, useRouteContext } from '@tanstack/react-router'
 import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.tsx'
@@ -14,7 +14,7 @@ import { buildErrorAgentPrompt } from '#universal/error-agent-prompt.ts'
 import { renderIcon } from '../components/icon.tsx'
 import { UserAvatar } from '../components/user-avatar.tsx'
 import { SiteLink } from '../components/site-link.tsx'
-import { type OrgInviteJoinLoaderData } from '#universal/loader-data.ts'
+import type { OrgInviteJoinLoaderData } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
 import {
 	cardCss,

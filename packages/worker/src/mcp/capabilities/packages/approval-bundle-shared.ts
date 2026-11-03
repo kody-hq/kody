@@ -1,7 +1,7 @@
 import { z } from 'zod'
-import { type ApprovalViewer } from '#worker/approval-bundles/item-views.ts'
+import type { ApprovalViewer } from '#worker/approval-bundles/item-views.ts'
 import { requireMcpRequest } from '#mcp/capabilities/meta/require-user.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { resolveCallerSecretAuthority } from '#mcp/secrets/secret-authority.ts'
 import {

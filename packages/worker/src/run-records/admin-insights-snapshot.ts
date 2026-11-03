@@ -6,7 +6,7 @@
  * errors, logs, or other user-authored content.
  */
 
-import { type ActivationMilestone } from './package-activation-state.ts'
+import type { ActivationMilestone } from './package-activation-state.ts'
 
 export type RunLogAdminInsightsWorkflowStatusCount = {
 	/** Projection `status`, or `'unknown'` when null/blank. */

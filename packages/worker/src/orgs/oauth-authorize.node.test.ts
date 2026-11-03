@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
-import { type AuthRequest } from '@cloudflare/workers-oauth-provider'
+import type { AuthRequest } from '@cloudflare/workers-oauth-provider'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { isOrgAuthorizeError } from './authorize-error.ts'

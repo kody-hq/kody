@@ -8,7 +8,7 @@ import * as Sentry from '@sentry/cloudflare'
 import { DurableObject } from 'cloudflare:workers'
 import { Lifecycle } from 'agents/lifecycle'
 import { MCPClientManager } from 'agents/mcp/client'
-import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js'
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import {
 	decryptMcpServerOAuthClientSecret,
 	mcpServerOAuthClientSecretContext,
@@ -104,17 +104,17 @@ import {
 	type McpConnectionEpisodeRecord,
 	type McpServerConnectionEvent,
 } from './connection-episodes.ts'
-import {
-	type McpHubConnectResult,
-	type McpHubOAuthClientChange,
-	type McpClientHubReadSnapshot,
-	type McpHubServerSnapshot,
-	type McpHubSnapshot,
-	type McpServerConnectionState,
-	type McpServerLastError,
-	type McpServerOAuthCallbackOutcome,
-	type McpServerPendingAuthorization,
-	type McpServerToolDescriptor,
+import type {
+	McpHubConnectResult,
+	McpHubOAuthClientChange,
+	McpClientHubReadSnapshot,
+	McpHubServerSnapshot,
+	McpHubSnapshot,
+	McpServerConnectionState,
+	McpServerLastError,
+	McpServerOAuthCallbackOutcome,
+	McpServerPendingAuthorization,
+	McpServerToolDescriptor,
 } from './types.ts'
 
 const mcpClientVersion = '1.0.0'

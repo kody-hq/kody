@@ -23,7 +23,7 @@ import {
 	sameStringSet,
 	type CredentialDetailField,
 } from '#worker/credentials/credential-audit.ts'
-import { type OrgAuditWriter } from '#worker/orgs/org-audit.ts'
+import type { OrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import {
 	getDiscoverablePlatformOauthApp,
 	getPlatformOauthAppBySlug,
@@ -62,11 +62,11 @@ import {
 	setUserOauthAppLogo,
 } from './user-oauth-app-logo.ts'
 import { scheduleUserOauthAppFaviconFill } from './user-oauth-app-favicon.ts'
-import {
-	type JoinedIntegration,
-	type UserIntegrationConnection,
-	type UserOauthApp,
-	type UserOauthAppWithConnectionCount,
+import type {
+	JoinedIntegration,
+	UserIntegrationConnection,
+	UserOauthApp,
+	UserOauthAppWithConnectionCount,
 } from './types.ts'
 
 export type { IntegrationConfig, PlatformOauthApp }

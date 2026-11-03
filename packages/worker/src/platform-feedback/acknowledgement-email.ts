@@ -9,7 +9,7 @@ import {
 	readPlatformFeedbackSubmitterMailTarget,
 	releasePlatformFeedbackEmailClaim,
 } from './submitter-mail.ts'
-import { type PlatformFeedbackRecord } from './types.ts'
+import type { PlatformFeedbackRecord } from './types.ts'
 
 export const platformFeedbackAcknowledgementEmailKvKeyPrefix =
 	'platform-feedback-acknowledgement-email:v1'

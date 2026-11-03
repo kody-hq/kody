@@ -2,12 +2,12 @@ import {
 	parsePackageJobSchedule,
 	type PackageJobSchedule as SharedPackageJobSchedule,
 } from '@kody-internal/shared/jobs/package-job-schedule.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { mcpServerNamePattern } from '@kody-internal/shared/mcp-servers.ts'
 import { z } from 'zod'
 import { automationExecutionSchema } from '#worker/execution-contexts/automation-execution-schema.ts'
 import { communityPackageCategories } from '#universal/community-categories.ts'
-import { type ForkListingRelation } from '#universal/community-listing-ahead.ts'
+import type { ForkListingRelation } from '#universal/community-listing-ahead.ts'
 import { credentialFillPlacementViewSchema } from '#universal/credential-fill-placement.ts'
 
 export const kodyPackageIdPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
@@ -920,8 +920,8 @@ export type AuthoredPackageKody = Omit<
 	/**
 	 * Published snapshot load only: `kody.credentials` slots that fail today's
 	 * slot schema, by name, with the validation message. They are left out of
-	 * `credentials` and every use of one fails with this message. Never read
-	 * from package.json.
+	 * `credentials`, block self-publish, and are shown to the owner on
+	 * packageGet. Never read from package.json.
 	 */
 	invalidCredentialSlots?: Record<string, string>
 }

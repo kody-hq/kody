@@ -1,5 +1,5 @@
 import { utcMonthKey } from '@kody-internal/shared/date-keys.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	buildBudgetSpendActorWeights,
 	type BudgetSpendAttributionInclude,
@@ -9,7 +9,7 @@ import {
 	backgroundRunBilledActor,
 	type RequestSource,
 } from '#worker/request-context/request-context.ts'
-import { type TransactionalEmailEnv } from '#app/email/sender-config.ts'
+import type { TransactionalEmailEnv } from '#app/email/sender-config.ts'
 import { sendBudgetHitEmail } from '#worker/billing/org-budget-hit-emails.ts'
 import {
 	readOrgBudgetSettings,

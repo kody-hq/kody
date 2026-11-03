@@ -25,9 +25,9 @@ import {
 	chainIsFull,
 	type ExecutionContextsPageData,
 } from '#universal/execution-contexts.ts'
-import {
-	type DesktopExecutionBridge,
-	type DesktopExecutionState,
+import type {
+	DesktopExecutionBridge,
+	DesktopExecutionState,
 } from '../desktop-shell.ts'
 import { onboardingQuery } from '../onboarding-query.ts'
 

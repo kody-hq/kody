@@ -1,11 +1,11 @@
 import { expect, test, vi } from 'vitest'
 import { silenceExpectedConsoleWarns } from '#worker/test-support/console-spies.ts'
-import { type FeatureFlagSuccessMetric } from '#universal/feature-flags/registry.ts'
+import type { FeatureFlagSuccessMetric } from '#universal/feature-flags/registry.ts'
 import {
 	attachFeatureFlagMetricReadouts,
 	loadFeatureFlagSuccessMetricReadout,
 } from './success-metric-readout.ts'
-import { type AdminFeatureFlag } from '#universal/feature-flags/types.ts'
+import type { AdminFeatureFlag } from '#universal/feature-flags/types.ts'
 
 const successMetric: FeatureFlagSuccessMetric = {
 	eventType: 'execute',

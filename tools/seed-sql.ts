@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto'
 import { dnsSafeUsernamePattern } from '@kody-internal/shared/public-urls.ts'
 import { quoteSqlString } from '@kody-internal/shared/sql-literals.ts'
-import { type FeatureFlagKey } from '#universal/feature-flags/registry.ts'
+import type { FeatureFlagKey } from '#universal/feature-flags/registry.ts'
+import type { PlanName } from '#universal/plans.ts'
 import { previewSeedFlagAllowlist } from './preview-seed-flag-allowlist.ts'
 
 /**
@@ -149,8 +150,11 @@ function personalOrgSlugFromUsername(username: string) {
 export function buildSeedPersonalOrgSql(input: {
 	stableUserId: string
 	username: string
+	/** Forces the personal org plan on every seed; omitted keeps the stored plan. */
+	plan?: PlanName
 }) {
 	const stableUserId = quoteSqlString(input.stableUserId)
+	const plan = quoteSqlString(input.plan ?? 'free')
 	const slug = quoteSqlString(personalOrgSlugFromUsername(input.username))
 	return `
 INSERT INTO orgs (
@@ -182,7 +186,7 @@ INSERT INTO orgs (
 	NULL,
 	NULL,
 	'public',
-	'free',
+	${plan},
 	'public',
 	NULL,
 	NULL,
@@ -199,7 +203,7 @@ INSERT INTO orgs (
 	CURRENT_TIMESTAMP
 )
 ON CONFLICT(id) DO UPDATE SET
-	slug = excluded.slug,
+	slug = excluded.slug,${input.plan ? '\n\tplan = excluded.plan,\n\taccess_epoch = access_epoch + 1,' : ''}
 	updated_at = CURRENT_TIMESTAMP;
 INSERT OR IGNORE INTO org_memberships (
 	org_id, user_id, role, invited_by_user_id, created_at, deleted_at
@@ -270,6 +274,7 @@ export function buildSeedUserSql(input: {
 	username: string
 	passwordHash: string
 	admin?: boolean
+	plan?: PlanName
 }) {
 	// Org pages and the switcher parse `/@username/-/…` with the signup rule,
 	// so a seeded account must hold a username signup would accept.
@@ -299,8 +304,79 @@ ON CONFLICT(email) DO UPDATE SET
 ${buildSeedPersonalOrgSql({
 	stableUserId: seedStableUserIdFromEmail(input.email),
 	username: input.username,
+	plan: input.plan,
 })}
 ${roleSql}`.trim()
+}
+
+/** Deterministic fixture ids for a seeded team org and its one team. */
+export function seedTeamOrgIds(slug: string) {
+	const normalized = slug.trim().toLowerCase()
+	const hash = (kind: string) =>
+		createHash('sha256').update(`${kind}:${normalized}`).digest('hex')
+	return { orgId: hash('seed-team-org'), teamId: hash('seed-team') }
+}
+
+const seedTeamSlug = 'members'
+
+/**
+ * A team org owned by `ownerEmail` with `memberEmail` as a plain member and
+ * on one team, so owner/member grant checks have a subject to pick. Both users
+ * must be seeded first. Re-seeding revives soft-deleted rows, resets the
+ * member role, and bumps `access_epoch` so cached access recompiles.
+ */
+export function buildSeedTeamOrgSql(input: {
+	slug: string
+	ownerEmail: string
+	memberEmail: string
+}) {
+	const slug = input.slug.trim().toLowerCase()
+	if (!dnsSafeUsernamePattern.test(slug)) {
+		throw new Error(
+			`Seed team org slug "${input.slug}" is not a valid handle: 3 to 32 characters, letters, numbers, and hyphens, starting and ending with a letter or number.`,
+		)
+	}
+	const ids = seedTeamOrgIds(slug)
+	const orgId = quoteSqlString(ids.orgId)
+	const teamId = quoteSqlString(ids.teamId)
+	const slugSql = quoteSqlString(slug)
+	const owner = storedStableUserIdSql(input.ownerEmail)
+	const member = storedStableUserIdSql(input.memberEmail)
+	return `
+INSERT INTO orgs (
+	id, slug, display_name, profile_visibility, plan, entitlement_ladder,
+	stripe_credits_eligible, admin_credits_eligible,
+	signup_welcome_credits_pending, access_epoch,
+	created_by_user_id, created_at, updated_at
+) VALUES (
+	${orgId}, ${slugSql}, ${slugSql}, 'public', 'free', 'public', 0, 0, 0, 0,
+	${owner}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+)
+ON CONFLICT(id) DO UPDATE SET
+	deleted_at = NULL,
+	deleting_at = NULL,
+	access_epoch = access_epoch + 1,
+	updated_at = CURRENT_TIMESTAMP;
+INSERT INTO handles (handle, user_id, org_id, created_at)
+VALUES (${slugSql}, NULL, ${orgId}, CURRENT_TIMESTAMP)
+ON CONFLICT(handle) DO NOTHING;
+INSERT INTO org_memberships (org_id, user_id, role, created_at)
+VALUES (${orgId}, ${owner}, 'owner', CURRENT_TIMESTAMP)
+ON CONFLICT(org_id, user_id) DO UPDATE SET role = 'owner', deleted_at = NULL;
+INSERT INTO org_memberships (org_id, user_id, role, invited_by_user_id, created_at)
+VALUES (${orgId}, ${member}, 'member', ${owner}, CURRENT_TIMESTAMP)
+ON CONFLICT(org_id, user_id) DO UPDATE SET role = 'member', deleted_at = NULL;
+INSERT INTO teams (
+	id, org_id, slug, name, description, parent_team_id,
+	created_by_user_id, created_at, updated_at
+) VALUES (
+	${teamId}, ${orgId}, ${quoteSqlString(seedTeamSlug)}, 'Members', NULL, NULL,
+	${owner}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+)
+ON CONFLICT(id) DO UPDATE SET deleted_at = NULL, updated_at = CURRENT_TIMESTAMP;
+INSERT INTO team_members (team_id, user_id, added_by_user_id, created_at)
+VALUES (${teamId}, ${member}, ${owner}, CURRENT_TIMESTAMP)
+ON CONFLICT(team_id, user_id) DO UPDATE SET deleted_at = NULL;`.trim()
 }
 
 /**

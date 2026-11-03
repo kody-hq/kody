@@ -1,8 +1,8 @@
 /** @jsxImportSource @emotion/react */
 import { SiteLink } from '../components/site-link.tsx'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { revealRef } from '../components/reveal.ts'
-import { type ReactNode, type CSSProperties } from 'react'
+import type { ReactNode, CSSProperties } from 'react'
 import { formatMinJobInterval, planLimits } from '#universal/plans.ts'
 import { publicSignupHref } from '#universal/public-signup-copy.ts'
 import { routes } from '#universal/routes.ts'

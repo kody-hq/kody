@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	deterministicEmbedding,
 	embedTextForVectorize,
@@ -18,7 +18,7 @@ import { getRawIdFromPassthroughVectorId } from '#worker/vectorize/vector-ids.ts
 import { parseJsonStringArray } from '@kody-internal/shared/json-parsing.ts'
 import { buildMemoryEmbedTextFromRow } from './memory-embed.ts'
 import { memoryVectorId } from './memory-vectorize.ts'
-import { type McpMemoryRow, type MemorySearchMatch } from './types.ts'
+import type { McpMemoryRow, MemorySearchMatch } from './types.ts'
 
 function buildMemoryVectorFilter(input: {
 	userId: OwnerId

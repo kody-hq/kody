@@ -4,7 +4,7 @@ import {
 } from '#app/account-jobs-data.ts'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { operationResult } from '#app/operation-result.ts'
-import { type ServerTimingEntry } from '#worker/server-timing.ts'
+import type { ServerTimingEntry } from '#worker/server-timing.ts'
 import { setAccountJobKillSwitch, runAccountJobNow } from './account-jobs.ts'
 export * from './account-jobs.ts'
 export function testAccountJobsApiHandler(env: Env) {

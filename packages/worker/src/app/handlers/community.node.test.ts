@@ -1,8 +1,8 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { loadCommunityIndexData } from '#app/community-data.ts'
-import { type CommunityIndexLoaderData } from '#universal/loader-data.ts'
-import { type CommunityListingWithAggregates } from '#worker/community/types.ts'
+import type { CommunityIndexLoaderData } from '#universal/loader-data.ts'
+import type { CommunityListingWithAggregates } from '#worker/community/types.ts'
 
 const mockModule = vi.hoisted(() => ({
 	listCommunityIndexOverview: vi.fn(),

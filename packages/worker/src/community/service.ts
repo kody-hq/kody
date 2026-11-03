@@ -1,9 +1,9 @@
 import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { invalidateCommunityPublicCache } from '#app/data-cache.ts'
 import { viewerCanReadSavedPackage } from '#app/package-viewer-access.ts'
-import { type McpUserContext } from '@kody-internal/shared/chat.ts'
+import type { McpUserContext } from '@kody-internal/shared/chat.ts'
 import { parseListingOwnerUsername } from '#universal/community-links.ts'
 import { communityForkAdoptionReviewNoteMinLength } from '#universal/community-fork-adoption.ts'
 import {
@@ -69,7 +69,7 @@ import { assertNotCommunityBanned } from './assert-not-community-banned.ts'
 import { CommunityActionError } from './errors.ts'
 import { hasCommunityListingReleaseChanged } from './fork-upstream-updated-subscription-event.ts'
 import { enqueueCommunityListingPublishedDispatch } from './listing-published-dispatch-queue-producer.ts'
-import { type CommunityListingPublishedProjection } from './listing-published-subscription-event.ts'
+import type { CommunityListingPublishedProjection } from './listing-published-subscription-event.ts'
 import {
 	deletePackageSlugRedirects,
 	getCommunityPackageHref,
@@ -142,18 +142,18 @@ import {
 	deleteCommunityIconAssets,
 	findCommunityIconPath,
 } from './community-icon.ts'
-import {
-	type CommunityForkActor,
-	type CommunityForkRecord,
-	type CommunityListingRecord,
-	type CommunityListingSearchResult,
-	type CommunityListingWithAggregates,
-	type CommunityActivityKind,
-	type CommunityRatingRecord,
-	type CommunityReportRecord,
-	type CommunityReportResolutionAction,
-	type CrossScopeReference,
-	type ForkCommunityListingResult,
+import type {
+	CommunityForkActor,
+	CommunityForkRecord,
+	CommunityListingRecord,
+	CommunityListingSearchResult,
+	CommunityListingWithAggregates,
+	CommunityActivityKind,
+	CommunityRatingRecord,
+	CommunityReportRecord,
+	CommunityReportResolutionAction,
+	CrossScopeReference,
+	ForkCommunityListingResult,
 } from './types.ts'
 
 const communityBayesianPriorMean = 3.25

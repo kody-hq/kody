@@ -1,6 +1,6 @@
 import { loadProfileChain } from '#worker/profiles/store.ts'
 import { profileStatus } from '#worker/profiles/rules.ts'
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import {
 	ownerIdFromStored,
 	type OwnerId,

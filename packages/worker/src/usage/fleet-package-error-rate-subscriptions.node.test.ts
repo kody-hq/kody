@@ -1,7 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import type * as AdminPackageSubscriptions from '#worker/package-invocations/admin-package-subscriptions.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
 	buildFleetPackageErrorRateElevatedEvent,
 	buildFleetPackageErrorRateIdempotencyKey,

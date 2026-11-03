@@ -11,7 +11,7 @@ import {
 	personIdFromStored,
 	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { expect, test, vi } from 'vitest'
 import { saveSecret } from '#mcp/secrets/service.ts'
 import { createOrganization } from '#worker/orgs/create-organization.ts'

@@ -1,4 +1,4 @@
-import { type DurableObjectOAuthClientProvider } from 'agents/mcp/do-oauth-client-provider'
+import type { DurableObjectOAuthClientProvider } from 'agents/mcp/do-oauth-client-provider'
 
 /**
  * An admin-supplied OAuth client for one MCP server, as the hub stores it.

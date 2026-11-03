@@ -1,7 +1,7 @@
 import { packageJobIdPrefix } from '@kody-internal/shared/jobs/package-job-id.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { isSecretExpired } from '@kody-internal/shared/secret-expires-at.ts'
-import { type StorageContext } from '#mcp/storage.ts'
+import type { StorageContext } from '#mcp/storage.ts'
 import { getOrgById } from '#worker/orgs/repo.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import {
@@ -18,7 +18,7 @@ import { isReservedSecretName } from './name-guards.ts'
 import { buildSecretEditorUrl } from './package-approval-url.ts'
 import { listSecretLocationsByNameForUser } from './repo.ts'
 import { getSecretBindingKey } from './secret-bindings.ts'
-import { type SecretScope } from './types.ts'
+import type { SecretScope } from './types.ts'
 
 const inaccessibleScopeRank: Record<SecretScope, number> = {
 	package: 0,

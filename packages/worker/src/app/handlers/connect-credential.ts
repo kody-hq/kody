@@ -1,4 +1,4 @@
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { orgCredentialCreatePath } from '#universal/credential-contracts.ts'
 
 /** The signup org's creation page, keeping `search` (including its `?`). */

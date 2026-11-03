@@ -1,6 +1,6 @@
 import * as Sentry from '@sentry/cloudflare'
 import { sendPlatformFeedbackAcknowledgementEmail } from './acknowledgement-email.ts'
-import { type PlatformFeedbackDispatchQueueMessage } from './dispatch-queue-producer.ts'
+import type { PlatformFeedbackDispatchQueueMessage } from './dispatch-queue-producer.ts'
 import { PlatformFeedbackDispatchCancelledError } from './errors.ts'
 import { dispatchPlatformFeedbackSubmittedSubscriptionEvent } from './package-subscriptions.ts'
 import { getPlatformFeedbackForAdmin } from './service.ts'

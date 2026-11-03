@@ -336,6 +336,22 @@ test('control-kody parses commands, maps every required route, and drives a seed
 			},
 		],
 		[
+			[
+				'browse',
+				'--path',
+				'/@acme/-/grants',
+				'--screenshot',
+				'.tmp/grants.png',
+				'--color-scheme',
+				'both',
+			],
+			{
+				command: 'browse',
+				path: '/@acme/-/grants',
+				colorSchemes: ['light', 'dark'],
+			},
+		],
+		[
 			['browse', '/account/waiting', '--origin', preview],
 			{
 				command: 'browse',
@@ -367,6 +383,7 @@ test('control-kody parses commands, maps every required route, and drives a seed
 		],
 		['browse --close-after -1', /--close-after requires a value/],
 		['browse --screenshot', /--screenshot requires a value/],
+		['browse --color-scheme sepia', /light, dark, or both/],
 		['browse --path account', /same-origin path/],
 		['browse --path //evil.example', /same-origin path/],
 		['nope', /Unknown command/],

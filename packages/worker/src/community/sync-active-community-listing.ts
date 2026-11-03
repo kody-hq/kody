@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { listingNeedsRepublish } from '#worker/community/listing-needs-republish.ts'
 import { getCommunityListingByOwnerAndPackage } from '#worker/community/repo.ts'
 import { publishCommunityListing } from '#worker/community/service.ts'

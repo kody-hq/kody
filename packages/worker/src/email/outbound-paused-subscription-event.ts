@@ -1,5 +1,5 @@
-import { type UserLifecycleIdentity } from '#worker/identity/user-lifecycle-subscription-event.ts'
-import { type EmailDeliveryStatus } from './types.ts'
+import type { UserLifecycleIdentity } from '#worker/identity/user-lifecycle-subscription-event.ts'
+import type { EmailDeliveryStatus } from './types.ts'
 
 export const userEmailOutboundPausedTopic = 'user.email_outbound.paused'
 

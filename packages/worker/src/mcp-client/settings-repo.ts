@@ -2,9 +2,9 @@ import {
 	parseAllowedPackages,
 	stringifyAllowedPackages,
 } from '#mcp/secrets/allowed-packages.ts'
-import {
-	type McpServerLogoSource,
-	type McpServerSettingRow,
+import type {
+	McpServerLogoSource,
+	McpServerSettingRow,
 } from './settings-types.ts'
 import {
 	normalizeMcpServerUsageMode,

@@ -1,5 +1,5 @@
 import { resolveCallerSecretAuthority } from '#mcp/secrets/secret-authority.ts'
-import { type StorageContext } from '#mcp/storage.ts'
+import type { StorageContext } from '#mcp/storage.ts'
 
 /**
  * Which package, if any, is asking `resolveCredential` for a credential.

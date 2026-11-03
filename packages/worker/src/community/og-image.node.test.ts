@@ -1,7 +1,7 @@
 import { bytesToBase64 } from '@kody-internal/shared/base64.ts'
 import { expect, test } from 'vitest'
 import { colors } from '#universal/styles/tokens.ts'
-import { type SatoriChild, type SatoriElement } from '#worker/og/render.ts'
+import type { SatoriChild, SatoriElement } from '#worker/og/render.ts'
 import { renderCommunityIconFallbackPng } from './community-icon.ts'
 import { createCommunityOgMarkup, renderCommunityOgImage } from './og-image.ts'
 

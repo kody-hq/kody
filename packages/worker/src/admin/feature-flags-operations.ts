@@ -1,9 +1,9 @@
-import {
-	type SetGlobalFeatureFlagInput,
-	type SetFeatureFlagOverrideInput,
-	type ClearFeatureFlagOverrideInput,
-	type SetFeatureFlagOrgOverrideInput,
-	type ClearFeatureFlagOrgOverrideInput,
+import type {
+	SetGlobalFeatureFlagInput,
+	SetFeatureFlagOverrideInput,
+	ClearFeatureFlagOverrideInput,
+	SetFeatureFlagOrgOverrideInput,
+	ClearFeatureFlagOrgOverrideInput,
 } from '#universal/admin-setting-mutations.ts'
 import { adminOperationResult } from './operation-result.ts'
 import {

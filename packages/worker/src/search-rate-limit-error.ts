@@ -1,4 +1,4 @@
-import { type PlanName } from '#universal/plans.ts'
+import type { PlanName } from '#universal/plans.ts'
 
 export type SearchRateLimitWindow = 'burst' | 'day'
 

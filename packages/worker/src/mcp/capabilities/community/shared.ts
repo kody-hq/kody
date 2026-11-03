@@ -4,10 +4,10 @@ import {
 	buildUserAvatarUrl,
 	getOwnerUsernameFromListingName,
 } from '#worker/community/public-urls.ts'
-import {
-	type CommunityActivityItem,
-	type CommunityListingAggregates,
-	type CommunityListingRecord,
+import type {
+	CommunityActivityItem,
+	CommunityListingAggregates,
+	CommunityListingRecord,
 } from '#worker/community/types.ts'
 import { getCommunityListingHref } from '#universal/community-links.ts'
 

@@ -15,11 +15,11 @@
  * traffic stops.
  */
 
-import { type exports as workerExports } from 'cloudflare:workers'
+import type { exports as workerExports } from 'cloudflare:workers'
 import { invariant } from '@epic-web/invariant'
 import { McpServer, createMcpHandler } from '@modelcontextprotocol/server'
 import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/server/validators/cf-worker'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { assembleMcpServerInstructionsForCaller } from './assemble-mcp-server-instructions.ts'
 import { registerTools } from './register-tools.ts'
 import { registerPackageSkillsExtensionWhenEnabled } from './skills/register-package-skills.ts'
@@ -31,6 +31,7 @@ import {
 import { runWithDynamicWorkerEvaluationBudget } from '#worker/dynamic-worker-evaluation-budget.ts'
 import { runWithInboundRequestSignal } from './inbound-request-signal.ts'
 import { buildKodyMcpServerInfo } from './kody-mcp-server-info.ts'
+import { detachedExecuteWorkLimitMs } from './execute-transport-budget.ts'
 
 /**
  * Serve one modern-era `/mcp` request. Called after `handleMcpRequest` has
@@ -129,5 +130,6 @@ function createStatelessRegistrationAgent(input: {
 		},
 		getLoopbackExports: () => input.ctx.exports as typeof workerExports,
 		waitUntil: (promise) => input.ctx.waitUntil(promise),
+		detachedWorkLimitMs: detachedExecuteWorkLimitMs,
 	}
 }

@@ -3,7 +3,7 @@
  * mock MSW path (buffered) or prod CapabilityProxy streaming hop.
  */
 
-import { type IncomingMessage, type ServerResponse } from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import {
 	callCapabilityProxyGatewayFetchStream,
 	gatewayFetchHeadersHeaderName,
@@ -14,7 +14,7 @@ import {
 	type CapabilityProxyClientInput,
 } from './capability-proxy.js'
 import { readBodyBuffer, writeWebResponse } from './local-runtime-bridge.js'
-import { type MockFetchGateway } from './mock/mock-fetch-gateway.js'
+import type { MockFetchGateway } from './mock/mock-fetch-gateway.js'
 
 function headerValue(
 	headers: IncomingMessage['headers'],

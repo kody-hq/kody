@@ -4,14 +4,14 @@ import { expect, test, vi } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
-import { type UsageCampaignSnapshot } from '#worker/usage/campaign-evaluator.ts'
+import type { UsageCampaignSnapshot } from '#worker/usage/campaign-evaluator.ts'
 import {
 	claimUsageCampaignSend,
 	listUsageCampaignSends,
 	readUsageCampaign,
 	upsertUsageCampaign,
 } from '#worker/usage/campaign-ledger.ts'
-import { type UsageCampaignCandidate } from '#worker/usage/campaign-inputs.ts'
+import type { UsageCampaignCandidate } from '#worker/usage/campaign-inputs.ts'
 import type * as cloudflareEmail from '#app/email/cloudflare-email.ts'
 
 const sendCloudflareEmail = vi.fn<typeof cloudflareEmail.sendCloudflareEmail>(

@@ -35,11 +35,11 @@ import { systemEmailOwnerId } from './email-owner.ts'
 import { mailboxRpc, type MailboxEnv } from './mailbox-client.ts'
 import { mailboxMessageToEmailMessageRecord } from './mailbox-record-mappers.ts'
 import { QuarantinedInboundReplyError } from './quarantined-inbound-reply.ts'
-import {
-	type MailboxAttachmentInput,
-	type MailboxDeliveryEventInput,
-	type MailboxMessageInput,
-	type MailboxThreadInput,
+import type {
+	MailboxAttachmentInput,
+	MailboxDeliveryEventInput,
+	MailboxMessageInput,
+	MailboxThreadInput,
 } from './mailbox-types.ts'
 import { emailOutboundPausedMessage } from './outbound-abuse.ts'
 import { emailOutboundDeliveryPausedMessage } from './outbound-consecutive-failures.ts'
@@ -61,7 +61,7 @@ import {
 } from './reporting-events.ts'
 import { emailAttachmentBlobKey } from './blob-keys.ts'
 import { ensurePlatformSenderIdentity } from './repo.ts'
-import { type EmailMessageRecord, type EmailProcessingStatus } from './types.ts'
+import type { EmailMessageRecord, EmailProcessingStatus } from './types.ts'
 
 type SendEmailEnv = Pick<
 	Env,

@@ -29,10 +29,7 @@
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 
-import {
-	type JevSearchRerankOutcome,
-	type SearchCandidate,
-} from './search-types.ts'
+import type { JevSearchRerankOutcome, SearchCandidate } from './search-types.ts'
 import {
 	extractMeaningfulSearchTokens,
 	type SearchIntent,

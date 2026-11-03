@@ -5,7 +5,7 @@ import {
 	packageAppOauthPkceCookieName,
 	packageAppOauthPkceCookieNameInsecure,
 } from '#universal/package-app-oauth-paths.ts'
-import { type PackageAppOauthScope } from '#app/package-app-oauth-scopes.ts'
+import type { PackageAppOauthScope } from '#app/package-app-oauth-scopes.ts'
 
 const pkceSecretPurpose = 'kody-package-app-oauth-pkce:v1'
 const pkceMaxAgeSeconds = 600

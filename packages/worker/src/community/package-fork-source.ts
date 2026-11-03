@@ -1,7 +1,7 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { resolvePackagePageUrl } from '#worker/community/package-url.ts'
 import { findPublicOwnerIdentityByHandle } from '#worker/identity/user-lookup.ts'
-import { type PrivatePackageForkSource } from './service.ts'
+import type { PrivatePackageForkSource } from './service.ts'
 
 /**
  * Owner org and package for `@owner/leaf`, or null when it does not exist.

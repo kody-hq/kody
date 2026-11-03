@@ -12,7 +12,7 @@ import {
 	type PlatformOauthAppLogoContentType,
 	type ServedFittedLogo,
 } from './platform-app-logo.ts'
-import { type UserOauthApp } from './types.ts'
+import type { UserOauthApp } from './types.ts'
 
 export const userOauthAppLogoR2KeyPrefix = 'user-oauth-app-logos/'
 const userOauthAppLogoCacheControl = 'private, no-store'

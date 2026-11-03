@@ -1,4 +1,4 @@
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
 	type OwnerId,
 	personIdFromStored,
@@ -60,7 +60,7 @@ import {
 	packageOwnerEntitlementEmail,
 	resolvePackageOwnerContext,
 } from '#worker/package-registry/package-owner.ts'
-import { type EnablementHintTrigger } from '#worker/enablements/enablement-agent-hints.ts'
+import type { EnablementHintTrigger } from '#worker/enablements/enablement-agent-hints.ts'
 import { listPublisherEnablementGaps } from '#worker/enablements/publisher-enablement-gaps.ts'
 import {
 	buildPackageTestHints,
@@ -89,7 +89,7 @@ import {
 } from '#worker/package-registry/package-publish-lock.ts'
 import { buildPackageCapabilityApprovalUrl } from '#worker/package-capabilities/capability-approval-url.ts'
 import { createCredentialNeedsApprovalMessage } from '#worker/credentials/credential-needs-approval.ts'
-import { type ApprovalViewer } from '#worker/approval-bundles/item-views.ts'
+import type { ApprovalViewer } from '#worker/approval-bundles/item-views.ts'
 import {
 	bundlePausedPublishes,
 	pausedPublishBundleMessage,

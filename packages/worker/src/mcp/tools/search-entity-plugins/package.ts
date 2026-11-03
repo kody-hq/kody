@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { listingAheadSearchNotice } from '#universal/community-listing-ahead.ts'
 import {
@@ -38,7 +38,7 @@ import {
 	packageExportCandidateMinScore,
 	packageExportCloseScoreGap,
 } from '../search-constants.ts'
-import { type SearchEntityPlugin } from '../search-entity-plugin.ts'
+import type { SearchEntityPlugin } from '../search-entity-plugin.ts'
 import {
 	escapeMarkdownText,
 	formatMarkdownInlineCode,
@@ -53,15 +53,12 @@ import {
 	buildPackageSourceFollowUp,
 	getPrimaryPackageActionFunction,
 } from '../search-format-helpers.ts'
-import {
-	type PackageActionMatch,
-	type SearchMatch,
-} from '../search-format-types.ts'
+import type { PackageActionMatch, SearchMatch } from '../search-format-types.ts'
 import {
 	buildCandidateBaseScore,
 	scoreMatchedTerms,
 } from '../search-scoring.ts'
-import { type PackageSearchRow, type SearchCandidate } from '../search-types.ts'
+import type { PackageSearchRow, SearchCandidate } from '../search-types.ts'
 import { extractMeaningfulSearchTokens } from '../understand-search-query.ts'
 
 export function flattenReferencedTypeFields(

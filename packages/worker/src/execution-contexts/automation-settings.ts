@@ -6,7 +6,7 @@ import {
 	type AutomationExecution,
 	parseAutomationExecution,
 } from './automation-execution-schema.ts'
-import { type AutomationRouting } from './automation-execution.ts'
+import type { AutomationRouting } from './automation-execution.ts'
 
 export const automationExecutionKinds = [
 	'job',

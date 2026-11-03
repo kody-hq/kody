@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import {
 	canActOnProfile,
 	chainExpiry,

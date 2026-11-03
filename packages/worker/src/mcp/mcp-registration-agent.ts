@@ -1,13 +1,13 @@
-import { type McpServer as McpServerV1 } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { type McpServer as McpServerV2 } from '@modelcontextprotocol/server'
-import {
-	type CallToolResult,
-	type GetPromptResult,
-	type ToolAnnotations,
+import type { McpServer as McpServerV1 } from '@modelcontextprotocol/sdk/server/mcp.js'
+import type { McpServer as McpServerV2 } from '@modelcontextprotocol/server'
+import type {
+	CallToolResult,
+	GetPromptResult,
+	ToolAnnotations,
 } from '@modelcontextprotocol/sdk/types.js'
-import { type z } from 'zod'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
-import { type McpToolCallExtra } from './progress.ts'
+import type { z } from 'zod'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpToolCallExtra } from './progress.ts'
 
 /**
  * Tool icon metadata (protocol revision 2025-11-25, SEP-973). Advertised by
@@ -95,4 +95,10 @@ export type McpRegistrationAgent = {
 	 * writes do not serialize the response they observe.
 	 */
 	waitUntil?(promise: Promise<unknown>): void
+	/**
+	 * Set when only `waitUntil` keeps work alive after the response (plain
+	 * Worker request lanes). Hosted execute stops a detached run this long
+	 * after its follow response so the outcome is recorded.
+	 */
+	detachedWorkLimitMs?: number
 }

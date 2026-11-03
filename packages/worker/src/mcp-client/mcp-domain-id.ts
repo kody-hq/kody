@@ -1,5 +1,5 @@
 import { synthesizeDomainId } from '@kody-internal/shared/domain-id.ts'
-import { type McpServerRef } from '@kody-internal/shared/mcp-servers.ts'
+import type { McpServerRef } from '@kody-internal/shared/mcp-servers.ts'
 import { slugWithStableDisambiguator } from '@kody-internal/shared/stable-slug.ts'
 
 export function mcpServerKodyName(ref: Pick<McpServerRef, 'name'>): string {

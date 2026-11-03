@@ -71,7 +71,7 @@ export function createDevBundler(input: {
 	}
 }
 
-export function readBundle(
+function readBundle(
 	result: esbuild.BuildResult<{ metafile: true; write: false }>,
 	workingDir: string,
 	entryPath: string,

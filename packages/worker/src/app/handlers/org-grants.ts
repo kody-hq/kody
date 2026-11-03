@@ -1,6 +1,6 @@
-import {
-	type AuthenticatedAppUser,
-	type readAuthenticatedAppUser,
+import type {
+	AuthenticatedAppUser,
+	readAuthenticatedAppUser,
 } from '#app/authenticated-user.ts'
 import { operationResult } from '#app/operation-result.ts'
 import {
@@ -14,9 +14,9 @@ import {
 	authorizeGrantTarget,
 	resolveAuthorizedGrantPermissions,
 } from '#mcp/capabilities/access/shared.ts'
-import {
-	type OrgGrantsLoaderData,
-	type OrgWideReadSubjectView,
+import type {
+	OrgGrantsLoaderData,
+	OrgWideReadSubjectView,
 } from '#universal/loader-data.ts'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
 import {

@@ -5,8 +5,8 @@ import {
 	emptyCapabilityInputSchema,
 	type CapabilityContext,
 } from '#mcp/capabilities/types.ts'
-import { type McpUserContext } from '@kody-internal/shared/chat.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { McpUserContext } from '@kody-internal/shared/chat.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { resolveDisplayName } from '#worker/identity/username.ts'
 import { loadRunningProfile } from '#worker/profiles/running-profile.ts'
 import { getMcpUserPackageScope } from '#worker/package-registry/user-scope.ts'

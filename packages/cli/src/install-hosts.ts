@@ -26,7 +26,7 @@ import {
 import { openUrl } from './open-url.js'
 import { which as whichOnPath } from './which.js'
 
-export type ApplyStatus = 'wrote' | 'unchanged' | 'manual' | 'command'
+type ApplyStatus = 'wrote' | 'unchanged' | 'manual' | 'command'
 
 export type ApplyResult = {
 	id: HostId

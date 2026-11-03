@@ -1,7 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { cloudflareOpaqueInternalErrorMessage } from '#worker/cloudflare-opaque-internal-error.ts'
-import { type EntitySourceRow } from './types.ts'
+import type { EntitySourceRow } from './types.ts'
 
 const artifactsMock = vi.hoisted(() => ({
 	resolveExistingArtifactSourceRepo: vi.fn(),

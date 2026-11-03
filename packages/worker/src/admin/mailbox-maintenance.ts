@@ -1,9 +1,9 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { systemEmailOwnerId } from '#worker/email/email-owner.ts'
 import { mailboxRpc, type MailboxEnv } from '#worker/email/mailbox-client.ts'
-import {
-	type MailboxBlobReference,
-	type MailboxCountResult,
+import type {
+	MailboxBlobReference,
+	MailboxCountResult,
 } from '#worker/email/mailbox-types.ts'
 import {
 	deleteOutboundProviderIndexByMessageId,

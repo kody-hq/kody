@@ -7,7 +7,7 @@ import {
 	safeParseHost,
 } from '@kody-internal/shared/url-hosts.ts'
 import { isBrowserFetchNetworkError } from '#client/browser-fetch-network-error.ts'
-import { type AccountIntegrationListItem } from '#universal/loader-data.ts'
+import type { AccountIntegrationListItem } from '#universal/loader-data.ts'
 import { resolveAuthorizeRequestScopes } from '#universal/oauth-authorize-scopes.ts'
 
 export type OAuthFlow = 'pkce' | 'confidential' | 'device'

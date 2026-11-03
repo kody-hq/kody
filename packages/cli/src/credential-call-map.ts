@@ -11,9 +11,9 @@
  * `credentials` field (never inside `args`), or as MCP `execute` `credentials`.
  */
 
-export const credentialCallMapFeature = 'credential-call-map'
+const credentialCallMapFeature = 'credential-call-map'
 
-export const credentialCallMapLimits = {
+const credentialCallMapLimits = {
 	maxKeys: 32,
 	maxPicksPerKey: 16,
 	maxTextLength: 100,

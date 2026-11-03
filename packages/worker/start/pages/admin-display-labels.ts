@@ -1,4 +1,4 @@
-import { type AccountCreditsLedgerItem } from '#universal/loader-data.ts'
+import type { AccountCreditsLedgerItem } from '#universal/loader-data.ts'
 
 export function formatAdminCreditLedgerKind(
 	kind: AccountCreditsLedgerItem['kind'],

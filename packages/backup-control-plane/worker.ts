@@ -9,7 +9,7 @@ import {
 	safeLog,
 	workflowInstanceId,
 } from './backup-policy.ts'
-import { type BackupEnvironment } from './backup-types.ts'
+import type { BackupEnvironment } from './backup-types.ts'
 import { handleControlPlaneFetch } from './control-plane-fetch.ts'
 import { sealRecentCompleteDays } from './seal-full-backup.ts'
 import {
