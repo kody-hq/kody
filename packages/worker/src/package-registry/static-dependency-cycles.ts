@@ -8,12 +8,13 @@ import { listKodyPackageDependencyNames } from '#worker/package-registry/types.t
  * Edges are package names (`@scope/leaf`). Missing nodes have no outgoing
  * edges (an unpublished or platform-live dependency cannot close a user-local
  * cycle). A saved package whose published manifest cannot load fails the
- * graph walk instead of pretending it has no dependencies.
+ * graph walk instead of pretending it has no dependencies; that failure is
+ * Kody's (Artifacts / storage read), not the authored package's.
  */
 
 export type LoadedStaticKodyDependencyEdges =
 	| { ok: true; edges: Map<string, Array<string>> }
-	| { ok: false; message: string }
+	| { ok: false; message: string; failureOrigin: 'platform' }
 export function findStaticKodyDependencyCycle(input: {
 	rootPackageName: string
 	edges: ReadonlyMap<string, ReadonlyArray<string>>
@@ -103,6 +104,7 @@ export async function loadReachableStaticKodyDependencyEdges(input: {
 		} catch (cause) {
 			return {
 				ok: false,
+				failureOrigin: 'platform',
 				message: formatStaticKodyDependencyLoadFailureMessage({
 					packageName,
 					cause,

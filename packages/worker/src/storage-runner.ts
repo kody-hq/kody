@@ -21,7 +21,11 @@ import {
 	type StorageBucketKind,
 	storageBucketKindFromStorageId,
 } from '#worker/storage-buckets/service.ts'
-import { createStorageEstimateReadError } from '#worker/storage-estimate-error.ts'
+import {
+	createStorageEstimateReadError,
+	isStorageEstimateReadError,
+} from '#worker/storage-estimate-error.ts'
+import { reportInfraHiccup } from '#worker/infra-hiccup-sentry.ts'
 import {
 	countStorageSqlRows,
 	readStorageSqlRowsPage,
@@ -65,17 +69,18 @@ const maxConcurrentStorageEstimateReads = 16
  * several attempts: production showed a single 150ms retry was not enough to
  * ride out transient per-bucket DO estimate-read *rejections*.
  *
- * A timeout does not start a second RPC to the same storageId. The underlying
- * stub call is not cancelled; a new call would queue behind it on the
- * single-threaded DO and turn a slow wake into four stacked timeouts.
- * Timed-out attempts keep waiting on the in-flight promise. Fast rejects
- * still open a new RPC after backoff.
+ * Timed-out attempts keep waiting on the in-flight promise (the stub call is
+ * not cancelled), and the first retry after a timeout also sends one hedged
+ * RPC on a fresh stub; whichever settles first wins. That keeps a lost RPC
+ * from failing every attempt while capping calls per bucket at two, so a slow
+ * wake never turns into four stacked queued calls. Fast rejects still open a
+ * new RPC after backoff.
  */
 export const storageEstimateReadRetryDelaysMs = [150, 600, 2400] as const
 /**
  * Bound each StorageRunner `getEstimatedBytes` wait so one hung DO cannot own
  * the whole sandbox deadline (~90s). Fail closed after this budget per
- * attempt; retries of a timed-out storageId reuse the same RPC.
+ * attempt; retries of a timed-out storageId reuse the same RPC plus one hedge.
  */
 export const storageEstimateReadTimeoutMs = 2_000
 /**
@@ -684,6 +689,22 @@ export function assertStorageSqlAllowed(
 	return trimmed
 }
 
+/**
+ * Resolves with whichever read fulfills first; rejects with the later
+ * failure only when both reject.
+ */
+function firstFulfilled<T>(first: Promise<T>, second: Promise<T>) {
+	return new Promise<T>((resolve, reject) => {
+		let rejections = 0
+		const onReject = (error: unknown) => {
+			rejections += 1
+			if (rejections === 2) reject(error)
+		}
+		first.then(resolve, onReject)
+		second.then(resolve, onReject)
+	})
+}
+
 async function withStorageEstimateReadTimeout<T>(
 	read: () => Promise<T>,
 	storageId: string,
@@ -1227,43 +1248,77 @@ async function readStorageEstimateChunkWithRetry(input: {
 	buckets: Array<{ storageId: string; kind: StorageBucketKind }>
 	/** Backoff pauses between attempts; attempts = length + 1. */
 	retryDelaysMs?: ReadonlyArray<number>
+	/** When set, an exhausted read is reported to Sentry under this name. */
+	reportOperation?: string
 }): Promise<Array<StorageEstimateResult>> {
 	const retryDelaysMs = input.retryDelaysMs ?? storageEstimateReadRetryDelaysMs
 	const maxAttempts = retryDelaysMs.length + 1
 	const inflightReads = new Map<string, Promise<StorageEstimateResult>>()
+	const timedOutStorageIds = new Set<string>()
+	const hedgedStorageIds = new Set<string>()
+	const fulfilledStorageIds = new Set<string>()
+	const sendRpc = (bucket: {
+		storageId: string
+		kind: StorageBucketKind
+	}): Promise<StorageEstimateResult> => {
+		const rpc = sendRawRpc(bucket)
+		rpc.then(
+			() => fulfilledStorageIds.add(bucket.storageId),
+			() => undefined,
+		)
+		return rpc
+	}
+	const sendRawRpc = (bucket: {
+		storageId: string
+		kind: StorageBucketKind
+	}): Promise<StorageEstimateResult> => {
+		switch (bucket.kind) {
+			case 'repo_session':
+				return repoSessionRpc(
+					input.env,
+					repoSessionIdFromStorageBucketId(bucket.storageId),
+				).getEstimatedBytes()
+			case 'job':
+			case 'package':
+			case 'execute':
+			case 'unknown':
+				return storageRunnerRpc({
+					env: input.env,
+					userId: input.userId,
+					storageId: bucket.storageId,
+				}).getEstimatedBytes()
+			default: {
+				const exhaustive: never = bucket.kind
+				throw new Error(
+					`Unsupported storage bucket kind: ${String(exhaustive)}`,
+				)
+			}
+		}
+	}
 	const startOrReuseRead = (bucket: {
 		storageId: string
 		kind: StorageBucketKind
 	}) => {
 		const existing = inflightReads.get(bucket.storageId)
-		if (existing) return existing
-		const rpc = (() => {
-			switch (bucket.kind) {
-				case 'repo_session':
-					return repoSessionRpc(
-						input.env,
-						repoSessionIdFromStorageBucketId(bucket.storageId),
-					).getEstimatedBytes()
-				case 'job':
-				case 'package':
-				case 'execute':
-				case 'unknown':
-					return storageRunnerRpc({
-						env: input.env,
-						userId: input.userId,
-						storageId: bucket.storageId,
-					}).getEstimatedBytes()
-				default: {
-					const exhaustive: never = bucket.kind
-					throw new Error(
-						`Unsupported storage bucket kind: ${String(exhaustive)}`,
-					)
-				}
-			}
-		})()
+		let rpc: Promise<StorageEstimateResult>
+		if (!existing) {
+			rpc = sendRpc(bucket)
+		} else if (
+			timedOutStorageIds.has(bucket.storageId) &&
+			!hedgedStorageIds.has(bucket.storageId) &&
+			!fulfilledStorageIds.has(bucket.storageId)
+		) {
+			// One hedged resend per bucket on a fresh stub after a timeout, so
+			// a lost RPC cannot fail every attempt. Capped at two calls per
+			// bucket so a slow DO never sees a stacked queue of retries.
+			hedgedStorageIds.add(bucket.storageId)
+			rpc = firstFulfilled(existing, sendRpc(bucket))
+		} else {
+			return existing
+		}
 		// Keep a fulfilled read in the map until this baseline returns so a
-		// timeout-then-success during backoff is reused instead of opening a
-		// second stub call. Only rejected RPCs are dropped so the next
+		// timeout-then-success during backoff is reused instead of opening
+		// another stub call. Only rejected RPCs are dropped so the next
 		// attempt can start a new one.
 		inflightReads.set(bucket.storageId, rpc)
 		void rpc.catch(() => {
@@ -1306,6 +1361,11 @@ async function readStorageEstimateChunkWithRetry(input: {
 				values[index] = result.value
 				continue
 			}
+			const storageId = input.buckets[index]?.storageId
+			// readOne only produces a storage estimate error from its timer.
+			if (storageId && isStorageEstimateReadError(result.reason)) {
+				timedOutStorageIds.add(storageId)
+			}
 			if (failedIndexes.length === 0) {
 				firstFailureReason = result.reason
 			}
@@ -1313,10 +1373,22 @@ async function readStorageEstimateChunkWithRetry(input: {
 		}
 		if (failedIndexes.length === 0) break
 		if (attempt === maxAttempts) {
+			const failedBucket = input.buckets[failedIndexes[0] ?? -1]
+			if (input.reportOperation) {
+				void reportInfraHiccup({
+					kind: 'storage_estimate_unavailable',
+					operation: input.reportOperation,
+					attempts: maxAttempts,
+					errorClass: isStorageEstimateReadError(firstFailureReason)
+						? 'timeout'
+						: 'fast_failure',
+					storageId: failedBucket?.storageId,
+					bucketKind: failedBucket?.kind,
+				})
+			}
 			// An unreadable bucket cannot safely be treated as zero usage.
 			throw createStorageEstimateReadError({
-				storageId:
-					input.buckets[failedIndexes[0] ?? -1]?.storageId ?? 'unknown',
+				storageId: failedBucket?.storageId ?? 'unknown',
 				attempts: maxAttempts,
 				cause: firstFailureReason,
 			})
@@ -1461,6 +1533,7 @@ async function readStorageBytesEntitlementBaseline(input: {
 			env: input.env,
 			userId: input.userId,
 			buckets: chunk,
+			reportOperation: 'storage_entitlement_baseline',
 		})
 		for (const [index, estimate] of estimates.entries()) {
 			durableObjectBytes += estimate.estimatedBytes

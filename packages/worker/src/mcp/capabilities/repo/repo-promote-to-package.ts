@@ -13,6 +13,10 @@ import {
 	requireMcpUser,
 } from '#mcp/capabilities/meta/require-user.ts'
 import { assertWithinEntitlement } from '#worker/entitlements/service.ts'
+import {
+	createRepoChecksError,
+	RepoChecksPlatformError,
+} from '#worker/repo/repo-checks-failed-error.ts'
 import { buildSavedPackageEmbedText } from '#worker/package-registry/embed.ts'
 import { parseAuthoredPackageJson } from '#worker/package-registry/manifest.ts'
 import { stampFirstSavedPackage } from '#worker/identity/activation-stamps.ts'
@@ -170,13 +174,12 @@ export const repoPromoteToPackageCapability = defineDomainCapability(
 				await session
 					.discardSession({ sessionId, userId: owner.ownerUserId })
 					.catch(() => undefined)
-				const failed = checkRun.results
-					.filter((entry) => !entry.ok)
-					.map((entry) => entry.message)
-					.join('\n')
-				throw new McpCallerError(
-					failed || 'Publish checks failed for the package-shaped plain repo.',
+				const checksError = createRepoChecksError(
+					checkRun.results,
+					'Publish checks failed for the package-shaped plain repo.',
 				)
+				if (checksError instanceof RepoChecksPlatformError) throw checksError
+				throw new McpCallerError(checksError.message)
 			}
 			const packageId = crypto.randomUUID()
 			const now = new Date().toISOString()

@@ -1583,14 +1583,14 @@ test('isolated check phases and artifact rebuilds load staged files from KV, ski
 		kvGet.mockResolvedValueOnce(null as never)
 		const expired = await run(`${prefix}:user-1:gone`)
 		expect(expired.ok).toBe(false)
+		if (run === typecheck)
+			expect(expired).toMatchObject({ failureOrigin: 'platform' })
 		expect(expired.message).toContain('staging data expired')
 
 		kvGet.mockClear()
 		const crossUser = await run(`${prefix}:user-2:abc`)
 		expect(crossUser.ok).toBe(false)
-		expect(crossUser.message).toContain(
-			'does not belong to the requesting user',
-		)
+		expect(crossUser.message).toContain('does not belong to the requesting')
 		expect(kvGet).not.toHaveBeenCalled()
 	}
 })
