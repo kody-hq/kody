@@ -155,6 +155,43 @@ export function buildEmailChangedSecurityEmail(input: {
 	})
 }
 
+export function buildAccountDeviceSignInApprovedEmail(input: {
+	appBaseUrl: string
+	email: string
+	approvedAt: Date
+	requester: string
+	location: string | null
+	accountUrl: string
+	resetPasswordUrl: string
+	supportEmail?: string
+}) {
+	const supportEmail = input.supportEmail?.trim() || 'support@kody.codes'
+	const body = [
+		`You approved a sign-in on another device, so a browser is now signed in to your full Kody account (${input.email}).`,
+		`When: ${formatEmailChangeWhen(input.approvedAt)}.`,
+		`Browser: ${input.requester}.`,
+		`Approximate location: ${input.location ?? 'unknown'}.`,
+		'If this was you, no action is needed. If it was not, someone may have tricked you into approving a code: secure the account immediately.',
+	]
+	return renderTransactionalEmail({
+		appBaseUrl: input.appBaseUrl,
+		subject: 'A browser signed in to your Kody account',
+		preheader: `New sign-in from ${input.requester}.`,
+		heading: 'A browser signed in to your account',
+		body,
+		action: { label: 'Open account settings', url: input.accountUrl },
+		secondaryAction: {
+			label: 'Reset your password',
+			url: input.resetPasswordUrl,
+		},
+		afterAction: [
+			`This wasn't you? Reset your password (that signs every browser out) and email ${supportEmail}.`,
+		],
+		footnote:
+			'We send this every time a sign-in on another device is approved for your account.',
+	})
+}
+
 export function buildEmailDestinationVerificationEmail(input: {
 	appBaseUrl: string
 	destinationEmail: string

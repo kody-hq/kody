@@ -20,3 +20,13 @@ export const oauthPaths = {
 	openidConfiguration: '/.well-known/openid-configuration',
 	jwks: '/.well-known/jwks.json',
 } as const
+
+/**
+ * "Sign in on another device" for Kody's own full-account sign-in (ADR 0094):
+ * the requesting browser starts here (POST) and waits here (GET).
+ */
+export const accountDeviceSignInPath = '/login/device'
+
+/** Device-code cookie for a browser signing in to a full Kody account. */
+export const accountDeviceSignInCookieName = '__Host-kody_account_device'
+export const accountDeviceSignInCookieNameInsecure = 'kody_account_device'

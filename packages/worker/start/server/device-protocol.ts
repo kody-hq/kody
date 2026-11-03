@@ -68,9 +68,11 @@ export async function handleDevicePost({ request }: { request: Request }) {
 		userCode,
 		decision: decisionValue,
 		orgSlug: orgValue || null,
+		confirmFullAccount: form.get('confirm') === 'full_account',
 	})
 	if (result.kind === 'approved' || result.kind === 'denied') {
 		location.searchParams.set('result', result.kind)
+		if (result.account) location.searchParams.set('kind', 'account')
 		return seeOther(location)
 	}
 	if (userCode) location.searchParams.set('user_code', userCode)
