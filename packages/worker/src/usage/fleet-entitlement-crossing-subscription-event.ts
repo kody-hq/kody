@@ -1,5 +1,5 @@
 import { isoTimestampDayKey } from '@kody-internal/shared/date-keys.ts'
-import { type AdminUsageEntitlementResource } from '#universal/loader-data.ts'
+import type { AdminUsageEntitlementResource } from '#universal/loader-data.ts'
 
 export const fleetEntitlementCrossedTopic = 'fleet.entitlement.crossed'
 

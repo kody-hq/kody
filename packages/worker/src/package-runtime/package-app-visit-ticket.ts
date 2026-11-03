@@ -37,13 +37,13 @@ import {
 	personIdFromStored,
 	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import {
-	type OrgRole,
-	type RequestBilling,
-	type RequestContext,
-	type RequestCredential,
+import type {
+	OrgRole,
+	RequestBilling,
+	RequestContext,
+	RequestCredential,
 } from '@kody-internal/shared/request-context.ts'
-import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
+import type { RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
 import { newRunCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
 
 export const packageAppVisitTicketHeaderName = 'X-Kody-Visit-Ticket'

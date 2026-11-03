@@ -6,7 +6,7 @@
  */
 import { invalidatePackageAppOwnerCache } from '#app/package-app-owner.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	type OAuthGrantHelpers,
 	revokeAllOAuthGrantsBestEffort,

@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	redactKodyCredentials,
 	redactKodyCredentialsDeep,
@@ -25,9 +25,12 @@ import {
 } from '#worker/entitlements/errors.ts'
 import { isQuarantinedInboundReplyError } from '#worker/email/quarantined-inbound-reply.ts'
 import {
+	classifyRetryableD1Error,
 	isRetryableD1LockMessage,
+	readD1RetryAttempts,
 	transientDatabaseUnavailableMessage,
 } from '#worker/d1-retry.ts'
+import { reportInfraHiccup } from '#worker/infra-hiccup-sentry.ts'
 import { isPublishComputeLimitMessage } from '#worker/repo/isolated-runner-limit-message.ts'
 import { readRemoteRefNotConfirmedError } from '#worker/repo/remote-ref-not-confirmed-error.ts'
 import {
@@ -208,7 +211,13 @@ export function notFound(message: string) {
  * 503 `internal_error` with `Retry-After`, so clients can tell it from a real
  * defect and retry.
  */
-export function toApiError(error: unknown): ApiError {
+export function toApiError(
+	error: unknown,
+	context?: {
+		/** Static operation id or capability name for infra hiccup reports. */
+		operation?: string
+	},
+): ApiError {
 	if (error instanceof ApiError) return error
 	if (error instanceof AuthorizationError) {
 		if (error.code === 'unauthenticated') {
@@ -375,13 +384,18 @@ export function toApiError(error: unknown): ApiError {
 	// with Retry-After rather than becoming a 400 invalid_request. Match only
 	// non-caller entries: a McpCallerError message can echo caller input (for
 	// example a job id of "SQLITE_BUSY") and must not turn a 404 into a 503.
-	if (
-		getErrorCauseChain(error).some(
-			(entry) =>
-				!(entry instanceof McpCallerError) &&
-				isRetryableD1LockMessage(getErrorMessage(entry)),
-		)
-	) {
+	const transientD1Entry = getErrorCauseChain(error).find(
+		(entry) =>
+			!(entry instanceof McpCallerError) &&
+			isRetryableD1LockMessage(getErrorMessage(entry)),
+	)
+	if (transientD1Entry !== undefined) {
+		void reportInfraHiccup({
+			kind: 'd1_transient',
+			operation: context?.operation ?? 'open_api',
+			attempts: readD1RetryAttempts(error),
+			errorClass: classifyRetryableD1Error(transientD1Entry) ?? 'unknown',
+		})
 		return new ApiError({
 			status: 503,
 			code: 'internal_error',

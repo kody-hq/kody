@@ -2,7 +2,7 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { expect, test, vi } from 'vitest'
 import { addOrgMember, upsertGrant } from '#worker/orgs/access-writes.ts'
 import { listMemoryReadersForOrgMemory } from '#worker/mcp/memory/memory-personalize.ts'

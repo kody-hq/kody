@@ -4,10 +4,10 @@
 
 import { endMemberExecutionContextLeases } from '#worker/execution-contexts/service.ts'
 import { revokeProfilesForMember } from '#worker/profiles/store.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { offboardOrgMember } from '#worker/orgs/offboarding.ts'
 import { resolveOAuthHelpers } from '#worker/oauth-helpers.ts'
-import { type OAuthGrantHelpers } from '#worker/oauth-grants.ts'
+import type { OAuthGrantHelpers } from '#worker/oauth-grants.ts'
 import {
 	recordOrgAuditEvent,
 	type OrgAuditWriter,

@@ -25,11 +25,11 @@ import {
 	formatMonthKeyLabel,
 	usageMetricSeries,
 } from '#client/charts/usage-metric-series.ts'
-import { type RoleName } from '#universal/permissions.ts'
-import {
-	type AdminUserListItem,
-	type AdminUserOrgMembership,
-	type AdminUserUsageLoaderData,
+import type { RoleName } from '#universal/permissions.ts'
+import type {
+	AdminUserListItem,
+	AdminUserOrgMembership,
+	AdminUserUsageLoaderData,
 } from '#universal/loader-data.ts'
 import { describeEmailVerificationDelivery } from '#universal/email-verification-delivery.ts'
 import {

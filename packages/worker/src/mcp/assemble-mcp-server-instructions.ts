@@ -3,7 +3,7 @@
  * user overlay. Both `/mcp` lanes call this helper.
  */
 
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { buildMcpServerInstructions } from '#mcp/server-instructions.ts'
 import { getMcpUserServerInstructions } from '#mcp/user-server-instructions-repo.ts'
 

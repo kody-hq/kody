@@ -14,7 +14,7 @@ import {
 	isMissingFeatureFlagsTable,
 } from '#worker/feature-flags/service.ts'
 import { credentialAllowedPackagesSafetyWindowFlagKey } from '#universal/feature-flags/registry.ts'
-import { type AllowedPackagesWouldBlockAccessKind } from './allowed-packages-would-block.ts'
+import type { AllowedPackagesWouldBlockAccessKind } from './allowed-packages-would-block.ts'
 
 /**
  * When non-empty allowed-packages lists become strict for every package: 30

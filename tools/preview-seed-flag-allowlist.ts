@@ -1,4 +1,4 @@
-import { type FeatureFlagKey } from '#universal/feature-flags/registry.ts'
+import type { FeatureFlagKey } from '#universal/feature-flags/registry.ts'
 
 /**
  * Flags the public preview seed user (`me@kentcdodds.com`) may have forced on.

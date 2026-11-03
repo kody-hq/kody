@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { listRepoSessionDueOwnersPage } from '#worker/repo/repo-session-due-owners.ts'
 import { repoSessionIndexRpc } from '#worker/repo/repo-session-index-client.ts'
 import {
@@ -32,6 +32,7 @@ import {
  */
 
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import { runD1WithRetry } from '#worker/d1-retry.ts'
 export type StorageBucketKind =
 	| 'job'
 	| 'package'
@@ -499,18 +500,22 @@ export async function listUserStorageBucketEstimates(input: {
 		estimatedBytes: number | null
 	}>
 > {
-	const result = await input.env.APP_DB.prepare(
-		`SELECT storage_id AS storageId, kind, estimated_bytes AS estimatedBytes
+	// Read on every entitlement baseline: retry D1 blips (lock, export,
+	// overload) instead of failing the write on the first one.
+	const result = await runD1WithRetry(() =>
+		input.env.APP_DB.prepare(
+			`SELECT storage_id AS storageId, kind, estimated_bytes AS estimatedBytes
 		FROM user_storage_buckets
 		WHERE user_id = ?${andLiveDeletedAtSql()}
 		ORDER BY storage_id ASC`,
+		)
+			.bind(input.userId)
+			.all<{
+				storageId: string
+				kind: string
+				estimatedBytes: number | null
+			}>(),
 	)
-		.bind(input.userId)
-		.all<{
-			storageId: string
-			kind: string
-			estimatedBytes: number | null
-		}>()
 	return (result.results ?? []).map((row) => ({
 		storageId: row.storageId,
 		kind: normalizeInventoriedStorageBucketKind(row.kind),

@@ -7,9 +7,9 @@ import {
 	type McpOAuthSettlePhase,
 	type McpServerLastError,
 } from './oauth-settle-error.ts'
-import {
-	type McpServerConnectionState,
-	type McpServerOAuthCallbackOutcome,
+import type {
+	McpServerConnectionState,
+	McpServerOAuthCallbackOutcome,
 } from './types.ts'
 
 export type McpOAuthCallbackConnection = {

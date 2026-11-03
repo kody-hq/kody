@@ -1,14 +1,14 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset } from '../public-assets.ts'
-import { type CSSObject } from '@emotion/react'
-import { type CSSProperties } from 'react'
+import type { CSSObject } from '@emotion/react'
+import type { CSSProperties } from 'react'
 import {
 	BLOG_AUTHOR_NAME,
 	formatBlogPostDate,
 } from '#universal/blog-display.ts'
-import {
-	type BlogLoaderData,
-	type BlogPostSummaryLoaderData,
+import type {
+	BlogLoaderData,
+	BlogPostSummaryLoaderData,
 } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
 import { colors, transitions } from '#universal/styles/tokens.ts'

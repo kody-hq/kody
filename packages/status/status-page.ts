@@ -5,12 +5,12 @@ import {
 	cloudflareStatusPageUrl,
 	sanitizeProviderIncidentShortlink,
 } from './provider-incidents.ts'
-import {
-	type ComponentSnapshot,
-	type ExecuteHealthSnapshot,
-	type IncidentView,
-	type ProviderIncident,
-	type StatusSnapshot,
+import type {
+	ComponentSnapshot,
+	ExecuteHealthSnapshot,
+	IncidentView,
+	ProviderIncident,
+	StatusSnapshot,
 } from './status-types.ts'
 
 /** Server-rendered public status page. A 60s reload keeps an open tab

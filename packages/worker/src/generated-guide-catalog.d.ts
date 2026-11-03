@@ -15,13 +15,13 @@
  */
 
 declare module '*/generated/guide-metadata.mjs' {
-	import { type GuideMetadata } from '#worker/guides/guide-types.ts'
+	import type { GuideMetadata } from '#worker/guides/guide-types.ts'
 
 	export const guideMetadata: ReadonlyArray<GuideMetadata>
 }
 
 declare module '*/generated/guide-catalog.mjs' {
-	import { type Guide } from '#worker/guides/guide-types.ts'
+	import type { Guide } from '#worker/guides/guide-types.ts'
 
 	export const guides: ReadonlyArray<Guide>
 }

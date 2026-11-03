@@ -10,7 +10,7 @@ import {
 	stampIncidentRetrospective,
 	type IncidentRetrospective,
 } from './retrospective.ts'
-import { type IncidentView } from './status-types.ts'
+import type { IncidentView } from './status-types.ts'
 
 const incidentPathPrefix = '/__maintenance/incidents/'
 const incidentRetrospectivePathSuffix = '/retrospective'

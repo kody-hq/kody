@@ -14,7 +14,7 @@
  * retry-after instead of running the exchange again, and `invalid_grant`
  * stops the exchange until a new revision (a saved value) replaces it.
  */
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	decryptLoginCredentialSession,
 	encryptLoginCredentialSession,

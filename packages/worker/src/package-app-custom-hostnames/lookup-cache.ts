@@ -1,5 +1,5 @@
 import { lookupPackageAppCustomHostname } from '#worker/package-app-custom-hostnames/lookup.ts'
-import { type PackageAppCustomHostnameLookup } from '#worker/package-app-custom-hostnames/types.ts'
+import type { PackageAppCustomHostnameLookup } from '#worker/package-app-custom-hostnames/types.ts'
 
 /**
  * Short-TTL per-isolate cache for Host-header → custom-hostname mapping.

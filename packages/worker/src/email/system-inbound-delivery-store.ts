@@ -18,7 +18,7 @@ import {
 	inboundReconciliationRetryMs,
 	inboundStorageLeaseMs,
 } from './inbound-delivery-transitions.ts'
-import { type SystemEmailLocal } from './system-email.ts'
+import type { SystemEmailLocal } from './system-email.ts'
 import { assertSystemEmailGraphAuthority } from './system-email-authority.ts'
 import {
 	commitSystemInboundEventMutation,

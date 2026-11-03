@@ -2,8 +2,8 @@ import {
 	normalizeEmailAddress,
 	normalizeHeaderMailbox,
 } from '#worker/email/address.ts'
-import { type InboundEmailSender } from '#worker/request-context/request-context.ts'
-import { type EnablementSenderKind } from './types.ts'
+import type { InboundEmailSender } from '#worker/request-context/request-context.ts'
+import type { EnablementSenderKind } from './types.ts'
 
 /**
  * What an inbound message presents to a sender rule. `authenticated` is

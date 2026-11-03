@@ -15,9 +15,9 @@
  * bindings, not this RPC surface.
  */
 
-import { type OwnerId, type PersonId } from './owner-person-ids.ts'
-import { type PackageAppMount } from './public-urls.ts'
-import { type OrgRole } from './request-context.ts'
+import type { OwnerId, PersonId } from './owner-person-ids.ts'
+import type { PackageAppMount } from './public-urls.ts'
+import type { OrgRole } from './request-context.ts'
 
 /** Healthcheck endpoint served by the runtime Worker. */
 export const runtimeWorkerHealthPath = '/__runtime/health'

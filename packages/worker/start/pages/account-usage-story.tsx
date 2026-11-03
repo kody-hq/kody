@@ -3,7 +3,7 @@ import {
 	surfaceCardCss,
 	nestedSurfaceDarkCss,
 } from '#universal/styles/surface.ts'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { SiteLink } from '../components/site-link.tsx'
 import { chartColor, formatIntegerNumber } from '#client/charts/chart-theme.ts'
 import { AccountManagementPanel } from './account-management-components.tsx'

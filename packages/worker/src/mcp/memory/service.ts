@@ -1,8 +1,8 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
-import { type StorageContext } from '#mcp/storage.ts'
-import { type ResourceListScope } from '#worker/authorization/authorize.ts'
+import type { StorageContext } from '#mcp/storage.ts'
+import type { ResourceListScope } from '#worker/authorization/authorize.ts'
 import {
 	isCapabilitySearchOffline,
 	type EmbedTextFn,
@@ -30,19 +30,15 @@ import {
 	assertWithinStorageBytesEntitlement,
 	estimateEntitlementStorageEntryByteDelta,
 } from '#worker/entitlements/service.ts'
-import { type UserMeterEnv } from '#worker/entitlements/user-meter-client.ts'
-import {
-	type McpMemoryRow,
-	type MemoryRecord,
-	type MemorySearchMatch,
-} from './types.ts'
+import type { UserMeterEnv } from '#worker/entitlements/user-meter-client.ts'
+import type { McpMemoryRow, MemoryRecord, MemorySearchMatch } from './types.ts'
 import { assertPersonalMemoryWritable } from './memory-owner.ts'
 import {
 	changedMemoryFields,
 	memoryAuditActions,
 	recordMemoryAudit,
 } from './memory-audit.ts'
-import { type OrgAuditWriter } from '#worker/orgs/org-audit.ts'
+import type { OrgAuditWriter } from '#worker/orgs/org-audit.ts'
 
 const maxSubjectLength = 200
 const maxSummaryLength = 500

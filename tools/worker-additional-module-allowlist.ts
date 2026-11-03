@@ -23,6 +23,7 @@ export const kodyGeneratedEsModuleNames = [
 	'isomorphic-git.mjs',
 	'postal-mime.mjs',
 	'codemode-normalize.mjs',
+	'disposable-email-domains.mjs',
 ] as const
 
 export const kodyGeneratedWasmNames = ['esbuild.wasm'] as const

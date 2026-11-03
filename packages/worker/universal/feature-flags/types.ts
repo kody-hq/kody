@@ -4,8 +4,8 @@
  * them without pulling in D1-typed modules.
  */
 
-import { type FeatureFlagSuccessMetric } from './registry.ts'
-import { type FeatureFlagAudience } from './audiences.ts'
+import type { FeatureFlagSuccessMetric } from './registry.ts'
+import type { FeatureFlagAudience } from './audiences.ts'
 
 /**
  * One exposure cohort's aggregates over the flag's declared usage metric.

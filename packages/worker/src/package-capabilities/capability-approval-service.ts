@@ -1,6 +1,6 @@
 import { approvedCommitCache } from './approved-commit-cache.ts'
 import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { computePackageCapabilitySet } from './compute-package-capability-set.ts'
 import {
 	findPackageCapabilityApprovalByFingerprint,
@@ -25,7 +25,7 @@ import {
 	nextSavedPackageUpdatedAt,
 	updateSavedPackage,
 } from '#worker/package-registry/repo.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import {
 	getPendingPackageApprovalRequest,

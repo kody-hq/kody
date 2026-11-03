@@ -1,21 +1,18 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { buildCommunityIconR2Key } from '#worker/community/community-icon.ts'
 import {
 	buildIdentityIconR2Key,
 	identityIconCommitForKind,
 } from '#worker/repo/identity-icon.ts'
-import { type EntityKind } from '#worker/repo/types.ts'
+import type { EntityKind } from '#worker/repo/types.ts'
 import {
 	type AccountMailboxEmailObjectSource,
 	countMailboxEmailObjectRefs,
 	listMailboxEmailObjectRefPage,
 	resolveMailboxEmailObjectRef,
 } from './mailbox-r2-references.ts'
-import {
-	type AccountR2Binding,
-	type AccountR2ObjectRef,
-} from './r2-inventory.ts'
+import type { AccountR2Binding, AccountR2ObjectRef } from './r2-inventory.ts'
 
 // v1 traversed D1 email rows, so its continuation cannot be translated to the
 // Mailbox keyset without risking duplicate bytes. Signed v1 cursors fail with

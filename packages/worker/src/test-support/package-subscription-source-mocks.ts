@@ -1,6 +1,6 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type Mock } from 'vitest'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { Mock } from 'vitest'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 
 /**
  * Expands a `loadPackageManifestBySourceId` mock into the source exports

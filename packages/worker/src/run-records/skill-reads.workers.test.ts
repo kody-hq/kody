@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers'
 import { expect, test } from 'vitest'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { runLogRpc, exportRunRecords, clearRunRecords } from './service.ts'
-import { type SkillReadEvent } from '#universal/skill-metrics.ts'
+import type { SkillReadEvent } from '#universal/skill-metrics.ts'
 
 function event(
 	id: string,

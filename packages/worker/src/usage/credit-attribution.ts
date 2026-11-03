@@ -19,7 +19,7 @@ import {
 	type CreditAttributionMeter,
 	type CreditAttributionVisitorRow,
 } from '#universal/credit-attribution.ts'
-import { type AccountUsageComputeOverage } from '#universal/loader-data.ts'
+import type { AccountUsageComputeOverage } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
 import {
 	filterLiveUsageRows,

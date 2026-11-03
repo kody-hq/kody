@@ -5,22 +5,22 @@ import {
 	buildOnboardingSetupPrompt,
 	buildPersistFirstPackagePrompt,
 } from '#worker/onboarding-prompts.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OnboardingFeaturedListing } from '#universal/community-public-types.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OnboardingFeaturedListing } from '#universal/community-public-types.ts'
 import { listDisconnectedOnboardingFeaturedMcpServers } from '#universal/onboarding-mcp-chooser.ts'
-import { type ConnectedMcpAgent } from '#universal/connected-mcp-agents.ts'
-import { type PlatformIntegrationCatalogItem } from '#universal/oauth-connect.ts'
+import type { ConnectedMcpAgent } from '#universal/connected-mcp-agents.ts'
+import type { PlatformIntegrationCatalogItem } from '#universal/oauth-connect.ts'
 import { hasSecondConnectedMcpClient } from '#universal/onboarding-agent-ecosystems.ts'
-import {
-	type OnboardingChecklistLoaderData,
-	type OnboardingCustomMcpServer,
-	type OnboardingFeaturedMcpServer,
-	type OnboardingLoaderData,
+import type {
+	OnboardingChecklistLoaderData,
+	OnboardingCustomMcpServer,
+	OnboardingFeaturedMcpServer,
+	OnboardingLoaderData,
 } from '#universal/loader-data.ts'
 import { describeSecondAgentStandardGift } from '#universal/second-agent-standard-gift.ts'
 import { loadInboundMcpConnectionState } from '#worker/connected-mcp-agents.ts'
 import { loadSecondAgentStandardGift } from '#worker/entitlements/second-agent-standard-gift.ts'
-import { type OAuthGrantListHelpers } from '#worker/oauth-grants.ts'
+import type { OAuthGrantListHelpers } from '#worker/oauth-grants.ts'
 export {
 	buildDiscoveryPrompt,
 	buildFirstWinPrompt,

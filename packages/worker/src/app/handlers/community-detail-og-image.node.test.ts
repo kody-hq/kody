@@ -1,6 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import { type CommunityListingWithAggregates } from '#worker/community/types.ts'
+import type { CommunityListingWithAggregates } from '#worker/community/types.ts'
 import type * as IconFitModule from '#worker/community/icon-fit.ts'
 import { createCommunityDetailOgImageHandler } from './community-detail.ts'
 

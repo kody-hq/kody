@@ -15,7 +15,7 @@ import testKeys from '@kody-internal/shared/execution-context-protocol/vectors/t
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { beginRunRecord, getRunRecord } from '#worker/run-records/service.ts'
-import { type RunRecordHandle } from '#worker/run-records/types.ts'
+import type { RunRecordHandle } from '#worker/run-records/types.ts'
 import {
 	ExecutionContextSessionV1,
 	type ExecutionContextLease,

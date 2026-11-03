@@ -1,5 +1,5 @@
 import { searchWaitingItemCap } from '#universal/connection-trouble.ts'
-import { type WaitingItem } from '#universal/waiting.ts'
+import type { WaitingItem } from '#universal/waiting.ts'
 import {
 	escapeMarkdownText,
 	formatMarkdownInlineCode,

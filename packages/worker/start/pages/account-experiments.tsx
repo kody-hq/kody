@@ -1,10 +1,10 @@
 /** @jsxImportSource @emotion/react */
 import { updateExperiments } from '#start/server/account-mutations'
 import { setExperiment } from '#start/server/experiment-opt-in'
-import { type SelfServeExperimentState } from '#universal/feature-flags/experiments.ts'
+import type { SelfServeExperimentState } from '#universal/feature-flags/experiments.ts'
 import { primaryLinkCss } from '#universal/styles/style-primitives.ts'
 import { SiteLink } from '../components/site-link.tsx'
-import { type AccountExperimentsLoaderData } from '#universal/loader-data.ts'
+import type { AccountExperimentsLoaderData } from '#universal/loader-data.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'

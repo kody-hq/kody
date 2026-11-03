@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { adoptPackageFork } from '#start/server/package-mutations'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useState, type FormEvent } from 'react'
 import { usePackageMutation } from '../package-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
@@ -9,9 +9,9 @@ import {
 	communityForkAdoptionReviewNoteMinLength,
 	communityForkAdoptionSectionId,
 } from '#universal/community-fork-adoption.ts'
-import {
-	type AccountPackageCommunityFork,
-	type AccountPackageDetail,
+import type {
+	AccountPackageCommunityFork,
+	AccountPackageDetail,
 } from '#universal/loader-data.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {

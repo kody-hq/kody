@@ -1,8 +1,8 @@
 import { packageAppVisitorNeedKeyPattern } from '#worker/package-registry/types.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import {
-	type RuntimePackageAppIdentity,
-	type RuntimePackageAppVisitor,
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type {
+	RuntimePackageAppIdentity,
+	RuntimePackageAppVisitor,
 } from '@kody-internal/shared/runtime-worker.ts'
 import * as Sentry from '@sentry/cloudflare'
 import { waitUntil as scheduleWorkerWaitUntil } from 'cloudflare:workers'

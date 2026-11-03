@@ -8,7 +8,7 @@ import {
 	type PackageAppOrgOwner,
 } from '#app/package-app-owner.ts'
 import { resolveSavedPackageForPackageAppSlug } from '#worker/package-invocations/module-artifacts.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 
 /**
  * A package-app OAuth client is not registered — it is a real hosted package

@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { cachified } from '@epic-web/cachified'
 import {
 	assertAccountWritableDb,
@@ -26,7 +26,7 @@ import {
 	type IdentityIconSourcePath,
 } from './identity-icon-paths.ts'
 import { updateEntitySource } from './entity-sources.ts'
-import { type EntityKind, type EntitySourceRow } from './types.ts'
+import type { EntityKind, EntitySourceRow } from './types.ts'
 
 export const identityIconVersion = 1 as const
 const identityIconDescriptorTtlMs = 30 * 24 * 60 * 60 * 1000

@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset } from '../public-assets.ts'
 import { SiteLink } from '../components/site-link.tsx'
-import { type OnboardingChecklistLoaderData } from '#universal/loader-data.ts'
+import type { OnboardingChecklistLoaderData } from '#universal/loader-data.ts'
 import { getPillButtonCss } from '#universal/styles/style-primitives.ts'
 import { noticeCardCss } from './account-management-components.tsx'
 import { colors } from '#universal/styles/tokens.ts'

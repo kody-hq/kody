@@ -9,7 +9,7 @@ import {
 	type MailboxDeliveryEventInput,
 	type MailboxDeliveryEventRecord,
 } from './mailbox-types.ts'
-import { type EmailDeliveryEventType } from './types.ts'
+import type { EmailDeliveryEventType } from './types.ts'
 import { mapMailboxDeliveryEventRow } from './mailbox-mappers.ts'
 import { isMailboxMessageTombstoned } from './mailbox-message-deletion-tombstones.ts'
 

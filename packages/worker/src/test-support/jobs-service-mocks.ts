@@ -3,13 +3,13 @@ import { vi } from 'vitest'
 import type * as backgroundMcpUserModule from '#worker/identity/background-mcp-user.ts'
 import type * as managerClientModule from '#worker/jobs/manager-client.ts'
 import type * as artifactRepoCleanupModule from '#worker/repo/artifact-repo-cleanup.ts'
-import { type RepoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
+import type { RepoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
 import type * as repoSessionsModule from '#worker/repo/repo-sessions.ts'
 import type * as sourceServiceModule from '#worker/repo/source-service.ts'
 import type * as sourceSyncModule from '#worker/repo/source-sync.ts'
-import {
-	type StorageClearResult,
-	type StorageEstimateResult,
+import type {
+	StorageClearResult,
+	StorageEstimateResult,
 } from '#worker/storage-runner.ts'
 
 type CleanupSessionBranchInput = Parameters<

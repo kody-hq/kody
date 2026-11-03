@@ -5,7 +5,7 @@ import {
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { isAccountEmailVerified } from '#app/email-verification.ts'
 import type * as EntitlementPlans from '#universal/plans.ts'
 import { getUserEntitlement } from '#worker/entitlements/service.ts'

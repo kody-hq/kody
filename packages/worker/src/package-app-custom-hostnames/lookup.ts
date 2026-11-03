@@ -10,11 +10,11 @@ import {
 	andActiveOrgSql,
 	andLiveDeletedAtSql,
 } from '#worker/soft-delete/live-sql.ts'
-import {
-	type PackageAppCustomHostnameBindingKind,
-	type PackageAppCustomHostnameLookup,
-	type VerifiedAppCustomHostname,
-	type VerifiedOrgCustomHostname,
+import type {
+	PackageAppCustomHostnameBindingKind,
+	PackageAppCustomHostnameLookup,
+	VerifiedAppCustomHostname,
+	VerifiedOrgCustomHostname,
 } from '#worker/package-app-custom-hostnames/types.ts'
 
 /**

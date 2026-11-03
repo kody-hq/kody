@@ -29,13 +29,13 @@ import {
 	sourceDatabaseFromObjectPrefix,
 	utcDay,
 } from './backup-policy.ts'
-import {
-	type BackupEnvironment,
-	type BackupManifest,
-	type BackupPayload,
-	type LegacyScheduledBackupPayload,
-	type SqlStatementStats,
-	type StoredBackup,
+import type {
+	BackupEnvironment,
+	BackupManifest,
+	BackupPayload,
+	LegacyScheduledBackupPayload,
+	SqlStatementStats,
+	StoredBackup,
 } from './backup-types.ts'
 import { signBackupManifest } from './manifest-signing.ts'
 

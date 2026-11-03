@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { type LocalPackageGraph } from '../local-package-graph.js'
+import type { LocalPackageGraph } from '../local-package-graph.js'
 
 export type PackageGraphCacheSlot = {
 	get: () => LocalPackageGraph | undefined

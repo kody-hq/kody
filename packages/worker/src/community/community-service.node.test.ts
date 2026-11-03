@@ -13,7 +13,7 @@ import {
 } from './errors.ts'
 import type * as CommunityRepo from './repo.ts'
 import type * as PackageUrl from './package-url.ts'
-import { type CommunityListingRecord } from './types.ts'
+import type { CommunityListingRecord } from './types.ts'
 
 const { mockModule, pickMocks } = vi.hoisted(() => {
 	const mockModule = {

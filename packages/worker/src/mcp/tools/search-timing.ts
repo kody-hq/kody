@@ -1,10 +1,7 @@
-import { type ServerTimingEntry } from '#worker/server-timing.ts'
+import type { ServerTimingEntry } from '#worker/server-timing.ts'
 
 import { SEARCH_DEADLINE_MS } from './search-constants.ts'
-import {
-	type SearchPhaseTimings,
-	type SearchTelemetry,
-} from './search-types.ts'
+import type { SearchPhaseTimings, SearchTelemetry } from './search-types.ts'
 
 export function elapsedMs(startedAt: number): number {
 	return Math.max(0, Math.round(performance.now() - startedAt))

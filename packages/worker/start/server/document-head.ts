@@ -1,4 +1,4 @@
-import { type AppLoaderData } from '#universal/loader-data.ts'
+import type { AppLoaderData } from '#universal/loader-data.ts'
 import {
 	type DocumentHeadKey,
 	absolutizeDocumentHead,

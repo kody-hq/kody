@@ -1,6 +1,6 @@
 import { assertProfileCanPublishImports } from '#worker/profiles/publish-imports.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { isUserCodeError } from '#worker/user-code-error.ts'
 import * as Sentry from '@sentry/cloudflare'
@@ -44,7 +44,7 @@ import {
 	loadLockedSavedPackage,
 } from '#worker/package-registry/package-publish-lock.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
 	collectPublishedPackageArtifactTargets,
 	isPublishedPackageArtifactBuiltForCommit,
@@ -54,7 +54,7 @@ import {
 	persistPublishedPackageArtifactTargets,
 	type PublishedPackageArtifactBuildTarget,
 } from '#worker/package-runtime/published-bundle-artifacts.ts'
-import { type PreparedKodyGraphCache } from '#worker/package-runtime/module-graph.ts'
+import type { PreparedKodyGraphCache } from '#worker/package-runtime/module-graph.ts'
 import {
 	hasPublishedRuntimeArtifacts,
 	loadPublishedSourceManifestSnapshot,
@@ -72,10 +72,9 @@ import {
 import {
 	runPackageTypecheckLanguageService,
 	runRepoSourceWalkChecks,
-	formatFailedRepoCheckMessages,
 	validatePackageBundles,
 } from './checks.ts'
-import { RepoChecksFailedError } from './repo-checks-failed-error.ts'
+import { createRepoChecksError } from './repo-checks-failed-error.ts'
 import { confirmRemoteRefAtCommit } from './confirm-remote-ref.ts'
 import { readRemoteRefNotConfirmedError } from './remote-ref-not-confirmed-error.ts'
 import { runAuthoringPublishChecksOnFiles } from './authoring-publish-checks.ts'
@@ -101,24 +100,24 @@ import {
 	isRepoCheckStep,
 	type RepoCheckStep,
 } from './isolated-runner-limit-message.ts'
-import {
-	type EntitySourceRow,
-	type RepoSearchMode,
-	type RepoSearchOutputMode,
-	type RepoExternalPublishResult,
-	type RepoExternalRefCheckResult,
-	type RepoSourceBootstrapResult,
-	type RepoSessionApplyEditsResult,
-	type RepoSessionEdit,
-	type RepoSessionCheckRun,
-	type RepoSessionCheckStatus,
-	type RepoSessionDiscardResult,
-	type RepoSessionPublishResult,
-	type RepoSessionRebaseResult,
-	type RepoSessionRow,
-	type RepoSessionSearchResult,
-	type RepoSessionTreeResult,
-	type RepoSessionLastPublish,
+import type {
+	EntitySourceRow,
+	RepoSearchMode,
+	RepoSearchOutputMode,
+	RepoExternalPublishResult,
+	RepoExternalRefCheckResult,
+	RepoSourceBootstrapResult,
+	RepoSessionApplyEditsResult,
+	RepoSessionEdit,
+	RepoSessionCheckRun,
+	RepoSessionCheckStatus,
+	RepoSessionDiscardResult,
+	RepoSessionPublishResult,
+	RepoSessionRebaseResult,
+	RepoSessionRow,
+	RepoSessionSearchResult,
+	RepoSessionTreeResult,
+	RepoSessionLastPublish,
 } from './types.ts'
 import {
 	finalizePublishedEntitySource,
@@ -2095,9 +2094,7 @@ class RepoSessionBase extends DurableObject<Env> {
 						},
 					})
 					if (!checks.ok) {
-						throw new RepoChecksFailedError(
-							formatFailedRepoCheckMessages(checks.results),
-						)
+						throw createRepoChecksError(checks.results)
 					}
 				},
 			)
@@ -3022,6 +3019,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		) {
 			return {
 				ok: false,
+				failureOrigin: 'platform',
 				message:
 					'Isolated check phase staging key does not belong to the requesting user.',
 			}
@@ -3034,6 +3032,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		if (!sourceFiles) {
 			return {
 				ok: false,
+				failureOrigin: 'platform',
 				message:
 					'Isolated check phase staging data expired or is missing; run the checks again.',
 			}
@@ -3100,6 +3099,7 @@ class RepoSessionBase extends DurableObject<Env> {
 					{
 						kind: 'manifest',
 						ok: false,
+						failureOrigin: 'platform',
 						message:
 							'Publish check staging key does not belong to the requesting user.',
 					},
@@ -3118,6 +3118,7 @@ class RepoSessionBase extends DurableObject<Env> {
 					{
 						kind: 'manifest',
 						ok: false,
+						failureOrigin: 'platform',
 						message:
 							'Publish check staging data expired or is missing; run the checks again.',
 					},

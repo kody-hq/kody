@@ -1,4 +1,4 @@
-import { type Guide, type GuideAudience } from './guide-types.ts'
+import type { Guide, GuideAudience } from './guide-types.ts'
 
 export type {
 	GuideAudience,

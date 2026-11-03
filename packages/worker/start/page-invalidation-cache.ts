@@ -1,6 +1,6 @@
 import { pageQueryInputOrg, type PageOrgScope } from './page-query-scope.ts'
-import { type QueryClient, type Query } from '@tanstack/react-query'
-import { type PageResource } from './page-resources.ts'
+import type { QueryClient, Query } from '@tanstack/react-query'
+import type { PageResource } from './page-resources.ts'
 
 export type PageMutationDependencies = readonly PageResource[] | 'permissions'
 

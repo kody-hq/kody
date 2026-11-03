@@ -1,4 +1,4 @@
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 
 // Missing auth is caller-clearable (e.g. an anonymous package-app visitor

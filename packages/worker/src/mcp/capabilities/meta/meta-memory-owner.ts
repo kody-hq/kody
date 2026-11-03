@@ -3,19 +3,19 @@
  * Surface orgPermission is `none` so team-org connections can invoke; handlers
  * authorize against the personal org and store under that owner id (ADR 0072).
  */
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
-import {
-	type OwnerId,
-	type PersonId,
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type {
+	OwnerId,
+	PersonId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
 	authorize,
 	loadResourceListScope,
 	orgResource,
 	type ResourceListScope,
 } from '#worker/authorization/authorize.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	personalMemoryOwnerId,

@@ -26,13 +26,13 @@ import {
 	displayNameFromEmail,
 	getUsernameFormatValidationError,
 } from '#worker/identity/username.ts'
-import { type McpUserContext } from '@kody-internal/shared/chat.ts'
+import type { McpUserContext } from '@kody-internal/shared/chat.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import {
 	planOrgBindingFromGrantProps,
 	type OrgBindingPlan,
 } from '#worker/orgs/grant-binding.ts'
-import { type OrgBinding } from '#worker/orgs/repo.ts'
+import type { OrgBinding } from '#worker/orgs/repo.ts'
 
 type McpOAuthGrantProps = {
 	userId?: unknown

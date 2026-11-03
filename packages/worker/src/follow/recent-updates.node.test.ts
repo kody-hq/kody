@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vitest'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { silenceExpectedConsoleErrors } from '#worker/test-support/console-spies.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { followRecentUpdatesPerFollow } from '#universal/follows.ts'
@@ -15,7 +15,7 @@ import {
 	insertFollowRecentUpdate,
 	listFollowRecentUpdates,
 } from './repo.ts'
-import { type FollowPushPending, type FollowRecord } from './types.ts'
+import type { FollowPushPending, FollowRecord } from './types.ts'
 
 const orgA = 'org-a'
 const orgB = 'org-b'

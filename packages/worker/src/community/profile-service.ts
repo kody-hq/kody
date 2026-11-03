@@ -20,12 +20,12 @@ import {
 	updateUserProfileFields,
 	type UserSocialRow,
 } from './profile-repo.ts'
-import {
-	type CommunityActivityItem,
-	type CommunityProfileRecord,
-	type ProfileVisibility,
-	type PublicProfilePackage,
-	type PublicProfilePackageListRow,
+import type {
+	CommunityActivityItem,
+	CommunityProfileRecord,
+	ProfileVisibility,
+	PublicProfilePackage,
+	PublicProfilePackageListRow,
 } from './types.ts'
 
 const maxDisplayNameLength = 50

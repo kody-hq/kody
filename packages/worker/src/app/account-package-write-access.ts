@@ -1,9 +1,9 @@
-import { type McpUserContext } from '@kody-internal/shared/chat.ts'
-import {
-	type OwnerId,
-	type PersonId,
+import type { McpUserContext } from '@kody-internal/shared/chat.ts'
+import type {
+	OwnerId,
+	PersonId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	AuthorizationError,
 	authorizePackageWrite,
@@ -11,7 +11,7 @@ import {
 import { jsonResponse } from '#worker/json-response.ts'
 import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import { getSavedPackageByIdInAnyOrg } from '#worker/package-registry/repo.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 
 type PackageWritePermission =

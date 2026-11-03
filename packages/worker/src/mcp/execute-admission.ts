@@ -1,6 +1,6 @@
 import { canonicalJsonStringify } from '@kody-internal/shared/canonical-json.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RequestCredential } from '@kody-internal/shared/request-context.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { RequestCredential } from '@kody-internal/shared/request-context.ts'
 import { sha256Base64Url } from '@kody-internal/shared/sha256.ts'
 import {
 	nextUtcDayStart,
@@ -17,8 +17,8 @@ import {
 	executeCallsPerMinutePerSeat,
 	resolveEntitlementLimit,
 } from '#universal/plans.ts'
-import { type CredentialCallMap } from '#worker/credentials/credential-call-map.ts'
-import { type OrgBudgetGateContext } from '#worker/entitlements/budget-gate.ts'
+import type { CredentialCallMap } from '#worker/credentials/credential-call-map.ts'
+import type { OrgBudgetGateContext } from '#worker/entitlements/budget-gate.ts'
 import {
 	consumeExecuteUniqueWorkerDay,
 	resolveLiveEntitlementForResource,
@@ -27,7 +27,7 @@ import {
 } from '#worker/entitlements/service.ts'
 import { userMeterRpc } from '#worker/entitlements/user-meter-client.ts'
 import { recordUsage } from '#worker/usage/record-usage.ts'
-import { type ClaimWorkerDay } from './executor.ts'
+import type { ClaimWorkerDay } from './executor.ts'
 
 /**
  * Per-seat base for the hosted execute runaway brake. The org limit is

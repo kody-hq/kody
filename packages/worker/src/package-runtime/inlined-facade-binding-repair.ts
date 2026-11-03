@@ -1,4 +1,4 @@
-import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 
 /**
  * Published bundles inline each package's `kody:runtime` facade (only the

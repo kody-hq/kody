@@ -36,9 +36,9 @@ import { orgAuditWriterFromRequest } from '#worker/orgs/org-audit.ts'
 import { getOrgById } from '#worker/orgs/repo.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
-import {
-	type OrgInviteJoinLoaderData,
-	type OrgInviteJoinOffer,
+import type {
+	OrgInviteJoinLoaderData,
+	OrgInviteJoinOffer,
 } from '#universal/loader-data.ts'
 import { orgOverviewPath, orgRoleLabel } from '#universal/org-pages.ts'
 import {

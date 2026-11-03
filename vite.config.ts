@@ -18,6 +18,7 @@ import { ensureWorkerBundlerModules } from './tools/build-worker-bundler-modules
 import { inlineCssText } from './tools/vite-inline-css-text.ts'
 import { markdownAsText } from './tools/vite-markdown-as-text.ts'
 import { harfbuzzWorker } from './tools/vite-harfbuzz-worker.ts'
+import { flattenClientPreloads } from './tools/vite-flatten-client-preloads.ts'
 import { workerWholeGraphReload } from './tools/vite-worker-whole-graph-reload.ts'
 
 import {
@@ -208,25 +209,28 @@ export default defineConfig(async ({ command }) => {
 			}),
 			workerWholeGraphReload(),
 			redact(),
-			tanstackStart({
-				srcDirectory: 'packages/worker/start',
-				serverFns: {
-					base: releaseBase === '/' ? '/_serverFn' : `${releaseBase}_serverFn/`,
-				},
-				router: {
-					basepath: '/',
-					codeSplittingOptions: {
-						defaultBehavior: [
-							['loader'],
-							['component'],
-							['pendingComponent'],
-							['errorComponent'],
-							['notFoundComponent'],
-						],
+			...flattenClientPreloads(
+				tanstackStart({
+					srcDirectory: 'packages/worker/start',
+					serverFns: {
+						base:
+							releaseBase === '/' ? '/_serverFn' : `${releaseBase}_serverFn/`,
 					},
-				},
-				server: { entry: 'server.ts' },
-			}),
+					router: {
+						basepath: '/',
+						codeSplittingOptions: {
+							defaultBehavior: [
+								['loader'],
+								['component'],
+								['pendingComponent'],
+								['errorComponent'],
+								['notFoundComponent'],
+							],
+						},
+					},
+					server: { entry: 'server.ts' },
+				}),
+			),
 			react({
 				include: /\/start\/.*\.[jt]sx?$/,
 				jsxImportSource: '@emotion/react',

@@ -1,10 +1,10 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	type ConnectedMcpAgent,
 	labelInboundMcpClient,
 	oauthGrantCreatedAtIso,
 } from '#universal/connected-mcp-agents.ts'
-import { type UserMeterEnv } from '#worker/entitlements/user-meter-client.ts'
+import type { UserMeterEnv } from '#worker/entitlements/user-meter-client.ts'
 import {
 	forgetInboundMcpConnectionLastUsed,
 	listInboundMcpConnectionLastUsed,

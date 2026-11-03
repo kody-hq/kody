@@ -4,7 +4,7 @@ import {
 	deterministicEmbedding,
 } from '#worker/vectorize/embedding.ts'
 import { searchCapabilities } from './capability-search.ts'
-import { type CapabilitySpec } from './types.ts'
+import type { CapabilitySpec } from './types.ts'
 
 function spec(name: string, description: string): CapabilitySpec {
 	return {

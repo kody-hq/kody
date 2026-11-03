@@ -1,5 +1,5 @@
 import { exports as workerExports } from 'cloudflare:workers'
-import { type RuntimeWorkerServiceContract } from '@kody-internal/shared/runtime-worker.ts'
+import type { RuntimeWorkerServiceContract } from '@kody-internal/shared/runtime-worker.ts'
 
 export const packageAppRuntimeBridgeMissingMessage =
 	'PackageAppRuntimeBridge is not exported on this Worker script. Slim origin must forward package-app construction via RUNTIME_WORKER (servePackageAppRequest); do not construct package apps in-process without the bridge or that forward.'

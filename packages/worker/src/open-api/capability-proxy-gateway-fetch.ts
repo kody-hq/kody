@@ -9,7 +9,7 @@ import {
 	type CapabilityProxyAuthenticatedFetchResult,
 } from './capability-proxy-authenticated-fetch.ts'
 import { authorizeLocalExecutePackageBinding } from './capability-proxy-package-grants.ts'
-import { type ApiInvocationContext } from './context.ts'
+import type { ApiInvocationContext } from './context.ts'
 import { invalidRequest } from './errors.ts'
 
 /**

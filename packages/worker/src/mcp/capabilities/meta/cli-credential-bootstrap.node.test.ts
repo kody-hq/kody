@@ -1,7 +1,7 @@
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
-import { type ApiTokenRecord } from '#worker/api-tokens/service.ts'
+import type { ApiTokenRecord } from '#worker/api-tokens/service.ts'
 import { cliCredentialBootstrapCapability } from './cli-credential-bootstrap.ts'
 
 const mintCliCredentialBootstrap = vi.hoisted(() =>

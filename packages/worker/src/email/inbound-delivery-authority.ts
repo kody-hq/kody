@@ -1,10 +1,10 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	buildEntitlementUpgradeHint,
 	EntitlementLimitError,
 } from '#worker/entitlements/errors.ts'
 import { entitlementBillingPath } from '#worker/entitlements/service.ts'
-import { type PlanName } from '#universal/plans.ts'
+import type { PlanName } from '#universal/plans.ts'
 import {
 	userMeterRpc,
 	type UserMeterEnv,
@@ -14,28 +14,28 @@ import {
 	type InboundDelivery,
 } from './inbound-delivery.ts'
 import { mailboxRpc, type MailboxEnv } from './mailbox-client.ts'
-import {
-	type MailboxClaimInboundSubscriptionEffectResult,
-	type MailboxClaimInboundUsageEffectResult,
-	type MailboxCompleteInboundSubscriptionEffectResult,
-	type MailboxCompleteInboundUsageEffectResult,
-	type MailboxFailInboundSubscriptionEffectResult,
-	type MailboxListDueInboundEffectWorkResult,
+import type {
+	MailboxClaimInboundSubscriptionEffectResult,
+	MailboxClaimInboundUsageEffectResult,
+	MailboxCompleteInboundSubscriptionEffectResult,
+	MailboxCompleteInboundUsageEffectResult,
+	MailboxFailInboundSubscriptionEffectResult,
+	MailboxListDueInboundEffectWorkResult,
 } from './mailbox-inbound-effect-ledger.ts'
-import {
-	type MailboxClaimInboundDeliveryCleanupResult,
-	type MailboxDeferInboundDeliveryReconcileResult,
-	type MailboxInboundDeliveryInsertInput,
-	type MailboxInboundDeliverySnapshot,
-	type MailboxListDueStaleInboundDeliveriesResult,
-	type MailboxMarkInboundDeliveryOrphanCleanedResult,
-	type MailboxReleaseInboundDeliveryCleanupResult,
+import type {
+	MailboxClaimInboundDeliveryCleanupResult,
+	MailboxDeferInboundDeliveryReconcileResult,
+	MailboxInboundDeliveryInsertInput,
+	MailboxInboundDeliverySnapshot,
+	MailboxListDueStaleInboundDeliveriesResult,
+	MailboxMarkInboundDeliveryOrphanCleanedResult,
+	MailboxReleaseInboundDeliveryCleanupResult,
 } from './mailbox-inbound-ledger.ts'
-import {
-	type MailboxAttachmentInput,
-	type MailboxCommitInboundMessageGraphResult,
-	type MailboxMessageInput,
-	type MailboxThreadInput,
+import type {
+	MailboxAttachmentInput,
+	MailboxCommitInboundMessageGraphResult,
+	MailboxMessageInput,
+	MailboxThreadInput,
 } from './mailbox-types.ts'
 import { systemEmailOwnerId } from './email-owner.ts'
 import { replaceInboundDueOwnerHint } from './inbound-due-owners.ts'

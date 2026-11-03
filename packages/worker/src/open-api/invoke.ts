@@ -1,7 +1,7 @@
 import { isRecord } from '@kody-internal/shared/is-record.ts'
 import { callerCanAccessCapability } from '#mcp/capabilities/access-control.ts'
 import { getStaticRegistry } from '#mcp/capabilities/registry.ts'
-import { type Capability } from '#mcp/capabilities/types.ts'
+import type { Capability } from '#mcp/capabilities/types.ts'
 import { authorizeSurface } from '#worker/authorization/authorize.ts'
 import {
 	recordUsage,
@@ -192,7 +192,7 @@ export async function invokeApiOperation(input: {
 		outcome = 'success'
 		return result
 	} catch (error) {
-		const apiError = toApiError(error)
+		const apiError = toApiError(error, { operation: operation.operationId })
 		failureCode = apiError.code
 		if (apiError.status >= 500 && !(error instanceof ApiError)) {
 			console.error('open-api-operation-failed', operation.operationId, error)

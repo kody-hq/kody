@@ -1,4 +1,4 @@
-import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import {
 	packageRuntimeModulePrefix,
 	publicRuntimeModulePath,

@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest'
 import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
-import { type CredentialNeed } from '#worker/credentials/credential-needs.ts'
+import type { CredentialNeed } from '#worker/credentials/credential-needs.ts'
 import {
 	dailyTarget as daily,
 	mappingFixtureNeeds,

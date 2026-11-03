@@ -1,6 +1,6 @@
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
-import { type InboundEmailSender } from '#worker/request-context/request-context.ts'
+import type { InboundEmailSender } from '#worker/request-context/request-context.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { normalizeHeaderMailbox } from './address.ts'
 import {
@@ -8,7 +8,7 @@ import {
 	resolveInboundEmailAuthVerdict,
 	type EmailAuthVerdict,
 } from './auth-verdict.ts'
-import { type EmailMessageRecord } from './types.ts'
+import type { EmailMessageRecord } from './types.ts'
 
 export type InboundEmailSenderClassification =
 	| InboundEmailSender

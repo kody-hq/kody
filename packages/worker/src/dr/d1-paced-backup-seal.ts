@@ -24,7 +24,7 @@ import {
 	DrBackupPreconditionFailedError,
 	type DrBackupS3Client,
 } from '#worker/dr/backup-s3.ts'
-import { type PacedD1SourceConfig } from '#worker/dr/d1-paced-backup-sources.ts'
+import type { PacedD1SourceConfig } from '#worker/dr/d1-paced-backup-sources.ts'
 
 export type PacedD1PartsPointer = {
 	schemaVersion: typeof pacedD1BackupSchemaVersion

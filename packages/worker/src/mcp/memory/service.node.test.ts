@@ -26,9 +26,9 @@ import {
 	upsertMemory,
 	verifyMemoryCandidate,
 } from './service.ts'
-import {
-	type McpMemoryConversationSuppressionRow,
-	type McpMemoryRow,
+import type {
+	McpMemoryConversationSuppressionRow,
+	McpMemoryRow,
 } from './types.ts'
 
 function createMemoryTestDb() {

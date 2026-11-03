@@ -1,5 +1,5 @@
 import { parseModuleSource } from '#worker/module-source.ts'
-import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import {
 	isKodyPublicRuntimeModulePath,
 	isKodyRuntimeModulePath,

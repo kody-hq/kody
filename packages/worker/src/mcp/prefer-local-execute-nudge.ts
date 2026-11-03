@@ -5,7 +5,7 @@ import {
 } from '#universal/compute-overage.ts'
 import { labelInboundMcpClient } from '#universal/connected-mcp-agents.ts'
 import { mcpClientById } from '#universal/onboarding-mcp-clients.ts'
-import { type UserEntitlement } from '#universal/plans.ts'
+import type { UserEntitlement } from '#universal/plans.ts'
 import { preferLocalExecuteNudgeWarning } from '#universal/prefer-local-cli-execute.ts'
 import { userEntitlementApproachingThreshold } from '#worker/entitlements/user-entitlement-warning-emails.ts'
 

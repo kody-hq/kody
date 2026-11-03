@@ -22,7 +22,7 @@ import { resolveAdminPlanOverlay } from '#universal/referral-program.ts'
 import { resolveEffectivePlanWithSecondAgentGift } from '#universal/second-agent-standard-gift.ts'
 import { resolveUserPlanFromRow } from '#worker/entitlements/service.ts'
 import { parseOwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type AppEnv } from '#worker/env-schema.ts'
+import type { AppEnv } from '#worker/env-schema.ts'
 
 type AdminOrgDb = AppEnv['APP_DB']
 

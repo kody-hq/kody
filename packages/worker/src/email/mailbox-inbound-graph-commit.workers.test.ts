@@ -11,7 +11,7 @@ import {
 	stubFor,
 	uniqueUserId,
 } from './mailbox-test-helpers.ts'
-import { type Mailbox } from './mailbox-do.ts'
+import type { Mailbox } from './mailbox-do.ts'
 
 test('inbound graph commit atomically fences the active storage lease', async () => {
 	silenceIncidentalRuntimeWarnings()

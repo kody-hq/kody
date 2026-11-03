@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite'
 import { createAuditTestDb } from '#worker/test-support/create-audit-db.ts'
-import { type OrgGrantResourceType } from '@kody-internal/shared/org-permissions.ts'
+import type { OrgGrantResourceType } from '@kody-internal/shared/org-permissions.ts'
 import {
 	ownerIdFromStored,
 	personalOrgId,

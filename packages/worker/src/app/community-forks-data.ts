@@ -1,4 +1,4 @@
-import { type McpUserContext } from '@kody-internal/shared/chat.ts'
+import type { McpUserContext } from '@kody-internal/shared/chat.ts'
 import { viewerCanReadSavedPackage } from '#app/package-viewer-access.ts'
 import {
 	type CommunityForkListRow,
@@ -8,7 +8,7 @@ import {
 } from '#worker/community/repo.ts'
 import { buildOrgAvatarUrl } from '#worker/orgs/org-avatar.ts'
 import { resolvePackageListIconUrl } from '#universal/identity-icon-urls.ts'
-import { type PackageForkView } from '#universal/package-forks.ts'
+import type { PackageForkView } from '#universal/package-forks.ts'
 import { routes } from '#universal/routes.ts'
 
 export const packageForksPageLimit = 100

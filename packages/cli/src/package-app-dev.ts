@@ -19,7 +19,7 @@ import {
 	type Server,
 	type ServerResponse,
 } from 'node:http'
-import { type AddressInfo } from 'node:net'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, relative, resolve, sep } from 'node:path'
 import {
@@ -117,7 +117,7 @@ import {
 	resolvePackagePath,
 } from './package-manifest.js'
 import { redact } from './redact.js'
-import { type KodyTarget } from './target.js'
+import type { KodyTarget } from './target.js'
 import { ensureWorkerdBinary } from './workerd-binary.js'
 
 export type PackageAppDevOptions = {

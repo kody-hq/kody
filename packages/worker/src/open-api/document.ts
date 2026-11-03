@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { isRecord } from '@kody-internal/shared/is-record.ts'
 import { getStaticRegistry } from '#mcp/capabilities/registry.ts'
-import { type BuiltCapabilityRegistry } from '#mcp/capabilities/build-capability-registry.ts'
+import type { BuiltCapabilityRegistry } from '#mcp/capabilities/build-capability-registry.ts'
 import {
 	apiTokenScopeDescriptions,
 	apiTokenScopes,

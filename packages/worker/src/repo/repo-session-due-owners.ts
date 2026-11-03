@@ -1,5 +1,5 @@
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 
 export const repoSessionDueOwnerBatchSize = 25
 export const repoSessionDueOwnerFailureDelayMs = 5 * 60 * 1000

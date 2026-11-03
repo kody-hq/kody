@@ -25,7 +25,7 @@ import {
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createInMemoryRepoSessionIndexEnv } from '#worker/test-support/repo-session-index.ts'
-import { type RepoSessionRow } from '#worker/repo/types.ts'
+import type { RepoSessionRow } from '#worker/repo/types.ts'
 
 function createRetentionDb() {
 	const sqlite = new DatabaseSync(':memory:')

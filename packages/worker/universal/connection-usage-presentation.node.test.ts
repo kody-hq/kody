@@ -5,7 +5,7 @@ import {
 	connectionUsageHasActivity,
 	connectionUsageOtherCounts,
 } from './connection-usage-presentation.ts'
-import { type ConnectionUsageTotals } from './connection-usage.ts'
+import type { ConnectionUsageTotals } from './connection-usage.ts'
 
 function totals(
 	last7Days: Partial<ConnectionUsageTotals['last7Days']>,

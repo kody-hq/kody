@@ -5,11 +5,11 @@ import { parseTagsJson } from '@kody-internal/shared/tags-json.ts'
 import { listingNeedsRepublish } from './listing-needs-republish.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { extractCommunityListingLikeTokens } from './repo.ts'
-import {
-	type CommunityActivityEventType,
-	type CommunityActivityItem,
-	type ProfileVisibility,
-	type PublicProfilePackageListRow,
+import type {
+	CommunityActivityEventType,
+	CommunityActivityItem,
+	ProfileVisibility,
+	PublicProfilePackageListRow,
 } from './types.ts'
 
 // D1 caps bound parameters per statement; 90 leaves headroom for fixed binds.

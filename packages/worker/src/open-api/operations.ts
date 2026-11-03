@@ -1,4 +1,4 @@
-import { type SurfacePermission } from '#worker/authorization/authorize.ts'
+import type { SurfacePermission } from '#worker/authorization/authorize.ts'
 
 export const apiOperationMethods = [
 	'GET',

@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { waitUntil } from 'cloudflare:workers'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { resolveCommunityInstallOwner } from '#app/community-install-org.ts'
 import {
 	buildInstallAdaptPrompt,

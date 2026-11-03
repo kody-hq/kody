@@ -7,7 +7,7 @@ import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
 import { authorize, packageResource } from '#worker/authorization/authorize.ts'
 import { resolveSavedPackage } from '#worker/package-invocations/module-artifacts.ts'
 import { listRunRecords } from '#worker/run-records/service.ts'
-import { type RunRecord } from '#worker/run-records/types.ts'
+import type { RunRecord } from '#worker/run-records/types.ts'
 import { getWebhookEndpointByKey } from '#worker/webhooks/repo.ts'
 import {
 	requirePackageRef,

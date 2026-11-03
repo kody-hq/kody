@@ -7,9 +7,9 @@ import {
 	checkPermission,
 	computeEffectivePermissions,
 } from '#worker/authorization/authorize.ts'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { ProfileError } from './errors.ts'
 import { isProfilesEnabledFor } from './flag.ts'
 import {

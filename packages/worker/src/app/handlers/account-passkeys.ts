@@ -1,4 +1,4 @@
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	buildDefaultPasskeyName,
 	validatePasskeyName,
@@ -9,7 +9,7 @@ import {
 	renamePasskeyForUser,
 	type PasskeyRow,
 } from '#app/passkeys.ts'
-import { type AccountPasskeysLoaderData } from '#universal/loader-data.ts'
+import type { AccountPasskeysLoaderData } from '#universal/loader-data.ts'
 import {
 	auditDatabaseFromEnv,
 	getRequestIp,

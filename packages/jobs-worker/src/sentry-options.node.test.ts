@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { type JobsWorkerEnv } from './env.ts'
+import type { JobsWorkerEnv } from './env.ts'
 import {
 	buildSentryOptions,
 	resolveJobsWorkerSentryDsn,

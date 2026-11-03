@@ -1,4 +1,4 @@
-import { type BackupR2BucketLabel } from './backup-staging.ts'
+import type { BackupR2BucketLabel } from './backup-staging.ts'
 import { canonicalJsonStringify } from './canonical-json.ts'
 import { isRecord } from './is-record.ts'
 

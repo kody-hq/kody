@@ -1,4 +1,4 @@
-import { type JobsServiceContract } from '@kody-internal/shared/jobs/rpc.ts'
+import type { JobsServiceContract } from '@kody-internal/shared/jobs/rpc.ts'
 import {
 	createD1JobsStore,
 	type JobsStore,

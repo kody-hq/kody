@@ -12,7 +12,7 @@ import {
 	formatOneLineSentence,
 	getPrimaryPackageActionFunction,
 } from './search-format-helpers.ts'
-import { type SearchMatch } from './search-format-types.ts'
+import type { SearchMatch } from './search-format-types.ts'
 
 export function formatSearchMarkdown(input: {
 	matches: Array<SearchMatch>

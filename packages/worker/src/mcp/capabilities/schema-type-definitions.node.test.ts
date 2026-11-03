@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { createSchemaTypeDefinition } from './schema-type-definitions.ts'
-import { type CapabilityJsonSchema } from './types.ts'
+import type { CapabilityJsonSchema } from './types.ts'
 
 test('createSchemaTypeDefinition composes intersections and escapes schema comment markers', () => {
 	const intersected = createSchemaTypeDefinition({

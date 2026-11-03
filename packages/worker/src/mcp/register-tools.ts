@@ -1,4 +1,4 @@
-import { type McpRegistrationAgent } from './mcp-registration-agent.ts'
+import type { McpRegistrationAgent } from './mcp-registration-agent.ts'
 import { registerPrompts } from './register-prompts.ts'
 import { registerApiTool } from './tools/api.ts'
 import { registerExecuteTool } from './tools/execute.ts'

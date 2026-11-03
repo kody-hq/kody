@@ -1,5 +1,5 @@
 import { workflowInstanceId } from './backup-policy.ts'
-import { type ScheduledBackupPayload } from './backup-types.ts'
+import type { ScheduledBackupPayload } from './backup-types.ts'
 
 export type WorkflowInstanceStatus =
 	| 'queued'

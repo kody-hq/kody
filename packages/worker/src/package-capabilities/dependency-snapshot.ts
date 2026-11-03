@@ -1,4 +1,4 @@
-import { type BundleArtifactDependency } from '#worker/package-runtime/published-runtime-artifacts.ts'
+import type { BundleArtifactDependency } from '#worker/package-runtime/published-runtime-artifacts.ts'
 
 /**
  * Lockfile-like pin recorded with an internet-visible capability approval.

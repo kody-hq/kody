@@ -1,10 +1,10 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { deletePublishedArtifactsForSource } from '#worker/package-runtime/published-bundle-artifacts.ts'
 import { deletePublishedSourceSnapshot } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { cleanupArtifactReposForSource } from './artifact-repo-cleanup.ts'
 import { deleteEntitySource } from './entity-sources.ts'
 import { deleteRepoSessionsBySourceForUser } from './repo-sessions.ts'
-import { type EntitySourceRow } from './types.ts'
+import type { EntitySourceRow } from './types.ts'
 
 /** Deletes an entity source no live entity references, with its repo and artifacts. */
 export async function deleteEntitySourceWithArtifacts(input: {

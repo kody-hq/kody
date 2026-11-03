@@ -19,7 +19,7 @@ import {
 	packageAppCustomDomainCheckWindowMs,
 	packageAppCustomDomainRecheckIntervalMs,
 } from '#universal/package-app-custom-domain-status.ts'
-import { type PackageAppCustomHostnameRow } from '#worker/package-app-custom-hostnames/types.ts'
+import type { PackageAppCustomHostnameRow } from '#worker/package-app-custom-hostnames/types.ts'
 
 export const packageAppCustomHostnameGracePeriodMs = 36 * 60 * 60 * 1000
 

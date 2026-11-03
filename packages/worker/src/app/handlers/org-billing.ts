@@ -1,6 +1,6 @@
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { operationResult } from '../operation-result.ts'
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import {
 	BillingPlanUnavailableError,
 	loadAccountBillingData,
@@ -11,7 +11,7 @@ import {
 	getRequestIp,
 	logAuditEvent,
 } from '#worker/audit-log.ts'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { userHasMcpOAuthGrants } from '#app/onboarding-data.ts'
 import { loadRequestOrgResolution } from '#app/org-request-binding.ts'
 import {

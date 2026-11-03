@@ -1,4 +1,4 @@
-import { type SearchEntityPlugin } from '../search-entity-plugin.ts'
+import type { SearchEntityPlugin } from '../search-entity-plugin.ts'
 
 /**
  * Domain summaries come from the broad-query overview in `searchUnified`,

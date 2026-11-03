@@ -3,7 +3,7 @@ import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { requireMcpRequest } from '#mcp/capabilities/meta/require-user.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { resolveSavedPackage } from '#worker/package-invocations/module-artifacts.ts'
 import { getGrantById } from '#worker/orgs/access-writes.ts'
 import { getLiveOrgMembership } from '#worker/orgs/org-members-list.ts'
@@ -13,7 +13,7 @@ import {
 	grantPackageToProfile,
 	removePackageProfileGrant,
 } from '#worker/profiles/package-grants.ts'
-import { type PackageCollaboratorView } from '#universal/package-collaborators.ts'
+import type { PackageCollaboratorView } from '#universal/package-collaborators.ts'
 import { computeEffectivePermissions } from '#worker/authorization/authorize.ts'
 import {
 	allowUnmappableCredentialChangesDescription,

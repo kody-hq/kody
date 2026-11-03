@@ -5,9 +5,9 @@ import {
 	QueryClient,
 	QueryObserver,
 } from '@tanstack/react-query'
-import {
-	type AccountEmailLoaderData,
-	type AccountEmailMessageDetail,
+import type {
+	AccountEmailLoaderData,
+	AccountEmailMessageDetail,
 } from '#universal/loader-data.ts'
 import {
 	emailMutationOptions,

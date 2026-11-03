@@ -1,5 +1,5 @@
 import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
-import { type NxCacheEnv, type NxCacheStore } from './nx-cache-types.ts'
+import type { NxCacheEnv, NxCacheStore } from './nx-cache-types.ts'
 
 const HASH_PATTERN = /^[a-fA-F0-9]{16,128}$/
 export const MAX_ARTIFACT_BYTES = 100 * 1024 * 1024

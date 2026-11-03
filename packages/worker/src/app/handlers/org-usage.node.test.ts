@@ -4,7 +4,7 @@ import {
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { beforeEach, expect, test, vi } from 'vitest'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { loadRequestOrgResolution } from '#app/org-request-binding.ts'
 import type * as CreditTopUps from '#worker/billing/credit-top-ups.ts'
 import { CreditTopUpError } from '#worker/billing/credit-top-ups.ts'

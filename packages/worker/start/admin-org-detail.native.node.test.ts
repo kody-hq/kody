@@ -2,7 +2,7 @@ import { createElement } from 'react'
 import { expect, test } from 'vitest'
 import { renderStartPage } from './test-support/render-start-page.ts'
 import { AdminOrgDetailPage } from './pages/admin-orgs.tsx'
-import { type AdminOrgDetail } from '../src/admin/orgs-data.ts'
+import type { AdminOrgDetail } from '../src/admin/orgs-data.ts'
 
 const orgId = 'a'.repeat(64)
 const memberId = 'b'.repeat(64)

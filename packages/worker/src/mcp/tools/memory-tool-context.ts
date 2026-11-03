@@ -1,13 +1,13 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
-import { type ContentBlock } from '@modelcontextprotocol/sdk/types.js'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { ContentBlock } from '@modelcontextprotocol/sdk/types.js'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import {
 	acknowledgeSurfacedMemories,
 	searchMemoryRecords,
 } from '#mcp/memory/service.ts'
-import { type MemoryRecord } from '#mcp/memory/types.ts'
-import { type EmbedTextFn } from '#worker/vectorize/embedding.ts'
+import type { MemoryRecord } from '#mcp/memory/types.ts'
+import type { EmbedTextFn } from '#worker/vectorize/embedding.ts'
 
 export type MemoryToolSummary = {
 	memories: Array<{

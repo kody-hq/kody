@@ -1,7 +1,7 @@
-import { type JsonSchemaToolDescriptor } from '@cloudflare/codemode'
-import { type Tool } from '@modelcontextprotocol/sdk/types.js'
-import { type McpOAuthClientMode } from '@kody-internal/shared/mcp-servers.ts'
-import { type McpServerConnectionEvent } from './connection-episodes.ts'
+import type { JsonSchemaToolDescriptor } from '@cloudflare/codemode'
+import type { Tool } from '@modelcontextprotocol/sdk/types.js'
+import type { McpOAuthClientMode } from '@kody-internal/shared/mcp-servers.ts'
+import type { McpServerConnectionEvent } from './connection-episodes.ts'
 
 export type McpServerConnectionState =
 	| 'authenticating'

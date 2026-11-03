@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { processInboundDeliveryEffects } from './inbound-effects.ts'
 
 export async function scheduleInboundDeliveryEffects(input: {

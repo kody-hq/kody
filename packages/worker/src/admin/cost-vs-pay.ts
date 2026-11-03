@@ -12,11 +12,11 @@ import {
 	fleetFreeDynamicWorkerNearAllotmentFraction,
 	toAdminDynamicWorkerCost,
 } from '#universal/dynamic-worker-cost.ts'
-import {
-	type AdminCostRiskKind,
-	type AdminCostVsPay,
-	type AdminInsightsDynamicWorkerCostConsumer,
-	type AdminPaidSource,
+import type {
+	AdminCostRiskKind,
+	AdminCostVsPay,
+	AdminInsightsDynamicWorkerCostConsumer,
+	AdminPaidSource,
 } from '#universal/loader-data.ts'
 import { parsePlanName, parseStripePlanName } from '#universal/plans.ts'
 import {

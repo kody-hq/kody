@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset } from '../public-assets.ts'
-import { type CSSObject } from '@emotion/react'
-import { type ReactNode, type CSSProperties } from 'react'
+import type { CSSObject } from '@emotion/react'
+import type { ReactNode, CSSProperties } from 'react'
 import { CopyCodeBlock } from '../components/copy-code-block.tsx'
 import { KodyMark } from '../components/kody-mark.tsx'
 import {

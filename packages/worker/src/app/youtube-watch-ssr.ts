@@ -1,4 +1,4 @@
-import { type YoutubeWatchLoaderData } from '#universal/loader-data.ts'
+import type { YoutubeWatchLoaderData } from '#universal/loader-data.ts'
 import { resolveYoutubeWatchAllowedVideoIds } from '#app/youtube-watch-allowlist.ts'
 
 export async function loadYoutubeWatchLoaderData(input: {

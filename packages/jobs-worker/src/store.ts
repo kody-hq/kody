@@ -2,7 +2,7 @@ import {
 	createD1JobsStore,
 	type JobsStore,
 } from '@kody-internal/shared/jobs/store.ts'
-import { type JobsWorkerEnv } from './env.ts'
+import type { JobsWorkerEnv } from './env.ts'
 
 export function jobsStore(env: JobsWorkerEnv): JobsStore {
 	return createD1JobsStore(env.JOBS_DB)

@@ -11,10 +11,10 @@ import {
 	missingSuccessMetricNotice,
 	type FeatureFlagSuccessMetricMeasure,
 } from '#universal/feature-flags/registry.ts'
-import { type FeatureFlagMetricCohort } from '#universal/feature-flags/types.ts'
-import {
-	type AdminFeatureFlag,
-	type AdminFeatureFlagsLoaderData,
+import type { FeatureFlagMetricCohort } from '#universal/feature-flags/types.ts'
+import type {
+	AdminFeatureFlag,
+	AdminFeatureFlagsLoaderData,
 } from '#universal/loader-data.ts'
 import {
 	cardCss,

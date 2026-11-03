@@ -5,7 +5,7 @@ import {
 	type UsageCampaignOrigin,
 	type UsageCampaignState,
 } from './campaign-states.ts'
-import { type UsageCampaignPersisted } from './campaign-evaluator.ts'
+import type { UsageCampaignPersisted } from './campaign-evaluator.ts'
 
 export type UsageCampaignRow = {
 	user_id: string

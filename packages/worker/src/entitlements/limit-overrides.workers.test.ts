@@ -26,7 +26,7 @@ import { adminOrgLimitOverridesSetCapability } from '#mcp/capabilities/admin/adm
 import { adminOrgLimitsGetCapability } from '#mcp/capabilities/admin/admin-org-limits-get.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { buildExecuteUsageReport } from '#mcp/execute-admission.ts'
-import { type OrgAuditWriter } from '#worker/orgs/org-audit.ts'
+import type { OrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { planLimits, unlimitedLimit } from '#universal/plans.ts'

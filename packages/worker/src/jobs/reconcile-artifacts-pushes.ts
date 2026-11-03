@@ -4,7 +4,7 @@ import {
 	listEntitySourcesForExternalReconcile,
 	updateEntitySource,
 } from '#worker/repo/entity-sources.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 import { resolveArtifactSourceHead } from '#worker/repo/artifacts.ts'
 import { revokeStaleArtifactsTokens } from '#worker/repo/artifacts-tokens.ts'
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'

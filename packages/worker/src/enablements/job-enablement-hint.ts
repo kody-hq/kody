@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { requirePackageIdFromJobId } from '#worker/jobs/package-job-id.ts'
 import { buildSingleTriggerEnablementHint } from './enablement-agent-hints.ts'
 import { listEnablementsForInstance } from './repo.ts'

@@ -8,7 +8,7 @@ import {
 	identityIconCommitForKind,
 	refreshIdentityIconForSource,
 } from './identity-icon.ts'
-import { type EntitySourceRow } from './types.ts'
+import type { EntitySourceRow } from './types.ts'
 import { createFakeImagesBinding } from '#worker/test-support/images-binding.ts'
 import type * as EntitySources from './entity-sources.ts'
 

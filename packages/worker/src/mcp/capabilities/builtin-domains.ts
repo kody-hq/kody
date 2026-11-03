@@ -1,4 +1,4 @@
-import { type DomainSpec } from './types.ts'
+import type { DomainSpec } from './types.ts'
 
 /**
  * Builtin domains merged by `buildCapabilityRegistry` in `registry.ts`.

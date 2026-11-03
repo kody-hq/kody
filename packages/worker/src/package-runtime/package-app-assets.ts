@@ -8,9 +8,9 @@ import {
 	createPublishedPackageCacheKey,
 	PromiseLruCache,
 } from '#worker/package-registry/published-package-cache.ts'
-import { type AuthoredPackageJson } from '#worker/package-registry/types.ts'
+import type { AuthoredPackageJson } from '#worker/package-registry/types.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
-import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import { buildKodyAppClientBundle } from './module-graph-client-bundle.ts'
 import {
 	packageAppClientModuleNamePattern,

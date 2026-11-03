@@ -13,7 +13,7 @@ import {
 	collectPackageSkills,
 	type PackageSkillsIndex,
 } from '#worker/package-registry/package-skills.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 
 const mocks = vi.hoisted(() => ({
 	listOwn: vi.fn(),

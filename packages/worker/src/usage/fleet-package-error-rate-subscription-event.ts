@@ -1,4 +1,4 @@
-import { type FleetPackageErrorRateConcentration } from '#universal/fleet-package-error-rate-concentration.ts'
+import type { FleetPackageErrorRateConcentration } from '#universal/fleet-package-error-rate-concentration.ts'
 
 export type { FleetPackageErrorRateConcentration }
 

@@ -1,4 +1,4 @@
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { loadRequestOrgResolution } from '#app/org-request-binding.ts'
 import {
 	AuthorizationError,
@@ -7,9 +7,9 @@ import {
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import { buildOrgAvatarUrl } from '#worker/orgs/org-avatar.ts'
 import { getOrgById, loadOrgBindingForSlug } from '#worker/orgs/repo.ts'
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 
 export type ManagedOrg = {
 	id: OwnerId

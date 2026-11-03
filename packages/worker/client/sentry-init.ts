@@ -1,4 +1,4 @@
-import { type ClientErrorContext } from './sentry-client.ts'
+import type { ClientErrorContext } from './sentry-client.ts'
 import * as Sentry from '@sentry/browser'
 import {
 	reloadOnStaleRouteChunk,
@@ -6,7 +6,7 @@ import {
 } from '#client/reload-on-stale-route-chunk.ts'
 import { reloadOnUnknownStartRelease } from '#client/reload-on-unknown-start-release.ts'
 import { filterBrowserSentryEvent } from '#client/sentry-browser-filters.ts'
-import { type SentryClientConfig } from '#universal/sentry-config.ts'
+import type { SentryClientConfig } from '#universal/sentry-config.ts'
 
 /**
  * Real browser Sentry SDK init. Loaded only via dynamic `import()` from

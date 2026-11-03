@@ -3,7 +3,7 @@ import {
 	type EmailVerificationDeliveryClass,
 	type EmailVerificationDeliveryStatus,
 } from '#universal/email-verification-delivery.ts'
-import { type UserLifecycleIdentity } from './user-lifecycle-subscription-event.ts'
+import type { UserLifecycleIdentity } from './user-lifecycle-subscription-event.ts'
 
 export const userEmailVerificationFailedTopic = 'user.email_verification.failed'
 

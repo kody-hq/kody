@@ -3,7 +3,7 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type AuthenticatedAppUser } from './authenticated-user.ts'
+import type { AuthenticatedAppUser } from './authenticated-user.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
 import { loadAuthorizedOrgCredits } from './org-credits-access.ts'

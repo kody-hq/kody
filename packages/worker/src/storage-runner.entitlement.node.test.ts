@@ -24,6 +24,11 @@ const mockModule = vi.hoisted(() => ({
 	registerStorageBucket: vi.fn(),
 	recordStorageBucketEstimate: vi.fn(),
 	maybeRefreshStorageBucketEstimate: vi.fn(),
+	reportInfraHiccup: vi.fn(async (_report: unknown) => undefined),
+}))
+
+vi.mock('#worker/infra-hiccup-sentry.ts', () => ({
+	reportInfraHiccup: (report: unknown) => mockModule.reportInfraHiccup(report),
 }))
 
 vi.mock('#worker/storage-buckets/service.ts', async (importOriginal) => {
@@ -150,6 +155,15 @@ test('assertStorageRunnerWriteWithinEntitlement retries estimate reads with back
 		await vi.advanceTimersByTimeAsync(totalRetryDelayMs)
 		await expectation
 		expect(persistentFailure).toHaveBeenCalledTimes(maxEstimateReadAttempts)
+		expect(mockModule.reportInfraHiccup).toHaveBeenCalledExactlyOnceWith({
+			kind: 'storage_estimate_unavailable',
+			operation: 'storage_entitlement_baseline',
+			attempts: maxEstimateReadAttempts,
+			errorClass: 'fast_failure',
+			storageId: 'bucket-a',
+			bucketKind: 'unknown',
+		})
+		mockModule.reportInfraHiccup.mockClear()
 	}
 
 	const chunkStorageIds = ['fast-fail', 'slow-ok'] as const
@@ -243,7 +257,10 @@ test('assertStorageRunnerWriteWithinEntitlement retries estimate reads with back
 		expect(slowWakeCalls).toBe(1)
 	}
 
+	// A hung RPC gets exactly one hedged resend on a fresh stub; both hanging
+	// still fails closed and is reported as a timeout.
 	let hungCalls = 0
+	mockModule.reportInfraHiccup.mockClear()
 	{
 		using _timers = fakeTimers()
 		const assertion = assertWrite(() => {
@@ -260,8 +277,36 @@ test('assertStorageRunnerWriteWithinEntitlement retries estimate reads with back
 				storageEstimateReadTimeoutMs * maxEstimateReadAttempts,
 		)
 		await expectation
-		expect(hungCalls).toBe(1)
+		expect(hungCalls).toBe(2)
+		expect(mockModule.reportInfraHiccup).toHaveBeenCalledExactlyOnceWith(
+			expect.objectContaining({
+				kind: 'storage_estimate_unavailable',
+				errorClass: 'timeout',
+				attempts: maxEstimateReadAttempts,
+			}),
+		)
 	}
+})
+
+test('a lost estimate RPC is rescued by one hedged resend after the timeout', async () => {
+	mockModule.listUserStorageBucketEstimates.mockResolvedValue(
+		unestimatedBuckets('lost-rpc'),
+	)
+	mockModule.reportInfraHiccup.mockClear()
+	let calls = 0
+	using _timers = fakeTimers()
+	const assertion = assertWrite(() => {
+		calls += 1
+		return calls === 1
+			? new Promise<{ estimatedBytes: number }>(() => {})
+			: Promise.resolve({ estimatedBytes: 64 })
+	}, 'lost-rpc')
+	await vi.advanceTimersByTimeAsync(
+		storageEstimateReadTimeoutMs + storageEstimateReadRetryDelaysMs[0],
+	)
+	await expect(assertion).resolves.toBeUndefined()
+	expect(calls).toBe(2)
+	expect(mockModule.reportInfraHiccup).not.toHaveBeenCalled()
 })
 
 // Regression for the 2026-07-30 production incidents: a tiny first write of a
@@ -318,11 +363,14 @@ test('peer estimates stay out of the live probe path while D1 + target compose t
 		return { estimatedBytes: storageId === 'package:target' ? 60 : 50 }
 	}
 
+	mockModule.reportInfraHiccup.mockClear()
 	const denied = await assertWrite(composeEstimate, 'package:target').then(
 		() => null,
 		(thrown: unknown) => thrown,
 	)
 	expect(isEntitlementLimitError(denied)).toBe(true)
+	// Limit exceeded is the caller's usage, not an infra hiccup.
+	expect(mockModule.reportInfraHiccup).not.toHaveBeenCalled()
 	expect(denied).toMatchObject({
 		details: {
 			resource: 'storage_bytes',

@@ -11,7 +11,7 @@ import { deleteSecretEntry } from '#worker/mcp/secrets/repo.ts'
 import { deleteSecretProviderBinding } from '#worker/mcp/secrets/secret-providers/repo.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
-import { type CredentialKind } from './credential-ids.ts'
+import type { CredentialKind } from './credential-ids.ts'
 
 const now = '2026-10-13T00:00:00.000Z'
 const ownerId = 'owner-org'

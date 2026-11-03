@@ -7,10 +7,10 @@ import { settleConnectionResources } from '../connection-resource-settlement.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
 import { buildConnectOauthHref } from '#universal/oauth-connect.ts'
-import {
-	type AccountOauthAppListItem,
-	type OrgAppMemberConnection,
-	type OrgAppMemberConnectionsData,
+import type {
+	AccountOauthAppListItem,
+	OrgAppMemberConnection,
+	OrgAppMemberConnectionsData,
 } from '#universal/loader-data.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 import {

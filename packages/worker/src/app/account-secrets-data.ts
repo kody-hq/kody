@@ -1,21 +1,21 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import {
 	buildAccountSecretId,
 	parseAccountSecretId,
 	parseAccountSecretPath,
 } from '@kody-internal/shared/account-secret-route.ts'
-import { type AccountSecretsLoaderData } from '#universal/loader-data.ts'
-import { type CredentialFillPlacementView } from '#universal/credential-fill-placement.ts'
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
-import { type StorageContext } from '#mcp/storage.ts'
+import type { AccountSecretsLoaderData } from '#universal/loader-data.ts'
+import type { CredentialFillPlacementView } from '#universal/credential-fill-placement.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { StorageContext } from '#mcp/storage.ts'
 import {
 	listPackageSecretsByPackageIds,
 	listSecrets,
 	resolveSecret,
 } from '#mcp/secrets/service.ts'
-import { type SecretScope } from '#mcp/secrets/types.ts'
-import { type RejectedApprovalHost } from '#mcp/secrets/approval-host-shape.ts'
+import type { SecretScope } from '#mcp/secrets/types.ts'
+import type { RejectedApprovalHost } from '#mcp/secrets/approval-host-shape.ts'
 import { classifyBulkApprovalHosts } from '#mcp/secrets/host-approval.ts'
 import { normalizeBulkPackageSecretApprovalNames } from '#mcp/secrets/package-approval-url.ts'
 import { listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'

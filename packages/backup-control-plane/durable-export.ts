@@ -4,10 +4,10 @@ import {
 	type ApiOptions,
 } from './d1-export-api.ts'
 import { BackupError } from './backup-policy.ts'
-import {
-	type BackupEnvironment,
-	type ExportReady,
-	type ExportState,
+import type {
+	BackupEnvironment,
+	ExportReady,
+	ExportState,
 } from './backup-types.ts'
 
 interface DurableStepConfig {

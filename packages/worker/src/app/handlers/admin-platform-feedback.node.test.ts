@@ -1,7 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { logAuditEventSpy } from '#worker/test-support/audit-log-spy.ts'
-import { type AdminPlatformFeedbackLoaderData } from '#universal/loader-data.ts'
+import type { AdminPlatformFeedbackLoaderData } from '#universal/loader-data.ts'
 import type * as AdminPlatformFeedbackData from '#app/admin-platform-feedback-data.ts'
 import type * as AuditLog from '#worker/audit-log.ts'
 

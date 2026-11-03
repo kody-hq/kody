@@ -2,7 +2,7 @@ import { expect, test } from 'vitest'
 import { jsx } from 'react/jsx-runtime'
 import { renderStartPage as renderToString } from '../test-support/render-start-page.ts'
 import { PackageFilesExplorer } from '../components/package-files-explorer.tsx'
-import { type PackageFilesLoaderData } from '#universal/loader-data.ts'
+import type { PackageFilesLoaderData } from '#universal/loader-data.ts'
 
 function tabbedFileData(): PackageFilesLoaderData {
 	const code = '\t\t<Button'

@@ -15,7 +15,7 @@ import {
 	restExportSourceDatabases,
 	safeLog,
 } from './backup-policy.ts'
-import { type BackupEnvironment } from './backup-types.ts'
+import type { BackupEnvironment } from './backup-types.ts'
 import { verifyBackupManifestSignature } from './manifest-signing.ts'
 import { readSqlRestorability } from './sql-statement-stats.ts'
 

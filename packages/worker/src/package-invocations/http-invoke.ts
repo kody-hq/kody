@@ -1,7 +1,7 @@
-import { type RunRecordHandle } from '#worker/run-records/types.ts'
+import type { RunRecordHandle } from '#worker/run-records/types.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type AutomationRouting } from '#worker/execution-contexts/automation-execution.ts'
-import { type AutomationExecutionTarget } from '#worker/execution-contexts/automation-settings.ts'
+import type { AutomationRouting } from '#worker/execution-contexts/automation-execution.ts'
+import type { AutomationExecutionTarget } from '#worker/execution-contexts/automation-settings.ts'
 import {
 	buildSavedPackageNotFoundMessage,
 	normalizeExportName,

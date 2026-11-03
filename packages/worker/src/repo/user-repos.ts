@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { isValidKodyInstanceName } from '@kody-internal/shared/stable-name.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 

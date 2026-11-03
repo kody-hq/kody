@@ -1,4 +1,4 @@
-import { type CommunityActivityRecord } from './types.ts'
+import type { CommunityActivityRecord } from './types.ts'
 
 export const communityActivityRecordedTopic = 'community.activity.recorded'
 

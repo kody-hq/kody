@@ -8,7 +8,7 @@ import {
 	type DailyEntitlementResource,
 } from '#universal/plans.ts'
 import { calculateUserD1StorageBytes } from '#worker/entitlements/service.ts'
-import { type JobsStore } from '@kody-internal/shared/jobs/store.ts'
+import type { JobsStore } from '@kody-internal/shared/jobs/store.ts'
 import {
 	parseOwnerId,
 	type OwnerId,

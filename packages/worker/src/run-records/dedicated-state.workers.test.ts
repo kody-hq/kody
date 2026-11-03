@@ -39,7 +39,7 @@ import {
 	runRecordRetentionEveryNFinishes,
 	type RunRecordContext,
 } from './types.ts'
-import { type WorkflowProjectionUpsertInput } from './workflow-projection.ts'
+import type { WorkflowProjectionUpsertInput } from './workflow-projection.ts'
 
 const dynamicBinding = 'DYNAMIC_CALLABLE_WORKFLOWS'
 const dayMs = 24 * 60 * 60 * 1000

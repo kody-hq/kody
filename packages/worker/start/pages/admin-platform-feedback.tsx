@@ -8,9 +8,9 @@ import {
 	cardCss,
 	getGhostButtonCss,
 } from '#universal/styles/style-primitives.ts'
-import {
-	type AdminPlatformFeedbackLoaderData,
-	type AdminPlatformFeedbackListItem,
+import type {
+	AdminPlatformFeedbackLoaderData,
+	AdminPlatformFeedbackListItem,
 } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
 import {

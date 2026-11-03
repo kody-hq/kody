@@ -14,7 +14,7 @@ import {
 	type LimitOverrideKey,
 	type LimitOverrideValue,
 } from '#universal/plans.ts'
-import { type AdminOrgLimits } from '#universal/loader-data.ts'
+import type { AdminOrgLimits } from '#universal/loader-data.ts'
 import {
 	listOrgLimitOverrides,
 	type OrgLimitOverrideRecord,

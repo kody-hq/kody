@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useState, useRef, type FormEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
@@ -11,7 +11,7 @@ import {
 } from '../admin-user-controls-query.ts'
 import { formatIntegerNumber } from '#client/charts/chart-theme.ts'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
-import { type AdminOrgLimits } from '#universal/loader-data.ts'
+import type { AdminOrgLimits } from '#universal/loader-data.ts'
 type AdminOrgLimitRow = AdminOrgLimits['limits'][number]
 import {
 	isUnlimitedLimit,
@@ -145,9 +145,9 @@ export function AdminOrgLimitsPanel({
 							<span>
 								{formatOverrideValue(row.override.value)}
 								{row.override.active ? '' : ' (expired)'}
-								{row.override.expiresAt
-									? ` until ${formatTimestampDate(row.override.expiresAt)}`
-									: ''}
+								{row.override.expiresAt ? (
+									<> until {formatTimestampDate(row.override.expiresAt)}</>
+								) : null}
 							</span>
 							<span css={{ color: colors.textMuted }}>
 								{row.override.reason}

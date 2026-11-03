@@ -17,7 +17,7 @@ import {
 	type StoredApiToken,
 } from './api-token-store.js'
 import { OpenApiError, openApiGet, openApiRequest } from './open-api-client.js'
-import { type SecretBackend, type StoreResolution } from './store.js'
+import type { SecretBackend, StoreResolution } from './store.js'
 import { which as whichOnPath } from './which.js'
 
 /** Scopes setup-git always requires for clone/fetch (+ push). */

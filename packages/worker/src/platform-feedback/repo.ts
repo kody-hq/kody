@@ -2,14 +2,14 @@ import {
 	parsePlatformFeedbackResolutionHistory,
 	parsePlatformFeedbackResolutionPrUrls,
 } from './resolution.ts'
-import {
-	type PlatformFeedbackCategory,
-	type PlatformFeedbackListItem,
-	type PlatformFeedbackRecordWithRevision,
-	type PlatformFeedbackRow,
-	type PlatformFeedbackStatus,
-	type PlatformFeedbackSubmitterListItem,
-	type PlatformFeedbackSubmitterRecord,
+import type {
+	PlatformFeedbackCategory,
+	PlatformFeedbackListItem,
+	PlatformFeedbackRecordWithRevision,
+	PlatformFeedbackRow,
+	PlatformFeedbackStatus,
+	PlatformFeedbackSubmitterListItem,
+	PlatformFeedbackSubmitterRecord,
 } from './types.ts'
 
 const platformFeedbackFullColumns = `id, submitter_user_id, submitter_username,

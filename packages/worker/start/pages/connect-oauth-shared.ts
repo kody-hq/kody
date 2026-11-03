@@ -18,7 +18,7 @@ import {
 	pickAuthorizeScopeHost,
 	resolveAuthorizeRequestScopes,
 } from '#universal/oauth-authorize-scopes.ts'
-import { type ConnectOauthLoaderData } from '#universal/loader-data.ts'
+import type { ConnectOauthLoaderData } from '#universal/loader-data.ts'
 import { isConnectOauthCallbackUrl } from '#universal/oauth-connect.ts'
 import { readOrgSlugFromUrl } from '#universal/org-binding/url.ts'
 import { colors, typography } from '#universal/styles/tokens.ts'

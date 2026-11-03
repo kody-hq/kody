@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
-import { type CloudflareArtifactsRepoEvent } from '#worker/repo/artifacts-events.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
+import type { CloudflareArtifactsRepoEvent } from '#worker/repo/artifacts-events.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { recordFollowDefaultBranchPush } from './push-ingress.ts'
 import {
@@ -10,7 +10,7 @@ import {
 	insertFollow,
 	upsertFollowPushPending,
 } from './repo.ts'
-import { type FollowPushCommit } from './types.ts'
+import type { FollowPushCommit } from './types.ts'
 
 function commit(id: string): FollowPushCommit {
 	return {

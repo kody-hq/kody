@@ -1,4 +1,4 @@
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { auditDatabaseFromEnv, logAuditEvent } from '#worker/audit-log.ts'
 import { deferWork } from '#worker/deferred-work.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'

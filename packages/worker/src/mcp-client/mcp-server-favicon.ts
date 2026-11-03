@@ -5,7 +5,7 @@ import {
 } from '#worker/integrations/user-oauth-app-favicon.ts'
 import { setMcpServerLogo } from './mcp-server-logo.ts'
 import { getMcpServerSettingRowById } from './settings-repo.ts'
-import { type McpServerSettingMetadata } from './settings-types.ts'
+import type { McpServerSettingMetadata } from './settings-types.ts'
 
 const maxBackfillPerPage = 5
 

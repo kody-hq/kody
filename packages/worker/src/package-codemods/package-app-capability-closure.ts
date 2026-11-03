@@ -5,9 +5,9 @@ import {
 } from '#worker/credentials/module-placeholder-scan.ts'
 import { getSavedPackageByName } from '#worker/package-registry/repo.ts'
 import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
-import {
-	type AuthoredPackageJson,
-	type SavedPackageRecord,
+import type {
+	AuthoredPackageJson,
+	SavedPackageRecord,
 } from '#worker/package-registry/types.ts'
 import {
 	collectBundlerResolvedSpecifiers,
@@ -19,7 +19,7 @@ import {
 	parseKodyPackageSpecifier,
 } from '#worker/package-runtime/package-import-resolution.ts'
 import { collectModuleKodyCalls } from './codemods/0017-detect-package-app-visitor-authority.ts'
-import { type PackageAppCapabilityHostFacts } from './types.ts'
+import type { PackageAppCapabilityHostFacts } from './types.ts'
 
 /** Bounds one app's closure walk; anything past it counts as unresolved. */
 const maxClosurePackages = 50

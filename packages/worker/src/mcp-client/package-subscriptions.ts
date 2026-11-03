@@ -14,7 +14,7 @@ import {
 	type McpServerConnectionEventTopic,
 } from './connection-episodes.ts'
 import { listEnabledMcpServerSettingRows } from './settings-repo.ts'
-import { type McpServerConnectionState } from './types.ts'
+import type { McpServerConnectionState } from './types.ts'
 
 export { mcpServerDisconnectedTopic, mcpServerReconnectedTopic }
 

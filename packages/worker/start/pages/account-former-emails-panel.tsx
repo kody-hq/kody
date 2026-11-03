@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
-import { type FormEvent } from 'react'
+import type { FormEvent } from 'react'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
-import { type AccountFormerEmail } from '#universal/loader-data.ts'
+import type { AccountFormerEmail } from '#universal/loader-data.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 import {
 	getGhostButtonCss,

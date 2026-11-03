@@ -468,16 +468,124 @@ const noNonRetryableErrorNameRule = {
 	},
 }
 
+const USER_METER_BUDGET_CHECK_METHODS = new Set([
+	'checkBudgetAndRecord',
+	'assertWithinBudgetAndRecord',
+])
+const USER_METER_BUDGET_CHECK_ALLOWED_FILES = [
+	'packages/worker/src/entitlements/user-meter-client.ts',
+	'packages/worker/src/entitlements/user-meter-client.node.test.ts',
+	'packages/worker/src/entitlements/user-meter-do.ts',
+	'tools/oxlint/local-plugin.js',
+	'tools/oxlint/user-meter-budget-check-via-helper.node.test.ts',
+]
+
+/**
+ * The UserMeter budget check returns denials as data, so a direct call that
+ * ignores the result would allow over-budget work. Every caller goes through
+ * `checkUserMeterBudgetAndRecord`, which turns a denial into BudgetLimitError.
+ */
+const userMeterBudgetCheckViaHelperRule = {
+	meta: {
+		type: 'problem',
+		docs: {
+			description:
+				'Only checkUserMeterBudgetAndRecord may call the UserMeter budget check RPC methods.',
+		},
+		schema: [],
+		messages: {
+			direct:
+				'Call checkUserMeterBudgetAndRecord (entitlements/user-meter-client.ts) instead of the UserMeter {{name}} RPC. It refuses on denial and fails closed.',
+		},
+	},
+	createOnce(context) {
+		let allowed = false
+		function check(node, name) {
+			if (allowed || !USER_METER_BUDGET_CHECK_METHODS.has(name)) return
+			context.report({ node, messageId: 'direct', data: { name } })
+		}
+		return {
+			Program() {
+				const filename = normalizeFilePath(context.filename)
+				allowed = USER_METER_BUDGET_CHECK_ALLOWED_FILES.some((file) =>
+					filename.endsWith(file),
+				)
+			},
+			Identifier(node) {
+				check(node, node.name)
+			},
+			Literal(node) {
+				if (typeof node.value === 'string') check(node, node.value)
+			},
+			TemplateElement(node) {
+				check(node, node.value.cooked)
+			},
+		}
+	},
+}
+
+const noInlineTypeOnlyImportRule = {
+	meta: {
+		type: 'problem',
+		fixable: 'code',
+		docs: {
+			description:
+				'Require `import type` when every specifier is type-only, so the module stays off the Worker startup graph.',
+		},
+		schema: [],
+		messages: {
+			inlineTypeOnly:
+				'Every specifier is type-only. Use `import type { ... }`: with verbatimModuleSyntax, `import { type X }` compiles to a side-effect import that keeps the module on the Worker startup graph.',
+		},
+	},
+	createOnce(context) {
+		return {
+			ImportDeclaration(node) {
+				if (node.importKind === 'type') return
+				const specifiers = node.specifiers
+				if (specifiers.length === 0) return
+				const allInlineTypes = specifiers.every(
+					(specifier) =>
+						specifier.type === 'ImportSpecifier' &&
+						specifier.importKind === 'type',
+				)
+				if (!allInlineTypes) return
+				context.report({
+					node,
+					messageId: 'inlineTypeOnly',
+					fix(fixer) {
+						const importKeywordEnd = node.range[0] + 'import'.length
+						return [
+							fixer.insertTextAfterRange(
+								[node.range[0], importKeywordEnd],
+								' type',
+							),
+							...specifiers.map((specifier) =>
+								fixer.removeRange([
+									specifier.range[0],
+									specifier.imported.range[0],
+								]),
+							),
+						]
+					},
+				})
+			},
+		}
+	},
+}
+
 const plugin = {
 	meta: { name: 'kody-custom' },
 	rules: {
 		'enforce-import-boundaries': enforceImportBoundariesRule,
 		'no-example-identifier': noExampleIdentifierRule,
+		'no-inline-type-only-import': noInlineTypeOnlyImportRule,
 		'no-literal-frame-src': noLiteralFrameSrcRule,
 		'no-nonretryable-error-name': noNonRetryableErrorNameRule,
 		'no-oversized-guide-section': noOversizedGuideSectionRule,
 		'no-tautological-absence': noTautologicalAbsenceRule,
 		'prefer-loader-data-types': preferLoaderDataTypesRule,
+		'user-meter-budget-check-via-helper': userMeterBudgetCheckViaHelperRule,
 	},
 }
 

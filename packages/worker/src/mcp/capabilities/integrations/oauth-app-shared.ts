@@ -1,8 +1,8 @@
 import { z } from 'zod'
 import { buildUserOauthAppLogoPaths } from '#worker/integrations/user-oauth-app-logo.ts'
-import {
-	type UserOauthApp,
-	type UserOauthAppWithConnectionCount,
+import type {
+	UserOauthApp,
+	UserOauthAppWithConnectionCount,
 } from '#worker/integrations/types.ts'
 import {
 	integrationFlowValues,

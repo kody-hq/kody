@@ -1,6 +1,6 @@
 import { utcMonthKey } from '@kody-internal/shared/date-keys.ts'
 import { computeOverageIncludePercent } from '#universal/compute-overage.ts'
-import { type CreditWalletState } from '#universal/plans.ts'
+import type { CreditWalletState } from '#universal/plans.ts'
 import { userEntitlementApproachingThreshold } from '#worker/entitlements/user-entitlement-warning-emails.ts'
 
 /**

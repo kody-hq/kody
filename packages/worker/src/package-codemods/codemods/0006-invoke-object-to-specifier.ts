@@ -1,10 +1,10 @@
 import { normalizeUsername } from '#worker/identity/username.ts'
 import { parseModuleSource, type ModuleAstNode } from '#worker/module-source.ts'
-import {
-	type PackageCodemod,
-	type PackageCodemodContext,
-	type PackageCodemodFinding,
-	type PackageCodemodTransformResult,
+import type {
+	PackageCodemod,
+	PackageCodemodContext,
+	PackageCodemodFinding,
+	PackageCodemodTransformResult,
 } from '../types.ts'
 
 export const invokeObjectToSpecifierCodemodId =

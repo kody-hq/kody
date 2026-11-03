@@ -1,4 +1,4 @@
-import { type BlogPost } from './parse-frontmatter.ts'
+import type { BlogPost } from './parse-frontmatter.ts'
 
 const BLOG_FEED_TITLE = 'Kody Blog'
 const BLOG_FEED_DESCRIPTION =

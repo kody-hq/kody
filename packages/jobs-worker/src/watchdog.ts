@@ -1,5 +1,5 @@
 import * as Sentry from '@sentry/cloudflare'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { runD1WithRetry } from '@kody-internal/shared/d1-retry.ts'
 import {
 	advanceStuckSkippedJobNextRunAt,
@@ -9,7 +9,7 @@ import {
 } from '@kody-internal/shared/jobs/repo.ts'
 import { computeNextRunAt } from '@kody-internal/shared/jobs/schedule.ts'
 import { logJobSchedulerEvent } from '@kody-internal/shared/jobs/scheduler-logging.ts'
-import { type JobsWorkerEnv } from './env.ts'
+import type { JobsWorkerEnv } from './env.ts'
 import { jobManagerStub } from './manager.ts'
 import { getWorkerStateValue, putWorkerStateValue } from './store.ts'
 

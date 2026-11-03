@@ -1,6 +1,6 @@
 import { routes } from '#universal/routes.ts'
 import { getSavedPackageById } from './repo.ts'
-import { type SavedPackageRecord } from './types.ts'
+import type { SavedPackageRecord } from './types.ts'
 
 /**
  * Full SHA-1 object id. Artifacts git and isomorphic-git resolve only a
