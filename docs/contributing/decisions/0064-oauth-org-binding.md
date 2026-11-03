@@ -14,10 +14,10 @@ org.
 
 ## Decision
 
-- Consent stamps `orgId` on the grant in **both** `props` and `metadata`.
-  Refresh (and authorization-code exchange) backfills
-  `orgId = props.orgId ?? props.userId` so grants minted before this stamp still
-  resolve to the personal org.
+- Consent stamps `orgId` on the grant in **both** `props` and `metadata`. A
+  grant without a stamped `orgId` fails closed; the earlier
+  `props.orgId ?? props.userId` fallback was removed once no live grant lacked
+  the stamp (#3903).
 - Clients may pass `?org=<slug>` on the authorize URL and/or the `/mcp`
   resource. A mismatch is an authorize error. The consent screen is **live, no
   feature flag**: one accessible org is auto-selected and the picker is hidden;
@@ -27,11 +27,9 @@ org.
   not folded into OAuth scopes.
 - OIDC ID tokens and UserInfo identify the person and their selected org in
   `sub`, so clients can connect several orgs for the same person. Personal orgs
-  keep the existing user-id subject, including grants without an org stamp.
-  Other orgs use `org:<encoded org id>:user:<encoded user id>`, with each id
-  encoded using `encodeURIComponent`. Refresh keeps the same subject.
-- Grants that still lack `metadata.orgId` / `props.orgId` use the `userId`
-  fallback until P9 cleanup. Do not revoke those grants from this path.
+  keep the existing user-id subject. Other orgs use
+  `org:<encoded org id>:user:<encoded user id>`, with each id encoded using
+  `encodeURIComponent`. Refresh keeps the same subject.
 
 ## Consequences
 

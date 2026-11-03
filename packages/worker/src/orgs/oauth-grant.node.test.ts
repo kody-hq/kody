@@ -10,10 +10,7 @@ import {
 	grantHasMetadataOrgId,
 	grantMatchesConsentOrg,
 	readOrgIdFromGrantMetadata,
-	readOrgIdFromGrantMetadataOrUserId,
 	readOrgIdFromGrantProps,
-	readOrgIdFromGrantPropsOrUserId,
-	stampOrgIdOnTokenExchange,
 } from './oauth-grant.ts'
 
 test('grantBindingFields stamps the same orgId and personId on props and metadata', () => {
@@ -37,14 +34,8 @@ test('readOrgId helpers ignore missing or blank values', () => {
 	expect(readOrgIdFromGrantProps(null)).toBeNull()
 	expect(readOrgIdFromGrantProps({ orgId: '  ' as OwnerId })).toBeNull()
 	expect(
-		readOrgIdFromGrantPropsOrUserId({ userId: ownerIdFromStored('user-1') }),
-	).toBe('user-1')
-	expect(
-		readOrgIdFromGrantPropsOrUserId({
-			orgId: ownerIdFromStored('org-1'),
-			userId: ownerIdFromStored('user-1'),
-		}),
-	).toBe('org-1')
+		readOrgIdFromGrantProps({ userId: ownerIdFromStored('user-1') }),
+	).toBeNull()
 })
 
 test('grantHasMetadataOrgId reads plaintext metadata only', () => {
@@ -56,7 +47,7 @@ test('grantHasMetadataOrgId reads plaintext metadata only', () => {
 	expect(grantHasMetadataOrgId(null)).toBe(false)
 })
 
-test('grantMatchesConsentOrg uses metadata.orgId then userId fallback', () => {
+test('grantMatchesConsentOrg matches metadata.orgId only', () => {
 	expect(
 		grantMatchesConsentOrg({
 			metadata: { orgId: ownerIdFromStored('org-acme') },
@@ -77,7 +68,7 @@ test('grantMatchesConsentOrg uses metadata.orgId then userId fallback', () => {
 			userId: ownerIdFromStored('user-1'),
 			orgId: ownerIdFromStored('user-1'),
 		}),
-	).toBe(true)
+	).toBe(false)
 	expect(
 		grantMatchesConsentOrg({
 			metadata: {},
@@ -85,49 +76,6 @@ test('grantMatchesConsentOrg uses metadata.orgId then userId fallback', () => {
 			orgId: ownerIdFromStored('org-acme'),
 		}),
 	).toBe(false)
-	expect(
-		readOrgIdFromGrantMetadataOrUserId({
-			metadata: null,
-			userId: ownerIdFromStored('user-1'),
-		}),
-	).toBe('user-1')
-})
-
-test('stampOrgIdOnTokenExchange backfills orgId from userId and no-ops when set', () => {
-	expect(
-		stampOrgIdOnTokenExchange({
-			props: { userId: ownerIdFromStored('user-1'), email: 'ada@example.com' },
-			grantType: 'refresh_token',
-		}),
-	).toEqual({
-		newProps: {
-			userId: ownerIdFromStored('user-1'),
-			email: 'ada@example.com',
-			orgId: ownerIdFromStored('user-1'),
-		},
-	})
-	expect(
-		stampOrgIdOnTokenExchange({
-			props: {
-				userId: ownerIdFromStored('user-1'),
-				orgId: ownerIdFromStored('org-1'),
-			},
-			grantType: 'authorization_code',
-		}),
-	).toBeUndefined()
-	expect(
-		stampOrgIdOnTokenExchange({
-			props: {
-				userId: ownerIdFromStored('user-1'),
-				orgId: ownerIdFromStored('user-1'),
-			},
-			grantType: 'refresh_token',
-		}),
-	).toBeUndefined()
-	expect(
-		stampOrgIdOnTokenExchange({ props: {}, grantType: 'refresh_token' }),
-	).toBeUndefined()
-	expect(stampOrgIdOnTokenExchange({ props: null })).toBeUndefined()
 })
 
 test('grantHasRetiredConnectionProfile flags only grants stamped with a profile name', () => {

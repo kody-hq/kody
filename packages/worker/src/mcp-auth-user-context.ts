@@ -18,10 +18,7 @@ import {
 	writeMcpAuthCache,
 	type OrgEpochRow,
 } from '#worker/mcp-auth-cache.ts'
-import {
-	readOrgIdFromGrantProps,
-	readOrgIdFromGrantPropsOrUserId,
-} from '#worker/orgs/oauth-grant.ts'
+import { readOrgIdFromGrantProps } from '#worker/orgs/oauth-grant.ts'
 import {
 	displayNameFromEmail,
 	getUsernameFormatValidationError,
@@ -268,10 +265,8 @@ export async function buildMcpAuthContextCached(
 	const userId = personIdFromGrantProps(grantProps)
 	if (!userId) return null
 	const db = env.APP_DB
-	const boundOrgId =
-		readOrgIdFromGrantProps(grantProps) ??
-		readOrgIdFromGrantPropsOrUserId(grantProps) ??
-		userId
+	const boundOrgId = readOrgIdFromGrantProps(grantProps)
+	if (!boundOrgId) return null
 	const readEpochs = (results: Array<D1Result<unknown>>) => {
 		const personalOrg = firstRow<OrgEpochRow>(results[0])
 		const boundOrg =

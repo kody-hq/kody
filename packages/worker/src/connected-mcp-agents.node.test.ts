@@ -307,7 +307,7 @@ test('an org filter lists only agents approved for that org', async () => {
 	const teamId = ownerIdFromStored('org-acme')
 	const helpers = createHelpers({
 		grants: [
-			// Before org stamping: the signup org.
+			// No org stamp: matches no org.
 			grant('grant-legacy', 'client-cursor', 1_700_000_000),
 			{
 				...grant('grant-personal', 'client-chatgpt', 1_700_000_100),
@@ -340,10 +340,7 @@ test('an org filter lists only agents approved for that org', async () => {
 				orgId: personId,
 			}),
 		),
-	).toEqual([
-		['client-chatgpt', ['grant-personal']],
-		['client-cursor', ['grant-legacy']],
-	])
+	).toEqual([['client-chatgpt', ['grant-personal']]])
 })
 
 test('revoking from an org keeps the same agent in other orgs and its last-used stamp', async () => {

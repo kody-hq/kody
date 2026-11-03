@@ -958,14 +958,9 @@ GROUP BY stage
   truncated owner sample cannot look like one account. One account at ≥80% of
   those errors, or three accounts together at ≥80%, is concentrated; otherwise
   the spike stays fleet-wide. A follow-up query then loads package ids only for
-  the named owners. Kody still fans `fleet.package_error_rate.elevated` to
-  admin-owned packages in every case. Concentrated payloads name usernames and
-  package name leaves only. The KV cooldown key
-  `ops-alert:fleet-package-error-rate:v1` stores structured state: hour
-  elevations quiet for six hours, day elevations for 24 hours, and the same
-  window end + top owner never re-pages. The payload has no user ids, package
-  UUIDs, emails, or error strings. See
-  [Admin events](../../guides/admin-events.md#fleetpackageerrorrateelevated-admins).
+  the named owners. Concentrated snapshots name usernames and package name
+  leaves only. The snapshot is admin-insights only; paging uses
+  `fleet.users_affected.elevated` below.
 - **Package-owner error spike** (same `usage_aggregation` hour): a separate
   Analytics Engine pass attributes `package_export` / `package_static_call`
   errors to the package publisher (`saved_packages.user_id`) and `job_run` /
@@ -985,11 +980,6 @@ GROUP BY stage
   `ops-alert:fleet-users-affected:v1` plus history
   `ops-alert:fleet-users-affected:history:v1`. See
   [Admin events](../../guides/admin-events.md#fleetusersaffectedelevated--fleetusersaffectedresolved-admins).
-
-  Tracking: remove `fleet.package_error_rate.elevated` after
-  `fleet.users_affected.elevated` has run ~1 week with sane behavior (owner
-  spikes already notify publishers via `fleet.package_owner_error_spike`); see
-  #4086.
 
 ## Usage campaign
 

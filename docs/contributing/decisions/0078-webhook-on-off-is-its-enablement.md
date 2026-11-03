@@ -18,9 +18,8 @@ and ingress returns 409 with the approval link; only off enablements make the
 URL return 404 before rate limiting and without a delivery record.
 
 Migration `0180` converts disabled live endpoints to off enablements, adding a
-deterministic off tombstone when needed and a live Owner exists. The legacy
-`webhook_endpoints.enabled` column remains temporarily for old Worker versions
-and is unused by current code; a later migration will drop it.
+deterministic off tombstone when needed and a live Owner exists. Migration
+`0242` drops the legacy `webhook_endpoints.enabled` column.
 
 ## Consequences
 
