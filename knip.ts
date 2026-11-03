@@ -79,5 +79,8 @@ export default defineConfig({
 		'packages/mock-servers/cloudflare': {
 			project: ['src/**/*.ts'],
 		},
+		'packages/mock-servers/oauth': {
+			project: ['src/**/*.ts'],
+		},
 	},
 })
