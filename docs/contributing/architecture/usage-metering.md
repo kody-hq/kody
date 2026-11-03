@@ -1022,12 +1022,12 @@ the sweep.
 The advocate mail is not a drip and does not reopen Activated or Paid campaign
 caps (those stay 0). Eligibility is current `Activated` or `Paid`, tenure of
 seven days from `first_activated_at` (or `entered_at` when that stamp is not set
-yet), a live referral `shareUrl` (`/signup?ref=<username>` from
-`referralSharePath`), and no prior `advocate_referral_testimonial` ledger row.
-Seed origin does not block it after tenure; first observation still only
-persists. Tips opt-out suppresses it. The CTA is the account's referral invite
-link; the secondary action is `mailto:me@kentcdodds.com` (the existing
-testimonial channel — the homepage carousel has no intake form).
+yet), a live referral `shareUrl` (`/?ref=<username>` from `referralSharePath`),
+and no prior `advocate_referral_testimonial` ledger row. Seed origin does not
+block it after tenure; first observation still only persists. Tips opt-out
+suppresses it. The CTA is the account's referral invite link; the secondary
+action is `mailto:me@kentcdodds.com` (the existing testimonial channel — the
+homepage carousel has no intake form).
 
 First sweep of an existing user seeds the current state without mailing
 (backfill is out of scope). Verify-time connect-agent mail is send 1 of

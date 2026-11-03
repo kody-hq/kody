@@ -183,10 +183,10 @@ test('transactional emails escape untrusted content and put action URLs in both 
 
 	const advocate = buildAdvocateReferralEmail({
 		appBaseUrl: 'https://kody.codes',
-		shareUrl: 'https://kody.codes/signup?ref=kentcdodds',
+		shareUrl: 'https://kody.codes/?ref=kentcdodds',
 	})
 	expect(advocate.subject).toBe('Share Kody (and get a month free)')
-	expect(advocate.html).toContain('https://kody.codes/signup?ref=kentcdodds')
+	expect(advocate.html).toContain('https://kody.codes/?ref=kentcdodds')
 	expect(advocate.text).toContain(
 		'Email a short testimonial: mailto:me@kentcdodds.com?subject=Kody%20testimonial',
 	)

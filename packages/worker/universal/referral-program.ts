@@ -72,7 +72,7 @@ export function parseReferralCode(input: {
 
 export function referralSharePath(username: string): string {
 	const code = normalizeReferralCode(username)
-	return code ? `/signup?ref=${encodeURIComponent(code)}` : '/signup'
+	return code ? `/?ref=${encodeURIComponent(code)}` : '/'
 }
 
 export function laterIsoTimestamp(
