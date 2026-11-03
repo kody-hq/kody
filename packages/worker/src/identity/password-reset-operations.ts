@@ -33,7 +33,7 @@ import {
 	buildPasswordResetEmail,
 } from '#app/email/messages.ts'
 import { resolveTransactionalEmailConfig } from '#app/email/sender-config.ts'
-import { type OAuthGrantHelpers } from '#worker/oauth-grants.ts'
+import type { OAuthGrantHelpers } from '#worker/oauth-grants.ts'
 import {
 	personalOrgId,
 	personIdFromStored,

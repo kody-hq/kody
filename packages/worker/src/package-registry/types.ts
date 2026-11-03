@@ -2,12 +2,12 @@ import {
 	parsePackageJobSchedule,
 	type PackageJobSchedule as SharedPackageJobSchedule,
 } from '@kody-internal/shared/jobs/package-job-schedule.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { mcpServerNamePattern } from '@kody-internal/shared/mcp-servers.ts'
 import { z } from 'zod'
 import { automationExecutionSchema } from '#worker/execution-contexts/automation-execution-schema.ts'
 import { communityPackageCategories } from '#universal/community-categories.ts'
-import { type ForkListingRelation } from '#universal/community-listing-ahead.ts'
+import type { ForkListingRelation } from '#universal/community-listing-ahead.ts'
 import { credentialFillPlacementViewSchema } from '#universal/credential-fill-placement.ts'
 
 export const kodyPackageIdPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/

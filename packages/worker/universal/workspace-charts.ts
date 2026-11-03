@@ -1,6 +1,6 @@
-import {
-	type AccountActivityRunListItem,
-	type AccountUsageLoaderData,
+import type {
+	AccountActivityRunListItem,
+	AccountUsageLoaderData,
 } from './loader-data.ts'
 
 type RunSurface = AccountActivityRunListItem['surface']

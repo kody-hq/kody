@@ -4,7 +4,7 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { consoleError } from '#worker/test-support/console-spies.ts'
-import { type PackageAppServeOwner } from './package-app-serve.ts'
+import type { PackageAppServeOwner } from './package-app-serve.ts'
 import type * as RuntimeWorkerServiceModule from '#worker/runtime-worker-service.ts'
 
 const runtimeForwardMock = vi.hoisted(() => ({

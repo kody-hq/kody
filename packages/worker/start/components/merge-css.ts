@@ -1,4 +1,4 @@
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 
 export function mergeCss(...objects: Array<CSSObject>): CSSObject {
 	const result: CSSObject = {}

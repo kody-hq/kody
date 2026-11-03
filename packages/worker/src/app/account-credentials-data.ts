@@ -1,4 +1,4 @@
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { loadCredentialDetail } from '#worker/credentials/credential-detail.ts'
 import { listCredentialsForViewer } from '#worker/credentials/credential-list.ts'
@@ -6,7 +6,7 @@ import { listCredentialProviderBindings } from '#worker/credentials/credential-p
 import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import { listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
-import { type CredentialListFilters } from '#universal/credential-contracts.ts'
+import type { CredentialListFilters } from '#universal/credential-contracts.ts'
 import {
 	type AccountCredentialsResponse,
 	filterCredentialList,

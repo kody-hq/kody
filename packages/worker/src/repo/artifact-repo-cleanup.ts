@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import {
 	getArtifactsBinding,
@@ -18,7 +18,7 @@ import {
 	listRepoSessionsBySource,
 	listRepoSessionsByUser,
 } from './repo-sessions.ts'
-import { type EntitySourceRow } from './types.ts'
+import type { EntitySourceRow } from './types.ts'
 
 function logArtifactRepoDeleted(input: {
 	userId: OwnerId

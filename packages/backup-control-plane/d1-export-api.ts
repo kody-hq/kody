@@ -3,10 +3,10 @@ import {
 	assertRemoteDatabaseIdentity,
 	safeLog,
 } from './backup-policy.ts'
-import {
-	type BackupEnvironment,
-	type ExportReady,
-	type ExportState,
+import type {
+	BackupEnvironment,
+	ExportReady,
+	ExportState,
 } from './backup-types.ts'
 
 export interface ApiOptions {

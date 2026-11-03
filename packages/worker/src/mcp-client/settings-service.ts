@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import {
 	isValidMcpServerName,
@@ -27,7 +27,7 @@ import {
 	credentialAuditActions,
 	recordCredentialAudit,
 } from '#worker/credentials/credential-audit.ts'
-import { type OrgAuditWriter } from '#worker/orgs/org-audit.ts'
+import type { OrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { mcpOAuthAttemptActorFromIds } from './oauth-attempt.ts'
 import { scheduleMcpServerFaviconFill } from './mcp-server-favicon.ts'
 import { deleteMcpServerLogoAsset } from './mcp-server-logo.ts'
@@ -52,14 +52,14 @@ import {
 	updateMcpServerSettingRow,
 	updateMcpServerSettingUsageRow,
 } from './settings-repo.ts'
-import {
-	type McpServerSettingMetadata,
-	type McpServerSettingRow,
+import type {
+	McpServerSettingMetadata,
+	McpServerSettingRow,
 } from './settings-types.ts'
-import {
-	type McpServerConnectResult,
-	type McpServerOAuthClientChange,
-	type McpServerLastError,
+import type {
+	McpServerConnectResult,
+	McpServerOAuthClientChange,
+	McpServerLastError,
 } from './types.ts'
 import {
 	normalizeMcpServerUsageMode,

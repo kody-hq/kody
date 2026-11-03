@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSObject } from '@emotion/react'
-import { type ReactNode } from 'react'
+import type { CSSObject } from '@emotion/react'
+import type { ReactNode } from 'react'
 import { recordCellClamp, recordStampCss } from './record-table.tsx'
 import { inlineWorkflowNameSubtitle } from '#universal/workflow-display.ts'
 import { colors, typography } from '#universal/styles/tokens.ts'

@@ -6,10 +6,7 @@ import {
 	takeJsonSnapshot,
 	type SnapshotUser,
 } from './json-snapshot.ts'
-import {
-	type OpenRehearsalSession,
-	type RehearsalSession,
-} from './kody-session.ts'
+import type { OpenRehearsalSession, RehearsalSession } from './kody-session.ts'
 import { appMarker } from './rehearsal-packages.ts'
 
 test('stripVolatile drops per-read fields but keeps job schedules', () => {

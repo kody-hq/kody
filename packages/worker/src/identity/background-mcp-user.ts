@@ -3,7 +3,7 @@
  * so a tombstoned person cannot fall through to a leftover personal org row.
  */
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type McpUserContext } from '@kody-internal/shared/chat.ts'
+import type { McpUserContext } from '@kody-internal/shared/chat.ts'
 import { AccountSuspendedError } from '#worker/account/account-suspension.ts'
 import { personalOrgIdFromUserRow } from '#worker/orgs/personal-org-id.ts'
 import { getUserRolesAndPermissions } from './permissions-db.ts'

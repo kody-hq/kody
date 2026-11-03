@@ -1,4 +1,4 @@
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { operationResult } from '#app/operation-result.ts'
 import { cancelWorkflowRunForUser } from '#worker/package-runtime/package-workflows.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'

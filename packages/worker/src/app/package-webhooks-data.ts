@@ -1,15 +1,15 @@
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import {
 	listWebhooksForUser,
 	type ListedWebhook,
 } from '#worker/webhooks/service.ts'
 import { boundOrgSlugForUrls } from '#universal/community-links.ts'
-import {
-	type AccountWebhooksLoaderData,
-	type PackageWebhookListItem,
-	type PackageWebhooksLoaderData,
+import type {
+	AccountWebhooksLoaderData,
+	PackageWebhookListItem,
+	PackageWebhooksLoaderData,
 } from '#universal/loader-data.ts'
 
 export type WebhooksUser = Pick<

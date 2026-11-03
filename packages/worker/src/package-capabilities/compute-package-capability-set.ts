@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { listSecrets } from '#mcp/secrets/service.ts'
 import {
@@ -18,7 +18,7 @@ import { listKodyPackageDependencyNames } from '#worker/package-registry/types.t
 import { resolveSavedPackageImport } from '#worker/package-runtime/package-import-resolution.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { listPublishedBundleArtifactsBySourceId } from '#worker/repo/published-bundle-artifacts-repo.ts'
-import { type BundleArtifactDependency } from '#worker/package-runtime/published-runtime-artifacts.ts'
+import type { BundleArtifactDependency } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import {
 	buildCapabilitySet,
 	type CapabilitySet,

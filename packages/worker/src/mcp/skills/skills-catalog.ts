@@ -3,8 +3,8 @@ import {
 	ProtocolErrorCode,
 	ResourceNotFoundError,
 } from '@modelcontextprotocol/server'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	checkPermission,
 	computeEffectivePermissions,
@@ -26,7 +26,7 @@ import {
 	writePackageSkillsIndex,
 } from '#worker/package-registry/skills-index-cache.ts'
 import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { listEntitySourcesByIds } from '#worker/repo/entity-sources.ts'
 
 export const skillsResultTtlMs = 300_000

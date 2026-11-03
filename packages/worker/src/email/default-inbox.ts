@@ -8,7 +8,7 @@ import {
 	getEmailInboxByName,
 } from './repo.ts'
 import { buildPlatformEmailAddress } from './platform-address.ts'
-import { type EmailInboxAddressRecord, type EmailInboxRecord } from './types.ts'
+import type { EmailInboxAddressRecord, EmailInboxRecord } from './types.ts'
 
 export const defaultEmailInboxName = 'default'
 

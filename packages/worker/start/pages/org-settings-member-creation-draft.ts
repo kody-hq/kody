@@ -1,4 +1,4 @@
-import { type OrgSettingsLoaderData } from '#universal/loader-data.ts'
+import type { OrgSettingsLoaderData } from '#universal/loader-data.ts'
 
 export type MemberCreation = NonNullable<
 	OrgSettingsLoaderData['memberCreation']

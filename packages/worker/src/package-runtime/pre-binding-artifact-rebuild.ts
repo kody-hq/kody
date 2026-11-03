@@ -10,7 +10,7 @@
  * enablement, job, or hostname change.
  */
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { rebuildPublishedPackageArtifactsViaRepoSession } from '#mcp/capabilities/repo/package-artifact-rebuild.ts'
 import {
 	loadPackageManifestForSource,

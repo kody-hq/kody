@@ -3,7 +3,7 @@ import {
 	handleSecretMaintenanceRequest,
 	MaintenanceFailureError,
 } from '#worker/maintenance-handler.ts'
-import { type DrBackupS3Client } from '#worker/dr/backup-s3.ts'
+import type { DrBackupS3Client } from '#worker/dr/backup-s3.ts'
 import {
 	runDrExportTick,
 	type DrExportTickResult,

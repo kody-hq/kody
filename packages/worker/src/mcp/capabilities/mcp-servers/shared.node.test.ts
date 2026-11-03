@@ -1,7 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { McpCallerError } from '#mcp/caller-error.ts'
-import { type McpServerSettingMetadata } from '#worker/mcp-client/settings-types.ts'
+import type { McpServerSettingMetadata } from '#worker/mcp-client/settings-types.ts'
 
 const mockModule = vi.hoisted(() => ({
 	getMcpServerSettingById: vi.fn(),

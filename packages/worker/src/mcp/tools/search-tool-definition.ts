@@ -1,8 +1,8 @@
-import { type ToolAnnotations } from '@modelcontextprotocol/sdk/types.js'
+import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
 
 import { maxBatchEntityRefs } from './search-constants.ts'
-import { type StructuredContentFromFields } from './mcp-tool-output.ts'
+import type { StructuredContentFromFields } from './mcp-tool-output.ts'
 import {
 	conversationIdInputField,
 	memoryContextInputField,

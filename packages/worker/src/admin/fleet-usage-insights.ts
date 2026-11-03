@@ -1,5 +1,5 @@
 import { utcMonthKey } from '@kody-internal/shared/date-keys.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	estimateDynamicWorkerUsd,
 	fleetDynamicWorkerCostAlertUsd,
@@ -28,15 +28,15 @@ import {
 	userEntitlementColumnsSql,
 	type UserEntitlementRow,
 } from '#worker/entitlements/service.ts'
-import {
-	type AdminInsightsDurationConsumer,
-	type AdminInsightsDynamicWorkerCost,
-	type AdminInsightsEntitlementPressureUser,
-	type AdminInsightsEventCountConsumer,
-	type AdminInsightsMetricDurationConsumers,
-	type AdminPlanName,
-	type AdminUsageEntitlementResource,
-	type AdminUsageMetric,
+import type {
+	AdminInsightsDurationConsumer,
+	AdminInsightsDynamicWorkerCost,
+	AdminInsightsEntitlementPressureUser,
+	AdminInsightsEventCountConsumer,
+	AdminInsightsMetricDurationConsumers,
+	AdminPlanName,
+	AdminUsageEntitlementResource,
+	AdminUsageMetric,
 } from '#universal/loader-data.ts'
 
 import {

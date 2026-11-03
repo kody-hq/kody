@@ -32,7 +32,7 @@ import {
 	bindSourceDatabase,
 	objectKeyForBookmark,
 } from './backup-policy.ts'
-import { type BackupEnvironment } from './backup-types.ts'
+import type { BackupEnvironment } from './backup-types.ts'
 import { putImmutableManifest } from './immutable-storage.ts'
 import { readFullManifest, sealFullBackupDay } from './seal-full-backup.ts'
 

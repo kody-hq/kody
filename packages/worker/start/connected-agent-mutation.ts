@@ -1,5 +1,5 @@
 import { revokeConnectedAgent } from '#start/server/account-mutations'
-import { type AccountConnectedAgentsLoaderData } from '#universal/loader-data.ts'
+import type { AccountConnectedAgentsLoaderData } from '#universal/loader-data.ts'
 import { mutationOptions, type QueryClient } from '@tanstack/react-query'
 import { updateOrgPagePayload } from './org-page-cache.ts'
 import { settleConnectionResources } from './connection-resource-settlement.ts'

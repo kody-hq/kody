@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { type IncidentSpan } from './day-bars.ts'
+import type { IncidentSpan } from './day-bars.ts'
 import {
 	dailyFailedAfterIncidentDelete,
 	dailyFailedIncrement,
@@ -8,7 +8,7 @@ import {
 	uptimeWindowLabel,
 	utcDaysInSpan,
 } from './incident-rollups.ts'
-import { type ComponentDayStat } from './status-types.ts'
+import type { ComponentDayStat } from './status-types.ts'
 
 function day(overrides: Partial<ComponentDayStat> = {}): ComponentDayStat {
 	return {

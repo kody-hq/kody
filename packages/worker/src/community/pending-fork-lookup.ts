@@ -5,7 +5,7 @@
  * it is not pending.
  */
 import { communityForkSelectColumns, mapCommunityForkRow } from './repo.ts'
-import { type CommunityForkRecord } from './types.ts'
+import type { CommunityForkRecord } from './types.ts'
 
 /**
  * Not-found copy for a lookup that matched a pending (unpublished) community

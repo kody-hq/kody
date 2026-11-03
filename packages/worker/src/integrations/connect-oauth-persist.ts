@@ -3,10 +3,10 @@
  * success. Scope validation, upsert, token persist (ADR 0052), optional BYO
  * client-secret store, and auth.succeeded events.
  */
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { waitUntil } from 'cloudflare:workers'
-import { type McpUserContext } from '@kody-internal/shared/chat.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { McpUserContext } from '@kody-internal/shared/chat.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
 	orgAuditWriterFromRequest,
 	type OrgAuditWriter,
@@ -26,7 +26,7 @@ import {
 	upsertPlatformIntegration,
 	type LiveConnectionGuard,
 } from '#worker/integrations/service.ts'
-import { type PlatformOauthApp } from '#worker/integrations/platform-apps.ts'
+import type { PlatformOauthApp } from '#worker/integrations/platform-apps.ts'
 import { listOauthAppsByTokenEndpoint } from '#worker/integrations/repo.ts'
 import {
 	persistIntegrationTokens,

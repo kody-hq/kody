@@ -1,5 +1,5 @@
 import { queueDurableObjectRowsRead } from './durable-object-usage.ts'
-import { type UsageEnv } from './record-usage.ts'
+import type { UsageEnv } from './record-usage.ts'
 
 export const durableObjectRowsReadEventType = 'durable_object_rows_read'
 export const durableObjectPlatformRowsReadEventType =

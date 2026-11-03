@@ -438,3 +438,17 @@ raised again.
   31,572 bytes. Browser Markdown chunk falls from 61,225 to 29,186 bytes.
   [Before/after measurements, raw samples, and repeatable runner](../docs/contributing/performance/markdown-migration-2026-10-28.md).
   Existing byte and CPU ceilings are unchanged.
+
+- Shrink and rebaseline platform and runtime (#3594, #3590). Main `6b3b4163d`
+  had grown to platform 6_967_027 and runtime 5_497_291 across many merges. This
+  change removes about 184 KB from platform and 355 KB from runtime: the
+  disposable email domain list (~163 KB) loads from the
+  `disposable-email-domains.mjs` additional module, and
+  `kody-custom/no-inline-type-only-import` rewrites `import { type X }` to
+  `import type`, which drops modules that were kept only as bare side-effect
+  imports. Local dry-run after: platform 6_782_846 and runtime 5_142_042. Origin
+  moves 769_682 → 802_810 because Rolldown regroups a few email and dead-letter
+  modules into the entry chunk. Largest remaining edges: `@babel/parser` (~296
+  KB, synchronous `parseModuleSource` with many callers), `mime-db` through the
+  agents MCP path (~137 KB, platform), and the `tldts` trie (~121 KB). Reviewed
+  ceilings platform 6_790_000 and runtime 5_150_000.

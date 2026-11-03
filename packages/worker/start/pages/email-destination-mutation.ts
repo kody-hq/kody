@@ -1,4 +1,4 @@
-import { type QueryClient } from '@tanstack/react-query'
+import type { QueryClient } from '@tanstack/react-query'
 import { emailKeys } from './email-resources.ts'
 
 export function emailDestinationMutationOptions(

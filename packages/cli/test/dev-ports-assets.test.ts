@@ -9,7 +9,7 @@ import {
 	writeFile,
 } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
-import { type AddressInfo } from 'node:net'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { test } from 'node:test'

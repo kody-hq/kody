@@ -11,19 +11,19 @@
  * first publish.
  */
 import * as Sentry from '@sentry/cloudflare'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { isCredentialKind } from '#universal/credential-contracts.ts'
 import { credentialKindLabel } from '#universal/credentials-list.ts'
 import { enqueuePackageApprovalRequest } from '#worker/package-capabilities/approval-requests-repo.ts'
 import { parseAuthoredPackageJson } from '#worker/package-registry/manifest.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 import {
 	computeCredentialNeedsClosure,
 	loadPublishedCredentialNeeds,
 	packageSourceFiles,
 } from './credential-needs-closure.ts'
-import { type CredentialNeed } from './credential-needs.ts'
+import type { CredentialNeed } from './credential-needs.ts'
 
 type NeedShape = Pick<
 	CredentialNeed,

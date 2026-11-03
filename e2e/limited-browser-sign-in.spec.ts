@@ -1,4 +1,4 @@
-import { type BrowserContext, type Page } from '@playwright/test'
+import type { BrowserContext, Page } from '@playwright/test'
 import { quoteSqlString } from '@kody-internal/shared/sql-literals.ts'
 import { executeE2eD1Command } from './d1-utils.ts'
 import { expect, test } from './playwright-utils.ts'

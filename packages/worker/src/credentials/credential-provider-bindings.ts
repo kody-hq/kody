@@ -3,7 +3,7 @@
  * credentials list contract leaves them out of `credentialKinds`, so the page
  * lists them in their own section. Nothing here selects a value.
  */
-import { type CredentialProviderBindingItem } from '#universal/credentials-list.ts'
+import type { CredentialProviderBindingItem } from '#universal/credentials-list.ts'
 import { readCredentialFillPlacement } from './fill-placement.ts'
 
 type ProviderBindingRow = {

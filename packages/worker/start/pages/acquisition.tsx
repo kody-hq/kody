@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { Global, type CSSObject } from '@emotion/react'
 import { colors } from '#universal/styles/tokens.ts'
 import { trackAcquisitionOnboardingClick } from '#client/acquisition-analytics.ts'

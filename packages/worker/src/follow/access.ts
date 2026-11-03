@@ -10,10 +10,10 @@ import { getOrgById, loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import { getSavedPackageByIdInAnyOrg } from '#worker/package-registry/repo.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import { getUserRepoByIdInAnyOrg } from '#worker/repo/user-repos.ts'
-import {
-	type FollowRecord,
-	type FollowTargetKind,
-	type FollowTargetSnapshot,
+import type {
+	FollowRecord,
+	FollowTargetKind,
+	FollowTargetSnapshot,
 } from './types.ts'
 
 export type FollowPermissionDecision = {

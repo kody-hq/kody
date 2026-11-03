@@ -1,4 +1,4 @@
-import { type AccountPackageSecurityAudit } from '#universal/loader-data.ts'
+import type { AccountPackageSecurityAudit } from '#universal/loader-data.ts'
 import { buildPackageSecurityAuditPrompt } from '#universal/package-security-audit-prompt.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { getLatestPackageSecurityAudit } from './security-audits-repo.ts'

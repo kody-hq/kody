@@ -1,10 +1,10 @@
 import { permissionsForGrantPreset } from '@kody-internal/shared/grant-presets.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
 import { resourceGrantKey } from '#worker/authorization/access-compile.ts'
-import { type EffectivePermissions } from '#worker/authorization/authorize.ts'
+import type { EffectivePermissions } from '#worker/authorization/authorize.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import {
 	followAccessFromPermissions,

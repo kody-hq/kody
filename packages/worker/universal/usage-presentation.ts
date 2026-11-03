@@ -25,7 +25,7 @@ import {
 	formatMicroUsd,
 	microUsdPerCent,
 } from './credits.ts'
-import { type CreditWalletState, type PlanName } from './plans.ts'
+import type { CreditWalletState, PlanName } from './plans.ts'
 
 /** Usage rollup metrics that count as customer activity, in display order. */
 export const accountActivityMetrics = [

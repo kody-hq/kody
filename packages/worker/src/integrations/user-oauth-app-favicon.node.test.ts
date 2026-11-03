@@ -7,7 +7,7 @@ import {
 	resolveFaviconOrigin,
 	shouldFetchUserOauthAppFavicon,
 } from './user-oauth-app-favicon.ts'
-import { type UserOauthApp } from './types.ts'
+import type { UserOauthApp } from './types.ts'
 
 test('favicon origin resolution prefers authorize hosts and skips unsafe URLs', () => {
 	const google = resolveFaviconOrigin([

@@ -2,12 +2,12 @@ import {
 	listScannableModulePaths,
 	parseModule,
 } from '#worker/credentials/module-placeholder-scan.ts'
-import {
-	type PackageAppCapabilityHostFacts,
-	type PackageCodemod,
-	type PackageCodemodContext,
-	type PackageCodemodFinding,
-	type PackageCodemodTransformResult,
+import type {
+	PackageAppCapabilityHostFacts,
+	PackageCodemod,
+	PackageCodemodContext,
+	PackageCodemodFinding,
+	PackageCodemodTransformResult,
 } from '../types.ts'
 import {
 	collectModuleKodyCalls,

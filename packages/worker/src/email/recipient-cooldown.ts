@@ -9,7 +9,7 @@
 
 import { normalizeEmailAddress } from './address.ts'
 import { classifyVerificationDeliveryFailure } from './verification-delivery.ts'
-import { type EmailDeliveryStatus } from './types.ts'
+import type { EmailDeliveryStatus } from './types.ts'
 import {
 	isEmailVerificationDeliveryStatus,
 	type EmailVerificationDeliveryClass,

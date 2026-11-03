@@ -1,7 +1,7 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { getEntitySourceByEntity } from '#worker/repo/entity-sources.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 import {
 	getUserRepoById,
 	getUserRepoByName,

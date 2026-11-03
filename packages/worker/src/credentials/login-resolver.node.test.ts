@@ -3,7 +3,7 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { afterEach, expect, test, vi } from 'vitest'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
 import { upsertGrant } from '#worker/orgs/access-writes.ts'

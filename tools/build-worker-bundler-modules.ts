@@ -98,6 +98,15 @@ const postalMimeModuleEntry = path.join(
 	repoRoot,
 	'packages/worker/src/email/postal-mime-module.ts',
 )
+export const disposableEmailDomainsModuleName = 'disposable-email-domains.mjs'
+const disposableEmailDomainsModuleEntry = path.join(
+	repoRoot,
+	'packages/worker/src/identity/disposable-email-domains-module.ts',
+)
+const disposableEmailDomainsListPath = path.join(
+	repoRoot,
+	'packages/worker/src/identity/disposable-email-domains.ts',
+)
 export const codemodeNormalizeModuleName = 'codemode-normalize.mjs'
 const codemodeNormalizeModuleEntry = path.join(
 	repoRoot,
@@ -111,6 +120,7 @@ const generatedArtifactNames = [
 	isomorphicGitModuleName,
 	postalMimeModuleName,
 	codemodeNormalizeModuleName,
+	disposableEmailDomainsModuleName,
 	'esbuild.wasm',
 ] as const
 const leftoverWranglerVisibleNames = [
@@ -274,6 +284,14 @@ async function buildStampContent(
 		codemodeNormalizeModuleEntry,
 		'utf8',
 	)
+	const disposableEmailDomainsSource = await readFile(
+		disposableEmailDomainsListPath,
+		'utf8',
+	)
+	const disposableEmailDomainsModuleSource = await readFile(
+		disposableEmailDomainsModuleEntry,
+		'utf8',
+	)
 	const shellPackageJson = await readFile(
 		path.join(repoRoot, 'node_modules', '@cloudflare', 'shell', 'package.json'),
 		'utf8',
@@ -298,6 +316,8 @@ async function buildStampContent(
 		.update(isomorphicGitModuleSource)
 		.update(isomorphicGitPackageJson)
 		.update(postalMimeModuleSource)
+		.update(disposableEmailDomainsSource)
+		.update(disposableEmailDomainsModuleSource)
 		.update(codemodeNormalizeModuleSource)
 		.update(shellPackageJson)
 		.update(
@@ -435,6 +455,7 @@ export async function ensureWorkerBundlerModules() {
 		entryPoints: {
 			'postal-mime': postalMimeModuleEntry,
 			'codemode-normalize': codemodeNormalizeModuleEntry,
+			'disposable-email-domains': disposableEmailDomainsModuleEntry,
 		},
 		bundle: true,
 		format: 'esm',

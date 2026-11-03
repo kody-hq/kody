@@ -21,14 +21,14 @@ import {
 	readDeclaredCredentialSlots,
 } from '#worker/credentials/credential-allowed-packages-publish-warning.ts'
 import { packageSourceFiles } from '#worker/credentials/credential-needs-closure.ts'
-import { type AllowedPackagesWouldBlockAccessKind } from '#worker/credentials/allowed-packages-would-block.ts'
+import type { AllowedPackagesWouldBlockAccessKind } from '#worker/credentials/allowed-packages-would-block.ts'
 import { savedPackageImplicitUserSecretReadAccessKind } from '#mcp/secrets/package-access.ts'
 import { parseAllowedPackages } from '#mcp/secrets/allowed-packages.ts'
-import { type OrgAuditWriter } from '#worker/orgs/org-audit.ts'
+import type { OrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { listCandidatePackages } from '#worker/package-runtime/published-importable-artifact-backfill.ts'
 import { readPublishedSourceSnapshot } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { loadPackageSourceRowForUser } from '#worker/package-registry/source.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import {
 	grantGrandfatheredPackageAccess,

@@ -5,7 +5,7 @@ import {
 	platformFeedbackResolutionPrUrlMaxLength,
 	platformFeedbackResolutionPrUrlsJsonMaxLength,
 } from './limits.ts'
-import { type PlatformFeedbackResolutionHistoryEntry } from './types.ts'
+import type { PlatformFeedbackResolutionHistoryEntry } from './types.ts'
 
 /**
  * Normalize an optional submitter-visible resolution note (same text as the

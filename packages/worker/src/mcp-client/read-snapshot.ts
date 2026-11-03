@@ -1,7 +1,4 @@
-import {
-	type McpHubServerSnapshot,
-	type McpClientHubReadSnapshot,
-} from './types.ts'
+import type { McpHubServerSnapshot, McpClientHubReadSnapshot } from './types.ts'
 
 export const mcpReadSnapshotStorageKey = 'website-mcp-status-v1'
 

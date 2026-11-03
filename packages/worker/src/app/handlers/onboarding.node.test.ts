@@ -8,7 +8,7 @@ import {
 	loadPersistedPackageName,
 } from '#app/handlers/onboarding.ts'
 import { onboardingIndexRedirectHref } from '#universal/onboarding-process.ts'
-import { type OnboardingLoaderData } from '#universal/loader-data.ts'
+import type { OnboardingLoaderData } from '#universal/loader-data.ts'
 import type * as McpServersShared from '#mcp/capabilities/mcp-servers/shared.ts'
 import type * as OnboardingChecklist from '#mcp/onboarding-checklist.ts'
 

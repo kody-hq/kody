@@ -1,10 +1,10 @@
-import { type getCapabilityRegistryForContext } from '#mcp/capabilities/registry.ts'
-import { type CapabilitySpec } from '#mcp/capabilities/types.ts'
+import type { getCapabilityRegistryForContext } from '#mcp/capabilities/registry.ts'
+import type { CapabilitySpec } from '#mcp/capabilities/types.ts'
 import { buildKodyCapabilityAccessor } from '#mcp/kody-capability-accessors.ts'
 
 import { buildEntityRef } from './search-format-helpers.ts'
-import { type SearchMatch } from './search-format-types.ts'
-import { type PackageSearchRow } from './search-types.ts'
+import type { SearchMatch } from './search-format-types.ts'
+import type { PackageSearchRow } from './search-types.ts'
 import { extractSearchTokens } from './understand-search-query.ts'
 
 export type SynthesizedMcpServer = {

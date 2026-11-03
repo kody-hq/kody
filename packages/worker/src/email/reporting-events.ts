@@ -1,4 +1,4 @@
-import { type EmailDeliveryStatus } from './types.ts'
+import type { EmailDeliveryStatus } from './types.ts'
 
 export type EmailReportingEnv = {
 	EMAIL_EVENTS?: AnalyticsEngineDataset

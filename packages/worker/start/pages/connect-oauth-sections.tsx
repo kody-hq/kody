@@ -1,11 +1,11 @@
 /** @jsxImportSource @emotion/react */
 
-import { type FormEvent } from 'react'
+import type { FormEvent } from 'react'
 import { normalizeProviderKey } from '@kody-internal/shared/url-hosts.ts'
 import { SiteLink } from '../components/site-link.tsx'
-import {
-	type ConnectOauthExistingConnection,
-	type ConnectOauthLoaderData,
+import type {
+	ConnectOauthExistingConnection,
+	ConnectOauthLoaderData,
 } from '#universal/loader-data.ts'
 import { docHref } from '#universal/docs-nav.ts'
 import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.tsx'
@@ -34,7 +34,7 @@ import {
 	connectOauthChooserOptionMarkSize,
 	filterConnectOauthChooserOptions,
 } from '#client/routes/connect-oauth-chooser-list.ts'
-import { type ConnectOauthConfig } from '#client/routes/connect-oauth-config.ts'
+import type { ConnectOauthConfig } from '#client/routes/connect-oauth-config.ts'
 import {
 	type ConnectOauthChooserOption,
 	type ConnectOauthStatusTone,

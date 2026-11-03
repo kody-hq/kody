@@ -1,4 +1,4 @@
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { createListDetailLinks } from '#client/list-detail-route.ts'
 import {
 	colors,
@@ -6,7 +6,7 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import { type AccountEmailMessageListItem } from '#universal/loader-data.ts'
+import type { AccountEmailMessageListItem } from '#universal/loader-data.ts'
 export type ClassifyState = 'idle' | 'saving'
 export type DeleteState = 'idle' | 'deleting'
 export const emailRoute = createListDetailLinks('/account/email')

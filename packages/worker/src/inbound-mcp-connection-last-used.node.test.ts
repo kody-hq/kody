@@ -6,7 +6,7 @@ import {
 	recordInboundMcpConnectionLastUsed,
 	shouldSkipInboundMcpConnectionLastUsedTouch,
 } from '#worker/inbound-mcp-connection-last-used.ts'
-import { type UserMeterEnv } from '#worker/entitlements/user-meter-client.ts'
+import type { UserMeterEnv } from '#worker/entitlements/user-meter-client.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 
 test('inbound MCP last-used debounce, record, list, and forget stay per user and no-op without USER_METER', async () => {

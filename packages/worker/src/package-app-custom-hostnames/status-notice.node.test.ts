@@ -1,7 +1,7 @@
 import { expect, test, vi } from 'vitest'
 import type * as OwnerEmails from '#worker/orgs/owner-emails.ts'
 import type * as SendPolicy from '#worker/email/transactional-send-policy.ts'
-import { type PackageAppCustomHostnameRow } from './types.ts'
+import type { PackageAppCustomHostnameRow } from './types.ts'
 
 const loadOrgOwnerRecipientEmails = vi.fn<
 	typeof OwnerEmails.loadOrgOwnerRecipientEmails

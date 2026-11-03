@@ -1,8 +1,8 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
-import { type McpServerRef } from '@kody-internal/shared/mcp-servers.ts'
+import type { McpServerRef } from '@kody-internal/shared/mcp-servers.ts'
 import { getCachedMcpClientHubSnapshot } from './hub-client.ts'
-import { type McpServerConnectionState } from './types.ts'
+import type { McpServerConnectionState } from './types.ts'
 
 export type McpServerStatus = {
 	state: McpServerConnectionState | 'unknown'

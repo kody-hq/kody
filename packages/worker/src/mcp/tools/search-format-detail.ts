@@ -1,5 +1,5 @@
 import { getSearchEntityPluginForDetail } from './search-entity-registry.ts'
-import { type SearchEntityDetail } from './search-format-types.ts'
+import type { SearchEntityDetail } from './search-format-types.ts'
 
 export function formatEntityDetailMarkdown(
 	detail: SearchEntityDetail,

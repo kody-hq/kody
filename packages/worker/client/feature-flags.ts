@@ -1,5 +1,5 @@
-import { type FeatureFlagKey } from '#universal/feature-flags/registry.ts'
-import { type SessionInfo } from './session.ts'
+import type { FeatureFlagKey } from '#universal/feature-flags/registry.ts'
+import type { SessionInfo } from './session.ts'
 
 /**
  * Synchronous client gate for evaluated feature flags embedded in the

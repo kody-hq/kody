@@ -1,7 +1,7 @@
-import {
-	type EmailSenderRuleEffect,
-	type EmailSenderRuleKind,
-	type EmailSenderRuleRecord,
+import type {
+	EmailSenderRuleEffect,
+	EmailSenderRuleKind,
+	EmailSenderRuleRecord,
 } from './types.ts'
 
 /** Flat cap; rules are created by the authenticated owner, this is just runaway-growth protection. */

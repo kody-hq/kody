@@ -5,7 +5,7 @@
 
 import { spawn, type ChildProcess } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import { type Readable } from 'node:stream'
+import type { Readable } from 'node:stream'
 import { redact } from '../redact.js'
 
 const workerdStartTimeoutMs = 30_000

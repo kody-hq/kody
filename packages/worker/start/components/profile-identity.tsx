@@ -1,11 +1,11 @@
 /** @jsxImportSource @emotion/react */
 import { SiteLink } from './site-link.tsx'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 
 import { workspaceLandingItem } from '#client/routes/account-rail.ts'
 import { buildAuthLink } from '#client/auth-links.ts'
 import { formatCommunityPublishedDate } from '#universal/community-display.ts'
-import { type ProfileShellLoaderData } from '#universal/loader-data.ts'
+import type { ProfileShellLoaderData } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
 import {
 	colors,

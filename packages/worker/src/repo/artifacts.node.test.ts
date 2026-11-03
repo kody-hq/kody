@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest'
-import { type ArtifactRepoHandle } from './artifacts.ts'
+import type { ArtifactRepoHandle } from './artifacts.ts'
 
 const gitMocks = vi.hoisted(() => ({
 	listServerRefs: vi.fn(),

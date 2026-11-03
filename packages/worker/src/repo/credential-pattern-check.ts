@@ -1,4 +1,4 @@
-import { type ResolvedSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
+import type { ResolvedSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
 import {
 	detectLegacyCredentialPatternsCodemod,
 	detectLegacyCredentialPatternsCodemodId,

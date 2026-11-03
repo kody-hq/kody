@@ -1,9 +1,9 @@
-import {
-	type BackupEnvironment,
-	type BackupPayload,
-	type LogRecord,
-	type RetentionTier,
-	type ScheduledBackupPayload,
+import type {
+	BackupEnvironment,
+	BackupPayload,
+	LogRecord,
+	RetentionTier,
+	ScheduledBackupPayload,
 } from './backup-types.ts'
 
 const CLOUDFLARE_ID_PATTERN =

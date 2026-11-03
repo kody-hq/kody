@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { sha256Hex } from '@kody-internal/shared/sha256.ts'
 import {
 	CAPABILITY_EMBEDDING_DIMENSIONS,

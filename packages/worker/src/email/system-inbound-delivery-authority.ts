@@ -7,7 +7,7 @@ import {
 	reconcileSystemStaleInboundDeliveries as reconcileStaleInboundDeliveries,
 	releaseSystemInboundDeliveryStorage as releaseInboundDeliveryStorage,
 } from './system-inbound-delivery-store.ts'
-import { type InboundDelivery } from './inbound-delivery.ts'
+import type { InboundDelivery } from './inbound-delivery.ts'
 import { systemEmailOwnerId } from './email-owner.ts'
 
 function assertSystemInboundOwner(userId: string) {

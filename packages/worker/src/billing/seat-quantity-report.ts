@@ -9,7 +9,7 @@ import {
 	billingSeatQuantitySyncedAction,
 	selectPurchasableSeatSubscription,
 } from './seat-sync.ts'
-import { type BillingEnv } from './billing-config.ts'
+import type { BillingEnv } from './billing-config.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 
 type SeatQuantityReportEnv = Env & BillingEnv & StripeEnv

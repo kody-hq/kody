@@ -10,7 +10,7 @@ import {
 } from '#mcp/capabilities/meta/require-user.ts'
 import { authorizeIntegration } from '#mcp/capabilities/integrations/authorize-integration.ts'
 import { authorize } from '#worker/authorization/authorize.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	getIntegration,

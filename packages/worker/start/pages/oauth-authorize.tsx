@@ -39,7 +39,7 @@ import {
 	oauthAuthorizeFetchStatusLabel,
 	type OAuthAuthorizeClientFailure,
 } from '#universal/oauth-authorize-client-failure.ts'
-import { type OAuthAuthorizeLoaderData } from '#universal/loader-data.ts'
+import type { OAuthAuthorizeLoaderData } from '#universal/loader-data.ts'
 import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
 import {
 	cardCss,

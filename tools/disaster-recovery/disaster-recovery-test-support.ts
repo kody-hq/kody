@@ -8,18 +8,18 @@ import {
 } from '@kody-internal/shared/backup-manifest.ts'
 import { vi } from 'vitest'
 
-import {
-	type BackupManifest,
-	type DrillAdapters,
-	type QueryRow,
-	type RestoreBaseline,
-	type RestoreTrustRegistry,
-	type VerificationQuery,
+import type {
+	BackupManifest,
+	DrillAdapters,
+	QueryRow,
+	RestoreBaseline,
+	RestoreTrustRegistry,
+	VerificationQuery,
 } from './d1-restore-drill.ts'
 import { canonicalJson, sha256 } from './canonical-json.ts'
-import {
-	type TrustedManifestPublicKeyRegistry,
-	type TrustedRestoreBaselineRegistry,
+import type {
+	TrustedManifestPublicKeyRegistry,
+	TrustedRestoreBaselineRegistry,
 } from './restore-trust.ts'
 
 export const productionUuid = '11111111-1111-4111-8111-111111111111'

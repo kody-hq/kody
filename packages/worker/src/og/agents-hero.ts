@@ -18,7 +18,7 @@ import {
 	landingOrbitTetherPoint,
 	type LandingOrbitAgentIcon,
 } from '#universal/landing-agent-orbit.ts'
-import { type SatoriElement } from '#worker/og/render.ts'
+import type { SatoriElement } from '#worker/og/render.ts'
 
 /** Matches the page OG hero slot (bled past frame padding). */
 export const AGENTS_HERO_SIZE = 560

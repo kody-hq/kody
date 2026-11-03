@@ -10,7 +10,7 @@ import {
 	recordToggleAudit,
 } from '#worker/jobs/toggle-audit.ts'
 import { offboardingDisabledReason } from '@kody-internal/shared/jobs/disabled-reason.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { deleteApprovalBundlesForMember } from '#worker/approval-bundles/repo.ts'
 import { deleteCredentialProposalsForMember } from '#worker/credentials/agent-credential-proposals.ts'

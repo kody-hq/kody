@@ -1,5 +1,5 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type ErrorEvent } from '@sentry/core'
+import type { ErrorEvent } from '@sentry/core'
 import { expect, test } from 'vitest'
 import { isCloudflareKvTransientHttpErrorMessage } from './cloudflare-kv-platform-error.ts'
 import {
@@ -13,7 +13,7 @@ import {
 	buildArtifactsRepoLookupTimeoutMessage,
 	buildSourceRecoveryProblemMessage,
 } from './repo/source-safety-policy.ts'
-import { type EntitySourceRow } from './repo/types.ts'
+import type { EntitySourceRow } from './repo/types.ts'
 import { isUserCodeError, UserCodeError } from './user-code-error.ts'
 import {
 	agentsSdkSqlErrorMessagePrefix,

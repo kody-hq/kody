@@ -1,12 +1,12 @@
 import { DatabaseSync } from 'node:sqlite'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { beforeEach, expect, test, vi } from 'vitest'
-import { type CredentialListItem } from '#universal/credential-contracts.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { CredentialListItem } from '#universal/credential-contracts.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import type * as CredentialCandidates from './credential-candidates.ts'
-import { type CredentialNeed } from './credential-needs.ts'
+import type { CredentialNeed } from './credential-needs.ts'
 
 const mocks = vi.hoisted(() => ({
 	needs: new Map<string, Array<CredentialNeed>>(),

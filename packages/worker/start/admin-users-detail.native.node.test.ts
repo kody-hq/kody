@@ -2,7 +2,7 @@ import { createElement } from 'react'
 import { expect, test } from 'vitest'
 import { renderStartPage } from './test-support/render-start-page.ts'
 import { AdminUserDetail } from './pages/admin-users-detail.tsx'
-import { type AdminUserListItem } from '#universal/loader-data.ts'
+import type { AdminUserListItem } from '#universal/loader-data.ts'
 
 test('user detail exposes organization billing and no user billing forms', async () => {
 	const stableUserId = 'a'.repeat(64)

@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { type McpHubConnectResult } from '#worker/mcp-client/types.ts'
+import type { McpHubConnectResult } from '#worker/mcp-client/types.ts'
 import { describeOrgTransferMcpConnection } from './post-commit-result.ts'
 
 function connectResult(

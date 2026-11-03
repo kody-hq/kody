@@ -1,5 +1,5 @@
 import { normalizeRepoWorkspacePath } from './manifest.ts'
-import { type EntitySourceRow } from './types.ts'
+import type { EntitySourceRow } from './types.ts'
 
 /**
  * Re-keys a file set to the repo-relative shape published snapshots store.

@@ -1,10 +1,10 @@
-import { type StorageContext } from '#mcp/storage.ts'
+import type { StorageContext } from '#mcp/storage.ts'
 import {
 	classifyApprovalHosts,
 	type ClassifiedApprovalHosts,
 } from './approval-host-shape.ts'
 import { normalizeBulkPackageSecretApprovalNames } from './package-approval-url.ts'
-import { type SecretScope } from './types.ts'
+import type { SecretScope } from './types.ts'
 
 const connectSecretsPath = '/connect/secrets'
 const maxBulkHostApprovalHosts = 20

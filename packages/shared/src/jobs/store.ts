@@ -28,7 +28,7 @@ import {
 	type JobCountBySourceId,
 	type JobRow,
 } from './repo.ts'
-import { type JobRecord } from './types.ts'
+import type { JobRecord } from './types.ts'
 
 /**
  * Coarse-grained jobs-data contract between the main worker and the jobs

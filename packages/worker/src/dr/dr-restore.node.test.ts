@@ -17,9 +17,9 @@ import {
 	runDrRestoreTick,
 } from '#worker/dr/dr-restore.ts'
 import { encodeStorageIdentity } from '#worker/dr/storage-identity.ts'
-import {
-	type DrBackupS3Client,
-	type DrBackupS3PutOptions,
+import type {
+	DrBackupS3Client,
+	DrBackupS3PutOptions,
 } from '#worker/dr/backup-s3.ts'
 import { MaintenanceFailureError } from '#worker/maintenance-handler.ts'
 

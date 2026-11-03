@@ -1,4 +1,4 @@
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import {
@@ -7,7 +7,7 @@ import {
 } from '#worker/authorization/authorize.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { loadOrgBindingForSlug } from '#worker/orgs/repo.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 
 export type CommunityInstallOwner = {
 	ownerId: OwnerId

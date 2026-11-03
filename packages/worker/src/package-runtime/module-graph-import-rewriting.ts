@@ -9,11 +9,11 @@ import {
 	normalizePackageWorkspacePath,
 	resolvePackageExportPath,
 } from '#worker/package-registry/manifest.ts'
-import {
-	type AuthoredPackageJson,
-	type SavedPackageRecord,
+import type {
+	AuthoredPackageJson,
+	SavedPackageRecord,
 } from '#worker/package-registry/types.ts'
-import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import {
 	parseKodyPackageSpecifier,
 	packageSpecifierPrefix,
@@ -34,7 +34,7 @@ import {
 	collectModuleImportNodesCached,
 	type ModuleImportNodesCache,
 } from './import-specifiers.ts'
-import { type BundleArtifactDependency } from './published-runtime-artifacts.ts'
+import type { BundleArtifactDependency } from './published-runtime-artifacts.ts'
 import {
 	createPackageProxyPathSegment,
 	createRelativeImportSpecifier,

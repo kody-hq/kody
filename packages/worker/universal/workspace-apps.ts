@@ -1,4 +1,4 @@
-import { type PublicProfilePackageItem } from './community-public-types.ts'
+import type { PublicProfilePackageItem } from './community-public-types.ts'
 
 export function filterWorkspaceApps<T extends PublicProfilePackageItem>(
 	apps: ReadonlyArray<T>,

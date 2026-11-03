@@ -2,9 +2,9 @@ import {
 	catalogReadResource,
 	recordSkillRead,
 } from '#worker/package-registry/skill-read-events.ts'
-import { type McpServer } from '@modelcontextprotocol/server'
+import type { McpServer } from '@modelcontextprotocol/server'
 import { z } from 'zod'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { mcpSkillsExtensionFlagKey } from '#universal/feature-flags/registry.ts'
 import { resolveCallerFeatureFlags } from '#mcp/capabilities/access-control.ts'
 import {

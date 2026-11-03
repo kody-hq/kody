@@ -32,7 +32,7 @@ import {
 } from './package-job-id.ts'
 import * as schedule from './schedule.ts'
 import { executeJobOnce, runJobNow, updateJob } from './service.ts'
-import { type JobRecord, type PersistedJobCallerContext } from './types.ts'
+import type { JobRecord, PersistedJobCallerContext } from './types.ts'
 import { jobsData } from './jobs-data.ts'
 import {
 	identityMockModule,

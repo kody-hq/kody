@@ -1,4 +1,4 @@
-import { type CommunityListingRelease } from '#worker/community/fork-upstream-updated-subscription-event.ts'
+import type { CommunityListingRelease } from '#worker/community/fork-upstream-updated-subscription-event.ts'
 import { deliverFollowRecords, deliverListingForkAliases } from './deliver.ts'
 import { hasAppDb, listActiveFollowsByTarget } from './repo.ts'
 

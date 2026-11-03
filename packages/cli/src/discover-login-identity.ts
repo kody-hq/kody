@@ -1,5 +1,5 @@
 import { defaultApiUrl } from './defaults.js'
-import { type LoginCallbackAccount } from './login-callback-page.js'
+import type { LoginCallbackAccount } from './login-callback-page.js'
 import { orgSlugFromFlag } from './org-slug.js'
 import { openApiGet } from './open-api-client.js'
 

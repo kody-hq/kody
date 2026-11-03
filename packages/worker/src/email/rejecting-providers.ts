@@ -10,8 +10,8 @@ import {
 	classifyRecipientDeliveryFailure,
 	type EmailPolicyWriteGuard,
 } from './recipient-cooldown.ts'
-import { type EmailDeliveryStatus } from './types.ts'
-import { type EmailVerificationDeliveryStatus } from '#universal/email-verification-delivery.ts'
+import type { EmailDeliveryStatus } from './types.ts'
+import type { EmailVerificationDeliveryStatus } from '#universal/email-verification-delivery.ts'
 
 /** How long a provider stays "rejecting" after the last observed rejection. */
 export const emailRejectingProviderTtlMs = 24 * 60 * 60 * 1000

@@ -1,6 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import { type Workspace } from '@cloudflare/shell'
+import type { Workspace } from '@cloudflare/shell'
 import type git from 'isomorphic-git'
 import type * as CloudflareWorkers from 'cloudflare:workers'
 import type * as Artifacts from './artifacts.ts'

@@ -3,7 +3,7 @@ import {
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
+import type { RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
 import {
 	createPackageAppRequestVisit,
 	endPackageAppVisit,

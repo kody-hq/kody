@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 
-import { type WorkflowEvent, type WorkflowStep } from 'cloudflare:workers'
+import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 import { test, vi } from 'vitest'
 
 import { errorCode } from './backup-policy.ts'

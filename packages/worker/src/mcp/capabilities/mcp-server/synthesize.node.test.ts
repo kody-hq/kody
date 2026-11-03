@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { type McpServerSnapshot } from '#worker/mcp-client/types.ts'
+import type { McpServerSnapshot } from '#worker/mcp-client/types.ts'
 import { synthesizeMcpServerToolDomain } from './index.ts'
 
 test('synthesizes a ready server tool with its binding and access hint', () => {

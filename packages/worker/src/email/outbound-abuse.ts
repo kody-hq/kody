@@ -11,7 +11,7 @@
  * admin users page.
  */
 
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
 import { joinAppUrl } from '#worker/app-base-url.ts'
 import { mailboxRpc } from './mailbox-client.ts'
@@ -20,7 +20,7 @@ import {
 	buildUserEmailOutboundPausedEvent,
 	isUserEmailOutboundPausedReason,
 } from './outbound-paused-subscription-event.ts'
-import { type EmailDeliveryStatus } from './types.ts'
+import type { EmailDeliveryStatus } from './types.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 /**

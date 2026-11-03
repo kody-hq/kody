@@ -1,4 +1,4 @@
-import { type FleetUsersAffectedWindowMetrics } from './fleet-users-affected.ts'
+import type { FleetUsersAffectedWindowMetrics } from './fleet-users-affected.ts'
 
 export const fleetUsersAffectedElevatedTopic = 'fleet.users_affected.elevated'
 export const fleetUsersAffectedResolvedTopic = 'fleet.users_affected.resolved'

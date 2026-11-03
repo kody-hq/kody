@@ -15,9 +15,9 @@ import {
 	queryAnalyticsEngineSql,
 	resolveUsageEventsDataset,
 } from '#worker/usage/aggregate-rollups.ts'
-import {
-	type ReceivePackOutcomeKind,
-	type ReceivePackPath,
+import type {
+	ReceivePackOutcomeKind,
+	ReceivePackPath,
 } from '#worker/repo/receive-pack-metrics.ts'
 
 export const repoPushQueueCostDefaultDays = 7

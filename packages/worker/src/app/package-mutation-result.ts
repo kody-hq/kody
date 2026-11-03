@@ -1,6 +1,6 @@
-import { type PackageSecurityAuditNextStep } from '../package-capabilities/security-audit-next-step.ts'
-import { type RepoSessionCheckStatus } from '../repo/types.ts'
-import { type AccountPackageListingBehindHint } from '#universal/loader-data.ts'
+import type { PackageSecurityAuditNextStep } from '../package-capabilities/security-audit-next-step.ts'
+import type { RepoSessionCheckStatus } from '../repo/types.ts'
+import type { AccountPackageListingBehindHint } from '#universal/loader-data.ts'
 export type PackageMutationPayload = {
 	ok: boolean
 	error?: string

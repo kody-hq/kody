@@ -1,17 +1,17 @@
 import { endMemberExecutionContextLeases } from '#worker/execution-contexts/service.ts'
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { operationResult } from '#app/operation-result.ts'
 import {
 	orgHasPermission,
 	resolveOrgManagementAccess,
 	type ManagedOrg,
 } from '#app/org-management-access.ts'
-import {
-	type OrgMemberView,
-	type OrgTeamMemberView,
-	type OrgTeamView,
-	type OrgTeamsLoaderData,
-	type ScopedInviteLinkView,
+import type {
+	OrgMemberView,
+	OrgTeamMemberView,
+	OrgTeamView,
+	OrgTeamsLoaderData,
+	ScopedInviteLinkView,
 } from '#universal/loader-data.ts'
 import { orgRoleLabel } from '#universal/org-pages.ts'
 import { buildUserAvatarUrl } from '#worker/community/public-urls.ts'

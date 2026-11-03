@@ -1,5 +1,5 @@
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
-import { type ProfileVisibility } from '#universal/loader-data.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { ProfileVisibility } from '#universal/loader-data.ts'
 import {
 	auditDatabaseFromEnv,
 	getRequestIp,

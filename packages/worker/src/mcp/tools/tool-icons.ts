@@ -1,4 +1,4 @@
-import { type McpToolIcon } from '#mcp/mcp-registration-agent.ts'
+import type { McpToolIcon } from '#mcp/mcp-registration-agent.ts'
 
 /**
  * Kody tool icons (protocol revision 2025-11-25, SEP-973). Servers must use

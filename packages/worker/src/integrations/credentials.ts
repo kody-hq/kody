@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	decryptUserOauthAccessToken,
 	decryptUserOauthClientSecret,
@@ -18,12 +18,12 @@ import {
 	updateIntegrationCredentialCiphertexts,
 	updateOauthAppClientSecretCiphertext,
 } from './repo.ts'
-import { type IntegrationRefreshPolicy } from './refresh-policy.ts'
+import type { IntegrationRefreshPolicy } from './refresh-policy.ts'
 import {
 	credentialAuditActions,
 	recordCredentialAudit,
 } from '#worker/credentials/credential-audit.ts'
-import { type OrgAuditWriter } from '#worker/orgs/org-audit.ts'
+import type { OrgAuditWriter } from '#worker/orgs/org-audit.ts'
 
 type CredentialEnv = Pick<Env, 'APP_DB' | 'SECRET_STORE_KEY'>
 

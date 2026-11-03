@@ -1,9 +1,9 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { env } from 'cloudflare:workers'
 import { expect, test } from 'vitest'
-import {
-	type OAuthHelpers,
-	type TokenSummary,
+import type {
+	OAuthHelpers,
+	TokenSummary,
 } from '@cloudflare/workers-oauth-provider'
 import {
 	buildProtectedResourceMetadata,

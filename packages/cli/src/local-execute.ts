@@ -9,7 +9,7 @@ import {
 import { randomBytes } from 'node:crypto'
 import { rmSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { type EffectiveFs } from './execution-context/fs-access.js'
+import type { EffectiveFs } from './execution-context/fs-access.js'
 import {
 	type HostFsRequest,
 	handleHostFsRequest,
@@ -22,7 +22,7 @@ import {
 import { request as httpRequest, type IncomingMessage } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { type Readable } from 'node:stream'
+import type { Readable } from 'node:stream'
 import { setTimeout as delay } from 'node:timers/promises'
 import {
 	assertTokenSafeApiUrl,
@@ -68,11 +68,11 @@ import {
 	tryHandleMockGatewayFetchCall,
 } from './mock/mock-fetch-gateway.js'
 import { redact } from './redact.js'
-import { type ToolCallResult } from './tool-result.js'
+import type { ToolCallResult } from './tool-result.js'
 import { ensureWorkerdBinary } from './workerd-binary.js'
 import { raiseSignal } from './process-tree.js'
-import { type PackageGraphCacheSlot } from './execution-context/package-graph-cache.js'
-import { type LocalWorkerTracker } from './execution-context/worker-tracker.js'
+import type { PackageGraphCacheSlot } from './execution-context/package-graph-cache.js'
+import type { LocalWorkerTracker } from './execution-context/worker-tracker.js'
 
 export {
 	hasSavedPackageImports,

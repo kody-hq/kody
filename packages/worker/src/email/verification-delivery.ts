@@ -6,7 +6,7 @@ import {
 	type EmailVerificationDeliveryClass,
 	type EmailVerificationDeliveryStatus,
 } from '#universal/email-verification-delivery.ts'
-import { type EmailDeliveryStatus } from './types.ts'
+import type { EmailDeliveryStatus } from './types.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 export const transactionalEmailVerificationKind = 'email_verification'

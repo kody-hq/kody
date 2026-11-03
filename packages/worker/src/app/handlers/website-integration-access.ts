@@ -1,4 +1,4 @@
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	AuthorizationError,
 	authorize,
@@ -16,8 +16,8 @@ import {
 } from '#worker/integrations/service.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { PermissionDeniedError } from '#universal/permission-denied.ts'
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
-import { type MemberCreationPermission } from '#worker/authorization/member-creation-permissions.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { MemberCreationPermission } from '#worker/authorization/member-creation-permissions.ts'
 
 type WebsiteUser = NonNullable<
 	Awaited<ReturnType<typeof readAuthenticatedAppUser>>

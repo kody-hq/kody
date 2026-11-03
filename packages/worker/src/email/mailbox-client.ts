@@ -1,6 +1,6 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { mailboxDurableObjectName } from '#worker/user-scoped-durable-object-name.ts'
-import { type MailboxRpc } from './mailbox-do.ts'
+import type { MailboxRpc } from './mailbox-do.ts'
 
 export type MailboxEnv = {
 	MAILBOX?: DurableObjectNamespace

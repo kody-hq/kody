@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { type EntitySourceRow } from './types.ts'
+import type { EntitySourceRow } from './types.ts'
 import { buildSourceRecoveryProblemMessage } from './source-safety-policy.ts'
 import {
 	classifyExternalPublishCloneError,

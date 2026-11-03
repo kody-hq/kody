@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	decryptSecretValue,
 	decryptUserOauthAccessToken,
@@ -18,8 +18,8 @@ import {
 	userWebhookHmacSecretContext,
 	userWebhookUrlSecretContext,
 } from '#mcp/secrets/crypto.ts'
-import { type OrgTransferPlan } from './plan.ts'
-import { type OrgTransferRow } from './snapshot.ts'
+import type { OrgTransferPlan } from './plan.ts'
+import type { OrgTransferRow } from './snapshot.ts'
 
 type CryptoEnv = Pick<Env, 'SECRET_STORE_KEY'>
 type Seal = (env: CryptoEnv, value: string, context: string) => Promise<string>

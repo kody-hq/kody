@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { sha256Hex } from '@kody-internal/shared/sha256.ts'
 import {
 	earliestSecretExpiresAt,
@@ -41,7 +41,7 @@ import {
 	resolveSecretListScopeOrder,
 	resolveSecretScopeOrder,
 } from './secret-bindings.ts'
-import { type StorageContext } from '#mcp/storage.ts'
+import type { StorageContext } from '#mcp/storage.ts'
 import {
 	clearSecretValueEntry,
 	deleteSecretEntry,
@@ -64,12 +64,12 @@ import {
 	assertWithinStorageBytesEntitlement,
 	estimateEntitlementStorageEntryByteDelta,
 } from '#worker/entitlements/service.ts'
-import { type UserMeterEnv } from '#worker/entitlements/user-meter-client.ts'
-import {
-	type ListedSecret,
-	type SecretMetadata,
-	type SecretScope,
-	type StoredCredentialKind,
+import type { UserMeterEnv } from '#worker/entitlements/user-meter-client.ts'
+import type {
+	ListedSecret,
+	SecretMetadata,
+	SecretScope,
+	StoredCredentialKind,
 } from './types.ts'
 import {
 	type OrgAuditOutboxEvent,
@@ -81,7 +81,7 @@ import {
 	isUntouchedDefaultPlacement,
 	resolvePackageSecretPlacement,
 } from '#worker/credentials/resolve-package-secret-placement.ts'
-import { type CredentialPlacementOrigin } from '#worker/credentials/placement-origin.ts'
+import type { CredentialPlacementOrigin } from '#worker/credentials/placement-origin.ts'
 import {
 	containsSealedToken,
 	sealedTokenValueRefusal,

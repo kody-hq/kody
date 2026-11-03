@@ -7,7 +7,7 @@ import {
 
 import { handleNxCacheRequest, MAX_ARTIFACT_BYTES } from './handle-request.ts'
 import { createMemoryCacheStore } from './memory-store.ts'
-import { type NxCacheStore } from './nx-cache-types.ts'
+import type { NxCacheStore } from './nx-cache-types.ts'
 
 type NxCacheRequestLog = {
 	method: string

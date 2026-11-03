@@ -1,8 +1,8 @@
-import {
-	type PackageStorageMatch,
-	type PackageStorageDetectionPattern,
+import type {
+	PackageStorageMatch,
+	PackageStorageDetectionPattern,
 } from './package-storage-use.ts'
-import { type CapabilitySetEntry } from './capability-set.ts'
+import type { CapabilitySetEntry } from './capability-set.ts'
 
 export type SelfPublishBlocker =
 	| 'unpublished'

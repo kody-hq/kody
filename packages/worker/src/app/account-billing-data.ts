@@ -1,6 +1,6 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { orgUsageCreditsPath, orgUsagePath } from '#universal/org-pages.ts'
-import { type AccountBillingLoaderData } from '#universal/loader-data.ts'
+import type { AccountBillingLoaderData } from '#universal/loader-data.ts'
 import { getCanonicalAppBaseUrl } from '#worker/app-base-url.ts'
 import {
 	getPurchasablePlans,

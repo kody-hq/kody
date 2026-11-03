@@ -6,7 +6,7 @@
  */
 import * as Sentry from '@sentry/cloudflare'
 import { parseAuthoredPackageJson } from '#worker/package-registry/manifest.ts'
-import { type AuthoredPackageJson } from '#worker/package-registry/types.ts'
+import type { AuthoredPackageJson } from '#worker/package-registry/types.ts'
 import { resolveSavedPackageImport } from '#worker/package-runtime/package-import-resolution.ts'
 import {
 	readPublishedCredentialNeeds,
@@ -20,7 +20,7 @@ import {
 } from '#worker/repo/entity-sources.ts'
 import { normalizeRepoWorkspacePath } from '#worker/repo/manifest.ts'
 import { loadPublishedEntityManifest } from '#worker/repo/published-source.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 import { isPackageCredentialSuppliersEnabled } from './credential-suppliers-flag.ts'
 import {
 	mergeCredentialNeeds,

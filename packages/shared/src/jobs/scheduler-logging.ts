@@ -1,5 +1,5 @@
 import { formatJobError } from './schedule.ts'
-import { type JobSchedule } from './types.ts'
+import type { JobSchedule } from './types.ts'
 
 const maxLoggedJobOutcomes = 10
 const maxLoggedStringLength = 1_000

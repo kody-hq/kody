@@ -6,7 +6,7 @@
  * type `profile`) never feed a person's roles or org binding, so these writes
  * do not bump `orgs.access_epoch`.
  */
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import {
 	maxProfileDepth,
 	profilePurgeAfterDays,

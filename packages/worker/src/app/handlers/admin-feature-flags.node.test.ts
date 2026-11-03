@@ -1,4 +1,4 @@
-import { type PermissionString, type RoleName } from '#universal/permissions.ts'
+import type { PermissionString, RoleName } from '#universal/permissions.ts'
 import type * as AuditLog from '#worker/audit-log.ts'
 import { adminOperationOutcome } from '#worker/test-support/admin-operation-outcome.ts'
 import { logAuditEventSpy } from '#worker/test-support/audit-log-spy.ts'

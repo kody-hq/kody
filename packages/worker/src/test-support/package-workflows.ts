@@ -5,9 +5,9 @@ import type * as packageInvocationsServiceModule from '#worker/package-invocatio
 import { terminalWorkflowStatusValues } from '#worker/package-runtime/workflow-statuses.ts'
 import { creatingWorkflowProjectionStatus } from '#worker/run-records/workflow-projection.ts'
 import type * as runRecordsServiceModule from '#worker/run-records/service.ts'
-import {
-	type WorkflowProjectionRecord,
-	type WorkflowProjectionUpsertInput,
+import type {
+	WorkflowProjectionRecord,
+	WorkflowProjectionUpsertInput,
 } from '#worker/run-records/service.ts'
 import { dynamicCallableWorkflowsBindingName } from '#worker/package-runtime/package-workflows.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'

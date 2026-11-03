@@ -1,6 +1,6 @@
 import { jsx } from 'react/jsx-runtime'
 import { renderStartPage } from './test-support/render-start-page.ts'
-import { type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 const renderToString = (page: ReactNode) => renderStartPage(page, '/docs')
 import { expect, test } from 'vitest'
 import { renderMarkdownNodes } from './components/markdown-view.tsx'

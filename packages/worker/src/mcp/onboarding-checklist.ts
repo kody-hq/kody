@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	readCurrentEntitlementResourceUsage,
 	type EntitlementUsageEnv,
@@ -8,9 +8,9 @@ import {
 	userHasFirstExecute,
 	userHasFirstSearch,
 } from '#worker/identity/activation-stamps.ts'
-import {
-	type OnboardingChecklistItem,
-	type OnboardingChecklistItemId,
+import type {
+	OnboardingChecklistItem,
+	OnboardingChecklistItemId,
 } from '#universal/onboarding-process.ts'
 
 /**

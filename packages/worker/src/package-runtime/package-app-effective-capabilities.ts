@@ -1,5 +1,5 @@
-import { type AuthoredPackageJson } from '#worker/package-registry/types.ts'
-import { type BundleArtifactDependency } from './published-runtime-artifacts.ts'
+import type { AuthoredPackageJson } from '#worker/package-registry/types.ts'
+import type { BundleArtifactDependency } from './published-runtime-artifacts.ts'
 
 /**
  * The Kody capabilities a package declares for its own modules (ADR 0089):

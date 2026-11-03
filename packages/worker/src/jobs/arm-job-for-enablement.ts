@@ -1,5 +1,5 @@
-import { type OrgAuditCause } from '#worker/orgs/org-audit.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OrgAuditCause } from '#worker/orgs/org-audit.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
 import { jobsData } from './jobs-data.ts'
 import { syncJobManagerAlarm } from './manager-client.ts'

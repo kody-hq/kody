@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest'
-import { type ApiInvocationContext } from './context.ts'
+import type { ApiInvocationContext } from './context.ts'
 
 const createProfile = vi.fn()
 const revokeProfile = vi.fn()

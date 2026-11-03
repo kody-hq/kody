@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { type RunRecord } from '#worker/run-records/types.ts'
+import type { RunRecord } from '#worker/run-records/types.ts'
 import { formatRunRecord } from './shared.ts'
 
 function run(overrides: Partial<RunRecord>): RunRecord {

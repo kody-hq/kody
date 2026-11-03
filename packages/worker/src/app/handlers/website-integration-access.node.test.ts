@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite'
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { loadAccountIntegrationByName } from '#app/account-integrations-data.ts'
 import { createOrganization } from '#worker/orgs/create-organization.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
@@ -20,7 +20,7 @@ import {
 	personIdFromStored,
 	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { expect, test, vi } from 'vitest'
 import {
 	deleteAccountOauthApp,

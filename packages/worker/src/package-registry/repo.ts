@@ -1,6 +1,6 @@
-import {
-	type OwnerId,
-	type PersonId,
+import type {
+	OwnerId,
+	PersonId,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { d1ContainsLikePattern } from '#worker/d1-like-pattern.ts'
 import { chunkArray } from '@kody-internal/shared/chunk.ts'
@@ -8,7 +8,7 @@ import { parseTagsJson } from '@kody-internal/shared/tags-json.ts'
 import { classifyForkListingRelation } from '#universal/community-listing-ahead.ts'
 import { buildLengthSafeVectorId } from '#worker/vectorize/vector-ids.ts'
 import { stampFirstSavedPackage } from '#worker/identity/activation-stamps.ts'
-import { type OnboardingFunnelEnv } from '#worker/identity/onboarding-funnel-event.ts'
+import type { OnboardingFunnelEnv } from '#worker/identity/onboarding-funnel-event.ts'
 import {
 	getPackageNameLeaf,
 	getPackageNameScope,
@@ -16,7 +16,7 @@ import {
 } from './package-name.ts'
 import { clearCachedPackageAppCustomHostnames } from '#worker/package-app-custom-hostnames/lookup-cache.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
-import { type OrgAuditWriter } from '#worker/orgs/org-audit.ts'
+import type { OrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import {
 	packageAuditActions,
 	packageSettingsAuditDetails,

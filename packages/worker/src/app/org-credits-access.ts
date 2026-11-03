@@ -1,5 +1,5 @@
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	decodeCreditLedgerCursor,
 	loadOrgCreditsData,

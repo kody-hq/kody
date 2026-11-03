@@ -5,7 +5,7 @@ import {
 	getDeadLetterQueue,
 	type DeadLetterQueueDefinition,
 } from '#worker/dead-letter/queues.ts'
-import { type ParkedDeadLetterMessage } from '#worker/dead-letter/store.ts'
+import type { ParkedDeadLetterMessage } from '#worker/dead-letter/store.ts'
 
 export const deadLetterQueueNameSchema = z
 	.enum(deadLetterQueueNames)

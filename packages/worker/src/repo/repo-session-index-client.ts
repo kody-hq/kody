@@ -1,6 +1,6 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { repoSessionIndexDurableObjectName } from '#worker/user-scoped-durable-object-name.ts'
-import { type RepoSessionIndexRpc } from './repo-session-index-do.ts'
+import type { RepoSessionIndexRpc } from './repo-session-index-do.ts'
 
 export type RepoSessionIndexEnv = {
 	REPO_SESSION_INDEX?: DurableObjectNamespace

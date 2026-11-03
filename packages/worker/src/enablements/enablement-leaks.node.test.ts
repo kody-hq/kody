@@ -1,4 +1,4 @@
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 /**
  * Enablement leak tests (credentials plan v4, PR 7b). Real boundaries: a
  * migrated APP_DB and AUDIT_DB, a real team org moved to enablements, real
@@ -10,16 +10,16 @@ import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
  */
 import { DatabaseSync } from 'node:sqlite'
 import type * as CloudflareWorkers from 'cloudflare:workers'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import {
 	ownerIdFromStored,
 	personalOrgId,
 	personIdFromStored,
 	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import {
-	type OrgRole,
-	type RequestContext,
+import type {
+	OrgRole,
+	RequestContext,
 } from '@kody-internal/shared/request-context.ts'
 import { expect, test, vi } from 'vitest'
 import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
@@ -31,7 +31,7 @@ import { buildPackageJobId } from '#worker/jobs/package-job-id.ts'
 import { upsertGrant } from '#worker/orgs/access-writes.ts'
 import { createOrganization } from '#worker/orgs/create-organization.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
-import { type PackageInvocationResponse } from '#worker/package-invocations/common.ts'
+import type { PackageInvocationResponse } from '#worker/package-invocations/common.ts'
 import type * as IdempotentModuleInvocation from '#worker/package-invocations/idempotent-module-invocation.ts'
 import type * as ModuleArtifacts from '#worker/package-invocations/module-artifacts.ts'
 import { runSavedPackageModuleOnce } from '#worker/package-invocations/module-execution.ts'

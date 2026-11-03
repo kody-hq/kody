@@ -1,6 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { beforeEach, expect, test, vi } from 'vitest'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { approvedCommitCache } from '#worker/package-capabilities/approved-commit-cache.ts'
 import {
 	resolveInternetVisibleApprovedCommit,

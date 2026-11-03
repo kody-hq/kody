@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite'
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { expect, test } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'

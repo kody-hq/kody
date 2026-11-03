@@ -1,5 +1,5 @@
 import { errorCauseChainIncludes } from '@kody-internal/shared/error-message.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { shouldStoreArtifactBlobAsLatin1 } from '#universal/package-file-media.ts'
 import { isDurableObjectIsolateResourceLimitResetMessage } from '#worker/sentry-options.ts'
 import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
@@ -20,9 +20,9 @@ import {
 	writePublishedSourceSnapshot,
 } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { refreshSavedPackageProjection } from '#worker/package-registry/service.ts'
-import {
-	type AuthoredPackageJson,
-	type PackageCredentialSlot,
+import type {
+	AuthoredPackageJson,
+	PackageCredentialSlot,
 } from '#worker/package-registry/types.ts'
 import { runAuthoringPublishChecks } from './authoring-publish-checks.ts'
 import {
@@ -47,8 +47,8 @@ import {
 	largestNonRuntimePaths,
 	type LargePathHint,
 } from './publish-size-hints.ts'
-import { type PublishPhaseTimings } from './publish-phase-timing.ts'
-import { type EntitySourceRow } from './types.ts'
+import type { PublishPhaseTimings } from './publish-phase-timing.ts'
+import type { EntitySourceRow } from './types.ts'
 
 /**
  * Heavy publish work (checks, credential scans and stamps, credential-needs

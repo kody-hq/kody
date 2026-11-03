@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	type AutomationExecution,
 	automationExecutionSchema,
@@ -23,9 +23,9 @@ import { NonRetryableError } from 'cloudflare:workflows'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { backgroundExecutorTimeoutMs } from '#mcp/executor-budgets.ts'
-import {
-	type OrgRole,
-	type RequestLineage,
+import type {
+	OrgRole,
+	RequestLineage,
 } from '@kody-internal/shared/request-context.ts'
 import { loadLiveOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import {

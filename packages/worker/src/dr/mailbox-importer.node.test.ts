@@ -21,9 +21,9 @@ import {
 	runMailboxImportTick,
 } from '#worker/dr/mailbox-importer.ts'
 import { handleMailboxImportRequest } from '#worker/dr/mailbox-import-maintenance.ts'
-import {
-	type DrBackupS3Client,
-	type DrBackupS3PutOptions,
+import type {
+	DrBackupS3Client,
+	DrBackupS3PutOptions,
 } from '#worker/dr/backup-s3.ts'
 import { sha256Hex } from '#worker/dr/sha256.ts'
 

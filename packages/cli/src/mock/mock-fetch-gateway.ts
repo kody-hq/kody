@@ -12,7 +12,7 @@
  */
 
 import { StructuredCliError } from '../structured-error.js'
-import { type KodyTarget } from '../target.js'
+import type { KodyTarget } from '../target.js'
 import { type EnsureMswInput, importMsw } from './ensure-msw.js'
 import { loadPackageMocks } from './load-package-mocks.js'
 

@@ -1,5 +1,5 @@
-import { type CloudflareArtifactsRepoEvent } from '#worker/repo/artifacts-events.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
+import type { CloudflareArtifactsRepoEvent } from '#worker/repo/artifacts-events.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 import { mergeFollowPushWindow, type FollowPushIngress } from './coalesce.ts'
 import { deliverFollowRecords } from './deliver.ts'
 import {
@@ -8,7 +8,7 @@ import {
 	listActiveFollowsByTarget,
 	upsertFollowPushPending,
 } from './repo.ts'
-import { type FollowPushCommit, type FollowTargetKind } from './types.ts'
+import type { FollowPushCommit, FollowTargetKind } from './types.ts'
 
 const followPushCoalesceAttempts = 5
 

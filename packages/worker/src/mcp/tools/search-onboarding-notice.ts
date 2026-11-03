@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	formatOnboardingSearchNotice,
 	remainingOnboardingWizardLabels,
@@ -10,7 +10,7 @@ import {
 } from '#mcp/onboarding-checklist.ts'
 import { loadInboundMcpConnectionState } from '#worker/connected-mcp-agents.ts'
 import { resolveOAuthHelpers } from '#worker/oauth-helpers.ts'
-import { type OAuthGrantListHelpers } from '#worker/oauth-grants.ts'
+import type { OAuthGrantListHelpers } from '#worker/oauth-grants.ts'
 
 /**
  * One-line onboarding reminder appended to `search` notices, at most once per

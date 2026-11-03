@@ -1,4 +1,4 @@
-import { type McpUserContext } from '@kody-internal/shared/chat.ts'
+import type { McpUserContext } from '@kody-internal/shared/chat.ts'
 import {
 	buildForkPrompt,
 	toOnboardingFeaturedListing,
@@ -19,9 +19,9 @@ import { parseCommunityListingCategory } from '#universal/community-categories.t
 import { listOnboardingFeaturedMcpListingIds } from '#universal/onboarding-mcp-chooser.ts'
 import { parseCommunityListingSort } from '#universal/community-search.ts'
 import { fallbackDefaultBranchName } from '#universal/package-files.ts'
-import {
-	type CommunityDetailLoaderData,
-	type CommunityIndexLoaderData,
+import type {
+	CommunityDetailLoaderData,
+	CommunityIndexLoaderData,
 } from '#universal/loader-data.ts'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { loadViewerPrivateCommunityForks } from '#app/community-forks-data.ts'

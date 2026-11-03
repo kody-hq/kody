@@ -1,7 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { sessionRequestLineage } from '#worker/test-support/request-context.ts'
-import { type WorkflowProjectionUpsertInput } from '#worker/run-records/service.ts'
+import type { WorkflowProjectionUpsertInput } from '#worker/run-records/service.ts'
 import { creatingWorkflowProjectionStatus } from '#worker/run-records/workflow-projection.ts'
 import {
 	packageWorkflowsRunRecordMocks as runRecordMocks,

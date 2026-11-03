@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { useState, useRef, type FormEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'

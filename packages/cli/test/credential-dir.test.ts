@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import { type spawn } from 'node:child_process'
+import type { spawn } from 'node:child_process'
 import assert from 'node:assert/strict'
 import {
 	chmodSync,

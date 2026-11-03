@@ -4,7 +4,7 @@ import {
 } from '#universal/community-listing-ahead.ts'
 import { listingPinIsAncestorOfForkTip } from '#worker/community/fork-listing-ancestry.ts'
 import { getCommunityListingById } from '#worker/community/repo.ts'
-import { type SavedPackageWithCommunityProvenanceRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageWithCommunityProvenanceRecord } from '#worker/package-registry/types.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 
 export function needsForkListingAncestry(input: {

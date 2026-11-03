@@ -1,11 +1,11 @@
-import { type JsonSchemaToolDescriptors } from '@cloudflare/codemode'
+import type { JsonSchemaToolDescriptors } from '@cloudflare/codemode'
 import { defineDomain } from './define-domain.ts'
-import { type CapabilityDomain } from './domain-metadata.ts'
-import {
-	type Capability,
-	type CapabilityDomainMetadata,
-	type CapabilitySpec,
-	type DomainSpec,
+import type { CapabilityDomain } from './domain-metadata.ts'
+import type {
+	Capability,
+	CapabilityDomainMetadata,
+	CapabilitySpec,
+	DomainSpec,
 } from './types.ts'
 
 export type BuiltCapabilityRegistry = {

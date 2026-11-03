@@ -1,4 +1,4 @@
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { createOrganization } from '#worker/orgs/create-organization.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'

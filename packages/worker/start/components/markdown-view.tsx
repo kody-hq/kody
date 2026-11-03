@@ -40,15 +40,15 @@ import { publicAsset } from '../public-assets.ts'
 import { SiteLink } from './site-link.tsx'
 
 import { parseKodyMarkdown } from '#universal/markdown.ts'
-import {
-	type BlockNode,
-	type InlineNode,
-	type TableNode,
-	type TableCellNode,
+import type {
+	BlockNode,
+	InlineNode,
+	TableNode,
+	TableCellNode,
 } from '@tanstack/markdown'
 type MarkdownNode = BlockNode | InlineNode
-import { type CSSObject } from '@emotion/react'
-import { type ReactNode } from 'react'
+import type { CSSObject } from '@emotion/react'
+import type { ReactNode } from 'react'
 import { CopyCodeBlock } from './copy-code-block.tsx'
 import { DocYoutubeEmbed } from './doc-youtube-embed.tsx'
 import { renderMarkdownHeadingAnchor } from './markdown-heading-anchor.tsx'

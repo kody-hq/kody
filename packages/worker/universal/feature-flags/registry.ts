@@ -21,7 +21,7 @@ import {
 	defaultFeatureFlagAudience,
 	type FeatureFlagAudience,
 } from './audiences.ts'
-import { type UsageEventType } from '#universal/usage-event-types.ts'
+import type { UsageEventType } from '#universal/usage-event-types.ts'
 
 export type FeatureFlagSuccessMetricMeasure =
 	| 'event_count'

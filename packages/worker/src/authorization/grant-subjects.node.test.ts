@@ -5,7 +5,7 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { expect, test } from 'vitest'
 import {
 	contextGrantSubjects,
@@ -35,7 +35,7 @@ import {
 	compileAccessForRequest,
 	liveGrantRowSubjects,
 } from './access-compile.ts'
-import { type GrantSubjectChoices } from './grant-subjects.ts'
+import type { GrantSubjectChoices } from './grant-subjects.ts'
 
 const workerSrc = fileURLToPath(new URL('../', import.meta.url))
 

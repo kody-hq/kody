@@ -19,9 +19,9 @@ import {
 	repoPushQueueWallMsHeader,
 } from '@kody-internal/shared/repo-push-queue-protocol.ts'
 import { recordRepoPushOwnersFlagExposure } from '#worker/feature-flags/repo-push-owners-exposure.ts'
-import { type FeatureFlagEvaluation } from '#worker/feature-flags/service.ts'
+import type { FeatureFlagEvaluation } from '#worker/feature-flags/service.ts'
 import { recordUsage, type UsageEnv } from '#worker/usage/record-usage.ts'
-import { type FeatureFlagExposureEnv } from '#worker/feature-flags/exposure.ts'
+import type { FeatureFlagExposureEnv } from '#worker/feature-flags/exposure.ts'
 
 /** `git_push` entity id: which receive-pack path served the push. */
 export type ReceivePackPath = 'queued' | 'direct'

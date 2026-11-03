@@ -5,7 +5,7 @@
  * / platform rows. Customer copy never says UWD.
  */
 import { creditDebitCostMicroUsd, type CreditDebitMeter } from './credits.ts'
-import { type ComputeOverageWarningResource } from './compute-overage.ts'
+import type { ComputeOverageWarningResource } from './compute-overage.ts'
 import { connectedAgentConnectionLabel } from './connected-mcp-agents.ts'
 import { connectionUsageKindLabel } from './connection-usage-presentation.ts'
 

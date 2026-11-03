@@ -11,7 +11,7 @@
  * marks Grok Bot connected, because Grok Bot uses that connection.
  */
 
-import { type McpClientKind } from '#universal/onboarding-mcp-clients.ts'
+import type { McpClientKind } from '#universal/onboarding-mcp-clients.ts'
 
 const onboardingAgentEcosystems = {
 	openai: ['chatgpt', 'codex', 'dots'],

@@ -6,7 +6,7 @@ import { secretAuthorityHeaderName } from '#mcp/secrets/secret-authority.ts'
 import { capabilityProxyCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { authorizeLocalExecutePackageBinding } from './capability-proxy-package-grants.ts'
-import { type ApiInvocationContext } from './context.ts'
+import type { ApiInvocationContext } from './context.ts'
 import { ApiError, invalidRequest } from './errors.ts'
 import {
 	assertContextRunRuntimePathAllowed,

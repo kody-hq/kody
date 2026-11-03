@@ -1,5 +1,5 @@
 import { vi } from 'vitest'
-import { type Workspace } from '@cloudflare/shell'
+import type { Workspace } from '@cloudflare/shell'
 import type isomorphicGit from 'isomorphic-git'
 import type * as publishedBundleArtifactsModule from '#worker/package-runtime/published-bundle-artifacts.ts'
 import type * as publishedRuntimeArtifactsModule from '#worker/package-runtime/published-runtime-artifacts.ts'

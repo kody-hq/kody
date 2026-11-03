@@ -1,5 +1,5 @@
 import { jobsService } from '#worker/jobs/jobs-data.ts'
-import { type DeadLetterQueueDefinition } from './queues.ts'
+import type { DeadLetterQueueDefinition } from './queues.ts'
 
 export type DeadLetterReplayEnv = Pick<
 	Env,

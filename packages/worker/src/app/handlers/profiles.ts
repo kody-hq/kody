@@ -3,13 +3,13 @@
  * write goes through the existing profile capabilities and token
  * operations, so the page has exactly the authority MCP and the API have.
  */
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	callCapabilityAsWebsite,
 	websiteCapabilityContext,
 } from '#app/website-capability.ts'
 import { getStaticRegistry } from '#mcp/capabilities/registry.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { createApiInvocationContext } from '#worker/open-api/context.ts'
 import { invokeApiOperation } from '#worker/open-api/invoke.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
@@ -18,12 +18,12 @@ import { isProfilesEnabledFor } from '#worker/profiles/flag.ts'
 import { profileOrgLevelAllowlist } from '#worker/profiles/rules.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { packageCollaboratorPermissions } from '#universal/package-collaborators.ts'
-import {
-	type ProfileGrantOption,
-	type ProfileItem,
-	type ProfilesPageData,
-	type ProfileStatus,
-	type ProfileTokenItem,
+import type {
+	ProfileGrantOption,
+	ProfileItem,
+	ProfilesPageData,
+	ProfileStatus,
+	ProfileTokenItem,
 } from '#universal/profiles.ts'
 import { routes } from '#universal/routes.ts'
 import { readExecutionContextFailure } from './execution-contexts.ts'
