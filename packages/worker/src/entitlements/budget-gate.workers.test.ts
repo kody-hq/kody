@@ -4,13 +4,21 @@ import { expect, test } from 'vitest'
 import { seedAccount } from '#worker/test-support/workers-seed.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { ensureEntitlementTestSchema } from './test-schema.ts'
-import { consumeExecuteUniqueWorkerDay } from './service.ts'
-import { isBudgetLimitError } from './errors.ts'
 import {
+	assertWithinComputeInclude,
+	consumeDailyEntitlement,
+	consumeExecuteUniqueWorkerDay,
+} from './service.ts'
+import { BudgetLimitError } from './errors.ts'
+import {
+	orgBudgetForJobExecution,
 	recordOrgBudgetSpend,
 	syncOrgBudgetSpendFromCreditLedger,
 } from './budget-gate.ts'
-import { userMeterRpc } from './user-meter-client.ts'
+import {
+	checkUserMeterBudgetAndRecord,
+	userMeterRpc,
+} from './user-meter-client.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { ensureCreditWalletTestSchema } from '#worker/billing/test-schema.ts'
 
@@ -18,16 +26,21 @@ import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 const now = new Date('2026-03-15T12:00:00.000Z')
 const month = utcMonthKey(now)
 
-test('over user budget denies a new execute worker via consumeExecuteUniqueWorkerDay', async () => {
+async function seedBudgetOrg(input: {
+	prefix: string
+	userBudgetMicroUsd: number | null
+	automationBudgetMicroUsd: number | null
+}) {
 	await ensureEntitlementTestSchema(env.APP_DB)
 	await ensureOrgsTestSchema(env.APP_DB)
-	const email = `budget-gate-${crypto.randomUUID()}@example.com`
+	const email = `${input.prefix}-${crypto.randomUUID()}@example.com`
 	const userId = testStableUserIdFromEmail(email)
-	const orgId = userId
+	const suffix = crypto.randomUUID().slice(0, 8)
+	const slug = `acme-${suffix}`
 	await seedAccount({
 		db: env.APP_DB,
 		email,
-		username: 'sam',
+		username: `budget-${suffix}`,
 		plan: 'free',
 		stableUserId: userId,
 	})
@@ -41,41 +54,190 @@ test('over user budget denies a new execute worker via consumeExecuteUniqueWorke
 				default_user_budget_micro_usd = excluded.default_user_budget_micro_usd,
 				automation_budget_micro_usd = excluded.automation_budget_micro_usd`,
 	)
-		.bind(orgId, 'acme', now.toISOString(), now.toISOString(), 50_000_000, null)
+		.bind(
+			userId,
+			slug,
+			now.toISOString(),
+			now.toISOString(),
+			input.userBudgetMicroUsd,
+			input.automationBudgetMicroUsd,
+		)
 		.run()
-	const meter = userMeterRpc({ env, userId: ownerIdFromStored(orgId) })
-	await meter.assertWithinBudgetAndRecord({
-		month,
-		actorUserId: userId,
-		automationSource: null,
-		deltaMicroUsd: 50_000_000,
-		userBudgetMicroUsd: 50_000_000,
-		automationBudgetMicroUsd: null,
-		actorUsername: 'sam',
-		orgSlug: 'acme',
-	})
+	return { email, userId, slug, orgId: ownerIdFromStored(userId) }
+}
 
-	const error = await consumeExecuteUniqueWorkerDay({
-		db: env.APP_DB,
-		env,
-		userId: ownerIdFromStored(userId),
-		email,
-		workerId: 'kody-budget-gate',
-		now,
-		orgBudget: {
-			orgId: ownerIdFromStored(orgId),
-			orgSlug: 'acme',
-			actorUserId: userId,
-			actorUsername: 'sam',
-		},
-	}).then(
+function catchError(promise: Promise<unknown>) {
+	return promise.then(
 		() => null,
 		(caught: unknown) => caught,
 	)
-	expect(isBudgetLimitError(error)).toBe(true)
-	if (!isBudgetLimitError(error)) return
-	expect(error.message).toContain('@sam')
-	expect(error.message).toContain('@acme')
+}
+
+const samOverBudget = (slug: string) =>
+	`@sam reached their monthly budget in org @${slug} ($50.00 of $50.00). An org Owner or Billing member can raise it.`
+const automationOverBudget = (slug: string) =>
+	`Automation in org @${slug} reached its monthly budget. An org Owner or Billing member can raise it.`
+
+async function seedSamAtBudget() {
+	const seeded = await seedBudgetOrg({
+		prefix: 'budget-gate',
+		userBudgetMicroUsd: 50_000_000,
+		automationBudgetMicroUsd: null,
+	})
+	await checkUserMeterBudgetAndRecord({
+		env,
+		userId: seeded.orgId,
+		check: {
+			month,
+			actorUserId: seeded.userId,
+			automationSource: null,
+			deltaMicroUsd: 50_000_000,
+			userBudgetMicroUsd: 50_000_000,
+			automationBudgetMicroUsd: null,
+			actorUsername: 'sam',
+			orgSlug: seeded.slug,
+		},
+	})
+	return seeded
+}
+
+function expectSamDenial(error: unknown, slug: string) {
+	expect(error).toBeInstanceOf(BudgetLimitError)
+	expect((error as BudgetLimitError).message).toBe(samOverBudget(slug))
+	expect((error as BudgetLimitError).details).toEqual({
+		code: 'org_budget_limit_exceeded',
+		kind: 'user',
+		orgSlug: slug,
+		actorUsername: 'sam',
+		spentMicroUsd: 50_000_000,
+		budgetMicroUsd: 50_000_000,
+	})
+}
+
+test('over user budget denies a new execute worker via consumeExecuteUniqueWorkerDay', async () => {
+	const { email, userId, slug, orgId } = await seedSamAtBudget()
+	const error = await catchError(
+		consumeExecuteUniqueWorkerDay({
+			db: env.APP_DB,
+			env,
+			userId: orgId,
+			email,
+			workerId: 'kody-budget-gate',
+			now,
+			orgBudget: {
+				orgId,
+				orgSlug: slug,
+				actorUserId: userId,
+				actorUsername: 'sam',
+			},
+		}),
+	)
+	expectSamDenial(error, slug)
+	const state = await userMeterRpc({ env, userId: orgId }).getBudgetSpend({
+		month,
+	})
+	expect(state.users[userId]).toBe(50_000_000)
+})
+
+test('over user budget denies package app compute via assertWithinComputeInclude', async () => {
+	const { userId, slug, orgId } = await seedSamAtBudget()
+	const error = await catchError(
+		assertWithinComputeInclude({
+			db: env.APP_DB,
+			env,
+			userId: orgId,
+			now,
+			orgBudget: {
+				orgId,
+				orgSlug: slug,
+				actorUserId: userId,
+				actorUsername: 'sam',
+			},
+		}),
+	)
+	expectSamDenial(error, slug)
+})
+
+test('over automation budget denies scheduled job runs via consumeDailyEntitlement', async () => {
+	const { email, slug, orgId } = await seedBudgetOrg({
+		prefix: 'budget-automation',
+		userBudgetMicroUsd: null,
+		automationBudgetMicroUsd: 1_000_000,
+	})
+	await checkUserMeterBudgetAndRecord({
+		env,
+		userId: orgId,
+		check: {
+			month,
+			actorUserId: null,
+			automationSource: 'schedule',
+			deltaMicroUsd: 1_000_000,
+			userBudgetMicroUsd: null,
+			automationBudgetMicroUsd: 1_000_000,
+			orgSlug: slug,
+		},
+	})
+	const orgBudget = orgBudgetForJobExecution({
+		orgId,
+		orgSlug: slug,
+		source: { kind: 'schedule', jobId: 'job-1' },
+	})
+	const error = await catchError(
+		consumeDailyEntitlement({
+			db: env.APP_DB,
+			env,
+			userId: orgId,
+			email,
+			resource: 'job_runs_per_day',
+			now,
+			orgBudget,
+		}),
+	)
+	expect(error).toBeInstanceOf(BudgetLimitError)
+	expect((error as BudgetLimitError).message).toBe(automationOverBudget(slug))
+	expect((error as BudgetLimitError).details).toEqual({
+		code: 'org_budget_limit_exceeded',
+		kind: 'automation',
+		orgSlug: slug,
+		spentMicroUsd: 1_000_000,
+		budgetMicroUsd: 1_000_000,
+	})
+	const executeError = await catchError(
+		consumeExecuteUniqueWorkerDay({
+			db: env.APP_DB,
+			env,
+			userId: orgId,
+			email,
+			workerId: 'kody-budget-automation',
+			now,
+			orgBudget,
+		}),
+	)
+	expect((executeError as BudgetLimitError).message).toBe(
+		automationOverBudget(slug),
+	)
+	const state = await userMeterRpc({ env, userId: orgId }).getBudgetSpend({
+		month,
+	})
+	expect(state.automationMicroUsd).toBe(1_000_000)
+})
+
+test('recordOrgBudgetSpend records the live month without a limit check', async () => {
+	const { userId, slug, orgId } = await seedSamAtBudget()
+	await recordOrgBudgetSpend({
+		db: env.APP_DB,
+		env,
+		orgId,
+		orgSlug: slug,
+		actorUserId: userId,
+		automationSource: null,
+		deltaMicroUsd: 5_000_000,
+		now,
+	})
+	const state = await userMeterRpc({ env, userId: orgId }).getBudgetSpend({
+		month,
+	})
+	expect(state.users[userId]).toBe(55_000_000)
 })
 
 test('recordOrgBudgetSpend skips past-month debits without resetting live MTD', async () => {
@@ -110,15 +272,19 @@ test('recordOrgBudgetSpend skips past-month debits without resetting live MTD', 
 		)
 		.run()
 	const meter = userMeterRpc({ env, userId: ownerIdFromStored(orgId) })
-	await meter.assertWithinBudgetAndRecord({
-		month: utcMonthKey(april),
-		actorUserId: userId,
-		automationSource: null,
-		deltaMicroUsd: 10_000_000,
-		userBudgetMicroUsd: 50_000_000,
-		automationBudgetMicroUsd: null,
-		actorUsername: 'april-user',
-		orgSlug: 'april-org',
+	await checkUserMeterBudgetAndRecord({
+		env,
+		userId: ownerIdFromStored(orgId),
+		check: {
+			month: utcMonthKey(april),
+			actorUserId: userId,
+			automationSource: null,
+			deltaMicroUsd: 10_000_000,
+			userBudgetMicroUsd: 50_000_000,
+			automationBudgetMicroUsd: null,
+			actorUsername: 'april-user',
+			orgSlug: 'april-org',
+		},
 	})
 	await recordOrgBudgetSpend({
 		db: env.APP_DB,
@@ -248,13 +414,17 @@ test('syncOrgBudgetSpendFromCreditLedger recovers MTD from ledger and weights ov
 	expect(third.users[memberB]).toBe(20_000)
 
 	// Ledger replace must overwrite provisional estimate rows even when lower.
-	await meter.assertWithinBudgetAndRecord({
-		month,
-		actorUserId: memberB,
-		automationSource: null,
-		deltaMicroUsd: 50_000,
-		userBudgetMicroUsd: 1_000_000,
-		automationBudgetMicroUsd: null,
+	await checkUserMeterBudgetAndRecord({
+		env,
+		userId: ownerIdFromStored(orgId),
+		check: {
+			month,
+			actorUserId: memberB,
+			automationSource: null,
+			deltaMicroUsd: 50_000,
+			userBudgetMicroUsd: 1_000_000,
+			automationBudgetMicroUsd: null,
+		},
 	})
 	await meter.replaceBudgetSpendFromLedger({
 		month,
