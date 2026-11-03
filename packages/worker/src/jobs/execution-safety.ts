@@ -12,6 +12,11 @@ import type { JobExecutionOutcome, PersistedJobCallerContext } from './types.ts'
 
 export const jobRetryBaseDelayMs = 5_000
 export const jobRetryMaximumDelayMs = 5 * 60 * 1_000
+/**
+ * How long after a publish a run keeps retrying while that publish's job
+ * bundle is still being built and no earlier bundle exists to serve.
+ */
+export const pendingJobBundleRetryWindowMs = 30 * 60 * 1_000
 
 export class TransientJobExecutionError extends Error {
 	override readonly name = 'TransientJobExecutionError'

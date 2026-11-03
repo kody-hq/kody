@@ -78,6 +78,19 @@ export function isPublishedRuntimeBundleMissingError(error: unknown) {
 	)
 }
 
+export function createPublishedRuntimeBundleMissingError(input: {
+	missingDependencies: ReadonlyArray<string>
+	bundleLabel: string
+}) {
+	return new Error(
+		`${input.bundleLabel} declares npm dependencies (${input.missingDependencies
+			.map((dependency) => `"${dependency}"`)
+			.join(
+				', ',
+			)}) but ${publishedRuntimeBundleMissingMessage}. Republish the package so Kody can install dependencies and persist a fresh runtime bundle artifact.`,
+	)
+}
+
 export function assertPublishedSourceCanRebuildWithoutInstallingDeps(input: {
 	sourceFiles: Record<string, string>
 	bundleLabel: string
@@ -86,11 +99,8 @@ export function assertPublishedSourceCanRebuildWithoutInstallingDeps(input: {
 		input.sourceFiles,
 	)
 	if (missingDependencies.length === 0) return
-	throw new Error(
-		`${input.bundleLabel} declares npm dependencies (${missingDependencies
-			.map((dependency) => `"${dependency}"`)
-			.join(
-				', ',
-			)}) but ${publishedRuntimeBundleMissingMessage}. Republish the package so Kody can install dependencies and persist a fresh runtime bundle artifact.`,
-	)
+	throw createPublishedRuntimeBundleMissingError({
+		missingDependencies,
+		bundleLabel: input.bundleLabel,
+	})
 }
