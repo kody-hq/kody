@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
 
 const migrationsDirectory = new URL('../../migrations/', import.meta.url)
-const migrationFileName = '0239-retire-unused-permissions.sql'
+const migrationFileName = '0241-retire-unused-permissions.sql'
 
 type Row = Record<string, string | number | null>
 
@@ -60,7 +60,7 @@ function grantPermissions(sqlite: DatabaseSync, grantId: string) {
 	).map((row) => row.permission)
 }
 
-test('0239 strips retired permissions from stored scopes and grants', () => {
+test('0241 strips retired permissions from stored scopes and grants', () => {
 	const sqlite = migratedDatabase((db) => {
 		insert(db, 'api_tokens', {
 			id: 'token-full',

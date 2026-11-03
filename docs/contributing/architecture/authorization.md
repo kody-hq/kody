@@ -139,10 +139,11 @@ the org, and a locked package needs a grant on that package with
 granted (advanced checklist only for the app pair) but no surface checks them:
 an app shares its package's id, so changing or deleting it is `package:write` /
 `package:delete`. Holding one of them alone unlocks nothing.
-`permission-enforcement.node.test.ts` pins this list. `job:create`,
-`app:create`, and `email:create` were removed (jobs and apps come from the
-package manifest, inboxes are made at signup); readers of stored scopes drop
-them (`withoutRetiredOrgPermissions`) and migration 0239 strips stored rows.
+`permission-enforcement.node.test.ts` pins this list. Jobs and apps come from
+the package manifest and inboxes are made at signup, so there is no
+`job:create`, `app:create`, or `email:create`. Readers of stored scopes drop
+those values (`withoutRetiredOrgPermissions`), and migration 0241 strips stored
+rows.
 
 A surface check without a resource (capability `orgPermission`, Open API
 `x-kody-permission`) passes when the permission is held at org level **or on any

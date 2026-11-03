@@ -111,7 +111,7 @@ CREATE TABLE __migration_assertions (
 );
 
 INSERT INTO __migration_assertions (message)
-SELECT 'api_tokens still carry a retired permission after 0239; aborting.'
+SELECT 'api_tokens still carry a retired permission after 0241; aborting.'
 WHERE EXISTS (
 	SELECT 1
 	FROM api_tokens AS t, json_each(t.scopes_json) AS j
@@ -119,7 +119,7 @@ WHERE EXISTS (
 );
 
 INSERT INTO __migration_assertions (message)
-SELECT 'grant_permissions still carry a retired permission after 0239; aborting.'
+SELECT 'grant_permissions still carry a retired permission after 0241; aborting.'
 WHERE EXISTS (
 	SELECT 1
 	FROM grant_permissions
