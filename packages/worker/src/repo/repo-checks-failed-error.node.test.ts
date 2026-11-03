@@ -4,9 +4,7 @@ import {
 	isRepoChecksFailedError,
 	RepoChecksFailedError,
 	repoChecksFailedCallerMessage,
-	repoChecksFailedErrorName,
 	RepoChecksPlatformError,
-	repoChecksPlatformErrorName,
 } from './repo-checks-failed-error.ts'
 
 test('createRepoChecksError joins author check failures into RepoChecksFailedError', () => {
@@ -25,7 +23,7 @@ test('createRepoChecksError joins author check failures into RepoChecksFailedErr
 		},
 	])
 	expect(error).toBeInstanceOf(RepoChecksFailedError)
-	expect(error.name).toBe(repoChecksFailedErrorName)
+	expect(error.name).toBe('RepoChecksFailedError')
 	expect(error.message).toBe('src/receive.js(1,1): type error\nbundle boom')
 })
 
@@ -40,7 +38,7 @@ test('createRepoChecksError throws RepoChecksPlatformError when any failure is K
 		},
 	])
 	expect(error).toBeInstanceOf(RepoChecksPlatformError)
-	expect(error.name).toBe(repoChecksPlatformErrorName)
+	expect(error.name).toBe('RepoChecksPlatformError')
 	expect(error.message).toContain('Kody platform failure')
 	expect(error.message).toContain('not a problem with your package')
 	expect(error.message).toContain('@scope/b')
@@ -48,7 +46,7 @@ test('createRepoChecksError throws RepoChecksPlatformError when any failure is K
 	expect(isRepoChecksFailedError(error)).toBe(false)
 	expect(
 		isRepoChecksFailedError(
-			new Error(`${repoChecksPlatformErrorName}: ${error.message}`),
+			new Error(`RepoChecksPlatformError: ${error.message}`),
 		),
 	).toBe(false)
 })
@@ -61,12 +59,12 @@ test('isRepoChecksFailedError matches live class, name-only RPC shape, and JSRPC
 	).toBe(true)
 
 	const nameOnly = new Error('src/receive.js type mismatch')
-	nameOnly.name = repoChecksFailedErrorName
+	nameOnly.name = 'RepoChecksFailedError'
 	expect(isRepoChecksFailedError(nameOnly)).toBe(true)
 
 	expect(
 		isRepoChecksFailedError(
-			new Error(`${repoChecksFailedErrorName}: src/receive.js type mismatch`),
+			new Error('RepoChecksFailedError: src/receive.js type mismatch'),
 		),
 	).toBe(true)
 
@@ -81,7 +79,7 @@ test('isRepoChecksFailedError matches live class, name-only RPC shape, and JSRPC
 test('repoChecksFailedCallerMessage strips a JSRPC name prefix', () => {
 	expect(
 		repoChecksFailedCallerMessage(
-			new Error(`${repoChecksFailedErrorName}: src/receive.js type mismatch`),
+			new Error('RepoChecksFailedError: src/receive.js type mismatch'),
 		),
 	).toBe('src/receive.js type mismatch')
 	expect(

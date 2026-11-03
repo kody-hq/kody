@@ -94,7 +94,13 @@ test('the actor is a person, an automation run, or a site admin outside the org'
 	expect(toggleActorFromRequest(request(), { siteAdmin: true }).kind).toBe(
 		'person',
 	)
-	expect(toggleActorFromRequest(null)).toEqual(automationToggleActor())
+	expect(toggleActorFromRequest(null)).toEqual({
+		kind: 'automation',
+		userId: null,
+		username: null,
+		credentialKind: null,
+		credentialId: null,
+	})
 })
 
 test('reasons are trimmed, blank reasons dropped, long reasons capped', () => {

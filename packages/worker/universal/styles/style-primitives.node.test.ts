@@ -5,15 +5,14 @@ import {
 	getPrimaryButtonCss,
 	getSecondaryButtonCss,
 } from './style-primitives.ts'
-import { typography } from './tokens.ts'
 
 test('filled buttons use the same display font as ghost pills', () => {
-	expect(getGhostButtonCss().font).toContain(typography.fontFamilyDisplay)
+	expect(getGhostButtonCss().font).toContain('var(--font-display)')
 	for (const css of [
 		getPrimaryButtonCss(),
 		getSecondaryButtonCss(),
 		getDangerButtonCss(),
 	]) {
-		expect(css.fontFamily).toBe(typography.fontFamilyDisplay)
+		expect(css.fontFamily).toBe('var(--font-display)')
 	}
 })

@@ -18,7 +18,6 @@ import {
 	createOrg,
 	upsertGrant,
 } from '#worker/orgs/access-writes.ts'
-import { mismatchedPackageScopeMessage } from '#worker/package-registry/package-name.ts'
 import { insertSavedPackage } from '#worker/package-registry/repo.ts'
 import { insertEntitySource } from '#worker/repo/entity-sources.ts'
 import { insertRepoSession } from '#worker/repo/repo-sessions.ts'
@@ -323,11 +322,7 @@ test('repoOpenSession never resolves a package from another org than the bound o
 			),
 		),
 	).toBe(
-		mismatchedPackageScopeMessage({
-			value: '@kentcdodds/github',
-			requestedScope: 'kentcdodds',
-			ownerScope: 'rocket-co',
-		}),
+		'Cannot use package name "@kentcdodds/github": scope "@kentcdodds" does not match the acting owner "@rocket-co". Use the leaf after "/" or "@rocket-co/…".',
 	)
 	expect(
 		await callerError(
