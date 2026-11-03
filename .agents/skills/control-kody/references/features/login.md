@@ -35,4 +35,5 @@ npm run control-kody -- request GET '/device?user_code=BCDF-GHJK' --contains 'Ap
 - Unknown or expired codes show the entry form with an error; misses are rate
   limited per person and per IP.
 - After Approve, the CLI's next poll gets tokens and mints the device API token
-  through `POST /v1/tokens/device` (API host only on previews).
+  through `POST /v1/tokens/device` (same origin on loopback local dev, or the
+  preview `-api` host).

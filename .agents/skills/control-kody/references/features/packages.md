@@ -7,15 +7,16 @@ fixtures after `node tools/seed-test-data.ts --local`.
 
 ```bash
 npm run control-kody -- login
-npm run control-kody -- package-create --origin <preview> --package-name demo-pkg
+npm run control-kody -- package-create --package-name demo-pkg
 npm run control-kody -- request GET /@jane --contains 'Repositories'
 npm run control-kody -- request GET /@jane/-/repositories --contains 'Packages live here too'
 npm run control-kody -- request GET /account/packages.json --contains 'packages'
 ```
 
-`package-create` needs the remote `ARTIFACTS` binding — use a PR preview origin,
-not `npm run dev`, when proving create/publish. See cloud-agents local
-limitations.
+`package-create` works on local `npm run dev` (mock Artifacts). Use a PR preview
+when you need the real remote Artifacts namespace. See
+[control-kody](../../../../../docs/contributing/control-kody.md) and
+[Local limitations](../../../../../docs/contributing/cloud-agents.md#local-limitations).
 
 ## Apps
 
