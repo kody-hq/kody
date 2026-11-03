@@ -11,6 +11,7 @@ import {
 	markQueuedAttemptRan,
 	planTargets,
 	withRunTiming,
+	sharedRunHostRefusal,
 } from './routing.ts'
 import type { ExecutionContextRow } from './store.ts'
 
@@ -402,4 +403,52 @@ test('ranOn carries the timing a context reported, and cloud never does', () => 
 			timing,
 		}),
 	).not.toHaveProperty('timing')
+})
+
+test('host folders stay with the operator: shared runs skip fs and outdated daemons with folders', () => {
+	const withFs = {
+		...ecpDefaultGrant,
+		fs: [{ path: '/Users/k/Desktop', mode: 'rw' as const }],
+	}
+	const current = { features: ['host-operator-only', 'fs'] }
+	expect(
+		sharedRunHostRefusal({
+			grant: withFs,
+			requires: ['fs'],
+			capabilities: current,
+			sharedRun: false,
+		}),
+	).toBeNull()
+	expect(
+		sharedRunHostRefusal({
+			grant: withFs,
+			requires: ['fs'],
+			capabilities: current,
+			sharedRun: true,
+		}),
+	).toBe('fs_operator_only')
+	expect(
+		sharedRunHostRefusal({
+			grant: withFs,
+			requires: [],
+			capabilities: { features: ['fs'] },
+			sharedRun: true,
+		}),
+	).toBe('fs_daemon_outdated')
+	expect(
+		sharedRunHostRefusal({
+			grant: withFs,
+			requires: [],
+			capabilities: current,
+			sharedRun: true,
+		}),
+	).toBeNull()
+	expect(
+		sharedRunHostRefusal({
+			grant: ecpDefaultGrant,
+			requires: [],
+			capabilities: {},
+			sharedRun: true,
+		}),
+	).toBeNull()
 })

@@ -164,6 +164,13 @@ export type EcpCapabilities = {
 	autoUpdate?: 'on' | 'off'
 }
 
+/**
+ * Advertised by daemons that give host folders and host commands only to the
+ * operator's own runs. Kody skips shared runs on a context with host folders
+ * when its daemon does not advertise it (older daemons mount them for all).
+ */
+export const ecpHostOperatorOnlyFeature = 'host-operator-only'
+
 export type EcpRunRequestBody = {
 	runId: string
 	deadline: number
@@ -181,7 +188,10 @@ export type EcpRunRequestBody = {
 	limits: { timeoutMs: number; maxResultBytes: number; memoryMb: number }
 	grantVersion: number
 	apiUrl: string
-	/** True for runs whose requester is not the operator. */
+	/**
+	 * True for runs whose requester is not the operator. The daemon gives
+	 * these runs no host folders and no host commands.
+	 */
 	sharedRun?: boolean
 }
 

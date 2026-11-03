@@ -33,6 +33,7 @@ import {
 	type Ed25519PublicJwk,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { finishRunRecord } from '#worker/run-records/service.ts'
+import type { CredentialCallMapJson } from '#worker/credentials/credential-call-map.ts'
 import {
 	type ExecuteRequirement,
 	grantRefusal,
@@ -94,6 +95,11 @@ export type ExecutionContextLease = {
 	runtime: EcpGrant['runtime']
 	deadline: number
 	sharedRun: boolean
+	/**
+	 * The run's credential call map, held here so Kody applies it to the run's
+	 * callbacks; the machine never supplies or changes it.
+	 */
+	credentials?: CredentialCallMapJson | null
 }
 
 export type DispatchOutcome =

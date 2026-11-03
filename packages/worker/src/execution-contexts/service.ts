@@ -1028,7 +1028,7 @@ export async function setSharing(
 		add?: Array<{
 			subject: { type: 'user' | 'team'; id: string }
 			preset: 'use' | 'contribute' | 'manage'
-			/** Also grant `execution_context:command` (run host commands). */
+			/** Refused: host commands are for the operator only. */
 			commands?: boolean
 		}>
 		allMembers?: boolean
@@ -1042,6 +1042,14 @@ export async function setSharing(
 			code: 'not_granted',
 			message:
 				'Only the operator or someone with Manage on this context can share it.',
+		})
+	}
+	if ((input.add ?? []).some((share) => share.commands === true)) {
+		throw new ExecutionContextError({
+			status: 400,
+			code: 'commands_operator_only',
+			message:
+				"Host commands run only for this context's operator, so a share cannot include them. Share without `commands`.",
 		})
 	}
 	const selfShare = selfShareError(
@@ -1066,16 +1074,12 @@ export async function setSharing(
 			subject: share.subject,
 			preset: share.preset,
 			permissions: null,
-			...(share.commands
-				? { extraPermissions: [executionContextCommandPermission] }
-				: {}),
 			createdByUserId: caller.userId,
 			audit,
 		})
 		await recordContextAudit(caller, row.id, 'share_added', {
 			subject: share.subject,
 			preset: share.preset,
-			...(share.commands ? { commands: true } : {}),
 		})
 	}
 	if (input.allMembers !== undefined) {

@@ -695,7 +695,6 @@ export async function setExecutionContextShareForUser(
 			| { kind: 'team'; slug: string }
 			| { kind: 'org'; enabled?: boolean }
 		preset: 'use' | 'contribute' | 'manage'
-		commands?: boolean
 	},
 ) {
 	return runScoped(input, async (scope) => {
@@ -710,9 +709,6 @@ export async function setExecutionContextShareForUser(
 						? { team_slug: input.subject.slug }
 						: { all_members: input.subject.enabled ?? true }),
 				preset: input.preset,
-				...(input.commands && input.subject.kind !== 'org'
-					? { commands: true }
-					: {}),
 			},
 		)
 		return {

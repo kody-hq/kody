@@ -43,6 +43,7 @@ export type UnusableReason =
 	| 'revoked'
 	| 'not_opted_in'
 	| 'credential_scope'
+	| 'operator_left'
 
 export type ContextAccess = {
 	isOperator: boolean
@@ -52,8 +53,9 @@ export type ContextAccess = {
 	preset: 'use' | 'contribute' | 'manage' | null
 	/**
 	 * May run host commands (`execution_context:command`, ADR 0093): the
-	 * operator, or a live grant on this context that lists the permission.
-	 * Never from all_members, an org role, or a preset.
+	 * operator only. Commands run as the machine's OS user with the machine's
+	 * login and context key, so a grantee with them could act as the machine;
+	 * command shares written before this rule confer nothing.
 	 */
 	canRunCommands: boolean
 	usable: boolean
@@ -190,6 +192,9 @@ export const contextGrantSubjects = {
  * Execute authority (protocol 8.5): the operator, a live grant on this
  * context in the run's org (directly or through a team), or a live member
  * when `all_members` is set. Compiled access and org roles never confer it.
+ * Fails closed with `operator_left` for everyone else once the operator is no
+ * longer a live member of the run's org: their machine must not keep taking
+ * other members' runs.
  */
 export async function loadContextAccess(
 	db: D1Database,
@@ -202,44 +207,44 @@ export async function loadContextAccess(
 		personId: input.userId,
 		boundOrgId: input.orgId,
 	})
-	const [attachment, grant, membership, optIn] = await db.batch<
-		Record<string, unknown>
-	>([
-		db
-			.prepare(
-				`SELECT all_members FROM execution_context_org_attachments WHERE context_id = ? AND org_id = ?`,
-			)
-			.bind(context.id, input.orgId),
-		db
-			.prepare(
-				`SELECT g.preset AS preset,
-				        EXISTS (
-				          SELECT 1 FROM grant_permissions gp
-				          WHERE gp.grant_id = g.id AND gp.permission = '${executionContextCommandPermission}'
-				        ) AS command
+	const [attachment, grant, membership, optIn, operatorMembership] =
+		await db.batch<Record<string, unknown>>([
+			db
+				.prepare(
+					`SELECT all_members FROM execution_context_org_attachments WHERE context_id = ? AND org_id = ?`,
+				)
+				.bind(context.id, input.orgId),
+			db
+				.prepare(
+					`SELECT g.preset AS preset
 				 FROM grants g
 				 WHERE g.resource_type = 'execution_context' AND g.resource_id = ?
 				   AND g.org_id = ? AND g.deleted_at IS NULL
 				   AND (g.expires_at IS NULL OR g.expires_at > ?)
 				   AND ${subjectMatch.sql}`,
-			)
-			.bind(
-				context.id,
-				input.orgId,
-				new Date().toISOString(),
-				...subjectMatch.binds,
-			),
-		db
-			.prepare(
-				`SELECT role FROM org_memberships WHERE org_id = ? AND user_id = ? AND deleted_at IS NULL`,
-			)
-			.bind(input.orgId, input.userId),
-		db
-			.prepare(
-				`SELECT 1 AS ok FROM execution_context_opt_ins WHERE context_id = ? AND user_id = ? AND org_id = ?`,
-			)
-			.bind(context.id, input.userId, input.orgId),
-	])
+				)
+				.bind(
+					context.id,
+					input.orgId,
+					new Date().toISOString(),
+					...subjectMatch.binds,
+				),
+			db
+				.prepare(
+					`SELECT role FROM org_memberships WHERE org_id = ? AND user_id = ? AND deleted_at IS NULL`,
+				)
+				.bind(input.orgId, input.userId),
+			db
+				.prepare(
+					`SELECT 1 AS ok FROM execution_context_opt_ins WHERE context_id = ? AND user_id = ? AND org_id = ?`,
+				)
+				.bind(context.id, input.userId, input.orgId),
+			db
+				.prepare(
+					`SELECT 1 AS ok FROM org_memberships WHERE org_id = ? AND user_id = ? AND deleted_at IS NULL`,
+				)
+				.bind(input.orgId, context.operator_user_id),
+		])
 	const attachRow = attachment?.results[0] as
 		| { all_members: number }
 		| undefined
@@ -248,9 +253,6 @@ export async function loadContextAccess(
 		(row) => (row as { preset: ContextAccess['preset'] }).preset,
 	)
 	const preset = strongestPreset(presets)
-	const commandGranted = (grant?.results ?? []).some(
-		(row) => Number((row as { command?: unknown }).command) === 1,
-	)
 	const isMember = (membership?.results.length ?? 0) > 0
 	const allMembers =
 		context.org_id === input.orgId
@@ -259,23 +261,26 @@ export async function loadContextAccess(
 	const granted =
 		isOperator || preset !== null || (isMember && allMembers === true)
 	const optedIn = isOperator || (optIn?.results.length ?? 0) > 0
+	const operatorLive =
+		isOperator || (operatorMembership?.results.length ?? 0) > 0
 	const unusableReason: UnusableReason | null = context.revoked_at
 		? 'revoked'
 		: !attached
 			? 'not_attached'
 			: !granted
 				? 'not_granted'
-				: !optedIn
-					? 'not_opted_in'
-					: null
+				: !operatorLive
+					? 'operator_left'
+					: !optedIn
+						? 'not_opted_in'
+						: null
 	return {
 		isOperator,
 		attached,
 		granted,
 		optedIn,
 		preset: isOperator ? 'manage' : (preset ?? (granted ? 'use' : null)),
-		canRunCommands:
-			isOperator || (granted && preset !== null && commandGranted),
+		canRunCommands: isOperator,
 		usable: unusableReason === null,
 		unusableReason,
 	}

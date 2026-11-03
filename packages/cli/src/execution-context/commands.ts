@@ -1001,7 +1001,7 @@ async function runCommandsOptInCommand(
 	}
 	if (action === 'on') {
 		lines.push(
-			'Runs with the command grant (you on your own context; others only if you share it with commands) can now run any command as your OS user, with no per-command approval. Every command is recorded in the context audit log. Turn it off any time: kody context commands off, the desktop app, or the website.',
+			'Your own runs on this context can now run any command as your OS user, with no per-command approval (runs by people you share it with never can). Every command is recorded in the context audit log. Turn it off any time: kody context commands off, the desktop app, or the website.',
 		)
 	} else if (action === 'off') {
 		lines.push('Background commands started by runs were stopped.')
