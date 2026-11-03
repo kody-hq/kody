@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset } from '../../public-assets.ts'
 import { SiteLink } from '../../components/site-link.tsx'
-import { BuildWithAgentButton } from '../../components/build-with-agent-button.tsx'
+import { FeatureCtaActions } from './feature-cta.tsx'
 import {
 	primitiveCards,
 	primitiveFeatureHref,
@@ -88,12 +88,7 @@ export function FeaturesOverview() {
 					<span aria-hidden="true">→</span>
 					<SiteLink href="/features/apps">Review in your app</SiteLink>
 				</div>
-				<div className="actions">
-					<SiteLink className="cta" href="/onboarding">
-						Connect your agent
-					</SiteLink>
-					<BuildWithAgentButton />
-				</div>
+				<FeatureCtaActions href="/onboarding" label="Connect your agent" />
 			</section>
 		</div>
 	)
