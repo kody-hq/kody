@@ -27,6 +27,7 @@ const outcomeSchema = z.object({
 		'complete',
 		'incomplete',
 		'resumed',
+		'partially_resumed',
 		'skipped_not_found',
 		'skipped_unpublished',
 		'skipped_head_differs',
@@ -37,6 +38,7 @@ const outcomeSchema = z.object({
 	publishNoteFound: z.boolean().optional(),
 	unbuiltArtifactTargetCount: z.number().int().nonnegative().optional(),
 	rebuiltTargetCount: z.number().int().nonnegative().optional(),
+	remainingTargetCount: z.number().int().nonnegative().optional(),
 	error: z.string().optional(),
 })
 
@@ -53,6 +55,15 @@ const inputSchema = z.object({
 		.optional()
 		.describe(
 			'When true (default), report whether each live published commit finished its publish. Set false to finish incomplete ones.',
+		),
+	maxTargets: z
+		.number()
+		.int()
+		.min(1)
+		.max(500)
+		.optional()
+		.describe(
+			'Apply only: rebuild at most this many unbuilt artifact targets per package in this call, so a large package fits the execute time limit. An outcome of partially_resumed with remainingTargetCount means call again; already built targets are skipped.',
 		),
 })
 
@@ -76,11 +87,26 @@ function describeResumeFailure(result: object) {
 	return 'message' in result && result.message ? `: ${result.message}` : ''
 }
 
+function rebuiltOutcome<State extends object>(
+	state: State,
+	rebuild: { rebuiltTargetCount: number; remainingTargetCount?: number },
+) {
+	const remaining = rebuild.remainingTargetCount ?? 0
+	return {
+		...state,
+		outcome:
+			remaining > 0 ? ('partially_resumed' as const) : ('resumed' as const),
+		rebuiltTargetCount: rebuild.rebuiltTargetCount,
+		...(remaining > 0 ? { remainingTargetCount: remaining } : {}),
+	}
+}
+
 async function resumePackage(input: {
 	env: Env
 	baseUrl: string
 	packageId: string
 	dryRun: boolean
+	maxTargets?: number
 }): Promise<Outcome> {
 	const savedPackage = await getSavedPackageByIdInAnyOrg(
 		input.env.APP_DB,
@@ -162,12 +188,9 @@ async function resumePackage(input: {
 				userId: ownerUserId,
 				publishedCommit,
 				baseUrl: input.baseUrl,
+				maxTargets: input.maxTargets,
 			})
-			return {
-				...state,
-				outcome: 'resumed',
-				rebuiltTargetCount: rebuild.rebuiltTargetCount,
-			}
+			return rebuiltOutcome(state, rebuild)
 		}
 		const result = await repoSessionRpc(
 			input.env,
@@ -200,12 +223,9 @@ async function resumePackage(input: {
 			publishedCommit,
 			baseUrl: input.baseUrl,
 			...(result.force_artifact_rebuild ? { force: true } : {}),
+			maxTargets: input.maxTargets,
 		})
-		return {
-			...state,
-			outcome: 'resumed',
-			rebuiltTargetCount: rebuild.rebuiltTargetCount,
-		}
+		return rebuiltOutcome(state, rebuild)
 	} catch (error) {
 		return { ...withCommit, outcome: 'failed', error: getErrorMessage(error) }
 	}
@@ -248,6 +268,7 @@ export const adminPublishFinalizeResumeCapability = defineDomainCapability(
 								baseUrl: ctx.callerContext.baseUrl,
 								packageId,
 								dryRun,
+								maxTargets: args.maxTargets,
 							}),
 						)
 					}

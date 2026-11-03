@@ -7,7 +7,10 @@ import { expect, test, vi } from 'vitest'
 import type * as sourceSafetyPolicyModule from '#worker/repo/source-safety-policy.ts'
 import type * as packageRegistryRepoModule from '#worker/package-registry/repo.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
-import { isEntitlementLimitError } from '#worker/entitlements/errors.ts'
+import {
+	isEntitlementLimitError,
+	JobIntervalFloorError,
+} from '#worker/entitlements/errors.ts'
 import { planLimits } from '#universal/plans.ts'
 import { maxRepoSourceFileBytes } from '#worker/repo/large-file-policy.ts'
 import { PackagePublishLockedError } from '#worker/package-registry/package-publish-lock.ts'
@@ -34,6 +37,7 @@ const mockModule = vi.hoisted(() => ({
 	ensureEntitySource: vi.fn(),
 	syncArtifactSourceSnapshot: vi.fn(),
 	refreshSavedPackageProjection: vi.fn(),
+	deleteSavedPackageProjection: vi.fn(),
 	upsertSavedPackageVector: vi.fn(),
 	getEntitySourceByEntity: vi.fn(),
 	deleteEntitySource: vi.fn(),
@@ -57,6 +61,8 @@ vi.mock('#worker/repo/source-sync.ts', () => ({
 vi.mock('#worker/package-registry/service.ts', () => ({
 	refreshSavedPackageProjection: (...args: Array<unknown>) =>
 		mockModule.refreshSavedPackageProjection(...args),
+	deleteSavedPackageProjection: (...args: Array<unknown>) =>
+		mockModule.deleteSavedPackageProjection(...args),
 }))
 
 vi.mock('#worker/package-registry/vectorize.ts', () => ({
@@ -299,6 +305,7 @@ async function setup({
 		mockModule.ensureEntitySource,
 		mockModule.syncArtifactSourceSnapshot,
 		mockModule.refreshSavedPackageProjection,
+		mockModule.deleteSavedPackageProjection,
 		mockModule.upsertSavedPackageVector,
 		mockModule.getEntitySourceByEntity,
 		mockModule.deleteEntitySource,
@@ -633,6 +640,49 @@ test('packageSave maps id mismatch, rename name collision, and UNIQUE insert rac
 			{ id: expect.stringMatching(/^source-/), userId: race.userId },
 		],
 	])
+})
+
+test('packageSave rolls back a new package when its jobs fail plan validation, but not an update', async () => {
+	const intervalError = new JobIntervalFloorError({
+		plan: 'pro',
+		minIntervalMs: 15 * 60_000,
+	})
+	const create = await setup({ email: 'rollback@example.com' })
+	mockModule.refreshSavedPackageProjection.mockRejectedValueOnce(intervalError)
+	const created = await rejection(
+		create.save({
+			files: buildPackageFiles('pkg', { private: true }),
+		}),
+	)
+	expect(created).toBe(intervalError)
+	expect(mockModule.deleteSavedPackageProjection).toHaveBeenCalledTimes(1)
+	expect(mockModule.deleteSavedPackageProjection).toHaveBeenCalledWith(
+		expect.objectContaining({
+			userId: create.ownerUserId,
+			packageId: create.latestPackage()?.['id'],
+			audit: null,
+		}),
+	)
+
+	const update = await setup({
+		email: 'rollback-update@example.com',
+		savedPackages: (userId) => [
+			savedPackageRow(userId, 'existing-package-id', 'pkg', {
+				name: '@planned/pkg',
+			}),
+		],
+	})
+	mockModule.refreshSavedPackageProjection.mockRejectedValueOnce(intervalError)
+	expect(
+		await rejection(
+			update.save({
+				package_id: 'existing-package-id',
+				confirm_destructive_overwrite: true,
+				files: buildPackageFiles('pkg', { private: true }),
+			}),
+		),
+	).toBe(intervalError)
+	expect(mockModule.deleteSavedPackageProjection).not.toHaveBeenCalled()
 })
 
 test('packageSave keeps new packages private unless an explicit private:false is confirmed', async () => {

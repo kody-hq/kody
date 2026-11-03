@@ -46,6 +46,12 @@ test('detachable signal forwards a caller abort until detach', () => {
 	later.abort()
 	expect(detached.signal.aborted).toBe(false)
 
+	const stopped = createDetachableAbortSignal(new AbortController().signal)
+	stopped.detach()
+	const reason = new Error('stop')
+	stopped.abort(reason)
+	expect(stopped.signal.reason).toBe(reason)
+
 	const already = new AbortController()
 	already.abort()
 	const forwarded = createDetachableAbortSignal(already.signal)
