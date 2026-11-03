@@ -387,9 +387,9 @@ test('retention prunes old send records and stale below-threshold tracking rows'
 	).toBeNull()
 })
 
-test('migration 0243 carries existing verification hard bounces forward', async () => {
+test('migration 0246 carries existing verification hard bounces forward', async () => {
 	const sqlite = new DatabaseSync(':memory:')
-	applyAllMigrations(sqlite, migrations, { before: '0243' })
+	applyAllMigrations(sqlite, migrations, { before: '0246' })
 	sqlite
 		.prepare(
 			`INSERT INTO email_verification_hard_bounces
@@ -404,7 +404,7 @@ test('migration 0243 carries existing verification hard bounces forward', async 
 	sqlite.exec(
 		readFileSync(
 			new URL(
-				'0243-system-email-sends-and-recipient-suppressions.sql',
+				'0246-system-email-sends-and-recipient-suppressions.sql',
 				migrations,
 			),
 			'utf8',
