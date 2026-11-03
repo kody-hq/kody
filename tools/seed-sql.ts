@@ -317,7 +317,7 @@ export function seedTeamOrgIds(slug: string) {
 	return { orgId: hash('seed-team-org'), teamId: hash('seed-team') }
 }
 
-export const seedTeamSlug = 'members'
+const seedTeamSlug = 'members'
 
 /**
  * A team org owned by `ownerEmail` with `memberEmail` as a plain member and
