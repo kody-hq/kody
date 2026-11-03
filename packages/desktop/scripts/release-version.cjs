@@ -1,4 +1,5 @@
 const { appendFileSync, readFileSync, writeFileSync } = require('node:fs')
+const { spawnSync } = require('node:child_process')
 const { assertFeedCoverage, releaseNotes } = require('./release-plan.cjs')
 
 function stableVersion(value) {
@@ -10,7 +11,26 @@ function stableVersion(value) {
 	return parts
 }
 
-function planVersion({ current, latest, sha, platforms }) {
+function isPublishedSourceAncestor(source, sha) {
+	const result = spawnSync(
+		'git',
+		['merge-base', '--is-ancestor', source, sha],
+		{
+			encoding: 'utf8',
+		},
+	)
+	if (result.status === 0) return true
+	if (result.status === 1) return false
+	throw new Error(`Could not compare desktop release sources: ${result.stderr}`)
+}
+
+function planVersion({
+	current,
+	latest,
+	sha,
+	platforms,
+	isAncestor = isPublishedSourceAncestor,
+}) {
 	const baseline = stableVersion(current)
 	const assets = latest?.assets.map((asset) => asset.name) || []
 	const scope =
@@ -28,7 +48,12 @@ function planVersion({ current, latest, sha, platforms }) {
 	if (!latest.tag_name.startsWith('v'))
 		throw new Error('Unexpected published desktop tag')
 	const published = stableVersion(latest.tag_name.slice(1))
-	if (latest.body === releaseNotes(sha, scope))
+	const source = latest.body?.match(
+		/^Source: https:\/\/github\.com\/kody-hq\/kody\/commit\/([a-f0-9]{40})\nPlatforms: (mac|all)$/,
+	)?.[1]
+	if (!source)
+		throw new Error('Published desktop release has no valid source commit')
+	if (latest.body === releaseNotes(sha, scope) || !isAncestor(source, sha))
 		return {
 			version: latest.tag_name.slice(1),
 			platforms: scope,

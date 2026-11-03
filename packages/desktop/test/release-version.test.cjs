@@ -16,10 +16,11 @@ const { releaseNotes } = require('../scripts/release-plan.cjs')
 function plan(overrides = {}) {
 	return planVersion({
 		current: '0.1.5',
-		sha: 'new',
+		sha: 'b'.repeat(40),
+		isAncestor: () => true,
 		latest: {
 			tag_name: 'v0.1.5',
-			body: releaseNotes('old', 'mac'),
+			body: releaseNotes('a'.repeat(40), 'mac'),
 			assets: [{ name: 'latest-arm64-mac.yml' }],
 		},
 		...overrides,
@@ -29,7 +30,13 @@ function plan(overrides = {}) {
 test('versions advance past the public feed even when the source package stays unchanged', () => {
 	assert.equal(plan().version, '0.1.6')
 	assert.equal(
-		plan({ latest: { tag_name: 'v0.1.9', assets: [] } }).version,
+		plan({
+			latest: {
+				tag_name: 'v0.1.9',
+				body: releaseNotes('a'.repeat(40), 'mac'),
+				assets: [],
+			},
+		}).version,
 		'0.1.10',
 	)
 	assert.equal(plan({ current: '0.2.0' }).version, '0.2.0')
@@ -37,12 +44,16 @@ test('versions advance past the public feed even when the source package stays u
 })
 
 test('a published source is skipped on retry', () => {
-	assert.equal(plan({ sha: 'old' }).release, false)
+	assert.equal(plan({ sha: 'a'.repeat(40) }).release, false)
 	assert.equal(plan().release, true)
 })
 
 test('automatic scope preserves existing platform feeds and explicit mac cannot remove them', () => {
-	const latest = { tag_name: 'v0.1.5', assets: [{ name: 'latest-x64.yml' }] }
+	const latest = {
+		tag_name: 'v0.1.5',
+		body: releaseNotes('a'.repeat(40), 'all'),
+		assets: [{ name: 'latest-x64.yml' }],
+	}
 	assert.equal(plan({ latest }).platforms, 'all')
 	assert.equal(plan().platforms, 'mac')
 	assert.equal(plan({ platforms: 'all' }).platforms, 'all')
@@ -95,4 +106,24 @@ test('each build applies the chosen version to both package and lockfile', () =>
 	} finally {
 		rmSync(directory, { recursive: true, force: true })
 	}
+})
+
+test('an obsolete queued run cannot publish older source under a newer version', () => {
+	assert.equal(plan({ isAncestor: () => false }).release, false)
+	assert.throws(
+		() =>
+			plan({
+				isAncestor: () => {
+					throw new Error('Missing history')
+				},
+			}),
+		/Missing history/,
+	)
+	assert.throws(
+		() =>
+			plan({
+				latest: { tag_name: 'v0.1.5', assets: [], body: 'No provenance' },
+			}),
+		/source commit/,
+	)
 })
