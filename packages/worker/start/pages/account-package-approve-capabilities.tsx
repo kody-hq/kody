@@ -674,7 +674,6 @@ const approveActionControlCss = {
 	maxWidth: '100%',
 	padding: `${spacing.sm} ${spacing.md}`,
 	appearance: 'none' as const,
-	fontFamily: typography.fontFamily,
 	fontSize: typography.fontSize.base,
 	fontWeight: typography.fontWeight.semibold,
 	lineHeight: 1.25,

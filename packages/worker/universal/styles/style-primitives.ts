@@ -28,6 +28,7 @@ function getBaseButtonCss(options: ButtonCssOptions = {}) {
 	return {
 		padding: `${spacing.sm} ${size === 'lg' ? spacing.lg : spacing.md}`,
 		borderRadius: radius.full,
+		fontFamily: typography.fontFamilyDisplay,
 		fontSize: typography.fontSize.base,
 		fontWeight: typography.fontWeight[weight],
 		cursor: 'pointer',

@@ -145,9 +145,9 @@ export function AdminOrgLimitsPanel({
 							<span>
 								{formatOverrideValue(row.override.value)}
 								{row.override.active ? '' : ' (expired)'}
-								{row.override.expiresAt
-									? ` until ${formatTimestampDate(row.override.expiresAt)}`
-									: ''}
+								{row.override.expiresAt ? (
+									<> until {formatTimestampDate(row.override.expiresAt)}</>
+								) : null}
 							</span>
 							<span css={{ color: colors.textMuted }}>
 								{row.override.reason}

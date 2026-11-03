@@ -12,6 +12,7 @@ import {
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { teamInviteMutationOptions } from './org-team-invite-mutation.ts'
 
+import { DetailParts } from '../components/detail-parts.tsx'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
 import { renderIcon } from '../components/icon.tsx'
 import {
@@ -171,11 +172,13 @@ export function OrgTeamInviteLinks({
 					{teamLinks.map((link) => (
 						<li key={link.id} css={rowCss} data-testid="org-team-invite-link">
 							<span css={detailCss}>
-								{[
-									`${link.useCount}${link.maxUses != null ? ` / ${link.maxUses}` : ''} uses`,
-									`Expires ${formatTimestampDate(link.expiresAt)}`,
-									`Created by ${creatorLabel(link)}`,
-								].join(' · ')}
+								<DetailParts
+									parts={[
+										`${link.useCount}${link.maxUses != null ? ` / ${link.maxUses}` : ''} uses`,
+										<>Expires {formatTimestampDate(link.expiresAt)}</>,
+										`Created by ${creatorLabel(link)}`,
+									]}
+								/>
 							</span>
 							<button
 								type="button"
