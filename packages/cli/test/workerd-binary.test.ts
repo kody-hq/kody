@@ -9,7 +9,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { test } from 'node:test'
+import { mock, test } from 'node:test'
 import { gzipSync } from 'node:zlib'
 import {
 	cachedWorkerdPath,
@@ -156,23 +156,36 @@ function serveStallingThen(head: Buffer, body: Buffer | null) {
 	return { fetchFn, calls: () => calls }
 }
 
-/** Streams `body` in `parts` chunks, `gapMs` apart. */
+/**
+ * Streams `body` in `parts` chunks, advancing mocked timers by `gapMs` before
+ * each one. The stream is pull-based, so a gap only starts once the previous
+ * chunk was read; waiting a macrotask lets it reach the hasher (and reset the
+ * idle timer) first, so the result never depends on runner speed.
+ */
 function serveProgressing(body: Buffer, gapMs: number, parts: number) {
 	const size = Math.ceil(body.length / parts)
-	const fetchFn = (async () =>
-		new Response(
-			new ReadableStream<Uint8Array>({
-				async start(controller) {
-					for (let offset = 0; offset < body.length; offset += size) {
-						await new Promise((resolve) => setTimeout(resolve, gapMs))
+	const fetchFn = (async () => {
+		let offset = 0
+		return new Response(
+			new ReadableStream<Uint8Array>(
+				{
+					async pull(controller) {
+						await new Promise((resolve) => setImmediate(resolve))
+						mock.timers.tick(gapMs)
+						if (offset >= body.length) {
+							controller.close()
+							return
+						}
 						controller.enqueue(
 							new Uint8Array(body.subarray(offset, offset + size)),
 						)
-					}
-					controller.close()
+						offset += size
+					},
 				},
-			}),
-		)) as typeof fetch
+				{ highWaterMark: 0 },
+			),
+		)
+	}) as typeof fetch
 	return { fetchFn }
 }
 
@@ -180,14 +193,20 @@ test('downloadVerifiedGzip keeps going past the idle timeout while bytes keep ar
 	const binary = Buffer.from('#!/bin/sh\necho slow but steady\n')
 	const gz = gzipSync(binary)
 	const destination = join(mkdtempSync(join(tmpdir(), 'kody-wd-')), 'workerd')
-	const { fetchFn } = serveProgressing(gz, 60, 6)
-	await downloadVerifiedGzip({
-		url: 'https://example.com/workerd.gz',
-		sha256: createHash('sha256').update(gz).digest('hex'),
-		destination,
-		fetchFn,
-		idleTimeoutMs: 200,
-	})
+	// Six 150ms gaps add up past the 200ms idle limit; no single gap reaches it.
+	const { fetchFn } = serveProgressing(gz, 150, 6)
+	mock.timers.enable({ apis: ['setTimeout'] })
+	try {
+		await downloadVerifiedGzip({
+			url: 'https://example.com/workerd.gz',
+			sha256: createHash('sha256').update(gz).digest('hex'),
+			destination,
+			fetchFn,
+			idleTimeoutMs: 200,
+		})
+	} finally {
+		mock.timers.reset()
+	}
 	assert.equal(readFileSync(destination, 'utf8'), binary.toString())
 })
 
