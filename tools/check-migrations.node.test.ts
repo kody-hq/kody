@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process'
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -24,7 +24,6 @@ import {
 	shouldEnforceOpenPullRequestOverlaps,
 	suggestFreeMigrationPrefix,
 	resolveTrustedMigrationBase,
-	type MigrationLedger,
 	type MigrationLedgerEntry,
 	type TrustedMigrationHistory,
 } from './check-migrations.ts'
@@ -168,7 +167,8 @@ test('migration ledger rejects historical mutation and lower-prefix additions wh
 				squashed,
 				'missing',
 				'0001-renamed.sql',
-				'not in tools/migration-ledger.json',
+				'has no ledger entry',
+				'tools/migration-ledger/0001-renamed.sql.sha256',
 			],
 		],
 		[
@@ -391,20 +391,13 @@ test(
 			tempRoot,
 			'packages/worker/migrations/0091-future.sql',
 		)
-		const ledgerPath = path.join(tempRoot, 'tools/migration-ledger.json')
-		const commitMigration = async (
-			ledger: MigrationLedger,
-			sql: string,
-			message: string,
-		) => {
+		const ledgerDir = path.join(tempRoot, 'tools/migration-ledger')
+		const commitMigration = async (sql: string, message: string) => {
 			await writeFile(migrationPath, sql)
-			ledger.migrations = [
-				...ledger.migrations.filter(
-					(entry) => entry.filename !== '0091-future.sql',
-				),
-				{ filename: '0091-future.sql', sha256: hashMigrationContent(sql) },
-			]
-			await writeFile(ledgerPath, `${JSON.stringify(ledger, null, '\t')}\n`)
+			await writeFile(
+				path.join(ledgerDir, '0091-future.sql.sha256'),
+				`${hashMigrationContent(sql)}\n`,
+			)
 			runGit('add', '.')
 			runGit('commit', '-m', message)
 		}
@@ -415,22 +408,15 @@ test(
 				path.join(tempRoot, 'packages/worker/migrations'),
 				{ recursive: true },
 			)
-			await cp('tools/migration-ledger.json', ledgerPath)
+			await cp('tools/migration-ledger', ledgerDir, { recursive: true })
 			runGit('init', '-b', 'main')
 			runGit('config', 'user.name', 'Migration Test')
 			runGit('config', 'user.email', 'migration-test@example.com')
 			runGit('add', '.')
 			runGit('commit', '-m', 'bootstrap')
 
-			const ledger = JSON.parse(
-				await readFile(ledgerPath, 'utf8'),
-			) as MigrationLedger
-			await commitMigration(ledger, 'SELECT 1;\n', 'land migration')
-			await commitMigration(
-				ledger,
-				'SELECT 2;\n',
-				'co-edit migration and ledger',
-			)
+			await commitMigration('SELECT 1;\n', 'land migration')
+			await commitMigration('SELECT 2;\n', 'co-edit migration and ledger')
 
 			const result = spawnSync(process.execPath, [checkerPath], {
 				cwd: tempRoot,
@@ -924,3 +910,91 @@ test('a push to main reports open-PR overlaps without yielding them', () => {
 		'Rename to the next free prefix',
 	)
 })
+
+test(
+	'a trusted ref with the legacy single-file ledger still validates the per-file ledger',
+	{ timeout: 30_000 },
+	async () => {
+		const tempRoot = await mkdtemp(
+			path.join(os.tmpdir(), 'kody-migration-legacy-'),
+		)
+		const checkerPath = fileURLToPath(
+			new URL('./check-migrations.ts', import.meta.url),
+		)
+		const scratchGitEnv = withoutInheritedGitEnv(process.env)
+		const runGit = (...args: Array<string>) =>
+			execFileSync('git', args, {
+				cwd: tempRoot,
+				encoding: 'utf8',
+				stdio: 'pipe',
+				env: scratchGitEnv,
+			})
+		const runChecker = () =>
+			spawnSync(process.execPath, [checkerPath], {
+				cwd: tempRoot,
+				encoding: 'utf8',
+				env: {
+					...scratchGitEnv,
+					GITHUB_BASE_REF: '',
+					MIGRATION_VALIDATION_BASE: 'main',
+					GH_TOKEN: '',
+					GITHUB_TOKEN: '',
+					GITHUB_REPOSITORY: '',
+				},
+			})
+		try {
+			await cp(
+				'packages/worker/migrations',
+				path.join(tempRoot, 'packages/worker/migrations'),
+				{ recursive: true },
+			)
+			const ledger = await readMigrationLedger()
+			await mkdir(path.join(tempRoot, 'tools'), { recursive: true })
+			await writeFile(
+				path.join(tempRoot, 'tools/migration-ledger.json'),
+				`${JSON.stringify({ version: 1, baselineCount: 1, baselineMaximumPrefix: 1, baselineSha256: expectedMigrationBaselineSha256, migrations: ledger.migrations }, null, '\t')}\n`,
+			)
+			runGit('init', '-b', 'main')
+			runGit('config', 'user.name', 'Migration Test')
+			runGit('config', 'user.email', 'migration-test@example.com')
+			runGit('add', '.')
+			runGit('commit', '-m', 'legacy ledger')
+			runGit('checkout', '-b', 'feature')
+			runGit('rm', '-q', 'tools/migration-ledger.json')
+			await cp(
+				'tools/migration-ledger',
+				path.join(tempRoot, 'tools/migration-ledger'),
+				{
+					recursive: true,
+				},
+			)
+			const [first] = ledger.migrations
+			if (!first) throw new Error('ledger fixture is empty')
+			const sql = 'SELECT 1;\n'
+			await writeFile(
+				path.join(tempRoot, 'packages/worker/migrations/9000-future.sql'),
+				sql,
+			)
+			await writeFile(
+				path.join(tempRoot, 'tools/migration-ledger/9000-future.sql.sha256'),
+				`${hashMigrationContent(sql)}\n`,
+			)
+			runGit('add', '.')
+			runGit('commit', '-m', 'per-file ledger')
+			const accepted = runChecker()
+			expect(accepted.stderr).toBe('')
+			expect(accepted.status).toBe(0)
+
+			// Dropping a historical entry is still caught against the legacy ref.
+			runGit('rm', '-q', `tools/migration-ledger/${first.filename}.sha256`)
+			runGit('commit', '-m', 'drop a historical entry')
+			const rejected = runChecker()
+			expect(rejected.status).toBe(1)
+			expect(rejected.stderr).toContain(
+				'Historical ledger entries cannot be edited',
+			)
+		} finally {
+			await rm(tempRoot, { recursive: true, force: true })
+		}
+	},
+)

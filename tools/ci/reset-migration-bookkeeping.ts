@@ -36,7 +36,7 @@ import { executeWranglerD1, runWranglerD1 } from '../wrangler-d1-execute.ts'
 export const squashedInitMigrationName = '0001-squashed-init.sql'
 
 /**
- * Frozen: the exact migration names recorded in tools/migration-ledger.json
+ * Frozen: the exact migration names recorded in the migration ledger
  * at the final pre-squash main commit (63616db6). Immutable by definition —
  * these migrations were applied to production and can never change.
  */

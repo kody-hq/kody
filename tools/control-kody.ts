@@ -51,6 +51,8 @@ import {
 	normalizeBrowsePath,
 	normalizeScreenshotPath,
 	openBrowseSession,
+	parseBrowseColorScheme,
+	type BrowseColorScheme,
 } from './control-kody/browse.ts'
 import {
 	defaultPlaywrightBrowsersJsonPath,
@@ -117,6 +119,7 @@ const usageLines = [
 	'  --path <path>        browse target path (default: /account)',
 	'  --record             browse: record Playwright video under .tmp/control-kody-browse',
 	'  --screenshot <path>  browse: write a PNG of the loaded page (live origin)',
+	'  --color-scheme <s>   browse: light, dark, or both (both writes <shot>-light.png and <shot>-dark.png)',
 	'  --headless           browse: launch Chromium headless (default is headed)',
 	'  --close-after <ms>   browse: close after N ms (scripted smoke / tests)',
 	'  --package-name <s>   Required for package-create (leaf or @scope/leaf)',
@@ -202,6 +205,7 @@ export type ControlKodyOptions = {
 	record: boolean
 	headed: boolean
 	screenshotPath: string | null
+	colorSchemes: Array<BrowseColorScheme>
 	closeAfterMs: number | null
 	kodyId: string | null
 	description: string | null
@@ -271,6 +275,7 @@ export function parseControlArgs(argv: Array<string>): ControlKodyOptions {
 		record: false,
 		headed: true,
 		screenshotPath: null,
+		colorSchemes: [],
 		closeAfterMs: null,
 		kodyId: null,
 		description: null,
@@ -559,6 +564,20 @@ function parseSharedFlags(
 				options.screenshotPath = normalizeScreenshotPath(
 					requireValue(argv[index + 1], '--screenshot'),
 				)
+				index += 1
+				break
+			}
+			case '--color-scheme': {
+				try {
+					options.colorSchemes = parseBrowseColorScheme(
+						requireValue(argv[index + 1], '--color-scheme'),
+					)
+				} catch (error) {
+					if (error instanceof ControlKodyError) throw error
+					throw new ControlKodyError(
+						error instanceof Error ? error.message : String(error),
+					)
+				}
 				index += 1
 				break
 			}
@@ -1595,6 +1614,7 @@ async function runCommand(options: ControlKodyOptions) {
 				record: options.record,
 				videoDir: options.record ? defaultBrowseVideoDir : undefined,
 				screenshotPath: options.screenshotPath,
+				colorSchemes: options.colorSchemes,
 				closeAfterMs: options.closeAfterMs,
 			})
 			if (options.json) printJson({ ...report, cookieFile: options.cookieFile })

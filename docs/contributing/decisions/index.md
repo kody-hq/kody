@@ -30,7 +30,11 @@ Do **not** write an ADR on every PR. Number collisions (two 0022s, then two
 number collides, renumber the later record; do not leave duplicates. The
 decision-record member of `npm run docs:check` (part of `npm run validate`)
 rejects duplicate primary numbers. A lab note may share a number only as
-`NNNN-*-lab.md`.
+`NNNN-*-lab.md`. The same check (and the pre-push hook, when a push touches a
+decision record) also lists the primary numbers other open pull requests add. On
+a collision the lowest-numbered pull request keeps the number; the others fail
+their PR check until they renumber to the suggested free number. Without GitHub
+auth the open-PR part is skipped silently.
 
 Do **not** record layout or UI tweaks, mode assignments, or "we use library X"
 unless that pick is a no that will otherwise be re-litigated.
