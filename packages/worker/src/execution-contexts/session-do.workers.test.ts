@@ -22,6 +22,11 @@ import {
 	type ExecutionContextSnapshot,
 } from './session-do.ts'
 
+// 100 × 50ms (~5s) timed out under full validate / CI workerd load while
+// isolation stayed green (#4469, #4477, #4484). Stay under the workers-unit
+// 40s test budget so a slow first `run.request` is not a false flake.
+const frameWaitMs = 30_000
+
 const contextJwk = testKeys.context as {
 	kty: 'OKP'
 	crv: 'Ed25519'
@@ -65,10 +70,6 @@ async function connect(ecid: string, hello: Record<string, unknown> = {}) {
 			inbox.push(decodeEnvelopePayload(envelope.p) as EcpFramePayload)
 		for (const wake of waiters.splice(0)) wake()
 	})
-	// 100 × 50ms (~5s) timed out under full validate / CI workerd load while
-	// isolation stayed green (#4469, #4477, #4484). Stay under the workers-unit
-	// 40s test budget so a slow first `run.request` is not a false flake.
-	const frameWaitMs = 30_000
 	const next = async (type: string) => {
 		const deadline = Date.now() + frameWaitMs
 		for (;;) {
@@ -142,7 +143,9 @@ function runRequest(runId: string) {
 	return {
 		runId,
 		deadline: Date.now() + 60_000,
-		acceptBy: Date.now() + 3_000,
+		// Match the frame wait so a slow runner accept under load is not
+		// dispatched as expired before the test reads its frames (#4610).
+		acceptBy: Date.now() + frameWaitMs,
 		requestedBy: {
 			userId: 'user_requester',
 			handle: 'requester',
