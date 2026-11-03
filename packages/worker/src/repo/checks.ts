@@ -1352,6 +1352,28 @@ function buildLintCheck(sourceFiles: Record<string, string>): {
 }
 
 /**
+ * Publish offload: the same typecheck a cloud publish runs, for a builder
+ * outside the worker (CLI or execution context) that has the whole tree.
+ */
+export async function runPackageTypecheckForSourceTree(input: {
+	sourceFiles: Record<string, string>
+	manifest: AuthoredPackageJson
+}) {
+	const packageTypecheckTargets = collectPackageTypecheckTargets(input.manifest)
+	const targets =
+		input.sourceFiles[repoChecksSyntheticTsconfigPath] == null
+			? packageTypecheckTargets.filter((target) => target.kind === 'callable')
+			: packageTypecheckTargets
+	if (targets.length === 0) {
+		return { ok: true, message: 'No typecheck targets.' }
+	}
+	return await runPackageTypecheckLanguageService({
+		sourceFiles: input.sourceFiles,
+		targets,
+	})
+}
+
+/**
  * The expensive half of the typecheck check: a TypeScript language service
  * over the full source snapshot. Exported so throwaway check-phase isolates
  * can run it against KV-staged source files (see isolated-check-phases.ts).

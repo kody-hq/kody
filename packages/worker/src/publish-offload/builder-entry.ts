@@ -11,6 +11,7 @@
 import { buildPublishedPackageArtifactTargetBundle } from '#worker/package-runtime/published-bundle-artifact-persist.ts'
 import { collectPublishedPackageArtifactTargets } from '#worker/package-runtime/package-artifact-targets.ts'
 import { parseAuthoredPackageJson } from '#worker/package-registry/manifest.ts'
+import { runPackageTypecheckForSourceTree } from '#worker/repo/checks.ts'
 import {
 	hashWorkerLoaderModules,
 	sha256Hex,
@@ -46,6 +47,15 @@ export async function buildPublishTargets(input: {
 		throw new Error('package.json is missing from the build tree.')
 	}
 	const manifest = parseAuthoredPackageJson({ content: manifestSource })
+	const typecheck = await runPackageTypecheckForSourceTree({
+		sourceFiles: input.sourceFiles,
+		manifest: manifest as Parameters<
+			typeof runPackageTypecheckForSourceTree
+		>[0]['manifest'],
+	})
+	if (!typecheck.ok) {
+		throw new Error(`Typecheck failed:\n${typecheck.message}`)
+	}
 	const targets = collectPublishedPackageArtifactTargets(
 		manifest as Parameters<typeof collectPublishedPackageArtifactTargets>[0],
 	)

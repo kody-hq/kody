@@ -9,7 +9,7 @@ export const publishLargePackagesDocsUrl =
  * Open product question 8 (does the CLI push HEAD for you?). `false`: the
  * CLI refuses unless HEAD is already pushed; flip to push first.
  */
-export const cliPushesHeadBeforeLocalBuild = false
+const cliPushesHeadBeforeLocalBuild = false
 
 type Call = (
 	operationId: string,

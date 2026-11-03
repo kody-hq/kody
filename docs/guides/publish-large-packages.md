@@ -37,8 +37,8 @@ cloud runs out of room. Agents and CI get these commands instead of a prompt.
 
 | Step                                                                    | Where                                           |
 | ----------------------------------------------------------------------- | ----------------------------------------------- |
-| Bundling every export, job, handler, and app target                     | Your machine or context (same bundler as Kody)  |
-| File manifest check, cheap publish checks, typecheck, credential stamp  | Kody                                            |
+| Typecheck, and bundling every export, job, handler, and app target      | Your machine or context (same code as Kody)     |
+| File manifest check, cheap publish checks, credential stamp             | Kody                                            |
 | Hash, size, and package-identity checks for each target, sample rebuild | Kody                                            |
 | Writing the registry and switching the serving version                  | Kody, only after every check and write succeeds |
 

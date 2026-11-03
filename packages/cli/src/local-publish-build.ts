@@ -8,9 +8,9 @@ import { promisify } from 'node:util'
 const execFileAsync = promisify(execFile)
 
 /** Matches the worker's `publishOffloadLimits.uploadChunkBytes`. */
-export const publishBuildChunkBytes = 4 * 1024 * 1024
+const publishBuildChunkBytes = 4 * 1024 * 1024
 
-export type PublishBuiltTarget = {
+type PublishBuiltTarget = {
 	target: {
 		kind: string
 		bundleKind: 'app' | 'app-client' | 'module' | 'importable-module'
@@ -35,7 +35,7 @@ export type PublishBuilder = {
 }
 
 /** Matches the worker's `publishBuilderVersion`. */
-export const cliPublishBuilderVersion = 1
+const cliPublishBuilderVersion = 1
 
 function sha256Hex(bytes: Uint8Array) {
 	return createHash('sha256').update(bytes).digest('hex')
@@ -176,7 +176,7 @@ async function git(cwd: string, args: Array<string>) {
  * Refuses unless `dir` is a clean checkout whose HEAD is `commit`, so the
  * bytes built here are exactly the pushed tree the server re-checks.
  */
-export async function assertCleanCheckoutAt(dir: string, commit: string) {
+async function assertCleanCheckoutAt(dir: string, commit: string) {
 	const status = (await git(dir, ['status', '--porcelain'])).toString('utf8')
 	if (status.trim()) {
 		throw new Error(
@@ -192,7 +192,7 @@ export async function assertCleanCheckoutAt(dir: string, commit: string) {
 }
 
 /** Every file in `commit`'s tree with its raw bytes. */
-export async function readCommitTree(dir: string, commit: string) {
+async function readCommitTree(dir: string, commit: string) {
 	const listing = (await git(dir, ['ls-tree', '-r', '-z', commit]))
 		.toString('utf8')
 		.split('\0')
