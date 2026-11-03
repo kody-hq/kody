@@ -4,7 +4,7 @@ import { expect, test, vi } from 'vitest'
 import { runWithDeferredWork } from '#worker/deferred-work.ts'
 import { communityIconCacheControl } from '#worker/community/community-icon.ts'
 import type * as CommunityIconModule from '#worker/community/community-icon.ts'
-import { type CommunityListingRecord } from '#worker/community/types.ts'
+import type { CommunityListingRecord } from '#worker/community/types.ts'
 import { silenceExpectedConsoleErrors } from '#worker/test-support/console-spies.ts'
 import {
 	buildCommunityIconCacheRequest,

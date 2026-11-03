@@ -6,7 +6,7 @@ import {
 } from '#worker/package-registry/manifest.ts'
 import {
 	createPublishedPackageCacheKey,
-	PromiseLruCache,
+	createPublishedPackagePromiseCache,
 } from '#worker/package-registry/published-package-cache.ts'
 import type { AuthoredPackageJson } from '#worker/package-registry/types.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
@@ -67,7 +67,7 @@ type PackageAppAssetSavedPackage = {
 }
 
 const packageAppClientArtifactCache =
-	new PromiseLruCache<PackageAppClientArtifact | null>()
+	createPublishedPackagePromiseCache<PackageAppClientArtifact | null>()
 
 /**
  * `/_assets/<relative>` → `<relative>` (percent-decoded), or `null` when the

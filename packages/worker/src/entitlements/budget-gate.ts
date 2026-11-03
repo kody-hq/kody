@@ -16,8 +16,12 @@ import {
 	readUserBudgetMicroUsd,
 	resolveEffectiveUserBudgetMicroUsd,
 } from '#worker/orgs/billing.ts'
-import { BudgetLimitError, coerceBudgetLimitError } from './errors.ts'
-import { type UserMeterEnv, userMeterRpc } from './user-meter-client.ts'
+import { BudgetLimitError, isBudgetLimitError } from './errors.ts'
+import {
+	checkUserMeterBudgetAndRecord,
+	type UserMeterEnv,
+	userMeterRpc,
+} from './user-meter-client.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 type OrgBudgetHitEmailEnv = Pick<
@@ -129,30 +133,31 @@ export async function assertWithinOrgBudget(input: {
 		return
 	}
 	const month = utcMonthKey(input.now ?? new Date())
-	const meter = userMeterRpc({ env: input.env, userId: input.orgId })
 	try {
-		await meter.assertWithinBudgetAndRecord({
-			month,
-			actorUserId: isAutomation ? null : actorUserId,
-			automationSource: input.automationSource,
-			deltaMicroUsd: input.estimatedDeltaMicroUsd,
-			userBudgetMicroUsd: userBudget,
-			automationBudgetMicroUsd: automationBudget,
-			actorUsername: input.actorUsername,
-			orgSlug: orgSlugLabel(input.orgSlug),
+		await checkUserMeterBudgetAndRecord({
+			env: input.env,
+			userId: input.orgId,
+			check: {
+				month,
+				actorUserId: isAutomation ? null : actorUserId,
+				automationSource: input.automationSource,
+				deltaMicroUsd: input.estimatedDeltaMicroUsd,
+				userBudgetMicroUsd: userBudget,
+				automationBudgetMicroUsd: automationBudget,
+				actorUsername: input.actorUsername,
+				orgSlug: orgSlugLabel(input.orgSlug),
+			},
 		})
 	} catch (error) {
-		const budgetError = coerceBudgetLimitError(error)
-		if (budgetError) {
+		if (isBudgetLimitError(error)) {
 			notifyBudgetHitFireAndForget({
 				env: input.env as UserMeterEnv & OrgBudgetHitEmailEnv,
 				db: input.db,
 				orgId: input.orgId,
 				actorUserId: isAutomation ? null : actorUserId,
-				budgetError,
+				budgetError: error,
 				now: input.now,
 			})
-			throw budgetError
 		}
 		throw error
 	}
@@ -234,9 +239,10 @@ export async function recordOrgBudgetSpend(input: {
 	}
 	const actorUserId = input.actorUserId
 	const isAutomation = actorUserId == null && input.automationSource != null
-	const meter = userMeterRpc({ env: input.env, userId: input.orgId })
-	try {
-		await meter.assertWithinBudgetAndRecord({
+	await checkUserMeterBudgetAndRecord({
+		env: input.env,
+		userId: input.orgId,
+		check: {
 			month,
 			actorUserId: isAutomation ? null : actorUserId,
 			automationSource: input.automationSource,
@@ -244,12 +250,8 @@ export async function recordOrgBudgetSpend(input: {
 			userBudgetMicroUsd: null,
 			automationBudgetMicroUsd: null,
 			orgSlug: orgSlugLabel(input.orgSlug),
-		})
-	} catch (error) {
-		const budgetError = coerceBudgetLimitError(error)
-		if (budgetError) throw budgetError
-		throw error
-	}
+		},
+	})
 }
 
 export function orgBudgetFromGateContext(

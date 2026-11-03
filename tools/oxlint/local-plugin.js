@@ -468,6 +468,62 @@ const noNonRetryableErrorNameRule = {
 	},
 }
 
+const USER_METER_BUDGET_CHECK_METHODS = new Set([
+	'checkBudgetAndRecord',
+	'assertWithinBudgetAndRecord',
+])
+const USER_METER_BUDGET_CHECK_ALLOWED_FILES = [
+	'packages/worker/src/entitlements/user-meter-client.ts',
+	'packages/worker/src/entitlements/user-meter-client.node.test.ts',
+	'packages/worker/src/entitlements/user-meter-do.ts',
+	'tools/oxlint/local-plugin.js',
+	'tools/oxlint/user-meter-budget-check-via-helper.node.test.ts',
+]
+
+/**
+ * The UserMeter budget check returns denials as data, so a direct call that
+ * ignores the result would allow over-budget work. Every caller goes through
+ * `checkUserMeterBudgetAndRecord`, which turns a denial into BudgetLimitError.
+ */
+const userMeterBudgetCheckViaHelperRule = {
+	meta: {
+		type: 'problem',
+		docs: {
+			description:
+				'Only checkUserMeterBudgetAndRecord may call the UserMeter budget check RPC methods.',
+		},
+		schema: [],
+		messages: {
+			direct:
+				'Call checkUserMeterBudgetAndRecord (entitlements/user-meter-client.ts) instead of the UserMeter {{name}} RPC. It refuses on denial and fails closed.',
+		},
+	},
+	createOnce(context) {
+		let allowed = false
+		function check(node, name) {
+			if (allowed || !USER_METER_BUDGET_CHECK_METHODS.has(name)) return
+			context.report({ node, messageId: 'direct', data: { name } })
+		}
+		return {
+			Program() {
+				const filename = normalizeFilePath(context.filename)
+				allowed = USER_METER_BUDGET_CHECK_ALLOWED_FILES.some((file) =>
+					filename.endsWith(file),
+				)
+			},
+			Identifier(node) {
+				check(node, node.name)
+			},
+			Literal(node) {
+				if (typeof node.value === 'string') check(node, node.value)
+			},
+			TemplateElement(node) {
+				check(node, node.value.cooked)
+			},
+		}
+	},
+}
+
 const noInlineTypeOnlyImportRule = {
 	meta: {
 		type: 'problem',
@@ -529,6 +585,7 @@ const plugin = {
 		'no-oversized-guide-section': noOversizedGuideSectionRule,
 		'no-tautological-absence': noTautologicalAbsenceRule,
 		'prefer-loader-data-types': preferLoaderDataTypesRule,
+		'user-meter-budget-check-via-helper': userMeterBudgetCheckViaHelperRule,
 	},
 }
 
