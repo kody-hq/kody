@@ -229,6 +229,12 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	usage_attribution_daily: keep(usageHistory),
 	package_app_visitor_attribution_daily: keep(usageHistory),
 	usage_connection_daily: keep(usageHistory),
+	jwt_sign_any_host_callers: keep(
+		'Any-host secretJwtSign deprecation state is keyed to the caller org; a moved package starts over as a new caller and must pass send_to_host.',
+	),
+	jwt_sign_any_host_destinations: keep(
+		'Fill-host counts for any-host secretJwtSign JWTs stay with the org that sent them.',
+	),
 	usage_rollups: keep(usageHistory),
 	user_email_claims: keep(personOwned),
 	user_mcp_oauth_clients: keep(personOwned),
