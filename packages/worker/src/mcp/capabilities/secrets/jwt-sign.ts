@@ -22,6 +22,7 @@ import {
 	inferJwtSignSendToHost,
 	isJwtSignAnyHostCallerGrandfathered,
 	jwtSignAnyHostEventKinds,
+	jwtSignNewAnyHostCallerCutoffDate,
 	type JwtSignAnyHostCaller,
 	recordJwtSignAnyHostEvent,
 } from '#worker/credentials/jwt-sign-any-host.ts'
@@ -203,7 +204,7 @@ export const secretJwtSignAnyHostWarning = `Deprecated: this sealed JWT may fill
 
 export const secretJwtSignSendToHostRequiredMessage = `secretJwtSign needs send_to_host (for example "api.example.com") when the "aud" claim is not an https URL. Since ${jwtSignSendToHostRequiredDate} a sealed JWT no longer fills on any host. Pass the host this JWT is sent to as send_to_host.`
 
-export const secretJwtSignNewAnyHostCallerMessage = `secretJwtSign needs send_to_host (for example "api.example.com") when the "aud" claim is not an https URL. A sealed JWT that fills on any host is deprecated, and only callers already using it keep it until ${jwtSignSendToHostRequiredDate}. Pass the host this JWT is sent to as send_to_host.`
+export const secretJwtSignNewAnyHostCallerMessage = `secretJwtSign needs send_to_host (for example "api.example.com") when the "aud" claim is not an https URL. A sealed JWT that fills on any host is deprecated: only callers that used it before ${jwtSignNewAnyHostCallerCutoffDate} keep it, until ${jwtSignSendToHostRequiredDate}. Pass the host this JWT is sent to as send_to_host.`
 
 function secretJwtSignInferredHostWarning(host: string) {
 	return `send_to_host was not passed, so Kody bound this sealed JWT to the domain of ${host}, the only domain this caller's earlier any-host JWTs were sent to. Pass send_to_host: "${host}" to make it explicit.`
@@ -212,6 +213,7 @@ function secretJwtSignInferredHostWarning(host: string) {
 /**
  * Seal target for a JWT with neither an https `aud` nor `send_to_host`
  * (kody-hq/kody#4456). Before the required date only grandfathered callers
+ * (pairs seen before the new-caller cutoff)
  * get an any-host JWT; from then a caller whose any-host JWTs all went to
  * one registrable domain is bound there, and any other is refused.
  */

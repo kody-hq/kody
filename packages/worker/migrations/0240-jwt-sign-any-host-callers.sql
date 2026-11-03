@@ -3,8 +3,8 @@
 -- execute code outside a package.
 --
 -- One row per caller pair that made an any-host call: `grandfathered` = 1
--- when Analytics Engine had seen the pair making any-host calls before new
--- callers were refused, 0 when it had not (re-checked after `checked_at`).
+-- when the pair made one before the new-caller cutoff (2026-11-10
+-- America/Denver), 0 when it had not (re-checked after `checked_at`).
 CREATE TABLE IF NOT EXISTS jwt_sign_any_host_callers (
 	user_id TEXT NOT NULL,
 	package_id TEXT NOT NULL,

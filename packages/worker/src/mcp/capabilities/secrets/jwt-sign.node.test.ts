@@ -613,7 +613,7 @@ test('secretJwtSign gives a grandfathered caller an any-host JWT with a dated wa
 	})
 })
 
-test('secretJwtSign refuses a new any-host caller now and still signs with send_to_host', async () => {
+test('secretJwtSign refuses an any-host caller first seen after the cutoff and still signs with send_to_host', async () => {
 	lookupSecretsThroughResolveSecret()
 	const { privateKey } = createKeyPair()
 	const { context, kinds } = countedContext()
@@ -626,7 +626,7 @@ test('secretJwtSign refuses a new any-host caller now and still signs with send_
 		jwtSignCapability.handler(anyHostInput, context),
 	).rejects.toSatisfy(
 		refusal(
-			/^secretJwtSign needs send_to_host .*only callers already using it keep it until 2026-12-02/,
+			/^secretJwtSign needs send_to_host .*only callers that used it before 2026-11-10 keep it, until 2026-12-02/,
 		),
 	)
 	expect(seal).not.toHaveBeenCalled()

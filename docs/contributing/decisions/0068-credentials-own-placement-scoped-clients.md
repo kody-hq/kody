@@ -1031,15 +1031,16 @@ JWT, and a manual token request returned whatever the token endpoint sent.
   with no new `oauthClientCredentials` option), or of the JWT's https `aud` or
   `send_to_host`, never in a URL query or path, and for at most one hour. A JWT
   with neither an https `aud` nor `send_to_host` is refused with an error
-  pointing at `send_to_host`, except for an org + package pair Analytics Engine
-  (`kody_jwt_sign_any_host_events`) already saw making such calls. That pair is
-  recorded in `jwt_sign_any_host_callers` and keeps a sealed, org-bound handle
-  that may fill on any host, with a deprecation `warning`, until 2026-12-02
-  (America/Denver). Each host such a handle fills on is counted per pair in
-  `jwt_sign_any_host_destinations` (never the JWT). From that date an any-host
-  handle stops filling, and a call without `send_to_host` is bound to the pair's
-  only destination domain when it has exactly one, and refused otherwise
-  (kody-hq/kody#4456).
+  pointing at `send_to_host`, except for an org + package pair that made such a
+  call before the new-caller cutoff (2026-11-10 America/Denver), as recorded in
+  `jwt_sign_any_host_callers` or, for calls before that table existed, in
+  Analytics Engine (`kody_jwt_sign_any_host_events`). That pair keeps a sealed,
+  org-bound handle that may fill on any host, with a deprecation `warning`,
+  until 2026-12-02 (America/Denver). Each host such a handle fills on is counted
+  per pair in `jwt_sign_any_host_destinations` (never the JWT). From that date
+  an any-host handle stops filling, and a call without `send_to_host` is bound
+  to the pair's only destination domain when it has exactly one, and refused
+  otherwise (kody-hq/kody#4456).
 - **Refresh tokens.** A sealed `refresh_token` shares the one-run, one-hour cap.
   Kody holding refresh tokens server side is tracked in kody-hq/kody#4457.
 - **Server-side.** `oauthClientCredentials` runs its token request through the

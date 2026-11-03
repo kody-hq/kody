@@ -3,8 +3,9 @@
  * (kody-hq/kody#4456). A caller is an owner org plus the attested package
  * ('' for execute code outside a package).
  *
- * - Only pairs Analytics Engine saw making any-host calls before this
- *   refusal shipped are grandfathered; any other pair is refused now.
+ * - Every pair making any-host calls before the new-caller cutoff
+ *   (2026-11-10 America/Denver) is grandfathered until `send_to_host` is
+ *   required; a pair first seen after the cutoff is refused.
  * - The host each any-host JWT is filled on is counted per pair, so a pair
  *   whose JWTs only ever went to one registrable domain gets `send_to_host`
  *   filled in server-side once it is required.
@@ -14,6 +15,13 @@
  */
 import { queryAnalyticsEngineSql } from '#worker/usage/aggregate-rollups.ts'
 import { sealedTokenDomainForUrl } from './sealed-token.ts'
+
+/** Pairs not seen making any-host calls before this are refused. */
+export const jwtSignNewAnyHostCallerCutoffDate = '2026-11-10'
+/** Midnight America/Denver (MST, UTC-7) on the cutoff date. */
+export const jwtSignNewAnyHostCallerCutoffAt = Date.parse(
+	`${jwtSignNewAnyHostCallerCutoffDate}T00:00:00-07:00`,
+)
 
 export const jwtSignAnyHostEventKinds = {
 	/** A grandfathered pair got an any-host JWT. */
@@ -74,11 +82,12 @@ export function recordJwtSignAnyHostEvent(input: {
 }
 
 /**
- * Whether the pair was making any-host calls before new callers were
- * refused. The answer is kept in APP_DB; a pair not decided yet is looked
- * up in Analytics Engine, where only grandfathered pairs keep writing
- * `sealed` points. Throws when that lookup fails, so an outage never
- * refuses a grandfathered caller with the permanent error.
+ * Whether the pair may still get an any-host JWT. Before the cutoff every
+ * pair may, and is stored as grandfathered. After it, a stored pair keeps
+ * its answer; a pair not stored yet is looked up in Analytics Engine,
+ * where only grandfathered pairs write `sealed` points. Throws when that
+ * lookup fails, so an outage never refuses a grandfathered caller with the
+ * permanent error.
  */
 export async function isJwtSignAnyHostCallerGrandfathered(input: {
 	env: CallerEnv
@@ -94,10 +103,29 @@ export async function isJwtSignAnyHostCallerGrandfathered(input: {
 		.bind(ownerId, packageId)
 		.first<{ grandfathered: number; checked_at: number }>()
 	if (row?.grandfathered === 1) return true
+	if (now < jwtSignNewAnyHostCallerCutoffAt) {
+		// The caller's `sealed` Analytics Engine point still records the pair.
+		await storeCallerDecision(input.env, input.caller, true, now).catch(
+			(error: unknown) => {
+				console.warn('jwt-sign-any-host-caller-store-failed', error)
+			},
+		)
+		return true
+	}
 	if (row && now - row.checked_at < refusedRecheckMs) return false
 	const seen = await analyticsSawAnyHostCalls(input.env, input.caller)
 	if (seen === null) return false
-	await input.env.APP_DB.prepare(
+	await storeCallerDecision(input.env, input.caller, seen, now)
+	return seen
+}
+
+async function storeCallerDecision(
+	env: Pick<Env, 'APP_DB'>,
+	caller: JwtSignAnyHostCaller,
+	grandfathered: boolean,
+	now: number,
+) {
+	await env.APP_DB.prepare(
 		`INSERT INTO jwt_sign_any_host_callers
 			(user_id, package_id, grandfathered, checked_at)
 		VALUES (?, ?, ?, ?)
@@ -105,9 +133,8 @@ export async function isJwtSignAnyHostCallerGrandfathered(input: {
 			grandfathered = MAX(jwt_sign_any_host_callers.grandfathered, excluded.grandfathered),
 			checked_at = excluded.checked_at`,
 	)
-		.bind(ownerId, packageId, seen ? 1 : 0, now)
+		.bind(caller.ownerId, caller.packageId, grandfathered ? 1 : 0, now)
 		.run()
-	return seen
 }
 
 /** Null when Analytics Engine is not configured (local dev and tests). */

@@ -5,6 +5,7 @@ import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.t
 import {
 	inferJwtSignSendToHost,
 	isJwtSignAnyHostCallerGrandfathered,
+	jwtSignNewAnyHostCallerCutoffAt,
 	recordJwtSignAnyHostDestination,
 } from './jwt-sign-any-host.ts'
 
@@ -16,6 +17,7 @@ const migration = readFileSync(
 	'utf8',
 )
 const caller = { ownerId: 'org-1', packageId: 'pkg-1' }
+const afterCutoff = jwtSignNewAnyHostCallerCutoffAt
 
 function createEnv(overrides: Record<string, string> = {}) {
 	const sqlite = new DatabaseSync(':memory:')
@@ -42,11 +44,69 @@ afterEach(() => {
 	vi.unstubAllGlobals()
 })
 
+test('the new-caller cutoff is midnight America/Denver on 2026-11-10', () => {
+	expect(new Date(jwtSignNewAnyHostCallerCutoffAt).toISOString()).toBe(
+		'2026-11-10T07:00:00.000Z',
+	)
+})
+
+test('before the cutoff any pair is grandfathered and stays so after it', async () => {
+	const env = createEnv()
+	const fetch = stubAnalytics(0)
+	await expect(
+		isJwtSignAnyHostCallerGrandfathered({
+			env,
+			caller,
+			now: afterCutoff - 1,
+		}),
+	).resolves.toBe(true)
+	await expect(
+		isJwtSignAnyHostCallerGrandfathered({
+			env,
+			caller,
+			now: afterCutoff + 1e9,
+		}),
+	).resolves.toBe(true)
+	expect(fetch).not.toHaveBeenCalled()
+
+	await expect(
+		isJwtSignAnyHostCallerGrandfathered({
+			env,
+			caller: { ...caller, packageId: 'pkg-new' },
+			now: afterCutoff,
+		}),
+	).resolves.toBe(false)
+	expect(fetch).toHaveBeenCalledTimes(1)
+})
+
+test('a failed store before the cutoff still grandfathers the call', async () => {
+	const env = createEnv()
+	const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+	const prepare = env.APP_DB.prepare.bind(env.APP_DB)
+	vi.spyOn(env.APP_DB, 'prepare').mockImplementation((sql: string) =>
+		sql.includes('INSERT')
+			? prepare('INSERT INTO missing_table VALUES (1)')
+			: prepare(sql),
+	)
+	await expect(
+		isJwtSignAnyHostCallerGrandfathered({
+			env,
+			caller,
+			now: afterCutoff - 1,
+		}),
+	).resolves.toBe(true)
+	expect(warn).toHaveBeenCalledWith(
+		'jwt-sign-any-host-caller-store-failed',
+		expect.anything(),
+	)
+	warn.mockRestore()
+})
+
 test('a pair Analytics Engine saw making any-host calls is grandfathered and stored', async () => {
 	const env = createEnv()
 	const fetch = stubAnalytics(3)
 	await expect(
-		isJwtSignAnyHostCallerGrandfathered({ env, caller, now: 1_000 }),
+		isJwtSignAnyHostCallerGrandfathered({ env, caller, now: afterCutoff }),
 	).resolves.toBe(true)
 	const query = String(fetch.mock.calls[0]?.[1].body)
 	expect(query).toContain('FROM kody_jwt_sign_any_host_events')
@@ -56,31 +116,43 @@ test('a pair Analytics Engine saw making any-host calls is grandfathered and sto
 
 	fetch.mockClear()
 	await expect(
-		isJwtSignAnyHostCallerGrandfathered({ env, caller, now: 1e12 }),
+		isJwtSignAnyHostCallerGrandfathered({
+			env,
+			caller,
+			now: afterCutoff + 1e9,
+		}),
 	).resolves.toBe(true)
 	expect(fetch).not.toHaveBeenCalled()
 })
 
-test('an unseen pair is refused, and re-checked only after an hour', async () => {
+test('after the cutoff an unseen pair is refused, and re-checked only after an hour', async () => {
 	const env = createEnv()
 	const fetch = stubAnalytics(0)
 	await expect(
-		isJwtSignAnyHostCallerGrandfathered({ env, caller, now: 0 }),
+		isJwtSignAnyHostCallerGrandfathered({ env, caller, now: afterCutoff }),
 	).resolves.toBe(false)
 	await expect(
-		isJwtSignAnyHostCallerGrandfathered({ env, caller, now: 60_000 }),
+		isJwtSignAnyHostCallerGrandfathered({
+			env,
+			caller,
+			now: afterCutoff + 60_000,
+		}),
 	).resolves.toBe(false)
 	expect(fetch).toHaveBeenCalledTimes(1)
 
 	stubAnalytics(1)
 	await expect(
-		isJwtSignAnyHostCallerGrandfathered({ env, caller, now: 3_600_000 }),
+		isJwtSignAnyHostCallerGrandfathered({
+			env,
+			caller,
+			now: afterCutoff + 3_600_000,
+		}),
 	).resolves.toBe(true)
 	await expect(
 		isJwtSignAnyHostCallerGrandfathered({
 			env,
 			caller: { ...caller, packageId: 'pkg-2' },
-			now: 3_600_000,
+			now: afterCutoff + 3_600_000,
 		}),
 	).resolves.toBe(true)
 })
@@ -89,7 +161,7 @@ test('without Analytics Engine credentials nothing is grandfathered or stored', 
 	const env = createEnv({ CLOUDFLARE_API_TOKEN: '' })
 	const fetch = stubAnalytics(5)
 	await expect(
-		isJwtSignAnyHostCallerGrandfathered({ env, caller }),
+		isJwtSignAnyHostCallerGrandfathered({ env, caller, now: afterCutoff }),
 	).resolves.toBe(false)
 	expect(fetch).not.toHaveBeenCalled()
 	const row = await env.APP_DB.prepare(
@@ -105,7 +177,7 @@ test('a failed Analytics Engine lookup throws instead of refusing', async () => 
 		vi.fn(async () => new Response('bad query', { status: 400 })),
 	)
 	await expect(
-		isJwtSignAnyHostCallerGrandfathered({ env, caller }),
+		isJwtSignAnyHostCallerGrandfathered({ env, caller, now: afterCutoff }),
 	).rejects.toThrow(/Analytics Engine SQL query failed \(400\)/)
 })
 
@@ -116,6 +188,7 @@ test('an id outside the expected shape is never put in the query', async () => {
 		isJwtSignAnyHostCallerGrandfathered({
 			env,
 			caller: { ownerId: "org' OR '1'='1", packageId: '' },
+			now: afterCutoff,
 		}),
 	).resolves.toBe(false)
 	expect(fetch).not.toHaveBeenCalled()

@@ -295,10 +295,10 @@ fills on the registrable domain of an https **`aud`** claim or of
 **`send_to_host`** (pass it when `aud` is not a URL), never in a URL query or
 path, and expires with the JWT's `exp` (at most one hour). Without either, a
 call is refused with an error asking for **`send_to_host`**, unless the same org
-and package were already making such calls: those keep an any-host handle with a
-deprecation **`warning`** until 2026-12-02 (America/Denver). From then, Kody
-fills in `send_to_host` when every earlier any-host handle from that org and
-package went to one registrable domain (the result's **`warning`** names the
+and package made such a call before 2026-11-10 (America/Denver): those keep an
+any-host handle with a deprecation **`warning`** until 2026-12-02. From then,
+Kody fills in `send_to_host` when every earlier any-host handle from that org
+and package went to one registrable domain (the result's **`warning`** names the
 host) and refuses the call otherwise. A token endpoint's `access_token`,
 `refresh_token`, and `id_token` come back sealed the same way. They fill on the
 token URL's registrable domain and the client secret's approved hosts; an
