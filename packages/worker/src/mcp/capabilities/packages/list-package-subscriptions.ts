@@ -83,8 +83,6 @@ export const listPackageSubscriptionsCapability = defineDomainCapability(
 			'status incident opened',
 			'status.incident.resolved',
 			'status incident resolved',
-			'fleet.package_error_rate.elevated',
-			'fleet package error rate',
 			'fleet.package_owner_error_spike',
 			'fleet package owner error spike',
 			'fleet.users_affected.elevated',

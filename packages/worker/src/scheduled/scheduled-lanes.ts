@@ -8,7 +8,6 @@ import {
 import { checkAuthDenialBurstAndNotify } from '#app/auth-denial-alerts.ts'
 import { checkEmailDeliveryBurstAndNotify } from '#app/email-delivery-alerts.ts'
 import { checkEmailVerificationStallsAndNotify } from '#app/email-verification-stall-alerts.ts'
-import { refreshFleetPackageErrorRateAndMaybeAlert } from '#app/fleet-package-error-rate-alerts.ts'
 import { refreshFleetUsersAffectedAndMaybeAlert } from '#app/fleet-users-affected-alerts.ts'
 import { refreshPackageOwnerErrorSpikesAndMaybeAlert } from '#app/package-owner-error-spike-alerts.ts'
 import { pruneRetention } from '#app/retention.ts'
@@ -42,6 +41,7 @@ import { cleanupRepoSessionBranches } from '#worker/repo/repo-session-cleanup.ts
 import { backfillCommunityListingsBehindPublished } from '#worker/community/listing-behind-backfill.ts'
 import { backfillStorageBucketEstimates } from '#worker/storage-buckets/estimate-backfill.ts'
 import { refreshAdminInsightsRunLogSnapshot } from '#worker/admin/insights-runlog-snapshot.ts'
+import { refreshFleetPackageErrorRateSnapshot } from '#worker/usage/fleet-package-error-rate.ts'
 import { aggregateUsageRollups } from '#worker/usage/aggregate-rollups.ts'
 import { aggregateConnectionUsageDaily } from '#worker/usage/connection-usage-rollup.ts'
 import { aggregateCreditAttributionDaily } from '#worker/usage/credit-attribution.ts'
@@ -173,16 +173,18 @@ export async function runScheduledLane(input: {
 			} catch (error) {
 				console.warn('connection-usage-aggregation-failed', error)
 			}
-			let fleetPackageErrorRate: Awaited<
-				ReturnType<typeof refreshFleetPackageErrorRateAndMaybeAlert>
-			>
+			let fleetPackageErrorRate:
+				| { status: 'skipped'; reason: string }
+				| { status: 'refreshed'; elevated: boolean }
 			try {
-				fleetPackageErrorRate = await refreshFleetPackageErrorRateAndMaybeAlert(
-					{
-						env: input.env,
-						now: input.scheduledAt,
-					},
-				)
+				const refreshed = await refreshFleetPackageErrorRateSnapshot({
+					env: input.env,
+					now: input.scheduledAt,
+				})
+				fleetPackageErrorRate =
+					refreshed.status === 'refreshed'
+						? { status: 'refreshed', elevated: refreshed.elevation !== null }
+						: refreshed
 			} catch (error) {
 				console.warn('fleet-package-error-rate-lane-failed', error)
 				fleetPackageErrorRate = {

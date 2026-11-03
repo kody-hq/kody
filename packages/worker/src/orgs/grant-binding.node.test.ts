@@ -13,7 +13,7 @@ async function createDb() {
 	return db
 }
 
-test('loadOrgBindingFromGrantProps prefers stamped orgId and falls back to userId', async () => {
+test('loadOrgBindingFromGrantProps uses stamped orgId and fails closed without it', async () => {
 	const db = await createDb()
 	const ada = testStableUserIdFromEmail('ada@example.com')
 	const gus = testStableUserIdFromEmail('gus@example.com')
@@ -44,10 +44,7 @@ test('loadOrgBindingFromGrantProps prefers stamped orgId and falls back to userI
 			personId: ada,
 			grantProps: { userId: ada },
 		}),
-	).toEqual({
-		org: { id: ada, slug: 'ada' },
-		role: 'owner',
-	})
+	).toBeNull()
 	expect(
 		await loadOrgBindingFromGrantProps({
 			db,
@@ -55,8 +52,6 @@ test('loadOrgBindingFromGrantProps prefers stamped orgId and falls back to userI
 			grantProps: { orgId: gus, userId: ada },
 		}),
 	).toBeNull()
-	// props.userId that is not a reachable org fails closed (no personal
-	// fallback after the userId path).
 	expect(
 		await loadOrgBindingFromGrantProps({
 			db,

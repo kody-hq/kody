@@ -205,7 +205,6 @@ async function ensureSchema(db: D1Database) {
 				previous_hmac_secret_name TEXT,
 				previous_hmac_secret_encrypted TEXT,
 				previous_hmac_secret_expires_at TEXT,
-				enabled INTEGER NOT NULL DEFAULT 1,
 				deleted_at TEXT,
 				instance_label TEXT,
 				created_at TEXT NOT NULL,

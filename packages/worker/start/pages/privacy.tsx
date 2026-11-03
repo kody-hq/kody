@@ -220,13 +220,6 @@ export function PrivacyRoute() {
 					and <code>observed_at</code>
 					). Those events omit user identities, tokens, recipients, and message
 					content. Admin-configured notification packages may also receive a
-					metadata-only <code>fleet.package_error_rate.elevated</code> event
-					when package-runtime error rates rise (window bounds, per-metric
-					counts and rates, public status URL, insights URL, and — when one
-					account or a few accounts own the recent-window errors — those
-					usernames and package name leaves). That event omits user ids, package
-					UUIDs, emails, error strings, logs, and unrelated account content.
-					Admin-configured notification packages may also receive a
 					metadata-only <code>fleet.entitlement.crossed</code> event when a
 					swept account first crosses 80% or 100% of a plan-limit resource, when
 					a non-admin account first exceeds the monthly runtime-duration

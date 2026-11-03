@@ -10,7 +10,6 @@ import {
 } from '#worker/oauth-cimd-last-known-good.ts'
 import { pinnedCimdDocument } from '#worker/oauth-known-cimd-clients.ts'
 import { mcpOauthScopes } from '#worker/mcp-oauth-scopes.ts'
-import { stampOrgIdOnTokenExchange } from '#worker/orgs/oauth-grant.ts'
 import { reportOAuthProviderError } from '#worker/oauth-provider-error-log.ts'
 
 /**
@@ -116,6 +115,5 @@ export function createSharedOAuthProviderOptions(
 		// v1.2 removed allowPlainPKCE / allowImplicitFlow (S256 + auth code only).
 		// App-layer getPkceValidationError remains defense in depth. See
 		// docs/contributing/security.md.
-		tokenExchangeCallback: ({ props }) => stampOrgIdOnTokenExchange({ props }),
 	}
 }

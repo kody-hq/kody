@@ -851,6 +851,10 @@
 		{
 			"filename": "0237-dr-paced-restore-drill-progress.sql",
 			"sha256": "a8b07e35ed972099642d244fef52c0a39e1571426948c7500a24717fd1b5b70b"
+		},
+		{
+			"filename": "0238-drop-webhook-endpoints-enabled.sql",
+			"sha256": "160e33e92bad49e344ea13e0802f0b7bb95b8235dade84c041f13c0a2103354c"
 		}
 	]
 }

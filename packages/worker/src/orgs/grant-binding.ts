@@ -1,44 +1,23 @@
-import {
-	readOrgIdFromGrantProps,
-	readOrgIdFromGrantPropsOrUserId,
-} from '#worker/orgs/oauth-grant.ts'
+import { readOrgIdFromGrantProps } from '#worker/orgs/oauth-grant.ts'
 import {
 	loadOrgBindingForOrg,
-	loadOrgBindingForPerson,
 	orgBindingForOrgFromRows,
 	orgBindingForOrgStatements,
-	orgBindingForPersonFromRow,
-	orgBindingForPersonStatement,
 	type OrgBinding,
 } from '#worker/orgs/repo.ts'
 
 /**
- * Resolve the org this MCP OAuth grant is bound to.
- *
- * Stamped `props.orgId` is authoritative. Grants minted before P4 have no
- * orgId — fall back to `props.userId` as the personal org id (P9 cleanup:
- * drop the userId fallback once every live grant has orgId; see ADR 0064).
+ * Resolve the org this MCP OAuth grant is bound to from its stamped
+ * `props.orgId` (ADR 0064). A grant without one fails closed.
  */
 export async function loadOrgBindingFromGrantProps(input: {
 	db: D1Database
 	personId: string
 	grantProps: unknown
 }): Promise<OrgBinding | null> {
-	const stampedOrgId = readOrgIdFromGrantProps(input.grantProps)
-	if (stampedOrgId) {
-		return await loadOrgBindingForOrg(input.db, input.personId, stampedOrgId)
-	}
-	const fallbackOrgId = readOrgIdFromGrantPropsOrUserId(input.grantProps)
-	if (fallbackOrgId) {
-		// ADR 0064: orgId ?? userId only. Do not fall through to the caller's
-		// personal org when that lookup fails (hides props.userId mismatch).
-		return await loadOrgBindingForOrg(input.db, input.personId, fallbackOrgId)
-	}
-	try {
-		return await loadOrgBindingForPerson(input.db, input.personId)
-	} catch {
-		return null
-	}
+	const orgId = readOrgIdFromGrantProps(input.grantProps)
+	if (!orgId) return null
+	return await loadOrgBindingForOrg(input.db, input.personId, orgId)
 }
 
 export type OrgBindingPlan = {
@@ -58,9 +37,7 @@ export function planOrgBindingFromGrantProps(input: {
 	personId: string
 	grantProps: unknown
 }): OrgBindingPlan {
-	const orgId =
-		readOrgIdFromGrantProps(input.grantProps) ??
-		readOrgIdFromGrantPropsOrUserId(input.grantProps)
+	const orgId = readOrgIdFromGrantProps(input.grantProps)
 	if (orgId) {
 		const statements = orgBindingForOrgStatements(
 			input.db,
@@ -80,17 +57,5 @@ export function planOrgBindingFromGrantProps(input: {
 				}),
 		}
 	}
-	return {
-		statements: [orgBindingForPersonStatement(input.db, input.personId)],
-		resolve: (rows) => {
-			try {
-				return orgBindingForPersonFromRow(
-					input.personId,
-					(rows[0] ?? null) as Parameters<typeof orgBindingForPersonFromRow>[1],
-				)
-			} catch {
-				return null
-			}
-		},
-	}
+	return { statements: [], resolve: () => null }
 }

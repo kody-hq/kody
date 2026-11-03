@@ -295,7 +295,7 @@ test('buildMcpUserContextWithOrgBindingFromGrantProps reads the user row and org
 	}
 	const grantProps = {
 		userId: ownerIdFromStored('stable-member'),
-		metadata: { orgId: ownerIdFromStored('org-team') },
+		orgId: ownerIdFromStored('org-team'),
 	} as GrantProps
 
 	const bound = await buildMcpUserContextWithOrgBindingFromGrantProps(
