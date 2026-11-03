@@ -15,7 +15,6 @@ import {
 import { sendToOrgBillingRecipients } from './org-billing-emails.ts'
 import {
 	buildOrgBillingMetadata,
-	KODY_STABLE_USER_ID_METADATA_KEY,
 	resolveOrgIdFromStripeMetadata,
 } from './org-stripe-metadata.ts'
 import {
@@ -201,30 +200,16 @@ async function createAutoRefillPaymentIntent(input: {
 	} catch (error) {
 		if (!(error instanceof StripeApiError)) throw error
 		if (!isStripeIdempotencyParameterMismatchError(error)) throw error
-		try {
-			// Deploy boundary (#3679): this key may already be bound to a
-			// PaymentIntent created with kody_stable_user_id-only metadata.
-			// Replay that shape so Stripe returns the cached intent instead of
-			// rejecting the dual-write metadata as a parameter mismatch.
-			return await createOffSessionPaymentIntent(input.env, {
-				...chargeInput,
-				idempotencyKey,
-				metadata: {
-					[creditAutoRefillMetadataKey]: '1',
-					[KODY_STABLE_USER_ID_METADATA_KEY]: input.userId,
-				},
-			})
-		} catch (legacyError) {
-			if (!(legacyError instanceof StripeApiError)) throw legacyError
-			const fromList = await tryFindUnledgeredSucceededAutoRefillPaymentIntent({
-				env: input.env,
-				db: input.db,
-				customerId: input.customerId,
-				orgId: input.userId,
-			})
-			if (fromList) return fromList
-			throw legacyError
-		}
+		// The key is already bound to an intent created with other parameters
+		// (e.g. different metadata before a deploy). Heal from the list instead.
+		const fromList = await tryFindUnledgeredSucceededAutoRefillPaymentIntent({
+			env: input.env,
+			db: input.db,
+			customerId: input.customerId,
+			orgId: input.userId,
+		})
+		if (fromList) return fromList
+		throw error
 	}
 }
 

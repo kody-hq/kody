@@ -201,25 +201,20 @@ test('stripe client request contracts for checkout, subscriptions, and portal', 
 			...checkoutInput,
 			metadata: {
 				kody_org_id: 'org-acme',
-				kody_stable_user_id: 'org-acme',
 				kody_plan: 'pro',
 			},
 		})
 		expect(
 			formFields(fetchMock.mock.calls[0]?.[1], [
 				'metadata[kody_org_id]',
-				'metadata[kody_stable_user_id]',
 				'metadata[kody_plan]',
 				'subscription_data[metadata][kody_org_id]',
-				'subscription_data[metadata][kody_stable_user_id]',
 				'subscription_data[metadata][kody_plan]',
 			]),
 		).toEqual({
 			'metadata[kody_org_id]': 'org-acme',
-			'metadata[kody_stable_user_id]': 'org-acme',
 			'metadata[kody_plan]': 'pro',
 			'subscription_data[metadata][kody_org_id]': 'org-acme',
-			'subscription_data[metadata][kody_stable_user_id]': 'org-acme',
 			'subscription_data[metadata][kody_plan]': 'pro',
 		})
 	}
@@ -1111,7 +1106,7 @@ test('credit top-up checkout and off-session refill send the expected Stripe con
 			successUrl:
 				'https://app.example.com/account/usage?topup=success&session_id={CHECKOUT_SESSION_ID}',
 			cancelUrl: 'https://app.example.com/account/usage#credits',
-			metadata: { kody_credit_top_up: '1', kody_stable_user_id: 'user-1' },
+			metadata: { kody_credit_top_up: '1', kody_org_id: 'user-1' },
 		}),
 	).toEqual({ id: 'cs_credit', url: 'https://checkout.stripe.com/c' })
 	expect(formOf(fetchMock.mock.calls[0]?.[1])).toMatchObject({

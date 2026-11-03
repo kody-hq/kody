@@ -1,7 +1,7 @@
-# 0094: Package-app visitors sign in from limited browsers
+# 0094: Package-app visitors and accounts sign in from limited browsers
 
 - **Status:** accepted
-- **Date:** 2026-10-31
+- **Date:** 2026-10-31 (amended 2026-11-03: full-account device sign-in)
 - **Amends:** [0082](./0082-cli-oauth-device-authorization-grant.md)
 
 ## Context
@@ -77,9 +77,49 @@ they stayed signed out of the app.
    plus a Continue link, no script. That starts a new navigation the CSP does
    not block. The in-page JavaScript flows are unchanged.
 
+7. **Full-account sign-in on another device (amended 2026-11-03).** The first
+   version ruled this out: approving a code that mints a Kody website session
+   hands over the whole account, so a phisher who gets a signed-in person to
+   approve their code gets everything. Kent decided limited browsers should
+   still be able to sign in to Kody itself, with stronger safeguards than the
+   app flow. Every `/login` that is not resuming a package app (where item 2
+   applies) offers "Sign in on another device", with an optional "Keep this
+   browser signed in". It posts to `/login/device`, which creates a
+   `kind = 'account'` row (`client_id = 'kody-account'`) whose `request_json`
+   holds the asking browser's label, its approximate location (Cloudflare's
+   `request.cf` city, region, country), the `redirectTo`, and remember-me. The
+   device code lives in an HttpOnly, signed `__Host-` cookie, and the page
+   refreshes with `Refresh` like item 2. Safeguards:
+   - **Short code.** Account codes live 5 minutes (half the CLI/app lifetime)
+     and are single use.
+   - **Rate limits.** Starting: 5 per IP per 15 minutes. Checking: 150 per IP
+     per code lifetime; past that the page slows to a 30 second refresh.
+     Approving: 5 per approving person per hour (denying is never limited). Code
+     entry on `/device` keeps the 0082 per-person and per-IP limits.
+   - **Clear approval UI.** `/device` shows these rows on their own screen (not
+     the CLI consent): "This gives a browser your full account", the code to
+     match, the asking browser, its approximate location, and when it asked (UTC
+     and minutes ago). A warning appears when the asking browser's country
+     differs from the approver's.
+   - **Explicit confirmation.** Approve needs a ticked "I understand: I am
+     signing a browser in to my full Kody account." The server refuses an
+     approval without it (`confirm_required`), not just the browser.
+   - **Notification.** Every approval sends an essential transactional email
+     (`account_device_sign_in`) to the account with the browser, location, and
+     time, plus links to account settings and password reset. On its next check
+     the asking browser consumes the row once and gets an ordinary Kody session
+     cookie (`createAuthCookie`) for the approver, then lands on `redirectTo` or
+     `/account`. Approval requires a verified email. The CLI token endpoint and
+     package-app consent refuse account rows, and the CLI and package-app
+     decision queries filter by kind, so no flow can redeem another's code.
+     Migration 0244 widens the `kind` check to allow `account`.
+
 ## Consequences
 
-- Only package-app visitor sign-in gets the second-device option. A Kody website
-  session is never minted by device approval.
-- Device-flow phishing is mitigated the same way as 0082: short codes,
-  anti-phishing copy, the asking browser's label, and single use.
+- Package-app visitor sign-in and full Kody account sign-in both get the
+  second-device option. A Kody website session is minted by device approval only
+  for `kind = 'account'` rows, after the full-account confirmation.
+- Device-flow phishing is mitigated the same way as 0082 (short codes,
+  anti-phishing copy, the asking browser's label, single use), and account codes
+  add the shorter lifetime, location and time on the approval screen, the
+  explicit confirmation, approval limits, and the approval email.

@@ -93,6 +93,7 @@ import { Route as IntegrationsClaudeRouteImport } from './routes/integrations_.c
 import { Route as IntegrationsGmailRouteImport } from './routes/integrations_.gmail'
 import { Route as IntegrationsSlackRouteImport } from './routes/integrations_.slack'
 import { Route as JoinTokenRouteImport } from './routes/join.$token'
+import { Route as LoginDeviceRouteImport } from './routes/login_.device'
 import { Route as OauthAuthorizeRouteImport } from './routes/oauth.authorize'
 import { Route as OauthCallbackRouteImport } from './routes/oauth.callback'
 import { Route as OgChar123pageChar125DotpngRouteImport } from './routes/og_.{$page}[.]png'
@@ -710,6 +711,11 @@ const IntegrationsSlackRoute = IntegrationsSlackRouteImport.update({
 const JoinTokenRoute = JoinTokenRouteImport.update({
   id: '/join/$token',
   path: '/join/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginDeviceRoute = LoginDeviceRouteImport.update({
+  id: '/login_/device',
+  path: '/login/device',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OauthAuthorizeRoute = OauthAuthorizeRouteImport.update({
@@ -1889,6 +1895,7 @@ export interface FileRoutesByFullPath {
   '/integrations/gmail': typeof IntegrationsGmailRoute
   '/integrations/slack': typeof IntegrationsSlackRoute
   '/join/$token': typeof JoinTokenRoute
+  '/login/device': typeof LoginDeviceRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/og/{$page}.png': typeof OgChar123pageChar125DotpngRoute
@@ -2165,6 +2172,7 @@ export interface FileRoutesByTo {
   '/integrations/gmail': typeof IntegrationsGmailRoute
   '/integrations/slack': typeof IntegrationsSlackRoute
   '/join/$token': typeof JoinTokenRoute
+  '/login/device': typeof LoginDeviceRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/og/{$page}.png': typeof OgChar123pageChar125DotpngRoute
@@ -2444,6 +2452,7 @@ export interface FileRoutesById {
   '/integrations_/gmail': typeof IntegrationsGmailRoute
   '/integrations_/slack': typeof IntegrationsSlackRoute
   '/join/$token': typeof JoinTokenRoute
+  '/login_/device': typeof LoginDeviceRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/og_/{$page}.png': typeof OgChar123pageChar125DotpngRoute
@@ -2723,6 +2732,7 @@ export interface FileRouteTypes {
     | '/integrations/gmail'
     | '/integrations/slack'
     | '/join/$token'
+    | '/login/device'
     | '/oauth/authorize'
     | '/oauth/callback'
     | '/og/{$page}.png'
@@ -2999,6 +3009,7 @@ export interface FileRouteTypes {
     | '/integrations/gmail'
     | '/integrations/slack'
     | '/join/$token'
+    | '/login/device'
     | '/oauth/authorize'
     | '/oauth/callback'
     | '/og/{$page}.png'
@@ -3277,6 +3288,7 @@ export interface FileRouteTypes {
     | '/integrations_/gmail'
     | '/integrations_/slack'
     | '/join/$token'
+    | '/login_/device'
     | '/oauth/authorize'
     | '/oauth/callback'
     | '/og_/{$page}.png'
@@ -3554,6 +3566,7 @@ export interface RootRouteChildren {
   IntegrationsGmailRoute: typeof IntegrationsGmailRoute
   IntegrationsSlackRoute: typeof IntegrationsSlackRoute
   JoinTokenRoute: typeof JoinTokenRoute
+  LoginDeviceRoute: typeof LoginDeviceRoute
   OauthAuthorizeRoute: typeof OauthAuthorizeRoute
   OauthCallbackRoute: typeof OauthCallbackRoute
   OgChar123pageChar125DotpngRoute: typeof OgChar123pageChar125DotpngRoute
@@ -4187,6 +4200,13 @@ declare module '@tanstack/react-router' {
       path: '/join/$token'
       fullPath: '/join/$token'
       preLoaderRoute: typeof JoinTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login_/device': {
+      id: '/login_/device'
+      path: '/login/device'
+      fullPath: '/login/device'
+      preLoaderRoute: typeof LoginDeviceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/oauth/authorize': {
@@ -6031,6 +6051,7 @@ const rootRouteChildren: RootRouteChildren = {
   IntegrationsGmailRoute: IntegrationsGmailRoute,
   IntegrationsSlackRoute: IntegrationsSlackRoute,
   JoinTokenRoute: JoinTokenRoute,
+  LoginDeviceRoute: LoginDeviceRoute,
   OauthAuthorizeRoute: OauthAuthorizeRoute,
   OauthCallbackRoute: OauthCallbackRoute,
   OgChar123pageChar125DotpngRoute: OgChar123pageChar125DotpngRoute,

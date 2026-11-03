@@ -36,6 +36,7 @@ import { bundleLocalUserModuleWithInputs } from './local-bundle.js'
 import {
 	collectPackageCheckFiles,
 	formatUnpublishedBundleInputMessage,
+	type PackageCheckFiles,
 	listPackageCheckPaths,
 	unpublishedBundleInputPaths,
 } from './package-check-files.js'
@@ -633,8 +634,7 @@ export type PackageCheckResult = {
  * Those are the same checks, with the same options, that publish runs.
  */
 export type RunPublishChecks = (
-	files: Record<string, string>,
-	binaryFiles: Record<string, number>,
+	tree: PackageCheckFiles,
 ) => Promise<PackageCheckResult>
 
 /**
@@ -705,6 +705,14 @@ function formatPublishChecksRunFailure(error: unknown): string {
 	]
 	return `could not run: ${message}${facts.length > 0 ? ` (${facts.join(', ')})` : ''}. Pass --debug for the HTTP details, or --offline to run only the local checks.`
 }
+
+/**
+ * The one git-push publish phase a working-tree check cannot run: cloning the
+ * pushed commit from Artifacts. Everything after the clone runs as publish
+ * runs it (see docs/use/packages.md, "What kody dev check runs").
+ */
+const devCheckCloneGapDetail =
+	'checked the working tree as a git-push publish snapshot. Not run: cloning the pushed commit from Artifacts (push and pack limits apply at `git push`), and the rebuilt artifacts are not saved.'
 
 const devCheckOfflineDetail =
 	'skipped (--offline). Only local checks ran; publish runs the full publish checks and can still refuse this package.'
@@ -903,7 +911,7 @@ export async function runDevCheck(input: {
 	} else {
 		try {
 			const tree = await collectPackageCheckFiles(manifest.root)
-			const outcome = await input.runPublishChecks(tree.files, tree.binaryFiles)
+			const outcome = await input.runPublishChecks(tree)
 			publishChecksOk = outcome.ok
 			for (const check of outcome.checks) {
 				push(`publish:${check.kind}`, check.ok, check.message || undefined)
@@ -914,14 +922,7 @@ export async function runDevCheck(input: {
 			for (const notice of outcome.notices ?? []) {
 				push('unmappable credentials', true, notice, 'warning')
 			}
-			const binaryCount = Object.keys(tree.binaryFiles).length
-			if (binaryCount > 0) {
-				push(
-					'publish checks',
-					true,
-					`sent ${binaryCount} binary file(s) by path and size only; their contents stay local`,
-				)
-			}
+			push('publish checks', true, devCheckCloneGapDetail)
 		} catch (error) {
 			publishChecksError = {
 				message: error instanceof Error ? error.message : String(error),

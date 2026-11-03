@@ -4,7 +4,6 @@ import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { runCreditAutoRefill } from './credit-auto-refill.ts'
 import { updateCreditWalletSettings } from './credit-wallet.ts'
-import { KODY_STABLE_USER_ID_METADATA_KEY } from './org-stripe-metadata.ts'
 
 const now = new Date('2026-09-27T12:00:00.000Z')
 const userId = 'user-refill-test'
@@ -83,41 +82,30 @@ beforeEach(() => {
 	vi.restoreAllMocks()
 })
 
-test('runCreditAutoRefill heals idempotency mismatch via legacy metadata replay', async () => {
+test('runCreditAutoRefill heals an idempotency mismatch from the PaymentIntent list', async () => {
 	const { db } = createDb()
 	await seedWallet(db)
 	const env = createTestEnv(db)
-	const succeededIntent = {
-		id: 'pi_legacy_cached',
+	// The key is bound to an intent created with different metadata (e.g. the
+	// pre-deploy dual-write shape); Stripe rejects the replay, the list heals it.
+	const boundIntent = {
+		id: 'pi_bound_to_key',
 		status: 'succeeded',
 		amount: amountCents,
 		currency: 'usd',
+		metadata: { [refillMetadataKey]: '1', kody_org_id: userId },
 	}
-	let postCount = 0
+	let listCount = 0
 	const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
 		const method = init?.method ?? 'GET'
 		if (method === 'GET' && url.includes('/v1/payment_intents?')) {
-			return jsonResponse({ data: [] })
+			listCount += 1
+			return jsonResponse({ data: listCount === 1 ? [] : [boundIntent] })
 		}
 		if (method === 'POST' && url.includes('/v1/payment_intents')) {
-			postCount += 1
 			const key = (init?.headers as Record<string, string>)?.['idempotency-key']
 			expect(key).toBe(refillIdempotencyKey)
-			const form = formOf(init)
-			if (postCount === 1) {
-				expect(form).toMatchObject({
-					[`metadata[${refillMetadataKey}]`]: '1',
-					[`metadata[kody_org_id]`]: userId,
-					[`metadata[${KODY_STABLE_USER_ID_METADATA_KEY}]`]: userId,
-				})
-				return idempotencyMismatchResponse()
-			}
-			expect(form).toMatchObject({
-				[`metadata[${refillMetadataKey}]`]: '1',
-				[`metadata[${KODY_STABLE_USER_ID_METADATA_KEY}]`]: userId,
-			})
-			expect(form[`metadata[kody_org_id]`]).toBeUndefined()
-			return jsonResponse(succeededIntent)
+			return idempotencyMismatchResponse()
 		}
 		throw new Error(`Unexpected fetch: ${method} ${url}`)
 	})
@@ -139,7 +127,7 @@ test('runCreditAutoRefill heals idempotency mismatch via legacy metadata replay'
 			.bind(userId)
 			.first<{ stripe_reference: string; kind: string }>()
 		expect(ledger).toEqual({
-			stripe_reference: 'pi_legacy_cached',
+			stripe_reference: 'pi_bound_to_key',
 			kind: 'auto_refill',
 		})
 		expect(fetchMock).toHaveBeenCalledTimes(3)
@@ -160,7 +148,6 @@ test('runCreditAutoRefill applies an unledgered succeeded PaymentIntent from lis
 		metadata: {
 			[refillMetadataKey]: '1',
 			kody_org_id: userId,
-			[KODY_STABLE_USER_ID_METADATA_KEY]: userId,
 		},
 	}
 	const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
@@ -215,7 +202,6 @@ test('runCreditAutoRefill heals an orphan whose amount differs from current sett
 		metadata: {
 			[refillMetadataKey]: '1',
 			kody_org_id: userId,
-			[KODY_STABLE_USER_ID_METADATA_KEY]: userId,
 		},
 	}
 	const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
@@ -295,7 +281,7 @@ test('runCreditAutoRefill still creates when PaymentIntent listing fails', async
 	}
 })
 
-test('runCreditAutoRefill lists then creates with dual-write metadata when no orphan exists', async () => {
+test('runCreditAutoRefill lists then creates with org-id metadata when no orphan exists', async () => {
 	const { db } = createDb()
 	await seedWallet(db)
 	const env = createTestEnv(db)
@@ -307,13 +293,14 @@ test('runCreditAutoRefill lists then creates with dual-write metadata when no or
 		if (method === 'POST' && url.includes('/v1/payment_intents')) {
 			const key = (init?.headers as Record<string, string>)?.['idempotency-key']
 			expect(key).toBe(refillIdempotencyKey)
-			expect(formOf(init)).toMatchObject({
+			const form = formOf(init)
+			expect(form).toMatchObject({
 				[`metadata[${refillMetadataKey}]`]: '1',
 				[`metadata[kody_org_id]`]: userId,
-				[`metadata[${KODY_STABLE_USER_ID_METADATA_KEY}]`]: userId,
 			})
+			expect(form['metadata[kody_stable_user_id]']).toBeUndefined()
 			return jsonResponse({
-				id: 'pi_new_dual_write',
+				id: 'pi_new_org_metadata',
 				status: 'succeeded',
 				amount: amountCents,
 				currency: 'usd',

@@ -32,6 +32,7 @@ export const essentialTransactionalEmailKinds = [
 	'email_verification',
 	'email_change',
 	'email_changed',
+	'account_device_sign_in',
 	'email_destination_verification',
 	'email_claim_release',
 	'password_reset',
