@@ -1,3 +1,4 @@
+import { resolveTokenEndpointClientSecret } from '#worker/integrations/connect-oauth-persist.ts'
 import {
 	resolvePinnedConnectClientSecret,
 	resolvePinnedConnectTarget,
@@ -919,18 +920,24 @@ export async function exchangeAccountOAuthToken(input: {
 	})
 
 	if (flow === 'confidential') {
-		clientSecret = await resolveConnectClientSecret({
+		clientSecret = await resolveTokenEndpointClientSecret({
 			env: input.env,
 			userId: ownerIdFromCaller({
 				request: input.user.request,
 				user: input.user.mcpUser,
 			}),
 			provider: input.fields.provider?.trim() ?? '',
+			clientId: new URLSearchParams(paramsRaw).get('client_id'),
+			tokenUrl,
 			clientSecret: input.fields.clientSecret?.trim() ?? null,
 		})
 		if (!clientSecret) {
 			return operationResult(
-				{ ok: false, error: 'Client secret is required.' },
+				{
+					ok: false,
+					error:
+						'No saved client secret matches this client ID and token URL. Go back to setup and enter the client secret.',
+				},
 				400,
 			)
 		}

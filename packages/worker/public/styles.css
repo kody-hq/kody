@@ -3144,13 +3144,21 @@ html:not(.js) .landing-connect-copy {
 	font-size: max(calc(100cqw / 30), 14px);
 }
 
+/* Narrow stages settle on 15px text. The layout stacks below each scene's
+   `stackWidth` (PrimitiveWidgetFrame); keep the two stack blocks in sync. */
+
 @container (max-width: 520px) {
 	.pw-stage[data-stack] {
-		aspect-ratio: auto;
 		font-size: 15px;
 	}
+}
 
-	.pw-stage[data-stack] .pw-run {
+@container (max-width: 520px) {
+	.pw-stage[data-stack='520'] {
+		aspect-ratio: auto;
+	}
+
+	.pw-stage[data-stack='520'] .pw-run {
 		position: relative;
 		inset: auto;
 		display: flex;
@@ -3159,7 +3167,7 @@ html:not(.js) .landing-connect-copy {
 		gap: 0.75em;
 	}
 
-	.pw-stage[data-stack] .pw-node {
+	.pw-stage[data-stack='520'] .pw-node {
 		position: relative;
 		left: auto !important;
 		top: auto !important;
@@ -3167,7 +3175,34 @@ html:not(.js) .landing-connect-copy {
 		width: auto;
 	}
 
-	.pw-stage[data-stack] .pw-wires {
+	.pw-stage[data-stack='520'] .pw-wires {
+		display: none;
+	}
+}
+
+@container (max-width: 419.98px) {
+	.pw-stage[data-stack='420'] {
+		aspect-ratio: auto;
+	}
+
+	.pw-stage[data-stack='420'] .pw-run {
+		position: relative;
+		inset: auto;
+		display: flex;
+		flex-direction: column;
+		align-items: stretch;
+		gap: 0.75em;
+	}
+
+	.pw-stage[data-stack='420'] .pw-node {
+		position: relative;
+		left: auto !important;
+		top: auto !important;
+		translate: none;
+		width: auto;
+	}
+
+	.pw-stage[data-stack='420'] .pw-wires {
 		display: none;
 	}
 }

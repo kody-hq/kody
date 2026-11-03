@@ -239,6 +239,11 @@
 	padding: 0.2em 0.05em 0.05em;
 }
 
+/* Publish stacks with the shared 520px rules; keep its tight board gap. */
+.pw .pw-stage[data-stack] .pw-pkg-board {
+	gap: 0.15em;
+}
+
 .pw .pw-pkg-board .pw-node {
 	position: relative;
 	top: auto;
@@ -406,79 +411,6 @@
 	border-color: var(--pw-accent);
 	box-shadow: 0 0 0 0.18em
 		color-mix(in oklab, var(--pw-accent) 28%, transparent);
-}
-
-/* The shared stack rules start at 520px, which also catches the two-column
-   desktop layout (about 465px). Keep the hero and share diagrams down to
-   420px and stack below that. */
-
-@container (min-width: 420px) and (max-width: 520px) {
-	.pw.pw-scene-pkg-hero .pw-stage[data-stack],
-	.pw.pw-scene-pkg-share .pw-stage[data-stack] {
-		aspect-ratio: var(--pw-ratio);
-	}
-
-	.pw.pw-scene-pkg-hero .pw-stage[data-stack] .pw-run,
-	.pw.pw-scene-pkg-share .pw-stage[data-stack] .pw-run {
-		position: absolute;
-		inset: 0;
-		display: block;
-	}
-
-	.pw.pw-scene-pkg-hero .pw-stage[data-stack] .pw-node,
-	.pw.pw-scene-pkg-share .pw-stage[data-stack] .pw-node,
-	.pw.pw-scene-pkg-share .pw-stage[data-stack] .pw-pkg-origin {
-		position: absolute;
-		left: var(--pkg-x) !important;
-		top: var(--pkg-y) !important;
-	}
-
-	.pw .pw-stage[data-stack] .pw-pkg-side {
-		translate: 0 -50%;
-	}
-
-	.pw .pw-stage[data-stack] .pw-pkg-chat {
-		width: 44%;
-	}
-
-	.pw .pw-stage[data-stack] .pw-pkg-born {
-		width: 36%;
-	}
-
-	.pw .pw-stage[data-stack] .pw-pkg-tree {
-		width: 30%;
-	}
-
-	.pw .pw-stage[data-stack] .pw-pkg-editor {
-		width: 61%;
-	}
-
-	.pw .pw-stage[data-stack] .pw-pkg-log {
-		width: 38%;
-	}
-
-	.pw .pw-stage[data-stack] .pw-pkg-result {
-		width: 53%;
-	}
-
-	.pw .pw-stage[data-stack] .pw-pkg-package {
-		width: 62%;
-		translate: -50% -100%;
-	}
-
-	.pw .pw-stage[data-stack] .pw-pkg-person {
-		width: 42%;
-		translate: -50% 0;
-	}
-
-	.pw .pw-stage[data-stack] .pw-pkg-copy {
-		width: 42%;
-		translate: -50% -50%;
-	}
-
-	.pw .pw-stage[data-stack] .pw-pkg-board {
-		gap: 0.15em;
-	}
 }
 
 /* Narrow stages: the cards stack in story order and short connectors stand
