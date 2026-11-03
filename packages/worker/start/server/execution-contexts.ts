@@ -126,6 +126,54 @@ export const turnOffExecutionContextCommands = createServerFn({
 		)
 	})
 
+export const dismissExecutionContextNotice = createServerFn({
+	method: 'POST',
+})
+	.validator(
+		z.object({
+			orgSlug,
+			contextId: segment,
+			fingerprint: z.string().min(1).max(64),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const { dismissExecutionContextNoticeForUser } =
+			await import('../../src/app/handlers/execution-contexts.ts')
+		return mutate(data.orgSlug, (input) =>
+			dismissExecutionContextNoticeForUser({
+				...input,
+				contextId: data.contextId,
+				fingerprint: data.fingerprint,
+			}),
+		)
+	})
+
+export const previewExecutionContextShare = createServerFn({ method: 'POST' })
+	.validator(
+		z.object({
+			orgSlug,
+			contextId: segment,
+			subject: z.discriminatedUnion('kind', [
+				z.object({
+					kind: z.literal('user'),
+					username: z.string().trim().min(1).max(64),
+				}),
+				z.object({ kind: z.literal('team'), slug: segment }),
+			]),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const { previewExecutionContextShareForUser } =
+			await import('../../src/app/handlers/execution-contexts.ts')
+		return mutate(data.orgSlug, (input) =>
+			previewExecutionContextShareForUser({
+				...input,
+				contextId: data.contextId,
+				subject: data.subject,
+			}),
+		)
+	})
+
 export const setExecutionChain = createServerFn({ method: 'POST' })
 	.validator(
 		z.object({

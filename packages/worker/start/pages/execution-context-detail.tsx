@@ -8,7 +8,9 @@ import { orgResourcePath } from '#universal/org-pages.ts'
 import {
 	cancelExecutionContextRun,
 	deleteExecutionContext,
+	dismissExecutionContextNotice,
 	loadExecutionContextAudit,
+	previewExecutionContextShare,
 	loadExecutionContextRuns,
 	optIntoExecutionContext,
 	optOutOfExecutionContext,
@@ -252,6 +254,7 @@ export function ExecutionContextDetail(props: {
 					})}
 				</AccountManagementMessage>
 			) : null}
+			<NoticesPanel orgSlug={orgSlug} context={context} onChanged={refresh} />
 			<CommandsPanel orgSlug={orgSlug} context={context} onChanged={refresh} />
 			<OptInControls {...props} onChanged={refresh} />
 			{context.sharing ? <SharingPanel {...props} onChanged={refresh} /> : null}
@@ -362,6 +365,117 @@ function DeleteControls(props: {
 }
 
 /** Host commands (ADR 0093): shows the machine opt-in and the off switch. */
+const misconfigurationText: Record<string, string> = {
+	operator_left:
+		'The person who runs this machine left the org, so it takes no one else’s runs.',
+	login_stale:
+		'The login on this machine was revoked or expired. Log the machine in again.',
+	profile_inactive:
+		'The agent profile this machine is logged in as is revoked or expired.',
+	team_deleted: 'The team this machine is for was deleted.',
+	personal_login_on_team_context:
+		'This machine is for a team but is logged in with a personal account.',
+	profile_not_assigned_to_team:
+		'This machine is for a team, but its agent profile is not assigned to that team.',
+}
+
+function entryText(entry: { permission: string; resource: string | null }) {
+	if (entry.permission === 'owner') return 'everything (an org Owner)'
+	return entry.resource
+		? `${entry.permission} on ${entry.resource}`
+		: entry.permission
+}
+
+function NoticesPanel(props: {
+	orgSlug: string
+	context: ExecutionContextListItem
+	onChanged: () => void
+}) {
+	const { context } = props
+	const [error, setError] = useState<string | null>(null)
+	const [busy, setBusy] = useState(false)
+	const elevation =
+		context.elevation && !context.elevation.dismissed ? context.elevation : null
+	const misconfigurations = context.misconfigurations ?? []
+	const review = context.accessReview ?? []
+	if (!elevation && misconfigurations.length === 0 && review.length === 0) {
+		return null
+	}
+
+	async function dismiss(fingerprint: string) {
+		setBusy(true)
+		setError(null)
+		const result = (await dismissExecutionContextNotice({
+			data: { orgSlug: props.orgSlug, contextId: context.id, fingerprint },
+		}).catch(() => unexpectedFailure)) as { ok: true } | Failure
+		setBusy(false)
+		if (!result.ok) return setError(failureText(result))
+		props.onChanged()
+	}
+
+	return (
+		<section
+			css={sectionCss}
+			data-testid="context-notices"
+			aria-label="Notices"
+		>
+			{misconfigurations.length > 0 ? (
+				<div role="alert" data-testid="context-misconfigured">
+					<strong>This machine needs fixing</strong>
+					<ul css={{ margin: 0 }}>
+						{misconfigurations.map((code) => (
+							<li key={code}>{misconfigurationText[code] ?? code}</li>
+						))}
+					</ul>
+				</div>
+			) : null}
+			{elevation ? (
+				<div role="status" data-testid="context-elevation">
+					<p css={{ margin: 0 }}>
+						<strong>
+							{context.name} can do {elevation.entries.length} thing
+							{elevation.entries.length === 1 ? '' : 's'} you can't.
+						</strong>{' '}
+						Your runs here use only your own access, but anyone with host access
+						on this machine acts with its login.
+					</p>
+					<ul css={{ margin: 0 }}>
+						{elevation.entries.map((entry) => (
+							<li key={entryText(entry)}>{entryText(entry)}</li>
+						))}
+					</ul>
+					<button
+						type="button"
+						css={[getPillButtonCss({ size: 'sm' }), target]}
+						disabled={busy}
+						onClick={() => void dismiss(elevation.fingerprint)}
+					>
+						Dismiss
+					</button>
+				</div>
+			) : null}
+			{review.length > 0 ? (
+				<details data-testid="context-access-review">
+					<summary>
+						Access review: {review.length}{' '}
+						{review.length === 1 ? 'person has' : 'people have'} less access
+						than this machine's login
+					</summary>
+					<ul css={{ margin: 0 }}>
+						{review.map((person, index) => (
+							<li key={person.handle ?? index}>
+								@{person.handle ?? 'unknown'}:{' '}
+								{person.entries.map(entryText).join(', ')}
+							</li>
+						))}
+					</ul>
+				</details>
+			) : null}
+			{error ? <p role="alert">{error}</p> : null}
+		</section>
+	)
+}
+
 function CommandsPanel(props: {
 	orgSlug: string
 	context: ExecutionContextListItem
@@ -785,10 +899,34 @@ function SharingPanel(props: {
 	const [confirmRemove, setConfirmRemove] = useState<string | null>(null)
 	const [error, setError] = useState<string | null>(null)
 	const [busy, setBusy] = useState(false)
+	const [excessWarning, setExcessWarning] = useState<string | null>(null)
 
 	async function share() {
 		setBusy(true)
 		setError(null)
+		const subjectKey = `${kind}:${value}`
+		if (kind !== 'org' && excessWarning !== subjectKey) {
+			const preview = (await previewExecutionContextShare({
+				data: {
+					orgSlug: props.orgSlug,
+					contextId: context.id,
+					subject:
+						kind === 'user' ? { kind, username: value } : { kind, slug: value },
+				},
+			}).catch(() => unexpectedFailure)) as
+				| { ok: true; excessCount: number; people: number }
+				| Failure
+			if (!preview.ok) {
+				setBusy(false)
+				return setError(failureText(preview))
+			}
+			if (preview.excessCount > 0) {
+				setBusy(false)
+				setExcessWarning(subjectKey)
+				return
+			}
+		}
+		setExcessWarning(null)
 		const result = (await shareExecutionContext({
 			data: {
 				orgSlug: props.orgSlug,
@@ -998,9 +1136,26 @@ function SharingPanel(props: {
 							css={[getPillButtonCss({ size: 'sm' }), target]}
 							disabled={busy}
 						>
-							Share
+							{excessWarning === `${kind}:${value}` ? 'Share anyway' : 'Share'}
 						</button>
 					</div>
+					{excessWarning === `${kind}:${value}` ? (
+						<p
+							role="alert"
+							data-testid="context-share-excess-warning"
+							css={{ margin: 0 }}
+						>
+							{context.name} is logged in as an account that can do things{' '}
+							{kind === 'team' ? 'some members of this team' : 'this person'}{' '}
+							can't do with their own access. Their runs still use only their
+							own access, but anyone with host access on the machine acts with
+							its login. See the{' '}
+							<a href="/docs/execution-contexts#shared-box-best-practices">
+								shared-box best practices
+							</a>
+							.
+						</p>
+					) : null}
 				</form>
 			) : (
 				<p css={mutedCss}>{copy.ownerWithoutManageNote}</p>

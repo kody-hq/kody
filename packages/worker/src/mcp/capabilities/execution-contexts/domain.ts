@@ -18,6 +18,8 @@ import {
 	executionContextShareRemoveCapability,
 	executionContextShareSetCapability,
 	executionContextUpdateCapability,
+	executionContextNoticeDismissCapability,
+	executionContextSharePreviewCapability,
 } from './capabilities.ts'
 import {
 	automationExecutionGetCapability,
@@ -51,6 +53,8 @@ export const executionContextsDomain = defineDomain({
 		executionContextListCapability,
 		executionContextGetCapability,
 		executionContextUpdateCapability,
+		executionContextNoticeDismissCapability,
+		executionContextSharePreviewCapability,
 		executionContextRevokeCapability,
 		executionContextDeleteCapability,
 		executionContextOptInCapability,

@@ -57,6 +57,8 @@ export const executionContextCapabilityNames = {
 	shareList: 'executionContextShareList',
 	shareSet: 'executionContextShareSet',
 	shareRemove: 'executionContextShareRemove',
+	sharePreview: 'executionContextSharePreview',
+	noticeDismiss: 'executionContextNoticeDismiss',
 	automationGet: 'automationExecutionGet',
 	automationSet: 'automationExecutionSet',
 } as const
@@ -533,6 +535,48 @@ export async function turnOffExecutionContextCommandsForUser(
 			grant: { commands: { enabled: false } },
 		})
 		return { ok: true as const }
+	})
+}
+
+export async function dismissExecutionContextNoticeForUser(
+	input: ScopedInput & { contextId: string; fingerprint: string },
+) {
+	return runScoped(input, async (scope) => {
+		await callCapability(scope, executionContextCapabilityNames.noticeDismiss, {
+			id: input.contextId,
+			fingerprint: input.fingerprint,
+		})
+		return { ok: true as const }
+	})
+}
+
+export async function previewExecutionContextShareForUser(
+	input: ScopedInput & {
+		contextId: string
+		subject: { kind: 'user'; username: string } | { kind: 'team'; slug: string }
+	},
+) {
+	return runScoped(input, async (scope) => {
+		const result = await callCapability(
+			scope,
+			executionContextCapabilityNames.sharePreview,
+			{
+				id: input.contextId,
+				...(input.subject.kind === 'user'
+					? { username: input.subject.username.replace(/^@/, '') }
+					: { team_slug: input.subject.slug }),
+			},
+		)
+		const people = Array.isArray(result.people) ? result.people : []
+		return {
+			ok: true as const,
+			excessCount: people.reduce(
+				(total: number, person: { excess?: Array<unknown> }) =>
+					total + (Array.isArray(person.excess) ? person.excess.length : 0),
+				0,
+			),
+			people: people.length,
+		}
 	})
 }
 

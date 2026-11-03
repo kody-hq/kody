@@ -49,6 +49,8 @@ function setup(input: { commands?: boolean } = {}) {
 			}),
 		)
 	sqlite.exec(`
+		INSERT INTO orgs (id, slug, access_epoch, created_at, updated_at)
+			VALUES ('${orgId}', 'acme', 0, '${now}', '${now}');
 		INSERT INTO org_memberships (org_id, user_id, role, created_at)
 			VALUES ('${orgId}', '${operator}', 'owner', '${now}'),
 			       ('${orgId}', 'user_friend', 'member', '${now}'),

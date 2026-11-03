@@ -35,6 +35,14 @@ export type ExecutionContextRow = {
 	capabilities_json: string | null
 	grant_json: string | null
 	grant_version: number
+	/** The box login (ADR 0096); null until recorded. */
+	login_kind?: 'person' | 'profile' | null
+	login_user_id?: string | null
+	login_profile_id?: string | null
+	login_token_id?: string | null
+	login_checked_at?: string | null
+	/** The team the operator says the box is for. */
+	team_id?: string | null
 }
 
 export type UnusableReason =
@@ -99,7 +107,8 @@ export function parsePublicKey(
 
 const contextColumns = `id, org_id, operator_user_id, all_members, name, public_key_jwk,
 	thumbprint, created_at, revoked_at, revoked_reason, last_seen_at, client_name,
-	client_version, capabilities_json, grant_json, grant_version`
+	client_version, capabilities_json, grant_json, grant_version, login_kind,
+	login_user_id, login_profile_id, login_token_id, login_checked_at, team_id`
 
 export async function getExecutionContext(db: D1Database, id: string) {
 	return await db
@@ -350,8 +359,9 @@ export async function insertExecutionContext(
 		.prepare(
 			`INSERT INTO execution_contexts (id, org_id, operator_user_id, all_members, name,
 				public_key_jwk, thumbprint, created_at, client_name, client_version,
-				capabilities_json, grant_json, grant_version)
-			 VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				capabilities_json, grant_json, grant_version, login_kind, login_user_id,
+				login_profile_id, login_token_id, login_checked_at)
+			 VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		)
 		.bind(
 			row.id,
@@ -366,6 +376,11 @@ export async function insertExecutionContext(
 			row.capabilities_json,
 			row.grant_json,
 			row.grant_version,
+			row.login_kind ?? null,
+			row.login_user_id ?? null,
+			row.login_profile_id ?? null,
+			row.login_token_id ?? null,
+			row.login_checked_at ?? null,
 		)
 		.run()
 }

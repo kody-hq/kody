@@ -128,6 +128,8 @@ export type ProfileView = {
 	revokedAt: string | null
 	createdAt: string
 	createdByProfileId: string | null
+	/** The team this profile is for (ADR 0096); grants nothing. */
+	assignedTeamId: string | null
 	/** Root first, this profile last. */
 	chain: Array<{ id: string; name: string }>
 	grants: Array<ProfileGrantRow>
@@ -151,6 +153,7 @@ function view(
 		revokedAt: row.revoked_at,
 		createdAt: row.created_at,
 		createdByProfileId: row.created_by_profile_id,
+		assignedTeamId: row.assigned_team_id ?? null,
 		chain: chain.map((entry) => ({ id: entry.id, name: entry.name })),
 		grants: [...grants],
 	}
@@ -463,7 +466,11 @@ export async function listProfiles(
 /** Shorten-only expiry (decision: profiles never get more time). */
 export async function updateProfile(
 	caller: ProfilesCaller,
-	input: { profileId: string; expiresAt: string | null },
+	input: {
+		profileId: string
+		expiresAt?: string | null
+		assignedTeamId?: string | null
+	},
 ): Promise<ProfileView> {
 	const chain = await loadAuthorizedChain(caller, input.profileId, 'edit')
 	const row = chain.at(-1)!
@@ -475,7 +482,15 @@ export async function updateProfile(
 			message: 'That profile is revoked; revoke is final.',
 		})
 	}
-	const expiresAt = parseExpiry(input.expiresAt, now)
+	if (input.assignedTeamId !== undefined) {
+		await caller.env.APP_DB.prepare(
+			`UPDATE profiles SET assigned_team_id = ? WHERE id = ? AND org_id = ?`,
+		)
+			.bind(input.assignedTeamId, row.id, caller.orgId)
+			.run()
+		if (input.expiresAt === undefined) return await getProfile(caller, row.id)
+	}
+	const expiresAt = parseExpiry(input.expiresAt ?? null, now)
 	if (isExpiryExtension({ current: row.expires_at, next: expiresAt })) {
 		throw new ProfileError({
 			status: 400,

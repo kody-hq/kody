@@ -343,6 +343,8 @@ export async function handleExecutionContextKeyRoute(input: {
 			: null,
 		grant_json: JSON.stringify(grant),
 		grant_version: 1,
+		...boxLoginColumns(caller),
+		login_checked_at: new Date().toISOString(),
 	}
 	try {
 		await insertExecutionContext(env.APP_DB, row)
@@ -500,5 +502,22 @@ async function setCommandsFromMachine(input: {
 		name: row.name,
 		commands: grant.commands,
 		grantVersion,
+	}
+}
+
+/** The box login (ADR 0096) a registering or rebinding credential gives. */
+export function boxLoginColumns(caller: {
+	actor: { userId: string } | null
+	credential: { kind: string; id: string | null; profileId?: string | null }
+}) {
+	const profileId = caller.credential.profileId ?? null
+	return {
+		login_kind: profileId ? ('profile' as const) : ('person' as const),
+		login_user_id: caller.actor?.userId ?? null,
+		login_profile_id: profileId,
+		login_token_id:
+			caller.credential.kind === 'api-token' || caller.credential.kind === 'cli'
+				? caller.credential.id
+				: null,
 	}
 }
