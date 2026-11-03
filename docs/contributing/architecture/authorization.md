@@ -386,10 +386,10 @@ which names the capability; Open API maps it to 403 `insufficient_scope` with
 
 Declared: `orgMemberUpdate`, `orgMemberRemove`, `inviteCreate`, `inviteAccept`,
 `inviteRevoke`, `inviteLinkCreate`, `inviteLinkAccept`, `inviteLinkRevoke`,
-`teamMemberAdd`, `teamMemberRemove`, and member or billing grants. Org billing
-writes are session-only web handlers. `registry.node.test.ts` fails when a
-member-changing capability does not declare it, and when a site-admin capability
-does.
+`teamMemberAdd`, `teamMemberRemove`, `teamDelete`, and member or billing grants.
+Org billing writes are session-only web handlers. `registry.node.test.ts` fails
+when a member-changing capability does not declare it, and when a site-admin
+capability does.
 
 ### Site-admin capabilities from triggered runs
 

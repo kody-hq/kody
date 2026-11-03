@@ -243,6 +243,7 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['DELETE', '/v1/orgs/members/{user_id}', 'orgMemberRemove'],
 		['GET', '/v1/orgs/teams', 'teamList'],
 		['POST', '/v1/orgs/teams', 'teamCreate'],
+		['DELETE', '/v1/orgs/teams/{team_id}', 'teamDelete'],
 		['POST', '/v1/orgs/teams/{team_id}/members', 'teamMemberAdd'],
 		[
 			'DELETE',

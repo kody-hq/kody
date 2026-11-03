@@ -137,6 +137,16 @@ once and revoking the grant removes access everywhere.
 - Secrets, connections, jobs, and email are not covered. Grant those per
   resource.
 
+## Delete a team
+
+`teamDelete` (`DELETE /v1/orgs/teams/{team_id}`, or pass `team_slug`) needs
+`team:write`, the same as creating a team. It is a soft delete and lands in the
+org audit log as `team.deleted`. Members stay in the organization but lose every
+grant they held through the team right away; Kody ends their open
+execution-context leases. The grant rows stay for history and never apply to
+another team. The slug is free again: a new team with the same slug starts with
+no grants.
+
 ## Personal vs team
 
 |                    | Personal                                                | Team                                                                                                                                                                                                                                                               |
