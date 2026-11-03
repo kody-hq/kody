@@ -1407,7 +1407,7 @@ async function dispatch(
 					...(offline
 						? {}
 						: {
-								runPublishChecks: async (files, binaryFiles) => {
+								runPublishChecks: async (tree) => {
 									const [
 										{ callOpenApiOperation, formatOpenApiHttpDebugLine },
 										{ parsePackageCheckResult, PublishChecksAuthError },
@@ -1433,9 +1433,12 @@ async function dispatch(
 										await callOpenApiOperation({
 											operationId: 'packageCheck',
 											params: {
-												files,
-												...(Object.keys(binaryFiles).length > 0
-													? { binary_files: binaryFiles }
+												files: tree.files,
+												...(Object.keys(tree.binaryFiles).length > 0
+													? {
+															binary_files: tree.binaryFiles,
+															binary_contents: tree.binaryContents,
+														}
 													: {}),
 											},
 											token,

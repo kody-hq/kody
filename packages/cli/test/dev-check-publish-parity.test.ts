@@ -91,7 +91,7 @@ test('kody dev check fails the stamped |scope=package case that publish refuses'
 			target: 'mock',
 			cwd: root,
 			io: out.io,
-			runPublishChecks: async (files) => {
+			runPublishChecks: async ({ files }) => {
 				sent = files
 				return refusesLikePublish()
 			},
@@ -137,7 +137,7 @@ test('kody dev check passes a data-only app package with no exports field', asyn
 			target: 'mock',
 			cwd: root,
 			io: out.io,
-			runPublishChecks: async (files) => {
+			runPublishChecks: async ({ files }) => {
 				sentManifest = JSON.parse(files['package.json'] ?? '{}')
 				return {
 					ok: true,
@@ -157,7 +157,7 @@ test('kody dev check passes a data-only app package with no exports field', asyn
 	}
 })
 
-test('kody dev check sends binary files by path and size so binary-only app assets count', async () => {
+test('kody dev check sends binary file bytes and sizes so binary-only app assets count', async () => {
 	await withPackage(async (root) => {
 		const png = Buffer.from([
 			0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff,
@@ -167,14 +167,16 @@ test('kody dev check sends binary files by path and size so binary-only app asse
 		await writeFile(join(root, 'icons/icon-512.png'), Buffer.concat([png, png]))
 		let sentFiles: Record<string, string> = {}
 		let sentBinary: Record<string, number> = {}
+		let sentContents: Record<string, string> = {}
 		const out = capture()
 		const code = await runDevCheck({
 			target: 'mock',
 			cwd: root,
 			io: out.io,
-			runPublishChecks: async (files, binaryFiles) => {
+			runPublishChecks: async ({ files, binaryFiles, binaryContents }) => {
 				sentFiles = files
 				sentBinary = binaryFiles
+				sentContents = binaryContents
 				return { ok: true, checks: [{ kind: 'bundle', ok: true, message: '' }] }
 			},
 		})
@@ -184,7 +186,14 @@ test('kody dev check sends binary files by path and size so binary-only app asse
 			'icons/icon-512.png': png.byteLength * 2,
 		})
 		assert.ok(!Object.keys(sentFiles).some((path) => path.startsWith('icons/')))
-		assert.match(out.stdout, /sent 2 binary file\(s\) by path and size only/)
+		assert.deepEqual(sentContents, {
+			'icons/icon-192.png': png.toString('base64'),
+			'icons/icon-512.png': Buffer.concat([png, png]).toString('base64'),
+		})
+		assert.match(
+			out.stdout,
+			/Not run: cloning the pushed commit from Artifacts/,
+		)
 	})
 })
 

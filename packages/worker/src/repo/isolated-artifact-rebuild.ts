@@ -1,3 +1,4 @@
+import { chunkArray } from '@kody-internal/shared/chunk.ts'
 import { errorCauseChainIncludes } from '@kody-internal/shared/error-message.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import type { PublishedPackageArtifactBuildTarget } from '#worker/package-runtime/published-bundle-artifacts.ts'
@@ -65,6 +66,19 @@ export type IsolatedArtifactRebuildRequest = {
 }
 
 /**
+ * One `packageCheck` chunk: build `targets` from staged files the way the
+ * rebuild does, without a published commit and without saving anything.
+ */
+export type IsolatedArtifactBuildCheckRequest = {
+	stagingKey: string
+	userId: OwnerId
+	baseUrl: string
+	/** The saved package's id, when the checked package was published before. */
+	rootPackageId?: string
+	targets: Array<PublishedPackageArtifactBuildTarget>
+}
+
+/**
  * Staged snapshots are user-owned content, so the staging key is namespaced
  * by `userId` and the consuming Durable Object verifies the key belongs to
  * the requesting user before reading it.
@@ -106,6 +120,9 @@ type IsolatedArtifactRebuildStub = {
 	runIsolatedArtifactRebuild(
 		input: IsolatedArtifactRebuildRequest,
 	): Promise<IsolatedArtifactRebuildOutcome>
+	runIsolatedArtifactBuildCheck(
+		input: IsolatedArtifactBuildCheckRequest,
+	): Promise<IsolatedArtifactRebuildOutcome>
 }
 
 export type IsolatedArtifactRebuildRunner = {
@@ -116,6 +133,14 @@ export type IsolatedArtifactRebuildRunner = {
 	touch(stagingKey: string): Promise<void>
 	run(
 		request: IsolatedArtifactRebuildRequest,
+	): Promise<IsolatedArtifactRebuildOutcome>
+	/** Stage `sourceFiles` for {@link buildCheck}; returns the staging key. */
+	stage(input: {
+		userId: OwnerId
+		sourceFiles: Record<string, string>
+	}): Promise<string>
+	buildCheck(
+		request: IsolatedArtifactBuildCheckRequest,
 	): Promise<IsolatedArtifactRebuildOutcome>
 	discard(stagingKey: string): Promise<void>
 }
@@ -159,6 +184,44 @@ export function createIsolatedArtifactRebuildRunner(
 		env as (Env & { BUNDLE_ARTIFACTS_KV?: KVNamespace }) | undefined
 	)?.BUNDLE_ARTIFACTS_KV
 	if (!namespace || !stagingKv) return null
+	async function runInThrowawayIsolate(
+		request: {
+			userId: OwnerId
+			targets: Array<PublishedPackageArtifactBuildTarget>
+		},
+		call: (
+			stub: IsolatedArtifactRebuildStub,
+		) => Promise<IsolatedArtifactRebuildOutcome>,
+	): Promise<IsolatedArtifactRebuildOutcome> {
+		// A fresh, user-namespaced id per chunk puts every heavy rebuild wave
+		// in its own isolate. The instance never touches its Durable Object
+		// storage, so nothing persists for the random name.
+		const stub = namespace!.get(
+			namespace!.idFromName(
+				`isolated-artifact-rebuild-${request.userId}-${crypto.randomUUID()}`,
+			),
+		) as unknown as IsolatedArtifactRebuildStub
+		try {
+			return await call(stub)
+		} catch (error) {
+			if (isDurableObjectResourceLimitResetError(error)) {
+				const message =
+					`Artifact rebuild for ${describeTargets(request.targets)} ` +
+					"exceeded the isolated rebuild runner's memory or CPU limits " +
+					`even on its own. ${isolatedRunnerResourceLimitAdvice()}`
+				return {
+					ok: false,
+					message,
+					results: request.targets.map((target) => ({
+						ok: false,
+						message,
+						target,
+					})),
+				}
+			}
+			throw error
+		}
+	}
 	return {
 		async touch(stagingKey) {
 			const payload = await stagingKv.get(stagingKey, 'text')
@@ -168,34 +231,23 @@ export function createIsolatedArtifactRebuildRunner(
 			})
 		},
 		async run(request) {
-			// A fresh, user-namespaced id per chunk puts every heavy rebuild
-			// wave in its own isolate. The instance never touches its Durable
-			// Object storage, so nothing persists for the random name.
-			const stub = namespace.get(
-				namespace.idFromName(
-					`isolated-artifact-rebuild-${request.userId}-${crypto.randomUUID()}`,
-				),
-			) as unknown as IsolatedArtifactRebuildStub
-			try {
-				return await stub.runIsolatedArtifactRebuild(request)
-			} catch (error) {
-				if (isDurableObjectResourceLimitResetError(error)) {
-					const message =
-						`Artifact rebuild for ${describeTargets(request.targets)} ` +
-						"exceeded the isolated rebuild runner's memory or CPU limits " +
-						`even on its own. ${isolatedRunnerResourceLimitAdvice()}`
-					return {
-						ok: false,
-						message,
-						results: request.targets.map((target) => ({
-							ok: false,
-							message,
-							target,
-						})),
-					}
-				}
-				throw error
-			}
+			return await runInThrowawayIsolate(request, (stub) =>
+				stub.runIsolatedArtifactRebuild(request),
+			)
+		},
+		async stage(input) {
+			const stagingKey = isolatedArtifactRebuildStagingKeyForUser(input.userId)
+			await stagingKv.put(
+				stagingKey,
+				JSON.stringify({ sourceFiles: input.sourceFiles }),
+				{ expirationTtl: stagingTtlSeconds },
+			)
+			return stagingKey
+		},
+		async buildCheck(request) {
+			return await runInThrowawayIsolate(request, (stub) =>
+				stub.runIsolatedArtifactBuildCheck(request),
+			)
 		},
 		async discard(stagingKey) {
 			try {
@@ -204,6 +256,48 @@ export function createIsolatedArtifactRebuildRunner(
 				// Best effort: the staging entry expires via its TTL anyway.
 			}
 		},
+	}
+}
+
+/**
+ * The rebuild fan-out: `isolatedArtifactRebuildChunkSize` targets per
+ * throwaway isolate, `isolatedArtifactRebuildChunkConcurrency` isolates per
+ * wave, staging TTL refreshed between waves, and no new wave after a failed
+ * one. Publish rebuilds and `packageCheck` both go through here, so a dev
+ * check meets the same per-isolate batching as the publish rebuild.
+ */
+export async function runIsolatedArtifactRebuildWaves(input: {
+	targets: ReadonlyArray<PublishedPackageArtifactBuildTarget>
+	runChunk(
+		targets: Array<PublishedPackageArtifactBuildTarget>,
+	): Promise<IsolatedArtifactRebuildOutcome>
+	beforeNextWave(): Promise<void>
+	/** Records one settled chunk; returns true when it failed. */
+	recordChunk(
+		targets: Array<PublishedPackageArtifactBuildTarget>,
+		result: PromiseSettledResult<IsolatedArtifactRebuildOutcome>,
+	): boolean
+}) {
+	const isolateChunks = chunkArray(
+		[...input.targets],
+		isolatedArtifactRebuildChunkSize,
+	)
+	const waves = chunkArray(
+		isolateChunks,
+		isolatedArtifactRebuildChunkConcurrency,
+	)
+	let failed = false
+	for (const [waveIndex, wave] of waves.entries()) {
+		if (failed) break
+		if (waveIndex > 0) await input.beforeNextWave()
+		const settled = await Promise.allSettled(
+			wave.map((targets) => input.runChunk(targets)),
+		)
+		for (const [index, result] of settled.entries()) {
+			const targets = wave[index]
+			if (!targets) continue
+			if (input.recordChunk(targets, result)) failed = true
+		}
 	}
 }
 

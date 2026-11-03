@@ -56,6 +56,10 @@ import {
 } from '#worker/package-runtime/published-bundle-artifacts.ts'
 import type { PreparedKodyGraphCache } from '#worker/package-runtime/module-graph.ts'
 import {
+	buildPublishedPackageArtifactTargetBundle,
+	type PublishedPackageArtifactBuilders,
+} from '#worker/package-runtime/published-bundle-artifact-persist.ts'
+import {
 	hasPublishedRuntimeArtifacts,
 	loadPublishedSourceManifestSnapshot,
 	loadPublishedSourceSnapshot,
@@ -85,6 +89,7 @@ import {
 	isolatedArtifactRebuildStagingKeyBelongsToUser,
 	isolatedArtifactRebuildStagingKeyForUser,
 	isolatedArtifactRebuildStagingTtlSeconds,
+	type IsolatedArtifactBuildCheckRequest,
 	type IsolatedArtifactRebuildOutcome,
 	type IsolatedArtifactRebuildRequest,
 	type IsolatedArtifactRebuildTargetResult,
@@ -3155,6 +3160,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		const staged = await this.env.BUNDLE_ARTIFACTS_KV.get<{
 			sourceFiles?: Record<string, string>
 			binaryFileSizes?: Record<string, number>
+			kodyIgnoredDeclarationFiles?: Array<string>
 		}>(input.stagingKey, 'json')
 		const sourceFiles = staged?.sourceFiles
 		if (!sourceFiles) {
@@ -3186,6 +3192,12 @@ class RepoSessionBase extends DurableObject<Env> {
 			...(input.sourceId ? { sourceId: input.sourceId } : {}),
 			...(input.expectedPackageScope !== undefined
 				? { expectedPackageScope: input.expectedPackageScope }
+				: {}),
+			...(input.deferBundleCheckToRebuild === true
+				? { deferBundleCheckToRebuild: true }
+				: {}),
+			...(staged.kodyIgnoredDeclarationFiles?.length
+				? { kodyIgnoredDeclarationFiles: staged.kodyIgnoredDeclarationFiles }
 				: {}),
 		}).finally(() => this.clearCheckStep())
 		return {
@@ -3716,6 +3728,110 @@ class RepoSessionBase extends DurableObject<Env> {
 		})
 	}
 
+	/**
+	 * The bundle builders the published artifact rebuild uses. `packageCheck`
+	 * builds through the same ones (without a package id for a package that
+	 * was never published) so a dev check hits the rebuild's bundling.
+	 */
+	private async publishedPackageArtifactBuilders(input: {
+		userId: OwnerId
+		baseUrl: string
+		sourceFiles: Record<string, string>
+		rootPackageId?: string
+		prepareCache: PreparedKodyGraphCache
+	}): Promise<PublishedPackageArtifactBuilders> {
+		const {
+			buildKodyAppBundle,
+			buildKodyAppClientBundle,
+			buildKodyModuleBundle,
+			buildKodyImportableModuleBundle,
+		} = await import('#worker/package-runtime/module-graph.ts')
+		const shared = {
+			env: this.env,
+			baseUrl: input.baseUrl,
+			userId: input.userId,
+			sourceFiles: input.sourceFiles,
+			...(input.rootPackageId ? { rootPackageId: input.rootPackageId } : {}),
+			prepareCache: input.prepareCache,
+		}
+		return {
+			buildAppBundle: async ({ entryPoint }) =>
+				await buildKodyAppBundle({ ...shared, entryPoint, cacheKey: null }),
+			buildAppClientBundle: async ({ entryPoint }) =>
+				await buildKodyAppClientBundle({
+					sourceFiles: input.sourceFiles,
+					entryPoint,
+				}),
+			buildModuleBundle: async ({ entryPoint }) =>
+				await buildKodyModuleBundle({ ...shared, entryPoint }),
+			buildImportableModuleBundle: async ({ entryPoint }) =>
+				await buildKodyImportableModuleBundle({ ...shared, entryPoint }),
+		}
+	}
+
+	/**
+	 * `packageCheck`'s stand-in for {@link runIsolatedArtifactRebuild}: builds
+	 * one chunk of artifact targets from the staged files in this throwaway
+	 * isolate with the rebuild's builders, and saves nothing.
+	 */
+	async runIsolatedArtifactBuildCheck(
+		input: IsolatedArtifactBuildCheckRequest,
+	): Promise<IsolatedArtifactRebuildOutcome> {
+		const failAll = (message: string): IsolatedArtifactRebuildOutcome => ({
+			ok: false,
+			message,
+			results: input.targets.map((target) => ({ ok: false, message, target })),
+		})
+		if (
+			!isolatedArtifactRebuildStagingKeyBelongsToUser({
+				stagingKey: input.stagingKey,
+				userId: input.userId,
+			})
+		) {
+			return failAll(
+				'Isolated artifact build check staging key does not belong to the requesting user.',
+			)
+		}
+		const staged = await this.env.BUNDLE_ARTIFACTS_KV.get<{
+			sourceFiles?: Record<string, string>
+		}>(input.stagingKey, 'json')
+		if (!staged?.sourceFiles) {
+			return failAll(
+				'Isolated artifact build check staging data expired or is missing; run the check again.',
+			)
+		}
+		const builders = await this.publishedPackageArtifactBuilders({
+			userId: input.userId,
+			baseUrl: input.baseUrl,
+			sourceFiles: staged.sourceFiles,
+			...(input.rootPackageId ? { rootPackageId: input.rootPackageId } : {}),
+			prepareCache: new Map(),
+		})
+		const results: Array<IsolatedArtifactRebuildTargetResult> = []
+		for (const target of input.targets) {
+			try {
+				await buildPublishedPackageArtifactTargetBundle({ ...builders, target })
+				results.push({ ok: true, message: 'Built.', target })
+			} catch (error) {
+				results.push({
+					ok: false,
+					message: getErrorMessage(error),
+					...(isUserCodeError(error) ? { callerFailure: true } : {}),
+					target,
+				})
+			}
+		}
+		const failed = results.filter((result) => !result.ok)
+		return {
+			ok: failed.length === 0,
+			message:
+				failed.length === 0
+					? 'Package artifacts built.'
+					: failed.map((result) => result.message).join('; '),
+			results,
+		}
+	}
+
 	private async persistPublishedPackageArtifactTargetsFromFiles(input: {
 		source: EntitySourceRow
 		savedPackage: SavedPackageRecord
@@ -3731,55 +3847,13 @@ class RepoSessionBase extends DurableObject<Env> {
 			...input.source,
 			published_commit: input.publishedCommit,
 		}
-		const {
-			buildKodyAppBundle,
-			buildKodyAppClientBundle,
-			buildKodyModuleBundle,
-			buildKodyImportableModuleBundle,
-		} = await import('#worker/package-runtime/module-graph.ts')
-		const prepareCache = input.prepareCache ?? new Map()
-		const builders = {
-			buildAppBundle: async ({ entryPoint }: { entryPoint: string }) =>
-				await buildKodyAppBundle({
-					env: this.env,
-					baseUrl: input.baseUrl ?? input.source.source_root,
-					userId: input.userId,
-					sourceFiles: input.sourceFiles,
-					entryPoint,
-					rootPackageId: input.savedPackage.id,
-					cacheKey: null,
-					prepareCache,
-				}),
-			buildAppClientBundle: async ({ entryPoint }: { entryPoint: string }) =>
-				await buildKodyAppClientBundle({
-					sourceFiles: input.sourceFiles,
-					entryPoint,
-				}),
-			buildModuleBundle: async ({ entryPoint }: { entryPoint: string }) =>
-				await buildKodyModuleBundle({
-					env: this.env,
-					baseUrl: input.baseUrl ?? input.source.source_root,
-					userId: input.userId,
-					sourceFiles: input.sourceFiles,
-					entryPoint,
-					rootPackageId: input.savedPackage.id,
-					prepareCache,
-				}),
-			buildImportableModuleBundle: async ({
-				entryPoint,
-			}: {
-				entryPoint: string
-			}) =>
-				await buildKodyImportableModuleBundle({
-					env: this.env,
-					baseUrl: input.baseUrl ?? input.source.source_root,
-					userId: input.userId,
-					sourceFiles: input.sourceFiles,
-					entryPoint,
-					rootPackageId: input.savedPackage.id,
-					prepareCache,
-				}),
-		}
+		const builders = await this.publishedPackageArtifactBuilders({
+			userId: input.userId,
+			baseUrl: input.baseUrl ?? input.source.source_root,
+			sourceFiles: input.sourceFiles,
+			rootPackageId: input.savedPackage.id,
+			prepareCache: input.prepareCache ?? new Map(),
+		})
 		if (input.targets.length === 1) {
 			const target = input.targets[0]!
 			try {

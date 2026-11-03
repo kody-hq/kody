@@ -9,7 +9,10 @@ import {
 import { resolvePackageOwnerContext } from '#worker/package-registry/package-owner.ts'
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import { runAuthoringPublishChecksOnFiles } from '#worker/repo/authoring-publish-checks.ts'
-import { repoCheckKinds } from '#worker/repo/checks.ts'
+import {
+	deferredBundleCheckMessage,
+	repoCheckKinds,
+} from '#worker/repo/checks.ts'
 import {
 	knownUnmappableCredentials,
 	loadOnePackageUnmappableCredentials,
@@ -21,6 +24,21 @@ import {
 	RepoChecksPlatformError,
 } from '#worker/repo/repo-checks-failed-error.ts'
 import { normalizeRepoWorkspacePath } from '#worker/repo/manifest.ts'
+import {
+	bytesToSnapshotString,
+	snapshotStringToBytes,
+} from '#universal/package-file-media.ts'
+import {
+	buildExternalPublishSnapshotTooLargeMessage,
+	externalPublishSnapshotMaxTotalBytes,
+} from '#worker/repo/external-publish-clone.ts'
+import { createIsolatedArtifactRebuildRunner } from '#worker/repo/isolated-artifact-rebuild.ts'
+import {
+	createSourceRootKodyIgnoreMatcher,
+	kodyIgnoreFilePath,
+} from '#worker/repo/kodyignore.ts'
+import { runPackageCheckArtifactBuild } from '#worker/repo/package-check-artifact-build.ts'
+import { createPublishWorkTree } from '#worker/repo/publish-work.ts'
 import { resolveOwnedPackageSource } from './resolve-package-source.ts'
 
 export const packageCheckMaxFiles = 2_000
@@ -46,6 +64,41 @@ function readManifestName(files: Record<string, string>): string | null {
 	return null
 }
 
+/**
+ * The tree a git-push publish would clone: `.kodyignore` applied before
+ * anything is counted, then the clone's checked-out-tree cap.
+ */
+function preparePublishSnapshot(input: {
+	files: Record<string, string>
+	binaryFileSizes: Record<string, number>
+}) {
+	const tree = createPublishWorkTree({ files: input.files, sourceRoot: '' })
+	const ignoredPath = createSourceRootKodyIgnoreMatcher({
+		ignoreFileContent: input.files[kodyIgnoreFilePath()] ?? null,
+	})
+	const binaryFileSizes = Object.fromEntries(
+		Object.entries(input.binaryFileSizes).filter(
+			([path]) => ignoredPath?.(path) == null,
+		),
+	)
+	let totalBytes = 0
+	for (const [path, content] of Object.entries(tree.files)) {
+		totalBytes += snapshotStringToBytes(content, path).byteLength
+	}
+	for (const size of Object.values(binaryFileSizes)) totalBytes += size
+	const fileCount =
+		Object.keys(tree.files).length + Object.keys(binaryFileSizes).length
+	const tooLargeMessage =
+		totalBytes > externalPublishSnapshotMaxTotalBytes
+			? buildExternalPublishSnapshotTooLargeMessage({
+					totalBytes,
+					limitBytes: externalPublishSnapshotMaxTotalBytes,
+					fileCount,
+				})
+			: null
+	return { tree, binaryFileSizes, tooLargeMessage }
+}
+
 function normalizePackageCheckPath(path: string) {
 	const key = normalizeRepoWorkspacePath(path).replace(/^(\.\/)+/, '')
 	if (!key || key.split('/').includes('..')) {
@@ -54,6 +107,22 @@ function normalizePackageCheckPath(path: string) {
 		)
 	}
 	return key
+}
+
+function decodeBinaryContent(path: string, base64: string) {
+	let binary: string
+	try {
+		binary = atob(base64)
+	} catch {
+		throw new McpCallerError(
+			`binary_contents[${JSON.stringify(path)}] is not valid base64.`,
+		)
+	}
+	const bytes = new Uint8Array(binary.length)
+	for (let index = 0; index < binary.length; index += 1) {
+		bytes[index] = binary.charCodeAt(index)
+	}
+	return bytes
 }
 
 function normalizePackageCheckFiles<Value>(
@@ -108,13 +177,22 @@ export const packageCheckCapability = defineDomainCapability(
 					.record(z.string(), z.number().int().nonnegative())
 					.optional()
 					.describe(
-						'Binary files (not UTF-8 text, for example `icons/icon-192.png`): path relative to the package root mapped to its size in bytes. They count toward size limits and `kody.app.assets` like the published files; their contents are not checked.',
+						'Binary files (not UTF-8 text, for example `icons/icon-192.png`): path relative to the package root mapped to its size in bytes. Only for callers that cannot send `binary_contents`: these count toward size limits and `kody.app.assets`, but their contents are not checked.',
+					),
+				binary_contents: z
+					.record(z.string(), z.string())
+					.optional()
+					.describe(
+						'Binary files mapped to their base64 contents. They join the checked tree byte for byte, exactly as a git-push publish snapshots them. A path here may also be listed in `binary_files` (older servers read only that); the contents win.',
 					),
 			})
 			.refine(
 				(input) =>
 					Object.keys(input.files).length +
-						Object.keys(input.binary_files ?? {}).length <=
+						Object.keys(input.binary_files ?? {}).filter(
+							(path) => !Object.hasOwn(input.binary_contents ?? {}, path),
+						).length +
+						Object.keys(input.binary_contents ?? {}).length <=
 					packageCheckMaxFiles,
 				{
 					message: `At most ${packageCheckMaxFiles} files (the publish check limit), counting binary_files.`,
@@ -154,6 +232,20 @@ export const packageCheckCapability = defineDomainCapability(
 					)
 				}
 			}
+			for (const [path, base64] of Object.entries(
+				normalizePackageCheckFiles(args.binary_contents ?? {}),
+			)) {
+				if (path in files) {
+					throw new McpCallerError(
+						`File path ${JSON.stringify(path)} is in both files and binary_contents.`,
+					)
+				}
+				files[path] = bytesToSnapshotString(
+					decodeBinaryContent(path, base64),
+					path,
+				)
+				delete binaryFileSizes[path]
+			}
 			const packageName = readManifestName(files)
 			// An existing package lets the checks compare credential needs with
 			// its published version, exactly as a publish of it would.
@@ -173,9 +265,37 @@ export const packageCheckCapability = defineDomainCapability(
 					sourceId = undefined
 				}
 			}
+			const snapshot = preparePublishSnapshot({ files, binaryFileSizes })
+			if (snapshot.tooLargeMessage) {
+				return {
+					ok: false,
+					notices: [],
+					package_name: packageName,
+					checks: [
+						{
+							kind: 'manifest' as const,
+							ok: false,
+							message: snapshot.tooLargeMessage,
+						},
+					],
+				}
+			}
+			// Git-push publish defers bundling to the artifact rebuild; do the
+			// same, then build the rebuild's targets below. Envs without the
+			// rebuild bindings keep the full up-front bundle validation.
+			const artifactRunner = createIsolatedArtifactRebuildRunner(ctx.env)
 			const checkInput = {
-				files,
-				...(Object.keys(binaryFileSizes).length > 0 ? { binaryFileSizes } : {}),
+				files: snapshot.tree.files,
+				...(Object.keys(snapshot.binaryFileSizes).length > 0
+					? { binaryFileSizes: snapshot.binaryFileSizes }
+					: {}),
+				...(snapshot.tree.kodyIgnoredDeclarationFiles.length > 0
+					? {
+							kodyIgnoredDeclarationFiles:
+								snapshot.tree.kodyIgnoredDeclarationFiles,
+						}
+					: {}),
+				...(artifactRunner ? { deferBundleCheckToRebuild: true } : {}),
 				env: ctx.env,
 				baseUrl: ctx.callerContext.baseUrl,
 				userId: owner.ownerUserId,
@@ -188,6 +308,27 @@ export const packageCheckCapability = defineDomainCapability(
 			const checks =
 				(await runAuthoringChecksInIsolate(checkInput)) ??
 				(await runAuthoringPublishChecksOnFiles(checkInput))
+			if (checks.ok && artifactRunner) {
+				const deferredIndex = checks.results.findIndex(
+					(result) =>
+						result.kind === 'bundle' &&
+						result.message === deferredBundleCheckMessage,
+				)
+				if (deferredIndex !== -1) {
+					const built = await runPackageCheckArtifactBuild({
+						runner: artifactRunner,
+						files: snapshot.tree.files,
+						userId: owner.ownerUserId,
+						baseUrl: ctx.callerContext.baseUrl,
+						expectedPackageScope: owner.ownerScope,
+						...(existingPackage ? { rootPackageId: existingPackage.id } : {}),
+					})
+					checks.results[deferredIndex] = built
+					if (!built.ok) {
+						Object.assign(checks, { ok: false })
+					}
+				}
+			}
 			// Kody infrastructure failures are not package diagnostics: throw so
 			// they reach Sentry instead of reading as checks the author must fix.
 			const checksError = checks.ok

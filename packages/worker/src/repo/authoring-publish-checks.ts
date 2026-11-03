@@ -32,9 +32,9 @@ export async function runAuthoringPublishChecks(input: {
 	expectedPackageScope?: string
 	phaseTimings?: PublishPhaseTimings
 	/**
-	 * Only for a publish that rebuilds the same artifact targets right after
-	 * (a rebuild failure is reported as a bundle check). Previews and dry runs
-	 * never set this, so they always run the full bundle validation.
+	 * Only for a run that rebuilds the same artifact targets right after (a
+	 * rebuild failure is reported as a bundle check): git-push publish, and
+	 * `packageCheck`, which then builds them the way the rebuild does.
 	 */
 	deferBundleCheckToRebuild?: boolean
 	onStep?: (step: RepoCheckStep) => Promise<void>
@@ -76,6 +76,9 @@ export async function runAuthoringPublishChecksOnFiles(input: {
 	sourceId?: string
 	expectedPackageScope?: string
 	onStep?: (step: RepoCheckStep) => Promise<void>
+	/** See {@link runAuthoringPublishChecks}; `packageCheck` follows it with the rebuild. */
+	deferBundleCheckToRebuild?: boolean
+	kodyIgnoredDeclarationFiles?: Array<string>
 }): Promise<RepoCheckRunResult> {
 	return await runAuthoringPublishChecks({
 		workspace: createSnapshotFilesWorkspace(
@@ -91,6 +94,12 @@ export async function runAuthoringPublishChecksOnFiles(input: {
 		...(input.sourceId ? { sourceId: input.sourceId } : {}),
 		...(input.expectedPackageScope !== undefined
 			? { expectedPackageScope: input.expectedPackageScope }
+			: {}),
+		...(input.deferBundleCheckToRebuild === true
+			? { deferBundleCheckToRebuild: true }
+			: {}),
+		...(input.kodyIgnoredDeclarationFiles?.length
+			? { kodyIgnoredDeclarationFiles: input.kodyIgnoredDeclarationFiles }
 			: {}),
 	})
 }
