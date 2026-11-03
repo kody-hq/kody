@@ -1,5 +1,9 @@
 import { afterEach, expect, test, vi } from 'vitest'
-import { PromiseLruCache } from './published-package-cache.ts'
+import {
+	estimateRetainedBytes,
+	PromiseLruCache,
+	RetainedByteBudget,
+} from './published-package-cache.ts'
 
 afterEach(() => {
 	vi.useRealTimers()
@@ -86,7 +90,10 @@ test('waiters that time out later share the first rebuild instead of starting an
 				resolveRebuild = resolve
 			}),
 	)
-	const firstWaiter = cache.getOrCreate({ cacheKey: 'k', create: firstRecover })
+	const firstWaiter = cache.getOrCreate({
+		cacheKey: 'k',
+		create: firstRecover,
+	})
 	await vi.advanceTimersByTimeAsync(20)
 	const secondRecover = vi.fn(async () => 'second')
 	const secondWaiter = cache.getOrCreate({
@@ -103,4 +110,89 @@ test('waiters that time out later share the first rebuild instead of starting an
 	await expect(firstWaiter).resolves.toBe('rebuilt')
 	await expect(secondWaiter).resolves.toBe('rebuilt')
 	expect(secondRecover).not.toHaveBeenCalled()
+})
+
+test('a shared byte budget evicts the least recently used entry across caches', async () => {
+	const budget = new RetainedByteBudget(100)
+	const first = new PromiseLruCache<string>({ byteBudget: budget })
+	const second = new PromiseLruCache<string>({ byteBudget: budget })
+	await first.getOrCreate({
+		cacheKey: 'a',
+		create: async () => 'x'.repeat(40),
+	})
+	await second.getOrCreate({
+		cacheKey: 'b',
+		create: async () => 'y'.repeat(40),
+	})
+	await first.getOrCreate({ cacheKey: 'a', create: async () => 'unused' })
+	await second.getOrCreate({
+		cacheKey: 'c',
+		create: async () => 'z'.repeat(40),
+	})
+	expect(budget.retainedBytes).toBe(80)
+	expect(first.get('a')).not.toBeNull()
+	expect(second.get('b')).toBeNull()
+	expect(second.get('c')).not.toBeNull()
+})
+
+test('a value bigger than the byte budget is returned but not cached', async () => {
+	const budget = new RetainedByteBudget(10)
+	const cache = new PromiseLruCache<string>({ byteBudget: budget })
+	const create = vi.fn(async () => 'x'.repeat(11))
+	await expect(
+		cache.getOrCreate({ cacheKey: 'k', create }),
+	).resolves.toHaveLength(11)
+	expect(cache.get('k')).toBeNull()
+	expect(budget.retainedBytes).toBe(0)
+	await cache.getOrCreate({ cacheKey: 'k', create })
+	expect(create).toHaveBeenCalledTimes(2)
+})
+
+test('expired, replaced, and entry-limit evictions release their bytes', async () => {
+	vi.useFakeTimers()
+	const budget = new RetainedByteBudget(1_000)
+	const cache = new PromiseLruCache<string>({
+		byteBudget: budget,
+		limit: 1,
+		ttlMs: 1_000,
+	})
+	await cache.getOrCreate({
+		cacheKey: 'a',
+		create: async () => 'x'.repeat(10),
+	})
+	await cache.getOrCreate({
+		cacheKey: 'b',
+		create: async () => 'y'.repeat(20),
+	})
+	expect(budget.retainedBytes).toBe(20)
+	cache.set('b', Promise.resolve('z'.repeat(5)))
+	await Promise.resolve()
+	await Promise.resolve()
+	expect(budget.retainedBytes).toBe(5)
+	vi.advanceTimersByTime(1_001)
+	expect(cache.get('b')).toBeNull()
+	expect(budget.retainedBytes).toBe(0)
+})
+
+test('estimateRetainedBytes sizes strings and binaries in plain data only', () => {
+	class Binding {
+		readonly payload = 'x'.repeat(1_000)
+	}
+	expect(
+		estimateRetainedBytes({
+			mainModule: 'main.js',
+			modules: { 'main.js': 'a'.repeat(100) },
+			bytes: new Uint8Array(50),
+			binding: new Binding(),
+		}),
+	).toBe(
+		'mainModule'.length +
+			'main.js'.length +
+			'modules'.length +
+			'main.js'.length +
+			100 +
+			'bytes'.length +
+			50 +
+			'binding'.length,
+	)
 })
