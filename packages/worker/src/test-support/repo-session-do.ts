@@ -43,8 +43,11 @@ export function createExternalClone(headCommit: string) {
 		isAncestorCommit: vi.fn(async () => true),
 		releaseGitObjects: vi.fn(async () => undefined),
 		collectFiles: vi.fn(async () => ({
-			'package.json': '{"name":"@kody/demo"}',
-			'index.ts': 'export const ready = true\n',
+			files: {
+				'package.json': '{"name":"@kody/demo"}',
+				'index.ts': 'export const ready = true\n',
+			},
+			ignoredPaths: [],
 		})),
 	}
 }

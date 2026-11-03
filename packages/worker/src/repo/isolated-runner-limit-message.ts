@@ -49,6 +49,7 @@ export function isolatedRunnerResourceLimitAdvice() {
  */
 export type RepoCheckStep =
 	| 'clone'
+	| 'staging'
 	| 'source-walk'
 	| 'credentials'
 	| 'package-checks'
@@ -60,6 +61,7 @@ export type RepoCheckStep =
 
 const repoCheckStepLabels: Record<RepoCheckStep, string> = {
 	clone: 'cloning the package repo',
+	staging: 'staging the package files for the publish steps',
 	'source-walk': 'reading the package source tree',
 	credentials: 'the credential stamp scan',
 	'package-checks':
@@ -107,6 +109,7 @@ export function repoCheckStepResourceLimitAdvice(step: RepoCheckStep | null) {
 				'Remove large files that should not be published (build output, ' +
 				'vendored dependencies, data files) from the repo and push again.'
 			)
+		case 'staging':
 		case 'source-walk':
 		case 'credentials':
 		case 'package-checks':

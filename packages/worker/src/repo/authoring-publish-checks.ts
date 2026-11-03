@@ -38,6 +38,7 @@ export async function runAuthoringPublishChecks(input: {
 	 */
 	deferBundleCheckToRebuild?: boolean
 	onStep?: (step: RepoCheckStep) => Promise<void>
+	kodyIgnoredDeclarationFiles?: Array<string>
 }): Promise<RepoCheckRunResult> {
 	return await runRepoChecks({
 		workspace: input.workspace,
@@ -52,6 +53,9 @@ export async function runAuthoringPublishChecks(input: {
 			: {}),
 		...(input.phaseTimings ? { phaseTimings: input.phaseTimings } : {}),
 		...(input.onStep ? { onStep: input.onStep } : {}),
+		...(input.kodyIgnoredDeclarationFiles?.length
+			? { kodyIgnoredDeclarationFiles: input.kodyIgnoredDeclarationFiles }
+			: {}),
 		...(input.deferBundleCheckToRebuild === true
 			? { deferBundleCheckToRebuild: true }
 			: {}),

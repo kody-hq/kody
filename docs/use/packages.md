@@ -1170,15 +1170,15 @@ limits, so a dev check result is the best predictor of a publish:
 | JS/TS source scanned in the main isolate  | 256 KiB (more gets its own) |
 
 Each check isolate also has a fixed memory and CPU budget. When a step runs out,
-the error names the step (cloning, reading the source tree, the credential stamp
-scan, package checks, lint, bundle validation, typecheck, finalizing, or the
-artifact rebuild), what to shrink, and the largest files under the source root
-that runtime code does not import. Memory and CPU use vary a little between runs
-(garbage collection timing and other work sharing the isolate), so a tree close
-to the limit can pass one attempt and fail the next. Shrink what the checks read
-rather than retrying. A `git push` publish clones only the commit it publishes
-(plus the history it needs to confirm a fast-forward), so a long history does
-not count against the check budget.
+the error names the step (cloning, staging the package files, reading the source
+tree, the credential stamp scan, package checks, lint, bundle validation,
+typecheck, finalizing, or the artifact rebuild), what to shrink, and the largest
+files under the source root that runtime code does not import. Memory and CPU
+use vary a little between runs (garbage collection timing and other work sharing
+the isolate), so a tree close to the limit can pass one attempt and fail the
+next. Shrink what the checks read rather than retrying. A `git push` publish
+clones only the commit it publishes (plus the history it needs to confirm a
+fast-forward), so a long history does not count against the check budget.
 
 To keep fixtures, generated data, notes, or other non-runtime files in the repo
 without paying for them at publish, list them in a `.kodyignore` file at the
@@ -1193,15 +1193,16 @@ docs/drafts/
 !types/__tests__/
 ```
 
-Matching files are never read by the publish checks (credential scan, lint,
-typecheck, bundle validation), do not count toward the source limits above, and
-are left out of the published snapshot. They are still part of the git tree, so
-they still count toward the 32 MiB checked-out tree cap for `git push`
-publishes; move very large files out of the repo instead. `package.json` and
-`.kodyignore` itself are always kept. Ignoring a file that runtime code imports
-fails bundle validation, so `.kodyignore` cannot hide code that runs. Kody does
-not read `package.json` `files`, because that field usually describes an npm
-build output that Kody does not publish.
+Matching files are dropped before the tree is staged for the publish checks:
+they are never read by the checks (credential scan, lint, typecheck, bundle
+validation), do not count toward the source limits above or the checked-out tree
+cap, and are left out of the published snapshot. They are still part of the git
+pack, so the Artifacts push limit below still applies; move very large files out
+of the repo instead. `package.json` and `.kodyignore` itself are always kept.
+Ignoring a file that runtime code imports fails bundle validation, so
+`.kodyignore` cannot hide code that runs. Kody does not read `package.json`
+`files`, because that field usually describes an npm build output that Kody does
+not publish.
 
 Broad patterns also match declaration files: `**/__tests__/` hides
 `types/__tests__/*.d.ts` too, and the typecheck then runs without those types.

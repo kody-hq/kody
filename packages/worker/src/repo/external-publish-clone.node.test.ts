@@ -130,8 +130,11 @@ test('cloneExternalPublishWorkspace clones into ephemeral FS and exposes publish
 		'{"name":"@kody/x"}',
 	)
 	await expect(cloned.collectFiles()).resolves.toEqual({
-		'package.json': '{"name":"@kody/x"}',
-		'src/index.ts': 'export const ok = true\n',
+		files: {
+			'package.json': '{"name":"@kody/x"}',
+			'src/index.ts': 'export const ok = true\n',
+		},
+		ignoredPaths: [],
 	})
 	expect(gitMocks.listFiles).toHaveBeenCalledTimes(1)
 	await cloned.releaseGitObjects()
@@ -160,8 +163,11 @@ test('cloneExternalPublishWorkspace clones into ephemeral FS and exposes publish
 		{ path: '/repo/src/index.ts', type: 'file' },
 	])
 	await expect(cloned.collectFiles()).resolves.toEqual({
-		'package.json': '{"name":"@kody/x"}',
-		'src/index.ts': 'export const ok = true\n',
+		files: {
+			'package.json': '{"name":"@kody/x"}',
+			'src/index.ts': 'export const ok = true\n',
+		},
+		ignoredPaths: [],
 	})
 })
 
@@ -203,6 +209,38 @@ test('collectFiles refuses trees over the publish snapshot ceiling', async () =>
 	await expect(cloned.collectFiles()).rejects.toThrow(/publish snapshot limit/)
 })
 
+test('collectFiles skips .kodyignore matches before reading or counting them', async () => {
+	const { externalPublishSnapshotMaxTotalBytes } =
+		await import('./external-publish-clone.ts')
+	gitMocks.listFiles.mockResolvedValueOnce([
+		'package.json',
+		'.kodyignore',
+		'fixtures/big.bin',
+		'src/index.ts',
+	])
+	const cloned = await cloneExternalPublishWorkspace({
+		remote: 'https://acct.artifacts.cloudflare.net/git/default/source-repo.git',
+		token: 'art_token',
+		branch: 'main',
+		checkoutCommit: 'commit-head',
+	})
+	await cloned.filesystem.writeFile('/repo/package.json', '{"name":"@kody/x"}')
+	await cloned.filesystem.writeFile('/repo/.kodyignore', 'fixtures/\n')
+	await cloned.filesystem.writeFile('/repo/src/index.ts', 'export {}\n')
+	await cloned.filesystem.writeFileBytes(
+		'/repo/fixtures/big.bin',
+		new Uint8Array(externalPublishSnapshotMaxTotalBytes + 1),
+	)
+	await expect(cloned.collectFiles({ sourceRoot: '/' })).resolves.toEqual({
+		files: {
+			'package.json': '{"name":"@kody/x"}',
+			'.kodyignore': 'fixtures/\n',
+			'src/index.ts': 'export {}\n',
+		},
+		ignoredPaths: ['fixtures/big.bin'],
+	})
+})
+
 test('collectFiles keeps PNG magic byte-identical (no UTF-8 replacement)', async () => {
 	const { bytesToLatin1String, snapshotStringToBytes } =
 		await import('#universal/package-file-media.ts')
@@ -226,7 +264,7 @@ test('collectFiles keeps PNG magic byte-identical (no UTF-8 replacement)', async
 	const utf8Decoded = await cloned.filesystem.readFile('/repo/public/mark.png')
 	expect(utf8Decoded.charCodeAt(0)).toBe(0xfffd)
 
-	const collected = await cloned.collectFiles()
+	const { files: collected } = await cloned.collectFiles()
 	expect(collected['public/mark.png']).toBe(bytesToLatin1String(pngMagic))
 	expect([
 		...snapshotStringToBytes(collected['public/mark.png']!, 'public/mark.png'),
