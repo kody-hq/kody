@@ -10,6 +10,7 @@ import {
 } from '#worker/repo/published-source.ts'
 import {
 	createPublishedPackageCacheKey,
+	packageArtifactCacheBudget,
 	PromiseLruCache,
 } from './published-package-cache.ts'
 import { parseAuthoredPackageJson } from './manifest.ts'
@@ -28,7 +29,9 @@ export type LoadedPackageManifest = {
 	manifest: AuthoredPackageJson
 }
 
-const packageSourceCache = new PromiseLruCache<LoadedPackageSource>()
+const packageSourceCache = new PromiseLruCache<LoadedPackageSource>({
+	byteBudget: packageArtifactCacheBudget,
+})
 const packageManifestCache = new PromiseLruCache<LoadedPackageManifest>()
 
 function deepFreeze<T>(value: T, seen = new WeakSet<object>()): T {

@@ -5,7 +5,7 @@ import { expect, test, vi } from 'vitest'
 import { utcDayKey, utcMonthKey } from '@kody-internal/shared/date-keys.ts'
 import { seedAccount } from '#worker/test-support/workers-seed.ts'
 import { userMeterDurableObjectName } from '#worker/user-scoped-durable-object-name.ts'
-import { EntitlementLimitError } from './errors.ts'
+import { BudgetLimitError, EntitlementLimitError } from './errors.ts'
 import { planLimits } from '#universal/plans.ts'
 import {
 	assertWithinStorageBytesEntitlement,
@@ -15,7 +15,10 @@ import {
 	refundDailyEntitlement,
 } from './service.ts'
 import { ensureEntitlementTestSchema } from './test-schema.ts'
-import { userMeterRpc } from './user-meter-client.ts'
+import {
+	checkUserMeterBudgetAndRecord,
+	userMeterRpc,
+} from './user-meter-client.ts'
 import { UserMeter, userMeterMirrorUpdatedAtToken } from './user-meter-do.ts'
 import { withPatchedDbPrepare } from '#worker/test-support/user-meter.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
@@ -1208,11 +1211,22 @@ test('UserMeter inbound MCP last-used touches debounce, list, forget, export, an
 	expect(await otherMeter.listInboundConnectionLastUsed()).toEqual(otherEntries)
 }, 30_000)
 
+function budgetCheck(
+	userId: string,
+	check: Parameters<typeof checkUserMeterBudgetAndRecord>[0]['check'],
+) {
+	return checkUserMeterBudgetAndRecord({
+		env,
+		userId: ownerIdFromStored(userId),
+		check,
+	})
+}
+
 test('UserMeter budget spend resets on UTC month rollover', async () => {
 	const { userId, meter } = await seedFreeUser('budget-meter')
 	const month = '2026-02'
 	const nextMonth = '2026-03'
-	await meter.assertWithinBudgetAndRecord({
+	await budgetCheck(userId, {
 		month,
 		actorUserId: userId,
 		automationSource: null,
@@ -1220,7 +1234,7 @@ test('UserMeter budget spend resets on UTC month rollover', async () => {
 		userBudgetMicroUsd: null,
 		automationBudgetMicroUsd: null,
 	})
-	await meter.assertWithinBudgetAndRecord({
+	await budgetCheck(userId, {
 		month,
 		actorUserId: null,
 		automationSource: 'webhook',
@@ -1240,64 +1254,55 @@ test('UserMeter budget spend resets on UTC month rollover', async () => {
 	})
 })
 
-test('UserMeter budget enforcement separates user and automation limits', async () => {
+test('UserMeter budget enforcement separates user and automation limits and records only allowed spend', async () => {
 	const { userId, meter } = await seedFreeUser('budget-enforce')
 	const month = utcMonthKey(new Date())
-	await expect(
-		meter.assertWithinBudgetAndRecord({
-			month,
-			actorUserId: userId,
-			automationSource: null,
-			deltaMicroUsd: 0,
-			userBudgetMicroUsd: 1_000_000,
-			automationBudgetMicroUsd: null,
-			actorUsername: 'member',
-			orgSlug: 'team',
-		}),
-	).resolves.toBeDefined()
-	await meter.assertWithinBudgetAndRecord({
+	const userCheck = {
 		month,
 		actorUserId: userId,
 		automationSource: null,
-		deltaMicroUsd: 1_000_000,
 		userBudgetMicroUsd: 1_000_000,
 		automationBudgetMicroUsd: null,
 		actorUsername: 'member',
 		orgSlug: 'team',
+	}
+	await expect(
+		budgetCheck(userId, { ...userCheck, deltaMicroUsd: 0 }),
+	).resolves.toEqual({ month, users: {}, automationMicroUsd: 0 })
+	await expect(
+		budgetCheck(userId, { ...userCheck, deltaMicroUsd: 1_000_000 }),
+	).resolves.toEqual({
+		month,
+		users: { [userId]: 1_000_000 },
+		automationMicroUsd: 0,
 	})
 	const atUserBudget = await catchError(
-		meter.assertWithinBudgetAndRecord({
-			month,
-			actorUserId: userId,
-			automationSource: null,
-			deltaMicroUsd: 0,
-			userBudgetMicroUsd: 1_000_000,
-			automationBudgetMicroUsd: null,
-			actorUsername: 'member',
-			orgSlug: 'team',
-		}),
+		budgetCheck(userId, { ...userCheck, deltaMicroUsd: 1 }),
 	)
-	expect(atUserBudget).toMatchObject({ name: 'BudgetLimitError' })
+	expect(atUserBudget).toBeInstanceOf(BudgetLimitError)
+	expect((atUserBudget as BudgetLimitError).message).toBe(
+		'@member reached their monthly budget in org @team ($1.00 of $1.00). An org Owner or Billing member can raise it.',
+	)
 
-	await meter.assertWithinBudgetAndRecord({
+	const automationCheck = {
 		month,
 		actorUserId: null,
 		automationSource: 'schedule',
-		deltaMicroUsd: 500_000,
 		userBudgetMicroUsd: null,
 		automationBudgetMicroUsd: 500_000,
 		orgSlug: 'team',
-	})
+	}
+	await budgetCheck(userId, { ...automationCheck, deltaMicroUsd: 500_000 })
 	const overAutomation = await catchError(
-		meter.assertWithinBudgetAndRecord({
-			month,
-			actorUserId: null,
-			automationSource: 'schedule',
-			deltaMicroUsd: 1,
-			userBudgetMicroUsd: null,
-			automationBudgetMicroUsd: 500_000,
-			orgSlug: 'team',
-		}),
+		budgetCheck(userId, { ...automationCheck, deltaMicroUsd: 1 }),
 	)
-	expect(overAutomation).toMatchObject({ name: 'BudgetLimitError' })
+	expect(overAutomation).toBeInstanceOf(BudgetLimitError)
+	expect((overAutomation as BudgetLimitError).message).toBe(
+		'Automation in org @team reached its monthly budget. An org Owner or Billing member can raise it.',
+	)
+	expect(await meter.getBudgetSpend({ month })).toEqual({
+		month,
+		users: { [userId]: 1_000_000 },
+		automationMicroUsd: 500_000,
+	})
 })

@@ -1,6 +1,10 @@
 import * as Sentry from '@sentry/cloudflare'
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
-import { BudgetLimitError, type BudgetLimitErrorDetails } from './errors.ts'
+import {
+	BudgetLimitError,
+	budgetLimitErrorCode,
+	type BudgetLimitErrorDetails,
+} from './errors.ts'
 import { DurableObject } from 'cloudflare:workers'
 import {
 	type DurableObjectPitrRpc,
@@ -163,6 +167,22 @@ export type UserMeterBudgetSpendState = {
 	users: Record<string, number>
 	automationMicroUsd: number
 }
+
+export type UserMeterBudgetCheckInput = {
+	month: string
+	actorUserId: string | null
+	automationSource: string | null
+	deltaMicroUsd: number
+	userBudgetMicroUsd: number | null
+	automationBudgetMicroUsd: number | null
+	actorUsername?: string | null
+	orgSlug?: string | null
+}
+
+/** Budget check outcome; denials return the BudgetLimitError details. */
+export type UserMeterBudgetCheckResult =
+	| { outcome: 'allowed'; state: UserMeterBudgetSpendState }
+	| { outcome: 'denied'; details: BudgetLimitErrorDetails }
 
 export type UserMeterDailyTrendResult = {
 	retentionDays: number
@@ -383,8 +403,13 @@ function assertUtcMonthKey(month: string): string {
 	return month
 }
 
-function throwBudgetLimit(details: Omit<BudgetLimitErrorDetails, 'code'>) {
-	throw new BudgetLimitError(details)
+function budgetDenied(
+	details: Omit<BudgetLimitErrorDetails, 'code'>,
+): UserMeterBudgetCheckResult {
+	return {
+		outcome: 'denied',
+		details: { code: budgetLimitErrorCode, ...details },
+	}
 }
 
 function assertInboundDeliveryId(deliveryId: string): string {
@@ -2195,16 +2220,15 @@ class UserMeterBase extends DurableObject<Env> {
 		return this.readBudgetSpendState(month)
 	}
 
-	async assertWithinBudgetAndRecord(input: {
-		month: string
-		actorUserId: string | null
-		automationSource: string | null
-		deltaMicroUsd: number
-		userBudgetMicroUsd: number | null
-		automationBudgetMicroUsd: number | null
-		actorUsername?: string | null
-		orgSlug?: string | null
-	}): Promise<UserMeterBudgetSpendState> {
+	/**
+	 * Check the org budget and record `deltaMicroUsd` only when allowed.
+	 * Returns denials instead of throwing: workerd logs every error thrown
+	 * from a DO method as uncaught, even when the caller handles it. Call it
+	 * only through `checkUserMeterBudgetAndRecord` (user-meter-client.ts).
+	 */
+	async checkBudgetAndRecord(
+		input: UserMeterBudgetCheckInput,
+	): Promise<UserMeterBudgetCheckResult> {
 		const month = assertUtcMonthKey(input.month)
 		const delta = Math.max(0, Math.floor(Number(input.deltaMicroUsd ?? 0)))
 		const orgSlug = input.orgSlug?.trim() || 'org'
@@ -2218,7 +2242,7 @@ class UserMeterBase extends DurableObject<Env> {
 				const next = current + delta
 				const overBudget = next > budget || (delta === 0 && current >= budget)
 				if (overBudget) {
-					throwBudgetLimit({
+					return budgetDenied({
 						kind: 'automation',
 						orgSlug,
 						spentMicroUsd: current,
@@ -2233,7 +2257,7 @@ class UserMeterBase extends DurableObject<Env> {
 				const next = current + delta
 				const overBudget = next > budget || (delta === 0 && current >= budget)
 				if (overBudget) {
-					throwBudgetLimit({
+					return budgetDenied({
 						kind: 'user',
 						orgSlug,
 						actorUsername: input.actorUsername?.trim() || undefined,
@@ -2244,7 +2268,7 @@ class UserMeterBase extends DurableObject<Env> {
 			}
 		}
 		if (delta === 0) {
-			return state
+			return { outcome: 'allowed', state }
 		}
 		const stored = this.storedBudgetMonth()
 		if (stored && month < stored) {
@@ -2252,7 +2276,7 @@ class UserMeterBase extends DurableObject<Env> {
 				month,
 				storedMonth: stored,
 			})
-			return state
+			return { outcome: 'allowed', state }
 		}
 		this.ctx.storage.transactionSync(() => {
 			this.ensureBudgetMonth(month)
@@ -2275,7 +2299,19 @@ class UserMeterBase extends DurableObject<Env> {
 				)
 			}
 		})
-		return this.readBudgetSpendState(month)
+		return { outcome: 'allowed', state: this.readBudgetSpendState(month) }
+	}
+
+	/**
+	 * @deprecated Throwing form kept only for workers deployed before
+	 * {@link checkBudgetAndRecord}. Remove once every caller script is on it.
+	 */
+	async assertWithinBudgetAndRecord(
+		input: UserMeterBudgetCheckInput,
+	): Promise<UserMeterBudgetSpendState> {
+		const result = await this.checkBudgetAndRecord(input)
+		if (result.outcome === 'denied') throw new BudgetLimitError(result.details)
+		return result.state
 	}
 
 	async recomputeBudgetSpend(input: {
@@ -2346,7 +2382,7 @@ class UserMeterBase extends DurableObject<Env> {
 		this.ensureBudgetMonth(month)
 		const automationTarget = Math.max(0, Math.floor(Number(input.automation)))
 		// Absolute ledger replace is source of truth and must overwrite
-		// provisional rows from assertWithinBudgetAndRecord(estimatedDelta).
+		// provisional rows from checkBudgetAndRecord(estimatedDelta).
 		// Do not gate on stored totals: estimates can exceed committed debit.
 		this.ctx.storage.transactionSync(() => {
 			this.ctx.storage.sql.exec(`DELETE FROM budget_spend_users`)
@@ -2654,16 +2690,6 @@ export type UserMeterRpc = DurableObjectPitrRpc & {
 	purge: () => Promise<{ ok: true }>
 	getBudgetSpend: (input: {
 		month: string
-	}) => Promise<UserMeterBudgetSpendState>
-	assertWithinBudgetAndRecord: (input: {
-		month: string
-		actorUserId: string | null
-		automationSource: string | null
-		deltaMicroUsd: number
-		userBudgetMicroUsd: number | null
-		automationBudgetMicroUsd: number | null
-		actorUsername?: string | null
-		orgSlug?: string | null
 	}) => Promise<UserMeterBudgetSpendState>
 	recomputeBudgetSpend: (input: {
 		month: string

@@ -330,12 +330,14 @@ export const communityDetailAssetHttp = ({
 	})
 
 export const communityDetailIconHttp = ({
+	request,
 	params,
 }: {
 	request: Request
 	params: { listingId: string; iconCommit: string }
 }) =>
 	createCommunityIconHandler(getStartRequestEnv())({
+		request,
 		params: {
 			listingId: params.listingId,
 			iconCommit: params.iconCommit,
