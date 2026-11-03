@@ -1358,6 +1358,7 @@ export async function listWorkflowProjections(input: {
 	id?: string | null
 	packageId?: string | null
 	since?: string | null
+	startedByUserId?: string | null
 }): Promise<{
 	projections: Array<WorkflowProjectionRecord>
 	nextCursor: string | null
@@ -1382,6 +1383,7 @@ export async function listWorkflowProjections(input: {
 		id: normalizeOptionalString(input.id),
 		packageId: normalizeOptionalString(input.packageId),
 		since: normalizeOptionalIsoTimestamp(input.since),
+		startedByUserId: normalizeOptionalString(input.startedByUserId),
 	})
 }
 

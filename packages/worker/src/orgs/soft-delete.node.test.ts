@@ -33,6 +33,10 @@ import {
 import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
 import * as JobManager from '#worker/jobs/manager-client.ts'
 
+vi.mock('#worker/package-runtime/package-workflows.ts', () => ({
+	cancelActiveWorkflowRunsForUser: vi.fn(async () => 0),
+}))
+
 vi.mock('#worker/jobs/jobs-data.ts', () => ({
 	jobsData: () => ({
 		softDeleteJobsForUser: vi.fn(async () => 0),

@@ -251,7 +251,7 @@ export const orgMemberRemoveCapability = defineDomainCapability(
 		orgPermission: 'member:delete',
 		requiresLivePerson: true,
 		description:
-			'Remove a member from the organization this request is bound to. Revokes org-bound credentials, disconnects integrations they connected, and keeps their jobs running, the same as when they leave. A retry finishes that cleanup when the membership is already tombstoned. Their team memberships in this organization end too. The last Owner cannot be removed.',
+			'Remove a member from the organization this request is bound to. Revokes org-bound credentials, disconnects integrations they connected, cancels workflow runs they started here, and keeps their jobs running, the same as when they leave. A retry finishes that cleanup when the membership is already tombstoned. Their team memberships in this organization end too. The last Owner cannot be removed.',
 		keywords: ['member', 'remove', 'kick'],
 		readOnly: false,
 		idempotent: false,

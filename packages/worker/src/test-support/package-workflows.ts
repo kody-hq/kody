@@ -82,6 +82,9 @@ export const packageWorkflowsRunRecordMocks = (() => {
 			sourceRevision: existing
 				? existing.sourceRevision
 				: (input.sourceRevision ?? null),
+			startedByUserId: existing
+				? (existing.startedByUserId ?? null)
+				: (input.startedByUserId ?? null),
 		}
 	}
 
@@ -212,6 +215,7 @@ export const packageWorkflowsRunRecordMocks = (() => {
 				id?: string | null
 				packageId?: string | null
 				since?: string | null
+				startedByUserId?: string | null
 			}) => {
 				const limit = Math.min(Math.max(input.limit ?? 25, 1), 100)
 				const statusSet =
@@ -231,7 +235,10 @@ export const packageWorkflowsRunRecordMocks = (() => {
 								? row.bindingName === input.bindingName
 								: true) &&
 							(input.packageId ? row.packageId === input.packageId : true) &&
-							(input.since ? row.createdAt >= input.since : true),
+							(input.since ? row.createdAt >= input.since : true) &&
+							(input.startedByUserId
+								? row.startedByUserId === input.startedByUserId
+								: true),
 					)
 					.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
 				return {

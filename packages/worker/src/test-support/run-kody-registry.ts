@@ -54,6 +54,7 @@ export function createFakeRunLogNamespace() {
 					id?: string | null
 					packageId?: string | null
 					since?: string | null
+					startedByUserId?: string | null
 				}) => Promise<{
 					projections: Array<WorkflowProjectionRecord>
 					nextCursor: string | null
@@ -103,6 +104,7 @@ export function createFakeRunLogNamespace() {
 						lastError: input.lastError ?? null,
 						enqueuedCommit: input.enqueuedCommit ?? null,
 						sourceRevision: input.sourceRevision ?? null,
+						startedByUserId: input.startedByUserId ?? null,
 					})
 					return { ok: true as const }
 				}
@@ -149,6 +151,7 @@ export function createFakeRunLogNamespace() {
 				id?: string | null
 				packageId?: string | null
 				since?: string | null
+				startedByUserId?: string | null
 			}) {
 				const limit = Math.min(Math.max(input.limit ?? 25, 1), 100)
 				const statusSet =
@@ -168,7 +171,10 @@ export function createFakeRunLogNamespace() {
 								? row.bindingName === input.bindingName
 								: true) &&
 							(input.packageId ? row.packageId === input.packageId : true) &&
-							(input.since ? row.createdAt >= input.since : true),
+							(input.since ? row.createdAt >= input.since : true) &&
+							(input.startedByUserId
+								? row.startedByUserId === input.startedByUserId
+								: true),
 					)
 					.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
 				return {

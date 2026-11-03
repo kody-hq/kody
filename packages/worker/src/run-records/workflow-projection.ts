@@ -69,6 +69,8 @@ export type WorkflowProjectionRecord = {
 	/** Package workflows: published commit resolved at enqueue (null before v14). */
 	enqueuedCommit: string | null
 	sourceRevision: WorkflowSourceRevisionPolicy | null
+	/** Person whose lineage started the run (null before v19 or for platform runs). */
+	startedByUserId?: string | null
 }
 
 export type WorkflowProjectionUpsertInput = {
@@ -92,6 +94,8 @@ export type WorkflowProjectionUpsertInput = {
 	enqueuedCommit?: string | null
 	/** Insert-only: later status upserts never change it. */
 	sourceRevision?: WorkflowSourceRevisionPolicy | null
+	/** Insert-only: later status upserts never change it. */
+	startedByUserId?: string | null
 }
 
 export type WorkflowProjectionReserveResult = {

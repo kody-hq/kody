@@ -8,8 +8,12 @@ import {
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { DatabaseSync } from 'node:sqlite'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { orgMemberRemoveCapability } from './org-members.ts'
+
+vi.mock('#worker/package-runtime/package-workflows.ts', () => ({
+	cancelActiveWorkflowRunsForUser: vi.fn(async () => 0),
+}))
 
 test('orgMemberRemove revokes org credentials and disconnects own-login integrations', async () => {
 	const sqlite = new DatabaseSync(':memory:')

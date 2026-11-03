@@ -4,7 +4,7 @@ import {
 	personIdFromStored,
 	personalOrgId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { compileAccessForRequest } from '#worker/authorization/access-compile.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
@@ -24,6 +24,10 @@ import {
 	createAuditTestDb,
 	createTestOrgAuditWriter,
 } from '#worker/test-support/create-audit-db.ts'
+
+vi.mock('#worker/package-runtime/package-workflows.ts', () => ({
+	cancelActiveWorkflowRunsForUser: vi.fn(async () => 0),
+}))
 
 async function createDb() {
 	const sqlite = new DatabaseSync(':memory:')

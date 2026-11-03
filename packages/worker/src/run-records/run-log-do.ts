@@ -108,7 +108,7 @@ const metaSchemaVersionKey = 'schema_version'
 /** YYYYMMDD coverage floor for warm v12→v13 (no backfill). Fresh DOs omit this. */
 const metaRunDayCountsSinceKey = 'run_day_counts_since'
 /** Bump when initializeSchema's DDL set changes; warm objects skip DDL. */
-const runLogSchemaVersion = 18
+const runLogSchemaVersion = 19
 
 function utcDayToMetaInt(day: string): number {
 	return Number(day.replaceAll('-', ''))
@@ -441,6 +441,7 @@ type WorkflowProjectionListInput = {
 	packageId?: string | null
 	/** Inclusive lower bound on created_at (canonical ISO). */
 	since?: string | null
+	startedByUserId?: string | null
 }
 
 function truncateUtf8(value: string, maxBytes: number) {
@@ -740,6 +741,10 @@ function mapWorkflowProjectionRow(
 		sourceRevision: parseWorkflowProjectionSourceRevision(
 			row['source_revision'],
 		),
+		startedByUserId:
+			row['started_by_user_id'] == null
+				? null
+				: String(row['started_by_user_id']),
 	}
 }
 
@@ -1021,11 +1026,15 @@ class RunLogBase extends DurableObject<Env> {
 				completed_at TEXT,
 				last_error TEXT,
 				enqueued_commit TEXT,
-				source_revision TEXT
+				source_revision TEXT,
+				started_by_user_id TEXT
 			)
 		`)
 		if (installedVersion != null && installedVersion < 14) {
 			this.migrateWorkflowProjectionSourceRevisionForV14()
+		}
+		if (installedVersion != null && installedVersion < 19) {
+			this.migrateWorkflowProjectionStartedByForV19()
 		}
 		this.ctx.storage.sql.exec(
 			`CREATE INDEX IF NOT EXISTS idx_workflow_projections_created
@@ -1249,6 +1258,20 @@ class RunLogBase extends DurableObject<Env> {
 			} catch {
 				// Column already present on a partially migrated object.
 			}
+		}
+	}
+
+	/**
+	 * Who started each workflow run, so member offboarding can stop the runs a
+	 * removed person started. Rows queued before this column stay NULL.
+	 */
+	private migrateWorkflowProjectionStartedByForV19() {
+		try {
+			this.ctx.storage.sql.exec(
+				`ALTER TABLE workflow_projections ADD COLUMN started_by_user_id TEXT`,
+			)
+		} catch {
+			// Column already present on a partially migrated object.
 		}
 	}
 
@@ -3360,8 +3383,8 @@ class RunLogBase extends DurableObject<Env> {
 				id, binding_name, source_type, package_id, kody_id, source_id,
 				workflow_name, export_name, idempotency_key, run_at, plan_date,
 				status, created_at, updated_at, completed_at, last_error,
-				enqueued_commit, source_revision
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				enqueued_commit, source_revision, started_by_user_id
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(id) DO UPDATE SET
 				status = excluded.status,
 				updated_at = excluded.updated_at,
@@ -3390,6 +3413,7 @@ class RunLogBase extends DurableObject<Env> {
 			input.lastError ?? null,
 			input.enqueuedCommit ?? null,
 			input.sourceRevision ?? null,
+			input.startedByUserId ?? null,
 			...workflowProjectionTerminalStatuses,
 			...workflowProjectionTerminalStatuses,
 		)
@@ -3555,6 +3579,11 @@ class RunLogBase extends DurableObject<Env> {
 			clauses.push('created_at >= ?')
 			params.push(since)
 		}
+		const startedByUserId = input.startedByUserId?.trim() || null
+		if (startedByUserId) {
+			clauses.push('started_by_user_id = ?')
+			params.push(startedByUserId)
+		}
 		if (input.cursor) {
 			const cursor = decodeCursor(input.cursor)
 			if (cursor) {
@@ -3662,8 +3691,8 @@ class RunLogBase extends DurableObject<Env> {
 				id, binding_name, source_type, package_id, kody_id, source_id,
 				workflow_name, export_name, idempotency_key, run_at, plan_date,
 				status, created_at, updated_at, completed_at, last_error,
-				enqueued_commit, source_revision
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
+				enqueued_commit, source_revision, started_by_user_id
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)
 			ON CONFLICT(id) DO UPDATE SET
 				updated_at = excluded.updated_at
 			WHERE COALESCE(workflow_projections.status, '') = ?`,
@@ -3683,6 +3712,7 @@ class RunLogBase extends DurableObject<Env> {
 			updatedAt,
 			input.enqueuedCommit ?? null,
 			input.sourceRevision ?? null,
+			input.startedByUserId ?? null,
 			creatingWorkflowProjectionStatus,
 		)
 		// Re-read: ON CONFLICT may no-op when status is not `creating` (e.g.

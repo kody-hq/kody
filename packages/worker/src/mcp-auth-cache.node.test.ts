@@ -37,6 +37,9 @@ import {
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 
+vi.mock('#worker/package-runtime/package-workflows.ts', () => ({
+	cancelActiveWorkflowRunsForUser: vi.fn(async () => 0),
+}))
 vi.mock('#worker/orgs/seat-sync-after-membership.ts', () => ({
 	syncSeatsAfterMembershipChange: vi.fn(async () => {}),
 }))

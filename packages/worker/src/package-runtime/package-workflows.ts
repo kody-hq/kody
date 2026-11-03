@@ -930,6 +930,9 @@ function buildWorkflowProjectionUpsert(input: {
 		updatedAt: now,
 		completedAt: input.completedAt ?? null,
 		lastError: input.lastError ?? null,
+		startedByUserId: input.payload.lineage?.actor
+			? String(input.payload.lineage.actor.userId)
+			: null,
 		...(input.payload.sourceType === 'package'
 			? {
 					enqueuedCommit: input.payload.enqueuedCommit ?? null,
@@ -1624,14 +1627,16 @@ export async function cancelWorkflowRunForUser(input: {
 }
 
 /**
- * Terminate every non-terminal workflow run the user owns (account deletion).
- * Each run goes through {@link cancelWorkflowRunForUser}, so a run that is
- * still `creating` throws and the caller retries instead of leaving an engine
- * instance running after the account's storage is purged.
+ * Terminate every non-terminal workflow run the user owns (account deletion),
+ * or only the runs one person started there (member offboarding). Each run
+ * goes through {@link cancelWorkflowRunForUser}, so a run that is still
+ * `creating` throws and the caller retries instead of leaving an engine
+ * instance running.
  */
 export async function cancelActiveWorkflowRunsForUser(input: {
 	env: Pick<Env, 'DYNAMIC_CALLABLE_WORKFLOWS' | 'RUN_LOG'>
 	userId: OwnerId
+	startedByUserId?: string | null
 }): Promise<number> {
 	const env = input.env as Env
 	let cancelled = 0
@@ -1644,6 +1649,7 @@ export async function cancelActiveWorkflowRunsForUser(input: {
 				status,
 				cursor,
 				limit: runRecordMaxPageSize,
+				startedByUserId: input.startedByUserId ?? null,
 			})
 			for (const projection of page.projections) {
 				const result = await cancelWorkflowRunForUser({

@@ -221,7 +221,7 @@ async function upgradeFromLegacySchema(
 				initializeSchema: () => void
 			}
 			proto.initializeSchema.call(instance)
-			expect(schemaVersion(state)).toBe(18)
+			expect(schemaVersion(state)).toBe(19)
 			verify(state)
 		},
 	)
@@ -1457,6 +1457,85 @@ test('warm schema v13 workflow projections gain insert-only source revision colu
 	})
 })
 
+test('warm schema v18 workflow projections gain an insert-only started-by column', async () => {
+	const userId = uniqueUserId('schema-v18-warm-wf-started-by')
+	await upgradeFromLegacySchema(
+		userId,
+		18,
+		(state) => {
+			state.storage.sql.exec(`
+				CREATE TABLE workflow_projections (
+					id TEXT PRIMARY KEY NOT NULL,
+					binding_name TEXT NOT NULL,
+					source_type TEXT NOT NULL CHECK (source_type IN ('package', 'inline')),
+					package_id TEXT,
+					kody_id TEXT,
+					source_id TEXT,
+					workflow_name TEXT NOT NULL,
+					export_name TEXT,
+					idempotency_key TEXT NOT NULL,
+					run_at TEXT NOT NULL,
+					plan_date TEXT,
+					status TEXT,
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL,
+					completed_at TEXT,
+					last_error TEXT,
+					enqueued_commit TEXT,
+					source_revision TEXT
+				)
+			`)
+			state.storage.sql.exec(
+				`INSERT INTO workflow_projections (
+					id, binding_name, source_type, workflow_name, idempotency_key,
+					run_at, status, created_at, updated_at
+				) VALUES (?, ?, 'inline', 'legacy', 'idem-legacy', ?, 'queued', ?, ?)`,
+				'wf-legacy',
+				dynamicBinding,
+				'2026-07-31T00:00:00.000Z',
+				'2026-07-31T00:00:00.000Z',
+				'2026-07-31T00:00:00.000Z',
+			)
+		},
+		(state) => {
+			expect(columnNames(state, 'workflow_projections')).toEqual(
+				expect.arrayContaining(['started_by_user_id']),
+			)
+		},
+	)
+	expect(
+		await getWorkflowProjection({ env, userId, id: 'wf-legacy' }),
+	).toMatchObject({ startedByUserId: null })
+
+	await upsertWorkflow(userId, 'wf-member', {
+		status: 'queued',
+		startedByUserId: 'member-1',
+		updatedAt: '2026-07-31T00:00:00.000Z',
+	})
+	// Later status writes rebuild the payload without lineage.
+	await upsertWorkflow(userId, 'wf-member', {
+		status: 'running',
+		startedByUserId: null,
+		updatedAt: '2026-07-31T00:00:01.000Z',
+	})
+	await upsertWorkflow(userId, 'wf-owner', {
+		status: 'queued',
+		startedByUserId: 'owner-1',
+	})
+	const listed = await listWorkflowProjections({
+		env,
+		userId,
+		startedByUserId: 'member-1',
+	})
+	expect(listed.projections).toEqual([
+		expect.objectContaining({
+			id: 'wf-member',
+			status: 'running',
+			startedByUserId: 'member-1',
+		}),
+	])
+})
+
 test('getAdminInsightsSnapshot returns content-free workflow, job, and activation aggregates', async () => {
 	const userId = uniqueUserId('admin-insights')
 	const reachedAt = '2026-08-01T12:00:00.000Z'
@@ -1557,7 +1636,7 @@ test('getSqlBillingStats and inspectRunLogSqlBilling report listRuns/finishRun c
 	)
 
 	const inspection = await inspectRunLogSqlBilling({ env, userId })
-	expect(inspection.schemaVersion).toBe(18)
+	expect(inspection.schemaVersion).toBe(19)
 	expect(inspection.tableCounts.runs).toBeGreaterThanOrEqual(1)
 	expect(inspection.tableCounts.runLogs).toBeGreaterThanOrEqual(1)
 	expect(inspection.runCount.actual).toBe(inspection.tableCounts.runs)

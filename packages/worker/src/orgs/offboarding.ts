@@ -27,6 +27,7 @@ import { jobsData } from '#worker/jobs/jobs-data.ts'
 import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { wipePinnedConnectionsForMember } from '#worker/integrations/pinned-connections.ts'
 import { syncJobManagerAlarm } from '#worker/jobs/manager-client.ts'
+import { cancelActiveWorkflowRunsForUser } from '#worker/package-runtime/package-workflows.ts'
 
 export type OffboardingJobDisposition = 'cancel' | 'delete' | 'keep_running'
 
@@ -47,6 +48,8 @@ export type OffboardingResult = {
 	disconnectedIntegrations: Array<string>
 	disconnectedMcpServers: Array<string>
 	jobDispositions: Array<OffboardingJobChoice>
+	/** Active workflow runs this person started in the org, now cancelled. */
+	cancelledWorkflowRuns: number
 }
 
 export type OffboardingPreview = {
@@ -498,8 +501,9 @@ async function applyJobDispositions(input: {
 
 /**
  * Remove a member from an org (or complete leave): soft-delete access rows,
- * revoke org-bound credentials, disconnect own-login integrations, and apply
- * job dispositions when an Owner removes them.
+ * revoke org-bound credentials, disconnect own-login integrations, apply job
+ * dispositions when an Owner removes them, and cancel workflow runs they
+ * started in the org.
  */
 export async function offboardOrgMember(input: {
 	appDb: D1Database
@@ -585,6 +589,13 @@ export async function offboardOrgMember(input: {
 		nowIso,
 		memberLeftVoluntarily: input.memberLeftVoluntarily,
 	})
+	// Workflow steps re-check the starter's access and would fail anyway; stop
+	// them now so nothing sleeps on until its next step.
+	const cancelledWorkflowRuns = await cancelActiveWorkflowRunsForUser({
+		env: input.env,
+		userId: input.orgId,
+		startedByUserId: input.memberUserId,
+	})
 	if (pinnedWipeError) throw pinnedWipeError
 
 	return {
@@ -592,5 +603,6 @@ export async function offboardOrgMember(input: {
 		...credentials,
 		...disconnected,
 		jobDispositions,
+		cancelledWorkflowRuns,
 	}
 }

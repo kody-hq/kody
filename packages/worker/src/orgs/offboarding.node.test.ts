@@ -46,6 +46,11 @@ vi.mock('#worker/jobs/manager-client.ts', () => ({
 	})),
 }))
 
+const cancelActiveWorkflowRunsForUser = vi.fn(async () => 2)
+vi.mock('#worker/package-runtime/package-workflows.ts', () => ({
+	cancelActiveWorkflowRunsForUser,
+}))
+
 const { offboardOrgMember, previewMemberOffboarding, revokeOAuthGrantsForOrg } =
 	await import('./offboarding.ts')
 
@@ -127,6 +132,13 @@ test('offboarding soft-deletes membership, disconnects integrations, applies job
 		{ jobId: 'job-1', disposition: 'cancel' },
 	])
 	expect(updateJob).toHaveBeenCalled()
+	expect(result.cancelledWorkflowRuns).toBe(2)
+	expect(cancelActiveWorkflowRunsForUser).toHaveBeenCalledWith(
+		expect.objectContaining({
+			userId: ownerIdFromStored('org-1'),
+			startedByUserId: 'member-1',
+		}),
+	)
 	const tokens = await db
 		.prepare(
 			`SELECT access_token_encrypted, refresh_token_encrypted, connected_at

@@ -399,3 +399,37 @@ test('cancelActiveWorkflowRunsForUser terminates every active run for one user o
 		expect.objectContaining({ id: 'other-user-queued', status: 'queued' }),
 	])
 })
+
+test('cancelActiveWorkflowRunsForUser can stop only the runs one person started', async () => {
+	const { env, binding, seedProjection } = createCancelTestEnv()
+	const seedStartedBy = (id: string, startedByUserId: string | null) =>
+		runRecordMocks.upsertWorkflowProjection({
+			env,
+			userId: ownerIdFromStored('user-1'),
+			projection: {
+				id,
+				bindingName: dynamicCallableWorkflowsBindingName,
+				sourceType: 'inline',
+				workflowName: 'inline-code',
+				idempotencyKey: id,
+				runAt: '2026-05-03T12:34:56.000Z',
+				status: 'queued',
+				startedByUserId,
+			},
+		})
+	await seedStartedBy('started-by-member', 'member-1')
+	await seedStartedBy('started-by-owner', 'owner-1')
+	await seedProjection('started-by-platform', 'started-by-platform', 'running')
+
+	expect(
+		await cancelActiveWorkflowRunsForUser({
+			env,
+			userId: ownerIdFromStored('user-1'),
+			startedByUserId: 'member-1',
+		}),
+	).toBe(1)
+	expect(findRun('started-by-member')?.status).toBe('cancelled')
+	expect(findRun('started-by-owner')?.status).toBe('queued')
+	expect(findRun('started-by-platform')?.status).toBe('running')
+	expect(binding.terminateCalls).toEqual([])
+})
