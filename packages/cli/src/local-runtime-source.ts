@@ -21,8 +21,8 @@ import {
 	type LocalEgressPolicy,
 } from './local-egress.js'
 
-export const localExecuteCompatibilityDate = '2026-04-16'
-export const localExecuteCompatibilityFlags = ['nodejs_compat'] as const
+const localExecuteCompatibilityDate = '2026-04-16'
+const localExecuteCompatibilityFlags = ['nodejs_compat'] as const
 
 export const localWorkerModuleNames = {
 	entry: '__kody_local_entry.js',

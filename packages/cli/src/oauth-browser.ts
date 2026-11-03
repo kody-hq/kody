@@ -38,7 +38,7 @@ export async function discoverCliAuthorizationServer(input: {
 	return oauth.processDiscoveryResponse(input.issuer, response)
 }
 
-export function cliOAuthClient(mcpUrl: string): oauth.Client {
+function cliOAuthClient(mcpUrl: string): oauth.Client {
 	return {
 		client_id: cliClientMetadataUrl(mcpUrl),
 		token_endpoint_auth_method: 'none',
@@ -211,7 +211,7 @@ export async function startDeviceAuthorization(input: {
 }
 
 /** Terminal device-grant outcomes, as readable errors. */
-export function deviceGrantErrorMessage(code: string): string | null {
+function deviceGrantErrorMessage(code: string): string | null {
 	switch (code) {
 		case 'access_denied':
 			return 'The sign-in was denied in the browser. Run `kody login --device` to try again.'

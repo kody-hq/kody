@@ -11,7 +11,7 @@ import {
 import { StructuredCliError } from './structured-error.js'
 
 /** Mirrors `@kody-internal/shared/jobs/package-job-schedule` (kept local so published CLI `.d.ts` does not reference the private package). */
-export type PackageJobSchedule =
+type PackageJobSchedule =
 	| {
 			type: 'cron'
 			expression: string
@@ -21,7 +21,7 @@ export type PackageJobSchedule =
 			every: string
 	  }
 
-export type PackageAppManifest = {
+type PackageAppManifest = {
 	entry: string
 	/** Browser entry (string form, or `entry` of the object form). */
 	client?: string
@@ -31,14 +31,14 @@ export type PackageAppManifest = {
 }
 
 /** Local-only `kody dev` settings (`package.json#kody.dev`); never published behavior. */
-export type PackageDevManifest = {
+type PackageDevManifest = {
 	/** Shell command run from the package root before every `kody dev` build. */
 	prebuild?: string
 	/** Root-relative path prefixes the watcher ignores (e.g. prebuild outputs). */
 	ignore: Array<string>
 }
 
-export type PackageJobManifest = {
+type PackageJobManifest = {
 	entry: string
 	/** Normalized for display / check output. */
 	schedule: string
@@ -48,13 +48,13 @@ export type PackageJobManifest = {
 	enabled?: boolean
 }
 
-export type PackageWebhookManifest = {
+type PackageWebhookManifest = {
 	export: string
 	description?: string
 	inputMode?: 'request' | 'params'
 }
 
-export type PackageSubscriptionManifest = {
+type PackageSubscriptionManifest = {
 	handler: string
 	description?: string
 	filters?: unknown

@@ -460,6 +460,7 @@ test(
 		])
 
 		const detail = await owner.get('run-execute-attr')
+		expect(detail.result).toEqual({ ok: true })
 		expect(detail.run.metadata).toMatchObject({
 			entry: 'invoke',
 			workerId: 'kody-abcdefghijklmnopqrstuvwxyz0123456789ABCDE',

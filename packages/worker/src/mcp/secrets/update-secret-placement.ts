@@ -4,16 +4,19 @@ import {
 } from '#worker/credentials/fill-placement.ts'
 import type { CredentialPlacementOrigin } from '#worker/credentials/placement-origin.ts'
 
-/** Update stored fill placement and origin on an existing secret entry. */
-export async function updateSecretEntryPlacement(input: {
+/**
+ * Update stored fill placement and origin on an existing secret entry. Run it
+ * in the same D1 batch as the value write so the two cannot diverge.
+ */
+export function prepareUpdateSecretEntryPlacementStatement(input: {
 	db: D1Database
 	bucketId: string
 	name: string
 	placement: CredentialFillPlacement | null
 	origin: CredentialPlacementOrigin
 	updatedAt?: string
-}): Promise<void> {
-	await input.db
+}): D1PreparedStatement {
+	return input.db
 		.prepare(
 			`UPDATE secret_entries
 			SET placement_json = ?, placement_origin = ?, updated_at = ?
@@ -26,5 +29,4 @@ export async function updateSecretEntryPlacement(input: {
 			input.bucketId,
 			input.name,
 		)
-		.run()
 }

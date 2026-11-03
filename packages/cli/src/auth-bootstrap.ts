@@ -14,12 +14,12 @@ import { saveStoredApiToken, type StoredApiToken } from './api-token-store.js'
 import type { SecretBackend, StoreResolution } from './store.js'
 
 /** ADR 0056 one-shot bootstrap code prefix (`kody_bc_…`). */
-export const cliBootstrapCodePrefix = 'kody_bc_'
+const cliBootstrapCodePrefix = 'kody_bc_'
 
 /** Platform shape: `kody_bc_<16 alnum>_<32 base64url>`. */
 const bootstrapCodePattern = /^kody_bc_([a-z0-9]{16})_([A-Za-z0-9_-]{32})$/
 
-export const bootstrapRedeemPath = 'v1/tokens/bootstrap/redeem'
+const bootstrapRedeemPath = 'v1/tokens/bootstrap/redeem'
 
 /** ADR 0056 idle / absolute lifetime caps (seconds). */
 export const cliTokenLifetimePolicy = {
@@ -45,7 +45,7 @@ export const cliTokenLifetimeAliases = {
 	},
 } as const
 
-export type CliTokenLifetimeAlias = keyof typeof cliTokenLifetimeAliases
+type CliTokenLifetimeAlias = keyof typeof cliTokenLifetimeAliases
 
 /**
  * Resolved lifetime for redeem. Alias form keeps the label only for the
@@ -78,7 +78,7 @@ export type BootstrapRedeemResponse = {
 	created_via?: string
 }
 
-export type BootstrapRedeemRequestBody =
+type BootstrapRedeemRequestBody =
 	| { code: string; lifetime: CliTokenLifetimeAlias }
 	| {
 			code: string
@@ -283,7 +283,7 @@ export async function redeemBootstrapCode(input: {
 	return parseRedeemResponse(body)
 }
 
-export function storedApiTokenFromRedeem(input: {
+function storedApiTokenFromRedeem(input: {
 	apiUrl: string
 	redeemed: BootstrapRedeemResponse
 }): StoredApiToken {
@@ -347,7 +347,7 @@ export async function authBootstrap(input: {
 
 export const cliCredentialBootstrapOperationId = 'cliCredentialBootstrap'
 
-export type BootstrapMintResponse = {
+type BootstrapMintResponse = {
 	bootstrap_code: string
 	scopes: Array<string>
 	idle_ttl_seconds: number
@@ -379,7 +379,7 @@ export function parseCliScopesFlag(
 }
 
 /** cliCredentialBootstrap params for an explicit scope list and lifetime. */
-export function bootstrapMintParams(
+function bootstrapMintParams(
 	scopes: ReadonlyArray<string>,
 	lifetime: ResolvedCliTokenLifetime,
 ): Record<string, unknown> {
@@ -400,9 +400,7 @@ export function bootstrapMintLifetimeFields(
 			}
 }
 
-export function parseBootstrapMintResponse(
-	body: unknown,
-): BootstrapMintResponse {
+function parseBootstrapMintResponse(body: unknown): BootstrapMintResponse {
 	if (
 		!isRecord(body) ||
 		typeof body.bootstrap_code !== 'string' ||

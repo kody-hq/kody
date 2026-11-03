@@ -1,6 +1,6 @@
 import { dirname } from 'node:path'
 
-export const leftoverHostIds = [
+const leftoverHostIds = [
 	'amazon-q',
 	'qwen-code',
 	'visual-studio',
@@ -29,7 +29,7 @@ function nestedObject(
 	return asObject(current, key)
 }
 
-export function leftoverRemoteEntry(
+function leftoverRemoteEntry(
 	id: LeftoverHostId,
 	mcpUrl: string,
 ): Record<string, unknown> {
@@ -62,7 +62,7 @@ function jsonRootKey(id: LeftoverHostId): 'mcpServers' | 'servers' {
 	}
 }
 
-export function sameRemoteUrl(entry: unknown, mcpUrl: string): boolean {
+function sameRemoteUrl(entry: unknown, mcpUrl: string): boolean {
 	if (!entry || typeof entry !== 'object') return false
 	const record = entry as Record<string, unknown>
 	const candidates = [record.url, record.serverUrl, record.httpUrl, record.uri]

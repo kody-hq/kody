@@ -15,7 +15,7 @@ export const liveReloadScriptTag = `<script type="module" src="${liveReloadClien
 
 const keepAliveMs = 15_000
 
-export type LiveReloadMessage =
+type LiveReloadMessage =
 	| { event: 'reload'; data: { buildId: number } }
 	| { event: 'build_error'; data: DevErrorView }
 	| { event: 'runtime_error'; data: DevErrorView }

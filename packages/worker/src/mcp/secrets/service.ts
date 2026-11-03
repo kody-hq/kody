@@ -87,7 +87,7 @@ import {
 	sealedTokenValueRefusal,
 } from '#worker/credentials/sealed-token.ts'
 import { isDisconnectedSecretEncryptedValue } from '#mcp/secrets/disconnected.ts'
-import { updateSecretEntryPlacement } from '#mcp/secrets/update-secret-placement.ts'
+import { prepareUpdateSecretEntryPlacementStatement } from '#mcp/secrets/update-secret-placement.ts'
 import {
 	credentialAuditActions,
 	listDelta,
@@ -527,6 +527,22 @@ export async function saveSecret(
 				})
 			}
 		}
+		const repairedPlacement =
+			existingEntry != null &&
+			input.scope === 'package' &&
+			input.baseUrl &&
+			isUntouchedDefaultPlacement(
+				readCredentialFillPlacement(existingEntry.placement_json),
+				existingEntry.placement_origin ?? null,
+			)
+				? await resolveManifestPlacementRepair({
+						env: input.env,
+						userId: input.userId,
+						baseUrl: input.baseUrl,
+						packageId: bucket.binding_key,
+						secretName: name,
+					})
+				: null
 		await upsertSecretEntry({
 			db: input.env.APP_DB,
 			row,
@@ -534,6 +550,20 @@ export async function saveSecret(
 				? {
 						placementOnInsert: placementOnInsert ?? null,
 						placementOriginOnInsert: placementOriginOnInsert ?? null,
+					}
+				: {}),
+			...(repairedPlacement
+				? {
+						alsoRun: [
+							prepareUpdateSecretEntryPlacementStatement({
+								db: input.env.APP_DB,
+								bucketId: bucket.id,
+								name,
+								placement: repairedPlacement.placement,
+								origin: 'manifest',
+								updatedAt: now,
+							}),
+						],
 					}
 				: {}),
 		})
@@ -583,41 +613,16 @@ export async function saveSecret(
 				? (existingEntry.placement_origin ?? null)
 				: (placementOriginOnInsert ?? null)
 
-		if (
-			existingEntry != null &&
-			input.scope === 'package' &&
-			input.baseUrl &&
-			isUntouchedDefaultPlacement(
-				placementAfter,
-				existingEntry.placement_origin ?? null,
-			)
-		) {
-			const resolved = await resolvePackageSecretPlacement({
-				env: input.env as Env,
+		if (existingEntry != null && repairedPlacement) {
+			placementAfter = repairedPlacement.placement
+			placementOriginAfter = 'manifest'
+			await auditPlacementDeclarationRepaired({
+				env: input.env,
 				userId: input.userId,
-				baseUrl: input.baseUrl,
 				packageId: bucket.binding_key,
 				secretName: name,
+				credentialId: existingEntry.id,
 			})
-			if (resolved.declarationStatus === 'applied') {
-				await updateSecretEntryPlacement({
-					db: input.env.APP_DB,
-					bucketId: bucket.id,
-					name,
-					placement: resolved.placement,
-					origin: 'manifest',
-					updatedAt: now,
-				})
-				placementAfter = resolved.placement
-				placementOriginAfter = 'manifest'
-				await auditPlacementDeclarationRepaired({
-					env: input.env,
-					userId: input.userId,
-					packageId: bucket.binding_key,
-					secretName: name,
-					credentialId: existingEntry.id,
-				})
-			}
 		}
 	}
 	if (
@@ -691,6 +696,29 @@ async function auditPlacementDeclarationUnread(input: {
 			error: error instanceof Error ? error.message : String(error),
 		})
 	}
+}
+
+/**
+ * The manifest placement for an existing package secret whose placement is an
+ * untouched default, or null when the manifest declares none.
+ */
+async function resolveManifestPlacementRepair(input: {
+	env: SecretWriteEnv
+	userId: OwnerId
+	baseUrl: string
+	packageId: string
+	secretName: string
+}): Promise<{ placement: CredentialFillPlacement | null } | null> {
+	const resolved = await resolvePackageSecretPlacement({
+		env: input.env as Env,
+		userId: input.userId,
+		baseUrl: input.baseUrl,
+		packageId: input.packageId,
+		secretName: input.secretName,
+	})
+	return resolved.declarationStatus === 'applied'
+		? { placement: resolved.placement }
+		: null
 }
 
 async function auditPlacementDeclarationRepaired(input: {
@@ -1077,6 +1105,7 @@ async function saveSecretsAtomically(input: {
 		placementOriginOnInsert?: CredentialPlacementOrigin | null
 		placementAfter?: CredentialFillPlacement | null
 		placementOriginAfter?: CredentialPlacementOrigin | null
+		placementRepaired?: boolean
 	}> = []
 	let newSecretCount = 0
 	let requestedStorageBytes = 0
@@ -1197,8 +1226,50 @@ async function saveSecretsAtomically(input: {
 		requested: requestedStorageBytes,
 	})
 
+	const placementRepairs: Array<D1PreparedStatement> = []
+	for (const entry of prepared) {
+		const currentPlacement = entry.existingEntry
+			? readCredentialFillPlacement(entry.existingEntry.placement_json)
+			: (entry.placementOnInsert ?? defaultNewCredentialFillPlacement)
+		const currentOrigin = entry.existingEntry
+			? (entry.existingEntry.placement_origin ?? null)
+			: (entry.placementOriginOnInsert ?? null)
+		entry.placementAfter = currentPlacement
+		entry.placementOriginAfter = currentOrigin
+		if (
+			!entry.existingEntry ||
+			!packageIdForPlacement ||
+			!input.baseUrl ||
+			!isUntouchedDefaultPlacement(currentPlacement, currentOrigin)
+		) {
+			continue
+		}
+		const repaired = await resolveManifestPlacementRepair({
+			env: input.env,
+			userId: input.userId,
+			baseUrl: input.baseUrl,
+			packageId: packageIdForPlacement,
+			secretName: entry.name,
+		})
+		if (!repaired) continue
+		placementRepairs.push(
+			prepareUpdateSecretEntryPlacementStatement({
+				db: input.env.APP_DB,
+				bucketId: bucket.id,
+				name: entry.name,
+				placement: repaired.placement,
+				origin: 'manifest',
+				updatedAt: now,
+			}),
+		)
+		entry.placementAfter = repaired.placement
+		entry.placementOriginAfter = 'manifest'
+		entry.placementRepaired = true
+	}
+
 	await upsertSecretEntriesAtomically({
 		db: input.env.APP_DB,
+		alsoRun: placementRepairs,
 		rows: prepared.map((entry) => ({
 			bucket_id: bucket.id,
 			name: entry.name,
@@ -1243,62 +1314,15 @@ async function saveSecretsAtomically(input: {
 			if (change) changes.push(change)
 		}
 	}
-	if (packageIdForPlacement && input.baseUrl) {
-		for (const entry of prepared) {
-			if (!entry.existingEntry) {
-				entry.placementAfter =
-					entry.placementOnInsert ?? defaultNewCredentialFillPlacement
-				entry.placementOriginAfter = entry.placementOriginOnInsert ?? null
-				continue
-			}
-			const currentPlacement = readCredentialFillPlacement(
-				entry.existingEntry.placement_json,
-			)
-			const currentOrigin = entry.existingEntry.placement_origin ?? null
-			if (!isUntouchedDefaultPlacement(currentPlacement, currentOrigin)) {
-				entry.placementAfter = currentPlacement
-				entry.placementOriginAfter = currentOrigin
-				continue
-			}
-			const resolved = await resolvePackageSecretPlacement({
-				env: input.env as Env,
-				userId: input.userId,
-				baseUrl: input.baseUrl,
-				packageId: packageIdForPlacement,
-				secretName: entry.name,
-			})
-			if (resolved.declarationStatus === 'applied') {
-				await updateSecretEntryPlacement({
-					db: input.env.APP_DB,
-					bucketId: bucket.id,
-					name: entry.name,
-					placement: resolved.placement,
-					origin: 'manifest',
-					updatedAt: now,
-				})
-				entry.placementAfter = resolved.placement
-				entry.placementOriginAfter = 'manifest'
-				await auditPlacementDeclarationRepaired({
-					env: input.env,
-					userId: input.userId,
-					packageId: packageIdForPlacement,
-					secretName: entry.name,
-					credentialId: entry.existingEntry.id,
-				})
-			} else {
-				entry.placementAfter = currentPlacement
-				entry.placementOriginAfter = currentOrigin
-			}
-		}
-	} else {
-		for (const entry of prepared) {
-			entry.placementAfter = entry.existingEntry
-				? readCredentialFillPlacement(entry.existingEntry.placement_json)
-				: (entry.placementOnInsert ?? defaultNewCredentialFillPlacement)
-			entry.placementOriginAfter = entry.existingEntry
-				? (entry.existingEntry.placement_origin ?? null)
-				: (entry.placementOriginOnInsert ?? null)
-		}
+	for (const entry of prepared) {
+		if (!entry.placementRepaired || !entry.existingEntry) continue
+		await auditPlacementDeclarationRepaired({
+			env: input.env,
+			userId: input.userId,
+			packageId: packageIdForPlacement,
+			secretName: entry.name,
+			credentialId: entry.existingEntry.id,
+		})
 	}
 	if (input.scope === 'user' || input.scope === 'package') {
 		for (const entry of prepared) {

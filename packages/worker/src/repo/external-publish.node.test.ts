@@ -394,6 +394,34 @@ test('clone-path publish matches .kodyignore against the repo-relative source ro
 	)
 })
 
+test('workspace-path publish stores check files keyed from the repo root', async () => {
+	setupPublish({
+		source_root: '/packages/demo/',
+		manifest_path: 'packages/demo/package.json',
+	})
+	mockModule.hasPublishedRuntimeArtifacts.mockReturnValue(true)
+	mockModule.runRepoChecks.mockResolvedValue({
+		...passingChecks,
+		sourceFiles: {
+			'package.json': '{"name":"@example/demo"}',
+			'src/index.ts': 'export default async () => null',
+		},
+	})
+
+	await expect(
+		publish({ env: kvEnv, files: undefined }),
+	).resolves.toMatchObject({ status: 'published' })
+
+	expect(mockModule.writePublishedSourceSnapshot).toHaveBeenCalledWith(
+		expect.objectContaining({
+			files: {
+				'packages/demo/package.json': '{"name":"@example/demo"}',
+				'packages/demo/src/index.ts': 'export default async () => null',
+			},
+		}),
+	)
+})
+
 test('returns no-op when commit is already current', async () => {
 	setupPublish()
 	const alreadyPublished = {

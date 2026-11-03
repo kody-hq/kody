@@ -18,7 +18,7 @@ import { apiTokenFileStorePath } from '../api-token-store.js'
 import { keyringService } from '../defaults.js'
 import { secretServiceKeyringOptions } from '../store.js'
 
-export const contextKeyPassphraseEnvVar = 'KODY_CONTEXT_KEY_PASSPHRASE'
+const contextKeyPassphraseEnvVar = 'KODY_CONTEXT_KEY_PASSPHRASE'
 
 export type StoredContext = {
 	version: 1

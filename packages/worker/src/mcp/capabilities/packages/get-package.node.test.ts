@@ -255,6 +255,32 @@ test('getPackageCapability returns export metadata for personal and org-bound ow
 	})
 })
 
+test('getPackageCapability shows published credential slots that fail validation', async () => {
+	stubSavedPackage()
+	mockModule.loadPackageSourceBySourceId.mockResolvedValue({
+		source: { id: 'source-1', published_commit: null },
+		manifest: {
+			name: '@kentcdodds/discord-gateway',
+			exports: { '.': './src/index.ts' },
+			kody: {
+				id: 'discord-gateway',
+				description: 'Helpers',
+				credentials: {},
+				invalidCredentialSlots: {
+					TOKEN: 'kody.credentials.TOKEN.raw: Invalid input',
+				},
+			},
+		},
+		files: {},
+	})
+
+	const result = await getPackage()
+
+	expect(result.credentials.invalidSlots).toEqual([
+		{ key: 'TOKEN', message: 'kody.credentials.TOKEN.raw: Invalid input' },
+	])
+})
+
 test('getPackageCapability omits fork-ahead from the agent payload', async () => {
 	stubSavedPackage({
 		originCommit: 'fork-tip',

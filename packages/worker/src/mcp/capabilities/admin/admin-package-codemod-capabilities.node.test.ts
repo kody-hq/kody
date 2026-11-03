@@ -57,7 +57,15 @@ function stepResult(
 	mode: 'scan' | 'dry-run' | 'apply' | 'revert',
 	nextCursor: string | null = null,
 ) {
-	return { runId, codemodId, mode, items: [], nextCursor, summary: {} }
+	return {
+		runId,
+		codemodId,
+		mode,
+		items: [],
+		nextCursor,
+		summary: {},
+		limit: 5,
+	}
 }
 
 test('admin package codemod capabilities are fleet-scoped, audited, and role-gated', async () => {

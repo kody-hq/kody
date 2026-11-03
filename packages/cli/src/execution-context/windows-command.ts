@@ -29,7 +29,7 @@ const isFile: FileExists = (path) => {
 }
 
 /** Case-insensitive env read: Windows env keys are case-insensitive. */
-export function windowsEnv(env: NodeJS.ProcessEnv, name: string) {
+function windowsEnv(env: NodeJS.ProcessEnv, name: string) {
 	const key = Object.keys(env).find(
 		(candidate) => candidate.toUpperCase() === name.toUpperCase(),
 	)

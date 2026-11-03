@@ -14,8 +14,8 @@ import { join, resolve, sep } from 'node:path'
 import { createBundleError } from '../local-bundle.js'
 import { bundleInputs } from './dev-bundler.js'
 
-export const devAssetsPathPrefix = '/_assets/'
-export const devVersionAssetName = '__version.json'
+const devAssetsPathPrefix = '/_assets/'
+const devVersionAssetName = '__version.json'
 const clientModuleHashLength = 16
 
 export type DevClientBundle = {

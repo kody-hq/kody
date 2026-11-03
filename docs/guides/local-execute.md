@@ -159,8 +159,11 @@ over that limit returns JSON `413 payload_too_large`. See the
 [CLI streaming gateway-fetch contract](../contributing/contracts/cli-streaming-gateway-fetch.md).
 
 The CLI CapabilityProxy client waits up to 7 minutes for origin's reply, so the
-gateway's 5-minute deadline ends a slow fetch, with its own error.
-`@kodycodes/cli` below 1.13.1 hits Node's default 300-second wait
+gateway's 5-minute deadline ends a slow fetch, with its own error. Set
+`KODY_CAPABILITY_PROXY_TIMEOUT_MS` (milliseconds) to change that wait for slow
+capabilities. When it runs out, the module fails with a
+`Kody API sent nothing for …ms` error that says the call may still be running on
+Kody. `@kodycodes/cli` below 1.13.1 hits Node's default 300-second wait
 (`UND_ERR_HEADERS_TIMEOUT`) instead. With `NODE_USE_ENV_PROXY=1` or
 `--use-env-proxy`, these requests still go through `HTTP_PROXY` / `HTTPS_PROXY`.
 A `fetch` without placeholders, and a multipart upload that does not need fill,

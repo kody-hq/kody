@@ -263,6 +263,7 @@ test('admin codemods run POST requires admin, rejects invalid requests, audits, 
 		],
 		nextCursor: null,
 		summary: { detected: 1 },
+		limit: 20,
 	}
 	mockModule.getPackageCodemodById.mockReturnValue({
 		id: codemodId,

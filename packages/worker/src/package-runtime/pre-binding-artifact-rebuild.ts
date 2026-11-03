@@ -47,9 +47,13 @@ export type PreBindingArtifactRebuildOutcome = {
 	staleMultiPackageTargets: number
 	/** Stored targets built from another commit than the published one. */
 	otherCommitTargets?: number
+	/** Stale targets left for a later call because `maxTargets` capped this one. */
+	remainingTargets?: number
 	outcome:
 		| 'would_rebuild'
 		| 'rebuilt'
+		| 'partially_rebuilt'
+		| 'rebuilt_unverified'
 		| 'current'
 		| 'other_commit_artifacts'
 		| 'skipped_unpublished'
@@ -66,6 +70,7 @@ export type PreBindingArtifactRebuildResult = {
 	staleTargets: number
 	staleMultiPackageTargets: number
 	rebuiltPackages: number
+	partiallyRebuiltPackages: number
 	stillStaleAfterRebuild: number
 	failedPackages: number
 	currentPackages: number
@@ -149,6 +154,8 @@ export async function runPreBindingArtifactRebuild(input: {
 	limit?: number
 	packageIds?: ReadonlyArray<string>
 	ownerUserIds?: ReadonlyArray<string>
+	/** Rebuild at most this many stale targets per package in this call. */
+	maxTargets?: number
 }): Promise<PreBindingArtifactRebuildResult> {
 	const dryRun = input.dryRun !== false
 	const limit = Math.max(
@@ -182,6 +189,7 @@ export async function runPreBindingArtifactRebuild(input: {
 		staleTargets: 0,
 		staleMultiPackageTargets: 0,
 		rebuiltPackages: 0,
+		partiallyRebuiltPackages: 0,
 		stillStaleAfterRebuild: 0,
 		failedPackages: 0,
 		currentPackages: 0,
@@ -286,6 +294,11 @@ export async function runPreBindingArtifactRebuild(input: {
 				})
 				continue
 			}
+			const batch =
+				input.maxTargets === undefined
+					? scan.stale
+					: scan.stale.slice(0, Math.max(1, input.maxTargets))
+			const remainingTargets = scan.stale.length - batch.length
 			const fresh = await loadPackageSourceRowForUser({
 				env: input.env,
 				userId: savedPackage.userId,
@@ -304,7 +317,7 @@ export async function runPreBindingArtifactRebuild(input: {
 				userId: savedPackage.userId,
 				publishedCommit,
 				baseUrl: input.baseUrl,
-				targets: scan.stale,
+				targets: batch,
 				force: true,
 			})
 			const afterRebuild = await loadPackageSourceRowForUser({
@@ -322,15 +335,36 @@ export async function runPreBindingArtifactRebuild(input: {
 				userId: savedPackage.userId,
 				sourceId: savedPackage.sourceId,
 				publishedCommit,
-				targets: scan.stale,
+				targets: batch,
 			})
-			// Every rebuilt target must now be stored at this commit and bound.
+			// The rebuild throws when any target fails, so a target that still
+			// reads stale here is usually a stored-artifact read that has not
+			// caught up with the write yet. Report it as unverified, not failed.
 			const notRebuilt = after.stale.length + after.notCurrent.length
 			if (notRebuilt > 0) {
 				result.stillStaleAfterRebuild += 1
-				throw new Error(
-					`${notRebuilt} target(s) not current after rebuild (${after.stale.length} still pre-binding, ${after.notCurrent.length} missing or at another commit).`,
-				)
+				result.outcomes.push({
+					...base,
+					publishedCommit,
+					staleTargets: staleCount,
+					staleMultiPackageTargets: multiCount,
+					...(remainingTargets > 0 ? { remainingTargets } : {}),
+					outcome: 'rebuilt_unverified',
+					error: `${notRebuilt} target(s) did not read as current right after the rebuild (${after.stale.length} still pre-binding, ${after.notCurrent.length} missing or at another commit). Re-check with a dryRun for this package in a minute.`,
+				})
+				continue
+			}
+			if (remainingTargets > 0) {
+				result.partiallyRebuiltPackages += 1
+				result.outcomes.push({
+					...base,
+					publishedCommit,
+					staleTargets: staleCount,
+					staleMultiPackageTargets: multiCount,
+					remainingTargets,
+					outcome: 'partially_rebuilt',
+				})
+				continue
 			}
 			result.rebuiltPackages += 1
 			result.outcomes.push({

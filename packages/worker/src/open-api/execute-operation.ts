@@ -3,6 +3,10 @@ import { z } from 'zod'
 import { hasRemovedExecuteInvoke } from '#mcp/execute-invoke-removed.ts'
 import { runExecuteToolCall } from '#mcp/tools/execute.ts'
 import {
+	detachedExecuteWorkLimitMs,
+	openApiExecuteTransportBudgetMs,
+} from '#mcp/execute-transport-budget.ts'
+import {
 	conversationIdInputField,
 	memoryContextInputField,
 } from '#mcp/tools/tool-call-context.ts'
@@ -68,6 +72,8 @@ export const executeOperationDefinition: NativeApiOperationDefinition = {
 			waitUntil: ctx.waitUntil,
 			args: { ...args, ...removedInvoke },
 			startedByLabel,
+			transportBudgetMs: openApiExecuteTransportBudgetMs,
+			detachedWorkLimitMs: detachedExecuteWorkLimitMs,
 		})
 	},
 }

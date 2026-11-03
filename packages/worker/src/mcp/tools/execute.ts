@@ -44,6 +44,7 @@ import {
 	limitExecutionResultValue,
 	formatExecutionOutput,
 	getExecutionErrorDetails,
+	createExecutorSandboxTimeoutMessage,
 } from '#mcp/executor.ts'
 import { entitlementStructuredContent } from '#mcp/entitlement-metadata.ts'
 import {
@@ -357,6 +358,7 @@ export async function registerExecuteTool(agent: McpRegistrationAgent) {
 				loopbackExports: agent.getLoopbackExports(),
 				waitUntil: agent.waitUntil?.bind(agent),
 				mcpAgent: agent,
+				detachedWorkLimitMs: agent.detachedWorkLimitMs,
 				args,
 				extra: toolExtra,
 			}),
@@ -383,6 +385,14 @@ export async function runExecuteToolCall(input: {
 	extra?: McpToolCallExtra
 	/** Cheap display label for started_by (API token name). Never a secret. */
 	startedByLabel?: string | null
+	/** How long to wait before returning a follow handle. Default 45s. */
+	transportBudgetMs?: number
+	/**
+	 * Set on lanes where only `waitUntil` keeps work alive after the response:
+	 * a run still going this long after the follow response is stopped with a
+	 * recorded timeout instead of being cut off with no outcome.
+	 */
+	detachedWorkLimitMs?: number
 }) {
 	const {
 		code,
@@ -424,6 +434,8 @@ export async function runExecuteToolCall(input: {
 		null
 	let claimedExecuteUsage: ClaimedExecuteUsage | null = null
 	let chargedWorkerUnits = 0
+	let detachedWork: Promise<unknown> | null = null
+	const transportBudgetMs = input.transportBudgetMs
 	const response = await attachExecuteUsage(
 		attachWorkerUnits(await runExecuteToolWithErrorBoundary()),
 	)
@@ -439,8 +451,32 @@ export async function runExecuteToolCall(input: {
 			signalAfterResponse.detach()
 		}
 		transportDetached = true
+		scheduleDetachedWorkDeadline(signalAfterResponse)
 	}
 	return response
+
+	/**
+	 * Stop a detached run before the host drops it, so the timeout lands on
+	 * the run record instead of an unknown `platform_interrupted` outcome.
+	 */
+	function scheduleDetachedWorkDeadline(
+		detachable: ReturnType<typeof createDetachableAbortSignal>,
+	) {
+		const limitMs = input.detachedWorkLimitMs
+		const work = detachedWork as Promise<unknown> | null
+		if (limitMs === undefined || !work || detachable.signal.aborted) return
+		const timer = setTimeout(() => {
+			const elapsedMs = performance.now() - timingStart.startedAtMs
+			const error = new Error(
+				createExecutorSandboxTimeoutMessage(
+					Math.max(1, Math.round(elapsedMs / 1000)) * 1000,
+				),
+			)
+			error.name = 'TimeoutError'
+			detachable.abort(error)
+		}, limitMs)
+		void work.finally(() => clearTimeout(timer))
+	}
 
 	/**
 	 * Units this call's own worker charged, on `ranOn` and its text line.
@@ -835,6 +871,7 @@ export async function runExecuteToolCall(input: {
 			credentials: normalizedCallMap,
 			waitMs: remainingTransportBudgetMs({
 				startedAtMs: timingStart.startedAtMs,
+				budgetMs: transportBudgetMs,
 			}),
 			signal: activeTransportSignal.signal,
 		})
@@ -1048,6 +1085,7 @@ export async function runExecuteToolCall(input: {
 			},
 		)
 		waitUntil?.(observedAdmittedWork)
+		detachedWork = observedAdmittedWork
 		let spanned:
 			| Awaited<typeof admittedWork>
 			| Awaited<ReturnType<typeof readTransportBudgetFollow>>
@@ -1058,6 +1096,7 @@ export async function runExecuteToolCall(input: {
 				admittedWork,
 				remainingTransportBudgetMs({
 					startedAtMs: timingStart.startedAtMs,
+					budgetMs: transportBudgetMs,
 				}),
 			)
 			const raced = await watched.raced
@@ -1139,6 +1178,7 @@ export async function runExecuteToolCall(input: {
 				idempotencyKey: spanned.idempotencyKey,
 				memories: surfacedMemories,
 				executionContext: routed?.kind === 'cloud' ? routed.metadata : null,
+				detachedWorkLimitMs: input.detachedWorkLimitMs,
 			})
 		}
 		const result = spanned
@@ -1466,17 +1506,23 @@ function buildTransportBudgetFollowResponse(input: {
 	idempotencyKey: string
 	memories: Parameters<typeof formatSurfacedMemoriesMarkdown>[0]
 	executionContext?: unknown
+	detachedWorkLimitMs?: number
 }) {
 	const { ranOnContent, ranOnFields } = ranOnParts(input.executionContext, {
 		running: true,
 	})
+	const poll = `Poll runGet with that id; once it finishes, runGet's result field holds the return value.`
 	const base = input.idempotencyKey
-		? `Execute is still running (runId: ${input.runId}). Poll runGet with that id. Retrying execute with idempotencyKey "${input.idempotencyKey}" reads this run instead of starting another mutation.`
-		: `Execute is still running (runId: ${input.runId}). Poll runGet with that id. Do not start another mutation for this call.`
+		? `Execute is still running (runId: ${input.runId}). ${poll} Retrying execute with idempotencyKey "${input.idempotencyKey}" reads this run instead of starting another mutation.`
+		: `Execute is still running (runId: ${input.runId}). ${poll} Do not start another mutation for this call.`
+	const limit =
+		input.detachedWorkLimitMs === undefined
+			? ''
+			: ` It has about ${String(Math.round(input.detachedWorkLimitMs / 1000))}s more before it stops with a timeout. Longer work belongs in a workflow or execute --local.`
 	const contextName = runningContextName(input.executionContext)
 	const text = contextName
-		? `${base} To stop it, call executionContextRunCancel with id "${contextName}" and that run_id.`
-		: base
+		? `${base}${limit} To stop it, call executionContextRunCancel with id "${contextName}" and that run_id.`
+		: `${base}${limit}`
 	return {
 		content: prependToolMetadataContent(input.conversationId, [
 			{ type: 'text' as const, text },

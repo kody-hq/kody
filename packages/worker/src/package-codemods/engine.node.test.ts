@@ -1162,7 +1162,11 @@ test('0012 dry-run and apply never rewrite or republish an undeclared webhook pa
 	expect(mocks.syncArtifactSourceSnapshot).not.toHaveBeenCalled()
 	expect(mocks.syncPublishedSourceSnapshotOnly).not.toHaveBeenCalled()
 	expect(mocks.refreshSavedPackageProjection).not.toHaveBeenCalled()
-	expect(kv.store.size).toBe(0)
+	expect(
+		[...kv.store.keys()].filter((key) =>
+			key.startsWith('package-codemod-revert:'),
+		),
+	).toEqual([])
 })
 
 test('published-only apply on drifted packages uses syncPublishedSourceSnapshotOnly and never default-branch sync', async () => {
@@ -1616,4 +1620,94 @@ test('a package whose earlier attempts never finished is recorded as failed and 
 	})
 	expect(retried.items).toEqual([])
 	expect(mocks.loadPackageSourceBySourceId).not.toHaveBeenCalled()
+})
+
+test('an apply whose publish errors but landed the transform is recorded as applied', async () => {
+	setupMocks()
+	const { env } = createEnv()
+	const pkg = savedPackage('pkg-reset')
+	mockSinglePackage(pkg)
+	const before = loadedSource({
+		files: ambientFiles(),
+		publishedCommit: 'commit-repo-reset',
+		repoId: 'repo-reset',
+		sourceId: pkg.sourceId,
+		userId: pkg.userId,
+	})
+	let published = before
+	mocks.loadPackageSourceBySourceId.mockImplementation(async () => published)
+	mocks.syncArtifactSourceSnapshot.mockImplementationOnce(
+		async (input: { files: Record<string, string> }) => {
+			published = {
+				...before,
+				source: { ...before.source, published_commit: 'commit-landed' },
+				files: input.files,
+			}
+			throw new Error(
+				'Durable Object exceeded its CPU time limit and was reset.',
+			)
+		},
+	)
+	const landed = await step(env, {
+		mode: 'apply',
+		filters: { packageIds: [pkg.id] },
+	})
+	expect(landed.items[0]).toMatchObject({
+		status: 'applied',
+		afterCommit: 'commit-landed',
+		error: null,
+	})
+	expect(mocks.refreshSavedPackageProjection).toHaveBeenCalledTimes(1)
+
+	published = before
+	mocks.syncArtifactSourceSnapshot.mockImplementationOnce(async () => {
+		published = {
+			...before,
+			source: { ...before.source, published_commit: 'commit-other' },
+		}
+		throw new Error('Durable Object exceeded its CPU time limit and was reset.')
+	})
+	const notOurs = await step(env, {
+		mode: 'apply',
+		filters: { packageIds: [pkg.id] },
+	})
+	expect(notOurs.items[0]).toMatchObject({ status: 'failed' })
+	expect(notOurs.items[0]?.error).toMatch(/was reset\. A revert snapshot/)
+})
+
+test('a step after one that was killed halves the page, then grows back', async () => {
+	setupMocks()
+	const { env, kv } = createEnv()
+	mocks.listSavedPackagesByUserId.mockResolvedValue(
+		Array.from({ length: 30 }, (_, index) =>
+			savedPackage(`pkg-${String(index).padStart(2, '0')}`),
+		),
+	)
+	mockSourcesByIdWith(cleanFiles)
+	const first = await step(env, { mode: 'dry-run', limit: 8 })
+	expect(first.limit).toBe(8)
+	expect(first.items).toHaveLength(8)
+
+	const key = `package-codemod-step-limit:${first.runId}`
+	kv.store.set(key, { value: JSON.stringify({ limit: 8, open: true }) })
+	const afterKill = await step(env, {
+		mode: 'dry-run',
+		runId: first.runId,
+		cursor: first.nextCursor,
+		limit: 8,
+	})
+	expect(afterKill.limit).toBe(4)
+	expect(afterKill.items).toHaveLength(4)
+
+	const recovered = await step(env, {
+		mode: 'dry-run',
+		runId: first.runId,
+		cursor: afterKill.nextCursor,
+		limit: 8,
+	})
+	expect(recovered.limit).toBe(8)
+	expect(JSON.parse(kv.store.get(key)!.value)).toEqual({
+		limit: 8,
+		open: false,
+	})
 })

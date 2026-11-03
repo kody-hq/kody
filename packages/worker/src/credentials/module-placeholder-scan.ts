@@ -951,3 +951,13 @@ export function parseModule(source: string) {
 		return null
 	}
 }
+
+/** The parser's message for a module {@link parseModule} returns null for. */
+export function readModuleParseError(source: string) {
+	try {
+		parseModuleSourceAllowingTypeAssertions(source)
+		return null
+	} catch (error) {
+		return error instanceof Error ? error.message : String(error)
+	}
+}

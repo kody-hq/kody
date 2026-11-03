@@ -259,10 +259,7 @@ export function hostMatchesPassthrough(
 }
 
 /** Refuse private/local hosts unless `--allow-private-network` (clear error). */
-export function assertOutboundAllowed(
-	url: URL,
-	allowPrivateNetwork: boolean,
-): void {
+function assertOutboundAllowed(url: URL, allowPrivateNetwork: boolean): void {
 	if (allowPrivateNetwork) return
 	if (url.protocol !== 'http:' && url.protocol !== 'https:') {
 		throw new StructuredCliError({
@@ -284,7 +281,7 @@ export function assertOutboundAllowed(
 	}
 }
 
-export function isPrivateOrLocalHost(hostname: string): boolean {
+function isPrivateOrLocalHost(hostname: string): boolean {
 	const host = hostname.toLowerCase()
 	return (
 		host === 'localhost' ||

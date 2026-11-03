@@ -9,9 +9,6 @@ import {
 	type StoreResolution,
 } from './store.js'
 
-export { orgEnvVar, orgSlugFromFlag } from './org-slug.js'
-export { resolveOrgSlug } from './org-resolve.js'
-
 export function formatOrgListHuman(orgs: Array<ListedOrg>): string {
 	if (orgs.length === 0) {
 		return 'Not logged in. Run `kody login`.\n'

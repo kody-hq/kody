@@ -95,4 +95,10 @@ export type McpRegistrationAgent = {
 	 * writes do not serialize the response they observe.
 	 */
 	waitUntil?(promise: Promise<unknown>): void
+	/**
+	 * Set when only `waitUntil` keeps work alive after the response (plain
+	 * Worker request lanes). Hosted execute stops a detached run this long
+	 * after its follow response so the outcome is recorded.
+	 */
+	detachedWorkLimitMs?: number
 }
