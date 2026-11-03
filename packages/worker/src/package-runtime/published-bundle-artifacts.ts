@@ -29,7 +29,10 @@ import {
 	type PublishedBundleArtifactRecord,
 	updatePublishedBundleArtifactRow,
 } from '#worker/repo/published-bundle-artifacts-repo.ts'
-import { listEntitySourcesByIds } from '#worker/repo/entity-sources.ts'
+import {
+	advanceEntitySourceServingCommit,
+	listEntitySourcesByIds,
+} from '#worker/repo/entity-sources.ts'
 import type { EntitySourceRow } from '#worker/repo/types.ts'
 import {
 	collectPublishedPackageArtifactTargets,
@@ -102,34 +105,52 @@ async function hydratePublishedBundleArtifactRow(input: {
 	kind: BundleArtifactKind
 	artifactName: string | null
 	entryPoint: string
+	commit?: string | null
 }): Promise<LoadedPublishedBundleArtifact> {
+	// The identity row tracks the newest saved build. A runtime reader pinned
+	// to an older serving commit reads that commit's payload instead: payloads
+	// are commit-keyed and outlive the row moving on.
+	const row =
+		input.commit != null && input.commit !== input.row.publishedCommit
+			? {
+					...input.row,
+					publishedCommit: input.commit,
+					kvKey: buildPublishedBundleArtifactKvKey({
+						sourceId: input.row.sourceId,
+						publishedCommit: input.commit,
+						kind: input.kind,
+						artifactName: input.artifactName,
+						entryPoint: input.entryPoint,
+					}),
+				}
+			: input.row
 	const artifact = await readPublishedBundleArtifact({
 		env: input.env,
-		kvKey: input.row.kvKey,
+		kvKey: row.kvKey,
 	})
 	if (!artifact) {
 		return {
-			row: input.row,
+			row: row,
 			artifact: null,
 		}
 	}
 	if (
 		!matchesPublishedBundleArtifactIdentity({
 			artifact,
-			sourceId: input.row.sourceId,
-			publishedCommit: input.row.publishedCommit,
+			sourceId: row.sourceId,
+			publishedCommit: row.publishedCommit,
 			kind: input.kind,
 			artifactName: input.artifactName,
 			entryPoint: input.entryPoint,
 		})
 	) {
 		return {
-			row: input.row,
+			row: row,
 			artifact: null,
 		}
 	}
 	return {
-		row: input.row,
+		row: row,
 		artifact,
 	}
 }
@@ -141,6 +162,11 @@ export async function loadPublishedBundleArtifactByIdentity(input: {
 	kind: BundleArtifactKind
 	artifactName?: string | null
 	entryPoint: string
+	/**
+	 * Load this commit's payload (runtime readers pass the serving commit)
+	 * even when the identity row already names a newer build.
+	 */
+	commit?: string | null
 }): Promise<LoadedPublishedBundleArtifact | null> {
 	const artifactName = normalizeArtifactName(input.artifactName)
 	const entryPoint = normalizeEntryPoint(input.entryPoint)
@@ -158,6 +184,7 @@ export async function loadPublishedBundleArtifactByIdentity(input: {
 		kind: input.kind,
 		artifactName,
 		entryPoint,
+		commit: input.commit,
 	})
 }
 
@@ -174,6 +201,8 @@ export async function loadPublishedBundleArtifactsByIdentities(input: {
 		kind: BundleArtifactKind
 		artifactName?: string | null
 		entryPoint: string
+		/** See {@link loadPublishedBundleArtifactByIdentity}. */
+		commit?: string | null
 	}>
 }): Promise<Map<string, LoadedPublishedBundleArtifact | null>> {
 	const normalized = new Map<
@@ -183,6 +212,7 @@ export async function loadPublishedBundleArtifactsByIdentities(input: {
 			kind: BundleArtifactKind
 			artifactName: string | null
 			entryPoint: string
+			commit: string | null
 		}
 	>()
 	for (const identity of input.identities) {
@@ -205,6 +235,7 @@ export async function loadPublishedBundleArtifactsByIdentities(input: {
 				kind: identity.kind,
 				artifactName,
 				entryPoint,
+				commit: identity.commit ?? null,
 			})
 		}
 	}
@@ -235,6 +266,7 @@ export async function loadPublishedBundleArtifactsByIdentities(input: {
 					kind: entry.kind,
 					artifactName: entry.artifactName,
 					entryPoint: entry.entryPoint,
+					commit: entry.commit,
 				}),
 			)
 		},
@@ -727,7 +759,10 @@ export async function rebuildPublishedPackageArtifacts(
 			targetsNeedingPersist.push(target)
 		},
 	)
-	if (targetsNeedingPersist.length === 0) return
+	if (targetsNeedingPersist.length === 0) {
+		await advanceServingCommitAfterCompleteRebuild(input)
+		return
+	}
 
 	// Overlap esbuild (cap 2), batch D1 identity upserts, then write KV only
 	// for accepted rows. Build failures are isolated so successful siblings
@@ -780,6 +815,22 @@ export async function rebuildPublishedPackageArtifacts(
 		}
 	}
 	if (firstError != null) throw firstError
+	await advanceServingCommitAfterCompleteRebuild(input)
+}
+
+/** Every target for the published commit is saved: start serving it. */
+async function advanceServingCommitAfterCompleteRebuild(input: {
+	env: Env
+	userId: string
+	source: EntitySourceRow
+}) {
+	const publishedCommit = input.source.published_commit
+	if (!publishedCommit) return
+	await advanceEntitySourceServingCommit(input.env.APP_DB, {
+		id: input.source.id,
+		userId: input.source.user_id,
+		commit: publishedCommit,
+	})
 }
 
 export async function deletePublishedArtifactsForSource(input: {

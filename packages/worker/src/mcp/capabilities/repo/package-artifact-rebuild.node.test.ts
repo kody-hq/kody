@@ -1,5 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { beforeEach, expect, test, vi } from 'vitest'
+import type * as EntitySourcesModule from '#worker/repo/entity-sources.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import type * as IsolatedArtifactRebuildModule from '#worker/repo/isolated-artifact-rebuild.ts'
 
@@ -12,6 +13,15 @@ const mockModule = vi.hoisted(() => ({
 	reusePublishedPackageArtifactIfUnchanged: vi.fn(),
 	loadPublishedBundleArtifactsForPackageTargets: vi.fn(),
 	publishedBundleArtifactForPackageTarget: vi.fn(),
+}))
+
+const advanceEntitySourceServingCommit = vi.hoisted(() =>
+	vi.fn(async () => true),
+)
+
+vi.mock('#worker/repo/entity-sources.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof EntitySourcesModule>()),
+	advanceEntitySourceServingCommit,
 }))
 
 vi.mock('#worker/repo/repo-session-rpc.ts', () => ({

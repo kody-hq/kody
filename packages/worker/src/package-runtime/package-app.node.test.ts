@@ -831,6 +831,7 @@ test('buildPackageAppWorker serves an artifactName-null artifact hit and reuses 
 		kind: 'app',
 		artifactName: null,
 		entryPoint: 'app.js',
+		commit: 'commit-1',
 	})
 	expect(packageAppRuntimeMock.buildKodyAppBundle).not.toHaveBeenCalled()
 	expect(

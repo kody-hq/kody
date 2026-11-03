@@ -110,6 +110,7 @@ beforeEach(() => {
 })
 
 vi.mock('#worker/repo/entity-sources.ts', () => ({
+	advanceEntitySourceServingCommit: async () => true,
 	getEntitySourceById: (...args: Array<unknown>) =>
 		mockModule.getEntitySourceById(...args),
 	getEntitySourceByIdForUser: (...args: Array<unknown>) =>

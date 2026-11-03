@@ -22,7 +22,7 @@ import type { RunRecordContext } from '#worker/run-records/types.ts'
 import type { EffectivePermissions } from '#worker/authorization/authorize.ts'
 import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { isInboundEmailApprovalTopic } from '#universal/credential-contracts.ts'
-import { loadPackageManifestBySourceId } from '#worker/package-registry/source.ts'
+import { loadServingPackageManifestBySourceId } from '#worker/package-registry/source.ts'
 import { listPackageEmittedEvents } from '#worker/package-registry/manifest.ts'
 import type { PackageEventsDispatchQueueMessage } from '#worker/package-events/dispatch-queue-producer.ts'
 import {
@@ -374,7 +374,7 @@ export function createPackageEventToolsWithToolFactories(input: {
 				throw new Error('events.dispatch requires a published package source.')
 			}
 			const packageOwnerId = ownerIdFromCaller(input.callerContext)
-			const sourceManifest = await loadPackageManifestBySourceId({
+			const sourceManifest = await loadServingPackageManifestBySourceId({
 				env: input.env,
 				baseUrl: input.baseUrl,
 				userId: packageOwnerId,

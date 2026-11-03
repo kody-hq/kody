@@ -5,11 +5,18 @@ import { pathToFileURL } from 'node:url'
 import { vi } from 'vitest'
 import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 
+const loadPackageSourceBySourceId = vi.fn()
+
 export const moduleGraphMockModule = {
 	createWorker: vi.fn(),
 	resolveSavedPackageRef: vi.fn(),
 	getSavedPackageByName: vi.fn(),
-	loadPackageSourceBySourceId: vi.fn(),
+	loadPackageSourceBySourceId,
+	// Runtime imports load at the serving commit; same per-test mock.
+	loadServingPackageSourceBySourceId: vi.fn(
+		async (...args: Array<unknown>) =>
+			await loadPackageSourceBySourceId(...args),
+	),
 	loadPublishedBundleArtifactByIdentity: vi.fn(),
 	loadPublishedBundleArtifactsByIdentities: vi.fn(),
 }
