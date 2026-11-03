@@ -819,12 +819,10 @@ test('buildPackageAppWorker serves an artifactName-null artifact hit and reuses 
 
 	// The expensive build (artifact lookup + hydration) runs once; each request
 	// still re-acquires a request-bound stub with the same stable worker id.
-	expect(
-		packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity,
-	).toHaveBeenCalledTimes(1)
-	expect(
-		packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity,
-	).toHaveBeenCalledWith({
+	const loadArtifact =
+		packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity
+	expect(loadArtifact).toHaveBeenCalledTimes(1)
+	expect(loadArtifact).toHaveBeenCalledWith({
 		env,
 		userId: ownerIdFromStored('user-artifact-hit'),
 		sourceId: 'source-1',
