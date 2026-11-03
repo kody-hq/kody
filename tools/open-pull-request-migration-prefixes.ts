@@ -34,6 +34,8 @@ export type OpenPullRequestFileScan =
 	| {
 			status: 'ok'
 			claims: Array<OpenPullRequestFileClaim>
+			/** Open pull requests with too many files to list; not scanned. */
+			oversizedPullNumbers?: Array<number>
 	  }
 
 type FetchLike = typeof fetch
@@ -150,7 +152,7 @@ export async function scanOpenPullRequestFiles(
 			? input.currentPullNumber
 			: resolveCurrentPullNumber(env, cwd)
 	try {
-		const claims = await listClaimedFiles({
+		const { claims, oversizedPullNumbers } = await listClaimedFiles({
 			repository,
 			token,
 			baseRef,
@@ -159,7 +161,7 @@ export async function scanOpenPullRequestFiles(
 			currentPullNumber,
 			fetchImpl: input.fetchImpl ?? fetch,
 		})
-		return { status: 'ok', claims }
+		return { status: 'ok', claims, oversizedPullNumbers }
 	} catch (error) {
 		if (
 			error instanceof GithubRequestError &&
@@ -295,6 +297,7 @@ async function listClaimedFiles(input: {
 		(pull) => pull.number !== input.currentPullNumber,
 	)
 	const claims: Array<OpenPullRequestFileClaim> = []
+	const oversizedPullNumbers: Array<number> = []
 	await mapPool(selected, openPullRequestScanConcurrency, async (pull) => {
 		const filenames = await listClaimedFilenames({
 			owner,
@@ -306,11 +309,25 @@ async function listClaimedFiles(input: {
 			fetchImpl: input.fetchImpl,
 			signal,
 		})
+		if (filenames === null) {
+			oversizedPullNumbers.push(pull.number)
+			return
+		}
 		if (filenames.length === 0) return
 		claims.push({ number: pull.number, filenames })
 	})
 	claims.sort((left, right) => left.number - right.number)
-	return claims
+	oversizedPullNumbers.sort((left, right) => left - right)
+	return { claims, oversizedPullNumbers }
+}
+
+/** Advisory line naming open pull requests too large to scan, or null. */
+export function formatOversizedPullRequestsWarning(
+	label: string,
+	pullNumbers: ReadonlyArray<number> = [],
+) {
+	if (pullNumbers.length === 0) return null
+	return `${label} scan skipped ${pullNumbers.map((number) => `#${String(number)}`).join(', ')}: more than ${String(pullFilesMaxPages * pullFilesPageSize)} changed files; other open pull requests were checked`
 }
 
 async function listOpenPullRequests(input: {
@@ -384,10 +401,7 @@ async function listClaimedFilenames(input: {
 			return filenames
 		}
 	}
-	throw new GithubRequestError(
-		`Pull request ${String(input.pullNumber)} has more than ${String(pullFilesMaxPages * pullFilesPageSize)} files.`,
-		'error',
-	)
+	return null
 }
 
 function basenameInDirectory(filename: string, directory: string) {

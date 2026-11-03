@@ -93,9 +93,11 @@ INSERT INTO org_memberships (org_id, user_id, role, created_at) VALUES
 	await page.locator('input[name="oauthClientSecret"]').fill('rehearsal-secret')
 	await page.getByRole('button', { name: 'Save and continue' }).click()
 	await page.getByRole('button', { name: `Continue to ${provider}` }).click()
+	// The OAuth round trip (provider mock, callback, token exchange) can take
+	// longer than the default 5s when every validate suite runs at once.
 	await expect(
 		page.getByText("You're connected.", { exact: true }),
-	).toBeVisible()
+	).toBeVisible({ timeout: 20_000 })
 
 	// The member finds "connect your own account" on the chooser.
 	await page.context().clearCookies()

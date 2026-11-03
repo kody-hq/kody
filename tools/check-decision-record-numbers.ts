@@ -11,6 +11,7 @@ import {
 import { isExecutedDirectly } from './node-runtime.ts'
 import {
 	resolveCurrentPullNumber,
+	formatOversizedPullRequestsWarning,
 	scanOpenPullRequestFiles,
 	type OpenPullRequestFileScan,
 } from './open-pull-request-migration-prefixes.ts'
@@ -268,7 +269,7 @@ export function formatOpenPullRequestDecisionAdvisory(input: {
 			...empty,
 			warning: silent
 				? null
-				: `Open pull request decision-number scan skipped: ${input.scan.detail ?? input.scan.reason}.`,
+				: `Open pull request decision-number scan skipped: ${(input.scan.detail ?? input.scan.reason).replace(/\.+$/u, '')}.`,
 		}
 	}
 	if (input.baseFilenames === null) {
@@ -357,7 +358,16 @@ export function formatOpenPullRequestDecisionAdvisory(input: {
 			),
 		)
 	}
-	return { lines, warning: null, overlaps, blockingOverlaps, suggestedPrefix }
+	return {
+		lines,
+		warning: formatOversizedPullRequestsWarning(
+			'Open pull request decision-number',
+			input.scan.oversizedPullNumbers,
+		),
+		overlaps,
+		blockingOverlaps,
+		suggestedPrefix,
+	}
 }
 
 function gitOutputIn(cwd: string, args: ReadonlyArray<string>) {

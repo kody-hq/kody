@@ -210,9 +210,18 @@ function isWranglerCrashAfterSubdomainRace(output: string) {
 	return /Cannot read properties of null \(reading 'tag'\)/.test(output)
 }
 
+/**
+ * `versions deploy` right after `versions upload` can briefly miss the new
+ * version id (code 100146); the same id deploys on a later attempt.
+ */
+function isRetryableVersionNotFoundRace(output: string) {
+	return /\[code:\s*100146\]/.test(output)
+}
+
 export function isRetryableWranglerDeployFailure(output: string) {
 	return (
 		isRetryableWorkersDevSubdomainRace(output) ||
+		isRetryableVersionNotFoundRace(output) ||
 		isRetryableEmptyMigrationTagPrecondition(output) ||
 		isRetryableCloudflareFailure(output)
 	)

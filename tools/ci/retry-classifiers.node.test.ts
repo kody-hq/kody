@@ -242,6 +242,11 @@ test('isRetryableWorkersDevSubdomainRace requires a successful upload then 10007
 	expect(isRetryableWranglerDeployFailure(wranglerD1FetchFailedLog)).toBe(true)
 	expect(
 		isRetryableWranglerDeployFailure(
+			'✘ [ERROR] A request to the Cloudflare API failed.\n  The requested Worker version could not be found [code: 100146]',
+		),
+	).toBe(true)
+	expect(
+		isRetryableWranglerDeployFailure(
 			'✘ [ERROR] Migration 0002_add_audit_actor.sql failed: UNIQUE constraint failed',
 		),
 	).toBe(false)

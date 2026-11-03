@@ -156,15 +156,18 @@ async function countOutstandingBootstrapCodes(input: {
 }) {
 	const row = await input.db
 		.prepare(
-			`SELECT COUNT(*) AS count
+			`SELECT COUNT(*) AS count, MIN(expires_at) AS oldest_expires_at
 			 FROM cli_credential_bootstrap_codes
 			 WHERE user_id = ?
 			   AND consumed_at IS NULL
 			   AND expires_at > ?`,
 		)
 		.bind(input.userId, input.now.toISOString())
-		.first<{ count: number }>()
-	return row?.count ?? 0
+		.first<{ count: number; oldest_expires_at: string | null }>()
+	return {
+		count: row?.count ?? 0,
+		oldestExpiresAt: row?.oldest_expires_at ?? null,
+	}
 }
 
 async function pruneExpiredBootstrapCodes(input: {
@@ -337,9 +340,19 @@ export async function mintCliCredentialBootstrap(input: {
 		userId: input.userId,
 		now,
 	})
-	if (outstanding >= cliCredentialBootstrapPolicy.maxOutstandingCodesPerUser) {
+	if (
+		outstanding.count >= cliCredentialBootstrapPolicy.maxOutstandingCodesPerUser
+	) {
+		const waitSeconds = outstanding.oldestExpiresAt
+			? Math.max(
+					1,
+					Math.ceil(
+						(Date.parse(outstanding.oldestExpiresAt) - now.getTime()) / 1000,
+					),
+				)
+			: null
 		throw new McpCallerError(
-			`This account already has ${cliCredentialBootstrapPolicy.maxOutstandingCodesPerUser} outstanding CLI bootstrap codes. Redeem or wait for expiry before minting another.`,
+			`This account already has ${cliCredentialBootstrapPolicy.maxOutstandingCodesPerUser} outstanding CLI bootstrap codes. Redeem one, or retry after the oldest expires${waitSeconds === null ? '' : ` in ${String(waitSeconds)}s (${outstanding.oldestExpiresAt})`}.`,
 		)
 	}
 

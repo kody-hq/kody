@@ -141,12 +141,17 @@ node tools/seed-test-data.ts --local
 - `localhost` / `127.0.0.1` → `jane@example.com` / `ilikecode`
 - anything else (PR preview, production) → `me@kentcdodds.com` / `ilikecode`
 
-Override with `--email` / `--password`. `--cookie-file` defaults to
-`.tmp/control-kody-cookie` and stores the origin and email that created the
-session, so a leftover local cookie is not sent to a preview and `--email` does
-not reuse another user's cookie for the same origin. MCP commands also store the
-`--org` slug beside the OAuth token; a different org remints the token and keeps
-the login cookie. `preview` uses
+Override with `--email` / `--password`. Site-admin capabilities (for example
+`adminPackageCredentialSupplierReport`) are hidden from non-admin sessions, so
+`execute` as `jane@example.com` reports `Tool "…" not found`. Locally, run them
+as the admin seed (`node tools/seed-test-data.ts --local` makes
+`kody@example.com` an admin by default):
+`npm run control-kody -- execute --email kody@example.com --code-file f.ts`.
+`--cookie-file` defaults to `.tmp/control-kody-cookie` and stores the origin and
+email that created the session, so a leftover local cookie is not sent to a
+preview and `--email` does not reuse another user's cookie for the same origin.
+MCP commands also store the `--org` slug beside the OAuth token; a different org
+remints the token and keeps the login cookie. `preview` uses
 [`preview-manual-test`](./preview-manual-testing.md) and its own seed.
 
 `package-create` registers a stub saved package through MCP
@@ -166,15 +171,17 @@ used. Prefer `package-create` / `execute` against localhost; use a PR preview
 when you need the real remote Artifacts namespace. See
 [Local limitations](./cloud-agents.md#local-limitations).
 
-`execute` and `search` use the same OAuth client against a preview or local
-origin. `execute` reads an ESM module from `--code-file` (default export) and
-optional JSON `--params-file`. `--execute-args-file` merges a JSON object into
-the execute call, such as a `credentials` call map. `search` takes `--query`,
-and optionally `--domain`, `--entity`, and `--limit`. Both refuse
-`https://kody.codes`. Do not hand-write a throwaway MCP client script for
-preview fixtures. Modules that call `packageSave`, publish, or
-`packageGetGitRemote` can run against the local origin (mock Artifacts) or a PR
-preview (real Artifacts namespace).
+`execute`, `search`, and `api` use the same OAuth client against a preview or
+local origin. `api` calls one MCP `api` operation: `--operation <operationId>`
+plus an optional JSON `--params-file`. Use it for api-only operations that
+refuse `execute`, such as `cliCredentialBootstrap`. `execute` reads an ESM
+module from `--code-file` (default export) and optional JSON `--params-file`.
+`--execute-args-file` merges a JSON object into the execute call, such as a
+`credentials` call map. `search` takes `--query`, and optionally `--domain`,
+`--entity`, and `--limit`. Both refuse `https://kody.codes`. Do not hand-write a
+throwaway MCP client script for preview fixtures. Modules that call
+`packageSave`, publish, or `packageGetGitRemote` can run against the local
+origin (mock Artifacts) or a PR preview (real Artifacts namespace).
 
 After the seed user belongs to more than one organization, OAuth authorize
 refuses to approve until an org is chosen. Pass `--org <slug>` on `execute`,

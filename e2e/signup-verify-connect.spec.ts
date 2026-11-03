@@ -181,7 +181,9 @@ test('a new user signs up, verifies email from the message, and reaches MCP conn
 					connectAgentEmail = findConnectAgentEmail(payload.messages, email)
 					return connectAgentEmail
 				},
-				{ timeout: 15_000 },
+				// The follow-up email is sent after the response; under load the
+				// mock email API can drop and retry the send.
+				{ timeout: 45_000 },
 			)
 			.not.toBeNull()
 		expect(connectAgentEmail?.subject).toBe('Connect the agent you already use')

@@ -38,6 +38,7 @@ import {
 	formatMcpCallReport,
 	readJsonObjectFile,
 	searchAppMcp,
+	apiAppMcp,
 } from './control-kody/mcp-call.ts'
 import {
 	formatLocalAppDbRemediation,
@@ -107,6 +108,7 @@ const usageLines = [
 	'  package-create  Create a stub saved package via MCP (preview data)',
 	'  execute         Run an MCP execute module as the seed user',
 	'  search          Run MCP search as the seed user',
+	'  api             Call one MCP api operation as the seed user (e.g. cliCredentialBootstrap)',
 	'',
 	'Common options:',
 	'  --origin <url>       App origin (default: healthy local 3742-3751)',
@@ -127,13 +129,14 @@ const usageLines = [
 	'  --description <t>    Optional package-create stub description',
 	'  --head-ahead         package-create: push one unpublished commit',
 	'  --code-file <p>      Required for execute (ESM module with default export)',
-	'  --params-file <p>    Optional JSON object passed to execute',
+	'  --params-file <p>    Optional JSON object passed to execute or api',
+	'  --operation <id>     Required for api (operationId, e.g. cliCredentialBootstrap)',
 	'  --execute-args-file <p>  Optional JSON object merged into the execute call (e.g. credentials)',
 	'  --query <text>       search query',
 	'  --domain <id>        Optional search domain',
 	'  --entity <ref>       Optional search entity ref',
 	'  --limit <n>          Optional search result limit',
-	'  --org <slug>         Bind execute, search, and package-create to this org',
+	'  --org <slug>         Bind execute, search, api, and package-create to this org',
 	'  --help               Print this help',
 	'',
 	'preview forwards its flags to preview:manual-test (--pr, --request, --check).',
@@ -180,6 +183,7 @@ export type ControlKodyCommand =
 	| 'package-create'
 	| 'execute'
 	| 'search'
+	| 'api'
 	| 'help'
 
 export type ControlKodyOptions = {
@@ -214,6 +218,7 @@ export type ControlKodyOptions = {
 	paramsFile: string | null
 	executeArgsFile: string | null
 	query: string | null
+	operationId: string | null
 	domain: string | null
 	entity: string | null
 	limit: number | null
@@ -284,6 +289,7 @@ export function parseControlArgs(argv: Array<string>): ControlKodyOptions {
 		paramsFile: null,
 		executeArgsFile: null,
 		query: null,
+		operationId: null,
 		domain: null,
 		entity: null,
 		limit: null,
@@ -314,6 +320,7 @@ export function parseControlArgs(argv: Array<string>): ControlKodyOptions {
 		'package-create',
 		'execute',
 		'search',
+		'api',
 		'help',
 	]
 	if (!commands.includes(command as ControlKodyCommand)) {
@@ -504,6 +511,11 @@ function parseSharedFlags(
 					argv[index + 1],
 					'--execute-args-file',
 				)
+				index += 1
+				break
+			}
+			case '--operation': {
+				options.operationId = requireValue(argv[index + 1], '--operation')
 				index += 1
 				break
 			}
@@ -1724,6 +1736,58 @@ async function runCommand(options: ControlKodyOptions) {
 				code: readFileSync(options.codeFile, 'utf8'),
 				params,
 				extraArguments,
+				cookieHeader: cached.cookieHeader,
+				oauth: cached.oauth,
+				orgSlug: cached.orgSlug,
+			})
+			if (report.cookieHeader) {
+				await writeCookieFile(
+					options.cookieFile,
+					report.cookieHeader,
+					origin,
+					email,
+					report.oauth,
+					options.orgSlug,
+				)
+			}
+			if (options.json) {
+				const {
+					cookieHeader: _cookieHeader,
+					oauth: _oauth,
+					...publicReport
+				} = report
+				printJson({ ...publicReport, cookieFile: options.cookieFile })
+			} else {
+				console.log(formatMcpCallReport(report))
+			}
+			return 0
+		}
+		case 'api': {
+			if (!options.operationId) {
+				throw new ControlKodyError('api requires --operation <operationId>')
+			}
+			const origin = await resolveOrigin(options)
+			if (isProductionKodyOrigin(origin)) {
+				throw new ControlKodyError(
+					'api refuses to run against https://kody.codes',
+				)
+			}
+			const defaults = credentialsForOrigin(origin)
+			const email = options.email ?? defaults.email
+			const cached = readMcpAuthFile(
+				options.cookieFile,
+				origin,
+				email,
+				options.orgSlug,
+			)
+			const report = await apiAppMcp({
+				origin,
+				email,
+				password: options.password ?? defaults.password,
+				operationId: options.operationId,
+				params: options.paramsFile
+					? await readJsonObjectFile(options.paramsFile)
+					: undefined,
 				cookieHeader: cached.cookieHeader,
 				oauth: cached.oauth,
 				orgSlug: cached.orgSlug,
