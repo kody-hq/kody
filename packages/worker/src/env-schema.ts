@@ -308,6 +308,7 @@ export const EnvSchema = object({
 	MCP_SEARCH_EVENTS: optionalAnalyticsEngineDatasetSchema,
 	ONBOARDING_FUNNEL_EVENTS: optionalAnalyticsEngineDatasetSchema,
 	PACKAGE_APP_LEGACY_EVENTS: optionalAnalyticsEngineDatasetSchema,
+	JWT_SIGN_ANY_HOST_EVENTS: optionalAnalyticsEngineDatasetSchema,
 	SENTRY_DSN: optionalUrlStringSchema,
 	SENTRY_ENVIRONMENT: optionalNonEmptyStringSchema,
 	SENTRY_TRACES_SAMPLE_RATE: optionalSentryTracesSampleRateSchema,
