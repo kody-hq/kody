@@ -37,6 +37,7 @@ test('backfillCommunityListingsBehindPublished syncs each behind listing', async
 				packageId: 'pkg-1',
 			},
 			publishedCommit: 'new-1',
+			publisherPersonId: null,
 		},
 		{
 			listing: {
@@ -45,6 +46,7 @@ test('backfillCommunityListingsBehindPublished syncs each behind listing', async
 				packageId: 'pkg-2',
 			},
 			publishedCommit: 'new-2',
+			publisherPersonId: 'publisher-2',
 		},
 	])
 	mockModule.syncActiveCommunityListingToPublishedCommit
@@ -69,6 +71,16 @@ test('backfillCommunityListingsBehindPublished syncs each behind listing', async
 		ownerUserId: ownerIdFromStored('user-1'),
 		packageId: 'pkg-1',
 		publishedCommit: 'new-1',
+	})
+	expect(
+		mockModule.syncActiveCommunityListingToPublishedCommit,
+	).toHaveBeenNthCalledWith(2, {
+		env: expect.anything(),
+		baseUrl: 'https://kody.codes',
+		ownerUserId: ownerIdFromStored('user-2'),
+		packageId: 'pkg-2',
+		publishedCommit: 'new-2',
+		actorUserId: 'publisher-2',
 	})
 	expect(mockModule.updateCommunityListing).toHaveBeenCalledTimes(1)
 	expect(mockModule.updateCommunityListing).toHaveBeenCalledWith(

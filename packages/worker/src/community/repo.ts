@@ -562,14 +562,21 @@ export async function listActiveCommunityListingsBehindPublished(
 	Array<{
 		listing: CommunityListingRecord
 		publishedCommit: string
+		/** Person recorded as the last publisher, so backfill re-checks their ban. */
+		publisherPersonId: string | null
 	}>
 > {
 	const rows = await db
 		.prepare(
 			`SELECT ${communityListingSelectColumns},
-				entity_sources.published_commit AS source_published_commit
+				entity_sources.published_commit AS source_published_commit,
+				package_app_authority.published_by_person_id AS publisher_person_id
 			FROM community_listings
 			${communityListingSourceJoin}
+			LEFT JOIN package_app_authority
+				ON package_app_authority.package_id = community_listings.package_id
+				AND package_app_authority.owner_id = community_listings.owner_user_id
+				AND COALESCE(package_app_authority.publisher_unknown, 0) = 0
 			WHERE community_listings.status = 'active'
 				AND entity_sources.published_commit IS NOT NULL
 				AND TRIM(entity_sources.published_commit) != ''
@@ -587,6 +594,8 @@ export async function listActiveCommunityListingsBehindPublished(
 			{
 				listing: mapCommunityListingRow(row),
 				publishedCommit,
+				publisherPersonId:
+					String(row['publisher_person_id'] ?? '').trim() || null,
 			},
 		]
 	})

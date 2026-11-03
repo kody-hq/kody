@@ -322,16 +322,29 @@ export async function softDeleteOrg(input: {
 		id: input.orgId,
 		nowIso,
 		missingError: 'org_not_found_or_already_deleted',
+		// Memberships share the org's batch so a later failing step can never
+		// leave live members (or Owners) on a tombstoned org.
 		stamp: async (stampAt) => {
-			const orgUpdate = await appDb
-				.prepare(
-					`UPDATE orgs
-					 SET deleted_at = ?, updated_at = ?
-					 WHERE id = ? AND deleted_at IS NULL`,
-				)
-				.bind(stampAt, stampAt, input.orgId)
-				.run()
-			return orgUpdate.meta.changes ?? 0
+			const [orgUpdate] = await appDb.batch([
+				appDb
+					.prepare(
+						`UPDATE orgs
+						 SET deleted_at = ?, updated_at = ?
+						 WHERE id = ? AND deleted_at IS NULL`,
+					)
+					.bind(stampAt, stampAt, input.orgId),
+				appDb
+					.prepare(
+						`UPDATE org_memberships
+						 SET deleted_at = ?
+						 WHERE org_id = ? AND deleted_at IS NULL
+						   AND EXISTS (
+						     SELECT 1 FROM orgs WHERE id = ? AND deleted_at = ?
+						   )`,
+					)
+					.bind(stampAt, input.orgId, input.orgId, stampAt),
+			])
+			return orgUpdate?.meta.changes ?? 0
 		},
 	})
 

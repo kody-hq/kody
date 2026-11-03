@@ -167,6 +167,7 @@ export function PackageCollaboratorsRoute({
 		key: string,
 		change: PackageCollaboratorsChange,
 		success: string,
+		onSaved?: (result: PackageCollaboratorsWriteResult) => void,
 	) {
 		if (inFlight.current || client.isMutating({ mutationKey, exact: true }))
 			return null
@@ -176,6 +177,7 @@ export function PackageCollaboratorsRoute({
 		setWarnings([])
 		try {
 			const result = await mutation.mutateAsync({ key, change })
+			if (result) onSaved?.(result)
 			if (!isCurrent()) return null
 			setMessage(success)
 			setMessageTone('info')
@@ -828,6 +830,7 @@ export function PackageCollaboratorsRoute({
 						{view.org.personal ? (
 							<PackageCollaboratorInvites
 								key={`${actorKey}/${username}/${kodyId}`}
+								handoffKey={`${actorKey}/${username}/${kodyId}`}
 								view={view}
 								busyKey={busy}
 								postChange={postChange}
