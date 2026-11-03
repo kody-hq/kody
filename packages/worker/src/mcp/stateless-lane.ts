@@ -31,6 +31,7 @@ import {
 import { runWithDynamicWorkerEvaluationBudget } from '#worker/dynamic-worker-evaluation-budget.ts'
 import { runWithInboundRequestSignal } from './inbound-request-signal.ts'
 import { buildKodyMcpServerInfo } from './kody-mcp-server-info.ts'
+import { detachedExecuteWorkLimitMs } from './execute-transport-budget.ts'
 
 /**
  * Serve one modern-era `/mcp` request. Called after `handleMcpRequest` has
@@ -129,5 +130,6 @@ function createStatelessRegistrationAgent(input: {
 		},
 		getLoopbackExports: () => input.ctx.exports as typeof workerExports,
 		waitUntil: (promise) => input.ctx.waitUntil(promise),
+		detachedWorkLimitMs: detachedExecuteWorkLimitMs,
 	}
 }

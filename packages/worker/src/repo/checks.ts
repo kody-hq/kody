@@ -38,6 +38,10 @@ import {
 } from '#worker/package-runtime/deprecated-invocation-usage.ts'
 import { validateBarePackageImportDeclarations } from '#worker/package-runtime/bare-package-import-declarations.ts'
 import {
+	collectUnresolvedRelativeImports,
+	formatUnresolvedRelativeImportsMessage,
+} from './unresolved-relative-imports.ts'
+import {
 	collectStaticKodyPackageImportsFromFiles,
 	isTypeDeclarationFilePath,
 } from '#worker/package-runtime/static-kody-imports.ts'
@@ -1717,7 +1721,8 @@ export async function runRepoChecks(input: {
 	phaseTimings?: PublishPhaseTimings
 	/**
 	 * Skip full esbuild validation when the caller is about to rebuild the
-	 * same published artifact targets. Missing entrypoints still fail. The
+	 * same published artifact targets. Missing entrypoints and unresolved
+	 * static relative imports still fail before the tip moves. The
 	 * `checks/bundle` timer is omitted. Rebuild failure must surface as a
 	 * bundle `checks_failed` result.
 	 */
@@ -2209,6 +2214,18 @@ export async function runRepoChecks(input: {
 				input.deferBundleCheckToRebuild === true &&
 				bundleTargets.length > 0
 			) {
+				// Rebuild runs after the tip moves, so refuse imports esbuild
+				// could never resolve before promotion.
+				const unresolvedImports = collectUnresolvedRelativeImports({
+					files: sourceFiles,
+					entryPoints: bundleTargets.map((target) => target.path),
+				})
+				if (unresolvedImports.length > 0) {
+					return {
+						ok: false,
+						message: formatUnresolvedRelativeImportsMessage(unresolvedImports),
+					}
+				}
 				return {
 					ok: true,
 					message: deferredBundleCheckMessage,

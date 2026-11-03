@@ -49,8 +49,12 @@ function createRepoFlagTest() {
 		`INSERT INTO entity_sources (id, user_id, entity_kind, entity_id, repo_id, manifest_path, source_root, created_at, updated_at)
 		 VALUES (?, ?, 'repo', ?, ?, 'package.json', '.', '2026-01-01', '2026-01-01')`,
 	)
+	const insertRepo = sqlite.prepare(
+		`INSERT INTO user_repos (id, user_id, name) VALUES (?, ?, ?)`,
+	)
 	const sources = Array.from({ length: 40 }, (_, index) => {
 		const id = `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`
+		insertRepo.run(`repo-${index}`, ownerStableId, `repo-${index}`)
 		insertSource.run(id, ownerStableId, `repo-${index}`, `artifact-${index}`)
 		return id
 	})
@@ -248,6 +252,16 @@ test('admin repo override and check capabilities allowlist one repo and report i
 		ctx,
 	)
 	expect(after.evaluation.enabled).toBe(true)
+
+	const byRepoId = await adminFeatureFlagRepoCheckCapability.handler(
+		{ key, sourceId: 'repo-0' },
+		ctx,
+	)
+	expect(byRepoId).toMatchObject({
+		sourceId: target,
+		repoId: 'repo-0',
+		evaluation: { enabled: true },
+	})
 
 	await expect(
 		adminFeatureFlagRepoOverrideCapability.handler(

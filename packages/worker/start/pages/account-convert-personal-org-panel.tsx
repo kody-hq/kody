@@ -105,6 +105,7 @@ export function AccountConvertPersonalOrgPanel({
 									oauth_grants: 'OAuth access cleanup',
 									email_inbox: 'your default email inbox',
 									memory_index: 'memory search indexing',
+									mcp_servers: 'reconnecting moved MCP servers',
 								}
 								toast.error(
 									`Conversion completed. Follow-up work is still needed for ${result.followUpFailures.map((failure) => labels[failure]).join(', ')}. Do not repeat the conversion.`,

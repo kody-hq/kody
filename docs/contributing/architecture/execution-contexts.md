@@ -220,9 +220,9 @@ KODY_API_TOKEN=<token with execution_context:create, execution_context:execute, 
   npm run e2e:context-commands -- --api-url https://api.kody.codes
 ```
 
-The account needs the `execution-contexts` experiment on. PR previews lack
-`ECP_FRAME_SIGNING_KEYS`, so the daemon cannot connect there; run it against
-production (or any deployment with signing keys).
+The account needs the `execution-contexts` experiment on. PR previews sign with
+the committed test key set; set `KODY_ECP_TRUST_TEST_ROOT=1` to run it against a
+preview (see the TEST ONLY rule below).
 
 ## Rules that matter
 

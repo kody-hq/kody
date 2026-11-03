@@ -8,7 +8,7 @@ import {
 	resolveCurrentPullNumber,
 	scanOpenPullRequestMigrationPrefixes,
 	type OpenPullRequestFileClaim,
-	type OpenPullRequestMigrationScan,
+	type OpenPullRequestFileScan,
 } from './open-pull-request-migration-prefixes.ts'
 
 const execFileAsync = promisify(execFile)
@@ -18,10 +18,15 @@ export const defaultMigrationsDir = path.join(
 	'worker',
 	'migrations',
 )
-export const defaultMigrationLedgerPath = path.join(
-	'tools',
-	'migration-ledger.json',
-)
+/**
+ * One `<migration filename>.sha256` file per migration, holding its digest.
+ * Per-file entries keep concurrent migration pull requests from conflicting on
+ * a shared array (#4675).
+ */
+export const defaultMigrationLedgerDir = path.join('tools', 'migration-ledger')
+/** Pre-#4675 single-file ledger, still read from older trusted Git refs. */
+const legacyMigrationLedgerPath = path.join('tools', 'migration-ledger.json')
+const migrationLedgerEntrySuffix = '.sha256'
 export const defaultMigrationRepairsPath = path.join(
 	'tools',
 	'migration-repairs.json',
@@ -50,6 +55,8 @@ export const defaultMigrationReferenceRoots: ReadonlyArray<string> = [
 ]
 export const expectedMigrationBaselineSha256 =
 	'aee006f0719e4d967b7485fb3199f8e2eb0660258b7720661b7fc48ce67fc199'
+/** The frozen baseline is the first `count` ledger entries (the squash). */
+const migrationLedgerBaseline = { count: 1, maximumPrefix: 1 } as const
 
 const migrationFilenameReferencePattern =
 	/\b(?<filename>\d{4}-[a-z0-9]+(?:-[a-z0-9]+)*)\.sql\b/g
@@ -113,9 +120,12 @@ export type MigrationLedgerEntry = {
 }
 
 export type MigrationLedger = {
+	/** Sorted by filename. */
+	migrations: Array<MigrationLedgerEntry>
+}
+
+type LegacyMigrationLedger = {
 	version: 1
-	baselineCount: number
-	baselineMaximumPrefix: number
 	baselineSha256: string
 	migrations: Array<MigrationLedgerEntry>
 }
@@ -396,15 +406,15 @@ function getBaselineSha256(
 	return createHash('sha256').update(JSON.stringify(entries)).digest('hex')
 }
 
-export function isMigrationLedger(value: unknown): value is MigrationLedger {
+function isLegacyMigrationLedger(
+	value: unknown,
+): value is LegacyMigrationLedger {
 	if (!value || typeof value !== 'object') {
 		return false
 	}
-	const candidate = value as Partial<MigrationLedger>
+	const candidate = value as Partial<LegacyMigrationLedger>
 	return (
 		candidate.version === 1 &&
-		Number.isInteger(candidate.baselineCount) &&
-		Number.isInteger(candidate.baselineMaximumPrefix) &&
 		typeof candidate.baselineSha256 === 'string' &&
 		Array.isArray(candidate.migrations) &&
 		candidate.migrations.every(
@@ -477,30 +487,26 @@ export function checkMigrationLedger(
 	const ledgerFilenames = ledger.migrations.map(({ filename }) => filename)
 	const ledgerFilenameResult = checkMigrationFilenames(ledgerFilenames)
 
-	if (ledger.baselineSha256 !== expectedMigrationBaselineSha256) {
+	const baselineCount = migrationLedgerBaseline.count
+	const baselineMaximumPrefix = migrationLedgerBaseline.maximumPrefix
+	if (ledger.migrations.length < baselineCount) {
 		errors.push(
-			`Migration ledger baseline digest changed. Baseline migrations are immutable; expected ${expectedMigrationBaselineSha256}.`,
-		)
-	}
-
-	if (ledger.migrations.length < ledger.baselineCount) {
-		errors.push(
-			`Migration ledger contains ${String(ledger.migrations.length)} entries but its frozen baseline requires ${String(ledger.baselineCount)}.`,
+			`Migration ledger contains ${String(ledger.migrations.length)} entries but its frozen baseline requires ${String(baselineCount)}.`,
 		)
 	} else {
-		const baselineEntries = ledger.migrations.slice(0, ledger.baselineCount)
+		const baselineEntries = ledger.migrations.slice(0, baselineCount)
 		const actualBaselineSha256 = getBaselineSha256(baselineEntries)
-		if (actualBaselineSha256 !== ledger.baselineSha256) {
+		if (actualBaselineSha256 !== expectedMigrationBaselineSha256) {
 			errors.push(
-				`Migration ledger baseline entries changed (expected digest ${ledger.baselineSha256}, received ${actualBaselineSha256}). Baseline entries cannot be edited, reordered, renamed, or deleted.`,
+				`Migration ledger baseline entries changed (expected digest ${expectedMigrationBaselineSha256}, received ${actualBaselineSha256}). Baseline entries cannot be edited, renamed, or deleted.`,
 			)
 		}
 		const actualBaselineMaximum = getMaxMigrationPrefix(
 			baselineEntries.map(({ filename }) => filename),
 		)
-		if (actualBaselineMaximum !== ledger.baselineMaximumPrefix) {
+		if (actualBaselineMaximum !== baselineMaximumPrefix) {
 			errors.push(
-				`Migration ledger baseline maximum is ${String(actualBaselineMaximum)}, not the recorded ${String(ledger.baselineMaximumPrefix)}.`,
+				`Migration ledger baseline maximum is ${String(actualBaselineMaximum)}, not the frozen ${String(baselineMaximumPrefix)}.`,
 			)
 		}
 	}
@@ -511,22 +517,11 @@ export function checkMigrationLedger(
 		)
 	}
 
-	const sortedLedgerFilenames = [...ledgerFilenames].sort()
-	if (
-		sortedLedgerFilenames.some(
-			(filename, index) => filename !== ledgerFilenames[index],
-		)
-	) {
-		errors.push(
-			'Migration ledger entries must remain in lexicographic filename order; append new migrations without reordering history.',
-		)
-	}
-
-	for (const entry of ledger.migrations.slice(ledger.baselineCount)) {
+	for (const entry of ledger.migrations.slice(baselineCount)) {
 		const parsed = parseMigrationFilename(entry.filename)
-		if (parsed && Number(parsed.prefix) <= ledger.baselineMaximumPrefix) {
+		if (parsed && Number(parsed.prefix) <= baselineMaximumPrefix) {
 			errors.push(
-				`Migration "${entry.filename}" was added at or below frozen baseline maximum ${formatMigrationPrefix(ledger.baselineMaximumPrefix)}. Additions must use a higher prefix.`,
+				`Migration "${entry.filename}" was added at or below frozen baseline maximum ${formatMigrationPrefix(baselineMaximumPrefix)}. Additions must use a higher prefix.`,
 			)
 		}
 	}
@@ -538,7 +533,7 @@ export function checkMigrationLedger(
 	const comparableTrustedHistory = isCrossEpochTrustedHistory
 		? null
 		: trustedHistory
-	const fallbackEntries = ledger.migrations.slice(0, ledger.baselineCount)
+	const fallbackEntries = ledger.migrations.slice(0, baselineCount)
 	const trustedFiles = comparableTrustedHistory?.files ?? fallbackEntries
 	const trustedLedgerEntries =
 		comparableTrustedHistory?.ledgerEntries ?? fallbackEntries
@@ -548,8 +543,7 @@ export function checkMigrationLedger(
 
 	if (
 		!trustedHistory &&
-		(ledger.migrations.length > ledger.baselineCount ||
-			files.length > ledger.baselineCount)
+		(ledger.migrations.length > baselineCount || files.length > baselineCount)
 	) {
 		errors.push(
 			'Cannot verify post-baseline migration history because no trusted Git base is available. Fetch origin/main history (CI uses fetch-depth: 0) and rerun validation.',
@@ -561,8 +555,8 @@ export function checkMigrationLedger(
 		ledger.migrations.map((entry) => [entry.filename, entry]),
 	)
 
-	for (const [index, trustedEntry] of trustedLedgerEntries.entries()) {
-		const currentEntry = ledger.migrations[index]
+	for (const trustedEntry of trustedLedgerEntries) {
+		const currentEntry = ledgerByName.get(trustedEntry.filename)
 		const repaired =
 			currentEntry !== undefined &&
 			currentEntry.filename === trustedEntry.filename &&
@@ -578,7 +572,7 @@ export function checkMigrationLedger(
 			(currentEntry.sha256 !== trustedEntry.sha256 && !repaired)
 		) {
 			errors.push(
-				`Migration ledger history from ${comparableTrustedHistory?.ref ?? 'the frozen bootstrap baseline'} changed at "${trustedEntry.filename}". Historical ledger entries cannot be edited, reordered, or deleted.`,
+				`Migration ledger history from ${comparableTrustedHistory?.ref ?? 'the frozen bootstrap baseline'} changed at "${trustedEntry.filename}". Historical ledger entries cannot be edited, renamed, or deleted.`,
 			)
 		}
 	}
@@ -598,7 +592,7 @@ export function checkMigrationLedger(
 	for (const file of files) {
 		if (!ledgerByName.has(file.filename)) {
 			errors.push(
-				`Migration "${file.filename}" is not in ${defaultMigrationLedgerPath}. Append its filename and sha256 after choosing a prefix above the ledger maximum.`,
+				`Migration "${file.filename}" has no ledger entry. After choosing a prefix above the ledger maximum, add ${migrationLedgerEntryPath(file.filename)} containing ${file.sha256}.`,
 			)
 		}
 	}
@@ -645,14 +639,64 @@ export function checkMigrationLedger(
 	}
 }
 
-export async function readMigrationLedger(
-	ledgerPath: string = defaultMigrationLedgerPath,
-): Promise<MigrationLedger> {
-	const parsed: unknown = JSON.parse(await readFile(ledgerPath, 'utf8'))
-	if (!isMigrationLedger(parsed)) {
-		throw new Error(`Invalid migration ledger structure in ${ledgerPath}.`)
+function migrationLedgerEntryPath(filename: string) {
+	return path.posix.join(
+		defaultMigrationLedgerDir.replaceAll(path.sep, '/'),
+		`${filename}${migrationLedgerEntrySuffix}`,
+	)
+}
+
+function parseMigrationLedgerEntry(
+	entryName: string,
+	content: string,
+	location: string,
+): MigrationLedgerEntry {
+	const sha256 = content.trim()
+	if (
+		!entryName.endsWith(migrationLedgerEntrySuffix) ||
+		entryName.length === migrationLedgerEntrySuffix.length ||
+		!/^[a-f0-9]{64}$/.test(sha256)
+	) {
+		throw new Error(
+			`Invalid migration ledger entry ${location}: expected <migration>.sql${migrationLedgerEntrySuffix} holding one lowercase sha256 digest.`,
+		)
 	}
-	return parsed
+	return {
+		filename: entryName.slice(0, -migrationLedgerEntrySuffix.length),
+		sha256,
+	}
+}
+
+function sortLedgerEntries(entries: Array<MigrationLedgerEntry>) {
+	return entries.sort((left, right) =>
+		left.filename < right.filename
+			? -1
+			: left.filename > right.filename
+				? 1
+				: 0,
+	)
+}
+
+export async function readMigrationLedger(
+	ledgerDir: string = defaultMigrationLedgerDir,
+): Promise<MigrationLedger> {
+	const entries = await readdir(ledgerDir, { withFileTypes: true })
+	const migrations = await Promise.all(
+		entries.map(async (entry) => {
+			const location = path.join(ledgerDir, entry.name)
+			if (!entry.isFile()) {
+				throw new Error(
+					`Invalid migration ledger entry ${location}: not a file.`,
+				)
+			}
+			return parseMigrationLedgerEntry(
+				entry.name,
+				await readFile(location, 'utf8'),
+				location,
+			)
+		}),
+	)
+	return { migrations: sortLedgerEntries(migrations) }
 }
 
 async function gitOutput(
@@ -736,23 +780,76 @@ export async function readTrustedMigrationHistory(
 		}),
 	)
 
-	const ledgerJson = await gitOutput(
-		['show', `${ref}:${defaultMigrationLedgerPath.replaceAll(path.sep, '/')}`],
+	const trustedLedger = await readTrustedMigrationLedger(ref)
+	const ledgerEntries = trustedLedger?.migrations ?? files
+	const ledgerBaselineSha256 = trustedLedger?.baselineSha256 ?? null
+	return { ref, files, ledgerEntries, ledgerBaselineSha256 }
+}
+
+/**
+ * The ledger at a trusted ref: the per-file directory, else the legacy
+ * single-file ledger (refs from before #4675), else null.
+ */
+async function readTrustedMigrationLedger(ref: string): Promise<{
+	migrations: Array<MigrationLedgerEntry>
+	baselineSha256: string
+} | null> {
+	const ledgerRoot = defaultMigrationLedgerDir.replaceAll(path.sep, '/')
+	const listing = await gitOutput([
+		'ls-tree',
+		'--name-only',
+		ref,
+		'--',
+		`${ledgerRoot}/`,
+	])
+	const entryPaths =
+		listing?.split('\n').filter((line) => line.length > 0) ?? []
+	if (entryPaths.length > 0) {
+		// One `git grep` reads every entry instead of one `git show` per file.
+		const output = await gitOutput(
+			['grep', '--no-color', '-I', '-e', '.', ref, '--', `${ledgerRoot}/`],
+			{ trim: false },
+		)
+		const contents = new Map<string, string>()
+		const linePrefix = `${ref}:`
+		for (const line of output?.split('\n') ?? []) {
+			if (!line.startsWith(linePrefix)) continue
+			const rest = line.slice(linePrefix.length)
+			const separator = rest.lastIndexOf(':')
+			if (separator === -1) continue
+			contents.set(rest.slice(0, separator), rest.slice(separator + 1))
+		}
+		const migrations = sortLedgerEntries(
+			entryPaths.map((entryPath) =>
+				parseMigrationLedgerEntry(
+					path.posix.basename(entryPath),
+					contents.get(entryPath) ?? '',
+					`${entryPath} at trusted Git ref ${ref}`,
+				),
+			),
+		)
+		return {
+			migrations,
+			baselineSha256: getBaselineSha256(
+				migrations.slice(0, migrationLedgerBaseline.count),
+			),
+		}
+	}
+	const legacyJson = await gitOutput(
+		['show', `${ref}:${legacyMigrationLedgerPath.replaceAll(path.sep, '/')}`],
 		{ trim: false },
 	)
-	let ledgerEntries = files
-	let ledgerBaselineSha256: string | null = null
-	if (ledgerJson !== null) {
-		const parsed: unknown = JSON.parse(ledgerJson)
-		if (!isMigrationLedger(parsed)) {
-			throw new Error(
-				`Invalid migration ledger structure at trusted Git ref ${ref}.`,
-			)
-		}
-		ledgerEntries = parsed.migrations
-		ledgerBaselineSha256 = parsed.baselineSha256
+	if (legacyJson === null) return null
+	const parsed: unknown = JSON.parse(legacyJson)
+	if (!isLegacyMigrationLedger(parsed)) {
+		throw new Error(
+			`Invalid migration ledger structure at trusted Git ref ${ref}.`,
+		)
 	}
-	return { ref, files, ledgerEntries, ledgerBaselineSha256 }
+	return {
+		migrations: parsed.migrations,
+		baselineSha256: parsed.baselineSha256,
+	}
 }
 
 export async function readMigrationRepairs(
@@ -781,7 +878,7 @@ export async function readMigrationRepairs(
 
 export async function checkMigrationsDirectory(
 	migrationsDir: string = defaultMigrationsDir,
-	ledgerPath: string = defaultMigrationLedgerPath,
+	ledgerDir: string = defaultMigrationLedgerDir,
 	repairsPath: string = defaultMigrationRepairsPath,
 ): Promise<
 	MigrationFilenameCheckResult & { trustedFilenames: ReadonlyArray<string> }
@@ -800,7 +897,7 @@ export async function checkMigrationsDirectory(
 			),
 		})),
 	)
-	const ledger = await readMigrationLedger(ledgerPath)
+	const ledger = await readMigrationLedger(ledgerDir)
 	const repairs = await readMigrationRepairs(repairsPath)
 	const trustedBase = await resolveTrustedMigrationBase()
 	const trustedHistory = trustedBase
@@ -884,7 +981,7 @@ export function formatOpenPullRequestMigrationAdvisory(input: {
 	/** Exact files already in trusted history cannot be renumbered for another PR. */
 	trustedFilenames?: ReadonlyArray<string>
 	localNextPrefix: string
-	scan: OpenPullRequestMigrationScan
+	scan: OpenPullRequestFileScan
 	/** This checkout's open pull request number, when known. */
 	currentPullNumber?: number | null
 	/** True for base-branch checkouts (push to main), which keep every prefix. */
@@ -913,7 +1010,7 @@ export function formatOpenPullRequestMigrationAdvisory(input: {
 
 function skippedMigrationPrefixAdvisory(
 	localNextPrefix: string,
-	scan: Extract<OpenPullRequestMigrationScan, { status: 'skipped' }>,
+	scan: Extract<OpenPullRequestFileScan, { status: 'skipped' }>,
 ): OpenPullRequestMigrationAdvisory {
 	switch (scan.reason) {
 		case 'no-token':
@@ -945,7 +1042,7 @@ function claimedMigrationPrefixAdvisory(input: {
 	migrationsDir: string
 	localFilenames: ReadonlyArray<string>
 	localNextPrefix: string
-	scan: Extract<OpenPullRequestMigrationScan, { status: 'ok' }>
+	scan: Extract<OpenPullRequestFileScan, { status: 'ok' }>
 	currentPullNumber: number | null
 	isBaseBranchCheckout: boolean
 }): OpenPullRequestMigrationAdvisory {
@@ -1132,7 +1229,7 @@ function isPullRequestEventName(eventName: string) {
 	return eventName === 'pull_request' || eventName === 'pull_request_target'
 }
 
-function isBaseBranchCheckout(env: NodeJS.ProcessEnv) {
+export function isBaseBranchCheckout(env: NodeJS.ProcessEnv) {
 	const eventName = env.GITHUB_EVENT_NAME?.trim()
 	return Boolean(eventName) && !isPullRequestEventName(eventName ?? '')
 }

@@ -1,0 +1,8 @@
+{
+	"$schema": "../../../node_modules/nx/schemas/project-schema.json",
+	"name": "mock-oauth",
+	"projectType": "application",
+	"sourceRoot": "packages/mock-servers/oauth/src",
+	"targets": {},
+	"tags": ["scope:mock-server", "service:oauth"]
+}

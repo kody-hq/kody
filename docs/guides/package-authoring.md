@@ -2,12 +2,9 @@
 id: package_authoring
 title: Package authoring
 summary:
-  START HERE when creating or materially changing a Kody package: package
-  shape, required README.md (human) and AGENTS.md (agent), README Intent
-  section, per-export JSDoc (search Purpose), strict runtime input
-  checking for agent-facing exports, personal-details hygiene before going
-  public, secret-using package approval checklist, and scope-update
-  guidance without adding new primitives.
+  START HERE when creating or materially changing a Kody package: shape,
+  required README.md and AGENTS.md, README Intent, per-export JSDoc, runtime
+  input checking, public-visibility hygiene, and secret-using approvals.
 category: platform
 ---
 
@@ -279,21 +276,10 @@ Non-production runtimes may serve inline on the app origin at
 Every package app receives only `/<path>` after the host strips the mount.
 Root-relative links such as `/audio/123` therefore escape the mount. Import
 `packageContext` from `kody:runtime` and build every in-app link, redirect,
-share/email URL, and OAuth callback against its public base. A Remix recipe that
-prefixes its route contract remounts the Request in the entry; see
-[Package apps](./package-apps.md#remix-recipe).
-
-```ts
-import { packageContext } from 'kody:runtime'
-import { form, route } from 'remix/routes'
-
-export const routes = route(packageContext?.appBasePath ?? '', {
-	home: '/',
-	notes: form('notes'),
-})
-```
-
-A fetch handler builds those URLs itself:
+share/email URL, and OAuth callback against its public base. Remix apps prefix
+their route contract with `packageContext.appBasePath`; see
+[Package apps](./package-apps.md#remix-recipe). A fetch handler builds those
+URLs itself:
 
 ```ts
 import { packageContext } from 'kody:runtime'

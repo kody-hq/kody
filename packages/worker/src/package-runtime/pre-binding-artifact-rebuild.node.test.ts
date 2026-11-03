@@ -157,7 +157,7 @@ test('apply force-rebuilds only stale targets at the published commit', async ()
 	).toEqual(['job', 'module'])
 })
 
-test('apply reports a failure when a target is still pre-binding afterwards', async () => {
+test('apply reports a rebuilt target that still reads pre-binding as unverified, not failed', async () => {
 	mocks.rebuild.mockResolvedValue(undefined)
 	const result = await runPreBindingArtifactRebuild({
 		env,
@@ -166,8 +166,39 @@ test('apply reports a failure when a target is still pre-binding afterwards', as
 	})
 	expect(result).toMatchObject({
 		rebuiltPackages: 0,
-		failedPackages: 1,
+		failedPackages: 0,
 		stillStaleAfterRebuild: 1,
+	})
+	expect(result.outcomes[0]).toMatchObject({
+		outcome: 'rebuilt_unverified',
+		error: expect.stringContaining('dryRun'),
+	})
+})
+
+test('apply with maxTargets rebuilds part of a package and reports what is left', async () => {
+	mocks.rebuild.mockImplementation(async () => {
+		mocks.loadPublishedBundleArtifactsForPackageTargets.mockResolvedValue(
+			new Map([
+				['module', current],
+				['job', staleSingle],
+			]),
+		)
+	})
+	const result = await runPreBindingArtifactRebuild({
+		env,
+		baseUrl: 'https://x',
+		dryRun: false,
+		maxTargets: 1,
+	})
+	expect(mocks.rebuild.mock.calls[0]?.[0].targets).toHaveLength(1)
+	expect(result).toMatchObject({
+		rebuiltPackages: 0,
+		partiallyRebuiltPackages: 1,
+		failedPackages: 0,
+	})
+	expect(result.outcomes[0]).toMatchObject({
+		outcome: 'partially_rebuilt',
+		remainingTargets: 1,
 	})
 })
 
@@ -184,9 +215,10 @@ test('apply reports a failure when a rebuilt target is missing afterwards', asyn
 	})
 	expect(result).toMatchObject({
 		rebuiltPackages: 0,
-		failedPackages: 1,
+		failedPackages: 0,
 		stillStaleAfterRebuild: 1,
 	})
+	expect(result.outcomes[0]?.outcome).toBe('rebuilt_unverified')
 })
 
 test('apply skips the rebuild when the published commit moves', async () => {

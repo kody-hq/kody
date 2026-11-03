@@ -496,8 +496,10 @@ export async function upsertSecretEntry(input: {
 	 */
 	placementOnInsert?: CredentialFillPlacement | null
 	placementOriginOnInsert?: CredentialPlacementOrigin | null
+	/** Statements committed in the same D1 batch, after the upsert. */
+	alsoRun?: Array<D1PreparedStatement>
 }): Promise<void> {
-	await prepareUpsertSecretEntryStatement({
+	const upsert = prepareUpsertSecretEntryStatement({
 		db: input.db,
 		row: input.row,
 		newCredentialPlacementJson:
@@ -508,7 +510,12 @@ export async function upsertSecretEntry(input: {
 			'placementOriginOnInsert' in input
 				? (input.placementOriginOnInsert ?? null)
 				: null,
-	}).run()
+	})
+	if (input.alsoRun?.length) {
+		await input.db.batch([upsert, ...input.alsoRun])
+		return
+	}
+	await upsert.run()
 }
 
 /**
@@ -530,10 +537,12 @@ export async function upsertSecretEntriesAtomically(input: {
 			placementOriginOnInsert?: CredentialPlacementOrigin | null
 		}
 	>
+	/** Statements committed in the same D1 batch, after every upsert. */
+	alsoRun?: Array<D1PreparedStatement>
 }): Promise<void> {
 	if (input.rows.length === 0) return
-	await input.db.batch(
-		input.rows.map((row) => {
+	await input.db.batch([
+		...input.rows.map((row) => {
 			const { placementOnInsert, placementOriginOnInsert, ...entry } = row
 			return prepareUpsertSecretEntryStatement({
 				db: input.db,
@@ -545,7 +554,8 @@ export async function upsertSecretEntriesAtomically(input: {
 				newCredentialPlacementOrigin: placementOriginOnInsert ?? null,
 			})
 		}),
-	)
+		...(input.alsoRun ?? []),
+	])
 }
 
 function prepareUpdateApprovedUserSecretEntryForPackageStatement(input: {

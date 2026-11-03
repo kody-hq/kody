@@ -7,8 +7,6 @@
 import { credentialClientRuntimeSource } from './credential-client-runtime-source.js'
 import {
 	kodyRuntimeStorageSymbolDescription,
-	localExecuteCompatibilityDate,
-	localExecuteCompatibilityFlags,
 	localGatewayFetchStreamRuntimeSource,
 	localWorkerModuleNames,
 	runSecretEnvVar,
@@ -33,13 +31,7 @@ export type PackageLocalContext = {
 	cookiePrefix: string
 }
 
-export {
-	localExecuteCompatibilityDate,
-	localExecuteCompatibilityFlags,
-	localWorkerModuleNames,
-	runSecretEnvVar,
-	runSecretHeader,
-}
+export { localWorkerModuleNames, runSecretEnvVar, runSecretHeader }
 
 /**
  * Runtime module for package-local workerd. `packageStorage()` hops through the

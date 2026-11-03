@@ -30,8 +30,13 @@ npm run preview:manual-test
 
 On **medium or high risk**, do not stop at the default health/login smoke. The
 seed user (`me@kentcdodds.com` / `ilikecode`, username `user-me`) has **no**
-secrets, packages, or jobs until you create them. Script that data and the
-assertions as the same logged-in user:
+secrets, packages, or jobs until you create them. A second non-admin account
+(`preview-member@example.com` / `ilikecode`) is always seeded; the
+`preview-seed:team-org` label adds the team org `preview-team` (seed user Owner,
+member account Member). Owner and member permission fixes are verified on the
+preview (Use-only member refused, Write member succeeds), not in production; see
+[Authorization checks](../../../docs/contributing/preview-manual-testing.md#authorization-checks).
+Script that data and the assertions as the same logged-in user:
 
 ```bash
 npm run preview:manual-test -- \

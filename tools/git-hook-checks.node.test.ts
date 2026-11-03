@@ -100,12 +100,14 @@ test('related tests use non-deleted paths per project and never record full prov
 			}),
 		).toBe(0)
 		expect(calls.map((call) => call.script)).toEqual([
+			'lint',
+			'format:check',
 			'typecheck',
 			'knip',
 			'vitest related --project node-unit',
 			'vitest related --project workers-unit',
 		])
-		expect(calls.slice(2).map((call) => call.paths)).toEqual([
+		expect(calls.slice(4).map((call) => call.paths)).toEqual([
 			['src/new name.ts'],
 			['src/new name.ts'],
 		])
@@ -142,7 +144,7 @@ test.each(['global deletion', 'unreadable non-deleted paths', 'unknown asset'])(
 		})
 		expect(result).toEqual({
 			code: 0,
-			scripts: ['typecheck', 'knip', 'test:push'],
+			scripts: ['lint', 'format:check', 'typecheck', 'knip', 'test:push'],
 		})
 	},
 )
@@ -162,7 +164,10 @@ test('deleted-only source push has no related tests and related failures block a
 					)
 				: gitResult(1),
 	})
-	expect(deleted).toEqual({ code: 0, scripts: ['typecheck', 'knip'] })
+	expect(deleted).toEqual({
+		code: 0,
+		scripts: ['lint', 'format:check', 'typecheck', 'knip'],
+	})
 	const failure = await runHook(
 		{
 			...input,
@@ -173,7 +178,13 @@ test('deleted-only source push has no related tests and related failures block a
 	)
 	expect(failure).toEqual({
 		code: 2,
-		scripts: ['typecheck', 'knip', 'vitest related --project node-unit'],
+		scripts: [
+			'lint',
+			'format:check',
+			'typecheck',
+			'knip',
+			'vitest related --project node-unit',
+		],
 	})
 })
 
@@ -244,7 +255,7 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 	expect(
 		planGitHookChecks({ hook: 'pre-push', paths: codePaths }).summary,
 	).toBe(
-		'pre-push: running typecheck, knip and tests (packages/worker/src/app.ts)',
+		'pre-push: running lint, format, typecheck, knip and tests (packages/worker/src/app.ts)',
 	)
 	const planCases: Array<
 		['pre-commit' | 'pre-push', Array<string> | null, Array<string>]
@@ -254,15 +265,29 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 		[
 			'pre-push',
 			['packages/worker/migrations/0067-example.sql'],
-			['typecheck', 'knip', 'test:push'],
+			['lint', 'format:check', 'typecheck', 'knip', 'test:push'],
 		],
 		['pre-commit', [], []],
 		['pre-commit', null, ['install:check', 'migrations:check']],
 		[
 			'pre-push',
 			null,
-			['typecheck', 'node tools/check-skills-lock.ts', 'knip', 'test:push'],
+			[
+				'lint',
+				'format:check',
+				'typecheck',
+				'node tools/check-skills-lock.ts',
+				'node tools/check-decision-record-numbers.ts',
+				'knip',
+				'test:push',
+			],
 		],
+		[
+			'pre-push',
+			['docs/contributing/decisions/0099-example.md'],
+			['node tools/check-decision-record-numbers.ts'],
+		],
+		['pre-push', ['docs/contributing/decisions/index.md'], []],
 	]
 	expect(
 		planCases.map(([hook, paths]) => [
@@ -315,8 +340,11 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 	).toEqual({
 		code: 0,
 		scripts: [
+			'lint',
+			'format:check',
 			'typecheck',
 			'node tools/check-skills-lock.ts',
+			'node tools/check-decision-record-numbers.ts',
 			'knip',
 			'test:push',
 		],
@@ -348,6 +376,8 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 			'.agents/skills/visual-recap/scripts/primitives-map.mjs',
 		]),
 	).toEqual([
+		'lint',
+		'format:check',
 		'typecheck',
 		'node tools/check-skills-lock.ts',
 		'knip',
@@ -359,6 +389,8 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 			'skills-lock.json',
 		]),
 	).toEqual([
+		'lint',
+		'format:check',
 		'typecheck',
 		'node tools/check-skills-lock.ts',
 		'knip',
@@ -370,6 +402,8 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 			'packages/worker/src/app.ts',
 		]),
 	).toEqual([
+		'lint',
+		'format:check',
 		'typecheck',
 		'node tools/check-skills-lock.ts',
 		'knip',
@@ -381,7 +415,7 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 			paths: ['skills-lock.json', 'packages/worker/src/app.ts'],
 		}).summary,
 	).toBe(
-		'pre-push: running skills-lock, typecheck, knip, and tests (packages/worker/src/app.ts)',
+		'pre-push: running skills-lock, lint, format, typecheck, knip, and tests (packages/worker/src/app.ts)',
 	)
 })
 
@@ -566,6 +600,8 @@ test('a real docs follow-up skips unit tests and a source rename still typecheck
 			}),
 		).toEqual(['src/app.ts'])
 		expect(plannedScripts('pre-push', ['src/app.ts'])).toEqual([
+			'lint',
+			'format:check',
 			'typecheck',
 			'knip',
 			'test:push',
@@ -656,7 +692,12 @@ test('pre-push skips knip and test:push only when each check is already green', 
 				progressIntervalMs: 60_000,
 			}),
 		).toBe(0)
-		expect(scriptsPartial).toEqual(['typecheck', 'knip'])
+		expect(scriptsPartial).toEqual([
+			'lint',
+			'format:check',
+			'typecheck',
+			'knip',
+		])
 		expect(
 			logsPartial.some((line) => line.includes('skipping test:push')),
 		).toBe(true)
@@ -693,7 +734,7 @@ test('pre-push skips knip and test:push only when each check is already green', 
 			progressIntervalMs: 60_000,
 		})
 		expect(code).toBe(0)
-		expect(scripts).toEqual(['typecheck'])
+		expect(scripts).toEqual(['lint', 'format:check', 'typecheck'])
 		expect(logs.some((line) => line.includes('skipping knip'))).toBe(true)
 		expect(logs.some((line) => line.includes('skipping test:push'))).toBe(true)
 		expect(logs.some((line) => line.includes('already green'))).toBe(true)
@@ -722,7 +763,7 @@ test('pre-push fails knip with a clear fix message before test:push', async () =
 		progressIntervalMs: 60_000,
 	})
 	expect(code).toBe(1)
-	expect(scripts).toEqual(['typecheck', 'knip'])
+	expect(scripts).toEqual(['lint', 'format:check', 'typecheck', 'knip'])
 	expect(
 		logs.some((line) =>
 			line.includes(
@@ -1133,6 +1174,92 @@ test('hook scripts can create foreign repositories without inherited worktree st
 		})
 		// Git prints forward slashes on Windows; resolve() normalizes them.
 		expect(resolve(top.stdout.trim())).toBe(await realpath(target))
+	} finally {
+		await rm(root, { recursive: true, force: true })
+	}
+})
+
+test('pre-push leaves merged-in main paths to main CI and skips tests for a merge-only push', async () => {
+	const root = await mkdtemp(join(tmpdir(), 'hook-mainline-'))
+	const git = (args: ReadonlyArray<string>) => {
+		const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' })
+		if ((result.status ?? 1) !== 0) {
+			throw new Error(`git ${args.join(' ')} failed: ${result.stderr}`)
+		}
+		return result.stdout.trim()
+	}
+	const runner: GitRunner = (args) => {
+		const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' })
+		return {
+			status: result.status ?? 1,
+			stdout: result.stdout ?? '',
+			stderr: result.stderr ?? '',
+		}
+	}
+	const run = async (stdin: string) => {
+		const calls: Array<{ script: string; paths?: ReadonlyArray<string> }> = []
+		const code = await runGitHookChecks({
+			hook: 'pre-push',
+			stdin,
+			git: runner,
+			provenance: createFileProvenanceStore(join(root, '.provenance.json')),
+			runScript: (script, _cwd, paths) => {
+				calls.push({ script, paths })
+				return 0
+			},
+			log: () => {},
+		})
+		return { code, calls }
+	}
+	try {
+		git(['init', '-b', 'main'])
+		git(['config', 'user.email', 'hooks@example.com'])
+		git(['config', 'user.name', 'Hook Test'])
+		await mkdir(join(root, 'src'))
+		await writeFile(join(root, 'src', 'branch.ts'), 'export const b = 1\n')
+		await writeFile(join(root, 'src', 'main.ts'), 'export const m = 1\n')
+		git(['add', '.'])
+		git(['commit', '-m', 'base'])
+		git(['checkout', '-b', 'topic'])
+		await writeFile(join(root, 'src', 'branch.ts'), 'export const b = 2\n')
+		git(['commit', '-am', 'topic'])
+		const pushedTopic = git(['rev-parse', 'HEAD'])
+		git(['checkout', 'main'])
+		await writeFile(join(root, 'src', 'main.ts'), 'export const m = 2\n')
+		await writeFile(join(root, 'package.json'), '{}\n')
+		git(['add', '.'])
+		git(['commit', '-m', 'main moves'])
+		git(['checkout', 'topic'])
+		git(['merge', '--no-edit', 'main'])
+		const merge = git(['rev-parse', 'HEAD'])
+
+		const mergeOnly = await run(
+			`refs/heads/topic ${merge} refs/heads/topic ${pushedTopic}\n`,
+		)
+		expect(mergeOnly.code).toBe(0)
+		expect(mergeOnly.calls.map((call) => call.script)).toEqual([
+			'lint',
+			'format:check',
+			'typecheck',
+			'knip',
+		])
+
+		await writeFile(join(root, 'src', 'branch.ts'), 'export const b = 3\n')
+		git(['commit', '-am', 'topic again'])
+		const next = git(['rev-parse', 'HEAD'])
+		const withOwnChange = await run(
+			`refs/heads/topic ${next} refs/heads/topic ${pushedTopic}\n`,
+		)
+		expect(withOwnChange.calls.slice(4)).toEqual([
+			{
+				script: 'vitest related --project node-unit',
+				paths: ['src/branch.ts'],
+			},
+			{
+				script: 'vitest related --project workers-unit',
+				paths: ['src/branch.ts'],
+			},
+		])
 	} finally {
 		await rm(root, { recursive: true, force: true })
 	}

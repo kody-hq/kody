@@ -340,6 +340,7 @@ async function getExecuteRegistration(
 		state?: Record<string, unknown>
 		setState?: (state: Record<string, unknown>) => void
 		waitUntil?: (promise: Promise<unknown>) => void
+		detachedWorkLimitMs?: number
 	} = {},
 ) {
 	vi.clearAllMocks()
@@ -1722,6 +1723,53 @@ test('execute keeps a caller-supplied idempotency key on the transport-budget fo
 		idempotencyKey: 'caller-key',
 		inProgress: true,
 		status: 'running',
+	})
+})
+
+test('execute stops a detached run before a waitUntil-only host drops it and says so up front', async () => {
+	transportBudgetMock.remainingMs = 0
+	onTestFinished(() => {
+		transportBudgetMock.remainingMs = null
+	})
+	const handle = transportFollowHandle(
+		'run-detached-limit',
+		'execute:limit-key',
+	)
+	const handler = await getExecuteHandler(transportCaller, {
+		detachedWorkLimitMs: 5,
+	})
+	mockModule.beginRunRecord.mockReturnValueOnce(handle)
+	mockModule.runModuleWithRegistry.mockImplementationOnce(
+		async (...args: Array<unknown>) => {
+			const { signal } = args[4] as { signal: AbortSignal }
+			await new Promise((resolve) =>
+				signal.addEventListener('abort', resolve, { once: true }),
+			)
+			return { result: undefined, error: String(signal.reason), logs: [] }
+		},
+	)
+	const response = await handler({
+		code: okCode,
+		conversationId: 'conv-detached-limit',
+	})
+	expect(response.structuredContent).toMatchObject({
+		runId: 'run-detached-limit',
+		inProgress: true,
+	})
+	const text = response.content
+		.map((block) => (block.type === 'text' ? block.text : ''))
+		.join('\n')
+	expect(text).toContain('before it stops with a timeout')
+	expect(text).toContain("runGet's result field")
+	const options = mockModule.runModuleWithRegistry.mock.calls.at(-1)?.[4] as {
+		signal: AbortSignal
+	}
+	await vi.waitFor(() => {
+		expect(options.signal.aborted).toBe(true)
+	})
+	expect(options.signal.reason).toMatchObject({
+		name: 'TimeoutError',
+		message: expect.stringMatching(/^Execution timed out after \d+s: /),
 	})
 })
 

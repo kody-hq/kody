@@ -127,7 +127,7 @@ function waitForListen(
 	})
 }
 
-export function parseListenPort(line: string): number | null {
+function parseListenPort(line: string): number | null {
 	if (!line.trim()) return null
 	try {
 		const event = JSON.parse(line) as {

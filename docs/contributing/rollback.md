@@ -352,10 +352,10 @@ Kody uses the Wrangler `migrations` array, not `exports`.
 git diff <good>..<bad> -- \
   packages/worker/migrations \
   packages/jobs-worker/migrations \
-  tools/migration-ledger.json
+  tools/migration-ledger
 ```
 
-`tools/check-migrations.ts` and `tools/migration-ledger.json` are append-only:
+`tools/check-migrations.ts` and `tools/migration-ledger/` are append-only:
 applied files cannot be edited, renamed, or deleted, and the ledger hash must
 match the SQL. D1 has no down-migrations — Wrangler can create, list, and apply
 remaining `.sql` files

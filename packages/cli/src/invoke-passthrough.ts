@@ -48,7 +48,7 @@ export function parseExecuteInvokeSpecifier(raw: string): string {
 	return value
 }
 
-export function buildExecuteInvokePassthroughSource(specifier: string): string {
+function buildExecuteInvokePassthroughSource(specifier: string): string {
 	return `import ${invokeLocalName} from ${JSON.stringify(specifier)}
 
 export default async function main(params) {

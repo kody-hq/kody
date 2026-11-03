@@ -474,13 +474,14 @@ npx @kodycodes/cli execute --local --invoke kody:@scope/pkg/export --params '{"n
   `POST /v1/capability-proxy/call` with `{ path, args, conversationId? }` for
   each runtime call. CapabilityProxy requests go through Node's own
   `node:http(s)` client with one keep-alive connection and a 7-minute idle limit
-  for headers and body chunks. Origin's 5-minute deadline for a `fetch` with
-  `{{secret:…}}` placeholders ends that call first, with its own error. The
-  client idle timeout is 7 minutes, so Node's default 300-second fetch limit
-  does not apply. With `NODE_USE_ENV_PROXY=1` or `--use-env-proxy`, these
-  requests honor `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` like Node's own fetch
-  (Node 22.21 / 24.5 or later; older Node fails with a clear error instead of
-  silently bypassing the proxy). A PR preview's API host is
+  for headers and body chunks (`KODY_CAPABILITY_PROXY_TIMEOUT_MS` overrides it,
+  in milliseconds). Origin's 5-minute deadline for a `fetch` with `{{secret:…}}`
+  placeholders ends that call first, with its own error. The client idle timeout
+  is 7 minutes, so Node's default 300-second fetch limit does not apply. With
+  `NODE_USE_ENV_PROXY=1` or `--use-env-proxy`, these requests honor `HTTP_PROXY`
+  / `HTTPS_PROXY` / `NO_PROXY` like Node's own fetch (Node 22.21 / 24.5 or
+  later; older Node fails with a clear error instead of silently bypassing the
+  proxy). A PR preview's API host is
   `https://kody-pr-<n>-api.<subdomain>.workers.dev`; the app origin
   (`kody-pr-<n>`) answers `/v1/*` with an HTML 404.
 - **Errors:** an expired/revoked token or an account without the `local-execute`

@@ -7,31 +7,27 @@
  */
 
 /** Terminal success: tip advanced or true no-op (incl. artifacts_rebuilt). */
-export const publishCliSuccessStatuses = [
-	'published',
-	'already_published',
-] as const
+const publishCliSuccessStatuses = ['published', 'already_published'] as const
 
 /**
  * Async handoff is not a refusal — the durable run is accepted. Poll
  * workflowRunList({ workflow_id }) for the terminal publish status.
  */
-export const publishCliAcceptedStatuses = ['dispatched'] as const
+const publishCliAcceptedStatuses = ['dispatched'] as const
 
-export type PublishCliSuccessStatus = (typeof publishCliSuccessStatuses)[number]
-export type PublishCliAcceptedStatus =
-	(typeof publishCliAcceptedStatuses)[number]
+type PublishCliSuccessStatus = (typeof publishCliSuccessStatuses)[number]
+type PublishCliAcceptedStatus = (typeof publishCliAcceptedStatuses)[number]
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
-export function readPublishStatus(result: unknown): string | null {
+function readPublishStatus(result: unknown): string | null {
 	if (!isRecord(result)) return null
 	return typeof result.status === 'string' ? result.status : null
 }
 
-export function isPublishCliSuccessStatus(
+function isPublishCliSuccessStatus(
 	status: string | null,
 ): status is PublishCliSuccessStatus | PublishCliAcceptedStatus {
 	return (

@@ -153,7 +153,13 @@ export const getPackageCapability = defineDomainCapability(
 				created_at: saved.createdAt,
 				updated_at: saved.updatedAt,
 				package_secrets: packageSecrets,
-				credentials: { needs: credentialNeeds, suppliersEnabled },
+				credentials: {
+					needs: credentialNeeds,
+					invalidSlots: Object.entries(
+						loaded.manifest.kody.invalidCredentialSlots ?? {},
+					).map(([key, message]) => ({ key, message })),
+					suppliersEnabled,
+				},
 				exports: (projection.exports ?? []).map((exportDetail) => ({
 					subpath: exportDetail.subpath,
 					import_specifier: buildPackageImportSpecifier(
