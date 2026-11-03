@@ -35,7 +35,7 @@ const {
 } = await import('./invite-link-redeem.ts')
 const { listPendingInviteLinksForPerson, recordInviteLinkPending } =
 	await import('./invite-link-pending.ts')
-const { upsertGrant } = await import('./access-writes.ts')
+const { softDeleteGrant, upsertGrant } = await import('./access-writes.ts')
 
 type Target = Parameters<typeof createOrgInviteLink>[0]['target']
 
@@ -565,6 +565,41 @@ test('a membership link stops working when its creator loses member:write', asyn
 			now: new Date().toISOString(),
 		}),
 	).toEqual([])
+})
+
+test('a membership link works only while a non-Owner creator holds a member:write grant', async () => {
+	const membership = await createLink(teamOrgId, {
+		kind: 'membership',
+		role: 'billing',
+	})
+	demoteOwnerToMember()
+	const grant = await upsertGrant({
+		db,
+		orgId: teamOrgId,
+		resourceType: 'org',
+		resourceId: teamOrgId,
+		family: 'org',
+		subject: { type: 'user', id: owner.personId },
+		preset: null,
+		permissions: ['member:write'],
+		createdByUserId: owner.personId,
+		audit: audit(),
+	})
+	expect(await redeemAsJoiner(membership.tokenHash)).toMatchObject({
+		ok: true,
+	})
+	expect(await joinerMembership(teamOrgId)).toEqual({ role: 'billing' })
+
+	await softDeleteGrant({
+		db,
+		orgId: teamOrgId,
+		grantId: grant.id,
+		audit: audit(),
+	})
+	expect(await redeemAsJoiner(membership.tokenHash)).toMatchObject({
+		ok: false,
+		reason: 'inviter_gone',
+	})
 })
 
 test('a failed access write gives the link use back', async () => {
