@@ -983,7 +983,7 @@ export function getAuthInputCss(options: AuthInputCssOptions = {}) {
  * own green ring.
  */
 export function getSelectCss(options: AuthInputCssOptions = {}) {
-	const caretInset = 'var(--control-padding-x, 0.75rem)'
+	const caretInset = 'var(--control-padding-x, 1.05rem)'
 	return {
 		...getAuthInputCss(options),
 		appearance: 'none' as const,
