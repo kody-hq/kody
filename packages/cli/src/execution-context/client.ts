@@ -277,6 +277,40 @@ export async function setContextCommands(input: {
 }
 
 /**
+ * Login check (ADR 0096): tells Kody which login (person or agent profile)
+ * this machine runs as, signed with the context key plus that login's token.
+ */
+export async function checkContextLogin(input: {
+	apiUrl: string
+	ecid: string
+	privateKey: EcpCryptoKey
+	token: string
+	fetchFn?: typeof fetch
+	signal?: AbortSignal
+}) {
+	const response = await signedFetch({
+		apiUrl: input.apiUrl,
+		ecid: input.ecid,
+		privateKey: input.privateKey,
+		...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
+		...(input.signal ? { signal: input.signal } : {}),
+		method: 'POST',
+		pathAndQuery: `${executionContextsPath}/login`,
+		body: '{}',
+		headers: {
+			authorization: `Bearer ${input.token}`,
+			'content-type': 'application/json',
+		},
+	})
+	if (!response.ok) throw await readError(response)
+	return (await response.json()) as {
+		id: string
+		login: { kind: 'person' | 'profile'; profileId: string | null }
+		changed: boolean
+	}
+}
+
+/**
  * Root keys a daemon trusts for this API. TEST ONLY: `KODY_ECP_TRUST_TEST_ROOT=1`
  * adds the public test root, and only for https `*.workers.dev` previews and
  * `localhost`; kody.codes and every other host get the pinned roots only.

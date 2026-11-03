@@ -10,6 +10,7 @@ import {
 	generateContextKey,
 	importContextKey,
 	registerContext,
+	checkContextLogin,
 	setContextCommands,
 	experimentOffError,
 	isExperimentOffError,
@@ -107,6 +108,7 @@ export type ExecutionContextCommandInput = {
 }
 
 const defaultMaxConcurrentRuns = 2
+const loginCheckIntervalMs = 6 * 60 * 60_000
 
 /** `--max-concurrent` or KODY_CONTEXT_MAX_CONCURRENT, 1..ecpMaxConcurrentRunsCap. */
 export function maxConcurrentRuns(
@@ -745,6 +747,32 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 				if (!drain.signal.aborted) drain.abort()
 			},
 		})
+		const checkLogin = async () => {
+			try {
+				const result = await checkContextLogin({
+					apiUrl: input.apiUrl,
+					ecid: context.ecid,
+					privateKey,
+					token: await input.token(),
+					...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
+				})
+				if (result.changed) {
+					log(
+						`Recorded this machine's login (${result.login.kind === 'profile' ? 'agent profile' : 'person'}) with Kody.`,
+					)
+				}
+			} catch (error) {
+				log(
+					`Could not check this machine's login with Kody: ${error instanceof Error ? error.message : String(error)}`,
+				)
+			}
+		}
+		void checkLogin()
+		const loginTimer = setInterval(
+			() => void checkLogin(),
+			loginCheckIntervalMs,
+		)
+		loginTimer.unref()
 		try {
 			stop = await runDaemon({
 				apiUrl: input.apiUrl,
@@ -792,6 +820,7 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 				drainSignal: drain.signal,
 			})
 		} finally {
+			clearInterval(loginTimer)
 			updater.stop()
 			unwatchFile(commandsPolicyPath, onCommandsPolicyChange)
 			// Background commands are the daemon's children: they stop with it.

@@ -378,6 +378,12 @@ can do something a grantee can't do personally, Kody shows a notice:
   `team_deleted`, `personal_login_on_team_context`, and
   `profile_not_assigned_to_team`.
 
+The daemon tells Kody which login it runs as when it starts and every 6 hours,
+so restart it (`kody daemon restart`, or let auto-update do it) after
+`kody login` switches the machine to another login. Set the team a machine is
+for with `executionContextUpdate({ team_slug })`, and the team an agent profile
+is for with `profileUpdate({ team_slug })`; neither grants anything.
+
 We recommend logging the machine in with an agent profile assigned to the team
 you share it with, and giving that team the same permissions as the profile.
 Nothing requires it: personal logins and shares outside the team keep working.

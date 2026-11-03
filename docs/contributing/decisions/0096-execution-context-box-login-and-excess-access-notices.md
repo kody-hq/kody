@@ -51,5 +51,9 @@ Kent decided on 2026-11-03:
 
 - Grantee lists past 200 people are not tracked eagerly; their notices appear
   when they run on the box.
-- Login changes after registration are recorded on the next registration; the
-  signed rebind and operator transfer route is follow-up work.
+- The daemon reports its login on start and every 6 hours through
+  `POST /v1/execution-contexts/login`, signed with the context key and sent with
+  the machine's current Bearer login. Only the operator or one of their agent
+  profiles is accepted; a changed login re-raises every grantee's notice.
+- Operator transfer (a team manager taking over a box whose operator left) is
+  follow-up work; until then such a box stays failed closed.
