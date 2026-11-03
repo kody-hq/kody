@@ -19,7 +19,7 @@ URL return 404 before rate limiting and without a delivery record.
 
 Migration `0180` converts disabled live endpoints to off enablements, adding a
 deterministic off tombstone when needed and a live Owner exists. Migration
-`0238` drops the legacy `webhook_endpoints.enabled` column.
+`0242` drops the legacy `webhook_endpoints.enabled` column.
 
 ## Consequences
 

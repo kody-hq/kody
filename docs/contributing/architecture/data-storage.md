@@ -1484,7 +1484,7 @@ on write unless a migration backfills existing rows.
   `0127-webhook-hmac-rotation-grace.sql`) stores per-user minted URL state for
   `package.json#kody.webhooks`, keyed by `(user_id, package_id, webhook_name)`.
   Webhook on/off state lives only in `enablements` (the legacy `enabled` column
-  was dropped in `0238`). URL secrets are SHA-256 hashed for ingress and AES-GCM
+  was dropped in `0242`). URL secrets are SHA-256 hashed for ingress and AES-GCM
   encrypted (`url_secret_encrypted`) for server-side apply. Package-owned HMAC
   signing material lives on the same row (`hmac_secret_encrypted`) when
   verification omits `secretName`; provider-issued secrets use the secrets
