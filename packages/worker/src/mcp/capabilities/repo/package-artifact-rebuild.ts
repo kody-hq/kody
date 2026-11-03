@@ -26,6 +26,7 @@ import {
 	isolatedArtifactRebuildChunkConcurrency,
 	runIsolatedArtifactRebuildWaves,
 } from '#worker/repo/isolated-artifact-rebuild.ts'
+import { advanceEntitySourceServingCommit } from '#worker/repo/entity-sources.ts'
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
 import {
 	isDurableObjectIsolateResourceLimitResetError,
@@ -653,7 +654,18 @@ export async function rebuildPublishedPackageArtifactsViaRepoSession(input: {
 	for (;;) {
 		attempt += 1
 		try {
-			return await rebuildPublishedPackageArtifactsViaRepoSessionOnce(input)
+			const result =
+				await rebuildPublishedPackageArtifactsViaRepoSessionOnce(input)
+			// Only a full pass (every package target, none left for a later
+			// batch) proves the commit is complete enough to serve.
+			if (input.targets == null && (result.remainingTargetCount ?? 0) === 0) {
+				await advanceEntitySourceServingCommit(input.env.APP_DB, {
+					id: input.sourceId,
+					userId: input.userId,
+					commit: input.publishedCommit,
+				})
+			}
+			return result
 		} catch (error) {
 			if (!isTransientArtifactRebuildError(error)) {
 				throw error

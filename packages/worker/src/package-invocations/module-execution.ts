@@ -1,3 +1,4 @@
+import { servingCommitForSource } from '#worker/repo/serving-commit.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { persistableExecutionArtifacts } from '#mcp/downstream-mcp-result.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
@@ -250,7 +251,8 @@ export async function runSavedPackageModuleOnce(
 						userId: input.actor.orgId,
 					})
 		const resolvedPublishedCommit =
-			artifact.publishedCommit ?? repoSource?.published_commit ?? null
+			artifact.publishedCommit ??
+			(repoSource ? servingCommitForSource(repoSource) : null)
 		input.sourceRevision?.onResolved?.(resolvedPublishedCommit)
 		const pinnedCommit = input.sourceRevision?.pinnedCommit ?? null
 		if (pinnedCommit && pinnedCommit !== resolvedPublishedCommit) {

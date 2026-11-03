@@ -9,6 +9,7 @@ import {
 } from '#worker/package-runtime/published-bundle-artifacts.ts'
 import { writePublishedSourceSnapshot } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import {
+	advanceEntitySourceServingCommit,
 	getEntitySourceById,
 	updateEntitySource,
 } from '#worker/repo/entity-sources.ts'
@@ -181,6 +182,12 @@ async function setUpPublishedJob(input: { withCompleteBundle: boolean }) {
 			...bundleFor('commit-1'),
 			packageContext,
 		})
+		// Every target for commit-1 is saved, as a completed publish leaves it.
+		await advanceEntitySourceServingCommit(db, {
+			id: sourceId,
+			userId,
+			commit: 'commit-1',
+		})
 	}
 	const executeSpy = vi
 		.spyOn(registry, 'runBundledModuleWithRegistry')
@@ -239,25 +246,37 @@ async function setUpPublishedJob(input: { withCompleteBundle: boolean }) {
 				}),
 		}
 	}
-	return { runJob, executeSpy, executedBundle, publishCommit }
+	const servingCommit = async () =>
+		(await getEntitySourceById(db, sourceId))?.serving_commit ?? null
+	return {
+		db,
+		runJob,
+		executeSpy,
+		executedBundle,
+		publishCommit,
+		servingCommit,
+	}
 }
 
 test('a job run while a publish is building keeps the previous bundle', async () => {
-	const { runJob, executedBundle, publishCommit } = await setUpPublishedJob({
-		withCompleteBundle: true,
-	})
+	const { runJob, executedBundle, publishCommit, servingCommit } =
+		await setUpPublishedJob({
+			withCompleteBundle: true,
+		})
 	await publishCommit('commit-2')
 
 	const outcome = await runJob()
 
 	expect(outcome.execution).toMatchObject({ ok: true })
 	expect(executedBundle()).toContain('bundle-commit-1')
+	expect(await servingCommit()).toBe('commit-1')
 })
 
 test('a failed publish rebuild keeps the previous bundle serving', async () => {
-	const { runJob, executedBundle, publishCommit } = await setUpPublishedJob({
-		withCompleteBundle: true,
-	})
+	const { runJob, executedBundle, publishCommit, servingCommit } =
+		await setUpPublishedJob({
+			withCompleteBundle: true,
+		})
 	const publish = await publishCommit('commit-2')
 
 	await expect(
@@ -269,20 +288,43 @@ test('a failed publish rebuild keeps the previous bundle serving', async () => {
 
 	expect(outcome.execution).toMatchObject({ ok: true })
 	expect(executedBundle()).toContain('bundle-commit-1')
+	expect(await servingCommit()).toBe('commit-1')
 })
 
 test('a finished publish rebuild switches jobs to the new bundle', async () => {
-	const { runJob, executedBundle, publishCommit } = await setUpPublishedJob({
-		withCompleteBundle: true,
-	})
+	const { runJob, executedBundle, publishCommit, servingCommit } =
+		await setUpPublishedJob({
+			withCompleteBundle: true,
+		})
 	const publish = await publishCommit('commit-2')
 	await publish.rebuildArtifacts(async () => bundleFor('commit-2'))
+
+	expect(await servingCommit()).toBe('commit-2')
 
 	const outcome = await runJob()
 
 	expect(outcome.execution).toMatchObject({ ok: true })
 	expect(executedBundle()).toContain('bundle-commit-2')
 	expect(executedBundle()).not.toContain('bundle-commit-1')
+})
+
+test('a source without a serving pointer keeps the last saved bundle while a publish builds', async () => {
+	const { db, runJob, executedBundle, publishCommit, servingCommit } =
+		await setUpPublishedJob({ withCompleteBundle: true })
+	// Rows not backfilled (their artifacts lagged when the column was added).
+	await db
+		.prepare(
+			'UPDATE entity_sources SET serving_commit = ? WHERE id = ? AND user_id = ?',
+		)
+		.bind(null, sourceId, userId)
+		.run()
+	expect(await servingCommit()).toBeNull()
+	await publishCommit('commit-2')
+
+	const outcome = await runJob()
+
+	expect(outcome.execution).toMatchObject({ ok: true })
+	expect(executedBundle()).toContain('bundle-commit-1')
 })
 
 test('a scheduled run retries while a first publish is still building its bundle', async () => {

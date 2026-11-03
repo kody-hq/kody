@@ -13,6 +13,8 @@ export function createSubscriptionDiscoverySourceMocks(
 ) {
 	return {
 		loadPackageManifestBySourceId,
+		loadServingPackageManifestBySourceId: async (...args: Array<unknown>) =>
+			await loadPackageManifestBySourceId(...args),
 		loadPackageSourceRowsForUser: async (input: {
 			userId: string
 			sourceIds: ReadonlyArray<string>

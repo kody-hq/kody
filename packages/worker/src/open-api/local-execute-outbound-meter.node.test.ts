@@ -28,6 +28,8 @@ vi.mock('#worker/package-registry/source.ts', async (importOriginal) => ({
 	...(await importOriginal<typeof PackageRegistrySourceModule>()),
 	loadPackageSourceBySourceId: (...args: Array<unknown>) =>
 		mockModule.loadPackageSourceBySourceId(...args),
+	loadServingPackageSourceBySourceId: (...args: Array<unknown>) =>
+		mockModule.loadPackageSourceBySourceId(...args),
 }))
 
 vi.mock(

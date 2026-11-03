@@ -1,5 +1,5 @@
 import { publishedArtifactNeedsPackageBindingRebuild } from './pre-binding-artifact-repair.ts'
-import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
+import { loadServingPackageSourceBySourceId } from '#worker/package-registry/source.ts'
 import {
 	normalizePackageExportKey,
 	resolvePackageExportPath,
@@ -59,7 +59,7 @@ export async function resolveCurrentDynamicPackageArtifact(input: {
 		)
 	}
 	const { row } = resolution
-	const loaded = await loadPackageSourceBySourceId({
+	const loaded = await loadServingPackageSourceBySourceId({
 		env: input.env,
 		baseUrl: input.baseUrl,
 		userId: input.userId,
@@ -82,6 +82,7 @@ export async function resolveCurrentDynamicPackageArtifact(input: {
 		kind: 'importable-module',
 		artifactName: exportName,
 		entryPoint,
+		commit: loaded.source.published_commit,
 	})
 	if (
 		loadedArtifact?.artifact &&

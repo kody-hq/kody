@@ -66,7 +66,7 @@ import {
 } from '#worker/package-invocations/module-artifacts.ts'
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import { getPackageAppClientReadableCookieNames } from '#worker/package-registry/manifest.ts'
-import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
+import { loadServingPackageSourceBySourceId } from '#worker/package-registry/source.ts'
 import { newRunCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
 import { loadPublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
 import { savedCredentialNeeds } from '#worker/credentials/credential-needs.ts'
@@ -983,7 +983,7 @@ export async function servePackageAppRequest(input: {
 	}
 
 	const loadSourceFiles = async () => {
-		const packageSource = await loadPackageSourceBySourceId({
+		const packageSource = await loadServingPackageSourceBySourceId({
 			env,
 			baseUrl,
 			userId: owner.userId,

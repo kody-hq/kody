@@ -19,6 +19,8 @@ vi.mock('#worker/package-registry/repo.ts', () => ({
 vi.mock('#worker/package-registry/source.ts', () => ({
 	loadPackageManifestBySourceId: (...args: Array<unknown>) =>
 		mockModule.loadPackageManifestBySourceId(...args),
+	loadServingPackageManifestBySourceId: (...args: Array<unknown>) =>
+		mockModule.loadPackageManifestBySourceId(...args),
 }))
 
 const { listPackageSubscriptionsCapability } =

@@ -1,7 +1,7 @@
 import { publishedArtifactNeedsPackageBindingRebuild } from './pre-binding-artifact-repair.ts'
 import { collectTopLevelFetchCollisionNames } from './rewrite-local-execute-secret-fetch.ts'
 import {
-	loadPackageSourceBySourceId,
+	loadServingPackageSourceBySourceId,
 	type LoadedPackageSource,
 } from '#worker/package-registry/source.ts'
 import {
@@ -168,6 +168,7 @@ async function maybeEnsurePublishedArtifactTarget(input: {
 				env: input.state.env,
 				userId: input.state.userId,
 				...identity,
+				commit: input.loaded.source.published_commit,
 			})
 	if (!artifact?.artifact) {
 		return null
@@ -254,6 +255,7 @@ async function prefetchPublishedArtifactTargets(
 		kind: 'importable-module'
 		artifactName: string
 		entryPoint: string
+		commit: string
 	}> = []
 	for (const specifier of new Set(specifiers)) {
 		if (state.proxies.has(specifier)) continue
@@ -272,6 +274,7 @@ async function prefetchPublishedArtifactTargets(
 					manifest: loaded.manifest,
 					exportName,
 				}),
+				commit: loaded.source.published_commit,
 			}
 			if (
 				!state.prefetchedPublishedArtifacts.has(
@@ -316,7 +319,7 @@ async function ensurePackageResolved(
 		throw new SavedPackageNotFoundError(parsed.packageName)
 	}
 	const { row } = resolution
-	const loaded = await loadPackageSourceBySourceId({
+	const loaded = await loadServingPackageSourceBySourceId({
 		env: state.env,
 		baseUrl: state.baseUrl,
 		userId: state.userId,

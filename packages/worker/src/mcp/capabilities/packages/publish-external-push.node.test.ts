@@ -57,6 +57,7 @@ vi.mock('#worker/enablements/publisher-enablement-gaps.ts', () => ({
 }))
 
 vi.mock('#worker/repo/entity-sources.ts', () => ({
+	advanceEntitySourceServingCommit: async () => true,
 	getEntitySourceByIdForUser: (...args: Array<unknown>) =>
 		mockModule.getEntitySourceByIdForUser(...args),
 	revertEntitySourcePublishedCommit: (...args: Array<unknown>) =>

@@ -1,3 +1,4 @@
+import { toServingSourceView } from '#worker/repo/serving-commit.ts'
 import {
 	isUnrepairablePreBindingArtifact,
 	publishedArtifactNeedsPackageBindingRebuild,
@@ -3722,7 +3723,7 @@ async function resolvePersistablePackageSource(input: {
 	if (!source || source.user_id !== input.userId) {
 		throw new Error(`Saved package source "${input.sourceId}" was not found.`)
 	}
-	return source
+	return toServingSourceView(source)
 }
 
 async function resolvePackageAppBundledArtifact(input: {
@@ -3782,6 +3783,7 @@ async function resolvePackageAppBundledArtifact(input: {
 		kind: 'app',
 		artifactName: null,
 		entryPoint: appEntry,
+		commit: input.savedPackage.publishedCommit,
 	})
 	const currentArtifact =
 		loadedArtifact?.artifact &&

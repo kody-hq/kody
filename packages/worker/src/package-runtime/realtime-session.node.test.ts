@@ -36,6 +36,8 @@ vi.mock('#worker/repo/entity-sources.ts', () => ({
 vi.mock('#worker/package-registry/source.ts', () => ({
 	loadPackageSourceBySourceId: (...args: Array<unknown>) =>
 		mockModule.loadPackageSourceBySourceId(...args),
+	loadServingPackageSourceBySourceId: (...args: Array<unknown>) =>
+		mockModule.loadPackageSourceBySourceId(...args),
 }))
 
 vi.mock('./package-app.ts', () => ({

@@ -815,7 +815,7 @@ export function createDatabase(
 								return { meta: { changes: 1, last_row_id: 0 } }
 							}
 							const entitySourceUpdate =
-								/^UPDATE entity_sources\s+SET ([\s\S]+?)\s+WHERE id = \? AND user_id = \?/.exec(
+								/^UPDATE entity_sources\s+SET ([\s\S]+?)\s+WHERE id = \? AND user_id = \?( AND published_commit = \?)?/.exec(
 									query,
 								)
 							if (entitySourceUpdate?.[1]) {
@@ -824,9 +824,16 @@ export function createDatabase(
 									.map((assignment) => assignment.replace(/=\s*\?/, '').trim())
 								const id = params[columns.length]
 								const userId = params[columns.length + 1]
+								const expectedPublishedCommit = entitySourceUpdate[2]
+									? params[columns.length + 2]
+									: undefined
 								const existing = selectOne(
 									'entity_sources',
-									(row) => row['id'] === id && row['user_id'] === userId,
+									(row) =>
+										row['id'] === id &&
+										row['user_id'] === userId &&
+										(expectedPublishedCommit === undefined ||
+											row['published_commit'] === expectedPublishedCommit),
 								)
 								if (!existing) {
 									return { meta: { changes: 0, last_row_id: 0 } }
