@@ -9,7 +9,7 @@ import {
 	packageAppOauthPaths,
 } from '#universal/package-app-oauth-paths.ts'
 import { buildPackageAppSubdomainUrl } from '@kody-internal/shared/public-urls.ts'
-import { type PackageAppOauthClientId } from '#app/package-app-oauth-client-id.ts'
+import type { PackageAppOauthClientId } from '#app/package-app-oauth-client-id.ts'
 
 /**
  * Redirect URIs for package-app OAuth are not registered. They must be the

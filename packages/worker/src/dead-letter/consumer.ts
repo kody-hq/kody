@@ -1,5 +1,5 @@
 import { describeDeadLetterBody } from './metadata.ts'
-import { type DeadLetterQueueDefinition } from './queues.ts'
+import type { DeadLetterQueueDefinition } from './queues.ts'
 import { reportDeadLetterFailure } from './report.ts'
 import { parkDeadLetterMessage } from './store.ts'
 

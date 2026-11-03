@@ -10,10 +10,7 @@ import {
 	selectPromotedPackageExportCandidates,
 } from './search-entity-plugins/package.ts'
 import { resolveJevSearchRecallLimit } from './search-jev-rerank.ts'
-import {
-	type PackageActionMatch,
-	type SearchMatch,
-} from './search-format-types.ts'
+import type { PackageActionMatch, SearchMatch } from './search-format-types.ts'
 
 function createPackageExportProjection(
 	subpath: string,

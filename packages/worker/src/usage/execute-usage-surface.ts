@@ -1,4 +1,4 @@
-import { type RunSurface } from '#worker/run-records/types.ts'
+import type { RunSurface } from '#worker/run-records/types.ts'
 
 /**
  * Whether a bundled sandbox run should emit the `execute` usage metric.

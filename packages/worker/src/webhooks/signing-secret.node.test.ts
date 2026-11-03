@@ -28,7 +28,7 @@ import {
 	resolveWebhookHmacSigningSecret,
 	resolveWebhookHmacVerificationSecrets,
 } from './signing-secret.ts'
-import { type WebhookEndpointRecord } from './types.ts'
+import type { WebhookEndpointRecord } from './types.ts'
 
 async function resolveSecrets(
 	...args: Parameters<typeof resolveWebhookHmacVerificationSecrets>

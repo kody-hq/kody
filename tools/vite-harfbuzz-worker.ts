@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { type Plugin } from 'vite'
+import type { Plugin } from 'vite'
 
 const workerEntry = path.resolve(
 	import.meta.dirname,

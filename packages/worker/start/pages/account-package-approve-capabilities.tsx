@@ -19,7 +19,7 @@ import { withApprovalTimeout } from '../approval-request.ts'
 import { PackageSecurityAuditField } from './package-security-audit-field.tsx'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { useState, type ReactNode } from 'react'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useRouter } from '@tanstack/react-router'
 import { usePackageMutation } from '../package-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
@@ -32,9 +32,9 @@ import {
 	MetadataGrid,
 	accountDisclosureCss,
 } from './account-management-components.tsx'
-import {
-	type AccountPackagePendingApproval,
-	type AccountPackageApproveCapabilitiesLoaderData,
+import type {
+	AccountPackagePendingApproval,
+	AccountPackageApproveCapabilitiesLoaderData,
 } from '#universal/loader-data.ts'
 import {
 	getAccentCalloutCss,

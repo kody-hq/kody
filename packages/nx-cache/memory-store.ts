@@ -1,4 +1,4 @@
-import { type NxCacheObject, type NxCacheStore } from './nx-cache-types.ts'
+import type { NxCacheObject, NxCacheStore } from './nx-cache-types.ts'
 
 export function createMemoryCacheStore(): NxCacheStore {
 	const objects = new Map<string, Uint8Array>()

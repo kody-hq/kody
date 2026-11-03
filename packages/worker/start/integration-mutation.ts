@@ -1,5 +1,5 @@
-import { type QueryClient } from '@tanstack/react-query'
-import { type AccountIntegrationsLoaderData } from '#universal/loader-data.ts'
+import type { QueryClient } from '@tanstack/react-query'
+import type { AccountIntegrationsLoaderData } from '#universal/loader-data.ts'
 import { integrationListId } from './pages/account-integrations-shared.ts'
 import { settleConnectionResources } from './connection-resource-settlement.ts'
 

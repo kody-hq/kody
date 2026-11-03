@@ -1,4 +1,4 @@
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { isProfilesEnabledFor } from './flag.ts'
 import { chainExpiry, profileStatus, type ProfileRow } from './rules.ts'
 import { loadProfileChain } from './store.ts'

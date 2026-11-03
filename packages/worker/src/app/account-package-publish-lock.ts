@@ -1,11 +1,11 @@
 import { loadWritableAccountSavedPackage } from '#app/account-package-write-access.ts'
 import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { loadPublicTreeFiles } from '#app/package-files-data.ts'
 import { buildPublishCommitDiff } from '#app/package-publish-diff.ts'
-import {
-	type AccountPackageApprovePublishLoaderData,
-	type AccountPackagePublishCheckPayload,
+import type {
+	AccountPackageApprovePublishLoaderData,
+	AccountPackagePublishCheckPayload,
 } from '#universal/loader-data.ts'
 import { getPackageTreeHref } from '#universal/package-files.ts'
 import { routes } from '#universal/routes.ts'

@@ -1,4 +1,4 @@
-import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
+import type { RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
 
 export function anonymousRefusalResponse(message: string) {
 	return new Response(message, {

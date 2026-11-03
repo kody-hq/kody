@@ -1,4 +1,4 @@
-import { type DatabaseSync } from 'node:sqlite'
+import type { DatabaseSync } from 'node:sqlite'
 
 export function withCachedMigrations(actual: {
 	applyAllMigrations: (sqlite: DatabaseSync, directory: URL) => void

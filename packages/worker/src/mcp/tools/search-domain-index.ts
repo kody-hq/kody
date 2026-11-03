@@ -1,9 +1,9 @@
-import {
-	type CapabilityDomainMetadata,
-	type CapabilitySpec,
+import type {
+	CapabilityDomainMetadata,
+	CapabilitySpec,
 } from '#mcp/capabilities/types.ts'
 
-import { type SearchMatch } from './search-format-types.ts'
+import type { SearchMatch } from './search-format-types.ts'
 
 const sampleCapabilityCount = 3
 

@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import * as Sentry from '@sentry/cloudflare'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { upsertSavedPackageVector } from './vectorize.ts'

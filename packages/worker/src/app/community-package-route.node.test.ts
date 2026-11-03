@@ -1,4 +1,4 @@
-import { type PackageFilesResource } from './community-package-route.ts'
+import type { PackageFilesResource } from './community-package-route.ts'
 import { expect, test, vi } from 'vitest'
 
 const mockModule = vi.hoisted(() => ({

@@ -11,7 +11,7 @@ import {
 	type Server,
 	type ServerResponse,
 } from 'node:http'
-import { type AddressInfo } from 'node:net'
+import type { AddressInfo } from 'node:net'
 import { Readable } from 'node:stream'
 import { redact } from './redact.js'
 import { runSecretHeader } from './local-runtime-source.js'

@@ -9,8 +9,8 @@ import {
 	loadAccountWorkflowsData,
 	readAccountWorkflowsSelectedWorkflowId,
 } from '#app/account-workflows-data.ts'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
-import { type WorkflowRunInspection } from '#worker/package-runtime/package-workflows.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { WorkflowRunInspection } from '#worker/package-runtime/package-workflows.ts'
 import { sessionRequestContext } from '#worker/test-support/request-context.ts'
 
 const mockModule = vi.hoisted(() => ({

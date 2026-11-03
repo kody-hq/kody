@@ -1,13 +1,13 @@
-import {
-	type EcpGrant,
-	type EcpRunRequestBody,
+import type {
+	EcpGrant,
+	EcpRunRequestBody,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { egressPolicyFromGrant } from '../local-egress.js'
-import { type EffectiveFs } from './fs-access.js'
-import { type HostCommands } from './host-commands.js'
-import { type LocalExecuteTiming } from '../local-execute.js'
-import { type PackageGraphCache } from './package-graph-cache.js'
-import { type LocalWorkerTracker } from './worker-tracker.js'
+import type { EffectiveFs } from './fs-access.js'
+import type { HostCommands } from './host-commands.js'
+import type { LocalExecuteTiming } from '../local-execute.js'
+import type { PackageGraphCache } from './package-graph-cache.js'
+import type { LocalWorkerTracker } from './worker-tracker.js'
 
 /**
  * Runs a context run in local workerd through the same path as

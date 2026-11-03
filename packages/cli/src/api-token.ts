@@ -5,7 +5,7 @@ import {
 	type CliCredential,
 } from './cli-credential.js'
 import { apiTokenEnvVar, defaultApiUrl, defaultMcpUrl } from './defaults.js'
-import { type SecretBackend, type StoreResolution } from './store.js'
+import type { SecretBackend, StoreResolution } from './store.js'
 
 /** Mirrors `cliTokenLifetimeAliases` in auth-bootstrap (keep in sync; avoid import cycle). */
 export type CliTokenLifetimeAlias = 'short' | 'long'

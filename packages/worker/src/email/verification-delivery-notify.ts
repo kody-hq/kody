@@ -4,7 +4,7 @@ import {
 	isUserEmailVerificationFailedStatus,
 } from '#worker/identity/email-verification-failed-subscription-event.ts'
 import { joinAppUrl } from '#worker/app-base-url.ts'
-import { type RecordedTransactionalDelivery } from './verification-delivery.ts'
+import type { RecordedTransactionalDelivery } from './verification-delivery.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 type VerificationNotifyEnv = Pick<

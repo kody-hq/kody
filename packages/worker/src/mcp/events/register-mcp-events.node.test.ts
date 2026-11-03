@@ -11,7 +11,7 @@ import { McpServer, createMcpHandler } from '@modelcontextprotocol/server'
 import { afterEach, expect, test, vi } from 'vitest'
 import { z } from 'zod'
 import { createMcpCallerContext } from '#mcp/context.ts'
-import { type FeatureFlagKey } from '#universal/feature-flags/registry.ts'
+import type { FeatureFlagKey } from '#universal/feature-flags/registry.ts'
 import { registerMcpEvents } from './register-mcp-events.ts'
 
 const mocks = vi.hoisted(() => ({

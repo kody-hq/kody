@@ -6,8 +6,8 @@ import {
 	parseIncidentRetrospectivePath,
 	unknownStatusMaintenanceResponse,
 } from './retrospective-maintenance.ts'
-import { type IncidentRetrospective } from './retrospective.ts'
-import { type IncidentView } from './status-types.ts'
+import type { IncidentRetrospective } from './retrospective.ts'
+import type { IncidentView } from './status-types.ts'
 
 function retrospectiveRequest(input: {
 	method?: string

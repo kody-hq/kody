@@ -1,4 +1,4 @@
-import { type AgentClaimRequest } from './claim-types.ts'
+import type { AgentClaimRequest } from './claim-types.ts'
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	auditDatabaseFromEnv,

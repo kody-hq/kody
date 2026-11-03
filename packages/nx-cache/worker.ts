@@ -1,6 +1,6 @@
 import { handleNxCacheRequest } from './handle-request.ts'
 import { createR2CacheStore } from './r2-store.ts'
-import { type NxCacheEnv } from './nx-cache-types.ts'
+import type { NxCacheEnv } from './nx-cache-types.ts'
 
 export default {
 	async fetch(request, env) {

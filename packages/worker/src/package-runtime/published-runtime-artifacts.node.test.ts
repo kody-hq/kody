@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 import {
 	type BundleArtifactKind,
 	isUsableStoredPublishedBundleArtifact,

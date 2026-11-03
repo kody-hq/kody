@@ -3,10 +3,7 @@ import { Global, type CSSObject } from '@emotion/react'
 import { useEffect, useState } from 'react'
 import { colors, typography } from '#universal/styles/tokens.ts'
 import { toast } from '#client/toast.ts'
-import {
-	type DesktopNavigationState,
-	type DesktopShell,
-} from '../desktop-shell.ts'
+import type { DesktopNavigationState, DesktopShell } from '../desktop-shell.ts'
 import { SiteLink } from './site-link.tsx'
 import { renderIcon } from './icon.tsx'
 

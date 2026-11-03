@@ -1,7 +1,7 @@
 import { assertTokenSafeApiUrl } from './capability-proxy.js'
 import { openApiRequest } from './open-api-client.js'
-import { type CredentialCallMapInput } from './credential-call-map.js'
-import { type ToolCallResult } from './tool-result.js'
+import type { CredentialCallMapInput } from './credential-call-map.js'
+import type { ToolCallResult } from './tool-result.js'
 import { resolveExecuteInvokeCode } from './invoke-passthrough.js'
 
 export type RemoteExecuteInput = {

@@ -9,7 +9,7 @@
 import * as esbuild from 'esbuild'
 import { createHash } from 'node:crypto'
 import { readFile, stat } from 'node:fs/promises'
-import { type IncomingMessage, type ServerResponse } from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import { join, resolve, sep } from 'node:path'
 import { createBundleError } from '../local-bundle.js'
 import { bundleInputs } from './dev-bundler.js'

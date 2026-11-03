@@ -11,7 +11,7 @@ import {
 	getEmailInboxById,
 	getEmailInboxByName,
 } from './repo.ts'
-import { type EmailInboxAddressRecord, type EmailInboxRecord } from './types.ts'
+import type { EmailInboxAddressRecord, EmailInboxRecord } from './types.ts'
 import {
 	assertSystemEmailGraphAuthority,
 	commitSystemEmailAuthorityBatch,

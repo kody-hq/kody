@@ -12,7 +12,7 @@ import {
 	type OnboardingFunnelEnv,
 } from './onboarding-funnel.ts'
 import { queryAnalyticsEngineSql } from '#worker/usage/aggregate-rollups.ts'
-import { type AdminInsightsOnboardingFunnel } from '#universal/loader-data.ts'
+import type { AdminInsightsOnboardingFunnel } from '#universal/loader-data.ts'
 
 type FunnelCountRow = {
 	stage?: string

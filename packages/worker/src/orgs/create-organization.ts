@@ -5,8 +5,8 @@ import {
 	OrgSlugValidationError,
 } from '#worker/orgs/access-writes.ts'
 import { FreeOrgLimitError } from '#worker/orgs/billing.ts'
-import { type OrgProfileVisibility } from '#worker/orgs/org-public-profile.ts'
-import { type OrgAuditWriter } from '#worker/orgs/org-audit.ts'
+import type { OrgProfileVisibility } from '#worker/orgs/org-public-profile.ts'
+import type { OrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import {
 	orgHandleRestorableError,
 	orgHandleTakenError,

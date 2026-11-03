@@ -1,5 +1,5 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type ContentBlock } from '@modelcontextprotocol/sdk/types.js'
+import type { ContentBlock } from '@modelcontextprotocol/sdk/types.js'
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
 import { z } from 'zod'
 import { expect, onTestFinished, test, vi } from 'vitest'
@@ -35,7 +35,7 @@ import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { runWithInboundRequestSignal } from '#mcp/inbound-request-signal.ts'
 import type * as ExecuteTransportBudgetModule from '#mcp/execute-transport-budget.ts'
-import { type RunRecordHandle } from '#worker/run-records/types.ts'
+import type { RunRecordHandle } from '#worker/run-records/types.ts'
 
 const transportBudgetMock = vi.hoisted(() => ({
 	remainingMs: null as number | null,

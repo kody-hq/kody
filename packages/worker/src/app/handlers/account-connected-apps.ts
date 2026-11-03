@@ -1,4 +1,4 @@
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { operationResult } from '#app/operation-result.ts'
 import {
 	packageAppOauthClaimLabel,
@@ -21,9 +21,9 @@ import { deleteMcpEventSubscriptionsForOauthClient } from '#mcp/events/subscript
 import { getSecretContextForAccountSecret } from '#app/account-secrets-data.ts'
 import { deleteSecret } from '#mcp/secrets/service.ts'
 import { resolvePackageListIconUrl } from '#universal/identity-icon-urls.ts'
-import {
-	type AccountConnectedAppsLoaderData,
-	type AccountConnectedAppView,
+import type {
+	AccountConnectedAppsLoaderData,
+	AccountConnectedAppView,
 } from '#universal/loader-data.ts'
 import {
 	auditDatabaseFromEnv,
@@ -35,9 +35,9 @@ import {
 	revokeConnectedMcpAgent,
 	type InboundMcpConnectionState,
 } from '#worker/connected-mcp-agents.ts'
-import {
-	type OAuthGrantHelpers,
-	type OAuthGrantListHelpers,
+import type {
+	OAuthGrantHelpers,
+	OAuthGrantListHelpers,
 } from '#worker/oauth-grants.ts'
 import { resolveOAuthHelpers } from '#worker/oauth-helpers.ts'
 import {

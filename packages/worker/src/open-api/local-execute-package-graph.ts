@@ -12,7 +12,7 @@ import {
 	requireLocalExecuteHttpPrincipal,
 	type NativeApiOperationDefinition,
 } from './native-operation-helpers.ts'
-import { type NativeApiOperationId } from './operations.ts'
+import type { NativeApiOperationId } from './operations.ts'
 import { maxApiRequestBodyBytes } from './request-params.ts'
 
 /**

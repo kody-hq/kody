@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
 import {
 	userMeterNamespace,
@@ -6,7 +6,7 @@ import {
 	type UserMeterEnv,
 } from '#worker/entitlements/user-meter-client.ts'
 import { recordUsage, type UsageEnv } from '#worker/usage/record-usage.ts'
-import { type DynamicWorkerDaySurface } from './dynamic-worker-day-surface.ts'
+import type { DynamicWorkerDaySurface } from './dynamic-worker-day-surface.ts'
 
 export type DynamicWorkerDayEnv = UsageEnv & UserMeterEnv
 

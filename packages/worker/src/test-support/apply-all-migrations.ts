@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from 'node:fs'
-import { type DatabaseSync } from 'node:sqlite'
+import type { DatabaseSync } from 'node:sqlite'
 
 function isDuplicateColumnError(error: unknown) {
 	const message = error instanceof Error ? error.message : String(error)

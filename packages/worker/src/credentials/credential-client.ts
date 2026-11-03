@@ -12,11 +12,11 @@
  * No error carries a value, and option lists hold only credentials the actor
  * can Use.
  */
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
-import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js'
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
@@ -50,9 +50,9 @@ import {
 	resolveNeedCandidates,
 	type UsableCredential,
 } from './credential-candidates.ts'
-import {
-	type CredentialCallMap,
-	type CredentialPick,
+import type {
+	CredentialCallMap,
+	CredentialPick,
 } from './credential-call-map.ts'
 import {
 	type CredentialMappingRowTarget,
@@ -76,13 +76,13 @@ import {
 	CredentialNotFoundError,
 	CredentialRequestRefusedError,
 } from './credential-request.ts'
-import {
-	type CredentialTarget,
-	type ResolvedClientPlacement,
-	type ResolveCredentialInput,
+import type {
+	CredentialTarget,
+	ResolvedClientPlacement,
+	ResolveCredentialInput,
 } from './credential-resolver.ts'
 import { resolveCredential } from './resolve-credential.ts'
-import { type SigningOperation } from './signing-resolver.ts'
+import type { SigningOperation } from './signing-resolver.ts'
 import { findPackageAppGrantCredentialMapping } from '#app/package-app-oauth-grants.ts'
 
 export type CredentialClientErrorCode =

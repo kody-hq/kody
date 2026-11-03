@@ -15,7 +15,7 @@ import {
 	updatePackageCodemodRunFilters,
 } from './ledger.ts'
 import type * as Registry from './registry.ts'
-import { type PackageCodemod } from './types.ts'
+import type { PackageCodemod } from './types.ts'
 
 const mocks = vi.hoisted(() => ({
 	listSavedPackagesByUserId: vi.fn(),

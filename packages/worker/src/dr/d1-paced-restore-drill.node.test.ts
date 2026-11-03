@@ -16,7 +16,7 @@ import {
 } from '@kody-internal/shared/backup-d1-paced.ts'
 import { sha256HexOfBytes } from '@kody-internal/shared/backup-d1-paced-encode.ts'
 import { sha256Hex } from '@kody-internal/shared/sha256.ts'
-import { type DrBackupS3Client } from '#worker/dr/backup-s3.ts'
+import type { DrBackupS3Client } from '#worker/dr/backup-s3.ts'
 import { runD1PacedRestoreDrillTick } from '#worker/dr/d1-paced-restore-drill.ts'
 import { readLatestD1PacedRestoreDrill } from '#worker/dr/d1-paced-restore-drill-progress.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'

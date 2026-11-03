@@ -1,9 +1,9 @@
 import { expect, test, vi } from 'vitest'
-import { type EffectivePermissions } from '#worker/authorization/authorize.ts'
-import { type OrgAuditOutboxPayload } from '#worker/orgs/org-audit-outbox.ts'
-import { type LoadedPackageSubscription } from '#worker/package-invocations/admin-package-subscriptions.ts'
-import { type invokePackageSubscription } from '#worker/package-invocations/service.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { EffectivePermissions } from '#worker/authorization/authorize.ts'
+import type { OrgAuditOutboxPayload } from '#worker/orgs/org-audit-outbox.ts'
+import type { LoadedPackageSubscription } from '#worker/package-invocations/admin-package-subscriptions.ts'
+import type { invokePackageSubscription } from '#worker/package-invocations/service.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 
 vi.mock('#worker/orgs/repo.ts', () => ({
 	getOrgById: async () => ({ slug: 'acme' }),

@@ -1,8 +1,8 @@
 /** @jsxImportSource @emotion/react */
-import { type RepositoryOwnerOption } from '#universal/repository-create.ts'
+import type { RepositoryOwnerOption } from '#universal/repository-create.ts'
 import { getSelectCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-import { type CommunityInstallOrgPicker } from '../use-community-install-org.ts'
+import type { CommunityInstallOrgPicker } from '../use-community-install-org.ts'
 
 function installOrgOptionLabel(owner: RepositoryOwnerOption) {
 	if (owner.personal) return 'Personal workspace'

@@ -9,7 +9,7 @@ import {
 	buildPlatformFeedbackSubmittedEvent,
 	platformFeedbackSubmittedTopic,
 } from './subscription-event.ts'
-import { type PlatformFeedbackRecord } from './types.ts'
+import type { PlatformFeedbackRecord } from './types.ts'
 
 const mocks = vi.hoisted(() => ({
 	getPlatformFeedbackForAdmin: vi.fn(),

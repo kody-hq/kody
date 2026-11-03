@@ -1,7 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { applySavedPackageForkListingAncestry } from './fork-listing-relation.ts'
-import { type SavedPackageWithCommunityProvenanceRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageWithCommunityProvenanceRecord } from '#worker/package-registry/types.ts'
 
 const mocks = vi.hoisted(() => ({
 	getCommunityListingById: vi.fn(),

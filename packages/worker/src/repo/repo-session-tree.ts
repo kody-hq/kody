@@ -1,9 +1,9 @@
 import { buildRepoDisallowedPathMessage } from './repo-session-caller-error.ts'
-import {
-	type EntitySourceRow,
-	type RepoSessionInfoResult,
-	type RepoSessionRow,
-	type RepoSessionTreeResult,
+import type {
+	EntitySourceRow,
+	RepoSessionInfoResult,
+	RepoSessionRow,
+	RepoSessionTreeResult,
 } from './types.ts'
 
 function normalizeUnknownTreeChild(

@@ -1,9 +1,9 @@
-import {
-	type McpServer,
-	type ServerCapabilities,
+import type {
+	McpServer,
+	ServerCapabilities,
 } from '@modelcontextprotocol/server'
 import { z } from 'zod'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { mcpEventsExtensionFlagKey } from '#universal/feature-flags/registry.ts'
 import { resolveCallerFeatureFlagEvaluations } from '#mcp/capabilities/access-control.ts'
 import { recordMcpEventsClientsFlagExposure } from '#worker/feature-flags/mcp-events-clients-exposure.ts'

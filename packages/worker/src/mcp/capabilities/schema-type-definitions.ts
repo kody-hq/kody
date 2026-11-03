@@ -1,5 +1,5 @@
 import { isRecord } from '@kody-internal/shared/is-record.ts'
-import { type CapabilityJsonSchema } from './types.ts'
+import type { CapabilityJsonSchema } from './types.ts'
 
 type TypeDefinitionOptions = {
 	jsonSchema: CapabilityJsonSchema

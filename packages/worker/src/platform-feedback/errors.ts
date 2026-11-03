@@ -1,7 +1,4 @@
-import {
-	type PlatformFeedbackAction,
-	type PlatformFeedbackStatus,
-} from './types.ts'
+import type { PlatformFeedbackAction, PlatformFeedbackStatus } from './types.ts'
 
 export class PlatformFeedbackDispatchCancelledError extends Error {
 	readonly feedbackId: string

@@ -1,7 +1,7 @@
 import { utcSqliteTimestamp } from '@kody-internal/shared/date-keys.ts'
 import { toHex } from '@kody-internal/shared/hex.ts'
 import { routes } from '#universal/routes.ts'
-import { type UserAvatarOutputContentType } from '#universal/user-avatar-limits.ts'
+import type { UserAvatarOutputContentType } from '#universal/user-avatar-limits.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 const orgAvatarR2KeyPrefix = 'org-avatars/'

@@ -4,7 +4,7 @@ import {
 	RetryableInboundStorageError,
 } from './email-raw-mime-store.ts'
 import { resolveInboundEmailClassification } from './inbound-classification.ts'
-import { type InboundDelivery } from './inbound-delivery.ts'
+import type { InboundDelivery } from './inbound-delivery.ts'
 import {
 	getSystemInboundDelivery,
 	markSystemInboundDeliveryReceived,
@@ -18,7 +18,7 @@ import {
 	listSystemEmailAttachments,
 	touchSystemEmailThread,
 } from './system-email-graph-store.ts'
-import { type ParsedInboundEmail } from './types.ts'
+import type { ParsedInboundEmail } from './types.ts'
 
 export async function storeIdempotentSystemInboundEmail(input: {
 	db: D1Database

@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { dismissOpenPopoverPanel, isPopoverOpen } from '#client/popover-open.ts'
-import { type ReactNode, type KeyboardEvent } from 'react'
+import type { ReactNode, KeyboardEvent } from 'react'
 import { SiteLink } from './site-link.tsx'
 import { type IconName, renderIcon } from './icon.tsx'
 import {

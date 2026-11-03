@@ -1,5 +1,5 @@
 import { stripCredentialPlacementRefusalTag } from '#worker/credentials/placement-refusal.ts'
-import { type SecretScope } from './types.ts'
+import type { SecretScope } from './types.ts'
 
 const hostApprovalRequiredRegex =
 	/^Secret "([^"]+)" is not allowed for host "([^"]+)"/

@@ -20,9 +20,9 @@ import {
 	type ExecutionContextRunMetadata,
 } from '#worker/execution-contexts/routing.ts'
 import * as Sentry from '@sentry/cloudflare'
-import {
-	type ContentBlock,
-	type ToolAnnotations,
+import type {
+	ContentBlock,
+	ToolAnnotations,
 } from '@modelcontextprotocol/sdk/types.js'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { z } from 'zod'
@@ -60,7 +60,7 @@ import {
 	normalizeCredentialCallMap,
 	type CredentialCallMapInput,
 } from '#worker/credentials/credential-call-map.ts'
-import { type McpRegistrationAgent } from '#mcp/mcp-registration-agent.ts'
+import type { McpRegistrationAgent } from '#mcp/mcp-registration-agent.ts'
 import { createProgressReporter, type McpToolCallExtra } from '#mcp/progress.ts'
 import {
 	callerContextFields,
@@ -138,7 +138,7 @@ import {
 	entitlementEmailForOwner,
 	ownerIdFromCaller,
 } from '#worker/request-context/owner-id.ts'
-import { type StructuredContentFromFields } from './mcp-tool-output.ts'
+import type { StructuredContentFromFields } from './mcp-tool-output.ts'
 
 export const executeTool = {
 	name: 'execute',

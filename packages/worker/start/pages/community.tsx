@@ -1,10 +1,10 @@
 /** @jsxImportSource @emotion/react */
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { parseCommunityListingCategory } from '#universal/community-categories.ts'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useState, type CSSProperties } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { type CommunityIndexLoaderData } from '#universal/loader-data.ts'
+import type { CommunityIndexLoaderData } from '#universal/loader-data.ts'
 import { landingArtAttrs } from '../public-assets.ts'
 import { routes } from '#universal/routes.ts'
 import {

@@ -8,7 +8,7 @@ import {
 } from './account-management-components.tsx'
 import { saveCredentialHosts } from '#start/server/credential-hosts'
 import { useCredentialMutation } from '../credential-mutation.ts'
-import { type CredentialHostSettings } from '#universal/credentials-list.ts'
+import type { CredentialHostSettings } from '#universal/credentials-list.ts'
 import {
 	getGhostButtonCss,
 	getPillButtonCss,

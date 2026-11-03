@@ -1,4 +1,4 @@
-import { type HostCommandFinished, type HostCommands } from './host-commands.js'
+import type { HostCommandFinished, HostCommands } from './host-commands.js'
 import { type EffectiveFs, emptyEffectiveFs, fsFeatures } from './fs-access.js'
 import {
 	classifyFrameText,

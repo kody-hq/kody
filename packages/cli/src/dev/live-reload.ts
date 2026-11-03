@@ -5,8 +5,8 @@
  * the page from the new build.
  */
 
-import { type IncomingMessage, type ServerResponse } from 'node:http'
-import { type DevErrorView } from './error-page.js'
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { DevErrorView } from './error-page.js'
 
 export const liveReloadEventsPath = '/__kody/dev/events'
 export const liveReloadClientPath = '/__kody/dev/client.js'

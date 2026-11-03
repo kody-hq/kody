@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { SiteLink } from './site-link.tsx'
 /** @jsxRuntime automatic */
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 
 import {
 	communityPackageCategoryCopy,

@@ -1,4 +1,4 @@
-import { type ClientInfo } from '@cloudflare/workers-oauth-provider'
+import type { ClientInfo } from '@cloudflare/workers-oauth-provider'
 import { expect, test } from 'vitest'
 import { signOidcJwt } from '#worker/oidc/keys.ts'
 import { handleOidcLogoutRequest } from '#worker/oidc/logout.ts'

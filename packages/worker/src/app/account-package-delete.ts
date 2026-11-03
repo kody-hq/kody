@@ -9,7 +9,7 @@ import {
 	deleteSavedPackageProjection,
 	PackageStorageCleanupError,
 } from '#worker/package-registry/service.ts'
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 
 type AuthenticatedUser = NonNullable<
 	Awaited<ReturnType<typeof readAuthenticatedAppUser>>

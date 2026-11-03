@@ -3,6 +3,10 @@ import { useParams } from '@tanstack/react-router'
 import {
 	parseCredentialApprovalQuery,
 	readCredentialProposalId,
+	type CredentialApprovalChangeView,
+	type CredentialApprovalEnableView,
+	type CredentialApprovalView,
+	type CredentialProposalSender,
 } from '#universal/credential-contracts.ts'
 import { approvePackageCredentials } from '#start/server/credential-approval-mutation'
 import { SiteLink } from '../components/site-link.tsx'
@@ -12,12 +16,6 @@ import { useCredentialMutation } from '../credential-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { NotFoundPage } from '../components/not-found-page.tsx'
-import {
-	type CredentialApprovalChangeView,
-	type CredentialApprovalEnableView,
-	type CredentialApprovalView,
-	type CredentialProposalSender,
-} from '#universal/credential-contracts.ts'
 import { credentialKindLabel } from '#universal/credentials-list.ts'
 import {
 	type CredentialApprovalGroup,

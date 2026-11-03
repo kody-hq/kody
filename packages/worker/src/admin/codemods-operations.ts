@@ -1,9 +1,9 @@
 import { credentialNeedEnforcementScope } from '#worker/credentials/credential-need-enforcement-scope.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import {
-	type AdminCodemodRunItemsLoaderData,
-	type AdminCodemodsLoaderData,
+import type {
+	AdminCodemodRunItemsLoaderData,
+	AdminCodemodsLoaderData,
 } from '#universal/loader-data.ts'
 import { requireUserWithRole } from '#app/permissions-server.ts'
 import {

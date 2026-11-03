@@ -8,9 +8,9 @@ import {
 import { isRecord } from '@kody-internal/shared/is-record.ts'
 
 import { canonicalJson, sha256 } from './canonical-json.ts'
-import {
-	type RestoreBaseline,
-	type RestoreTrustRegistry,
+import type {
+	RestoreBaseline,
+	RestoreTrustRegistry,
 } from './d1-restore-drill.ts'
 
 const sha256Pattern = /^[0-9a-f]{64}$/

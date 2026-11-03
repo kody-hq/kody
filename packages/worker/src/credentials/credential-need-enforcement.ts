@@ -11,11 +11,11 @@
  * Ad hoc code (no package id) is never limited. Placement stays fill-anywhere;
  * this is about declaration only.
  */
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { getSecretProviderBinding } from '#mcp/secrets/secret-providers/repo.ts'
 import { secretProviderIdPattern } from '#mcp/secrets/secret-providers/types.ts'
-import { type SecretScope } from '#mcp/secrets/types.ts'
+import type { SecretScope } from '#mcp/secrets/types.ts'
 import { credentialNeedEnforcementFlagKey } from '#universal/feature-flags/registry.ts'
 import {
 	isFeatureGloballyEnabled,
@@ -23,7 +23,7 @@ import {
 } from '#worker/feature-flags/service.ts'
 import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { getSavedPackageByIdInAnyOrg } from '#worker/package-registry/repo.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { loadPublishedCredentialNeeds } from './credential-needs-closure.ts'
 import {
 	isSecretProviderNeed,

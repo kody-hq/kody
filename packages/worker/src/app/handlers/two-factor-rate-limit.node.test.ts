@@ -1,7 +1,7 @@
 import type * as RateLimitModule from '#app/rate-limit.ts'
 import type * as TwoFactorModule from '#app/two-factor.ts'
 import { beforeEach, expect, test, vi } from 'vitest'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	checkAuthRateLimit,
 	checkRateLimit,

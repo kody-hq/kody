@@ -14,7 +14,7 @@ import {
 import { loadConnectOauthChooser } from '#app/connect-oauth-chooser.ts'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { joinAppUrl } from '#worker/app-base-url.ts'
-import { type ConnectOauthLoaderData } from '#universal/loader-data.ts'
+import type { ConnectOauthLoaderData } from '#universal/loader-data.ts'
 
 /**
  * Every working visit to /connect/oauth carries at least one of these:

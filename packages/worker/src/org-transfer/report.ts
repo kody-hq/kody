@@ -2,9 +2,9 @@ import { formatScheduleSummary } from '@kody-internal/shared/jobs/schedule.ts'
 import { orgSectionRestPath } from '#universal/org-section-hrefs.ts'
 import { requirePackageIdFromJobId } from '#worker/jobs/package-job-id.ts'
 import { buildWebhookEndpointPathPrefix } from '#worker/webhooks/public-url.ts'
-import { type OrgTransferFinding } from './findings.ts'
+import type { OrgTransferFinding } from './findings.ts'
 import { type OrgTransferPlan, transferredPackageName } from './plan.ts'
-import { type OrgTransferRow } from './snapshot.ts'
+import type { OrgTransferRow } from './snapshot.ts'
 
 const text = (row: OrgTransferRow, column: string) => String(row[column] ?? '')
 

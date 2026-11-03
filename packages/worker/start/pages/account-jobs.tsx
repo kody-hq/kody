@@ -4,9 +4,9 @@ import {
 	type AccountJobsViewFilter,
 } from '#client/routes/account-jobs-filter.ts'
 import { setJobKillSwitch, runJobNow } from '#start/server/account-mutations'
-import {
-	type AccountJobListItem,
-	type AccountJobsLoaderData,
+import type {
+	AccountJobListItem,
+	AccountJobsLoaderData,
 } from '#universal/loader-data.ts'
 import {
 	useIsMutating,

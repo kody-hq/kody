@@ -1,10 +1,10 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type WorkflowStep } from 'cloudflare:workers'
+import type { WorkflowStep } from 'cloudflare:workers'
 import { NonRetryableError } from 'cloudflare:workflows'
 import { expect, test, vi } from 'vitest'
-import {
-	type OrgRole,
-	type RequestLineage,
+import type {
+	OrgRole,
+	RequestLineage,
 } from '@kody-internal/shared/request-context.ts'
 import { sessionRequestLineage } from '#worker/test-support/request-context.ts'
 import type * as PackageInvocationsService from '#worker/package-invocations/service.ts'
@@ -14,8 +14,8 @@ import {
 	AccountSuspendedError,
 	accountSuspendedMessage,
 } from '#worker/account/account-suspension.ts'
-import { type PackageInvocationStoredResponse } from '#worker/package-invocations/repo.ts'
-import { type WorkflowProjectionUpsertInput } from '#worker/run-records/service.ts'
+import type { PackageInvocationStoredResponse } from '#worker/package-invocations/repo.ts'
+import type { WorkflowProjectionUpsertInput } from '#worker/run-records/service.ts'
 import { UserCodeError, isUserCodeError } from '#worker/user-code-error.ts'
 import { backgroundExecutorTimeoutMs } from '#mcp/executor-budgets.ts'
 import {

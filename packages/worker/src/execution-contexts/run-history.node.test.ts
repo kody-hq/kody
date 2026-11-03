@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { contextRunRecordFromHistory } from './service.ts'
-import { type RunHistoryRow } from './session-do.ts'
+import type { RunHistoryRow } from './session-do.ts'
 
 function row(overrides: Partial<RunHistoryRow>): RunHistoryRow {
 	return {

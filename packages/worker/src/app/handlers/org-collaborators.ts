@@ -5,10 +5,10 @@ import {
 import { buildUserAvatarUrl } from '#worker/community/public-urls.ts'
 import { listOutsideCollaborators } from '#worker/orgs/org-collaborators-list.ts'
 import { listOrgGrantsForView } from '#worker/orgs/org-grants-view.ts'
-import {
-	type OrgCollaboratorView,
-	type OrgCollaboratorsLoaderData,
-	type OrgGrantView,
+import type {
+	OrgCollaboratorView,
+	OrgCollaboratorsLoaderData,
+	OrgGrantView,
 } from '#universal/loader-data.ts'
 
 export async function loadOrgCollaboratorsData(input: {

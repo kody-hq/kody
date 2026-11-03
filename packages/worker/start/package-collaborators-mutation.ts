@@ -1,6 +1,6 @@
 import { mutationOptions, type QueryClient } from '@tanstack/react-query'
 import { invalidatePageResources } from './page-invalidation-cache.ts'
-import { type PackageCollaboratorsChange } from '#universal/package-collaborators.ts'
+import type { PackageCollaboratorsChange } from '#universal/package-collaborators.ts'
 
 export function collaboratorsMutationKey(
 	actorKey: string | null,

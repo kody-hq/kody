@@ -1,4 +1,4 @@
-import { type DatabaseSync } from 'node:sqlite'
+import type { DatabaseSync } from 'node:sqlite'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 

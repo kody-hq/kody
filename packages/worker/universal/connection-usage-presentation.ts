@@ -1,11 +1,11 @@
 /**
  * Labels and number copy for per-connection usage on the Connections page.
  */
-import {
-	type ConnectionUsageCountKey,
-	type ConnectionUsageEntry,
-	type ConnectionUsageTotals,
-	type ConnectionUsageWindowKey,
+import type {
+	ConnectionUsageCountKey,
+	ConnectionUsageEntry,
+	ConnectionUsageTotals,
+	ConnectionUsageWindowKey,
 } from '#universal/connection-usage.ts'
 import {
 	connectedAgentConnectionLabel,

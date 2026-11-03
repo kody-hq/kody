@@ -1,9 +1,9 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { chartColor, formatIntegerNumber } from '#client/charts/chart-theme.ts'
 import { accountDisclosureCss } from './account-management-components.tsx'
 import { formatEstimatedCreditMicroUsd } from '#universal/credits.ts'
-import { type AccountCreditsDebitMeter } from '#universal/loader-data.ts'
+import type { AccountCreditsDebitMeter } from '#universal/loader-data.ts'
 import {
 	colors,
 	mq,

@@ -17,7 +17,7 @@ import {
 } from '#worker/credentials/credential-client.ts'
 import { createPackageAppCredentialAuthority } from '#worker/package-runtime/package-app-authority.ts'
 import { withLanding } from './secrets/echo-redaction.ts'
-import { type FetchGatewayProps } from './fetch-gateway.ts'
+import type { FetchGatewayProps } from './fetch-gateway.ts'
 
 /** Response header naming the inject shape (never a value) on a 401 / 403. */
 export const credentialClientHintHeaderName = 'x-kody-credential-hint'

@@ -10,7 +10,7 @@ import {
 	runWithSecretAuthorityScope,
 } from '#mcp/secrets/secret-authority.ts'
 import * as secretService from '#mcp/secrets/service.ts'
-import { type ListedSecret } from '#mcp/secrets/types.ts'
+import type { ListedSecret } from '#mcp/secrets/types.ts'
 import { applyAllMigrations as applyRepositoryMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'

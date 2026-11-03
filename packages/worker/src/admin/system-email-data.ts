@@ -4,7 +4,7 @@ import {
 } from '@kody-internal/shared/json-parsing.ts'
 import { readPagination } from '#worker/query-params.ts'
 // Type-only: see the note in users-data.ts.
-import { type AdminSystemEmailLoaderData } from '#universal/loader-data.ts'
+import type { AdminSystemEmailLoaderData } from '#universal/loader-data.ts'
 import { loadRawMime } from '#worker/email/service.ts'
 import {
 	getSystemEmailAdminMessageRow,

@@ -30,7 +30,7 @@ vi.mock('#worker/package-runtime/module-graph.ts', () => ({
 }))
 
 import { runRepoChecks } from './checks.ts'
-import { type PublishPhaseTimings } from './publish-phase-timing.ts'
+import type { PublishPhaseTimings } from './publish-phase-timing.ts'
 
 function setupDefaultBundleMocks() {
 	mockModule.buildKodyAppBundle.mockResolvedValue({

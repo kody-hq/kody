@@ -3,7 +3,7 @@
  * (`credential_fill_placement_opt_ins`). The host may store a value sent
  * there, so placement enforcement honors those parts only when opted in.
  */
-import { type CredentialFillPlacement } from './fill-placement.ts'
+import type { CredentialFillPlacement } from './fill-placement.ts'
 
 export const optInFillPlacementParts = ['query', 'path', 'body'] as const
 

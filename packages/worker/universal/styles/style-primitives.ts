@@ -1,4 +1,4 @@
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { surfaceCardCss } from './surface.ts'
 import {
 	colors,

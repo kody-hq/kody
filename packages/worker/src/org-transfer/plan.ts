@@ -1,4 +1,4 @@
-import { type JobRow } from '@kody-internal/shared/jobs/repo.ts'
+import type { JobRow } from '@kody-internal/shared/jobs/repo.ts'
 import { createJobStorageId } from '@kody-internal/shared/jobs/storage-id.ts'
 import {
 	buildPackageStorageId,
@@ -8,12 +8,12 @@ import { userOauthAppLogoR2KeyPrefix } from '#worker/integrations/user-oauth-app
 import { mcpServerLogoR2KeyPrefix } from '#worker/mcp-client/mcp-server-logo.ts'
 import { jobVectorId } from '#mcp/jobs-vectorize.ts'
 import { savedPackageVectorId } from '#worker/package-registry/repo.ts'
-import { type OrgTransferFinding } from './findings.ts'
-import {
-	type OrgTransferOrg,
-	type OrgTransferOwnerTable,
-	type OrgTransferRow,
-	type OrgTransferSnapshot,
+import type { OrgTransferFinding } from './findings.ts'
+import type {
+	OrgTransferOrg,
+	OrgTransferOwnerTable,
+	OrgTransferRow,
+	OrgTransferSnapshot,
 } from './snapshot.ts'
 
 /** Grantable resources a transfer leaves in the source org. */

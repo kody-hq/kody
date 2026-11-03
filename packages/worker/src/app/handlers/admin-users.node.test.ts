@@ -1,8 +1,8 @@
-import {
-	type AdminUsersMutationData,
-	type AdminUsersLoaderData,
+import type {
+	AdminUsersMutationData,
+	AdminUsersLoaderData,
 } from '#universal/loader-data.ts'
-import { type PermissionString, type RoleName } from '#universal/permissions.ts'
+import type { PermissionString, RoleName } from '#universal/permissions.ts'
 import type * as UsersData from '#worker/admin/users-data.ts'
 import type * as AuditLog from '#worker/audit-log.ts'
 import * as AdminUserCreation from '#worker/identity/admin-user-creation.ts'

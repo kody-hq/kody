@@ -1,6 +1,6 @@
 import { createElement } from 'react'
 import { expect, test, vi } from 'vitest'
-import { type AccountPackageDetail } from '#universal/loader-data.ts'
+import type { AccountPackageDetail } from '#universal/loader-data.ts'
 import { loadCommunityPackagePayload } from '#app/community-package-payload.ts'
 import { CommunityDetailContent } from './components/community-detail-content.tsx'
 import { renderStartPage } from './test-support/render-start-page.ts'

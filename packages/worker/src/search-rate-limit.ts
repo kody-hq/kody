@@ -1,5 +1,5 @@
 import { checkRateLimit, releaseRateLimit } from '#app/rate-limit.ts'
-import { type PlanName } from '#universal/plans.ts'
+import type { PlanName } from '#universal/plans.ts'
 import { getCachedUserPlan } from '#worker/entitlements/service.ts'
 import { SearchRateLimitError } from '#worker/search-rate-limit-error.ts'
 

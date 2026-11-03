@@ -1,5 +1,5 @@
 import { CommunityListingPublishedDispatchCancelledError } from './errors.ts'
-import { type CommunityListingRelease } from './fork-upstream-updated-subscription-event.ts'
+import type { CommunityListingRelease } from './fork-upstream-updated-subscription-event.ts'
 import {
 	communityForkUpstreamUpdatedDispatchKind,
 	type CommunityForkUpstreamUpdatedDispatchQueueMessage,

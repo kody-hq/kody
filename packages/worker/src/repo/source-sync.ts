@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	hasArtifactsAccess,
 	type ArtifactBootstrapAccess,
@@ -26,7 +26,7 @@ import {
 	buildPublishedSourceSnapshotKvKey,
 	writePublishedSourceSnapshot,
 } from '#worker/package-runtime/published-runtime-artifacts.ts'
-import { type EntitySourceRow } from './types.ts'
+import type { EntitySourceRow } from './types.ts'
 import {
 	pushServerTiming,
 	type ServerTimingEntry,

@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset } from '../public-assets.ts'
-import { type JSX } from 'react'
+import type { JSX } from 'react'
 import { getLogoWellCss } from '#universal/styles/style-primitives.ts'
 
 /**

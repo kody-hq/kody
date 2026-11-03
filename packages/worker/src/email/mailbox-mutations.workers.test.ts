@@ -3,7 +3,7 @@ import { runInDurableObject } from 'cloudflare:test'
 import { expect, test } from 'vitest'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
 import { emailAttachmentBlobKey, emailRawMimeKey } from './blob-keys.ts'
-import { type Mailbox } from './mailbox-do.ts'
+import type { Mailbox } from './mailbox-do.ts'
 import {
 	assertMailboxThrows,
 	baseAttachment,

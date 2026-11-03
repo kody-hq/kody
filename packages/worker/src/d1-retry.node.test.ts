@@ -1,4 +1,4 @@
-import { type ErrorEvent } from '@sentry/core'
+import type { ErrorEvent } from '@sentry/core'
 import { expect, test, vi } from 'vitest'
 import {
 	d1LockRetryBaseDelayMs,

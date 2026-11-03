@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { spawnSync } from 'node:child_process'
 import { isExecutedDirectly } from '../node-runtime.ts'
-import { type SitePerfReport } from './collect.ts'
+import type { SitePerfReport } from './collect.ts'
 import { needsFixTitle } from './upsert-github-issue.ts'
 
 export function shouldInvokeSitePerfPackage(report: SitePerfReport) {

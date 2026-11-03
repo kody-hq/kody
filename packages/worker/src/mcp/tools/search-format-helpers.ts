@@ -1,9 +1,9 @@
-import { type CapabilitySpec } from '#mcp/capabilities/types.ts'
+import type { CapabilitySpec } from '#mcp/capabilities/types.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { buildKodyCapabilityAccessor } from '#mcp/kody-capability-accessors.ts'
 import { listingAheadSearchNotice } from '#universal/community-listing-ahead.ts'
 import { buildPackageImportSpecifier } from '#worker/package-registry/package-import-specifier.ts'
-import { type PackageJobSchedule } from '#worker/package-registry/types.ts'
+import type { PackageJobSchedule } from '#worker/package-registry/types.ts'
 import { resolveHostedPackageAppUrl } from '@kody-internal/shared/public-urls.ts'
 
 import {

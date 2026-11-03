@@ -43,9 +43,9 @@ import {
 	type CreditNotifySettings,
 } from '#universal/credits.ts'
 import { buyCreditsUnavailableGuidance } from '#universal/usage-presentation.ts'
-import {
-	type AccountUsageCredits,
-	type AccountUsageCreditsWallet,
+import type {
+	AccountUsageCredits,
+	AccountUsageCreditsWallet,
 } from '#universal/loader-data.ts'
 import { orgCreditsPath } from '#universal/org-pages.ts'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'

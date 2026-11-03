@@ -1,5 +1,5 @@
 import { getDomain } from 'tldts'
-import { type PackageAppCustomHostnameDnsRecord } from '#worker/package-app-custom-hostnames/types.ts'
+import type { PackageAppCustomHostnameDnsRecord } from '#worker/package-app-custom-hostnames/types.ts'
 
 /**
  * One DNS record the customer must publish at their DNS provider. `name` is

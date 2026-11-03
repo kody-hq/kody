@@ -12,7 +12,7 @@ import {
 	refreshCommunityIconForPackagePublish,
 	renderCommunityIconFallbackPng,
 } from './community-icon.ts'
-import { type CommunityListingRecord } from './types.ts'
+import type { CommunityListingRecord } from './types.ts'
 import {
 	createFakeImagesBinding,
 	tinyWebpBytes,

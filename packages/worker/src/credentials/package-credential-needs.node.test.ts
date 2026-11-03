@@ -11,7 +11,7 @@ import {
 	parseCredentialApprovalQuery,
 	type CredentialMappingProposalChange,
 } from '#universal/credential-contracts.ts'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import {
 	approveCredentialProposal,
 	resolveCredentialApproval,

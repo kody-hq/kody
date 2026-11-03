@@ -10,7 +10,7 @@ import {
 	type Server,
 	type ServerResponse,
 } from 'node:http'
-import { type AddressInfo } from 'node:net'
+import type { AddressInfo } from 'node:net'
 import {
 	notImplementedInMock,
 	StructuredCliError,

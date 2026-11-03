@@ -1,5 +1,5 @@
 import { dnsSafeUsernamePattern } from '@kody-internal/shared/public-urls.ts'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 
 /**
  * Account sections that own organization resources. Person pages (login,

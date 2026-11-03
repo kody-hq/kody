@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest'
 import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import {
 	mappingFixtureBaseUrl,

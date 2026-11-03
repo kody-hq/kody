@@ -2,12 +2,12 @@ import {
 	buildRepoSearchEmptyPatternCallerMessage,
 	buildRepoSearchInvalidRegexCallerMessage,
 } from './repo-session-caller-error.ts'
-import {
-	type RepoSearchFileMatch,
-	type RepoSearchMatch,
-	type RepoSearchMode,
-	type RepoSearchOutputMode,
-	type RepoSessionSearchResult,
+import type {
+	RepoSearchFileMatch,
+	RepoSearchMatch,
+	RepoSearchMode,
+	RepoSearchOutputMode,
+	RepoSessionSearchResult,
 } from './types.ts'
 
 const defaultRepoSearchLimit = 50

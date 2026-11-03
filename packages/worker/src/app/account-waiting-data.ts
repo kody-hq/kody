@@ -1,9 +1,9 @@
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
-import { type AccountWaitingLoaderData } from '#universal/loader-data.ts'
+import type { AccountWaitingLoaderData } from '#universal/loader-data.ts'
 import { deriveWaitingItems } from '#mcp/waiting/derive-waiting.ts'
 import { listPendingInvitesForViewer } from '#app/account-organizations-data.ts'
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 
 type AuthenticatedUser = NonNullable<
 	Awaited<ReturnType<typeof readAuthenticatedAppUser>>

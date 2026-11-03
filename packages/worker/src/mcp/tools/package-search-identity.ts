@@ -8,7 +8,7 @@ import {
 } from '@kody-internal/shared/public-urls.ts'
 import { parseLegacyHosts } from '#worker/app-legacy-redirect.ts'
 import { getUsernameFormatValidationError } from '#worker/identity/username.ts'
-import { type SearchMatch } from '#mcp/tools/search-format.ts'
+import type { SearchMatch } from '#mcp/tools/search-format.ts'
 import { readListingAheadFlag } from '#universal/community-listing-ahead.ts'
 import { applySavedPackageForkListingAncestry } from '#worker/community/fork-listing-relation.ts'
 import {

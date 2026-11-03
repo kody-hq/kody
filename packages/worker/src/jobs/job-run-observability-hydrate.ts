@@ -3,13 +3,13 @@
  * for user-facing readers (jobGet, jobList, account jobs).
  */
 
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	getJobRunObservability,
 	getJobRunObservabilityBatch,
 	type JobRunObservabilityRecord,
 } from '#worker/run-records/service.ts'
-import { type JobView } from './types.ts'
+import type { JobView } from './types.ts'
 
 export function applyJobRunObservabilityToJobView(
 	job: JobView,

@@ -1,5 +1,5 @@
-import { type StorageContext } from '#mcp/storage.ts'
-import { type z } from 'zod'
+import type { StorageContext } from '#mcp/storage.ts'
+import type { z } from 'zod'
 import {
 	assertLoginExchangeOnHosts,
 	defaultCredentialInject,
@@ -10,7 +10,7 @@ import {
 	defaultNewCredentialFillPlacement,
 	serializeCredentialFillPlacement,
 } from '#worker/credentials/fill-placement.ts'
-import { type loginExchangeSchema } from '#worker/credentials/login-resolver.ts'
+import type { loginExchangeSchema } from '#worker/credentials/login-resolver.ts'
 import {
 	openSealedTokenForSave,
 	sealedTokenNameFromInput,
@@ -21,7 +21,7 @@ import {
 } from '#worker/orgs/org-audit.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { requireMcpRequest } from '#mcp/capabilities/meta/require-user.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { saveSecret } from '#mcp/secrets/service.ts'
 

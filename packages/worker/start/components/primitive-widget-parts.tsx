@@ -1,8 +1,8 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset } from '../public-assets.ts'
-import { type ReactNode, type CSSProperties } from 'react'
+import type { ReactNode, CSSProperties } from 'react'
 import { usePrimitiveWidgetMotion } from './primitive-widget-motion.ts'
-import { type PrimitiveWidgetId } from '#universal/primitive-cards.ts'
+import type { PrimitiveWidgetId } from '#universal/primitive-cards.ts'
 
 type PrimitiveWidgetSize = 'full' | 'mini'
 

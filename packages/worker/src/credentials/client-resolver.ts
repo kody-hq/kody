@@ -7,7 +7,7 @@
  * checked before any value is read.
  */
 import { bytesToBase64 } from '@kody-internal/shared/base64.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import {
 	createMissingIntegrationAccessTokenMessage,

@@ -5,7 +5,7 @@ import {
 	renderPackageRepoActions,
 } from '../components/package-title-actions.tsx'
 import { renderStartPage } from '../test-support/render-start-page.ts'
-import { type CommunityInstallOrgPicker } from '../use-community-install-org.ts'
+import type { CommunityInstallOrgPicker } from '../use-community-install-org.ts'
 
 const fork = {
 	listingId: 'listing-1',

@@ -2,7 +2,7 @@ import { createElement } from 'react'
 import { expect, test, vi } from 'vitest'
 import { renderStartPage } from '../test-support/render-start-page.ts'
 import { PackageAppOauthConsentPage } from './package-app-oauth-consent.tsx'
-import { type PackageAppOauthConsentLoaderData } from '#universal/loader-data.ts'
+import type { PackageAppOauthConsentLoaderData } from '#universal/loader-data.ts'
 import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
 
 const advancedView = vi.hoisted(() => ({ enabled: false }))

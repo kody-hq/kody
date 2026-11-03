@@ -5,10 +5,10 @@ import {
 import { d1ImportMaxStatementBytes } from '@kody-internal/shared/backup-restore-safety.ts'
 
 import { BackupError } from './backup-policy.ts'
-import {
-	type BackupManifest,
-	type SqlStatementStats,
-	type StoredBackup,
+import type {
+	BackupManifest,
+	SqlStatementStats,
+	StoredBackup,
 } from './backup-types.ts'
 
 export const MAXIMUM_SINGLE_BACKUP_OBJECT_BYTES = 5 * 1024 * 1024 * 1024

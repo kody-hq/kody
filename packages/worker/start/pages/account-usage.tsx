@@ -1,14 +1,14 @@
 /** @jsxImportSource @emotion/react */
-import { type QueryKey } from '@tanstack/react-query'
+import type { QueryKey } from '@tanstack/react-query'
 import { WhereItWentPanel } from './account-usage-where-it-went.tsx'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { SiteLink } from '../components/site-link.tsx'
 import { renderIcon } from '../components/icon.tsx'
 import { adminGrantDiffersFromSubscription } from '#universal/account-plan-display.ts'
-import {
-	type AccountUsageEntitlementConsumption,
-	type AccountUsageLoaderData,
-	type AdminPlanName,
+import type {
+	AccountUsageEntitlementConsumption,
+	AccountUsageLoaderData,
+	AdminPlanName,
 } from '#universal/loader-data.ts'
 import {
 	AccountManagementPanel,

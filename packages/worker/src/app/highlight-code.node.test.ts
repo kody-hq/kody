@@ -11,7 +11,7 @@ import {
 	plainHighlightedCode,
 	type HighlightedCode,
 } from '#universal/highlighted-code.ts'
-import { type ServerTimingEntry } from '#worker/server-timing.ts'
+import type { ServerTimingEntry } from '#worker/server-timing.ts'
 
 function highlightedFixture(
 	code: string,

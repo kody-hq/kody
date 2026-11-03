@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 
-import { type HighlightedCode } from '#universal/highlighted-code.ts'
+import type { HighlightedCode } from '#universal/highlighted-code.ts'
 import { googleOauthTranscriptActs } from '#client/routes/google-oauth-transcript.ts'
 import { renderInteractiveGuideWalkthrough } from './interactive-guide-walkthrough.tsx'
 

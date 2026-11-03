@@ -1,5 +1,5 @@
 import { parseKodyMarkdown } from '#universal/markdown.ts'
-import { type BlockNode } from '@tanstack/markdown'
+import type { BlockNode } from '@tanstack/markdown'
 import {
 	highlightCacheHeaderName,
 	highlightServiceOrigin,
@@ -11,7 +11,7 @@ import {
 	type HighlightedCode,
 	type HighlightSnippet,
 } from '#universal/highlighted-code.ts'
-import { type ServerTimingEntry } from '#worker/server-timing.ts'
+import type { ServerTimingEntry } from '#worker/server-timing.ts'
 
 export type HighlightEnv = {
 	HIGHLIGHT?: Fetcher

@@ -10,10 +10,10 @@ import {
 	parseEntityRef,
 	toSlimStructuredMatches,
 } from './search-format.ts'
-import {
-	type SearchEntityDetail,
-	type SearchMatch,
-	type SlimSearchMatch,
+import type {
+	SearchEntityDetail,
+	SearchMatch,
+	SlimSearchMatch,
 } from './search-format-types.ts'
 
 type PackageDetail = Extract<SearchEntityDetail, { type: 'package' }>

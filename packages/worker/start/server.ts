@@ -43,7 +43,11 @@ export async function renderNativeDocument(
 	documentFailure?: { status: 403 | 404 | 500 },
 ) {
 	const nonce = crypto.randomUUID().replaceAll('-', '')
-	const response = await recordServerTiming('ssr', renderStart, request)
+	const response = await recordServerTiming(
+		'ssr',
+		async () => renderStart(),
+		request,
+	)
 	function renderStart() {
 		return startHandler(request, {
 			context: {

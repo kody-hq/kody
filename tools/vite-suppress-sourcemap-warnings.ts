@@ -1,4 +1,4 @@
-import { type Plugin } from 'vite'
+import type { Plugin } from 'vite'
 
 // Several npm packages (e.g. @modelcontextprotocol/sdk, cron-schedule) ship
 // sourcemaps whose `sources` files are not published, and Vite warns once per

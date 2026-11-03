@@ -2,7 +2,7 @@ import {
 	setResponseHeader,
 	setResponseStatus,
 } from '@tanstack/react-start/server'
-import { type PackagePageAccess } from '#app/package-page.ts'
+import type { PackagePageAccess } from '#app/package-page.ts'
 import { loadDocumentHead } from './document-head.ts'
 export function packageNoAccessResult(
 	page: Extract<PackagePageAccess, { kind: 'no_access' }>,

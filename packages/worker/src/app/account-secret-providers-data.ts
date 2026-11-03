@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { listSecrets } from '#mcp/secrets/service.ts'
 import {
 	inspectSecretProviderPackageGrant,
@@ -8,7 +8,7 @@ import {
 import { tryCanonicalizeProviderRef } from '#mcp/secrets/secret-providers/canonicalize.ts'
 import { SecretProviderError } from '#mcp/secrets/secret-providers/errors.ts'
 import { listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'
-import { type AccountSecretProvidersLoaderData } from '#universal/loader-data.ts'
+import type { AccountSecretProvidersLoaderData } from '#universal/loader-data.ts'
 
 export async function loadAccountSecretProvidersData(input: {
 	env: Env

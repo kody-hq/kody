@@ -3,9 +3,9 @@ import {
 	packageMutationResult,
 	type PackageMutationResult,
 } from './package-mutation-result.ts'
-import {
-	type AuthenticatedAppUser,
-	type readAuthenticatedAppUser,
+import type {
+	AuthenticatedAppUser,
+	readAuthenticatedAppUser,
 } from '#app/authenticated-user.ts'
 import { loadWritableAccountSavedPackage } from '#app/account-package-write-access.ts'
 import {
@@ -33,7 +33,7 @@ import {
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import { loadPackageSecurityAuditState } from '#worker/package-capabilities/security-audit-state.ts'
 import { loadPackageSecurityAuditNextStep } from '#worker/package-capabilities/security-audit-next-step.ts'
-import { type AccountPackageApproveCapabilitiesLoaderData } from '#universal/loader-data.ts'
+import type { AccountPackageApproveCapabilitiesLoaderData } from '#universal/loader-data.ts'
 import { logOrgAuditEvent } from '#worker/orgs/org-audit.ts'
 import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import { getSavedPackageByIdInAnyOrg } from '#worker/package-registry/repo.ts'

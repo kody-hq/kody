@@ -14,7 +14,7 @@
 import { normalizeEmailAddress } from './address.ts'
 import { parseAccountEmail } from '#worker/identity/account-email-policy.ts'
 import { classifyVerificationDeliveryFailure } from './verification-delivery.ts'
-import { type EmailDeliveryStatus } from './types.ts'
+import type { EmailDeliveryStatus } from './types.ts'
 
 export const verificationHardBounceMessage =
 	'We stopped sending verification email to this address after a previous message bounced. Use a different address, or contact support@kody.codes so we can verify the account another way.'

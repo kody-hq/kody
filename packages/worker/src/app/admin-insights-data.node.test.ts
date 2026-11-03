@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
-import { type AdminInsightsLaunchSignals } from '#universal/loader-data.ts'
+import type { AdminInsightsLaunchSignals } from '#universal/loader-data.ts'
 import {
 	platformPublicOpenedAt,
 	platformPublicOpenedDay,

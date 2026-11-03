@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest'
 import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
-import { type RunRecord } from '#worker/run-records/types.ts'
+import type { RunRecord } from '#worker/run-records/types.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { scanWebhookVerification } from './verification-scan.ts'
 

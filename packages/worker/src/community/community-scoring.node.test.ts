@@ -1,7 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import type * as CommunityRepo from './repo.ts'
-import { type CommunityListingRecord } from './types.ts'
+import type { CommunityListingRecord } from './types.ts'
 
 const mockModule = vi.hoisted(() => ({
 	listCommunityListingCandidates: vi.fn(),

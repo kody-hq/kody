@@ -9,7 +9,7 @@ import {
 	requireUserWithPermission,
 	requireUserWithRole,
 } from '#app/permissions-server.ts'
-import { type RoleName } from '#universal/permissions.ts'
+import type { RoleName } from '#universal/permissions.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'

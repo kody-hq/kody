@@ -1,4 +1,4 @@
-import { type GrantSubjectType } from '#worker/orgs/access-writes.ts'
+import type { GrantSubjectType } from '#worker/orgs/access-writes.ts'
 
 /**
  * Whether a lookup lets a grant subject type reach the person. Every lookup

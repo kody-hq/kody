@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { KodyMark } from './kody-mark.tsx'
 import { SiteLink } from './site-link.tsx'
 import { colors, transitions, typography } from '#universal/styles/tokens.ts'

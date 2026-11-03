@@ -1,5 +1,5 @@
-import { type CloudflareOptions } from '@sentry/cloudflare'
-import { type ErrorEvent, type EventHint } from '@sentry/core'
+import type { CloudflareOptions } from '@sentry/cloudflare'
+import type { ErrorEvent, EventHint } from '@sentry/core'
 import { redactKodyCredentials } from '@kody-internal/shared/api-token-format.ts'
 import { getErrorCauseChain } from '@kody-internal/shared/error-message.ts'
 import { isRetryableD1LockSentryEvent } from './d1-retry.ts'

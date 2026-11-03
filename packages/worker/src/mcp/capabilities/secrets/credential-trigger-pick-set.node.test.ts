@@ -4,7 +4,7 @@ import {
 	approveCredentialProposal,
 	resolveCredentialApproval,
 } from '#worker/credentials/credential-approval.ts'
-import { type RequestSource } from '#worker/request-context/request-context.ts'
+import type { RequestSource } from '#worker/request-context/request-context.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import {
 	dailyTarget as daily,

@@ -1,4 +1,4 @@
-import { type AdminProviderMarksLoaderData } from '#universal/loader-data.ts'
+import type { AdminProviderMarksLoaderData } from '#universal/loader-data.ts'
 import {
 	buildProviderMarkLogoPath,
 	builtInProviderMarkAliases,

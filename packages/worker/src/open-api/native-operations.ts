@@ -21,7 +21,7 @@ import {
 	assertContextRunSpecialPathAllowed,
 	type NativeApiOperationDefinition,
 } from './native-operation-helpers.ts'
-import { type NativeApiOperationId } from './operations.ts'
+import type { NativeApiOperationId } from './operations.ts'
 import {
 	emptyInputSchema,
 	cliCredentialBootstrapRedeemDefinition,

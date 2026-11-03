@@ -2,7 +2,7 @@ import { jsx } from 'react/jsx-runtime'
 import { renderStartPage as renderToString } from '../../test-support/render-start-page.ts'
 import { expect, test } from 'vitest'
 import { AccountPackageApproveCapabilitiesRoute } from '../../pages/account-package-approve-capabilities.tsx'
-import { type AccountPackageApproveCapabilitiesLoaderData } from '#universal/loader-data.ts'
+import type { AccountPackageApproveCapabilitiesLoaderData } from '#universal/loader-data.ts'
 import { buildPackageSecurityAuditPrompt } from '#universal/package-security-audit-prompt.ts'
 
 const approveHref = '/@kody/mau-chart/approve-capabilities'

@@ -33,7 +33,7 @@ import {
 	installMcpPreRegisteredOAuthClient,
 	type McpPreRegisteredOAuthClientInformation,
 } from './preregistered-oauth-client.ts'
-import { type McpOAuthClientMode } from '@kody-internal/shared/mcp-servers.ts'
+import type { McpOAuthClientMode } from '@kody-internal/shared/mcp-servers.ts'
 
 export const mcpClientIdMetadataPath = '/oauth/client-metadata.json'
 export const mcpServerOAuthCallbackPath = '/account/mcp-servers/oauth/callback'

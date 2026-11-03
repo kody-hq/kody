@@ -12,7 +12,7 @@ import {
 	isWorkersHungRequestCanceledError,
 	workersHungExecutionMessage,
 } from '@kody-internal/shared/workers-hung-request.ts'
-import { type ContentBlock } from '@modelcontextprotocol/sdk/types.js'
+import type { ContentBlock } from '@modelcontextprotocol/sdk/types.js'
 import { exports as workerExports } from 'cloudflare:workers'
 import { loadNormalizeCode } from '#worker/codemode-normalize-load.ts'
 import {
@@ -20,7 +20,7 @@ import {
 	type DynamicWorkerUsageTailProps,
 } from '#worker/usage/dynamic-worker-cpu.ts'
 import { defaultExecutorTimeoutMs } from '#mcp/executor-budgets.ts'
-import { type FetchGatewayProps } from '#mcp/fetch-gateway.ts'
+import type { FetchGatewayProps } from '#mcp/fetch-gateway.ts'
 import { pathSegmentEncodingWarningHeaderName } from '#mcp/secrets/path-segment-encoding-warning.ts'
 import {
 	readBaseUrlHostname,
@@ -40,10 +40,10 @@ import {
 	countEvaluateInvocationParamsChars,
 	recordDynamicWorkerInvoke,
 } from '#worker/usage/dynamic-worker-invoke.ts'
-import { type DynamicWorkerDaySurface } from '#worker/usage/dynamic-worker-day-surface.ts'
-import { type ExecuteThinGlueClass } from '#worker/usage/execute-thin-glue.ts'
-import { type UserMeterEnv } from '#worker/entitlements/user-meter-client.ts'
-import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import type { DynamicWorkerDaySurface } from '#worker/usage/dynamic-worker-day-surface.ts'
+import type { ExecuteThinGlueClass } from '#worker/usage/execute-thin-glue.ts'
+import type { UserMeterEnv } from '#worker/entitlements/user-meter-client.ts'
+import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import {
 	isSecretAuthRequiredMessage,
 	parseHostApprovalRequiredBatchMessage,
@@ -53,7 +53,7 @@ import {
 	parsePackageAccessRequiredMessage,
 	parseSecretScopeUnavailableMessage,
 } from '#mcp/secrets/errors.ts'
-import { type SecretScope } from '#mcp/secrets/types.ts'
+import type { SecretScope } from '#mcp/secrets/types.ts'
 import {
 	isComputeOverageLimitError,
 	isEntitlementLimitError,
@@ -67,9 +67,9 @@ import {
 import { buildIntegrationReconnectHref } from '#universal/connection-trouble.ts'
 import { buildCredentialCreateHref } from '#universal/credential-contracts.ts'
 import { isIntegrationTokenRefreshCallerMessage } from '#worker/integrations/token-refresh.ts'
-import {
-	type KodyMcpServerMetadata,
-	type KodyResolvedProvider,
+import type {
+	KodyMcpServerMetadata,
+	KodyResolvedProvider,
 } from '#mcp/kody-remote-types.ts'
 import {
 	createKodyProviderProxySource,

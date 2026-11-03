@@ -1,9 +1,9 @@
-import {
-	type Agent as HttpAgent,
-	type IncomingMessage,
-	type request as httpRequest,
+import type {
+	Agent as HttpAgent,
+	IncomingMessage,
+	request as httpRequest,
 } from 'node:http'
-import { type Socket } from 'node:net'
+import type { Socket } from 'node:net'
 import { Readable } from 'node:stream'
 import {
 	capabilityProxyForbiddenMessage,

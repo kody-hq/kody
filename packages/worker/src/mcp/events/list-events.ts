@@ -1,5 +1,5 @@
 import { chunkArray } from '@kody-internal/shared/chunk.ts'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import {
 	checkPermission,
 	computeEffectivePermissions,
@@ -8,7 +8,7 @@ import {
 import { listPackageEmittedEvents } from '#worker/package-registry/manifest.ts'
 import { listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'
 import { loadPackageManifestBySourceId } from '#worker/package-registry/source.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 
 const manifestLoadConcurrency = 5
 

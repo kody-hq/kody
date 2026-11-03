@@ -1,6 +1,6 @@
 import { orgPermissions } from '@kody-internal/shared/org-permissions.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
-import { type ApiInvocationContext } from '#worker/open-api/context.ts'
+import type { ApiInvocationContext } from '#worker/open-api/context.ts'
 import { invalidRequest } from '#worker/open-api/errors.ts'
 import {
 	mintApiToken,

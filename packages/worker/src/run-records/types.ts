@@ -15,8 +15,8 @@
  *   a per-user Durable Object, never `APP_DB`.
  */
 
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RunStartedBy } from './run-started-by.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { RunStartedBy } from './run-started-by.ts'
 
 export type { RunStartedBy, RunStartedByClient } from './run-started-by.ts'
 export {

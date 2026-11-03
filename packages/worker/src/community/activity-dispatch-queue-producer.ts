@@ -1,4 +1,4 @@
-import { type CommunityActivityKind } from './types.ts'
+import type { CommunityActivityKind } from './types.ts'
 
 export type CommunityActivityDispatchQueueMessage = {
 	eventId: string

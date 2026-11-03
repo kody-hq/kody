@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest'
-import { type ResolvedConfig } from 'vite'
+import type { ResolvedConfig } from 'vite'
 import {
 	isThirdPartySourcemapWarning,
 	suppressThirdPartySourcemapWarnings,

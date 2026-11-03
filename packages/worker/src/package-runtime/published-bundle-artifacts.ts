@@ -3,9 +3,9 @@ import {
 	isUnrepairablePreBindingArtifact,
 	packageBindingRewriteVersion,
 } from './pre-binding-artifact-repair.ts'
-import {
-	type AuthoredPackageJson,
-	type SavedPackageRecord,
+import type {
+	AuthoredPackageJson,
+	SavedPackageRecord,
 } from '#worker/package-registry/types.ts'
 import {
 	type BundleArtifactDependency,
@@ -36,8 +36,8 @@ import {
 	upsertPublishedBundleArtifactRows,
 } from '#worker/repo/published-bundle-artifacts-repo.ts'
 import { listEntitySourcesByIds } from '#worker/repo/entity-sources.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
-import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
+import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import {
 	collectPublishedPackageArtifactTargets,
 	type PublishedPackageArtifactBuildTarget,

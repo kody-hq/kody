@@ -1,7 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
-import { type EntitlementResource } from '#universal/plans.ts'
+import type { EntitlementResource } from '#universal/plans.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import type * as cloudflareEmail from '#app/email/cloudflare-email.ts'
 

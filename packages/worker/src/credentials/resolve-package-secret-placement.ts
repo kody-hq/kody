@@ -1,7 +1,7 @@
 /**
  * Decide fill placement for a package-scope secret insert or repair-on-update.
  */
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	type CredentialFillPlacement,
 	defaultNewCredentialFillPlacement,

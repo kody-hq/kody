@@ -3,11 +3,11 @@ import {
 	resolvePinnedConnectTarget,
 	savePinnedConnection,
 } from '#worker/integrations/pinned-connect.ts'
-import {
-	type SaveSecretInput,
-	type SaveOAuthAppInput,
-	type ConnectOAuthInput,
-	type ExchangeOAuthTokenInput,
+import type {
+	SaveSecretInput,
+	SaveOAuthAppInput,
+	ConnectOAuthInput,
+	ExchangeOAuthTokenInput,
 } from '#universal/secret-mutations.ts'
 import {
 	fillPlacementOptInFromPlacement,
@@ -21,7 +21,7 @@ import {
 	resolveApprovalRequest,
 	toPackageOptions,
 } from '#app/account-secrets-data.ts'
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { buildConnectOauthNextSteps } from '#worker/integrations/connect-oauth-next-steps.ts'
 import { operationResult } from '#app/operation-result.ts'
 import {
@@ -42,7 +42,7 @@ import {
 import { normalizeAllowedHosts } from '#mcp/secrets/allowed-hosts.ts'
 import { normalizeAllowedPackages } from '#mcp/secrets/allowed-packages.ts'
 import { classifyBulkApprovalHosts } from '#mcp/secrets/host-approval.ts'
-import { type StorageContext } from '#mcp/storage.ts'
+import type { StorageContext } from '#mcp/storage.ts'
 import { filterValidApprovalHosts } from '#mcp/secrets/approval-host-shape.ts'
 import { normalizeBulkPackageSecretApprovalNames } from '#mcp/secrets/package-approval-url.ts'
 import {
@@ -59,7 +59,7 @@ import {
 	setSecretsAllowedHosts,
 	setSecretsAllowedPackages,
 } from '#mcp/secrets/service.ts'
-import { type SecretScope } from '#mcp/secrets/types.ts'
+import type { SecretScope } from '#mcp/secrets/types.ts'
 import {
 	credentialHostsSchema,
 	credentialProviderSchema,
@@ -73,8 +73,8 @@ import {
 	serializeCredentialFillPlacement,
 	type CredentialFillPlacement,
 } from '#worker/credentials/fill-placement.ts'
-import { type CredentialPlacementOrigin } from '#worker/credentials/placement-origin.ts'
-import { type LoginExchange } from '#worker/credentials/login-resolver.ts'
+import type { CredentialPlacementOrigin } from '#worker/credentials/placement-origin.ts'
+import type { LoginExchange } from '#worker/credentials/login-resolver.ts'
 import {
 	persistIntegrationTokens,
 	persistUserOauthAppClientSecret,
@@ -131,7 +131,7 @@ import {
 	buildAccountSecretId,
 	parseAccountSecretId,
 } from '@kody-internal/shared/account-secret-route.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { normalizeSecretExpiresAt } from '@kody-internal/shared/secret-expires-at.ts'
 import { safeParseHost } from '@kody-internal/shared/url-hosts.ts'
 import { waitUntil } from 'cloudflare:workers'

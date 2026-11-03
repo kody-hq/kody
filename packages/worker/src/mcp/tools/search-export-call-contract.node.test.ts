@@ -4,8 +4,8 @@ import {
 	attachHighConfidenceExportCallContract,
 	shouldInlineExportCallContract,
 } from './search-export-call-contract.ts'
-import { type SearchMatch } from './search-format-types.ts'
-import { type SearchCandidate } from './search-types.ts'
+import type { SearchMatch } from './search-format-types.ts'
+import type { SearchCandidate } from './search-types.ts'
 
 function makeExportMatch(
 	overrides: Partial<Extract<SearchMatch, { type: 'package' }>> = {},

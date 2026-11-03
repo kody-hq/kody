@@ -3,7 +3,7 @@
  * Stable `code`, optional `where` / `fix`, and which `target` produced it.
  */
 
-import { type KodyTarget } from './target.js'
+import type { KodyTarget } from './target.js'
 
 export type StructuredErrorCode =
 	| 'not_implemented_in_mock'

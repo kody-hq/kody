@@ -19,7 +19,7 @@ import {
 	accountInputCss,
 } from './account-management-components.tsx'
 import { renderIcon } from '../components/icon.tsx'
-import { type ScopedInviteLinkView } from '#universal/loader-data.ts'
+import type { ScopedInviteLinkView } from '#universal/loader-data.ts'
 import {
 	type PackageCollaboratorPreset,
 	packageCollaboratorPresetDescription,

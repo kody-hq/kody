@@ -1,11 +1,11 @@
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	auditDatabaseFromEnv,
 	getRequestIp,
 	logAuditEvent,
 } from '#worker/audit-log.ts'
 import { setSelfServeExperimentForUser } from '#worker/feature-flags/self-serve-experiments.ts'
-import { type SelfServeExperimentId } from '#universal/feature-flags/experiments.ts'
+import type { SelfServeExperimentId } from '#universal/feature-flags/experiments.ts'
 
 export async function setWebsiteExperiment(input: {
 	env: Env

@@ -2,7 +2,7 @@
 
 /** @jsxRuntime automatic */
 
-import { type PublicCommunityListing } from '#universal/community-public-types.ts'
+import type { PublicCommunityListing } from '#universal/community-public-types.ts'
 import { IdentityIconMark } from './identity-icon-mark.tsx'
 
 type CommunityListingIconProps = {

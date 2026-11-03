@@ -1,6 +1,6 @@
 import { ProtocolError } from '@modelcontextprotocol/server'
 import { z } from 'zod'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import {
 	personalOrgId,
 	type OwnerId,

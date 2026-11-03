@@ -4,7 +4,7 @@ import {
 } from '#app/authenticated-user.ts'
 import { operationResult } from '#app/operation-result.ts'
 import { orgSectionDenial } from '#app/org-request-binding.ts'
-import { type McpServerAuthorizeLoaderData } from '#universal/loader-data.ts'
+import type { McpServerAuthorizeLoaderData } from '#universal/loader-data.ts'
 import { orgSectionRestPath } from '#universal/org-section-hrefs.ts'
 import {
 	AuthorizationError,
@@ -18,7 +18,7 @@ import { createMcpClientHubClient } from '#worker/mcp-client/hub-client.ts'
 import { mcpOAuthAttemptActorFromIds } from '#worker/mcp-client/oauth-attempt.ts'
 import { mcpOAuthAttemptIdentityInvalidMessage } from '#worker/mcp-client/oauth-identity.ts'
 import { getMcpServerSettingById } from '#worker/mcp-client/settings-service.ts'
-import { type McpServerPendingAuthorization } from '#worker/mcp-client/types.ts'
+import type { McpServerPendingAuthorization } from '#worker/mcp-client/types.ts'
 import { loadOrgBindingForSlug } from '#worker/orgs/repo.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'

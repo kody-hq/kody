@@ -4,7 +4,7 @@
  * `integration:manage_access` see every member's connection (metadata only)
  * and can revoke any; every member sees and can disconnect their own.
  */
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { operationResult } from '#app/operation-result.ts'
 import {
 	AuthorizationError,
@@ -20,7 +20,7 @@ import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import { orgAuditWriterFromRequest } from '#worker/orgs/org-audit.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
-import { type OrgAppMemberConnectionsData } from '#universal/loader-data.ts'
+import type { OrgAppMemberConnectionsData } from '#universal/loader-data.ts'
 
 type WebsiteUser = NonNullable<
 	Awaited<ReturnType<typeof readAuthenticatedAppUser>>

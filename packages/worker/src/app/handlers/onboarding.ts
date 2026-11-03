@@ -11,7 +11,7 @@ import {
 } from '#mcp/onboarding-checklist.ts'
 import { hasSecondConnectedMcpClient } from '#universal/onboarding-agent-ecosystems.ts'
 import { loadInboundMcpConnectionState } from '#worker/connected-mcp-agents.ts'
-import { type OAuthGrantListHelpers } from '#worker/oauth-grants.ts'
+import type { OAuthGrantListHelpers } from '#worker/oauth-grants.ts'
 import { resolveOAuthHelpers } from '#worker/oauth-helpers.ts'
 import { normalizeRedirectTo } from '#app/auth-redirect.ts'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
@@ -33,11 +33,11 @@ import {
 	overlayOnboardingFeaturedMcpServers,
 } from '#universal/onboarding-mcp-chooser.ts'
 import { firstInstalledOnboardingExampleName } from '#universal/onboarding-examples.ts'
-import {
-	type OnboardingChecklistLoaderData,
-	type OnboardingCustomMcpServer,
-	type OnboardingFeaturedMcpServer,
-	type OnboardingLoaderData,
+import type {
+	OnboardingChecklistLoaderData,
+	OnboardingCustomMcpServer,
+	OnboardingFeaturedMcpServer,
+	OnboardingLoaderData,
 } from '#universal/loader-data.ts'
 import {
 	loadOnboardingData,

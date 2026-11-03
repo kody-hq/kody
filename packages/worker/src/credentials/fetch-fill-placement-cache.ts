@@ -3,11 +3,11 @@
  * resolved on this request (body after headers) can still observe would-block
  * without another authorize. Keyed like the fetch-audit cache identity.
  */
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
-import { type CredentialTarget } from './credential-resolver.ts'
-import { type CredentialFillPlacement } from './fill-placement.ts'
-import { type FillPlacementRefusalLinks } from './fill-placement-enforcement.ts'
-import { type PackageStamp } from './package-stamp.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { CredentialTarget } from './credential-resolver.ts'
+import type { CredentialFillPlacement } from './fill-placement.ts'
+import type { FillPlacementRefusalLinks } from './fill-placement-enforcement.ts'
+import type { PackageStamp } from './package-stamp.ts'
 
 type CachedFillPlacement = {
 	placement: CredentialFillPlacement | null

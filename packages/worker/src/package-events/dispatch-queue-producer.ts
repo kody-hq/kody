@@ -1,5 +1,5 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RequestLineage } from '@kody-internal/shared/request-context.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { RequestLineage } from '@kody-internal/shared/request-context.ts'
 import { parseRequestLineage } from '#worker/request-context/request-context.ts'
 
 export type PackageEventsDispatchQueueMessage = {

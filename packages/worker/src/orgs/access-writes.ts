@@ -14,7 +14,7 @@ import {
 	type OrgResourceType,
 } from '@kody-internal/shared/org-permissions.ts'
 import { mintPersonId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { bumpAccessEpochStatement } from '#worker/authorization/access-compile.ts'
 import { normalizeUsername } from '#worker/identity/username.ts'
 import {
@@ -24,7 +24,7 @@ import {
 	liveFreeOwnedOrgCountSql,
 } from '#worker/orgs/billing.ts'
 import { getOrgHandleClaimError } from '#worker/orgs/org-handle-claim.ts'
-import { type OrgProfileVisibility } from '#worker/orgs/org-public-profile.ts'
+import type { OrgProfileVisibility } from '#worker/orgs/org-public-profile.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import {
 	recordOrgAuditEvent,

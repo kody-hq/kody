@@ -6,7 +6,7 @@ import {
 	type CommunityCategoryCounts,
 } from '#universal/community-categories.ts'
 import type * as forkListingRelation from '#worker/community/fork-listing-relation.ts'
-import { type CommunityListingWithAggregates } from '#worker/community/types.ts'
+import type { CommunityListingWithAggregates } from '#worker/community/types.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import { invalidateCommunityPublicCache } from './data-cache.ts'
 import {

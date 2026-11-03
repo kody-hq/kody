@@ -1,7 +1,7 @@
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
-import { type CredentialListItem } from '#universal/credential-contracts.ts'
+import type { CredentialListItem } from '#universal/credential-contracts.ts'
 import { credentialListCapability } from './credential-list.ts'
 
 const listed = vi.hoisted(() => ({ items: [] as Array<unknown> }))

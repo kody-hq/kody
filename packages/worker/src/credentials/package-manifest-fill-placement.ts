@@ -6,7 +6,7 @@
  * placement_origin repair). Runtime cannot pass placement; the published
  * manifest is the reviewable source.
  */
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	type CredentialFillPlacement,
 	credentialFillPlacementSchema,

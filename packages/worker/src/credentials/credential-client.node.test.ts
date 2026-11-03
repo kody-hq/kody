@@ -1,5 +1,5 @@
 import { personalOrgId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { expect, test, vi } from 'vitest'
 import { executeGatewayFetch } from '#mcp/fetch-gateway.ts'
 import { credentialClientHintHeaderName } from '#mcp/credential-client-gateway.ts'
@@ -9,10 +9,10 @@ import {
 } from '#mcp/credential-client-tools.ts'
 import { credentialClientToolNames } from '#mcp/execute-modules/credential-client-source.ts'
 import { createRunCredentialClientToolOptions } from '#mcp/run-kody-registry.ts'
-import { type CredentialClientToolOptions } from '#mcp/runtime-helper-manifest.ts'
+import type { CredentialClientToolOptions } from '#mcp/runtime-helper-manifest.ts'
 import { runWithCurrentSecretAuthority } from '#mcp/secrets/secret-authority.ts'
 import { createCapabilityProxyCredentialClientTools } from '#worker/open-api/capability-proxy.ts'
-import { type ApiInvocationContext } from '#worker/open-api/context.ts'
+import type { ApiInvocationContext } from '#worker/open-api/context.ts'
 import { signLocalExecutePackageBinding } from '#worker/package-runtime/local-execute-package-binding.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
@@ -42,10 +42,7 @@ import {
 	runCredentialMappingWrite,
 } from './credential-mappings.ts'
 import * as needsClosure from './credential-needs-closure.ts'
-import {
-	type CredentialNeed,
-	type SavedCredentialNeed,
-} from './credential-needs.ts'
+import type { CredentialNeed, SavedCredentialNeed } from './credential-needs.ts'
 
 import {
 	createCredentialClientFixtures,

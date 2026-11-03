@@ -1,4 +1,4 @@
-import { type ProfileVisibility } from '#universal/loader-data.ts'
+import type { ProfileVisibility } from '#universal/loader-data.ts'
 
 export type AccountProfileSavePayload = {
 	ok?: boolean

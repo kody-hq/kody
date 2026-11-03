@@ -4,7 +4,7 @@ import {
 	isPackageAppLegacySubdomainMountPath,
 } from '@kody-internal/shared/package-app-host-paths.ts'
 import { packageAppHandoffQueryParam } from '#app/package-app-handoff.ts'
-import { type PackageAppPath } from '#worker/package-runtime/package-app-serve.ts'
+import type { PackageAppPath } from '#worker/package-runtime/package-app-serve.ts'
 
 export const packageAppLegacyMountEventKind = 'legacy_package_mount'
 

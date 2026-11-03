@@ -1,5 +1,5 @@
 import { sha256Hex } from '@kody-internal/shared/sha256.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getJoinedIntegration } from '#worker/integrations/service.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import {

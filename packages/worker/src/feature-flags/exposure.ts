@@ -31,7 +31,7 @@ import {
 	recordsFeatureFlagExposureAtEvaluation,
 	type FeatureFlagKey,
 } from '#universal/feature-flags/registry.ts'
-import { type FeatureFlagEvaluation } from './service.ts'
+import type { FeatureFlagEvaluation } from './service.ts'
 
 export type FeatureFlagExposureEnv = {
 	FLAG_EXPOSURES?: AnalyticsEngineDataset

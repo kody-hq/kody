@@ -1,6 +1,6 @@
 import { base64ToBytes, bytesToBase64 } from '@kody-internal/shared/base64.ts'
-import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
+import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 import { repairInlinedFacadeBindingsInArtifact } from './inlined-facade-binding-repair.ts'
 import {
 	isRepairableArtifactKind,

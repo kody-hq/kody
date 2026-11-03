@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest'
-import { type ResolvedRequestAuth } from '#app/request-auth-cache.ts'
+import type { ResolvedRequestAuth } from '#app/request-auth-cache.ts'
 import {
 	handleMeHandleRedirect,
 	isMeHandlePath,

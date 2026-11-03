@@ -1,9 +1,9 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { authorize, authorizeOrgWide } from '#worker/authorization/authorize.ts'
 import { getOwnerEmailMessageById } from './owner-email-reader.ts'
 import { getEmailInboxById } from './repo.ts'
-import { type EmailMessageRecord } from './types.ts'
+import type { EmailMessageRecord } from './types.ts'
 
 /**
  * Loads one stored message for a delete or triage and checks `permission` on

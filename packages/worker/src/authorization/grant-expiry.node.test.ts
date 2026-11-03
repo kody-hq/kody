@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RequestContext as AuthRequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext as AuthRequestContext } from '@kody-internal/shared/request-context.ts'
 import { afterEach, expect, test, vi } from 'vitest'
 import {
 	compileAccessForActor,

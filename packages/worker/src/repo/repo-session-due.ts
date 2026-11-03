@@ -1,4 +1,4 @@
-import { type RepoSessionRow } from './types.ts'
+import type { RepoSessionRow } from './types.ts'
 
 /**
  * Read-only leftovers (never checkpointed) are cheap to lose — there is no

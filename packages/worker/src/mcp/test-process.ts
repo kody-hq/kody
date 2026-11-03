@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { spawn, type ChildProcessByStdio } from 'node:child_process'
 import path from 'node:path'
-import { type Readable } from 'node:stream'
+import type { Readable } from 'node:stream'
 import { text } from 'node:stream/consumers'
 import { setTimeout as delay } from 'node:timers/promises'
 

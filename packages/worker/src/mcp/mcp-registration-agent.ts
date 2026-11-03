@@ -1,13 +1,13 @@
-import { type McpServer as McpServerV1 } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { type McpServer as McpServerV2 } from '@modelcontextprotocol/server'
-import {
-	type CallToolResult,
-	type GetPromptResult,
-	type ToolAnnotations,
+import type { McpServer as McpServerV1 } from '@modelcontextprotocol/sdk/server/mcp.js'
+import type { McpServer as McpServerV2 } from '@modelcontextprotocol/server'
+import type {
+	CallToolResult,
+	GetPromptResult,
+	ToolAnnotations,
 } from '@modelcontextprotocol/sdk/types.js'
-import { type z } from 'zod'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
-import { type McpToolCallExtra } from './progress.ts'
+import type { z } from 'zod'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpToolCallExtra } from './progress.ts'
 
 /**
  * Tool icon metadata (protocol revision 2025-11-25, SEP-973). Advertised by

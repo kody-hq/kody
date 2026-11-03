@@ -1,6 +1,6 @@
 import { lexicalScore } from '#worker/vectorize/scoring.ts'
 
-import { type SearchEntityPlugin } from '../search-entity-plugin.ts'
+import type { SearchEntityPlugin } from '../search-entity-plugin.ts'
 import { buildEntityRef, buildSecretUsage } from '../search-format-helpers.ts'
 import { buildCandidateBaseScore } from '../search-scoring.ts'
 

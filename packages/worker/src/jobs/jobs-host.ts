@@ -1,13 +1,13 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
-import {
-	type JobsHostContract,
-	type RunDueJobsResult,
-	type RunJobNowResult,
-	type SettleHungDueJobsResult,
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type {
+	JobsHostContract,
+	RunDueJobsResult,
+	RunJobNowResult,
+	SettleHungDueJobsResult,
 } from '@kody-internal/shared/jobs/rpc.ts'
-import { type ScheduledLaneMessage } from '@kody-internal/shared/jobs/scheduled-lanes.ts'
-import { type PacedRestoreDrillCheckpoint } from '@kody-internal/shared/backup-d1-paced-drill-alert.ts'
+import type { ScheduledLaneMessage } from '@kody-internal/shared/jobs/scheduled-lanes.ts'
+import type { PacedRestoreDrillCheckpoint } from '@kody-internal/shared/backup-d1-paced-drill-alert.ts'
 import * as Sentry from '@sentry/cloudflare'
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import { getWorkerSentryOptions } from '#worker/sentry-options.ts'
@@ -22,7 +22,7 @@ import {
 	runJobNow,
 	settleHungDueJobsForUser,
 } from './service.ts'
-import { type JobRepoCheckPolicy } from './types.ts'
+import type { JobRepoCheckPolicy } from './types.ts'
 
 /**
  * `JobsHost` — the main worker's callback entrypoint for the jobs worker

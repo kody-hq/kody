@@ -1,20 +1,20 @@
-import { type McpUserContext } from '@kody-internal/shared/chat.ts'
+import type { McpUserContext } from '@kody-internal/shared/chat.ts'
 import { isRecord } from '@kody-internal/shared/is-record.ts'
 import { isOrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import {
 	personIdFromStored,
 	ownerIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import {
-	type AutomationSource,
-	type OrgRole,
-	type RequestActor,
-	type RequestAttribution,
-	type RequestContext,
-	type RequestCredential,
-	type RequestCredentialKind,
-	type RequestLineage,
-	type RequestOrg,
+import type {
+	AutomationSource,
+	OrgRole,
+	RequestActor,
+	RequestAttribution,
+	RequestContext,
+	RequestCredential,
+	RequestCredentialKind,
+	RequestLineage,
+	RequestOrg,
 } from '@kody-internal/shared/request-context.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 

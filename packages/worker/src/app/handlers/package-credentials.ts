@@ -1,4 +1,4 @@
-import { type loadPackageMappingScopeForViewer } from '#app/package-credentials-access.ts'
+import type { loadPackageMappingScopeForViewer } from '#app/package-credentials-access.ts'
 import {
 	deliverPlannedEnablementToggle,
 	planEnablementToggle,

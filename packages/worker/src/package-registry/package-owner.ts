@@ -1,9 +1,9 @@
-import { type McpUserContext } from '@kody-internal/shared/chat.ts'
-import {
-	type OwnerId,
-	type PersonId,
+import type { McpUserContext } from '@kody-internal/shared/chat.ts'
+import type {
+	OwnerId,
+	PersonId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { getMcpUserPackageScope } from './user-scope.ts'
 

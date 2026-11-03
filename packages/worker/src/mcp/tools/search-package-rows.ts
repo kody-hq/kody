@@ -7,12 +7,12 @@ import {
 	buildPackageReadmeSnippet,
 	type PackageReadmeSnippet,
 } from '#worker/package-registry/package-readme.ts'
-import { type listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'
+import type { listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'
 import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
 
-import {
-	type BuildSavedPackageSearchRowsResult,
-	type PackageSearchRow,
+import type {
+	BuildSavedPackageSearchRowsResult,
+	PackageSearchRow,
 } from './search-types.ts'
 
 function buildLeanPackageSearchProjection(

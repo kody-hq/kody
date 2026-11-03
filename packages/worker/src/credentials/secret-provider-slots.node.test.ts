@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest'
 import * as packageRepo from '#worker/package-registry/repo.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import * as publishedSource from '#worker/repo/published-source.ts'
 import { resolveSecretProviderSlots } from './secret-provider-slots.ts'
 

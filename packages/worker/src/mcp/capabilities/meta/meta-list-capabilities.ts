@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { buildDomainIndexMatches } from '#mcp/tools/search-domain-index.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 

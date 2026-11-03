@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
-import { type OrgAuditWriter } from '#worker/orgs/org-audit.ts'
+import type { OrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { applyAllMigrations } from './apply-all-migrations.ts'
 import { createD1FromSqlite } from './create-d1-from-sqlite.ts'
 

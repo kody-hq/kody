@@ -1,9 +1,9 @@
 /** @jsxImportSource @emotion/react */
 import { useEffect, useRef, useId } from 'react'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
-import { type AccountPackageSecurityAudit } from '#universal/loader-data.ts'
+import type { AccountPackageSecurityAudit } from '#universal/loader-data.ts'
 import { packageSecurityAuditAnchor } from '#universal/package-security-audit-prompt.ts'
 import { communityStatusPillBoxCss } from '#universal/community-status-pill.ts'
 import {
