@@ -127,3 +127,48 @@ test('an obsolete queued run cannot publish older source under a newer version',
 		/source commit/,
 	)
 })
+
+test('matching drafts resume while drafts from another source reserve their versions', () => {
+	const draft = {
+		draft: true,
+		tag_name: 'v0.1.6',
+		body: releaseNotes('b'.repeat(40), 'mac'),
+		assets: [{ name: 'Kody-0.1.6-mac-arm64.zip' }],
+	}
+	assert.equal(plan({ drafts: [draft] }).version, '0.1.6')
+	assert.equal(
+		plan({ drafts: [{ ...draft, body: releaseNotes('c'.repeat(40), 'mac') }] })
+			.version,
+		'0.1.7',
+	)
+	assert.equal(
+		plan({ drafts: [{ ...draft, assets: [{ name: 'unexpected.exe' }] }] })
+			.version,
+		'0.1.7',
+	)
+	assert.equal(
+		plan({ drafts: [{ ...draft, body: releaseNotes('b'.repeat(40), 'all') }] })
+			.version,
+		'0.1.7',
+	)
+	assert.equal(
+		plan({
+			drafts: [
+				{ ...draft, tag_name: 'v0.1.8', assets: [] },
+				{ ...draft, body: 'other source' },
+			],
+		}).version,
+		'0.1.8',
+	)
+	assert.equal(
+		plan({
+			drafts: [draft, { ...draft, tag_name: 'v0.1.9', body: 'other source' }],
+		}).version,
+		'0.1.10',
+	)
+	assert.equal(
+		plan({ latest: null, drafts: [{ ...draft, body: 'other source' }] })
+			.version,
+		'0.1.7',
+	)
+})

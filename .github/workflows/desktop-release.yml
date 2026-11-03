@@ -56,7 +56,8 @@ jobs:
               *) cat release-lookup-error.txt; exit 1 ;;
             esac
           fi
-          node packages/desktop/scripts/release-version.cjs < latest.json
+          gh api --paginate --slurp repos/kody-hq/kody-desktop/releases > releases.json
+          node packages/desktop/scripts/release-version.cjs --releases releases.json < latest.json
       - name: Check release credentials
         id: check
         if: steps.version.outputs.release == 'true'

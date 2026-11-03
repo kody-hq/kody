@@ -1,6 +1,11 @@
 const { appendFileSync, readFileSync, writeFileSync } = require('node:fs')
 const { spawnSync } = require('node:child_process')
-const { assertFeedCoverage, releaseNotes } = require('./release-plan.cjs')
+const {
+	assertFeedCoverage,
+	releaseNotes,
+	releasePlan,
+	assertDraft,
+} = require('./release-plan.cjs')
 
 function stableVersion(value) {
 	if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value))
@@ -24,14 +29,65 @@ function isPublishedSourceAncestor(source, sha) {
 	throw new Error(`Could not compare desktop release sources: ${result.stderr}`)
 }
 
+function compareVersions(left, right) {
+	return (
+		stableVersion(left)
+			.map((part, index) => part - stableVersion(right)[index])
+			.find((part) => part !== 0) || 0
+	)
+}
+
+function nextPatch(version) {
+	const parts = stableVersion(version)
+	parts[2]++
+	return parts.join('.')
+}
+
+function versionFromTag(tag) {
+	if (!tag.startsWith('v')) throw new Error('Unexpected desktop release tag')
+	const version = tag.slice(1)
+	stableVersion(version)
+	return version
+}
+
+function releaseAssetNames(version, scope) {
+	return releasePlan(scope, {}).matrix.include.flatMap(({ platform, arch }) => {
+		const os = platform
+		const suffix =
+			platform === 'mac'
+				? '-mac'
+				: platform === 'linux'
+					? `-linux${arch === 'x64' ? '' : `-${arch}`}`
+					: ''
+		const artifactArch =
+			platform === 'linux' && arch === 'x64' ? 'x86_64' : arch
+		const extensions =
+			platform === 'mac'
+				? ['dmg', 'zip']
+				: platform === 'win'
+					? ['exe']
+					: ['AppImage']
+		return [
+			`latest-${arch}${suffix}.yml`,
+			`SHA256SUMS-${os}-${arch}.txt`,
+			`build-info-${os}-${arch}.json`,
+			...extensions.flatMap((extension) => {
+				const name = `Kody-${version}-${os}-${artifactArch}.${extension}`
+				return [name, `${name}.blockmap`]
+			}),
+		]
+	})
+}
+
 function planVersion({
 	current,
 	latest,
 	sha,
 	platforms,
+	drafts = [],
 	isAncestor = isPublishedSourceAncestor,
 }) {
-	const baseline = stableVersion(current)
+	stableVersion(current)
 	const assets = latest?.assets.map((asset) => asset.name) || []
 	const scope =
 		platforms ||
@@ -44,28 +100,40 @@ function planVersion({
 			? 'all'
 			: 'mac')
 	assertFeedCoverage(scope, assets)
-	if (!latest) return { version: current, platforms: scope, release: true }
-	if (!latest.tag_name.startsWith('v'))
-		throw new Error('Unexpected published desktop tag')
-	const published = stableVersion(latest.tag_name.slice(1))
-	const source = latest.body?.match(
-		/^Source: https:\/\/github\.com\/kody-hq\/kody\/commit\/([a-f0-9]{40})\nPlatforms: (mac|all)$/,
-	)?.[1]
-	if (!source)
-		throw new Error('Published desktop release has no valid source commit')
-	if (latest.body === releaseNotes(sha, scope) || !isAncestor(source, sha))
-		return {
-			version: latest.tag_name.slice(1),
-			platforms: scope,
-			release: false,
+	let version = current
+	if (latest) {
+		const published = versionFromTag(latest.tag_name)
+		const source = latest.body?.match(
+			/^Source: https:\/\/github\.com\/kody-hq\/kody\/commit\/([a-f0-9]{40})\nPlatforms: (mac|all)$/,
+		)?.[1]
+		if (!source)
+			throw new Error('Published desktop release has no valid source commit')
+		if (latest.body === releaseNotes(sha, scope) || !isAncestor(source, sha))
+			return {
+				version: latest.tag_name.slice(1),
+				platforms: scope,
+				release: false,
+			}
+		version =
+			compareVersions(current, published) > 0 ? current : nextPatch(published)
+	}
+	const reserved = drafts
+		.map((draft) => ({ draft, version: versionFromTag(draft.tag_name) }))
+		.sort((a, b) => compareVersions(a.version, b.version))
+	for (const { draft, version: reservedVersion } of reserved) {
+		if (compareVersions(reservedVersion, version) < 0) continue
+		try {
+			assertDraft(
+				{ ...draft, isDraft: draft.draft },
+				sha,
+				scope,
+				releaseAssetNames(reservedVersion, scope),
+			)
+			version = reservedVersion
+		} catch {
+			version = nextPatch(reservedVersion)
 		}
-	const comparison =
-		baseline
-			.map((part, index) => part - published[index])
-			.find((part) => part !== 0) || 0
-	const next = [...published]
-	next[2]++
-	const version = comparison > 0 ? current : next.join('.')
+	}
 	stableVersion(version)
 	return { version, platforms: scope, release: true }
 }
@@ -87,6 +155,12 @@ if (require.main === module) {
 		const plan = planVersion({
 			current: require('../package.json').version,
 			latest: JSON.parse(readFileSync(0, 'utf8')),
+			drafts:
+				process.argv[2] === '--releases'
+					? JSON.parse(readFileSync(process.argv[3], 'utf8'))
+							.flat()
+							.filter((release) => release.draft)
+					: [],
 			sha: process.env.SOURCE_SHA,
 			platforms: process.env.RELEASE_PLATFORMS,
 		})

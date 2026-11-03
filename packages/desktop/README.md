@@ -225,7 +225,9 @@ package version when it is higher. It updates the package and lockfile inside
 each build, without committing version bumps back to main. Every build uses the
 same version and source commit. Re-running an already published source skips
 publication. Obsolete queued runs also skip publication so older source cannot
-replace a newer build. Missing source history fails before signing.
+replace a newer build. Missing source history fails before signing. Matching
+drafts resume after a failed upload, while conflicting drafts reserve their
+version so the next run advances past them automatically.
 
 The default `auto` scope preserves the platforms in the published feed, starting
 with Apple silicon and Intel Mac installers. Run the workflow manually on main
