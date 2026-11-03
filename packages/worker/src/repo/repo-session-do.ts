@@ -128,6 +128,7 @@ import {
 	bindPublishHeavyWork,
 	createInlinePublishWorkRunner,
 	createIsolatedPublishWorkRunner,
+	publishWorkIgnoredDeclarationFiles,
 	runStagedPublishWorkStep,
 	stagePublishWorkFiles,
 	type ExternalRefCloneRequest,
@@ -135,7 +136,12 @@ import {
 	type PublishWorkChecksInput,
 	type PublishWorkRequest,
 	type PublishWorkRunner,
+	type PublishWorkTree,
 } from './publish-work.ts'
+import {
+	createSourceRootKodyIgnoreMatcher,
+	kodyIgnoreFilePath,
+} from './kodyignore.ts'
 import {
 	buildWorkspaceSqliteTooBigCallerMessage,
 	cloneExternalPublishWorkspace,
@@ -988,13 +994,32 @@ class RepoSessionBase extends DurableObject<Env> {
 	 * One workspace walk that yields both the relative-path file map and the
 	 * tree hash used for checks_outdated. Publish reuses this instead of
 	 * globbing and re-reading every file three times.
+	 *
+	 * With `kodyIgnoreSourceRoot`, files that package's `.kodyignore` drops
+	 * stay in the tree hash but are left out of `files`, so they are never
+	 * staged for (or loaded by) the publish work isolates.
 	 */
 	private async collectWorkspacePublishSnapshot(
 		root = repoSessionWorkspacePrefix,
-	): Promise<{ files: Record<string, string>; treeHash: string }> {
+		options: { kodyIgnoreSourceRoot?: string } = {},
+	): Promise<{
+		files: Record<string, string>
+		kodyIgnoredPaths: Array<string>
+		treeHash: string
+	}> {
 		const entries = await this.listWorkspaceFileEntries(root)
 		const rootPrefix = `${root.replace(/\/+$/, '')}/`
+		const ignoredPath =
+			options.kodyIgnoreSourceRoot === undefined
+				? null
+				: createSourceRootKodyIgnoreMatcher({
+						ignoreFileContent: await this.workspace.readFile(
+							`${rootPrefix}${kodyIgnoreFilePath(options.kodyIgnoreSourceRoot)}`,
+						),
+						sourceRoot: options.kodyIgnoreSourceRoot,
+					})
 		const files: Record<string, string> = {}
+		const kodyIgnoredPaths: Array<string> = []
 		const chunks: Array<string> = []
 		for (const entry of entries) {
 			// Raw bytes — UTF-8 `readFile` replaces invalid sequences with
@@ -1014,7 +1039,9 @@ class RepoSessionBase extends DurableObject<Env> {
 				? entry.path.slice(rootPrefix.length)
 				: entry.path
 			const content = bytesToSnapshotString(bytes, relativePath)
-			files[relativePath] = content
+			const ignored = ignoredPath?.(relativePath) ?? null
+			if (ignored === null) files[relativePath] = content
+			else kodyIgnoredPaths.push(ignored)
 			chunks.push(`${entry.path}\n${content}\n`)
 		}
 		const data = new TextEncoder().encode(chunks.join(''))
@@ -1022,7 +1049,26 @@ class RepoSessionBase extends DurableObject<Env> {
 		const treeHash = [...new Uint8Array(digest)]
 			.map((byte) => byte.toString(16).padStart(2, '0'))
 			.join('')
-		return { files, treeHash }
+		return { files, kodyIgnoredPaths, treeHash }
+	}
+
+	/**
+	 * Session snapshot for the publish work runner: the full-tree hash plus
+	 * the `.kodyignore`-filtered tree every staged step reads. Checks apply
+	 * `.kodyignore` to package and plain-repo sources alike.
+	 */
+	private async collectWorkspacePublishWorkTree(source: EntitySourceRow) {
+		const snapshot = await this.collectWorkspacePublishSnapshot(
+			repoSessionWorkspacePrefix,
+			{ kodyIgnoreSourceRoot: source.source_root },
+		)
+		const tree: PublishWorkTree = {
+			files: snapshot.files,
+			kodyIgnoredDeclarationFiles: publishWorkIgnoredDeclarationFiles(
+				snapshot.kodyIgnoredPaths,
+			),
+		}
+		return { tree, treeHash: snapshot.treeHash }
 	}
 
 	private async computeTreeHash(root = repoSessionWorkspacePrefix) {
@@ -2074,7 +2120,7 @@ class RepoSessionBase extends DurableObject<Env> {
 				'bootstrap-repo-checks',
 				async () => {
 					const checks = await this.runSessionTreeChecks({
-						files: (await this.collectWorkspacePublishSnapshot()).files,
+						tree: (await this.collectWorkspacePublishWorkTree(source)).tree,
 						userId: input.userId,
 						checks: {
 							mode: 'session',
@@ -2889,9 +2935,9 @@ class RepoSessionBase extends DurableObject<Env> {
 		)
 		// One workspace walk yields both the checked tree and its hash; the
 		// checks themselves run off this Durable Object.
-		const snapshot = await this.collectWorkspacePublishSnapshot()
+		const snapshot = await this.collectWorkspacePublishWorkTree(source)
 		const result = await this.runSessionTreeChecks({
-			files: snapshot.files,
+			tree: snapshot.tree,
 			userId: input.userId,
 			checks: {
 				mode: 'session',
@@ -3185,14 +3231,14 @@ class RepoSessionBase extends DurableObject<Env> {
 
 	/** Checks over a collected session tree, run through the publish runner. */
 	private async runSessionTreeChecks(input: {
-		files: Record<string, string>
+		tree: PublishWorkTree
 		userId: OwnerId
 		checks: PublishWorkChecksInput
 	}) {
 		const runner = this.publishWorkRunner()
 		const stagingKey = await runner.stage({
 			userId: input.userId,
-			files: input.files,
+			tree: input.tree,
 		})
 		try {
 			return await bindPublishHeavyWork({
@@ -3235,9 +3281,17 @@ class RepoSessionBase extends DurableObject<Env> {
 		// pre-clone D1 row: a concurrent snapshot-failure revert can clear
 		// published_commit so publish still finalizes, and UTF-8 check source
 		// files would corrupt PNG magic.
-		const files = await publishClone.collectFiles()
+		const collected = await publishClone.collectFiles({
+			sourceRoot: request.source.source_root,
+		})
+		const tree: PublishWorkTree = {
+			files: collected.files,
+			kodyIgnoredDeclarationFiles: publishWorkIgnoredDeclarationFiles(
+				collected.ignoredPaths,
+			),
+		}
 		return {
-			files,
+			tree,
 			headCommit: publishClone.headCommit,
 			isFastForward,
 			phaseTimings,
@@ -3260,7 +3314,7 @@ class RepoSessionBase extends DurableObject<Env> {
 			const stagingKey = await stagePublishWorkFiles({
 				kv: this.env.BUNDLE_ARTIFACTS_KV,
 				userId: request.userId,
-				files: cloned.files,
+				tree: cloned.tree,
 			})
 			return {
 				stagingKey,
@@ -4050,7 +4104,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		}
 		const sessionBranch = sessionRow.session_branch
 		const checkStatus = await this.readCheckStatus()
-		const workspaceSnapshot = await this.collectWorkspacePublishSnapshot()
+		const workspaceSnapshot = await this.collectWorkspacePublishWorkTree(source)
 		const currentTreeHash = workspaceSnapshot.treeHash
 		if (
 			(!input.force && !checkStatus.runId) ||
@@ -4103,7 +4157,7 @@ class RepoSessionBase extends DurableObject<Env> {
 			})
 		}
 		if (source.entity_kind === 'package') {
-			const afterContent = workspaceSnapshot.files[source.manifest_path]
+			const afterContent = workspaceSnapshot.tree.files[source.manifest_path]
 			if (typeof afterContent !== 'string') {
 				throw new Error(`Manifest "${source.manifest_path}" was not found.`)
 			}
@@ -4174,7 +4228,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		const publishWork = this.publishWorkRunner()
 		const publishStagingKey = await publishWork.stage({
 			userId: input.userId,
-			files: workspaceSnapshot.files,
+			tree: workspaceSnapshot.tree,
 		})
 		try {
 			const work = bindPublishHeavyWork({

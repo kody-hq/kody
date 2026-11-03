@@ -26,7 +26,6 @@ import type {
 } from '#worker/package-registry/types.ts'
 import { runAuthoringPublishChecks } from './authoring-publish-checks.ts'
 import {
-	createSnapshotFilesWorkspace,
 	runRepoChecks,
 	type RepoCheckKind,
 	type RepoCheckResult,
@@ -42,7 +41,9 @@ import {
 	publishComputeLimitMessage,
 	type RepoCheckStep,
 } from './isolated-runner-limit-message.ts'
-import { omitKodyIgnoredFiles } from './kodyignore.ts'
+import { normalizeRepoWorkspacePath } from './manifest.ts'
+import { isTypeDeclarationFilePath } from '#worker/package-runtime/static-kody-imports.ts'
+import { partitionKodyIgnoredFiles } from './kodyignore.ts'
 import {
 	largestNonRuntimePaths,
 	type LargePathHint,
@@ -72,6 +73,44 @@ type StagedPublishWorkManifest = {
 	version: 1
 	chunkCount: number
 	byteLength: number
+	kodyIgnoredDeclarationFiles?: Array<string>
+}
+
+/**
+ * The tree every publish work step reads: `.kodyignore` already applied, so
+ * ignored files are never staged, loaded, or counted by a step isolate.
+ */
+export type PublishWorkTree = {
+	/** Repo-relative snapshot files `.kodyignore` keeps. */
+	files: Record<string, string>
+	/**
+	 * Source-root-relative `.d.ts` paths `.kodyignore` dropped, so checks can
+	 * still warn that the typecheck runs without them.
+	 */
+	kodyIgnoredDeclarationFiles: Array<string>
+}
+
+/** Ignored declaration files from a list of `.kodyignore`d paths. */
+export function publishWorkIgnoredDeclarationFiles(
+	ignoredPaths: Iterable<string>,
+) {
+	return [...ignoredPaths].filter((path) => isTypeDeclarationFilePath(path))
+}
+
+/** Applies the package's `.kodyignore` before a tree is staged. */
+export function createPublishWorkTree(input: {
+	files: Record<string, string>
+	sourceRoot: string
+}): PublishWorkTree {
+	const { kept, ignoredPaths } = partitionKodyIgnoredFiles(
+		input.files,
+		input.sourceRoot,
+	)
+	return {
+		files: kept,
+		kodyIgnoredDeclarationFiles:
+			publishWorkIgnoredDeclarationFiles(ignoredPaths),
+	}
 }
 
 function stagingChunkKey(stagingKey: string, index: number) {
@@ -86,10 +125,10 @@ function stagingChunkKey(stagingKey: string, index: number) {
 export async function stagePublishWorkFiles(input: {
 	kv: KVNamespace
 	userId: string
-	files: Record<string, string>
+	tree: PublishWorkTree
 }) {
 	const stagingKey = isolatedCheckStagingKeyForUser(input.userId)
-	const bytes = new TextEncoder().encode(JSON.stringify(input.files))
+	const bytes = new TextEncoder().encode(JSON.stringify(input.tree.files))
 	const chunkCount = Math.max(
 		1,
 		Math.ceil(bytes.byteLength / stagingChunkMaxBytes),
@@ -107,6 +146,9 @@ export async function stagePublishWorkFiles(input: {
 		version: 1,
 		chunkCount,
 		byteLength: bytes.byteLength,
+		...(input.tree.kodyIgnoredDeclarationFiles.length > 0
+			? { kodyIgnoredDeclarationFiles: input.tree.kodyIgnoredDeclarationFiles }
+			: {}),
 	}
 	await input.kv.put(stagingKey, JSON.stringify(manifest), {
 		expirationTtl: stagingTtlSeconds,
@@ -117,7 +159,7 @@ export async function stagePublishWorkFiles(input: {
 export async function loadStagedPublishWorkFiles(input: {
 	kv: KVNamespace
 	stagingKey: string
-}): Promise<Record<string, string> | null> {
+}): Promise<PublishWorkTree | null> {
 	const manifest = await input.kv.get<StagedPublishWorkManifest>(
 		input.stagingKey,
 		'json',
@@ -135,7 +177,13 @@ export async function loadStagedPublishWorkFiles(input: {
 		offset += chunk.byteLength
 	}
 	if (offset !== manifest.byteLength) return null
-	return JSON.parse(new TextDecoder().decode(bytes)) as Record<string, string>
+	return {
+		files: JSON.parse(new TextDecoder().decode(bytes)) as Record<
+			string,
+			string
+		>,
+		kodyIgnoredDeclarationFiles: manifest.kodyIgnoredDeclarationFiles ?? [],
+	}
 }
 
 async function discardStagedPublishWorkFiles(input: {
@@ -156,24 +204,43 @@ async function discardStagedPublishWorkFiles(input: {
 	}
 }
 
+function isSnapshotBinaryFile(path: string, content: string) {
+	return content.includes('\0') || shouldStoreArtifactBlobAsLatin1(path)
+}
+
 /**
  * Check workspace over a snapshot file map (`bytesToSnapshotString`
- * encoding). Binary blobs are passed by size only, the same shape
- * `packageCheck` (`kody dev check`) checks, so publish and dev check agree.
+ * encoding), read in place rather than copied. Binary blobs read as empty
+ * and stat by size, the same shape `packageCheck` (`kody dev check`)
+ * checks, so publish and dev check agree.
  */
 export function createPublishSnapshotCheckWorkspace(
 	files: Record<string, string>,
 ) {
-	const textFiles: Record<string, string> = {}
-	const binaryFileSizes: Record<string, number> = {}
-	for (const [path, content] of Object.entries(files)) {
-		if (content.includes('\0') || shouldStoreArtifactBlobAsLatin1(path)) {
-			binaryFileSizes[path] = content.length
-		} else {
-			textFiles[path] = content
-		}
+	const snapshotFile = (path: string) => {
+		const normalized = normalizeRepoWorkspacePath(path)
+		return Object.hasOwn(files, normalized)
+			? { path: normalized, content: files[normalized] ?? '' }
+			: null
 	}
-	return createSnapshotFilesWorkspace(textFiles, { binaryFileSizes })
+	return {
+		async readFile(path: string) {
+			const file = snapshotFile(path)
+			if (!file) return null
+			return isSnapshotBinaryFile(file.path, file.content) ? '' : file.content
+		},
+		async stat(path: string) {
+			const file = snapshotFile(path)
+			if (!file || !isSnapshotBinaryFile(file.path, file.content)) return null
+			return { size: file.content.length }
+		},
+		async glob() {
+			return Object.keys(files).map((path) => ({
+				path,
+				type: 'file' as const,
+			}))
+		},
+	}
 }
 
 export type PublishWorkChecksInput = {
@@ -296,11 +363,11 @@ export type ExternalRefCloneResult = {
 	phaseTimings: PublishPhaseTimings
 }
 
-/** Clone + collect, run wherever the runner runs it. */
+/** Clone + collect (`.kodyignore` applied), run wherever the runner runs it. */
 export type ExternalRefCloneFiles = (
 	request: ExternalRefCloneRequest,
 ) => Promise<{
-	files: Record<string, string>
+	tree: PublishWorkTree
 	headCommit: string | null
 	isFastForward: boolean | null
 	phaseTimings: PublishPhaseTimings
@@ -340,8 +407,9 @@ export type PublishHeavyWork = {
  * callers (published source sync, ref repair) use it, and publish work
  * isolates run it for the one step they were started for.
  *
- * `publishedFiles` is the `.kodyignore`-filtered published set; `checks`
- * read `checkFiles` (or `checkWorkspace`) and apply `.kodyignore` themselves.
+ * `publishedFiles` is the `.kodyignore`-filtered published set, and checks
+ * read it too (or `checkWorkspace`). `kodyIgnoredDeclarationFiles` names the
+ * `.d.ts` files filtering dropped, for the typecheck warning.
  */
 export function createInlinePublishHeavyWork(input: {
 	env: Env
@@ -349,7 +417,7 @@ export function createInlinePublishHeavyWork(input: {
 	publishedFiles: Record<string, string>
 	/** Source root the published set is keyed under, for scans. */
 	publishedFilesSourceRoot?: string
-	checkFiles?: Record<string, string>
+	kodyIgnoredDeclarationFiles?: Array<string>
 	checkWorkspace?: Parameters<typeof runRepoChecks>[0]['workspace']
 	onStep?: (step: RepoCheckStep) => Promise<void>
 }): PublishHeavyWork {
@@ -358,7 +426,7 @@ export function createInlinePublishHeavyWork(input: {
 		async runChecks(checksInput) {
 			const workspace =
 				input.checkWorkspace ??
-				createPublishSnapshotCheckWorkspace(input.checkFiles ?? publishedFiles)
+				createPublishSnapshotCheckWorkspace(publishedFiles)
 			if (!input.userId) {
 				throw new Error('Publish checks need the owning user id.')
 			}
@@ -376,6 +444,9 @@ export function createInlinePublishHeavyWork(input: {
 					: {}),
 				phaseTimings,
 				...(input.onStep ? { onStep: input.onStep } : {}),
+				...(input.kodyIgnoredDeclarationFiles?.length
+					? { kodyIgnoredDeclarationFiles: input.kodyIgnoredDeclarationFiles }
+					: {}),
 			}
 			const checks =
 				checksInput.mode === 'authoring'
@@ -545,8 +616,12 @@ export function createInlinePublishHeavyWork(input: {
 	}
 }
 
-const publishWorkOpSteps: Record<PublishWorkOp, RepoCheckStep> = {
-	checks: 'source-walk',
+/**
+ * Step each op records once its staged tree is loaded. Checks record their
+ * own finer steps (source walk, credentials, lint, bundle, typecheck).
+ */
+const publishWorkOpSteps: Record<PublishWorkOp, RepoCheckStep | null> = {
+	checks: null,
 	notices: 'credentials',
 	approval: 'package-checks',
 	'write-snapshot': 'finalize',
@@ -556,25 +631,24 @@ const publishWorkOpSteps: Record<PublishWorkOp, RepoCheckStep> = {
 	'refresh-already-published-snapshot': 'finalize',
 }
 
-/** Run one publish work step over a file tree already in this isolate. */
+/** Run one publish work step over a staged tree already in this isolate. */
 export async function runPublishWorkStep<Op extends PublishWorkOp>(input: {
 	env: Env
 	request: PublishWorkRequestFor<Op>
-	files: Record<string, string>
+	tree: PublishWorkTree
 	onStep?: (step: RepoCheckStep) => Promise<void>
 }): Promise<PublishWorkResult<Op>> {
-	const { request, files } = input
-	await input.onStep?.(publishWorkOpSteps[request.op])
+	const { request, tree } = input
+	const opStep = publishWorkOpSteps[request.op]
+	if (opStep) await input.onStep?.(opStep)
 	const source =
 		'source' in request.input ? (request.input.source as EntitySourceRow) : null
 	const work = createInlinePublishHeavyWork({
 		env: input.env,
 		userId: request.userId,
-		publishedFiles: source
-			? omitKodyIgnoredFiles(files, source.source_root)
-			: files,
+		publishedFiles: tree.files,
 		...(source ? { publishedFilesSourceRoot: source.source_root } : {}),
-		checkFiles: files,
+		kodyIgnoredDeclarationFiles: tree.kodyIgnoredDeclarationFiles,
 		...(input.onStep ? { onStep: input.onStep } : {}),
 	})
 	const run = async (): Promise<unknown> => {
@@ -628,11 +702,12 @@ export async function runStagedPublishWorkStep(input: {
 			'Publish work staging key does not belong to the requesting user.',
 		)
 	}
-	const files = await loadStagedPublishWorkFiles({
+	await input.onStep?.('staging')
+	const tree = await loadStagedPublishWorkFiles({
 		kv: input.env.BUNDLE_ARTIFACTS_KV,
 		stagingKey: input.request.stagingKey,
 	})
-	if (!files) {
+	if (!tree) {
 		throw new Error(
 			'Publish work staging data expired or is missing; retry the publish.',
 		)
@@ -640,7 +715,7 @@ export async function runStagedPublishWorkStep(input: {
 	return await runPublishWorkStep({
 		env: input.env,
 		request: input.request,
-		files,
+		tree,
 		...(input.onStep ? { onStep: input.onStep } : {}),
 	})
 }
@@ -648,10 +723,8 @@ export async function runStagedPublishWorkStep(input: {
 export type PublishWorkRunner = {
 	/** True when steps run in throwaway isolates (production bindings). */
 	isolated: boolean
-	stage(input: {
-		userId: OwnerId
-		files: Record<string, string>
-	}): Promise<string>
+	/** Stage a tree built by {@link createPublishWorkTree}. */
+	stage(input: { userId: OwnerId; tree: PublishWorkTree }): Promise<string>
 	run<Op extends PublishWorkOp>(
 		request: PublishWorkRequestFor<Op>,
 	): Promise<PublishWorkResult<Op>>
@@ -698,11 +771,11 @@ async function stagedLargestNonRuntimePaths(input: {
 	request: PublishWorkRequest
 }): Promise<Array<LargePathHint>> {
 	try {
-		const files = await loadStagedPublishWorkFiles({
+		const tree = await loadStagedPublishWorkFiles({
 			kv: input.kv,
 			stagingKey: input.request.stagingKey,
 		})
-		if (!files) return []
+		if (!tree) return []
 		const requestInput = input.request.input as {
 			sourceRoot?: unknown
 			source?: { source_root?: unknown }
@@ -713,7 +786,7 @@ async function stagedLargestNonRuntimePaths(input: {
 				: typeof requestInput.source?.source_root === 'string'
 					? requestInput.source.source_root
 					: ''
-		return largestNonRuntimePaths({ files, sourceRoot })
+		return largestNonRuntimePaths({ files: tree.files, sourceRoot })
 	} catch {
 		return []
 	}
@@ -747,7 +820,7 @@ export function createIsolatedPublishWorkRunner(
 			return await stagePublishWorkFiles({
 				kv,
 				userId: input.userId,
-				files: input.files,
+				tree: input.tree,
 			})
 		},
 		async run(request) {
@@ -758,8 +831,12 @@ export function createIsolatedPublishWorkRunner(
 				)) as PublishWorkResult<typeof request.op>
 			} catch (error) {
 				if (!isResourceLimitReset(error)) throw error
+				// Nothing recorded: the reset came before the step's own first
+				// marker (loading the staged tree, for checks).
 				const step =
-					(await readLastCheckStep(stub)) ?? publishWorkOpSteps[request.op]
+					(await readLastCheckStep(stub)) ??
+					publishWorkOpSteps[request.op] ??
+					'staging'
 				const largestPaths = await stagedLargestNonRuntimePaths({
 					kv,
 					request,
@@ -811,21 +888,21 @@ export function createInlinePublishWorkRunner(input: {
 	cloneExternalRefFiles: ExternalRefCloneFiles
 	onStep?: (step: RepoCheckStep) => Promise<void>
 }): PublishWorkRunner {
-	const staged = new Map<string, Record<string, string>>()
+	const staged = new Map<string, PublishWorkTree>()
 	const stage = async (stageInput: {
 		userId: OwnerId
-		files: Record<string, string>
+		tree: PublishWorkTree
 	}) => {
 		const stagingKey = isolatedCheckStagingKeyForUser(stageInput.userId)
-		staged.set(stagingKey, stageInput.files)
+		staged.set(stagingKey, stageInput.tree)
 		return stagingKey
 	}
 	return {
 		isolated: false,
 		stage,
 		async run(request) {
-			const files = staged.get(request.stagingKey)
-			if (!files) {
+			const tree = staged.get(request.stagingKey)
+			if (!tree) {
 				throw new Error(
 					'Publish work staging data expired or is missing; retry the publish.',
 				)
@@ -833,7 +910,7 @@ export function createInlinePublishWorkRunner(input: {
 			return await runPublishWorkStep({
 				env: input.env,
 				request,
-				files,
+				tree,
 				...(input.onStep ? { onStep: input.onStep } : {}),
 			})
 		},
@@ -843,7 +920,7 @@ export function createInlinePublishWorkRunner(input: {
 			return {
 				stagingKey: await stage({
 					userId: request.userId,
-					files: cloned.files,
+					tree: cloned.tree,
 				}),
 				headCommit: cloned.headCommit,
 				isFastForward: cloned.isFastForward,

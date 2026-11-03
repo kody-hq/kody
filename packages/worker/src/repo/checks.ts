@@ -1770,6 +1770,11 @@ export async function runRepoChecks(input: {
 	 */
 	onStep?: (step: RepoCheckStep) => Promise<void>
 	/**
+	 * Source-root-relative `.d.ts` paths `.kodyignore` already removed from
+	 * `workspace` before it was staged, warned about like walk-time skips.
+	 */
+	kodyIgnoredDeclarationFiles?: Array<string>
+	/**
 	 * When false, the warn-only capability check reads only this package's
 	 * modules. Platform codemods pass false: they compute the closure once
 	 * themselves, and its findings never fail a check.
@@ -1832,7 +1837,9 @@ export async function runRepoChecks(input: {
 		'',
 	)
 	await input.onStep?.('source-walk')
-	const kodyIgnoredDeclarationFiles: Array<string> = []
+	const kodyIgnoredDeclarationFiles = [
+		...(input.kodyIgnoredDeclarationFiles ?? []),
+	]
 	const sourceWalk = await (async () => {
 		const collected: Record<string, string> = {}
 		let fileCount = 0

@@ -9,6 +9,10 @@ import {
 	wrapArtifactsGitHttpError,
 } from './artifacts-git-retry.ts'
 import { createEphemeralGitWorkspace } from './ephemeral-git-workspace.ts'
+import {
+	createSourceRootKodyIgnoreMatcher,
+	kodyIgnoreFilePath,
+} from './kodyignore.ts'
 import { loadIsomorphicGit } from './isomorphic-git-lazy.ts'
 import type { RepoPublishWorkspace } from './external-publish.ts'
 import type { PublishGitNoteFileSystem } from './publish-git-notes.ts'
@@ -51,7 +55,15 @@ export type ExternalPublishCloneResult = {
 	releaseGitObjects(): Promise<void>
 	filesystem: PublishGitNoteFileSystem
 	dir: string
-	collectFiles(): Promise<Record<string, string>>
+	/**
+	 * Flattens the checked-out tree. With `sourceRoot`, files the package's
+	 * `.kodyignore` drops are never read or counted toward the snapshot
+	 * limit; their source-root-relative paths come back in `ignoredPaths`.
+	 */
+	collectFiles(options?: { sourceRoot?: string }): Promise<{
+		files: Record<string, string>
+		ignoredPaths: Array<string>
+	}>
 }
 
 export function buildExternalPublishSnapshotTooLargeMessage(input: {
@@ -87,16 +99,35 @@ async function collectPublishWorkspaceFiles(input: {
 	filesystem: PublishGitNoteFileSystem
 	dir: string
 	listFiles: () => Promise<Array<string>>
+	sourceRoot?: string
 	maxTotalBytes?: number
 }) {
 	const dirPrefix = input.dir.endsWith('/') ? input.dir.slice(0, -1) : input.dir
 	const maxTotalBytes =
 		input.maxTotalBytes ?? externalPublishSnapshotMaxTotalBytes
+	const absolutePath = (relative: string) =>
+		`${dirPrefix}/${relative}`.replace(/\/+/g, '/')
+	const ignoredPath =
+		input.sourceRoot === undefined
+			? null
+			: createSourceRootKodyIgnoreMatcher({
+					ignoreFileContent: await readOptionalText(
+						input.filesystem,
+						absolutePath(kodyIgnoreFilePath(input.sourceRoot)),
+					),
+					sourceRoot: input.sourceRoot,
+				})
 	const files: Record<string, string> = {}
+	const ignoredPaths: Array<string> = []
 	let totalBytes = 0
 	for (const relative of await input.listFiles()) {
 		if (relative.split('/').includes('.git')) continue
-		const absolute = `${dirPrefix}/${relative}`.replace(/\/+/g, '/')
+		const ignored = ignoredPath?.(relative) ?? null
+		if (ignored !== null) {
+			ignoredPaths.push(ignored)
+			continue
+		}
+		const absolute = absolutePath(relative)
 		let bytes: Uint8Array
 		try {
 			// Raw bytes — UTF-8 `readFile` replaces invalid sequences with
@@ -119,7 +150,18 @@ async function collectPublishWorkspaceFiles(input: {
 		}
 		files[relative] = bytesToSnapshotString(bytes, relative)
 	}
-	return files
+	return { files, ignoredPaths }
+}
+
+async function readOptionalText(
+	filesystem: PublishGitNoteFileSystem,
+	path: string,
+) {
+	try {
+		return await filesystem.readFile(path)
+	} catch {
+		return null
+	}
 }
 
 function buildPublishWorkspaceFromCheckout(input: {
@@ -354,11 +396,14 @@ export async function cloneExternalPublishWorkspace(input: {
 		headCommit,
 		dir,
 		filesystem: workspace.filesystem,
-		collectFiles: async () =>
+		collectFiles: async (options) =>
 			await collectPublishWorkspaceFiles({
 				filesystem: workspace.filesystem,
 				dir,
 				listFiles,
+				...(options?.sourceRoot !== undefined
+					? { sourceRoot: options.sourceRoot }
+					: {}),
 			}),
 		releaseGitObjects: async () => {
 			// Warm the path cache before deleting the index so glob/collectFiles

@@ -1721,8 +1721,8 @@ test('already_published external publish refreshes the snapshot from the in-memo
 		'package.json': demoPackageJson,
 		'index.ts': 'export const fromClone = true\n',
 	}
-	// [stored snapshot, force_artifact_rebuild, invalidateExistingArtifacts
-	// (null = snapshot left untouched)]
+	const collected = { files: cloneFiles, ignoredPaths: [] }
+	// [stored snapshot, force_artifact_rebuild, invalidate (null = untouched)]
 	const cases = [
 		[null, false, false],
 		[{ files: cloneFiles }, false, null],
@@ -1740,7 +1740,7 @@ test('already_published external publish refreshes the snapshot from the in-memo
 		mockModule.loadPublishedSourceSnapshot.mockResolvedValueOnce(
 			stored as never,
 		)
-		const collectFiles = vi.fn(async () => cloneFiles)
+		const collectFiles = vi.fn(async () => collected)
 		mockExternalClone({ collectFiles })
 
 		await expect(publishExternal()).resolves.toEqual({
