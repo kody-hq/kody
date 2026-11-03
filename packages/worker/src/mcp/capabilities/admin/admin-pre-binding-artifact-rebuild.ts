@@ -46,6 +46,15 @@ const inputSchema = z.object({
 		.max(90)
 		.optional()
 		.describe('Optional canary: only these package owner org/user ids.'),
+	maxTargets: z
+		.number()
+		.int()
+		.min(1)
+		.max(200)
+		.optional()
+		.describe(
+			'Apply only: rebuild at most this many stale targets per package in this call, so a package with many targets fits the execute time limit. Call again with packageIds until its outcome is rebuilt.',
+		),
 })
 
 const outcomeSchema = z.object({
@@ -56,9 +65,12 @@ const outcomeSchema = z.object({
 	staleTargets: z.number().int().nonnegative(),
 	staleMultiPackageTargets: z.number().int().nonnegative(),
 	otherCommitTargets: z.number().int().nonnegative().optional(),
+	remainingTargets: z.number().int().nonnegative().optional(),
 	outcome: z.enum([
 		'would_rebuild',
 		'rebuilt',
+		'partially_rebuilt',
+		'rebuilt_unverified',
 		'current',
 		'other_commit_artifacts',
 		'skipped_unpublished',
@@ -80,7 +92,12 @@ const outputSchema = z.object({
 		'Stale targets whose bundle inlines another saved package (load sites cannot bind these in place).',
 	),
 	rebuiltPackages: count,
-	stillStaleAfterRebuild: count,
+	partiallyRebuiltPackages: count.describe(
+		'Packages that still have stale targets because maxTargets capped this call.',
+	),
+	stillStaleAfterRebuild: count.describe(
+		'Rebuilt packages whose targets did not read as current right away (rebuilt_unverified). Stored artifact reads can lag the write; re-check with a dryRun later.',
+	),
 	failedPackages: count,
 	currentPackages: count,
 	otherCommitPackages: count.describe(
@@ -100,7 +117,7 @@ export const adminPreBindingArtifactRebuildCapability = defineDomainCapability(
 		name: 'adminPreBindingArtifactRebuild',
 		contextRuns: 'deny',
 		description:
-			'Fleet scan/apply for published packages whose stored isolate bundles (module, importable, job, app; not browser app-client) were built before package fetch/kody became lexically bound (GHSA-5fv3), including bundles that inline other packages. In those bundles a wrapper package can be attributed to its caller. Rebuilds artifacts only at the current published commit (no source, version, visibility, enablement, job, or hostname change) and rechecks each target afterwards. One page per execute; resume with nextCursor until null. dryRun default is true.',
+			'Fleet scan/apply for published packages whose stored isolate bundles (module, importable, job, app; not browser app-client) were built before package fetch/kody became lexically bound (GHSA-5fv3), including bundles that inline other packages. In those bundles a wrapper package can be attributed to its caller. Rebuilds artifacts only at the current published commit (no source, version, visibility, enablement, job, or hostname change) and rechecks each target afterwards (a target that does not read as current yet is reported rebuilt_unverified, not failed). One page per execute; resume with nextCursor until null. Pass maxTargets to split a package with many targets across calls. dryRun default is true.',
 		keywords: [
 			'admin',
 			'package',
@@ -127,6 +144,7 @@ export const adminPreBindingArtifactRebuildCapability = defineDomainCapability(
 						limit: args.limit,
 						packageIds: args.packageIds,
 						ownerUserIds: args.ownerUserIds,
+						maxTargets: args.maxTargets,
 					}),
 				{
 					successReason: (result) =>

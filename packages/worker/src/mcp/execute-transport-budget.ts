@@ -5,6 +5,23 @@
  */
 export const hostedExecuteTransportBudgetMs = 45_000
 
+/**
+ * Open API `/v1/execute` callers (the CLI) are not MCP clients with a 60s
+ * tools/call deadline, so they wait out the whole 90s sandbox budget plus
+ * setup instead of getting a follow handle for work that would then have to
+ * finish inside `waitUntil`.
+ */
+export const openApiExecuteTransportBudgetMs = 105_000
+
+/**
+ * A plain Worker request (stateless MCP lane, Open API) keeps `waitUntil`
+ * work alive for about 30s after the response. A run still going at the
+ * transport budget is stopped this long after the follow response, while the
+ * isolate can still record a timeout, instead of being cut off mid-flight and
+ * left `running` until stale reconciliation marks it `platform_interrupted`.
+ */
+export const detachedExecuteWorkLimitMs = 20_000
+
 const defaultExecuteIdempotencyKeyPrefix = 'execute:'
 
 /** Server-assigned retry token when the caller did not pass one. */
@@ -30,6 +47,8 @@ export type DetachableAbortSignal = {
 	 * handle so completing the HTTP response does not cancel the sandbox.
 	 */
 	detach: () => void
+	/** Abort the sandbox directly, even after `detach`. */
+	abort: (reason: unknown) => void
 }
 
 /**
@@ -45,6 +64,9 @@ export function createDetachableAbortSignal(
 		return {
 			signal: controller.signal,
 			detach() {},
+			abort(reason) {
+				if (!controller.signal.aborted) controller.abort(reason)
+			},
 		}
 	}
 	let detached = false
@@ -64,6 +86,9 @@ export function createDetachableAbortSignal(
 		detach() {
 			detached = true
 			upstream.removeEventListener('abort', forward)
+		},
+		abort(reason) {
+			if (!controller.signal.aborted) controller.abort(reason)
 		},
 	}
 }
