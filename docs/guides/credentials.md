@@ -339,6 +339,10 @@ packages: `credentials.suppliersEnabled` is `true` when it is. While it is
 `false`, `supplier` and `required` are ignored and needs resolve without a
 supplier.
 
+`packageGet` also lists `credentials.invalidSlots`: published `kody.credentials`
+slots that fail the current slot schema, each with its validation message.
+Nothing fills those slots; fix them and republish.
+
 Executor needs default to required. Set `required: false` to make a need
 optional. Required needs cannot be skipped in consent, and the app does not
 serve until the visitor has connected a usable credential. A direct run that

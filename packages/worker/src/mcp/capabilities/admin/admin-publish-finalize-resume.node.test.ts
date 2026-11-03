@@ -173,6 +173,25 @@ test('apply finishes the live commit and rebuilds its artifacts without moving t
 	)
 })
 
+test('apply with maxTargets reports a partial rebuild so the caller can call again', async () => {
+	mocks.rebuildPublishedPackageArtifactsViaRepoSession.mockResolvedValueOnce({
+		rebuiltTargetCount: 25,
+		remainingTargetCount: 125,
+	})
+	const result = await adminPublishFinalizeResumeCapability.handler(
+		{ packageIds: ['package-1'], dryRun: false, maxTargets: 25 },
+		createContext(['admin']),
+	)
+	expect(result.outcomes[0]).toMatchObject({
+		outcome: 'partially_resumed',
+		rebuiltTargetCount: 25,
+		remainingTargetCount: 125,
+	})
+	expect(
+		mocks.rebuildPublishedPackageArtifactsViaRepoSession,
+	).toHaveBeenCalledWith(expect.objectContaining({ maxTargets: 25 }))
+})
+
 test('apply skips a package whose Artifacts HEAD differs from published_commit', async () => {
 	mocks.resolveArtifactSourceHead.mockResolvedValue({
 		branch: 'main',

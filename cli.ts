@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { platform } from 'node:os'
+import path from 'node:path'
 import readline from 'node:readline'
 import { setTimeout as delay } from 'node:timers/promises'
 import getPort, { clearLockedPorts } from 'get-port'
@@ -18,6 +19,7 @@ import {
 	workerPortRange,
 } from './tools/dev-server.ts'
 import { resolveNpmCommand } from './tools/node-runtime.ts'
+import { startMockArtifactsGitServer } from './tools/mock-artifacts-git-server.ts'
 const defaultMockPort = 8788
 const mockReadyTimeoutMs = 10_000
 const mockReadyPollMs = 200
@@ -370,6 +372,18 @@ async function waitForWorkerReady(workerOrigin: string, child: ChildProcess) {
 	return false
 }
 
+let mockArtifactsGitServer: ReturnType<
+	typeof startMockArtifactsGitServer
+> | null = null
+
+/** Git smart HTTP for mock Artifacts remotes, so local repo sessions work. */
+function ensureMockArtifactsGitServer() {
+	mockArtifactsGitServer ??= startMockArtifactsGitServer({
+		root: path.join('.wrangler', 'state', 'mock-artifacts-git'),
+	})
+	return mockArtifactsGitServer
+}
+
 async function attachCloudflareMock(
 	mockEnv: Record<string, string>,
 	anchorPort: number,
@@ -392,6 +406,7 @@ async function attachCloudflareMock(
 	})
 	const baseUrl = `http://127.0.0.1:${cloudflarePort}`
 	const apiToken = `mock-cloudflare-${randomUUID()}`
+	const gitBackend = await ensureMockArtifactsGitServer()
 	const child = runNpmScript(
 		'dev:mock-cloudflare',
 		[
@@ -401,6 +416,8 @@ async function attachCloudflareMock(
 			'127.0.0.1',
 			'--var',
 			`MOCK_API_TOKEN:${apiToken}`,
+			'--var',
+			`MOCK_GIT_BACKEND_URL:${gitBackend.origin}`,
 		],
 		{},
 		{

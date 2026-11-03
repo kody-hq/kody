@@ -8,7 +8,8 @@ import { syncActiveCommunityListingToPublishedCommit } from '#worker/community/s
 /**
  * Cron lane that advances active community listings still pinned behind their
  * package `published_commit`. Auto-follow on promote covers new publishes; this
- * clears listings that drifted before that landed. Per-row failures stay behind
+ * clears listings that drifted before that landed, re-checking the recorded
+ * publisher's community ban like promote does. Per-row failures stay behind
  * and are retried on a later tick.
  */
 export const communityListingBehindBackfillBatchSize = 16
@@ -45,6 +46,11 @@ export async function backfillCommunityListingsBehindPublished(input: {
 				ownerUserId: row.listing.ownerUserId,
 				packageId: row.listing.packageId,
 				publishedCommit: row.publishedCommit,
+				// Promote-time sync checks the promoting person's community ban;
+				// the retry must check the same person, not just the owner.
+				...(row.publisherPersonId
+					? { actorUserId: row.publisherPersonId }
+					: {}),
 			})
 			if (result === 'synced') synced += 1
 		} catch (error) {

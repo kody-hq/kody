@@ -195,10 +195,22 @@ function main(argv: Array<string> = process.argv.slice(2)) {
 	})
 	const markdownPath = readFlag(argv, 'markdown')
 
-	const audit = spawnSync('npm', ['audit', '--omit=dev', '--json'], {
-		encoding: 'utf8',
-		maxBuffer: 64 * 1024 * 1024,
-	})
+	// npm's default 5 minute fetch timeout once stalled the Static job; a slow
+	// registry now fails within a minute (enforce fails, report warns).
+	const audit = spawnSync(
+		'npm',
+		[
+			'audit',
+			'--omit=dev',
+			'--json',
+			'--fetch-timeout=60000',
+			'--fetch-retries=1',
+		],
+		{
+			encoding: 'utf8',
+			maxBuffer: 64 * 1024 * 1024,
+		},
+	)
 	let findings: Array<AuditFinding>
 	try {
 		findings = parseAuditFindings(JSON.parse(audit.stdout || 'null'))

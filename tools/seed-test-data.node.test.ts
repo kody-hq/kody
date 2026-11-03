@@ -6,6 +6,7 @@ import {
 	buildSeedSavedPackagesSql,
 	seedSavedPackageIds,
 	seedStableUserIdFromEmail,
+	seedTeamOrgIds,
 } from './seed-sql.ts'
 import {
 	buildSeedSql,
@@ -319,4 +320,102 @@ test('saved-packages and non-preview enable-flag are rejected for remote seed', 
 	expect(consoleError).toHaveBeenCalledWith(
 		expect.stringContaining('--saved-packages must be an integer'),
 	)
+})
+
+test('member, team org, and plan options seed a second account with a team org', () => {
+	const options = parseArgs([
+		'--local',
+		'--email',
+		'owner@example.com',
+		'--member-email',
+		'member@example.com',
+		'--team-org',
+		'seed-team',
+		'--plan',
+		'pro',
+	])
+	expect(options).toMatchObject({
+		memberEmail: 'member@example.com',
+		teamOrg: 'seed-team',
+		plan: 'pro',
+	})
+	const sql = buildSeedSql(
+		[
+			{
+				email: 'owner@example.com',
+				username: 'owner',
+				passwordHash: 'hash',
+				admin: false,
+				plan: 'pro',
+			},
+			{
+				email: 'member@example.com',
+				username: 'member',
+				passwordHash: 'hash',
+				admin: false,
+			},
+		],
+		{
+			teamOrg: {
+				slug: 'seed-team',
+				ownerEmail: 'owner@example.com',
+				memberEmail: 'member@example.com',
+			},
+		},
+	)
+	const { orgId, teamId } = seedTeamOrgIds('seed-team')
+	expect(sql).toContain("'pro',")
+	expect(sql).toContain('plan = excluded.plan')
+	expect(sql).toContain(`'${orgId}', 'seed-team'`)
+	expect(sql).toContain(
+		"'member', (SELECT stable_user_id FROM users WHERE email = 'owner@example.com')",
+	)
+	expect(sql).toContain(
+		`INSERT INTO team_members (team_id, user_id, added_by_user_id, created_at)\nVALUES ('${teamId}'`,
+	)
+})
+
+test('omitting --plan keeps the stored personal org plan on reseed', () => {
+	const sql = buildSeedSql([
+		{
+			email: 'owner@example.com',
+			username: 'owner',
+			passwordHash: 'hash',
+			admin: false,
+		},
+	])
+	expect(sql).toContain("'free',")
+	expect(sql).not.toContain('plan = excluded.plan')
+})
+
+test('member, team org, and plan seeding are refused outside preview for remote', () => {
+	using _exit = mockProcessExit()
+	consoleError.mockImplementation(() => {})
+	for (const extra of [
+		['--member-email', 'member@example.com'],
+		['--member-email', 'member@example.com', '--team-org', 'seed-team'],
+		['--plan', 'pro'],
+	]) {
+		expect(() =>
+			parseArgs(['--remote', '--env', 'production', ...extra]),
+		).toThrow('process.exit called')
+		expect(parseArgs(['--remote', '--env', 'preview', ...extra])).toMatchObject(
+			{ env: 'preview' },
+		)
+	}
+	expect(() => parseArgs(['--local', '--team-org', 'seed-team'])).toThrow(
+		'process.exit called',
+	)
+	expect(() => parseArgs(['--local', '--plan', 'platinum'])).toThrow(
+		'process.exit called',
+	)
+	expect(() =>
+		parseArgs([
+			'--local',
+			'--email',
+			'a@example.com',
+			'--member-email',
+			'A@example.com',
+		]),
+	).toThrow('process.exit called')
 })

@@ -26,7 +26,7 @@ export type StoredApiToken = {
 	createdVia?: string
 }
 
-export function accountForApiUrl(apiUrl: string): string {
+function accountForApiUrl(apiUrl: string): string {
 	return `cli-api-token:${new URL(apiUrl).origin}`
 }
 
@@ -44,7 +44,7 @@ export function apiTokenFileStorePath(
 	return join(base, `api-token-${origin}.json`)
 }
 
-export function createApiTokenKeyringBackend(apiUrl: string): SecretBackend {
+function createApiTokenKeyringBackend(apiUrl: string): SecretBackend {
 	const entry = new Entry(
 		keyringService,
 		accountForApiUrl(apiUrl),

@@ -44,6 +44,7 @@ import {
 	welcomeTimeoutCloseCode,
 } from '../src/execution-context/daemon.js'
 import {
+	contextDir,
 	decryptPrivateKey,
 	encryptPrivateKey,
 	resolveWrappingKey,
@@ -1119,6 +1120,57 @@ test('kody context revoke and delete call the revoke and delete routes', async (
 		'POST /v1/execution-contexts/box/delete',
 	])
 	await assert.rejects(run(['delete']), /Usage: kody context delete/)
+})
+
+test('kody context register rolls the server context back when the local key write fails', async () => {
+	const apiUrl = 'https://api.kody.test'
+	const ecid = 'ec_savefails'
+	const home = mkdtempSync(join(tmpdir(), 'kody-ec-save-'))
+	const saved = { HOME: process.env.HOME, XDG: process.env.XDG_CONFIG_HOME }
+	process.env.HOME = home
+	process.env.XDG_CONFIG_HOME = home
+	// A directory where key.enc belongs makes saveContext throw after register.
+	mkdirSync(join(contextDir(apiUrl, ecid), 'key.enc'), { recursive: true })
+	const calls: Array<string> = []
+	const fetchFn = (async (url: URL | string, init?: RequestInit) => {
+		const path = new URL(url).pathname
+		calls.push(`${init?.method} ${path}`)
+		if (path.endsWith('/registration-challenge')) {
+			return Response.json({ challenge: 'challenge' })
+		}
+		if (path === '/v1/execution-contexts' && init?.method === 'POST') {
+			return Response.json({
+				ecid,
+				name: 'box',
+				owner: { orgSlug: 'acme' },
+			})
+		}
+		return Response.json({ ok: true })
+	}) as typeof fetch
+	try {
+		await assert.rejects(
+			runExecutionContextCommand({
+				command: 'context',
+				positionals: ['register'],
+				values: { name: 'box', keyStorage: 'file' },
+				apiUrl,
+				token: async () => 'kody_at_test',
+				clientVersion: '0.0.0',
+				write: () => {},
+				fetchFn,
+			}),
+			/EISDIR|illegal operation on a directory/,
+		)
+	} finally {
+		if (saved.HOME === undefined) delete process.env.HOME
+		else process.env.HOME = saved.HOME
+		if (saved.XDG === undefined) delete process.env.XDG_CONFIG_HOME
+		else process.env.XDG_CONFIG_HOME = saved.XDG
+	}
+	assert.deepEqual(calls.slice(-2), [
+		`DELETE /v1/execution-contexts/${ecid}`,
+		`POST /v1/execution-contexts/${ecid}/delete`,
+	])
 })
 
 test('kody context cancel-run posts to the run cancel route', async () => {

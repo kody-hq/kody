@@ -67,6 +67,13 @@ export const packageCodemodStepResultSchema = z.object({
 		packageCodemodItemStatusSchema,
 		z.number().int().nonnegative(),
 	),
+	limit: z
+		.number()
+		.int()
+		.positive()
+		.describe(
+			'Page size this step used. After a step on this run ran out of CPU or memory, the next step halves it, then each finished step doubles it back toward the requested limit.',
+		),
 	nextStep: z
 		.string()
 		.describe(

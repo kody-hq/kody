@@ -6,6 +6,7 @@ import { insertCommunityFork } from '#worker/community/repo.ts'
 import { resolveViewerListingInstalls } from '#worker/community/viewer-install.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
+import { communityForksTableSql } from '#worker/community/community-forks-test-schema.ts'
 
 const mockModule = vi.hoisted(() => ({
 	cleanupArtifactReposForPackage: vi.fn(),
@@ -132,21 +133,7 @@ function createDeleteForkDb() {
 			entity_id TEXT NOT NULL,
 			deleted_at TEXT
 		);
-		CREATE TABLE community_forks (
-			id TEXT PRIMARY KEY NOT NULL,
-			listing_id TEXT, upstream_owner_id TEXT, upstream_package_id TEXT,
-			forker_user_id TEXT NOT NULL,
-			origin_commit TEXT NOT NULL,
-			forked_package_id TEXT NOT NULL,
-			forked_source_id TEXT NOT NULL,
-			target_kody_id TEXT NOT NULL,
-			listing_name TEXT,
-			listing_kody_id TEXT,
-			adopted_at TEXT,
-			adoption_note TEXT,
-			actor TEXT,
-			created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
-		);
+		${communityForksTableSql};
 		CREATE TABLE package_kody_id_redirects (
 			user_id TEXT NOT NULL,
 			old_kody_id TEXT NOT NULL,

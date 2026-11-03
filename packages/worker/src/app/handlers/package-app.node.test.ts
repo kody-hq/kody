@@ -121,6 +121,7 @@ const mockModule = vi.hoisted(() => ({
 }))
 
 vi.mock('@sentry/cloudflare', () => ({
+	withSentry: (_options: unknown, handler: unknown) => handler,
 	isInitialized: () => mockModule.isSentryInitialized(),
 	getClient: () => mockModule.getSentryClient(),
 	withScope: (callback: (scope: typeof mockModule.sentryScope) => void) =>

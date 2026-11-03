@@ -1032,8 +1032,9 @@ JWT, and a manual token request returned whatever the token endpoint sent.
   `send_to_host`, never in a URL query or path, and for at most one hour. A JWT
   with neither an https `aud` nor `send_to_host` stays sealed and org-bound but
   may fill on any host, so existing callers keep working; the result carries a
-  deprecation `warning`, and requiring `send_to_host` is tracked in
-  kody-hq/kody#4456.
+  deprecation `warning`. Starting 2026-12-02 (America/Denver) `secretJwtSign`
+  refuses that call with an error pointing at `send_to_host`, and an any-host
+  handle stops filling (kody-hq/kody#4456).
 - **Refresh tokens.** A sealed `refresh_token` shares the one-run, one-hour cap.
   Kody holding refresh tokens server side is tracked in kody-hq/kody#4457.
 - **Server-side.** `oauthClientCredentials` runs its token request through the

@@ -5,20 +5,22 @@
  * and members of the org the request is bound to (`--org`).
  */
 
-export const packageCollaboratorPresets = [
+const packageCollaboratorPresets = [
 	'read',
 	'use',
 	'contribute',
 	'manage',
 ] as const
 
-export type PackageCollaboratorPreset =
-	(typeof packageCollaboratorPresets)[number]
+type PackageCollaboratorPreset = (typeof packageCollaboratorPresets)[number]
 
 export type PackageCollaboratorAction = 'collaborators' | 'grant' | 'revoke'
 
-export const packageCollaboratorActions: ReadonlyArray<PackageCollaboratorAction> =
-	['collaborators', 'grant', 'revoke']
+const packageCollaboratorActions: ReadonlyArray<PackageCollaboratorAction> = [
+	'collaborators',
+	'grant',
+	'revoke',
+]
 
 export function isPackageCollaboratorAction(
 	value: string | undefined,
@@ -205,7 +207,7 @@ function describeSubject(subject: Subject) {
 		: `@${subject.username}`
 }
 
-export function collaboratorLabel(collaborator: PackageCollaborator) {
+function collaboratorLabel(collaborator: PackageCollaborator) {
 	if (collaborator.subject_type === 'team') {
 		return collaborator.team_slug
 			? `${collaborator.team_slug}${collaborator.team_name ? ` (${collaborator.team_name})` : ''}`

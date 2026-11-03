@@ -920,8 +920,8 @@ export type AuthoredPackageKody = Omit<
 	/**
 	 * Published snapshot load only: `kody.credentials` slots that fail today's
 	 * slot schema, by name, with the validation message. They are left out of
-	 * `credentials` and every use of one fails with this message. Never read
-	 * from package.json.
+	 * `credentials`, block self-publish, and are shown to the owner on
+	 * packageGet. Never read from package.json.
 	 */
 	invalidCredentialSlots?: Record<string, string>
 }

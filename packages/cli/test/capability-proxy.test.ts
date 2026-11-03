@@ -10,7 +10,10 @@ import {
 	assertTokenSafeApiUrl,
 	callCapabilityProxy,
 	capabilityProxyGatewayDeadlineMs,
+	CapabilityProxyError,
 	capabilityProxyHttpTimeoutMs,
+	capabilityProxyTimeoutEnvVar,
+	capabilityProxyTimeoutMs,
 	capabilityProxyUrl,
 	checkCredentialCallMap,
 	createCapabilityProxyFetch,
@@ -450,6 +453,47 @@ test('CapabilityProxy HTTP timeouts outlast the 5-minute gateway deadline plus o
 	)
 })
 
+test('KODY_CAPABILITY_PROXY_TIMEOUT_MS overrides the CapabilityProxy idle limit', () => {
+	assert.equal(capabilityProxyTimeoutMs({}), capabilityProxyHttpTimeoutMs)
+	assert.equal(
+		capabilityProxyTimeoutMs({ [capabilityProxyTimeoutEnvVar]: ' ' }),
+		capabilityProxyHttpTimeoutMs,
+	)
+	assert.equal(
+		capabilityProxyTimeoutMs({ [capabilityProxyTimeoutEnvVar]: '1800000' }),
+		1_800_000,
+	)
+	for (const bad of ['0', '-5', '1.5', 'ten']) {
+		assert.throws(
+			() => capabilityProxyTimeoutMs({ [capabilityProxyTimeoutEnvVar]: bad }),
+			/KODY_CAPABILITY_PROXY_TIMEOUT_MS must be a whole number/,
+		)
+	}
+})
+
+test('createCapabilityProxyFetch reads KODY_CAPABILITY_PROXY_TIMEOUT_MS', async () => {
+	const previous = process.env[capabilityProxyTimeoutEnvVar]
+	process.env[capabilityProxyTimeoutEnvVar] = '1000'
+	try {
+		await withDelayedHeadersServer(2_500, async (apiUrl) => {
+			await assert.rejects(
+				() =>
+					callCapabilityProxy({
+						apiUrl,
+						token,
+						fetchFn: createCapabilityProxyFetch({ useEnvProxy: false }),
+						path: ['kody', 'emailSend'],
+						args: [{}],
+					}),
+				/sent nothing for 1000ms/,
+			)
+		})
+	} finally {
+		if (previous === undefined) delete process.env[capabilityProxyTimeoutEnvVar]
+		else process.env[capabilityProxyTimeoutEnvVar] = previous
+	}
+})
+
 test('the CapabilityProxy sender governs how long a call waits for headers', async () => {
 	await withDelayedHeadersServer(2_500, async (apiUrl) => {
 		const call = (timeoutMs: number) =>
@@ -462,7 +506,16 @@ test('the CapabilityProxy sender governs how long a call waits for headers', asy
 			})
 		await assert.rejects(
 			() => call(1_000),
-			/Could not reach the Kody API[\s\S]*sent nothing for 1000ms/,
+			(error: unknown) => {
+				assert.ok(error instanceof CapabilityProxyError)
+				assert.equal(error.code, 'capability_proxy_timeout')
+				assert.equal(error.sent, 'unknown')
+				assert.doesNotMatch(error.message, /Could not reach/)
+				assert.match(error.message, /sent nothing for 1000ms/)
+				assert.match(error.message, /may still be running/)
+				assert.match(error.message, /KODY_CAPABILITY_PROXY_TIMEOUT_MS=<ms>/)
+				return true
+			},
 		)
 		assert.deepEqual(await call(10_000), { ok: true })
 	})

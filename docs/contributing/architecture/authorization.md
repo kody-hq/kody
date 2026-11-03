@@ -135,6 +135,16 @@ locks still apply: when a non-Owner holds org-wide `package:write` or
 the org, and a locked package needs a grant on that package with
 `allow_unmappable_credential_changes` before those two pass.
 
+**Grantable but unenforced.** `app:create`, `app:write`, `app:delete`,
+`job:create`, `job:delete`, and `email:create` can be granted but no surface
+checks them: jobs and apps come from the package manifest, so creating them is
+`package:create` / `package:publish`; an app shares its package's id, so
+changing or deleting it is `package:write` / `package:delete`; inboxes are
+created at signup. Holding one of them alone unlocks nothing.
+`permission-enforcement.node.test.ts` pins this list. Removing any of them needs
+an `api_tokens.scopes_json` strip as well, because `normalizeApiTokenScopes`
+throws on unknown scopes.
+
 A surface check without a resource (capability `orgPermission`, Open API
 `x-kody-permission`) passes when the permission is held at org level **or on any
 resource grant** in the org. A surface that both creates and updates declares a

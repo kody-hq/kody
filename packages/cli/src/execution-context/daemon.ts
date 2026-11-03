@@ -139,7 +139,7 @@ type DaemonInput = {
 /** `replaced`: another daemon connected for this context, so this one stands down. */
 export type DaemonStop = 'shutdown' | 'revoked' | 'unknown_context' | 'replaced'
 
-export type DaemonFsAccess = {
+type DaemonFsAccess = {
 	effective: (
 		grantFs: Array<{ path: string; mode: string }>,
 	) => Promise<EffectiveFs>
@@ -161,12 +161,12 @@ const layerLabel = {
 	local_policy: 'local policy',
 }
 
-export const welcomeTimeoutMs = 15_000
+const welcomeTimeoutMs = 15_000
 export const welcomeTimeoutCloseCode = 4000
 /** How long a client-initiated close may wait for the close event. */
-export const closeSettleMs = 5_000
-export const defaultPingMs = 30_000
-export const defaultPongTimeoutMs = 10_000
+const closeSettleMs = 5_000
+const defaultPingMs = 30_000
+const defaultPongTimeoutMs = 10_000
 /** Kody stopped answering pings: the socket is half-dead. */
 export const heartbeatTimeoutCloseCode = 4001
 /**

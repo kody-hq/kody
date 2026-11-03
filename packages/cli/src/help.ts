@@ -459,12 +459,3 @@ Environment:
   KODY_WORKERD_PATH   Use this workerd binary instead of the pinned download
 `
 }
-
-/**
- * Build usage on demand. Do not call at module load: reading the credential
- * store (and pulling keyring) on every `kody --version` blows the startup
- * budget. Callers that need the offline org list pass `mcpUrl` / `backend`.
- */
-export function usage(input?: Parameters<typeof buildUsage>[0]): string {
-	return buildUsage(input)
-}

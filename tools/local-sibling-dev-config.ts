@@ -7,6 +7,12 @@ import { collectLocalOriginDevVars } from './local-origin-dev-config.ts'
 
 type JsonRecord = Record<string, unknown>
 
+const localSiblingSecretKeys = [
+	'COOKIE_SECRET',
+	'SECRET_STORE_KEY',
+	'ECP_FRAME_SIGNING_KEYS',
+] as const
+
 /**
  * Builds a local-dev variant of a sibling worker config (platform or runtime)
  * for multi-config `wrangler dev`. Wrangler applies `--var` and dotenv-derived
@@ -91,7 +97,9 @@ export async function writeLocalSiblingDevConfig({
 	} else if (process.env.APP_BASE_URL) {
 		vars.APP_BASE_URL = process.env.APP_BASE_URL
 	}
-	for (const key of ['COOKIE_SECRET', 'SECRET_STORE_KEY']) {
+	// ECP_FRAME_SIGNING_KEYS: the execution context session DO lives on the
+	// platform sibling and signs daemon frames with it.
+	for (const key of localSiblingSecretKeys) {
 		const value = process.env[key]
 		if (value) vars[key] = value
 	}

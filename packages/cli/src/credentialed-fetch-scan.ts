@@ -10,7 +10,7 @@ import {
 
 const esModuleLexerReady = initEsModuleLexer()
 
-export type CredentialedFetchKind =
+type CredentialedFetchKind =
 	| 'createAuthenticatedFetch'
 	| 'credential_runtime'
 	| 'authenticatedFetch'
@@ -91,7 +91,7 @@ function stripCommentsForScan(code: string): string {
 		.replace(/(^|[^:])\/\/.*$/gm, '$1')
 }
 
-export function formatCredentialedFetchKinds(
+function formatCredentialedFetchKinds(
 	signals: ReadonlyArray<CredentialedFetchSignal>,
 ): string {
 	const kinds = [...new Set(signals.map((s) => s.kind))]

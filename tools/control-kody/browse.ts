@@ -29,6 +29,11 @@ export type BrowseSessionInput = {
 	videoDir?: string
 	/** Write a PNG of the loaded page (PR walkthrough evidence). */
 	screenshotPath?: string | null
+	/**
+	 * `prefers-color-scheme` for the page. Two schemes write one PNG each,
+	 * suffixed `-light` / `-dark` (see `colorSchemeScreenshotPath`).
+	 */
+	colorSchemes?: ReadonlyArray<BrowseColorScheme> | null
 	/** Close the browser after this many ms (scripted smoke / tests). */
 	closeAfterMs?: number | null
 	chromium?: BrowseChromium
@@ -43,7 +48,31 @@ export type BrowseSessionReport = {
 	record: boolean
 	videoDir: string | null
 	screenshotPath: string | null
+	screenshotPaths: Array<string>
+	colorSchemes: Array<BrowseColorScheme>
 	detail: string
+}
+
+export type BrowseColorScheme = 'light' | 'dark'
+
+/** `--color-scheme light|dark|both` → the schemes to capture, in order. */
+export function parseBrowseColorScheme(
+	value: string,
+): Array<BrowseColorScheme> {
+	const normalized = value.trim().toLowerCase()
+	if (normalized === 'light' || normalized === 'dark') return [normalized]
+	if (normalized === 'both') return ['light', 'dark']
+	throw new Error('browse --color-scheme must be light, dark, or both')
+}
+
+/** `shot.png` → `shot-dark.png` when more than one scheme is captured. */
+function colorSchemeScreenshotPath(
+	screenshotPath: string,
+	scheme: BrowseColorScheme,
+	schemeCount: number,
+) {
+	if (schemeCount < 2) return screenshotPath
+	return screenshotPath.replace(/\.png$/i, `-${scheme}.png`)
 }
 
 /**
@@ -154,8 +183,8 @@ export function formatBrowseReport(report: BrowseSessionReport) {
 	if (report.record && report.videoDir) {
 		lines.push(`video-dir ${report.videoDir}`)
 	}
-	if (report.screenshotPath) {
-		lines.push(`screenshot ${report.screenshotPath}`)
+	for (const screenshotPath of report.screenshotPaths) {
+		lines.push(`screenshot ${screenshotPath}`)
 	}
 	return lines.join('\n')
 }
@@ -182,6 +211,21 @@ export async function openBrowseSession(
 	const record = input.record === true
 	const videoDir = record ? (input.videoDir ?? defaultBrowseVideoDir) : null
 	const screenshotPath = normalizeScreenshotPath(input.screenshotPath)
+	const colorSchemes = [...(input.colorSchemes ?? [])]
+	if (colorSchemes.length > 1 && !screenshotPath) {
+		throw new Error('browse --color-scheme both requires --screenshot <path>')
+	}
+	const screenshotPaths = screenshotPath
+		? (colorSchemes.length > 0 ? colorSchemes : [null]).map((scheme) =>
+				scheme
+					? colorSchemeScreenshotPath(
+							screenshotPath,
+							scheme,
+							colorSchemes.length,
+						)
+					: screenshotPath,
+			)
+		: []
 	if (videoDir) await mkdir(videoDir, { recursive: true })
 	if (screenshotPath) {
 		await mkdir(path.dirname(screenshotPath), { recursive: true })
@@ -204,15 +248,10 @@ export async function openBrowseSession(
 	}
 	let context: BrowserContext | null = null
 	try {
-		context = await browser.newContext(
-			videoDir
-				? {
-						recordVideo: {
-							dir: videoDir,
-						},
-					}
-				: {},
-		)
+		context = await browser.newContext({
+			...(videoDir ? { recordVideo: { dir: videoDir } } : {}),
+			...(colorSchemes[0] ? { colorScheme: colorSchemes[0] } : {}),
+		})
 		await context.addCookies(cookies)
 		const page = await context.newPage()
 		const sessionClosed =
@@ -231,7 +270,14 @@ export async function openBrowseSession(
 			requestedUrl: url,
 			finalUrl: page.url(),
 		})
-		if (screenshotPath) {
+		for (const [index, shotPath] of screenshotPaths.entries()) {
+			const scheme = colorSchemes[index]
+			if (index > 0 && scheme) {
+				// Reload so theme code that reads matchMedia at boot sees the
+				// new scheme too, not just CSS media queries.
+				await page.emulateMedia({ colorScheme: scheme })
+				await page.reload({ waitUntil: 'domcontentloaded' })
+			}
 			await page.waitForLoadState('load', {
 				timeout: browseScreenshotLoadTimeoutMs,
 			})
@@ -242,7 +288,7 @@ export async function openBrowseSession(
 				finalUrl: page.url(),
 			})
 			await page.screenshot({
-				path: screenshotPath,
+				path: shotPath,
 				fullPage: true,
 				type: 'png',
 			})
@@ -259,7 +305,9 @@ export async function openBrowseSession(
 				headed,
 				record,
 				videoDir,
-				screenshotPath,
+				screenshotPath: screenshotPaths[0] ?? null,
+				screenshotPaths,
+				colorSchemes,
 				detail: `opened ${finalUrl} (signed in)`,
 			} satisfies BrowseSessionReport
 		}

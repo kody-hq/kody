@@ -672,7 +672,7 @@ function readPublishChecksFailureMeta(
 }
 
 /** True when the publish checks could not run because of the login. */
-export function isPublishChecksAuthFailure(error: unknown): boolean {
+function isPublishChecksAuthFailure(error: unknown): boolean {
 	if (error instanceof PublishChecksAuthError) return true
 	const meta = readPublishChecksFailureMeta(error)
 	return (
@@ -687,7 +687,7 @@ export function isPublishChecksAuthFailure(error: unknown): boolean {
  * only for auth failures; every other failure names the server status, error
  * code and request id so it can be reported.
  */
-export function formatPublishChecksRunFailure(error: unknown): string {
+function formatPublishChecksRunFailure(error: unknown): string {
 	const message = (
 		error instanceof Error ? error.message : String(error)
 	).replace(/\.+$/, '')
@@ -706,7 +706,7 @@ export function formatPublishChecksRunFailure(error: unknown): string {
 	return `could not run: ${message}${facts.length > 0 ? ` (${facts.join(', ')})` : ''}. Pass --debug for the HTTP details, or --offline to run only the local checks.`
 }
 
-export const devCheckOfflineDetail =
+const devCheckOfflineDetail =
 	'skipped (--offline). Only local checks ran; publish runs the full publish checks and can still refuse this package.'
 
 /** Parse a `packageCheck` response body (Open API structured result). */

@@ -827,6 +827,86 @@ test('package insert marks unread defaults; later secretSet repairs untouched de
 	readSpy.mockRestore()
 })
 
+test('a placement repair that fails rolls back the value write with it', async () => {
+	const { env, sqlite } = await createSecretEnv()
+	const packageContext = ctx('pkg-repair')
+	const readSpy = vi
+		.spyOn(packageManifestPlacement, 'readDeclaredPackageSecretFillPlacement')
+		.mockResolvedValueOnce({ status: 'unread', reason: 'manifest_load_failed' })
+		.mockResolvedValueOnce({ status: 'unread', reason: 'manifest_load_failed' })
+	for (const name of ['single', 'batched']) {
+		await saveSecret({
+			env,
+			userId,
+			scope: 'package',
+			name,
+			value: 'first',
+			storageContext: packageContext,
+			baseUrl: 'https://kody.example',
+			audit: null,
+		})
+	}
+
+	const prepare = env.APP_DB.prepare.bind(env.APP_DB)
+	const failingDb = {
+		...env.APP_DB,
+		batch: env.APP_DB.batch.bind(env.APP_DB),
+		prepare(query: string) {
+			const statement = prepare(query)
+			if (!query.includes('SET placement_json = ?, placement_origin = ?')) {
+				return statement
+			}
+			return {
+				...statement,
+				bind: (...params: Array<unknown>) => ({
+					...statement.bind(...params),
+					query,
+					run: async () => {
+						throw new Error('SQLITE_BUSY')
+					},
+				}),
+			}
+		},
+	} as D1Database
+	const failingEnv = { ...env, APP_DB: failingDb }
+	readSpy.mockResolvedValue({ status: 'applied', placement: { body: true } })
+
+	await expect(
+		saveSecret({
+			env: failingEnv,
+			userId,
+			scope: 'package',
+			name: 'single',
+			value: 'second',
+			storageContext: packageContext,
+			baseUrl: 'https://kody.example',
+			audit: null,
+		}),
+	).rejects.toThrow('SQLITE_BUSY')
+	await expect(
+		setSecretsAtomically({
+			env: failingEnv,
+			userId,
+			secrets: [{ name: 'batched', value: 'second', scope: 'package' }],
+			storageContext: packageContext,
+			baseUrl: 'https://kody.example',
+			audit: null,
+		}),
+	).rejects.toThrow('SQLITE_BUSY')
+
+	for (const name of ['single', 'batched']) {
+		await expect(
+			resolveSecret({ env, userId, name, storageContext: packageContext }),
+		).resolves.toMatchObject({ found: true, value: 'first' })
+		expect(
+			sqlite
+				.prepare(`SELECT placement_origin FROM secret_entries WHERE name = ?`)
+				.get(name),
+		).toEqual({ placement_origin: 'default_unread' })
+	}
+	readSpy.mockRestore()
+})
+
 test('setSecretsAllowedPackages and setSecretsAllowedHosts batch upserts and skip missing-name loops', async () => {
 	const { env } = await createSecretEnv()
 	for (const name of ['alphaToken', 'bravoToken', 'charlieToken']) {

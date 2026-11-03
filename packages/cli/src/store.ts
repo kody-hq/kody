@@ -46,7 +46,7 @@ export type MultiOrgCredentialStore = {
 	pending?: OrgCredentialRecord
 }
 
-export type OrgCredentialRecord = {
+type OrgCredentialRecord = {
 	org?: string
 	resource: string
 	authorizationServerUrl: string
@@ -423,7 +423,7 @@ export function loadCredentialStore(
 	return null
 }
 
-export function saveCredentialStore(
+function saveCredentialStore(
 	snapshot: MultiOrgCredentialStore,
 	backend?: SecretBackend,
 	resolution?: StoreResolution,
@@ -468,7 +468,7 @@ export function loadPendingCredentials(
 	return recordToCredentials(snapshot.mcpUrl, snapshot.pending)
 }
 
-export function pickCredentialsFromStore(
+function pickCredentialsFromStore(
 	snapshot: MultiOrgCredentialStore,
 	org?: string,
 ): StoredCredentials | null {
@@ -633,7 +633,7 @@ export function setActiveOrg(
 	return next
 }
 
-export function listOrgSlugs(snapshot: MultiOrgCredentialStore): Array<string> {
+function listOrgSlugs(snapshot: MultiOrgCredentialStore): Array<string> {
 	return Object.keys(snapshot.orgs).sort((a, b) => a.localeCompare(b))
 }
 

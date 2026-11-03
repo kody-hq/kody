@@ -5,6 +5,7 @@ import { ensureSavedPackageInternetVisibleColumn } from '#worker/package-registr
 import { ensureSoftDeleteTestColumns } from '#worker/soft-delete/test-schema.ts'
 import { ensureFollowTables } from '#worker/follow/repo.ts'
 import { communityForksDeleteCascadeStatements } from './community-forks-delete-cascade.ts'
+import { communityForksTableSql } from './community-forks-test-schema.ts'
 
 /**
  * Community flow workers-unit schema. Adds the community tables and the
@@ -124,21 +125,7 @@ export async function ensureCommunityFlowSchema(db: D1Database) {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_package_slug_redirects_package_id
 			ON package_slug_redirects(package_id)`,
-		`CREATE TABLE IF NOT EXISTS community_forks (
-			id TEXT PRIMARY KEY NOT NULL,
-			listing_id TEXT, upstream_owner_id TEXT, upstream_package_id TEXT,
-			forker_user_id TEXT NOT NULL,
-			origin_commit TEXT NOT NULL,
-			forked_package_id TEXT NOT NULL,
-			forked_source_id TEXT NOT NULL,
-			target_kody_id TEXT NOT NULL,
-			listing_name TEXT,
-			listing_kody_id TEXT,
-			adopted_at TEXT,
-			adoption_note TEXT,
-			actor TEXT CHECK (actor IS NULL OR actor IN ('human', 'agent')),
-			created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
-		)`,
+		communityForksTableSql,
 		`CREATE TABLE IF NOT EXISTS community_fork_claims (
 			owner_id TEXT NOT NULL,
 			listing_id TEXT NOT NULL,
