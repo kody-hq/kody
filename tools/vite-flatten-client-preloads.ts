@@ -9,7 +9,7 @@ const manifestCapturePluginName =
 	'tanstack-start:start-manifest-capture-client-build'
 
 /** Each chunk's full static import closure, direct imports first. */
-export function staticImportClosures(bundle: ChunkGraph) {
+function staticImportClosures(bundle: ChunkGraph) {
 	const closures = new Map<string, Array<string>>()
 	for (const [fileName, chunk] of Object.entries(bundle)) {
 		if (chunk.type !== 'chunk') continue
