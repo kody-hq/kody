@@ -192,7 +192,7 @@ export async function invokeApiOperation(input: {
 		outcome = 'success'
 		return result
 	} catch (error) {
-		const apiError = toApiError(error)
+		const apiError = toApiError(error, { operation: operation.operationId })
 		failureCode = apiError.code
 		if (apiError.status >= 500 && !(error instanceof ApiError)) {
 			console.error('open-api-operation-failed', operation.operationId, error)

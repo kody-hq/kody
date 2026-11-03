@@ -198,7 +198,7 @@ function withAnonymousHtmlCacheLookup(
 	})
 }
 
-function workerDefaultCache(): Cache | null {
+export function workerDefaultCache(): Cache | null {
 	if (typeof caches === 'undefined') return null
 	const store = caches as CacheStorage & { default?: Cache }
 	return store.default ?? null

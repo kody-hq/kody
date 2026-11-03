@@ -1,3 +1,4 @@
+import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test'
 import { env, exports } from 'cloudflare:workers'
 import { beforeEach, expect, test } from 'vitest'
 import { setAuthSessionSecret } from '#app/auth-session.ts'
@@ -20,6 +21,7 @@ import {
 	type AccessFixturePerson,
 } from '#worker/test-support/package-app-access-fixture.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
+import { originWorkerHandler } from '#worker/origin-handler.ts'
 
 /**
  * Access tickets on the package-app origin: revocation through the org
@@ -51,16 +53,29 @@ beforeEach(async () => {
 
 const sessions = new Map<AccessFixturePerson, string>()
 
+async function inIsolateOriginFetch(request: Request) {
+	const handleFetch = originWorkerHandler.fetch
+	if (!handleFetch) throw new Error('Expected the origin fetch handler.')
+	const ctx = createExecutionContext()
+	try {
+		return await handleFetch(request, env, ctx)
+	} finally {
+		await waitOnExecutionContext(ctx)
+	}
+}
+
 async function visit(
 	person: AccessFixturePerson,
 	ticket?: string | null,
 	path = `/packages/${accessFixture.privateApp.slug}`,
 	websocket = false,
+	fetchOrigin: (request: Request) => Promise<Response> = (request) =>
+		exports.default.fetch(request),
 ) {
 	const session =
 		sessions.get(person) ?? (await packageAppSessionCookieFor(person))
 	sessions.set(person, session)
-	const response = await exports.default.fetch(
+	const response = await fetchOrigin(
 		new Request(`${accessFixtureOrigin}${path}`, {
 			redirect: 'manual',
 			headers: {
@@ -240,9 +255,13 @@ test('a D1 failure reading the access epoch fails closed', async () => {
 	} satisfies D1Database
 	mutableEnv.APP_DB = failingDb
 	try {
-		// The error reaches the Workers runtime, which answers 500: nothing is
-		// served and no ticket is minted.
-		await expect(visit('owner')).rejects.toThrow('D1 unavailable')
+		// The error escapes the origin handler, so the Workers runtime answers
+		// 500: nothing is served and no ticket is minted. Call the handler in
+		// this isolate so the expected rejection is asserted here instead of
+		// crossing the entrypoint boundary.
+		await expect(
+			visit('owner', null, undefined, false, inIsolateOriginFetch),
+		).rejects.toThrow('D1 unavailable')
 	} finally {
 		mutableEnv.APP_DB = realDb
 	}
