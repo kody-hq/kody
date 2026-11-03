@@ -267,7 +267,7 @@ test('stripe webhook verifies signature, links checkout, refreshes subscription,
 			object: {
 				...checkoutSession,
 				customer_email: email,
-				metadata: { kody_stable_user_id: user.stableUserId },
+				metadata: { kody_org_id: user.stableUserId },
 			},
 		},
 	}
@@ -578,7 +578,7 @@ test('checkout.session.completed for a credit top-up credits the wallet once and
 		client_reference_id: user.linkReference,
 		metadata: {
 			kody_credit_top_up: '1',
-			kody_stable_user_id: user.stableUserId,
+			kody_org_id: user.stableUserId,
 		},
 	}
 	using fetchStub = stubFetch((url) =>
@@ -640,7 +640,6 @@ test('subscription.updated with team org metadata defers until the customer is l
 				status: 'active',
 				metadata: {
 					kody_org_id: ownerIdFromStored(teamOrgId),
-					kody_stable_user_id: ownerIdFromStored(teamOrgId),
 				},
 			},
 		},
@@ -736,7 +735,6 @@ test('subscription.updated before personal checkout link defers side effects unt
 
 	const subscriptionMetadata = {
 		kody_org_id: ownerIdFromStored(user.stableUserId),
-		kody_stable_user_id: ownerIdFromStored(user.stableUserId),
 	}
 	const progressCount = () =>
 		env.APP_DB.prepare(

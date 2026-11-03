@@ -389,7 +389,7 @@ test('an owner subscribes the team org in the URL with one seat per owner and me
 	// Team org id everywhere — never the authorizing member's personal org /
 	// stable user id (regression for misattributed team checkout).
 	expect(checkoutArgs.metadata.kody_org_id).toBe('org-acme')
-	expect(checkoutArgs.metadata.kody_stable_user_id).toBe('org-acme')
+	expect(checkoutArgs.metadata).not.toHaveProperty('kody_stable_user_id')
 	expect(checkoutArgs.metadata.kody_org_id).not.toBe(people.ada.personId)
 	expect(checkoutArgs.clientReferenceId).not.toBe(
 		await createBillingLinkReference(env, people.ada.personId),

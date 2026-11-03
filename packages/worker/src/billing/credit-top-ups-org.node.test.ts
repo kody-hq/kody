@@ -79,7 +79,6 @@ function paidSessionStampedWith(id: string, clientReferenceId = `ref:${id}`) {
 		metadata: {
 			kody_credit_top_up: '1',
 			kody_org_id: id,
-			kody_stable_user_id: id,
 		},
 		payment_intent: { payment_method: null },
 	})
