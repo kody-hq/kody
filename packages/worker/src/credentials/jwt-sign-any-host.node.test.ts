@@ -10,7 +10,7 @@ import {
 
 const migration = readFileSync(
 	new URL(
-		'../../migrations/0238-jwt-sign-any-host-callers.sql',
+		'../../migrations/0240-jwt-sign-any-host-callers.sql',
 		import.meta.url,
 	),
 	'utf8',
