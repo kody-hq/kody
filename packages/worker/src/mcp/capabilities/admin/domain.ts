@@ -52,6 +52,8 @@ import { adminUserOauthGrantsCapability } from './admin-user-oauth-grants.ts'
 import { adminOauthGrantsLackingOrgIdRevokeCapability } from './admin-oauth-grants-lacking-org-id-revoke.ts'
 import { adminSystemEmailClassifyCapability } from './admin-system-email-classify.ts'
 import { adminSystemEmailDeleteCapability } from './admin-system-email-delete.ts'
+import { adminEmailSuppressionClearCapability } from './admin-email-suppression-clear.ts'
+import { adminEmailSuppressionListCapability } from './admin-email-suppression-list.ts'
 import { adminSystemEmailGetCapability } from './admin-system-email-get.ts'
 import { adminSystemEmailListCapability } from './admin-system-email-list.ts'
 import { adminSystemEmailSendCapability } from './admin-system-email-send.ts'
@@ -266,6 +268,8 @@ export const adminDomain = defineDomain({
 		adminSystemEmailSenderRuleListCapability,
 		adminSystemEmailSenderRuleSetCapability,
 		adminSystemEmailSenderRuleDeleteCapability,
+		adminEmailSuppressionListCapability,
+		adminEmailSuppressionClearCapability,
 		adminPlatformFeedbackListCapability,
 		adminPlatformFeedbackGetCapability,
 		adminPlatformFeedbackUpdateCapability,

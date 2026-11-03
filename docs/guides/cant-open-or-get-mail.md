@@ -36,12 +36,14 @@ the same verification message will not get through and can make delivery worse.
 
 Signup also refuses an address that is missing an `@`, a known typo (the error
 suggests the corrected address), a disposable inbox, or a domain that has no
-mail servers. If a previous message to that address hard-bounced, Kody stops
-sending verification mail and password-reset mail there. Verification asks for a
-different address or support. A password-reset request still shows the same
-generic success message. One address can receive at most 5 verification emails
-in 24 hours; password resets do not count toward that cap. The verification
-error says when to retry.
+mail servers. If a previous verification or password-reset message to that
+address hard-bounced, Kody stops sending verification mail and password-reset
+mail there. If Kody mail to the address hard-bounced twice, Kody stops sending
+it any Kody email until a message is delivered again or support clears the
+address. Verification asks for a different address or support. A password-reset
+request still shows the same generic success message. One address can receive at
+most 5 verification emails in 24 hours; password resets do not count toward that
+cap. The verification error says when to retry.
 
 **If mail is delayed rather than blocked:** check Spam/Junk, then whitelist
 `kody.codes` / `kody@kody.codes` (exact steps vary by provider). On Fastmail,

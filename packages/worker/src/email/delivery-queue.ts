@@ -38,6 +38,10 @@ export async function handleEmailDeliveryQueue(
 				case 'invalid':
 					queueMessage.ack()
 					break
+				case 'stale_system':
+				case 'recorded_system':
+					queueMessage.ack()
+					break
 				case 'stale_transactional':
 					// Older than the status already on the user row — ack so
 					// the queue does not retry as unmatched.

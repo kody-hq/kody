@@ -2,6 +2,10 @@ import { resolveTransactionalSenderReplyTo } from '@kody-internal/shared/transac
 import { sendCloudflareEmail } from '#app/email/cloudflare-email.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { normalizeEmailAddress } from './address.ts'
+import {
+	loadRecipientSuppression,
+	recipientSuppressedMessage,
+} from './recipient-suppression.ts'
 import { getSystemEmailDomain } from './platform-address.ts'
 import {
 	consumeSystemEmailDailySend,
@@ -12,6 +16,10 @@ import {
 } from './system-email.ts'
 import { dispatchSystemEmailSentSubscriptionEvent } from './system-email-sent-package-subscriptions.ts'
 import { buildSystemEmailSentEvent } from './system-email-sent-subscription-event.ts'
+import {
+	recordSystemEmailSends,
+	systemEmailOperatorSendKind,
+} from './system-email-sends.ts'
 
 type SystemOutboundEnv = Pick<
 	Env,
@@ -96,6 +104,11 @@ function resolveRecipients(to: string | Array<string>): Array<string> {
  * caller passes an explicit `replyTo`. Callers are responsible for the
  * authorization check — today only admin-gated, audit-logged capabilities
  * and internal platform alerts reach it.
+ *
+ * Every send is recorded in `system_email_sends` so delivery reports match
+ * it, and a recipient fully suppressed after repeated hard bounces is
+ * refused before the counter is consumed (`adminEmailSuppressionClear`
+ * lifts it).
  */
 export async function sendSystemEmail(input: {
 	env: SystemOutboundEnv
@@ -107,6 +120,8 @@ export async function sendSystemEmail(input: {
 	html?: string | null
 	replyTo?: string | null
 	headers?: Record<string, string>
+	/** Send kind recorded for delivery-report matching. */
+	kind?: string
 	now?: Date
 	waitUntil?: (promise: Promise<unknown>) => void
 }): Promise<SystemOutboundResult> {
@@ -142,6 +157,16 @@ export async function sendSystemEmail(input: {
 			from,
 			replyTo: explicitReplyTo,
 		}) ?? null
+
+	for (const recipient of to) {
+		const suppression = await loadRecipientSuppression({
+			db: input.env.APP_DB,
+			recipient,
+		})
+		if (suppression?.scope === 'all') {
+			throw new McpCallerError(`${recipient}: ${recipientSuppressedMessage}`)
+		}
+	}
 
 	const now = input.now ?? new Date()
 	const consumed = await consumeSystemEmailDailySend({
@@ -194,6 +219,14 @@ export async function sendSystemEmail(input: {
 		)
 	}
 	const providerMessageId = result.messageId ?? null
+	await recordSystemEmailSends({
+		db: input.env.APP_DB,
+		providerMessageId,
+		recipients: to,
+		sender: from,
+		kind: input.kind ?? systemEmailOperatorSendKind,
+		now,
+	})
 	const resolvedHtml = html ?? htmlFromText(text ?? '')
 	try {
 		await dispatchSystemEmailSentSubscriptionEvent({

@@ -101,9 +101,13 @@ function createResendTestDb(
 						personal_org_id: user.stable_user_id,
 					}
 				}
-				if (normalized.includes('from email_verification_hard_bounces')) {
+				if (normalized.includes('from email_recipient_suppressions')) {
 					return options.hardBounced
-						? { recipient: user.email, status: 'bounced' }
+						? {
+								recipient: user.email,
+								verification_suppressed_at: '2026-01-01T00:00:00.000Z',
+								last_status: 'bounced',
+							}
 						: null
 				}
 				if (normalized.includes('email_verification_delivery_status')) {

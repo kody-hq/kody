@@ -1,6 +1,6 @@
-import { sendCloudflareEmail } from '#app/email/cloudflare-email.ts'
 import { resolveTransactionalEmailConfig } from '#app/email/sender-config.ts'
 import { renderTransactionalEmail } from '#app/email/template.ts'
+import { sendGatedTransactionalEmail } from '#worker/email/transactional-send-policy.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import {
 	getPackageCodemodRunById,
@@ -348,20 +348,23 @@ async function noticeOneOwner(input: {
 	let claimFailures = 0
 	for (const recipient of pending) {
 		try {
-			const result = await sendCloudflareEmail(
-				{
+			const result = await sendGatedTransactionalEmail({
+				db: input.env.APP_DB,
+				config: {
 					accountId: input.env.CLOUDFLARE_ACCOUNT_ID,
 					apiBaseUrl: input.env.CLOUDFLARE_API_BASE_URL,
 					apiToken: input.env.CLOUDFLARE_API_TOKEN,
 				},
-				{
+				category: 'essential',
+				kind: 'package_owner_notice',
+				message: {
 					to: recipient.email,
 					from: input.emailConfig.fromEmail,
 					subject: email.subject,
 					html: email.html,
 					text: email.text,
 				},
-			)
+			})
 			if (!result.ok) {
 				console.warn('package-owner-notice-send-skipped', {
 					noticeId: input.noticeId,

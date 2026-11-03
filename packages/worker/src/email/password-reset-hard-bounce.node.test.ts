@@ -3,7 +3,7 @@ import { expect, test } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { processCloudflareEmailDeliveryEvent } from './delivery-events.ts'
-import { loadVerificationRecipientHardBounce } from './verification-recipient-suppression.ts'
+import { loadVerificationRecipientHardBounce } from './recipient-suppression.ts'
 import { registerTransactionalEmailDelivery } from './verification-delivery.ts'
 
 async function createDb() {
@@ -82,9 +82,12 @@ test('a password reset hard bounce records suppression and a delivery clears it'
 		}),
 	})
 	expect(bounced.outcome).toBe('recorded_transactional')
-	expect(await loadVerificationRecipientHardBounce({ db, recipient })).toEqual({
+	expect(
+		await loadVerificationRecipientHardBounce({ db, recipient }),
+	).toMatchObject({
 		recipient,
-		status: 'bounced',
+		scope: 'verification',
+		lastStatus: 'bounced',
 	})
 
 	await registerTransactionalEmailDelivery({
