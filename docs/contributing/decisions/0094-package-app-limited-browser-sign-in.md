@@ -112,7 +112,7 @@ they stayed signed out of the app.
      `/account`. Approval requires a verified email. The CLI token endpoint and
      package-app consent refuse account rows, and the CLI and package-app
      decision queries filter by kind, so no flow can redeem another's code.
-     Migration 0243 widens the `kind` check to allow `account`.
+     Migration 0244 widens the `kind` check to allow `account`.
 
 ## Consequences
 

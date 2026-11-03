@@ -57,7 +57,7 @@ SELECT id, device_code_hash, user_code, client_id, scope, resource,
 FROM oauth_device_authorizations;
 
 INSERT INTO __migration_assertions (message)
-SELECT 'oauth_device_authorizations_next does not match; aborting 0243.'
+SELECT 'oauth_device_authorizations_next does not match; aborting 0244.'
 WHERE EXISTS (
 	SELECT id, device_code_hash, user_code, client_id, scope, resource,
 		requested_org_slug, status, interval_seconds, created_at, expires_at,
