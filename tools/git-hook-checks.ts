@@ -51,6 +51,8 @@ export type GitHookCheckPlan = {
 	runKnip: boolean
 	runUnitTests: boolean
 	runSkillsLockCheck: boolean
+	/** Pre-push only: ADR numbers against other open pull requests (#4487). */
+	runDecisionNumbersCheck: boolean
 	summary: string
 }
 
@@ -115,6 +117,9 @@ export function hookScripts(plan: GitHookCheckPlan) {
 	if (plan.runTypecheck) scripts.push('typecheck')
 	if (plan.runMigrationsCheck) scripts.push('migrations:check')
 	if (plan.runSkillsLockCheck) scripts.push('node tools/check-skills-lock.ts')
+	if (plan.runDecisionNumbersCheck) {
+		scripts.push('node tools/check-decision-record-numbers.ts')
+	}
 	if (plan.runKnip) scripts.push('knip')
 	if (plan.runUnitTests) scripts.push('test:push')
 	return scripts
@@ -673,6 +678,7 @@ function planPreCommit(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 			runKnip: false,
 			runUnitTests: false,
 			runSkillsLockCheck: false,
+			runDecisionNumbersCheck: false,
 			summary:
 				'pre-commit: running install:check and migrations:check (could not list staged paths)',
 		}
@@ -686,6 +692,7 @@ function planPreCommit(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 			runKnip: false,
 			runUnitTests: false,
 			runSkillsLockCheck: false,
+			runDecisionNumbersCheck: false,
 			summary: `pre-commit: skipping install:check and migrations:check (${docsOnlySummary(paths)})`,
 		}
 	}
@@ -697,11 +704,33 @@ function planPreCommit(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 		runKnip: false,
 		runUnitTests: false,
 		runSkillsLockCheck: false,
+		runDecisionNumbersCheck: false,
 		summary: `pre-commit: running install:check and migrations:check (${codePathSummary(paths)})`,
 	}
 }
 
 function planPrePush(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
+	const plan = planPrePushWithoutDecisions(paths)
+	const runDecisionNumbersCheck =
+		paths === null || paths.some(isDecisionRecordHookPath)
+	return {
+		...plan,
+		runDecisionNumbersCheck,
+		summary: runDecisionNumbersCheck
+			? `${plan.summary}; checking decision numbers against open pull requests`
+			: plan.summary,
+	}
+}
+
+export function isDecisionRecordHookPath(filePath: string) {
+	return /^docs\/contributing\/decisions\/\d{4}-[^/]+\.md$/.test(
+		normalizeHookPath(filePath),
+	)
+}
+
+function planPrePushWithoutDecisions(
+	paths: ReadonlyArray<string> | null,
+): Omit<GitHookCheckPlan, 'runDecisionNumbersCheck'> {
 	if (paths === null) {
 		return {
 			runInstallCheck: false,
