@@ -372,6 +372,21 @@ async function dispatchCapabilityProxyCall(input: {
  * values the call wrote and API tokens. Platform failures outside the
  * capability return the generic internal error and are logged here.
  */
+const capabilityPathSegmentPattern = /^[A-Za-z][A-Za-z0-9_]{0,63}$/
+
+/** First two static runtime segments only (never connector/package names). */
+function capabilityProxyOperationName(path: ReadonlyArray<string>) {
+	const [root, name] = path
+	if (
+		(root === 'kody' || root === 'workflows') &&
+		name !== undefined &&
+		capabilityPathSegmentPattern.test(name)
+	) {
+		return `capability:${root}.${name}`
+	}
+	return 'capability_proxy'
+}
+
 export async function runCapabilityProxyCall(input: {
 	ctx: ApiInvocationContext
 	call: CapabilityProxyCallInput
@@ -385,7 +400,9 @@ export async function runCapabilityProxyCall(input: {
 	} catch (error) {
 		const fromCapability = error instanceof CapabilityInvocationError
 		const cause = fromCapability ? error.cause : error
-		const apiError = toApiError(cause)
+		const apiError = toApiError(cause, {
+			operation: capabilityProxyOperationName(input.call.path),
+		})
 		if (
 			cause instanceof ApiError ||
 			apiError.status < 500 ||

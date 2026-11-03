@@ -170,7 +170,7 @@ export async function registerApiTool(agent: McpRegistrationAgent) {
 					},
 				}
 			} catch (error) {
-				const apiError = toApiError(error)
+				const apiError = toApiError(error, { operation: 'mcp_api' })
 				logMcpEvent({
 					...logFields,
 					outcome: 'failure',
