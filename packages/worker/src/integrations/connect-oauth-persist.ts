@@ -27,6 +27,7 @@ import {
 	type LiveConnectionGuard,
 } from '#worker/integrations/service.ts'
 import { type PlatformOauthApp } from '#worker/integrations/platform-apps.ts'
+import { listOauthAppsByTokenEndpoint } from '#worker/integrations/repo.ts'
 import {
 	persistIntegrationTokens,
 	persistUserOauthAppClientSecret,
@@ -247,6 +248,46 @@ export async function resolveConnectClientSecret(input: {
 			env: input.env,
 			userId: input.userId,
 			slug,
+		})
+		if (fromApp) return fromApp
+	}
+	return null
+}
+
+/**
+ * The stored secret for a token exchange the caller describes. A stored
+ * secret only goes to its own app's token URL with its own client id, so a
+ * request naming a provider cannot send that app's secret elsewhere. Matching
+ * on the endpoint also finds an app reused under another provider name.
+ */
+export async function resolveTokenEndpointClientSecret(input: {
+	env: Env
+	userId: OwnerId
+	provider: string
+	clientId: string | null
+	tokenUrl: string
+	clientSecret?: string | null
+}): Promise<string | null> {
+	const inline = input.clientSecret?.trim()
+	if (inline) return inline
+	const clientId = input.clientId?.trim()
+	const tokenUrl = input.tokenUrl.trim()
+	if (!clientId || !tokenUrl) return null
+	const apps = await listOauthAppsByTokenEndpoint({
+		db: input.env.APP_DB,
+		userId: input.userId,
+		clientId,
+		tokenUrl,
+	})
+	const preferred = canonicalIntegrationName(input.provider)
+	apps.sort(
+		(a, b) => Number(b.slug === preferred) - Number(a.slug === preferred),
+	)
+	for (const app of apps) {
+		const fromApp = await resolveUserOauthAppClientSecret({
+			env: input.env,
+			userId: input.userId,
+			slug: app.slug,
 		})
 		if (fromApp) return fromApp
 	}

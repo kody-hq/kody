@@ -361,6 +361,24 @@ token into chat. Guide: [Local CLI execute](../guides/local-execute.md). Skill:
 [prefer-local-cli-execute](../../.agents/skills/prefer-local-cli-execute/SKILL.md).
 Open API fallback: [Open API](../guides/open-api.md).
 
+### CLI against local dev
+
+Local dev has no separate API worker, so on `http://localhost:<port>` the origin
+itself answers `/v1/*` and `/openapi.json` (only when
+`WRANGLER_IS_LOCAL_DEV=true` and the host is loopback). It also registers the
+CLI OAuth client in `OAUTH_KV`, since plain-HTTP origins cannot fetch the CLI's
+Client ID Metadata Document. So `kody login` (or `--device`), `kody context`,
+and `kody daemon` work against local dev:
+
+```bash
+kody login --device --mcp-url http://localhost:3742/mcp --api-url http://localhost:3742
+KODY_ECP_TRUST_TEST_ROOT=1 kody daemon --mcp-url http://localhost:3742/mcp
+```
+
+Approve the device code at `/device` (pick the org when the account has more
+than one). The daemon needs `KODY_ECP_TRUST_TEST_ROOT=1` because local and
+preview server keys are signed by the committed test root.
+
 ### CLI against a PR preview
 
 A preview deploys the Open API edge as its own worker,
@@ -433,5 +451,10 @@ seed write D1 under `.wrangler/state`, the directory Vite persists.
   `CLOUDFLARE_API_BASE_URL` to a mock). Prefer local verification:
   `npm run migrate:local && node tools/seed-test-data.ts --local`, then
   `control-kody dev` / `execute` (admin seed `kody@example.com` for admin-owned
-  automation). Production and preview keep the real binding; use a PR preview
-  only when you need that remote Artifacts namespace.
+  automation). Mock repo remotes are real git: `cli.ts` serves them from bare
+  repos under `.wrangler/state/mock-artifacts-git`
+  (`tools/mock-artifacts-git-server.ts`), so plain repos (`repoCreate`, push
+  through `repoGetGitRemote`, then `repoOpenSession`) exercise RepoSession
+  locally. Saved packages still use mock source snapshots, so a package repo
+  session needs a preview. Production and preview keep the real binding; use a
+  PR preview only when you need that remote Artifacts namespace.

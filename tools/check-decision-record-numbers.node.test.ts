@@ -10,6 +10,7 @@ import {
 	findHeadingPrefixMismatches,
 	findIndexPrimaryNumberCollisions,
 	findOrphanLabCompanions,
+	formatOpenPullRequestDecisionAdvisory,
 } from './check-decision-record-numbers.ts'
 
 test('decision record helpers reject duplicates, orphan labs, and heading mismatches', () => {
@@ -153,6 +154,7 @@ test('checkDecisionRecordNumbers accepts unique primaries and reports colliding 
 		await expect(checkDecisionRecordNumbers(tree.cwd)).resolves.toEqual({
 			ok: true,
 			errors: [],
+			records: expect.any(Array),
 		})
 	}
 
@@ -165,5 +167,131 @@ test('checkDecisionRecordNumbers accepts unique primaries and reports colliding 
 	await expect(checkDecisionRecordNumbers(duplicates.cwd)).resolves.toEqual({
 		ok: false,
 		errors: [expect.stringContaining('Duplicate decision number 0022')],
+		records: expect.any(Array),
+	})
+})
+
+test('open pull request decision numbers: lowest PR keeps a number, others renumber', () => {
+	const records = [
+		'0094-existing.md',
+		'0095-existing-lab.md',
+		'0095-existing.md',
+		'0096-new-record.md',
+	].flatMap((filename) => {
+		const record = classifyDecisionRecordFilename(filename)
+		return record ? [record] : []
+	})
+	const baseFilenames = new Set([
+		'0094-existing.md',
+		'0095-existing.md',
+		'0095-existing-lab.md',
+	])
+	const scan = {
+		status: 'ok' as const,
+		claims: [
+			{ number: 10, filenames: ['docs/contributing/decisions/0096-other.md'] },
+			{ number: 30, filenames: ['docs/contributing/decisions/0096-third.md'] },
+			{ number: 40, filenames: ['docs/contributing/decisions/0097-next.md'] },
+			{
+				number: 50,
+				filenames: ['docs/contributing/decisions/0094-existing-lab.md'],
+			},
+		],
+	}
+
+	const yielding = formatOpenPullRequestDecisionAdvisory({
+		records,
+		baseFilenames,
+		scan,
+		currentPullNumber: 20,
+		isBaseBranchCheckout: false,
+	})
+	expect(yielding.blockingOverlaps).toEqual([
+		{ prefix: '0096', pullNumbers: [10, 30] },
+	])
+	// 0096 and 0097 are claimed; 0098 is the first free number.
+	expect(yielding.suggestedPrefix).toBe('0098')
+	expect(yielding.lines.join('\n')).toContain('Renumber to 0098')
+
+	const keeping = formatOpenPullRequestDecisionAdvisory({
+		records,
+		baseFilenames,
+		scan,
+		currentPullNumber: 5,
+		isBaseBranchCheckout: false,
+	})
+	expect(keeping.blockingOverlaps).toEqual([])
+	expect(keeping.overlaps).toEqual([{ prefix: '0096', pullNumbers: [10, 30] }])
+	expect(keeping.lines.join('\n')).toContain('they must renumber')
+
+	const unknownPull = formatOpenPullRequestDecisionAdvisory({
+		records,
+		baseFilenames,
+		scan,
+		currentPullNumber: null,
+		isBaseBranchCheckout: false,
+	})
+	expect(unknownPull.blockingOverlaps).toHaveLength(1)
+
+	const onMain = formatOpenPullRequestDecisionAdvisory({
+		records,
+		baseFilenames,
+		scan,
+		currentPullNumber: null,
+		isBaseBranchCheckout: true,
+	})
+	expect(onMain.blockingOverlaps).toEqual([])
+
+	// Records already on the base never collide with open PRs.
+	const existingOnly = formatOpenPullRequestDecisionAdvisory({
+		records,
+		baseFilenames: new Set([...baseFilenames, '0096-new-record.md']),
+		scan,
+		currentPullNumber: 20,
+		isBaseBranchCheckout: false,
+	})
+	expect(existingOnly.overlaps).toEqual([])
+})
+
+test('open pull request decision numbers: skipped scans and unknown bases do not block', () => {
+	const records = [
+		classifyDecisionRecordFilename('0096-new-record.md'),
+	].flatMap((record) => (record ? [record] : []))
+	const base = {
+		records,
+		currentPullNumber: 20,
+		isBaseBranchCheckout: false,
+	}
+	expect(
+		formatOpenPullRequestDecisionAdvisory({
+			...base,
+			baseFilenames: new Set(),
+			scan: { status: 'skipped', reason: 'no-token' },
+		}),
+	).toMatchObject({ warning: null, blockingOverlaps: [] })
+	expect(
+		formatOpenPullRequestDecisionAdvisory({
+			...base,
+			baseFilenames: new Set(),
+			scan: { status: 'skipped', reason: 'error', detail: 'GitHub 500' },
+		}),
+	).toMatchObject({
+		warning: expect.stringContaining('GitHub 500'),
+		blockingOverlaps: [],
+	})
+	expect(
+		formatOpenPullRequestDecisionAdvisory({
+			...base,
+			baseFilenames: null,
+			scan: {
+				status: 'ok',
+				claims: [
+					{ number: 1, filenames: ['docs/contributing/decisions/0096-x.md'] },
+				],
+			},
+		}),
+	).toMatchObject({
+		warning: expect.stringContaining('no trusted Git base'),
+		blockingOverlaps: [],
 	})
 })

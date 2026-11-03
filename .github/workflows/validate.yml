@@ -267,6 +267,8 @@ jobs:
       - name: 📚 Docs
         if: ${{ !cancelled() }}
         run: npm run docs:check
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: 📦 Deps
         if: ${{ !cancelled() }}

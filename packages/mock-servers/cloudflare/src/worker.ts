@@ -15,6 +15,11 @@ import { routeRehearsal } from './rehearsal-routes.ts'
 
 type MockCloudflareEnv = {
 	MOCK_API_TOKEN?: string
+	/**
+	 * Local dev only: git smart HTTP origin (`tools/mock-artifacts-git-server.ts`)
+	 * that backs repo remotes, so repo sessions can clone and push.
+	 */
+	MOCK_GIT_BACKEND_URL?: string
 	MOCK_CLOUDFLARE_ARTIFACTS_STATE: DurableObjectNamespace
 	MOCK_CLOUDFLARE_EMAIL_STATE: DurableObjectNamespace
 }
@@ -282,10 +287,11 @@ function buildMockArtifactsRemote(input: {
 	accountId: string
 	namespace: string
 	repoName: string
+	gitBackendUrl?: string
 }) {
 	const remote = new URL(
 		`/git/${encodeURIComponent(input.namespace)}/${encodeURIComponent(input.repoName)}.git`,
-		input.requestUrl,
+		input.gitBackendUrl?.trim() || input.requestUrl,
 	)
 	return remote.toString()
 }
@@ -645,6 +651,7 @@ async function handleArtifactsRepos(
 			accountId: input.accountId,
 			namespace: input.namespace,
 			repoName,
+			gitBackendUrl: env.MOCK_GIT_BACKEND_URL,
 		}),
 	})
 	const token = await state.createToken({
@@ -764,6 +771,7 @@ async function handleArtifactsFork(
 			accountId: input.accountId,
 			namespace: input.namespace,
 			repoName: targetName,
+			gitBackendUrl: env.MOCK_GIT_BACKEND_URL,
 		}),
 	})
 	const token = await state.createToken({
