@@ -1423,21 +1423,20 @@ capabilities ([dead-letter queues](../dead-letter-queues.md)).
 
 Production note:
 
-- Production deploys warn that the documented Artifacts Worker binding config is
-  unexpected, and deploy logs show no `env.ARTIFACTS` binding in the deployed
-  Worker binding summary.
-- Because that binding is absent in production, repo source code uses the
-  documented Artifacts REST API as the single integration path for
-  create/get/token/fork operations.
-- `packages/worker/src/repo/artifacts.ts` builds that REST client from
-  `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, and optional
-  `CLOUDFLARE_API_BASE_URL` / `ARTIFACTS_NAMESPACE`, which also makes local dev
-  mocking straightforward.
+- Production and preview Workers bind `ARTIFACTS` (wrangler `artifacts`,
+  namespaces `production` / per-PR). `getArtifactsBinding()` uses that JSRPC
+  binding when it matches `ARTIFACTS_NAMESPACE`, and falls back to the Artifacts
+  REST client from `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, and optional
+  `CLOUDFLARE_API_BASE_URL` / `ARTIFACTS_NAMESPACE` when the binding is absent
+  or the requested namespace differs (local/tests).
 - During `npm run dev`, those REST calls go to the local Cloudflare mock Worker,
   which implements the Artifacts repo metadata endpoints used by the app
-  (`create`, `get`, `list`, `createToken`, and `fork`). The mock only covers the
-  REST control plane; repo session Durable Objects need a Git-capable remote for
-  clone/pull/push flows.
+  (`create`, `get`, `list`, `createToken`, and `fork`). `cli.ts` also serves
+  mock git remotes from `.wrangler/state/mock-artifacts-git`
+  (`tools/mock-artifacts-git-server.ts`), so plain-repo `repoOpenSession`
+  clone/push works locally. Saved-package repo sessions still use mock source
+  snapshots — use a preview for that namespace. See
+  [Local limitations](../cloud-agents.md#local-limitations).
 - Durable repo-source creation paths
   (`ensureEntitySource(..., requirePersistence: true)`) fail closed when
   persistence bindings are unavailable so callers do not write orphaned

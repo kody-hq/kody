@@ -117,14 +117,12 @@ in, register a real device, or change an execution chain.
 For local UI development, start the website with control-kody, then run
 `npm start --workspace @kodycodes/desktop -- --app-url=http://localhost:3743`
 using the origin printed by control-kody. The override accepts only loopback
-origins in unpackaged builds. Production builds always load the live site. The
-integrated controls require the website release containing the desktop
-navigation component.
-
-The website advertises `X-Kody-Desktop-Navigation: 1` on HTML responses. On
-macOS the shell checks that capability before hiding the native titlebar, so
-older website releases and offline launches retain usable window controls. The
-web UI and shell can ship independently.
+origins in unpackaged builds. Production builds always load the live site.
+Integrated chrome appears when the origin advertises
+`X-Kody-Desktop-Navigation: 1` on HTML responses. On macOS the shell checks that
+capability before hiding the native titlebar, so older website releases and
+offline launches retain usable window controls. The web UI and shell can ship
+independently.
 
 After `control-kody login --origin <local-origin>`, run
 `npm run test:explorer --workspace @kodycodes/desktop -- <local-origin>`. It
@@ -146,8 +144,8 @@ state, or session. A callback with the matching state and an OAuth-style `error`
 ends the attempt right away (`access_denied` shows a canceled page). Older
 websites and shells keep the existing embedded sign-in form.
 
-The website release includes migration `0215-desktop-browser-login.sql` and must
-ship before the shell enables browser authentication on the live site. CLI
+Browser sign-in uses migration `0215-desktop-browser-login.sql`. The shell
+enables it when the origin advertises `X-Kody-Desktop-Authentication: 1`. CLI
 sign-in still grants the CLI its own scoped credentials through its existing
 browser flow. A website session does not become a CLI API token.
 
@@ -287,10 +285,10 @@ ID identity in Keychain without exporting its private key. Provide
 `APPLE_API_KEY` as the local `.p8` path, plus `APPLE_API_KEY_ID` and
 `APPLE_API_ISSUER`. CI still requires the protected certificate export above.
 
-The existing 0.1.0 demo predates the updater. Install the first production
-release manually once, subsequent releases update automatically. A real
-signed-version-to-signed-version update remains part of first-release
-acceptance.
+Installs that never received a signed auto-update build need one manual install
+from a published production release; after that, the updater handles subsequent
+releases. A real signed-version-to-signed-version update remains part of
+first-release acceptance.
 
 ### macOS app automation
 
@@ -320,9 +318,10 @@ have Kody.app send Apple Events instead, remove a CLI service with
 
 ### Contacts access
 
-Desktop 0.1.5 includes the Contacts entitlement and purpose string. Packages can
-use the built-in Contacts framework to resolve names, phone numbers, and email
-addresses. macOS still requires the user's Contacts consent, separately from
-Full Disk Access and Messages Automation. These permissions belong to the app's
-own runner, not an adopted CLI service or terminal daemon. Release verification
-checks the Contacts entitlement and purpose string on the signed app.
+Signed production builds include the Contacts entitlement and purpose string
+(desktop 0.1.5 or later). Packages can use the built-in Contacts framework to
+resolve names, phone numbers, and email addresses. macOS still requires the
+user's Contacts consent, separately from Full Disk Access and Messages
+Automation. These permissions belong to the app's own runner, not an adopted CLI
+service or terminal daemon. Release verification checks the Contacts entitlement
+and purpose string on the signed app.

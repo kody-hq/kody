@@ -149,21 +149,21 @@ not reuse another user's cookie for the same origin. MCP commands also store the
 the login cookie. `preview` uses
 [`preview-manual-test`](./preview-manual-testing.md) and its own seed.
 
-`package-create` registers a stub saved package on a PR preview through MCP
-`packageGetGitRemote({ create: true, name })`. Pass the package name leaf or
-`@owner/leaf` with `--package-name`. It reuses `--origin`, `--email`,
-`--password`, `--cookie-file`, `--json`, and `--org <slug>`. Pass
-`--package-name <leaf-or-@scope/leaf>` (required; `--kody-id` is an alias),
-`--description` (optional), and `--head-ahead` to push one unpublished commit so
-the package page can show **HEAD ahead of published**. Do not POST a create
-action to `/account/packages.json` — that endpoint has no package-create action.
-Logged-in preview testing does not require agents to hand-roll an MCP OAuth
-dance — the CLI does it for them. The command refuses `https://kody.codes`.
-Package source persistence (`packageGetGitRemote`, `packageSave`, publish) works
-on local `npm run dev`: the generated origin config drops the always-remote
-`ARTIFACTS` binding so the mock Artifacts API is used. Prefer `package-create` /
-`execute` against localhost; use a PR preview when you need the real remote
-Artifacts namespace. See
+`package-create` registers a stub saved package through MCP
+`packageGetGitRemote({ create: true, name })` on local `npm run dev` or a PR
+preview. Pass the package name leaf or `@owner/leaf` with `--package-name`. It
+reuses `--origin`, `--email`, `--password`, `--cookie-file`, `--json`, and
+`--org <slug>`. Pass `--package-name <leaf-or-@scope/leaf>` (required;
+`--kody-id` is an alias), `--description` (optional), and `--head-ahead` to push
+one unpublished commit so the package page can show **HEAD ahead of published**.
+Do not POST a create action to `/account/packages.json` — that endpoint has no
+package-create action. Logged-in testing does not require agents to hand-roll an
+MCP OAuth dance — the CLI does it for them. The command refuses
+`https://kody.codes`. Package source persistence (`packageGetGitRemote`,
+`packageSave`, publish) works on local `npm run dev`: the generated origin
+config drops the always-remote `ARTIFACTS` binding so the mock Artifacts API is
+used. Prefer `package-create` / `execute` against localhost; use a PR preview
+when you need the real remote Artifacts namespace. See
 [Local limitations](./cloud-agents.md#local-limitations).
 
 `execute` and `search` use the same OAuth client against a preview or local

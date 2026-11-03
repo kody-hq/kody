@@ -173,10 +173,10 @@ Messages database (`~/Library/Messages/chat.db`) needs Full Disk Access. macOS
 asks once per target app; after you allow it, runs with host commands on can use
 that app without asking you again.
 
-Desktop 0.1.5 and later also include a Contacts entitlement. Packages that use
-the macOS Contacts framework to resolve names, phone numbers, or email addresses
-get a separate Contacts prompt. That consent belongs to the desktop app's own
-runner, not an adopted CLI service or terminal daemon.
+The Kody desktop app (0.1.5 or later) includes a Contacts entitlement. Packages
+that use the macOS Contacts framework to resolve names, phone numbers, or email
+addresses get a separate Contacts prompt. That consent belongs to the desktop
+app's own runner, not an adopted CLI service or terminal daemon.
 
 macOS checks the app that runs the daemon:
 
