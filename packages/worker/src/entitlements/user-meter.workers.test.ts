@@ -18,6 +18,7 @@ import { ensureEntitlementTestSchema } from './test-schema.ts'
 import { userMeterRpc } from './user-meter-client.ts'
 import { UserMeter, userMeterMirrorUpdatedAtToken } from './user-meter-do.ts'
 import { withPatchedDbPrepare } from '#worker/test-support/user-meter.ts'
+import { inObjectUserMeterNamespace } from '#worker/test-support/in-object-user-meter.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 
 type DailyResource = Parameters<typeof consumeDailyEntitlement>[0]['resource']
@@ -1241,7 +1242,11 @@ test('UserMeter budget spend resets on UTC month rollover', async () => {
 })
 
 test('UserMeter budget enforcement separates user and automation limits', async () => {
-	const { userId, meter } = await seedFreeUser('budget-enforce')
+	const { userId } = await seedFreeUser('budget-enforce')
+	const meter = userMeterRpc({
+		env: { USER_METER: inObjectUserMeterNamespace(env.USER_METER) },
+		userId: ownerIdFromStored(userId),
+	})
 	const month = utcMonthKey(new Date())
 	await expect(
 		meter.assertWithinBudgetAndRecord({
