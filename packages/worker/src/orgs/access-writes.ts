@@ -9,6 +9,7 @@ import {
 } from '@kody-internal/shared/grant-presets.ts'
 import {
 	isOrgPermission,
+	withoutRetiredOrgPermissions,
 	type OrgGrantResourceType,
 	type OrgPermission,
 	type OrgResourceType,
@@ -1112,7 +1113,7 @@ function parseStoredInvite(row: InviteRow): StoredInvite {
 		? parseJsonStringList(row.permissions_json, `Invite ${row.id} permissions`)
 		: null
 	const permissions = permissionValues
-		? permissionValues.map((permission) => {
+		? withoutRetiredOrgPermissions(permissionValues).map((permission) => {
 				if (!isOrgPermission(permission)) {
 					throw new Error(`Invite ${row.id} has permission ${permission}.`)
 				}

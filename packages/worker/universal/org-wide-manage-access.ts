@@ -32,14 +32,9 @@ export const orgWideManageAccessOptions: ReadonlyArray<{
 		permission: 'app',
 		label: 'Every package app',
 		description:
-			'Open, change, delete, and share every package app in this organization, including ones created later.',
+			'Open and share every package app in this organization, including ones created later. Changing or deleting an app is part of its package.',
 		read: 'app:read',
-		permissions: [
-			'app:execute',
-			'app:write',
-			'app:delete',
-			'app:manage_access',
-		],
+		permissions: ['app:execute', 'app:manage_access'],
 	},
 ]
 

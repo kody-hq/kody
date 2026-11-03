@@ -76,8 +76,8 @@ synchronous, for callers that already hold the compiled permissions.
 
 **Member permissions.** A team org's `members_can_create_packages` (default off)
 and `members_can_create_credentials` (default on) columns on `orgs` add
-`package:create` + `app:create` and `secret:create` + `integration:create` to
-every Member's compiled org permissions (`memberCreationGrants` in
+`package:create` and `secret:create` + `integration:create` to every Member's
+compiled org permissions (`memberCreationGrants` in
 `authorization/member-creation-permissions.ts`, applied in
 `compileFromRoleAndGrants`). `updateOrgMemberCreation`
 (`orgs/member-creation.ts`) writes them with the `org.member_creation_changed`
@@ -135,15 +135,15 @@ locks still apply: when a non-Owner holds org-wide `package:write` or
 the org, and a locked package needs a grant on that package with
 `allow_unmappable_credential_changes` before those two pass.
 
-**Grantable but unenforced.** `app:create`, `app:write`, `app:delete`,
-`job:create`, `job:delete`, and `email:create` can be granted but no surface
-checks them: jobs and apps come from the package manifest, so creating them is
-`package:create` / `package:publish`; an app shares its package's id, so
-changing or deleting it is `package:write` / `package:delete`; inboxes are
-created at signup. Holding one of them alone unlocks nothing.
-`permission-enforcement.node.test.ts` pins this list. Removing any of them needs
-an `api_tokens.scopes_json` strip as well, because `normalizeApiTokenScopes`
-throws on unknown scopes.
+**Grantable but unenforced.** `app:write`, `app:delete`, and `job:delete` can be
+granted (advanced checklist only for the app pair) but no surface checks them:
+an app shares its package's id, so changing or deleting it is `package:write` /
+`package:delete`. Holding one of them alone unlocks nothing.
+`permission-enforcement.node.test.ts` pins this list. Jobs and apps come from
+the package manifest and inboxes are made at signup, so there is no
+`job:create`, `app:create`, or `email:create`. Readers of stored scopes drop
+those values (`withoutRetiredOrgPermissions`), and migration 0241 strips stored
+rows.
 
 A surface check without a resource (capability `orgPermission`, Open API
 `x-kody-permission`) passes when the permission is held at org level **or on any

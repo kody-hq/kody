@@ -5,6 +5,7 @@ import {
 	localExecuteOrgPermissions,
 	unionLocalExecuteParityScopes,
 } from './legacy-scope-rewrite.ts'
+import { normalizeApiTokenScopes } from './scopes.ts'
 
 test('the CLI local-execute remint list matches localExecuteOrgPermissions', async () => {
 	const cliDefaults = (await import(
@@ -69,7 +70,6 @@ test('rewrites each §5.3 legacy scope to the fixed org-permission set', () => {
 	])
 	expect(rewriteLegacyApiTokenScopes(['jobs:read'])).toEqual(['job:read'])
 	expect(rewriteLegacyApiTokenScopes(['jobs:write'])).toEqual([
-		'job:create',
 		'job:execute',
 		'job:read',
 		'job:write',
@@ -83,7 +83,6 @@ test('rewrites each §5.3 legacy scope to the fixed org-permission set', () => {
 	])
 	expect(rewriteLegacyApiTokenScopes(['email:read'])).toEqual(['email:read'])
 	expect(rewriteLegacyApiTokenScopes(['email:write'])).toEqual([
-		'email:create',
 		'email:delete',
 		'email:read',
 		'email:send',
@@ -243,4 +242,16 @@ test('throws on unknown scopes', () => {
 	expect(() =>
 		rewriteLegacyApiTokenScopes(['account:read', 'not-a-scope']),
 	).toThrow(/not-a-scope/)
+})
+
+test('retired permissions are dropped instead of rejected', () => {
+	expect(
+		rewriteLegacyApiTokenScopes(['jobs:read', 'job:create', 'email:create']),
+	).toEqual(['job:read'])
+	expect(
+		normalizeApiTokenScopes(['package:read', 'app:create', 'job:create']),
+	).toEqual(['package:read'])
+	expect(() => normalizeApiTokenScopes(['job:launch'])).toThrow(
+		/Unknown API token scope/,
+	)
 })

@@ -29,10 +29,10 @@ Like a code host's "members can create repositories" setting, an Owner chooses
 what every Member of a team org can create without a grant: **Organization
 settings**, **Member permissions**, or `orgUpdate`.
 
-| Setting                              | Default | Gives every Member                                                                  |
-| ------------------------------------ | ------- | ----------------------------------------------------------------------------------- |
-| Members can create packages and apps | Off     | `package:create`, `app:create`: save, fork, and first-publish packages, repos, apps |
-| Members can create credentials       | On      | `secret:create`, `integration:create`: new secrets, OAuth connections, MCP servers  |
+| Setting                              | Default | Gives every Member                                                                 |
+| ------------------------------------ | ------- | ---------------------------------------------------------------------------------- |
+| Members can create packages and apps | Off     | `package:create`: save, fork, and first-publish packages, repos, and their apps    |
+| Members can create credentials       | On      | `secret:create`, `integration:create`: new secrets, OAuth connections, MCP servers |
 
 ```json
 { "members_can_create_packages": true, "members_can_create_credentials": true }
@@ -112,8 +112,6 @@ or `accessGrant` with `resource_type: "org"`:
 		"package:manage_access",
 		"app:read",
 		"app:execute",
-		"app:write",
-		"app:delete",
 		"app:manage_access"
 	]
 }

@@ -47,7 +47,7 @@ const contributeExtraByType: Record<
 	ReadonlyArray<OrgPermission>
 > = {
 	package: ['package:write'],
-	app: ['app:write'],
+	app: [],
 	job: ['job:write'],
 	secret: ['secret:write'],
 	integration: ['integration:write'],
@@ -61,7 +61,7 @@ const manageExtraByType: Record<
 	ReadonlyArray<OrgPermission>
 > = {
 	package: ['package:delete', 'package:manage_access', 'package:publish'],
-	app: ['app:delete', 'app:manage_access'],
+	app: ['app:manage_access'],
 	job: ['job:delete', 'job:manage_access'],
 	secret: ['secret:delete', 'secret:manage_access'],
 	integration: ['integration:delete', 'integration:manage_access'],
@@ -111,8 +111,6 @@ export const orgWideManagePermissions = [
 	'package:delete',
 	'package:manage_access',
 	'app:execute',
-	'app:write',
-	'app:delete',
 	'app:manage_access',
 ] as const satisfies ReadonlyArray<OrgPermission>
 
@@ -133,12 +131,9 @@ const orgResourceGrantable: ReadonlyArray<OrgPermission> = [
 	'org:delete',
 	'org:execute',
 	'package:create',
-	'app:create',
-	'job:create',
 	'secret:create',
 	'integration:create',
 	'memory:create',
-	'email:create',
 	'execution_context:create',
 	'search:read',
 	'member:read',

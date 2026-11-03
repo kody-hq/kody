@@ -30,6 +30,7 @@ import {
 import { toHex } from '@kody-internal/shared/hex.ts'
 import {
 	isOrgPermission,
+	withoutRetiredOrgPermissions,
 	type OrgPermission,
 } from '@kody-internal/shared/org-permissions.ts'
 import {
@@ -294,7 +295,8 @@ function isStoredVisitTicket(value: unknown): value is StoredVisitTicket {
 		record.scopes.every((scope) => typeof scope === 'string') &&
 		(record.cs === undefined ||
 			record.cs === null ||
-			(Array.isArray(record.cs) && record.cs.every(isOrgPermission))) &&
+			(Array.isArray(record.cs) &&
+				withoutRetiredOrgPermissions(record.cs).every(isOrgPermission))) &&
 		(record.cp === undefined || record.cp === null || isText(record.cp)) &&
 		(record.cpi === undefined || record.cpi === null || isText(record.cpi)) &&
 		(record.cpc === undefined ||

@@ -173,7 +173,6 @@ test('Members can create credentials but not packages by default', async () => {
 	expect(member.orgPermissions.has('secret:create')).toBe(true)
 	expect(member.orgPermissions.has('integration:create')).toBe(true)
 	expect(member.orgPermissions.has('package:create')).toBe(false)
-	expect(member.orgPermissions.has('app:create')).toBe(false)
 	// Creating never brings write on what others made.
 	for (const write of ['secret:write', 'integration:write', 'package:write']) {
 		expect(member.orgPermissions.has(write as never)).toBe(false)
@@ -206,7 +205,6 @@ test('member settings change what every Member compiles, never Owners', async ()
 	})
 	expect(member.epoch).toBe(1)
 	expect(member.orgPermissions.has('package:create')).toBe(true)
-	expect(member.orgPermissions.has('app:create')).toBe(true)
 	expect(member.orgPermissions.has('secret:create')).toBe(false)
 	expect(member.orgPermissions.has('integration:create')).toBe(false)
 
