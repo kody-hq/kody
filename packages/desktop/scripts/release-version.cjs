@@ -50,6 +50,14 @@ function versionFromTag(tag) {
 	return version
 }
 
+function stableTagVersion(tag) {
+	try {
+		return versionFromTag(tag)
+	} catch {
+		return null
+	}
+}
+
 function releaseAssetNames(version, scope) {
 	return releasePlan(scope, {}).matrix.include.flatMap(({ platform, arch }) => {
 		const os = platform
@@ -85,13 +93,33 @@ function planVersion({
 	sha,
 	platforms,
 	drafts = [],
+	releases = [],
 	isAncestor = isPublishedSourceAncestor,
 }) {
 	stableVersion(current)
+	if (latest) versionFromTag(latest.tag_name)
+	for (const release of releases) {
+		if (
+			release.draft ||
+			release.prerelease ||
+			!stableTagVersion(release.tag_name)
+		)
+			continue
+		if (
+			!latest ||
+			compareVersions(
+				versionFromTag(release.tag_name),
+				versionFromTag(latest.tag_name),
+			) > 0
+		)
+			latest = release
+	}
 	const assets = latest?.assets.map((asset) => asset.name) || []
+	const recordedPlatforms = latest?.body?.match(/\nPlatforms: (mac|all)$/)?.[1]
 	const scope =
 		platforms ||
-		(assets.some(
+		(recordedPlatforms === 'all' ||
+		assets.some(
 			(name) =>
 				name.startsWith('latest-') &&
 				name.endsWith('.yml') &&
@@ -99,6 +127,10 @@ function planVersion({
 		)
 			? 'all'
 			: 'mac')
+	if (scope === 'mac' && recordedPlatforms === 'all')
+		throw new Error(
+			'Choose all platforms to preserve the recorded desktop release scope.',
+		)
 	assertFeedCoverage(scope, assets)
 	let version = current
 	if (latest) {
@@ -117,7 +149,8 @@ function planVersion({
 		version =
 			compareVersions(current, published) > 0 ? current : nextPatch(published)
 	}
-	const reserved = drafts
+	const reserved = [...drafts, ...releases]
+		.filter((draft) => stableTagVersion(draft.tag_name))
 		.map((draft) => ({ draft, version: versionFromTag(draft.tag_name) }))
 		.sort((a, b) => compareVersions(a.version, b.version))
 	for (const { draft, version: reservedVersion } of reserved) {
@@ -155,11 +188,9 @@ if (require.main === module) {
 		const plan = planVersion({
 			current: require('../package.json').version,
 			latest: JSON.parse(readFileSync(0, 'utf8')),
-			drafts:
+			releases:
 				process.argv[2] === '--releases'
-					? JSON.parse(readFileSync(process.argv[3], 'utf8'))
-							.flat()
-							.filter((release) => release.draft)
+					? JSON.parse(readFileSync(process.argv[3], 'utf8')).flat()
 					: [],
 			sha: process.env.SOURCE_SHA,
 			platforms: process.env.RELEASE_PLATFORMS,

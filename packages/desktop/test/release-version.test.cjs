@@ -172,3 +172,50 @@ test('matching drafts resume while drafts from another source reserve their vers
 		'0.1.7',
 	)
 })
+
+test('recorded platform coverage survives missing feed assets', () => {
+	const latest = {
+		tag_name: 'v0.1.5',
+		body: releaseNotes('a'.repeat(40), 'all'),
+		assets: [],
+	}
+	assert.equal(plan({ latest }).platforms, 'all')
+	assert.throws(
+		() => plan({ latest, platforms: 'mac' }),
+		/Choose all platforms/,
+	)
+})
+
+test('unrelated and prerelease drafts cannot block a stable release', () => {
+	const drafts = ['v0.2.0-rc', 'unrelated', ''].map((tag_name) => ({
+		draft: true,
+		tag_name,
+		assets: [],
+	}))
+	assert.equal(plan({ drafts }).version, '0.1.6')
+})
+
+test('published history sets the version floor even when latest points to an older release', () => {
+	const releases = [
+		{
+			draft: false,
+			tag_name: 'v0.1.6',
+			body: releaseNotes('a'.repeat(40), 'all'),
+			assets: [],
+		},
+		{ draft: false, prerelease: true, tag_name: 'v0.2.0-rc', assets: [] },
+	]
+	assert.equal(plan({ releases }).version, '0.1.7')
+	assert.equal(plan({ releases }).platforms, 'all')
+	assert.equal(plan({ latest: null, releases }).version, '0.1.7')
+	assert.equal(plan({ releases, isAncestor: () => false }).release, false)
+	assert.equal(
+		plan({
+			releases: [
+				...releases,
+				{ draft: false, prerelease: true, tag_name: 'v0.1.9', assets: [] },
+			],
+		}).version,
+		'0.1.10',
+	)
+})
