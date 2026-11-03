@@ -1262,11 +1262,12 @@ async function runExternalPublishAttempt(input: {
 						? { listing: alreadyPublishedExtras.listing }
 						: {}),
 					phase_timings: phaseTimings,
-					...(showBuildOrigin
+					// Only builds made outside the cloud (publish-offload) say so.
+					...(showBuildOrigin && input.uploadedBuild
 						? {
 								build_origin: {
-									origin: input.uploadedBuild?.origin ?? ('cloud' as const),
-									context_name: input.uploadedBuild?.contextName ?? null,
+									origin: input.uploadedBuild.origin,
+									context_name: input.uploadedBuild.contextName ?? null,
 								},
 							}
 						: {}),

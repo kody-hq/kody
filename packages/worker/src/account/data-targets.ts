@@ -325,6 +325,13 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		columns: ['operator_user_id'],
 	},
 	{ kind: 'user_id', table: 'execution_context_opt_ins' },
+	// Publish builds (publish-offload): short-lived upload jobs for a package
+	// the person owns or published. Their R2 chunks expire with the build.
+	{
+		kind: 'user_columns',
+		table: 'publish_builds',
+		columns: ['owner_user_id', 'requester_user_id'],
+	},
 	// Profiles a person acts as (ADR 0092). Their `grants` rows are swept by
 	// the profile purge once the profile row is gone.
 	{

@@ -137,11 +137,11 @@ export const getPackageCapability = defineDomainCapability(
 					})
 				: null
 			return {
-				...(showBuildOrigin
+				...(outsideBuild
 					? {
 							build_origin: {
-								origin: outsideBuild?.origin ?? ('cloud' as const),
-								context_name: outsideBuild?.context_name ?? null,
+								origin: outsideBuild.origin,
+								context_name: outsideBuild.context_name ?? null,
 							},
 						}
 					: {}),
