@@ -88,6 +88,7 @@ import {
 	executeOrReplayScheduledJobRun,
 	isTransientJobExecutionError,
 	markPreExecutionTransientError,
+	pendingJobBundleRetryWindowMs,
 	resolveScheduledJobCallerContext,
 	resolveScheduledJobRunRequest,
 	TransientJobExecutionError,
@@ -139,13 +140,16 @@ import {
 } from '#universal/plans.ts'
 import { resolveBackgroundMcpUser } from '#worker/identity/background-mcp-user.ts'
 import { isAccountSuspendedError } from '#worker/account/account-suspension.ts'
-import { assertPublishedSourceCanRebuildWithoutInstallingDeps } from '#worker/package-runtime/published-source-dependencies.ts'
+import {
+	assertPublishedSourceCanRebuildWithoutInstallingDeps,
+	createPublishedRuntimeBundleMissingError,
+	listMissingPublishedSourceInstalledDependencies,
+} from '#worker/package-runtime/published-source-dependencies.ts'
 import {
 	normalizePackageWorkspacePath,
 	type parseAuthoredPackageJson,
 } from '#worker/package-registry/manifest.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
-import { checkPublishedEntrypointsForRebuild } from '#worker/repo/published-entrypoint-checks.ts'
 import {
 	recordUsage,
 	usageErrorNameFromUnknown,
@@ -326,100 +330,6 @@ async function persistPublishedJobBundleArtifact(input: {
 	return artifact
 }
 
-function isPublishedJobBundleCurrent(input: {
-	artifact: PublishedBundleArtifact | null
-	rowPublishedCommit?: string | null
-	currentPublishedCommit: string | null
-}) {
-	return isPublishedBundleArtifactCurrentForCommit(input)
-}
-
-async function ensurePublishedBundleArtifactForJob(input: {
-	env: Env
-	job: JobRecord
-	callerContext: PersistedJobCallerContext
-}) {
-	const resolved = await resolvePublishedJobSource({
-		env: input.env,
-		userId: input.job.userId,
-		job: input.job,
-	})
-	const artifact = await loadPublishedBundleArtifactByIdentity({
-		env: input.env,
-		userId: input.job.userId,
-		sourceId: input.job.sourceId,
-		kind: 'job',
-		artifactName: resolved.artifactName,
-		entryPoint: resolved.entryPoint,
-	})
-	if (
-		artifact?.artifact &&
-		isPublishedJobBundleCurrent({
-			artifact: artifact.artifact,
-			rowPublishedCommit: artifact.row?.publishedCommit,
-			currentPublishedCommit: resolved.source.published_commit,
-		}) &&
-		// Pre-fix bundles that inline other packages rebuild once so each
-		// package's fetch acts as that package (GHSA-5fv3-qv7j-rqf5).
-		!publishedArtifactNeedsPackageBindingRebuild({
-			artifact: artifact.artifact,
-			sourceFiles: resolved.files,
-		})
-	) {
-		logJobSchedulerEvent({
-			event: 'job_bundle_cache_hit',
-			userId: input.job.userId,
-			jobId: input.job.id,
-			sourceId: input.job.sourceId,
-			artifactEntryPoint: artifact.row?.entryPoint ?? 'unknown',
-			artifactCacheHit: true,
-			dependencyCount: artifact.artifact.dependencies.length,
-		})
-		return artifact.artifact
-	}
-	logJobSchedulerEvent({
-		event: 'job_bundle_cache_miss',
-		userId: input.job.userId,
-		jobId: input.job.id,
-		sourceId: input.job.sourceId,
-		artifactCacheHit: false,
-		reason: 'bundle_not_found',
-	})
-	// Invocation trusts what publish accepted: no typecheck here, only the
-	// structural preconditions execution needs anyway.
-	const entrypointCheck = checkPublishedEntrypointsForRebuild({
-		sourceFiles: resolved.files,
-		entryPoints: [{ path: resolved.entryPoint }],
-	})
-	if (!entrypointCheck.ok) {
-		throw new Error(entrypointCheck.message)
-	}
-	await persistPublishedJobBundleArtifact({
-		env: input.env,
-		job: input.job,
-		callerContext: input.callerContext,
-		sourceId: input.job.sourceId,
-		sourceFiles: resolved.files,
-		entryPoint: resolved.entryPoint,
-		artifactName: resolved.artifactName,
-		packageContext: resolved.packageContext,
-	})
-	const loadedArtifact = await loadPublishedBundleArtifactByIdentity({
-		env: input.env,
-		userId: input.job.userId,
-		sourceId: input.job.sourceId,
-		kind: 'job',
-		artifactName: resolved.artifactName,
-		entryPoint: resolved.entryPoint,
-	})
-	if (!loadedArtifact?.artifact) {
-		throw new Error(
-			`Published bundle artifact for job "${input.job.id}" could not be loaded after rebuild.`,
-		)
-	}
-	return loadedArtifact.artifact
-}
-
 async function rebuildAndExecuteJobArtifact(input: {
 	env: Env
 	job: JobRecord
@@ -475,9 +385,7 @@ async function executePublishedJobArtifact(input: {
 	job: JobRecord
 	callerContext: PersistedJobCallerContext
 	source: RequestSource
-	artifact:
-		| PublishedBundleArtifact
-		| Awaited<ReturnType<typeof ensurePublishedBundleArtifactForJob>>
+	artifact: PublishedBundleArtifact
 	bypassLogs: Array<string>
 	waitUntil?: (promise: Promise<unknown>) => void
 	runRecordHandle?: RunRecordHandle | null
@@ -513,7 +421,10 @@ async function executePublishedJobArtifact(input: {
 		jobId: input.job.id,
 		storageId: input.job.storageId,
 		sourceId: packageContext?.sourceId ?? input.job.sourceId,
-		publishedCommit: source?.published_commit ?? input.job.publishedCommit,
+		publishedCommit:
+			input.artifact.publishedCommit ??
+			source?.published_commit ??
+			input.job.publishedCommit,
 		...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
 		metadata: {
 			trigger: jobRunTriggerForContext({
@@ -1392,6 +1303,29 @@ export async function executeJobOnce(input: {
 	})
 }
 
+/**
+ * No bundle exists yet for a job whose package needs npm dependencies. Right
+ * after a publish that is the build still running, so claimed (scheduled)
+ * runs retry; past the window it is a failed build and the run fails.
+ */
+function pendingPublishedJobBundleError(input: {
+	entryPoint: string
+	missingDependencies: ReadonlyArray<string>
+	snapshotCreatedAt: string | null
+	retryable: boolean
+}) {
+	const error = createPublishedRuntimeBundleMissingError({
+		missingDependencies: input.missingDependencies,
+		bundleLabel: `Saved package job "${input.entryPoint}"`,
+	})
+	const publishedAtMs = Date.parse(input.snapshotCreatedAt ?? '')
+	const publishIsRecent =
+		!Number.isFinite(publishedAtMs) ||
+		Date.now() - publishedAtMs <= pendingJobBundleRetryWindowMs
+	if (!input.retryable || !publishIsRecent) return error
+	return new TransientJobExecutionError(error.message, { cause: error })
+}
+
 async function runRepoBackedJob(input: {
 	env: Env
 	job: JobRecord
@@ -1431,9 +1365,21 @@ async function runRepoBackedJob(input: {
 	}).catch((error: unknown) => {
 		throw markPreExecutionTransientError(error)
 	})
+	const executeArtifact = (artifact: PublishedBundleArtifact) =>
+		executePublishedJobArtifact({
+			env: input.env,
+			job: input.job,
+			callerContext: input.callerContext,
+			source: input.source,
+			artifact,
+			bypassLogs: [],
+			waitUntil: input.waitUntil,
+			runRecordHandle: input.runRecordHandle,
+			idempotencyKey: input.idempotencyKey,
+		})
 	if (
 		loadedArtifact?.artifact &&
-		isPublishedJobBundleCurrent({
+		isPublishedBundleArtifactCurrentForCommit({
 			artifact: loadedArtifact.artifact,
 			rowPublishedCommit: loadedArtifact.row?.publishedCommit,
 			currentPublishedCommit: resolved.source.published_commit,
@@ -1447,16 +1393,34 @@ async function runRepoBackedJob(input: {
 			sourceFiles: resolved.files,
 		})
 	) {
-		return await executePublishedJobArtifact({
-			env: input.env,
-			job: input.job,
-			callerContext: input.callerContext,
-			source: input.source,
-			artifact: loadedArtifact.artifact,
-			bypassLogs: [],
-			waitUntil: input.waitUntil,
-			runRecordHandle: input.runRecordHandle,
-			idempotencyKey: input.idempotencyKey,
+		return await executeArtifact(loadedArtifact.artifact)
+	}
+	// npm dependencies are only installed by publish, so the job cannot be
+	// rebuilt here. `published_commit` moves before publish finishes building
+	// every target (and stays moved if that build fails), so keep running the
+	// last complete bundle for this job until publish replaces it.
+	const missingDependencies = listMissingPublishedSourceInstalledDependencies(
+		resolved.files,
+	)
+	if (missingDependencies.length > 0) {
+		if (loadedArtifact?.artifact) {
+			logJobSchedulerEvent({
+				event: 'job_bundle_previous_commit_served',
+				userId: input.job.userId,
+				jobId: input.job.id,
+				sourceId: input.job.sourceId,
+				artifactEntryPoint: loadedArtifact.row.entryPoint,
+				artifactCacheHit: true,
+				artifactPublishedCommit: loadedArtifact.artifact.publishedCommit,
+				reason: 'bundle_pending_for_published_commit',
+			})
+			return await executeArtifact(loadedArtifact.artifact)
+		}
+		throw pendingPublishedJobBundleError({
+			entryPoint: resolved.entryPoint,
+			missingDependencies,
+			snapshotCreatedAt: resolved.snapshotCreatedAt,
+			retryable: input.runRecordHandle != null,
 		})
 	}
 	return await rebuildAndExecuteJobArtifact({

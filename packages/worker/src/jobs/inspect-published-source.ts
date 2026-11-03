@@ -12,6 +12,7 @@ import type { JobRecord, JobSourceInspection, JobView } from './types.ts'
 export type PublishedJobSourceResolution = {
 	source: NonNullable<PublishedEntitySource['source']>
 	files: Record<string, string>
+	snapshotCreatedAt: PublishedEntitySource['snapshotCreatedAt']
 	artifactName: string
 	entryPoint: string
 	emittedEventTopics: Array<string>
@@ -64,6 +65,7 @@ export async function resolvePublishedJobSource(input: {
 	return {
 		source: publishedSource,
 		files: published.files,
+		snapshotCreatedAt: published.snapshotCreatedAt,
 		artifactName: input.job.name,
 		entryPoint: normalizePackageWorkspacePath(jobDefinition.entry),
 		emittedEventTopics: Object.keys(manifest.kody.emits ?? {}),
