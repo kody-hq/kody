@@ -1,4 +1,6 @@
+import * as Sentry from '@sentry/cloudflare'
 import { WorkerEntrypoint } from 'cloudflare:workers'
+import { getWorkerEntrypointSentryOptions } from '#worker/sentry-options.ts'
 import { recordUsage } from './record-usage.ts'
 
 export const dynamicWorkerCpuEventType = 'dynamic_worker_cpu'
@@ -27,7 +29,7 @@ export type DynamicWorkerUsageTailProps = {
  * platform outcome (`exceededCpu`, `exception`, …), not the sandbox result:
  * user code errors are caught inside `evaluate` and still trace as `ok`.
  */
-export class DynamicWorkerUsageTail extends WorkerEntrypoint<
+class DynamicWorkerUsageTailEntrypoint extends WorkerEntrypoint<
 	Env,
 	DynamicWorkerUsageTailProps
 > {
@@ -43,6 +45,12 @@ export class DynamicWorkerUsageTail extends WorkerEntrypoint<
 		)
 	}
 }
+
+export const DynamicWorkerUsageTail = Sentry.withSentry(
+	getWorkerEntrypointSentryOptions,
+	DynamicWorkerUsageTailEntrypoint,
+)
+export type DynamicWorkerUsageTail = DynamicWorkerUsageTailEntrypoint
 
 export async function recordDynamicWorkerCpu(input: {
 	env: Pick<Env, 'USAGE_EVENTS' | 'APP_DB'>
