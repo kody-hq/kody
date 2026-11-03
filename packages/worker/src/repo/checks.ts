@@ -1204,7 +1204,7 @@ function formatBundleCheckMessage(input: {
  * importable / app targets as published artifacts. Check-time esbuild is
  * skipped so a multi-export publish does not pay for bundling twice.
  */
-const deferredBundleCheckMessage =
+export const deferredBundleCheckMessage =
 	'Bundle validation deferred to published artifact rebuild.'
 
 const lintPassedMessage =

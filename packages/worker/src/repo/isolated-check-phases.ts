@@ -129,6 +129,7 @@ export type IsolatedAuthoringChecksRequest = {
 	baseUrl: string
 	sourceId?: string
 	expectedPackageScope?: string
+	deferBundleCheckToRebuild?: boolean
 }
 
 export type IsolatedAuthoringChecksOutcome = {
@@ -319,6 +320,8 @@ export async function runAuthoringChecksInIsolate(input: {
 	binaryFileSizes?: Record<string, number>
 	sourceId?: string
 	expectedPackageScope?: string
+	deferBundleCheckToRebuild?: boolean
+	kodyIgnoredDeclarationFiles?: Array<string>
 }): Promise<IsolatedAuthoringChecksOutcome | null> {
 	const namespace = (
 		input.env as (Env & { REPO_SESSION?: DurableObjectNamespace }) | undefined
@@ -334,6 +337,9 @@ export async function runAuthoringChecksInIsolate(input: {
 			sourceFiles: input.files,
 			...(input.binaryFileSizes
 				? { binaryFileSizes: input.binaryFileSizes }
+				: {}),
+			...(input.kodyIgnoredDeclarationFiles?.length
+				? { kodyIgnoredDeclarationFiles: input.kodyIgnoredDeclarationFiles }
 				: {}),
 		}),
 		{ expirationTtl: stagingTtlSeconds },
@@ -352,6 +358,9 @@ export async function runAuthoringChecksInIsolate(input: {
 				...(input.sourceId ? { sourceId: input.sourceId } : {}),
 				...(input.expectedPackageScope !== undefined
 					? { expectedPackageScope: input.expectedPackageScope }
+					: {}),
+				...(input.deferBundleCheckToRebuild === true
+					? { deferBundleCheckToRebuild: true }
 					: {}),
 			})
 		} catch (error) {

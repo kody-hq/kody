@@ -24,7 +24,7 @@ import type { PublishedPackageArtifactBuildTarget } from '#worker/package-runtim
 import {
 	createIsolatedArtifactRebuildRunner,
 	isolatedArtifactRebuildChunkConcurrency,
-	isolatedArtifactRebuildChunkSize,
+	runIsolatedArtifactRebuildWaves,
 } from '#worker/repo/isolated-artifact-rebuild.ts'
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
 import {
@@ -566,45 +566,28 @@ async function rebuildPublishedPackageArtifactsViaRepoSessionOnce(input: {
 	}> = []
 
 	try {
-		const isolateChunks = chunkArray(
-			remaining,
-			isolatedArtifactRebuildChunkSize,
-		)
-		const waves = chunkArray(
-			isolateChunks,
-			publishedPackageArtifactRebuildConcurrency,
-		)
-		for (const [waveIndex, wave] of waves.entries()) {
-			if (failed.length > 0) break
-			if (waveIndex > 0) {
-				await isolatedRunner.touch(stagingKey)
-			}
-
-			const settled = await Promise.allSettled(
-				wave.map(async (targets) => {
-					const outcome = await isolatedRunner.run({
-						stagingKey,
-						sourceId: input.sourceId,
-						userId: input.userId,
-						publishedCommit: input.publishedCommit,
-						targets,
-						baseUrl: input.baseUrl,
-						force: input.force,
-					})
-					return { targets, outcome }
+		await runIsolatedArtifactRebuildWaves({
+			targets: remaining,
+			runChunk: (targets) =>
+				isolatedRunner.run({
+					stagingKey,
+					sourceId: input.sourceId,
+					userId: input.userId,
+					publishedCommit: input.publishedCommit,
+					targets,
+					baseUrl: input.baseUrl,
+					force: input.force,
 				}),
-			)
-
-			for (const [index, result] of settled.entries()) {
-				const targets = wave[index]
-				if (!targets) continue
+			beforeNextWave: () => isolatedRunner.touch(stagingKey),
+			recordChunk: (targets, result) => {
+				const failedBefore = failed.length
 				if (result.status === 'rejected') {
 					for (const target of targets) {
 						failed.push({ target, error: result.reason })
 					}
-					continue
+					return true
 				}
-				const { outcome } = result.value
+				const outcome = result.value
 				const targetResults = outcome.results ?? []
 				if (targetResults.length > 0) {
 					for (const targetResult of targetResults) {
@@ -620,17 +603,18 @@ async function rebuildPublishedPackageArtifactsViaRepoSessionOnce(input: {
 							}),
 						)
 					}
-					continue
+					return failed.length > failedBefore
 				}
 				if (outcome.ok) {
 					succeeded.push(...targets)
-					continue
+					return false
 				}
 				for (const target of targets) {
 					failed.push({ target, error: new Error(outcome.message) })
 				}
-			}
-		}
+				return true
+			},
+		})
 	} finally {
 		await isolatedRunner.discard(stagingKey)
 	}
