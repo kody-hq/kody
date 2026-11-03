@@ -21,7 +21,9 @@ const mockModule = vi.hoisted(() => ({
 	getCommunityListingByOwnerAndPackage: vi.fn(),
 	runWithDurableEscalation: vi.fn(),
 	listPublisherEnablementGaps: vi.fn(),
-	clearPublishedPublishChecksVersion: vi.fn(async () => {}),
+	clearPublishedPublishChecksVersion: vi.fn(
+		async (..._args: Array<unknown>) => {},
+	),
 }))
 
 vi.mock(
