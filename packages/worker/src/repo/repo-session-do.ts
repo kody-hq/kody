@@ -72,10 +72,9 @@ import {
 import {
 	runPackageTypecheckLanguageService,
 	runRepoSourceWalkChecks,
-	formatFailedRepoCheckMessages,
 	validatePackageBundles,
 } from './checks.ts'
-import { RepoChecksFailedError } from './repo-checks-failed-error.ts'
+import { createRepoChecksError } from './repo-checks-failed-error.ts'
 import { confirmRemoteRefAtCommit } from './confirm-remote-ref.ts'
 import { readRemoteRefNotConfirmedError } from './remote-ref-not-confirmed-error.ts'
 import { runAuthoringPublishChecksOnFiles } from './authoring-publish-checks.ts'
@@ -2095,9 +2094,7 @@ class RepoSessionBase extends DurableObject<Env> {
 						},
 					})
 					if (!checks.ok) {
-						throw new RepoChecksFailedError(
-							formatFailedRepoCheckMessages(checks.results),
-						)
+						throw createRepoChecksError(checks.results)
 					}
 				},
 			)
@@ -3022,6 +3019,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		) {
 			return {
 				ok: false,
+				failureOrigin: 'platform',
 				message:
 					'Isolated check phase staging key does not belong to the requesting user.',
 			}
@@ -3034,6 +3032,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		if (!sourceFiles) {
 			return {
 				ok: false,
+				failureOrigin: 'platform',
 				message:
 					'Isolated check phase staging data expired or is missing; run the checks again.',
 			}
@@ -3100,6 +3099,7 @@ class RepoSessionBase extends DurableObject<Env> {
 					{
 						kind: 'manifest',
 						ok: false,
+						failureOrigin: 'platform',
 						message:
 							'Publish check staging key does not belong to the requesting user.',
 					},
@@ -3118,6 +3118,7 @@ class RepoSessionBase extends DurableObject<Env> {
 					{
 						kind: 'manifest',
 						ok: false,
+						failureOrigin: 'platform',
 						message:
 							'Publish check staging data expired or is missing; run the checks again.',
 					},

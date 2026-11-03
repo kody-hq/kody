@@ -105,6 +105,8 @@ export function isolatedCheckStagingKeyBelongsToUser(input: {
 export type IsolatedCheckPhaseOutcome = {
 	ok: boolean
 	message: string
+	/** Staging expired or missing: a Kody failure, not an authored one. */
+	failureOrigin?: 'platform'
 	/** `credentials` phase only: staged files the stamp merge rewrote. */
 	changedFiles?: Record<string, string>
 	/** `credentials` phase only. */

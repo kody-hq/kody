@@ -1584,6 +1584,9 @@ test('isolated check phases and artifact rebuilds load staged files from KV, ski
 		const expired = await run(`${prefix}:user-1:gone`)
 		expect(expired.ok).toBe(false)
 		expect(expired.message).toContain('staging data expired')
+		if (prefix === 'repo-checks-staging:v1') {
+			expect(expired).toMatchObject({ failureOrigin: 'platform' })
+		}
 
 		kvGet.mockClear()
 		const crossUser = await run(`${prefix}:user-2:abc`)

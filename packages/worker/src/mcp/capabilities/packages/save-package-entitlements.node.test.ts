@@ -12,8 +12,10 @@ import { planLimits } from '#universal/plans.ts'
 import { maxRepoSourceFileBytes } from '#worker/repo/large-file-policy.ts'
 import { PackagePublishLockedError } from '#worker/package-registry/package-publish-lock.ts'
 import {
+	createRepoChecksError,
 	RepoChecksFailedError,
 	repoChecksFailedErrorName,
+	RepoChecksPlatformError,
 } from '#worker/repo/repo-checks-failed-error.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
@@ -727,6 +729,27 @@ test('packageSave maps failed publish checks to McpCallerError (live and DO RPC 
 	)
 	expect(rpcError).toBeInstanceOf(McpCallerError)
 	expect((rpcError as Error).message).toContain('EmailMessage')
+
+	const checksPlatform = await setup({ plan: 'max' })
+	mockModule.syncArtifactSourceSnapshot.mockRejectedValueOnce(
+		createRepoChecksError([
+			{
+				kind: 'bundle',
+				ok: false,
+				failureOrigin: 'platform',
+				message:
+					'Isolated check phase staging data expired or is missing; run the checks again.',
+			},
+		]),
+	)
+	const checksPlatformError = await rejection(
+		checksPlatform.save({ files: buildPackageFiles('checks-platform') }),
+	)
+	expect(checksPlatformError).toBeInstanceOf(RepoChecksPlatformError)
+	expect(checksPlatformError).not.toBeInstanceOf(McpCallerError)
+	expect((checksPlatformError as Error).message).toContain(
+		'Kody platform failure',
+	)
 
 	const unrelated = await setup({ plan: 'max' })
 	mockModule.syncArtifactSourceSnapshot.mockRejectedValueOnce(
