@@ -16,7 +16,7 @@ import {
 } from '#worker/integrations/service.ts'
 import { toConnectablePlatformApp } from '#app/platform-integration-catalog.ts'
 
-import { type UserOauthApp } from '#worker/integrations/types.ts'
+import type { UserOauthApp } from '#worker/integrations/types.ts'
 
 export type { ConnectOauthChooserOption }
 

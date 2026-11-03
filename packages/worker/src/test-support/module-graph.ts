@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { pathToFileURL } from 'node:url'
 import { vi } from 'vitest'
-import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 
 export const moduleGraphMockModule = {
 	createWorker: vi.fn(),

@@ -5,8 +5,8 @@ import {
 	resolvePackageExportPath,
 } from '#worker/package-registry/manifest.ts'
 import { assertNotSealedSecretProviderExport } from '#mcp/secrets/secret-providers/sealed-export.ts'
-import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
-import { type PublishedBundleArtifact } from './published-runtime-artifacts.ts'
+import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import type { PublishedBundleArtifact } from './published-runtime-artifacts.ts'
 import {
 	parseKodyPackageSpecifier,
 	resolveSavedPackageImport,

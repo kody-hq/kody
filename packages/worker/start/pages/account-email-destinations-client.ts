@@ -4,7 +4,7 @@ import {
 	setDefaultEmailDestination,
 	removeEmailDestination,
 } from '#start/server/account-mutations'
-import { type AccountEmailDestinationsLoaderData } from '#universal/loader-data.ts'
+import type { AccountEmailDestinationsLoaderData } from '#universal/loader-data.ts'
 import {
 	useMutation,
 	useMutationState,

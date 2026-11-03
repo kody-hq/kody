@@ -1,4 +1,4 @@
-import { type OauthProviderId } from '#app/oauth-providers.ts'
+import type { OauthProviderId } from '#app/oauth-providers.ts'
 import { parseLegacyHosts } from '#worker/app-legacy-redirect.ts'
 export function getCallbackRedirectUri(
 	env: Env,

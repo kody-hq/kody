@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { buildFacetName } from '#mcp/app-runner-facet-names.ts'
 import { resolveBackgroundMcpUser } from '#worker/identity/background-mcp-user.ts'

@@ -1,10 +1,10 @@
 import { isRedirect } from '@tanstack/react-router'
 import { savePackageCredentialMappings } from '#start/server/credential-approval-mutation'
-import {
-	type CredentialMappingChange,
-	type PackageCredentialsEnablementAction,
+import type {
+	CredentialMappingChange,
+	PackageCredentialsEnablementAction,
 } from '#universal/credential-contracts.ts'
-import { type PackageCredentialsWriteResult } from '#client/routes/package-credentials-editing.ts'
+import type { PackageCredentialsWriteResult } from '#client/routes/package-credentials-editing.ts'
 export async function postPackageCredentialChanges(input: {
 	username: string
 	kodyId: string

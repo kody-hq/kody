@@ -23,10 +23,38 @@ export class RepoChecksFailedError extends Error {
 	}
 }
 
-export function createRepoChecksFailedError(
+export const repoChecksPlatformErrorName = 'RepoChecksPlatformError'
+
+/**
+ * Thrown instead of {@link RepoChecksFailedError} when a failed check has
+ * `failureOrigin: 'platform'` (expired check staging, a saved dependency
+ * manifest that would not load). Not a caller error, so it reaches Sentry,
+ * and the message tells the agent the package is not at fault. #3661.
+ */
+export class RepoChecksPlatformError extends Error {
+	constructor(message: string) {
+		super(message)
+		this.name = repoChecksPlatformErrorName
+	}
+}
+
+/**
+ * The error for an `ok: false` check run: {@link RepoChecksPlatformError}
+ * when any failure is Kody's, else {@link RepoChecksFailedError} with the
+ * authored-package diagnostics.
+ */
+export function createRepoChecksError(
 	results: ReadonlyArray<RepoCheckResult>,
 	fallback = 'Publish checks failed.',
-) {
+): RepoChecksFailedError | RepoChecksPlatformError {
+	const platformFailures = results.filter(
+		(entry) => !entry.ok && entry.failureOrigin === 'platform',
+	)
+	if (platformFailures.length > 0) {
+		return new RepoChecksPlatformError(
+			`Publish checks could not finish because of a Kody platform problem. This is a Kody platform failure, not a problem with your package, so there is nothing to fix in it; retry in a moment. Details: ${formatFailedRepoCheckMessages(platformFailures)}`,
+		)
+	}
 	return new RepoChecksFailedError(
 		formatFailedRepoCheckMessages(results, fallback),
 	)

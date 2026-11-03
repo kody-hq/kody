@@ -8,8 +8,8 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { expect, test, vi } from 'vitest'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'

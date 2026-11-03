@@ -1,7 +1,7 @@
 import { runInDurableObject } from 'cloudflare:test'
 import { expect, test } from 'vitest'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
-import { type Mailbox } from './mailbox-do.ts'
+import type { Mailbox } from './mailbox-do.ts'
 import {
 	initializeMailboxSchema,
 	mailboxV6RebuildBatchSize,

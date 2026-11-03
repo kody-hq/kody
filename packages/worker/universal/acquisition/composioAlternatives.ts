@@ -1,5 +1,5 @@
 import { acquisitionPageMeta } from './metadata.ts'
-import { type AcquisitionPage } from './types.ts'
+import type { AcquisitionPage } from './types.ts'
 
 export const composioAlternatives = {
 	...acquisitionPageMeta.composioAlternatives,

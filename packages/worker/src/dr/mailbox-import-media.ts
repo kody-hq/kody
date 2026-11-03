@@ -16,7 +16,7 @@ import {
 } from '@kody-internal/shared/backup-staging.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { MaintenanceFailureError } from '#worker/maintenance-handler.ts'
-import { type DrBackupS3Client } from '#worker/dr/backup-s3.ts'
+import type { DrBackupS3Client } from '#worker/dr/backup-s3.ts'
 import { sha256Hex } from '#worker/dr/sha256.ts'
 
 const sha256Pattern = /^[0-9a-f]{64}$/

@@ -6,9 +6,9 @@ import {
 
 import { runBackupRuntime, type BackupRuntimeStep } from './backup-runtime.ts'
 import { BackupError } from './backup-policy.ts'
-import {
-	type BackupEnvironment,
-	type ScheduledBackupWorkflowPayload,
+import type {
+	BackupEnvironment,
+	ScheduledBackupWorkflowPayload,
 } from './backup-types.ts'
 import { withNonRetryableBackupErrors } from './workflow-step-boundary.ts'
 import { nonRetryableBackupError } from './workflow-terminal-error.ts'

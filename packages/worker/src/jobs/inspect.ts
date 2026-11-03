@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	hydrateJobViewFromRunLog,
@@ -10,7 +10,7 @@ import {
 } from './manager-client.ts'
 import { jobsData } from './jobs-data.ts'
 import { toJobView } from './schedule.ts'
-import { type JobSourceInspection, type JobView } from './types.ts'
+import type { JobSourceInspection, JobView } from './types.ts'
 
 /**
  * Read-side job inspection helpers for capability/UI list+get paths.

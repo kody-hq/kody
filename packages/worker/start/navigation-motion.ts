@@ -1,4 +1,4 @@
-import { type AnyRouter } from '@tanstack/react-router'
+import type { AnyRouter } from '@tanstack/react-router'
 
 /** Suppress repeated entrance animations after committed client navigation. */
 export function installNavigationMotion(

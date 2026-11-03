@@ -1,4 +1,4 @@
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	applyPasswordChange,
 	type ApplyPasswordChangeResult,
@@ -16,7 +16,7 @@ import {
 } from '#worker/audit-log.ts'
 import { createDb, usersTable } from '#worker/db.ts'
 import { isUsablePasswordHash } from '#worker/identity/usable-password.ts'
-import { type OAuthGrantHelpers } from '#worker/oauth-grants.ts'
+import type { OAuthGrantHelpers } from '#worker/oauth-grants.ts'
 import {
 	personalOrgId,
 	personIdFromStored,

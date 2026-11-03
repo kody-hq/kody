@@ -1,5 +1,5 @@
 import { buildUserAvatarUrl } from '#app/community-public.ts'
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	auditDatabaseFromEnv,
 	getRequestIp,

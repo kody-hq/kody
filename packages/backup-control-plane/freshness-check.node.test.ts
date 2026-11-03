@@ -11,7 +11,7 @@ import {
 	storeSignedDownload,
 } from './immutable-storage.ts'
 import { objectKeyForBookmark } from './backup-policy.ts'
-import { type BackupEnvironment } from './backup-types.ts'
+import type { BackupEnvironment } from './backup-types.ts'
 import {
 	MemoryBucket,
 	badSqlStatsFixture,

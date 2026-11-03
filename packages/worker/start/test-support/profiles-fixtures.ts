@@ -1,4 +1,4 @@
-import { type ProfileItem, type ProfilesPageData } from '#universal/profiles.ts'
+import type { ProfileItem, ProfilesPageData } from '#universal/profiles.ts'
 
 function profileFixture(
 	id: string,

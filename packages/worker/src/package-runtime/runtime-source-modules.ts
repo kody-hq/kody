@@ -1,6 +1,6 @@
 import { createExecuteHelperPrelude } from '#mcp/execute-modules/kody-runtime-utils.ts'
 import { kodyCallDispatcherName } from '#worker/kody-evaluate-bindings.ts'
-import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import {
 	createPackageBoundRuntimeExportLines,
 	packageBoundRuntimeCreatorNames,

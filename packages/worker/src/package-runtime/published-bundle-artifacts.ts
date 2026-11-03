@@ -2,9 +2,9 @@ import {
 	isPublishedArtifactRefusedByLoadSites,
 	isUnrepairablePreBindingArtifact,
 } from './pre-binding-artifact-repair.ts'
-import {
-	type AuthoredPackageJson,
-	type SavedPackageRecord,
+import type {
+	AuthoredPackageJson,
+	SavedPackageRecord,
 } from '#worker/package-registry/types.ts'
 import {
 	type BundleArtifactDependency,
@@ -30,7 +30,7 @@ import {
 	updatePublishedBundleArtifactRow,
 } from '#worker/repo/published-bundle-artifacts-repo.ts'
 import { listEntitySourcesByIds } from '#worker/repo/entity-sources.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 import {
 	collectPublishedPackageArtifactTargets,
 	type PublishedPackageArtifactBuildTarget,

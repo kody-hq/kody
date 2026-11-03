@@ -1,7 +1,7 @@
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { isRecord } from '@kody-internal/shared/is-record.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RequestSource } from '#worker/request-context/request-context.ts'
+import type { RequestSource } from '#worker/request-context/request-context.ts'
 import { sealedSecretProviderInvocationSource } from '#worker/package-runtime/package-invocation-sources.ts'
 import { runSavedPackageModuleOnce } from '#worker/package-invocations/module-execution.ts'
 import { createPackageEventTools } from '#worker/package-invocations/service.ts'
@@ -12,12 +12,12 @@ import {
 	createProviderErrorMessage,
 } from './errors.ts'
 import { sealedSecretProviderExportName } from './sealed-export.ts'
-import {
-	type SecretProviderInvokeInput,
-	type SealedProviderCanonicalizeResult,
-	type SealedProviderResolveResult,
+import type {
+	SecretProviderInvokeInput,
+	SealedProviderCanonicalizeResult,
+	SealedProviderResolveResult,
 } from './types.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 
 const toolFactories = {
 	createPackageEventTools,

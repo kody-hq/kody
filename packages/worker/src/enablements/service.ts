@@ -1,12 +1,12 @@
-import { type OrgAuditCause } from '#worker/orgs/org-audit.ts'
+import type { OrgAuditCause } from '#worker/orgs/org-audit.ts'
 /**
  * Enablement writes from people (credentials plan v4, section 3.3). Each
  * person turns triggers on for themselves; nobody enables a trigger for
  * someone else, and publishing never turns anything on. An enabler, or an
  * Owner, can turn an enablement off.
  */
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	authorize,
@@ -33,7 +33,7 @@ import {
 	webhookHmacVerification,
 } from '#worker/package-registry/manifest.ts'
 import { loadPackageManifestBySourceId } from '#worker/package-registry/source.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
 	buildCredentialApprovalHref,
 	isInboundEmailApprovalTopic,
@@ -65,10 +65,10 @@ import {
 	canonicalizeEnablementSender,
 	isCompleteEnablementSender,
 } from './sender-match.ts'
-import {
-	type EnablementRecord,
-	type EnablementSenderKind,
-	type EnablementTriggerKind,
+import type {
+	EnablementRecord,
+	EnablementSenderKind,
+	EnablementTriggerKind,
 } from './types.ts'
 
 export type TriggerEnablementErrorCode =

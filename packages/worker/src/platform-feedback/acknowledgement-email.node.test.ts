@@ -9,7 +9,7 @@ import { createMcpCallerContext } from '#mcp/context.ts'
 import { metaPlatformFeedbackSubmitCapability } from '#mcp/capabilities/meta/meta-platform-feedback-submit.ts'
 import { submitWebsiteCancellationFeedback } from '#app/handlers/org-billing.ts'
 import type * as authenticatedUserModule from '#app/authenticated-user.ts'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createMswNodeServer } from '#worker/test-support/msw-node-server.ts'
@@ -20,7 +20,7 @@ import {
 	sendPlatformFeedbackAcknowledgementEmail,
 } from './acknowledgement-email.ts'
 import { platformFeedbackTestSchemaSql } from './test-schema.ts'
-import { type PlatformFeedbackRecord } from './types.ts'
+import type { PlatformFeedbackRecord } from './types.ts'
 
 const captureException = vi.hoisted(() => vi.fn())
 

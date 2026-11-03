@@ -7,7 +7,7 @@ import {
 } from '@kody-internal/shared/backup-manifest.ts'
 
 import { BackupError } from './backup-policy.ts'
-import { type BackupEnvironment } from './backup-types.ts'
+import type { BackupEnvironment } from './backup-types.ts'
 
 const sha256Pattern = /^[0-9a-f]{64}$/
 const keyIdPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/

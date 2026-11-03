@@ -1,7 +1,7 @@
 import { QueryClient, MutationObserver } from '@tanstack/react-query'
 import { expect, test, vi } from 'vitest'
 import { avatarMutationOptions } from './account-avatar-query.ts'
-import { type updateAvatar } from '#start/server/account-mutations'
+import type { updateAvatar } from '#start/server/account-mutations'
 
 test('avatar completion after unmount updates only submitted actor avatar, preserving newer profile edits', async () => {
 	const client = new QueryClient()

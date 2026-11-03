@@ -40,10 +40,10 @@ import {
 	isPackageAppCustomHostnameVerified,
 	normalizeCustomHostname,
 } from '#worker/package-app-custom-hostnames/lookup.ts'
-import {
-	type PackageAppCustomHostnameBindingKind,
-	type PackageAppCustomHostnameDnsRecord,
-	type PackageAppCustomHostnameRow,
+import type {
+	PackageAppCustomHostnameBindingKind,
+	PackageAppCustomHostnameDnsRecord,
+	PackageAppCustomHostnameRow,
 } from '#worker/package-app-custom-hostnames/types.ts'
 
 export class PackageAppCustomHostnameError extends Error {

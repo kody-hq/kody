@@ -2,12 +2,12 @@ import { DatabaseSync } from 'node:sqlite'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { insertSavedPackage } from '#worker/package-registry/repo.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import type * as NeedsClosure from './credential-needs-closure.ts'
-import { type CredentialNeed } from './credential-needs.ts'
+import type { CredentialNeed } from './credential-needs.ts'
 
 const mocks = vi.hoisted(() => ({
 	before: [] as Array<CredentialNeed>,

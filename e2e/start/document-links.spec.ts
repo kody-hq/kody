@@ -1,5 +1,5 @@
 import { expect, test, waitForClientHydration } from '../playwright-utils.ts'
-import { type Page } from '@playwright/test'
+import type { Page } from '@playwright/test'
 
 // Start prunes server-only routes from the client route tree, so a link to
 // one used to fall through to an app route (e.g. `/docs/$slug`) and render a

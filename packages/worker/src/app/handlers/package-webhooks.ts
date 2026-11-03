@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
@@ -21,9 +21,9 @@ import {
 	revealWebhookUrlForWebsite,
 	rotateWebhookUrlForUser,
 } from '#worker/webhooks/service.ts'
-import {
-	type PackageWebhookRevealedUrl,
-	type PackageWebhooksActionPayload,
+import type {
+	PackageWebhookRevealedUrl,
+	PackageWebhooksActionPayload,
 } from '#universal/loader-data.ts'
 
 const webhookActionIntents = ['mint', 'rotate', 'reveal'] as const

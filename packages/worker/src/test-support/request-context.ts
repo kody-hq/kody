@@ -1,7 +1,7 @@
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import {
-	type RequestContext,
-	type RequestLineage,
+import type {
+	RequestContext,
+	RequestLineage,
 } from '@kody-internal/shared/request-context.ts'
 import {
 	deriveRequestContext,

@@ -1,4 +1,4 @@
-import { type EcpRunTiming } from '@kody-internal/shared/execution-context-protocol/index.ts'
+import type { EcpRunTiming } from '@kody-internal/shared/execution-context-protocol/index.ts'
 
 /** Daemon-reported phases (daemon clock) plus what Kody measured around them. */
 export type ExecutionContextRunTiming = EcpRunTiming & {

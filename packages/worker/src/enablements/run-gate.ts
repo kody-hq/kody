@@ -14,7 +14,7 @@ import {
 	orgPermissions,
 	type OrgPermission,
 } from '@kody-internal/shared/org-permissions.ts'
-import { type PersonId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { PersonId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	checkPermission,
 	computeEffectivePermissions,
@@ -50,10 +50,10 @@ import {
 	enablementMatchesInboundSender,
 	type InboundSenderMatch,
 } from './sender-match.ts'
-import {
-	type EnablementPause,
-	type EnablementRecord,
-	type EnablementTriggerKind,
+import type {
+	EnablementPause,
+	EnablementRecord,
+	EnablementTriggerKind,
 } from './types.ts'
 
 export type EnablementTrigger = {

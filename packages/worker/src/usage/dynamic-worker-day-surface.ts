@@ -12,7 +12,7 @@
  * context is available.
  */
 
-import { type RunSurface } from '#worker/run-records/types.ts'
+import type { RunSurface } from '#worker/run-records/types.ts'
 
 export const dynamicWorkerDaySurfaces = [
 	'execute',

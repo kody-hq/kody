@@ -1,8 +1,8 @@
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { listOwnerIdsPendingDeletion } from '#worker/account/owner-deletion-state.ts'
 import { listSavedPackagesPage } from '#worker/package-registry/repo.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { readPublishedSourceSnapshot } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import {
 	buildArtifactsGitAuth,
@@ -21,7 +21,7 @@ import { finalizePublishedEntitySource } from './external-publish.ts'
 import { loadIsomorphicGit } from './isomorphic-git-lazy.ts'
 import { syncWorkspaceFiles } from './published-source-sync.ts'
 import { listRepoSessionsBySource, updateRepoSession } from './repo-sessions.ts'
-import { type EntitySourceRow } from './types.ts'
+import type { EntitySourceRow } from './types.ts'
 
 /**
  * Repair for package sources whose `published_commit` is not reachable from

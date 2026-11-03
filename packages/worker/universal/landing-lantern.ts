@@ -1,4 +1,4 @@
-import { type LandingHomePrimitive } from '#universal/landing-home-copy.ts'
+import type { LandingHomePrimitive } from '#universal/landing-home-copy.ts'
 
 /**
  * Five-orb lantern for the `/features` primitives section. The lantern is one

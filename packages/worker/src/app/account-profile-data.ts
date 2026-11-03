@@ -1,9 +1,9 @@
 import { buildUserAvatarUrl } from '#app/community-public.ts'
-import {
-	type AccountProfileLoaderData,
-	type ProfileVisibility,
+import type {
+	AccountProfileLoaderData,
+	ProfileVisibility,
 } from '#universal/loader-data.ts'
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { listFormerEmailClaims } from '#worker/identity/email-claims.ts'
 import { createDb, usersTable } from '#worker/db.ts'
 

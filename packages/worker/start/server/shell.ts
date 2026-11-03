@@ -87,6 +87,7 @@ export const loadShell = createServerFn({ method: 'GET' })
 			{ getCanonicalAppBaseUrl },
 			{ loadYoutubeWatchLoaderData },
 			{ parseYoutubeWatchSearch },
+			{ recordServerTiming },
 		] = await Promise.all([
 			import('cloudflare:workers'),
 			import('@tanstack/react-start/server'),
@@ -97,12 +98,17 @@ export const loadShell = createServerFn({ method: 'GET' })
 			import('../../src/app-base-url.ts'),
 			import('../../src/app/youtube-watch-ssr.ts'),
 			import('../../universal/youtube-watch.ts'),
+			import('../../src/request-context.ts'),
 		])
 		const appEnv = getEnv(env)
 		setAuthSessionSecret(appEnv.COOKIE_SECRET)
 		const request = getRequest()
 		const [{ session, setCookie }, resolvedAuth] = await Promise.all([
-			loadSessionInfo(request, env, data.pathname),
+			recordServerTiming(
+				'session',
+				() => loadSessionInfo(request, env, data.pathname),
+				request,
+			),
 			loadResolvedRequestAuth(request, env),
 		])
 		if (setCookie) setResponseHeader('Set-Cookie', setCookie)

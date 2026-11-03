@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { type CredentialListItem } from './credential-contracts.ts'
+import type { CredentialListItem } from './credential-contracts.ts'
 import {
 	filterCredentialList,
 	readCredentialListFilters,

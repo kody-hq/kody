@@ -4,9 +4,9 @@ import {
 	type EntitlementResource,
 	type UserEntitlement,
 } from '#universal/plans.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { readCurrentEntitlementResourceUsage } from '#worker/entitlements/service.ts'
-import { type AdminUsageEntitlementConsumption } from '#universal/loader-data.ts'
+import type { AdminUsageEntitlementConsumption } from '#universal/loader-data.ts'
 
 export const adminEntitlementResources = [
 	'saved_packages',

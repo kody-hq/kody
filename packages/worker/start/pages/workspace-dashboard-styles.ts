@@ -1,5 +1,5 @@
 import { surfaceCardCss } from '#universal/styles/surface.ts'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { colors } from '#universal/styles/tokens.ts'
 
 export const dashboardPanelCss: CSSObject = {

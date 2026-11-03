@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
-import { type AdminInsightsLoaderData } from '#universal/loader-data.ts'
+import type { AdminInsightsLoaderData } from '#universal/loader-data.ts'
 import {
 	AccountManagementShell,
 	AdminPageHeader,

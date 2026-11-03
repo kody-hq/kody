@@ -123,10 +123,18 @@ export const repoCheckKinds = [
 
 export type RepoCheckKind = (typeof repoCheckKinds)[number]
 
+/**
+ * Who has to act on a failed check. `platform` means Kody infrastructure
+ * failed (expired check staging, a saved dependency manifest that would not
+ * load), not the authored package; absent means `author`.
+ */
+export type RepoCheckFailureOrigin = 'platform' | 'author'
+
 export type RepoCheckResult = {
 	kind: RepoCheckKind
 	ok: boolean
 	message: string
+	failureOrigin?: RepoCheckFailureOrigin
 }
 
 export type RepoCheckRunResult =
@@ -1442,6 +1450,19 @@ async function mapPool<T, R>(
 	return results
 }
 
+function platformFailureOrigin(
+	outcomes: ReadonlyArray<{
+		ok: boolean
+		failureOrigin?: RepoCheckFailureOrigin
+	}>,
+): { failureOrigin?: 'platform' } {
+	return outcomes.some(
+		(outcome) => !outcome.ok && outcome.failureOrigin === 'platform',
+	)
+		? { failureOrigin: 'platform' }
+		: {}
+}
+
 async function runChunkedBundleValidation(input: {
 	runner: IsolatedCheckPhaseRunner
 	stagingKey: string
@@ -1481,6 +1502,7 @@ async function runChunkedBundleValidation(input: {
 			failures.length === 0
 				? `Bundled ${input.entryPoints.length} package target(s) successfully.`
 				: failures.join('\n'),
+		...platformFailureOrigin(outcomes),
 	}
 }
 
@@ -1532,6 +1554,7 @@ async function runChunkedTypecheck(input: {
 			failures.length === 0
 				? `No semantic diagnostics for ${input.targets.length} package runtime entrypoint(s), typechecked in ${chunks.length} chunk(s).`
 				: Array.from(new Set(failures)).join('\n'),
+		...platformFailureOrigin(outcomes),
 	}
 }
 
@@ -1654,6 +1677,7 @@ async function runCredentialPatternCheck(input: {
 			kind: 'credentials',
 			ok: outcome.ok,
 			message: outcome.message,
+			...platformFailureOrigin([outcome]),
 			sourceFiles:
 				outcome.changedFiles && Object.keys(outcome.changedFiles).length > 0
 					? { ...input.sourceFiles, ...outcome.changedFiles }
@@ -1892,6 +1916,7 @@ export async function runRepoChecks(input: {
 	const credentialCheckOk =
 		credentialPatternCheck.ok ||
 		(!enforceCredentialStamp &&
+			credentialPatternCheck.failureOrigin !== 'platform' &&
 			!isRepoCheckResourceLimitMessage(credentialPatternCheck.message))
 	const credentialCheckMessage =
 		!enforceCredentialStamp && !credentialPatternCheck.ok
@@ -1914,6 +1939,7 @@ export async function runRepoChecks(input: {
 		message: fetchBodyWarning
 			? `${credentialCheckMessage}\n\n${fetchBodyWarning}`
 			: credentialCheckMessage,
+		...platformFailureOrigin([credentialPatternCheck]),
 	})
 	if (enforceCredentialStamp && !credentialPatternCheck.ok) {
 		return toRepoCheckRunResult({ results, manifest, sourceFiles })
@@ -2033,6 +2059,7 @@ export async function runRepoChecks(input: {
 		})
 	let staticKodyDependencyMessage = staticKodyDependencyCheck.message
 	let staticKodyDependencyOk = staticKodyDependencyCheck.ok
+	let staticKodyDependencyFailureOrigin: RepoCheckFailureOrigin | undefined
 	if (
 		staticKodyDependencyOk &&
 		input.env &&
@@ -2049,6 +2076,7 @@ export async function runRepoChecks(input: {
 		if (!graph.ok) {
 			staticKodyDependencyOk = false
 			staticKodyDependencyMessage = graph.message
+			staticKodyDependencyFailureOrigin = graph.failureOrigin
 		} else {
 			const cycle = findStaticKodyDependencyCycle({
 				rootPackageName: manifest.name,
@@ -2079,6 +2107,9 @@ export async function runRepoChecks(input: {
 			staticKodyDependencyMessage,
 			barePackageImportCheck.message,
 		].join(' '),
+		...(staticKodyDependencyFailureOrigin
+			? { failureOrigin: staticKodyDependencyFailureOrigin }
+			: {}),
 	})
 
 	const packageTypecheckTargets = collectPackageTypecheckTargets(manifest)
@@ -2138,7 +2169,11 @@ export async function runRepoChecks(input: {
 			: null
 
 	let typecheckResult: RepoCheckResult
-	let bundleCheckResult: { ok: boolean; message: string }
+	let bundleCheckResult: {
+		ok: boolean
+		message: string
+		failureOrigin?: RepoCheckFailureOrigin
+	}
 	try {
 		const runTypecheckPhase = async (): Promise<RepoCheckResult> => {
 			const { value } = await timePublishExternalPushPhase(
@@ -2243,6 +2278,7 @@ export async function runRepoChecks(input: {
 		const runBundlePhase = async (): Promise<{
 			ok: boolean
 			message: string
+			failureOrigin?: RepoCheckFailureOrigin
 		}> => {
 			if (input.deferBundleCheckToRebuild === true) {
 				return cheapBundleCheckResult()
@@ -2309,6 +2345,7 @@ export async function runRepoChecks(input: {
 		kind: 'bundle',
 		ok: bundleCheckResult.ok,
 		message: bundleCheckResult.message,
+		...platformFailureOrigin([bundleCheckResult]),
 	})
 	const ignoredDeclarationNote = formatKodyIgnoredDeclarationNote({
 		ignored: kodyIgnoredDeclarationFiles,

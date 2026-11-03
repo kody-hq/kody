@@ -4,7 +4,7 @@
  * value is decrypted. A vault item's hosts come back with its value, so the
  * vault checks Use on the binding first and the host after the read.
  */
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import {
 	assertPackageCanAccessResolvedSecret,
@@ -33,7 +33,7 @@ import {
 	type ResolvedSecret,
 } from '#mcp/secrets/service.ts'
 import { createUnresolvedSecretMessage } from '#mcp/secrets/unresolved-secret.ts'
-import { type StorageContext } from '#mcp/storage.ts'
+import type { StorageContext } from '#mcp/storage.ts'
 import { assertCredentialUsesDeclared } from './credential-need-enforcement.ts'
 import {
 	assertCredentialScopeAllows,

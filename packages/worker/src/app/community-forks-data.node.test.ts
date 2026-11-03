@@ -1,6 +1,6 @@
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { beforeEach, expect, test, vi } from 'vitest'
-import { type CommunityForkListRow } from '#worker/community/repo.ts'
+import type { CommunityForkListRow } from '#worker/community/repo.ts'
 
 const state = vi.hoisted(() => ({
 	publicForks: [] as Array<CommunityForkListRow>,

@@ -1,11 +1,11 @@
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vitest'
-import { type CommunityForkRecord } from '#worker/community/types.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { CommunityForkRecord } from '#worker/community/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { deliverFollowRecords, deliverListingForkAliases } from './deliver.ts'
 import { ensureFollowTables, getFollowByTarget, insertFollow } from './repo.ts'
-import { type FollowPushPending, type FollowRecord } from './types.ts'
+import type { FollowPushPending, FollowRecord } from './types.ts'
 
 const aliasMocks = vi.hoisted(() => ({
 	listCommunityForksByListingId: vi.fn(),

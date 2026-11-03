@@ -10,7 +10,7 @@ import {
 	getEntitySourceById,
 	listEntitySourcesByIds,
 } from '#worker/repo/entity-sources.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 import { resolveSavedPackageImport } from '#worker/package-runtime/package-import-resolution.ts'
 import { collectStaticKodyPackageImportsFromFiles } from '#worker/package-runtime/static-kody-imports.ts'
 import {

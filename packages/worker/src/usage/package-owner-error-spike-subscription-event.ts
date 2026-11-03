@@ -1,6 +1,6 @@
-import {
-	type PackageOwnerSpikeMetricSummary,
-	type PackageOwnerSpikePackageSummary,
+import type {
+	PackageOwnerSpikeMetricSummary,
+	PackageOwnerSpikePackageSummary,
 } from './package-owner-error-spike.ts'
 
 /**

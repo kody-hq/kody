@@ -35,6 +35,7 @@ test('ensureWorkerBundlerModules writes bundler artifacts outside the src watch 
 		'isomorphic-git.mjs',
 		'postal-mime.mjs',
 		'codemode-normalize.mjs',
+		'disposable-email-domains.mjs',
 		'esbuild.wasm',
 		'worker-bundler.stamp.json',
 	] as const) {
@@ -55,6 +56,7 @@ test('ensureWorkerBundlerModules writes bundler artifacts outside the src watch 
 		'isomorphic-git.mjs',
 		'postal-mime.mjs',
 		'codemode-normalize.mjs',
+		'disposable-email-domains.mjs',
 		'esbuild.wasm',
 	] as const) {
 		expect(await pathExists(path.join(workerBundlerWranglerDir, name))).toBe(

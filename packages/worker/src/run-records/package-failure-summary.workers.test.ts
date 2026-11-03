@@ -5,7 +5,7 @@ import {
 import { env } from 'cloudflare:workers'
 import { expect, test } from 'vitest'
 import { finishRunRecord, summarizePackageFailures } from './service.ts'
-import { type RunRecordContext } from './types.ts'
+import type { RunRecordContext } from './types.ts'
 
 const windowStartMs = Date.parse('2026-10-11T02:51:00.000Z')
 const minuteMs = 60 * 1000

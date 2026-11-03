@@ -1,11 +1,11 @@
 import { createElement as jsx } from 'react'
 import { renderStartPage as renderToString } from './test-support/render-start-page.ts'
 import { expect, test } from 'vitest'
-import { type SessionInfo } from '#client/session.ts'
-import {
-	type AccountUsageComputeOverage,
-	type AccountUsageEntitlementConsumption,
-	type AccountUsageLoaderData,
+import type { SessionInfo } from '#client/session.ts'
+import type {
+	AccountUsageComputeOverage,
+	AccountUsageEntitlementConsumption,
+	AccountUsageLoaderData,
 } from '#universal/loader-data.ts'
 import { orgUsagePath } from '#universal/org-pages.ts'
 import {

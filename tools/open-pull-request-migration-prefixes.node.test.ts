@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import {
 	githubTokenFromEnv,
 	parseGithubRepository,
+	scanOpenPullRequestFiles,
 	scanOpenPullRequestMigrationPrefixes,
 } from './open-pull-request-migration-prefixes.ts'
 
@@ -123,6 +124,40 @@ test('open pull request migration files are listed and the current pull request 
 		true,
 	)
 	expect(calls.some((call) => call.url.includes(token))).toBe(false)
+})
+
+test('the generic file scan applies its own directory and claim filter', async () => {
+	const decisionsDir = 'docs/contributing/decisions'
+	const scan = await scanOpenPullRequestFiles({
+		directory: decisionsDir,
+		claimsFile: (file) =>
+			file.status !== 'removed' && /^\d{4}-.+\.md$/.test(file.basename),
+		repository: 'kody-hq/kody',
+		token,
+		baseRef: 'main',
+		currentPullNumber: 3,
+		fetchImpl: (input) => {
+			const url = input instanceof URL ? input : new URL(String(input))
+			if (url.pathname.endsWith('/pulls')) {
+				return Promise.resolve(Response.json([{ number: 3 }, { number: 4 }]))
+			}
+			if (url.pathname.endsWith('/pulls/4/files')) {
+				return Promise.resolve(
+					Response.json([
+						{ filename: `${decisionsDir}/0096-new.md`, status: 'added' },
+						{ filename: `${decisionsDir}/0090-gone.md`, status: 'removed' },
+						{ filename: `${decisionsDir}/index.md`, status: 'modified' },
+						{ filename: `${migrationsDir}/0098-usage.sql`, status: 'added' },
+					]),
+				)
+			}
+			throw new Error(`unexpected request ${url.pathname}`)
+		},
+	})
+	expect(scan).toEqual({
+		status: 'ok',
+		claims: [{ number: 4, filenames: [`${decisionsDir}/0096-new.md`] }],
+	})
 })
 
 test('pull and file lists page until a short page', async () => {

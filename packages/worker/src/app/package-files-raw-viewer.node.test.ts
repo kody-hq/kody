@@ -1,9 +1,9 @@
 import type * as CloudflareWorkers from 'cloudflare:workers'
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import { type ApiTokenScope } from '#worker/api-tokens/scopes.ts'
+import type { ApiTokenScope } from '#worker/api-tokens/scopes.ts'
 import type * as Authenticate from '#worker/open-api/authenticate.ts'
-import { type ApiInvocationContext } from '#worker/open-api/context.ts'
+import type { ApiInvocationContext } from '#worker/open-api/context.ts'
 import { ApiError } from '#worker/open-api/errors.ts'
 
 const mockModule = vi.hoisted(() => ({

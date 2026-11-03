@@ -45,7 +45,7 @@ import {
 	personalOrgId,
 	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OauthProviderId } from '#app/oauth-providers.ts'
+import type { OauthProviderId } from '#app/oauth-providers.ts'
 
 const oauthNoUsablePasswordHash = unusablePasswordHash.oauthCreated
 

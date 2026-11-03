@@ -6,7 +6,7 @@ import {
 } from './activity-subscription-event.ts'
 import { CommunityActivityDispatchCancelledError } from './errors.ts'
 import { getCommunityActivityForAdmin } from './service.ts'
-import { type CommunityActivityKind } from './types.ts'
+import type { CommunityActivityKind } from './types.ts'
 
 const communityActivitySubscriptionActorTokenId =
 	'internal:community-activity-subscriptions'

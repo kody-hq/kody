@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	embedTextForVectorize,
 	getCapabilityVectorIndex,
@@ -11,7 +11,7 @@ import {
 } from '#worker/vectorize/embed-fingerprints.ts'
 import { userVectorNamespace } from '#worker/vectorize/vector-namespaces.ts'
 import { buildLengthSafeVectorId } from '#worker/vectorize/vector-ids.ts'
-import { type MemoryStatus } from './types.ts'
+import type { MemoryStatus } from './types.ts'
 
 export function memoryVectorId(memoryId: string): string {
 	return buildLengthSafeVectorId({ prefix: 'memory', rawId: memoryId })

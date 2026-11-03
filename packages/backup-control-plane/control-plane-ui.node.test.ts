@@ -24,7 +24,7 @@ import {
 	renderRestoreStatusPage,
 } from './control-plane-ui.ts'
 import { putImmutableManifest } from './immutable-storage.ts'
-import { type BackupEnvironment } from './backup-types.ts'
+import type { BackupEnvironment } from './backup-types.ts'
 
 const day = '2026-07-31'
 const now = new Date(`${day}T12:00:00.000Z`)

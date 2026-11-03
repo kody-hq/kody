@@ -1,10 +1,10 @@
 import { blendLexicalAndVectorScore } from '#worker/vectorize/scoring.ts'
 
-import { type SearchMatch } from './search-format.ts'
-import {
-	type SearchCandidate,
-	type SearchScoreComponents,
-	type SearchTelemetry,
+import type { SearchMatch } from './search-format.ts'
+import type {
+	SearchCandidate,
+	SearchScoreComponents,
+	SearchTelemetry,
 } from './search-types.ts'
 import {
 	type SearchIntent,

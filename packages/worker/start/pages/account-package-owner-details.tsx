@@ -5,7 +5,7 @@ import {
 	setPackageInternetVisible,
 } from '#start/server/package-mutations'
 import { buildPackageAppOpenPath } from '@kody-internal/shared/public-urls.ts'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useState } from 'react'
 import { usePackageMutation } from '../package-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
@@ -41,7 +41,7 @@ import { AccountPackageForkAdoption } from './account-package-fork-adoption.tsx'
 import { PackageCapabilityAllowanceCallout } from './package-capability-allowance-callout.tsx'
 import { PackageCookieWarningsCallout } from './package-cookie-warnings-callout.tsx'
 import { PackageUnmappableCredentialsCallout } from './package-unmappable-credentials-callout.tsx'
-import { type AccountPackageDetail } from '#universal/loader-data.ts'
+import type { AccountPackageDetail } from '#universal/loader-data.ts'
 
 function PackageAppLinks(props: { openHref: string | null }) {
 	if (!props.openHref) return 'No app'

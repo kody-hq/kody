@@ -1,11 +1,11 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	enqueuePackageApprovalRequest,
 	getPendingPackageApprovalRequest,
 	type PackageApprovalRequest,
 	setPendingPackageApprovalRequestFlag,
 } from './approval-requests-repo.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 
 /**

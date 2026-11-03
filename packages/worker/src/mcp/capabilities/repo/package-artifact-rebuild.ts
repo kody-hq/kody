@@ -1,5 +1,5 @@
 import { chunkArray } from '@kody-internal/shared/chunk.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	formatErrorCauseChain,
 	getErrorMessage,
@@ -20,7 +20,7 @@ import {
 	readPublishedSourceSnapshot,
 	type PublishedSourceSnapshot,
 } from '#worker/package-runtime/published-runtime-artifacts.ts'
-import { type PublishedPackageArtifactBuildTarget } from '#worker/package-runtime/package-artifact-targets.ts'
+import type { PublishedPackageArtifactBuildTarget } from '#worker/package-runtime/package-artifact-targets.ts'
 import {
 	createIsolatedArtifactRebuildRunner,
 	isolatedArtifactRebuildChunkConcurrency,

@@ -1,4 +1,4 @@
-import { type AutomationRouting } from '#worker/execution-contexts/automation-execution.ts'
+import type { AutomationRouting } from '#worker/execution-contexts/automation-execution.ts'
 import {
 	type AutomationExecutionTarget,
 	automationTargetId,

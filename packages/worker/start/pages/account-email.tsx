@@ -14,10 +14,10 @@ import {
 	type EmailMessageView,
 } from '#universal/email-message-view.ts'
 import { acceptedEmailVerificationDelivery } from '#universal/email-verification-delivery.ts'
-import {
-	type AccountEmailDestinationsLoaderData,
-	type AccountEmailLoaderData,
-	type AccountEmailMessageDetail,
+import type {
+	AccountEmailDestinationsLoaderData,
+	AccountEmailLoaderData,
+	AccountEmailMessageDetail,
 } from '#universal/loader-data.ts'
 import { orgGrantsPath, relocateAccountHref } from '#universal/org-pages.ts'
 import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'

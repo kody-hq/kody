@@ -1,4 +1,4 @@
-import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import { runtimeModulePath } from './module-graph-path-basics.ts'
 import { listMissingPublishedSourceInstalledDependencies } from './published-source-dependencies.ts'
 import { collectTopLevelFetchCollisionNames } from './rewrite-local-execute-secret-fetch.ts'

@@ -1,6 +1,6 @@
 import { utcMonthKey } from '@kody-internal/shared/date-keys.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type BillingPageOrg } from '#app/account-billing-data.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { BillingPageOrg } from '#app/account-billing-data.ts'
 import {
 	computeOverageUnitLabels,
 	computeOverageWarningResourceLabels,
@@ -9,12 +9,12 @@ import {
 	signupWelcomeCreditLedgerIdPrefix,
 	signupWelcomeCreditNote,
 } from '#universal/credits.ts'
-import {
-	type OrgCreditsBudget,
-	type OrgCreditsBudgets,
-	type OrgCreditsLedgerEntry,
-	type OrgCreditsLedgerPage,
-	type OrgCreditsLoaderData,
+import type {
+	OrgCreditsBudget,
+	OrgCreditsBudgets,
+	OrgCreditsLedgerEntry,
+	OrgCreditsLedgerPage,
+	OrgCreditsLoaderData,
 } from '#universal/loader-data.ts'
 import {
 	orgUsageCreditsPath,

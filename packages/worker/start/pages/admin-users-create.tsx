@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { SiteLink } from '../components/site-link.tsx'
-import { type FormEvent } from 'react'
+import type { FormEvent } from 'react'
 import { formatNullableTimestamp } from '../components/local-timestamp.tsx'
 import { colors, mq, spacing } from '#universal/styles/tokens.ts'
 import {
@@ -8,13 +8,13 @@ import {
 	fieldLabelCss,
 	getPillButtonCss,
 } from '#universal/styles/style-primitives.ts'
-import { type AdminCreatedUserSetup } from '#universal/loader-data.ts'
+import type { AdminCreatedUserSetup } from '#universal/loader-data.ts'
 import {
 	AccountManagementPanel,
 	accountInputCss,
 	noticeCardCss,
 } from './account-management-components.tsx'
-import { type AdminUsersActionState } from './admin-users-detail.tsx'
+import type { AdminUsersActionState } from './admin-users-detail.tsx'
 const primaryButtonCss = getPillButtonCss({ size: 'sm' })
 export function AdminCreateUserPanel(input: {
 	actionState: AdminUsersActionState

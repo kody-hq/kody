@@ -1,5 +1,5 @@
 import { env, runInDurableObject } from 'cloudflare:test'
-import { type UserMeter } from '#worker/entitlements/user-meter-do.ts'
+import type { UserMeter } from '#worker/entitlements/user-meter-do.ts'
 import { userMeterDurableObjectName } from '#worker/user-scoped-durable-object-name.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test } from 'vitest'
@@ -10,7 +10,7 @@ import {
 	admitHostedExecuteCall,
 } from '#mcp/execute-admission.ts'
 import { getCachedUserEntitlement } from '#worker/entitlements/service.ts'
-import { type OrgAuditWriter } from '#worker/orgs/org-audit.ts'
+import type { OrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { resolveEntitlementLimit } from '#universal/plans.ts'

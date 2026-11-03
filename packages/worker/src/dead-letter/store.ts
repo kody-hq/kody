@@ -1,4 +1,4 @@
-import { type DeadLetterPayloadMetadata } from './metadata.ts'
+import type { DeadLetterPayloadMetadata } from './metadata.ts'
 
 export type DeadLetterMessageStatus = 'parked' | 'replaying'
 

@@ -7,7 +7,7 @@ import { createMcpCallerContext } from '#mcp/context.ts'
 // These tests assert real `audit_events` rows written through the actual
 // audit pipeline, so opt out of the shared audit-log-spy setup mock.
 vi.unmock('#worker/audit-log.ts')
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { getPlatformOauthAppClientSecret } from '#worker/integrations/platform-apps.ts'
 import { applyAllMigrations as applyRepositoryMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'

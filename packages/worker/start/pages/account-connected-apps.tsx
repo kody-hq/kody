@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 import { toast } from '#client/toast.ts'
@@ -9,9 +9,9 @@ import {
 	revokeConnectedAppScope,
 } from '#start/server/account-mutations'
 import { groupConnectedAgents } from '#universal/connected-mcp-agents.ts'
-import {
-	type AccountConnectedAppsLoaderData,
-	type AccountConnectedAppView,
+import type {
+	AccountConnectedAppsLoaderData,
+	AccountConnectedAppView,
 } from '#universal/loader-data.ts'
 import {
 	getDangerPillCss,

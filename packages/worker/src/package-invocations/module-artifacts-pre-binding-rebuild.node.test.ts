@@ -1,6 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { afterEach, expect, test, vi } from 'vitest'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { persistPublishedBundleArtifact } from '#worker/package-runtime/published-bundle-artifacts.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'

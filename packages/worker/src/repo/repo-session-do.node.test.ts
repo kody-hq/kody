@@ -14,9 +14,9 @@ import type * as EntitySources from './entity-sources.ts'
 import type * as ExternalPublishClone from './external-publish-clone.ts'
 import type * as RepoSessions from './repo-sessions.ts'
 import type * as PublishedRuntimeArtifacts from '#worker/package-runtime/published-runtime-artifacts.ts'
-import {
-	type PublishedSourceManifestSnapshot,
-	type PublishedSourceSnapshot,
+import type {
+	PublishedSourceManifestSnapshot,
+	PublishedSourceSnapshot,
 } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import type * as PublishedBundleArtifactsModule from '#worker/package-runtime/published-bundle-artifacts.ts'
 import type * as SavedPackageRepo from '#worker/package-registry/repo.ts'
@@ -1583,14 +1583,14 @@ test('isolated check phases and artifact rebuilds load staged files from KV, ski
 		kvGet.mockResolvedValueOnce(null as never)
 		const expired = await run(`${prefix}:user-1:gone`)
 		expect(expired.ok).toBe(false)
+		if (run === typecheck)
+			expect(expired).toMatchObject({ failureOrigin: 'platform' })
 		expect(expired.message).toContain('staging data expired')
 
 		kvGet.mockClear()
 		const crossUser = await run(`${prefix}:user-2:abc`)
 		expect(crossUser.ok).toBe(false)
-		expect(crossUser.message).toContain(
-			'does not belong to the requesting user',
-		)
+		expect(crossUser.message).toContain('does not belong to the requesting')
 		expect(kvGet).not.toHaveBeenCalled()
 	}
 })

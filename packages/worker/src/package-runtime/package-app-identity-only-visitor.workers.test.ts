@@ -3,7 +3,7 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
+import type { RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
 import { env } from 'cloudflare:workers'
 import { expect, test } from 'vitest'
 import { ensureCreditWalletTestSchema } from '#worker/billing/test-schema.ts'

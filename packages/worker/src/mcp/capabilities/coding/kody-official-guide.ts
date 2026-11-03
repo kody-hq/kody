@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { callerHasRole } from '#mcp/capabilities/access-control.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { maxChars } from '#mcp/tools/search-constants.ts'
 import { resolveMarkdownDocument } from '#worker/guides/document-sections.ts'
 import {

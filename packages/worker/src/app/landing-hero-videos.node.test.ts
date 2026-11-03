@@ -3,7 +3,7 @@ import { http, HttpResponse } from 'msw'
 import { createMemoryKv } from '#worker/test-support/auth-provider-harness.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { createMswNodeServer } from '#worker/test-support/msw-node-server.ts'
-import { type LandingHeroVideo } from '#universal/landing-hero-copy.ts'
+import type { LandingHeroVideo } from '#universal/landing-hero-copy.ts'
 import {
 	youtubePlaylistBrowseUrl,
 	youtubePlaylistItemsApiOrigin,

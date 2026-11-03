@@ -1,6 +1,6 @@
-import { type RepoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
+import type { RepoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
 import { normalizeRepoWorkspacePath } from './manifest.ts'
-import { type RepoSessionTreeResult } from './types.ts'
+import type { RepoSessionTreeResult } from './types.ts'
 
 export const repoCapabilitiesModuleTypecheckHarnessPath =
 	'.__kody_repo_module_check__.ts'

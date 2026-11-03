@@ -1,5 +1,5 @@
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { boundOrgSlugForUrls } from '#universal/community-links.ts'
 import {
 	listWorkflowRunsForUser,

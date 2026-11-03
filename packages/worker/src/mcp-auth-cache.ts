@@ -14,8 +14,8 @@
  * Identity, verification, suspension, password-change and deletion flags are
  * never cached: they come from the fresh user row on every request.
  */
-import { type McpUserContext } from '@kody-internal/shared/chat.ts'
-import { type OrgBinding } from '#worker/orgs/repo.ts'
+import type { McpUserContext } from '@kody-internal/shared/chat.ts'
+import type { OrgBinding } from '#worker/orgs/repo.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 export type McpAuthCacheEntry = {

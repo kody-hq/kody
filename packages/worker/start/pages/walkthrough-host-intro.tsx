@@ -1,8 +1,8 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset } from '../public-assets.ts'
 
-import { type CSSObject } from '@emotion/react'
-import { type CSSProperties } from 'react'
+import type { CSSObject } from '@emotion/react'
+import type { CSSProperties } from 'react'
 import {
 	listWalkthroughHostOptions,
 	replaceWalkthroughHost,

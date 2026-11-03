@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSObject } from '@emotion/react'
-import { type CSSProperties } from 'react'
+import type { CSSObject } from '@emotion/react'
+import type { CSSProperties } from 'react'
 import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
 import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
 import { colors } from '#universal/styles/tokens.ts'

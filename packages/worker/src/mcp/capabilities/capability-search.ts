@@ -1,4 +1,4 @@
-import { type CapabilitySpec } from './types.ts'
+import type { CapabilitySpec } from './types.ts'
 import {
 	CAPABILITY_EMBEDDING_DIMENSIONS,
 	deterministicEmbedding,

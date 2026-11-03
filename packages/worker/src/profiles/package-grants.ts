@@ -3,8 +3,8 @@ import {
 	type GrantPreset,
 	permissionsForGrantPreset,
 } from '@kody-internal/shared/grant-presets.ts'
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { experimentOffMessage } from '#universal/feature-flags/experiments.ts'
 import { isProfilesEnabledFor } from './flag.ts'
 import { maxGrantsPerProfile, profileStatus } from './rules.ts'

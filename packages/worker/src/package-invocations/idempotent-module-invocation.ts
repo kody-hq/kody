@@ -1,6 +1,6 @@
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
-import { type AutomationRouting } from '#worker/execution-contexts/automation-execution.ts'
-import { type AutomationExecutionTarget } from '#worker/execution-contexts/automation-settings.ts'
+import type { AutomationRouting } from '#worker/execution-contexts/automation-execution.ts'
+import type { AutomationExecutionTarget } from '#worker/execution-contexts/automation-settings.ts'
 import {
 	createPackageInvocationClientDisconnectedError,
 	isCallerDisconnectAbort,
@@ -16,11 +16,11 @@ import {
 	touchPackageInvocationRecord,
 	type PackageInvocationLedgerRecord,
 } from '#worker/run-records/service.ts'
-import {
-	type RunRecordContext,
-	type RunRecordHandle,
+import type {
+	RunRecordContext,
+	RunRecordHandle,
 } from '#worker/run-records/types.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { isAccountSuspendedError } from '#worker/account/account-suspension.ts'
 import { resolveBackgroundMcpUser } from '#worker/identity/background-mcp-user.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
@@ -37,7 +37,7 @@ import {
 	resolveExistingInvocation,
 	type ResolvableInvocationRecord,
 } from './idempotency.ts'
-import { type ensureModuleArtifact } from './module-artifacts.ts'
+import type { ensureModuleArtifact } from './module-artifacts.ts'
 import { runSavedPackageModuleOnce } from './module-execution.ts'
 import { buildJsonErrorResponse } from './responses.ts'
 import { buildSubscriptionInvocationRunMetadata } from './subscription-envelope.ts'

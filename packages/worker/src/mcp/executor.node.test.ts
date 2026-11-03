@@ -15,7 +15,7 @@ import {
 	kodyCallDispatcherName,
 	kodyProviderEvaluateBindingName,
 } from '#worker/kody-evaluate-bindings.ts'
-import { type StorageContext } from '#mcp/storage.ts'
+import type { StorageContext } from '#mcp/storage.ts'
 import {
 	ComputeOverageLimitError,
 	EntitlementLimitError,

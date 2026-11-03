@@ -19,7 +19,7 @@ import {
 import { parseAuthoredPackageJson } from '#worker/package-registry/manifest.ts'
 import { jobsData } from './jobs-data.ts'
 import { buildPackageJobId } from './package-job-id.ts'
-import { type JobRecord, type PersistedJobCallerContext } from './types.ts'
+import type { JobRecord, PersistedJobCallerContext } from './types.ts'
 import {
 	repoMockModule,
 	jobManagerMockModule,

@@ -7,9 +7,9 @@ import {
 	revokeUserMcpOauthClient,
 	type UserMcpOauthClientListItem,
 } from '#app/account-mcp-oauth-clients.ts'
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { operationResult } from '#app/operation-result.ts'
-import { type AccountMcpOauthClientsLoaderData } from '#universal/loader-data.ts'
+import type { AccountMcpOauthClientsLoaderData } from '#universal/loader-data.ts'
 import {
 	auditDatabaseFromEnv,
 	getRequestIp,

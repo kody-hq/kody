@@ -3,7 +3,7 @@ import {
 	getPackageAppClientExternals,
 	normalizePackageWorkspacePath,
 } from '#worker/package-registry/manifest.ts'
-import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import { importWorkerBundler } from '#worker/worker-bundler-modules.ts'
 import { throwUnresolvedBarePackageImportsError } from './bare-package-import-declarations.ts'
 import {
@@ -26,7 +26,7 @@ import {
 } from './package-app-client-module-name.ts'
 import { assertNoPlatformSuppliedNodeModules } from './package-bundle-node-modules.ts'
 import { createPackageAppJsxBundleOptions } from './package-app-tsconfig.ts'
-import { type RuntimeBundle } from './runtime-bundle-types.ts'
+import type { RuntimeBundle } from './runtime-bundle-types.ts'
 import { iterateModuleSourceTexts } from './runtime-source-modules.ts'
 import { isTypeDeclarationFilePath } from './static-kody-imports.ts'
 

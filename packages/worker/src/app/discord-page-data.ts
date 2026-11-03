@@ -1,5 +1,5 @@
 import { kodyDiscordInviteUrl } from '#universal/community-links.ts'
-import { type DiscordPageLoaderData } from '#universal/loader-data.ts'
+import type { DiscordPageLoaderData } from '#universal/loader-data.ts'
 import { isDiscordGuildRoleSyncConfigured } from '#worker/discord/guild-role.ts'
 import { getEnabledOauthProviders } from '#app/oauth-providers.ts'
 import { getTurnstileSiteKey } from '#app/public-form-protection.ts'

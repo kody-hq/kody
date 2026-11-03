@@ -13,7 +13,7 @@ import {
 	objectKeyForBookmark,
 	workflowInstanceId,
 } from './backup-policy.ts'
-import { type BackupEnvironment, type BackupPayload } from './backup-types.ts'
+import type { BackupEnvironment, BackupPayload } from './backup-types.ts'
 import {
 	CachedUploadStep,
 	DATABASE_ID,

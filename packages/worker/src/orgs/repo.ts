@@ -2,9 +2,9 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import {
-	type OrgRole,
-	type RequestOrg,
+import type {
+	OrgRole,
+	RequestOrg,
 } from '@kody-internal/shared/request-context.ts'
 import {
 	type GrantSubjectChoices,

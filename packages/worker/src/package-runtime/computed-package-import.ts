@@ -1,9 +1,9 @@
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
-import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import { maxPackageRuntimeInvokeDepth } from '#worker/package-invocations/common.ts'
-import {
-	type BundleArtifactDependency,
-	type PublishedBundleArtifact,
+import type {
+	BundleArtifactDependency,
+	PublishedBundleArtifact,
 } from './published-runtime-artifacts.ts'
 import { createRelativeImportSpecifier } from './module-graph-paths.ts'
 import { resolveCurrentDynamicPackageArtifact } from './module-graph-hydration.ts'

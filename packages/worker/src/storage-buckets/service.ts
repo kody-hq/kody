@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { listRepoSessionDueOwnersPage } from '#worker/repo/repo-session-due-owners.ts'
 import { repoSessionIndexRpc } from '#worker/repo/repo-session-index-client.ts'
 import {

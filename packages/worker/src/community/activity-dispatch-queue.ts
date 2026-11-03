@@ -1,5 +1,5 @@
 import { dispatchCommunityActivityRecordedSubscriptionEvent } from './activity-package-subscriptions.ts'
-import { type CommunityActivityDispatchQueueMessage } from './activity-dispatch-queue-producer.ts'
+import type { CommunityActivityDispatchQueueMessage } from './activity-dispatch-queue-producer.ts'
 import { CommunityActivityDispatchCancelledError } from './errors.ts'
 import { communityActivityKinds } from './types.ts'
 

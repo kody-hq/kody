@@ -10,10 +10,10 @@ import {
 	packageHrefFromScope,
 	packageScopeFromNameOrOwner,
 } from '#universal/community-links.ts'
-import {
-	type AccountWorkflowListItem,
-	type AccountWorkflowRunStatus,
-	type AccountWorkflowsLoaderData,
+import type {
+	AccountWorkflowListItem,
+	AccountWorkflowRunStatus,
+	AccountWorkflowsLoaderData,
 } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
 import {

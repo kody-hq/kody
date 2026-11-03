@@ -7,9 +7,9 @@ import {
 	scanPackageAppImportClosure,
 	type ClosurePackage,
 } from '../package-app-capability-closure.ts'
-import {
-	type PackageAppCapabilityHostFacts,
-	type PackageCodemodContext,
+import type {
+	PackageAppCapabilityHostFacts,
+	PackageCodemodContext,
 } from '../types.ts'
 import {
 	declarePackageAppCapabilitiesCodemod,

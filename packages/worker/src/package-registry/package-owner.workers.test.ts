@@ -2,7 +2,7 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { env } from 'cloudflare:workers'
 import { expect, test } from 'vitest'
 import { sessionRequestContext } from '#worker/test-support/request-context.ts'

@@ -12,7 +12,7 @@ import {
 	buildIntegrationAccountUrl,
 	buildIntegrationReconnectUrl,
 } from './account-identity.ts'
-import { type IntegrationAuthFailedReason } from './token-refresh.ts'
+import type { IntegrationAuthFailedReason } from './token-refresh.ts'
 
 export const integrationAuthFailedTopic = 'integration.auth.failed'
 export const integrationAuthSucceededTopic = 'integration.auth.succeeded'

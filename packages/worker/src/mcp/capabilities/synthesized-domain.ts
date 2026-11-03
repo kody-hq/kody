@@ -1,6 +1,6 @@
 import { defineDomain } from '#mcp/capabilities/define-domain.ts'
-import { type CapabilityDomain } from '#mcp/capabilities/domain-metadata.ts'
-import { type Capability, type DomainSpec } from '#mcp/capabilities/types.ts'
+import type { CapabilityDomain } from '#mcp/capabilities/domain-metadata.ts'
+import type { Capability, DomainSpec } from '#mcp/capabilities/types.ts'
 
 export function tokenizeCapabilityKeywords(
 	words: ReadonlyArray<string>,

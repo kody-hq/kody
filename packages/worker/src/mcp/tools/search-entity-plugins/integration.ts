@@ -1,9 +1,9 @@
 import { deterministicEmbedding } from '#worker/vectorize/embedding.ts'
 import { cosineSimilarity, lexicalScore } from '#worker/vectorize/scoring.ts'
-import { type IntegrationConfig } from '#mcp/capabilities/integrations/integration-shared.ts'
+import type { IntegrationConfig } from '#mcp/capabilities/integrations/integration-shared.ts'
 import { toJoinedIntegrationConfig } from '#worker/integrations/service.ts'
 
-import { type SearchEntityPlugin } from '../search-entity-plugin.ts'
+import type { SearchEntityPlugin } from '../search-entity-plugin.ts'
 import {
 	escapeMarkdownText,
 	formatMarkdownInlineCode,

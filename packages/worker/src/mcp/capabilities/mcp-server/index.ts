@@ -1,13 +1,13 @@
-import { type McpServerRef } from '@kody-internal/shared/mcp-servers.ts'
+import type { McpServerRef } from '@kody-internal/shared/mcp-servers.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineCapability } from '#mcp/capabilities/define-capability.ts'
-import { type CapabilityDomain } from '#mcp/capabilities/domain-metadata.ts'
+import type { CapabilityDomain } from '#mcp/capabilities/domain-metadata.ts'
 import {
 	defineSynthesizedDomain,
 	readMcpToolAnnotationHints,
 	tokenizeCapabilityKeywords,
 } from '#mcp/capabilities/synthesized-domain.ts'
-import { type Capability, type DomainSpec } from '#mcp/capabilities/types.ts'
+import type { Capability, DomainSpec } from '#mcp/capabilities/types.ts'
 import { wrapDownstreamMcpToolResult } from '#mcp/downstream-mcp-result.ts'
 import { assertCredentialUsesDeclared } from '#worker/credentials/credential-need-enforcement.ts'
 import { attestedPackageStampFromCaller } from '#worker/credentials/package-stamp.ts'
@@ -23,9 +23,9 @@ import {
 	formatMcpServerUnavailableMessage,
 	getMcpServerStatus,
 } from '#worker/mcp-client/status.ts'
-import {
-	type McpServerSnapshot,
-	type McpServerToolDescriptor,
+import type {
+	McpServerSnapshot,
+	McpServerToolDescriptor,
 } from '#worker/mcp-client/types.ts'
 
 type McpServerToolCapabilityBinding = {

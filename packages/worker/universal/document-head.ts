@@ -1,6 +1,6 @@
 import { acquisitionPageSummaries } from '#universal/acquisition/metadata.ts'
 import { isAccountConnectionAgent } from '#universal/account-connections.ts'
-import { type AppLoaderData } from '#universal/loader-data.ts'
+import type { AppLoaderData } from '#universal/loader-data.ts'
 import { onboardingAgentLabel } from '#universal/onboarding-mcp-clients.ts'
 import {
 	type PackageCredentialsTab,

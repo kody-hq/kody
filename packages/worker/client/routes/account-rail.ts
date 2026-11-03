@@ -1,4 +1,4 @@
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import {
 	orgBillingPath,
 	orgCollaboratorsPath,
@@ -17,7 +17,7 @@ import {
 	type OrgOwnedAccountSection,
 } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
-import { type IconName } from '#universal/icon-names.ts'
+import type { IconName } from '#universal/icon-names.ts'
 
 /**
  * The repository list for an organization. Without a slug yet, the link

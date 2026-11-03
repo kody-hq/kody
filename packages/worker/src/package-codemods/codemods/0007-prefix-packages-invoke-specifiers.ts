@@ -3,10 +3,10 @@ import {
 	packageSpecifierPrefix,
 	parseKodyPackageSpecifier,
 } from '#worker/package-runtime/package-import-resolution.ts'
-import {
-	type PackageCodemod,
-	type PackageCodemodFinding,
-	type PackageCodemodTransformResult,
+import type {
+	PackageCodemod,
+	PackageCodemodFinding,
+	PackageCodemodTransformResult,
 } from '../types.ts'
 
 export const prefixPackagesInvokeSpecifiersCodemodId =

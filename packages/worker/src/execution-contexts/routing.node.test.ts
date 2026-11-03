@@ -12,7 +12,7 @@ import {
 	planTargets,
 	withRunTiming,
 } from './routing.ts'
-import { type ExecutionContextRow } from './store.ts'
+import type { ExecutionContextRow } from './store.ts'
 
 const a = { kind: 'context', id: 'ec_a' } as const
 const b = { kind: 'context', id: 'ec_b' } as const

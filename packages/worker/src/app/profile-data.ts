@@ -8,7 +8,7 @@ import {
 	toPublicCommunityProfile,
 	toPublicProfilePackageItem,
 } from '#app/community-public.ts'
-import { type ProfileLoaderData } from '#universal/loader-data.ts'
+import type { ProfileLoaderData } from '#universal/loader-data.ts'
 import {
 	canSeeResource,
 	checkPermission,
@@ -22,7 +22,7 @@ import {
 	getProfileActivity,
 	listProfileRepositories,
 } from '#worker/community/profile-service.ts'
-import { type PublicProfilePackage } from '#worker/community/types.ts'
+import type { PublicProfilePackage } from '#worker/community/types.ts'
 import { findPublicOwnerIdentityByHandle } from '#worker/identity/user-lookup.ts'
 import { getUsernameFormatValidationError } from '#worker/identity/username.ts'
 import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'

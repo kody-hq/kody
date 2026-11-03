@@ -18,7 +18,7 @@ import {
 	type RequestSentStatus,
 } from './network-error.js'
 import { bakedOpenApiRoutes } from './generated/openapi-routes.js'
-import { type ToolCallResult } from './tool-result.js'
+import type { ToolCallResult } from './tool-result.js'
 import { readPackageVersion } from './package-info.js'
 import { userCacheDir } from './workerd-binary.js'
 

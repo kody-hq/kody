@@ -3,7 +3,7 @@ import {
 	checkRateLimit,
 	twoFactorVerifyRateLimitConfig,
 } from '#app/rate-limit.ts'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	cancelTwoFactorSetup,
 	confirmTwoFactorSetup,
@@ -15,7 +15,7 @@ import {
 	twoFactorVerificationType,
 	verifyTwoFactorCode,
 } from '#app/two-factor.ts'
-import { type AccountTwoFactorLoaderData } from '#universal/loader-data.ts'
+import type { AccountTwoFactorLoaderData } from '#universal/loader-data.ts'
 import {
 	auditDatabaseFromEnv,
 	getRequestIp,

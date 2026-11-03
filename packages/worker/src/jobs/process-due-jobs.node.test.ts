@@ -1,7 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test } from 'vitest'
 import { processDueJobs } from './process-due-jobs.ts'
-import { type JobRecord } from './types.ts'
+import type { JobRecord } from './types.ts'
 
 test('processDueJobs advances next_run_at from the claimed occurrence, not wall clock', async () => {
 	const scheduledFor = '2026-04-12T07:00:00.000Z'

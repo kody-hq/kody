@@ -1,15 +1,15 @@
 import { McpCallerError } from '#mcp/caller-error.ts'
-import { type PackageExportProjection } from '#worker/package-registry/manifest.ts'
+import type { PackageExportProjection } from '#worker/package-registry/manifest.ts'
 import { buildPackageImportSpecifier } from '#worker/package-registry/package-import-specifier.ts'
 
 import { maxChars } from './search-constants.ts'
 import { formatMarkdownInlineCode } from './markdown-safety.ts'
-import { type SearchEntityDetailFormatResult } from './search-entity-plugin.ts'
+import type { SearchEntityDetailFormatResult } from './search-entity-plugin.ts'
 import {
 	buildEntityRef,
 	getPrimaryPackageActionFunction,
 } from './search-format-helpers.ts'
-import { type SearchEntityDetail } from './search-format-types.ts'
+import type { SearchEntityDetail } from './search-format-types.ts'
 
 const packageExportReferencedTypesOmittedLine =
 	'Referenced type definitions omitted (exceeds search response budget). `packageGet` returns the full export array.'

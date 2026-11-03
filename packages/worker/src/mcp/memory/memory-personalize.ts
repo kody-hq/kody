@@ -3,9 +3,9 @@
  * time (ADR 0072). Originals stay on the team org (write-frozen); copies land
  * in each reader's personal org with provenance. Idempotent via provenance URI.
  */
-import {
-	type OwnerId,
-	type PersonId,
+import type {
+	OwnerId,
+	PersonId,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { parseJsonStringArray } from '@kody-internal/shared/json-parsing.ts'
 import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
@@ -27,7 +27,7 @@ import { buildMemoryEmbedTextFromRow } from './memory-embed.ts'
 import { legacyOrgMemoryProvenanceUri } from './memory-owner.ts'
 import { insertMemory, listMemoriesByUserIdPage } from './repo.ts'
 import { upsertMemoryVector } from './memory-vectorize.ts'
-import { type McpMemoryRow } from './types.ts'
+import type { McpMemoryRow } from './types.ts'
 
 const defaultOrgPageSize = 20
 const defaultMemoryPageSize = 50

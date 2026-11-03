@@ -25,9 +25,9 @@ import {
 	releaseMailboxInboundDeliveryStorage,
 } from './mailbox-inbound-ledger.ts'
 import { getMailboxInboundDueAt } from './inbound-due-owners.ts'
-import { type MailboxMaintenanceCommands } from './mailbox-maintenance-commands.ts'
-import { type MailboxStore } from './mailbox-store.ts'
-import { type MailboxRpc } from './mailbox-types.ts'
+import type { MailboxMaintenanceCommands } from './mailbox-maintenance-commands.ts'
+import type { MailboxStore } from './mailbox-store.ts'
+import type { MailboxRpc } from './mailbox-types.ts'
 
 export class MailboxInboundCommands {
 	private readonly ctx: DurableObjectState

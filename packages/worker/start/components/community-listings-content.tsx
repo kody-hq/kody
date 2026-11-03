@@ -2,9 +2,9 @@
 import { mergeCss } from './merge-css.ts'
 import { SiteLink } from './site-link.tsx'
 /** @jsxRuntime automatic */
-import { type CSSObject } from '@emotion/react'
-import { type CSSProperties } from 'react'
-import { type PublicCommunityListing } from '#universal/community-public-types.ts'
+import type { CSSObject } from '@emotion/react'
+import type { CSSProperties } from 'react'
+import type { PublicCommunityListing } from '#universal/community-public-types.ts'
 import {
 	communityPackageCategoryCopy,
 	countCommunityListingsByCategory,
@@ -32,7 +32,7 @@ import {
 	defaultCommunityListingSort,
 	type CommunityListingSort,
 } from '#universal/community-search.ts'
-import { type CommunityIndexGroup } from '#universal/loader-data.ts'
+import type { CommunityIndexGroup } from '#universal/loader-data.ts'
 import { colors, transitions } from '#universal/styles/tokens.ts'
 import {
 	getSurfaceCardCss,

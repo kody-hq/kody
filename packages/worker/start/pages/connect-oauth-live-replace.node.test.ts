@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, test } from 'vitest'
-import { type ConnectOauthConfig } from '#client/routes/connect-oauth-config.ts'
-import { type ConnectOauthExistingConnection } from '#universal/loader-data.ts'
+import type { ConnectOauthConfig } from '#client/routes/connect-oauth-config.ts'
+import type { ConnectOauthExistingConnection } from '#universal/loader-data.ts'
 import {
 	newConnectionNameError,
 	renderLiveAppReplaceWarning,

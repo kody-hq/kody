@@ -30,7 +30,7 @@ import {
 } from '@kody-internal/shared/password-hash.ts'
 import { quoteSqlString } from '@kody-internal/shared/sql-literals.ts'
 import { HttpResponse, http } from 'msw'
-import { type DatabaseSync } from 'node:sqlite'
+import type { DatabaseSync } from 'node:sqlite'
 import { afterAll, afterEach, beforeAll, expect, test, vi } from 'vitest'
 
 const lifecycleMocks = vi.hoisted(() => ({

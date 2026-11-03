@@ -12,7 +12,7 @@
  */
 
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
-import { type AdminInsightsPackageErrorRate } from '#universal/loader-data.ts'
+import type { AdminInsightsPackageErrorRate } from '#universal/loader-data.ts'
 import { personalOrgIdFromUserRow } from '#worker/orgs/personal-org-id.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import {

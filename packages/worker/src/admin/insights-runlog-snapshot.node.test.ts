@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest'
-import { type RunLogAdminInsightsSnapshot } from '#worker/run-records/admin-insights-snapshot.ts'
+import type { RunLogAdminInsightsSnapshot } from '#worker/run-records/admin-insights-snapshot.ts'
 import {
 	adminInsightsRunLogConcurrency,
 	adminInsightsRunLogMaxUsersPerTick,

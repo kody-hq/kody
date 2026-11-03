@@ -1,5 +1,5 @@
 import { notFound } from '@tanstack/react-router'
-import { type z } from 'zod'
+import type { z } from 'zod'
 
 /**
  * Optional `@{$username}` (and similar) route params reach server fns as empty

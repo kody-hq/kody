@@ -5,9 +5,9 @@
  * personal org. See convert-personal-org-policy.ts for product knobs.
  */
 
-import {
-	type OwnerId,
-	type PersonId,
+import type {
+	OwnerId,
+	PersonId,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	decryptSecretValue,
@@ -27,7 +27,7 @@ import {
 	upsertMemoryVector,
 } from '#mcp/memory/memory-vectorize.ts'
 import { buildMemoryEmbedTextFromRow } from '#mcp/memory/memory-embed.ts'
-import { type McpMemoryRow } from '#mcp/memory/types.ts'
+import type { McpMemoryRow } from '#mcp/memory/types.ts'
 import { ensureDefaultEmailInbox } from '#worker/email/default-inbox.ts'
 import { getPlatformEmailDomain } from '#worker/email/platform-address.ts'
 import { isUsernameClaimedInIdentity } from '#worker/identity/generated-username.ts'

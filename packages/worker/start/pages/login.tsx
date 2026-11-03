@@ -32,7 +32,7 @@ import { packageAppDeviceSignInTarget } from '#universal/package-app-oauth-paths
 import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
 import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
 import { colors } from '#universal/styles/tokens.ts'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { handlePermanenceConfirmMessage } from '@kody-internal/shared/handle-permanence.ts'
 import {
 	startAuthentication,
@@ -57,7 +57,7 @@ import { ProviderIcon } from '../components/provider-icons.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import { useHydrated } from '../components/use-hydrated.ts'
 import { useSocialSignIn, type PublicAuthConfig } from '../social-sign-in.ts'
-import { type UsernameAvailabilityView } from '../components/username-choice-field.tsx'
+import type { UsernameAvailabilityView } from '../components/username-choice-field.tsx'
 import { AuthForm, formMessageCss } from './login-sections.tsx'
 
 export type AuthStatus = 'idle' | 'submitting' | 'success' | 'error'

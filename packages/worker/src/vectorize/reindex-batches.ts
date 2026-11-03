@@ -1,5 +1,5 @@
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { embedTextsForVectorize } from './embedding.ts'
 import {
 	hasVectorEmbedFingerprintDb,

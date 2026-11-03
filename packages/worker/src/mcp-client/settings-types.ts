@@ -1,4 +1,4 @@
-import { type McpServerUsageMode } from './usage-mode.ts'
+import type { McpServerUsageMode } from './usage-mode.ts'
 
 export type McpServerLogoSource = 'favicon'
 

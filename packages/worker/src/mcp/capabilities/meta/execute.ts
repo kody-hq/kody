@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { type ExecuteResult } from '@cloudflare/codemode'
+import type { ExecuteResult } from '@cloudflare/codemode'
 import { buildExecuteAttributionMetadata } from '#worker/run-records/execute-attribution.ts'
 import {
 	defaultExecutionResponseLimitBytes,
@@ -13,7 +13,7 @@ import { getInboundRequestSignal } from '#mcp/inbound-request-signal.ts'
 import { runModuleWithRegistry } from '#mcp/run-kody-registry.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { personalOrgId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import {
 	conversationIdInputField,
 	memoryContextInputField,

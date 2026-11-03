@@ -8,13 +8,13 @@ import {
 	type PublishedBundleArtifact,
 	readPackageAppWorkerTemplate,
 } from './published-runtime-artifacts.ts'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	billedOrgIdOf,
 	type RequestBilling,
 } from '@kody-internal/shared/request-context.ts'
-import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
+import type { RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
 import { withRequestBilling } from './package-app-billing.ts'
 import {
 	WorkerEntrypoint,
@@ -33,11 +33,11 @@ import {
 	getPackageAppEntryPath,
 	parseAuthoredPackageJson,
 } from '#worker/package-registry/manifest.ts'
-import {
-	type AuthoredPackageJson,
-	type PackageAppVisitorNeed,
+import type {
+	AuthoredPackageJson,
+	PackageAppVisitorNeed,
 } from '#worker/package-registry/types.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 import {
 	buildKodyFns,
 	collectPackageStorageGrantIds,
@@ -64,7 +64,7 @@ import {
 import { createPublishedPackagePromiseCache } from '#worker/package-registry/published-package-cache.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
-import { type FetchGatewayProps } from '#mcp/fetch-gateway.ts'
+import type { FetchGatewayProps } from '#mcp/fetch-gateway.ts'
 import { buildPackageStorageId } from '#worker/storage-ids.ts'
 import {
 	assertStorageRunnerWriteWithinEntitlement,
@@ -112,7 +112,7 @@ import {
 	createCredentialClientKodyTools,
 	resolveCallerCredentialPackageId,
 } from '#worker/mcp/credential-client-tools.ts'
-import { type AdditionalKodyTools } from '#worker/mcp/runtime-helper-manifest.ts'
+import type { AdditionalKodyTools } from '#worker/mcp/runtime-helper-manifest.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import {
 	runWithCurrentSecretAuthority,
@@ -126,10 +126,10 @@ import {
 } from '#mcp/secrets/execution-secret-redactor.ts'
 import { pathSegmentEncodingWarningHeaderName } from '#mcp/secrets/path-segment-encoding-warning.ts'
 import { beginRunRecord, finishRunRecord } from '#worker/run-records/service.ts'
-import {
-	type RunRecordHandle,
-	type RunRecordLogInput,
-	type RunTerminalStatus,
+import type {
+	RunRecordHandle,
+	RunRecordLogInput,
+	RunTerminalStatus,
 } from '#worker/run-records/types.ts'
 import {
 	buildPackageAppPath,

@@ -5,10 +5,7 @@ import { integrationSearchEntityPlugin } from './search-entity-plugins/integrati
 import { mcpServerSearchEntityPlugin } from './search-entity-plugins/mcp-server.ts'
 import { packageSearchEntityPlugin } from './search-entity-plugins/package.ts'
 import { secretSearchEntityPlugin } from './search-entity-plugins/secret.ts'
-import {
-	type SearchEntityDetail,
-	type SearchMatch,
-} from './search-format-types.ts'
+import type { SearchEntityDetail, SearchMatch } from './search-format-types.ts'
 
 export const searchEntityPlugins = [
 	capabilitySearchEntityPlugin,

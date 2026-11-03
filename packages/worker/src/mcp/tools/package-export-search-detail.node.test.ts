@@ -1,11 +1,11 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test } from 'vitest'
 import { McpCallerError } from '#mcp/caller-error.ts'
-import { type AuthoredPackageJson } from '#worker/package-registry/types.ts'
+import type { AuthoredPackageJson } from '#worker/package-registry/types.ts'
 
 import { formatPackageExportEntityDetail } from './package-export-search-detail.ts'
 import { formatEntityDetailMarkdown } from './search-format-detail.ts'
-import { type SearchEntityDetail } from './search-format-types.ts'
+import type { SearchEntityDetail } from './search-format-types.ts'
 
 function createHomeControlsDetail(
 	section?: string,

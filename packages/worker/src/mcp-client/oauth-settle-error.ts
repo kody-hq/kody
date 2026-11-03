@@ -1,7 +1,7 @@
-import {
-	type McpOAuthSettlePhase,
-	type McpServerConnectionState,
-	type McpServerLastError,
+import type {
+	McpOAuthSettlePhase,
+	McpServerConnectionState,
+	McpServerLastError,
 } from './types.ts'
 
 export type { McpOAuthSettlePhase, McpServerLastError }

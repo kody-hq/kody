@@ -8,7 +8,7 @@ import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createMemoryKvNamespace } from '#worker/test-support/memory-kv.ts'
 import type * as AuditLog from '#worker/audit-log.ts'
-import { type PackageCodemodRunItemRecord } from './ledger.ts'
+import type { PackageCodemodRunItemRecord } from './ledger.ts'
 
 const mocks = vi.hoisted(() => ({
 	items: [] as Array<PackageCodemodRunItemRecord>,

@@ -5,8 +5,8 @@ import {
 	type EcpCancelReason,
 	type EcpGrant,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
 import { upsertGrant, softDeleteGrant } from '#worker/orgs/access-writes.ts'
 import { chainCloudOrderError, selfShareError } from './chain-rules.ts'
@@ -38,11 +38,11 @@ import {
 	executionContextCommandPermission,
 } from './store.ts'
 import { optInTrustNotice, sharingTrustNotice } from './trust-copy.ts'
-import { type RunHistoryRow } from './session-do.ts'
+import type { RunHistoryRow } from './session-do.ts'
 import { kodyCloudTarget } from './routing.ts'
 import { latestCliVersion } from './latest-cli-version.ts'
 import { isOlderCliVersion } from '#universal/execution-contexts.ts'
-import { type RunRecord } from '#worker/run-records/types.ts'
+import type { RunRecord } from '#worker/run-records/types.ts'
 
 /** Shared logic behind the execution-context MCP capabilities and routes. */
 

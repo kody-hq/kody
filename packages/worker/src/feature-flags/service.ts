@@ -12,7 +12,7 @@ import {
 	isFeatureFlagKey,
 	type FeatureFlagKey,
 } from '#universal/feature-flags/registry.ts'
-import { type AdminFeatureFlag } from '#universal/feature-flags/types.ts'
+import type { AdminFeatureFlag } from '#universal/feature-flags/types.ts'
 import { memoizeForFeatureFlagExecution } from '#worker/feature-flags/execution-scope.ts'
 import {
 	andActiveOrgSql,

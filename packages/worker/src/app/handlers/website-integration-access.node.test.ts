@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite'
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { loadAccountIntegrationByName } from '#app/account-integrations-data.ts'
 import { createOrganization } from '#worker/orgs/create-organization.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
@@ -20,7 +20,7 @@ import {
 	personIdFromStored,
 	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { expect, test, vi } from 'vitest'
 import {
 	deleteAccountOauthApp,
@@ -31,7 +31,10 @@ import {
 	loadDevicePendingSession,
 	storeDevicePendingSession,
 } from '#worker/integrations/device-flow.ts'
-import { resolveConnectClientSecret } from '#worker/integrations/connect-oauth-persist.ts'
+import {
+	resolveConnectClientSecret,
+	resolveTokenEndpointClientSecret,
+} from '#worker/integrations/connect-oauth-persist.ts'
 import { createMemoryKvNamespace } from '#worker/test-support/memory-kv.ts'
 import { updateOrgMemberCreation } from '#worker/orgs/member-creation.ts'
 import {
@@ -499,4 +502,33 @@ test('Members add team secrets and OAuth connections unless an Owner turns membe
 			error: expect.stringContaining('You need Write on this credential'),
 		},
 	})
+})
+
+test('a stored client secret only resolves for its own client id and token URL', async () => {
+	const { env, teamId, teamOwner } = await setup()
+	await saveAccountOAuthApp({ env, user: teamOwner, fields: githubApp })
+	const resolve = (fields: {
+		provider?: string
+		clientId?: string
+		tokenUrl?: string
+		clientSecret?: string
+	}) =>
+		resolveTokenEndpointClientSecret({
+			env,
+			userId: teamId,
+			provider: fields.provider ?? 'github',
+			clientId: fields.clientId ?? githubApp.clientId,
+			tokenUrl: fields.tokenUrl ?? githubApp.tokenUrl,
+			clientSecret: fields.clientSecret ?? null,
+		})
+
+	expect(await resolve({})).toBe(githubApp.clientSecret)
+	expect(await resolve({ tokenUrl: 'https://elsewhere.example/token' })).toBe(
+		null,
+	)
+	expect(await resolve({ clientId: 'other-client' })).toBe(null)
+	expect(await resolve({ provider: 'github-work' })).toBe(
+		githubApp.clientSecret,
+	)
+	expect(await resolve({ clientSecret: 'inline-secret' })).toBe('inline-secret')
 })

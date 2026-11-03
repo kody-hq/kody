@@ -12,7 +12,7 @@ import {
 	invalidateMcpClientHubSnapshotCache,
 } from './hub-client.ts'
 import type * as packageSubscriptionsModule from './package-subscriptions.ts'
-import { type McpHubServerSnapshot, type McpHubSnapshot } from './types.ts'
+import type { McpHubServerSnapshot, McpHubSnapshot } from './types.ts'
 
 const mocks = vi.hoisted(() => ({
 	readSnapshot: vi.fn(async () => ({ servers: [] })),

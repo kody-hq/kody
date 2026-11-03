@@ -1,9 +1,9 @@
 import { utcMonthKey } from '@kody-internal/shared/date-keys.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { resolveUserEntitlementFromRow } from '#worker/entitlements/service.ts'
 import { jobsData } from '#worker/jobs/jobs-data.ts'
 import { resolveOAuthHelpers } from '#worker/oauth-helpers.ts'
-import { type OAuthGrantListHelpers } from '#worker/oauth-grants.ts'
+import type { OAuthGrantListHelpers } from '#worker/oauth-grants.ts'
 import {
 	parseStripePlanName,
 	resolveEntitlementLimits,
@@ -14,7 +14,7 @@ import {
 	usageCampaignStrongUseActiveMs,
 	usageCampaignStrongUseMinExecuteEvents,
 } from './campaign-states.ts'
-import { type UsageCampaignSnapshot } from './campaign-evaluator.ts'
+import type { UsageCampaignSnapshot } from './campaign-evaluator.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 export type UsageCampaignCandidate = {

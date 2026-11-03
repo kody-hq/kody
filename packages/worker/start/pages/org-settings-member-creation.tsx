@@ -7,7 +7,7 @@ import {
 } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
 import { useState } from 'react'
-import { type OrgSettingsLoaderData } from '#universal/loader-data.ts'
+import type { OrgSettingsLoaderData } from '#universal/loader-data.ts'
 import { orgGrantsPath } from '#universal/org-pages.ts'
 import {
 	getPillButtonCss,

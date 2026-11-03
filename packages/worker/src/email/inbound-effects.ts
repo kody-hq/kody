@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
 import { recordUsage } from '#worker/usage/record-usage.ts'
 import { createUserInboundDeliveryAuthority } from './inbound-delivery-authority.ts'

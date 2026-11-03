@@ -2,7 +2,7 @@ import { assertBackupDay } from '@kody-internal/shared/backup-staging.ts'
 import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
 
 import { BackupError, safeLog } from './backup-policy.ts'
-import { type BackupEnvironment } from './backup-types.ts'
+import type { BackupEnvironment } from './backup-types.ts'
 import {
 	dayFromSealWorkflowInstanceId,
 	describeSealStatus,

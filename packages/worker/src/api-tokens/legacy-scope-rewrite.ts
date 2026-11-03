@@ -11,7 +11,7 @@
  * The 0090 SQL header also names a companion
  * `tools/teams-migration/rewrite-api-token-scopes.ts`. That tool was deleted
  * (#3365) and the applied migration's bytes are immutable under
- * `tools/migration-ledger.json`, so this module and the SQL in 0090 are the
+ * `tools/migration-ledger/`, so this module and the SQL in 0090 are the
  * only copies of the map. `jobs:write` here no longer expands to `job:delete`
  * (`jobDelete` is gone, #3422). Applied 0090 rows stay as written.
  */

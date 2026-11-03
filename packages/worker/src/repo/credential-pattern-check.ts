@@ -1,4 +1,4 @@
-import { type ResolvedSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
+import type { ResolvedSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
 import {
 	detectLegacyCredentialPatternsCodemod,
 	detectLegacyCredentialPatternsCodemodId,
@@ -229,6 +229,8 @@ export type CredentialPatternCheckResult = {
 	kind: 'credentials'
 	ok: boolean
 	message: string
+	/** Set when the isolated scan could not run (see RepoCheckResult). */
+	failureOrigin?: 'platform'
 	/** Manifest may gain auto-written stamp keys (never overwrites descriptions). */
 	sourceFiles: Record<string, string>
 	stampKeys: Array<string>

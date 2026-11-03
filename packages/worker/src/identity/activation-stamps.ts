@@ -5,8 +5,8 @@
  */
 
 import { utcSqliteTimestamp } from '@kody-internal/shared/date-keys.ts'
-import { type OnboardingFunnelStage } from '#universal/onboarding-funnel-point.ts'
-import { type OnboardingFunnelEnv } from './onboarding-funnel-event.ts'
+import type { OnboardingFunnelStage } from '#universal/onboarding-funnel-point.ts'
+import type { OnboardingFunnelEnv } from './onboarding-funnel-event.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 function nowIso(at?: string) {

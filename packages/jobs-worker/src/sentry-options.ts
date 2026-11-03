@@ -1,7 +1,7 @@
-import { type CloudflareOptions } from '@sentry/cloudflare'
-import { type ErrorEvent } from '@sentry/core'
+import type { CloudflareOptions } from '@sentry/cloudflare'
+import type { ErrorEvent } from '@sentry/core'
 import { isRetryableD1LockSentryEvent } from './d1-retry.ts'
-import { type JobsWorkerEnv } from './env.ts'
+import type { JobsWorkerEnv } from './env.ts'
 
 export function filterRetryableD1LockSentryEvent(event: ErrorEvent) {
 	if (!isRetryableD1LockSentryEvent(event)) return event

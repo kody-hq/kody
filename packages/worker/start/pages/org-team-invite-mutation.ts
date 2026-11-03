@@ -1,4 +1,4 @@
-import { type QueryClient, type QueryKey } from '@tanstack/react-query'
+import type { QueryClient, QueryKey } from '@tanstack/react-query'
 
 export function teamInviteMutationOptions<TInput>(
 	client: QueryClient,

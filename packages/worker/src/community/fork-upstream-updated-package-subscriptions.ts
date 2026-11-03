@@ -10,8 +10,8 @@ import {
 	communityForkUpstreamUpdatedTopic,
 	type CommunityListingRelease,
 } from './fork-upstream-updated-subscription-event.ts'
-import { type CommunityListingPublishedProjection } from './listing-published-subscription-event.ts'
-import { type CommunityForkRecord } from './types.ts'
+import type { CommunityListingPublishedProjection } from './listing-published-subscription-event.ts'
+import type { CommunityForkRecord } from './types.ts'
 
 const communityForkUpstreamUpdatedSubscriptionActorTokenId =
 	'internal:community-fork-upstream-updated-subscriptions'

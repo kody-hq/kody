@@ -24,7 +24,7 @@ import {
 	getAuthInputCss,
 	hoverMq,
 } from '#universal/styles/style-primitives.ts'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useEffect, useId, useRef, useState, type ChangeEvent } from 'react'
 import { renderIcon } from './icon.tsx'
 

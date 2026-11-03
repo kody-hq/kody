@@ -9,8 +9,8 @@ import {
 	personIdFromStored,
 	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { expect, test } from 'vitest'
 import { findCredentialIdsByLegacyName } from '#worker/credentials/credential-ids.ts'
 import { listPersonalCredentialCandidates } from '#worker/credentials/personal-credentials.ts'

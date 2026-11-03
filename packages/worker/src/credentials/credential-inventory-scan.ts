@@ -13,9 +13,9 @@
  * not followed either. Placeholder counts are source occurrences: following a
  * binding adds references, not occurrences.
  */
-import {
-	type PackageCredentialSlot,
-	type PackageCredentialSlotKind,
+import type {
+	PackageCredentialSlot,
+	PackageCredentialSlotKind,
 } from '#worker/package-registry/types.ts'
 import {
 	type AstNode,

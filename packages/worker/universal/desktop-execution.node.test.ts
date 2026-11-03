@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { desktopExecutionChain } from './desktop-execution.ts'
-import { type ExecutionChain } from './execution-contexts.ts'
+import type { ExecutionChain } from './execution-contexts.ts'
 function chain(ids: Array<string>, cloud = true): ExecutionChain {
 	return {
 		entries: [

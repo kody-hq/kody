@@ -1,5 +1,5 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 
 import { getOrgById } from '#worker/orgs/repo.ts'
@@ -13,8 +13,8 @@ import {
 	createPackageSecretAccessDeniedMessage,
 } from './errors.ts'
 import { findSecret, type FoundSecret } from './service.ts'
-import { type SecretScope } from './types.ts'
-import { type StorageContext } from '#mcp/storage.ts'
+import type { SecretScope } from './types.ts'
+import type { StorageContext } from '#mcp/storage.ts'
 import { resolveCallerSecretAuthority } from './secret-authority.ts'
 import { getCommunityForkByForkedPackageId } from '#worker/community/repo.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
@@ -22,7 +22,7 @@ import {
 	loadPackageManifestBySourceId,
 	type LoadedPackageManifest,
 } from '#worker/package-registry/source.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
 	isAllowedPackagesSafetyWindowActive,
 	allowDuringAllowedPackagesSafetyWindow,

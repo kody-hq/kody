@@ -12,7 +12,7 @@ import type * as entitlementsService from '#worker/entitlements/service.ts'
 import type * as integrationsService from '#worker/integrations/service.ts'
 import type * as packageRepo from '#worker/package-registry/repo.ts'
 import type * as searchRateLimit from '#worker/search-rate-limit.ts'
-import { type CapabilityContext } from '../types.ts'
+import type { CapabilityContext } from '../types.ts'
 
 const mockModule = vi.hoisted(() => ({
 	getCapabilityRegistryForContext: vi.fn(

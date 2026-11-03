@@ -1,4 +1,4 @@
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { personalOrgId } from '@kody-internal/shared/owner-person-ids.ts'
 import type * as CloudflareWorkers from 'cloudflare:workers'
 import { expect, test, vi } from 'vitest'

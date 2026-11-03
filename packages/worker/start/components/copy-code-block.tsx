@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 
 import { writeClipboardText } from '#client/clipboard.ts'
 import { useState, useRef, useEffect } from 'react'

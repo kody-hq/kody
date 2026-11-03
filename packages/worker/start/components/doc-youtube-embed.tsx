@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 
 import { YouTubeLightPlayer } from './youtube-light-player.tsx'
 import { docYoutubeWatchUrl } from '#universal/doc-youtube.ts'

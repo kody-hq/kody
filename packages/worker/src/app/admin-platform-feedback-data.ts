@@ -1,8 +1,8 @@
 import { readPositiveInt } from '#worker/query-params.ts'
-import {
-	type AdminPlatformFeedbackDetail,
-	type AdminPlatformFeedbackListItem,
-	type AdminPlatformFeedbackLoaderData,
+import type {
+	AdminPlatformFeedbackDetail,
+	AdminPlatformFeedbackListItem,
+	AdminPlatformFeedbackLoaderData,
 } from '#universal/loader-data.ts'
 import {
 	getPlatformFeedbackForAdmin,

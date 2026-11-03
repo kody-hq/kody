@@ -12,7 +12,7 @@ import {
 } from '#worker/authorization/authorize.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import { isFeatureEnabled } from '#worker/feature-flags/service.ts'
-import { type PackageEventsDispatchQueueMessage } from '#worker/package-events/dispatch-queue-producer.ts'
+import type { PackageEventsDispatchQueueMessage } from '#worker/package-events/dispatch-queue-producer.ts'
 import { listPackageEmittedEvents } from '#worker/package-registry/manifest.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { loadPackageManifestBySourceId } from '#worker/package-registry/source.ts'

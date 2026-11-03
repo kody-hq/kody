@@ -7,7 +7,7 @@ import {
 	type LanternOrbHold,
 	type LanternPointerSample,
 } from '#universal/landing-lantern-motion.ts'
-import { type LandingPrimitiveId } from '#universal/landing-lantern.ts'
+import type { LandingPrimitiveId } from '#universal/landing-lantern.ts'
 
 /** Bubbles from the lantern so the leader overlay can redraw in the same frame. */
 export const lanternOrbMotionEvent = 'lantern-orb-motion'

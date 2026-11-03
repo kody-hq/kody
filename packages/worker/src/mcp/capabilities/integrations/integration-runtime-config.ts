@@ -7,7 +7,7 @@
  * integration-token gateway resolves. Non-secret config only; tokens stay
  * host-side.
  */
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
 import {
 	authorizePersonalIntegrationLookup,
@@ -19,7 +19,7 @@ import { getIntegration } from '#worker/integrations/service.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { assertCallerCanAccessCapability } from '#mcp/capabilities/access-control.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
-import { type Capability } from '#mcp/capabilities/types.ts'
+import type { Capability } from '#mcp/capabilities/types.ts'
 import { canonicalIntegrationName } from './integration-shared.ts'
 
 export type IntegrationRuntimeConfig = {

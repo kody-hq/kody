@@ -4,8 +4,8 @@ import {
 	applyDeliverabilitySideEffects,
 	applyDeliverabilitySideEffectsOnce,
 } from './deliverability-side-effects.ts'
-import { type MailboxEnv } from './mailbox-client.ts'
-import { type EmailReportingEnv } from './reporting-events.ts'
+import type { MailboxEnv } from './mailbox-client.ts'
+import type { EmailReportingEnv } from './reporting-events.ts'
 import { recordProviderEmailDeliveryEvent } from './service.ts'
 import { emailDeliveryStatusValues, type EmailDeliveryStatus } from './types.ts'
 import {

@@ -24,9 +24,9 @@ import {
 } from '#app/verify-session.ts'
 import { isAccountEmailVerified } from '#worker/identity/email-verification-state.ts'
 import { getEnv } from '#app/env.ts'
-import {
-	type OAuthAuthorizeConsentOrg,
-	type OAuthAuthorizeLoaderData,
+import type {
+	OAuthAuthorizeConsentOrg,
+	OAuthAuthorizeLoaderData,
 } from '#universal/loader-data.ts'
 import {
 	personalOrgId,

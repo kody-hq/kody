@@ -1,4 +1,4 @@
-import { type RequestCredential } from '@kody-internal/shared/request-context.ts'
+import type { RequestCredential } from '@kody-internal/shared/request-context.ts'
 /**
  * Owner cron enablement for scheduled package jobs.
  *
@@ -19,7 +19,7 @@ import {
 	loadEarliestLiveOwnerId,
 	updateCronEnablerNarrowing,
 } from './repo.ts'
-import { type EnablementRecord } from './types.ts'
+import type { EnablementRecord } from './types.ts'
 
 /**
  * True when this enabler already has any cron enablement row for the job,

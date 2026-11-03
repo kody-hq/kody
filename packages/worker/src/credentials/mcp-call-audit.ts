@@ -8,11 +8,11 @@
  * tool call a place to leak credentials into the audit log.
  */
 import { waitUntil } from 'cloudflare:workers'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { auditDatabaseFromEnv } from '#worker/audit-log.ts'
 import { logOrgAuditEvent } from '#worker/orgs/org-audit.ts'
-import { type PackageStamp } from './package-stamp.ts'
+import type { PackageStamp } from './package-stamp.ts'
 import { reportOrgAuditWriteFailure } from './report-org-audit-write-failure.ts'
 
 export const mcpCallAuditAction = 'mcp.call'

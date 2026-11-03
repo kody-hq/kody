@@ -3,8 +3,8 @@ import {
 	authorizePackageWrite,
 } from '#worker/authorization/authorize.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
-import { type ConnectWebhookApplyLoaderData } from '#universal/loader-data.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { ConnectWebhookApplyLoaderData } from '#universal/loader-data.ts'
 import {
 	approveWebhookApplyDestination,
 	loadWebhookApplyDestinationApprovalView,

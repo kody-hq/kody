@@ -2,11 +2,11 @@ import { jsx } from 'react/jsx-runtime'
 import { renderStartPage as renderToString } from '../../test-support/render-start-page.ts'
 import { expect, test } from 'vitest'
 import { AccountUsagePage } from '../../pages/account-usage.tsx'
-import { type SessionInfo } from '#client/session.ts'
-import {
-	type AccountUsageCredits,
-	type AccountUsageCreditsWallet,
-	type AccountUsageLoaderData,
+import type { SessionInfo } from '#client/session.ts'
+import type {
+	AccountUsageCredits,
+	AccountUsageCreditsWallet,
+	AccountUsageLoaderData,
 } from '#universal/loader-data.ts'
 import { orgUsagePath } from '#universal/org-pages.ts'
 import {

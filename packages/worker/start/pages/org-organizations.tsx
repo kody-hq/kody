@@ -12,7 +12,7 @@ import {
 	type PendingInviteActions,
 } from './pending-invite-actions.tsx'
 import { useState, type ReactNode } from 'react'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
@@ -35,7 +35,7 @@ import {
 	OrgVisibilityFieldset,
 	type OrgProfileVisibilityChoice,
 } from '../components/org-visibility-fieldset.tsx'
-import { type AccountOrganizationsLoaderData } from '#universal/loader-data.ts'
+import type { AccountOrganizationsLoaderData } from '#universal/loader-data.ts'
 import {
 	orgIdentity,
 	orgRoleLabel,

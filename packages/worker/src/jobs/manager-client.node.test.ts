@@ -3,8 +3,8 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { expect, test, vi } from 'vitest'
 import { applyMigrations } from '#worker/test-support/account-export.ts'
 import { createAuditTestDb } from '#worker/test-support/create-audit-db.ts'

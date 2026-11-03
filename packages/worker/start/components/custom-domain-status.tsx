@@ -1,9 +1,9 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSObject } from '@emotion/react'
-import {
-	type PackageAppCustomDomainRecordView,
-	type PackageAppCustomDomainStatus,
-	type PackageAppCustomDomainView,
+import type { CSSObject } from '@emotion/react'
+import type {
+	PackageAppCustomDomainRecordView,
+	PackageAppCustomDomainStatus,
+	PackageAppCustomDomainView,
 } from '#universal/package-app-custom-domain-status.ts'
 import { primaryLinkCss } from '#universal/styles/style-primitives.ts'
 import {

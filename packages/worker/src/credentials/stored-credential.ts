@@ -8,7 +8,7 @@ import {
 	findStoredCredentialForUse,
 	type StoredCredential,
 } from '#mcp/secrets/service.ts'
-import { type StoredCredentialKind } from '#mcp/secrets/types.ts'
+import type { StoredCredentialKind } from '#mcp/secrets/types.ts'
 import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import {
 	CredentialNotFoundError,

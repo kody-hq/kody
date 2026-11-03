@@ -6,8 +6,8 @@
  * packages exist.
  */
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
 	checkPermission,
 	computeEffectivePermissions,
@@ -31,10 +31,10 @@ import {
 } from '#worker/package-capabilities/approval-requests-repo.ts'
 import { loadCapabilityApprovalSummary } from '#worker/package-capabilities/capability-approval-service.ts'
 import { loadCurrentPackageSecurityAudit } from '#worker/package-capabilities/security-audit-state.ts'
-import { type CapabilitySetEntry } from '#worker/package-capabilities/capability-set.ts'
+import type { CapabilitySetEntry } from '#worker/package-capabilities/capability-set.ts'
 import { readWentPublicSummary } from '#worker/package-capabilities/went-public-approval.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { loadPublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
 import {
@@ -63,7 +63,7 @@ import {
 } from '#universal/package-credential-approval-page.ts'
 import { describeTrigger } from '#universal/package-credentials-page.ts'
 import { routes } from '#universal/routes.ts'
-import { type ApprovalBundleDecisionRecord } from './repo.ts'
+import type { ApprovalBundleDecisionRecord } from './repo.ts'
 
 /** The person reviewing, bound to the org the bundle is for. */
 export type ApprovalViewer = {

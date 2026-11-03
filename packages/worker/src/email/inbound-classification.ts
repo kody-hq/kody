@@ -1,7 +1,7 @@
 import { normalizeEmailAddress } from './address.ts'
 import { resolveInboundEmailAuthVerdict } from './auth-verdict.ts'
 import { evaluateEmailSenderRules } from './sender-rules.ts'
-import { type EmailReceiveClassification } from './types.ts'
+import type { EmailReceiveClassification } from './types.ts'
 
 export async function resolveInboundEmailClassification(input: {
 	db: D1Database

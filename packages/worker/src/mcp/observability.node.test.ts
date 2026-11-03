@@ -49,8 +49,11 @@ const { PackageNameInputError, normalizePackageNameInput } =
 const { SavedPackageNotFoundError } =
 	await import('#worker/package-runtime/package-import-resolution.ts')
 const { UserCodeError } = await import('#worker/user-code-error.ts')
-const { RepoChecksFailedError, repoChecksFailedErrorName } =
-	await import('#worker/repo/repo-checks-failed-error.ts')
+const {
+	createRepoChecksError,
+	RepoChecksFailedError,
+	repoChecksFailedErrorName,
+} = await import('#worker/repo/repo-checks-failed-error.ts')
 
 function captureMcpEvents(run: () => void) {
 	sentryMock.captureException.mockClear()
@@ -782,6 +785,38 @@ test('mcpServerAdd duplicate-name caller error stays off Sentry (KODY-A5)', () =
 			message: 'Unable to connect to MCP server: hub unreachable',
 		}),
 	)
+})
+
+test('platform repo check failures reach Sentry while author check failures stay off (#3661)', () => {
+	captureMcpEvents(() => {
+		logMcpEvent(
+			handlerFailure(
+				'packageSave',
+				'packages',
+				repoChecksFailedErrorName,
+				createRepoChecksError([
+					{ kind: 'typecheck', ok: false, message: 'src/a.ts: type error' },
+				]),
+			),
+		)
+	})
+	expectNoSentry()
+
+	const platform = createRepoChecksError([
+		{
+			kind: 'dependencies',
+			ok: false,
+			failureOrigin: 'platform',
+			message: 'Could not load the saved package manifest for @scope/b.',
+		},
+	])
+	captureMcpEvents(() => {
+		logMcpEvent(
+			handlerFailure('packageSave', 'packages', platform.name, platform),
+		)
+	})
+	expect(sentryMock.captureException).toHaveBeenCalledTimes(1)
+	expect(sentryMock.captureException).toHaveBeenCalledWith(platform)
 })
 
 test('unauthenticated capability calls stay off Sentry (KODY-9C)', () => {

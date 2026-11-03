@@ -14,17 +14,17 @@ import {
 	type OwnerId,
 	type PersonId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import {
-	type OrgRole,
-	type RequestContext,
+import type {
+	OrgRole,
+	RequestContext,
 } from '@kody-internal/shared/request-context.ts'
-import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
+import type { RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
 import {
 	findLivePackageAppOauthGrant,
 	touchPackageAppOauthGrantLastUsed,
 } from '#app/package-app-oauth-grants.ts'
 import { packageAppVisitorNeedScope } from '#app/package-app-oauth-scopes.ts'
-import { type PackageAppCredentialAuthority } from '#worker/credentials/credential-client.ts'
+import type { PackageAppCredentialAuthority } from '#worker/credentials/credential-client.ts'
 import { isPackageCredentialSuppliersEnabled } from '#worker/credentials/credential-suppliers-flag.ts'
 import { PromiseLruCache } from '#worker/package-registry/published-package-cache.ts'
 import {

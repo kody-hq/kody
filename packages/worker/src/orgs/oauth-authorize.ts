@@ -3,7 +3,7 @@ import {
 	readOrgSlugFromUrl,
 	stripOrgFromResourceUri,
 } from '#universal/org-binding/url.ts'
-import { type AuthRequest } from '@cloudflare/workers-oauth-provider'
+import type { AuthRequest } from '@cloudflare/workers-oauth-provider'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { mcpOAuthResourceUri } from '#worker/oauth-provider-options.ts'
 import { OrgAuthorizeError } from '#worker/orgs/authorize-error.ts'

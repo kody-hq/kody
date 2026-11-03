@@ -1,7 +1,7 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { isSystemEmailOwner } from './email-owner.ts'
 import { processInboundDeliveryEffects } from './inbound-effects.ts'
-import { type EmailReportingEnv } from './reporting-events.ts'
+import type { EmailReportingEnv } from './reporting-events.ts'
 
 /**
  * Env surface for inbound Mailbox terminal coordination.

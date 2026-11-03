@@ -2,7 +2,7 @@ import {
 	normalizePackageExportKey,
 	normalizePackageWorkspacePath,
 } from '#worker/package-registry/manifest.ts'
-import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import { packageBindingRewriteVersion } from './pre-binding-artifact-repair.ts'
 import {
 	type BundleArtifactDependency,

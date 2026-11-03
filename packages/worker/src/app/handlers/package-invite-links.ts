@@ -1,4 +1,4 @@
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { unmappableCredentialGrantWarnings } from '#mcp/capabilities/access/unmappable-credential-warnings.ts'
 import { resolveGrantPermissions } from '@kody-internal/shared/grant-presets.ts'
 import { loadCollaboratorsScope } from '#app/handlers/package-collaborators.ts'
@@ -18,9 +18,9 @@ import {
 	type ListedInviteLink,
 } from '#worker/orgs/invite-links.ts'
 import { orgAuditWriterFromRequest } from '#worker/orgs/org-audit.ts'
-import {
-	type PackageInviteLinksView,
-	type ScopedInviteLinkView,
+import type {
+	PackageInviteLinksView,
+	ScopedInviteLinkView,
 } from '#universal/loader-data.ts'
 import { packageCollaboratorPresetLabel } from '#universal/package-collaborators.ts'
 

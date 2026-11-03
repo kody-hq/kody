@@ -8,7 +8,7 @@ import {
 	readAccountActivityFilters,
 	readAccountActivitySelectedRunId,
 } from '#app/account-activity-data.ts'
-import { type RunRecord } from '#worker/run-records/types.ts'
+import type { RunRecord } from '#worker/run-records/types.ts'
 import { sessionRequestContext } from '#worker/test-support/request-context.ts'
 
 const mockModule = vi.hoisted(() => ({

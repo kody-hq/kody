@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { isOrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import { profileGrantResourceTypes } from '#worker/profiles/rules.ts'
 import {

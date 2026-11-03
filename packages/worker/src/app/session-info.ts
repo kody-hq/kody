@@ -6,9 +6,9 @@ import {
 	loadRequestFeatureFlags,
 	type EvaluatedFeatureFlags,
 } from '#app/request-feature-flags-cache.ts'
-import { type EmailVerificationDelivery } from '#universal/email-verification-delivery.ts'
-import { type AccountOrganizationSummary } from '#universal/loader-data.ts'
-import { type PermissionString, type RoleName } from '#universal/permissions.ts'
+import type { EmailVerificationDelivery } from '#universal/email-verification-delivery.ts'
+import type { AccountOrganizationSummary } from '#universal/loader-data.ts'
+import type { PermissionString, RoleName } from '#universal/permissions.ts'
 
 export type SessionInfo = {
 	email: string

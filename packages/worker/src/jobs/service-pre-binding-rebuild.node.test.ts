@@ -16,7 +16,7 @@ import {
 } from '#worker/test-support/jobs-service.ts'
 import { buildPackageJobId } from './package-job-id.ts'
 import { executeJobOnce } from './service.ts'
-import { type JobRecord } from './types.ts'
+import type { JobRecord } from './types.ts'
 
 vi.mock('#worker/repo/source-service.ts', async () =>
 	(

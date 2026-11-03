@@ -1,4 +1,4 @@
-import { type DatabaseSync, type SQLInputValue } from 'node:sqlite'
+import type { DatabaseSync, SQLInputValue } from 'node:sqlite'
 
 export type CreateD1FromSqliteOptions = {
 	/**

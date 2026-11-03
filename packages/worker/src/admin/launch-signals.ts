@@ -5,12 +5,12 @@
 
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
 import { classifyMcpClientName } from '#universal/connected-mcp-agents.ts'
-import {
-	type AdminInsightsLaunchFunnelStep,
-	type AdminInsightsLaunchSignals,
-	type AdminInsightsMcpClientSlice,
-	type AdminInsightsPaidSlice,
-	type AdminInsightsPlanSlice,
+import type {
+	AdminInsightsLaunchFunnelStep,
+	AdminInsightsLaunchSignals,
+	AdminInsightsMcpClientSlice,
+	AdminInsightsPaidSlice,
+	AdminInsightsPlanSlice,
 } from '#universal/loader-data.ts'
 import {
 	platformPublicOpenedAt,
@@ -20,7 +20,7 @@ import {
 	monthlyRecurringRevenueUsdCents,
 	resolveStripePriceCatalog,
 } from '#worker/billing/stripe-price-catalog.ts'
-import { type BillingEnv } from '#worker/billing/billing-config.ts'
+import type { BillingEnv } from '#worker/billing/billing-config.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 const dayMs = 24 * 60 * 60 * 1000

@@ -26,7 +26,7 @@ import {
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
 import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
-import { type OrgAuditWriter } from '#worker/orgs/org-audit-outbox.ts'
+import type { OrgAuditWriter } from '#worker/orgs/org-audit-outbox.ts'
 import { runAppDbBatchWithOrgAudit } from '#worker/orgs/org-audit.ts'
 import {
 	isOrgActive,

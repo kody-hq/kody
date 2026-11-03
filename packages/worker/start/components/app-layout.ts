@@ -1,5 +1,5 @@
-import { type CSSObject } from '@emotion/react'
-import { type AppShell } from '../app-shell.ts'
+import type { CSSObject } from '@emotion/react'
+import type { AppShell } from '../app-shell.ts'
 import { mq, spacing, typography } from '#universal/styles/tokens.ts'
 
 export const appFrameCss: CSSObject = {

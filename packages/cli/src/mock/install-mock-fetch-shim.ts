@@ -11,7 +11,7 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { localExecuteGatewayFetchShimModuleName } from '../local-package-graph.js'
-import { type WorkerdPackageModuleFile } from '../local-runtime-source.js'
+import type { WorkerdPackageModuleFile } from '../local-runtime-source.js'
 import { createMockGatewayFetchShimSource } from './mock-gateway-fetch-shim.js'
 
 const mockShimFileName = 'mock-gateway-fetch-shim.js'
