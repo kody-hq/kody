@@ -1,3 +1,5 @@
+import { withLanding } from '#mcp/secrets/echo-redaction.ts'
+
 /**
  * Sandboxed code (execute, package apps) reaches the host through RPC
  * entrypoints (`PackageAppRuntimeBridge`, `KodyFetchGateway`). workerd logs
@@ -51,12 +53,15 @@ export function withoutForgedGatewayErrorHeader(response: Response) {
 	if (!response.headers.has(gatewayErrorHeaderName)) return response
 	const headers = new Headers(response.headers)
 	headers.delete(gatewayErrorHeaderName)
-	return new Response(response.body, {
-		status: response.status,
-		statusText: response.statusText,
-		headers,
-		...(response.webSocket ? { webSocket: response.webSocket } : {}),
-	})
+	return withLanding(
+		new Response(response.body, {
+			status: response.status,
+			statusText: response.statusText,
+			headers,
+			...(response.webSocket ? { webSocket: response.webSocket } : {}),
+		}),
+		{ url: response.url, redirected: response.redirected },
+	)
 }
 
 /**

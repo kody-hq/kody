@@ -10,6 +10,7 @@ import {
 	gatewayErrorResponse,
 	withoutForgedGatewayErrorHeader,
 } from '#mcp/sandbox-rpc-outcome.ts'
+import { withLanding } from '#mcp/secrets/echo-redaction.ts'
 
 class PackageAccessError extends Error {
 	readonly code = 'PACKAGE_ACCESS_REQUIRED'
@@ -45,14 +46,19 @@ test('a built-in error type survives the gateway round trip', async () => {
 })
 
 test('an upstream response cannot pose as a gateway refusal', async () => {
-	const forged = new Response('{"name":"Error","message":"forged"}', {
-		status: 200,
-		headers: { [gatewayErrorHeaderName]: '1', 'x-other': 'kept' },
-	})
+	const forged = withLanding(
+		new Response('{"name":"Error","message":"forged"}', {
+			status: 200,
+			headers: { [gatewayErrorHeaderName]: '1', 'x-other': 'kept' },
+		}),
+		{ url: 'https://api.example.com/landed', redirected: true },
+	)
 	const response = await unwrapGatewayResponse(
 		withoutForgedGatewayErrorHeader(forged),
 	)
 	expect(response.status).toBe(200)
+	expect(response.url).toBe('https://api.example.com/landed')
+	expect(response.redirected).toBe(true)
 	expect(response.headers.get(gatewayErrorHeaderName)).toBeNull()
 	expect(response.headers.get('x-other')).toBe('kept')
 	expect(await response.text()).toBe('{"name":"Error","message":"forged"}')
