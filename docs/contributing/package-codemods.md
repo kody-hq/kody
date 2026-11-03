@@ -667,6 +667,12 @@ Fleet scan mode may scan up to five D1 pages of 50 saved packages per step while
 applying filters, and can return a progress `nextCursor` even when the current
 step matched zero packages.
 
+The page size adapts per run. Each step marks its page open in KV and closes it
+when it returns. If the next step finds the page still open, the previous step
+was killed (out of CPU or memory), so it halves the page size (minimum 1). Each
+finished step then doubles it back toward the requested `limit`. The step
+result's `limit` reports the page size that step used.
+
 ### Modes
 
 | Mode      | Behavior                                                                                                                                                                                                                                                                                                                          |
@@ -687,6 +693,11 @@ with destructive overwrite confirmation (backup required).
 
 Per-package failures are **isolated**; one package error does not abort sibling
 items in the same run step.
+
+A publish can land and still report an error, for example when the repo Durable
+Object is reset after it moved `published_commit`. Before recording `failed`,
+apply re-reads the source: if `published_commit` moved and the published tree
+equals the transformed tree, the item is `applied` with that commit.
 
 ### Run lifecycle
 

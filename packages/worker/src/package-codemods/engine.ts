@@ -105,6 +105,8 @@ export type PackageCodemodRunStepResult = {
 	items: Array<PackageCodemodRunItemResult>
 	nextCursor: string | null
 	summary: Partial<Record<PackageCodemodItemStatus, number>>
+	/** Page size this step used; can be below the requested limit. */
+	limit: number
 }
 
 type PersistedItemResult = PackageCodemodRunItemResult & {
@@ -903,6 +905,40 @@ async function processTransformGates(input: {
 	}
 }
 
+/**
+ * A publish can land and still report an error, for example when the
+ * repo Durable Object is reset after it moved published_commit. The item
+ * counts as applied only when the published tree now equals the transform.
+ */
+async function findLandedPublish(input: {
+	env: Env
+	baseUrl: string
+	savedPackage: SavedPackageRecord
+	beforeCommit: string
+	transformedFiles: Record<string, string>
+}): Promise<string | null> {
+	try {
+		const reloaded = await loadPackageSourceBySourceId({
+			env: input.env,
+			baseUrl: input.baseUrl,
+			userId: input.savedPackage.userId,
+			sourceId: input.savedPackage.sourceId,
+		})
+		const landedCommit = reloaded.source.published_commit
+		if (landedCommit == null || landedCommit === input.beforeCommit) {
+			return null
+		}
+		const expected = Object.entries(input.transformedFiles)
+		const actual = reloaded.files
+		const same =
+			Object.keys(actual).length === expected.length &&
+			expected.every(([path, content]) => actual[path] === content)
+		return same ? landedCommit : null
+	} catch {
+		return null
+	}
+}
+
 async function processPackageForMode(input: {
 	env: Env
 	baseUrl: string
@@ -1057,8 +1093,10 @@ async function processPackageForMode(input: {
 				applyMode === 'published-only' && locked ? true : undefined
 			const commitMessage = `codemod(${input.codemod.id}): ${input.codemod.description}`
 
+			let afterCommit: string | null = null
+			let publishError: string | null = null
 			try {
-				const afterCommit = publishedOnlyApply
+				afterCommit = publishedOnlyApply
 					? await syncPublishedSourceSnapshotOnly({
 							env: input.env,
 							baseUrl: input.baseUrl,
@@ -1093,42 +1131,59 @@ async function processPackageForMode(input: {
 							requirePackageDocs: false,
 							enforceCredentialStamp: false,
 						})
-				if (afterCommit == null) {
-					return emptyItemResult({
-						itemId: gated.itemId,
-						userId: input.savedPackage.userId,
+			} catch (error) {
+				publishError = getErrorMessage(error)
+			}
+			afterCommit ??= await findLandedPublish({
+				env: input.env,
+				baseUrl: input.baseUrl,
+				savedPackage: input.savedPackage,
+				beforeCommit: publishedCommit,
+				transformedFiles: gated.transformedFiles,
+			})
+			if (afterCommit == null) {
+				const retained = publishedOnlyApply
+					? 'A revert snapshot was retained; default-branch HEAD was not moved.'
+					: 'A revert snapshot was retained; repo HEAD may be ahead of published_commit.'
+				return emptyItemResult({
+					itemId: gated.itemId,
+					userId: input.savedPackage.userId,
+					packageId: input.savedPackage.id,
+					kodyId: input.savedPackage.kodyId,
+					status: 'failed',
+					changedPaths: gated.changedPaths,
+					findings: gated.findings,
+					ownerDetail: gated.ownerDetail,
+					beforeCommit: publishedCommit,
+					checkSummary: gated.checkSummary,
+					revertSnapshotKey,
+					error: `${
+						publishError ??
+						(publishedOnlyApply
+							? 'syncPublishedSourceSnapshotOnly returned no published commit.'
+							: 'syncArtifactSourceSnapshot returned no published commit.')
+					} ${retained}`,
+				})
+			}
+			try {
+				await refreshSavedPackageProjection({
+					env: input.env,
+					baseUrl: input.baseUrl,
+					userId: input.savedPackage.userId,
+					packageId: input.savedPackage.id,
+					sourceId: input.savedPackage.sourceId,
+					audit: null,
+				})
+			} catch (error) {
+				console.error(
+					JSON.stringify({
+						message: 'package-codemod projection refresh failed',
 						packageId: input.savedPackage.id,
-						kodyId: input.savedPackage.kodyId,
-						status: 'failed',
-						changedPaths: gated.changedPaths,
-						findings: gated.findings,
-						ownerDetail: gated.ownerDetail,
-						beforeCommit: publishedCommit,
-						checkSummary: gated.checkSummary,
-						revertSnapshotKey,
-						error: publishedOnlyApply
-							? 'syncPublishedSourceSnapshotOnly returned no published commit. A revert snapshot was retained; default-branch HEAD was not moved.'
-							: 'syncArtifactSourceSnapshot returned no published commit. A revert snapshot was retained; repo HEAD may be ahead of published_commit.',
-					})
-				}
-				try {
-					await refreshSavedPackageProjection({
-						env: input.env,
-						baseUrl: input.baseUrl,
-						userId: input.savedPackage.userId,
-						packageId: input.savedPackage.id,
-						sourceId: input.savedPackage.sourceId,
-						audit: null,
-					})
-				} catch (error) {
-					console.error(
-						JSON.stringify({
-							message: 'package-codemod projection refresh failed',
-							packageId: input.savedPackage.id,
-							error: getErrorMessage(error),
-						}),
-					)
-				}
+						error: getErrorMessage(error),
+					}),
+				)
+			}
+			try {
 				await dispatchPackageCodemodSubscriptionEvent({
 					env: input.env,
 					userId: input.savedPackage.userId,
@@ -1145,38 +1200,29 @@ async function processPackageForMode(input: {
 					waitUntil: input.waitUntil,
 					subscriptionCache: input.subscriptionCache,
 				})
-				return emptyItemResult({
-					itemId: gated.itemId,
-					userId: input.savedPackage.userId,
-					packageId: input.savedPackage.id,
-					kodyId: input.savedPackage.kodyId,
-					status: 'applied',
-					changedPaths: gated.changedPaths,
-					findings: gated.findings,
-					ownerDetail: gated.ownerDetail,
-					beforeCommit: publishedCommit,
-					afterCommit,
-					checkSummary: gated.checkSummary,
-					revertSnapshotKey,
-				})
 			} catch (error) {
-				return emptyItemResult({
-					itemId: gated.itemId,
-					userId: input.savedPackage.userId,
-					packageId: input.savedPackage.id,
-					kodyId: input.savedPackage.kodyId,
-					status: 'failed',
-					changedPaths: gated.changedPaths,
-					findings: gated.findings,
-					ownerDetail: gated.ownerDetail,
-					beforeCommit: publishedCommit,
-					checkSummary: gated.checkSummary,
-					revertSnapshotKey,
-					error: publishedOnlyApply
-						? `${getErrorMessage(error)} A revert snapshot was retained; default-branch HEAD was not moved.`
-						: `${getErrorMessage(error)} A revert snapshot was retained; repo HEAD may be ahead of published_commit.`,
-				})
+				console.error(
+					JSON.stringify({
+						message: 'package-codemod applied event dispatch failed',
+						packageId: input.savedPackage.id,
+						error: getErrorMessage(error),
+					}),
+				)
 			}
+			return emptyItemResult({
+				itemId: gated.itemId,
+				userId: input.savedPackage.userId,
+				packageId: input.savedPackage.id,
+				kodyId: input.savedPackage.kodyId,
+				status: 'applied',
+				changedPaths: gated.changedPaths,
+				findings: gated.findings,
+				ownerDetail: gated.ownerDetail,
+				beforeCommit: publishedCommit,
+				afterCommit,
+				checkSummary: gated.checkSummary,
+				revertSnapshotKey,
+			})
 		}
 		case 'revert':
 			throw new Error('processPackageForMode does not handle revert mode.')
@@ -1229,6 +1275,7 @@ async function processRevertStep(input: {
 				items,
 				nextCursor: null,
 				summary,
+				limit: input.limit,
 			}
 		}
 		const ownersPendingDeletion = await listOwnerIdsPendingDeletion(
@@ -1562,6 +1609,7 @@ async function processRevertStep(input: {
 					items,
 					nextCursor: cursor,
 					summary,
+					limit: input.limit,
 				}
 			}
 		}
@@ -1577,6 +1625,7 @@ async function processRevertStep(input: {
 				items,
 				nextCursor: null,
 				summary,
+				limit: input.limit,
 			}
 		}
 		if (pagesFetched >= maxFleetPagesPerStep) {
@@ -1587,6 +1636,7 @@ async function processRevertStep(input: {
 				items,
 				nextCursor: cursor,
 				summary,
+				limit: input.limit,
 			}
 		}
 	}
@@ -1611,6 +1661,70 @@ export const unfinishedAttemptsError =
 
 function unfinishedAttemptKvKey(runId: string, packageId: string) {
 	return `package-codemod-attempt:${runId}:${packageId}`
+}
+
+/**
+ * A step marks its page open before processing and closed after. An open
+ * mark on the next step means the previous one was killed (out of CPU or
+ * memory), so the page size halves; each finished step doubles it back
+ * toward the requested limit.
+ */
+type AdaptiveStepLimit = { limit: number; open: boolean }
+
+function adaptiveStepLimitKvKey(runId: string) {
+	return `package-codemod-step-limit:${runId}`
+}
+
+function parseAdaptiveStepLimit(raw: string | null): AdaptiveStepLimit | null {
+	if (raw == null) return null
+	try {
+		const parsed = JSON.parse(raw) as Partial<AdaptiveStepLimit>
+		if (typeof parsed.limit !== 'number' || parsed.limit < 1) return null
+		return { limit: parsed.limit, open: parsed.open === true }
+	} catch {
+		return null
+	}
+}
+
+async function openAdaptiveStepLimit(input: {
+	env: Env
+	runId: string
+	requestedLimit: number
+}): Promise<number> {
+	const key = adaptiveStepLimitKvKey(input.runId)
+	const prior = parseAdaptiveStepLimit(
+		await input.env.BUNDLE_ARTIFACTS_KV.get(key),
+	)
+	const limit =
+		prior == null
+			? input.requestedLimit
+			: prior.open
+				? Math.max(
+						1,
+						Math.floor(Math.min(prior.limit, input.requestedLimit) / 2),
+					)
+				: Math.min(input.requestedLimit, prior.limit * 2)
+	await input.env.BUNDLE_ARTIFACTS_KV.put(
+		key,
+		JSON.stringify({ limit, open: true } satisfies AdaptiveStepLimit),
+		{ expirationTtl: unfinishedAttemptTtlSeconds },
+	)
+	return limit
+}
+
+async function closeAdaptiveStepLimit(input: {
+	env: Env
+	runId: string
+	limit: number
+}) {
+	await input.env.BUNDLE_ARTIFACTS_KV.put(
+		adaptiveStepLimitKvKey(input.runId),
+		JSON.stringify({
+			limit: input.limit,
+			open: false,
+		} satisfies AdaptiveStepLimit),
+		{ expirationTtl: unfinishedAttemptTtlSeconds },
+	)
 }
 
 export async function runPackageCodemodStep(input: {
@@ -1661,6 +1775,7 @@ export async function runPackageCodemodStep(input: {
 		filters: input.filters,
 		revertOfRunId: input.revertOfRunId,
 	})
+	let stepLimit: number | null = null
 	try {
 		const subscriptionCache = createPackageCodemodSubscriptionCache()
 		if (input.mode === 'revert') {
@@ -1677,6 +1792,11 @@ export async function runPackageCodemodStep(input: {
 			})
 		}
 
+		stepLimit = await openAdaptiveStepLimit({
+			env: input.env,
+			runId: run.id,
+			requestedLimit: limit,
+		})
 		const filters = input.filters ?? parseStoredFiltersJson(run.filtersJson)
 		const excluded = new Set(filters.excludePackageIds ?? [])
 		const { packages, nextCursor } = await listCandidatePackages({
@@ -1684,7 +1804,7 @@ export async function runPackageCodemodStep(input: {
 			scope: input.scope,
 			filters,
 			cursor: input.cursor ?? null,
-			limit,
+			limit: stepLimit,
 		})
 		const items: Array<PackageCodemodRunItemResult> = []
 		const summary: Partial<Record<PackageCodemodItemStatus, number>> = {}
@@ -1773,6 +1893,11 @@ export async function runPackageCodemodStep(input: {
 			items.push(toPublicItem(result))
 			incrementSummary(summary, result.status)
 		}
+		await closeAdaptiveStepLimit({
+			env: input.env,
+			runId: run.id,
+			limit: stepLimit,
+		})
 		if (nextCursor == null) {
 			await updatePackageCodemodRunStatus(input.env.APP_DB, {
 				id: run.id,
@@ -1786,6 +1911,7 @@ export async function runPackageCodemodStep(input: {
 			items,
 			nextCursor,
 			summary,
+			limit: stepLimit,
 		}
 	} catch (error) {
 		// Per-package failures are isolated above; only step-level failures
@@ -1794,6 +1920,14 @@ export async function runPackageCodemodStep(input: {
 		// a cursor back to continue with. A later continuation step reopens
 		// the run via the ensureRun heartbeat.
 		try {
+			// A thrown step finished; only a killed step leaves the page open.
+			if (stepLimit != null) {
+				await closeAdaptiveStepLimit({
+					env: input.env,
+					runId: run.id,
+					limit: stepLimit,
+				})
+			}
 			await updatePackageCodemodRunStatus(input.env.APP_DB, {
 				id: run.id,
 				status: 'failed',
