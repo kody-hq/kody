@@ -538,6 +538,22 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		reason:
 			'Derived Vectorize embed-text skip cache omitted from portable export; account deletion removes user-owned fingerprint rows. Builtin rows use the reserved __kody_builtin__ owner id.',
 	},
+	{
+		kind: 'user_id',
+		table: 'jwt_sign_any_host_callers',
+		includeInExport: false,
+		surface: 'jwt_sign_any_host_callers',
+		reason:
+			'Operational any-host secretJwtSign deprecation state omitted from portable export; account deletion removes the rows.',
+	},
+	{
+		kind: 'user_id',
+		table: 'jwt_sign_any_host_destinations',
+		includeInExport: false,
+		surface: 'jwt_sign_any_host_destinations',
+		reason:
+			'Operational per-host fill counts for any-host secretJwtSign JWTs omitted from portable export; account deletion removes the rows.',
+	},
 	{ kind: 'user_id', table: 'entity_source_artifacts_push_subscriptions' },
 	{ kind: 'user_id', table: 'entity_sources' },
 	{
