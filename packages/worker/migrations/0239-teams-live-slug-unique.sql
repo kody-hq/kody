@@ -41,7 +41,7 @@ SELECT id, org_id, slug, name, description, parent_team_id,
 FROM teams;
 
 INSERT INTO __migration_assertions (message)
-SELECT 'teams_next does not match teams; aborting 0238.'
+SELECT 'teams_next does not match teams; aborting 0239.'
 WHERE EXISTS (
 	SELECT id, org_id, slug, name, description, parent_team_id,
 		created_by_user_id, created_at, updated_at, deleted_at

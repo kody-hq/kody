@@ -102,9 +102,7 @@ export async function loadOrgTeamsData(input: {
 	const canManage =
 		!input.org.personal &&
 		(await orgHasPermission(input.env, input.user, 'team:write'))
-	const canRemoveMembers =
-		!input.org.personal &&
-		(await orgHasPermission(input.env, input.user, 'team:delete'))
+	const canRemoveMembers = canManage
 	// A team link also adds the person to the org, so it needs both.
 	const canCreateInviteLinks =
 		canManage && (await orgHasPermission(input.env, input.user, 'member:write'))
@@ -295,7 +293,7 @@ export async function removeOrganizationTeamMember({
 		orgSlug,
 		env,
 		user,
-		permission: 'team:delete',
+		permission: 'team:write',
 	})
 	if (!access.ok) {
 		return operationResult({ ok: false, error: access.error }, access.status)

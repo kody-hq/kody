@@ -32,6 +32,7 @@ import {
 	teamDeleteCapability,
 	teamListCapability,
 	teamMemberAddCapability,
+	teamMemberRemoveCapability,
 } from './teams.ts'
 
 async function createDb() {
@@ -953,6 +954,15 @@ test('teamDelete soft-deletes, keeps grants inert, and frees the slug', async ()
 			permissions: ['team:write'],
 		},
 		owner,
+	)
+	expect(teamMemberRemoveCapability.orgPermission).toBe('team:write')
+	await teamMemberAddCapability.handler(
+		{ team_slug: 'core', user_id: people.writer.id },
+		owner,
+	)
+	await teamMemberRemoveCapability.handler(
+		{ team_slug: 'core', user_id: people.writer.id },
+		asPerson(people.writer),
 	)
 	const epochBefore = orgEpochFromRow(
 		await db

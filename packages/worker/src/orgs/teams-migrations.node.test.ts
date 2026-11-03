@@ -240,7 +240,7 @@ test('migration 0092 restores local-execute parity on org:execute tokens', () =>
 	).toEqual(['org:execute', 'org:read', 'package:execute'])
 })
 
-test('migration 0238 lets a deleted team slug be reused', () => {
+test('migration 0239 lets a deleted team slug be reused', () => {
 	const migrationsDirectory = new URL('../../migrations/', import.meta.url)
 	const sqlite = new DatabaseSync(':memory:')
 	sqlite.exec(`
@@ -264,7 +264,7 @@ test('migration 0238 lets a deleted team slug be reused', () => {
 	`)
 	sqlite.exec(
 		readFileSync(
-			new URL('0238-teams-live-slug-unique.sql', migrationsDirectory),
+			new URL('0239-teams-live-slug-unique.sql', migrationsDirectory),
 			'utf8',
 		),
 	)

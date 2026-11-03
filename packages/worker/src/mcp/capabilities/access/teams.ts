@@ -194,7 +194,7 @@ export const teamMemberRemoveCapability = defineDomainCapability(
 	{
 		name: 'teamMemberRemove',
 		contextRuns: 'deny',
-		orgPermission: 'team:delete',
+		orgPermission: 'team:write',
 		requiresLivePerson: true,
 		description:
 			'Remove a person from a team in the organization this request is bound to. They stay an organization member.',
@@ -215,7 +215,7 @@ export const teamMemberRemoveCapability = defineDomainCapability(
 		}),
 		async handler(args, ctx) {
 			try {
-				const { request, db } = await requireOrgPermission(ctx, 'team:delete')
+				const { request, db } = await requireOrgPermission(ctx, 'team:write')
 				await assertTeamOrg(db, request.org.id)
 				const teamId = await resolveTeamId(db, request.org.id, {
 					teamId: args.team_id,
