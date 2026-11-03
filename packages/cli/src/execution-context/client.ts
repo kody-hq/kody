@@ -16,10 +16,10 @@ import {
 export const executionContextsPath = '/v1/execution-contexts'
 
 /** Old logins lack execution context scopes; never widen them silently. */
-export const reloginHint =
+const reloginHint =
 	'Run `kody login` again, then retry `kody context register`.'
 
-export class ExecutionContextApiError extends Error {
+class ExecutionContextApiError extends Error {
 	constructor(
 		message: string,
 		readonly status: number,

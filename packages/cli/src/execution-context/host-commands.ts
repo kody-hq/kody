@@ -18,12 +18,12 @@ import {
  * kill them.
  */
 
-export type HostCommandsDenialCode =
+type HostCommandsDenialCode =
 	| 'execution_context_commands_off'
 	| 'invalid_request'
 	| 'not_found'
 
-export class HostCommandError extends Error {
+class HostCommandError extends Error {
 	constructor(
 		readonly code: HostCommandsDenialCode,
 		message: string,
@@ -33,7 +33,7 @@ export class HostCommandError extends Error {
 	}
 }
 
-export type HostCommandSpec = {
+type HostCommandSpec = {
 	/**
 	 * Shell command line, run with the user's shell (`$SHELL -c`, else
 	 * /bin/sh). Windows: PowerShell (`pwsh`, else powershell.exe), or cmd.exe
@@ -52,13 +52,13 @@ export type HostCommandSpec = {
 	maxOutputBytes?: number
 }
 
-export type HostCommandLifecycle = 'status' | 'output' | 'kill' | 'list'
+type HostCommandLifecycle = 'status' | 'output' | 'kill' | 'list'
 
 /**
  * Starts (`run`, `start`) are authorized and audited; lifecycle calls on
  * existing commands are authorized (grant, permission, token scope) only.
  */
-export type HostCommandAuthorize = (
+type HostCommandAuthorize = (
 	input:
 		| {
 				commandId: string
@@ -95,7 +95,7 @@ export type HostCommandRunContext = {
 	authorize: HostCommandAuthorize
 }
 
-export const hostCommandLimits = {
+const hostCommandLimits = {
 	foregroundDefaultTimeoutMs: 60_000,
 	foregroundMaxTimeoutMs: 15 * 60_000,
 	backgroundDefaultTimeoutMs: 2 * 60 * 60_000,

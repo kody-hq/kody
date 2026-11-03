@@ -20,9 +20,9 @@ import { cliConfigDir } from '../store.js'
 
 export type FsMode = 'ro' | 'rw'
 export type FsRule = { path: string; mode: FsMode }
-export type FsLayer = 'server_grant' | 'local_policy'
+type FsLayer = 'server_grant' | 'local_policy'
 /** Host commands opt-in on this machine (ADR 0093). Absent means off. */
-export type LocalCommandsPolicy = { enabled: boolean; changedAt?: string }
+type LocalCommandsPolicy = { enabled: boolean; changedAt?: string }
 export type LocalFsPolicy = {
 	version: 1
 	fs: Array<FsRule>
@@ -30,8 +30,8 @@ export type LocalFsPolicy = {
 	/** Daemon auto-update on this machine. Absent means on. */
 	autoUpdate?: LocalCommandsPolicy
 }
-export type FsMount = { path: string; mode: FsMode }
-export type FsRefusal = { path: string; layer: FsLayer; reason: string }
+type FsMount = { path: string; mode: FsMode }
+type FsRefusal = { path: string; layer: FsLayer; reason: string }
 /**
  * Host folders one run may touch: the server grant intersected with this
  * machine's local policy, plus the grant roots so refusals can name the layer.

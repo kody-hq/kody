@@ -50,11 +50,10 @@ import { readPackageVersion } from './package-info.js'
  * 401 means the token is expired/revoked (or MCP OAuth until the platform
  * accepts it); 403 `feature_disabled` means the `local-execute` flag is off.
  */
-export const capabilityProxySessionPath = 'v1/capability-proxy/session'
-export const capabilityProxyCallPath = 'v1/capability-proxy/call'
+const capabilityProxySessionPath = 'v1/capability-proxy/session'
+const capabilityProxyCallPath = 'v1/capability-proxy/call'
 /** Streaming ambient/secret fetch hop (raw body; not JSON `/call`). */
-export const capabilityProxyGatewayFetchPath =
-	'v1/capability-proxy/gateway-fetch'
+const capabilityProxyGatewayFetchPath = 'v1/capability-proxy/gateway-fetch'
 
 /** Allowlisted metadata headers for {@link capabilityProxyGatewayFetchPath}. */
 export const gatewayFetchUrlHeaderName = 'X-Kody-Gateway-Url'
@@ -74,8 +73,56 @@ export const secretResolutionHeaderName = 'x-kody-secret-resolution'
  */
 export const capabilityProxyGatewayDeadlineMs = 5 * 60_000
 export const capabilityProxyHttpTimeoutMs = 7 * 60_000
+export const capabilityProxyTimeoutEnvVar = 'KODY_CAPABILITY_PROXY_TIMEOUT_MS'
+
+/** Idle limit for CapabilityProxy hops: `KODY_CAPABILITY_PROXY_TIMEOUT_MS` or 7 minutes. */
+export function capabilityProxyTimeoutMs(
+	env: NodeJS.ProcessEnv = process.env,
+): number {
+	const raw = env[capabilityProxyTimeoutEnvVar]?.trim()
+	if (!raw) return capabilityProxyHttpTimeoutMs
+	const parsed = Number(raw)
+	if (!Number.isSafeInteger(parsed) || parsed < 1) {
+		throw new Error(
+			`${capabilityProxyTimeoutEnvVar} must be a whole number of milliseconds greater than 0; got ${JSON.stringify(raw)}.`,
+		)
+	}
+	return parsed
+}
+
+/**
+ * The idle timer fired. Kody may still be running the call, so say so and
+ * name the knob instead of reporting the API as unreachable.
+ */
+class CapabilityProxyIdleTimeoutError extends Error {
+	constructor(timeoutMs: number, pathname: string) {
+		super(
+			`Kody API sent nothing for ${timeoutMs}ms (${pathname}), so the CLI stopped waiting. ` +
+				`The call may still be running on Kody: check its result before retrying a write. ` +
+				`Raise the limit with ${capabilityProxyTimeoutEnvVar}=<ms>.`,
+		)
+		this.name = 'CapabilityProxyIdleTimeoutError'
+	}
+}
+
+function toCapabilityProxyTransportError(
+	origin: string,
+	error: unknown,
+): CapabilityProxyError {
+	if (error instanceof CapabilityProxyError) return error
+	if (error instanceof CapabilityProxyIdleTimeoutError) {
+		return new CapabilityProxyError(error.message, {
+			code: 'capability_proxy_timeout',
+			sent: 'unknown',
+		})
+	}
+	return new CapabilityProxyError(
+		formatUnreachableApiMessage({ origin, error }),
+		{ sent: requestSentStatus(error) },
+	)
+}
 /** Bound DNS / TCP / TLS before the idle timer (undici Agent default was 10s). */
-export const capabilityProxyConnectTimeoutMs = 10_000
+const capabilityProxyConnectTimeoutMs = 10_000
 
 /**
  * Node routes global fetch through `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`
@@ -121,7 +168,7 @@ export type CapabilityProxyFetchOptions = {
 export function createCapabilityProxyFetch(
 	options: CapabilityProxyFetchOptions = {},
 ): typeof fetch {
-	const timeoutMs = options.timeoutMs ?? capabilityProxyHttpTimeoutMs
+	const timeoutMs = options.timeoutMs ?? capabilityProxyTimeoutMs()
 	const connectTimeoutMs =
 		options.connectTimeoutMs ?? capabilityProxyConnectTimeoutMs
 	const useEnvProxy = options.useEnvProxy ?? nodeUsesEnvProxy()
@@ -195,9 +242,7 @@ export function createCapabilityProxyFetch(
 			})
 			request.setTimeout(timeoutMs, () =>
 				request.destroy(
-					new Error(
-						`Kody API sent nothing for ${timeoutMs}ms (${url.pathname}).`,
-					),
+					new CapabilityProxyIdleTimeoutError(timeoutMs, url.pathname),
 				),
 			)
 			request.on('error', (error) => {
@@ -371,7 +416,7 @@ export function capabilityProxyUrl(apiUrl: string, path: string): URL {
 }
 
 /** Attach `?org=` for user-owned tokens without clobbering other query params. */
-export function withOrgQuery(url: URL, org?: string): URL {
+function withOrgQuery(url: URL, org?: string): URL {
 	if (org) url.searchParams.set('org', org)
 	return url
 }
@@ -451,8 +496,8 @@ export type CapabilityProxyGatewayFetchStreamHeaders = {
  * The Open API body is the outbound fetch body (no JSON/base64 wrapper).
  * Returns the upstream `Response` (or an Open API JSON error envelope).
  *
- * Uses Node `http(s)` so duplex streaming works with the same 7-minute idle
- * timeout as JSON CapabilityProxy calls (undici's global fetch caps at 300s).
+ * Uses Node `http(s)` so duplex streaming works with the same idle timeout as
+ * JSON CapabilityProxy calls (undici's global fetch caps at 300s).
  */
 export async function callCapabilityProxyGatewayFetchStream(
 	input: CapabilityProxyClientInput & {
@@ -473,7 +518,7 @@ export async function callCapabilityProxyGatewayFetchStream(
 			url,
 		)
 	}
-	const timeoutMs = capabilityProxyHttpTimeoutMs
+	const timeoutMs = capabilityProxyTimeoutMs()
 	const connectTimeoutMs = capabilityProxyConnectTimeoutMs
 	const useEnvProxy = nodeUsesEnvProxy()
 	if (useEnvProxy && !nodeAgentHonorsEnvProxy()) {
@@ -532,24 +577,12 @@ export async function callCapabilityProxyGatewayFetchStream(
 		})
 		request.setTimeout(timeoutMs, () =>
 			request.destroy(
-				new Error(
-					`Kody API sent nothing for ${timeoutMs}ms (${url.pathname}).`,
-				),
+				new CapabilityProxyIdleTimeoutError(timeoutMs, url.pathname),
 			),
 		)
 		request.on('error', (error) => {
 			clearTimeout(connectTimer)
-			reject(
-				error instanceof CapabilityProxyError
-					? error
-					: new CapabilityProxyError(
-							formatUnreachableApiMessage({
-								origin: url.origin,
-								error,
-							}),
-							{ sent: requestSentStatus(error) },
-						),
-			)
+			reject(toCapabilityProxyTransportError(url.origin, error))
 		})
 		if (signal) {
 			const abort = () => {
@@ -634,16 +667,12 @@ async function sendGatewayFetchWithFetchFn(
 			signal: input.signal,
 		})
 	} catch (error) {
-		if (error instanceof CapabilityProxyError) throw error
-		throw new CapabilityProxyError(
-			formatUnreachableApiMessage({ origin: url.origin, error }),
-			{ sent: requestSentStatus(error) },
-		)
+		throw toCapabilityProxyTransportError(url.origin, error)
 	}
 }
 
 /** Convert a Node response into a streaming Web `Response`. */
-export function nodeIncomingToWebResponse(response: IncomingMessage): Response {
+function nodeIncomingToWebResponse(response: IncomingMessage): Response {
 	const headers = new Headers()
 	for (const [name, value] of Object.entries(response.headers)) {
 		if (Array.isArray(value)) {
@@ -744,11 +773,7 @@ async function send(
 			},
 		})
 	} catch (error) {
-		if (error instanceof CapabilityProxyError) throw error
-		throw new CapabilityProxyError(
-			formatUnreachableApiMessage({ origin: url.origin, error }),
-			{ sent: requestSentStatus(error) },
-		)
+		throw toCapabilityProxyTransportError(url.origin, error)
 	}
 }
 
@@ -806,6 +831,7 @@ function describeFailure(
 			`${insufficientScopeMessage({
 				...readInsufficientScopeDetails(body),
 				currentLifetime: currentStoredTokenLifetimeAlias(url.origin),
+				localExecute: true,
 			})}${detail}`,
 			{ status, code },
 		)

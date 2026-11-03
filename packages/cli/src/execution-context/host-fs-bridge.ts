@@ -21,7 +21,7 @@ import {
 } from './fs-access.js'
 
 /** Largest file one host-folder read or write moves through the bridge. */
-export const hostFsMaxBytes = 32 * 1024 * 1024
+const hostFsMaxBytes = 32 * 1024 * 1024
 
 export type HostFsRequest = {
 	op: string

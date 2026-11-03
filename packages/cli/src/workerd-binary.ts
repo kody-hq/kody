@@ -12,7 +12,7 @@ import { describeNetworkError } from './network-error.js'
 export const workerdVersion = '1.20260815.1'
 
 /** sha256 of each gzipped release asset on github.com/cloudflare/workerd. */
-export const workerdAssetDigests = {
+const workerdAssetDigests = {
 	'linux-64':
 		'05099ec6f50832fcbc327490e5a971d682c97231fb01943b61726db07677e559',
 	'linux-arm64':
@@ -26,7 +26,7 @@ export const workerdAssetDigests = {
 } as const
 
 /** Abort a workerd download after this long with no bytes; a download that keeps making progress can run as long as it needs. */
-export const workerdDownloadIdleTimeoutMs = 60_000
+const workerdDownloadIdleTimeoutMs = 60_000
 
 export class WorkerdDownloadStalledError extends Error {}
 

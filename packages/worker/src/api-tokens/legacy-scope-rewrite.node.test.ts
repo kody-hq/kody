@@ -2,8 +2,18 @@ import { expect, test } from 'vitest'
 import {
 	rewriteLegacyApiTokenScopes,
 	shouldRepairLocalExecuteParity,
+	localExecuteOrgPermissions,
 	unionLocalExecuteParityScopes,
 } from './legacy-scope-rewrite.ts'
+
+test('the CLI local-execute remint list matches localExecuteOrgPermissions', async () => {
+	const cliDefaults = (await import(
+		new URL('../../../cli/src/defaults.ts', import.meta.url).href
+	)) as { localExecuteScopes: ReadonlyArray<string> }
+	expect([...cliDefaults.localExecuteScopes].sort()).toEqual(
+		[...localExecuteOrgPermissions].sort(),
+	)
+})
 
 test('rewrites each §5.3 legacy scope to the fixed org-permission set', () => {
 	expect(rewriteLegacyApiTokenScopes(['account:read'])).toEqual([

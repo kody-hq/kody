@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { mkdtempSync } from 'node:fs'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { type AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { mock, test } from 'node:test'
 import { Entry } from '@napi-rs/keyring'
 import {
+	apiUrlFrom,
 	buildExecuteToolArgs,
 	executeSourcesConflict,
 	argvIncludesJsonFlag,
@@ -15,6 +16,7 @@ import {
 	packagePublishParams,
 	resolvePackagePublishTarget,
 	parseApiParamsJson,
+	positionalModuleFile,
 	resolveApiToken,
 	resolveCommand,
 	resolveLocalExecuteBearer,
@@ -677,7 +679,12 @@ test('--org selects an org for org-scoped commands and rejects a blank slug', as
 
 type ApiStub = {
 	apiUrl: string
-	requests: Array<{ method: string; url: string; authorization: string | null }>
+	requests: Array<{
+		method: string
+		url: string
+		authorization: string | null
+		body: string
+	}>
 	close: () => Promise<void>
 }
 
@@ -689,12 +696,14 @@ async function startApiStub(
 	},
 ): Promise<ApiStub> {
 	const requests: ApiStub['requests'] = []
-	const server = createServer((request, response) => {
-		request.resume()
+	const server = createServer(async (request, response) => {
+		const chunks: Array<Buffer> = []
+		for await (const chunk of request) chunks.push(Buffer.from(chunk))
 		const entry = {
 			method: request.method ?? '',
 			url: request.url ?? '',
 			authorization: request.headers.authorization ?? null,
+			body: Buffer.concat(chunks).toString('utf8'),
 		}
 		requests.push(entry)
 		const { status, body } = respond(entry)
@@ -750,6 +759,88 @@ test('execute with --token (no --local) posts /v1/execute and never requires log
 		['POST /v1/execute'],
 	)
 	assert.equal(api.requests[0]?.authorization, 'Bearer tok')
+})
+
+test('execute treats a lone positional module path like --file', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'kody-positional-file-'))
+	const modulePath = join(dir, 'tick.ts')
+	const source = 'export default async () => ({ fromFile: true })\n'
+	await writeFile(modulePath, source)
+	const api = await startApiStub(() => ({
+		status: 200,
+		body: { ok: true, result: { fromFile: true }, logs: [] },
+	}))
+	let stderr = ''
+	try {
+		const code = await runCli(
+			['execute', '--token', 'tok', '--api-url', api.apiUrl, modulePath],
+			{ stdout: () => {}, stderr: (text) => (stderr += text) },
+		)
+		assert.equal(code, 0, stderr)
+	} finally {
+		await api.close()
+		await rm(dir, { recursive: true, force: true })
+	}
+	const body = JSON.parse(api.requests[0]?.body ?? '{}') as { code?: string }
+	assert.equal(body.code, source)
+})
+
+test('execute rejects a positional module path that does not exist', async () => {
+	let stderr = ''
+	const code = await runCli(
+		['execute', '--token', 'tok', '/nonexistent/kody-missing-module.ts'],
+		{ stdout: () => {}, stderr: (text) => (stderr += text) },
+	)
+	assert.equal(code, 1)
+	assert.match(
+		stderr,
+		/No module file at "\/nonexistent\/kody-missing-module\.ts"/,
+	)
+	assert.match(stderr, /--file <path>/)
+	assert.doesNotMatch(stderr, /Invalid regular expression/)
+})
+
+test('apiUrlFrom pairs a preview --mcp-url with its -api host', () => {
+	const preview = 'https://kody-pr-7.example.workers.dev/mcp'
+	assert.equal(
+		apiUrlFrom({}, {}, preview),
+		'https://kody-pr-7-api.example.workers.dev',
+	)
+	assert.equal(
+		apiUrlFrom(
+			{ apiUrl: 'https://flag.test' },
+			{ KODY_API_URL: 'https://env.test' },
+			preview,
+		),
+		'https://flag.test',
+	)
+	assert.equal(
+		apiUrlFrom({}, { KODY_API_URL: 'https://env.test' }, preview),
+		'https://env.test',
+	)
+	assert.equal(
+		apiUrlFrom({}, {}, 'https://kody.codes/mcp'),
+		'https://api.kody.codes',
+	)
+	assert.equal(
+		apiUrlFrom({}, {}, 'http://localhost:3742/mcp'),
+		'https://api.kody.codes',
+	)
+	assert.equal(apiUrlFrom({}, {}), 'https://api.kody.codes')
+})
+
+test('positionalModuleFile keeps module source text as code', () => {
+	const exists = (path: string) => path === 'mod.js'
+	assert.equal(positionalModuleFile('mod.js', exists), 'mod.js')
+	assert.equal(
+		positionalModuleFile('export default () => 1', exists),
+		undefined,
+	)
+	assert.equal(positionalModuleFile('', exists), undefined)
+	assert.throws(
+		() => positionalModuleFile('missing.mts', exists),
+		/No module file/,
+	)
 })
 
 test('execute without token or login prompts clearly', async () => {

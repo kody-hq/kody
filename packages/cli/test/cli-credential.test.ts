@@ -397,3 +397,14 @@ test('desktop login selection never reads or replaces stored API tokens and neve
 		/must be login/,
 	)
 })
+
+test('status labels the stored API token expiry as the mint-time deadline', async () => {
+	await withStoredTokenAndLogin(async ({ capture }) => {
+		const status = await capture(['status', '--api-url', apiUrl])
+		assert.equal(status.code, 0, status.stderr)
+		assert.match(
+			status.stdout,
+			/API token expires: .+ \(saved at mint; idle tokens slide on use, `kody whoami` shows the live deadline\)/,
+		)
+	})
+})

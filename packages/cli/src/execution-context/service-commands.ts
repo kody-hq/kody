@@ -30,12 +30,10 @@ import {
 	ephemeralRuntimeReason,
 	formatServiceStatus,
 	installService,
-	lingerCommand,
 	npxRefusal,
 	restartService,
 	startService,
 	stopService,
-	runCommand,
 	serviceManagerFor,
 	servicePaths,
 	serviceStatus,
@@ -343,7 +341,7 @@ export async function autoUpdateStatus(clientVersion: string) {
 	}
 }
 
-export function formatAutoUpdateLine(
+function formatAutoUpdateLine(
 	status: Awaited<ReturnType<typeof autoUpdateStatus>>,
 ) {
 	const lines = [
@@ -361,7 +359,7 @@ export function formatAutoUpdateLine(
 }
 
 /** The live daemon running this context on this machine (any launcher). */
-export function runnerFor(apiUrl: string, ecid: string) {
+function runnerFor(apiUrl: string, ecid: string) {
 	const statePath = servicePaths({
 		apiUrl,
 		ecid,
@@ -805,5 +803,3 @@ export async function runUpdate(env: ServiceCommandEnv) {
 	)
 	return restarted === services.length ? 0 : 1
 }
-
-export { lingerCommand, runCommand }

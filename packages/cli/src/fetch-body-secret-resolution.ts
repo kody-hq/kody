@@ -13,7 +13,7 @@
  * spreads, still warn: the scanner cannot see `headers-only` on those bags.
  */
 
-export const fetchBodySecretResolutionWarningLead =
+const fetchBodySecretResolutionWarningLead =
 	'WARNING: a fetch sends a body without x-kody-secret-resolution. The gateway fills {{secret:name}} anywhere in that body, so text this package did not write can fail with Secret "name" was not found, or a saved secret can be sent to a host the credential allows. Set x-kody-secret-resolution: headers-only on that fetch (headers still resolve). This does not block publish.'
 
 const secretResolutionHeaderName = 'x-kody-secret-resolution'
