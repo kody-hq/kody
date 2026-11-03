@@ -540,6 +540,14 @@ the `fs` capability only while at least one folder is mounted, so
 `requires: ["fs"]` routing and chains skip it otherwise (`no_fs`: the server
 grant lists no folders; `no_local_fs`: the local policy allows none of them).
 
+Host folders are for the operator's own runs only: runs by people the context is
+shared with get no host folders (and no host commands). Credential stores are
+never mounted and are refused inside a mounted folder, symlinks included: this
+CLI config directory (login tokens, context keys, the local policy), `~/.ssh`,
+`~/.gnupg`, git credential files, cloud CLI logins (`~/.aws`, `~/.azure`,
+gcloud, `gh`, `~/.kube`, Docker), package-manager tokens (`.npmrc`, `.pypirc`,
+Cargo), and OS keyring files.
+
 Inside a run, `node:fs` / `fs/promises` `readFile`, `writeFile`, `appendFile`,
 `readdir`, `stat`, `lstat`, `mkdir`, `rm`, `unlink`, `rmdir`, `rename`,
 `copyFile`, `access`, and `realpath` work on mounted paths (up to 32 MiB per

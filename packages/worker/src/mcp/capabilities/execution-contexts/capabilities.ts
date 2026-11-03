@@ -269,7 +269,7 @@ export const executionContextShareSetCapability = defineDomainCapability(
 				.boolean()
 				.optional()
 				.describe(
-					"Also grant execution_context:command: this person or team may run host commands (kody.command.*) on the machine as the operator's OS user. Off by default; no preset includes it. The machine must also have commands turned on locally.",
+					"Refused with commands_operator_only: host commands (kody.command.*) run only for the context's operator, so shares never include execution_context:command.",
 				),
 			all_members: z.boolean().optional(),
 		}),

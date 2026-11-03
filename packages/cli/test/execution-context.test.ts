@@ -915,12 +915,12 @@ export default async function main(p) {
 	const hello = frames.find((frame) => frame.t === 'hello')
 	assert.deepEqual(
 		(hello?.body.capabilities as { features?: unknown }).features,
-		[],
+		['host-operator-only'],
 	)
 	const update = frames.find((frame) => frame.t === 'capabilities.update')
 	assert.deepEqual(
 		(update?.body.capabilities as { features?: unknown }).features,
-		['fs'],
+		['host-operator-only', 'fs'],
 	)
 	const result = frames.find((frame) => frame.t === 'run.result')
 	assert.equal(result?.body.isError, false, JSON.stringify(result?.body))

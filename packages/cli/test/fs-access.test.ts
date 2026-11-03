@@ -12,6 +12,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import {
 	allowLocalPath,
+	credentialDenylist,
 	effectiveFs,
 	readLocalPolicy,
 	removeLocalPath,
@@ -310,4 +311,67 @@ test('renames cannot swap an escaping symlink in between a path check and its re
 	swapping = false
 	await Promise.all(readers)
 	assert.deepEqual(leaks, [])
+})
+
+test('credential folders are never mounted and stay closed inside a mounted folder', async () => {
+	const { dir } = sandbox()
+	const home = dir('home')
+	const ssh = dir('home/.ssh')
+	const config = dir('home/.config/kody')
+	writeFileSync(join(ssh, 'id_ed25519'), 'secret')
+	writeFileSync(join(home, 'notes.txt'), 'hello')
+	const denylist = [ssh, config, join(home, '.npmrc')]
+	const effective = await effectiveFs(
+		[
+			{ path: home, mode: 'rw' },
+			{ path: ssh, mode: 'ro' },
+		],
+		[{ path: home, mode: 'rw' }],
+		denylist,
+	)
+	assert.deepEqual(effective.mounts, [{ path: home, mode: 'rw' }])
+	assert.deepEqual(
+		effective.refused.map((entry) => [entry.path, entry.layer]),
+		[[ssh, 'credential_denylist']],
+	)
+	assert.equal(
+		await resolveHostPath(effective, join(home, 'notes.txt'), 'read'),
+		join(home, 'notes.txt'),
+	)
+	for (const path of [
+		join(ssh, 'id_ed25519'),
+		join(config, 'credentials-kody.codes.json'),
+		join(home, '.npmrc'),
+	]) {
+		await assert.rejects(
+			resolveHostPath(effective, path, 'read'),
+			/holds credentials/,
+		)
+	}
+	// A symlink inside the mount cannot reach a denied folder either.
+	symlinkSync(ssh, join(home, 'keys'))
+	await assert.rejects(
+		resolveHostPath(effective, join(home, 'keys', 'id_ed25519'), 'read'),
+		/holds credentials/,
+	)
+})
+
+test('the default denylist covers the Kody CLI dir, SSH, git, cloud and package-manager credentials', () => {
+	const home = process.platform === 'win32' ? 'C:\\Users\\k' : '/home/k'
+	const list = credentialDenylist(home, 'linux', {})
+	for (const suffix of [
+		'.ssh',
+		'.gnupg',
+		'.git-credentials',
+		'.aws',
+		'.npmrc',
+		'.docker',
+		'keyrings',
+	]) {
+		assert.ok(
+			list.some((path) => path.includes(suffix)),
+			`denylist covers ${suffix}`,
+		)
+	}
+	assert.ok(list.some((path) => path.endsWith('kody')))
 })

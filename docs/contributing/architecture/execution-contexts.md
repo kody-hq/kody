@@ -154,12 +154,20 @@ must both be on, and either one turns it off:
   `commands_opt_in_local`. Either write bumps `grant_version` and pushes a
   `grant.update`, so a daemon applies it at once.
 
-Then the caller needs `execution_context:command`. `loadContextAccess` computes
-`canRunCommands`: always for the operator, otherwise only with a grant row whose
-`command` column is set. Presets and `all_members` never set it;
-`executionContextShareSet` with `commands: true` does (`extraPermissions` in
-`access-writes.ts`). A future profile withholds it by leaving the permission
-out; there is no other special case.
+Then the caller needs `execution_context:command`, and only the operator has it:
+`loadContextAccess` sets `canRunCommands` for the operator alone. Commands run
+as the machine's OS user, which holds the machine's Kody login and context key,
+so anyone else with commands could act as the machine and see other people's
+runs. `executionContextShareSet` refuses `commands: true` with
+`commands_operator_only`; command grants written earlier stay in `grants` and
+confer nothing. The daemon also never hands `hostCommands` to a shared run
+(`sharedRun` on `run.request`). A profile withholds it by leaving the permission
+out.
+
+Commands inherit the daemon's environment minus every `KODY_*` variable (the CLI
+token, `KODY_CONTEXT_KEY_PASSPHRASE`), and a `cwd` inside the credential
+denylist (below) is refused. Both are defense in depth: a command runs as the
+same OS user and can still read those files.
 
 Call path:
 
@@ -302,10 +310,28 @@ preview (see the TEST ONLY rule below).
   narrower mode wins. Mounts are re-applied on `grant.update` and policy edits.
   The daemon advertises `features: ["fs"]` in `hello` / `capabilities.update`
   only while a folder is mounted, and routing refuses `requires: ["fs"]` with
-  `no_fs` (grant lists none) or `no_local_fs` (local policy allows none). In the
-  run, a `node:fs` shim sends host paths over the run-secret loopback bridge,
-  which enforces the mounts on the Node side; see
+  `no_fs` (grant lists none) or `no_local_fs` (local policy allows none). Host
+  folders are for the operator's own runs: the daemon mounts nothing for a
+  `sharedRun`, and routing refuses a shared run with `requires: ["fs"]`
+  (`fs_operator_only`). Daemons that follow that rule advertise
+  `host-operator-only` (`ecpHostOperatorOnlyFeature`); older daemons mount
+  folders for every run, so routing skips shared runs on a context with
+  `grant.fs` whose daemon lacks it (`fs_daemon_outdated`). A credential denylist
+  (`credentialDenylist` in `fs-access.ts`: the Kody CLI config dir with its
+  tokens, context keys and this policy, SSH, GPG, git, cloud CLI and
+  package-manager credentials, OS keyring files) is never mounted and is refused
+  inside a mounted folder, symlinks included. In the run, a `node:fs` shim sends
+  host paths over the run-secret loopback bridge, which enforces the mounts on
+  the Node side; see
   [CLI README](../../../packages/cli/README.md#execution-context-host-folders).
+- A context's operator must stay a live member of the run's org. Once they
+  leave, `loadContextAccess` reports `operator_left` for everyone else, so their
+  machine stops taking other members' runs (fail closed).
+- A run's credential call map (`execute` `credentials`) is stored on its lease
+  in the session DO (`ExecutionContextLease.credentials`). CapabilityProxy
+  applies it to the run's lease-authenticated callbacks and refuses a
+  `credentials` field from the machine, so the machine cannot pick other
+  credentials for the requester.
 - A run (`execute` `chain`) or automation (`execution` on jobs, webhooks,
   subscriptions and workflow steps) can set its own `context` or `chain`, which
   overrides the default chain. API/MCP/UI overrides beat the manifest.

@@ -328,9 +328,11 @@ service or terminal daemon does not, even when the desktop app adopts it. See
 ## Sharing a context
 
 You can share a context with people or teams in your org. Their runs use the
-grant you set (host folders, egress, limits). Someone you share with can use the
-context only after they opt in to it: the "Opt into <name>?" dialog on the
-context's page, `executionContextOptIn` (`executionContextOptOut` to leave), or
+grant you set (egress, limits), but never your host folders or host commands:
+those are only for your own runs, because they act as your machine. Someone you
+share with can use the context only after they opt in to it: the "Opt into
+<name>?" dialog on the context's page, `executionContextOptIn`
+(`executionContextOptOut` to leave), or
 `POST /v1/execution-contexts/{id}/opt-in` (from the CLI,
 `kody api executionContextOptIn`). Until then the context is skipped for their
 runs (`not_opted_in`) and the run moves down their chain; a run that names the
@@ -345,10 +347,16 @@ the credential values stay in Kody cloud and never reach the machine. Their runs
 cannot start workflows there, and Kody APIs kept for Kody cloud refuse them
 (`context_run_denied`). The context's runtime allowlist narrows their runs too.
 
-Shares never include host commands unless you say so: share with
-`commands: true` (`executionContextShareSet`) to give someone
-`execution_context:command`. The `use`, `contribute`, and `manage` presets and
-sharing with everyone in the org leave it out.
+Shares never include host commands or host folders. A share with
+`commands: true` fails with `commands_operator_only`, and command shares made
+before this rule stay listed but do nothing. If you leave the org, your context
+stops taking other people's runs (`operator_left`).
+
+Host folders never expose credential stores, even inside a folder you allow: the
+Kody CLI config folder (your login and context keys), `~/.ssh`, `~/.gnupg`, git
+credential files, cloud CLI logins (`~/.aws`, `~/.azure`, gcloud, `gh`,
+`~/.kube`, Docker), package-manager tokens (`.npmrc`, `.pypirc`, Cargo), and OS
+keyring files.
 
 ## Automations
 

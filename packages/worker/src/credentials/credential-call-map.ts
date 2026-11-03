@@ -90,6 +90,34 @@ export type RunCredentialCallMap = {
 	checked?: boolean
 }
 
+/** A call map as plain JSON, for storing on an execution-context lease. */
+export type CredentialCallMapJson = Record<string, Array<CredentialPick>>
+
+export function credentialCallMapToJson(
+	map: CredentialCallMap | null,
+): CredentialCallMapJson | null {
+	if (!map || map.size === 0) return null
+	const json: CredentialCallMapJson = {}
+	for (const [key, picks] of map) {
+		json[key] = picks.map((pick) => ({ name: pick.name, scope: pick.scope }))
+	}
+	return json
+}
+
+export function credentialCallMapFromJson(
+	json: CredentialCallMapJson | null | undefined,
+): CredentialCallMap | null {
+	if (!json) return null
+	const map = new Map<string, ReadonlyArray<CredentialPick>>()
+	for (const [key, picks] of Object.entries(json)) {
+		map.set(
+			key,
+			picks.map((pick) => ({ name: pick.name, scope: pick.scope ?? null })),
+		)
+	}
+	return map.size > 0 ? map : null
+}
+
 export function normalizeCredentialCallMap(
 	input: CredentialCallMapInput | null | undefined,
 ): CredentialCallMap | null {

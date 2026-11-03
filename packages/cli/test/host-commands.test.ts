@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import {
 	HostCommands,
+	inheritedCommandEnv,
 	type HostCommandFinished,
 	type HostCommandRunContext,
 } from '../src/execution-context/host-commands.js'
@@ -430,4 +431,31 @@ test('local policy keeps the commands opt-in alongside host folders', async () =
 	assert.deepEqual(policy.fs, [{ path: dir, mode: 'ro' }])
 	await setLocalCommandsEnabled({ enabled: false, policyPath })
 	assert.equal(await readLocalCommandsEnabled(policyPath), false)
+})
+
+test('commands never inherit KODY_* variables from the daemon', () => {
+	const env = inheritedCommandEnv({
+		PATH: '/usr/bin',
+		KODY_API_TOKEN: 'kody_at_secret',
+		KODY_CONTEXT_KEY_PASSPHRASE: 'hunter2',
+		kody_lower: 'x',
+	})
+	assert.deepEqual(env, { PATH: '/usr/bin' })
+})
+
+test('a command cannot use a credential folder as its cwd', async () => {
+	const denied = realpathSync.native(
+		mkdtempSync(join(tmpdir(), 'kody-cmd-denied-')),
+	)
+	const commands = new HostCommands({
+		localEnabled: true,
+		deniedPaths: [denied],
+	})
+	commands.setGrantEnabled(true)
+	const { run, authorized } = runContext()
+	await assert.rejects(
+		commands.call('run', { command: 'pwd', cwd: denied }, run),
+		/holds credentials/,
+	)
+	assert.equal(authorized.length, 0)
 })
