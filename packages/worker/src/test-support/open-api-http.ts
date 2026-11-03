@@ -87,6 +87,7 @@ export async function createOpenApiTestHarness(
 									scope: ['openid', 'profile', 'email'],
 									props: {
 										userId,
+										orgId: userId,
 										email,
 										username: 'api-user',
 										displayName: 'API User',

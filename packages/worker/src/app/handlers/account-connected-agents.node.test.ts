@@ -55,18 +55,21 @@ function createAppEnv(
 
 test('connected agents API lists unique inbound clients and revokes every grant for one clientId', async () => {
 	setAuthSessionSecret(testCookieSecret)
+	const personalOrg = { orgId: userOneSession.stableUserId }
 	const grants = [
 		{
 			id: 'grant-1',
 			clientId: 'client-a',
 			scope: ['profile'],
 			createdAt: 1_700_000_000,
+			metadata: personalOrg,
 		},
 		{
 			id: 'grant-2',
 			clientId: 'client-a',
 			scope: ['profile'],
 			createdAt: 1_700_000_100,
+			metadata: personalOrg,
 		},
 		{
 			id: 'grant-3',
@@ -74,6 +77,7 @@ test('connected agents API lists unique inbound clients and revokes every grant 
 			scope: ['profile'],
 			redirectUri: 'https://chatgpt.com/connector/oauth/vG3',
 			createdAt: 1_700_000_200,
+			metadata: personalOrg,
 		},
 	]
 	const helpers = {
@@ -291,6 +295,7 @@ test('connected agents API on a team org lists and revokes only agents approved 
 			clientId: 'client-a',
 			scope: ['profile'],
 			createdAt: 1_700_000_000,
+			metadata: { orgId: personId },
 		},
 		{
 			id: 'grant-team',
