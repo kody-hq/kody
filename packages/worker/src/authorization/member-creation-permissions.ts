@@ -16,7 +16,7 @@ export const defaultOrgMemberCreation: OrgMemberCreation = {
 }
 
 export const memberCreationPermissions = {
-	packages: ['package:create', 'app:create'],
+	packages: ['package:create'],
 	credentials: ['secret:create', 'integration:create'],
 } as const satisfies Record<
 	keyof OrgMemberCreation,

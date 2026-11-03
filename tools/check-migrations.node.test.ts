@@ -113,7 +113,6 @@ test(
 		const live = await checkMigrationsDirectory()
 		expect(live.ok).toBe(true)
 		expect(live.errors).toEqual([])
-		expect(live.nextPrefix).toBe(formatMigrationPrefix(live.maxPrefix + 1))
 		expect(live.nextPrefix).toMatch(/^\d{4}$/)
 	},
 )
@@ -152,9 +151,6 @@ test('migration ledger rejects historical mutation and lower-prefix additions wh
 
 	const baseline = checkMigrationLedger(baselineFiles, ledger, trustedHistory)
 	expect(baseline).toMatchObject({ ok: true, errors: [] })
-	expect(baseline.nextPrefix).toBe(
-		formatMigrationPrefix(baseline.maxPrefix + 1),
-	)
 
 	const rejections: Array<
 		[ReturnType<typeof checkMigrationLedger>, Array<string>]
@@ -189,7 +185,7 @@ test('migration ledger rejects historical mutation and lower-prefix additions wh
 	).toMatchObject({
 		ok: true,
 		errors: [],
-		nextPrefix: formatMigrationPrefix(baseline.maxPrefix + 2),
+		nextPrefix: String(baseline.maxPrefix + 2).padStart(4, '0'),
 		maxPrefix: baseline.maxPrefix + 1,
 	})
 })

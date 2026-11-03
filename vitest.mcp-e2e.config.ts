@@ -10,7 +10,9 @@ import {
 // Wrangler test harness (see getSharedMcpE2eServer) and each test seeds its
 // own user/org. Concurrent local validation still needs more headroom than an
 // isolated run because OAuth + MCP handshakes contend with other suites.
-const mcpE2eTimeout = process.env.CI ? 120_000 : 90_000
+// Local `npm run validate` sets CI=1 but runs every suite at once, so only
+// GitHub Actions (one suite per runner) gets the tighter budget.
+const mcpE2eTimeout = process.env.GITHUB_ACTIONS ? 120_000 : 240_000
 
 export default mergeConfig(
 	sharedProjectConfig,

@@ -930,12 +930,14 @@ export async function loadSharing(
 			 FROM grants g
 			 LEFT JOIN users u ON g.subject_type = 'user' AND u.stable_user_id = g.subject_id
 			 LEFT JOIN teams t ON g.subject_type = 'team' AND t.id = g.subject_id
+				AND t.org_id = g.org_id AND t.deleted_at IS NULL
 			 LEFT JOIN org_memberships m ON g.subject_type = 'user' AND m.user_id = g.subject_id
 				AND m.org_id = g.org_id AND m.deleted_at IS NULL
 			 WHERE g.resource_type = 'execution_context' AND g.resource_id = ?
 			   AND g.org_id = ? AND g.deleted_at IS NULL
 			   AND (g.expires_at IS NULL OR g.expires_at > ?)
 			   AND g.subject_type IN ('user', 'team')
+			   AND (g.subject_type != 'team' OR t.id IS NOT NULL)
 			 ORDER BY g.created_at`,
 		)
 		.bind(row.id, caller.orgId, now)

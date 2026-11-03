@@ -9,6 +9,7 @@ import {
 } from '@kody-internal/shared/grant-presets.ts'
 import {
 	isOrgPermission,
+	withoutRetiredOrgPermissions,
 	type OrgGrantResourceType,
 	type OrgPermission,
 	type OrgResourceType,
@@ -330,6 +331,58 @@ export async function removeTeamMember(input: {
 			targetUserId: input.userId,
 		},
 	})
+}
+
+/**
+ * Soft-deletes a team. Its grant rows and seats stay for history; every access
+ * lookup joins live teams only, so they stop granting at once. Returns the
+ * people who held a live seat so callers can end their leases.
+ */
+export async function deleteTeam(input: {
+	db: D1Database
+	orgId: string
+	teamId: string
+	audit: OrgAuditWriter
+}) {
+	const team = await input.db
+		.prepare(
+			`SELECT id, slug FROM teams
+			 WHERE id = ? AND org_id = ? AND deleted_at IS NULL`,
+		)
+		.bind(input.teamId, input.orgId)
+		.first<{ id: string; slug: string }>()
+	if (!team) throw new Error('Team was not found in this org.')
+	const seats = await input.db
+		.prepare(
+			`SELECT user_id FROM team_members
+			 WHERE team_id = ? AND deleted_at IS NULL`,
+		)
+		.bind(team.id)
+		.all<{ user_id: string }>()
+	const memberUserIds = (seats.results ?? []).map((row) => row.user_id)
+	const now = new Date().toISOString()
+	await runAccessBatchWithAudit({
+		db: input.db,
+		audit: input.audit,
+		statements: [
+			input.db
+				.prepare(
+					`UPDATE teams
+					 SET deleted_at = ?, updated_at = ?
+					 WHERE id = ? AND org_id = ? AND deleted_at IS NULL`,
+				)
+				.bind(now, now, team.id, input.orgId),
+			bumpAccessEpochStatement(input.db, input.orgId),
+		],
+		event: {
+			orgId: input.orgId,
+			action: 'team.deleted',
+			resourceType: 'team',
+			resourceId: team.id,
+			details: { slug: team.slug, member_count: memberUserIds.length },
+		},
+	})
+	return { id: team.id, slug: team.slug, memberUserIds }
 }
 
 function grantFamilyOf(
@@ -1060,7 +1113,7 @@ function parseStoredInvite(row: InviteRow): StoredInvite {
 		? parseJsonStringList(row.permissions_json, `Invite ${row.id} permissions`)
 		: null
 	const permissions = permissionValues
-		? permissionValues.map((permission) => {
+		? withoutRetiredOrgPermissions(permissionValues).map((permission) => {
 				if (!isOrgPermission(permission)) {
 					throw new Error(`Invite ${row.id} has permission ${permission}.`)
 				}

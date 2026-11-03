@@ -1,3 +1,4 @@
+import { createGatewayResponseUnwrapSource } from '#mcp/sandbox-rpc-outcome.ts'
 import {
 	sanitizeToolName,
 	ToolDispatcher,
@@ -1157,7 +1158,7 @@ function createSandboxRunFetchSource() {
 		'          console.warn(__kodyPathSegmentWarning);',
 		'        }',
 		'        return __kodyResponse;',
-		'      })();',
+		'      })().then(__kodyUnwrapGatewayResponse);',
 		'    };',
 	]
 }
@@ -1225,7 +1226,7 @@ function createPackageBindingSandboxSource() {
 		'      fetch: async (input, init) => {',
 		'        if (!fetcher) throw new __kodyErrorCaptured("Outbound fetch is unavailable for this package.");',
 		'        await recordFetch();',
-		'        return await fetcher.fetch(input, init);',
+		'        return await __kodyUnwrapGatewayResponse(await fetcher.fetch(input, init));',
 		'      },',
 		'      kodyCall: (dispatchName, args) => kodyCall(dispatchName, args),',
 		// packageStorage() for this package only: the host bound dispatcher
@@ -1321,6 +1322,7 @@ function createExecutorModule(input: {
 		'const __kodyArrayIsArrayCaptured = Array.isArray;',
 		'const __kodyStringCaptured = String;',
 		...createPackageBindingSandboxSource(),
+		createGatewayResponseUnwrapSource(),
 		'const __kodyNativeFetch = globalThis.fetch.bind(globalThis);',
 		'const __kodyEvaluateFetchStorage =',
 		'  globalThis[__kodyEvaluateFetchStorageSymbol] ??',
@@ -1329,7 +1331,7 @@ function createExecutorModule(input: {
 		'  globalThis.fetch = (input, init) => {',
 		'    const ctx = __kodyReflectApplyCaptured(__kodyAlsGetStoreCaptured, __kodyEvaluateFetchStorage, []);',
 		'    if (ctx) return ctx.fetch(input, init);',
-		'    return __kodyNativeFetch(input, init);',
+		'    return __kodyNativeFetch(input, init).then(__kodyUnwrapGatewayResponse);',
 		'  };',
 		'  globalThis[__kodyEvaluateFetchPatchedSymbol] = true;',
 		'}',

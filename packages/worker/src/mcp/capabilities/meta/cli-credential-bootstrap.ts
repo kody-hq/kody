@@ -1,3 +1,4 @@
+import { retiredOrgPermissionNames } from '@kody-internal/shared/org-permissions.ts'
 import { personalOrgId } from '@kody-internal/shared/owner-person-ids.ts'
 import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
@@ -25,6 +26,12 @@ const scopeSchema = z.enum(
 	apiTokenScopes as [ApiTokenScope, ...Array<ApiTokenScope>],
 )
 
+/** Older clients may still request retired scopes; minting drops them. */
+const requestedScopeSchema = z.union([
+	scopeSchema,
+	z.enum(retiredOrgPermissionNames),
+])
+
 const scopeListDescription = Object.entries(apiTokenScopeDescriptions)
 	.map(([scope, description]) => `\`${scope}\`: ${description}`)
 	.join('\n')
@@ -44,7 +51,7 @@ const inputSchema = z
 				`Label for the eventual API token (default \`${cliCredentialBootstrapPolicy.defaultName}\`).`,
 			),
 		scopes: z
-			.array(scopeSchema)
+			.array(requestedScopeSchema)
 			.min(1)
 			.optional()
 			.describe(

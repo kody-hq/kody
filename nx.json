@@ -89,6 +89,9 @@
 				"suiteSupport",
 				{
 					"env": "CI"
+				},
+				{
+					"env": "GITHUB_ACTIONS"
 				}
 			]
 		},

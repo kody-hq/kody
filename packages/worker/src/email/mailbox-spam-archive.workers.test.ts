@@ -13,10 +13,7 @@ import {
 	stubFor,
 	uniqueUserId,
 } from './mailbox-test-helpers.ts'
-import {
-	mailboxMetaSchemaVersionKey,
-	mailboxSchemaVersion,
-} from './mailbox-types.ts'
+import { mailboxMetaSchemaVersionKey } from './mailbox-types.ts'
 
 const at = (time: string) => `2026-07-01T${time}.000Z`
 
@@ -350,8 +347,7 @@ test('Mailbox warm-migrates a v5 email_messages table to v6 without losing rows'
 					)
 					.toArray()[0]?.value,
 			),
-		).toBe(mailboxSchemaVersion)
-		expect(mailboxSchemaVersion).toBe(6)
+		).toBe(6)
 		expect(
 			sql
 				.exec<{ name: string }>(`PRAGMA table_info('email_messages')`)

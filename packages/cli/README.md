@@ -231,8 +231,8 @@ npx @kodycodes/cli auth bootstrap --code 'kody_bc_…' --lifetime short
 
 ## Git HTTPS (`setup-git`)
 
-After the server ships persistent `kody_at_…` git auth (see
-[auth-setup-git](https://kody.codes/docs/auth-setup-git)), install a credential
+Kody provides persistent `kody_at_…` HTTPS git auth (see
+[auth-setup-git](https://kody.codes/docs/auth-setup-git)). Install a credential
 helper once:
 
 ```bash

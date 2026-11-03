@@ -124,9 +124,14 @@ export async function ensureOrgsTestSchema(db: D1Database) {
 				created_by_user_id TEXT,
 				created_at TEXT NOT NULL,
 				updated_at TEXT NOT NULL,
-				deleted_at TEXT,
-				UNIQUE (org_id, slug)
+				deleted_at TEXT
 			)`,
+		)
+		.run()
+	await db
+		.prepare(
+			`CREATE UNIQUE INDEX IF NOT EXISTS teams_live_org_slug ON teams (org_id, slug)
+			 WHERE deleted_at IS NULL`,
 		)
 		.run()
 	await db

@@ -137,3 +137,26 @@ test('cliCredentialBootstrap from a user-owned parent token stays user-owned', a
 		'orgBinding',
 	)
 })
+
+test('cliCredentialBootstrap accepts retired scopes from older clients', async () => {
+	mintCliCredentialBootstrap.mockClear()
+	const token = {
+		id: 'tok-3',
+		user_id: 'user-1',
+		org_id: 'user-1',
+		org_binding: 'user',
+		scopes: ['package:read', 'job:create'],
+		max_expires_at: null,
+	} as unknown as ApiTokenRecord
+	await cliCredentialBootstrapCapability.handler(
+		{ lifetime: 'short', scopes: ['package:read', 'job:create'] },
+		{
+			env: { APP_DB: {} } as unknown as Env,
+			callerContext: mcpCaller(),
+			openApiPrincipal: { kind: 'token', token },
+		},
+	)
+	expect(mintCliCredentialBootstrap.mock.calls[0]?.[0]).toMatchObject({
+		scopes: ['package:read', 'job:create'],
+	})
+})

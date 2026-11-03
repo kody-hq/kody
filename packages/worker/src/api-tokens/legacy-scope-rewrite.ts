@@ -18,6 +18,7 @@
 import {
 	isOrgPermission,
 	type OrgPermission,
+	withoutRetiredOrgPermissions,
 } from '@kody-internal/shared/org-permissions.ts'
 
 /**
@@ -165,17 +166,11 @@ export const legacyApiTokenScopeMap = {
 	'repos:read': [...reposRead],
 	'repos:write': [...reposRead, 'package:write'],
 	'jobs:read': [...jobsRead],
-	'jobs:write': [...jobsRead, 'job:execute', 'job:write', 'job:create'],
+	'jobs:write': [...jobsRead, 'job:execute', 'job:write'],
 	'webhooks:read': [...webhooksRead],
 	'webhooks:write': [...webhooksRead, 'package:write'],
 	'email:read': [...emailRead],
-	'email:write': [
-		...emailRead,
-		'email:send',
-		'email:write',
-		'email:delete',
-		'email:create',
-	],
+	'email:write': [...emailRead, 'email:send', 'email:write', 'email:delete'],
 	'integrations:read': [...integrationsRead],
 	'integrations:write': [
 		...integrationsRead,
@@ -225,7 +220,7 @@ export function rewriteLegacyApiTokenScopes(
 ): Array<OrgPermission> {
 	const rewritten = new Set<OrgPermission>()
 	const unknown: Array<string> = []
-	for (const scope of scopes) {
+	for (const scope of withoutRetiredOrgPermissions(scopes)) {
 		if (isLegacyApiTokenScope(scope)) {
 			for (const permission of legacyApiTokenScopeMap[scope]) {
 				rewritten.add(permission)

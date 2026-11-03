@@ -9,6 +9,7 @@ import {
 	scanOpenPullRequestMigrationPrefixes,
 	type OpenPullRequestFileClaim,
 	type OpenPullRequestFileScan,
+	formatOversizedPullRequestsWarning,
 } from './open-pull-request-migration-prefixes.ts'
 
 const execFileAsync = promisify(execFile)
@@ -1027,7 +1028,7 @@ function skippedMigrationPrefixAdvisory(
 			return {
 				suggestedPrefix: localNextPrefix,
 				lines: [],
-				warning: `Open pull request migration prefix scan skipped: ${scan.detail ?? scan.reason}.`,
+				warning: `Open pull request migration prefix scan skipped: ${withoutTrailingPeriod(scan.detail ?? scan.reason)}.`,
 				overlaps: [],
 				blockingOverlaps: [],
 			}
@@ -1088,7 +1089,10 @@ function claimedMigrationPrefixAdvisory(input: {
 		return {
 			suggestedPrefix,
 			lines: [],
-			warning: null,
+			warning: formatOversizedPullRequestsWarning(
+				'Open pull request migration prefix',
+				input.scan.oversizedPullNumbers,
+			),
 			overlaps: [],
 			blockingOverlaps: [],
 		}
@@ -1126,7 +1130,16 @@ function claimedMigrationPrefixAdvisory(input: {
 			`Next prefix free of this checkout and those claims: ${suggestedPrefix}.`,
 		)
 	}
-	return { suggestedPrefix, lines, warning: null, overlaps, blockingOverlaps }
+	return {
+		suggestedPrefix,
+		lines,
+		warning: formatOversizedPullRequestsWarning(
+			'Open pull request migration prefix',
+			input.scan.oversizedPullNumbers,
+		),
+		overlaps,
+		blockingOverlaps,
+	}
 }
 
 /**
@@ -1301,4 +1314,8 @@ function printMigrationPrefixAdvisory(
 
 if (isExecutedDirectly(import.meta.url)) {
 	await main()
+}
+
+function withoutTrailingPeriod(text: string) {
+	return text.replace(/\.+$/u, '')
 }

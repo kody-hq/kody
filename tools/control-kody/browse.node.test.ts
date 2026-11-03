@@ -4,7 +4,6 @@ import { expect, test } from 'vitest'
 import {
 	assertBrowseLandedOnTarget,
 	browseTargetUrl,
-	defaultBrowsePath,
 	formatBrowseReport,
 	normalizeBrowsePath,
 	normalizeScreenshotPath,
@@ -59,7 +58,7 @@ test('playwrightCookiesFromHeader uses insecure cookies for localhost', () => {
 })
 
 test('normalizeBrowsePath rejects full URLs, protocol-relative paths, and backslashes', () => {
-	expect(normalizeBrowsePath('')).toBe(defaultBrowsePath)
+	expect(normalizeBrowsePath('')).toBe('/account')
 	expect(normalizeBrowsePath('  /account/packages  ')).toBe('/account/packages')
 	expect(() => normalizeBrowsePath('account')).toThrow(/same-origin path/)
 	expect(() =>

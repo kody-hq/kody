@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
 import {
+	formatOversizedPullRequestsWarning,
 	githubTokenFromEnv,
 	parseGithubRepository,
 	scanOpenPullRequestFiles,
@@ -108,6 +109,7 @@ test('open pull request migration files are listed and the current pull request 
 
 	expect(scan).toEqual({
 		status: 'ok',
+		oversizedPullNumbers: [],
 		claims: [
 			{
 				number: 8,
@@ -156,6 +158,7 @@ test('the generic file scan applies its own directory and claim filter', async (
 	})
 	expect(scan).toEqual({
 		status: 'ok',
+		oversizedPullNumbers: [],
 		claims: [{ number: 4, filenames: [`${decisionsDir}/0096-new.md`] }],
 	})
 })
@@ -197,6 +200,7 @@ test('pull and file lists page until a short page', async () => {
 	})
 	expect(scan).toEqual({
 		status: 'ok',
+		oversizedPullNumbers: [],
 		claims: [
 			{
 				number: 101,
@@ -212,6 +216,46 @@ test('pull and file lists page until a short page', async () => {
 			(url) => url.includes('/pulls/101/files') && url.includes('page=2'),
 		),
 	).toBe(true)
+})
+
+test('a pull request too large to list is skipped by itself and the rest are still scanned', async () => {
+	const huge = Array.from({ length: 100 }, (_, index) => ({
+		filename: `docs/file-${String(index)}.md`,
+		status: 'modified',
+	}))
+	const scan = await scanOpenPullRequestMigrationPrefixes({
+		migrationsDir,
+		repository: 'kody-hq/kody',
+		token,
+		currentPullNumber: null,
+		fetchImpl: (input) => {
+			const url = input instanceof URL ? input : new URL(String(input))
+			if (url.pathname.endsWith('/pulls')) {
+				return Promise.resolve(Response.json([{ number: 7 }, { number: 8 }]))
+			}
+			if (url.pathname.endsWith('/pulls/7/files')) {
+				return Promise.resolve(Response.json(huge))
+			}
+			return Promise.resolve(
+				Response.json([
+					{ filename: `${migrationsDir}/0108-usage.sql`, status: 'added' },
+				]),
+			)
+		},
+	})
+	expect(scan).toEqual({
+		status: 'ok',
+		claims: [{ number: 8, filenames: [`${migrationsDir}/0108-usage.sql`] }],
+		oversizedPullNumbers: [7],
+	})
+	expect(
+		formatOversizedPullRequestsWarning(
+			'Open pull request migration prefix',
+			[7],
+		),
+	).toBe(
+		'Open pull request migration prefix scan skipped #7 (more than 1000 changed files).',
+	)
 })
 
 test('missing auth, a bad repository, and GitHub failures skip without throwing', async () => {

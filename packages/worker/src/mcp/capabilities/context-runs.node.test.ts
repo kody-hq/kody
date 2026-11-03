@@ -28,6 +28,7 @@ test('contextRuns allow list snapshot', async () => {
 		'credentialTriggerPickSet',
 		'packageAppRunsAsSet',
 		'adminSoftDeletePurgeRun',
+		'teamDelete',
 	]) {
 		expect(allowed).not.toContain(denied)
 	}

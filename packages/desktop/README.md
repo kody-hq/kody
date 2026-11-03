@@ -117,14 +117,12 @@ in, register a real device, or change an execution chain.
 For local UI development, start the website with control-kody, then run
 `npm start --workspace @kodycodes/desktop -- --app-url=http://localhost:3743`
 using the origin printed by control-kody. The override accepts only loopback
-origins in unpackaged builds. Production builds always load the live site. The
-integrated controls require the website release containing the desktop
-navigation component.
-
-The website advertises `X-Kody-Desktop-Navigation: 1` on HTML responses. On
-macOS the shell checks that capability before hiding the native titlebar, so
-older website releases and offline launches retain usable window controls. The
-web UI and shell can ship independently.
+origins in unpackaged builds. Production builds always load the live site.
+Integrated chrome appears when the origin advertises
+`X-Kody-Desktop-Navigation: 1` on HTML responses. On macOS the shell checks that
+capability before hiding the native titlebar, so older website releases and
+offline launches retain usable window controls. The web UI and shell can ship
+independently.
 
 After `control-kody login --origin <local-origin>`, run
 `npm run test:explorer --workspace @kodycodes/desktop -- <local-origin>`. It
@@ -146,8 +144,8 @@ state, or session. A callback with the matching state and an OAuth-style `error`
 ends the attempt right away (`access_denied` shows a canceled page). Older
 websites and shells keep the existing embedded sign-in form.
 
-The website release includes migration `0215-desktop-browser-login.sql` and must
-ship before the shell enables browser authentication on the live site. CLI
+Browser sign-in uses migration `0215-desktop-browser-login.sql`. The shell
+enables it when the origin advertises `X-Kody-Desktop-Authentication: 1`. CLI
 sign-in still grants the CLI its own scoped credentials through its existing
 browser flow. A website session does not become a CLI API token.
 
@@ -218,11 +216,21 @@ Closing a Mac window continues to keep the app and runner open. Update failures
 retry without interrupting the app. Development builds never check for updates.
 Updates do not downgrade or install prereleases.
 
-Run **Desktop release** manually on main after bumping the desktop package
-version and lockfile. The default `mac` scope builds Apple silicon and Intel Mac
-installers without requiring a Windows signing account. Choose `all` to add
-Windows and Linux later. Once those platforms have been published, future
-releases must keep choosing `all` so their update feeds stay available. Every
+**Desktop release** runs automatically when desktop, bundled CLI, shared code,
+dependency manifests, or the release workflow change on main. CI chooses the
+next patch version above the latest published release, or uses the desktop
+package version when it is higher. It updates the package and lockfile inside
+each build, without committing version bumps back to main. Every build uses the
+same version and source commit. Re-running an already published source skips
+publication. Obsolete queued runs also skip publication so older source cannot
+replace a newer build. Missing source history fails before signing. Matching
+drafts resume after a failed upload, while conflicting drafts reserve their
+version so the next run advances past them automatically.
+
+The default `auto` scope preserves the platforms in the published feed, starting
+with Apple silicon and Intel Mac installers. Run the workflow manually on main
+with `all` to add Windows and Linux after configuring their signing credentials.
+Subsequent automatic releases keep those platforms in the update feed. Every
 selected build must succeed before publishing. macOS builds require Developer ID
 signing, Apple's notarization service, and a valid stapled ticket. Windows
 builds require valid signatures on the application and installer. The final job
@@ -277,10 +285,10 @@ ID identity in Keychain without exporting its private key. Provide
 `APPLE_API_KEY` as the local `.p8` path, plus `APPLE_API_KEY_ID` and
 `APPLE_API_ISSUER`. CI still requires the protected certificate export above.
 
-The existing 0.1.0 demo predates the updater. Install the first production
-release manually once, subsequent releases update automatically. A real
-signed-version-to-signed-version update remains part of first-release
-acceptance.
+Installs that never received a signed auto-update build need one manual install
+from a published production release; after that, the updater handles subsequent
+releases. A real signed-version-to-signed-version update remains part of
+first-release acceptance.
 
 ### macOS app automation
 
@@ -310,9 +318,10 @@ have Kody.app send Apple Events instead, remove a CLI service with
 
 ### Contacts access
 
-Desktop 0.1.5 includes the Contacts entitlement and purpose string. Packages can
-use the built-in Contacts framework to resolve names, phone numbers, and email
-addresses. macOS still requires the user's Contacts consent, separately from
-Full Disk Access and Messages Automation. These permissions belong to the app's
-own runner, not an adopted CLI service or terminal daemon. Release verification
-checks the Contacts entitlement and purpose string on the signed app.
+Signed production builds include the Contacts entitlement and purpose string
+(desktop 0.1.5 or later). Packages can use the built-in Contacts framework to
+resolve names, phone numbers, and email addresses. macOS still requires the
+user's Contacts consent, separately from Full Disk Access and Messages
+Automation. These permissions belong to the app's own runner, not an adopted CLI
+service or terminal daemon. Release verification checks the Contacts entitlement
+and purpose string on the signed app.

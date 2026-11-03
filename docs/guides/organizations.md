@@ -29,10 +29,10 @@ Like a code host's "members can create repositories" setting, an Owner chooses
 what every Member of a team org can create without a grant: **Organization
 settings**, **Member permissions**, or `orgUpdate`.
 
-| Setting                              | Default | Gives every Member                                                                  |
-| ------------------------------------ | ------- | ----------------------------------------------------------------------------------- |
-| Members can create packages and apps | Off     | `package:create`, `app:create`: save, fork, and first-publish packages, repos, apps |
-| Members can create credentials       | On      | `secret:create`, `integration:create`: new secrets, OAuth connections, MCP servers  |
+| Setting                              | Default | Gives every Member                                                                 |
+| ------------------------------------ | ------- | ---------------------------------------------------------------------------------- |
+| Members can create packages and apps | Off     | `package:create`: save, fork, and first-publish packages, repos, and their apps    |
+| Members can create credentials       | On      | `secret:create`, `integration:create`: new secrets, OAuth connections, MCP servers |
 
 ```json
 { "members_can_create_packages": true, "members_can_create_credentials": true }
@@ -112,8 +112,6 @@ or `accessGrant` with `resource_type: "org"`:
 		"package:manage_access",
 		"app:read",
 		"app:execute",
-		"app:write",
-		"app:delete",
 		"app:manage_access"
 	]
 }
@@ -136,6 +134,16 @@ once and revoking the grant removes access everywhere.
   [Package sharing](./package-sharing.md).
 - Secrets, connections, jobs, and email are not covered. Grant those per
   resource.
+
+## Delete a team
+
+`teamDelete` (`DELETE /v1/orgs/teams/{team_id}`, or pass `team_slug`) needs
+`team:write`, the same as creating a team. It is a soft delete and lands in the
+org audit log as `team.deleted`. Members stay in the organization but lose every
+grant they held through the team right away; Kody ends their open
+execution-context leases. The grant rows stay for history and never apply to
+another team. The slug is free again: a new team with the same slug starts with
+no grants.
 
 ## Personal vs team
 

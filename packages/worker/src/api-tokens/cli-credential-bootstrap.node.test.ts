@@ -520,3 +520,30 @@ test('bootstrap still rejects an explicit idle TTL longer than the parent', asyn
 		}),
 	).rejects.toThrow(/expires too soon/)
 })
+
+test('bootstrap mint at the outstanding cap says when the oldest code expires', async () => {
+	const { db } = createDb()
+	for (
+		let index = 0;
+		index < cliCredentialBootstrapPolicy.maxOutstandingCodesPerUser;
+		index += 1
+	) {
+		await mintCliCredentialBootstrap({
+			db,
+			userId,
+			lifetime: 'short',
+			redeemTtlSeconds: 600,
+			now: at(index),
+		})
+	}
+	await expect(
+		mintCliCredentialBootstrap({
+			db,
+			userId,
+			lifetime: 'short',
+			now: at(10),
+		}),
+	).rejects.toThrow(
+		`retry after the oldest expires in 590s (${at(600).toISOString()})`,
+	)
+})

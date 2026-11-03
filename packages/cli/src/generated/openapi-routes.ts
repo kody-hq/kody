@@ -1231,6 +1231,12 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: [],
 	},
 	{
+		operationId: 'teamDelete',
+		method: 'DELETE',
+		pathTemplate: '/v1/orgs/teams/{team_id}',
+		pathParamNames: ['team_id'],
+	},
+	{
 		operationId: 'teamList',
 		method: 'GET',
 		pathTemplate: '/v1/orgs/teams',

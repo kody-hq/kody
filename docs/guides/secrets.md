@@ -80,7 +80,10 @@ boundary, on the final serialized request, and only for hosts you approved.
   (`key_encoding` defaults to `base64`) and rejects keys shorter than 32, 48, or
   64 bytes (JWA). `RS*`, `PS*`, `ES*`, and `EdDSA` use a PKCS#8 PEM private key.
   Pass the secret as `private_key_secret_name` (a saved secret name **or** the
-  opaque ref from `packageSecrets.get`).
+  opaque ref from `packageSecrets.get`). When `aud` is not an https URL, pass
+  **`send_to_host`** (bare host) so the sealed JWT fills on that host's
+  registrable domain. An https `aud` already names the fill domain. See
+  [Signing JWTs with saved secrets](../use/secrets-and-values.md#signing-jwts-with-saved-secrets).
 
 - **Saving a token from a token exchange**: a token response (`access_token`,
   `refresh_token`, `id_token`) to a request Kody filled a credential into comes

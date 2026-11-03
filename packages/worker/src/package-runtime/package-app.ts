@@ -61,7 +61,7 @@ import {
 	loadPublishedBundleArtifactByIdentity,
 	persistPublishedBundleArtifact,
 } from './published-bundle-artifacts.ts'
-import { PromiseLruCache } from '#worker/package-registry/published-package-cache.ts'
+import { createPublishedPackagePromiseCache } from '#worker/package-registry/published-package-cache.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
 import type { FetchGatewayProps } from '#mcp/fetch-gateway.ts'
@@ -201,12 +201,59 @@ import {
 	modulesContainUnboundPackagesInvokeAccess,
 } from './unbound-runtime-helpers.ts'
 import { modulesReferenceKodyMcp } from './package-app-mcp-preload.ts'
+import { createGatewayResponseUnwrapSource } from '#mcp/sandbox-rpc-outcome.ts'
 import {
 	createRandomPackageBindingToken,
 	packageAppBindingTokenFor,
 } from './package-app-binding-token.ts'
 
 const packageAppEntrypointName = 'PackageAppWorker'
+
+/** Bridge methods the package-app sandbox calls through `settle`. */
+const packageAppSandboxBridgeMethods = [
+	'appPublisherGet',
+	'appRateLimit',
+	'appSpendGet',
+	'authenticatedFetch',
+	'callCapability',
+	'credentialClientCall',
+	'listMcpServerNames',
+	'packageBoundCall',
+	'packageBoundFetch',
+	'packageEventDispatch',
+	'packageRuntimeRunFinish',
+	'packageRuntimeRunStart',
+	'packageSecretGet',
+	'packageSecretHas',
+	'packageStorageClear',
+	'packageStorageDelete',
+	'packageStorageGet',
+	'packageStorageList',
+	'packageStorageSet',
+	'packageStorageSql',
+	'realtimeBroadcast',
+	'realtimeDisconnect',
+	'realtimeEmit',
+	'realtimeListSessions',
+	'storageClear',
+	'storageDelete',
+	'storageGet',
+	'storageList',
+	'storageSet',
+	'workflowCreate',
+] as const satisfies ReadonlyArray<keyof PackageAppRuntimeBridge>
+
+type PackageAppSandboxBridgeMethod =
+	(typeof packageAppSandboxBridgeMethods)[number]
+
+function isPackageAppSandboxBridgeMethod(
+	name: unknown,
+): name is PackageAppSandboxBridgeMethod {
+	return (
+		typeof name === 'string' &&
+		(packageAppSandboxBridgeMethods as ReadonlyArray<string>).includes(name)
+	)
+}
 const packageAppRuntimeBindingName = 'KODY_RUNTIME'
 
 function createPackageAppWorkerSource(input: {
@@ -390,9 +437,31 @@ function __kodyCaptureRuntimeBridge(env) {
 	// First capture happens on the first request, before the user module is
 	// imported, so later package code cannot swap the binding it calls.
 	if (__kodyCapturedRuntimeBridge == null) {
-		__kodyCapturedRuntimeBridge = env.${packageAppRuntimeBindingName};
+		__kodyCapturedRuntimeBridge = __kodySettledBridge(env.${packageAppRuntimeBindingName});
 	}
 	return __kodyCapturedRuntimeBridge;
+}
+${createGatewayResponseUnwrapSource()}
+const __kodyProxyCaptured = Proxy;
+const __kodySettledBridgeMethods = __kodyObjectFreezeCaptured(${JSON.stringify(packageAppSandboxBridgeMethods)});
+const __kodyArrayIncludesCaptured = Array.prototype.includes;
+// Bridge calls go through settle() so a refusal comes back as a value and is
+// rethrown here instead of crossing RPC as a workerd uncaught exception.
+function __kodySettledBridge(raw) {
+	if (raw == null) return raw;
+	return new __kodyProxyCaptured({}, {
+		get(_target, name) {
+			if (typeof name !== 'string' || name === 'then') return undefined;
+			if (!__kodyReflectApplyCaptured(__kodyArrayIncludesCaptured, __kodySettledBridgeMethods, [name])) {
+				return raw[name];
+			}
+			return async (...args) => {
+				const outcome = await raw.settle(name, args);
+				if (outcome?.ok === true) return outcome.value;
+				throw outcome?.error;
+			};
+		},
+	});
 }
 function __kodyCreateAppPackageBindings(bridge, identity) {
 	const map = new __kodyMapCaptured();
@@ -428,11 +497,13 @@ function __kodyCreateAppPackageBindings(bridge, identity) {
 				return mcp;
 			},
 			fetch: async (requestInput, init) =>
-				await bridge.packageBoundFetch(
-					token,
-					packageId,
-					new __kodyRequestCaptured(requestInput, init),
-					__kodyCurrentVisitTicket(),
+				await __kodyUnwrapGatewayResponse(
+					await bridge.packageBoundFetch(
+						token,
+						packageId,
+						new __kodyRequestCaptured(requestInput, init),
+						__kodyCurrentVisitTicket(),
+					),
 				),
 			kodyCall: async (name, args) => await boundCapability({ name, args }),
 			// credential() for this package only (GHSA-5fv3).
@@ -508,7 +579,7 @@ if (!globalThis[__kodyEvaluateFetchPatchedSymbol]) {
 		// matches it against the run binding on its props and places the
 		// credential. Stripping it would send an unauthenticated upstream
 		// request; throwing would block legitimate credential().fetch.
-		return __kodyNativeFetch(input, { ...init, headers }).then((response) => {
+		return __kodyNativeFetch(input, { ...init, headers }).then(__kodyUnwrapGatewayResponse).then((response) => {
 			const warning = response.headers.get(
 				${JSON.stringify(pathSegmentEncodingWarningHeaderName)},
 			);
@@ -948,10 +1019,13 @@ function createDurableObjectNamespace(runtimeBridge, runtimeEnv, packageId, expo
 }
 
 function createPackageAppEnv(env, userModule) {
-	const runtimeBridge = env.${packageAppRuntimeBindingName};
+	const runtimeBridge = __kodySettledBridge(env.${packageAppRuntimeBindingName});
 	const packageContext = env.__kodyPackageContext ?? null;
 	const packageId = packageContext?.packageId ?? '';
 	const runtimeEnv = Object.create(env);
+	// Package code reaching env.KODY_RUNTIME gets the same settled view, so a
+	// refused call still rejects here without a workerd uncaught exception.
+	runtimeEnv.${packageAppRuntimeBindingName} = runtimeBridge;
 	for (const [exportName, exported] of Object.entries(userModule)) {
 		if (exportName !== 'default' && typeof exported === 'function') {
 			const namespace = createDurableObjectNamespace(
@@ -1249,7 +1323,7 @@ function tagPackageAppRuntimeRun(response, runtimeRunId) {
 
 export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 	async fetch(request) {
-		const runtimeBridge = this.env.${packageAppRuntimeBindingName};
+		const runtimeBridge = __kodySettledBridge(this.env.${packageAppRuntimeBindingName});
 		const requestUrl = new URL(request.url);
 		// Read before any package code runs. Ticket and visitor stay in ALS
 		// for this request only; they never enter module scope.
@@ -1365,7 +1439,7 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 	}
 
 	async handleRealtimeEvent(payload) {
-		const runtimeBridge = this.env.${packageAppRuntimeBindingName};
+		const runtimeBridge = __kodySettledBridge(this.env.${packageAppRuntimeBindingName});
 		const visitTicket =
 			payload && typeof payload.__kodyVisitTicket === 'string'
 				? payload.__kodyVisitTicket
@@ -1535,8 +1609,38 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 	private readonly secretRedactor: ExecutionSecretRedactor =
 		createExecutionSecretRedactor()
 
+	/**
+	 * Sandbox entry for the allowlisted bridge methods. A rejection comes back
+	 * as a value the sandbox rethrows, so expected denials do not cross RPC as
+	 * workerd uncaught exceptions (#4534). Same authority as calling the
+	 * method directly.
+	 */
+	async settle(
+		method: string,
+		args: Array<unknown>,
+	): Promise<{ ok: true; value: unknown } | { ok: false; error: unknown }> {
+		if (!isPackageAppSandboxBridgeMethod(method)) {
+			return {
+				ok: false,
+				error: new Error(`Unknown package app bridge method "${method}".`),
+			}
+		}
+		try {
+			const call = this[method] as (...input: Array<unknown>) => unknown
+			return {
+				ok: true,
+				value: await call.apply(this, Array.isArray(args) ? args : []),
+			}
+		} catch (error) {
+			return { ok: false, error }
+		}
+	}
+
 	private authorityScope(): PackageAppAuthorityScope {
-		return { orgId: this.ctx.props.userId, packageId: this.ctx.props.packageId }
+		return {
+			orgId: this.ctx.props.userId,
+			packageId: this.ctx.props.packageId,
+		}
 	}
 
 	/** The app's runs-as person in the owning org, with their live role. */
@@ -3308,7 +3412,7 @@ type PackageAppWorkerBuild = {
 // behalf of a different request" whenever it (re)loaded the dynamic isolate
 // from any request other than the one that built the options.
 const packageAppWorkerOptionsCache =
-	new PromiseLruCache<PackageAppWorkerBuild>()
+	createPublishedPackagePromiseCache<PackageAppWorkerBuild>()
 
 /**
  * Mint the request-bound loopback bindings for one loader call. Call it inside

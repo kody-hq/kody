@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect, test } from 'vitest'
 import {
+	apiAppMcp,
 	executeAppMcp,
 	formatMcpCallReport,
 	readJsonObjectFile,
@@ -221,4 +222,46 @@ test('control-kody MCP execute and search reuse the OAuth client and print struc
 	} finally {
 		await rm(parent, { recursive: true, force: true })
 	}
+})
+
+test('control-kody api calls one MCP api operation and refuses production', async () => {
+	const report = await apiAppMcp({
+		origin: 'https://kody-pr-9.kody.workers.dev',
+		email: 'me@kentcdodds.com',
+		password: 'ilikecode',
+		operationId: 'cliCredentialBootstrap',
+		params: { lifetime: 'short' },
+		connect: async () => ({
+			cookieHeader: 'kody_session=abc',
+			client: {
+				async callTool(params) {
+					expect(params.name).toBe('api')
+					expect(params.arguments).toEqual({
+						operationId: 'cliCredentialBootstrap',
+						params: { lifetime: 'short' },
+					})
+					return {
+						isError: false,
+						structuredContent: {
+							operationId: 'cliCredentialBootstrap',
+							result: { bootstrap_code: 'kody_bc_test' },
+						},
+					}
+				},
+			},
+		}),
+	})
+	expect(report).toMatchObject({
+		ok: true,
+		tool: 'api',
+		result: { bootstrap_code: 'kody_bc_test' },
+	})
+	await expect(
+		apiAppMcp({
+			origin: 'https://kody.codes',
+			email: 'me@kentcdodds.com',
+			password: 'ilikecode',
+			operationId: 'cliCredentialBootstrap',
+		}),
+	).rejects.toThrow(/refuses to run against https:\/\/kody.codes/)
 })

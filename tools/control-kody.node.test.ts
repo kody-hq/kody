@@ -276,6 +276,23 @@ test('control-kody parses commands, maps every required route, and drives a seed
 			},
 		],
 		[
+			[
+				'api',
+				'--operation',
+				'cliCredentialBootstrap',
+				'--params-file',
+				'params.json',
+				'--org',
+				'@X-Org',
+			],
+			{
+				command: 'api',
+				operationId: 'cliCredentialBootstrap',
+				paramsFile: 'params.json',
+				orgSlug: 'x-org',
+			},
+		],
+		[
 			['execute', '--code-file', 'fixture.ts', '--org', '@X-Org'],
 			{
 				command: 'execute',
@@ -379,7 +396,7 @@ test('control-kody parses commands, maps every required route, and drives a seed
 		['execute --code-file fixture.ts --org ab', /organization slug/],
 		[
 			'request GET /account --org x-org',
-			/--org is only valid for execute, search, and package-create/,
+			/--org is only valid for execute, search, api, and package-create/,
 		],
 		['browse --close-after -1', /--close-after requires a value/],
 		['browse --screenshot', /--screenshot requires a value/],
