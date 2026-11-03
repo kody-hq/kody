@@ -60,11 +60,15 @@ request.
 
 ### Minting
 
-- **`cliCredentialBootstrap` / redeem:** mints `org_binding: "user"`. Redeem
-  honors the binding stamped on the code.
+- **`cliCredentialBootstrap` / redeem:** mints `org_binding: "user"`, also when
+  the caller is an org-bound token (scopes and expiry still cannot exceed the
+  caller's). Redeem honors the binding stamped on the code.
 - **`tokenCreate`:** defaults to `org` (current request org). Pass
   `"org_binding": "user"` for a person-owned token. An org-bound parent token
-  cannot mint a user-owned child.
+  cannot mint a user-owned child through `tokenCreate`.
+
+An org binding picks the default org; it is not a security boundary. Git HTTPS
+and `cliCredentialBootstrap` act person-wide, like a GitHub CLI login.
 
 ## Persistent git credentials (credential helper)
 

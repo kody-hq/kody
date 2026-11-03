@@ -35,7 +35,9 @@ required: `short` (1h idle / 24h max), `long` (14d idle / 3mo max), or both
 `idle_ttl_seconds` and `max_lifetime_seconds`. Tokens default to
 `org_binding: "org"` (fixed to the current request org). Pass
 `"org_binding": "user"` for a person-owned token that selects an org per request
-with `?org=<slug>` (see [Git credential helper](./auth-setup-git.md)).
+with `?org=<slug>` (see [Git credential helper](./auth-setup-git.md)). The
+binding picks the org for API calls; it does not confine the token (git HTTPS
+and `cliCredentialBootstrap` act person-wide).
 
 ```json
 {

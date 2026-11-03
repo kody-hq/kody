@@ -824,6 +824,18 @@ change to these decisions here so future agents do not relitigate them.
   it acts for from D1, and every such call writes an `admin` audit row naming
   the trigger type and id. See
   [Site-admin capabilities from triggered runs](./architecture/authorization.md#site-admin-capabilities-from-triggered-runs).
+- **An org binding sets a token's default org; it does not confine the token.**
+  `org_binding: "org"` fixes the org for Open API and CapabilityProxy calls and
+  gets the token revoked when the person leaves that org. It does not limit what
+  the person can reach: git HTTPS ignores the binding and checks the person's
+  access to the repo owner's org plus the token's scopes (ADR 0070), and
+  `cliCredentialBootstrap` called with an org-bound token mints a person-wide
+  (`org_binding: "user"`) CLI token with a subset of its scopes and no later
+  expiry, which `kody auth setup-git` relies on. This follows GitHub, where a
+  person's CLI and git credential covers every org they belong to. Only
+  `tokenCreate` refuses to mint a user-owned token from an org-bound parent.
+  Treat any `kody_at_` as able to act for its person in every org they can
+  access, within its scopes.
 - **Package inbound webhook replay protection is opt-in.** HMAC over the raw
   body without a `replay` declaration does not bind a timestamp or delivery id,
   so a captured signed payload can be replayed until the URL secret is rotated.
