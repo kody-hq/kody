@@ -218,11 +218,18 @@ Closing a Mac window continues to keep the app and runner open. Update failures
 retry without interrupting the app. Development builds never check for updates.
 Updates do not downgrade or install prereleases.
 
-Run **Desktop release** manually on main after bumping the desktop package
-version and lockfile. The default `mac` scope builds Apple silicon and Intel Mac
-installers without requiring a Windows signing account. Choose `all` to add
-Windows and Linux later. Once those platforms have been published, future
-releases must keep choosing `all` so their update feeds stay available. Every
+**Desktop release** runs automatically when desktop, bundled CLI, shared code,
+dependency manifests, or the release workflow change on main. CI chooses the
+next patch version above the latest published release, or uses the desktop
+package version when it is higher. It updates the package and lockfile inside
+each build, without committing version bumps back to main. Every build uses the
+same version and source commit. Re-running an already published source skips
+publication.
+
+The default `auto` scope preserves the platforms in the published feed, starting
+with Apple silicon and Intel Mac installers. Run the workflow manually on main
+with `all` to add Windows and Linux after configuring their signing credentials.
+Subsequent automatic releases keep those platforms in the update feed. Every
 selected build must succeed before publishing. macOS builds require Developer ID
 signing, Apple's notarization service, and a valid stapled ticket. Windows
 builds require valid signatures on the application and installer. The final job
