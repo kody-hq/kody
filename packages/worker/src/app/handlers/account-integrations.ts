@@ -1,7 +1,7 @@
 import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { operationResult } from '#app/operation-result.ts'
 import { toOauthAppPublic } from '#mcp/capabilities/integrations/oauth-app-shared.ts'
-import { persistUserOauthAppClientSecret } from '#worker/integrations/credentials.ts'
+import { encryptUserOauthAppClientSecret } from '#worker/integrations/credentials.ts'
 import {
 	deleteIntegration,
 	deleteOauthAppWithConnections,
@@ -200,20 +200,22 @@ export async function rotateAccountOauthAppCredentials(
 	const nextClientId = input.clientId?.trim() || existing.clientId
 
 	try {
-		if (input.clientSecret) {
-			await persistUserOauthAppClientSecret({
-				env: input.env,
-				userId,
-				slug: existing.slug,
-				value: input.clientSecret,
-			})
-		}
-
+		// One write: a new client id drops the old secret unless a new one comes with it.
 		const rotated = await rotateOauthAppClientCredentials({
 			env: input.env,
 			userId,
 			slug: existing.slug,
 			clientId: nextClientId,
+			...(input.clientSecret
+				? {
+						clientSecretEncrypted: await encryptUserOauthAppClientSecret({
+							env: input.env,
+							userId,
+							slug: existing.slug,
+							value: input.clientSecret,
+						}),
+					}
+				: {}),
 		})
 		const joined = await listJoinedIntegrations({
 			env: input.env,

@@ -111,22 +111,30 @@ export async function persistIntegrationTokens(input: {
 	}
 }
 
+export function encryptUserOauthAppClientSecret(input: {
+	env: Pick<Env, 'SECRET_STORE_KEY'>
+	userId: OwnerId
+	slug: string
+	value: string
+}): Promise<string> {
+	return encryptUserOauthClientSecret(
+		input.env,
+		input.value,
+		userOauthAppCredentialContext(input.userId, input.slug),
+	)
+}
+
 export async function persistUserOauthAppClientSecret(input: {
 	env: CredentialEnv
 	userId: OwnerId
 	slug: string
 	value: string
 }): Promise<void> {
-	const encrypted = await encryptUserOauthClientSecret(
-		input.env,
-		input.value,
-		userOauthAppCredentialContext(input.userId, input.slug),
-	)
 	await updateOauthAppClientSecretCiphertext({
 		db: input.env.APP_DB,
 		userId: input.userId,
 		slug: input.slug,
-		clientSecretEncrypted: encrypted,
+		clientSecretEncrypted: await encryptUserOauthAppClientSecret(input),
 	})
 }
 

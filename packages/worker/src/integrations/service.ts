@@ -953,6 +953,7 @@ export async function rotateOauthAppClientCredentials(input: {
 	userId: string
 	slug: string
 	clientId: string
+	clientSecretEncrypted?: string
 }): Promise<UserOauthApp> {
 	const slug = canonicalizeOauthAppSlug(input.slug)
 	const clientId = input.clientId.trim()
@@ -984,6 +985,9 @@ export async function rotateOauthAppClientCredentials(input: {
 		userId: input.userId,
 		slug,
 		clientId,
+		...(input.clientSecretEncrypted
+			? { clientSecretEncrypted: input.clientSecretEncrypted }
+			: {}),
 	})
 	if (!updated) {
 		throw new Error(`Failed to rotate credentials for OAuth app "${slug}".`)

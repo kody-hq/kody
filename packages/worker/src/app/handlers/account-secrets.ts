@@ -79,7 +79,6 @@ import type { LoginExchange } from '#worker/credentials/login-resolver.ts'
 import {
 	persistIntegrationTokens,
 	persistUserOauthAppClientSecret,
-	resolveUserOauthAppClientSecret,
 } from '#worker/integrations/credentials.ts'
 import {
 	pollIntegrationDeviceConnect,
@@ -103,7 +102,6 @@ import {
 } from '#worker/integrations/device-flow.ts'
 import {
 	assertScopesAllowedForPlatformApp,
-	findOauthAppForProviderSetup,
 	getAvailablePlatformApp,
 	assertOauthAppReplaceConfirmed,
 	getJoinedIntegration,
@@ -259,13 +257,15 @@ export async function saveAccountOAuthApp(input: {
 					: null,
 			},
 		})
-		const clientSecret = await resolveConnectClientSecret({
+		const clientSecret = await resolveTokenEndpointClientSecret({
 			env: input.env,
 			userId: ownerIdFromCaller({
 				request: input.user.request,
 				user: input.user.mcpUser,
 			}),
 			provider,
+			clientId: app.clientId,
+			tokenUrl: app.tokenUrl,
 			clientSecret: input.fields.clientSecret?.trim() ?? null,
 		})
 		if (clientSecret) {
@@ -549,14 +549,16 @@ export async function connectAccountOAuth(input: {
 		userId: ownerId,
 		name: integrationName,
 	})
-	if (!platformApp) {
-		const clientSecret = await resolveConnectClientSecret({
+	if (!platformApp && connected?.lane === 'user') {
+		const clientSecret = await resolveTokenEndpointClientSecret({
 			env: input.env,
 			userId: ownerId,
 			provider: integrationName,
+			clientId: connected.app.clientId,
+			tokenUrl: connected.app.tokenUrl,
 			clientSecret: input.fields.clientSecret?.trim() ?? null,
 		})
-		if (clientSecret && connected?.lane === 'user') {
+		if (clientSecret) {
 			await persistUserOauthAppClientSecret({
 				env: input.env,
 				userId: ownerId,
@@ -1202,52 +1204,6 @@ async function saveIntegrationConfig(input: {
 		audit: input.audit,
 	})
 	return integration.name
-}
-
-async function resolveConnectClientSecret(input: {
-	env: Env
-	userId: OwnerId
-	provider: string
-	clientSecret?: string | null
-}): Promise<string | null> {
-	const inline = input.clientSecret?.trim()
-	if (inline) return inline
-	const slugs = await listConnectClientSecretSlugs(input)
-	for (const slug of slugs) {
-		const fromApp = await resolveUserOauthAppClientSecret({
-			env: input.env,
-			userId: input.userId,
-			slug,
-		})
-		if (fromApp) return fromApp
-	}
-	return null
-}
-
-async function listConnectClientSecretSlugs(input: {
-	env: Env
-	userId: OwnerId
-	provider: string
-}): Promise<Array<string>> {
-	const slugs: Array<string> = []
-	const add = (slug: string | null | undefined) => {
-		const normalized = slug?.trim()
-		if (normalized && !slugs.includes(normalized)) slugs.push(normalized)
-	}
-	add(canonicalIntegrationName(input.provider))
-	const joined = await getJoinedIntegration({
-		env: input.env,
-		userId: input.userId,
-		name: input.provider,
-	})
-	if (joined?.lane === 'user') add(joined.app.slug)
-	const setup = await findOauthAppForProviderSetup({
-		env: input.env,
-		userId: input.userId,
-		name: input.provider,
-	})
-	add(setup?.slug)
-	return slugs
 }
 
 function readTokenField(
