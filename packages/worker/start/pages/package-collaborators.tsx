@@ -36,6 +36,7 @@ import {
 	type PackageCollaboratorsChange,
 	type PackageCollaboratorsLoaderData,
 	type PackageCollaboratorsView,
+	type PackageCollaboratorsWriteResult,
 	type PackageCollaboratorView,
 	packageCollaboratorPresetDescription,
 	packageCollaboratorPresetLabel,
