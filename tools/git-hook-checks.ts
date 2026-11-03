@@ -26,8 +26,10 @@ import {
 
 /**
  * Docs-only commits/pushes skip expensive checks. Unreadable diffs fail closed.
- * Pre-commit keeps install and migration checks; pre-push typechecks, runs Knip,
- * and selects related unit tests unless global inputs require the full suites.
+ * Pre-commit keeps install and migration checks; pre-push runs CI's lint and
+ * format checks, typechecks, runs Knip, and selects related unit tests unless
+ * global inputs require the full suites. Paths whose pushed content matches
+ * origin/main (merged-in main) are left to main's CI when picking unit tests.
  * Only full successful suites can record test:push provenance.
  */
 
@@ -43,6 +45,7 @@ export type GitRunner = (args: ReadonlyArray<string>) => GitCommandResult
 
 export type GitHookCheckPlan = {
 	runInstallCheck: boolean
+	runLint: boolean
 	runTypecheck: boolean
 	runMigrationsCheck: boolean
 	runKnip: boolean
@@ -66,6 +69,8 @@ const licenseBasenamePattern =
 	/^(?:license|licence|copying|notice)(?:\.(?:md|txt))?$/i
 
 const newRefBaseCandidates = ['origin/HEAD', 'origin/main', 'main'] as const
+
+const mainlineRefCandidates = ['origin/main', 'main'] as const
 
 /** Heartbeat while a long hook script (test:push) inherits silence from vitest. */
 export const gitHookProgressIntervalMs = 30_000
@@ -106,6 +111,7 @@ export function planGitHookChecks(input: {
 export function hookScripts(plan: GitHookCheckPlan) {
 	const scripts: Array<string> = []
 	if (plan.runInstallCheck) scripts.push('install:check')
+	if (plan.runLint) scripts.push('lint', 'format:check')
 	if (plan.runTypecheck) scripts.push('typecheck')
 	if (plan.runMigrationsCheck) scripts.push('migrations:check')
 	if (plan.runSkillsLockCheck) scripts.push('node tools/check-skills-lock.ts')
@@ -432,6 +438,50 @@ export function isGlobalHookTestPath(filePath: string) {
 	)
 }
 
+/**
+ * Drops pushed paths whose content at every pushed tip equals the mainline
+ * ref (`origin/main`, else `main`). Those changes came from merging main, and
+ * main's own CI already ran their tests. Without a mainline ref the paths are
+ * returned unchanged.
+ */
+export function withoutMainlinePaths(input: {
+	git: GitRunner
+	stdin: string | null
+	paths: ReadonlyArray<string>
+	log?: (message: string) => void
+}): ReadonlyArray<string> {
+	const updates = parsePrePushUpdates(input.stdin)
+	if (updates === null) return input.paths
+	const mainline = mainlineRefCandidates.find(
+		(candidate) =>
+			input.git(['rev-parse', '--verify', '--quiet', `${candidate}^{commit}`])
+				.status === 0,
+	)
+	if (!mainline) return input.paths
+	const differing = new Set<string>()
+	for (const update of updates) {
+		if (isZeroSha(update.localSha)) continue
+		const diff = listDiffPaths(input.git, [
+			'diff',
+			'--name-only',
+			'--no-renames',
+			'-z',
+			mainline,
+			update.localSha,
+		])
+		if (diff === null) return input.paths
+		for (const path of diff) differing.add(path)
+	}
+	const kept = input.paths.filter((path) => differing.has(path))
+	const dropped = input.paths.length - kept.length
+	if (dropped > 0) {
+		input.log?.(
+			`pre-push: leaving ${dropped} path${dropped === 1 ? '' : 's'} identical to ${mainline} to main's CI for unit tests`,
+		)
+	}
+	return kept
+}
+
 export function relatedHookTestPaths(paths: ReadonlyArray<string>) {
 	return paths.filter((path) => /\.[cm]?[jt]sx?$/.test(path))
 }
@@ -492,12 +542,20 @@ export async function runGitHookChecks(input: {
 				scripts = scripts.filter((script) => script !== 'test:push')
 			}
 		}
+		const testPaths =
+			scripts.includes('test:push') && paths !== null
+				? withoutMainlinePaths({ git, stdin: input.stdin ?? null, paths, log })
+				: paths
 		if (
 			scripts.includes('test:push') &&
-			paths !== null &&
-			!paths.some(isGlobalHookTestPath)
+			testPaths !== null &&
+			!testPaths.some(isGlobalHookTestPath)
 		) {
-			const nonDeleted = listPushedPaths(git, input.stdin ?? null, true)
+			const listed = listPushedPaths(git, input.stdin ?? null, true)
+			const nonDeleted =
+				listed === null
+					? null
+					: listed.filter((path) => testPaths.includes(path))
 			if (nonDeleted !== null) {
 				relatedPaths = relatedHookTestPaths(nonDeleted)
 				if (
@@ -515,7 +573,9 @@ export async function runGitHookChecks(input: {
 							: [script],
 					)
 					log(
-						`pre-push: related tests for ${relatedPaths.length} non-deleted source paths (no test:push provenance recorded)`,
+						relatedPaths.length > 0
+							? `pre-push: related tests for ${relatedPaths.length} non-deleted source paths (no test:push provenance recorded)`
+							: 'pre-push: skipping unit tests (no pushed source paths differ from main)',
 					)
 				}
 			}
@@ -607,6 +667,7 @@ function planPreCommit(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 	if (paths === null) {
 		return {
 			runInstallCheck: true,
+			runLint: false,
 			runTypecheck: false,
 			runMigrationsCheck: true,
 			runKnip: false,
@@ -619,6 +680,7 @@ function planPreCommit(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 	if (paths.every(isDocsOnlyHookPath)) {
 		return {
 			runInstallCheck: false,
+			runLint: false,
 			runTypecheck: false,
 			runMigrationsCheck: false,
 			runKnip: false,
@@ -629,6 +691,7 @@ function planPreCommit(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 	}
 	return {
 		runInstallCheck: true,
+		runLint: false,
 		runTypecheck: false,
 		runMigrationsCheck: true,
 		runKnip: false,
@@ -642,13 +705,14 @@ function planPrePush(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 	if (paths === null) {
 		return {
 			runInstallCheck: false,
+			runLint: true,
 			runTypecheck: true,
 			runMigrationsCheck: false,
 			runKnip: true,
 			runUnitTests: true,
 			runSkillsLockCheck: true,
 			summary:
-				'pre-push: running typecheck, knip, test:push, and skills-lock (could not list pushed paths)',
+				'pre-push: running lint, format, typecheck, knip, test:push, and skills-lock (could not list pushed paths)',
 		}
 	}
 	const skillsLock = paths.some(isSkillsLockHookPath)
@@ -659,6 +723,7 @@ function planPrePush(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 		if (skillsLock) {
 			return {
 				runInstallCheck: false,
+				runLint: false,
 				runTypecheck: false,
 				runMigrationsCheck: false,
 				runKnip: false,
@@ -669,6 +734,7 @@ function planPrePush(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 		}
 		return {
 			runInstallCheck: false,
+			runLint: false,
 			runTypecheck: false,
 			runMigrationsCheck: false,
 			runKnip: false,
@@ -679,14 +745,15 @@ function planPrePush(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 	}
 	return {
 		runInstallCheck: false,
+		runLint: true,
 		runTypecheck: true,
 		runMigrationsCheck: false,
 		runKnip: true,
 		runUnitTests: true,
 		runSkillsLockCheck: skillsLock,
 		summary: skillsLock
-			? `pre-push: running skills-lock, typecheck, knip, and tests (${codePathSummary(paths)})`
-			: `pre-push: running typecheck, knip and tests (${codePathSummary(paths)})`,
+			? `pre-push: running skills-lock, lint, format, typecheck, knip, and tests (${codePathSummary(paths)})`
+			: `pre-push: running lint, format, typecheck, knip and tests (${codePathSummary(paths)})`,
 	}
 }
 
