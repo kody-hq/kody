@@ -133,7 +133,7 @@ test('loadAccountBillingData refreshes Stripe status and degrades when refresh i
 		purchasablePlans: ['pro'],
 		creditsHref: '/@billing-user/-/usage#credits',
 		referralProgram: expect.objectContaining({
-			sharePath: '/signup?ref=billing-user',
+			sharePath: '/?ref=billing-user',
 			rewardedCount: 0,
 			pendingCount: 0,
 			creditExpiresAt: null,

@@ -171,23 +171,23 @@ exposes that object as `secondAgentStandardGift`.
 
 ### Referral Pro credit
 
-Shareable signup links (`/signup?ref=<username>`) set a last-wins `kody_ref`
-cookie that expires after one week. A later share link overwrites the previous
-referrer for the rest of that window. Signup (password and OAuth) persists a
-pending `referrals` row from the cookie or a same-request share link.
-First-touch UTMs stay write-once and do not carry the referral code. Reward runs
-on `invoice.paid` after the referee's first qualifying paid Stripe invoice
-(`amount_paid > 0`, not a $0 trial, not a historical compute-overage invoice).
-Both the referrer and the referee receive one stacked month (30 days) of Pro via
-`orgs.referral_standard_credit_expires_at` (retired Pro ceilings, no credit
-wallet — same as the second-agent gift). There is no annual or lifetime cap on
-how many months a referrer can earn. Paid subscribers stack from the later of an
-existing credit and the current paid period end so the month starts after paid
-access rather than overlapping it. Referee invoices use the latest line
-`period.end`. A failed Stripe lookup of the referrer's subscription fails the
-webhook so Stripe can retry instead of stacking from now. Email-verify leaves a
-held row pending if that lookup fails; the referrer’s later `invoice.paid`
-retries it. Stripe subscriptions are not mutated.
+Share links add `?ref=` to any page (for example `/?ref=<username>`) and set a
+last-wins `kody_ref` cookie that expires after one week. A later share link
+overwrites the previous referrer for the rest of that window. Signup (password
+and OAuth) persists a pending `referrals` row from the cookie or a same-request
+share link. First-touch UTMs stay write-once and do not carry the referral code.
+Reward runs on `invoice.paid` after the referee's first qualifying paid Stripe
+invoice (`amount_paid > 0`, not a $0 trial, not a historical compute-overage
+invoice). Both the referrer and the referee receive one stacked month (30 days)
+of Pro via `orgs.referral_standard_credit_expires_at` (retired Pro ceilings, no
+credit wallet — same as the second-agent gift). There is no annual or lifetime
+cap on how many months a referrer can earn. Paid subscribers stack from the
+later of an existing credit and the current paid period end so the month starts
+after paid access rather than overlapping it. Referee invoices use the latest
+line `period.end`. A failed Stripe lookup of the referrer's subscription fails
+the webhook so Stripe can retry instead of stacking from now. Email-verify
+leaves a held row pending if that lookup fails; the referrer’s later
+`invoice.paid` retries it. Stripe subscriptions are not mutated.
 
 Fraud basics before a reward: both emails verified, new-account attribution only
 (persisted at signup from the last-wins cookie), no self-referral, no plus-tag /

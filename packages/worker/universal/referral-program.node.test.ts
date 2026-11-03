@@ -26,8 +26,8 @@ test('referral codes, share links, stacking, overlays, and fraud email collapse'
 	expect(
 		parseReferralCode({ searchParams: new URLSearchParams('ref=x') }),
 	).toBe(null)
-	expect(referralSharePath('KentCDodds')).toBe('/signup?ref=kentcdodds')
-	expect(referralSharePath('x')).toBe('/signup')
+	expect(referralSharePath('KentCDodds')).toBe('/?ref=kentcdodds')
+	expect(referralSharePath('x')).toBe('/')
 
 	expect(
 		laterIsoTimestamp(
