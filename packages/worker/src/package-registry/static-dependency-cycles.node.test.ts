@@ -158,6 +158,7 @@ test('loadReachableStaticKodyDependencyEdges fails closed when a saved package m
 		}),
 	).resolves.toEqual({
 		ok: false,
+		failureOrigin: 'platform',
 		message:
 			'Could not load the saved package manifest for @scope/c while checking package.json#kody.dependencies: manifest unavailable.',
 	})
