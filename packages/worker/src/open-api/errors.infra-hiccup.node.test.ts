@@ -4,7 +4,7 @@ import { EntitlementLimitError } from '#worker/entitlements/errors.ts'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
 
 const mocks = vi.hoisted(() => ({
-	reportInfraHiccup: vi.fn(async () => undefined),
+	reportInfraHiccup: vi.fn(async (_report: unknown) => undefined),
 }))
 
 vi.mock('#worker/infra-hiccup-sentry.ts', () => ({

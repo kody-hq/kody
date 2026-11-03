@@ -24,12 +24,11 @@ const mockModule = vi.hoisted(() => ({
 	registerStorageBucket: vi.fn(),
 	recordStorageBucketEstimate: vi.fn(),
 	maybeRefreshStorageBucketEstimate: vi.fn(),
-	reportInfraHiccup: vi.fn(async () => undefined),
+	reportInfraHiccup: vi.fn(async (_report: unknown) => undefined),
 }))
 
 vi.mock('#worker/infra-hiccup-sentry.ts', () => ({
-	reportInfraHiccup: (...args: Array<unknown>) =>
-		mockModule.reportInfraHiccup(...args),
+	reportInfraHiccup: (report: unknown) => mockModule.reportInfraHiccup(report),
 }))
 
 vi.mock('#worker/storage-buckets/service.ts', async (importOriginal) => {
