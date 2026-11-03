@@ -11,6 +11,7 @@ import {
 	syncOrgBudgetSpendFromCreditLedger,
 } from './budget-gate.ts'
 import { userMeterRpc } from './user-meter-client.ts'
+import { inObjectUserMeterNamespace } from '#worker/test-support/in-object-user-meter.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { ensureCreditWalletTestSchema } from '#worker/billing/test-schema.ts'
 
@@ -57,7 +58,7 @@ test('over user budget denies a new execute worker via consumeExecuteUniqueWorke
 
 	const error = await consumeExecuteUniqueWorkerDay({
 		db: env.APP_DB,
-		env,
+		env: { ...env, USER_METER: inObjectUserMeterNamespace(env.USER_METER) },
 		userId: ownerIdFromStored(userId),
 		email,
 		workerId: 'kody-budget-gate',
