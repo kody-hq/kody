@@ -5,6 +5,7 @@ import {
 import { expect, test, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { consoleInfo, consoleWarn } from '#worker/test-support/console-spies.ts'
+import type * as PublishedRuntimeArtifactsModule from '#worker/package-runtime/published-runtime-artifacts.ts'
 
 const mockModule = vi.hoisted(() => ({
 	getSavedPackageById: vi.fn(),
@@ -20,7 +21,17 @@ const mockModule = vi.hoisted(() => ({
 	getCommunityListingByOwnerAndPackage: vi.fn(),
 	runWithDurableEscalation: vi.fn(),
 	listPublisherEnablementGaps: vi.fn(),
+	clearPublishedPublishChecksVersion: vi.fn(async () => {}),
 }))
+
+vi.mock(
+	'#worker/package-runtime/published-runtime-artifacts.ts',
+	async (importOriginal) => ({
+		...(await importOriginal<typeof PublishedRuntimeArtifactsModule>()),
+		clearPublishedPublishChecksVersion: (...args: Array<unknown>) =>
+			mockModule.clearPublishedPublishChecksVersion(...args),
+	}),
+)
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
 	getSavedPackageById: (...args: Array<unknown>) =>
@@ -492,6 +503,11 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 		],
 		manifest: {},
 	})
+	// The failed rebuild is not a successful publish: drop the tip's seal so
+	// retrying the same commit re-runs checks instead of a sealed no-op.
+	expect(mockModule.clearPublishedPublishChecksVersion).toHaveBeenCalledWith(
+		expect.objectContaining({ publishedCommit: 'commit-new' }),
+	)
 
 	setupDefaultMocks({
 		head: 'commit-old',
@@ -512,6 +528,9 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 		],
 		manifest: null,
 	})
+	expect(mockModule.clearPublishedPublishChecksVersion).toHaveBeenCalledWith(
+		expect.objectContaining({ publishedCommit: 'commit-old' }),
+	)
 })
 
 test('force publish passes destructive confirmation through and refuses without allow_force', async () => {

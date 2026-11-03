@@ -387,6 +387,22 @@ export async function writePublishedPublishChecksVersion(input: {
 }
 
 /**
+ * Drop this tip's publish-checks seal so a retry of the same commit re-runs
+ * checks instead of returning a sealed no-op. Used when a publish advanced the
+ * tip but its artifact rebuild failed, so the publish did not succeed.
+ */
+export async function clearPublishedPublishChecksVersion(input: {
+	env: Env
+	sourceId: string
+	publishedCommit: string
+}) {
+	if (!bundleArtifactsKvSupportsGetPut(input.env)) return
+	await getBundleArtifactsKv(input.env).delete(
+		buildPublishedPublishChecksKvKey(input),
+	)
+}
+
+/**
  * Stored authoring-check version for this tip, or null when never recorded
  * (pre-version publishes and failed attempts).
  */
