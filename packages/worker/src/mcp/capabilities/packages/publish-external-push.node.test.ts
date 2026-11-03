@@ -21,9 +21,13 @@ const mockModule = vi.hoisted(() => ({
 	getCommunityListingByOwnerAndPackage: vi.fn(),
 	runWithDurableEscalation: vi.fn(),
 	listPublisherEnablementGaps: vi.fn(),
-	clearPublishedPublishChecksVersion: vi.fn(async () => {}),
-	revertEntitySourcePublishedCommit: vi.fn(async () => true),
-	refreshSavedPackageProjection: vi.fn(async () => {}),
+	clearPublishedPublishChecksVersion: vi.fn(
+		async (..._args: Array<unknown>) => {},
+	),
+	revertEntitySourcePublishedCommit: vi.fn(
+		async (..._args: Array<unknown>) => true,
+	),
+	refreshSavedPackageProjection: vi.fn(async (..._args: Array<unknown>) => {}),
 }))
 
 vi.mock('#worker/package-registry/service.ts', () => ({
