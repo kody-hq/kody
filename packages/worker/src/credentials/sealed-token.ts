@@ -62,6 +62,11 @@ const sealedPayloadSchema = z.object({
 	 * saved. Empty: the token repeats a filled credential.
 	 */
 	save: z.array(z.string().min(1)).optional(),
+	/**
+	 * Package that minted an any-host JWT ('' outside a package), so each
+	 * fill host is counted per caller (kody-hq/kody#4456).
+	 */
+	pkg: z.string().optional(),
 })
 
 type SealedTokenEnv = Pick<Env, 'SECRET_STORE_KEY'>
@@ -73,6 +78,8 @@ export type SealedTokenBinding = {
 	source?: 'jwt-sign' | 'token-response'
 	/** Exact hosts a saved copy may be sent to (see `openSealedTokenForSave`). */
 	saveHosts?: ReadonlyArray<string>
+	/** Set on an any-host JWT: the package that minted it, '' outside one. */
+	anyHostPackageId?: string
 }
 
 async function sealingKey(env: SealedTokenEnv) {
@@ -136,6 +143,9 @@ export async function sealToken(input: {
 		...(input.to.source ? { src: input.to.source } : {}),
 		...(audienceHosts.length > 0 ? { aud: [...audienceHosts] } : {}),
 		...(input.to.saveHosts ? { save: [...new Set(input.to.saveHosts)] } : {}),
+		...(input.to.anyHostPackageId === undefined
+			? {}
+			: { pkg: input.to.anyHostPackageId }),
 	}
 	const iv = crypto.getRandomValues(new Uint8Array(12))
 	const sealed = await crypto.subtle.encrypt(
@@ -207,6 +217,8 @@ export async function openSealedToken(
 	input: OpenSealedTokenInput & {
 		requestHost: string
 		parts: ReadonlyArray<string>
+		/** Called when an any-host JWT fills, with the caller that minted it. */
+		onAnyHostFill?: (caller: { ownerId: string; packageId: string }) => void
 	},
 ) {
 	const payload = await openSealedPayload(input, refuse)
@@ -232,6 +244,12 @@ export async function openSealedToken(
 		refuse(
 			`A sealed token fills a header or the body, not the ${urlPart}, because hosts log URLs.`,
 		)
+	}
+	if (
+		payload.pkg !== undefined &&
+		payload.domains.includes(anySealedTokenDomain)
+	) {
+		input.onAnyHostFill?.({ ownerId: payload.org, packageId: payload.pkg })
 	}
 	return payload.v
 }

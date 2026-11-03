@@ -87,6 +87,10 @@ import {
 	sealTokenResponse,
 } from '#worker/credentials/sealed-token.ts'
 import {
+	type JwtSignAnyHostCaller,
+	recordJwtSignAnyHostDestination,
+} from '#worker/credentials/jwt-sign-any-host.ts'
+import {
 	pathSegmentEncodedCredentialNames,
 	withPathSegmentEncodingWarning,
 } from '#mcp/secrets/path-segment-encoding-warning.ts'
@@ -660,6 +664,7 @@ export async function expandSecretPlaceholders(input: {
 	request: Request
 	props: FetchGatewayProps
 	env: Pick<Env, 'APP_DB' | 'SECRET_STORE_KEY'>
+	waitUntil?: (promise: Promise<unknown>) => void
 }): Promise<{
 	request: Request
 	substitutedValues: Array<string>
@@ -931,6 +936,7 @@ export async function expandSecretPlaceholders(input: {
 			) {
 				continue
 			}
+			const anyHostFill: { caller?: JwtSignAnyHostCaller } = {}
 			const value = await openSealedToken({
 				env: input.env,
 				name,
@@ -940,7 +946,19 @@ export async function expandSecretPlaceholders(input: {
 				parts: (fillSitesByPlaceholder.get(placeholder) ?? []).map(
 					(site) => site.part,
 				),
+				onAnyHostFill: (caller) => {
+					anyHostFill.caller = caller
+				},
 			})
+			if (anyHostFill.caller) {
+				const recorded = recordJwtSignAnyHostDestination({
+					env: input.env,
+					caller: anyHostFill.caller,
+					host: requestHost,
+				})
+				if (input.waitUntil) input.waitUntil(recorded)
+				else await recorded
+			}
 			referencedAnyCredential = true
 			credentialNamesByPlaceholder.set(placeholder, 'sealed token')
 			replacements.set(placeholder, value)

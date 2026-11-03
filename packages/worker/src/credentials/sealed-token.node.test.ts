@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { parseIntegrationTokenPlaceholders } from '#mcp/secrets/placeholders.ts'
 import {
 	anySealedTokenDomain,
@@ -372,6 +372,37 @@ test('an any-host secretJwtSign handle stops filling on 2026-12-02', async () =>
 	await expect(
 		open(sealed, { ...elsewhere, now: jwtSignSendToHostRequiredAt }),
 	).rejects.toThrow(/pass send_to_host: "api\.example\.net" to secretJwtSign/)
+})
+
+test('an any-host JWT fill reports the caller that minted it', async () => {
+	const anyHost = await sealToken({
+		env,
+		value: 'signed-jwt',
+		to: {
+			...to,
+			domains: [anySealedTokenDomain],
+			source: 'jwt-sign',
+			anyHostPackageId: 'pkg-1',
+		},
+		now: jwtSignSendToHostRequiredAt - 60_000,
+	})
+	const bound = await sealToken({
+		env,
+		value: 'signed-jwt',
+		to: { ...to, source: 'jwt-sign' },
+		now: jwtSignSendToHostRequiredAt - 60_000,
+	})
+	const onAnyHostFill = vi.fn()
+	const now = jwtSignSendToHostRequiredAt - 1
+	await open(bound, { requestHost: 'api.example.com', onAnyHostFill, now })
+	expect(onAnyHostFill).not.toHaveBeenCalled()
+	await expect(
+		open(anyHost, { requestHost: 'api.example.net', onAnyHostFill, now }),
+	).resolves.toBe('signed-jwt')
+	expect(onAnyHostFill).toHaveBeenCalledWith({
+		ownerId: 'org-1',
+		packageId: 'pkg-1',
+	})
 })
 
 test('an audience host fills exactly, not on its subdomains', async () => {
