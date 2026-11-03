@@ -70,7 +70,20 @@ type ResourcePermission = {
 	[Type in OrgResourceType]: `${Type}:${(typeof resourceActions)[Type][number]}`
 }[OrgResourceType]
 
-type CreatePermission = `${OrgResourceType}:create`
+/**
+ * Resource types whose creation has its own permission. Jobs and apps come
+ * from a package manifest (`package:create` / `package:publish`) and inboxes
+ * are made at signup, so they have none.
+ */
+const creatableResourceTypes = [
+	'package',
+	'secret',
+	'integration',
+	'memory',
+	'execution_context',
+] as const satisfies ReadonlyArray<OrgResourceType>
+
+type CreatePermission = `${(typeof creatableResourceTypes)[number]}:create`
 
 const orgLevelPermissionList = [
 	'org:read',
@@ -103,7 +116,7 @@ export const orgPermissions: ReadonlyArray<OrgPermission> = [
 			(action) => `${type}:${action}` as ResourcePermission,
 		),
 	),
-	...orgResourceTypes.map((type) => `${type}:create` as CreatePermission),
+	...creatableResourceTypes.map((type) => `${type}:create` as CreatePermission),
 	...orgLevelPermissionList,
 ]
 
@@ -111,4 +124,23 @@ const orgPermissionSet: ReadonlySet<string> = new Set(orgPermissions)
 
 export function isOrgPermission(value: unknown): value is OrgPermission {
 	return typeof value === 'string' && orgPermissionSet.has(value)
+}
+
+/**
+ * Removed permissions that stored credentials, lineages, and tickets may still
+ * carry. They never gated anything, so readers drop them instead of rejecting
+ * the whole list.
+ */
+const retiredOrgPermissions: ReadonlySet<string> = new Set([
+	'app:create',
+	'email:create',
+	'job:create',
+])
+
+export function withoutRetiredOrgPermissions<T>(
+	values: ReadonlyArray<T>,
+): Array<T> {
+	return values.filter(
+		(value) => typeof value !== 'string' || !retiredOrgPermissions.has(value),
+	)
 }

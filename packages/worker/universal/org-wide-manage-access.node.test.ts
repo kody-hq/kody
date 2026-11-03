@@ -10,8 +10,6 @@ test('saving one manage kind keeps a partial grant on the other', () => {
 	expect(orgWideManagePermissionsFor(['app'], held)).toEqual([
 		'package:execute',
 		'app:execute',
-		'app:write',
-		'app:delete',
 		'app:manage_access',
 	])
 })
@@ -21,8 +19,6 @@ test('unchecking a fully held kind removes it', () => {
 	expect(heldOrgWideManageOptions(held)).toEqual(['package', 'app'])
 	expect(orgWideManagePermissionsFor(['app'], held)).toEqual([
 		'app:execute',
-		'app:write',
-		'app:delete',
 		'app:manage_access',
 	])
 })

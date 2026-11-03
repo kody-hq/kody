@@ -1,6 +1,9 @@
 import type { McpUserContext } from '@kody-internal/shared/chat.ts'
 import { isRecord } from '@kody-internal/shared/is-record.ts'
-import { isOrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import {
+	isOrgPermission,
+	withoutRetiredOrgPermissions,
+} from '@kody-internal/shared/org-permissions.ts'
 import {
 	personIdFromStored,
 	ownerIdFromStored,
@@ -524,7 +527,9 @@ export function parseRequestLineage(value: unknown): RequestLineage | null {
 	) {
 		return null
 	}
-	const scopes = credential.scopes
+	const scopes = Array.isArray(credential.scopes)
+		? withoutRetiredOrgPermissions(credential.scopes)
+		: credential.scopes
 	if (
 		scopes !== null &&
 		!(Array.isArray(scopes) && scopes.every((scope) => isOrgPermission(scope)))

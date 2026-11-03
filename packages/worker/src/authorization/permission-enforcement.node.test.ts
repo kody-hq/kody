@@ -26,20 +26,14 @@ const vocabularyFiles = new Set([
 ])
 
 /**
- * Grantable but checked nowhere (kody-hq/kody#3739). Creation of jobs and
- * apps is gated by `package:create` / `package:publish` (jobs and apps come
- * from the package manifest), app changes and deletion by `package:write` /
- * `package:delete` (an app shares its package's id), and inboxes are created
- * at signup. `job:delete` removal is tracked in #3678. Removing any of these
- * needs an `api_tokens.scopes_json` strip, since `normalizeApiTokenScopes`
- * throws on unknown scopes.
+ * Grantable but checked nowhere (kody-hq/kody#3739). App changes and deletion
+ * are `package:write` / `package:delete` (an app shares its package's id), so
+ * `app:write` / `app:delete` are in no preset and only an advanced app grant
+ * can carry them. `job:delete` removal is tracked in #3678.
  */
 const unenforcedGrantablePermissions: ReadonlyArray<OrgPermission> = [
-	'app:create',
 	'app:delete',
 	'app:write',
-	'email:create',
-	'job:create',
 	'job:delete',
 ]
 

@@ -474,3 +474,23 @@ test('a triggered run as a sub-profile records its whole chain', () => {
 		profileChain: ['prf_root', 'prf_child'],
 	})
 })
+
+test('a persisted lineage drops retired scopes instead of failing closed', () => {
+	const run = deriveRequestContext({
+		user: { userId: personIdFromStored('d'.repeat(64)), username: 'dee' },
+		source: { kind: 'mcp-oauth' },
+		orgBinding: {
+			org: { id: ownerIdFromStored(stableId), slug: 'ada' },
+			role: 'member',
+		},
+	})
+	const lineage = JSON.parse(JSON.stringify(requestLineage(run))) as {
+		credential: { scopes: Array<string> | null }
+	}
+	lineage.credential.scopes = ['job:create', 'package:read']
+	expect(parseRequestLineage(lineage)?.credential.scopes).toEqual([
+		'package:read',
+	])
+	lineage.credential.scopes = ['job:launch']
+	expect(parseRequestLineage(lineage)).toBeNull()
+})
