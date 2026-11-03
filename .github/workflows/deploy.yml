@@ -1,4 +1,10 @@
 name: 🚀 Deploy (production)
+# The run list's head SHA is main at trigger time; name runs after the SHA
+# this run actually validates and deploys (workflow_run.head_sha).
+run-name: >-
+  ${{ github.event_name == 'workflow_run' && format('🚀 Deploy {0}',
+  github.event.workflow_run.head_sha) || format('🚀 Deploy {0} ({1})',
+  github.sha, inputs.mode) }}
 
 on:
   workflow_run:
@@ -457,6 +463,11 @@ jobs:
           git fetch origin main
           HEAD_SHA="$(git rev-parse origin/main)"
           echo "deploy_sha=$DEPLOY_SHA" >> "$GITHUB_OUTPUT"
+          {
+            echo "Deploy SHA: \`$DEPLOY_SHA\`"
+            echo ""
+            echo "main HEAD at guard time: \`$HEAD_SHA\`"
+          } >> "$GITHUB_STEP_SUMMARY"
           # main HEAD, or an older validated main commit when production is
           # strictly behind it (tools/ci/deploy-sha-guard.ts).
           # Commits validated before the guard landed lack the script; they

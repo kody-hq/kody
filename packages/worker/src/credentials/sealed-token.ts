@@ -26,6 +26,19 @@ import { buildIntegrationTokenPlaceholder } from '#mcp/secrets/placeholders.ts'
 export const sealedTokenNamePrefix = 'kody-sealed.'
 /** A `domains` entry that lets a sealed token fill on any host. */
 export const anySealedTokenDomain = '*'
+/** Day `secretJwtSign` starts requiring an https `aud` or `send_to_host`. */
+export const jwtSignSendToHostRequiredDate = '2026-12-02'
+/**
+ * Midnight America/Denver on that day. From then `secretJwtSign` refuses an
+ * any-host JWT and `anySealedTokenDomain` no longer fills (kody-hq/kody#4456).
+ */
+export const jwtSignSendToHostRequiredAt = Date.parse(
+	`${jwtSignSendToHostRequiredDate}T00:00:00-07:00`,
+)
+
+export function jwtSignMayFillAnyHost(now = Date.now()) {
+	return now < jwtSignSendToHostRequiredAt
+}
 export const sealedTokenFields = [
 	'access_token',
 	'refresh_token',
@@ -198,10 +211,11 @@ export async function openSealedToken(
 ) {
 	const payload = await openSealedPayload(input, refuse)
 	const host = input.requestHost.toLowerCase()
+	const anyHost = jwtSignMayFillAnyHost(input.now)
 	if (
 		!payload.domains.some(
 			(domain) =>
-				domain === anySealedTokenDomain ||
+				(domain === anySealedTokenDomain && anyHost) ||
 				host === domain ||
 				host.endsWith(`.${domain}`),
 		) &&

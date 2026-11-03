@@ -786,3 +786,14 @@ export function getWorkerSentryOptions(
 	const options = buildSentryOptions(env)
 	return options.dsn ? options : undefined
 }
+
+/**
+ * Options for `Sentry.withSentry` on a `WorkerEntrypoint` class. RPC methods
+ * on a bare entrypoint run with no Sentry client, so throws and
+ * `captureException` inside them are dropped. No DSN (including tests) must
+ * stay disabled: `undefined` would let the SDK fall back to
+ * `env.SENTRY_DSN` without our filters.
+ */
+export function getWorkerEntrypointSentryOptions(env: Env): CloudflareOptions {
+	return getWorkerSentryOptions(env) ?? { enabled: false }
+}

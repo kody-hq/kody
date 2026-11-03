@@ -79,6 +79,7 @@ test('personal package invites show access choices and pending recipients withou
 				],
 			},
 			busyKey: null,
+			handoffKey: 'owner/owner/demo',
 			postChange: async () => null,
 		}),
 	)

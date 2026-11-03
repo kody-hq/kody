@@ -13,8 +13,10 @@ import {
 	buildSeedFeatureFlagOverrideSql,
 	buildSeedIntegrationSql,
 	buildSeedSavedPackagesSql,
+	buildSeedTeamOrgSql,
 	buildSeedUserSql,
 } from './seed-sql.ts'
+import { parsePlanName, planNames, type PlanName } from '#universal/plans.ts'
 import { usernameFromEmail } from '../packages/worker/src/identity/username.ts'
 import {
 	isFeatureFlagKey,
@@ -46,6 +48,12 @@ type CliOptions = {
 	 * With `--remote`, only preview env and the committed preview allowlist.
 	 */
 	enableFlags: Array<FeatureFlagKey>
+	/** Second verified non-admin account, same password as the primary. */
+	memberEmail?: string
+	/** Team org owned by the primary with the member account and one team. */
+	teamOrg?: string
+	/** Forces the primary personal org plan (remote: preview only). */
+	plan?: PlanName
 }
 
 const defaultTestEmail = 'kody@example.com'
@@ -55,8 +63,7 @@ const defaultTestPassword = 'ilikecode'
 const regularTestEmail = 'jane@example.com'
 const regularTestUsername = 'jane'
 
-const usageLine =
-	'Usage: node tools/seed-test-data.ts [--local|--remote] [--admin|--no-admin] [--env <name>] [--config <path>] [--persist-to <path>] [--email <email>] [--username <username>] [--password <password>] [--saved-packages <n>] [--enable-flag <key>]...'
+const usageLine = `Usage: node tools/seed-test-data.ts [--local|--remote] [--admin|--no-admin] [--env <name>] [--config <path>] [--persist-to <path>] [--email <email>] [--username <username>] [--password <password>] [--saved-packages <n>] [--enable-flag <key>]... [--member-email <email>] [--team-org <slug>] [--plan <${planNames.join('|')}>]`
 
 const maxSavedPackages = 1_000
 
@@ -73,6 +80,9 @@ export function parseArgs(argv: Array<string>): CliOptions {
 		persistTo: undefined,
 		savedPackages: undefined,
 		enableFlags: [],
+		memberEmail: undefined,
+		teamOrg: undefined,
+		plan: undefined,
 	}
 	let usernameProvided = false
 	let adminProvided = false
@@ -164,6 +174,31 @@ export function parseArgs(argv: Array<string>): CliOptions {
 				}
 				break
 			}
+			case '--member-email': {
+				options.memberEmail = argv[index + 1] ?? ''
+				index += 1
+				if (!options.memberEmail)
+					fail('Missing value for --member-email <email>.')
+				break
+			}
+			case '--team-org': {
+				options.teamOrg = argv[index + 1] ?? ''
+				index += 1
+				if (!options.teamOrg) fail('Missing value for --team-org <slug>.')
+				break
+			}
+			case '--plan': {
+				const raw = argv[index + 1] ?? ''
+				index += 1
+				const plan = parsePlanName(raw)
+				if (!plan) {
+					fail(
+						`Invalid --plan value ${JSON.stringify(raw)}. Use one of: ${planNames.join(', ')}.`,
+					)
+				}
+				options.plan = plan
+				break
+			}
 			default: {
 				if (arg.startsWith('-')) {
 					fail([`Unknown flag: ${arg}`, usageLine].join('\n'))
@@ -217,6 +252,26 @@ export function parseArgs(argv: Array<string>): CliOptions {
 			'--saved-packages is local-only (metadata fixtures for local account UI).',
 		)
 	}
+	if (options.teamOrg !== undefined && !options.memberEmail) {
+		fail('--team-org needs --member-email <email> for the member account.')
+	}
+	if (
+		options.memberEmail !== undefined &&
+		options.memberEmail.toLowerCase() === options.email.toLowerCase()
+	) {
+		fail('--member-email must differ from --email.')
+	}
+	if (
+		options.remote &&
+		options.env !== 'preview' &&
+		(options.memberEmail !== undefined ||
+			options.teamOrg !== undefined ||
+			options.plan !== undefined)
+	) {
+		fail(
+			`--member-email, --team-org, and --plan with --remote are only allowed when the wrangler env is preview. Refusing env ${JSON.stringify(options.env)}.`,
+		)
+	}
 	if (options.remote && options.enableFlags.length > 0) {
 		if (options.env !== 'preview') {
 			fail(
@@ -255,6 +310,7 @@ type SeedAccount = {
 	username: string
 	passwordHash: string
 	admin: boolean
+	plan?: PlanName
 }
 
 export function buildSeedSql(
@@ -264,9 +320,10 @@ export function buildSeedSql(
 		enableFlags?: ReadonlyArray<FeatureFlagKey>
 		/** Preview reseeds delete allowlisted flags this run is not enabling. */
 		reconcilePreviewFlags?: boolean
+		teamOrg?: { slug: string; ownerEmail: string; memberEmail: string }
 	} = {},
 ) {
-	return accounts
+	const accountSql = accounts
 		.flatMap((account) => {
 			const parts = [
 				buildSeedUserSql(account),
@@ -298,6 +355,9 @@ export function buildSeedSql(
 			return parts
 		})
 		.join('\n')
+	return options.teamOrg
+		? `${accountSql}\n${buildSeedTeamOrgSql(options.teamOrg)}`
+		: accountSql
 }
 
 /**
@@ -380,8 +440,17 @@ async function main() {
 			username: options.username,
 			passwordHash,
 			admin: options.admin,
+			plan: options.plan,
 		},
 	]
+	if (options.memberEmail) {
+		accounts.push({
+			email: options.memberEmail,
+			username: usernameFromEmail(options.memberEmail),
+			passwordHash,
+			admin: false,
+		})
+	}
 	if (shouldSeedCompanionAccount(options)) {
 		accounts.push({
 			email: regularTestEmail,
@@ -394,6 +463,14 @@ async function main() {
 		savedPackages: options.savedPackages,
 		enableFlags: options.enableFlags,
 		reconcilePreviewFlags: options.remote && options.env === 'preview',
+		teamOrg:
+			options.teamOrg && options.memberEmail
+				? {
+						slug: options.teamOrg,
+						ownerEmail: options.email,
+						memberEmail: options.memberEmail,
+					}
+				: undefined,
 	})
 	executeSeedSql(sql, options, localPersistEnv())
 
@@ -406,6 +483,8 @@ async function main() {
 			`${options.savedPackages} metadata-only saved package${options.savedPackages === 1 ? '' : 's'} per account`,
 		)
 	}
+	if (options.plan) extras.push(`plan ${options.plan}`)
+	if (options.teamOrg) extras.push(`team org ${options.teamOrg}`)
 	if (options.enableFlags.length > 0) {
 		extras.push(`flags on: ${options.enableFlags.join(', ')}`)
 	}

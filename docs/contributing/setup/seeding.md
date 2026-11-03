@@ -50,6 +50,16 @@ See the [setup index](./index.md) for the other setup pages.
   pass those keys only when the PR has a matching `preview-flag:<key>` label.
   See
   [Manual preview testing](../preview-manual-testing.md#feature-flags-on-the-preview-seed).
+- Owner and member fixtures (local, or remote on `preview` only):
+  - `--member-email <email>` seeds a second verified non-admin account with the
+    same password as the primary.
+  - `--team-org <slug>` (needs `--member-email`) seeds a team org owned by the
+    primary, with the member account as a Member and on the team `members`.
+  - `--plan <free|standard|pro|max>` sets the primary personal org plan (no
+    Stripe rows). Preview deploys pass `--plan` from a `preview-plan:<plan>`
+    label, `free` without one.
+  - Example:
+    `node tools/seed-test-data.ts --local --member-email member@example.com --team-org acme`
 - These credentials are a test fixture only and should not be used to describe
   product behavior. Pass `--no-admin` to seed the default account without the
   admin role.

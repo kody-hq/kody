@@ -12,6 +12,8 @@ import { resolveCredential } from '#worker/credentials/resolve-credential.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import {
 	anySealedTokenDomain,
+	jwtSignMayFillAnyHost,
+	jwtSignSendToHostRequiredDate,
 	sealToken,
 	sealedTokenDomainForUrl,
 } from '#worker/credentials/sealed-token.ts'
@@ -58,7 +60,7 @@ const jwtSignInputSchema = z.object({
 		.min(1)
 		.optional()
 		.describe(
-			'Host the sealed JWT will be sent to, for example "api.github.com". Recommended when the "aud" claim is not an https URL: the sealed JWT then fills only on that host\'s registrable domain.',
+			`Host the sealed JWT will be sent to, for example "api.github.com". The sealed JWT then fills only on that host's registrable domain. Required when the "aud" claim is not an https URL, starting ${jwtSignSendToHostRequiredDate}.`,
 		),
 	header: z
 		.record(z.string(), z.unknown())
@@ -75,8 +77,7 @@ export const jwtSignCapability = defineDomainCapability(
 		name: 'secretJwtSign',
 		contextRuns: 'deny',
 		orgPermission: 'secret:use',
-		description:
-			"Sign a JWT with a key stored in a saved secret without revealing the key or the JWT. The returned jwt is a sealed handle: put it in a fetch header or body to the aud URL's domain (or send_to_host) and Kody fills the signed JWT there; a token endpoint's access_token comes back sealed the same way. HMAC algorithms (HS256, HS384, HS512) use key material from the secret; RS*, PS*, ES*, and EdDSA use a PKCS#8 PEM private key. This generic primitive only signs caller-provided header and claims; package or execute code should perform any OAuth token exchange separately.",
+		description: `Sign a JWT with a key stored in a saved secret without revealing the key or the JWT. The returned jwt is a sealed handle: put it in a fetch header or body to the domain of an https aud claim or of send_to_host and Kody fills the signed JWT there. Pass send_to_host when aud is not an https URL; starting ${jwtSignSendToHostRequiredDate} (America/Denver) a call with neither is refused. A token endpoint's access_token comes back sealed the same way. HMAC algorithms (HS256, HS384, HS512) use key material from the secret; RS*, PS*, ES*, and EdDSA use a PKCS#8 PEM private key. This generic primitive only signs caller-provided header and claims; package or execute code should perform any OAuth token exchange separately.`,
 		keywords: [
 			'jwt',
 			'sign',
@@ -105,7 +106,7 @@ export const jwtSignCapability = defineDomainCapability(
 				.string()
 				.optional()
 				.describe(
-					'Deprecation notice when the sealed JWT may fill on any host. Pass send_to_host to bind it.',
+					`Deprecation notice when the sealed JWT may fill on any host. Pass send_to_host to bind it; starting ${jwtSignSendToHostRequiredDate} the call is refused instead.`,
 				),
 		}),
 		async handler(args, ctx: CapabilityContext) {
@@ -151,11 +152,21 @@ export const jwtSignCapability = defineDomainCapability(
 			}
 
 			// Without an https aud or send_to_host the JWT stays sealed and
-			// org-bound but may fill on any host, so existing callers keep working
-			// until send_to_host is required (kody-hq/kody#4456).
+			// org-bound but may fill on any host until send_to_host is required
+			// (kody-hq/kody#4456).
 			const audienceDomains = sealedJwtDomains(args.claims, args.send_to_host)
-			const domains =
-				audienceDomains.length > 0 ? audienceDomains : [anySealedTokenDomain]
+			const anyHost = audienceDomains.length === 0
+			if (anyHost && !jwtSignMayFillAnyHost()) {
+				throw new McpCallerError(secretJwtSignSendToHostRequiredMessage)
+			}
+			if (anyHost) {
+				recordJwtSignAnyHost({
+					env: ctx.env,
+					ownerId: secretUserId,
+					packageId: packageStamp?.packageId ?? null,
+				})
+			}
+			const domains = anyHost ? [anySealedTokenDomain] : audienceDomains
 			const jwt = await signJwtWithSecret(resolved.value, {
 				algorithm: args.algorithm,
 				keyEncoding: args.key_encoding,
@@ -178,16 +189,41 @@ export const jwtSignCapability = defineDomainCapability(
 						exp === null ? null : exp - Math.floor(Date.now() / 1000),
 				}),
 				algorithm: args.algorithm,
-				...(audienceDomains.length > 0
-					? {}
-					: { warning: secretJwtSignAnyHostWarning }),
+				...(anyHost ? { warning: secretJwtSignAnyHostWarning } : {}),
 			}
 		},
 	},
 )
 
-export const secretJwtSignAnyHostWarning =
-	'Deprecated: this sealed JWT may fill on any host because the "aud" claim is not an https URL and send_to_host was not passed. Pass send_to_host (for example "api.example.com"); a future release will require it.'
+export const secretJwtSignAnyHostWarning = `Deprecated: this sealed JWT may fill on any host because the "aud" claim is not an https URL and send_to_host was not passed. Pass send_to_host (for example "api.example.com"). Starting ${jwtSignSendToHostRequiredDate} (America/Denver), secretJwtSign refuses this call.`
+
+export const secretJwtSignSendToHostRequiredMessage = `secretJwtSign needs send_to_host (for example "api.example.com") when the "aud" claim is not an https URL. Since ${jwtSignSendToHostRequiredDate} a sealed JWT no longer fills on any host. Pass the host this JWT is sent to as send_to_host.`
+
+export const jwtSignAnyHostEventKind = 'jwt_sign_any_host'
+
+/**
+ * One Analytics Engine point per any-host `secretJwtSign` call, so remaining
+ * callers can be counted before enforcement. Never throws.
+ */
+function recordJwtSignAnyHost(input: {
+	env: Pick<Env, 'JWT_SIGN_ANY_HOST_EVENTS'> & {
+		WRANGLER_IS_LOCAL_DEV?: string
+	}
+	ownerId: string
+	packageId: string | null
+}) {
+	try {
+		if (!input.env.JWT_SIGN_ANY_HOST_EVENTS) return
+		if (input.env.WRANGLER_IS_LOCAL_DEV === 'true') return
+		input.env.JWT_SIGN_ANY_HOST_EVENTS.writeDataPoint({
+			indexes: [input.ownerId],
+			blobs: [jwtSignAnyHostEventKind, input.ownerId, input.packageId ?? ''],
+			doubles: [1],
+		})
+	} catch (error) {
+		console.warn('jwt-sign-any-host-event-failed', error)
+	}
+}
 
 function sealedJwtDomains(
 	claims: Record<string, unknown>,
