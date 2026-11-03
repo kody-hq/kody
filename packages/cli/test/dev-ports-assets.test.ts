@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict'
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import {
+	cp,
+	mkdir,
+	mkdtemp,
+	readFile,
+	rm,
+	utimes,
+	writeFile,
+} from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
 import { type AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -346,6 +354,15 @@ function clientSource(marker: string): string {
 	return `import { h } from 'preact'\nconsole.log(${JSON.stringify(marker)}, h)\n`
 }
 
+const generatorScript = [
+	'n=$(cat count.txt 2>/dev/null || echo 0)',
+	'n=$((n + 1))',
+	'echo "$n" > count.txt',
+	'echo "export const gen = \'gen-$n\'" > app/generated.ts',
+	'echo "generated gen-$n (KODY_DEV=$KODY_DEV)"',
+	'',
+].join('\n')
+
 test('kody.dev.prebuild runs before every build, without retriggering itself', async () => {
 	await withDevServer(
 		async ({ server, root, events, writeMessage }) => {
@@ -400,20 +417,29 @@ test('kody.dev.prebuild runs before every build, without retriggering itself', a
 				'failed prebuild output must not retrigger the rebuild loop',
 			)
 			assert.equal(server.status().state, 'build_error')
+
+			// A late watcher event for the failed trigger whose mtime predates
+			// that build is an echo, even after the absorb window (#4720).
+			const past = new Date(Date.now() - 60_000)
+			await utimes(join(root, 'gen.sh'), past, past)
+			await new Promise((resolve) => setTimeout(resolve, 600))
+			assert.equal(
+				events.filter((event) => event.type === 'rebuild_start').length,
+				rebuildStartsAfterFailure,
+				'a stale echo of the failed trigger must not rebuild',
+			)
+
+			// A real save after the failure still rebuilds.
+			await writeFile(join(root, 'gen.sh'), generatorScript)
+			const recovered = await waitFor(async () => {
+				const response = await server.fetchPath('/')
+				return response.status === 200 ? response : undefined
+			}, 'rebuild after fixing the prebuild')
+			assert.match(recovered.body, /v1 gen-3/)
 		},
 		{
 			prepare: async (root) => {
-				await writeFile(
-					join(root, 'gen.sh'),
-					[
-						'n=$(cat count.txt 2>/dev/null || echo 0)',
-						'n=$((n + 1))',
-						'echo "$n" > count.txt',
-						'echo "export const gen = \'gen-$n\'" > app/generated.ts',
-						'echo "generated gen-$n (KODY_DEV=$KODY_DEV)"',
-						'',
-					].join('\n'),
-				)
+				await writeFile(join(root, 'gen.sh'), generatorScript)
 				await writeFile(
 					join(root, 'app/entry.ts'),
 					`import { message } from './message.ts'\nimport { gen } from './generated.ts'\n\nexport default {\n  async fetch(): Promise<Response> {\n    return new Response(message + ' ' + gen)\n  },\n}\n`,
