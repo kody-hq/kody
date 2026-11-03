@@ -1,5 +1,5 @@
-import { type CommunityListingPublishedProjection } from './listing-published-subscription-event.ts'
-import { type CommunityForkRecord } from './types.ts'
+import type { CommunityListingPublishedProjection } from './listing-published-subscription-event.ts'
+import type { CommunityForkRecord } from './types.ts'
 
 export const communityForkUpstreamUpdatedTopic =
 	'community.fork.upstream_updated'

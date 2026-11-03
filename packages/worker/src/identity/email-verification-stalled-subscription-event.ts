@@ -1,4 +1,4 @@
-import { type UserLifecycleIdentity } from './user-lifecycle-subscription-event.ts'
+import type { UserLifecycleIdentity } from './user-lifecycle-subscription-event.ts'
 
 export const userEmailVerificationStalledTopic =
 	'user.email_verification.stalled'

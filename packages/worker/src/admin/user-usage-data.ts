@@ -5,11 +5,11 @@ import {
 	toAdminDurableObjectDuration,
 	toAdminMeasuredDurableObjectDuration,
 } from '#universal/durable-object-duration.ts'
-import {
-	type AdminUsageMetric,
-	type AdminUsageMonthRollup,
-	type AdminUsageRollup,
-	type AdminUserUsageLoaderData,
+import type {
+	AdminUsageMetric,
+	AdminUsageMonthRollup,
+	AdminUsageRollup,
+	AdminUserUsageLoaderData,
 } from '#universal/loader-data.ts'
 import { resolvePlanLimits } from '#universal/plans.ts'
 import { toAdminCostVsPay } from '#worker/admin/cost-vs-pay.ts'

@@ -12,7 +12,7 @@ import {
 	renderStatusUnavailablePage,
 } from './status-page.ts'
 import { StatusStore, type StatusWorkerEnv } from './status-store.ts'
-import { type ComponentStatus } from './status-types.ts'
+import type { ComponentStatus } from './status-types.ts'
 
 export { StatusStore }
 

@@ -9,7 +9,7 @@ import { cliCredentialBootstrapCapability } from '#mcp/capabilities/meta/cli-cre
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { ApiError, invalidRequest } from './errors.ts'
-import { type ApiInvocationContext } from './context.ts'
+import type { ApiInvocationContext } from './context.ts'
 import { runCapabilityProxyCall } from './capability-proxy.ts'
 
 const migrationsDirectory = new URL('../../migrations/', import.meta.url)

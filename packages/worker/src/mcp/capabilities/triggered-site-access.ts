@@ -1,6 +1,6 @@
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { auditDatabaseFromEnv, logAuditEvent } from '#worker/audit-log.ts'
-import { type NonInteractiveTrigger } from '#worker/authorization/authorize.ts'
+import type { NonInteractiveTrigger } from '#worker/authorization/authorize.ts'
 import { getActiveStableUserRolesAndPermissions } from '#worker/identity/permissions-db.ts'
 import { userHasPermission, userHasRole } from '#universal/permissions.ts'
 import {
@@ -8,7 +8,7 @@ import {
 	recordMcpAuthDenial,
 } from '#mcp/auth-audit.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
-import { type Capability } from './types.ts'
+import type { Capability } from './types.ts'
 
 type SiteAccessRequirement = Pick<
 	Capability,

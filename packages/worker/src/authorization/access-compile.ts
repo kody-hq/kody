@@ -10,10 +10,10 @@ import {
 	type OrgGrantResourceType,
 	type OrgPermission,
 } from '@kody-internal/shared/org-permissions.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import {
-	type OrgRole,
-	type RequestContext,
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type {
+	OrgRole,
+	RequestContext,
 } from '@kody-internal/shared/request-context.ts'
 import {
 	type GrantSubjectChoices,

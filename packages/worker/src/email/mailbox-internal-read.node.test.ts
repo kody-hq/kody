@@ -8,7 +8,7 @@ import {
 	listInternalEmailAttachmentsForMessage,
 	listInternalUserEmailBlobReferences,
 } from './mailbox-internal-read.ts'
-import { type MailboxMessageRecord } from './mailbox-types.ts'
+import type { MailboxMessageRecord } from './mailbox-types.ts'
 
 const {
 	countSystemEmailMessagesMock,

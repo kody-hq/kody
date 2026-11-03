@@ -1,4 +1,4 @@
-import { type HttpHandler } from 'msw'
+import type { HttpHandler } from 'msw'
 import { setupServer } from 'msw/node'
 
 export type MswNodeServerOptions = {

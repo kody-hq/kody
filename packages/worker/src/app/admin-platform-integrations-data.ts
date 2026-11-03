@@ -1,4 +1,4 @@
-import { type AdminPlatformIntegrationsLoaderData } from '#universal/loader-data.ts'
+import type { AdminPlatformIntegrationsLoaderData } from '#universal/loader-data.ts'
 import { buildPlatformOauthAppLogoPath } from '#worker/integrations/platform-app-logo.ts'
 import {
 	countConnectionsForPlatformApp,

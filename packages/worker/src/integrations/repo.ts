@@ -32,13 +32,13 @@ import {
 	serializeCredentialFillPlacement,
 } from '#worker/credentials/fill-placement.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
-import {
-	type JoinedIntegration,
-	type UserIntegrationConnection,
-	type UserIntegrationRow,
-	type UserOauthApp,
-	type UserOauthAppRow,
-	type UserOauthAppWithConnectionCount,
+import type {
+	JoinedIntegration,
+	UserIntegrationConnection,
+	UserIntegrationRow,
+	UserOauthApp,
+	UserOauthAppRow,
+	UserOauthAppWithConnectionCount,
 } from './types.ts'
 
 type NullablePrefixed<TRow, TPrefix extends string> = {

@@ -3,8 +3,8 @@ import {
 	joinOriginAndEncodedPath,
 } from '@kody-internal/shared/account-secret-route.ts'
 import { orgResourcePathForAccountPath } from '#universal/org-pages.ts'
-import { type StorageContext } from '#mcp/storage.ts'
-import { type SecretScope } from './types.ts'
+import type { StorageContext } from '#mcp/storage.ts'
+import type { SecretScope } from './types.ts'
 
 const accountSecretsApprovePath = '/account/secrets/approve'
 export const maxBulkPackageSecretApprovalNames = 40

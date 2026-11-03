@@ -11,7 +11,7 @@
  */
 import { listSavedPackagesPage } from '#worker/package-registry/repo.ts'
 import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
 	type CredentialEndpoint,
 	type CredentialOtherContext,
@@ -22,7 +22,7 @@ import {
 	emptyPlaceholderCounts,
 	scanPackageCredentials,
 } from './credential-inventory-scan.ts'
-import { type PlaceholderMatchKind } from './module-placeholder-scan.ts'
+import type { PlaceholderMatchKind } from './module-placeholder-scan.ts'
 
 export const credentialInventoryScanLimitDefault = 25
 export const credentialInventoryScanLimitMax = 50

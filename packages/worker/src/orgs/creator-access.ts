@@ -1,4 +1,4 @@
-import { type OrgResourceType } from '@kody-internal/shared/org-permissions.ts'
+import type { OrgResourceType } from '@kody-internal/shared/org-permissions.ts'
 import { type GrantResourceType, upsertGrant } from './access-writes.ts'
 import { grantProfileCreatorAccess } from '#worker/profiles/creator-grants.ts'
 import { orgAuditWriterForPerson, type OrgAuditWriter } from './org-audit.ts'

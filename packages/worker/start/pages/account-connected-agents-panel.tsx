@@ -13,7 +13,7 @@ import {
 	type ConnectedAgentRevoke,
 } from '../connected-agent-mutation.ts'
 import { useState, type ReactNode } from 'react'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { SiteLink } from '../components/site-link.tsx'
 import {
 	AccountManagementPanel,
@@ -28,7 +28,7 @@ import {
 	connectedAgentConnectionLabel,
 	groupConnectedAgents,
 } from '#universal/connected-mcp-agents.ts'
-import { type AccountConnectedAgentsLoaderData } from '#universal/loader-data.ts'
+import type { AccountConnectedAgentsLoaderData } from '#universal/loader-data.ts'
 import { renderIcon } from '../components/icon.tsx'
 import {
 	colors,

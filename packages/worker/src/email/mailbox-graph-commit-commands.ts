@@ -1,13 +1,13 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getMailboxInboundDelivery } from './mailbox-inbound-ledger.ts'
-import { type MailboxMaintenanceCommands } from './mailbox-maintenance-commands.ts'
+import type { MailboxMaintenanceCommands } from './mailbox-maintenance-commands.ts'
 import { updateMailboxMessageDelivery } from './mailbox-mutations.ts'
 import {
 	clearMailboxProviderIndexRepair,
 	getMailboxProviderIndexRepairStatus,
 	upsertMailboxProviderIndexRepair,
 } from './mailbox-provider-index-repair.ts'
-import { type MailboxStore } from './mailbox-store.ts'
+import type { MailboxStore } from './mailbox-store.ts'
 import {
 	assertMailboxNonEmptyString,
 	type MailboxAttachmentInput,

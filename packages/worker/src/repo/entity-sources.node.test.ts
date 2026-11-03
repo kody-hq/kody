@@ -3,8 +3,8 @@ import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createInMemoryRepoSessionIndexEnv } from '#worker/test-support/repo-session-index.ts'
-import { type RepoSessionIndexRpc } from './repo-session-index-do.ts'
-import { type RepoSessionRow } from './types.ts'
+import type { RepoSessionIndexRpc } from './repo-session-index-do.ts'
+import type { RepoSessionRow } from './types.ts'
 import {
 	deleteEntitySource,
 	externalReconcileGraceMs,

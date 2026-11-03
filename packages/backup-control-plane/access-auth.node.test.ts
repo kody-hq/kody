@@ -8,7 +8,7 @@ import {
 	verifyAccessJwt,
 } from './access-auth.ts'
 import { BackupError } from './backup-policy.ts'
-import { type BackupEnvironment } from './backup-types.ts'
+import type { BackupEnvironment } from './backup-types.ts'
 import {
 	accessClaims,
 	accessSigner,

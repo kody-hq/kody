@@ -1,24 +1,24 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { normalizeHost } from '#mcp/secrets/allowed-hosts.ts'
 import { buildSecretHostApprovalUrl } from '#mcp/secrets/host-approval.ts'
 import { attestedPackageStamp } from '#worker/credentials/package-stamp.ts'
 import { resolveCredential } from '#worker/credentials/resolve-credential.ts'
 import { getJoinedIntegration } from '#worker/integrations/service.ts'
-import { type JoinedIntegration } from '#worker/integrations/types.ts'
+import type { JoinedIntegration } from '#worker/integrations/types.ts'
 import {
 	listPackageWebhooks,
 	type PackageWebhookManifestEntry,
 } from '#worker/package-registry/manifest.ts'
 import { loadPackageManifestBySourceId } from '#worker/package-registry/source.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
 	collectWebhookCredentialSecrets,
 	redactWebhookCredentials,
 } from './redact.ts'
 import { resolveWebhookHmacSigningSecret } from './signing-secret.ts'
-import { type WebhookEndpointRecord } from './types.ts'
+import type { WebhookEndpointRecord } from './types.ts'
 
 export const webhookUrlApplyHttpMethods = [
 	'GET',

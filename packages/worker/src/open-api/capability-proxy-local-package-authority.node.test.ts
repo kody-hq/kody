@@ -6,7 +6,7 @@ import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { signLocalExecutePackageBinding } from '#worker/package-runtime/local-execute-package-binding.ts'
-import { type ApiInvocationContext } from './context.ts'
+import type { ApiInvocationContext } from './context.ts'
 import { runCapabilityProxyAuthenticatedFetch } from './capability-proxy-authenticated-fetch.ts'
 import { runCapabilityProxyOauthClientCredentials } from './capability-proxy-oauth-client-credentials.ts'
 import { createCapabilityProxyPackageHostTools } from './capability-proxy-package-grants.ts'

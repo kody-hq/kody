@@ -27,7 +27,7 @@ import {
 	normalizeSecretProviderNeedId,
 	secretProviderSlotExample,
 } from '#worker/credentials/credential-needs.ts'
-import { type ResolvedSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
+import type { ResolvedSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
 import {
 	getPackageAppClientEntryPath,
 	getPackageAppEntryPath,

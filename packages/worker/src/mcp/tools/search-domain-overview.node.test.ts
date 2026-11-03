@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { buildCapabilityRegistry } from '#mcp/capabilities/build-capability-registry.ts'
-import { type Capability } from '#mcp/capabilities/types.ts'
+import type { Capability } from '#mcp/capabilities/types.ts'
 import {
 	buildDomainIndexMatches,
 	buildDomainOverviewMatches,

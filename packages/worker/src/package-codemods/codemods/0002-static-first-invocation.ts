@@ -3,11 +3,11 @@ import {
 	collectDeprecatedInvocationUsage,
 	type DeprecatedInvocationUsage,
 } from '#worker/package-runtime/deprecated-invocation-usage.ts'
-import {
-	type PackageCodemod,
-	type PackageCodemodContext,
-	type PackageCodemodFinding,
-	type PackageCodemodTransformResult,
+import type {
+	PackageCodemod,
+	PackageCodemodContext,
+	PackageCodemodFinding,
+	PackageCodemodTransformResult,
 } from '../types.ts'
 import { invokeObjectToSpecifierCodemod } from './0006-invoke-object-to-specifier.ts'
 

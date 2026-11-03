@@ -1,4 +1,4 @@
-import { type DataCacheLookup } from '#app/data-cache.ts'
+import type { DataCacheLookup } from '#app/data-cache.ts'
 
 type RequestMeta = {
 	dataCacheLookup?: DataCacheLookup

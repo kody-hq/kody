@@ -5,12 +5,12 @@ import {
 	getReadNextBlogPost,
 	listBlogPosts,
 } from '#worker/blog/catalog.ts'
-import { type BlogPost } from '#worker/blog/parse-frontmatter.ts'
+import type { BlogPost } from '#worker/blog/parse-frontmatter.ts'
 import { buildBlogRssXml } from '#worker/blog/rss.ts'
 import { markdownResponse } from '#app/markdown-negotiation.ts'
 import { parseOgTheme } from '#worker/og/palette.ts'
 import { highlightMarkdownFences } from '#app/highlight-code.ts'
-import { type ServerTimingEntry } from '#worker/server-timing.ts'
+import type { ServerTimingEntry } from '#worker/server-timing.ts'
 
 export async function toBlogPostLoaderData(
 	env: Env,

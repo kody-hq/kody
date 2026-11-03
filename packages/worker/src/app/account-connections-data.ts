@@ -1,4 +1,4 @@
-import { type AccountConnectionsLoaderData } from '#universal/loader-data.ts'
+import type { AccountConnectionsLoaderData } from '#universal/loader-data.ts'
 import { isDiscordGuildRoleSyncConfigured } from '#worker/discord/guild-role.ts'
 import {
 	getEnabledOauthProviders,

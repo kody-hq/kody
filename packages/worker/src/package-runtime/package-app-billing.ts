@@ -12,13 +12,13 @@
  * never on the cached worker, so the shared per-app worker does not fork per
  * visiting org.
  */
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import {
-	type RequestBilling,
-	type RequestContext,
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type {
+	RequestBilling,
+	RequestContext,
 } from '@kody-internal/shared/request-context.ts'
-import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { loadOrgBindingForPerson } from '#worker/orgs/repo.ts'
 
 /** Pure decision: who is billed, given the visit's facts. */

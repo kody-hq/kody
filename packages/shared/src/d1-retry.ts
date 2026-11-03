@@ -1,4 +1,8 @@
-import { errorCauseChainIncludes } from './error-message.ts'
+import {
+	errorCauseChainIncludes,
+	getErrorCauseChain,
+	getErrorMessage,
+} from './error-message.ts'
 
 export const d1LockRetryMaxAttempts = 6
 
@@ -261,6 +265,51 @@ export function isRetryableD1StorageUnavailabilityError(error: unknown) {
 	)
 }
 
+export type RetryableD1ErrorKind =
+	| 'lock'
+	| 'export'
+	| 'network'
+	| 'overloaded'
+	| 'internal'
+	| 'do_reset'
+
+function classifyRetryableD1Message(
+	message: string,
+): RetryableD1ErrorKind | null {
+	if (message.includes('SQLITE_BUSY') || message.includes('database is locked'))
+		return 'lock'
+	if (message.includes(d1LongRunningExportMessage)) return 'export'
+	if (isD1NetworkConnectionLostMessage(message)) return 'network'
+	if (isD1DbOverloadedMessage(message)) return 'overloaded'
+	if (isD1InternalErrorMessage(message)) return 'internal'
+	if (isD1DurableObjectPlatformResetMessage(message)) return 'do_reset'
+	return null
+}
+
+/** First retryable D1 kind in the cause chain, or null. */
+export function classifyRetryableD1Error(
+	error: unknown,
+): RetryableD1ErrorKind | null {
+	for (const entry of getErrorCauseChain(error)) {
+		const kind = classifyRetryableD1Message(getErrorMessage(entry))
+		if (kind) return kind
+	}
+	return null
+}
+
+const d1RetryAttemptsByError = new WeakMap<object, number>()
+
+/** Attempts `runD1WithRetry` made before throwing this error (or a cause). */
+export function readD1RetryAttempts(error: unknown): number | null {
+	for (const entry of getErrorCauseChain(error)) {
+		if (entry && typeof entry === 'object') {
+			const attempts = d1RetryAttemptsByError.get(entry)
+			if (attempts !== undefined) return attempts
+		}
+	}
+	return null
+}
+
 /**
  * Opt-in per-attempt deadline for `runD1WithRetry`. Idle D1 bindings can hang
  * instead of throwing a retryable platform error; a bounded attempt lets the
@@ -340,6 +389,9 @@ export async function runD1WithRetry<T>(
 				isRetryableD1LockError(error) ||
 				(attemptTimeoutMs !== undefined && isD1AttemptTimeoutError(error))
 			if (!retryable || attempt === maxAttempts) {
+				if (retryable && error && typeof error === 'object') {
+					d1RetryAttemptsByError.set(error, attempt)
+				}
 				throw error
 			}
 			await sleep(baseDelayMs * 2 ** (attempt - 1))

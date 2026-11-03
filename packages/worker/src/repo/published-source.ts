@@ -1,7 +1,7 @@
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { parseAuthoredPackageJson } from '#worker/package-registry/manifest.ts'
-import { type AuthoredPackageJson } from '#worker/package-registry/types.ts'
+import type { AuthoredPackageJson } from '#worker/package-registry/types.ts'
 import {
 	loadPublishedSourceManifestSnapshot,
 	loadPublishedSourceSnapshot,

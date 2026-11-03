@@ -9,7 +9,7 @@
  */
 
 import { sendCloudflareEmail } from '#app/email/cloudflare-email.ts'
-import { type OutboundEmail } from '@kody-internal/shared/outbound-email.ts'
+import type { OutboundEmail } from '@kody-internal/shared/outbound-email.ts'
 import {
 	assertEmailRecipientSendable,
 	emailRecipientCooldownBlockedMessage,

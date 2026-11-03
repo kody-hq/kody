@@ -7,13 +7,13 @@
  * code does, through `resolveCredential` with the run's request context.
  */
 import { DatabaseSync } from 'node:sqlite'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import {
 	ownerIdFromStored,
 	personIdFromStored,
 	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { expect, test, vi } from 'vitest'
 import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import { findCredentialIdsByLegacyName } from '#worker/credentials/credential-ids.ts'
@@ -23,7 +23,7 @@ import { insertEnablement } from '#worker/enablements/repo.ts'
 import { upsertGrant } from '#worker/orgs/access-writes.ts'
 import { createOrganization } from '#worker/orgs/create-organization.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
-import { type PackageInvocationResponse } from '#worker/package-invocations/common.ts'
+import type { PackageInvocationResponse } from '#worker/package-invocations/common.ts'
 import type * as IdempotentModuleInvocation from '#worker/package-invocations/idempotent-module-invocation.ts'
 import type * as ModuleArtifacts from '#worker/package-invocations/module-artifacts.ts'
 import { runSavedPackageModuleOnce } from '#worker/package-invocations/module-execution.ts'

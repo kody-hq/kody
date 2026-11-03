@@ -1,4 +1,4 @@
-import { type CommunitySnapshot } from './types.ts'
+import type { CommunitySnapshot } from './types.ts'
 
 const communitySnapshotPrefix = 'community-snapshot:v1'
 

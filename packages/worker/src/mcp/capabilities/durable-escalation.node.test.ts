@@ -11,9 +11,9 @@ import {
 	runWithDurableEscalation,
 } from './durable-escalation.ts'
 import { creatingWorkflowProjectionStatus } from '#worker/run-records/workflow-projection.ts'
-import {
-	type WorkflowProjectionRecord,
-	type WorkflowProjectionUpsertInput,
+import type {
+	WorkflowProjectionRecord,
+	WorkflowProjectionUpsertInput,
 } from '#worker/run-records/service.ts'
 import type * as PackageWorkflows from '#worker/package-runtime/package-workflows.ts'
 import type * as RunRecordsServiceModule from '#worker/run-records/service.ts'

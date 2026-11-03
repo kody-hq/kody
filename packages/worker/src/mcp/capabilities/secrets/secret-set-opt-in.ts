@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { z } from 'zod'
 import {
 	assertInjectFitsKind,
@@ -28,11 +28,11 @@ import {
 } from '#worker/orgs/org-audit.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { requireMcpRequest } from '#mcp/capabilities/meta/require-user.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { assertCredentialSecurityEditAllowed } from './credential-security-edit.ts'
-import { type SaveSecretCredential } from '#mcp/secrets/service.ts'
-import { type secretScopeValues } from '#mcp/secrets/types.ts'
+import type { SaveSecretCredential } from '#mcp/secrets/service.ts'
+import type { secretScopeValues } from '#mcp/secrets/types.ts'
 
 const storedKindValues = ['secret', ...optInStoredCredentialKinds] as const
 

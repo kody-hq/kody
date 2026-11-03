@@ -1,4 +1,4 @@
-import { type ContentBlock } from '@modelcontextprotocol/sdk/types.js'
+import type { ContentBlock } from '@modelcontextprotocol/sdk/types.js'
 
 export function prependToolMetadataContent(
 	conversationId: string,

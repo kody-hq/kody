@@ -2,9 +2,9 @@ import {
 	applyHomeOgVariant,
 	getHomeOgVariant,
 } from '#universal/home-og-variants.ts'
-import { type LandingPrimitiveId } from '#universal/landing-lantern.ts'
+import type { LandingPrimitiveId } from '#universal/landing-lantern.ts'
 import { parseOgEmphasis, type OgEmphasisRun } from '#universal/og-emphasis.ts'
-import { type PublicOgPage } from '#universal/og-pages.ts'
+import type { PublicOgPage } from '#universal/og-pages.ts'
 import { createAgentsHero } from '#worker/og/agents-hero.ts'
 import { createPrimitivesLantern } from '#worker/og/primitives-lantern.ts'
 import { getKodyDiscordDataUri } from '#worker/og/og-image-assets.ts'

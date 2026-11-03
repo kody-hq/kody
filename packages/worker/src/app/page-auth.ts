@@ -13,7 +13,7 @@ import {
 } from '#app/auth-session.ts'
 import { requireUserWithRole } from '#app/permissions-server.ts'
 import { loadResolvedRequestAuth } from '#app/request-auth-cache.ts'
-import { type RoleName } from '#universal/permissions.ts'
+import type { RoleName } from '#universal/permissions.ts'
 
 export async function requirePageSession(
 	request: Request,

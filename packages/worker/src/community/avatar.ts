@@ -1,5 +1,5 @@
 import { toHex } from '@kody-internal/shared/hex.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { utcSqliteTimestamp } from '@kody-internal/shared/date-keys.ts'
 import {
 	normalizeUserAvatarContentType,
@@ -13,7 +13,7 @@ import {
 	assertAccountWritableDb,
 	withAccountWriteLease,
 } from '#worker/account/deletion-state.ts'
-import { type UserMeterEnv } from '#worker/entitlements/user-meter-client.ts'
+import type { UserMeterEnv } from '#worker/entitlements/user-meter-client.ts'
 import {
 	readJpegDimensions,
 	readPngDimensions,

@@ -1,4 +1,4 @@
-import { type JobView } from '#worker/jobs/types.ts'
+import type { JobView } from '#worker/jobs/types.ts'
 
 const defaultJobEmbedMaxChars = 8_000
 

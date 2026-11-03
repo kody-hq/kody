@@ -1,4 +1,4 @@
-import { type SessionInfo } from '#client/session.ts'
+import type { SessionInfo } from '#client/session.ts'
 import { appShellForMatches, type AppShell } from './app-shell.ts'
 import { pageNavigationForMatches } from './page-navigation.ts'
 

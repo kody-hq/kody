@@ -1,12 +1,9 @@
 import { waitUntil } from 'cloudflare:workers'
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
-import {
-	type Capability,
-	type CapabilityContext,
-} from '#mcp/capabilities/types.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { Capability, CapabilityContext } from '#mcp/capabilities/types.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
-import { type OrgBinding } from '#worker/orgs/repo.ts'
+import type { OrgBinding } from '#worker/orgs/repo.ts'
 
 type WebsiteUser = NonNullable<
 	Awaited<ReturnType<typeof readAuthenticatedAppUser>>

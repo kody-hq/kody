@@ -25,8 +25,8 @@ test('parseAccountEmail accepts a normal address and rejects a bare username', (
 	expect(parseAccountEmail('ada@example.xn--')).toBeNull()
 })
 
-test('typo domains suggest the mailbox the person likely meant', () => {
-	expect(assessAccountEmailSyntax('ada@gmial.com')).toEqual({
+test('typo domains suggest the mailbox the person likely meant', async () => {
+	expect(await assessAccountEmailSyntax('ada@gmial.com')).toEqual({
 		ok: false,
 		code: 'email_typo',
 		error: 'That email domain looks mistyped. Did you mean ada@gmail.com?',
@@ -46,16 +46,16 @@ test('typo domains suggest the mailbox the person likely meant', () => {
 	expect(accountEmailTypoSuggestion('ada@company.co')).toBeNull()
 })
 
-test('disposable domains match subdomains and spare real mailbox providers', () => {
+test('disposable domains match subdomains and spare real mailbox providers', async () => {
 	expect(disposableEmailDomainList.length).toBeGreaterThan(1000)
 	expect(disposableEmailDomainList).toContain('mailinator.com')
 	expect(disposableEmailDomainList).not.toContain('gmail.com')
-	expect(isDisposableEmailDomain('mailinator.com')).toBe(true)
-	expect(isDisposableEmailDomain('mail.mailinator.com')).toBe(true)
-	expect(isDisposableEmailDomain('gmail.com')).toBe(false)
-	expect(isDisposableEmailDomain('outlook.com')).toBe(false)
-	expect(assessAccountEmailSyntax('ada@mailinator.com').ok).toBe(false)
-	expect(assessAccountEmailSyntax('ada@gmail.com')).toEqual({
+	expect(await isDisposableEmailDomain('mailinator.com')).toBe(true)
+	expect(await isDisposableEmailDomain('mail.mailinator.com')).toBe(true)
+	expect(await isDisposableEmailDomain('gmail.com')).toBe(false)
+	expect(await isDisposableEmailDomain('outlook.com')).toBe(false)
+	expect((await assessAccountEmailSyntax('ada@mailinator.com')).ok).toBe(false)
+	expect(await assessAccountEmailSyntax('ada@gmail.com')).toEqual({
 		ok: true,
 		email: 'ada@gmail.com',
 	})

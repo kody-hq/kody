@@ -4,7 +4,7 @@ import { buildCapabilityRegistry } from './build-capability-registry.ts'
 import { defineDomain } from './define-domain.ts'
 import { defineDomainCapability } from './define-domain-capability.ts'
 import { capabilityDomainNames } from './domain-metadata.ts'
-import { type CapabilityContext } from './types.ts'
+import type { CapabilityContext } from './types.ts'
 
 const noopHandler = async (
 	_args: Record<string, unknown>,

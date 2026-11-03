@@ -6,13 +6,13 @@
  * recorded too. `credentialTriggerPickSet` may set a trigger pick only to one
  * of those approved values, so no pick changes without a person's approval.
  */
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
-import {
-	type CredentialTriggerKind,
-	type ParsedCredentialProposal,
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
+import type {
+	CredentialTriggerKind,
+	ParsedCredentialProposal,
 } from '#universal/credential-contracts.ts'
-import { type ResolvedMappingChange } from './package-credential-mapping-changes.ts'
-import { type PackageMappingScope } from './package-credential-mappings.ts'
+import type { ResolvedMappingChange } from './package-credential-mapping-changes.ts'
+import type { PackageMappingScope } from './package-credential-mappings.ts'
 
 const agentCredentialKinds = ['mcp-oauth', 'cli', 'api-token'] as const
 

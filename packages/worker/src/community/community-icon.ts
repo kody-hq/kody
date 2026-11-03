@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { cachified } from '@epic-web/cachified'
 import { invalidateCommunityPublicCache } from '#app/data-cache.ts'
 import {
@@ -12,7 +12,7 @@ import {
 } from '#worker/kv-cachified.ts'
 import { readFirstArtifactFileAtCommit } from '#worker/repo/artifact-file.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 import {
 	fitIconRaster,
 	iconFitCustomMetadata,
@@ -32,7 +32,7 @@ import {
 	getCommunityListingByOwnerAndPackage,
 } from './repo.ts'
 import { readCommunitySnapshot } from './snapshot.ts'
-import { type CommunityListingRecord } from './types.ts'
+import type { CommunityListingRecord } from './types.ts'
 
 export const communityIconVersion = 3 as const
 const communityIconAssetVersions = [1, 2, communityIconVersion] as const

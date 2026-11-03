@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { jobsData } from '#worker/jobs/jobs-data.ts'
 import { listRunRecordStorageIds } from '#worker/run-records/service.ts'
 import { listUserStorageBucketIds } from '#worker/storage-buckets/service.ts'

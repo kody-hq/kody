@@ -1,5 +1,5 @@
 import { McpCallerError } from '#mcp/caller-error.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { requireMcpRequest } from '#mcp/capabilities/meta/require-user.ts'
 import {
 	computeEffectivePermissions,

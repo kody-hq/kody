@@ -11,11 +11,11 @@ import {
 	credentialStampConvertCodemodId,
 	credentialStampConvertMessages,
 } from '#worker/credentials/credential-stamp-convert.ts'
-import {
-	type PackageCodemod,
-	type PackageCodemodContext,
-	type PackageCodemodFinding,
-	type PackageCodemodTransformResult,
+import type {
+	PackageCodemod,
+	PackageCodemodContext,
+	PackageCodemodFinding,
+	PackageCodemodTransformResult,
 } from '../types.ts'
 
 export {

@@ -1,4 +1,4 @@
-import { type TipsUnsubscribeResult } from '#universal/token-outcomes.ts'
+import type { TipsUnsubscribeResult } from '#universal/token-outcomes.ts'
 import {
 	auditDatabaseFromEnv,
 	getRequestIp,

@@ -10,7 +10,7 @@ import {
 	loadPackageSourceRowForUser,
 	type LoadedPackageManifest,
 } from '#worker/package-registry/source.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
 	normalizePackageWorkspacePath,
 	resolvePackageExportPath,

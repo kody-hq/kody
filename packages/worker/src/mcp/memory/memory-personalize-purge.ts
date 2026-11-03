@@ -17,7 +17,7 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
 import { listGrants, softDeleteGrant } from '#worker/orgs/access-writes.ts'
-import { type OrgAuditWriter } from '#worker/orgs/org-audit.ts'
+import type { OrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { legacyOrgMemoryProvenanceUri } from './memory-owner.ts'
 import {
@@ -27,7 +27,7 @@ import {
 } from './memory-personalize.ts'
 import { deleteMemoryVector } from './memory-vectorize.ts'
 import { listMemoriesByUserIdPage, updateMemory } from './repo.ts'
-import { type McpMemoryRow } from './types.ts'
+import type { McpMemoryRow } from './types.ts'
 
 const defaultOrgPageSize = 20
 const defaultMemoryPageSize = 50

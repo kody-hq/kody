@@ -1,5 +1,5 @@
 import http from 'node:http'
-import { type AddressInfo } from 'node:net'
+import type { AddressInfo } from 'node:net'
 import { expect, test } from 'vitest'
 import { findHealthyWorkerOrigin, isWorkerHealthOk } from './dev-server.ts'
 

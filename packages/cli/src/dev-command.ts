@@ -30,7 +30,7 @@ import {
 	type KodyPackageManifest,
 } from './package-manifest.js'
 import { StructuredCliError } from './structured-error.js'
-import { type KodyTarget } from './target.js'
+import type { KodyTarget } from './target.js'
 import { formatToolResult } from './tool-result.js'
 import { bundleLocalUserModuleWithInputs } from './local-bundle.js'
 import {

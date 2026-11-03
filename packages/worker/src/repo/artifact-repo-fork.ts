@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	rewriteForkedPackageSelfReferences,
 	rewritePackageManifestForFork,
@@ -27,7 +27,7 @@ import {
 } from './artifacts-git-retry.ts'
 import { updateEntitySource } from './entity-sources.ts'
 import { syncArtifactSourceSnapshot } from './source-sync.ts'
-import { type EntitySourceRow } from './types.ts'
+import type { EntitySourceRow } from './types.ts'
 import {
 	pushServerTiming,
 	type ServerTimingEntry,

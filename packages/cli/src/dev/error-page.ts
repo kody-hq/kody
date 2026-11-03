@@ -4,7 +4,7 @@
  * (curl, agents, `kody dev fetch`).
  */
 
-import { type IncomingMessage, type ServerResponse } from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 
 type DevErrorKind = 'build' | 'runtime'
 

@@ -3,7 +3,7 @@ import {
 	normalizePackageWorkspacePath,
 	resolvePackageExportPath,
 } from '#worker/package-registry/manifest.ts'
-import { type AuthoredPackageJson } from '#worker/package-registry/types.ts'
+import type { AuthoredPackageJson } from '#worker/package-registry/types.ts'
 import { UserCodeError } from '#worker/user-code-error.ts'
 import {
 	collectBundlerResolvedSpecifiers,

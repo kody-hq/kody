@@ -18,7 +18,7 @@ import {
 } from '#client/charts/usage-metric-series.ts'
 import { dynamicWorkerCostFootnote } from '#universal/dynamic-worker-cost.ts'
 import { AccountManagementMessage } from './account-management-components.tsx'
-import { type AdminInsightsLoaderData } from '#universal/loader-data.ts'
+import type { AdminInsightsLoaderData } from '#universal/loader-data.ts'
 import {
 	authCategoryColors,
 	formatDayLabel,

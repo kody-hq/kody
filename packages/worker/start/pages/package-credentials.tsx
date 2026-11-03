@@ -23,9 +23,9 @@ import { colors, spacing } from '#universal/styles/tokens.ts'
 import { detailArticleCss } from '../components/community-detail-sections.tsx'
 import { packageCredentialsQueryFilter } from '../package-credentials-cache.ts'
 import { postPackageCredentialChanges } from '../package-credential-changes.ts'
-import {
-	type PackageCredentialsEnablementAction,
-	type PackageCredentialsView,
+import type {
+	PackageCredentialsEnablementAction,
+	PackageCredentialsView,
 } from '#universal/credential-contracts.ts'
 import { usePackageMappingEditor } from './package-credentials-editor.tsx'
 import {

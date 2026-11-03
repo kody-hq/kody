@@ -7,6 +7,11 @@ import {
 } from '@tanstack/react-start/server'
 import { isOnlyPermissionDenied } from '#universal/permission-denied.ts'
 import { secureNativeResponse } from '../src/app/native-response-envelope.ts'
+import {
+	collectServerTiming,
+	recordServerTiming,
+} from '../src/request-context.ts'
+import { applyServerTimingHeader } from '../src/server-timing.ts'
 
 const startHandler = createStartHandler(async (context) => {
 	const nonce = getGlobalStartContext()?.nonce
@@ -38,7 +43,11 @@ export async function renderNativeDocument(
 	documentFailure?: { status: 403 | 404 | 500 },
 ) {
 	const nonce = crypto.randomUUID().replaceAll('-', '')
-	const response = await renderStart()
+	const response = await recordServerTiming(
+		'ssr',
+		async () => renderStart(),
+		request,
+	)
 	function renderStart() {
 		return startHandler(request, {
 			context: {
@@ -48,7 +57,15 @@ export async function renderNativeDocument(
 			},
 		})
 	}
-	return secureNativeResponse(request, response, env, nonce, documentFailure)
+	const secured = secureNativeResponse(
+		request,
+		response,
+		env,
+		nonce,
+		documentFailure,
+	)
+	applyServerTimingHeader(secured.headers, collectServerTiming(request))
+	return secured
 }
 
 export default { fetch: startHandler }

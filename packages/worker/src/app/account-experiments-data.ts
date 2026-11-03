@@ -1,5 +1,5 @@
 import { listSelfServeExperimentsForUser } from '#worker/feature-flags/self-serve-experiments.ts'
-import { type AccountExperimentsLoaderData } from '#universal/loader-data.ts'
+import type { AccountExperimentsLoaderData } from '#universal/loader-data.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 export async function readExperimentsOptIn(

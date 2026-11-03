@@ -14,7 +14,7 @@ import {
 	isBackupEnabled,
 	utcDay,
 } from './backup-policy.ts'
-import { type BackupEnvironment, type BackupManifest } from './backup-types.ts'
+import type { BackupEnvironment, BackupManifest } from './backup-types.ts'
 import {
 	dayColumnLegend,
 	deriveDayCells,
@@ -30,11 +30,11 @@ import { getD1Database } from './d1-import-api.ts'
 import { verifyBackupFullManifestSignature } from './full-manifest-signing.ts'
 import { readManifest } from './immutable-storage.ts'
 import { verifyBackupManifestSignature } from './manifest-signing.ts'
-import { type DrillReport } from './restore-drill.ts'
-import { type ProductionRestoreProgress } from './production-restore.ts'
-import { type RestoreConfirmToken } from './restore-confirm-token.ts'
+import type { DrillReport } from './restore-drill.ts'
+import type { ProductionRestoreProgress } from './production-restore.ts'
+import type { RestoreConfirmToken } from './restore-confirm-token.ts'
 import { readFullManifest } from './seal-full-backup.ts'
-import { type SealStatusView } from './seal-day-run.ts'
+import type { SealStatusView } from './seal-day-run.ts'
 import { readSqlRestorability } from './sql-statement-stats.ts'
 
 const DASHBOARD_DAY_COUNT = 14

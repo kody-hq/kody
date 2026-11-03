@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 
-import { type AdminProviderMark } from '#universal/loader-data.ts'
+import type { AdminProviderMark } from '#universal/loader-data.ts'
 import {
 	filterMarks,
 	groupMarks,

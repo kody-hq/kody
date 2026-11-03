@@ -1,5 +1,5 @@
-import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js'
-import { type AppMcpOAuthSession } from '../mcp-oauth-client.ts'
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
+import type { AppMcpOAuthSession } from '../mcp-oauth-client.ts'
 
 const mcpCallTimeoutMs = 180_000
 

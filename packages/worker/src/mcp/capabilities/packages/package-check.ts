@@ -16,6 +16,10 @@ import {
 	unmappableCredentialOwnerNotice,
 } from '#worker/credentials/package-unmappable-credentials.ts'
 import { runAuthoringChecksInIsolate } from '#worker/repo/isolated-check-phases.ts'
+import {
+	createRepoChecksError,
+	RepoChecksPlatformError,
+} from '#worker/repo/repo-checks-failed-error.ts'
 import { normalizeRepoWorkspacePath } from '#worker/repo/manifest.ts'
 import { resolveOwnedPackageSource } from './resolve-package-source.ts'
 
@@ -184,6 +188,12 @@ export const packageCheckCapability = defineDomainCapability(
 			const checks =
 				(await runAuthoringChecksInIsolate(checkInput)) ??
 				(await runAuthoringPublishChecksOnFiles(checkInput))
+			// Kody infrastructure failures are not package diagnostics: throw so
+			// they reach Sentry instead of reading as checks the author must fix.
+			const checksError = checks.ok
+				? null
+				: createRepoChecksError(checks.results)
+			if (checksError instanceof RepoChecksPlatformError) throw checksError
 			const unmappable = existingPackage
 				? knownUnmappableCredentials(
 						await loadOnePackageUnmappableCredentials({

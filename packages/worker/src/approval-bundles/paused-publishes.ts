@@ -1,5 +1,5 @@
 import * as Sentry from '@sentry/cloudflare'
-import { type ApprovalViewer } from './item-views.ts'
+import type { ApprovalViewer } from './item-views.ts'
 import { createApprovalBundle, listPendingApprovalItems } from './service.ts'
 
 export type PausedPublishBundle = { url: string; count: number }

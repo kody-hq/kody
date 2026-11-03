@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset } from '../public-assets.ts'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 
 import { useState } from 'react'
 import {

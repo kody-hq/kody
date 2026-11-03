@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { z } from 'zod'
 import { normalizeMcpServerName } from '@kody-internal/shared/mcp-servers.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
@@ -12,9 +12,9 @@ import {
 	getMcpServerSettingById,
 	listMcpServerSettings,
 } from '#worker/mcp-client/settings-service.ts'
-import { type McpServerSettingMetadata } from '#worker/mcp-client/settings-types.ts'
+import type { McpServerSettingMetadata } from '#worker/mcp-client/settings-types.ts'
 import { isMcpOAuthMissingRefreshGrantLastError } from '#worker/mcp-client/oauth-token-recovery.ts'
-import { type McpServerReadSnapshot } from '#worker/mcp-client/types.ts'
+import type { McpServerReadSnapshot } from '#worker/mcp-client/types.ts'
 
 export const mcpServerStatusSchema = z.object({
 	id: z.string(),

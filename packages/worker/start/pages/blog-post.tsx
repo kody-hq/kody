@@ -1,13 +1,13 @@
 /** @jsxImportSource @emotion/react */
 import { landingArtAttrs, publicAsset } from '../public-assets.ts'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { type CSSProperties, useMemo } from 'react'
 import {
 	BLOG_AUTHOR_NAME,
 	BLOG_PLACEHOLDER_CALLOUT,
 	formatBlogPostDate,
 } from '#universal/blog-display.ts'
-import { type BlogPostLoaderData } from '#universal/loader-data.ts'
+import type { BlogPostLoaderData } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
 import { publicSignupPrimaryCta } from '#universal/public-signup-copy.ts'
 import {

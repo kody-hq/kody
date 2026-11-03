@@ -1,10 +1,10 @@
 import { buildMcpServerAuthorizeUrl } from '#worker/mcp-client/authorize-consent.ts'
 import { isAuthorizationPending } from '#worker/mcp-client/hub-client.ts'
-import {
-	type McpHubConnectResult,
-	type McpServerConnectionState,
+import type {
+	McpHubConnectResult,
+	McpServerConnectionState,
 } from '#worker/mcp-client/types.ts'
-import { type OrgTransferFinding } from './findings.ts'
+import type { OrgTransferFinding } from './findings.ts'
 
 /**
  * A moved MCP server after the target hub dialed it. `state` is null when

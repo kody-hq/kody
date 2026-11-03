@@ -5,7 +5,7 @@
  * present so restore-window artifacts are not pruned before hard purge.
  */
 import { purgeProfiles } from '#worker/profiles/store.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { accountRetentionDispositions } from '#app/account-retention-dispositions.ts'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
 import { agentPackagePopularityMaxAgeDays } from '#worker/usage/agent-package-conversation-uses.ts'
@@ -16,7 +16,7 @@ import {
 	buildPublishedSourceSnapshotKvKey,
 } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { hasActiveRepoSessionForSource } from '#worker/repo/repo-sessions.ts'
-import { type RepoSessionIndexEnv } from '#worker/repo/repo-session-index-client.ts'
+import type { RepoSessionIndexEnv } from '#worker/repo/repo-session-index-client.ts'
 
 type RetentionPolicy = {
 	table: string

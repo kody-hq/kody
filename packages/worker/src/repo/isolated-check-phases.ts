@@ -1,13 +1,13 @@
 import { errorCauseChainIncludes } from '@kody-internal/shared/error-message.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { isDurableObjectIsolateResourceLimitResetMessage } from '#worker/sentry-options.ts'
-import {
-	type PackageBundleTarget,
-	type PackageTypecheckTarget,
-	type RepoCheckKind,
-	type RepoCheckResult,
+import type {
+	PackageBundleTarget,
+	PackageTypecheckTarget,
+	RepoCheckKind,
+	RepoCheckResult,
 } from './checks.ts'
-import { type ResolvedSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
+import type { ResolvedSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
 import {
 	isRepoCheckStep,
 	repoCheckStepLabel,
@@ -105,6 +105,8 @@ export function isolatedCheckStagingKeyBelongsToUser(input: {
 export type IsolatedCheckPhaseOutcome = {
 	ok: boolean
 	message: string
+	/** Staging expired or missing: a Kody failure, not an authored one. */
+	failureOrigin?: 'platform'
 	/** `credentials` phase only: staged files the stamp merge rewrote. */
 	changedFiles?: Record<string, string>
 	/** `credentials` phase only. */

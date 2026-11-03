@@ -4,7 +4,7 @@ import {
 	prefersHtml,
 	type HealthReport,
 } from '#worker/deploy-info.ts'
-import { type AppEnv } from '#worker/env-schema.ts'
+import type { AppEnv } from '#worker/env-schema.ts'
 
 type HealthEnv = {
 	APP_COMMIT_SHA: AppEnv['APP_COMMIT_SHA']

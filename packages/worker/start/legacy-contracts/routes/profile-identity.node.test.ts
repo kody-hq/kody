@@ -3,7 +3,7 @@ import { expect, test } from 'vitest'
 const renderToString = async (...args: Parameters<typeof renderStartPage>) =>
 	(await renderStartPage(...args)).replace(/<!-- -->/g, '')
 import { renderProfileIdentity } from '../../components/profile-identity.tsx'
-import { type ProfileShellLoaderData } from '#universal/loader-data.ts'
+import type { ProfileShellLoaderData } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
 
 const publicSelf = {

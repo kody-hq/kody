@@ -3,7 +3,7 @@ import { expect, test, vi } from 'vitest'
 import { buildInboundDelivery } from './inbound-delivery.ts'
 import { createUserInboundDeliveryAuthority } from './inbound-delivery-authority.ts'
 import { systemEmailOwnerId } from './email-owner.ts'
-import { type MailboxInboundDeliverySnapshot } from './mailbox-inbound-ledger.ts'
+import type { MailboxInboundDeliverySnapshot } from './mailbox-inbound-ledger.ts'
 
 function namespace(stub: object) {
 	return {

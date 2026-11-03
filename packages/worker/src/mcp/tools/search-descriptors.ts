@@ -1,4 +1,4 @@
-import { type getCapabilityRegistryForContext } from '#mcp/capabilities/registry.ts'
+import type { getCapabilityRegistryForContext } from '#mcp/capabilities/registry.ts'
 import { buildPackageImportSpecifier } from '#worker/package-registry/package-import-specifier.ts'
 
 import { searchEntityPlugins } from './search-entity-registry.ts'
@@ -8,9 +8,9 @@ import {
 	buildPackageActionImportUsage,
 	getPrimaryPackageActionFunction,
 } from './search-format.ts'
-import {
-	type OptionalSearchRowsResult,
-	type SearchGuidanceContext,
+import type {
+	OptionalSearchRowsResult,
+	SearchGuidanceContext,
 } from './search-types.ts'
 import {
 	type SearchableEntityDescriptor,

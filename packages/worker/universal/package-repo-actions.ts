@@ -1,4 +1,4 @@
-import { type ViewerListingInstall } from './community-public-types.ts'
+import type { ViewerListingInstall } from './community-public-types.ts'
 export type PackageRepoForkAction = {
 	/** Null when forking a package the viewer can read that has no listing. */
 	listingId: string | null

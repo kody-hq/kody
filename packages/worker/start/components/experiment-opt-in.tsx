@@ -2,7 +2,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { setExperiment } from '#start/server/experiment-opt-in'
-import { type SelfServeExperimentId } from '#universal/feature-flags/experiments.ts'
+import type { SelfServeExperimentId } from '#universal/feature-flags/experiments.ts'
 import { getPillButtonCss } from '#universal/styles/style-primitives.ts'
 
 /** Turns one self-serve experiment on for the signed-in person. */

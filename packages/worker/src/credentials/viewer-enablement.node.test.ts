@@ -3,10 +3,10 @@ import {
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test } from 'vitest'
-import { type DeclaredTrigger } from '#worker/enablements/service.ts'
-import {
-	type EnablementRecord,
-	type EnablementSenderKind,
+import type { DeclaredTrigger } from '#worker/enablements/service.ts'
+import type {
+	EnablementRecord,
+	EnablementSenderKind,
 } from '#worker/enablements/types.ts'
 import { viewerEnablement } from './package-credential-mappings.ts'
 

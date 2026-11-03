@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { type McpUserContext } from '@kody-internal/shared/chat.ts'
+import type { McpUserContext } from '@kody-internal/shared/chat.ts'
 import {
 	ownerIdFromStored,
 	personIdFromStored,

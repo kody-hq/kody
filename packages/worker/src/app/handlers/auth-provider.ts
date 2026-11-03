@@ -30,7 +30,7 @@ import {
 	createVerifySessionCookie,
 	setVerifySessionSecret,
 } from '#app/verify-session.ts'
-import { type OauthLoginErrorCode } from '#universal/oauth-login-errors.ts'
+import type { OauthLoginErrorCode } from '#universal/oauth-login-errors.ts'
 import { isNonProductionRuntime } from '#app/deployment-env.ts'
 import {
 	assessAccountEmail,
@@ -68,7 +68,7 @@ import { getCallbackRedirectUri } from '#worker/identity/oauth-provider-redirect
 import { recordOnboardingFunnelEvent } from '#worker/identity/onboarding-funnel.ts'
 import { unusablePasswordHash } from '#worker/identity/usable-password.ts'
 import { usernameFromEmail } from '#worker/identity/username.ts'
-import { type OAuthGrantHelpers } from '#worker/oauth-grants.ts'
+import type { OAuthGrantHelpers } from '#worker/oauth-grants.ts'
 import {
 	personIdFromStored,
 	personalOrgId,

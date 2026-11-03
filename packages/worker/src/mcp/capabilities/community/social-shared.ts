@@ -1,8 +1,8 @@
 import { z } from 'zod'
 import { buildUserAvatarUrl } from '#worker/community/public-urls.ts'
-import {
-	type CommunityProfileRecord,
-	type PublicProfilePackage,
+import type {
+	CommunityProfileRecord,
+	PublicProfilePackage,
 } from '#worker/community/types.ts'
 import { communityActivityItemSchema } from './shared.ts'
 

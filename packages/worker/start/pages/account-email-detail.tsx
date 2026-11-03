@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { SiteLink } from '../components/site-link.tsx'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { buildCredentialApprovalHref } from '#universal/credential-contracts.ts'
 import {
 	buildAdminEmailHtmlPreviewDocument,
@@ -24,8 +24,8 @@ import {
 	getDangerPillCss,
 	getGhostButtonCss,
 } from '#universal/styles/style-primitives.ts'
-import { type EmailClassification } from '#universal/email-message-view.ts'
-import { type AccountEmailMessageDetail } from '#universal/loader-data.ts'
+import type { EmailClassification } from '#universal/email-message-view.ts'
+import type { AccountEmailMessageDetail } from '#universal/loader-data.ts'
 import { EmailTriageBadges } from './email-triage-controls.tsx'
 import {
 	type ClassifyState,

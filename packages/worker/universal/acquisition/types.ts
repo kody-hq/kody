@@ -1,4 +1,4 @@
-import { type acquisitionPageMeta } from './metadata.ts'
+import type { acquisitionPageMeta } from './metadata.ts'
 
 export type AcquisitionPage = {
 	key: string

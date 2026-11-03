@@ -3,7 +3,7 @@ import {
 	buildPackageRepoActions,
 	resolvePackageAppLinks,
 } from '#app/package-repo-actions.ts'
-import { type PublicCommunityListing } from '#universal/community-public-types.ts'
+import type { PublicCommunityListing } from '#universal/community-public-types.ts'
 
 const publicLocation = vi.hoisted(() => ({
 	hostedUrl: 'https://app.example.com/' as string | null,

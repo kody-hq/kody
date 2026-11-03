@@ -4,30 +4,30 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import type * as authenticatedUser from '#app/authenticated-user.ts'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import type * as highlightCode from '#app/highlight-code.ts'
 import type * as packagePage from '#app/package-page.ts'
-import { type PackagePageAccess } from '#app/package-page.ts'
+import type { PackagePageAccess } from '#app/package-page.ts'
 import type * as profileRepo from '#worker/community/profile-repo.ts'
-import { type UserSocialRow } from '#worker/community/profile-repo.ts'
+import type { UserSocialRow } from '#worker/community/profile-repo.ts'
 import type * as communityRepo from '#worker/community/repo.ts'
 import type * as communitySnapshot from '#worker/community/snapshot.ts'
-import {
-	type CommunityListingRecord,
-	type CommunitySnapshot,
-	type ProfileVisibility,
+import type {
+	CommunityListingRecord,
+	CommunitySnapshot,
+	ProfileVisibility,
 } from '#worker/community/types.ts'
 import type * as publishedRuntimeArtifacts from '#worker/package-runtime/published-runtime-artifacts.ts'
-import { type PublishedSourceSnapshot } from '#worker/package-runtime/published-runtime-artifacts.ts'
+import type { PublishedSourceSnapshot } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import type * as packageRegistryRepo from '#worker/package-registry/repo.ts'
 import type * as packageSource from '#worker/package-registry/source.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import type * as artifactFile from '#worker/repo/artifact-file.ts'
 import type * as artifactHeadCache from '#worker/repo/artifact-head-cache.ts'
 import type * as artifactSourceSnapshot from '#worker/repo/artifact-source-snapshot.ts'
 import type * as entitySources from '#worker/repo/entity-sources.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
-import { type AccountPackageDetail } from '#universal/loader-data.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
+import type { AccountPackageDetail } from '#universal/loader-data.ts'
 import { sessionRequestContext } from '#worker/test-support/request-context.ts'
 import { maxPackageFilePreviewBytes } from '#universal/package-file-media.ts'
 

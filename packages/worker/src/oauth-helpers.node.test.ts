@@ -1,5 +1,5 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OAuthHelpers } from '@cloudflare/workers-oauth-provider'
+import type { OAuthHelpers } from '@cloudflare/workers-oauth-provider'
 import { expect, test } from 'vitest'
 import { resolveOAuthHelpers } from './oauth-helpers.ts'
 import { createMemoryKvNamespace } from '#worker/test-support/memory-kv.ts'

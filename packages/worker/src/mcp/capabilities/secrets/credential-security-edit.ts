@@ -5,12 +5,12 @@
  * move a value somewhere the owner never chose. Narrowing placement and
  * non-security edits (provider) stay available to every caller.
  */
-import { type CredentialInject } from '#worker/credentials/credential-fields.ts'
-import { type CredentialFillPlacement } from '#worker/credentials/fill-placement.ts'
+import type { CredentialInject } from '#worker/credentials/credential-fields.ts'
+import type { CredentialFillPlacement } from '#worker/credentials/fill-placement.ts'
 import { buildCredentialPlacementSettingUrl } from '#worker/credentials/placement-approval-links.ts'
 import { orgResourcePathForAccountPath } from '#universal/org-pages.ts'
 import { buildAccountSecretPath } from '@kody-internal/shared/account-secret-route.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	buildSecretEditorUrl,

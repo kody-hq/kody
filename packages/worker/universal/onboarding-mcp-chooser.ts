@@ -12,7 +12,7 @@
  * unknown segments 302 to the step-2 index.
  */
 
-import { type OnboardingFeaturedListing } from '#universal/community-public-types.ts'
+import type { OnboardingFeaturedListing } from '#universal/community-public-types.ts'
 
 const onboardingFeaturedMcpServerIds = [
 	'notion',

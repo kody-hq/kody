@@ -152,6 +152,7 @@ export const startupBundles: ReadonlyArray<StartupBundleSpec> = [
 			'/node_modules/@cloudflare/shell/dist/git/',
 			'/node_modules/postal-mime/',
 			'/node_modules/acorn/',
+			'/packages/worker/src/identity/disposable-email-domains.ts',
 		],
 	},
 	{
@@ -171,6 +172,7 @@ export const startupBundles: ReadonlyArray<StartupBundleSpec> = [
 			'/node_modules/@cloudflare/shell/dist/git/',
 			'/node_modules/postal-mime/',
 			'/node_modules/acorn/',
+			'/packages/worker/src/identity/disposable-email-domains.ts',
 		],
 	},
 ]

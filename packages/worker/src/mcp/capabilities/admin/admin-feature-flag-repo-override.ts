@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import {
 	clearFeatureFlagRepoOverride,
 	evaluateRepoFeatureFlag,
@@ -20,7 +20,7 @@ import {
 	auditAdminCapabilityInvocation,
 	resolveActingAdminPerson,
 } from './admin-shared.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 import { assertFeatureFlagKey } from './feature-flag-shared.ts'
 
 const sourceIdSchema = z

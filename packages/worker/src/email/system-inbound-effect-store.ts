@@ -1,5 +1,5 @@
 import { systemEmailOwnerId } from './email-owner.ts'
-import { type InboundDelivery } from './inbound-delivery.ts'
+import type { InboundDelivery } from './inbound-delivery.ts'
 import {
 	inboundEffectLeaseMs,
 	inboundEffectRetryMs,

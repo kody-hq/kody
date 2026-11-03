@@ -1,4 +1,4 @@
-import { type SecretScope } from '#mcp/secrets/types.ts'
+import type { SecretScope } from '#mcp/secrets/types.ts'
 
 const secretPlaceholderRegex =
 	/\{\{secret:([a-zA-Z0-9._-]+)(?:\|scope=(session|package|user))?(?:\|ref=([A-Za-z0-9_-]+))?\}\}/g

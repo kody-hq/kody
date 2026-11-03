@@ -1,8 +1,8 @@
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import { PromiseLruCache } from '#worker/package-registry/published-package-cache.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
-import { type PublishedBundleArtifact } from '#worker/package-runtime/published-runtime-artifacts.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { PublishedBundleArtifact } from '#worker/package-runtime/published-runtime-artifacts.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 
 /**
  * Per-isolate caches for invocation hot paths (host invoke contract check and

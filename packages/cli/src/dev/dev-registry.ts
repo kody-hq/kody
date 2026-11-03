@@ -8,7 +8,7 @@
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { type KodyTarget } from '../target.js'
+import type { KodyTarget } from '../target.js'
 import { userCacheDir } from '../workerd-binary.js'
 import { isProcessAlive } from './process-reaper.js'
 

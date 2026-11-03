@@ -6,7 +6,7 @@ import {
 	listDueInboundOwners,
 	replaceInboundDueOwnerHint,
 } from './inbound-due-owners.ts'
-import { type Mailbox } from './mailbox-do.ts'
+import type { Mailbox } from './mailbox-do.ts'
 import {
 	baseMessage,
 	rpcFor,

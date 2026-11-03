@@ -2,7 +2,7 @@ import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import type * as PublishLock from '#worker/package-registry/package-publish-lock.ts'
 import type * as PublishedRuntimeArtifacts from '#worker/package-runtime/published-runtime-artifacts.ts'
-import { type ArtifactBootstrapAccess } from './artifacts.ts'
+import type { ArtifactBootstrapAccess } from './artifacts.ts'
 import type * as EntitySources from './entity-sources.ts'
 import {
 	isRepoChecksFailedError,

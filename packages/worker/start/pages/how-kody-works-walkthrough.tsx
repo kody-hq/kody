@@ -6,7 +6,7 @@ import {
 	highlightSnippetKey,
 	type HighlightedCode,
 } from '#universal/highlighted-code.ts'
-import { type WalkthroughHostPick } from '#universal/walkthrough-hosts.ts'
+import type { WalkthroughHostPick } from '#universal/walkthrough-hosts.ts'
 import {
 	howKodyWorksPackageFiles,
 	howKodyWorksTranscriptActs,

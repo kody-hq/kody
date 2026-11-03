@@ -6,8 +6,8 @@
  * soft-deleted source rows are what stays behind.
  */
 
-import { type JobRow } from '@kody-internal/shared/jobs/repo.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { JobRow } from '@kody-internal/shared/jobs/repo.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { jobsData, type JobsDataEnv } from '#worker/jobs/jobs-data.ts'
 import { mcpClientHubTransferStub } from '#worker/mcp-client/hub-transfer.ts'
 

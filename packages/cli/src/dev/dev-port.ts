@@ -6,8 +6,8 @@
  */
 
 import { createHash } from 'node:crypto'
-import { type Server } from 'node:http'
-import { type AddressInfo } from 'node:net'
+import type { Server } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { StructuredCliError } from '../structured-error.js'
 
 export const devPortRange = { min: 4100, max: 4999 } as const

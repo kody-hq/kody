@@ -1,7 +1,7 @@
 import { execFileSync, spawn } from 'node:child_process'
 import { existsSync, mkdirSync } from 'node:fs'
 import http from 'node:http'
-import { type AddressInfo } from 'node:net'
+import type { AddressInfo } from 'node:net'
 import path from 'node:path'
 
 /**

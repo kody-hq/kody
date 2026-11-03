@@ -1,4 +1,4 @@
-import { type BillingInterval } from '#worker/billing/billing-config.ts'
+import type { BillingInterval } from '#worker/billing/billing-config.ts'
 import {
 	findActivePromotionCode,
 	type StripeEnv,

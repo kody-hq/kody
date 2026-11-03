@@ -6,14 +6,14 @@
  * and effective mappings hold only credentials they can Use, and only their
  * own `mine` layer and enablements show. Nothing here reads a value.
  */
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
 	listDeclaredTriggers,
 	type DeclaredTrigger,
 } from '#worker/enablements/service.ts'
 import { canonicalizeEnablementSender } from '#worker/enablements/sender-match.ts'
-import { type EnablementRecord } from '#worker/enablements/types.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { EnablementRecord } from '#worker/enablements/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
 	fetchCapableCredentialKinds,
 	isInboundEmailApprovalTopic,

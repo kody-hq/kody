@@ -9,8 +9,8 @@ import {
 	type InferOutput,
 	union,
 } from 'remix/data-schema'
-import { type OwnerId, type PersonId } from './owner-person-ids.ts'
-import { type OrgRole, type RequestContext } from './request-context.ts'
+import type { OwnerId, PersonId } from './owner-person-ids.ts'
+import type { OrgRole, RequestContext } from './request-context.ts'
 
 export const mcpUserContextSchema = object({
 	userId: string(),

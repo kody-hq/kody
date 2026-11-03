@@ -50,7 +50,7 @@ import {
 import { isExecutionContextsEnabledFor } from './flag.ts'
 import { runTiming, type ExecutionContextRunTiming } from './run-timing.ts'
 import { buildSentryOptions } from '#worker/sentry-options.ts'
-import { type RunRecordHandle } from '#worker/run-records/types.ts'
+import type { RunRecordHandle } from '#worker/run-records/types.ts'
 
 export const executionContextsUnavailableCode = 'execution_contexts_unavailable'
 

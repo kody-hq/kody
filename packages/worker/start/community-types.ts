@@ -1,10 +1,10 @@
-import { type PackageRepoActions } from '#universal/package-repo-actions.ts'
-import { type HighlightedCode } from '#universal/highlighted-code.ts'
-import {
-	type PublicCommunityListing,
-	type ViewerListingInstall,
+import type { PackageRepoActions } from '#universal/package-repo-actions.ts'
+import type { HighlightedCode } from '#universal/highlighted-code.ts'
+import type {
+	PublicCommunityListing,
+	ViewerListingInstall,
 } from '#universal/community-public-types.ts'
-import { type AccountPackageDetail } from '#universal/loader-data.ts'
+import type { AccountPackageDetail } from '#universal/loader-data.ts'
 export type CommunityDetailApiPayload = {
 	ok: true
 	repoActions?: PackageRepoActions | null

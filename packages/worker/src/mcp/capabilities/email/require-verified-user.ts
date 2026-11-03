@@ -1,12 +1,12 @@
-import { type McpUserContext } from '@kody-internal/shared/chat.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { McpUserContext } from '@kody-internal/shared/chat.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	emailVerificationRequiredMessage,
 	isAccountEmailVerified,
 } from '#worker/identity/email-verification-state.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 
 /**
  * Defense-in-depth for the email domain: even though `/mcp` already rejects

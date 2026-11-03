@@ -1,4 +1,4 @@
-import { type Page, type Request } from './playwright-utils.ts'
+import type { Page, Request } from './playwright-utils.ts'
 
 /** Match the root RPC input, not nested values from context or another request. */
 export function requestHasDataFields(

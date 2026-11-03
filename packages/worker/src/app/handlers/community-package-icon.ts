@@ -1,5 +1,5 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type McpUserContext } from '@kody-internal/shared/chat.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { McpUserContext } from '@kody-internal/shared/chat.ts'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { viewerCanReadSavedPackage } from '#app/package-viewer-access.ts'
 import {
@@ -11,7 +11,7 @@ import { findPublicOwnerIdentityByHandle } from '#worker/identity/user-lookup.ts
 import { normalizeUsername } from '#worker/identity/username.ts'
 import { resolvePackagePageUrl } from '#worker/community/package-url.ts'
 import { getCommunityListingById } from '#worker/community/repo.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
 	getEntitySourceByEntity,
 	getEntitySourceById,

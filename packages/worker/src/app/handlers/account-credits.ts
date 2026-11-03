@@ -7,7 +7,7 @@ import {
 	getRequestIp,
 	logAuditEvent,
 } from '#worker/audit-log.ts'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { loadRequestOrgResolution } from '#app/org-request-binding.ts'
 import {
 	authorize,
@@ -27,7 +27,7 @@ import {
 } from '#worker/billing/credit-wallet.ts'
 import { StripeApiError } from '#worker/billing/stripe-client.ts'
 import { getOrgById, loadOrgBindingForSlug } from '#worker/orgs/repo.ts'
-import { type BillingPageOrg } from '#app/account-billing-data.ts'
+import type { BillingPageOrg } from '#app/account-billing-data.ts'
 
 /**
  * Where an old `/account/credits` link lands once the personal org slug is

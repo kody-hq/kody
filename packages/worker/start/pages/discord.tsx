@@ -3,7 +3,7 @@ import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.
 import { buildErrorAgentPrompt } from '#universal/error-agent-prompt.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import { SiteLink } from '../components/site-link.tsx'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useEffect, useState } from 'react'
 import { useSocialSignIn } from '../social-sign-in.ts'
 import { syncDiscordMemberRole } from '#start/server/account-mutations'
@@ -15,7 +15,7 @@ import {
 	turnstileWidgetClassName,
 } from '#client/public-form-protection.ts'
 import { getOauthLoginErrorMessage } from '#universal/oauth-login-errors.ts'
-import { type DiscordPageLoaderData } from '#universal/loader-data.ts'
+import type { DiscordPageLoaderData } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 import {

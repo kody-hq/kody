@@ -16,7 +16,7 @@ import {
 	selectPlanRetainingSubscriptions,
 	subscriptionHasPrice,
 } from './billing-config.ts'
-import { type StripeSubscription } from './stripe-client.ts'
+import type { StripeSubscription } from './stripe-client.ts'
 
 function subscription(input: {
 	id?: string

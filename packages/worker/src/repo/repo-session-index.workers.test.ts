@@ -2,7 +2,7 @@ import { env, runInDurableObject } from 'cloudflare:test'
 import { expect, test } from 'vitest'
 import { repoSessionIndexDurableObjectName } from '#worker/user-scoped-durable-object-name.ts'
 import { RepoSessionIndex } from './repo-session-index-do.ts'
-import { type RepoSessionRow } from './types.ts'
+import type { RepoSessionRow } from './types.ts'
 
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 function sessionRow(

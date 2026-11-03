@@ -1,13 +1,13 @@
 /** @jsxImportSource @emotion/react */
 import { SiteLink } from '../components/site-link.tsx'
-import { type FormEvent } from 'react'
+import type { FormEvent } from 'react'
 import {
 	handlePermanentNote,
 	handleUrlPreview,
 } from '@kody-internal/shared/handle-permanence.ts'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 import { PasswordRevealInput } from '../components/password-reveal-input.tsx'
-import { type ProfileVisibility } from '#universal/loader-data.ts'
+import type { ProfileVisibility } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
 import { UserAvatar } from '../components/user-avatar.tsx'
 import { renderIcon } from '../components/icon.tsx'

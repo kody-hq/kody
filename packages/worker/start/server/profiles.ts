@@ -2,7 +2,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { notFound, redirect } from '@tanstack/react-router'
 import { z } from 'zod'
 import { routes } from '#universal/routes.ts'
-import { type loadProfilesPageData } from '#app/handlers/profiles.ts'
+import type { loadProfilesPageData } from '#app/handlers/profiles.ts'
 
 const orgSlug = z.string().regex(/^[a-zA-Z0-9_-]+$/)
 const id = z.string().min(1).max(200)

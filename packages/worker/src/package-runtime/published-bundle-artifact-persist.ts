@@ -3,16 +3,16 @@
  * D1-first identity upsert, and building + persisting package artifact
  * targets. Loading, reuse, and rebuild live in `published-bundle-artifacts.ts`.
  */
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
 	publishedBundleArtifactIdentityKey,
 	type PublishedBundleArtifactUpsertInput,
 	upsertPublishedBundleArtifactRow,
 	upsertPublishedBundleArtifactRows,
 } from '#worker/repo/published-bundle-artifacts-repo.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
-import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
-import { type PublishedPackageArtifactBuildTarget } from './package-artifact-targets.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
+import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import type { PublishedPackageArtifactBuildTarget } from './package-artifact-targets.ts'
 import { packageBindingRewriteVersion } from './pre-binding-artifact-repair.ts'
 import {
 	type BundleArtifactDependency,

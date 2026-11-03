@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { emailAttachmentBlobKey, emailRawMimeKey } from './blob-keys.ts'
 import {
 	mailboxBlobDeleteMaxKeys,
@@ -11,7 +11,7 @@ import {
 	mailboxRetentionRetryDelayMs,
 	type MailboxBlobReference,
 } from './mailbox-types.ts'
-import { type MailboxStore } from './mailbox-store.ts'
+import type { MailboxStore } from './mailbox-store.ts'
 
 const messageRetentionMs = mailboxMessageRetentionDays * 24 * 60 * 60 * 1000
 const deliveryEventRetentionMs =

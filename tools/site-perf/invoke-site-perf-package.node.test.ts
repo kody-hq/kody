@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { type SitePerfReport } from './collect.ts'
+import type { SitePerfReport } from './collect.ts'
 import {
 	buildInvokeBody,
 	invokeSitePerfPackage,

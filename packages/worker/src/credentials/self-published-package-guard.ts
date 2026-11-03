@@ -1,8 +1,8 @@
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { getLatestApprovedPackageApprovalRequest } from '#worker/package-capabilities/approval-requests-repo.ts'
 import { isSelfPublishRequest } from '#worker/package-capabilities/went-public-approval.ts'
 import { getSavedPackageByIdInAnyOrg } from '#worker/package-registry/repo.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { CredentialNeedUndeclaredError } from './credential-need-enforcement.ts'
 const selfPublishedByRequest = new WeakMap<
 	RequestContext,

@@ -1,4 +1,4 @@
-import { type EmailVerificationResult } from '#universal/token-outcomes.ts'
+import type { EmailVerificationResult } from '#universal/token-outcomes.ts'
 import {
 	auditDatabaseFromEnv,
 	getRequestIp,

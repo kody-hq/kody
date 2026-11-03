@@ -9,12 +9,12 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { getJobRowById, insertJobRow } from '@kody-internal/shared/jobs/repo.ts'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import { buildPackageJobId } from '#worker/jobs/package-job-id.ts'
-import { type JobRecord } from '#worker/jobs/types.ts'
+import type { JobRecord } from '#worker/jobs/types.ts'
 import { upsertGrant } from '#worker/orgs/access-writes.ts'
 import { createOrganization } from '#worker/orgs/create-organization.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'

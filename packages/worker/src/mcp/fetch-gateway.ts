@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { bytesToBase64 } from '@kody-internal/shared/base64.ts'
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import {
@@ -40,8 +40,8 @@ import {
 } from '#mcp/secrets/errors.ts'
 import { createUnresolvedSecretMessage } from '#mcp/secrets/unresolved-secret.ts'
 import { normalizeHost } from '#mcp/secrets/allowed-hosts.ts'
-import { type ResolvedSecret } from '#mcp/secrets/service.ts'
-import { type SecretScope } from '#mcp/secrets/types.ts'
+import type { ResolvedSecret } from '#mcp/secrets/service.ts'
+import type { SecretScope } from '#mcp/secrets/types.ts'
 import { secretPageOrgSlugFromCaller } from '#mcp/secrets/package-approval-url.ts'
 import { SecretProviderHostDeniedError } from '#mcp/secrets/secret-providers/errors.ts'
 import {
@@ -73,7 +73,7 @@ import {
 	credentialFetchPlacementKey,
 	type CredentialFetchPlacement,
 } from '#worker/credentials/credential-resolver.ts'
-import { type CredentialFillSite } from '#worker/credentials/fill-placement.ts'
+import type { CredentialFillSite } from '#worker/credentials/fill-placement.ts'
 import {
 	auditResolvedFetchPlacements,
 	resolveCredential,
@@ -105,7 +105,7 @@ import { CredentialClientError } from '#worker/credentials/credential-client.ts'
 import { CredentialLoginRetryLaterError } from '#worker/credentials/credential-request.ts'
 import { recordRetriedLoginSession } from '#worker/credentials/login-session-store.ts'
 import { IntegrationHostNotAllowedError } from './execute-modules/integration-host-allowlist.ts'
-import { type StorageContext } from '#mcp/storage.ts'
+import type { StorageContext } from '#mcp/storage.ts'
 import {
 	billedOrgIdOf,
 	type RequestContext,

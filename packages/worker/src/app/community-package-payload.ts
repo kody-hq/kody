@@ -16,10 +16,10 @@ import {
 	resolvePackagePageReadmeImageBaseHref,
 } from '#app/package-files-data.ts'
 import { highlightMarkdownFences } from '#app/highlight-code.ts'
-import { type HighlightedCode } from '#universal/highlighted-code.ts'
-import { type PackageRepoActions } from '#universal/package-repo-actions.ts'
+import type { HighlightedCode } from '#universal/highlighted-code.ts'
+import type { PackageRepoActions } from '#universal/package-repo-actions.ts'
 import { recordServerTiming } from '#worker/request-context.ts'
-import { type ServerTimingEntry } from '#worker/server-timing.ts'
+import type { ServerTimingEntry } from '#worker/server-timing.ts'
 export async function highlightReadmeFences(
 	env: Env,
 	readmeContent: string | null,

@@ -7,7 +7,7 @@ import {
 	stagePublishWorkFiles,
 	type PublishWorkRequest,
 } from './publish-work.ts'
-import { type EntitySourceRow } from './types.ts'
+import type { EntitySourceRow } from './types.ts'
 
 const userId = ownerIdFromStored('user-1')
 

@@ -1,4 +1,4 @@
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { auditDatabaseFromEnv } from '#worker/audit-log.ts'
 import {
 	nonInteractiveTriggerOf,
@@ -24,12 +24,12 @@ import {
 	type McpAuthDenialReason,
 	recordMcpAuthDenial,
 } from '#mcp/auth-audit.ts'
-import { type BuiltCapabilityRegistry } from './build-capability-registry.ts'
+import type { BuiltCapabilityRegistry } from './build-capability-registry.ts'
 import {
 	requiresSiteAccess,
 	type SiteAccessActorTrigger,
 } from './triggered-site-access.ts'
-import { type Capability, type CapabilitySpec } from './types.ts'
+import type { Capability, CapabilitySpec } from './types.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 type CapabilityAccessRequirement = Pick<

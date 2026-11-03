@@ -15,13 +15,13 @@ import {
 	getErrorMessage,
 } from '@kody-internal/shared/error-message.ts'
 import { isDurableObjectIsolateResetMessage } from '#worker/sentry-options.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { listSavedPackagesPage } from '#worker/package-registry/repo.ts'
 import {
 	loadPackageSourceBySourceId,
 	loadPackageSourceRowForUser,
 } from '#worker/package-registry/source.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { readPublishedCredentialStamp } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { packageSourceFiles } from './credential-needs-closure.ts'
 import {

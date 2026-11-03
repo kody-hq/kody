@@ -1,7 +1,7 @@
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
-import {
-	type OwnerId,
-	type PersonId,
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type {
+	OwnerId,
+	PersonId,
 } from '@kody-internal/shared/owner-person-ids.ts'
 
 /**

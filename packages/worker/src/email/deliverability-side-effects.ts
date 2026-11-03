@@ -14,7 +14,7 @@ import {
 	prepareRejectingProviderUpserts,
 	recordRejectingProvidersForRecipient,
 } from './rejecting-providers.ts'
-import { type EmailDeliveryStatus } from './types.ts'
+import type { EmailDeliveryStatus } from './types.ts'
 import {
 	transactionalDeliveryCursorIsDelivered,
 	transactionalDeliveryCursorMatches,

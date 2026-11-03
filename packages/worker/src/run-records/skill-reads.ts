@@ -1,6 +1,6 @@
-import {
-	type SkillReadEvent,
-	type SkillReadSummary,
+import type {
+	SkillReadEvent,
+	SkillReadSummary,
 } from '#universal/skill-metrics.ts'
 
 export function initializeSkillReads(sql: SqlStorage) {

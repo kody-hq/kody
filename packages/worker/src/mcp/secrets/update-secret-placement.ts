@@ -2,7 +2,7 @@ import {
 	type CredentialFillPlacement,
 	serializeCredentialFillPlacement,
 } from '#worker/credentials/fill-placement.ts'
-import { type CredentialPlacementOrigin } from '#worker/credentials/placement-origin.ts'
+import type { CredentialPlacementOrigin } from '#worker/credentials/placement-origin.ts'
 
 /**
  * Update stored fill placement and origin on an existing secret entry. Run it

@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	deterministicEmbedding,
@@ -6,7 +6,7 @@ import {
 	isCapabilitySearchOffline,
 	type EmbedTextFn,
 } from '#worker/vectorize/embedding.ts'
-import { type getCapabilityRegistryForContext } from '#mcp/capabilities/registry.ts'
+import type { getCapabilityRegistryForContext } from '#mcp/capabilities/registry.ts'
 
 import {
 	buildRecommendedNextStep,
@@ -19,7 +19,7 @@ import {
 import { searchEntityPlugins } from './search-entity-registry.ts'
 import { toCapabilitySearchMatch } from './search-entity-plugins/capability.ts'
 import { hydrateTopPackageMatches } from './search-entity-plugins/package.ts'
-import { type SearchMatch } from './search-format.ts'
+import type { SearchMatch } from './search-format.ts'
 import { attachHighConfidenceExportCallContract } from './search-export-call-contract.ts'
 import { attachTopCapabilityCallShapes } from './search-related-capabilities.ts'
 import {
@@ -29,12 +29,12 @@ import {
 } from './search-scoring.ts'
 import { collapseSynthesizedProviderMatches } from './search-provider-overview.ts'
 import { elapsedMs } from './search-timing.ts'
-import {
-	type OptionalSearchRowsResult,
-	type PackageSearchRow,
-	type SearchCandidate,
-	type SearchPhaseTimings,
-	type SearchUnifiedResult,
+import type {
+	OptionalSearchRowsResult,
+	PackageSearchRow,
+	SearchCandidate,
+	SearchPhaseTimings,
+	SearchUnifiedResult,
 } from './search-types.ts'
 import {
 	rerankSearchCandidatesWithJev,

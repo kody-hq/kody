@@ -1,7 +1,7 @@
 import { waitUntil } from 'cloudflare:workers'
-import {
-	type McpCallerContext,
-	type McpUserContext,
+import type {
+	McpCallerContext,
+	McpUserContext,
 } from '@kody-internal/shared/chat.ts'
 import { apiTokenScopeIncludes } from '#worker/api-tokens/scopes.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'

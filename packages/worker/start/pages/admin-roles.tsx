@@ -6,7 +6,7 @@ import {
 	AccountManagementShell,
 	AdminPageHeader,
 } from './account-management-components.tsx'
-import { type AdminRolesLoaderData } from '#universal/loader-data.ts'
+import type { AdminRolesLoaderData } from '#universal/loader-data.ts'
 export function AdminRolesPage({
 	payload: data,
 	currentHref,

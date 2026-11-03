@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto'
 import { dnsSafeUsernamePattern } from '@kody-internal/shared/public-urls.ts'
 import { quoteSqlString } from '@kody-internal/shared/sql-literals.ts'
-import { type FeatureFlagKey } from '#universal/feature-flags/registry.ts'
-import { type PlanName } from '#universal/plans.ts'
+import type { FeatureFlagKey } from '#universal/feature-flags/registry.ts'
+import type { PlanName } from '#universal/plans.ts'
 import { previewSeedFlagAllowlist } from './preview-seed-flag-allowlist.ts'
 
 /**

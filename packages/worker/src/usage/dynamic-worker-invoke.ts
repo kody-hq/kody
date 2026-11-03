@@ -1,12 +1,12 @@
-import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import {
 	recordUsage,
 	type DynamicWorkerCacheReuse,
 	type UsageEnv,
 	type UsageOutcome,
 } from '#worker/usage/record-usage.ts'
-import { type DynamicWorkerDaySurface } from './dynamic-worker-day-surface.ts'
-import { type ExecuteThinGlueClass } from './execute-thin-glue.ts'
+import type { DynamicWorkerDaySurface } from './dynamic-worker-day-surface.ts'
+import type { ExecuteThinGlueClass } from './execute-thin-glue.ts'
 
 const workerModuleTextKeys = ['js', 'cjs', 'text'] as const
 

@@ -2,9 +2,9 @@ import {
 	highlightCacheHeaderName,
 	highlightServiceOrigin,
 } from '../../worker/universal/highlight-cache-header.ts'
-import {
-	type HighlightedCode,
-	type HighlightSnippet,
+import type {
+	HighlightedCode,
+	HighlightSnippet,
 } from '../../worker/universal/highlighted-code.ts'
 import { highlightCacheName, highlightCacheRequest } from './cache.ts'
 import { handleHighlightHealthRequest } from './health.ts'

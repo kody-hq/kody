@@ -12,7 +12,7 @@ import {
 	scheduledDispatchMaxRetries,
 	type ScheduledLaneMessage,
 } from '@kody-internal/shared/jobs/scheduled-lanes.ts'
-import { type JobsWorkerEnv } from './env.ts'
+import type { JobsWorkerEnv } from './env.ts'
 import {
 	dispatchScheduledLanes,
 	handleScheduledDispatchQueue,

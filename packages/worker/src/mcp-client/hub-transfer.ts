@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { mcpClientHubDurableObjectName } from '#worker/user-scoped-durable-object-name.ts'
 import { mcpClientName } from './client-id-metadata.ts'
 import { mcpConnectionEpisodeStorageKey } from './connection-episodes.ts'
@@ -13,7 +13,7 @@ import {
 	mcpOAuthTokenRecoveryStorageKey,
 } from './oauth-token-recovery.ts'
 import { mcpPreRegisteredOAuthClientStorageKey } from './preregistered-oauth-client.ts'
-import { type McpHubConnectResult } from './types.ts'
+import type { McpHubConnectResult } from './types.ts'
 
 /**
  * One remote MCP server's hub state, moved between owners' hubs by the

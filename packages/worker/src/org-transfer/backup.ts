@@ -1,4 +1,4 @@
-import { type OrgTransferPlan } from './plan.ts'
+import type { OrgTransferPlan } from './plan.ts'
 
 export const orgTransferBackupPrefix = 'org-resource-transfers/'
 

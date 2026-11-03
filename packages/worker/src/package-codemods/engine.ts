@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { listOwnerIdsPendingDeletion } from '#worker/account/owner-deletion-state.ts'
 import {
@@ -12,7 +12,7 @@ import {
 import { isSavedPackageLocked } from '#worker/package-registry/package-publish-lock.ts'
 import { refreshSavedPackageProjection } from '#worker/package-registry/service.ts'
 import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { getPackageScopeByUserId } from '#worker/package-registry/user-scope.ts'
 import { resolveArtifactSourceHead } from '#worker/repo/artifacts.ts'
 import {
@@ -44,11 +44,11 @@ import {
 } from './subscription-events.ts'
 import { computePackageAppCapabilityHostFacts } from './package-app-capability-closure.ts'
 import { isRepoCheckResourceLimitMessage } from '#worker/repo/isolated-runner-limit-message.ts'
-import {
-	type PackageCodemod,
-	type PackageCodemodApplyMode,
-	type PackageCodemodContext,
-	type PackageCodemodFinding,
+import type {
+	PackageCodemod,
+	PackageCodemodApplyMode,
+	PackageCodemodContext,
+	PackageCodemodFinding,
 } from './types.ts'
 
 export type PackageCodemodRunMode = 'scan' | 'dry-run' | 'apply' | 'revert'

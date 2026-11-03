@@ -1,6 +1,6 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { callerHasRole } from '#mcp/capabilities/access-control.ts'
 import { buildMemoryRetrievalQuery } from '#mcp/tools/memory-tool-context.ts'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
@@ -24,12 +24,12 @@ import {
 	settleSearchMemoryEnrichment,
 } from './search-memory.ts'
 import { elapsedMs } from './search-timing.ts'
-import {
-	type SearchMemoryEnrichmentSettlement,
-	type SearchPhaseTimings,
-	type SearchUnifiedResult,
+import type {
+	SearchMemoryEnrichmentSettlement,
+	SearchPhaseTimings,
+	SearchUnifiedResult,
 } from './search-types.ts'
-import { type SearchToolArgs } from './search-tool-definition.ts'
+import type { SearchToolArgs } from './search-tool-definition.ts'
 import { queryMatchesSynthesizedProvider } from './search-provider-overview.ts'
 import { normalizeSearchText } from './understand-search-query.ts'
 

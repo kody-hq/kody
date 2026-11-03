@@ -1,8 +1,8 @@
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
-import {
-	type AdditionalKodyTools,
-	type PackageSecretToolOptions,
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
+import type {
+	AdditionalKodyTools,
+	PackageSecretToolOptions,
 } from '#mcp/runtime-helper-manifest.ts'
 import { authorize, packageResource } from '#worker/authorization/authorize.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'

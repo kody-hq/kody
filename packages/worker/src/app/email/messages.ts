@@ -1,6 +1,6 @@
 import { renderTransactionalEmail } from '#app/email/template.ts'
 import { platformFeedbackAcknowledgementSubject } from '#worker/platform-feedback/email-threading.ts'
-import { type PlatformFeedbackOutcomeStatus } from '#worker/platform-feedback/types.ts'
+import type { PlatformFeedbackOutcomeStatus } from '#worker/platform-feedback/types.ts'
 import { ERROR_AGENT_PROMPT_ATTR } from '#universal/error-agent-prompt.ts'
 import { buildBillingFailureAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
 import { formatCappedPercent } from '#universal/usage-presentation.ts'

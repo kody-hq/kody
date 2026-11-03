@@ -11,7 +11,7 @@ import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
 import { createAuditTestDb } from '#worker/test-support/create-audit-db.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
-import { type EmailMessageRecord } from './types.ts'
+import type { EmailMessageRecord } from './types.ts'
 
 const supportInbox = 'inbox-support'
 const billingInbox = 'inbox-billing'

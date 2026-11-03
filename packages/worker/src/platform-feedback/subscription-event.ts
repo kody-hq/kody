@@ -1,7 +1,7 @@
 import { platformFeedbackContentWarning } from './content-warning.ts'
-import {
-	type PlatformFeedbackCategory,
-	type PlatformFeedbackRecord,
+import type {
+	PlatformFeedbackCategory,
+	PlatformFeedbackRecord,
 } from './types.ts'
 
 export const platformFeedbackSubmittedTopic = 'platform.feedback.submitted'

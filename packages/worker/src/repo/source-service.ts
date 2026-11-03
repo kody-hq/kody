@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	buildEntityRepoId,
 	hasArtifactsAccess,
@@ -10,7 +10,7 @@ import {
 	insertEntitySource,
 	updateEntitySource,
 } from './entity-sources.ts'
-import { type EntityKind, type EntitySourceRow } from './types.ts'
+import type { EntityKind, EntitySourceRow } from './types.ts'
 import {
 	pushServerTiming,
 	type ServerTimingEntry,

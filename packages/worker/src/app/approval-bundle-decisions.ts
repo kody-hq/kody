@@ -6,7 +6,7 @@
  * recorded once per bundle item and audited.
  */
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	approveCredentialNeedsRequest,
 	approveWentPublicRequest,

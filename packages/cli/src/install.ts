@@ -14,7 +14,7 @@ import {
 	buildOnboardingContinuationPrompt,
 	webClientsOnboardingNote,
 } from './onboarding-prompt.js'
-import { type ProcessInfo } from './process-info.js'
+import type { ProcessInfo } from './process-info.js'
 
 export type InstallOptions = {
 	mcpUrl: string

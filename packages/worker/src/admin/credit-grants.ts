@@ -11,9 +11,9 @@
  *
  * The admin wallet reader can inspect wallets owned by deleted organizations.
  */
-import {
-	type AdminCreditLedgerItem,
-	type AdminCreditWalletSummary,
+import type {
+	AdminCreditLedgerItem,
+	AdminCreditWalletSummary,
 } from '#universal/loader-data.ts'
 import {
 	creditAdminGrantNoteMaxLength,
@@ -35,7 +35,7 @@ import {
 } from '#worker/entitlements/service.ts'
 import { normalizeEmail } from '#worker/identity/normalize-email.ts'
 import { parseOwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type AdminUserTarget } from './users-data.ts'
+import type { AdminUserTarget } from './users-data.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { writeOrgCreditEligibility } from './org-billing-mutations.ts'
 

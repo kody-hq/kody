@@ -1,6 +1,6 @@
 import { expect, test, type Mock } from 'vitest'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RepoSession } from '../repo/repo-session-do.ts'
+import type { RepoSession } from '../repo/repo-session-do.ts'
 import {
 	repoSessionMockModule as mockModule,
 	setCommonSessionFixtures,

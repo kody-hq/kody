@@ -4,8 +4,8 @@ import {
 	personIdFromStored,
 	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { vi } from 'vitest'
 import { saveSecret } from '#mcp/secrets/service.ts'
 import { upsertGrant } from '#worker/orgs/access-writes.ts'
@@ -25,9 +25,9 @@ import {
 	normalizeCredentialCallMap,
 	type CredentialCallMapInput,
 } from '#worker/credentials/credential-call-map.ts'
-import { type CredentialClientContext } from '#worker/credentials/credential-client.ts'
+import type { CredentialClientContext } from '#worker/credentials/credential-client.ts'
 import * as needsClosure from '#worker/credentials/credential-needs-closure.ts'
-import { type CredentialNeed } from '#worker/credentials/credential-needs.ts'
+import type { CredentialNeed } from '#worker/credentials/credential-needs.ts'
 
 export const now = '2026-10-12T00:00:00.000Z'
 export const resendKey = 're_live_secret_value_123'

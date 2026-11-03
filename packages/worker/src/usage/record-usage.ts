@@ -32,9 +32,9 @@
  */
 
 import * as cloudflareWorkers from 'cloudflare:workers'
-import {
-	type AutomationSource,
-	type RequestContext,
+import type {
+	AutomationSource,
+	RequestContext,
 } from '@kody-internal/shared/request-context.ts'
 import {
 	connectionKeyColumns,
@@ -50,8 +50,8 @@ import {
 	type UsageEventType,
 } from '#universal/usage-event-types.ts'
 import { stampFirstExecute } from '#worker/identity/activation-stamps.ts'
-import { type DynamicWorkerDaySurface } from './dynamic-worker-day-surface.ts'
-import { type ExecuteThinGlueClass } from './execute-thin-glue.ts'
+import type { DynamicWorkerDaySurface } from './dynamic-worker-day-surface.ts'
+import type { ExecuteThinGlueClass } from './execute-thin-glue.ts'
 import {
 	sanitizeUsageErrorName,
 	usageErrorNameUnrecorded,

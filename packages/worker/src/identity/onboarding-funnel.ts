@@ -28,9 +28,9 @@ import {
 	onboardingFunnelStages,
 	type OnboardingFunnelStage,
 } from '#universal/onboarding-funnel-point.ts'
-import {
-	type AdminInsightsOnboardingFunnel,
-	type AdminInsightsOnboardingFunnelWindow,
+import type {
+	AdminInsightsOnboardingFunnel,
+	AdminInsightsOnboardingFunnelWindow,
 } from '#universal/loader-data.ts'
 import {
 	recordOnboardingFunnelEvent,

@@ -13,7 +13,7 @@ import {
 	unlink,
 	writeFile,
 } from 'node:fs/promises'
-import { type Stats } from 'node:fs'
+import type { Stats } from 'node:fs'
 import {
 	type EffectiveFs,
 	FsAccessError,

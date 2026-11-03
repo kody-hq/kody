@@ -5,7 +5,7 @@
  * then call enablementEnable (or Approve for webhooks/email).
  */
 
-import { type EnablementTriggerKind } from './types.ts'
+import type { EnablementTriggerKind } from './types.ts'
 
 export type EnablementHintReason = 'missing' | 'paused'
 

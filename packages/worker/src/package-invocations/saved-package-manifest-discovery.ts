@@ -3,11 +3,11 @@ import {
 	loadPackageManifestForSource,
 	loadPackageSourceRowsForUser,
 } from '#worker/package-registry/source.ts'
-import {
-	type AuthoredPackageJson,
-	type SavedPackageRecord,
+import type {
+	AuthoredPackageJson,
+	SavedPackageRecord,
 } from '#worker/package-registry/types.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 
 const savedPackageManifestDiscoveryConcurrency = 5
 

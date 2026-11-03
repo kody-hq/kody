@@ -19,7 +19,7 @@ import {
 	triggersScene,
 	type TriggerSourceId,
 } from '../../components/primitive-widgets.tsx'
-import { type LandingPrimitiveId } from '#universal/landing-lantern.ts'
+import type { LandingPrimitiveId } from '#universal/landing-lantern.ts'
 
 /**
  * `/features` cards: the shared primitive scenes plus the controls that

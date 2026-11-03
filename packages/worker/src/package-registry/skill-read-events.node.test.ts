@@ -1,6 +1,6 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import {
 	ownerIdFromStored,
 	personIdFromStored,

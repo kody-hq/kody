@@ -3,7 +3,7 @@
  * Isolated ticks below the consecutive-failure threshold stay green.
  */
 
-import { type ComponentDayStat } from './status-types.ts'
+import type { ComponentDayStat } from './status-types.ts'
 
 export type IncidentSpan = {
 	startedAt: number

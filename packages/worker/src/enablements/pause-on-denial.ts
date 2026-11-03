@@ -1,4 +1,4 @@
-import { type AuthorizationError } from '#worker/authorization/authorize.ts'
+import type { AuthorizationError } from '#worker/authorization/authorize.ts'
 import { pauseEnablement, type EnablementPauseInput } from './repo.ts'
 
 /**

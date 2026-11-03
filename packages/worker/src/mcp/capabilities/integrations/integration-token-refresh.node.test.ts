@@ -8,7 +8,7 @@ import {
 import * as needsClosure from '#worker/credentials/credential-needs-closure.ts'
 import * as stampPresence from '#worker/credentials/credential-stamp-presence.ts'
 import * as packageRepo from '#worker/package-registry/repo.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { personalOrgAccessD1 } from '#worker/test-support/org-binding-query.ts'
 import { integrationTokenRefreshCapability } from './integration-token-refresh.ts'
 

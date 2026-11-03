@@ -31,13 +31,13 @@ import { writePublishedSourceSnapshot } from '#worker/package-runtime/published-
 import { writeArtifactSourceSnapshot } from '#worker/repo/artifact-source-snapshot.ts'
 import { getArtifactsBinding } from '#worker/repo/artifacts.ts'
 import { insertEntitySource } from '#worker/repo/entity-sources.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 import { createArtifactsMswHandlers } from '#worker/test-support/artifacts-msw-handlers.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
-import { type CommunityActivityDispatchQueueMessage } from './activity-dispatch-queue-producer.ts'
-import {
-	type CommunityForkUpstreamUpdatedDispatchQueueMessage,
-	type CommunityListingPublishedDispatchQueueMessage,
+import type { CommunityActivityDispatchQueueMessage } from './activity-dispatch-queue-producer.ts'
+import type {
+	CommunityForkUpstreamUpdatedDispatchQueueMessage,
+	CommunityListingPublishedDispatchQueueMessage,
 } from './listing-published-dispatch-queue-producer.ts'
 import { createMswWorkerServer } from '#worker/test-support/msw-worker-server.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'

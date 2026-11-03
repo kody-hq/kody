@@ -2,10 +2,10 @@
  * Pure profile rules (ADR 0092), kept apart from storage so every refusal is
  * unit-testable.
  */
-import {
-	type OrgGrantResourceType,
-	type OrgPermission,
-	type OrgResourceType,
+import type {
+	OrgGrantResourceType,
+	OrgPermission,
+	OrgResourceType,
 } from '@kody-internal/shared/org-permissions.ts'
 import { isGrantablePermission } from '@kody-internal/shared/grant-presets.ts'
 

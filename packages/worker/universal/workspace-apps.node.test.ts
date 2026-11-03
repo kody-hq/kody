@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { type PublicProfilePackageItem } from './community-public-types.ts'
+import type { PublicProfilePackageItem } from './community-public-types.ts'
 import { filterWorkspaceApps } from './workspace-apps.ts'
 
 const app = (

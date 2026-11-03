@@ -6,10 +6,10 @@ import { SiteLink } from '../components/site-link.tsx'
 import { type ReactNode, useState, useRef, useEffect } from 'react'
 import { useCredentialMutation } from '../credential-mutation.ts'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
-import {
-	type CredentialMappingTarget,
-	type PackageCredentialsView,
-	type PackageCredentialsWriteError,
+import type {
+	CredentialMappingTarget,
+	PackageCredentialsView,
+	PackageCredentialsWriteError,
 } from '#universal/credential-contracts.ts'
 import { credentialRefLabel } from '#universal/package-credentials-page.ts'
 import {

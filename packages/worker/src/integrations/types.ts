@@ -1,11 +1,11 @@
 import { z } from 'zod'
-import { type IntegrationAuthFailureReason } from '#universal/connection-trouble.ts'
+import type { IntegrationAuthFailureReason } from '#universal/connection-trouble.ts'
 import {
 	integrationFlowValues,
 	tokenExchangeStyleValues,
 } from '#mcp/capabilities/integrations/integration-shared.ts'
-import { type PlatformOauthApp } from './platform-apps.ts'
-import { type IntegrationRefreshPolicy } from './refresh-policy.ts'
+import type { PlatformOauthApp } from './platform-apps.ts'
+import type { IntegrationRefreshPolicy } from './refresh-policy.ts'
 import { integrationUsageModeValues } from './usage-mode.ts'
 export const oauthAppFlowSchema = z.enum(integrationFlowValues)
 export const oauthTokenExchangeStyleSchema = z.enum(tokenExchangeStyleValues)

@@ -1,4 +1,4 @@
-import { type ComponentStatus } from './status-types.ts'
+import type { ComponentStatus } from './status-types.ts'
 
 /** Public PNG for each overall status. Distinct paths so a tab that already
  * loaded the operational icon will actually swap when an incident opens. */

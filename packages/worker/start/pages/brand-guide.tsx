@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { publicAsset } from '../public-assets.ts'
 import { kodyBrandAssets } from '../brand/kody-mark-path.ts'
 import { colors, radius, transitions } from '#universal/styles/tokens.ts'

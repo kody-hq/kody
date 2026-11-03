@@ -22,7 +22,7 @@ import {
 import { recordBodyCss } from './record-table.tsx'
 import { renderHighlightedCode } from '../components/syntax-highlight.tsx'
 import { plainHighlightedCode } from '#universal/highlighted-code.ts'
-import { type AccountActivityRunDetail } from '#universal/loader-data.ts'
+import type { AccountActivityRunDetail } from '#universal/loader-data.ts'
 import {
 	colors,
 	radius,

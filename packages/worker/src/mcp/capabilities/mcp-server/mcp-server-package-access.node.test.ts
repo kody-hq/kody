@@ -12,9 +12,9 @@ import {
 import * as needsClosure from '#worker/credentials/credential-needs-closure.ts'
 import * as stampPresence from '#worker/credentials/credential-stamp-presence.ts'
 import * as packageRepo from '#worker/package-registry/repo.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { McpServerPackageAccessDeniedError } from '#worker/mcp-client/package-access.ts'
-import { type McpServerSnapshot } from '#worker/mcp-client/types.ts'
+import type { McpServerSnapshot } from '#worker/mcp-client/types.ts'
 import type * as McpClientStatus from '#worker/mcp-client/status.ts'
 
 const mocks = vi.hoisted(() => ({

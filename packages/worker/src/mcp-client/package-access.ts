@@ -1,9 +1,9 @@
-import { type McpServerRef } from '@kody-internal/shared/mcp-servers.ts'
+import type { McpServerRef } from '@kody-internal/shared/mcp-servers.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { orgSectionRestPath } from '#universal/org-section-hrefs.ts'
 import { readSignupOrgSlug } from '#worker/orgs/signup-org-slug.ts'
 import { getMcpServerSettingRowById } from './settings-repo.ts'
-import { type McpServerSettingMetadata } from './settings-types.ts'
+import type { McpServerSettingMetadata } from './settings-types.ts'
 import {
 	normalizeMcpServerUsageMode,
 	type McpServerUsageMode,

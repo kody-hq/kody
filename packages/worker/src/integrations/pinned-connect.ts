@@ -6,12 +6,12 @@
  * from the app row, never from the request, so a member cannot point the
  * org's secret at another token URL, and never sees it.
  */
-import {
-	type OwnerId,
-	type PersonId,
+import type {
+	OwnerId,
+	PersonId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type McpUserContext } from '@kody-internal/shared/chat.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { McpUserContext } from '@kody-internal/shared/chat.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { safeParseHost } from '@kody-internal/shared/url-hosts.ts'
 import { buildConnectOauthHref } from '#universal/oauth-connect.ts'
 import { canonicalIntegrationName } from '#mcp/capabilities/integrations/integration-shared.ts'
@@ -42,7 +42,7 @@ import {
 	upsertIntegrationConnection,
 	listOauthAppsWithConnectionCounts,
 } from './repo.ts'
-import { type UserOauthApp } from './types.ts'
+import type { UserOauthApp } from './types.ts'
 
 /**
  * `/connect/oauth?org=&app=&mode=personal` for the caller's own connection

@@ -1,4 +1,4 @@
-import { type AdminReservedUsernamesLoaderData } from '#universal/loader-data.ts'
+import type { AdminReservedUsernamesLoaderData } from '#universal/loader-data.ts'
 import { loadReservedUsernameAdminSnapshot } from '#worker/identity/reserved-username-settings.ts'
 
 export async function loadAdminReservedUsernamesData(

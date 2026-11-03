@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
-import { type DailyEntitlementResource } from '#universal/plans.ts'
+import type { DailyEntitlementResource } from '#universal/plans.ts'
 import { createInMemoryRepoSessionIndexEnv } from '#worker/test-support/repo-session-index.ts'
 import { createInMemoryRunLogUsageEnv } from '#worker/test-support/run-log-usage.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
