@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import type { CSSProperties } from 'react'
+import { type CSSProperties } from 'react'
 import {
 	at,
 	PrimitiveWidgetFrame,
@@ -15,11 +15,6 @@ import {
 export type PackageTab = 'intent' | 'source' | 'result'
 export type PackageAccess = 'use' | 'contribute' | 'manage'
 export type PackageSharing = 'share' | 'fork'
-/** `at()` plus the same spot as custom properties, so the page CSS can put
- *  a node back once the shared stack rules have overridden `left`/`top`. */
-function place(x: number, y: number) {
-	return at(x, y, { '--pkg-x': `${x}%`, '--pkg-y': `${y}%` })
-}
 function sequenceStyle(index: number): CSSProperties & { '--i': string } {
 	return { '--i': String(index) }
 }
@@ -106,6 +101,7 @@ export function PackageWorkbenchScene(props: {
 			height={heroHeight}
 			className="pw-scene-pkg-hero"
 			stack
+			stackWidth={420}
 		>
 			<div
 				className="pw-run"
@@ -129,7 +125,7 @@ function heroBody(tab: PackageTab, live: boolean) {
 					)}
 					<div
 						className="pw-node pw-pkg-card pw-pkg-side pw-pkg-chat"
-						style={place(2, 50)}
+						style={at(2, 50)}
 					>
 						<span className="pw-kicker">Your agent</span>
 						<p className="pw-pkg-ask">
@@ -139,7 +135,7 @@ function heroBody(tab: PackageTab, live: boolean) {
 					</div>
 					<div
 						className="pw-node pw-pkg-card pw-pkg-side pw-pkg-born"
-						style={place(62, 50)}
+						style={at(62, 50)}
 					>
 						<span className="pw-pkg-card-head">
 							<span className="pw-kicker pw-pkg-name">◇ weekly-brief</span>
@@ -164,7 +160,7 @@ function heroBody(tab: PackageTab, live: boolean) {
 					)}
 					<div
 						className="pw-node pw-pkg-card pw-pkg-side pw-pkg-tree"
-						style={place(2, 50)}
+						style={at(2, 50)}
 					>
 						<span className="pw-kicker">weekly-brief</span>
 						<ul className="pw-pkg-files">
@@ -180,7 +176,7 @@ function heroBody(tab: PackageTab, live: boolean) {
 					</div>
 					<div
 						className="pw-node pw-pkg-card pw-pkg-side pw-pkg-editor"
-						style={place(37, 50)}
+						style={at(37, 50)}
 					>
 						<span className="pw-kicker">src/brief.ts</span>
 						<code className="pw-pkg-code">
@@ -206,7 +202,7 @@ function heroBody(tab: PackageTab, live: boolean) {
 					)}
 					<div
 						className="pw-node pw-pkg-card pw-pkg-side pw-pkg-log"
-						style={place(2, 50)}
+						style={at(2, 50)}
 					>
 						<span className="pw-kicker">Run</span>
 						<ol className="pw-pkg-loglines">
@@ -217,7 +213,7 @@ function heroBody(tab: PackageTab, live: boolean) {
 					</div>
 					<div
 						className="pw-node pw-pkg-card pw-pkg-side pw-pkg-result"
-						style={place(45, 50)}
+						style={at(45, 50)}
 					>
 						<span className="pw-kicker">Result</span>
 						<div className="pw-pkg-brief">{renderBrief(live)}</div>
@@ -331,6 +327,7 @@ export function PackageShareScene(props: {
 			height={shareHeight}
 			className="pw-scene-pkg-share"
 			stack
+			stackWidth={420}
 		>
 			<div
 				className="pw-run"
@@ -379,12 +376,12 @@ function renderShareDiagram(access: PackageAccess) {
 				</>,
 				shareHeight,
 			)}
-			<div className="pw-node pw-pkg-card pw-pkg-package" style={place(50, 34)}>
+			<div className="pw-node pw-pkg-card pw-pkg-package" style={at(50, 34)}>
 				<span className="pw-kicker">◇ weekly-brief</span>
 				<strong>One live package</strong>
 				<span className="pw-pkg-meta">Shared · runs in your organization</span>
 			</div>
-			<div className="pw-node pw-pkg-card pw-pkg-person" style={place(24, 58)}>
+			<div className="pw-node pw-pkg-card pw-pkg-person" style={at(24, 58)}>
 				<span className="pw-pkg-who">
 					<span className="pw-pkg-avatar" aria-hidden="true">
 						Y
@@ -395,7 +392,7 @@ function renderShareDiagram(access: PackageAccess) {
 			</div>
 			<div
 				className="pw-node pw-pkg-card pw-pkg-person pw-pkg-mate"
-				style={place(76, 58)}
+				style={at(76, 58)}
 			>
 				<span className="pw-pkg-who">
 					<span className="pw-pkg-avatar" aria-hidden="true">
@@ -439,10 +436,10 @@ function renderForkDiagram(copyEdited: boolean) {
 				</>,
 				shareHeight,
 			)}
-			<span className="pw-pkg-origin" style={place(50, 10)}>
+			<span className="pw-pkg-origin" style={at(50, 10)}>
 				◇ weekly-brief · public
 			</span>
-			<div className="pw-node pw-pkg-card pw-pkg-copy" style={place(24, 52)}>
+			<div className="pw-node pw-pkg-card pw-pkg-copy" style={at(24, 52)}>
 				<span className="pw-pkg-who">
 					<span className="pw-pkg-avatar" aria-hidden="true">
 						Y
@@ -454,7 +451,7 @@ function renderForkDiagram(copyEdited: boolean) {
 			</div>
 			<div
 				className="pw-node pw-pkg-card pw-pkg-copy pw-pkg-fork-copy"
-				style={place(76, 52)}
+				style={at(76, 52)}
 				data-edited={copyEdited ? '' : undefined}
 			>
 				<span className="pw-pkg-who">
