@@ -19,7 +19,7 @@ import {
 	type IntegrationPackageId,
 } from './integrations-scenes.tsx'
 import { IntegrationsSetup } from './integrations-setup.tsx'
-import { BuildWithAgentButton } from '../../components/build-with-agent-button.tsx'
+import { FeatureCtaActions, FeatureCtaLink } from './feature-cta.tsx'
 
 const approvals = {
 	host: 'An approved destination can receive the credential. An empty host allowlist blocks requests that use secret references.',
@@ -69,9 +69,9 @@ export function CredentialsFeature() {
 							adds the value to the outgoing request, only for hosts you
 							approve. Agents, packages, and logs never see it.
 						</p>
-						<SiteLink className="action" href="/onboarding">
+						<FeatureCtaLink href="/onboarding">
 							Connect your agent
-						</SiteLink>
+						</FeatureCtaLink>
 					</div>
 					<div className="ms-trip">
 						<SecretsTripScene host={host} sent={sent} shot={tripShot} />
@@ -282,12 +282,7 @@ export function CredentialsFeature() {
 						</SiteLink>
 					</p>
 				</div>
-				<div className="controls">
-					<SiteLink className="action" href="/onboarding">
-						Connect your agent
-					</SiteLink>
-					<BuildWithAgentButton />
-				</div>
+				<FeatureCtaActions href="/onboarding" label="Connect your agent" />
 			</div>
 		</div>
 	)

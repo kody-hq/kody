@@ -2,7 +2,7 @@
 import { publicAsset } from '../../public-assets.ts'
 import { useState } from 'react'
 import { SiteLink } from '../../components/site-link.tsx'
-import { BuildWithAgentButton } from '../../components/build-with-agent-button.tsx'
+import { FeatureCtaActions, FeatureCtaLink } from './feature-cta.tsx'
 import { FeatureRelated } from './feature-related.tsx'
 import {
 	PackagePublishScene,
@@ -91,9 +91,9 @@ export function PackagesFeature() {
 						it, or give someone access to the work.
 					</p>
 					<div className="controls">
-						<SiteLink className="action" href="/onboarding">
+						<FeatureCtaLink href="/onboarding">
 							Connect your agent
-						</SiteLink>
+						</FeatureCtaLink>
 						<SiteLink href="/community">Explore community packages</SiteLink>
 					</div>
 				</div>
@@ -333,12 +333,7 @@ export function PackagesFeature() {
 						<SiteLink href="/docs/package-lifecycle">Read the guide</SiteLink>
 					</p>
 				</div>
-				<div className="controls">
-					<SiteLink className="action" href="/onboarding">
-						Connect your agent
-					</SiteLink>
-					<BuildWithAgentButton />
-				</div>
+				<FeatureCtaActions href="/onboarding" label="Connect your agent" />
 			</div>
 		</div>
 	)

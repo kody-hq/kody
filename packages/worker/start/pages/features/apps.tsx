@@ -10,7 +10,7 @@ import {
 	tomorrowBrief,
 } from './apps-scenes.tsx'
 import { FeatureRelated } from './feature-related.tsx'
-import { BuildWithAgentButton } from '../../components/build-with-agent-button.tsx'
+import { FeatureCtaActions, FeatureCtaLink } from './feature-cta.tsx'
 const initialBrief: Brief = {
 	id: 0,
 	name: 'Autumn launch',
@@ -111,9 +111,7 @@ export function AppsFeature() {
 						Ask your agent for a tool that fits the job. Kody hosts the app,
 						keeps its data, and connects it to the packages you already use.
 					</p>
-					<SiteLink className="action" href="/onboarding">
-						Build an app
-					</SiteLink>
+					<FeatureCtaLink href="/onboarding">Build an app</FeatureCtaLink>
 				</div>
 				<div>
 					<span className="example">
@@ -268,12 +266,7 @@ export function AppsFeature() {
 						<SiteLink href="/docs/package-apps">Read the guide</SiteLink>
 					</p>
 				</div>
-				<div>
-					<SiteLink className="action" href="/onboarding">
-						Build an app
-					</SiteLink>
-					<BuildWithAgentButton />
-				</div>
+				<FeatureCtaActions href="/onboarding" label="Build an app" />
 			</div>
 		</div>
 	)

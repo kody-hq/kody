@@ -49,7 +49,7 @@
 .feature-detail .apps {
 	--hue: 300;
 }
-.feature-detail button {
+:where(.feature-detail) button {
 	color: inherit;
 }
 .feature-detail * {
@@ -67,7 +67,7 @@
 .feature-detail a {
 	touch-action: manipulation;
 }
-.feature-detail button {
+:where(.feature-detail) button {
 	font: inherit;
 	cursor: pointer;
 }
@@ -115,15 +115,6 @@
 	gap: 60px;
 	align-items: center;
 }
-.feature-detail .action {
-	display: inline-block;
-	background: var(--accent);
-	color: var(--on-accent);
-	text-decoration: none;
-	padding: 12px 20px;
-	border-radius: 9px;
-	font-weight: 600;
-}
 .feature-detail .example {
 	display: block;
 	font-size: 12px;
@@ -136,10 +127,10 @@
 	gap: 7px;
 	margin: 18px 0;
 }
-.feature-detail .controls:has(> a:not(.action)) {
+.feature-detail .controls:has(> a:not(.feature-cta)) {
 	column-gap: 24px;
 }
-.feature-detail .controls > a:not(.action) {
+.feature-detail .controls > a:not(.feature-cta) {
 	align-self: center;
 }
 .feature-detail .controls button,
@@ -510,6 +501,20 @@
 .feature-detail .feature-related-list a {
 	font-weight: 600;
 }
+/* `FeatureCtaActions`: the primary pill and the agent copy pill as one row
+   that stacks full width on phones. */
+.feature-cta-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.75rem;
+}
+@media (max-width: 640px) {
+	.feature-cta-actions {
+		flex-direction: column;
+		align-items: stretch;
+	}
+}
 .feature-detail .feature-start {
 	border-top: 1px solid var(--border);
 	padding: 65px 0 25px;
@@ -526,9 +531,6 @@
 	margin-top: 16px;
 	max-width: 60ch;
 	color: var(--muted);
-}
-.feature-detail .feature-start .action {
-	white-space: nowrap;
 }
 @media (max-width: 800px) {
 	.feature-detail .story-section {
@@ -548,9 +550,6 @@
 	}
 	.feature-detail .feature-start h2 {
 		font-size: 32px;
-	}
-	.feature-detail .feature-start .action {
-		justify-self: start;
 	}
 	.feature-detail .story-section svg text {
 		font-size: inherit;
@@ -1239,9 +1238,9 @@
 		16px/1.6 var(--font-family),
 		system-ui;
 }
-.feature-overview button,
-.feature-overview input,
-.feature-overview select {
+/* The CTA pair keeps its shared pill typography. */
+.feature-overview
+	:is(button:where(:not(.feature-cta-actions > *)), input, select) {
 	font: inherit;
 	color: inherit;
 }
@@ -1253,7 +1252,7 @@
 .feature-overview button {
 	cursor: pointer;
 }
-.feature-overview a {
+.feature-overview a:not(.feature-cta) {
 	color: var(--accent);
 }
 .feature-overview :focus-visible {
@@ -1377,21 +1376,8 @@
 	text-decoration: none;
 	font-size: 13px;
 }
-.feature-overview .together .actions {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 1.25rem;
+.feature-overview .together .feature-cta-actions {
 	margin-top: 12px;
-}
-.feature-overview .cta {
-	display: inline-block;
-	background: var(--accent);
-	color: var(--on-accent);
-	border-radius: 8px;
-	padding: 12px 18px;
-	text-decoration: none;
-	font-weight: 600;
 }
 @media (max-width: 720px) {
 	.feature-overview .overview-content {
@@ -1501,13 +1487,10 @@
 	max-width: var(--feature-max-width);
 	padding: 4rem var(--feature-gutter);
 }
-.feature-detail a:not(.action) {
+.feature-detail a:not(.feature-cta) {
 	color: var(--accent);
 }
-.feature-detail button,
-.feature-detail input,
-.feature-detail select,
-.feature-detail textarea {
+:where(.feature-detail) :is(button, input, select, textarea) {
 	font: inherit;
 }
 @media (max-width: 800px) {
