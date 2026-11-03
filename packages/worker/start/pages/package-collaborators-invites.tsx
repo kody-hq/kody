@@ -3,6 +3,7 @@ import { useState, type FormEvent } from 'react'
 import { useInviteHandoff } from '../use-invite-handoff.ts'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { SiteLink } from '../components/site-link.tsx'
+import { DetailParts } from '../components/detail-parts.tsx'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
 import {
 	AccountManagementPanel,
@@ -265,12 +266,14 @@ export function PackageCollaboratorInvites({
 										{packageCollaboratorInviteeLabel(invite)}
 									</span>
 									<span css={rowDetailCss}>
-										{[
-											invite.preset
-												? packageCollaboratorPresetLabel(invite.preset)
-												: 'Custom access',
-											`Expires ${formatTimestampDate(invite.expiresAt)}`,
-										].join(' · ')}
+										<DetailParts
+											parts={[
+												invite.preset
+													? packageCollaboratorPresetLabel(invite.preset)
+													: 'Custom access',
+												<>Expires {formatTimestampDate(invite.expiresAt)}</>,
+											]}
+										/>
 									</span>
 								</span>
 								<span css={rowActionsCss}>

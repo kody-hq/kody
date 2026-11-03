@@ -17,7 +17,7 @@ import { getPlatformOauthAppClientSecret } from '#worker/integrations/platform-a
 import { type buildConnectOauthNextSteps } from '#worker/integrations/connect-oauth-next-steps.ts'
 import {
 	persistConnectOauthTokens,
-	resolveConnectClientSecret,
+	resolveTokenEndpointClientSecret,
 	type ConnectOauthHostApprovalLink,
 } from '#worker/integrations/connect-oauth-persist.ts'
 import {
@@ -182,10 +182,12 @@ export async function startIntegrationDeviceConnect(
 			slug: platformApp.slug,
 		})
 	} else {
-		clientSecret = await resolveConnectClientSecret({
+		clientSecret = await resolveTokenEndpointClientSecret({
 			env: input.env,
 			userId: ownerId,
 			provider,
+			clientId,
+			tokenUrl,
 			clientSecret: input.clientSecret,
 		})
 	}
