@@ -369,6 +369,11 @@ export const packageDetailSchema =
 		credentials: z
 			.object({
 				needs: z.array(packageCredentialNeedSchema),
+				invalidSlots: z
+					.array(z.object({ key: z.string(), message: z.string() }))
+					.describe(
+						'Published `kody.credentials` slots that fail the current slot schema, with the validation message. They are left out of `needs`, so nothing fills them. Fix each slot in package.json and republish.',
+					),
 				suppliersEnabled: z
 					.boolean()
 					.describe(
