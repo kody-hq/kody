@@ -467,20 +467,23 @@ export async function updateOauthAppClientCredentials(input: {
 	userId: string
 	slug: string
 	clientId: string
+	/** Written with the new client id; otherwise a changed client id drops the old secret. */
+	clientSecretEncrypted?: string
 	updatedAt?: string
 }): Promise<boolean> {
 	const result = await input.db
 		.prepare(
 			`UPDATE user_oauth_apps
-			SET client_secret_encrypted = CASE
+			SET client_secret_encrypted = COALESCE(?, CASE
 					WHEN client_id = ? THEN client_secret_encrypted
 					ELSE NULL
-				END,
+				END),
 				client_id = ?,
 				updated_at = ?
 			WHERE user_id = ? AND slug = ?${andLiveDeletedAtSql()}`,
 		)
 		.bind(
+			input.clientSecretEncrypted ?? null,
 			input.clientId,
 			input.clientId,
 			input.updatedAt ?? new Date().toISOString(),
