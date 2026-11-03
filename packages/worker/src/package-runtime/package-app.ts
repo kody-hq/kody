@@ -61,7 +61,7 @@ import {
 	loadPublishedBundleArtifactByIdentity,
 	persistPublishedBundleArtifact,
 } from './published-bundle-artifacts.ts'
-import { PromiseLruCache } from '#worker/package-registry/published-package-cache.ts'
+import { createPublishedPackagePromiseCache } from '#worker/package-registry/published-package-cache.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
 import { type FetchGatewayProps } from '#mcp/fetch-gateway.ts'
@@ -1536,7 +1536,10 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		createExecutionSecretRedactor()
 
 	private authorityScope(): PackageAppAuthorityScope {
-		return { orgId: this.ctx.props.userId, packageId: this.ctx.props.packageId }
+		return {
+			orgId: this.ctx.props.userId,
+			packageId: this.ctx.props.packageId,
+		}
 	}
 
 	/** The app's runs-as person in the owning org, with their live role. */
@@ -3308,7 +3311,7 @@ type PackageAppWorkerBuild = {
 // behalf of a different request" whenever it (re)loaded the dynamic isolate
 // from any request other than the one that built the options.
 const packageAppWorkerOptionsCache =
-	new PromiseLruCache<PackageAppWorkerBuild>()
+	createPublishedPackagePromiseCache<PackageAppWorkerBuild>()
 
 /**
  * Mint the request-bound loopback bindings for one loader call. Call it inside
