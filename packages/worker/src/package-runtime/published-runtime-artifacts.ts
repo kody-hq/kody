@@ -1,6 +1,7 @@
 import { base64ToBytes, bytesToBase64 } from '@kody-internal/shared/base64.ts'
 import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import { type EntitySourceRow } from '#worker/repo/types.ts'
+import { repoRelativeSourceFiles } from '#worker/repo/published-source-files.ts'
 import { repairInlinedFacadeBindingsInArtifact } from './inlined-facade-binding-repair.ts'
 import {
 	isRepairableArtifactKind,
@@ -107,6 +108,11 @@ export type PublishedSourceSnapshot = {
 	publishedCommit: string
 	manifestPath: string
 	sourceRoot: string
+	/**
+	 * Keyed from the repo root, like `manifestPath` (see
+	 * `repoRelativeSourceFiles`). Entries written before #3569 may be
+	 * keyed from `sourceRoot`; `packageSourceFiles` reads both.
+	 */
 	files: Record<string, string>
 	createdAt: string
 	/**
@@ -464,6 +470,10 @@ export async function writePublishedSourceSnapshot(input: {
 	if (!input.source.published_commit) {
 		return null
 	}
+	const files = repoRelativeSourceFiles({
+		source: input.source,
+		files: input.files,
+	})
 	const createdAt = new Date().toISOString()
 	const snapshot: PublishedSourceSnapshot = {
 		version: sourceSnapshotVersion,
@@ -474,7 +484,7 @@ export async function writePublishedSourceSnapshot(input: {
 		publishedCommit: input.source.published_commit,
 		manifestPath: input.source.manifest_path,
 		sourceRoot: input.source.source_root,
-		files: input.files,
+		files,
 		createdAt,
 		...(input.invalidateExistingArtifacts
 			? { invalidateArtifactsBefore: createdAt }
@@ -485,7 +495,7 @@ export async function writePublishedSourceSnapshot(input: {
 		sourceId: input.source.id,
 		publishedCommit: input.source.published_commit,
 	})
-	const manifestContent = input.files[input.source.manifest_path]
+	const manifestContent = files[input.source.manifest_path]
 	if (typeof manifestContent !== 'string') {
 		throw new Error(
 			`Published source snapshot is missing manifest "${input.source.manifest_path}".`,

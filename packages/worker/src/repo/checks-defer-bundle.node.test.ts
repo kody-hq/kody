@@ -175,6 +175,41 @@ test('runRepoChecks defers full esbuild when rebuild will validate the same targ
 	expectNoBundleBuilds()
 })
 
+test('deferred bundle check refuses relative imports the rebuild could not resolve', async () => {
+	const files = new Map<string, string>([
+		[
+			'package.json',
+			packageJson('deferred-imports', {}, { '.': './src/index.ts' }),
+		],
+		...docs,
+		[
+			'src/index.ts',
+			"import { helper } from './lib/helper.js'\nexport default async () => helper()\n",
+		],
+		[
+			'src/lib/helper.ts',
+			"import { value } from '../missing.ts'\nimport type { Shape } from './types.ts'\nexport const helper = (): Shape => value\n",
+		],
+		['src/job.ts', 'export default async () => ({ ok: true })\n'],
+	])
+	const missing = await runDeferred(files)
+	expect(missing.result.ok).toBe(false)
+	const bundle = missing.result.results.find(
+		(result) => result.kind === 'bundle',
+	)
+	expect(bundle).toMatchObject({ ok: false })
+	expect(bundle?.message).toContain('"../missing.ts" in "src/lib/helper.ts"')
+	expect(bundle?.message).not.toContain('types.ts')
+	expectNoBundleBuilds()
+
+	const fixed = new Map(files)
+	fixed.set('src/missing.ts', 'export const value = { ok: true }\n')
+	const resolved = await runDeferred(fixed)
+	expect(resolved.result.results).toEqual(
+		expect.arrayContaining([deferredBundle]),
+	)
+})
+
 test('deferred bundle check still typechecks in an isolate and does not start bundle-chunk isolates', async () => {
 	const files = new Map<string, string>([
 		[
