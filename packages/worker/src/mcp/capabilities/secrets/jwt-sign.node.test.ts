@@ -10,7 +10,7 @@ import {
 	timingSafeEqual,
 	verify,
 } from 'node:crypto'
-import { expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { lookupSecretsThroughResolveSecret } from '#worker/test-support/secret-lookup.ts'
 import { isMcpCallerError, McpCallerError } from '#mcp/caller-error.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
@@ -41,6 +41,16 @@ const ctx = {
 	}),
 }
 type SignInput = Parameters<typeof jwtSignCapability.handler>[0]
+
+// Most cases sign without an https aud; pin the clock before enforcement so
+// they keep running. The enforcement test moves it.
+beforeEach(() => {
+	vi.useFakeTimers({ toFake: ['Date'] })
+	vi.setSystemTime(sealedToken.jwtSignSendToHostRequiredAt - 1)
+})
+afterEach(() => {
+	vi.useRealTimers()
+})
 
 function createKeyPair() {
 	return generateKeyPairSync('rsa', {
@@ -544,13 +554,52 @@ test('secretJwtSign seals the JWT to the aud URL or send_to_host domain', async 
 	expect(byHost.sealedTo.domains).toEqual(['example.org'])
 	expect(byAudience.warning).toBeUndefined()
 	expect(byHost.warning).toBeUndefined()
-	const anyHost = await signWith(privateKey, {
+})
+
+test('secretJwtSign warns and counts an any-host JWT before 2026-12-02 and refuses it from then', async () => {
+	lookupSecretsThroughResolveSecret()
+	const { privateKey } = createKeyPair()
+	const writeDataPoint = vi.fn()
+	const counted = {
+		...ctx,
+		env: { ...ctx.env, JWT_SIGN_ANY_HOST_EVENTS: { writeDataPoint } },
+	} as typeof ctx
+	const anyHostInput = {
 		private_key_secret_name: 'serviceAccountKey',
 		algorithm: 'RS256',
-		claims,
-	})
+		claims: { iss: 'app', aud: 'not-a-url', iat: 1, exp: 3601 },
+	} as const
+	const anyHost = await signWith(privateKey, anyHostInput, counted)
 	expect(anyHost.sealedTo.domains).toEqual([sealedToken.anySealedTokenDomain])
-	expect(anyHost.warning).toMatch(/Deprecated: .*Pass send_to_host/)
+	expect(anyHost.warning).toMatch(
+		/Deprecated: .*Pass send_to_host.*Starting 2026-12-02 \(America\/Denver\), secretJwtSign refuses this call\./,
+	)
+	expect(writeDataPoint).toHaveBeenCalledWith({
+		indexes: [ownerIdFromStored('user-123')],
+		blobs: ['jwt_sign_any_host', ownerIdFromStored('user-123'), ''],
+		doubles: [1],
+	})
+
+	vi.setSystemTime(sealedToken.jwtSignSendToHostRequiredAt)
+	writeDataPoint.mockClear()
+	stubSecret(privateKey)
+	await expect(
+		jwtSignCapability.handler(anyHostInput, counted),
+	).rejects.toSatisfy(
+		(error: unknown) =>
+			isMcpCallerError(error) &&
+			/^secretJwtSign needs send_to_host .*Since 2026-12-02/.test(
+				error.message,
+			),
+	)
+	expect(writeDataPoint).not.toHaveBeenCalled()
+	const bound = await signWith(
+		privateKey,
+		{ ...anyHostInput, send_to_host: 'api.example.org' },
+		counted,
+	)
+	expect(bound.sealedTo.domains).toEqual(['example.org'])
+	expect(bound.warning).toBeUndefined()
 })
 
 test('secretJwtSign rejects a send_to_host that is not a bare host', async () => {

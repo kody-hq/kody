@@ -1,7 +1,9 @@
 import { expect, test } from 'vitest'
 import { parseIntegrationTokenPlaceholders } from '#mcp/secrets/placeholders.ts'
 import {
+	anySealedTokenDomain,
 	isSealedTokenName,
+	jwtSignSendToHostRequiredAt,
 	openSealedToken,
 	openSealedTokenForSave,
 	sealToken,
@@ -353,6 +355,23 @@ test('a refused secretJwtSign handle hints at send_to_host', async () => {
 	await expect(open(sealed, { requestHost: 'evil.test' })).rejects.toThrow(
 		/pass send_to_host: "evil\.test" to secretJwtSign/,
 	)
+})
+
+test('an any-host secretJwtSign handle stops filling on 2026-12-02', async () => {
+	const minted = jwtSignSendToHostRequiredAt - 60_000
+	const sealed = await sealToken({
+		env,
+		value: 'signed-jwt',
+		to: { ...to, domains: [anySealedTokenDomain], source: 'jwt-sign' },
+		now: minted,
+	})
+	const elsewhere = { requestHost: 'api.example.net' }
+	await expect(
+		open(sealed, { ...elsewhere, now: jwtSignSendToHostRequiredAt - 1 }),
+	).resolves.toBe('signed-jwt')
+	await expect(
+		open(sealed, { ...elsewhere, now: jwtSignSendToHostRequiredAt }),
+	).rejects.toThrow(/pass send_to_host: "api\.example\.net" to secretJwtSign/)
 })
 
 test('an audience host fills exactly, not on its subdomains', async () => {
