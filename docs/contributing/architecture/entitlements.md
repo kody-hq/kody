@@ -1490,9 +1490,9 @@ endpoint returns 503.
 Handled event types:
 
 - `checkout.session.completed` — resolve the user via `client_reference_id`
-  matching `createBillingLinkReference` (candidates from
-  `metadata.kody_stable_user_id`, existing `stripe_customer_id`, or customer
-  email), then run the same link+refresh helper as the success redirect
+  matching `createBillingLinkReference` (candidates from `metadata.kody_org_id`,
+  existing `stripe_customer_id`, or customer email), then run the same
+  link+refresh helper as the success redirect
 - `customer.subscription.updated` / `customer.subscription.deleted` — look up
   the user by `orgs.stripe_customer_id` and call `refreshStripePlanForUser`
 - `invoice.payment_failed` — same customer lookup + refresh (surfaces
