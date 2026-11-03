@@ -2,7 +2,6 @@ import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test'
 import { expect, test, vi } from 'vitest'
 import { runWithDeferredWork } from '#worker/deferred-work.ts'
-import { communityIconCacheControl } from '#worker/community/community-icon.ts'
 import type * as CommunityIconModule from '#worker/community/community-icon.ts'
 import type { CommunityListingRecord } from '#worker/community/types.ts'
 import { silenceExpectedConsoleErrors } from '#worker/test-support/console-spies.ts'
@@ -149,7 +148,7 @@ test('a cached community icon is served without D1, KV, or R2 reads', async () =
 	expect(hit.response.status).toBe(200)
 	expect(hit.response.headers.get('X-Kody-Cache')).toBe('HIT')
 	expect(hit.response.headers.get('Cache-Control')).toBe(
-		communityIconCacheControl,
+		'public, max-age=31536000, immutable',
 	)
 	expect(hit.response.headers.get('Content-Type')).toBe('image/webp')
 	expect(hit.response.headers.get('ETag')).toBe('"icon-etag"')
@@ -204,7 +203,7 @@ test('fallback icons and 404s are never stored', async () => {
 
 test('only 200 responses with the immutable policy are stored, without viewer headers', async () => {
 	const env = { APP_BASE_URL: origin }
-	const immutable = { 'Cache-Control': communityIconCacheControl }
+	const immutable = { 'Cache-Control': 'public, max-age=31536000, immutable' }
 	const cases: Array<[string, () => Response, boolean]> = [
 		[
 			'immutable 200',
@@ -273,7 +272,7 @@ test('only 200 responses with the immutable policy are stored, without viewer he
 		if (cached) {
 			expect(cached.headers.get('X-Viewer')).toBeNull()
 			expect(cached.headers.get('Cache-Control')).toBe(
-				communityIconCacheControl,
+				'public, max-age=31536000, immutable',
 			)
 		}
 	}

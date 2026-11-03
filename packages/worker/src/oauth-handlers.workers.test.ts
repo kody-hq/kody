@@ -30,7 +30,6 @@ import {
 	handleAuthorizeRequest,
 	tryHandleSilentOidcAuthorize,
 	oauthEmailVerificationRequiredMessage,
-	oauthScopes,
 } from './oauth-handlers.ts'
 import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
 import {
@@ -756,7 +755,7 @@ test('authorize info, denial, approval, and default scopes follow the OAuth work
 		},
 	)
 	const defaultScopeOptions = defaultScopeCompletion.mock.lastCall?.[0]
-	expect(defaultScopeOptions?.scope).toEqual(oauthScopes)
+	expect(defaultScopeOptions?.scope).toEqual(['openid', 'profile', 'email'])
 	expect(defaultScopeOptions?.request.issuer).toBe('https://example.com')
 	expect(defaultScopeOptions?.revokeExistingGrants).toBe(false)
 })
@@ -1050,7 +1049,7 @@ test('worker entrypoint advertises OAuth, OIDC, and RFC 9728 resource metadata p
 	await expect(prm.json()).resolves.toEqual({
 		resource: mcpResource,
 		authorization_servers: ['https://heykody.dev'],
-		scopes_supported: oauthScopes,
+		scopes_supported: ['openid', 'profile', 'email'],
 		bearer_methods_supported: ['header'],
 	})
 

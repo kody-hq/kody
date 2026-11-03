@@ -15,7 +15,6 @@ import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.t
 import { createMswNodeServer } from '#worker/test-support/msw-node-server.ts'
 import { sessionRequestContext } from '#worker/test-support/request-context.ts'
 import {
-	platformFeedbackAcknowledgementEmailClaimTtlSeconds,
 	platformFeedbackAcknowledgementEmailKvKey,
 	sendPlatformFeedbackAcknowledgementEmail,
 } from './acknowledgement-email.ts'
@@ -279,9 +278,7 @@ test('platform feedback acknowledgement emails send once, skip unsafe recipients
 	expect(
 		store.get(platformFeedbackAcknowledgementEmailKvKey('feedback-ack-1')),
 	).toBeTruthy()
-	expect(puts[0]?.options?.expirationTtl).toBe(
-		platformFeedbackAcknowledgementEmailClaimTtlSeconds,
-	)
+	expect(puts[0]?.options?.expirationTtl).toBe(2_592_000)
 	expect(
 		sqlite
 			.prepare(

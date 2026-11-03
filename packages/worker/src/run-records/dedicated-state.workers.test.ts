@@ -35,7 +35,6 @@ import {
 	workflowProjectionCreatingTtlMs,
 } from './service.ts'
 import {
-	runRecordMaxRunsPerUser,
 	runRecordRetentionEveryNFinishes,
 	type RunRecordContext,
 } from './types.ts'
@@ -859,7 +858,7 @@ test('retention prunes runs but never dedicated workflow/job/activation state', 
 	// the fresh rows still exceed the cap, so excess prune runs too.
 	const agedStartedAt = new Date(Date.now() - 40 * dayMs).toISOString()
 	const freshStartedAt = new Date().toISOString()
-	const excessCount = runRecordMaxRunsPerUser + 10
+	const excessCount = 2_000 + 10
 	await runInDurableObject(
 		runLogStub(userId),
 		async (instance: RunLog, state) => {
@@ -891,7 +890,7 @@ test('retention prunes runs but never dedicated workflow/job/activation state', 
 					.one().n,
 		)
 	expect(await countRuns(`id LIKE 'aged-%'`)).toBe(0)
-	expect(await countRuns('1 = 1')).toBe(runRecordMaxRunsPerUser)
+	expect(await countRuns('1 = 1')).toBe(2_000)
 	expect(
 		await getWorkflowProjection({ env, userId, id: 'wf-keep' }),
 	).toMatchObject({ id: 'wf-keep', bindingName: dynamicBinding })

@@ -1,7 +1,6 @@
 import { expect, test } from 'vitest'
 import {
 	executeGatewayFetch,
-	gatewayWithoutRunContextMessage,
 	type FetchGatewayProps,
 } from '#mcp/fetch-gateway.ts'
 import {
@@ -71,5 +70,5 @@ test('a gateway minted without run props refuses the fetch explicitly', async ()
 			props: {} as FetchGatewayProps,
 			request: new Request('https://api.example.com/'),
 		}),
-	).rejects.toThrow(gatewayWithoutRunContextMessage)
+	).rejects.toThrow('Outbound fetch has no run context')
 })

@@ -10,7 +10,6 @@ import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { provisionPersonalOrgForSqliteUser } from '#worker/test-support/personal-org-seed.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
-import { maskEmailAddressForNotice } from '#app/email/messages.ts'
 
 const mockSendCloudflareEmail = vi.fn(
 	async (..._args: Parameters<typeof CloudflareEmail.sendCloudflareEmail>) => ({
@@ -161,7 +160,7 @@ test('successful email change notifies the previous address with masked new emai
 	})
 	const text = (message as { text: string }).text
 	expect(text).toContain(oldEmail)
-	expect(text).toContain(maskEmailAddressForNotice(newEmail))
+	expect(text).toContain('n***@example.com')
 	expect(text).not.toContain(newEmail)
 	expect(text).toContain('IP 203.0.113.10')
 	expect(text).toContain('country US')

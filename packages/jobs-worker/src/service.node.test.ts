@@ -1,6 +1,5 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { createD1JobsStore } from '@kody-internal/shared/jobs/store.ts'
-import { jobExpiredDisabledReason } from '@kody-internal/shared/jobs/disabled-reason.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
@@ -263,5 +262,5 @@ test('an expired job turns off with the expiry saved as its disabled reason', as
 	).toBe(1)
 	const row = await store.getJobById({ userId, jobId: 'job-expired' })
 	expect(row?.record.enabled).toBe(false)
-	expect(row?.record.disabledReason).toBe(jobExpiredDisabledReason)
+	expect(row?.record.disabledReason).toBe('The job passed its expiry time.')
 })

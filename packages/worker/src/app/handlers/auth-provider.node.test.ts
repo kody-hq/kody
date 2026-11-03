@@ -4,7 +4,6 @@ import { publicAuthProvidersLoaderData } from '#app/public-auth-providers.ts'
 import { emptyPublicFormProtection } from '#universal/public-form-protection.ts'
 import { startWebsiteOAuth } from '#worker/identity/oauth-start-operation.ts'
 import { reservedUsernamesKvKey } from '#worker/identity/reserved-username-settings.ts'
-import { unusablePasswordHash } from '#worker/identity/usable-password.ts'
 import { getUsernameValidationError } from '#worker/identity/username.ts'
 import {
 	auditEventSummaries,
@@ -570,7 +569,7 @@ test('google sign-in reclaims an unverified password account matching the provid
 		.prepare(`SELECT password_hash, email_verified_at FROM users WHERE id = 8`)
 		.get() as { password_hash: string; email_verified_at: string | null }
 	expect(user.email_verified_at).toBeTruthy()
-	expect(user.password_hash).toBe(unusablePasswordHash.reclaimedUnverified)
+	expect(user.password_hash).toBe('reclaimed_unverified_no_usable_password')
 	expect(await verifyPassword('test-password', user.password_hash)).toBe(false)
 	expect([
 		countRows(sqlite, 'verifications', `WHERE target = '8'`),
