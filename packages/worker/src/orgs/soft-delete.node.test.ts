@@ -269,6 +269,51 @@ test('interrupted soft-delete still lists and restores for a live Owner', async 
 	expect(live?.membership_deleted_at).toBeNull()
 })
 
+test('soft-delete tombstones memberships with the org even when a later step fails', async () => {
+	const { env, appDb } = await createHarness()
+	const orgId = ownerIdFromStored('org-delete-interrupted')
+	const ownerId = ownerIdFromStored('owner-delete-interrupted')
+	await seedOrg(appDb, orgId, 'delete-interrupted')
+	await appDb
+		.prepare(
+			`INSERT INTO org_memberships (org_id, user_id, role, created_at)
+			 VALUES (?, ?, 'owner', ?)`,
+		)
+		.bind(orgId, ownerId, '2026-01-01T00:00:00.000Z')
+		.run()
+	const failingDb = new Proxy(appDb, {
+		get(target, key, receiver) {
+			if (key === 'prepare') {
+				return (sql: string) => {
+					if (sql.includes('UPDATE api_tokens')) {
+						throw new Error('injected failure after the org stamp')
+					}
+					return target.prepare(sql)
+				}
+			}
+			const value = Reflect.get(target, key, receiver)
+			return typeof value === 'function' ? value.bind(target) : value
+		},
+	})
+	await expect(
+		softDeleteOrg({ env: { ...env, APP_DB: failingDb }, orgId, now }),
+	).rejects.toThrow('injected failure after the org stamp')
+	const row = await appDb
+		.prepare(
+			`SELECT o.deleted_at AS org_deleted_at, m.deleted_at AS membership_deleted_at
+			 FROM orgs o
+			 INNER JOIN org_memberships m ON m.org_id = o.id AND m.user_id = ?
+			 WHERE o.id = ?`,
+		)
+		.bind(ownerId, orgId)
+		.first<{
+			org_deleted_at: string | null
+			membership_deleted_at: string | null
+		}>()
+	expect(row?.org_deleted_at).toBe(now.toISOString())
+	expect(row?.membership_deleted_at).toBe(now.toISOString())
+})
+
 test('org soft delete revokes team-bound API tokens and bootstrap codes', async () => {
 	const { env, appDb } = await createHarness()
 	const orgId = ownerIdFromStored('org-token-revoke')

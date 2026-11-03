@@ -28,6 +28,7 @@ const hubMock = vi.hoisted(() => {
 	const calls: Array<string> = []
 	let failImportOnServerId: string | null = null
 	let throwOnDiscardServerId: string | null = null
+	let throwOnConnectServerId: string | null = null
 	let usernameAtFirstImport: string | null = null
 	let readUsername: (() => Promise<string | null>) | null = null
 	return {
@@ -36,6 +37,7 @@ const hubMock = vi.hoisted(() => {
 			calls.length = 0
 			failImportOnServerId = null
 			throwOnDiscardServerId = null
+			throwOnConnectServerId = null
 			usernameAtFirstImport = null
 			readUsername = null
 		},
@@ -44,6 +46,9 @@ const hubMock = vi.hoisted(() => {
 		},
 		throwOnDiscard(serverId: string) {
 			throwOnDiscardServerId = serverId
+		},
+		throwOnConnect(serverId: string) {
+			throwOnConnectServerId = serverId
 		},
 		observeUsername(reader: () => Promise<string | null>) {
 			readUsername = reader
@@ -80,6 +85,9 @@ const hubMock = vi.hoisted(() => {
 			},
 			connectTransferredServer: async ({ serverId }: { serverId: string }) => {
 				calls.push(`connect:${userId}:${serverId}`)
+				if (throwOnConnectServerId === serverId) {
+					throw new Error('connect boom')
+				}
 				return { ok: true as const }
 			},
 			discardTransferredServer: async ({ serverId }: { serverId: string }) => {
@@ -664,6 +672,40 @@ test('convertPersonalOrg finalizes MCP remove/connect only after identity rewrit
 	expect(
 		await db
 			.prepare(`SELECT user_id FROM mcp_server_settings WHERE id = 'srv-ok'`)
+			.first(),
+	).toEqual({ user_id: result.newPersonalOrgId })
+})
+
+test('convertPersonalOrg reports mcp_servers follow-up when finalize fails after identity rewrite', async () => {
+	const { db, env } = await createHarness()
+	const personId = await seedEqualIdPerson(db, {
+		email: 'mcp-finalize@example.com',
+		username: 'mcp-finalize',
+	})
+	const convertedOrgId = personalOrgId(personId)
+	;(env as { MCP_CLIENT_HUB?: unknown }).MCP_CLIENT_HUB = {}
+	await db
+		.prepare(
+			`INSERT INTO mcp_server_settings (id, user_id, name, url)
+			 VALUES ('srv-flaky', ?, 'flaky', 'https://flaky.example.com')`,
+		)
+		.bind(convertedOrgId)
+		.run()
+	hubMock.throwOnConnect('srv-flaky')
+	const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+	const result = await convertPersonalOrg({
+		env,
+		personId,
+		newHandle: 'mcp-finalize-new',
+		now: new Date(now),
+	})
+	warn.mockRestore()
+
+	expect(result.followUpFailures).toContain('mcp_servers')
+	expect(
+		await db
+			.prepare(`SELECT user_id FROM mcp_server_settings WHERE id = 'srv-flaky'`)
 			.first(),
 	).toEqual({ user_id: result.newPersonalOrgId })
 })
