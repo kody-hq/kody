@@ -4,7 +4,12 @@ import {
 	credentialUsedNote,
 	type CliCredential,
 } from './cli-credential.js'
-import { apiTokenEnvVar, defaultApiUrl, defaultMcpUrl } from './defaults.js'
+import {
+	apiTokenEnvVar,
+	defaultApiUrl,
+	defaultMcpUrl,
+	localExecuteScopes,
+} from './defaults.js'
 import { type SecretBackend, type StoreResolution } from './store.js'
 
 /** Mirrors `cliTokenLifetimeAliases` in auth-bootstrap (keep in sync; avoid import cycle). */
@@ -306,6 +311,11 @@ export function insufficientScopeMessage(
 		currentLifetime?: CliTokenLifetimeAlias | null
 		/** Credential that was sent; defaults to the one this process resolved. */
 		credential?: CliCredential | null
+		/**
+		 * The denial came from `execute --local`: widen the replacement scopes
+		 * to every local-execute scope so one remint covers the module graph.
+		 */
+		localExecute?: boolean
 	},
 ): string {
 	const message = baseInsufficientScopeMessage(input)
@@ -322,19 +332,31 @@ export function insufficientScopeMessage(
 function insufficientScopeMintScopes(
 	input: Partial<InsufficientScopeDetails> & {
 		currentScopes?: ReadonlyArray<string> | null
+		localExecute?: boolean
 	},
 ): Array<string> | null {
 	const required = input.requiredScope ?? null
 	if (!required) return null
-	if (input.mintScopes && input.mintScopes.length > 0) {
-		return [...input.mintScopes]
-	}
-	if (input.currentScopes && input.currentScopes.length > 0) {
-		return [
-			...new Set([...input.currentScopes, ...required.split(/,\s*/)]),
-		].sort()
-	}
-	return null
+	const scopes =
+		input.mintScopes && input.mintScopes.length > 0
+			? [...input.mintScopes]
+			: input.currentScopes && input.currentScopes.length > 0
+				? [...input.currentScopes, ...required.split(/,\s*/)]
+				: null
+	if (!scopes) return null
+	if (widensToLocalExecuteScopes(input)) scopes.push(...localExecuteScopes)
+	return [...new Set(scopes)].sort()
+}
+
+function widensToLocalExecuteScopes(input: {
+	requiredScope?: string | null
+	localExecute?: boolean
+}): boolean {
+	if (!input.localExecute || !input.requiredScope) return false
+	const local: ReadonlyArray<string> = localExecuteScopes
+	return input.requiredScope
+		.split(/,\s*/)
+		.every((scope) => local.includes(scope))
 }
 
 function baseInsufficientScopeMessage(
@@ -359,7 +381,10 @@ function baseInsufficientScopeMessage(
 	if (!mintScopes) {
 		return `Kody returned insufficient_scope: this token is missing "${required}". Mint a token whose scopes include "${required}" plus the ones you already use (scopes replace the defaults): run \`${cliBootstrapScopesCommand(['<current scopes>', required], lifetimeFlags)}\` after \`kody login\`, or from Kody MCP call \`${cliBootstrapMintCall(['<current scopes>', required], lifetimeMint)}\` and run its cli_command. For CI/headless, mint with tokenCreate including "${required}" and pass --token or set ${apiTokenEnvVar}.`
 	}
-	return `Kody returned insufficient_scope: this token is missing "${required}". Mint one that includes it: run \`${cliBootstrapScopesCommand(mintScopes, lifetimeFlags)}\` after \`kody login\`, or from Kody MCP call \`${cliBootstrapMintCall(mintScopes, lifetimeMint)}\` and run its cli_command. For CI/headless, mint with tokenCreate using those scopes and pass --token or set ${apiTokenEnvVar}.`
+	const localNote = widensToLocalExecuteScopes(input)
+		? ' Local execute of saved packages needs the other local-execute scopes too, so this list adds them all at once.'
+		: ''
+	return `Kody returned insufficient_scope: this token is missing "${required}".${localNote} Mint one that includes it: run \`${cliBootstrapScopesCommand(mintScopes, lifetimeFlags)}\` after \`kody login\`, or from Kody MCP call \`${cliBootstrapMintCall(mintScopes, lifetimeMint)}\` and run its cli_command. For CI/headless, mint with tokenCreate using those scopes and pass --token or set ${apiTokenEnvVar}.`
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

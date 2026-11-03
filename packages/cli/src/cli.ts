@@ -1,6 +1,7 @@
 import { parseArgs } from 'node:util'
+import { statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { cliBootstrapMintCall } from './api-token.js'
+import { cliBootstrapMintCall, expectedPairedApiOrigin } from './api-token.js'
 import { deleteStoredApiToken, loadStoredApiToken } from './api-token-store.js'
 import {
 	describeCliCredential,
@@ -121,11 +122,20 @@ function mcpUrlFrom(values: { mcpUrl?: string }): string {
 	return values.mcpUrl || process.env.KODY_MCP_URL || defaultMcpUrl
 }
 
+/**
+ * `--api-url`, then `KODY_API_URL`, then the Open API host paired with
+ * `mcpUrl` when given (a PR preview's `-api` host), then production.
+ */
 export function apiUrlFrom(
 	values: { apiUrl?: string },
 	env: NodeJS.ProcessEnv = process.env,
+	mcpUrl?: string,
 ): string {
-	return values.apiUrl || env.KODY_API_URL || defaultApiUrl
+	if (values.apiUrl || env.KODY_API_URL) {
+		return (values.apiUrl || env.KODY_API_URL) as string
+	}
+	const paired = mcpUrl ? expectedPairedApiOrigin(mcpUrl) : null
+	return paired?.startsWith('https://') ? paired : defaultApiUrl
 }
 
 const cliFlagOptions = {
@@ -551,12 +561,16 @@ async function dispatch(
 									: ('long' as const),
 						}
 					: {}
-			const loginApiUrl = apiUrlFrom({
-				apiUrl:
-					typeof parsed.values['api-url'] === 'string'
-						? parsed.values['api-url']
-						: undefined,
-			})
+			const loginApiUrl = apiUrlFrom(
+				{
+					apiUrl:
+						typeof parsed.values['api-url'] === 'string'
+							? parsed.values['api-url']
+							: undefined,
+				},
+				process.env,
+				mcpUrl,
+			)
 			if (parsed.values.device === true) {
 				const result = await loginWithDevice({
 					mcpUrl,
@@ -589,12 +603,16 @@ async function dispatch(
 			return 0
 		}
 		case 'logout': {
-			const apiUrl = apiUrlFrom({
-				apiUrl:
-					typeof parsed.values['api-url'] === 'string'
-						? parsed.values['api-url']
-						: undefined,
-			})
+			const apiUrl = apiUrlFrom(
+				{
+					apiUrl:
+						typeof parsed.values['api-url'] === 'string'
+							? parsed.values['api-url']
+							: undefined,
+				},
+				process.env,
+				mcpUrl,
+			)
 			const oauth = deleteCredentials(
 				mcpUrl,
 				undefined,
@@ -657,12 +675,16 @@ async function dispatch(
 			throw new Error('Usage: kody org list [--json] | kody org use [<slug>]')
 		}
 		case 'status': {
-			const apiUrl = apiUrlFrom({
-				apiUrl:
-					typeof parsed.values['api-url'] === 'string'
-						? parsed.values['api-url']
-						: undefined,
-			})
+			const apiUrl = apiUrlFrom(
+				{
+					apiUrl:
+						typeof parsed.values['api-url'] === 'string'
+							? parsed.values['api-url']
+							: undefined,
+				},
+				process.env,
+				mcpUrl,
+			)
 			// Status always reports the active (or pending) login — not KODY_ORG.
 			const credentials = loadCredentials(mcpUrl)
 			const orgs = listStoredOrgs(mcpUrl)
@@ -694,7 +716,7 @@ async function dispatch(
 					`api: ${storedApi.apiUrl}`,
 					`stored API token: yes (${storedApi.tokenId})`,
 					`API token scopes: ${scopes}`,
-					`API token expires: ${storedApi.expiresAt ?? 'unknown'}`,
+					`API token expires: ${storedApi.expiresAt ?? 'unknown'} (saved at mint; idle tokens slide on use, \`kody whoami\` shows the live deadline)`,
 					`API token via: ${storedApi.createdVia ?? 'unknown'}`,
 				)
 			} else {
@@ -1063,7 +1085,13 @@ async function dispatch(
 				)
 			}
 			if (local) assertLocalExecuteNodeEngine()
-			const fileArg = hasFileFlag ? (parsed.values.file as string) : undefined
+			const positionalFile =
+				!hasCodeFlag && !hasFileFlag && invoke === undefined
+					? positionalModuleFile(positionalModule)
+					: undefined
+			const fileArg = hasFileFlag
+				? (parsed.values.file as string)
+				: positionalFile
 			// `--code` wins over `--file`. Only attribute the path when the file is the source.
 			const modulePath =
 				localPackageInvoke?.modulePath ??
@@ -1893,6 +1921,32 @@ export function executeSourcesConflict(input: {
 			input.hasFileFlag ||
 			input.positionalModule.length > 0)
 	)
+}
+
+const moduleFileExtension = /\.(?:[cm]?[jt]sx?)$/i
+
+/**
+ * A lone positional that names a module file is a path, not source text
+ * (`kody execute --local ./tick.ts` behaves like `--file ./tick.ts`).
+ */
+export function positionalModuleFile(
+	positionalModule: string,
+	exists: (path: string) => boolean = (path) => {
+		try {
+			return statSync(path).isFile()
+		} catch {
+			return false
+		}
+	},
+): string | undefined {
+	if (!positionalModule || /\s/.test(positionalModule)) return undefined
+	if (exists(positionalModule)) return positionalModule
+	if (moduleFileExtension.test(positionalModule)) {
+		throw new Error(
+			`No module file at ${JSON.stringify(positionalModule)}. Pass an existing path (or --file <path>), or the module source with --code.`,
+		)
+	}
+	return undefined
 }
 
 /**

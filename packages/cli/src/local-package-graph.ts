@@ -1071,6 +1071,7 @@ function describePackageGraphFailure(
 			`${insufficientScopeMessage({
 				...readInsufficientScopeDetails(body),
 				currentLifetime: currentStoredTokenLifetimeAlias(url.origin),
+				localExecute: true,
 			})}${detail}`,
 			{ status, code },
 		)
