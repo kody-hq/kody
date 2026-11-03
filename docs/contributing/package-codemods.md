@@ -371,10 +371,13 @@ through a bundler-resolved import (`import` / `export … from`, `import()`,
 `require()`).
 
 Helpers are matched by name, comments are ignored, and an unparseable module
-falls back to a text match. An unsuffixed `{{secret:NAME}}` still reads a
-package-scoped secret before the user one, and no static scan can see that, so
-`|scope=` findings undercount package-scoped buckets. Count those from secret
-rows with `scope = 'package'`. Publish seals literal credential uses into a
+falls back to a text match. The publish stamp gate is stricter: an unparseable
+server-runtime module that mentions `credential`, `credentials`, or `kody` fails
+with `non_literal`. An unsuffixed `{{secret:NAME}}` still reads a package-scoped
+secret before the user one, and no static scan can see that, so `|scope=`
+findings undercount package-scoped buckets. Count those with the read-only
+`adminPackageScopedSecretReport` (live package-scope secrets by org and package)
+next to the 0010 fleet report. Publish seals literal credential uses into a
 credential stamp (issue #3836 phase 1) and **fails the build** on non-literal or
 unstampable patterns. This module yields a publish gate failure for `index.ts`
 (computed integration/secret names and `|scope=`; `kody.mcp` is reported by this

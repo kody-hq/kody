@@ -217,7 +217,7 @@ test('scanCredentialStamp ignores credential/credentials in erased type position
 		API_KEY: { kind: 'secret', description: 'API key.' },
 	}
 	const typeOnlyForms = [
-		'export type LoginClient = Awaited<ReturnType<typeof credential>>',
+		'export type OpenClient = Awaited<ReturnType<typeof credential>>',
 		'export type Clients = Awaited<ReturnType<typeof credentials>>',
 		'type Visitor = Awaited<ReturnType<typeof credential.visitor>>',
 		'type ViaKody = Awaited<ReturnType<typeof kody.credential>>',
@@ -260,7 +260,7 @@ test('scanCredentialStamp ignores credential/credentials in erased type position
 		'src/index.ts': 'export default async function run() { return 1 }',
 		'src/client.d.ts': [
 			"import type { credential } from 'kody:runtime'",
-			'export type LoginClient = Awaited<ReturnType<typeof credential>>',
+			'export type OpenClient = Awaited<ReturnType<typeof credential>>',
 			'export declare const open: typeof credential',
 		].join('\n'),
 	})
@@ -924,6 +924,46 @@ test('server eval / new Function / non-literal import fail; UI client entry is e
 	)
 	expect(serverPaths.has('src/server.ts')).toBe(true)
 	expect(serverPaths.has('src/client.ts')).toBe(false)
+})
+
+test('a server module the parser rejects fails closed when it mentions credential or kody; UI client entry is exempt', () => {
+	const unparseable = [
+		"import { credential } from 'kody:runtime'",
+		'const open = credential',
+		'export default { fetch() { return open } } }',
+	].join('\n')
+	const server = scanCredentialStamp(
+		appManifestFiles({
+			'src/server.ts': unparseable,
+			'src/client.ts': 'export {}',
+		}),
+	)
+	expect(server.failures).toEqual([
+		expect.objectContaining({
+			code: 'non_literal',
+			path: 'src/server.ts',
+			message: expect.stringMatching(/could not be parsed \(.+\)/),
+		}),
+	])
+
+	const unrelated = scanCredentialStamp(
+		appManifestFiles({
+			'src/server.ts': 'export default { fetch() { return 1 } } }',
+			'src/client.ts': 'export {}',
+		}),
+	)
+	expect(unrelated.failures).toEqual([])
+
+	const clientOnly = scanCredentialStamp(
+		appManifestFiles({
+			'src/server.ts':
+				'export default { fetch() { return new Response("ok") } }',
+			'src/client.ts': unparseable,
+		}),
+	)
+	expect(clientOnly.failures.filter((f) => f.code === 'non_literal')).toEqual(
+		[],
+	)
 })
 
 function assetsAppFiles(extra: Record<string, string>) {
