@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { expect, test, waitForClientHydration } from '../playwright-utils.ts'
-import { type Locator, type Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 
 async function watchControl(
 	page: Page,

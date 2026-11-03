@@ -1,4 +1,4 @@
-import { type Page } from '@playwright/test'
+import type { Page } from '@playwright/test'
 import { readE2eCloudflareMockState } from '../tools/e2e-cloudflare-mock-state.ts'
 import { expect, test, waitForClientHydration } from './playwright-utils.ts'
 
