@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
@@ -15,7 +15,10 @@ import {
 	pruneSystemEmailSends,
 	recordSystemEmailSends,
 } from './system-email-sends.ts'
-import { gateTransactionalSend } from './transactional-send-policy.ts'
+import {
+	gateTransactionalSend,
+	sendGatedTransactionalEmail,
+} from './transactional-send-policy.ts'
 import { registerTransactionalEmailDelivery } from './verification-delivery.ts'
 
 const migrations = new URL('../../migrations/', import.meta.url)
@@ -426,4 +429,84 @@ test('migration 0243 carries existing verification hard bounces forward', async 
 			)
 			.get(),
 	).toBeUndefined()
+})
+
+test('a bounce older than a later delivery on another send does not count', async () => {
+	const db = createDb()
+	const recipient = 'flaky@example.com'
+	await recordSend(db, 'cf-a', [recipient])
+	await recordSend(db, 'cf-b', [recipient])
+	await recordSend(db, 'cf-c', [recipient])
+
+	await process(
+		db,
+		providerEvent({
+			messageId: 'cf-c',
+			eventId: 'ev-c-delivered',
+			status: 'delivered',
+			recipient,
+			at: '2026-11-03T10:05:00.000Z',
+		}),
+	)
+	// Both bounces happened before that delivery but are reported after it.
+	for (const [messageId, at] of [
+		['cf-a', '2026-11-03T10:01:00.000Z'],
+		['cf-b', '2026-11-03T10:02:00.000Z'],
+	] as const) {
+		await process(
+			db,
+			providerEvent({
+				messageId,
+				eventId: `ev-${messageId}-bounced`,
+				...hardBounce,
+				recipient,
+				at,
+			}),
+		)
+	}
+	expect(await loadRecipientSuppression({ db, recipient })).toBeNull()
+})
+
+test('gated transactional mail is held when any recipient is suppressed', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const db = createDb()
+	const suppressed = 'gone@example.com'
+	await recordSend(db, 'cf-1', [suppressed])
+	await recordSend(db, 'cf-2', [suppressed])
+	for (const [messageId, at] of [
+		['cf-1', '2026-11-03T10:01:00.000Z'],
+		['cf-2', '2026-11-03T10:02:00.000Z'],
+	] as const) {
+		await process(
+			db,
+			providerEvent({
+				messageId,
+				eventId: `ev-${messageId}`,
+				...hardBounce,
+				recipient: suppressed,
+				at,
+			}),
+		)
+	}
+	const fetchImpl = vi.fn(stubMxFetch)
+	const result = await sendGatedTransactionalEmail({
+		db,
+		config: { accountId: 'account-1', apiToken: 'test-token' },
+		category: 'essential',
+		kind: 'billing_success',
+		message: {
+			from: 'kody@kody.codes',
+			to: ['ok@example.com', suppressed],
+			subject: 'Receipt',
+			text: 'Thanks',
+			html: '<p>Thanks</p>',
+		},
+		now: afterCooldown(),
+		fetchImpl,
+	})
+	expect(result).toMatchObject({
+		ok: false,
+		hold: true,
+		code: 'recipient_suppressed',
+	})
 })

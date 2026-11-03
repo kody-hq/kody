@@ -260,9 +260,12 @@ event, or `failed` / `rejected` with a permanent 5xx.
 - **Full suppression.** Two hard bounces of any recorded system send
   (onboarding, usage and billing notices, verification, operator mail) with no
   delivery in between skip all system mail to the address, verification included
-  (`recipient_suppressed`). Each send counts once across queue retries.
-  Below-threshold rows that suppress nothing age out after 90 days, with the
-  90-day `system_email_sends` retention, in the `system_email_retention` lane.
+  (`recipient_suppressed`). Each send counts once across queue retries, and a
+  bounce older than a delivery already recorded for the address (reports can
+  arrive out of order) does not count. A multi-recipient message is held when
+  any recipient is held. Below-threshold rows that suppress nothing age out
+  after 90 days, with the 90-day `system_email_sends` retention, in the
+  `system_email_retention` lane.
 
 A `delivered` event to the address deletes the row, and so does
 `adminEmailSuppressionClear`; `adminEmailSuppressionList` shows suppressed

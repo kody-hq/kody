@@ -190,7 +190,10 @@ export function systemEmailSendCursorGuard(input: {
 /**
  * Count one hard bounce per send (idempotent across queue retries: the
  * count only moves in the batch where `hard_bounced_at` was first set) and
- * suppress the recipient once the count reaches the threshold.
+ * suppress the recipient once the count reaches the threshold. A bounce older
+ * than a delivery already recorded for the recipient on another send is not
+ * counted: reports can arrive out of order across sends, and that delivery
+ * already cleared the suppression the bounce would rebuild.
  */
 async function countSendHardBounce(input: {
 	db: D1Database
@@ -203,9 +206,15 @@ async function countSendHardBounce(input: {
 	const results = await input.db.batch([
 		input.db
 			.prepare(
-				`UPDATE system_email_sends SET hard_bounced_at = ?
-				WHERE provider_message_id = ? AND recipient = ?
-					AND hard_bounced_at IS NULL`,
+				`UPDATE system_email_sends SET hard_bounced_at = ?1
+				WHERE provider_message_id = ?2 AND recipient = ?3
+					AND hard_bounced_at IS NULL
+					AND NOT EXISTS (
+						SELECT 1 FROM system_email_sends AS later
+						WHERE later.recipient = ?3
+							AND later.last_status = 'delivered'
+							AND later.last_status_at > ?1
+					)`,
 			)
 			.bind(input.at, input.providerMessageId, input.recipient),
 		input.db

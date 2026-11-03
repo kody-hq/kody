@@ -15,6 +15,11 @@ CREATE TABLE system_email_sends (
 
 CREATE INDEX idx_system_email_sends_sent_at ON system_email_sends(sent_at);
 
+-- Per-recipient lookup for the latest delivery, so a late-arriving bounce
+-- older than a later delivery does not count toward suppression.
+CREATE INDEX idx_system_email_sends_recipient_status_at
+	ON system_email_sends(recipient, last_status_at);
+
 -- Per-recipient hard-bounce state for system mail. One verification or
 -- password-reset hard bounce sets verification_suppressed_at (the rule that
 -- email_verification_hard_bounces held). Repeated hard bounces of any system

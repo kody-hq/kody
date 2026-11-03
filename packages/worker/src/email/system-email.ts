@@ -622,14 +622,29 @@ export async function pruneSystemEmailRetention(input: {
 		.bind(cutoffDay)
 		.run()
 	result.deletedCounters = counterDelete.meta.changes ?? 0
-	result.deletedSendRecords = await pruneSystemEmailSends({
-		db: input.db,
-		now,
-	})
-	result.deletedSuppressionTracking = await pruneRecipientSuppressionTracking({
-		db: input.db,
-		now,
-	})
+	let deletedInBatch = 0
+	do {
+		deletedInBatch = await pruneSystemEmailSends({
+			db: input.db,
+			now,
+			limit: systemEmailLimits.pruneBatchSize,
+		})
+		result.deletedSendRecords += deletedInBatch
+	} while (
+		deletedInBatch >= systemEmailLimits.pruneBatchSize &&
+		Date.now() < deadlineMs
+	)
+	do {
+		deletedInBatch = await pruneRecipientSuppressionTracking({
+			db: input.db,
+			now,
+			limit: systemEmailLimits.pruneBatchSize,
+		})
+		result.deletedSuppressionTracking += deletedInBatch
+	} while (
+		deletedInBatch >= systemEmailLimits.pruneBatchSize &&
+		Date.now() < deadlineMs
+	)
 
 	if (Date.now() < deadlineMs) {
 		const threadRows = await input.db

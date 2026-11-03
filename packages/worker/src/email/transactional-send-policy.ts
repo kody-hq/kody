@@ -214,8 +214,9 @@ export type GatedTransactionalSendResult =
 	  }
 
 /**
- * Run the transactional send gate, then Cloudflare Email Sending. Hold and
- * cooldown outcomes look like a skipped send so callers that already treat
+ * Run the transactional send gate for every recipient, then Cloudflare Email
+ * Sending. One held recipient holds the whole message. Hold and cooldown
+ * outcomes look like a skipped send so callers that already treat
  * `ok: false` as non-throwing keep working.
  */
 export async function sendGatedTransactionalEmail(input: {
@@ -228,25 +229,26 @@ export async function sendGatedTransactionalEmail(input: {
 	now?: Date
 	fetchImpl?: typeof fetch
 }): Promise<GatedTransactionalSendResult> {
-	const recipient = Array.isArray(input.message.to)
-		? input.message.to[0]
-		: input.message.to
-	if (!recipient) {
+	const recipients = (
+		Array.isArray(input.message.to) ? input.message.to : [input.message.to]
+	).filter(Boolean)
+	if (recipients.length === 0) {
 		return {
 			ok: false,
 			error: 'Transactional email requires a recipient.',
 		}
 	}
 
-	const gate = await gateTransactionalSend({
-		db: input.db,
-		recipient,
-		category: input.category,
-		kind: input.kind,
-		now: input.now,
-		fetchImpl: input.fetchImpl,
-	})
-	if (!gate.allowed) {
+	for (const recipient of recipients) {
+		const gate = await gateTransactionalSend({
+			db: input.db,
+			recipient,
+			category: input.category,
+			kind: input.kind,
+			now: input.now,
+			fetchImpl: input.fetchImpl,
+		})
+		if (gate.allowed) continue
 		console.info('transactional-email-held', {
 			kind: input.kind,
 			code: gate.code,
@@ -268,9 +270,7 @@ export async function sendGatedTransactionalEmail(input: {
 		await recordSystemEmailSends({
 			db: input.db,
 			providerMessageId: result.messageId,
-			recipients: Array.isArray(input.message.to)
-				? input.message.to
-				: [input.message.to],
+			recipients,
 			sender: input.message.from,
 			kind: input.kind,
 			now: input.now,
