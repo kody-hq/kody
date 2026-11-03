@@ -1,0 +1,22 @@
+{
+	"$schema": "../../../node_modules/wrangler/config-schema.json",
+	"name": "kody-mock-oauth",
+	"compatibility_date": "2026-04-16",
+	"compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+	"main": "./src/worker.ts",
+	"preview_urls": true,
+	"observability": { "enabled": false },
+	"env": {
+		"preview": {
+			"observability": {
+				"enabled": true,
+				"logs": {
+					"enabled": true,
+					"head_sampling_rate": 0.1,
+					"invocation_logs": true,
+				},
+				"traces": { "enabled": false },
+			},
+		},
+	},
+}
