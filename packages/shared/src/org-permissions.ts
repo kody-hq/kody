@@ -131,11 +131,15 @@ export function isOrgPermission(value: unknown): value is OrgPermission {
  * carry. They never gated anything, so readers drop them instead of rejecting
  * the whole list.
  */
-const retiredOrgPermissions: ReadonlySet<string> = new Set([
+export const retiredOrgPermissionNames = [
 	'app:create',
 	'email:create',
 	'job:create',
-])
+] as const
+
+const retiredOrgPermissions: ReadonlySet<string> = new Set(
+	retiredOrgPermissionNames,
+)
 
 export function withoutRetiredOrgPermissions<T>(
 	values: ReadonlyArray<T>,
