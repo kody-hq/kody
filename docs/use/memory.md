@@ -51,10 +51,28 @@ ranked hits that share a non-empty `dedupe_key` are collapsed so two copies of
 the same fact cannot spend both slots; blank or missing keys surface
 independently. Ask before copying a personal memory into an org package.
 
+### Search relevance floor
+
+Memory ranking fuses lexical and vector ranks, and those scores say nothing
+about absolute relevance: without a floor the best two memories surface for
+every query. `search` therefore drops a memory whose query cosine similarity
+(`bge-small-en-v1.5`, CLS pooling) is below `searchMemorySurfaceMinVectorScore`
+(0.64), and a memory missing from the vector results. Ranking order and the
+two-memory cap are unchanged. Local dev and tests use a hash stand-in for
+embeddings, so the floor is skipped there.
+
+The floor came from `tools/evals/memory-surface-floor.json`: 16 synthetic
+memories, 56 related queries, and 60 unrelated ones. At 0.64, 46 of 56 related
+queries kept their target memory and 3 of 60 unrelated queries surfaced any
+memory (40/56 and 0/60 with longer memory details). At 0.60 the leak was 10 of
+60; at 0.65 related recall fell to 41 of 56. Retune with that fixture, not a
+guess.
+
 That retrieval is:
 
 - **conservative** — the top one or two ranked active memories after
-  `dedupe_key` collapse
+  `dedupe_key` collapse; on `search`, only memories whose embedding similarity
+  to the query clears a relevance floor, so an unrelated query surfaces none
 - **task-based** — driven by `memoryContext` and, for `search`, the query
 - **cheap to repeat** — subject and summary only; the same one-liners may appear
   again so a compacted context keeps the rule

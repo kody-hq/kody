@@ -59,6 +59,8 @@ export type MemorySearchHit = MemoryMetadata & {
 	score: number
 	lexicalRank?: number
 	vectorRank?: number
+	/** Cosine similarity to the query embedding; absent offline or on a vector miss. */
+	vectorScore?: number
 }
 
 export type MemorySearchMatch = MemorySearchHit
