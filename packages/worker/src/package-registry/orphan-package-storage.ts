@@ -7,8 +7,6 @@ import { liveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { clearPackageOwnedStorageBucket } from './service.ts'
 
 const packageStoragePrefix = 'package:'
-const hexGlob = (count: number) => '[0-9a-f]'.repeat(count)
-const canonicalPackageStorageIdGlob = `${packageStoragePrefix}${hexGlob(8)}-${hexGlob(4)}-${hexGlob(4)}-${hexGlob(4)}-${hexGlob(12)}`
 
 export const orphanedPackageStorageMaxLimit = 100
 
@@ -43,7 +41,14 @@ export async function listOrphanedPackageStorageBuckets(
 		.prepare(
 			`SELECT b.user_id, b.storage_id, b.estimated_bytes
 			FROM user_storage_buckets b
-			WHERE b.storage_id GLOB ?
+			WHERE b.storage_id LIKE 'package:%'
+				AND length(b.storage_id) = 44
+				AND substr(b.storage_id, 9) NOT GLOB '*[^-0-9a-f]*'
+				AND length(replace(substr(b.storage_id, 9), '-', '')) = 32
+				AND substr(b.storage_id, 17, 1) = '-'
+				AND substr(b.storage_id, 22, 1) = '-'
+				AND substr(b.storage_id, 27, 1) = '-'
+				AND substr(b.storage_id, 32, 1) = '-'
 				AND ${liveDeletedAtSql('b')}
 				AND NOT EXISTS (
 					SELECT 1 FROM saved_packages p WHERE 'package:' || p.id = b.storage_id
@@ -55,7 +60,7 @@ export async function listOrphanedPackageStorageBuckets(
 			ORDER BY b.user_id, b.storage_id
 			LIMIT ?`,
 		)
-		.bind(canonicalPackageStorageIdGlob, limit)
+		.bind(limit)
 		.all<OrphanedPackageStorageRow>()
 	return results.map((row) => ({
 		userId: row.user_id,

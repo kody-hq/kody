@@ -71,6 +71,7 @@ function seed() {
 	bucket(`package:${deletedBucketId}`, { deletedAt: at })
 	bucket(`package:${orphanId.toUpperCase()}`)
 	bucket(`package:not-a-uuid-but-exactly-36-characters-xx`)
+	bucket(`package:aaaaaaaa-1111-4111-8111-11111111-111`)
 	bucket(`job:package-job:${orphanId}:nightly`, { kind: 'job' })
 	return sqlite
 }
