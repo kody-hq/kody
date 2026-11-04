@@ -22,6 +22,10 @@ export const defaultWaitTimeoutMs = 15 * 60 * 1000
 export const defaultPollIntervalMs = 8_000
 export const defaultRequestTimeoutMs = 10_000
 
+export function previewManualTestUsage(): string {
+	return usageLines.join('\n')
+}
+
 const usageLines = [
 	'Usage: node tools/preview-manual-test.ts [options]',
 	'',
