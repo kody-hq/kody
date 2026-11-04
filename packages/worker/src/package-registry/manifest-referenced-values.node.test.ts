@@ -184,8 +184,8 @@ export function walk(node: Infer<typeof NodeSchema>, huge: Infer<typeof HugeSche
 			'// typeof NodeSchema resolves to this schema input:',
 			'{',
 			'\tname: string',
-			'\tchildren: Array<typeof NodeSchema>',
-			'\tnext: unknown /* lazy(() => NodeSchema) */',
+			'\tchildren: Array<unknown /* recursive: NodeSchema */>',
+			'\tnext: unknown /* recursive: NodeSchema */',
 			'}',
 		].join('\n'),
 	)
@@ -198,4 +198,69 @@ export function walk(node: Infer<typeof NodeSchema>, huge: Infer<typeof HugeSche
 		0,
 	)
 	expect(totalChars).toBeLessThanOrEqual(12_000)
+})
+
+test('fields resolve schema consts imported across package files', () => {
+	const exportDetail = projectExport({
+		'src/strings.ts': `import { string } from 'remix/data-schema'
+
+export const trimmedString = string()
+`,
+		'src/shared.ts': `export { trimmedString as text } from './strings.ts'
+`,
+		'src/repeat.ts': `import { enum_, number, object, optional } from 'remix/data-schema'
+
+const frequencies = ['daily', 'weekly'] as const
+
+export const RepeatSpecSchema = object({
+	frequency: enum_(frequencies),
+	interval: optional(number()),
+})
+`,
+		'src/index.ts': `import { enum_, object, optional, type InferInput } from 'remix/data-schema'
+import { opaqueSchema } from 'some-schema-lib'
+import { RepeatSpecSchema } from './repeat.ts'
+import { text } from './shared.ts'
+import { trimmedString } from './strings.ts'
+import { MissingSchema } from './missing.ts'
+
+export const CreateEventInputSchema = object(
+	{
+		summary: trimmedString,
+		location: optional(text),
+		repeat: optional(RepeatSpecSchema),
+		sendUpdates: optional(enum_(['all', 'externalOnly', 'none'] as const)),
+		visibility: enum_(['public', 'private']),
+		extra: optional(opaqueSchema),
+		missing: MissingSchema,
+	},
+	{ unknownKeys: 'error' },
+)
+
+export type CreateEventParams = InferInput<typeof CreateEventInputSchema>
+
+export default async function createEvent(raw: CreateEventParams) {
+	return raw
+}
+`,
+	})
+	const definition = definitionOf(exportDetail, 'CreateEventInputSchema')
+	expect(definition).toBe(
+		[
+			'// typeof CreateEventInputSchema resolves to this schema input (unknown keys rejected):',
+			'{',
+			'\tsummary: string',
+			'\tlocation?: string',
+			'\trepeat?: {',
+			"\t\tfrequency: 'daily' | 'weekly'",
+			'\t\tinterval?: number',
+			'\t}',
+			"\tsendUpdates?: 'all' | 'externalOnly' | 'none'",
+			"\tvisibility: 'public' | 'private'",
+			'\textra?: unknown /* opaqueSchema */',
+			'\tmissing: unknown /* MissingSchema */',
+			'}',
+		].join('\n'),
+	)
+	expect(definition).not.toContain('typeof trimmedString')
 })
