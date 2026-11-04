@@ -3,6 +3,7 @@ import earlyKodyUsers from './posts/early-kody-users.md'
 import everyInstallIsAForkYouOwn from './posts/every-install-is-a-fork-you-own.md'
 import gatewaysConnectHomesAccumulate from './posts/gateways-connect-homes-accumulate.md'
 import howToTurnAgentWorkIntoSoftwareYouOwn from './posts/how-to-turn-agent-work-into-software-you-own.md'
+import kodyWeekly20260320 from './posts/kody-weekly-2026-03-20.md'
 import selfServiceMeansOwnership from './posts/self-service-means-ownership.md'
 import theAssistantThatCantLeakYourKeychain from './posts/the-assistant-that-cant-leak-your-keychain.md'
 import theAutomationsYouNeverBuilt from './posts/the-automations-you-never-built.md'
@@ -144,6 +145,7 @@ const postSources: Array<{ slug: string; raw: string }> = [
 		slug: 'how-to-roll-out-ai-agents-to-your-team',
 		raw: howToRollOutAiAgentsToYourTeam,
 	},
+	{ slug: 'kody-weekly-2026-03-20', raw: kodyWeekly20260320 },
 ]
 
 function compareBlogPosts(a: BlogPost, b: BlogPost): number {
