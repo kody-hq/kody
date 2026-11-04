@@ -9,6 +9,26 @@ import theAutomationsYouNeverBuilt from './posts/the-automations-you-never-built
 import openclaw2NeedsAHome from './posts/openclaw-2-needs-a-home.md'
 import yourAssistantsHome from './posts/your-assistants-home.md'
 import zeroInferenceCalls from './posts/zero-inference-calls.md'
+import engineersAreHandingPrivateKeysToAiAgents from './posts/engineers-are-handing-private-keys-to-ai-agents.md'
+import aiAgentRepoAccessWithoutYourGithubToken from './posts/ai-agent-repo-access-without-your-github-token.md'
+import teamLeadGuideToAiAgentCredentials from './posts/team-lead-guide-to-ai-agent-credentials.md'
+import stopPastingApiKeysIntoAgentConfigs from './posts/stop-pasting-api-keys-into-agent-configs.md'
+import leastPrivilegeTokensForAiAgents from './posts/least-privilege-tokens-for-ai-agents.md'
+import revokeAiAgentAccessInOnePlace from './posts/revoke-ai-agent-access-in-one-place.md'
+import mcpSecurityChecklistForEngineeringManagers from './posts/mcp-security-checklist-for-engineering-managers.md'
+import whatYourTeamsAgentsDidWithProductionAccess from './posts/what-your-teams-agents-did-with-production-access.md'
+import guardrailsOnAgentAutonomyForTeams from './posts/guardrails-on-agent-autonomy-for-teams.md'
+import whyYourAiAgentBillKeepsGrowing from './posts/why-your-ai-agent-bill-keeps-growing.md'
+import hiddenCostOfEveryoneBuildingAgentTooling from './posts/hidden-cost-of-everyone-building-agent-tooling.md'
+import teamAiWorkflowsWhenSomeoneQuits from './posts/team-ai-workflows-when-someone-quits.md'
+import shareAiAgentWorkflowsAcrossATeam from './posts/share-ai-agent-workflows-across-a-team.md'
+import skillsVsPackagesAgentPromptsToCode from './posts/skills-vs-packages-agent-prompts-to-code.md'
+import shareCredentialsAcrossClaudeCodeCursorCodex from './posts/share-credentials-across-claude-code-cursor-codex.md'
+import bringYourOwnKeySharedAgentTools from './posts/bring-your-own-key-shared-agent-tools.md'
+import buildOnceUseFromAnyAgent from './posts/build-once-use-from-any-agent.md'
+import whyAwsLambdaBreaksDownForAiAgentTeams from './posts/why-aws-lambda-breaks-down-for-ai-agent-teams.md'
+import agentBuiltInternalAppsReuseTeamCredentials from './posts/agent-built-internal-apps-reuse-team-credentials.md'
+import rollingOutAiAgentsToANonAiForwardTeam from './posts/rolling-out-ai-agents-to-a-non-ai-forward-team.md'
 
 /**
  * Static post sources. When adding a post, drop a `.md` file under `posts/`
@@ -46,6 +66,83 @@ const postSources: Array<{ slug: string; raw: string }> = [
 	{
 		slug: 'how-to-turn-agent-work-into-software-you-own',
 		raw: howToTurnAgentWorkIntoSoftwareYouOwn,
+	},
+	{
+		slug: 'engineers-are-handing-private-keys-to-ai-agents',
+		raw: engineersAreHandingPrivateKeysToAiAgents,
+	},
+	{
+		slug: 'ai-agent-repo-access-without-your-github-token',
+		raw: aiAgentRepoAccessWithoutYourGithubToken,
+	},
+	{
+		slug: 'team-lead-guide-to-ai-agent-credentials',
+		raw: teamLeadGuideToAiAgentCredentials,
+	},
+	{
+		slug: 'stop-pasting-api-keys-into-agent-configs',
+		raw: stopPastingApiKeysIntoAgentConfigs,
+	},
+	{
+		slug: 'least-privilege-tokens-for-ai-agents',
+		raw: leastPrivilegeTokensForAiAgents,
+	},
+	{
+		slug: 'revoke-ai-agent-access-in-one-place',
+		raw: revokeAiAgentAccessInOnePlace,
+	},
+	{
+		slug: 'mcp-security-checklist-for-engineering-managers',
+		raw: mcpSecurityChecklistForEngineeringManagers,
+	},
+	{
+		slug: 'what-your-teams-agents-did-with-production-access',
+		raw: whatYourTeamsAgentsDidWithProductionAccess,
+	},
+	{
+		slug: 'guardrails-on-agent-autonomy-for-teams',
+		raw: guardrailsOnAgentAutonomyForTeams,
+	},
+	{
+		slug: 'why-your-ai-agent-bill-keeps-growing',
+		raw: whyYourAiAgentBillKeepsGrowing,
+	},
+	{
+		slug: 'hidden-cost-of-everyone-building-agent-tooling',
+		raw: hiddenCostOfEveryoneBuildingAgentTooling,
+	},
+	{
+		slug: 'team-ai-workflows-when-someone-quits',
+		raw: teamAiWorkflowsWhenSomeoneQuits,
+	},
+	{
+		slug: 'share-ai-agent-workflows-across-a-team',
+		raw: shareAiAgentWorkflowsAcrossATeam,
+	},
+	{
+		slug: 'skills-vs-packages-agent-prompts-to-code',
+		raw: skillsVsPackagesAgentPromptsToCode,
+	},
+	{
+		slug: 'share-credentials-across-claude-code-cursor-codex',
+		raw: shareCredentialsAcrossClaudeCodeCursorCodex,
+	},
+	{
+		slug: 'bring-your-own-key-shared-agent-tools',
+		raw: bringYourOwnKeySharedAgentTools,
+	},
+	{ slug: 'build-once-use-from-any-agent', raw: buildOnceUseFromAnyAgent },
+	{
+		slug: 'why-aws-lambda-breaks-down-for-ai-agent-teams',
+		raw: whyAwsLambdaBreaksDownForAiAgentTeams,
+	},
+	{
+		slug: 'agent-built-internal-apps-reuse-team-credentials',
+		raw: agentBuiltInternalAppsReuseTeamCredentials,
+	},
+	{
+		slug: 'rolling-out-ai-agents-to-a-non-ai-forward-team',
+		raw: rollingOutAiAgentsToANonAiForwardTeam,
 	},
 ]
 
