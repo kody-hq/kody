@@ -4,7 +4,6 @@ date: 2026-04-24
 description: Saved skills and apps now run as repo-backed packages, plus 8 more updates to jobs, repo editing, search, and realtime.
 order: 1
 category: updates
-placeholder: false
 ---
 
 Here is what shipped in Kody from April 18 to April 24, 2026. This week Kody

@@ -4,7 +4,6 @@ date: 2026-04-10
 description: Search now returns saved values and connectors, plus 2 more updates to outbound email and generated UI rendering.
 order: 1
 category: updates
-placeholder: false
 ---
 
 Here is what shipped in Kody from April 4 to April 10, 2026. This is a short

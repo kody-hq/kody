@@ -4,7 +4,6 @@ date: 2026-08-14
 description: Built-in OAuth integrations connect providers without your own OAuth app, plus 7 more updates and 2 breaking changes to domains and limits.
 order: 1
 category: updates
-placeholder: false
 ---
 
 Here is what shipped in Kody from August 8 to August 14, 2026. This week Kody

@@ -156,8 +156,6 @@ export type BlogPostLoaderData = {
 	description: string
 	category: BlogCategorySlug
 	readingMinutes: number
-	/** When true, the post page shows the AI-placeholder callout. */
-	placeholder: boolean
 	image: string | null
 	imageAlt: string | null
 	ogImage: string | null

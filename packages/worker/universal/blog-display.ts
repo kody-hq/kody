@@ -21,6 +21,3 @@ export function formatBlogPostDate(date: string) {
 }
 
 export const BLOG_AUTHOR_NAME = 'Kent C. Dodds'
-
-export const BLOG_PLACEHOLDER_CALLOUT =
-	"This post is a placeholder and was written by AI. It's probably still useful, but if you're reading this it's because Kent hasn't yet gotten the chance to come back around and write it himself. Feel free to ping him and remind him he still needs to write the blog posts."

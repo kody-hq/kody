@@ -4,7 +4,6 @@ date: 2026-08-07
 description: Create plain repos with repo_create and promote one to a package when you need it, plus 7 more updates to onboarding, plans, and status.
 order: 1
 category: updates
-placeholder: false
 ---
 
 Here is what shipped in Kody from August 1 to August 7, 2026. This week repos

@@ -4,7 +4,6 @@ date: 2026-06-26
 description: Repo sessions now use sessions branches in the source repo, plus 3 more updates to package tokens and errors, and 2 breaking changes.
 order: 1
 category: updates
-placeholder: false
 ---
 
 Here is what shipped in Kody from June 20 to June 26, 2026. This week repo

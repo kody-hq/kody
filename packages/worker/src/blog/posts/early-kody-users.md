@@ -6,7 +6,6 @@ description:
   words.
 order: 1
 category: stories
-placeholder: false
 ---
 
 The homepage carousel keeps quotes short. A few people have more to say than

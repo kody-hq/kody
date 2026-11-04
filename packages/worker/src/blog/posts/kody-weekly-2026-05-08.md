@@ -4,7 +4,6 @@ date: 2026-05-08
 description: workflows.create runs code or a package export on a delay from any Kody runtime, plus 8 more updates and 4 breaking changes to review.
 order: 1
 category: updates
-placeholder: false
 ---
 
 Here is what shipped in Kody from May 2 to May 8, 2026. This week your code can

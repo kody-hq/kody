@@ -4,7 +4,6 @@ date: 2026-08-21
 description: A read-only files explorer for published packages, plus 7 more updates and 4 breaking changes to connectors, services, values, and tokens.
 order: 1
 category: updates
-placeholder: false
 ---
 
 Here is what shipped in Kody from August 15 to August 21, 2026. This week you

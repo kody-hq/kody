@@ -75,8 +75,7 @@ import howToRollOutAiAgentsToYourTeam from './posts/how-to-roll-out-ai-agents-to
  * and add one import + entry here (and the slug in
  * `#universal/blog-post-slugs.ts`). Pick its category and series with
  * docs/contributing/blog.md. The client never imports this module.
- * After a human review, set `placeholder: false` in that post's frontmatter
- * to hide the AI-placeholder callout. Optional `image` / `imageAlt` are
+ * Optional `image` / `imageAlt` are
  * headline artwork. Optional `ogImage` is Satori artwork composed into the
  * generated `/blog/:slug/og.png` card.
  */

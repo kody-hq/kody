@@ -4,7 +4,6 @@ date: 2026-06-19
 description: Create, list, and revoke package invocation tokens from your account, plus 1 more update and 1 fix to integrations and secrets.
 order: 1
 category: updates
-placeholder: false
 ---
 
 Here is what shipped in Kody from June 13 to June 19, 2026. This week you can

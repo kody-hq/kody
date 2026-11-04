@@ -4,7 +4,6 @@ date: 2026-09-04
 description: Lock grants to named packages and gate publishes, plus 8 more updates and 4 breaking changes to OAuth, OpenAPI, visibility, and hosts.
 order: 1
 category: updates
-placeholder: false
 ---
 
 Here is what shipped in Kody from August 29 to September 4, 2026. This week you

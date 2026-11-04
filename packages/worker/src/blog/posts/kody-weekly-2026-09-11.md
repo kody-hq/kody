@@ -4,7 +4,6 @@ date: 2026-09-11
 description: Signup is open with no waitlist or invite, plus 7 more updates to docs, referrals, agents, email, and packages, and 1 breaking change.
 order: 1
 category: updates
-placeholder: false
 ---
 
 Here is what shipped in Kody from September 5 to September 11, 2026. This week

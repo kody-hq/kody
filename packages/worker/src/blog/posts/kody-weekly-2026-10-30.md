@@ -4,7 +4,6 @@ date: 2026-10-30
 description: Package apps use the publisher's credentials and spend, plus 7 more updates to Activity, invites, the CLI, and forks, and 3 breaking changes.
 order: 1
 category: updates
-placeholder: false
 ---
 
 Here is what shipped in Kody from October 24 to October 30, 2026. This week

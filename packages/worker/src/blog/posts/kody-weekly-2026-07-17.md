@@ -4,7 +4,6 @@ date: 2026-07-17
 description: Community listings install into your account as live packages in one click, plus 7 more updates to packages, onboarding, and email.
 order: 1
 category: updates
-placeholder: false
 ---
 
 Here is what shipped in Kody from July 11 to July 17, 2026. This week community
