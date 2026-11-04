@@ -165,17 +165,17 @@ export default defineConfig(async ({ command }) => {
 	}
 
 	// Full commit SHA baked into the client for deploy-skew recovery (KODY-DP).
-	// Prefer an explicit override, then deploy/APP commit vars, then Actions SHA.
-	const appCommitSha = (
-		process.env.KODY_APP_COMMIT_SHA?.trim() ||
-		process.env.APP_COMMIT_SHA?.trim() ||
-		process.env.DEPLOY_COMMIT_SHA?.trim() ||
-		process.env.GITHUB_SHA?.trim() ||
-		''
-	).toLowerCase()
-	const bakedAppCommitSha = /^[a-f0-9]{7,40}$/.test(appCommitSha)
-		? appCommitSha
-		: ''
+	// Validate each candidate so an invalid override cannot blank a valid
+	// fallback. Require a full 40-char object id so it matches X-Kody-Build.
+	const bakedAppCommitSha =
+		[
+			process.env.KODY_APP_COMMIT_SHA,
+			process.env.APP_COMMIT_SHA,
+			process.env.DEPLOY_COMMIT_SHA,
+			process.env.GITHUB_SHA,
+		]
+			.map((value) => value?.trim().toLowerCase() ?? '')
+			.find((value) => /^[a-f0-9]{40}$/.test(value)) ?? ''
 
 	return {
 		base: releaseBase,

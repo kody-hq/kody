@@ -5,6 +5,10 @@ const getRouterInstance = vi.fn()
 const reloadOnDeploySkew = vi.fn()
 const readClientBuildId = vi.fn()
 
+const sameSha = 'c'.repeat(40)
+const oldSha = 'a'.repeat(40)
+const newSha = 'b'.repeat(40)
+
 vi.mock('@tanstack/react-start', () => ({
 	getRouterInstance: (...args: Array<unknown>) => getRouterInstance(...args),
 }))
@@ -30,10 +34,10 @@ afterEach(() => {
 })
 
 test('fetchWithDeploySkewCheck returns the response when builds match', async () => {
-	readClientBuildId.mockReturnValue('same-sha')
+	readClientBuildId.mockReturnValue(sameSha)
 	reloadOnDeploySkew.mockReturnValue(false)
 	const response = new Response('ok', {
-		headers: { 'X-Kody-Build': 'same-sha' },
+		headers: { 'X-Kody-Build': sameSha },
 	})
 	vi.stubGlobal(
 		'fetch',
@@ -45,7 +49,7 @@ test('fetchWithDeploySkewCheck returns the response when builds match', async ()
 })
 
 test('fetchWithDeploySkewCheck hard-navigates and throws on mismatch', async () => {
-	readClientBuildId.mockReturnValue('old-sha')
+	readClientBuildId.mockReturnValue(oldSha)
 	reloadOnDeploySkew.mockReturnValue(true)
 	getRouterInstance.mockResolvedValue({
 		latestLocation: { href: '/blog' },
@@ -55,7 +59,7 @@ test('fetchWithDeploySkewCheck hard-navigates and throws on mismatch', async () 
 		vi.fn(
 			async () =>
 				new Response('payload', {
-					headers: { 'X-Kody-Build': 'new-sha' },
+					headers: { 'X-Kody-Build': newSha },
 				}),
 		),
 	)
@@ -64,13 +68,13 @@ test('fetchWithDeploySkewCheck hard-navigates and throws on mismatch', async () 
 		name: 'DeploySkewRecovery',
 	})
 	expect(reloadOnDeploySkew).toHaveBeenCalledWith({
-		serverBuild: 'new-sha',
+		serverBuild: newSha,
 		href: '/blog',
 	})
 })
 
 test('fetchWithDeploySkewCheck still throws when reload is spent so sibling fetches cannot leak payloads', async () => {
-	readClientBuildId.mockReturnValue('old-sha')
+	readClientBuildId.mockReturnValue(oldSha)
 	reloadOnDeploySkew.mockReturnValue(false)
 	getRouterInstance.mockResolvedValue({
 		latestLocation: { href: '/blog' },
@@ -80,7 +84,7 @@ test('fetchWithDeploySkewCheck still throws when reload is spent so sibling fetc
 		vi.fn(
 			async () =>
 				new Response('payload', {
-					headers: { 'X-Kody-Build': 'new-sha' },
+					headers: { 'X-Kody-Build': newSha },
 				}),
 		),
 	)
@@ -89,7 +93,7 @@ test('fetchWithDeploySkewCheck still throws when reload is spent so sibling fetc
 		name: 'DeploySkewRecovery',
 	})
 	expect(reloadOnDeploySkew).toHaveBeenCalledWith({
-		serverBuild: 'new-sha',
+		serverBuild: newSha,
 		href: '/blog',
 	})
 })

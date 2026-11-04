@@ -245,7 +245,7 @@ test('RPC responses advertise APP_COMMIT_SHA for deploy skew recovery', async ()
 		)
 		const response = await handle(
 			new Request('https://example.com/_serverFn/read'),
-			createEnv({ APP_COMMIT_SHA: 'a'.repeat(40) }),
+			createEnv({ APP_COMMIT_SHA: 'A'.repeat(40) }),
 		)
 		expect(response.headers.get('X-Kody-Build')).toBe('a'.repeat(40))
 		expect(response.headers.get('Cache-Control')).toBe('private, no-store')

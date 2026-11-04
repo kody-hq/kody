@@ -9,7 +9,10 @@ import {
 	renderInternalServerErrorPage,
 	retryHrefFromRequest,
 } from '../src/app/internal-error-page.ts'
-import { deploySkewBuildHeader } from '../universal/deploy-skew.ts'
+import {
+	deploySkewBuildHeader,
+	normalizeDeploySkewBuildId,
+} from '../universal/deploy-skew.ts'
 
 type RenderDocument = (
 	request: Request,
@@ -42,7 +45,7 @@ export function createHttpRequestHandler(renderDocument: RenderDocument) {
 					headers.set('Cache-Control', 'private, no-store')
 					// Advertise the live Worker commit so stale tabs can hard-navigate
 					// instead of rendering a newer loader shape (KODY-DP).
-					const buildId = bindings.APP_COMMIT_SHA?.trim()
+					const buildId = normalizeDeploySkewBuildId(bindings.APP_COMMIT_SHA)
 					if (buildId) headers.set(deploySkewBuildHeader, buildId)
 					return new Response(response.body, {
 						status: response.status,

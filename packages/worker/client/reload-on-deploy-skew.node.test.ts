@@ -8,6 +8,7 @@ import {
 	readClientBuildId,
 	reloadOnDeploySkew,
 	resetDeploySkewClientBuildCache,
+	setBakedClientBuildIdForTests,
 } from './reload-on-deploy-skew.ts'
 
 const oldSha = 'a'.repeat(40)
@@ -146,6 +147,24 @@ test('readClientBuildId does not permanently cache a missing meta', () => {
 	expect(readClientBuildId()).toBeNull()
 	installBuildMeta(sameSha)
 	expect(readClientBuildId()).toBe(sameSha)
+})
+
+test('readClientBuildId prefers the baked build ID over meta', () => {
+	setBakedClientBuildIdForTests(oldSha)
+	installBuildMeta(newSha)
+	expect(readClientBuildId()).toBe(oldSha)
+})
+
+test('readClientBuildId uses the baked build ID when meta is missing', () => {
+	setBakedClientBuildIdForTests(oldSha)
+	installBuildMeta(null)
+	expect(readClientBuildId()).toBe(oldSha)
+})
+
+test('readClientBuildId ignores a short baked SHA that cannot match X-Kody-Build', () => {
+	setBakedClientBuildIdForTests('abcdef1')
+	installBuildMeta(null)
+	expect(readClientBuildId()).toBeNull()
 })
 
 test('reloadOnDeploySkew does not throw or navigate when sessionStorage is unavailable', () => {

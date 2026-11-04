@@ -10,6 +10,7 @@ import {
 	deploySkewBuildMetaName,
 	deploySkewReloadAttemptKey,
 	isDeploySkewMismatch,
+	normalizeDeploySkewBuildId,
 } from '#universal/deploy-skew.ts'
 import {
 	getSessionStorageItem,
@@ -23,24 +24,36 @@ export const deploySkewRecoveryErrorName = 'DeploySkewRecovery'
 /** Cached at first successful resolve so SPA head updates cannot hide skew. */
 let cachedClientBuildId: string | null | undefined
 
+/** Test-only override for the Vite define (undefined = use real define). */
+let bakedClientBuildIdForTests: string | null | undefined
+
 /** Test helper: drop the boot-time build cache between cases. */
 export function resetDeploySkewClientBuildCache(): void {
 	cachedClientBuildId = undefined
+	bakedClientBuildIdForTests = undefined
 }
 
-function normalizeCommitSha(value: string | null | undefined): string | null {
-	const trimmed = value?.trim().toLowerCase() ?? ''
-	// Match `optionalCommitShaSchema` (7–40 hex), not only full object IDs.
-	return /^[a-f0-9]{7,40}$/.test(trimmed) ? trimmed : null
+/** Test helper: stub the Vite-baked commit without relying on globals. */
+export function setBakedClientBuildIdForTests(
+	value: string | null | undefined,
+): void {
+	bakedClientBuildIdForTests = value
+	cachedClientBuildId = undefined
 }
 
 /**
  * Vite-baked commit SHA (production/preview builds). Empty string locally /
- * when the define is unset.
+ * when the define is unset. Only full 40-char object ids count — short SHAs
+ * would false-positive against a full `X-Kody-Build` header.
  */
 export function readBakedClientBuildId(): string | null {
+	if (bakedClientBuildIdForTests !== undefined) {
+		const trimmed = bakedClientBuildIdForTests?.trim().toLowerCase() ?? ''
+		return /^[a-f0-9]{40}$/.test(trimmed) ? trimmed : null
+	}
 	try {
-		return normalizeCommitSha(__KODY_APP_COMMIT_SHA__)
+		const trimmed = __KODY_APP_COMMIT_SHA__.trim().toLowerCase()
+		return /^[a-f0-9]{40}$/.test(trimmed) ? trimmed : null
 	} catch {
 		return null
 	}
@@ -66,7 +79,7 @@ export function readClientBuildId(
 		return baked
 	}
 	if (!doc) return null
-	const content = normalizeCommitSha(
+	const content = normalizeDeploySkewBuildId(
 		doc
 			.querySelector(`meta[name="${deploySkewBuildMetaName}"]`)
 			?.getAttribute('content'),

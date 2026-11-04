@@ -11,15 +11,27 @@ export const deploySkewBuildHeader = 'X-Kody-Build'
 export const deploySkewBuildMetaName = 'kody:build'
 
 /**
+ * Normalize a deploy build id for header/meta/compare. `getEnv` validates but
+ * does not transform bindings, so callers must lowercase at the point of use.
+ */
+export function normalizeDeploySkewBuildId(
+	value: string | null | undefined,
+): string | null {
+	const trimmed = value?.trim().toLowerCase() ?? ''
+	return /^[a-f0-9]{7,40}$/.test(trimmed) ? trimmed : null
+}
+
+/**
  * True when both sides advertise a build id and they differ. Missing either
  * side is a no-op (local/dev without `APP_COMMIT_SHA`, or pre-skew clients).
+ * Comparison is case-insensitive.
  */
 export function isDeploySkewMismatch(
 	clientBuild: string | null | undefined,
 	serverBuild: string | null | undefined,
 ): boolean {
-	const client = clientBuild?.trim() ?? ''
-	const server = serverBuild?.trim() ?? ''
+	const client = normalizeDeploySkewBuildId(clientBuild)
+	const server = normalizeDeploySkewBuildId(serverBuild)
 	if (!client || !server) return false
 	return client !== server
 }
@@ -29,5 +41,7 @@ export function deploySkewReloadAttemptKey(
 	serverBuild: string,
 	href: string,
 ): string {
-	return `${serverBuild.trim()}\n${href}`
+	const normalized =
+		normalizeDeploySkewBuildId(serverBuild) ?? serverBuild.trim()
+	return `${normalized}\n${href}`
 }
