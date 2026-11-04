@@ -158,6 +158,10 @@ import {
 } from './external-publish-clone.ts'
 import { classifyExternalPublishCloneError } from './requested-commit-error.ts'
 import {
+	buildArtifactsHeadChangedBeforePublishMessage,
+	buildPublishedCommitMovedDuringPublishMessage,
+} from './publish-concurrency-caller-error.ts'
+import {
 	attachPublishPhaseTimings,
 	timePublishExternalPushPhase,
 	type PublishPhaseTimings,
@@ -3623,7 +3627,6 @@ class RepoSessionBase extends DurableObject<Env> {
 		userId: OwnerId
 		publishedCommit: string
 		buildId: string
-		writablePackageIds: Array<string>
 		communityListed: boolean
 		baseUrl?: string
 	}): Promise<PersistUploadedPublishBuildResult> {
@@ -3663,7 +3666,6 @@ class RepoSessionBase extends DurableObject<Env> {
 		return await persistUploadedPublishBuild({
 			env: this.env,
 			buildId: input.buildId,
-			writablePackageIds: input.writablePackageIds,
 			communityListed: input.communityListed,
 			baseUrl,
 			userId: input.userId,
@@ -3688,6 +3690,7 @@ class RepoSessionBase extends DurableObject<Env> {
 							rootPackageId: savedPackage.id,
 							targets: sampleTargets,
 							includeModuleHashes: true,
+							linkKodyPackageImports: true,
 						})
 						return sampleTargets.map((_, index) => {
 							const result = outcome.results[index]
@@ -3705,6 +3708,7 @@ class RepoSessionBase extends DurableObject<Env> {
 					sourceFiles,
 					rootPackageId: savedPackage.id,
 					prepareCache: new Map(),
+					linkKodyPackageImports: true,
 				})
 				const results = []
 				for (const target of sampleTargets) {
@@ -3860,6 +3864,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		sourceFiles: Record<string, string>
 		rootPackageId?: string
 		prepareCache: PreparedKodyGraphCache
+		linkKodyPackageImports?: boolean
 	}): Promise<PublishedPackageArtifactBuilders> {
 		const {
 			buildKodyAppBundle,
@@ -3874,6 +3879,7 @@ class RepoSessionBase extends DurableObject<Env> {
 			sourceFiles: input.sourceFiles,
 			...(input.rootPackageId ? { rootPackageId: input.rootPackageId } : {}),
 			prepareCache: input.prepareCache,
+			...(input.linkKodyPackageImports ? { linkKodyPackageImports: true } : {}),
 		}
 		return {
 			buildAppBundle: async ({ entryPoint }) =>
@@ -3927,6 +3933,7 @@ class RepoSessionBase extends DurableObject<Env> {
 			sourceFiles: staged.sourceFiles,
 			...(input.rootPackageId ? { rootPackageId: input.rootPackageId } : {}),
 			prepareCache: new Map(),
+			...(input.linkKodyPackageImports ? { linkKodyPackageImports: true } : {}),
 		})
 		const results: Array<IsolatedArtifactRebuildTargetResult> = []
 		for (const target of input.targets) {
@@ -4685,7 +4692,10 @@ class RepoSessionBase extends DurableObject<Env> {
 						const clonedHead = cloned.headCommit
 						if (clonedHead !== input.expectedHead) {
 							throw new Error(
-								`Artifacts HEAD changed from "${input.expectedHead}" to "${clonedHead ?? 'unknown'}" before publish.`,
+								buildArtifactsHeadChangedBeforePublishMessage(
+									input.expectedHead,
+									clonedHead ?? 'unknown',
+								),
 							)
 						}
 					}
@@ -4915,9 +4925,7 @@ class RepoSessionBase extends DurableObject<Env> {
 						previousCommit !== source.published_commit ||
 						cloned.isFastForward === null
 					) {
-						throw new Error(
-							'The published commit moved while this publish was running. Retry the publish.',
-						)
+						throw new Error(buildPublishedCommitMovedDuringPublishMessage())
 					}
 					return cloned.isFastForward
 				},

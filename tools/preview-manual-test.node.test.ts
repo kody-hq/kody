@@ -29,6 +29,7 @@ import {
 	type GhResult,
 	type PreviewManualTestDeps,
 	type PreviewManualTestResult,
+	previewManualTestUsage,
 } from './preview-manual-test.ts'
 
 const sampleComment = [
@@ -1453,3 +1454,20 @@ function json(response: ServerResponse, status: number, body: unknown) {
 function hasSessionCookie(request: IncomingMessage) {
 	return (request.headers.cookie ?? '').includes('kody_session=test-cookie')
 }
+
+test('--help carries the --request spec and export.json caveat the skill points to', () => {
+	const help = previewManualTestUsage()
+	for (const fact of [
+		'Spec: METHOD /path [status] [json-body]',
+		'[--dump] [--contains <text>]',
+		'Default success is any 2xx.',
+		'--contains also sees Location.',
+		'GET /account/export.json is a metadata manifest;',
+		'do not --contains user data there.',
+		'MCP accountExportSection via control-kody execute.',
+		'--skip-login        Skip POST /auth and cookie-backed checks',
+		'--no-wait           Fail immediately if the preview is not ready',
+	]) {
+		expect(help).toContain(fact)
+	}
+})

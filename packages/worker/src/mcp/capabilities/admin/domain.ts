@@ -16,6 +16,7 @@ import { adminOrgResourceTransferCapability } from './admin-org-resource-transfe
 import { adminOrgRestoreCapability } from './admin-org-restore.ts'
 import { adminPackageAppCustomHostnameRemoveCapability } from './admin-package-app-custom-hostname-remove.ts'
 import { adminCommunityOrphanForksCleanupCapability } from './admin-community-orphan-forks-cleanup.ts'
+import { adminOrphanPackageStorageCleanupCapability } from './admin-orphan-package-storage-cleanup.ts'
 import { adminFeatureFlagListCapability } from './admin-feature-flag-list.ts'
 import { adminFeatureFlagOrgOverrideCapability } from './admin-feature-flag-org-override.ts'
 import { adminFeatureFlagOverrideCapability } from './admin-feature-flag-override.ts'
@@ -54,6 +55,7 @@ import { adminSystemEmailClassifyCapability } from './admin-system-email-classif
 import { adminSystemEmailDeleteCapability } from './admin-system-email-delete.ts'
 import { adminEmailSuppressionClearCapability } from './admin-email-suppression-clear.ts'
 import { adminEmailSuppressionListCapability } from './admin-email-suppression-list.ts'
+import { adminSystemEmailSendListCapability } from './admin-system-email-send-list.ts'
 import { adminSystemEmailGetCapability } from './admin-system-email-get.ts'
 import { adminSystemEmailListCapability } from './admin-system-email-list.ts'
 import { adminSystemEmailSendCapability } from './admin-system-email-send.ts'
@@ -265,6 +267,7 @@ export const adminDomain = defineDomain({
 		adminSystemEmailClassifyCapability,
 		adminSystemEmailDeleteCapability,
 		adminSystemEmailSendCapability,
+		adminSystemEmailSendListCapability,
 		adminSystemEmailSenderRuleListCapability,
 		adminSystemEmailSenderRuleSetCapability,
 		adminSystemEmailSenderRuleDeleteCapability,
@@ -280,6 +283,7 @@ export const adminDomain = defineDomain({
 		adminDeadLetterQueuePurgeCapability,
 		adminCommunityActivityListCapability,
 		adminCommunityOrphanForksCleanupCapability,
+		adminOrphanPackageStorageCleanupCapability,
 		adminOrgResourceTransferCapability,
 		adminOrgRestoreCapability,
 		adminPackageAppCustomHostnameRemoveCapability,

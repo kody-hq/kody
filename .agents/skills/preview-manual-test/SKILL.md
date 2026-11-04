@@ -10,117 +10,52 @@ description: >
 
 # Manual preview testing
 
-Read
-[`docs/contributing/preview-manual-testing.md`](../../../docs/contributing/preview-manual-testing.md).
-Do not improvise `gh` comment scraping, local E2E against the preview URL, or
-raw D1 seeding of preview resources.
-
-Prefer [`control-kody`](../control-kody/SKILL.md) when you also need `doctor`,
-local login, Feature Map lookup, or a `/health` SHA check:
-
 ```bash
+npm run preview:manual-test -- --help   # flags, --request spec, export.json caveat
 npm run control-kody -- preview --pr 42 --request 'GET /session' --check /onboarding/step-2
 ```
 
-## Command
-
-```bash
-npm run preview:manual-test
-```
-
-On **medium or high risk**, do not stop at the default health/login smoke. The
-seed user (`me@kentcdodds.com` / `ilikecode`, username `user-me`) has **no**
-secrets, packages, or jobs until you create them. A second non-admin account
-(`preview-member@example.com` / `ilikecode`) is always seeded; the
-`preview-seed:team-org` label adds the team org `preview-team` (seed user Owner,
-member account Member). Owner and member permission fixes are verified on the
-preview (Use-only member refused, Write member succeeds), not in production; see
-[Authorization checks](../../../docs/contributing/preview-manual-testing.md#authorization-checks).
-Script that data and the assertions as the same logged-in user:
-
-```bash
-npm run preview:manual-test -- \
-  --request 'GET /session' \
-  --check /onboarding/step-2
-```
-
-`--request` spec:
-`METHOD /path [status] [json-body] [--dump] [--contains <text>]` (default
-success: 2xx). `--dump` / `--contains` match `control-kody request`, e.g.
-`--request 'GET /pricing --dump --contains Worker compute'`. Create fixtures
-through supported MCP capabilities with `control-kody execute` or the browser
-UI. Website-only reads and mutations use Start server functions; exercise those
-through the browser, not retired JSON action URLs. `/session`, `/auth`, and
-`/account/export.json` remain HTTP protocols. `GET /account/export.json` is a
-metadata manifest only — do not `--contains` user data there; verify rows with
-MCP `accountExportSection` via `control-kody execute` (see the contributing
-doc). For more authenticated HTTP after login, use `control-kody request`
-(`--dump` / `--contains` for HTML). Do not cat the session cookie into `curl` or
-Python.
-
-`--pr`, `--url`, `--no-wait`, `--skip-login`, `--help` as documented.
-
-The briefing's `API:` line is the preview's Open API host,
-`https://kody-pr-<n>-api.kody-a99.workers.dev`, and the next line prints
-`export KODY_API_URL=…` for it. `@kodycodes/cli` (`auth bootstrap`,
-`execute --local`) needs that host; the app origin 404s `/v1/*` with HTML. See
-[CLI against a PR preview](../../../docs/contributing/cloud-agents.md#cli-against-a-pr-preview).
-
-Flag-gated preview checks need a `preview-flag:<key>` label for a key in
-`tools/preview-seed-flag-allowlist.ts` before 🔎 Preview seeds. Example for
-execution contexts:
-
-```bash
-# PR label: preview-flag:execution-contexts
-# .github/workflows/preview.yml then seeds with:
-# node tools/seed-test-data.ts --remote --config "$WRANGLER_CONFIG" \
-#   --email me@kentcdodds.com --password ilikecode \
-#   --enable-flag execution-contexts
-npm run control-kody -- preview --pr 42 --check /@<slug>/-/execution-contexts
-```
-
-Open `/@<slug>/-/execution-contexts` in the signed-in browser and verify the
-flagged page. A successful HTML check alone does not prove the flag-gated
-interaction works.
-
-`--enable-flag` with `--remote` fails unless the wrangler env is `preview`.
+Do not improvise `gh` comment scraping, local E2E against the preview URL, or
+raw D1 seeding of preview resources. Details:
+[`docs/contributing/preview-manual-testing.md`](../../../docs/contributing/preview-manual-testing.md).
 
 ## When
 
-Prefer local [control-kody](../control-kody/SKILL.md) verification
-(`dev`/`login`/`request`/`browse`/`execute`) for UI and API changes. Use a PR
-preview when local cannot exercise the change: Workers / service bindings,
-Durable Objects, real OAuth or inbound third-party webhooks, deploy / wrangler /
-config, the real remote Artifacts namespace, or when the user asks to try the
-preview URL. Local `packageSave` / publish use the mock Artifacts API. After the
-PR is **ready for review** (drafts and forks have no preview) and you have
-pushed the commits you want to exercise.
+Prefer local [control-kody](../control-kody/SKILL.md) verification. Use a PR
+preview only when local cannot exercise the change (Workers / service bindings,
+Durable Objects, real OAuth or inbound webhooks, deploy / wrangler / config, the
+real remote Artifacts namespace) or when the user asks. The PR must be **ready
+for review** (drafts and forks have no preview). This does not replace
+`npm run validate`.
 
-This does not replace `npm run validate` or local control-kody proof.
+## Data and accounts
 
-## After the scripted session
+On **medium or high risk**, do not stop at the default health/login smoke. The
+seed user (`me@kentcdodds.com` / `ilikecode`, username `user-me`) has **no**
+secrets, packages, or jobs until you create them through `control-kody execute`
+or the browser UI. A second non-admin account (`preview-member@example.com` /
+`ilikecode`) is always seeded; the `preview-seed:team-org` label adds the team
+org `preview-team` (seed user Owner, member account Member). Owner and member
+permission fixes are verified on the preview; see
+[Authorization checks](../../../docs/contributing/preview-manual-testing.md#authorization-checks).
 
-Default: prove behavior via MCP/API/`control-kody` `request` / `execute`. Open a
-browser only when UI is under test.
+- CLI (`auth bootstrap`, `execute --local`) needs the `export KODY_API_URL=…`
+  host the briefing prints, not the app origin.
+- Flag-gated pages need a `preview-flag:<key>` label (keys in
+  `tools/preview-seed-flag-allowlist.ts`) before 🔎 Preview seeds; then open the
+  page in the signed-in browser. An HTML check alone does not prove the flagged
+  interaction.
+- `/mcp` 401 and `/admin` 403 are expected. Admin-gated states (suspension,
+  outbound-email pause, account deletion) need the local admin seed plus Workers
+  or unit tests.
+- Two `packageSave` packages on the seed account share implicit user-secret
+  read; locked-secret denial needs an unadopted community fork.
 
-When UI is under test:
+## UI under test
 
-1. Prefer `npm run control-kody -- browse --origin <preview> --path <path>` so
-   Chromium opens already signed in (reuses `.tmp/control-kody-cookie`).
-   Optional `--record` writes video under `.tmp/control-kody-browse`.
-   `--screenshot <path>` writes a PNG from the live preview — do not screenshot
-   a `file://` `renderToString` dump.
-2. Cursor `computerUse` cannot drive that Playwright window. For computerUse,
-   open `/login?redirectTo=<path>` (seed email `me@kentcdodds.com` / password
-   `ilikecode`, button **Sign in**) and stay on the preview origin.
-3. Confirm the data you created and exercise the UI this PR changes.
-4. Record what you saw on the PR.
-
-`GET /mcp` is 401 without OAuth; `/admin` is 403 (seed account is not admin).
-Neither is a regression. Admin-gated states (suspension, outbound-email pause,
-account deletion) cannot be set on preview; use the local admin seed plus
-Workers or unit tests. For MCP `execute` / `search` fixtures, use
-`control-kody execute` / `search` — do not hand-roll OAuth. Two `packageSave`
-packages on the seed account share implicit user-secret read; locked-secret
-denial needs an unadopted community fork. See
-[preview-manual-testing.md](../../../docs/contributing/preview-manual-testing.md).
+Prove behavior via MCP/API/`control-kody` first. For UI, use
+`control-kody browse --origin <preview> --path <path>` (signed in;
+`--screenshot`, `--record`). Cursor `computerUse` instead opens
+`/login?redirectTo=<path>` on the preview origin with the seed credentials.
+Confirm the data you created, exercise the changed UI, and record what you saw
+on the PR.

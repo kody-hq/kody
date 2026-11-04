@@ -341,12 +341,189 @@ export function attributeDurableObjectActiveTime(input: {
 }
 
 /**
+ * D1 caps a statement at 100 bound parameters. Upserts bind 4 per row plus
+ * the shared day and timestamp; deletes bind 2 per row plus the day.
+ */
+export const durableObjectDurationUpsertRowsPerStatement = 24
+export const durableObjectDurationDeleteRowsPerStatement = 49
+/** Statements per D1 batch() call; each batch is its own transaction. */
+export const durableObjectDurationStatementsPerBatch = 10
+/** Gap between batches so one run never fills D1's 10-second window. */
+export const durableObjectDurationWriteBatchPauseMs = 250
+
+type DurationRow = DurableObjectOwner & {
+	activeMs: number
+	objectCount: number
+}
+
+function chunk<T>(items: ReadonlyArray<T>, size: number): Array<Array<T>> {
+	const chunks: Array<Array<T>> = []
+	for (let index = 0; index < items.length; index += size) {
+		chunks.push(items.slice(index, index + size))
+	}
+	return chunks
+}
+
+function durationRowKey(userId: string, doClass: string) {
+	return `${userId}\n${doClass}`
+}
+
+/**
+ * Brings one day's stored rows in line with `rows` without rewriting the
+ * whole day: unchanged rows are skipped, changed or new rows go out as
+ * multi-row upserts, and rows no longer attributed are deleted. Writes go in
+ * small paced batches (KODY-DS: the old one-statement-per-row rewrite issued
+ * thousands of statements in one burst and overloaded D1). A failure midway
+ * leaves some rows at the previous run's values, never missing; the next run
+ * converges. Coverage is written last.
+ */
+export async function writeDurableObjectDurationDay(input: {
+	db: D1Database
+	day: string
+	rows: ReadonlyArray<DurationRow>
+	coverage: {
+		totalActiveMs: number
+		attributedActiveMs: number
+		objectCount: number
+		attributedObjectCount: number
+		truncated: boolean
+	}
+	updatedAt: string
+	pauseMs: number
+}) {
+	const { db, day, updatedAt } = input
+	const existing = await runD1WithRetry(() =>
+		db
+			.prepare(
+				`SELECT user_id, do_class, active_ms, object_count
+				 FROM durable_object_duration_daily WHERE day = ?`,
+			)
+			.bind(day)
+			.all<{
+				user_id: string
+				do_class: string
+				active_ms: number
+				object_count: number
+			}>(),
+	)
+	const stored = new Map(
+		(existing.results ?? []).map((row) => [
+			durationRowKey(row.user_id, row.do_class),
+			row,
+		]),
+	)
+	const changed: Array<DurationRow> = []
+	for (const row of input.rows) {
+		const key = durationRowKey(row.userId, row.doClass)
+		const previous = stored.get(key)
+		stored.delete(key)
+		if (
+			previous &&
+			Number(previous.active_ms) === row.activeMs &&
+			Number(previous.object_count) === row.objectCount
+		) {
+			continue
+		}
+		changed.push(row)
+	}
+	const stale = [...stored.values()]
+	const statements: Array<D1PreparedStatement> = []
+	for (const rows of chunk(
+		changed,
+		durableObjectDurationUpsertRowsPerStatement,
+	)) {
+		const values = rows
+			.map((_row, index) => {
+				const base = 3 + index * 4
+				return `(?${base}, ?${base + 1}, ?${base + 2}, ?${base + 3})`
+			})
+			.join(', ')
+		// The owner map is a snapshot. Skip owners whose deletion or
+		// soft-delete started since, including team orgs with no users row.
+		statements.push(
+			db
+				.prepare(
+					`INSERT INTO durable_object_duration_daily
+						(user_id, do_class, day, active_ms, object_count, updated_at)
+					 SELECT v.column1, v.column2, ?1, v.column3, v.column4, ?2
+					 FROM (VALUES ${values}) AS v
+					 WHERE ${liveBillingOwnerSql('v.column1')}
+					 ON CONFLICT (user_id, do_class, day) DO UPDATE SET
+						active_ms = excluded.active_ms,
+						object_count = excluded.object_count,
+						updated_at = excluded.updated_at`,
+				)
+				.bind(
+					day,
+					updatedAt,
+					...rows.flatMap((row) => [
+						row.userId,
+						row.doClass,
+						row.activeMs,
+						row.objectCount,
+					]),
+				),
+		)
+	}
+	for (const rows of chunk(
+		stale,
+		durableObjectDurationDeleteRowsPerStatement,
+	)) {
+		const pairs = rows
+			.map((_row, index) => `(?${2 + index * 2}, ?${3 + index * 2})`)
+			.join(', ')
+		statements.push(
+			db
+				.prepare(
+					`DELETE FROM durable_object_duration_daily
+					 WHERE day = ?1 AND (user_id, do_class) IN (VALUES ${pairs})`,
+				)
+				.bind(day, ...rows.flatMap((row) => [row.user_id, row.do_class])),
+		)
+	}
+	statements.push(
+		db
+			.prepare(
+				`INSERT INTO durable_object_duration_coverage_daily (
+					day, total_active_ms, attributed_active_ms, object_count,
+					attributed_object_count, truncated, updated_at
+				) VALUES (?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT (day) DO UPDATE SET
+					total_active_ms = excluded.total_active_ms,
+					attributed_active_ms = excluded.attributed_active_ms,
+					object_count = excluded.object_count,
+					attributed_object_count = excluded.attributed_object_count,
+					truncated = excluded.truncated,
+					updated_at = excluded.updated_at`,
+			)
+			.bind(
+				day,
+				input.coverage.totalActiveMs,
+				input.coverage.attributedActiveMs,
+				input.coverage.objectCount,
+				input.coverage.attributedObjectCount,
+				input.coverage.truncated ? 1 : 0,
+				updatedAt,
+			),
+	)
+	const batches = chunk(statements, durableObjectDurationStatementsPerBatch)
+	for (const [index, batch] of batches.entries()) {
+		if (index > 0 && input.pauseMs > 0) {
+			await new Promise((resolve) => setTimeout(resolve, input.pauseMs))
+		}
+		await runD1WithRetry(() => db.batch(batch))
+	}
+	return { changed: changed.length, deleted: stale.length }
+}
+
+/**
  * Refresh yesterday and today (UTC). Yesterday settles once Cloudflare's
  * analytics catch up; today is partial and is overwritten each hour.
  */
 export async function runDurableObjectDurationAttribution(input: {
 	env: DurableObjectDurationAttributionEnv
 	now?: Date
+	batchPauseMs?: number
 }): Promise<DurableObjectDurationAttributionResult> {
 	const accountId = input.env.CLOUDFLARE_ACCOUNT_ID?.trim()
 	const apiToken = input.env.CLOUDFLARE_API_TOKEN?.trim()
@@ -395,52 +572,20 @@ export async function runDurableObjectDurationAttribution(input: {
 		})
 		const truncated =
 			groups.length >= durableObjectDurationAttributionObjectLimit
-		const statements = [
-			input.env.APP_DB.prepare(
-				`DELETE FROM durable_object_duration_daily WHERE day = ?`,
-			).bind(day),
-			...attribution.rows.map((row) =>
-				// The owner map is a snapshot. Skip owners whose deletion or
-				// soft-delete started since, including team orgs with no users row.
-				input.env.APP_DB.prepare(
-					`INSERT INTO durable_object_duration_daily
-						(user_id, do_class, day, active_ms, object_count, updated_at)
-					 SELECT ?1, ?2, ?3, ?4, ?5, ?6
-					 WHERE ${liveBillingOwnerSql('?1')}`,
-				).bind(
-					row.userId,
-					row.doClass,
-					day,
-					row.activeMs,
-					row.objectCount,
-					updatedAt,
-				),
-			),
-			input.env.APP_DB.prepare(
-				`INSERT INTO durable_object_duration_coverage_daily (
-					day, total_active_ms, attributed_active_ms, object_count,
-					attributed_object_count, truncated, updated_at
-				) VALUES (?, ?, ?, ?, ?, ?, ?)
-				ON CONFLICT (day) DO UPDATE SET
-					total_active_ms = excluded.total_active_ms,
-					attributed_active_ms = excluded.attributed_active_ms,
-					object_count = excluded.object_count,
-					attributed_object_count = excluded.attributed_object_count,
-					truncated = excluded.truncated,
-					updated_at = excluded.updated_at`,
-			).bind(
-				day,
-				attribution.totalActiveMs,
-				attribution.attributedActiveMs,
-				attribution.objectCount,
-				attribution.attributedObjectCount,
-				truncated ? 1 : 0,
-				updatedAt,
-			),
-		]
-		// One batch per day: D1 applies it atomically, so a day is never left
-		// half-deleted.
-		await runD1WithRetry(() => input.env.APP_DB.batch(statements))
+		await writeDurableObjectDurationDay({
+			db: input.env.APP_DB,
+			day,
+			rows: attribution.rows,
+			coverage: {
+				totalActiveMs: attribution.totalActiveMs,
+				attributedActiveMs: attribution.attributedActiveMs,
+				objectCount: attribution.objectCount,
+				attributedObjectCount: attribution.attributedObjectCount,
+				truncated,
+			},
+			updatedAt,
+			pauseMs: input.batchPauseMs ?? durableObjectDurationWriteBatchPauseMs,
+		})
 		results.push({
 			day,
 			totalActiveMs: attribution.totalActiveMs,

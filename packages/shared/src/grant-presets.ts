@@ -62,7 +62,7 @@ const manageExtraByType: Record<
 > = {
 	package: ['package:delete', 'package:manage_access', 'package:publish'],
 	app: ['app:manage_access'],
-	job: ['job:delete', 'job:manage_access'],
+	job: ['job:manage_access'],
 	secret: ['secret:delete', 'secret:manage_access'],
 	integration: ['integration:delete', 'integration:manage_access'],
 	memory: ['memory:delete', 'memory:manage_access'],

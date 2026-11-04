@@ -3,6 +3,7 @@ import {
 	guestClaimUrl,
 } from '#worker/guest/guest-accounts.ts'
 import { jsonResponse } from '#worker/json-response.ts'
+import { scheduleUserCreatedEvent } from '#worker/identity/schedule-user-lifecycle-event.ts'
 import {
 	type AuthRequest,
 	CimdFetchError,
@@ -1665,6 +1666,21 @@ async function completeGuestAuthorization(input: {
 			'guest_rate_limited',
 		)
 	}
+	scheduleUserCreatedEvent({
+		env,
+		user: {
+			id: created.personId,
+			username: created.username,
+			email: created.email,
+		},
+		source: 'guest',
+		createdAt: created.createdAt,
+		guest: {
+			client_name: clientName,
+			expires_at: created.expiresAt,
+			delete_at: created.deleteAt,
+		},
+	})
 	const userId = created.personId
 	const bindingFields = grantBindingFields({
 		orgId: created.personalOrgId,

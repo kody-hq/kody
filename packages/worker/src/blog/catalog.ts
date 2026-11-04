@@ -331,6 +331,8 @@ export type BlogPostSummary = {
 	category: BlogCategorySlug
 	series: BlogSeriesSlug | null
 	readingMinutes: number
+	image: string | null
+	imageAlt: string | null
 }
 
 export function toBlogPostSummary(post: BlogPost): BlogPostSummary {
@@ -343,6 +345,8 @@ export function toBlogPostSummary(post: BlogPost): BlogPostSummary {
 		category: post.category,
 		series: post.series,
 		readingMinutes: post.readingMinutes,
+		image: post.image,
+		imageAlt: post.imageAlt,
 	}
 }
 

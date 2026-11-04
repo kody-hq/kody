@@ -7,6 +7,8 @@ import type { ModuleAstNode } from '#worker/module-source.ts'
 export type LocalValueDeclaration = {
 	name: string
 	source: string
+	/** Package path of the module that declares it, for resolving its imports. */
+	modulePath: string | null
 	/** Verbatim declaration source, used when the initializer is not a schema. */
 	definition: string
 	declarator: ModuleAstNode
@@ -67,9 +69,16 @@ function isFunctionLikeInit(init: unknown) {
 	)
 }
 
+/** Finds the const `name` refers to in the module at `fromPath`, following package-relative imports. */
+export type ResolveLocalValue = (
+	fromPath: string | null,
+	name: string,
+) => LocalValueDeclaration | undefined
+
 export function collectLocalValueDeclarations(
 	source: string,
 	body: Array<ModuleAstNode>,
+	modulePath: string | null = null,
 ) {
 	const declarations = new Map<string, LocalValueDeclaration>()
 	for (const statement of body) {
@@ -100,6 +109,7 @@ export function collectLocalValueDeclarations(
 			declarations.set(name, {
 				name,
 				source,
+				modulePath,
 				definition: definition.replace(/\s*;\s*$/, ''),
 				declarator,
 				init,
@@ -163,7 +173,8 @@ type SchemaShape = {
 }
 
 type SchemaContext = {
-	localValues: Map<string, LocalValueDeclaration>
+	resolveValue: ResolveLocalValue
+	modulePath: string | null
 	visiting: Set<string>
 	fields: number
 }
@@ -188,23 +199,23 @@ const primitiveSchemaTypes: Record<string, string> = {
 	void: 'void',
 }
 
-const passthroughChainMethods = new Set([
-	'brand',
-	'check',
-	'email',
-	'int',
-	'length',
-	'max',
-	'min',
-	'nonempty',
-	'pipe',
-	'readonly',
-	'refine',
-	'regex',
-	'superRefine',
-	'trim',
-	'url',
-	'uuid',
+/** Chained methods that change the accepted input shape; any other chained method keeps it (`.pipe`, `.refine`, `.transform`, `.min`, …). */
+const shapeChangingChainMethods = new Set([
+	'and',
+	'catchall',
+	'deepPartial',
+	'element',
+	'extend',
+	'keyof',
+	'merge',
+	'omit',
+	'partial',
+	'pick',
+	'promise',
+	'removeDefault',
+	'required',
+	'safeExtend',
+	'unwrap',
 ])
 
 function shape(
@@ -256,14 +267,48 @@ function isSchemaReceiver(receiver: unknown, context: SchemaContext) {
 	const type = getNodeType(receiver)
 	if (type === 'CallExpression') return true
 	return (
-		type === 'Identifier' && context.localValues.has(readName(receiver) ?? '')
+		type === 'Identifier' &&
+		context.resolveValue(context.modulePath, readName(receiver) ?? '') != null
 	)
 }
 
-function readArrayElements(node: unknown) {
-	return getNodeType(node) === 'ArrayExpression'
-		? ((node as { elements?: Array<unknown> }).elements ?? [])
-		: null
+function unwrapExpression(node: unknown): unknown {
+	const type = getNodeType(node)
+	if (
+		type === 'TSAsExpression' ||
+		type === 'TSSatisfiesExpression' ||
+		type === 'TSTypeAssertion' ||
+		type === 'TSNonNullExpression' ||
+		type === 'ParenthesizedExpression'
+	) {
+		return unwrapExpression((node as { expression?: unknown }).expression)
+	}
+	return node
+}
+
+/** Array literal elements, through `as const` and through a const holding the array. */
+function readArrayElements(
+	node: unknown,
+	context?: SchemaContext,
+): { elements: Array<unknown>; source: string | null } | null {
+	const unwrapped = unwrapExpression(node)
+	if (getNodeType(unwrapped) === 'ArrayExpression') {
+		return {
+			elements: (unwrapped as { elements?: Array<unknown> }).elements ?? [],
+			source: null,
+		}
+	}
+	if (getNodeType(unwrapped) !== 'Identifier' || !context) return null
+	const declaration = context.resolveValue(
+		context.modulePath,
+		readName(unwrapped) ?? '',
+	)
+	const init = unwrapExpression(declaration?.init)
+	if (!declaration || getNodeType(init) !== 'ArrayExpression') return null
+	return {
+		elements: (init as { elements?: Array<unknown> }).elements ?? [],
+		source: declaration.source,
+	}
 }
 
 function readObjectOptionString(node: unknown, key: string) {
@@ -405,7 +450,7 @@ function resolveChainCall(input: {
 			return other ? { ...base, type: `${base.type} | ${other}` } : base
 		}
 		default:
-			return passthroughChainMethods.has(name) ? base : null
+			return shapeChangingChainMethods.has(name) ? null : base
 	}
 }
 
@@ -422,6 +467,8 @@ function resolveBuilderCall(input: {
 	if (primitive) return shape(primitive)
 	const resolveArg = (node: unknown) =>
 		resolveSchemaShape(node, source, depth + 1, context)
+	const resolveArgOrUnknown = (node: unknown) =>
+		resolveArg(node) ?? shape(unknownSnippet(source, node))
 	switch (name) {
 		case 'literal':
 			return shape(sliceNode(source, args[0]) ?? 'unknown')
@@ -448,33 +495,37 @@ function resolveBuilderCall(input: {
 		case 'optional':
 		case 'Optional':
 		case 'defaulted':
-		case 'exactOptional': {
-			const inner = resolveArg(args[0])
-			return inner ? { ...inner, optional: true } : null
-		}
+		case 'exactOptional':
+			return { ...resolveArgOrUnknown(args[0]), optional: true }
 		case 'nullable':
 		case 'Nullable': {
-			const inner = resolveArg(args[0])
-			return inner
-				? { ...inner, type: `${wrapUnionMember(inner.type)} | null` }
-				: null
+			const inner = resolveArgOrUnknown(args[0])
+			return { ...inner, type: `${wrapUnionMember(inner.type)} | null` }
 		}
 		case 'nullish': {
-			const inner = resolveArg(args[0])
-			return inner
-				? {
-						...inner,
-						optional: true,
-						type: `${wrapUnionMember(inner.type)} | null`,
-					}
-				: null
+			const inner = resolveArgOrUnknown(args[0])
+			return {
+				...inner,
+				optional: true,
+				type: `${wrapUnionMember(inner.type)} | null`,
+			}
+		}
+		case 'lazy': {
+			const getter = unwrapExpression(args[0])
+			const type = getNodeType(getter)
+			if (type !== 'ArrowFunctionExpression') return null
+			const body = (getter as { body?: unknown }).body
+			return getNodeType(body) === 'BlockStatement' ? null : resolveArg(body)
 		}
 		case 'union':
 		case 'Union':
 		case 'variant':
 		case 'discriminatedUnion': {
-			const members =
-				args.map(readArrayElements).find((elements) => elements != null) ?? args
+			const list = args
+				.map((arg) => readArrayElements(arg, context))
+				.find((elements) => elements != null)
+			if (list?.source && list.source !== source) return null
+			const members = list?.elements ?? args
 			if (members.length === 0) return null
 			return shape(
 				resolveSchemaList(members, source, depth, context)
@@ -484,18 +535,20 @@ function resolveBuilderCall(input: {
 		}
 		case 'enum':
 		case 'picklist': {
-			const elements = readArrayElements(args[0])
-			if (!elements || elements.length === 0) return null
-			const literals = elements.map((element) => sliceNode(source, element))
+			const list = readArrayElements(args[0], context)
+			if (!list || list.elements.length === 0) return null
+			const literals = list.elements.map((element) =>
+				sliceNode(list.source ?? source, element),
+			)
 			if (literals.some((literal) => !literal)) return null
 			return shape(literals.join(' | '))
 		}
 		case 'tuple':
 		case 'Tuple': {
-			const elements = readArrayElements(args[0])
-			if (!elements) return null
+			const list = readArrayElements(args[0])
+			if (!list) return null
 			return shape(
-				`[${resolveSchemaList(elements, source, depth, context).join(', ')}]`,
+				`[${resolveSchemaList(list.elements, source, depth, context).join(', ')}]`,
 			)
 		}
 		case 'record':
@@ -547,21 +600,27 @@ function resolveSchemaShape(
 	}
 	if (type === 'Identifier') {
 		const name = readName(node)
-		const declaration = name ? context.localValues.get(name) : undefined
+		const declaration = name
+			? context.resolveValue(context.modulePath, name)
+			: undefined
 		if (!name || !declaration?.init) return null
-		if (context.visiting.has(name)) return shape(`typeof ${name}`)
-		context.visiting.add(name)
+		const key = `${declaration.modulePath ?? ''}#${declaration.name}`
+		if (context.visiting.has(key)) {
+			return shape(`unknown /* recursive: ${name} */`)
+		}
+		const outerModulePath = context.modulePath
+		context.visiting.add(key)
+		context.modulePath = declaration.modulePath
 		try {
-			return (
-				resolveSchemaShape(
-					declaration.init,
-					declaration.source,
-					depth + 1,
-					context,
-				) ?? shape(`typeof ${name}`)
+			return resolveSchemaShape(
+				declaration.init,
+				declaration.source,
+				depth + 1,
+				context,
 			)
 		} finally {
-			context.visiting.delete(name)
+			context.visiting.delete(key)
+			context.modulePath = outerModulePath
 		}
 	}
 	if (type !== 'CallExpression') return null
@@ -587,16 +646,18 @@ function capDefinition(definition: string) {
  * Renders a `typeof Name` const for export detail. Schema builder
  * initializers (`object({...})`, `z.object({...}).strict()`, valibot-style
  * `pipe(...)`) expand to the field shape callers pass; anything else is the
- * verbatim declaration. Both are bounded for huge or recursive schemas.
+ * verbatim declaration. Schema consts imported from other package files are
+ * followed; unreadable parts render as `unknown`. Both are bounded for huge or recursive schemas.
  */
 export function describeReferencedValue(input: {
 	declaration: LocalValueDeclaration
-	localValues: Map<string, LocalValueDeclaration>
+	resolveValue: ResolveLocalValue
 }) {
 	const { declaration } = input
 	const context: SchemaContext = {
-		localValues: input.localValues,
-		visiting: new Set([declaration.name]),
+		resolveValue: input.resolveValue,
+		modulePath: declaration.modulePath,
+		visiting: new Set([`${declaration.modulePath ?? ''}#${declaration.name}`]),
 		fields: 0,
 	}
 	const resolved = declaration.init

@@ -31,11 +31,13 @@ export const d1LongRunningExportMessage =
 export const d1NetworkConnectionLostMessage = 'Network connection lost'
 
 /**
- * Cloudflare D1 capacity blips. Two exact platform phrasings exist:
+ * Cloudflare D1 capacity blips. Three exact platform phrasings exist:
  * - `D1_ERROR: D1 DB is overloaded. Requests queued for too long.`
  * - `D1_ERROR: D1 DB is overloaded. Too many requests queued.`
- * Not an application defect — D1's request queue timed out or rejected under
- * platform load. Same retry / Sentry-drop class as SQLITE_BUSY and binding
+ * - `D1_ERROR: D1 DB is overloaded. Too many resources consumed within a 10
+ *   second window.` (KODY-DS)
+ * Not an application defect — D1's request queue timed out, rejected, or
+ * throttled under load. Same retry / Sentry-drop class as SQLITE_BUSY and binding
  * transport blips. Match only these exact D1 forms (optional `Error:` /
  * `D1_ERROR:` prefixes) so unrelated "… overloaded …" messages stay out.
  */
@@ -44,6 +46,9 @@ export const d1DbOverloadedMessage =
 
 export const d1DbOverloadedTooManyQueuedMessage =
 	'D1 DB is overloaded. Too many requests queued'
+
+export const d1DbOverloadedResourceWindowMessage =
+	'D1 DB is overloaded. Too many resources consumed within a 10 second window'
 
 /**
  * Cloudflare D1 opaque platform failures with a support reference, e.g.
@@ -105,7 +110,8 @@ function isD1NetworkConnectionLostMessage(message: string) {
 function isD1DbOverloadedMessage(message: string) {
 	return (
 		isExactD1PlatformMessage(message, d1DbOverloadedMessage) ||
-		isExactD1PlatformMessage(message, d1DbOverloadedTooManyQueuedMessage)
+		isExactD1PlatformMessage(message, d1DbOverloadedTooManyQueuedMessage) ||
+		isExactD1PlatformMessage(message, d1DbOverloadedResourceWindowMessage)
 	)
 }
 
@@ -352,7 +358,8 @@ function withAttemptTimeout<T>(
  * Cloudflare's "Currently processing a long-running export" (DR / REST
  * exports block other requests), binding "Network connection lost"
  * transport blips, "D1 DB is overloaded. Requests queued for too long" /
- * "D1 DB is overloaded. Too many requests queued" capacity blips, opaque
+ * "D1 DB is overloaded. Too many requests queued" / "… Too many resources
+ * consumed within a 10 second window" capacity blips, opaque
  * D1 "internal error …; reference = …" platform faults (including D1 DB and
  * Durable Object storage object-reset, with either `in` or `while starting up`
  * phrasing), and D1-prefixed Durable Object platform-reset sentences such as

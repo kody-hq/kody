@@ -28,6 +28,10 @@ import {
 
 const deleteUserAccount = vi.hoisted(() => vi.fn(async () => {}))
 vi.mock('#app/account-deletion.ts', () => ({ deleteUserAccount }))
+const scheduleUserDeletedEvent = vi.hoisted(() => vi.fn())
+vi.mock('#worker/identity/schedule-user-lifecycle-event.ts', () => ({
+	scheduleUserDeletedEvent,
+}))
 
 const baseUrl = 'https://kody.test'
 const start = new Date('2026-11-04T07:00:00.000Z')
@@ -237,6 +241,7 @@ test('the purge deletes guests only after the seven-day hold, through account de
 	})
 	expect(duringHold.purged).toBe(0)
 	expect(deleteUserAccount).not.toHaveBeenCalled()
+	expect(scheduleUserDeletedEvent).not.toHaveBeenCalled()
 	const afterHold = await pruneExpiredGuestAccounts({
 		env,
 		now: new Date(start.getTime() + guestFullAccessMs + guestHoldMs),
@@ -246,4 +251,14 @@ test('the purge deletes guests only after the seven-day hold, through account de
 		expect.objectContaining({ personUserId: guest.personId }),
 	)
 	expect(await readGuestAccountByPerson(db, guest.personId)).toBeNull()
+	expect(scheduleUserDeletedEvent).toHaveBeenCalledOnce()
+	expect(scheduleUserDeletedEvent).toHaveBeenCalledWith({
+		env,
+		user: {
+			id: guest.personId,
+			username: guest.username,
+			email: guest.email,
+		},
+		createdAt: start.toISOString(),
+	})
 })

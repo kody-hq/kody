@@ -293,6 +293,34 @@ test('logMcpEvent keeps sandbox and caller failures off Sentry and still reports
 				'Push rejected because it was not a simple fast-forward. Use "force: true" to override.',
 			),
 		),
+		// External publish concurrency guards (KODY-DZ). Plain Errors from DO
+		// RPC, including cause-chain wrapping and the legacy HEAD phrase.
+		handlerFailure(
+			'packagePublishExternalPush',
+			'packages',
+			'Error',
+			new Error(
+				'The package\'s Artifacts HEAD moved from "commit-stale" to "commit-new" while publishing. Retry the publish (or re-run so the newest pushed commit publishes).',
+			),
+		),
+		handlerFailure(
+			'packagePublishExternalPush',
+			'packages',
+			'Error',
+			new Error(
+				'Artifacts HEAD changed from "commit-stale" to "commit-new" before publish.',
+			),
+		),
+		handlerFailure(
+			'packagePublishExternalPush',
+			'packages',
+			'Error',
+			new Error('Durable Object RPC failed', {
+				cause: new Error(
+					'The published commit moved while this publish was running. Retry the publish.',
+				),
+			}),
+		),
 		// packageSave destructive overwrite confirmation (issue 7661329778).
 		// Plain Error from shared source-safety-policy helpers.
 		handlerFailure(

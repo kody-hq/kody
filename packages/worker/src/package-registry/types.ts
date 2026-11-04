@@ -880,6 +880,29 @@ export function assertKodyDescriptionLength(description: string) {
 	}
 }
 
+/**
+ * `kody.publish`: how this package publishes. `execution.context` binds every
+ * publish that does not name a context itself to one execution context (or
+ * `"cloud"`). A binding never falls back down the chain or to Kody cloud.
+ */
+export const packagePublishDefinitionSchema = z.strictObject({
+	execution: z
+		.strictObject({
+			context: z
+				.string()
+				.trim()
+				.min(1)
+				.describe(
+					'Execution context name or id (ec_...) every publish builds on unless the publish names a context, or "cloud". No fallback.',
+				),
+		})
+		.optional(),
+})
+
+export type PackagePublishDefinition = z.infer<
+	typeof packagePublishDefinitionSchema
+>
+
 export const authoredPackageKodySchema = z.object({
 	id: z.string().regex(kodyPackageIdPattern).optional(),
 	// No max here: this schema is shared by load/parse. Enforce
@@ -910,6 +933,7 @@ export const authoredPackageKodySchema = z.object({
 	app: packageAppDefinitionSchema.optional(),
 	jobs: z.record(z.string().min(1), packageJobDefinitionSchema).optional(),
 	webhooks: packageWebhooksSchema.optional(),
+	publish: packagePublishDefinitionSchema.optional(),
 })
 
 export type AuthoredPackageKody = Omit<

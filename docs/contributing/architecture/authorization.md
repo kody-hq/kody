@@ -135,14 +135,15 @@ locks still apply: when a non-Owner holds org-wide `package:write` or
 the org, and a locked package needs a grant on that package with
 `allow_unmappable_credential_changes` before those two pass.
 
-**Grantable but unenforced.** `app:write`, `app:delete`, and `job:delete` can be
-granted (advanced checklist only for the app pair) but no surface checks them:
-an app shares its package's id, so changing or deleting it is `package:write` /
-`package:delete`. Holding one of them alone unlocks nothing.
-`permission-enforcement.node.test.ts` pins this list. Jobs and apps come from
-the package manifest and inboxes are made at signup, so there is no
-`job:create`, `app:create`, or `email:create`. Readers of stored scopes drop
-those values (`withoutRetiredOrgPermissions`), and migration 0241 strips stored
+**Grantable but unenforced.** `app:write` and `app:delete` can be granted
+(advanced checklist only) but no surface checks them: an app shares its
+package's id, so changing or deleting it is `package:write` / `package:delete`.
+Holding one of them alone unlocks nothing. `permission-enforcement.node.test.ts`
+pins this list. Jobs and apps come from the package manifest and inboxes are
+made at signup, so there is no `job:create`, `app:create`, or `email:create`. A
+package's jobs go away with `package:write` / `package:delete`, so there is no
+`job:delete` either. Readers of stored scopes drop those values
+(`withoutRetiredOrgPermissions`), and migrations 0241 and 0251 strip stored
 rows.
 
 A surface check without a resource (capability `orgPermission`, Open API
@@ -934,13 +935,15 @@ package source, and unrelated account content. Delivery is best-effort (no
 Queue). Staying over the same threshold does not emit again.
 
 **Admins can subscribe to person-account create and delete.** Password signup,
-social-login signup, and admin-created person accounts fan `user.created`.
-Self-service account deletion fans `user.deleted`. Fan-out selects only packages
-whose owners hold the admin role at dispatch time. The event contains the stable
-user id, username, email, create source or delete timestamp, and first-touch
-marketing attribution when present. It omits passwords, roles, plan, secrets,
-and unrelated account content. Delivery is best-effort (no Queue) after the
-account change commits.
+social-login signup, admin-created person accounts, and guest accounts fan
+`user.created`. Self-service account deletion and the unclaimed-guest purge fan
+`user.deleted`. Claiming a guest fans `user.guest_claimed` (claim mode and
+method, guest identity and timestamps, and per-category counts, never claim
+codes or secret values). Fan-out selects only packages whose owners hold the
+admin role at dispatch time. The event contains the stable user id, username,
+email, create source or delete timestamp, and first-touch marketing attribution
+when present. It omits passwords, roles, plan, secrets, and unrelated account
+content. Delivery is best-effort (no Queue) after the account change commits.
 
 **Admins can subscribe to verification-mail terminal failures.** The first
 bounce, failure, rejection, or complaint on a signup/verify send fans
@@ -989,14 +992,15 @@ user-owned mailbox content. Admins can also **send** from those reserved
 addresses with `adminSystemEmailSend` (also audit logged, with redacted
 recipients) and list or clear hard-bounce suppressions of system mail with
 `adminEmailSuppressionList` / `adminEmailSuppressionClear` (clears are audit
-logged with redacted recipients): that channel speaks for the platform, so it
-uses no user mailbox, sender identity, or plan entitlement, and it never reads
-or writes user-owned mail. Stored system mail also fans out metadata (never
-bodies or attachment bytes) on the `email.system-message.received` package
-subscription topic, and only to packages saved by users who hold the admin role
-at dispatch time — a non-admin subscriber never receives the event, and revoking
-admin stops delivery immediately. Successful reserved-sender sends fan
-`email.system-message.sent` the same admin-only way. That outbound topic
+logged with redacted recipients), and trace sent system mail with its delivery
+reports via `adminSystemEmailSendList`: that channel speaks for the platform, so
+it uses no user mailbox, sender identity, or plan entitlement, and it never
+reads or writes user-owned mail. Stored system mail also fans out metadata
+(never bodies or attachment bytes) on the `email.system-message.received`
+package subscription topic, and only to packages saved by users who hold the
+admin role at dispatch time — a non-admin subscriber never receives the event,
+and revoking admin stops delivery immediately. Successful reserved-sender sends
+fan `email.system-message.sent` the same admin-only way. That outbound topic
 includes the sent correspondence (recipients, subject, and bodies) because those
 sends are not written to the dedicated inbound graph (the graph refuses
 provider-message-id rows). It does not include user-owned mailbox content.

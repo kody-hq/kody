@@ -9,7 +9,11 @@ import {
 	readGuestAccountByPerson,
 } from './guest-accounts.ts'
 import { guestClaimDonePath } from './guest-claim.ts'
+import { recordSystemEmailSends } from '#worker/email/system-email-sends.ts'
+import { logAuditEventSpy } from '#worker/test-support/audit-log-spy.ts'
+import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import {
+	describeClaimCodeDelivery,
 	finishGuestClaim,
 	guestClaimCodeMaxAttempts,
 	guestClaimStartRateLimit,
@@ -17,8 +21,13 @@ import {
 } from './guest-claim-code.ts'
 
 const sendGatedTransactionalEmail = vi.hoisted(() =>
-	vi.fn(async () => ({ ok: true as const })),
+	vi.fn(
+		async (): Promise<
+			{ ok: true; messageId?: string | null } | { ok: false; error: string }
+		> => ({ ok: true }),
+	),
 )
+const runtime = vi.hoisted(() => ({ nonProduction: true }))
 const maybeGrantSignupWelcomeCredits = vi.hoisted(() => vi.fn(async () => {}))
 vi.mock('#worker/email/transactional-send-policy.ts', () => ({
 	sendGatedTransactionalEmail,
@@ -28,7 +37,7 @@ vi.mock('#worker/billing/signup-welcome-credits.ts', () => ({
 }))
 vi.mock('#app/deployment-env.ts', async (importOriginal) => ({
 	...(await importOriginal<typeof DeploymentEnv>()),
-	isNonProductionRuntime: () => true,
+	isNonProductionRuntime: () => runtime.nonProduction,
 }))
 
 const requestUrl = 'https://kody.test/mcp'
@@ -227,4 +236,126 @@ test('a guest can only ask for a few fresh claim codes per hour', async () => {
 			now: start,
 		}),
 	).rejects.toMatchObject({ code: 'rate_limited' })
+})
+
+test('production claim starts return the provider message id and log the send outcome', async () => {
+	const { env, guest } = await setup()
+	runtime.nonProduction = false
+	try {
+		sendGatedTransactionalEmail.mockResolvedValueOnce({
+			ok: true,
+			messageId: '<claim-1@kody.test>',
+		})
+		const started = await startGuestClaim({
+			env,
+			guest,
+			email: 'person@example.test',
+			username: 'person',
+			requestUrl,
+			now: start,
+		})
+		expect(started).toMatchObject({
+			devCode: null,
+			providerMessageId: '<claim-1@kody.test>',
+			codeDelivery: 'accepted',
+		})
+		expect(logAuditEventSpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				action: 'guest_claim_code_sent',
+				result: 'success',
+				reason: 'mode=new;message_id=<claim-1@kody.test>',
+			}),
+		)
+
+		consoleWarn.mockImplementation(() => {})
+		sendGatedTransactionalEmail.mockRejectedValueOnce(new Error('boom'))
+		await expect(
+			startGuestClaim({
+				env,
+				guest,
+				email: 'person@example.test',
+				username: 'person',
+				requestUrl,
+				now: start,
+			}),
+		).rejects.toMatchObject({ code: 'send_failed' })
+		expect(logAuditEventSpy).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				action: 'guest_claim_code_sent',
+				result: 'failure',
+				reason: 'mode=new;error=provider_error',
+			}),
+		)
+		expect(consoleWarn).toHaveBeenCalledWith('guest-claim-code-send-threw', {
+			error: 'boom',
+		})
+	} finally {
+		runtime.nonProduction = true
+	}
+})
+
+test('wrong claim codes report what the mail provider said about the code email', async () => {
+	const { env, guest } = await setup()
+	await startGuestClaim({
+		env,
+		guest,
+		email: 'person@example.test',
+		username: 'person',
+		requestUrl,
+		now: start,
+	})
+	await expect(
+		finishGuestClaim({
+			env,
+			guest,
+			code: '000000x',
+			baseUrl: 'https://kody.test',
+			now: start,
+		}),
+	).rejects.toMatchObject({
+		code: 'code_invalid',
+		deliveryNote: describeClaimCodeDelivery(null),
+	})
+	await recordSystemEmailSends({
+		db: env.APP_DB,
+		providerMessageId: '<claim-2@kody.test>',
+		recipients: ['person@example.test'],
+		sender: 'kody@kody.test',
+		kind: 'guest_claim_code',
+		now: start,
+	})
+	await expect(
+		finishGuestClaim({
+			env,
+			guest,
+			code: '000001x',
+			baseUrl: 'https://kody.test',
+			now: start,
+		}),
+	).rejects.toMatchObject({
+		deliveryNote: expect.stringContaining(
+			'accepted the code email (message <claim-2@kody.test>) but has not confirmed delivery yet',
+		),
+	})
+})
+
+test('claim code delivery notes follow the latest delivery report', () => {
+	const send = {
+		providerMessageId: '<m@kody.test>',
+		recipient: 'person@example.test',
+		sender: 'kody@kody.test',
+		kind: 'guest_claim_code',
+		sentAt: start.toISOString(),
+		deliveryStatusAt: start.toISOString(),
+		hardBouncedAt: null,
+	}
+	expect(
+		describeClaimCodeDelivery({ ...send, deliveryStatus: 'delivered' }),
+	).toContain('was delivered to the recipient')
+	expect(
+		describeClaimCodeDelivery({ ...send, deliveryStatus: 'deferred' }),
+	).toContain('is delayed')
+	expect(
+		describeClaimCodeDelivery({ ...send, deliveryStatus: 'bounced' }),
+	).toContain('was not delivered (bounced)')
 })

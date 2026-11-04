@@ -4,6 +4,11 @@ import { normalizeEmail } from '#worker/identity/normalize-email.ts'
 import { checkRateLimit, type RateLimitConfig } from '#worker/rate-limit.ts'
 import { sendGatedTransactionalEmail } from '#worker/email/transactional-send-policy.ts'
 import {
+	readLatestSystemEmailSend,
+	type SystemEmailSendRecord,
+} from '#worker/email/system-email-sends.ts'
+import { auditDatabaseFromEnv, logAuditEvent } from '#worker/audit-log.ts'
+import {
 	assertClaimUsernameAvailable,
 	convertGuestInPlace,
 	findClaimTargetByEmail,
@@ -32,13 +37,63 @@ export type GuestClaimCodeErrorCode =
 	| 'send_failed'
 	| 'rate_limited'
 
+export const guestClaimCodeEmailKind = 'guest_claim_code'
+
 export class GuestClaimCodeError extends Error {
 	readonly code: GuestClaimCodeErrorCode
-	constructor(code: GuestClaimCodeErrorCode, message: string) {
+	/** What Kody knows about delivery of the latest code email, when relevant. */
+	readonly deliveryNote: string | null
+	constructor(
+		code: GuestClaimCodeErrorCode,
+		message: string,
+		options: { deliveryNote?: string | null } = {},
+	) {
 		super(message)
 		this.name = 'GuestClaimCodeError'
 		this.code = code
+		this.deliveryNote = options.deliveryNote ?? null
 	}
+}
+
+const failedDeliveryStatuses = new Set([
+	'bounced',
+	'failed',
+	'rejected',
+	'complained',
+])
+
+/** One sentence on the latest claim code email, from Cloudflare's reports. */
+export function describeClaimCodeDelivery(
+	send: SystemEmailSendRecord | null,
+): string {
+	if (!send) {
+		return 'Kody has no record that its mail provider accepted the code email.'
+	}
+	const id = send.providerMessageId
+	const status = send.deliveryStatus
+	if (!status) {
+		return `Kody's mail provider accepted the code email (message ${id}) but has not confirmed delivery yet.`
+	}
+	if (status === 'delivered') {
+		return `Kody's mail provider reports the code email (message ${id}) was delivered to the recipient's mail server; if it is not in the inbox, it may be in spam or held by a filter.`
+	}
+	if (status === 'deferred') {
+		return `Delivery of the code email (message ${id}) is delayed; the mail provider is still retrying.`
+	}
+	if (failedDeliveryStatuses.has(status)) {
+		return `The code email (message ${id}) was not delivered (${status}).`
+	}
+	return `The latest delivery report for the code email (message ${id}) is ${status}.`
+}
+
+async function latestClaimCodeDeliveryNote(db: D1Database, email: string) {
+	return describeClaimCodeDelivery(
+		await readLatestSystemEmailSend({
+			db,
+			recipient: email,
+			kind: guestClaimCodeEmailKind,
+		}),
+	)
 }
 
 type ClaimCodeRow = {
@@ -89,6 +144,13 @@ export type GuestClaimStartResult = {
 	expiresAt: string
 	/** Non-production runtimes have no mail sender; the code comes back here. */
 	devCode: string | null
+	/** Cloudflare Email Sending message id; null when no email went out. */
+	providerMessageId: string | null
+	/**
+	 * `accepted`: the mail provider took the email, inbox delivery is not
+	 * confirmed. `dev_code`: non-production send failed or was skipped.
+	 */
+	codeDelivery: 'accepted' | 'dev_code'
 }
 
 /**
@@ -193,7 +255,7 @@ export async function startGuestClaim(input: {
 			apiToken: env.CLOUDFLARE_API_TOKEN,
 		},
 		category: 'essential',
-		kind: 'guest_claim_code',
+		kind: guestClaimCodeEmailKind,
 		message: {
 			to: email,
 			from: emailConfig.fromEmail,
@@ -202,16 +264,45 @@ export async function startGuestClaim(input: {
 			text: message.text,
 		},
 	}).catch((error: unknown) => {
-		if (!nonProduction) throw error
-		return { ok: false as const, error: String(error) }
+		console.warn('guest-claim-code-send-threw', {
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return { ok: false as const, error: 'provider_error' }
+	})
+	const providerMessageId = sent.ok ? (sent.messageId ?? null) : null
+	const failure = sent.ok
+		? null
+		: 'hold' in sent && sent.hold
+			? `held:${sent.code}`
+			: 'skipped' in sent && sent.skipped
+				? 'skipped'
+				: 'provider_error'
+	void logAuditEvent({
+		db: auditDatabaseFromEnv(env),
+		category: 'auth',
+		action: 'guest_claim_code_sent',
+		result: sent.ok ? 'success' : 'failure',
+		email,
+		reason: sent.ok
+			? `mode=${mode};message_id=${providerMessageId ?? 'none'}`
+			: `mode=${mode};error=${failure}`,
 	})
 	if (!sent.ok && !nonProduction) {
 		throw new GuestClaimCodeError(
 			'send_failed',
-			'Kody could not send the claim code email. Try again in a minute.',
+			failure?.startsWith('held:')
+				? 'Kody is holding email to that address after earlier delivery problems, so no claim code was sent.'
+				: 'Kody could not send the claim code email. Try again in a minute.',
 		)
 	}
-	return { email, mode, expiresAt, devCode: nonProduction ? code : null }
+	return {
+		email,
+		mode,
+		expiresAt,
+		devCode: nonProduction ? code : null,
+		providerMessageId,
+		codeDelivery: sent.ok ? 'accepted' : 'dev_code',
+	}
 }
 
 /** Agent-led claim, step two: check the code and finish the claim. */
@@ -221,6 +312,8 @@ export async function finishGuestClaim(input: {
 	code: string
 	baseUrl: string
 	now?: Date
+	/** `email_code` from the claim page, `agent` (default) from guestClaimFinish. */
+	method?: 'email_code' | 'agent'
 }): Promise<GuestClaimResult> {
 	const { env, guest } = input
 	const db = env.APP_DB
@@ -239,12 +332,14 @@ export async function finishGuestClaim(input: {
 		throw new GuestClaimCodeError(
 			'code_expired',
 			'That code expired. Start the claim again to get a new one.',
+			{ deliveryNote: await latestClaimCodeDeliveryNote(db, row.email) },
 		)
 	}
 	if (row.attempts >= guestClaimCodeMaxAttempts) {
 		throw new GuestClaimCodeError(
 			'too_many_attempts',
 			'Too many wrong codes. Start the claim again to get a new one.',
+			{ deliveryNote: await latestClaimCodeDeliveryNote(db, row.email) },
 		)
 	}
 	const code = input.code.replace(/\D/g, '')
@@ -258,6 +353,7 @@ export async function finishGuestClaim(input: {
 		throw new GuestClaimCodeError(
 			'code_invalid',
 			'That code is not right. Check the email and try again.',
+			{ deliveryNote: await latestClaimCodeDeliveryNote(db, row.email) },
 		)
 	}
 	if (row.mode === 'merge') {
@@ -274,6 +370,7 @@ export async function finishGuestClaim(input: {
 			target,
 			baseUrl: input.baseUrl,
 			now,
+			method: input.method ?? 'agent',
 		})
 	}
 	return convertGuestInPlace({
@@ -282,5 +379,6 @@ export async function finishGuestClaim(input: {
 		email: row.email,
 		username: row.username ?? '',
 		now,
+		method: input.method ?? 'agent',
 	})
 }
