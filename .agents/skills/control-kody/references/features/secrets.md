@@ -17,7 +17,7 @@ not raw D1.
   `/@{$orgSlug}/-/secret-providers`
 - Connect approvals: `/connect/secrets`, `/connect/secret-set`,
   `/connect/credential`
-- Legacy `/account/secrets` redirects or 404s depending on route — prefer org
+- Legacy `/account/secrets` redirects or 404s depending on route; prefer org
   URLs
 - Credential detail shows **Fill placement** (and **Inject** separately). Edit
   fill placement when the credential is org-owned. `/connect/secret-set` and the

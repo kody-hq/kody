@@ -52,7 +52,7 @@ through supported MCP capabilities with `control-kody execute` or the browser
 UI. Website-only reads and mutations use Start server functions; exercise those
 through the browser, not retired JSON action URLs. `/session`, `/auth`, and
 `/account/export.json` remain HTTP protocols. `GET /account/export.json` is a
-metadata manifest only — do not `--contains` user data there; verify rows with
+metadata manifest only: do not `--contains` user data there; verify rows with
 MCP `accountExportSection` via `control-kody execute` (see the contributing
 doc). For more authenticated HTTP after login, use `control-kody request`
 (`--dump` / `--contains` for HTML). Do not cat the session cookie into `curl` or
@@ -108,8 +108,8 @@ When UI is under test:
 1. Prefer `npm run control-kody -- browse --origin <preview> --path <path>` so
    Chromium opens already signed in (reuses `.tmp/control-kody-cookie`).
    Optional `--record` writes video under `.tmp/control-kody-browse`.
-   `--screenshot <path>` writes a PNG from the live preview — do not screenshot
-   a `file://` `renderToString` dump.
+   `--screenshot <path>` writes a PNG from the live preview: do not screenshot a
+   `file://` `renderToString` dump.
 2. Cursor `computerUse` cannot drive that Playwright window. For computerUse,
    open `/login?redirectTo=<path>` (seed email `me@kentcdodds.com` / password
    `ilikecode`, button **Sign in**) and stay on the preview origin.
@@ -120,7 +120,7 @@ When UI is under test:
 Neither is a regression. Admin-gated states (suspension, outbound-email pause,
 account deletion) cannot be set on preview; use the local admin seed plus
 Workers or unit tests. For MCP `execute` / `search` fixtures, use
-`control-kody execute` / `search` — do not hand-roll OAuth. Two `packageSave`
+`control-kody execute` / `search`: do not hand-roll OAuth. Two `packageSave`
 packages on the seed account share implicit user-secret read; locked-secret
 denial needs an unadopted community fork. See
 [preview-manual-testing.md](../../../docs/contributing/preview-manual-testing.md).
