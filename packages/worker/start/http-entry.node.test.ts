@@ -237,6 +237,50 @@ test.each([200, 301, 403, 500])(
 	},
 )
 
+test('RPC responses advertise APP_COMMIT_SHA for deploy skew recovery', async () => {
+	vi.stubEnv('TSS_SERVER_FN_BASE', '/_serverFn/')
+	try {
+		const handle = createHttpRequestHandler(
+			async () => new Response('serialized result'),
+		)
+		const response = await handle(
+			new Request('https://example.com/_serverFn/read'),
+			createEnv({ APP_COMMIT_SHA: 'A'.repeat(40) }),
+		)
+		expect(response.headers.get('X-Kody-Build')).toBe('a'.repeat(40))
+		expect(response.headers.get('Cache-Control')).toBe('private, no-store')
+	} finally {
+		vi.unstubAllEnvs()
+	}
+})
+
+test('RPC responses omit X-Kody-Build when APP_COMMIT_SHA is unset', async () => {
+	vi.stubEnv('TSS_SERVER_FN_BASE', '/_serverFn/')
+	try {
+		const handle = createHttpRequestHandler(
+			async () => new Response('serialized result'),
+		)
+		const response = await handle(
+			new Request('https://example.com/_serverFn/read'),
+			createEnv(),
+		)
+		expect(response.headers.get('X-Kody-Build')).toBeNull()
+	} finally {
+		vi.unstubAllEnvs()
+	}
+})
+
+test('document responses are not stamped with X-Kody-Build', async () => {
+	const handle = createHttpRequestHandler(
+		async () => new Response('<html></html>'),
+	)
+	const response = await handle(
+		new Request('https://example.com/blog'),
+		createEnv({ APP_COMMIT_SHA: 'a'.repeat(40) }),
+	)
+	expect(response.headers.get('X-Kody-Build')).toBeNull()
+})
+
 test('canonical document redirects retain their public cache policy', async () => {
 	const handle = createHttpRequestHandler(
 		async () =>

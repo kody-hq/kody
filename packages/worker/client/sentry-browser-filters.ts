@@ -9,6 +9,7 @@ import {
 	isBrowserFetchNetworkError,
 	isBrowserFetchNetworkErrorMessage,
 } from '#client/browser-fetch-network-error.ts'
+import { isDeploySkewRecoveryError } from '#client/reload-on-deploy-skew.ts'
 
 type SentryStackFrame = {
 	filename?: string
@@ -1310,6 +1311,25 @@ function isUnknownStartReleaseSentryEvent(
 	)
 }
 
+/**
+ * Expected abort after deploy-skew hard navigation (KODY-DP). The client throws
+ * this only after `location.assign` so stale loader JSON never reaches routes.
+ */
+function filterDeploySkewRecoverySentryEvent<T extends SentryErrorEventLike>(
+	event: T,
+	originalException?: unknown,
+): T | null {
+	if (isDeploySkewRecoveryError(originalException)) return null
+	if (
+		event.exception?.values?.some(
+			(value) => value.type === 'DeploySkewRecovery',
+		)
+	) {
+		return null
+	}
+	return event
+}
+
 function filterUnknownStartReleaseSentryEvent<T extends SentryErrorEventLike>(
 	event: T,
 	originalException?: unknown,
@@ -2023,6 +2043,9 @@ export function filterBrowserSentryEvent<T extends SentryErrorEventLike>(
 		return null
 	}
 	if (filterUnknownStartReleaseSentryEvent(event, originalException) === null) {
+		return null
+	}
+	if (filterDeploySkewRecoverySentryEvent(event, originalException) === null) {
 		return null
 	}
 	if (

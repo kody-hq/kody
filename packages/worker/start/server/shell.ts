@@ -1,3 +1,4 @@
+import { normalizeDeploySkewBuildId } from '#universal/deploy-skew.ts'
 import { buildSsrSentryClientConfig } from '#universal/sentry-config.ts'
 import { createServerFn } from '@tanstack/react-start'
 import { notFound } from '@tanstack/react-router'
@@ -120,6 +121,7 @@ export const loadShell = createServerFn({ method: 'GET' })
 			actorKey:
 				session && resolvedAuth.user ? resolvedAuth.user.mcpUser.userId : null,
 			session,
+			buildId: normalizeDeploySkewBuildId(appEnv.APP_COMMIT_SHA),
 			sentryConfig: buildSsrSentryClientConfig({
 				dsn: appEnv.SENTRY_DSN,
 				environment: appEnv.SENTRY_ENVIRONMENT,
