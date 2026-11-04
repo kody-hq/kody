@@ -120,6 +120,7 @@ export const loadShell = createServerFn({ method: 'GET' })
 			actorKey:
 				session && resolvedAuth.user ? resolvedAuth.user.mcpUser.userId : null,
 			session,
+			buildId: appEnv.APP_COMMIT_SHA?.trim() || null,
 			sentryConfig: buildSsrSentryClientConfig({
 				dsn: appEnv.SENTRY_DSN,
 				environment: appEnv.SENTRY_ENVIRONMENT,
