@@ -466,7 +466,7 @@ export type SearchEntityDetailStructured =
 			}>
 			referencedTypes: Array<{
 				name: string
-				kind: 'type' | 'interface' | 'enum'
+				kind: 'type' | 'interface' | 'enum' | 'const'
 				definition: string | null
 			}>
 			example: string | null
