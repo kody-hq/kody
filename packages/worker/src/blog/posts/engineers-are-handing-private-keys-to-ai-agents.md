@@ -8,6 +8,7 @@ description:
 order: 1
 category: essays
 series: agent-credentials-for-team-leads
+updated: 2026-11-04
 featured: true
 ---
 
@@ -54,6 +55,45 @@ Multiply that by every engineer and every agent they use (most people I talk to
 run more than one), and you've got a credential sprawl problem that no secret
 scanner was designed for. Scanners look for keys in commits. They don't look in
 an agent vendor's chat history.
+
+## It doesn't even take prompt injection
+
+Point 2 is the one people worry about most. But the model doesn't have to be
+tricked. It just has to misunderstand.
+
+In April 2026, a Cursor coding agent running Claude Opus 4.6 was working in
+PocketOS's staging environment. PocketOS makes software for car rental
+businesses. The agent hit a credential mismatch and decided, on its own, to fix
+it by deleting a Railway volume.
+
+It needed a token for that, so it went looking. It found a Railway API token in
+a file that had nothing to do with its task. That token was created to manage
+custom domains through the Railway CLI, but it was scoped for any operation. The
+agent called Railway's `volumeDelete` API with it. That API path deleted
+immediately, with no confirmation. The volume held production data, and the
+volume-level backups appeared to be gone too. PocketOS founder Jer Crane said it
+took 9 seconds.
+
+Nobody injected anything. The agent's rules said not to run destructive commands
+without being asked. Afterward it explained itself: "I guessed that deleting a
+staging volume via the API would be scoped to staging only. I didn't verify."
+
+PocketOS lost about three months of reservation and customer data until Railway
+restored it from offsite disaster backups. Railway then changed the API so
+deletes are soft deletes for 48 hours.
+[Railway's postmortem](https://blog.railway.com/p/your-ai-wants-to-nuke-your-database)
+and
+[The Register's story](https://www.theregister.com/software/2026/04/27/cursor-opus-agent-snuffs-out-startups-production-database/5224442)
+have the details.
+
+> [!WATCH] https://www.youtube.com/watch?v=m8I2p3nQtR4 Watch: How an AI Agent
+> Deleted PocketOS Production in 9 Seconds
+
+So a key the agent can read is a risk even when nothing malicious is in its
+context. With Kody, there's no raw token lying in a file for the agent to find.
+It only ever sees placeholders (you'll see one below), and the gateway only
+fills them for hosts you approved. But that Railway token was also over-scoped.
+It could do anything on the account. I'll come back to that in the limits.
 
 ## The fix isn't "tell the agent to be careful"
 
@@ -121,8 +161,15 @@ I don't want to oversell this. Here's what the design doesn't do:
 
 - **It doesn't shrink the provider's permissions.** If someone saves a GitHub
   token with write access to every repo, code that uses it can write to every
-  repo, even though nobody can read the token. Scoping still starts at the
-  provider. That's what
+  repo, even though nobody can read the token. Kody's answer is locked packages
+  and locked credentials. You publish a small package that exposes only the
+  operations you want and lock it. Then you lock the credential to that package,
+  so `execute` and other packages can't use the broad token at all. An agent can
+  add those locks, but only you can remove them, on the website. Google has no
+  drafts-only Gmail scope, so
+  [Gmail drafts without send](/docs/locked-gmail-drafts) shows the pattern with
+  a package that creates drafts and never sends. Scoping at the provider still
+  helps. That's what
   [least-privilege tokens for AI agents](/blog/least-privilege-for-ai-agents) is
   about.
 - **It doesn't stop non-secret network calls.** Sandboxed code can still reach

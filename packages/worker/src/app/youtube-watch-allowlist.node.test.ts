@@ -56,6 +56,10 @@ test('loadPlaylistVideoIds fails open when YouTube is unreachable', async () => 
 	).resolves.toEqual([])
 })
 
+test('bundledDocWatchVideoIds includes watch blocks from blog posts', () => {
+	expect(bundledDocWatchVideoIds()).toContain('m8I2p3nQtR4')
+})
+
 test('resolveYoutubeWatchAllowedVideoIds skips playlist fetch when loadPlaylists is false', async () => {
 	using _server = createMswNodeServer([])
 	const ids = await resolveYoutubeWatchAllowedVideoIds({
