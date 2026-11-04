@@ -109,6 +109,8 @@ export function buildLlmsTxt(baseUrl: string): string {
 		'plain markdown; the same content is available to connected agents as',
 		'`search({ entity: "guide:{id}" })`.',
 		'',
+		'No account yet? Pick Try it out on the Kody sign-in screen and claim the account later by telling your agent.',
+		'',
 		buildOpenApiDiscoveryMarkdown(baseUrl).trimEnd(),
 		'',
 		...buildDocsIndexSections(baseUrl),

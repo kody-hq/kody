@@ -154,6 +154,8 @@ Interactive humans: \`npx -y @kodycodes/cli@latest login\` once. CI / headless
 without an MCP session: set \`KODY_API_TOKEN\` in the environment (never paste
 credentials into chat).
 
+No Kody account yet: the person can pick Try it out on the \`kody login\` sign-in screen and claim the account later by telling their agent (\`guestClaimStart\`).
+
 Default bootstrap scopes include local-execute use scopes plus
 \`package:write\`, \`package:create\`, and \`token:delete\`. They do not include
 \`search:read\`. Prefer MCP \`search\` for discovery.
@@ -402,6 +404,7 @@ export function buildAuthMarkdown(origin: string): string {
 		`1. Point the host at \`${mcp}\`.`,
 		'2. Complete the OAuth flow the host opens. Sign in to Kody if needed,',
 		'   then approve access.',
+		'   No account yet? The person can pick Try it out on the sign-in screen and claim the account later by telling their agent.',
 		'3. The account email must be verified before authorize can finish. If',
 		'   authorize asks to verify, keep that tab open, finish verification',
 		'   from the email link or `/pending-verification`, then continue.',

@@ -244,8 +244,8 @@ async function renameClashingPackages(
 	const clashes = await db
 		.prepare(
 			`SELECT id, kody_id FROM saved_packages
-			 WHERE org_id = ? AND deleted_at IS NULL
-			   AND kody_id IN (SELECT kody_id FROM saved_packages WHERE org_id = ? AND deleted_at IS NULL)`,
+			 WHERE user_id = ? AND deleted_at IS NULL
+			   AND kody_id IN (SELECT kody_id FROM saved_packages WHERE user_id = ? AND deleted_at IS NULL)`,
 		)
 		.bind(fromOrgId, toOrgId)
 		.all<{ id: string; kody_id: string }>()
@@ -259,7 +259,7 @@ async function renameClashingPackages(
 			const taken = await db
 				.prepare(
 					`SELECT 1 AS present FROM saved_packages
-					 WHERE kody_id = ? AND org_id IN (?, ?) AND deleted_at IS NULL`,
+					 WHERE kody_id = ? AND user_id IN (?, ?) AND deleted_at IS NULL`,
 				)
 				.bind(candidate, fromOrgId, toOrgId)
 				.first<{ present: number }>()
@@ -449,7 +449,7 @@ export async function guestComesWithCounts(
 	const [packages, memories, jobs, runs] = await Promise.all([
 		db
 			.prepare(
-				`SELECT COUNT(*) AS n FROM saved_packages WHERE org_id = ? AND deleted_at IS NULL`,
+				`SELECT COUNT(*) AS n FROM saved_packages WHERE user_id = ? AND deleted_at IS NULL`,
 			)
 			.bind(orgId)
 			.first<{ n: number }>()
