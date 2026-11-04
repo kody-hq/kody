@@ -1,6 +1,6 @@
 ---
 title: A team lead's guide to AI agent credentials
-date: 2026-11-03
+date: 2026-09-04
 description:
   Who owns the keys when your team's AI agents call real services? A practical
   model for team, personal, and shared credentials.
@@ -10,7 +10,9 @@ order: 3
 Picture the Slack thread. Someone on your team built a handy agent workflow that
 files Linear issues from customer emails. It works great. Three other engineers
 want it. So the author shares the script, and each person needs a Linear API key
-to run it. One asks in the thread, "can I just use yours?"
+to run it. One asks in the thread, "can I just use yours?" That question is
+where AI agent credentials stop being a personal choice and become a team
+problem.
 
 Now you have to answer a question you probably haven't written down yet: **for
 AI agent work, which credentials belong to the team, which belong to a person,
@@ -21,7 +23,7 @@ pasted a key most recently." This post is the model I'd use to decide on
 purpose, and how [Kody](https://kody.codes) lets you enforce it instead of just
 writing it in a wiki.
 
-## Three kinds of credentials
+## Three kinds of AI agent credentials
 
 Almost every key your team's agents touch falls into one of three buckets:
 
@@ -131,10 +133,10 @@ If you want something you can paste into your team docs, here's where I'd start:
    their own key.
 4. **No raw keys in chat, `.env`, or MCP configs.** Agents send a Kody save link
    instead. (More on that in
-   [Stop pasting API keys into agent configs](/blog/stop-pasting-api-keys-into-agent-configs).)
+   [Stop pasting API keys into agent configs](/blog/where-to-store-api-keys-for-ai-agents).)
 5. **Scope at the provider first.** Kody keeps keys unreadable, but it can't
    make a broad token narrow. See
-   [least-privilege tokens for AI agents](/blog/least-privilege-tokens-for-ai-agents).
+   [least-privilege tokens for AI agents](/blog/least-privilege-for-ai-agents).
 
 ## Next step
 
@@ -143,3 +145,10 @@ team-owned credential into it and turn one shared script into a package that
 declares that credential as a need. Start at [kody.codes](https://kody.codes),
 and keep the [credentials guide](https://kody.codes/docs/credentials) and
 [organizations guide](https://kody.codes/docs/organizations) open while you do.
+
+More in this series:
+
+- [ Your engineers are handing private keys to AI agents. Here's what that means.](/blog/engineers-are-handing-private-keys-to-ai-agents)
+- [Where to store API keys for AI agents (not in agent configs)](/blog/where-to-store-api-keys-for-ai-agents)
+- [Bring your own key, letting each teammate run shared tools as themselves](/blog/bring-your-own-key-for-shared-team-tools)
+- [How to share AI workflows with your team](/blog/share-ai-workflows-with-your-team)

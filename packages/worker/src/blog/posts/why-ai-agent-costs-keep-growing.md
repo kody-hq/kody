@@ -1,16 +1,16 @@
 ---
-title:
-  Why your AI agent bill keeps growing (and how deterministic tools cut tokens)
-date: 2026-11-03
+title: Why AI agent costs keep growing (and how deterministic tools cut tokens)
+date: 2026-10-23
 description:
   Agents re-reason the same tasks every day, and you pay for every token. How
   saving repeated work as deterministic code cuts AI agent costs.
 order: 10
 ---
 
-Look at what one of your engineers' agents does every morning. Something like:
-"Check Sentry for new errors in the checkout service, cross-reference recent
-deploys on GitHub, and post a summary to Slack."
+If you want to know why AI agent costs keep growing, look at what one of your
+engineers' agents does every morning. Something like: "Check Sentry for new
+errors in the checkout service, cross-reference recent deploys on GitHub, and
+post a summary to Slack."
 
 Every morning, the model reads that instruction, figures out which APIs to call,
 reads the tool definitions, makes the calls, reads the raw JSON responses (often
@@ -22,7 +22,7 @@ Now multiply that by every engineer and every recurring task. That's a big part
 of why agent bills grow faster than anyone expects. You aren't paying for new
 thinking. You're paying for the same thinking over and over.
 
-## Where the tokens actually go
+## Where AI agent costs actually go
 
 When an agent does a multi-step task by calling tools directly, the model's
 context fills up with:
@@ -130,8 +130,15 @@ To be fair about it:
 
 Once a few workflows are packages, the next problem is everyone building their
 own version of the same thing. That's the subject of
-[the hidden cost of every engineer building their own agent tooling](/blog/hidden-cost-of-everyone-building-agent-tooling).
+[the hidden cost of every engineer building their own agent tooling](/blog/ai-tooling-for-engineering-teams-hidden-cost).
 
 [Connect your agent to Kody](https://kody.codes/onboarding) and ask it to turn
 your most repeated task into a package. The details on Kody's compute meter are
 in the [platform efficiency guide](https://kody.codes/docs/platform-efficiency).
+
+More in this series:
+
+- [AI agent skills vs packages, turning prompts into reviewable code](/blog/ai-agent-skills-vs-packages)
+- [The hidden cost of AI tooling for engineering teams when everyone builds their own](/blog/ai-tooling-for-engineering-teams-hidden-cost)
+- [Why "just use AWS Lambda" breaks down for teams using AI agents](/blog/why-aws-lambda-breaks-down-for-ai-agent-teams)
+- [How to avoid AI assistant lock-in, build once and use from any agent](/blog/avoid-ai-assistant-lock-in)

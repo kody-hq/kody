@@ -1,6 +1,6 @@
 ---
-title: Agent-built internal apps that reuse your team's credentials
-date: 2026-11-03
+title: Internal tools built with AI that reuse your team's credentials
+date: 2026-10-29
 description:
   Agents can build an internal dashboard in an afternoon. The hard part is auth,
   keys, and hosting. How to ship one on credentials you already have.
@@ -10,7 +10,8 @@ order: 19
 An engineer asks their agent for a small internal tool: a page that shows open
 support escalations from your help desk next to each customer's plan in Stripe,
 with a button to post a note to the account's Slack channel. Twenty minutes
-later, there's a working app on `localhost:3000`.
+later, there's a working app on `localhost:3000`. Most internal tools built with
+AI stall right there.
 
 Then the real questions start. Where does it run so the support team can use it?
 How do people sign in? Where do the help desk, Stripe, and Slack keys go? Who's
@@ -21,7 +22,7 @@ For most teams, that's where agent-built internal apps die. The code was the
 easy part. The plumbing around it is a project, and it usually ends with a key
 in an environment variable on a box someone forgot about.
 
-## What an internal app actually needs
+## What internal tools built with AI actually need
 
 Strip away the UI and every internal tool needs the same few things:
 
@@ -116,7 +117,7 @@ high bar. When the plumbing is already there, the calculation changes:
 If you want a guardrail on what the app can do with a powerful credential,
 restrict that credential to the app's package, so nothing else can use it.
 That's covered in
-[least-privilege tokens for AI agents](/blog/least-privilege-tokens-for-ai-agents).
+[least-privilege tokens for AI agents](/blog/least-privilege-for-ai-agents).
 
 ## Build one this week
 
@@ -126,3 +127,10 @@ Kody package app in our team org that shows X, using our existing credentials,
 and share it with the support team." The
 [package apps guide](https://kody.codes/docs/package-apps) covers hosting, Sign
 in with Kody, and visitor needs.
+
+More in this series:
+
+- [Bring your own key, letting each teammate run shared tools as themselves](/blog/bring-your-own-key-for-shared-team-tools)
+- [Why "just use AWS Lambda" breaks down for teams using AI agents](/blog/why-aws-lambda-breaks-down-for-ai-agent-teams)
+- [How to share AI workflows with your team](/blog/share-ai-workflows-with-your-team)
+- [A team lead's guide to AI agent credentials](/blog/ai-agent-credentials-guide-for-team-leads)

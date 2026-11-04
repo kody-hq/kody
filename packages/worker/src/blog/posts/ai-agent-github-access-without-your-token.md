@@ -1,6 +1,6 @@
 ---
-title: How to give an AI agent repo access without giving it your GitHub token
-date: 2026-11-03
+title: AI agent GitHub access without handing over your token
+date: 2026-09-11
 description:
   Let an AI agent read repos, open PRs, and check CI without ever seeing a
   GitHub token. A step-by-step setup with fine-grained tokens and Kody.
@@ -12,7 +12,8 @@ PRs across a few repos every morning and summarize what's blocked on review.
 Reasonable. So the agent asks for a GitHub token, the engineer goes to
 **Settings, Developer settings**, clicks "Generate new token (classic)," checks
 `repo` because that's the box that makes errors go away, and pastes the result
-into the chat.
+into the chat. That's the default way teams grant AI agent GitHub access, and
+it's worth fixing.
 
 That token can now push to every private repo the engineer can reach, in every
 org they belong to, until somebody remembers to delete it. And the plaintext is
@@ -22,7 +23,7 @@ The task needed read access to pull requests in four repos. The token grants
 something much closer to "be this engineer on GitHub." This post is about
 closing that gap without making the agent less useful.
 
-## Two separate problems
+## Two separate problems with AI agent GitHub access
 
 It helps to pull this apart, because people tend to solve one and assume they've
 solved both:
@@ -147,8 +148,8 @@ tell you what's stuck. It just can't become you on GitHub, and it can't leak a
 token it never saw.
 
 For the general version of this pattern across every provider, read
-[least-privilege tokens for AI agents](/blog/least-privilege-tokens-for-ai-agents).
-For why keys in agent context are risky to begin with, start at
+[least-privilege tokens for AI agents](/blog/least-privilege-for-ai-agents). For
+why keys in agent context are risky to begin with, start at
 [Your engineers are handing private keys to AI agents](/blog/engineers-are-handing-private-keys-to-ai-agents).
 
 ## Try it
@@ -157,3 +158,10 @@ For why keys in agent context are risky to begin with, start at
 up GitHub in Kody with a fine-grained token for these repos, read-only pull
 requests." It'll walk you through the token page and send the save link. The
 full steps are in the [GitHub provider guide](https://kody.codes/docs/github).
+
+More in this series:
+
+- [ Your engineers are handing private keys to AI agents. Here's what that means.](/blog/engineers-are-handing-private-keys-to-ai-agents)
+- [Least privilege for AI agents, a practical setup](/blog/least-privilege-for-ai-agents)
+- [A team lead's guide to AI agent credentials](/blog/ai-agent-credentials-guide-for-team-leads)
+- [How to revoke AI agent access in one place](/blog/revoke-ai-agent-access)

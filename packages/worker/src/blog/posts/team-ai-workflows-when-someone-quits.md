@@ -1,11 +1,15 @@
 ---
-title: What happens to your team's AI workflows when someone quits
-date: 2026-11-03
+title:
+  When an engineer quits, their AI workflows break or keep running on their keys
+date: 2026-10-16
 description:
   When an engineer leaves, their agent workflows often leave with them or keep
   running on their keys. How to make AI workflows survive offboarding.
 order: 12
 ---
+
+Most of the AI workflows your team depends on belong to a person, not to the
+team. You find out the week that person leaves.
 
 Your most AI-forward engineer gives notice. Over the last six months, they built
 half a dozen agent workflows the team now relies on: the release notes draft,
@@ -113,7 +117,7 @@ offboarding boring:
   package.
 - **Team services use team credentials.** If the GitHub token belongs to a
   person, the workflow leaves with that person. See
-  [a team lead's guide to AI agent credentials](/blog/team-lead-guide-to-ai-agent-credentials)
+  [a team lead's guide to AI agent credentials](/blog/ai-agent-credentials-guide-for-team-leads)
   for how to split team and personal keys.
 - **Two people know each automation.** At least one other person should have
   Contribute on any package that runs on a schedule.
@@ -122,7 +126,7 @@ offboarding boring:
 
 If you're worried about the "someone's laptop is still running things" problem
 in general,
-[Revoking an AI agent's access in one place](/blog/revoke-ai-agent-access-in-one-place)
+[Revoking an AI agent's access in one place](/blog/revoke-ai-agent-access)
 covers cutting off an agent connection directly.
 
 ## Start with your bus-factor list
@@ -133,3 +137,10 @@ Kody package in your team org and share it with a second person. Get started at
 [kody.codes](https://kody.codes); the
 [organizations guide](https://kody.codes/docs/organizations) covers how
 automation runs as its enabler.
+
+More in this series:
+
+- [How to share AI workflows with your team](/blog/share-ai-workflows-with-your-team)
+- [A team lead's guide to AI agent credentials](/blog/ai-agent-credentials-guide-for-team-leads)
+- [How to revoke AI agent access in one place](/blog/revoke-ai-agent-access)
+- [Bring your own key, letting each teammate run shared tools as themselves](/blog/bring-your-own-key-for-shared-team-tools)

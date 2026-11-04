@@ -1,13 +1,14 @@
 ---
-title: Stop pasting API keys into agent configs
-date: 2026-11-03
+title: Where to store API keys for AI agents (not in agent configs)
+date: 2026-09-08
 description:
   MCP configs and .env files spread API keys across every laptop and agent.
   Here's how to connect agents to services without putting keys in config files.
 order: 4
 ---
 
-Here's a real-looking `~/.cursor/mcp.json`:
+If you're wondering where to store API keys for AI agents, start with where they
+live today. Here's a real-looking `~/.cursor/mcp.json`:
 
 ```json
 {
@@ -35,7 +36,7 @@ agents themselves.
 This is how most teams wire agents to services today. It works on day one. It's
 a mess by month three.
 
-## What goes wrong with keys in config
+## What goes wrong with API keys for AI agents in config
 
 None of these are exotic:
 
@@ -136,7 +137,7 @@ provider's expiry, the "stale key quietly keeps working" problem goes away.
 
 Not sure which credentials belong in the team org and which are personal? I
 wrote
-[a team lead's guide to AI agent credentials](/blog/team-lead-guide-to-ai-agent-credentials)
+[a team lead's guide to AI agent credentials](/blog/ai-agent-credentials-guide-for-team-leads)
 for exactly that. And if you're wondering why keys in agent-readable files are
 risky in the first place,
 [Your engineers are handing private keys to AI agents](/blog/engineers-are-handing-private-keys-to-ai-agents)
@@ -144,3 +145,10 @@ covers it.
 
 [Connect your agent to Kody](https://kody.codes/onboarding) and move your first
 key out of a config file today.
+
+More in this series:
+
+- [ Your engineers are handing private keys to AI agents. Here's what that means.](/blog/engineers-are-handing-private-keys-to-ai-agents)
+- [Least privilege for AI agents, a practical setup](/blog/least-privilege-for-ai-agents)
+- [Sharing credentials across Claude Code, Cursor, and Codex without copying secrets](/blog/claude-code-cursor-and-codex-shared-credentials)
+- [An MCP security checklist for engineering managers](/blog/mcp-security-checklist-for-engineering-managers)

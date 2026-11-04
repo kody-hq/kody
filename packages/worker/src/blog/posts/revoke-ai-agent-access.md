@@ -1,6 +1,6 @@
 ---
-title: Revoking an AI agent's access in one place
-date: 2026-11-03
+title: How to revoke AI agent access in one place
+date: 2026-09-25
 description:
   When an agent misbehaves or a laptop goes missing, how many places do you
   revoke? Here's how to make agent access something you can cut off fast.
@@ -9,7 +9,8 @@ order: 6
 
 It's 4:45pm and a teammate pings you: "I think my agent just pushed something
 weird to the billing repo. Also my laptop's been acting strange." You want to
-cut off that agent's access right now, before you figure out what happened.
+cut off that agent's access right now, before you figure out what happened. You
+need to revoke AI agent access now, and you need to know you got all of it.
 
 So, where do you go?
 
@@ -107,7 +108,7 @@ it pause with `profile_inactive`. Profiles are currently an experiment you turn
 on at `/account/experiments`, so treat them as an option to try, not a team-wide
 default yet.
 
-## A one-page runbook
+## A one-page runbook to revoke AI agent access
 
 Here's what I'd put in your incident doc for "an agent did something wrong":
 
@@ -119,7 +120,7 @@ Here's what I'd put in your incident doc for "an agent did something wrong":
 4. **Stop the person, if the person is the problem.** Review `accessList` and
    revoke grants.
 5. **Look at what ran.** That's the next post:
-   [knowing what your team's agents did with production access](/blog/what-your-teams-agents-did-with-production-access).
+   [knowing what your team's agents did with production access](/blog/ai-agent-audit-log-for-production-access).
 
 Compare that to "find every key this agent might have seen and rotate them all
 at their providers." The first list fits on an index card.
@@ -131,3 +132,10 @@ and reconnect. It takes a minute, and you'll know exactly where the button is
 when it matters. If your team isn't on Kody yet, start by
 [connecting one agent](https://kody.codes/onboarding) and moving the keys it
 uses into Kody, so there's a single door to close.
+
+More in this series:
+
+- [Least privilege for AI agents, a practical setup](/blog/least-privilege-for-ai-agents)
+- [An AI agent audit log for production access](/blog/ai-agent-audit-log-for-production-access)
+- [When an engineer quits, their AI workflows break or keep running on their keys](/blog/team-ai-workflows-when-someone-quits)
+- [An MCP security checklist for engineering managers](/blog/mcp-security-checklist-for-engineering-managers)

@@ -1,6 +1,6 @@
 ---
-title: Knowing what your team's agents did with production access
-date: 2026-11-03
+title: An AI agent audit log for production access
+date: 2026-10-02
 description:
   When an AI agent touches production, can you say who ran what, through which
   client, and what happened? How to get an agent audit trail you can use.
@@ -9,7 +9,8 @@ order: 8
 
 Monday morning, a customer reports that a batch of their invoices got voided
 over the weekend. Your team has a few agents with access to the billing system.
-One of them is probably involved. The questions start immediately:
+One of them is probably involved. Without an AI agent audit log, the questions
+start immediately:
 
 - Which agent was it?
 - Who was it acting for?
@@ -25,7 +26,7 @@ This is the part of agent adoption that tends to get missed. Teams think about
 what agents can access. Fewer think about whether they can reconstruct what
 agents did.
 
-## What a useful agent audit trail answers
+## What a useful AI agent audit log answers
 
 For an incident review, I want four things for every action against a real
 system:
@@ -50,7 +51,7 @@ Because Kody holds the credentials (agents never see them), there isn't a side
 door where an agent calls the provider directly with a copied key. That's the
 precondition for a trail you can trust. It's also why moving keys out of configs
 matters, as covered in
-[Stop pasting API keys into agent configs](/blog/stop-pasting-api-keys-into-agent-configs).
+[Stop pasting API keys into agent configs](/blog/where-to-store-api-keys-for-ai-agents).
 
 ## The Activity page
 
@@ -107,7 +108,7 @@ weekend job was allowed to do, instead of guessing what an agent improvised.
 For actions where the stakes are high, go further and lock the package and the
 integration it uses, so a later publish can't quietly change what runs. That's
 covered in
-[least-privilege tokens for AI agents](/blog/least-privilege-tokens-for-ai-agents).
+[least-privilege tokens for AI agents](/blog/least-privilege-for-ai-agents).
 
 ## Get told, don't just look
 
@@ -140,3 +141,10 @@ If you haven't moved yet, start with the system that would hurt most:
 key in Kody, and point the next production task at it. Then you'll have a run to
 look at. The automation audit rules are in the
 [organizations guide](https://kody.codes/docs/organizations).
+
+More in this series:
+
+- [How to revoke AI agent access in one place](/blog/revoke-ai-agent-access)
+- [AI agent guardrails for your team, without killing autonomy](/blog/ai-agent-guardrails-for-teams)
+- [An MCP security checklist for engineering managers](/blog/mcp-security-checklist-for-engineering-managers)
+- [How to roll out AI agents to your team when it isn't AI-forward yet](/blog/how-to-roll-out-ai-agents-to-your-team)

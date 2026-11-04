@@ -1,11 +1,15 @@
 ---
 title: Why "just use AWS Lambda" breaks down for teams using AI agents
-date: 2026-11-03
+date: 2026-10-31
 description:
   Lambda can run the code your agents write. The trouble is everything around
   it, like IAM, secrets, deploys, and review. Here's where it breaks for teams.
 order: 18
 ---
+
+"Just use Lambda" is the right answer for one function a person wrote. It's the
+wrong answer for a team whose agents write a new one every week, because running
+the code was never the hard part.
 
 An engineer's agent wrote a nice little function: every hour, check Stripe for
 failed payments, look up the customer in your CRM, and post a summary to the
@@ -93,7 +97,7 @@ project. Then:
   and its log lines.
 - **It's findable.** It lives in your team org, where teammates' agents can find
   it and run it, with the sharing rules from
-  [How to share AI agent workflows across a team](/blog/share-ai-agent-workflows-across-a-team).
+  [How to share AI agent workflows across a team](/blog/share-ai-workflows-with-your-team).
 
 ## Where Lambda (or something like it) still wins
 
@@ -132,3 +136,10 @@ Next time someone suggests Lambda for something an agent wrote, try Kody first.
 Kody package and set it up as an hourly job." If it turns out to be too heavy,
 the [heavy work offload guide](https://kody.codes/docs/heavy-work-offload) shows
 how to split it.
+
+More in this series:
+
+- [Why AI agent costs keep growing (and how deterministic tools cut tokens)](/blog/why-ai-agent-costs-keep-growing)
+- [How to avoid AI assistant lock-in, build once and use from any agent](/blog/avoid-ai-assistant-lock-in)
+- [Internal tools built with AI that reuse your team's credentials](/blog/internal-tools-built-with-ai-team-credentials)
+- [AI agent skills vs packages, turning prompts into reviewable code](/blog/ai-agent-skills-vs-packages)

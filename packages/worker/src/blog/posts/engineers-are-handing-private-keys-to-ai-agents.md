@@ -1,12 +1,16 @@
 ---
 title:
   Your engineers are handing private keys to AI agents. Here's what that means.
-date: 2026-11-03
+date: 2026-09-01
 description:
   Every agent your team connects ends up holding real API keys. Here's where
   those keys hide today and how to keep them out of the model's context.
 order: 1
 ---
+
+If an AI agent can read a key, assume the key can leak. Not because agents are
+malicious, but because a model will repeat what's in its context when the right
+text asks it to.
 
 Ask an engineer on your team to show you how their AI agent talks to GitHub,
 Stripe, or your cloud provider. Odds are good you'll find a key sitting in one
@@ -103,7 +107,7 @@ sends a link instead of asking for the value. The link opens a Kody page
 prefilled with the credential's name, description, and allowed host, and the
 person pastes the value into that page, never into the conversation. I cover
 that flow in more detail in
-[Stop pasting API keys into agent configs](/blog/stop-pasting-api-keys-into-agent-configs).
+[Stop pasting API keys into agent configs](/blog/where-to-store-api-keys-for-ai-agents).
 
 Once a key is saved, every agent connected to that account can use it by name.
 Nobody has to copy it into a second config file when they try a new tool.
@@ -116,8 +120,8 @@ I don't want to oversell this. Here's what the design doesn't do:
   token with write access to every repo, code that uses it can write to every
   repo, even though nobody can read the token. Scoping still starts at the
   provider. That's what
-  [least-privilege tokens for AI agents](/blog/least-privilege-tokens-for-ai-agents)
-  is about.
+  [least-privilege tokens for AI agents](/blog/least-privilege-for-ai-agents) is
+  about.
 - **It doesn't stop non-secret network calls.** Sandboxed code can still reach
   the internet. The claim is "the agent can't exfiltrate your keys," not "the
   agent can't do anything you'd dislike."
@@ -145,7 +149,14 @@ would hurt most if it leaked and move it:
    rotate the key at the provider if it ever touched a chat transcript.
 
 If that goes well, the rest of this series walks through the team version:
-[repo access without handing over a GitHub token](/blog/ai-agent-repo-access-without-your-github-token)
+[repo access without handing over a GitHub token](/blog/ai-agent-github-access-without-your-token)
 and
-[a team lead's guide to AI agent credentials](/blog/team-lead-guide-to-ai-agent-credentials).
+[a team lead's guide to AI agent credentials](/blog/ai-agent-credentials-guide-for-team-leads).
 Start at [kody.codes](https://kody.codes).
+
+More in this series:
+
+- [AI agent GitHub access without handing over your token](/blog/ai-agent-github-access-without-your-token)
+- [A team lead's guide to AI agent credentials](/blog/ai-agent-credentials-guide-for-team-leads)
+- [Where to store API keys for AI agents (not in agent configs)](/blog/where-to-store-api-keys-for-ai-agents)
+- [Least privilege for AI agents, a practical setup](/blog/least-privilege-for-ai-agents)

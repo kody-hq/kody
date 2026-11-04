@@ -1,14 +1,16 @@
 ---
-title: Skills vs packages: turning agent prompts into reliable, reviewable code
-date: 2026-11-03
-description: Agent skills tell a model what to do; packages are code that does it. When to use each, and how to turn a fragile prompt into reviewable code.
+title: AI agent skills vs packages, turning prompts into reviewable code
+date: 2026-10-20
+description:
+  Agent skills tell a model what to do; packages are code that does it. When to
+  use each, and how to turn a fragile prompt into reviewable code.
 order: 14
 ---
 
 Your team has a `SKILL.md` that everyone loves. It explains how to cut a
 release: bump the version, update the changelog from merged PRs, tag, draft the
 GitHub release, post in Slack. It's 200 lines of careful instructions, and it
-works most of the time.
+works most of the time. It's one of the most useful AI agent skills you have.
 
 "Most of the time" is the problem. One week the agent forgets to filter out
 dependency bumps from the changelog. Another week it tags before the changelog
@@ -20,7 +22,7 @@ Skills are a great idea. They're also instructions to a probabilistic reader.
 For a lot of team workflows, that's exactly the wrong tool, and it helps to be
 clear about when.
 
-## What a skill is good at
+## What AI agent skills are good at
 
 An agent skill is a folder with a `SKILL.md` that tells a model how to approach
 a kind of task. Skills shine when the task needs judgment:
@@ -45,7 +47,7 @@ Skills struggle when the task is really a procedure:
   delete the branch," but nothing enforces it.
 - **Cost.** Every run, the model reads the skill and re-derives the procedure. I
   covered why that adds up in
-  [why your AI agent bill keeps growing](/blog/why-your-ai-agent-bill-keeps-growing).
+  [why your AI agent bill keeps growing](/blog/why-ai-agent-costs-keep-growing).
 
 The tell is when your skill starts containing code snippets the model is
 supposed to copy exactly. At that point, it wants to be code.
@@ -117,7 +119,7 @@ Here's the process I'd use on that release skill:
 4. **Rewrite the skill** to call the export and keep only the judgment calls.
 5. **Lock the package** if the side effects matter, so a later publish can't
    quietly change what it does. See
-   [Setting guardrails on agent autonomy](/blog/guardrails-on-agent-autonomy-for-teams)
+   [Setting guardrails on agent autonomy](/blog/ai-agent-guardrails-for-teams)
    for that pattern.
 
 ## A quick test for your team's skills
@@ -137,3 +139,10 @@ smuggling a procedure.
 the procedure out into a package. The
 [package skills guide](https://kody.codes/docs/package-skills) covers shipping
 the remaining skill alongside it.
+
+More in this series:
+
+- [Why AI agent costs keep growing (and how deterministic tools cut tokens)](/blog/why-ai-agent-costs-keep-growing)
+- [The hidden cost of AI tooling for engineering teams when everyone builds their own](/blog/ai-tooling-for-engineering-teams-hidden-cost)
+- [How to avoid AI assistant lock-in, build once and use from any agent](/blog/avoid-ai-assistant-lock-in)
+- [AI agent guardrails for your team, without killing autonomy](/blog/ai-agent-guardrails-for-teams)

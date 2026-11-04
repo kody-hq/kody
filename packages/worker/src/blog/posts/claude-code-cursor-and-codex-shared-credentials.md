@@ -1,8 +1,8 @@
 ---
 title:
-  Sharing one set of credentials across Claude Code, Cursor, and Codex without
-  copying secrets
-date: 2026-11-03
+  Sharing credentials across Claude Code, Cursor, and Codex without copying
+  secrets
+date: 2026-09-18
 description:
   Your engineers use Claude Code, Cursor, and Codex, each with its own copy of
   every key. How to give every assistant the same access with zero copies.
@@ -13,7 +13,8 @@ Watch an engineer set up a new AI coding assistant. They've been using Cursor
 for months. Now they want to try Codex for a week, and Claude Code for longer
 tasks. So they open three config files and copy the same block into each one:
 the GitHub MCP server with their token, the Sentry server with its token, the
-Postgres server with a connection string.
+Postgres server with a connection string. One engineer, Claude Code, Cursor, and
+Codex, and three copies of every secret.
 
 Three assistants, three copies of every secret. Each config has its own format,
 so the copies aren't even identical, and when one key gets rotated, two of the
@@ -33,7 +34,7 @@ single answer to "what can this engineer's agents reach?" because each assistant
 has its own answer.
 
 I covered the security side of keys in config files in
-[Stop pasting API keys into agent configs](/blog/stop-pasting-api-keys-into-agent-configs).
+[Stop pasting API keys into agent configs](/blog/where-to-store-api-keys-for-ai-agents).
 This post is about the team side: making every assistant share one set of access
 without anyone copying anything.
 
@@ -75,7 +76,7 @@ their personal org for side projects. Kody refuses a connection whose `?org=`
 disagrees with the org picked at consent, so the work assistant can't drift into
 personal credentials or the other way around.
 
-## Same workflow, any assistant
+## Same workflow in Claude Code, Cursor, and Codex
 
 Shared credentials are only half the win. The other half is that what you build
 in one assistant works in all of them. A Kody **package** built from a
@@ -94,7 +95,7 @@ Because every assistant goes through one place, a few things get simpler:
 - **One list of connected agents.** **Account, Agents** lists every agent that
   has authorized, with a revoke button for each. Revoking Codex doesn't touch
   Cursor. More on that in
-  [Revoking an AI agent's access in one place](/blog/revoke-ai-agent-access-in-one-place).
+  [Revoking an AI agent's access in one place](/blog/revoke-ai-agent-access).
 - **One run history.** The Activity page records who started each run and the
   client, so work from different assistants shows up in the same place.
 - **One place to set rules.** Credential hosts, package locks, and member
@@ -108,7 +109,7 @@ not a reduced subset. So "Cursor and Codex share access" really does mean they
 share _all_ of it. The org boundary is your main tool here: connect work
 assistants to the team org, keep personal stuff in the personal org, and put
 anything sensitive behind package and credential restrictions.
-[Least-privilege tokens for AI agents](/blog/least-privilege-tokens-for-ai-agents)
+[Least-privilege tokens for AI agents](/blog/least-privilege-for-ai-agents)
 covers those restrictions.
 
 ## A migration for one engineer
@@ -129,7 +130,7 @@ they try after that is a one-line setup.
 
 What if teammates need to run the same workflow under their _own_ accounts
 instead of sharing one? That's the next post:
-[Bring your own key](/blog/bring-your-own-key-shared-agent-tools).
+[Bring your own key](/blog/bring-your-own-key-for-shared-team-tools).
 
 ## Get started
 
@@ -137,3 +138,10 @@ instead of sharing one? That's the next post:
 connect a second one and ask it what the first one built. The per-assistant
 steps are in the
 [connect your agent guide](https://kody.codes/docs/connect-your-agent).
+
+More in this series:
+
+- [Where to store API keys for AI agents (not in agent configs)](/blog/where-to-store-api-keys-for-ai-agents)
+- [How to avoid AI assistant lock-in, build once and use from any agent](/blog/avoid-ai-assistant-lock-in)
+- [Bring your own key, letting each teammate run shared tools as themselves](/blog/bring-your-own-key-for-shared-team-tools)
+- [A team lead's guide to AI agent credentials](/blog/ai-agent-credentials-guide-for-team-leads)

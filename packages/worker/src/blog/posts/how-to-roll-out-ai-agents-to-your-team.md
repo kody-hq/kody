@@ -1,5 +1,5 @@
 ---
-title: Rolling out AI agents to a team that isn't AI-forward yet
+title: How to roll out AI agents to your team when it isn't AI-forward yet
 date: 2026-11-03
 description:
   Not everyone on your team wants an AI agent. A practical rollout plan that
@@ -10,7 +10,8 @@ order: 20
 Every team has a spread. A couple of engineers have three assistants running and
 opinions about all of them. A few have tried one and weren't impressed. Some
 haven't touched any and are quietly worried about what happens when an agent has
-access to production. And you've been asked to "get the team using AI."
+access to production. And you've been asked to "get the team using AI." Here's
+how I'd roll out AI agents to your team without forcing it.
 
 The worst version of this rollout is the one I see most: hand everyone a
 license, share a doc of tips, and hope. The AI-forward folks run ahead and wire
@@ -50,7 +51,7 @@ that's:
 3. **Decide what automation can do.** Anything scheduled runs as the person who
    turned it on, and access, membership, and billing changes always need a live
    person. More detail in
-   [Setting guardrails on agent autonomy for your team](/blog/guardrails-on-agent-autonomy-for-teams).
+   [Setting guardrails on agent autonomy for your team](/blog/ai-agent-guardrails-for-teams).
 
 Now the platform enforces what you'd otherwise be writing in a policy doc.
 
@@ -83,7 +84,7 @@ about: Claude Code, Cursor, Codex, ChatGPT, GitHub Copilot, and many others
 work. One MCP entry, and they have the same access and the same team workflows
 as everyone else. "I don't want to learn three setups" goes away, because
 there's one. The details are in
-[Sharing one set of credentials across Claude Code, Cursor, and Codex](/blog/share-credentials-across-claude-code-cursor-codex).
+[Sharing one set of credentials across Claude Code, Cursor, and Codex](/blog/claude-code-cursor-and-codex-shared-credentials).
 
 Share the first package with **everyone in the org** at **Use**. The skeptic's
 first experience is asking their assistant to run a workflow their teammates
@@ -133,9 +134,9 @@ A few things I'd avoid:
   people run them instead.
 - **Letting keys sprawl "temporarily."** Once keys are in personal configs,
   they're hard to get back. See
-  [Stop pasting API keys into agent configs](/blog/stop-pasting-api-keys-into-agent-configs).
+  [Stop pasting API keys into agent configs](/blog/where-to-store-api-keys-for-ai-agents).
 
-## Your first week
+## How to roll out AI agents to your team in the first week
 
 1. Create a Kody team org and move one team-owned credential into it.
 2. Ask your most AI-forward engineer to turn one read-only workflow into a
@@ -145,3 +146,10 @@ A few things I'd avoid:
 Start at [kody.codes](https://kody.codes). The
 [organizations guide](https://kody.codes/docs/organizations) covers invite
 links, member permissions, and how automation runs.
+
+More in this series:
+
+- [A team lead's guide to AI agent credentials](/blog/ai-agent-credentials-guide-for-team-leads)
+- [How to share AI workflows with your team](/blog/share-ai-workflows-with-your-team)
+- [An AI agent audit log for production access](/blog/ai-agent-audit-log-for-production-access)
+- [AI agent guardrails for your team, without killing autonomy](/blog/ai-agent-guardrails-for-teams)

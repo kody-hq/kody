@@ -1,6 +1,6 @@
 ---
-title: Setting guardrails on agent autonomy for your team
-date: 2026-11-03
+title: AI agent guardrails for your team, without killing autonomy
+date: 2026-10-06
 description:
   How much should your team's AI agents do without asking? A practical way to
   set autonomy guardrails that are enforced by the platform, not the prompt.
@@ -10,7 +10,8 @@ order: 9
 An engineer on your team sets up an agent to triage new GitHub issues overnight.
 Label them, close duplicates, ping the right person. It's great for two weeks.
 Then a malformed issue convinces it that the whole `needs-repro` backlog is
-duplicates, and you wake up to 140 closed issues.
+duplicates, and you wake up to 140 closed issues. That's the case for AI agent
+guardrails that don't depend on the model behaving.
 
 Nothing was hacked. The agent did what agents do: it made a judgment call with
 the access it had. The problem is that nobody decided ahead of time which calls
@@ -87,7 +88,7 @@ The Kody docs walk through this exact pattern for Gmail, where the provider has
 no drafts-only scope and you want an agent that can draft but never send:
 [Gmail drafts without send](https://kody.codes/docs/locked-gmail-drafts). I
 cover the credential side of the same idea in
-[least-privilege tokens for AI agents](/blog/least-privilege-tokens-for-ai-agents).
+[least-privilege tokens for AI agents](/blog/least-privilege-for-ai-agents).
 
 ## Make "on" a human decision
 
@@ -124,7 +125,7 @@ get shorter, and you can grant it only the packages it needs. Profiles are an
 experiment you turn on at `/account/experiments`, so try them on one workflow
 before making them a team norm.
 
-## A starting policy
+## A starting policy for AI agent guardrails
 
 Here's a version you can adapt:
 
@@ -138,7 +139,7 @@ Back to the overnight triage job. Under this policy, reading and labeling run
 unattended. Closing is in a locked package that caps how many it closes per run,
 and the GitHub connection is locked to that package. Worst case, you wake up to
 five wrongly closed issues and a clear record of which run did it (see
-[knowing what your team's agents did with production access](/blog/what-your-teams-agents-did-with-production-access)).
+[knowing what your team's agents did with production access](/blog/ai-agent-audit-log-for-production-access)).
 
 ## Pick one workflow
 
@@ -146,3 +147,10 @@ Find the agent workflow on your team that has the most access and the least
 review. Turn its risky step into a package, lock it, and lock the integration to
 it. [Connect your agent to Kody](https://kody.codes/onboarding) and ask it to
 help: "Turn this into a Kody package and lock the GitHub integration to it."
+
+More in this series:
+
+- [An AI agent audit log for production access](/blog/ai-agent-audit-log-for-production-access)
+- [An MCP security checklist for engineering managers](/blog/mcp-security-checklist-for-engineering-managers)
+- [AI agent skills vs packages, turning prompts into reviewable code](/blog/ai-agent-skills-vs-packages)
+- [How to revoke AI agent access in one place](/blog/revoke-ai-agent-access)

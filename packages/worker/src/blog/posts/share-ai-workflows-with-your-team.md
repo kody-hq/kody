@@ -1,16 +1,16 @@
 ---
-title: How to share AI agent workflows across a team
-date: 2026-11-03
+title: How to share AI workflows with your team
+date: 2026-10-09
 description:
   "Copy my prompt" doesn't scale. A concrete way to share AI agent workflows with teammates, teams, and contractors without sharing anyone's keys.
 order: 13
 ---
 
-Here's how agent workflows get shared on most teams today. Someone posts in
-Slack: "I built a thing that turns a Linear project into a release checklist.
-Want it?" Ten people say yes. The author replies with a wall of prompt text, a
-link to a gist with a script, and "you'll need to set `LINEAR_API_KEY` and
-`GITHUB_TOKEN`."
+Here's how engineers usually share AI workflows with your team today. Someone
+posts in Slack: "I built a thing that turns a Linear project into a release
+checklist. Want it?" Ten people say yes. The author replies with a wall of
+prompt text, a link to a gist with a script, and "you'll need to set
+`LINEAR_API_KEY` and `GITHUB_TOKEN`."
 
 Three people get it working. Two of them change the prompt a little. A month
 later, the author fixes a bug, and nobody else gets the fix. A contractor asks
@@ -41,7 +41,7 @@ In [Kody](https://kody.codes), the layer under your team's assistants, a shared
 workflow is a **package**: a repo-backed TypeScript project with named exports,
 living in your team org. Any agent connected to Kody can find it and run it.
 I've written before about
-[why duplicated tooling is expensive](/blog/hidden-cost-of-everyone-building-agent-tooling);
+[why duplicated tooling is expensive](/blog/ai-tooling-for-engineering-teams-hidden-cost);
 this post is about the mechanics of sharing once you have the package.
 
 ## Pick who gets it
@@ -136,14 +136,21 @@ author's next fix reaches everyone.
 
 If you're working out whose credentials the shared workflow should use, the next
 posts dig into it:
-[one set of credentials across Claude Code, Cursor, and Codex](/blog/share-credentials-across-claude-code-cursor-codex)
+[one set of credentials across Claude Code, Cursor, and Codex](/blog/claude-code-cursor-and-codex-shared-credentials)
 and
-[bring your own key for shared tools](/blog/bring-your-own-key-shared-agent-tools).
+[bring your own key for shared tools](/blog/bring-your-own-key-for-shared-team-tools).
 
-## Share one today
+## Share AI workflows with your team today
 
 Pick the workflow your team asks about most. Turn it into a package in a Kody
 team org and share it with everyone at Use. Start at
 [kody.codes](https://kody.codes), and keep the
 [package sharing guide](https://kody.codes/docs/package-sharing) open for the
 presets and invite links.
+
+More in this series:
+
+- [The hidden cost of AI tooling for engineering teams when everyone builds their own](/blog/ai-tooling-for-engineering-teams-hidden-cost)
+- [Bring your own key, letting each teammate run shared tools as themselves](/blog/bring-your-own-key-for-shared-team-tools)
+- [When an engineer quits, their AI workflows break or keep running on their keys](/blog/team-ai-workflows-when-someone-quits)
+- [Internal tools built with AI that reuse your team's credentials](/blog/internal-tools-built-with-ai-team-credentials)

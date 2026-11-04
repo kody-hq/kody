@@ -1,6 +1,8 @@
 ---
-title: The hidden cost of every engineer building their own agent tooling
-date: 2026-11-03
+title:
+  The hidden cost of AI tooling for engineering teams when everyone builds their
+  own
+date: 2026-10-13
 description:
   Five engineers, five private scripts doing the same job. Why duplicated agent
   tooling costs more than it looks, and how to build it once for the team.
@@ -12,7 +14,8 @@ each built an agent workflow that pulls open PRs and pings reviewers in Slack.
 One wrote a Python script their agent shells out to. One has a long prompt saved
 in Cursor rules. One found a community MCP server and configured it with their
 own token. They all do roughly the same thing. None of them know about the
-others.
+others. That's what AI tooling for engineering teams looks like when nobody owns
+it.
 
 Individually, each one was a good idea. Collectively, it's waste you can't see,
 and it gets more expensive the more AI-forward your team becomes.
@@ -36,13 +39,13 @@ costs show up later:
   version, because there's nothing to find.
 - **Recurring token spend.** If the tooling is a prompt, the model re-derives
   the procedure on every run. I wrote about that in
-  [why your AI agent bill keeps growing](/blog/why-your-ai-agent-bill-keeps-growing).
+  [why your AI agent bill keeps growing](/blog/why-ai-agent-costs-keep-growing).
 
 The root cause isn't that engineers are doing something wrong. It's that agent
 tooling has nowhere to live. A script lives on a laptop. A prompt lives in one
 assistant's settings. Neither is somewhere a teammate can find, run, or improve.
 
-## Give agent tooling a home
+## Give AI tooling for engineering teams a home
 
 [Kody](https://kody.codes) is the layer under the assistants your team already
 uses, and the unit of tooling there is a **package**. A package is a small
@@ -127,3 +130,10 @@ workflow into it as a package, and share it with everyone in the org. The
 grants, and the
 [package lifecycle guide](https://kody.codes/docs/package-lifecycle) covers
 reuse versus fork versus create.
+
+More in this series:
+
+- [How to share AI workflows with your team](/blog/share-ai-workflows-with-your-team)
+- [Why AI agent costs keep growing (and how deterministic tools cut tokens)](/blog/why-ai-agent-costs-keep-growing)
+- [AI agent skills vs packages, turning prompts into reviewable code](/blog/ai-agent-skills-vs-packages)
+- [When an engineer quits, their AI workflows break or keep running on their keys](/blog/team-ai-workflows-when-someone-quits)

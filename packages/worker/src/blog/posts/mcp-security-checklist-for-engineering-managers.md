@@ -1,6 +1,6 @@
 ---
 title: An MCP security checklist for engineering managers
-date: 2026-11-03
+date: 2026-09-29
 description:
   A practical MCP security checklist for engineering managers. What to ask about
   every MCP server your team's AI agents use, and what good looks like.
@@ -10,14 +10,15 @@ order: 7
 Your team didn't ask permission to start using MCP. One engineer added a GitHub
 server to Cursor, another added a Postgres server to Claude Code, and somebody
 found a Notion one on a list of "awesome MCP servers." Now there are a dozen MCP
-servers across your team, and you've been asked whether that's OK.
+servers across your team, and you've been asked whether that's OK. This MCP
+security checklist is how I'd answer that.
 
 You can't review a dozen servers line by line. What you can do is ask the same
 handful of questions about each one, and know what a good answer sounds like.
 That's this checklist. I've written it so it's useful whether or not you use
 [Kody](https://kody.codes), and then I'll show how Kody answers each item.
 
-## The checklist
+## The MCP security checklist
 
 ### 1. Where does the server's credential live?
 
@@ -92,7 +93,7 @@ the agent's context, package code, or logs. Code refers to them by name and Kody
 fills them in at the network boundary. Remote MCP servers are added to Kody
 once, and their auth stays on Kody's side instead of in each engineer's config.
 See
-[Stop pasting API keys into agent configs](/blog/stop-pasting-api-keys-into-agent-configs).
+[Stop pasting API keys into agent configs](/blog/where-to-store-api-keys-for-ai-agents).
 
 **2. What runs.** Code the agent writes runs in Kody's sandbox, not on the
 laptop. Remote MCP servers are called by Kody. (Kody also has an experiment for
@@ -122,11 +123,11 @@ profiles, exist as an experiment.)
 
 **6. Run history.** The Activity page shows recent runs with who started each
 one and the client: MCP, CLI, API token, schedule, or webhook. More on this in
-[knowing what your team's agents did with production access](/blog/what-your-teams-agents-did-with-production-access).
+[knowing what your team's agents did with production access](/blog/ai-agent-audit-log-for-production-access).
 
 **7. Shutting it off.** Revoke on the Agents page, `tokenRevoke` for API tokens
 (immediate 401), and one credential to rotate. The full runbook is in
-[Revoking an AI agent's access in one place](/blog/revoke-ai-agent-access-in-one-place).
+[Revoking an AI agent's access in one place](/blog/revoke-ai-agent-access).
 
 **8. Reviewable behavior.** Repeated work becomes a Kody **package**: a
 repo-backed TypeScript project with named exports and version history. Packages
@@ -146,7 +147,7 @@ You don't need a meeting per server. Here's a way to do it in a week:
 
 Want help deciding which credentials are team-owned versus personal while you do
 it? See
-[a team lead's guide to AI agent credentials](/blog/team-lead-guide-to-ai-agent-credentials).
+[a team lead's guide to AI agent credentials](/blog/ai-agent-credentials-guide-for-team-leads).
 
 ## Start here
 
@@ -154,3 +155,10 @@ it? See
 MCP server from your list. The
 [lock an MCP server to a package](https://kody.codes/docs/locked-mcp-server)
 guide shows how to narrow its tools once it's connected.
+
+More in this series:
+
+- [Where to store API keys for AI agents (not in agent configs)](/blog/where-to-store-api-keys-for-ai-agents)
+- [How to revoke AI agent access in one place](/blog/revoke-ai-agent-access)
+- [An AI agent audit log for production access](/blog/ai-agent-audit-log-for-production-access)
+- [AI agent guardrails for your team, without killing autonomy](/blog/ai-agent-guardrails-for-teams)

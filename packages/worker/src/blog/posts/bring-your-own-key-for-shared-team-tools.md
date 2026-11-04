@@ -1,7 +1,9 @@
 ---
-title: Bring your own key: letting each teammate run shared tools under their own account
-date: 2026-11-03
-description: Shared agent tools shouldn't run as whoever built them. How to let each teammate run the same tool under their own account, with no keys shared.
+title: Bring your own key, letting each teammate run shared tools as themselves
+date: 2026-09-22
+description:
+  Shared agent tools shouldn't run as whoever built them. How to let each
+  teammate run the same tool under their own account, with no keys shared.
 order: 16
 ---
 
@@ -9,10 +11,11 @@ Someone on your team built an agent tool that drafts weekly status updates from
 your calendar and your merged PRs. Everyone wants it. But it was built against
 one person's Google account and one person's GitHub token. If you share it as
 is, everyone's status update is about the author's week, posted as the author.
+What you want is bring your own key: one shared tool, each person's own account.
 
 So the usual workaround kicks in. People copy the tool, swap in their own
 tokens, and now you have six copies, which is the duplication problem from
-[the hidden cost of every engineer building their own agent tooling](/blog/hidden-cost-of-everyone-building-agent-tooling).
+[the hidden cost of every engineer building their own agent tooling](/blog/ai-tooling-for-engineering-teams-hidden-cost).
 Or, worse, the author's token gets shared "just for now."
 
 What you actually want is one tool and many accounts. Everyone runs the same
@@ -33,7 +36,7 @@ Separating them takes three pieces:
 3. At run time, something picks the right account for the person running it, and
    refuses to guess if it's unclear.
 
-## How Kody splits behavior from identity
+## How bring your own key works in Kody
 
 In [Kody](https://kody.codes), the layer under your team's assistants, the tool
 is a **package**. It declares the accounts it needs in `package.json`:
@@ -121,7 +124,7 @@ A few things worth confirming before you roll a shared tool out this way:
 - **Some tools should use a team account.** A tool that posts to the team's
   shared channel as the team bot should use a team credential, not each
   person's. Decide per need. See
-  [a team lead's guide to AI agent credentials](/blog/team-lead-guide-to-ai-agent-credentials).
+  [a team lead's guide to AI agent credentials](/blog/ai-agent-credentials-guide-for-team-leads).
 - **Watch for packages that always use the owner's credentials.** If a package
   is set up so callers can't swap in their own account, Kody warns when you give
   someone Contribute or Manage on it, because they could change how those
@@ -143,3 +146,10 @@ Start at [kody.codes](https://kody.codes). The
 [shared packages guide](https://kody.codes/docs/shared-packages) has the full
 mapping rules, and the [OAuth guide](https://kody.codes/docs/oauth) covers
 connecting through an org's app.
+
+More in this series:
+
+- [A team lead's guide to AI agent credentials](/blog/ai-agent-credentials-guide-for-team-leads)
+- [How to share AI workflows with your team](/blog/share-ai-workflows-with-your-team)
+- [Sharing credentials across Claude Code, Cursor, and Codex without copying secrets](/blog/claude-code-cursor-and-codex-shared-credentials)
+- [Internal tools built with AI that reuse your team's credentials](/blog/internal-tools-built-with-ai-team-credentials)

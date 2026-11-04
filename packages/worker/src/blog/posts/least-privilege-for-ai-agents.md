@@ -1,12 +1,14 @@
 ---
-title: Least-privilege tokens for AI agents: a practical setup
-date: 2026-11-03
+title: Least privilege for AI agents, a practical setup
+date: 2026-09-15
 description:
-  A layer-by-layer least-privilege setup for AI agents: provider scopes, host allowlists, fill placement, package-only keys, locks, and expiry.
+  A layer-by-layer least-privilege setup for AI agents:
+    provider scopes, host allowlists, fill placement, package-only keys, locks,
+    and expiry.
 order: 5
 ---
 
-"Least privilege" is easy to agree with and hard to actually do for AI agents.
+Least privilege for AI agents is easy to agree with and hard to actually do.
 Here's the usual sticking point. You want the agent to post release notes to one
 Slack channel. Slack's bot token scopes let you get close, but the token can
 still post to any channel the bot is in. The agent, meanwhile, can write any
@@ -25,7 +27,7 @@ Nothing downstream can make a broad token narrow, so this is always first.
 - Prefer fine-grained tokens over classic ones. GitHub's fine-grained personal
   access tokens let you pick repositories and set each permission to read or
   write. I walk through a real example in
-  [How to give an AI agent repo access without giving it your GitHub token](/blog/ai-agent-repo-access-without-your-github-token).
+  [How to give an AI agent repo access without giving it your GitHub token](/blog/ai-agent-github-access-without-your-token).
 - Prefer test or restricted keys. Stripe restricted keys and test mode keys
   exist for exactly this.
 - Use the shortest expiry the provider will let you live with.
@@ -116,7 +118,7 @@ Give the Kody credential an expiry that matches the provider's. Once it passes,
 Kody treats the credential as missing and stops sending it. That's a nice safety
 net for the token you meant to rotate and didn't.
 
-## Putting it together
+## Least privilege for AI agents, all seven layers together
 
 Here's the Slack release-notes setup, end to end:
 
@@ -136,7 +138,7 @@ host, in one header."
 
 Want to see who's allowed to use which credentials across your team? That's
 covered in
-[a team lead's guide to AI agent credentials](/blog/team-lead-guide-to-ai-agent-credentials).
+[a team lead's guide to AI agent credentials](/blog/ai-agent-credentials-guide-for-team-leads).
 
 ## Start with one token
 
@@ -145,3 +147,10 @@ list. [Connect your agent to Kody](https://kody.codes/onboarding), ask it to
 save the token with one approved host, and then restrict it to the one package
 that needs it. The full reference is in the
 [credentials guide](https://kody.codes/docs/credentials).
+
+More in this series:
+
+- [AI agent GitHub access without handing over your token](/blog/ai-agent-github-access-without-your-token)
+- [Where to store API keys for AI agents (not in agent configs)](/blog/where-to-store-api-keys-for-ai-agents)
+- [How to revoke AI agent access in one place](/blog/revoke-ai-agent-access)
+- [An MCP security checklist for engineering managers](/blog/mcp-security-checklist-for-engineering-managers)

@@ -1,14 +1,17 @@
 ---
-title: Build once, use from any agent: avoiding AI assistant lock-in
-date: 2026-11-03
-description: Workflows built inside one AI assistant are stuck there. How to keep your team's agent tooling portable across Claude Code, Cursor, Codex, and ChatGPT.
+title: How to avoid AI assistant lock-in, build once and use from any agent
+date: 2026-10-27
+description:
+  Workflows built inside one AI assistant are stuck there. How to keep your
+  team's agent tooling portable across Claude Code, Cursor, Codex, and ChatGPT.
 order: 17
 ---
 
 A year from now, will your team still be using the same AI assistant it uses
 today? Maybe. But look at how quickly the field has moved, and how often
 engineers switch or add a second tool when a new model lands. Betting your
-team's workflows on any single assistant is a bet I wouldn't take.
+team's workflows on any single assistant is a bet I wouldn't take. AI assistant
+lock-in is a real cost, and most of it is avoidable.
 
 Here's what lock-in looks like in practice. Your team has spent months building
 up assistant-specific stuff: custom commands in one tool, rules files in
@@ -18,7 +21,7 @@ assistant, and the answer is "we'd have to rebuild all of that."
 
 That's not a model problem. It's a "where does the work live" problem.
 
-## What gets locked in
+## What AI assistant lock-in actually locks in
 
 When I look at what a team actually loses by switching assistants, it's rarely
 the chat history. It's:
@@ -51,7 +54,7 @@ What lives in Kody instead of in the assistant:
 - **Connections as credentials and MCP servers.** Saved once in Kody, used by
   name. Switching assistants doesn't mean re-entering a single key. I went
   through that in
-  [Sharing one set of credentials across Claude Code, Cursor, and Codex](/blog/share-credentials-across-claude-code-cursor-codex).
+  [Sharing one set of credentials across Claude Code, Cursor, and Codex](/blog/claude-code-cursor-and-codex-shared-credentials).
 - **Automation as jobs and triggers.** Schedules, webhooks, and subscriptions
   run in Kody with no model in the loop, so they don't care what assistant your
   team uses this quarter.
@@ -103,7 +106,7 @@ Portability changes some decisions you'd otherwise have to make up front:
 
 Portability also helps cost. Repeated work that lives in packages instead of
 prompts costs fewer tokens, whichever assistant runs it. See
-[why your AI agent bill keeps growing](/blog/why-your-ai-agent-bill-keeps-growing).
+[why your AI agent bill keeps growing](/blog/why-ai-agent-costs-keep-growing).
 
 ## An audit you can do this week
 
@@ -123,3 +126,10 @@ keys become credentials, the schedule becomes a job.
 one small package with the first, and run it from the second. The
 [portability guide](https://kody.codes/docs/portability) is the exact prompt
 Kody's onboarding uses for that second agent.
+
+More in this series:
+
+- [Sharing credentials across Claude Code, Cursor, and Codex without copying secrets](/blog/claude-code-cursor-and-codex-shared-credentials)
+- [AI agent skills vs packages, turning prompts into reviewable code](/blog/ai-agent-skills-vs-packages)
+- [Why "just use AWS Lambda" breaks down for teams using AI agents](/blog/why-aws-lambda-breaks-down-for-ai-agent-teams)
+- [Why AI agent costs keep growing (and how deterministic tools cut tokens)](/blog/why-ai-agent-costs-keep-growing)
