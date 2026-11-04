@@ -593,7 +593,9 @@ delivery reports match it. A recipient that hard-bounced repeatedly is refused
 before the send (see
 [Authentication](../contributing/architecture/authentication.md) for the
 suppression levels); `adminEmailSuppressionList` shows suppressed addresses and
-`adminEmailSuppressionClear` lifts one.
+`adminEmailSuppressionClear` lifts one. `adminSystemEmailSendList` traces those
+rows: each send's provider message id, its latest Cloudflare delivery report
+(null until one matches), and the recipient's bounce or suppression state.
 
 Outbound system mail is not stored on the dedicated inbound `system_email_*`
 graph, so this topic carries the sent copy (recipients, subject, text, and HTML)
