@@ -1,4 +1,8 @@
+import { existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { expect, test } from 'vitest'
+import { isBlogImagePath } from '#universal/blog-images.ts'
+import { parseKodyMarkdown } from '#universal/markdown.ts'
 import { blogPostSlugs } from '#universal/blog-post-slugs.ts'
 import {
 	blogCategories,
@@ -157,6 +161,44 @@ test('every catalog post uses the fixed taxonomy and the client slug list', () =
 		listBlogCategoriesWithPosts().reduce((sum, c) => sum + c.count, 0),
 	).toBe(posts.length)
 	expect(getFeaturedBlogPost()?.category).not.toBe('updates')
+})
+
+function collectMarkdownImages(
+	node: unknown,
+	images: Array<{ src: string; alt: string }> = [],
+) {
+	if (Array.isArray(node)) {
+		for (const child of node) collectMarkdownImages(child, images)
+	} else if (node && typeof node === 'object') {
+		const record = node as Record<string, unknown>
+		if (record.type === 'image') {
+			images.push({ src: String(record.src), alt: String(record.alt ?? '') })
+		}
+		for (const value of Object.values(record)) {
+			collectMarkdownImages(value, images)
+		}
+	}
+	return images
+}
+
+test('every inline post image is an alt-texted /images/ file under public', () => {
+	const publicDir = new URL('../../public/', import.meta.url)
+	const problems: Array<string> = []
+	for (const post of listBlogPosts()) {
+		for (const image of collectMarkdownImages(parseKodyMarkdown(post.body))) {
+			const where = `${post.slug}: ${image.src}`
+			if (!isBlogImagePath(image.src)) problems.push(`${where} (path)`)
+			else if (!existsSync(fileURLToPath(new URL(`.${image.src}`, publicDir))))
+				problems.push(`${where} (missing file)`)
+			if (!image.alt.trim()) problems.push(`${where} (empty alt)`)
+		}
+	}
+	expect(problems).toEqual([])
+	expect(
+		collectMarkdownImages(
+			parseKodyMarkdown('![Shot](/images/blog/post/shot.webp)'),
+		),
+	).toEqual([{ src: '/images/blog/post/shot.webp', alt: 'Shot' }])
 })
 
 test('series nav lists every part oldest first with prev/next positions', () => {
