@@ -20,7 +20,6 @@ type PublishBuiltTarget = {
 	mainModule: string
 	/** Tagged module bytes, exactly what Kody hashes (`workerLoaderModuleBytes`). */
 	modules: Record<string, Uint8Array>
-	inlinedPackageIds: Array<string>
 }
 
 type PublishBuildFileManifestEntry = {
@@ -51,7 +50,7 @@ export type PublishBuilder = {
 }
 
 /** Matches the worker's `publishBuilderVersion`. */
-const cliPublishBuilderVersion = 1
+const cliPublishBuilderVersion = 2
 
 function sha256Hex(bytes: Uint8Array) {
 	return createHash('sha256').update(bytes).digest('hex')
@@ -215,13 +214,58 @@ async function git(
  * Refuses unless `dir` is a clean checkout whose HEAD is `commit`, so the
  * bytes built here are exactly the pushed tree the server re-checks.
  */
-async function assertCleanCheckoutAt(dir: string, commit: string) {
+async function assertCleanWorkingTree(dir: string) {
 	const status = (await git(dir, ['status', '--porcelain'])).toString('utf8')
 	if (status.trim()) {
 		throw new Error(
-			'Local publish builds need a clean working tree. Commit or stash your changes, push, and try again.',
+			'Local publish builds need a clean working tree. Commit or stash your changes and try again.',
 		)
 	}
+}
+
+async function gitText(dir: string, args: Array<string>) {
+	return (await git(dir, args)).toString('utf8').trim()
+}
+
+/**
+ * 8B: refuse uncommitted changes, then push HEAD to its upstream branch (the
+ * package's Kody remote) unless that branch is already at HEAD. Never
+ * commits. The caller still has Kody confirm the commit before building.
+ */
+export async function pushHeadForPublish(
+	dir: string,
+	log: (line: string) => void = () => {},
+) {
+	await assertCleanWorkingTree(dir)
+	const head = await gitText(dir, ['rev-parse', 'HEAD'])
+	const branch = await gitText(dir, [
+		'symbolic-ref',
+		'--quiet',
+		'--short',
+		'HEAD',
+	]).catch(() => '')
+	const remote = branch
+		? await gitText(dir, ['config', `branch.${branch}.remote`]).catch(() => '')
+		: ''
+	const mergeRef = branch
+		? await gitText(dir, ['config', `branch.${branch}.merge`]).catch(() => '')
+		: ''
+	if (!remote || !mergeRef) {
+		throw new Error(
+			"Local publish builds push HEAD to its upstream branch on the package's Kody remote, and this checkout has none. Check out the branch and set its upstream (git push -u <kody remote> HEAD), then try again.",
+		)
+	}
+	const remoteHead = (
+		await gitText(dir, ['ls-remote', remote, mergeRef])
+	).split(/\s/)[0]
+	if (remoteHead === head) return { head, pushed: false }
+	log(`Pushing ${head.slice(0, 12)} to ${remote} ${mergeRef}…`)
+	await git(dir, ['push', '--quiet', remote, `HEAD:${mergeRef}`])
+	return { head, pushed: true }
+}
+
+async function assertCleanCheckoutAt(dir: string, commit: string) {
+	await assertCleanWorkingTree(dir)
 	const head = (await git(dir, ['rev-parse', 'HEAD'])).toString('utf8').trim()
 	if (head !== commit) {
 		throw new Error(
@@ -341,10 +385,8 @@ export async function runLocalPublishBuild(input: {
 	)
 	let uploadedChunks = 0
 	let reusedChunks = 0
-	const inlined = new Set<string>()
 	const targets = []
 	for (const entry of built) {
-		for (const id of entry.inlinedPackageIds) inlined.add(id)
 		const modules: Record<
 			string,
 			{ sha256: string; size: number; chunks: Array<string> }
@@ -389,7 +431,6 @@ export async function runLocalPublishBuild(input: {
 			commit: input.ticket.commit,
 			files,
 			targets,
-			inlinedPackageIds: [...inlined],
 			buildMs,
 		}),
 	})

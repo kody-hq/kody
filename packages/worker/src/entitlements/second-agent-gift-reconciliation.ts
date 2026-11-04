@@ -1,6 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { countConnectedAgentEcosystems } from '#universal/onboarding-agent-ecosystems.ts'
-import { loadInboundMcpConnectionState } from '#worker/connected-mcp-agents.ts'
+import { loadInboundMcpAgentKinds } from '#worker/connected-mcp-agents.ts'
 import type { OAuthGrantListHelpers } from '#worker/oauth-grants.ts'
 import { resolveOAuthHelpers } from '#worker/oauth-helpers.ts'
 import { joinOrgsOnPersonalOrgIdSql } from '#worker/orgs/personal-org-sql.ts'
@@ -13,7 +13,10 @@ const batchSize = 8
 
 /**
  * Repairs missed OAuth-completion evaluations, including existing eligible people.
- * Each tick scans at most eight people. Failures retry on the next sweep wrap.
+ * Each tick scans at most eight people. The cursor moves to each person before
+ * their grants are listed, so a person whose listing fails, or kills the
+ * isolate, is skipped next tick and retried on the next sweep wrap instead of
+ * replaying the same batch every tick.
  * KV is only a scan hint: stale/concurrent cursors can repeat work, while the D1
  * conditional gift write is authoritative and never extends an existing gift.
  */
@@ -40,18 +43,18 @@ export async function reconcileSecondAgentStandardGifts(input: {
 	let granted = 0
 	let failed = 0
 	for (const row of page.results) {
+		await input.env.OAUTH_KV.put(secondAgentGiftCursorKey, row.stable_user_id)
 		try {
 			// Match OAuth completion: all of the person's ecosystems count, but
 			// evaluateSecondAgentStandardGift writes only their personal org.
-			const inbound = await loadInboundMcpConnectionState(
+			const agents = await loadInboundMcpAgentKinds(
 				helpers,
 				ownerIdFromStored(row.stable_user_id),
 			)
-			if (inbound.listingFailed) throw new Error('OAuth grant listing failed.')
 			const result = await evaluateSecondAgentStandardGift({
 				db: input.env.APP_DB,
 				stableUserId: row.stable_user_id,
-				ecosystemCount: countConnectedAgentEcosystems(inbound.agents),
+				ecosystemCount: countConnectedAgentEcosystems(agents),
 				now: input.now,
 			})
 			if (result.outcome === 'granted') granted += 1
@@ -64,12 +67,9 @@ export async function reconcileSecondAgentStandardGifts(input: {
 			)
 		}
 	}
-	// Advance past failed rows too so one broken listing cannot starve the fleet.
-	// An empty tail resets the sweep; a partial page can reset immediately.
-	const last = page.results.at(-1)
-	await input.env.OAUTH_KV.put(
-		secondAgentGiftCursorKey,
-		page.results.length === batchSize && last ? last.stable_user_id : '',
-	)
+	// A partial page ends the sweep; the next tick starts over.
+	if (page.results.length < batchSize) {
+		await input.env.OAUTH_KV.put(secondAgentGiftCursorKey, '')
+	}
 	return { scanned: page.results.length, granted, failed }
 }

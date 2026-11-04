@@ -121,7 +121,10 @@ export function isGuestEmail(email: string | null | undefined) {
 	)
 }
 
-export function guestPhase(expiresAt: string, now: Date = new Date()) {
+export function guestPhase(
+	expiresAt: string,
+	now: Date = new Date(),
+): GuestPhase {
 	return Date.parse(expiresAt) > now.getTime() ? 'active' : 'hold'
 }
 
@@ -220,7 +223,9 @@ export type GuestCreateResult =
 			email: string
 			username: string
 			claimCode: string
+			createdAt: string
 			expiresAt: string
+			deleteAt: string
 	  }
 	| { ok: false; reason: 'rate_limited'; retryAfterSeconds: number | null }
 
@@ -372,7 +377,9 @@ export async function createGuestAccount(input: {
 				email,
 				username,
 				claimCode,
+				createdAt,
 				expiresAt,
+				deleteAt,
 			}
 		} catch (error) {
 			lastError = error

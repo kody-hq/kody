@@ -654,7 +654,6 @@ export async function rebuildPublishedPackageArtifactsViaRepoSession(input: {
 	 */
 	uploadedBuild?: {
 		buildId: string
-		writablePackageIds: Array<string>
 		communityListed: boolean
 	}
 }): Promise<RebuildPublishedPackageArtifactsResult> {
@@ -668,7 +667,6 @@ export async function rebuildPublishedPackageArtifactsViaRepoSession(input: {
 			userId: input.userId,
 			publishedCommit: input.publishedCommit,
 			buildId: input.uploadedBuild.buildId,
-			writablePackageIds: input.uploadedBuild.writablePackageIds,
 			communityListed: input.uploadedBuild.communityListed,
 			baseUrl: input.baseUrl,
 		})

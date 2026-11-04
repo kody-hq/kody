@@ -5,7 +5,7 @@ import type { PublishBuildOrigin } from './policy.ts'
  * server rejects documents from any other version so a stale CLI or daemon
  * cannot upload bundles the server would not build the same way.
  */
-export const publishBuilderVersion = 1
+export const publishBuilderVersion = 2
 
 export type PublishBuildFileEntry = {
 	path: string
@@ -35,11 +35,6 @@ export type PublishBuildDocument = {
 	commit: string
 	files: Array<PublishBuildFileEntry>
 	targets: Array<PublishBuildTargetEntry>
-	/**
-	 * Kody packages the builder inlined. Untrusted: the server recomputes the
-	 * real list from source and only uses this to pre-check write access.
-	 */
-	inlinedPackageIds: Array<string>
 	/** Builder timing, shown to the publisher; never trusted. */
 	buildMs?: number
 }
@@ -52,8 +47,6 @@ export type PublishBuildStatus =
 
 export type UploadedPublishBuildRef = {
 	buildId: string
-	/** Package ids the publisher may write, checked at commit time. */
-	writablePackageIds: Array<string>
 	communityListed: boolean
 	origin: PublishBuildOrigin
 	contextName: string | null
