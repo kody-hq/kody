@@ -139,7 +139,7 @@ export function parseBlogPostMarkdown(slug: string, raw: string): BlogPost {
 			// oxfmt rewraps a value containing ": " as a YAML complex key.
 			if (/^[?:](?:\s|$)/.test(part)) {
 				throw new Error(
-					`Blog post "${slug}" has a YAML complex-key marker in frontmatter "${currentKey}" ("${part.slice(0, 1)}" line). Reword the value so it does not contain ": ".`,
+					`Blog post "${slug}" has a YAML complex-key marker in frontmatter "${currentKey}" ("${part.slice(0, 1)}" line). Remove the leading "${part.slice(0, 1)}", or reword the value so it does not contain ": ".`,
 				)
 			}
 			if (part) currentParts.push(part)
