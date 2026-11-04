@@ -145,7 +145,7 @@ test('unbound packages follow the chain, Kody cloud last', async () => {
 })
 
 test('parsePublishBinding reads kody.publish.execution.context only', () => {
-	const manifest = (kody: unknown) =>
+	const manifest = (kody: Record<string, unknown>) =>
 		JSON.stringify({ name: '@me/p', kody: { description: 'p', ...kody } })
 	expect(
 		parsePublishBinding(
