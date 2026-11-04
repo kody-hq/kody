@@ -31,11 +31,18 @@ async function requireGuest(ctx: {
 	return guest
 }
 
-function asCallerError(error: unknown): never {
-	if (
-		error instanceof GuestClaimError ||
-		error instanceof GuestClaimCodeError
-	) {
+function asCallerError(error: unknown, claimUrl: string): never {
+	if (error instanceof GuestClaimCodeError) {
+		const parts = [`${error.message} (${error.code})`]
+		if (error.deliveryNote) parts.push(error.deliveryNote)
+		if (error.code !== 'email_invalid') {
+			parts.push(
+				`If the code email did not arrive, send them the claim link instead: ${claimUrl}`,
+			)
+		}
+		throw new McpCallerError(parts.join(' '))
+	}
+	if (error instanceof GuestClaimError) {
 		throw new McpCallerError(`${error.message} (${error.code})`)
 	}
 	throw error
@@ -80,6 +87,17 @@ export const guestClaimStartCapability = defineDomainCapability(
 			code_expires_at: z.string(),
 			next_step: z.string(),
 			claim_url: z.string(),
+			provider_message_id: z
+				.string()
+				.nullable()
+				.describe(
+					'Cloudflare Email Sending message id for the code email; null when no email went out.',
+				),
+			code_delivery: z
+				.enum(['accepted', 'dev_code'])
+				.describe(
+					'accepted: the mail provider took the email; delivery to the inbox is not confirmed. dev_code: non-production, use dev_code.',
+				),
 			dev_code: z.string().optional(),
 		}),
 		async handler(args, ctx) {
@@ -88,6 +106,7 @@ export const guestClaimStartCapability = defineDomainCapability(
 				env: ctx.env,
 				requestUrl: ctx.callerContext.baseUrl,
 			})
+			const claimUrl = guestClaimUrl(baseUrl, guest.claimCode)
 			const started = await startGuestClaim({
 				env: ctx.env,
 				guest,
@@ -95,13 +114,19 @@ export const guestClaimStartCapability = defineDomainCapability(
 				username: args.username ?? null,
 				merge: args.merge ?? false,
 				requestUrl: baseUrl,
-			}).catch(asCallerError)
+			}).catch((error: unknown) => asCallerError(error, claimUrl))
+			const accepted =
+				started.codeDelivery === 'accepted'
+					? `Kody's mail provider accepted the code email${started.providerMessageId ? ` (message ${started.providerMessageId})` : ''}; delivery to the inbox is not confirmed yet. `
+					: ''
 			return {
 				code_sent_to: started.email,
 				mode: started.mode,
 				code_expires_at: started.expiresAt,
-				next_step: `Ask the person for the 6-digit code Kody emailed to ${started.email}, then call ${guestClaimFinishCapabilityName} with it.`,
-				claim_url: guestClaimUrl(baseUrl, guest.claimCode),
+				next_step: `${accepted}Ask the person for the 6-digit code Kody emailed to ${started.email}, then call ${guestClaimFinishCapabilityName} with it. If it has not arrived within a few minutes (check spam), send them claim_url instead.`,
+				claim_url: claimUrl,
+				provider_message_id: started.providerMessageId,
+				code_delivery: started.codeDelivery,
 				...(started.devCode ? { dev_code: started.devCode } : {}),
 			}
 		},
@@ -142,7 +167,9 @@ export const guestClaimFinishCapability = defineDomainCapability(
 				code: args.code,
 				baseUrl,
 				method: 'agent',
-			}).catch(asCallerError)
+			}).catch((error: unknown) =>
+				asCallerError(error, guestClaimUrl(baseUrl, guest.claimCode)),
+			)
 			return {
 				claimed: true as const,
 				mode: result.mode,

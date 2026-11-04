@@ -55,6 +55,7 @@ import { adminSystemEmailClassifyCapability } from './admin-system-email-classif
 import { adminSystemEmailDeleteCapability } from './admin-system-email-delete.ts'
 import { adminEmailSuppressionClearCapability } from './admin-email-suppression-clear.ts'
 import { adminEmailSuppressionListCapability } from './admin-email-suppression-list.ts'
+import { adminSystemEmailSendListCapability } from './admin-system-email-send-list.ts'
 import { adminSystemEmailGetCapability } from './admin-system-email-get.ts'
 import { adminSystemEmailListCapability } from './admin-system-email-list.ts'
 import { adminSystemEmailSendCapability } from './admin-system-email-send.ts'
@@ -266,6 +267,7 @@ export const adminDomain = defineDomain({
 		adminSystemEmailClassifyCapability,
 		adminSystemEmailDeleteCapability,
 		adminSystemEmailSendCapability,
+		adminSystemEmailSendListCapability,
 		adminSystemEmailSenderRuleListCapability,
 		adminSystemEmailSenderRuleSetCapability,
 		adminSystemEmailSenderRuleDeleteCapability,

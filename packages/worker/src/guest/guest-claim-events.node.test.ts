@@ -342,3 +342,27 @@ test('a failing dispatch never fails the claim', async () => {
 		method: 'email_code',
 	})
 })
+
+test('guestClaimStart reports provider acceptance and wrong codes point to the claim link', async () => {
+	const { guest, created } = await setup()
+	const claimUrl = `${baseUrl}/claim/${guest.claimCode}`
+	const started = await guestClaimStartCapability.handler(
+		{ email: 'claimer@example.test', username: 'claimer' } as never,
+		capabilityContext(created.personId),
+	)
+	expect(started).toMatchObject({
+		claim_url: claimUrl,
+		code_delivery: 'accepted',
+		provider_message_id: null,
+		next_step: expect.stringContaining('send them claim_url instead'),
+	})
+	await expect(
+		guestClaimFinishCapability.handler(
+			{ code: '000000x' },
+			capabilityContext(created.personId),
+		),
+	).rejects.toThrow(
+		`If the code email did not arrive, send them the claim link instead: ${claimUrl}`,
+	)
+	expect(mocks.dispatch).not.toHaveBeenCalled()
+})

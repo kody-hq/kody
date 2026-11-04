@@ -114,9 +114,8 @@ async function sendViaCloudflareApi(
 			JSON.stringify({
 				status: response.status,
 				body: payload,
-				to: message.to,
+				to: redactRecipients(message.to),
 				from: message.from,
-				subject: message.subject,
 			}),
 		)
 		return {
