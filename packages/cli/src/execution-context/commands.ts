@@ -754,6 +754,7 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 					ecid: context.ecid,
 					privateKey,
 					token: await input.token(),
+					org: context.orgSlug,
 					...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
 				})
 				if (result.changed) {

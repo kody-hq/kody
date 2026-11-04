@@ -6,7 +6,11 @@ import {
 	type BoxAccess,
 	type BoxAccessEntry,
 } from './box-access.ts'
-import { recordElevation, recordMisconfigurations } from './notices.ts'
+import {
+	pruneElevations,
+	recordElevation,
+	recordMisconfigurations,
+} from './notices.ts'
 import type { ExecutionContextRow } from './store.ts'
 
 /** Grantees whose excess Kody tracks; larger orgs are computed on read. */
@@ -157,10 +161,15 @@ export async function refreshContextNotices(
 				entries: await excessForUser(db, box, orgId, userId),
 			})
 		}
+		if (!options.userIds && userIds.length <= maxTrackedGrantees) {
+			await pruneElevations(db, { contextId: row.id, orgId, keep: userIds })
+		}
+		const owning =
+			orgId === row.org_id ? box : await loadBoxAccess(db, row, row.org_id)
 		await recordMisconfigurations(db, {
 			contextId: row.id,
 			orgId: row.org_id,
-			codes: await contextMisconfigurations(db, row, box),
+			codes: await contextMisconfigurations(db, row, owning),
 		})
 		return box
 	} catch (error) {

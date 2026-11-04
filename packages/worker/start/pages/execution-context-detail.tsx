@@ -905,13 +905,17 @@ function SharingPanel(props: {
 		setBusy(true)
 		setError(null)
 		const subjectKey = `${kind}:${value}`
-		if (kind !== 'org' && excessWarning !== subjectKey) {
+		if (excessWarning !== subjectKey) {
 			const preview = (await previewExecutionContextShare({
 				data: {
 					orgSlug: props.orgSlug,
 					contextId: context.id,
 					subject:
-						kind === 'user' ? { kind, username: value } : { kind, slug: value },
+						kind === 'user'
+							? { kind, username: value }
+							: kind === 'team'
+								? { kind, slug: value }
+								: { kind },
 				},
 			}).catch(() => unexpectedFailure)) as
 				| { ok: true; excessCount: number; people: number }

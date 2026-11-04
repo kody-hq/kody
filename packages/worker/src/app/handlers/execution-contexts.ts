@@ -553,18 +553,24 @@ export async function dismissExecutionContextNoticeForUser(
 export async function previewExecutionContextShareForUser(
 	input: ScopedInput & {
 		contextId: string
-		subject: { kind: 'user'; username: string } | { kind: 'team'; slug: string }
+		subject:
+			| { kind: 'user'; username: string }
+			| { kind: 'team'; slug: string }
+			| { kind: 'org' }
 	},
 ) {
+	const { subject } = input
 	return runScoped(input, async (scope) => {
 		const result = await callCapability(
 			scope,
 			executionContextCapabilityNames.sharePreview,
 			{
 				id: input.contextId,
-				...(input.subject.kind === 'user'
-					? { username: input.subject.username.replace(/^@/, '') }
-					: { team_slug: input.subject.slug }),
+				...(subject.kind === 'user'
+					? { username: subject.username.replace(/^@/, '') }
+					: subject.kind === 'team'
+						? { team_slug: subject.slug }
+						: { all_members: true }),
 			},
 		)
 		const people = Array.isArray(result.people) ? result.people : []

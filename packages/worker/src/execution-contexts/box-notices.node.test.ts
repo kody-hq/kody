@@ -217,3 +217,20 @@ test('refresh flags operator_left and a revoked box login token', async () => {
 		codes: ['login_stale', 'operator_left'],
 	})
 })
+
+test('a full refresh drops notices of people who lost access', async () => {
+	const { db } = setup()
+	const row = (await getExecutionContext(db, 'ec_mac'))!
+	await refreshContextNotices(db, row, orgId, { userIds: ['user_friend'] })
+	expect(
+		(await listContextNotices(db, { contextId: 'ec_mac', orgId })).some(
+			(notice) => notice.subjectUserId === 'user_friend',
+		),
+	).toBe(true)
+	await refreshContextNotices(db, row, orgId)
+	expect(
+		(await listContextNotices(db, { contextId: 'ec_mac', orgId })).some(
+			(notice) => notice.kind === 'elevation',
+		),
+	).toBe(false)
+})

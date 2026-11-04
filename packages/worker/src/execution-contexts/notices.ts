@@ -101,6 +101,30 @@ async function write(
 		.run()
 }
 
+/** Drops elevation notices of people who no longer have access to the context. */
+export async function pruneElevations(
+	db: D1Database,
+	input: { contextId: string; orgId: string; keep: ReadonlyArray<string> },
+) {
+	const keep = new Set(input.keep)
+	const stored = await db
+		.prepare(
+			`SELECT subject_user_id FROM execution_context_notices
+			 WHERE context_id = ? AND org_id = ? AND kind = 'elevation'`,
+		)
+		.bind(input.contextId, input.orgId)
+		.all<{ subject_user_id: string }>()
+	for (const { subject_user_id: subject } of stored.results) {
+		if (keep.has(subject)) continue
+		await clear(db, {
+			contextId: input.contextId,
+			orgId: input.orgId,
+			kind: 'elevation',
+			subject,
+		})
+	}
+}
+
 /** Records one grantee's excess; returns true when it notifies (new or added). */
 export async function recordElevation(
 	db: D1Database,
@@ -238,8 +262,18 @@ export async function listContextNotices(
  */
 export async function listNoticesForViewer(
 	db: D1Database,
-	input: { userId: string; orgId: string },
+	input: {
+		userId: string
+		orgId: string
+		contextId?: string
+		undeliveredColumn?:
+			| 'delivered_execute_fingerprint'
+			| 'delivered_search_fingerprint'
+	},
 ): Promise<Array<StoredNotice & { contextName: string }>> {
+	const undelivered = input.undeliveredColumn
+		? `AND (n.${input.undeliveredColumn} IS NULL OR n.${input.undeliveredColumn} != n.fingerprint)`
+		: ''
 	const result = await db
 		.prepare(
 			`SELECT n.*, c.name AS context_name FROM execution_context_notices n
@@ -248,9 +282,16 @@ export async function listNoticesForViewer(
 			   AND ((n.kind = 'elevation' AND n.subject_user_id = ?
 			         AND (n.dismissed_fingerprint IS NULL OR n.dismissed_fingerprint != n.fingerprint))
 			     OR (n.kind = 'misconfigured' AND c.operator_user_id = ?))
+			   AND (? IS NULL OR n.context_id = ?) ${undelivered}
 			 ORDER BY n.raised_at DESC LIMIT 20`,
 		)
-		.bind(input.orgId, input.userId, input.userId)
+		.bind(
+			input.orgId,
+			input.userId,
+			input.userId,
+			input.contextId ?? null,
+			input.contextId ?? null,
+		)
 		.all<NoticeRow & { context_name: string }>()
 	return result.results.map((row) => ({
 		...toNotice(row),
@@ -275,9 +316,12 @@ export async function takeUndeliveredNotices(
 		input.surface === 'execute'
 			? 'delivered_execute_fingerprint'
 			: 'delivered_search_fingerprint'
-	const notices = (await listNoticesForViewer(db, input)).filter(
-		(notice) => !input.contextId || notice.contextId === input.contextId,
-	)
+	const notices = await listNoticesForViewer(db, {
+		userId: input.userId,
+		orgId: input.orgId,
+		...(input.contextId ? { contextId: input.contextId } : {}),
+		undeliveredColumn: column,
+	})
 	const rows = await Promise.all(
 		notices.map(async (notice) => {
 			const result = await db

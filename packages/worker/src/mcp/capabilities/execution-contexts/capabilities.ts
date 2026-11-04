@@ -562,12 +562,24 @@ export const executionContextSharePreviewCapability = defineDomainCapability(
 			user_id: z.string().min(1).optional(),
 			team_slug: z.string().min(1).optional(),
 			team_id: z.string().min(1).optional(),
+			all_members: z
+				.boolean()
+				.optional()
+				.describe('Preview sharing with everyone in the org.'),
 		}),
 		async handler(args, ctx) {
 			const resolved = await caller(ctx)
 			const db = ctx.env.APP_DB
 			let userIds: Array<string> = []
-			if (args.team_slug || args.team_id) {
+			if (args.all_members) {
+				const members = await db
+					.prepare(
+						`SELECT user_id FROM org_memberships WHERE org_id = ? AND deleted_at IS NULL LIMIT 201`,
+					)
+					.bind(resolved.orgId)
+					.all<{ user_id: string }>()
+				userIds = members.results.map((row) => row.user_id)
+			} else if (args.team_slug || args.team_id) {
 				const teamId = await resolveTeamId(db, resolved.orgId, {
 					teamId: args.team_id ?? null,
 					teamSlug: args.team_slug ?? null,

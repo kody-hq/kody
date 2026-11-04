@@ -483,6 +483,17 @@ export async function updateProfile(
 		})
 	}
 	if (input.assignedTeamId !== undefined) {
+		if (input.expiresAt !== undefined) {
+			const next = parseExpiry(input.expiresAt, now)
+			if (isExpiryExtension({ current: row.expires_at, next })) {
+				throw new ProfileError({
+					status: 400,
+					code: 'profile_expiry_extension',
+					message:
+						'A profile’s expiry can only move earlier. Create a new profile for more time.',
+				})
+			}
+		}
 		await caller.env.APP_DB.prepare(
 			`UPDATE profiles SET assigned_team_id = ? WHERE id = ? AND org_id = ?`,
 		)

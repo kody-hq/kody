@@ -200,6 +200,10 @@ export async function loadBoxAccess(
 	if (!principal.profileId) {
 		return { principal, entries: compiledEntries(base), profileInactive: false }
 	}
+	// A profile acts only in the org it was minted in, the box's own org.
+	if (orgId !== row.org_id) {
+		return { principal, entries: [], profileInactive: false }
+	}
 	const chain = await loadProfileChain(db, {
 		orgId,
 		profileId: principal.profileId,

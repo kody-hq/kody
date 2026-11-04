@@ -159,6 +159,7 @@ export const previewExecutionContextShare = createServerFn({ method: 'POST' })
 					username: z.string().trim().min(1).max(64),
 				}),
 				z.object({ kind: z.literal('team'), slug: segment }),
+				z.object({ kind: z.literal('org') }),
 			]),
 		}),
 	)

@@ -285,9 +285,11 @@ export async function checkContextLogin(input: {
 	ecid: string
 	privateKey: EcpCryptoKey
 	token: string
+	org?: string | null
 	fetchFn?: typeof fetch
 	signal?: AbortSignal
 }) {
+	const query = input.org ? `?org=${encodeURIComponent(input.org)}` : ''
 	const response = await signedFetch({
 		apiUrl: input.apiUrl,
 		ecid: input.ecid,
@@ -295,7 +297,7 @@ export async function checkContextLogin(input: {
 		...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
 		...(input.signal ? { signal: input.signal } : {}),
 		method: 'POST',
-		pathAndQuery: `${executionContextsPath}/login`,
+		pathAndQuery: `${executionContextsPath}/login${query}`,
 		body: '{}',
 		headers: {
 			authorization: `Bearer ${input.token}`,
