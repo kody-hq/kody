@@ -13,6 +13,7 @@ CREATE TABLE guest_accounts (
 	personal_org_id TEXT NOT NULL,
 	claim_code TEXT NOT NULL UNIQUE,
 	client_name TEXT,
+	guest_slug TEXT,
 	expires_at TEXT NOT NULL,
 	delete_at TEXT NOT NULL,
 	created_at TEXT NOT NULL,

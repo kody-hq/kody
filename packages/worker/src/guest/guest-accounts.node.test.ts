@@ -22,6 +22,7 @@ import {
 } from './guest-policy.ts'
 import {
 	buildGuestResultBlock,
+	formatGuestResultText,
 	formatGuestTimeLeft,
 } from './guest-result-block.ts'
 
@@ -129,6 +130,15 @@ test('guest result block shows time left and asks for a reminder with 2 hours le
 		now: new Date(start.getTime() + guestFullAccessMs + 1),
 	})
 	expect(held).toMatchObject({ status: 'read_only', time_left: '0 minutes' })
+	expect(formatGuestResultText(early!)).toContain(
+		`full access for 24 hours more`,
+	)
+	expect(formatGuestResultText(held!)).toContain(
+		'read-only until claimed. It is deleted at',
+	)
+	expect(formatGuestResultText(held!)).toContain(
+		`Claim link: ${baseUrl}/claim/${guest.claimCode}`,
+	)
 	expect(formatGuestTimeLeft(90 * 60 * 1000)).toBe('1 hour 30 minutes')
 })
 

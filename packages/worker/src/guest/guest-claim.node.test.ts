@@ -5,6 +5,7 @@ import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import {
 	createGuestAccount,
+	readClaimedGuestOrgForSlug,
 	readGuestAccountByPerson,
 } from './guest-accounts.ts'
 import { guestClaimDonePath } from './guest-claim.ts'
@@ -98,6 +99,22 @@ test('agent-led claim emails a code, then converts the guest in place keeping th
 	expect(overrides.n).toBe(0)
 	const claimed = await readGuestAccountByPerson(env.APP_DB, created.personId)
 	expect(claimed?.claimedAt).toBeTruthy()
+	const { guest_slug: guestSlug } = sqlite
+		.prepare('SELECT guest_slug FROM guest_accounts WHERE person_id = ?')
+		.get(created.personId) as { guest_slug: string }
+	expect(guestSlug).toMatch(/^guest-/)
+	expect(
+		await readClaimedGuestOrgForSlug(env.APP_DB, {
+			slug: guestSlug,
+			personId: created.personId,
+		}),
+	).toBe(created.personalOrgId)
+	expect(
+		await readClaimedGuestOrgForSlug(env.APP_DB, {
+			slug: guestSlug,
+			personId: 'someone-else',
+		}),
+	).toBeNull()
 })
 
 test('claim codes stop working after too many wrong tries or once expired', async () => {

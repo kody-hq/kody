@@ -579,7 +579,10 @@ export function OAuthAuthorizeRoute({
 		await submitDecision('approve', event.currentTarget)
 	}
 
-	const clientLabel = info?.client?.name ?? 'Unknown client'
+	const clientLabel =
+		info?.client?.name === '@kodycodes/cli'
+			? 'Kody CLI'
+			: (info?.client?.name ?? 'Unknown client')
 	const scopes = info?.scopes ?? []
 	const sessionEmail = session?.email ?? ''
 	const sessionDisplayName = getSessionDisplayName(session)

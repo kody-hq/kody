@@ -58,7 +58,10 @@ export async function buildGuestResultBlock(input: {
 
 /** Adds the guest block to a search or execute tool result. */
 export async function attachGuestResultBlock<
-	Response extends { structuredContent?: Record<string, unknown> },
+	Response extends {
+		content?: Array<unknown>
+		structuredContent?: Record<string, unknown>
+	},
 >(
 	response: Response,
 	input: { db: D1Database; callerContext: McpCallerContext },
@@ -71,6 +74,23 @@ export async function attachGuestResultBlock<
 	if (!guest) return response
 	return {
 		...response,
+		...(response.content
+			? {
+					content: [
+						...response.content,
+						{ type: 'text', text: formatGuestResultText(guest) },
+					],
+				}
+			: {}),
 		structuredContent: { ...response.structuredContent, guest },
 	}
+}
+
+/** Text form of the guest block, for clients that only read text parts. */
+export function formatGuestResultText(guest: GuestResultBlock) {
+	const status =
+		guest.status === 'active'
+			? `Guest account: full access for ${guest.time_left} more (until ${guest.full_access_until}).`
+			: `Guest account: read-only until claimed. It is deleted at ${guest.delete_at}.`
+	return `${status} Claim link: ${guest.claim_url}\n${guest.guidance}`
 }

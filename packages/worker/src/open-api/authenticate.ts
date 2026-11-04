@@ -51,6 +51,7 @@ import {
 	sessionStub,
 } from '#worker/execution-contexts/store.ts'
 import { isOperatorContextRun } from '#worker/execution-contexts/credential-grant.ts'
+import { readClaimedGuestOrgForSlug } from '#worker/guest/guest-accounts.ts'
 import { credentialCallMapFromJson } from '#worker/credentials/credential-call-map.ts'
 
 type McpOauthGrantProps = {
@@ -147,6 +148,13 @@ export async function resolveOrgBindingForUserOwnedToken(input: {
 	const byId = await getOrgById(input.db, hint)
 	if (byId) {
 		return loadOrgBindingForOrg(input.db, input.userId, byId.id)
+	}
+	const claimedGuestOrgId = await readClaimedGuestOrgForSlug(input.db, {
+		slug: hint,
+		personId: input.userId,
+	})
+	if (claimedGuestOrgId) {
+		return loadOrgBindingForOrg(input.db, input.userId, claimedGuestOrgId)
 	}
 	return null
 }

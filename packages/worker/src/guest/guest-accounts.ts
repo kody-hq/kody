@@ -177,6 +177,26 @@ export async function readGuestAlias(
 	}
 }
 
+/**
+ * The org a claimed guest's old org slug now points at, for `personId`.
+ * Clients that stored the guest slug (CLI `--org`) keep working after claim.
+ */
+export async function readClaimedGuestOrgForSlug(
+	db: D1Database,
+	input: { slug: string; personId: string },
+): Promise<OwnerId | null> {
+	const row = await db
+		.prepare(
+			`SELECT COALESCE(claimed_into_org_id, personal_org_id) AS org_id
+			 FROM guest_accounts
+			 WHERE guest_slug = ? AND claimed_at IS NOT NULL
+			   AND (person_id = ? OR claimed_into_person_id = ?)`,
+		)
+		.bind(input.slug, input.personId, input.personId)
+		.first<{ org_id: string }>()
+	return row ? (row.org_id as OwnerId) : null
+}
+
 /** Guest person ids merged into `personId` (their grants belong to it). */
 export async function listGuestAliasesForPerson(
 	db: D1Database,
@@ -300,15 +320,16 @@ export async function createGuestAccount(input: {
 				db
 					.prepare(
 						`INSERT INTO guest_accounts (
-							person_id, personal_org_id, claim_code, client_name,
+							person_id, personal_org_id, claim_code, client_name, guest_slug,
 							expires_at, delete_at, created_at
-						) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+						) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 					)
 					.bind(
 						personId,
 						orgId,
 						claimCode,
 						clientName,
+						username,
 						expiresAt,
 						deleteAt,
 						createdAt,
