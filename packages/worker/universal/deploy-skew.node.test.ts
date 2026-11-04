@@ -24,6 +24,7 @@ test('isDeploySkewMismatch requires both builds and detects inequality', () => {
 
 test('normalizeDeploySkewBuildId lowercases and rejects short or junk IDs', () => {
 	expect(normalizeDeploySkewBuildId('ABCDEF1')).toBeNull()
+	expect(normalizeDeploySkewBuildId('a'.repeat(39))).toBeNull()
 	expect(normalizeDeploySkewBuildId(`  ${'A'.repeat(40)}  `)).toBe(left)
 	expect(normalizeDeploySkewBuildId(left.toUpperCase())).toBe(left)
 	expect(normalizeDeploySkewBuildId('not-a-sha')).toBeNull()
