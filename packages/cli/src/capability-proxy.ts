@@ -10,6 +10,7 @@ import {
 	currentStoredTokenLifetimeAlias,
 	featureDisabledMessage,
 	insufficientScopeMessage,
+	profileDenialMessage,
 	readInsufficientScopeDetails,
 	isScopedApiToken,
 	rejectedApiTokenMessage,
@@ -825,6 +826,14 @@ function describeFailure(
 			status,
 			code,
 		})
+	}
+	const profileDenial = profileDenialMessage({
+		code,
+		body,
+		serverMessage: failure?.message,
+	})
+	if (profileDenial) {
+		return new CapabilityProxyError(profileDenial, { status, code })
 	}
 	if (code === 'insufficient_scope') {
 		return new CapabilityProxyError(

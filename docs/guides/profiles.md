@@ -38,8 +38,15 @@ limits. A denial names the layer that blocked it:
 
 - `profile_grant`:
   `Profile "helper" was not granted package:execute on package @acme/tools` (or
-  `Parent profile "agent" does not hold ...`).
+  `Parent profile "agent" does not hold ...`). Credentials are named the same
+  way: `Profile "helper" was not granted secret:use on credential "notes-key"`.
 - `profile_inactive`: the profile or a parent was revoked or expired.
+
+Open API and the CLI report these as 403 `profile_grant` or `profile_inactive`,
+never `insufficient_scope`: the token's scopes passed, so a new token cannot
+help. Grant the profile access instead. Sharing a package with a profile does
+not share the credentials its code uses; grant each credential to the profile
+too.
 
 ## Share a package with a profile
 

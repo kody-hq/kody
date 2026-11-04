@@ -300,6 +300,35 @@ export function cliBootstrapMintCall(
 	return `cliCredentialBootstrap({ ${fields.join(', ')} })`
 }
 
+const profileDenialCodes = new Set(['profile_grant', 'profile_inactive'])
+
+/**
+ * A profile denial: the token's scopes passed but the profile chain it acts
+ * as was not granted the permission. Older servers sent these as
+ * `insufficient_scope` with `details.denial`, so both shapes are read. A new
+ * token cannot fix it, so there is no mint hint.
+ */
+export function profileDenialMessage(input: {
+	code: string | null
+	body: unknown
+	serverMessage?: string | null
+}): string | null {
+	const denial = readInsufficientScopeDetails(input.body).denial
+	const code =
+		input.code && profileDenialCodes.has(input.code)
+			? input.code
+			: input.code === 'insufficient_scope' &&
+				  denial &&
+				  profileDenialCodes.has(denial)
+				? denial
+				: null
+	if (!code) return null
+	const reason =
+		input.serverMessage?.trim() ||
+		'the profile this token acts as, or a parent profile, does not hold the required permission.'
+	return `Kody returned ${code}: ${reason} A new token cannot add it; the person the profile acts for has to grant it.`
+}
+
 export function insufficientScopeMessage(
 	input: Partial<InsufficientScopeDetails> & {
 		/** Scopes the CLI already knows the current token holds. */
@@ -318,6 +347,14 @@ export function insufficientScopeMessage(
 		localExecute?: boolean
 	},
 ): string {
+	if (input.denial && profileDenialCodes.has(input.denial)) {
+		return (
+			profileDenialMessage({
+				code: input.denial,
+				body: null,
+			}) ?? ''
+		)
+	}
 	const message = baseInsufficientScopeMessage(input)
 	if (input.denial === 'missing_permission') return message
 	const note = credentialUsedNote({

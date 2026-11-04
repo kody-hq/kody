@@ -205,6 +205,10 @@ still auth or permission — use the Failure section below. Two workarounds for
   carry the same list as `details.mint_scopes`. When your org role lacks the
   permission (`denial: missing_permission`), a new token cannot help; an org
   Owner has to grant it.
+- `profile_grant` / `profile_inactive` mean the token's scopes passed but the
+  profile it acts as (or a parent) was not granted that package or credential,
+  or is no longer active. A new token cannot help; the person the profile acts
+  for grants it (`accessGrant` with `subject_type: "profile"`).
 - **Package-scoped `secretSet` / `secretSetMany` / `secretDelete` are not
   available under `--local`.** Local CapabilityProxy does not attach package
   secret authority (a client-supplied package id is not trusted as a hosted

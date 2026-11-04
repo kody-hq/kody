@@ -538,3 +538,41 @@ test('openApiRequest keeps the status, error code, reason and request id of a se
 		/^debug: POST https:\/\/api\.kody\.codes\/v1\/packages\/check -> HTTP 503, code internal_error, reason origin_unreachable, request id ray-42, /,
 	)
 })
+
+test('searchWithApiToken reports profile_grant without a mint-token hint', async () => {
+	const fetchFn = (async () =>
+		new Response(
+			JSON.stringify({
+				error: {
+					code: 'profile_grant',
+					message:
+						'Profile "helper" was not granted secret:use on credential "notes-api-key".',
+					details: {
+						required_permission: 'secret:use',
+						denial: 'profile_grant',
+					},
+				},
+			}),
+			{ status: 403, headers: { 'content-type': 'application/json' } },
+		)) as typeof fetch
+	await assert.rejects(
+		() =>
+			searchWithApiToken({
+				token: 'tok',
+				apiUrl: 'https://api.kody.codes',
+				query: 'x',
+				fetchFn,
+			}),
+		(error: unknown) => {
+			assert.ok(error instanceof OpenApiError)
+			assert.equal(error.status, 403)
+			assert.equal(error.code, 'profile_grant')
+			assert.match(
+				error.message,
+				/Kody returned profile_grant: Profile "helper"/,
+			)
+			assert.doesNotMatch(error.message, /cliCredentialBootstrap/)
+			return true
+		},
+	)
+})

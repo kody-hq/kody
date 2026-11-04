@@ -295,7 +295,7 @@ Every error is `{ error: { code, message, details? } }` with
 | ------ | ------------------------------------------------------------------------------------------------------------------ |
 | 400    | `invalid_request`, `package_import_unresolved`, `package_import_unpublished`, `unsupported_dynamic_package_import` |
 | 401    | `unauthorized` (missing, invalid, expired, or revoked token)                                                       |
-| 403    | `insufficient_scope`, `email_verification_required`, `account_suspended`                                           |
+| 403    | `insufficient_scope`, `profile_grant`, `profile_inactive`, `email_verification_required`, `account_suspended`      |
 | 404    | `not_found`, `feature_unavailable` (capability or MCP gate)                                                        |
 | 405    | `method_not_allowed` (with `Allow`)                                                                                |
 | 409    | `account_deleting`                                                                                                 |
