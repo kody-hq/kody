@@ -200,7 +200,12 @@ async function smoke() {
 		await page.getByRole('button', { name: 'Back', exact: true }).click()
 		await expect(page).not.toHaveURL(/shell-history-test/)
 		// Closing a window must not call the runner shutdown path.
-		const closed = page.waitForEvent('close')
+		const savedUrl = page.url()
+		await page.evaluate(() => {
+			window.smokePreserved = 'still here'
+		})
+		const closed =
+			process.platform === 'darwin' ? null : page.waitForEvent('close')
 		await app.evaluate(({ app, BrowserWindow }) => {
 			const load = process
 				.getBuiltinModule('module')
@@ -220,14 +225,32 @@ async function smoke() {
 				await app.evaluate(
 					({ BrowserWindow }) => BrowserWindow.getAllWindows().length,
 				),
-				0,
+				1,
 			)
 			assert.equal(
 				await app.evaluate(() => globalThis.smokeClosedRunner),
 				false,
 			)
+			assert.equal(
+				await app.evaluate(({ BrowserWindow }) =>
+					BrowserWindow.getAllWindows()[0].isVisible(),
+				),
+				false,
+			)
 			await app.evaluate(({ app }) => app.emit('activate'))
 			const reopened = await app.firstWindow()
+			assert.equal(reopened, page)
+			assert.equal(reopened.url(), savedUrl)
+			assert.equal(
+				await reopened.evaluate(() => window.smokePreserved),
+				'still here',
+			)
+			assert.equal(
+				await app.evaluate(({ BrowserWindow }) =>
+					BrowserWindow.getAllWindows()[0].isVisible(),
+				),
+				true,
+			)
 			await reopened
 				.getByRole('navigation', { name: 'App navigation', exact: true })
 				.waitFor()

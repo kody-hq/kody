@@ -53,6 +53,7 @@ function isCurrentAppUrl(value) {
 }
 let navigation
 let windowOpening
+let failedLoadUrl
 ipcMain.handle('kody:navigation', (event, command) => {
 	if (!navigation?.accepts(event))
 		throw new Error('Navigation is only available to the main Kody document.')
@@ -284,9 +285,11 @@ function updateMenu() {
 	)
 }
 async function showApp(path) {
-	const creating = !window || window.isDestroyed()
-	if (creating) {
-		windowOpening ??= createWindow()
+	if (quitting) return
+	// Only the caller that starts creation owns the initial navigation.
+	const creating = !windowOpening && (!window || window.isDestroyed())
+	if (creating) windowOpening = createWindow()
+	if (windowOpening) {
 		try {
 			await windowOpening
 		} finally {
@@ -294,16 +297,29 @@ async function showApp(path) {
 		}
 	}
 	if (quitting || !window || window.isDestroyed()) return
+	if (window.isMinimized()) window.restore()
 	window.show()
 	window.focus()
-	if (!creating && !path) return
 	const shownWindow = window
-	void shownWindow
-		.loadURL(`${appOrigin}${path ?? '/account'}`)
-		.catch((error) => {
-			if (!quitting && !shownWindow.isDestroyed())
-				dialog.showErrorBox('Could not load Kody', error.message)
-		})
+	const crashed = shownWindow.webContents.isCrashed()
+	if (!creating && !path && !crashed && !failedLoadUrl) return
+	const url = path
+		? `${appOrigin}${path}`
+		: failedLoadUrl ||
+			shownWindow.webContents.getURL() ||
+			`${appOrigin}/account`
+	failedLoadUrl = undefined
+	void shownWindow.loadURL(url).catch((error) => {
+		// A newer navigation can cancel this load without failing the page.
+		if (
+			!quitting &&
+			!shownWindow.isDestroyed() &&
+			error.code !== 'ERR_ABORTED'
+		) {
+			failedLoadUrl = url
+			dialog.showErrorBox('Could not load Kody', error.message)
+		}
+	})
 }
 async function supportsBrowserLogin() {
 	try {
@@ -405,7 +421,29 @@ async function createWindow() {
 		else external(url)
 		return { action: 'deny' }
 	})
+	window.on('close', (event) => {
+		if (process.platform === 'darwin' && !quitting) {
+			event.preventDefault()
+			window.hide()
+		}
+	})
+	window.webContents.on(
+		'did-fail-load',
+		(_event, errorCode, _description, url, isMainFrame) => {
+			// Chromium uses -3 (ERR_ABORTED) for canceled navigation.
+			if (
+				isMainFrame &&
+				errorCode !== -3 &&
+				(isCurrentAppUrl(url) || isNavigationUrl(url))
+			)
+				failedLoadUrl = url
+		},
+	)
+	window.webContents.on('did-finish-load', () => {
+		failedLoadUrl = undefined
+	})
 	window.on('closed', () => {
+		failedLoadUrl = undefined
 		window = null
 		navigation = null
 	})
@@ -423,9 +461,7 @@ runner.on('shutdown-error', () => {
 if (!app.requestSingleInstanceLock()) app.quit()
 else {
 	app.on('second-instance', () => showApp())
-	app.on('activate', () => {
-		if (!window) showApp()
-	})
+	app.on('activate', () => showApp())
 	app.on('window-all-closed', () => {
 		if (process.platform !== 'darwin') app.quit()
 	})
