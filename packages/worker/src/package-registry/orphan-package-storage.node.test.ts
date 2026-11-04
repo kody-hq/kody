@@ -176,3 +176,48 @@ test('apply keeps the row of a bucket whose clear keeps failing and continues', 
 		before.filter((id) => id !== `user-3 package:${secondOrphanId}`),
 	)
 })
+
+test('apply skips an id that a package claimed after the listing', async () => {
+	const sqlite = seed()
+	mocks.storageRunnerRpc.mockReturnValue({ clearStorage: mocks.clearStorage })
+	mocks.clearStorage.mockClear()
+	const db = createD1FromSqlite(sqlite)
+	const claimingDb = {
+		prepare(sql: string) {
+			const statement = db.prepare(sql)
+			if (!sql.includes('LIMIT ?')) return statement
+			return {
+				bind: (...values: Array<unknown>) => {
+					const bound = statement.bind(...values)
+					return {
+						all: async () => {
+							const listed = await bound.all()
+							sqlite
+								.prepare(
+									`INSERT INTO saved_packages (id, user_id, name, kody_id, description, tags_json, source_id, has_app, has_skills, hidden, is_private, created_at, updated_at, deleted_at)
+									VALUES (?, 'user-2', '@user/back', 'back', '', '[]', 'source-back', 0, 0, 0, 1, ?, ?, NULL)`,
+								)
+								.run(orphanId, at, at)
+							return listed
+						},
+					}
+				},
+			}
+		},
+	} as unknown as D1Database
+	const env = { APP_DB: claimingDb } as unknown as Env
+	const before = bucketIds(sqlite)
+
+	const applied = await cleanupOrphanedPackageStorageBuckets({
+		env,
+		apply: true,
+	})
+	expect(applied).toMatchObject({
+		clearedCount: 0,
+		failedCount: 0,
+		skippedCount: 1,
+	})
+	expect(applied.orphans).toHaveLength(1)
+	expect(mocks.clearStorage).not.toHaveBeenCalled()
+	expect(bucketIds(sqlite)).toEqual(before)
+})

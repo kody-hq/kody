@@ -61,7 +61,24 @@ export async function listOrphanedPackageStorageBuckets(
 	}))
 }
 
-/** Preview by default; `apply` clears each orphan's storage and inventory row. */
+async function packageIdIsClaimed(db: D1Database, packageId: string) {
+	const row = await db
+		.prepare(
+			`SELECT 1 AS claimed FROM saved_packages WHERE id = ?
+			UNION ALL
+			SELECT 1 AS claimed FROM community_forks WHERE forked_package_id = ?
+			LIMIT 1`,
+		)
+		.bind(packageId, packageId)
+		.first<{ claimed: number }>()
+	return row !== null
+}
+
+/**
+ * Preview by default; `apply` clears each orphan's storage and inventory row.
+ * Each id is rechecked right before its clear, since `packageSave` can create
+ * a package with a caller-chosen `package_id`; claimed ids are skipped.
+ */
 export async function cleanupOrphanedPackageStorageBuckets(input: {
 	env: Env
 	apply: boolean
@@ -70,17 +87,29 @@ export async function cleanupOrphanedPackageStorageBuckets(input: {
 	applied: boolean
 	clearedCount: number
 	failedCount: number
+	skippedCount: number
 	orphans: Array<OrphanedPackageStorageBucket>
 }> {
 	const orphans = await listOrphanedPackageStorageBuckets(input.env.APP_DB, {
 		limit: input.limit,
 	})
 	if (!input.apply) {
-		return { applied: false, clearedCount: 0, failedCount: 0, orphans }
+		return {
+			applied: false,
+			clearedCount: 0,
+			failedCount: 0,
+			skippedCount: 0,
+			orphans,
+		}
 	}
 	let clearedCount = 0
 	let failedCount = 0
+	let skippedCount = 0
 	for (const orphan of orphans) {
+		if (await packageIdIsClaimed(input.env.APP_DB, orphan.packageId)) {
+			skippedCount++
+			continue
+		}
 		const cleared = await clearPackageOwnedStorageBucket({
 			env: input.env,
 			userId: ownerIdFromStored(orphan.userId),
@@ -90,5 +119,5 @@ export async function cleanupOrphanedPackageStorageBuckets(input: {
 		if (cleared) clearedCount++
 		else failedCount++
 	}
-	return { applied: true, clearedCount, failedCount, orphans }
+	return { applied: true, clearedCount, failedCount, skippedCount, orphans }
 }

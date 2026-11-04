@@ -61,6 +61,7 @@ test('admin orphan package storage cleanup enforces admin role, previews by defa
 		applied: false,
 		clearedCount: 0,
 		failedCount: 0,
+		skippedCount: 0,
 		orphans: [orphan],
 	})
 	await adminOrphanPackageStorageCleanupCapability.handler(
@@ -77,6 +78,7 @@ test('admin orphan package storage cleanup enforces admin role, previews by defa
 		applied: true,
 		clearedCount: 1,
 		failedCount: 0,
+		skippedCount: 0,
 		orphans: [orphan],
 	})
 	const result = await adminOrphanPackageStorageCleanupCapability.handler(
@@ -92,6 +94,7 @@ test('admin orphan package storage cleanup enforces admin role, previews by defa
 		applied: true,
 		cleared_count: 1,
 		failed_count: 0,
+		skipped_count: 0,
 		orphans: [
 			{
 				user_id: 'user-1',
@@ -114,6 +117,7 @@ test('admin orphan package storage cleanup audits partial failures as failure', 
 		applied: true,
 		clearedCount: 0,
 		failedCount: 1,
+		skippedCount: 0,
 		orphans: [],
 	})
 	await adminOrphanPackageStorageCleanupCapability.handler(

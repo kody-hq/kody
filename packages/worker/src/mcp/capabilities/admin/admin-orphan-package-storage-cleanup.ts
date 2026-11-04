@@ -23,7 +23,7 @@ export const adminOrphanPackageStorageCleanupCapability =
 		name: 'adminOrphanPackageStorageCleanup',
 		contextRuns: 'deny',
 		description:
-			'Admin-only maintenance for leftover package storage buckets: live `package:<uuid>` user_storage_buckets rows whose package has no saved_packages row (soft-deleted packages count as present) and no community fork reserving the id. apply defaults to false (preview). When true, clears each bucket and removes its inventory row, the same cleanup packageDelete runs. Audited.',
+			'Admin-only maintenance for leftover package storage buckets: live `package:<uuid>` user_storage_buckets rows whose package has no saved_packages row (soft-deleted packages count as present) and no community fork reserving the id. apply defaults to false (preview). When true, clears each bucket and removes its inventory row, the same cleanup packageDelete runs. Each id is rechecked right before its clear; ids a package or fork claimed since the listing are skipped. Audited.',
 		keywords: [
 			'admin',
 			'package',
@@ -55,6 +55,7 @@ export const adminOrphanPackageStorageCleanupCapability =
 			applied: z.boolean(),
 			cleared_count: z.number().int().nonnegative(),
 			failed_count: z.number().int().nonnegative(),
+			skipped_count: z.number().int().nonnegative(),
 			orphans: z.array(orphanedBucketSchema),
 		}),
 		async handler(args, ctx) {
@@ -72,6 +73,7 @@ export const adminOrphanPackageStorageCleanupCapability =
 						applied: result.applied,
 						cleared_count: result.clearedCount,
 						failed_count: result.failedCount,
+						skipped_count: result.skippedCount,
 						orphans: result.orphans.map((orphan) => ({
 							user_id: orphan.userId,
 							storage_id: orphan.storageId,
@@ -84,7 +86,7 @@ export const adminOrphanPackageStorageCleanupCapability =
 					resultOf: (result) =>
 						result.failed_count > 0 ? 'failure' : 'success',
 					successReason: (result) =>
-						`applied=${result.applied ? 1 : 0};cleared=${result.cleared_count};failed=${result.failed_count};orphans=${result.orphans.length}`,
+						`applied=${result.applied ? 1 : 0};cleared=${result.cleared_count};failed=${result.failed_count};skipped=${result.skipped_count};orphans=${result.orphans.length}`,
 				},
 			)
 		},
