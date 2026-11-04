@@ -10,6 +10,10 @@ import {
 	resetDeploySkewClientBuildCache,
 } from './reload-on-deploy-skew.ts'
 
+const oldSha = 'a'.repeat(40)
+const newSha = 'b'.repeat(40)
+const sameSha = 'c'.repeat(40)
+
 const originalWindow = globalThis.window
 const originalSessionStorage = Object.getOwnPropertyDescriptor(
 	globalThis,
@@ -82,23 +86,17 @@ test('reloadOnDeploySkew hard-navigates once per server build and href', () => {
 	const assign = vi.fn()
 	installSessionStorage(store)
 	installWindow(assign)
-	installBuildMeta('old-sha')
+	installBuildMeta(oldSha)
 
-	expect(reloadOnDeploySkew({ serverBuild: 'new-sha', href: '/blog' })).toBe(
-		true,
-	)
+	expect(reloadOnDeploySkew({ serverBuild: newSha, href: '/blog' })).toBe(true)
 	expect(assign).toHaveBeenCalledTimes(1)
 	expect(assign).toHaveBeenCalledWith('/blog')
-	expect(store.get(deploySkewReloadFlag)).toBe('new-sha\n/blog')
+	expect(store.get(deploySkewReloadFlag)).toBe(`${newSha}\n/blog`)
 
-	expect(reloadOnDeploySkew({ serverBuild: 'new-sha', href: '/blog' })).toBe(
-		false,
-	)
+	expect(reloadOnDeploySkew({ serverBuild: newSha, href: '/blog' })).toBe(false)
 	expect(assign).toHaveBeenCalledTimes(1)
 
-	expect(reloadOnDeploySkew({ serverBuild: 'new-sha', href: '/docs' })).toBe(
-		true,
-	)
+	expect(reloadOnDeploySkew({ serverBuild: newSha, href: '/docs' })).toBe(true)
 	expect(assign).toHaveBeenCalledTimes(2)
 	expect(assign).toHaveBeenLastCalledWith('/docs')
 })
@@ -108,16 +106,14 @@ test('reloadOnDeploySkew ignores same-release and missing builds', () => {
 	const assign = vi.fn()
 	installSessionStorage(store)
 	installWindow(assign)
-	installBuildMeta('same-sha')
+	installBuildMeta(sameSha)
 
-	expect(reloadOnDeploySkew({ serverBuild: 'same-sha', href: '/blog' })).toBe(
+	expect(reloadOnDeploySkew({ serverBuild: sameSha, href: '/blog' })).toBe(
 		false,
 	)
 	resetDeploySkewClientBuildCache()
 	installBuildMeta(null)
-	expect(reloadOnDeploySkew({ serverBuild: 'new-sha', href: '/blog' })).toBe(
-		false,
-	)
+	expect(reloadOnDeploySkew({ serverBuild: newSha, href: '/blog' })).toBe(false)
 	expect(assign).not.toHaveBeenCalled()
 	expect(store.has(deploySkewReloadFlag)).toBe(false)
 })
@@ -127,32 +123,35 @@ test('clearDeploySkewReloadFlag allows a later deploy to recover again', () => {
 	const assign = vi.fn()
 	installSessionStorage(store)
 	installWindow(assign)
-	installBuildMeta('old-sha')
+	installBuildMeta(oldSha)
 
-	expect(reloadOnDeploySkew({ serverBuild: 'new-sha', href: '/blog' })).toBe(
-		true,
-	)
+	expect(reloadOnDeploySkew({ serverBuild: newSha, href: '/blog' })).toBe(true)
 	clearDeploySkewReloadFlag()
 	expect(store.has(deploySkewReloadFlag)).toBe(false)
-	expect(reloadOnDeploySkew({ serverBuild: 'new-sha', href: '/blog' })).toBe(
-		true,
-	)
+	expect(reloadOnDeploySkew({ serverBuild: newSha, href: '/blog' })).toBe(true)
 	expect(assign).toHaveBeenCalledTimes(2)
 })
 
-test('readClientBuildId caches the boot meta so SPA head updates cannot hide skew', () => {
-	installBuildMeta('boot-sha')
-	expect(readClientBuildId()).toBe('boot-sha')
-	installBuildMeta('updated-sha')
-	expect(readClientBuildId()).toBe('boot-sha')
+test('readClientBuildId caches a resolved meta so SPA head updates cannot hide skew', () => {
+	installBuildMeta(oldSha)
+	expect(readClientBuildId()).toBe(oldSha)
+	installBuildMeta(newSha)
+	expect(readClientBuildId()).toBe(oldSha)
 	resetDeploySkewClientBuildCache()
-	expect(readClientBuildId()).toBe('updated-sha')
+	expect(readClientBuildId()).toBe(newSha)
+})
+
+test('readClientBuildId does not permanently cache a missing meta', () => {
+	installBuildMeta(null)
+	expect(readClientBuildId()).toBeNull()
+	installBuildMeta(sameSha)
+	expect(readClientBuildId()).toBe(sameSha)
 })
 
 test('reloadOnDeploySkew does not throw or navigate when sessionStorage is unavailable', () => {
 	const assign = vi.fn()
 	installWindow(assign)
-	installBuildMeta('old-sha')
+	installBuildMeta(oldSha)
 	Object.defineProperty(globalThis, 'sessionStorage', {
 		configurable: true,
 		get() {
@@ -161,7 +160,7 @@ test('reloadOnDeploySkew does not throw or navigate when sessionStorage is unava
 	})
 
 	expect(() =>
-		reloadOnDeploySkew({ serverBuild: 'new-sha', href: '/blog' }),
+		reloadOnDeploySkew({ serverBuild: newSha, href: '/blog' }),
 	).not.toThrow()
 	expect(assign).not.toHaveBeenCalled()
 })

@@ -164,9 +164,25 @@ export default defineConfig(async ({ command }) => {
 		}
 	}
 
+	// Full commit SHA baked into the client for deploy-skew recovery (KODY-DP).
+	// Prefer an explicit override, then deploy/APP commit vars, then Actions SHA.
+	const appCommitSha = (
+		process.env.KODY_APP_COMMIT_SHA?.trim() ||
+		process.env.APP_COMMIT_SHA?.trim() ||
+		process.env.DEPLOY_COMMIT_SHA?.trim() ||
+		process.env.GITHUB_SHA?.trim() ||
+		''
+	).toLowerCase()
+	const bakedAppCommitSha = /^[a-f0-9]{7,40}$/.test(appCommitSha)
+		? appCommitSha
+		: ''
+
 	return {
 		base: releaseBase,
 		publicDir: 'packages/worker/public',
+		define: {
+			__KODY_APP_COMMIT_SHA__: JSON.stringify(bakedAppCommitSha),
+		},
 		environments: {
 			client: {
 				// The late-injected Buffer polyfill is missed by the initial dependency scan.

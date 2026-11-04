@@ -20,7 +20,7 @@ export const deploySkewReloadFlag = 'kody:deploy-skew-reload'
 
 export const deploySkewRecoveryErrorName = 'DeploySkewRecovery'
 
-/** Cached at first read so SPA head updates cannot hide a later mismatch. */
+/** Cached at first successful resolve so SPA head updates cannot hide skew. */
 let cachedClientBuildId: string | null | undefined
 
 /** Test helper: drop the boot-time build cache between cases. */
@@ -28,9 +28,30 @@ export function resetDeploySkewClientBuildCache(): void {
 	cachedClientBuildId = undefined
 }
 
+function normalizeCommitSha(value: string | null | undefined): string | null {
+	const trimmed = value?.trim().toLowerCase() ?? ''
+	// Match `optionalCommitShaSchema` (7–40 hex), not only full object IDs.
+	return /^[a-f0-9]{7,40}$/.test(trimmed) ? trimmed : null
+}
+
 /**
- * Commit SHA the hydrated document booted with. Read once from
- * `<meta name="kody:build">` (or null when absent / non-browser).
+ * Vite-baked commit SHA (production/preview builds). Empty string locally /
+ * when the define is unset.
+ */
+export function readBakedClientBuildId(): string | null {
+	try {
+		return normalizeCommitSha(__KODY_APP_COMMIT_SHA__)
+	} catch {
+		return null
+	}
+}
+
+/**
+ * Commit SHA this client bundle / document booted with. Prefer the Vite-baked
+ * define (available even on failure documents with no root loader meta), then
+ * fall back to `<meta name="kody:build">`. Cache only after a successful
+ * resolve so a missing meta on an early error document cannot permanently
+ * disable skew recovery.
  */
 export function readClientBuildId(
 	doc: Pick<Document, 'querySelector'> | null | undefined = typeof document ===
@@ -39,16 +60,22 @@ export function readClientBuildId(
 		: document,
 ): string | null {
 	if (cachedClientBuildId !== undefined) return cachedClientBuildId
-	if (!doc) {
-		cachedClientBuildId = null
-		return null
+	const baked = readBakedClientBuildId()
+	if (baked) {
+		cachedClientBuildId = baked
+		return baked
 	}
-	const content = doc
-		.querySelector(`meta[name="${deploySkewBuildMetaName}"]`)
-		?.getAttribute('content')
-		?.trim()
-	cachedClientBuildId = content || null
-	return cachedClientBuildId
+	if (!doc) return null
+	const content = normalizeCommitSha(
+		doc
+			.querySelector(`meta[name="${deploySkewBuildMetaName}"]`)
+			?.getAttribute('content'),
+	)
+	if (content) {
+		cachedClientBuildId = content
+		return content
+	}
+	return null
 }
 
 export function isDeploySkewRecoveryError(error: unknown): boolean {

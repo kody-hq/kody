@@ -27,9 +27,10 @@ async function navigationHref(): Promise<string> {
 
 /**
  * Client `serverFns.fetch` wrapper: compare `X-Kody-Build` to the boot meta,
- * hard-navigate on mismatch, then throw a named recovery error so the stale
- * payload never reaches route components. No-ops when either build id is
- * missing (local/dev) or they match.
+ * hard-navigate on mismatch, then always throw a named recovery error so the
+ * newer payload never reaches route components (including sibling in-flight
+ * fetches after the one-shot navigate flag is set). No-ops when either build
+ * id is missing (local/dev) or they match.
  */
 export async function fetchWithDeploySkewCheck(
 	input: RequestInfo | URL,
@@ -41,8 +42,6 @@ export async function fetchWithDeploySkewCheck(
 		return response
 	}
 	const href = await navigationHref()
-	if (reloadOnDeploySkew({ serverBuild, href })) {
-		throw createDeploySkewRecoveryError()
-	}
-	return response
+	reloadOnDeploySkew({ serverBuild, href })
+	throw createDeploySkewRecoveryError()
 }

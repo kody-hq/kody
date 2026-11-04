@@ -69,19 +69,27 @@ test('fetchWithDeploySkewCheck hard-navigates and throws on mismatch', async () 
 	})
 })
 
-test('fetchWithDeploySkewCheck leaves unmatched responses alone when reload is spent', async () => {
+test('fetchWithDeploySkewCheck still throws when reload is spent so sibling fetches cannot leak payloads', async () => {
 	readClientBuildId.mockReturnValue('old-sha')
 	reloadOnDeploySkew.mockReturnValue(false)
 	getRouterInstance.mockResolvedValue({
 		latestLocation: { href: '/blog' },
 	})
-	const response = new Response('payload', {
-		headers: { 'X-Kody-Build': 'new-sha' },
-	})
 	vi.stubGlobal(
 		'fetch',
-		vi.fn(async () => response),
+		vi.fn(
+			async () =>
+				new Response('payload', {
+					headers: { 'X-Kody-Build': 'new-sha' },
+				}),
+		),
 	)
 	const { fetchWithDeploySkewCheck } = await import('./deploy-skew-fetch.ts')
-	await expect(fetchWithDeploySkewCheck('/_serverFn/x')).resolves.toBe(response)
+	await expect(fetchWithDeploySkewCheck('/_serverFn/x')).rejects.toMatchObject({
+		name: 'DeploySkewRecovery',
+	})
+	expect(reloadOnDeploySkew).toHaveBeenCalledWith({
+		serverBuild: 'new-sha',
+		href: '/blog',
+	})
 })
