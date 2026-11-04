@@ -94,6 +94,13 @@ test('classifyRetryableD1Error names the D1 kind and ignores query mistakes', ()
 	).toBe('do_reset')
 	expect(
 		classifyRetryableD1Error(
+			new Error(
+				'D1_ERROR: D1 DB is overloaded. Too many resources consumed within a 10 second window.',
+			),
+		),
+	).toBe('overloaded')
+	expect(
+		classifyRetryableD1Error(
 			new Error('D1_ERROR: no such table: missing: SQLITE_ERROR'),
 		),
 	).toBeNull()

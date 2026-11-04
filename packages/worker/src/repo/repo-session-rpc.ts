@@ -211,7 +211,6 @@ export type RepoSessionRpc = {
 		userId: string
 		publishedCommit: string
 		buildId: string
-		writablePackageIds: Array<string>
 		communityListed: boolean
 		baseUrl?: string
 	}) => Promise<PersistUploadedPublishBuildResult>

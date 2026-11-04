@@ -133,10 +133,9 @@ test('a bad or expired ticket is refused', async () => {
 test('sealing names missing chunks, then seals once they are uploaded', async () => {
 	const sha = await sha256Hex(chunk)
 	const document = JSON.stringify({
-		builderVersion: 1,
+		builderVersion: 2,
 		commit: row.commit_sha,
 		files: [],
-		inlinedPackageIds: [],
 		targets: [
 			{
 				kind: 'module',
@@ -180,11 +179,10 @@ test('a document for another commit cannot be sealed', async () => {
 			'POST',
 			'/v1/publish-builds/pb_0123456789abcdef01234567/seal',
 			JSON.stringify({
-				builderVersion: 1,
+				builderVersion: 2,
 				commit: 'b'.repeat(40),
 				files: [],
 				targets: [],
-				inlinedPackageIds: [],
 			}),
 		),
 	).rejects.toThrow(/this build is for/)

@@ -4,6 +4,8 @@ import { toAdminMeasuredDurableObjectDuration } from '#universal/durable-object-
 import {
 	attributeDurableObjectActiveTime,
 	buildDurableObjectOwnerMap,
+	durableObjectDurationStatementsPerBatch,
+	durableObjectDurationUpsertRowsPerStatement,
 	runDurableObjectDurationAttribution,
 	type DurableObjectDurationAttributionEnv,
 } from './durable-object-duration-attribution.ts'
@@ -34,6 +36,12 @@ function createEnv(input: {
 	orgs?: Array<string>
 	buckets?: Array<{ user_id: string; storage_id: string; kind: string }>
 	apps?: Array<{ user_id: string; id: string }>
+	stored?: Array<{
+		user_id: string
+		do_class: string
+		active_ms: number
+		object_count: number
+	}>
 	credentials?: boolean
 }) {
 	const batches: Array<Array<{ sql: string; params: Array<unknown> }>> = []
@@ -64,6 +72,9 @@ function createEnv(input: {
 					}
 					if (sql.includes('FROM saved_packages')) {
 						return { results: input.apps ?? [] }
+					}
+					if (sql.includes('FROM durable_object_duration_daily')) {
+						return { results: input.stored ?? [] }
 					}
 					return { results: [] }
 				},
@@ -195,7 +206,7 @@ test('the fleet total replaces a truncated per-object sum as the denominator', (
 	expect(result.attributedActiveMs).toBe(4_000)
 })
 
-test('the lane rewrites days with analytics atomically and skips lagging empty days', async () => {
+test('the lane upserts days with analytics and skips lagging empty days', async () => {
 	const { env, batches } = createEnv({ users: ['user-a'] })
 	using fetchStub = stubFetch(
 		vi.fn(async (_url: string, init: RequestInit) => {
@@ -233,18 +244,104 @@ test('the lane rewrites days with analytics atomically and skips lagging empty d
 		'https://api.cloudflare.com/client/v4/graphql',
 	)
 	expect(batches).toHaveLength(1)
-	expect(batches[0]?.[0]).toMatchObject({
-		sql: 'DELETE FROM durable_object_duration_daily WHERE day = ?',
-		params: ['2026-09-26'],
-	})
-	expect(batches[0]?.[1]?.sql).toContain('FROM orgs')
-	expect(batches[0]?.[1]?.params.slice(0, 5)).toEqual([
+	expect(batches[0]).toHaveLength(2)
+	expect(batches[0]?.[0]?.sql).toContain('ON CONFLICT (user_id, do_class, day)')
+	expect(batches[0]?.[0]?.sql).toContain('FROM orgs')
+	expect(batches[0]?.[0]?.params).toEqual([
+		'2026-09-26',
+		'2026-09-27T03:20:00.000Z',
 		'user-a',
 		'McpClientHub',
-		'2026-09-26',
 		2_000,
 		1,
 	])
+	expect(batches[0]?.[1]?.sql).toContain(
+		'INSERT INTO durable_object_duration_coverage_daily',
+	)
+})
+
+test('the lane writes only changed rows in bounded multi-row batches', async () => {
+	const users = Array.from({ length: 300 }, (_, index) => `user-${index}`)
+	const { env, batches } = createEnv({
+		users,
+		stored: [
+			// Unchanged: skipped.
+			{
+				user_id: 'user-0',
+				do_class: 'McpClientHub',
+				active_ms: 1_000,
+				object_count: 1,
+			},
+			// Changed: rewritten.
+			{
+				user_id: 'user-1',
+				do_class: 'McpClientHub',
+				active_ms: 5,
+				object_count: 1,
+			},
+			// No longer attributed: deleted.
+			{
+				user_id: 'gone',
+				do_class: 'RunLog',
+				active_ms: 9,
+				object_count: 1,
+			},
+		],
+	})
+	using _fetch = stubFetch(
+		vi.fn(async (_url: string, init: RequestInit) => {
+			const { variables } = JSON.parse(String(init.body)) as {
+				variables: { day: string }
+			}
+			return analyticsResponse([
+				{
+					durableObjectsPeriodicGroups:
+						variables.day === '2026-09-26'
+							? users.map((user) => group(`hub:${user}`, 1_000_000))
+							: [],
+				},
+			])
+		}),
+	)
+	await runDurableObjectDurationAttribution({
+		env,
+		now: new Date('2026-09-27T03:20:00.000Z'),
+		batchPauseMs: 0,
+	})
+	const statements = batches.flat()
+	const upserts = statements.filter(({ sql }) =>
+		sql.includes('INSERT INTO durable_object_duration_daily'),
+	)
+	const deletes = statements.filter(({ sql }) =>
+		sql.includes('DELETE FROM durable_object_duration_daily'),
+	)
+	// 299 changed rows instead of 300 single-row statements plus a day DELETE.
+	expect(upserts).toHaveLength(
+		Math.ceil(299 / durableObjectDurationUpsertRowsPerStatement),
+	)
+	for (const batch of batches) {
+		expect(batch.length).toBeLessThanOrEqual(
+			durableObjectDurationStatementsPerBatch,
+		)
+	}
+	for (const { params } of statements) {
+		expect(params.length).toBeLessThanOrEqual(100)
+	}
+	const upsertedUsers = upserts.flatMap(({ params }) =>
+		params.slice(2).filter((_value, index) => index % 4 === 0),
+	)
+	expect(upsertedUsers).toHaveLength(299)
+	expect(upsertedUsers).not.toContain('user-0')
+	expect(upsertedUsers).toContain('user-1')
+	expect(deletes).toEqual([
+		{
+			sql: expect.stringContaining('(user_id, do_class) IN (VALUES (?2, ?3))'),
+			params: ['2026-09-26', 'gone', 'RunLog'],
+		},
+	])
+	expect(statements.at(-1)?.sql).toContain(
+		'INSERT INTO durable_object_duration_coverage_daily',
+	)
 })
 
 test('the lane skips without credentials and surfaces analytics errors', async () => {

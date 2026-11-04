@@ -98,12 +98,9 @@ export function parseSealedDocument(
 		!document ||
 		typeof document !== 'object' ||
 		!Array.isArray(document.files) ||
-		!Array.isArray(document.targets) ||
-		!Array.isArray(document.inlinedPackageIds)
+		!Array.isArray(document.targets)
 	) {
-		throw invalidRequest(
-			'The build document needs files, targets and inlinedPackageIds.',
-		)
+		throw invalidRequest('The build document needs files and targets.')
 	}
 	if (document.builderVersion !== publishBuilderVersion) {
 		throw invalidRequest(

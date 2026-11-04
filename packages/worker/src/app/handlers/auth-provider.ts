@@ -425,6 +425,8 @@ export function createAuthProviderCallbackHandler(env: Env) {
 						guest,
 						target,
 						baseUrl: url.origin,
+						method: 'social',
+						provider,
 					})
 					if (!existingConnection) {
 						await createConnection({
@@ -460,6 +462,8 @@ export function createAuthProviderCallbackHandler(env: Env) {
 					email,
 					username,
 					displayName: profile.displayName,
+					method: 'social',
+					provider,
 				})
 				const user = await db.findOne(usersTable, {
 					where: { stable_user_id: guest.personId },

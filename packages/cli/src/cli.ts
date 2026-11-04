@@ -1781,7 +1781,7 @@ async function dispatch(
 			}
 			if (action !== 'publish') {
 				throw new Error(
-					`Usage: kody package publish [<@owner/leaf|package_id>] [--params <json>] [--token <token>] [--api-url <url>] [--org <slug>]\n${packageCollaboratorUsage}`,
+					`Usage: kody package publish [<@owner/leaf|package_id>] [--build local|context] [--context <name|cloud>] [--params <json>] [--token <token>] [--api-url <url>] [--org <slug>]\n${packageCollaboratorUsage}`,
 				)
 			}
 			const params = packagePublishParams({
@@ -1815,6 +1815,10 @@ async function dispatch(
 			const { runPublishWithBuild } = await import('./publish-offload.js')
 			const result = await runPublishWithBuild({
 				build: buildMode,
+				context:
+					typeof parsed.values.context === 'string'
+						? parsed.values.context
+						: null,
 				target: publishTarget,
 				call,
 				apiUrl,
