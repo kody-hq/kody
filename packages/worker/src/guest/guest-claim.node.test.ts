@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vitest'
+import type * as DeploymentEnv from '#app/deployment-env.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import {
@@ -24,7 +25,7 @@ vi.mock('#worker/billing/signup-welcome-credits.ts', () => ({
 	maybeGrantSignupWelcomeCredits,
 }))
 vi.mock('#app/deployment-env.ts', async (importOriginal) => ({
-	...(await importOriginal<typeof import('#app/deployment-env.ts')>()),
+	...(await importOriginal<typeof DeploymentEnv>()),
 	isNonProductionRuntime: () => true,
 }))
 

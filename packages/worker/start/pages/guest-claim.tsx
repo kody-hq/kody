@@ -118,10 +118,12 @@ function GuestClaimed(props: {
 							again.
 						</span>
 					</li>
-					<li css={checkItemCss}>
-						{renderIcon('check', { size: '1rem' })}
-						<span>Your $5 welcome credits are on the account.</span>
-					</li>
+					{data.mode === 'merge' ? null : (
+						<li css={checkItemCss}>
+							{renderIcon('check', { size: '1rem' })}
+							<span>Your $5 welcome credits are on the account.</span>
+						</li>
+					)}
 				</ul>
 				<SiteLink href="/account" css={primaryLinkCss}>
 					Go to your account
