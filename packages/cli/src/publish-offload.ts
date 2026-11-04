@@ -103,19 +103,24 @@ async function buildThenPublish(input: {
 			`Built on execution context ${created.context_name ?? ''}.\n`,
 		)
 	}
+	const { context: _context, ...publishTarget } = input.target
 	return await input.call('packagePublishExternalPush', {
-		...input.target,
+		...publishTarget,
 		publish_build_id: created.build_id,
 	})
 }
 
 /**
- * `kody package publish [--build local|context]`. Without `--build` it
- * publishes on Kody cloud; when that hits a resource limit, a TTY is asked
- * whether to build here now (2B) and agents/CI get the commands and docs.
+ * `kody package publish [--build local|context] [--context <name|cloud>]`.
+ * Without either, Kody picks where it builds: the package's
+ * `kody.publish.execution.context` binding, else your execution context
+ * chain (Kody cloud last). When a cloud build hits a resource limit, a TTY is
+ * asked whether to build here now (2B) and agents/CI get the commands and docs.
  */
 export async function runPublishWithBuild(input: {
 	build: string | null
+	/** `--context`: build on this execution context (or `cloud`), no fallback. */
+	context?: string | null
 	target: Record<string, unknown>
 	call: Call
 	apiUrl: string
@@ -132,10 +137,27 @@ export async function runPublishWithBuild(input: {
 	) {
 		throw new Error('--build must be local or context.')
 	}
+	const context = input.context?.trim() || null
+	if (context && input.build === 'local') {
+		throw new Error(
+			'--context names an execution context, so it cannot be combined with --build local.',
+		)
+	}
 	if (input.build) {
 		return await buildThenPublish({
 			...input,
+			target:
+				context && input.build === 'context'
+					? { ...input.target, context }
+					: input.target,
 			origin: input.build === 'local' ? 'cli' : 'context',
+		})
+	}
+	if (context) {
+		// Kody builds on that context (or cloud) and never falls back.
+		return await input.call('packagePublishExternalPush', {
+			...input.target,
+			context,
 		})
 	}
 	const ref = String(input.target.package_id ?? input.target.kody_id ?? '')

@@ -14,7 +14,10 @@ import {
 } from '#worker/package-registry/package-name.ts'
 import { resolvePackageOwnerContext } from '#worker/package-registry/package-owner.ts'
 import { dispatchContextPublishBuild } from '#worker/publish-offload/context-dispatch.ts'
+import { ExecutionContextError } from '#worker/execution-contexts/errors.ts'
+import { isExecutionContextsEnabledFor } from '#worker/execution-contexts/flag.ts'
 import { isPublishOffloadEnabledFor } from '#worker/publish-offload/flag.ts'
+import { publishContextFlagsOffMessage } from '#worker/publish-offload/publish-routing.ts'
 import {
 	publishLargePackagesDocsUrl,
 	publishOffloadLimits,
@@ -123,6 +126,20 @@ export const publishBuildCreateCapability = defineDomainCapability(
 					'Publishing a build made outside Kody cloud needs the publish-offload feature flag, which is off for this account.',
 				)
 			}
+			if (
+				args.origin === 'context' &&
+				!(await isExecutionContextsEnabledFor(
+					ctx.env.APP_DB,
+					user.userId,
+					request.org.id,
+				))
+			) {
+				throw new ExecutionContextError({
+					status: 403,
+					code: 'feature_disabled',
+					message: publishContextFlagsOffMessage,
+				})
+			}
 			const owner = await resolvePackageOwnerContext(ctx.env, {
 				user,
 				request,
@@ -204,6 +221,11 @@ export const publishBuildCreateCapability = defineDomainCapability(
 				manifestPath: source.manifest_path,
 				context: args.context ?? null,
 			})
+			if (dispatched.kind !== 'context') {
+				throw new McpCallerError(
+					'No execution context you operate took this publish build.',
+				)
+			}
 			return {
 				...common,
 				status: 'sealed' as const,

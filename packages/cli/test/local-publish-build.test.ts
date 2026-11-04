@@ -464,3 +464,35 @@ test('a builder that fails to start leaves no temp folder', async () => {
 	}
 	assert.equal(leftovers(), before)
 })
+
+test('--context asks Kody to build on that context and is refused with --build local', async () => {
+	const calls: Array<{ operationId: string; params: Record<string, unknown> }> =
+		[]
+	const call = async (operationId: string, params: Record<string, unknown>) => {
+		calls.push({ operationId, params })
+		return { status: 'published' }
+	}
+	const base = {
+		target: { kody_id: '@me/pkg' },
+		call,
+		apiUrl: 'https://kody.test',
+		cwd: tmpdir(),
+		interactive: false,
+		writeErr: () => {},
+	}
+	assert.deepEqual(
+		await runPublishWithBuild({ ...base, build: null, context: 'build-box' }),
+		{ status: 'published' },
+	)
+	assert.deepEqual(calls, [
+		{
+			operationId: 'packagePublishExternalPush',
+			params: { kody_id: '@me/pkg', context: 'build-box' },
+		},
+	])
+	await assert.rejects(
+		runPublishWithBuild({ ...base, build: 'local', context: 'build-box' }),
+		/cannot be combined with --build local/,
+	)
+	assert.equal(calls.length, 1)
+})

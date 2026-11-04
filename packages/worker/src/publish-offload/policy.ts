@@ -1,18 +1,19 @@
 /**
  * Every product choice publish offload makes, in one place, so changing an
- * answer is a one-line edit here. Labels match the open product questions on
- * the "Move package publish off worker isolate limits" card.
+ * answer is a one-line edit here. Labels match the product questions on the
+ * "Move package publish off worker isolate limits" card.
  *
- * Settled: 2B, 4A, 5C, 6A, 7B, 9B, 10A, 11B.
- * Still open (keep them here, easy to flip): 1/3 and 8.
+ * Settled: 1, 2B, 3, 4A, 5C, 6C, 7B, 8B, 9B, 10A, 11B.
+ *
+ * 1 (Kent, Nov 4 2026): a publish follows the publisher's execution context
+ * chain like execute, a trigger can name a context, and a package's
+ * `kody.publish.execution.context` is a binding with no fallback. See
+ * `publish-routing.ts`.
+ *
+ * 3 (Kent, Nov 4 2026): no server-side push routing. Auto-publish on push is
+ * a package subscribing to the repo pushed event and calling publish, which
+ * then follows rule 1.
  */
-
-/**
- * 1/3 (open): offload is chosen per publish with `--build local|context`
- * (flag only). Set to true to also honor a per-package `publish.build`
- * setting, which a plain `git push` then follows.
- */
-export const publishOffloadFollowsPackageSetting = false
 
 /**
  * 8B: `kody package publish --build local` refuses uncommitted changes,

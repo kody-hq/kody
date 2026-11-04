@@ -100,6 +100,17 @@ export async function createPublishBuild(input: {
 	return { buildId: id, ticket, expiresAt }
 }
 
+/** Drops a build nothing took (the chain ended in Kody cloud). */
+export async function discardUnstartedPublishBuild(
+	db: D1Database,
+	buildId: string,
+) {
+	await db
+		.prepare(`DELETE FROM publish_builds WHERE id = ? AND status = 'uploading'`)
+		.bind(buildId)
+		.run()
+}
+
 export async function getPublishBuild(db: D1Database, buildId: string) {
 	return await db
 		.prepare(`SELECT * FROM publish_builds WHERE id = ?`)

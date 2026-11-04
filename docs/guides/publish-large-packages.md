@@ -31,7 +31,43 @@ In a terminal, `kody package publish` asks whether to build locally when Kody
 cloud runs out of room. Agents and CI get these commands instead of a prompt.
 
 > Builds outside Kody cloud are behind the `publish-offload` feature flag and
-> are not enabled for accounts yet.
+> are not enabled for accounts yet. Building on an execution context also needs
+> the `execution-contexts` flag.
+
+## Where a publish builds
+
+When both flags are on, Kody picks where each publish builds, in this order:
+
+1. **The context you name.** `kody package publish @you/pkg --context build-box`
+   (or `context` on `packagePublishExternalPush`) builds there and never falls
+   back. `--context cloud` builds on Kody cloud.
+2. **The package's bound context.** A package can set one in `package.json`:
+
+   ```json
+   {
+   	"kody": {
+   		"publish": { "execution": { "context": "build-box" } }
+   	}
+   }
+   ```
+
+   This is a binding, not a default. When a publish does not name a context and
+   the bound one is offline, busy, or its build fails, the publish fails. It
+   does not fall back to your chain or to Kody cloud, and the previous version
+   keeps serving. The error names the context and the two ways out: name a
+   context for this publish (`--context <name>` or `--context cloud`), or change
+   or remove `kody.publish.execution.context`, push, and publish again.
+   `"context": "cloud"` binds the package to Kody cloud.
+
+3. **Your execution context chain,** the same as `execute`: the contexts you
+   operate, in order, then Kody cloud, unless your chain is strict. Contexts
+   that are offline, busy, or that someone else operates are skipped.
+
+Auto-publish on push works the same way. A package that subscribes to the repo
+pushed event and calls publish from its handler gets these same rules.
+
+Without the flags, every publish builds on Kody cloud as before, a bound package
+included, and naming a context other than `cloud` is refused.
 
 ## What runs where
 
@@ -91,11 +127,11 @@ context build time is free; only Kody's verification is metered.
 
 ## Execution contexts
 
-`--build context` runs on a context you operate (not one shared with you). The
-context clones only this package's repo with a read-only token that expires in
-about five minutes, builds with no access to your credentials, and uploads with
-a ticket that only works for that one build. See
-[execution contexts](./execution-contexts.md).
+A context build (named, bound, or from your chain, or `--build context`) runs on
+a context you operate (not one shared with you). The context clones only this
+package's repo with a read-only token that expires in about five minutes, builds
+with no access to your credentials, and uploads with a ticket that only works
+for that one build. See [execution contexts](./execution-contexts.md).
 
 Related: [heavy work offload](./heavy-work-offload.md) for runtime work that
 never fits a Worker.
