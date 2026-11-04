@@ -43,10 +43,11 @@ test('CI matrices hash shards, retain crash retry and aggregate every shard at t
 	)
 	expect(e2e).toContain('retry-classifiers.ts e2e e2e-attempt-1.log')
 	expect(e2e).toContain('path: blob-report')
-	expect(workflow).toContain("needs.node.result == 'success'")
-	expect(workflow).toContain("needs.node.result != 'success'")
-	expect(workflow).toContain("needs.workers.result == 'success'")
-	expect(workflow).toContain("needs.workers.result != 'success'")
+	const conditions = workflow.replace(/\s+/g, ' ')
+	expect(conditions).toContain("needs.node.result == 'success'")
+	expect(conditions).toContain("needs.node.result != 'success'")
+	expect(conditions).toContain("needs.workers.result == 'success'")
+	expect(conditions).toContain("needs.workers.result != 'success'")
 })
 
 test.each(['', 'bench / iteration-2 / '])(
@@ -158,3 +159,31 @@ test.each([0, 2])(
 		}
 	},
 )
+
+test('main reuses a stamped PR tree only by skipping verification jobs', () => {
+	const jobs = workflow.slice(workflow.indexOf('\njobs:'))
+	const gate = jobs.slice(jobs.indexOf('\n  validate:'))
+	const verificationJobs = [
+		'static',
+		'node',
+		'workers',
+		'mcp',
+		'e2e',
+		'host_commands',
+		'cli',
+		'cli_windows',
+	]
+	for (const job of verificationJobs) {
+		const start = jobs.indexOf(`\n  ${job}:`)
+		const body = jobs.slice(start, jobs.indexOf('\n    steps:', start))
+		expect(`${job}: ${body}`).toContain('needs: tested_tree')
+		expect(`${job}: ${body}`).toContain(
+			"needs.tested_tree.outputs.skip != 'true'",
+		)
+	}
+	expect(gate).toContain('- tested_tree')
+	expect(gate).toContain('node tools/ci/tested-tree.ts stamp')
+	expect(gate.replace(/\s+/g, ' ')).toContain(
+		'github.event.pull_request.head.repo.full_name == github.repository',
+	)
+})
