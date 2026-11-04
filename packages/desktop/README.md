@@ -35,11 +35,13 @@ macOS an adopted runner does not get the app's Automation entitlement; see
 itself, under the same lock. Every runner auto-updates; **Turn off automatic
 updates** sets the shared CLI policy (`kody daemon auto-update off`).
 
-On macOS, closing all windows keeps the runner available. Quit stops the CLI and
-its workerd processes. On Windows and Linux, closing all windows quits the app.
-Pausing persists across launches. Sleep and network reconnects use the CLI's
-reconnect behavior, a sleeping machine cannot run compute. A running process is
-not necessarily connected, the website shows the context's status.
+On macOS, closing the window hides it and keeps the page and runner alive.
+Clicking the Dock icon brings back the same page without reloading, preserving
+navigation history, scroll position, and unfinished input. Quit stops the CLI
+and its workerd processes. On Windows and Linux, closing all windows quits the
+app. Pausing persists across launches. Sleep and network reconnects use the
+CLI's reconnect behavior, a sleeping machine cannot run compute. A running
+process is not necessarily connected, the website shows the context's status.
 
 Keys, credentials, grants, and host-folder policy stay owned by the CLI. The
 shell saves the context ID, name, account, enabled state, and onboarding
@@ -102,6 +104,10 @@ The separate Desktop release workflow signs, notarizes, verifies, and publishes
 production installers once release credentials are configured. Application files
 are unpacked so CLI chunks, Node-API modules, and native executables have normal
 filesystem paths.
+
+On macOS, `node packages/desktop/test/window-lifetime-smoke.cjs` uses an
+isolated profile and a local fixture page to verify that closing and reopening
+preserves the document, URL, history, scroll position, and unfinished input.
 
 The smoke check needs a graphical desktop and the live website. To check a
 packaged build, pass its executable after `--`, for example:

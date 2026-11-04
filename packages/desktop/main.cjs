@@ -284,9 +284,11 @@ function updateMenu() {
 	)
 }
 async function showApp(path) {
-	const creating = !window || window.isDestroyed()
-	if (creating) {
-		windowOpening ??= createWindow()
+	if (quitting) return
+	// Only the caller that starts creation owns the initial navigation.
+	const creating = !windowOpening && (!window || window.isDestroyed())
+	if (creating) windowOpening = createWindow()
+	if (windowOpening) {
 		try {
 			await windowOpening
 		} finally {
@@ -294,6 +296,7 @@ async function showApp(path) {
 		}
 	}
 	if (quitting || !window || window.isDestroyed()) return
+	if (window.isMinimized()) window.restore()
 	window.show()
 	window.focus()
 	if (!creating && !path) return
@@ -301,7 +304,12 @@ async function showApp(path) {
 	void shownWindow
 		.loadURL(`${appOrigin}${path ?? '/account'}`)
 		.catch((error) => {
-			if (!quitting && !shownWindow.isDestroyed())
+			// A newer navigation can cancel this load without failing the page.
+			if (
+				!quitting &&
+				!shownWindow.isDestroyed() &&
+				error.code !== 'ERR_ABORTED'
+			)
 				dialog.showErrorBox('Could not load Kody', error.message)
 		})
 }
@@ -405,6 +413,12 @@ async function createWindow() {
 		else external(url)
 		return { action: 'deny' }
 	})
+	window.on('close', (event) => {
+		if (process.platform === 'darwin' && !quitting) {
+			event.preventDefault()
+			window.hide()
+		}
+	})
 	window.on('closed', () => {
 		window = null
 		navigation = null
@@ -423,9 +437,7 @@ runner.on('shutdown-error', () => {
 if (!app.requestSingleInstanceLock()) app.quit()
 else {
 	app.on('second-instance', () => showApp())
-	app.on('activate', () => {
-		if (!window) showApp()
-	})
+	app.on('activate', () => showApp())
 	app.on('window-all-closed', () => {
 		if (process.platform !== 'darwin') app.quit()
 	})
