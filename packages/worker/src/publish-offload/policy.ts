@@ -15,11 +15,12 @@
 export const publishOffloadFollowsPackageSetting = false
 
 /**
- * 8 (open): the CLI refuses unless HEAD is already pushed. Set to true to
- * have `kody package publish --build local` push HEAD itself (it still
- * refuses on uncommitted changes either way).
+ * 8B: `kody package publish --build local` refuses uncommitted changes,
+ * pushes HEAD to its upstream on the Kody remote when it is not there yet
+ * (never committing), and builds only once Kody confirms it sees that
+ * commit (`expected_commit` on `packagePublishBuildCreate`).
  */
-export const cliPushesHeadBeforeLocalBuild = false
+export const cliPushesHeadBeforeLocalBuild = true
 
 /** 2B: a TTY asks "build here now?"; agents and CI get commands + docs. */
 export const offerLocalBuildPromptInTty = true
@@ -35,11 +36,12 @@ export const publishBuildRejectionHint =
 	'The previously published version is still serving. Build again from a clean checkout of the pushed commit (`git status` shows no changes and HEAD matches the remote), then publish again.'
 
 /**
- * 6A: a bundle built outside the worker may only inline packages the
- * publisher can write. Anything else fails clearly; runtime-linked
- * dependencies are a later option.
+ * 6C: a bundle built outside the worker never inlines another Kody package.
+ * Its `kody:@…` imports stay linked placeholders that Kody fills in at commit
+ * time from each dependency's published artifact, resolved as the
+ * publisher, so any package the publisher can import works.
  */
-export const externallyBuiltBundlesMayInlineOnlyWritablePackages = true
+export const externallyBuiltBundlesLinkKodyPackageImports = true
 
 /**
  * 7B: offloaded builds lift the compute caps (CPU, memory, wall time) but

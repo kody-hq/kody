@@ -1,18 +1,14 @@
 import { createInterface } from 'node:readline/promises'
 import {
 	publishBuildUploadUrl,
+	pushHeadForPublish,
 	runLocalPublishBuild,
+	type PublishBuilder,
 } from './local-publish-build.js'
 
 /** Same page the worker links from resource-limit errors. */
 export const publishLargePackagesDocsUrl =
 	'https://kody.codes/docs/publish-large-packages'
-
-/**
- * Open product question 8 (does the CLI push HEAD for you?). `false`: the
- * CLI refuses unless HEAD is already pushed; flip to push first.
- */
-const cliPushesHeadBeforeLocalBuild = false
 
 type Call = (
 	operationId: string,
@@ -26,7 +22,7 @@ export function isResourceLimitRefusal(result: unknown) {
 export function offloadCommandsText(ref: string) {
 	return [
 		'This package is too big to build on Kody cloud. Build it outside the worker instead:',
-		`  kody package publish ${ref} --build local     # on this machine (clean checkout at the pushed commit)`,
+		`  kody package publish ${ref} --build local     # on this machine (clean checkout; pushes HEAD first)`,
 		`  kody package publish ${ref} --build context   # on an execution context you operate`,
 		`Docs: ${publishLargePackagesDocsUrl}`,
 	].join('\n')
@@ -50,15 +46,17 @@ async function buildThenPublish(input: {
 	apiUrl: string
 	cwd: string
 	writeErr: (text: string) => void
+	fetchFn?: typeof fetch
+	loadBuilder?: () => Promise<PublishBuilder>
 }) {
-	if (cliPushesHeadBeforeLocalBuild && input.origin === 'cli') {
-		const { execFile } = await import('node:child_process')
-		const { promisify } = await import('node:util')
-		await promisify(execFile)('git', ['push'], { cwd: input.cwd })
-	}
+	const log = (line: string) => input.writeErr(`${line}\n`)
+	// 8B: never build a commit Kody cannot see.
+	const pushed =
+		input.origin === 'cli' ? await pushHeadForPublish(input.cwd, log) : null
 	const created = (await input.call('packagePublishBuildCreate', {
 		...input.target,
 		origin: input.origin,
+		...(pushed ? { expected_commit: pushed.head } : {}),
 	})) as {
 		build_id: string
 		package_id: string
@@ -69,7 +67,12 @@ async function buildThenPublish(input: {
 		upload_ticket?: string
 		context_name?: string
 	}
-	if (input.origin === 'cli') {
+	if (pushed) {
+		if (created.commit !== pushed.head) {
+			throw new Error(
+				`Kody sees ${String(created.commit).slice(0, 12)} for this package, not your HEAD ${pushed.head.slice(0, 12)}. Nothing was built or uploaded. Push HEAD to the package's Kody remote and try again.`,
+			)
+		}
 		if (!created.upload_ticket) {
 			throw new Error('Kody did not return an upload ticket for this build.')
 		}
@@ -88,7 +91,9 @@ async function buildThenPublish(input: {
 				uploadUrl: publishBuildUploadUrl(input.apiUrl, created.upload_path),
 				ticket: created.upload_ticket,
 			},
-			log: (line) => input.writeErr(`${line}\n`),
+			log,
+			...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
+			...(input.loadBuilder ? { loadBuilder: input.loadBuilder } : {}),
 		})
 		input.writeErr(
 			`Built ${built.targets} targets locally in ${built.buildMs} ms (${built.uploadedChunks} chunks uploaded, ${built.reusedChunks} reused).\n`,
@@ -117,6 +122,8 @@ export async function runPublishWithBuild(input: {
 	cwd: string
 	interactive: boolean
 	writeErr: (text: string) => void
+	fetchFn?: typeof fetch
+	loadBuilder?: () => Promise<PublishBuilder>
 }) {
 	if (
 		input.build !== null &&

@@ -4,8 +4,9 @@ title: Publish packages too big for Kody cloud
 summary:
   When a publish hits the worker's memory, CPU, or payload limits, build the
   package on your own machine (`kody package publish --build local`) or on an
-  execution context you operate (`--build context`). Kody still checks the
-  upload against the pushed commit and writes the registry itself.
+  execution context you operate (`--build context`). The CLI pushes HEAD first;
+  Kody checks the upload against that commit, links any `kody:@` packages it
+  imports, and writes the registry itself.
 category: platform
 ---
 
@@ -18,8 +19,7 @@ it, and the publish fails with a resource-limit error that links here.
 You can move the heavy part, bundling, off Kody cloud:
 
 ```sh
-# Build on this machine
-git push
+# Build on this machine (commit first; the CLI pushes HEAD for you)
 kody package publish @you/big-package --build local
 
 # Build on an execution context you operate
@@ -42,27 +42,44 @@ cloud runs out of room. Agents and CI get these commands instead of a prompt.
 | Hash, size, and package-identity checks for each target, sample rebuild | Kody                                            |
 | Writing the registry and switching the serving version                  | Kody, only after every check and write succeeds |
 
+Kody never publishes a commit it cannot see. `--build local` refuses uncommitted
+changes, pushes HEAD to its upstream branch on the package's Kody remote if it
+is not there yet (it never makes a commit), and builds only after Kody confirms
+that exact commit is the head of the package repo. If Kody reports a different
+commit, nothing is built or uploaded. `--build context` builds the commit Kody
+sees, so push first.
+
 Kody trusts nothing it did not compute itself:
 
 - The build's per-file SHA-256 manifest must match the pushed commit's tree
-  exactly. A dirty working tree or a commit you have not pushed is refused.
+  exactly.
 - Every target must be one the commit's `package.json` declares, with the right
   hashes and sizes and no platform-reserved module names.
 - Kody rebuilds a sample of targets itself and compares hashes (more for
   community-listed packages).
-- A build may only inline Kody packages you can write. Otherwise publish on Kody
-  cloud.
+- A build never contains another Kody package. Each `kody:@` import stays a
+  linked placeholder, and Kody fills it in when it commits the upload: the
+  dependency's own published artifact, resolved for you the same way a cloud
+  build resolves it, behind the same metered proxy. The dependency's package id,
+  storage, secrets, and capabilities come from Kody, so you can import packages
+  you can use but not write.
+- Uploaded modules may bind only your own package. A build that inlines another
+  package's code, binds another package's id, or ships its own module at a
+  linked placeholder path is refused.
 
 ## When a build is refused
 
 The publish result says exactly why. The version that was serving keeps serving.
-Usually the fix is a clean checkout at the pushed commit:
+Usually the fix is a clean, pushed checkout:
 
 ```sh
 git status        # must be clean
-git push
+git push          # if the CLI could not push for you
 kody package publish @you/big-package --build local
 ```
+
+The CLI pushes to the branch's upstream. A detached HEAD or a branch without an
+upstream is refused; set one with `git push -u <kody remote> HEAD`.
 
 Uploads resume: rerunning the same command skips chunks Kody already has.
 
