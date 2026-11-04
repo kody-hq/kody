@@ -862,7 +862,7 @@ export function parsePrePushUpdates(
 		if (!localRef || !localSha || !remoteSha) return null
 		updates.push({ localRef, localSha, remoteSha })
 	}
-	if (updates.length === 0) return null
+	// Git sends no lines when every ref is already up to date: nothing to push.
 	return updates
 }
 

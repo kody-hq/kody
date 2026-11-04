@@ -129,6 +129,10 @@ test('parseBlogPostMarkdown reads frontmatter and rejects invalid input', () => 
 			`title: Bad image\n${baseFrontmatter}\nimage: https://example.com/image.webp\nimageAlt: Nope`,
 			/invalid frontmatter "image"/,
 		],
+		[
+			'title: Complex key\ndate: 2026-08-20\ndescription:\n  ? Part one\n  : part two\norder: 1\ncategory: essays',
+			/YAML complex-key marker in frontmatter "description"/,
+		],
 	] as const) {
 		expect(() => parseBlogPostMarkdown('bad', markdown(frontmatter))).toThrow(
 			error,

@@ -298,7 +298,7 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 	).toEqual(planCases)
 
 	expect(parsePrePushUpdates(null)).toBeNull()
-	expect(parsePrePushUpdates('\n')).toBeNull()
+	expect(parsePrePushUpdates('\n')).toEqual([])
 	expect(
 		parsePrePushUpdates(
 			`refs/heads/docs ${localSha} refs/heads/docs not-a-sha\n`,
@@ -334,7 +334,16 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 			hook: 'pre-push',
 			stdin: ' \n',
 			git: () => {
-				throw new Error('blank pre-push stdin must fail closed before git')
+				throw new Error('an up-to-date push has nothing to diff')
+			},
+		}),
+	).toEqual({ code: 0, scripts: [] })
+	expect(
+		await runHook({
+			hook: 'pre-push',
+			stdin: null,
+			git: () => {
+				throw new Error('unreadable pre-push stdin must fail closed before git')
 			},
 		}),
 	).toEqual({

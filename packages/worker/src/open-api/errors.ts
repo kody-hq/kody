@@ -9,7 +9,10 @@ import {
 	getErrorMessage,
 } from '@kody-internal/shared/error-message.ts'
 import { McpCallerError, isMcpCallerError } from '#mcp/caller-error.ts'
-import { isExecutionContextError } from '#worker/execution-contexts/errors.ts'
+import {
+	executionContextErrorCodes,
+	isExecutionContextError,
+} from '#worker/execution-contexts/errors.ts'
 import { EncodedPlaceholderError } from '#mcp/secrets/encoded-placeholder.ts'
 import {
 	AuthorizationError,
@@ -95,7 +98,7 @@ function classifyBareDurableObjectReset(
 	return null
 }
 
-export const apiErrorCodes = [
+const platformApiErrorCodes = [
 	'invalid_request',
 	'unauthorized',
 	'insufficient_scope',
@@ -105,21 +108,6 @@ export const apiErrorCodes = [
 	'guest_claim_required',
 	'feature_unavailable',
 	'feature_disabled',
-	'not_granted',
-	'context_revoked',
-	'chain_changed',
-	'chain_too_long',
-	'context_not_usable',
-	'no_execution_context_available',
-	'execution_context_unavailable',
-	'execution_context_lease_invalid',
-	'execution_context_access_lost',
-	'context_not_revoked',
-	'commands_opt_in_local',
-	'commands_operator_only',
-	'execution_context_commands_off',
-	'execution_context_command_not_granted',
-	'execution_context_command_requires_context',
 	'not_found',
 	'method_not_allowed',
 	'account_deleting',
@@ -136,7 +124,17 @@ export const apiErrorCodes = [
 	'internal_error',
 ] as const
 
-export type ApiErrorCode = (typeof apiErrorCodes)[number]
+/** Execution-context codes come from their own list, so a new one is one edit. */
+export const apiErrorCodes: ReadonlyArray<ApiErrorCode> = [
+	...new Set<ApiErrorCode>([
+		...platformApiErrorCodes,
+		...executionContextErrorCodes,
+	]),
+]
+
+export type ApiErrorCode =
+	| (typeof platformApiErrorCodes)[number]
+	| (typeof executionContextErrorCodes)[number]
 
 export type ApiErrorBody = {
 	error: {

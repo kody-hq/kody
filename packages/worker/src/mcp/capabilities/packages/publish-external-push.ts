@@ -692,6 +692,40 @@ function buildOriginField(
 	}
 }
 
+type PublishedResult = Extract<
+	PublishExternalPushResult,
+	{ status: 'published' }
+>
+
+/**
+ * Fields every success status (published, already_published) returns, so a
+ * new optional field cannot land on only one path.
+ */
+function publishSuccessFields(input: {
+	extras: {
+		hosted_app_url: PublishedResult['hosted_app_url']
+		testHints?: PublishedResult['test_hints'] | null
+		static_dependents: PublishedResult['static_dependents']
+		pending_secret_package_approvals: PublishedResult['pending_secret_package_approvals']
+		allowed_packages_publish_notice: PublishedResult['allowed_packages_publish_notice']
+		listing?: PublishedResult['listing'] | null
+	}
+	phaseTimings: PublishPhaseTimings
+	uploadedBuild: UploadedPublishBuildRef | null | undefined
+}) {
+	const { extras } = input
+	return {
+		hosted_app_url: extras.hosted_app_url,
+		...(extras.testHints ? { test_hints: extras.testHints } : {}),
+		static_dependents: extras.static_dependents,
+		pending_secret_package_approvals: extras.pending_secret_package_approvals,
+		allowed_packages_publish_notice: extras.allowed_packages_publish_notice,
+		...(extras.listing ? { listing: extras.listing } : {}),
+		phase_timings: input.phaseTimings,
+		...buildOriginField(input.uploadedBuild),
+	}
+}
+
 function buildPublishPhaseTimings(input: {
 	startedAt: number
 	fromPublish?: PublishPhaseTimings
@@ -1264,20 +1298,11 @@ async function runExternalPublishAttempt(input: {
 				})
 				const sharedSuccessFields = {
 					published_commit: publishedCommit,
-					hosted_app_url: alreadyPublishedExtras.hosted_app_url,
-					...(alreadyPublishedExtras.testHints
-						? { test_hints: alreadyPublishedExtras.testHints }
-						: {}),
-					static_dependents: alreadyPublishedExtras.static_dependents,
-					pending_secret_package_approvals:
-						alreadyPublishedExtras.pending_secret_package_approvals,
-					allowed_packages_publish_notice:
-						alreadyPublishedExtras.allowed_packages_publish_notice,
-					...(alreadyPublishedExtras.listing
-						? { listing: alreadyPublishedExtras.listing }
-						: {}),
-					phase_timings: phaseTimings,
-					...buildOriginField(input.uploadedBuild),
+					...publishSuccessFields({
+						extras: alreadyPublishedExtras,
+						phaseTimings,
+						uploadedBuild: input.uploadedBuild,
+					}),
 				}
 				if (tipMoved) {
 					await reportCapabilityProgress(input.reportProgress, {
@@ -1515,25 +1540,16 @@ async function runExternalPublishAttempt(input: {
 			})
 			return {
 				...result,
-				hosted_app_url: publishedExtras.hosted_app_url,
-				...(publishedExtras.testHints
-					? { test_hints: publishedExtras.testHints }
-					: {}),
-				static_dependents: publishedExtras.static_dependents,
-				pending_secret_package_approvals:
-					publishedExtras.pending_secret_package_approvals,
-				allowed_packages_publish_notice:
-					publishedExtras.allowed_packages_publish_notice,
-				...(publishedExtras.listing
-					? { listing: publishedExtras.listing }
-					: {}),
-				phase_timings: buildPublishPhaseTimings({
-					startedAt: publishStartedAt,
-					fromPublish: result.phase_timings,
-					rebuildMs,
-					dependentsMs,
+				...publishSuccessFields({
+					extras: publishedExtras,
+					phaseTimings: buildPublishPhaseTimings({
+						startedAt: publishStartedAt,
+						fromPublish: result.phase_timings,
+						rebuildMs,
+						dependentsMs,
+					}),
+					uploadedBuild: input.uploadedBuild,
 				}),
-				...buildOriginField(input.uploadedBuild),
 			} as const
 		} catch (error) {
 			assertNotAborted(input.signal)
