@@ -32,6 +32,7 @@ import {
 } from '#worker/package-registry/repo.ts'
 import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
+import { isArtifactsHeadChangedBeforePublishMessage } from '#worker/repo/publish-concurrency-caller-error.ts'
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
 import { getRepoSessionById } from '#worker/repo/repo-sessions.ts'
 import type {
@@ -328,7 +329,7 @@ export async function approveCredentialNeedsRequest(input: {
 			rebuildPackageArtifacts: true,
 		})
 	} catch (error) {
-		if (getErrorMessage(error).includes('Artifacts HEAD changed from')) {
+		if (isArtifactsHeadChangedBeforePublishMessage(getErrorMessage(error))) {
 			return await supersede()
 		}
 		throw error

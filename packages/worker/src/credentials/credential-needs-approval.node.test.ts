@@ -582,7 +582,7 @@ test('approving publishes the paused commit past the pause; a moved base superse
 	const overtaken = await enqueue('commit-three')
 	mocks.publishFromExternalRef.mockRejectedValueOnce(
 		new Error(
-			'Artifacts HEAD changed from "commit-three" to "commit-four" before publish.',
+			'The package\'s Artifacts HEAD moved from "commit-three" to "commit-four" while publishing. Retry the publish (or re-run so the newest pushed commit publishes).',
 		),
 	)
 	await expect(approve(overtaken.id)).resolves.toMatchObject({

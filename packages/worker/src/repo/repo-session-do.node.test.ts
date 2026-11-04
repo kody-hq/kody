@@ -1414,7 +1414,7 @@ test('publishFromExternalRef rejects stale expected HEAD values and checks fast-
 			createEnv(),
 		),
 	).rejects.toThrow(
-		'Artifacts HEAD changed from "commit-stale" to "commit-new" before publish.',
+		'The package\'s Artifacts HEAD moved from "commit-stale" to "commit-new" while publishing. Retry the publish (or re-run so the newest pushed commit publishes).',
 	)
 	expect(mockModule.resolveArtifactDefaultBranchHead).not.toHaveBeenCalled()
 

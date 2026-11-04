@@ -7,6 +7,7 @@ import {
 } from '#worker/repo/entity-sources.ts'
 import { resolveArtifactSourceHead } from '#worker/repo/artifacts.ts'
 import { revokeStaleArtifactsTokens } from '#worker/repo/artifacts-tokens.ts'
+import { isPublishConcurrencyCallerMessage } from '#worker/repo/publish-concurrency-caller-error.ts'
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
 import { getSavedPackageLockedAt } from '#worker/package-registry/repo.ts'
 import { isSavedPackageLocked } from '#worker/package-registry/package-publish-lock.ts'
@@ -202,16 +203,30 @@ async function reconcileSource(input: {
 		)
 		result[outcome] += 1
 	} catch (error) {
+		const message = getErrorMessage(error)
 		if (error instanceof ReconcileSourceTimeoutError) {
 			result.sourceTimeouts += 1
+			console.warn('reconcile_artifacts_pushes source failed', {
+				sourceId: source.id,
+				repoId: source.repo_id,
+				error: message,
+			})
+		} else if (isPublishConcurrencyCallerMessage(message)) {
+			// Another push/publish won the race. Guards stay in place; the next
+			// stale tick retries with the newer tip. No Sentry (KODY-DZ).
+			console.warn('reconcile_artifacts_pushes publish concurrency race', {
+				sourceId: source.id,
+				repoId: source.repo_id,
+				error: message,
+			})
 		} else {
 			result.errors += 1
+			console.warn('reconcile_artifacts_pushes source failed', {
+				sourceId: source.id,
+				repoId: source.repo_id,
+				error: message,
+			})
 		}
-		console.warn('reconcile_artifacts_pushes source failed', {
-			sourceId: source.id,
-			repoId: source.repo_id,
-			error: getErrorMessage(error),
-		})
 		try {
 			await updateEntitySource(env.APP_DB, {
 				id: source.id,

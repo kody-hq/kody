@@ -16,6 +16,7 @@ import {
 	isRepoLargeFileMessage,
 } from '#worker/repo/large-file-policy.ts'
 import { isRepoChecksFailedError } from '#worker/repo/repo-checks-failed-error.ts'
+import { isPublishConcurrencyCallerMessage } from '#worker/repo/publish-concurrency-caller-error.ts'
 import {
 	isGitPushNotFastForwardMessage,
 	isRepoDisallowedPathMessage,
@@ -233,6 +234,18 @@ function isCallerFailure(payload: McpObservabilityPayload, cause?: unknown) {
 		getErrorCauseChain(cause).some(
 			(entry) =>
 				entry instanceof Error && isGitPushNotFastForwardMessage(entry.message),
+		)
+	) {
+		return true
+	}
+	// External publish concurrency guards (Artifacts HEAD or published_commit
+	// moved mid-run). Plain Errors from the RepoSession DO; callers retry.
+	// KODY-DZ.
+	if (
+		getErrorCauseChain(cause).some(
+			(entry) =>
+				entry instanceof Error &&
+				isPublishConcurrencyCallerMessage(entry.message),
 		)
 	) {
 		return true
