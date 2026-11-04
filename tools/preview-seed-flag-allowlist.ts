@@ -12,6 +12,7 @@ export const previewSeedFlagAllowlist = [
 	'execution-contexts',
 	'mcp-events-extension',
 	'package-credential-suppliers',
+	'publish-offload',
 	'repo-push-queue',
 ] as const satisfies ReadonlyArray<FeatureFlagKey>
 

@@ -37,6 +37,7 @@ export async function runAuthoringPublishChecks(input: {
 	 * `packageCheck`, which then builds them the way the rebuild does.
 	 */
 	deferBundleCheckToRebuild?: boolean
+	typecheckRanOffWorker?: boolean
 	onStep?: (step: RepoCheckStep) => Promise<void>
 	kodyIgnoredDeclarationFiles?: Array<string>
 }): Promise<RepoCheckRunResult> {
@@ -59,6 +60,9 @@ export async function runAuthoringPublishChecks(input: {
 		...(input.deferBundleCheckToRebuild === true
 			? { deferBundleCheckToRebuild: true }
 			: {}),
+		...(input.typecheckRanOffWorker === true
+			? { typecheckRanOffWorker: true }
+			: {}),
 	})
 }
 
@@ -78,6 +82,7 @@ export async function runAuthoringPublishChecksOnFiles(input: {
 	onStep?: (step: RepoCheckStep) => Promise<void>
 	/** See {@link runAuthoringPublishChecks}; `packageCheck` follows it with the rebuild. */
 	deferBundleCheckToRebuild?: boolean
+	typecheckRanOffWorker?: boolean
 	kodyIgnoredDeclarationFiles?: Array<string>
 }): Promise<RepoCheckRunResult> {
 	return await runAuthoringPublishChecks({
@@ -97,6 +102,9 @@ export async function runAuthoringPublishChecksOnFiles(input: {
 			: {}),
 		...(input.deferBundleCheckToRebuild === true
 			? { deferBundleCheckToRebuild: true }
+			: {}),
+		...(input.typecheckRanOffWorker === true
+			? { typecheckRanOffWorker: true }
 			: {}),
 		...(input.kodyIgnoredDeclarationFiles?.length
 			? { kodyIgnoredDeclarationFiles: input.kodyIgnoredDeclarationFiles }

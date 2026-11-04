@@ -436,6 +436,7 @@ export async function publishFromExternalRef(input: {
 	/** Records each check step so a resource reset can name it. */
 	onCheckStep?: (step: RepoCheckStep) => Promise<void>
 	deferBundleCheckToRebuild?: boolean
+	typecheckRanOffWorker?: boolean
 	/**
 	 * Finish the live tip's finalize even when it is sealed (admin repair of a
 	 * publish whose earlier attempt sealed without job attribution).
@@ -522,6 +523,9 @@ export async function publishFromExternalRef(input: {
 				...(deferBundleCheckToRebuild
 					? { deferBundleCheckToRebuild: true }
 					: {}),
+				...(input.typecheckRanOffWorker === true
+					? { typecheckRanOffWorker: true }
+					: {}),
 			})
 		: await runAuthoringPublishChecks({
 				workspace: requireInlineWorkspace(input.workspace),
@@ -536,6 +540,9 @@ export async function publishFromExternalRef(input: {
 				...(input.onCheckStep ? { onStep: input.onCheckStep } : {}),
 				...(deferBundleCheckToRebuild
 					? { deferBundleCheckToRebuild: true }
+					: {}),
+				...(input.typecheckRanOffWorker === true
+					? { typecheckRanOffWorker: true }
 					: {}),
 			})
 	if (input.work && input.phaseTimings && 'phaseTimings' in checks) {

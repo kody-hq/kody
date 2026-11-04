@@ -5,6 +5,23 @@ import {
 
 const heavyWorkOffloadGuideId = 'heavy_work_offload'
 
+export const publishLargePackagesDocsUrl =
+	'https://kody.codes/docs/publish-large-packages'
+
+/**
+ * How to publish when Kody cloud runs out of room: build on this machine or
+ * on an execution context you operate. Not flag-gated: the docs page says
+ * when those builds are available.
+ */
+export function publishOutsideCloudAdvice() {
+	return (
+		'To publish a package this big, build it outside Kody cloud: ' +
+		'`kody package publish <package> --build local` (a clean checkout at the pushed commit) ' +
+		'or `kody package publish <package> --build context` (an execution context you operate). ' +
+		`See ${publishLargePackagesDocsUrl}`
+	)
+}
+
 const isolatedCheckRunnerLimitPhrase =
 	"exceeded the isolated check runner's memory or CPU limits"
 const authoringCheckRunnerLimitPhrase =
@@ -38,7 +55,8 @@ export function isolatedRunnerResourceLimitAdvice() {
 		'cost grows with that import graph. Split very large entrypoints, ' +
 		'drop heavy dependencies, or keep the Kody package as a thin ' +
 		'orchestrator and offload the heavy work to a process you operate. Load ' +
-		`\`search({ entity: "guide:${heavyWorkOffloadGuideId}" })\`.`
+		`\`search({ entity: "guide:${heavyWorkOffloadGuideId}" })\`. ` +
+		publishOutsideCloudAdvice()
 	)
 }
 

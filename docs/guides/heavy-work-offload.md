@@ -132,3 +132,10 @@ The check message points here on purpose. Typical causes:
 
 Fix: remove the heavy dependency from the package, move that work to the owner's
 process, and keep the Kody side to the snippet above.
+
+## Publishing a package that is too big
+
+If only the publish (bundling) is too big, and the package runs fine once built,
+build it on your machine or an execution context instead of moving work to your
+own infra: `kody package publish <package> --build local` or `--build context`.
+See [publish large packages](./publish-large-packages.md).

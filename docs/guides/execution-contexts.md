@@ -397,3 +397,13 @@ Turn it off the same way. It is only for your account.
 - [Execution contexts field reference](../use/execution-contexts.md)
 - [Local CLI execute](./local-execute.md), which runs code on your machine for
   one call without a daemon
+
+## Publish builds
+
+`kody package publish <package> --build context` asks a context you operate to
+bundle the package. The run carries no user code and no credentials: the daemon
+clones the pushed commit with a read-only, single-repo token that expires in
+about five minutes and uploads the build with a per-build ticket. Kody checks
+the upload and writes the registry itself. Every credential kind, not only CLI
+logins, needs `execution_context:execute` to route a run to a context. See
+[publish large packages](./publish-large-packages.md).
