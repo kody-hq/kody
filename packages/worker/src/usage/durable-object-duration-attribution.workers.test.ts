@@ -290,3 +290,51 @@ test('a soft-deleted team org gets no duration rows', async () => {
 			.first(),
 	).toEqual({ count: 0 })
 })
+
+test('reruns upsert changed rows, keep unchanged ones, and drop stale ones', async () => {
+	await ensureSchema()
+	const users = await Promise.all(Array.from({ length: 30 }, () => seedUser()))
+	const hubIds = users.map((userId) =>
+		env.MCP_CLIENT_HUB.idFromName(userId).toString(),
+	)
+	let groups: Array<[string, number]> = hubIds.map((id) => [id, 1_000_000])
+	using _fetch = stubFetch(
+		vi.fn(async (_url: string, init: RequestInit) => {
+			const { variables } = JSON.parse(String(init.body)) as {
+				variables: { day: string }
+			}
+			return analyticsResponse(variables.day === '2026-09-26' ? groups : [])
+		}),
+	)
+	await runDurableObjectDurationAttribution({
+		env: credentialedEnv,
+		now: new Date('2026-09-27T03:20:00.000Z'),
+		batchPauseMs: 0,
+	})
+	// User 0 grows, user 1 drops out of the analytics, the rest are unchanged.
+	groups = [
+		[hubIds[0]!, 4_000_000],
+		...hubIds.slice(2).map((id): [string, number] => [id, 1_000_000]),
+	]
+	await runDurableObjectDurationAttribution({
+		env: credentialedEnv,
+		now: new Date('2026-09-27T04:20:00.000Z'),
+		batchPauseMs: 0,
+	})
+	const rows = await env.APP_DB.prepare(
+		`SELECT user_id, active_ms, updated_at FROM durable_object_duration_daily
+		 WHERE day = '2026-09-26' AND do_class = 'McpClientHub'`,
+	).all<{ user_id: string; active_ms: number; updated_at: string }>()
+	const byUser = new Map(rows.results.map((row) => [row.user_id, row]))
+	expect(byUser.get(users[0]!)).toMatchObject({
+		active_ms: 4_000,
+		updated_at: '2026-09-27T04:20:00.000Z',
+	})
+	expect(byUser.has(users[1]!)).toBe(false)
+	for (const userId of users.slice(2)) {
+		expect(byUser.get(userId)).toMatchObject({
+			active_ms: 1_000,
+			updated_at: '2026-09-27T03:20:00.000Z',
+		})
+	}
+})
