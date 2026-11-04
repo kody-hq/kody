@@ -52,6 +52,11 @@ import { checkWebhookAuthRegressionsAndAlert } from '#worker/webhooks/auth-regre
 import { reconcilePackageAppCustomHostnames } from '#worker/package-app-custom-hostnames/reconcile.ts'
 import { runFollowMaintenance } from '#worker/follow/maintenance.ts'
 import { checkDlqDepthAndAlert } from './dlq-depth-alert.ts'
+import {
+	acquireScheduledLaneLease,
+	releaseScheduledLaneLease,
+	scheduledLaneLeaseMs,
+} from './scheduled-lane-lease.ts'
 
 export {
 	isScheduledLaneName,
@@ -386,12 +391,28 @@ export async function runScheduledLaneWithFailureIsolation(input: {
 	message: ScheduledLaneMessage
 }): Promise<'completed' | 'd1_lock_contention' | 'failed'> {
 	const scheduledAt = new Date(input.message.scheduledTime)
+	const lane = input.message.lane
+	const leaseMs = scheduledLaneLeaseMs[lane]
+	let leaseHolder: string | null = null
 	try {
-		await runScheduledLane({
-			env: input.env,
-			lane: input.message.lane,
-			scheduledAt,
-		})
+		if (leaseMs !== undefined) {
+			const holder = crypto.randomUUID()
+			const acquired = await acquireScheduledLaneLease(input.env.APP_DB, {
+				lane,
+				holder,
+				leaseMs,
+				now: new Date(),
+			})
+			if (!acquired) {
+				console.warn('scheduled_lane_skipped_overlap', {
+					lane,
+					scheduledTime: scheduledAt.toISOString(),
+				})
+				return 'completed'
+			}
+			leaseHolder = holder
+		}
+		await runScheduledLane({ env: input.env, lane, scheduledAt })
 		return 'completed'
 	} catch (error) {
 		if (isRetryableD1LockError(error)) {
@@ -422,5 +443,20 @@ export async function runScheduledLaneWithFailureIsolation(input: {
 			Sentry.captureException(error)
 		})
 		return 'failed'
+	} finally {
+		if (leaseHolder !== null) {
+			try {
+				await releaseScheduledLaneLease(input.env.APP_DB, {
+					lane,
+					holder: leaseHolder,
+				})
+			} catch (releaseError) {
+				// The lease expires on its own; the next tick after it lapses runs.
+				console.warn('scheduled_lane_lease_release_failed', {
+					lane,
+					error: releaseError,
+				})
+			}
+		}
 	}
 }
