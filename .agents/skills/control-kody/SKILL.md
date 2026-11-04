@@ -56,10 +56,10 @@ redirects, and `--contains` also searches the `Location` header.
 or `preview`) and injects it into headed Playwright Chromium the same way E2E
 does (`addCookies`). Opens `--path` already signed in. Optional `--record`
 writes video under `.tmp/control-kody-browse`. `--screenshot <path>` writes a
-PNG from that live origin — do not attach `file://` `renderToString` dumps as
+PNG from that live origin. Do not attach `file://` `renderToString` dumps as
 walkthrough evidence. Prefer MCP/API/`execute` for proof; use `browse` only when
 UI is under test. Cursor `computerUse` drives its own browser and cannot attach
-to the CLI Chromium window — for computerUse, open `/login?redirectTo=<path>`
+to the CLI Chromium window. For computerUse, open `/login?redirectTo=<path>`
 with the public seed credentials instead.
 
 `doctor` (and a failed local `login`) print `npm run migrate:local` plus
@@ -110,7 +110,7 @@ before opening a Feature Map PR.
 ## Proof
 
 CI green is not enough for a user-visible account change. **Local verification
-is the default** — prefer `dev` / `login` / `request` / `browse` / `execute` on
+is the default**: prefer `dev` / `login` / `request` / `browse` / `execute` on
 localhost before a PR preview:
 
 1. `doctor` then `dev` (migrate + seed if `login` says so)
