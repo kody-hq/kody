@@ -3,7 +3,12 @@ import { vi } from 'vitest'
 import type * as runKodyRegistryModule from '#mcp/run-kody-registry.ts'
 import type * as packageInvocationsServiceModule from '#worker/package-invocations/service.ts'
 import { terminalWorkflowStatusValues } from '#worker/package-runtime/workflow-statuses.ts'
-import { creatingWorkflowProjectionStatus } from '#worker/run-records/workflow-projection.ts'
+import {
+	creatingWorkflowProjectionStatus,
+	decodeWorkflowProjectionCursor,
+	encodeWorkflowProjectionCursor,
+	isAfterWorkflowProjectionCursor,
+} from '#worker/run-records/workflow-projection.ts'
 import type * as runRecordsServiceModule from '#worker/run-records/service.ts'
 import type {
 	WorkflowProjectionRecord,
@@ -233,10 +238,25 @@ export const packageWorkflowsRunRecordMocks = (() => {
 							(input.packageId ? row.packageId === input.packageId : true) &&
 							(input.since ? row.createdAt >= input.since : true),
 					)
-					.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+					.sort(
+						(left, right) =>
+							right.createdAt.localeCompare(left.createdAt) ||
+							right.id.localeCompare(left.id),
+					)
+				const cursor = input.cursor
+					? decodeWorkflowProjectionCursor(input.cursor)
+					: null
+				const after = cursor
+					? rows.filter((row) => isAfterWorkflowProjectionCursor(row, cursor))
+					: rows
+				const page = after.slice(0, limit)
+				const last = page[page.length - 1]
 				return {
-					projections: rows.slice(0, limit),
-					nextCursor: null as string | null,
+					projections: page,
+					nextCursor:
+						after.length > limit && last
+							? encodeWorkflowProjectionCursor(last)
+							: null,
 				}
 			},
 		),

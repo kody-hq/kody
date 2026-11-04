@@ -1797,6 +1797,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 					kodyId,
 					sourceId: source.id,
 				},
+				enqueuedCommit: newCommit,
 				durableCode: durablePublishWorkflowCode,
 				durableParams,
 				run: async (signal) =>
