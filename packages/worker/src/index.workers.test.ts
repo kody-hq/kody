@@ -1,5 +1,5 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { expect, test, vi } from 'vitest'
+import { beforeAll, expect, test, vi } from 'vitest'
 import * as Sentry from '@sentry/cloudflare'
 import { env, runInDurableObject } from 'cloudflare:test'
 import type * as SystemEmail from '#worker/email/system-email.ts'
@@ -11,6 +11,17 @@ import {
 	type OAuthPurgeCoordinator,
 	type PurgeContinuation,
 } from './oauth-purge.ts'
+
+// Only the lease table: other lanes here rely on their tables being absent.
+beforeAll(async () => {
+	await env.APP_DB.prepare(
+		`CREATE TABLE IF NOT EXISTS scheduled_lane_leases (
+			lane TEXT PRIMARY KEY,
+			holder TEXT NOT NULL,
+			expires_at TEXT NOT NULL
+		)`,
+	).run()
+})
 
 const mocks = vi.hoisted(() => ({
 	reconcileArtifactsPushes: vi.fn(async () => ({})),

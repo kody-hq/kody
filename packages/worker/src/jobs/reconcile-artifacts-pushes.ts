@@ -46,8 +46,6 @@ export const reconcileTimeBudgetMs = 60_000
  * source is re-selected by a later tick.
  */
 export const reconcileSourceTimeoutMs = 45_000
-/** Lease for single-flight ticks: budget plus one source, with headroom. */
-export const reconcileLaneLeaseMs = 3 * 60_000
 /** How long a HEAD whose checks failed is skipped before checks run again. */
 export const failedHeadRetryWindowMinutes = 6 * 60
 

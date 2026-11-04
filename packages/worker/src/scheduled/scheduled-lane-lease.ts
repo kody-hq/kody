@@ -1,6 +1,5 @@
 import type { ScheduledLaneName } from '@kody-internal/shared/jobs/scheduled-lanes.ts'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
-import { reconcileLaneLeaseMs } from '#worker/jobs/reconcile-artifacts-pushes.ts'
 
 /**
  * Lanes that must not overlap. A tick whose predecessor still holds the lease
@@ -9,7 +8,8 @@ import { reconcileLaneLeaseMs } from '#worker/jobs/reconcile-artifacts-pushes.ts
  */
 export const scheduledLaneLeaseMs: Partial<Record<ScheduledLaneName, number>> =
 	{
-		reconcile_artifacts_pushes: reconcileLaneLeaseMs,
+		// Lane budget (60s) plus one source deadline (45s), with headroom.
+		reconcile_artifacts_pushes: 3 * 60_000,
 	}
 
 export async function acquireScheduledLaneLease(
