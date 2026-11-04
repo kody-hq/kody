@@ -52,6 +52,7 @@ Another package or `execute` call imports its export as
 
 Docs: [Package authoring](https://kody.codes/docs/package-authoring) · PRs:
 [#221](https://github.com/kody-hq/kody/pull/221),
+[#229](https://github.com/kody-hq/kody/pull/229),
 [#235](https://github.com/kody-hq/kody/pull/235)
 
 ## More updates
