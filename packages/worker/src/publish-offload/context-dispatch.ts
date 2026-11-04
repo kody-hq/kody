@@ -30,7 +30,9 @@ export async function dispatchContextPublishBuild(input: {
 	sourceRoot: string
 	manifestPath: string
 	context: string | null
-}) {
+	/** Follow the chain to Kody cloud instead of failing (default publish). */
+	fallbackToCloud?: boolean
+}): Promise<{ kind: 'cloud' } | { kind: 'context'; contextName: string }> {
 	const repo = await resolveArtifactSourceRepo(input.env, input.repoId)
 	const info = await repo.info()
 	if (!info) {
@@ -62,7 +64,9 @@ export async function dispatchContextPublishBuild(input: {
 			timeoutMs: publishOffloadLimits.contextTimeoutMs,
 			memoryMb: publishOffloadLimits.contextMemoryMb,
 		},
+		...(input.fallbackToCloud ? { fallbackToCloud: true } : {}),
 	})
+	if (routed.kind === 'cloud') return routed
 	if (routed.result.isError) {
 		const text = routed.result.content
 			.map((part) =>
@@ -87,5 +91,5 @@ export async function dispatchContextPublishBuild(input: {
 	)
 		.bind(routed.contextName, input.buildId)
 		.run()
-	return { contextName: routed.contextName }
+	return { kind: 'context', contextName: routed.contextName }
 }

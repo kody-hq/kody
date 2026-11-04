@@ -141,6 +141,7 @@ export const guestClaimFinishCapability = defineDomainCapability(
 				guest,
 				code: args.code,
 				baseUrl,
+				method: 'agent',
 			}).catch(asCallerError)
 			return {
 				claimed: true as const,

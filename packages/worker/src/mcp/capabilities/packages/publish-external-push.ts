@@ -117,6 +117,10 @@ import {
 	resolveListingBehindPublishHint,
 } from '#worker/community/resolve-listing-behind-publish-hint.ts'
 import { buildUpdatePublicListingHref } from '#universal/update-public-listing.ts'
+import {
+	decidePublishRoute,
+	publishRouteDeps,
+} from '#worker/publish-offload/publish-routing.ts'
 
 const inputSchema = z.object({
 	package_id: z.string().min(1).optional().describe(packageIdLookupDescription),
@@ -142,6 +146,14 @@ const inputSchema = z.object({
 		.optional()
 		.describe(
 			'Publish offload (publish-offload flag): the id of a publish build whose bundles were built by the Kody CLI or an execution context and uploaded for this exact commit. The server re-runs the cheap checks, verifies the uploaded tree and bundles, and only then serves the commit. Set by `kody package publish --build local|context`; agents should not set it by hand.',
+		),
+	context: z
+		.string()
+		.trim()
+		.min(1)
+		.optional()
+		.describe(
+			'Execution context name or id to build this publish on, or "cloud" (execution-contexts and publish-offload flags). Overrides the package\'s kody.publish.execution.context binding and your chain, and never falls back. Without it, a bound package builds only on its bound context, and any other package follows your execution context chain like execute (contexts in order, Kody cloud last unless the chain is strict).',
 		),
 })
 
@@ -1680,6 +1692,32 @@ export const publishExternalPushCapability = defineDomainCapability(
 					? args.baseline_published_commit
 					: (source.published_commit ?? null)
 
+			// Durable re-entry already routed (its build id rides in durableParams).
+			const durableReentry =
+				ctx.callerContext.executionOrigin === 'background' &&
+				args.baseline_published_commit !== undefined
+			const route =
+				args.publish_build_id || durableReentry
+					? null
+					: await decidePublishRoute({
+							requestedContext: args.context,
+							packageRef: name,
+							deps: publishRouteDeps({
+								env: ctx.env,
+								callerContext: ctx.callerContext,
+								request: requireMcpRequest(ctx.callerContext),
+								personId: user.userId,
+								packageId,
+								packageName: name,
+								ownerUserId: userId,
+								source,
+								commit: newCommit,
+							}),
+						})
+			const publishBuildId =
+				args.publish_build_id ??
+				(route?.kind === 'context' ? route.buildId : undefined)
+
 			const publishInput = {
 				env: ctx.env,
 				baseUrl: ctx.callerContext.baseUrl,
@@ -1702,11 +1740,11 @@ export const publishExternalPushCapability = defineDomainCapability(
 				publisherRequest: ctx.callerContext.request ?? null,
 				approvalViewer: optionalApprovalViewerForCaller(ctx),
 				reportProgress: ctx.reportProgress,
-				uploadedBuild: args.publish_build_id
+				uploadedBuild: publishBuildId
 					? await resolveUploadedPublishBuildForPublish({
 							env: ctx.env,
 							request: ctx.callerContext.request,
-							buildId: args.publish_build_id,
+							buildId: publishBuildId,
 							packageId,
 							sourceId: source.id,
 							commit: newCommit,
@@ -1728,9 +1766,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 				newCommit,
 				allowForce: args.allow_force,
 				destructiveOverwriteConfirmed: args.confirm_destructive_overwrite,
-				...(args.publish_build_id
-					? { publishBuildId: args.publish_build_id }
-					: {}),
+				...(publishBuildId ? { publishBuildId } : {}),
 			} satisfies ExternalPublishSemanticInput
 			const durableParams = {
 				...(args.package_id ? { package_id: args.package_id } : {}),
@@ -1742,9 +1778,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 				allow_force: args.allow_force,
 				confirm_destructive_overwrite: args.confirm_destructive_overwrite,
 				baseline_published_commit: baselinePublishedCommit,
-				...(args.publish_build_id
-					? { publish_build_id: args.publish_build_id }
-					: {}),
+				...(publishBuildId ? { publish_build_id: publishBuildId } : {}),
 			}
 			const escalateStartedAt = Date.now()
 			// Key the durable re-entry to the package-owning org, not the actor's

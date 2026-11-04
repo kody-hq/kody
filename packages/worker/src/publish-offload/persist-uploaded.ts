@@ -3,6 +3,7 @@ import {
 	persistPublishedPackageArtifactTargets,
 	type PublishedPackageArtifactBuilders,
 } from '#worker/package-runtime/published-bundle-artifact-persist.ts'
+import { mergePublishedArtifactDependencies } from '#worker/package-runtime/module-graph-import-rewriting.ts'
 import { resolveKodyDependenciesForEntryPoint } from '#worker/package-runtime/module-graph-workspace.ts'
 import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import type { EntitySourceRow } from '#worker/repo/types.ts'
@@ -15,13 +16,16 @@ import {
 	parsePublishBuildDocument,
 	publishBuildBlobKey,
 } from './store.ts'
+import {
+	collectLinkedPackageImports,
+	linkUploadedPackageImports,
+} from './link-dependencies.ts'
 import type {
 	PersistUploadedPublishBuildResult,
 	PublishBuildModuleEntry,
 	PublishBuildTargetEntry,
 } from './types.ts'
 import {
-	assertInlinedDependenciesWritable,
 	assertServerRebuildMatches,
 	assertSupportedBuilderVersion,
 	matchUploadedTargets,
@@ -100,15 +104,15 @@ async function readTargetModules(input: {
 
 /**
  * Publish offload commit step, run on the RepoSession that owns the publish:
- * verify the sealed upload against the pushed commit, re-check a sample by
- * rebuilding it here, then write every target the same way a rebuild does
+ * verify the sealed upload against the pushed commit, link the Kody
+ * packages it imports (6C), re-check a sample by rebuilding it here, then
+ * write every target the same way a rebuild does
  * (one KV value per target, then the batched D1 rows). The caller advances
  * `serving_commit` only after this returns ok.
  */
 export async function persistUploadedPublishBuild(input: {
 	env: Env
 	buildId: string
-	writablePackageIds: ReadonlyArray<string>
 	communityListed: boolean
 	baseUrl: string
 	userId: string
@@ -158,7 +162,6 @@ export async function persistUploadedPublishBuild(input: {
 			uploaded: document.targets,
 		})
 		const ownPackageId = input.savedPackage.id
-		const writable = new Set(input.writablePackageIds)
 		const bucket = input.env.REPO_SESSION_BLOBS
 		const prepared = new Map<
 			PublishedPackageArtifactBuildTarget,
@@ -175,31 +178,39 @@ export async function persistUploadedPublishBuild(input: {
 							sourceFiles: input.sourceFiles,
 							entryPoint: target.entryPoint,
 						})
-			assertInlinedDependenciesWritable({
-				entryPoint: target.entryPoint,
-				ownPackageId,
-				dependencies,
-				writablePackageIds: writable,
-			})
+			const linkedImports =
+				target.bundleKind === 'app-client'
+					? new Map<string, string>()
+					: collectLinkedPackageImports({
+							sourceFiles: input.sourceFiles,
+							entryPoint: target.entryPoint,
+						})
 			const modules = await readTargetModules({
 				bucket,
 				buildId: input.buildId,
 				uploaded,
 			})
-			await verifyUploadedTargetModules({
+			const { referencedLinkedImports } = await verifyUploadedTargetModules({
 				uploaded,
 				modules,
 				ownPackageId,
-				allowedActsAsPackageIds: new Set(
-					dependencies.flatMap((dependency) =>
-						dependency.packageId ? [dependency.packageId] : [],
-					),
-				),
+				linkedImports,
+			})
+			const linked = await linkUploadedPackageImports({
+				env: input.env,
+				baseUrl: input.baseUrl,
+				userId: input.userId,
+				modules,
+				linkedImports,
+				referenced: referencedLinkedImports,
 			})
 			prepared.set(target, {
 				mainModule: uploaded.mainModule,
-				modules,
-				dependencies,
+				modules: linked.modules,
+				dependencies: mergePublishedArtifactDependencies({
+					dependencies,
+					publishedArtifactDependencies: linked.publishedArtifactDependencies,
+				}),
 			})
 		}
 		const sample = pickServerRebuildSample(

@@ -930,13 +930,15 @@ package source, and unrelated account content. Delivery is best-effort (no
 Queue). Staying over the same threshold does not emit again.
 
 **Admins can subscribe to person-account create and delete.** Password signup,
-social-login signup, and admin-created person accounts fan `user.created`.
-Self-service account deletion fans `user.deleted`. Fan-out selects only packages
-whose owners hold the admin role at dispatch time. The event contains the stable
-user id, username, email, create source or delete timestamp, and first-touch
-marketing attribution when present. It omits passwords, roles, plan, secrets,
-and unrelated account content. Delivery is best-effort (no Queue) after the
-account change commits.
+social-login signup, admin-created person accounts, and guest accounts fan
+`user.created`. Self-service account deletion and the unclaimed-guest purge fan
+`user.deleted`. Claiming a guest fans `user.guest_claimed` (claim mode and
+method, guest identity and timestamps, and per-category counts, never claim
+codes or secret values). Fan-out selects only packages whose owners hold the
+admin role at dispatch time. The event contains the stable user id, username,
+email, create source or delete timestamp, and first-touch marketing attribution
+when present. It omits passwords, roles, plan, secrets, and unrelated account
+content. Delivery is best-effort (no Queue) after the account change commits.
 
 **Admins can subscribe to verification-mail terminal failures.** The first
 bounce, failure, rejection, or complaint on a signup/verify send fans

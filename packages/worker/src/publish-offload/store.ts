@@ -1,6 +1,4 @@
-import { authorizePackageWrite } from '#worker/authorization/authorize.ts'
 import { McpCallerError } from '#worker/mcp/caller-error.ts'
-import { getSavedPackageByIdInAnyOrg } from '#worker/package-registry/repo.ts'
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { isPublishOffloadEnabledFor } from './flag.ts'
 import { sha256Hex } from './module-hashes.ts'
@@ -100,6 +98,17 @@ export async function createPublishBuild(input: {
 		)
 		.run()
 	return { buildId: id, ticket, expiresAt }
+}
+
+/** Drops a build nothing took (the chain ended in Kody cloud). */
+export async function discardUnstartedPublishBuild(
+	db: D1Database,
+	buildId: string,
+) {
+	await db
+		.prepare(`DELETE FROM publish_builds WHERE id = ? AND status = 'uploading'`)
+		.bind(buildId)
+		.run()
 }
 
 export async function getPublishBuild(db: D1Database, buildId: string) {
@@ -298,9 +307,8 @@ function rejected(message: string) {
 /**
  * Commit-time gate for `packagePublishExternalPush({ publish_build_id })`:
  * the flag is on, the build belongs to this package, publisher and pushed
- * commit, it is sealed, and every package it claims to inline is one the
- * publisher can write (6A). The server recomputes the real inlined list from
- * source later and requires it to be inside this checked set.
+ * commit, and it is sealed. Its Kody package imports are linked and
+ * checked when the upload is committed (6C).
  */
 export async function resolveUploadedPublishBuildForPublish(input: {
 	env: Env
@@ -345,31 +353,8 @@ export async function resolveUploadedPublishBuildForPublish(input: {
 	}
 	const document = parsePublishBuildDocument(row)
 	if (!document) throw rejected('the build has no sealed manifest.')
-	const writablePackageIds: Array<string> = []
-	for (const packageId of new Set(document.inlinedPackageIds)) {
-		if (packageId === input.packageId) continue
-		const dependency = await getSavedPackageByIdInAnyOrg(
-			input.env.APP_DB,
-			packageId,
-		)
-		if (!dependency) continue
-		try {
-			await authorizePackageWrite(
-				{ env: input.env, request: input.request ?? null },
-				{
-					id: dependency.id,
-					userId: dependency.userId,
-					label: dependency.name,
-				},
-			)
-			writablePackageIds.push(dependency.id)
-		} catch {
-			// Left out: the server-side check names it if the bundle inlines it.
-		}
-	}
 	return {
 		buildId: row.id,
-		writablePackageIds,
 		communityListed: await isPackageCommunityListed(
 			input.env.APP_DB,
 			input.packageId,

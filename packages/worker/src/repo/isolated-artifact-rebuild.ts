@@ -81,6 +81,8 @@ export type IsolatedArtifactBuildCheckRequest = {
 	 * compare a server rebuild against an uploaded bundle.
 	 */
 	includeModuleHashes?: boolean
+	/** Build the way an off-worker publish build does (6C linked imports). */
+	linkKodyPackageImports?: boolean
 }
 
 /**

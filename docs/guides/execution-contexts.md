@@ -430,6 +430,15 @@ Turn it off the same way. It is only for your account.
 
 ## Publish builds
 
+With the `publish-offload` flag also on, a publish follows your chain the same
+as `execute`: the first context you operate that can take it builds the package,
+and Kody cloud is last unless your chain is strict. `--context <name>` (or
+`context` on `packagePublishExternalPush`) picks one for this publish and never
+falls back. A package can bind its publishes to one context with
+`kody.publish.execution.context` in `package.json`. A bound publish that names
+no context fails when that context is unavailable, instead of falling back. See
+[where a publish builds](./publish-large-packages.md#where-a-publish-builds).
+
 `kody package publish <package> --build context` asks a context you operate to
 bundle the package. The run carries no user code and no credentials: the daemon
 clones the pushed commit with a read-only, single-repo token that expires in
