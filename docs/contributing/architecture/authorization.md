@@ -442,7 +442,11 @@ same commands. Default bootstrap scopes include local-execute use scopes plus
 explicit `scopes`.
 
 Profiles are a separate narrowing layer (not folded into scopes): a
-profile-bound token is narrowed by both its scopes and its profile chain.
+profile-bound token is narrowed by both its scopes and its profile chain. The
+chain is checked before the scope, so a request both lack reports
+`profile_grant` (the message also says the token lacks the scope). Open API maps
+`profile_grant` and `profile_inactive` to 403 with that code, not
+`insufficient_scope`, and without `mint_scopes`.
 
 ## Site admin
 

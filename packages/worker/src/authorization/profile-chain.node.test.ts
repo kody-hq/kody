@@ -36,7 +36,7 @@ function layer(
 }
 
 function access(
-	chain: ProfileChainAccess,
+	chain: ProfileChainAccess | null,
 	overrides: Partial<EffectivePermissions> = {},
 ): EffectivePermissions {
 	return {
@@ -267,4 +267,216 @@ test("a collaborator's profile inherits the unmappable-credential lock even when
 		allowed: false,
 		error: { code: 'unmappable_credentials' },
 	})
+})
+
+const notesKey: OrgResource = {
+	type: 'credential',
+	id: 'cred-1',
+	orgId,
+	label: 'notes-api-key',
+}
+const unnamedKey: OrgResource = { type: 'credential', id: 'cred-2', orgId }
+
+function credentialAccess(input: {
+	personHolds: boolean
+	tokenScopes: Array<OrgPermission> | null
+	profile: 'none' | 'granted' | 'not-granted' | 'parent-missing' | 'inactive'
+}): EffectivePermissions {
+	const granted = {
+		'credential:cred-1': ['secret:use'] as Array<OrgPermission>,
+	}
+	const chain: ProfileChainAccess | null =
+		input.profile === 'none'
+			? null
+			: input.profile === 'inactive'
+				? {
+						inactive: {
+							id: 'prf_helper',
+							name: 'helper',
+							self: true,
+							reason: 'revoked',
+						},
+						layers: [layer('helper', true, granted)],
+					}
+				: {
+						inactive: null,
+						layers: [
+							layer(
+								'helper',
+								true,
+								input.profile === 'not-granted' ? {} : granted,
+							),
+							layer(
+								'agent',
+								false,
+								input.profile === 'parent-missing' ? {} : granted,
+							),
+						],
+					}
+	return access(chain, {
+		isOwner: false,
+		permissions: new Set(input.personHolds ? (['secret:use'] as const) : []),
+		credentialScopes: input.tokenScopes ? new Set(input.tokenScopes) : null,
+		profileChain: chain,
+	})
+}
+
+// Every combination of person access, token scope, and profile chain: which
+// cases are allowed and which denial each reports.
+test.each([
+	{ personHolds: true, tokenScopes: null, profile: 'none', expected: null },
+	{
+		personHolds: true,
+		tokenScopes: ['secret:use'],
+		profile: 'none',
+		expected: null,
+	},
+	{
+		personHolds: true,
+		tokenScopes: ['secret:use'],
+		profile: 'granted',
+		expected: null,
+	},
+	{ personHolds: true, tokenScopes: null, profile: 'granted', expected: null },
+	{
+		personHolds: true,
+		tokenScopes: ['package:read'],
+		profile: 'none',
+		expected: 'credential_scope',
+	},
+	{
+		personHolds: true,
+		tokenScopes: ['package:read'],
+		profile: 'granted',
+		expected: 'credential_scope',
+	},
+	{
+		personHolds: true,
+		tokenScopes: ['secret:use'],
+		profile: 'not-granted',
+		expected: 'profile_grant',
+	},
+	{
+		personHolds: true,
+		tokenScopes: ['secret:use'],
+		profile: 'parent-missing',
+		expected: 'profile_grant',
+	},
+	{
+		personHolds: true,
+		tokenScopes: ['package:read'],
+		profile: 'not-granted',
+		expected: 'profile_grant',
+	},
+	{
+		personHolds: true,
+		tokenScopes: ['secret:use'],
+		profile: 'inactive',
+		expected: 'profile_inactive',
+	},
+	{
+		personHolds: false,
+		tokenScopes: ['secret:use'],
+		profile: 'granted',
+		expected: 'missing_permission',
+	},
+	{
+		personHolds: false,
+		tokenScopes: ['secret:use'],
+		profile: 'not-granted',
+		expected: 'missing_permission',
+	},
+	{
+		personHolds: false,
+		tokenScopes: null,
+		profile: 'none',
+		expected: 'missing_permission',
+	},
+] as const)(
+	'credential use: person $personHolds, token $tokenScopes, profile $profile -> $expected',
+	({ expected, ...input }) => {
+		const decision = checkPermission(
+			credentialAccess({
+				...input,
+				tokenScopes: input.tokenScopes ? [...input.tokenScopes] : null,
+			}),
+			'secret:use',
+			notesKey,
+		)
+		if (expected === null) {
+			expect(decision.allowed).toBe(true)
+			return
+		}
+		expect(decision.allowed).toBe(false)
+		if (!decision.allowed) {
+			expect(decision.error.code).toBe(expected)
+			expect(decision.error.message).not.toContain('cred-1')
+		}
+	},
+)
+
+test('a profile credential denial names the profile and the credential by name', () => {
+	const denied = checkPermission(
+		credentialAccess({
+			personHolds: true,
+			tokenScopes: ['secret:use'],
+			profile: 'not-granted',
+		}),
+		'secret:use',
+		notesKey,
+	)
+	expect(denied.allowed).toBe(false)
+	if (denied.allowed) return
+	expect(denied.error.message).toBe(
+		'Profile "helper" was not granted secret:use on credential "notes-api-key". The person it acts for can share the credential with it under Credentials (or accessGrant with resource_type "credential" and subject_type "profile").',
+	)
+	expect(denied.error.mintScopes).toBeNull()
+
+	const parent = checkPermission(
+		credentialAccess({
+			personHolds: true,
+			tokenScopes: ['secret:use'],
+			profile: 'parent-missing',
+		}),
+		'secret:use',
+		notesKey,
+	)
+	if (!parent.allowed) {
+		expect(parent.error.message).toContain(
+			'Parent profile "agent" does not hold secret:use on credential "notes-api-key"',
+		)
+	}
+})
+
+test('a profile credential denial never prints a raw credential id', () => {
+	const effective = credentialAccess({
+		personHolds: true,
+		tokenScopes: ['secret:use'],
+		profile: 'not-granted',
+	})
+	const denied = checkPermission(effective, 'secret:use', unnamedKey)
+	expect(denied.allowed).toBe(false)
+	if (!denied.allowed) {
+		expect(denied.error.code).toBe('profile_grant')
+		expect(denied.error.message).toContain('on this credential')
+		expect(denied.error.message).not.toContain('cred-2')
+	}
+})
+
+test('a profile denial on a token that also lacks the scope says both', () => {
+	const denied = checkPermission(
+		credentialAccess({
+			personHolds: true,
+			tokenScopes: ['package:read'],
+			profile: 'not-granted',
+		}),
+		'secret:use',
+		notesKey,
+	)
+	if (!denied.allowed) {
+		expect(denied.error.code).toBe('profile_grant')
+		expect(denied.error.message).toContain(
+			'This token is also not scoped for secret:use',
+		)
+	}
 })

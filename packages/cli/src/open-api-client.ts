@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import {
 	currentStoredTokenLifetimeAlias,
 	insufficientScopeMessage,
+	profileDenialMessage,
 	readInsufficientScopeDetails,
 	rejectedApiTokenMessage,
 } from './api-token.js'
@@ -709,6 +710,11 @@ function describeOpenApiFailure(
 	if (status === 401) {
 		return new OpenApiError(rejectedApiTokenMessage(detail), meta)
 	}
+	const profileDenial =
+		status === 403
+			? profileDenialMessage({ code, body, serverMessage: failure?.message })
+			: null
+	if (profileDenial) return new OpenApiError(profileDenial, meta)
 	if (status === 403 && code === 'insufficient_scope') {
 		return new OpenApiError(
 			`${insufficientScopeMessage({
