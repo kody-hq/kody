@@ -205,9 +205,8 @@ same as a missing README `## Intent` section.
 
 ## Runtime input checking
 
-This rule applies to **exposed exports** — the package surface agents call
-through `execute` with plain objects. Internal helpers and modules can rely on
-TypeScript; do not prescribe Remix Schema or fail-on-unknown for internal code.
+This rule applies to **exposed exports** — the surface agents call through
+`execute` with plain objects. Internal code can rely on TypeScript alone.
 
 On those export boundaries, TypeScript types do not run at call time, so a
 guessed or mistyped key is easy to ship. For exports that publish, send, write
@@ -217,12 +216,13 @@ and prefer one clear contract.
 1. **Fail on unknown keys (strict).** At the export entrypoint, parse the call
    object with a schema that rejects unrecognized fields. Prefer
    [`remix/data-schema`](https://www.npmjs.com/package/@remix-run/data-schema)
-   over Zod when choosing a schema library for those boundaries (smaller and
-   faster in Worker isolates). Remix Schema's `object()` strips unknown keys by
-   default — pass `{ unknownKeys: 'error' }` for agent-facing export inputs:
+   over Zod (smaller and faster in Worker isolates). Remix Schema's `object()`
+   strips unknown keys by default — pass `{ unknownKeys: 'error' }` for
+   agent-facing export inputs:
 
    ```ts
    import { object, optional, parse, string } from 'remix/data-schema'
+   import type { InferInput } from 'remix/data-schema'
 
    const createPostInput = object(
    	{
@@ -234,7 +234,9 @@ and prefer one clear contract.
    	{ unknownKeys: 'error' },
    )
 
-   export default async function createPost(raw: unknown) {
+   export type CreatePostParams = InferInput<typeof createPostInput>
+
+   export default async function createPost(raw: CreatePostParams) {
    	const input = parse(createPostInput, raw)
    	// …
    }

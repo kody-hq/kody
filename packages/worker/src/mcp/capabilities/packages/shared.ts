@@ -271,14 +271,16 @@ export const packageExportSurfaceSchema = z.object({
 		.array(
 			z.object({
 				name: z.string(),
-				kind: z.enum(['type', 'interface', 'enum']),
+				kind: z.enum(['type', 'interface', 'enum', 'const']),
 				definition: z
 					.string()
-					.describe('Source text of the referenced type, interface, or enum.'),
+					.describe(
+						'Source text of the referenced type, interface, or enum. For a `const` reached through `typeof`, the resolved schema input fields when the initializer is a schema builder, otherwise its declaration.',
+					),
 			}),
 		)
 		.describe(
-			"Type, interface, and enum definitions referenced by this export's callable functions.",
+			"Type, interface, enum, and `typeof` const definitions referenced by this export's callable functions.",
 		),
 })
 
