@@ -11,6 +11,7 @@ import { routes } from '#universal/routes.ts'
 import { publicSignupPrimaryCta } from '#universal/public-signup-copy.ts'
 import {
 	colors,
+	mq,
 	radius,
 	transitions,
 	typography,
@@ -351,10 +352,25 @@ const postCtaCss = {
 		color: colors.textMuted,
 		fontSize: '0.98rem',
 	},
+	[mq.mobile]: {
+		flexDirection: 'column',
+		alignItems: 'flex-start',
+		gap: '1rem',
+		'& p': {
+			flex: 'none',
+			width: '100%',
+		},
+	},
 } satisfies CSSObject
 
 const postCtaButtonCss = {
 	...getPillButtonCss(),
 	fontSize: '0.95rem',
 	padding: '0.8rem 1.35rem',
+	[mq.mobile]: {
+		width: '100%',
+		boxSizing: 'border-box',
+		justifyContent: 'center',
+		textAlign: 'center',
+	},
 } satisfies CSSObject
