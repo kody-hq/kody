@@ -30,6 +30,19 @@ function authorization(
 	}
 }
 
+const signedInSession: SessionInfo = {
+	email: 'ada@example.com',
+	emailVerified: true,
+	emailVerificationDelivery: null,
+	username: 'ada',
+	avatarUrl: null,
+	roles: ['user'],
+	permissions: [],
+	featureFlags: Object.fromEntries(
+		featureFlagKeys.map((key) => [key, false]),
+	) as SessionInfo['featureFlags'],
+}
+
 test('native signup renders accessible social provider controls before hydration', async () => {
 	const html = await renderStartPage(
 		createElement(LoginPage, {
@@ -47,7 +60,7 @@ test('native OAuth document renders grant, scopes, and POST action with consent 
 	const html = await renderStartPage(
 		createElement(OAuthAuthorizeRoute, {
 			data: authorization(null),
-			session: null,
+			session: signedInSession,
 			authProviders: authConfig,
 		}),
 		authorizePath,
@@ -108,7 +121,7 @@ test('native OAuth document omits unconfigured social providers and keeps passke
 	const html = await renderStartPage(
 		createElement(OAuthAuthorizeRoute, {
 			data: { ...authorization(null), requireCredentials: true },
-			session: null,
+			session: signedInSession,
 			authProviders: { turnstileSiteKey: null, providers: [] },
 		}),
 		authorizePath,
@@ -117,4 +130,27 @@ test('native OAuth document omits unconfigured social providers and keeps passke
 	for (const label of ['GitHub', 'Google']) {
 		expect(html).not.toContain(`aria-label="Continue with ${label}"`)
 	}
+})
+
+test('signed-out OAuth document offers log in, sign up, and Try it out', async () => {
+	const html = await renderStartPage(
+		createElement(OAuthAuthorizeRoute, {
+			data: { ...authorization(null), orgs: [], selectedOrgSlug: null },
+			session: null,
+			authProviders: authConfig,
+		}),
+		authorizePath,
+	)
+	const text = html.replaceAll('<!-- -->', '')
+	for (const expected of [
+		'Kody secure connection',
+		'Cursor wants to connect to your Kody account',
+		'data-testid="oauth-authorize-try-it-out"',
+		'No account needed. Full access for 24 hours, then claim it to keep everything.',
+		'just tell Cursor to claim your account.',
+		'You can disconnect Cursor anytime from your Kody account.',
+	])
+		expect(text).toContain(expected)
+	expect(html).not.toContain('data-testid="oauth-authorize-form"')
+	expect(html).not.toContain('—')
 })

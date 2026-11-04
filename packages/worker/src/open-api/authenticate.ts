@@ -27,7 +27,10 @@ import {
 	type OrgBinding,
 } from '#worker/orgs/repo.ts'
 import { cliClientIdMetadataPath } from '#worker/cli-client-metadata.ts'
-import { buildMcpUserContextFromGrantProps } from '#worker/mcp-auth-user-context.ts'
+import {
+	buildMcpUserContextFromGrantProps,
+	resolveGuestAliasedGrantProps,
+} from '#worker/mcp-auth-user-context.ts'
 import { resolveOAuthHelpers } from '#worker/oauth-helpers.ts'
 import { isCredentialInvalidatedByStoredPasswordChange } from '#worker/password-change-lockout.ts'
 import {
@@ -48,6 +51,7 @@ import {
 	sessionStub,
 } from '#worker/execution-contexts/store.ts'
 import { isOperatorContextRun } from '#worker/execution-contexts/credential-grant.ts'
+import { readClaimedGuestOrgForSlug } from '#worker/guest/guest-accounts.ts'
 import { credentialCallMapFromJson } from '#worker/credentials/credential-call-map.ts'
 
 type McpOauthGrantProps = {
@@ -144,6 +148,13 @@ export async function resolveOrgBindingForUserOwnedToken(input: {
 	const byId = await getOrgById(input.db, hint)
 	if (byId) {
 		return loadOrgBindingForOrg(input.db, input.userId, byId.id)
+	}
+	const claimedGuestOrgId = await readClaimedGuestOrgForSlug(input.db, {
+		slug: hint,
+		personId: input.userId,
+	})
+	if (claimedGuestOrgId) {
+		return loadOrgBindingForOrg(input.db, input.userId, claimedGuestOrgId)
 	}
 	return null
 }
@@ -294,9 +305,13 @@ async function authenticateWithMcpOauth(input: {
 	) {
 		throw unauthorized('Invalid API token.', true)
 	}
+	const grantProps = await resolveGuestAliasedGrantProps(
+		input.env,
+		tokenSummary.grant.props as Record<string, unknown>,
+	)
 	const authContext = await buildMcpUserContextFromGrantProps(
 		input.env,
-		tokenSummary.grant.props,
+		grantProps,
 	)
 	if (!authContext) {
 		throw unauthorized('Invalid API token.', true)
@@ -336,7 +351,7 @@ async function authenticateWithMcpOauth(input: {
 	const orgBinding = await loadOrgBindingFromGrantProps({
 		db: input.env.APP_DB,
 		personId: authContext.user.userId,
-		grantProps: tokenSummary.grant.props,
+		grantProps,
 	})
 	if (grantHasRetiredConnectionProfile(tokenSummary.grant.props)) {
 		throw unauthorized(

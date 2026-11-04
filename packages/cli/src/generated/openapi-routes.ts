@@ -469,6 +469,18 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: [],
 	},
 	{
+		operationId: 'guestClaimFinish',
+		method: 'POST',
+		pathTemplate: '/v1/account/guest-claim/finish',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'guestClaimStart',
+		method: 'POST',
+		pathTemplate: '/v1/account/guest-claim',
+		pathParamNames: [],
+	},
+	{
 		operationId: 'integrationDelete',
 		method: 'DELETE',
 		pathTemplate: '/v1/integrations/{name}',

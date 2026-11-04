@@ -1,3 +1,4 @@
+import { attachGuestResultBlock } from '#worker/guest/guest-result-block.ts'
 import { recordSkillFileRead } from '#worker/package-registry/skill-read-events.ts'
 import {
 	personalOrgId,
@@ -128,7 +129,16 @@ async function stampFirstSearchIfAuthenticated(
 	}
 }
 
-export async function runSearchTool(input: {
+export async function runSearchTool(
+	input: Parameters<typeof runSearchToolWithoutGuestBlock>[0],
+) {
+	return await attachGuestResultBlock(
+		await runSearchToolWithoutGuestBlock(input),
+		{ db: input.env.APP_DB, callerContext: input.callerContext },
+	)
+}
+
+async function runSearchToolWithoutGuestBlock(input: {
 	env: Env
 	callerContext: McpCallerContext
 	args: SearchToolArgs

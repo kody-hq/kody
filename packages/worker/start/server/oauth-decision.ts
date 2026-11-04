@@ -12,7 +12,7 @@ export const submitOAuthDecision = createServerFn({ method: 'POST' })
 				fields: z.record(z.string(), z.string()),
 			})
 			.refine((input) =>
-				['approve', 'deny', 'reset-client'].includes(
+				['approve', 'deny', 'reset-client', 'guest'].includes(
 					input.fields.decision ?? '',
 				),
 			),

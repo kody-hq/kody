@@ -74,6 +74,16 @@ import {
 	personalOrgId,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import { readGuestAccountByClaimCode } from '#worker/guest/guest-accounts.ts'
+import {
+	convertGuestInPlace,
+	findClaimTargetByDbId,
+	findClaimTargetByEmail,
+	GuestClaimError,
+	guestClaimDonePath,
+	guestComesWithCounts,
+	mergeGuestIntoAccount,
+} from '#worker/guest/guest-claim.ts'
 
 function oauthCodeForAccountEmail(
 	code: AccountEmailRejectionCode,
@@ -383,6 +393,93 @@ export function createAuthProviderCallbackHandler(env: Env) {
 			return redirect(postLoginPath, cookies)
 		}
 
+		async function completeGuestClaim(
+			claim: { code: string; username: string | null },
+			existingConnection: { user_id: number } | null,
+		) {
+			const claimPath = `/claim/${encodeURIComponent(claim.code)}`
+			const back = (error: string) =>
+				redirect(`${claimPath}?error=${encodeURIComponent(error)}`, [
+					clearStateCookie,
+				])
+			const guest = await readGuestAccountByClaimCode(env.APP_DB, claim.code)
+			if (!guest || guest.claimedAt) {
+				return redirect(claimPath, [clearStateCookie])
+			}
+			const email =
+				profile.email && profile.emailVerified
+					? normalizeEmail(profile.email)
+					: null
+			try {
+				const comesWith = await guestComesWithCounts(env, guest)
+				let target = existingConnection
+					? await findClaimTargetByDbId(env.APP_DB, existingConnection.user_id)
+					: null
+				if (!target && !existingConnection && email) {
+					target = await findClaimTargetByEmail(env.APP_DB, email)
+				}
+				if (existingConnection && !target) return back('account_unavailable')
+				if (target) {
+					await mergeGuestIntoAccount({
+						env,
+						guest,
+						target,
+						baseUrl: url.origin,
+					})
+					if (!existingConnection) {
+						await createConnection({
+							provider,
+							profile,
+							userId: target.dbUserId,
+							requireVerifiedEmail: true,
+						}).catch((error: unknown) => {
+							console.warn('guest-claim-link-provider-failed', error)
+						})
+					}
+					return issueLogin(
+						{
+							id: target.dbUserId,
+							stable_user_id: target.personId,
+							email: target.email,
+						},
+						claimPath,
+						{ destination: guestClaimDonePath(claim.code, 'merge', comesWith) },
+					)
+				}
+				if (!email) return back('no_verified_email')
+				const username =
+					claim.username ??
+					(await getAvailableUsernameFromBase(
+						env.APP_DB,
+						profile.username ?? usernameFromEmail(email),
+						env,
+					))
+				await convertGuestInPlace({
+					env,
+					guest,
+					email,
+					username,
+					displayName: profile.displayName,
+				})
+				const user = await db.findOne(usersTable, {
+					where: { stable_user_id: guest.personId },
+				})
+				if (!user) return back('account_unavailable')
+				await createConnection({
+					provider,
+					profile,
+					userId: user.id,
+					requireVerifiedEmail: true,
+				})
+				return issueLogin(user, claimPath, {
+					destination: guestClaimDonePath(claim.code, 'new', comesWith),
+				})
+			} catch (error) {
+				if (error instanceof GuestClaimError) return back(error.code)
+				throw error
+			}
+		}
+
 		let connection = await db.findOne(oauthConnectionsTable, {
 			where: {
 				provider_name: provider,
@@ -398,6 +495,11 @@ export function createAuthProviderCallbackHandler(env: Env) {
 				: null
 		const releasedUsernames: Array<string> = []
 		if (supersededAccount) connection = null
+
+		// 0. Claiming a guest account from /claim/<code>.
+		if (loginState.guestClaim) {
+			return completeGuestClaim(loginState.guestClaim, connection)
+		}
 
 		// 1. A signed-in user links the provider identity to their account
 		// (an existing connection for another user is a conflict, never an

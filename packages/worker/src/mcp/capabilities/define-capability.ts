@@ -1,3 +1,4 @@
+import { assertGuestCapabilityAllowed } from '#worker/guest/guest-policy.ts'
 import { z } from 'zod'
 import {
 	callerContextFields,
@@ -141,6 +142,13 @@ export function defineCapability<
 			}
 			await assertCallerCanAccessCapability(ctx.callerContext, definition, {
 				env: ctx.env,
+			})
+			await assertGuestCapabilityAllowed({
+				db: ctx.env.APP_DB,
+				callerContext: ctx.callerContext,
+				capabilityName: definition.name,
+				readOnly: definition.readOnly === true,
+				args,
 			})
 			const siteAccessTrigger = requiresSiteAccess(definition)
 				? siteAccessActorTriggerOf(ctx.callerContext)

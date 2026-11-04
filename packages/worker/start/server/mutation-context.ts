@@ -7,6 +7,7 @@ import { loadRequestOrgResolution } from '#app/org-request-binding.ts'
 import { loadOrgBindingForSlug } from '#worker/orgs/repo.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
+import { guestHoldWriteError } from '#worker/guest/guest-policy.ts'
 
 type WebsiteScope = { scope?: { orgSlug: string; requireMembership?: boolean } }
 type WebsiteContext = {
@@ -85,6 +86,13 @@ export async function withWebsiteMutation<T>(
 	const auth = await loadResolvedRequestAuth(request, env)
 	if (auth.user?.accountDeleting)
 		throw new Error('Account deletion is in progress.')
+	const held = await guestHoldWriteError({
+		db: env.APP_DB,
+		baseUrl: new URL(request.url).origin,
+		email: user.email,
+		personId: user.mcpUser.userId,
+	})
+	if (held) throw held
 	return withAccountWriteLease({
 		db: env.APP_DB,
 		stableUserId: personalOrgIdForPerson(user.mcpUser),

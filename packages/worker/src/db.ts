@@ -18,6 +18,7 @@ export const usersTable = table({
 		deleting_at: c.text(),
 		deleted_at: c.text(),
 		suspended_at: c.text(),
+		guest_expires_at: c.text(),
 		email_verification_delivery_status: c.text(),
 		email_verification_delivery_at: c.text(),
 		email_verification_delivery_detail: c.text(),

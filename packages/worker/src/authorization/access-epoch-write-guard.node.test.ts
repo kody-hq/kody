@@ -50,6 +50,7 @@ const writers: Record<string, Invalidation> = {
 	'execution-contexts/service.ts': 'same-batch-bump',
 	'orgs/soft-delete.ts': 'org-tombstone-then-restore-bump',
 	'orgs/provision.ts': 'org-row-lifecycle',
+	'guest/guest-accounts.ts': 'org-row-lifecycle',
 	'account/data-targets.ts': 'person-row-gone',
 	'profiles/creator-grants.ts': 'profile-subject-only',
 	'profiles/package-grants.ts': 'profile-subject-only',

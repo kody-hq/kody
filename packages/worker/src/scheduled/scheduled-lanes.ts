@@ -1,3 +1,4 @@
+import { pruneExpiredGuestAccounts } from '#worker/guest/guest-account-purge.ts'
 import { reconcileSecondAgentStandardGifts } from '#worker/entitlements/second-agent-gift-reconciliation.ts'
 import * as Sentry from '@sentry/cloudflare'
 import {
@@ -155,11 +156,17 @@ export async function runScheduledLane(input: {
 			})
 		case 'retention':
 			return pruneRetention({ env: input.env, now: input.scheduledAt })
-		case 'unverified_account_purge':
-			return pruneUnverifiedAccounts({
+		case 'unverified_account_purge': {
+			const unverified = await pruneUnverifiedAccounts({
 				env: input.env,
 				now: input.scheduledAt,
 			})
+			const guests = await pruneExpiredGuestAccounts({
+				env: input.env,
+				now: input.scheduledAt,
+			})
+			return { ...unverified, guests }
+		}
 		case 'soft_delete_purge':
 			return pruneSoftDeleted({
 				env: input.env,

@@ -10,6 +10,7 @@ import {
 import { accountManagementNarrowMq } from '../pages/account-management-link-nav.tsx'
 import { BrandContextMenu } from './brand-context-menu.tsx'
 import { DemoIndicator } from './demo-indicator.tsx'
+import { GuestBanner } from '../pages/guest-banner.tsx'
 import { KodyMark } from './kody-mark.tsx'
 import { AccountMenu } from './org-switcher.tsx'
 import { SiteLink } from './site-link.tsx'
@@ -242,6 +243,7 @@ export function WorkspaceLayout() {
 						padding: 'clamp(1rem, 3vw, 2.5rem)',
 					}}
 				>
+					{session.guest ? <GuestBanner guest={session.guest} /> : null}
 					<Outlet />
 				</main>
 			</div>

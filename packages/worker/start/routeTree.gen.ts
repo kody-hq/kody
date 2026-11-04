@@ -63,6 +63,7 @@ import { Route as BlogIndexRouteImport } from './routes/blog.index'
 import { Route as BlogSlugRouteImport } from './routes/blog.$slug'
 import { Route as BlogRssDotxmlRouteImport } from './routes/blog_.rss[.]xml'
 import { Route as BlogChar123slugChar125DotmdRouteImport } from './routes/blog_.{$slug}[.]md'
+import { Route as ClaimCodeRouteImport } from './routes/claim.$code'
 import { Route as CommunityListingIdRouteImport } from './routes/community_.$listingId'
 import { Route as CompareComposioAlternativesRouteImport } from './routes/compare_.composio-alternatives'
 import { Route as CompareN8nAlternativesRouteImport } from './routes/compare_.n8n-alternatives'
@@ -564,6 +565,11 @@ const BlogChar123slugChar125DotmdRoute =
     path: '/blog/{$slug}.md',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ClaimCodeRoute = ClaimCodeRouteImport.update({
+  id: '/claim/$code',
+  path: '/claim/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CommunityListingIdRoute = CommunityListingIdRouteImport.update({
   id: '/community_/$listingId',
   path: '/community/$listingId',
@@ -1885,6 +1891,7 @@ export interface FileRoutesByFullPath {
   '/blog/$slug': typeof BlogSlugRoute
   '/blog/rss.xml': typeof BlogRssDotxmlRoute
   '/blog/{$slug}.md': typeof BlogChar123slugChar125DotmdRoute
+  '/claim/$code': typeof ClaimCodeRoute
   '/community/$listingId': typeof CommunityListingIdRouteWithChildren
   '/compare/composio-alternatives': typeof CompareComposioAlternativesRoute
   '/compare/n8n-alternatives': typeof CompareN8nAlternativesRoute
@@ -2165,6 +2172,7 @@ export interface FileRoutesByTo {
   '/blog/$slug': typeof BlogSlugRoute
   '/blog/rss.xml': typeof BlogRssDotxmlRoute
   '/blog/{$slug}.md': typeof BlogChar123slugChar125DotmdRoute
+  '/claim/$code': typeof ClaimCodeRoute
   '/community/$listingId': typeof CommunityListingIdRouteWithChildren
   '/compare/composio-alternatives': typeof CompareComposioAlternativesRoute
   '/compare/n8n-alternatives': typeof CompareN8nAlternativesRoute
@@ -2448,6 +2456,7 @@ export interface FileRoutesById {
   '/blog/$slug': typeof BlogSlugRoute
   '/blog_/rss.xml': typeof BlogRssDotxmlRoute
   '/blog_/{$slug}.md': typeof BlogChar123slugChar125DotmdRoute
+  '/claim/$code': typeof ClaimCodeRoute
   '/community_/$listingId': typeof CommunityListingIdRouteWithChildren
   '/compare_/composio-alternatives': typeof CompareComposioAlternativesRoute
   '/compare_/n8n-alternatives': typeof CompareN8nAlternativesRoute
@@ -2731,6 +2740,7 @@ export interface FileRouteTypes {
     | '/blog/$slug'
     | '/blog/rss.xml'
     | '/blog/{$slug}.md'
+    | '/claim/$code'
     | '/community/$listingId'
     | '/compare/composio-alternatives'
     | '/compare/n8n-alternatives'
@@ -3011,6 +3021,7 @@ export interface FileRouteTypes {
     | '/blog/$slug'
     | '/blog/rss.xml'
     | '/blog/{$slug}.md'
+    | '/claim/$code'
     | '/community/$listingId'
     | '/compare/composio-alternatives'
     | '/compare/n8n-alternatives'
@@ -3293,6 +3304,7 @@ export interface FileRouteTypes {
     | '/blog/$slug'
     | '/blog_/rss.xml'
     | '/blog_/{$slug}.md'
+    | '/claim/$code'
     | '/community_/$listingId'
     | '/compare_/composio-alternatives'
     | '/compare_/n8n-alternatives'
@@ -3574,6 +3586,7 @@ export interface RootRouteChildren {
   BlogSlugRoute: typeof BlogSlugRoute
   BlogRssDotxmlRoute: typeof BlogRssDotxmlRoute
   BlogChar123slugChar125DotmdRoute: typeof BlogChar123slugChar125DotmdRoute
+  ClaimCodeRoute: typeof ClaimCodeRoute
   CommunityListingIdRoute: typeof CommunityListingIdRouteWithChildren
   CompareComposioAlternativesRoute: typeof CompareComposioAlternativesRoute
   CompareN8nAlternativesRoute: typeof CompareN8nAlternativesRoute
@@ -4030,6 +4043,13 @@ declare module '@tanstack/react-router' {
       path: '/blog/{$slug}.md'
       fullPath: '/blog/{$slug}.md'
       preLoaderRoute: typeof BlogChar123slugChar125DotmdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/claim/$code': {
+      id: '/claim/$code'
+      path: '/claim/$code'
+      fullPath: '/claim/$code'
+      preLoaderRoute: typeof ClaimCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/community_/$listingId': {
@@ -6083,6 +6103,7 @@ const rootRouteChildren: RootRouteChildren = {
   BlogSlugRoute: BlogSlugRoute,
   BlogRssDotxmlRoute: BlogRssDotxmlRoute,
   BlogChar123slugChar125DotmdRoute: BlogChar123slugChar125DotmdRoute,
+  ClaimCodeRoute: ClaimCodeRoute,
   CommunityListingIdRoute: CommunityListingIdRouteWithChildren,
   CompareComposioAlternativesRoute: CompareComposioAlternativesRoute,
   CompareN8nAlternativesRoute: CompareN8nAlternativesRoute,

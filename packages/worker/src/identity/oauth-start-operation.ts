@@ -29,21 +29,26 @@ export async function startWebsiteOAuth({
 	url,
 	body,
 	provider,
+	guestClaim = null,
 }: {
 	env: Env
 	request: Request
 	url: URL
 	body: Record<string, unknown>
 	provider: string
+	/** Server-side claim page starts only; the claim code is the proof. */
+	guestClaim?: { code: string; username: string | null } | null
 }) {
-	const redirectTo = normalizeRedirectTo(url.searchParams.get('redirectTo'))
+	const redirectTo = guestClaim
+		? `/claim/${encodeURIComponent(guestClaim.code)}`
+		: normalizeRedirectTo(url.searchParams.get('redirectTo'))
 	const attribution = parseFirstTouchAttribution({
 		searchParams: url.searchParams,
 		body: null,
 	})
 	const session = (await readLiveAuthSession(request, env)).parsed?.session
 
-	if (!session) {
+	if (!session && !guestClaim) {
 		const protection = await checkPublicFormProtection({
 			env,
 			request,
@@ -85,6 +90,7 @@ export async function startWebsiteOAuth({
 			codeVerifier,
 			redirectTo,
 			attribution: hasFirstTouchAttribution(attribution) ? attribution : null,
+			guestClaim,
 		},
 		isSecureRequest(request),
 	)
