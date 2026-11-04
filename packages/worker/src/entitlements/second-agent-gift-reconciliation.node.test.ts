@@ -202,3 +202,63 @@ test('personal org remapping between evaluation and write cannot grant the old o
 		f.sqlite.close()
 	}
 })
+
+test('a person that kills the tick mid-listing is skipped next tick instead of replaying the batch', async () => {
+	const f = fixture()
+	try {
+		for (let i = 0; i < 10; i++) f.add(`person-${i}`)
+		const list = f.helpers.listUserGrants.getMockImplementation()!
+		let hung = false
+		f.helpers.listUserGrants.mockImplementation(async (personId: string) => {
+			if (personId === 'person-3' && !hung) {
+				hung = true
+				// Stands in for an isolate killed mid-listing (uncatchable OOM).
+				return new Promise<never>(() => {})
+			}
+			return list(personId)
+		})
+		void reconcileSecondAgentStandardGifts({ env: f.env, now })
+		await vi.waitFor(() => expect(hung).toBe(true))
+		expect(f.cursor.get(secondAgentGiftCursorKey)).toBe('person-3')
+		f.helpers.listUserGrants.mockClear()
+		expect(
+			await reconcileSecondAgentStandardGifts({ env: f.env, now }),
+		).toEqual({ scanned: 6, granted: 6, failed: 0 })
+		const listed = f.helpers.listUserGrants.mock.calls.map(([id]) => id)
+		expect(listed).toEqual([4, 5, 6, 7, 8, 9].map((i) => `person-${i}`))
+		expect(f.cursor.get(secondAgentGiftCursorKey)).toBe('')
+	} finally {
+		f.sqlite.close()
+	}
+})
+
+test('ecosystems are counted across every grant page', async () => {
+	const f = fixture()
+	try {
+		f.add('many-grants')
+		const metadata = { consent: 'x'.repeat(1024) }
+		f.helpers.listUserGrants.mockImplementation(
+			async (_personId: string, options?: { cursor?: string }) => {
+				const pageIndex = Number(options?.cursor ?? 0)
+				const clientId = pageIndex < 4 ? 'cursor' : 'chatgpt'
+				return {
+					items: Array.from({ length: 50 }, (_, i) => ({
+						id: `${clientId}-${pageIndex}-${i}`,
+						clientId,
+						scope: ['profile'],
+						createdAt: i,
+						metadata,
+					})),
+					...(pageIndex < 4 ? { cursor: String(pageIndex + 1) } : {}),
+				}
+			},
+		)
+		expect(
+			await reconcileSecondAgentStandardGifts({ env: f.env, now }),
+		).toEqual({ scanned: 1, granted: 1, failed: 0 })
+		expect(f.helpers.listUserGrants).toHaveBeenCalledTimes(5)
+		expect(f.helpers.lookupClient).toHaveBeenCalledTimes(2)
+	} finally {
+		f.sqlite.close()
+	}
+})
