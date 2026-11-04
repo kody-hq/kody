@@ -19,6 +19,7 @@ import { isExecutedDirectly } from '../node-runtime.ts'
 export const stampContext = 'kody/tested-tree'
 const stampCreator = 'github-actions[bot]'
 const validateWorkflowPath = '.github/workflows/validate.yml'
+const validateGateJob = '✅ Validate'
 
 export type TreeKey = {
 	tree: string
@@ -63,7 +64,6 @@ type WorkflowRun = {
 	path: string
 	event: string
 	status: string
-	conclusion: string | null
 	head_sha: string
 	head_repository: { full_name: string } | null
 }
@@ -71,6 +71,20 @@ type WorkflowRun = {
 export type LookupResult =
 	| { skip: true; prUrl: string; runUrl: string }
 	| { skip: false; reason: string }
+
+// The run conclusion is `failure` whenever a job was never assigned a runner,
+// even when the gate passed through a fallback, so trust the gate job itself.
+async function gatePassed(
+	api: <T>(path: string) => Promise<T>,
+	runPath: string,
+) {
+	const { jobs } = await api<{
+		jobs: Array<{ name: string; conclusion: string | null }>
+	}>(`${runPath}/jobs?filter=latest&per_page=100`)
+	return jobs.some(
+		(job) => job.name === validateGateJob && job.conclusion === 'success',
+	)
+}
 
 export async function findTestedTreeStamp(input: {
 	repository: string
@@ -125,9 +139,9 @@ export async function findTestedTreeStamp(input: {
 			run.path === validateWorkflowPath &&
 			run.event === 'pull_request' &&
 			run.status === 'completed' &&
-			run.conclusion === 'success' &&
 			run.head_sha === pr.head.sha &&
-			run.head_repository?.full_name === repository
+			run.head_repository?.full_name === repository &&
+			(await gatePassed(api, `/repos/${repository}/actions/runs/${runId}`))
 		) {
 			return { skip: true, prUrl: pr.html_url, runUrl: `${runPrefix}${runId}` }
 		}

@@ -25,6 +25,7 @@ function lookup(overrides: {
 	creator?: string
 	description?: string
 	run?: Record<string, unknown>
+	gate?: string | null
 	parents?: Array<string>
 }) {
 	const responses: Record<string, unknown> = {
@@ -54,10 +55,18 @@ function lookup(overrides: {
 			path: '.github/workflows/validate.yml',
 			event: 'pull_request',
 			status: 'completed',
-			conclusion: 'success',
 			head_sha: head,
 			head_repository: { full_name: repository },
 			...overrides.run,
+		},
+		[`/repos/${repository}/actions/runs/42/jobs?filter=latest&per_page=100`]: {
+			jobs: [
+				{ name: '🖥️ Host commands (macos-15)', conclusion: null },
+				{
+					name: '✅ Validate',
+					conclusion: overrides.gate === undefined ? 'success' : overrides.gate,
+				},
+			],
 		},
 	}
 	return findTestedTreeStamp({
@@ -87,11 +96,16 @@ test('skips only for a trusted stamp on a successful same-repo Validate run', as
 		prUrl: `${serverUrl}/${repository}/pull/7`,
 		runUrl,
 	})
+	// An abandoned macOS job marks the run failed even when the gate passed.
+	expect(await lookup({ run: { conclusion: 'failure' } })).toMatchObject({
+		skip: true,
+	})
 	for (const overrides of [
 		{ headRepo: 'someone/fork' },
 		{ creator: 'kentcdodds' },
 		{ description: treeStampDescription({ ...key, tree: 'x'.repeat(40) }) },
-		{ run: { conclusion: 'failure' } },
+		{ gate: 'failure' },
+		{ gate: null },
 		{ run: { path: '.github/workflows/preview.yml' } },
 		{ run: { head_sha: 'z'.repeat(40) } },
 		{ parents: ['c'.repeat(40)] },

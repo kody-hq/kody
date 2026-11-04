@@ -457,9 +457,14 @@ jobs:
         shard: [1, 2]
     env:
       WORKERS_TEST_SHARD: ${{ matrix.shard }}/2
-    # Room for one ≤780s attempt + one retry + setup. Soft-capping the suite
-    # below the job wall avoids workers=cancelled mid-suite (#3763).
-    timeout-minutes: 30
+    # Room for one ≤780s attempt + setup. A budget timeout retries on a fresh
+    # runner in workers_retry, with its own budget (#3763).
+    timeout-minutes: 20
+    # One output per shard: matrix legs merge distinct output names. The gate
+    # reads both and fails closed when one is missing.
+    outputs:
+      outcome_1: ${{ steps.attempt.outputs.outcome_1 }}
+      outcome_2: ${{ steps.attempt.outputs.outcome_2 }}
     needs: tested_tree
     if: >-
       !cancelled() && needs.tested_tree.outputs.skip != 'true' &&
@@ -470,9 +475,8 @@ jobs:
       # each Workers suite attempt soft-caps at the hard ceiling (780s);
       # post-suite watch is 620s (~Workers p95 + headroom). Cache hit or miss
       # does not change either. Do not delete tests to stay under. A mid-suite
-      # soft-cap hit retries once; assertion failures do not. On retry the
-      # start epoch resets so the post-suite check measures the successful
-      # attempt; overall job wall is the 30-minute timeout above.
+      # soft-cap hit retries once on a fresh runner (workers_retry); assertion
+      # failures do not retry.
       - name: ⏱️ Mark job start
         run: |
           epoch=$(date +%s)
@@ -490,72 +494,9 @@ jobs:
           worker-env: 'true'
           no_cache: ${{ env.VALIDATE_NO_CACHE }}
 
-      # Soft-cap the first attempt at the remaining hard ceiling so a slow
-      # runner cannot burn the whole job timeout and leave Validate as
-      # workers=cancelled (#3763). GNU timeout exits 124 on soft-cap; exit
-      # 137 is retryable only after the soft deadline (--kill-after SIGKILL).
-      # Early SIGKILL before the deadline is not a budget timeout. Vitest
-      # assertion failures keep their own non-zero status and never retry.
-      # Keep ADR 0011 per-file isolation (do not disable isolate, warm DOs
-      # from setupFiles, or skip verify).
       - name: ☁️ Workers unit tests
-        run: |
-          set -u
-          attempt_budget_seconds=780
-          kill_after_seconds=60
-          now=$(date +%s)
-          elapsed=$((now - UNIT_JOB_START_EPOCH))
-          remaining=$((attempt_budget_seconds - elapsed))
-          if [ "$remaining" -lt 60 ]; then
-            remaining=60
-          fi
-          # No pipefail: the runner's implicit `bash -e` would abort on the
-          # failing pipeline before the timeout check; PIPESTATUS captures
-          # timeout/vitest's exit code instead.
-          attempt_started=$(date +%s)
-          timeout --signal=TERM --kill-after="${kill_after_seconds}s" "${remaining}s" \
-            npm run test:workers 2>&1 | tee workers-attempt-1.log
-          status=${PIPESTATUS[0]}
-          attempt_elapsed=$(( $(date +%s) - attempt_started ))
-          if [ "$status" -eq 0 ]; then
-            exit 0
-          fi
-          # 124 = soft-cap TERM. 137 = SIGKILL (128+9): retryable only once
-          # the soft deadline has been reached (kill-after), not for an early
-          # OS kill before the budget.
-          retryable=0
-          if [ "$status" -eq 124 ]; then
-            retryable=1
-          elif [ "$status" -eq 137 ] && [ "$attempt_elapsed" -ge "$remaining" ]; then
-            retryable=1
-          fi
-          if [ "$retryable" -ne 1 ]; then
-            exit "$status"
-          fi
-          echo "::warning::Workers unit hit the ≤${attempt_budget_seconds}s attempt budget mid-suite; retrying once (#3763)."
-          # Measure the post-suite budget against the successful attempt only.
-          echo "UNIT_JOB_START_EPOCH=$(date +%s)" >> "$GITHUB_ENV"
-          # Capture under bash -e: a bare failing timeout would abort before
-          # status=$? and skip the ::error:: annotation.
-          attempt_started=$(date +%s)
-          if timeout --signal=TERM --kill-after="${kill_after_seconds}s" "${attempt_budget_seconds}s" \
-            npm run test:workers; then
-            status=0
-          else
-            status=$?
-          fi
-          attempt_elapsed=$(( $(date +%s) - attempt_started ))
-          retry_timeout=0
-          if [ "$status" -eq 124 ]; then
-            retry_timeout=1
-          elif [ "$status" -eq 137 ] && [ "$attempt_elapsed" -ge "$attempt_budget_seconds" ]; then
-            retry_timeout=1
-          fi
-          if [ "$retry_timeout" -eq 1 ]; then
-            echo "::error::Workers unit exceeded ≤${attempt_budget_seconds}s on retry (#3763)."
-            exit "$status"
-          fi
-          exit "$status"
+        id: attempt
+        run: bash tools/ci/workers-unit-attempt.sh
 
       - name: ⏱️ Unit shard budget (watch 620s / hard 780s)
         if: success()
@@ -576,6 +517,90 @@ jobs:
           {
             echo "### Job wall-clock"
             echo "- job: workers-${{ matrix.shard }}/2"
+            echo "- runner: \`${RUNNER_NAME:-unknown}\`"
+            echo "- no_cache: \`${VALIDATE_NO_CACHE}\`"
+            echo "- duration_seconds: **${dur}**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  workers_retry:
+    # Fresh runner for a shard whose first attempt hit the ≤780s budget on a
+    # slow machine (#3763). Same suite and budget; legs whose shard did not
+    # time out finish without running anything.
+    runs-on:
+      ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
+      inputs.runner) || vars.CI_RUNNER || 'ubuntu-latest' }}
+    name: ☁️ Workers retry (${{ matrix.shard }}/2)
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    env:
+      WORKERS_TEST_SHARD: ${{ matrix.shard }}/2
+      WORKERS_ATTEMPT: '2'
+      RETRY:
+        ${{ needs.workers.outputs[format('outcome_{0}', matrix.shard)] ==
+        'timeout' }}
+    timeout-minutes: 20
+    outputs:
+      outcome_1: ${{ steps.attempt.outputs.outcome_1 }}
+      outcome_2: ${{ steps.attempt.outputs.outcome_2 }}
+    needs: [tested_tree, workers]
+    if: >-
+      !cancelled() && needs.tested_tree.outputs.skip != 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft ==
+      false) && (needs.workers.outputs.outcome_1 == 'timeout' ||
+      needs.workers.outputs.outcome_2 == 'timeout')
+    steps:
+      # Self-driving attempt budget (tools/ci/enforce-unit-job-budget.ts):
+      # each Workers suite attempt soft-caps at the hard ceiling (780s);
+      # post-suite watch is 620s (~Workers p95 + headroom). Cache hit or miss
+      # does not change either. Do not delete tests to stay under. A mid-suite
+      # soft-cap hit retries once on a fresh runner (workers_retry); assertion
+      # failures do not retry.
+      - name: ⏱️ Mark job start
+        if: env.RETRY == 'true'
+        run: |
+          epoch=$(date +%s)
+          echo "UNIT_JOB_START_EPOCH=$epoch" >> "$GITHUB_ENV"
+          echo "VALIDATE_JOB_START_EPOCH=$epoch" >> "$GITHUB_ENV"
+
+      - name: 📦 Checkout
+        if: env.RETRY == 'true'
+        uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: 🧰 Setup
+        if: env.RETRY == 'true'
+        uses: ./.github/actions/setup-validate
+        with:
+          worker-env: 'true'
+          no_cache: ${{ env.VALIDATE_NO_CACHE }}
+
+      - name: ☁️ Workers unit tests
+        if: env.RETRY == 'true'
+        id: attempt
+        run: bash tools/ci/workers-unit-attempt.sh
+
+      - name: ⏱️ Unit shard budget (watch 620s / hard 780s)
+        if: success() && env.RETRY == 'true'
+        # Watch warns always; hard fail on pull requests and merge groups. Advisory
+        # (warning only) on push to main and manual dispatches so a slow
+        # cold run cannot block deploy.
+        run: >-
+          node tools/ci/enforce-unit-job-budget.ts --leg workers --start-epoch
+          "$UNIT_JOB_START_EPOCH" ${{ github.event_name != 'pull_request' &&
+          github.event_name != 'merge_group' && '--advisory' || '' }}
+
+      - name: ⏱️ Job wall-clock
+        if: always() && !cancelled() && env.RETRY == 'true'
+        run: |
+          end=$(date +%s)
+          start="${VALIDATE_JOB_START_EPOCH:-$end}"
+          dur=$((end - start))
+          {
+            echo "### Job wall-clock"
+            echo "- job: workers-retry-${{ matrix.shard }}/2"
             echo "- runner: \`${RUNNER_NAME:-unknown}\`"
             echo "- no_cache: \`${VALIDATE_NO_CACHE}\`"
             echo "- duration_seconds: **${dur}**"
@@ -804,7 +829,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15, windows-latest, windows-11-arm]
+        os: [ubuntu-24.04, windows-latest, windows-11-arm]
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -825,24 +850,61 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: 🟢 Setup Node
-        uses: actions/setup-node@v6
+      - name: 🖥️ Host commands
+        uses: ./.github/actions/host-commands
+
+  host_commands_macos:
+    # Own job (not a host_commands leg) so a macos-15 job GitHub never assigns
+    # a runner to (result `abandoned`) is visible on its own and can fall back.
+    runs-on: macos-15
+    defaults:
+      run:
+        shell: bash
+    name: 🖥️ Host commands (macos-15)
+    timeout-minutes: 20
+    needs: tested_tree
+    if: >-
+      !cancelled() && needs.tested_tree.outputs.skip != 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft ==
+      false)
+    env:
+      KODY_SKIP_SKILL_REFRESH: '1'
+      KODY_SKIP_GIT_HELPER_REFRESH: '1'
+    steps:
+      - name: 📦 Checkout
+        uses: actions/checkout@v6.0.2
         with:
-          node-version: 26
-          cache: npm
+          persist-credentials: false
 
-      - name: 📥 Install
-        run: npm ci
+      - name: 🖥️ Host commands
+        uses: ./.github/actions/host-commands
 
-      - name: 🧪 Host command process manager
-        working-directory: packages/cli
-        run: ../../node_modules/.bin/tsx --test test/host-commands.test.ts
+  host_commands_macos_fallback:
+    # macos-15 arm64 hosted capacity sometimes never assigns a runner ("not
+    # acquired by Runner of type hosted even after multiple attempts"). Run the
+    # same macOS coverage on the separate Intel pool instead of dropping it.
+    runs-on: macos-15-intel
+    defaults:
+      run:
+        shell: bash
+    name: 🖥️ Host commands (macos-15-intel fallback)
+    timeout-minutes: 20
+    needs: [tested_tree, host_commands_macos]
+    if: >-
+      !cancelled() && needs.tested_tree.outputs.skip != 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft ==
+      false) && needs.host_commands_macos.result == 'abandoned'
+    env:
+      KODY_SKIP_SKILL_REFRESH: '1'
+      KODY_SKIP_GIT_HELPER_REFRESH: '1'
+    steps:
+      - name: 📦 Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
 
-      - name: 🧪 Host commands through a real daemon and workerd
-        working-directory: packages/cli
-        run: >-
-          ../../node_modules/.bin/tsx --test --test-name-pattern="commands on
-          runs a real" test/execution-context.test.ts
+      - name: 🖥️ Host commands
+        uses: ./.github/actions/host-commands
 
   cli:
     runs-on:
@@ -944,6 +1006,7 @@ jobs:
     # vars.CI_RUNNER points heavy jobs at a different runner.
     runs-on: ubuntu-latest
     name: ✅ Validate
+    # Checkout + Node setup for the verdict script.
     timeout-minutes: 5
     needs:
       - tested_tree
@@ -956,6 +1019,9 @@ jobs:
       - cli
       - cli_windows
       - host_commands
+      - workers_retry
+      - host_commands_macos
+      - host_commands_macos_fallback
     permissions:
       contents: read
       actions: read
@@ -1242,59 +1308,35 @@ jobs:
             echo "- passing Validate run with the same tree: ${STAMP_RUN_URL}"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: ✅ All checks passed
-        id: passed
-        # needs.node.result aggregates both matrix shards, including failures.
-        if: >-
-          needs.static.result == 'success' && needs.node.result == 'success' &&
-          needs.workers.result == 'success' && needs.mcp.result == 'success' &&
-          needs.e2e.result == 'success' && needs.e2e_report.result == 'success'
-          && needs.cli.result == 'success' && needs.cli_windows.result ==
-          'success' && needs.host_commands.result == 'success'
-        run: echo "All validate jobs passed"
-
-      - name: ❌ Report failures
-        if: >-
-          needs.tested_tree.outputs.skip != 'true' && ( needs.static.result !=
-          'success' || needs.node.result != 'success' || needs.workers.result !=
-          'success' || needs.mcp.result != 'success' || needs.e2e.result !=
-          'success' || needs.e2e_report.result != 'success' || needs.cli.result
-          != 'success' || needs.cli_windows.result != 'success' ||
-          needs.host_commands.result != 'success')
-        run: |
-          echo "static=${{ needs.static.result }}"
-          echo "node=${{ needs.node.result }}"
-          echo "workers=${{ needs.workers.result }}"
-          echo "mcp=${{ needs.mcp.result }}"
-          echo "e2e=${{ needs.e2e.result }}"
-          echo "e2e_report=${{ needs.e2e_report.result }}"
-          echo "cli=${{ needs.cli.result }}"
-          echo "cli_windows=${{ needs.cli_windows.result }}"
-          echo "host_commands=${{ needs.host_commands.result }}"
-          exit 1
-
-      # Same-repo PRs only: fork PR tokens cannot write statuses, and the main
-      # lookup also rejects fork heads and stamps not created by this workflow.
-      - name: 📦 Checkout tested merge ref
-        if: >-
-          steps.passed.outcome == 'success' && github.event_name ==
-          'pull_request' && github.event.pull_request.head.repo.full_name ==
-          github.repository
+      - name: 📦 Checkout
+        if: needs.tested_tree.outputs.skip != 'true'
         uses: actions/checkout@v6.0.2
         with:
+          # Stamping reads HEAD^2 of the tested merge ref.
           fetch-depth: 2
           persist-credentials: false
 
       - name: 🟢 Setup Node
-        if: >-
-          steps.passed.outcome == 'success' && github.event_name ==
-          'pull_request' && github.event.pull_request.head.repo.full_name ==
-          github.repository
+        if: needs.tested_tree.outputs.skip != 'true'
         uses: actions/setup-node@v6
         with:
           node-version: 26
           package-manager-cache: false
 
+      # tools/ci/validate-gate-verdict.ts: success only when every job passed (a
+      # Workers shard may pass on its fresh-runner retry, macOS on its Intel
+      # fallback). A job GitHub never assigned a runner is reported as CI
+      # infrastructure, not a code failure, and still fails the gate so an
+      # unverified tree is never stamped or deployed.
+      - name: ✅ All checks passed
+        id: passed
+        if: needs.tested_tree.outputs.skip != 'true'
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: node tools/ci/validate-gate-verdict.ts
+
+      # Same-repo PRs only: fork PR tokens cannot write statuses, and the main
+      # lookup also rejects fork heads and stamps not created by this workflow.
       - name: 🌳 Stamp tested tree
         if: >-
           steps.passed.outcome == 'success' && github.event_name ==
