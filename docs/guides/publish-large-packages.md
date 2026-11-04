@@ -66,8 +66,8 @@ When both flags are on, Kody picks where each publish builds, in this order:
 Auto-publish on push works the same way. A package that subscribes to the repo
 pushed event and calls publish from its handler gets these same rules.
 
-Without the flags, every publish builds on Kody cloud as before, a bound package
-included, and naming a context other than `cloud` is refused.
+Without the flags, every publish builds on Kody cloud, a bound package included,
+and naming a context other than `cloud` is refused.
 
 ## What runs where
 
