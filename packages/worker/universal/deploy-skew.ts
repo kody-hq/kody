@@ -18,7 +18,9 @@ export function normalizeDeploySkewBuildId(
 	value: string | null | undefined,
 ): string | null {
 	const trimmed = value?.trim().toLowerCase() ?? ''
-	return /^[a-f0-9]{7,40}$/.test(trimmed) ? trimmed : null
+	// Full object id only: short SHAs must not stamp X-Kody-Build / meta while
+	// the client bakes a 40-char define (that pair would always look like skew).
+	return /^[a-f0-9]{40}$/.test(trimmed) ? trimmed : null
 }
 
 /**
