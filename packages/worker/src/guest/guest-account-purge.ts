@@ -1,6 +1,7 @@
 import { personalOrgIdFromUserRow } from '#worker/orgs/personal-org-id.ts'
 import { auditDatabaseFromEnv, logAuditEvent } from '#worker/audit-log.ts'
 import { deleteUserAccount } from '#app/account-deletion.ts'
+import { scheduleUserDeletedEvent } from '#worker/identity/schedule-user-lifecycle-event.ts'
 
 export const guestPurgeBatchSize = 10
 
@@ -23,7 +24,8 @@ export async function pruneExpiredGuestAccounts(input: {
 	const db = input.env.APP_DB
 	const rows = await db
 		.prepare(
-			`SELECT u.id, u.stable_user_id, u.personal_org_id
+			`SELECT u.id, u.stable_user_id, u.personal_org_id, u.username, u.email,
+			        g.created_at AS guest_created_at
 			 FROM guest_accounts g
 			 INNER JOIN users u ON u.stable_user_id = g.person_id
 			 WHERE g.claimed_at IS NULL
@@ -39,6 +41,9 @@ export async function pruneExpiredGuestAccounts(input: {
 			id: number
 			stable_user_id: string
 			personal_org_id: string | null
+			username: string
+			email: string
+			guest_created_at: string
 		}>()
 	const result: GuestPurgeResult = {
 		scanned: rows.results?.length ?? 0,
@@ -58,6 +63,15 @@ export async function pruneExpiredGuestAccounts(input: {
 				.bind(row.stable_user_id)
 				.run()
 			result.purged += 1
+			scheduleUserDeletedEvent({
+				env: input.env,
+				user: {
+					id: row.stable_user_id,
+					username: row.username,
+					email: row.email,
+				},
+				createdAt: row.guest_created_at,
+			})
 			void logAuditEvent({
 				db: auditDatabaseFromEnv(input.env),
 				category: 'account',
