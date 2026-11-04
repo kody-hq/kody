@@ -427,6 +427,18 @@ async function createWindow() {
 			window.hide()
 		}
 	})
+	window.webContents.on(
+		'did-fail-load',
+		(_event, errorCode, _description, url, isMainFrame) => {
+			// Chromium uses -3 (ERR_ABORTED) for canceled navigation.
+			if (
+				isMainFrame &&
+				errorCode !== -3 &&
+				(isCurrentAppUrl(url) || isNavigationUrl(url))
+			)
+				failedLoadUrl = url
+		},
+	)
 	window.webContents.on('did-finish-load', () => {
 		failedLoadUrl = undefined
 	})

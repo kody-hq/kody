@@ -229,3 +229,21 @@ test('reopening retries the failed page once and preserves it after success', as
 		'https://kody.codes/account',
 	])
 })
+
+test('reopening retries failed main-frame navigation from the page', async () => {
+	const f = fixture()
+	await f.start()
+	await f.finish()
+	const window = f.windows[0]
+	const url = 'https://kody.codes/working'
+	window.webContents.emit('did-fail-load', {}, -106, '', url, false)
+	f.app.emit('activate')
+	assert.equal(window.loads.length, 1)
+	window.webContents.emit('did-fail-load', {}, -3, '', url, true)
+	f.app.emit('activate')
+	assert.equal(window.loads.length, 1)
+	window.webContents.emit('did-fail-load', {}, -106, '', url, true)
+	f.app.emit('activate')
+	assert.equal(window.loads.at(-1), url)
+	assert.equal(window.loads.length, 2)
+})
