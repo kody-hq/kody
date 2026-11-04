@@ -679,6 +679,19 @@ const outputSchema = z.discriminatedUnion('status', [
 
 type PublishExternalPushResult = z.infer<typeof outputSchema>
 
+/** Only builds made outside the cloud (publish-offload) say where they ran. */
+function buildOriginField(
+	uploadedBuild: UploadedPublishBuildRef | null | undefined,
+) {
+	if (!showBuildOrigin || !uploadedBuild) return {}
+	return {
+		build_origin: {
+			origin: uploadedBuild.origin,
+			context_name: uploadedBuild.contextName ?? null,
+		},
+	}
+}
+
 function buildPublishPhaseTimings(input: {
 	startedAt: number
 	fromPublish?: PublishPhaseTimings
@@ -1264,15 +1277,7 @@ async function runExternalPublishAttempt(input: {
 						? { listing: alreadyPublishedExtras.listing }
 						: {}),
 					phase_timings: phaseTimings,
-					// Only builds made outside the cloud (publish-offload) say so.
-					...(showBuildOrigin && input.uploadedBuild
-						? {
-								build_origin: {
-									origin: input.uploadedBuild.origin,
-									context_name: input.uploadedBuild.contextName ?? null,
-								},
-							}
-						: {}),
+					...buildOriginField(input.uploadedBuild),
 				}
 				if (tipMoved) {
 					await reportCapabilityProgress(input.reportProgress, {
@@ -1528,6 +1533,7 @@ async function runExternalPublishAttempt(input: {
 					rebuildMs,
 					dependentsMs,
 				}),
+				...buildOriginField(input.uploadedBuild),
 			} as const
 		} catch (error) {
 			assertNotAborted(input.signal)
