@@ -6,6 +6,7 @@ import {
 	type BlogCategorySlug,
 	type BlogSeriesSlug,
 } from '#universal/blog-taxonomy.ts'
+import { BLOG_IMAGE_PATTERN } from '#universal/blog-images.ts'
 
 export type BlogPostFrontmatter = {
 	title: string
@@ -55,8 +56,6 @@ const KNOWN_KEYS = new Set([
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
-const BLOG_IMAGE_PATTERN =
-	/^\/images\/[a-z0-9][a-z0-9/-]*\.(?:avif|jpe?g|png|webp)$/
 
 function parseBooleanField(
 	slug: string,

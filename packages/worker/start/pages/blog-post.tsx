@@ -32,6 +32,7 @@ export function BlogPostRoute({ post }: { post: BlogPostLoaderData }) {
 				headingOffset: 0,
 				linkRel: 'noopener noreferrer',
 				headingIds: true,
+				blogImages: true,
 				fences: post.bodyFences,
 			}),
 		[post.body, post.bodyFences],
