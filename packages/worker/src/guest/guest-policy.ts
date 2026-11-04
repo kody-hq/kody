@@ -23,7 +23,6 @@ export const guestBlockedCapabilities: Readonly<Record<string, string>> = {
 	secretSet: storeCredentials,
 	secretSetMany: storeCredentials,
 	secretProviderBind: storeCredentials,
-	serviceAccountKey: storeCredentials,
 	credentialUpdate: storeCredentials,
 	credentialOrgGrant: storeCredentials,
 	credentialMappingPropose: storeCredentials,
