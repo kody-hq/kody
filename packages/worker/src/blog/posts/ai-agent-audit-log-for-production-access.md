@@ -5,6 +5,8 @@ description:
   When an AI agent touches production, can you say who ran what, through which
   client, and what happened? How to get an agent audit trail you can use.
 order: 8
+category: how-to
+series: agent-credentials-for-team-leads
 ---
 
 Monday morning, a customer reports that a batch of their invoices got voided
@@ -141,10 +143,3 @@ If you haven't moved yet, start with the system that would hurt most:
 key in Kody, and point the next production task at it. Then you'll have a run to
 look at. The automation audit rules are in the
 [organizations guide](https://kody.codes/docs/organizations).
-
-More in this series:
-
-- [How to revoke AI agent access in one place](/blog/revoke-ai-agent-access)
-- [AI agent guardrails for your team, without killing autonomy](/blog/ai-agent-guardrails-for-teams)
-- [An MCP security checklist for engineering managers](/blog/mcp-security-checklist-for-engineering-managers)
-- [How to roll out AI agents to your team when it isn't AI-forward yet](/blog/how-to-roll-out-ai-agents-to-your-team)

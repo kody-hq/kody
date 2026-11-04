@@ -137,6 +137,18 @@ export const routes = {
 	adminSystemEmail: { href: () => '/admin/system-email' },
 	blog: { href: () => '/blog' },
 	blogRss: { href: () => '/blog/rss.xml' },
+	blogCategory: {
+		href: (params: { category: string }) =>
+			`/blog/category/${segment(params.category)}`,
+	},
+	blogCategoryRss: {
+		href: (params: { category: string }) =>
+			`/blog/category/${segment(params.category)}/rss.xml`,
+	},
+	blogSeries: {
+		href: (params: { series: string }) =>
+			`/blog/series/${segment(params.series)}`,
+	},
 	blogPost: {
 		href: (params: { slug: string | number }) =>
 			`/blog/${segment(params.slug)}`,

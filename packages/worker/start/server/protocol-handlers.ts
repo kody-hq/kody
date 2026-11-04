@@ -145,6 +145,18 @@ export const ogPageImageHttp = ({
 export const blogRssHttp = ({ request }: { request: Request; params: {} }) =>
 	createBlogRssHandler(getStartRequestEnv())({ request })
 
+export const blogCategoryRssHttp = ({
+	request,
+	params,
+}: {
+	request: Request
+	params: { category: string }
+}) =>
+	createBlogRssHandler(getStartRequestEnv())({
+		request,
+		category: params.category,
+	})
+
 export const blogPostMarkdownHttp = ({
 	params,
 }: {

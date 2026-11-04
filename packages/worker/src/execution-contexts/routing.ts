@@ -2,6 +2,7 @@ import {
 	type EcpCancelReason,
 	type EcpCapabilities,
 	type EcpGrant,
+	type EcpPublishBuildSource,
 	type EcpRunRequestBody,
 	sha256Base64Url,
 	ecpHostOperatorOnlyFeature,
@@ -22,6 +23,7 @@ import type {
 	OwnerId,
 	PersonId,
 } from '@kody-internal/shared/owner-person-ids.ts'
+import { refreshContextNotices } from './box-notices.ts'
 import { ExecutionContextError } from './errors.ts'
 import type {
 	ExecutionContextLease,
@@ -385,6 +387,15 @@ export async function routeExecute(input: {
 	queue?: { expiresAt: number } | null
 	/** `skip` records an unknown chain entry as skipped instead of a 404. */
 	unknownChainRef?: 'error' | 'skip'
+	/**
+	 * Publish offload: run the daemon's builder instead of user code. Only
+	 * contexts the requester operates may take it, it carries no credential
+	 * picks or params, and it gets the publish-build limits.
+	 */
+	publishBuild?: {
+		source: EcpPublishBuildSource
+		limits: { timeoutMs: number; memoryMb: number }
+	} | null
 }): Promise<RoutingOutcome> {
 	const requires = [...new Set(input.args.requires ?? [])]
 	const db = input.env.APP_DB
@@ -482,7 +493,9 @@ export async function routeExecute(input: {
 				outcome: 'skipped',
 				reason,
 			})
-		if (input.request.credentialKind === 'cli' && !hasContextScope(input)) {
+		// Every credential kind, not only CLI logins: a scoped token without
+		// execution_context:execute never reaches a context.
+		if (!hasContextScope(input)) {
 			skip('credential_scope')
 			continue
 		}
@@ -508,6 +521,11 @@ export async function routeExecute(input: {
 		}
 		const grant = parseGrant(row)
 		const sharedRun = row.operator_user_id !== input.request.userId
+		if (sharedRun) {
+			await refreshContextNotices(db, row, input.request.orgId, {
+				userIds: [input.request.userId],
+			})
+		}
 		const refusal = grantRefusal({
 			grant,
 			requires,
@@ -518,12 +536,17 @@ export async function routeExecute(input: {
 			skip(refusal)
 			continue
 		}
-		if (!input.code) {
+		if (input.publishBuild && sharedRun) {
+			skip('not_operator')
+			continue
+		}
+		if (!input.code && !input.publishBuild) {
 			skip('invoke_not_supported')
 			continue
 		}
 		const now = Date.now()
-		const deadline = now + grant.limits.timeoutMs
+		const deadline =
+			now + (input.publishBuild?.limits.timeoutMs ?? grant.limits.timeoutMs)
 		const lease: ExecutionContextLease = {
 			runId: input.runId,
 			ecid: row.id,
@@ -551,18 +574,25 @@ export async function routeExecute(input: {
 				orgId: input.request.orgId,
 				orgSlug: input.request.orgSlug,
 			},
-			source: {
-				kind: 'code',
-				code: input.code,
-				sha256: await sha256Base64Url(new TextEncoder().encode(input.code)),
-			},
-			params: input.params ?? {},
+			source: input.publishBuild
+				? input.publishBuild.source
+				: {
+						kind: 'code',
+						code: input.code!,
+						sha256: await sha256Base64Url(
+							new TextEncoder().encode(input.code!),
+						),
+					},
+			params: input.publishBuild ? {} : (input.params ?? {}),
 			...(input.conversationId ? { conversationId: input.conversationId } : {}),
-			credentialPicks: credentialPicks(input.credentials),
+			credentialPicks: input.publishBuild
+				? {}
+				: credentialPicks(input.credentials),
 			limits: {
-				timeoutMs: grant.limits.timeoutMs,
+				timeoutMs:
+					input.publishBuild?.limits.timeoutMs ?? grant.limits.timeoutMs,
 				maxResultBytes: grant.payload.maxResultBytes,
-				memoryMb: grant.limits.memoryMb,
+				memoryMb: input.publishBuild?.limits.memoryMb ?? grant.limits.memoryMb,
 			},
 			grantVersion: row.grant_version,
 			apiUrl: input.apiUrl,
@@ -724,12 +754,17 @@ export async function routeExecute(input: {
 	)
 }
 
-function hasContextScope(input: { request: { scopes: Array<string> | null } }) {
+/** Scope gate for every credential kind (CLI login, API token, OAuth, ...). */
+export function hasContextScope(input: {
+	request: { scopes: Array<string> | null }
+}) {
 	const scopes = input.request.scopes
 	return scopes === null || scopes.includes('execution_context:execute')
 }
 
 const contextReasonText: Record<string, string> = {
+	not_operator:
+		'not_operator: publish builds run only on contexts you operate yourself',
 	profile_grant:
 		'profile_grant: the profile this credential acts as, or a parent profile, was not granted execution_context:execute on it',
 	no_fs: 'no_fs: its server grant lists no host folders (grant.fs)',

@@ -6,6 +6,7 @@ description:
   that keeps its memory, keys, packages, and jobs running when that machine
   sleeps. Here's how they stack.
 order: 1
+category: essays
 image: /images/openclaw-2-needs-a-home.webp
 imageAlt:
   Kody, a 3D koala in a white jacket, stands with his arm around OpenClaw, a

@@ -44,6 +44,7 @@ import { refreshActiveQueries } from '../refresh-active-queries.ts'
 import { isBrowserFetchNetworkError } from '#client/browser-fetch-network-error.ts'
 import { captureClientException } from '#client/sentry-client.ts'
 import { CANONICAL_ORIGIN_META_NAME } from '#universal/document-head-markers.ts'
+import { deploySkewBuildMetaName } from '#universal/deploy-skew.ts'
 import {
 	documentCharset,
 	documentViewport,
@@ -184,6 +185,7 @@ export const Route = createRootRouteWithContext<{
 					pathname: location.pathname,
 					searchStr: location.searchStr,
 				},
+				buildId: shell.buildId,
 				sentryConfig: shell.sentryConfig,
 				canonicalOrigin: shell.canonicalOrigin,
 				fathomSiteId: shell.fathomSiteId,
@@ -193,6 +195,14 @@ export const Route = createRootRouteWithContext<{
 	head: ({ loaderData }) => ({
 		meta: [
 			{ title: 'Kody' },
+			...(loaderData?.buildId
+				? [
+						{
+							name: deploySkewBuildMetaName,
+							content: loaderData.buildId,
+						},
+					]
+				: []),
 			...(loaderData?.sentryConfig
 				? [
 						{

@@ -1,14 +1,27 @@
+import {
+	estimateReadingMinutes,
+	getBlogCategory,
+	getBlogSeries,
+	reservedBlogSlugs,
+	type BlogCategorySlug,
+	type BlogSeriesSlug,
+} from '#universal/blog-taxonomy.ts'
+import { BLOG_IMAGE_PATTERN } from '#universal/blog-images.ts'
+
 export type BlogPostFrontmatter = {
 	title: string
 	date: string
+	/** Last meaningful revision (`YYYY-MM-DD`, not before `date`), or null. */
+	updated: string | null
 	description: string
+	/** Tie-break for posts sharing a `date` (lower first). */
 	order: number
-	/**
-	 * When true, the post page shows the AI-placeholder callout. Omit the
-	 * field to keep the callout (existing posts). Set `placeholder: false`
-	 * after a human review.
-	 */
-	placeholder: boolean
+	/** Exactly one category from `#universal/blog-taxonomy.ts`. */
+	category: BlogCategorySlug
+	/** Optional series from `#universal/blog-taxonomy.ts`; parts read by date. */
+	series: BlogSeriesSlug | null
+	/** Pins the post as the blog index hero. At most one post sets it. */
+	featured: boolean
 	/** Optional origin-relative artwork shown as the post headline. */
 	image: string | null
 	/** Accessible description required when `image` is present. */
@@ -24,11 +37,40 @@ export type BlogPostFrontmatter = {
 export type BlogPost = BlogPostFrontmatter & {
 	slug: string
 	body: string
+	readingMinutes: number
 }
 
+const KNOWN_KEYS = new Set([
+	'title',
+	'date',
+	'updated',
+	'description',
+	'order',
+	'category',
+	'series',
+	'featured',
+	'image',
+	'imageAlt',
+	'ogImage',
+])
+const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
-const BLOG_IMAGE_PATTERN =
-	/^\/images\/[a-z0-9][a-z0-9/-]*\.(?:avif|jpe?g|png|webp)$/
+
+function parseBooleanField(
+	slug: string,
+	key: string,
+	value: string | undefined,
+	fallback: boolean,
+) {
+	if (value === undefined) return fallback
+	if (value !== 'true' && value !== 'false') {
+		throw new Error(
+			`Blog post "${slug}" has invalid frontmatter "${key}" (expected true or false).`,
+		)
+	}
+	return value === 'true'
+}
 
 /**
  * Parse a blog markdown file with the fixed YAML-like frontmatter contract:
@@ -37,9 +79,12 @@ const BLOG_IMAGE_PATTERN =
  * ---
  * title: <string>
  * date: YYYY-MM-DD
+ * updated: YYYY-MM-DD (optional; not before date)
  * description: <string>
  * order: <number>
- * placeholder: true | false (optional; default true)
+ * category: essays | how-to | updates | stories
+ * series: <series slug> (optional)
+ * featured: true | false (optional; default false)
  * image: /images/<file> (optional)
  * imageAlt: <string, required with image>
  * ogImage: /images/<file> (optional Satori artwork on the generated card)
@@ -48,10 +93,19 @@ const BLOG_IMAGE_PATTERN =
  * ```
  *
  * Values may be inline (`key: value`) or a single-level indented block after
- * `key:` (joined with spaces). Unknown keys and blank lines are ignored.
- * Throws on missing fence, missing required fields, or invalid values.
+ * `key:` (joined with spaces). Blank lines are ignored. Throws on a missing
+ * fence, an unknown key, a missing required field, or an invalid value
+ * (including a category or series that is not in the taxonomy).
  */
 export function parseBlogPostMarkdown(slug: string, raw: string): BlogPost {
+	if (
+		!SLUG_PATTERN.test(slug) ||
+		(reservedBlogSlugs as ReadonlyArray<string>).includes(slug)
+	) {
+		throw new Error(
+			`Blog post slug "${slug}" must be kebab-case and not one of: ${reservedBlogSlugs.join(', ')}.`,
+		)
+	}
 	const normalized = raw.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
 	if (!normalized.startsWith('---\n')) {
 		throw new Error(`Blog post "${slug}" is missing opening frontmatter fence.`)
@@ -95,6 +149,11 @@ export function parseBlogPostMarkdown(slug: string, raw: string): BlogPost {
 
 		commitCurrentKey()
 		currentKey = line.slice(0, colonIndex).trim()
+		if (!KNOWN_KEYS.has(currentKey)) {
+			throw new Error(
+				`Blog post "${slug}" has unknown frontmatter "${currentKey}" (allowed: ${[...KNOWN_KEYS].join(', ')}).`,
+			)
+		}
 		const inlineValue = line.slice(colonIndex + 1).trim()
 		if (inlineValue) {
 			currentParts.push(inlineValue)
@@ -107,7 +166,10 @@ export function parseBlogPostMarkdown(slug: string, raw: string): BlogPost {
 	const date = fields.get('date')
 	const description = fields.get('description')
 	const orderRaw = fields.get('order')
-	const placeholderRaw = fields.get('placeholder')
+	const updated = fields.get('updated') ?? null
+	const categoryRaw = fields.get('category')
+	const seriesRaw = fields.get('series') ?? null
+	const featuredRaw = fields.get('featured')
 	const image = fields.get('image') ?? null
 	const imageAlt = fields.get('imageAlt') ?? null
 	const ogImageRaw = fields.get('ogImage') ?? null
@@ -135,15 +197,28 @@ export function parseBlogPostMarkdown(slug: string, raw: string): BlogPost {
 		)
 	}
 
-	let placeholder = true
-	if (placeholderRaw !== undefined) {
-		if (placeholderRaw !== 'true' && placeholderRaw !== 'false') {
-			throw new Error(
-				`Blog post "${slug}" has invalid frontmatter "placeholder" (expected true or false).`,
-			)
-		}
-		placeholder = placeholderRaw === 'true'
+	if (updated !== null && (!DATE_PATTERN.test(updated) || updated < date)) {
+		throw new Error(
+			`Blog post "${slug}" has invalid frontmatter "updated" (expected YYYY-MM-DD on or after "date").`,
+		)
 	}
+	if (!categoryRaw) {
+		throw new Error(`Blog post "${slug}" is missing frontmatter "category".`)
+	}
+	const category = getBlogCategory(categoryRaw)
+	if (!category) {
+		throw new Error(
+			`Blog post "${slug}" has unknown frontmatter "category" "${categoryRaw}" (see #universal/blog-taxonomy.ts).`,
+		)
+	}
+	const series = seriesRaw === null ? null : getBlogSeries(seriesRaw)
+	if (seriesRaw !== null && !series) {
+		throw new Error(
+			`Blog post "${slug}" has unknown frontmatter "series" "${seriesRaw}" (see #universal/blog-taxonomy.ts).`,
+		)
+	}
+
+	const featured = parseBooleanField(slug, 'featured', featuredRaw, false)
 
 	if (image !== null && !BLOG_IMAGE_PATTERN.test(image)) {
 		throw new Error(
@@ -170,12 +245,16 @@ export function parseBlogPostMarkdown(slug: string, raw: string): BlogPost {
 		slug,
 		title,
 		date,
+		updated,
 		description,
 		order: Number(orderRaw),
-		placeholder,
+		category: category.slug,
+		series: series?.slug ?? null,
+		featured,
 		image,
 		imageAlt,
 		ogImage: ogImageRaw,
 		body,
+		readingMinutes: estimateReadingMinutes(body),
 	}
 }

@@ -358,6 +358,36 @@ credential files, cloud CLI logins (`~/.aws`, `~/.azure`, gcloud, `gh`,
 `~/.kube`, Docker), package-manager tokens (`.npmrc`, `.pypirc`, Cargo), and OS
 keyring files.
 
+### Shared-box best practices
+
+Kody records who the machine is logged in as (a person or one of their agent
+profiles) and compares that login with the access of everyone the context is
+shared with. Runs still use only the requester's own access for Kody API calls,
+but anyone with host access on the machine acts with its login. When the login
+can do something a grantee can't do personally, Kody shows a notice:
+
+- the grantee sees their own on the context's page, in "what's waiting on me"
+  (`context-elevation`), and once in the `notices` field of execute (runs on
+  that context) and search results; only they can dismiss it
+  (`executionContextNoticeDismiss`, signed in as themselves), and it comes back
+  when the machine gains access they lack or its login changes;
+- the operator and Manage holders see every grantee in the access review, and
+  the share form warns before saving (`executionContextSharePreview`);
+- the operator sees misconfigurations, which can't be dismissed
+  (`context-misconfigured`): `operator_left`, `login_stale`, `profile_inactive`,
+  `team_deleted`, `personal_login_on_team_context`, and
+  `profile_not_assigned_to_team`.
+
+The daemon tells Kody which login it runs as when it starts and every 6 hours,
+so restart it (`kody daemon restart`, or let auto-update do it) after
+`kody login` switches the machine to another login. Set the team a machine is
+for with `executionContextUpdate({ team_slug })`, and the team an agent profile
+is for with `profileUpdate({ team_slug })`; neither grants anything.
+
+We recommend logging the machine in with an agent profile assigned to the team
+you share it with, and giving that team the same permissions as the profile.
+Nothing requires it: personal logins and shares outside the team keep working.
+
 ## Automations
 
 Jobs, webhooks, subscriptions, and package workflow steps can choose where they
@@ -397,3 +427,13 @@ Turn it off the same way. It is only for your account.
 - [Execution contexts field reference](../use/execution-contexts.md)
 - [Local CLI execute](./local-execute.md), which runs code on your machine for
   one call without a daemon
+
+## Publish builds
+
+`kody package publish <package> --build context` asks a context you operate to
+bundle the package. The run carries no user code and no credentials: the daemon
+clones the pushed commit with a read-only, single-repo token that expires in
+about five minutes and uploads the build with a per-build ticket. Kody checks
+the upload and writes the registry itself. Every credential kind, not only CLI
+logins, needs `execution_context:execute` to route a run to a context. See
+[publish large packages](./publish-large-packages.md).

@@ -1,5 +1,6 @@
 import { acquisitionPageSummaries } from '#universal/acquisition/metadata.ts'
 import { blogPostSlugs } from '#universal/blog-post-slugs.ts'
+import { blogCategories, blogSeries } from '#universal/blog-taxonomy.ts'
 import { listDocsNavSlugs } from '#universal/docs-nav.ts'
 import { withAgentHref, withAgents } from '#universal/with-agents.ts'
 
@@ -21,6 +22,8 @@ const publicPaths = new Set([
 	...listDocsNavSlugs({ includeAdmin: false }).map((slug) => `/docs/${slug}`),
 	// Catalog slugs only — unknown /blog/:slug shapes (including 404s) stay out.
 	...blogPostSlugs.map((slug) => `/blog/${slug}`),
+	...blogCategories.map((category) => `/blog/category/${category.slug}`),
+	...blogSeries.map((series) => `/blog/series/${series.slug}`),
 ])
 
 export function scarfPageUrl(href: string): string | null {

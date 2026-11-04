@@ -5,6 +5,8 @@ description:
   Not everyone on your team wants an AI agent. A practical rollout plan that
   starts small, keeps keys safe, and lets skeptics adopt at their own pace.
 order: 20
+category: how-to
+series: agent-credentials-for-team-leads
 ---
 
 Every team has a spread. A couple of engineers have three assistants running and
@@ -146,10 +148,3 @@ A few things I'd avoid:
 Start at [kody.codes](https://kody.codes). The
 [organizations guide](https://kody.codes/docs/organizations) covers invite
 links, member permissions, and how automation runs.
-
-More in this series:
-
-- [A team lead's guide to AI agent credentials](/blog/ai-agent-credentials-guide-for-team-leads)
-- [How to share AI workflows with your team](/blog/share-ai-workflows-with-your-team)
-- [An AI agent audit log for production access](/blog/ai-agent-audit-log-for-production-access)
-- [AI agent guardrails for your team, without killing autonomy](/blog/ai-agent-guardrails-for-teams)

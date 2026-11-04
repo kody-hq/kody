@@ -26,6 +26,10 @@ import {
 	setSharing,
 	updateContext,
 } from '#worker/execution-contexts/service.ts'
+import {
+	dismissContextNotice,
+	previewShare,
+} from '#worker/execution-contexts/notices-service.ts'
 
 const domain = capabilityDomainNames.executionContexts
 const idSchema = z
@@ -148,11 +152,30 @@ export const executionContextUpdateCapability = defineDomainCapability(domain, {
 			.regex(/^[a-z0-9][a-z0-9-]{0,62}$/)
 			.optional(),
 		grant: grantPatchSchema.optional(),
+		team_slug: z
+			.string()
+			.min(1)
+			.nullable()
+			.optional()
+			.describe(
+				'The team this machine is for (null clears). Grants nothing: Kody flags the machine when its login is not an agent profile assigned to that team. Needs Manage.',
+			),
 	}),
 	async handler(args, ctx) {
-		return await updateContext(await caller(ctx), args.id, {
+		const resolved = await caller(ctx)
+		const teamId =
+			args.team_slug === undefined
+				? undefined
+				: args.team_slug === null
+					? null
+					: await resolveTeamId(ctx.env.APP_DB, resolved.orgId, {
+							teamId: null,
+							teamSlug: args.team_slug,
+						})
+		return await updateContext(resolved, args.id, {
 			...(args.name ? { name: args.name } : {}),
 			...(args.grant ? { grant: args.grant as never } : {}),
+			...(teamId !== undefined ? { teamId } : {}),
 		})
 	},
 })
@@ -494,3 +517,89 @@ export const executionChainSetCapability = defineDomainCapability(domain, {
 		})
 	},
 })
+
+export const executionContextNoticeDismissCapability = defineDomainCapability(
+	domain,
+	{
+		name: 'executionContextNoticeDismiss',
+		contextRuns: 'deny',
+		orgPermission: 'execution_context:read',
+		description:
+			'Dismiss your own excess-access notice on an execution context (the machine can do more than you can personally). Pass the fingerprint you saw; it comes back when the machine gains access you lack or its login changes. Misconfiguration notices cannot be dismissed. Only the person the notice is about can dismiss it, signed in as themselves.',
+		keywords: ['execution context', 'notice', 'dismiss', 'warning'],
+		readOnly: false,
+		idempotent: true,
+		destructive: false,
+		inputSchema: z.object({
+			id: idSchema,
+			fingerprint: z.string().min(1),
+		}),
+		async handler(args, ctx) {
+			return await dismissContextNotice(
+				await caller(ctx),
+				args.id,
+				args.fingerprint,
+			)
+		},
+	},
+)
+
+export const executionContextSharePreviewCapability = defineDomainCapability(
+	domain,
+	{
+		name: 'executionContextSharePreview',
+		contextRuns: 'deny',
+		orgPermission: 'execution_context:read',
+		description:
+			"Before sharing an execution context, see what its login (the machine's account or agent profile) can do that a person or each member of a team cannot do personally. Sharing is still allowed; this is the warning to review. Needs Manage on the context.",
+		keywords: ['execution context', 'share', 'preview', 'excess access'],
+		readOnly: true,
+		idempotent: true,
+		destructive: false,
+		inputSchema: z.object({
+			id: idSchema,
+			username: z.string().min(1).optional(),
+			user_id: z.string().min(1).optional(),
+			team_slug: z.string().min(1).optional(),
+			team_id: z.string().min(1).optional(),
+			all_members: z
+				.boolean()
+				.optional()
+				.describe('Preview sharing with everyone in the org.'),
+		}),
+		async handler(args, ctx) {
+			const resolved = await caller(ctx)
+			const db = ctx.env.APP_DB
+			let userIds: Array<string> = []
+			if (args.all_members) {
+				const members = await db
+					.prepare(
+						`SELECT user_id FROM org_memberships WHERE org_id = ? AND deleted_at IS NULL LIMIT 201`,
+					)
+					.bind(resolved.orgId)
+					.all<{ user_id: string }>()
+				userIds = members.results.map((row) => row.user_id)
+			} else if (args.team_slug || args.team_id) {
+				const teamId = await resolveTeamId(db, resolved.orgId, {
+					teamId: args.team_id ?? null,
+					teamSlug: args.team_slug ?? null,
+				})
+				const members = await db
+					.prepare(
+						`SELECT user_id FROM team_members WHERE team_id = ? AND deleted_at IS NULL`,
+					)
+					.bind(teamId)
+					.all<{ user_id: string }>()
+				userIds = members.results.map((row) => row.user_id)
+			} else if (args.username || args.user_id) {
+				userIds = [
+					await resolvePersonId(db, {
+						userId: args.user_id ?? null,
+						username: args.username ?? null,
+					}),
+				]
+			}
+			return await previewShare(resolved, args.id, userIds)
+		},
+	},
+)

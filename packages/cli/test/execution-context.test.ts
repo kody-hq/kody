@@ -24,6 +24,7 @@ import {
 	type EcpFramePayload,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import {
+	checkContextLogin,
 	generateContextKey,
 	importContextKey,
 	registerContext,
@@ -337,6 +338,46 @@ test('run-scoped fetch signs Kody API calls and never sends the bearer token', a
 	)
 	assert.equal(other!.headers.get('authorization'), 'Bearer other')
 	assert.equal(other!.headers.get(ecpSignatureHeader), null)
+})
+
+test('the login check signs with the context key and sends the box login token', async () => {
+	const { publicKeyJwk, privateKeyJwk } = await generateContextKey()
+	const seen: Array<Request> = []
+	const result = await checkContextLogin({
+		apiUrl: 'https://api.kody.test',
+		ecid: 'ec_test',
+		privateKey: await importContextKey(privateKeyJwk),
+		token: 'box-token',
+		fetchFn: (async (
+			resource: Parameters<typeof fetch>[0],
+			init?: RequestInit,
+		) => {
+			seen.push(new Request(resource, init))
+			return Response.json({
+				id: 'ec_test',
+				login: { kind: 'profile', profileId: 'prof_1' },
+				changed: true,
+			})
+		}) as typeof fetch,
+	})
+	assert.equal(result.login.kind, 'profile')
+	const [request] = seen
+	assert.equal(new URL(request!.url).pathname, '/v1/execution-contexts/login')
+	assert.equal(request!.headers.get('authorization'), 'Bearer box-token')
+	const signature = parseEcpSignatureHeader(
+		request!.headers.get(ecpSignatureHeader),
+	)
+	assert.equal(signature?.ec, 'ec_test')
+	assert.equal(
+		await verifyEcpHttpSignature({
+			signature: signature!,
+			method: 'POST',
+			pathAndQuery: '/v1/execution-contexts/login',
+			body: '{}',
+			publicKey: await importEd25519PublicKey(publicKeyJwk),
+		}),
+		'ok',
+	)
 })
 
 test('kody chain show and add read the chain out of the API response', async () => {

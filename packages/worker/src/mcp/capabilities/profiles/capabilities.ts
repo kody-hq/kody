@@ -1,3 +1,4 @@
+import { resolveTeamId } from '#worker/mcp/capabilities/access/shared.ts'
 import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
@@ -149,19 +150,38 @@ export const profileUpdateCapability = defineDomainCapability(domain, {
 	orgPermission: 'profile:manage',
 	featureFlag: 'profiles',
 	description:
-		'Shorten a profile’s expiry. Expiry only moves earlier: a later time or clearing it is refused, so create a new profile for more time. Only the person the profile acts for (or a profile above it) can change it; a profile cannot change itself, its parents, or its siblings, and Owners can only list and revoke.',
+		'Shorten a profile’s expiry, or set the team it is for (`team_slug`, grants nothing). Expiry only moves earlier: a later time or clearing it is refused, so create a new profile for more time. Only the person the profile acts for (or a profile above it) can change it; a profile cannot change itself, its parents, or its siblings, and Owners can only list and revoke.',
 	keywords: [...keywords, 'shorten expiry', 'update profile'],
 	readOnly: false,
 	idempotent: true,
 	destructive: false,
 	inputSchema: z.object({
 		profile_id: idSchema,
-		expires_at: expiresAtSchema,
+		expires_at: expiresAtSchema.optional(),
+		team_slug: z
+			.string()
+			.min(1)
+			.nullable()
+			.optional()
+			.describe(
+				'The team this agent profile is for (null clears). Grants nothing; an execution context for that team logged in as this profile then reads as set up correctly.',
+			),
 	}),
 	async handler(args, ctx) {
-		return await updateProfile(await caller(ctx), {
+		const resolved = await caller(ctx)
+		const assignedTeamId =
+			args.team_slug === undefined
+				? undefined
+				: args.team_slug === null
+					? null
+					: await resolveTeamId(ctx.env.APP_DB, resolved.orgId, {
+							teamId: null,
+							teamSlug: args.team_slug,
+						})
+		return await updateProfile(resolved, {
 			profileId: args.profile_id,
-			expiresAt: args.expires_at,
+			...(args.expires_at !== undefined ? { expiresAt: args.expires_at } : {}),
+			...(assignedTeamId !== undefined ? { assignedTeamId } : {}),
 		})
 	},
 })

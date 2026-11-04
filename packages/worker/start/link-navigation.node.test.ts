@@ -27,6 +27,8 @@ test.each([
 	['/docs/local-execute.md', true],
 	['/docs/local-execute', false],
 	['/blog/rss.xml', true],
+	['/blog/category/how-to/rss.xml', true],
+	['/blog/category/how-to', false],
 	['/blog/some-post.md', true],
 	['/blog/some-post', false],
 	['/health', true],

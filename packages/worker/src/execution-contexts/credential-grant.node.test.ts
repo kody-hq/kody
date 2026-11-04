@@ -28,6 +28,12 @@ function setup() {
 			 VALUES ('ec_mac', ?, ?, 0, 'mac', '{}', 'thumb', ?, ?, 1)`,
 		)
 		.run(orgId, operator, now, JSON.stringify(ecpDefaultGrant))
+	sqlite
+		.prepare(
+			`INSERT INTO orgs (id, slug, access_epoch, created_at, updated_at)
+			 VALUES (?, 'acme', 0, ?, ?)`,
+		)
+		.run(orgId, now, now)
 	const db = createD1FromSqlite(sqlite)
 	const session = {
 		updateGrant: async () => {},

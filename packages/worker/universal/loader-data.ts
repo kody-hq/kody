@@ -1,3 +1,7 @@
+import type {
+	BlogCategorySlug,
+	BlogSeriesSlug,
+} from '#universal/blog-taxonomy.ts'
 import type { SelfServeExperimentState } from '#universal/feature-flags/experiments.ts'
 import type { OAuthAuthorizeClientFailure } from '#universal/oauth-authorize-client-failure.ts'
 import type {
@@ -96,12 +100,50 @@ export type BlogPostSummaryLoaderData = {
 	slug: string
 	title: string
 	date: string
+	updated: string | null
 	description: string
-	order: number
+	category: BlogCategorySlug
+	series: BlogSeriesSlug | null
+	readingMinutes: number
+}
+
+export type BlogCategoryCountLoaderData = {
+	slug: BlogCategorySlug
+	label: string
+	count: number
 }
 
 export type BlogLoaderData = {
 	ok: true
+	categories: Array<BlogCategoryCountLoaderData>
+	featured: BlogPostSummaryLoaderData | null
+	series: Array<{
+		slug: BlogSeriesSlug
+		title: string
+		description: string
+		count: number
+		firstSlug: string | null
+	}>
+	/** Newest posts outside `updates`, without the featured post. */
+	latest: Array<BlogPostSummaryLoaderData>
+	updates: Array<BlogPostSummaryLoaderData>
+}
+
+export type BlogCategoryLoaderData = {
+	ok: true
+	slug: BlogCategorySlug
+	label: string
+	description: string
+	categories: Array<BlogCategoryCountLoaderData>
+	posts: Array<BlogPostSummaryLoaderData>
+}
+
+export type BlogSeriesLoaderData = {
+	ok: true
+	slug: BlogSeriesSlug
+	title: string
+	description: string
+	/** Reading order: oldest first. */
 	posts: Array<BlogPostSummaryLoaderData>
 }
 
@@ -110,17 +152,25 @@ export type BlogPostLoaderData = {
 	slug: string
 	title: string
 	date: string
+	updated: string | null
 	description: string
-	/** When true, the post page shows the AI-placeholder callout. */
-	placeholder: boolean
+	category: BlogCategorySlug
+	readingMinutes: number
 	image: string | null
 	imageAlt: string | null
 	ogImage: string | null
 	body: string
 	/** Highlight tokens for fenced code in `body`, in lexer order. */
 	bodyFences?: Array<HighlightedCode>
-	/** Next post in catalog order for the post foot; null when alone. */
-	readNext: { slug: string; title: string } | null
+	/** Series position and every part in reading order; null outside a series. */
+	series: {
+		slug: BlogSeriesSlug
+		title: string
+		part: number
+		parts: Array<{ slug: string; title: string }>
+	} | null
+	/** Up to three posts for the post foot (series siblings excluded). */
+	related: Array<BlogPostSummaryLoaderData>
 }
 
 export type DocSummaryLoaderData = {
@@ -3103,6 +3153,8 @@ export type DiscordPageLoaderData = {
 
 export type AppLoaderData = {
 	blog?: BlogLoaderData
+	blogCategory?: BlogCategoryLoaderData
+	blogSeries?: BlogSeriesLoaderData
 	blogPost?: BlogPostLoaderData
 	docsConnect?: DocsConnectLoaderData
 	docDetail?: DocDetailLoaderData

@@ -25,6 +25,7 @@ import googleOauth from '../../../../docs/guides/google-oauth.md'
 import kodyFactory from '../../../../docs/guides/kody-factory.md'
 import localMcpTunnels from '../../../../docs/guides/local-mcp-tunnels.md'
 import heavyWorkOffload from '../../../../docs/guides/heavy-work-offload.md'
+import publishLargePackages from '../../../../docs/guides/publish-large-packages.md'
 import memory from '../../../../docs/guides/memory.md'
 import agentGuidance from '../../../../docs/guides/agent-guidance.md'
 import quickExample from '../../../../docs/guides/quick-example.md'
@@ -130,6 +131,7 @@ const guideSources: Array<{ slug: string; raw: string }> = [
 	{ slug: 'profiles', raw: profiles },
 	{ slug: 'wake-your-agent', raw: wakeYourAgent },
 	{ slug: 'heavy-work-offload', raw: heavyWorkOffload },
+	{ slug: 'publish-large-packages', raw: publishLargePackages },
 	{ slug: 'integration-bootstrap', raw: integrationBootstrap },
 	{ slug: 'oauth', raw: oauth },
 	{ slug: 'google-oauth', raw: googleOauth },

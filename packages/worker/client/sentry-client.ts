@@ -2,6 +2,7 @@ import {
 	reloadOnStaleRouteChunk,
 	shouldSuppressStaleRouteChunkFollowOnError,
 } from '#client/reload-on-stale-route-chunk.ts'
+import { isDeploySkewRecoveryError } from '#client/reload-on-deploy-skew.ts'
 import { reloadOnUnknownStartRelease } from '#client/reload-on-unknown-start-release.ts'
 import {
 	isBrowserAbortError,
@@ -83,6 +84,7 @@ function shouldIgnoreBufferedError(error: unknown) {
 		isMetaMaskWalletNoAccountError(error) ||
 		isChromeExtensionMessageChannelDisconnectedError(error) ||
 		isUnknownStartReleaseError(error) ||
+		isDeploySkewRecoveryError(error) ||
 		isTanStackServerFnFetchNetworkError(error) ||
 		isSyntaxHighlightCoreDynamicImportFailureError(error) ||
 		isLocalViteDevError(error) ||

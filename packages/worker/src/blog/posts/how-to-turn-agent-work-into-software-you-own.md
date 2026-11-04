@@ -6,7 +6,7 @@ description:
   you own, then trigger it — invoke, job, webhook, or app — without paying the
   model again.
 order: 8
-placeholder: true
+category: how-to
 image: /images/kody-factory-map.webp
 imageAlt:
   Kody, a 3D koala in a white jacket, presents a wooden factory board with a

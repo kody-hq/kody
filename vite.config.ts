@@ -164,9 +164,25 @@ export default defineConfig(async ({ command }) => {
 		}
 	}
 
+	// Full commit SHA baked into the client for deploy-skew recovery (KODY-DP).
+	// Validate each candidate so an invalid override cannot blank a valid
+	// fallback. Require a full 40-char object id so it matches X-Kody-Build.
+	const bakedAppCommitSha =
+		[
+			process.env.KODY_APP_COMMIT_SHA,
+			process.env.APP_COMMIT_SHA,
+			process.env.DEPLOY_COMMIT_SHA,
+			process.env.GITHUB_SHA,
+		]
+			.map((value) => value?.trim().toLowerCase() ?? '')
+			.find((value) => /^[a-f0-9]{40}$/.test(value)) ?? ''
+
 	return {
 		base: releaseBase,
 		publicDir: 'packages/worker/public',
+		define: {
+			__KODY_APP_COMMIT_SHA__: JSON.stringify(bakedAppCommitSha),
+		},
 		environments: {
 			client: {
 				// The late-injected Buffer polyfill is missed by the initial dependency scan.

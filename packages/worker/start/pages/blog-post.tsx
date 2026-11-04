@@ -4,7 +4,6 @@ import type { CSSObject } from '@emotion/react'
 import { type CSSProperties, useMemo } from 'react'
 import {
 	BLOG_AUTHOR_NAME,
-	BLOG_PLACEHOLDER_CALLOUT,
 	formatBlogPostDate,
 } from '#universal/blog-display.ts'
 import type { BlogPostLoaderData } from '#universal/loader-data.ts'
@@ -18,11 +17,13 @@ import {
 } from '#universal/styles/tokens.ts'
 import {
 	getPillButtonCss,
+	getSurfaceCardCss,
 	pageHeadCss,
 	proseCss,
 } from '#universal/styles/style-primitives.ts'
 import { renderMarkdownNodes } from '../components/markdown-view.tsx'
 import { SiteLink } from '../components/site-link.tsx'
+import { BlogPostList, blogCategoryLabel } from './blog-parts.tsx'
 export function BlogPostRoute({ post }: { post: BlogPostLoaderData }) {
 	const signedOutCta = publicSignupPrimaryCta()
 	const renderedBody = useMemo(
@@ -31,6 +32,7 @@ export function BlogPostRoute({ post }: { post: BlogPostLoaderData }) {
 				headingOffset: 0,
 				linkRel: 'noopener noreferrer',
 				headingIds: true,
+				blogImages: true,
 				fences: post.bodyFences,
 			}),
 		[post.body, post.bodyFences],
@@ -43,12 +45,34 @@ export function BlogPostRoute({ post }: { post: BlogPostLoaderData }) {
 				href={routes.blog.href()}
 				css={postBackCss}
 			>
-				← All posts
+				← Blog
 			</SiteLink>
 
 			{post !== null ? (
 				<>
 					<header css={postHeadCss}>
+						<p
+							data-rise
+							style={{ '--rise': '1' } as CSSProperties}
+							css={postEyebrowCss}
+						>
+							<SiteLink
+								href={routes.blogCategory.href({ category: post.category })}
+							>
+								{blogCategoryLabel(post.category)}
+							</SiteLink>
+							{post.series ? (
+								<>
+									{' · '}
+									<SiteLink
+										href={routes.blogSeries.href({ series: post.series.slug })}
+									>
+										{post.series.title}, part {post.series.part} of{' '}
+										{post.series.parts.length}
+									</SiteLink>
+								</>
+							) : null}
+						</p>
 						<h1 data-rise style={{ '--rise': '1' } as CSSProperties}>
 							{post.title}
 						</h1>
@@ -57,7 +81,17 @@ export function BlogPostRoute({ post }: { post: BlogPostLoaderData }) {
 							style={{ '--rise': '2' } as CSSProperties}
 							css={postMetaCss}
 						>
-							{BLOG_AUTHOR_NAME} · {formatBlogPostDate(post.date)}
+							{BLOG_AUTHOR_NAME} ·{' '}
+							<time dateTime={post.date}>{formatBlogPostDate(post.date)}</time>
+							{post.updated ? (
+								<>
+									{' · Updated '}
+									<time dateTime={post.updated}>
+										{formatBlogPostDate(post.updated)}
+									</time>
+								</>
+							) : null}
+							{` · ${post.readingMinutes} min read`}
 						</p>
 					</header>
 
@@ -75,28 +109,17 @@ export function BlogPostRoute({ post }: { post: BlogPostLoaderData }) {
 						/>
 					) : null}
 
-					{post.placeholder ? (
-						<aside
-							data-rise
-							style={{ '--rise': '4' } as CSSProperties}
-							css={placeholderCalloutCss}
-							role="note"
-						>
-							<p>{BLOG_PLACEHOLDER_CALLOUT}</p>
-						</aside>
-					) : null}
-
 					<div css={proseCss}>{renderedBody}</div>
 
 					<footer css={postFootCss}>
-						{post.readNext ? (
-							<SiteLink
-								href={routes.blogPost.href({ slug: post.readNext.slug })}
-								css={readNextCss}
-							>
-								<span css={postMetaCss}>Read next</span>
-								<strong>{post.readNext.title}</strong>
-							</SiteLink>
+						{post.series ? <SeriesNav series={post.series} /> : null}
+						{post.related.length > 0 ? (
+							<section aria-labelledby="blog-related-heading">
+								<h2 id="blog-related-heading" css={footHeadingCss}>
+									Related
+								</h2>
+								<BlogPostList posts={post.related} />
+							</section>
 						) : null}
 						<div css={postCtaCss}>
 							<img
@@ -117,6 +140,49 @@ export function BlogPostRoute({ post }: { post: BlogPostLoaderData }) {
 				</>
 			) : null}
 		</article>
+	)
+}
+
+function SeriesNav({
+	series,
+}: {
+	series: NonNullable<BlogPostLoaderData['series']>
+}) {
+	const previous = series.parts[series.part - 2]
+	const next = series.parts[series.part]
+	return (
+		<nav aria-labelledby="blog-series-nav-heading" css={seriesNavCss}>
+			<h2 id="blog-series-nav-heading" css={footHeadingCss}>
+				<SiteLink href={routes.blogSeries.href({ series: series.slug })}>
+					{series.title}
+				</SiteLink>
+			</h2>
+			<p css={postMetaCss}>
+				Part {series.part} of {series.parts.length}
+			</p>
+			<div css={seriesStepsCss}>
+				{previous ? (
+					<SiteLink
+						href={routes.blogPost.href({ slug: previous.slug })}
+						css={seriesStepCss}
+					>
+						<span css={postMetaCss}>← Previous</span>
+						<strong>{previous.title}</strong>
+					</SiteLink>
+				) : (
+					<span />
+				)}
+				{next ? (
+					<SiteLink
+						href={routes.blogPost.href({ slug: next.slug })}
+						css={[seriesStepCss, { textAlign: 'right' as const }]}
+					>
+						<span css={postMetaCss}>Next →</span>
+						<strong>{next.title}</strong>
+					</SiteLink>
+				) : null}
+			</div>
+		</nav>
 	)
 }
 
@@ -187,29 +253,67 @@ const postImageCss = {
 	border: `1px solid ${colors.border}`,
 } satisfies CSSObject
 
-const placeholderCalloutCss = {
-	marginTop: 'clamp(1.4rem, 3vw, 2rem)',
-	padding: '1rem 1.15rem',
-	border: `1.5px solid ${colors.border}`,
-	borderRadius: radius.card,
-	backgroundColor: colors.surface,
-	'& p': {
-		margin: 0,
-		color: colors.textMuted,
-		fontSize: '0.95rem',
-		lineHeight: 1.5,
-		maxWidth: '62ch',
-		textWrap: 'pretty' as const,
-	},
-} satisfies CSSObject
-
 const postFootCss = {
 	marginTop: 'clamp(3rem, 7vw, 4.5rem)',
 	paddingTop: 'clamp(1.8rem, 4vw, 2.5rem)',
 	borderTop: `1px solid ${colors.border}`,
 } satisfies CSSObject
 
-const readNextCss = {
+const postEyebrowCss = {
+	margin: '0 0 0.8rem',
+	color: colors.textMuted,
+	fontSize: '0.88rem',
+	fontWeight: 550,
+	'& a': {
+		color: colors.primaryText,
+		textDecoration: 'none',
+	},
+	'& a:hover': {
+		color: colors.text,
+		textDecoration: 'underline',
+	},
+} satisfies CSSObject
+
+const footHeadingCss = {
+	margin: '0 0 0.6rem',
+	color: colors.textMuted,
+	fontSize: '0.82rem',
+	fontWeight: 650,
+	letterSpacing: '0.08em',
+	textTransform: 'uppercase' as const,
+	'& a': {
+		color: 'inherit',
+		textDecorationThickness: '1px',
+		textUnderlineOffset: '3px',
+	},
+	'& a:hover': {
+		color: colors.text,
+	},
+} satisfies CSSObject
+
+const seriesNavCss = {
+	...getSurfaceCardCss(),
+	padding: 'clamp(1.1rem, 3vw, 1.5rem)',
+	marginBottom: 'clamp(2rem, 5vw, 2.8rem)',
+	'& > h2': {
+		marginBottom: '0.2rem',
+	},
+} satisfies CSSObject
+
+const seriesStepsCss = {
+	display: 'grid',
+	gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+	gap: '1.2rem',
+	marginTop: '1rem',
+	'@media (max-width: 560px)': {
+		gridTemplateColumns: '1fr',
+		'& a': {
+			textAlign: 'left' as const,
+		},
+	},
+} satisfies CSSObject
+
+const seriesStepCss = {
 	display: 'block',
 	textDecoration: 'none',
 	color: 'inherit',
@@ -219,8 +323,9 @@ const readNextCss = {
 	'& strong': {
 		display: 'block',
 		marginTop: '0.3rem',
-		font: `720 1.25rem/1.25 ${typography.fontFamilyDisplay}`,
-		letterSpacing: '-0.014em',
+		font: `700 1.05rem/1.3 ${typography.fontFamilyDisplay}`,
+		letterSpacing: '-0.01em',
+		textWrap: 'balance' as const,
 		transition: `color ${transitions.fast}`,
 	},
 	'&:hover strong': {

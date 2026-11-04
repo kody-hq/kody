@@ -373,6 +373,12 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: [],
 	},
 	{
+		operationId: 'executionContextNoticeDismiss',
+		method: 'POST',
+		pathTemplate: '/v1/execution-contexts/{id}/notices/dismiss',
+		pathParamNames: ['id'],
+	},
+	{
 		operationId: 'executionContextOptIn',
 		method: 'POST',
 		pathTemplate: '/v1/execution-contexts/{id}/opt-in',
@@ -406,6 +412,12 @@ export const bakedOpenApiRoutes = [
 		operationId: 'executionContextShareList',
 		method: 'GET',
 		pathTemplate: '/v1/execution-contexts/{id}/sharing',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextSharePreview',
+		method: 'POST',
+		pathTemplate: '/v1/execution-contexts/{id}/sharing/preview',
 		pathParamNames: ['id'],
 	},
 	{
@@ -863,6 +875,18 @@ export const bakedOpenApiRoutes = [
 		method: 'GET',
 		pathTemplate: '/v1/packages',
 		pathParamNames: [],
+	},
+	{
+		operationId: 'packagePublishBuildCreate',
+		method: 'POST',
+		pathTemplate: '/v1/packages/publish-builds',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'packagePublishBuildCreateByPath',
+		method: 'POST',
+		pathTemplate: '/v1/packages/{package_id}/publish-builds',
+		pathParamNames: ['package_id'],
 	},
 	{
 		operationId: 'packagePublishExternalPush',

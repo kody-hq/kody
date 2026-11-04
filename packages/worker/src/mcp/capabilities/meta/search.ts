@@ -88,6 +88,12 @@ const searchOutputSchema = z.object({
 	matches: z.array(z.unknown()),
 	offline: z.boolean(),
 	warnings: z.array(z.string()),
+	notices: z
+		.array(z.unknown())
+		.optional()
+		.describe(
+			'Execution-context notices that are new or changed since you last saw them (same shape as execute `notices`).',
+		),
 	guidance: z.string().optional(),
 	memories: memoryResultSchema.optional(),
 	telemetry: z
@@ -220,6 +226,7 @@ export const searchCapability = defineDomainCapability(
 					...(domainFilter ? { domain: domainFilter } : {}),
 				}),
 			)
+			const contextNotices = await searchContextNotices(ctx)
 			const jevRerank = execution.result.telemetry.jevRerank
 			const jevRerankMs = execution.result.phaseTimings.jevRerankMs
 			const serverTiming = toSearchServerTiming({
@@ -240,7 +247,11 @@ export const searchCapability = defineDomainCapability(
 					username: execution.username,
 				}) as Array<SlimSearchMatch>,
 				offline: execution.result.offline,
-				warnings: execution.warnings,
+				warnings: [
+					...execution.warnings,
+					...contextNotices.map((notice) => notice.summary),
+				],
+				...(contextNotices.length > 0 ? { notices: contextNotices } : {}),
 				...(execution.capabilityGuidance
 					? { guidance: execution.capabilityGuidance }
 					: {}),
@@ -264,3 +275,29 @@ export const searchCapability = defineDomainCapability(
 		},
 	},
 )
+
+/** Execution-context notices new to search for this caller (never recomputed here). */
+async function searchContextNotices(ctx: CapabilityContext) {
+	const userId = ctx.callerContext.user?.userId
+	const org = ctx.callerContext.request?.org
+	if (!userId || !org?.slug) return []
+	const slug = org.slug
+	try {
+		const { takeUndeliveredNotices, noticePayload } =
+			await import('#worker/execution-contexts/notices.ts')
+		const { orgResourcePath } = await import('#universal/org-pages.ts')
+		const notices = await takeUndeliveredNotices(ctx.env.APP_DB, {
+			userId,
+			orgId: org.id,
+			surface: 'search',
+		})
+		return notices.map((notice) =>
+			noticePayload(
+				notice,
+				`${ctx.callerContext.baseUrl}${orgResourcePath(slug, 'execution-contexts', notice.contextId)}`,
+			),
+		)
+	} catch {
+		return []
+	}
+}

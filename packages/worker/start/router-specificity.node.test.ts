@@ -30,6 +30,9 @@ test('native static nested endpoints beat dynamic siblings', () => {
 		],
 		['/admin/users/42', '/admin/users/$stableUserId'],
 		['/blog/rss.xml', '/blog/rss.xml'],
+		['/blog/category/how-to', '/blog/category/$category'],
+		['/blog/category/how-to/rss.xml', '/blog/category/$category/rss.xml'],
+		['/blog/series/agent-credentials', '/blog/series/$series'],
 		['/docs/connect.md', '/docs/connect.md'],
 		[
 			'/.well-known/agent-skills/build/SKILL.md',

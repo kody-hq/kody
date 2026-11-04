@@ -411,6 +411,20 @@ test('ranOn carries the timing a context reported, and cloud never does', () => 
 	).not.toHaveProperty('timing')
 })
 
+test('every credential kind needs execution_context:execute to reach a context', async () => {
+	const { hasContextScope } = await import('./routing.ts')
+	// CLI logins, API tokens and OAuth grants all carry scopes now; none of
+	// them reach a context without the execution-context scope.
+	expect(hasContextScope({ request: { scopes: ['org:execute'] } })).toBe(false)
+	expect(
+		hasContextScope({
+			request: { scopes: ['org:execute', 'execution_context:execute'] },
+		}),
+	).toBe(true)
+	// Unscoped credentials (a signed-in browser session) keep full access.
+	expect(hasContextScope({ request: { scopes: null } })).toBe(true)
+})
+
 test('host folders stay with the operator: shared runs skip fs and outdated daemons with folders', () => {
 	const withFs = {
 		...ecpDefaultGrant,

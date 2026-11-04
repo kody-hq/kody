@@ -5,6 +5,8 @@ description:
   Shared agent tools shouldn't run as whoever built them. How to let each
   teammate run the same tool under their own account, with no keys shared.
 order: 16
+category: how-to
+series: agent-credentials-for-team-leads
 ---
 
 Someone on your team built an agent tool that drafts weekly status updates from
@@ -146,10 +148,3 @@ Start at [kody.codes](https://kody.codes). The
 [shared packages guide](https://kody.codes/docs/shared-packages) has the full
 mapping rules, and the [OAuth guide](https://kody.codes/docs/oauth) covers
 connecting through an org's app.
-
-More in this series:
-
-- [A team lead's guide to AI agent credentials](/blog/ai-agent-credentials-guide-for-team-leads)
-- [How to share AI workflows with your team](/blog/share-ai-workflows-with-your-team)
-- [Sharing credentials across Claude Code, Cursor, and Codex without copying secrets](/blog/claude-code-cursor-and-codex-shared-credentials)
-- [Internal tools built with AI that reuse your team's credentials](/blog/internal-tools-built-with-ai-team-credentials)

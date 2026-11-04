@@ -256,6 +256,7 @@ export type PublishWorkChecksInput = {
 	 */
 	mode: 'authoring' | 'session'
 	deferBundleCheckToRebuild?: boolean
+	typecheckRanOffWorker?: boolean
 	requirePackageDocs?: boolean
 	enforceCredentialStamp?: boolean
 }
@@ -454,6 +455,9 @@ export function createInlinePublishHeavyWork(input: {
 							...common,
 							...(checksInput.deferBundleCheckToRebuild === true
 								? { deferBundleCheckToRebuild: true }
+								: {}),
+							...(checksInput.typecheckRanOffWorker === true
+								? { typecheckRanOffWorker: true }
 								: {}),
 						})
 					: await runRepoChecks({

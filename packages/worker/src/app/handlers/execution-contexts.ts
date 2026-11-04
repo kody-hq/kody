@@ -57,6 +57,8 @@ export const executionContextCapabilityNames = {
 	shareList: 'executionContextShareList',
 	shareSet: 'executionContextShareSet',
 	shareRemove: 'executionContextShareRemove',
+	sharePreview: 'executionContextSharePreview',
+	noticeDismiss: 'executionContextNoticeDismiss',
 	automationGet: 'automationExecutionGet',
 	automationSet: 'automationExecutionSet',
 } as const
@@ -533,6 +535,54 @@ export async function turnOffExecutionContextCommandsForUser(
 			grant: { commands: { enabled: false } },
 		})
 		return { ok: true as const }
+	})
+}
+
+export async function dismissExecutionContextNoticeForUser(
+	input: ScopedInput & { contextId: string; fingerprint: string },
+) {
+	return runScoped(input, async (scope) => {
+		await callCapability(scope, executionContextCapabilityNames.noticeDismiss, {
+			id: input.contextId,
+			fingerprint: input.fingerprint,
+		})
+		return { ok: true as const }
+	})
+}
+
+export async function previewExecutionContextShareForUser(
+	input: ScopedInput & {
+		contextId: string
+		subject:
+			| { kind: 'user'; username: string }
+			| { kind: 'team'; slug: string }
+			| { kind: 'org' }
+	},
+) {
+	const { subject } = input
+	return runScoped(input, async (scope) => {
+		const result = await callCapability(
+			scope,
+			executionContextCapabilityNames.sharePreview,
+			{
+				id: input.contextId,
+				...(subject.kind === 'user'
+					? { username: subject.username.replace(/^@/, '') }
+					: subject.kind === 'team'
+						? { team_slug: subject.slug }
+						: { all_members: true }),
+			},
+		)
+		const people = Array.isArray(result.people) ? result.people : []
+		return {
+			ok: true as const,
+			excessCount: people.reduce(
+				(total: number, person: { excess?: Array<unknown> }) =>
+					total + (Array.isArray(person.excess) ? person.excess.length : 0),
+				typeof result.unchecked === 'number' ? result.unchecked : 0,
+			),
+			people: people.length,
+		}
 	})
 }
 
