@@ -349,7 +349,8 @@ export async function startPackageAppDev(
 		await new Promise<void>((resolve) => {
 			proxy.close(() => resolve())
 		})
-		await rm(workDir, { recursive: true, force: true })
+		// Windows can hold a just-stopped workerd's handles for a moment (EPERM).
+		await rm(workDir, { recursive: true, force: true, maxRetries: 10 })
 		throw error
 	}
 	const contextFor = (client: DevClientBundle | null) =>
@@ -1106,7 +1107,8 @@ export async function startPackageAppDev(
 		await new Promise<void>((resolve) => {
 			proxy.close(() => resolve())
 		})
-		await rm(workDir, { recursive: true, force: true })
+		// Windows can hold a just-stopped workerd's handles for a moment (EPERM).
+		await rm(workDir, { recursive: true, force: true, maxRetries: 10 })
 	}
 
 	try {

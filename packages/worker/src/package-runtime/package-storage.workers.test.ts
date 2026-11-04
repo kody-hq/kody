@@ -20,6 +20,7 @@ import {
 import { persistPublishedBundleArtifact } from './published-bundle-artifacts.ts'
 import { persistPublishedSourceSnapshot } from './published-runtime-artifacts.ts'
 import { ensureSoftDeleteTestColumns } from '#worker/soft-delete/test-schema.ts'
+import { entitySourcesTableSql } from '#worker/repo/entity-sources-test-schema.ts'
 
 /**
  * End-to-end behavior matrix for `packageStorage()` against REAL
@@ -40,20 +41,7 @@ async function runSql(sql: string, ...values: Array<unknown>) {
 
 async function ensureSavedPackageArtifactSchema() {
 	await ensureEntitlementTestSchema(env.APP_DB)
-	await runSql(`CREATE TABLE IF NOT EXISTS entity_sources (
-		id TEXT PRIMARY KEY,
-		user_id TEXT NOT NULL,
-		entity_kind TEXT NOT NULL,
-		entity_id TEXT NOT NULL,
-		repo_id TEXT NOT NULL,
-		published_commit TEXT,
-		serving_commit TEXT,
-		indexed_commit TEXT,
-		manifest_path TEXT NOT NULL DEFAULT 'package.json',
-		source_root TEXT NOT NULL DEFAULT '/',
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL
-	)`)
+	await runSql(entitySourcesTableSql)
 	await runSql(`CREATE TABLE IF NOT EXISTS saved_packages (
 		id TEXT PRIMARY KEY NOT NULL,
 		user_id TEXT NOT NULL,

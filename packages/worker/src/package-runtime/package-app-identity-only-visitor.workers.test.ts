@@ -33,6 +33,7 @@ import {
 	withPackageAppVisitorHeader,
 } from './package-app-visitor-header.ts'
 import { persistPublishedSourceSnapshot } from './published-runtime-artifacts.ts'
+import { entitySourcesTableSql } from '#worker/repo/entity-sources-test-schema.ts'
 
 /**
  * A signed-in person who cannot run an internet-visible app is served as an
@@ -54,20 +55,7 @@ async function ensureSchema() {
 	await ensureOrgsTestSchema(env.APP_DB)
 	await ensureCreditWalletTestSchema(env.APP_DB)
 	await ensureUsageRollupsTestSchema(env.APP_DB)
-	await runSql(`CREATE TABLE IF NOT EXISTS entity_sources (
-		id TEXT PRIMARY KEY,
-		user_id TEXT NOT NULL,
-		entity_kind TEXT NOT NULL,
-		entity_id TEXT NOT NULL,
-		repo_id TEXT NOT NULL,
-		published_commit TEXT,
-		serving_commit TEXT,
-		indexed_commit TEXT,
-		manifest_path TEXT NOT NULL DEFAULT 'package.json',
-		source_root TEXT NOT NULL DEFAULT '/',
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL
-	)`)
+	await runSql(entitySourcesTableSql)
 	await runSql(`CREATE TABLE IF NOT EXISTS saved_packages (
 		id TEXT PRIMARY KEY NOT NULL,
 		user_id TEXT NOT NULL,

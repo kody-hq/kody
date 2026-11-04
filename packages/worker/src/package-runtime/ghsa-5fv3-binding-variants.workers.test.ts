@@ -30,6 +30,7 @@ import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
 import { buildPackageStorageId } from '#worker/storage-ids.ts'
 import { storageRunnerRpc } from '#worker/storage-runner.ts'
 import { communityForksTableSql } from '#worker/community/community-forks-test-schema.ts'
+import { entitySourcesTableSql } from '#worker/repo/entity-sources-test-schema.ts'
 
 /**
  * GHSA-5fv3 trusted per-package binding: related variants found while
@@ -49,20 +50,7 @@ async function ensureSecretAuthorityTestSchema() {
 	await ensureEntitlementTestSchema(env.APP_DB)
 	await ensureOrgsTestSchema(env.APP_DB)
 	await ensureUsageRollupsTestSchema(env.APP_DB)
-	await runSql(`CREATE TABLE IF NOT EXISTS entity_sources (
-		id TEXT PRIMARY KEY,
-		user_id TEXT NOT NULL,
-		entity_kind TEXT NOT NULL,
-		entity_id TEXT NOT NULL,
-		repo_id TEXT NOT NULL,
-		published_commit TEXT,
-		serving_commit TEXT,
-		indexed_commit TEXT,
-		manifest_path TEXT NOT NULL DEFAULT 'package.json',
-		source_root TEXT NOT NULL DEFAULT '/',
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL
-	)`)
+	await runSql(entitySourcesTableSql)
 	await runSql(`CREATE TABLE IF NOT EXISTS saved_packages (
 		id TEXT PRIMARY KEY NOT NULL,
 		user_id TEXT NOT NULL,

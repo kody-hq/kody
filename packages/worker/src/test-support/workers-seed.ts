@@ -6,6 +6,7 @@ import { ensureSavedPackageInternetVisibleColumn } from '#worker/package-registr
 import { ensureSoftDeleteTestColumns } from '#worker/soft-delete/test-schema.ts'
 import { ensurePersonalOrg } from '#worker/orgs/provision.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
+import { entitySourcesTableSql } from '#worker/repo/entity-sources-test-schema.ts'
 
 /**
  * Explicit-import factories for `*.workers.test.ts` suites that need a local
@@ -92,23 +93,7 @@ export async function ensurePackageSubscriptionTestSchema(db: D1Database) {
 			created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
 			PRIMARY KEY (user_id, old_slug)
 		)`,
-		`CREATE TABLE IF NOT EXISTS entity_sources (
-			id TEXT PRIMARY KEY,
-			user_id TEXT NOT NULL,
-			entity_kind TEXT NOT NULL,
-			entity_id TEXT NOT NULL,
-			repo_id TEXT NOT NULL,
-			published_commit TEXT,
-			serving_commit TEXT,
-			indexed_commit TEXT,
-			manifest_path TEXT NOT NULL,
-			source_root TEXT NOT NULL,
-			last_external_check_at TEXT,
-			external_check_until TEXT,
-			deleted_at TEXT,
-			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL
-		)`,
+		entitySourcesTableSql,
 		`CREATE TABLE IF NOT EXISTS published_bundle_artifacts (
 			id TEXT PRIMARY KEY,
 			user_id TEXT NOT NULL,

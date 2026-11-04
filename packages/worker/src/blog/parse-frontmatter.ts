@@ -136,6 +136,12 @@ export function parseBlogPostMarkdown(slug: string, raw: string): BlogPost {
 		const indentedContinuation = /^(?: {2}|\t)\s*(.*)$/.exec(line)
 		if (indentedContinuation && currentKey !== null) {
 			const part = indentedContinuation[1]!.trim()
+			// oxfmt rewraps a value containing ": " as a YAML complex key.
+			if (/^[?:](?:\s|$)/.test(part)) {
+				throw new Error(
+					`Blog post "${slug}" has a YAML complex-key marker in frontmatter "${currentKey}" ("${part.slice(0, 1)}" line). Remove the leading "${part.slice(0, 1)}", or reword the value so it does not contain ": ".`,
+				)
+			}
 			if (part) currentParts.push(part)
 			continue
 		}
