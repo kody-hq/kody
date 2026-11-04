@@ -573,7 +573,9 @@ export const executionContextSharePreviewCapability = defineDomainCapability(
 					teamSlug: args.team_slug ?? null,
 				})
 				const members = await db
-					.prepare(`SELECT user_id FROM team_members WHERE team_id = ?`)
+					.prepare(
+						`SELECT user_id FROM team_members WHERE team_id = ? AND deleted_at IS NULL`,
+					)
 					.bind(teamId)
 					.all<{ user_id: string }>()
 				userIds = members.results.map((row) => row.user_id)

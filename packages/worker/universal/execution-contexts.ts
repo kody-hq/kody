@@ -77,7 +77,7 @@ type ExecutionContextChainUsage = {
 	chainCount: number
 }
 
-export type ExecutionContextBoxEntry = {
+type ExecutionContextBoxEntry = {
 	permission: string
 	resource: string | null
 }

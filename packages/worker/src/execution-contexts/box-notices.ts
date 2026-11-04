@@ -28,7 +28,7 @@ export async function contextGranteeIds(
 			 UNION
 			 SELECT tm.user_id FROM grants g
 			 JOIN teams t ON t.id = g.subject_id AND t.org_id = g.org_id AND t.deleted_at IS NULL
-			 JOIN team_members tm ON tm.team_id = t.id
+			 JOIN team_members tm ON tm.team_id = t.id AND tm.deleted_at IS NULL
 			 WHERE g.resource_type = 'execution_context' AND g.resource_id = ? AND g.org_id = ?
 			   AND g.deleted_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > ?)
 			   AND g.subject_type = 'team'
@@ -89,20 +89,21 @@ export async function contextMisconfigurations(
 		row.login_token_id
 			? db
 					.prepare(
-						`SELECT revoked_at, expires_at, deleted_at FROM api_tokens WHERE id = ?`,
+						`SELECT revoked_at, expires_at FROM api_tokens WHERE id = ? AND deleted_at IS NULL`,
 					)
 					.bind(row.login_token_id)
 					.first<{
 						revoked_at: string | null
 						expires_at: string | null
-						deleted_at: string | null
 					}>()
 			: Promise.resolve(null),
 		row.team_id
 			? db
-					.prepare(`SELECT deleted_at FROM teams WHERE id = ?`)
+					.prepare(
+						`SELECT 1 AS ok FROM teams WHERE id = ? AND deleted_at IS NULL`,
+					)
 					.bind(row.team_id)
-					.first<{ deleted_at: string | null }>()
+					.first<{ ok: number }>()
 			: Promise.resolve(null),
 		principal.profileId
 			? db
@@ -117,14 +118,13 @@ export async function contextMisconfigurations(
 		row.login_token_id &&
 		(!token ||
 			token.revoked_at ||
-			token.deleted_at ||
 			(token.expires_at && token.expires_at <= now))
 	) {
 		codes.push('login_stale')
 	}
 	if (box?.profileInactive) codes.push('profile_inactive')
 	if (row.team_id) {
-		if (!team || team.deleted_at) codes.push('team_deleted')
+		if (!team) codes.push('team_deleted')
 		else if (!principal.profileId) codes.push('personal_login_on_team_context')
 		else if (profile?.assigned_team_id !== row.team_id) {
 			codes.push('profile_not_assigned_to_team')

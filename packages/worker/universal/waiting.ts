@@ -172,7 +172,7 @@ export type WaitingSignals = {
 	contextNotices?: Array<WaitingContextNoticeSignal>
 }
 
-export type WaitingContextNoticeSignal = {
+type WaitingContextNoticeSignal = {
 	contextId: string
 	contextName: string
 	kind: 'elevation' | 'misconfigured'

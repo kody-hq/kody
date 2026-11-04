@@ -55,6 +55,11 @@ const handWrittenSubjectMatches: Record<
 	string,
 	{ count: number; reason: string }
 > = {
+	'execution-contexts/box-notices.ts': {
+		count: 2,
+		reason:
+			"Lists a context's grantees (ADR 0096) by expanding its user and team grants, not matching a person to a grant.",
+	},
 	'orgs/access-writes.ts': {
 		count: 3,
 		reason:

@@ -322,9 +322,15 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 	{
 		kind: 'user_columns',
 		table: 'execution_contexts',
-		columns: ['operator_user_id'],
+		columns: ['operator_user_id', 'login_user_id'],
 	},
 	{ kind: 'user_id', table: 'execution_context_opt_ins' },
+	// Excess-access notices about a person (ADR 0096).
+	{
+		kind: 'user_columns',
+		table: 'execution_context_notices',
+		columns: ['subject_user_id'],
+	},
 	// Profiles a person acts as (ADR 0092). Their `grants` rows are swept by
 	// the profile purge once the profile row is gone.
 	{
