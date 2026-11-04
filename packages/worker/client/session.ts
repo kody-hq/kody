@@ -27,6 +27,33 @@ export type SessionInfo = {
 	featureFlags: Record<FeatureFlagKey, boolean>
 	organizations?: Array<OrganizationSummary>
 	inviteCount?: number
+	guest?: SessionGuestInfo | null
+}
+
+export type SessionGuestInfo = {
+	phase: 'active' | 'hold'
+	claimUrl: string
+	fullAccessUntil: string
+	deleteAt: string
+}
+
+function readGuest(value: unknown): SessionGuestInfo | null {
+	if (!value || typeof value !== 'object') return null
+	const row = value as Record<string, unknown>
+	if (row.phase !== 'active' && row.phase !== 'hold') return null
+	if (
+		typeof row.claimUrl !== 'string' ||
+		typeof row.fullAccessUntil !== 'string' ||
+		typeof row.deleteAt !== 'string'
+	) {
+		return null
+	}
+	return {
+		phase: row.phase,
+		claimUrl: row.claimUrl,
+		fullAccessUntil: row.fullAccessUntil,
+		deleteAt: row.deleteAt,
+	}
 }
 
 export function getSessionDisplayName(session: SessionInfo | null) {
@@ -76,6 +103,7 @@ export function parseSessionInfo(value: unknown): SessionInfo | null {
 				featureFlags,
 				organizations: readOrganizations(payload?.session?.organizations),
 				inviteCount: readInviteCount(payload?.session?.inviteCount),
+				guest: readGuest(payload?.session?.guest),
 			}
 		: null
 }

@@ -166,11 +166,6 @@ export async function convertGuestInPlace(input: {
 	email: string
 	username: string
 	displayName?: string | null
-	connection?: {
-		provider: string
-		providerUserId: string
-		providerDisplayName: string | null
-	}
 	now?: Date
 }): Promise<GuestClaimResult> {
 	const { env, guest } = input
@@ -222,24 +217,6 @@ export async function convertGuestInPlace(input: {
 			now,
 		}),
 	]
-	if (input.connection) {
-		statements.push(
-			db
-				.prepare(
-					`INSERT INTO oauth_connections
-						(provider_name, provider_id, user_id, provider_display_name, created_at, updated_at)
-					 VALUES (?, ?, ?, ?, ?, ?)`,
-				)
-				.bind(
-					input.connection.provider,
-					input.connection.providerUserId,
-					user.id,
-					input.connection.providerDisplayName,
-					now,
-					now,
-				),
-		)
-	}
 	await db.batch(statements)
 	await maybeGrantSignupWelcomeCredits({ db, userId: orgId })
 	void logAuditEvent({
@@ -453,4 +430,56 @@ export async function mergeGuestIntoAccount(input: {
 		personalOrgId: toOrgId,
 		renamedPackages,
 	}
+}
+
+export type GuestComesWith = {
+	packages: number
+	memories: number
+	jobs: number
+	runs: number
+}
+
+/** What a claim carries over, for the "Comes with you" pills. */
+export async function guestComesWithCounts(
+	env: Env,
+	guest: GuestAccount,
+): Promise<GuestComesWith> {
+	const db = env.APP_DB
+	const orgId = guest.personalOrgId
+	const [packages, memories, jobs, runs] = await Promise.all([
+		db
+			.prepare(
+				`SELECT COUNT(*) AS n FROM saved_packages WHERE org_id = ? AND deleted_at IS NULL`,
+			)
+			.bind(orgId)
+			.first<{ n: number }>()
+			.then((row) => Number(row?.n ?? 0)),
+		db
+			.prepare(
+				`SELECT COUNT(*) AS n FROM mcp_memories WHERE user_id = ? AND deleted_at IS NULL`,
+			)
+			.bind(orgId)
+			.first<{ n: number }>()
+			.then((row) => Number(row?.n ?? 0)),
+		import('#worker/jobs/inspect.ts')
+			.then(({ listJobs }) => listJobs({ env, userId: orgId as never }))
+			.then((rows) => rows.length)
+			.catch(() => 0),
+		runLogRpc({ env, userId: orgId as never })
+			.countRunHistory()
+			.catch(() => 0),
+	])
+	return { packages, memories, jobs, runs }
+}
+
+export function guestClaimDonePath(
+	claimCode: string,
+	mode: 'new' | 'merge',
+	comesWith: GuestComesWith,
+) {
+	const params = new URLSearchParams({ result: 'claimed', mode })
+	for (const [key, value] of Object.entries(comesWith)) {
+		if (value > 0) params.set(key, String(value))
+	}
+	return `/claim/${encodeURIComponent(claimCode)}?${params}`
 }

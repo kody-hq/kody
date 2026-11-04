@@ -4006,6 +4006,13 @@ class RunLogBase extends DurableObject<Env> {
 	}
 
 	/** Guest merge: page every run (with its log lines) out of this owner. */
+	async countRunHistory(): Promise<number> {
+		const row = this.ctx.storage.sql
+			.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM runs`)
+			.one()
+		return Number(row.n ?? 0) || 0
+	}
+
 	async exportRunHistoryPage(input: {
 		afterId: string | null
 		limit: number
@@ -5024,6 +5031,7 @@ export type RunHistoryTransferPage = {
 }
 
 export type RunLogRpc = DurableObjectPitrRpc & {
+	countRunHistory: () => Promise<number>
 	exportRunHistoryPage: (input: {
 		afterId: string | null
 		limit: number
