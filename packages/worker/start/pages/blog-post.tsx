@@ -30,6 +30,7 @@ export const blogPostMarkdownOptions = {
 	linkRel: 'noopener noreferrer',
 	linkPolicy: 'first-party',
 	headingIds: true,
+	blogImages: true,
 } as const
 
 export function BlogPostRoute({ post }: { post: BlogPostLoaderData }) {

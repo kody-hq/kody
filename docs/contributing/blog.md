@@ -46,6 +46,13 @@ featured: true
 
 Any other key (including `tags`) fails the build.
 
+## Inline screenshots
+
+Put body images at `packages/worker/public/images/blog/<post-slug>/<name>.<ext>`
+(webp preferred, at most about 1600px wide and about 400 KiB) and embed them as
+`![Caption](/images/blog/<post-slug>/<name>.webp)`. Alt text is required, and
+never hotlink GitHub attachment URLs; other hrefs render as links.
+
 ## Picking a category
 
 Ask what the reader came to do:
