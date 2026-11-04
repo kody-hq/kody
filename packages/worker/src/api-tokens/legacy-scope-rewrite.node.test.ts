@@ -254,8 +254,9 @@ test('retired permissions are dropped instead of rejected', () => {
 			'app:create',
 			'job:create',
 			'job:delete',
+			'job:read',
 		]),
-	).toEqual(['package:read'])
+	).toEqual(['job:read', 'package:read'])
 	expect(() => normalizeApiTokenScopes(['job:launch'])).toThrow(
 		/Unknown API token scope/,
 	)
