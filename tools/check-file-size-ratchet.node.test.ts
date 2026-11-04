@@ -231,7 +231,7 @@ test('checkFileSizeRatchet rejects oversized AGENTS.md even when snapshot-listed
 				groupId: 'agents-md',
 				kind: 'new-over-budget',
 				lineCount: 25,
-				maxLines: 23,
+				maxLines: 24,
 			}),
 		])
 	} finally {
