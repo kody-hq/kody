@@ -13,6 +13,7 @@ import { checkRateLimit, type RateLimitConfig } from '#worker/rate-limit.ts'
 import { mintPersonalOrgIdForSignup } from '#worker/orgs/signup-provision.ts'
 import { personalOrgProvisionStatements } from '#worker/orgs/provision.ts'
 import { unusablePasswordHash } from '#worker/identity/usable-password.ts'
+import { ceilingLimitOverrideReason } from '#worker/entitlements/limit-overrides.ts'
 
 export const guestFullAccessMs = 24 * 60 * 60 * 1000
 export const guestHoldMs = 7 * 24 * 60 * 60 * 1000
@@ -39,7 +40,7 @@ export const guestCreateDailyRateLimit: RateLimitConfig = {
 
 /**
  * About $1 of house compute with a hard stop: tight caps on the metered
- * resources through the existing per-org limit overrides. Removed at claim.
+ * resources through per-org ceiling limit overrides. Removed at claim.
  */
 export const guestLimitOverrides: ReadonlyArray<readonly [string, number]> = [
 	['execute_unique_workers_per_day', 200],
@@ -50,7 +51,7 @@ export const guestLimitOverrides: ReadonlyArray<readonly [string, number]> = [
 	['email_receives_per_day', 0],
 	['execute_calls_per_minute', 30],
 ]
-export const guestLimitOverrideReason = 'guest_account'
+export const guestLimitOverrideReason = ceilingLimitOverrideReason
 
 export type GuestPhase = 'active' | 'hold'
 

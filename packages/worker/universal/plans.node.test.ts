@@ -391,6 +391,33 @@ test('limit overrides only raise caps, skip expired entries, and never add a mis
 	).toBeNull()
 })
 
+test('ceiling overrides cap plan limits instead of raising them', () => {
+	const now = new Date('2026-11-04T00:00:00.000Z')
+	const limits = resolvePlanLimits('standard', 'legacy', 'none')
+	const capped = applyLimitOverrides(
+		limits,
+		[
+			{ key: 'email_sends_per_day', value: 0, expiresAt: null, ceiling: true },
+			{
+				key: 'job_runs_per_day',
+				value: 1_000_000,
+				expiresAt: null,
+				ceiling: true,
+			},
+		],
+		now,
+	)
+	expect(capped.maxEmailSendsPerDay).toBe(0)
+	expect(capped.maxJobRunsPerDay).toBe(limits.maxJobRunsPerDay)
+	expect(
+		applyLimitOverrides(
+			limits,
+			[{ key: 'email_sends_per_day', value: 0, expiresAt: null }],
+			now,
+		).maxEmailSendsPerDay,
+	).toBe(limits.maxEmailSendsPerDay)
+})
+
 test('limit override keys parse strictly and map to overridable resources', () => {
 	expect(parseLimitOverrideKey('saved_packages')).toBeNull()
 	expect(parseLimitOverrideKey(undefined)).toBeNull()
