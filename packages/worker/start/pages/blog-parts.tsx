@@ -7,10 +7,13 @@ import type {
 	BlogPostSummaryLoaderData,
 } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
-import { colors, transitions } from '#universal/styles/tokens.ts'
+import { colors, radius, transitions } from '#universal/styles/tokens.ts'
 import { pageHeadCss } from '#universal/styles/style-primitives.ts'
 import { revealRef } from '../components/reveal.ts'
 import { SiteLink } from '../components/site-link.tsx'
+import { publicAsset } from '../public-assets.ts'
+
+const THUMBNAIL_SIZE = 112
 
 export function blogCategoryLabel(slug: string) {
 	return getBlogCategory(slug)?.label ?? slug
@@ -82,15 +85,32 @@ export function BlogPostList({
 				>
 					<SiteLink
 						href={routes.blogPost.href({ slug: post.slug })}
-						css={postLinkCss}
+						css={
+							post.image && post.imageAlt
+								? [postLinkCss, postLinkWithThumbnailCss]
+								: postLinkCss
+						}
 					>
-						<p css={blogMetaCss}>
-							{eyebrow
-								? `${eyebrow(post, index)} · ${blogPostMetaText(post, { category: false })}`
-								: blogPostMetaText(post, { category: showCategory })}
-						</p>
-						<h3 css={postTitleCss}>{post.title}</h3>
-						<p css={postDescriptionCss}>{post.description}</p>
+						<div>
+							<p css={blogMetaCss}>
+								{eyebrow
+									? `${eyebrow(post, index)} · ${blogPostMetaText(post, { category: false })}`
+									: blogPostMetaText(post, { category: showCategory })}
+							</p>
+							<h3 css={postTitleCss}>{post.title}</h3>
+							<p css={postDescriptionCss}>{post.description}</p>
+						</div>
+						{post.image && post.imageAlt ? (
+							<img
+								src={publicAsset(post.image)}
+								alt={post.imageAlt}
+								width={THUMBNAIL_SIZE}
+								height={THUMBNAIL_SIZE}
+								loading="lazy"
+								decoding="async"
+								css={postThumbnailCss}
+							/>
+						) : null}
 					</SiteLink>
 				</li>
 			))}
@@ -189,6 +209,31 @@ const postLinkCss = {
 	color: 'inherit',
 	'&:hover h3': {
 		color: colors.primaryText,
+	},
+} satisfies CSSObject
+
+/* Text first, art on the right, like the featured hero above the list. */
+const postLinkWithThumbnailCss = {
+	display: 'grid',
+	gridTemplateColumns: 'minmax(0, 1fr) auto',
+	gap: 'clamp(0.9rem, 3vw, 1.6rem)',
+	alignItems: 'center',
+	'@media (max-width: 560px)': {
+		alignItems: 'start',
+	},
+} satisfies CSSObject
+
+const postThumbnailCss = {
+	display: 'block',
+	width: `clamp(64px, 16vw, ${THUMBNAIL_SIZE}px)`,
+	height: 'auto',
+	aspectRatio: '1 / 1',
+	objectFit: 'cover' as const,
+	borderRadius: radius.md,
+	border: `1px solid ${colors.border}`,
+	background: colors.surface,
+	'@media (max-width: 560px)': {
+		marginTop: '0.2rem',
 	},
 } satisfies CSSObject
 

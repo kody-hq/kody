@@ -13,6 +13,7 @@ import {
 	listBlogPosts,
 	listBlogSeriesPosts,
 	normalizeMarkdownPhraseSource,
+	toBlogPostSummary,
 } from './catalog.ts'
 import { parseBlogPostMarkdown } from './parse-frontmatter.ts'
 import { buildBlogRssXml } from './rss.ts'
@@ -157,6 +158,22 @@ test('every catalog post uses the fixed taxonomy and the client slug list', () =
 		listBlogCategoriesWithPosts().reduce((sum, c) => sum + c.count, 0),
 	).toBe(posts.length)
 	expect(getFeaturedBlogPost()?.category).not.toBe('updates')
+})
+
+test('list summaries carry headline image fields for index thumbnails', () => {
+	const posts = listBlogPosts()
+	const withImage = posts.find((post) => post.image !== null)!
+	expect(toBlogPostSummary(withImage)).toMatchObject({
+		slug: withImage.slug,
+		image: withImage.image,
+		imageAlt: withImage.imageAlt,
+	})
+	expect(withImage.imageAlt).toBeTruthy()
+	const withoutImage = posts.find((post) => post.image === null)!
+	expect(toBlogPostSummary(withoutImage)).toMatchObject({
+		image: null,
+		imageAlt: null,
+	})
 })
 
 test('series nav lists every part oldest first with prev/next positions', () => {
