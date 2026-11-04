@@ -221,6 +221,8 @@ export async function finishGuestClaim(input: {
 	code: string
 	baseUrl: string
 	now?: Date
+	/** `email_code` from the claim page, `agent` (default) from guestClaimFinish. */
+	method?: 'email_code' | 'agent'
 }): Promise<GuestClaimResult> {
 	const { env, guest } = input
 	const db = env.APP_DB
@@ -274,6 +276,7 @@ export async function finishGuestClaim(input: {
 			target,
 			baseUrl: input.baseUrl,
 			now,
+			method: input.method ?? 'agent',
 		})
 	}
 	return convertGuestInPlace({
@@ -282,5 +285,6 @@ export async function finishGuestClaim(input: {
 		email: row.email,
 		username: row.username ?? '',
 		now,
+		method: input.method ?? 'agent',
 	})
 }
