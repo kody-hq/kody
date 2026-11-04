@@ -98,7 +98,8 @@ someone else's data.
 
 Plenty of people have a work and a personal calendar, or two GitHub accounts. A
 need can be declared with `multiple: true`, and then the package opens several
-accounts at once. The per-run map can pick an array, like
+accounts at once with `credentials('calendar')` (plural), which returns one
+client per picked account. The per-run map can pick an array, like
 `"calendar": ["work", "personal"]`. Same rule: explicit, never guessed.
 
 ## Scheduling it for everyone
