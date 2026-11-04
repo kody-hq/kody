@@ -138,6 +138,12 @@ export const accountOperatorOwnedD1Surfaces = [
 			'Operator-owned provider brand marks (global catalog like platform OAuth app logos; no user data). Saved integrations and MCP servers use these after an explicit upload and before auto-favicon.',
 	},
 	{
+		table: 'scheduled_lane_leases',
+		surface: 'scheduled_lane_leases',
+		reason:
+			'Platform single-flight leases for scheduled lanes (one short-lived row per lane; no user data).',
+	},
+	{
 		table: 'repo_session_storage_bucket_cursor',
 		surface: 'repo_session_storage_bucket_cursor',
 		reason:

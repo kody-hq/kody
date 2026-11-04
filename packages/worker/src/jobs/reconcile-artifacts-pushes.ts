@@ -1,10 +1,10 @@
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import {
 	type ExternalReconcileCursor,
+	type ExternalReconcileSourceRow,
 	listEntitySourcesForExternalReconcile,
 	updateEntitySource,
 } from '#worker/repo/entity-sources.ts'
-import type { EntitySourceRow } from '#worker/repo/types.ts'
 import { resolveArtifactSourceHead } from '#worker/repo/artifacts.ts'
 import { revokeStaleArtifactsTokens } from '#worker/repo/artifacts-tokens.ts'
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
@@ -21,7 +21,9 @@ export type ReconcileArtifactsPushesResult = {
 	notFastForward: number
 	lockedSkipped: number
 	approvalRequiredSkipped: number
+	failedHeadSkipped: number
 	errors: number
+	sourceTimeouts: number
 	tokenCleanupErrors: number
 	tokensRevoked: number
 	batches: number
@@ -37,6 +39,54 @@ const defaultStaleAfterMinutes = 5
  * capped at one batch per five-minute tick.
  */
 export const reconcileTimeBudgetMs = 60_000
+/**
+ * Most one source may hold a tick. Without it a single clone + checks publish
+ * kept ticks running to the 15-minute consumer limit, and overlapping ticks
+ * stacked up in one isolate. The abandoned publish finishes on its own; the
+ * source is re-selected by a later tick.
+ */
+export const reconcileSourceTimeoutMs = 45_000
+/** How long a HEAD whose checks failed is skipped before checks run again. */
+export const failedHeadRetryWindowMinutes = 6 * 60
+
+type SourceOutcome =
+	| 'missingHead'
+	| 'lockedSkipped'
+	| 'alreadyPublished'
+	| 'approvalRequiredSkipped'
+	| 'failedHeadSkipped'
+	| 'published'
+	| 'checksFailed'
+	| 'notFastForward'
+
+class ReconcileSourceTimeoutError extends Error {
+	constructor(timeoutMs: number) {
+		super(`Reconcile source exceeded its ${timeoutMs}ms deadline.`)
+		this.name = 'ReconcileSourceTimeoutError'
+	}
+}
+
+async function withSourceDeadline<T>(
+	work: Promise<T>,
+	timeoutMs: number,
+): Promise<T> {
+	// The abandoned work may still reject after the deadline wins.
+	work.catch(() => {})
+	let timer: ReturnType<typeof setTimeout> | undefined
+	try {
+		return await Promise.race([
+			work,
+			new Promise<never>((_, reject) => {
+				timer = setTimeout(
+					() => reject(new ReconcileSourceTimeoutError(timeoutMs)),
+					timeoutMs,
+				)
+			}),
+		])
+	} finally {
+		clearTimeout(timer)
+	}
+}
 
 function minutesAgoIso(now: Date, minutes: number) {
 	return new Date(now.getTime() - minutes * 60_000).toISOString()
@@ -52,6 +102,7 @@ export async function reconcileArtifactsPushes(input: {
 	batchSize?: number
 	staleAfterMinutes?: number
 	timeBudgetMs?: number
+	sourceTimeoutMs?: number
 	now?: Date
 }): Promise<ReconcileArtifactsPushesResult> {
 	const now = input.now ?? new Date()
@@ -70,7 +121,9 @@ export async function reconcileArtifactsPushes(input: {
 		notFastForward: 0,
 		lockedSkipped: 0,
 		approvalRequiredSkipped: 0,
+		failedHeadSkipped: 0,
 		errors: 0,
+		sourceTimeouts: 0,
 		tokenCleanupErrors: 0,
 		tokensRevoked: 0,
 		batches: 0,
@@ -114,6 +167,7 @@ export async function reconcileArtifactsPushes(input: {
 				source,
 				now,
 				shouldCleanupTokens,
+				sourceTimeoutMs: input.sourceTimeoutMs ?? reconcileSourceTimeoutMs,
 				result,
 			})
 			if (Date.now() >= deadlineMs) {
@@ -130,9 +184,10 @@ export async function reconcileArtifactsPushes(input: {
 async function reconcileSource(input: {
 	env: Env
 	baseUrl: string
-	source: EntitySourceRow
+	source: ExternalReconcileSourceRow
 	now: Date
 	shouldCleanupTokens: boolean
+	sourceTimeoutMs: number
 	result: ReconcileArtifactsPushesResult
 }) {
 	const { env, source, now, result } = input
@@ -141,135 +196,17 @@ async function reconcileSource(input: {
 	}
 	result.checked += 1
 	try {
-		const head = await resolveArtifactSourceHead(env, source.repo_id)
-		if (input.shouldCleanupTokens) {
-			try {
-				const cleanup = await revokeStaleArtifactsTokens(env, source.repo_id, {
-					keepAfter: now,
-				})
-				result.tokensRevoked += cleanup.revoked
-			} catch (cleanupError) {
-				result.tokenCleanupErrors += 1
-				console.warn('reconcile_artifacts_pushes token cleanup failed', {
-					sourceId: source.id,
-					repoId: source.repo_id,
-					error: getErrorMessage(cleanupError),
-				})
-			}
-		}
-		// Unchanged (or unresolvable) HEADs only advance the reconcile cursor;
-		// the RepoSession Durable Object is spun up solely for changed HEADs.
-		if (!head.commit) {
-			result.missingHead += 1
-			await updateEntitySource(env.APP_DB, {
-				id: source.id,
-				userId: source.user_id,
-				lastExternalCheckAt: now.toISOString(),
-			})
-			return
-		}
-		if (
-			source.entity_kind === 'package' &&
-			isSavedPackageLocked(
-				await getSavedPackageLockedAt(env.APP_DB, {
-					userId: source.user_id,
-					packageId: source.entity_id,
-				}),
-			)
-		) {
-			result.lockedSkipped += 1
-			await updateEntitySource(env.APP_DB, {
-				id: source.id,
-				userId: source.user_id,
-				lastExternalCheckAt: now.toISOString(),
-			})
-			return
-		}
-		if (head.commit === source.published_commit) {
-			result.alreadyPublished += 1
-			const horizonPassed =
-				source.external_check_until !== null &&
-				source.external_check_until <= now.toISOString()
-			await updateEntitySource(env.APP_DB, {
-				id: source.id,
-				userId: source.user_id,
-				lastExternalCheckAt: now.toISOString(),
-				...(horizonPassed ? { externalCheckUntil: null } : {}),
-			})
-			return
-		}
-		const pendingApproval =
-			source.entity_kind === 'package'
-				? await getPendingPackageApprovalRequest(env.APP_DB, {
-						packageId: source.entity_id,
-						ownerUserId: source.user_id,
-						reason: 'credential_needs_changed',
-					})
-				: null
-		// A request against an older published commit is stale; re-running the
-		// gate supersedes it.
-		if (
-			pendingApproval?.pendingCommit === head.commit &&
-			pendingApproval.baseCommit === source.published_commit
-		) {
-			result.approvalRequiredSkipped += 1
-			await updateEntitySource(env.APP_DB, {
-				id: source.id,
-				userId: source.user_id,
-				lastExternalCheckAt: now.toISOString(),
-			})
-			return
-		}
-		const sessionId = `external-reconcile-${source.id}`
-		const publishResult = await repoSessionRpc(
-			env,
-			sessionId,
-		).publishFromExternalRef({
-			sessionId,
-			sourceId: source.id,
-			userId: source.user_id,
-			newCommit: head.commit,
-			expectedHead: head.commit,
-			allowForce: false,
-			baseUrl: input.baseUrl,
-		})
-		switch (publishResult.status) {
-			case 'already_published':
-				result.alreadyPublished += 1
-				break
-			case 'published':
-				result.published += 1
-				break
-			case 'checks_failed':
-				result.checksFailed += 1
-				break
-			case 'not_fast_forward':
-				result.notFastForward += 1
-				break
-			case 'locked':
-				result.lockedSkipped += 1
-				break
-			case 'approval_required':
-				result.approvalRequiredSkipped += 1
-				break
-			default: {
-				const exhaustive: never = publishResult
-				throw new Error(
-					`Unknown external publish status: ${String(exhaustive)}`,
-				)
-			}
-		}
-		await updateEntitySource(env.APP_DB, {
-			id: source.id,
-			userId: source.user_id,
-			lastExternalCheckAt: now.toISOString(),
-			...(publishResult.status === 'published' ||
-			publishResult.status === 'already_published'
-				? { externalCheckUntil: null }
-				: {}),
-		})
+		const outcome = await withSourceDeadline(
+			checkSource(input),
+			input.sourceTimeoutMs,
+		)
+		result[outcome] += 1
 	} catch (error) {
-		result.errors += 1
+		if (error instanceof ReconcileSourceTimeoutError) {
+			result.sourceTimeouts += 1
+		} else {
+			result.errors += 1
+		}
 		console.warn('reconcile_artifacts_pushes source failed', {
 			sourceId: source.id,
 			repoId: source.repo_id,
@@ -287,6 +224,159 @@ async function reconcileSource(input: {
 				repoId: source.repo_id,
 				error: getErrorMessage(updateError),
 			})
+		}
+	}
+}
+
+async function checkSource(input: {
+	env: Env
+	baseUrl: string
+	source: ExternalReconcileSourceRow
+	now: Date
+	shouldCleanupTokens: boolean
+	result: ReconcileArtifactsPushesResult
+}): Promise<SourceOutcome> {
+	const { env, source, now, result } = input
+	const advanceCursor = () =>
+		updateEntitySource(env.APP_DB, {
+			id: source.id,
+			userId: source.user_id,
+			lastExternalCheckAt: now.toISOString(),
+		})
+	const head = await resolveArtifactSourceHead(env, source.repo_id)
+	if (input.shouldCleanupTokens) {
+		try {
+			const cleanup = await revokeStaleArtifactsTokens(env, source.repo_id, {
+				keepAfter: now,
+			})
+			result.tokensRevoked += cleanup.revoked
+		} catch (cleanupError) {
+			result.tokenCleanupErrors += 1
+			console.warn('reconcile_artifacts_pushes token cleanup failed', {
+				sourceId: source.id,
+				repoId: source.repo_id,
+				error: getErrorMessage(cleanupError),
+			})
+		}
+	}
+	// Unchanged (or unresolvable) HEADs only advance the reconcile cursor;
+	// the RepoSession Durable Object is spun up solely for changed HEADs.
+	if (!head.commit) {
+		await advanceCursor()
+		return 'missingHead'
+	}
+	if (
+		source.entity_kind === 'package' &&
+		isSavedPackageLocked(
+			await getSavedPackageLockedAt(env.APP_DB, {
+				userId: source.user_id,
+				packageId: source.entity_id,
+			}),
+		)
+	) {
+		await advanceCursor()
+		return 'lockedSkipped'
+	}
+	if (head.commit === source.published_commit) {
+		const horizonPassed =
+			source.external_check_until !== null &&
+			source.external_check_until <= now.toISOString()
+		await updateEntitySource(env.APP_DB, {
+			id: source.id,
+			userId: source.user_id,
+			lastExternalCheckAt: now.toISOString(),
+			...(horizonPassed ? { externalCheckUntil: null } : {}),
+		})
+		return 'alreadyPublished'
+	}
+	const pendingApproval =
+		source.entity_kind === 'package'
+			? await getPendingPackageApprovalRequest(env.APP_DB, {
+					packageId: source.entity_id,
+					ownerUserId: source.user_id,
+					reason: 'credential_needs_changed',
+				})
+			: null
+	// A request against an older published commit is stale; re-running the
+	// gate supersedes it.
+	if (
+		pendingApproval?.pendingCommit === head.commit &&
+		pendingApproval.baseCommit === source.published_commit
+	) {
+		await advanceCursor()
+		return 'approvalRequiredSkipped'
+	}
+	if (
+		source.external_check_failed_commit === head.commit &&
+		source.external_check_failed_at !== null &&
+		source.external_check_failed_at >
+			minutesAgoIso(now, failedHeadRetryWindowMinutes)
+	) {
+		console.info('reconcile_artifacts_pushes failed head skipped', {
+			sourceId: source.id,
+			commit: head.commit,
+			failedAt: source.external_check_failed_at,
+		})
+		await advanceCursor()
+		return 'failedHeadSkipped'
+	}
+	const sessionId = `external-reconcile-${source.id}`
+	const publishResult = await repoSessionRpc(
+		env,
+		sessionId,
+	).publishFromExternalRef({
+		sessionId,
+		sourceId: source.id,
+		userId: source.user_id,
+		newCommit: head.commit,
+		expectedHead: head.commit,
+		allowForce: false,
+		baseUrl: input.baseUrl,
+	})
+	const outcome = publishOutcome(publishResult.status)
+	const settled = outcome === 'published' || outcome === 'alreadyPublished'
+	await updateEntitySource(env.APP_DB, {
+		id: source.id,
+		userId: source.user_id,
+		lastExternalCheckAt: now.toISOString(),
+		...(settled
+			? {
+					externalCheckUntil: null,
+					externalCheckFailedCommit: null,
+					externalCheckFailedAt: null,
+				}
+			: {}),
+		...(outcome === 'checksFailed'
+			? {
+					externalCheckFailedCommit: head.commit,
+					externalCheckFailedAt: now.toISOString(),
+				}
+			: {}),
+	})
+	return outcome
+}
+
+function publishOutcome(
+	status: Awaited<
+		ReturnType<ReturnType<typeof repoSessionRpc>['publishFromExternalRef']>
+	>['status'],
+): SourceOutcome {
+	switch (status) {
+		case 'already_published':
+			return 'alreadyPublished'
+		case 'published':
+			return 'published'
+		case 'checks_failed':
+			return 'checksFailed'
+		case 'not_fast_forward':
+			return 'notFastForward'
+		case 'locked':
+			return 'lockedSkipped'
+		case 'approval_required':
+			return 'approvalRequiredSkipped'
+		default: {
+			const exhaustive: never = status
+			throw new Error(`Unknown external publish status: ${String(exhaustive)}`)
 		}
 	}
 }
