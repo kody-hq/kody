@@ -2,6 +2,7 @@ import { consoleError } from '#worker/test-support/console-spies.ts'
 import { expect, test } from 'vitest'
 import {
 	deleteVectorizeIndex,
+	ensureExistingVectorizeMetadataIndexes,
 	ensureVectorizeIndex,
 } from './vectorize-resources.ts'
 
@@ -438,5 +439,58 @@ test('dry-run ensure and delete make no Cloudflare requests', async () => {
 		dryRun: true,
 		name: 'kody-pr-10-vectors',
 	})
+	expect(api.requests).toEqual([])
+})
+
+test('ensureExistingVectorizeMetadataIndexes adds only missing metadata indexes, reports them, and never creates or deletes the index', async () => {
+	consoleError.mockImplementation(() => {})
+	const api = fakeVectorizeApi()
+	api.indexes.set('kody-capabilities-prod', {
+		config: { dimensions: 384, metric: 'cosine' },
+		metadataIndexes: ['kind'],
+	})
+	const first = await ensureExistingVectorizeMetadataIndexes({
+		...client(api.fetcher),
+		name: 'kody-capabilities-prod',
+	})
+	expect(first.created).toEqual(['userId', 'status', 'category', 'domain'])
+	expect(api.indexes.get('kody-capabilities-prod')?.metadataIndexes).toEqual([
+		'kind',
+		'userId',
+		'status',
+		'category',
+		'domain',
+	])
+
+	api.requests.length = 0
+	const second = await ensureExistingVectorizeMetadataIndexes({
+		...client(api.fetcher),
+		name: 'kody-capabilities-prod',
+	})
+	expect(second.created).toEqual([])
+	expect(api.requests).toEqual([
+		'GET /kody-capabilities-prod/metadata_index/list',
+	])
+
+	api.requests.length = 0
+	await expect(
+		ensureExistingVectorizeMetadataIndexes({
+			...client(api.fetcher),
+			name: 'kody-missing-prod',
+		}),
+	).rejects.toThrow(/Failed to ensure Vectorize metadata indexes/)
+	expect(api.requests).toEqual(['GET /kody-missing-prod/metadata_index/list'])
+	expect(api.indexes.has('kody-missing-prod')).toBe(false)
+})
+
+test('ensureExistingVectorizeMetadataIndexes dry-run makes no Cloudflare requests', async () => {
+	consoleError.mockImplementation(() => {})
+	const api = fakeVectorizeApi()
+	const result = await ensureExistingVectorizeMetadataIndexes({
+		...client(api.fetcher),
+		dryRun: true,
+		name: 'kody-capabilities-prod',
+	})
+	expect(result.created).toEqual([])
 	expect(api.requests).toEqual([])
 })
