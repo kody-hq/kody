@@ -5,6 +5,7 @@ import type { ConnectOauthExistingConnection } from '#universal/loader-data.ts'
 import {
 	newConnectionNameError,
 	renderLiveAppReplaceWarning,
+	storedClientSecretApplies,
 	suggestNewConnectionName,
 	wouldReplaceLiveApp,
 } from './connect-oauth-sections.tsx'
@@ -32,6 +33,37 @@ function next(overrides: Partial<ConnectOauthConfig> = {}) {
 		...overrides,
 	} as ConnectOauthConfig
 }
+
+test('storedClientSecretApplies is only true for the saved client ID', () => {
+	expect(
+		storedClientSecretApplies({
+			hasStoredClientSecret: true,
+			storedClientId: 'client-a',
+			nextClientId: 'client-a',
+		}),
+	).toBe(true)
+	expect(
+		storedClientSecretApplies({
+			hasStoredClientSecret: true,
+			storedClientId: 'client-a',
+			nextClientId: ' client-a ',
+		}),
+	).toBe(true)
+	expect(
+		storedClientSecretApplies({
+			hasStoredClientSecret: true,
+			storedClientId: 'client-a',
+			nextClientId: 'client-b',
+		}),
+	).toBe(false)
+	expect(
+		storedClientSecretApplies({
+			hasStoredClientSecret: false,
+			storedClientId: 'client-a',
+			nextClientId: 'client-a',
+		}),
+	).toBe(false)
+})
 
 test('wouldReplaceLiveApp flags app-identity edits on a live bring-your-own connection only', () => {
 	const existingConnection = liveConnection

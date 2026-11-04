@@ -63,6 +63,7 @@ import {
 	type LiveReplaceState,
 	newConnectionNameError,
 	suggestNewConnectionName,
+	storedClientSecretApplies,
 	wouldReplaceDifferentApp,
 	wouldReplaceLiveApp,
 } from './connect-oauth-sections.tsx'
@@ -456,12 +457,12 @@ export function ConnectOauthRoute({
 	 * warning; without either, a save that would rewrite the app behind a
 	 * live connection stops and asks first.
 	 */
-	/** A stored secret belongs to the saved client ID; a new one needs its own. */
-	function storedClientSecretApplies(
-		current: ConnectOauthConfig,
-		clientId: string,
-	) {
-		return hasStoredClientSecret && clientId.trim() === current.clientId.trim()
+	function storedSecretApplies(current: ConnectOauthConfig, clientId: string) {
+		return storedClientSecretApplies({
+			hasStoredClientSecret,
+			storedClientId: current.clientId,
+			nextClientId: clientId,
+		})
 	}
 	async function submitSetup(choice: { replace?: boolean; newName?: string }) {
 		if (!config || inFlight.current) return
@@ -474,7 +475,7 @@ export function ConnectOauthRoute({
 				setStatus('Client ID is required.', 'error')
 				return
 			}
-			const keepsStoredSecret = storedClientSecretApplies(config, clientId)
+			const keepsStoredSecret = storedSecretApplies(config, clientId)
 			if (
 				config.flow === 'confidential' &&
 				(!keepsStoredSecret || revealStoredClientSecretField) &&
@@ -882,10 +883,11 @@ export function ConnectOauthRoute({
 					config={currentConfig}
 					existingIntegrationConfig={existingIntegrationConfig}
 					hasStoredClientId={hasStoredClientId}
-					hasStoredClientSecret={storedClientSecretApplies(
-						currentConfig,
-						clientIdInput,
-					)}
+					hasStoredClientSecret={
+						currentConfig
+							? storedSecretApplies(currentConfig, clientIdInput)
+							: false
+					}
 					revealStoredClientSecretField={revealStoredClientSecretField}
 					clientIdInput={clientIdInput}
 					clientSecretInput={clientSecretInput}

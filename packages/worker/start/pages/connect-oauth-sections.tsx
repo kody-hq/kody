@@ -68,6 +68,22 @@ export function wouldReplaceLiveApp(input: {
 	)
 }
 
+/**
+ * A stored confidential secret is bound to the saved client ID. Editing the
+ * client ID must collect a new secret before token exchange, or the callback
+ * fails with "No saved client secret matches this client ID and token URL."
+ */
+export function storedClientSecretApplies(input: {
+	hasStoredClientSecret: boolean
+	storedClientId: string
+	nextClientId: string
+}) {
+	return (
+		input.hasStoredClientSecret &&
+		input.nextClientId.trim() === input.storedClientId.trim()
+	)
+}
+
 export function suggestNewConnectionName(providerKey: string) {
 	return `${providerKey}-2`
 }
