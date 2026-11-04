@@ -14,9 +14,11 @@ import {
 	listHookPaths,
 	parsePrePushUpdates,
 	isSkillsLockHookPath,
+	isVitestWorkerCrashWithoutFailures,
 	listInstalledNodeModulesDirs,
 	planGitHookChecks,
 	runGitHookChecks,
+	runVitestWithWorkerCrashRetry,
 	shouldSkipProvenanceCheck,
 	shouldSkipTestPushForProvenance,
 	withStagedTreeForTypecheck,
@@ -1272,4 +1274,49 @@ test('pre-push leaves merged-in main paths to main CI and skips tests for a merg
 	} finally {
 		await rm(root, { recursive: true, force: true })
 	}
+})
+
+test('vitest related retries once only on a worker crash with no failed test', async () => {
+	const crash =
+		'Error: [vitest-pool-runner]: Timeout waiting for worker to respond\n\u001b[31mError: Worker exited unexpectedly\u001b[39m\n Test Files  3 passed (3)\n'
+	const failed = `${crash}      Tests  1 failed | 4 passed (5)\n`
+	expect(isVitestWorkerCrashWithoutFailures(crash)).toBe(true)
+	expect(isVitestWorkerCrashWithoutFailures(failed)).toBe(false)
+	expect(
+		isVitestWorkerCrashWithoutFailures(' Test Files  1 failed (1)\n'),
+	).toBe(false)
+
+	const run = async (outputs: Array<{ code: number; output: string }>) => {
+		const logs: Array<string> = []
+		let calls = 0
+		const code = await runVitestWithWorkerCrashRetry({
+			label: 'vitest related --project node-unit',
+			runOnce: async () => outputs[calls++]!,
+			log: (message) => logs.push(message),
+		})
+		return { code, calls, logs }
+	}
+	expect(await run([{ code: 0, output: crash }])).toEqual({
+		code: 0,
+		calls: 1,
+		logs: [],
+	})
+	expect(await run([{ code: 1, output: failed }])).toMatchObject({
+		code: 1,
+		calls: 1,
+	})
+	const retried = await run([
+		{ code: 1, output: crash },
+		{ code: 1, output: crash },
+	])
+	expect(retried).toMatchObject({ code: 1, calls: 2 })
+	expect(retried.logs).toEqual([
+		'hook: vitest related --project node-unit crashed on a Vitest worker exit with no failed test; retrying once',
+	])
+	expect(
+		await run([
+			{ code: 1, output: crash },
+			{ code: 0, output: '' },
+		]),
+	).toMatchObject({ code: 0, calls: 2 })
 })
