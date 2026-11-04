@@ -23,3 +23,9 @@ Follow what it returns, re-ticking until `exit.done`.
   billing, data migrations, destructive changes, or anything hard to undo.
 - **Merge:** auto-merge low and medium once CI is green and valid reviewer
   feedback is handled. High waits for Kent unless he explicitly said to merge.
+- **Migrations:** right before merging a PR that adds files under
+  `packages/worker/migrations/`, run
+  `git fetch origin main && node tools/check-migration-prefix-against-main.ts`.
+  PR CI compares against the merge base, so a prefix another PR already took on
+  `main` merges green and then fails main Validate. If it fails, rename the
+  migration and its ledger entry, push, and wait for CI before merging.

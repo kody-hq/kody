@@ -119,7 +119,13 @@ When UI is under test:
 `GET /mcp` is 401 without OAuth; `/admin` is 403 (seed account is not admin).
 Neither is a regression. Admin-gated states (suspension, outbound-email pause,
 account deletion) cannot be set on preview; use the local admin seed plus
-Workers or unit tests. For MCP `execute` / `search` fixtures, use
+Workers or unit tests. Previews leave `PACKAGE_APP_BASE_URL` unset and serve
+package apps inline, so package-app host behavior (per-host subdomains, cookie
+`Domain` scrub, the cross-site handoff) cannot be checked there; verify it
+locally with `PACKAGE_APP_BASE_URL=http://packages.localhost:<port>` in
+`packages/worker/.env` (see
+[security](../../../docs/contributing/security.md#hosted-package-app-origin-isolation)),
+plus Workers tests. For MCP `execute` / `search` fixtures, use
 `control-kody execute` / `search` — do not hand-roll OAuth. Two `packageSave`
 packages on the seed account share implicit user-secret read; locked-secret
 denial needs an unadopted community fork. See

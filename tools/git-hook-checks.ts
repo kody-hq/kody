@@ -9,6 +9,7 @@ import {
 } from 'node:fs'
 import { dirname, join, resolve as resolvePath } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { stripVTControlCharacters } from 'node:util'
 import {
 	envWithNodeHeapFloor,
 	isExecutedDirectly,
@@ -949,48 +950,113 @@ export function hookCommandLabel(script: string) {
 		: `npm run ${script}`
 }
 
+const vitestWorkerCrashPattern =
+	/Worker exited unexpectedly|Timeout waiting for worker to respond/
+const vitestFailedSummaryPattern =
+	/^\s*(?:Test Files|Tests)\s+.*\b\d+ failed\b/m
+const vitestOutputTailChars = 256 * 1024
+
+/**
+ * A Vitest pool worker that times out while terminating crashes the run with
+ * no failed test (#4809). Real test failures still print a failed summary.
+ */
+export function isVitestWorkerCrashWithoutFailures(output: string) {
+	const plain = stripVTControlCharacters(output)
+	return (
+		vitestWorkerCrashPattern.test(plain) &&
+		!vitestFailedSummaryPattern.test(plain)
+	)
+}
+
+export async function runVitestWithWorkerCrashRetry(input: {
+	label: string
+	runOnce: () => Promise<{ code: number; output: string }>
+	log?: (message: string) => void
+}) {
+	const log = input.log ?? console.log
+	const first = await input.runOnce()
+	if (first.code === 0 || !isVitestWorkerCrashWithoutFailures(first.output)) {
+		return first.code
+	}
+	log(
+		`hook: ${input.label} crashed on a Vitest worker exit with no failed test; retrying once`,
+	)
+	return (await input.runOnce()).code
+}
+
+function runVitestRelatedOnce(
+	project: string,
+	paths: ReadonlyArray<string>,
+	cwd?: string,
+): Promise<{ code: number; output: string }> {
+	return new Promise((resolve) => {
+		const child = spawn(
+			process.execPath,
+			[
+				fileURLToPath(
+					new URL('../node_modules/vitest/vitest.mjs', import.meta.url),
+				),
+				'related',
+				'--run',
+				'--project',
+				project,
+				'--passWithNoTests',
+				...paths.map((path) => resolvePath(path)),
+			],
+			{
+				stdio: ['inherit', 'pipe', 'pipe'],
+				env: {
+					...gitHookScriptEnv(),
+					CI: '1',
+					...(process.stdout.isTTY ? { FORCE_COLOR: '1' } : {}),
+				},
+				cwd,
+			},
+		)
+		let output = ''
+		const tee = (target: NodeJS.WriteStream) => (chunk: Buffer) => {
+			target.write(chunk)
+			output = (output + chunk.toString('utf8')).slice(-vitestOutputTailChars)
+		}
+		child.stdout?.on('data', tee(process.stdout))
+		child.stderr?.on('data', tee(process.stderr))
+		child.once('error', (error) => {
+			console.error(error.message)
+			resolve({ code: 1, output })
+		})
+		child.once('close', (code) => {
+			resolve({ code: code ?? 1, output })
+		})
+	})
+}
+
 function defaultRunNpmScript(
 	script: string,
 	cwd?: string,
 	paths: ReadonlyArray<string> = [],
 ): Promise<number> {
+	if (script.startsWith('vitest related --project ')) {
+		const project = script.slice('vitest related --project '.length)
+		return runVitestWithWorkerCrashRetry({
+			label: script,
+			runOnce: () => runVitestRelatedOnce(project, paths, cwd),
+		})
+	}
 	return new Promise((resolve) => {
-		// Repo paths go straight to node, never through a shell, so spaces and
-		// metacharacters in paths stay intact on Windows.
-		const child = script.startsWith('vitest related --project ')
-			? spawn(
-					process.execPath,
-					[
-						fileURLToPath(
-							new URL('../node_modules/vitest/vitest.mjs', import.meta.url),
-						),
-						'related',
-						'--run',
-						'--project',
-						script.slice('vitest related --project '.length),
-						'--passWithNoTests',
-						...paths.map((path) => resolvePath(path)),
-					],
-					{
-						stdio: 'inherit',
-						env: { ...gitHookScriptEnv(), CI: '1' },
-						cwd,
-					},
-				)
-			: script.startsWith('node ')
-				? spawn(process.execPath, script.slice('node '.length).split(' '), {
-						stdio: 'inherit',
-						env: gitHookScriptEnv(),
-						cwd,
-					})
-				: spawn(resolveNpmCommand(), ['run', script], {
-						stdio: 'inherit',
-						env: gitHookScriptEnv(),
-						cwd,
-						// Node refuses to spawn `npm.cmd` without a shell on Windows; the
-						// only arg is a fixed script name.
-						shell: process.platform === 'win32',
-					})
+		const child = script.startsWith('node ')
+			? spawn(process.execPath, script.slice('node '.length).split(' '), {
+					stdio: 'inherit',
+					env: gitHookScriptEnv(),
+					cwd,
+				})
+			: spawn(resolveNpmCommand(), ['run', script], {
+					stdio: 'inherit',
+					env: gitHookScriptEnv(),
+					cwd,
+					// Node refuses to spawn `npm.cmd` without a shell on Windows; the
+					// only arg is a fixed script name.
+					shell: process.platform === 'win32',
+				})
 		child.once('error', (error) => {
 			console.error(error.message)
 			resolve(1)
