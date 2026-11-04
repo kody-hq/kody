@@ -1,4 +1,8 @@
 import {
+	listNoticesForViewer,
+	noticePayload,
+} from '#worker/execution-contexts/notices.ts'
+import {
 	personalOrgId,
 	type OwnerId,
 	type PersonId,
@@ -152,6 +156,7 @@ export async function collectWaitingSignals(input: {
 		firstJob,
 		discordJoined,
 		enablementsProbe,
+		contextNoticesProbe,
 	] = await Promise.all([
 		readOnboardingChecklistDismissed({
 			env,
@@ -191,6 +196,12 @@ export async function collectWaitingSignals(input: {
 				db: env.APP_DB,
 				orgId: user.stableUserId,
 				enablerUserId: user.actorStableUserId ?? user.stableUserId,
+			}),
+		),
+		probe(() =>
+			listNoticesForViewer(env.APP_DB, {
+				userId: user.actorStableUserId ?? user.stableUserId,
+				orgId: user.stableUserId,
 			}),
 		),
 	])
@@ -244,6 +255,14 @@ export async function collectWaitingSignals(input: {
 		pendingEmailChange,
 		errorRate,
 		entitlementCaps,
+		contextNotices: contextNoticesProbe.ok
+			? contextNoticesProbe.value.map((notice) => ({
+					contextId: notice.contextId,
+					contextName: notice.contextName,
+					kind: notice.kind,
+					summary: noticePayload(notice, '').summary,
+				}))
+			: [],
 		firstUseMissing: collectFirstUseMissing({
 			search: activationStamp(activationStamps, 'first_search_at'),
 			memory: firstMemory,

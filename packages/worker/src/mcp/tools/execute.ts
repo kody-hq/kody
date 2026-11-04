@@ -1,3 +1,4 @@
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { ExecutionContextError } from '#worker/execution-contexts/errors.ts'
 import { loadOrgUsageWarningsEnabled } from '#worker/orgs/usage-warnings.ts'
 import {
@@ -5,7 +6,7 @@ import {
 	computeIncludeHeadsUpKvKey,
 	formatComputeIncludeHeadsUp,
 } from '#mcp/compute-include-heads-up.ts'
-import { orgUsagePath } from '#universal/org-pages.ts'
+import { orgResourcePath, orgUsagePath } from '#universal/org-pages.ts'
 import { executionContextsFlagKey } from '#worker/execution-contexts/flag.ts'
 import {
 	type ExecuteRoutingArgs,
@@ -230,6 +231,12 @@ export const executeToolOutputSchema = {
 		.optional()
 		.describe(
 			'Focused plan-limit or quota fields when a call is denied. Omitted from ordinary successes.',
+		),
+	notices: z
+		.array(z.unknown())
+		.optional()
+		.describe(
+			'Execution-context notices that are new or changed since you last saw them: `context-elevation` (the machine this ran on can do more than you can personally) and `context-misconfigured`. Each has contextId, contextName, fingerprint, summary, entries or codes, href, and dismissible.',
 		),
 	usage: z
 		.unknown()
@@ -931,6 +938,11 @@ export async function runExecuteToolCall(input: {
 			transportDetached = true
 			const timing = finishToolTiming(timingStart)
 			const ranOnContext = ranOnParts(routed.metadata)
+			const notices = await executeContextNotices(
+				env,
+				callerContext,
+				ranOnContext.ranOnFields.ranOn,
+			)
 			return {
 				content: prependToolMetadataContent(resolvedConversationId, [
 					...(routed.result.content as Array<ContentBlock>),
@@ -942,6 +954,7 @@ export async function runExecuteToolCall(input: {
 					timing,
 					...(claimedRunHandle ? { runId: claimedRunHandle.id } : {}),
 					...ranOnContext.ranOnFields,
+					...(notices.length > 0 ? { notices } : {}),
 				},
 				isError: routed.result.isError,
 			}
@@ -1847,4 +1860,34 @@ async function resolvePreferLocalExecuteNudges(input: {
 		})
 	}
 	return applied.nudges
+}
+
+/** Context notices that are new or changed for the caller, once per fingerprint. */
+async function executeContextNotices(
+	env: Env,
+	callerContext: McpCallerContext,
+	ranOn: ExecuteRanOn,
+) {
+	const userId = callerContext.user?.userId
+	const org = callerContext.request?.org
+	if (ranOn.kind !== 'context' || !userId || !org?.slug) return []
+	const slug = org.slug
+	try {
+		const { takeUndeliveredNotices, noticePayload } =
+			await import('#worker/execution-contexts/notices.ts')
+		const notices = await takeUndeliveredNotices(env.APP_DB, {
+			userId,
+			orgId: org.id,
+			surface: 'execute',
+			contextId: ranOn.id,
+		})
+		return notices.map((notice) =>
+			noticePayload(
+				notice,
+				`${callerContext.baseUrl}${orgResourcePath(slug, 'execution-contexts', notice.contextId)}`,
+			),
+		)
+	} catch {
+		return []
+	}
 }

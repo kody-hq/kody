@@ -1,3 +1,4 @@
+import { refreshContextNotices } from './box-notices.ts'
 import { experimentOffMessage } from '#universal/feature-flags/experiments.ts'
 import {
 	ecpSignatureHeader,
@@ -46,6 +47,7 @@ export function isExecutionContextKeyRoute(method: string, pathname: string) {
 		pathname === `${executionContextsBasePath}/connect-ticket` ||
 		pathname === `${executionContextsBasePath}/connect` ||
 		pathname === `${executionContextsBasePath}/commands` ||
+		pathname === `${executionContextsBasePath}/login` ||
 		pathname === `${executionContextsBasePath}/server-keys`
 	)
 }
@@ -239,6 +241,10 @@ export async function handleExecutionContextKeyRoute(input: {
 	) {
 		throw featureDisabled()
 	}
+	if (path === `${executionContextsBasePath}/login`) {
+		if (request.method !== 'POST') throw methodNotAllowed('POST')
+		return json(await recordLoginFromMachine({ request, url, env, caller }))
+	}
 	try {
 		await authorizeOrgWide({ env, request: caller }, 'execution_context:create')
 	} catch (error) {
@@ -343,6 +349,8 @@ export async function handleExecutionContextKeyRoute(input: {
 			: null,
 		grant_json: JSON.stringify(grant),
 		grant_version: 1,
+		...boxLoginColumns(caller),
+		login_checked_at: new Date().toISOString(),
 	}
 	try {
 		await insertExecutionContext(env.APP_DB, row)
@@ -394,6 +402,89 @@ function methodNotAllowed(allow: string) {
 		message: `Use ${allow}.`,
 		headers: { Allow: allow },
 	})
+}
+
+/**
+ * Login check (ADR 0096): signed with the context key and authenticated with
+ * the box's current Bearer login, so only this machine can say who it is
+ * logged in as. The login must be the operator or one of their profiles.
+ */
+async function recordLoginFromMachine(input: {
+	request: Request
+	url: URL
+	env: Env
+	caller: Parameters<typeof boxLoginColumns>[0] & { org: { id: string } }
+}) {
+	const { request, url, env, caller } = input
+	const body = await readBody(request)
+	const signature = parseEcpSignatureHeader(
+		request.headers.get(ecpSignatureHeader),
+	)
+	if (!signature) throw signatureError('missing_signature')
+	const row = await getExecutionContext(env.APP_DB, signature.ec)
+	if (!row) throw signatureError('unknown_context')
+	await verifySigned({
+		request,
+		url,
+		body,
+		publicKeyJwk: parsePublicKey(row),
+		expectedEc: row.id,
+	})
+	if (row.revoked_at) {
+		throw new ApiError({
+			status: 403,
+			code: 'unauthorized',
+			message: `This execution context was revoked (${row.revoked_reason ?? 'revoked'}).`,
+			details: { reason: 'revoked' },
+		})
+	}
+	if (
+		row.org_id !== caller.org.id ||
+		caller.actor?.userId !== row.operator_user_id
+	) {
+		throw new ApiError({
+			status: 403,
+			code: 'unauthorized',
+			message:
+				'Log this machine in as its operator, or one of their agent profiles, in the org it is registered in.',
+			details: { reason: 'not_operator' },
+		})
+	}
+	const nonce = await sessionStub(env, row.id).consumeMachineNonce({
+		nonce: signature.n,
+	})
+	if (!nonce.ok) throw signatureError(nonce.code)
+	const login = boxLoginColumns(caller)
+	const checkedAt = new Date().toISOString()
+	const changed =
+		login.login_kind !== row.login_kind ||
+		login.login_profile_id !== (row.login_profile_id ?? null) ||
+		login.login_token_id !== (row.login_token_id ?? null)
+	await env.APP_DB.prepare(
+		`UPDATE execution_contexts SET login_kind = ?, login_user_id = ?,
+			login_profile_id = ?, login_token_id = ?, login_checked_at = ?
+		WHERE id = ?`,
+	)
+		.bind(
+			login.login_kind,
+			login.login_user_id,
+			login.login_profile_id,
+			login.login_token_id,
+			checkedAt,
+			row.id,
+		)
+		.run()
+	const fresh = { ...row, ...login, login_checked_at: checkedAt }
+	if (changed) await refreshContextNotices(env.APP_DB, fresh, row.org_id)
+	return {
+		id: row.id,
+		login: {
+			kind: login.login_kind,
+			profileId: login.login_profile_id,
+			checkedAt,
+		},
+		changed,
+	}
 }
 
 /**
@@ -500,5 +591,22 @@ async function setCommandsFromMachine(input: {
 		name: row.name,
 		commands: grant.commands,
 		grantVersion,
+	}
+}
+
+/** The box login (ADR 0096) a registering or rebinding credential gives. */
+export function boxLoginColumns(caller: {
+	actor: { userId: string } | null
+	credential: { kind: string; id: string | null; profileId?: string | null }
+}) {
+	const profileId = caller.credential.profileId ?? null
+	return {
+		login_kind: profileId ? ('profile' as const) : ('person' as const),
+		login_user_id: caller.actor?.userId ?? null,
+		login_profile_id: profileId,
+		login_token_id:
+			caller.credential.kind === 'api-token' || caller.credential.kind === 'cli'
+				? caller.credential.id
+				: null,
 	}
 }

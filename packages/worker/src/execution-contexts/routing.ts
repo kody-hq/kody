@@ -23,6 +23,7 @@ import type {
 	OwnerId,
 	PersonId,
 } from '@kody-internal/shared/owner-person-ids.ts'
+import { refreshContextNotices } from './box-notices.ts'
 import { ExecutionContextError } from './errors.ts'
 import type {
 	ExecutionContextLease,
@@ -520,6 +521,11 @@ export async function routeExecute(input: {
 		}
 		const grant = parseGrant(row)
 		const sharedRun = row.operator_user_id !== input.request.userId
+		if (sharedRun) {
+			await refreshContextNotices(db, row, input.request.orgId, {
+				userIds: [input.request.userId],
+			})
+		}
 		const refusal = grantRefusal({
 			grant,
 			requires,

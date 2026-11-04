@@ -77,7 +77,30 @@ type ExecutionContextChainUsage = {
 	chainCount: number
 }
 
+type ExecutionContextBoxEntry = {
+	permission: string
+	resource: string | null
+}
+
 export type ExecutionContextListItem = {
+	/** The viewer's own excess-access notice (ADR 0096). */
+	elevation?: {
+		fingerprint: string
+		dismissed: boolean
+		entries: Array<ExecutionContextBoxEntry>
+	}
+	misconfigurations?: Array<string>
+	accessReview?: Array<{
+		handle: string | null
+		entries: Array<ExecutionContextBoxEntry>
+	}>
+	login?: {
+		kind: 'person' | 'profile'
+		recorded: boolean
+		profileId: string | null
+		checkedAt: string | null
+	}
+	teamId?: string | null
 	id: string
 	name: string
 	ownerOrg: { id: string; slug: string }
