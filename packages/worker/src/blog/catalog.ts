@@ -11,6 +11,38 @@ import everyInstallIsAForkYouOwn from './posts/every-install-is-a-fork-you-own.m
 import gatewaysConnectHomesAccumulate from './posts/gateways-connect-homes-accumulate.md'
 import howToTurnAgentWorkIntoSoftwareYouOwn from './posts/how-to-turn-agent-work-into-software-you-own.md'
 import kodyWeekly20260320 from './posts/kody-weekly-2026-03-20.md'
+import kodyWeekly20260327 from './posts/kody-weekly-2026-03-27.md'
+import kodyWeekly20260403 from './posts/kody-weekly-2026-04-03.md'
+import kodyWeekly20260410 from './posts/kody-weekly-2026-04-10.md'
+import kodyWeekly20260417 from './posts/kody-weekly-2026-04-17.md'
+import kodyWeekly20260424 from './posts/kody-weekly-2026-04-24.md'
+import kodyWeekly20260501 from './posts/kody-weekly-2026-05-01.md'
+import kodyWeekly20260508 from './posts/kody-weekly-2026-05-08.md'
+import kodyWeekly20260515 from './posts/kody-weekly-2026-05-15.md'
+import kodyWeekly20260522 from './posts/kody-weekly-2026-05-22.md'
+import kodyWeekly20260529 from './posts/kody-weekly-2026-05-29.md'
+import kodyWeekly20260605 from './posts/kody-weekly-2026-06-05.md'
+import kodyWeekly20260612 from './posts/kody-weekly-2026-06-12.md'
+import kodyWeekly20260619 from './posts/kody-weekly-2026-06-19.md'
+import kodyWeekly20260626 from './posts/kody-weekly-2026-06-26.md'
+import kodyWeekly20260703 from './posts/kody-weekly-2026-07-03.md'
+import kodyWeekly20260710 from './posts/kody-weekly-2026-07-10.md'
+import kodyWeekly20260717 from './posts/kody-weekly-2026-07-17.md'
+import kodyWeekly20260724 from './posts/kody-weekly-2026-07-24.md'
+import kodyWeekly20260731 from './posts/kody-weekly-2026-07-31.md'
+import kodyWeekly20260807 from './posts/kody-weekly-2026-08-07.md'
+import kodyWeekly20260814 from './posts/kody-weekly-2026-08-14.md'
+import kodyWeekly20260821 from './posts/kody-weekly-2026-08-21.md'
+import kodyWeekly20260828 from './posts/kody-weekly-2026-08-28.md'
+import kodyWeekly20260904 from './posts/kody-weekly-2026-09-04.md'
+import kodyWeekly20260911 from './posts/kody-weekly-2026-09-11.md'
+import kodyWeekly20260918 from './posts/kody-weekly-2026-09-18.md'
+import kodyWeekly20260925 from './posts/kody-weekly-2026-09-25.md'
+import kodyWeekly20261002 from './posts/kody-weekly-2026-10-02.md'
+import kodyWeekly20261009 from './posts/kody-weekly-2026-10-09.md'
+import kodyWeekly20261016 from './posts/kody-weekly-2026-10-16.md'
+import kodyWeekly20261023 from './posts/kody-weekly-2026-10-23.md'
+import kodyWeekly20261030 from './posts/kody-weekly-2026-10-30.md'
 import selfServiceMeansOwnership from './posts/self-service-means-ownership.md'
 import theAssistantThatCantLeakYourKeychain from './posts/the-assistant-that-cant-leak-your-keychain.md'
 import theAutomationsYouNeverBuilt from './posts/the-automations-you-never-built.md'
@@ -155,6 +187,38 @@ const postSources: Array<{ slug: string; raw: string }> = [
 		raw: howToRollOutAiAgentsToYourTeam,
 	},
 	{ slug: 'kody-weekly-2026-03-20', raw: kodyWeekly20260320 },
+	{ slug: 'kody-weekly-2026-03-27', raw: kodyWeekly20260327 },
+	{ slug: 'kody-weekly-2026-04-03', raw: kodyWeekly20260403 },
+	{ slug: 'kody-weekly-2026-04-10', raw: kodyWeekly20260410 },
+	{ slug: 'kody-weekly-2026-04-17', raw: kodyWeekly20260417 },
+	{ slug: 'kody-weekly-2026-04-24', raw: kodyWeekly20260424 },
+	{ slug: 'kody-weekly-2026-05-01', raw: kodyWeekly20260501 },
+	{ slug: 'kody-weekly-2026-05-08', raw: kodyWeekly20260508 },
+	{ slug: 'kody-weekly-2026-05-15', raw: kodyWeekly20260515 },
+	{ slug: 'kody-weekly-2026-05-22', raw: kodyWeekly20260522 },
+	{ slug: 'kody-weekly-2026-05-29', raw: kodyWeekly20260529 },
+	{ slug: 'kody-weekly-2026-06-05', raw: kodyWeekly20260605 },
+	{ slug: 'kody-weekly-2026-06-12', raw: kodyWeekly20260612 },
+	{ slug: 'kody-weekly-2026-06-19', raw: kodyWeekly20260619 },
+	{ slug: 'kody-weekly-2026-06-26', raw: kodyWeekly20260626 },
+	{ slug: 'kody-weekly-2026-07-03', raw: kodyWeekly20260703 },
+	{ slug: 'kody-weekly-2026-07-10', raw: kodyWeekly20260710 },
+	{ slug: 'kody-weekly-2026-07-17', raw: kodyWeekly20260717 },
+	{ slug: 'kody-weekly-2026-07-24', raw: kodyWeekly20260724 },
+	{ slug: 'kody-weekly-2026-07-31', raw: kodyWeekly20260731 },
+	{ slug: 'kody-weekly-2026-08-07', raw: kodyWeekly20260807 },
+	{ slug: 'kody-weekly-2026-08-14', raw: kodyWeekly20260814 },
+	{ slug: 'kody-weekly-2026-08-21', raw: kodyWeekly20260821 },
+	{ slug: 'kody-weekly-2026-08-28', raw: kodyWeekly20260828 },
+	{ slug: 'kody-weekly-2026-09-04', raw: kodyWeekly20260904 },
+	{ slug: 'kody-weekly-2026-09-11', raw: kodyWeekly20260911 },
+	{ slug: 'kody-weekly-2026-09-18', raw: kodyWeekly20260918 },
+	{ slug: 'kody-weekly-2026-09-25', raw: kodyWeekly20260925 },
+	{ slug: 'kody-weekly-2026-10-02', raw: kodyWeekly20261002 },
+	{ slug: 'kody-weekly-2026-10-09', raw: kodyWeekly20261009 },
+	{ slug: 'kody-weekly-2026-10-16', raw: kodyWeekly20261016 },
+	{ slug: 'kody-weekly-2026-10-23', raw: kodyWeekly20261023 },
+	{ slug: 'kody-weekly-2026-10-30', raw: kodyWeekly20261030 },
 ]
 
 function compareBlogPosts(a: BlogPost, b: BlogPost): number {

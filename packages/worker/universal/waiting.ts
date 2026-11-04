@@ -15,7 +15,7 @@ import {
 	packageApprovePublishHrefFromScope,
 	packageScopeFromNameOrOwner,
 } from './community-links.ts'
-import { orgResourcePathForAccountPath } from './org-pages.ts'
+import { orgResourcePath, orgResourcePathForAccountPath } from './org-pages.ts'
 import { routes } from './routes.ts'
 
 export const waitingItemKinds = [
@@ -30,6 +30,8 @@ export const waitingItemKinds = [
 	'error-rate',
 	'onboarding',
 	'first-use',
+	'context-elevation',
+	'context-misconfigured',
 ] as const
 
 type WaitingItemKind = (typeof waitingItemKinds)[number]
@@ -166,6 +168,15 @@ export type WaitingSignals = {
 	 * a storage blip cannot invent a card.
 	 */
 	firstUseMissing: Array<WaitingFirstUseId>
+	/** Execution-context notices for the viewer (ADR 0096). */
+	contextNotices?: Array<WaitingContextNoticeSignal>
+}
+
+type WaitingContextNoticeSignal = {
+	contextId: string
+	contextName: string
+	kind: 'elevation' | 'misconfigured'
+	summary: string
 }
 
 const severityRank: Record<WaitingSeverity, number> = {
@@ -186,6 +197,8 @@ const kindRank: Record<WaitingItemKind, number> = {
 	'error-rate': 8,
 	onboarding: 9,
 	'first-use': 10,
+	'context-misconfigured': 11,
+	'context-elevation': 12,
 }
 
 const firstUseRank = Object.fromEntries(
@@ -208,6 +221,25 @@ export function buildWaitingItems(
 	orgSlug: string,
 ): Array<WaitingItem> {
 	const items: Array<WaitingItem> = []
+
+	for (const notice of signals.contextNotices ?? []) {
+		items.push({
+			id: `context-${notice.kind}:${notice.contextId}`,
+			kind:
+				notice.kind === 'elevation'
+					? 'context-elevation'
+					: 'context-misconfigured',
+			title:
+				notice.kind === 'elevation'
+					? `${notice.contextName} can do more than you can`
+					: `Fix ${notice.contextName}`,
+			why: notice.summary,
+			who: 'you',
+			doLabel: notice.kind === 'elevation' ? 'Review' : 'Fix it',
+			href: orgResourcePath(orgSlug, 'execution-contexts', notice.contextId),
+			severity: notice.kind === 'elevation' ? 'setup' : 'degraded',
+		})
+	}
 
 	if (!signals.emailVerified) {
 		items.push({

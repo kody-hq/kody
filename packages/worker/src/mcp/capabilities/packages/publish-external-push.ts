@@ -1,4 +1,9 @@
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
+import { showBuildOrigin } from '#worker/publish-offload/policy.ts'
+import {
+	resolveUploadedPublishBuildForPublish,
+	type UploadedPublishBuildRef,
+} from '#worker/publish-offload/store.ts'
 import {
 	type OwnerId,
 	personIdFromStored,
@@ -131,6 +136,13 @@ const inputSchema = z.object({
 	 * capability stamps this into durableParams; agents must not set it.
 	 */
 	baseline_published_commit: z.string().nullable().optional(),
+	publish_build_id: z
+		.string()
+		.min(1)
+		.optional()
+		.describe(
+			'Publish offload (publish-offload flag): the id of a publish build whose bundles were built by the Kody CLI or an execution context and uploaded for this exact commit. The server re-runs the cheap checks, verifies the uploaded tree and bundles, and only then serves the commit. Set by `kody package publish --build local|context`; agents should not set it by hand.',
+		),
 })
 
 const externalPublishRetryDelaysMs = [100, 500] as const
@@ -140,6 +152,15 @@ const publishedExternalPushStatuses = ['published', 'already_published']
 // A durable publish that did not publish fails its run once (no step retries)
 // with the reason as last_error, so the run is not recorded as a success and
 // its idempotency key is released for the next attempt.
+const publishBuildOriginSchema = z
+	.object({
+		origin: z.enum(['cloud', 'cli', 'context']),
+		context_name: z.string().nullable(),
+	})
+	.describe(
+		"Where this version was built: Kody cloud, the publisher's CLI (--build local), or one of their execution contexts (--build context).",
+	)
+
 export const durablePublishWorkflowCode = `import { kody } from 'kody:runtime'
 const publishedStatuses = ${JSON.stringify(publishedExternalPushStatuses)}
 export default async function main(params = {}) {
@@ -565,6 +586,7 @@ const outputSchema = z.discriminatedUnion('status', [
 		allowed_packages_publish_notice: allowedPackagesPublishNoticeSchema,
 		listing: communityListingBehindHintSchema.optional(),
 		phase_timings: publishPhaseTimingsSchema,
+		build_origin: publishBuildOriginSchema.optional(),
 	}),
 	z.object({
 		status: z.literal('not_fast_forward'),
@@ -641,6 +663,7 @@ const outputSchema = z.discriminatedUnion('status', [
 		allowed_packages_publish_notice: allowedPackagesPublishNoticeSchema,
 		listing: communityListingBehindHintSchema.optional(),
 		phase_timings: publishPhaseTimingsSchema,
+		build_origin: publishBuildOriginSchema.optional(),
 	}),
 	z.object({
 		status: z.literal('dispatched'),
@@ -650,10 +673,24 @@ const outputSchema = z.discriminatedUnion('status', [
 		run_status: z.string().nullable(),
 		message: z.string(),
 		phase_timings: publishPhaseTimingsSchema,
+		build_origin: publishBuildOriginSchema.optional(),
 	}),
 ])
 
 type PublishExternalPushResult = z.infer<typeof outputSchema>
+
+/** Only builds made outside the cloud (publish-offload) say where they ran. */
+function buildOriginField(
+	uploadedBuild: UploadedPublishBuildRef | null | undefined,
+) {
+	if (!showBuildOrigin || !uploadedBuild) return {}
+	return {
+		build_origin: {
+			origin: uploadedBuild.origin,
+			context_name: uploadedBuild.contextName ?? null,
+		},
+	}
+}
 
 function buildPublishPhaseTimings(input: {
 	startedAt: number
@@ -956,6 +993,7 @@ export type ExternalPublishSemanticInput = {
 	newCommit: string
 	allowForce: boolean
 	destructiveOverwriteConfirmed: boolean
+	publishBuildId?: string
 }
 
 export function buildExternalPublishIdempotencyParts(
@@ -1021,6 +1059,8 @@ async function runExternalPublishAttempt(input: {
 	approvalViewer: ApprovalViewer | null
 	signal?: AbortSignal
 	reportProgress?: McpReportProgress
+	/** Publish offload: persist this verified upload instead of rebuilding. */
+	uploadedBuild?: UploadedPublishBuildRef | null
 }): Promise<Exclude<PublishExternalPushResult, { status: 'dispatched' }>> {
 	const maxAttempts = externalPublishRetryDelaysMs.length + 1
 	let lastTransientError: unknown = null
@@ -1058,6 +1098,8 @@ async function runExternalPublishAttempt(input: {
 				requestedByUserId: input.requestedByUserId,
 				publisherRequest: input.publisherRequest ?? null,
 				deferBundleCheckToRebuild: true,
+				// The publish builder typechecked this exact tree (verified by hash).
+				...(input.uploadedBuild ? { typecheckRanOffWorker: true } : {}),
 			})
 			const publishMs = Date.now() - publishStartedAt
 			assertNotAborted(input.signal)
@@ -1106,6 +1148,9 @@ async function runExternalPublishAttempt(input: {
 										publishedCommit,
 										baseUrl: input.baseUrl,
 										...(forceRebuild ? { force: true } : {}),
+										...(input.uploadedBuild
+											? { uploadedBuild: input.uploadedBuild }
+											: {}),
 									})
 								return {
 									ok: true as const,
@@ -1232,6 +1277,7 @@ async function runExternalPublishAttempt(input: {
 						? { listing: alreadyPublishedExtras.listing }
 						: {}),
 					phase_timings: phaseTimings,
+					...buildOriginField(input.uploadedBuild),
 				}
 				if (tipMoved) {
 					await reportCapabilityProgress(input.reportProgress, {
@@ -1355,6 +1401,9 @@ async function runExternalPublishAttempt(input: {
 								userId: input.ownerUserId,
 								publishedCommit: result.published_commit,
 								baseUrl: input.baseUrl,
+								...(input.uploadedBuild
+									? { uploadedBuild: input.uploadedBuild }
+									: {}),
 							})
 							return { ok: true as const }
 						} catch (error) {
@@ -1484,6 +1533,7 @@ async function runExternalPublishAttempt(input: {
 					rebuildMs,
 					dependentsMs,
 				}),
+				...buildOriginField(input.uploadedBuild),
 			} as const
 		} catch (error) {
 			assertNotAborted(input.signal)
@@ -1636,6 +1686,18 @@ export const publishExternalPushCapability = defineDomainCapability(
 				publisherRequest: ctx.callerContext.request ?? null,
 				approvalViewer: optionalApprovalViewerForCaller(ctx),
 				reportProgress: ctx.reportProgress,
+				uploadedBuild: args.publish_build_id
+					? await resolveUploadedPublishBuildForPublish({
+							env: ctx.env,
+							request: ctx.callerContext.request,
+							buildId: args.publish_build_id,
+							packageId,
+							sourceId: source.id,
+							commit: newCommit,
+							requesterUserId: user.userId,
+							orgId: requireMcpRequest(ctx.callerContext).org.id,
+						})
+					: null,
 			}
 
 			if (!shouldEscalateExternalPublish(ctx.callerContext.executionOrigin)) {
@@ -1650,6 +1712,9 @@ export const publishExternalPushCapability = defineDomainCapability(
 				newCommit,
 				allowForce: args.allow_force,
 				destructiveOverwriteConfirmed: args.confirm_destructive_overwrite,
+				...(args.publish_build_id
+					? { publishBuildId: args.publish_build_id }
+					: {}),
 			} satisfies ExternalPublishSemanticInput
 			const durableParams = {
 				...(args.package_id ? { package_id: args.package_id } : {}),
@@ -1661,6 +1726,9 @@ export const publishExternalPushCapability = defineDomainCapability(
 				allow_force: args.allow_force,
 				confirm_destructive_overwrite: args.confirm_destructive_overwrite,
 				baseline_published_commit: baselinePublishedCommit,
+				...(args.publish_build_id
+					? { publish_build_id: args.publish_build_id }
+					: {}),
 			}
 			const escalateStartedAt = Date.now()
 			// Key the durable re-entry to the package-owning org, not the actor's

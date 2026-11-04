@@ -26,11 +26,44 @@ export async function runContextRun(input: {
 	hostCommands?: HostCommands
 	packageGraphCache?: PackageGraphCache
 }) {
+	const source = input.request.source
+	if (source.kind === 'publish-build') {
+		// Not user code: the CLI's own builder, with no credentials, host
+		// folders, or host commands. The upload ticket is the only token.
+		const { runContextPublishBuild } = await import('../local-publish-build.js')
+		try {
+			const built = await runContextPublishBuild({
+				source,
+				userId: input.request.requestedBy.userId,
+				apiUrl: input.apiUrl,
+			})
+			return {
+				isError: false,
+				content: [
+					{
+						type: 'text',
+						text: `Built ${built.targets} targets at ${built.commit.slice(0, 12)} in ${built.buildMs} ms.`,
+					},
+				],
+				structuredContent: { publishBuild: built },
+			}
+		} catch (error) {
+			return {
+				isError: true,
+				content: [
+					{
+						type: 'text',
+						text: error instanceof Error ? error.message : String(error),
+					},
+				],
+			}
+		}
+	}
 	const hostCommands = input.hostCommands
 	const { runLocalExecute } = await import('../local-execute.js')
 	let timing: LocalExecuteTiming | undefined
 	const result = await runLocalExecute({
-		code: input.request.source.code,
+		code: source.code,
 		params: input.request.params,
 		...(input.request.conversationId
 			? { conversationId: input.request.conversationId }
@@ -67,7 +100,7 @@ export async function runContextRun(input: {
 						...(input.request.conversationId
 							? { conversationId: input.request.conversationId }
 							: {}),
-						code: input.request.source.code,
+						code: source.code,
 					}),
 				}
 			: {}),

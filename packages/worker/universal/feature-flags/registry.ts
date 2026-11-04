@@ -162,6 +162,13 @@ export const featureFlagDefinitions = [
 		},
 	},
 	{
+		key: 'publish-offload',
+		defaultEnabled: false,
+		defaultAudience: 'experiments_opt_in',
+		description:
+			'Publish offload: build a package on the CLI machine or an execution context the publisher runs, upload the bundles, and let the server verify them before it serves the commit. Off by default; do not enable for users until the open product choices in #worker/publish-offload/policy.ts are settled.',
+	},
+	{
 		key: 'credential-need-enforcement',
 		defaultEnabled: false,
 		description:
@@ -196,6 +203,8 @@ export const executionContextsFlagKey =
 	'execution-contexts' satisfies FeatureFlagKey
 
 export const profilesFlagKey = 'profiles' satisfies FeatureFlagKey
+
+export const publishOffloadFlagKey = 'publish-offload' satisfies FeatureFlagKey
 
 export const credentialNeedEnforcementFlagKey =
 	'credential-need-enforcement' satisfies FeatureFlagKey

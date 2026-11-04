@@ -150,6 +150,7 @@ const cliFlagOptions = {
 	file: { type: 'string' },
 	invoke: { type: 'string' },
 	params: { type: 'string' },
+	build: { type: 'string' },
 	'conversation-id': { type: 'string' },
 	local: { type: 'boolean' },
 	'allow-private-network': { type: 'boolean' },
@@ -1404,6 +1405,9 @@ async function dispatch(
 					json,
 					io,
 					offline,
+					...(parsed.values.build === 'local'
+						? { localBuild: { apiUrl: prodApiUrl } }
+						: {}),
 					...(offline
 						? {}
 						: {
@@ -1805,10 +1809,19 @@ async function dispatch(
 					apiUrl,
 					...(org ? { org } : {}),
 				})
-			const result = await call(
-				'packagePublishExternalPush',
-				await resolvePackagePublishTarget(params, call),
-			)
+			const buildMode =
+				typeof parsed.values.build === 'string' ? parsed.values.build : null
+			const publishTarget = await resolvePackagePublishTarget(params, call)
+			const { runPublishWithBuild } = await import('./publish-offload.js')
+			const result = await runPublishWithBuild({
+				build: buildMode,
+				target: publishTarget,
+				call,
+				apiUrl,
+				cwd: process.cwd(),
+				interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
+				writeErr,
+			})
 			// Always print the API body (agents/scripts inspect `status`).
 			write(`${JSON.stringify(result, null, 2)}\n`)
 			const unmappableNotice =

@@ -380,6 +380,12 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 				aliasPaths: ['/v1/packages/{package_id}/external-push'],
 			},
 		],
+		[
+			'POST',
+			'/v1/packages/publish-builds',
+			'packagePublishBuildCreate',
+			{ aliasPaths: ['/v1/packages/{package_id}/publish-builds'] },
+		],
 		['GET', '/v1/package-subscriptions', 'packageSubscriptionsList'],
 		['GET', '/v1/enablements', 'enablementList'],
 		['POST', '/v1/enablements', 'enablementEnable'],
@@ -533,6 +539,16 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['POST', '/v1/execution-contexts/{id}/delete', 'executionContextDelete'],
 		['POST', '/v1/execution-contexts/{id}/opt-in', 'executionContextOptIn'],
 		['DELETE', '/v1/execution-contexts/{id}/opt-in', 'executionContextOptOut'],
+		[
+			'POST',
+			'/v1/execution-contexts/{id}/notices/dismiss',
+			'executionContextNoticeDismiss',
+		],
+		[
+			'POST',
+			'/v1/execution-contexts/{id}/sharing/preview',
+			'executionContextSharePreview',
+		],
 		['GET', '/v1/execution-contexts/{id}/sharing', 'executionContextShareList'],
 		['PUT', '/v1/execution-contexts/{id}/sharing', 'executionContextShareSet'],
 		[

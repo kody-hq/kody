@@ -1,3 +1,9 @@
+import {
+	listContextNotices,
+	type ElevationDetail,
+	type MisconfigDetail,
+} from './notices.ts'
+import { refreshContextNotices } from './box-notices.ts'
 import { experimentOffMessage } from '#universal/feature-flags/experiments.ts'
 import { bumpAccessEpochStatement } from '#worker/authorization/access-compile.ts'
 import {
@@ -278,6 +284,16 @@ export async function formatContexts(
 					inMyChain: inChain.has(row.id),
 					chainCount: counts.get(row.id) ?? 0,
 				},
+				login: {
+					kind: row.login_kind ?? 'person',
+					recorded: row.login_kind != null,
+					profileId: row.login_profile_id ?? null,
+					checkedAt: row.login_checked_at ?? null,
+				},
+				teamId: row.team_id ?? null,
+				...(options.includeSharing
+					? await noticesView(caller, row, manage || isOrgOwner(caller))
+					: {}),
 				...(options.includeSharing && (manage || isOrgOwner(caller))
 					? { sharing: await loadSharing(caller, row) }
 					: {}),
@@ -594,6 +610,9 @@ export async function optIn(caller: ExecutionContextCaller, ref: string) {
 		})
 		await recordContextAudit(caller, row.id, 'opt_in')
 	}
+	await refreshContextNotices(caller.env.APP_DB, row, caller.orgId, {
+		userIds: [caller.userId],
+	})
 	const handles = await handlesFor(caller.env.APP_DB, [row.operator_user_id])
 	const all = await listContexts(caller)
 	return {
@@ -631,7 +650,7 @@ export async function optOut(caller: ExecutionContextCaller, ref: string) {
 export async function updateContext(
 	caller: ExecutionContextCaller,
 	ref: string,
-	input: { name?: string; grant?: Partial<EcpGrant> },
+	input: { name?: string; grant?: Partial<EcpGrant>; teamId?: string | null },
 ) {
 	const { row, access } = await loadVisibleContext(caller, ref)
 	if (!canWriteContext(access)) {
@@ -656,6 +675,26 @@ export async function updateContext(
 		})
 	}
 	const db = caller.env.APP_DB
+	if (input.teamId !== undefined) {
+		if (!canManageContext(access) && !isOrgOwner(caller)) {
+			throw new ExecutionContextError({
+				status: 403,
+				code: 'not_granted',
+				message: 'Setting the team a context is for needs Manage on it.',
+			})
+		}
+		await db
+			.prepare(`UPDATE execution_contexts SET team_id = ? WHERE id = ?`)
+			.bind(input.teamId, row.id)
+			.run()
+		await recordContextAudit(caller, row.id, 'grant_changed', {
+			teamId: input.teamId,
+		})
+		const fresh = await getExecutionContext(db, row.id)
+		if (fresh) await refreshContextNotices(db, fresh, caller.orgId)
+		if (!input.name && !input.grant)
+			return await getContextDetail(caller, row.id)
+	}
 	const commandsWereOn = parseGrant(row).commands?.enabled === true
 	const grant = input.grant
 		? mergeGrant(parseGrant(row), input.grant)
@@ -1106,6 +1145,7 @@ export async function setSharing(
 			await endLeasesWithoutAccess(caller.env, row, caller.orgId)
 	}
 	const fresh = (await getExecutionContext(db, row.id)) ?? row
+	await refreshContextNotices(db, fresh, caller.orgId)
 	return {
 		id: row.id,
 		canAddShares: true,
@@ -1533,5 +1573,59 @@ export async function endMemberExecutionContextLeases(
 		})
 	} catch (error) {
 		console.error('execution-context-member-lease-end-failed', error)
+	}
+}
+
+/**
+ * Notices on the context page (ADR 0096): the viewer's own excess, and for
+ * people who can act on it, every grantee's excess and the misconfigurations.
+ */
+async function noticesView(
+	caller: ExecutionContextCaller,
+	row: ExecutionContextRow,
+	canAct: boolean,
+) {
+	const notices = await listContextNotices(caller.env.APP_DB, {
+		contextId: row.id,
+		orgId: caller.orgId,
+	})
+	const mine = notices.find(
+		(notice) =>
+			notice.kind === 'elevation' && notice.subjectUserId === caller.userId,
+	)
+	const misconfigured = notices.find(
+		(notice) => notice.kind === 'misconfigured',
+	)
+	const reviewIds = notices
+		.filter((notice) => notice.kind === 'elevation' && notice.subjectUserId)
+		.map((notice) => notice.subjectUserId!)
+	const handles = canAct ? await handlesFor(caller.env.APP_DB, reviewIds) : null
+	return {
+		...(mine
+			? {
+					elevation: {
+						fingerprint: mine.fingerprint,
+						dismissed: mine.dismissed,
+						entries: (mine.detail as ElevationDetail).entries.slice(0, 50),
+					},
+				}
+			: {}),
+		...(canAct && misconfigured
+			? {
+					misconfigurations: (misconfigured.detail as MisconfigDetail).codes,
+				}
+			: {}),
+		...(handles
+			? {
+					accessReview: notices
+						.filter(
+							(notice) => notice.kind === 'elevation' && notice.subjectUserId,
+						)
+						.map((notice) => ({
+							handle: handles.get(notice.subjectUserId!) ?? null,
+							entries: (notice.detail as ElevationDetail).entries.slice(0, 50),
+						})),
+				}
+			: {}),
 	}
 }

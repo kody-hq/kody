@@ -160,6 +160,12 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 		'Org overrides of where an automation runs; the manifest declaration travels with the package and the target org sets its own override.',
 	),
 	execution_context_opt_ins: keep(personOwned),
+	execution_context_notices: keep(
+		'Notices are about a person and a context that stays in the owning org; nothing to move.',
+	),
+	publish_builds: keep(
+		'Publish builds are short-lived upload jobs for one commit; they expire on their own and are not resources a transfer moves.',
+	),
 	profiles: keep(
 		'Profiles are identities a person acts as in one org; they stay in that org and their grants on moved resources are dropped with the other grants.',
 	),

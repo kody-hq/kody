@@ -120,6 +120,7 @@ function createContext(db: D1Database): ApiInvocationContext {
 			'package-credential-suppliers': false,
 			'repo-push-queue': false,
 			'execution-contexts': false,
+			'publish-offload': false,
 			'credential-need-enforcement': false,
 			'credential-allowed-packages-safety-window': false,
 		}),

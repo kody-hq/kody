@@ -7,10 +7,10 @@ category: updates
 placeholder: false
 ---
 
-Here is what shipped in Kody from March 14 to March 20, 2026. These were Kody's
-first two tagged releases, made while it was still in early development, and
-they centered on the MCP `search` and `execute` tools: reusable skills, GitHub
-access, and layouts that work on a phone.
+Here is what shipped in Kody from March 14 to March 20, 2026. This week we
+tagged our first two releases, v2026-03-19 and v2026-03-20, and the work centers
+on the MCP `search` and `execute` tools: saved skills you can reuse with
+different inputs, GitHub GraphQL access, and layouts that work on a phone.
 
 ## Saved skills take parameters
 
@@ -28,8 +28,8 @@ expects before it runs it.
 
 ### Why it matters
 
-Before this, a saved skill's inputs lived in its code, so reusing a workflow for
-a different repository or date range meant editing the skill or saving a near
+Until now, a saved skill's inputs lived in its code, so reusing a workflow for a
+different repository or date range meant editing the skill or saving a near
 copy. Now one saved skill covers the pattern and your agent supplies the values
 at run time. That keeps the code you save small, reusable, and easy to find in
 `search`.
@@ -108,10 +108,11 @@ No user-facing fixes this week.
 
 ## Try it
 
-Skills and capabilities from this week were found and run through the `search`
-and `execute` tools. Read
-[Search and execute](https://kody.codes/docs/search-and-execute) to see how your
-agent uses them in Kody today.
+Save one workflow you repeat often as a skill with `meta_save_skill`, declare
+its inputs as `parameters`, and run it with `meta_run_skill`. Your agent finds
+saved skills and capabilities through `search`; see
+[Search and execute](https://kody.codes/docs/search-and-execute) for how the two
+tools fit together.
 
 Questions or feedback? Join us on the
 [Kody Discord](https://kcd.im/kody-discord).

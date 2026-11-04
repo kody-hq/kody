@@ -62,6 +62,8 @@ export type ProfileGrantResourceType =
 	(typeof profileGrantResourceTypes)[number]
 
 export type ProfileRow = {
+	/** The team this profile is for (ADR 0096); grants nothing. */
+	assigned_team_id?: string | null
 	id: string
 	org_id: string
 	owner_kind: 'person'
