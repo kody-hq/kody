@@ -70,10 +70,8 @@ PRs: [#792](https://github.com/kody-hq/kody/pull/792),
   not create duplicate threads, and only verified sender identities can send.
   ([#891](https://github.com/kody-hq/kody/pull/891),
   [#858](https://github.com/kody-hq/kody/pull/858))
-- **Platform:** Relicenses Kody under the Functional Source License,
-  FSL-1.1-ALv2. Source stays public. A public blog also launches at `/blog`.
-  ([#863](https://github.com/kody-hq/kody/pull/863),
-  [#800](https://github.com/kody-hq/kody/pull/800))
+- **Platform:** Launches a public blog at `/blog`.
+  ([#800](https://github.com/kody-hq/kody/pull/800))
 
 ## Fixes
 
