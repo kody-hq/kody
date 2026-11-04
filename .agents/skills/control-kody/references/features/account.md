@@ -11,7 +11,7 @@ npm run control-kody -- request GET /account/organizations --contains 'Organizat
 
 Create a team org through the signed-in page (`browse`), then use `/@<slug>/-/…`
 workspace pages. For a verification fixture, use MCP `orgCreate` via `execute`
-(not a direct POST — the page calls a Start server function).
+(not a direct POST; the page calls a Start server function).
 
 ```bash
 npm run control-kody -- browse --path /account/organizations/new

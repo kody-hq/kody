@@ -9,7 +9,7 @@ npm run control-kody -- request GET /@jane/-/webhooks --contains 'Webhooks'
 
 Minted ingress URLs live under
 `/@{$username}/webhooks/$packageKodyId/$webhookName/$urlSecret`. Inbound Stripe:
-`/webhooks/stripe` (needs real Stripe — preview only).
+`/webhooks/stripe` (needs real Stripe, preview only).
 
 ## Assert
 
