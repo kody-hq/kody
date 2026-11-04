@@ -1,4 +1,8 @@
-import { guestPhase } from '#worker/guest/guest-accounts.ts'
+import {
+	guestClaimCapabilityName,
+	guestClaimFinishCapabilityName,
+	guestPhase,
+} from '#worker/guest/guest-accounts.ts'
 import { guestRestrictionError } from '#worker/guest/guest-policy.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
@@ -353,6 +357,8 @@ async function handleOperation(input: {
 	if (
 		guestExpiresAt &&
 		guestPhase(guestExpiresAt) === 'hold' &&
+		matchedOperation.operationId !== guestClaimCapabilityName &&
+		matchedOperation.operationId !== guestClaimFinishCapabilityName &&
 		operationNeedsAccountWriteLease(resolved)
 	) {
 		throw toApiError(

@@ -27,6 +27,8 @@ const errorCopy: Record<GuestClaimPageError, string> = {
 	code_expired: 'That code expired. Send a new one.',
 	too_many_attempts: 'Too many wrong codes. Send a new one.',
 	send_failed: 'Kody could not send the email. Try again in a minute.',
+	rate_limited:
+		'Too many codes were sent. Wait an hour, or claim with GitHub or Google.',
 	already_claimed: 'This guest account was already claimed.',
 	deleted: 'This guest account was deleted.',
 	username_invalid:

@@ -136,7 +136,7 @@ export async function findClaimTargetByDbId(
 		.prepare(
 			`SELECT id, stable_user_id, username, personal_org_id, email FROM users
 			 WHERE id = ? AND deleted_at IS NULL AND deleting_at IS NULL
-			   AND guest_expires_at IS NULL`,
+			   AND guest_expires_at IS NULL AND email_verified_at IS NOT NULL`,
 		)
 		.bind(dbUserId)
 		.first<GuestUserRow & { email: string }>()
@@ -378,9 +378,25 @@ export async function mergeGuestIntoAccount(input: {
 			'Kody could not move this guest account into that account. Nothing was changed. Try again, or claim into a new account.',
 		)
 	}
+	const leftovers = Object.entries(transfer.leftovers ?? {}).filter(
+		([, count]) => count > 0,
+	)
+	if (leftovers.length > 0) {
+		console.error('guest-claim-merge-transfer-leftovers', {
+			kinds: leftovers.map(([kind]) => kind),
+		})
+		throw new GuestClaimError(
+			'merge_blocked',
+			'Kody moved part of this guest account but not all of it. Nothing was deleted. Try the claim again.',
+		)
+	}
 	await moveMemories(env, fromOrgId, toOrgId)
 	await moveRunHistory(env, fromOrgId, toOrgId).catch((error: unknown) => {
-		console.warn('guest-claim-run-history-move-failed', error)
+		console.error('guest-claim-run-history-move-failed', error)
+		throw new GuestClaimError(
+			'merge_blocked',
+			'Kody could not move the run history yet. Nothing was deleted. Try the claim again.',
+		)
 	})
 	const now = (input.now ?? new Date()).toISOString()
 	await db.batch([

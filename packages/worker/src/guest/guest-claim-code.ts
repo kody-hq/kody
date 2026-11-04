@@ -1,6 +1,7 @@
 import { resolveTransactionalEmailConfig } from '#app/email/sender-config.ts'
 import { isNonProductionRuntime } from '#app/deployment-env.ts'
 import { normalizeEmail } from '#worker/identity/normalize-email.ts'
+import { checkRateLimit, type RateLimitConfig } from '#worker/rate-limit.ts'
 import { sendGatedTransactionalEmail } from '#worker/email/transactional-send-policy.ts'
 import {
 	assertClaimUsernameAvailable,
@@ -16,6 +17,12 @@ import type { GuestAccount } from './guest-accounts.ts'
 export const guestClaimCodeTtlMs = 15 * 60 * 1000
 export const guestClaimCodeMaxAttempts = 5
 
+/** Fresh claim codes per guest per hour (each resets the guess counter). */
+export const guestClaimStartRateLimit: RateLimitConfig = {
+	maxRequests: 5,
+	windowSeconds: 60 * 60,
+}
+
 export type GuestClaimCodeErrorCode =
 	| 'email_invalid'
 	| 'code_missing'
@@ -23,6 +30,7 @@ export type GuestClaimCodeErrorCode =
 	| 'code_expired'
 	| 'too_many_attempts'
 	| 'send_failed'
+	| 'rate_limited'
 
 export class GuestClaimCodeError extends Error {
 	readonly code: GuestClaimCodeErrorCode
@@ -132,6 +140,17 @@ export async function startGuestClaim(input: {
 			env,
 			input.username,
 			guest.personId,
+		)
+	}
+	const startLimit = await checkRateLimit(
+		db,
+		`guest-claim-start:${guest.personId}`,
+		guestClaimStartRateLimit,
+	)
+	if (!startLimit.allowed) {
+		throw new GuestClaimCodeError(
+			'rate_limited',
+			'Too many claim codes were sent for this guest account. Wait an hour, or use the claim link instead.',
 		)
 	}
 	const now = input.now ?? new Date()

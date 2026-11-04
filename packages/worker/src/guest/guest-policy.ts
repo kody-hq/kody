@@ -4,6 +4,7 @@ import {
 	guestClaimFinishCapabilityName,
 	guestClaimUrl,
 	guestPhase,
+	isGuestEmail,
 	readGuestAccountByPerson,
 } from '#worker/guest/guest-accounts.ts'
 import {
@@ -122,5 +123,26 @@ export async function assertGuestCapabilityAllowed(input: {
 		personId: user.userId,
 		blocked,
 		code: 'guest_not_allowed',
+	})
+}
+
+/** guest_claim_required for a website write by a guest in the read-only hold. */
+export async function guestHoldWriteError(input: {
+	db: D1Database
+	baseUrl: string
+	email: string
+	personId: string
+}) {
+	if (!isGuestEmail(input.email)) return null
+	const guest = await readGuestAccountByPerson(input.db, input.personId)
+	if (!guest || guest.claimedAt || guestPhase(guest.expiresAt) !== 'hold') {
+		return null
+	}
+	return await guestRestrictionError({
+		db: input.db,
+		baseUrl: input.baseUrl,
+		personId: input.personId,
+		blocked: 'saving changes',
+		code: 'guest_claim_required',
 	})
 }

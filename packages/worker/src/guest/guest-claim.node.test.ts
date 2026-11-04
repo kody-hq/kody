@@ -12,6 +12,7 @@ import { guestClaimDonePath } from './guest-claim.ts'
 import {
 	finishGuestClaim,
 	guestClaimCodeMaxAttempts,
+	guestClaimStartRateLimit,
 	startGuestClaim,
 } from './guest-claim-code.ts'
 
@@ -198,4 +199,32 @@ test('the claimed confirmation link leaves out empty categories', () => {
 			runs: 0,
 		}),
 	).toBe('/claim/abc?result=claimed&mode=new')
+})
+
+test('a guest can only ask for a few fresh claim codes per hour', async () => {
+	const { env, guest } = await setup()
+	for (
+		let started = 0;
+		started < guestClaimStartRateLimit.maxRequests;
+		started++
+	) {
+		await startGuestClaim({
+			env,
+			guest,
+			email: 'person@example.test',
+			username: 'person',
+			requestUrl,
+			now: start,
+		})
+	}
+	await expect(
+		startGuestClaim({
+			env,
+			guest,
+			email: 'person@example.test',
+			username: 'person',
+			requestUrl,
+			now: start,
+		}),
+	).rejects.toMatchObject({ code: 'rate_limited' })
 })
