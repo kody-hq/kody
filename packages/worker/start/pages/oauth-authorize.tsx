@@ -58,9 +58,6 @@ import {
 	mutedLinkCss,
 	nativeDisclosureCss,
 	pageDescriptionCss,
-	pageEyebrowCss,
-	pageHeaderCss,
-	pageTitleCss,
 	sectionTitleCss,
 	stackedPageCss,
 	visuallyHiddenCss,
@@ -88,10 +85,17 @@ import {
 	useResendVerification,
 } from './email-verification-prompt.tsx'
 import { AuthorizeOrgField } from './oauth-authorize-org-picker.tsx'
+import {
+	OAuthAuthorizeConnectionHeader,
+	OAuthAuthorizeDisconnectFooter,
+	OAuthAuthorizeGuestConnected,
+	OAuthAuthorizeSignedOutChoices,
+	type GuestConnection,
+} from './oauth-authorize-guest.tsx'
 
 type OAuthAuthorizeStatus = 'idle' | 'loading' | 'ready' | 'error'
 type OAuthAuthorizeMessage = { type: 'error' | 'info'; text: string }
-type OAuthAuthorizeDecision = 'approve' | 'deny' | 'reset-client'
+type OAuthAuthorizeDecision = 'approve' | 'deny' | 'reset-client' | 'guest'
 
 function oauthAuthorizeAccessLead(
 	status: OAuthAuthorizeStatus,
@@ -309,6 +313,8 @@ export function OAuthAuthorizeRoute({
 	const info = data.ok ? data : null
 	const status: OAuthAuthorizeStatus = data.ok ? 'ready' : 'error'
 	const allowClientReset = !data.ok && data.allowClientReset
+	const [guestConnection, setGuestConnection] =
+		useState<GuestConnection | null>(null)
 	const [decisionClientFailure, setDecisionClientFailure] =
 		useState<OAuthAuthorizeClientFailure | null>(null)
 	const clientFailure =
@@ -535,6 +541,14 @@ export function OAuthAuthorizeRoute({
 				setSubmittingDecision(null)
 				return
 			}
+			if (payload.guest && payload.redirectTo) {
+				setGuestConnection({
+					redirectTo: payload.redirectTo,
+					claimUrl: payload.guest.claimUrl,
+					expiresAt: payload.guest.expiresAt,
+				})
+				return
+			}
 			if (payload?.redirectTo) {
 				window.location.assign(payload.redirectTo)
 				return
@@ -581,7 +595,10 @@ export function OAuthAuthorizeRoute({
 	})
 	const needsEmailVerification = isLoggedIn && !emailVerified
 	const showResetClientCard = allowClientReset && !resetCompleted
+	const showSignedOutChoices =
+		!isLoggedIn && !sessionEmail && !resetCompleted && !clientFailure
 	const showAuthorizeForm =
+		!showSignedOutChoices &&
 		!resetCompleted &&
 		!needsEmailVerification &&
 		status !== 'error' &&
@@ -621,13 +638,24 @@ export function OAuthAuthorizeRoute({
 			? 'Resetting this connection...'
 			: 'Reset this connection'
 
+	if (guestConnection) {
+		return (
+			<section css={pageCss}>
+				<OAuthAuthorizeGuestConnected
+					clientLabel={clientLabel}
+					connection={guestConnection}
+				/>
+				<OAuthAuthorizeDisconnectFooter clientLabel={clientLabel} />
+			</section>
+		)
+	}
+
 	return (
 		<section css={pageCss}>
-			<header css={headerCss}>
-				<span css={eyebrowCss}>Kody secure connection</span>
-				<h1 css={pageTitleCss}>Authorize access</h1>
-				{accessLead ? <p css={pageDescriptionCss}>{accessLead}</p> : null}
-			</header>
+			<OAuthAuthorizeConnectionHeader clientLabel={clientLabel} />
+			{accessLead ? (
+				<p css={{ ...pageDescriptionCss, textAlign: 'center' }}>{accessLead}</p>
+			) : null}
 			{status === 'ready'
 				? renderOauthAuthorizeGrant({
 						clientLabel,
@@ -733,6 +761,16 @@ export function OAuthAuthorizeRoute({
 						</p>
 					) : null}
 				</section>
+			) : null}
+			{showSignedOutChoices ? (
+				<OAuthAuthorizeSignedOutChoices
+					clientLabel={clientLabel}
+					loginHref={buildAuthLink('/login', readOAuthResumeTarget())}
+					signupHref={buildAuthLink('/signup', readOAuthResumeTarget())}
+					disabled={!formReady || Boolean(submittingDecision)}
+					tryingOut={submittingDecision === 'guest'}
+					onTryItOut={() => void submitDecision('guest')}
+				/>
 			) : null}
 			{showAuthorizeForm ? (
 				<form
@@ -884,9 +922,7 @@ export function OAuthAuthorizeRoute({
 					</div>
 				</form>
 			) : null}
-			<SiteLink href="/" css={mutedLinkCss}>
-				Back home
-			</SiteLink>
+			<OAuthAuthorizeDisconnectFooter clientLabel={clientLabel} />
 		</section>
 	)
 }
@@ -897,7 +933,6 @@ const pageCss = {
 	margin: '0 auto',
 }
 
-const headerCss = pageHeaderCss
 const codeCss = {
 	fontFamily: typography.fontFamilyMono,
 	fontSize: typography.fontSize.sm,
@@ -927,7 +962,6 @@ const failureDetailsCss = {
 	gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
 	gap: spacing.md,
 }
-const eyebrowCss = pageEyebrowCss
 const primaryButtonCss = getPrimaryButtonCss({
 	size: 'lg',
 	weight: 'semibold',

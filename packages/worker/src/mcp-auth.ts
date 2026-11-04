@@ -1,3 +1,12 @@
+import {
+	guestClaimUrl,
+	guestPhase,
+	readGuestAccountByPerson,
+} from '#worker/guest/guest-accounts.ts'
+import {
+	createGuestErrorResponse,
+	guestErrorPayload,
+} from '#worker/guest/guest-errors.ts'
 import { personalOrgId } from '@kody-internal/shared/owner-person-ids.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import {
@@ -610,6 +619,21 @@ export async function handleMcpRequest({
 								: { parsedBody: classification.parsedBody }),
 						})
 			return guardLegacyLaneSseResponse(legacyRequestIds, response)
+		}
+		const guestExpiresAt = authContext.context.guestExpiresAt
+		if (
+			guestExpiresAt &&
+			guestPhase(guestExpiresAt) === 'hold' &&
+			mcpParsedBodyNeedsAccountWriteLease(classification.parsedBody)
+		) {
+			const guest = await readGuestAccountByPerson(env.APP_DB, mcpUser.userId)
+			return createGuestErrorResponse(
+				guestErrorPayload({
+					code: 'guest_claim_required',
+					blocked: 'running code and saving changes',
+					claimUrl: guest ? guestClaimUrl(origin, guest.claimCode) : null,
+				}),
+			)
 		}
 		if (mcpParsedBodyNeedsAccountWriteLease(classification.parsedBody)) {
 			return await withAccountWriteLease({

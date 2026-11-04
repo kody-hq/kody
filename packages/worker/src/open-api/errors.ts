@@ -1,3 +1,4 @@
+import { GuestRestrictionError } from '#worker/guest/guest-errors.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	redactKodyCredentials,
@@ -100,6 +101,8 @@ export const apiErrorCodes = [
 	'insufficient_scope',
 	'email_verification_required',
 	'account_suspended',
+	'guest_not_allowed',
+	'guest_claim_required',
 	'feature_unavailable',
 	'feature_disabled',
 	'not_granted',
@@ -220,6 +223,19 @@ export function toApiError(
 	},
 ): ApiError {
 	if (error instanceof ApiError) return error
+	if (error instanceof GuestRestrictionError) {
+		return new ApiError({
+			status: 403,
+			code: error.payload.error,
+			message: error.payload.error_description,
+			details: {
+				claim_url: error.payload.claim_url,
+				claim_capability: error.payload.claim_capability,
+				claim_finish_capability: error.payload.claim_finish_capability,
+			},
+			cause: error,
+		})
+	}
 	if (error instanceof AuthorizationError) {
 		if (error.code === 'unauthenticated') {
 			return new ApiError({

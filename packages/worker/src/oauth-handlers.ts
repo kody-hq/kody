@@ -1,3 +1,7 @@
+import {
+	createGuestAccount,
+	guestClaimUrl,
+} from '#worker/guest/guest-accounts.ts'
 import { jsonResponse } from '#worker/json-response.ts'
 import {
 	type AuthRequest,
@@ -688,6 +692,8 @@ export type OAuthDecisionData = {
 	requiresOrgChoice?: boolean
 	requiresTwoFactor?: boolean
 	clientFailure?: OAuthAuthorizeClientFailure
+	/** Set after Try it out: the connected screen shows the claim link. */
+	guest?: { claimUrl: string; expiresAt: string; clientName: string | null }
 }
 type OAuthDecisionResult = {
 	data: OAuthDecisionData
@@ -1613,6 +1619,117 @@ export async function handleAuthorizeRequest(
 	)
 }
 
+/**
+ * Try it out: create a guest person and personal org in one write, then
+ * complete the same OAuth authorization a signed-in person would get.
+ */
+async function completeGuestAuthorization(input: {
+	request: Request
+	env: Env
+	helpers: OAuthHelpers
+	authRequest: AuthRequest
+	requestIp: string | undefined
+	nonce: string | undefined
+}): Promise<OAuthDecisionResult> {
+	const { request, env, helpers, authRequest, requestIp } = input
+	const session = await resolveAuthorizeSession(request, env)
+	if (session.email) {
+		return decisionError(
+			'You are already signed in. Approve the connection instead.',
+			400,
+			'guest_signed_in',
+		)
+	}
+	const resolvedScopes = resolveScopes(authRequest.scope)
+	if (!Array.isArray(resolvedScopes)) return decisionError(resolvedScopes.error)
+	const client = await helpers.lookupClient(authRequest.clientId)
+	const clientName = client?.clientName?.trim() || null
+	const created = await createGuestAccount({
+		db: env.APP_DB,
+		requestIp: requestIp ?? null,
+		clientName,
+	})
+	if (!created.ok) {
+		void logAuditEvent({
+			db: auditDatabaseFromEnv(env),
+			category: 'oauth',
+			action: 'authorize',
+			result: 'failure',
+			ip: requestIp,
+			clientId: authRequest.clientId,
+			reason: 'guest_rate_limited',
+		})
+		return decisionError(
+			'Too many guest accounts were started from here today. Log in or sign up to keep going.',
+			429,
+			'guest_rate_limited',
+		)
+	}
+	const userId = created.personId
+	const bindingFields = grantBindingFields({
+		orgId: created.personalOrgId,
+		personId: userId,
+	})
+	const { redirectTo: providerRedirectTo } =
+		await helpers.completeAuthorization({
+			request: authRequest,
+			userId,
+			metadata: {
+				email: created.email,
+				clientId: authRequest.clientId,
+				guest: true,
+				...bindingFields.metadata,
+			},
+			scope: resolvedScopes,
+			props: {
+				userId,
+				email: created.email,
+				username: created.username,
+				displayName: 'Guest',
+				authTime: Math.floor(Date.now() / 1000),
+				...(input.nonce ? { nonce: input.nonce } : {}),
+				...bindingFields.props,
+			},
+			revokeExistingGrants: false,
+		})
+	const redirectTo = stampClientAuthorizationRedirect(
+		providerRedirectTo,
+		request,
+		env,
+	)
+	const setCookie = await createAuthCookie(
+		{ stableUserId: userId, email: created.email, rememberMe: true },
+		isSecureRequest(request),
+	)
+	void logAuditEvent({
+		db: auditDatabaseFromEnv(env),
+		category: 'oauth',
+		action: 'authorize',
+		result: 'success',
+		ip: requestIp,
+		clientId: authRequest.clientId,
+		reason: 'guest_created',
+	})
+	recordMcpConnectFunnelEvent(env, {
+		stage: 'mcp_connect_succeeded',
+		userId,
+		clientId: authRequest.clientId,
+	})
+	const baseUrl = getAppBaseUrl({ env, requestUrl: new URL(request.url) })
+	return decisionResult(
+		{
+			ok: true,
+			redirectTo,
+			guest: {
+				claimUrl: guestClaimUrl(baseUrl, created.claimCode),
+				expiresAt: created.expiresAt,
+				clientName,
+			},
+		},
+		{ headers: createSetCookieHeaders([setCookie]) },
+	)
+}
+
 export async function decideOAuthAuthorization({
 	request,
 	env,
@@ -1726,6 +1843,17 @@ export async function decideOAuthAuthorization({
 			return decisionError('Missing redirect URI for access denial.')
 		}
 		return decisionResult({ ok: true, redirectTo })
+	}
+
+	if (decision === 'guest') {
+		return completeGuestAuthorization({
+			request,
+			env,
+			helpers,
+			authRequest,
+			requestIp,
+			nonce: oidcParams.nonce,
+		})
 	}
 
 	const email = String(formData.get('email') ?? '').trim()

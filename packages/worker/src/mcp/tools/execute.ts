@@ -1,3 +1,4 @@
+import { attachGuestResultBlock } from '#worker/guest/guest-result-block.ts'
 import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { ExecutionContextError } from '#worker/execution-contexts/errors.ts'
 import { loadOrgUsageWarningsEnabled } from '#worker/orgs/usage-warnings.ts'
@@ -443,8 +444,11 @@ export async function runExecuteToolCall(input: {
 	let chargedWorkerUnits = 0
 	let detachedWork: Promise<unknown> | null = null
 	const transportBudgetMs = input.transportBudgetMs
-	const response = await attachExecuteUsage(
-		attachWorkerUnits(await runExecuteToolWithErrorBoundary()),
+	const response = await attachGuestResultBlock(
+		await attachExecuteUsage(
+			attachWorkerUnits(await runExecuteToolWithErrorBoundary()),
+		),
+		{ db: env.APP_DB, callerContext },
 	)
 	// Detach only after the follow response is built, including the
 	// usage read. A caller cancel before that still stops the sandbox.

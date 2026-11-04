@@ -21,6 +21,8 @@ export const mcpUserContextSchema = object({
 	personalOrgId: optional(string()),
 	roles: optional(array(string())),
 	permissions: optional(array(string())),
+	/** End of full access when the person is a guest (ADR 0091). */
+	guestExpiresAt: optional(string()),
 })
 
 export const mcpStorageContextSchema = object({
@@ -94,7 +96,12 @@ type McpUserContextInferred = InferOutput<typeof mcpUserContextSchema>
 
 export type McpUserContext = Omit<
 	McpUserContextInferred,
-	'userId' | 'roles' | 'permissions' | 'username' | 'personalOrgId'
+	| 'userId'
+	| 'roles'
+	| 'permissions'
+	| 'username'
+	| 'personalOrgId'
+	| 'guestExpiresAt'
 > & {
 	/**
 	 * The signed-in person, or the org's owning account for Automation runs.
@@ -106,6 +113,8 @@ export type McpUserContext = Omit<
 	username?: string
 	roles?: Array<string>
 	permissions?: Array<string>
+	/** End of full access when the person is a guest. */
+	guestExpiresAt?: string
 }
 export type McpStorageContext = InferOutput<typeof mcpStorageContextSchema>
 export type McpRepoContext = InferOutput<typeof mcpRepoContextSchema>
