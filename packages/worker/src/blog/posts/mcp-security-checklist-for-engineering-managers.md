@@ -2,9 +2,8 @@
 title: An MCP security checklist for engineering managers
 date: 2026-11-03
 description:
-  A practical MCP security checklist for engineering managers:
-    what to ask about every MCP server your team's AI agents use, and what good
-    looks like.
+  A practical MCP security checklist for engineering managers. What to ask about
+  every MCP server your team's AI agents use, and what good looks like.
 order: 7
 ---
 

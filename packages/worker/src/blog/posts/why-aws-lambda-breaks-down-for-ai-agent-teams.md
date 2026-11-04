@@ -2,9 +2,8 @@
 title: Why "just use AWS Lambda" breaks down for teams using AI agents
 date: 2026-11-03
 description:
-  ? Lambda can run the code your agents write. The trouble is everything around
-    it
-  : IAM, secrets, deploys, and review. Here's where it breaks for teams.
+  Lambda can run the code your agents write. The trouble is everything around
+  it, like IAM, secrets, deploys, and review. Here's where it breaks for teams.
 order: 18
 ---
 
