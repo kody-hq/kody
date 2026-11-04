@@ -244,8 +244,8 @@ function renderOauthAuthorizeGrant(input: {
 				{input.selectedOrgSlug
 					? ` organization @${input.selectedOrgSlug}`
 					: ' account'}
-				: packages, memories, secrets, email, connected services, and anything
-				else your assistant can do.
+				: packages, memories, credentials, email, connected services, and
+				anything else your assistant can do.
 			</p>
 			{input.scopes.length > 0 ? (
 				<details
@@ -653,7 +653,7 @@ export function OAuthAuthorizeRoute({
 	return (
 		<section css={pageCss}>
 			<OAuthAuthorizeConnectionHeader clientLabel={clientLabel} />
-			{accessLead ? (
+			{accessLead && status !== 'ready' ? (
 				<p css={{ ...pageDescriptionCss, textAlign: 'center' }}>{accessLead}</p>
 			) : null}
 			{status === 'ready'
