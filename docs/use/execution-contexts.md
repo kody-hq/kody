@@ -27,7 +27,8 @@ Execution contexts are an experiment. Turn them on at
   `automationExecutionSet`.
 - Every run on a context uses the requester's own credentials exactly as in Kody
   cloud, and credentialed requests leave from Kody cloud, so credential values
-  never reach the machine.
+  never reach the machine. `execute`'s `credentials` map is stored on the run
+  lease; the machine cannot override those picks.
 - The operator's own runs on a context have the same Kody access as in Kody
   cloud, workflows included. On a shared context, someone else's runs need their
   opt-in (`executionContextOptIn`, `POST /v1/execution-contexts/{id}/opt-in`, or
@@ -41,8 +42,12 @@ Execution contexts are an experiment. Turn them on at
 - Capabilities: `executionContextList`, `executionContextGet`,
   `executionContextUpdate`, `executionContextRevoke`, `executionContextDelete`,
   `executionContextRunList`, `executionContextRunCancel`, `executionChainGet`,
-  `executionChainSet`, and the sharing capabilities. Find them with
-  `search({ query: "execution context" })`.
+  `executionChainSet`, `executionContextNoticeDismiss`,
+  `executionContextSharePreview`, and the sharing capabilities. Find them with
+  `search({ query: "execution context" })`. Shared-box access notices appear
+  once in execute and search `notices` (`context-elevation` for a grantee;
+  `context-misconfigured` for the operator). See
+  [Shared-box best practices](../guides/execution-contexts.md#shared-box-best-practices).
 - CLI: `kody connect --name <name>` (register plus background service),
   `kody context register --name <name>`,
   `kody daemon install | status [--json] | logs | start | stop | restart | uninstall`,

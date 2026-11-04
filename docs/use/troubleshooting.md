@@ -192,14 +192,10 @@ Cloudflare Tunnel and Access, also see
 
 ## The `api` tool is missing (only `search` and `execute`)
 
-- **ChatGPT:** Kody's tool updates are not currently being picked up in ChatGPT.
-  If `api` is missing, add Kody manually in developer mode (see
-  [Connect your agent](./connect-your-agent.md)), or use the Kody CLI, for
-  example `npx @kodycodes/cli api tokenList` and
-  `npx @kodycodes/cli api tokenRevoke --params '{"token_id":"<id>"}'`.
-- **Other clients:** refresh the Kody server's tools (reconnect, or restart the
-  client). Until then, use `npx @kodycodes/cli api <operationId>`. See
-  [API tokens](../guides/api-tokens.md).
+See
+[API tokens](../guides/api-tokens.md#only-search-and-execute-in-your-tool-list)
+for ChatGPT (developer mode or the CLI) and other clients (refresh the tool
+list). Until the client shows `api`, use `npx @kodycodes/cli api <operationId>`.
 
 ## Search returns no good matches
 
@@ -227,6 +223,9 @@ hit the limit:
   a thin orchestrator and run the heavy work in a process the owner operates.
   See
   [Offload work that does not fit a Worker isolate](../guides/heavy-work-offload.md).
+  If the package runs once built and only publish bundling exceeds the isolate,
+  build outside Kody cloud:
+  [Publish packages too big for Kody cloud](../guides/publish-large-packages.md).
 
 Do not vendor a heavy library or switch to a dynamic import to dodge a bundle
 limit. Memory and CPU use vary between runs, so shrink what the checks read

@@ -66,8 +66,8 @@ account on every plan; nothing gates `api` by tier, scope, or client. If your
 agent only sees `search` and `execute`, its MCP client has not picked up the
 current tool list.
 
-- **ChatGPT:** Kody's tool updates are not currently being picked up in ChatGPT,
-  so reconnecting does not add `api`. Add Kody manually in developer mode (see
+- **ChatGPT:** ChatGPT does not refresh Kody's tool list after reconnect, so
+  `api` stays missing. Add Kody in developer mode (see
   [Connect your agent](../use/connect-your-agent.md)), or use the Kody CLI:
   `npx @kodycodes/cli api tokenList` and
   `npx @kodycodes/cli api tokenRevoke --params '{"token_id":"<id>"}'`.
