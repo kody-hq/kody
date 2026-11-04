@@ -130,7 +130,9 @@ function fixture(platform = 'darwin') {
 		},
 		show: (path) => context.showApp(path),
 		failLoad: (code) => {
-			nextLoadError = Object.assign(new Error(code), { code })
+			nextLoadError = code
+				? Object.assign(new Error(code), { code })
+				: undefined
 		},
 		quitCount: () => quitting,
 	}
@@ -209,5 +211,21 @@ test('reopening a crashed window reloads its current page', async () => {
 	assert.deepEqual(window.loads.slice(-2), [
 		'https://kody.codes/working?draft=1',
 		'https://kody.codes/working?draft=1',
+	])
+})
+
+test('reopening retries the failed page once and preserves it after success', async () => {
+	const f = fixture()
+	f.failLoad('ERR_INTERNET_DISCONNECTED')
+	await f.start()
+	await f.finish()
+	const window = f.windows[0]
+	assert.equal(f.errors.length, 1)
+	f.failLoad()
+	f.app.emit('activate')
+	f.app.emit('second-instance')
+	assert.deepEqual(window.loads, [
+		'https://kody.codes/account',
+		'https://kody.codes/account',
 	])
 })

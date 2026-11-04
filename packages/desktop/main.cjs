@@ -53,6 +53,7 @@ function isCurrentAppUrl(value) {
 }
 let navigation
 let windowOpening
+let failedLoadUrl
 ipcMain.handle('kody:navigation', (event, command) => {
 	if (!navigation?.accepts(event))
 		throw new Error('Navigation is only available to the main Kody document.')
@@ -301,19 +302,24 @@ async function showApp(path) {
 	window.focus()
 	const shownWindow = window
 	const crashed = shownWindow.webContents.isCrashed()
-	if (!creating && !path && !crashed) return
-	const url = crashed && !path ? shownWindow.webContents.getURL() : ''
-	void shownWindow
-		.loadURL(url || `${appOrigin}${path ?? '/account'}`)
-		.catch((error) => {
-			// A newer navigation can cancel this load without failing the page.
-			if (
-				!quitting &&
-				!shownWindow.isDestroyed() &&
-				error.code !== 'ERR_ABORTED'
-			)
-				dialog.showErrorBox('Could not load Kody', error.message)
-		})
+	if (!creating && !path && !crashed && !failedLoadUrl) return
+	const url = path
+		? `${appOrigin}${path}`
+		: failedLoadUrl ||
+			shownWindow.webContents.getURL() ||
+			`${appOrigin}/account`
+	failedLoadUrl = undefined
+	void shownWindow.loadURL(url).catch((error) => {
+		// A newer navigation can cancel this load without failing the page.
+		if (
+			!quitting &&
+			!shownWindow.isDestroyed() &&
+			error.code !== 'ERR_ABORTED'
+		) {
+			failedLoadUrl = url
+			dialog.showErrorBox('Could not load Kody', error.message)
+		}
+	})
 }
 async function supportsBrowserLogin() {
 	try {
@@ -421,7 +427,11 @@ async function createWindow() {
 			window.hide()
 		}
 	})
+	window.webContents.on('did-finish-load', () => {
+		failedLoadUrl = undefined
+	})
 	window.on('closed', () => {
+		failedLoadUrl = undefined
 		window = null
 		navigation = null
 	})
