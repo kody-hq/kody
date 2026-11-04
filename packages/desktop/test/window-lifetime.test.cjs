@@ -37,6 +37,8 @@ function fixture(platform = 'darwin') {
 			this.destroyed = false
 			this.minimized = false
 			this.webContents = Object.assign(new EventEmitter(), {
+				isCrashed: () => this.crashed === true,
+				getURL: () => this.loads.at(-1) ?? '',
 				session: {
 					setPermissionRequestHandler() {},
 					setPermissionCheckHandler() {},
@@ -191,5 +193,21 @@ test('canceled navigation is quiet but real load failures are reported', async (
 	await f.show('/account')
 	assert.deepEqual(f.errors, [
 		['Could not load Kody', 'ERR_INTERNET_DISCONNECTED'],
+	])
+})
+
+test('reopening a crashed window reloads its current page', async () => {
+	const f = fixture()
+	await f.start()
+	await f.finish()
+	const window = f.windows[0]
+	await f.show('/working?draft=1')
+	window.close()
+	window.crashed = true
+	f.app.emit('activate')
+	assert.equal(window.visible, true)
+	assert.deepEqual(window.loads.slice(-2), [
+		'https://kody.codes/working?draft=1',
+		'https://kody.codes/working?draft=1',
 	])
 })

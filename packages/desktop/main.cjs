@@ -299,10 +299,12 @@ async function showApp(path) {
 	if (window.isMinimized()) window.restore()
 	window.show()
 	window.focus()
-	if (!creating && !path) return
 	const shownWindow = window
+	const crashed = shownWindow.webContents.isCrashed()
+	if (!creating && !path && !crashed) return
+	const url = crashed && !path ? shownWindow.webContents.getURL() : ''
 	void shownWindow
-		.loadURL(`${appOrigin}${path ?? '/account'}`)
+		.loadURL(url || `${appOrigin}${path ?? '/account'}`)
 		.catch((error) => {
 			// A newer navigation can cancel this load without failing the page.
 			if (
