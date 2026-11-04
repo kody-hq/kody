@@ -137,3 +137,34 @@ export function planCliRelease(input: {
 	const version = nextVersion(input.currentVersion, bump)
 	return version ? { version } : null
 }
+
+function compareVersions(a: string, b: string): number {
+	const left = a.split('.').map(Number)
+	const right = b.split('.').map(Number)
+	for (let index = 0; index < 3; index++) {
+		const diff = (left[index] ?? 0) - (right[index] ?? 0)
+		if (diff !== 0) return diff
+	}
+	return 0
+}
+
+/**
+ * Where the next release counts from. npm is the record of what shipped: a
+ * publish whose tag push failed leaves npm ahead of the tags, so count from
+ * the published commit instead of planning a version npm already has.
+ */
+export function pickReleaseBase(input: {
+	tag: { name: string; version: string }
+	published: { version: string; gitHead: string | null } | null
+}): { ref: string; version: string } {
+	const { tag, published } = input
+	if (!published || compareVersions(published.version, tag.version) <= 0) {
+		return { ref: tag.name, version: tag.version }
+	}
+	if (!published.gitHead) {
+		throw new Error(
+			`${cliPackageName}@${published.version} is on npm without a gitHead and ahead of ${tag.name}; push tag cli-v${published.version} at the commit it was published from.`,
+		)
+	}
+	return { ref: published.gitHead, version: published.version }
+}

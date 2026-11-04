@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import {
 	cliBaselineVersion,
 	cliPathAffectsPublishedPackage,
+	pickReleaseBase,
 	planCliRelease,
 	type ReleaseCommit,
 } from './cli-release-plan.ts'
@@ -171,4 +172,33 @@ test('breaking feat on the CLI is major', () => {
 			],
 		}),
 	).toEqual({ version: '2.0.0' })
+})
+
+test('release base counts from npm when a publish left npm ahead of the tags', () => {
+	const tag = { name: 'cli-v3.27.1', version: '3.27.1' }
+	expect(pickReleaseBase({ tag, published: null })).toEqual({
+		ref: 'cli-v3.27.1',
+		version: '3.27.1',
+	})
+	expect(
+		pickReleaseBase({
+			tag,
+			published: { version: '3.27.1', gitHead: 'abc' },
+		}),
+	).toEqual({ ref: 'cli-v3.27.1', version: '3.27.1' })
+	expect(
+		pickReleaseBase({
+			tag,
+			published: { version: '3.27.2', gitHead: 'abc' },
+		}),
+	).toEqual({ ref: 'abc', version: '3.27.2' })
+	expect(
+		pickReleaseBase({
+			tag: { name: 'cli-v3.9.0', version: '3.9.0' },
+			published: { version: '3.10.0', gitHead: 'def' },
+		}),
+	).toEqual({ ref: 'def', version: '3.10.0' })
+	expect(() =>
+		pickReleaseBase({ tag, published: { version: '3.27.2', gitHead: null } }),
+	).toThrow('without a gitHead')
 })
