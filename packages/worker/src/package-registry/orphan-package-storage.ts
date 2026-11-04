@@ -1,3 +1,7 @@
+/**
+ * soft-delete-read-filter: opt-out — orphan detection counts soft-deleted
+ * packages as present, so these reads include them on purpose.
+ */
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { liveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { clearPackageOwnedStorageBucket } from './service.ts'
