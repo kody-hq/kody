@@ -4,7 +4,6 @@ date: 2026-09-25
 description: webhookSyntheticDispatch sends a test event to your package webhook, plus 5 more updates to Activity, search, and files, and 1 breaking change.
 order: 1
 category: updates
-placeholder: false
 ---
 
 Here is what shipped in Kody from September 19 to September 25, 2026. This week

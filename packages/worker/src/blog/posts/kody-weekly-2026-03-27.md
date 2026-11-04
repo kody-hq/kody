@@ -4,7 +4,6 @@ date: 2026-03-27
 description: Codemode fetch fills in secrets only for approved hosts, plus 6 more updates to saved UI apps, integrations, and fixes.
 order: 1
 category: updates
-placeholder: false
 ---
 
 Here is what shipped in Kody from March 21 to March 27, 2026. This week is about

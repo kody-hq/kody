@@ -143,7 +143,6 @@ export const loadBlogPost = createServerFn({ method: 'GET' })
 			description: post.description,
 			category: post.category,
 			readingMinutes: post.readingMinutes,
-			placeholder: post.placeholder,
 			image: post.image,
 			imageAlt: post.imageAlt,
 			ogImage: post.ogImage,

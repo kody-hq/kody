@@ -4,7 +4,6 @@ import type { CSSObject } from '@emotion/react'
 import { type CSSProperties, useMemo } from 'react'
 import {
 	BLOG_AUTHOR_NAME,
-	BLOG_PLACEHOLDER_CALLOUT,
 	formatBlogPostDate,
 } from '#universal/blog-display.ts'
 import type { BlogPostLoaderData } from '#universal/loader-data.ts'
@@ -107,17 +106,6 @@ export function BlogPostRoute({ post }: { post: BlogPostLoaderData }) {
 							style={{ '--rise': '3' } as CSSProperties}
 							css={postImageCss}
 						/>
-					) : null}
-
-					{post.placeholder ? (
-						<aside
-							data-rise
-							style={{ '--rise': '4' } as CSSProperties}
-							css={placeholderCalloutCss}
-							role="note"
-						>
-							<p>{BLOG_PLACEHOLDER_CALLOUT}</p>
-						</aside>
 					) : null}
 
 					<div css={proseCss}>{renderedBody}</div>
@@ -262,22 +250,6 @@ const postImageCss = {
 	margin: 'clamp(1.5rem, 4vw, 2.2rem) 0 0',
 	borderRadius: radius.card,
 	border: `1px solid ${colors.border}`,
-} satisfies CSSObject
-
-const placeholderCalloutCss = {
-	marginTop: 'clamp(1.4rem, 3vw, 2rem)',
-	padding: '1rem 1.15rem',
-	border: `1.5px solid ${colors.border}`,
-	borderRadius: radius.card,
-	backgroundColor: colors.surface,
-	'& p': {
-		margin: 0,
-		color: colors.textMuted,
-		fontSize: '0.95rem',
-		lineHeight: 1.5,
-		maxWidth: '62ch',
-		textWrap: 'pretty' as const,
-	},
 } satisfies CSSObject
 
 const postFootCss = {

@@ -4,7 +4,6 @@ date: 2026-04-17
 description: A unified job_* surface runs your code on cron, interval, or one-time schedules, plus 8 more updates to storage, apps, memory, and repos.
 order: 1
 category: updates
-placeholder: false
 ---
 
 Here is what shipped in Kody from April 11 to April 17, 2026. This week your

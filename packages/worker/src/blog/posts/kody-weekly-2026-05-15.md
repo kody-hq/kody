@@ -4,7 +4,6 @@ date: 2026-05-15
 description: packages.invoke and packages.invokeChecked call another package's current export, plus 8 more updates and 4 breaking changes.
 order: 1
 category: updates
-placeholder: false
 ---
 
 Here is what shipped in Kody from May 9 to May 15, 2026. This week packages can

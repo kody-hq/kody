@@ -4,7 +4,6 @@ date: 2026-05-22
 description: Authenticated fetch uses your saved access token and keeps your refresh token name after reauth, plus no other updates this week.
 order: 1
 category: updates
-placeholder: false
 ---
 
 Here is what shipped in Kody from May 16 to May 22, 2026. This is a quiet week

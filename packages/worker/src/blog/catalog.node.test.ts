@@ -49,7 +49,6 @@ test('parseBlogPostMarkdown reads frontmatter and rejects invalid input', () => 
 		category: 'how-to',
 		series: null,
 		featured: false,
-		placeholder: true,
 		image: null,
 		imageAlt: null,
 		ogImage: null,
@@ -70,11 +69,10 @@ test('parseBlogPostMarkdown reads frontmatter and rejects invalid input', () => 
 		parseBlogPostMarkdown(
 			'reviewed',
 			markdown(
-				`title: Reviewed\n${baseFrontmatter}\nplaceholder: false\nimage: /images/openclaw-2-needs-a-home.webp\nimageAlt: Kody stands with his arm around OpenClaw.`,
+				`title: Reviewed\n${baseFrontmatter}\nimage: /images/openclaw-2-needs-a-home.webp\nimageAlt: Kody stands with his arm around OpenClaw.`,
 			),
 		),
 	).toMatchObject({
-		placeholder: false,
 		image: '/images/openclaw-2-needs-a-home.webp',
 		imageAlt: 'Kody stands with his arm around OpenClaw.',
 		ogImage: null,
@@ -120,8 +118,8 @@ test('parseBlogPostMarkdown reads frontmatter and rejects invalid input', () => 
 		],
 		[baseFrontmatter, /missing frontmatter "title"/],
 		[
-			`title: Bad placeholder\n${baseFrontmatter}\nplaceholder: maybe`,
-			/invalid frontmatter "placeholder"/,
+			`title: Retired placeholder\n${baseFrontmatter}\nplaceholder: false`,
+			/unknown frontmatter "placeholder"/,
 		],
 		[
 			`title: Bad image\n${baseFrontmatter}\nimage: https://example.com/image.webp\nimageAlt: Nope`,
@@ -233,7 +231,6 @@ test('buildBlogRssXml escapes markup and includes every catalog post', () => {
 				category: 'essays',
 				series: null,
 				featured: false,
-				placeholder: true,
 				image: null,
 				imageAlt: null,
 				ogImage: null,

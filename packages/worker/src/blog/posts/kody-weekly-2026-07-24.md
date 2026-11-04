@@ -4,7 +4,6 @@ date: 2026-07-24
 description: Pick a Free plan or upgrade to Pro for $5 a month, plus 8 more updates to profiles, search, email, and package storage.
 order: 1
 category: updates
-placeholder: false
 ---
 
 Here is what shipped in Kody from July 18 to July 24, 2026. This week Kody gets

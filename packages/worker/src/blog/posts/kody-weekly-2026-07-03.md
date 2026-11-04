@@ -4,7 +4,6 @@ date: 2026-07-03
 description: Package invocation calls can use your attached remote connectors, plus 1 more update and 3 fixes to jobs and account security.
 order: 1
 category: updates
-placeholder: false
 ---
 
 Here is what shipped in Kody from June 27 to July 3, 2026. This is a quiet week:

@@ -30,21 +30,19 @@ category: how-to
 series: agent-credentials-for-team-leads
 updated: 2026-10-12
 featured: true
-placeholder: false
 ---
 ```
 
-| Key                            | Required | Rule                                                                        |
-| ------------------------------ | -------- | --------------------------------------------------------------------------- |
-| `title`, `description`         | yes      | Plain text, no quotes (the parser keeps them).                              |
-| `date`                         | yes      | `YYYY-MM-DD` publish date.                                                  |
-| `order`                        | yes      | Integer tie-break for posts on the same date (lower first).                 |
-| `category`                     | yes      | Exactly one slug from the list below.                                       |
-| `series`                       | no       | A series slug from `blog-taxonomy.ts`.                                      |
-| `updated`                      | no       | Last meaningful revision, not before `date`. Typo fixes do not count.       |
-| `featured`                     | no       | `true` pins the post as the index hero. At most one post.                   |
-| `placeholder`                  | no       | Defaults to `true` (shows the AI-draft callout). Set `false` once reviewed. |
-| `image`, `imageAlt`, `ogImage` | no       | `/images/...` asset paths; `imageAlt` is required with `image`.             |
+| Key                            | Required | Rule                                                                  |
+| ------------------------------ | -------- | --------------------------------------------------------------------- |
+| `title`, `description`         | yes      | Plain text, no quotes (the parser keeps them).                        |
+| `date`                         | yes      | `YYYY-MM-DD` publish date.                                            |
+| `order`                        | yes      | Integer tie-break for posts on the same date (lower first).           |
+| `category`                     | yes      | Exactly one slug from the list below.                                 |
+| `series`                       | no       | A series slug from `blog-taxonomy.ts`.                                |
+| `updated`                      | no       | Last meaningful revision, not before `date`. Typo fixes do not count. |
+| `featured`                     | no       | `true` pins the post as the index hero. At most one post.             |
+| `image`, `imageAlt`, `ogImage` | no       | `/images/...` asset paths; `imageAlt` is required with `image`.       |
 
 Any other key (including `tags`) fails the build.
 

@@ -7,7 +7,6 @@ description:
   model again.
 order: 8
 category: how-to
-placeholder: true
 image: /images/kody-factory-map.webp
 imageAlt:
   Kody, a 3D koala in a white jacket, presents a wooden factory board with a

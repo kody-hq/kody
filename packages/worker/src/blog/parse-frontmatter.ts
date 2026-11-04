@@ -21,12 +21,6 @@ export type BlogPostFrontmatter = {
 	series: BlogSeriesSlug | null
 	/** Pins the post as the blog index hero. At most one post sets it. */
 	featured: boolean
-	/**
-	 * When true, the post page shows the AI-placeholder callout. Omit the
-	 * field to keep the callout (existing posts). Set `placeholder: false`
-	 * after a human review.
-	 */
-	placeholder: boolean
 	/** Optional origin-relative artwork shown as the post headline. */
 	image: string | null
 	/** Accessible description required when `image` is present. */
@@ -54,7 +48,6 @@ const KNOWN_KEYS = new Set([
 	'category',
 	'series',
 	'featured',
-	'placeholder',
 	'image',
 	'imageAlt',
 	'ogImage',
@@ -93,7 +86,6 @@ function parseBooleanField(
  * category: essays | how-to | updates | stories
  * series: <series slug> (optional)
  * featured: true | false (optional; default false)
- * placeholder: true | false (optional; default true)
  * image: /images/<file> (optional)
  * imageAlt: <string, required with image>
  * ogImage: /images/<file> (optional Satori artwork on the generated card)
@@ -175,7 +167,6 @@ export function parseBlogPostMarkdown(slug: string, raw: string): BlogPost {
 	const date = fields.get('date')
 	const description = fields.get('description')
 	const orderRaw = fields.get('order')
-	const placeholderRaw = fields.get('placeholder')
 	const updated = fields.get('updated') ?? null
 	const categoryRaw = fields.get('category')
 	const seriesRaw = fields.get('series') ?? null
@@ -228,12 +219,6 @@ export function parseBlogPostMarkdown(slug: string, raw: string): BlogPost {
 		)
 	}
 
-	const placeholder = parseBooleanField(
-		slug,
-		'placeholder',
-		placeholderRaw,
-		true,
-	)
 	const featured = parseBooleanField(slug, 'featured', featuredRaw, false)
 
 	if (image !== null && !BLOG_IMAGE_PATTERN.test(image)) {
@@ -267,7 +252,6 @@ export function parseBlogPostMarkdown(slug: string, raw: string): BlogPost {
 		category: category.slug,
 		series: series?.slug ?? null,
 		featured,
-		placeholder,
 		image,
 		imageAlt,
 		ogImage: ogImageRaw,

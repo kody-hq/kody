@@ -4,7 +4,6 @@ date: 2026-10-16
 description: Org settings and members pages under /@slug/-/, plus 7 more updates to triggers, credentials, MCP servers, and packages.
 order: 1
 category: updates
-placeholder: false
 ---
 
 Here is what shipped in Kody from October 10 to October 16, 2026. This week team

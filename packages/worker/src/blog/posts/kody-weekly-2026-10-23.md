@@ -4,7 +4,6 @@ date: 2026-10-23
 description: Convert a personal org into a team org, plus 7 more updates to the CLI, OAuth, package apps, and credentials.
 order: 1
 category: updates
-placeholder: false
 ---
 
 Here is what shipped in Kody from October 17 to October 22, 2026. This week you
