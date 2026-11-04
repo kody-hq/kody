@@ -53,6 +53,16 @@ test('runD1WithRetry matches lock errors, retries them, and rethrows other failu
 		['D1_ERROR: D1 DB is overloaded. Too many requests queued.', true, true],
 		['D1 DB is overloaded. Too many requests queued', true, true],
 		[
+			'D1_ERROR: D1 DB is overloaded. Too many resources consumed within a 10 second window.',
+			true,
+			true,
+		],
+		[
+			'D1 DB is overloaded. Too many resources consumed within a 10 second window',
+			true,
+			false,
+		],
+		[
 			'D1_ERROR: internal error; reference = 0u3odos5iotccpol68ppc0eg',
 			true,
 			true,
