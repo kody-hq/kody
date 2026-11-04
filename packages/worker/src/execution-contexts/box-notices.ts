@@ -161,7 +161,7 @@ export async function refreshContextNotices(
 				entries: await excessForUser(db, box, orgId, userId),
 			})
 		}
-		if (!options.userIds && userIds.length <= maxTrackedGrantees) {
+		if (!options.userIds && userIds.length < maxTrackedGrantees) {
 			await pruneElevations(db, { contextId: row.id, orgId, keep: userIds })
 		}
 		const owning =

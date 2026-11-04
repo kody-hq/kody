@@ -579,7 +579,7 @@ export async function previewExecutionContextShareForUser(
 			excessCount: people.reduce(
 				(total: number, person: { excess?: Array<unknown> }) =>
 					total + (Array.isArray(person.excess) ? person.excess.length : 0),
-				0,
+				typeof result.unchecked === 'number' ? result.unchecked : 0,
 			),
 			people: people.length,
 		}

@@ -60,5 +60,10 @@ export async function previewShare(
 			excess: await excessForUser(db, box, caller.orgId, userId),
 		})),
 	)
-	return { box: box.principal, people }
+	// People past the cap are unchecked; callers treat them as possible excess.
+	return {
+		box: box.principal,
+		people,
+		unchecked: Math.max(0, userIds.length - people.length),
+	}
 }
