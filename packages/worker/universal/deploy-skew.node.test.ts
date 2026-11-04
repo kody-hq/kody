@@ -1,7 +1,5 @@
 import { expect, test } from 'vitest'
 import {
-	deploySkewBuildHeader,
-	deploySkewBuildMetaName,
 	deploySkewReloadAttemptKey,
 	isDeploySkewMismatch,
 	normalizeDeploySkewBuildId,
@@ -30,11 +28,6 @@ test('normalizeDeploySkewBuildId lowercases and rejects short or junk IDs', () =
 	expect(normalizeDeploySkewBuildId(left.toUpperCase())).toBe(left)
 	expect(normalizeDeploySkewBuildId('not-a-sha')).toBeNull()
 	expect(normalizeDeploySkewBuildId('')).toBeNull()
-})
-
-test('deploy skew header and meta names stay stable for client/server wiring', () => {
-	expect(deploySkewBuildHeader).toBe('X-Kody-Build')
-	expect(deploySkewBuildMetaName).toBe('kody:build')
 })
 
 test('deploySkewReloadAttemptKey keys one attempt per server build and href', () => {

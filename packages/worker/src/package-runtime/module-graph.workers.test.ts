@@ -14,7 +14,6 @@ import {
 	buildKodyImportableModuleBundle,
 	buildKodyModuleBundle,
 } from './module-graph.ts'
-import { packageAppClientModuleNamePattern } from './package-app-client-module-name.ts'
 import { persistPublishedSourceSnapshot } from './published-runtime-artifacts.ts'
 import { persistPublishedBundleArtifact } from './published-bundle-artifacts.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
@@ -522,7 +521,7 @@ export const mounted = render(greeting.name)`,
 			})
 
 		const bundle = await buildClient()
-		expect(bundle.mainModule).toMatch(packageAppClientModuleNamePattern)
+		expect(bundle.mainModule).toMatch(/^client\.[A-Za-z0-9_-]{16}\.js$/)
 		expect(Object.keys(bundle.modules)).toEqual([bundle.mainModule])
 		const source = bundle.modules[bundle.mainModule]
 		expect(typeof source).toBe('string')

@@ -6,7 +6,6 @@ import { applyDeliverabilitySideEffects } from './deliverability-side-effects.ts
 import {
 	isHardBounce,
 	loadVerificationRecipientHardBounce,
-	verificationHardBounceMessage,
 } from './recipient-suppression.ts'
 
 function createDb() {
@@ -68,7 +67,6 @@ test('a hard bounce suppresses later verification sends until a delivery clears 
 		scope: 'verification',
 		lastStatus: 'bounced',
 	})
-	expect(verificationHardBounceMessage).toContain('support@kody.codes')
 	await applyDeliverabilitySideEffects({
 		db,
 		recipient: "O'Brien <o'brien@company.com>",

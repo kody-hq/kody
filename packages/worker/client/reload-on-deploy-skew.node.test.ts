@@ -2,7 +2,6 @@ import { afterEach, expect, test, vi } from 'vitest'
 import {
 	clearDeploySkewReloadFlag,
 	createDeploySkewRecoveryError,
-	deploySkewRecoveryErrorName,
 	deploySkewReloadFlag,
 	isDeploySkewRecoveryError,
 	readClientBuildId,
@@ -196,7 +195,7 @@ test('clearDeploySkewReloadFlag does not throw when sessionStorage is unavailabl
 
 test('deploy skew recovery errors are identifiable for Sentry filters', () => {
 	const error = createDeploySkewRecoveryError()
-	expect(error.name).toBe(deploySkewRecoveryErrorName)
+	expect(error.name).toBe('DeploySkewRecovery')
 	expect(isDeploySkewRecoveryError(error)).toBe(true)
 	expect(isDeploySkewRecoveryError(new Error('Deploy skew recovery'))).toBe(
 		false,

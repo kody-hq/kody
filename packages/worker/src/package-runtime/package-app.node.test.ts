@@ -166,7 +166,7 @@ test('package app kody.mcp supports calls, advertises connected servers, and ded
 	>
 
 	// GHSA-5fv3: the run proxy never stamps package authority into args.
-	expect(kodyProxySource).not.toContain(secretAuthorityArgName)
+	expect(kodyProxySource).not.toContain('__kodySecretAuthorityPackageId')
 
 	const withoutNames = createKodyProxyForTest(runtimeBridge)
 	await expect(
