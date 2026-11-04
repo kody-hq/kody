@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -11,9 +12,12 @@ import {
 	runPublishWithBuild,
 } from '../src/publish-offload.js'
 import {
+	buildWorkingTreeLocally,
+	contextCloneGitEnv,
 	publishBuildUploadUrl,
 	runLocalPublishBuild,
 } from '../src/local-publish-build.js'
+import { OpenApiError } from '../src/open-api-client.js'
 
 function git(dir: string, ...args: Array<string>) {
 	return execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim()
@@ -37,23 +41,37 @@ const fakeBuilder = async () => ({
 	publishBuilderVersion: 1,
 	close: async () => {},
 	buildPublishTargets: async (input: {
-		sourceFiles: Record<string, string>
-	}) => [
-		{
-			target: {
-				kind: 'module',
-				bundleKind: 'module' as const,
-				entryPoint: 'index.ts',
-			},
-			mainModule: 'index.js',
-			modules: {
-				'index.js': encoder.encode(
-					`js\0${input.sourceFiles['index.ts'] ?? ''}`,
-				),
-			},
-			inlinedPackageIds: [],
-		},
-	],
+		files: Array<{ path: string; base64: string }>
+	}) => {
+		const bytes = (path: string) =>
+			Buffer.from(
+				input.files.find((file) => file.path === path)?.base64 ?? '',
+				'base64',
+			)
+		return {
+			files: input.files.map((file) => ({
+				path: file.path,
+				size: bytes(file.path).byteLength,
+				sha256: createHash('sha256').update(bytes(file.path)).digest('hex'),
+			})),
+			targets: [
+				{
+					target: {
+						kind: 'module',
+						bundleKind: 'module' as const,
+						entryPoint: 'index.ts',
+					},
+					mainModule: 'index.js',
+					modules: {
+						'index.js': encoder.encode(
+							`js\0${bytes('index.ts').toString('utf8')}`,
+						),
+					},
+					inlinedPackageIds: [],
+				},
+			],
+		}
+	},
 })
 
 function fakeServer(alreadyUploaded: Array<string> = []) {
@@ -219,4 +237,80 @@ test('uploads go to the Open API host the CLI uses, not the app origin', () => {
 		publishBuildUploadUrl('http://localhost:3742/', '/v1/publish-builds/pb_1'),
 		'http://localhost:3742/v1/publish-builds/pb_1',
 	)
+})
+
+test('a resource-limit HTTP error still prints the offload commands', async () => {
+	const failure = new OpenApiError(
+		`Exceeded memory limit. See ${publishLargePackagesDocsUrl}`,
+		{ status: 500 },
+	)
+	let stderr = ''
+	await assert.rejects(
+		runPublishWithBuild({
+			build: null,
+			target: { kody_id: '@me/big' },
+			call: async () => {
+				throw failure
+			},
+			apiUrl: 'https://kody.test',
+			cwd: process.cwd(),
+			interactive: false,
+			writeErr: (text) => {
+				stderr += text
+			},
+		}),
+		(error) => error === failure,
+	)
+	assert.match(stderr, /--build local/)
+	assert.ok(stderr.includes(publishLargePackagesDocsUrl))
+	await assert.rejects(
+		runPublishWithBuild({
+			build: null,
+			target: {},
+			call: async () => {
+				throw new OpenApiError('Unauthorized', { status: 401 })
+			},
+			apiUrl: 'https://kody.test',
+			cwd: process.cwd(),
+			interactive: false,
+			writeErr: () => {
+				throw new Error('should not print offload commands')
+			},
+		}),
+		/Unauthorized/,
+	)
+})
+
+test('the context clone token goes in git config env, never argv or the URL', () => {
+	const env = contextCloneGitEnv('art_secret?expires=123')
+	assert.equal(env.GIT_CONFIG_KEY_0, 'http.extraHeader')
+	assert.equal(
+		env.GIT_CONFIG_VALUE_0,
+		`Authorization: Basic ${Buffer.from('x:art_secret').toString('base64')}`,
+	)
+	assert.equal(env.GIT_TERMINAL_PROMPT, '0')
+})
+
+test('a builder that fails to start leaves no temp folder', async () => {
+	const { dir } = repo({ 'index.ts': 'export default 1' })
+	const leftovers = () =>
+		readdirSync(tmpdir()).filter((name) =>
+			name.startsWith('kody-publish-builder-'),
+		).length
+	const before = leftovers()
+	const previous = process.env.KODY_PUBLISH_BUILDER_DIR
+	process.env.KODY_PUBLISH_BUILDER_DIR = join(dir, 'no-builder-here')
+	try {
+		await assert.rejects(
+			buildWorkingTreeLocally({
+				dir,
+				packageId: 'pkg-1',
+				apiUrl: 'https://kody.test',
+			}),
+		)
+	} finally {
+		if (previous === undefined) delete process.env.KODY_PUBLISH_BUILDER_DIR
+		else process.env.KODY_PUBLISH_BUILDER_DIR = previous
+	}
+	assert.equal(leftovers(), before)
 })

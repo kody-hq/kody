@@ -23,14 +23,30 @@ type PublishBuiltTarget = {
 	inlinedPackageIds: Array<string>
 }
 
+type PublishBuildFileManifestEntry = {
+	path: string
+	size: number
+	sha256: string
+}
+
 export type PublishBuilder = {
 	publishBuilderVersion: number
+	/**
+	 * `files` are the commit's raw blobs at repo-root paths. The builder
+	 * turns them into the snapshot the server keeps (binary encoding,
+	 * `.kodyignore`) and returns the manifest the server checks.
+	 */
 	buildPublishTargets(input: {
-		sourceFiles: Record<string, string>
+		files: Array<{ path: string; base64: string }>
+		sourceRoot: string
+		manifestPath: string
 		rootPackageId: string
 		userId: string
 		baseUrl: string
-	}): Promise<Array<PublishBuiltTarget>>
+	}): Promise<{
+		files: Array<PublishBuildFileManifestEntry>
+		targets: Array<PublishBuiltTarget>
+	}>
 	close(): Promise<void>
 }
 
@@ -72,14 +88,27 @@ ${wasm}
  * local workerd with no network and no bindings, and POST the tree to it.
  */
 async function loadPublishBuilder(): Promise<PublishBuilder> {
-	const { copyFile, readdir, writeFile } = await import('node:fs/promises')
 	const { fileURLToPath } = await import('node:url')
-	const { ensureWorkerdBinary } = await import('./workerd-binary.js')
-	const { startWorkerd } = await import('./dev/workerd-process.js')
 	const distDir =
 		process.env.KODY_PUBLISH_BUILDER_DIR ??
 		path.dirname(fileURLToPath(import.meta.url))
 	const workDir = await mkdtemp(path.join(tmpdir(), 'kody-publish-builder-'))
+	try {
+		return await startPublishBuilder({ distDir, workDir })
+	} catch (error) {
+		await rm(workDir, { recursive: true, force: true })
+		throw error
+	}
+}
+
+async function startPublishBuilder(input: {
+	distDir: string
+	workDir: string
+}): Promise<PublishBuilder> {
+	const { copyFile, readdir, writeFile } = await import('node:fs/promises')
+	const { ensureWorkerdBinary } = await import('./workerd-binary.js')
+	const { startWorkerd } = await import('./dev/workerd-process.js')
+	const { distDir, workDir } = input
 	const wasmDir = path.join(distDir, 'publish-builder-wasm')
 	const wasmModules = await readdir(wasmDir).catch(() => [] as Array<string>)
 	await copyFile(
@@ -123,6 +152,7 @@ async function loadPublishBuilder(): Promise<PublishBuilder> {
 			const body = (await response.json()) as
 				| {
 						ok: true
+						files: Array<PublishBuildFileManifestEntry>
 						targets: Array<
 							Omit<PublishBuiltTarget, 'modules'> & {
 								modules: Record<string, string>
@@ -131,7 +161,7 @@ async function loadPublishBuilder(): Promise<PublishBuilder> {
 				  }
 				| { ok: false; message: string }
 			if (!body.ok) throw new Error(body.message)
-			return body.targets.map((entry) => ({
+			const targets = body.targets.map((entry) => ({
 				...entry,
 				modules: Object.fromEntries(
 					Object.entries(entry.modules).map(([modulePath, base64]) => [
@@ -140,6 +170,7 @@ async function loadPublishBuilder(): Promise<PublishBuilder> {
 					]),
 				),
 			}))
+			return { files: body.files, targets }
 		},
 	}
 }
@@ -148,6 +179,9 @@ export type PublishBuildTicket = {
 	buildId: string
 	packageId: string
 	commit: string
+	/** Entity source root and manifest path; default `/` and `package.json`. */
+	sourceRoot?: string
+	manifestPath?: string
 	userId: string
 	/** `…/v1/publish-builds/{buildId}` */
 	uploadUrl: string
@@ -163,9 +197,14 @@ export type LocalPublishBuildResult = {
 	buildMs: number
 }
 
-async function git(cwd: string, args: Array<string>) {
+async function git(
+	cwd: string,
+	args: Array<string>,
+	env?: Record<string, string>,
+) {
 	const { stdout } = await execFileAsync('git', args, {
 		cwd,
+		...(env ? { env: { ...process.env, ...env } } : {}),
 		maxBuffer: 256 * 1024 * 1024,
 		encoding: 'buffer',
 	})
@@ -278,22 +317,16 @@ export async function runLocalPublishBuild(input: {
 	}
 	const started = Date.now()
 	const tree = await readCommitTree(input.dir, input.ticket.commit)
-	const decoder = new TextDecoder()
-	const sourceFiles: Record<string, string> = {}
-	const files = []
-	for (const file of tree) {
-		sourceFiles[file.path] = decoder.decode(file.bytes)
-		files.push({
-			path: file.path,
-			size: file.bytes.byteLength,
-			sha256: sha256Hex(file.bytes),
-		})
-	}
-	log(`Building ${files.length} files at ${input.ticket.commit.slice(0, 12)}…`)
+	log(`Building ${tree.length} files at ${input.ticket.commit.slice(0, 12)}…`)
 	const builder = await (input.loadBuilder ?? loadPublishBuilder)()
-	const built = await builder
+	const { files, targets: built } = await builder
 		.buildPublishTargets({
-			sourceFiles,
+			files: tree.map((file) => ({
+				path: file.path,
+				base64: file.bytes.toString('base64'),
+			})),
+			sourceRoot: input.ticket.sourceRoot ?? '/',
+			manifestPath: input.ticket.manifestPath ?? 'package.json',
 			rootPackageId: input.ticket.packageId,
 			userId: input.ticket.userId,
 			baseUrl: input.apiUrl,
@@ -376,6 +409,21 @@ export async function runLocalPublishBuild(input: {
 }
 
 /**
+ * Git reads `GIT_CONFIG_*` from its environment, which other local users
+ * cannot read (unlike argv), so the clone token never reaches a command
+ * line or the fetched remote URL.
+ */
+export function contextCloneGitEnv(token: string) {
+	const password = token.split('?expires=')[0] ?? ''
+	return {
+		GIT_TERMINAL_PROMPT: '0',
+		GIT_CONFIG_COUNT: '1',
+		GIT_CONFIG_KEY_0: 'http.extraHeader',
+		GIT_CONFIG_VALUE_0: `Authorization: Basic ${Buffer.from(`x:${password}`).toString('base64')}`,
+	}
+}
+
+/**
  * Context builds: clone one commit with the read-only, single-repo token
  * from the run request (never the operator's CLI login), build, upload.
  */
@@ -384,6 +432,8 @@ export async function runContextPublishBuild(input: {
 		buildId: string
 		packageId: string
 		commit: string
+		sourceRoot?: string
+		manifestPath?: string
 		clone: { remote: string; token: string }
 		upload: { path: string; ticket: string }
 	}
@@ -394,19 +444,20 @@ export async function runContextPublishBuild(input: {
 }) {
 	const dir = await mkdtemp(path.join(tmpdir(), 'kody-publish-build-'))
 	try {
-		const remote = new URL(input.source.clone.remote)
-		remote.username = 'x'
-		remote.password = input.source.clone.token.split('?expires=')[0] ?? ''
 		await git(dir, ['init', '--quiet'])
-		await git(dir, [
-			'-c',
-			'credential.helper=',
-			'fetch',
-			'--quiet',
-			'--depth=1',
-			remote.toString(),
-			input.source.commit,
-		])
+		await git(
+			dir,
+			[
+				'-c',
+				'credential.helper=',
+				'fetch',
+				'--quiet',
+				'--depth=1',
+				input.source.clone.remote,
+				input.source.commit,
+			],
+			contextCloneGitEnv(input.source.clone.token),
+		)
 		return await runLocalPublishBuild({
 			dir,
 			freshClone: true,
@@ -417,6 +468,12 @@ export async function runContextPublishBuild(input: {
 				buildId: input.source.buildId,
 				packageId: input.source.packageId,
 				commit: input.source.commit,
+				...(input.source.sourceRoot
+					? { sourceRoot: input.source.sourceRoot }
+					: {}),
+				...(input.source.manifestPath
+					? { manifestPath: input.source.manifestPath }
+					: {}),
 				userId: input.userId,
 				uploadUrl: publishBuildUploadUrl(
 					input.apiUrl,
@@ -454,10 +511,11 @@ export async function buildWorkingTreeLocally(input: {
 		.toString('utf8')
 		.split('\0')
 		.filter(Boolean)
-	const sourceFiles: Record<string, string> = {}
+	const files: Array<{ path: string; base64: string }> = []
 	for (const file of paths) {
 		try {
-			sourceFiles[file] = await readFile(path.join(input.dir, file), 'utf8')
+			const bytes = await readFile(path.join(input.dir, file))
+			files.push({ path: file, base64: bytes.toString('base64') })
 		} catch {
 			// Deleted but still in the index.
 		}
@@ -466,11 +524,13 @@ export async function buildWorkingTreeLocally(input: {
 	const builder = await (input.loadBuilder ?? loadPublishBuilder)()
 	const built = await builder
 		.buildPublishTargets({
-			sourceFiles,
+			files,
+			sourceRoot: '/',
+			manifestPath: 'package.json',
 			rootPackageId: input.packageId,
 			userId: '',
 			baseUrl: input.apiUrl,
 		})
 		.finally(() => builder.close())
-	return { targets: built.length, buildMs: Date.now() - started }
+	return { targets: built.targets.length, buildMs: Date.now() - started }
 }

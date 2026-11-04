@@ -19,7 +19,10 @@ import {
 	publishLargePackagesDocsUrl,
 	publishOffloadLimits,
 } from '#worker/publish-offload/policy.ts'
-import { createPublishBuild } from '#worker/publish-offload/store.ts'
+import {
+	createPublishBuild,
+	purgeExpiredPublishBuilds,
+} from '#worker/publish-offload/store.ts'
 import { publishBuilderVersion } from '#worker/publish-offload/types.ts'
 import { resolveArtifactSourceHead } from '#worker/repo/artifacts.ts'
 import { resolveOwnedPackageSource } from './resolve-package-source.ts'
@@ -60,6 +63,14 @@ const outputSchema = z.toJSONSchema(
 			.describe(
 				'Upload API path; join it with the Open API host the caller uses.',
 			),
+		source_root: z
+			.string()
+			.describe(
+				'Package source root in the repo; the builder applies its `.kodyignore`.',
+			),
+		manifest_path: z
+			.string()
+			.describe('Repo path of the package.json the builder reads.'),
 		expires_at: z.string(),
 		builder_version: z.number(),
 		chunk_bytes: z.number(),
@@ -105,7 +116,10 @@ export const publishBuildCreateCapability = defineDomainCapability(
 					'Publishing a build made outside Kody cloud needs the publish-offload feature flag, which is off for this account.',
 				)
 			}
-			const owner = await resolvePackageOwnerContext(ctx.env, { user, request })
+			const owner = await resolvePackageOwnerContext(ctx.env, {
+				user,
+				request,
+			})
 			const nameInput = args.name?.trim() || undefined
 			const { packageId, userId, name, source } =
 				await resolveOwnedPackageSource({
@@ -127,6 +141,10 @@ export const publishBuildCreateCapability = defineDomainCapability(
 					`Package "${name}" has no pushed commit to build. Push first.`,
 				)
 			}
+			await purgeExpiredPublishBuilds({
+				db: ctx.env.APP_DB,
+				bucket: ctx.env.REPO_SESSION_BLOBS,
+			}).catch(() => {})
 			const created = await createPublishBuild({
 				db: ctx.env.APP_DB,
 				packageId,
@@ -143,6 +161,8 @@ export const publishBuildCreateCapability = defineDomainCapability(
 				commit: head.commit,
 				origin: args.origin,
 				upload_path: `/v1/publish-builds/${created.buildId}`,
+				source_root: source.source_root,
+				manifest_path: source.manifest_path,
 				expires_at: created.expiresAt,
 				builder_version: publishBuilderVersion,
 				chunk_bytes: publishOffloadLimits.chunkBytes,
@@ -168,6 +188,8 @@ export const publishBuildCreateCapability = defineDomainCapability(
 				packageName: name,
 				repoId: source.repo_id,
 				commit: head.commit,
+				sourceRoot: source.source_root,
+				manifestPath: source.manifest_path,
 				context: args.context ?? null,
 			})
 			return {

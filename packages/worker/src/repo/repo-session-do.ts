@@ -149,6 +149,7 @@ import {
 import {
 	createSourceRootKodyIgnoreMatcher,
 	kodyIgnoreFilePath,
+	omitKodyIgnoredFiles,
 } from './kodyignore.ts'
 import {
 	buildWorkspaceSqliteTooBigCallerMessage,
@@ -3645,11 +3646,15 @@ class RepoSessionBase extends DurableObject<Env> {
 			...source,
 			published_commit: input.publishedCommit,
 		}
-		const sourceFiles =
+		// The snapshot is already `.kodyignore`-filtered; the workspace
+		// fallback is not, and the builder's manifest never has ignored files.
+		const sourceFiles = omitKodyIgnoredFiles(
 			await this.collectSourceFilesForPublishedArtifactRebuild(
 				source,
 				input.publishedCommit,
-			)
+			),
+			source.source_root,
+		)
 		const targets =
 			await this.listPackageArtifactTargetsForSource(sourceAtCommit)
 		const baseUrl = input.baseUrl ?? source.source_root

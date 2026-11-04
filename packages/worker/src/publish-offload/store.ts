@@ -6,6 +6,7 @@ import { isPublishOffloadEnabledFor } from './flag.ts'
 import { sha256Hex } from './module-hashes.ts'
 import {
 	publishBuildRejectionHint,
+	publishBuildRetentionMs,
 	publishBuildTicketTtlMs,
 	type PublishBuildOrigin,
 } from './policy.ts'
@@ -182,6 +183,66 @@ export async function finishPublishBuild(input: {
 			input.buildId,
 		)
 		.run()
+}
+
+async function deletePublishBuildBlobs(bucket: R2Bucket, buildId: string) {
+	let cursor: string | undefined
+	do {
+		const page = await bucket.list({
+			prefix: publishBuildBlobPrefix(buildId),
+			...(cursor ? { cursor } : {}),
+		})
+		const keys = page.objects.map((object) => object.key)
+		if (keys.length > 0) await bucket.delete(keys)
+		cursor = page.truncated ? page.cursor : undefined
+	} while (cursor)
+}
+
+/**
+ * Drops the chunks of builds whose ticket expired over a day ago (a
+ * committed build's targets are already written by then). Committed rows
+ * stay for their build origin (11B) with the manifest cleared; every other
+ * row goes. Runs a few builds at a time whenever a build starts, so the
+ * work tracks how many builds are made.
+ */
+export async function purgeExpiredPublishBuilds(input: {
+	db: D1Database
+	bucket: R2Bucket
+	now?: number
+	limit?: number
+}) {
+	const cutoff = new Date(
+		(input.now ?? Date.now()) - publishBuildRetentionMs,
+	).toISOString()
+	const { results } = await input.db
+		.prepare(
+			`SELECT id, status FROM publish_builds
+			WHERE expires_at < ?
+				AND (status != 'committed' OR document_json IS NOT NULL)
+			ORDER BY expires_at LIMIT ?`,
+		)
+		.bind(cutoff, input.limit ?? 10)
+		.all<{ id: string; status: PublishBuildStatus }>()
+	for (const row of results) {
+		await deletePublishBuildBlobs(input.bucket, row.id)
+		if (row.status === 'committed') {
+			await input.db
+				.prepare(
+					`UPDATE publish_builds SET document_json = NULL, updated_at = ?
+					WHERE id = ?`,
+				)
+				.bind(new Date().toISOString(), row.id)
+				.run()
+		} else {
+			await input.db
+				.prepare(
+					`DELETE FROM publish_builds WHERE id = ? AND status != 'committed'`,
+				)
+				.bind(row.id)
+				.run()
+		}
+	}
+	return results.length
 }
 
 export function parsePublishBuildDocument(row: PublishBuildRow) {

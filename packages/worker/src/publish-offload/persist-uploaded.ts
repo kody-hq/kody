@@ -131,7 +131,10 @@ export async function persistUploadedPublishBuild(input: {
 			status: 'rejected',
 			message,
 		}).catch(() => {})
-		return { ok: false as const, message: `Publish build rejected: ${message}` }
+		return {
+			ok: false as const,
+			message: `Publish build rejected: ${message}`,
+		}
 	}
 	try {
 		const row = await getPublishBuild(db, input.buildId)

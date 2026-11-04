@@ -64,6 +64,12 @@ export const publishBuildTicketTtlMs = 30 * 60 * 1000
 export const publishBuildCloneTokenTtlSeconds = 300
 
 /**
+ * How long a build's chunks outlive its upload ticket before the sweep that
+ * runs when a build starts drops them (and the row, unless committed).
+ */
+export const publishBuildRetentionMs = 24 * 60 * 60 * 1000
+
+/**
  * 9B: community-listed packages may offload, with a bigger server re-check
  * sample. The server rebuilds this many targets and compares hashes.
  */

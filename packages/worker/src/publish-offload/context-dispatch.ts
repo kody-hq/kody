@@ -27,6 +27,8 @@ export async function dispatchContextPublishBuild(input: {
 	packageName: string
 	repoId: string
 	commit: string
+	sourceRoot: string
+	manifestPath: string
 	context: string | null
 }) {
 	const repo = await resolveArtifactSourceRepo(input.env, input.repoId)
@@ -47,6 +49,8 @@ export async function dispatchContextPublishBuild(input: {
 			packageName: input.packageName,
 			commit: input.commit,
 			builderVersion: publishBuilderVersion,
+			sourceRoot: input.sourceRoot,
+			manifestPath: input.manifestPath,
 			clone: {
 				remote: info.remote,
 				token: token.plaintext,

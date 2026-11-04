@@ -64,6 +64,8 @@ async function buildThenPublish(input: {
 		package_id: string
 		commit: string
 		upload_path: string
+		source_root?: string
+		manifest_path?: string
 		upload_ticket?: string
 		context_name?: string
 	}
@@ -78,6 +80,10 @@ async function buildThenPublish(input: {
 				buildId: created.build_id,
 				packageId: created.package_id,
 				commit: created.commit,
+				...(created.source_root ? { sourceRoot: created.source_root } : {}),
+				...(created.manifest_path
+					? { manifestPath: created.manifest_path }
+					: {}),
 				userId: '',
 				uploadUrl: publishBuildUploadUrl(input.apiUrl, created.upload_path),
 				ticket: created.upload_ticket,
@@ -125,12 +131,29 @@ export async function runPublishWithBuild(input: {
 			origin: input.build === 'local' ? 'cli' : 'context',
 		})
 	}
-	const result = await input.call('packagePublishExternalPush', input.target)
-	if (!isResourceLimitRefusal(result)) return result
 	const ref = String(input.target.package_id ?? input.target.kody_id ?? '')
-	if (input.interactive && (await askBuildHere(input.writeErr))) {
-		return await buildThenPublish({ ...input, origin: 'cli' })
+	const offerOffload = async () => {
+		if (input.interactive && (await askBuildHere(input.writeErr))) {
+			return { built: await buildThenPublish({ ...input, origin: 'cli' }) }
+		}
+		input.writeErr(`${offloadCommandsText(ref)}\n`)
+		return null
 	}
-	input.writeErr(`${offloadCommandsText(ref)}\n`)
-	return result
+	let result: unknown
+	try {
+		result = await input.call('packagePublishExternalPush', input.target)
+	} catch (error) {
+		// A resource-limit failure can also come back as an HTTP error.
+		if (
+			!isResourceLimitRefusal(error instanceof Error ? error.message : error)
+		) {
+			throw error
+		}
+		const offloaded = await offerOffload()
+		if (offloaded) return offloaded.built
+		throw error
+	}
+	if (!isResourceLimitRefusal(result)) return result
+	const offloaded = await offerOffload()
+	return offloaded ? offloaded.built : result
 }

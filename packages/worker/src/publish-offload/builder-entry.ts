@@ -17,6 +17,7 @@ import {
 	sha256Hex,
 	workerLoaderModuleBytes,
 } from './module-hashes.ts'
+import { preparePublishBuildSourceTree } from './source-tree.ts'
 import { publishBuilderVersion } from './types.ts'
 
 export { publishBuilderVersion, sha256Hex, workerLoaderModuleBytes }
@@ -36,19 +37,44 @@ function offWorkerEnv(): Env {
 	})
 }
 
+function fromBase64(base64: string) {
+	const binary = atob(base64)
+	const bytes = new Uint8Array(binary.length)
+	for (let index = 0; index < binary.length; index += 1) {
+		bytes[index] = binary.charCodeAt(index)
+	}
+	return bytes
+}
+
+/**
+ * Builds the commit's raw blobs (repo-root paths) the way the server
+ * rebuilds its snapshot of them, and returns the file manifest the server
+ * checks that snapshot against.
+ */
 export async function buildPublishTargets(input: {
-	sourceFiles: Record<string, string>
+	files: Array<{ path: string; base64: string }>
+	sourceRoot?: string
+	manifestPath?: string
 	rootPackageId: string
 	userId: string
 	baseUrl: string
 }) {
-	const manifestSource = input.sourceFiles['package.json']
+	const tree = await preparePublishBuildSourceTree({
+		files: input.files.map((file) => ({
+			path: file.path,
+			bytes: fromBase64(file.base64),
+		})),
+		sourceRoot: input.sourceRoot ?? '/',
+	})
+	const manifestPath = input.manifestPath ?? 'package.json'
+	const manifestSource = tree.sourceFiles[manifestPath]
 	if (typeof manifestSource !== 'string') {
-		throw new Error('package.json is missing from the build tree.')
+		throw new Error(`${manifestPath} is missing from the build tree.`)
 	}
+	const sourceFiles = tree.sourceFiles
 	const manifest = parseAuthoredPackageJson({ content: manifestSource })
 	const typecheck = await runPackageTypecheckForSourceTree({
-		sourceFiles: input.sourceFiles,
+		sourceFiles,
 		manifest: manifest as Parameters<
 			typeof runPackageTypecheckForSourceTree
 		>[0]['manifest'],
@@ -69,7 +95,7 @@ export async function buildPublishTargets(input: {
 		env: offWorkerEnv(),
 		baseUrl: input.baseUrl,
 		userId: input.userId,
-		sourceFiles: input.sourceFiles,
+		sourceFiles,
 		rootPackageId: input.rootPackageId,
 		prepareCache: new Map(),
 	}
@@ -78,7 +104,7 @@ export async function buildPublishTargets(input: {
 			await buildKodyAppBundle({ ...shared, entryPoint, cacheKey: null }),
 		buildAppClientBundle: async ({ entryPoint }: { entryPoint: string }) =>
 			await buildKodyAppClientBundle({
-				sourceFiles: input.sourceFiles,
+				sourceFiles,
 				entryPoint,
 			}),
 		buildModuleBundle: async ({ entryPoint }: { entryPoint: string }) =>
@@ -105,7 +131,7 @@ export async function buildPublishTargets(input: {
 			),
 		})
 	}
-	return built
+	return { files: tree.manifest, targets: built }
 }
 
 function toBase64(bytes: Uint8Array) {
@@ -131,7 +157,8 @@ export default {
 			return Response.json({
 				ok: true,
 				builderVersion: publishBuilderVersion,
-				targets: built.map((entry) => ({
+				files: built.files,
+				targets: built.targets.map((entry) => ({
 					target: entry.target,
 					mainModule: entry.mainModule,
 					inlinedPackageIds: entry.inlinedPackageIds,

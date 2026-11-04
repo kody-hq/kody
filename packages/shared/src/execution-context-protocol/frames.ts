@@ -181,6 +181,9 @@ export type EcpPublishBuildSource = {
 	packageName: string
 	commit: string
 	builderVersion: number
+	/** Entity source root and manifest path; default `/` and `package.json`. */
+	sourceRoot?: string
+	manifestPath?: string
 	/** Read-only, single-repo Artifacts remote; the token expires in ~5 minutes. */
 	clone: { remote: string; token: string; expiresAt: string }
 	/** Per-build upload ticket and base URL (`/v1/publish-builds/{id}`). */

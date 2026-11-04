@@ -1,6 +1,7 @@
 import type { PublishedPackageArtifactBuildTarget } from '#worker/package-runtime/package-artifact-targets.ts'
 import type { BundleArtifactDependency } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import { snapshotStringToBytes } from '#universal/package-file-media.ts'
 import { sha256Hex, workerLoaderModuleBytes } from './module-hashes.ts'
 import { publishOffloadLimits } from './policy.ts'
 import {
@@ -24,8 +25,6 @@ export class PublishBuildVerificationError extends Error {
 function fail(message: string): never {
 	throw new PublishBuildVerificationError(message)
 }
-
-const encoder = new TextEncoder()
 
 export function assertSupportedBuilderVersion(document: PublishBuildDocument) {
 	if (document.builderVersion !== publishBuilderVersion) {
@@ -59,7 +58,9 @@ export async function verifySourceManifest(input: {
 				`"${path}" is in the pushed commit but not in the build manifest, so the build did not use the pushed tree.`,
 			)
 		}
-		const bytes = encoder.encode(content)
+		// Bytes the snapshot string stands for (latin1 for binaries), which
+		// is what the builder hashes too.
+		const bytes = snapshotStringToBytes(content, path)
 		totalBytes += bytes.byteLength
 		if (totalBytes > publishOffloadLimits.maxSourceBytes) {
 			fail(
@@ -148,12 +149,77 @@ export function matchUploadedTargets(input: {
 }
 
 const platformVirtualPathPattern = /(^|\/)\.__kody_virtual__\//
+const boundCreatorNamePattern = /__kodyCreatePackageBound[\w$]*/g
 const boundCreatorCallPattern =
-	/__kodyCreatePackageBound[A-Za-z]*\(\s*("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|[^)\s]+)\s*\)/g
+	/__kodyCreatePackageBound[\w$]*\(\s*("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|[^)\s]+)\s*\)/g
 const preBindingRepairNames = [
 	'__kodyPreBindingBoundFetch',
 	'__kodyPreBindingBoundKody',
 ]
+
+const namedImportPattern =
+	/\bimport\s*(?:[\w$]+\s*,\s*)?\{([^}]*)\}\s*from\s*(["'])[^"'\n]*\2/g
+const platformModuleImportPatterns = [
+	/\bimport\s*(?:[\w$]+\s*,\s*)?\*\s*as\s+[\w$]+\s*from\s*["'][^"'\n]*__kody_virtual__/,
+	/\bexport\s*(?:\*|\{[^}]*\})\s*(?:as\s+[\w$]+\s*)?from\s*["'][^"'\n]*__kody_virtual__/,
+	/\b(?:import|require)\s*\(\s*["'`][^"'`\n]*__kody_virtual__/,
+]
+const nonLiteralDynamicLoadPattern =
+	/\b(?:import|require)\s*\(\s*(?!["'][^"'`\n]*["']\s*\))/
+
+/**
+ * The bound-identity check below reads `creator("<id>")` calls, so an
+ * uploaded module may only name a creator in a named import (kept or
+ * aliased to another creator name) or a direct literal call. Namespace
+ * imports and re-exports of platform modules, and imports or requires of a
+ * computed path, would reach a creator under another name and are refused.
+ * Returns the direct calls.
+ */
+function assertBoundCreatorsOnlyCalledDirectly(input: {
+	source: string
+	label: string
+}) {
+	const { source, label } = input
+	for (const pattern of platformModuleImportPatterns) {
+		if (pattern.test(source)) {
+			fail(
+				`${label} imports a Kody platform module as a namespace or by re-export.`,
+			)
+		}
+	}
+	if (nonLiteralDynamicLoadPattern.test(source)) {
+		fail(
+			`${label} imports or requires a computed module path, which a build made outside Kody cloud may not do.`,
+		)
+	}
+	const allowed = new Set<number>()
+	for (const match of source.matchAll(namedImportPattern)) {
+		const clauseStart = match.index + match[0].indexOf('{') + 1
+		for (const name of match[1]!.matchAll(boundCreatorNamePattern)) {
+			allowed.add(clauseStart + name.index)
+		}
+		for (const specifier of match[1]!.split(',')) {
+			const [imported, local] = specifier.trim().split(/\s+as\s+/)
+			const names = [imported, local].filter(Boolean) as Array<string>
+			if (!names.some((name) => name.startsWith('__kodyCreatePackageBound'))) {
+				continue
+			}
+			if (!names.every((name) => name.startsWith('__kodyCreatePackageBound'))) {
+				fail(`${label} renames the runtime helper ${imported}.`)
+			}
+		}
+	}
+	const directCalls = [...source.matchAll(boundCreatorCallPattern)]
+	for (const call of directCalls) allowed.add(call.index)
+	for (const name of source.matchAll(boundCreatorNamePattern)) {
+		if (!allowed.has(name.index)) {
+			fail(
+				`${label} refers to the runtime helper ${name[0]} outside a direct call.`,
+			)
+		}
+	}
+	return directCalls
+}
 
 function parseBoundId(raw: string) {
 	if (raw.startsWith('"')) {
@@ -237,7 +303,11 @@ export async function verifyUploadedTargetModules(input: {
 				)
 			}
 		}
-		for (const match of source.matchAll(boundCreatorCallPattern)) {
+		const directCalls = assertBoundCreatorsOnlyCalledDirectly({
+			source,
+			label: `module "${path}" of "${uploaded.entryPoint}"`,
+		})
+		for (const match of directCalls) {
 			const id = parseBoundId(match[1]!)
 			if (
 				id === null ||
