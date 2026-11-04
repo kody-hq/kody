@@ -16,6 +16,11 @@ import type { McpMemoryRow } from '#mcp/memory/types.ts'
 import { runOrgResourceTransfer } from '#worker/org-transfer/apply.ts'
 import { defaultOrgTransferEffects } from '#worker/org-transfer/effects.ts'
 import { runLogRpc } from '#worker/run-records/service.ts'
+import { scheduleGuestClaimedEvent } from '#worker/identity/schedule-user-lifecycle-event.ts'
+import type {
+	GuestClaimCounts,
+	GuestClaimMethod,
+} from '#worker/identity/user-lifecycle-subscription-event.ts'
 import {
 	guestConversionStatements,
 	guestPhase,
@@ -38,6 +43,12 @@ export class GuestClaimError extends Error {
 		this.name = 'GuestClaimError'
 		this.code = code
 	}
+}
+
+/** How the person claimed, for the `user.guest_claimed` admin event. */
+type GuestClaimVia = {
+	method?: GuestClaimMethod
+	provider?: string | null
 }
 
 export type GuestClaimTarget = {
@@ -160,16 +171,19 @@ function claimTargetFromRow(
  * Claim into a new account: the guest becomes a regular account in place,
  * so its OAuth grants and CLI logins keep working untouched.
  */
-export async function convertGuestInPlace(input: {
-	env: Env
-	guest: GuestAccount
-	email: string
-	username: string
-	displayName?: string | null
-	now?: Date
-}): Promise<GuestClaimResult> {
+export async function convertGuestInPlace(
+	input: {
+		env: Env
+		guest: GuestAccount
+		email: string
+		username: string
+		displayName?: string | null
+		now?: Date
+	} & GuestClaimVia,
+): Promise<GuestClaimResult> {
 	const { env, guest } = input
 	const db = env.APP_DB
+	const countsPromise = guestClaimCounts(env, guest)
 	const user = await readClaimableGuestUser(db, guest)
 	const username = await assertClaimUsernameAvailable(
 		env,
@@ -182,7 +196,9 @@ export async function convertGuestInPlace(input: {
 			'That email already has a Kody account. Claim into that account instead.',
 		)
 	}
-	const now = (input.now ?? new Date()).toISOString()
+	const counts = await countsPromise
+	const claimDate = input.now ?? new Date()
+	const now = claimDate.toISOString()
 	const orgId = guest.personalOrgId
 	const statements = [
 		db
@@ -226,6 +242,17 @@ export async function convertGuestInPlace(input: {
 		result: 'success',
 		email: input.email,
 		reason: `mode=new;phase=${guestPhase(guest.expiresAt)}`,
+	})
+	scheduleGuestClaimedEvent({
+		env,
+		mode: 'new',
+		method: input.method ?? 'agent',
+		provider: input.provider ?? null,
+		user: { id: guest.personId, username, email: input.email },
+		guest: guestClaimedSnapshot(guest, user, claimDate),
+		claimedAt: now,
+		counts,
+		renamedPackages: 0,
 	})
 	return {
 		mode: 'new',
@@ -335,16 +362,20 @@ async function moveRunHistory(env: Env, fromOrgId: string, toOrgId: string) {
  * personal org, then delete the empty guest. The guest's OAuth grants stay
  * and resolve to the claiming person through the guest alias.
  */
-export async function mergeGuestIntoAccount(input: {
-	env: Env
-	guest: GuestAccount
-	target: GuestClaimTarget
-	baseUrl: string
-	now?: Date
-}): Promise<GuestClaimResult> {
+export async function mergeGuestIntoAccount(
+	input: {
+		env: Env
+		guest: GuestAccount
+		target: GuestClaimTarget
+		baseUrl: string
+		now?: Date
+	} & GuestClaimVia,
+): Promise<GuestClaimResult> {
 	const { env, guest, target } = input
 	const db = env.APP_DB
+	const countsPromise = guestClaimCounts(env, guest)
 	const user = await readClaimableGuestUser(db, guest)
+	const counts = await countsPromise
 	const fromOrgId = guest.personalOrgId
 	const toOrgId = target.personalOrgId
 	const renamedPackages = await renameClashingPackages(db, fromOrgId, toOrgId)
@@ -398,7 +429,8 @@ export async function mergeGuestIntoAccount(input: {
 			'Kody could not move the run history yet. Nothing was deleted. Try the claim again.',
 		)
 	})
-	const now = (input.now ?? new Date()).toISOString()
+	const claimDate = input.now ?? new Date()
+	const now = claimDate.toISOString()
 	await db.batch([
 		db
 			.prepare(
@@ -441,6 +473,21 @@ export async function mergeGuestIntoAccount(input: {
 		email: target.email,
 		reason: `mode=merge;phase=${guestPhase(guest.expiresAt)};renamed=${renamedPackages.length}`,
 	})
+	scheduleGuestClaimedEvent({
+		env,
+		mode: 'merge',
+		method: input.method ?? 'agent',
+		provider: input.provider ?? null,
+		user: {
+			id: target.personId,
+			username: target.username,
+			email: target.email,
+		},
+		guest: guestClaimedSnapshot(guest, user, claimDate),
+		claimedAt: now,
+		counts,
+		renamedPackages: renamedPackages.length,
+	})
 	return {
 		mode: 'merge',
 		username: target.username,
@@ -450,11 +497,128 @@ export async function mergeGuestIntoAccount(input: {
 	}
 }
 
-export type GuestComesWith = {
-	packages: number
-	memories: number
-	jobs: number
-	runs: number
+function guestClaimedSnapshot(
+	guest: GuestAccount,
+	user: GuestUserRow,
+	claimDate: Date,
+) {
+	return {
+		id: guest.personId,
+		username: user.username,
+		clientName: guest.clientName,
+		createdAt: guest.createdAt,
+		expiresAt: guest.expiresAt,
+		phase: guestPhase(guest.expiresAt, claimDate),
+	}
+}
+
+export type GuestComesWith = Pick<
+	GuestClaimCounts,
+	'packages' | 'memories' | 'jobs' | 'runs'
+>
+
+async function countOr0(
+	label: string,
+	read: () => Promise<number>,
+	options: { quiet?: boolean } = {},
+) {
+	try {
+		return await read()
+	} catch (error) {
+		if (!options.quiet) {
+			console.warn('guest-claim-count-failed', { kind: label, error })
+		}
+		return 0
+	}
+}
+
+/**
+ * What the guest personal org holds right now (non-deleted rows). Never
+ * throws: a failed count reads as 0 so it cannot fail a claim.
+ */
+export async function guestClaimCounts(
+	env: Env,
+	guest: GuestAccount,
+): Promise<GuestClaimCounts> {
+	const db = env.APP_DB
+	const orgId = guest.personalOrgId
+	const count = (label: string, sql: string) =>
+		countOr0(label, async () => {
+			const row = await db.prepare(sql).bind(orgId).first<{ n: number }>()
+			return Number(row?.n ?? 0)
+		})
+	const [
+		packages,
+		repos,
+		memories,
+		secrets,
+		connections,
+		mcpServers,
+		apps,
+		jobs,
+		webhooks,
+		runs,
+	] = await Promise.all([
+		count(
+			'packages',
+			`SELECT COUNT(*) AS n FROM saved_packages WHERE user_id = ? AND deleted_at IS NULL`,
+		),
+		count(
+			'repos',
+			`SELECT COUNT(*) AS n FROM user_repos WHERE user_id = ? AND deleted_at IS NULL`,
+		),
+		count(
+			'memories',
+			`SELECT COUNT(*) AS n FROM mcp_memories WHERE user_id = ? AND deleted_at IS NULL`,
+		),
+		count(
+			'secrets',
+			`SELECT COUNT(*) AS n FROM secret_entries e
+			 JOIN secret_buckets b ON b.id = e.bucket_id
+			 WHERE b.user_id = ? AND b.deleted_at IS NULL AND e.deleted_at IS NULL`,
+		),
+		count(
+			'connections',
+			`SELECT COUNT(*) AS n FROM user_integrations WHERE user_id = ? AND deleted_at IS NULL`,
+		),
+		count(
+			'mcp_servers',
+			`SELECT COUNT(*) AS n FROM mcp_server_settings WHERE user_id = ? AND deleted_at IS NULL`,
+		),
+		count(
+			'apps',
+			`SELECT COUNT(*) AS n FROM saved_packages WHERE user_id = ? AND deleted_at IS NULL AND has_app = 1`,
+		),
+		countOr0(
+			'jobs',
+			async () => {
+				const { listJobs } = await import('#worker/jobs/inspect.ts')
+				return (await listJobs({ env, userId: orgId as never })).length
+			},
+			{ quiet: true },
+		),
+		count(
+			'webhooks',
+			`SELECT COUNT(*) AS n FROM webhook_endpoints WHERE user_id = ? AND deleted_at IS NULL`,
+		),
+		countOr0(
+			'runs',
+			async () => runLogRpc({ env, userId: orgId as never }).countRunHistory(),
+			{ quiet: true },
+		),
+	])
+	return {
+		packages,
+		repos,
+		memories,
+		secrets,
+		connections,
+		mcp_servers: mcpServers,
+		apps,
+		jobs,
+		webhooks,
+		runs,
+	}
 }
 
 /** What a claim carries over, for the "Comes with you" pills. */
@@ -462,31 +626,7 @@ export async function guestComesWithCounts(
 	env: Env,
 	guest: GuestAccount,
 ): Promise<GuestComesWith> {
-	const db = env.APP_DB
-	const orgId = guest.personalOrgId
-	const [packages, memories, jobs, runs] = await Promise.all([
-		db
-			.prepare(
-				`SELECT COUNT(*) AS n FROM saved_packages WHERE user_id = ? AND deleted_at IS NULL`,
-			)
-			.bind(orgId)
-			.first<{ n: number }>()
-			.then((row) => Number(row?.n ?? 0)),
-		db
-			.prepare(
-				`SELECT COUNT(*) AS n FROM mcp_memories WHERE user_id = ? AND deleted_at IS NULL`,
-			)
-			.bind(orgId)
-			.first<{ n: number }>()
-			.then((row) => Number(row?.n ?? 0)),
-		import('#worker/jobs/inspect.ts')
-			.then(({ listJobs }) => listJobs({ env, userId: orgId as never }))
-			.then((rows) => rows.length)
-			.catch(() => 0),
-		runLogRpc({ env, userId: orgId as never })
-			.countRunHistory()
-			.catch(() => 0),
-	])
+	const { packages, memories, jobs, runs } = await guestClaimCounts(env, guest)
 	return { packages, memories, jobs, runs }
 }
 

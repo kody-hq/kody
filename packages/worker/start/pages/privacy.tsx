@@ -185,18 +185,22 @@ export function PrivacyRoute() {
 					the create source, the signup <code>created_at</code> on both events,
 					the delete timestamp, and first-touch marketing attribution fields
 					when present). Those lifecycle events omit passwords, roles, plan,
-					secrets, and unrelated account content. Admin-configured notification
-					packages may also receive a metadata-only{' '}
-					<code>user.email_verification.failed</code> event when signup/verify
-					mail first hits a terminal delivery failure (stable user id, username,
-					email, status, <code>class</code> (<code>sender_block</code> /{' '}
-					<code>other</code> / <code>null</code>), an admin user URL, and{' '}
-					<code>occurred_at</code>). That event omits SMTP transcripts, tokens,
-					and unrelated account content. Admin-configured notification packages
-					may also receive a metadata-only{' '}
-					<code>user.email_verification.stalled</code> event when signup/verify
-					mail stays <code>accepted</code> for an hour with no Cloudflare
-					lifecycle event (stable user id, username, email,{' '}
+					secrets, and unrelated account content. When a guest account is
+					claimed they may also receive a <code>user.guest_claimed</code> event
+					with the resulting account and guest identity, the claim method, the
+					guest timestamps, and how many items of each kind the guest had
+					(counts only, never their content, claim codes, or secret values).
+					Admin-configured notification packages may also receive a
+					metadata-only <code>user.email_verification.failed</code> event when
+					signup/verify mail first hits a terminal delivery failure (stable user
+					id, username, email, status, <code>class</code> (
+					<code>sender_block</code> / <code>other</code> / <code>null</code>),
+					an admin user URL, and <code>occurred_at</code>). That event omits
+					SMTP transcripts, tokens, and unrelated account content.
+					Admin-configured notification packages may also receive a
+					metadata-only <code>user.email_verification.stalled</code> event when
+					signup/verify mail stays <code>accepted</code> for an hour with no
+					Cloudflare lifecycle event (stable user id, username, email,{' '}
 					<code>accepted_at</code>, stall threshold, an admin user URL, and{' '}
 					<code>occurred_at</code>). That event omits SMTP transcripts, tokens,
 					and unrelated account content. Admin-configured notification packages
