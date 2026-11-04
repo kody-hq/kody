@@ -147,6 +147,7 @@ export function defineCapability<
 				db: ctx.env.APP_DB,
 				callerContext: ctx.callerContext,
 				capabilityName: definition.name,
+				readOnly: definition.readOnly === true,
 				args,
 			})
 			const siteAccessTrigger = requiresSiteAccess(definition)

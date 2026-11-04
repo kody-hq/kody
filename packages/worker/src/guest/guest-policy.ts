@@ -1,6 +1,9 @@
 import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import {
+	guestClaimCapabilityName,
+	guestClaimFinishCapabilityName,
 	guestClaimUrl,
+	guestPhase,
 	readGuestAccountByPerson,
 } from '#worker/guest/guest-accounts.ts'
 import {
@@ -92,10 +95,25 @@ export async function assertGuestCapabilityAllowed(input: {
 	db: D1Database
 	callerContext: McpCallerContext
 	capabilityName: string
+	readOnly?: boolean
 	args: unknown
 }) {
 	const user = input.callerContext.user
 	if (!user?.guestExpiresAt) return
+	if (
+		guestPhase(user.guestExpiresAt) === 'hold' &&
+		!input.readOnly &&
+		input.capabilityName !== guestClaimCapabilityName &&
+		input.capabilityName !== guestClaimFinishCapabilityName
+	) {
+		throw await guestRestrictionError({
+			db: input.db,
+			baseUrl: input.callerContext.baseUrl,
+			personId: user.userId,
+			blocked: 'saving changes',
+			code: 'guest_claim_required',
+		})
+	}
 	const blocked = guestBlockedReason(input.capabilityName, input.args)
 	if (!blocked) return
 	throw await guestRestrictionError({

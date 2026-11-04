@@ -1,4 +1,6 @@
 import {
+	guestClaimCapabilityName,
+	guestClaimFinishCapabilityName,
 	guestClaimUrl,
 	guestPhase,
 	readGuestAccountByPerson,
@@ -624,7 +626,8 @@ export async function handleMcpRequest({
 		if (
 			guestExpiresAt &&
 			guestPhase(guestExpiresAt) === 'hold' &&
-			mcpParsedBodyNeedsAccountWriteLease(classification.parsedBody)
+			mcpParsedBodyNeedsAccountWriteLease(classification.parsedBody) &&
+			!mentionsGuestClaimCapability(classification.parsedBody)
 		) {
 			const guest = await readGuestAccountByPerson(env.APP_DB, mcpUser.userId)
 			return createGuestErrorResponse(
@@ -655,4 +658,13 @@ export async function handleMcpRequest({
 		}
 		throw error
 	}
+}
+
+/** Held guests may still run code that claims the account. */
+function mentionsGuestClaimCapability(parsedBody: unknown) {
+	const text = JSON.stringify(parsedBody ?? null)
+	return (
+		text.includes(guestClaimCapabilityName) ||
+		text.includes(guestClaimFinishCapabilityName)
+	)
 }

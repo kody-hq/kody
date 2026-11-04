@@ -43,15 +43,11 @@ export const guestCreateDailyRateLimit: RateLimitConfig = {
  */
 export const guestLimitOverrides: ReadonlyArray<readonly [string, number]> = [
 	['execute_unique_workers_per_day', 200],
-	['execute_unique_workers_per_week', 200],
 	['outbound_fetches_per_day', 500],
-	['outbound_fetches_per_week', 500],
 	['job_runs_per_day', 50],
 	['automation_invocations_per_day', 50],
 	['email_sends_per_day', 0],
 	['email_receives_per_day', 0],
-	['unique_worker_days_per_month', 1],
-	['durable_object_rows_read_per_month', 1_000_000],
 	['execute_calls_per_minute', 30],
 ]
 export const guestLimitOverrideReason = 'guest_account'

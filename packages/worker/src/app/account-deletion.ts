@@ -1762,6 +1762,11 @@ export async function deleteUserAccount(input: {
 	 * users row.
 	 */
 	purgeSoftDeleted?: boolean
+	/**
+	 * Guest merge: the claiming person inherits this account's OAuth grants
+	 * through the guest alias, so they must survive the deletion.
+	 */
+	keepOAuthGrants?: boolean
 }): Promise<AccountDeletionResult> {
 	const personUserId = input.personUserId ?? input.mcpUserId
 	const purgeSoftDeleted = input.purgeSoftDeleted === true
@@ -2098,16 +2103,17 @@ export async function deleteUserAccount(input: {
 				)
 			}
 		}
-		try {
-			result.revokedOAuthGrants = await revokeAllOAuthGrantsBestEffort({
-				helpers,
-				userId: input.mcpUserId,
-				warnings,
-			})
-		} catch (error) {
-			const message = getErrorMessage(error)
-			warnings.push(`OAuth grant revocation failed unexpectedly: ${message}`)
-		}
+		if (!input.keepOAuthGrants)
+			try {
+				result.revokedOAuthGrants = await revokeAllOAuthGrantsBestEffort({
+					helpers,
+					userId: input.mcpUserId,
+					warnings,
+				})
+			} catch (error) {
+				const message = getErrorMessage(error)
+				warnings.push(`OAuth grant revocation failed unexpectedly: ${message}`)
+			}
 	} else {
 		warnings.push(
 			'OAuth provider binding and OAUTH_KV were unavailable; OAuth grants were not revoked.',

@@ -4005,6 +4005,65 @@ class RunLogBase extends DurableObject<Env> {
 			.map(mapActivationMilestoneRow)
 	}
 
+	/** Guest merge: page every run (with its log lines) out of this owner. */
+	async exportRunHistoryPage(input: {
+		afterId: string | null
+		limit: number
+	}): Promise<RunHistoryTransferPage> {
+		const limit = Math.max(1, Math.min(Math.floor(input.limit), 50))
+		const runs = this.ctx.storage.sql
+			.exec(
+				`SELECT * FROM runs WHERE id > ? ORDER BY id LIMIT ?`,
+				input.afterId ?? '',
+				limit,
+			)
+			.toArray() as Array<RunHistoryTransferRow>
+		const ids = runs.map((row) => String(row.id))
+		const logs =
+			ids.length > 0
+				? (this.ctx.storage.sql
+						.exec(
+							`SELECT * FROM run_logs WHERE run_id IN (${ids.map(() => '?').join(', ')})`,
+							...ids,
+						)
+						.toArray() as Array<RunHistoryTransferRow>)
+				: []
+		return {
+			runs,
+			logs,
+			nextAfterId: runs.length === limit ? (ids.at(-1) ?? null) : null,
+		}
+	}
+
+	/** Guest merge: copy runs exported from another owner; existing ids win. */
+	async importRunHistory(input: {
+		runs: Array<RunHistoryTransferRow>
+		logs: Array<RunHistoryTransferRow>
+	}): Promise<{ imported: number }> {
+		let imported = 0
+		for (const [table, rows] of [
+			['runs', input.runs],
+			['run_logs', input.logs],
+		] as const) {
+			const known = new Set(
+				this.ctx.storage.sql
+					.exec(`PRAGMA table_info(${table})`)
+					.toArray()
+					.map((column) => String(column.name)),
+			)
+			for (const row of rows) {
+				const columns = Object.keys(row).filter((key) => known.has(key))
+				if (columns.length === 0) continue
+				const cursor = this.ctx.storage.sql.exec(
+					`INSERT OR IGNORE INTO ${table} (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`,
+					...columns.map((key) => row[key] ?? null),
+				)
+				if (table === 'runs') imported += cursor.rowsWritten > 0 ? 1 : 0
+			}
+		}
+		return { imported }
+	}
+
 	async listRuns(input: ListRunsInput): Promise<RunRecordPage> {
 		const limit = normalizePageSize(input.limit, runRecordDefaultPageSize)
 		const clauses: Array<string> = ['1 = 1']
@@ -4956,7 +5015,23 @@ export const RunLog = Sentry.instrumentDurableObjectWithSentry(
 )
 export type RunLog = InstanceType<typeof RunLog>
 
+export type RunHistoryTransferRow = Record<string, SqlStorageValue>
+
+export type RunHistoryTransferPage = {
+	runs: Array<RunHistoryTransferRow>
+	logs: Array<RunHistoryTransferRow>
+	nextAfterId: string | null
+}
+
 export type RunLogRpc = DurableObjectPitrRpc & {
+	exportRunHistoryPage: (input: {
+		afterId: string | null
+		limit: number
+	}) => Promise<RunHistoryTransferPage>
+	importRunHistory: (input: {
+		runs: Array<RunHistoryTransferRow>
+		logs: Array<RunHistoryTransferRow>
+	}) => Promise<{ imported: number }>
 	recordSkillRead: (event: SkillReadEvent) => Promise<void>
 	skillReadSummary: (input: {
 		since: string
