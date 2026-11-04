@@ -29,12 +29,11 @@ const vocabularyFiles = new Set([
  * Grantable but checked nowhere (kody-hq/kody#3739). App changes and deletion
  * are `package:write` / `package:delete` (an app shares its package's id), so
  * `app:write` / `app:delete` are in no preset and only an advanced app grant
- * can carry them. `job:delete` removal is tracked in #3678.
+ * can carry them.
  */
 const unenforcedGrantablePermissions: ReadonlyArray<OrgPermission> = [
 	'app:delete',
 	'app:write',
-	'job:delete',
 ]
 
 function listSourceFiles(directory: string): Array<string> {

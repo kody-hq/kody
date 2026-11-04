@@ -74,7 +74,6 @@ test('org grants carry org-wide reads plus package and app manage, and nothing e
 	for (const permission of [
 		'job:write',
 		'job:execute',
-		'job:delete',
 		'job:manage_access',
 		'secret:use',
 		'integration:use',

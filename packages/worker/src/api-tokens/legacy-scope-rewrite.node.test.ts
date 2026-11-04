@@ -249,7 +249,12 @@ test('retired permissions are dropped instead of rejected', () => {
 		rewriteLegacyApiTokenScopes(['jobs:read', 'job:create', 'email:create']),
 	).toEqual(['job:read'])
 	expect(
-		normalizeApiTokenScopes(['package:read', 'app:create', 'job:create']),
+		normalizeApiTokenScopes([
+			'package:read',
+			'app:create',
+			'job:create',
+			'job:delete',
+		]),
 	).toEqual(['package:read'])
 	expect(() => normalizeApiTokenScopes(['job:launch'])).toThrow(
 		/Unknown API token scope/,
