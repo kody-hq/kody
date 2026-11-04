@@ -3,6 +3,7 @@ import {
 	getErrorMessage,
 } from '@kody-internal/shared/error-message.ts'
 import { isArtifactsGitMissingObjectMessage } from './artifacts-git-retry.ts'
+import { isArtifactsHeadChangedBeforePublishMessage } from './publish-concurrency-caller-error.ts'
 
 /**
  * User-facing failure when approve-publish (or another external publish)
@@ -116,7 +117,7 @@ export function classifyExternalPublishCloneError(
 	commit: string,
 ): ExternalPublishCloneFailure {
 	const message = getErrorMessage(error)
-	if (message.includes('Artifacts HEAD changed from')) {
+	if (isArtifactsHeadChangedBeforePublishMessage(message)) {
 		return { kind: 'rethrow' }
 	}
 	const unknownCommit = unknownRequestedCommitError(error, commit)

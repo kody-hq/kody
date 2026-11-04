@@ -158,6 +158,10 @@ import {
 } from './external-publish-clone.ts'
 import { classifyExternalPublishCloneError } from './requested-commit-error.ts'
 import {
+	buildArtifactsHeadChangedBeforePublishMessage,
+	buildPublishedCommitMovedDuringPublishMessage,
+} from './publish-concurrency-caller-error.ts'
+import {
 	attachPublishPhaseTimings,
 	timePublishExternalPushPhase,
 	type PublishPhaseTimings,
@@ -4688,7 +4692,10 @@ class RepoSessionBase extends DurableObject<Env> {
 						const clonedHead = cloned.headCommit
 						if (clonedHead !== input.expectedHead) {
 							throw new Error(
-								`Artifacts HEAD changed from "${input.expectedHead}" to "${clonedHead ?? 'unknown'}" before publish.`,
+								buildArtifactsHeadChangedBeforePublishMessage(
+									input.expectedHead,
+									clonedHead ?? 'unknown',
+								),
 							)
 						}
 					}
@@ -4918,9 +4925,7 @@ class RepoSessionBase extends DurableObject<Env> {
 						previousCommit !== source.published_commit ||
 						cloned.isFastForward === null
 					) {
-						throw new Error(
-							'The published commit moved while this publish was running. Retry the publish.',
-						)
+						throw new Error(buildPublishedCommitMovedDuringPublishMessage())
 					}
 					return cloned.isFastForward
 				},
