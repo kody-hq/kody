@@ -6,6 +6,8 @@ description:
   When an engineer leaves, their agent workflows often leave with them or keep
   running on their keys. How to make AI workflows survive offboarding.
 order: 12
+category: essays
+series: agent-credentials-for-team-leads
 ---
 
 Most of the AI workflows your team depends on belong to a person, not to the
@@ -137,10 +139,3 @@ Kody package in your team org and share it with a second person. Get started at
 [kody.codes](https://kody.codes); the
 [organizations guide](https://kody.codes/docs/organizations) covers how
 automation runs as its enabler.
-
-More in this series:
-
-- [How to share AI workflows with your team](/blog/share-ai-workflows-with-your-team)
-- [A team lead's guide to AI agent credentials](/blog/ai-agent-credentials-guide-for-team-leads)
-- [How to revoke AI agent access in one place](/blog/revoke-ai-agent-access)
-- [Bring your own key, letting each teammate run shared tools as themselves](/blog/bring-your-own-key-for-shared-team-tools)

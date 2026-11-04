@@ -5,6 +5,8 @@ description:
   MCP configs and .env files spread API keys across every laptop and agent.
   Here's how to connect agents to services without putting keys in config files.
 order: 4
+category: how-to
+series: agent-credentials-for-team-leads
 ---
 
 If you're wondering where to store API keys for AI agents, start with where they
@@ -145,10 +147,3 @@ covers it.
 
 [Connect your agent to Kody](https://kody.codes/onboarding) and move your first
 key out of a config file today.
-
-More in this series:
-
-- [ Your engineers are handing private keys to AI agents. Here's what that means.](/blog/engineers-are-handing-private-keys-to-ai-agents)
-- [Least privilege for AI agents, a practical setup](/blog/least-privilege-for-ai-agents)
-- [Sharing credentials across Claude Code, Cursor, and Codex without copying secrets](/blog/claude-code-cursor-and-codex-shared-credentials)
-- [An MCP security checklist for engineering managers](/blog/mcp-security-checklist-for-engineering-managers)

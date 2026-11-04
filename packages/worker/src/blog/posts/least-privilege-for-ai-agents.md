@@ -6,6 +6,8 @@ description:
     provider scopes, host allowlists, fill placement, package-only keys, locks,
     and expiry.
 order: 5
+category: how-to
+series: agent-credentials-for-team-leads
 ---
 
 Least privilege for AI agents is easy to agree with and hard to actually do.
@@ -147,10 +149,3 @@ list. [Connect your agent to Kody](https://kody.codes/onboarding), ask it to
 save the token with one approved host, and then restrict it to the one package
 that needs it. The full reference is in the
 [credentials guide](https://kody.codes/docs/credentials).
-
-More in this series:
-
-- [AI agent GitHub access without handing over your token](/blog/ai-agent-github-access-without-your-token)
-- [Where to store API keys for AI agents (not in agent configs)](/blog/where-to-store-api-keys-for-ai-agents)
-- [How to revoke AI agent access in one place](/blog/revoke-ai-agent-access)
-- [An MCP security checklist for engineering managers](/blog/mcp-security-checklist-for-engineering-managers)

@@ -5,6 +5,8 @@ description:
   Lambda can run the code your agents write. The trouble is everything around
   it, like IAM, secrets, deploys, and review. Here's where it breaks for teams.
 order: 18
+category: essays
+series: agent-credentials-for-team-leads
 ---
 
 "Just use Lambda" is the right answer for one function a person wrote. It's the
@@ -136,10 +138,3 @@ Next time someone suggests Lambda for something an agent wrote, try Kody first.
 Kody package and set it up as an hourly job." If it turns out to be too heavy,
 the [heavy work offload guide](https://kody.codes/docs/heavy-work-offload) shows
 how to split it.
-
-More in this series:
-
-- [Why AI agent costs keep growing (and how deterministic tools cut tokens)](/blog/why-ai-agent-costs-keep-growing)
-- [How to avoid AI assistant lock-in, build once and use from any agent](/blog/avoid-ai-assistant-lock-in)
-- [Internal tools built with AI that reuse your team's credentials](/blog/internal-tools-built-with-ai-team-credentials)
-- [AI agent skills vs packages, turning prompts into reviewable code](/blog/ai-agent-skills-vs-packages)

@@ -7,6 +7,8 @@ description:
   Your engineers use Claude Code, Cursor, and Codex, each with its own copy of
   every key. How to give every assistant the same access with zero copies.
 order: 15
+category: how-to
+series: agent-credentials-for-team-leads
 ---
 
 Watch an engineer set up a new AI coding assistant. They've been using Cursor
@@ -138,10 +140,3 @@ instead of sharing one? That's the next post:
 connect a second one and ask it what the first one built. The per-assistant
 steps are in the
 [connect your agent guide](https://kody.codes/docs/connect-your-agent).
-
-More in this series:
-
-- [Where to store API keys for AI agents (not in agent configs)](/blog/where-to-store-api-keys-for-ai-agents)
-- [How to avoid AI assistant lock-in, build once and use from any agent](/blog/avoid-ai-assistant-lock-in)
-- [Bring your own key, letting each teammate run shared tools as themselves](/blog/bring-your-own-key-for-shared-team-tools)
-- [A team lead's guide to AI agent credentials](/blog/ai-agent-credentials-guide-for-team-leads)

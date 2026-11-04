@@ -5,6 +5,7 @@ description:
   Longer notes from people using Kody — how it shows up in their work, in their
   words.
 order: 1
+category: stories
 placeholder: false
 ---
 

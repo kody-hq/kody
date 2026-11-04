@@ -6,6 +6,7 @@ description:
   scheduled jobs, an inbox. Those things should live somewhere durable that you
   own, no matter which agent you talk to this year.
 order: 1
+category: essays
 ---
 
 I've switched AI agents more times in the last two years than I switched text

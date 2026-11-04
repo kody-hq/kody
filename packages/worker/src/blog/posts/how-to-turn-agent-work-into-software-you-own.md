@@ -6,6 +6,7 @@ description:
   you own, then trigger it — invoke, job, webhook, or app — without paying the
   model again.
 order: 8
+category: how-to
 placeholder: true
 image: /images/kody-factory-map.webp
 imageAlt:

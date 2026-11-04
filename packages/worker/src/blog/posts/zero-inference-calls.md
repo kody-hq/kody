@@ -5,6 +5,7 @@ description:
   Kody makes zero inference calls. That's not a limitation, it's the business
   model, and it changes who your assistant platform is actually working for.
 order: 4
+category: essays
 ---
 
 Here's a claim from the [Kody](https://kody.codes) home page that sounds like a

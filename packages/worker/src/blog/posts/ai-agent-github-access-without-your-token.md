@@ -5,6 +5,8 @@ description:
   Let an AI agent read repos, open PRs, and check CI without ever seeing a
   GitHub token. A step-by-step setup with fine-grained tokens and Kody.
 order: 2
+category: how-to
+series: agent-credentials-for-team-leads
 ---
 
 Here's a request I see all the time. An engineer wants their agent to pull open
@@ -158,10 +160,3 @@ why keys in agent context are risky to begin with, start at
 up GitHub in Kody with a fine-grained token for these repos, read-only pull
 requests." It'll walk you through the token page and send the save link. The
 full steps are in the [GitHub provider guide](https://kody.codes/docs/github).
-
-More in this series:
-
-- [ Your engineers are handing private keys to AI agents. Here's what that means.](/blog/engineers-are-handing-private-keys-to-ai-agents)
-- [Least privilege for AI agents, a practical setup](/blog/least-privilege-for-ai-agents)
-- [A team lead's guide to AI agent credentials](/blog/ai-agent-credentials-guide-for-team-leads)
-- [How to revoke AI agent access in one place](/blog/revoke-ai-agent-access)

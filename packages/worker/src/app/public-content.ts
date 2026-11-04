@@ -1,7 +1,13 @@
 import { acquisitionPageSummaries } from '#universal/acquisition/metadata.ts'
 import { publicOgPages } from '#universal/og-pages.ts'
 import { withAgentHref, withAgents } from '#universal/with-agents.ts'
-import { listBlogPosts } from '#worker/blog/catalog.ts'
+import {
+	listBlogCategoriesWithPosts,
+	listBlogCategoryPosts,
+	listBlogPosts,
+	listBlogSeriesPosts,
+} from '#worker/blog/catalog.ts'
+import { blogSeries, getBlogCategory } from '#universal/blog-taxonomy.ts'
 
 /** Public discovery excludes account access and recovery screens. */
 const accountPaths = new Set(['/login', '/signup', '/reset-password'])
@@ -47,10 +53,29 @@ export function listPublicWebsitePages() {
  * Catalog of public blog post URLs for discovery feeds (llms.txt, sitemap).
  */
 export function listPublicBlogPages() {
-	return listBlogPosts().map((post) => ({
+	const posts = listBlogPosts().map((post) => ({
 		path: `/blog/${post.slug}`,
 		title: post.title,
 		description: post.description,
-		lastmod: post.date,
+		lastmod: post.updated ?? post.date,
 	}))
+	const categories = listBlogCategoriesWithPosts().map((summary) => {
+		const category = getBlogCategory(summary.slug)!
+		return {
+			path: `/blog/category/${category.slug}`,
+			title: `Kody blog: ${category.label}`,
+			description: category.description,
+			lastmod: listBlogCategoryPosts(category.slug)[0]!.date,
+		}
+	})
+	const series = blogSeries.map((entry) => {
+		const parts = listBlogSeriesPosts(entry.slug)
+		return {
+			path: `/blog/series/${entry.slug}`,
+			title: `Kody blog series: ${entry.title}`,
+			description: entry.description,
+			lastmod: parts.at(-1)!.date,
+		}
+	})
+	return [...posts, ...categories, ...series]
 }

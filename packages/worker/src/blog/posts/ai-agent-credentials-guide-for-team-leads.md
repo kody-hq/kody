@@ -5,6 +5,8 @@ description:
   Who owns the keys when your team's AI agents call real services? A practical
   model for team, personal, and shared credentials.
 order: 3
+category: how-to
+series: agent-credentials-for-team-leads
 ---
 
 Picture the Slack thread. Someone on your team built a handy agent workflow that
@@ -145,10 +147,3 @@ team-owned credential into it and turn one shared script into a package that
 declares that credential as a need. Start at [kody.codes](https://kody.codes),
 and keep the [credentials guide](https://kody.codes/docs/credentials) and
 [organizations guide](https://kody.codes/docs/organizations) open while you do.
-
-More in this series:
-
-- [ Your engineers are handing private keys to AI agents. Here's what that means.](/blog/engineers-are-handing-private-keys-to-ai-agents)
-- [Where to store API keys for AI agents (not in agent configs)](/blog/where-to-store-api-keys-for-ai-agents)
-- [Bring your own key, letting each teammate run shared tools as themselves](/blog/bring-your-own-key-for-shared-team-tools)
-- [How to share AI workflows with your team](/blog/share-ai-workflows-with-your-team)

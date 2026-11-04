@@ -34,6 +34,7 @@ style, tests, MCP capabilities, and runtime architecture.
   still work and will be removed later, including `kody_id` / `kody.id`)
 - [Release notes](./release-notes.md) (PR bodies / Discord; **May break
   packages** heading)
+- [Writing blog posts](./blog.md) (category, series, frontmatter schema)
 - [Friction log](./friction-log.md) (when/where/how-to-fix policy; package owns
   create/file/daily at
   [@kentcdodds/friction-log](https://kody.codes/@kentcdodds/friction-log))

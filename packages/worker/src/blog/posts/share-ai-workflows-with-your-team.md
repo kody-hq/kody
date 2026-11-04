@@ -4,6 +4,8 @@ date: 2026-10-09
 description:
   "Copy my prompt" doesn't scale. A concrete way to share AI agent workflows with teammates, teams, and contractors without sharing anyone's keys.
 order: 13
+category: how-to
+series: agent-credentials-for-team-leads
 ---
 
 Here's how engineers usually share AI workflows with your team today. Someone
@@ -147,10 +149,3 @@ team org and share it with everyone at Use. Start at
 [kody.codes](https://kody.codes), and keep the
 [package sharing guide](https://kody.codes/docs/package-sharing) open for the
 presets and invite links.
-
-More in this series:
-
-- [The hidden cost of AI tooling for engineering teams when everyone builds their own](/blog/ai-tooling-for-engineering-teams-hidden-cost)
-- [Bring your own key, letting each teammate run shared tools as themselves](/blog/bring-your-own-key-for-shared-team-tools)
-- [When an engineer quits, their AI workflows break or keep running on their keys](/blog/team-ai-workflows-when-someone-quits)
-- [Internal tools built with AI that reuse your team's credentials](/blog/internal-tools-built-with-ai-team-credentials)

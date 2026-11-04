@@ -5,6 +5,8 @@ description:
   Agent skills tell a model what to do; packages are code that does it. When to
   use each, and how to turn a fragile prompt into reviewable code.
 order: 14
+category: essays
+series: agent-credentials-for-team-leads
 ---
 
 Your team has a `SKILL.md` that everyone loves. It explains how to cut a
@@ -139,10 +141,3 @@ smuggling a procedure.
 the procedure out into a package. The
 [package skills guide](https://kody.codes/docs/package-skills) covers shipping
 the remaining skill alongside it.
-
-More in this series:
-
-- [Why AI agent costs keep growing (and how deterministic tools cut tokens)](/blog/why-ai-agent-costs-keep-growing)
-- [The hidden cost of AI tooling for engineering teams when everyone builds their own](/blog/ai-tooling-for-engineering-teams-hidden-cost)
-- [How to avoid AI assistant lock-in, build once and use from any agent](/blog/avoid-ai-assistant-lock-in)
-- [AI agent guardrails for your team, without killing autonomy](/blog/ai-agent-guardrails-for-teams)
