@@ -242,7 +242,7 @@ test('collectFiles skips .kodyignore matches before reading or counting them', a
 })
 
 test('collectFiles keeps PNG magic byte-identical (no UTF-8 replacement)', async () => {
-	const { bytesToLatin1String, snapshotStringToBytes } =
+	const { snapshotStringToBytes } =
 		await import('#universal/package-file-media.ts')
 	const pngMagic = Uint8Array.from([
 		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -265,7 +265,6 @@ test('collectFiles keeps PNG magic byte-identical (no UTF-8 replacement)', async
 	expect(utf8Decoded.charCodeAt(0)).toBe(0xfffd)
 
 	const { files: collected } = await cloned.collectFiles()
-	expect(collected['public/mark.png']).toBe(bytesToLatin1String(pngMagic))
 	expect([
 		...snapshotStringToBytes(collected['public/mark.png']!, 'public/mark.png'),
 	]).toEqual([...pngMagic])

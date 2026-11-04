@@ -10,7 +10,6 @@ import {
 	createSnapshotFilesWorkspace,
 	deferredBundleCheckMessage,
 } from '#worker/repo/checks.ts'
-import { bytesToLatin1String } from '#universal/package-file-media.ts'
 
 const mockModule = vi.hoisted(() => ({
 	resolvePackageOwnerContext: vi.fn(),
@@ -521,7 +520,9 @@ test('packageCheck checks binary_contents byte for byte as the publish snapshot'
 	)
 	const staged = JSON.parse(isolated.kv.put.mock.calls[0]![1])
 	expect(staged.binaryFileSizes).toBeUndefined()
-	expect(staged.sourceFiles['icons/icon.png']).toBe(bytesToLatin1String(png))
+	expect([
+		...Buffer.from(staged.sourceFiles['icons/icon.png'], 'latin1'),
+	]).toEqual([...png])
 	await expect(
 		packageCheckCapability.handler(
 			{ files: stampedScopePackageFiles(), binary_contents: { 'x.png': '%%' } },

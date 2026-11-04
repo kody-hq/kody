@@ -7,7 +7,6 @@ import {
 } from '#worker/test-support/module-graph.ts'
 import {
 	buildLocalExecutePackageGraph,
-	localExecuteHostRuntimeModuleName,
 	type LocalExecutePackageGraphError,
 } from './local-execute-package-graph.ts'
 import {
@@ -189,7 +188,6 @@ export default async function main(params) { return greet(params.name) }`
 	const runtimeShim = graph.modules.find(
 		(module) => module.name === '.__kody_virtual__/runtime.js',
 	)?.esModule
-	expect(runtimeShim).toContain(localExecuteHostRuntimeModuleName)
 	// Bare "kody:runtime" path-joins under .__kody_virtual__/ in local workerd.
 	expect(runtimeShim).toContain('"../kody:runtime"')
 	expect(runtimeShim).not.toMatch(/from ["']kody:runtime["']/)

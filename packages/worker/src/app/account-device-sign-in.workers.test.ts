@@ -3,9 +3,7 @@ import { env } from 'cloudflare:workers'
 import { afterEach, beforeAll, expect, test, vi } from 'vitest'
 import {
 	accountDeviceApproveRateLimit,
-	accountDeviceCodeTtlSeconds,
 	accountDevicePollRateLimit,
-	accountDeviceSlowRefreshSeconds,
 	accountDeviceStartRateLimit,
 	formatDeviceLocation,
 	handleAccountDeviceSignInDocument,
@@ -82,7 +80,7 @@ async function startOnLimitedBrowser(
 async function started(input: Parameters<typeof startOnLimitedBrowser>[0]) {
 	const response = await startOnLimitedBrowser(input)
 	expect(response.status).toBe(303)
-	expect(response.headers.get('Location')).toBe(accountDeviceSignInPath)
+	expect(response.headers.get('Location')).toBe('/login/device')
 	const cookie = response.headers.get('Set-Cookie')?.split(';')[0] ?? ''
 	expect(cookie).toMatch(/^__Host-kody_account_device=/)
 	return cookie
@@ -156,7 +154,7 @@ test('an approved full-account sign-in signs the browser in once and emails the 
 	expect(view.verificationUriComplete).toBe(
 		`${appOrigin}/device?user_code=${view.userCode}`,
 	)
-	expect(view.minutesLeft).toBe(accountDeviceCodeTtlSeconds / 60)
+	expect(view.minutesLeft).toBe(5)
 	await expect(
 		handleAccountDeviceSignInDocument({ env, request: limitedRequest(cookie) }),
 	).resolves.toEqual({ refreshSeconds: 5 })
@@ -312,7 +310,7 @@ test('starting is limited per network and refused cross-origin', async () => {
 	}
 	const limited = await startOnLimitedBrowser({ ip })
 	expect(limited.headers.get('Location')).toBe(
-		`${accountDeviceSignInPath}?error=rate_limited`,
+		'/login/device?error=rate_limited',
 	)
 	expect(limited.headers.get('Set-Cookie')).toBeNull()
 
@@ -345,7 +343,7 @@ test('checking too often slows the asking browser down', async () => {
 			env,
 			request: limitedRequest(cookie, ip),
 		}),
-	).resolves.toEqual({ refreshSeconds: accountDeviceSlowRefreshSeconds })
+	).resolves.toEqual({ refreshSeconds: 30 })
 })
 
 test('approvals are limited per person', async () => {
