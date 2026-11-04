@@ -135,14 +135,15 @@ locks still apply: when a non-Owner holds org-wide `package:write` or
 the org, and a locked package needs a grant on that package with
 `allow_unmappable_credential_changes` before those two pass.
 
-**Grantable but unenforced.** `app:write`, `app:delete`, and `job:delete` can be
-granted (advanced checklist only for the app pair) but no surface checks them:
-an app shares its package's id, so changing or deleting it is `package:write` /
-`package:delete`. Holding one of them alone unlocks nothing.
-`permission-enforcement.node.test.ts` pins this list. Jobs and apps come from
-the package manifest and inboxes are made at signup, so there is no
-`job:create`, `app:create`, or `email:create`. Readers of stored scopes drop
-those values (`withoutRetiredOrgPermissions`), and migration 0241 strips stored
+**Grantable but unenforced.** `app:write` and `app:delete` can be granted
+(advanced checklist only) but no surface checks them: an app shares its
+package's id, so changing or deleting it is `package:write` / `package:delete`.
+Holding one of them alone unlocks nothing. `permission-enforcement.node.test.ts`
+pins this list. Jobs and apps come from the package manifest and inboxes are
+made at signup, so there is no `job:create`, `app:create`, or `email:create`. A
+package's jobs go away with `package:write` / `package:delete`, so there is no
+`job:delete` either. Readers of stored scopes drop those values
+(`withoutRetiredOrgPermissions`), and migrations 0241 and 0251 strip stored
 rows.
 
 A surface check without a resource (capability `orgPermission`, Open API
