@@ -134,3 +134,45 @@ test('preview clears nothing; apply clears only the orphan bucket', async () => 
 		before.filter((id) => id !== `user-2 package:${orphanId}`),
 	)
 })
+
+test('a small limit still finds the canonical orphan past noncanonical rows', async () => {
+	const sqlite = seed()
+	expect(
+		await listOrphanedPackageStorageBuckets(createD1FromSqlite(sqlite), {
+			limit: 1,
+		}),
+	).toEqual([expect.objectContaining({ storageId: `package:${orphanId}` })])
+})
+
+test('apply keeps the row of a bucket whose clear keeps failing and continues', async () => {
+	const sqlite = seed()
+	const secondOrphanId = '66666666-6666-4666-8666-666666666666'
+	sqlite
+		.prepare(
+			`INSERT INTO user_storage_buckets (user_id, storage_id, kind, created_at, last_seen_at, estimated_bytes, deleted_at)
+			VALUES ('user-3', ?, 'package', ?, ?, 1024, NULL)`,
+		)
+		.run(`package:${secondOrphanId}`, at, at)
+	const failingClear = vi.fn(async () => {
+		throw new Error('clear failed')
+	})
+	mocks.storageRunnerRpc.mockImplementation(
+		({ storageId }: { storageId: string }) => ({
+			clearStorage:
+				storageId === `package:${orphanId}` ? failingClear : mocks.clearStorage,
+		}),
+	)
+	vi.spyOn(console, 'warn').mockImplementation(() => {})
+	const env = { APP_DB: createD1FromSqlite(sqlite) } as unknown as Env
+	const before = bucketIds(sqlite)
+
+	const applied = await cleanupOrphanedPackageStorageBuckets({
+		env,
+		apply: true,
+	})
+	expect(applied).toMatchObject({ clearedCount: 1, failedCount: 1 })
+	expect(failingClear).toHaveBeenCalledTimes(3)
+	expect(bucketIds(sqlite)).toEqual(
+		before.filter((id) => id !== `user-3 package:${secondOrphanId}`),
+	)
+})

@@ -81,6 +81,8 @@ export const adminOrphanPackageStorageCleanupCapability =
 					}
 				},
 				{
+					resultOf: (result) =>
+						result.failed_count > 0 ? 'failure' : 'success',
 					successReason: (result) =>
 						`applied=${result.applied ? 1 : 0};cleared=${result.cleared_count};failed=${result.failed_count};orphans=${result.orphans.length}`,
 				},

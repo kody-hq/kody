@@ -107,3 +107,20 @@ test('admin orphan package storage cleanup enforces admin role, previews by defa
 		'adminOrphanPackageStorageCleanup:success',
 	])
 })
+
+test('admin orphan package storage cleanup audits partial failures as failure', async () => {
+	logAuditEventSpy.mockClear()
+	mocks.cleanupOrphanedPackageStorageBuckets.mockResolvedValueOnce({
+		applied: true,
+		clearedCount: 0,
+		failedCount: 1,
+		orphans: [],
+	})
+	await adminOrphanPackageStorageCleanupCapability.handler(
+		{ apply: true },
+		createContext(['admin']),
+	)
+	expect(auditEventSummaries()).toEqual([
+		'adminOrphanPackageStorageCleanup:failure',
+	])
+})
