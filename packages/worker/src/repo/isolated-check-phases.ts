@@ -130,6 +130,7 @@ export type IsolatedAuthoringChecksRequest = {
 	sourceId?: string
 	expectedPackageScope?: string
 	deferBundleCheckToRebuild?: boolean
+	typecheckRanOffWorker?: boolean
 }
 
 export type IsolatedAuthoringChecksOutcome = {
@@ -321,6 +322,7 @@ export async function runAuthoringChecksInIsolate(input: {
 	sourceId?: string
 	expectedPackageScope?: string
 	deferBundleCheckToRebuild?: boolean
+	typecheckRanOffWorker?: boolean
 	kodyIgnoredDeclarationFiles?: Array<string>
 }): Promise<IsolatedAuthoringChecksOutcome | null> {
 	const namespace = (
@@ -361,6 +363,9 @@ export async function runAuthoringChecksInIsolate(input: {
 					: {}),
 				...(input.deferBundleCheckToRebuild === true
 					? { deferBundleCheckToRebuild: true }
+					: {}),
+				...(input.typecheckRanOffWorker === true
+					? { typecheckRanOffWorker: true }
 					: {}),
 			})
 		} catch (error) {

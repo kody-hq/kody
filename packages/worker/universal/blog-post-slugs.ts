@@ -16,4 +16,5 @@ export const blogPostSlugs = [
 	'self-service-means-ownership',
 	'openclaw-2-needs-a-home',
 	'how-to-turn-agent-work-into-software-you-own',
+	'kody-weekly-2026-03-20',
 ] as const

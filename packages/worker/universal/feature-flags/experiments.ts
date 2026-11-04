@@ -114,6 +114,8 @@ export const notSelfServeExperimentFlags: Partial<
 > = {
 	'repo-push-queue':
 		'Infrastructure kill switch evaluated per repo, not a user-facing feature.',
+	'publish-offload':
+		'Kept off for users until the open product questions are answered; not self-serve yet.',
 }
 
 export function getSelfServeExperimentForDoc(

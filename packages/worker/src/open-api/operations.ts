@@ -380,6 +380,12 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 				aliasPaths: ['/v1/packages/{package_id}/external-push'],
 			},
 		],
+		[
+			'POST',
+			'/v1/packages/publish-builds',
+			'packagePublishBuildCreate',
+			{ aliasPaths: ['/v1/packages/{package_id}/publish-builds'] },
+		],
 		['GET', '/v1/package-subscriptions', 'packageSubscriptionsList'],
 		['GET', '/v1/enablements', 'enablementList'],
 		['POST', '/v1/enablements', 'enablementEnable'],

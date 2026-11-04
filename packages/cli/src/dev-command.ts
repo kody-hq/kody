@@ -764,6 +764,8 @@ export async function runDevCheck(input: {
 	offline?: boolean
 	/** Required unless `offline`; a missing runner fails the check. */
 	runPublishChecks?: RunPublishChecks
+	/** `--build local`: also run the publish-offload builder on the tree. */
+	localBuild?: { apiUrl: string }
 }): Promise<number> {
 	const manifest = await loadPackageManifest(input.cwd)
 	const checks: Array<{
@@ -831,6 +833,29 @@ export async function runDevCheck(input: {
 
 	push('package.json', true, manifest.name)
 	push('kody.id', Boolean(manifest.kodyId), manifest.kodyId)
+
+	if (input.localBuild) {
+		try {
+			const { buildWorkingTreeLocally } =
+				await import('./local-publish-build.js')
+			const built = await buildWorkingTreeLocally({
+				dir: manifest.root,
+				packageId: manifest.kodyId ?? '',
+				apiUrl: input.localBuild.apiUrl,
+			})
+			push(
+				'local publish build',
+				true,
+				`${built.targets} targets in ${built.buildMs} ms`,
+			)
+		} catch (error) {
+			push(
+				'local publish build',
+				false,
+				error instanceof Error ? error.message : String(error),
+			)
+		}
+	}
 
 	try {
 		await readFile(resolve(manifest.root, 'README.md'))

@@ -314,13 +314,16 @@ export function BrandContextMenu({ children }: BrandContextMenuProps) {
 		if (!menu) return
 		const rect = menu.getBoundingClientRect()
 		const margin = 8
+		// innerWidth/innerHeight include classic scrollbars; the root's client
+		// box is the area the menu can actually show in.
+		const { clientWidth, clientHeight } = document.documentElement
 		const x = Math.max(
 			margin,
-			Math.min(coords.x, window.innerWidth - rect.width - margin),
+			Math.min(coords.x, clientWidth - rect.width - margin),
 		)
 		const y = Math.max(
 			margin,
-			Math.min(coords.y, window.innerHeight - rect.height - margin),
+			Math.min(coords.y, clientHeight - rect.height - margin),
 		)
 		if (x !== coords.x || y !== coords.y) setCoords({ x, y })
 	}, [open, coords])

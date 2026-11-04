@@ -877,6 +877,18 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: [],
 	},
 	{
+		operationId: 'packagePublishBuildCreate',
+		method: 'POST',
+		pathTemplate: '/v1/packages/publish-builds',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'packagePublishBuildCreateByPath',
+		method: 'POST',
+		pathTemplate: '/v1/packages/{package_id}/publish-builds',
+		pathParamNames: ['package_id'],
+	},
+	{
 		operationId: 'packagePublishExternalPush',
 		method: 'POST',
 		pathTemplate: '/v1/packages/external-push',

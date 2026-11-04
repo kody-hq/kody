@@ -76,6 +76,11 @@ export type IsolatedArtifactBuildCheckRequest = {
 	/** The saved package's id, when the checked package was published before. */
 	rootPackageId?: string
 	targets: Array<PublishedPackageArtifactBuildTarget>
+	/**
+	 * Return each built target's per-module sha256 so publish offload can
+	 * compare a server rebuild against an uploaded bundle.
+	 */
+	includeModuleHashes?: boolean
 }
 
 /**
@@ -107,6 +112,8 @@ export type IsolatedArtifactRebuildTargetResult = {
 	callerFailure?: boolean
 	skipped?: boolean
 	kvKey?: string | null
+	/** Build check only, when `includeModuleHashes` asked for it. */
+	built?: { mainModule: string; moduleHashes: Record<string, string> }
 	target: PublishedPackageArtifactBuildTarget
 }
 
