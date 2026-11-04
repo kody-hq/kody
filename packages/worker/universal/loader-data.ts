@@ -105,6 +105,9 @@ export type BlogPostSummaryLoaderData = {
 	category: BlogCategorySlug
 	series: BlogSeriesSlug | null
 	readingMinutes: number
+	/** Headline art; list rows show it as a thumbnail. */
+	image: string | null
+	imageAlt: string | null
 }
 
 export type BlogCategoryCountLoaderData = {
