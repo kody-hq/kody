@@ -12,7 +12,7 @@ export type GuestBannerInfo = {
 	deleteAt: string
 }
 
-export function formatGuestTimeLeft(ms: number) {
+function formatGuestTimeLeft(ms: number) {
 	if (ms <= 0) return 'less than a minute'
 	const totalMinutes = Math.max(1, Math.floor(ms / 60_000))
 	const days = Math.floor(totalMinutes / (60 * 24))

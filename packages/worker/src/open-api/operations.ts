@@ -200,6 +200,8 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['GET', '/v1/account/feedback', 'metaPlatformFeedbackList'],
 		['GET', '/v1/account/feedback/{feedback_id}', 'metaPlatformFeedbackGet'],
 		['POST', '/v1/account/feedback', 'metaPlatformFeedbackSubmit'],
+		['POST', '/v1/account/guest-claim', 'guestClaimStart'],
+		['POST', '/v1/account/guest-claim/finish', 'guestClaimFinish'],
 		// Teams access (grants, invites, orgs, teams). Tagged account until
 		// token scopes move to the org vocabulary (P4/P5).
 		['GET', '/v1/access/grants', 'accessList'],

@@ -30,6 +30,7 @@ export async function pruneExpiredGuestAccounts(input: {
 			   AND g.delete_at <= ?
 			   AND u.guest_expires_at IS NOT NULL
 			   AND u.deleting_at IS NULL
+			   AND u.deleted_at IS NULL
 			 ORDER BY g.delete_at
 			 LIMIT ?`,
 		)

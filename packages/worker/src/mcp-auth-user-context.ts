@@ -412,7 +412,7 @@ export async function resolveGuestAliasedGrantProps<
 	const personId = personIdFromGrantProps(grantProps)
 	if (!personId) return grantProps
 	const row = await env.APP_DB.prepare(
-		`SELECT 1 AS present FROM users WHERE stable_user_id = ?`,
+		`SELECT 1 AS present FROM users WHERE stable_user_id = ? AND deleted_at IS NULL`,
 	)
 		.bind(personId)
 		.first<{ present: number }>()

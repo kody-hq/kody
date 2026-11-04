@@ -24,7 +24,7 @@ export type GuestConnection = {
 }
 
 /** `Nov 4, 11:24 PM MT` in Kody's home time zone. */
-export function formatGuestDeadline(iso: string) {
+function formatGuestDeadline(iso: string) {
 	const formatted = new Intl.DateTimeFormat('en-US', {
 		timeZone: 'America/Denver',
 		month: 'short',
@@ -35,7 +35,7 @@ export function formatGuestDeadline(iso: string) {
 	return `${formatted} MT`
 }
 
-export function displayClaimUrl(url: string) {
+function displayClaimUrl(url: string) {
 	return url.replace(/^https?:\/\//, '')
 }
 

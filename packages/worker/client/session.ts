@@ -30,7 +30,7 @@ export type SessionInfo = {
 	guest?: SessionGuestInfo | null
 }
 
-export type SessionGuestInfo = {
+type SessionGuestInfo = {
 	phase: 'active' | 'hold'
 	claimUrl: string
 	fullAccessUntil: string

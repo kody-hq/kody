@@ -52,7 +52,7 @@ const pillLabels: Array<[keyof GuestComesWithCounts, string, string]> = [
 ]
 
 /** "Comes with you" pills. Empty categories get no pill; all empty hides it. */
-export function ComesWithYou(props: { counts: GuestComesWithCounts }) {
+function ComesWithYou(props: { counts: GuestComesWithCounts }) {
 	const pills = pillLabels.flatMap(([key, one, many]) => {
 		const value = props.counts[key] ?? 0
 		return value > 0 ? [`${value} ${value === 1 ? one : many}`] : []

@@ -100,7 +100,7 @@ export async function loadSessionInfo(
 			featureFlags,
 			organizations: organizations.organizations,
 			inviteCount: organizations.inviteCount,
-			guest,
+			...(guest ? { guest } : {}),
 		},
 		setCookie: resolved.setCookie,
 	}

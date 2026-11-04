@@ -190,7 +190,7 @@ export async function convertGuestInPlace(input: {
 				`UPDATE users
 				 SET username = ?, email = ?, email_verified_at = ?, guest_expires_at = NULL,
 				     display_name = COALESCE(?, display_name), updated_at = ?
-				 WHERE id = ? AND guest_expires_at IS NOT NULL`,
+				 WHERE id = ? AND guest_expires_at IS NOT NULL AND deleted_at IS NULL`,
 			)
 			.bind(
 				username,
@@ -205,7 +205,7 @@ export async function convertGuestInPlace(input: {
 				`UPDATE orgs
 				 SET slug = ?, display_name = COALESCE(?, display_name), profile_visibility = 'public',
 				     signup_welcome_credits_pending = 1, updated_at = ?
-				 WHERE id = ?`,
+				 WHERE id = ? AND deleted_at IS NULL`,
 			)
 			.bind(username, input.displayName ?? null, now, orgId),
 		db
@@ -265,7 +265,9 @@ async function renameClashingPackages(
 				.first<{ present: number }>()
 			if (taken) continue
 			await db
-				.prepare(`UPDATE saved_packages SET kody_id = ? WHERE id = ?`)
+				.prepare(
+					`UPDATE saved_packages SET kody_id = ? WHERE id = ? AND deleted_at IS NULL`,
+				)
 				.bind(candidate, row.id)
 				.run()
 			renamed.push({ from: row.kody_id, to: candidate })
