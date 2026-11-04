@@ -166,7 +166,7 @@ export const featureFlagDefinitions = [
 		defaultEnabled: false,
 		defaultAudience: 'experiments_opt_in',
 		description:
-			'Publish offload: build a package on the CLI machine or an execution context the publisher runs, upload the bundles, and let the server verify them before it serves the commit. Off by default; do not enable for users until the open product choices in #worker/publish-offload/policy.ts are settled.',
+			"Publish offload: build a package on the CLI machine or an execution context the publisher runs, upload the bundles, and let the server verify them before it serves the commit. Off by default. Publishing on an execution context (by chain, a named context, or a package's kody.publish.execution.context binding) also needs execution-contexts; `--build local` needs only this flag. Product choices live in #worker/publish-offload/policy.ts.",
 	},
 	{
 		key: 'credential-need-enforcement',
