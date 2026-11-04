@@ -3,6 +3,7 @@ title: Kody weekly: small fixes and maintenance
 date: 2026-06-05
 description: Generated UI shows real tool errors and next steps, and package sources recover from missing repos.
 order: 1
+category: updates
 placeholder: false
 ---
 

@@ -5,6 +5,8 @@ description:
   Workflows built inside one AI assistant are stuck there. How to keep your
   team's agent tooling portable across Claude Code, Cursor, Codex, and ChatGPT.
 order: 17
+category: how-to
+series: agent-credentials-for-team-leads
 ---
 
 A year from now, will your team still be using the same AI assistant it uses
@@ -126,10 +128,3 @@ keys become credentials, the schedule becomes a job.
 one small package with the first, and run it from the second. The
 [portability guide](https://kody.codes/docs/portability) is the exact prompt
 Kody's onboarding uses for that second agent.
-
-More in this series:
-
-- [Sharing credentials across Claude Code, Cursor, and Codex without copying secrets](/blog/claude-code-cursor-and-codex-shared-credentials)
-- [AI agent skills vs packages, turning prompts into reviewable code](/blog/ai-agent-skills-vs-packages)
-- [Why "just use AWS Lambda" breaks down for teams using AI agents](/blog/why-aws-lambda-breaks-down-for-ai-agent-teams)
-- [Why AI agent costs keep growing (and how deterministic tools cut tokens)](/blog/why-ai-agent-costs-keep-growing)

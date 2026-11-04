@@ -3,6 +3,7 @@ title: Kody weekly: Call Kody over HTTPS with the Open API
 date: 2026-10-02
 description: A JSON HTTP API on api.kody.codes with scoped tokens, plus 7 more updates to credits, webhooks, imports, and git, and 2 breaking changes.
 order: 1
+category: updates
 placeholder: false
 ---
 

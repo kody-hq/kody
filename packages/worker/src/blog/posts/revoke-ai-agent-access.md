@@ -5,6 +5,8 @@ description:
   When an agent misbehaves or a laptop goes missing, how many places do you
   revoke? Here's how to make agent access something you can cut off fast.
 order: 6
+category: how-to
+series: agent-credentials-for-team-leads
 ---
 
 It's 4:45pm and a teammate pings you: "I think my agent just pushed something
@@ -132,10 +134,3 @@ and reconnect. It takes a minute, and you'll know exactly where the button is
 when it matters. If your team isn't on Kody yet, start by
 [connecting one agent](https://kody.codes/onboarding) and moving the keys it
 uses into Kody, so there's a single door to close.
-
-More in this series:
-
-- [Least privilege for AI agents, a practical setup](/blog/least-privilege-for-ai-agents)
-- [An AI agent audit log for production access](/blog/ai-agent-audit-log-for-production-access)
-- [When an engineer quits, their AI workflows break or keep running on their keys](/blog/team-ai-workflows-when-someone-quits)
-- [An MCP security checklist for engineering managers](/blog/mcp-security-checklist-for-engineering-managers)

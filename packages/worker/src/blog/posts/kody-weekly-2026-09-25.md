@@ -3,6 +3,7 @@ title: Kody weekly: Smoke-test webhooks without public traffic
 date: 2026-09-25
 description: webhookSyntheticDispatch sends a test event to your package webhook, plus 5 more updates to Activity, search, and files, and 1 breaking change.
 order: 1
+category: updates
 placeholder: false
 ---
 

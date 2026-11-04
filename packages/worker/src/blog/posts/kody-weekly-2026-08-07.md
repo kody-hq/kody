@@ -3,6 +3,7 @@ title: Kody weekly: Plain repos, with packages as an opt-in
 date: 2026-08-07
 description: Create plain repos with repo_create and promote one to a package when you need it, plus 7 more updates to onboarding, plans, and status.
 order: 1
+category: updates
 placeholder: false
 ---
 

@@ -54,10 +54,10 @@ export const publicOgPages = {
 	blog: {
 		imageTitle: 'Kody Blog',
 		imageSubtitle:
-			'Updates and positioning posts from Kent C. Dodds about Kody.',
+			'Essays, how-to guides, release notes, and customer stories about Kody.',
 		ogTitle: 'Blog — Kody',
 		ogDescription:
-			'Updates and positioning posts from Kent C. Dodds about Kody.',
+			'Essays, how-to guides, release notes, and customer stories about Kody, from Kent C. Dodds.',
 		path: '/blog',
 	},
 	login: {

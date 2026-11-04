@@ -7,6 +7,8 @@ description:
   Five engineers, five private scripts doing the same job. Why duplicated agent
   tooling costs more than it looks, and how to build it once for the team.
 order: 11
+category: essays
+series: agent-credentials-for-team-leads
 ---
 
 Ask around your team and you'll find something like this. Three engineers have
@@ -130,10 +132,3 @@ workflow into it as a package, and share it with everyone in the org. The
 grants, and the
 [package lifecycle guide](https://kody.codes/docs/package-lifecycle) covers
 reuse versus fork versus create.
-
-More in this series:
-
-- [How to share AI workflows with your team](/blog/share-ai-workflows-with-your-team)
-- [Why AI agent costs keep growing (and how deterministic tools cut tokens)](/blog/why-ai-agent-costs-keep-growing)
-- [AI agent skills vs packages, turning prompts into reviewable code](/blog/ai-agent-skills-vs-packages)
-- [When an engineer quits, their AI workflows break or keep running on their keys](/blog/team-ai-workflows-when-someone-quits)

@@ -3,6 +3,7 @@ title: Kody weekly: Share packages with the community
 date: 2026-07-10
 description: Publish packages as public MIT listings others can fork and rate, plus 8 more updates and 3 breaking changes to email, UI, and secrets.
 order: 1
+category: updates
 placeholder: false
 ---
 

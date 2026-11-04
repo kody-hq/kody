@@ -5,6 +5,8 @@ description:
   A practical MCP security checklist for engineering managers. What to ask about
   every MCP server your team's AI agents use, and what good looks like.
 order: 7
+category: how-to
+series: agent-credentials-for-team-leads
 ---
 
 Your team didn't ask permission to start using MCP. One engineer added a GitHub
@@ -155,10 +157,3 @@ it? See
 MCP server from your list. The
 [lock an MCP server to a package](https://kody.codes/docs/locked-mcp-server)
 guide shows how to narrow its tools once it's connected.
-
-More in this series:
-
-- [Where to store API keys for AI agents (not in agent configs)](/blog/where-to-store-api-keys-for-ai-agents)
-- [How to revoke AI agent access in one place](/blog/revoke-ai-agent-access)
-- [An AI agent audit log for production access](/blog/ai-agent-audit-log-for-production-access)
-- [AI agent guardrails for your team, without killing autonomy](/blog/ai-agent-guardrails-for-teams)

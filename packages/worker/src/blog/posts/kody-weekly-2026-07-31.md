@@ -3,6 +3,7 @@ title: Kody weekly: Packages can receive webhooks
 date: 2026-07-31
 description: Packages declare kody.webhooks and you mint a URL per webhook, plus 8 more updates to run history, account pages, billing, and email.
 order: 1
+category: updates
 placeholder: false
 ---
 

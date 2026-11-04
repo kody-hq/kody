@@ -3,6 +3,7 @@ title: Kody weekly: Secrets only go to the hosts you approve
 date: 2026-03-27
 description: Codemode fetch fills in secrets only for approved hosts, plus 6 more updates to saved UI apps, integrations, and fixes.
 order: 1
+category: updates
 placeholder: false
 ---
 

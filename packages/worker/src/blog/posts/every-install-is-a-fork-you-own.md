@@ -6,6 +6,7 @@ description:
   In Kody's community, one-click install creates a fork you own. Here's why that
   changes how you treat other people's code.
 order: 5
+category: essays
 ---
 
 Think about the last time you installed someone else's automation. A browser

@@ -3,6 +3,7 @@ title: Kody weekly: Repo sessions work on branches in your package repo
 date: 2026-06-26
 description: Repo sessions now use sessions branches in the source repo, plus 3 more updates to package tokens and errors, and 2 breaking changes.
 order: 1
+category: updates
 placeholder: false
 ---
 

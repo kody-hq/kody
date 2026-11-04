@@ -3,6 +3,7 @@ title: Kody weekly: Skills, apps, and jobs become packages
 date: 2026-04-24
 description: Saved skills and apps now run as repo-backed packages, plus 8 more updates to jobs, repo editing, search, and realtime.
 order: 1
+category: updates
 placeholder: false
 ---
 

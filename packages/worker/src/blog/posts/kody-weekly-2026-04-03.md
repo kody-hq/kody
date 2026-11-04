@@ -3,6 +3,7 @@ title: Kody weekly: Connect OAuth providers from a hosted page
 date: 2026-04-03
 description: A hosted /connect/oauth page stores and refreshes provider tokens, plus 8 more updates to secrets, skills, search, and memory.
 order: 1
+category: updates
 placeholder: false
 ---
 

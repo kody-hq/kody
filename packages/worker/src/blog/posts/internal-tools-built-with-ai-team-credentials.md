@@ -5,6 +5,8 @@ description:
   Agents can build an internal dashboard in an afternoon. The hard part is auth,
   keys, and hosting. How to ship one on credentials you already have.
 order: 19
+category: how-to
+series: agent-credentials-for-team-leads
 ---
 
 An engineer asks their agent for a small internal tool: a page that shows open
@@ -127,10 +129,3 @@ Kody package app in our team org that shows X, using our existing credentials,
 and share it with the support team." The
 [package apps guide](https://kody.codes/docs/package-apps) covers hosting, Sign
 in with Kody, and visitor needs.
-
-More in this series:
-
-- [Bring your own key, letting each teammate run shared tools as themselves](/blog/bring-your-own-key-for-shared-team-tools)
-- [Why "just use AWS Lambda" breaks down for teams using AI agents](/blog/why-aws-lambda-breaks-down-for-ai-agent-teams)
-- [How to share AI workflows with your team](/blog/share-ai-workflows-with-your-team)
-- [A team lead's guide to AI agent credentials](/blog/ai-agent-credentials-guide-for-team-leads)

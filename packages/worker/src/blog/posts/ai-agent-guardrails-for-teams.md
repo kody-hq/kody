@@ -5,6 +5,8 @@ description:
   How much should your team's AI agents do without asking? A practical way to
   set autonomy guardrails that are enforced by the platform, not the prompt.
 order: 9
+category: how-to
+series: agent-credentials-for-team-leads
 ---
 
 An engineer on your team sets up an agent to triage new GitHub issues overnight.
@@ -147,10 +149,3 @@ Find the agent workflow on your team that has the most access and the least
 review. Turn its risky step into a package, lock it, and lock the integration to
 it. [Connect your agent to Kody](https://kody.codes/onboarding) and ask it to
 help: "Turn this into a Kody package and lock the GitHub integration to it."
-
-More in this series:
-
-- [An AI agent audit log for production access](/blog/ai-agent-audit-log-for-production-access)
-- [An MCP security checklist for engineering managers](/blog/mcp-security-checklist-for-engineering-managers)
-- [AI agent skills vs packages, turning prompts into reviewable code](/blog/ai-agent-skills-vs-packages)
-- [How to revoke AI agent access in one place](/blog/revoke-ai-agent-access)

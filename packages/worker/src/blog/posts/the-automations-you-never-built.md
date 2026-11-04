@@ -6,6 +6,7 @@ description:
   at all. Why the activation energy of hosting and credentials killed your
   automations, and what changes when your agent has a durable home.
 order: 6
+category: essays
 ---
 
 You have a list. Maybe it's written down, probably it isn't, but you have it:

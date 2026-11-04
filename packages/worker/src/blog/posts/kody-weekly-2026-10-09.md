@@ -3,6 +3,7 @@ title: Kody weekly: See where your credits went
 date: 2026-10-09
 description: Usage and package pages break down where compute went, plus 5 more updates to secrets, packages, and tokens, and 2 breaking changes.
 order: 1
+category: updates
 placeholder: false
 ---
 

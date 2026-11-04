@@ -3,6 +3,7 @@ title: Kody weekly: Read what each package publish recorded
 date: 2026-05-29
 description: Publishes record Kody publish notes you can read with repo_show_publish_note, plus 1 more update to package and account cleanup.
 order: 1
+category: updates
 placeholder: false
 ---
 

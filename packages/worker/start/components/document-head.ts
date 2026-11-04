@@ -20,7 +20,7 @@ export function documentHead(head: ResolvedDocumentHead | undefined) {
 			{ property: 'og:title', content: head.og.title },
 			{ property: 'og:description', content: head.og.description },
 			{ property: 'og:image', content: head.og.imageUrl },
-			{ property: 'og:type', content: 'website' },
+			{ property: 'og:type', content: head.article ? 'article' : 'website' },
 			{ name: 'twitter:card', content: 'summary_large_image' },
 			{ name: 'twitter:title', content: head.og.title },
 			{ name: 'twitter:description', content: head.og.description },
@@ -28,6 +28,24 @@ export function documentHead(head: ResolvedDocumentHead | undefined) {
 		)
 		if (head.canonicalUrl)
 			meta.push({ property: 'og:url', content: head.canonicalUrl })
+	}
+	if (head.article) {
+		meta.push(
+			{
+				property: 'article:published_time',
+				content: head.article.publishedTime,
+			},
+			...(head.article.modifiedTime
+				? [
+						{
+							property: 'article:modified_time',
+							content: head.article.modifiedTime,
+						},
+					]
+				: []),
+			{ property: 'article:section', content: head.article.section },
+			{ property: 'article:author', content: head.article.author },
+		)
 	}
 	return {
 		meta,

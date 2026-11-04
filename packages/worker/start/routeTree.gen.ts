@@ -159,6 +159,8 @@ import { Route as AppAdminSystemEmailRouteImport } from './routes/_app.admin.sys
 import { Route as AppAdminUsersRouteImport } from './routes/_app.admin.users'
 import { Route as KodyAuthSplatRouteImport } from './routes/[_]kody.auth.$'
 import { Route as AuthProviderCallbackRouteImport } from './routes/auth_.$provider_.callback'
+import { Route as BlogCategoryCategoryRouteImport } from './routes/blog.category.$category'
+import { Route as BlogSeriesSeriesRouteImport } from './routes/blog.series.$series'
 import { Route as BlogSlugOgDotpngRouteImport } from './routes/blog_.$slug_.og[.]png'
 import { Route as CommunityListingIdOgDotpngRouteImport } from './routes/community_.$listingId_.og[.]png'
 import { Route as DocsSlugOgDotpngRouteImport } from './routes/docs_.$slug_.og[.]png'
@@ -240,6 +242,7 @@ import { Route as AppAdminPlatformIntegrationsNewRouteImport } from './routes/_a
 import { Route as AppAdminUsersStableUserIdRouteImport } from './routes/_app.admin.users_.$stableUserId'
 import { Route as AccountMcpServersLogosServerIdRouteImport } from './routes/account_.mcp-servers_.logos_.$serverId'
 import { Route as AccountMcpServersOauthCallbackRouteImport } from './routes/account_.mcp-servers_.oauth_.callback'
+import { Route as BlogCategoryCategoryRssDotxmlRouteImport } from './routes/blog_.category.$category_.rss[.]xml'
 import { Route as CommunityListingIdFilesSplatRouteImport } from './routes/community_.$listingId.files.$'
 import { Route as CommunityListingIdAssetsSplatRouteImport } from './routes/community_.$listingId_.assets_.$'
 import { Route as CommunityListingIdIconIconCommitRouteImport } from './routes/community_.$listingId_.icon_.$iconCommit'
@@ -1059,6 +1062,16 @@ const AuthProviderCallbackRoute = AuthProviderCallbackRouteImport.update({
   path: '/auth/$provider/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BlogCategoryCategoryRoute = BlogCategoryCategoryRouteImport.update({
+  id: '/blog/category/$category',
+  path: '/blog/category/$category',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BlogSeriesSeriesRoute = BlogSeriesSeriesRouteImport.update({
+  id: '/blog/series/$series',
+  path: '/blog/series/$series',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BlogSlugOgDotpngRoute = BlogSlugOgDotpngRouteImport.update({
   id: '/blog_/$slug_/og.png',
   path: '/blog/$slug/og.png',
@@ -1531,6 +1544,12 @@ const AccountMcpServersOauthCallbackRoute =
     path: '/account/mcp-servers/oauth/callback',
     getParentRoute: () => rootRouteImport,
   } as any)
+const BlogCategoryCategoryRssDotxmlRoute =
+  BlogCategoryCategoryRssDotxmlRouteImport.update({
+    id: '/blog_/category/$category_/rss.xml',
+    path: '/blog/category/$category/rss.xml',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const CommunityListingIdFilesSplatRoute =
   CommunityListingIdFilesSplatRouteImport.update({
     id: '/files/$',
@@ -1962,6 +1981,8 @@ export interface FileRoutesByFullPath {
   '/admin/users': typeof AppAdminUsersRoute
   '/_kody/auth/$': typeof KodyAuthSplatRoute
   '/auth/$provider/callback': typeof AuthProviderCallbackRoute
+  '/blog/category/$category': typeof BlogCategoryCategoryRoute
+  '/blog/series/$series': typeof BlogSeriesSeriesRoute
   '/blog/$slug/og.png': typeof BlogSlugOgDotpngRoute
   '/community/$listingId/og.png': typeof CommunityListingIdOgDotpngRoute
   '/docs/$slug/og.png': typeof DocsSlugOgDotpngRoute
@@ -2043,6 +2064,7 @@ export interface FileRoutesByFullPath {
   '/admin/users/$stableUserId': typeof AppAdminUsersStableUserIdRoute
   '/account/mcp-servers/logos/$serverId': typeof AccountMcpServersLogosServerIdRoute
   '/account/mcp-servers/oauth/callback': typeof AccountMcpServersOauthCallbackRoute
+  '/blog/category/$category/rss.xml': typeof BlogCategoryCategoryRssDotxmlRoute
   '/community/$listingId/files/$': typeof CommunityListingIdFilesSplatRoute
   '/community/$listingId/assets/$': typeof CommunityListingIdAssetsSplatRoute
   '/community/$listingId/icon/$iconCommit': typeof CommunityListingIdIconIconCommitRoute
@@ -2239,6 +2261,8 @@ export interface FileRoutesByTo {
   '/admin/users': typeof AppAdminUsersRoute
   '/_kody/auth/$': typeof KodyAuthSplatRoute
   '/auth/$provider/callback': typeof AuthProviderCallbackRoute
+  '/blog/category/$category': typeof BlogCategoryCategoryRoute
+  '/blog/series/$series': typeof BlogSeriesSeriesRoute
   '/blog/$slug/og.png': typeof BlogSlugOgDotpngRoute
   '/community/$listingId/og.png': typeof CommunityListingIdOgDotpngRoute
   '/docs/$slug/og.png': typeof DocsSlugOgDotpngRoute
@@ -2320,6 +2344,7 @@ export interface FileRoutesByTo {
   '/admin/users/$stableUserId': typeof AppAdminUsersStableUserIdRoute
   '/account/mcp-servers/logos/$serverId': typeof AccountMcpServersLogosServerIdRoute
   '/account/mcp-servers/oauth/callback': typeof AccountMcpServersOauthCallbackRoute
+  '/blog/category/$category/rss.xml': typeof BlogCategoryCategoryRssDotxmlRoute
   '/community/$listingId/files/$': typeof CommunityListingIdFilesSplatRoute
   '/community/$listingId/assets/$': typeof CommunityListingIdAssetsSplatRoute
   '/community/$listingId/icon/$iconCommit': typeof CommunityListingIdIconIconCommitRoute
@@ -2519,6 +2544,8 @@ export interface FileRoutesById {
   '/_app/admin/users': typeof AppAdminUsersRoute
   '/_kody/auth/$': typeof KodyAuthSplatRoute
   '/auth_/$provider_/callback': typeof AuthProviderCallbackRoute
+  '/blog/category/$category': typeof BlogCategoryCategoryRoute
+  '/blog/series/$series': typeof BlogSeriesSeriesRoute
   '/blog_/$slug_/og.png': typeof BlogSlugOgDotpngRoute
   '/community_/$listingId_/og.png': typeof CommunityListingIdOgDotpngRoute
   '/docs_/$slug_/og.png': typeof DocsSlugOgDotpngRoute
@@ -2600,6 +2627,7 @@ export interface FileRoutesById {
   '/_app/admin/users_/$stableUserId': typeof AppAdminUsersStableUserIdRoute
   '/account_/mcp-servers_/logos_/$serverId': typeof AccountMcpServersLogosServerIdRoute
   '/account_/mcp-servers_/oauth_/callback': typeof AccountMcpServersOauthCallbackRoute
+  '/blog_/category/$category_/rss.xml': typeof BlogCategoryCategoryRssDotxmlRoute
   '/community_/$listingId/files/$': typeof CommunityListingIdFilesSplatRoute
   '/community_/$listingId_/assets_/$': typeof CommunityListingIdAssetsSplatRoute
   '/community_/$listingId_/icon_/$iconCommit': typeof CommunityListingIdIconIconCommitRoute
@@ -2799,6 +2827,8 @@ export interface FileRouteTypes {
     | '/admin/users'
     | '/_kody/auth/$'
     | '/auth/$provider/callback'
+    | '/blog/category/$category'
+    | '/blog/series/$series'
     | '/blog/$slug/og.png'
     | '/community/$listingId/og.png'
     | '/docs/$slug/og.png'
@@ -2880,6 +2910,7 @@ export interface FileRouteTypes {
     | '/admin/users/$stableUserId'
     | '/account/mcp-servers/logos/$serverId'
     | '/account/mcp-servers/oauth/callback'
+    | '/blog/category/$category/rss.xml'
     | '/community/$listingId/files/$'
     | '/community/$listingId/assets/$'
     | '/community/$listingId/icon/$iconCommit'
@@ -3076,6 +3107,8 @@ export interface FileRouteTypes {
     | '/admin/users'
     | '/_kody/auth/$'
     | '/auth/$provider/callback'
+    | '/blog/category/$category'
+    | '/blog/series/$series'
     | '/blog/$slug/og.png'
     | '/community/$listingId/og.png'
     | '/docs/$slug/og.png'
@@ -3157,6 +3190,7 @@ export interface FileRouteTypes {
     | '/admin/users/$stableUserId'
     | '/account/mcp-servers/logos/$serverId'
     | '/account/mcp-servers/oauth/callback'
+    | '/blog/category/$category/rss.xml'
     | '/community/$listingId/files/$'
     | '/community/$listingId/assets/$'
     | '/community/$listingId/icon/$iconCommit'
@@ -3355,6 +3389,8 @@ export interface FileRouteTypes {
     | '/_app/admin/users'
     | '/_kody/auth/$'
     | '/auth_/$provider_/callback'
+    | '/blog/category/$category'
+    | '/blog/series/$series'
     | '/blog_/$slug_/og.png'
     | '/community_/$listingId_/og.png'
     | '/docs_/$slug_/og.png'
@@ -3436,6 +3472,7 @@ export interface FileRouteTypes {
     | '/_app/admin/users_/$stableUserId'
     | '/account_/mcp-servers_/logos_/$serverId'
     | '/account_/mcp-servers_/oauth_/callback'
+    | '/blog_/category/$category_/rss.xml'
     | '/community_/$listingId/files/$'
     | '/community_/$listingId_/assets_/$'
     | '/community_/$listingId_/icon_/$iconCommit'
@@ -3588,6 +3625,8 @@ export interface RootRouteChildren {
   AtChar123orgSlugChar125ConnectionsRoute: typeof AtChar123orgSlugChar125ConnectionsRoute
   KodyAuthSplatRoute: typeof KodyAuthSplatRoute
   AuthProviderCallbackRoute: typeof AuthProviderCallbackRoute
+  BlogCategoryCategoryRoute: typeof BlogCategoryCategoryRoute
+  BlogSeriesSeriesRoute: typeof BlogSeriesSeriesRoute
   BlogSlugOgDotpngRoute: typeof BlogSlugOgDotpngRoute
   CommunityListingIdOgDotpngRoute: typeof CommunityListingIdOgDotpngRoute
   DocsSlugOgDotpngRoute: typeof DocsSlugOgDotpngRoute
@@ -3602,6 +3641,7 @@ export interface RootRouteChildren {
   AtChar123usernameChar125KodyIdIconIconCommitRoute: typeof AtChar123usernameChar125KodyIdIconIconCommitRoute
   AccountMcpServersLogosServerIdRoute: typeof AccountMcpServersLogosServerIdRoute
   AccountMcpServersOauthCallbackRoute: typeof AccountMcpServersOauthCallbackRoute
+  BlogCategoryCategoryRssDotxmlRoute: typeof BlogCategoryCategoryRssDotxmlRoute
   CommunityListingIdAssetsSplatRoute: typeof CommunityListingIdAssetsSplatRoute
   CommunityListingIdIconIconCommitRoute: typeof CommunityListingIdIconIconCommitRoute
   CommunityListingIdRawSplatRoute: typeof CommunityListingIdRawSplatRoute
@@ -4664,6 +4704,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthProviderCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/blog/category/$category': {
+      id: '/blog/category/$category'
+      path: '/blog/category/$category'
+      fullPath: '/blog/category/$category'
+      preLoaderRoute: typeof BlogCategoryCategoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/blog/series/$series': {
+      id: '/blog/series/$series'
+      path: '/blog/series/$series'
+      fullPath: '/blog/series/$series'
+      preLoaderRoute: typeof BlogSeriesSeriesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/blog_/$slug_/og.png': {
       id: '/blog_/$slug_/og.png'
       path: '/blog/$slug/og.png'
@@ -5229,6 +5283,13 @@ declare module '@tanstack/react-router' {
       path: '/account/mcp-servers/oauth/callback'
       fullPath: '/account/mcp-servers/oauth/callback'
       preLoaderRoute: typeof AccountMcpServersOauthCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/blog_/category/$category_/rss.xml': {
+      id: '/blog_/category/$category_/rss.xml'
+      path: '/blog/category/$category/rss.xml'
+      fullPath: '/blog/category/$category/rss.xml'
+      preLoaderRoute: typeof BlogCategoryCategoryRssDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/community_/$listingId/files/$': {
@@ -6075,6 +6136,8 @@ const rootRouteChildren: RootRouteChildren = {
     AtChar123orgSlugChar125ConnectionsRoute,
   KodyAuthSplatRoute: KodyAuthSplatRoute,
   AuthProviderCallbackRoute: AuthProviderCallbackRoute,
+  BlogCategoryCategoryRoute: BlogCategoryCategoryRoute,
+  BlogSeriesSeriesRoute: BlogSeriesSeriesRoute,
   BlogSlugOgDotpngRoute: BlogSlugOgDotpngRoute,
   CommunityListingIdOgDotpngRoute: CommunityListingIdOgDotpngRoute,
   DocsSlugOgDotpngRoute: DocsSlugOgDotpngRoute,
@@ -6093,6 +6156,7 @@ const rootRouteChildren: RootRouteChildren = {
     AtChar123usernameChar125KodyIdIconIconCommitRoute,
   AccountMcpServersLogosServerIdRoute: AccountMcpServersLogosServerIdRoute,
   AccountMcpServersOauthCallbackRoute: AccountMcpServersOauthCallbackRoute,
+  BlogCategoryCategoryRssDotxmlRoute: BlogCategoryCategoryRssDotxmlRoute,
   CommunityListingIdAssetsSplatRoute: CommunityListingIdAssetsSplatRoute,
   CommunityListingIdIconIconCommitRoute: CommunityListingIdIconIconCommitRoute,
   CommunityListingIdRawSplatRoute: CommunityListingIdRawSplatRoute,

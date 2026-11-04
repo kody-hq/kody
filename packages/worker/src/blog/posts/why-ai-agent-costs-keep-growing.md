@@ -5,6 +5,8 @@ description:
   Agents re-reason the same tasks every day, and you pay for every token. How
   saving repeated work as deterministic code cuts AI agent costs.
 order: 10
+category: essays
+series: agent-credentials-for-team-leads
 ---
 
 If you want to know why AI agent costs keep growing, look at what one of your
@@ -135,10 +137,3 @@ own version of the same thing. That's the subject of
 [Connect your agent to Kody](https://kody.codes/onboarding) and ask it to turn
 your most repeated task into a package. The details on Kody's compute meter are
 in the [platform efficiency guide](https://kody.codes/docs/platform-efficiency).
-
-More in this series:
-
-- [AI agent skills vs packages, turning prompts into reviewable code](/blog/ai-agent-skills-vs-packages)
-- [The hidden cost of AI tooling for engineering teams when everyone builds their own](/blog/ai-tooling-for-engineering-teams-hidden-cost)
-- [Why "just use AWS Lambda" breaks down for teams using AI agents](/blog/why-aws-lambda-breaks-down-for-ai-agent-teams)
-- [How to avoid AI assistant lock-in, build once and use from any agent](/blog/avoid-ai-assistant-lock-in)

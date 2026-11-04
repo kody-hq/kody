@@ -6,6 +6,9 @@ description:
   Every agent your team connects ends up holding real API keys. Here's where
   those keys hide today and how to keep them out of the model's context.
 order: 1
+category: essays
+series: agent-credentials-for-team-leads
+featured: true
 ---
 
 If an AI agent can read a key, assume the key can leak. Not because agents are
@@ -153,10 +156,3 @@ If that goes well, the rest of this series walks through the team version:
 and
 [a team lead's guide to AI agent credentials](/blog/ai-agent-credentials-guide-for-team-leads).
 Start at [kody.codes](https://kody.codes).
-
-More in this series:
-
-- [AI agent GitHub access without handing over your token](/blog/ai-agent-github-access-without-your-token)
-- [A team lead's guide to AI agent credentials](/blog/ai-agent-credentials-guide-for-team-leads)
-- [Where to store API keys for AI agents (not in agent configs)](/blog/where-to-store-api-keys-for-ai-agents)
-- [Least privilege for AI agents, a practical setup](/blog/least-privilege-for-ai-agents)

@@ -7,6 +7,8 @@ import {
 	packageCredentialsTabLabel,
 } from '#universal/package-credentials-page.ts'
 import { docHref, docsIntroSlug } from '#universal/docs-nav.ts'
+import { BLOG_AUTHOR_NAME } from '#universal/blog-display.ts'
+import { getBlogCategory } from '#universal/blog-taxonomy.ts'
 import {
 	homeOgImagePath,
 	readHomeOgVariant,
@@ -42,11 +44,20 @@ type DocumentHeadOg = {
  * Route-relative head descriptor. Paths stay origin-relative so the same
  * registry works for SSR (absolute URLs) and SPA updates (`location.origin`).
  */
+/** Open Graph `article:*` fields; their presence sets `og:type` to article. */
+type DocumentHeadArticle = {
+	publishedTime: string
+	modifiedTime?: string
+	section: string
+	author: string
+}
+
 export type DocumentHeadDescriptor = {
 	title: string
 	description?: string
 	canonicalPath?: string
 	og?: DocumentHeadOg
+	article?: DocumentHeadArticle
 	links?: Array<DocumentHeadLink>
 }
 
@@ -59,6 +70,7 @@ export type ResolvedDocumentHead = {
 		description: string
 		imageUrl: string
 	}
+	article?: DocumentHeadArticle
 	links?: Array<{
 		rel: string
 		href: string
@@ -309,6 +321,48 @@ const routeDocumentHeads = {
 				title,
 				description: post.description,
 				imagePath: `/blog/${post.slug}/og.png`,
+			},
+			article: {
+				publishedTime: post.date,
+				...(post.updated ? { modifiedTime: post.updated } : {}),
+				section: getBlogCategory(post.category)?.label ?? post.category,
+				author: BLOG_AUTHOR_NAME,
+			},
+		}
+	},
+	blogCategory: ({ loaderData, pathname }) => {
+		const category = loaderData?.blogCategory
+		if (!category?.ok) return titleOnly('Blog')
+		const title = `${category.label} — Kody Blog`
+		return {
+			title,
+			canonicalPath: pathname,
+			og: {
+				title,
+				description: category.description,
+				imagePath: '/og/blog.png',
+			},
+			links: [
+				{
+					rel: 'alternate',
+					type: 'application/rss+xml',
+					title: `Kody Blog RSS: ${category.label}`,
+					hrefPath: `${pathname}/rss.xml`,
+				},
+			],
+		}
+	},
+	blogSeries: ({ loaderData, pathname }) => {
+		const series = loaderData?.blogSeries
+		if (!series?.ok) return titleOnly('Blog')
+		const title = `${series.title} — Kody Blog`
+		return {
+			title,
+			canonicalPath: pathname,
+			og: {
+				title,
+				description: series.description,
+				imagePath: '/og/blog.png',
 			},
 		}
 	},
@@ -626,6 +680,7 @@ export function absolutizeDocumentHead(
 					imageUrl: toAbsolute(withOgImageVersion(descriptor.og.imagePath)),
 				}
 			: undefined,
+		article: descriptor.article,
 		links: descriptor.links?.map((link) => ({
 			rel: link.rel,
 			href: link.sameOrigin ? link.hrefPath : toAbsolute(link.hrefPath),

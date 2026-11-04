@@ -6,6 +6,7 @@ description:
   makes the scary failure modes structurally impossible instead of
   policy-discouraged.
 order: 3
+category: essays
 ---
 
 My [Kody](https://kody.codes) account currently holds 51 secrets. API keys,

@@ -3,6 +3,7 @@ title: Kody weekly: Search finds your saved values and connectors
 date: 2026-04-10
 description: Search now returns saved values and connectors, plus 2 more updates to outbound email and generated UI rendering.
 order: 1
+category: updates
 placeholder: false
 ---
 
