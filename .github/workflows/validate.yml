@@ -118,6 +118,53 @@ concurrency:
 # machine. Local `npm run validate` remains the authoritative single-command
 # gate.
 jobs:
+  # Main pushes skip every verification job below when the pushed tree, its
+  # base tree, and the CI inputs outside the tree already passed a same-repo PR
+  # Validate run (tools/ci/tested-tree.ts). A miss or any lookup error runs the
+  # full suite. Deploy never depends on this: it runs on any green Validate.
+  tested_tree:
+    runs-on: ubuntu-latest
+    name: 🌳 Tested tree lookup
+    timeout-minutes: 3
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+      statuses: read
+    outputs:
+      skip: ${{ steps.lookup.outputs.skip }}
+      pr_url: ${{ steps.lookup.outputs.pr_url }}
+      stamp_run_url: ${{ steps.lookup.outputs.stamp_run_url }}
+    steps:
+      - name: 📦 Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: 🟢 Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 26
+          package-manager-cache: false
+
+      - name: 🌳 Look up PR stamp for this tree
+        id: lookup
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_BEFORE: ${{ github.event.before }}
+        run: node tools/ci/tested-tree.ts lookup
+
+      # The advisory database changes without the tree changing, so a reused
+      # run still reports main's production audit like the 🧹 Static job does.
+      - name: 🔐 Production dependency audit
+        if: steps.lookup.outputs.skip == 'true'
+        env:
+          AUDIT_MODE: report
+        run: npm run audit:prod
+
   static:
     runs-on:
       ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
@@ -128,9 +175,11 @@ jobs:
       contents: read
       issues: write
       pull-requests: read
+    needs: tested_tree
     if: >-
-      github.event_name != 'pull_request' || github.event.pull_request.draft ==
-      false
+      !cancelled() && needs.tested_tree.outputs.skip != 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft ==
+      false)
     steps:
       - name: ⏱️ Mark job start
         run: echo "VALIDATE_JOB_START_EPOCH=$(date +%s)" >> "$GITHUB_ENV"
@@ -335,9 +384,11 @@ jobs:
     env:
       NODE_TEST_SHARD: ${{ matrix.shard }}/2
     timeout-minutes: 15
+    needs: tested_tree
     if: >-
-      github.event_name != 'pull_request' || github.event.pull_request.draft ==
-      false
+      !cancelled() && needs.tested_tree.outputs.skip != 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft ==
+      false)
     steps:
       # Self-driving test-time budget (tools/ci/enforce-unit-job-budget.ts):
       # warn at watch 700s (~Node p95 + headroom); hard-fail at 840s on PRs
@@ -414,9 +465,11 @@ jobs:
     outputs:
       outcome_1: ${{ steps.attempt.outputs.outcome_1 }}
       outcome_2: ${{ steps.attempt.outputs.outcome_2 }}
+    needs: tested_tree
     if: >-
-      github.event_name != 'pull_request' || github.event.pull_request.draft ==
-      false
+      !cancelled() && needs.tested_tree.outputs.skip != 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft ==
+      false)
     steps:
       # Self-driving attempt budget (tools/ci/enforce-unit-job-budget.ts):
       # each Workers suite attempt soft-caps at the hard ceiling (780s);
@@ -491,11 +544,11 @@ jobs:
     outputs:
       outcome_1: ${{ steps.attempt.outputs.outcome_1 }}
       outcome_2: ${{ steps.attempt.outputs.outcome_2 }}
-    needs: workers
+    needs: [tested_tree, workers]
     if: >-
-      !cancelled() && (github.event_name != 'pull_request' ||
-      github.event.pull_request.draft == false) &&
-      (needs.workers.outputs.outcome_1 == 'timeout' ||
+      !cancelled() && needs.tested_tree.outputs.skip != 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft ==
+      false) && (needs.workers.outputs.outcome_1 == 'timeout' ||
       needs.workers.outputs.outcome_2 == 'timeout')
     steps:
       # Self-driving attempt budget (tools/ci/enforce-unit-job-budget.ts):
@@ -559,9 +612,11 @@ jobs:
       inputs.runner) || vars.CI_RUNNER || 'ubuntu-latest' }}
     name: 🔌 MCP
     timeout-minutes: 10
+    needs: tested_tree
     if: >-
-      github.event_name != 'pull_request' || github.event.pull_request.draft ==
-      false
+      !cancelled() && needs.tested_tree.outputs.skip != 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft ==
+      false)
     steps:
       - name: ⏱️ Mark job start
         run: echo "VALIDATE_JOB_START_EPOCH=$(date +%s)" >> "$GITHUB_ENV"
@@ -611,9 +666,11 @@ jobs:
     # Room for one shard plus one permitted workerd-crash
     # retry.
     timeout-minutes: 25
+    needs: tested_tree
     if: >-
-      github.event_name != 'pull_request' || github.event.pull_request.draft ==
-      false
+      !cancelled() && needs.tested_tree.outputs.skip != 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft ==
+      false)
     steps:
       - name: ⏱️ Mark job start
         run: echo "VALIDATE_JOB_START_EPOCH=$(date +%s)" >> "$GITHUB_ENV"
@@ -779,9 +836,11 @@ jobs:
         shell: bash
     name: 🖥️ Host commands (${{ matrix.os }})
     timeout-minutes: 20
+    needs: tested_tree
     if: >-
-      github.event_name != 'pull_request' || github.event.pull_request.draft ==
-      false
+      !cancelled() && needs.tested_tree.outputs.skip != 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft ==
+      false)
     env:
       KODY_SKIP_SKILL_REFRESH: '1'
       KODY_SKIP_GIT_HELPER_REFRESH: '1'
@@ -803,7 +862,9 @@ jobs:
         shell: bash
     name: 🖥️ Host commands (macos-15)
     timeout-minutes: 20
+    needs: tested_tree
     if: >-
+      !cancelled() && needs.tested_tree.outputs.skip != 'true' &&
       (github.event_name != 'pull_request' || github.event.pull_request.draft ==
       false)
     env:
@@ -828,11 +889,11 @@ jobs:
         shell: bash
     name: 🖥️ Host commands (macos-15-intel fallback)
     timeout-minutes: 20
-    needs: host_commands_macos
+    needs: [tested_tree, host_commands_macos]
     if: >-
-      !cancelled() && (github.event_name != 'pull_request' ||
-      github.event.pull_request.draft == false) &&
-      needs.host_commands_macos.result == 'abandoned'
+      !cancelled() && needs.tested_tree.outputs.skip != 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft ==
+      false) && needs.host_commands_macos.result == 'abandoned'
     env:
       KODY_SKIP_SKILL_REFRESH: '1'
       KODY_SKIP_GIT_HELPER_REFRESH: '1'
@@ -851,9 +912,11 @@ jobs:
       inputs.runner) || vars.CI_RUNNER || 'ubuntu-latest' }}
     name: 🧰 CLI
     timeout-minutes: 20
+    needs: tested_tree
     if: >-
-      github.event_name != 'pull_request' || github.event.pull_request.draft ==
-      false
+      !cancelled() && needs.tested_tree.outputs.skip != 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft ==
+      false)
     steps:
       - name: ⏱️ Mark job start
         run: echo "VALIDATE_JOB_START_EPOCH=$(date +%s)" >> "$GITHUB_ENV"
@@ -901,9 +964,11 @@ jobs:
     runs-on: ${{ matrix.runner }}
     name: 🪟 CLI (${{ matrix.runner }})
     timeout-minutes: 30
+    needs: tested_tree
     if: >-
-      github.event_name != 'pull_request' || github.event.pull_request.draft ==
-      false
+      !cancelled() && needs.tested_tree.outputs.skip != 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft ==
+      false)
     defaults:
       run:
         shell: bash
@@ -944,6 +1009,7 @@ jobs:
     # Checkout + Node setup for the verdict script.
     timeout-minutes: 5
     needs:
+      - tested_tree
       - static
       - node
       - workers
@@ -959,6 +1025,7 @@ jobs:
     permissions:
       contents: read
       actions: read
+      statuses: write
     # always() so a failed sibling still reports; !cancelled() so a
     # superseded run (cancel-in-progress) does not paint ✅ Validate red.
     # A sibling job timeout still fails this job: the workflow is not
@@ -1215,12 +1282,42 @@ jobs:
           overwrite: true
           retention-days: 30
 
+      - name: 🌳 Reused PR verification
+        if: needs.tested_tree.outputs.skip == 'true'
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          PR_URL: ${{ needs.tested_tree.outputs.pr_url }}
+          STAMP_RUN_URL: ${{ needs.tested_tree.outputs.stamp_run_url }}
+        run: |
+          set -euo pipefail
+          if [ "${{ needs.tested_tree.result }}" != success ]; then
+            echo "🌳 Tested tree lookup did not succeed." >&2
+            exit 1
+          fi
+          ran=$(jq -r 'to_entries[] | select(.key != "tested_tree" and .value.result != "skipped") | .key' <<<"$NEEDS" | paste -sd, -)
+          if [ -n "$ran" ]; then
+            echo "Verification jobs ran despite a matching stamp: $ran" >&2
+            exit 1
+          fi
+          skipped=$(jq -r 'keys - ["tested_tree"] | join(", ")' <<<"$NEEDS")
+          echo "::notice title=Reused PR verification::Skipped ${skipped}. Same tree passed ${STAMP_RUN_URL} (${PR_URL})."
+          {
+            echo "### 🌳 Reused PR verification"
+            echo "- skipped: ${skipped}"
+            echo "- PR: ${PR_URL}"
+            echo "- passing Validate run with the same tree: ${STAMP_RUN_URL}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: 📦 Checkout
+        if: needs.tested_tree.outputs.skip != 'true'
         uses: actions/checkout@v6.0.2
         with:
+          # Stamping reads HEAD^2 of the tested merge ref.
+          fetch-depth: 2
           persist-credentials: false
 
       - name: 🟢 Setup Node
+        if: needs.tested_tree.outputs.skip != 'true'
         uses: actions/setup-node@v6
         with:
           node-version: 26
@@ -1233,6 +1330,23 @@ jobs:
       # unverified tree is never stamped or deployed.
       - name: ✅ All checks passed
         id: passed
+        if: needs.tested_tree.outputs.skip != 'true'
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: node tools/ci/validate-gate-verdict.ts
+
+      # Same-repo PRs only: fork PR tokens cannot write statuses, and the main
+      # lookup also rejects fork heads and stamps not created by this workflow.
+      - name: 🌳 Stamp tested tree
+        if: >-
+          steps.passed.outcome == 'success' && github.event_name ==
+          'pull_request' && github.event.pull_request.head.repo.full_name ==
+          github.repository
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{
+            github.run_id }}
+        run: node tools/ci/tested-tree.ts stamp
