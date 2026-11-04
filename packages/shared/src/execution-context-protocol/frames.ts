@@ -184,7 +184,7 @@ export type EcpPublishBuildSource = {
 	/** Read-only, single-repo Artifacts remote; the token expires in ~5 minutes. */
 	clone: { remote: string; token: string; expiresAt: string }
 	/** Per-build upload ticket and base URL (`/v1/publish-builds/{id}`). */
-	upload: { url: string; ticket: string }
+	upload: { path: string; ticket: string }
 }
 
 /**

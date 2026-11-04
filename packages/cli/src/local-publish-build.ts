@@ -223,6 +223,11 @@ function splitChunks(bytes: Uint8Array) {
 	return chunks
 }
 
+/** The upload API lives on the Open API host the CLI already talks to. */
+export function publishBuildUploadUrl(apiUrl: string, path: string) {
+	return new URL(path, apiUrl.endsWith('/') ? apiUrl : `${apiUrl}/`).toString()
+}
+
 async function ticketFetch(
 	fetchFn: typeof fetch,
 	ticket: PublishBuildTicket,
@@ -380,7 +385,7 @@ export async function runContextPublishBuild(input: {
 		packageId: string
 		commit: string
 		clone: { remote: string; token: string }
-		upload: { url: string; ticket: string }
+		upload: { path: string; ticket: string }
 	}
 	userId: string
 	apiUrl: string
@@ -413,7 +418,10 @@ export async function runContextPublishBuild(input: {
 				packageId: input.source.packageId,
 				commit: input.source.commit,
 				userId: input.userId,
-				uploadUrl: input.source.upload.url,
+				uploadUrl: publishBuildUploadUrl(
+					input.apiUrl,
+					input.source.upload.path,
+				),
 				ticket: input.source.upload.ticket,
 			},
 		})

@@ -55,7 +55,11 @@ const outputSchema = z.toJSONSchema(
 			.describe(
 				'`cli` only. Bearer token for this one build; it cannot publish.',
 			),
-		upload_url: z.string(),
+		upload_path: z
+			.string()
+			.describe(
+				'Upload API path; join it with the Open API host the caller uses.',
+			),
 		expires_at: z.string(),
 		builder_version: z.number(),
 		chunk_bytes: z.number(),
@@ -138,7 +142,7 @@ export const publishBuildCreateCapability = defineDomainCapability(
 				package_id: packageId,
 				commit: head.commit,
 				origin: args.origin,
-				upload_url: `${ctx.callerContext.baseUrl}/v1/publish-builds/${created.buildId}`,
+				upload_path: `/v1/publish-builds/${created.buildId}`,
 				expires_at: created.expiresAt,
 				builder_version: publishBuilderVersion,
 				chunk_bytes: publishOffloadLimits.chunkBytes,
@@ -159,7 +163,7 @@ export const publishBuildCreateCapability = defineDomainCapability(
 				request,
 				buildId: created.buildId,
 				ticket: created.ticket,
-				uploadUrl: common.upload_url,
+				uploadPath: common.upload_path,
 				packageId,
 				packageName: name,
 				repoId: source.repo_id,

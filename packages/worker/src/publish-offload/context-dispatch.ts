@@ -22,7 +22,7 @@ export async function dispatchContextPublishBuild(input: {
 	request: RequestContext
 	buildId: string
 	ticket: string
-	uploadUrl: string
+	uploadPath: string
 	packageId: string
 	packageName: string
 	repoId: string
@@ -52,7 +52,7 @@ export async function dispatchContextPublishBuild(input: {
 				token: token.plaintext,
 				expiresAt: token.expiresAt,
 			},
-			upload: { url: input.uploadUrl, ticket: input.ticket },
+			upload: { path: input.uploadPath, ticket: input.ticket },
 		},
 		limits: {
 			timeoutMs: publishOffloadLimits.contextTimeoutMs,

@@ -10,7 +10,10 @@ import {
 	publishLargePackagesDocsUrl,
 	runPublishWithBuild,
 } from '../src/publish-offload.js'
-import { runLocalPublishBuild } from '../src/local-publish-build.js'
+import {
+	publishBuildUploadUrl,
+	runLocalPublishBuild,
+} from '../src/local-publish-build.js'
 
 function git(dir: string, ...args: Array<string>) {
 	return execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim()
@@ -201,5 +204,19 @@ test('--build rejects unknown values', async () => {
 			writeErr: () => {},
 		}),
 		/--build must be local or context/,
+	)
+})
+
+test('uploads go to the Open API host the CLI uses, not the app origin', () => {
+	assert.equal(
+		publishBuildUploadUrl(
+			'https://kody-pr-1-api.example.dev',
+			'/v1/publish-builds/pb_1',
+		),
+		'https://kody-pr-1-api.example.dev/v1/publish-builds/pb_1',
+	)
+	assert.equal(
+		publishBuildUploadUrl('http://localhost:3742/', '/v1/publish-builds/pb_1'),
+		'http://localhost:3742/v1/publish-builds/pb_1',
 	)
 })

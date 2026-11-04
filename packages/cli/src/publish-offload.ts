@@ -1,5 +1,8 @@
 import { createInterface } from 'node:readline/promises'
-import { runLocalPublishBuild } from './local-publish-build.js'
+import {
+	publishBuildUploadUrl,
+	runLocalPublishBuild,
+} from './local-publish-build.js'
 
 /** Same page the worker links from resource-limit errors. */
 export const publishLargePackagesDocsUrl =
@@ -60,7 +63,7 @@ async function buildThenPublish(input: {
 		build_id: string
 		package_id: string
 		commit: string
-		upload_url: string
+		upload_path: string
 		upload_ticket?: string
 		context_name?: string
 	}
@@ -76,7 +79,7 @@ async function buildThenPublish(input: {
 				packageId: created.package_id,
 				commit: created.commit,
 				userId: '',
-				uploadUrl: created.upload_url,
+				uploadUrl: publishBuildUploadUrl(input.apiUrl, created.upload_path),
 				ticket: created.upload_ticket,
 			},
 			log: (line) => input.writeErr(`${line}\n`),
