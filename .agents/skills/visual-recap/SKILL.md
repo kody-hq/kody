@@ -45,7 +45,7 @@ you change that primitive.
 
 Plan mode uses `**Mode:** plan` before a PR exists. Recap mode replaces that
 block from `git diff <base>...HEAD`. In plan mode, say explicitly when the plan
-requires **no** change to any primitive — that is the lowest-risk outcome.
+requires **no** change to any primitive, which is the lowest-risk outcome.
 
 The block shape is one example:
 [references/block-format.md](./references/block-format.md).

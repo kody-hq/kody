@@ -8,7 +8,7 @@ npm run control-kody -- request GET /@jane/-/agents --contains 'Agents'
 ```
 
 Local personal org slug is typically the seed username (`user-me` on preview,
-`jane` locally — check `/session`). Old `/@<slug>/-/connections` URLs 301 to
+`jane` locally; check `/session`). Old `/@<slug>/-/connections` URLs 301 to
 agents.
 
 ## Assert

@@ -5,6 +5,7 @@ import { expect, test } from 'vitest'
 import {
 	checkFileSizeRatchet,
 	countLines,
+	fileSizeRatchetGroups,
 	formatOptionsFromOxfmtConfig,
 	formatSourceWithRepoOxfmt,
 	parseFileSizeRatchetSnapshot,
@@ -217,7 +218,13 @@ test('checkFileSizeRatchet measures budget after formatting, not the raw working
 test('checkFileSizeRatchet rejects oversized AGENTS.md even when snapshot-listed', async () => {
 	const cwd = await mkdtemp(path.join(os.tmpdir(), 'agents-md-ratchet-'))
 	try {
-		await writeFile(path.join(cwd, 'AGENTS.md'), `${lines(25)}\n`)
+		const agentsMdMaxLines = fileSizeRatchetGroups.find(
+			(group) => group.id === 'agents-md',
+		)!.maxLines
+		await writeFile(
+			path.join(cwd, 'AGENTS.md'),
+			`${lines(agentsMdMaxLines + 1)}\n`,
+		)
 		const snapshot: FileSizeRatchetSnapshot = {
 			'agents-md': ['AGENTS.md'],
 			'client-routes': [],
@@ -230,8 +237,8 @@ test('checkFileSizeRatchet rejects oversized AGENTS.md even when snapshot-listed
 				file: 'AGENTS.md',
 				groupId: 'agents-md',
 				kind: 'new-over-budget',
-				lineCount: 25,
-				maxLines: 24,
+				lineCount: agentsMdMaxLines + 1,
+				maxLines: agentsMdMaxLines,
 			}),
 		])
 	} finally {
