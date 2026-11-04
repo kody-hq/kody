@@ -10,6 +10,7 @@ import {
 	youtubePlaylistFeedUrl,
 	youtubeWatchSampleVideoId,
 } from '#universal/youtube-watch.ts'
+import { listBlogPosts } from '#worker/blog/catalog.ts'
 import { guides } from '#worker/guides/catalog.ts'
 
 export async function resolveYoutubeWatchAllowedVideoIds(input: {
@@ -56,14 +57,14 @@ export async function resolveYoutubeWatchAllowedVideoIds(input: {
 }
 
 /**
- * Video ids from first-party `> [!WATCH]` blocks. Unlisted docs films are
- * often missing from the public playlist Atom feed, and the thumb proxy
- * 404s without an allowlist hit.
+ * Video ids from first-party `> [!WATCH]` blocks in guides and blog posts.
+ * Unlisted films are often missing from the public playlist Atom feed, and
+ * the thumb proxy 404s without an allowlist hit.
  */
 export function bundledDocWatchVideoIds(): Array<string> {
 	const ids: Array<string> = []
-	for (const guide of guides) {
-		for (const embed of listDocWatchEmbeds(guide.body)) {
+	for (const { body } of [...guides, ...listBlogPosts()]) {
+		for (const embed of listDocWatchEmbeds(body)) {
 			ids.push(embed.videoId)
 		}
 	}

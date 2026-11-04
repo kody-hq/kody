@@ -24,14 +24,20 @@ import {
 import { renderMarkdownNodes } from '../components/markdown-view.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import { BlogPostList, blogCategoryLabel } from './blog-parts.tsx'
+/** Blog posts are repo-authored, so they render with the first-party docs policy. */
+export const blogPostMarkdownOptions = {
+	headingOffset: 0,
+	linkRel: 'noopener noreferrer',
+	linkPolicy: 'first-party',
+	headingIds: true,
+} as const
+
 export function BlogPostRoute({ post }: { post: BlogPostLoaderData }) {
 	const signedOutCta = publicSignupPrimaryCta()
 	const renderedBody = useMemo(
 		() =>
 			renderMarkdownNodes(post.body, {
-				headingOffset: 0,
-				linkRel: 'noopener noreferrer',
-				headingIds: true,
+				...blogPostMarkdownOptions,
 				fences: post.bodyFences,
 			}),
 		[post.body, post.bodyFences],
