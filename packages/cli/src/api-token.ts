@@ -325,8 +325,14 @@ export function profileDenialMessage(input: {
 	if (!code) return null
 	const reason =
 		input.serverMessage?.trim() ||
-		'the profile this token acts as, or a parent profile, does not hold the required permission.'
-	return `Kody returned ${code}: ${reason} A new token cannot add it; the person the profile acts for has to grant it.`
+		(code === 'profile_inactive'
+			? 'the profile this token acts as, or a parent profile, is revoked or expired.'
+			: 'the profile this token acts as, or a parent profile, does not hold the required permission.')
+	const fix =
+		code === 'profile_inactive'
+			? 'A grant cannot revive a revoked or expired profile; use a token for an active profile.'
+			: 'A new token alone cannot fix this; the person the profile acts for has to grant it to the profile.'
+	return `Kody returned ${code}: ${reason} ${fix}`
 }
 
 export function insufficientScopeMessage(

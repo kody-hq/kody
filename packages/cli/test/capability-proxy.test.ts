@@ -788,3 +788,32 @@ test('callCapabilityProxy reports a profile denial without a re-mint hint', asyn
 		)
 	}
 })
+
+test('callCapabilityProxy does not suggest a grant for an inactive profile', async () => {
+	const { fetchFn } = respondWith(403, {
+		error: {
+			code: 'profile_inactive',
+			message: 'Profile "helper" is revoked, so it cannot use secret:use.',
+			details: {
+				required_permission: 'secret:use',
+				denial: 'profile_inactive',
+			},
+		},
+	})
+	await assert.rejects(
+		() =>
+			callCapabilityProxy({
+				apiUrl: 'https://api.kody.codes',
+				token,
+				fetchFn,
+				path: ['kody', 'secretUse'],
+				args: [{}],
+			}),
+		(thrown: Error) => {
+			assert.match(thrown.message, /^Kody returned profile_inactive: /)
+			assert.match(thrown.message, /active profile/)
+			assert.doesNotMatch(thrown.message, /has to grant it/)
+			return true
+		},
+	)
+})
