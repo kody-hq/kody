@@ -154,6 +154,7 @@ test('filterSentryEvent drops expected platform and caller noise and keeps real 
 		'Network connection lost.',
 		'D1_ERROR: D1 DB is overloaded. Requests queued for too long.',
 		'D1_ERROR: D1 DB is overloaded. Too many requests queued.',
+		'D1_ERROR: D1 DB is overloaded. Too many resources consumed within a 10 second window.',
 		'D1_ERROR: internal error; reference = 0u3odos5iotccpol68ppc0eg',
 		'Error: D1_ERROR: internal error; reference = e_Gz3hrU_5c47162d21d24e238a5c25e98b89ee39',
 		'D1_ERROR: internal error; reference = e-Gz3hrU-5c47162d21d24e238a5c25e98b89ee39',

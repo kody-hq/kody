@@ -1,25 +1,27 @@
 /**
  * Every product choice publish offload makes, in one place, so changing an
- * answer is a one-line edit here. Labels match the open product questions on
- * the "Move package publish off worker isolate limits" card.
+ * answer is a one-line edit here. Labels match the product questions on the
+ * "Move package publish off worker isolate limits" card.
  *
- * Settled: 2B, 4A, 5C, 6A, 7B, 9B, 10A, 11B.
- * Still open (keep them here, easy to flip): 1/3 and 8.
+ * Settled: 1, 2B, 3, 4A, 5C, 6C, 7B, 8B, 9B, 10A, 11B.
+ *
+ * 1 (Kent, Nov 4 2026): a publish follows the publisher's execution context
+ * chain like execute, a trigger can name a context, and a package's
+ * `kody.publish.execution.context` is a binding with no fallback. See
+ * `publish-routing.ts`.
+ *
+ * 3 (Kent, Nov 4 2026): no server-side push routing. Auto-publish on push is
+ * a package subscribing to the repo pushed event and calling publish, which
+ * then follows rule 1.
  */
 
 /**
- * 1/3 (open): offload is chosen per publish with `--build local|context`
- * (flag only). Set to true to also honor a per-package `publish.build`
- * setting, which a plain `git push` then follows.
+ * 8B: `kody package publish --build local` refuses uncommitted changes,
+ * pushes HEAD to its upstream on the Kody remote when it is not there yet
+ * (never committing), and builds only once Kody confirms it sees that
+ * commit (`expected_commit` on `packagePublishBuildCreate`).
  */
-export const publishOffloadFollowsPackageSetting = false
-
-/**
- * 8 (open): the CLI refuses unless HEAD is already pushed. Set to true to
- * have `kody package publish --build local` push HEAD itself (it still
- * refuses on uncommitted changes either way).
- */
-export const cliPushesHeadBeforeLocalBuild = false
+export const cliPushesHeadBeforeLocalBuild = true
 
 /** 2B: a TTY asks "build here now?"; agents and CI get commands + docs. */
 export const offerLocalBuildPromptInTty = true
@@ -35,11 +37,12 @@ export const publishBuildRejectionHint =
 	'The previously published version is still serving. Build again from a clean checkout of the pushed commit (`git status` shows no changes and HEAD matches the remote), then publish again.'
 
 /**
- * 6A: a bundle built outside the worker may only inline packages the
- * publisher can write. Anything else fails clearly; runtime-linked
- * dependencies are a later option.
+ * 6C: a bundle built outside the worker never inlines another Kody package.
+ * Its `kody:@…` imports stay linked placeholders that Kody fills in at commit
+ * time from each dependency's published artifact, resolved as the
+ * publisher, so any package the publisher can import works.
  */
-export const externallyBuiltBundlesMayInlineOnlyWritablePackages = true
+export const externallyBuiltBundlesLinkKodyPackageImports = true
 
 /**
  * 7B: offloaded builds lift the compute caps (CPU, memory, wall time) but

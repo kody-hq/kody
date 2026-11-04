@@ -14,7 +14,10 @@ import {
 } from '#worker/package-registry/package-name.ts'
 import { resolvePackageOwnerContext } from '#worker/package-registry/package-owner.ts'
 import { dispatchContextPublishBuild } from '#worker/publish-offload/context-dispatch.ts'
+import { ExecutionContextError } from '#worker/execution-contexts/errors.ts'
+import { isExecutionContextsEnabledFor } from '#worker/execution-contexts/flag.ts'
 import { isPublishOffloadEnabledFor } from '#worker/publish-offload/flag.ts'
+import { publishContextFlagsOffMessage } from '#worker/publish-offload/publish-routing.ts'
 import {
 	publishLargePackagesDocsUrl,
 	publishOffloadLimits,
@@ -42,6 +45,13 @@ const inputSchema = z.object({
 		.optional()
 		.describe(
 			'Execution context name or id for `origin: context`. Defaults to the first online context you operate.',
+		),
+	expected_commit: z
+		.string()
+		.regex(/^[0-9a-f]{40}$/)
+		.optional()
+		.describe(
+			'The commit the caller is about to build (the CLI sends its pushed HEAD). Refused unless it is the commit Kody sees at the head of the package repo.',
 		),
 })
 
@@ -116,6 +126,20 @@ export const publishBuildCreateCapability = defineDomainCapability(
 					'Publishing a build made outside Kody cloud needs the publish-offload feature flag, which is off for this account.',
 				)
 			}
+			if (
+				args.origin === 'context' &&
+				!(await isExecutionContextsEnabledFor(
+					ctx.env.APP_DB,
+					user.userId,
+					request.org.id,
+				))
+			) {
+				throw new ExecutionContextError({
+					status: 403,
+					code: 'feature_disabled',
+					message: publishContextFlagsOffMessage,
+				})
+			}
 			const owner = await resolvePackageOwnerContext(ctx.env, {
 				user,
 				request,
@@ -139,6 +163,11 @@ export const publishBuildCreateCapability = defineDomainCapability(
 			if (!head.commit) {
 				throw new McpCallerError(
 					`Package "${name}" has no pushed commit to build. Push first.`,
+				)
+			}
+			if (args.expected_commit && args.expected_commit !== head.commit) {
+				throw new McpCallerError(
+					`Kody sees ${head.commit.slice(0, 12)} at the head of "${name}" (branch ${head.branch}), not your commit ${args.expected_commit.slice(0, 12)}. Nothing was built. Push that commit to the package's Kody remote and try again.`,
 				)
 			}
 			await purgeExpiredPublishBuilds({
@@ -192,6 +221,11 @@ export const publishBuildCreateCapability = defineDomainCapability(
 				manifestPath: source.manifest_path,
 				context: args.context ?? null,
 			})
+			if (dispatched.kind !== 'context') {
+				throw new McpCallerError(
+					'No execution context you operate took this publish build.',
+				)
+			}
 			return {
 				...common,
 				status: 'sealed' as const,

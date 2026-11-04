@@ -1,5 +1,13 @@
 import type { PublishedPackageArtifactBuildTarget } from '#worker/package-runtime/package-artifact-targets.ts'
-import type { BundleArtifactDependency } from '#worker/package-runtime/published-runtime-artifacts.ts'
+import { collectBundlerResolvedSpecifiers } from '#worker/package-runtime/import-specifiers.ts'
+import {
+	publicRuntimeModulePath,
+	resolveRelativeModulePath,
+} from '#worker/package-runtime/module-graph-paths.ts'
+import {
+	buildPackageRuntimeModulePath,
+	isKodyRuntimeModulePath,
+} from '#worker/package-runtime/runtime-source-modules.ts'
 import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import { snapshotStringToBytes } from '#universal/package-file-media.ts'
 import { sha256Hex, workerLoaderModuleBytes } from './module-hashes.ts'
@@ -149,12 +157,14 @@ export function matchUploadedTargets(input: {
 }
 
 const platformVirtualPathPattern = /(^|\/)\.__kody_virtual__\//
+const linkedPathPattern = /(^|\/)\.__kody_linked__\//
 const boundCreatorNamePattern = /__kodyCreatePackageBound[\w$]*/g
 const boundCreatorCallPattern =
 	/__kodyCreatePackageBound[\w$]*\(\s*("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|[^)\s]+)\s*\)/g
 const preBindingRepairNames = [
 	'__kodyPreBindingBoundFetch',
 	'__kodyPreBindingBoundKody',
+	'__kodyMeterStaticPackageExport',
 ]
 
 const namedImportPattern =
@@ -249,21 +259,75 @@ function assertSafeModulePath(path: string) {
 			`the build uploaded "${path}", but platform modules under .__kody_virtual__/ are supplied by Kody at load time and cannot come from a build.`,
 		)
 	}
+	if (linkedPathPattern.test(path)) {
+		fail(
+			`the build uploaded "${path}", but other Kody packages under .__kody_linked__/ are linked by Kody and cannot come from a build.`,
+		)
+	}
+}
+
+/**
+ * 6C: every relative import an uploaded module makes stays inside the
+ * upload, is the shared runtime or this package's own runtime facade, or is
+ * a linked placeholder for a Kody package the source imports. Anything else
+ * (another package's facade, a linked artifact's internals) is refused.
+ * Returns the placeholders the module imports.
+ */
+function assertImportsStayInPackage(input: {
+	path: string
+	source: string
+	label: string
+	ownPackageId: string
+	linkedImports: ReadonlyMap<string, string>
+	referenced: Set<string>
+}) {
+	const specifiers = collectBundlerResolvedSpecifiers(input.source)
+	if (specifiers === null) {
+		fail(`${input.label} does not parse as a module.`)
+	}
+	for (const specifier of specifiers) {
+		if (!specifier.startsWith('./') && !specifier.startsWith('../')) continue
+		const resolved = resolveRelativeModulePath(input.path, specifier)
+		if (resolved && linkedPathPattern.test(resolved)) {
+			if (!input.linkedImports.has(resolved)) {
+				fail(
+					`${input.label} imports "${resolved}", which is not a Kody package this source imports.`,
+				)
+			}
+			input.referenced.add(resolved)
+			continue
+		}
+		if (
+			!resolved ||
+			(platformVirtualPathPattern.test(resolved) &&
+				!isKodyRuntimeModulePath(resolved) &&
+				resolved !== publicRuntimeModulePath &&
+				resolved !== buildPackageRuntimeModulePath(input.ownPackageId))
+		) {
+			fail(
+				`${input.label} imports "${specifier}", which is not part of this package.`,
+			)
+		}
+	}
 }
 
 /**
  * One uploaded target, after its bytes were read back from staging: the
  * hashes and sizes match the sealed document, it stays under the per-target
  * storage cap, and every package-bound runtime call acts as the package
- * itself or a dependency the server computed (never another package).
+ * itself. Other packages' code and bindings only ever come from Kody's link
+ * step (6C), so an upload that binds another package id inlined it or
+ * forged it.
  */
 export async function verifyUploadedTargetModules(input: {
 	uploaded: PublishBuildTargetEntry
 	modules: WorkerLoaderModules
 	ownPackageId: string
-	allowedActsAsPackageIds: ReadonlySet<string>
+	/** Server-derived: placeholder path → the `kody:@…` import it stands for. */
+	linkedImports: ReadonlyMap<string, string>
 }) {
 	const { uploaded } = input
+	const referencedLinkedImports = new Set<string>()
 	if (!(uploaded.mainModule in input.modules)) {
 		fail(
 			`target "${uploaded.entryPoint}" names main module "${uploaded.mainModule}", which it did not upload.`,
@@ -303,54 +367,34 @@ export async function verifyUploadedTargetModules(input: {
 				)
 			}
 		}
+		const label = `module "${path}" of "${uploaded.entryPoint}"`
 		const directCalls = assertBoundCreatorsOnlyCalledDirectly({
 			source,
-			label: `module "${path}" of "${uploaded.entryPoint}"`,
+			label,
 		})
 		for (const match of directCalls) {
 			const id = parseBoundId(match[1]!)
-			if (
-				id === null ||
-				(id !== input.ownPackageId && !input.allowedActsAsPackageIds.has(id))
-			) {
+			if (id !== input.ownPackageId) {
 				fail(
-					`module "${path}" of "${uploaded.entryPoint}" binds runtime calls to ${id === null ? 'a computed package id' : `package "${id}"`}, which is neither this package nor a dependency the server resolved from source.`,
+					`${label} binds runtime calls to ${id === null ? 'a computed package id' : `package "${id}"`}, not this package. A build made outside Kody cloud may not contain another Kody package; Kody links those itself.`,
 				)
 			}
 		}
+		assertImportsStayInPackage({
+			path,
+			source,
+			label,
+			ownPackageId: input.ownPackageId,
+			linkedImports: input.linkedImports,
+			referenced: referencedLinkedImports,
+		})
 	}
 	if (totalBytes > publishOffloadLimits.maxTargetBytes) {
 		fail(
 			`target "${uploaded.entryPoint}" is ${(totalBytes / 1024 / 1024).toFixed(1)} MiB, over the ${publishOffloadLimits.maxTargetBytes / 1024 / 1024} MiB per-target storage limit. Split the entrypoint or drop heavy dependencies.`,
 		)
 	}
-	return { totalBytes }
-}
-
-/**
- * 6A: a bundle built outside the worker may only inline packages the
- * publisher can write. `dependencies` is the server's own resolution from
- * source, so a builder cannot hide one.
- */
-export function assertInlinedDependenciesWritable(input: {
-	entryPoint: string
-	ownPackageId: string
-	dependencies: ReadonlyArray<BundleArtifactDependency>
-	writablePackageIds: ReadonlySet<string>
-}) {
-	const blocked = input.dependencies.filter(
-		(dependency) =>
-			!dependency.packageId ||
-			(dependency.packageId !== input.ownPackageId &&
-				!input.writablePackageIds.has(dependency.packageId)),
-	)
-	if (blocked.length === 0) return
-	const names = blocked
-		.map((dependency) => `"${dependency.packageName ?? dependency.kodyId}"`)
-		.join(', ')
-	fail(
-		`"${input.entryPoint}" inlines ${names}, and a build made outside Kody cloud may only inline packages you can write. Publish this package on Kody cloud (drop --build), or ask that package's owner for write access.`,
-	)
+	return { totalBytes, referencedLinkedImports }
 }
 
 /**

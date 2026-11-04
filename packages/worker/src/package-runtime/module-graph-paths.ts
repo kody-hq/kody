@@ -26,6 +26,13 @@ export const wranglerConfigPaths = [
 export const rootSourcePrefix = '.__kody_root__'
 export const packageSourcePrefix = '.__kody_packages__'
 export const packageImportProxyPrefix = '.__kody_virtual__/imports'
+/**
+ * Publish offload: a bundle built outside Kody cloud imports each other Kody
+ * package from here instead of inlining it. The build never supplies these
+ * modules; Kody writes them when it commits the upload
+ * (`#worker/publish-offload/link-dependencies.ts`).
+ */
+export const linkedPackageImportPrefix = '.__kody_linked__'
 export const dynamicPackageImportProxyPrefix =
 	'.__kody_virtual__/dynamic-imports'
 export const dynamicPackageImportArtifactSegment = '.__kody_current__'
@@ -62,6 +69,10 @@ export function decodePathKey(value: string) {
 	} catch {
 		return null
 	}
+}
+
+export function linkedPackageImportPath(specifier: string) {
+	return `${linkedPackageImportPrefix}/${createPackageProxyPathSegment(specifier)}.js`
 }
 
 export function createPackageProxyPathSegment(specifier: string) {

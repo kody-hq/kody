@@ -107,6 +107,7 @@ export async function handleGuestClaimPost({
 				guest,
 				code: field('code'),
 				baseUrl,
+				method: 'email_code',
 			})
 			const setCookie = await loginAs(result.personId)
 			return seeOther(
@@ -127,6 +128,7 @@ export async function handleGuestClaimPost({
 				guest,
 				target,
 				baseUrl,
+				method: 'signed_in_merge',
 			})
 			return seeOther(claim.guestClaimDonePath(code, result.mode, comesWith))
 		}

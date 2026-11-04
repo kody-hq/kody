@@ -3,6 +3,7 @@ import { testAccountConnectionsApiHandler } from '#app/handlers/account-connecti
 import { publicAuthProvidersLoaderData } from '#app/public-auth-providers.ts'
 import { emptyPublicFormProtection } from '#universal/public-form-protection.ts'
 import { startWebsiteOAuth } from '#worker/identity/oauth-start-operation.ts'
+import { createGuestAccount } from '#worker/guest/guest-accounts.ts'
 import { reservedUsernamesKvKey } from '#worker/identity/reserved-username-settings.ts'
 import { getUsernameValidationError } from '#worker/identity/username.ts'
 import {
@@ -34,12 +35,15 @@ import { afterAll, afterEach, beforeAll, expect, test, vi } from 'vitest'
 
 const lifecycleMocks = vi.hoisted(() => ({
 	scheduleUserCreatedEvent: vi.fn(),
+	scheduleGuestClaimedEvent: vi.fn(),
 }))
 
 vi.mock('#worker/identity/schedule-user-lifecycle-event.ts', () => ({
 	scheduleUserCreatedEvent: (...args: Array<unknown>) =>
 		lifecycleMocks.scheduleUserCreatedEvent(...args),
 	scheduleUserDeletedEvent: vi.fn(),
+	scheduleGuestClaimedEvent: (...args: Array<unknown>) =>
+		lifecycleMocks.scheduleGuestClaimedEvent(...args),
 }))
 
 const { createAuthProviderCallbackHandler } =
@@ -1287,3 +1291,68 @@ async function runConnectionsOperation(
 ) {
 	return operation.execute({ request })
 }
+
+test('claiming a guest with GitHub emits one user.guest_claimed and no user.created', async () => {
+	const { sqlite, db } = createMigratedDb()
+	const env = createAppEnv(db)
+	const created = await createGuestAccount({
+		db,
+		requestIp: '203.0.113.9',
+		clientName: 'Claim Agent',
+	})
+	if (!created.ok) throw new Error('guest was not created')
+	sqlite.exec(`
+		INSERT INTO mcp_memories (id, user_id, subject, summary)
+		VALUES ('guest-memory', '${created.personalOrgId}', 'Likes', 'Tea');
+	`)
+	mockGithubProfileExchange('claimer@example.com', 99077)
+	lifecycleMocks.scheduleUserCreatedEvent.mockClear()
+	lifecycleMocks.scheduleGuestClaimedEvent.mockClear()
+	const startUrl = 'http://example.com/auth/github'
+	const started = await startWebsiteOAuth({
+		env,
+		provider: 'github',
+		url: new URL(startUrl),
+		request: new Request(startUrl),
+		body: {},
+		guestClaim: { code: created.claimCode, username: 'claimer' },
+	})
+	if (!('authorizeUrl' in started.data) || !started.data.authorizeUrl) {
+		throw new Error('Expected OAuth authorization URL')
+	}
+	const state = new URL(started.data.authorizeUrl).searchParams.get('state')
+	const response = await runHandler(
+		createAuthProviderCallbackHandler(env),
+		new Request(
+			`http://example.com/auth/github/callback?code=github-auth-code&state=${state}`,
+			{
+				headers: {
+					Cookie: getCookiePair(started.headers.get('Set-Cookie') ?? ''),
+				},
+			},
+		),
+		{ provider: 'github' },
+	)
+	expect(response.status).toBe(302)
+	expect(lifecycleMocks.scheduleUserCreatedEvent).not.toHaveBeenCalled()
+	expect(lifecycleMocks.scheduleGuestClaimedEvent).toHaveBeenCalledOnce()
+	expect(lifecycleMocks.scheduleGuestClaimedEvent).toHaveBeenCalledWith(
+		expect.objectContaining({
+			mode: 'new',
+			method: 'social',
+			provider: 'github',
+			user: {
+				id: created.personId,
+				username: 'claimer',
+				email: 'claimer@example.com',
+			},
+			guest: expect.objectContaining({
+				id: created.personId,
+				username: created.username,
+				clientName: 'Claim Agent',
+			}),
+			counts: expect.objectContaining({ memories: 1, packages: 0 }),
+			renamedPackages: 0,
+		}),
+	)
+})
