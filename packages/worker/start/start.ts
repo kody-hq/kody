@@ -10,6 +10,7 @@ import {
 	markRpcResponsePrivate,
 	verifyBrowserDocument,
 } from '#start/server/document-actor'
+import { fetchWithDeploySkewCheck } from './deploy-skew-fetch.ts'
 import { readDocumentActor } from './document-actor.ts'
 import { permissionDeniedSerializationAdapter } from './permission-denied-serialization.ts'
 import {
@@ -58,4 +59,8 @@ export const startInstance = createStart(() => ({
 	],
 	functionMiddleware: [documentIdentity],
 	serializationAdapters: [permissionDeniedSerializationAdapter],
+	// Client-only: compare X-Kody-Build on server-fn responses to the boot
+	// meta and hard-navigate on deploy skew (KODY-DP). SSR calls handlers
+	// directly and never uses this fetch.
+	serverFns: { fetch: fetchWithDeploySkewCheck },
 }))
