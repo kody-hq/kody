@@ -43,9 +43,9 @@ local filesystem and git access:
   commit, push, then publish with `packagePublishExternalPush`. If that tool
   returns `locked`, open the returned `approval_url` so the owner can promote
   the named commit. Do not treat HEAD as live until `published_commit` moves.
-  When the OAuth token is coarser than the export (Gmail drafts without send),
-  lock after the first publish — see
-  [locked-gmail-drafts.md](./locked-gmail-drafts.md).
+  Isolate-limit bundling: `guide:publish_large_packages`. When the OAuth token
+  is coarser than the export (Gmail drafts without send), lock after the first
+  publish — see [locked-gmail-drafts.md](./locked-gmail-drafts.md).
 - **Tool-only lane.** Without local filesystem/git access (MCP-only agents such
   as ChatGPT / Claude / Grok mobile apps), create with `packageSave` (complete
   UTF-8 text file set; no binary files) and edit through repo sessions
@@ -368,7 +368,8 @@ works in ad hoc `execute`.
 
 Do not vendor the library, switch to a dynamic import, or skip checks. Keep the
 Kody package as a thin orchestrator and run the heavy work in a process the
-owner operates. Open `search({ entity: "guide:heavy_work_offload" })`.
+owner operates. Open `search({ entity: "guide:heavy_work_offload" })` or, when
+only publish bundling is too big, `guide:publish_large_packages`.
 
 ## Secret-using packages
 

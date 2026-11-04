@@ -391,6 +391,9 @@ Cloudflare Workers runtime.
   the usual cause is the npm graph, not the package source. Keep the package as
   a thin orchestrator and offload that work; see
   [Offload work that does not fit a Worker isolate](../guides/heavy-work-offload.md).
+  If the package runs once built and only publish bundling exceeds the isolate,
+  build outside Kody cloud:
+  [Publish packages too big for Kody cloud](../guides/publish-large-packages.md).
 - After changing `dependencies`, republish the package so Kody can rebuild the
   published runtime bundle artifacts that execution paths use.
 
@@ -1311,18 +1314,26 @@ publish checks run.
    Call `packagePublishExternalPush` (CLI: `kody package publish`). Kody checks
    the pushed tree server-side before recording the new published version,
    writing the published source snapshot, rebuilding package bundle artifacts,
-   and refreshing search projections. If the package tip already matched HEAD
-   before this request began, the tool returns `already_published` (true no-op
-   tip). That result still runs the artifact rebuild and sets
-   `artifacts_rebuilt` true when any target needed rebuild or a forced snapshot
-   repair ran. If `published_commit` moved relative to that pre-request tip —
-   including a durable re-entry after an overlapping inline attempt advanced the
-   tip — the status is `published` with `previous_commit` set to the baseline
-   tip, even when the repo session already saw tip==HEAD. If the package is
-   locked, it returns `locked` with a `pending_commit` and `approval_url` after
-   checks pass and leaves `published_commit` unchanged. If it is
-   internet-visible and its credential needs changed, it returns
-   `approval_required` the same way (see
+   and refreshing search projections. When the package is too large to bundle in
+   a Worker isolate, `kody package publish --build local` or `--build context`
+   builds on the publisher's machine or an execution context they operate, then
+   calls `packagePublishExternalPush` with `publish_build_id`. Kody re-runs the
+   cheap checks, verifies the uploaded tree and bundles, and only then serves
+   the commit. Successful results include `build_origin` (`cloud`, `cli`, or
+   `context`). Builds outside Kody cloud need the `publish-offload` feature
+   flag. See
+   [Publish packages too big for Kody cloud](../guides/publish-large-packages.md).
+   If the package tip already matched HEAD before this request began, the tool
+   returns `already_published` (true no-op tip). That result still runs the
+   artifact rebuild and sets `artifacts_rebuilt` true when any target needed
+   rebuild or a forced snapshot repair ran. If `published_commit` moved relative
+   to that pre-request tip — including a durable re-entry after an overlapping
+   inline attempt advanced the tip — the status is `published` with
+   `previous_commit` set to the baseline tip, even when the repo session already
+   saw tip==HEAD. If the package is locked, it returns `locked` with a
+   `pending_commit` and `approval_url` after checks pass and leaves
+   `published_commit` unchanged. If it is internet-visible and its credential
+   needs changed, it returns `approval_required` the same way (see
    [Approval when credential needs change](#approval-when-credential-needs-change)).
    If checks fail before promotion, it returns `checks_failed` with the failed
    check entries and leaves the underlying storage state unchanged. The CLI
@@ -1343,24 +1354,28 @@ publish checks run.
    repairs still rebuild. A published commit always has a complete target set —
    reuse writes the prior modules under the new commit key rather than leaving
    holes. A rebuild failure after promotion also returns `checks_failed` with a
-   bundle check — re-run the publish capability to repair artifacts. Successful
-   `published` responses, and `already_published` responses when the metadata is
-   available, include a bounded `static_dependents` summary of direct saved
-   packages whose published bundle artifacts statically reference this package.
-   Stale entries mean the dependent bundle captured a dependency commit that
-   differs from the current published commit. Kody does not automatically
-   republish those dependents; inspect and republish only the ones whose static
-   snapshot should reference the current published commit. Those same success
-   results include `phase_timings` with optional millisecond fields `clone_ms`,
-   `checks_typecheck_ms`, `checks_bundle_ms`, `rebuild_ms`, `dependents_ms`, and
-   `total_ms`. Omitted keys did not run on that attempt. `checks_bundle_ms` is
-   the publish bundle-check and is omitted when that esbuild pass is deferred to
-   rebuild; `rebuild_ms` is the later artifact rebuild — they stay separate.
-   Read `phase_timings` on the capability result; it is not available from
-   `runList` or Cloudflare Log Explorer. When an interactive publish exceeds the
-   inline budget (~35s), the tool returns `status: "dispatched"` with a
-   `workflow_id` instead of hanging until the host times out. `dispatched`
-   includes `phase_timings.total_ms` as time-to-dispatch. Poll with
+   bundle check. The publish did not succeed: Kody drops that commit's
+   publish-checks seal and moves `published_commit`, the package projection, and
+   job pins back to the last good commit (a first publish has no earlier commit,
+   so only the seal is dropped). Re-run the publish capability to repair
+   artifacts. Successful `published` responses, and `already_published`
+   responses when the metadata is available, include a bounded
+   `static_dependents` summary of direct saved packages whose published bundle
+   artifacts statically reference this package. Stale entries mean the dependent
+   bundle captured a dependency commit that differs from the current published
+   commit. Kody does not automatically republish those dependents; inspect and
+   republish only the ones whose static snapshot should reference the current
+   published commit. Those same success results include `phase_timings` with
+   optional millisecond fields `clone_ms`, `checks_typecheck_ms`,
+   `checks_bundle_ms`, `rebuild_ms`, `dependents_ms`, and `total_ms`. Omitted
+   keys did not run on that attempt. `checks_bundle_ms` is the publish
+   bundle-check and is omitted when that esbuild pass is deferred to rebuild;
+   `rebuild_ms` is the later artifact rebuild — they stay separate. Read
+   `phase_timings` on the capability result; it is not available from `runList`
+   or Cloudflare Log Explorer. When an interactive publish exceeds the inline
+   budget (~35s), the tool returns `status: "dispatched"` with a `workflow_id`
+   instead of hanging until the host times out. `dispatched` includes
+   `phase_timings.total_ms` as time-to-dispatch. Poll with
    `workflowRunList({ workflow_id })` (CLI:
    `kody api workflowRunList --params '{"workflow_id":"<id>"}'`) until the run
    is terminal; do not retry the same publish while the run is active.

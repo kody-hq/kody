@@ -102,7 +102,8 @@ Important behavior:
   way so publish cannot skip the check.
 - An isolate memory or CPU reset during bundle validation is the same class of
   failure: the npm graph does not fit a Worker isolate. The check message points
-  at `search({ entity: "guide:heavy_work_offload" })`.
+  at `search({ entity: "guide:heavy_work_offload" })` and, when only publish
+  bundling is too big, `search({ entity: "guide:publish_large_packages" })`.
 - Runtime execution does not invent a new dependency policy or ask callers to
   choose one. Dependency handling is part of the saved-package pipeline itself.
 
@@ -662,11 +663,14 @@ refreshes the credential stamp, writes the current checks version, and returns
 Check failures before promotion return the failed checks and do not mutate D1,
 KV snapshots, published bundle artifacts, package projections, or vectors. A
 rebuild failure after promotion returns `checks_failed` with a bundle check;
-re-run the publish capability to repair artifacts. Non-fast-forward external
-heads are refused unless the caller passes `allow_force: true`. When
-`saved_packages.locked_at` is set, checks still run and the result is `locked`
-with an approval URL; `published_commit` does not move until the owner promotes
-that commit on the website.
+Kody drops that commit's publish-checks seal and moves `published_commit`, the
+package projection, and job pins back to the last good commit (a first publish
+has no earlier commit, so only the seal is dropped). Re-run the publish
+capability to repair artifacts. Non-fast-forward external heads are refused
+unless the caller passes `allow_force: true`. When `saved_packages.locked_at` is
+set, checks still run and the result is `locked` with an approval URL;
+`published_commit` does not move until the owner promotes that commit on the
+website.
 
 When publish succeeds, `packagePublishExternalPush` decorates the response with
 `static_dependents`, a bounded summary of direct saved packages whose published

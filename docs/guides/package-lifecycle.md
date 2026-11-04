@@ -171,9 +171,13 @@ When a normal filesystem and git client are available:
    `dispatched` with a `workflow_id`; poll `workflowRunList` until the run is
    terminal. A durable run that does not publish ends `errored` and frees a
    retry for the same commit. See [Packages](../use/packages.md) for the
-   statuses. Do **not** open a repo session to run `repoRunChecks` on the pushed
-   tree — `repoOpenSession` refuses unpublished HEAD, so the session cannot see
-   that commit.
+   statuses. When bundling exceeds the worker isolate, build on this machine or
+   a context you operate and have Kody verify the upload:
+   `kody package publish <package> --build local` or `--build context`. See
+   [Publish packages too big for Kody cloud](./publish-large-packages.md)
+   (`guide:publish_large_packages`). Do **not** open a repo session to run
+   `repoRunChecks` on the pushed tree — `repoOpenSession` refuses unpublished
+   HEAD, so the session cannot see that commit.
 
 This lane supports binary assets, multi-file changes, local tests, and normal
 git review.
