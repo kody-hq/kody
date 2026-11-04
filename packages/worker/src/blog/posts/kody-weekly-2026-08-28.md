@@ -3,7 +3,7 @@ title: Kody weekly: Choose the OAuth scopes a connection requests
 date: 2026-08-28
 description: Pick providers and OAuth scopes from /connect/oauth, plus 5 more updates and 2 breaking changes to package composition and jobs.
 order: 1
-placeholder: false
+category: updates
 ---
 
 Here is what shipped in Kody from August 22 to August 28, 2026. This week you

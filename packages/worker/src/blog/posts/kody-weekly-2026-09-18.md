@@ -3,7 +3,7 @@ title: Kody weekly: Manage webhook URLs from your account
 date: 2026-09-18
 description: Mint, reveal, rotate, and disable webhook URLs at /account/webhooks, plus 7 more updates to connections, email, and package apps.
 order: 1
-placeholder: false
+category: updates
 ---
 
 Here is what shipped in Kody from September 12 to September 18, 2026. This week

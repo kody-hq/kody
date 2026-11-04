@@ -3,7 +3,7 @@ title: Kody weekly: Turn your personal org into a team org
 date: 2026-10-23
 description: Convert a personal org into a team org, plus 7 more updates to the CLI, OAuth, package apps, and credentials.
 order: 1
-placeholder: false
+category: updates
 ---
 
 Here is what shipped in Kody from October 17 to October 22, 2026. This week you

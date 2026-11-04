@@ -3,7 +3,7 @@ title: Kody weekly: small fixes and maintenance
 date: 2026-06-12
 description: package_save spells out its source safety policy, and package remotes and sessions fail clearly on empty sources.
 order: 1
-placeholder: false
+category: updates
 ---
 
 Here is what shipped in Kody from June 6 to June 12, 2026. This is a quiet week

@@ -3,7 +3,7 @@ title: Kody weekly: Skills, apps, and jobs become packages
 date: 2026-04-24
 description: Saved skills and apps now run as repo-backed packages, plus 8 more updates to jobs, repo editing, search, and realtime.
 order: 1
-placeholder: false
+category: updates
 ---
 
 Here is what shipped in Kody from April 18 to April 24, 2026. This week Kody
@@ -52,7 +52,6 @@ Another package or `execute` call imports its export as
 
 Docs: [Package authoring](https://kody.codes/docs/package-authoring) · PRs:
 [#221](https://github.com/kody-hq/kody/pull/221),
-[#229](https://github.com/kody-hq/kody/pull/229),
 [#235](https://github.com/kody-hq/kody/pull/235)
 
 ## More updates

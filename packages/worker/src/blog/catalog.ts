@@ -1,3 +1,10 @@
+import {
+	blogCategories,
+	blogSeries,
+	getBlogSeries,
+	type BlogCategorySlug,
+	type BlogSeriesSlug,
+} from '#universal/blog-taxonomy.ts'
 import { parseBlogPostMarkdown, type BlogPost } from './parse-frontmatter.ts'
 import earlyKodyUsers from './posts/early-kody-users.md'
 import everyInstallIsAForkYouOwn from './posts/every-install-is-a-fork-you-own.md'
@@ -65,9 +72,10 @@ import howToRollOutAiAgentsToYourTeam from './posts/how-to-roll-out-ai-agents-to
 
 /**
  * Static post sources. When adding a post, drop a `.md` file under `posts/`
- * and add one import + entry here. The client never imports this module.
- * After a human review, set `placeholder: false` in that post's frontmatter
- * to hide the AI-placeholder callout. Optional `image` / `imageAlt` are
+ * and add one import + entry here (and the slug in
+ * `#universal/blog-post-slugs.ts`). Pick its category and series with
+ * docs/contributing/blog.md. The client never imports this module.
+ * Optional `image` / `imageAlt` are
  * headline artwork. Optional `ogImage` is Satori artwork composed into the
  * generated `/blog/:slug/og.png` card.
  */
@@ -219,14 +227,42 @@ function compareBlogPosts(a: BlogPost, b: BlogPost): number {
 	return a.order - b.order
 }
 
+/** Cross-post rules the per-file frontmatter parse cannot see. */
+function assertCatalogRules(posts: ReadonlyArray<BlogPost>) {
+	const slugs = new Set<string>()
+	for (const post of posts) {
+		if (slugs.has(post.slug)) {
+			throw new Error(`Blog post slug "${post.slug}" is listed twice.`)
+		}
+		slugs.add(post.slug)
+	}
+	const featured = posts.filter((post) => post.featured)
+	if (featured.length > 1) {
+		throw new Error(
+			`Only one blog post may set "featured: true" (found ${featured
+				.map((post) => post.slug)
+				.join(', ')}).`,
+		)
+	}
+	for (const series of blogSeries) {
+		const parts = posts.filter((post) => post.series === series.slug)
+		if (parts.length < 2) {
+			throw new Error(
+				`Blog series "${series.slug}" needs at least two posts (found ${parts.length}); drop it from #universal/blog-taxonomy.ts or tag more posts.`,
+			)
+		}
+	}
+}
+
 function buildCatalog(): ReadonlyArray<BlogPost> {
 	const posts = postSources.map(({ slug, raw }) =>
 		parseBlogPostMarkdown(slug, raw),
 	)
+	assertCatalogRules(posts)
 	return posts.sort(compareBlogPosts)
 }
 
-export const blogPosts: ReadonlyArray<BlogPost> = buildCatalog()
+const blogPosts: ReadonlyArray<BlogPost> = buildCatalog()
 
 const postsBySlug = new Map(blogPosts.map((post) => [post.slug, post]))
 
@@ -243,27 +279,46 @@ export function normalizeMarkdownPhraseSource(source: string) {
 	return source.replaceAll(/^>\s?/gm, '').replace(/\s+/g, ' ')
 }
 
+/** Every post, newest first (ties by `order`). */
 export function listBlogPosts(): ReadonlyArray<BlogPost> {
 	return blogPosts
 }
 
-/** Slug + title pointer for the post foot's "Read next" link. */
-export type BlogPostPointer = {
-	slug: string
-	title: string
+export function listBlogCategoryPosts(
+	category: BlogCategorySlug,
+): ReadonlyArray<BlogPost> {
+	return blogPosts.filter((post) => post.category === category)
+}
+
+/** Series parts in reading order: oldest first. */
+export function listBlogSeriesPosts(
+	series: BlogSeriesSlug,
+): ReadonlyArray<BlogPost> {
+	return blogPosts.filter((post) => post.series === series).reverse()
+}
+
+/** Categories with at least one post, in taxonomy order, with counts. */
+export function listBlogCategoriesWithPosts() {
+	return blogCategories
+		.map((category) => ({
+			slug: category.slug,
+			label: category.label,
+			count: listBlogCategoryPosts(category.slug).length,
+		}))
+		.filter((category) => category.count > 0)
 }
 
 /**
- * The post that follows `slug` in catalog order (newest → oldest, then
- * `order`). Wraps from the last post back to the first so every post foot has
- * somewhere to send the reader; null only when the post is unknown or alone.
+ * The index hero: the post pinned with `featured: true`, else the newest
+ * post outside `updates` (weekly notes would otherwise always win).
  */
-export function getReadNextBlogPost(slug: string): BlogPostPointer | null {
-	const index = blogPosts.findIndex((post) => post.slug === slug)
-	if (index === -1 || blogPosts.length < 2) return null
-	const next = blogPosts[(index + 1) % blogPosts.length]
-	if (!next) return null
-	return { slug: next.slug, title: next.title }
+export function getFeaturedBlogPost(): BlogPost | null {
+	return (
+		blogPosts.find((post) => post.featured) ??
+		blogPosts.find((post) => post.category !== 'updates') ??
+		blogPosts[0] ??
+		null
+	)
 }
 
 /** Index / API summary shape (no markdown body). */
@@ -271,8 +326,11 @@ export type BlogPostSummary = {
 	slug: string
 	title: string
 	date: string
+	updated: string | null
 	description: string
-	order: number
+	category: BlogCategorySlug
+	series: BlogSeriesSlug | null
+	readingMinutes: number
 }
 
 export function toBlogPostSummary(post: BlogPost): BlogPostSummary {
@@ -280,7 +338,68 @@ export function toBlogPostSummary(post: BlogPost): BlogPostSummary {
 		slug: post.slug,
 		title: post.title,
 		date: post.date,
+		updated: post.updated,
 		description: post.description,
-		order: post.order,
+		category: post.category,
+		series: post.series,
+		readingMinutes: post.readingMinutes,
 	}
+}
+
+export type BlogSeriesNav = {
+	slug: BlogSeriesSlug
+	title: string
+	/** 1-based position of the current post. */
+	part: number
+	parts: Array<{ slug: string; title: string }>
+}
+
+export function getBlogSeriesNav(slug: string): BlogSeriesNav | null {
+	const post = getBlogPost(slug)
+	const series = post?.series ? getBlogSeries(post.series) : null
+	if (!post || !series) return null
+	const parts = listBlogSeriesPosts(series.slug).map((part) => ({
+		slug: part.slug,
+		title: part.title,
+	}))
+	return {
+		slug: series.slug,
+		title: series.title,
+		part: parts.findIndex((part) => part.slug === slug) + 1,
+		parts,
+	}
+}
+
+function daysApart(a: BlogPost, b: BlogPost) {
+	return Math.abs(Date.parse(a.date) - Date.parse(b.date))
+}
+
+/**
+ * Up to `limit` posts to read next: the same category first, then anything
+ * outside `updates`, nearest in date. Series siblings are left out because
+ * the series nav already lists them.
+ */
+export function getRelatedBlogPosts(
+	slug: string,
+	limit = 3,
+): Array<BlogPostSummary> {
+	const post = getBlogPost(slug)
+	if (!post) return []
+	const candidates = blogPosts.filter(
+		(other) =>
+			other.slug !== post.slug &&
+			(post.series === null || other.series !== post.series),
+	)
+	const byDistance = (a: BlogPost, b: BlogPost) =>
+		daysApart(a, post) - daysApart(b, post) || compareBlogPosts(a, b)
+	const sameCategory = candidates
+		.filter((other) => other.category === post.category)
+		.sort(byDistance)
+	const fallback = candidates
+		.filter(
+			(other) =>
+				other.category !== post.category && other.category !== 'updates',
+		)
+		.sort(byDistance)
+	return [...sameCategory, ...fallback].slice(0, limit).map(toBlogPostSummary)
 }

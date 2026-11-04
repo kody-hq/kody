@@ -3,7 +3,7 @@ title: Kody weekly: See where your credits went
 date: 2026-10-09
 description: Usage and package pages break down where compute went, plus 5 more updates to secrets, packages, and tokens, and 2 breaking changes.
 order: 1
-placeholder: false
+category: updates
 ---
 
 Here is what shipped in Kody from October 3 to October 9, 2026. This week usage

@@ -3,7 +3,7 @@ title: Kody weekly: Manage your organization on the web
 date: 2026-10-16
 description: Org settings and members pages under /@slug/-/, plus 7 more updates to triggers, credentials, MCP servers, and packages.
 order: 1
-placeholder: false
+category: updates
 ---
 
 Here is what shipped in Kody from October 10 to October 16, 2026. This week team

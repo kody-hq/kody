@@ -3,7 +3,7 @@ title: Kody weekly: Your agent can send and receive email
 date: 2026-05-01
 description: Kody inboxes store inbound mail and send replies, and packages can react to new mail, plus 8 more updates to packages and secrets.
 order: 1
-placeholder: false
+category: updates
 ---
 
 Here is what shipped in Kody from April 25 to May 1, 2026. This week Kody gets

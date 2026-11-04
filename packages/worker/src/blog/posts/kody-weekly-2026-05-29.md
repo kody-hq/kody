@@ -3,7 +3,7 @@ title: Kody weekly: Read what each package publish recorded
 date: 2026-05-29
 description: Publishes record Kody publish notes you can read with repo_show_publish_note, plus 1 more update to package and account cleanup.
 order: 1
-placeholder: false
+category: updates
 ---
 
 Here is what shipped in Kody from May 23 to May 29, 2026. This is a quiet week:

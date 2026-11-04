@@ -1,9 +1,9 @@
 ---
 title: Kody weekly: Package tokens carry your remote connectors
 date: 2026-07-03
-description: Package invocation calls can use your attached remote connectors, plus 1 more update and 3 fixes to jobs and account security.
+description: Package invocation calls can use your attached remote connectors, plus 3 fixes to jobs and account security.
 order: 1
-placeholder: false
+category: updates
 ---
 
 Here is what shipped in Kody from June 27 to July 3, 2026. This is a quiet week:
@@ -35,8 +35,7 @@ PRs: [#570](https://github.com/kody-hq/kody/pull/570)
 
 ## More updates
 
-- **Platform:** Adds an MIT license to the Kody repository.
-  ([#579](https://github.com/kody-hq/kody/pull/579))
+No other improvements this week.
 
 ## Fixes
 

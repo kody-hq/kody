@@ -3,7 +3,7 @@ title: Kody weekly: Saved skills now take parameters
 date: 2026-03-20
 description: Saved skills can declare typed parameters, plus 3 other updates: GitHub GraphQL access, skill run hints, and mobile layouts.
 order: 1
-placeholder: false
+category: updates
 ---
 
 Here is what shipped in Kody from March 14 to March 20, 2026. This week we
