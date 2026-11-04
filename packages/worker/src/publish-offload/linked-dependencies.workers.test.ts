@@ -281,9 +281,12 @@ function builderFiles(files: Record<string, string>) {
 }
 
 async function uploadedEntry(input: {
-	target: PublishBuildTargetEntry extends infer T
-		? Pick<T & object, 'kind' | 'bundleKind' | 'artifactName' | 'entryPoint'>
-		: never
+	target: Pick<
+		PublishBuildTargetEntry,
+		'kind' | 'bundleKind' | 'entryPoint'
+	> & {
+		artifactName?: string | null
+	}
 	mainModule: string
 	modules: WorkerLoaderModules
 }): Promise<PublishBuildTargetEntry> {
