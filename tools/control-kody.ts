@@ -91,6 +91,10 @@ export const localAdminEmail = 'kody@example.com'
 export const controlKodyUserAgent =
 	'Mozilla/5.0 (compatible; KodyControlKody/1.0; +https://github.com/kody-hq/kody)'
 
+export function controlKodyUsage(): string {
+	return usageLines.join('\n')
+}
+
 const usageLines = [
 	'Usage: node tools/control-kody.ts <command> [options]',
 	'',
