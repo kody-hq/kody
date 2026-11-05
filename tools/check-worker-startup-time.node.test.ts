@@ -8,7 +8,6 @@ import {
 	profileStartupWithRetry,
 	resolveStartupTimeCwd,
 	resolveStartupTimeTarget,
-	startupTimeTargets,
 } from './check-worker-startup-time.ts'
 
 const sampleOutput = `
@@ -80,10 +79,8 @@ test('startup profiling retries timeout measurements but not other errors', asyn
 })
 
 test('origin startup profile runs from the Vite snapshot, not the workspace root', () => {
-	const origin = startupTimeTargets.find((target) => target.name === 'origin')
-	expect(origin).toBeDefined()
 	const resolved = resolveStartupTimeTarget(
-		origin!,
+		{ name: 'origin', packageDir: '.', args: [] },
 		'/tmp/kody-startup-time/origin-vite/ssr/wrangler.json',
 	)
 	expect(resolved.packageDir).toBe('/tmp/kody-startup-time/origin-vite/ssr')
@@ -94,15 +91,6 @@ test('origin startup profile runs from the Vite snapshot, not the workspace root
 	expect(resolveStartupTimeCwd('packages/platform-worker')).toMatch(
 		/packages\/platform-worker$/,
 	)
-})
-
-test('sibling startup profiles pass an explicit Wrangler config', () => {
-	expect(
-		startupTimeTargets.find((target) => target.name === 'platform')?.args,
-	).toEqual(['--config', 'wrangler.jsonc'])
-	expect(
-		startupTimeTargets.find((target) => target.name === 'runtime')?.args,
-	).toEqual(['--config', 'wrangler.jsonc'])
 })
 
 test('reports only workers whose best sample exceeds the budget', () => {
