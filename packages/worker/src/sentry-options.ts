@@ -11,6 +11,7 @@ import {
 	isEntitlementLimitError,
 } from './entitlements/errors.ts'
 import { isIntegrationTokenRefreshCallerMessage } from './integrations/token-refresh.ts'
+import { isMcpCallerError } from './mcp/caller-error.ts'
 import {
 	isArtifactsGitTransientErrorMessage,
 	isArtifactsGitTransientRemapError,
@@ -129,6 +130,34 @@ export function filterEntitlementLimitErrorSentryEvent(
 	hint?: EventHint,
 ) {
 	if (!isEntitlementLimitErrorSentryEvent(event, hint)) return event
+	return null
+}
+
+/**
+ * Caller-clearable failures (an id that does not resolve, a missing argument)
+ * are routine agent turns, not platform defects. MCP observability already
+ * skips them via `isCallerFailure`; this `beforeSend` gate keeps
+ * `withSentry` WorkerEntrypoints (e.g. `JobsHost.runJobNow` on a missing job)
+ * from capturing them as unhandled.
+ */
+export function isMcpCallerErrorSentryEvent(
+	event: ErrorEvent,
+	hint?: EventHint,
+) {
+	if (getErrorCauseChain(hint?.originalException).some(isMcpCallerError)) {
+		return true
+	}
+	return (
+		event.exception?.values?.some((value) => value.type === 'McpCallerError') ??
+		false
+	)
+}
+
+export function filterMcpCallerErrorSentryEvent(
+	event: ErrorEvent,
+	hint?: EventHint,
+) {
+	if (!isMcpCallerErrorSentryEvent(event, hint)) return event
 	return null
 }
 
@@ -666,6 +695,7 @@ export function filterSentryEvent(event: ErrorEvent, hint?: EventHint) {
 	// Marker first: primary mechanism for user-authored failures.
 	if (filterUserCodeErrorSentryEvent(event, hint) === null) return null
 	if (filterEntitlementLimitErrorSentryEvent(event, hint) === null) return null
+	if (filterMcpCallerErrorSentryEvent(event, hint) === null) return null
 	if (filterRetryableD1LockSentryEvent(event, hint) === null) return null
 	// String-match backstops for paths that cannot yet be marked.
 	if (filterUserModuleBundlerFailureSentryEvent(event) === null) return null
@@ -736,8 +766,10 @@ export function buildSentryOptions(env: Env): CloudflareOptions {
 		//
 		// User-authored failures are dropped primarily via `UserCodeError`
 		// (`filterUserCodeErrorSentryEvent`). Plan-limit denials
-		// (`EntitlementLimitError`) are dropped the same way — expected
-		// account policy, still visible on structured `mcp-event` logs. Bundler
+		// (`EntitlementLimitError`) and caller-clearable failures
+		// (`McpCallerError`, e.g. a job id that does not resolve) are dropped
+		// the same way — expected account policy / caller state, still visible
+		// on structured `mcp-event` logs. Bundler
 		// / sandbox-timeout string matches remain as backstops for unmarked
 		// paths; see filterUserModuleBundlerFailureSentryEvent and
 		// filterExecutorSandboxTimeoutSentryEvent. OAuth token-refresh
