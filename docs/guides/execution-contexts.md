@@ -35,9 +35,9 @@ The context's runtime allowlist, if you set one, narrows what runs on it may
 call. Three things are added, and only when you allow them:
 
 - **Host folders.** Folders you allow with `kody context policy allow` (and that
-  the context's grant includes) are mounted for the run.
-- **Local network.** With egress set to `public-and-lan`, the run can reach
-  devices on your network.
+  the context's server grant includes) are mounted for the run.
+- **Local network.** With the server grant's egress set to `public-and-lan`
+  (`kody context grant lan on`), the run can reach devices on your network.
 - **Host commands.** After you turn them on at the machine, runs with the
   command grant can run shell commands there (see
   [Run commands on the machine](#run-commands-on-the-machine)).
@@ -68,11 +68,27 @@ credential.
    `--no-install` to skip the service and run `kody daemon` in a terminal
    instead, or `--yes` to accept the defaults without prompts.
 
-4. Optional: allow folders runs may use (read-only unless you pass `rw`):
+4. Optional: allow folders runs may use (read-only unless you pass `rw`). A
+   folder needs both layers, so run both commands:
 
    ```sh
    kody context policy allow ~/projects --mode rw
+   kody context grant allow ~/projects --mode rw
    ```
+
+   - **Local policy** (`kody context policy`) lives on this machine, and only
+     the machine owner changes it. It is the ceiling for what any run here may
+     touch.
+   - **Server grant** (`kody context grant`, or `executionContextUpdate`
+     `grant.fs` / `grant.egress`) lives in Kody, and anyone with Contribute or
+     Manage on the context can change it. It says what runs on this context may
+     ask for.
+
+   A run gets only what both allow; the narrower mode wins. `policy allow` never
+   changes the server grant. `kody context list`, `kody context policy show`,
+   and `kody context grant show` point out a folder that only one layer allows,
+   with the command that fixes it. The local network has only the server layer
+   (`kody context grant lan on|off`).
 
    On Windows use native paths, for example
    `kody context policy allow C:\Users\you\projects --mode rw`. Runs see the

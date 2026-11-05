@@ -37,7 +37,7 @@ export function egressPolicyFromGrant(egress: {
 		...(egress.hosts?.length ? { hosts: egress.hosts } : {}),
 		...(egress.ports?.length ? { ports: egress.ports } : {}),
 		setting: "this execution context's network setting",
-		hint: 'The machine owner (or anyone with Contribute on the context) can change it with executionContextUpdate grant.egress, e.g. mode "public-and-lan" or an allowlist that includes {host}.',
+		hint: 'This is the server grant, not local policy. Anyone with Contribute or Manage on the context can turn the local network on with `kody context grant lan on --context <name>`, or set executionContextUpdate grant.egress to an allowlist that includes {host}.',
 	}
 }
 

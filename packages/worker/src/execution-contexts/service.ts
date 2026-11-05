@@ -269,6 +269,10 @@ export async function formatContexts(
 					features: capabilities.features ?? [],
 				},
 				grantSummary: grantSummary(grant),
+				// Full host access for callers who may already change it.
+				...(canWriteContext(access)
+					? { hostAccess: { fs: grant.fs, egress: grant.egress } }
+					: {}),
 				optedIn: access.optedIn,
 				canOptIn:
 					!row.revoked_at &&

@@ -37,6 +37,14 @@ import {
 import { HostCommands } from './host-commands.js'
 import { createPackageGraphCache } from './package-graph-cache.js'
 import {
+	type HostAccessContext,
+	describeMachineGrantNotes,
+	hostAccessNotes,
+	lanState,
+	machineGrantNotes,
+	runGrantCommand,
+} from './host-access.js'
+import {
 	type FsMode,
 	allowLocalPath,
 	effectiveFs,
@@ -175,6 +183,9 @@ async function runCommand(
 	}
 	if (input.command === 'context' && sub === 'policy') {
 		return await runPolicyCommand(input, rest)
+	}
+	if (input.command === 'context' && sub === 'grant') {
+		return await runGrantCommand({ ...input, ...base, positionals: rest })
 	}
 	const serviceEnv: ServiceCommandEnv = {
 		apiUrl: input.apiUrl,
@@ -374,22 +385,44 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 			method: 'GET',
 			path: '/v1/execution-contexts',
 		})
-		const contexts = (body.contexts ?? []) as Array<{
-			id: string
-			name: string
-			status: string
-			usable: boolean
-			unusableReason?: string
-		}>
+		const contexts = (body.contexts ?? []) as Array<
+			HostAccessContext & {
+				status: string
+				usable: boolean
+				unusableReason?: string
+			}
+		>
+		const local = new Set(storedContextIds(input.apiUrl))
+		const policyFs = contexts.some((c) => local.has(c.id))
+			? (await readLocalPolicy()).fs
+			: []
+		const notesFor = (c: HostAccessContext) =>
+			local.has(c.id) ? hostAccessNotes(c, policyFs) : []
 		out(
 			input,
-			body,
+			{
+				...body,
+				...(local.size > 0
+					? {
+							thisMachine: {
+								localPolicy: policyFs,
+								notes: Object.fromEntries(
+									contexts
+										.filter((c) => local.has(c.id))
+										.map((c) => [c.name, notesFor(c)]),
+								),
+							},
+						}
+					: {}),
+			},
 			contexts.length === 0
 				? 'No execution contexts yet. Register this machine with `kody context register --name <name>`.'
 				: contexts
-						.map(
-							(c) =>
-								`${c.name} (${c.id}) ${c.status}${c.usable ? '' : `, not usable: ${c.unusableReason}`}`,
+						.map((c) =>
+							[
+								`${c.name} (${c.id}) ${c.status}${c.usable ? '' : `, not usable: ${c.unusableReason}`}${c.grantSummary ? `; server grant: ${c.grantSummary.fs} host folder${c.grantSummary.fs === 1 ? '' : 's'}, LAN ${lanState(c.grantSummary.egress.mode)}` : ''}${local.has(c.id) ? ' (this machine)' : ''}`,
+								...notesFor(c).map((note) => `  ${note}`),
+							].join('\n'),
 						)
 						.join('\n'),
 		)
@@ -727,6 +760,7 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 		const packageGraphCache = createPackageGraphCache()
 		let stop: Awaited<ReturnType<typeof runDaemon>> = 'shutdown'
 		let autoUpdateEnabled = (await readAutoUpdate()).enabled
+		let reportedServerFsOff = false
 		const activity = { runs: 0 }
 		const updater = startDaemonUpdater({
 			selfVersion: input.clientVersion,
@@ -808,6 +842,13 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 					effective: async (grantFs) => {
 						const policy = await readLocalPolicy()
 						autoUpdateEnabled = autoUpdateSetting(policy).enabled
+						const serverOff = grantFs.length === 0 && policy.fs.length > 0
+						if (serverOff && !reportedServerFsOff) {
+							log(
+								"This machine's local policy allows host folders, but this context's server grant (grant.fs) lists none, so runs get no host folders. Someone with Contribute or Manage on the context can turn it on with: kody context grant allow <folder> --mode ro|rw",
+							)
+						}
+						reportedServerFsOff = serverOff
 						return await effectiveFs(grantFs, policy.fs)
 					},
 					onChange: (listener) => {
@@ -881,7 +922,7 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 		return stayStoppedExitCode
 	}
 	throw new Error(
-		'Usage: kody context register --name <name> [--org <slug>] | kody context list | kody context revoke <name> | kody context delete <name> | kody context cancel-run <name> <run id> | kody context policy [show | allow <path> [--mode ro|rw] | remove <path>] | kody context commands [status | on | off] [--context <name>] | kody chain show | add <name> | remove <name> | kody connect --name <name> | kody daemon [--context <ec id>] [--max-concurrent <n>] | kody daemon install | status | logs | restart | start | stop | uninstall | auto-update [on | off | status] | kody update',
+		'Usage: kody context register --name <name> [--org <slug>] | kody context list | kody context revoke <name> | kody context delete <name> | kody context cancel-run <name> <run id> | kody context policy [show | allow <path> [--mode ro|rw] | remove <path>] | kody context grant [show | allow <path> [--mode ro|rw] | remove <path> | lan on|off] [--context <name>] | kody context commands [status | on | off] [--context <name>] | kody chain show | add <name> | remove <name> | kody connect --name <name> | kody daemon [--context <ec id>] [--max-concurrent <n>] | kody daemon install | status | logs | restart | start | stop | uninstall | auto-update [on | off | status] | kody update',
 	)
 }
 
@@ -1057,11 +1098,24 @@ async function runPolicyCommand(
 			: [
 					`Host folders this machine allows (${file}):`,
 					...rules.map((rule) => `  ${rule.mode}  ${rule.path}`),
-					'A run can use a folder only if its context grant (grant.fs) also lists it; the narrower mode wins.',
+					'This is the local policy. A run can use a folder only if its context server grant (grant.fs) also lists it; the narrower mode wins.',
 				].join('\n')
+	const grantNotes = (fs: Array<{ path: string; mode: FsMode }>) =>
+		machineGrantNotes({
+			apiUrl: input.apiUrl,
+			...(input.org ? { org: input.org } : {}),
+			...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
+			token: input.token,
+			policyFs: fs,
+		})
 	if (action === undefined || action === 'show') {
 		const policy = await readLocalPolicy(file)
-		out(input, { path: file, ...policy }, describe(policy.fs))
+		const serverGrant = await grantNotes(policy.fs)
+		out(
+			input,
+			{ path: file, ...policy, serverGrant },
+			`${describe(policy.fs)}${describeMachineGrantNotes(serverGrant)}`,
+		)
 		return 0
 	}
 	if (!path || extra.length > 0) throw new Error(policyUsage)
@@ -1075,10 +1129,11 @@ async function runPolicyCommand(
 			mode,
 			policyPath: file,
 		})
+		const serverGrant = await grantNotes(policy.fs)
 		out(
 			input,
-			{ path: file, ...policy },
-			`Allowed ${added.path} (${added.mode}). Running daemons pick this up within a few seconds.\n${describe(policy.fs)}`,
+			{ path: file, ...policy, serverGrant },
+			`Allowed ${added.path} (${added.mode}) in this machine's local policy. Running daemons pick this up within a few seconds. This does not change the context's server grant.\n${describe(policy.fs)}${describeMachineGrantNotes(serverGrant)}`,
 		)
 		return 0
 	}

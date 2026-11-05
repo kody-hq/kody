@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import { ecpDefaultGrant } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { runChainShapeError } from './chain-rules.ts'
 import {
+	describeAttempts,
 	describeCloudFallback,
 	describeRanOn,
 	historyRanOn,
@@ -480,4 +481,25 @@ test('host folders stay with the operator: shared runs skip fs and outdated daem
 			sharedRun: true,
 		}),
 	).toBeNull()
+})
+
+test('fs and lan skips name the server grant layer and the command that turns it on', () => {
+	expect(
+		describeAttempts([
+			{
+				target: 'ec_box',
+				name: 'wsl-box',
+				outcome: 'skipped',
+				reason: 'no_fs',
+			},
+			{
+				target: 'ec_lan',
+				name: 'lan-box',
+				outcome: 'skipped',
+				reason: 'no_lan',
+			},
+		]),
+	).toBe(
+		'wsl-box: skipped (no_fs: its server grant lists no host folders (grant.fs is off on the server, whatever the local policy allows); someone with Contribute or Manage on it can turn it on with `kody context grant allow <folder> --context wsl-box`); lan-box: skipped (no_lan: its server grant does not allow the local network (grant.egress is not public-and-lan); someone with Contribute or Manage on it can turn it on with `kody context grant lan on --context lan-box`)',
+	)
 })

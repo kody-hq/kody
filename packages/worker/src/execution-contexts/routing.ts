@@ -767,9 +767,12 @@ const contextReasonText: Record<string, string> = {
 		'not_operator: publish builds run only on contexts you operate yourself',
 	profile_grant:
 		'profile_grant: the profile this credential acts as, or a parent profile, was not granted execution_context:execute on it',
-	no_fs: 'no_fs: its server grant lists no host folders (grant.fs)',
+	no_fs:
+		'no_fs: its server grant lists no host folders (grant.fs is off on the server, whatever the local policy allows); someone with Contribute or Manage on it can turn it on with `kody context grant allow <folder> --context {name}`',
 	no_local_fs:
-		"no_local_fs: its server grant lists host folders, but the machine's local policy allows none of them (`kody context policy allow <folder>`)",
+		"no_local_fs: its server grant lists host folders, but the machine's local policy allows none of them; the machine owner can allow one there with `kody context policy allow <folder>`",
+	no_lan:
+		'no_lan: its server grant does not allow the local network (grant.egress is not public-and-lan); someone with Contribute or Manage on it can turn it on with `kody context grant lan on --context {name}`',
 	fs_operator_only:
 		"fs_operator_only: host folders are only for the operator's own runs",
 	fs_daemon_outdated:
@@ -778,12 +781,15 @@ const contextReasonText: Record<string, string> = {
 		'operator_left: the person who runs this machine is no longer a member of this org',
 }
 
-function describeAttempts(attempts: ReadonlyArray<RoutingAttempt>) {
+export function describeAttempts(attempts: ReadonlyArray<RoutingAttempt>) {
 	return attempts
 		.map((a) => {
 			const reason =
 				a.reason && a.target !== 'cloud'
-					? (contextReasonText[a.reason] ?? a.reason)
+					? (contextReasonText[a.reason]?.replaceAll(
+							'{name}',
+							a.name ?? '<context>',
+						) ?? a.reason)
 					: a.reason
 			return `${a.name ?? a.target}: ${a.outcome}${reason ? ` (${reason})` : ''}`
 		})
