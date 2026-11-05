@@ -722,7 +722,7 @@ const devCheckOfflineDetail =
  * publish retries a step that hit a compute limit or timed out, so a tree
  * near the limit passes on a later attempt there too.
  */
-export const publishChecksMaxAttempts = 3
+const publishChecksMaxAttempts = 3
 
 const computeLimitCheckPhrases = [
 	'ran out of memory or CPU time in the check runner',

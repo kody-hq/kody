@@ -26,7 +26,7 @@ const responseTimeoutNetworkCodes = new Set([
 ])
 
 /** True when the request reached Kody but no answer came back in time. */
-export function isResponseTimeoutNetworkError(error: unknown): boolean {
+function isResponseTimeoutNetworkError(error: unknown): boolean {
 	const code = networkErrorCauseCode(error)
 	return code != null && responseTimeoutNetworkCodes.has(code)
 }
