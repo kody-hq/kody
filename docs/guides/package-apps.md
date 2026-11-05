@@ -531,6 +531,16 @@ the same local runtime bridge for these cells.
 
 Share previews for unpublished apps are out of scope — publish to share.
 
+On mock, the working-tree `packageStorage` key/value rows live in one file per
+mock session (`state.json` under the CLI cache's `mock-sessions/`), and that
+file is the source of truth. A running `kody dev` reads it on every call, and
+each write updates the latest file under a lock. So writes from a separate
+`kody execute --target mock`, a one-shot `kody dev job|webhook|emit`, or a hand
+edit show up in the preview right away, and a later preview write keeps them
+(last write wins per key). If the file is not valid JSON, mock storage calls
+fail with `mock_store_unreadable` and leave it untouched: fix the JSON, or
+delete it (or pass `--reset-storage`) to start empty.
+
 Optional outbound HTTP mocking: add `.kody/mocks.ts` (MSW `handlers`) so the CLI
 Node gateway answers package `fetch` calls under mock. Unmatched requests return
 `unmocked_request` with a paste-ready stub; `--passthrough <host,…>` opts hosts

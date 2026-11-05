@@ -4,8 +4,18 @@
  */
 
 import { mkdirSync } from 'node:fs'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import {
+	mkdir,
+	open,
+	readFile,
+	rename,
+	rm,
+	stat,
+	writeFile,
+} from 'node:fs/promises'
 import { join } from 'node:path'
+import { setTimeout as sleep } from 'node:timers/promises'
 import { DatabaseSync } from 'node:sqlite'
 import { userCacheDir } from '../workerd-binary.js'
 
@@ -71,15 +81,8 @@ export async function loadMockSession(input: {
 		await rm(root, { recursive: true, force: true })
 	}
 	await mkdir(root, { recursive: true })
-	const path = join(root, mockStateFile)
-	try {
-		const raw = JSON.parse(await readFile(path, 'utf8')) as MockSessionState
-		if (raw?.version === 1 && raw.sessionId === sessionId) {
-			return normalizeMockSessionCredentials(raw)
-		}
-	} catch {
-		// miss → create
-	}
+	const existing = await readMockStateFile(join(root, mockStateFile), sessionId)
+	if (existing) return existing
 	const now = new Date().toISOString()
 	const fresh: MockSessionState = {
 		version: 1,
@@ -130,10 +133,129 @@ export async function persistMockSession(
 	state.updatedAt = new Date().toISOString()
 	const root = mockSessionRoot(state.sessionId, env)
 	await mkdir(root, { recursive: true })
-	await writeFile(
-		join(root, mockStateFile),
-		`${JSON.stringify(state, null, 2)}\n`,
+	const path = join(root, mockStateFile)
+	// Write then rename so a reader in another process never sees half a file.
+	const temp = `${path}.${process.pid}.${randomUUID()}.tmp`
+	await writeFile(temp, `${JSON.stringify(state, null, 2)}\n`)
+	await rename(temp, path)
+}
+
+/**
+ * The mock store file is the source of truth, not any one process's memory:
+ * `kody dev`, `kody execute --target mock`, one-shot `kody dev job|webhook|emit`,
+ * and hand edits all share it. Refuses (never overwrites) a file it cannot read.
+ */
+export class MockStoreFileError extends Error {
+	constructor(message: string) {
+		super(message)
+		this.name = 'MockStoreFileError'
+	}
+}
+
+async function readMockStateFile(
+	path: string,
+	sessionId: string,
+): Promise<MockSessionState | null> {
+	for (let attempt = 0; ; attempt++) {
+		let text: string
+		try {
+			text = await readFile(path, 'utf8')
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+			throw error
+		}
+		let raw: MockSessionState
+		try {
+			raw = JSON.parse(text) as MockSessionState
+		} catch (error) {
+			// An editor saving in place can leave a half-written file for a moment.
+			if (attempt === 0) {
+				await sleep(50)
+				continue
+			}
+			throw new MockStoreFileError(
+				`The mock store ${path} is not valid JSON (${(error as Error).message}), so Kody will not read or overwrite it. Fix the JSON, or delete the file (or pass --reset-storage) to start with empty mock storage.`,
+			)
+		}
+		if (raw?.version !== 1 || raw.sessionId !== sessionId) {
+			throw new MockStoreFileError(
+				`The mock store ${path} is not a version 1 store for mock session "${sessionId}", so Kody will not read or overwrite it. Restore its "version": 1 and "sessionId": "${sessionId}", or delete the file (or pass --reset-storage) to start with empty mock storage.`,
+			)
+		}
+		return normalizeMockSessionCredentials(raw)
+	}
+}
+
+const mockStoreLockWaitMs = 5_000
+const mockStoreStaleLockMs = 10_000
+
+async function withMockStoreLock<T>(
+	path: string,
+	fn: () => Promise<T>,
+): Promise<T> {
+	const lockPath = `${path}.lock`
+	const deadline = Date.now() + mockStoreLockWaitMs
+	for (;;) {
+		try {
+			await (await open(lockPath, 'wx')).close()
+			break
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+			const heldMs = await stat(lockPath).then(
+				(info) => Date.now() - info.mtimeMs,
+				() => 0,
+			)
+			// A process that died mid-write leaves its lock behind.
+			if (heldMs > mockStoreStaleLockMs) {
+				await rm(lockPath, { force: true })
+				continue
+			}
+			if (Date.now() > deadline) {
+				throw new MockStoreFileError(
+					`Another kody process has held the mock store lock ${lockPath} for over ${mockStoreLockWaitMs / 1000}s. If no other kody command is running, delete that file and retry.`,
+				)
+			}
+			await sleep(10)
+		}
+	}
+	try {
+		return await fn()
+	} finally {
+		await rm(lockPath, { force: true })
+	}
+}
+
+/** The current mock store, read fresh so writes from other processes show. */
+export async function readMockSession(input: {
+	sessionId: string
+	env?: NodeJS.ProcessEnv
+}): Promise<MockSessionState> {
+	const env = input.env ?? process.env
+	const path = join(mockSessionRoot(input.sessionId, env), mockStateFile)
+	return (
+		(await readMockStateFile(path, input.sessionId)) ??
+		(await loadMockSession({ sessionId: input.sessionId, env }))
 	)
+}
+
+/**
+ * Apply one change to the latest store on disk under a cross-process lock,
+ * so concurrent writers each keep their keys (last write wins per key).
+ */
+export async function mutateMockSession<T>(
+	input: { sessionId: string; env?: NodeJS.ProcessEnv },
+	change: (state: MockSessionState) => T,
+): Promise<T> {
+	const env = input.env ?? process.env
+	const root = mockSessionRoot(input.sessionId, env)
+	await mkdir(root, { recursive: true })
+	const path = join(root, mockStateFile)
+	return await withMockStoreLock(path, async () => {
+		const state = await readMockSession({ sessionId: input.sessionId, env })
+		const result = change(state)
+		await persistMockSession(state, env)
+		return result
+	})
 }
 
 /** Backfill hosts/scope on older mock session files so credential() stays iterable. */

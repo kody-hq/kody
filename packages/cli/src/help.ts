@@ -81,7 +81,7 @@ Usage:
   kody connect --name <name> [--org <slug>] [--no-install] [--key-storage keyring|file] [--yes]
   kody daemon [--context <ec id>] [--max-concurrent <n>]
   kody daemon install [--context <ec id>] [--max-concurrent <n>] [--key-storage keyring|file] [--yes]
-  kody daemon status [--context <ec id>] [--json] | logs [--lines <n>] [--follow] | restart
+  kody daemon status [--context <ec id>] [--json] | logs [--lines <n>] [--follow] | restart | start | stop
   kody daemon uninstall [--context <ec id>] [--unregister | --no-unregister]
   kody daemon auto-update [on | off | status] [--json]
   kody update
@@ -94,6 +94,9 @@ Usage:
   kody dev check [--target prod|mock] [--offline] [--debug] [--json]
   kody install [--mcp-url <url>] [--clients <ids>] [--yes] [--project] [--json]
   kody skill install [--project]
+
+  Run \`kody <command> --help\` (or \`kody help <command>\`) for one command's
+  usage, flags, and subcommands.
 
   kody connect registers this machine as an execution context and installs
   \`kody daemon\` as a per-user background service (systemd --user on Linux,

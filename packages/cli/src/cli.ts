@@ -25,6 +25,7 @@ import {
 	type CredentialCallMapInput,
 } from './credential-call-map.js'
 import { defaultApiUrl, defaultMcpUrl } from './defaults.js'
+import { buildCommandHelp } from './command-help.js'
 import { buildUsage } from './help.js'
 import { orgSlugFromFlag, resolveOrgSlug } from './org-resolve.js'
 import { refreshGitCredentialHelperPinIfNeeded } from './setup-git.js'
@@ -202,7 +203,7 @@ const cliFlagOptions = {
 	'disallow-changes-despite-unmappable-credentials': { type: 'boolean' },
 } as const
 
-const cliFlagNames = Object.keys(cliFlagOptions)
+export const cliFlagNames = Object.keys(cliFlagOptions)
 
 function parseKnown(args: Array<string>) {
 	const { tokens, values, positionals } = parseArgs({
@@ -334,8 +335,17 @@ export async function runCli(
 					? parsed.values['mcp-url']
 					: undefined,
 		})
-		if (parsed.values.help && parsed.command !== 'help') {
-			write(buildUsage({ mcpUrl: helpMcpUrl }))
+		if (
+			parsed.values.help &&
+			(parsed.command !== 'help' || argv[0] === 'help')
+		) {
+			const helpPath =
+				parsed.command === 'help'
+					? parsed.positionals.length > 0
+						? parsed.positionals
+						: ['help']
+					: [parsed.command, ...parsed.positionals]
+			write(buildCommandHelp(helpPath) ?? buildUsage({ mcpUrl: helpMcpUrl }))
 			return 0
 		}
 		return await dispatch(parsed, write, writeErr)
@@ -486,7 +496,11 @@ async function dispatch(
 
 	switch (parsed.command) {
 		case 'help':
-			write(buildUsage({ mcpUrl }))
+			write(
+				(parsed.positionals.length > 0
+					? buildCommandHelp(parsed.positionals)
+					: null) ?? buildUsage({ mcpUrl }),
+			)
 			return 0
 		case 'context':
 		case 'chain':
