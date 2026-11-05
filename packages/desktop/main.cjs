@@ -51,25 +51,38 @@ function isCurrentAppUrl(value) {
 		return false
 	}
 }
-let navigation
+const windows = new Map()
+let lastWindow
 let windowOpening
-let failedLoadUrl
+function currentWindow() {
+	const focused = BrowserWindow.getFocusedWindow()
+	return windows.has(focused) ? focused : lastWindow
+}
+function navigationFor(event) {
+	const window = BrowserWindow.fromWebContents(event.sender)
+	const navigation = windows.get(window)?.navigation
+	return navigation?.accepts(event) ? navigation : undefined
+}
 ipcMain.handle('kody:navigation', (event, command) => {
-	if (!navigation?.accepts(event))
+	const navigation = navigationFor(event)
+	if (!navigation)
 		throw new Error('Navigation is only available to the main Kody document.')
 	return navigation.command(command)
 })
 let loginAttempt
+let loginWindow
 ipcMain.handle('kody:authentication', async (event, mode) => {
-	if (!navigation?.accepts(event))
+	if (!navigationFor(event))
 		throw new Error('Sign-in is only available to the main Kody document.')
+	const window = BrowserWindow.fromWebContents(event.sender)
 	if (mode === 'cancel') {
-		loginAttempt?.cancel()
+		if (loginWindow === window) loginAttempt?.cancel()
 		return
 	}
 	if (mode !== 'login' && mode !== 'signup')
 		throw new Error('Invalid sign-in action.')
 	if (loginAttempt) return { error: 'Browser sign-in is already open.' }
+	loginWindow = window
 	const targetSession = window.webContents.session
 	loginAttempt = browserLogin({
 		origin: appOrigin,
@@ -114,20 +127,17 @@ ipcMain.handle('kody:authentication', async (event, mode) => {
 	})
 	try {
 		await loginAttempt.result
-		if (!quitting) {
-			await showApp('/account')
-			window.focus()
-		}
+		if (!quitting && !window.isDestroyed()) await showApp('/account', window)
 		return {}
 	} catch (error) {
 		if (error.message === 'Browser sign-in canceled.') return {}
 		return { error: error.message }
 	} finally {
 		loginAttempt = null
+		loginWindow = null
 	}
 })
 const runner = new Runner()
-let window
 let quitting = false
 let updates
 let restartForUpdate = false
@@ -219,7 +229,7 @@ const execution = new DesktopExecution({
 	},
 })
 ipcMain.handle('kody:execution', (event, command, input) => {
-	if (!navigation?.accepts(event))
+	if (!navigationFor(event))
 		throw new Error(
 			'Machine controls are only available to the main Kody document.',
 		)
@@ -230,7 +240,17 @@ function updateMenu() {
 	Menu.setApplicationMenu(
 		Menu.buildFromTemplate([
 			...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
-			{ label: 'File', submenu: [{ role: 'close' }] },
+			{
+				label: 'File',
+				submenu: [
+					{
+						label: 'New Window',
+						accelerator: 'CmdOrCtrl+N',
+						click: () => void newWindow(),
+					},
+					{ role: 'close' },
+				],
+			},
 			...(updates
 				? [
 						{
@@ -260,12 +280,14 @@ function updateMenu() {
 					{
 						label: 'Back',
 						accelerator: 'CmdOrCtrl+[',
-						click: () => navigation?.command('back'),
+						click: () =>
+							windows.get(currentWindow())?.navigation.command('back'),
 					},
 					{
 						label: 'Forward',
 						accelerator: 'CmdOrCtrl+]',
-						click: () => navigation?.command('forward'),
+						click: () =>
+							windows.get(currentWindow())?.navigation.command('forward'),
 					},
 					{
 						label: 'Home',
@@ -275,7 +297,8 @@ function updateMenu() {
 					{
 						label: 'Copy page address',
 						accelerator: 'CmdOrCtrl+Shift+C',
-						click: () => navigation?.command('copy-address'),
+						click: () =>
+							windows.get(currentWindow())?.navigation.command('copy-address'),
 					},
 				],
 			},
@@ -284,39 +307,48 @@ function updateMenu() {
 		]),
 	)
 }
-async function showApp(path) {
+async function showApp(path, window = currentWindow()) {
 	if (quitting) return
-	// Only the caller that starts creation owns the initial navigation.
-	const creating = !windowOpening && (!window || window.isDestroyed())
-	if (creating) windowOpening = createWindow()
-	if (windowOpening) {
+	if (!window || window.isDestroyed()) {
+		const creating = !windowOpening
+		if (creating) windowOpening = createWindow(path)
 		try {
-			await windowOpening
+			window = await windowOpening
 		} finally {
 			windowOpening = null
 		}
+		// createWindow owns the initial navigation for all overlapping launches.
+		if (creating) return window
 	}
-	if (quitting || !window || window.isDestroyed()) return
+	if (!quitting && window && !window.isDestroyed()) showWindow(window, path)
+	return window
+}
+async function newWindow(path) {
+	try {
+		return await createWindow(path)
+	} catch (error) {
+		if (!quitting)
+			dialog.showErrorBox('Could not open Kody window', error.message)
+	}
+}
+function showWindow(window, path) {
+	const record = windows.get(window)
+	if (!record || quitting) return
 	if (window.isMinimized()) window.restore()
 	window.show()
 	window.focus()
-	const shownWindow = window
-	const crashed = shownWindow.webContents.isCrashed()
-	if (!creating && !path && !crashed && !failedLoadUrl) return
+	const crashed = window.webContents.isCrashed()
+	if (!path && !crashed && !record.failedLoadUrl) return
 	const url = path
 		? `${appOrigin}${path}`
-		: failedLoadUrl ||
-			shownWindow.webContents.getURL() ||
+		: record.failedLoadUrl ||
+			window.webContents.getURL() ||
 			`${appOrigin}/account`
-	failedLoadUrl = undefined
-	void shownWindow.loadURL(url).catch((error) => {
+	record.failedLoadUrl = undefined
+	void window.loadURL(url).catch((error) => {
 		// A newer navigation can cancel this load without failing the page.
-		if (
-			!quitting &&
-			!shownWindow.isDestroyed() &&
-			error.code !== 'ERR_ABORTED'
-		) {
-			failedLoadUrl = url
+		if (!quitting && !window.isDestroyed() && error.code !== 'ERR_ABORTED') {
+			record.failedLoadUrl = url
 			dialog.showErrorBox('Could not load Kody', error.message)
 		}
 	})
@@ -336,7 +368,7 @@ async function supportsBrowserLogin() {
 		return false
 	}
 }
-async function createWindow() {
+async function createWindow(path = '/account') {
 	const [integratedTitlebar, browserAuthentication] = await Promise.all([
 		process.platform === 'darwin'
 			? supportsIntegratedTitlebar(appOrigin, net.fetch)
@@ -344,7 +376,7 @@ async function createWindow() {
 		supportsBrowserLogin(),
 	])
 	if (quitting) return
-	window = new BrowserWindow({
+	const window = new BrowserWindow({
 		width: 1280,
 		height: 860,
 		minWidth: 720,
@@ -368,11 +400,17 @@ async function createWindow() {
 			],
 		},
 	})
-	navigation = attachWindowNavigation(window, {
+	const navigation = attachWindowNavigation(window, {
 		appOrigin,
 		clipboard,
 		shell,
 		integratedTitlebar,
+	})
+	const record = { navigation, failedLoadUrl: undefined }
+	windows.set(window, record)
+	lastWindow = window
+	window.on('focus', () => {
+		lastWindow = window
 	})
 	window.webContents.session.setPermissionRequestHandler(
 		(contents, permission, callback, details) => {
@@ -417,12 +455,14 @@ async function createWindow() {
 	})
 	window.webContents.setWindowOpenHandler(({ url }) => {
 		if (isCurrentAppUrl(url))
-			showApp(new URL(url).pathname + new URL(url).search + new URL(url).hash)
+			void newWindow(
+				new URL(url).pathname + new URL(url).search + new URL(url).hash,
+			)
 		else external(url)
 		return { action: 'deny' }
 	})
 	window.on('close', (event) => {
-		if (process.platform === 'darwin' && !quitting) {
+		if (process.platform === 'darwin' && !quitting && windows.size === 1) {
 			event.preventDefault()
 			window.hide()
 		}
@@ -436,17 +476,19 @@ async function createWindow() {
 				errorCode !== -3 &&
 				(isCurrentAppUrl(url) || isNavigationUrl(url))
 			)
-				failedLoadUrl = url
+				record.failedLoadUrl = url
 		},
 	)
 	window.webContents.on('did-finish-load', () => {
-		failedLoadUrl = undefined
+		record.failedLoadUrl = undefined
 	})
 	window.on('closed', () => {
-		failedLoadUrl = undefined
-		window = null
-		navigation = null
+		windows.delete(window)
+		if (lastWindow === window) lastWindow = Array.from(windows.keys()).at(-1)
+		if (loginWindow === window) loginAttempt?.cancel()
 	})
+	showWindow(window, path)
+	return window
 }
 runner.on('change', () => {
 	if (app.isReady() && !quitting) updateMenu()

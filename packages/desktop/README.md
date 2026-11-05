@@ -35,7 +35,9 @@ macOS an adopted runner does not get the app's Automation entitlement; see
 itself, under the same lock. Every runner auto-updates; **Turn off automatic
 updates** sets the shared CLI policy (`kody daemon auto-update off`).
 
-On macOS, closing the window hides it and keeps the page and runner alive.
+Use File > New Window or Cmd+N (Ctrl+N on Windows and Linux) to open another
+window. Windows share your login and runner, and each keeps its own navigation.
+On macOS, closing the last window hides it and keeps the page and runner alive.
 Clicking the Dock icon brings back the same page without reloading, preserving
 navigation history, scroll position, and unfinished input. Quit stops the CLI
 and its workerd processes. On Windows and Linux, closing all windows quits the
@@ -108,6 +110,10 @@ filesystem paths.
 On macOS, `node packages/desktop/test/window-lifetime-smoke.cjs` uses an
 isolated profile and a local fixture page to verify that closing and reopening
 preserves the document, URL, history, scroll position, and unfinished input.
+After local control-kody login,
+`node packages/desktop/test/multiple-windows-smoke.cjs <local-origin>` verifies
+that windows share sign-in, keep independent navigation, and preserve the last
+window when closed.
 
 The smoke check needs a graphical desktop and the live website. To check a
 packaged build, pass its executable after `--`, for example:
