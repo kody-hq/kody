@@ -291,18 +291,18 @@ module and does not silently hop to `kody.execute`. See
 Every error is `{ error: { code, message, details? } }` with
 `Cache-Control: no-store`.
 
-| Status | `code`                                                                                                             |
-| ------ | ------------------------------------------------------------------------------------------------------------------ |
-| 400    | `invalid_request`, `package_import_unresolved`, `package_import_unpublished`, `unsupported_dynamic_package_import` |
-| 401    | `unauthorized` (missing, invalid, expired, or revoked token)                                                       |
-| 403    | `insufficient_scope`, `profile_grant`, `profile_inactive`, `email_verification_required`, `account_suspended`      |
-| 404    | `not_found`, `feature_unavailable` (capability or MCP gate)                                                        |
-| 405    | `method_not_allowed` (with `Allow`)                                                                                |
-| 409    | `account_deleting`                                                                                                 |
-| 413    | `payload_too_large`                                                                                                |
-| 415    | `unsupported_media_type`                                                                                           |
-| 429    | `rate_limited` (edge, `Retry-After`), `entitlement_limit`                                                          |
-| 500    | `capability_error`, `internal_error`                                                                               |
+| Status | `code`                                                                                                                                                     |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 400    | `invalid_request`, `package_import_unresolved`, `package_import_unpublished`, `unsupported_dynamic_package_import`                                         |
+| 401    | `unauthorized` (missing, invalid, expired, or revoked token)                                                                                               |
+| 403    | `insufficient_scope`, `profile_grant`, `profile_inactive`, `email_verification_required`, `account_suspended`, `guest_not_allowed`, `guest_claim_required` |
+| 404    | `not_found`, `feature_unavailable` (capability or MCP gate)                                                                                                |
+| 405    | `method_not_allowed` (with `Allow`)                                                                                                                        |
+| 409    | `account_deleting`                                                                                                                                         |
+| 413    | `payload_too_large`                                                                                                                                        |
+| 415    | `unsupported_media_type`                                                                                                                                   |
+| 429    | `rate_limited` (edge, `Retry-After`), `entitlement_limit`                                                                                                  |
+| 500    | `capability_error`, `internal_error`                                                                                                                       |
 
 ## Metering
 
