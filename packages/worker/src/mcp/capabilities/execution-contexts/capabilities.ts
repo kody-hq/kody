@@ -663,7 +663,7 @@ export const executionContextDaemonStatusCapability = defineDomainCapability(
 	domain,
 	{
 		name: 'executionContextDaemonStatus',
-		contextRuns: 'allow',
+		contextRuns: daemonContextRuns,
 		orgPermission: 'execution_context:read',
 		description:
 			'Daemon status for an execution context: online / paused / offline / revoked, who paused it and why, and (for its operator, Manage holders and org owners/admins, when online) a live snapshot from the daemon: version, service manager, auto-update, concurrency, runs in flight and problems.',
