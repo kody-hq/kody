@@ -11,9 +11,15 @@ import {
 	credentialSummary,
 	credentialVisitorsNote,
 	credentialEntryKey,
+	declaredFieldSummary,
+	manifestFieldLabel,
 	noCapabilitiesMessage,
 	reachingDependency,
+	selfPublishReasonText,
 	storageSummary,
+	unboundNeedState,
+	unboundNeedSummary,
+	unboundNeedsIntro,
 } from '#client/routes/account-package-approve-capabilities-copy.ts'
 import { withApprovalTimeout } from '../approval-request.ts'
 import { PackageSecurityAuditField } from './package-security-audit-field.tsx'
@@ -158,6 +164,7 @@ export function AccountPackageApproveCapabilitiesRoute({
 	const storageEntries = payload.entries.filter(
 		(entry) => entry.kind === 'storage',
 	)
+	const { unboundNeeds, declaredFields } = payload
 	async function approvePending(approval: AccountPackagePendingApproval) {
 		if (!approval.approveAction || busy) return
 		const isCurrent = capture()
@@ -286,31 +293,11 @@ export function AccountPackageApproveCapabilitiesRoute({
 							data-testid="package-self-publish-blocker-reasons"
 						>
 							{payload.selfPublishBlocker.reasons.map((reason, index) => (
-								<li key={`${reason.kind}-${String(index)}`}>
-									<code css={{ fontSize: typography.fontSize.sm }}>
-										{reason.kind}
-									</code>
-									{reason.matches && reason.matches.length > 0 ? (
-										<span>
-											{' '}
-											at{' '}
-											{reason.matches
-												.slice(0, 3)
-												.map(
-													(match) =>
-														`${match.path}:${String(match.line)} (${match.pattern})`,
-												)
-												.join('; ')}
-										</span>
-									) : reason.field ? (
-										<span>
-											{' '}
-											(kody.{reason.field}
-											{reason.sourceId ? ` on ${reason.sourceId}` : ''})
-										</span>
-									) : reason.storageId ? (
-										<span> (storage {reason.storageId})</span>
-									) : null}
+								<li
+									key={`${reason.kind}-${String(index)}`}
+									data-reason-kind={reason.kind}
+								>
+									{selfPublishReasonText(reason, payload.package.sourceId)}
 								</li>
 							))}
 						</ul>
@@ -422,7 +409,9 @@ export function AccountPackageApproveCapabilitiesRoute({
 						</div>
 					) : null}
 					{!payload.publishedCommit ? null : credentialEntries.length === 0 &&
-					  storageEntries.length === 0 ? (
+					  unboundNeeds.length === 0 &&
+					  storageEntries.length === 0 &&
+					  declaredFields.length === 0 ? (
 						<section
 							data-testid="package-approve-capabilities-empty"
 							aria-labelledby="package-approve-capabilities-empty-heading"
@@ -451,11 +440,12 @@ export function AccountPackageApproveCapabilitiesRoute({
 								>
 									Credentials
 								</h2>
-								{credentialEntries.length === 0 ? (
+								{credentialEntries.length === 0 && unboundNeeds.length === 0 ? (
 									<p css={{ margin: 0, color: colors.textMuted }}>
 										This package does not use any of your credentials.
 									</p>
-								) : (
+								) : null}
+								{credentialEntries.length > 0 ? (
 									<>
 										<p css={{ margin: 0, color: colors.textMuted }}>
 											{credentialsSectionIntro({
@@ -499,7 +489,42 @@ export function AccountPackageApproveCapabilitiesRoute({
 											})}
 										</ul>
 									</>
-								)}
+								) : null}
+								{unboundNeeds.length > 0 ? (
+									<>
+										<p css={{ margin: 0, color: colors.textMuted }}>
+											{unboundNeedsIntro(credentialEntries.length > 0)}
+										</p>
+										<ul css={cardListCss}>
+											{unboundNeeds.map((need) => (
+												<li
+													key={need.needKey}
+													data-testid="package-approve-capabilities-unbound-need"
+													css={capabilityRowCss}
+												>
+													<strong css={cardTitleCss}>{need.needKey}</strong>
+													<span css={{ color: colors.textMuted }}>
+														{unboundNeedSummary(need)}
+													</span>
+													{need.description.trim() ? (
+														<span css={{ color: colors.text }}>
+															{need.description}
+														</span>
+													) : null}
+													<span
+														data-testid="package-approve-capabilities-unbound-need-state"
+														css={{
+															color: colors.text,
+															fontWeight: typography.fontWeight.semibold,
+														}}
+													>
+														{unboundNeedState(need)}
+													</span>
+												</li>
+											))}
+										</ul>
+									</>
+								) : null}
 							</section>
 							<section
 								data-testid="package-approve-capabilities-other"
@@ -512,7 +537,7 @@ export function AccountPackageApproveCapabilitiesRoute({
 								>
 									Other capabilities
 								</h2>
-								{storageEntries.length === 0 ? (
+								{storageEntries.length === 0 && declaredFields.length === 0 ? (
 									<p css={{ margin: 0, color: colors.textMuted }}>
 										No other capabilities.
 									</p>
@@ -527,6 +552,20 @@ export function AccountPackageApproveCapabilitiesRoute({
 												<strong css={cardTitleCss}>Package storage</strong>
 												<span css={{ color: colors.textMuted }}>
 													{storageSummary(entry)}
+												</span>
+											</li>
+										))}
+										{declaredFields.map((item) => (
+											<li
+												key={`${item.field}:${item.via.join('/')}`}
+												data-testid="package-approve-capabilities-declared-field"
+												css={capabilityRowCss}
+											>
+												<strong css={cardTitleCss}>
+													{manifestFieldLabel(item.field)}
+												</strong>
+												<span css={{ color: colors.textMuted }}>
+													{declaredFieldSummary(item)}
 												</span>
 											</li>
 										))}

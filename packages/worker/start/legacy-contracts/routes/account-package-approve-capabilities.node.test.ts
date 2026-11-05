@@ -54,6 +54,8 @@ function loaderData(
 				via: ['mau-chart', 'chart-kit'],
 			},
 		],
+		unboundNeeds: [],
+		declaredFields: [],
 		fingerprintMatchesApproval: false,
 		latestApprovedAt: null,
 		selfPublishBlocker: null,
@@ -320,6 +322,92 @@ test('credential-needs-only copy wins over an already internet-visible package',
 	expect(html).not.toContain('Approve capability set')
 	expect(html).not.toContain('Re-approve capability set')
 	expect(html).not.toContain('public internet')
+})
+
+test('a declared need with no credential bound is listed, so the page never claims the package uses nothing', async () => {
+	const html = await render(
+		loaderData({
+			entries: [],
+			unboundNeeds: [
+				{
+					needKey: 'resend',
+					description: 'Send the weekly digest.',
+					provider: 'resend',
+					via: ['mau-chart'],
+				},
+			],
+			selfPublishBlocker: {
+				blocker: 'declares_credentials',
+				message:
+					"Source source-1 has 1 credential need(s) (resend) in its published closure. Publisher-supplied needs always need the owner's approval.",
+				reasons: [
+					{
+						kind: 'credential_needs',
+						sourceId: 'source-1',
+						needCount: 1,
+						needs: [{ key: 'resend', description: 'Send the weekly digest.' }],
+					},
+				],
+			},
+		}),
+	)
+	const visible = beforeDetails(html)
+
+	expect(visible).not.toContain('This package uses no credentials')
+	expect(visible).not.toContain('package-approve-capabilities-empty')
+	expect(visible).not.toContain('does not use any of your credentials')
+	const row = visible.slice(
+		visible.indexOf('data-testid="package-approve-capabilities-unbound-need"'),
+	)
+	expect(row).toContain('resend')
+	expect(row).toContain('resend credential · declared by this package')
+	expect(row).toContain('Send the weekly digest.')
+	expect(row).toContain('No credential bound yet')
+	const reasons = visible.slice(
+		visible.indexOf('data-testid="package-self-publish-blocker-reasons"'),
+	)
+	expect(reasons).toContain(
+		'This package declares a credential need: resend (Send the weekly digest).',
+	)
+	expect(reasons).not.toMatch(/<code[^>]*>credential_needs</)
+})
+
+test('a dependency-declared need and manifest capability fields are listed by name', async () => {
+	const html = beforeDetails(
+		await render(
+			loaderData({
+				entries: [],
+				unboundNeeds: [
+					{
+						needKey: 'github',
+						description: '',
+						provider: 'github',
+						from: '@kody/chart-kit',
+						via: ['mau-chart'],
+					},
+				],
+				declaredFields: [{ field: 'jobs', via: ['mau-chart', 'chart-kit'] }],
+			}),
+		),
+	)
+
+	expect(html).not.toContain('This package uses no credentials')
+	expect(html).toContain(
+		'github credential · declared by its dependency @kody/chart-kit',
+	)
+	expect(html).toContain('Scheduled jobs')
+	expect(html).toContain('Its dependency chart-kit declares kody.jobs.')
+	expect(html).not.toContain('No other capabilities.')
+})
+
+test('a package that truly declares nothing still says so', async () => {
+	const html = beforeDetails(await render(loaderData({ entries: [] })))
+
+	expect(html).toContain('data-testid="package-approve-capabilities-empty"')
+	expect(html).toContain(
+		'This package uses no credentials or other capabilities.',
+	)
+	expect(html).not.toContain('package-approve-capabilities-unbound-need')
 })
 
 test('each credential says how this package reaches it', async () => {
