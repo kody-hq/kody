@@ -1140,7 +1140,12 @@ function chainOf(body: Record<string, unknown>) {
 	return (body.chain ?? {}) as Record<string, unknown>
 }
 
-type ContextSummary = { id: string; name?: string | null; status?: string }
+type ContextSummary = {
+	id: string
+	name?: string | null
+	status?: string
+	paused?: unknown
+}
 
 function contextsById(body: Record<string, unknown>) {
 	const contexts = (body.contexts ?? []) as Array<ContextSummary>
@@ -1163,8 +1168,11 @@ function describeChain(
 		const known = entry.id ? contexts.get(entry.id) : undefined
 		const name = entry.name ?? known?.name
 		const label = name ? `${name} (${entry.id})` : String(entry.id)
-		const offline =
-			known?.status && known.status !== 'online' ? ` [${known.status}]` : ''
+		const offline = known?.paused
+			? ' [paused]'
+			: known?.status && known.status !== 'online'
+				? ` [${known.status}]`
+				: ''
 		const skipped =
 			entry.usable === false ? ` (skipped: ${entry.unusableReason})` : ''
 		return `${index + 1}. ${label}${offline}${skipped}`
