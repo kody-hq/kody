@@ -339,10 +339,13 @@ export function grantRefusal(input: {
 }
 
 function noContext(attempts: Array<RoutingAttempt>, message: string): never {
+	const needsAck = attempts.some((a) => a.reason === 'acknowledgment_required')
 	throw new ExecutionContextError({
 		status: 409,
-		code: 'no_execution_context_available',
-		message,
+		code: needsAck
+			? 'acknowledgment_required'
+			: 'no_execution_context_available',
+		message: needsAck ? `${message} The run did not start.` : message,
 		details: { attempts },
 	})
 }
