@@ -1,8 +1,13 @@
-import { execFileSync, type ExecFileSyncOptions } from 'node:child_process'
+import {
+	execFileSync,
+	spawnSync,
+	type ExecFileSyncOptions,
+} from 'node:child_process'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { chmod, mkdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { checkInstalledLockfile } from './check-installed-lockfile.ts'
 import {
 	createDefaultEnsureDevDeps,
@@ -109,6 +114,7 @@ const usageLines = [
 	'  browse          Open headed Chromium already signed in (reuse seed cookie)',
 	'  health          GET /health and optionally assert commitSha (--wait polls until live)',
 	'  map             Print generated route inventory or a feature notes file; --check for drift',
+	'  verify <id>     Run every request check in a feature notes file (GET/HEAD only); add --origin for a preview',
 	'  package-create  Create a stub saved package via MCP (preview data)',
 	'  execute         Run an MCP execute module as the seed user',
 	'  search          Run MCP search as the seed user',
@@ -186,6 +192,7 @@ export type ControlKodyCommand =
 	| 'browse'
 	| 'health'
 	| 'map'
+	| 'verify'
 	| 'package-create'
 	| 'execute'
 	| 'search'
@@ -205,6 +212,7 @@ export type ControlKodyOptions = {
 	wait: boolean
 	waitMinutes: number
 	featureId: string | null
+	verifyPassthrough: Array<string>
 	check: boolean
 	request: SessionRequestSpec | null
 	body: string | null
@@ -278,6 +286,7 @@ export function parseControlArgs(argv: Array<string>): ControlKodyOptions {
 		wait: false,
 		waitMinutes: defaultHealthWaitMinutes,
 		featureId: null,
+		verifyPassthrough: [],
 		check: false,
 		request: null,
 		body: null,
@@ -327,6 +336,7 @@ export function parseControlArgs(argv: Array<string>): ControlKodyOptions {
 		'browse',
 		'health',
 		'map',
+		'verify',
 		'package-create',
 		'execute',
 		'search',
@@ -371,6 +381,14 @@ export function parseControlArgs(argv: Array<string>): ControlKodyOptions {
 			}
 			options.request = parsed
 		}
+		return options
+	}
+
+	if (options.command === 'verify') {
+		const positional: Array<string> = []
+		parseSharedFlags(rest, options, positional)
+		options.featureId = positional[0] ?? null
+		options.verifyPassthrough = rest.filter((arg) => arg !== positional[0])
 		return options
 	}
 
@@ -1389,6 +1407,33 @@ export function defaultRoutesPath(root: string) {
 	return path.join(root, 'packages/worker/start/routeTree.gen.ts')
 }
 
+/**
+ * The `npm run control-kody -- request GET|HEAD ...` lines of a feature notes
+ * file, as argv after `request`. Mutating methods are skipped: verify is safe
+ * to run against any origin.
+ */
+export function featureVerifyRequests(markdown: string) {
+	const prefix = 'npm run control-kody -- request '
+	const checks: Array<Array<string>> = []
+	for (const raw of markdown.split('\n')) {
+		const line = raw.trim()
+		if (!line.startsWith(prefix)) continue
+		const argv = splitShellWords(line.slice(prefix.length))
+		const method = (argv[0] ?? '').toUpperCase()
+		if (method === 'GET' || method === 'HEAD') checks.push(argv)
+	}
+	return checks
+}
+
+function splitShellWords(input: string) {
+	const words: Array<string> = []
+	const pattern = /'([^']*)'|"([^"]*)"|(\S+)/g
+	for (const match of input.matchAll(pattern)) {
+		words.push(match[1] ?? match[2] ?? match[3] ?? '')
+	}
+	return words
+}
+
 export function defaultFeaturesDir(root: string) {
 	return path.join(root, featuresDirRelativePath)
 }
@@ -1956,6 +2001,51 @@ async function runCommand(options: ControlKodyOptions) {
 				console.log(formatMcpCallReport(report))
 			}
 			return 0
+		}
+		case 'verify': {
+			const root = repoRootFromHere()
+			const feature = options.featureId
+				? findFeature(featureCatalog, options.featureId)
+				: null
+			if (!feature) {
+				throw new ControlKodyError(
+					`verify needs a feature id${options.featureId ? ` (unknown: ${options.featureId})` : ''}. List them: npm run control-kody -- map`,
+				)
+			}
+			const notes = readFileSync(
+				path.join(defaultFeaturesDir(root), feature.file),
+				'utf8',
+			)
+			const checks = featureVerifyRequests(notes)
+			if (checks.length === 0) {
+				throw new ControlKodyError(
+					`${feature.file} has no \`npm run control-kody -- request GET ...\` lines to verify. Add one under Seed / reach.`,
+				)
+			}
+			let failed = 0
+			for (const check of checks) {
+				const child = spawnSync(
+					process.execPath,
+					[
+						fileURLToPath(import.meta.url),
+						'request',
+						...check,
+						...options.verifyPassthrough,
+					],
+					{ encoding: 'utf8' },
+				)
+				const ok = child.status === 0
+				if (!ok) failed += 1
+				console.log(`${ok ? 'ok  ' : 'FAIL'} request ${check.join(' ')}`)
+				if (!ok) {
+					const output = `${child.stdout}${child.stderr}`.trim()
+					if (output) console.log(output.replace(/^/gm, '      '))
+				}
+			}
+			console.log(
+				`verify ${feature.id}: ${checks.length - failed}/${checks.length} checks passed`,
+			)
+			return failed === 0 ? 0 : 1
 		}
 		case 'map': {
 			const root = repoRootFromHere()

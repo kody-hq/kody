@@ -11,6 +11,7 @@ import { readFileSync, statSync } from 'node:fs'
 import {
 	controlKodyUserAgent,
 	defaultFeaturesDir,
+	featureVerifyRequests,
 	defaultRoutesPath,
 	loginToOrigin,
 	localSeedEmail,
@@ -1449,4 +1450,48 @@ test('waitForHealth gives up at the deadline and says where to look', async () =
 test('help documents health --wait', async () => {
 	expect(controlKodyUsage()).toContain('--wait')
 	expect(controlKodyUsage()).toContain('--wait-minutes <n>')
+})
+
+test('featureVerifyRequests reads the GET request lines of a feature notes file', () => {
+	const notes = [
+		'```bash',
+		'npm run control-kody -- login',
+		"npm run control-kody -- request GET /@jane/-/waiting --dump --contains 'Waiting'",
+		'npm run control-kody -- request POST /account/delete',
+		'```',
+	].join('\n')
+	expect(featureVerifyRequests(notes)).toEqual([
+		['GET', '/@jane/-/waiting', '--dump', '--contains', 'Waiting'],
+	])
+})
+
+test('every request line in the Feature Map parses, so verify can run it', () => {
+	const dir = defaultFeaturesDir(repoRootFromHere())
+	let total = 0
+	for (const feature of featureCatalog) {
+		const notes = readFileSync(path.join(dir, feature.file), 'utf8')
+		for (const check of featureVerifyRequests(notes)) {
+			total += 1
+			expect(
+				() => parseControlArgs(['request', ...check]),
+				`${feature.file}: request ${check.join(' ')}`,
+			).not.toThrow()
+		}
+	}
+	expect(total).toBeGreaterThan(30)
+})
+
+test('verify passes shared flags through to each request', () => {
+	const options = parseControlArgs([
+		'verify',
+		'waiting',
+		'--origin',
+		'https://pr-1.example',
+	])
+	expect(options.featureId).toBe('waiting')
+	expect(options.verifyPassthrough).toEqual([
+		'--origin',
+		'https://pr-1.example',
+	])
+	expect(controlKodyUsage()).toContain('verify <id>')
 })
