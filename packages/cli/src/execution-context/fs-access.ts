@@ -330,18 +330,23 @@ async function writeLocalPolicy(path: string, policy: LocalFsPolicy) {
 }
 
 /** Adds or replaces one rule, stored as its canonical (realpath) form. */
+/** The canonical form `kody context policy allow` stores for `path`. */
+export async function canonicalHostPath(path: string) {
+	return await canonicalize(path).catch((error) => {
+		if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+			throw new Error(`${path} does not exist on this machine.`)
+		}
+		throw error
+	})
+}
+
 export async function allowLocalPath(input: {
 	path: string
 	mode: FsMode
 	policyPath?: string
 }) {
 	const policyPath = input.policyPath ?? localPolicyPath()
-	const canonical = await canonicalize(input.path).catch((error) => {
-		if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-			throw new Error(`${input.path} does not exist on this machine.`)
-		}
-		throw error
-	})
+	const canonical = await canonicalHostPath(input.path)
 	const policy = await readLocalPolicy(policyPath)
 	const fs = policy.fs.filter((rule) => !samePath(rule.path, canonical))
 	fs.push({ path: canonical, mode: input.mode })
@@ -530,7 +535,7 @@ export async function resolveHostPath(
 			'EACCES',
 			granted
 				? `${path} is in this execution context's server grant, but this machine's local policy does not allow it. The machine owner can allow it with \`kody context policy allow <folder> --mode ro|rw\`.`
-				: `${path} is outside this execution context's server grant (grant.fs). Someone with Contribute on the context can add the folder with executionContextUpdate; the machine's local policy must also allow it.`,
+				: `${path} is outside this execution context's server grant (grant.fs). Someone with Contribute or Manage on the context can add the folder with \`kody context grant allow <folder> --mode ro|rw\` (or executionContextUpdate grant.fs); the machine's local policy must also allow it.`,
 		)
 	}
 	if (access === 'write' && mount.mode === 'ro') {
