@@ -13,12 +13,22 @@ export const publishLargePackagesDocsUrl =
  * on an execution context you operate. Not flag-gated: the docs page says
  * when those builds are available.
  */
+export const executionContextPublishDocsUrl =
+	'https://kody.codes/docs/execution-contexts#try-publishing-from-a-context'
+
+/**
+ * The long-term path for packages that hit Kody cloud's compute limits:
+ * build on this machine or on an execution context the publisher operates.
+ * Every compute-limit failure in dev check and publish ends with this.
+ */
 export function publishOutsideCloudAdvice() {
 	return (
-		'To publish a package this big, build it outside Kody cloud: ' +
-		'`kody package publish <package> --build local` (a clean checkout at the pushed commit) ' +
-		'or `kody package publish <package> --build context` (an execution context you operate). ' +
-		`See ${publishLargePackagesDocsUrl}`
+		"This package is near Kody cloud's build CPU or memory limit. Build it " +
+		'on your machine with `kody package publish --build local`, or on an ' +
+		'execution context with `--context <name>` ' +
+		`(docs: ${executionContextPublishDocsUrl}). ` +
+		'`kody dev check --build local` checks the same local build before you ' +
+		`publish. More: ${publishLargePackagesDocsUrl}`
 	)
 }
 
@@ -55,8 +65,7 @@ export function isolatedRunnerResourceLimitAdvice() {
 		'cost grows with that import graph. Split very large entrypoints, ' +
 		'drop heavy dependencies, or keep the Kody package as a thin ' +
 		'orchestrator and offload the heavy work to a process you operate. Load ' +
-		`\`search({ entity: "guide:${heavyWorkOffloadGuideId}" })\`. ` +
-		publishOutsideCloudAdvice()
+		`\`search({ entity: "guide:${heavyWorkOffloadGuideId}" })\`.`
 	)
 }
 
@@ -121,6 +130,10 @@ export const resourceLimitVarianceNote =
 
 /** What the author can do when `step` hits the isolate memory/CPU limit. */
 export function repoCheckStepResourceLimitAdvice(step: RepoCheckStep | null) {
+	return `${repoCheckStepShrinkAdvice(step)} ${publishOutsideCloudAdvice()}`
+}
+
+function repoCheckStepShrinkAdvice(step: RepoCheckStep | null) {
 	switch (step) {
 		case 'clone':
 			return (

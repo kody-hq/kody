@@ -696,6 +696,8 @@ export async function closeStoppedWorkflowAttemptRuns(input: {
 	userId?: OwnerId | null
 	workflowId: string
 	outcome: 'retried' | 'succeeded' | 'failed'
+	/** Appended to the failed rows' message (what the owner can do next). */
+	failureHint?: string
 	waitUntil?: (promise: Promise<unknown>) => void
 }): Promise<Array<string>> {
 	const userId = runLogOwnerId(input.userId)
@@ -710,7 +712,7 @@ export async function closeStoppedWorkflowAttemptRuns(input: {
 			workflowId: input.workflowId,
 			errorName: workflowAttemptStoppedErrorName,
 			errorMessage: failed
-				? 'This workflow step attempt stopped before it recorded a result (for example, it hit the CPU or memory limit), and the workflow failed.'
+				? `This workflow step attempt stopped before it recorded a result (for example, it hit the CPU or memory limit), and the workflow failed.${input.failureHint ? ` ${input.failureHint}` : ''}`
 				: 'This workflow step attempt stopped before it recorded a result (for example, it hit the CPU or memory limit), and the workflow ran the step again.',
 			errorTriage: failed ? null : 'ignored',
 			triageNote: failed ? null : workflowAttemptStoppedTriageNote,
