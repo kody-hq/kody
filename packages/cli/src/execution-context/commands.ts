@@ -1,4 +1,11 @@
-import { appendFileSync, rmSync, unwatchFile, watchFile } from 'node:fs'
+import {
+	appendFileSync,
+	existsSync,
+	readFileSync,
+	rmSync,
+	unwatchFile,
+	watchFile,
+} from 'node:fs'
 import { cpus, platform, totalmem } from 'node:os'
 import {
 	ed25519JwkThumbprint,
@@ -18,6 +25,7 @@ import {
 import {
 	type CurrentVersion,
 	autoUpdateSetting,
+	checkForUpdate,
 	newerInstalledVersion,
 	relaunchExitCode,
 	startupRefusedExitCode,
@@ -25,7 +33,11 @@ import {
 	superviseNewerVersion,
 	supervisedEnvVar,
 } from './auto-update.js'
-import { runDaemon } from './daemon.js'
+import {
+	DaemonControlError,
+	type DaemonPause,
+	runDaemon,
+} from './daemon.js'
 import {
 	type RunnerLauncher,
 	acquireRunnerLock,
@@ -52,6 +64,7 @@ import {
 	readLocalCommandsEnabled,
 	readLocalPolicy,
 	removeLocalPath,
+	setLocalAutoUpdateEnabled,
 	setLocalCommandsEnabled,
 } from './fs-access.js'
 import {
@@ -596,7 +609,12 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 				? []
 				: ['--max-concurrent', input.values.maxConcurrent]),
 		]
-		const log = (line: string) => input.write(`${line}\n`)
+		const recentLog: Array<string> = []
+		const log = (line: string) => {
+			recentLog.push(`${new Date().toISOString()} ${line}`)
+			if (recentLog.length > daemonLogBufferLines) recentLog.shift()
+			input.write(`${line}\n`)
+		}
 		// A newer verified CLI is installed (by this or another daemon): run it.
 		if (!supervised && (await readAutoUpdate()).enabled) {
 			const newer = newerInstalledVersion({ selfVersion: input.clientVersion })
@@ -713,6 +731,9 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 		let signalledAt = 0
 		let updateTo: CurrentVersion | null = null
 		let forcedUpdate = false
+		let restartRequested = false
+		let paused: DaemonPause | null = null
+		const startedAt = new Date().toISOString()
 		const onSignal = () => {
 			if (signalled) {
 				// A supervisor forwards the signal the terminal or service manager
@@ -858,6 +879,123 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 					},
 				},
 				log,
+				onPaused: (next) => {
+					if (JSON.stringify(next) === JSON.stringify(paused)) return
+					log(
+						next
+							? `Paused in Kody${next.by ? ` by @${next.by}` : ''}${next.reason ? `: ${next.reason}` : ''}. This daemon stays connected but gets no runs and no host commands until it is resumed (kody daemon resume).`
+							: paused
+								? 'Resumed in Kody. Taking runs again.'
+								: '',
+					)
+					paused = next
+				},
+				control: async (op, args) => {
+					const restartable = Boolean(manager) || supervised
+					const busyDraining = () => {
+						if (drain.signal.aborted) {
+							throw new DaemonControlError(
+								'daemon_busy',
+								'This daemon is already stopping for a restart or update.',
+							)
+						}
+					}
+					switch (op) {
+						case 'status':
+							return {
+								version: input.clientVersion,
+								service: manager,
+								supervised,
+								pid: process.pid,
+								platform: platform(),
+								startedAt,
+								autoUpdate: autoUpdateEnabled ? 'on' : 'off',
+								maxConcurrent,
+								runs: activity.runs,
+								backgroundCommands: hostCommands.runningBackground(),
+								draining: drain.signal.aborted,
+								paused,
+							}
+						case 'restart': {
+							if (!restartable) {
+								throw new DaemonControlError(
+									'not_service_managed',
+									'This daemon runs in a terminal, so nothing would start it again.',
+								)
+							}
+							busyDraining()
+							log(
+								'Restart requested from Kody. Stopping after runs in flight finish; the service manager starts it again.',
+							)
+							restartRequested = true
+							// Answer first, then drain.
+							setTimeout(() => {
+								if (!drain.signal.aborted) drain.abort()
+							}, 250).unref()
+							return { restarting: true, runs: activity.runs }
+						}
+						case 'update': {
+							busyDraining()
+							const result = await checkForUpdate({
+								selfVersion: input.clientVersion,
+								enabled: true,
+							})
+							if (result.kind === 'ready') {
+								log(
+									`Update requested from Kody: moving kody ${input.clientVersion} to ${result.current.version} after runs in flight finish.`,
+								)
+								updateTo = result.current
+								setTimeout(() => {
+									if (!drain.signal.aborted) drain.abort()
+								}, 250).unref()
+								return {
+									version: input.clientVersion,
+									updatingTo: result.current.version,
+									message: `Updating to kody ${result.current.version} after runs in flight finish.`,
+								}
+							}
+							if (result.kind === 'up-to-date') {
+								return {
+									version: input.clientVersion,
+									latest: result.latest,
+									message: `Already on the latest kody (${input.clientVersion}).`,
+								}
+							}
+							throw new DaemonControlError(
+								'daemon_control_failed',
+								result.kind === 'failed'
+									? `Could not update to ${result.version}: ${result.error}`
+									: result.kind === 'backoff'
+										? `${result.version} failed before; next try after ${result.until}.`
+										: 'Another update check is running. Try again shortly.',
+							)
+						}
+						case 'auto-update': {
+							const enabled = args.enabled === true
+							await setLocalAutoUpdateEnabled({ enabled })
+							autoUpdateEnabled = (await readAutoUpdate()).enabled
+							log(
+								`Auto-update turned ${enabled ? 'on' : 'off'} from Kody (for every kody daemon on this machine).`,
+							)
+							return { autoUpdate: autoUpdateEnabled ? 'on' : 'off' }
+						}
+						case 'logs': {
+							const lines = Math.max(
+								1,
+								Math.min(
+									daemonLogBufferLines,
+									typeof args.lines === 'number' ? Math.floor(args.lines) : 100,
+								),
+							)
+							return { lines: recentDaemonLog(paths?.logPath, recentLog, lines) }
+						}
+						default:
+							throw new DaemonControlError(
+								'daemon_control_failed',
+								`Unknown daemon operation ${op}. Update kody on this machine.`,
+							)
+					}
+				},
 				signal: abort.signal,
 				drainSignal: drain.signal,
 			})
@@ -887,6 +1025,9 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 			return supervised ? startupRefusedExitCode : 1
 		}
 		const target: CurrentVersion | null = updateTo
+		if (stop === 'shutdown' && restartRequested && !target && !signalled) {
+			return relaunchExitCode
+		}
 		if (stop === 'shutdown' && target && !signalled) {
 			// Services and supervised daemons exit so they come back on the new
 			// version; a terminal daemon runs it in place.
@@ -1150,6 +1291,25 @@ async function runPolicyCommand(
 		return 0
 	}
 	throw new Error(policyUsage)
+}
+
+const daemonLogBufferLines = 500
+
+/** Last lines of the service log, or of this process's own log lines. */
+function recentDaemonLog(
+	logPath: string | undefined,
+	buffered: ReadonlyArray<string>,
+	lines: number,
+) {
+	if (logPath && existsSync(logPath)) {
+		try {
+			const text = readFileSync(logPath, 'utf8')
+			return text.split(/\r?\n/).filter(Boolean).slice(-lines)
+		} catch {
+			// Fall back to this process's lines.
+		}
+	}
+	return buffered.slice(-lines)
 }
 
 function appendOutputTo(path: string) {

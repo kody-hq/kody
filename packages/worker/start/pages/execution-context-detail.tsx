@@ -15,6 +15,7 @@ import {
 	optIntoExecutionContext,
 	optOutOfExecutionContext,
 	removeExecutionContextShare,
+	runExecutionContextDaemonAction,
 	setExecutionChain,
 	shareExecutionContext,
 	turnOffExecutionContextCommands,
@@ -255,6 +256,7 @@ export function ExecutionContextDetail(props: {
 				</AccountManagementMessage>
 			) : null}
 			<NoticesPanel orgSlug={orgSlug} context={context} onChanged={refresh} />
+			<DaemonPanel orgSlug={orgSlug} context={context} onChanged={refresh} />
 			<CommandsPanel orgSlug={orgSlug} context={context} onChanged={refresh} />
 			<OptInControls {...props} onChanged={refresh} />
 			{context.sharing ? <SharingPanel {...props} onChanged={refresh} /> : null}
@@ -472,6 +474,240 @@ function NoticesPanel(props: {
 				</details>
 			) : null}
 			{error ? <p role="alert">{error}</p> : null}
+		</section>
+	)
+}
+
+type DaemonAction = 'pause' | 'resume' | 'restart' | 'update'
+
+const daemonActionBusyLabel: Record<DaemonAction, string> = {
+	pause: 'Pausing…',
+	resume: 'Resuming…',
+	restart: 'Restarting…',
+	update: 'Checking…',
+}
+
+function DaemonPanel(props: {
+	orgSlug: string
+	context: ExecutionContextListItem
+	onChanged: () => void
+}) {
+	const { context } = props
+	const [busy, setBusy] = useState<DaemonAction | null>(null)
+	const [error, setError] = useState<string | null>(null)
+	const [notice, setNotice] = useState<string | null>(null)
+	const [confirmingPause, setConfirmingPause] = useState(false)
+	const [reason, setReason] = useState('')
+	if (context.status === 'revoked') return null
+	const canPause = context.canPause === true
+	const canResume = context.canResume === true
+	const canControl = context.canControlDaemon === true
+	if (!canPause && !canResume && !canControl && !context.paused) return null
+	const paused = context.paused ?? null
+	const online = context.status === 'online'
+	const serviceManaged = Boolean(context.capabilities?.service)
+
+	async function run(action: DaemonAction) {
+		setBusy(action)
+		setError(null)
+		setNotice(null)
+		try {
+			const result = (await runExecutionContextDaemonAction({
+				data: {
+					orgSlug: props.orgSlug,
+					contextId: context.id,
+					action,
+					...(action === 'pause' && reason.trim()
+						? { reason: reason.trim() }
+						: {}),
+				},
+			})) as { ok: true; message: string | null } | Failure
+			if (!result.ok) {
+				setError(failureText(result))
+				return
+			}
+			setConfirmingPause(false)
+			setReason('')
+			setNotice(
+				action === 'restart'
+					? `${context.name} is restarting. It reconnects in a few seconds.`
+					: action === 'update'
+						? (result.message ?? 'Update check sent.')
+						: null,
+			)
+			props.onChanged()
+		} catch {
+			setError(unexpectedErrorText)
+		} finally {
+			setBusy(null)
+		}
+	}
+
+	const rowCss = css({
+		display: 'flex',
+		flexWrap: 'wrap',
+		gap: spacing.sm,
+		alignItems: 'center',
+	})
+	return (
+		<section
+			css={[
+				sectionCss,
+				{
+					border: `1px solid ${paused ? colors.warning : colors.border}`,
+					borderRadius: radius.lg,
+					padding: spacing.md,
+				},
+			]}
+			aria-labelledby="context-daemon-title"
+			data-testid="context-daemon"
+		>
+			<div css={[rowCss, { justifyContent: 'space-between' }]}>
+				<h2 id="context-daemon-title" css={{ margin: 0, fontSize: '1rem' }}>
+					Daemon
+				</h2>
+				<span
+					data-testid="context-daemon-state"
+					css={{
+						display: 'inline-flex',
+						alignItems: 'center',
+						gap: spacing.xs,
+						fontWeight: 600,
+						color: paused || !online ? colors.textMuted : colors.text,
+					}}
+				>
+					<span
+						aria-hidden
+						css={{
+							width: 8,
+							height: 8,
+							borderRadius: 999,
+							background: paused
+								? colors.warning
+								: online
+									? colors.primary
+									: colors.borderSubtle,
+						}}
+					/>
+					{paused ? 'Paused' : online ? 'Running' : 'Offline'}
+				</span>
+			</div>
+			{paused ? (
+				<p css={mutedCss} data-testid="context-daemon-paused">
+					Paused {formatTimestamp(paused.at)}
+					{paused.by ? ` by @${paused.by}` : ''}
+					{paused.reason ? `: ${paused.reason}` : ''}. Chains skip{' '}
+					{context.name}, queued runs fail and host commands are refused until
+					it is resumed. The daemon stays connected.
+					{!canResume && canPause
+						? ` Only ${context.isOperator ? 'you' : `@${context.operator.handle}`} or someone with Manage on it can resume it.`
+						: ''}
+				</p>
+			) : (
+				<p css={mutedCss}>
+					{online
+						? `${context.name} takes runs from chains it is in.`
+						: `${context.name} is offline, so chains skip it. Start it on the machine with `}
+					{online ? null : <code>kody daemon start</code>}
+					{online ? null : '.'} Pause it to stop routing runs to it from
+					anywhere, even while it is offline.
+				</p>
+			)}
+			{error ? (
+				<AccountManagementMessage tone="error">{error}</AccountManagementMessage>
+			) : null}
+			{notice ? <AccountManagementMessage>{notice}</AccountManagementMessage> : null}
+			{confirmingPause ? (
+				<div css={rowCss}>
+					<label css={{ display: 'grid', gap: spacing.xs, flex: '1 1 16rem' }}>
+						<span>Reason (optional, shown on the context)</span>
+						<input
+							css={[accountInputCss, target]}
+							value={reason}
+							maxLength={200}
+							onChange={(event) => setReason(event.target.value)}
+							data-testid="context-daemon-pause-reason"
+						/>
+					</label>
+					<button
+						type="button"
+						css={[getDangerPillCss({ size: 'sm' }), target]}
+						disabled={busy !== null}
+						onClick={() => void run('pause')}
+						data-testid="context-daemon-pause-confirm"
+					>
+						{busy === 'pause' ? daemonActionBusyLabel.pause : 'Pause'}
+					</button>
+					<button
+						type="button"
+						css={[getGhostButtonCss({ size: 'sm' }), target]}
+						disabled={busy !== null}
+						onClick={() => setConfirmingPause(false)}
+					>
+						Cancel
+					</button>
+				</div>
+			) : (
+				<div css={rowCss}>
+					{paused && canResume ? (
+						<button
+							type="button"
+							css={[getPillButtonCss({ size: 'sm' }), target]}
+							disabled={busy !== null}
+							onClick={() => void run('resume')}
+							data-testid="context-daemon-resume"
+						>
+							{busy === 'resume' ? daemonActionBusyLabel.resume : 'Resume'}
+						</button>
+					) : null}
+					{!paused && canPause ? (
+						<button
+							type="button"
+							css={[getGhostButtonCss({ size: 'sm' }), target]}
+							disabled={busy !== null}
+							onClick={() => setConfirmingPause(true)}
+							data-testid="context-daemon-pause"
+						>
+							Pause
+						</button>
+					) : null}
+					{canControl ? (
+						<>
+							<button
+								type="button"
+								css={[getGhostButtonCss({ size: 'sm' }), target]}
+								disabled={busy !== null || !online || !serviceManaged}
+								title={
+									!online
+										? 'The daemon is offline'
+										: !serviceManaged
+											? 'Runs in a terminal: restart it there, or install it as a service'
+											: undefined
+								}
+								onClick={() => void run('restart')}
+								data-testid="context-daemon-restart"
+							>
+								{busy === 'restart' ? daemonActionBusyLabel.restart : 'Restart'}
+							</button>
+							<button
+								type="button"
+								css={[getGhostButtonCss({ size: 'sm' }), target]}
+								disabled={busy !== null || !online || !serviceManaged}
+								title={!online ? 'The daemon is offline' : undefined}
+								onClick={() => void run('update')}
+								data-testid="context-daemon-update"
+							>
+								{busy === 'update' ? daemonActionBusyLabel.update : 'Update now'}
+							</button>
+						</>
+					) : null}
+				</div>
+			)}
+			{context.canReadDaemonLogs ? (
+				<p css={mutedCss}>
+					Logs: <code>kody daemon logs --context {context.name}</code>
+				</p>
+			) : null}
 		</section>
 	)
 }

@@ -126,6 +126,30 @@ export const turnOffExecutionContextCommands = createServerFn({
 		)
 	})
 
+export const runExecutionContextDaemonAction = createServerFn({
+	method: 'POST',
+})
+	.validator(
+		z.object({
+			orgSlug,
+			contextId: segment,
+			action: z.enum(['pause', 'resume', 'restart', 'update']),
+			reason: z.string().max(200).optional(),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const { runExecutionContextDaemonActionForUser } =
+			await import('../../src/app/handlers/execution-contexts.ts')
+		return mutate(data.orgSlug, (input) =>
+			runExecutionContextDaemonActionForUser({
+				...input,
+				contextId: data.contextId,
+				action: data.action,
+				...(data.reason ? { reason: data.reason } : {}),
+			}),
+		)
+	})
+
 export const dismissExecutionContextNotice = createServerFn({
 	method: 'POST',
 })

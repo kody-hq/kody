@@ -545,6 +545,45 @@ export async function turnOffExecutionContextCommandsForUser(
 	})
 }
 
+export type ExecutionContextDaemonAction =
+	| 'pause'
+	| 'resume'
+	| 'restart'
+	| 'update'
+
+/** Daemon card actions: server-side pause/resume and live restart/update. */
+export async function runExecutionContextDaemonActionForUser(
+	input: ScopedInput & {
+		contextId: string
+		action: ExecutionContextDaemonAction
+		reason?: string
+	},
+) {
+	return runScoped(input, async (scope) => {
+		const name = {
+			pause: executionContextCapabilityNames.pause,
+			resume: executionContextCapabilityNames.resume,
+			restart: executionContextCapabilityNames.daemonRestart,
+			update: executionContextCapabilityNames.daemonUpdate,
+		}[input.action]
+		const result = await callCapability(scope, name, {
+			id: input.contextId,
+			...(input.action === 'pause' && input.reason
+				? { reason: input.reason }
+				: {}),
+		})
+		return {
+			ok: true as const,
+			message:
+				typeof result.message === 'string'
+					? result.message
+					: typeof result.note === 'string'
+						? result.note
+						: null,
+		}
+	})
+}
+
 export async function dismissExecutionContextNoticeForUser(
 	input: ScopedInput & { contextId: string; fingerprint: string },
 ) {
