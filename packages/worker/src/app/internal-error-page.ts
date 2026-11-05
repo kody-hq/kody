@@ -1,7 +1,10 @@
 import { html } from 'remix/html-template'
 import { render } from '#app/render.ts'
 import { DEFAULT_DOCUMENT_TITLE } from '#universal/document-head.ts'
-import { renderErrorAgentPromptStaticHtml } from '#universal/error-agent-prompt.ts'
+import {
+	ERROR_AGENT_PROMPT_COPY_SCRIPT_SRC,
+	renderErrorAgentPromptStaticHtml,
+} from '#universal/error-agent-prompt.ts'
 import { buildInternalErrorAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
 import { routes } from '#universal/routes.ts'
 import {
@@ -19,7 +22,8 @@ import {
 /**
  * Minimal first-party HTML for uncaught handler failures. The catch that
  * calls this may have come from rendering the app shell, so this document
- * is static: no client entry, no inline scripts.
+ * is static: no client entry, no inline scripts. Its one classic script only
+ * wires the agent prompt's Copy button.
  */
 export function renderInternalServerErrorPage(retryHref = '/') {
 	return render(
@@ -32,6 +36,7 @@ export function renderInternalServerErrorPage(retryHref = '/') {
 					<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 					<title>Something went wrong — ${DEFAULT_DOCUMENT_TITLE}</title>
 					<link rel="stylesheet" href="/styles.css" />
+					<script src="${ERROR_AGENT_PROMPT_COPY_SCRIPT_SRC}" defer></script>
 					<style>
 						.illustrated-error-page {
 							box-sizing: border-box;
