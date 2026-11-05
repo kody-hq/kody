@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
+import { assertCallerCanAccessCapability } from '#mcp/capabilities/access-control.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
 import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { assertCredentialUsesDeclared } from '#worker/credentials/credential-need-enforcement.ts'
@@ -11,6 +12,7 @@ import {
 	type PackageStamp,
 } from '#worker/credentials/package-stamp.ts'
 import { resolveCredential } from '#worker/credentials/resolve-credential.ts'
+import { assertContextRunAllowed } from '#worker/execution-contexts/context-run-policy.ts'
 import { IntegrationTokenRefreshCallerError } from '#worker/integrations/token-refresh.ts'
 
 const inputSchema = z.object({
@@ -81,6 +83,17 @@ export async function refreshIntegrationTokenForPackage(input: {
 	name: string
 }): Promise<z.infer<typeof outputSchema>> {
 	const { env, callerContext, packageStamp, name } = input
+	// Direct callers skip the capability wrapper, so apply its gates here too.
+	assertContextRunAllowed(
+		callerContext.request,
+		integrationTokenRefreshCapability.name,
+		integrationTokenRefreshCapability.contextRuns,
+	)
+	await assertCallerCanAccessCapability(
+		callerContext,
+		integrationTokenRefreshCapability,
+		{ env },
+	)
 	const user = requireMcpUser(callerContext)
 	const orgId = ownerIdFromCaller(callerContext)
 	// Webhook 401 retry shares integration-refresh and picks names
