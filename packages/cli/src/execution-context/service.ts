@@ -70,6 +70,8 @@ export type ServicePaths = {
 	logPath: string
 	statePath: string
 	stoppedPath: string
+	/** Written by `kody daemon stop`, removed by start/restart/install. */
+	stopRequestedPath: string
 	workingDir: string
 }
 
@@ -104,6 +106,7 @@ export function servicePaths(input: {
 		logPath: join(dir, 'daemon.log'),
 		statePath: join(dir, 'daemon.json'),
 		stoppedPath: join(dir, 'stopped.json'),
+		stopRequestedPath: join(dir, 'stop-requested.json'),
 		workingDir: dir,
 	}
 }
@@ -523,6 +526,8 @@ export type ServiceStatus = {
 	unitPath: string | null
 	logPath: string | null
 	stopped: StoppedState | null
+	/** Not running because `kody daemon stop` asked (not a crash). */
+	stopRequested: { at: string } | null
 	problems: Array<ServiceProblem>
 }
 
@@ -661,6 +666,7 @@ export function serviceStatus(input: {
 		unitPath: null,
 		logPath: null,
 		stopped: null,
+		stopRequested: null,
 		problems: [],
 	}
 	if (!manager) {
@@ -801,6 +807,9 @@ export function serviceStatus(input: {
 		})
 	}
 	if (!state.running && !base.stopped) {
+		base.stopRequested = readJson<{ at: string }>(paths.stopRequestedPath)
+	}
+	if (!state.running && !base.stopped && !base.stopRequested) {
 		base.problems.push({
 			code: 'not-running',
 			message: 'The service is not running.',
@@ -842,7 +851,9 @@ export function formatServiceStatus(
 						? `running${status.pid ? ` (pid ${status.pid})` : ''}${status.runningVersion ? `, kody ${status.runningVersion}` : ''}`
 						: status.stopped
 							? 'stopped for good'
-							: 'not running'
+							: status.stopRequested
+								? `stopped (kody daemon stop, ${status.stopRequested.at}); start it with: kody daemon start`
+								: 'not running (crashed or failed to start)'
 			}`,
 		)
 		if (status.installed) {
@@ -888,6 +899,7 @@ export function installService(input: {
 	mkdirSync(input.paths.workingDir, { recursive: true, mode: 0o700 })
 	if (changed) writeFileSync(input.paths.unitPath, input.unit, { mode: 0o644 })
 	rmSync(input.paths.stoppedPath, { force: true })
+	rmSync(input.paths.stopRequestedPath, { force: true })
 	const must = (command: string, args: Array<string>, what: string) => {
 		const result = run(command, args)
 		if (!result.ok) {

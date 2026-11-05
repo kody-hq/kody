@@ -9,7 +9,7 @@ import { readLocalPolicy, setLocalAutoUpdateEnabled } from './fs-access.js'
 import { killProcessTree } from '../process-tree.js'
 import { describeHolder, lockPathFor, runnerLockHolder } from './runner-lock.js'
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 import { setTimeout as sleep } from 'node:timers/promises'
 import {
@@ -38,6 +38,7 @@ import {
 	servicePaths,
 	serviceStatus,
 	uninstallService,
+	writeJson,
 	unitFor,
 	unsupportedPlatformMessage,
 } from './service.js'
@@ -392,8 +393,16 @@ async function startOrStopRunner(
 				? `${JSON.stringify({ ok: true, ecid: input.ecid, message: text, ...extra })}\n`
 				: `${text}\n`,
 		)
+	const stopRequestedPath = input.manager
+		? servicePaths({
+				apiUrl: env.apiUrl,
+				ecid: input.ecid,
+				manager: input.manager,
+			}).stopRequestedPath
+		: null
 	if (input.start) {
 		if (installed && input.manager) {
+			if (stopRequestedPath) rmSync(stopRequestedPath, { force: true })
 			startService({
 				manager: input.manager,
 				ecid: input.ecid,
@@ -421,6 +430,8 @@ async function startOrStopRunner(
 			}).statePath,
 			...(env.run ? { run: env.run } : {}),
 		})
+		if (stopRequestedPath)
+			writeJson(stopRequestedPath, { at: new Date().toISOString() })
 		// The service may be stopped while a terminal or desktop daemon holds
 		// the lock: stop that one too, since it is what runs this context.
 		const other =
@@ -608,6 +619,7 @@ export async function runDaemonServiceCommand(
 		)
 	}
 	if (input.sub === 'restart') {
+		rmSync(paths.stopRequestedPath, { force: true })
 		const before = runtimeState(paths.statePath)
 		restartService({
 			manager,
