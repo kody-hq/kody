@@ -11,6 +11,15 @@ function fixture(platform = 'darwin') {
 	let capabilities
 	let quitting = 0
 	let nextLoadError
+	let windowProbe
+	let failWindowCreation = false
+	let focusedWindow
+	let menu
+	const ipc = new Map()
+	const executionRequests = []
+	let runnerCount = 0
+	let login
+	let finishLogin
 	const capability = new Promise((resolve) => {
 		capabilities = resolve
 	})
@@ -30,20 +39,39 @@ function fixture(platform = 'darwin') {
 		},
 	})
 	class BrowserWindow extends EventEmitter {
+		static getFocusedWindow() {
+			return focusedWindow
+		}
+		static fromWebContents(contents) {
+			return windows.find(
+				(window) => window.webContents === contents && !window.destroyed,
+			)
+		}
 		constructor() {
 			super()
+			if (failWindowCreation) throw new Error('Window creation failed')
 			this.loads = []
 			this.visible = true
 			this.destroyed = false
 			this.minimized = false
 			this.webContents = Object.assign(new EventEmitter(), {
+				mainFrame: { url: 'https://kody.codes/account' },
+				navigationHistory: {
+					canGoBack: () => false,
+					canGoForward: () => false,
+				},
+				send() {},
+				isDestroyed: () => this.destroyed,
+				loadURL: (url) => this.loadURL(url),
 				isCrashed: () => this.crashed === true,
 				getURL: () => this.loads.at(-1) ?? '',
 				session: {
 					setPermissionRequestHandler() {},
 					setPermissionCheckHandler() {},
 				},
-				setWindowOpenHandler() {},
+				setWindowOpenHandler: (handler) => {
+					this.openHandler = handler
+				},
 			})
 			windows.push(this)
 		}
@@ -59,7 +87,13 @@ function fixture(platform = 'darwin') {
 		show() {
 			this.visible = true
 		}
-		focus() {}
+		focus() {
+			focusedWindow = this
+			this.emit('focus')
+		}
+		isFullScreen() {
+			return false
+		}
 		hide() {
 			this.visible = false
 		}
@@ -76,6 +110,7 @@ function fixture(platform = 'darwin') {
 			})
 			if (!prevented) {
 				this.destroyed = true
+				if (focusedWindow === this) focusedWindow = null
 				this.emit('closed')
 			}
 		}
@@ -84,22 +119,62 @@ function fixture(platform = 'darwin') {
 		electron: {
 			app,
 			BrowserWindow,
-			Menu: { setApplicationMenu() {}, buildFromTemplate: (value) => value },
+			Menu: {
+				setApplicationMenu(value) {
+					menu = value
+				},
+				buildFromTemplate: (value) => value,
+			},
+			clipboard: {
+				writeText(value) {
+					mocks.copiedAddress = value
+				},
+			},
+			shell: { openExternal: async () => {} },
 			dialog: { showErrorBox: (...args) => errors.push(args) },
-			ipcMain: { handle() {} },
-			net: { fetch: async () => ({ ok: false }) },
+			ipcMain: {
+				handle(name, handler) {
+					ipc.set(name, handler)
+				},
+			},
+			net: { fetch: async () => windowProbe ?? { ok: false } },
 		},
 		'./updates.cjs': { startUpdates() {}, finishQuit: async () => app.quit() },
-		'./browser-login.cjs': {},
+		'./browser-login.cjs': {
+			browserLogin() {
+				let reject
+				const result = new Promise((resolve, fail) => {
+					finishLogin = resolve
+					reject = fail
+				})
+				login = {
+					result,
+					cancel() {
+						reject(new Error('Browser sign-in canceled.'))
+					},
+				}
+				return login
+			},
+		},
 		'electron-updater': {},
 		'./navigation.cjs': require('../navigation.cjs'),
 		'set-cookie-parser': {},
 		'./site-capabilities.cjs': { supportsIntegratedTitlebar: () => capability },
-		'./window-navigation.cjs': { attachWindowNavigation: () => ({}) },
-		'./runner.cjs': { Runner: EventEmitter },
+		'./window-navigation.cjs': require('../window-navigation.cjs'),
+		'./runner.cjs': {
+			Runner: class extends EventEmitter {
+				constructor() {
+					super()
+					runnerCount++
+				}
+			},
+		},
 		'./execution.cjs': {
 			DesktopExecution: class {
-				async request() {}
+				async request(command, input) {
+					executionRequests.push([command, input])
+					return {}
+				}
 			},
 		},
 		'node:fs': {
@@ -128,7 +203,35 @@ function fixture(platform = 'darwin') {
 			capabilities(false)
 			await new Promise(setImmediate)
 		},
-		show: (path) => context.showApp(path),
+		show: (path, window) => context.showApp(path, window),
+		newWindow: (path) => context.newWindow(path),
+		pauseWindowProbe: () => {
+			let resume
+			windowProbe = new Promise((resolve) => {
+				resume = () => resolve({ ok: false })
+			})
+			return resume
+		},
+		failWindowCreation: () => {
+			failWindowCreation = true
+		},
+		menu: () => menu,
+		ipc: (
+			name,
+			window,
+			command,
+			input,
+			senderFrame = window.webContents.mainFrame,
+		) =>
+			ipc.get(`kody:${name}`)(
+				{ sender: window.webContents, senderFrame },
+				command,
+				input,
+			),
+		executionRequests,
+		runnerCount: () => runnerCount,
+		copiedAddress: () => mocks.copiedAddress,
+		finishLogin: () => finishLogin(),
 		failLoad: (code) => {
 			nextLoadError = code
 				? Object.assign(new Error(code), { code })
@@ -246,4 +349,165 @@ test('reopening retries failed main-frame navigation from the page', async () =>
 	f.app.emit('activate')
 	assert.equal(window.loads.at(-1), url)
 	assert.equal(window.loads.length, 2)
+})
+
+test('New Window uses CmdOrCtrl+N and each window has independent navigation', async () => {
+	const f = fixture()
+	await f.start()
+	await f.finish()
+	const first = f.windows[0]
+	await f.show('/first', first)
+	const item = f.menu().find((entry) => entry.label === 'File').submenu[0]
+	assert.equal(item.label, 'New Window')
+	assert.equal(item.accelerator, 'CmdOrCtrl+N')
+	item.click()
+	await new Promise(setImmediate)
+	const second = f.windows[1]
+	assert.deepEqual(second.loads, ['https://kody.codes/account'])
+	await f.show('/second', second)
+	await f.ipc('navigation', first, 'home')
+	assert.equal(first.loads.at(-1), 'https://kody.codes/account')
+	assert.equal(second.loads.at(-1), 'https://kody.codes/second')
+	assert.throws(() =>
+		f.ipc('navigation', first, 'state', undefined, {
+			url: 'https://kody.codes/account',
+		}),
+	)
+	first.webContents.mainFrame.url = 'https://example.com'
+	assert.throws(() => f.ipc('execution', first, 'state'))
+	assert.equal(f.runnerCount(), 1)
+	await f.ipc('execution', second, 'state')
+	assert.equal(f.executionRequests.at(-1)[0], 'state')
+})
+
+test('menu actions target the focused window and closing another window keeps its navigation', async () => {
+	const f = fixture()
+	await f.start()
+	await f.finish()
+	const first = f.windows[0]
+	const second = await f.newWindow('/second')
+	await f.show('/first', first)
+	const navigate = f.menu().find((entry) => entry.label === 'Navigate').submenu
+	await navigate.find((item) => item.label === 'Copy page address').click()
+	assert.equal(f.copiedAddress(), 'https://kody.codes/first')
+	first.close()
+	assert.equal(first.destroyed, true)
+	await f.show()
+	await navigate.find((item) => item.label === 'Copy page address').click()
+	assert.equal(f.copiedAddress(), 'https://kody.codes/second')
+	second.close()
+	assert.equal(second.destroyed, false)
+	assert.equal(second.visible, false)
+	f.app.emit('activate')
+	assert.equal(second.visible, true)
+	assert.equal(second.loads.length, 1)
+	assert.equal(f.quitCount(), 0)
+})
+
+test('Cmd+N creates a new window while retaining the hidden last window', async () => {
+	const f = fixture()
+	await f.start()
+	await f.finish()
+	const first = f.windows[0]
+	first.close()
+	const second = await f.newWindow()
+	assert.equal(first.destroyed, false)
+	assert.equal(first.visible, false)
+	second.close()
+	assert.equal(second.destroyed, true)
+	f.app.emit('activate')
+	assert.equal(first.visible, true)
+	assert.equal(first.loads.length, 1)
+})
+
+test('failed loads and completion events remain scoped to their owning window', async () => {
+	const f = fixture()
+	await f.start()
+	await f.finish()
+	const first = f.windows[0]
+	const second = await f.newWindow('/second')
+	first.webContents.emit(
+		'did-fail-load',
+		{},
+		-106,
+		'',
+		'https://kody.codes/retry-first',
+		true,
+	)
+	second.webContents.emit('did-finish-load')
+	await f.show(undefined, second)
+	assert.equal(second.loads.length, 1)
+	await f.show(undefined, first)
+	assert.equal(first.loads.at(-1), 'https://kody.codes/retry-first')
+	assert.equal(first.loads.length, 2)
+})
+
+test('new-window links open separately and concurrent new windows stay independent', async () => {
+	const f = fixture()
+	await f.start()
+	await f.finish()
+	const first = f.windows[0]
+	assert.equal(
+		first.openHandler({ url: 'https://kody.codes/link?q=1#here' }).action,
+		'deny',
+	)
+	await new Promise(setImmediate)
+	assert.equal(f.windows[1].loads[0], 'https://kody.codes/link?q=1#here')
+	assert.equal(first.loads.length, 1)
+	const [second, third] = await Promise.all([
+		f.newWindow('/two'),
+		f.newWindow('/three'),
+	])
+	assert.notEqual(second, third)
+	assert.deepEqual(second.loads, ['https://kody.codes/two'])
+	assert.deepEqual(third.loads, ['https://kody.codes/three'])
+})
+
+test('browser sign-in returns to its originating window and another window cannot cancel it', async () => {
+	const f = fixture()
+	await f.start()
+	await f.finish()
+	const first = f.windows[0]
+	const second = await f.newWindow('/second')
+	const pending = f.ipc('authentication', first, 'login')
+	await f.ipc('authentication', second, 'cancel')
+	f.finishLogin()
+	await pending
+	assert.equal(first.loads.at(-1), 'https://kody.codes/account')
+	assert.deepEqual(second.loads, ['https://kody.codes/second'])
+	const canceled = f.ipc('authentication', first, 'login')
+	first.close()
+	assert.deepEqual(Object.keys(await canceled), [])
+})
+
+for (const fails of [false, true]) {
+	test(`Windows waits for a requested window before closing the app, creation ${fails ? 'fails' : 'succeeds'}`, async () => {
+		const f = fixture('win32')
+		await f.start()
+		await f.finish()
+		const resume = f.pauseWindowProbe()
+		const opening = f.newWindow('/next')
+		f.windows[0].close()
+		f.app.emit('window-all-closed')
+		assert.equal(f.quitCount(), 0)
+		if (fails) f.failWindowCreation()
+		resume()
+		const window = await opening
+		assert.equal(f.quitCount(), fails ? 1 : 0)
+		if (!fails) assert.equal(window.loads[0], 'https://kody.codes/next')
+	})
+}
+
+test('explicit Quit still cancels pending window creation', async () => {
+	const f = fixture('win32')
+	await f.start()
+	await f.finish()
+	const resume = f.pauseWindowProbe()
+	const opening = f.newWindow()
+	f.app.emit('before-quit', { preventDefault() {} })
+	resume()
+	assert.equal(await opening, undefined)
+	assert.equal(f.windows.length, 1)
+	await new Promise(setImmediate)
+	assert.equal(f.quitCount(), 1)
 })
