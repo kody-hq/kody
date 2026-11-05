@@ -189,3 +189,46 @@ export function registerCopy(input: { orgSlug: string | null }): RegisterCopy {
 			'If your Kody login predates execution context permissions, registering fails and tells you to run `kody login` again first. Other logins keep working as they are.',
 	}
 }
+
+/** The first-run acknowledgment on a shared context (ADR 0097). */
+export function acknowledgmentCopy(input: {
+	name: string
+	operator: string
+	reason: 'first_run' | 'login_changed' | 'new_access'
+	login: {
+		kind: 'person' | 'profile'
+		handle: string | null
+		profileName: string | null
+	}
+	excessCount: number
+}) {
+	const who = input.login.handle ? `@${input.login.handle}` : 'its owner'
+	const runsAs =
+		input.login.kind === 'profile'
+			? `the agent profile ${input.login.profileName ? `"${input.login.profileName}"` : ''} of ${who}`.replace(
+					'  ',
+					' ',
+				)
+			: `the account ${who}`
+	return {
+		title:
+			input.reason === 'first_run'
+				? `Before your first run on ${input.name}`
+				: `${input.name} changed since you acknowledged it`,
+		lead:
+			input.reason === 'login_changed'
+				? `${input.name} is now logged in as ${runsAs}.`
+				: input.reason === 'new_access'
+					? `${input.name}'s login gained access you don't have.`
+					: `${input.name} runs as ${runsAs}, on a machine operated by @${input.operator}.`,
+		runsAs: `Logged in as ${runsAs}.`,
+		ownAccess:
+			'Your runs use only your own Kody access, never the machine login’s. Anyone with host access on the machine acts with its login.',
+		excess:
+			input.excessCount === 0
+				? 'Its login has no access you lack.'
+				: `Its login can do ${input.excessCount} thing${input.excessCount === 1 ? '' : 's'} you can't:`,
+		button: 'Acknowledge',
+		note: 'Kody asks again if the login changes or gains access you lack. Only you can acknowledge, signed in as yourself.',
+	}
+}

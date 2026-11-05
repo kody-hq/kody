@@ -160,6 +160,9 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 		'Org overrides of where an automation runs; the manifest declaration travels with the package and the target org sets its own override.',
 	),
 	execution_context_opt_ins: keep(personOwned),
+	execution_context_acknowledgments: keep(
+		"Acknowledgments are a person's consent on a context that stays in the owning org; nothing to move.",
+	),
 	execution_context_notices: keep(
 		'Notices are about a person and a context that stays in the owning org; nothing to move.',
 	),
