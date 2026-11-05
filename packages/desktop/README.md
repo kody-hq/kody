@@ -41,9 +41,12 @@ On macOS, closing the last window hides it and keeps the page and runner alive.
 Clicking the Dock icon brings back the same page without reloading, preserving
 navigation history, scroll position, and unfinished input. Quit stops the CLI
 and its workerd processes. On Windows and Linux, closing all windows quits the
-app. Pausing persists across launches. Sleep and network reconnects use the
-CLI's reconnect behavior, a sleeping machine cannot run compute. A running
-process is not necessarily connected, the website shows the context's status.
+app. Pausing persists across launches. **Pause routing** in **This machine** is
+the server-side pause (`kody daemon pause`): chains skip this machine from
+anywhere until **Resume routing**, while the runner stays connected. Sleep and
+network reconnects use the CLI's reconnect behavior, a sleeping machine cannot
+run compute. A running process is not necessarily connected, the website shows
+the context's status.
 
 Keys, credentials, grants, and host-folder policy stay owned by the CLI. The
 shell saves the context ID, name, account, enabled state, and onboarding

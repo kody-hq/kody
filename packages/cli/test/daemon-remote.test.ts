@@ -20,7 +20,9 @@ function recorder(responses: Record<string, unknown>) {
 		const response = responses[key]
 		if (response === undefined)
 			return Response.json(
-				{ error: { code: 'context_offline', message: 'build-box is offline.' } },
+				{
+					error: { code: 'context_offline', message: 'build-box is offline.' },
+				},
 				{ status: 409 },
 			)
 		return Response.json(response)
@@ -96,7 +98,10 @@ test('remote logs are capped at 500 lines and print one line per entry', async (
 		},
 		{ lines: '2' },
 	)
-	assert.equal(calls[0]!.path, '/v1/execution-contexts/build-box/daemon/logs?lines=2')
+	assert.equal(
+		calls[0]!.path,
+		'/v1/execution-contexts/build-box/daemon/logs?lines=2',
+	)
 	assert.equal(out, 'one\ntwo\n')
 })
 
@@ -111,7 +116,11 @@ test('status shows the pause and how to resume it', async () => {
 			name: 'build-box',
 			state: 'paused',
 			online: true,
-			paused: { at: '2026-11-05T00:00:00.000Z', by: 'kent', reason: 'disk full' },
+			paused: {
+				at: '2026-11-05T00:00:00.000Z',
+				by: 'kent',
+				reason: 'disk full',
+			},
 			daemon: {
 				version: '3.29.0',
 				service: 'systemd',
@@ -122,8 +131,14 @@ test('status shows the pause and how to resume it', async () => {
 		},
 	})
 	assert.match(out, /^build-box: paused$/m)
-	assert.match(out, /by @kent: disk full\. Resume with: kody daemon resume --context build-box/)
-	assert.match(out, /kody 3\.29\.0, systemd service, auto-update on, 0\/2 run\(s\)/)
+	assert.match(
+		out,
+		/by @kent: disk full\. Resume with: kody daemon resume --context build-box/,
+	)
+	assert.match(
+		out,
+		/kody 3\.29\.0, systemd service, auto-update on, 0\/2 run\(s\)/,
+	)
 })
 
 test('config set validates its value before calling Kody', async () => {
@@ -145,6 +160,9 @@ test('config set validates its value before calling Kody', async () => {
 		runRemoteDaemonCommand({ ...base, args: ['set', 'max-concurrent', '9'] }),
 		/1 to 8/,
 	)
-	await runRemoteDaemonCommand({ ...base, args: ['set', 'max-concurrent', '3'] })
+	await runRemoteDaemonCommand({
+		...base,
+		args: ['set', 'max-concurrent', '3'],
+	})
 	assert.deepEqual(calls.at(-1)!.body, { max_concurrent: 3 })
 })

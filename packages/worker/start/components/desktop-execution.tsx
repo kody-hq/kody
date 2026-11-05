@@ -534,10 +534,10 @@ export function DesktopMachinePanel() {
 							? pausedInKody
 								? ` · Runner paused${pausedInKody.by ? ` by @${pausedInKody.by}` : ''}`
 								: state.runner?.label
-								? ` · ${state.runner.label}`
-								: state.running
-									? ' · Runner running'
-									: ' · Runner paused'
+									? ` · ${state.runner.label}`
+									: state.running
+										? ' · Runner running'
+										: ' · Runner paused'
 							: state.existingContext
 								? ' · Registered with the kody CLI'
 								: ' · Not set up'}
@@ -571,15 +571,14 @@ export function DesktopMachinePanel() {
 								paddingLeft: spacing.sm,
 							}}
 						>
-							Paused in Kody{pausedInKody.reason ? `: ${pausedInKody.reason}` : ''}.
-							Chains skip this machine and host commands are refused until it is
+							Paused in Kody
+							{pausedInKody.reason ? `: ${pausedInKody.reason}` : ''}. Chains
+							skip this machine and host commands are refused until it is
 							resumed. The runner stays connected.
 						</p>
 					) : null}
 					{serverContext &&
-					(pausedInKody
-						? serverContext.canResume
-						: serverContext.canPause) ? (
+					(pausedInKody ? serverContext.canResume : serverContext.canPause) ? (
 						<button
 							type="button"
 							css={{ ...secondaryCss, marginLeft: spacing.sm }}

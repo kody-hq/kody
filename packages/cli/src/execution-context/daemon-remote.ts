@@ -160,9 +160,7 @@ export function formatRemoteStatus(result: Record<string, unknown>) {
 		reason?: string | null
 	} | null
 	const daemon = result.daemon as Record<string, unknown> | null | undefined
-	const lines = [
-		`${String(result.name ?? result.id)}: ${String(result.state)}`,
-	]
+	const lines = [`${String(result.name ?? result.id)}: ${String(result.state)}`]
 	if (paused?.at) {
 		lines.push(
 			`  Paused ${paused.at}${paused.by ? ` by @${paused.by}` : ''}${paused.reason ? `: ${paused.reason}` : ''}. Resume with: kody daemon resume --context ${String(result.name ?? result.id)}`,

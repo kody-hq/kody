@@ -578,7 +578,9 @@ export async function runExecutionContextDaemonActionForUser(
 		return {
 			ok: true as const,
 			lines: Array.isArray(result.lines)
-				? result.lines.filter((line): line is string => typeof line === 'string')
+				? result.lines.filter(
+						(line): line is string => typeof line === 'string',
+					)
 				: null,
 			message:
 				typeof result.message === 'string'

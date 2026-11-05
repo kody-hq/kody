@@ -1950,7 +1950,9 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				: {
 						ok: false,
 						code:
-							typeof body.code === 'string' ? body.code : 'daemon_control_failed',
+							typeof body.code === 'string'
+								? body.code
+								: 'daemon_control_failed',
 						...(typeof body.message === 'string'
 							? { message: body.message.slice(0, 2000) }
 							: {}),
@@ -1963,7 +1965,10 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 	 * (for routing). Pausing fails queued runs instead of holding them,
 	 * since a pause may last indefinitely. The daemon stays connected.
 	 */
-	async setPaused(input: { paused: ExecutionContextPause | null; name: string }) {
+	async setPaused(input: {
+		paused: ExecutionContextPause | null
+		name: string
+	}) {
 		if (input.paused) {
 			this.ctx.storage.sql.exec(
 				`INSERT INTO meta (key, value) VALUES ('paused', ?)

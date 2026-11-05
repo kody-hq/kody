@@ -37,11 +37,7 @@ import {
 	isRemoteDaemonCommand,
 	runRemoteDaemonCommand,
 } from './daemon-remote.js'
-import {
-	DaemonControlError,
-	type DaemonPause,
-	runDaemon,
-} from './daemon.js'
+import { DaemonControlError, type DaemonPause, runDaemon } from './daemon.js'
 import {
 	type RunnerLauncher,
 	acquireRunnerLock,
@@ -1019,7 +1015,9 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 									typeof args.lines === 'number' ? Math.floor(args.lines) : 100,
 								),
 							)
-							return { lines: recentDaemonLog(paths?.logPath, recentLog, lines) }
+							return {
+								lines: recentDaemonLog(paths?.logPath, recentLog, lines),
+							}
 						}
 						default:
 							throw new DaemonControlError(

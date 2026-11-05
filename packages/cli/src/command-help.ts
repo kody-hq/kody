@@ -700,7 +700,10 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 				],
 				flags: [
 					anyContextFlag,
-					['--lines <n>', 'Lines from the end (default 100; at most 500 remotely)'],
+					[
+						'--lines <n>',
+						'Lines from the end (default 100; at most 500 remotely)',
+					],
 					['--follow', 'Keep printing new lines (this machine only)'],
 					remoteFlag,
 				],
@@ -742,7 +745,10 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 				flags: [
 					anyContextFlag,
 					['--reason <text>', 'Why, shown on the context (200 characters)'],
-					['--cancel-runs', 'Also cancel runs in flight (default: they finish)'],
+					[
+						'--cancel-runs',
+						'Also cancel runs in flight (default: they finish)',
+					],
 					jsonFlag,
 				],
 				notes: [

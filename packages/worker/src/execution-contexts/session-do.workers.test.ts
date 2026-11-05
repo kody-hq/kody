@@ -1138,7 +1138,11 @@ test('pausing fails queued runs, tells the connected daemon, and a reconnect wel
 		position: 1,
 		expiresAt: Date.now() + 60_000,
 	})
-	const pause = { at: '2026-11-05T00:00:00.000Z', by: 'kent', reason: 'disk full' }
+	const pause = {
+		at: '2026-11-05T00:00:00.000Z',
+		by: 'kent',
+		reason: 'disk full',
+	}
 	await stub.setPaused({ paused: pause, name: 'build-box' })
 	expect(await stub.listQueued()).toEqual([])
 	expect((await next('state.update')).body).toEqual({ paused: pause })
@@ -1148,7 +1152,9 @@ test('pausing fails queued runs, tells the connected daemon, and a reconnect wel
 	const reconnected = await connect(ecid)
 	expect(reconnected.welcome.body).toMatchObject({ paused: pause })
 	await stub.setPaused({ paused: null, name: 'build-box' })
-	expect((await reconnected.next('state.update')).body).toEqual({ paused: null })
+	expect((await reconnected.next('state.update')).body).toEqual({
+		paused: null,
+	})
 })
 
 test('control requests round-trip over the signed socket, and fail fast when they cannot', async () => {

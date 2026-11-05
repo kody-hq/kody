@@ -541,7 +541,11 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['POST', '/v1/execution-contexts/{id}/delete', 'executionContextDelete'],
 		['POST', '/v1/execution-contexts/{id}/pause', 'executionContextPause'],
 		['POST', '/v1/execution-contexts/{id}/resume', 'executionContextResume'],
-		['GET', '/v1/execution-contexts/{id}/daemon', 'executionContextDaemonStatus'],
+		[
+			'GET',
+			'/v1/execution-contexts/{id}/daemon',
+			'executionContextDaemonStatus',
+		],
 		[
 			'POST',
 			'/v1/execution-contexts/{id}/daemon/restart',

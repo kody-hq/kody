@@ -749,8 +749,8 @@ export async function routeExecute(input: {
 			namedAttempt?.outcome === 'paused'
 				? `${named.name} is paused, so it takes no runs. Its operator or someone with Manage on it can resume it with \`kody daemon resume --context ${named.name}\` or executionContextResume. A named context never falls back; pass fallback: "chain" to use your chain instead.`
 				: namedAttempt?.outcome === 'busy'
-				? `${named.name} is busy: it is already running as many runs as it allows at once, so it could not take this run. A named context never falls back; try again when one of its runs finishes, or pass fallback: "chain" to use your chain instead.`
-				: `${named.name} could not take this run (${describeAttempts(attempts)}). A named context never falls back; pass fallback: "chain" to use your chain instead.`,
+					? `${named.name} is busy: it is already running as many runs as it allows at once, so it could not take this run. A named context never falls back; try again when one of its runs finishes, or pass fallback: "chain" to use your chain instead.`
+					: `${named.name} could not take this run (${describeAttempts(attempts)}). A named context never falls back; pass fallback: "chain" to use your chain instead.`,
 		)
 	}
 	noContext(

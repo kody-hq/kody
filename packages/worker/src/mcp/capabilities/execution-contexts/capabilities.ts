@@ -723,8 +723,14 @@ export const executionContextDaemonConfigCapability = defineDomainCapability(
 		contextRuns: daemonContextRuns,
 		orgPermission: 'execution_context:write',
 		description:
-			"Change daemon config remotely: max_concurrent caps runs at once (a server limit, works while offline; the daemon uses the lower of it and its local setting) and auto_update turns automatic CLI updates on or off (needs the daemon online). Host folders and turning host commands on stay machine-side. Omit both to read the current values. Needs the operator or Manage on it.",
-		keywords: ['execution context', 'daemon', 'config', 'concurrency', 'auto-update'],
+			'Change daemon config remotely: max_concurrent caps runs at once (a server limit, works while offline; the daemon uses the lower of it and its local setting) and auto_update turns automatic CLI updates on or off (needs the daemon online). Host folders and turning host commands on stay machine-side. Omit both to read the current values. Needs the operator or Manage on it.',
+		keywords: [
+			'execution context',
+			'daemon',
+			'config',
+			'concurrency',
+			'auto-update',
+		],
 		readOnly: false,
 		idempotent: true,
 		destructive: false,

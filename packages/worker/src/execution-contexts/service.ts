@@ -1820,7 +1820,10 @@ async function daemonControl(
 }
 
 /** Live daemon snapshot: state, version, manager, problems, pause. */
-export async function daemonStatus(caller: ExecutionContextCaller, ref: string) {
+export async function daemonStatus(
+	caller: ExecutionContextCaller,
+	ref: string,
+) {
 	const { row, access } = await loadVisibleContext(caller, ref)
 	const db = caller.env.APP_DB
 	const live = await liveStatus(caller.env, row)
@@ -1861,7 +1864,10 @@ export async function daemonRestart(
 	return { id: row.id, name: row.name, ...data }
 }
 
-export async function daemonUpdate(caller: ExecutionContextCaller, ref: string) {
+export async function daemonUpdate(
+	caller: ExecutionContextCaller,
+	ref: string,
+) {
 	const { row, access } = await liveContext(caller, ref)
 	requireManage(caller, access, 'Updating the daemon')
 	const data = await daemonControl(caller, row, 'update', {}, 45_000)

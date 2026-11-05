@@ -461,7 +461,10 @@ test('status names each problem with the command that fixes it', () => {
 		/Status: stopped \(kody daemon stop, 2026-11-05T00:00:00\.000Z\); start it with: kody daemon start/,
 	)
 	rmSync(stopRequested, { force: true })
-	assert.match(service.formatServiceStatus(broken), /crashed or failed to start/)
+	assert.match(
+		service.formatServiceStatus(broken),
+		/crashed or failed to start/,
+	)
 	const windows = service.serviceStatus({
 		apiUrl,
 		ecid: null,

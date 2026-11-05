@@ -148,7 +148,11 @@ type DaemonInput = {
 
 export const daemonControlFeature = 'daemon-control'
 
-export type DaemonPause = { at: string; by: string | null; reason: string | null }
+export type DaemonPause = {
+	at: string
+	by: string | null
+	reason: string | null
+}
 
 export class DaemonControlError extends Error {
 	constructor(

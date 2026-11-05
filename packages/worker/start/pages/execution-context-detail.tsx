@@ -622,9 +622,13 @@ function DaemonPanel(props: {
 				</p>
 			)}
 			{error ? (
-				<AccountManagementMessage tone="error">{error}</AccountManagementMessage>
+				<AccountManagementMessage tone="error">
+					{error}
+				</AccountManagementMessage>
 			) : null}
-			{notice ? <AccountManagementMessage>{notice}</AccountManagementMessage> : null}
+			{notice ? (
+				<AccountManagementMessage>{notice}</AccountManagementMessage>
+			) : null}
 			{confirmingPause ? (
 				<div css={rowCss}>
 					<label css={{ display: 'grid', gap: spacing.xs, flex: '1 1 16rem' }}>
@@ -705,7 +709,9 @@ function DaemonPanel(props: {
 								onClick={() => void run('update')}
 								data-testid="context-daemon-update"
 							>
-								{busy === 'update' ? daemonActionBusyLabel.update : 'Update now'}
+								{busy === 'update'
+									? daemonActionBusyLabel.update
+									: 'Update now'}
 							</button>
 						</>
 					) : null}
