@@ -57,6 +57,11 @@ vi.mock('#worker/run-records/service.ts', () => ({
 	finishRunRecord: (
 		...args: Parameters<typeof RunRecordsServiceModule.finishRunRecord>
 	) => runRecordMocks.finishRunRecord(...args),
+	closeStoppedWorkflowAttemptRuns: (
+		...args: Parameters<
+			typeof RunRecordsServiceModule.closeStoppedWorkflowAttemptRuns
+		>
+	) => runRecordMocks.closeStoppedWorkflowAttemptRuns(...args),
 	upsertWorkflowProjection: (...args: Array<unknown>) =>
 		runRecordMocks.upsertWorkflowProjection(
 			...(args as [
