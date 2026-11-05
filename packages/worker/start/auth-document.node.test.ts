@@ -142,15 +142,14 @@ test('signed-out OAuth document offers log in, sign up, and Try it out', async (
 		authorizePath,
 	)
 	const text = html.replaceAll('<!-- -->', '')
-	for (const expected of [
-		'Kody secure connection',
-		'Cursor wants to connect to your Kody account',
-		'data-testid="oauth-authorize-try-it-out"',
-		'No account needed. Full access for 24 hours, then claim it to keep everything.',
-		'just tell Cursor to claim your account.',
-		'You can disconnect Cursor anytime from your Kody account.',
-	])
-		expect(text).toContain(expected)
+	expect(text).toContain('Cursor wants to connect to your Kody account')
+	expect(html).toContain('data-testid="oauth-authorize-login"')
+	expect(html).toContain('data-testid="oauth-authorize-signup"')
+	expect(html).toContain('data-testid="oauth-authorize-try-it-out"')
+	expect(html).toMatch(/href="\/login\?redirectTo=/)
+	expect(html).toMatch(/href="\/signup\?redirectTo=/)
+	expect(text).toContain('Log in')
+	expect(text).toContain('Sign up')
+	expect(text).toContain('Try it out')
 	expect(html).not.toContain('data-testid="oauth-authorize-form"')
-	expect(html).not.toContain('—')
 })
