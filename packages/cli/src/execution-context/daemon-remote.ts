@@ -153,7 +153,7 @@ export async function runRemoteDaemonCommand(input: RemoteDaemonInput) {
 	}
 }
 
-export function formatRemoteStatus(result: Record<string, unknown>) {
+function formatRemoteStatus(result: Record<string, unknown>) {
 	const paused = result.paused as {
 		at?: string
 		by?: string | null

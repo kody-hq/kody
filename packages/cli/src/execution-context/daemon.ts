@@ -146,7 +146,7 @@ type DaemonInput = {
 	onPaused?: (paused: DaemonPause | null) => void
 }
 
-export const daemonControlFeature = 'daemon-control'
+const daemonControlFeature = 'daemon-control'
 
 export type DaemonPause = {
 	at: string
