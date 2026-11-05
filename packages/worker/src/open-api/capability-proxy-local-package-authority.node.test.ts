@@ -53,8 +53,32 @@ vi.mock('#mcp/run-kody-registry.ts', () => ({
 	buildKodyFns: async () => ({}),
 }))
 
+const authenticatedFetchKody = vi.hoisted(() => ({
+	current: null as Record<string, unknown> | null,
+}))
+
+const tokenRefreshCalls = vi.hoisted(
+	() => [] as Array<{ packageStamp: unknown; name: string }>,
+)
+
+vi.mock('#mcp/capabilities/integrations/integration-token-refresh.ts', () => ({
+	refreshIntegrationTokenForPackage: async (input: {
+		packageStamp: unknown
+		name: string
+	}) => {
+		tokenRefreshCalls.push({
+			packageStamp: input.packageStamp,
+			name: input.name,
+		})
+		return { ok: true, refreshed: true }
+	},
+}))
+
 vi.mock('#mcp/execute-modules/kody-runtime-utils.ts', () => ({
-	createAuthenticatedFetch: async () => async () => new Response('ok'),
+	createAuthenticatedFetch: async (kody: Record<string, unknown>) => {
+		authenticatedFetchKody.current = kody
+		return async () => new Response('ok')
+	},
 	oauthClientCredentials: async () => ({ access_token: 'ok' }),
 }))
 
@@ -278,4 +302,49 @@ test('packageStorage acts as the verified package, not the wire value', async ()
 	expect(call?.runPackageId).toBe(ownedPackageId)
 	expect([...(call?.grantedPackageIds ?? [])]).toEqual([ownedPackageId])
 	expect(call?.args).toEqual({ key: 'cursor', packageId: ownedPackageId })
+})
+
+test('authenticatedFetch refreshes tokens as the verified package (#4889)', async () => {
+	const { db } = createDb()
+	tokenRefreshCalls.length = 0
+	await runCapabilityProxyAuthenticatedFetch({
+		ctx: createContext(db),
+		args: [
+			{
+				providerName: 'slack',
+				packageId: await bindingFor(db, ownedPackageId),
+				request: { url: 'https://slack.example.test/api' },
+			},
+		],
+	})
+	const refresh = authenticatedFetchKody.current?.integrationTokenRefresh
+	if (typeof refresh !== 'function') throw new Error('refresh missing')
+	await expect(refresh({ name: 'slack' })).resolves.toEqual({
+		ok: true,
+		refreshed: true,
+	})
+	expect(tokenRefreshCalls).toEqual([
+		{
+			packageStamp: { kind: 'claimed', packageId: ownedPackageId },
+			name: 'slack',
+		},
+	])
+})
+
+test('authenticatedFetch without a package keeps the caller refresh', async () => {
+	const { db } = createDb()
+	tokenRefreshCalls.length = 0
+	await runCapabilityProxyAuthenticatedFetch({
+		ctx: createContext(db),
+		args: [
+			{
+				providerName: 'slack',
+				request: { url: 'https://slack.example.test/api' },
+			},
+		],
+	})
+	expect(
+		authenticatedFetchKody.current?.integrationTokenRefresh,
+	).toBeUndefined()
+	expect(tokenRefreshCalls).toEqual([])
 })

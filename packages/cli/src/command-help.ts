@@ -231,7 +231,7 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 					],
 					[
 						'--context <name|cloud>',
-						'Execution context that builds it (with --build context)',
+						'Execution context that builds it (alone or with --build context; not with --build local)',
 					],
 					orgFlag,
 					['--params <json>', 'Extra publish fields, e.g. allow_force'],
