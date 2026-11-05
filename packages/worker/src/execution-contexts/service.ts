@@ -16,7 +16,10 @@ import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
 import { upsertGrant, softDeleteGrant } from '#worker/orgs/access-writes.ts'
 import { chainCloudOrderError, selfShareError } from './chain-rules.ts'
-import { ExecutionContextError } from './errors.ts'
+import {
+	ExecutionContextError,
+	type ExecutionContextErrorCode,
+} from './errors.ts'
 import { isExecutionContextsEnabledFor } from './flag.ts'
 import {
 	ChainConflictError,
@@ -44,7 +47,7 @@ import {
 	executionContextCommandPermission,
 } from './store.ts'
 import { optInTrustNotice, sharingTrustNotice } from './trust-copy.ts'
-import type { RunHistoryRow } from './session-do.ts'
+import type { ExecutionContextPause, RunHistoryRow } from './session-do.ts'
 import { kodyCloudTarget } from './routing.ts'
 import { latestCliVersion } from './latest-cli-version.ts'
 import { isOlderCliVersion } from '#universal/execution-contexts.ts'
@@ -244,6 +247,13 @@ export async function formatContexts(
 				acceptingRuns: live.acceptingRuns,
 				lastSeenAt: live.lastSeenAt ?? row.last_seen_at,
 				revokedAt: row.revoked_at,
+				paused: await pauseView(db, row),
+				canPause:
+					!row.revoked_at &&
+					(access.isOperator || manage || isOrgAdmin(caller)),
+				canResume: !row.revoked_at && (access.isOperator || manage),
+				canControlDaemon: !row.revoked_at && (access.isOperator || manage),
+				canReadDaemonLogs: !row.revoked_at && access.isOperator,
 				client: {
 					name: row.client_name,
 					version: row.client_version,
@@ -1632,4 +1642,298 @@ async function noticesView(
 				}
 			: {}),
 	}
+}
+
+// ---------- daemon management ----------
+
+const pauseReasonMax = 200
+const daemonLogLinesMax = 500
+
+function isOrgAdmin(caller: ExecutionContextCaller) {
+	const role = caller.request.membership?.role as string | undefined
+	return role === 'owner' || role === 'admin'
+}
+
+async function liveContext(caller: ExecutionContextCaller, ref: string) {
+	const loaded = await loadVisibleContext(caller, ref)
+	if (loaded.row.revoked_at) {
+		throw new ExecutionContextError({
+			status: 409,
+			code: 'context_revoked',
+			message: `${loaded.row.name} was revoked.`,
+		})
+	}
+	return loaded
+}
+
+function requireManage(
+	caller: ExecutionContextCaller,
+	access: ContextAccess,
+	what: string,
+	options: { orgAdmin?: boolean } = {},
+) {
+	if (
+		access.isOperator ||
+		canManageContext(access) ||
+		(options.orgAdmin && isOrgAdmin(caller))
+	)
+		return
+	throw new ExecutionContextError({
+		status: 403,
+		code: 'not_granted',
+		message: `${what} needs Manage on this context${options.orgAdmin ? ' (or org owner/admin)' : ''}.`,
+	})
+}
+
+export async function pauseView(
+	db: D1Database,
+	row: ExecutionContextRow,
+): Promise<ExecutionContextPause | null> {
+	if (!row.paused_at) return null
+	const by = row.paused_by_user_id
+		? ((await handlesFor(db, [row.paused_by_user_id])).get(
+				row.paused_by_user_id,
+			) ?? null)
+		: null
+	return { at: row.paused_at, by, reason: row.pause_reason ?? null }
+}
+
+/**
+ * Server-side pause (remote "stop"): routing skips the context, queued runs
+ * fail, host commands are refused; the daemon stays connected. Org
+ * owners/admins may pause as a kill switch but not resume.
+ */
+export async function pauseContext(
+	caller: ExecutionContextCaller,
+	ref: string,
+	input: { reason?: string | null; cancelRuns?: boolean } = {},
+) {
+	const { row, access } = await liveContext(caller, ref)
+	requireManage(caller, access, 'Pausing', { orgAdmin: true })
+	const reason = input.reason?.trim().slice(0, pauseReasonMax) || null
+	const db = caller.env.APP_DB
+	const at = row.paused_at ?? new Date().toISOString()
+	if (!row.paused_at) {
+		await db
+			.prepare(
+				`UPDATE execution_contexts SET paused_at = ?, paused_by_user_id = ?, pause_reason = ? WHERE id = ?`,
+			)
+			.bind(at, caller.userId, reason, row.id)
+			.run()
+	}
+	const fresh = (await getExecutionContext(db, row.id)) ?? row
+	const paused = await pauseView(db, fresh)
+	await sessionStub(caller.env, row.id).setPaused({ paused, name: row.name })
+	let cancelled = 0
+	if (input.cancelRuns) {
+		const stub = sessionStub(caller.env, row.id)
+		for (const lease of await stub.activeLeases()) {
+			const result = await stub.cancel({
+				runId: lease.runId,
+				reason: 'user_cancelled',
+			})
+			if (result.cancelled) cancelled += 1
+		}
+	}
+	if (!row.paused_at) {
+		await recordContextAudit(caller, row.id, 'paused', {
+			...(reason ? { reason } : {}),
+			...(input.cancelRuns ? { cancelledRuns: cancelled } : {}),
+		})
+	}
+	return {
+		id: row.id,
+		name: row.name,
+		paused,
+		alreadyPaused: Boolean(row.paused_at),
+		...(input.cancelRuns ? { cancelledRuns: cancelled } : {}),
+		note: `Kody routes no runs to ${row.name} until it is resumed: chains skip it, queued runs fail, and host commands are refused. Runs already in flight ${input.cancelRuns ? 'were cancelled' : 'finish'}. Resume with \`kody daemon resume --context ${row.name}\` or executionContextResume.`,
+	}
+}
+
+export async function resumeContext(
+	caller: ExecutionContextCaller,
+	ref: string,
+) {
+	const { row, access } = await liveContext(caller, ref)
+	requireManage(caller, access, 'Resuming')
+	const db = caller.env.APP_DB
+	if (row.paused_at) {
+		await db
+			.prepare(
+				`UPDATE execution_contexts SET paused_at = NULL, paused_by_user_id = NULL, pause_reason = NULL WHERE id = ?`,
+			)
+			.bind(row.id)
+			.run()
+		await recordContextAudit(caller, row.id, 'resumed')
+	}
+	await sessionStub(caller.env, row.id).setPaused({
+		paused: null,
+		name: row.name,
+	})
+	return {
+		id: row.id,
+		name: row.name,
+		paused: null,
+		wasPaused: Boolean(row.paused_at),
+	}
+}
+
+const controlErrorText: Record<string, (name: string) => string> = {
+	context_offline: (name) =>
+		`${name} is offline, so it cannot take this right now. Start it on the machine with \`kody daemon start\` (or \`kody daemon install\`), then try again. Pause and resume work while it is offline.`,
+	daemon_outdated: (name) =>
+		`The daemon on ${name} predates remote management. Run \`kody update\` on the machine once (or turn on auto-update), then try again.`,
+	daemon_timeout: (name) =>
+		`${name} did not answer in time. Check it with \`kody daemon status\` and \`kody daemon logs\` on the machine.`,
+	not_service_managed: (name) =>
+		`${name} runs \`kody daemon\` in a terminal, not as a background service, so nothing would start it again after a restart or update. Restart it there, or run \`kody daemon install\` on the machine.`,
+	daemon_busy: (name) =>
+		`${name} is already draining for a restart or update. Try again once it reconnects.`,
+	context_revoked: (name) => `${name} was revoked.`,
+}
+
+async function daemonControl(
+	caller: ExecutionContextCaller,
+	row: ExecutionContextRow,
+	op: string,
+	args: Record<string, unknown> = {},
+	timeoutMs?: number,
+) {
+	const result = await sessionStub(caller.env, row.id).control({
+		op,
+		args,
+		...(timeoutMs ? { timeoutMs } : {}),
+	})
+	if ('data' in result) return result.data as Record<string, unknown>
+	const failed = result as { code: string; message?: string }
+	const code = failed.code as keyof typeof controlErrorText
+	throw new ExecutionContextError({
+		status: code === 'context_offline' || code === 'daemon_timeout' ? 503 : 409,
+		code: (controlErrorText[code]
+			? code
+			: 'daemon_control_failed') as ExecutionContextErrorCode,
+		message:
+			controlErrorText[code]?.(row.name) ??
+			`${row.name} could not do that: ${failed.message ?? failed.code}.`,
+	})
+}
+
+/** Live daemon snapshot: state, version, manager, problems, pause. */
+export async function daemonStatus(caller: ExecutionContextCaller, ref: string) {
+	const { row, access } = await loadVisibleContext(caller, ref)
+	const db = caller.env.APP_DB
+	const live = await liveStatus(caller.env, row)
+	const paused = await pauseView(db, row)
+	const detailed =
+		access.isOperator || canManageContext(access) || isOrgAdmin(caller)
+	let daemon: Record<string, unknown> | null = null
+	if (detailed && live.status === 'online') {
+		daemon = await daemonControl(caller, row, 'status').catch(() => null)
+	}
+	return {
+		id: row.id,
+		name: row.name,
+		state: row.revoked_at
+			? 'revoked'
+			: paused
+				? 'paused'
+				: live.status === 'online'
+					? 'online'
+					: 'offline',
+		online: live.status === 'online',
+		acceptingRuns: live.acceptingRuns,
+		lastSeenAt: live.lastSeenAt ?? row.last_seen_at,
+		paused,
+		client: { name: row.client_name, version: row.client_version },
+		...(detailed ? { daemon } : {}),
+	}
+}
+
+export async function daemonRestart(
+	caller: ExecutionContextCaller,
+	ref: string,
+) {
+	const { row, access } = await liveContext(caller, ref)
+	requireManage(caller, access, 'Restarting the daemon')
+	const data = await daemonControl(caller, row, 'restart')
+	await recordContextAudit(caller, row.id, 'daemon_restarted')
+	return { id: row.id, name: row.name, ...data }
+}
+
+export async function daemonUpdate(caller: ExecutionContextCaller, ref: string) {
+	const { row, access } = await liveContext(caller, ref)
+	requireManage(caller, access, 'Updating the daemon')
+	const data = await daemonControl(caller, row, 'update', {}, 45_000)
+	await recordContextAudit(caller, row.id, 'daemon_update_checked', {
+		...(typeof data.version === 'string' ? { version: data.version } : {}),
+	})
+	return { id: row.id, name: row.name, ...data }
+}
+
+/** Remote config: concurrency cap (a grant limit, works offline) and auto-update (live). */
+export async function daemonConfig(
+	caller: ExecutionContextCaller,
+	ref: string,
+	input: { maxConcurrent?: number; autoUpdate?: 'on' | 'off' },
+) {
+	const { row, access } = await liveContext(caller, ref)
+	requireManage(caller, access, 'Changing daemon config')
+	if (input.maxConcurrent !== undefined) {
+		await updateContext(caller, row.id, {
+			grant: {
+				limits: {
+					...parseGrant(row).limits,
+					maxConcurrent: input.maxConcurrent,
+				},
+			},
+		})
+	}
+	let autoUpdate: unknown = undefined
+	if (input.autoUpdate) {
+		const data = await daemonControl(caller, row, 'auto-update', {
+			enabled: input.autoUpdate === 'on',
+		})
+		autoUpdate = data.autoUpdate ?? input.autoUpdate
+		await recordContextAudit(caller, row.id, 'daemon_config_changed', {
+			autoUpdate: input.autoUpdate,
+		})
+	}
+	const fresh = (await getExecutionContext(caller.env.APP_DB, row.id)) ?? row
+	return {
+		id: row.id,
+		name: row.name,
+		maxConcurrent: parseGrant(fresh).limits.maxConcurrent,
+		...(autoUpdate !== undefined ? { autoUpdate } : {}),
+	}
+}
+
+/** Recent daemon log lines: operator only, at most 500. */
+export async function daemonLogs(
+	caller: ExecutionContextCaller,
+	ref: string,
+	input: { lines?: number } = {},
+) {
+	const { row, access } = await liveContext(caller, ref)
+	if (!access.isOperator) {
+		throw new ExecutionContextError({
+			status: 403,
+			code: 'not_granted',
+			message: `Only ${row.name}'s operator can read its daemon log (it can include host paths and command output).`,
+		})
+	}
+	const lines = Math.max(
+		1,
+		Math.min(daemonLogLinesMax, Math.floor(input.lines ?? 100)),
+	)
+	const data = await daemonControl(caller, row, 'logs', { lines })
+	const raw: Array<unknown> = Array.isArray(data.lines) ? data.lines : []
+	const logLines = raw
+		.filter((line): line is string => typeof line === 'string')
+		.slice(-lines)
+		.map((line) => line.slice(0, 2000))
+	await recordContextAudit(caller, row.id, 'daemon_logs_read', {
+		lines: logLines.length,
+	})
+	return { id: row.id, name: row.name, lines: logLines }
 }

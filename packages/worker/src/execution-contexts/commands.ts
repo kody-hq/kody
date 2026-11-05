@@ -150,6 +150,13 @@ async function assertCommandAccess(
 			message: 'This execution context was revoked.',
 		})
 	}
+	if (row.paused_at) {
+		throw new ExecutionContextError({
+			status: 409,
+			code: 'context_paused',
+			message: `${row.name} is paused, so it runs no host commands. Resume it with \`kody daemon resume --context ${row.name}\` or executionContextResume.`,
+		})
+	}
 	if (parseGrant(row).commands?.enabled !== true)
 		throw commandsOffError(row.name)
 	const user = ctx.callerContext.user

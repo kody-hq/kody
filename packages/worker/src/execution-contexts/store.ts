@@ -43,6 +43,10 @@ export type ExecutionContextRow = {
 	login_checked_at?: string | null
 	/** The team the operator says the box is for. */
 	team_id?: string | null
+	/** Server-side pause (migration 0254): routing skips the context. */
+	paused_at?: string | null
+	paused_by_user_id?: string | null
+	pause_reason?: string | null
 }
 
 export type UnusableReason =

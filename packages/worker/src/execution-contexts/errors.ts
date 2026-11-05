@@ -21,6 +21,13 @@ export const executionContextErrorCodes = [
 	'execution_context_commands_off',
 	'execution_context_command_not_granted',
 	'execution_context_command_requires_context',
+	'context_paused',
+	'context_offline',
+	'not_service_managed',
+	'daemon_busy',
+	'daemon_outdated',
+	'daemon_timeout',
+	'daemon_control_failed',
 ] as const
 
 export type ExecutionContextErrorCode =

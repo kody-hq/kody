@@ -61,6 +61,13 @@ export const executionContextCapabilityNames = {
 	noticeDismiss: 'executionContextNoticeDismiss',
 	automationGet: 'automationExecutionGet',
 	automationSet: 'automationExecutionSet',
+	pause: 'executionContextPause',
+	resume: 'executionContextResume',
+	daemonStatus: 'executionContextDaemonStatus',
+	daemonRestart: 'executionContextDaemonRestart',
+	daemonUpdate: 'executionContextDaemonUpdate',
+	daemonConfig: 'executionContextDaemonConfig',
+	daemonLogs: 'executionContextDaemonLogs',
 } as const
 
 type CapabilityName =

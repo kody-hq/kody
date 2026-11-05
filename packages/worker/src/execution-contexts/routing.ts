@@ -72,6 +72,7 @@ export type RoutingAttempt = {
 		| 'skipped'
 		| 'queued'
 		| 'expired'
+		| 'paused'
 	reason?: string
 }
 
@@ -205,6 +206,7 @@ const passPhrases: Record<RoutingAttempt['outcome'], string> = {
 	skipped: 'was skipped',
 	queued: 'was queued',
 	expired: 'did not take it before the queue expired',
+	paused: 'was paused',
 }
 
 function describePass(attempt: RoutingAttempt) {
@@ -519,6 +521,11 @@ export async function routeExecute(input: {
 			skip(access.unusableReason ?? 'not_granted')
 			continue
 		}
+		// Paused contexts are skipped like offline ones but never queued on.
+		if (row.paused_at) {
+			attempts.push({ target: row.id, name: row.name, outcome: 'paused' })
+			continue
+		}
 		const grant = parseGrant(row)
 		const sharedRun = row.operator_user_id !== input.request.userId
 		if (sharedRun) {
@@ -739,7 +746,9 @@ export async function routeExecute(input: {
 		const namedAttempt = attempts.find((a) => a.target === named.id)
 		noContext(
 			attempts,
-			namedAttempt?.outcome === 'busy'
+			namedAttempt?.outcome === 'paused'
+				? `${named.name} is paused, so it takes no runs. Its operator or someone with Manage on it can resume it with \`kody daemon resume --context ${named.name}\` or executionContextResume. A named context never falls back; pass fallback: "chain" to use your chain instead.`
+				: namedAttempt?.outcome === 'busy'
 				? `${named.name} is busy: it is already running as many runs as it allows at once, so it could not take this run. A named context never falls back; try again when one of its runs finishes, or pass fallback: "chain" to use your chain instead.`
 				: `${named.name} could not take this run (${describeAttempts(attempts)}). A named context never falls back; pass fallback: "chain" to use your chain instead.`,
 		)
