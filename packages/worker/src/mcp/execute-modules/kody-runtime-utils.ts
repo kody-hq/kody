@@ -18,14 +18,10 @@ export type KodyNamespace = Record<
 >
 
 /** Non-secret config the host returns for `createAuthenticatedFetch`. */
-type IntegrationConfig = {
+export type IntegrationConfig = {
 	name: string
 	apiBaseUrl?: string | null
 	requiredHosts?: Array<string>
-}
-
-type IntegrationConfigResult = {
-	integration: IntegrationConfig | null
 }
 
 /**
@@ -81,20 +77,22 @@ export const EXECUTE_HELPER_CAPABILITY_NAMES = [
 	'integrationTokenRefresh',
 ] as const
 
+/**
+ * What host-side `createAuthenticatedFetch` needs from origin: the non-secret
+ * config read and the token refresh. Both act as one package stamp fixed when
+ * the authority is built (`createHostIntegrationAuthority`), so a refresh can
+ * never run as a different package than the request it retries (#4889).
+ */
+export type HostIntegrationAuthority = {
+	readConfig: (providerName: string) => Promise<IntegrationConfig | null>
+	refresh: (providerName: string) => Promise<{ ok: true; refreshed: boolean }>
+}
+
 async function refreshIntegrationTokensHostSide(
-	kody: KodyNamespace,
+	authority: HostIntegrationAuthority,
 	providerName: string,
 ) {
-	const tokenRefresh = kody.integrationTokenRefresh
-	if (typeof tokenRefresh !== 'function') {
-		throw new Error(
-			'kody.integrationTokenRefresh is not available in this sandbox.',
-		)
-	}
-	const result = (await tokenRefresh({ name: providerName })) as {
-		ok?: unknown
-		refreshed?: unknown
-	} | null
+	const result = await authority.refresh(providerName)
 	if (result?.ok !== true) {
 		throw new Error(
 			`Host-side token refresh for integration "${providerName}" did not succeed.`,
@@ -104,7 +102,7 @@ async function refreshIntegrationTokensHostSide(
 }
 
 export async function createAuthenticatedFetch(
-	kody: KodyNamespace,
+	authority: HostIntegrationAuthority,
 	providerName: string,
 	options?: {
 		/**
@@ -118,7 +116,10 @@ export async function createAuthenticatedFetch(
 ): Promise<
 	(input: ExecuteRequestInput, init?: RequestInit) => Promise<Response>
 > {
-	const integration = await readIntegrationConfig(kody, providerName)
+	const integration = await authority.readConfig(providerName)
+	if (!integration) {
+		throw new Error(`Integration "${providerName}" was not found.`)
+	}
 	const doFetch = options?.fetch ?? fetch
 
 	// Both lanes refresh host-side (integrationTokenRefresh) and retry with
@@ -129,7 +130,10 @@ export async function createAuthenticatedFetch(
 	// Null when the connection has nothing to refresh (non-expiring grant);
 	// retrying with the same token would only repeat the failure.
 	const retryAuthorizationHeader = async () => {
-		const refreshed = await refreshIntegrationTokensHostSide(kody, providerName)
+		const refreshed = await refreshIntegrationTokensHostSide(
+			authority,
+			providerName,
+		)
 		return refreshed
 			? buildAccessTokenAuthorizationHeader(providerName, integration)
 			: null
@@ -281,26 +285,6 @@ export async function oauthClientCredentials(
 	}
 	// The fetch gateway sealed access_token and refresh_token (ADR 0068).
 	return payload as Record<string, unknown>
-}
-
-async function readIntegrationConfig(
-	kody: KodyNamespace,
-	providerName: string,
-) {
-	const readConfig = kody[INTEGRATION_RUNTIME_CONFIG_TOOL_NAME]
-	if (typeof readConfig !== 'function') {
-		throw new Error(
-			'createAuthenticatedFetch is not available in this sandbox.',
-		)
-	}
-	const result = (await readConfig({
-		name: providerName,
-	})) as IntegrationConfigResult
-	const integration = result?.integration ?? null
-	if (!integration) {
-		throw new Error(`Integration "${providerName}" was not found.`)
-	}
-	return integration
 }
 
 function buildAccessTokenAuthorizationHeader(

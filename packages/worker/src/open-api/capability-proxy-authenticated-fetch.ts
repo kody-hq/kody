@@ -5,8 +5,7 @@ import {
 } from '#mcp/capabilities/integrations/read-bounded-body.ts'
 import { createAuthenticatedFetch } from '#mcp/execute-modules/kody-runtime-utils.ts'
 import { executeGatewayFetch } from '#mcp/fetch-gateway.ts'
-import { buildKodyFns } from '#mcp/run-kody-registry.ts'
-import { refreshIntegrationTokenForPackage } from '#mcp/capabilities/integrations/integration-token-refresh.ts'
+import { createHostIntegrationAuthority } from '#mcp/capabilities/integrations/host-integration-authority.ts'
 import { secretAuthorityHeaderName } from '#mcp/secrets/secret-authority.ts'
 import { claimedPackageStamp } from '#worker/credentials/package-stamp.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
@@ -182,23 +181,14 @@ export async function runCapabilityProxyAuthenticatedFetch(input: {
 				packageId: call.packageId,
 			})
 		: null
-	const callerKody = await buildKodyFns(input.ctx.env, input.ctx.callerContext)
-	// The caller-built `kody` has no package stamp, so a host-side refresh
-	// would hit the package lock as ad-hoc execute (#4889). Refresh as the
-	// verified binding, claimed like the gateway fetch below.
-	const kody = stampedPackageId
-		? {
-				...callerKody,
-				integrationTokenRefresh: async (args: Record<string, unknown>) =>
-					refreshIntegrationTokenForPackage({
-						env: input.ctx.env,
-						callerContext: input.ctx.callerContext,
-						...(input.ctx.waitUntil ? { waitUntil: input.ctx.waitUntil } : {}),
-						packageStamp: claimedPackageStamp(stampedPackageId),
-						name: String(args.name ?? ''),
-					}),
-			}
-		: callerKody
+	// Config read, gateway fetch, and refresh all act as the verified local
+	// binding, claimed. Never the run's attested storage package.
+	const authority = createHostIntegrationAuthority({
+		env: input.ctx.env,
+		callerContext: input.ctx.callerContext,
+		...(input.ctx.waitUntil ? { waitUntil: input.ctx.waitUntil } : {}),
+		packageStamp: claimedPackageStamp(stampedPackageId),
+	})
 	const existingStorage = input.ctx.callerContext.storageContext
 	const storageContext = {
 		sessionId: existingStorage?.sessionId ?? null,
@@ -225,7 +215,7 @@ export async function runCapabilityProxyAuthenticatedFetch(input: {
 		})
 	}
 	const authenticatedFetch = await createAuthenticatedFetch(
-		kody,
+		authority,
 		call.providerName,
 		{ fetch: gatewayFetch },
 	)
