@@ -54,6 +54,7 @@ function isCurrentAppUrl(value) {
 const windows = new Map()
 let lastWindow
 let windowOpening
+let pendingWindows = 0
 function currentWindow() {
 	const focused = BrowserWindow.getFocusedWindow()
 	return windows.has(focused) ? focused : lastWindow
@@ -323,12 +324,21 @@ async function showApp(path, window = currentWindow()) {
 	if (!quitting && window && !window.isDestroyed()) showWindow(window, path)
 	return window
 }
+function quitWithoutWindows() {
+	if (process.platform !== 'darwin' && !windows.size && !pendingWindows)
+		app.quit()
+}
 async function newWindow(path) {
+	if (quitting) return
+	pendingWindows++
 	try {
 		return await createWindow(path)
 	} catch (error) {
 		if (!quitting)
 			dialog.showErrorBox('Could not open Kody window', error.message)
+	} finally {
+		pendingWindows--
+		if (!quitting) quitWithoutWindows()
 	}
 }
 function showWindow(window, path) {
@@ -504,9 +514,7 @@ if (!app.requestSingleInstanceLock()) app.quit()
 else {
 	app.on('second-instance', () => showApp())
 	app.on('activate', () => showApp())
-	app.on('window-all-closed', () => {
-		if (process.platform !== 'darwin') app.quit()
-	})
+	app.on('window-all-closed', quitWithoutWindows)
 	app.on('before-quit', (event) => {
 		loginAttempt?.cancel()
 		if (quitting) return

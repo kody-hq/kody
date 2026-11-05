@@ -11,6 +11,8 @@ function fixture(platform = 'darwin') {
 	let capabilities
 	let quitting = 0
 	let nextLoadError
+	let windowProbe
+	let failWindowCreation = false
 	let focusedWindow
 	let menu
 	const ipc = new Map()
@@ -47,6 +49,7 @@ function fixture(platform = 'darwin') {
 		}
 		constructor() {
 			super()
+			if (failWindowCreation) throw new Error('Window creation failed')
 			this.loads = []
 			this.visible = true
 			this.destroyed = false
@@ -134,7 +137,7 @@ function fixture(platform = 'darwin') {
 					ipc.set(name, handler)
 				},
 			},
-			net: { fetch: async () => ({ ok: false }) },
+			net: { fetch: async () => windowProbe ?? { ok: false } },
 		},
 		'./updates.cjs': { startUpdates() {}, finishQuit: async () => app.quit() },
 		'./browser-login.cjs': {
@@ -202,6 +205,16 @@ function fixture(platform = 'darwin') {
 		},
 		show: (path, window) => context.showApp(path, window),
 		newWindow: (path) => context.newWindow(path),
+		pauseWindowProbe: () => {
+			let resume
+			windowProbe = new Promise((resolve) => {
+				resume = () => resolve({ ok: false })
+			})
+			return resume
+		},
+		failWindowCreation: () => {
+			failWindowCreation = true
+		},
 		menu: () => menu,
 		ipc: (
 			name,
@@ -465,4 +478,36 @@ test('browser sign-in returns to its originating window and another window canno
 	const canceled = f.ipc('authentication', first, 'login')
 	first.close()
 	assert.deepEqual(Object.keys(await canceled), [])
+})
+
+for (const fails of [false, true]) {
+	test(`Windows waits for a requested window before closing the app, creation ${fails ? 'fails' : 'succeeds'}`, async () => {
+		const f = fixture('win32')
+		await f.start()
+		await f.finish()
+		const resume = f.pauseWindowProbe()
+		const opening = f.newWindow('/next')
+		f.windows[0].close()
+		f.app.emit('window-all-closed')
+		assert.equal(f.quitCount(), 0)
+		if (fails) f.failWindowCreation()
+		resume()
+		const window = await opening
+		assert.equal(f.quitCount(), fails ? 1 : 0)
+		if (!fails) assert.equal(window.loads[0], 'https://kody.codes/next')
+	})
+}
+
+test('explicit Quit still cancels pending window creation', async () => {
+	const f = fixture('win32')
+	await f.start()
+	await f.finish()
+	const resume = f.pauseWindowProbe()
+	const opening = f.newWindow()
+	f.app.emit('before-quit', { preventDefault() {} })
+	resume()
+	assert.equal(await opening, undefined)
+	assert.equal(f.windows.length, 1)
+	await new Promise(setImmediate)
+	assert.equal(f.quitCount(), 1)
 })
