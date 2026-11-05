@@ -196,6 +196,8 @@ export async function runWithDurableEscalation<T>(input: {
 		kodyId: string
 		sourceId?: string | null
 	} | null
+	/** Package commit the operation targets; recorded on the workflow run. */
+	enqueuedCommit?: string | null
 	durableCode: string
 	durableParams?: Record<string, unknown>
 	run: (signal: AbortSignal) => Promise<T>
@@ -323,6 +325,7 @@ export async function runWithDurableEscalation<T>(input: {
 			userId: input.userId,
 			userEmail: input.userEmail,
 			packageContext: input.packageContext ?? null,
+			enqueuedCommit: input.enqueuedCommit ?? null,
 			body: createBody,
 			lineage: input.lineage,
 		})
@@ -340,6 +343,7 @@ export async function runWithDurableEscalation<T>(input: {
 				userId: input.userId,
 				userEmail: input.userEmail,
 				packageContext: input.packageContext ?? null,
+				enqueuedCommit: input.enqueuedCommit ?? null,
 				body: createBody,
 				lineage: input.lineage,
 			})

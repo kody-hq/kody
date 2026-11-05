@@ -72,6 +72,9 @@ import {
 } from '#worker/run-records/service.ts'
 import {
 	creatingWorkflowProjectionStatus,
+	decodeWorkflowProjectionCursor,
+	encodeWorkflowProjectionCursor,
+	isAfterWorkflowProjectionCursor,
 	isWorkflowBindingName,
 	parseWorkflowProjectionSourceRevision,
 	workflowProjectionReservationStatuses,
@@ -192,6 +195,8 @@ export type DynamicCallableWorkflowPayload =
 			planDate: string | null
 			params?: PackageWorkflowParams
 			lineage?: RequestLineage
+			/** Package commit the launching operation targets (for example a publish). */
+			enqueuedCommit?: string
 	  }
 
 export type WorkflowRunInspection = {
@@ -562,15 +567,21 @@ function createInlineWorkflowPayload(input: {
 	params?: PackageWorkflowParams | null
 	planDate?: string | null
 	lineage: RequestLineage | null
+	enqueuedCommit?: string | null
 }): DynamicCallableWorkflowPayload {
 	const runAt = normalizeRunAt(input.runAt)
 	const idempotencyKey = normalizeWorkflowIdempotencyKey(input.idempotencyKey)
 	const params = normalizePackageWorkflowParams(input.params)
+	const packageContext = input.packageContext ?? null
+	const enqueuedCommit = packageContext
+		? input.enqueuedCommit?.trim() || null
+		: null
 	return {
 		version: 3,
 		sourceType: 'inline',
 		userId: normalizeOwnerId(input.userId, 'userId'),
-		packageContext: input.packageContext ?? null,
+		packageContext,
+		...(enqueuedCommit ? { enqueuedCommit } : {}),
 		workflowName: normalizeOptionalWorkflowName(
 			input.workflowName,
 			inlineWorkflowNameFallback,
@@ -688,6 +699,10 @@ function validateDynamicCallableWorkflowPayload(
 		return createInlineWorkflowPayload({
 			userId: String(record['userId'] ?? '') as OwnerId,
 			packageContext,
+			enqueuedCommit:
+				typeof record['enqueuedCommit'] === 'string'
+					? record['enqueuedCommit']
+					: null,
 			workflowName:
 				typeof record['workflowName'] === 'string'
 					? record['workflowName']
@@ -909,16 +924,14 @@ function buildWorkflowProjectionUpsert(input: {
 	createdAt?: string | null
 }): WorkflowProjectionUpsertInput {
 	const now = input.now ?? new Date().toISOString()
+	const provenance = workflowPayloadProvenance(input.payload)
 	return {
 		id: input.id,
 		bindingName: dynamicCallableWorkflowsBindingName,
 		sourceType: input.payload.sourceType,
-		packageId:
-			input.payload.sourceType === 'package' ? input.payload.packageId : null,
-		kodyId:
-			input.payload.sourceType === 'package' ? input.payload.kodyId : null,
-		sourceId:
-			input.payload.sourceType === 'package' ? input.payload.sourceId : null,
+		packageId: provenance?.packageId ?? null,
+		kodyId: provenance?.kodyId ?? null,
+		sourceId: provenance?.sourceId ?? null,
 		workflowName: input.payload.workflowName,
 		exportName:
 			input.payload.sourceType === 'package' ? input.payload.exportName : null,
@@ -930,12 +943,31 @@ function buildWorkflowProjectionUpsert(input: {
 		updatedAt: now,
 		completedAt: input.completedAt ?? null,
 		lastError: input.lastError ?? null,
+		enqueuedCommit: input.payload.enqueuedCommit ?? null,
 		...(input.payload.sourceType === 'package'
-			? {
-					enqueuedCommit: input.payload.enqueuedCommit ?? null,
-					sourceRevision: payloadSourceRevision(input.payload),
-				}
+			? { sourceRevision: payloadSourceRevision(input.payload) }
 			: {}),
+	}
+}
+
+/**
+ * Package a run belongs to: the package export itself, or the package context
+ * an inline run was launched under (for example a durable publish), so
+ * `package_id` filters find both after the idempotency key is released.
+ */
+function workflowPayloadProvenance(payload: DynamicCallableWorkflowPayload) {
+	if (payload.sourceType === 'package') {
+		return {
+			packageId: payload.packageId,
+			kodyId: payload.kodyId,
+			sourceId: payload.sourceId,
+		}
+	}
+	if (!payload.packageContext) return null
+	return {
+		packageId: payload.packageContext.packageId,
+		kodyId: payload.packageContext.kodyId,
+		sourceId: payload.packageContext.sourceId ?? null,
 	}
 }
 
@@ -965,7 +997,15 @@ function payloadFromWorkflowInspection(
 		version: 3,
 		sourceType: 'inline',
 		userId: row.userId,
-		packageContext: null,
+		packageContext:
+			row.packageId && row.kodyId
+				? {
+						packageId: row.packageId,
+						kodyId: row.kodyId,
+						sourceId: row.sourceId,
+					}
+				: null,
+		...(row.enqueuedCommit ? { enqueuedCommit: row.enqueuedCommit } : {}),
 		workflowName: row.workflowName,
 		code: '',
 		idempotencyKey: row.idempotencyKey,
@@ -1117,6 +1157,7 @@ async function resolveWorkflowPayload(input: {
 	} | null
 	body: PackageWorkflowCreateInput
 	lineage: RequestLineage
+	enqueuedCommit?: string | null
 }): Promise<DynamicCallableWorkflowPayload> {
 	const body = input.body as PackageWorkflowCreateInput &
 		Record<string, unknown>
@@ -1132,6 +1173,7 @@ async function resolveWorkflowPayload(input: {
 		return createInlineWorkflowPayload({
 			userId: input.userId,
 			packageContext: input.packageContext,
+			enqueuedCommit: input.enqueuedCommit,
 			workflowName: input.body.workflowName,
 			code,
 			idempotencyKey: input.body.idempotencyKey,
@@ -1238,6 +1280,12 @@ export async function createDynamicCallableWorkflow(input: {
 	body: PackageWorkflowCreateInput
 	/** The run that starts the workflow; every step inherits it. */
 	lineage: RequestLineage
+	/**
+	 * Inline runs with a packageContext: the package commit the launching
+	 * operation targets, recorded as enqueued_commit. Package exports resolve
+	 * their own published commit.
+	 */
+	enqueuedCommit?: string | null
 }): Promise<PackageWorkflowCreateResult> {
 	const env = input.env as Env
 	const workflowBinding = resolveWorkflowEngineBinding(
@@ -1674,8 +1722,32 @@ export async function listWorkflowRunsForUser(input: {
 	limit?: number
 	filter?: ListWorkflowRunsForUserFilter | null
 }): Promise<Array<WorkflowRunInspection>> {
+	return (await listWorkflowRunPageForUser(input)).workflows
+}
+
+export class InvalidWorkflowRunCursorError extends Error {
+	constructor() {
+		super('cursor is not a valid workflowRunList next_cursor value.')
+		this.name = 'InvalidWorkflowRunCursorError'
+	}
+}
+
+/** One newest-first page of workflow runs; pass `nextCursor` back for the next page. */
+export async function listWorkflowRunPageForUser(input: {
+	env: Pick<Env, 'DYNAMIC_CALLABLE_WORKFLOWS' | 'RUN_LOG'>
+	userId: OwnerId
+	limit?: number
+	cursor?: string | null
+	filter?: ListWorkflowRunsForUserFilter | null
+}): Promise<{
+	workflows: Array<WorkflowRunInspection>
+	nextCursor: string | null
+}> {
 	const env = input.env as Env
 	const limit = Math.min(Math.max(input.limit ?? 25, 1), 100)
+	const cursor = input.cursor?.trim() || null
+	const cursorPosition = cursor ? decodeWorkflowProjectionCursor(cursor) : null
+	if (cursor && !cursorPosition) throw new InvalidWorkflowRunCursorError()
 	const filter = input.filter ?? null
 	const statusFilter = filter?.status?.trim() || null
 	const shared = {
@@ -1691,6 +1763,7 @@ export async function listWorkflowRunsForUser(input: {
 		const listed = await listWorkflowProjections({
 			...shared,
 			limit,
+			cursor,
 		})
 		const rows = listed.projections.map((projection) =>
 			mapWorkflowProjectionToInspection(projection, input.userId),
@@ -1701,7 +1774,7 @@ export async function listWorkflowRunsForUser(input: {
 			rows,
 			forceRefresh: false,
 		})
-		return rows
+		return { workflows: rows, nextCursor: listed.nextCursor }
 	}
 
 	// Exact SQL matches plus every active projection (page through; max plan
@@ -1714,12 +1787,19 @@ export async function listWorkflowRunsForUser(input: {
 			...shared,
 			status: statusFilter,
 			limit,
+			cursor,
 		}),
 		listAllActiveWorkflowProjections(shared),
 	])
 	const byId = new Map<string, WorkflowRunInspection>()
 	for (const projection of [...exact.projections, ...activeProjections]) {
 		if (byId.has(projection.id)) continue
+		if (
+			cursorPosition &&
+			!isAfterWorkflowProjectionCursor(projection, cursorPosition)
+		) {
+			continue
+		}
 		byId.set(
 			projection.id,
 			mapWorkflowProjectionToInspection(projection, input.userId),
@@ -1732,14 +1812,20 @@ export async function listWorkflowRunsForUser(input: {
 		rows,
 		forceRefresh: true,
 	})
-	return rows
+	const matching = rows
 		.filter((row) => row.status === statusFilter)
 		.sort((left, right) => {
 			const byCreated = right.createdAt.localeCompare(left.createdAt)
 			if (byCreated !== 0) return byCreated
 			return right.id.localeCompare(left.id)
 		})
-		.slice(0, limit)
+	const workflows = matching.slice(0, limit)
+	const last = workflows[workflows.length - 1]
+	const hasMore = matching.length > limit || exact.nextCursor !== null
+	return {
+		workflows,
+		nextCursor: hasMore && last ? encodeWorkflowProjectionCursor(last) : null,
+	}
 }
 
 async function listAllActiveWorkflowProjections(shared: {

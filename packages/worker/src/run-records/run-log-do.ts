@@ -53,6 +53,7 @@ import {
 	type WorkflowProjectionUpsertInput,
 	creatingWorkflowProjectionStatus,
 	parseWorkflowProjectionSourceRevision,
+	publishProvenanceFromIdempotencyKey,
 	workflowProjectionActiveStatuses,
 	workflowProjectionCreatingTtlMs,
 	workflowProjectionReservationStatuses,
@@ -108,7 +109,7 @@ const metaSchemaVersionKey = 'schema_version'
 /** YYYYMMDD coverage floor for warm v12→v13 (no backfill). Fresh DOs omit this. */
 const metaRunDayCountsSinceKey = 'run_day_counts_since'
 /** Bump when initializeSchema's DDL set changes; warm objects skip DDL. */
-const runLogSchemaVersion = 18
+const runLogSchemaVersion = 19
 
 function utcDayToMetaInt(day: string): number {
 	return Number(day.replaceAll('-', ''))
@@ -1027,6 +1028,9 @@ class RunLogBase extends DurableObject<Env> {
 		if (installedVersion != null && installedVersion < 14) {
 			this.migrateWorkflowProjectionSourceRevisionForV14()
 		}
+		if (installedVersion != null && installedVersion < 19) {
+			this.backfillPublishWorkflowProvenanceForV19()
+		}
 		this.ctx.storage.sql.exec(
 			`CREATE INDEX IF NOT EXISTS idx_workflow_projections_created
 			ON workflow_projections(created_at DESC, id DESC)`,
@@ -1249,6 +1253,36 @@ class RunLogBase extends DurableObject<Env> {
 			} catch {
 				// Column already present on a partially migrated object.
 			}
+		}
+	}
+
+	/**
+	 * Additive: durable publish rows queued before package_id/enqueued_commit
+	 * were recorded get them from their unreleased idempotency key. Only null
+	 * columns are filled; keys and timestamps are untouched.
+	 */
+	private backfillPublishWorkflowProvenanceForV19() {
+		const rows = this.ctx.storage.sql
+			.exec<{ id: string; idempotency_key: string }>(
+				`SELECT id, idempotency_key FROM workflow_projections
+				WHERE workflow_name = 'packagePublishExternalPush'
+					AND package_id IS NULL
+					AND idempotency_key NOT LIKE 'released:%'`,
+			)
+			.toArray()
+		for (const row of rows) {
+			const provenance = publishProvenanceFromIdempotencyKey(
+				String(row.idempotency_key),
+			)
+			if (!provenance) continue
+			this.ctx.storage.sql.exec(
+				`UPDATE workflow_projections
+				SET package_id = ?, enqueued_commit = COALESCE(enqueued_commit, ?)
+				WHERE id = ? AND package_id IS NULL`,
+				provenance.packageId,
+				provenance.commit,
+				String(row.id),
+			)
 		}
 	}
 
