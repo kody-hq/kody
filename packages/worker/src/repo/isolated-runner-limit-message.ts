@@ -1,6 +1,6 @@
 import {
-	formatLargestNonRuntimePaths,
-	type LargePathHint,
+	formatPublishSizeHints,
+	type PublishSizeHints,
 } from './publish-size-hints.ts'
 
 const heavyWorkOffloadGuideId = 'heavy_work_offload'
@@ -175,11 +175,11 @@ const publishComputeLimitPhrase = 'exceeded a Kody compute limit'
  * Caller-facing copy when one publish step, already running in its own
  * throwaway isolate, still hits the Durable Object CPU time or memory limit.
  * A plain retry of the same tree usually hits the same limit; this is never
- * a storage outage. `largestPaths` names what the author could `.kodyignore`.
+ * a storage outage. `sizeHints` names what the step had to process.
  */
 export function publishComputeLimitMessage(
 	step: RepoCheckStep | null = null,
-	largestPaths: Array<LargePathHint> = [],
+	sizeHints: PublishSizeHints | null = null,
 ) {
 	const where = step ? ` during ${repoCheckStepLabel(step)}` : ''
 	return [
@@ -187,7 +187,7 @@ export function publishComputeLimitMessage(
 			`memory)${where}, so it stopped before it finished. This is not a ` +
 			`storage outage. ${resourceLimitVarianceNote}`,
 		repoCheckStepResourceLimitAdvice(step),
-		formatLargestNonRuntimePaths(largestPaths),
+		formatPublishSizeHints(sizeHints),
 		'`kody dev check` runs the same checks under the same limits, so use ' +
 			'it to confirm a fix before publishing again.',
 	]

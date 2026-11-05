@@ -1884,6 +1884,14 @@ class RunLogBase extends DurableObject<Env> {
 		startedAt: string
 		parentRunId?: string | null
 		finishedAt?: string
+		/** Overrides for callers that know why the row stopped. */
+		reason?: {
+			errorName: string
+			errorMessage: string
+			errorTriage: RunErrorTriage | null
+			triageNote: string | null
+			triagedBy: string | null
+		}
 	}) {
 		const existing = this.ctx.storage.sql
 			.exec<{
@@ -1907,10 +1915,19 @@ class RunLogBase extends DurableObject<Env> {
 			Number.isFinite(startedMs) && Number.isFinite(finishedMs)
 				? Math.max(0, finishedMs - startedMs)
 				: null
-		const errorTriage = runErrorTriageForPlatformInterrupt({
-			surface: input.surface,
-			idempotencyKey: input.idempotencyKey,
-		})
+		const errorTriage =
+			input.reason !== undefined
+				? input.reason.errorTriage
+				: runErrorTriageForPlatformInterrupt({
+						surface: input.surface,
+						idempotencyKey: input.idempotencyKey,
+					})
+		const triageNote = errorTriage
+			? (input.reason?.triageNote ?? platformInterruptTriageNote)
+			: null
+		const triagedBy = errorTriage
+			? (input.reason?.triagedBy ?? platformInterruptTriagedBy)
+			: null
 		// Scheduled ticks must be able to claim the occurrence again after a
 		// stranded `running` row is interrupted. Clearing the key keeps the
 		// interrupted attempt as visible history without consuming the slot.
@@ -1933,12 +1950,12 @@ class RunLogBase extends DurableObject<Env> {
 			WHERE id = ? AND status = 'running'`,
 			finishedAt,
 			durationMs,
-			runRecordPlatformInterruptedErrorName,
-			runRecordPlatformInterruptedErrorMessage,
+			input.reason?.errorName ?? runRecordPlatformInterruptedErrorName,
+			input.reason?.errorMessage ?? runRecordPlatformInterruptedErrorMessage,
 			errorTriage,
-			errorTriage ? platformInterruptTriageNote : null,
+			triageNote,
 			errorTriage ? finishedAt : null,
-			errorTriage ? platformInterruptTriagedBy : null,
+			triagedBy,
 			finishedAt,
 			releaseScheduledJobKey ? 1 : 0,
 			input.id,
@@ -4229,6 +4246,67 @@ class RunLogBase extends DurableObject<Env> {
 		}
 	}
 
+	/**
+	 * Make every still-`running` row of one durable workflow instance terminal.
+	 * A step attempt whose isolate was killed (CPU or memory limit, eviction)
+	 * never reaches its finish write, so the next attempt, or the workflow's
+	 * own terminal transition, closes those rows here with the given reason.
+	 */
+	async interruptRunningWorkflowRuns(input: {
+		workflowId: string
+		excludeRunId?: string | null
+		errorName: string
+		errorMessage: string
+		errorTriage: RunErrorTriage | null
+		triageNote: string | null
+		triagedBy: string | null
+	}): Promise<Array<RunRecord>> {
+		const workflowId = input.workflowId.trim()
+		if (!workflowId) return []
+		const rows = this.execSqlTracked<{
+			id: string
+			started_at: string
+			idempotency_key: string | null
+		}>(
+			'healStaleRunning',
+			`SELECT id, started_at, idempotency_key FROM runs
+			WHERE workflow_id = ? AND surface = 'workflow' AND status = 'running'
+			LIMIT ?`,
+			workflowId,
+			maxStaleRunningReconcilesPerPass,
+		).toArray()
+		const finishedAt = new Date().toISOString()
+		const ids: Array<string> = []
+		for (const row of rows) {
+			if (input.excludeRunId && row.id === input.excludeRunId) continue
+			this.markRunningInterrupted({
+				id: row.id,
+				surface: 'workflow',
+				idempotencyKey: row.idempotency_key,
+				startedAt: row.started_at,
+				finishedAt,
+				reason: {
+					errorName: input.errorName,
+					errorMessage: input.errorMessage,
+					errorTriage: input.errorTriage,
+					triageNote: input.triageNote,
+					triagedBy: input.triagedBy,
+				},
+			})
+			ids.push(row.id)
+		}
+		if (ids.length === 0) return []
+		await this.ensureRetentionAlarm()
+		const placeholders = ids.map(() => '?').join(', ')
+		return this.execSqlTracked<Record<string, SqlStorageValue>>(
+			'healStaleRunning',
+			`SELECT r.* FROM runs r WHERE r.id IN (${placeholders})`,
+			...ids,
+		)
+			.toArray()
+			.map((row) => mapRunRow(row, Number(row['log_count'] ?? 0) || 0))
+	}
+
 	async dashboardBuckets(input: { since: string; until: string }): Promise<{
 		buckets: Array<WorkspaceRunBucket>
 		countsSince: string | null
@@ -5098,6 +5176,15 @@ export type RunLogRpc = DurableObjectPitrRpc & {
 	getRun: (input: {
 		runId: string
 	}) => Promise<{ run: RunRecord; logs: Array<RunRecordLog> } | null>
+	interruptRunningWorkflowRuns: (input: {
+		workflowId: string
+		excludeRunId?: string | null
+		errorName: string
+		errorMessage: string
+		errorTriage: RunErrorTriage | null
+		triageNote: string | null
+		triagedBy: string | null
+	}) => Promise<Array<RunRecord>>
 	getRunByIdempotencyKey: (input: {
 		idempotencyKey: string
 		surface?: RunSurface | null

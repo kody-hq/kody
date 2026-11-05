@@ -79,6 +79,7 @@ import { adminAccountWriteLeaseRepairCapability } from './admin-account-write-le
 import { adminPersonalOrgRepairCapability } from './admin-personal-org-repair.ts'
 import { adminUserMeterParityCapability } from './admin-user-meter-parity.ts'
 import { adminRunLogSqlBillingCapability } from './admin-run-log-sql-billing.ts'
+import { adminWorkflowStoppedAttemptsCloseCapability } from './admin-workflow-stopped-attempts-close.ts'
 import { adminUserMeterStorageReconcileCapability } from './admin-user-meter-storage-reconcile.ts'
 import { adminMailboxMaintenanceCapability } from './admin-mailbox-maintenance.ts'
 import { adminReservedUsernameAddCapability } from './admin-reserved-username-add.ts'
@@ -195,6 +196,7 @@ export const adminDomain = defineDomain({
 		adminEmailDestinationVerifyCapability,
 		adminUserMeterParityCapability,
 		adminRunLogSqlBillingCapability,
+		adminWorkflowStoppedAttemptsCloseCapability,
 		adminPackagePlacementFailuresCapability,
 		adminUserMeterStorageReconcileCapability,
 		adminMailboxMaintenanceCapability,

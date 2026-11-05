@@ -65,6 +65,11 @@ vi.mock('#worker/run-records/service.ts', () => ({
 	finishRunRecord: (
 		...args: Parameters<typeof RunRecordsServiceModule.finishRunRecord>
 	) => runRecordMocks.finishRunRecord(...args),
+	closeStoppedWorkflowAttemptRuns: (
+		...args: Parameters<
+			typeof RunRecordsServiceModule.closeStoppedWorkflowAttemptRuns
+		>
+	) => runRecordMocks.closeStoppedWorkflowAttemptRuns(...args),
 	updateRunErrorTriage: vi.fn(async () => ({ ok: true as const, run: {} })),
 	upsertWorkflowProjection: (...args: Array<unknown>) =>
 		runRecordMocks.upsertWorkflowProjection(
@@ -1065,4 +1070,89 @@ test('workflows.create validates sourceRevision', async () => {
 			sourceRevision: 'pinned',
 		}),
 	).rejects.toThrow('it has no published revision yet')
+})
+
+test('only the attempt that ends the workflow notifies run error subscribers, and later attempts close stopped ones', async () => {
+	runRecordMocks.resetProjections()
+	runRecordMocks.finishRunRecord.mockClear()
+	runRecordMocks.closeStoppedWorkflowAttemptRuns.mockClear()
+	const { step, attempts } = createRetryingStep()
+	const { created, run } = await queueWorkflow(
+		{
+			code: 'export default async function main() { return null }',
+			runAt,
+			idempotencyKey: 'retry-then-pass',
+		},
+		null,
+		{ step },
+	)
+	invocationMocks.runModuleWithRegistry.mockReset()
+	invocationMocks.runModuleWithRegistry
+		.mockResolvedValueOnce({
+			result: undefined,
+			error: 'Error: Execution timed out after 300s',
+			logs: [],
+		})
+		.mockResolvedValueOnce({
+			result: undefined,
+			error: 'Error: Execution timed out after 300s',
+			logs: [],
+		})
+		.mockResolvedValueOnce({ result: { ok: true }, logs: [] })
+
+	await run()
+	expect(attempts.get('execute inline workflow code')).toBe(3)
+	const finishes = runRecordMocks.finishRunRecord.mock.calls.map(([input]) => ({
+		status: input.status,
+		skip: input.skipErrorSubscriptions ?? false,
+	}))
+	expect(finishes).toEqual([
+		{ status: 'error', skip: true },
+		{ status: 'error', skip: true },
+		{ status: 'success', skip: false },
+	])
+	const outcomes =
+		runRecordMocks.closeStoppedWorkflowAttemptRuns.mock.calls.map(([input]) => [
+			input.workflowId,
+			input.outcome,
+		])
+	expect(outcomes).toEqual([
+		[created.id, 'retried'],
+		[created.id, 'retried'],
+		[created.id, 'succeeded'],
+	])
+	invocationMocks.runModuleWithRegistry.mockReset()
+})
+
+test('the final failed attempt notifies subscribers and closes stopped attempts as a failure', async () => {
+	runRecordMocks.resetProjections()
+	runRecordMocks.finishRunRecord.mockClear()
+	runRecordMocks.closeStoppedWorkflowAttemptRuns.mockClear()
+	const { step, attempts } = createRetryingStep()
+	const { created, run } = await queueWorkflow(
+		{
+			code: 'export default async function main() { return null }',
+			runAt,
+			idempotencyKey: 'always-fails',
+		},
+		null,
+		{ step },
+	)
+	invocationMocks.runModuleWithRegistry.mockReset()
+	invocationMocks.runModuleWithRegistry.mockResolvedValue({
+		result: undefined,
+		error: 'Error: boom',
+		logs: [],
+	})
+
+	await expect(run()).rejects.toThrow(/boom/)
+	expect(attempts.get('execute inline workflow code')).toBe(4)
+	const skips = runRecordMocks.finishRunRecord.mock.calls.map(
+		([input]) => input.skipErrorSubscriptions ?? false,
+	)
+	expect(skips).toEqual([true, true, true, false])
+	expect(
+		runRecordMocks.closeStoppedWorkflowAttemptRuns.mock.lastCall?.[0],
+	).toMatchObject({ workflowId: created.id, outcome: 'failed' })
+	invocationMocks.runModuleWithRegistry.mockReset()
 })

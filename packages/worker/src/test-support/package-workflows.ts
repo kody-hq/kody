@@ -161,6 +161,13 @@ export const packageWorkflowsRunRecordMocks = (() => {
 				_input: Parameters<typeof runRecordsServiceModule.finishRunRecord>[0],
 			) => {},
 		),
+		closeStoppedWorkflowAttemptRuns: vi.fn(
+			async (
+				_input: Parameters<
+					typeof runRecordsServiceModule.closeStoppedWorkflowAttemptRuns
+				>[0],
+			): Promise<Array<string>> => [],
+		),
 		upsertWorkflowProjection,
 		releaseWorkflowProjectionIdempotencyKey: vi.fn(
 			async (input: { env: Env; userId: string; id: string }) => {

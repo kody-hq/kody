@@ -59,6 +59,7 @@ import {
 } from '#worker/run-records/run-started-by.ts'
 import {
 	beginRunRecord,
+	closeStoppedWorkflowAttemptRuns,
 	deleteWorkflowProjectionIfCreating,
 	findWorkflowProjectionByIdempotencyKey,
 	finishRunRecord,
@@ -290,6 +291,14 @@ function workflowStepWillRetry(attempt: number | undefined) {
 		return false
 	}
 	return attempt <= workflowStepRetryLimit
+}
+
+function attemptWillRetry(
+	error: unknown,
+	stepCtx: WorkflowStepAttemptContext | undefined,
+) {
+	if (isAccountSuspendedError(error) || isNonRetryableError(error)) return false
+	return workflowStepWillRetry(stepCtx?.attempt)
 }
 
 const packageWorkflowTokenId = 'internal:package-workflows'
@@ -1955,6 +1964,16 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 					: 'execute inline workflow code',
 				workflowStepDoConfig,
 				async (stepCtx) => {
+					// An earlier attempt killed before its finish write (CPU or
+					// memory limit) left its run row `running`.
+					if ((stepCtx?.attempt ?? 1) > 1) {
+						await closeStoppedWorkflowAttemptRuns({
+							env: this.env,
+							userId: payload.userId,
+							workflowId: event.instanceId,
+							outcome: 'retried',
+						})
+					}
 					try {
 						if (payload.sourceType === 'package') {
 							return await this.invokePackageWorkflowExport(
@@ -1987,6 +2006,13 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				lastError: getErrorMessage(error),
 				completedAt: new Date().toISOString(),
 			})
+			await closeStoppedWorkflowAttemptRuns({
+				env: this.env,
+				userId: payload.userId,
+				workflowId: event.instanceId,
+				outcome: 'failed',
+				waitUntil: (promise) => this.ctx.waitUntil(promise),
+			})
 			await this.recordWorkflowRunUsage({
 				typedStep,
 				payload,
@@ -2005,6 +2031,12 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 			payload,
 			status: 'complete',
 			completedAt: new Date().toISOString(),
+		})
+		await closeStoppedWorkflowAttemptRuns({
+			env: this.env,
+			userId: payload.userId,
+			workflowId: event.instanceId,
+			outcome: 'succeeded',
 		})
 		await this.recordWorkflowRunUsage({
 			typedStep,
@@ -2194,23 +2226,24 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 			})
 			return result
 		} catch (error) {
+			// Suspension becomes NonRetryableError in the step wrapper — leave
+			// that run open, like a moved pinned revision. Other failures still
+			// retry up to the step limit.
+			const willRetry = attemptWillRetry(error, stepCtx)
 			await finishRunRecord({
 				env: this.env,
 				handle: runHandle,
 				status: 'error',
 				logs,
 				error,
+				// Only the attempt that ends the workflow notifies subscribers.
+				skipErrorSubscriptions: willRetry,
 			})
-			// Suspension becomes NonRetryableError in the step wrapper — leave
-			// that run open, like a moved pinned revision. Other failures still
-			// retry up to the step limit.
-			if (!isAccountSuspendedError(error) && !isNonRetryableError(error)) {
-				await this.markRetryableWorkflowRunIgnored({
-					userId: payload.userId,
-					runId: runHandle?.id,
-					willRetry: workflowStepWillRetry(stepCtx?.attempt),
-				})
-			}
+			await this.markRetryableWorkflowRunIgnored({
+				userId: payload.userId,
+				runId: runHandle?.id,
+				willRetry,
+			})
 			throw error
 		}
 	}
@@ -2306,20 +2339,20 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 			})
 			return value
 		} catch (error) {
+			const willRetry = attemptWillRetry(error, stepCtx)
 			await finishRunRecord({
 				env: this.env,
 				handle: runHandle,
 				status: 'error',
 				logs,
 				error,
+				skipErrorSubscriptions: willRetry,
 			})
-			if (!isAccountSuspendedError(error) && !isNonRetryableError(error)) {
-				await this.markRetryableWorkflowRunIgnored({
-					userId: payload.userId,
-					runId: runHandle?.id,
-					willRetry: workflowStepWillRetry(stepCtx?.attempt),
-				})
-			}
+			await this.markRetryableWorkflowRunIgnored({
+				userId: payload.userId,
+				runId: runHandle?.id,
+				willRetry,
+			})
 			throw error
 		}
 	}
