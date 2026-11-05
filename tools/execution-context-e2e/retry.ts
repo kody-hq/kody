@@ -1,7 +1,9 @@
 /**
- * Preview `kody context register` / execute hops that failed before a usable
- * HTTP response. Windows GHA has hit a bare `fetch failed` against the
- * preview API after the app-origin session already succeeded; retry once.
+ * Preview `kody context register` hops that failed before a usable HTTP
+ * response. Windows GHA has hit a bare `fetch failed` against the preview
+ * API after the app-origin session already succeeded; retry register once.
+ * Do not retry `execute`: it has no idempotency key, so a lost response
+ * would start a second run.
  */
 
 const retryableExecutionContextCliPatterns = [
@@ -30,6 +32,10 @@ export function isRetryableExecutionContextCliFailure(text: string) {
 	)
 }
 
-export function shouldRetryExecutionContextCli(error: unknown) {
+export function shouldRetryExecutionContextCli(
+	error: unknown,
+	args: ReadonlyArray<string> = [],
+) {
+	if (args[0] === 'execute') return false
 	return isRetryableExecutionContextCliFailure(cliFailureText(error))
 }

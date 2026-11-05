@@ -71,7 +71,7 @@ async function cli(env: NodeJS.ProcessEnv, args: Array<string>) {
 	try {
 		return runCli(env, args)
 	} catch (error) {
-		if (!shouldRetryExecutionContextCli(error)) throw error
+		if (!shouldRetryExecutionContextCli(error, args)) throw error
 		log(`retrying ${args.join(' ')} after a transient API fetch failure`)
 		await delay(cliRetryDelayMs)
 		return runCli(env, args)

@@ -45,7 +45,10 @@ test('shouldRetryExecutionContextCli reads execFileSync stdout', () => {
 		},
 	)
 	expect(cliFailureText(error)).toContain('fetch failed')
-	expect(shouldRetryExecutionContextCli(error)).toBe(true)
+	expect(shouldRetryExecutionContextCli(error, ['context', 'register'])).toBe(
+		true,
+	)
+	expect(shouldRetryExecutionContextCli(error, ['execute'])).toBe(false)
 	expect(
 		shouldRetryExecutionContextCli(new Error('The daemon never came online.')),
 	).toBe(false)
