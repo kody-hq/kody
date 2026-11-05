@@ -177,7 +177,9 @@ export function selfPublishReasonText(
 			if (matches.length === 0) return 'It can save and read its own data.'
 			const shown = matches
 				.slice(0, 3)
-				.map((match) => `${match.path}:${String(match.line)}`)
+				.map(
+					(match) => `${match.path}:${String(match.line)} (${match.pattern})`,
+				)
 				.join(', ')
 			const more =
 				matches.length > 3 ? ` and ${String(matches.length - 3)} more` : ''

@@ -279,7 +279,9 @@ export function AccountPackageApproveCapabilitiesRoute({
 						css={{ margin: 0, color: colors.textMuted }}
 						data-testid="package-self-publish-blocker-message"
 					>
-						{payload.selfPublishBlocker.message}
+						{payload.selfPublishBlocker.reasons.length > 0
+							? 'Agents cannot make this package internet-visible without you because:'
+							: payload.selfPublishBlocker.message}
 					</p>
 					{payload.selfPublishBlocker.reasons.length > 0 ? (
 						<ul

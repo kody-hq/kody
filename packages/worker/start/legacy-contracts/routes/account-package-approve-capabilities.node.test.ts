@@ -370,6 +370,8 @@ test('a declared need with no credential bound is listed, so the page never clai
 		'This package declares a credential need: resend (Send the weekly digest).',
 	)
 	expect(reasons).not.toMatch(/<code[^>]*>credential_needs</)
+	// The agent-facing message names the raw source id; the page lists reasons.
+	expect(visible).not.toContain('Source source-1 has')
 })
 
 test('a dependency-declared need and manifest capability fields are listed by name', async () => {
