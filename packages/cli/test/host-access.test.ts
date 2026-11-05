@@ -9,6 +9,11 @@ import { contextDir } from '../src/execution-context/keystore.js'
 
 const apiUrl = 'https://api.kody.test'
 
+// Absolute on this platform: grant paths are host paths.
+const p = (path: string) =>
+	process.platform === 'win32' ? `C:${path.replaceAll('/', '\\')}` : path
+const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
 function context(
 	hostAccess?: {
 		fs: Array<{ path: string; mode: 'ro' | 'rw' }>
@@ -89,31 +94,31 @@ async function run(
 test('host access notes name the layer that is off in both directions', () => {
 	assert.deepEqual(
 		hostAccessNotes(context({ fs: [], egress: { mode: 'public' } }), [
-			{ path: '/home/me/project', mode: 'rw' },
+			{ path: p('/home/me/project'), mode: 'rw' },
 		]),
 		[
-			"/home/me/project (local policy rw) is not in box's server grant, so runs cannot use it. Turn it on with: kody context grant allow /home/me/project --mode rw --context box",
+			`${p('/home/me/project')} (local policy rw) is not in box's server grant, so runs cannot use it. Turn it on with: kody context grant allow ${p('/home/me/project')} --mode rw --context box`,
 		],
 	)
 	assert.deepEqual(
 		hostAccessNotes(
 			context({
-				fs: [{ path: '/srv/data', mode: 'ro' }],
+				fs: [{ path: p('/srv/data'), mode: 'ro' }],
 				egress: { mode: 'public' },
 			}),
 			[],
 		),
 		[
-			"/srv/data (server grant ro) is not allowed by this machine's local policy, so runs cannot use it. The machine owner can allow it with: kody context policy allow /srv/data --mode ro",
+			`${p('/srv/data')} (server grant ro) is not allowed by this machine's local policy, so runs cannot use it. The machine owner can allow it with: kody context policy allow ${p('/srv/data')} --mode ro`,
 		],
 	)
 	assert.deepEqual(
 		hostAccessNotes(
 			context({
-				fs: [{ path: '/home/me', mode: 'rw' }],
+				fs: [{ path: p('/home/me'), mode: 'rw' }],
 				egress: { mode: 'public' },
 			}),
-			[{ path: '/home/me/project', mode: 'rw' }],
+			[{ path: p('/home/me/project'), mode: 'rw' }],
 		),
 		[],
 	)
@@ -127,13 +132,13 @@ test('host access notes name the layer that is off in both directions', () => {
 test('kody context grant allow adds one folder through PATCH and keeps the others', async () => {
 	const api = fakeApi(
 		context({
-			fs: [{ path: '/srv/data', mode: 'ro' }],
+			fs: [{ path: p('/srv/data'), mode: 'ro' }],
 			egress: { mode: 'public' },
 		}),
 	)
 	const text = await withHome(() =>
 		run(
-			['grant', 'allow', '/home/me/project'],
+			['grant', 'allow', p('/home/me/project')],
 			{ context: 'box', mode: 'rw' },
 			api.fetchFn,
 		),
@@ -149,16 +154,18 @@ test('kody context grant allow adds one folder through PATCH and keeps the other
 	assert.deepEqual(api.calls[2]!.body, {
 		grant: {
 			fs: [
-				{ path: '/home/me/project', mode: 'rw' },
-				{ path: '/srv/data', mode: 'ro' },
+				{ path: p('/home/me/project'), mode: 'rw' },
+				{ path: p('/srv/data'), mode: 'ro' },
 			],
 		},
 	})
 	assert.match(
 		text,
-		/^Added \/home\/me\/project \(rw\) to box's server grant\./,
+		new RegExp(
+			`^Added ${escape(p('/home/me/project'))} \\(rw\\) to box's server grant\\.`,
+		),
 	)
-	assert.match(text, /rw {2}\/home\/me\/project/)
+	assert.match(text, new RegExp(`rw {2}${escape(p('/home/me/project'))}`))
 })
 
 test('kody context grant lan on switches public egress and refuses an allowlist', async () => {
@@ -188,7 +195,7 @@ test('kody context grant never patches when the server withholds write access', 
 	await withHome(() =>
 		assert.rejects(
 			run(
-				['grant', 'allow', '/home/me/project'],
+				['grant', 'allow', p('/home/me/project')],
 				{ context: 'ec_box' },
 				api.fetchFn,
 			),
