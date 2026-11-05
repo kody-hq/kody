@@ -25,6 +25,7 @@ npm run control-kody -- browse --path /account/organizations/new
 npm run control-kody -- map waiting
 npm run control-kody -- map --check
 npm run control-kody -- health --sha <commit>
+npm run control-kody -- health --origin https://kody.codes --sha <merge-sha> --wait
 npm run control-kody -- preview --pr 42 --check /@user-me/-/waiting
 npm run control-kody -- browse --origin <preview> --path /@user-me/pkg [--record] [--screenshot .tmp/page.png] [--color-scheme light|dark|both]
 npm run control-kody -- package-create --origin <preview> --package-name <leaf-or-@scope/leaf> [--head-ahead] [--org <slug>]
@@ -45,7 +46,8 @@ drift), origin `/health`, and local APP_DB. Playwright passes only when
 `health --sha` succeeds when `/health` `commitSha` equals the argument, uniquely
 starts with it (git short SHA, 7+ characters), or is a descendant that contains
 it (`git merge-base --is-ancestor`). A later main HEAD deploy still counts as
-the merge being live.
+the merge being live. `--wait` polls every 20 seconds until that is true
+(default 30 minutes, `--wait-minutes <n>`), so do not write sleep loops.
 
 ## Feature Map
 

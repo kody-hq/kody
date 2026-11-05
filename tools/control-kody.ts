@@ -107,7 +107,7 @@ const usageLines = [
 	'  request         Authenticated HTTP as the current session',
 	'  preview         PR preview smoke (forwards flags to preview:manual-test)',
 	'  browse          Open headed Chromium already signed in (reuse seed cookie)',
-	'  health          GET /health and optionally assert commitSha',
+	'  health          GET /health and optionally assert commitSha (--wait polls until live)',
 	'  map             Print generated route inventory or a feature notes file; --check for drift',
 	'  package-create  Create a stub saved package via MCP (preview data)',
 	'  execute         Run an MCP execute module as the seed user',
@@ -141,6 +141,8 @@ const usageLines = [
 	'  --entity <ref>       Optional search entity ref',
 	'  --limit <n>          Optional search result limit',
 	'  --org <slug>         Bind execute, search, api, and package-create to this org',
+	'  --wait               health: poll every 20s until /health serves --sha or a descendant',
+	'  --wait-minutes <n>   health --wait: give up after n minutes (default 30)',
 	'  --help               Print this help',
 	'',
 	'preview forwards its flags to preview:manual-test (--pr, --request, --check).',
@@ -200,6 +202,8 @@ export type ControlKodyOptions = {
 	password: string | null
 	skipLogin: boolean
 	sha: string | null
+	wait: boolean
+	waitMinutes: number
 	featureId: string | null
 	check: boolean
 	request: SessionRequestSpec | null
@@ -271,6 +275,8 @@ export function parseControlArgs(argv: Array<string>): ControlKodyOptions {
 		password: null,
 		skipLogin: false,
 		sha: null,
+		wait: false,
+		waitMinutes: defaultHealthWaitMinutes,
 		featureId: null,
 		check: false,
 		request: null,
@@ -450,6 +456,21 @@ function parseSharedFlags(
 			}
 			case '--sha': {
 				options.sha = requireValue(argv[index + 1], '--sha')
+				index += 1
+				break
+			}
+			case '--wait': {
+				options.wait = true
+				break
+			}
+			case '--wait-minutes': {
+				const raw = requireValue(argv[index + 1], '--wait-minutes')
+				if (!/^[1-9]\d*$/.test(raw)) {
+					throw new ControlKodyError(
+						'--wait-minutes must be a positive integer (minutes)',
+					)
+				}
+				options.waitMinutes = Number(raw)
 				index += 1
 				break
 			}
@@ -1218,6 +1239,57 @@ export async function readHealth(input: {
 	}
 }
 
+const defaultHealthWaitMinutes = 30
+const healthWaitIntervalMs = 20_000
+
+export async function waitForHealth(input: {
+	origin: string
+	expectedSha: string
+	timeoutMs: number
+	intervalMs?: number
+	read?: (expectedSha: string) => ReturnType<typeof readHealth>
+	sleep?: (ms: number) => Promise<void>
+	now?: () => number
+	onPoll?: (line: string) => void
+}) {
+	const read =
+		input.read ??
+		((expectedSha: string) => readHealth({ origin: input.origin, expectedSha }))
+	const sleep =
+		input.sleep ??
+		((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
+	const now = input.now ?? Date.now
+	const intervalMs = input.intervalMs ?? healthWaitIntervalMs
+	const deadline = now() + input.timeoutMs
+	for (;;) {
+		let result: Awaited<ReturnType<typeof readHealth>>
+		try {
+			result = await read(input.expectedSha)
+		} catch (error) {
+			result = {
+				ok: false,
+				status: 0,
+				origin: input.origin,
+				commitSha: null,
+				detail: `fetch failed: ${error instanceof Error ? error.message : String(error)}`,
+			}
+		}
+		if (result.ok) return result
+		const remainingMs = deadline - now()
+		if (remainingMs <= 0) {
+			const minutes = Math.round(input.timeoutMs / 60_000)
+			return {
+				...result,
+				detail: `${result.detail}. Still not live after ${minutes} min. Check the Deploy run for this commit: gh run list --workflow '🚀 Deploy (production)' --limit 5 (a newer merge's deploy also counts once /health serves a descendant).`,
+			}
+		}
+		input.onPoll?.(
+			`waiting for ${input.expectedSha.slice(0, 9)} on ${input.origin}: ${result.detail}`,
+		)
+		await sleep(Math.min(intervalMs, remainingMs))
+	}
+}
+
 export function readCookieFile(
 	cookieFile: string,
 	origin: string,
@@ -1640,10 +1712,22 @@ async function runCommand(options: ControlKodyOptions) {
 		}
 		case 'health': {
 			const origin = await resolveOrigin(options)
-			const result = await readHealth({
-				origin,
-				expectedSha: options.sha,
-			})
+			if (options.wait && !options.sha) {
+				throw new ControlKodyError(
+					'health --wait needs --sha <merge-sha> (the commit to wait for)',
+				)
+			}
+			const result = options.wait
+				? await waitForHealth({
+						origin,
+						expectedSha: options.sha!,
+						timeoutMs: options.waitMinutes * 60_000,
+						onPoll: (poll) => console.error(poll),
+					})
+				: await readHealth({
+						origin,
+						expectedSha: options.sha,
+					})
 			if (options.json) printJson(result)
 			else
 				console.log(`${result.ok ? 'ok' : 'FAIL'} ${origin} ${result.detail}`)

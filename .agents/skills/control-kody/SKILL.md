@@ -17,7 +17,7 @@ npm run control-kody -- doctor
 npm run control-kody -- dev
 npm run control-kody -- request GET /@user-me/-/waiting --contains 'Waiting'
 npm run control-kody -- map waiting
-npm run control-kody -- health --sha <merge-sha>
+npm run control-kody -- health --sha <merge-sha> --wait
 ```
 
 Use `request` for HTML and JSON assertions. Website actions (profile uploads,
@@ -58,7 +58,7 @@ is the default**:
    `browse --path <path>` when UI is under test.
 3. Use a PR `preview` only when local cannot exercise the change (see
    [Local limitations](../../../docs/contributing/cloud-agents.md#local-limitations)).
-4. After merge, `health --origin https://kody.codes --sha <merge>`.
+4. After merge, `health --origin https://kody.codes --sha <merge> --wait`.
 
 See
 [docs/contributing/control-kody.md](../../../docs/contributing/control-kody.md)
