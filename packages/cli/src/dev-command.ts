@@ -12,6 +12,7 @@ import {
 	type CredentialedFetchSignal,
 } from './credentialed-fetch-scan.js'
 import { formatFetchBodySecretResolutionWarning } from './fetch-body-secret-resolution.js'
+import { publishOutsideCloudAdvice } from './publish-limit-advice.js'
 import { findPackageFetchBodyWarnings } from './fetch-body-package-scan.js'
 import {
 	buildLocalPackageContext,
@@ -763,6 +764,8 @@ async function runPublishChecksWithRetry(input: {
 	run: () => Promise<PackageCheckResult>
 	stderr: (text: string) => void
 	delayMs?: number
+	/** Called when the last attempt still hit a limit or timed out. */
+	onComputeLimit?: () => void
 }): Promise<PackageCheckResult> {
 	for (let attempt = 1; ; attempt += 1) {
 		const settled = await input.run().then(
@@ -771,6 +774,7 @@ async function runPublishChecksWithRetry(input: {
 		)
 		const reason = publishChecksRetryReason(settled)
 		if (reason === null || attempt >= publishChecksMaxAttempts) {
+			if (reason !== null) input.onComputeLimit?.()
 			if (settled.ok) return settled.value
 			throw settled.error
 		}
@@ -990,6 +994,7 @@ export async function runDevCheck(input: {
 	}
 
 	let publishChecksOk: boolean | null = null
+	let hitComputeLimit = false
 	let publishChecksError:
 		| ({ message: string } & PublishChecksFailureMeta)
 		| null = null
@@ -1007,6 +1012,9 @@ export async function runDevCheck(input: {
 			const outcome = await runPublishChecksWithRetry({
 				run: () => input.runPublishChecks!(tree),
 				stderr: input.io.stderr,
+				onComputeLimit: () => {
+					hitComputeLimit = true
+				},
 				...(input.publishChecksRetryDelayMs !== undefined
 					? { delayMs: input.publishChecksRetryDelayMs }
 					: {}),
@@ -1028,6 +1036,9 @@ export async function runDevCheck(input: {
 				...readPublishChecksFailureMeta(error),
 			}
 			push('publish checks', false, formatPublishChecksRunFailure(error))
+		}
+		if (hitComputeLimit) {
+			push('build outside Kody cloud', false, publishOutsideCloudAdvice)
 		}
 	}
 

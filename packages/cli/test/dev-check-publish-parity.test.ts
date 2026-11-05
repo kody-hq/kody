@@ -457,6 +457,18 @@ test('kody dev check retries the publish checks after a compute limit or respons
 		assert.match(stderr, /attempt 1 of 3\); retrying/)
 		assert.match(stderr, /attempt 2 of 3\); retrying/)
 
+		const exhausted = capture()
+		await runDevCheck({
+			target: 'mock',
+			cwd: root,
+			io: exhausted.io,
+			publishChecksRetryDelayMs: 0,
+			runPublishChecks: async () => limited,
+		})
+		assert.match(exhausted.stdout, /build outside Kody cloud/)
+		assert.match(exhausted.stdout, /kody package publish --build local/)
+		assert.match(exhausted.stdout, /--context <name>/)
+
 		let refusedCalls = 0
 		await runDevCheck({
 			target: 'mock',

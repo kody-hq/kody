@@ -57,6 +57,7 @@ import {
 	runStartedByClientFromCredentialKind,
 	normalizeRunStartedBy,
 } from '#worker/run-records/run-started-by.ts'
+import { publishOutsideCloudAdvice } from '#worker/repo/isolated-runner-limit-message.ts'
 import {
 	beginRunRecord,
 	closeStoppedWorkflowAttemptRuns,
@@ -299,6 +300,20 @@ function attemptWillRetry(
 ) {
 	if (isAccountSuspendedError(error) || isNonRetryableError(error)) return false
 	return workflowStepWillRetry(stepCtx?.attempt)
+}
+
+function isPublishWorkflow(payload: DynamicCallableWorkflowPayload) {
+	return payload.workflowName === 'packagePublishExternalPush'
+}
+
+function isPublishComputeFailure(
+	payload: DynamicCallableWorkflowPayload,
+	error: unknown,
+) {
+	if (!isPublishWorkflow(payload)) return false
+	const message = getErrorMessage(error)
+	if (message.includes(publishOutsideCloudAdvice())) return false
+	return /timed out|CPU time|memory limit|compute limit/i.test(message)
 }
 
 const packageWorkflowTokenId = 'internal:package-workflows'
@@ -2011,6 +2026,9 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				userId: payload.userId,
 				workflowId: event.instanceId,
 				outcome: 'failed',
+				...(isPublishWorkflow(payload)
+					? { failureHint: publishOutsideCloudAdvice() }
+					: {}),
 				waitUntil: (promise) => this.ctx.waitUntil(promise),
 			})
 			await this.recordWorkflowRunUsage({
@@ -2345,7 +2363,14 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				handle: runHandle,
 				status: 'error',
 				logs,
-				error,
+				// The owner's alert for a publish that ran out of time or compute
+				// names the build-outside-cloud path.
+				error:
+					!willRetry && isPublishComputeFailure(payload, error)
+						? new Error(
+								`${getErrorMessage(error)} ${publishOutsideCloudAdvice()}`,
+							)
+						: error,
 				skipErrorSubscriptions: willRetry,
 			})
 			await this.markRetryableWorkflowRunIgnored({
