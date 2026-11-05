@@ -33,6 +33,7 @@ import {
 	advanceEntitySourceServingCommit,
 	listEntitySourcesByIds,
 } from '#worker/repo/entity-sources.ts'
+import { normalizeRepoWorkspacePath } from '#worker/repo/manifest.ts'
 import type { EntitySourceRow } from '#worker/repo/types.ts'
 import {
 	collectPublishedPackageArtifactTargets,
@@ -626,6 +627,99 @@ export async function reusePublishedPackageArtifactIfUnchanged(input: {
 		})
 		return false
 	}
+}
+
+/**
+ * Read-only twin of {@link reusePublishedPackageArtifactIfUnchanged} for a
+ * tree that is not published yet (`packageCheck`): the targets whose current
+ * artifact the publish rebuild would copy instead of building, because their
+ * bundler inputs in `files` match the snapshot that artifact was built from
+ * and its bundled `kody:@` dependencies are still current. `files` are keyed
+ * from the package root. Writes nothing.
+ */
+export async function publishedPackageArtifactTargetsReusableForFiles(input: {
+	env: Env
+	userId: string
+	source: Pick<EntitySourceRow, 'id' | 'manifest_path' | 'source_root'>
+	targets: ReadonlyArray<PublishedPackageArtifactBuildTarget>
+	files: Record<string, string>
+}): Promise<Set<PublishedPackageArtifactBuildTarget>> {
+	const reusable = new Set<PublishedPackageArtifactBuildTarget>()
+	if (!hasPublishedRuntimeArtifacts(input.env) || input.targets.length === 0) {
+		return reusable
+	}
+	const loadedByIdentity = await loadPublishedBundleArtifactsForPackageTargets({
+		env: input.env,
+		userId: input.userId,
+		sourceId: input.source.id,
+		targets: input.targets,
+	})
+	const snapshotCache: PublishedPackageArtifactReuseSnapshotCache = new Map()
+	const dependencySourceCache: PublishedPackageArtifactDependencySourceCache =
+		new Map()
+	for (const target of input.targets) {
+		const loaded = publishedBundleArtifactForPackageTarget({
+			sourceId: input.source.id,
+			target,
+			loadedByIdentity,
+		})
+		if (!loaded?.artifact) continue
+		const priorCommit = loaded.artifact.publishedCommit
+		if (loaded.row.publishedCommit !== priorCommit) continue
+		if (isUnrepairablePreBindingArtifact(loaded.artifact)) continue
+		const previousSnapshot = await readPublishedSourceSnapshotCached({
+			env: input.env,
+			sourceId: input.source.id,
+			publishedCommit: priorCommit,
+			snapshotCache,
+		})
+		if (!previousSnapshot?.files) continue
+		const previousFiles = packageRootFiles(input.source, previousSnapshot.files)
+		if (
+			publishedPackageArtifactTargetInputsChanged({
+				entryPoint: target.entryPoint,
+				previousFiles,
+				nextFiles: input.files,
+			})
+		) {
+			continue
+		}
+		if (
+			!(await publishedPackageArtifactDependenciesMatchCurrent({
+				env: input.env,
+				userId: input.userId,
+				dependencies: loaded.artifact.dependencies,
+				dependencySourceCache,
+			}))
+		) {
+			continue
+		}
+		reusable.add(target)
+	}
+	return reusable
+}
+
+/** Snapshot files (keyed from the repo root) re-keyed from the package root. */
+function packageRootFiles(
+	source: Pick<EntitySourceRow, 'manifest_path' | 'source_root'>,
+	files: Record<string, string>,
+) {
+	const root = normalizeRepoWorkspacePath(source.source_root).replace(
+		/\/+$/,
+		'',
+	)
+	if (!root || root === '.') return files
+	const prefix = `${root}/`
+	// Older snapshots were keyed from the source root already.
+	if (typeof files[source.manifest_path] !== 'string') return files
+	const rekeyed: Record<string, string> = {}
+	for (const [path, content] of Object.entries(files)) {
+		const normalized = normalizeRepoWorkspacePath(path)
+		if (normalized.startsWith(prefix)) {
+			rekeyed[normalized.slice(prefix.length)] = content
+		}
+	}
+	return rekeyed
 }
 
 async function publishedPackageArtifactDependenciesMatchCurrent(input: {

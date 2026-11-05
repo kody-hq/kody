@@ -35,6 +35,14 @@ export async function runPackageCheckArtifactBuild(input: {
 	expectedPackageScope?: string
 	/** The saved package's id, when the checked package was published before. */
 	rootPackageId?: string
+	/**
+	 * Targets the publish rebuild would copy from the current artifact instead
+	 * of building (unchanged inputs); publish never builds them, so neither
+	 * does the check.
+	 */
+	listReusableTargets?: (
+		targets: ReadonlyArray<PublishedPackageArtifactBuildTarget>,
+	) => Promise<ReadonlySet<PublishedPackageArtifactBuildTarget>>
 }): Promise<RepoCheckResult> {
 	const manifest = parseAuthoredPackageJson({
 		content: input.files['package.json'] ?? '',
@@ -43,13 +51,26 @@ export async function runPackageCheckArtifactBuild(input: {
 			? { expectedPackageScope: input.expectedPackageScope }
 			: {}),
 	})
-	const targets = collectPublishedPackageArtifactTargets(manifest)
-	if (targets.length === 0) {
+	const allTargets = collectPublishedPackageArtifactTargets(manifest)
+	if (allTargets.length === 0) {
 		return {
 			kind: 'bundle',
 			ok: true,
 			message:
 				'No runtime artifacts to build: the package has no entry points.',
+		}
+	}
+	const reusable = (await input.listReusableTargets?.(allTargets)) ?? new Set()
+	const targets = allTargets.filter((target) => !reusable.has(target))
+	const reusedNote =
+		reusable.size > 0
+			? ` ${reusable.size} more are unchanged since the published commit, so publish copies them instead of building them.`
+			: ''
+	if (targets.length === 0) {
+		return {
+			kind: 'bundle',
+			ok: true,
+			message: `All ${reusable.size} runtime artifact(s) are unchanged since the published commit, so publish copies them instead of building them; nothing was built or saved.`,
 		}
 	}
 	const stagingKey = await input.runner.stage({
@@ -110,6 +131,6 @@ export async function runPackageCheckArtifactBuild(input: {
 	return {
 		kind: 'bundle',
 		ok: true,
-		message: `Built all ${built} runtime artifact(s) the way the publish rebuild does (${isolates} isolate(s), up to ${isolatedArtifactRebuildChunkSize} per isolate); nothing was saved.`,
+		message: `Built all ${built} runtime artifact(s) the way the publish rebuild does (${isolates} isolate(s), up to ${isolatedArtifactRebuildChunkSize} per isolate); nothing was saved.${reusedNote}`,
 	}
 }

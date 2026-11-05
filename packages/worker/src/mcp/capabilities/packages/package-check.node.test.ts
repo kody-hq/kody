@@ -3,6 +3,7 @@ import {
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
+import type * as PublishedBundleArtifactsModule from '#worker/package-runtime/published-bundle-artifacts.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { runAuthoringPublishChecks } from '#worker/repo/authoring-publish-checks.ts'
@@ -14,7 +15,18 @@ import {
 const mockModule = vi.hoisted(() => ({
 	resolvePackageOwnerContext: vi.fn(),
 	resolveOwnedPackageSource: vi.fn(),
+	reusableTargets: vi.fn(),
 }))
+
+vi.mock(
+	'#worker/package-runtime/published-bundle-artifacts.ts',
+	async (importOriginal) => ({
+		...(await importOriginal<typeof PublishedBundleArtifactsModule>()),
+		publishedPackageArtifactTargetsReusableForFiles: (
+			...args: Array<unknown>
+		) => mockModule.reusableTargets(...args),
+	}),
+)
 
 vi.mock('#worker/package-registry/package-owner.ts', () => ({
 	resolvePackageOwnerContext: (...args: Array<unknown>) =>
@@ -564,4 +576,60 @@ test('packageCheck applies .kodyignore before the git-push snapshot limit', asyn
 	expect(tooLarge.checks[0]!.message).toMatch(
 		/over the 32 MiB publish snapshot limit/,
 	)
+})
+
+test('packageCheck skips the targets publish would copy from the published commit', async () => {
+	resetMocks()
+	const source = {
+		id: 'source-1',
+		manifest_path: 'package.json',
+		source_root: '/',
+	}
+	mockModule.resolveOwnedPackageSource.mockResolvedValue({
+		packageId: 'pkg-1',
+		userId: owner.ownerUserId,
+		kodyId: 'many',
+		name: '@acme/many',
+		hasApp: false,
+		source,
+	})
+	mockModule.reusableTargets.mockImplementation(
+		async (input: { targets: Array<{ entryPoint: string }> }) =>
+			new Set(
+				input.targets.filter((target) => !target.entryPoint.includes('/a.ts')),
+			),
+	)
+	const runIsolatedArtifactBuildCheck = vi.fn(
+		async (request: Record<string, unknown>) => {
+			const targets = request.targets as Array<unknown>
+			return {
+				ok: true,
+				message: 'built',
+				results: targets.map((target) => ({ ok: true, message: '', target })),
+			}
+		},
+	)
+	const isolated = isolatedCheckEnv(
+		async () => ({ ok: true, results: [deferredBundle] }),
+		runIsolatedArtifactBuildCheck,
+	)
+	const result = (await packageCheckCapability.handler(
+		{ files: multiExportPackageFiles() },
+		{ env: isolated.env, callerContext: callerContext() },
+	)) as { ok: boolean; checks: Array<{ kind: string; message: string }> }
+	expect(result.ok).toBe(true)
+	expect(mockModule.reusableTargets).toHaveBeenCalledWith(
+		expect.objectContaining({ source, userId: owner.ownerUserId }),
+	)
+	const built = runIsolatedArtifactBuildCheck.mock.calls.flatMap(
+		([request]) => request.targets as Array<{ entryPoint: string }>,
+	)
+	expect(built.length).toBeGreaterThan(0)
+	expect(built.every((target) => target.entryPoint.includes('/a.ts'))).toBe(
+		true,
+	)
+	expect(result.checks[0]!.message).toMatch(
+		/more are unchanged since the published commit, so publish copies them/,
+	)
+	mockModule.reusableTargets.mockReset()
 })

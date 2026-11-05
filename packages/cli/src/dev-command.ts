@@ -717,6 +717,72 @@ const devCheckCloneGapDetail =
 const devCheckOfflineDetail =
 	'skipped (--offline). Only local checks ran; publish runs the full publish checks and can still refuse this package.'
 
+/**
+ * Attempts the server publish checks get, matching publish: a durable
+ * publish retries a step that hit a compute limit or timed out, so a tree
+ * near the limit passes on a later attempt there too.
+ */
+export const publishChecksMaxAttempts = 3
+
+const computeLimitCheckPhrases = [
+	'ran out of memory or CPU time in the check runner',
+	"exceeded the isolated check runner's memory or CPU limits",
+	"exceeded the isolated rebuild runner's memory or CPU limits",
+]
+
+/** Why an attempt is worth repeating, or null when its answer is final. */
+function publishChecksRetryReason(
+	attempt:
+		| { ok: true; value: PackageCheckResult }
+		| { ok: false; error: unknown },
+): string | null {
+	if (attempt.ok) {
+		const limited = attempt.value.checks.some(
+			(check) =>
+				!check.ok &&
+				computeLimitCheckPhrases.some((phrase) =>
+					check.message.includes(phrase),
+				),
+		)
+		return limited ? 'hit a Kody server memory or CPU limit' : null
+	}
+	const error = attempt.error
+	if (error instanceof PublishChecksAuthError) return null
+	const meta = readPublishChecksFailureMeta(error)
+	if (meta.status === 502 || meta.status === 503 || meta.status === 504) {
+		return `failed with HTTP ${meta.status}`
+	}
+	const message = error instanceof Error ? error.message : String(error)
+	if (/UND_ERR_(HEADERS|BODY)_TIMEOUT/.test(message)) {
+		return 'got no answer before the request timed out'
+	}
+	return null
+}
+
+async function runPublishChecksWithRetry(input: {
+	run: () => Promise<PackageCheckResult>
+	stderr: (text: string) => void
+	delayMs?: number
+}): Promise<PackageCheckResult> {
+	for (let attempt = 1; ; attempt += 1) {
+		const settled = await input.run().then(
+			(value) => ({ ok: true as const, value }),
+			(error: unknown) => ({ ok: false as const, error }),
+		)
+		const reason = publishChecksRetryReason(settled)
+		if (reason === null || attempt >= publishChecksMaxAttempts) {
+			if (settled.ok) return settled.value
+			throw settled.error
+		}
+		input.stderr(
+			`kody dev check: the server publish checks ${reason} (attempt ${attempt} of ${publishChecksMaxAttempts}); retrying, as publish does.\n`,
+		)
+		await new Promise((resolve) =>
+			setTimeout(resolve, input.delayMs ?? 2_000 * attempt),
+		)
+	}
+}
+
 /** Parse a `packageCheck` response body (Open API structured result). */
 export function parsePackageCheckResult(value: unknown): PackageCheckResult {
 	const body =
@@ -766,6 +832,8 @@ export async function runDevCheck(input: {
 	runPublishChecks?: RunPublishChecks
 	/** `--build local`: also run the publish-offload builder on the tree. */
 	localBuild?: { apiUrl: string }
+	/** Test seam: wait between publish-check attempts. */
+	publishChecksRetryDelayMs?: number
 }): Promise<number> {
 	const manifest = await loadPackageManifest(input.cwd)
 	const checks: Array<{
@@ -936,7 +1004,13 @@ export async function runDevCheck(input: {
 	} else {
 		try {
 			const tree = await collectPackageCheckFiles(manifest.root)
-			const outcome = await input.runPublishChecks(tree)
+			const outcome = await runPublishChecksWithRetry({
+				run: () => input.runPublishChecks!(tree),
+				stderr: input.io.stderr,
+				...(input.publishChecksRetryDelayMs !== undefined
+					? { delayMs: input.publishChecksRetryDelayMs }
+					: {}),
+			})
 			publishChecksOk = outcome.ok
 			for (const check of outcome.checks) {
 				push(`publish:${check.kind}`, check.ok, check.message || undefined)
