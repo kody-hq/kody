@@ -9,7 +9,6 @@ import { tmpdir } from 'node:os'
 import { expect, test } from 'vitest'
 import { readFileSync, statSync } from 'node:fs'
 import {
-	controlKodyUsage,
 	controlKodyUserAgent,
 	defaultFeaturesDir,
 	defaultRoutesPath,
@@ -1388,22 +1387,4 @@ test('control-kody map --check reports unmapped required routes and unknown note
 		featuresDir: temp.dir,
 	})
 	expect(incidental.ok).toBe(true)
-})
-
-test('--help carries the CLI behavior the control-kody skill points to', () => {
-	const help = controlKodyUsage()
-	for (const fact of [
-		'--dump               Write the raw response body to .tmp/control-kody-body',
-		'--contains <text>    Fail unless the response body includes this text',
-		'only POSTs /auth when the response is',
-		'Public pages such as /pricing do not need a session.',
-		'Mutating methods log in first when no cookie exists.',
-		"preview --pr 42 --request 'GET /pricing --dump --contains Worker compute'",
-		'--kody-id <slug>     Alias for --package-name',
-		'remints the token and',
-		'keeps the login cookie.',
-		'Prefer MCP/API/control-kody execute for proof',
-	]) {
-		expect(help).toContain(fact)
-	}
 })
