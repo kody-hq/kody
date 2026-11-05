@@ -2,8 +2,9 @@
  * Preview `kody context register` hops that failed before a usable HTTP
  * response. Windows GHA has hit a bare `fetch failed` against the preview
  * API after the app-origin session already succeeded; retry register once.
- * Do not retry `execute`: it has no idempotency key, so a lost response
- * would start a second run.
+ * Do not retry `execute` or other context hops (`policy`, `commands on`):
+ * `execute` has no idempotency key, so a lost response would start a
+ * second run.
  */
 
 const retryableExecutionContextCliPatterns = [
@@ -36,6 +37,6 @@ export function shouldRetryExecutionContextCli(
 	error: unknown,
 	args: ReadonlyArray<string> = [],
 ) {
-	if (args[0] === 'execute') return false
+	if (args[0] !== 'context' || args[1] !== 'register') return false
 	return isRetryableExecutionContextCliFailure(cliFailureText(error))
 }
