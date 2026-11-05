@@ -9,6 +9,7 @@ import {
 	isChromeExtensionMessageChannelDisconnectedError,
 	isTanStackRouterNotFoundError,
 	isTanStackServerFnFetchNetworkError,
+	isThirdPartyProxyBlockPageError,
 } from './sentry-browser-filters.ts'
 import { PermissionDeniedError } from '#universal/permission-denied.ts'
 
@@ -1210,4 +1211,72 @@ test('drops expected permission denials and keeps real errors', () => {
 	expect(filterBrowserSentryEvent(real, new Error('Missing email:read.'))).toBe(
 		real,
 	)
+})
+
+// Issue 7830430060: Cisco Secure Access answered /_serverFn with its own 503.
+const ciscoSecureAccessBlockPage = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Error 503</title>
+<link rel="stylesheet" href="https://shared.opendns.com/css/intelligent-proxy/intelligent-proxy.css">
+</head><body><div class="container"><h1>Error 503</h1>
+<p>An upstream server error has occurred. If the problem persists, please contact your network administrator.</p>
+<p class="footer">This page is served by Cisco Secure Access</p></div></body></html>`
+
+const cloudflareOrigin503Page = `<!DOCTYPE html>
+<html lang="en-US"><head><title>kody.codes | 503: Service unavailable</title>
+<link rel="stylesheet" href="/cdn-cgi/styles/cf.errors.css"></head>
+<body><h1>Service unavailable</h1><p>Error code 503</p>
+<p>Cloudflare Ray ID: 8f0c0ffee0000000</p></body></html>`
+
+const kody503Page =
+	'<!doctype html><html><head><title>Kody is unavailable</title></head><body><h1>503</h1><p>Something went wrong on our end.</p></body></html>'
+
+test('drops third-party proxy block pages from serverFn responses (7830430060)', () => {
+	const serverFnCrumb = {
+		category: 'fetch',
+		data: {
+			url: 'https://kody.codes/_serverFn/46292ebe7e4bf8b5',
+			method: 'GET',
+			status_code: 503,
+		},
+	}
+	const proxyEvent = {
+		...makeEvent(['Error', ciscoSecureAccessBlockPage]),
+		breadcrumbs: [serverFnCrumb],
+	}
+	expect(filterBrowserSentryEvent(proxyEvent)).toBeNull()
+	expect(
+		filterBrowserSentryEvent(
+			{ exception: { values: [] } },
+			new Error(ciscoSecureAccessBlockPage),
+		),
+	).toBeNull()
+	expect(
+		isThirdPartyProxyBlockPageError(new Error(ciscoSecureAccessBlockPage)),
+	).toBe(true)
+
+	// Cloudflare-origin and Kody 5xx pages may be real outages: keep them.
+	for (const page of [cloudflareOrigin503Page, kody503Page]) {
+		const event = {
+			...makeEvent(['Error', page]),
+			breadcrumbs: [serverFnCrumb],
+		}
+		expect(filterBrowserSentryEvent(event, new Error(page))).toBe(event)
+		expect(isThirdPartyProxyBlockPageError(new Error(page))).toBe(false)
+	}
+	// Marker text without an HTML document stays visible.
+	expect(
+		isThirdPartyProxyBlockPageError(
+			new Error('Failed to load https://shared.opendns.com/ asset'),
+		),
+	).toBe(false)
+	// An app Error wrapping a proxy-page cause stays visible.
+	const linkedEvent = {
+		exception: {
+			values: [
+				{ type: 'Error', value: ciscoSecureAccessBlockPage },
+				{ type: 'Error', value: 'Repositories failed to load' },
+			],
+		},
+	}
+	expect(filterBrowserSentryEvent(linkedEvent)).toBe(linkedEvent)
 })
