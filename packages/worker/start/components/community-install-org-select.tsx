@@ -4,7 +4,7 @@ import { getSelectCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import type { CommunityInstallOrgPicker } from '../use-community-install-org.ts'
 
-function installOrgOptionLabel(owner: RepositoryOwnerOption) {
+export function installOrgOptionLabel(owner: RepositoryOwnerOption) {
 	if (owner.personal) return 'Personal workspace'
 	return owner.displayName?.trim() || `@${owner.slug}`
 }
