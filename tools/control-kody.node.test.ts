@@ -20,6 +20,8 @@ import {
 	mergeCommitMessageNamesHead,
 	readGithubHealthCommitInfo,
 	readHealth,
+	controlKodyUsage,
+	waitForHealth,
 	readLocalHealthCommitInfo,
 	repoRootFromHere,
 	requestAsSession,
@@ -1387,4 +1389,64 @@ test('control-kody map --check reports unmapped required routes and unknown note
 		featuresDir: temp.dir,
 	})
 	expect(incidental.ok).toBe(true)
+})
+
+test('waitForHealth polls until /health serves the expected sha, then stops', async () => {
+	const served = ['old1111', 'old1111', 'abc1234']
+	const polls: Array<string> = []
+	const sleeps: Array<number> = []
+	let clock = 0
+	const result = await waitForHealth({
+		origin: 'https://kody.codes',
+		expectedSha: 'abc1234',
+		timeoutMs: 60_000,
+		intervalMs: 20_000,
+		read: async (expectedSha) => {
+			const commitSha = served.shift()!
+			return {
+				ok: commitSha === expectedSha,
+				status: 200,
+				origin: 'https://kody.codes',
+				commitSha,
+				detail: `commitSha ${commitSha}`,
+			}
+		},
+		sleep: async (ms) => {
+			sleeps.push(ms)
+			clock += ms
+		},
+		now: () => clock,
+		onPoll: (line) => polls.push(line),
+	})
+	expect(result.ok).toBe(true)
+	expect(sleeps).toEqual([20_000, 20_000])
+	expect(polls[0]).toContain('waiting for abc1234')
+})
+
+test('waitForHealth gives up at the deadline and says where to look', async () => {
+	let clock = 0
+	const result = await waitForHealth({
+		origin: 'https://kody.codes',
+		expectedSha: 'abc1234',
+		timeoutMs: 60_000,
+		intervalMs: 20_000,
+		read: async () => {
+			throw new Error('ECONNRESET')
+		},
+		sleep: async (ms) => {
+			clock += ms
+		},
+		now: () => clock,
+	})
+	expect(result.ok).toBe(false)
+	expect(result.detail).toContain('fetch failed: ECONNRESET')
+	expect(result.detail).toContain('Still not live after 1 min')
+	expect(result.detail).toContain(
+		"gh run list --workflow '🚀 Deploy (production)'",
+	)
+})
+
+test('help documents health --wait', async () => {
+	expect(controlKodyUsage()).toContain('--wait')
+	expect(controlKodyUsage()).toContain('--wait-minutes <n>')
 })
