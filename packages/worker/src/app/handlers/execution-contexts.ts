@@ -59,6 +59,7 @@ export const executionContextCapabilityNames = {
 	shareRemove: 'executionContextShareRemove',
 	sharePreview: 'executionContextSharePreview',
 	noticeDismiss: 'executionContextNoticeDismiss',
+	acknowledge: 'executionContextAcknowledge',
 	automationGet: 'automationExecutionGet',
 	automationSet: 'automationExecutionSet',
 } as const
@@ -467,7 +468,11 @@ async function runScoped<T>(
 ): Promise<T | ExecutionContextFailure> {
 	const scope = await loadExecutionContextsScope(input)
 	if (!scope)
-		return { ok: false, error: 'not_found', message: 'Organization not found.' }
+		return {
+			ok: false,
+			error: 'not_found',
+			message: 'Organization not found.',
+		}
 	try {
 		return await run(scope)
 	} catch (error) {
@@ -543,6 +548,18 @@ export async function dismissExecutionContextNoticeForUser(
 ) {
 	return runScoped(input, async (scope) => {
 		await callCapability(scope, executionContextCapabilityNames.noticeDismiss, {
+			id: input.contextId,
+			fingerprint: input.fingerprint,
+		})
+		return { ok: true as const }
+	})
+}
+
+export async function acknowledgeExecutionContextForUser(
+	input: ScopedInput & { contextId: string; fingerprint: string },
+) {
+	return runScoped(input, async (scope) => {
+		await callCapability(scope, executionContextCapabilityNames.acknowledge, {
 			id: input.contextId,
 			fingerprint: input.fingerprint,
 		})

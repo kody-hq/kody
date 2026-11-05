@@ -148,6 +148,26 @@ export const dismissExecutionContextNotice = createServerFn({
 		)
 	})
 
+export const acknowledgeExecutionContext = createServerFn({ method: 'POST' })
+	.validator(
+		z.object({
+			orgSlug,
+			contextId: segment,
+			fingerprint: z.string().min(1).max(64),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const { acknowledgeExecutionContextForUser } =
+			await import('../../src/app/handlers/execution-contexts.ts')
+		return mutate(data.orgSlug, (input) =>
+			acknowledgeExecutionContextForUser({
+				...input,
+				contextId: data.contextId,
+				fingerprint: data.fingerprint,
+			}),
+		)
+	})
+
 export const previewExecutionContextShare = createServerFn({ method: 'POST' })
 	.validator(
 		z.object({

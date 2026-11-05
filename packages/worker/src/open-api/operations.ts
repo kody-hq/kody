@@ -548,6 +548,11 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		],
 		[
 			'POST',
+			'/v1/execution-contexts/{id}/acknowledge',
+			'executionContextAcknowledge',
+		],
+		[
+			'POST',
 			'/v1/execution-contexts/{id}/sharing/preview',
 			'executionContextSharePreview',
 		],

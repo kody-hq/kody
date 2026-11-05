@@ -43,11 +43,17 @@ Execution contexts are an experiment. Turn them on at
   `executionContextUpdate`, `executionContextRevoke`, `executionContextDelete`,
   `executionContextRunList`, `executionContextRunCancel`, `executionChainGet`,
   `executionChainSet`, `executionContextNoticeDismiss`,
+  `executionContextAcknowledge` (people only, not agents),
   `executionContextSharePreview`, and the sharing capabilities. Find them with
   `search({ query: "execution context" })`. Shared-box access notices appear
   once in execute and search `notices` (`context-elevation` for a grantee;
   `context-misconfigured` for the operator). See
   [Shared-box best practices](../guides/execution-contexts.md#shared-box-best-practices).
+  A shared context you haven't acknowledged is skipped with
+  `acknowledgment_required`. If nothing else in the run's targets can take it,
+  execute fails with code `acknowledgment_required` (HTTP 409), a link to the
+  context's page and `kody context acknowledge <name>`, and the run does not
+  start.
 - CLI: `kody connect --name <name>` (register plus background service),
   `kody context register --name <name>`,
   `kody daemon install | status [--json] | logs | start | stop | restart | uninstall`,

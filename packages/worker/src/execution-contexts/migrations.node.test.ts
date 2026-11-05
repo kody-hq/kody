@@ -284,6 +284,7 @@ test('execution context tables exist with their columns and unique rules', () =>
 			.all() as Array<{ name: string }>
 	).map((row) => row.name)
 	expect(indexes).toEqual([
+		'execution_context_acknowledgments_user',
 		'execution_context_chain_entries_cloud_once',
 		'execution_context_chain_entries_context',
 		'execution_context_chain_entries_context_once',

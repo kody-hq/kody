@@ -431,6 +431,81 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 		)
 		return 0
 	}
+	if (input.command === 'context' && sub === 'acknowledge') {
+		const ref = rest[0]
+		if (!ref) throw new Error('Usage: kody context acknowledge <name|ec id>')
+		const token = await input.token()
+		const id = encodeURIComponent(ref)
+		const read = await apiJson({
+			...base,
+			token,
+			method: 'GET',
+			path: `/v1/execution-contexts/${id}`,
+		})
+		const context = (read.context ?? {}) as {
+			name?: string
+			operator?: { handle?: string }
+			acknowledgment?: {
+				required: boolean
+				reason?: string
+				fingerprint?: string
+				login?: {
+					kind: string
+					handle: string | null
+					profileName: string | null
+				}
+				entries?: Array<{ permission: string; resource: string | null }>
+				excessCount?: number
+			}
+		}
+		const ack = context.acknowledgment
+		const name = context.name ?? ref
+		if (!ack?.required || !ack.fingerprint) {
+			out(
+				input,
+				{ acknowledged: true, alreadyCurrent: true },
+				`Nothing to acknowledge on ${name}: you operate it, are its login, or already acknowledged what it runs as.`,
+			)
+			return 0
+		}
+		const login = ack.login
+		const who = login?.handle ? `@${login.handle}` : 'its owner'
+		const runsAs =
+			login?.kind === 'profile'
+				? `the agent profile ${login.profileName ? `"${login.profileName}" ` : ''}of ${who}`
+				: `the account ${who}`
+		const lines = [
+			`${name} runs as ${runsAs}, on a machine operated by @${context.operator?.handle ?? 'unknown'}.`,
+			"Your runs use only your own Kody access, never the machine login's. Anyone with host access on the machine acts with its login.",
+			ack.excessCount
+				? `Its login can do ${ack.excessCount} thing${ack.excessCount === 1 ? '' : 's'} you can't:`
+				: 'Its login has no access you lack.',
+			...(ack.entries ?? []).map(
+				(entry) =>
+					`  - ${entry.permission === 'owner' ? 'everything (an org Owner)' : entry.resource ? `${entry.permission} on ${entry.resource}` : entry.permission}`,
+			),
+		]
+		const confirm = input.service?.confirm ?? terminalConfirm()
+		if (!confirm) {
+			throw new Error(
+				`Acknowledging needs you at a terminal: run \`kody context acknowledge ${ref}\` yourself, or choose Acknowledge on ${name}'s page in Kody.`,
+			)
+		}
+		input.write(`${lines.join('\n')}\n`)
+		if (!(await confirm(`Acknowledge what ${name} runs as?`, false))) {
+			input.write('Not acknowledged; runs on it stay refused.\n')
+			return 1
+		}
+		const body = await apiJson({
+			...base,
+			token,
+			method: 'POST',
+			path: `/v1/execution-contexts/${id}/acknowledge`,
+			body: { fingerprint: ack.fingerprint },
+		})
+		out(input, body, `Acknowledged ${name}. Your runs can use it now.`)
+		return 0
+	}
 	if (input.command === 'context' && sub === 'cancel-run') {
 		const [ref, runId] = rest
 		if (!ref || !runId) {
@@ -881,7 +956,7 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 		return stayStoppedExitCode
 	}
 	throw new Error(
-		'Usage: kody context register --name <name> [--org <slug>] | kody context list | kody context revoke <name> | kody context delete <name> | kody context cancel-run <name> <run id> | kody context policy [show | allow <path> [--mode ro|rw] | remove <path>] | kody context commands [status | on | off] [--context <name>] | kody chain show | add <name> | remove <name> | kody connect --name <name> | kody daemon [--context <ec id>] [--max-concurrent <n>] | kody daemon install | status | logs | restart | start | stop | uninstall | auto-update [on | off | status] | kody update',
+		'Usage: kody context register --name <name> [--org <slug>] | kody context list | kody context revoke <name> | kody context delete <name> | kody context acknowledge <name> | kody context cancel-run <name> <run id> | kody context policy [show | allow <path> [--mode ro|rw] | remove <path>] | kody context commands [status | on | off] [--context <name>] | kody chain show | add <name> | remove <name> | kody connect --name <name> | kody daemon [--context <ec id>] [--max-concurrent <n>] | kody daemon install | status | logs | restart | start | stop | uninstall | auto-update [on | off | status] | kody update',
 	)
 }
 
