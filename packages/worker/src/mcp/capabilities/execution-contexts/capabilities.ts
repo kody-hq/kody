@@ -27,7 +27,6 @@ import {
 	updateContext,
 } from '#worker/execution-contexts/service.ts'
 import {
-	acknowledgeContext,
 	dismissContextNotice,
 	previewShare,
 } from '#worker/execution-contexts/notices-service.ts'
@@ -537,32 +536,6 @@ export const executionContextNoticeDismissCapability = defineDomainCapability(
 		}),
 		async handler(args, ctx) {
 			return await dismissContextNotice(
-				await caller(ctx),
-				args.id,
-				args.fingerprint,
-			)
-		},
-	},
-)
-
-export const executionContextAcknowledgeCapability = defineDomainCapability(
-	domain,
-	{
-		name: 'executionContextAcknowledge',
-		contextRuns: 'deny',
-		orgPermission: 'execution_context:read',
-		description:
-			'Acknowledge what a shared execution context runs as (its login and any access it has that you lack). Required before your first run there and again when its login changes or it gains access you lack. Pass the acknowledgment.fingerprint from executionContextGet. Only the person can acknowledge, signed in as themselves in the Kody app or with `kody context acknowledge <name>`; agents, agent profiles, MCP clients and API tokens are refused.',
-		keywords: ['execution context', 'acknowledge', 'consent', 'first run'],
-		readOnly: false,
-		idempotent: true,
-		destructive: false,
-		inputSchema: z.object({
-			id: idSchema,
-			fingerprint: z.string().min(1).max(64),
-		}),
-		async handler(args, ctx) {
-			return await acknowledgeContext(
 				await caller(ctx),
 				args.id,
 				args.fingerprint,

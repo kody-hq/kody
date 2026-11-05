@@ -47,7 +47,6 @@ import { optInTrustNotice, sharingTrustNotice } from './trust-copy.ts'
 import type { RunHistoryRow } from './session-do.ts'
 import { kodyCloudTarget } from './routing.ts'
 import { latestCliVersion } from './latest-cli-version.ts'
-import { acknowledgmentState, needsAcknowledgment } from './acknowledgments.ts'
 import { isOlderCliVersion } from '#universal/execution-contexts.ts'
 import type { RunRecord } from '#worker/run-records/types.ts'
 
@@ -294,9 +293,6 @@ export async function formatContexts(
 				teamId: row.team_id ?? null,
 				...(options.includeSharing
 					? await noticesView(caller, row, manage || isOrgOwner(caller))
-					: {}),
-				...(options.includeSharing && access.granted
-					? await acknowledgmentView(caller, row)
 					: {}),
 				...(options.includeSharing && (manage || isOrgOwner(caller))
 					? { sharing: await loadSharing(caller, row) }
@@ -1584,48 +1580,6 @@ export async function endMemberExecutionContextLeases(
  * Notices on the context page (ADR 0096): the viewer's own excess, and for
  * people who can act on it, every grantee's excess and the misconfigurations.
  */
-/** What the viewer must acknowledge before running here (ADR 0097). */
-async function acknowledgmentView(
-	caller: ExecutionContextCaller,
-	row: ExecutionContextRow,
-) {
-	if (!needsAcknowledgment(row, caller.userId)) return {}
-	const db = caller.env.APP_DB
-	const state = await acknowledgmentState(db, row, caller.orgId, caller.userId)
-	if (!state.required) {
-		return {
-			acknowledgment: {
-				required: false as const,
-				acknowledgedAt: state.acknowledgedAt,
-			},
-		}
-	}
-	const [handles, profile] = await Promise.all([
-		handlesFor(db, [state.principal.userId]),
-		state.principal.profileId
-			? db
-					.prepare('SELECT name FROM profiles WHERE id = ?')
-					.bind(state.principal.profileId)
-					.first<{ name: string }>()
-			: null,
-	])
-	return {
-		acknowledgment: {
-			required: true as const,
-			reason: state.reason,
-			fingerprint: state.fingerprint,
-			login: {
-				kind: state.principal.kind,
-				handle: handles.get(state.principal.userId) ?? null,
-				profileName: profile?.name ?? null,
-			},
-			entries: state.entries.slice(0, 50),
-			excessCount: state.entries.length,
-			acknowledgedAt: state.acknowledgedAt,
-		},
-	}
-}
-
 async function noticesView(
 	caller: ExecutionContextCaller,
 	row: ExecutionContextRow,

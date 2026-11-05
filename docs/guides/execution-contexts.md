@@ -378,17 +378,6 @@ can do something a grantee can't do personally, Kody shows a notice:
   `team_deleted`, `personal_login_on_team_context`, and
   `profile_not_assigned_to_team`.
 
-Before a person's first run on a box they don't operate, they acknowledge what
-it runs as: its login and any access it has that they lack. They do it on the
-context's page (Acknowledge, or Acknowledge and opt in) or with
-`kody context acknowledge <name>` at a terminal; agents, agent profiles and API
-tokens can't acknowledge for them. Kody asks again when the login changes or
-gains access they lack, never when it loses some. Until then, a run naming that
-context fails with `acknowledgment_required` and a link to the page, and a chain
-skips it like any unusable context (reaching Kody cloud only if the chain ends
-in cloud). See
-[ADR 0097](../contributing/decisions/0097-execution-context-first-run-acknowledgment.md).
-
 The daemon tells Kody which login it runs as when it starts and every 6 hours,
 so restart it (`kody daemon restart`, or let auto-update do it) after
 `kody login` switches the machine to another login. Set the team a machine is

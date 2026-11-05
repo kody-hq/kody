@@ -90,25 +90,6 @@ export type ExecutionContextListItem = {
 		entries: Array<ExecutionContextBoxEntry>
 	}
 	misconfigurations?: Array<string>
-	/**
-	 * What the viewer must acknowledge before their next run on a context
-	 * they don't operate (ADR 0097). Absent for the operator and box login.
-	 */
-	acknowledgment?:
-		| { required: false; acknowledgedAt: string | null }
-		| {
-				required: true
-				reason: 'first_run' | 'login_changed' | 'new_access'
-				fingerprint: string
-				login: {
-					kind: 'person' | 'profile'
-					handle: string | null
-					profileName: string | null
-				}
-				entries: Array<ExecutionContextBoxEntry>
-				excessCount: number
-				acknowledgedAt: string | null
-		  }
 	accessReview?: Array<{
 		handle: string | null
 		entries: Array<ExecutionContextBoxEntry>
