@@ -5,6 +5,8 @@ import { defineDomainCapability } from '#mcp/capabilities/define-domain-capabili
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { assertCallerCanAccessCapability } from '#mcp/capabilities/access-control.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
+import { authorizeSurface } from '#worker/authorization/authorize.ts'
+import { assertGuestCapabilityAllowed } from '#worker/guest/guest-policy.ts'
 import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { assertCredentialUsesDeclared } from '#worker/credentials/credential-need-enforcement.ts'
 import {
@@ -93,6 +95,17 @@ export async function refreshIntegrationTokenForPackage(input: {
 		callerContext,
 		integrationTokenRefreshCapability,
 		{ env },
+	)
+	await assertGuestCapabilityAllowed({
+		db: env.APP_DB,
+		callerContext,
+		capabilityName: integrationTokenRefreshCapability.name,
+		readOnly: false,
+		args: { name },
+	})
+	await authorizeSurface(
+		{ env, request: callerContext.request },
+		integrationTokenRefreshCapability.orgPermission,
 	)
 	const user = requireMcpUser(callerContext)
 	const orgId = ownerIdFromCaller(callerContext)
