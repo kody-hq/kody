@@ -17,6 +17,7 @@ npm run control-kody -- doctor
 npm run control-kody -- dev
 npm run control-kody -- request GET /@user-me/-/waiting --contains 'Waiting'
 npm run control-kody -- map waiting
+npm run control-kody -- verify waiting   # every request check in that notes file
 npm run control-kody -- health --sha <merge-sha> --wait
 ```
 
@@ -31,8 +32,10 @@ credentials instead.
 
 [references/features/README.md](./references/features/README.md) is verification
 notes (seed, reach, assert). Load **one** feature file for the surface you are
-changing. After adding a route file, run `npm run routes:generate`, then
-`map --check` (CI runs `npm run feature-map:check`).
+changing. `verify <id>` runs its request lines (GET/HEAD) against `--origin`
+(local by default, or a preview). After adding a route file, run
+`npm run routes:generate`, then `map --check` (CI runs
+`npm run feature-map:check`).
 
 ## Seed users
 

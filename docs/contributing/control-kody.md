@@ -64,11 +64,14 @@ committed tree drifts. Feature prefixes in
 only group that inventory — do not hand-maintain path lists.
 
 `map` prints the generated inventory (optionally filtered by feature id).
-`map --check` (and `npm run feature-map:check` in CI) fails when notes cite
-unknown routes, a required user-facing prefix has no notes (and no exemption),
-or a notes file is missing / orphaned. When you add a new user-facing area, add
-a short notes file and a prefix in the catalog; leaf routes under an existing
-prefix need no catalog edit.
+`verify <id>` runs every `npm run control-kody -- request GET|HEAD ...` line in
+that feature's notes against the resolved origin (add `--origin <preview>` for a
+PR preview) and prints one ok/FAIL line per check. Keep those lines runnable: a
+test parses every one. `map --check` (and `npm run feature-map:check` in CI)
+fails when notes cite unknown routes, a required user-facing prefix has no notes
+(and no exemption), or a notes file is missing / orphaned. When you add a new
+user-facing area, add a short notes file and a prefix in the catalog; leaf
+routes under an existing prefix need no catalog edit.
 
 After `login`, keep using `request` for HTML and JSON assertions. Do not `cat`
 the session cookie into `curl` or Python. `request --dump` writes the raw body
