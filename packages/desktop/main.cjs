@@ -184,8 +184,10 @@ const execution = new DesktopExecution({
 	runner,
 	read: () => state,
 	write: (next) => {
+		const registered = !!state.ecid
 		state = next
 		saveState()
+		if (registered !== !!state.ecid && app.isReady() && !quitting) updateMenu()
 	},
 	hostname: hostname(),
 	confirmCommands: async () => {
@@ -339,42 +341,49 @@ function updateMenu() {
 					},
 				],
 			},
-			{
-				label: 'Machine',
-				submenu: [
-					{
-						label: 'This machine',
-						click: () => void showApp(machinePath()),
-					},
-					{ type: 'separator' },
-					{
-						label: 'Pause routing in Kody…',
-						click: () => void machineMenu('pause'),
-					},
-					{
-						label: 'Resume routing in Kody',
-						click: () => void machineMenu('resume'),
-					},
-					{ type: 'separator' },
-					{
-						label: 'Start runner',
-						click: () => void machineRunner('start'),
-					},
-					{ label: 'Stop runner', click: () => void machineRunner('stop') },
-					{
-						label: 'Restart runner',
-						click: () => void machineRunner('restart'),
-					},
-					{
-						label: 'Update runner now',
-						click: () => void machineMenu('update'),
-					},
-					{
-						label: 'Show runner log',
-						click: () => void machineMenu('logs'),
-					},
-				],
-			},
+			...(state.ecid
+				? [
+						{
+							label: 'Machine',
+							submenu: [
+								{
+									label: 'This machine',
+									click: () => void showApp(machinePath()),
+								},
+								{ type: 'separator' },
+								{
+									label: 'Pause routing in Kody…',
+									click: () => void machineMenu('pause'),
+								},
+								{
+									label: 'Resume routing in Kody',
+									click: () => void machineMenu('resume'),
+								},
+								{ type: 'separator' },
+								{
+									label: 'Start runner',
+									click: () => void machineRunner('start'),
+								},
+								{
+									label: 'Stop runner',
+									click: () => void machineRunner('stop'),
+								},
+								{
+									label: 'Restart runner',
+									click: () => void machineRunner('restart'),
+								},
+								{
+									label: 'Update runner now',
+									click: () => void machineMenu('update'),
+								},
+								{
+									label: 'Show runner log',
+									click: () => void machineMenu('logs'),
+								},
+							],
+						},
+					]
+				: []),
 			{ role: 'viewMenu' },
 			{ role: 'windowMenu' },
 		]),
