@@ -39,7 +39,10 @@ export type DesktopExecutionBridge = {
 	disableAutoUpdate?: () => Promise<DesktopExecutionState>
 	dismissOnboarding: () => Promise<DesktopExecutionState>
 	completeOnboarding: () => Promise<DesktopExecutionState>
+	takeMenuCommand?: () => Promise<DesktopMachineMenuCommand | null>
+	onMenuCommand?: (callback: () => void) => () => void
 }
+export type DesktopMachineMenuCommand = 'pause' | 'resume' | 'update' | 'logs'
 export type DesktopNavigationState = {
 	platform: string
 	integratedTitlebar: boolean

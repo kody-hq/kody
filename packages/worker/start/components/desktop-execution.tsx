@@ -29,6 +29,7 @@ import {
 import type {
 	DesktopExecutionBridge,
 	DesktopExecutionState,
+	DesktopMachineMenuCommand,
 } from '../desktop-shell.ts'
 import { onboardingQuery } from '../onboarding-query.ts'
 
@@ -42,6 +43,8 @@ const DesktopMachineContext = createContext<null | {
 	autoUpdate: ((enabled: boolean) => Promise<void>) | null
 	error: string | null
 	orgSlug: string | null
+	menuCommand: DesktopMachineMenuCommand | null
+	clearMenuCommand: () => void
 }>(null)
 
 const oneRunnerCopy =
@@ -80,9 +83,21 @@ export function DesktopExecutionProvider({
 	const enable = useServerFn(setExperiment)
 	const loadSetup = useServerFn(loadExecutionContextsPage)
 	const putFirst = useServerFn(putDesktopExecutionFirst)
+	const [menuCommand, setMenuCommand] =
+		useState<DesktopMachineMenuCommand | null>(null)
 	useEffect(() => {
 		setBridge(window.kodyDesktop?.execution ?? null)
 	}, [])
+	useEffect(() => {
+		if (!bridge?.takeMenuCommand) return
+		const take = () =>
+			void bridge
+				.takeMenuCommand?.()
+				.then((command) => command && setMenuCommand(command))
+				.catch(() => {})
+		take()
+		return bridge.onMenuCommand?.(take)
+	}, [bridge])
 	const machine = useQuery({
 		queryKey: ['desktop-machine', actorKey],
 		queryFn: () => bridge!.getState(),
@@ -210,6 +225,8 @@ export function DesktopExecutionProvider({
 			? {
 					state: machine.data,
 					orgSlug,
+					menuCommand,
+					clearMenuCommand: () => setMenuCommand(null),
 					commands: async (action: 'status' | 'on' | 'off') => {
 						if (action === 'status') {
 							try {
@@ -483,16 +500,23 @@ export function DesktopMachinePanel() {
 	})
 	const [routingBusy, setRoutingBusy] = useState(false)
 	const [routingError, setRoutingError] = useState<string | null>(null)
-	async function setRouting(action: 'pause' | 'resume') {
+	const [notice, setNotice] = useState<string | null>(null)
+	const [logLines, setLogLines] = useState<Array<string> | null>(null)
+	async function daemon(action: DesktopMachineMenuCommand) {
 		if (!orgSlug || !contextId) return
 		setRoutingBusy(true)
 		setRoutingError(null)
+		setNotice(null)
 		try {
 			const result = (await daemonAction({
 				data: { orgSlug, contextId, action },
-			})) as { ok: boolean; message?: string }
+			})) as
+				| { ok: true; message: string | null; lines: Array<string> | null }
+				| { ok: false; message?: string }
 			if (!result.ok)
 				setRoutingError(result.message ?? `Could not ${action} this machine.`)
+			else if (action === 'logs') setLogLines(result.lines ?? [])
+			else if (action === 'update') setNotice(result.message)
 		} catch (error) {
 			setRoutingError(error instanceof Error ? error.message : String(error))
 		} finally {
@@ -500,6 +524,16 @@ export function DesktopMachinePanel() {
 			await server.refetch()
 		}
 	}
+	const menuCommand = machine?.menuCommand ?? null
+	const clearMenuCommand = machine?.clearMenuCommand
+	const serverReady = server.isFetched
+	const daemonRef = useRef(daemon)
+	daemonRef.current = daemon
+	useEffect(() => {
+		if (!menuCommand || !serverReady) return
+		clearMenuCommand?.()
+		void daemonRef.current(menuCommand)
+	}, [menuCommand, serverReady, clearMenuCommand])
 	if (!machine) return null
 	const state = machine.state
 	const serverContext = server.data ?? null
@@ -583,7 +617,7 @@ export function DesktopMachinePanel() {
 							type="button"
 							css={{ ...secondaryCss, marginLeft: spacing.sm }}
 							disabled={state.busy || routingBusy}
-							onClick={() => void setRouting(pausedInKody ? 'resume' : 'pause')}
+							onClick={() => void daemon(pausedInKody ? 'resume' : 'pause')}
 							data-testid="desktop-machine-routing"
 						>
 							{routingBusy
@@ -604,6 +638,47 @@ export function DesktopMachinePanel() {
 						>
 							Restart runner
 						</button>
+					) : null}
+					{serverContext?.canControlDaemon &&
+					serverContext.status === 'online' ? (
+						<button
+							type="button"
+							css={{ ...secondaryCss, marginLeft: spacing.sm }}
+							disabled={state.busy || routingBusy}
+							onClick={() => void daemon('update')}
+							data-testid="desktop-machine-update"
+						>
+							Update runner now
+						</button>
+					) : null}
+					{serverContext?.canReadDaemonLogs ? (
+						<button
+							type="button"
+							css={{ ...secondaryCss, marginLeft: spacing.sm }}
+							disabled={routingBusy}
+							onClick={() => void daemon('logs')}
+							data-testid="desktop-machine-logs"
+						>
+							{logLines ? 'Refresh runner log' : 'Show runner log'}
+						</button>
+					) : null}
+					{notice ? <p role="status">{notice}</p> : null}
+					{logLines ? (
+						<pre
+							data-testid="desktop-machine-log"
+							css={{
+								maxHeight: '16rem',
+								overflow: 'auto',
+								padding: spacing.sm,
+								background: colors.surface,
+								border: `1px solid ${colors.border}`,
+								borderRadius: radius.sm,
+								fontSize: '0.8125rem',
+								whiteSpace: 'pre-wrap',
+							}}
+						>
+							{logLines.length ? logLines.join('\n') : 'No log lines yet.'}
+						</pre>
 					) : null}
 					<button
 						type="button"
