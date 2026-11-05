@@ -50,3 +50,14 @@ test('every self-serve experiment has a served guide, a nav entry, and a docs/us
 		}).toEqual({ slug, guide: true, use: true, nav: true })
 	}
 })
+
+test('the execution contexts toggle also turns publish-offload on and off', () => {
+	const experiment = selfServeExperiments.find(
+		(entry) => entry.id === 'execution-contexts',
+	)
+	expect(
+		experiment && 'linkedFlagKeys' in experiment
+			? experiment.linkedFlagKeys
+			: [],
+	).toEqual(['publish-offload'])
+})

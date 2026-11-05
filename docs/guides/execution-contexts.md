@@ -428,6 +428,38 @@ Turn it off the same way. It is only for your account.
 - [Local CLI execute](./local-execute.md), which runs code on your machine for
   one call without a daemon
 
+## Try publishing from a context
+
+Publishing from a context is part of the Execution contexts experiment. The one
+switch at
+[kody.codes/account/experiments](https://kody.codes/account/experiments) turns
+on both execution contexts and publishing from them; turning it off turns both
+off.
+
+1. Turn on **Execution contexts** at
+   [Experiments](https://kody.codes/account/experiments).
+2. Run `kody connect` on the machine that should build your packages.
+3. Publish on it: `kody package publish @you/pkg --context my-box`. Use
+   `--context cloud` to build on Kody cloud instead. A named context never falls
+   back.
+4. Optional: bind a package to one machine in `package.json`:
+
+   ```json
+   { "kody": { "publish": { "execution": { "context": "my-box" } } } }
+   ```
+
+   A bound publish that names no context builds only there. When that machine is
+   offline, busy, or its build fails, the publish fails with an error that says
+   how to pass `--context` or change the binding. It never falls back to your
+   chain or Kody cloud.
+
+With no `--context` and no binding, a publish follows your chain like `execute`:
+the contexts you operate, in order, then Kody cloud unless your chain is strict.
+`kody package publish @you/pkg --build local` builds on the machine you run the
+CLI on instead, after pushing HEAD. With the experiment off, every publish
+builds on Kody cloud. More detail:
+[publish large packages](./publish-large-packages.md).
+
 ## Publish builds
 
 With the `publish-offload` flag also on, a publish follows your chain the same
