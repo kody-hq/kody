@@ -123,7 +123,8 @@ flags, and subcommands.
 
 `kody package publish --build local|context` builds off Kody cloud
 (`--build local` pushes HEAD first). `--context <name|cloud>` names the context
-and cannot be combined with `--build local`. See
+on its own or with `--build context`; it cannot be combined with
+`--build local`. See
 [publish-large-packages](https://kody.codes/docs/publish-large-packages).
 
 `--json` prints structured MCP results. On command failures it also prints a
