@@ -770,7 +770,7 @@ export const commandHelpTree: Array<CommandHelpNode> = [
  * The deepest command node named by the leading positionals, so
  * `kody daemon stop extra --help` still finds `daemon stop`.
  */
-export function findCommandHelp(
+function findCommandHelp(
 	path: Array<string>,
 ): { node: CommandHelpNode; path: Array<string> } | null {
 	let nodes = commandHelpTree

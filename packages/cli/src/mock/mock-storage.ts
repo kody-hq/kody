@@ -126,7 +126,7 @@ export async function loadMockSession(input: {
 	return fresh
 }
 
-export async function persistMockSession(
+async function persistMockSession(
 	state: MockSessionState,
 	env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
