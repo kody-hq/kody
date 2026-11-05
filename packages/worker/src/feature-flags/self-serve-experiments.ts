@@ -7,6 +7,7 @@ import {
 	type SelfServeExperimentId,
 	type SelfServeExperimentState,
 } from '#universal/feature-flags/experiments.ts'
+import type { FeatureFlagKey } from '#universal/feature-flags/registry.ts'
 
 export async function listSelfServeExperimentsForUser(
 	db: D1Database,
@@ -43,12 +44,16 @@ export async function setSelfServeExperimentForUser(
 ) {
 	const experiment = selfServeExperiments.find((entry) => entry.id === input.id)
 	if (!experiment) throw new Error(`Unknown experiment: ${input.id}`)
-	await setFeatureFlagUserOverride(db, {
-		key: experiment.flagKey,
-		userId: input.userId,
-		enabled: input.enabled,
-		updatedBy: input.userId,
-	})
+	const linked: ReadonlyArray<FeatureFlagKey> =
+		'linkedFlagKeys' in experiment ? experiment.linkedFlagKeys : []
+	for (const key of [experiment.flagKey, ...linked]) {
+		await setFeatureFlagUserOverride(db, {
+			key,
+			userId: input.userId,
+			enabled: input.enabled,
+			updatedBy: input.userId,
+		})
+	}
 	return experiment
 }
 

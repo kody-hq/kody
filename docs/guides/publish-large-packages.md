@@ -30,13 +30,14 @@ kody package publish @you/big-package --build context
 In a terminal, `kody package publish` asks whether to build locally when Kody
 cloud runs out of room. Agents and CI get these commands instead of a prompt.
 
-> Builds outside Kody cloud are behind the `publish-offload` feature flag and
-> are not enabled for accounts yet. Building on an execution context also needs
-> the `execution-contexts` flag.
+> Building outside Kody cloud is part of the Execution contexts experiment. Turn
+> it on at [Experiments](https://kody.codes/account/experiments); the same
+> switch covers `--build local`, `--context`, and package bindings. See
+> [try publishing from a context](./execution-contexts.md#try-publishing-from-a-context).
 
 ## Where a publish builds
 
-When both flags are on, Kody picks where each publish builds, in this order:
+With the experiment on, Kody picks where each publish builds, in this order:
 
 1. **The context you name.** `kody package publish @you/pkg --context build-box`
    (or `context` on `packagePublishExternalPush`) builds there and never falls
@@ -66,8 +67,8 @@ When both flags are on, Kody picks where each publish builds, in this order:
 Auto-publish on push works the same way. A package that subscribes to the repo
 pushed event and calls publish from its handler gets these same rules.
 
-Without the flags, every publish builds on Kody cloud, a bound package included,
-and naming a context other than `cloud` is refused.
+With the experiment off, every publish builds on Kody cloud, a bound package
+included, and naming a context other than `cloud` is refused.
 
 ## What runs where
 
