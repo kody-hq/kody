@@ -126,6 +126,9 @@ the context, so the daemon starts at login or boot and restarts after a crash:
 | `kody daemon logs` (`--lines <n>`, `--follow`) | Shows the daemon log                                 |
 | `kody daemon restart`                          | Restarts after runs in flight finish                 |
 | `kody daemon start` / `stop`                   | Starts or stops the service (or the running daemon)  |
+| `kody daemon pause` / `resume` (`--context`)   | Server-side pause: chains skip it, from anywhere     |
+| `kody daemon update` (`--context`)             | Updates now (same as `kody update` on this machine)  |
+| `kody daemon config [show\|set ...]`           | Concurrency cap and auto-update, from anywhere       |
 | `kody daemon install`                          | Installs the service, or repairs it                  |
 | `kody daemon uninstall` (`--unregister`)       | Removes the service and offers to revoke the context |
 | `kody daemon auto-update on\|off\|status`      | Auto-update switch for every daemon on this machine  |
@@ -161,6 +164,79 @@ app share one lock per context, so a second daemon refuses (a service waits)
 instead of replacing the first in a loop. The desktop app adopts an existing
 service and registration instead of starting or registering a second one; see
 [one runner per machine](../use/execution-contexts.md#one-runner-per-machine).
+
+### Stop, pause, and remote control
+
+`kody daemon stop` stops the service on this machine until `kody daemon start`
+or the next login or boot. It does not unregister: the context shows offline and
+chains skip it. systemd (`RestartPreventExitStatus`), launchd
+(`SuccessfulExit=false`) and the Windows task's launcher do not restart a daemon
+that exits after a stop. `kody daemon status` then says
+`stopped (kody daemon stop, <time>)` and exits 0; a service that crashed or
+failed to start says `not running (crashed or failed to start)` and exits 1.
+
+`kody daemon pause` is a server-side pause in Kody. It works from any machine
+and while the context's machine is offline, and it survives reboots. While
+paused, chains skip the context (`was paused`, never queued), queued runs fail,
+and host commands are refused. The daemon stays connected, so status, update and
+resume keep working. `kody daemon resume` (or **Resume** on the context page)
+turns routing back on. Pass `--reason` to show why, and `--cancel-runs` to also
+cancel runs in flight. The context's operator and people with Manage on it can
+pause and resume it; org owners can pause (not resume) any context attached to
+their org, as a kill switch.
+
+With `--remote`, or with `--context` naming a context that is not on this
+machine, `status`, `restart`, `update` and `logs` go through Kody to the
+connected daemon over its signed connection. They fail at once with
+`context_offline` when the daemon is not connected; a stopped daemon cannot be
+started remotely. Restart needs a background service (or the desktop app) to
+bring the daemon back, so a terminal daemon refuses it (`not_service_managed`).
+Remote logs are for the operator only, at most 500 lines. The same operations
+are capabilities (`executionContextPause`, `executionContextResume`,
+`executionContextDaemonStatus`, `executionContextDaemonRestart`,
+`executionContextDaemonUpdate`, `executionContextDaemonConfig`,
+`executionContextDaemonLogs`) and Open API routes under
+`/v1/execution-contexts/{id}/pause`, `/resume` and `/daemon`. The context page's
+**Daemon** card and **This machine** in the desktop app use them too.
+
+### Service environment: proxies and custom CAs
+
+The service file only carries what kody needs (`PATH`, the service marker and
+`XDG_CONFIG_HOME`). To give the daemon more variables, set them with kody so
+every manager (launchd, systemd, Task Scheduler) gets them and reinstalls and
+upgrades keep them:
+
+```sh
+kody daemon env set NODE_OPTIONS=--use-system-ca
+kody daemon env list
+kody daemon env unset NODE_OPTIONS
+kody daemon install --env NODE_EXTRA_CA_CERTS=/path/to/corp-ca.pem   # repeatable
+```
+
+They are stored in the CLI config (`execution-context-policy.json`), so every
+service kody writes on this machine gets them. `env set` and `env unset` also
+rewrite the installed service file and restart its daemon (pick one with
+`--context` when the machine has several). kody owns `PATH`,
+`KODY_DAEMON_SERVICE` and `XDG_CONFIG_HOME`, so they cannot be set. The values
+are written to the service file in plain text: do not put secrets there. Keep
+API keys and tokens in [Kody credentials](./credentials.md) instead.
+
+`kody daemon status` ignores these variables when it checks whether the service
+file is outdated. A variable added to the service file by hand is kept on every
+reinstall (never stripped) and `status` and `install` warn about it; move it to
+`kody daemon env set` so kody manages it.
+
+Behind a TLS-intercepting proxy, or a server with a private CA, HTTPS fetches
+from a run fail certificate checks. The run gets an error that names the problem
+(for example `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`, `SELF_SIGNED_CERT_IN_CHAIN` or
+`CERT_HAS_EXPIRED`) and the fix, never the certificate itself. If the proxy's CA
+is in the OS trust store (Keychain on macOS, the Windows certificate store, or
+`/etc/ssl` on Linux), run `kody daemon env set NODE_OPTIONS=--use-system-ca`
+(Node 22.15+). Otherwise point `NODE_EXTRA_CA_CERTS` at a PEM file with the CA.
+The daemon trusts the same CAs as Node for both its own Kody connection and the
+fetches runs make. For `kody execute --local`, set the same variable in your
+shell. An expired or wrong-host certificate has to be fixed on the server or
+proxy.
 
 Revoking a context stops its daemon for good: it does not reconnect, and the
 service disables itself instead of restarting. Remove the leftover service with

@@ -349,6 +349,36 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: ['id'],
 	},
 	{
+		operationId: 'executionContextDaemonConfig',
+		method: 'PATCH',
+		pathTemplate: '/v1/execution-contexts/{id}/daemon/config',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextDaemonLogs',
+		method: 'GET',
+		pathTemplate: '/v1/execution-contexts/{id}/daemon/logs',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextDaemonRestart',
+		method: 'POST',
+		pathTemplate: '/v1/execution-contexts/{id}/daemon/restart',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextDaemonStatus',
+		method: 'GET',
+		pathTemplate: '/v1/execution-contexts/{id}/daemon',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextDaemonUpdate',
+		method: 'POST',
+		pathTemplate: '/v1/execution-contexts/{id}/daemon/update',
+		pathParamNames: ['id'],
+	},
+	{
 		operationId: 'executionContextDelete',
 		method: 'POST',
 		pathTemplate: '/v1/execution-contexts/{id}/delete',
@@ -388,6 +418,18 @@ export const bakedOpenApiRoutes = [
 		operationId: 'executionContextOptOut',
 		method: 'DELETE',
 		pathTemplate: '/v1/execution-contexts/{id}/opt-in',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextPause',
+		method: 'POST',
+		pathTemplate: '/v1/execution-contexts/{id}/pause',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextResume',
+		method: 'POST',
+		pathTemplate: '/v1/execution-contexts/{id}/resume',
 		pathParamNames: ['id'],
 	},
 	{

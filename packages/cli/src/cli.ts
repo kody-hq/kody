@@ -170,6 +170,7 @@ const cliFlagOptions = {
 	context: { type: 'string' },
 	mode: { type: 'string' },
 	'max-concurrent': { type: 'string' },
+	env: { type: 'string', multiple: true },
 	install: { type: 'boolean' },
 	'no-install': { type: 'boolean' },
 	'key-storage': { type: 'string' },
@@ -177,6 +178,9 @@ const cliFlagOptions = {
 	follow: { type: 'boolean', short: 'f' },
 	unregister: { type: 'boolean' },
 	'no-unregister': { type: 'boolean' },
+	reason: { type: 'string' },
+	'cancel-runs': { type: 'boolean' },
+	remote: { type: 'boolean' },
 	fallback: { type: 'string' },
 	requires: { type: 'string' },
 	chain: { type: 'string' },
@@ -531,6 +535,9 @@ async function dispatch(
 					...(parsed.values['max-concurrent'] !== undefined
 						? { maxConcurrent: String(parsed.values['max-concurrent']) }
 						: {}),
+					...(Array.isArray(parsed.values.env)
+						? { env: parsed.values.env.map(String) }
+						: {}),
 					...(parsed.values.yes === true ? { yes: true } : {}),
 					...(parsed.values['no-install'] === true
 						? { install: false }
@@ -544,6 +551,13 @@ async function dispatch(
 						? { lines: parsed.values.lines }
 						: {}),
 					...(parsed.values.follow === true ? { follow: true } : {}),
+					...(typeof parsed.values.reason === 'string'
+						? { reason: parsed.values.reason }
+						: {}),
+					...(parsed.values['cancel-runs'] === true
+						? { cancelRuns: true }
+						: {}),
+					...(parsed.values.remote === true ? { remote: true } : {}),
 					...(parsed.values['no-unregister'] === true
 						? { unregister: false }
 						: parsed.values.unregister === true

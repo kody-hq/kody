@@ -330,6 +330,13 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		table: 'execution_contexts',
 		columns: ['operator_user_id', 'login_user_id'],
 	},
+	// Who paused a context: deleting that person keeps the pause, not their id.
+	{
+		kind: 'null_user_column',
+		table: 'execution_contexts',
+		matchColumn: 'paused_by_user_id',
+		nullColumns: ['paused_by_user_id'],
+	},
 	{ kind: 'user_id', table: 'execution_context_opt_ins' },
 	// Excess-access notices about a person (ADR 0096).
 	{

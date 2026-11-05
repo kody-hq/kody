@@ -23,6 +23,7 @@ type ExecutionContextStatus = 'online' | 'offline' | 'revoked'
 export type ExecutionContextDisplayStatus =
 	| 'online'
 	| 'busy'
+	| 'paused'
 	| 'offline'
 	| 'revoked'
 
@@ -113,6 +114,12 @@ export type ExecutionContextListItem = {
 	acceptingRuns: boolean
 	lastSeenAt: string | null
 	revokedAt: string | null
+	/** Server-side pause: routing skips the context until it is resumed. */
+	paused?: ExecutionContextPause | null
+	canPause?: boolean
+	canResume?: boolean
+	canControlDaemon?: boolean
+	canReadDaemonLogs?: boolean
 	client: {
 		name: string
 		version: string
@@ -136,6 +143,13 @@ export type ExecutionContextListItem = {
 	canOptIn?: boolean
 	canAddShares?: boolean
 	chainUsage: ExecutionContextChainUsage
+}
+
+export type ExecutionContextPause = {
+	at: string
+	/** Handle of who paused it. */
+	by: string | null
+	reason: string | null
 }
 
 export type ExecutionContextUnutilized = {
@@ -418,9 +432,12 @@ export function ordinal(position: number): string {
 }
 
 export function contextDisplayStatus(
-	context: Pick<ExecutionContextListItem, 'status' | 'acceptingRuns'>,
+	context: Pick<ExecutionContextListItem, 'status' | 'acceptingRuns'> & {
+		paused?: ExecutionContextPause | null
+	},
 ): ExecutionContextDisplayStatus {
 	if (context.status === 'revoked') return 'revoked'
+	if (context.paused) return 'paused'
 	if (context.status === 'offline') return 'offline'
 	return context.acceptingRuns ? 'online' : 'busy'
 }
@@ -431,6 +448,8 @@ export function displayStatusLabel(status: ExecutionContextDisplayStatus) {
 			return 'Online'
 		case 'busy':
 			return 'Busy'
+		case 'paused':
+			return 'Paused'
 		case 'offline':
 			return 'Offline'
 		case 'revoked':
@@ -743,6 +762,12 @@ const executionContextAuditLabels: Record<string, string> = {
 	command_started: 'Command started',
 	command_finished: 'Command finished',
 	run_cancelled: 'Run cancelled',
+	paused: 'Paused',
+	resumed: 'Resumed',
+	daemon_restarted: 'Daemon restarted',
+	daemon_update_checked: 'Daemon update checked',
+	daemon_config_changed: 'Daemon config changed',
+	daemon_logs_read: 'Daemon log read',
 }
 
 /** `$ npm test in /repo, exit 0` for host command audit rows (ADR 0093). */

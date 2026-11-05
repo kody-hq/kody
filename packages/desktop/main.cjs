@@ -184,8 +184,10 @@ const execution = new DesktopExecution({
 	runner,
 	read: () => state,
 	write: (next) => {
+		const registered = !!state.ecid
 		state = next
 		saveState()
+		if (registered !== !!state.ecid && app.isReady() && !quitting) updateMenu()
 	},
 	hostname: hostname(),
 	confirmCommands: async () => {
@@ -237,6 +239,42 @@ ipcMain.handle('kody:execution', (event, command, input) => {
 	if (quitting) throw new Error('Kody is quitting.')
 	return execution.request(command, input)
 })
+let machineMenuCommand = null
+ipcMain.handle('kody:machine-menu', (event) => {
+	if (!navigationFor(event)) return null
+	const command = machineMenuCommand
+	machineMenuCommand = null
+	return command
+})
+function machinePath() {
+	const orgSlug = execution.read().owner?.orgSlug
+	return orgSlug ? `/@${orgSlug}/-/execution-contexts` : '/account'
+}
+async function machineMenu(command) {
+	if (quitting) return
+	if (command === 'pause') {
+		const { response } = await dialog.showMessageBox({
+			type: 'question',
+			message: 'Pause routing to this machine?',
+			detail:
+				'Kody keeps it paused until you resume it, even while this machine is offline. Chains skip it, queued runs fail, and host commands are refused. The runner stays connected.',
+			buttons: ['Pause routing', 'Cancel'],
+			defaultId: 1,
+			cancelId: 1,
+		})
+		if (response !== 0 || quitting) return
+	}
+	machineMenuCommand = command
+	const window = await showApp(machinePath())
+	window?.webContents.send('kody:machine-menu')
+}
+async function machineRunner(command) {
+	try {
+		await execution.request(command)
+	} catch (error) {
+		if (!quitting) dialog.showErrorBox('Kody runner', error.message)
+	}
+}
 function updateMenu() {
 	Menu.setApplicationMenu(
 		Menu.buildFromTemplate([
@@ -303,6 +341,49 @@ function updateMenu() {
 					},
 				],
 			},
+			...(state.ecid
+				? [
+						{
+							label: 'Machine',
+							submenu: [
+								{
+									label: 'This machine',
+									click: () => void showApp(machinePath()),
+								},
+								{ type: 'separator' },
+								{
+									label: 'Pause routing in Kody…',
+									click: () => void machineMenu('pause'),
+								},
+								{
+									label: 'Resume routing in Kody',
+									click: () => void machineMenu('resume'),
+								},
+								{ type: 'separator' },
+								{
+									label: 'Start runner',
+									click: () => void machineRunner('start'),
+								},
+								{
+									label: 'Stop runner',
+									click: () => void machineRunner('stop'),
+								},
+								{
+									label: 'Restart runner',
+									click: () => void machineRunner('restart'),
+								},
+								{
+									label: 'Update runner now',
+									click: () => void machineMenu('update'),
+								},
+								{
+									label: 'Show runner log',
+									click: () => void machineMenu('logs'),
+								},
+							],
+						},
+					]
+				: []),
 			{ role: 'viewMenu' },
 			{ role: 'windowMenu' },
 		]),

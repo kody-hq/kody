@@ -61,6 +61,13 @@ export const executionContextCapabilityNames = {
 	noticeDismiss: 'executionContextNoticeDismiss',
 	automationGet: 'automationExecutionGet',
 	automationSet: 'automationExecutionSet',
+	pause: 'executionContextPause',
+	resume: 'executionContextResume',
+	daemonStatus: 'executionContextDaemonStatus',
+	daemonRestart: 'executionContextDaemonRestart',
+	daemonUpdate: 'executionContextDaemonUpdate',
+	daemonConfig: 'executionContextDaemonConfig',
+	daemonLogs: 'executionContextDaemonLogs',
 } as const
 
 type CapabilityName =
@@ -535,6 +542,53 @@ export async function turnOffExecutionContextCommandsForUser(
 			grant: { commands: { enabled: false } },
 		})
 		return { ok: true as const }
+	})
+}
+
+export type ExecutionContextDaemonAction =
+	| 'pause'
+	| 'resume'
+	| 'restart'
+	| 'update'
+	| 'logs'
+
+/** Daemon card actions: server-side pause/resume and live restart/update. */
+export async function runExecutionContextDaemonActionForUser(
+	input: ScopedInput & {
+		contextId: string
+		action: ExecutionContextDaemonAction
+		reason?: string
+	},
+) {
+	return runScoped(input, async (scope) => {
+		const name = {
+			pause: executionContextCapabilityNames.pause,
+			resume: executionContextCapabilityNames.resume,
+			restart: executionContextCapabilityNames.daemonRestart,
+			update: executionContextCapabilityNames.daemonUpdate,
+			logs: executionContextCapabilityNames.daemonLogs,
+		}[input.action]
+		const result = await callCapability(scope, name, {
+			id: input.contextId,
+			...(input.action === 'pause' && input.reason
+				? { reason: input.reason }
+				: {}),
+			...(input.action === 'logs' ? { lines: 200 } : {}),
+		})
+		return {
+			ok: true as const,
+			lines: Array.isArray(result.lines)
+				? result.lines.filter(
+						(line): line is string => typeof line === 'string',
+					)
+				: null,
+			message:
+				typeof result.message === 'string'
+					? result.message
+					: typeof result.note === 'string'
+						? result.note
+						: null,
+		}
 	})
 }
 

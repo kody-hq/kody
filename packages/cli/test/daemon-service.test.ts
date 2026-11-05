@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import {
 	existsSync,
 	mkdtempSync,
+	rmSync,
 	readFileSync,
 	statSync,
 	writeFileSync,
@@ -433,6 +434,36 @@ test('status names each problem with the command that fixes it', () => {
 	assert.match(
 		text,
 		/\[linger-disabled\][^\n]*\n\s+Fix: sudo loginctl enable-linger/,
+	)
+	// A stop you asked for is not a crash: no not-running problem.
+	const stopRequested = service.servicePaths({
+		apiUrl,
+		ecid: 'ec_status',
+		manager: 'systemd',
+	}).stopRequestedPath
+	service.writeJson(stopRequested, { at: '2026-11-05T00:00:00.000Z' })
+	const stopped = service.serviceStatus({
+		apiUrl,
+		ecid: 'ec_status',
+		cliVersion: '1.2.3',
+		tmpDir: null,
+		expectedUnit: 'something else',
+		keyWrap: 'passphrase',
+		platform: 'linux',
+		isRoot: false,
+		readText: (path) => (path === unitPath ? unit : null),
+		run: fakeSystemd({ active: false, enabled: false, linger: 'no' }).run,
+	})
+	assert.deepEqual(stopped.stopRequested, { at: '2026-11-05T00:00:00.000Z' })
+	assert.ok(!stopped.problems.some((p) => p.code === 'not-running'))
+	assert.match(
+		service.formatServiceStatus(stopped),
+		/Status: stopped \(kody daemon stop, 2026-11-05T00:00:00\.000Z\); start it with: kody daemon start/,
+	)
+	rmSync(stopRequested, { force: true })
+	assert.match(
+		service.formatServiceStatus(broken),
+		/crashed or failed to start/,
 	)
 	const windows = service.serviceStatus({
 		apiUrl,
