@@ -122,7 +122,8 @@ flags, and subcommands.
 | `kody dev`                                        | Local testing for unpublished packages. Serves `kody.app.entry` on localhost via workerd with hot reload. Subcommands: `fetch`, `job`, `webhook`, `emit`, `check`. Default `--target mock` (scratch storage, fake credentials). Covers exports, webhooks, schedules (run-once), and subscriptions. See [Local package testing](#local-package-testing-kody-dev).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 `kody package publish --build local|context` builds off Kody cloud
-(`--context <name|cloud>` picks where; local pushes HEAD first). See
+(`--build local` pushes HEAD first). `--context <name|cloud>` names the context
+and cannot be combined with `--build local`. See
 [publish-large-packages](https://kody.codes/docs/publish-large-packages).
 
 `--json` prints structured MCP results. On command failures it also prints a

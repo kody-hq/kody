@@ -54,10 +54,10 @@ independently. Ask before copying a personal memory into an org package.
 ### Search relevance floor
 
 `search` drops a memory whose query embedding similarity is below the relevance
-floor, and a memory missing from the vector results, so an unrelated query
-surfaces none. Ranking order and the two-memory cap stay the same. Local dev and
-tests skip the floor (hash stand-in embeddings). Retune the threshold with
-`tools/evals/memory-surface-floor.json`, not a guess.
+floor, and a memory missing from the vector results. Ranking order and the
+two-memory cap stay the same. Local dev and tests skip the floor (hash stand-in
+embeddings). Retune the threshold with `tools/evals/memory-surface-floor.json`,
+not a guess.
 
 That retrieval is:
 
