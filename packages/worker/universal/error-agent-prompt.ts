@@ -217,15 +217,42 @@ export function escapeErrorAgentPromptHtml(text: string) {
 		.replaceAll('>', '&gt;')
 }
 
+/** Classic script (served from `public/`) that wires the static block's button. */
+export const ERROR_AGENT_PROMPT_COPY_SCRIPT_SRC = '/error-agent-prompt-copy.js'
+
+const copyIconSvg = `<svg data-icon="copy" viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true" focusable="false"><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6.5 15.25V15.25C5.5335 15.25 4.75 14.4665 4.75 13.5V6.75C4.75 5.64543 5.64543 4.75 6.75 4.75H13.5C14.4665 4.75 15.25 5.5335 15.25 6.5V6.5"/><rect width="10.5" height="10.5" x="8.75" y="8.75" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" rx="2"/></svg>`
+const checkIconSvg = `<svg data-icon="check" viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true" focusable="false"><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5.75 12.8665L8.33995 16.4138C9.15171 17.5256 10.8179 17.504 11.6006 16.3715L18.25 6.75"/></svg>`
+
+// Mirrors the small ghost pill + swap-label CopyTextButton look with plain
+// CSS: these documents load no app bundle. Custom properties fall back to
+// currentColor where the page has no Kody stylesheet.
+const copyButtonStyles = `<style>
+[data-error-agent-prompt-head]{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:0.5rem 1rem;margin:0.75rem 0 0.5rem}
+[data-error-agent-prompt-copy]{display:inline-grid;align-items:center;justify-items:center;box-sizing:border-box;min-height:2.25rem;padding:0.5rem 0.875rem;border:none;border-radius:0.625rem;background:transparent;color:var(--color-text,inherit);box-shadow:inset 0 0 0 1.5px var(--color-border,currentColor);font:650 0.875rem/1.25rem var(--font-display,inherit);cursor:pointer;white-space:nowrap;transition:background-color 160ms ease-out,box-shadow 160ms ease-out}
+[data-error-agent-prompt-copy][hidden]{display:none}
+[data-error-agent-prompt-copy]>span{grid-area:1/1;display:inline-flex;align-items:center;gap:0.375rem;transition:opacity 120ms ease-out}
+[data-error-agent-prompt-copy]>span:not([data-active]){opacity:0;visibility:hidden}
+@media (hover:hover) and (pointer:fine){[data-error-agent-prompt-copy]:hover{background-color:var(--color-surface,transparent);box-shadow:inset 0 0 0 1.5px var(--color-text-muted,currentColor)}}
+@media (any-pointer:coarse){[data-error-agent-prompt-copy]{min-height:2.75rem}}
+[data-error-agent-prompt-status]{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+</style>`
+
 /**
  * Static HTML block for pages without a hydrated Copy button (static 500,
- * package-app HTML). Uses a details/pre so the prompt is copyable without JS.
+ * package-app HTML). Uses a details/pre so the prompt is copyable without JS;
+ * the Copy prompt button stays hidden until
+ * {@link ERROR_AGENT_PROMPT_COPY_SCRIPT_SRC} runs and copies the `<pre>` text.
  */
 export function renderErrorAgentPromptStaticHtml(prompt: string) {
 	const safe = escapeErrorAgentPromptHtml(prompt)
 	return `<details ${ERROR_AGENT_PROMPT_ATTR}="" data-testid="${ERROR_AGENT_PROMPT_TEST_ID}" style="margin-top:1.25rem;text-align:left">
 <summary style="cursor:pointer;font-weight:650">${ERROR_AGENT_PROMPT_IDLE_LABEL}</summary>
-<p style="margin:0.75rem 0 0.5rem;color:inherit;opacity:0.85">Paste this into Claude, ChatGPT, Grok, or Cursor so your agent can fix it.</p>
-<pre style="margin:0;padding:0.75rem;overflow:auto;white-space:pre-wrap;word-break:break-word;border:1px solid currentColor;border-radius:0.5rem;font-size:0.85rem">${safe}</pre>
+${copyButtonStyles}
+<div data-error-agent-prompt-head="">
+<p style="margin:0;color:inherit;opacity:0.85">Paste this into Claude, ChatGPT, Grok, or Cursor so your agent can fix it.</p>
+<button type="button" data-error-agent-prompt-copy="" hidden><span data-label="idle" data-active="">${copyIconSvg}Copy prompt</span><span data-label="copied">${checkIconSvg}Copied</span><span data-label="error">Copy failed</span></button>
+<span data-error-agent-prompt-status="" role="status" aria-live="polite"></span>
+</div>
+<pre data-error-agent-prompt-text="" style="margin:0;padding:0.75rem;overflow:auto;white-space:pre-wrap;word-break:break-word;border:1px solid currentColor;border-radius:0.5rem;font-size:0.85rem">${safe}</pre>
 </details>`
 }

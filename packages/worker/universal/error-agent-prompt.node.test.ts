@@ -76,3 +76,15 @@ test('static HTML block escapes prompt text', () => {
 	expect(html).not.toContain('<script>alert')
 	expect(escapeErrorAgentPromptHtml('<&>')).toBe('&lt;&amp;&gt;')
 })
+
+test('static HTML block renders a hidden, non-submitting Copy prompt button', () => {
+	const html = renderErrorAgentPromptStaticHtml('Exact error: boom')
+	expect(html).toContain(
+		'<button type="button" data-error-agent-prompt-copy="" hidden>',
+	)
+	expect(html).toContain('Copy prompt</span>')
+	expect(html).toContain('role="status" aria-live="polite"')
+	expect(html).toContain(
+		'<pre data-error-agent-prompt-text="" style="margin:0;padding:0.75rem;overflow:auto;white-space:pre-wrap;word-break:break-word;border:1px solid currentColor;border-radius:0.5rem;font-size:0.85rem">Exact error: boom</pre>',
+	)
+})
