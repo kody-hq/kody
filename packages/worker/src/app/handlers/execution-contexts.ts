@@ -550,6 +550,7 @@ export type ExecutionContextDaemonAction =
 	| 'resume'
 	| 'restart'
 	| 'update'
+	| 'logs'
 
 /** Daemon card actions: server-side pause/resume and live restart/update. */
 export async function runExecutionContextDaemonActionForUser(
@@ -565,15 +566,20 @@ export async function runExecutionContextDaemonActionForUser(
 			resume: executionContextCapabilityNames.resume,
 			restart: executionContextCapabilityNames.daemonRestart,
 			update: executionContextCapabilityNames.daemonUpdate,
+			logs: executionContextCapabilityNames.daemonLogs,
 		}[input.action]
 		const result = await callCapability(scope, name, {
 			id: input.contextId,
 			...(input.action === 'pause' && input.reason
 				? { reason: input.reason }
 				: {}),
+			...(input.action === 'logs' ? { lines: 200 } : {}),
 		})
 		return {
 			ok: true as const,
+			lines: Array.isArray(result.lines)
+				? result.lines.filter((line): line is string => typeof line === 'string')
+				: null,
 			message:
 				typeof result.message === 'string'
 					? result.message

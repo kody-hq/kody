@@ -503,3 +503,12 @@ test('fs and lan skips name the server grant layer and the command that turns it
 	expect(text).toContain('grant.egress is not public-and-lan')
 	expect(text).toContain('kody context grant lan on --context lan-box')
 })
+
+test('a paused context is described as paused, not offline', () => {
+	expect(
+		describeAttempts([
+			{ target: 'ec_a', name: 'laptop', outcome: 'paused' },
+			{ target: 'ec_b', name: 'desk', outcome: 'offline' },
+		]),
+	).toContain('laptop: paused')
+})

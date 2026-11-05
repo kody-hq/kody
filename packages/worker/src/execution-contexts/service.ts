@@ -1649,9 +1649,9 @@ async function noticesView(
 const pauseReasonMax = 200
 const daemonLogLinesMax = 500
 
+/** Org owners are Kody's org admins: they may pause (never resume) any attached context. */
 function isOrgAdmin(caller: ExecutionContextCaller) {
-	const role = caller.request.membership?.role as string | undefined
-	return role === 'owner' || role === 'admin'
+	return isOrgOwner(caller)
 }
 
 async function liveContext(caller: ExecutionContextCaller, ref: string) {

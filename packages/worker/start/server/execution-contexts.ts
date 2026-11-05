@@ -133,7 +133,7 @@ export const runExecutionContextDaemonAction = createServerFn({
 		z.object({
 			orgSlug,
 			contextId: segment,
-			action: z.enum(['pause', 'resume', 'restart', 'update']),
+			action: z.enum(['pause', 'resume', 'restart', 'update', 'logs']),
 			reason: z.string().max(200).optional(),
 		}),
 	)

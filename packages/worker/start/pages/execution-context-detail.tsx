@@ -478,13 +478,14 @@ function NoticesPanel(props: {
 	)
 }
 
-type DaemonAction = 'pause' | 'resume' | 'restart' | 'update'
+type DaemonAction = 'pause' | 'resume' | 'restart' | 'update' | 'logs'
 
 const daemonActionBusyLabel: Record<DaemonAction, string> = {
 	pause: 'Pausing…',
 	resume: 'Resuming…',
 	restart: 'Restarting…',
 	update: 'Checking…',
+	logs: 'Loading…',
 }
 
 function DaemonPanel(props: {
@@ -498,6 +499,7 @@ function DaemonPanel(props: {
 	const [notice, setNotice] = useState<string | null>(null)
 	const [confirmingPause, setConfirmingPause] = useState(false)
 	const [reason, setReason] = useState('')
+	const [logLines, setLogLines] = useState<Array<string> | null>(null)
 	if (context.status === 'revoked') return null
 	const canPause = context.canPause === true
 	const canResume = context.canResume === true
@@ -521,9 +523,15 @@ function DaemonPanel(props: {
 						? { reason: reason.trim() }
 						: {}),
 				},
-			})) as { ok: true; message: string | null } | Failure
+			})) as
+				| { ok: true; message: string | null; lines: Array<string> | null }
+				| Failure
 			if (!result.ok) {
 				setError(failureText(result))
+				return
+			}
+			if (action === 'logs') {
+				setLogLines(result.lines ?? [])
 				return
 			}
 			setConfirmingPause(false)
@@ -692,7 +700,7 @@ function DaemonPanel(props: {
 							<button
 								type="button"
 								css={[getGhostButtonCss({ size: 'sm' }), target]}
-								disabled={busy !== null || !online || !serviceManaged}
+								disabled={busy !== null || !online}
 								title={!online ? 'The daemon is offline' : undefined}
 								onClick={() => void run('update')}
 								data-testid="context-daemon-update"
@@ -704,9 +712,47 @@ function DaemonPanel(props: {
 				</div>
 			)}
 			{context.canReadDaemonLogs ? (
-				<p css={mutedCss}>
-					Logs: <code>kody daemon logs --context {context.name}</code>
-				</p>
+				<div css={{ display: 'grid', gap: spacing.sm }}>
+					<div css={rowCss}>
+						<button
+							type="button"
+							css={[getGhostButtonCss({ size: 'sm' }), target]}
+							disabled={busy !== null || !online}
+							title={!online ? 'The daemon is offline' : undefined}
+							onClick={() => void run('logs')}
+							data-testid="context-daemon-logs"
+						>
+							{busy === 'logs'
+								? daemonActionBusyLabel.logs
+								: logLines
+									? 'Refresh log'
+									: 'View recent log'}
+						</button>
+						<span css={mutedCss}>
+							Only you see this. Or run{' '}
+							<code>kody daemon logs --context {context.name}</code>
+						</span>
+					</div>
+					{logLines ? (
+						<pre
+							data-testid="context-daemon-log"
+							css={{
+								margin: 0,
+								maxHeight: '16rem',
+								overflow: 'auto',
+								padding: spacing.sm,
+								borderRadius: radius.md,
+								border: `1px solid ${colors.border}`,
+								background: colors.surface,
+								fontSize: '0.75rem',
+								whiteSpace: 'pre-wrap',
+								wordBreak: 'break-word',
+							}}
+						>
+							{logLines.length ? logLines.join('\n') : 'No log lines yet.'}
+						</pre>
+					) : null}
+				</div>
 			) : null}
 		</section>
 	)

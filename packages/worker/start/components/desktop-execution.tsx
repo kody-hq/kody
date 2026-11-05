@@ -14,6 +14,7 @@ import { setExperiment } from '#start/server/experiment-opt-in'
 import {
 	loadExecutionContextsPage,
 	putDesktopExecutionFirst,
+	runExecutionContextDaemonAction,
 } from '#start/server/execution-contexts'
 import { colors, radius, spacing } from '#universal/styles/tokens.ts'
 import {
@@ -40,6 +41,7 @@ const DesktopMachineContext = createContext<null | {
 	restart: (() => Promise<void>) | null
 	autoUpdate: ((enabled: boolean) => Promise<void>) | null
 	error: string | null
+	orgSlug: string | null
 }>(null)
 
 const oneRunnerCopy =
@@ -207,6 +209,7 @@ export function DesktopExecutionProvider({
 		bridge && username
 			? {
 					state: machine.data,
+					orgSlug,
 					commands: async (action: 'status' | 'on' | 'off') => {
 						if (action === 'status') {
 							try {
@@ -462,8 +465,45 @@ export function DesktopMachinePanel() {
 		const interval = setInterval(() => void commands.current?.('status'), 15000)
 		return () => clearInterval(interval)
 	}, [contextId])
+	const orgSlug = machine?.orgSlug ?? null
+	const loadPage = useServerFn(loadExecutionContextsPage)
+	const daemonAction = useServerFn(runExecutionContextDaemonAction)
+	const server = useQuery({
+		queryKey: ['desktop-machine-server', orgSlug, contextId],
+		queryFn: async () => {
+			const page = await loadPage({ data: { orgSlug: orgSlug!, search: [] } })
+			return page.payload.enabled
+				? (page.payload.contexts.find((context) => context.id === contextId) ??
+						null)
+				: null
+		},
+		enabled: Boolean(orgSlug && contextId),
+		refetchInterval: 15000,
+		retry: false,
+	})
+	const [routingBusy, setRoutingBusy] = useState(false)
+	const [routingError, setRoutingError] = useState<string | null>(null)
+	async function setRouting(action: 'pause' | 'resume') {
+		if (!orgSlug || !contextId) return
+		setRoutingBusy(true)
+		setRoutingError(null)
+		try {
+			const result = (await daemonAction({
+				data: { orgSlug, contextId, action },
+			})) as { ok: boolean; message?: string }
+			if (!result.ok)
+				setRoutingError(result.message ?? `Could not ${action} this machine.`)
+		} catch (error) {
+			setRoutingError(error instanceof Error ? error.message : String(error))
+		} finally {
+			setRoutingBusy(false)
+			await server.refetch()
+		}
+	}
 	if (!machine) return null
 	const state = machine.state
+	const serverContext = server.data ?? null
+	const pausedInKody = serverContext?.paused ?? null
 	return (
 		<section
 			aria-labelledby="desktop-machine-heading"
@@ -491,7 +531,9 @@ export function DesktopMachinePanel() {
 					<p>
 						{state.name}
 						{state.contextId
-							? state.runner?.label
+							? pausedInKody
+								? ` · Runner paused${pausedInKody.by ? ` by @${pausedInKody.by}` : ''}`
+								: state.runner?.label
 								? ` · ${state.runner.label}`
 								: state.running
 									? ' · Runner running'
@@ -518,6 +560,40 @@ export function DesktopMachinePanel() {
 							onClick={() => void machine.toggle()}
 						>
 							{state.running ? 'Pause execution' : 'Resume execution'}
+						</button>
+					) : null}
+					{pausedInKody ? (
+						<p
+							data-testid="desktop-machine-paused"
+							css={{
+								color: colors.textMuted,
+								borderLeft: `3px solid ${colors.warning}`,
+								paddingLeft: spacing.sm,
+							}}
+						>
+							Paused in Kody{pausedInKody.reason ? `: ${pausedInKody.reason}` : ''}.
+							Chains skip this machine and host commands are refused until it is
+							resumed. The runner stays connected.
+						</p>
+					) : null}
+					{serverContext &&
+					(pausedInKody
+						? serverContext.canResume
+						: serverContext.canPause) ? (
+						<button
+							type="button"
+							css={{ ...secondaryCss, marginLeft: spacing.sm }}
+							disabled={state.busy || routingBusy}
+							onClick={() => void setRouting(pausedInKody ? 'resume' : 'pause')}
+							data-testid="desktop-machine-routing"
+						>
+							{routingBusy
+								? pausedInKody
+									? 'Resuming…'
+									: 'Pausing…'
+								: pausedInKody
+									? 'Resume routing'
+									: 'Pause routing'}
 						</button>
 					) : null}
 					{state.contextId && state.runner?.canRestart && machine.restart ? (
@@ -586,6 +662,7 @@ export function DesktopMachinePanel() {
 				</button>
 			) : null}
 			{machine.error ? <p role="alert">{machine.error}</p> : null}
+			{routingError ? <p role="alert">{routingError}</p> : null}
 		</section>
 	)
 }
