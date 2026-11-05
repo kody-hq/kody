@@ -42,6 +42,16 @@ const dryRunFlag: [string, string] = [
 	'--dry-run',
 	'Print the module path and params without invoking',
 ]
+const anyContextFlag: [string, string] = [
+	'--context <name>',
+	'Execution context: one on this machine (default: the only one registered), or any you manage in Kody',
+]
+const remoteFlag: [string, string] = [
+	'--remote',
+	'Go through Kody (the daemon may be on another machine)',
+]
+const remoteNote =
+	'Goes through Kody with --remote, or when --context names a context that is not registered on this machine.'
 
 export const commandHelpTree: Array<CommandHelpNode> = [
 	{
@@ -675,26 +685,35 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 			{
 				name: 'status',
 				summary: 'Show the service state and each problem with its fix',
-				usage: ['kody daemon status [--context <ec id>] [--json]'],
-				flags: [ecContextFlag, jsonFlag],
+				usage: ['kody daemon status [--context <name>] [--remote] [--json]'],
+				flags: [anyContextFlag, remoteFlag, jsonFlag],
+				notes: [
+					'Exits 0 when the service is running or was stopped on purpose (`kody daemon stop`), and 1 when it crashed or has another problem.',
+					remoteNote,
+				],
 			},
 			{
 				name: 'logs',
 				summary: 'Print the daemon log',
 				usage: [
-					'kody daemon logs [--context <ec id>] [--lines <n>] [--follow]',
+					'kody daemon logs [--context <name>] [--lines <n>] [--follow] [--remote]',
 				],
 				flags: [
-					ecContextFlag,
-					['--lines <n>', 'Lines from the end (default 100)'],
-					['--follow', 'Keep printing new lines'],
+					anyContextFlag,
+					['--lines <n>', 'Lines from the end (default 100; at most 500 remotely)'],
+					['--follow', 'Keep printing new lines (this machine only)'],
+					remoteFlag,
+				],
+				notes: [
+					`${remoteNote} Remote logs are for the context's operator only.`,
 				],
 			},
 			{
 				name: 'restart',
 				summary: 'Restart the service after runs in flight finish',
-				usage: ['kody daemon restart [--context <ec id>]'],
-				flags: [ecContextFlag],
+				usage: ['kody daemon restart [--context <name>] [--remote]'],
+				flags: [anyContextFlag, remoteFlag],
+				notes: [remoteNote],
 			},
 			{
 				name: 'start',
@@ -710,6 +729,66 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 				flags: [ecContextFlag],
 				notes: [
 					'The context shows offline, so chains skip it. It stays stopped until `kody daemon start` or the next login or boot.',
+					'To stop runs from anywhere, even while the machine is offline, use `kody daemon pause` instead.',
+				],
+			},
+			{
+				name: 'pause',
+				summary:
+					'Pause the context in Kody so chains skip it (works from any machine)',
+				usage: [
+					'kody daemon pause [--context <name>] [--reason <text>] [--cancel-runs] [--json]',
+				],
+				flags: [
+					anyContextFlag,
+					['--reason <text>', 'Why, shown on the context (200 characters)'],
+					['--cancel-runs', 'Also cancel runs in flight (default: they finish)'],
+					jsonFlag,
+				],
+				notes: [
+					'A server-side pause: chains skip the context ("was paused"), queued runs fail and host commands are refused until `kody daemon resume`. It holds while the machine is offline and across reboots; the daemon stays connected.',
+					'Org owners and admins can pause any context attached to their org (a kill switch) but only its operator or Manage holders can resume it.',
+				],
+			},
+			{
+				name: 'resume',
+				summary: 'Resume a paused context so chains route runs to it again',
+				usage: ['kody daemon resume [--context <name>] [--json]'],
+				flags: [anyContextFlag, jsonFlag],
+			},
+			{
+				name: 'update',
+				summary:
+					'Update the CLI now (here: same as `kody update`; remote: the daemon updates itself)',
+				usage: ['kody daemon update [--context <name>] [--remote] [--json]'],
+				flags: [ecContextFlag, remoteFlag, jsonFlag],
+				notes: [remoteNote],
+			},
+			{
+				name: 'config',
+				summary: "Show or change a context's daemon config in Kody",
+				usage: ['kody daemon config [<command>] [--context <name>] [--json]'],
+				flags: [ecContextFlag, jsonFlag],
+				notes: ['With no command, shows the config.'],
+				subcommands: [
+					{
+						name: 'show',
+						summary: 'Show the concurrency cap',
+						usage: ['kody daemon config show [--context <name>] [--json]'],
+						flags: [ecContextFlag, jsonFlag],
+					},
+					{
+						name: 'set',
+						summary: 'Set max-concurrent (1-8) or auto-update (on|off)',
+						usage: [
+							'kody daemon config set max-concurrent <n> [--context <name>] [--json]',
+							'kody daemon config set auto-update on|off [--context <name>] [--json]',
+						],
+						flags: [ecContextFlag, jsonFlag],
+						notes: [
+							'max-concurrent is a server limit and works while the machine is offline; auto-update needs the daemon online.',
+						],
+					},
 				],
 			},
 			{

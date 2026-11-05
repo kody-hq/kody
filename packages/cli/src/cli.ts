@@ -177,6 +177,9 @@ const cliFlagOptions = {
 	follow: { type: 'boolean', short: 'f' },
 	unregister: { type: 'boolean' },
 	'no-unregister': { type: 'boolean' },
+	reason: { type: 'string' },
+	'cancel-runs': { type: 'boolean' },
+	remote: { type: 'boolean' },
 	fallback: { type: 'string' },
 	requires: { type: 'string' },
 	chain: { type: 'string' },
@@ -544,6 +547,13 @@ async function dispatch(
 						? { lines: parsed.values.lines }
 						: {}),
 					...(parsed.values.follow === true ? { follow: true } : {}),
+					...(typeof parsed.values.reason === 'string'
+						? { reason: parsed.values.reason }
+						: {}),
+					...(parsed.values['cancel-runs'] === true
+						? { cancelRuns: true }
+						: {}),
+					...(parsed.values.remote === true ? { remote: true } : {}),
 					...(parsed.values['no-unregister'] === true
 						? { unregister: false }
 						: parsed.values.unregister === true

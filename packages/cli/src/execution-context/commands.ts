@@ -34,6 +34,10 @@ import {
 	supervisedEnvVar,
 } from './auto-update.js'
 import {
+	isRemoteDaemonCommand,
+	runRemoteDaemonCommand,
+} from './daemon-remote.js'
+import {
 	DaemonControlError,
 	type DaemonPause,
 	runDaemon,
@@ -117,6 +121,9 @@ export type ExecutionContextCommandInput = {
 		lines?: string
 		follow?: boolean
 		unregister?: boolean
+		reason?: string
+		cancelRuns?: boolean
+		remote?: boolean
 	}
 	apiUrl: string
 	org?: string
@@ -220,6 +227,31 @@ async function runCommand(
 	if (input.command === 'update') return await runUpdate(serviceEnv)
 	if (input.command === 'daemon' && sub === 'auto-update') {
 		return await runAutoUpdateCommand(serviceEnv, rest[0])
+	}
+	if (
+		input.command === 'daemon' &&
+		isRemoteDaemonCommand({
+			sub,
+			apiUrl: input.apiUrl,
+			...(input.values.context ? { context: input.values.context } : {}),
+			...(input.values.remote ? { remote: true } : {}),
+		})
+	) {
+		return await runRemoteDaemonCommand({
+			...base,
+			sub: sub!,
+			args: rest,
+			token: input.token,
+			write: input.write,
+			...(input.values.context ? { context: input.values.context } : {}),
+			...(input.values.reason ? { reason: input.values.reason } : {}),
+			...(input.values.cancelRuns ? { cancelRuns: true } : {}),
+			...(input.values.lines ? { lines: input.values.lines } : {}),
+			...(input.values.json ? { json: true } : {}),
+		})
+	}
+	if (input.command === 'daemon' && sub === 'update') {
+		return await runUpdate(serviceEnv)
 	}
 	if (input.command === 'daemon' && sub !== undefined) {
 		const maxConcurrent = maxConcurrentFlag()
