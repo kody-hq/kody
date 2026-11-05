@@ -127,9 +127,7 @@ test('refreshIntegrationTokenForPackage keeps the contextRuns deny gate for dire
 			request: deriveRequestContext({
 				user: {
 					userId: personIdFromStored('user-alice'),
-					email: 'alice@example.com',
 					username: 'alice',
-					displayName: 'Alice',
 				},
 				source: {
 					kind: 'execution-context-run',
