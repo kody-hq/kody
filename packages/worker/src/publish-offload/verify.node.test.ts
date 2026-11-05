@@ -117,7 +117,7 @@ test('a tampered module is refused by hash', async () => {
 			linkedImports: new Map(),
 		}),
 	).resolves.toEqual({
-		totalBytes: workerLoaderModuleBytes(source).byteLength,
+		totalBytes: 19,
 		referencedLinkedImports: new Set(),
 	})
 	await expect(
@@ -278,7 +278,7 @@ test('binding checks accept the bundler output for the package itself', async ()
 			linkedImports: new Map(),
 		}),
 	).resolves.toEqual({
-		totalBytes: workerLoaderModuleBytes(source).byteLength,
+		totalBytes: 444,
 		referencedLinkedImports: new Set(),
 	})
 })

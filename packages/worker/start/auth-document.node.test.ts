@@ -143,11 +143,20 @@ test('signed-out OAuth document offers log in, sign up, and Try it out', async (
 	)
 	const text = html.replaceAll('<!-- -->', '')
 	expect(text).toContain('Cursor wants to connect to your Kody account')
-	expect(html).toContain('data-testid="oauth-authorize-login"')
-	expect(html).toContain('data-testid="oauth-authorize-signup"')
+	const tagWithTestId = (testId: string) => {
+		const tag = html.match(
+			new RegExp(`<[^>]*data-testid="${testId}"[^>]*>`),
+		)?.[0]
+		if (!tag) throw new Error(`Missing ${testId}`)
+		return tag
+	}
+	expect(tagWithTestId('oauth-authorize-login')).toContain(
+		'href="/login?redirectTo=',
+	)
+	expect(tagWithTestId('oauth-authorize-signup')).toContain(
+		'href="/signup?redirectTo=',
+	)
 	expect(html).toContain('data-testid="oauth-authorize-try-it-out"')
-	expect(html).toMatch(/href="\/login\?redirectTo=/)
-	expect(html).toMatch(/href="\/signup\?redirectTo=/)
 	expect(text).toContain('Log in')
 	expect(text).toContain('Sign up')
 	expect(text).toContain('Try it out')
