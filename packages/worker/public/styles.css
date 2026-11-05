@@ -728,7 +728,9 @@ html.is-settled {
    by one list width per loop as a pure CSS animation, so it moves from
    first paint and hydration never touches it. `.is-manual` (set by
    `landing-agent-marquee.tsx` while someone scrolls, drags, or uses the
-   keyboard) stops the drift and JS wraps the scroll instead. */
+   keyboard) stops the drift and JS wraps the scroll instead. The drift never
+   scrolls, so `fade-always-x` pins both edge fades on (tw-fade's default
+   only fades the start edge once scrolled). */
 .landing-agents-row {
 	width: 100%;
 }
