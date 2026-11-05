@@ -76,7 +76,6 @@ Usage:
   kody context register --name <name> [--org <slug>] | kody context list [--json]
   kody context revoke <name|ec id> | kody context delete <name|ec id> [--org <slug>] [--json]
   kody context cancel-run <name|ec id> <run id> [--org <slug>] [--json]
-  kody context acknowledge <name|ec id> [--org <slug>]
   kody context policy [show] | allow <path> [--mode ro|rw] | remove <path> [--json]
   kody chain show | add <name> | remove <name> [--org <slug>] [--json]
   kody connect --name <name> [--org <slug>] [--no-install] [--key-storage keyring|file] [--yes]

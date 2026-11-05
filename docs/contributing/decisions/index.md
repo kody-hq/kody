@@ -283,7 +283,6 @@ Open these before proposing a new primitive, surface, or storage home.
   personal org; the publisher keeps the worker day; public apps stay
   publisher-paid; the billed org rides on the request, never the worker key
 - [0096: An execution context records its box login and warns grantees about excess access](./0096-execution-context-box-login-and-excess-access-notices.md)
-- [0097: A shared execution context needs an acknowledgment before a person's first run](./0097-execution-context-first-run-acknowledgment.md)
   Box login (person or agent profile) stored on the context; excess over each
   grantee shown only to people who can act; subject-only dismissal; no
   acknowledgment (amends 0092)

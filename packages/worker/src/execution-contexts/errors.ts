@@ -10,7 +10,6 @@ export const executionContextErrorCodes = [
 	'chain_too_long',
 	'context_not_usable',
 	'no_execution_context_available',
-	'acknowledgment_required',
 	'execution_context_unavailable',
 	'execution_context_binding_unavailable',
 	'insufficient_scope',

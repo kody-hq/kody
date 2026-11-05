@@ -1258,62 +1258,6 @@ test('kody context cancel-run posts to the run cancel route', async () => {
 	)
 })
 
-test('kody context acknowledge shows what the box runs as and needs a yes at a terminal', async () => {
-	const calls: Array<string> = []
-	const detail = {
-		context: {
-			name: 'build box',
-			operator: { handle: 'op' },
-			acknowledgment: {
-				required: true,
-				reason: 'first_run',
-				fingerprint: 'fp_1',
-				login: { kind: 'profile', handle: 'op', profileName: 'ci' },
-				entries: [{ permission: 'secret:use', resource: null }],
-				excessCount: 1,
-			},
-		},
-	}
-	const fetchFn = (async (url: URL | string, init?: RequestInit) => {
-		calls.push(
-			`${init?.method} ${new URL(url).pathname}${init?.body ? ` ${String(init.body)}` : ''}`,
-		)
-		return Response.json(
-			init?.method === 'GET' ? detail : { acknowledged: true },
-		)
-	}) as typeof fetch
-	const run = async (answer: boolean | null) => {
-		let text = ''
-		const code = await runExecutionContextCommand({
-			command: 'context',
-			positionals: ['acknowledge', 'build box'],
-			values: {},
-			apiUrl: 'https://api.kody.test',
-			token: async () => 'kody_at_test',
-			clientVersion: '0.0.0',
-			write: (chunk) => {
-				text += chunk
-			},
-			fetchFn,
-			service: { confirm: answer === null ? null : async () => answer },
-		})
-		return { code, text }
-	}
-	const yes = await run(true)
-	assert.equal(yes.code, 0)
-	assert.match(
-		yes.text,
-		/build box runs as the agent profile "ci" of @op[\s\S]*- secret:use[\s\S]*Acknowledged build box\./,
-	)
-	assert.deepEqual(calls.splice(0), [
-		'GET /v1/execution-contexts/build%20box',
-		'POST /v1/execution-contexts/build%20box/acknowledge {"fingerprint":"fp_1"}',
-	])
-	assert.equal((await run(false)).code, 1)
-	assert.deepEqual(calls.splice(0), ['GET /v1/execution-contexts/build%20box'])
-	await assert.rejects(run(null), /Acknowledging needs you at a terminal/)
-})
-
 test('a context run with commands on runs a real command and a background job, authorized and reported to Kody', async () => {
 	SilentSocket.instances = []
 	const cwd = realpathSync.native(

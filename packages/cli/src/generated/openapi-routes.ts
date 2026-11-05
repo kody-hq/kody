@@ -337,12 +337,6 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: [],
 	},
 	{
-		operationId: 'executionContextAcknowledge',
-		method: 'POST',
-		pathTemplate: '/v1/execution-contexts/{id}/acknowledge',
-		pathParamNames: ['id'],
-	},
-	{
 		operationId: 'executionContextAttach',
 		method: 'POST',
 		pathTemplate: '/v1/execution-contexts/{id}/attachments',

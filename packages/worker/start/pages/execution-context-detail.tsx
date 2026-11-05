@@ -6,7 +6,6 @@ import { useRef, useState } from 'react'
 import { useRouter } from '@tanstack/react-router'
 import { orgResourcePath } from '#universal/org-pages.ts'
 import {
-	acknowledgeExecutionContext,
 	cancelExecutionContextRun,
 	deleteExecutionContext,
 	dismissExecutionContextNotice,
@@ -21,7 +20,6 @@ import {
 	turnOffExecutionContextCommands,
 } from '#start/server/execution-contexts'
 import {
-	acknowledgmentCopy,
 	optInCopy,
 	presetLabels,
 	shareCopy,
@@ -256,13 +254,6 @@ export function ExecutionContextDetail(props: {
 					})}
 				</AccountManagementMessage>
 			) : null}
-			{context.optedIn ? (
-				<AcknowledgmentPanel
-					orgSlug={orgSlug}
-					context={context}
-					onChanged={refresh}
-				/>
-			) : null}
 			<NoticesPanel orgSlug={orgSlug} context={context} onChanged={refresh} />
 			<CommandsPanel orgSlug={orgSlug} context={context} onChanged={refresh} />
 			<OptInControls {...props} onChanged={refresh} />
@@ -393,116 +384,6 @@ function entryText(entry: { permission: string; resource: string | null }) {
 	return entry.resource
 		? `${entry.permission} on ${entry.resource}`
 		: entry.permission
-}
-
-function AcknowledgmentBody(props: { context: ExecutionContextListItem }) {
-	const ack = props.context.acknowledgment
-	if (!ack?.required) return null
-	const copy = acknowledgmentCopy({
-		name: props.context.name,
-		operator: props.context.operator.handle,
-		reason: ack.reason,
-		login: ack.login,
-		excessCount: ack.excessCount,
-	})
-	return (
-		<div data-testid="context-acknowledgment-body">
-			<p css={{ margin: 0 }}>
-				<strong>{copy.lead}</strong>
-			</p>
-			{ack.reason !== 'first_run' ? <p>{copy.runsAs}</p> : null}
-			<p>{copy.ownAccess}</p>
-			<p css={{ marginBottom: ack.entries.length ? 0 : undefined }}>
-				{copy.excess}
-			</p>
-			{ack.entries.length > 0 ? (
-				<ul>
-					{ack.entries.map((entry) => (
-						<li key={entryText(entry)}>{entryText(entry)}</li>
-					))}
-				</ul>
-			) : null}
-			<p css={mutedCss}>{copy.note}</p>
-		</div>
-	)
-}
-
-async function acknowledge(
-	orgSlug: string,
-	context: ExecutionContextListItem,
-): Promise<{ ok: true } | Failure> {
-	const ack = context.acknowledgment
-	if (!ack?.required) return { ok: true }
-	return (await acknowledgeExecutionContext({
-		data: { orgSlug, contextId: context.id, fingerprint: ack.fingerprint },
-	}).catch(() => unexpectedFailure)) as { ok: true } | Failure
-}
-
-function AcknowledgmentPanel(props: {
-	orgSlug: string
-	context: ExecutionContextListItem
-	onChanged: () => void
-}) {
-	const { context } = props
-	const [busy, setBusy] = useState(false)
-	const [error, setError] = useState<string | null>(null)
-	const ack = context.acknowledgment
-	if (!ack?.required || context.status === 'revoked') return null
-	const copy = acknowledgmentCopy({
-		name: context.name,
-		operator: context.operator.handle,
-		reason: ack.reason,
-		login: ack.login,
-		excessCount: ack.excessCount,
-	})
-
-	async function submit() {
-		setBusy(true)
-		setError(null)
-		const result = await acknowledge(props.orgSlug, context)
-		setBusy(false)
-		if (!result.ok) return setError(failureText(result))
-		props.onChanged()
-	}
-
-	return (
-		<section
-			css={[
-				sectionCss,
-				{
-					border: `1px solid ${colors.primary}`,
-					borderRadius: radius.lg,
-					padding: spacing.md,
-				},
-			]}
-			aria-labelledby="context-acknowledgment-title"
-			data-testid="context-acknowledgment"
-		>
-			<h2
-				id="context-acknowledgment-title"
-				css={{ margin: 0, fontSize: '1rem' }}
-			>
-				{copy.title}
-			</h2>
-			<AcknowledgmentBody context={context} />
-			{error ? (
-				<AccountManagementMessage tone="error">
-					{error}
-				</AccountManagementMessage>
-			) : null}
-			<div>
-				<button
-					type="button"
-					data-testid="context-acknowledge"
-					css={[getPillButtonCss({ size: 'sm' }), target]}
-					disabled={busy}
-					onClick={() => void submit()}
-				>
-					{copy.button}
-				</button>
-			</div>
-		</section>
-	)
 }
 
 function NoticesPanel(props: {
@@ -819,14 +700,6 @@ function OptInControls(props: {
 			return
 		}
 		setLeftLocally(false)
-		const acknowledged = await acknowledge(props.orgSlug, context)
-		if (!acknowledged.ok) {
-			props.onChanged()
-			setError(
-				`You opted in, but your acknowledgment was not saved. ${failureText(acknowledged)}`,
-			)
-			return
-		}
 		if (addToChain && !full) {
 			const chained = (await setExecutionChain({
 				data: {
@@ -954,7 +827,6 @@ function OptInControls(props: {
 					<p key={paragraph}>{paragraph}</p>
 				))}
 				{copy.lan ? <p data-testid="opt-in-lan">{copy.lan}</p> : null}
-				<AcknowledgmentBody context={context} />
 				<p css={mutedCss}>{copy.managersNote}</p>
 				<label
 					css={{
@@ -992,11 +864,7 @@ function OptInControls(props: {
 						disabled={busy}
 						onClick={() => void optIn()}
 					>
-						{busy
-							? 'Opting in…'
-							: context.acknowledgment?.required
-								? 'Acknowledge and opt in'
-								: 'Opt in'}
+						{busy ? 'Opting in…' : 'Opt in'}
 					</button>
 				</div>
 			</dialog>

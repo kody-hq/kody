@@ -23,8 +23,6 @@ import type {
 	OwnerId,
 	PersonId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { orgResourcePath } from '#universal/org-pages.ts'
-import { acknowledgmentState } from './acknowledgments.ts'
 import { refreshContextNotices } from './box-notices.ts'
 import { ExecutionContextError } from './errors.ts'
 import type {
@@ -339,13 +337,10 @@ export function grantRefusal(input: {
 }
 
 function noContext(attempts: Array<RoutingAttempt>, message: string): never {
-	const needsAck = attempts.some((a) => a.reason === 'acknowledgment_required')
 	throw new ExecutionContextError({
 		status: 409,
-		code: needsAck
-			? 'acknowledgment_required'
-			: 'no_execution_context_available',
-		message: needsAck ? `${message} The run did not start.` : message,
+		code: 'no_execution_context_available',
+		message,
 		details: { attempts },
 	})
 }
@@ -472,7 +467,6 @@ export async function routeExecute(input: {
 		}
 	}
 	let lastTried: ExecutionContextRow | null = null
-	const acknowledgeHrefs = new Map<string, string>()
 	let firstOffline: {
 		row: ExecutionContextRow
 		request: EcpRunRequestBody
@@ -531,22 +525,6 @@ export async function routeExecute(input: {
 			await refreshContextNotices(db, row, input.request.orgId, {
 				userIds: [input.request.userId],
 			})
-			const ack = await acknowledgmentState(
-				db,
-				row,
-				input.request.orgId,
-				input.request.userId,
-			)
-			if (ack.required) {
-				acknowledgeHrefs.set(
-					row.id,
-					input.request.orgSlug
-						? `${input.apiUrl}${orgResourcePath(input.request.orgSlug, 'execution-contexts', row.id)}`
-						: `${input.apiUrl}/account`,
-				)
-				skip('acknowledgment_required')
-				continue
-			}
 		}
 		const refusal = grantRefusal({
 			grant,
@@ -763,7 +741,7 @@ export async function routeExecute(input: {
 			attempts,
 			namedAttempt?.outcome === 'busy'
 				? `${named.name} is busy: it is already running as many runs as it allows at once, so it could not take this run. A named context never falls back; try again when one of its runs finishes, or pass fallback: "chain" to use your chain instead.`
-				: `${named.name} could not take this run (${describeAttempts(attempts, acknowledgeHrefs)}). A named context never falls back; pass fallback: "chain" to use your chain instead.`,
+				: `${named.name} could not take this run (${describeAttempts(attempts)}). A named context never falls back; pass fallback: "chain" to use your chain instead.`,
 		)
 	}
 	noContext(
@@ -772,7 +750,7 @@ export async function routeExecute(input: {
 			? requires.length > 0
 				? `This run requires ${requires.join(' and ')}, which Kody cloud cannot provide, and no context in your chain can take it. Add one with executionChainSet.`
 				: 'Your chain is strict and has no contexts, so this run had nowhere to go. Add a context or Kody cloud with executionChainSet.'
-			: `No execution context could take this run (${describeAttempts(attempts, acknowledgeHrefs)}).`,
+			: `No execution context could take this run (${describeAttempts(attempts)}).`,
 	)
 }
 
@@ -800,27 +778,13 @@ const contextReasonText: Record<string, string> = {
 		'operator_left: the person who runs this machine is no longer a member of this org',
 }
 
-/** The refusal a shared run gets before its person acknowledged the context. */
-export function acknowledgmentRequiredText(input: {
-	name: string
-	href: string
-}) {
-	return `acknowledgment_required: before your first run here, acknowledge what this machine runs as (its login and any access it has that you lack). Open ${input.href} and choose Acknowledge, or run \`kody context acknowledge ${input.name}\` in a terminal signed in as yourself`
-}
-
-function describeAttempts(
-	attempts: ReadonlyArray<RoutingAttempt>,
-	acknowledgeHrefs?: ReadonlyMap<string, string>,
-) {
+function describeAttempts(attempts: ReadonlyArray<RoutingAttempt>) {
 	return attempts
 		.map((a) => {
-			const href = acknowledgeHrefs?.get(a.target)
 			const reason =
-				a.reason === 'acknowledgment_required' && href
-					? acknowledgmentRequiredText({ name: a.name ?? a.target, href })
-					: a.reason && a.target !== 'cloud'
-						? (contextReasonText[a.reason] ?? a.reason)
-						: a.reason
+				a.reason && a.target !== 'cloud'
+					? (contextReasonText[a.reason] ?? a.reason)
+					: a.reason
 			return `${a.name ?? a.target}: ${a.outcome}${reason ? ` (${reason})` : ''}`
 		})
 		.join('; ')
