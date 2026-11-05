@@ -14,6 +14,7 @@ import {
 	INTEGRATION_RUNTIME_CONFIG_TOOL_NAME,
 } from '#mcp/execute-modules/kody-runtime-utils.ts'
 import { readIntegrationRuntimeConfig } from '#mcp/capabilities/integrations/integration-runtime-config.ts'
+import { attestedPackageStampFromCaller } from '#worker/credentials/package-stamp.ts'
 import type { Capability } from '#mcp/capabilities/types.ts'
 import {
 	createPackageStorageHelperPrelude,
@@ -545,6 +546,9 @@ const runtimeHelperManifest: Array<RuntimeHelperManifestEntry> = [
 						env: context.env,
 						callerContext: context.callerContext,
 						integrationGet,
+						packageStamp: attestedPackageStampFromCaller({
+							storageContext: context.callerContext.storageContext,
+						}).packageStamp,
 						args,
 					}),
 			}

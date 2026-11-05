@@ -37,6 +37,8 @@ import {
 } from '#mcp/secrets/crypto.ts'
 import { integrationGetCapability } from './integration-get.ts'
 import { readIntegrationRuntimeConfig } from './integration-runtime-config.ts'
+import { hostAuthorityFromKody } from '#worker/test-support/host-integration-authority.ts'
+import { attestedPackageStampFromCaller } from '#worker/credentials/package-stamp.ts'
 
 const scheduledAudits = vi.hoisted(() => [] as Array<Promise<unknown>>)
 
@@ -186,6 +188,11 @@ async function setup() {
 			orgBinding: { org: { id: acmeId, slug: 'acme-fetch' }, role },
 		})
 
+	const stampOf = (callerContext: ReturnType<typeof callerAs>) =>
+		attestedPackageStampFromCaller({
+			storageContext: callerContext.storageContext,
+		}).packageStamp
+
 	const readConfig = (
 		callerContext: ReturnType<typeof callerAs>,
 		name = 'svc',
@@ -194,6 +201,7 @@ async function setup() {
 			env,
 			callerContext,
 			integrationGet: integrationGetCapability,
+			packageStamp: stampOf(callerContext),
 			args: { name },
 		})
 
@@ -208,6 +216,7 @@ async function setup() {
 					env,
 					callerContext,
 					integrationGet: integrationGetCapability,
+					packageStamp: stampOf(callerContext),
 					args,
 				}),
 			async integrationTokenRefresh(args) {
@@ -242,9 +251,13 @@ async function setup() {
 			}
 			return Response.json({ host: url.hostname, token })
 		}
-		const authed = await createAuthenticatedFetch(kody, 'svc', {
-			fetch: gateway,
-		})
+		const authed = await createAuthenticatedFetch(
+			hostAuthorityFromKody(kody),
+			'svc',
+			{
+				fetch: gateway,
+			},
+		)
 		return (await (await authed('/me')).json()) as {
 			host: string
 			token: string

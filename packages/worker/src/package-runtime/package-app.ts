@@ -39,11 +39,9 @@ import type {
 	PackageAppVisitorNeed,
 } from '#worker/package-registry/types.ts'
 import type { EntitySourceRow } from '#worker/repo/types.ts'
-import {
-	buildKodyFns,
-	collectPackageStorageGrantIds,
-} from '#mcp/run-kody-registry.ts'
+import { collectPackageStorageGrantIds } from '#mcp/run-kody-registry.ts'
 import { getCapabilityRegistryForContext } from '#mcp/capabilities/registry.ts'
+import { createHostIntegrationAuthority } from '#mcp/capabilities/integrations/host-integration-authority.ts'
 import { readIntegrationRuntimeConfig } from '#mcp/capabilities/integrations/integration-runtime-config.ts'
 import { listVisibleEnabledMcpServerRefsCached } from '#worker/mcp-client/settings-service.ts'
 import {
@@ -97,7 +95,10 @@ import {
 	issuePackageSecretRef,
 } from '#mcp/secrets/package-secret-ref.ts'
 import { buildSecretPlaceholder } from '#mcp/secrets/placeholders.ts'
-import { attestedPackageStamp } from '#worker/credentials/package-stamp.ts'
+import {
+	attestedPackageStamp,
+	attestedPackageStampFromCaller,
+} from '#worker/credentials/package-stamp.ts'
 import { resolveCredential } from '#worker/credentials/resolve-credential.ts'
 import { newRunCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
 import {
@@ -2261,6 +2262,9 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 					env: this.env,
 					callerContext,
 					integrationGet,
+					packageStamp: attestedPackageStampFromCaller({
+						storageContext: callerContext.storageContext,
+					}).packageStamp,
 					args,
 				})
 			},
@@ -2866,9 +2870,14 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			storageId: this.ctx.props.packageId,
 			visitTicket: input.visitTicket,
 			run: async (callerContext) => {
-				const kody = await buildKodyFns(this.env, callerContext)
 				const authenticatedFetch = await createAuthenticatedFetch(
-					kody,
+					createHostIntegrationAuthority({
+						env: this.env,
+						callerContext,
+						packageStamp: attestedPackageStampFromCaller({
+							storageContext: callerContext.storageContext,
+						}).packageStamp,
+					}),
 					input.providerName,
 				)
 				return await authenticatedFetch(input.request.url, {

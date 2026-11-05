@@ -12,6 +12,7 @@ import {
 } from './kody-runtime-utils.ts'
 import { createMswNodeServer } from '#worker/test-support/msw-node-server.ts'
 import { buildBasicAuthSecretPlaceholder } from '#mcp/secrets/placeholders.ts'
+import { hostAuthorityFromKody } from '#worker/test-support/host-integration-authority.ts'
 
 type SandboxHelpers = {
 	createAuthenticatedFetch: (
@@ -161,7 +162,8 @@ function authenticatedFetchImplementations(
 	kody: KodyNamespace,
 ) {
 	return {
-		host: () => createAuthenticatedFetch(kody, integration.name),
+		host: () =>
+			createAuthenticatedFetch(hostAuthorityFromKody(kody), integration.name),
 		sandbox: () =>
 			createSandboxHelpers(dispatchFor(kody)).createAuthenticatedFetch(
 				integration.name,
@@ -220,7 +222,10 @@ test('createAuthenticatedFetch uses placeholder auth and refreshes host-side on 
 		{
 			// Native Response bodies avoid hanging when 401 retry cancels one.
 			using _fetchMock = createFetchMock({ fetchCalls, ...scenario })
-			const authenticatedFetch = await createAuthenticatedFetch(kody, name)
+			const authenticatedFetch = await createAuthenticatedFetch(
+				hostAuthorityFromKody(kody),
+				name,
+			)
 			const response = await authenticatedFetch(scenario.path, scenario.init)
 			expect(await response.json()).toEqual({ ok: true })
 		}
@@ -244,7 +249,8 @@ test('createAuthenticatedFetch uses placeholder auth and refreshes host-side on 
 
 test('createAuthenticatedFetch returns the original 401 without a retry when the connection has nothing to refresh', async () => {
 	const implementations = {
-		host: (kody: KodyNamespace) => createAuthenticatedFetch(kody, 'spotify'),
+		host: (kody: KodyNamespace) =>
+			createAuthenticatedFetch(hostAuthorityFromKody(kody), 'spotify'),
 		sandbox: (kody: KodyNamespace) =>
 			createSandboxHelpers(dispatchFor(kody)).createAuthenticatedFetch(
 				'spotify',
