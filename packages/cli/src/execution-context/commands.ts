@@ -81,6 +81,7 @@ import {
 	offerInstall,
 	offerUninstallAfterRevoke,
 	runAutoUpdateCommand,
+	runDaemonEnvCommand,
 	runDaemonServiceCommand,
 	runUpdate,
 	storedContextIds,
@@ -100,6 +101,7 @@ import {
 	createLocalWorkerTracker,
 	reapLeftoverWorkers,
 } from './worker-tracker.js'
+import { saveServiceEnvAssignments } from './service-env.js'
 
 export type ExecutionContextCommandInput = {
 	command: 'context' | 'chain' | 'daemon' | 'connect' | 'update'
@@ -110,6 +112,8 @@ export type ExecutionContextCommandInput = {
 		mode?: string
 		json?: boolean
 		maxConcurrent?: string
+		/** `kody daemon install --env KEY=VALUE` (repeatable). */
+		env?: Array<string>
 		yes?: boolean
 		/** true: --install, false: --no-install, undefined: ask. */
 		install?: boolean
@@ -221,6 +225,20 @@ async function runCommand(
 			: maxConcurrentRuns(input.values.maxConcurrent)
 	}
 	if (input.command === 'update') return await runUpdate(serviceEnv)
+	if (input.command === 'daemon' && sub === 'env') {
+		return await runDaemonEnvCommand(serviceEnv, {
+			action: rest[0],
+			args: rest.slice(1),
+			...(input.values.context ? { context: input.values.context } : {}),
+		})
+	}
+	if (
+		input.command === 'daemon' &&
+		sub === 'install' &&
+		input.values.env?.length
+	) {
+		await saveServiceEnvAssignments(input.values.env)
+	}
 	if (input.command === 'daemon' && sub === 'auto-update') {
 		return await runAutoUpdateCommand(serviceEnv, rest[0])
 	}

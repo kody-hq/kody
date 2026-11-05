@@ -199,6 +199,45 @@ are capabilities (`executionContextPause`, `executionContextResume`,
 `/v1/execution-contexts/{id}/pause`, `/resume` and `/daemon`. The context page's
 **Daemon** card and **This machine** in the desktop app use them too.
 
+### Service environment: proxies and custom CAs
+
+The service file only carries what kody needs (`PATH`, the service marker and
+`XDG_CONFIG_HOME`). To give the daemon more variables, set them with kody so
+every manager (launchd, systemd, Task Scheduler) gets them and reinstalls and
+upgrades keep them:
+
+```sh
+kody daemon env set NODE_OPTIONS=--use-system-ca
+kody daemon env list
+kody daemon env unset NODE_OPTIONS
+kody daemon install --env NODE_EXTRA_CA_CERTS=/path/to/corp-ca.pem   # repeatable
+```
+
+They are stored in the CLI config (`execution-context-policy.json`), so every
+service kody writes on this machine gets them. `env set` and `env unset` also
+rewrite the installed service file and restart its daemon (pick one with
+`--context` when the machine has several). kody owns `PATH`,
+`KODY_DAEMON_SERVICE` and `XDG_CONFIG_HOME`, so they cannot be set. The values
+are written to the service file in plain text: do not put secrets there. Keep
+API keys and tokens in [Kody credentials](./credentials.md) instead.
+
+`kody daemon status` ignores these variables when it checks whether the service
+file is outdated. A variable added to the service file by hand is kept on every
+reinstall (never stripped) and `status` and `install` warn about it; move it to
+`kody daemon env set` so kody manages it.
+
+Behind a TLS-intercepting proxy, or a server with a private CA, HTTPS fetches
+from a run fail certificate checks. The run gets an error that names the problem
+(for example `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`, `SELF_SIGNED_CERT_IN_CHAIN` or
+`CERT_HAS_EXPIRED`) and the fix, never the certificate itself. If the proxy's CA
+is in the OS trust store (Keychain on macOS, the Windows certificate store, or
+`/etc/ssl` on Linux), run `kody daemon env set NODE_OPTIONS=--use-system-ca`
+(Node 22.15+). Otherwise point `NODE_EXTRA_CA_CERTS` at a PEM file with the CA.
+The daemon trusts the same CAs as Node for both its own Kody connection and the
+fetches runs make. For `kody execute --local`, set the same variable in your
+shell. An expired or wrong-host certificate has to be fixed on the server or
+proxy.
+
 Revoking a context stops its daemon for good: it does not reconnect, and the
 service disables itself instead of restarting. Remove the leftover service with
 `kody daemon uninstall`.

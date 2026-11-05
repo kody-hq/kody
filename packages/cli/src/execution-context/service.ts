@@ -12,6 +12,7 @@ import { homedir, tmpdir, userInfo } from 'node:os'
 import { dirname, join, sep } from 'node:path'
 import { killProcessTree, windowsCommandLine } from '../process-tree.js'
 import { contextDir } from './keystore.js'
+import { managedEnvComment, unitWithoutEnv } from './service-env.js'
 
 /**
  * `kody daemon install`: run one execution context's daemon as a per-user
@@ -154,6 +155,10 @@ export type UnitInput = {
 	maxConcurrent?: number
 	env?: NodeJS.ProcessEnv
 	platform?: NodeJS.Platform
+	/** `kody daemon env` variables plus hand-added ones kept from the old file. */
+	extraEnv?: Record<string, string>
+	/** Keys set with `kody daemon env`, recorded in the file. */
+	managedEnvKeys?: Array<string>
 }
 
 function daemonArgs(input: UnitInput) {
@@ -187,6 +192,14 @@ function servicePath(input: { node: string; platform?: NodeJS.Platform }) {
 
 /** Variables the service passes through (paths only, never secrets). */
 function serviceEnvironment(input: UnitInput) {
+	const base = kodyServiceEnvironment(input)
+	const extra = Object.entries(input.extraEnv ?? {}).filter(
+		([key]) => !(key in base),
+	)
+	return { ...base, ...Object.fromEntries(extra) }
+}
+
+function kodyServiceEnvironment(input: UnitInput): Record<string, string> {
 	const env = input.env ?? process.env
 	// A logon task already runs in the user's own environment, PATH included.
 	if (input.paths.manager === 'taskscheduler') {
@@ -214,10 +227,16 @@ function systemdPath(value: string) {
 	return value.replace(/[\n\r]/g, '').replace(/%/g, '%%')
 }
 
+function envCommentLines(input: UnitInput, before: string, after = '') {
+	const comment = managedEnvComment(input.managedEnvKeys ?? [])
+	return comment ? [`${before}${comment}${after}`] : []
+}
+
 export function systemdUnit(input: UnitInput) {
 	const env = serviceEnvironment(input)
 	return [
 		'# Written by `kody daemon install`. Re-run it to repair; remove with `kody daemon uninstall`.',
+		...envCommentLines(input, '# '),
 		'[Unit]',
 		`Description=Kody execution context ${input.contextName.replace(/[\n\r]/g, ' ')} (${input.ecid})`,
 		'Documentation=https://kody.codes/docs/use/execution-contexts',
@@ -259,7 +278,9 @@ export function launchdPlist(input: UnitInput) {
 	return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- Written by \`kody daemon install\`. Re-run it to repair; remove with \`kody daemon uninstall\`. -->
-<plist version="1.0">
+${envCommentLines(input, '<!-- ', ' -->')
+	.map((line) => `${line}\n`)
+	.join('')}<plist version="1.0">
 <dict>
 	<key>Label</key>
 	<string>${xml(launchdLabel(input.ecid))}</string>
@@ -317,6 +338,7 @@ export function taskSchedulerScript(input: UnitInput) {
 	return [
 		'\ufeff# Written by `kody daemon install`. Re-run it to repair; remove with `kody daemon uninstall`.',
 		`# Kody execution context ${input.contextName.replace(/[\n\r]/g, ' ')} (${input.ecid})`,
+		...envCommentLines(input, '# '),
 		...Object.entries(env).map(
 			([key, value]) => `$env:${key} = ${powershellQuote(value)}`,
 		),
@@ -632,6 +654,8 @@ export function serviceStatus(input: {
 	contextName?: string
 	cliVersion: string
 	expectedUnit?: string | null
+	/** Service env keys the outdated check ignores (`kody daemon env`, hand-added). */
+	ignoreEnvKeys?: Array<string>
 	keyWrap?: 'keyring' | 'passphrase' | 'file' | null
 	run?: CommandRunner
 	platform?: NodeJS.Platform
@@ -748,7 +772,13 @@ export function serviceStatus(input: {
 			fix: 'npm install -g @kodycodes/cli && kody daemon install',
 		})
 	}
-	if (input.expectedUnit && input.expectedUnit !== unitText) {
+	const ignoreEnvKeys = input.ignoreEnvKeys ?? []
+	if (
+		input.expectedUnit &&
+		(unitText === null ||
+			unitWithoutEnv(input.expectedUnit, ignoreEnvKeys) !==
+				unitWithoutEnv(unitText, ignoreEnvKeys))
+	) {
 		base.problems.push({
 			code: 'unit-outdated',
 			message: `The service file differs from what this kody ${input.cliVersion} writes.`,

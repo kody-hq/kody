@@ -670,11 +670,15 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 				name: 'install',
 				summary: 'Install the daemon as a per-user background service',
 				usage: [
-					'kody daemon install [--context <ec id>] [--max-concurrent <n>] [--key-storage keyring|file] [--yes]',
+					'kody daemon install [--context <ec id>] [--max-concurrent <n>] [--env KEY=VALUE]... [--key-storage keyring|file] [--yes]',
 				],
 				flags: [
 					ecContextFlag,
 					['--max-concurrent <n>', 'Runs at once'],
+					[
+						'--env KEY=VALUE',
+						'Set a service environment variable (repeatable; saved like `kody daemon env set`)',
+					],
 					[
 						'--key-storage keyring|file',
 						'Where the service reads the machine key',
@@ -807,6 +811,41 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 					ecContextFlag,
 					['--unregister', 'Also revoke the execution context'],
 					['--no-unregister', 'Keep the execution context registered'],
+				],
+			},
+			{
+				name: 'env',
+				summary: 'Set environment variables for the daemon service',
+				usage: ['kody daemon env [<command>] [--context <name>] [--json]'],
+				flags: [anyContextFlag, jsonFlag],
+				notes: [
+					'With no command, lists them. Saved in the kody config, so reinstalls and upgrades keep them; set and unset rewrite an installed service file and restart it.',
+					'Not for secrets: the service file stores values in plain text. Use Kody credentials.',
+					'Behind a TLS-intercepting proxy: kody daemon env set NODE_OPTIONS=--use-system-ca (or NODE_EXTRA_CA_CERTS=<ca file>).',
+				],
+				subcommands: [
+					{
+						name: 'list',
+						summary: 'List the service environment',
+						usage: ['kody daemon env list [--json]'],
+						flags: [jsonFlag],
+					},
+					{
+						name: 'set',
+						summary: 'Set one or more variables',
+						usage: [
+							'kody daemon env set KEY=VALUE [KEY=VALUE...] [--context <name>] [--json]',
+						],
+						flags: [anyContextFlag, jsonFlag],
+					},
+					{
+						name: 'unset',
+						summary: 'Remove one or more variables',
+						usage: [
+							'kody daemon env unset KEY [KEY...] [--context <name>] [--json]',
+						],
+						flags: [anyContextFlag, jsonFlag],
+					},
 				],
 			},
 			{

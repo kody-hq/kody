@@ -170,6 +170,7 @@ const cliFlagOptions = {
 	context: { type: 'string' },
 	mode: { type: 'string' },
 	'max-concurrent': { type: 'string' },
+	env: { type: 'string', multiple: true },
 	install: { type: 'boolean' },
 	'no-install': { type: 'boolean' },
 	'key-storage': { type: 'string' },
@@ -533,6 +534,9 @@ async function dispatch(
 						: {}),
 					...(parsed.values['max-concurrent'] !== undefined
 						? { maxConcurrent: String(parsed.values['max-concurrent']) }
+						: {}),
+					...(Array.isArray(parsed.values.env)
+						? { env: parsed.values.env.map(String) }
 						: {}),
 					...(parsed.values.yes === true ? { yes: true } : {}),
 					...(parsed.values['no-install'] === true
