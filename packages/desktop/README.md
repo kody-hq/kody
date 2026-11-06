@@ -10,18 +10,24 @@ npm install
 npm run desktop:dev
 ```
 
-After normal onboarding, the desktop app offers to set up this machine:
+After normal onboarding, the desktop app offers to set up this machine. Setup is
+personal-first, then optional team access, with clear stages you can resume:
 
-1. **Continue in browser** opens the CLI browser login for your personal
-   workspace. The desktop verifies that it matches the account signed into the
-   website.
-2. Choose a machine name and select **Enable this machine**. This registers the
-   device, starts its runner, and puts it first in your personal execution
-   chain. Other entries keep their order and cloud fallback keeps its current
-   setting. A full chain asks which existing entry to replace.
-3. **Not now** skips the wizard for this account on this installation. Open
-   **This machine** in the web account menu to return to setup, pause or resume
-   execution, or forget this app’s setup. These controls appear only in desktop.
+1. **Sign in as this person** (**Continue in browser**) opens the CLI browser
+   login for your personal workspace. When login already named an organization,
+   the authorize page locks that choice and explains why. The desktop verifies
+   that the CLI matches the account signed into the website.
+2. **Register this device personally** (name the machine, or adopt an existing
+   CLI registration). This starts the runner. On a personal workspace it also
+   puts the machine first in your personal execution chain.
+3. **Make available to @team** when you start setup from a team workspace (or
+   use **Manage setup** there later). That attaches the same personal
+   registration to the team chain without registering again.
+4. Success only after the intended workspace lists the machine and the runner is
+   connected. **Not now** skips the wizard for this account on this
+   installation; **This machine** always offers **Set up this machine** /
+   **Resume setup** / **Manage setup**, and explains when the wizard is
+   unavailable.
 
 One runner per machine: the app and the kody CLI share this machine’s
 registration and runner. When the CLI already registered the machine, setup

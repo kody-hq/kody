@@ -8,13 +8,17 @@ import {
 	fieldLabelCss,
 	inputCss,
 	getAlertCardCss,
+	descriptionCss,
 } from '#universal/styles/style-primitives.ts'
+import { colors, spacing } from '#universal/styles/tokens.ts'
 
 export function AuthorizeOrgField(props: {
 	orgs: readonly OAuthAuthorizeConsentOrg[]
 	selectedOrgSlug: string | null
 	signedIn: boolean
 	onChange: (slug: string | null) => void
+	requiredOrgSlug?: string | null
+	requiredReason?: string | null
 }) {
 	const field = oauthAuthorizeOrgField(props)
 	if (field.kind === 'hidden')
@@ -26,6 +30,47 @@ export function AuthorizeOrgField(props: {
 				data-testid="oauth-authorize-org"
 			/>
 		)
+	if (field.kind === 'locked') {
+		const selected = field.options.find((org) => org.slug === field.slug)
+		const label = selected?.displayName
+			? `${selected.displayName} (@${field.slug})`
+			: `@${field.slug}`
+		return (
+			<div
+				css={{ display: 'grid', gap: spacing.sm }}
+				data-testid="oauth-authorize-org-locked"
+			>
+				<input
+					type="hidden"
+					name="org"
+					value={field.slug}
+					data-testid="oauth-authorize-org"
+				/>
+				<label css={fieldCss}>
+					<span css={fieldLabelCss}>Organization</span>
+					<select
+						css={inputCss}
+						value={field.slug}
+						disabled
+						aria-disabled="true"
+						data-testid="oauth-authorize-org-disabled"
+					>
+						<option value={field.slug}>{label}</option>
+					</select>
+				</label>
+				<p
+					css={{
+						...descriptionCss,
+						margin: 0,
+						color: colors.textMuted,
+					}}
+					data-testid="oauth-authorize-org-locked-reason"
+				>
+					{field.reason}
+				</p>
+			</div>
+		)
+	}
 	if (field.kind === 'missing')
 		return (
 			<p

@@ -116,11 +116,13 @@ uninstall, `kody update`), `auto-update.ts`, and `runner-lock.ts`.
   server-side `1012 replaced` close makes `runDaemon` return `replaced`: the
   daemon logs the other local `kody daemon` processes (by command line) and
   exits instead of reconnecting.
-- Desktop **Manage setup** in a team org (`putDesktopExecutionFirst` with
-  `targetOrgSlug`) attaches the personal registration to that org and puts it
-  first in the org chain; it does not register the machine again. The context
-  page **Daemon** card and desktop **This machine** call
-  `runExecutionContextDaemonAction` (pause, resume, restart, update, logs).
+- Desktop setup is staged (sign in → personal register → optional team attach →
+  runner). **Manage setup** / team-first setup in a team org
+  (`putDesktopExecutionFirst` with `targetOrgSlug`) attaches the personal
+  registration to that org and puts it first in the org chain; it does not
+  register the machine again. The context page **Daemon** card and desktop
+  **This machine** call `runExecutionContextDaemonAction` (pause, resume,
+  restart, update, logs).
 
 ## Revoke, then delete
 
