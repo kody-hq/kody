@@ -667,6 +667,29 @@ const packageVisibilityPermissions: ReadonlyArray<OrgPermission> = [
  * least one permission on it. A profile that only grants `execute` still
  * shows the package, so it can be invoked.
  */
+/**
+ * Only the profile-chain layer of `checkPermission` (ADR 0092), for a Use
+ * check that decides person access another way (a granted personal
+ * credential).
+ */
+export function checkProfileChain(
+	access: EffectivePermissions,
+	permission: OrgPermission,
+	resource?: OrgResource,
+): AuthorizationDecision {
+	const blocked = profileChainBlock(access, permission, resource)
+	if (!blocked) return { allowed: true }
+	return deny({
+		code: blocked.code,
+		permission,
+		access,
+		resource,
+		message:
+			profileDenialMessage(access, permission, resource) ??
+			denialMessage(blocked.code, permission, resource),
+	})
+}
+
 export function canSeeResource(
 	access: EffectivePermissions,
 	resource: OrgResource,
