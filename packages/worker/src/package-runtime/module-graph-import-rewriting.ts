@@ -4,6 +4,7 @@ import {
 	loadServingPackageSourceBySourceId,
 	type LoadedPackageSource,
 } from '#worker/package-registry/source.ts'
+import { servingArtifactCommitForSource } from '#worker/repo/serving-commit.ts'
 import {
 	normalizePackageExportKey,
 	normalizePackageWorkspacePath,
@@ -175,7 +176,7 @@ async function maybeEnsurePublishedArtifactTarget(input: {
 				env: input.state.env,
 				userId: input.state.userId,
 				...identity,
-				commit: input.loaded.source.published_commit,
+				commit: servingArtifactCommitForSource(input.loaded.source),
 			})
 	if (!artifact?.artifact) {
 		return null
@@ -262,7 +263,7 @@ async function prefetchPublishedArtifactTargets(
 		kind: 'importable-module'
 		artifactName: string
 		entryPoint: string
-		commit: string
+		commit: string | null
 	}> = []
 	for (const specifier of new Set(specifiers)) {
 		if (state.proxies.has(specifier)) continue
@@ -281,7 +282,7 @@ async function prefetchPublishedArtifactTargets(
 					manifest: loaded.manifest,
 					exportName,
 				}),
-				commit: loaded.source.published_commit,
+				commit: servingArtifactCommitForSource(loaded.source),
 			}
 			if (
 				!state.prefetchedPublishedArtifacts.has(
