@@ -71,14 +71,12 @@ test('panel actions stay available and name resume versus unavailable reasons', 
 	expect(
 		desktopSetupPanelAction({
 			state: undefined,
-			pageOrgSlug: null,
 			needsAccountOnboarding: null,
 		}).kind,
 	).toBe('unavailable')
 	expect(
 		desktopSetupPanelAction({
 			state: { ...base, supported: false },
-			pageOrgSlug: null,
 			needsAccountOnboarding: false,
 		}),
 	).toMatchObject({
@@ -88,7 +86,6 @@ test('panel actions stay available and name resume versus unavailable reasons', 
 	expect(
 		desktopSetupPanelAction({
 			state: { ...base, cliReady: true },
-			pageOrgSlug: null,
 			needsAccountOnboarding: false,
 		}),
 	).toEqual({ kind: 'resume', label: 'Resume setup' })
@@ -98,21 +95,18 @@ test('panel actions stay available and name resume versus unavailable reasons', 
 				...base,
 				existingContext: { id: 'ec_old', name: 'old-laptop' },
 			},
-			pageOrgSlug: null,
 			needsAccountOnboarding: false,
 		}),
 	).toEqual({ kind: 'resume', label: 'Resume setup' })
 	expect(
 		desktopSetupPanelAction({
 			state: { ...base, contextId: 'ec_mac', onboardingSeen: true },
-			pageOrgSlug: 'acme',
 			needsAccountOnboarding: false,
 		}),
 	).toEqual({ kind: 'manage', label: 'Manage setup' })
 	expect(
 		desktopSetupPanelAction({
 			state: base,
-			pageOrgSlug: 'acme',
 			needsAccountOnboarding: true,
 		}),
 	).toMatchObject({

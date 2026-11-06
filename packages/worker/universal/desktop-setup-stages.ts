@@ -1,6 +1,6 @@
 export type DesktopSetupStageId = 'sign-in' | 'register' | 'attach' | 'runner'
 
-export type DesktopSetupStageStatus = 'complete' | 'current' | 'upcoming'
+type DesktopSetupStageStatus = 'complete' | 'current' | 'upcoming'
 
 export type DesktopSetupWizardStep =
 	| 'overview'
@@ -29,14 +29,14 @@ export type DesktopSetupMachineSnapshot = {
 }
 
 /** Personal registration first; team attach only when a team org is the destination. */
-export function desktopSetupStageIds(targetOrgSlug: string | null) {
+function desktopSetupStageIds(targetOrgSlug: string | null) {
 	const stages: Array<DesktopSetupStageId> = ['sign-in', 'register']
 	if (targetOrgSlug) stages.push('attach')
 	stages.push('runner')
 	return stages
 }
 
-export function desktopSetupStageLabel(
+function desktopSetupStageLabel(
 	id: DesktopSetupStageId,
 	targetOrgSlug: string | null,
 ) {
@@ -133,8 +133,6 @@ export type DesktopSetupPanelAction =
 
 export function desktopSetupPanelAction(input: {
 	state: DesktopSetupMachineSnapshot | undefined
-	/** Team org for this page, or null on the personal workspace. */
-	pageOrgSlug: string | null
 	needsAccountOnboarding: boolean | null
 }): DesktopSetupPanelAction {
 	const { state, needsAccountOnboarding } = input

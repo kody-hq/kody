@@ -758,7 +758,6 @@ export function DesktopMachinePanel({
 	const pausedInKody = serverContext?.paused ?? null
 	const panelAction = desktopSetupPanelAction({
 		state,
-		pageOrgSlug: selectedOrgSlug,
 		needsAccountOnboarding: machine.needsAccountOnboarding,
 	})
 	return (

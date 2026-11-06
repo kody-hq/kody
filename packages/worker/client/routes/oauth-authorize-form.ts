@@ -69,7 +69,7 @@ export type OAuthAuthorizeOrgField =
 	| { kind: 'pending' }
 
 /** Default copy when a flow requires one org and the chooser must stay fixed. */
-export function oauthAuthorizeRequiredOrgReason(slug: string) {
+function oauthAuthorizeRequiredOrgReason(slug: string) {
 	return `This connection was started for @${slug}. The organization cannot be changed here because the client already bound this sign-in to that workspace.`
 }
 
