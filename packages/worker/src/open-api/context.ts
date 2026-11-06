@@ -74,6 +74,8 @@ export type ApiInvocationContext = {
 	}
 	principal: ApiPrincipal
 	waitUntil?: (promise: Promise<unknown>) => void
+	/** The HTTP caller's IP, when the request came over HTTP. */
+	clientIp?: string | null
 	/** Worker entrypoint exports for hosted execute loopback. */
 	loopbackExports?: Cloudflare.Exports
 	/** Memoized per invocation; resolves on first flag-gated check. */

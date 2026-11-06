@@ -107,11 +107,20 @@ export async function requireProfilesCaller(input: {
 			isOwner: effective.isOwner,
 		},
 		holds: (resourceType, resourceId, permission) =>
-			checkPermission(effective, permission, {
-				type: resourceType as never,
-				id: resourceId,
-				orgId: effective.orgId,
-			}).allowed,
+			checkPermission(
+				effective,
+				// No role holds "read locally": a person may give it to a profile
+				// on a secret they can use. The secret's own local reads switch
+				// still decides each read (ADR 0097).
+				resourceType === 'credential' && permission === 'secret:read_local'
+					? 'secret:use'
+					: permission,
+				{
+					type: resourceType as never,
+					id: resourceId,
+					orgId: effective.orgId,
+				},
+			).allowed,
 	}
 }
 

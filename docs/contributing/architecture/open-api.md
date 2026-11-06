@@ -128,6 +128,13 @@ accepted as Bearer
 reject non-`kody_at_` bearers with `401 Invalid API token`. Older CLIs keep
 using MCP and the local-execute OAuth routes.
 
+`POST /v1/secrets/local-read` returns secret values for `kody secret get` and
+`kody run` only ([ADR 0097](../decisions/0097-local-secret-reads.md)). It takes
+a `kody_at_` bearer over HTTP and refuses the MCP `api` tool, CLI OAuth, and
+execution-context runs. Each secret needs Use, its local reads switch on, and
+`secret:read_local` on agent-minted tokens (`kody login` device tokens count as
+holding it). Refusals are 403 with a plain-language reason per secret.
+
 - Scopes are org permissions (`resource-type:action`: `org:read`, `org:execute`,
   `package:read`, `search:read`, …). Vocabulary:
   [`packages/shared/src/org-permissions.ts`](../../../packages/shared/src/org-permissions.ts).

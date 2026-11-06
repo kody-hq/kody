@@ -1,6 +1,8 @@
 import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { loadCredentialDetail } from '#worker/credentials/credential-detail.ts'
+import { listLocalReadSettings } from '#worker/credentials/local-read-store.ts'
+import { loadCredentialLocalReadsView } from '#app/credential-local-reads.ts'
 import { listCredentialsForViewer } from '#worker/credentials/credential-list.ts'
 import { listCredentialProviderBindings } from '#worker/credentials/credential-provider-bindings.ts'
 import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
@@ -52,9 +54,45 @@ export async function loadAccountCredentialsData(input: {
 				packages,
 			})
 		: null
+	const selectedProvider = selectedItem
+		? undefined
+		: providers.find((binding) => binding.id === input.selectedId)
+	const selectedLocalReads =
+		selectedItem &&
+		selectedItem.kind === 'secret' &&
+		selectedItem.packageId === null
+			? await loadCredentialLocalReadsView({
+					env: input.env,
+					request: input.user.request,
+					credentialId: selectedItem.id,
+					...(teamOrg && selectedItem.scope === 'personal'
+						? { personalOrgSlug }
+						: {}),
+				})
+			: selectedProvider
+				? await loadCredentialLocalReadsView({
+						env: input.env,
+						request: input.user.request,
+						credentialId: selectedProvider.id,
+					})
+				: null
+	const settings = await listLocalReadSettings(input.env.APP_DB, [
+		...listed
+			.filter((item) => item.kind === 'secret' && item.packageId === null)
+			.map((item) => item.id),
+		...providers.map((binding) => binding.id),
+	])
+	const localReadBadges: AccountCredentialsResponse['localReadBadges'] = {}
+	for (const [credentialId, setting] of settings) {
+		if (setting.enabled) {
+			localReadBadges[credentialId] = { lastReadAt: setting.lastReadAt }
+		}
+	}
 	return {
 		ok: true,
 		selected,
+		selectedLocalReads,
+		localReadBadges,
 		credentials: input.filters
 			? filterCredentialList(listed, input.filters)
 			: listed,

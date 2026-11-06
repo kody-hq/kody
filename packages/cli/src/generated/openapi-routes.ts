@@ -1249,6 +1249,12 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: [],
 	},
 	{
+		operationId: 'secretLocalRead',
+		method: 'POST',
+		pathTemplate: '/v1/secrets/local-read',
+		pathParamNames: [],
+	},
+	{
 		operationId: 'secretLock',
 		method: 'POST',
 		pathTemplate: '/v1/secrets/lock',

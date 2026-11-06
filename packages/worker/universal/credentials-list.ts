@@ -138,9 +138,43 @@ export type SetCredentialHostsResponse = CredentialHostSettings & {
 }
 
 /** The contract response plus what the website page needs to render it. */
+/** One local read of a secret by the Kody CLI. Never the value. */
+export type CredentialLocalReadView = {
+	id: string
+	createdAt: string
+	who: string | null
+	device: string | null
+	profile: string | null
+	command: 'run' | 'get'
+	ip: string | null
+	allowed: boolean
+	/** Plain-language reason for a refused read. */
+	refusal: string | null
+}
+
+/** Local reads (ADR 0097) for the secret the detail pane shows. */
+export type CredentialLocalReadsView = {
+	credentialId: string
+	enabled: boolean
+	/** True when the signed-in person can turn local reads on or off here. */
+	canChange: boolean
+	/** Where the owner changes it, when this page cannot. */
+	manageHref: string | null
+	lastReadAt: string | null
+	/** Null when the viewer may not see who read it. */
+	reads: Array<CredentialLocalReadView> | null
+}
+
+/** The list badge for a secret with local reads on. */
+export type CredentialLocalReadBadge = { lastReadAt: string | null }
+
 export type AccountCredentialsResponse = CredentialListResponse & {
 	/** Set when the request named a credential (`?selected=<id>`). */
 	selected: AccountCredentialDetail | null
+	/** Local reads for the selected secret or vault, when it supports them. */
+	selectedLocalReads: CredentialLocalReadsView | null
+	/** Secrets and vaults with local reads on, by credential. */
+	localReadBadges: Record<string, CredentialLocalReadBadge>
 	orgSlug: string
 	/** Where the viewer's personal credentials are managed. */
 	personalOrgSlug: string | null

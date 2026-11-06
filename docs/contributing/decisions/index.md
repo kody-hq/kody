@@ -286,6 +286,10 @@ Open these before proposing a new primitive, surface, or storage home.
   Box login (person or agent profile) stored on the context; excess over each
   grantee shown only to people who can act; subject-only dismissal; no
   acknowledgment (amends 0092)
+- [0097: People can read a secret's value locally with the Kody CLI, per secret](./0097-local-secret-reads.md)
+  Per-secret switch set only on the website by write access; `kody login` tokens
+  read, agent tokens need `secret:read_local`, profiles need "read locally"; CLI
+  HTTP only; every read listed for 90 days (amends 0056, 0076, 0092)
 
 ## Historical / UI / implementation
 

@@ -153,6 +153,12 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 		'Approved picks name source-org credentials; an agent proposes again in the target org.',
 	),
 	credential_org_grants: keep(personOwned),
+	credential_local_read_settings: keep(
+		'Local reads stay with the credential in its owning org; a moved credential starts with local reads off.',
+	),
+	credential_local_read_events: keep(
+		'Local reads history stays with the credential in its owning org.',
+	),
 	execution_contexts: keep(
 		'Execution contexts are machines their operator controls; they stay in the owning org and are not moved by a resource transfer.',
 	),

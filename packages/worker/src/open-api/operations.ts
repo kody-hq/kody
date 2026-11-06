@@ -95,6 +95,7 @@ export const nativeApiOperationIds = [
 	'execute',
 	'searchTool',
 	'cliLoginDeviceToken',
+	'secretLocalRead',
 ] as const
 
 export type NativeApiOperationId = (typeof nativeApiOperationIds)[number]
@@ -695,6 +696,10 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		tag: 'search',
 	}),
 	nativeRoute('POST', '/v1/tokens/device', 'cliLoginDeviceToken', 'none'),
+	// Use is checked per secret in the handler (grants, not a role).
+	nativeRoute('POST', '/v1/secrets/local-read', 'secretLocalRead', 'none', {
+		tag: 'secrets',
+	}),
 ]
 
 export const apiOperationsById: ReadonlyMap<string, ApiOperation> = new Map(
