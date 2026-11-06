@@ -116,6 +116,44 @@ async function smoke() {
 			assert.deepEqual(await snapshot(), before)
 			assert.equal((await app.windows()).length, 1)
 		}
+
+		async function background(checked) {
+			await app.evaluate(({ Menu }, checked) => {
+				const file = Menu.getApplicationMenu().items.find(
+					(item) => item.label === 'File',
+				)
+				const item = file.submenu.items.find(
+					(item) => item.label === 'Run in background',
+				)
+				if (item.checked !== checked) item.click()
+			}, checked)
+		}
+		await background(true)
+		await expect
+			.poll(() => app.evaluate(({ app }) => app.dock.isVisible()))
+			.toBe(false)
+		await app.evaluate(({ BrowserWindow }) =>
+			BrowserWindow.getAllWindows()[0].close(),
+		)
+		assert.equal(
+			await app.evaluate(({ BrowserWindow }) =>
+				BrowserWindow.getAllWindows()[0].isVisible(),
+			),
+			false,
+		)
+		await app.evaluate(({ app }) => app.emit('second-instance'))
+		await expect
+			.poll(() =>
+				app.evaluate(({ BrowserWindow }) =>
+					BrowserWindow.getAllWindows()[0].isVisible(),
+				),
+			)
+			.toBe(true)
+		assert.deepEqual(await snapshot(), before)
+		await background(false)
+		await expect
+			.poll(() => app.evaluate(({ app }) => app.dock.isVisible()))
+			.toBe(true)
 		console.log(
 			'Native New Window menu, independent pages and IPC, shared cookies, new-window links, and last-window preservation passed.',
 		)

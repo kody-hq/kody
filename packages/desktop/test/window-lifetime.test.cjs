@@ -4,7 +4,7 @@ const { EventEmitter } = require('node:events')
 const { readFileSync } = require('node:fs')
 const { runInNewContext } = require('node:vm')
 
-function fixture(platform = 'darwin') {
+function fixture(platform = 'darwin', background = false) {
 	const windows = []
 	const errors = []
 	let ready
@@ -168,6 +168,17 @@ function fixture(platform = 'darwin') {
 					super()
 					runnerCount++
 				}
+			},
+		},
+		'./presence.cjs': {
+			DesktopPresence: class {
+				background = background
+				start() {}
+				menuItems() {
+					return []
+				}
+				applyWindow() {}
+				async onboard() {}
 			},
 		},
 		'./execution.cjs': {
@@ -567,4 +578,21 @@ test('links for other origins or activity types are left to the system', async (
 	assert.equal(openLink(f.app, 'https://kody.codes/account', 'other'), false)
 	await new Promise(setImmediate)
 	assert.equal(f.windows.length, 1)
+})
+
+test('Windows background mode preserves the last window until explicit Quit', async () => {
+	const f = fixture('win32', true)
+	await f.start()
+	await f.finish()
+	const window = f.windows[0]
+	window.close()
+	assert.equal(window.destroyed, false)
+	assert.equal(window.visible, false)
+	f.app.emit('window-all-closed')
+	assert.equal(f.quitCount(), 0)
+	f.app.emit('second-instance')
+	assert.equal(window.visible, true)
+	f.app.emit('before-quit', { preventDefault() {} })
+	window.close()
+	assert.equal(window.destroyed, true)
 })

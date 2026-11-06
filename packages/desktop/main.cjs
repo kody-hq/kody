@@ -9,6 +9,7 @@ const {
 	session,
 	net,
 } = require('electron')
+const { DesktopPresence } = require('./presence.cjs')
 const { startUpdates, finishQuit } = require('./updates.cjs')
 const { browserLogin } = require('./browser-login.cjs')
 const { parseString } = require('set-cookie-parser')
@@ -147,6 +148,13 @@ const runner = new Runner()
 let quitting = false
 let updates
 let restartForUpdate = false
+const presence = new DesktopPresence({
+	app,
+	dialog,
+	show: () => showApp(),
+	windows: () => [...windows.keys()],
+	changed: () => updateMenu(),
+})
 let state = { ecid: null, enabled: false }
 function statePath() {
 	return join(app.getPath('userData'), 'machine.json')
@@ -287,6 +295,7 @@ function updateMenu() {
 			{
 				label: 'File',
 				submenu: [
+					...presence.menuItems(),
 					{
 						label: 'New Window',
 						accelerator: 'CmdOrCtrl+N',
@@ -411,7 +420,12 @@ async function showApp(path, window = currentWindow()) {
 	return window
 }
 function quitWithoutWindows() {
-	if (process.platform !== 'darwin' && !windows.size && !pendingWindows)
+	if (
+		process.platform !== 'darwin' &&
+		!presence.background &&
+		!windows.size &&
+		!pendingWindows
+	)
 		app.quit()
 }
 async function newWindow(path) {
@@ -502,6 +516,7 @@ async function createWindow(path = '/account') {
 		openBrowser: (url) => openInBrowser(url, { app, shell }),
 		integratedTitlebar,
 	})
+	presence.applyWindow(window)
 	const record = { navigation, failedLoadUrl: undefined }
 	windows.set(window, record)
 	lastWindow = window
@@ -558,7 +573,11 @@ async function createWindow(path = '/account') {
 		return { action: 'deny' }
 	})
 	window.on('close', (event) => {
-		if (process.platform === 'darwin' && !quitting && windows.size === 1) {
+		if (
+			(process.platform === 'darwin' || presence.background) &&
+			!quitting &&
+			windows.size === 1
+		) {
 			event.preventDefault()
 			window.hide()
 		}
@@ -645,10 +664,12 @@ else {
 				changed: updateMenu,
 			})
 			loadState()
+			presence.start()
 			updateMenu()
 			const [launchLink, ...moreLinks] = appLinks.start()
 			await showApp(launchLink)
 			for (const path of moreLinks) void newWindow(path)
+			await presence.onboard()
 			if (!quitting) void execution.request('state').catch(() => {})
 		})
 		.catch((error) => {
