@@ -1,8 +1,10 @@
 /**
  * Batched {@link loadContextsAccess} must match per-row {@link loadContextAccess}
- * and keep attachment/grant lookups O(1) in the number of contexts (Sentry KODY-E6).
+ * and keep attachment/grant lookups O(chunks) under D1's bind cap (Sentry KODY-E6).
  */
+import { maxD1BoundParameters } from '@kody-internal/shared/chunk.ts'
 import { expect, test, vi } from 'vitest'
+import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import {
 	collaboratorPeople,
 	collaboratorsNow,
@@ -311,7 +313,7 @@ test('loadContextsAccess matches N× loadContextAccess across fixture combinatio
 	})
 })
 
-test('loadContextsAccess issues one attachment and one grant query for N contexts', async () => {
+test('loadContextsAccess issues one attachment and one grant query for a small list', async () => {
 	const seed = await seedWithContextTables()
 	const contexts = Array.from({ length: 9 }, (_, index) =>
 		contextRow(seed, { id: `ctx-${index}` }),
@@ -360,6 +362,46 @@ test('loadContextsAccess issues one attachment and one grant query for N context
 	}
 	expect(prepared.filter(isAttachmentLookup).length).toBe(contexts.length)
 	expect(prepared.filter(isGrantPresetLookup).length).toBe(contexts.length)
+})
+
+test('loadContextsAccess chunks under the D1 bind limit for large lists', async () => {
+	const seed = await seedWithContextTables()
+	const db = createD1FromSqlite(seed.sqlite, {
+		maxBindings: maxD1BoundParameters,
+	})
+	// Above the grant-query headroom (~94 ids) so an unchunked IN would fail.
+	const contexts = Array.from({ length: 120 }, (_, index) =>
+		contextRow(seed, { id: `ctx-big-${index}` }),
+	)
+	for (const context of contexts) {
+		insertGrant(seed, {
+			id: `grant-${context.id}`,
+			resourceId: context.id,
+			subjectType: 'user',
+			subjectId: collaboratorPeople.bob.personId,
+			preset: 'use',
+		})
+		insertOptIn(seed, {
+			contextId: context.id,
+			userId: collaboratorPeople.bob.personId,
+		})
+	}
+
+	const access = await loadContextsAccess(db, contexts, {
+		userId: collaboratorPeople.bob.personId,
+		orgId: seed.orgId,
+	})
+	expect(access.size).toBe(contexts.length)
+	expect(access.get('ctx-big-0')).toMatchObject({
+		granted: true,
+		optedIn: true,
+		usable: true,
+	})
+	expect(access.get('ctx-big-119')).toMatchObject({
+		granted: true,
+		optedIn: true,
+		usable: true,
+	})
 })
 
 test('loadContextsAccess returns an empty map without querying', async () => {

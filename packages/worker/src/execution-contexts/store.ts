@@ -1,4 +1,8 @@
 import {
+	chunkArray,
+	maxD1BoundParameters,
+} from '@kody-internal/shared/chunk.ts'
+import {
 	ecpDefaultGrant,
 	ecpMaxChainContexts,
 	type EcpCapabilities,
@@ -340,8 +344,10 @@ export async function loadContextAccess(
 }
 
 /**
- * Same semantics as {@link loadContextAccess}, for every context in one
- * fixed set of queries (attachments / grants / opt-ins / memberships).
+ * Same semantics as {@link loadContextAccess}, for every context via
+ * set-based queries (attachments / grants / opt-ins / memberships).
+ * Context-id lists are chunked so each statement stays within D1's
+ * {@link maxD1BoundParameters} cap (the grant query is the tightest).
  */
 export async function loadContextsAccess(
 	db: D1Database,
@@ -355,77 +361,118 @@ export async function loadContextsAccess(
 	const operatorIds = [
 		...new Set(contexts.map((context) => context.operator_user_id)),
 	]
-	const idPlaceholders = contextIds.map(() => '?').join(', ')
-	const operatorPlaceholders = operatorIds.map(() => '?').join(', ')
 	const subjectMatch = grantSubjectMatchSql({
 		subjects: contextGrantSubjects,
 		personId: input.userId,
 		boundOrgId: input.orgId,
 	})
 	const now = new Date().toISOString()
-	const [attachments, grants, membership, optIns, operatorMemberships] =
-		await db.batch<Record<string, unknown>>([
+	// Grant binds: resource ids + org + expiry + subjectMatch binds.
+	const grantFixedBinds = 2 + subjectMatch.binds.length
+	const contextIdChunkSize = Math.max(
+		1,
+		Math.min(
+			maxD1BoundParameters - 1, // attachments: org + ids
+			maxD1BoundParameters - 2, // opt-ins: user + org + ids
+			maxD1BoundParameters - grantFixedBinds,
+		),
+	)
+	const operatorChunkSize = Math.max(1, maxD1BoundParameters - 1)
+
+	const statements: Array<D1PreparedStatement> = [
+		db
+			.prepare(
+				`SELECT role FROM org_memberships WHERE org_id = ? AND user_id = ? AND deleted_at IS NULL`,
+			)
+			.bind(input.orgId, input.userId),
+	]
+	const attachmentChunkIndexes: Array<number> = []
+	const grantChunkIndexes: Array<number> = []
+	const optInChunkIndexes: Array<number> = []
+	const operatorChunkIndexes: Array<number> = []
+
+	for (const ids of chunkArray(contextIds, contextIdChunkSize)) {
+		const placeholders = ids.map(() => '?').join(', ')
+		attachmentChunkIndexes.push(statements.length)
+		statements.push(
 			db
 				.prepare(
 					`SELECT context_id, all_members FROM execution_context_org_attachments
-					 WHERE org_id = ? AND context_id IN (${idPlaceholders})`,
+					 WHERE org_id = ? AND context_id IN (${placeholders})`,
 				)
-				.bind(input.orgId, ...contextIds),
+				.bind(input.orgId, ...ids),
+		)
+		grantChunkIndexes.push(statements.length)
+		statements.push(
 			db
 				.prepare(
 					`SELECT g.resource_id AS resource_id, g.preset AS preset
 					 FROM grants g
 					 WHERE g.resource_type = 'execution_context'
-					   AND g.resource_id IN (${idPlaceholders})
+					   AND g.resource_id IN (${placeholders})
 					   AND g.org_id = ? AND g.deleted_at IS NULL
 					   AND (g.expires_at IS NULL OR g.expires_at > ?)
 					   AND ${subjectMatch.sql}`,
 				)
-				.bind(...contextIds, input.orgId, now, ...subjectMatch.binds),
-			db
-				.prepare(
-					`SELECT role FROM org_memberships WHERE org_id = ? AND user_id = ? AND deleted_at IS NULL`,
-				)
-				.bind(input.orgId, input.userId),
+				.bind(...ids, input.orgId, now, ...subjectMatch.binds),
+		)
+		optInChunkIndexes.push(statements.length)
+		statements.push(
 			db
 				.prepare(
 					`SELECT context_id FROM execution_context_opt_ins
-					 WHERE user_id = ? AND org_id = ? AND context_id IN (${idPlaceholders})`,
+					 WHERE user_id = ? AND org_id = ? AND context_id IN (${placeholders})`,
 				)
-				.bind(input.userId, input.orgId, ...contextIds),
+				.bind(input.userId, input.orgId, ...ids),
+		)
+	}
+	for (const ids of chunkArray(operatorIds, operatorChunkSize)) {
+		operatorChunkIndexes.push(statements.length)
+		statements.push(
 			db
 				.prepare(
 					`SELECT user_id FROM org_memberships
-					 WHERE org_id = ? AND user_id IN (${operatorPlaceholders}) AND deleted_at IS NULL`,
+					 WHERE org_id = ? AND user_id IN (${ids.map(() => '?').join(', ')}) AND deleted_at IS NULL`,
 				)
-				.bind(input.orgId, ...operatorIds),
-		])
+				.bind(input.orgId, ...ids),
+		)
+	}
 
+	const results = await db.batch<Record<string, unknown>>(statements)
+	const membership = results[0]
 	const attachByContext = new Map<string, { all_members: number }>()
-	for (const row of attachments?.results ?? []) {
-		const typed = row as { context_id: string; all_members: number }
-		attachByContext.set(typed.context_id, { all_members: typed.all_members })
+	for (const index of attachmentChunkIndexes) {
+		for (const row of results[index]?.results ?? []) {
+			const typed = row as { context_id: string; all_members: number }
+			attachByContext.set(typed.context_id, {
+				all_members: typed.all_members,
+			})
+		}
 	}
 	const presetsByContext = new Map<string, Array<ContextAccess['preset']>>()
-	for (const row of grants?.results ?? []) {
-		const typed = row as {
-			resource_id: string
-			preset: ContextAccess['preset']
+	for (const index of grantChunkIndexes) {
+		for (const row of results[index]?.results ?? []) {
+			const typed = row as {
+				resource_id: string
+				preset: ContextAccess['preset']
+			}
+			const list = presetsByContext.get(typed.resource_id) ?? []
+			list.push(typed.preset)
+			presetsByContext.set(typed.resource_id, list)
 		}
-		const list = presetsByContext.get(typed.resource_id) ?? []
-		list.push(typed.preset)
-		presetsByContext.set(typed.resource_id, list)
 	}
-	const optedInIds = new Set(
-		(optIns?.results ?? []).map(
-			(row) => (row as { context_id: string }).context_id,
-		),
-	)
-	const liveOperators = new Set(
-		(operatorMemberships?.results ?? []).map(
-			(row) => (row as { user_id: string }).user_id,
-		),
-	)
+	const optedInIds = new Set<string>()
+	for (const index of optInChunkIndexes) {
+		for (const row of results[index]?.results ?? []) {
+			optedInIds.add((row as { context_id: string }).context_id)
+		}
+	}
+	const liveOperators = new Set<string>()
+	for (const index of operatorChunkIndexes) {
+		for (const row of results[index]?.results ?? []) {
+			liveOperators.add((row as { user_id: string }).user_id)
+		}
+	}
 	const isMember = (membership?.results.length ?? 0) > 0
 
 	for (const context of contexts) {
