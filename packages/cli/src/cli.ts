@@ -103,6 +103,8 @@ export type CommandName =
 	| 'daemon'
 	| 'connect'
 	| 'update'
+	| 'secret'
+	| 'run'
 
 const orgScopedCommands = new Set<CommandName>([
 	'context',
@@ -205,6 +207,9 @@ const cliFlagOptions = {
 	grant: { type: 'string' },
 	'allow-changes-despite-unmappable-credentials': { type: 'boolean' },
 	'disallow-changes-despite-unmappable-credentials': { type: 'boolean' },
+	secret: { type: 'string', multiple: true },
+	format: { type: 'string' },
+	reveal: { type: 'boolean' },
 } as const
 
 export const cliFlagNames = Object.keys(cliFlagOptions)
@@ -257,6 +262,8 @@ export function resolveCommand(argv: Array<string>): {
 		case 'daemon':
 		case 'connect':
 		case 'update':
+		case 'secret':
+		case 'run':
 			return { command: raw, positionals: positionals.slice(1), values }
 		default:
 			// Never embed full usage here: git credential helpers treat any
@@ -271,7 +278,12 @@ export function resolveCommand(argv: Array<string>): {
 
 export async function runCli(
 	argv: Array<string> = process.argv.slice(2),
-	io: { stdout?: (text: string) => void; stderr?: (text: string) => void } = {},
+	io: {
+		stdout?: (text: string) => void
+		stderr?: (text: string) => void
+		/** Whether stdout is an interactive terminal (tests override it). */
+		isTTY?: boolean
+	} = {},
 ): Promise<number> {
 	const write = io.stdout ?? ((text: string) => process.stdout.write(text))
 	const writeErr = io.stderr ?? ((text: string) => process.stderr.write(text))
@@ -352,7 +364,7 @@ export async function runCli(
 			write(buildCommandHelp(helpPath) ?? buildUsage({ mcpUrl: helpMcpUrl }))
 			return 0
 		}
-		return await dispatch(parsed, write, writeErr)
+		return await dispatch(parsed, write, writeErr, io.isTTY)
 	} catch (error) {
 		const redacted = redactError(error)
 		if (jsonFlag) {
@@ -412,6 +424,7 @@ async function dispatch(
 	parsed: ReturnType<typeof resolveCommand>,
 	write: (text: string) => void,
 	writeErr: (text: string) => void,
+	stdoutIsTTY?: boolean,
 ): Promise<number> {
 	const mcpUrl = mcpUrlFrom({
 		mcpUrl:
@@ -1732,6 +1745,78 @@ async function dispatch(
 				await auth.closeMock?.()
 				throw error
 			}
+		}
+		case 'secret':
+		case 'run': {
+			const apiUrl = apiUrlFrom({
+				apiUrl:
+					typeof parsed.values['api-url'] === 'string'
+						? parsed.values['api-url']
+						: undefined,
+			})
+			const local = await import('./local-secrets.js')
+			const token = () =>
+				accessTokenForOpenApi({
+					tokenValues: tokenFlagValues(parsed.values),
+					apiUrl,
+					mcpUrl,
+					org,
+				})
+			if (parsed.command === 'secret') {
+				const [action, ...names] = parsed.positionals
+				if (action !== 'get' || names.length === 0) {
+					throw new Error(
+						'Usage: kody secret get <name>… [--format raw|env|json] [--reveal] [--org <slug>]',
+					)
+				}
+				const format = local.parseSecretFormat(parsed.values.format)
+				if (format === 'raw' && names.length > 1) {
+					throw new Error(
+						'Raw output prints one secret. Use --format env or --format json for more.',
+					)
+				}
+				const isTTY = stdoutIsTTY ?? process.stdout.isTTY === true
+				if (isTTY && parsed.values.reveal !== true) {
+					throw new Error(local.revealRequiredMessage)
+				}
+				const secrets = await local.fetchLocalSecrets({
+					token: await token(),
+					apiUrl,
+					...(org ? { org } : {}),
+					names,
+					command: 'get',
+				})
+				write(local.formatLocalSecrets(secrets, format))
+				return 0
+			}
+			const flags = Array.isArray(parsed.values.secret)
+				? parsed.values.secret.filter(
+						(value): value is string => typeof value === 'string',
+					)
+				: []
+			if (flags.length === 0 || parsed.positionals.length === 0) {
+				throw new Error(
+					'Usage: kody run --secret <name>[=ENV_NAME]… [--org <slug>] -- <command> [args…]',
+				)
+			}
+			const wanted = local.parseRunSecretFlags(flags)
+			const secrets = await local.fetchLocalSecrets({
+				token: await token(),
+				apiUrl,
+				...(org ? { org } : {}),
+				names: wanted.map((entry) => entry.name),
+				command: 'run',
+			})
+			const values = new Map(secrets.map((entry) => [entry.name, entry.value]))
+			const env: Record<string, string> = {}
+			for (const entry of wanted) {
+				const value = values.get(entry.name)
+				if (value === undefined) {
+					throw new Error(`Kody did not return "${entry.name}".`)
+				}
+				env[entry.envName] = value
+			}
+			return await local.runWithSecrets({ argv: parsed.positionals, env })
 		}
 		case 'api': {
 			const operationId = parsed.positionals[0]?.trim() ?? ''

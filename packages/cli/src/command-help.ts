@@ -223,6 +223,57 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 		notes: ["Example: kody api usageGet --params '{}'"],
 	},
 	{
+		name: 'secret',
+		summary: 'Read secrets that allow local reads',
+		usage: ['kody secret <command> [flags]'],
+		subcommands: [
+			{
+				name: 'get',
+				summary: 'Print secret values (only secrets with local reads on)',
+				usage: [
+					'kody secret get <name>… [--format raw|env|json] [--reveal] [--org <slug>] [--token <token>] [--api-url <url>]',
+				],
+				flags: [
+					[
+						'--format raw|env|json',
+						'raw prints one value (default); env prints NAME=value lines; json prints one object',
+					],
+					[
+						'--reveal',
+						'Allow printing to an interactive terminal (piped output never needs it)',
+					],
+					orgFlag,
+					tokenFlag,
+					apiUrlFlag,
+				],
+				notes: [
+					'A person with write access turns on local reads for each secret on its page in Kody. A refused read prints a link that does it in one step.',
+					'Provider secrets use secret/<provider>:<ref>.',
+				],
+			},
+		],
+	},
+	{
+		name: 'run',
+		summary: 'Run a command with secrets in its environment',
+		usage: [
+			'kody run --secret <name>[=ENV_NAME]… [--org <slug>] [--token <token>] [--api-url <url>] -- <command> [args…]',
+		],
+		flags: [
+			[
+				'--secret <name>[=ENV_NAME]',
+				'Repeatable. databaseUrl becomes DATABASE_URL unless you name it',
+			],
+			orgFlag,
+			tokenFlag,
+			apiUrlFlag,
+		],
+		notes: [
+			'Example: kody run --secret databaseUrl --secret apiKey=SERVICE_KEY -- npm start',
+			'Every secret is read before the command starts, or none is. Turning local reads off later does not take back values a running program already has.',
+		],
+	},
+	{
 		name: 'package',
 		summary: 'Publish packages and manage who can use them',
 		usage: ['kody package <command> [flags]'],
