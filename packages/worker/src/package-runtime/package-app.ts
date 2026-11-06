@@ -2214,6 +2214,11 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		if (name === INTEGRATION_RUNTIME_CONFIG_TOOL_NAME) {
 			return await this.integrationRuntimeConfig(capabilityArgs, visitTicket)
 		}
+		// Host functions, not capabilities: no declaration needed, and they
+		// stay scoped to the app package even when an import calls them.
+		if (name === 'appRateLimit') return await this.appRateLimit(capabilityArgs)
+		if (name === 'appSpendGet') return await this.appSpendGet()
+		if (name === 'appPublisherGet') return await this.appPublisherGet()
 		const declared = new Set([
 			...(this.ctx.props.declaredCapabilities ?? []),
 			...(this.ctx.props.capabilityAllowance ?? []),
