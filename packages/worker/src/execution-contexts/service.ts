@@ -29,8 +29,10 @@ import {
 	chainIsTooLong,
 	getChain,
 	getExecutionContext,
+	getExecutionContexts,
 	listOrgExecutionContexts,
 	loadContextAccess,
+	loadContextsAccess,
 	parseCapabilities,
 	parseGrant,
 	parsePublicKey,
@@ -228,9 +230,10 @@ export async function formatContexts(
 			entry.kind === 'context' ? [entry.id] : [],
 		),
 	)
+	const accessById = await loadContextsAccess(db, rows, caller)
 	return await Promise.all(
 		rows.map(async (row) => {
-			const access = await loadContextAccess(db, row, caller)
+			const access = accessById.get(row.id)!
 			const grant = parseGrant(row)
 			const live = await liveStatus(caller.env, row)
 			const capabilities = parseCapabilities(row)
@@ -428,32 +431,39 @@ function chainUpdatedBy(caller: ExecutionContextCaller) {
 export async function chainView(caller: ExecutionContextCaller) {
 	const db = caller.env.APP_DB
 	const chain = await getChain(db, caller)
-	const entries = await Promise.all(
-		chain.entries.map(async (entry) => {
-			if (entry.kind === 'cloud') return entry
-			const row = await getExecutionContext(db, entry.id)
-			if (!row) {
-				return {
-					kind: 'context' as const,
-					id: entry.id,
-					name: null,
-					usable: false,
-					unusableReason: 'revoked' as UnusableReason,
-				}
-			}
-			const access = await loadContextAccess(db, row, caller)
+	const contextIds = chain.entries.flatMap((entry) =>
+		entry.kind === 'context' ? [entry.id] : [],
+	)
+	const rowsById = await getExecutionContexts(db, contextIds)
+	const accessById = await loadContextsAccess(
+		db,
+		[...rowsById.values()],
+		caller,
+	)
+	const entries = chain.entries.map((entry) => {
+		if (entry.kind === 'cloud') return entry
+		const row = rowsById.get(entry.id)
+		if (!row) {
 			return {
 				kind: 'context' as const,
 				id: entry.id,
-				// Lost access hides a rename made after it.
-				name: access.unusableReason === 'not_granted' ? null : row.name,
-				usable: access.usable,
-				...(access.unusableReason
-					? { unusableReason: access.unusableReason }
-					: {}),
+				name: null,
+				usable: false,
+				unusableReason: 'revoked' as UnusableReason,
 			}
-		}),
-	)
+		}
+		const access = accessById.get(row.id)!
+		return {
+			kind: 'context' as const,
+			id: entry.id,
+			// Lost access hides a rename made after it.
+			name: access.unusableReason === 'not_granted' ? null : row.name,
+			usable: access.usable,
+			...(access.unusableReason
+				? { unusableReason: access.unusableReason }
+				: {}),
+		}
+	})
 	return {
 		entries,
 		strict: !chain.entries.some((entry) => entry.kind === 'cloud'),
@@ -515,6 +525,10 @@ export async function setChain(
 			entry.kind === 'context' ? [entry.id] : [],
 		),
 	)
+	const resolved: Array<{
+		entry: ChainEntry
+		row: ExecutionContextRow | null
+	}> = []
 	for (const entry of input.entries) {
 		const key = entry.kind === 'cloud' ? 'cloud' : entry.id
 		if (seen.has(key)) {
@@ -527,24 +541,38 @@ export async function setChain(
 		}
 		seen.add(key)
 		if (entry.kind === 'context') {
-			const row = await resolveExecutionContextRef(db, caller.orgId, entry.id)
-			const access = row ? await loadContextAccess(db, row, caller) : null
-			// Already-stored entries may stay even if they became unusable (r4).
-			if (!row || (!access?.usable && !stored.has(row.id))) {
-				throw new ExecutionContextError({
-					status: 422,
-					code: 'context_not_usable',
-					message: `${entry.id} is not usable by you in this org (${access?.unusableReason ?? 'not_attached'}).`,
-					details: {
-						contextId: entry.id,
-						reason: access?.unusableReason ?? 'not_attached',
-					},
-				})
-			}
-			normalized.push({ kind: 'context', id: row.id })
+			resolved.push({
+				entry,
+				row: await resolveExecutionContextRef(db, caller.orgId, entry.id),
+			})
 		} else {
-			normalized.push(entry)
+			resolved.push({ entry, row: null })
 		}
+	}
+	const accessById = await loadContextsAccess(
+		db,
+		resolved.flatMap(({ row }) => (row ? [row] : [])),
+		caller,
+	)
+	for (const { entry, row } of resolved) {
+		if (entry.kind !== 'context') {
+			normalized.push(entry)
+			continue
+		}
+		const access = row ? (accessById.get(row.id) ?? null) : null
+		// Already-stored entries may stay even if they became unusable (r4).
+		if (!row || (!access?.usable && !stored.has(row.id))) {
+			throw new ExecutionContextError({
+				status: 422,
+				code: 'context_not_usable',
+				message: `${entry.id} is not usable by you in this org (${access?.unusableReason ?? 'not_attached'}).`,
+				details: {
+					contextId: entry.id,
+					reason: access?.unusableReason ?? 'not_attached',
+				},
+			})
+		}
+		normalized.push({ kind: 'context', id: row.id })
 	}
 	try {
 		await writeChain(db, {
@@ -1871,9 +1899,12 @@ export async function daemonUpdate(
 	const { row, access } = await liveContext(caller, ref)
 	requireManage(caller, access, 'Updating the daemon')
 	const data = await daemonControl(caller, row, 'update', {}, 45_000)
-	await recordContextAudit(caller, row.id, 'daemon_update_checked', {
-		...(typeof data.version === 'string' ? { version: data.version } : {}),
-	})
+	await recordContextAudit(
+		caller,
+		row.id,
+		'daemon_update_checked',
+		typeof data.version === 'string' ? { version: data.version } : {},
+	)
 	return { id: row.id, name: row.name, ...data }
 }
 
