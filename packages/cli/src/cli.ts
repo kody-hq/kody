@@ -121,6 +121,47 @@ const orgScopedCommands = new Set<CommandName>([
 	'auth',
 ])
 
+/**
+ * Whether resolving this command's org may read the stored active org.
+ * Local `daemon status` (desktop polls this) and other keychain-free commands
+ * must not open the login keychain just to discover activeOrg — `--org` /
+ * `KODY_ORG` still apply via {@link resolveOrgSlug}, and authenticated
+ * subcommands open credentials when they call `token()` / whoami.
+ */
+function commandUsesStoredActiveOrg(command: CommandName): boolean {
+	switch (command) {
+		case 'version':
+		case 'help':
+		case 'status':
+		case 'org':
+		case 'login':
+		case 'logout':
+		case 'daemon':
+		case 'update':
+		case 'install':
+		case 'skill':
+		case 'git-credential':
+			return false
+		case 'context':
+		case 'connect':
+		case 'chain':
+		case 'whoami':
+		case 'search':
+		case 'api':
+		case 'package':
+		case 'execute':
+		case 'dev':
+		case 'auth':
+		case 'secret':
+		case 'run':
+			return true
+		default: {
+			const exhaustive: never = command
+			throw new Error(`Unhandled CLI command: ${String(exhaustive)}`)
+		}
+	}
+}
+
 function mcpUrlFrom(values: { mcpUrl?: string }): string {
 	return values.mcpUrl || process.env.KODY_MCP_URL || defaultMcpUrl
 }
@@ -506,10 +547,16 @@ async function dispatch(
 	// org-scoped commands and must not bind browser login or change logout).
 	const orgFlagOnly =
 		orgFlag !== undefined ? orgSlugFromFlag(orgFlag) : undefined
-	const org = resolveOrgSlug({
-		flag: orgFlag,
-		activeOrg: loadCredentialStore(mcpUrl)?.activeOrg,
-	})
+	// Prefer --org / KODY_ORG without touching the keychain. Only open the
+	// credential store for activeOrg when a command actually uses that org.
+	const orgFromFlagOrEnv = resolveOrgSlug({ flag: orgFlag })
+	const org =
+		orgFromFlagOrEnv ??
+		(commandUsesStoredActiveOrg(parsed.command)
+			? resolveOrgSlug({
+					activeOrg: loadCredentialStore(mcpUrl)?.activeOrg,
+				})
+			: undefined)
 
 	switch (parsed.command) {
 		case 'help':

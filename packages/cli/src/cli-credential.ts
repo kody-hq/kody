@@ -252,3 +252,33 @@ export function credentialUsedNote(input: {
 		? `${used} Your org role must grant the scope. (Also stored: ${describeCliCredential(stored)}.)`
 		: `${used} Your org role must grant the scope; run \`kody login\` again if it was granted recently.`
 }
+
+/**
+ * Sentence for 401 / rejected-token errors naming the credential that was sent
+ * and the matching reauth path (null when none was resolved in this process).
+ * Does not clear or switch credentials — only explains which source won.
+ */
+export function credentialRejectedNote(input: {
+	credential: CliCredential | null
+	lifetime?: 'short' | 'long'
+}): string | null {
+	const { credential } = input
+	if (!credential) return null
+	const used = `Credential used: ${describeCliCredential(credential)}.`
+	const lifetime = input.lifetime ?? 'short'
+	const scopes =
+		credential.source === 'stored-api-token'
+			? (credential.stored?.scopes ?? null)
+			: null
+	const fix = replaceStoredTokenCommand(
+		scopes && scopes.length > 0 ? scopes : ['<scopes>'],
+		lifetime,
+	)
+	if (credential.source === 'stored-api-token') {
+		return `${used} \`kody login\` does not replace a stored API token, so logging in again will not fix this. Replace the stored token with \`${fix}\`.`
+	}
+	if (credential.source === 'env' || credential.source === 'token-flag') {
+		return `${used} It wins over any stored API token and \`kody login\` session; unset or replace ${credential.source === 'env' ? 'KODY_API_TOKEN' : '--token'} before retrying, or mint a fresh token (agents: cliCredentialBootstrap then run the returned cli_command; CI: tokenCreate) and update that value.`
+	}
+	return `${used} Run \`kody login\` again to refresh the session.`
+}
