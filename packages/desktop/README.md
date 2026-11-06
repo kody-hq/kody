@@ -40,13 +40,13 @@ window. Windows share your login and runner, and each keeps its own navigation.
 On macOS, closing the last window hides it and keeps the page and runner alive.
 Clicking the Dock icon brings back the same page without reloading, preserving
 navigation history, scroll position, and unfinished input. Quit stops the CLI
-and its workerd processes. On Windows and Linux, closing all windows quits the
-app. Pausing persists across launches. **Pause routing** in **This machine** is
-the server-side pause (`kody daemon pause`): chains skip this machine from
-anywhere until **Resume routing**, while the runner stays connected. Sleep and
-network reconnects use the CLI's reconnect behavior, a sleeping machine cannot
-run compute. A running process is not necessarily connected, the website shows
-the context's status.
+and its workerd processes. On Windows, closing all windows quits unless
+background mode is on. On Linux, closing all windows quits. Pausing persists
+across launches. **Pause routing** in **This machine** is the server-side pause
+(`kody daemon pause`): chains skip this machine from anywhere until **Resume
+routing**, while the runner stays connected. Sleep and network reconnects use
+the CLI's reconnect behavior, a sleeping machine cannot run compute. A running
+process is not necessarily connected, the website shows the context's status.
 
 Keys, credentials, grants, and host-folder policy stay owned by the CLI. The
 shell saves the context ID, name, account, enabled state, and onboarding
@@ -72,6 +72,20 @@ authenticated shell actions. Browser permissions are denied by default. The
 shell bundles the workspace CLI and runs it in a separate process using
 Electron's Node runtime, without needing Node or a global CLI on PATH. Native
 Node-API dependencies keep their normal Node build, not an Electron rebuild.
+
+## Background mode
+
+On macOS and Windows, new installs and existing installs upgrading to this
+version see the choice once, even if machine setup is already complete. Choose
+**Run in background** to keep local execution available after closing the window
+and hide the Dock or taskbar icon. Kody stays in the macOS menu bar or Windows
+system tray. Its menu has **Open Kody**, **Run in background**, and **Quit
+Kody**. The same background setting is in the File menu and is saved for this
+installation.
+
+Turning background mode off restores the Dock or taskbar icon and opens the
+window. Quit still stops the app's runner. This does not start Kody at login or
+keep a sleeping computer awake.
 
 ## Platform support
 
