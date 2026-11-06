@@ -74,8 +74,11 @@ export function rankCommands(
 	query: string,
 	history: CommandHistory,
 	now = Date.now(),
+	options: { literal?: boolean } = {},
 ) {
-	const parsed = parseCommandQuery(query)
+	const parsed = options.literal
+		? { text: query, kind: undefined, commandsOnly: false }
+		: parseCommandQuery(query)
 	return commands
 		.flatMap((command) => {
 			if (parsed.kind && command.kind !== parsed.kind) return []

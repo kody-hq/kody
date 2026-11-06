@@ -139,3 +139,27 @@ test('job filters apply before the result cap and expired jobs cannot run', asyn
 		false,
 	)
 })
+
+test('server ranking treats an already parsed resource query as literal text', async () => {
+	state.repositories.mockResolvedValue({
+		profile: { username: 'team' },
+		packages: [
+			{
+				name: 'job: backup',
+				kodyId: 'backup',
+				description: '',
+				tags: [],
+				canOpenDetail: true,
+			},
+		],
+	})
+	const results = await searchCommands({
+		data: {
+			orgSlug: 'team',
+			kind: 'repository',
+			query: 'job: backup',
+			mode: 'resources',
+		},
+	})
+	expect(results.map((command) => command.title)).toEqual(['job: backup'])
+})

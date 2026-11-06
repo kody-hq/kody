@@ -25,18 +25,20 @@ export function usePageCommands(commands: Command[]) {
 				...command,
 				context: true,
 				run: command.run
-					? () => {
-							const current = latest.current.find(
-								(item) => item.id === command.id,
-							)
-							if (!current?.run)
-								throw new Error(
-									'This action is no longer available. Search again.',
-								)
-							return current.run()
-						}
+					? () => runCurrentPageCommand(latest.current, command)
 					: undefined,
 			})),
 		)
 	}, [context, id, signature])
+}
+
+function commandMetadata({ run: _run, ...command }: Command) {
+	return JSON.stringify(command)
+}
+
+export function runCurrentPageCommand(commands: Command[], expected: Command) {
+	const current = commands.find((command) => command.id === expected.id)
+	if (!current?.run || commandMetadata(current) !== commandMetadata(expected))
+		throw new Error('This action is no longer available. Search again.')
+	return current.run()
 }

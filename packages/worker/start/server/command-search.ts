@@ -138,5 +138,7 @@ export const searchCommands = createServerFn({ method: 'GET' })
 					{ count: 0, lastUsed: 0, pinned: true },
 				]),
 			),
+			undefined,
+			{ literal: true },
 		).slice(0, 40)
 	})

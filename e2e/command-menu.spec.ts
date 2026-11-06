@@ -80,7 +80,7 @@ test('resource search finds a saved credential without exposing its value', asyn
 	await login({ email: user.email, password: user.password, mode: 'login' })
 	const value = `sk-command-private-${Date.now()}`
 	await saveKeyThroughUi(page, {
-		name: 'COMMAND_SEARCH_KEY',
+		name: `COMMAND_SEARCH_KEY_${'X'.repeat(40)}`,
 		value,
 		description: 'Command search fixture',
 		allowedHosts: ['api.example.com'],
@@ -100,6 +100,12 @@ test('resource search finds a saved credential without exposing its value', asyn
 		.filter({ hasText: 'COMMAND_SEARCH_KEY' })
 	await expect(result).toBeVisible()
 	await expect(dialog).not.toContainText(value)
+	await page.setViewportSize({ width: 390, height: 844 })
+	expect(
+		await result.evaluate(
+			(element) => element.scrollWidth <= element.clientWidth,
+		),
+	).toBe(true)
 	await search.press('Enter')
 	await expect(page).toHaveURL(new RegExp(`/@${user.username}/-/credentials/`))
 	await expect(dialog).not.toBeVisible()

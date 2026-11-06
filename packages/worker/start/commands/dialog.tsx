@@ -66,7 +66,6 @@ export function CommandDialog({
 	const preferredIds = Object.entries(history)
 		.filter(([id, use]) => use.pinned && id.includes(`:${slug}:`))
 		.map(([id]) => id)
-		.slice(0, 40)
 	const kinds = [
 		'repository',
 		'job',
@@ -75,50 +74,62 @@ export function CommandDialog({
 		'workflow',
 	] as const
 	const searches = useQueries({
-		queries: kinds.map((kind) => ({
-			queryKey: [
-				'command-search',
-				session?.username,
-				slug,
-				kind,
-				parsedDebounced.text,
-				preferredIds,
-				org?.role,
-				parsedDebounced.commandsOnly || parsedDebounced.kind === 'action'
-					? 'actions'
-					: parsedDebounced.kind
-						? 'resources'
-						: 'all',
-			],
-			queryFn: ({ signal }: { signal: AbortSignal }) =>
-				searchCommands({
-					data: {
-						orgSlug: slug!,
-						kind,
-						mode:
-							parsedDebounced.commandsOnly || parsedDebounced.kind === 'action'
-								? 'actions'
-								: parsedDebounced.kind
-									? 'resources'
-									: 'all',
-						query: parsedDebounced.text.slice(0, 200),
-						preferredIds,
-					},
-					signal,
-				}),
-			enabled: Boolean(
-				org &&
-				org.role !== null &&
-				(!parsedDebounced.commandsOnly || kind === 'job') &&
-				(!parsedDebounced.kind ||
-					parsedDebounced.kind === kind ||
-					(parsedDebounced.kind === 'action' && kind === 'job')) &&
-				(kind !== 'memory' || org.personal),
-			),
-			staleTime: 15_000,
-			gcTime: 60_000,
-			retry: false,
-		})),
+		queries: kinds.map((kind) => {
+			const resourcePreferredIds = preferredIds
+				.filter(
+					(id) =>
+						id.startsWith(`${kind}:${slug}:`) ||
+						(kind === 'job' &&
+							(id.startsWith(`run-job:${slug}:`) ||
+								id.startsWith(`toggle-job:${slug}:`))),
+				)
+				.slice(0, 40)
+			return {
+				queryKey: [
+					'command-search',
+					session?.username,
+					slug,
+					kind,
+					parsedDebounced.text,
+					resourcePreferredIds,
+					org?.role,
+					parsedDebounced.commandsOnly || parsedDebounced.kind === 'action'
+						? 'actions'
+						: parsedDebounced.kind
+							? 'resources'
+							: 'all',
+				],
+				queryFn: ({ signal }: { signal: AbortSignal }) =>
+					searchCommands({
+						data: {
+							orgSlug: slug!,
+							kind,
+							mode:
+								parsedDebounced.commandsOnly ||
+								parsedDebounced.kind === 'action'
+									? 'actions'
+									: parsedDebounced.kind
+										? 'resources'
+										: 'all',
+							query: parsedDebounced.text.slice(0, 200),
+							preferredIds: resourcePreferredIds,
+						},
+						signal,
+					}),
+				enabled: Boolean(
+					org &&
+					org.role !== null &&
+					(!parsedDebounced.commandsOnly || kind === 'job') &&
+					(!parsedDebounced.kind ||
+						parsedDebounced.kind === kind ||
+						(parsedDebounced.kind === 'action' && kind === 'job')) &&
+					(kind !== 'memory' || org.personal),
+				),
+				staleTime: 15_000,
+				gcTime: 60_000,
+				retry: false,
+			}
+		}),
 	})
 	const loading =
 		query !== debounced || searches.some((search) => search.isFetching)
@@ -623,7 +634,13 @@ export function CommandDialog({
 									{renderIcon(command.icon, { size: '17px' })}
 								</span>
 								<span css={{ minWidth: 0, flex: 1 }}>
-									<span css={{ display: 'block', fontWeight: 550 }}>
+									<span
+										css={{
+											display: 'block',
+											fontWeight: 550,
+											overflowWrap: 'anywhere',
+										}}
+									>
 										{command.title}
 										{history[command.id]?.pinned ? (
 											<span
