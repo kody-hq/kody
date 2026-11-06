@@ -163,3 +163,26 @@ test('server ranking treats an already parsed resource query as literal text', a
 	})
 	expect(results.map((command) => command.title)).toEqual(['job: backup'])
 })
+
+test('all-mode job actions leave room for job destinations', async () => {
+	state.jobs.mockResolvedValue({
+		payload: {
+			jobs: Array.from({ length: 25 }, (_, i) => ({
+				id: `job-${i}`,
+				name: `Zebra ${i}`,
+				packageId: 'package',
+				scheduleSummary: 'Daily',
+				killSwitchEnabled: false,
+				expired: false,
+			})),
+		},
+	})
+	const results = await searchCommands({
+		data: { orgSlug: 'team', kind: 'job', query: '', mode: 'all' },
+	})
+	expect(results).toHaveLength(40)
+	expect(results.filter((command) => command.kind === 'job')).toHaveLength(20)
+	expect(results.filter((command) => command.kind === 'action')).toHaveLength(
+		20,
+	)
+})

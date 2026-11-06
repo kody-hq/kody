@@ -3,7 +3,7 @@ import { orgSlugFromPathname } from '#universal/org-pages.ts'
 import { useEffect, useId, useRef, useState } from 'react'
 import { useHotkeys, formatForDisplay } from '@tanstack/react-hotkeys'
 import { useRouter } from '@tanstack/react-router'
-import { useQueries } from '@tanstack/react-query'
+import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { useJobCommands } from './job-commands.ts'
 import type { SessionInfo } from '#client/session.ts'
 import { searchCommands } from '#start/server/command-search'
@@ -35,6 +35,7 @@ export function CommandDialog({
 	onClose: () => void
 }) {
 	const router = useRouter()
+	const queryClient = useQueryClient()
 	const dialog = useRef<HTMLDialogElement>(null)
 	const input = useRef<HTMLInputElement>(null)
 	const confirmationHeading = useRef<HTMLHeadingElement>(null)
@@ -161,8 +162,24 @@ export function CommandDialog({
 		},
 	}
 	const resourceCommands = useJobCommands(
-		org && org.role !== null && query === debounced
-			? searches.flatMap((search) => search.data ?? [])
+		org && org.role !== null
+			? searches.flatMap(
+					(search, i) =>
+						search.data ??
+						(queryClient
+							.getQueryCache()
+							.findAll({
+								queryKey: ['command-search', session?.username, slug, kinds[i]],
+							})
+							.filter(
+								(cached) =>
+									cached.queryKey[6] === org.role &&
+									cached.state.data !== undefined,
+							)
+							.sort((a, b) => b.state.dataUpdatedAt - a.state.dataUpdatedAt)[0]
+							?.state.data as Command[] | undefined) ??
+						[],
+				)
 			: [],
 		slug,
 	)
@@ -186,9 +203,9 @@ export function CommandDialog({
 	const results = (
 		favorites ? ranked.filter((command) => history[command.id]?.pinned) : ranked
 	).slice(0, 60)
-	const selected =
-		results.find((command) => command.id === selectionId) ??
-		results[Math.min(index, Math.max(0, results.length - 1))]
+	const selected = selectionId
+		? results.find((command) => command.id === selectionId)
+		: results[Math.min(index, Math.max(0, results.length - 1))]
 	const rows: Command[] = actions
 		? [
 				{
@@ -226,9 +243,12 @@ export function CommandDialog({
 					: []),
 			]
 		: results
-	const active =
-		rows.find((command) => command.id === selectionId) ??
-		rows[Math.min(index, Math.max(0, rows.length - 1))]
+	const active = selectionId
+		? rows.find((command) => command.id === selectionId)
+		: rows[Math.min(index, Math.max(0, rows.length - 1))]
+	useEffect(() => {
+		if (selectionId === null && active) setSelectionId(active.id)
+	}, [selectionId, active?.id])
 	function selectIndex(next: number) {
 		setIndex(next)
 		setSelectionId(rows[next]?.id ?? null)
@@ -244,6 +264,7 @@ export function CommandDialog({
 		setError(null)
 	}
 	function togglePin(command: Command) {
+		setSelectionId(command.id)
 		const previous = historyRef.current
 		const next = {
 			...previous,

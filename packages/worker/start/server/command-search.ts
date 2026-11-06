@@ -123,7 +123,7 @@ export const searchCommands = createServerFn({ method: 'GET' })
 				icon: 'book',
 			}))
 		}
-		return rankCommands(
+		const ranked = rankCommands(
 			commands.filter(
 				(command) =>
 					data.mode === 'all' ||
@@ -140,5 +140,16 @@ export const searchCommands = createServerFn({ method: 'GET' })
 			),
 			undefined,
 			{ literal: true },
-		).slice(0, 40)
+		)
+		if (data.kind === 'job' && data.mode === 'all') {
+			const destinations = ranked
+				.filter((command) => command.kind === 'job')
+				.slice(0, 20)
+			const actions = ranked
+				.filter((command) => command.kind === 'action')
+				.slice(0, 40 - destinations.length)
+			const selected = new Set([...destinations, ...actions])
+			return ranked.filter((command) => selected.has(command))
+		}
+		return ranked.slice(0, 40)
 	})

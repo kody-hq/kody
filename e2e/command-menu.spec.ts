@@ -106,6 +106,7 @@ test('resource search finds a saved credential without exposing its value', asyn
 			(element) => element.scrollWidth <= element.clientWidth,
 		),
 	).toBe(true)
+	await search.press(`${mod}+p`)
 	await search.press('Enter')
 	await expect(page).toHaveURL(new RegExp(`/@${user.username}/-/credentials/`))
 	await expect(dialog).not.toBeVisible()
