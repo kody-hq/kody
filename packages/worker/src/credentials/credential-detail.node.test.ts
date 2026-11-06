@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
 		packageId: string | null
 		expired: boolean
 	}>,
+	usableByPackageError: null as Error | null,
 	suppliersFlag: vi.fn(async () => false),
 }))
 
@@ -42,6 +43,7 @@ vi.mock('./credential-candidates.ts', async (importOriginal) => ({
 	listUsableCredentialsByPackage: async (input: {
 		packageIds: ReadonlyArray<string>
 	}) => {
+		if (mocks.usableByPackageError) throw mocks.usableByPackageError
 		const byPackage = new Map<string, typeof mocks.usable>()
 		for (const packageId of input.packageIds) {
 			byPackage.set(packageId, mocks.usable)
@@ -91,7 +93,25 @@ function setup() {
 beforeEach(() => {
 	mocks.needs.clear()
 	mocks.usable = []
+	mocks.usableByPackageError = null
 	mocks.suppliersFlag.mockReset().mockResolvedValue(false)
+})
+
+test('a usable-credentials failure marks usage unreadable without failing detail', async () => {
+	const { env } = setup()
+	mocks.usableByPackageError = new Error('usable load failed')
+	const detail = await loadCredentialDetail({
+		env,
+		request: {} as RequestContext,
+		orgId: 'org-1',
+		ownedByViewer: true,
+		credential: item({ id: 'openai-1', name: 'OPENAI', provider: 'openai' }),
+		packages: [pkg('triage'), pkg('digest')],
+	})
+	expect(detail.usage).toEqual([])
+	expect(detail.usageUnreadable).toBe(2)
+	expect(detail.grants).toEqual([])
+	expect(detail.placeholder).toBe('{{secret:OPENAI}}')
 })
 
 test('a suppliers-flag failure marks usage unreadable without failing detail', async () => {
@@ -202,6 +222,27 @@ test("the viewer's own credential lists the team orgs it is granted to", async (
 		{ orgSlug: 'acme', orgName: 'Acme', grantedAt: '2026-10-05T00:00:00.000Z' },
 	])
 	expect((await load(false)).grants).toEqual([])
+})
+
+test('a grants query failure leaves detail usable with empty shared-with', async () => {
+	const { env } = setup()
+	const originalPrepare = env.APP_DB.prepare.bind(env.APP_DB)
+	env.APP_DB.prepare = ((query: string) => {
+		if (query.includes('credential_org_grants')) {
+			throw new Error('grants query failed')
+		}
+		return originalPrepare(query)
+	}) as typeof env.APP_DB.prepare
+	const detail = await loadCredentialDetail({
+		env,
+		request: {} as RequestContext,
+		orgId: 'ann-org',
+		ownedByViewer: true,
+		credential: item({ id: 'mine', name: 'mine' }),
+		packages: [],
+	})
+	expect(detail.grants).toEqual([])
+	expect(detail.placeholder).toBe('{{secret:mine}}')
 })
 
 test("host settings cover the org's own Keys and OAuth connections only", async () => {

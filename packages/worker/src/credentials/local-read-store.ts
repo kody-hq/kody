@@ -94,7 +94,8 @@ export async function listLocalReadSettings(
 			)
 			.bind(...chunk)
 			.all<SettingRow>()
-		for (const row of results) settings.set(row.credential_id, toSetting(row))
+		for (const row of results ?? [])
+			settings.set(row.credential_id, toSetting(row))
 	}
 	return settings
 }
@@ -233,7 +234,7 @@ export async function listLocalReadEvents(input: {
 			input.limit ?? localReadListLimit,
 		)
 		.all<EventRow>()
-	return results.map((row) => ({
+	return (results ?? []).map((row) => ({
 		id: row.id,
 		credentialId: row.credential_id,
 		actorUserId: row.actor_user_id,

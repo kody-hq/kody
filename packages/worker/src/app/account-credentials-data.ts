@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/cloudflare'
 import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { loadCredentialDetail } from '#worker/credentials/credential-detail.ts'
@@ -52,6 +53,12 @@ export async function loadAccountCredentialsData(input: {
 				ownedByViewer: !teamOrg || selectedItem.scope === 'personal',
 				credential: selectedItem,
 				packages,
+			}).catch((error: unknown) => {
+				Sentry.captureException(error, {
+					tags: { scope: 'credentials.detail' },
+					extra: { credentialId: selectedItem.id, orgId, teamOrg },
+				})
+				return null
 			})
 		: null
 	const selectedProvider = selectedItem
@@ -68,25 +75,45 @@ export async function loadAccountCredentialsData(input: {
 					...(teamOrg && selectedItem.scope === 'personal'
 						? { personalOrgSlug }
 						: {}),
+				}).catch((error: unknown) => {
+					Sentry.captureException(error, {
+						tags: { scope: 'credentials.detail.local_reads' },
+						extra: { credentialId: selectedItem.id },
+					})
+					return null
 				})
 			: selectedProvider
 				? await loadCredentialLocalReadsView({
 						env: input.env,
 						request: input.user.request,
 						credentialId: selectedProvider.id,
+					}).catch((error: unknown) => {
+						Sentry.captureException(error, {
+							tags: { scope: 'credentials.detail.local_reads' },
+							extra: { credentialId: selectedProvider.id },
+						})
+						return null
 					})
 				: null
-	const settings = await listLocalReadSettings(input.env.APP_DB, [
-		...listed
-			.filter((item) => item.kind === 'secret' && item.packageId === null)
-			.map((item) => item.id),
-		...providers.map((binding) => binding.id),
-	])
-	const localReadBadges: AccountCredentialsResponse['localReadBadges'] = {}
-	for (const [credentialId, setting] of settings) {
-		if (setting.enabled) {
-			localReadBadges[credentialId] = { lastReadAt: setting.lastReadAt }
+	let localReadBadges: AccountCredentialsResponse['localReadBadges'] = {}
+	try {
+		const settings = await listLocalReadSettings(input.env.APP_DB, [
+			...listed
+				.filter((item) => item.kind === 'secret' && item.packageId === null)
+				.map((item) => item.id),
+			...providers.map((binding) => binding.id),
+		])
+		for (const [credentialId, setting] of settings) {
+			if (setting.enabled) {
+				localReadBadges[credentialId] = { lastReadAt: setting.lastReadAt }
+			}
 		}
+	} catch (error) {
+		Sentry.captureException(error, {
+			tags: { scope: 'credentials.detail.local_reads' },
+			extra: { orgId },
+		})
+		localReadBadges = {}
 	}
 	return {
 		ok: true,
