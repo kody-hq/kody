@@ -7,10 +7,8 @@ import {
 	installCommunityPackage,
 } from '#start/server/community-mutations'
 import { communityForkStateQuery } from './community-fork-state-query.ts'
-import type {
-	CommunityInstallApiPayload,
-	CommunityInstallOutcome,
-} from './community-types.ts'
+import { readCommunityInstallResult } from './community-install-result.ts'
+import type { CommunityInstallOutcome } from './community-types.ts'
 import { usePageInvalidation } from './page-invalidation.ts'
 import { useSubmitterScope } from './use-submitter-scope.ts'
 import { useCommunityInstallOrg } from './use-community-install-org.ts'
@@ -95,36 +93,18 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 			org: string | null
 		}) => {
 			const { fork: target, org: targetOrg } = input
-			const result = (
-				target.source
-					? await forkReadablePackage({
-							data: { ...target.source, org: targetOrg },
-						})
-					: await installCommunityPackage({
-							data: {
-								listingId: target.listingId ?? '',
-								org: targetOrg,
-								acknowledged: true,
-							},
-						})
-			) as CommunityInstallApiPayload
-			if (
-				!result.ok ||
-				!result.status ||
-				!result.targetName ||
-				!result.agentPrompt
-			)
-				throw new Error(
-					result.error ?? 'Unable to install this public package.',
-				)
-			return {
-				status: result.status,
-				targetName: result.targetName,
-				agentPrompt: result.agentPrompt,
-				packageId: result.packageId ?? null,
-				failedChecks: result.failedChecks ?? [],
-				alreadyInstalled: result.alreadyInstalled === true,
-			}
+			const result = target.source
+				? await forkReadablePackage({
+						data: { ...target.source, org: targetOrg },
+					})
+				: await installCommunityPackage({
+						data: {
+							listingId: target.listingId ?? '',
+							org: targetOrg,
+							acknowledged: true,
+						},
+					})
+			return readCommunityInstallResult(result)
 		},
 		onMutate: () => ({ reconcile, refetchForkState: forkStateQuery.refetch }),
 		onSettled: (_data, _error, _variables, context) => {
