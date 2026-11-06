@@ -246,6 +246,10 @@ API response, MCP tool, or page returns the secret after save.
 - Execute: the `kody.mcp` proxy exposes tools as
   `kody.mcp["<server-name>"].<tool>(input)` and never as flat `kody.*`
   functions. Search capability detail returns the exact accessor.
+- Package-local CLI hops (`kody dev`, unpublished package runs) send the signed
+  package binding as a second argument `{ packageBinding }` so the MCP
+  capability acts as that package, claimed. No binding means no package. See
+  [Open API](./open-api.md#capabilityproxy).
 - Tool calls flow worker → credential door `callTool` → hub DO `callTool` →
   `MCPClientManager.callTool` → remote server. The door writes one `mcp.call`
   org audit row per invocation (tool name, server, success or failure, error

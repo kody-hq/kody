@@ -224,7 +224,9 @@ module and does not silently hop to `kody.execute`. See
   tokens and any secret values the call wrote. Platform failures outside the
   capability return the generic `internal_error`, and the details are logged
   server-side.
-- Package-local `kody.mcp.<server>.<tool>(args)` calls send the signed package
+- Package-local `kody.mcp.<server>.<tool>(args)` calls
+  (`createPackageLocalRuntimeModuleSource` in
+  `packages/cli/src/package-local-runtime-source.ts`) send the signed package
   binding as a second argument, `{ packageBinding }`. Origin verifies it with
   `authorizeLocalExecutePackageBinding` and the MCP capability acts as that
   package, claimed (package locks and declared needs apply; the actor still
