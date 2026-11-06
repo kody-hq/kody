@@ -60,3 +60,55 @@ test('package-local runtime rejects bare package UUIDs as packageBinding', () =>
 		/const __kodyPackageBinding = "11111111-1111-1111-1111-111111111111"/,
 	)
 })
+
+async function importRuntime(packageBinding?: string) {
+	const source = createPackageLocalRuntimeModuleSource({
+		packageContext: samplePackageContext,
+		mockStorage: true,
+		...(packageBinding ? { packageBinding } : {}),
+	})
+	const runtime = (await import(
+		`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
+	)) as {
+		kody: Record<string, any>
+		__kodyInstallLocalBridge: (bridge: unknown) => void
+	}
+	const calls: Array<{ path: Array<string>; args: Array<unknown> }> = []
+	runtime.__kodyInstallLocalBridge({
+		call: async (path: Array<string>, args: Array<unknown>) => {
+			calls.push({ path, args })
+			return null
+		},
+		gatewayFetch: null,
+	})
+	return { kody: runtime.kody, calls }
+}
+
+test('package-local kody.mcp calls send the signed package binding', async () => {
+	const { kody, calls } = await importRuntime('kpb1.test-binding.sig')
+	await kody.mcp.home.lights_on({ room: 'office' })
+	await kody.mcp['home'].lights_on(
+		{ room: 'den' },
+		{ packageBinding: 'kpb1.forged' },
+	)
+	await kody.emailSend({ to: 'a@example.com' })
+	assert.deepEqual(calls, [
+		{
+			path: ['kody', 'mcp', 'home', 'lights_on'],
+			args: [{ room: 'office' }, { packageBinding: 'kpb1.test-binding.sig' }],
+		},
+		{
+			path: ['kody', 'mcp', 'home', 'lights_on'],
+			args: [{ room: 'den' }, { packageBinding: 'kpb1.test-binding.sig' }],
+		},
+		{ path: ['kody', 'emailSend'], args: [{ to: 'a@example.com' }] },
+	])
+})
+
+test('package-local kody.mcp calls without a binding are unchanged', async () => {
+	const { kody, calls } = await importRuntime()
+	await kody.mcp.home.lights_on({ room: 'office' })
+	assert.deepEqual(calls, [
+		{ path: ['kody', 'mcp', 'home', 'lights_on'], args: [{ room: 'office' }] },
+	])
+})

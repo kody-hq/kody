@@ -17,6 +17,7 @@ import { exports as workerExports } from 'cloudflare:workers'
 import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import type {
 	Capability,
+	CapabilityContext,
 	CapabilityOpenApiPrincipal,
 } from '#mcp/capabilities/types.ts'
 import {
@@ -456,6 +457,7 @@ export async function buildKodyToolContext(
 		waitUntil?: (promise: Promise<unknown>) => void
 		openApiPrincipal?: CapabilityOpenApiPrincipal
 		localExecuteHop?: true
+		localPackageStamp?: CapabilityContext['localPackageStamp']
 		credentialClientBinding?: string
 	},
 ): Promise<{
@@ -516,6 +518,9 @@ export async function buildKodyToolContext(
 							? { openApiPrincipal: options.openApiPrincipal }
 							: {}),
 						...(options?.localExecuteHop ? { localExecuteHop: true } : {}),
+						...(options?.localPackageStamp
+							? { localPackageStamp: options.localPackageStamp }
+							: {}),
 						...(options?.credentialClientBinding
 							? { credentialClientBinding: options.credentialClientBinding }
 							: {}),

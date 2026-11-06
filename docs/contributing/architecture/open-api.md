@@ -217,6 +217,11 @@ module and does not silently hop to `kody.execute`. See
   tokens and any secret values the call wrote. Platform failures outside the
   capability return the generic `internal_error`, and the details are logged
   server-side.
+- Package-local `kody.mcp.<server>.<tool>(args)` calls send the signed package
+  binding as a second argument, `{ packageBinding }`. Origin verifies it with
+  `authorizeLocalExecutePackageBinding` and the MCP capability acts as that
+  package, claimed (package locks and declared needs apply; the actor still
+  needs Use). No binding means no package. Older origins ignore the argument.
 - Confused-deputy limits: `POST /v1/capability-proxy/call` is JSON arguments
   only. No caller header or cookie is forwarded into a capability, and the edge
   strips `Cookie` and non-allowlisted `X-Kody-*` before origin sees the request.
