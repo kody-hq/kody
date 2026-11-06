@@ -1,4 +1,7 @@
-import { toServingSourceView } from '#worker/repo/serving-commit.ts'
+import {
+	servingArtifactCommitForSource,
+	toServingSourceView,
+} from '#worker/repo/serving-commit.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test } from 'vitest'
 import { parseAuthoredPackageJson } from '#worker/package-registry/manifest.ts'
@@ -133,7 +136,7 @@ async function setUp() {
 		module: bundleFor('commit-1'),
 		importable: bundleFor('commit-1'),
 	})
-	return { db, source, rebuild, publish, served }
+	return { db, env, source, rebuild, publish, served }
 }
 
 const servingCommit1 = {
@@ -213,4 +216,32 @@ test('the serving pointer only compare-and-sets to the current published commit'
 		}),
 	).resolves.toBe(true)
 	expect((await source()).serving_commit).toBe('commit-3')
+})
+
+test('a source without a serving pointer keeps importing its newest saved build', async () => {
+	const { env, source, publish } = await setUp()
+	await publish('commit-2')
+	// Migration 0245 leaves the pointer null when saved artifacts lag
+	// `published_commit`, so no complete build exists at commit-2.
+	const row = { ...(await source()), serving_commit: null }
+	const importable = async (commit: string | null) => {
+		const loaded = await loadPublishedBundleArtifactByIdentity({
+			env,
+			userId,
+			sourceId,
+			kind: 'importable-module',
+			artifactName: '.',
+			entryPoint: 'src/index.ts',
+			commit,
+		})
+		return loaded?.artifact
+			? Object.values(loaded.artifact.modules).join('')
+			: null
+	}
+
+	expect(await importable(toServingSourceView(row).published_commit)).toBeNull()
+	expect(servingArtifactCommitForSource(row)).toBeNull()
+	expect(await importable(servingArtifactCommitForSource(row))).toContain(
+		'bundle-commit-1',
+	)
 })
