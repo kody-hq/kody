@@ -1,4 +1,8 @@
 import {
+	chunkArray,
+	maxD1BoundParameters,
+} from '@kody-internal/shared/chunk.ts'
+import {
 	ecpDefaultGrant,
 	ecpMaxChainContexts,
 	type EcpCapabilities,
@@ -122,6 +126,25 @@ export async function getExecutionContext(db: D1Database, id: string) {
 		.first<ExecutionContextRow>()
 }
 
+/** Rows for the given ids; missing ids are omitted. */
+export async function getExecutionContexts(
+	db: D1Database,
+	ids: ReadonlyArray<string>,
+) {
+	const byId = new Map<string, ExecutionContextRow>()
+	if (ids.length === 0) return byId
+	for (const chunk of chunkArray(ids, maxD1BoundParameters)) {
+		const result = await db
+			.prepare(
+				`SELECT ${contextColumns} FROM execution_contexts WHERE id IN (${chunk.map(() => '?').join(', ')})`,
+			)
+			.bind(...chunk)
+			.all<ExecutionContextRow>()
+		for (const row of result.results) byId.set(row.id, row)
+	}
+	return byId
+}
+
 export async function getExecutionContextByThumbprint(
 	db: D1Database,
 	thumbprint: string,
@@ -203,19 +226,71 @@ export const contextGrantSubjects = {
 } as const satisfies GrantSubjectChoices
 
 /**
+ * Assemble {@link ContextAccess} from preloaded rows. Shared by the single-
+ * and batched loaders so list paths cannot drift from one-context checks.
+ */
+export function assembleContextAccess(
+	context: ExecutionContextRow,
+	input: { userId: string; orgId: string },
+	parts: {
+		attachRow: { all_members: number } | undefined
+		presets: Array<ContextAccess['preset']>
+		isMember: boolean
+		optedIn: boolean
+		operatorLive: boolean
+	},
+): ContextAccess {
+	const isOperator = context.operator_user_id === input.userId
+	const attached = context.org_id === input.orgId || Boolean(parts.attachRow)
+	const preset = strongestPreset(parts.presets)
+	const allMembers =
+		context.org_id === input.orgId
+			? context.all_members === 1
+			: parts.attachRow?.all_members === 1
+	const granted =
+		isOperator || preset !== null || (parts.isMember && allMembers === true)
+	const optedIn = isOperator || parts.optedIn
+	const operatorLive = isOperator || parts.operatorLive
+	const unusableReason: UnusableReason | null = context.revoked_at
+		? 'revoked'
+		: !attached
+			? 'not_attached'
+			: !granted
+				? 'not_granted'
+				: !operatorLive
+					? 'operator_left'
+					: !optedIn
+						? 'not_opted_in'
+						: null
+	return {
+		isOperator,
+		attached,
+		granted,
+		optedIn,
+		preset: isOperator ? 'manage' : (preset ?? (granted ? 'use' : null)),
+		canRunCommands: isOperator,
+		usable: unusableReason === null,
+		unusableReason,
+	}
+}
+
+/**
  * Execute authority (protocol 8.5): the operator, a live grant on this
  * context in the run's org (directly or through a team), or a live member
  * when `all_members` is set. Compiled access and org roles never confer it.
  * Fails closed with `operator_left` for everyone else once the operator is no
  * longer a live member of the run's org: their machine must not keep taking
  * other members' runs.
+ *
+ * Prefer {@link loadContextsAccess} when formatting many contexts in one
+ * request (list / chain): it uses set-based queries instead of one D1 batch
+ * per row (Sentry KODY-E6).
  */
 export async function loadContextAccess(
 	db: D1Database,
 	context: ExecutionContextRow,
 	input: { userId: string; orgId: string },
 ): Promise<ContextAccess> {
-	const isOperator = context.operator_user_id === input.userId
 	const subjectMatch = grantSubjectMatchSql({
 		subjects: contextGrantSubjects,
 		personId: input.userId,
@@ -259,45 +334,162 @@ export async function loadContextAccess(
 				)
 				.bind(input.orgId, context.operator_user_id),
 		])
-	const attachRow = attachment?.results[0] as
-		| { all_members: number }
-		| undefined
-	const attached = context.org_id === input.orgId || Boolean(attachRow)
-	const presets = (grant?.results ?? []).map(
-		(row) => (row as { preset: ContextAccess['preset'] }).preset,
+	return assembleContextAccess(context, input, {
+		attachRow: attachment?.results[0] as { all_members: number } | undefined,
+		presets: (grant?.results ?? []).map(
+			(row) => (row as { preset: ContextAccess['preset'] }).preset,
+		),
+		isMember: (membership?.results.length ?? 0) > 0,
+		optedIn: (optIn?.results.length ?? 0) > 0,
+		operatorLive: (operatorMembership?.results.length ?? 0) > 0,
+	})
+}
+
+/**
+ * Same semantics as {@link loadContextAccess}, for every context via
+ * set-based queries (attachments / grants / opt-ins / memberships).
+ * Context-id lists are chunked so each statement stays within D1's
+ * {@link maxD1BoundParameters} cap (the grant query is the tightest).
+ */
+export async function loadContextsAccess(
+	db: D1Database,
+	contexts: ReadonlyArray<ExecutionContextRow>,
+	input: { userId: string; orgId: string },
+): Promise<Map<string, ContextAccess>> {
+	const access = new Map<string, ContextAccess>()
+	if (contexts.length === 0) return access
+
+	const contextIds = contexts.map((context) => context.id)
+	const operatorIds = [
+		...new Set(contexts.map((context) => context.operator_user_id)),
+	]
+	const subjectMatch = grantSubjectMatchSql({
+		subjects: contextGrantSubjects,
+		personId: input.userId,
+		boundOrgId: input.orgId,
+	})
+	const now = new Date().toISOString()
+	// Grant binds: resource ids + org + expiry + subjectMatch binds.
+	const grantFixedBinds = 2 + subjectMatch.binds.length
+	const contextIdChunkSize = Math.max(
+		1,
+		Math.min(
+			maxD1BoundParameters - 1, // attachments: org + ids
+			maxD1BoundParameters - 2, // opt-ins: user + org + ids
+			maxD1BoundParameters - grantFixedBinds,
+		),
 	)
-	const preset = strongestPreset(presets)
-	const isMember = (membership?.results.length ?? 0) > 0
-	const allMembers =
-		context.org_id === input.orgId
-			? context.all_members === 1
-			: attachRow?.all_members === 1
-	const granted =
-		isOperator || preset !== null || (isMember && allMembers === true)
-	const optedIn = isOperator || (optIn?.results.length ?? 0) > 0
-	const operatorLive =
-		isOperator || (operatorMembership?.results.length ?? 0) > 0
-	const unusableReason: UnusableReason | null = context.revoked_at
-		? 'revoked'
-		: !attached
-			? 'not_attached'
-			: !granted
-				? 'not_granted'
-				: !operatorLive
-					? 'operator_left'
-					: !optedIn
-						? 'not_opted_in'
-						: null
-	return {
-		isOperator,
-		attached,
-		granted,
-		optedIn,
-		preset: isOperator ? 'manage' : (preset ?? (granted ? 'use' : null)),
-		canRunCommands: isOperator,
-		usable: unusableReason === null,
-		unusableReason,
+	const operatorChunkSize = Math.max(1, maxD1BoundParameters - 1)
+
+	const statements: Array<D1PreparedStatement> = [
+		db
+			.prepare(
+				`SELECT role FROM org_memberships WHERE org_id = ? AND user_id = ? AND deleted_at IS NULL`,
+			)
+			.bind(input.orgId, input.userId),
+	]
+	const attachmentChunkIndexes: Array<number> = []
+	const grantChunkIndexes: Array<number> = []
+	const optInChunkIndexes: Array<number> = []
+	const operatorChunkIndexes: Array<number> = []
+
+	for (const ids of chunkArray(contextIds, contextIdChunkSize)) {
+		const placeholders = ids.map(() => '?').join(', ')
+		attachmentChunkIndexes.push(statements.length)
+		statements.push(
+			db
+				.prepare(
+					`SELECT context_id, all_members FROM execution_context_org_attachments
+					 WHERE org_id = ? AND context_id IN (${placeholders})`,
+				)
+				.bind(input.orgId, ...ids),
+		)
+		grantChunkIndexes.push(statements.length)
+		statements.push(
+			db
+				.prepare(
+					`SELECT g.resource_id AS resource_id, g.preset AS preset
+					 FROM grants g
+					 WHERE g.resource_type = 'execution_context'
+					   AND g.resource_id IN (${placeholders})
+					   AND g.org_id = ? AND g.deleted_at IS NULL
+					   AND (g.expires_at IS NULL OR g.expires_at > ?)
+					   AND ${subjectMatch.sql}`,
+				)
+				.bind(...ids, input.orgId, now, ...subjectMatch.binds),
+		)
+		optInChunkIndexes.push(statements.length)
+		statements.push(
+			db
+				.prepare(
+					`SELECT context_id FROM execution_context_opt_ins
+					 WHERE user_id = ? AND org_id = ? AND context_id IN (${placeholders})`,
+				)
+				.bind(input.userId, input.orgId, ...ids),
+		)
 	}
+	for (const ids of chunkArray(operatorIds, operatorChunkSize)) {
+		operatorChunkIndexes.push(statements.length)
+		statements.push(
+			db
+				.prepare(
+					`SELECT user_id FROM org_memberships
+					 WHERE org_id = ? AND user_id IN (${ids.map(() => '?').join(', ')}) AND deleted_at IS NULL`,
+				)
+				.bind(input.orgId, ...ids),
+		)
+	}
+
+	const results = await db.batch<Record<string, unknown>>(statements)
+	const membership = results[0]
+	const attachByContext = new Map<string, { all_members: number }>()
+	for (const index of attachmentChunkIndexes) {
+		for (const row of results[index]?.results ?? []) {
+			const typed = row as { context_id: string; all_members: number }
+			attachByContext.set(typed.context_id, {
+				all_members: typed.all_members,
+			})
+		}
+	}
+	const presetsByContext = new Map<string, Array<ContextAccess['preset']>>()
+	for (const index of grantChunkIndexes) {
+		for (const row of results[index]?.results ?? []) {
+			const typed = row as {
+				resource_id: string
+				preset: ContextAccess['preset']
+			}
+			const list = presetsByContext.get(typed.resource_id) ?? []
+			list.push(typed.preset)
+			presetsByContext.set(typed.resource_id, list)
+		}
+	}
+	const optedInIds = new Set<string>()
+	for (const index of optInChunkIndexes) {
+		for (const row of results[index]?.results ?? []) {
+			optedInIds.add((row as { context_id: string }).context_id)
+		}
+	}
+	const liveOperators = new Set<string>()
+	for (const index of operatorChunkIndexes) {
+		for (const row of results[index]?.results ?? []) {
+			liveOperators.add((row as { user_id: string }).user_id)
+		}
+	}
+	const isMember = (membership?.results.length ?? 0) > 0
+
+	for (const context of contexts) {
+		access.set(
+			context.id,
+			assembleContextAccess(context, input, {
+				attachRow: attachByContext.get(context.id),
+				presets: presetsByContext.get(context.id) ?? [],
+				isMember,
+				optedIn: optedInIds.has(context.id),
+				operatorLive: liveOperators.has(context.operator_user_id),
+			}),
+		)
+	}
+	return access
 }
 
 function strongestPreset(presets: Array<ContextAccess['preset']>) {
@@ -541,14 +733,16 @@ export async function writeChain(
 export async function chainCounts(db: D1Database, ids: ReadonlyArray<string>) {
 	const counts = new Map<string, number>()
 	if (ids.length === 0) return counts
-	const result = await db
-		.prepare(
-			`SELECT context_id, COUNT(*) AS n FROM execution_context_chain_entries
-			 WHERE context_id IN (${ids.map(() => '?').join(', ')}) GROUP BY context_id`,
-		)
-		.bind(...ids)
-		.all<{ context_id: string; n: number }>()
-	for (const row of result.results) counts.set(row.context_id, row.n)
+	for (const chunk of chunkArray(ids, maxD1BoundParameters)) {
+		const result = await db
+			.prepare(
+				`SELECT context_id, COUNT(*) AS n FROM execution_context_chain_entries
+				 WHERE context_id IN (${chunk.map(() => '?').join(', ')}) GROUP BY context_id`,
+			)
+			.bind(...chunk)
+			.all<{ context_id: string; n: number }>()
+		for (const row of result.results) counts.set(row.context_id, row.n)
+	}
 	return counts
 }
 
