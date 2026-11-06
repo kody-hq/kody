@@ -57,6 +57,7 @@ export const executionContextCapabilityNames = {
 	shareList: 'executionContextShareList',
 	shareSet: 'executionContextShareSet',
 	shareRemove: 'executionContextShareRemove',
+	attach: 'executionContextAttach',
 	sharePreview: 'executionContextSharePreview',
 	noticeDismiss: 'executionContextNoticeDismiss',
 	automationGet: 'automationExecutionGet',
@@ -482,6 +483,29 @@ async function runScoped<T>(
 		if (failure) return failure
 		throw error
 	}
+}
+
+/** Attach the caller's context (seen from its owner org) to another org they belong to. */
+export async function attachExecutionContextForUser(
+	input: ScopedInput & { contextId: string; targetOrgSlug: string },
+) {
+	const target = await loadExecutionContextsScope({
+		...input,
+		orgSlug: input.targetOrgSlug,
+	})
+	if (!target || target.personal)
+		return {
+			ok: false as const,
+			error: 'not_found',
+			message: 'Organization not found.',
+		}
+	return runScoped(input, async (scope) => {
+		await callCapability(scope, executionContextCapabilityNames.attach, {
+			id: input.contextId,
+			org_id: target.org.id,
+		})
+		return { ok: true as const }
+	})
 }
 
 export async function optIntoExecutionContextForUser(
