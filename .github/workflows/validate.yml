@@ -717,8 +717,13 @@ jobs:
           echo "::warning::Playwright webServer died on start or mid-suite; retrying shard ${shard} once with a fresh server."
           node tools/run-nx.ts run worker:test-e2e
 
+      # Diagnostic only: GitHub's FinalizeArtifact can return an HTML error
+      # page after the zip already uploaded (Validate #42065690831: 26 tests
+      # passed, then 5 finalize retries over ~10m). e2e_report merges whatever
+      # shards arrived; a missing blob must not fail ✅ Validate.
       - name: 📤 Upload Playwright blob report
         if: ${{ !cancelled() }}
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: playwright-blob-report-${{ matrix.shard }}
@@ -815,8 +820,11 @@ jobs:
           fi
           npx playwright merge-reports --reporter html ./all-blob-reports
 
+      # Same FinalizeArtifact HTML-error flake as the shard blob upload.
+      # Missing HTML is inconvenient; failing ✅ Validate is not.
       - name: 📤 Upload merged HTML report
         if: ${{ !cancelled() }}
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report-merged
