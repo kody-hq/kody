@@ -288,7 +288,7 @@ export function credentialRejectedNote(input: {
 	}
 	if (credential.source === 'env') {
 		if (credential.purpose === 'session') {
-			return `${used} For search and cloud execute, \`kody login\` outranks ${apiTokenEnvVar}; unset it to use the login session, or replace it with a fresh token (agents: cliCredentialBootstrap then run the returned cli_command; CI: tokenCreate).`
+			return `${used} For search and cloud execute, run \`kody login\` (the login session then outranks ${apiTokenEnvVar} without unsetting it), or replace ${apiTokenEnvVar} with a fresh token (agents: cliCredentialBootstrap then run the returned cli_command; CI: tokenCreate).`
 		}
 		return `${used} It wins over any stored API token and \`kody login\` session; unset or replace ${apiTokenEnvVar} before retrying, or mint a fresh token (agents: cliCredentialBootstrap then run the returned cli_command; CI: tokenCreate) and update that value.`
 	}

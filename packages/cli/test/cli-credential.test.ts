@@ -240,7 +240,8 @@ test('rejectedApiTokenMessage for session purpose prefers login over a stored to
 	})
 	assert.equal(envOnly?.source, 'env')
 	const envNote = credentialRejectedNote({ credential: envOnly }) ?? ''
-	assert.match(envNote, /outranks KODY_API_TOKEN/)
+	assert.match(envNote, /run `kody login`/)
+	assert.match(envNote, /outranks KODY_API_TOKEN without unsetting it/)
 	assert.doesNotMatch(
 		envNote,
 		/wins over any stored API token and `kody login`/,

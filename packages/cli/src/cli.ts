@@ -604,12 +604,9 @@ async function dispatch(
 		case 'daemon':
 		case 'connect':
 		case 'update': {
-			const apiUrl = apiUrlFrom({
-				apiUrl:
-					typeof parsed.values['api-url'] === 'string'
-						? parsed.values['api-url']
-						: undefined,
-			})
+			// Same paired apiUrl used for remote/local classification above
+			// (preview --mcp-url without --api-url must not diverge).
+			const apiUrl = earlyApiUrl
 			const { runExecutionContextCommand } =
 				await import('./execution-context/commands.js')
 			return await runExecutionContextCommand({
