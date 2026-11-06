@@ -37,7 +37,7 @@ const DesktopMachineContext = createContext<null | {
 	state: DesktopExecutionState | undefined
 	commands: (action: 'status' | 'on' | 'off') => Promise<void>
 	forget: () => void
-	open: () => void
+	open: (targetOrgSlug?: string | null) => void
 	toggle: () => Promise<void>
 	restart: (() => Promise<void>) | null
 	autoUpdate: ((enabled: boolean) => Promise<void>) | null
@@ -75,6 +75,8 @@ export function DesktopExecutionProvider({
 	const [name, setName] = useState('')
 	const [replace, setReplace] = useState('')
 	const [setup, setSetup] = useState<SetupData | null>(null)
+	// A team org to attach this machine's personal registration to.
+	const [target, setTarget] = useState<string | null>(null)
 	const [busy, setBusy] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 	const dialog = useRef<HTMLDialogElement>(null)
@@ -170,11 +172,14 @@ export function DesktopExecutionProvider({
 			await enable({
 				data: { experiment: 'execution-contexts', enabled: true },
 			})
-			const signedIn = machine.data?.cliReady
-				? machine.data
-				: await bridge.signIn()
+			const signedIn =
+				machine.data?.cliReady || (target && machine.data?.contextId)
+					? machine.data
+					: await bridge.signIn()
 			client.setQueryData(['desktop-machine', actorKey], signedIn)
-			const page = await loadSetup({ data: { orgSlug, search: [] } })
+			const page = await loadSetup({
+				data: { orgSlug: target ?? orgSlug, search: [] },
+			})
 			if (!page.payload.enabled)
 				throw new Error('Execution contexts could not be enabled. Try again.')
 			setSetup(page.payload)
@@ -185,9 +190,11 @@ export function DesktopExecutionProvider({
 	async function connect() {
 		if (!bridge || !orgSlug || !username) return
 		await run(async () => {
-			const registered = await bridge.connect(name)
-			client.setQueryData(['desktop-machine', actorKey], registered)
-			if (!registered.contextId)
+			// Attaching reuses the personal registration as is.
+			const registered = target ? machine.data : await bridge.connect(name)
+			if (!target)
+				client.setQueryData(['desktop-machine', actorKey], registered)
+			if (!registered?.contextId)
 				throw new Error('The machine could not be registered. Try again.')
 			try {
 				await putFirst({
@@ -195,18 +202,21 @@ export function DesktopExecutionProvider({
 						orgSlug,
 						username,
 						contextId: registered.contextId,
+						...(target ? { targetOrgSlug: target } : {}),
 						...(needsReplacement && replace
 							? { replaceContextId: replace }
 							: {}),
 					},
 				})
 			} catch (error) {
-				const current = await loadSetup({ data: { orgSlug, search: [] } })
+				const current = await loadSetup({
+					data: { orgSlug: target ?? orgSlug, search: [] },
+				})
 				if (current.payload.enabled) setSetup(current.payload)
 				setReplace('')
 				throw error
 			}
-			await bridge.completeOnboarding()
+			if (!target) await bridge.completeOnboarding()
 			await client.invalidateQueries({ queryKey: ['shell'] })
 			await client.invalidateQueries({ queryKey: ['page'] })
 			await router.invalidate()
@@ -248,12 +258,14 @@ export function DesktopExecutionProvider({
 					},
 					forget: () => {
 						setError(null)
+						setTarget(null)
 						setStep('forget')
 						setOpened(true)
 					},
 					error: error ?? machine.data?.error ?? machine.error?.message ?? null,
-					open: () => {
+					open: (targetOrgSlug?: string | null) => {
 						setError(null)
+						setTarget(targetOrgSlug ?? null)
 						setStep('intro')
 						setOpened(true)
 					},
@@ -311,7 +323,9 @@ export function DesktopExecutionProvider({
 							: step === 'done'
 								? 'This machine is ready'
 								: step === 'machine'
-									? 'Enable this machine'
+									? target
+										? `Add this machine to @${target}`
+										: 'Enable this machine'
 									: 'Run Kody on this machine'}
 					</h2>
 					{step === 'forget' ? (
@@ -364,12 +378,22 @@ export function DesktopExecutionProvider({
 								disabled={busy}
 								onClick={() => void prepare()}
 							>
-								{busy ? 'Opening browser…' : 'Continue in browser'}
+								{target
+									? busy
+										? 'Loading…'
+										: 'Continue'
+									: busy
+										? 'Opening browser…'
+										: 'Continue in browser'}
 							</button>
 						</>
 					) : step === 'machine' ? (
 						<>
-							{existingContext ? (
+							{target ? (
+								<p>
+									{`${name} will be first in your execution chain in @${target}. It keeps its personal setup, and your other entries in @${target} stay in their current order.`}
+								</p>
+							) : existingContext ? (
 								<p>
 									The kody CLI already registered this machine
 									{existingContext.name ? ` as ${existingContext.name}` : ''}.
@@ -389,11 +413,13 @@ export function DesktopExecutionProvider({
 									/>
 								</label>
 							)}
-							<p>
-								This machine will be first in your personal execution chain.
-								Your other entries and cloud fallback settings stay in their
-								current order.
-							</p>
+							{target ? null : (
+								<p>
+									This machine will be first in your personal execution chain.
+									Your other entries and cloud fallback settings stay in their
+									current order.
+								</p>
+							)}
 							{needsReplacement ? (
 								<label css={{ display: 'grid', gap: spacing.sm }}>
 									Your chain is full. Replace an entry
@@ -423,23 +449,26 @@ export function DesktopExecutionProvider({
 								css={buttonCss}
 								disabled={
 									busy ||
-									!/^[a-z0-9][a-z0-9-]{0,62}$/.test(name) ||
+									(!target && !/^[a-z0-9][a-z0-9-]{0,62}$/.test(name)) ||
 									(!!needsReplacement && !replace)
 								}
 								onClick={() => void connect()}
 							>
 								{busy
 									? 'Enabling…'
-									: existingContext
-										? 'Use this machine’s existing registration'
-										: 'Enable this machine'}
+									: target
+										? `Add to @${target}`
+										: existingContext
+											? 'Use this machine’s existing registration'
+											: 'Enable this machine'}
 							</button>
 						</>
 					) : (
 						<>
 							<p>
-								This machine is first in your execution chain. You can pause or
-								resume it from Execution contexts.
+								This machine is first in your execution chain
+								{target ? ` in @${target}` : ''}. You can pause or resume it
+								from Execution contexts.
 							</p>
 							<button
 								type="button"
@@ -471,7 +500,12 @@ export function useDesktopMachine() {
 	return useContext(DesktopMachineContext)
 }
 
-export function DesktopMachinePanel() {
+/** `orgSlug`: the team org this page is for, if not the personal workspace. */
+export function DesktopMachinePanel({
+	orgSlug: selectedOrgSlug = null,
+}: {
+	orgSlug?: string | null
+} = {}) {
 	const machine = useDesktopMachine()
 	const contextId = machine?.state?.contextId
 	const commands = useRef(machine?.commands)
@@ -684,7 +718,9 @@ export function DesktopMachinePanel() {
 						type="button"
 						css={{ ...buttonCss, marginLeft: state.contextId ? spacing.sm : 0 }}
 						disabled={state.busy}
-						onClick={machine.open}
+						onClick={() =>
+							machine.open(state.contextId ? selectedOrgSlug : null)
+						}
 					>
 						{state.contextId
 							? 'Manage setup'
