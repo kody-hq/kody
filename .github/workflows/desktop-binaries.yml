@@ -80,6 +80,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtk-3-0t64 libnss3 libxss1 libasound2t64 libgbm1 libsecret-1-0
       - run: npm ci
+      - name: Process-tree timeout helper (SIGTERM-resistant descendant)
+        # Confirms run-with-timeout stops descendants on the same runners
+        # Desktop release uses (macos-15 / macos-15-intel / Windows / Linux).
+        run: npm run test:timeout-tree --workspace @kodycodes/desktop
       - name: Build bundled CLI
         run: npm run build --workspace @kodycodes/cli
       - name: Validate desktop

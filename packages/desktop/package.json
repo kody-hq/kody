@@ -16,6 +16,7 @@
     "test:browser-login": "node test/browser-login-smoke.cjs",
     "dist": "electron-builder --config electron-builder.cjs --publish never",
     "test:packaged-cli": "node test/packaged-cli.cjs",
+    "test:timeout-tree": "node --test test/run-with-timeout.test.cjs && node scripts/smoke-timeout-tree.cjs",
     "dist:release": "electron-builder --config electron-builder.release.cjs --publish never"
   },
   "dependencies": {
