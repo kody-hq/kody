@@ -597,9 +597,82 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 			targetOrgSlug: 'acme',
 		})
 		assert.equal(await page.evaluate(() => window.fixture.registers), 1)
+		// Registered + running but missing from the personal chain must not skip
+		// putFirst on resume (failed chain put / dismissed wizard).
+		await mount(true)
+		await page.evaluate(() => {
+			Object.assign(window.fixture.state, {
+				contextId: 'ec_mac',
+				hasSetup: true,
+				running: true,
+				cliReady: true,
+				onboardingSeen: true,
+			})
+			window.fixture.setup.chain.entries = [{ kind: 'cloud' }]
+			window.fixture.puts = []
+			window.fixture.starts = 0
+		})
+		await page.evaluate(() => window.refreshFixture())
+		await page
+			.getByRole('button', { name: 'Manage setup', exact: true })
+			.click()
+		await page
+			.getByRole('dialog')
+			.getByRole('button', { name: 'Resume setup', exact: true })
+			.click()
+		await expect(
+			page.getByRole('heading', { name: 'Register this device personally' }),
+		).toBeVisible()
+		await page
+			.getByRole('button', { name: 'Enable this machine', exact: true })
+			.click()
+		await expect(
+			page.getByRole('heading', { name: 'This machine is ready', exact: true }),
+		).toBeVisible()
+		assert.deepEqual(await page.evaluate(() => window.fixture.puts), [
+			{ orgSlug: 'jane', username: 'jane', contextId: 'ec_mac' },
+		])
+		// Registered + in chain but runner down must start before success.
+		await mount(true)
+		await page.evaluate(() => {
+			Object.assign(window.fixture.state, {
+				contextId: 'ec_mac',
+				hasSetup: true,
+				running: false,
+				cliReady: true,
+				onboardingSeen: true,
+			})
+			window.fixture.setup.chain.entries = [
+				{ kind: 'context', id: 'ec_mac' },
+				{ kind: 'cloud' },
+			]
+			window.fixture.puts = []
+			window.fixture.starts = 0
+			const execution = window.kodyDesktop.execution
+			const start = execution.start
+			execution.start = async () => {
+				window.fixture.starts++
+				return start()
+			}
+		})
+		await page.evaluate(() => window.refreshFixture())
+		await page
+			.getByRole('button', { name: 'Manage setup', exact: true })
+			.click()
+		await page
+			.getByRole('dialog')
+			.getByRole('button', { name: 'Resume setup', exact: true })
+			.click()
+		await page
+			.getByRole('button', { name: 'Enable this machine', exact: true })
+			.click()
+		await expect(
+			page.getByRole('heading', { name: 'This machine is ready', exact: true }),
+		).toBeVisible()
+		assert.equal(await page.evaluate(() => window.fixture.starts), 1)
 		assert.deepEqual(errors, [])
 		console.log(
-			'Desktop UI: browser hidden, onboarding order, skip/reopen, staged setup, chain replacement/retry, pause, forget, existing-registration adoption, service restart, auto-update toggle, team-org attach, and team-first enrollment passed.',
+			'Desktop UI: browser hidden, onboarding order, skip/reopen, staged setup, chain replacement/retry, pause, forget, existing-registration adoption, service restart, auto-update toggle, team-org attach, team-first enrollment, and resume chain/runner fixes passed.',
 		)
 	} finally {
 		await browser.close()

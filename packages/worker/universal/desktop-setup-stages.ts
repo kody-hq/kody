@@ -64,22 +64,26 @@ export function desktopSetupCompleted(input: {
 	running: boolean
 	/** Team attach succeeded for this open (wizard-local). */
 	attached?: boolean
+	/**
+	 * The machine is already an entry in the intended workspace chain
+	 * (personal when no target, team when target is set).
+	 */
+	inChain?: boolean
 	targetOrgSlug: string | null
 }): ReadonlySet<DesktopSetupStageId> {
 	const done = new Set<DesktopSetupStageId>()
 	if (input.cliReady || input.contextId) done.add('sign-in')
 	if (input.contextId) done.add('register')
+	const teamReady = Boolean(
+		input.attached || (input.targetOrgSlug && input.inChain),
+	)
 	if (input.targetOrgSlug) {
-		if (input.attached) done.add('attach')
+		if (teamReady) done.add('attach')
 	}
-	// Runner is satisfied once the local registration exists and either the
-	// process is up or the intended team attach finished (paused is still ok).
-	if (
-		input.contextId &&
-		(input.running || input.attached) &&
-		(!input.targetOrgSlug || input.attached)
-	) {
-		done.add('runner')
+	// Runner stage requires the process up. Paused-after-success is handled by
+	// Manage setup re-entering register when running is false.
+	if (input.contextId && input.running) {
+		if (!input.targetOrgSlug || teamReady) done.add('runner')
 	}
 	return done
 }
@@ -90,6 +94,7 @@ export function desktopSetupStages(input: {
 	contextId: string | null
 	running: boolean
 	attached?: boolean
+	inChain?: boolean
 	/** Override which stage is current while a step is active. */
 	focus?: DesktopSetupStageId | null
 }): Array<DesktopSetupStage> {
@@ -116,11 +121,14 @@ export function desktopSetupResumeStep(input: {
 	contextId: string | null
 	running: boolean
 	attached?: boolean
+	inChain?: boolean
 }): DesktopSetupWizardStep {
 	const completed = desktopSetupCompleted(input)
 	if (!completed.has('sign-in') || !completed.has('register')) return 'overview'
 	if (input.targetOrgSlug && !completed.has('attach')) return 'attach'
 	if (!completed.has('runner')) return 'register'
+	// Personal success requires the machine to be listed in the personal chain.
+	if (!input.targetOrgSlug && !input.inChain) return 'register'
 	return 'done'
 }
 
@@ -183,4 +191,15 @@ export function desktopSetupPanelAction(input: {
 		return { kind: 'resume', label: 'Resume setup' }
 	}
 	return { kind: 'setup', label: 'Set up this machine' }
+}
+
+/** True when the context is already an entry in the loaded execution chain. */
+export function desktopSetupContextInChain(
+	chainEntries: ReadonlyArray<{ kind: string; id?: string }> | undefined,
+	contextId: string | null,
+) {
+	if (!contextId || !chainEntries) return false
+	return chainEntries.some(
+		(entry) => entry.kind === 'context' && entry.id === contextId,
+	)
 }

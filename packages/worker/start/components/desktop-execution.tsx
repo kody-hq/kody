@@ -27,6 +27,7 @@ import {
 	type ExecutionContextsPageData,
 } from '#universal/execution-contexts.ts'
 import {
+	desktopSetupContextInChain,
 	desktopSetupPanelAction,
 	desktopSetupResumeStep,
 	desktopSetupStages,
@@ -227,12 +228,17 @@ export function DesktopExecutionProvider({
 		if (step === 'overview') return 'sign-in'
 		return null
 	}
+	const inChain = desktopSetupContextInChain(
+		setup?.chain.entries,
+		machine.data?.contextId ?? null,
+	)
 	const stages = desktopSetupStages({
 		targetOrgSlug: target,
 		cliReady: !!machine.data?.cliReady,
 		contextId: machine.data?.contextId ?? null,
 		running: !!machine.data?.running,
 		attached,
+		inChain,
 		focus: opened ? stageFocus() : null,
 	})
 	async function prepare() {
@@ -253,17 +259,20 @@ export function DesktopExecutionProvider({
 				throw new Error('Execution contexts could not be enabled. Try again.')
 			setSetup(page.payload)
 			setReplace('')
+			const listed = desktopSetupContextInChain(
+				page.payload.chain.entries,
+				signedIn?.contextId ?? null,
+			)
 			const next = desktopSetupResumeStep({
 				targetOrgSlug: target,
 				cliReady: !!signedIn?.cliReady,
 				contextId: signedIn?.contextId ?? null,
 				running: !!signedIn?.running,
 				attached,
+				inChain: listed,
 			})
-			if (next === 'done') {
-				if (target && !attached) setStep('attach')
-				else setStep('done')
-			} else if (next === 'overview') setStep('register')
+			if (next === 'done') setStep('done')
+			else if (next === 'overview') setStep('register')
 			else setStep(next)
 		})
 	}
@@ -283,16 +292,18 @@ export function DesktopExecutionProvider({
 	async function registerMachine() {
 		if (!bridge || !orgSlug || !username) return
 		await run(async () => {
-			const alreadyRegistered = !!machine.data?.contextId
-			const registered = alreadyRegistered
-				? machine.data
-				: await bridge.connect(name)
-			if (!alreadyRegistered)
+			let registered = machine.data
+			if (!registered?.contextId) {
+				registered = await bridge.connect(name)
 				client.setQueryData(['desktop-machine', actorKey], registered)
+			} else if (!registered.running) {
+				// Resume after a stopped runner: start it before claiming success.
+				registered = await bridge.start()
+				client.setQueryData(['desktop-machine', actorKey], registered)
+			}
 			if (!registered?.contextId)
 				throw new Error('The machine could not be registered. Try again.')
-			// A fresh registration must leave the runner up before we call success.
-			if (!alreadyRegistered && !registered.running)
+			if (!registered.running)
 				throw new Error(
 					'The runner is not connected yet. Start it from This machine, then resume setup.',
 				)
@@ -321,11 +332,20 @@ export function DesktopExecutionProvider({
 	async function attachMachine() {
 		if (!bridge || !orgSlug || !username || !target) return
 		await run(async () => {
-			const registered = machine.data
-			if (!registered?.contextId)
+			let registered = machine.data
+			const contextId = registered?.contextId
+			if (!contextId)
 				throw new Error('Register this device personally before attaching it.')
+			if (!registered?.running) {
+				registered = await bridge.start()
+				client.setQueryData(['desktop-machine', actorKey], registered)
+			}
+			if (!registered?.running)
+				throw new Error(
+					'The runner is not connected yet. Start it from This machine, then resume setup.',
+				)
 			try {
-				await putMachineFirst(registered.contextId)
+				await putMachineFirst(contextId)
 			} catch (error) {
 				const current = await loadSetup({
 					data: { orgSlug: target, search: [] },

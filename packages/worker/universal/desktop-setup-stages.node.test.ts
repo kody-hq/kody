@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 import {
 	desktopSetupCompleted,
+	desktopSetupContextInChain,
 	desktopSetupPanelAction,
 	desktopSetupResumeStep,
 	desktopSetupStages,
@@ -65,6 +66,63 @@ test('team destination inserts attach before runner and resumes there after regi
 			attached: true,
 		}),
 	).toEqual(new Set(['sign-in', 'register', 'attach', 'runner']))
+})
+
+test('personal resume stays on register until the machine is in the chain', () => {
+	expect(
+		desktopSetupResumeStep({
+			targetOrgSlug: null,
+			cliReady: true,
+			contextId: 'ec_mac',
+			running: true,
+			inChain: false,
+		}),
+	).toBe('register')
+	expect(
+		desktopSetupResumeStep({
+			targetOrgSlug: null,
+			cliReady: true,
+			contextId: 'ec_mac',
+			running: true,
+			inChain: true,
+		}),
+	).toBe('done')
+})
+
+test('personal resume stays on register when the runner is down', () => {
+	expect(
+		desktopSetupResumeStep({
+			targetOrgSlug: null,
+			cliReady: true,
+			contextId: 'ec_mac',
+			running: false,
+			inChain: true,
+		}),
+	).toBe('register')
+})
+
+test('team resume treats an existing chain entry as attach complete', () => {
+	expect(
+		desktopSetupResumeStep({
+			targetOrgSlug: 'acme',
+			cliReady: true,
+			contextId: 'ec_mac',
+			running: true,
+			attached: false,
+			inChain: true,
+		}),
+	).toBe('done')
+})
+
+test('desktopSetupContextInChain matches context entries only', () => {
+	expect(
+		desktopSetupContextInChain(
+			[{ kind: 'context', id: 'ec_mac' }, { kind: 'cloud' }],
+			'ec_mac',
+		),
+	).toBe(true)
+	expect(desktopSetupContextInChain([{ kind: 'cloud' }], 'ec_mac')).toBe(false)
+	expect(desktopSetupContextInChain(undefined, 'ec_mac')).toBe(false)
 })
 
 test('panel actions stay available and name resume versus unavailable reasons', () => {
