@@ -19,7 +19,8 @@ class DesktopPresence {
 		try {
 			const saved = JSON.parse(readFileSync(this.path, 'utf8'))
 			this.background = saved?.background === true
-			this.chosen = saved?.chosen === true
+			this.chosen =
+				saved?.chosen === true && typeof saved?.background === 'boolean'
 		} catch (error) {
 			if (error.code !== 'ENOENT' && !(error instanceof SyntaxError))
 				throw error
