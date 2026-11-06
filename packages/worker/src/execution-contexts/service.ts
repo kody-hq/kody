@@ -1044,11 +1044,9 @@ export async function loadSharing(
 				)
 	const grantViews: Array<ExecutionContextShareGrant> = []
 	for (const grant of grants.results) {
-		if (
-			grant.preset !== 'use' &&
-			grant.preset !== 'contribute' &&
-			grant.preset !== 'manage'
-		) {
+		// Authorization treats a null preset as use; keep those grants visible.
+		const preset = grant.preset ?? 'use'
+		if (preset !== 'use' && preset !== 'contribute' && preset !== 'manage') {
 			continue
 		}
 		const commands = Number(grant.command) === 1
@@ -1061,7 +1059,7 @@ export async function loadSharing(
 					slug: grant.team_slug,
 					...(grant.team_name ? { name: grant.team_name } : {}),
 				},
-				preset: grant.preset,
+				preset,
 				...(commands ? { commands: true } : {}),
 			})
 			continue
@@ -1074,7 +1072,7 @@ export async function loadSharing(
 				handle: grant.username,
 				...(grant.is_member === 0 ? { outside: true } : {}),
 			},
-			preset: grant.preset,
+			preset,
 			...(commands ? { commands: true } : {}),
 		})
 	}
