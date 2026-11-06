@@ -181,10 +181,10 @@ jobs:
           KODY_AZURE_ACCOUNT: ${{ vars.DESKTOP_AZURE_ACCOUNT }}
           KODY_AZURE_PROFILE: ${{ vars.DESKTOP_AZURE_PROFILE }}
         run: |
-          # Apple's notary service occasionally times out mid-poll. Retry once
-          # before failing the matrix job so a transient outage does not drop
-          # an otherwise complete desktop update.
-          if npm run dist:release --workspace @kodycodes/desktop -- --${{ matrix.platform }} --${{ matrix.arch }}; then
+          # Bound the first attempt so a stuck notarization poll cannot consume
+          # the whole job timeout; keep time for one retry plus verification.
+          # Apple's notary service occasionally times out mid-poll.
+          if timeout 25m npm run dist:release --workspace @kodycodes/desktop -- --${{ matrix.platform }} --${{ matrix.arch }}; then
             exit 0
           fi
           echo 'First signed build failed; retrying once after a short wait.'

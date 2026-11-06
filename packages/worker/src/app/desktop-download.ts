@@ -9,11 +9,11 @@
 export const desktopReleasesLatestUrl =
 	'https://github.com/kody-hq/kody-desktop/releases/latest'
 
-export const desktopReleaseLatestDownloadBase =
-	'https://github.com/kody-hq/kody-desktop/releases/latest/download'
-
 export const desktopReleaseDownloadBase =
 	'https://github.com/kody-hq/kody-desktop/releases/download'
+
+export const desktopLatestReleaseApiUrl =
+	'https://api.github.com/repos/kody-hq/kody-desktop/releases/latest'
 
 export type DesktopPlatform = 'mac' | 'win' | 'linux'
 export type DesktopArch = 'arm64' | 'x64'
@@ -28,22 +28,15 @@ export type DesktopInstallerAsset = {
 	assetName: string
 }
 
+export type DesktopGithubRelease = {
+	tag_name: string
+	assets: ReadonlyArray<{ name: string }>
+}
+
 const installerExtension: Record<DesktopPlatform, string> = {
 	mac: '.dmg',
 	win: '.exe',
 	linux: '.AppImage',
-}
-
-export function desktopUpdaterFeedName(target: DesktopDownloadTarget): string {
-	const { platform, arch } = target
-	if (platform === 'mac') return `latest-${arch}-mac.yml`
-	if (platform === 'win') return `latest-${arch}.yml`
-	if (arch === 'x64') return 'latest-x64-linux.yml'
-	return 'latest-arm64-linux-arm64.yml'
-}
-
-export function desktopUpdaterFeedUrl(target: DesktopDownloadTarget): string {
-	return `${desktopReleaseLatestDownloadBase}/${desktopUpdaterFeedName(target)}`
 }
 
 /**
@@ -56,7 +49,7 @@ export function desktopAssetDownloadUrl(asset: DesktopInstallerAsset): string {
 
 /**
  * Resolve a Mac/Win/Linux + arch target from query overrides and User-Agent.
- * Returns null when the visitor's platform cannot be inferred.
+ * Returns null when the visitor's platform or architecture cannot be inferred.
  */
 export function detectDesktopDownloadTarget(input: {
 	userAgent?: string | null
@@ -68,39 +61,35 @@ export function detectDesktopDownloadTarget(input: {
 	if (!platform) return null
 	const arch =
 		normalizeArch(input.arch) ?? detectArch(input.userAgent, platform)
+	if (!arch) return null
 	return { platform, arch }
 }
 
-export function parseElectronUpdaterVersion(yml: string): string | null {
-	const match = /^\s*version:\s*(\S+)\s*$/m.exec(yml)
-	const version = match?.[1]
-	if (!version) return null
+export function versionFromDesktopReleaseTag(tagName: string): string | null {
+	if (!tagName.startsWith('v')) return null
+	const version = tagName.slice(1)
 	if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version)) return null
 	return version
 }
 
-export function parseElectronUpdaterAssetNames(yml: string): string[] {
-	const names: string[] = []
-	for (const match of yml.matchAll(/^\s*-\s*url:\s*(\S+)\s*$/gm)) {
-		const name = match[1]
-		if (name) names.push(name)
-	}
-	const pathMatch = /^\s*path:\s*(\S+)\s*$/m.exec(yml)
-	if (pathMatch?.[1] && !names.includes(pathMatch[1])) names.push(pathMatch[1])
-	return names
-}
-
 export function pickDesktopInstallerAsset(
-	yml: string,
-	platform: DesktopPlatform,
+	release: DesktopGithubRelease,
+	target: DesktopDownloadTarget,
 ): DesktopInstallerAsset | null {
-	const version = parseElectronUpdaterVersion(yml)
+	const version = versionFromDesktopReleaseTag(release.tag_name)
 	if (!version) return null
-	const extension = installerExtension[platform]
-	const assetName = parseElectronUpdaterAssetNames(yml).find((name) =>
-		name.endsWith(extension),
-	)
-	if (!assetName) return null
+	const os =
+		target.platform === 'mac'
+			? 'mac'
+			: target.platform === 'win'
+				? 'win'
+				: 'linux'
+	const archToken =
+		target.platform === 'linux' && target.arch === 'x64'
+			? 'x86_64'
+			: target.arch
+	const assetName = `Kody-${version}-${os}-${archToken}${installerExtension[target.platform]}`
+	if (!release.assets.some((asset) => asset.name === assetName)) return null
 	return { version, assetName }
 }
 
@@ -156,8 +145,8 @@ function detectPlatform(
 
 function detectArch(
 	userAgent: string | null | undefined,
-	platform: DesktopPlatform,
-): DesktopArch {
+	_platform: DesktopPlatform,
+): DesktopArch | null {
 	const ua = (userAgent ?? '').slice(0, 512).toLowerCase()
 	if (
 		ua.includes('arm64') ||
@@ -172,8 +161,8 @@ function detectArch(
 		/\bx64\b/.test(ua)
 	)
 		return 'x64'
-	// Safari and Chrome still say "Intel Mac OS X" on Apple silicon, so Mac
-	// defaults to arm64. Pass ?arch=x64 for Intel Macs.
-	if (platform === 'mac') return 'arm64'
-	return 'x64'
+	// Safari/Chrome still say "Intel Mac OS X" on Apple silicon and omit a
+	// reliable arch token, so leave Mac (and other ambiguous agents) unknown
+	// and send them to the releases page instead of guessing.
+	return null
 }
