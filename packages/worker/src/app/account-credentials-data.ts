@@ -1,7 +1,10 @@
 import * as Sentry from '@sentry/cloudflare'
 import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
-import { loadCredentialDetail } from '#worker/credentials/credential-detail.ts'
+import {
+	credentialPlaceholder,
+	loadCredentialDetail,
+} from '#worker/credentials/credential-detail.ts'
 import { listLocalReadSettings } from '#worker/credentials/local-read-store.ts'
 import { loadCredentialLocalReadsView } from '#app/credential-local-reads.ts'
 import { listCredentialsForViewer } from '#worker/credentials/credential-list.ts'
@@ -54,11 +57,22 @@ export async function loadAccountCredentialsData(input: {
 				credential: selectedItem,
 				packages,
 			}).catch((error: unknown) => {
+				// A null selected with a listed row looks like "Loading…" forever
+				// in the expand pane. Degrade to empty detail sections instead.
 				Sentry.captureException(error, {
 					tags: { scope: 'credentials.detail' },
 					extra: { credentialId: selectedItem.id, orgId, teamOrg },
 				})
-				return null
+				return {
+					id: selectedItem.id,
+					placeholder: credentialPlaceholder(selectedItem),
+					grants: [],
+					usage: [],
+					usageTruncated: false,
+					usageUnreadable: 0,
+					hostSettings: null,
+					fillPlacementObservation: null,
+				}
 			})
 		: null
 	const selectedProvider = selectedItem

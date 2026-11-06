@@ -158,6 +158,15 @@ test('personal org detail soft-fails when selected detail or local reads reject'
 	expect(page.ok).toBe(true)
 	expect(page.teamOrg).toBe(false)
 	expect(page.credentials.some((item) => item.id === t.credentialId)).toBe(true)
-	expect(page.selected).toBeNull()
+	expect(page.selected).toEqual({
+		id: t.credentialId,
+		placeholder: '{{secret:annToken}}',
+		grants: [],
+		usage: [],
+		usageTruncated: false,
+		usageUnreadable: 0,
+		hostSettings: null,
+		fillPlacementObservation: null,
+	})
 	expect(page.selectedLocalReads).toBeNull()
 })
