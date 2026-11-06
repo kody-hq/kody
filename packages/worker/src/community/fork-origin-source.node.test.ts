@@ -1,10 +1,13 @@
 import { expect, test, vi } from 'vitest'
+import { wrapArtifactsGitHttpError } from '#worker/repo/artifacts-git-retry.ts'
+import { consoleError } from '#worker/test-support/console-spies.ts'
 import {
 	forkOriginCommitCandidates,
 	missingCommunityForkSnapshotMessage,
 	missingPrivateForkSnapshotMessage,
 	resolveForkOriginSourceFiles,
 } from './fork-origin-source.ts'
+import { CommunityForkResourceLimitError } from './fork-resource-limit.ts'
 
 const mocks = vi.hoisted(() => ({
 	readPublishedSourceSnapshot: vi.fn(),
@@ -90,7 +93,43 @@ test('resolveForkOriginSourceFiles prefers a published KV snapshot at HEAD', asy
 	expect(mocks.readArtifactTreeAtCommit).not.toHaveBeenCalled()
 })
 
-test('resolveForkOriginSourceFiles falls back to the listing pin without git walk', async () => {
+test('resolveForkOriginSourceFiles tries HEAD git before accepting a pin-keyed published snapshot', async () => {
+	resetMocks()
+	mocks.readPublishedSourceSnapshot.mockImplementation(
+		async (input: { publishedCommit: string }) =>
+			input.publishedCommit === 'pin-commit' ? { files: publishedFiles } : null,
+	)
+	mocks.readArtifactTreeAtCommit.mockImplementation(
+		async (input: { commit: string }) =>
+			input.commit === 'head-commit' ? gitFiles : null,
+	)
+
+	const resolved = await resolveForkOriginSourceFiles({
+		env,
+		sourceId: 'source-1',
+		repoId: 'repo-1',
+		preferredCommit: 'head-commit',
+		fallbackCommits: ['pin-commit'],
+		listingSnapshotFiles: listingPinFiles,
+		listingSnapshotCommit: 'pin-commit',
+	})
+
+	expect(resolved).toEqual({
+		files: gitFiles,
+		commit: 'head-commit',
+		source: 'artifact-git-tree',
+	})
+	expect(mocks.readArtifactTreeAtCommit).toHaveBeenCalledWith({
+		env,
+		repoId: 'repo-1',
+		commit: 'head-commit',
+	})
+	expect(mocks.readPublishedSourceSnapshot).not.toHaveBeenCalledWith(
+		expect.objectContaining({ publishedCommit: 'pin-commit' }),
+	)
+})
+
+test('resolveForkOriginSourceFiles falls back to the listing pin after HEAD and pin cascades miss', async () => {
 	resetMocks()
 
 	const resolved = await resolveForkOriginSourceFiles({
@@ -108,7 +147,16 @@ test('resolveForkOriginSourceFiles falls back to the listing pin without git wal
 		commit: 'pin-commit',
 		source: 'listing-snapshot',
 	})
-	expect(mocks.readArtifactTreeAtCommit).not.toHaveBeenCalled()
+	expect(mocks.readArtifactTreeAtCommit).toHaveBeenCalledWith({
+		env,
+		repoId: 'repo-1',
+		commit: 'head-commit',
+	})
+	expect(mocks.readArtifactTreeAtCommit).toHaveBeenCalledWith({
+		env,
+		repoId: 'repo-1',
+		commit: 'pin-commit',
+	})
 })
 
 test('resolveForkOriginSourceFiles recovers a missing target revision from origin git objects', async () => {
@@ -146,7 +194,7 @@ test('resolveForkOriginSourceFiles recovers a missing target revision from origi
 	// Recovery is read-only: no persist helpers are involved in this module.
 })
 
-test('resolveForkOriginSourceFiles tries the pinned commit when HEAD published KV misses', async () => {
+test('resolveForkOriginSourceFiles tries the pinned commit when HEAD published, mock, and git miss', async () => {
 	resetMocks()
 	mocks.readPublishedSourceSnapshot.mockImplementation(
 		async (input: { publishedCommit: string }) =>
@@ -170,10 +218,14 @@ test('resolveForkOriginSourceFiles tries the pinned commit when HEAD published K
 	expect(mocks.readPublishedSourceSnapshot).toHaveBeenCalledWith(
 		expect.objectContaining({ publishedCommit: 'head-commit' }),
 	)
+	expect(mocks.readArtifactTreeAtCommit).toHaveBeenCalledWith({
+		env,
+		repoId: 'repo-1',
+		commit: 'head-commit',
+	})
 	expect(mocks.readPublishedSourceSnapshot).toHaveBeenCalledWith(
 		expect.objectContaining({ publishedCommit: 'pin-commit' }),
 	)
-	expect(mocks.readArtifactTreeAtCommit).not.toHaveBeenCalled()
 })
 
 test('resolveForkOriginSourceFiles returns null when refs-shaped commits have no objects or snapshots', async () => {
@@ -224,4 +276,50 @@ test('resolveForkOriginSourceFiles uses the mock snapshot API before git walk', 
 		source: 'artifact-snapshot-api',
 	})
 	expect(mocks.readArtifactTreeAtCommit).not.toHaveBeenCalled()
+})
+
+test('resolveForkOriginSourceFiles rethrows transient Artifacts git failures', async () => {
+	resetMocks()
+	consoleError.mockImplementation(() => {})
+	mocks.readArtifactTreeAtCommit.mockRejectedValue(
+		wrapArtifactsGitHttpError({
+			operation: 'git fetch',
+			remote: 'https://example.test/repo.git',
+			error: Object.assign(new Error('HTTP Error: 503'), {
+				data: { statusCode: 503 },
+			}),
+		}),
+	)
+
+	await expect(
+		resolveForkOriginSourceFiles({
+			env,
+			sourceId: 'source-1',
+			repoId: 'repo-1',
+			preferredCommit: 'head-commit',
+			listingSnapshotFiles: null,
+		}),
+	).rejects.toMatchObject({ name: 'ArtifactsGitUnavailableError' })
+	expect(consoleError).toHaveBeenCalled()
+})
+
+test('resolveForkOriginSourceFiles rethrows isolate memory limit failures', async () => {
+	resetMocks()
+	mocks.readArtifactTreeAtCommit.mockRejectedValue(
+		new CommunityForkResourceLimitError(
+			Object.assign(new Error('Worker exceeded memory limit'), {
+				code: 'MEMORY_LIMIT',
+			}),
+		),
+	)
+
+	await expect(
+		resolveForkOriginSourceFiles({
+			env,
+			sourceId: 'source-1',
+			repoId: 'repo-1',
+			preferredCommit: 'head-commit',
+			listingSnapshotFiles: null,
+		}),
+	).rejects.toBeInstanceOf(CommunityForkResourceLimitError)
 })

@@ -1,6 +1,11 @@
 import { readPublishedSourceSnapshot } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { readArtifactTreeAtCommit } from '#worker/repo/artifact-file.ts'
+import { isArtifactsGitTransientRemapError } from '#worker/repo/artifacts-git-retry.ts'
 import { readArtifactSourceSnapshot } from '#worker/repo/artifact-source-snapshot.ts'
+import {
+	isCommunityForkResourceLimitCause,
+	rethrowCommunityForkFailure,
+} from './fork-resource-limit.ts'
 
 export type ForkOriginSourceFiles = {
 	files: Record<string, string>
@@ -48,7 +53,7 @@ async function readPublishedAtCommit(input: {
 			return published.files
 		}
 	} catch {
-		// Try the next source / commit.
+		// Try the next source for this commit.
 	}
 	return null
 }
@@ -68,7 +73,7 @@ async function readMockSnapshotAtCommit(input: {
 			return treeSnapshot.files
 		}
 	} catch {
-		// Fall through.
+		// Fall through to git for this commit.
 	}
 	return null
 }
@@ -87,21 +92,28 @@ async function readGitTreeAtCommit(input: {
 		if (files && Object.keys(files).length > 0) {
 			return files
 		}
-	} catch {
-		// Commit may be absent from objects; try the next candidate.
+		return null
+	} catch (error) {
+		// Missing commit / empty tree: try the next candidate. Transient
+		// Artifacts HTTP and isolate memory limits must stay 503 / resource
+		// errors — do not mask them as a missing snapshot.
+		if (
+			isCommunityForkResourceLimitCause(error) ||
+			isArtifactsGitTransientRemapError(error)
+		) {
+			rethrowCommunityForkFailure(error)
+		}
+		return null
 	}
-	return null
 }
 
 /**
- * Resolve the file tree a fork will copy. Public listing forks may already have
- * a community KV pin; both listing and private forks then try published KV, the
- * local mock snapshot API, and finally a shallow Artifacts git walk of the
- * **origin** repo only (platform credentials). Does not persist recovered trees
- * into the owner's published-source KV — that would mutate another account.
- *
- * When a listing pin exists, prefer upgrading to HEAD published/mock snapshots,
- * then keep the pin — skip the git walk (listing pin already has files).
+ * Resolve the file tree a fork will copy. For each candidate commit (HEAD /
+ * preferred first), try published KV, then the mock snapshot API, then a
+ * shallow Artifacts git walk before moving on. That way a pin-keyed snapshot
+ * never wins over a recoverable HEAD tree (website installs bind
+ * `expectedPinnedCommit` to HEAD). Listing pin is last-resort only. Does not
+ * persist recovered trees into another account's published-source KV.
  */
 export async function resolveForkOriginSourceFiles(input: {
 	env: Env
@@ -124,35 +136,46 @@ export async function resolveForkOriginSourceFiles(input: {
 		Boolean(listingFiles && Object.keys(listingFiles).length > 0) &&
 		Boolean(listingCommit)
 
-	if (sourceId) {
-		for (const commit of commits) {
-			const files = await readPublishedAtCommit({
+	for (const commit of commits) {
+		if (sourceId) {
+			const published = await readPublishedAtCommit({
 				env: input.env,
 				sourceId,
 				commit,
 			})
-			if (files) {
+			if (published) {
 				return {
-					files,
+					files: published,
 					commit,
 					source: 'published-snapshot',
 				}
 			}
 		}
-	}
 
-	if (repoId) {
-		for (const commit of commits) {
-			const files = await readMockSnapshotAtCommit({
+		if (repoId) {
+			const mock = await readMockSnapshotAtCommit({
 				env: input.env,
 				repoId,
 				commit,
 			})
-			if (files) {
+			if (mock) {
 				return {
-					files,
+					files: mock,
 					commit,
 					source: 'artifact-snapshot-api',
+				}
+			}
+
+			const gitFiles = await readGitTreeAtCommit({
+				env: input.env,
+				repoId,
+				commit,
+			})
+			if (gitFiles) {
+				return {
+					files: gitFiles,
+					commit,
+					source: 'artifact-git-tree',
 				}
 			}
 		}
@@ -163,25 +186,6 @@ export async function resolveForkOriginSourceFiles(input: {
 			files: listingFiles,
 			commit: listingCommit,
 			source: 'listing-snapshot',
-		}
-	}
-
-	// No listing pin and no KV/mock snapshot: rebuild from origin git objects
-	// at preferred then fallback commits (same recovery as published-source).
-	if (repoId) {
-		for (const commit of commits) {
-			const files = await readGitTreeAtCommit({
-				env: input.env,
-				repoId,
-				commit,
-			})
-			if (files) {
-				return {
-					files,
-					commit,
-					source: 'artifact-git-tree',
-				}
-			}
 		}
 	}
 
