@@ -133,13 +133,15 @@ export async function getExecutionContexts(
 ) {
 	const byId = new Map<string, ExecutionContextRow>()
 	if (ids.length === 0) return byId
-	const result = await db
-		.prepare(
-			`SELECT ${contextColumns} FROM execution_contexts WHERE id IN (${ids.map(() => '?').join(', ')})`,
-		)
-		.bind(...ids)
-		.all<ExecutionContextRow>()
-	for (const row of result.results) byId.set(row.id, row)
+	for (const chunk of chunkArray(ids, maxD1BoundParameters)) {
+		const result = await db
+			.prepare(
+				`SELECT ${contextColumns} FROM execution_contexts WHERE id IN (${chunk.map(() => '?').join(', ')})`,
+			)
+			.bind(...chunk)
+			.all<ExecutionContextRow>()
+		for (const row of result.results) byId.set(row.id, row)
+	}
 	return byId
 }
 
@@ -731,14 +733,16 @@ export async function writeChain(
 export async function chainCounts(db: D1Database, ids: ReadonlyArray<string>) {
 	const counts = new Map<string, number>()
 	if (ids.length === 0) return counts
-	const result = await db
-		.prepare(
-			`SELECT context_id, COUNT(*) AS n FROM execution_context_chain_entries
-			 WHERE context_id IN (${ids.map(() => '?').join(', ')}) GROUP BY context_id`,
-		)
-		.bind(...ids)
-		.all<{ context_id: string; n: number }>()
-	for (const row of result.results) counts.set(row.context_id, row.n)
+	for (const chunk of chunkArray(ids, maxD1BoundParameters)) {
+		const result = await db
+			.prepare(
+				`SELECT context_id, COUNT(*) AS n FROM execution_context_chain_entries
+				 WHERE context_id IN (${chunk.map(() => '?').join(', ')}) GROUP BY context_id`,
+			)
+			.bind(...chunk)
+			.all<{ context_id: string; n: number }>()
+		for (const row of result.results) counts.set(row.context_id, row.n)
+	}
 	return counts
 }
 
