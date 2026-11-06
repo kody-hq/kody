@@ -717,8 +717,14 @@ jobs:
           echo "::warning::Playwright webServer died on start or mid-suite; retrying shard ${shard} once with a fresh server."
           node tools/run-nx.ts run worker:test-e2e
 
+      # Diagnostic only: GitHub's FinalizeArtifact can return an HTML error
+      # page after the zip already uploaded (Validate #42065690831: 26 tests
+      # passed, then 5 finalize retries over ~10m). e2e_report merges whatever
+      # shards arrived; a missing blob must not fail ✅ Validate.
       - name: 📤 Upload Playwright blob report
         if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 2
         uses: actions/upload-artifact@v4
         with:
           name: playwright-blob-report-${{ matrix.shard }}
@@ -785,8 +791,12 @@ jobs:
 
       # actions/download-artifact stream-unzips with unzip-stream, which
       # rejects some valid archives ("unexpected end of file"); gh reads the
-      # zip central directory instead.
+      # zip central directory instead. Any download failure is diagnostic:
+      # the same artifact-API HTML/hang that flakes uploads must not fail
+      # ✅ Validate after tests passed.
       - name: 📥 Download blob reports
+        continue-on-error: true
+        timeout-minutes: 2
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -795,12 +805,9 @@ jobs:
           set -euo pipefail
           mkdir -p all-blob-reports
           if ! out=$(gh run download "$RUN_ID" --pattern 'playwright-blob-report-*' --dir blob-artifacts 2>&1); then
-            if grep -qE 'no artifact matches|no valid artifacts found' <<<"$out"; then
-              echo "::warning::No Playwright blob report artifacts found."
-              exit 0
-            fi
-            echo "$out" >&2
-            exit 1
+            echo "::warning::Playwright blob report download failed (diagnostic only)."
+            echo "$out"
+            exit 0
           fi
           find blob-artifacts -type f -name '*.zip' -exec mv -t all-blob-reports {} +
 
@@ -815,8 +822,12 @@ jobs:
           fi
           npx playwright merge-reports --reporter html ./all-blob-reports
 
+      # Same FinalizeArtifact HTML-error flake as the shard blob upload.
+      # Missing HTML is inconvenient; failing ✅ Validate is not.
       - name: 📤 Upload merged HTML report
         if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 2
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report-merged
