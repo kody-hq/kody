@@ -16,11 +16,11 @@ export function workspaceScopeKind(personal: boolean): WorkspaceScopeKind {
 	return personal ? 'personal' : 'team'
 }
 
-export function workspaceScopeHandle(slug: string) {
+function workspaceScopeHandle(slug: string) {
 	return `@${slug}`
 }
 
-export function workspaceScopeKindLabel(kind: WorkspaceScopeKind) {
+function workspaceScopeKindLabel(kind: WorkspaceScopeKind) {
 	switch (kind) {
 		case 'personal':
 			return 'personal workspace'
