@@ -4,6 +4,7 @@ const { test } = require('node:test')
 const {
 	TIMED_OUT,
 	parseDuration,
+	killProcessTree,
 	runWithTimeout,
 } = require('../scripts/run-with-timeout.cjs')
 
@@ -16,11 +17,42 @@ test('parseDuration accepts seconds, minutes, and bare integers', () => {
 	assert.throws(() => parseDuration('forever'), /Invalid duration/)
 })
 
+test('killProcessTree signals the process group on POSIX', () => {
+	const kills = []
+	killProcessTree(4242, 'SIGTERM', {
+		platform: 'linux',
+		kill: (target, signal) => kills.push([target, signal]),
+	})
+	assert.deepEqual(kills, [[-4242, 'SIGTERM']])
+})
+
+test('killProcessTree falls back to the pid when the group is gone', () => {
+	const kills = []
+	killProcessTree(7, 'SIGKILL', {
+		platform: 'darwin',
+		kill: (target, signal) => {
+			kills.push([target, signal])
+			if (target < 0) throw Object.assign(new Error('ESRCH'), { code: 'ESRCH' })
+		},
+	})
+	assert.deepEqual(kills, [
+		[-7, 'SIGKILL'],
+		[7, 'SIGKILL'],
+	])
+})
+
+test('killProcessTree uses taskkill /T on Windows', () => {
+	const calls = []
+	killProcessTree(99, 'SIGTERM', {
+		platform: 'win32',
+		taskkill: (args) => calls.push(args),
+	})
+	assert.deepEqual(calls, [['/pid', '99', '/T', '/F']])
+})
+
 test('runWithTimeout resolves the child exit code when it finishes in time', async () => {
 	const child = new EventEmitter()
-	child.kill = () => {
-		throw new Error('should not kill')
-	}
+	child.pid = 11
 	const timers = []
 	const resultPromise = runWithTimeout(60_000, 'npm', ['run', 'dist:release'], {
 		spawnImpl: () => child,
@@ -29,6 +61,9 @@ test('runWithTimeout resolves the child exit code when it finishes in time', asy
 			return timers.length
 		},
 		clearTimeoutImpl: () => {},
+		killTree: () => {
+			throw new Error('should not kill')
+		},
 	})
 	child.emit('exit', 0, null)
 	const result = await resultPromise
@@ -36,22 +71,27 @@ test('runWithTimeout resolves the child exit code when it finishes in time', asy
 	assert.equal(timers[0]?.ms, 60_000)
 })
 
-test('runWithTimeout returns 124 and SIGTERMs a hung child', async () => {
-	const kills = []
+test('runWithTimeout returns 124 and kills the process tree on hang', async () => {
 	const child = new EventEmitter()
-	child.kill = (signal) => {
-		kills.push(signal)
-		if (signal === 'SIGTERM') child.emit('exit', null, 'SIGTERM')
-	}
+	child.pid = 55
+	const kills = []
 	const pending = []
 	const resultPromise = runWithTimeout(25, 'npm', ['run', 'dist:release'], {
-		spawnImpl: () => child,
+		spawnImpl: (command, args, opts) => {
+			assert.equal(opts.detached, true)
+			return child
+		},
 		setTimeoutImpl: (fn, ms) => {
 			pending.push({ fn, ms })
 			return pending.length
 		},
 		clearTimeoutImpl: () => {},
 		killGraceMs: 5,
+		killTree: (pid, signal) => {
+			kills.push([pid, signal])
+			if (signal === 'SIGTERM') child.emit('exit', null, 'SIGTERM')
+		},
+		platform: 'linux',
 	})
 	assert.equal(pending[0]?.ms, 25)
 	pending[0].fn()
@@ -61,5 +101,5 @@ test('runWithTimeout returns 124 and SIGTERMs a hung child', async () => {
 		timedOut: true,
 		signal: 'SIGTERM',
 	})
-	assert.deepEqual(kills, ['SIGTERM'])
+	assert.deepEqual(kills, [[55, 'SIGTERM']])
 })

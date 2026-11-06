@@ -1,4 +1,4 @@
-const { spawn } = require('node:child_process')
+const { spawn, spawnSync } = require('node:child_process')
 
 // Match GNU `timeout` so workflow conditionals stay familiar.
 const TIMED_OUT = 124
@@ -13,6 +13,34 @@ function parseDuration(spec) {
 }
 
 /**
+ * Stop the spawned command and its descendants. Unix uses a dedicated process
+ * group (see `detached` in `runWithTimeout`); Windows uses `taskkill /T`.
+ */
+function killProcessTree(pid, signal, options = {}) {
+	const {
+		platform = process.platform,
+		kill = (target, sig) => process.kill(target, sig),
+		taskkill = (args) =>
+			spawnSync('taskkill', args, { stdio: 'ignore', windowsHide: true }),
+	} = options
+	if (pid == null) return
+	if (platform === 'win32') {
+		taskkill(['/pid', String(pid), '/T', '/F'])
+		return
+	}
+	try {
+		// Negative PID = whole process group (npm + electron-builder + notary).
+		kill(-pid, signal)
+	} catch {
+		try {
+			kill(pid, signal)
+		} catch {
+			/* already exited */
+		}
+	}
+}
+
+/**
  * Run a command and kill it after `ms`. Portable replacement for GNU
  * `timeout` / Homebrew `gtimeout`, which are not reliably on PATH for the
  * macOS and Windows GitHub Actions runners used by desktop-release.
@@ -22,10 +50,12 @@ function runWithTimeout(ms, command, args, options = {}) {
 		spawnImpl = spawn,
 		setTimeoutImpl = setTimeout,
 		clearTimeoutImpl = clearTimeout,
+		killTree = killProcessTree,
 		killGraceMs = 10_000,
 		stdio = 'inherit',
 		env = process.env,
 		cwd,
+		platform = process.platform,
 	} = options
 
 	return new Promise((resolve) => {
@@ -33,24 +63,19 @@ function runWithTimeout(ms, command, args, options = {}) {
 			stdio,
 			env,
 			cwd,
+			// Own process group on POSIX so kill(-pid) stops descendants
+			// (notarization / electron-builder children of npm).
+			detached: platform !== 'win32',
 			// `npm` is `npm.cmd` on Windows; shell keeps PATH resolution working.
-			shell: process.platform === 'win32',
+			shell: platform === 'win32',
 		})
 		let timedOut = false
 		let forceTimer
 		const timer = setTimeoutImpl(() => {
 			timedOut = true
-			try {
-				child.kill('SIGTERM')
-			} catch {
-				/* already exited */
-			}
+			killTree(child.pid, 'SIGTERM')
 			forceTimer = setTimeoutImpl(() => {
-				try {
-					child.kill('SIGKILL')
-				} catch {
-					/* already exited */
-				}
+				killTree(child.pid, 'SIGKILL')
 			}, killGraceMs)
 		}, ms)
 
@@ -89,7 +114,13 @@ async function main(argv = process.argv.slice(2)) {
 	process.exitCode = result.status
 }
 
-module.exports = { TIMED_OUT, parseDuration, runWithTimeout, main }
+module.exports = {
+	TIMED_OUT,
+	parseDuration,
+	killProcessTree,
+	runWithTimeout,
+	main,
+}
 
 if (require.main === module) {
 	main().catch((error) => {
