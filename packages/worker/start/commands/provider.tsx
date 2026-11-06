@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { orgSlugFromPathname } from '#universal/org-pages.ts'
 import {
 	useCallback,
 	useContext,
@@ -57,8 +58,9 @@ function CommandController({ children }: { children: ReactNode }) {
 	})
 	const router = useRouter()
 	const slug =
-		session?.organizations.find((org) => pathname.startsWith(`/@${org.slug}/`))
-			?.slug ?? session?.organizations.find((org) => org.personal)?.slug
+		session?.organizations.find(
+			(org) => orgSlugFromPathname(pathname) === org.slug,
+		)?.slug ?? session?.organizations.find((org) => org.personal)?.slug
 	const catalog = commandCatalog(session, slug, pathname)
 	useHotkeys(
 		navigationHotkeys.map(([id, title]) => {
@@ -83,7 +85,10 @@ function CommandController({ children }: { children: ReactNode }) {
 			{open ? (
 				<HotkeysProvider scope="command-menu" exclusive>
 					<CommandDialog
-						key={session?.username ?? 'public'}
+						key={JSON.stringify([
+							session?.username,
+							session?.organizations.map((org) => [org.slug, org.role]),
+						])}
 						session={session}
 						pathname={pathname}
 						pageCommands={Object.values(registrations).flat()}

@@ -112,7 +112,19 @@ export function ShortcutSettings({ onBack }: { onBack: () => void }) {
 							<button
 								css={smallButtonCss}
 								aria-label={`Reset ${appHotkey.meta?.name} shortcut`}
-								onClick={() => resetCustomHotkey(appHotkey.id)}
+								onClick={() => {
+									const conflict = appHotkey.defaultHotkey
+										? findConflicts(appHotkey.id, appHotkey.defaultHotkey)[0]
+										: undefined
+									if (conflict) {
+										setError(
+											`Already used by ${conflict.meta?.name ?? conflict.id}.`,
+										)
+										return
+									}
+									resetCustomHotkey(appHotkey.id)
+									setError(null)
+								}}
 							>
 								Reset
 							</button>

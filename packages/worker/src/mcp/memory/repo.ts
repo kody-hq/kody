@@ -1,3 +1,4 @@
+import { commandTextScore } from '#universal/command-search.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	chunkArray,
@@ -450,35 +451,51 @@ export async function searchMemoryMetadata(
 ): Promise<
 	Array<{ id: string; subject: string; category: string | null; tags: string }>
 > {
-	const tokens = query.trim().split(/\s+/).filter(Boolean).slice(0, 8)
-	// Subsequence candidates let the shared ranker handle abbreviations. User
-	// wildcard characters stay literal and every token must match the metadata.
-	const patterns = tokens.map(
-		(token) =>
-			`%${Array.from(token)
-				.map((character) => character.replace(/[\\%_]/g, '\\$&'))
-				.join('%')}%`,
-	)
-	const ids = preferredIds.slice(0, 40)
-	const preferred = ids.length
-		? `CASE WHEN id IN (${ids.map(() => '?').join(',')}) THEN 0 ELSE 1 END,`
-		: ''
-	const conditions = patterns
-		.map(
-			() =>
-				"AND (subject || ' ' || COALESCE(category, '') || ' ' || tags_json) LIKE ? ESCAPE '\\'",
+	type Row = {
+		id: string
+		subject: string
+		category: string | null
+		tags: string
+		updated_at: string
+	}
+	const preferred = new Set(preferredIds.slice(0, 40))
+	let cursor: Row | undefined
+	let best: Array<{ row: Row; score: number }> = []
+	// Scan metadata in bounded keyset pages so SQL's ASCII-only LIKE and a
+	// recency cutoff cannot discard the ranker's best normalized matches.
+	while (true) {
+		const after = cursor
+			? 'AND (updated_at < ? OR (updated_at = ? AND id < ?))'
+			: ''
+		const statement = db.prepare(
+			`SELECT id, subject, category, tags_json AS tags, updated_at FROM mcp_memories WHERE user_id = ? AND deleted_at IS NULL AND status IN ('active', 'archived') ${after} ORDER BY updated_at DESC, id DESC LIMIT 200`,
 		)
-		.join(' ')
-	const { results } = await db
-		.prepare(
-			`SELECT id, subject, category, tags_json AS tags FROM mcp_memories WHERE user_id = ? AND deleted_at IS NULL AND status IN ('active', 'archived') ${conditions} ORDER BY ${preferred} updated_at DESC LIMIT 200`,
-		)
-		.bind(userId, ...patterns, ...ids)
-		.all<{
-			id: string
-			subject: string
-			category: string | null
-			tags: string
-		}>()
-	return results ?? []
+		const { results } = await statement
+			.bind(
+				userId,
+				...(cursor ? [cursor.updated_at, cursor.updated_at, cursor.id] : []),
+			)
+			.all<Row>()
+		const rows = results ?? []
+		for (const row of rows) {
+			const score = commandTextScore(
+				row.subject,
+				`${row.category ?? ''} ${row.tags}`,
+				query,
+			)
+			if (score !== null)
+				best.push({ row, score: score + (preferred.has(row.id) ? 18 : 0) })
+		}
+		best = best
+			.sort(
+				(a, b) =>
+					b.score - a.score ||
+					b.row.updated_at.localeCompare(a.row.updated_at) ||
+					b.row.id.localeCompare(a.row.id),
+			)
+			.slice(0, 200)
+		if (rows.length < 200) break
+		cursor = rows[rows.length - 1]
+	}
+	return best.map(({ row: { updated_at: _updated, ...row } }) => row)
 }

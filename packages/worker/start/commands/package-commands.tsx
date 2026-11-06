@@ -17,6 +17,7 @@ export function PackageCommands(input: {
 	viewerCanManage: boolean
 	viewerIsOwner: boolean
 	viewerCanManageAccess?: boolean
+	viewerCanSeeConnectedPeople?: boolean
 	hasPackage?: boolean
 	installOrg?: string | null
 }) {
@@ -53,6 +54,8 @@ export function PackageCommands(input: {
 				packageCredentialsTabLabel(tab),
 				packageCredentialsTabHref({ ...input, tab }),
 			)
+	if (input.viewerCanSeeConnectedPeople && input.hasPackage !== false)
+		page('Connected people', routes.communityPackageConnectedPeople.href(input))
 	usePageCommands(commands)
 	return null
 }

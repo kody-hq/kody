@@ -112,3 +112,30 @@ test('job actions require confirmation and carry explicit scope, never an execut
 	expect(results[0]?.confirm).toContain('saved parameters')
 	expect(results[0]).not.toHaveProperty('run')
 })
+
+test('job filters apply before the result cap and expired jobs cannot run', async () => {
+	state.jobs.mockResolvedValue({
+		payload: {
+			jobs: Array.from({ length: 25 }, (_, i) => ({
+				id: `job-${i}`,
+				name: `Zebra ${i}`,
+				packageId: 'package',
+				scheduleSummary: 'Daily',
+				killSwitchEnabled: false,
+				expired: i === 0,
+			})),
+		},
+	})
+	const resources = await searchCommands({
+		data: { orgSlug: 'team', kind: 'job', query: '', mode: 'resources' },
+	})
+	expect(resources).toHaveLength(25)
+	expect(resources.every((command) => command.kind === 'job')).toBe(true)
+	const actions = await searchCommands({
+		data: { orgSlug: 'team', kind: 'job', query: 'run Zebra', mode: 'actions' },
+	})
+	expect(actions).toHaveLength(24)
+	expect(actions.some((command) => command.id === 'run-job:team:job-0')).toBe(
+		false,
+	)
+})

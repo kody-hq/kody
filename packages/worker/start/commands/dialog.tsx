@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { orgSlugFromPathname } from '#universal/org-pages.ts'
 import { useEffect, useId, useRef, useState } from 'react'
 import { useHotkeys, formatForDisplay } from '@tanstack/react-hotkeys'
 import { useRouter } from '@tanstack/react-router'
@@ -43,8 +44,8 @@ export function CommandDialog({
 	const [debounced, setDebounced] = useState('')
 	const [slug, setSlug] = useState(
 		() =>
-			session?.organizations?.find((org) =>
-				pathname.startsWith(`/@${org.slug}/`),
+			session?.organizations?.find(
+				(org) => orgSlugFromPathname(pathname) === org.slug,
 			)?.slug ?? session?.organizations?.find((org) => org.personal)?.slug,
 	)
 	const [index, setIndex] = useState(0)
@@ -58,6 +59,7 @@ export function CommandDialog({
 	const historyKey = `kody:commands:v1:${session?.username ?? 'public'}`
 	const [history, setHistory] = useState(() => readCommandHistory(historyKey))
 	const [favorites, setFavorites] = useState(false)
+	const historyRef = useRef(history)
 	const parsed = parseCommandQuery(query)
 	const parsedDebounced = parseCommandQuery(debounced)
 	const org = session?.organizations?.find((org) => org.slug === slug)
@@ -81,12 +83,24 @@ export function CommandDialog({
 				kind,
 				parsedDebounced.text,
 				preferredIds,
+				org?.role,
+				parsedDebounced.commandsOnly || parsedDebounced.kind === 'action'
+					? 'actions'
+					: parsedDebounced.kind
+						? 'resources'
+						: 'all',
 			],
 			queryFn: ({ signal }: { signal: AbortSignal }) =>
 				searchCommands({
 					data: {
 						orgSlug: slug!,
 						kind,
+						mode:
+							parsedDebounced.commandsOnly || parsedDebounced.kind === 'action'
+								? 'actions'
+								: parsedDebounced.kind
+									? 'resources'
+									: 'all',
 						query: parsedDebounced.text.slice(0, 200),
 						preferredIds,
 					},
@@ -130,19 +144,23 @@ export function CommandDialog({
 		icon: 'refresh',
 		confirm: 'Clear your command history and favorites on this browser?',
 		run: () => {
+			historyRef.current = {}
 			saveCommandHistory(historyKey, {})
 			setHistory({})
 		},
 	}
 	const resourceCommands = useJobCommands(
-		query === debounced ? searches.flatMap((search) => search.data ?? []) : [],
+		org && org.role !== null && query === debounced
+			? searches.flatMap((search) => search.data ?? [])
+			: [],
+		slug,
 	)
 	const all = [
 		...catalog,
 		...resourceCommands,
 		...(slug ===
-		(session?.organizations?.find((item) =>
-			pathname.startsWith(`/@${item.slug}/`),
+		(session?.organizations?.find(
+			(item) => orgSlugFromPathname(pathname) === item.slug,
 		)?.slug ?? session?.organizations?.find((item) => item.personal)?.slug)
 			? pageCommands
 			: []),
@@ -215,19 +233,20 @@ export function CommandDialog({
 		setError(null)
 	}
 	function togglePin(command: Command) {
-		setHistory((previous) => {
-			const next = {
-				...previous,
-				[command.id]: {
-					count: previous[command.id]?.count ?? 0,
-					lastUsed: previous[command.id]?.lastUsed ?? 0,
-					pinned: !previous[command.id]?.pinned,
-				},
-			}
-			saveCommandHistory(historyKey, next)
-			return next
-		})
+		const previous = historyRef.current
+		const next = {
+			...previous,
+			[command.id]: {
+				count: previous[command.id]?.count ?? 0,
+				lastUsed: previous[command.id]?.lastUsed ?? 0,
+				pinned: !previous[command.id]?.pinned,
+			},
+		}
+		historyRef.current = next
+		saveCommandHistory(historyKey, next)
+		setHistory(next)
 	}
+
 	async function execute(command: Command | undefined, confirmed = false) {
 		if (!command || busyRef.current) return
 		if (command.confirm && !confirmed) {
@@ -242,13 +261,14 @@ export function CommandDialog({
 			else if (command.href) await router.navigate({ href: command.href })
 			if (command.id !== 'clear-history' && command.id !== 'pin') {
 				const next = {
-					...history,
+					...historyRef.current,
 					[command.id]: {
-						...history[command.id],
-						count: (history[command.id]?.count ?? 0) + 1,
+						...historyRef.current[command.id],
+						count: (historyRef.current[command.id]?.count ?? 0) + 1,
 						lastUsed: Date.now(),
 					},
 				}
+				historyRef.current = next
 				saveCommandHistory(historyKey, next)
 			}
 			if (command.id !== 'pin') onClose()

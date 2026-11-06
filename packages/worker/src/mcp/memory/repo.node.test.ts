@@ -248,3 +248,27 @@ test('command memory search reaches old rows, escapes wildcards, and keeps favor
 	expect(await searchMemoryMetadata(db, 'owner', "' OR 1=1 --", [])).toEqual([])
 	sqlite.close()
 })
+
+test('command memory candidates normalize accents and keep older exact matches ahead of newer partial matches', async () => {
+	const { sqlite, db } = createMemoryDb()
+	for (let i = 0; i < 205; i++)
+		insertMemory(sqlite, {
+			id: `recent-${i}`,
+			userId: 'owner',
+			status: 'active',
+			subject: `Café notes ${i}`,
+		})
+	insertMemory(sqlite, {
+		id: 'exact',
+		userId: 'owner',
+		status: 'active',
+		subject: 'CAFÉ',
+	})
+	sqlite
+		.prepare("UPDATE mcp_memories SET updated_at='2020-01-01' WHERE id='exact'")
+		.run()
+	const results = await searchMemoryMetadata(db, 'owner', 'cafe', [])
+	expect(results).toHaveLength(200)
+	expect(results[0]?.id).toBe('exact')
+	sqlite.close()
+})

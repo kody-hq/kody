@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import type { Command } from '../commands/model.ts'
 import {
 	filterAccountJobs,
 	type AccountJobsViewFilter,
@@ -175,17 +176,21 @@ export function AccountJobsPage({
 		isMutating
 			? []
 			: jobs.flatMap((job) => [
-					{
-						id: `run-job:${orgSlug}:${job.id}`,
-						title: `Run ${job.name} now`,
-						subtitle: job.packageName ?? job.packageId,
-						kind: 'action',
-						icon: 'play',
-						confirm: `Run ${job.name} now? This executes the job with its saved parameters.`,
-						run: async () => {
-							await runMutation.mutateAsync({ id: job.id, orgSlug })
-						},
-					},
+					...(job.expired
+						? []
+						: ([
+								{
+									id: `run-job:${orgSlug}:${job.id}`,
+									title: `Run ${job.name} now`,
+									subtitle: job.packageName ?? job.packageId,
+									kind: 'action',
+									icon: 'play',
+									confirm: `Run ${job.name} now? This executes the job with its saved parameters.`,
+									run: async () => {
+										await runMutation.mutateAsync({ id: job.id, orgSlug })
+									},
+								},
+							] as Command[])),
 					{
 						id: `toggle-job:${orgSlug}:${job.id}`,
 						title: `${job.killSwitchEnabled ? 'Resume' : 'Pause'} ${job.name}`,

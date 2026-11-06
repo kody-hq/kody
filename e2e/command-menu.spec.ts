@@ -178,6 +178,40 @@ test('custom shortcuts detect conflicts, survive reload, and work with a narrow 
 		dialog.getByRole('button', { name: 'Actions', exact: false }),
 	).toBeVisible()
 	await page.screenshot({ path: '.tmp/command-menu-mobile.png' })
+	await page.setViewportSize({ width: 1280, height: 800 })
+	await dialog
+		.getByRole('button', { name: 'Keyboard shortcuts', exact: true })
+		.click()
+	const openShortcut = dialog.getByRole('button', {
+		name: 'Change Search and commands shortcut',
+		exact: true,
+	})
+	await openShortcut.click()
+	await openShortcut.press('Control+Shift+8')
+	await openShortcut.press('Enter')
+	await change.click()
+	await change.press(`${mod}+k`)
+	await change.press('Enter')
+	await dialog
+		.getByRole('button', {
+			name: 'Reset Search and commands shortcut',
+			exact: true,
+		})
+		.click()
+	await expect(dialog.getByRole('alert')).toContainText('Go to jobs')
+	await dialog
+		.getByRole('button', { name: 'Reset Go to jobs shortcut', exact: true })
+		.click()
+	await dialog
+		.getByRole('button', {
+			name: 'Reset Search and commands shortcut',
+			exact: true,
+		})
+		.click()
+	await expect(dialog.getByRole('alert')).toHaveCount(0)
+	await dialog
+		.getByRole('button', { name: 'Back to search', exact: true })
+		.click()
 	await page.keyboard.press('Escape')
 	await expect(dialog).not.toBeVisible()
 })

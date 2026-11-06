@@ -1,3 +1,4 @@
+import { commandTextScore } from '#universal/command-search.ts'
 import type { IconName } from '#universal/icon-names.ts'
 
 export type Command = {
@@ -68,27 +69,6 @@ export function parseCommandQuery(value: string) {
 		commandsOnly,
 	}
 }
-function normalize(value: string) {
-	return value
-		.normalize('NFD')
-		.replace(/[\u0300-\u036f]/g, '')
-		.toLowerCase()
-}
-function matchScore(text: string, query: string): number {
-	if (text === query) return 180
-	if (text.startsWith(query)) return 95
-	if (text.split(/\W+/).some((word) => word.startsWith(query))) return 75
-	if (text.includes(query)) return 60
-	let cursor = -1
-	let gaps = 0
-	for (const character of query) {
-		const next = text.indexOf(character, cursor + 1)
-		if (next < 0) return 0
-		gaps += next - cursor - 1
-		cursor = next
-	}
-	return gaps > query.length * 2 ? 0 : Math.max(5, 35 - gaps)
-}
 export function rankCommands(
 	commands: readonly Command[],
 	query: string,
@@ -96,7 +76,6 @@ export function rankCommands(
 	now = Date.now(),
 ) {
 	const parsed = parseCommandQuery(query)
-	const tokens = normalize(parsed.text).split(/\s+/).filter(Boolean)
 	return commands
 		.flatMap((command) => {
 			if (parsed.kind && command.kind !== parsed.kind) return []
@@ -105,14 +84,12 @@ export function rankCommands(
 				!['action', 'page', 'workspace'].includes(command.kind)
 			)
 				return []
-			const title = normalize(command.title)
-			const extra = normalize(
+			const textScore = commandTextScore(
+				command.title,
 				`${command.subtitle ?? ''} ${command.keywords ?? ''}`,
+				parsed.text,
 			)
-			const scores = tokens.map((token) =>
-				Math.max(matchScore(title, token), matchScore(extra, token) * 0.45),
-			)
-			if (scores.some((score) => !score)) return []
+			if (textScore === null) return []
 			const use = history[command.id]
 			const learned = use
 				? Math.min(12, Math.log2(use.count + 1) * 3) +
@@ -122,7 +99,7 @@ export function rankCommands(
 				command.kind === 'page' ? 10 : command.kind === 'guide' ? -10 : 0
 			const score =
 				base +
-				scores.reduce((a, b) => a + b, 0) +
+				textScore +
 				learned +
 				(command.context ? 10 : 0) +
 				(use?.pinned ? 18 : 0)

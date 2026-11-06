@@ -8,6 +8,7 @@ export const searchCommands = createServerFn({ method: 'GET' })
 		z.object({
 			orgSlug: z.string().regex(/^[a-zA-Z0-9_-]+$/),
 			query: z.string().max(200),
+			mode: z.enum(['all', 'resources', 'actions']).default('all'),
 			preferredIds: z.array(z.string().max(512)).max(40).default([]),
 			kind: z.enum(['repository', 'job', 'credential', 'memory', 'workflow']),
 		}),
@@ -49,15 +50,23 @@ export const searchCommands = createServerFn({ method: 'GET' })
 				const operation = item.killSwitchEnabled ? 'resume' : 'pause'
 				const label = item.killSwitchEnabled ? 'Resume' : 'Pause'
 				commands.push(
-					{
-						id: `run-job:${data.orgSlug}:${item.id}`,
-						title: `Run ${item.name} now`,
-						subtitle: item.packageName ?? item.packageId,
-						kind: 'action',
-						icon: 'play',
-						confirm: `Run ${item.name} now? This executes the job with its saved parameters.`,
-						jobAction: { id: item.id, orgSlug: data.orgSlug, operation: 'run' },
-					},
+					...(item.expired
+						? []
+						: ([
+								{
+									id: `run-job:${data.orgSlug}:${item.id}`,
+									title: `Run ${item.name} now`,
+									subtitle: item.packageName ?? item.packageId,
+									kind: 'action',
+									icon: 'play',
+									confirm: `Run ${item.name} now? This executes the job with its saved parameters.`,
+									jobAction: {
+										id: item.id,
+										orgSlug: data.orgSlug,
+										operation: 'run',
+									},
+								},
+							] as Command[])),
 					{
 						id: `toggle-job:${data.orgSlug}:${item.id}`,
 						title: `${label} ${item.name}`,
@@ -115,7 +124,13 @@ export const searchCommands = createServerFn({ method: 'GET' })
 			}))
 		}
 		return rankCommands(
-			commands,
+			commands.filter(
+				(command) =>
+					data.mode === 'all' ||
+					(data.mode === 'actions'
+						? command.kind === 'action'
+						: command.kind !== 'action'),
+			),
 			data.query,
 			Object.fromEntries(
 				data.preferredIds.map((id) => [
