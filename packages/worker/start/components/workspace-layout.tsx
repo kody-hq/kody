@@ -177,14 +177,16 @@ export function WorkspaceLayout() {
 								Kody
 							</SiteLink>
 						</BrandContextMenu>
-						<CommandTrigger />
-						<AccountMenu
-							placement="sidebar"
-							organizations={session.organizations ?? []}
-							username={session.username}
-							displayName={session.username || session.email}
-							avatarUrl={session.avatarUrl}
-						/>
+						<div css={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+							<CommandTrigger />
+							<AccountMenu
+								placement="sidebar"
+								organizations={session.organizations ?? []}
+								username={session.username}
+								displayName={session.username || session.email}
+								avatarUrl={session.avatarUrl}
+							/>
+						</div>
 					</div>
 					<ShellWorkspaceSwitcher navigation={navigation} />
 					<div

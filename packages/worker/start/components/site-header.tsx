@@ -105,13 +105,17 @@ export function SiteHeader(props: SiteHeaderProps) {
 								<SiteLink href={workspaceHref} css={navLoginCss}>
 									Workspace
 								</SiteLink>
-								<CommandTrigger />
-								<AccountMenu
-									username={props.username}
-									displayName={props.displayName}
-									avatarUrl={props.avatarUrl}
-									organizations={props.organizationSession?.organizations ?? []}
-								/>
+								<div css={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+									<CommandTrigger />
+									<AccountMenu
+										username={props.username}
+										displayName={props.displayName}
+										avatarUrl={props.avatarUrl}
+										organizations={
+											props.organizationSession?.organizations ?? []
+										}
+									/>
+								</div>
 							</>
 						) : (
 							<SiteLink href={props.loginHref} css={navLoginCss}>
@@ -158,13 +162,15 @@ export function SiteHeader(props: SiteHeaderProps) {
 							<SiteLink href={workspaceHref} css={navLoginCss}>
 								Workspace
 							</SiteLink>
-							<CommandTrigger />
-							<AccountMenu
-								organizations={props.organizationSession?.organizations ?? []}
-								username={props.username}
-								displayName={props.displayName}
-								avatarUrl={props.avatarUrl}
-							/>
+							<div css={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+								<CommandTrigger />
+								<AccountMenu
+									organizations={props.organizationSession?.organizations ?? []}
+									username={props.username}
+									displayName={props.displayName}
+									avatarUrl={props.avatarUrl}
+								/>
+							</div>
 							{props.showDemoIndicator ? <DemoIndicator /> : null}
 						</>
 					) : (
