@@ -49,23 +49,54 @@ test('tray assets match published favicon light/dark treatments', () => {
 	}
 })
 
-test('tray chrome prefers system-integrated UI over app theme', () => {
+test('macOS tray chrome prefers system-integrated UI over app theme', () => {
 	assert.equal(
-		trayChromeIsDark({
-			shouldUseDarkColors: false,
-			shouldUseDarkColorsForSystemIntegratedUI: true,
-		}),
+		trayChromeIsDark(
+			{
+				shouldUseDarkColors: false,
+				shouldUseDarkColorsForSystemIntegratedUI: true,
+			},
+			{ platform: 'darwin' },
+		),
 		true,
 	)
 	assert.equal(
-		trayChromeIsDark({
-			shouldUseDarkColors: true,
-			shouldUseDarkColorsForSystemIntegratedUI: false,
-		}),
+		trayChromeIsDark(
+			{
+				shouldUseDarkColors: true,
+				shouldUseDarkColorsForSystemIntegratedUI: false,
+			},
+			{ platform: 'darwin' },
+		),
 		false,
 	)
-	assert.equal(trayChromeIsDark({ shouldUseDarkColors: true }), true)
-	assert.equal(trayChromeIsDark({ shouldUseDarkColors: false }), false)
+	assert.equal(
+		trayChromeIsDark({ shouldUseDarkColors: true }, { platform: 'darwin' }),
+		true,
+	)
+})
+
+test('Windows tray chrome uses live shouldUseDarkColors (Electron #52308)', () => {
+	assert.equal(
+		trayChromeIsDark(
+			{
+				shouldUseDarkColors: true,
+				shouldUseDarkColorsForSystemIntegratedUI: false,
+			},
+			{ platform: 'win32' },
+		),
+		true,
+	)
+	assert.equal(
+		trayChromeIsDark(
+			{
+				shouldUseDarkColors: false,
+				shouldUseDarkColorsForSystemIntegratedUI: true,
+			},
+			{ platform: 'win32' },
+		),
+		false,
+	)
 })
 
 test('createTrayIcon reads the chrome-appropriate asset', () => {
@@ -85,6 +116,7 @@ test('createTrayIcon reads the chrome-appropriate asset', () => {
 			},
 			{
 				root: join(__dirname, '..'),
+				platform: 'darwin',
 			},
 		),
 		{ path: join(assets, 'tray-light.png') },
@@ -98,6 +130,21 @@ test('createTrayIcon reads the chrome-appropriate asset', () => {
 			},
 			{
 				root: join(__dirname, '..'),
+				platform: 'darwin',
+			},
+		),
+		{ path: join(assets, 'tray-dark.png') },
+	)
+	assert.deepEqual(
+		createTrayIcon(
+			nativeImage,
+			{
+				shouldUseDarkColors: true,
+				shouldUseDarkColorsForSystemIntegratedUI: false,
+			},
+			{
+				root: join(__dirname, '..'),
+				platform: 'win32',
 			},
 		),
 		{ path: join(assets, 'tray-dark.png') },
@@ -115,6 +162,7 @@ test('createTrayIcon reads the chrome-appropriate asset', () => {
 	)
 	assert.deepEqual(paths, [
 		join(assets, 'tray-light.png'),
+		join(assets, 'tray-dark.png'),
 		join(assets, 'tray-dark.png'),
 		join(assets, 'tray-light.png'),
 	])

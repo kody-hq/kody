@@ -163,8 +163,7 @@ for (const platform of ['darwin', 'win32']) {
 					tray.image.path,
 					join(__dirname, '../assets/tray-dark.png'),
 				)
-				// App dark + system chrome light must keep the light tray mark.
-				theme.shouldUseDarkColors = true
+				theme.shouldUseDarkColors = false
 				theme.shouldUseDarkColorsForSystemIntegratedUI = false
 				theme.emit('updated')
 				assert.equal(
