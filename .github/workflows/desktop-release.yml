@@ -184,7 +184,10 @@ jobs:
           # Bound the first attempt so a stuck notarization poll cannot consume
           # the whole job timeout; keep time for one retry plus verification.
           # Apple's notary service occasionally times out mid-poll.
-          if timeout 25m npm run dist:release --workspace @kodycodes/desktop -- --${{ matrix.platform }} --${{ matrix.arch }}; then
+          # Use the Node helper: GNU `timeout` / Homebrew `gtimeout` are not
+          # reliably on PATH for macos-15, macos-15-intel, or Windows runners.
+          if node packages/desktop/scripts/run-with-timeout.cjs 25m \
+            npm run dist:release --workspace @kodycodes/desktop -- --${{ matrix.platform }} --${{ matrix.arch }}; then
             exit 0
           fi
           echo 'First signed build failed; retrying once after a short wait.'
