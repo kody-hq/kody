@@ -53,7 +53,7 @@ docs index is at `/llms.txt`.
 
 Also watch:
 [The home your agents share](https://www.youtube.com/watch?v=6PGKZDcPsvE) and
-[Personal software, connected to everything.](https://www.youtube.com/watch?v=MGOj4NwV0uk).
+[Personal software, connected to everything.](https://www.youtube.com/watch?v=rRUs0Ui6tl4).
 
 ## What Kody is
 
