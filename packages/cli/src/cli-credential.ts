@@ -274,11 +274,23 @@ export function credentialRejectedNote(input: {
 		scopes && scopes.length > 0 ? scopes : ['<scopes>'],
 		lifetime,
 	)
+	if (
+		credential.source === 'stored-api-token' &&
+		credential.purpose === 'session'
+	) {
+		return `${used} Run \`kody login\` (search and cloud execute then use the login session before the stored token), or replace the stored token with \`${fix}\`.`
+	}
 	if (credential.source === 'stored-api-token') {
 		return `${used} \`kody login\` does not replace a stored API token, so logging in again will not fix this. Replace the stored token with \`${fix}\`.`
 	}
-	if (credential.source === 'env' || credential.source === 'token-flag') {
-		return `${used} It wins over any stored API token and \`kody login\` session; unset or replace ${credential.source === 'env' ? 'KODY_API_TOKEN' : '--token'} before retrying, or mint a fresh token (agents: cliCredentialBootstrap then run the returned cli_command; CI: tokenCreate) and update that value.`
+	if (credential.source === 'token-flag') {
+		return `${used} \`--token\` wins over any stored API token and \`kody login\` session; unset or replace --token before retrying, or mint a fresh token (agents: cliCredentialBootstrap then run the returned cli_command; CI: tokenCreate) and update that value.`
+	}
+	if (credential.source === 'env') {
+		if (credential.purpose === 'session') {
+			return `${used} For search and cloud execute, \`kody login\` outranks ${apiTokenEnvVar}; unset it to use the login session, or replace it with a fresh token (agents: cliCredentialBootstrap then run the returned cli_command; CI: tokenCreate).`
+		}
+		return `${used} It wins over any stored API token and \`kody login\` session; unset or replace ${apiTokenEnvVar} before retrying, or mint a fresh token (agents: cliCredentialBootstrap then run the returned cli_command; CI: tokenCreate) and update that value.`
 	}
 	return `${used} Run \`kody login\` again to refresh the session.`
 }

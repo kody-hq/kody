@@ -217,6 +217,36 @@ test('rejectedApiTokenMessage names KODY_API_TOKEN and the login session', () =>
 	assert.match(rejectedApiTokenMessage('', null), /cliCredentialBootstrap/)
 })
 
+test('rejectedApiTokenMessage for session purpose prefers login over a stored token', () => {
+	const credential = resolveCliCredential({
+		env: {},
+		apiUrl,
+		mcpUrl,
+		purpose: 'session',
+		loadApiToken: () => stored,
+		loadLogin: () => null,
+	})
+	assert.equal(credential?.source, 'stored-api-token')
+	const note = credentialRejectedNote({ credential }) ?? ''
+	assert.match(note, /Run `kody login` \(search and cloud execute/)
+	assert.doesNotMatch(note, /does not replace a stored API token/)
+	const envOnly = resolveCliCredential({
+		env: { KODY_API_TOKEN: 'kody_at_env' },
+		apiUrl,
+		mcpUrl,
+		purpose: 'session',
+		loadApiToken: () => stored,
+		loadLogin: () => null,
+	})
+	assert.equal(envOnly?.source, 'env')
+	const envNote = credentialRejectedNote({ credential: envOnly }) ?? ''
+	assert.match(envNote, /outranks KODY_API_TOKEN/)
+	assert.doesNotMatch(
+		envNote,
+		/wins over any stored API token and `kody login`/,
+	)
+})
+
 test('insufficientScopeMessage for search with only a stored token suggests kody login', () => {
 	const message = insufficientScopeMessage({
 		requiredScope: 'search:read',
