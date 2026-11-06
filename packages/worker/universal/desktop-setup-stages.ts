@@ -22,7 +22,7 @@ export type DesktopSetupMachineSnapshot = {
 	signedIn: boolean
 	cliReady: boolean
 	contextId: string | null
-	existingContext: { id: string; name: string | null } | null
+	existingContext?: { id: string; name: string | null } | null
 	needsVerification: boolean
 	onboardingSeen: boolean
 	running: boolean
@@ -137,7 +137,7 @@ export function desktopSetupPanelAction(input: {
 	pageOrgSlug: string | null
 	needsAccountOnboarding: boolean | null
 }): DesktopSetupPanelAction {
-	const { state, pageOrgSlug, needsAccountOnboarding } = input
+	const { state, needsAccountOnboarding } = input
 	if (!state) {
 		return {
 			kind: 'unavailable',
