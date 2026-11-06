@@ -68,6 +68,7 @@ for (const platform of ['darwin', 'win32']) {
 				prompts = 0
 			const theme = new EventEmitter()
 			theme.shouldUseDarkColors = false
+			theme.shouldUseDarkColorsForSystemIntegratedUI = false
 			const window = {
 				setSkipTaskbar: (value) => {
 					skipped = value
@@ -156,12 +157,15 @@ for (const platform of ['darwin', 'win32']) {
 					join(__dirname, '../assets/tray-light.png'),
 				)
 				theme.shouldUseDarkColors = true
+				theme.shouldUseDarkColorsForSystemIntegratedUI = true
 				theme.emit('updated')
 				assert.equal(
 					tray.image.path,
 					join(__dirname, '../assets/tray-dark.png'),
 				)
-				theme.shouldUseDarkColors = false
+				// App dark + system chrome light must keep the light tray mark.
+				theme.shouldUseDarkColors = true
+				theme.shouldUseDarkColorsForSystemIntegratedUI = false
 				theme.emit('updated')
 				assert.equal(
 					tray.image.path,

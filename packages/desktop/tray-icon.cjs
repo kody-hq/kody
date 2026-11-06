@@ -16,9 +16,28 @@ function trayIconPath(dark, root = __dirname) {
 	return join(root, 'assets', trayIconFileName(dark))
 }
 
+/**
+ * Prefer system-integrated UI chrome (Windows taskbar / tray) over app theme.
+ * On macOS Electron reports the same value as shouldUseDarkColors; fall back
+ * when the property is missing (tests or older Electron).
+ */
+function trayChromeIsDark(nativeTheme) {
+	if (
+		typeof nativeTheme.shouldUseDarkColorsForSystemIntegratedUI === 'boolean'
+	) {
+		return nativeTheme.shouldUseDarkColorsForSystemIntegratedUI
+	}
+	return Boolean(nativeTheme.shouldUseDarkColors)
+}
+
 function createTrayIcon(nativeImage, nativeTheme, options = {}) {
-	const dark = options.dark ?? Boolean(nativeTheme.shouldUseDarkColors)
+	const dark = options.dark ?? trayChromeIsDark(nativeTheme)
 	return nativeImage.createFromPath(trayIconPath(dark, options.root))
 }
 
-module.exports = { trayIconFileName, trayIconPath, createTrayIcon }
+module.exports = {
+	trayIconFileName,
+	trayIconPath,
+	trayChromeIsDark,
+	createTrayIcon,
+}

@@ -6,6 +6,7 @@ const { createHash } = require('node:crypto')
 const {
 	trayIconFileName,
 	trayIconPath,
+	trayChromeIsDark,
 	createTrayIcon,
 } = require('../tray-icon.cjs')
 
@@ -48,7 +49,26 @@ test('tray assets match published favicon light/dark treatments', () => {
 	}
 })
 
-test('createTrayIcon reads the theme-appropriate asset', () => {
+test('tray chrome prefers system-integrated UI over app theme', () => {
+	assert.equal(
+		trayChromeIsDark({
+			shouldUseDarkColors: false,
+			shouldUseDarkColorsForSystemIntegratedUI: true,
+		}),
+		true,
+	)
+	assert.equal(
+		trayChromeIsDark({
+			shouldUseDarkColors: true,
+			shouldUseDarkColorsForSystemIntegratedUI: false,
+		}),
+		false,
+	)
+	assert.equal(trayChromeIsDark({ shouldUseDarkColors: true }), true)
+	assert.equal(trayChromeIsDark({ shouldUseDarkColors: false }), false)
+})
+
+test('createTrayIcon reads the chrome-appropriate asset', () => {
 	const paths = []
 	const nativeImage = {
 		createFromPath: (path) => {
@@ -59,7 +79,10 @@ test('createTrayIcon reads the theme-appropriate asset', () => {
 	assert.deepEqual(
 		createTrayIcon(
 			nativeImage,
-			{ shouldUseDarkColors: false },
+			{
+				shouldUseDarkColors: true,
+				shouldUseDarkColorsForSystemIntegratedUI: false,
+			},
 			{
 				root: join(__dirname, '..'),
 			},
@@ -69,7 +92,10 @@ test('createTrayIcon reads the theme-appropriate asset', () => {
 	assert.deepEqual(
 		createTrayIcon(
 			nativeImage,
-			{ shouldUseDarkColors: true },
+			{
+				shouldUseDarkColors: false,
+				shouldUseDarkColorsForSystemIntegratedUI: true,
+			},
 			{
 				root: join(__dirname, '..'),
 			},
