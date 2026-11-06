@@ -51,6 +51,7 @@ import { Route as VerifyEmailChangeRouteImport } from './routes/verify-email-cha
 import { Route as VerifyEmailClaimReleaseRouteImport } from './routes/verify-email-claim-release'
 import { Route as VerifyEmailDestinationRouteImport } from './routes/verify-email-destination'
 import { Route as DotwellKnownApiCatalogRouteImport } from './routes/[.]well-known_.api-catalog'
+import { Route as DotwellKnownAppleAppSiteAssociationRouteImport } from './routes/[.]well-known_.apple-app-site-association'
 import { Route as DotwellKnownOpenaiAppsChallengeRouteImport } from './routes/[.]well-known_.openai-apps-challenge'
 import { Route as DotwellKnownSecurityDottxtRouteImport } from './routes/[.]well-known_.security[.]txt'
 import { Route as AppAtChar123usernameChar125RouteImport } from './routes/_app.@{$username}'
@@ -500,6 +501,12 @@ const DotwellKnownApiCatalogRoute = DotwellKnownApiCatalogRouteImport.update({
   path: '/.well-known/api-catalog',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DotwellKnownAppleAppSiteAssociationRoute =
+  DotwellKnownAppleAppSiteAssociationRouteImport.update({
+    id: '/.well-known_/apple-app-site-association',
+    path: '/.well-known/apple-app-site-association',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const DotwellKnownOpenaiAppsChallengeRoute =
   DotwellKnownOpenaiAppsChallengeRouteImport.update({
     id: '/.well-known_/openai-apps-challenge',
@@ -1880,6 +1887,7 @@ export interface FileRoutesByFullPath {
   '/verify-email-claim-release': typeof VerifyEmailClaimReleaseRoute
   '/verify-email-destination': typeof VerifyEmailDestinationRoute
   '/.well-known/api-catalog': typeof DotwellKnownApiCatalogRoute
+  '/.well-known/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
   '/.well-known/openai-apps-challenge': typeof DotwellKnownOpenaiAppsChallengeRoute
   '/.well-known/security.txt': typeof DotwellKnownSecurityDottxtRoute
   '/@{$username}': typeof AppAtChar123usernameChar125Route
@@ -2161,6 +2169,7 @@ export interface FileRoutesByTo {
   '/verify-email-claim-release': typeof VerifyEmailClaimReleaseRoute
   '/verify-email-destination': typeof VerifyEmailDestinationRoute
   '/.well-known/api-catalog': typeof DotwellKnownApiCatalogRoute
+  '/.well-known/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
   '/.well-known/openai-apps-challenge': typeof DotwellKnownOpenaiAppsChallengeRoute
   '/.well-known/security.txt': typeof DotwellKnownSecurityDottxtRoute
   '/@{$username}': typeof AppAtChar123usernameChar125Route
@@ -2445,6 +2454,7 @@ export interface FileRoutesById {
   '/verify-email-claim-release': typeof VerifyEmailClaimReleaseRoute
   '/verify-email-destination': typeof VerifyEmailDestinationRoute
   '/.well-known_/api-catalog': typeof DotwellKnownApiCatalogRoute
+  '/.well-known_/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
   '/.well-known_/openai-apps-challenge': typeof DotwellKnownOpenaiAppsChallengeRoute
   '/.well-known_/security.txt': typeof DotwellKnownSecurityDottxtRoute
   '/_app/@{$username}': typeof AppAtChar123usernameChar125Route
@@ -2729,6 +2739,7 @@ export interface FileRouteTypes {
     | '/verify-email-claim-release'
     | '/verify-email-destination'
     | '/.well-known/api-catalog'
+    | '/.well-known/apple-app-site-association'
     | '/.well-known/openai-apps-challenge'
     | '/.well-known/security.txt'
     | '/@{$username}'
@@ -3010,6 +3021,7 @@ export interface FileRouteTypes {
     | '/verify-email-claim-release'
     | '/verify-email-destination'
     | '/.well-known/api-catalog'
+    | '/.well-known/apple-app-site-association'
     | '/.well-known/openai-apps-challenge'
     | '/.well-known/security.txt'
     | '/@{$username}'
@@ -3293,6 +3305,7 @@ export interface FileRouteTypes {
     | '/verify-email-claim-release'
     | '/verify-email-destination'
     | '/.well-known_/api-catalog'
+    | '/.well-known_/apple-app-site-association'
     | '/.well-known_/openai-apps-challenge'
     | '/.well-known_/security.txt'
     | '/_app/@{$username}'
@@ -3577,6 +3590,7 @@ export interface RootRouteChildren {
   VerifyEmailClaimReleaseRoute: typeof VerifyEmailClaimReleaseRoute
   VerifyEmailDestinationRoute: typeof VerifyEmailDestinationRoute
   DotwellKnownApiCatalogRoute: typeof DotwellKnownApiCatalogRoute
+  DotwellKnownAppleAppSiteAssociationRoute: typeof DotwellKnownAppleAppSiteAssociationRoute
   DotwellKnownOpenaiAppsChallengeRoute: typeof DotwellKnownOpenaiAppsChallengeRoute
   DotwellKnownSecurityDottxtRoute: typeof DotwellKnownSecurityDottxtRoute
   AccountExportDotjsonRoute: typeof AccountExportDotjsonRoute
@@ -3959,6 +3973,13 @@ declare module '@tanstack/react-router' {
       path: '/.well-known/api-catalog'
       fullPath: '/.well-known/api-catalog'
       preLoaderRoute: typeof DotwellKnownApiCatalogRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/.well-known_/apple-app-site-association': {
+      id: '/.well-known_/apple-app-site-association'
+      path: '/.well-known/apple-app-site-association'
+      fullPath: '/.well-known/apple-app-site-association'
+      preLoaderRoute: typeof DotwellKnownAppleAppSiteAssociationRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/.well-known_/openai-apps-challenge': {
@@ -6094,6 +6115,8 @@ const rootRouteChildren: RootRouteChildren = {
   VerifyEmailClaimReleaseRoute: VerifyEmailClaimReleaseRoute,
   VerifyEmailDestinationRoute: VerifyEmailDestinationRoute,
   DotwellKnownApiCatalogRoute: DotwellKnownApiCatalogRoute,
+  DotwellKnownAppleAppSiteAssociationRoute:
+    DotwellKnownAppleAppSiteAssociationRoute,
   DotwellKnownOpenaiAppsChallengeRoute: DotwellKnownOpenaiAppsChallengeRoute,
   DotwellKnownSecurityDottxtRoute: DotwellKnownSecurityDottxtRoute,
   AccountExportDotjsonRoute: AccountExportDotjsonRoute,

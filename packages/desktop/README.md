@@ -331,6 +331,56 @@ have Kody.app send Apple Events instead, remove a CLI service with
 **This machine** resumed; the app runs the runner itself. See
 [macOS app control](../../docs/use/execution-contexts.md#macos-app-control).
 
+### Universal links
+
+On macOS, clicking a `https://kody.codes` link opens Kody Desktop when it is
+installed and the browser otherwise. The site serves the path allowlist at
+[`/.well-known/apple-app-site-association`](https://kody.codes/.well-known/apple-app-site-association)
+(`packages/worker/src/app/desktop-app-links.ts`). Account, org workspace,
+profile and package, onboarding, admin, and community listing pages open in the
+app. The homepage, docs, blog, pricing, legal pages, every sign-in or token
+flow, and raw files, assets, and images stay in the browser. A link that arrives
+on launch opens the first window at that page; a link that arrives while the app
+is running opens a new window so the current page keeps its input. Signed-out
+users get the normal sign-in flow. **Open in browser** in the address menu
+launches the default browser directly so the link does not return to the app.
+
+macOS only delivers links when the app was opened from another app (Mail,
+Messages, Notes, Slack) or from Safari on another site. Links clicked inside
+Chrome, Arc, Firefox, or a kody.codes page in Safari stay in the browser.
+Windows and Linux are not supported: Windows App Links need an MSIX or sparse
+package identity, and the NSIS installer has none.
+
+Associated Domains is a restricted entitlement, so a Developer ID build needs a
+matching provisioning profile or macOS kills it at launch. Release builds add
+the `applinks:kody.codes` entitlement
+(`assets/entitlements.mac.app-links.plist`) and embed the profile only when
+`KODY_MAC_PROVISIONING_PROFILE` points at one; without it builds are unchanged.
+To turn universal links on, the Apple Developer account holder for team
+`7A84LHNSXV` must:
+
+1. In Certificates, Identifiers & Profiles, register an App ID with the explicit
+   bundle ID `codes.kody.desktop` and enable **Associated Domains**.
+2. Create a **Developer ID** provisioning profile for that App ID using the same
+   Developer ID Application certificate as `DESKTOP_MAC_CERTIFICATE_BASE64`, and
+   download the `.provisionprofile`.
+3. Store it as the `desktop-release` environment secret
+   `DESKTOP_MAC_PROVISIONING_PROFILE_BASE64`:
+   `base64 -i Kody.provisionprofile | gh secret set DESKTOP_MAC_PROVISIONING_PROFILE_BASE64 --env desktop-release --repo kody-hq/kody`.
+
+The next release then embeds the profile, and release verification checks the
+entitlement. To verify on a Mac after installing that release:
+
+```sh
+codesign -d --entitlements - /Applications/Kody.app | grep -A2 associated-domains
+swcutil dl -d kody.codes   # Apple's CDN copy of the association file
+```
+
+Then click a `https://kody.codes/account` link in Notes or Messages; it should
+open Kody Desktop. `https://kody.codes/docs` should still open the browser.
+Apple's CDN caches the association file, so allowlist changes can take a day to
+reach devices.
+
 ### Contacts access
 
 Signed production builds include the Contacts entitlement and purpose string

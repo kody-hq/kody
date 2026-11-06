@@ -161,6 +161,7 @@ function fixture(platform = 'darwin') {
 		'set-cookie-parser': {},
 		'./site-capabilities.cjs': { supportsIntegratedTitlebar: () => capability },
 		'./window-navigation.cjs': require('../window-navigation.cjs'),
+		'./app-links.cjs': require('../app-links.cjs'),
 		'./runner.cjs': {
 			Runner: class extends EventEmitter {
 				constructor() {
@@ -510,4 +511,60 @@ test('explicit Quit still cancels pending window creation', async () => {
 	assert.equal(f.windows.length, 1)
 	await new Promise(setImmediate)
 	assert.equal(f.quitCount(), 1)
+})
+
+function openLink(app, url, type = 'NSUserActivityTypeBrowsingWeb') {
+	let handled = false
+	app.emit(
+		'continue-activity',
+		{
+			preventDefault() {
+				handled = true
+			},
+		},
+		type,
+		{},
+		{ webpageURL: url },
+	)
+	return handled
+}
+
+test('a universal link on cold start opens the first window at that page', async () => {
+	const f = fixture()
+	assert.equal(
+		openLink(f.app, 'https://kody.codes/@acme/-/jobs?tab=runs#r1'),
+		true,
+	)
+	await f.start()
+	await f.finish()
+	assert.equal(f.windows.length, 1)
+	assert.deepEqual(f.windows[0].loads, [
+		'https://kody.codes/@acme/-/jobs?tab=runs#r1',
+	])
+})
+
+test('a universal link while running opens a new window and keeps the current page', async () => {
+	const f = fixture()
+	await f.start()
+	await f.finish()
+	await f.show('/account/secrets?draft=1')
+	assert.equal(openLink(f.app, 'https://kody.codes/@kent/pkg'), true)
+	await new Promise(setImmediate)
+	assert.equal(f.windows.length, 2)
+	assert.deepEqual(f.windows[0].loads, [
+		'https://kody.codes/account',
+		'https://kody.codes/account/secrets?draft=1',
+	])
+	assert.deepEqual(f.windows[1].loads, ['https://kody.codes/@kent/pkg'])
+})
+
+test('links for other origins or activity types are left to the system', async () => {
+	const f = fixture()
+	await f.start()
+	await f.finish()
+	assert.equal(openLink(f.app, 'https://example.com/account'), false)
+	assert.equal(openLink(f.app, 'https://www.kody.codes/account'), false)
+	assert.equal(openLink(f.app, 'https://kody.codes/account', 'other'), false)
+	await new Promise(setImmediate)
+	assert.equal(f.windows.length, 1)
 })
