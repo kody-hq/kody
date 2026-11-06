@@ -321,6 +321,19 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 	},
 	// A person's org grants of their personal credentials.
 	{ kind: 'user_id', table: 'credential_org_grants' },
+	// Local reads a person made with the Kody CLI (with their IP).
+	{
+		kind: 'user_columns',
+		table: 'credential_local_read_events',
+		columns: ['actor_user_id'],
+	},
+	// Who last turned local reads on or off for a credential.
+	{
+		kind: 'null_user_column',
+		table: 'credential_local_read_settings',
+		matchColumn: 'updated_by_user_id',
+		nullColumns: ['updated_by_user_id'],
+	},
 	// Execution contexts a person registered (they operate the machine), the
 	// contexts they opted into, their attachments of contexts to other orgs,
 	// and their chains. Registration challenges are short-lived and never

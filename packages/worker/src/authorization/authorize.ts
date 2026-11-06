@@ -513,6 +513,19 @@ function profileChainBlock(
 	return null
 }
 
+/**
+ * Only the profile layers: true when the request acts as no profile or every
+ * layer of its chain holds `permission` on `resource`. For a permission no
+ * role holds (`secret:read_local`), where `checkPermission` cannot apply.
+ */
+export function profileChainAllows(
+	access: EffectivePermissions,
+	permission: OrgPermission,
+	resource: OrgResource,
+) {
+	return profileChainBlock(access, permission, resource) === null
+}
+
 function profileDenialMessage(
 	access: EffectivePermissions,
 	permission: OrgPermission,

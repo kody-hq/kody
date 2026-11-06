@@ -17,6 +17,7 @@ import {
 	usageAttributionFieldsFromRequest,
 } from '#worker/usage/record-usage.ts'
 import { authenticateApiRequest } from './authenticate.ts'
+import { getRequestIp } from '#worker/audit-log.ts'
 import {
 	handleExecutionContextKeyRoute,
 	isExecutionContextKeyRoute,
@@ -318,6 +319,7 @@ async function handleOperation(input: {
 		throw error
 	}
 	if (input.loopbackExports) ctx.loopbackExports = input.loopbackExports
+	ctx.clientIp = getRequestIp(input.request)
 	const resolved = resolveApiOperation(
 		matchedOperation,
 		await getStaticRegistry(),

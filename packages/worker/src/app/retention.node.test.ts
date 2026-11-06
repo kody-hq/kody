@@ -103,6 +103,11 @@ function createRetentionDb() {
 			event_type TEXT NOT NULL,
 			processed_at TEXT NOT NULL
 		);
+		CREATE TABLE credential_local_read_events (
+			id TEXT PRIMARY KEY NOT NULL,
+			credential_id TEXT NOT NULL,
+			created_at TEXT NOT NULL
+		);
 		CREATE TABLE platform_feedback (
 			id TEXT PRIMARY KEY NOT NULL,
 			submitter_user_id TEXT NOT NULL,

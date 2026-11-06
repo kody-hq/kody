@@ -1347,7 +1347,11 @@ function CreateProfilePanel(props: {
 													)
 												}
 											/>
-											<code>{permission}</code>
+											{permission === 'secret:read_local' ? (
+												'read locally'
+											) : (
+												<code>{permission}</code>
+											)}
 										</label>
 									))}
 								</span>

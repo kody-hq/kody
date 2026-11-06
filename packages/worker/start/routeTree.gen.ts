@@ -281,6 +281,7 @@ import { Route as AppAccountPackagesPackageIdApprovePublishRouteImport } from '.
 import { Route as AppAccountSecretsUserSecretNameRouteImport } from './routes/_app.account_.secrets_.user.$secretName'
 import { Route as AccountReposRepoIdIconIconCommitRouteImport } from './routes/account_.repos_.$repoId_.icon_.$iconCommit'
 import { Route as AppAtChar123orgSlugChar125AgentsNewAgentRouteImport } from './routes/_app.@{$orgSlug}_.-.agents_.new_.$agent'
+import { Route as AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRouteImport } from './routes/_app.@{$orgSlug}_.-.credentials_.$credentialId_.local-reads'
 import { Route as AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRouteImport } from './routes/_app.@{$orgSlug}_.-.integrations_.apps.$appSlug'
 import { Route as AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRouteImport } from './routes/_app.@{$orgSlug}_.-.mcp-servers_.$serverId_.authorize'
 import { Route as AppAtChar123orgSlugChar125SecretsUserSecretNameRouteImport } from './routes/_app.@{$orgSlug}_.-.secrets_.user.$secretName'
@@ -1779,6 +1780,14 @@ const AppAtChar123orgSlugChar125AgentsNewAgentRoute =
     path: '/@{$orgSlug}/-/agents/new/$agent',
     getParentRoute: () => AppRoute,
   } as any)
+const AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute =
+  AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRouteImport.update(
+    {
+      id: '/@{$orgSlug}_/-/credentials_/$credentialId_/local-reads',
+      path: '/@{$orgSlug}/-/credentials/$credentialId/local-reads',
+      getParentRoute: () => AppRoute,
+    } as any,
+  )
 const AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute =
   AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRouteImport.update({
     id: '/@{$orgSlug}_/-/integrations_/apps/$appSlug',
@@ -2110,6 +2119,7 @@ export interface FileRoutesByFullPath {
   '/account/secrets/user/$secretName': typeof AppAccountSecretsUserSecretNameRoute
   '/account/repos/$repoId/icon/$iconCommit': typeof AccountReposRepoIdIconIconCommitRoute
   '/@{$orgSlug}/-/agents/new/$agent': typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
+  '/@{$orgSlug}/-/credentials/$credentialId/local-reads': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute
   '/@{$orgSlug}/-/integrations/apps/$appSlug': typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
   '/@{$orgSlug}/-/mcp-servers/$serverId/authorize': typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
   '/@{$orgSlug}/-/secrets/user/$secretName': typeof AppAtChar123orgSlugChar125SecretsUserSecretNameRoute
@@ -2391,6 +2401,7 @@ export interface FileRoutesByTo {
   '/account/secrets/user/$secretName': typeof AppAccountSecretsUserSecretNameRoute
   '/account/repos/$repoId/icon/$iconCommit': typeof AccountReposRepoIdIconIconCommitRoute
   '/@{$orgSlug}/-/agents/new/$agent': typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
+  '/@{$orgSlug}/-/credentials/$credentialId/local-reads': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute
   '/@{$orgSlug}/-/integrations/apps/$appSlug': typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
   '/@{$orgSlug}/-/mcp-servers/$serverId/authorize': typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
   '/@{$orgSlug}/-/secrets/user/$secretName': typeof AppAtChar123orgSlugChar125SecretsUserSecretNameRoute
@@ -2675,6 +2686,7 @@ export interface FileRoutesById {
   '/_app/account_/secrets_/user/$secretName': typeof AppAccountSecretsUserSecretNameRoute
   '/account_/repos_/$repoId_/icon_/$iconCommit': typeof AccountReposRepoIdIconIconCommitRoute
   '/_app/@{$orgSlug}_/-/agents_/new_/$agent': typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
+  '/_app/@{$orgSlug}_/-/credentials_/$credentialId_/local-reads': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute
   '/_app/@{$orgSlug}_/-/integrations_/apps/$appSlug': typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
   '/_app/@{$orgSlug}_/-/mcp-servers_/$serverId_/authorize': typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
   '/_app/@{$orgSlug}_/-/secrets_/user/$secretName': typeof AppAtChar123orgSlugChar125SecretsUserSecretNameRoute
@@ -2959,6 +2971,7 @@ export interface FileRouteTypes {
     | '/account/secrets/user/$secretName'
     | '/account/repos/$repoId/icon/$iconCommit'
     | '/@{$orgSlug}/-/agents/new/$agent'
+    | '/@{$orgSlug}/-/credentials/$credentialId/local-reads'
     | '/@{$orgSlug}/-/integrations/apps/$appSlug'
     | '/@{$orgSlug}/-/mcp-servers/$serverId/authorize'
     | '/@{$orgSlug}/-/secrets/user/$secretName'
@@ -3240,6 +3253,7 @@ export interface FileRouteTypes {
     | '/account/secrets/user/$secretName'
     | '/account/repos/$repoId/icon/$iconCommit'
     | '/@{$orgSlug}/-/agents/new/$agent'
+    | '/@{$orgSlug}/-/credentials/$credentialId/local-reads'
     | '/@{$orgSlug}/-/integrations/apps/$appSlug'
     | '/@{$orgSlug}/-/mcp-servers/$serverId/authorize'
     | '/@{$orgSlug}/-/secrets/user/$secretName'
@@ -3523,6 +3537,7 @@ export interface FileRouteTypes {
     | '/_app/account_/secrets_/user/$secretName'
     | '/account_/repos_/$repoId_/icon_/$iconCommit'
     | '/_app/@{$orgSlug}_/-/agents_/new_/$agent'
+    | '/_app/@{$orgSlug}_/-/credentials_/$credentialId_/local-reads'
     | '/_app/@{$orgSlug}_/-/integrations_/apps/$appSlug'
     | '/_app/@{$orgSlug}_/-/mcp-servers_/$serverId_/authorize'
     | '/_app/@{$orgSlug}_/-/secrets_/user/$secretName'
@@ -5571,6 +5586,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAtChar123orgSlugChar125AgentsNewAgentRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/@{$orgSlug}_/-/credentials_/$credentialId_/local-reads': {
+      id: '/_app/@{$orgSlug}_/-/credentials_/$credentialId_/local-reads'
+      path: '/@{$orgSlug}/-/credentials/$credentialId/local-reads'
+      fullPath: '/@{$orgSlug}/-/credentials/$credentialId/local-reads'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/@{$orgSlug}_/-/integrations_/apps/$appSlug': {
       id: '/_app/@{$orgSlug}_/-/integrations_/apps/$appSlug'
       path: '/@{$orgSlug}/-/integrations/apps/$appSlug'
@@ -5789,6 +5811,7 @@ interface AppRouteChildren {
   AppAccountPackagesPackageIdApprovePublishRoute: typeof AppAccountPackagesPackageIdApprovePublishRoute
   AppAccountSecretsUserSecretNameRoute: typeof AppAccountSecretsUserSecretNameRoute
   AppAtChar123orgSlugChar125AgentsNewAgentRoute: typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
+  AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute: typeof AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute
   AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute: typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
   AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute: typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
   AppAtChar123orgSlugChar125SecretsUserSecretNameRoute: typeof AppAtChar123orgSlugChar125SecretsUserSecretNameRoute
@@ -5996,6 +6019,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccountSecretsUserSecretNameRoute: AppAccountSecretsUserSecretNameRoute,
   AppAtChar123orgSlugChar125AgentsNewAgentRoute:
     AppAtChar123orgSlugChar125AgentsNewAgentRoute,
+  AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute:
+    AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute,
   AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute:
     AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute,
   AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute:

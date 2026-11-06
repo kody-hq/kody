@@ -8,6 +8,10 @@ import { purgeProfiles } from '#worker/profiles/store.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { accountRetentionDispositions } from '#app/account-retention-dispositions.ts'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
+import {
+	localReadEventRetentionDays,
+	pruneLocalReadEvents,
+} from '#worker/credentials/local-read-store.ts'
 import { agentPackagePopularityMaxAgeDays } from '#worker/usage/agent-package-conversation-uses.ts'
 import {
 	buildPublishedSourceManifestSnapshotKvKey,
@@ -113,6 +117,14 @@ export const retentionPolicies: ReadonlyArray<RetentionPolicy> = [
 			'Local-dev/test flag exposure rollups keep 90 days, matching Analytics Engine retention for the production exposure stream; the metric readout window is the current month.',
 	},
 	{
+		table: 'credential_local_read_events',
+		scope: 'global',
+		retentionDays: localReadEventRetentionDays,
+		batchSize: retentionDefaultBatchSize,
+		description:
+			'Local reads of a secret by the Kody CLI (with the real IP) keep 90 days; the last local read time on the secret is kept for good.',
+	},
+	{
 		table: 'stripe_webhook_events',
 		scope: 'global',
 		retentionDays: stripeWebhookEventRetentionDays,
@@ -158,6 +170,7 @@ export type RetentionPruneResult = {
 	}
 	usageRollups: number
 	featureFlagExposureRollups: number
+	credentialLocalReadEvents: number
 	auditEvents: number
 	stripeWebhookEvents: number
 	agentPackageConversationUses: number
@@ -594,6 +607,7 @@ export async function pruneRetention(input: {
 		},
 		usageRollups: 0,
 		featureFlagExposureRollups: 0,
+		credentialLocalReadEvents: 0,
 		auditEvents: 0,
 		stripeWebhookEvents: 0,
 		agentPackageConversationUses: 0,
@@ -663,6 +677,20 @@ export async function pruneRetention(input: {
 			() => pruneFeatureFlagExposuresForRetention({ db, now }),
 			(count) => {
 				result.featureFlagExposureRollups += count
+			},
+		),
+		countTask(
+			'credential_local_read_events',
+			async () => {
+				const deleted = await pruneLocalReadEvents({
+					db,
+					now,
+					batchSize: retentionDefaultBatchSize,
+				})
+				return { selected: deleted, deleted }
+			},
+			(count) => {
+				result.credentialLocalReadEvents += count
 			},
 		),
 		countTask(

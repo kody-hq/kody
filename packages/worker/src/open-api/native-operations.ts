@@ -3,6 +3,7 @@ import { mintCliLoginDeviceToken } from '#worker/api-tokens/cli-login-device-tok
 import { toApiTokenView } from '#worker/api-tokens/service.ts'
 import { executeOperationDefinition } from './execute-operation.ts'
 import { searchToolOperationDefinition } from './search-tool-operation.ts'
+import { secretLocalReadDefinition } from './secret-local-read-operation.ts'
 import {
 	capabilityProxyCallInputSchema,
 	capabilityProxyCallOutputSchema,
@@ -203,4 +204,5 @@ export const nativeApiOperationDefinitions: Record<
 	...localExecutePackageGraphOperationDefinitions,
 	execute: executeOperationDefinition,
 	searchTool: searchToolOperationDefinition,
+	secretLocalRead: secretLocalReadDefinition,
 }
