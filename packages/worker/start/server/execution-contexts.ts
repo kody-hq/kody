@@ -398,9 +398,10 @@ export const setAutomationExecution = createServerFn({ method: 'POST' })
 	})
 
 /**
- * Desktop setup puts this machine first in the caller's personal chain.
- * When `targetOrgSlug` is set, it attaches the personal registration to that
- * org (does not re-register) and puts it first in that org's chain.
+ * Desktop setup puts this machine first in the caller's personal chain unless
+ * `targetOrgSlug` names another org. In that case, it attaches the personal
+ * registration to that org (does not re-register) and updates only that org's
+ * chain.
  */
 export const putDesktopExecutionFirst = createServerFn({ method: 'POST' })
 	.validator(
