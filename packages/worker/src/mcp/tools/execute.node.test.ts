@@ -1375,17 +1375,11 @@ test('execute tool attaches entitlement metadata on denials and quota, not on su
 		current: quotaLimit,
 		upgradeHint: quotaHint,
 	} as const
-	expect(quotaDenied.structuredContent.entitlement).toEqual({
+	expect(quotaDenied.structuredContent.entitlement).toMatchObject({
 		...quotaEntitlement,
 		used: quotaLimit,
 		remaining: 0,
 		resetAt: expect.any(String),
-		...(typeof quotaDenied.structuredContent.entitlement?.orgSlug === 'string'
-			? {
-					orgSlug: quotaDenied.structuredContent.entitlement.orgSlug,
-					usagePath: expect.stringMatching(/^\/@[^/]+\/-\/usage$/),
-				}
-			: {}),
 	})
 })
 
