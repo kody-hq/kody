@@ -40,7 +40,7 @@
       "*.cjs",
       "package.json",
       "assets/icon.png",
-      "assets/trayTemplate*.png",
+      "assets/tray-*.png",
       "!electron-builder*.cjs"
     ],
     "mac": {
