@@ -8,7 +8,11 @@ import {
 	installCommunityPackage,
 } from '#start/server/community-mutations'
 import { communityForkStateQuery } from './community-fork-state-query.ts'
-import { resolveCommunityInstallResult } from './community-install-result.ts'
+import {
+	CommunityInstallInProgressError,
+	communityInstallOutcomeFromLiveFork,
+	resolveCommunityInstallResult,
+} from './community-install-result.ts'
 import type { CommunityInstallOutcome } from './community-types.ts'
 import { usePageInvalidation } from './page-invalidation.ts'
 import { useSubmitterScope } from './use-submitter-scope.ts'
@@ -171,12 +175,33 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 				orgPicker.onSelect(targetSlug)
 			}
 		} catch (error) {
-			if (isCurrent())
-				setMessage(
-					error instanceof Error
-						? error.message
-						: 'Unable to install this public package.',
-				)
+			if (!isCurrent()) return
+			// Reconcile before offering retry: a lost Start envelope after a
+			// committed write must become success / in-progress UI, never a
+			// second Fork click that could create a duplicate.
+			if (error instanceof CommunityInstallInProgressError) {
+				setMessage(null)
+				return
+			}
+			const refreshed = await forkStateQuery.refetch()
+			const live = refreshed.data
+			if (
+				live &&
+				(live.state === 'installed' || live.state === 'adaptation_required')
+			) {
+				setMessage(null)
+				setOutcome(communityInstallOutcomeFromLiveFork(live))
+				return
+			}
+			if (live?.state === 'in_progress') {
+				setMessage(null)
+				return
+			}
+			setMessage(
+				error instanceof Error
+					? error.message
+					: 'Unable to install this public package.',
+			)
 		}
 	}
 	async function install() {

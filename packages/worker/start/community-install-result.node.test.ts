@@ -1,5 +1,6 @@
 import { expect, test, vi } from 'vitest'
 import {
+	CommunityInstallInProgressError,
 	communityInstallOutcomeFromLiveFork,
 	readCommunityInstallResult,
 	resolveCommunityInstallResult,
@@ -65,7 +66,7 @@ test('resolveCommunityInstallResult reconciles a lost Start envelope via live fo
 	expect(outcome.agentPrompt).toContain('@nstudio/tanstack-github-dashboard')
 })
 
-test('resolveCommunityInstallResult waits once when live fork is still in progress', async () => {
+test('resolveCommunityInstallResult waits while live fork is still in progress', async () => {
 	const loadForkState = vi
 		.fn()
 		.mockResolvedValueOnce({
@@ -83,11 +84,30 @@ test('resolveCommunityInstallResult waits once when live fork is still in progre
 		loadForkState,
 		waitMs,
 		inProgressPollMs: 1,
+		maxInProgressPolls: 3,
 	})
 	expect(waitMs).toHaveBeenCalledWith(1)
 	expect(loadForkState).toHaveBeenCalledTimes(2)
 	expect(outcome.status).toBe('adaptation_required')
 	expect(outcome.targetName).toBe('@nstudio/tanstack-github-dashboard')
+})
+
+test('resolveCommunityInstallResult keeps in_progress as non-failure (no retry)', async () => {
+	const loadForkState = vi.fn(async () => ({
+		state: 'in_progress' as const,
+		startedAt: '2026-11-06T21:15:00.000Z',
+	}))
+	const waitMs = vi.fn(async () => {})
+	await expect(
+		resolveCommunityInstallResult({
+			result: undefined,
+			loadForkState,
+			waitMs,
+			inProgressPollMs: 1,
+			maxInProgressPolls: 2,
+		}),
+	).rejects.toBeInstanceOf(CommunityInstallInProgressError)
+	expect(loadForkState).toHaveBeenCalledTimes(3)
 })
 
 test('resolveCommunityInstallResult keeps explicit server failures', async () => {

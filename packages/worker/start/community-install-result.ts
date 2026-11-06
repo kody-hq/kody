@@ -6,6 +6,15 @@ import type {
 
 /** Same cadence as `FORK_IN_PROGRESS_POLL_MS` — kept local to avoid importing the query module (serverFn) into this client helper. */
 const LOST_ENVELOPE_IN_PROGRESS_WAIT_MS = 2_000
+const LOST_ENVELOPE_IN_PROGRESS_MAX_POLLS = 5
+
+/** Lost Start envelope while live fork state is still `in_progress`. */
+export class CommunityInstallInProgressError extends Error {
+	constructor() {
+		super('Fork is still being created.')
+		this.name = 'CommunityInstallInProgressError'
+	}
+}
 
 /**
  * Normalize a website fork/install server-fn payload. After a successful fork
@@ -92,13 +101,15 @@ export function communityInstallOutcomeFromLiveFork(
  * Prefer the serverFn body when present. When Start resolves to `undefined`
  * (lost envelope after a committed write), reconcile through live fork state
  * instead of reporting a false failure — same rule as other Start mutations
- * (`docs/contributing/tanstack-start.md` Writes).
+ * (`docs/contributing/tanstack-start.md` Writes). Never treat a still-running
+ * fork as a hard failure (that would reopen Fork and risk a duplicate).
  */
 export async function resolveCommunityInstallResult(input: {
 	result: unknown
 	loadForkState: () => Promise<CommunityForkState>
 	waitMs?: (ms: number) => Promise<void>
 	inProgressPollMs?: number
+	maxInProgressPolls?: number
 }): Promise<CommunityInstallOutcome> {
 	if (isExplicitInstallFailure(input.result)) {
 		throw new Error(
@@ -113,13 +124,22 @@ export async function resolveCommunityInstallResult(input: {
 	const wait =
 		input.waitMs ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)))
 	const pollMs = input.inProgressPollMs ?? LOST_ENVELOPE_IN_PROGRESS_WAIT_MS
+	const maxPolls =
+		input.maxInProgressPolls ?? LOST_ENVELOPE_IN_PROGRESS_MAX_POLLS
 	let live = await input.loadForkState()
-	if (live.state === 'in_progress') {
+	for (
+		let attempt = 0;
+		live.state === 'in_progress' && attempt < maxPolls;
+		attempt += 1
+	) {
 		await wait(pollMs)
 		live = await input.loadForkState()
 	}
 	if (live.state === 'installed' || live.state === 'adaptation_required') {
 		return communityInstallOutcomeFromLiveFork(live)
+	}
+	if (live.state === 'in_progress') {
+		throw new CommunityInstallInProgressError()
 	}
 	throw new Error('Unable to install this public package.')
 }
