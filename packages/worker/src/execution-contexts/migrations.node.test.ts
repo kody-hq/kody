@@ -201,6 +201,9 @@ test('execution context tables exist with their columns and unique rules', () =>
 		'login_token_id',
 		'login_checked_at',
 		'team_id',
+		'paused_at',
+		'paused_by_user_id',
+		'pause_reason',
 	])
 	expect(columnNames(sqlite, 'execution_context_opt_ins')).toEqual([
 		'context_id',

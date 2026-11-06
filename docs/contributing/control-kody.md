@@ -25,6 +25,7 @@ npm run control-kody -- browse --path /account/organizations/new
 npm run control-kody -- map waiting
 npm run control-kody -- map --check
 npm run control-kody -- health --sha <commit>
+npm run control-kody -- health --origin https://kody.codes --sha <merge-sha> --wait
 npm run control-kody -- preview --pr 42 --check /@user-me/-/waiting
 npm run control-kody -- browse --origin <preview> --path /@user-me/pkg [--record] [--screenshot .tmp/page.png] [--color-scheme light|dark|both]
 npm run control-kody -- package-create --origin <preview> --package-name <leaf-or-@scope/leaf> [--head-ahead] [--org <slug>]
@@ -45,7 +46,8 @@ drift), origin `/health`, and local APP_DB. Playwright passes only when
 `health --sha` succeeds when `/health` `commitSha` equals the argument, uniquely
 starts with it (git short SHA, 7+ characters), or is a descendant that contains
 it (`git merge-base --is-ancestor`). A later main HEAD deploy still counts as
-the merge being live.
+the merge being live. `--wait` polls every 20 seconds until that is true
+(default 30 minutes, `--wait-minutes <n>`), so do not write sleep loops.
 
 ## Feature Map
 
@@ -62,11 +64,14 @@ committed tree drifts. Feature prefixes in
 only group that inventory — do not hand-maintain path lists.
 
 `map` prints the generated inventory (optionally filtered by feature id).
-`map --check` (and `npm run feature-map:check` in CI) fails when notes cite
-unknown routes, a required user-facing prefix has no notes (and no exemption),
-or a notes file is missing / orphaned. When you add a new user-facing area, add
-a short notes file and a prefix in the catalog; leaf routes under an existing
-prefix need no catalog edit.
+`verify <id>` runs every `npm run control-kody -- request GET|HEAD ...` line in
+that feature's notes against the resolved origin (add `--origin <preview>` for a
+PR preview) and prints one ok/FAIL line per check. Keep those lines runnable: a
+test parses every one. `map --check` (and `npm run feature-map:check` in CI)
+fails when notes cite unknown routes, a required user-facing prefix has no notes
+(and no exemption), or a notes file is missing / orphaned. When you add a new
+user-facing area, add a short notes file and a prefix in the catalog; leaf
+routes under an existing prefix need no catalog edit.
 
 After `login`, keep using `request` for HTML and JSON assertions. Do not `cat`
 the session cookie into `curl` or Python. `request --dump` writes the raw body

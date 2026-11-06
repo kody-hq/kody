@@ -14,6 +14,7 @@ import { setExperiment } from '#start/server/experiment-opt-in'
 import {
 	loadExecutionContextsPage,
 	putDesktopExecutionFirst,
+	runExecutionContextDaemonAction,
 } from '#start/server/execution-contexts'
 import { colors, radius, spacing } from '#universal/styles/tokens.ts'
 import {
@@ -28,6 +29,7 @@ import {
 import type {
 	DesktopExecutionBridge,
 	DesktopExecutionState,
+	DesktopMachineMenuCommand,
 } from '../desktop-shell.ts'
 import { onboardingQuery } from '../onboarding-query.ts'
 
@@ -35,11 +37,14 @@ const DesktopMachineContext = createContext<null | {
 	state: DesktopExecutionState | undefined
 	commands: (action: 'status' | 'on' | 'off') => Promise<void>
 	forget: () => void
-	open: () => void
+	open: (targetOrgSlug?: string | null) => void
 	toggle: () => Promise<void>
 	restart: (() => Promise<void>) | null
 	autoUpdate: ((enabled: boolean) => Promise<void>) | null
 	error: string | null
+	orgSlug: string | null
+	menuCommand: DesktopMachineMenuCommand | null
+	clearMenuCommand: () => void
 }>(null)
 
 const oneRunnerCopy =
@@ -70,6 +75,8 @@ export function DesktopExecutionProvider({
 	const [name, setName] = useState('')
 	const [replace, setReplace] = useState('')
 	const [setup, setSetup] = useState<SetupData | null>(null)
+	// A team org to attach this machine's personal registration to.
+	const [target, setTarget] = useState<string | null>(null)
 	const [busy, setBusy] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 	const dialog = useRef<HTMLDialogElement>(null)
@@ -78,9 +85,21 @@ export function DesktopExecutionProvider({
 	const enable = useServerFn(setExperiment)
 	const loadSetup = useServerFn(loadExecutionContextsPage)
 	const putFirst = useServerFn(putDesktopExecutionFirst)
+	const [menuCommand, setMenuCommand] =
+		useState<DesktopMachineMenuCommand | null>(null)
 	useEffect(() => {
 		setBridge(window.kodyDesktop?.execution ?? null)
 	}, [])
+	useEffect(() => {
+		if (!bridge?.takeMenuCommand) return
+		const take = () =>
+			void bridge
+				.takeMenuCommand?.()
+				.then((command) => command && setMenuCommand(command))
+				.catch(() => {})
+		take()
+		return bridge.onMenuCommand?.(take)
+	}, [bridge])
 	const machine = useQuery({
 		queryKey: ['desktop-machine', actorKey],
 		queryFn: () => bridge!.getState(),
@@ -153,11 +172,14 @@ export function DesktopExecutionProvider({
 			await enable({
 				data: { experiment: 'execution-contexts', enabled: true },
 			})
-			const signedIn = machine.data?.cliReady
-				? machine.data
-				: await bridge.signIn()
+			const signedIn =
+				machine.data?.cliReady || (target && machine.data?.contextId)
+					? machine.data
+					: await bridge.signIn()
 			client.setQueryData(['desktop-machine', actorKey], signedIn)
-			const page = await loadSetup({ data: { orgSlug, search: [] } })
+			const page = await loadSetup({
+				data: { orgSlug: target ?? orgSlug, search: [] },
+			})
 			if (!page.payload.enabled)
 				throw new Error('Execution contexts could not be enabled. Try again.')
 			setSetup(page.payload)
@@ -168,9 +190,11 @@ export function DesktopExecutionProvider({
 	async function connect() {
 		if (!bridge || !orgSlug || !username) return
 		await run(async () => {
-			const registered = await bridge.connect(name)
-			client.setQueryData(['desktop-machine', actorKey], registered)
-			if (!registered.contextId)
+			// Attaching reuses the personal registration as is.
+			const registered = target ? machine.data : await bridge.connect(name)
+			if (!target)
+				client.setQueryData(['desktop-machine', actorKey], registered)
+			if (!registered?.contextId)
 				throw new Error('The machine could not be registered. Try again.')
 			try {
 				await putFirst({
@@ -178,18 +202,21 @@ export function DesktopExecutionProvider({
 						orgSlug,
 						username,
 						contextId: registered.contextId,
+						...(target ? { targetOrgSlug: target } : {}),
 						...(needsReplacement && replace
 							? { replaceContextId: replace }
 							: {}),
 					},
 				})
 			} catch (error) {
-				const current = await loadSetup({ data: { orgSlug, search: [] } })
+				const current = await loadSetup({
+					data: { orgSlug: target ?? orgSlug, search: [] },
+				})
 				if (current.payload.enabled) setSetup(current.payload)
 				setReplace('')
 				throw error
 			}
-			await bridge.completeOnboarding()
+			if (!target) await bridge.completeOnboarding()
 			await client.invalidateQueries({ queryKey: ['shell'] })
 			await client.invalidateQueries({ queryKey: ['page'] })
 			await router.invalidate()
@@ -207,6 +234,9 @@ export function DesktopExecutionProvider({
 		bridge && username
 			? {
 					state: machine.data,
+					orgSlug,
+					menuCommand,
+					clearMenuCommand: () => setMenuCommand(null),
 					commands: async (action: 'status' | 'on' | 'off') => {
 						if (action === 'status') {
 							try {
@@ -228,12 +258,14 @@ export function DesktopExecutionProvider({
 					},
 					forget: () => {
 						setError(null)
+						setTarget(null)
 						setStep('forget')
 						setOpened(true)
 					},
 					error: error ?? machine.data?.error ?? machine.error?.message ?? null,
-					open: () => {
+					open: (targetOrgSlug?: string | null) => {
 						setError(null)
+						setTarget(targetOrgSlug ?? null)
 						setStep('intro')
 						setOpened(true)
 					},
@@ -291,7 +323,9 @@ export function DesktopExecutionProvider({
 							: step === 'done'
 								? 'This machine is ready'
 								: step === 'machine'
-									? 'Enable this machine'
+									? target
+										? `Add this machine to @${target}`
+										: 'Enable this machine'
 									: 'Run Kody on this machine'}
 					</h2>
 					{step === 'forget' ? (
@@ -344,12 +378,22 @@ export function DesktopExecutionProvider({
 								disabled={busy}
 								onClick={() => void prepare()}
 							>
-								{busy ? 'Opening browser…' : 'Continue in browser'}
+								{target
+									? busy
+										? 'Loading…'
+										: 'Continue'
+									: busy
+										? 'Opening browser…'
+										: 'Continue in browser'}
 							</button>
 						</>
 					) : step === 'machine' ? (
 						<>
-							{existingContext ? (
+							{target ? (
+								<p>
+									{`${name} will be first in your execution chain in @${target}. It keeps its personal setup, and your other entries in @${target} stay in their current order.`}
+								</p>
+							) : existingContext ? (
 								<p>
 									The kody CLI already registered this machine
 									{existingContext.name ? ` as ${existingContext.name}` : ''}.
@@ -369,11 +413,13 @@ export function DesktopExecutionProvider({
 									/>
 								</label>
 							)}
-							<p>
-								This machine will be first in your personal execution chain.
-								Your other entries and cloud fallback settings stay in their
-								current order.
-							</p>
+							{target ? null : (
+								<p>
+									This machine will be first in your personal execution chain.
+									Your other entries and cloud fallback settings stay in their
+									current order.
+								</p>
+							)}
 							{needsReplacement ? (
 								<label css={{ display: 'grid', gap: spacing.sm }}>
 									Your chain is full. Replace an entry
@@ -403,23 +449,26 @@ export function DesktopExecutionProvider({
 								css={buttonCss}
 								disabled={
 									busy ||
-									!/^[a-z0-9][a-z0-9-]{0,62}$/.test(name) ||
+									(!target && !/^[a-z0-9][a-z0-9-]{0,62}$/.test(name)) ||
 									(!!needsReplacement && !replace)
 								}
 								onClick={() => void connect()}
 							>
 								{busy
 									? 'Enabling…'
-									: existingContext
-										? 'Use this machine’s existing registration'
-										: 'Enable this machine'}
+									: target
+										? `Add to @${target}`
+										: existingContext
+											? 'Use this machine’s existing registration'
+											: 'Enable this machine'}
 							</button>
 						</>
 					) : (
 						<>
 							<p>
-								This machine is first in your execution chain. You can pause or
-								resume it from Execution contexts.
+								This machine is first in your execution chain
+								{target ? ` in @${target}` : ''}. You can pause or resume it
+								from Execution contexts.
 							</p>
 							<button
 								type="button"
@@ -451,7 +500,12 @@ export function useDesktopMachine() {
 	return useContext(DesktopMachineContext)
 }
 
-export function DesktopMachinePanel() {
+/** `orgSlug`: the team org this page is for, if not the personal workspace. */
+export function DesktopMachinePanel({
+	orgSlug: selectedOrgSlug = null,
+}: {
+	orgSlug?: string | null
+} = {}) {
 	const machine = useDesktopMachine()
 	const contextId = machine?.state?.contextId
 	const commands = useRef(machine?.commands)
@@ -462,8 +516,62 @@ export function DesktopMachinePanel() {
 		const interval = setInterval(() => void commands.current?.('status'), 15000)
 		return () => clearInterval(interval)
 	}, [contextId])
+	const orgSlug = machine?.orgSlug ?? null
+	const loadPage = useServerFn(loadExecutionContextsPage)
+	const daemonAction = useServerFn(runExecutionContextDaemonAction)
+	const server = useQuery({
+		queryKey: ['desktop-machine-server', orgSlug, contextId],
+		queryFn: async () => {
+			const page = await loadPage({ data: { orgSlug: orgSlug!, search: [] } })
+			return page.payload.enabled
+				? (page.payload.contexts.find((context) => context.id === contextId) ??
+						null)
+				: null
+		},
+		enabled: Boolean(orgSlug && contextId),
+		refetchInterval: 15000,
+		retry: false,
+	})
+	const [routingBusy, setRoutingBusy] = useState(false)
+	const [routingError, setRoutingError] = useState<string | null>(null)
+	const [notice, setNotice] = useState<string | null>(null)
+	const [logLines, setLogLines] = useState<Array<string> | null>(null)
+	async function daemon(action: DesktopMachineMenuCommand) {
+		if (!orgSlug || !contextId) return
+		setRoutingBusy(true)
+		setRoutingError(null)
+		setNotice(null)
+		try {
+			const result = (await daemonAction({
+				data: { orgSlug, contextId, action },
+			})) as
+				| { ok: true; message: string | null; lines: Array<string> | null }
+				| { ok: false; message?: string }
+			if (!result.ok)
+				setRoutingError(result.message ?? `Could not ${action} this machine.`)
+			else if (action === 'logs') setLogLines(result.lines ?? [])
+			else if (action === 'update') setNotice(result.message)
+		} catch (error) {
+			setRoutingError(error instanceof Error ? error.message : String(error))
+		} finally {
+			setRoutingBusy(false)
+			await server.refetch()
+		}
+	}
+	const menuCommand = machine?.menuCommand ?? null
+	const clearMenuCommand = machine?.clearMenuCommand
+	const serverReady = server.isFetched
+	const daemonRef = useRef(daemon)
+	daemonRef.current = daemon
+	useEffect(() => {
+		if (!menuCommand || !serverReady) return
+		clearMenuCommand?.()
+		void daemonRef.current(menuCommand)
+	}, [menuCommand, serverReady, clearMenuCommand])
 	if (!machine) return null
 	const state = machine.state
+	const serverContext = server.data ?? null
+	const pausedInKody = serverContext?.paused ?? null
 	return (
 		<section
 			aria-labelledby="desktop-machine-heading"
@@ -491,11 +599,13 @@ export function DesktopMachinePanel() {
 					<p>
 						{state.name}
 						{state.contextId
-							? state.runner?.label
-								? ` · ${state.runner.label}`
-								: state.running
-									? ' · Runner running'
-									: ' · Runner paused'
+							? pausedInKody
+								? ` · Runner paused${pausedInKody.by ? ` by @${pausedInKody.by}` : ''}`
+								: state.runner?.label
+									? ` · ${state.runner.label}`
+									: state.running
+										? ' · Runner running'
+										: ' · Runner paused'
 							: state.existingContext
 								? ' · Registered with the kody CLI'
 								: ' · Not set up'}
@@ -520,6 +630,39 @@ export function DesktopMachinePanel() {
 							{state.running ? 'Pause execution' : 'Resume execution'}
 						</button>
 					) : null}
+					{pausedInKody ? (
+						<p
+							data-testid="desktop-machine-paused"
+							css={{
+								color: colors.textMuted,
+								borderLeft: `3px solid ${colors.warning}`,
+								paddingLeft: spacing.sm,
+							}}
+						>
+							Paused in Kody
+							{pausedInKody.reason ? `: ${pausedInKody.reason}` : ''}. Chains
+							skip this machine and host commands are refused until it is
+							resumed. The runner stays connected.
+						</p>
+					) : null}
+					{serverContext &&
+					(pausedInKody ? serverContext.canResume : serverContext.canPause) ? (
+						<button
+							type="button"
+							css={{ ...secondaryCss, marginLeft: spacing.sm }}
+							disabled={state.busy || routingBusy}
+							onClick={() => void daemon(pausedInKody ? 'resume' : 'pause')}
+							data-testid="desktop-machine-routing"
+						>
+							{routingBusy
+								? pausedInKody
+									? 'Resuming…'
+									: 'Pausing…'
+								: pausedInKody
+									? 'Resume routing'
+									: 'Pause routing'}
+						</button>
+					) : null}
 					{state.contextId && state.runner?.canRestart && machine.restart ? (
 						<button
 							type="button"
@@ -530,11 +673,54 @@ export function DesktopMachinePanel() {
 							Restart runner
 						</button>
 					) : null}
+					{serverContext?.canControlDaemon &&
+					serverContext.status === 'online' ? (
+						<button
+							type="button"
+							css={{ ...secondaryCss, marginLeft: spacing.sm }}
+							disabled={state.busy || routingBusy}
+							onClick={() => void daemon('update')}
+							data-testid="desktop-machine-update"
+						>
+							Update runner now
+						</button>
+					) : null}
+					{serverContext?.canReadDaemonLogs ? (
+						<button
+							type="button"
+							css={{ ...secondaryCss, marginLeft: spacing.sm }}
+							disabled={routingBusy}
+							onClick={() => void daemon('logs')}
+							data-testid="desktop-machine-logs"
+						>
+							{logLines ? 'Refresh runner log' : 'Show runner log'}
+						</button>
+					) : null}
+					{notice ? <p role="status">{notice}</p> : null}
+					{logLines ? (
+						<pre
+							data-testid="desktop-machine-log"
+							css={{
+								maxHeight: '16rem',
+								overflow: 'auto',
+								padding: spacing.sm,
+								background: colors.surface,
+								border: `1px solid ${colors.border}`,
+								borderRadius: radius.sm,
+								fontSize: '0.8125rem',
+								whiteSpace: 'pre-wrap',
+							}}
+						>
+							{logLines.length ? logLines.join('\n') : 'No log lines yet.'}
+						</pre>
+					) : null}
 					<button
 						type="button"
 						css={{ ...buttonCss, marginLeft: state.contextId ? spacing.sm : 0 }}
 						disabled={state.busy}
-						onClick={machine.open}
+						onClick={() =>
+							machine.open(state.contextId ? selectedOrgSlug : null)
+						}
 					>
 						{state.contextId
 							? 'Manage setup'
@@ -586,6 +772,7 @@ export function DesktopMachinePanel() {
 				</button>
 			) : null}
 			{machine.error ? <p role="alert">{machine.error}</p> : null}
+			{routingError ? <p role="alert">{routingError}</p> : null}
 		</section>
 	)
 }

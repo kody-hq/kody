@@ -4,8 +4,6 @@ import { toAdminMeasuredDurableObjectDuration } from '#universal/durable-object-
 import {
 	attributeDurableObjectActiveTime,
 	buildDurableObjectOwnerMap,
-	durableObjectDurationStatementsPerBatch,
-	durableObjectDurationUpsertRowsPerStatement,
 	runDurableObjectDurationAttribution,
 	type DurableObjectDurationAttributionEnv,
 } from './durable-object-duration-attribution.ts'
@@ -315,14 +313,10 @@ test('the lane writes only changed rows in bounded multi-row batches', async () 
 	const deletes = statements.filter(({ sql }) =>
 		sql.includes('DELETE FROM durable_object_duration_daily'),
 	)
-	// 299 changed rows instead of 300 single-row statements plus a day DELETE.
-	expect(upserts).toHaveLength(
-		Math.ceil(299 / durableObjectDurationUpsertRowsPerStatement),
-	)
+	// 299 changed rows at 24 rows/statement → 13 upserts; 10 statements/batch.
+	expect(upserts).toHaveLength(13)
 	for (const batch of batches) {
-		expect(batch.length).toBeLessThanOrEqual(
-			durableObjectDurationStatementsPerBatch,
-		)
+		expect(batch.length).toBeLessThanOrEqual(10)
 	}
 	for (const { params } of statements) {
 		expect(params.length).toBeLessThanOrEqual(100)

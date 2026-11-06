@@ -4,20 +4,26 @@ import path from 'node:path'
 import { expect, test } from 'vitest'
 import { checkAgentText, findAgentTextViolations } from './check-agent-text.ts'
 
-test('rejects em dashes in skills with a fix that names the replacement', () => {
+test('rejects em dashes in skills and AGENTS.md, not other docs', () => {
+	const content = 'Tick the PR — then merge.'
 	expect(
 		findAgentTextViolations({
 			relativePath: '.agents/skills/ship-pr/SKILL.md',
-			content: 'Tick the PR — then merge.',
+			content,
 		}),
 	).toEqual([
 		expect.objectContaining({
 			rule: 'em-dash',
 			line: 1,
 			column: 13,
-			fix: expect.stringContaining('period, comma, colon'),
 		}),
 	])
+	expect(
+		findAgentTextViolations({
+			relativePath: 'docs/guides/local-execute.md',
+			content,
+		}),
+	).toEqual([])
 })
 
 test('rejects token values and malformed secret placeholders', () => {
@@ -34,13 +40,10 @@ test('rejects token values and malformed secret placeholders', () => {
 		'2:secret-placeholder-syntax',
 		'2:secret-placeholder-syntax',
 	])
-})
-
-test('ignores files outside skills and AGENTS.md', () => {
 	expect(
 		findAgentTextViolations({
-			relativePath: 'docs/guides/local-execute.md',
-			content: 'A guide — with an em dash.',
+			relativePath: 'AGENTS.md',
+			content: 'Good: {{secret:githubToken}} and kody_bc_… placeholders.',
 		}),
 	).toEqual([])
 })

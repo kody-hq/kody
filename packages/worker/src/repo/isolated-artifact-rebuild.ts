@@ -3,7 +3,10 @@ import { errorCauseChainIncludes } from '@kody-internal/shared/error-message.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import type { PublishedPackageArtifactBuildTarget } from '#worker/package-runtime/published-bundle-artifacts.ts'
 import { isDurableObjectIsolateResourceLimitResetMessage } from '#worker/sentry-options.ts'
-import { isolatedRunnerResourceLimitAdvice } from './isolated-runner-limit-message.ts'
+import {
+	isolatedRunnerResourceLimitAdvice,
+	publishOutsideCloudAdvice,
+} from './isolated-runner-limit-message.ts'
 
 /**
  * Heavy published-package artifact rebuilds run in fresh, throwaway
@@ -217,7 +220,7 @@ export function createIsolatedArtifactRebuildRunner(
 				const message =
 					`Artifact rebuild for ${describeTargets(request.targets)} ` +
 					"exceeded the isolated rebuild runner's memory or CPU limits " +
-					`even on its own. ${isolatedRunnerResourceLimitAdvice()}`
+					`even on its own. ${isolatedRunnerResourceLimitAdvice()} ${publishOutsideCloudAdvice()}`
 				return {
 					ok: false,
 					message,

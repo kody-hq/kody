@@ -35,9 +35,9 @@ The context's runtime allowlist, if you set one, narrows what runs on it may
 call. Three things are added, and only when you allow them:
 
 - **Host folders.** Folders you allow with `kody context policy allow` (and that
-  the context's grant includes) are mounted for the run.
-- **Local network.** With egress set to `public-and-lan`, the run can reach
-  devices on your network.
+  the context's server grant includes) are mounted for the run.
+- **Local network.** With the server grant's egress set to `public-and-lan`
+  (`kody context grant lan on`), the run can reach devices on your network.
 - **Host commands.** After you turn them on at the machine, runs with the
   command grant can run shell commands there (see
   [Run commands on the machine](#run-commands-on-the-machine)).
@@ -68,11 +68,27 @@ credential.
    `--no-install` to skip the service and run `kody daemon` in a terminal
    instead, or `--yes` to accept the defaults without prompts.
 
-4. Optional: allow folders runs may use (read-only unless you pass `rw`):
+4. Optional: allow folders runs may use (read-only unless you pass `rw`). A
+   folder needs both layers, so run both commands:
 
    ```sh
    kody context policy allow ~/projects --mode rw
+   kody context grant allow ~/projects --mode rw
    ```
+
+   - **Local policy** (`kody context policy`) lives on this machine, and only
+     the machine owner changes it. It is the ceiling for what any run here may
+     touch.
+   - **Server grant** (`kody context grant`, or `executionContextUpdate`
+     `grant.fs` / `grant.egress`) lives in Kody, and anyone with Contribute or
+     Manage on the context can change it. It says what runs on this context may
+     ask for.
+
+   A run gets only what both allow; the narrower mode wins. `policy allow` never
+   changes the server grant. `kody context list`, `kody context policy show`,
+   and `kody context grant show` point out a folder that only one layer allows,
+   with the command that fixes it. The local network has only the server layer
+   (`kody context grant lan on|off`).
 
    On Windows use native paths, for example
    `kody context policy allow C:\Users\you\projects --mode rw`. Runs see the
@@ -110,6 +126,9 @@ the context, so the daemon starts at login or boot and restarts after a crash:
 | `kody daemon logs` (`--lines <n>`, `--follow`) | Shows the daemon log                                 |
 | `kody daemon restart`                          | Restarts after runs in flight finish                 |
 | `kody daemon start` / `stop`                   | Starts or stops the service (or the running daemon)  |
+| `kody daemon pause` / `resume` (`--context`)   | Server-side pause: chains skip it, from anywhere     |
+| `kody daemon update` (`--context`)             | Updates now (same as `kody update` on this machine)  |
+| `kody daemon config [show\|set ...]`           | Concurrency cap and auto-update, from anywhere       |
 | `kody daemon install`                          | Installs the service, or repairs it                  |
 | `kody daemon uninstall` (`--unregister`)       | Removes the service and offers to revoke the context |
 | `kody daemon auto-update on\|off\|status`      | Auto-update switch for every daemon on this machine  |
@@ -145,6 +164,79 @@ app share one lock per context, so a second daemon refuses (a service waits)
 instead of replacing the first in a loop. The desktop app adopts an existing
 service and registration instead of starting or registering a second one; see
 [one runner per machine](../use/execution-contexts.md#one-runner-per-machine).
+
+### Stop, pause, and remote control
+
+`kody daemon stop` stops the service on this machine until `kody daemon start`
+or the next login or boot. It does not unregister: the context shows offline and
+chains skip it. systemd (`RestartPreventExitStatus`), launchd
+(`SuccessfulExit=false`) and the Windows task's launcher do not restart a daemon
+that exits after a stop. `kody daemon status` then says
+`stopped (kody daemon stop, <time>)` and exits 0; a service that crashed or
+failed to start says `not running (crashed or failed to start)` and exits 1.
+
+`kody daemon pause` is a server-side pause in Kody. It works from any machine
+and while the context's machine is offline, and it survives reboots. While
+paused, chains skip the context (`was paused`, never queued), queued runs fail,
+and host commands are refused. The daemon stays connected, so status, update and
+resume keep working. `kody daemon resume` (or **Resume** on the context page)
+turns routing back on. Pass `--reason` to show why, and `--cancel-runs` to also
+cancel runs in flight. The context's operator and people with Manage on it can
+pause and resume it; org owners can pause (not resume) any context attached to
+their org, as a kill switch.
+
+With `--remote`, or with `--context` naming a context that is not on this
+machine, `status`, `restart`, `update` and `logs` go through Kody to the
+connected daemon over its signed connection. They fail at once with
+`context_offline` when the daemon is not connected; a stopped daemon cannot be
+started remotely. Restart needs a background service (or the desktop app) to
+bring the daemon back, so a terminal daemon refuses it (`not_service_managed`).
+Remote logs are for the operator only, at most 500 lines. The same operations
+are capabilities (`executionContextPause`, `executionContextResume`,
+`executionContextDaemonStatus`, `executionContextDaemonRestart`,
+`executionContextDaemonUpdate`, `executionContextDaemonConfig`,
+`executionContextDaemonLogs`) and Open API routes under
+`/v1/execution-contexts/{id}/pause`, `/resume` and `/daemon`. The context page's
+**Daemon** card and **This machine** in the desktop app use them too.
+
+### Service environment: proxies and custom CAs
+
+The service file only carries what kody needs (`PATH`, the service marker and
+`XDG_CONFIG_HOME`). To give the daemon more variables, set them with kody so
+every manager (launchd, systemd, Task Scheduler) gets them and reinstalls and
+upgrades keep them:
+
+```sh
+kody daemon env set NODE_OPTIONS=--use-system-ca
+kody daemon env list
+kody daemon env unset NODE_OPTIONS
+kody daemon install --env NODE_EXTRA_CA_CERTS=/path/to/corp-ca.pem   # repeatable
+```
+
+They are stored in the CLI config (`execution-context-policy.json`), so every
+service kody writes on this machine gets them. `env set` and `env unset` also
+rewrite the installed service file and restart its daemon (pick one with
+`--context` when the machine has several). kody owns `PATH`,
+`KODY_DAEMON_SERVICE` and `XDG_CONFIG_HOME`, so they cannot be set. The values
+are written to the service file in plain text: do not put secrets there. Keep
+API keys and tokens in [Kody credentials](./credentials.md) instead.
+
+`kody daemon status` ignores these variables when it checks whether the service
+file is outdated. A variable added to the service file by hand is kept on every
+reinstall (never stripped) and `status` and `install` warn about it; move it to
+`kody daemon env set` so kody manages it.
+
+Behind a TLS-intercepting proxy, or a server with a private CA, HTTPS fetches
+from a run fail certificate checks. The run gets an error that names the problem
+(for example `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`, `SELF_SIGNED_CERT_IN_CHAIN` or
+`CERT_HAS_EXPIRED`) and the fix, never the certificate itself. If the proxy's CA
+is in the OS trust store (Keychain on macOS, the Windows certificate store, or
+`/etc/ssl` on Linux), run `kody daemon env set NODE_OPTIONS=--use-system-ca`
+(Node 22.15+). Otherwise point `NODE_EXTRA_CA_CERTS` at a PEM file with the CA.
+The daemon trusts the same CAs as Node for both its own Kody connection and the
+fetches runs make. For `kody execute --local`, set the same variable in your
+shell. An expired or wrong-host certificate has to be fixed on the server or
+proxy.
 
 Revoking a context stops its daemon for good: it does not reconnect, and the
 service disables itself instead of restarting. Remove the leftover service with
@@ -427,6 +519,38 @@ Turn it off the same way. It is only for your account.
 - [Execution contexts field reference](../use/execution-contexts.md)
 - [Local CLI execute](./local-execute.md), which runs code on your machine for
   one call without a daemon
+
+## Try publishing from a context
+
+Publishing from a context is part of the Execution contexts experiment. The one
+switch at
+[kody.codes/account/experiments](https://kody.codes/account/experiments) turns
+on both execution contexts and publishing from them; turning it off turns both
+off.
+
+1. Turn on **Execution contexts** at
+   [Experiments](https://kody.codes/account/experiments).
+2. Run `kody connect` on the machine that should build your packages.
+3. Publish on it: `kody package publish @you/pkg --context my-box`. Use
+   `--context cloud` to build on Kody cloud instead. A named context never falls
+   back.
+4. Optional: bind a package to one machine in `package.json`:
+
+   ```json
+   { "kody": { "publish": { "execution": { "context": "my-box" } } } }
+   ```
+
+   A bound publish that names no context builds only there. When that machine is
+   offline, busy, or its build fails, the publish fails with an error that says
+   how to pass `--context` or change the binding. It never falls back to your
+   chain or Kody cloud.
+
+With no `--context` and no binding, a publish follows your chain like `execute`:
+the contexts you operate, in order, then Kody cloud unless your chain is strict.
+`kody package publish @you/pkg --build local` builds on the machine you run the
+CLI on instead, after pushing HEAD. With the experiment off, every publish
+builds on Kody cloud. More detail:
+[publish large packages](./publish-large-packages.md).
 
 ## Publish builds
 

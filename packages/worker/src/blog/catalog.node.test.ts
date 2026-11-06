@@ -168,17 +168,30 @@ test('every catalog post uses the fixed taxonomy and the client slug list', () =
 	expect(getFeaturedBlogPost()?.category).not.toBe('updates')
 })
 
-test('list summaries carry headline image fields for index thumbnails', () => {
-	const posts = listBlogPosts()
-	const withImage = posts.find((post) => post.image !== null)!
-	expect(toBlogPostSummary(withImage)).toMatchObject({
-		slug: withImage.slug,
-		image: withImage.image,
-		imageAlt: withImage.imageAlt,
+test('list summaries keep headline image fields and drop body', () => {
+	const withArt = parseBlogPostMarkdown(
+		'with-art',
+		markdown(
+			`title: With art\n${baseFrontmatter}\nimage: /images/openclaw-2-needs-a-home.webp\nimageAlt: Kody hugs OpenClaw.`,
+		),
+	)
+	expect(toBlogPostSummary(withArt)).toEqual({
+		slug: 'with-art',
+		title: 'With art',
+		date: '2026-08-20',
+		updated: null,
+		description: 'Nope',
+		category: 'essays',
+		series: null,
+		readingMinutes: 1,
+		image: '/images/openclaw-2-needs-a-home.webp',
+		imageAlt: 'Kody hugs OpenClaw.',
 	})
-	expect(withImage.imageAlt).toBeTruthy()
-	const withoutImage = posts.find((post) => post.image === null)!
-	expect(toBlogPostSummary(withoutImage)).toMatchObject({
+	const plain = parseBlogPostMarkdown(
+		'plain',
+		markdown(`title: Plain\n${baseFrontmatter}`),
+	)
+	expect(toBlogPostSummary(plain)).toMatchObject({
 		image: null,
 		imageAlt: null,
 	})

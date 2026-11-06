@@ -1,8 +1,13 @@
-import { execFileSync, type ExecFileSyncOptions } from 'node:child_process'
+import {
+	execFileSync,
+	spawnSync,
+	type ExecFileSyncOptions,
+} from 'node:child_process'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { chmod, mkdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { checkInstalledLockfile } from './check-installed-lockfile.ts'
 import {
 	createDefaultEnsureDevDeps,
@@ -107,8 +112,9 @@ const usageLines = [
 	'  request         Authenticated HTTP as the current session',
 	'  preview         PR preview smoke (forwards flags to preview:manual-test)',
 	'  browse          Open headed Chromium already signed in (reuse seed cookie)',
-	'  health          GET /health and optionally assert commitSha',
+	'  health          GET /health and optionally assert commitSha (--wait polls until live)',
 	'  map             Print generated route inventory or a feature notes file; --check for drift',
+	'  verify <id>     Run every request check in a feature notes file (GET/HEAD only); add --origin for a preview',
 	'  package-create  Create a stub saved package via MCP (preview data)',
 	'  execute         Run an MCP execute module as the seed user',
 	'  search          Run MCP search as the seed user',
@@ -141,6 +147,8 @@ const usageLines = [
 	'  --entity <ref>       Optional search entity ref',
 	'  --limit <n>          Optional search result limit',
 	'  --org <slug>         Bind execute, search, api, and package-create to this org',
+	'  --wait               health: poll every 20s until /health serves --sha or a descendant',
+	'  --wait-minutes <n>   health --wait: give up after n minutes (default 30)',
 	'  --help               Print this help',
 	'',
 	'preview forwards its flags to preview:manual-test (--pr, --request, --check).',
@@ -184,6 +192,7 @@ export type ControlKodyCommand =
 	| 'browse'
 	| 'health'
 	| 'map'
+	| 'verify'
 	| 'package-create'
 	| 'execute'
 	| 'search'
@@ -200,7 +209,10 @@ export type ControlKodyOptions = {
 	password: string | null
 	skipLogin: boolean
 	sha: string | null
+	wait: boolean
+	waitMinutes: number
 	featureId: string | null
+	verifyPassthrough: Array<string>
 	check: boolean
 	request: SessionRequestSpec | null
 	body: string | null
@@ -271,7 +283,10 @@ export function parseControlArgs(argv: Array<string>): ControlKodyOptions {
 		password: null,
 		skipLogin: false,
 		sha: null,
+		wait: false,
+		waitMinutes: defaultHealthWaitMinutes,
 		featureId: null,
+		verifyPassthrough: [],
 		check: false,
 		request: null,
 		body: null,
@@ -321,6 +336,7 @@ export function parseControlArgs(argv: Array<string>): ControlKodyOptions {
 		'browse',
 		'health',
 		'map',
+		'verify',
 		'package-create',
 		'execute',
 		'search',
@@ -365,6 +381,14 @@ export function parseControlArgs(argv: Array<string>): ControlKodyOptions {
 			}
 			options.request = parsed
 		}
+		return options
+	}
+
+	if (options.command === 'verify') {
+		const positional: Array<string> = []
+		parseSharedFlags(rest, options, positional)
+		options.featureId = positional[0] ?? null
+		options.verifyPassthrough = rest.filter((arg) => arg !== positional[0])
 		return options
 	}
 
@@ -450,6 +474,21 @@ function parseSharedFlags(
 			}
 			case '--sha': {
 				options.sha = requireValue(argv[index + 1], '--sha')
+				index += 1
+				break
+			}
+			case '--wait': {
+				options.wait = true
+				break
+			}
+			case '--wait-minutes': {
+				const raw = requireValue(argv[index + 1], '--wait-minutes')
+				if (!/^[1-9]\d*$/.test(raw)) {
+					throw new ControlKodyError(
+						'--wait-minutes must be a positive integer (minutes)',
+					)
+				}
+				options.waitMinutes = Number(raw)
 				index += 1
 				break
 			}
@@ -1218,6 +1257,57 @@ export async function readHealth(input: {
 	}
 }
 
+const defaultHealthWaitMinutes = 30
+const healthWaitIntervalMs = 20_000
+
+export async function waitForHealth(input: {
+	origin: string
+	expectedSha: string
+	timeoutMs: number
+	intervalMs?: number
+	read?: (expectedSha: string) => ReturnType<typeof readHealth>
+	sleep?: (ms: number) => Promise<void>
+	now?: () => number
+	onPoll?: (line: string) => void
+}) {
+	const read =
+		input.read ??
+		((expectedSha: string) => readHealth({ origin: input.origin, expectedSha }))
+	const sleep =
+		input.sleep ??
+		((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
+	const now = input.now ?? Date.now
+	const intervalMs = input.intervalMs ?? healthWaitIntervalMs
+	const deadline = now() + input.timeoutMs
+	for (;;) {
+		let result: Awaited<ReturnType<typeof readHealth>>
+		try {
+			result = await read(input.expectedSha)
+		} catch (error) {
+			result = {
+				ok: false,
+				status: 0,
+				origin: input.origin,
+				commitSha: null,
+				detail: `fetch failed: ${error instanceof Error ? error.message : String(error)}`,
+			}
+		}
+		if (result.ok) return result
+		const remainingMs = deadline - now()
+		if (remainingMs <= 0) {
+			const minutes = Math.round(input.timeoutMs / 60_000)
+			return {
+				...result,
+				detail: `${result.detail}. Still not live after ${minutes} min. Check the Deploy run for this commit: gh run list --workflow '🚀 Deploy (production)' --limit 5 (a newer merge's deploy also counts once /health serves a descendant).`,
+			}
+		}
+		input.onPoll?.(
+			`waiting for ${input.expectedSha.slice(0, 9)} on ${input.origin}: ${result.detail}`,
+		)
+		await sleep(Math.min(intervalMs, remainingMs))
+	}
+}
+
 export function readCookieFile(
 	cookieFile: string,
 	origin: string,
@@ -1315,6 +1405,33 @@ export function repoRootFromHere(here = import.meta.dirname) {
 
 export function defaultRoutesPath(root: string) {
 	return path.join(root, 'packages/worker/start/routeTree.gen.ts')
+}
+
+/**
+ * The `npm run control-kody -- request GET|HEAD ...` lines of a feature notes
+ * file, as argv after `request`. Mutating methods are skipped: verify is safe
+ * to run against any origin.
+ */
+export function featureVerifyRequests(markdown: string) {
+	const prefix = 'npm run control-kody -- request '
+	const checks: Array<Array<string>> = []
+	for (const raw of markdown.split('\n')) {
+		const line = raw.trim()
+		if (!line.startsWith(prefix)) continue
+		const argv = splitShellWords(line.slice(prefix.length))
+		const method = (argv[0] ?? '').toUpperCase()
+		if (method === 'GET' || method === 'HEAD') checks.push(argv)
+	}
+	return checks
+}
+
+function splitShellWords(input: string) {
+	const words: Array<string> = []
+	const pattern = /'([^']*)'|"([^"]*)"|(\S+)/g
+	for (const match of input.matchAll(pattern)) {
+		words.push(match[1] ?? match[2] ?? match[3] ?? '')
+	}
+	return words
 }
 
 export function defaultFeaturesDir(root: string) {
@@ -1640,10 +1757,22 @@ async function runCommand(options: ControlKodyOptions) {
 		}
 		case 'health': {
 			const origin = await resolveOrigin(options)
-			const result = await readHealth({
-				origin,
-				expectedSha: options.sha,
-			})
+			if (options.wait && !options.sha) {
+				throw new ControlKodyError(
+					'health --wait needs --sha <merge-sha> (the commit to wait for)',
+				)
+			}
+			const result = options.wait
+				? await waitForHealth({
+						origin,
+						expectedSha: options.sha!,
+						timeoutMs: options.waitMinutes * 60_000,
+						onPoll: (poll) => console.error(poll),
+					})
+				: await readHealth({
+						origin,
+						expectedSha: options.sha,
+					})
 			if (options.json) printJson(result)
 			else
 				console.log(`${result.ok ? 'ok' : 'FAIL'} ${origin} ${result.detail}`)
@@ -1872,6 +2001,51 @@ async function runCommand(options: ControlKodyOptions) {
 				console.log(formatMcpCallReport(report))
 			}
 			return 0
+		}
+		case 'verify': {
+			const root = repoRootFromHere()
+			const feature = options.featureId
+				? findFeature(featureCatalog, options.featureId)
+				: null
+			if (!feature) {
+				throw new ControlKodyError(
+					`verify needs a feature id${options.featureId ? ` (unknown: ${options.featureId})` : ''}. List them: npm run control-kody -- map`,
+				)
+			}
+			const notes = readFileSync(
+				path.join(defaultFeaturesDir(root), feature.file),
+				'utf8',
+			)
+			const checks = featureVerifyRequests(notes)
+			if (checks.length === 0) {
+				throw new ControlKodyError(
+					`${feature.file} has no \`npm run control-kody -- request GET ...\` lines to verify. Add one under Seed / reach.`,
+				)
+			}
+			let failed = 0
+			for (const check of checks) {
+				const child = spawnSync(
+					process.execPath,
+					[
+						fileURLToPath(import.meta.url),
+						'request',
+						...check,
+						...options.verifyPassthrough,
+					],
+					{ encoding: 'utf8' },
+				)
+				const ok = child.status === 0
+				if (!ok) failed += 1
+				console.log(`${ok ? 'ok  ' : 'FAIL'} request ${check.join(' ')}`)
+				if (!ok) {
+					const output = `${child.stdout}${child.stderr}`.trim()
+					if (output) console.log(output.replace(/^/gm, '      '))
+				}
+			}
+			console.log(
+				`verify ${feature.id}: ${checks.length - failed}/${checks.length} checks passed`,
+			)
+			return failed === 0 ? 0 : 1
 		}
 		case 'map': {
 			const root = repoRootFromHere()

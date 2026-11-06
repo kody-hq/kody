@@ -3,6 +3,12 @@
  * in local workerd against `--target prod|mock`.
  */
 
+import {
+	createEgressGateSource,
+	egressGateModuleName,
+	egressNeedsPrivateNetwork,
+	localExecuteEgressPolicy,
+} from './local-egress.js'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import { rmSync } from 'node:fs'
@@ -282,6 +288,11 @@ export async function runLocalPackageModule(
 			join(workDir, localWorkerModuleNames.runtimeFlatAlias),
 			createRuntimeFlatAliasSource(),
 		)
+		const egressPolicy = localExecuteEgressPolicy(input.allowPrivateNetwork)
+		await writeFile(
+			join(workDir, egressGateModuleName),
+			createEgressGateSource(),
+		)
 		const configPath = join(workDir, 'config.capnp')
 		await writeFile(
 			configPath,
@@ -289,7 +300,8 @@ export async function runLocalPackageModule(
 				bridgePort: bridge.port,
 				files,
 				packageModules,
-				allowPrivateNetwork: input.allowPrivateNetwork,
+				allowPrivateNetwork: egressNeedsPrivateNetwork(egressPolicy),
+				egress: { policy: egressPolicy, gateFile: egressGateModuleName },
 			}),
 		)
 

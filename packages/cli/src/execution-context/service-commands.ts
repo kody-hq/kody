@@ -9,7 +9,7 @@ import { readLocalPolicy, setLocalAutoUpdateEnabled } from './fs-access.js'
 import { killProcessTree } from '../process-tree.js'
 import { describeHolder, lockPathFor, runnerLockHolder } from './runner-lock.js'
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 import { setTimeout as sleep } from 'node:timers/promises'
 import {
@@ -38,9 +38,19 @@ import {
 	servicePaths,
 	serviceStatus,
 	uninstallService,
+	writeJson,
 	unitFor,
 	unsupportedPlatformMessage,
 } from './service.js'
+import {
+	handAddedWarning,
+	looksSecret,
+	readServiceEnvSync,
+	saveServiceEnvAssignments,
+	serviceEnvPlan,
+	updateServiceEnv,
+} from './service-env.js'
+import { validateServiceEnvKey } from './service-env-keys.js'
 
 export type ServiceCommandEnv = {
 	apiUrl: string
@@ -142,10 +152,21 @@ function expectedUnit(
 	const existing = readText(paths.unitPath)
 	const context = readStoredContext(env.apiUrl, ecid)
 	const concurrent = maxConcurrent ?? maxConcurrentInUnit(existing)
+	const envPlan = serviceEnvPlan({
+		existing,
+		configured: readServiceEnvSync(),
+	})
 	return {
 		paths,
 		existing,
+		envPlan,
 		unit: unitFor({
+			...(Object.keys(envPlan.extraEnv).length > 0
+				? { extraEnv: envPlan.extraEnv }
+				: {}),
+			...(envPlan.managedKeys.length > 0
+				? { managedEnvKeys: envPlan.managedKeys }
+				: {}),
 			ecid,
 			contextName: context?.name ?? ecid,
 			apiUrl: env.apiUrl,
@@ -254,12 +275,15 @@ export async function installDaemonService(
 		)
 	}
 	await ensureServiceKey(env, input.ecid, input.keyStorage)
-	const { paths, unit } = expectedUnit(
+	const { paths, unit, envPlan } = expectedUnit(
 		env,
 		input.ecid,
 		manager,
 		input.maxConcurrent,
 	)
+	if (envPlan.handAdded.length > 0) {
+		env.write(`${handAddedWarning(envPlan.handAdded)}\n`)
+	}
 	const before = runtimeState(paths.statePath)
 	const result = installService({
 		unit,
@@ -276,6 +300,7 @@ export async function installDaemonService(
 		ecid: input.ecid,
 		cliVersion: env.clientVersion,
 		expectedUnit: unit,
+		ignoreEnvKeys: envPlan.ignoreKeys,
 		keyWrap: storedKeyWrap(env.apiUrl, input.ecid),
 		...(env.run ? { run: env.run } : {}),
 		...(env.platform ? { platform: env.platform } : {}),
@@ -392,8 +417,16 @@ async function startOrStopRunner(
 				? `${JSON.stringify({ ok: true, ecid: input.ecid, message: text, ...extra })}\n`
 				: `${text}\n`,
 		)
+	const stopRequestedPath = input.manager
+		? servicePaths({
+				apiUrl: env.apiUrl,
+				ecid: input.ecid,
+				manager: input.manager,
+			}).stopRequestedPath
+		: null
 	if (input.start) {
 		if (installed && input.manager) {
+			if (stopRequestedPath) rmSync(stopRequestedPath, { force: true })
 			startService({
 				manager: input.manager,
 				ecid: input.ecid,
@@ -421,6 +454,8 @@ async function startOrStopRunner(
 			}).statePath,
 			...(env.run ? { run: env.run } : {}),
 		})
+		if (stopRequestedPath)
+			writeJson(stopRequestedPath, { at: new Date().toISOString() })
 		// The service may be stopped while a terminal or desktop daemon holds
 		// the lock: stop that one too, since it is what runs this context.
 		const other =
@@ -453,6 +488,77 @@ async function startOrStopRunner(
 function stopDaemonProcess(pid: number) {
 	if (process.platform === 'win32') killProcessTree(pid, 'win32')
 	else process.kill(pid, 'SIGTERM')
+}
+
+/** `kody daemon env [list] | set KEY=VALUE... | unset KEY...`. */
+export async function runDaemonEnvCommand(
+	env: ServiceCommandEnv,
+	input: { action: string | undefined; args: Array<string>; context?: string },
+) {
+	const usage =
+		'Usage: kody daemon env [list] | set KEY=VALUE [KEY=VALUE...] | unset KEY [KEY...] [--context <name>] [--json]'
+	const action = input.action ?? 'list'
+	if (action === 'set' || action === 'unset') {
+		if (input.args.length === 0) throw new Error(usage)
+		if (action === 'set') {
+			const keys = await saveServiceEnvAssignments(input.args)
+			for (const key of keys.filter(looksSecret)) {
+				env.write(
+					`${key} looks like a secret. The service file stores it in plain text; keep secrets in Kody credentials instead.\n`,
+				)
+			}
+		} else {
+			for (const key of input.args) validateServiceEnvKey(key)
+			await updateServiceEnv({ unset: input.args })
+		}
+		const applied = applyServiceEnv(env, input.context)
+		if (!env.json) {
+			env.write(
+				`${action === 'set' ? 'Saved' : 'Removed'} ${input.args.map((arg) => arg.split('=')[0]).join(', ')} for the kody daemon service. ${applied}\n`,
+			)
+		}
+	} else if (action !== 'list') {
+		throw new Error(usage)
+	}
+	const configured = readServiceEnvSync()
+	if (env.json) {
+		env.write(`${JSON.stringify({ env: configured }, null, 2)}\n`)
+		return 0
+	}
+	if (action === 'list') {
+		const keys = Object.keys(configured)
+		env.write(
+			keys.length === 0
+				? 'No service environment set. Add one with: kody daemon env set KEY=VALUE\n'
+				: `${keys.map((key) => `${key}=${configured[key]}`).join('\n')}\n`,
+		)
+	}
+	return 0
+}
+
+/** Rewrites an installed service file with the configured env and restarts it. */
+function applyServiceEnv(env: ServiceCommandEnv, context?: string) {
+	const manager = serviceManagerFor(env.platform)
+	const ecid = localContextId(env.apiUrl, context)
+	if (!manager || !ecid) return 'It applies when you run: kody daemon install'
+	const { paths, unit, envPlan } = expectedUnit(env, ecid, manager)
+	if (!existsSync(paths.unitPath)) {
+		return 'It applies when you run: kody daemon install'
+	}
+	if (envPlan.handAdded.length > 0) {
+		env.write(`${handAddedWarning(envPlan.handAdded)}\n`)
+	}
+	const result = installService({
+		unit,
+		paths,
+		ecid,
+		restart: true,
+		...(env.run ? { run: env.run } : {}),
+	})
+	for (const warning of result.warnings) env.write(`${warning}\n`)
+	return result.changed
+		? 'Rewrote the service file and restarted the daemon so it uses it.'
+		: 'The service file already had it.'
 }
 
 /** `kody daemon auto-update on|off|status`. */
@@ -514,14 +620,23 @@ export async function runDaemonServiceCommand(
 	const ecid = localContextId(env.apiUrl, input.context)
 	const manager = serviceManagerFor(env.platform)
 	if (input.sub === 'status') {
+		const planned =
+			ecid && manager && !ephemeral(env)
+				? expectedUnit(env, ecid, manager)
+				: null
+		if (
+			planned?.existing &&
+			planned.envPlan.handAdded.length > 0 &&
+			!env.json
+		) {
+			env.write(`${handAddedWarning(planned.envPlan.handAdded)}\n`)
+		}
 		const status = serviceStatus({
 			apiUrl: env.apiUrl,
 			ecid,
 			cliVersion: env.clientVersion,
-			expectedUnit:
-				ecid && manager && !ephemeral(env)
-					? expectedUnit(env, ecid, manager).unit
-					: null,
+			expectedUnit: planned?.unit ?? null,
+			...(planned ? { ignoreEnvKeys: planned.envPlan.ignoreKeys } : {}),
 			keyWrap: ecid ? storedKeyWrap(env.apiUrl, ecid) : null,
 			...(env.run ? { run: env.run } : {}),
 			...(env.platform ? { platform: env.platform } : {}),
@@ -608,6 +723,7 @@ export async function runDaemonServiceCommand(
 		)
 	}
 	if (input.sub === 'restart') {
+		rmSync(paths.stopRequestedPath, { force: true })
 		const before = runtimeState(paths.statePath)
 		restartService({
 			manager,

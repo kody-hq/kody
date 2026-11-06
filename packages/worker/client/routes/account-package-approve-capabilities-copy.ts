@@ -68,6 +68,142 @@ export function credentialEntryKey(entry: CapabilityEntry) {
 export const noCapabilitiesMessage =
 	'This package uses no credentials or other capabilities.'
 
+export type UnboundNeed =
+	AccountPackageApproveCapabilitiesLoaderData['unboundNeeds'][number]
+
+/** Whether the bound entries are only part of what the tree declares. */
+export function unboundNeedsIntro(hasBoundCredentials: boolean) {
+	return hasBoundCredentials
+		? 'It also declares these credentials, which nothing fills yet. Approving does not bind them.'
+		: 'It declares these credentials, but none has a credential bound yet. Approving does not bind them.'
+}
+
+function declaringDependency(item: { from?: string; via: Array<string> }) {
+	if (item.from) return item.from
+	return item.via.length > 1 ? (item.via.at(-1) ?? null) : null
+}
+
+export function unboundNeedSummary(need: UnboundNeed) {
+	const what = need.secretProviderPackage
+		? 'Secret provider'
+		: need.provider
+			? `${need.provider} credential`
+			: 'Credential'
+	const dependency = declaringDependency(need)
+	return `${what} · ${dependency ? `declared by its dependency ${dependency}` : 'declared by this package'}`
+}
+
+export function unboundNeedState(need: UnboundNeed) {
+	if (need.invalid) return `Invalid declaration: ${need.invalid}`
+	if (need.secretProviderPackage) {
+		return `Filled by your ${need.secretProviderPackage} secret provider binding, not a saved credential`
+	}
+	return 'No credential bound yet'
+}
+
+const manifestFieldLabels: Record<string, string> = {
+	secretMounts: 'Secret mounts',
+	secretProvider: 'Secret provider',
+	subscriptions: 'Event subscriptions',
+	emits: 'Emitted events',
+	jobs: 'Scheduled jobs',
+	webhooks: 'Webhooks',
+}
+
+export function manifestFieldLabel(field: string) {
+	return manifestFieldLabels[field] ?? field
+}
+
+export function declaredFieldSummary(item: {
+	field: string
+	via: Array<string>
+}) {
+	const dependency = declaringDependency(item)
+	return dependency
+		? `Its dependency ${dependency} declares kody.${item.field}.`
+		: `This package declares kody.${item.field}.`
+}
+
+type SelfPublishReason = NonNullable<
+	AccountPackageApproveCapabilitiesLoaderData['selfPublishBlocker']
+>['reasons'][number]
+
+function namedNeeds(needs: NonNullable<SelfPublishReason['needs']>) {
+	return needs
+		.map((need) =>
+			need.description.trim()
+				? `${need.key} (${need.description.trim().replace(/[.!?]$/, '')})`
+				: need.key,
+		)
+		.join(', ')
+}
+
+/** Plain-language line for one reason self-publish does not apply. */
+export function selfPublishReasonText(
+	reason: SelfPublishReason,
+	rootSourceId: string,
+) {
+	const who =
+		reason.sourceId && reason.sourceId !== rootSourceId
+			? 'A dependency'
+			: 'This package'
+	switch (reason.kind) {
+		case 'credential_needs': {
+			const count = reason.needCount ?? reason.needs?.length ?? 1
+			const needs =
+				reason.needs && reason.needs.length > 0
+					? `: ${namedNeeds(reason.needs)}`
+					: ''
+			const executor = reason.executorNeedCount ?? 0
+			const visitors =
+				executor > 0 && executor >= count
+					? ' Visitors supply these, but going internet-visible still needs your approval.'
+					: ''
+			return `${who} declares ${count === 1 ? 'a credential need' : `${String(count)} credential needs`}${needs}.${visitors}`
+		}
+		case 'credential_entry': {
+			const label = reason.name ?? 'a credential'
+			const dependency =
+				reason.via && reason.via.length > 1 ? reason.via.at(-1) : null
+			return dependency
+				? `Its dependency ${dependency} can use ${label}.`
+				: `It can use ${label}.`
+		}
+		case 'storage_entry': {
+			if (reason.assumed) {
+				return 'It is assumed to use package storage because its published source could not be read.'
+			}
+			const matches = reason.matches ?? []
+			if (matches.length === 0) return 'It can save and read its own data.'
+			const shown = matches
+				.slice(0, 3)
+				.map(
+					(match) => `${match.path}:${String(match.line)} (${match.pattern})`,
+				)
+				.join(', ')
+			const more =
+				matches.length > 3 ? ` and ${String(matches.length - 3)} more` : ''
+			return `It uses package storage at ${shown}${more}.`
+		}
+		case 'manifest_field':
+			return reason.field
+				? `${who} declares ${manifestFieldLabel(reason.field).toLowerCase()} (kody.${reason.field}).`
+				: `${who} declares a capability.`
+		case 'unpublished':
+			return `${who} has no published version.`
+		case 'stale_dependencies':
+			return 'A dependency was published again since this package was. Publish this package again.'
+		case 'not_audited':
+			return 'No passing security audit is recorded for this version.'
+		case 'audit_concerns':
+			return 'The security audit for this version raised concerns.'
+		case 'not_permitted':
+			return 'You do not have permission to publish this package.'
+		default:
+			return 'Something in this package needs your approval.'
+	}
+}
+
 export function storageSummary(entry: CapabilityEntry) {
 	const dependency = reachingDependency(entry)
 	return dependency

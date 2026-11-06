@@ -41,6 +41,8 @@ export const ecpServerFrameTypes = [
 	'run.cancel',
 	'run.result.ack',
 	'grant.update',
+	'state.update',
+	'control.request',
 	'revoke',
 	'error',
 ] as const
@@ -56,6 +58,7 @@ export const ecpContextFrameTypes = [
 	'run.cancel.ack',
 	'grant.ack',
 	'command.finished',
+	'control.result',
 	'error',
 ] as const
 

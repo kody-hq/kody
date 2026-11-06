@@ -118,6 +118,38 @@ test('registering with a pre-PR 2 login prints the exact kody login command', as
 	)
 })
 
+test('registerContext names a connect-phase fetch failure', async () => {
+	const { publicKeyJwk, privateKeyJwk } = await generateContextKey()
+	const fetchFn = (async () => {
+		throw new TypeError('fetch failed', {
+			cause: Object.assign(new Error('ECONNREFUSED'), { code: 'ECONNREFUSED' }),
+		})
+	}) as typeof fetch
+	await assert.rejects(
+		registerContext({
+			apiUrl: 'https://api.kody.test',
+			token: 'kody_at_test',
+			name: 'my-machine',
+			publicKeyJwk,
+			privateKey: await importContextKey(privateKeyJwk),
+			thumbprint: await ed25519JwkThumbprint(publicKeyJwk),
+			capabilities: {},
+			client: { name: 'kody-cli', version: '0.0.0' },
+			fetchFn,
+		}),
+		(error: Error & { sent?: unknown }) => {
+			assert.match(
+				error.message,
+				/Could not reach the Kody API at https:\/\/api\.kody\.test/,
+			)
+			assert.match(error.message, /fetch failed: ECONNREFUSED/)
+			assert.match(error.message, /The request was not sent/)
+			assert.equal(error.sent, false)
+			return true
+		},
+	)
+})
+
 test('registering with a scoped credential keeps the server message', async () => {
 	const { publicKeyJwk, privateKeyJwk } = await generateContextKey()
 	const message =

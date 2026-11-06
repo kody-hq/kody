@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import { ecpDefaultGrant } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { runChainShapeError } from './chain-rules.ts'
 import {
+	describeAttempts,
 	describeCloudFallback,
 	describeRanOn,
 	historyRanOn,
@@ -480,4 +481,34 @@ test('host folders stay with the operator: shared runs skip fs and outdated daem
 			sharedRun: true,
 		}),
 	).toBeNull()
+})
+
+test('fs and lan skips name the server grant layer and the command that turns it on', () => {
+	const text = describeAttempts([
+		{
+			target: 'ec_box',
+			name: 'wsl-box',
+			outcome: 'skipped',
+			reason: 'no_fs',
+		},
+		{
+			target: 'ec_lan',
+			name: 'lan-box',
+			outcome: 'skipped',
+			reason: 'no_lan',
+		},
+	])
+	expect(text).toContain('grant.fs is off on the server')
+	expect(text).toContain('kody context grant allow <folder> --context wsl-box')
+	expect(text).toContain('grant.egress is not public-and-lan')
+	expect(text).toContain('kody context grant lan on --context lan-box')
+})
+
+test('a paused context is described as paused, not offline', () => {
+	expect(
+		describeAttempts([
+			{ target: 'ec_a', name: 'laptop', outcome: 'paused' },
+			{ target: 'ec_b', name: 'desk', outcome: 'offline' },
+		]),
+	).toContain('laptop: paused')
 })

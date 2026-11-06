@@ -18,9 +18,9 @@ import {
 	type RepoCheckStep,
 } from './isolated-runner-limit-message.ts'
 import {
-	formatLargestNonRuntimePaths,
-	largestNonRuntimePaths,
-	type LargePathHint,
+	formatPublishSizeHints,
+	publishSizeHints,
+	type PublishSizeHints,
 } from './publish-size-hints.ts'
 
 /**
@@ -258,7 +258,7 @@ export function createIsolatedCheckPhaseRunner(
  */
 export function authoringChecksResourceLimitMessage(
 	step: RepoCheckStep | null = null,
-	largestPaths: Array<LargePathHint> = [],
+	sizeHints: PublishSizeHints | null = null,
 ) {
 	const where = step ? ` during ${repoCheckStepLabel(step)}` : ''
 	return [
@@ -267,7 +267,7 @@ export function authoringChecksResourceLimitMessage(
 			'the same limits, so it is likely to fail the same way. ' +
 			resourceLimitVarianceNote,
 		repoCheckStepResourceLimitAdvice(step),
-		formatLargestNonRuntimePaths(largestPaths),
+		formatPublishSizeHints(sizeHints),
 	]
 		.filter(Boolean)
 		.join(' ')
@@ -381,7 +381,7 @@ export async function runAuthoringChecksInIsolate(input: {
 							ok: false,
 							message: authoringChecksResourceLimitMessage(
 								step,
-								largestNonRuntimePaths({ files: input.files }),
+								publishSizeHints({ files: input.files }),
 							),
 						},
 					],

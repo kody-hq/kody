@@ -22,6 +22,11 @@ import {
 import { persistPublishedBundleArtifact } from '#worker/package-runtime/published-bundle-artifacts.ts'
 import { persistPublishedSourceSnapshot } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
+import { createHostIntegrationAuthority } from '#mcp/capabilities/integrations/host-integration-authority.ts'
+import { claimedPackageStamp } from '#worker/credentials/package-stamp.ts'
+import { runCapabilityProxyAuthenticatedFetch } from '#worker/open-api/capability-proxy-authenticated-fetch.ts'
+import type { ApiInvocationContext } from '#worker/open-api/context.ts'
+import { signLocalExecutePackageBinding } from '#worker/package-runtime/local-execute-package-binding.ts'
 
 /**
  * An integration locked to one package must work when hosted execute
@@ -267,7 +272,11 @@ async function publishPackage(
 	return { packageId, name }
 }
 
-async function connectLockedIntegration(person: Person, packageId: string) {
+async function connectLockedIntegration(
+	person: Person,
+	packageId: string,
+	options: { refreshToken?: string } = {},
+) {
 	await upsertIntegration({
 		env,
 		userId: person.ownerId,
@@ -275,7 +284,7 @@ async function connectLockedIntegration(person: Person, packageId: string) {
 			name: INTEGRATION,
 			tokenUrl: 'https://upstream.example.com/oauth/token',
 			apiBaseUrl: 'https://upstream.example.com',
-			flow: 'confidential',
+			flow: options.refreshToken ? 'pkce' : 'confidential',
 			clientId: 'dummy-client-id',
 			requiredHosts: ['upstream.example.com'],
 			authorization: {
@@ -292,6 +301,7 @@ async function connectLockedIntegration(person: Person, packageId: string) {
 		userId: person.ownerId,
 		name: INTEGRATION,
 		accessToken: DUMMY_TOKEN,
+		...(options.refreshToken ? { refreshToken: options.refreshToken } : {}),
 		refreshPolicy: 'required',
 		audit: null,
 	})
@@ -654,5 +664,142 @@ test(
 
 		await expectConcurrentCallsSettle(person, helper.name)
 		await expectConcurrentCallsSettle(person, helper.name)
+	},
+)
+
+const FRESH_TOKEN = 'dummy-refreshed-integration-token'
+
+/** Upstream that rejects the stored token until a refresh replaces it. */
+function installExpiringUpstream() {
+	const seen: Array<{ path: string; authorization: string | null }> = []
+	const realFetch = globalThis.fetch
+	vi.stubGlobal(
+		'fetch',
+		async (input: RequestInfo | URL, init?: RequestInit) => {
+			const request = new Request(input as RequestInfo, init)
+			const url = new URL(request.url)
+			if (url.hostname !== 'upstream.example.com') {
+				return realFetch(input as RequestInfo, init)
+			}
+			const authorization = request.headers.get('authorization')
+			seen.push({ path: url.pathname, authorization })
+			if (url.pathname === '/oauth/token') {
+				return Response.json({
+					access_token: FRESH_TOKEN,
+					token_type: 'Bearer',
+					expires_in: 3600,
+				})
+			}
+			return authorization === `Bearer ${FRESH_TOKEN}`
+				? Response.json({ ok: true })
+				: new Response('expired', { status: 401 })
+		},
+	)
+	return seen
+}
+
+function localContext(person: Person): ApiInvocationContext {
+	const callerContext = caller(person)
+	if (!callerContext.user) throw new Error('Caller context needs a user')
+	return {
+		env,
+		callerContext: { ...callerContext, user: callerContext.user },
+		principal: { kind: 'mcp' },
+		getFeatureFlags: async () => ({
+			'demo-indicator': false,
+			profiles: false,
+			'mcp-skills-extension': false,
+			'mcp-events-extension': false,
+			'package-credential-suppliers': false,
+			'repo-push-queue': false,
+			'execution-contexts': false,
+			'publish-offload': false,
+			'credential-need-enforcement': false,
+			'credential-allowed-packages-safety-window': false,
+		}),
+	}
+}
+
+async function localBinding(person: Person, packageId: string) {
+	const { callerContext } = localContext(person)
+	return await signLocalExecutePackageBinding({
+		env,
+		packageId,
+		subject: {
+			org: person.ownerId,
+			actor: callerContext.request?.actor?.userId ?? null,
+		},
+	})
+}
+
+function localFetch(person: Person, packageBinding?: string) {
+	return runCapabilityProxyAuthenticatedFetch({
+		ctx: localContext(person),
+		args: [
+			{
+				providerName: INTEGRATION,
+				...(packageBinding ? { packageId: packageBinding } : {}),
+				request: { url: 'https://upstream.example.com/locked' },
+			},
+		],
+	})
+}
+
+test(
+	'local execute refreshes a locked integration as the verified package',
+	{ timeout: 120_000 },
+	async () => {
+		silenceIncidentalRuntimeWarnings()
+		const person = await createPerson()
+		const allowed = await publishPackage(person, 'allowed')
+		await connectLockedIntegration(person, allowed.packageId, {
+			refreshToken: 'dummy-refresh-token',
+		})
+		const seen = installExpiringUpstream()
+
+		const response = await localFetch(
+			person,
+			await localBinding(person, allowed.packageId),
+		)
+
+		expect(response.status).toBe(200)
+		expect(seen).toEqual([
+			{ path: '/locked', authorization: `Bearer ${DUMMY_TOKEN}` },
+			{ path: '/oauth/token', authorization: null },
+			{ path: '/locked', authorization: `Bearer ${FRESH_TOKEN}` },
+		])
+	},
+)
+
+test(
+	'a locked integration refresh is still refused for another or no package',
+	{ timeout: 120_000 },
+	async () => {
+		silenceIncidentalRuntimeWarnings()
+		const person = await createPerson()
+		const allowed = await publishPackage(person, 'allowed')
+		const other = await publishPackage(person, 'other')
+		await connectLockedIntegration(person, allowed.packageId, {
+			refreshToken: 'dummy-refresh-token',
+		})
+		const seen = installExpiringUpstream()
+		const refreshAs = (packageId: string | null) =>
+			createHostIntegrationAuthority({
+				env,
+				callerContext: caller(person),
+				packageStamp: claimedPackageStamp(packageId),
+			}).refresh(INTEGRATION)
+
+		await expect(refreshAs(other.packageId)).rejects.toThrow(INTEGRATION)
+		await expect(refreshAs(null)).rejects.toThrow(
+			'limited to specific packages',
+		)
+		await expect(
+			localFetch(person, await localBinding(person, other.packageId)),
+		).rejects.toThrow(INTEGRATION)
+		await expect(localFetch(person)).rejects.toThrow(
+			'limited to specific packages',
+		)
+		expect(seen).toEqual([])
 	},
 )

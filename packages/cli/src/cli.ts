@@ -25,6 +25,7 @@ import {
 	type CredentialCallMapInput,
 } from './credential-call-map.js'
 import { defaultApiUrl, defaultMcpUrl } from './defaults.js'
+import { buildCommandHelp } from './command-help.js'
 import { buildUsage } from './help.js'
 import { orgSlugFromFlag, resolveOrgSlug } from './org-resolve.js'
 import { refreshGitCredentialHelperPinIfNeeded } from './setup-git.js'
@@ -169,6 +170,7 @@ const cliFlagOptions = {
 	context: { type: 'string' },
 	mode: { type: 'string' },
 	'max-concurrent': { type: 'string' },
+	env: { type: 'string', multiple: true },
 	install: { type: 'boolean' },
 	'no-install': { type: 'boolean' },
 	'key-storage': { type: 'string' },
@@ -176,6 +178,9 @@ const cliFlagOptions = {
 	follow: { type: 'boolean', short: 'f' },
 	unregister: { type: 'boolean' },
 	'no-unregister': { type: 'boolean' },
+	reason: { type: 'string' },
+	'cancel-runs': { type: 'boolean' },
+	remote: { type: 'boolean' },
 	fallback: { type: 'string' },
 	requires: { type: 'string' },
 	chain: { type: 'string' },
@@ -202,7 +207,7 @@ const cliFlagOptions = {
 	'disallow-changes-despite-unmappable-credentials': { type: 'boolean' },
 } as const
 
-const cliFlagNames = Object.keys(cliFlagOptions)
+export const cliFlagNames = Object.keys(cliFlagOptions)
 
 function parseKnown(args: Array<string>) {
 	const { tokens, values, positionals } = parseArgs({
@@ -334,8 +339,17 @@ export async function runCli(
 					? parsed.values['mcp-url']
 					: undefined,
 		})
-		if (parsed.values.help && parsed.command !== 'help') {
-			write(buildUsage({ mcpUrl: helpMcpUrl }))
+		if (
+			parsed.values.help &&
+			(parsed.command !== 'help' || argv[0] === 'help')
+		) {
+			const helpPath =
+				parsed.command === 'help'
+					? parsed.positionals.length > 0
+						? parsed.positionals
+						: ['help']
+					: [parsed.command, ...parsed.positionals]
+			write(buildCommandHelp(helpPath) ?? buildUsage({ mcpUrl: helpMcpUrl }))
 			return 0
 		}
 		return await dispatch(parsed, write, writeErr)
@@ -486,7 +500,11 @@ async function dispatch(
 
 	switch (parsed.command) {
 		case 'help':
-			write(buildUsage({ mcpUrl }))
+			write(
+				(parsed.positionals.length > 0
+					? buildCommandHelp(parsed.positionals)
+					: null) ?? buildUsage({ mcpUrl }),
+			)
 			return 0
 		case 'context':
 		case 'chain':
@@ -517,6 +535,9 @@ async function dispatch(
 					...(parsed.values['max-concurrent'] !== undefined
 						? { maxConcurrent: String(parsed.values['max-concurrent']) }
 						: {}),
+					...(Array.isArray(parsed.values.env)
+						? { env: parsed.values.env.map(String) }
+						: {}),
 					...(parsed.values.yes === true ? { yes: true } : {}),
 					...(parsed.values['no-install'] === true
 						? { install: false }
@@ -530,6 +551,13 @@ async function dispatch(
 						? { lines: parsed.values.lines }
 						: {}),
 					...(parsed.values.follow === true ? { follow: true } : {}),
+					...(typeof parsed.values.reason === 'string'
+						? { reason: parsed.values.reason }
+						: {}),
+					...(parsed.values['cancel-runs'] === true
+						? { cancelRuns: true }
+						: {}),
+					...(parsed.values.remote === true ? { remote: true } : {}),
 					...(parsed.values['no-unregister'] === true
 						? { unregister: false }
 						: parsed.values.unregister === true

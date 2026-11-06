@@ -18,7 +18,7 @@ import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {DesktopExecutionProvider, DesktopMachinePanel} from './packages/worker/start/components/desktop-execution.tsx';
 const client = new QueryClient({defaultOptions:{queries:{retry:false}}});
 window.refreshFixture = () => client.invalidateQueries();
-createRoot(document.getElementById('root')).render(<QueryClientProvider client={client}><DesktopExecutionProvider actorKey="jane" username="jane" orgSlug="jane" pathname="/@jane"><DesktopMachinePanel/></DesktopExecutionProvider></QueryClientProvider>);
+createRoot(document.getElementById('root')).render(<QueryClientProvider client={client}><DesktopExecutionProvider actorKey="jane" username="jane" orgSlug="jane" pathname="/@jane"><DesktopMachinePanel orgSlug={window.fixture.panelOrg ?? null}/></DesktopExecutionProvider></QueryClientProvider>);
 `,
 			resolveDir: root,
 			loader: 'tsx',
@@ -62,7 +62,7 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 										? 'export const onboardingQuery = () => ({queryKey:["onboarding"],queryFn:async()=>({payload:{needsOnboarding:window.fixture.needsOnboarding}})});'
 										: args.path.endsWith('experiment-opt-in')
 											? 'export const setExperiment = async()=>{};'
-											: 'export const loadExecutionContextsPage = async()=>({payload:window.fixture.setup}); export const putDesktopExecutionFirst = async(input)=>{window.fixture.puts.push(input.data); if(window.fixture.failChain){window.fixture.failChain=false;throw new Error("Your chain changed. Try again.")}};',
+											: 'export const loadExecutionContextsPage = async(input)=>{window.fixture.loads.push(input.data.orgSlug); return {payload:window.fixture.setup}}; export const runExecutionContextDaemonAction = async()=>({ok:true,message:null,lines:null}); export const putDesktopExecutionFirst = async(input)=>{window.fixture.puts.push(input.data); if(window.fixture.failChain){window.fixture.failChain=false;throw new Error("Your chain changed. Try again.")}};',
 					}))
 				},
 			},
@@ -84,12 +84,13 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 			needsOnboarding = false,
 			full = false,
 			existing = false,
+			teamOrg = null,
 		) {
 			await page.goto('about:blank')
 			await page.setContent('<div id="root"></div>')
 			await page.addStyleTag({ content: styles })
 			await page.evaluate(
-				({ native, needsOnboarding, full, existing }) => {
+				({ native, needsOnboarding, full, existing, teamOrg }) => {
 					const state = {
 						name: 'my-mac',
 						platform: 'darwin',
@@ -115,6 +116,7 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 						needsOnboarding,
 						state,
 						puts: [],
+						loads: [],
 						logins: 0,
 						registers: 0,
 						setup: {
@@ -134,6 +136,26 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 								strict: false,
 							},
 						},
+					}
+					if (teamOrg) {
+						Object.assign(state, {
+							contextId: 'ec_mac',
+							hasSetup: true,
+							running: true,
+							onboardingSeen: true,
+						})
+						window.fixture.panelOrg = teamOrg
+						Object.assign(window.fixture.setup, {
+							orgSlug: teamOrg,
+							personalOrg: false,
+							chain: {
+								entries: [
+									{ kind: 'context', id: 'ec_build' },
+									{ kind: 'cloud' },
+								],
+								strict: false,
+							},
+						})
 					}
 					if (native)
 						window.kodyDesktop = {
@@ -223,7 +245,7 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 							},
 						}
 				},
-				{ native, needsOnboarding, full, existing },
+				{ native, needsOnboarding, full, existing, teamOrg },
 			)
 			await page.addScriptTag({ content: bundled.outputFiles[0].text })
 		}
@@ -414,9 +436,65 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 			.click()
 		await expect(page.getByText('Automatic runner updates: Off')).toBeVisible()
 		await page.emulateMedia({ colorScheme: 'light' })
+		// Manage setup on a team org page attaches the personal registration
+		// there and leaves this app's personal setup as it is.
+		await mount(true, false, false, false, 'acme')
+		await page
+			.getByRole('button', { name: 'Manage setup', exact: true })
+			.click()
+		await page.getByRole('button', { name: 'Continue', exact: true }).click()
+		await expect(
+			page.getByRole('heading', { name: 'Add this machine to @acme' }),
+		).toBeVisible()
+		await expect(page.getByLabel('Machine name')).toHaveCount(0)
+		await expect(page.getByRole('dialog')).toContainText(
+			'keeps its personal setup',
+		)
+		for (const colorScheme of ['light', 'dark']) {
+			await page.emulateMedia({ colorScheme })
+			await page.screenshot({
+				path: resolve(
+					root,
+					`artifacts/desktop-machine-attach-org-${colorScheme}.png`,
+				),
+			})
+		}
+		await page.emulateMedia({ colorScheme: 'light' })
+		await page
+			.getByRole('button', { name: 'Add to @acme', exact: true })
+			.click()
+		await expect(
+			page.getByRole('heading', { name: 'This machine is ready', exact: true }),
+		).toBeVisible()
+		await expect(page.getByRole('dialog')).toContainText(
+			'first in your execution chain in @acme',
+		)
+		assert.deepEqual(
+			await page.evaluate(() => ({
+				puts: window.fixture.puts,
+				setupLoads: window.fixture.loads.filter((org) => org !== 'jane'),
+				logins: window.fixture.logins,
+				registers: window.fixture.registers,
+				state: window.fixture.state.contextId,
+			})),
+			{
+				puts: [
+					{
+						orgSlug: 'jane',
+						username: 'jane',
+						contextId: 'ec_mac',
+						targetOrgSlug: 'acme',
+					},
+				],
+				setupLoads: ['acme'],
+				logins: 0,
+				registers: 0,
+				state: 'ec_mac',
+			},
+		)
 		assert.deepEqual(errors, [])
 		console.log(
-			'Desktop UI: browser hidden, onboarding order, skip/reopen, setup, chain replacement/retry, pause, forget, existing-registration adoption, service restart, and auto-update toggle passed.',
+			'Desktop UI: browser hidden, onboarding order, skip/reopen, setup, chain replacement/retry, pause, forget, existing-registration adoption, service restart, auto-update toggle, and team-org attach passed.',
 		)
 	} finally {
 		await browser.close()

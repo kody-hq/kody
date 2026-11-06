@@ -2475,6 +2475,21 @@ export type AccountPackageApproveCapabilitiesLoaderData = {
 		via: Array<string>
 		storageId?: string
 	}>
+	/**
+	 * Declared `kody.credentials` needs no credential fills yet. Not part of the
+	 * fingerprint, but declaring them still needs the owner's approval.
+	 */
+	unboundNeeds: Array<{
+		needKey: string
+		description: string
+		provider?: string
+		secretProviderPackage?: string
+		from?: string
+		invalid?: string
+		via: Array<string>
+	}>
+	/** Declared manifest capability fields (`kody.jobs`, `kody.webhooks`, ...). */
+	declaredFields: Array<{ field: string; via: Array<string> }>
 	fingerprintMatchesApproval: boolean
 	latestApprovedAt: string | null
 	securityAudit: AccountPackageSecurityAudit
@@ -2493,6 +2508,8 @@ export type AccountPackageApproveCapabilitiesLoaderData = {
 			storageId?: string
 			field?: string
 			needCount?: number
+			executorNeedCount?: number
+			needs?: Array<{ key: string; description: string }>
 			credentialId?: string
 			name?: string
 			via?: Array<string>

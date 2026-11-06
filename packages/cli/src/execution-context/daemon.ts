@@ -134,6 +134,45 @@ type DaemonInput = {
 	activity?: { runs: number }
 	/** Capabilities that can change while connected (sent on the next policy change). */
 	extraCapabilities?: () => Record<string, unknown>
+	/**
+	 * Remote daemon management (`control.request`): returns the result data,
+	 * or throws a {@link DaemonControlError}. Advertises `daemon-control`.
+	 */
+	control?: (
+		op: string,
+		args: Record<string, unknown>,
+	) => Promise<Record<string, unknown>>
+	/** Kody's server-side pause for this context (welcome and state.update). */
+	onPaused?: (paused: DaemonPause | null) => void
+}
+
+const daemonControlFeature = 'daemon-control'
+
+export type DaemonPause = {
+	at: string
+	by: string | null
+	reason: string | null
+}
+
+export class DaemonControlError extends Error {
+	constructor(
+		readonly code: string,
+		message: string,
+	) {
+		super(message)
+		this.name = 'DaemonControlError'
+	}
+}
+
+function pauseOf(value: unknown): DaemonPause | null {
+	const pause = value as Partial<DaemonPause> | null
+	return pause && typeof pause.at === 'string'
+		? {
+				at: pause.at,
+				by: typeof pause.by === 'string' ? pause.by : null,
+				reason: typeof pause.reason === 'string' ? pause.reason : null,
+			}
+		: null
 }
 
 /** Why runDaemon returned. `revoked` and `unknown_context` are permanent. */
@@ -229,6 +268,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 						feature !== 'fs' && feature !== ecpHostOperatorOnlyFeature,
 				),
 				ecpHostOperatorOnlyFeature,
+				...(input.control ? [daemonControlFeature] : []),
 				...fsFeatures(hostFs),
 			],
 		}
@@ -449,6 +489,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 				}
 				grantFs = grantFsOf(body.grant)
 				await applyFs()
+				input.onPaused?.(pauseOf(body.paused))
 				welcomed = true
 				await send('hello', {
 					protocol: { min: ecpProtocolVersion, max: ecpProtocolVersion },
@@ -514,6 +555,47 @@ export async function runDaemonConnection(input: DaemonInput) {
 				await refreshFs(before)
 				await send('grant.ack', { grantVersion: body.grantVersion }, frame.seq)
 				if (limitsChanged) await send('status', status())
+				return
+			}
+			case 'state.update':
+				input.onPaused?.(pauseOf(body.paused))
+				return
+			case 'control.request': {
+				const id = typeof body.id === 'string' ? body.id : ''
+				const op = typeof body.op === 'string' ? body.op : ''
+				const args =
+					body.args && typeof body.args === 'object'
+						? (body.args as Record<string, unknown>)
+						: {}
+				const control = input.control
+				const re = frame.seq
+				// Off the inbound queue: an update check can take a while.
+				void (async () => {
+					try {
+						if (!control) {
+							throw new DaemonControlError(
+								'daemon_outdated',
+								'This daemon does not take remote control requests.',
+							)
+						}
+						const data = await control(op, args)
+						await send('control.result', { id, ok: true, data }, re)
+					} catch (error) {
+						await send(
+							'control.result',
+							{
+								id,
+								ok: false,
+								code:
+									error instanceof DaemonControlError
+										? error.code
+										: 'daemon_control_failed',
+								message: error instanceof Error ? error.message : String(error),
+							},
+							re,
+						).catch(() => {})
+					}
+				})()
 				return
 			}
 			case 'revoke':

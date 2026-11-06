@@ -70,7 +70,7 @@ export JSDoc, and memory is covered in
 
 Your agent does not have to ask for memories. When it calls `search`, Kody
 retrieves the one or two most relevant active **personal** memories for the
-query and adds them to the response as a compact
+query (an unrelated query gets none) and adds them to the response as a compact
 `## Relevant memories (personal)` block, labeled `[personal]`: subject, summary,
 and id. `execute` does the same when the agent passes a short `memoryContext`
 (the task, the query, key entities and constraints). Agents should ask you

@@ -1,7 +1,9 @@
 import { expect, test } from 'vitest'
 import {
 	formatLargestNonRuntimePaths,
+	formatPublishSizeHints,
 	largestNonRuntimePaths,
+	publishSizeHints,
 } from './publish-size-hints.ts'
 
 test('largestNonRuntimePaths lists the biggest files runtime code does not import', () => {
@@ -65,4 +67,33 @@ test('largestNonRuntimePaths never suggests ignoring the docs publish requires',
 	expect(largestNonRuntimePaths({ files })).toEqual([
 		{ path: 'docs/guide.md', bytes: 3000 },
 	])
+})
+
+test('publishSizeHints names the runtime inputs and npm dependencies, not tiny configs', () => {
+	const files = {
+		'package.json': JSON.stringify({
+			name: '@example/big',
+			exports: { '.': './src/index.ts' },
+			dependencies: { zod: '^3.0.0', effect: '^3.0.0' },
+		}),
+		'tsconfig.json': '{"compilerOptions":{}}',
+		'src/index.ts': "import { a } from './a.ts'\nexport default a",
+		'src/a.ts': 'a'.repeat(60 * 1024),
+		'scripts/seed.ts': 's'.repeat(40 * 1024),
+	}
+	const hints = publishSizeHints({ files })
+	expect(hints.runtime).toMatchObject({ fileCount: 2 })
+	expect(hints.runtime.largest[0]).toEqual({
+		path: 'src/a.ts',
+		bytes: 60 * 1024,
+	})
+	expect(hints.npmDependencies).toEqual(['zod', 'effect'])
+	expect(hints.ignorable).toEqual([
+		{ path: 'scripts/seed.ts', bytes: 40 * 1024 },
+	])
+	const message = formatPublishSizeHints(hints)
+	expect(message).toContain('`src/a.ts` (60 KiB)')
+	expect(message).toContain('`zod`, `effect`')
+	expect(message).not.toContain('tsconfig.json')
+	expect(formatPublishSizeHints(null)).toBe('')
 })

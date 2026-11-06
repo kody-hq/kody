@@ -213,7 +213,9 @@ function EnabledPage(props: {
 				description="Your machines and shared servers that run execute, and the order Kody tries them in."
 				currentHref={currentHref}
 			/>
-			<DesktopMachinePanel />
+			<DesktopMachinePanel
+				orgSlug={payload.personalOrg ? null : payload.orgSlug}
+			/>
 			{note ? (
 				<AccountManagementMessage>
 					<span data-testid="execution-contexts-unutilized">{note}</span>

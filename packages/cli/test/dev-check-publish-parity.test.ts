@@ -259,6 +259,7 @@ test('kody dev check shows the login hint only for auth failures', async () => {
 				cwd: root,
 				json: true,
 				io: serverDown.io,
+				publishChecksRetryDelayMs: 0,
 				runPublishChecks: async () => {
 					throw new OpenApiError(
 						'The Kody API ran out of server memory or CPU time before it answered this request (request id ray-1).',
@@ -407,5 +408,78 @@ test('kody dev check prints the unmappable-credential lock notice as a warning',
 			}),
 		})
 		assert.match(out.stdout, /unmappable credentials.*"Prod DB"/)
+	})
+})
+
+test('kody dev check retries the publish checks after a compute limit or response timeout, as publish does', async () => {
+	await withPackage(async (root) => {
+		const limited: PackageCheckResult = {
+			ok: false,
+			checks: [
+				{
+					kind: 'bundle',
+					ok: false,
+					message:
+						'The publish checks ran out of memory or CPU time in the check runner during bundle validation before they finished.',
+				},
+			],
+		}
+		const passing: PackageCheckResult = {
+			ok: true,
+			checks: [{ kind: 'manifest', ok: true, message: 'Validated.' }],
+		}
+		let calls = 0
+		let stderr = ''
+		const out = capture()
+		const code = await runDevCheck({
+			target: 'mock',
+			cwd: root,
+			io: {
+				stdout: out.io.stdout,
+				stderr: (text) => {
+					stderr += text
+				},
+			},
+			publishChecksRetryDelayMs: 0,
+			runPublishChecks: async () => {
+				calls += 1
+				if (calls === 1) return limited
+				if (calls === 2) {
+					throw new OpenApiError(
+						"The Kody API at https://api.kody.codes accepted the request but sent no answer within the CLI's wait (UND_ERR_HEADERS_TIMEOUT, about 5 minutes).",
+					)
+				}
+				return passing
+			},
+		})
+		assert.equal(calls, 3)
+		assert.equal(code, 0)
+		assert.match(stderr, /attempt 1 of 3\); retrying/)
+		assert.match(stderr, /attempt 2 of 3\); retrying/)
+
+		const exhausted = capture()
+		await runDevCheck({
+			target: 'mock',
+			cwd: root,
+			io: exhausted.io,
+			publishChecksRetryDelayMs: 0,
+			runPublishChecks: async () => limited,
+		})
+		assert.match(exhausted.stdout, /build outside Kody cloud/)
+		assert.match(exhausted.stdout, /kody package publish --build local/)
+		assert.match(exhausted.stdout, /--context <name>/)
+
+		let refusedCalls = 0
+		await runDevCheck({
+			target: 'mock',
+			cwd: root,
+			io: capture().io,
+			publishChecksRetryDelayMs: 0,
+			runPublishChecks: async () => {
+				refusedCalls += 1
+				return refusesLikePublish()
+			},
+		})
+		assert.equal(refusedCalls, 1)
 	})
 })

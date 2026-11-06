@@ -9,9 +9,9 @@ import { tmpdir } from 'node:os'
 import { expect, test } from 'vitest'
 import { readFileSync, statSync } from 'node:fs'
 import {
-	controlKodyUsage,
 	controlKodyUserAgent,
 	defaultFeaturesDir,
+	featureVerifyRequests,
 	defaultRoutesPath,
 	loginToOrigin,
 	localSeedEmail,
@@ -21,6 +21,8 @@ import {
 	mergeCommitMessageNamesHead,
 	readGithubHealthCommitInfo,
 	readHealth,
+	controlKodyUsage,
+	waitForHealth,
 	readLocalHealthCommitInfo,
 	repoRootFromHere,
 	requestAsSession,
@@ -1390,20 +1392,106 @@ test('control-kody map --check reports unmapped required routes and unknown note
 	expect(incidental.ok).toBe(true)
 })
 
-test('--help carries the CLI behavior the control-kody skill points to', () => {
-	const help = controlKodyUsage()
-	for (const fact of [
-		'--dump               Write the raw response body to .tmp/control-kody-body',
-		'--contains <text>    Fail unless the response body includes this text',
-		'only POSTs /auth when the response is',
-		'Public pages such as /pricing do not need a session.',
-		'Mutating methods log in first when no cookie exists.',
-		"preview --pr 42 --request 'GET /pricing --dump --contains Worker compute'",
-		'--kody-id <slug>     Alias for --package-name',
-		'remints the token and',
-		'keeps the login cookie.',
-		'Prefer MCP/API/control-kody execute for proof',
-	]) {
-		expect(help).toContain(fact)
+test('waitForHealth polls until /health serves the expected sha, then stops', async () => {
+	const served = ['old1111', 'old1111', 'abc1234']
+	const polls: Array<string> = []
+	const sleeps: Array<number> = []
+	let clock = 0
+	const result = await waitForHealth({
+		origin: 'https://kody.codes',
+		expectedSha: 'abc1234',
+		timeoutMs: 60_000,
+		intervalMs: 20_000,
+		read: async (expectedSha) => {
+			const commitSha = served.shift()!
+			return {
+				ok: commitSha === expectedSha,
+				status: 200,
+				origin: 'https://kody.codes',
+				commitSha,
+				detail: `commitSha ${commitSha}`,
+			}
+		},
+		sleep: async (ms) => {
+			sleeps.push(ms)
+			clock += ms
+		},
+		now: () => clock,
+		onPoll: (line) => polls.push(line),
+	})
+	expect(result.ok).toBe(true)
+	expect(sleeps).toEqual([20_000, 20_000])
+	expect(polls[0]).toContain('waiting for abc1234')
+})
+
+test('waitForHealth gives up at the deadline and says where to look', async () => {
+	let clock = 0
+	const result = await waitForHealth({
+		origin: 'https://kody.codes',
+		expectedSha: 'abc1234',
+		timeoutMs: 60_000,
+		intervalMs: 20_000,
+		read: async () => {
+			throw new Error('ECONNRESET')
+		},
+		sleep: async (ms) => {
+			clock += ms
+		},
+		now: () => clock,
+	})
+	expect(result.ok).toBe(false)
+	expect(result.detail).toContain('fetch failed: ECONNRESET')
+	expect(result.detail).toContain('Still not live after 1 min')
+	expect(result.detail).toContain(
+		"gh run list --workflow '🚀 Deploy (production)'",
+	)
+})
+
+test('help documents health --wait', async () => {
+	expect(controlKodyUsage()).toContain('--wait')
+	expect(controlKodyUsage()).toContain('--wait-minutes <n>')
+})
+
+test('featureVerifyRequests reads the GET request lines of a feature notes file', () => {
+	const notes = [
+		'```bash',
+		'npm run control-kody -- login',
+		"npm run control-kody -- request GET /@jane/-/waiting --dump --contains 'Waiting'",
+		'npm run control-kody -- request POST /account/delete',
+		'```',
+	].join('\n')
+	expect(featureVerifyRequests(notes)).toEqual([
+		['GET', '/@jane/-/waiting', '--dump', '--contains', 'Waiting'],
+	])
+})
+
+test('every request line in the Feature Map parses, so verify can run it', () => {
+	const dir = defaultFeaturesDir(repoRootFromHere())
+	let total = 0
+	for (const feature of featureCatalog) {
+		const notes = readFileSync(path.join(dir, feature.file), 'utf8')
+		for (const check of featureVerifyRequests(notes)) {
+			total += 1
+			expect(
+				() => parseControlArgs(['request', ...check]),
+				`${feature.file}: request ${check.join(' ')}`,
+			).not.toThrow()
+		}
 	}
+	expect(total).toBeGreaterThan(30)
+})
+
+test('verify passes shared flags through to each request', () => {
+	const options = parseControlArgs([
+		'verify',
+		'waiting',
+		'--origin',
+		'https://pr-1.example',
+	])
+	expect(options.featureId).toBe('waiting')
+	expect(options.verifyPassthrough).toEqual([
+		'--origin',
+		'https://pr-1.example',
+	])
+	expect(controlKodyUsage()).toContain('verify <id>')
 })

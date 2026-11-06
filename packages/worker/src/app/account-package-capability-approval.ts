@@ -166,6 +166,8 @@ export async function loadAccountPackageApproveCapabilitiesData(input: {
 		publishedCommit: summary.publishedCommit,
 		fingerprint: summary.capabilitySet.fingerprint,
 		entries: summary.capabilitySet.entries,
+		unboundNeeds: summary.declarations?.unboundNeeds ?? [],
+		declaredFields: summary.declarations?.manifestFields ?? [],
 		fingerprintMatchesApproval: summary.fingerprintMatchesApproval,
 		// Timestamp for the matching fingerprint row, not the chronologically
 		// latest approval (which may be a different capability set).

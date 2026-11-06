@@ -20,6 +20,7 @@ const {
 	automaticMemorySingleListRankOneScore,
 	formatSurfacedMemoriesMarkdown,
 	loadRelevantMemoriesForTool,
+	searchMemorySurfaceMinVectorScore,
 } = await import('./memory-tool-context.ts')
 
 const callerContext = createMcpCallerContext({
@@ -52,6 +53,7 @@ function memory(
 		lastAccessedAt: null,
 		deletedAt: null,
 		score,
+		vectorScore: 0.8,
 		...overrides,
 	}
 }
@@ -60,11 +62,13 @@ function loadMemories(
 	query: string,
 	matches: Array<ReturnType<typeof memory>>,
 	extra: Partial<Parameters<typeof loadRelevantMemoriesForTool>[0]> = {},
+	offline = false,
 ) {
 	mockModule.searchMemoryRecords.mockResolvedValueOnce({
 		matches,
 		suppressedCount: 0,
 		query,
+		offline,
 	})
 	return loadRelevantMemoriesForTool({
 		env: { APP_DB: {} } as Env,
@@ -160,4 +164,45 @@ test('memory tool context filters weak matches and formats markdown', async () =
 		'null-a',
 		'null-b',
 	])
+})
+
+const belowFloor = searchMemorySurfaceMinVectorScore - 0.05
+
+test('search auto-surface drops memories below the relevance floor', async () => {
+	const unrelated = await loadMemories('convert a pdf to text', [
+		memory('weak-one', rankOne, { vectorScore: belowFloor }),
+		memory('weak-two', 1 / 62, { vectorScore: belowFloor }),
+		memory('vector-miss', 1 / 63, { vectorScore: undefined }),
+	])
+	expect(unrelated).toEqual({
+		memories: [],
+		suppressedCount: 0,
+		retrievalQuery: 'convert a pdf to text',
+	})
+	expect(formatSurfacedMemoriesMarkdown(unrelated)).toEqual([])
+
+	const related = await loadMemories('write release notes', [
+		memory('lexical-noise', rankOne, { vectorScore: belowFloor }),
+		memory('release-notes', 1 / 62, {
+			vectorScore: searchMemorySurfaceMinVectorScore,
+		}),
+		memory('also-weak', 1 / 63, { vectorScore: belowFloor }),
+	])
+	expect(related?.memories.map((entry) => entry.id)).toEqual(['release-notes'])
+
+	const offline = await loadMemories(
+		'local dev',
+		[memory('hash-ranked', rankOne, { vectorScore: undefined })],
+		{},
+		true,
+	)
+	expect(offline?.memories.map((entry) => entry.id)).toEqual(['hash-ranked'])
+})
+
+test('search auto-surface with zero memories is unchanged', async () => {
+	expect(await loadMemories('anything', [])).toEqual({
+		memories: [],
+		suppressedCount: 0,
+		retrievalQuery: 'anything',
+	})
 })

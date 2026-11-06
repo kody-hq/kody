@@ -14,6 +14,11 @@ import type {
 import { usePageInvalidation } from './page-invalidation.ts'
 import { useSubmitterScope } from './use-submitter-scope.ts'
 import { useCommunityInstallOrg } from './use-community-install-org.ts'
+import {
+	type ForkTargetChoice,
+	forkOrgForSlug,
+	pressFork,
+} from './fork-target.ts'
 
 const resources = [
 	'loadPackage',
@@ -60,33 +65,29 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 	const { actorKey } = useRouteContext({ from: '__root__' })
 	const capture = useSubmitterScope()
 	const reconcile = usePageInvalidation(resources)
-	const { org, picker: orgPicker } = useCommunityInstallOrg(
-		Boolean(fork?.loggedIn),
-	)
+	const {
+		org,
+		picker: orgPicker,
+		loadOwners,
+	} = useCommunityInstallOrg(Boolean(fork?.loggedIn))
 	const forkStateQuery = useCommunityForkState(fork, org)
 	const liveForkState = forkStateQuery.data ?? null
-	const [confirmed, setConfirmed] = useState(false)
+	const [forkTarget, setForkTarget] = useState<ForkTargetChoice | null>(null)
+	const pressing = useRef(false)
+	// A fork into another org moves `?org=` there; keep its outcome on screen.
+	const carryOutcome = useRef<{ org: string | null } | null>(null)
 	const [installMessage, setMessage] = useState<string | null>(null)
 	const [installOutcome, setOutcome] = useState<CommunityInstallOutcome | null>(
 		null,
 	)
 	useEffect(() => {
-		setConfirmed(false)
+		const carried = carryOutcome.current
+		carryOutcome.current = null
+		if (carried && carried.org === org) return
+		setForkTarget(null)
 		setMessage(null)
 		setOutcome(null)
 	}, [fork?.listingId, actorKey, org])
-	useEffect(() => {
-		if (!confirmed) return
-		const disarm = (event: MouseEvent) => {
-			if (
-				event.target instanceof Element &&
-				!event.target.closest('[data-community-install]')
-			)
-				setConfirmed(false)
-		}
-		document.addEventListener('click', disarm)
-		return () => document.removeEventListener('click', disarm)
-	}, [confirmed])
 	const mutation = useMutation({
 		gcTime: 0,
 		mutationFn: async (input: {
@@ -156,26 +157,29 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 		!fork?.viewerInstall && liveForkState?.state === 'in_progress'
 			? { startedAt: liveForkState.startedAt }
 			: null
-	async function install() {
-		if (
-			!fork ||
-			!fork.loggedIn ||
-			mutation.isPending ||
-			installOutcome ||
-			existingFork ||
-			inProgress
+	function canFork() {
+		return Boolean(
+			fork?.loggedIn &&
+			!mutation.isPending &&
+			!installOutcome &&
+			!existingFork &&
+			!inProgress &&
+			!forkTarget &&
+			!pressing.current,
 		)
-			return
-		if (!confirmed) {
-			setConfirmed(true)
-			return
-		}
+	}
+	async function runFork(targetOrg: string | null, targetSlug?: string) {
+		if (!fork) return
 		const isCurrent = capture()
-		setConfirmed(false)
 		setMessage(null)
 		try {
-			const outcome = await mutation.mutateAsync({ fork, org })
-			if (isCurrent()) setOutcome(outcome)
+			const outcome = await mutation.mutateAsync({ fork, org: targetOrg })
+			if (!isCurrent()) return
+			setOutcome(outcome)
+			if (targetOrg !== org && targetSlug && orgPicker) {
+				carryOutcome.current = { org: targetOrg }
+				orgPicker.onSelect(targetSlug)
+			}
 		} catch (error) {
 			if (isCurrent())
 				setMessage(
@@ -185,18 +189,52 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 				)
 		}
 	}
+	async function install() {
+		if (!canFork()) return
+		const isCurrent = capture()
+		pressing.current = true
+		setMessage(null)
+		try {
+			await pressFork({
+				loadOwners,
+				currentOrg: org,
+				fork: async (targetOrg) => {
+					if (isCurrent()) await runFork(targetOrg)
+				},
+				choose: (choice) => {
+					if (isCurrent()) setForkTarget(choice)
+				},
+			})
+		} catch (error) {
+			if (isCurrent())
+				setMessage(
+					error instanceof Error
+						? error.message
+						: 'Unable to load the orgs you can fork into.',
+				)
+		} finally {
+			pressing.current = false
+		}
+	}
+	function chooseForkTarget(slug: string) {
+		const choice = forkTarget
+		setForkTarget(null)
+		if (!choice || mutation.isPending) return
+		void runFork(forkOrgForSlug(choice.owners, slug), slug)
+	}
 	return {
 		org,
 		installMessage,
 		installOutcome,
 		context: {
 			busy: mutation.isPending,
-			confirmed,
 			existingFork,
 			inProgress,
+			choosesForkTarget: orgPicker != null,
+			forkTarget,
 			onInstall: () => void install(),
-			onDisarm: () => setConfirmed(false),
-			orgPicker,
+			onChooseForkTarget: chooseForkTarget,
+			onDismissForkTarget: () => setForkTarget(null),
 		},
 	}
 }

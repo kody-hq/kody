@@ -1172,7 +1172,13 @@ the commit it clones, so a dev check result is the best predictor of a publish:
   bundle pre-check; every runtime artifact (app, client, exports, importable
   modules, jobs, subscriptions) is then built the way the publish rebuild builds
   it: the same targets and builders, 4 targets per throwaway isolate, 2 isolates
-  at a time, stopping after a failed wave. Nothing is saved.
+  at a time, stopping after a failed wave. Nothing is saved. Targets whose
+  inputs are unchanged since the published commit are skipped, because publish
+  copies those artifacts instead of building them.
+- **Same retries.** A durable publish retries an attempt that hit a compute
+  limit or timed out, so `kody dev check` runs the server checks up to 3 times
+  when the server reports a memory or CPU limit, answers 502/503/504, or sends
+  no answer before the request times out.
 
 What a dev check cannot run, and says so in its output: cloning the pushed
 commit from Artifacts. `git push` (and the Artifacts push limit) happens before

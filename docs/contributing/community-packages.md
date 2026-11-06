@@ -139,20 +139,18 @@ wizard itself is connect an agent, make something useful (one prompt), then
 connect a second agent — see [Onboarding process](./architecture/onboarding.md).
 `@kody/*` listings are ordinary community packages from the `@kody` org: an org
 forks them and runs its own copy. One-click install on listing detail puts a
-fork icon beside the name. Listings from another account use `createDoubleCheck`
-(the tooltip is “This was built by another user. Verify it before using. Click
-again to confirm fork.”; the first click arms that control; the second click
-sends `acknowledged: true`; clicking elsewhere, navigating, or leaving the
-control clears the armed state; the endpoint responds `409` without the flag).
-User-facing install UX:
-[Public packages](../use/community-packages.md#one-click-install). `/community`
-cards overlay a per-request `viewerInstall` when the viewer already has a
-matching slug saved package or a `community_forks` row, so those cards show
-**Installed** / **Forked** / **Fork outdated** / **Fork ahead**. Listing detail
-uses title-slot icons for install, an open icon for a current fork, a link-break
-icon for an outdated fork, a clipboard when a setup prompt exists, and a **Fork
-ahead** badge when the pin is already in the fork history. An installed fork
-offers **Use in agent** under the listing.
+fork icon beside the name. Pressing it sends `acknowledged: true` (the endpoint
+responds `409` without the flag). `pressFork` (`start/fork-target.ts`) forks
+straight into the only forkable org, or opens `ForkTargetDialog` (a native modal
+`<dialog>`) when `loadCommunityInstallOrgs` returns more than one. User-facing
+install UX: [Public packages](../use/community-packages.md#one-click-install).
+`/community` cards overlay a per-request `viewerInstall` when the viewer already
+has a matching slug saved package or a `community_forks` row, so those cards
+show **Installed** / **Forked** / **Fork outdated** / **Fork ahead**. Listing
+detail uses title-slot icons for install, an open icon for a current fork, a
+link-break icon for an outdated fork, a clipboard when a setup prompt exists,
+and a **Fork ahead** badge when the pin is already in the fork history. An
+installed fork offers **Use in agent** under the listing.
 
 Reports survive listing deletion via denormalized listing name and owner on the
 report row.

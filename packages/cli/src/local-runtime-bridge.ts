@@ -15,6 +15,13 @@ import type { AddressInfo } from 'node:net'
 import { Readable } from 'node:stream'
 import { redact } from './redact.js'
 import { runSecretHeader } from './local-runtime-source.js'
+import { localBridgeTlsCheckPath } from './local-egress.js'
+import {
+	certErrorCode,
+	certErrorMessage,
+	checkTlsCertificate,
+	isCertErrorCode,
+} from './tls-errors.js'
 
 const localBridgeCallPath = '/call'
 export const localBridgeGatewayFetchPath = '/gateway-fetch'
@@ -113,11 +120,35 @@ export async function startLocalRuntimeBridge(
 					)
 					return
 				}
+				const certCode = certErrorCode(error)
 				replyGatewayFetchError(
 					502,
-					redact(error instanceof Error ? error.message : String(error)),
-					'gateway_fetch_failed',
+					certCode
+						? certErrorMessage(certCode, 'the Kody API')
+						: redact(error instanceof Error ? error.message : String(error)),
+					certCode ? 'tls_certificate_error' : 'gateway_fetch_failed',
 				)
+			}
+			return
+		}
+		if (request.method === 'POST' && request.url === localBridgeTlsCheckPath) {
+			try {
+				const body = JSON.parse(await readBodyText(request)) as {
+					host?: unknown
+					port?: unknown
+				}
+				const host = typeof body.host === 'string' ? body.host : ''
+				const port = Number(body.port)
+				if (!host || !Number.isInteger(port) || port < 1 || port > 65535) {
+					replyJson(400, { message: null })
+					return
+				}
+				const code = await checkTlsCertificate({ host, port })
+				replyJson(200, {
+					message: isCertErrorCode(code) ? certErrorMessage(code, host) : null,
+				})
+			} catch {
+				replyJson(200, { message: null })
 			}
 			return
 		}

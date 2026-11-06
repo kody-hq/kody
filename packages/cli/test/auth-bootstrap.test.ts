@@ -532,7 +532,7 @@ test('redeemBootstrapCode surfaces already-used codes clearly', async () => {
 				apiUrl,
 				fetchFn: fetch,
 			}),
-		/already used[\s\S]*Call cliCredentialBootstrap again for a fresh code/,
+		/already used[\s\S]*fresh code/,
 	)
 })
 

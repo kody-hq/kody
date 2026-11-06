@@ -71,7 +71,7 @@ export async function installWebsiteCommunityPackage(input: {
 		return installResult({ ok: false, error: 'Catalog entry not found.' }, 404)
 	}
 	// Every listing requires acknowledged: true. The listing page sends
-	// that flag after createDoubleCheck confirms the fork.
+	// that flag when the viewer presses Fork (or confirms the Fork into dialog).
 	if (parsed.data.acknowledged !== true) {
 		return installResult(
 			{

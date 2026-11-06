@@ -53,6 +53,15 @@ vi.mock('#mcp/run-kody-registry.ts', () => ({
 	buildKodyFns: async () => ({}),
 }))
 
+const authorityStamps = vi.hoisted(() => [] as Array<unknown>)
+
+vi.mock('#mcp/capabilities/integrations/host-integration-authority.ts', () => ({
+	createHostIntegrationAuthority: (input: { packageStamp: unknown }) => {
+		authorityStamps.push(input.packageStamp)
+		return { readConfig: async () => null, refresh: async () => null }
+	},
+}))
+
 vi.mock('#mcp/execute-modules/kody-runtime-utils.ts', () => ({
 	createAuthenticatedFetch: async () => async () => new Response('ok'),
 	oauthClientCredentials: async () => ({ access_token: 'ok' }),
@@ -278,4 +287,37 @@ test('packageStorage acts as the verified package, not the wire value', async ()
 	expect(call?.runPackageId).toBe(ownedPackageId)
 	expect([...(call?.grantedPackageIds ?? [])]).toEqual([ownedPackageId])
 	expect(call?.args).toEqual({ key: 'cursor', packageId: ownedPackageId })
+})
+
+test('authenticatedFetch config read and refresh act as the verified package, claimed (#4889)', async () => {
+	const { db } = createDb()
+	authorityStamps.length = 0
+	await runCapabilityProxyAuthenticatedFetch({
+		ctx: createContext(db),
+		args: [
+			{
+				providerName: 'slack',
+				packageId: await bindingFor(db, ownedPackageId),
+				request: { url: 'https://slack.example.test/api' },
+			},
+		],
+	})
+	expect(authorityStamps).toEqual([
+		{ kind: 'claimed', packageId: ownedPackageId },
+	])
+})
+
+test('authenticatedFetch without a package binding acts as no package', async () => {
+	const { db } = createDb()
+	authorityStamps.length = 0
+	await runCapabilityProxyAuthenticatedFetch({
+		ctx: createContext(db),
+		args: [
+			{
+				providerName: 'slack',
+				request: { url: 'https://slack.example.test/api' },
+			},
+		],
+	})
+	expect(authorityStamps).toEqual([null])
 })

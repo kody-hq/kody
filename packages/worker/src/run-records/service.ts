@@ -516,6 +516,11 @@ export async function finishRunRecord(input: {
 	 */
 	result?: unknown
 	waitUntil?: (promise: Promise<unknown>) => void
+	/**
+	 * Persist an error without fanning it out to `run.error.recorded`
+	 * subscribers, e.g. a durable workflow step attempt the engine retries.
+	 */
+	skipErrorSubscriptions?: boolean
 }): Promise<boolean> {
 	const handle = input.handle
 	if (!handle) return false
@@ -572,6 +577,7 @@ export async function finishRunRecord(input: {
 	}
 
 	if (!persistedRun) return false
+	if (input.skipErrorSubscriptions === true) return true
 	const sideEffects = dispatchTerminalRunRecordSideEffects({
 		env: input.env,
 		handle,
@@ -670,6 +676,96 @@ export async function listRunRecords(input: {
 		limit,
 		cursor: input.cursor ?? null,
 	})
+}
+
+export const workflowAttemptStoppedErrorName = 'workflow_attempt_stopped'
+
+const workflowAttemptStoppedTriageNote =
+	'auto-ignored: the durable workflow ran this step again'
+
+/**
+ * Close the `running` rows a durable workflow instance left behind when a
+ * step attempt's isolate was killed before its finish write (CPU or memory
+ * limit, eviction). `outcome` says what happened next: `retried` and
+ * `succeeded` close them as ignored history; `failed` (the workflow's final
+ * failure) leaves them open and notifies `run.error.recorded` subscribers,
+ * since no later attempt reported the failure. Never throws.
+ */
+export async function closeStoppedWorkflowAttemptRuns(input: {
+	env: Env
+	userId?: OwnerId | null
+	workflowId: string
+	outcome: 'retried' | 'succeeded' | 'failed'
+	/** Appended to the failed rows' message (what the owner can do next). */
+	failureHint?: string
+	waitUntil?: (promise: Promise<unknown>) => void
+}): Promise<Array<string>> {
+	const userId = runLogOwnerId(input.userId)
+	if (!runLogBinding(input.env) || !userId) return []
+	const failed = input.outcome === 'failed'
+	let closed: Array<RunRecord>
+	try {
+		closed = await runLogRpc({
+			env: input.env,
+			userId,
+		}).interruptRunningWorkflowRuns({
+			workflowId: input.workflowId,
+			errorName: workflowAttemptStoppedErrorName,
+			errorMessage: failed
+				? `This workflow step attempt stopped before it recorded a result (for example, it hit the CPU or memory limit), and the workflow failed.${input.failureHint ? ` ${input.failureHint}` : ''}`
+				: 'This workflow step attempt stopped before it recorded a result (for example, it hit the CPU or memory limit), and the workflow ran the step again.',
+			errorTriage: failed ? null : 'ignored',
+			triageNote: failed ? null : workflowAttemptStoppedTriageNote,
+			triagedBy: failed ? null : 'system:workflow-retry',
+		})
+	} catch (error) {
+		console.warn('workflow-attempt-runs-close-failed', error)
+		return []
+	}
+	if (failed && closed.length > 0) {
+		const { dispatchRunErrorSubscriptionEvents } =
+			await import('./package-subscriptions.ts')
+		await Promise.allSettled(
+			closed.map((run) =>
+				dispatchRunErrorSubscriptionEvents({
+					env: input.env,
+					userId,
+					run: runLogRowFromRecord(run),
+					waitUntil: input.waitUntil,
+				}),
+			),
+		)
+	}
+	return closed.map((run) => run.id)
+}
+
+function runLogRowFromRecord(run: RunRecord): RunLogRowInput {
+	return {
+		id: run.id,
+		surface: run.surface,
+		status: run.status,
+		name: run.name,
+		packageId: run.packageId,
+		kodyId: run.kodyId,
+		sourceId: run.sourceId,
+		publishedCommit: run.publishedCommit,
+		storageId: run.storageId,
+		jobId: run.jobId,
+		workflowId: run.workflowId,
+		invocationId: run.invocationId,
+		sessionId: run.sessionId,
+		idempotencyKey: run.idempotencyKey,
+		parentRunId: run.parentRunId,
+		startedAt: run.startedAt,
+		finishedAt: run.finishedAt,
+		durationMs: run.durationMs,
+		errorName: run.errorName,
+		errorMessage: run.errorMessage,
+		startedBy: run.startedBy,
+		metadataJson: serializeJson(run.metadata),
+		createdAt: run.startedAt,
+		updatedAt: run.finishedAt ?? run.startedAt,
+	}
 }
 
 export type UpdateRunErrorTriageOutcome =

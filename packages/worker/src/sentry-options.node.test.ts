@@ -7,6 +7,7 @@ import {
 	EntitlementLimitError,
 } from './entitlements/errors.ts'
 import { transientDatabaseUnavailableMessage } from './d1-retry.ts'
+import { McpCallerError } from './mcp/caller-error.ts'
 import { artifactsGitTemporarilyUnavailableMessage } from './open-api/errors.ts'
 import {
 	buildArtifactsOpaqueInternalErrorMessage,
@@ -454,6 +455,39 @@ test('filterSentryEvent drops expected platform and caller noise and keeps real 
 		}),
 	).toBe(platformEvent)
 	expect(filterSentryEvent(platformEvent)).toBe(platformEvent)
+
+	// Caller-clearable McpCallerError (e.g. JobsHost.runJobNow on a missing
+	// job) is routine agent state. Match the typed originalException, wrappers,
+	// and the serialized type name when the instance is gone.
+	const mcpCallerError = new McpCallerError('Job "missing-job" was not found.')
+	const mcpCallerEvent = exceptionEvent({
+		type: 'McpCallerError',
+		value: mcpCallerError.message,
+	})
+	expect(
+		filterSentryEvent(mcpCallerEvent, { originalException: mcpCallerError }),
+	).toBeNull()
+	expect(filterSentryEvent(mcpCallerEvent)).toBeNull()
+	const wrappedMcpCallerEvent = exceptionEvent({
+		type: 'Error',
+		value: 'handler failed',
+	})
+	expect(
+		filterSentryEvent(wrappedMcpCallerEvent, {
+			originalException: new Error('handler failed', {
+				cause: mcpCallerError,
+			}),
+		}),
+	).toBeNull()
+	const unrelatedNotFoundEvent = exceptionEvent({
+		type: 'Error',
+		value: 'Job "missing-job" was not found.',
+	})
+	expect(
+		filterSentryEvent(unrelatedNotFoundEvent, {
+			originalException: new Error('Job "missing-job" was not found.'),
+		}),
+	).toBe(unrelatedNotFoundEvent)
 
 	// Plan-limit denials are account policy, not platform defects. Match the
 	// typed originalException (including wrappers) and the serialized type

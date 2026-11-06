@@ -51,10 +51,19 @@ ranked hits that share a non-empty `dedupe_key` are collapsed so two copies of
 the same fact cannot spend both slots; blank or missing keys surface
 independently. Ask before copying a personal memory into an org package.
 
+### Search relevance floor
+
+`search` drops a memory whose query embedding similarity is below the relevance
+floor, and a memory missing from the vector results. Ranking order and the
+two-memory cap stay the same. Local dev and tests skip the floor (hash stand-in
+embeddings). Retune the threshold with `tools/evals/memory-surface-floor.json`,
+not a guess.
+
 That retrieval is:
 
 - **conservative** — the top one or two ranked active memories after
-  `dedupe_key` collapse
+  `dedupe_key` collapse; on `search`, only memories that clear the relevance
+  floor
 - **task-based** — driven by `memoryContext` and, for `search`, the query
 - **cheap to repeat** — subject and summary only; the same one-liners may appear
   again so a compacted context keeps the rule

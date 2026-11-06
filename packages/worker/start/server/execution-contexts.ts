@@ -126,6 +126,30 @@ export const turnOffExecutionContextCommands = createServerFn({
 		)
 	})
 
+export const runExecutionContextDaemonAction = createServerFn({
+	method: 'POST',
+})
+	.validator(
+		z.object({
+			orgSlug,
+			contextId: segment,
+			action: z.enum(['pause', 'resume', 'restart', 'update', 'logs']),
+			reason: z.string().max(200).optional(),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const { runExecutionContextDaemonActionForUser } =
+			await import('../../src/app/handlers/execution-contexts.ts')
+		return mutate(data.orgSlug, (input) =>
+			runExecutionContextDaemonActionForUser({
+				...input,
+				contextId: data.contextId,
+				action: data.action,
+				...(data.reason ? { reason: data.reason } : {}),
+			}),
+		)
+	})
+
 export const dismissExecutionContextNotice = createServerFn({
 	method: 'POST',
 })
@@ -380,11 +404,17 @@ export const putDesktopExecutionFirst = createServerFn({ method: 'POST' })
 			username: z.string().min(1),
 			contextId: segment,
 			replaceContextId: segment.optional(),
+			// Another org to attach the personal registration to and put first in.
+			targetOrgSlug: orgSlug.optional(),
 		}),
 	)
 	.handler(async ({ data }) => {
 		const [
-			{ loadExecutionContextsPageData, setExecutionChainForUser },
+			{
+				attachExecutionContextForUser,
+				loadExecutionContextsPageData,
+				setExecutionChainForUser,
+			},
 			{ desktopExecutionChain },
 		] = await Promise.all([
 			import('../../src/app/handlers/execution-contexts.ts'),
@@ -407,14 +437,30 @@ export const putDesktopExecutionFirst = createServerFn({ method: 'POST' })
 				context.status === 'revoked'
 			)
 				throw new Error('This machine is not registered to your account.')
+			let chainOrg = input
+			let chain = page.chain
+			if (data.targetOrgSlug && data.targetOrgSlug !== data.orgSlug) {
+				chainOrg = { ...input, orgSlug: data.targetOrgSlug }
+				const target = await loadExecutionContextsPageData({
+					...chainOrg,
+					contextId: null,
+				})
+				if ('notFound' in target || !target.enabled || target.personalOrg)
+					throw new Error(
+						`Execution contexts are not available in @${data.targetOrgSlug}.`,
+					)
+				const attached = await attachExecutionContextForUser({
+					...input,
+					contextId: data.contextId,
+					targetOrgSlug: data.targetOrgSlug,
+				})
+				if (!attached.ok) throw new Error(attached.message)
+				chain = target.chain
+			}
 			const result = await setExecutionChainForUser({
-				...input,
-				...desktopExecutionChain(
-					page.chain,
-					data.contextId,
-					data.replaceContextId,
-				),
-				ifMatch: page.chain.updatedAt,
+				...chainOrg,
+				...desktopExecutionChain(chain, data.contextId, data.replaceContextId),
+				ifMatch: chain.updatedAt,
 			})
 			if (!result.ok) throw new Error(result.message)
 			return result

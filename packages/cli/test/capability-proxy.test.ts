@@ -750,3 +750,70 @@ test('with env proxy enabled, CapabilityProxy calls go through HTTP_PROXY', asyn
 		}
 	})
 })
+
+test('callCapabilityProxy reports a profile denial without a re-mint hint', async () => {
+	const serverMessage =
+		'Profile "helper" was not granted secret:use on credential "notes-api-key".'
+	for (const error of [
+		{
+			code: 'profile_grant',
+			message: serverMessage,
+			details: { required_permission: 'secret:use', denial: 'profile_grant' },
+		},
+		// Older servers sent profile denials as insufficient_scope.
+		{
+			code: 'insufficient_scope',
+			message: serverMessage,
+			details: { required_permission: 'secret:use', denial: 'profile_grant' },
+		},
+	]) {
+		const { fetchFn } = respondWith(403, { error })
+		await assert.rejects(
+			() =>
+				callCapabilityProxy({
+					apiUrl: 'https://api.kody.codes',
+					token,
+					fetchFn,
+					path: ['kody', 'secretUse'],
+					args: [{}],
+				}),
+			(thrown: Error) => {
+				assert.match(thrown.message, /^Kody returned profile_grant: /)
+				assert.match(thrown.message, /Profile "helper" was not granted/)
+				assert.match(thrown.message, /credential "notes-api-key"/)
+				assert.doesNotMatch(thrown.message, /token is missing/)
+				assert.doesNotMatch(thrown.message, /cliCredentialBootstrap/)
+				return true
+			},
+		)
+	}
+})
+
+test('callCapabilityProxy does not suggest a grant for an inactive profile', async () => {
+	const { fetchFn } = respondWith(403, {
+		error: {
+			code: 'profile_inactive',
+			message: 'Profile "helper" is revoked, so it cannot use secret:use.',
+			details: {
+				required_permission: 'secret:use',
+				denial: 'profile_inactive',
+			},
+		},
+	})
+	await assert.rejects(
+		() =>
+			callCapabilityProxy({
+				apiUrl: 'https://api.kody.codes',
+				token,
+				fetchFn,
+				path: ['kody', 'secretUse'],
+				args: [{}],
+			}),
+		(thrown: Error) => {
+			assert.match(thrown.message, /^Kody returned profile_inactive: /)
+			assert.match(thrown.message, /active profile/)
+			assert.doesNotMatch(thrown.message, /has to grant it/)
+			return true
+		},
+	)
+})

@@ -45,8 +45,8 @@ import { normalizeRepoWorkspacePath } from './manifest.ts'
 import { isTypeDeclarationFilePath } from '#worker/package-runtime/static-kody-imports.ts'
 import { partitionKodyIgnoredFiles } from './kodyignore.ts'
 import {
-	largestNonRuntimePaths,
-	type LargePathHint,
+	publishSizeHints,
+	type PublishSizeHints,
 } from './publish-size-hints.ts'
 import type { PublishPhaseTimings } from './publish-phase-timing.ts'
 import type { EntitySourceRow } from './types.ts'
@@ -767,19 +767,19 @@ function repoCheckKindForStep(step: RepoCheckStep | null): RepoCheckKind {
 }
 
 /**
- * Best effort: names the biggest non-runtime files in a staged tree after a
- * step hit the memory/CPU limit, so the error can suggest `.kodyignore`.
+ * Best effort: what a staged tree's step had to process after it hit the
+ * memory/CPU limit (runtime inputs, npm dependencies, big ignorable files).
  */
-async function stagedLargestNonRuntimePaths(input: {
+async function stagedPublishSizeHints(input: {
 	kv: KVNamespace
 	request: PublishWorkRequest
-}): Promise<Array<LargePathHint>> {
+}): Promise<PublishSizeHints | null> {
 	try {
 		const tree = await loadStagedPublishWorkFiles({
 			kv: input.kv,
 			stagingKey: input.request.stagingKey,
 		})
-		if (!tree) return []
+		if (!tree) return null
 		const requestInput = input.request.input as {
 			sourceRoot?: unknown
 			source?: { source_root?: unknown }
@@ -790,9 +790,9 @@ async function stagedLargestNonRuntimePaths(input: {
 				: typeof requestInput.source?.source_root === 'string'
 					? requestInput.source.source_root
 					: ''
-		return largestNonRuntimePaths({ files: tree.files, sourceRoot })
+		return publishSizeHints({ files: tree.files, sourceRoot })
 	} catch {
-		return []
+		return null
 	}
 }
 
@@ -841,7 +841,7 @@ export function createIsolatedPublishWorkRunner(
 					(await readLastCheckStep(stub)) ??
 					publishWorkOpSteps[request.op] ??
 					'staging'
-				const largestPaths = await stagedLargestNonRuntimePaths({
+				const sizeHints = await stagedPublishSizeHints({
 					kv,
 					request,
 				})
@@ -852,10 +852,7 @@ export function createIsolatedPublishWorkRunner(
 							{
 								kind: repoCheckKindForStep(step),
 								ok: false,
-								message: authoringChecksResourceLimitMessage(
-									step,
-									largestPaths,
-								),
+								message: authoringChecksResourceLimitMessage(step, sizeHints),
 							},
 						],
 						manifest: null,
@@ -863,7 +860,7 @@ export function createIsolatedPublishWorkRunner(
 						typeof request.op
 					>
 				}
-				throw new Error(publishComputeLimitMessage(step, largestPaths), {
+				throw new Error(publishComputeLimitMessage(step, sizeHints), {
 					cause: error,
 				})
 			}

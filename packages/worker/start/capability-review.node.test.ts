@@ -32,6 +32,8 @@ const payload: AccountPackageApproveCapabilitiesLoaderData = {
 		},
 		{ kind: 'storage', storageId: 'storage-id', hosts: [], via: ['root'] },
 	],
+	unboundNeeds: [],
+	declaredFields: [],
 	fingerprintMatchesApproval: false,
 	goPublicRequestId: null,
 	latestApprovedAt: null,

@@ -17,6 +17,7 @@ import {
 	win32,
 } from 'node:path'
 import { homedir } from 'node:os'
+import { normalizeServiceEnv } from './service-env-keys.js'
 import { cliConfigDir } from '../store.js'
 
 export type FsMode = 'ro' | 'rw'
@@ -30,6 +31,8 @@ export type LocalFsPolicy = {
 	commands?: LocalCommandsPolicy
 	/** Daemon auto-update on this machine. Absent means on. */
 	autoUpdate?: LocalCommandsPolicy
+	/** Extra environment for the daemon service (`kody daemon env`). */
+	serviceEnv?: Record<string, string>
 }
 type FsMount = { path: string; mode: FsMode }
 type FsRefusal = { path: string; layer: FsLayer; reason: string }
@@ -271,6 +274,14 @@ export async function readLocalPolicy(
 			`${path} has an invalid "autoUpdate" entry. Use \`kody daemon auto-update on|off\` to fix it.`,
 		)
 	}
+	const serviceEnv = normalizeServiceEnv(
+		(parsed as { serviceEnv?: unknown }).serviceEnv,
+	)
+	if (serviceEnv === null) {
+		throw new Error(
+			`${path} has an invalid "serviceEnv" entry. Use \`kody daemon env set|unset\` to fix it.`,
+		)
+	}
 	const toggle = (value: { enabled?: unknown; changedAt?: unknown }) => ({
 		enabled: value.enabled as boolean,
 		...(typeof value.changedAt === 'string'
@@ -282,6 +293,7 @@ export async function readLocalPolicy(
 		fs: (fs as Array<FsRule>).map(({ path, mode }) => ({ path, mode })),
 		...(commands ? { commands: toggle(commands) } : {}),
 		...(autoUpdate ? { autoUpdate: toggle(autoUpdate) } : {}),
+		...(serviceEnv ? { serviceEnv } : {}),
 	}
 }
 
@@ -320,7 +332,7 @@ export async function setLocalCommandsEnabled(input: {
 	return next
 }
 
-async function writeLocalPolicy(path: string, policy: LocalFsPolicy) {
+export async function writeLocalPolicy(path: string, policy: LocalFsPolicy) {
 	await mkdir(dirname(path), { recursive: true, mode: 0o700 })
 	const temp = `${path}.${process.pid}.tmp`
 	await writeFile(temp, `${JSON.stringify(policy, null, 2)}\n`, {
@@ -330,18 +342,23 @@ async function writeLocalPolicy(path: string, policy: LocalFsPolicy) {
 }
 
 /** Adds or replaces one rule, stored as its canonical (realpath) form. */
+/** The canonical form `kody context policy allow` stores for `path`. */
+export async function canonicalHostPath(path: string) {
+	return await canonicalize(path).catch((error) => {
+		if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+			throw new Error(`${path} does not exist on this machine.`)
+		}
+		throw error
+	})
+}
+
 export async function allowLocalPath(input: {
 	path: string
 	mode: FsMode
 	policyPath?: string
 }) {
 	const policyPath = input.policyPath ?? localPolicyPath()
-	const canonical = await canonicalize(input.path).catch((error) => {
-		if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-			throw new Error(`${input.path} does not exist on this machine.`)
-		}
-		throw error
-	})
+	const canonical = await canonicalHostPath(input.path)
 	const policy = await readLocalPolicy(policyPath)
 	const fs = policy.fs.filter((rule) => !samePath(rule.path, canonical))
 	fs.push({ path: canonical, mode: input.mode })
@@ -530,7 +547,7 @@ export async function resolveHostPath(
 			'EACCES',
 			granted
 				? `${path} is in this execution context's server grant, but this machine's local policy does not allow it. The machine owner can allow it with \`kody context policy allow <folder> --mode ro|rw\`.`
-				: `${path} is outside this execution context's server grant (grant.fs). Someone with Contribute on the context can add the folder with executionContextUpdate; the machine's local policy must also allow it.`,
+				: `${path} is outside this execution context's server grant (grant.fs). Someone with Contribute or Manage on the context can add the folder with \`kody context grant allow <folder> --mode ro|rw\` (or executionContextUpdate grant.fs); the machine's local policy must also allow it.`,
 		)
 	}
 	if (access === 'write' && mount.mode === 'ro') {

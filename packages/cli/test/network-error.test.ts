@@ -71,3 +71,17 @@ test('formatUnreachableApiMessage distinguishes not-sent from unknown', () => {
 	assert.match(unknown, /kody api workflowRunList/)
 	assert.match(unknown, /workflowRunList/)
 })
+
+test('formatUnreachableApiMessage turns an undici response timeout into a retryable message', () => {
+	const message = formatUnreachableApiMessage({
+		origin: 'https://api.kody.codes',
+		error: fetchFailed('UND_ERR_HEADERS_TIMEOUT'),
+	})
+	assert.match(message, /accepted the request but sent no answer/)
+	assert.match(message, /This is retryable/)
+	assert.match(message, /workflowRunList/)
+	assert.equal(
+		requestSentStatus(fetchFailed('UND_ERR_HEADERS_TIMEOUT')),
+		'unknown',
+	)
+})

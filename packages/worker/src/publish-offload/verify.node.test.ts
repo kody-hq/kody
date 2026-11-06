@@ -90,7 +90,7 @@ test('the uploaded target set must equal the declared targets', async () => {
 	const ok = await uploadedTarget({ 'index.js': 'export default 1' })
 	expect(
 		matchUploadedTargets({ expected: expected as never, uploaded: [ok] }),
-	).toHaveLength(1)
+	).toEqual([{ target: expected[0], uploaded: ok }])
 	expect(() =>
 		matchUploadedTargets({ expected: expected as never, uploaded: [] }),
 	).toThrow(/missing/)
@@ -107,15 +107,19 @@ test('the uploaded target set must equal the declared targets', async () => {
 })
 
 test('a tampered module is refused by hash', async () => {
-	const uploaded = await uploadedTarget({ 'index.js': 'export default 1' })
+	const source = 'export default 1'
+	const uploaded = await uploadedTarget({ 'index.js': source })
 	await expect(
 		verifyUploadedTargetModules({
 			uploaded,
-			modules: { 'index.js': 'export default 1' },
+			modules: { 'index.js': source },
 			ownPackageId: 'pkg-1',
 			linkedImports: new Map(),
 		}),
-	).resolves.not.toThrow()
+	).resolves.toEqual({
+		totalBytes: 19,
+		referencedLinkedImports: new Set(),
+	})
 	await expect(
 		verifyUploadedTargetModules({
 			uploaded,
@@ -273,7 +277,10 @@ test('binding checks accept the bundler output for the package itself', async ()
 			ownPackageId: 'pkg-1',
 			linkedImports: new Map(),
 		}),
-	).resolves.not.toThrow()
+	).resolves.toEqual({
+		totalBytes: 444,
+		referencedLinkedImports: new Set(),
+	})
 })
 
 const linkedNotes = '.__kody_linked__/@them__notes/list.js'

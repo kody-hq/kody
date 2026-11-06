@@ -5,24 +5,32 @@ import {
 	isArtifactsHeadChangedBeforePublishMessage,
 	isPublishConcurrencyCallerMessage,
 	isPublishedCommitMovedDuringPublishMessage,
-	publishedCommitMovedDuringPublishMessage,
 } from './publish-concurrency-caller-error.ts'
 
-test('Artifacts HEAD race builder keeps both SHAs and matches current plus legacy phrases', () => {
-	const current = buildArtifactsHeadChangedBeforePublishMessage(
-		'commit-stale',
-		'commit-new',
-	)
-	expect(current).toBe(
+test('Artifacts HEAD race builder interpolates both SHAs; matchers accept current and legacy phrases', () => {
+	expect(
+		buildArtifactsHeadChangedBeforePublishMessage('commit-stale', 'commit-new'),
+	).toBe(
 		'The package\'s Artifacts HEAD moved from "commit-stale" to "commit-new" while publishing. Retry the publish (or re-run so the newest pushed commit publishes).',
 	)
-	expect(isArtifactsHeadChangedBeforePublishMessage(current)).toBe(true)
-	expect(isPublishConcurrencyCallerMessage(current)).toBe(true)
 
-	const legacy =
-		'Artifacts HEAD changed from "commit-stale" to "commit-new" before publish.'
-	expect(isArtifactsHeadChangedBeforePublishMessage(legacy)).toBe(true)
-	expect(isPublishConcurrencyCallerMessage(legacy)).toBe(true)
+	// Phrases written here, not via the builder — so a matcher that only
+	// round-trips its own output would fail.
+	expect(
+		isArtifactsHeadChangedBeforePublishMessage(
+			'The package\'s Artifacts HEAD moved from "aaa" to "bbb" while publishing.',
+		),
+	).toBe(true)
+	expect(
+		isArtifactsHeadChangedBeforePublishMessage(
+			'Artifacts HEAD changed from "aaa" to "bbb" before publish.',
+		),
+	).toBe(true)
+	expect(
+		isPublishConcurrencyCallerMessage(
+			'The package\'s Artifacts HEAD moved from "aaa" to "bbb" while publishing.',
+		),
+	).toBe(true)
 
 	expect(
 		isArtifactsHeadChangedBeforePublishMessage(
@@ -32,11 +40,20 @@ test('Artifacts HEAD race builder keeps both SHAs and matches current plus legac
 	expect(isPublishConcurrencyCallerMessage('D1 write failed.')).toBe(false)
 })
 
-test('published-commit race builder is stable and matches only that phrase', () => {
-	const message = buildPublishedCommitMovedDuringPublishMessage()
-	expect(message).toBe(publishedCommitMovedDuringPublishMessage)
-	expect(isPublishedCommitMovedDuringPublishMessage(message)).toBe(true)
-	expect(isPublishConcurrencyCallerMessage(message)).toBe(true)
+test('published-commit race matcher matches only that phrase', () => {
+	expect(buildPublishedCommitMovedDuringPublishMessage()).toBe(
+		'The published commit moved while this publish was running. Retry the publish.',
+	)
+	expect(
+		isPublishedCommitMovedDuringPublishMessage(
+			'The published commit moved while this publish was running. Retry the publish.',
+		),
+	).toBe(true)
+	expect(
+		isPublishConcurrencyCallerMessage(
+			'The published commit moved while this publish was running. Retry the publish.',
+		),
+	).toBe(true)
 	expect(
 		isPublishedCommitMovedDuringPublishMessage(
 			'The published commit was not reachable from any ref.',

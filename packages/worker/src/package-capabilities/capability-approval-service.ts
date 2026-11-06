@@ -1,7 +1,10 @@
 import { approvedCommitCache } from './approved-commit-cache.ts'
 import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { computePackageCapabilitySet } from './compute-package-capability-set.ts'
+import {
+	computePackageCapabilitySet,
+	type PackageCapabilityDeclarations,
+} from './compute-package-capability-set.ts'
 import {
 	findPackageCapabilityApprovalByFingerprint,
 	getLatestPackageCapabilityApproval,
@@ -43,6 +46,8 @@ export type CapabilityApprovalSummary = {
 	matchingApproval: PackageCapabilityApprovalRecord | null
 	fingerprintMatchesApproval: boolean
 	isInternetVisible: boolean
+	/** Declared but unreachable needs and fields; display only. */
+	declarations?: PackageCapabilityDeclarations
 }
 
 export async function loadCapabilityApprovalSummary(input: {
@@ -111,6 +116,7 @@ export async function loadCapabilityApprovalSummary(input: {
 		matchingApproval,
 		fingerprintMatchesApproval: matchingApproval != null,
 		isInternetVisible: input.savedPackage.isInternetVisible,
+		declarations: computed.declarations,
 	}
 }
 

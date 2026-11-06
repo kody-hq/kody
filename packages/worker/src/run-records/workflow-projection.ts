@@ -126,3 +126,78 @@ export const workflowProjectionReservationStatuses: ReadonlyArray<string> = [
 ]
 
 export type { WorkflowRunStatus }
+
+/**
+ * Keyset cursor for `workflow_projections` pages (newest first by
+ * `created_at`, then `id`). Same encoding as the RunLog runs cursor, so
+ * cursors minted before this helper existed still decode.
+ */
+export function encodeWorkflowProjectionCursor(position: {
+	createdAt: string
+	id: string
+}) {
+	return btoa(
+		JSON.stringify({ startedAt: position.createdAt, id: position.id }),
+	)
+}
+
+export function decodeWorkflowProjectionCursor(
+	cursor: string,
+): { createdAt: string; id: string } | null {
+	try {
+		const parsed = JSON.parse(atob(cursor)) as unknown
+		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+			return null
+		}
+		const record = parsed as Record<string, unknown>
+		const createdAt = record['startedAt']
+		const id = record['id']
+		if (typeof createdAt !== 'string' || typeof id !== 'string') return null
+		return { createdAt, id }
+	} catch {
+		return null
+	}
+}
+
+/** True when `row` sorts strictly after the cursor position (older page). */
+export function isAfterWorkflowProjectionCursor(
+	row: { createdAt: string; id: string },
+	cursor: { createdAt: string; id: string },
+) {
+	if (row.createdAt !== cursor.createdAt)
+		return row.createdAt < cursor.createdAt
+	return row.id < cursor.id
+}
+
+const publishWorkflowName = 'packagePublishExternalPush'
+
+/**
+ * Read-only recovery of package id and target commit from a durable publish
+ * idempotency key, for backfilling rows queued before provenance columns were
+ * filled. Keys are `<owner>:packagePublishExternalPush:[v2:]<canonical JSON>`;
+ * released keys (`released:<id>`) carry nothing and return null. This never
+ * builds or matches keys.
+ */
+export function publishProvenanceFromIdempotencyKey(
+	key: string,
+): { packageId: string; commit: string } | null {
+	const marker = `:${publishWorkflowName}:`
+	const markerIndex = key.indexOf(marker)
+	if (markerIndex <= 0) return null
+	let rest = key.slice(markerIndex + marker.length)
+	if (rest.startsWith('v2:')) rest = rest.slice('v2:'.length)
+	try {
+		const parsed = JSON.parse(rest) as unknown
+		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+			return null
+		}
+		const record = parsed as Record<string, unknown>
+		const packageId = record['packageId']
+		const commit = record['newCommit']
+		if (typeof packageId !== 'string' || !packageId.trim()) return null
+		if (typeof commit !== 'string' || !commit.trim()) return null
+		return { packageId: packageId.trim(), commit: commit.trim() }
+	} catch {
+		return null
+	}
+}

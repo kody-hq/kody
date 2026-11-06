@@ -38,6 +38,8 @@ import {
 	kodyIgnoreFilePath,
 } from '#worker/repo/kodyignore.ts'
 import { runPackageCheckArtifactBuild } from '#worker/repo/package-check-artifact-build.ts'
+import { publishedPackageArtifactTargetsReusableForFiles } from '#worker/package-runtime/published-bundle-artifacts.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 import { createPublishWorkTree } from '#worker/repo/publish-work.ts'
 import { resolveOwnedPackageSource } from './resolve-package-source.ts'
 
@@ -251,6 +253,7 @@ export const packageCheckCapability = defineDomainCapability(
 			// its published version, exactly as a publish of it would.
 			let sourceId: string | undefined
 			let existingPackage: { id: string; name: string } | undefined
+			let existingSource: EntitySourceRow | undefined
 			if (packageName) {
 				try {
 					const existing = await resolveOwnedPackageSource({
@@ -260,6 +263,7 @@ export const packageCheckCapability = defineDomainCapability(
 						args: { kody_id: getPackageNameLeaf(packageName) },
 					})
 					sourceId = existing.source.id
+					existingSource = existing.source
 					existingPackage = { id: existing.packageId, name: existing.name }
 				} catch {
 					sourceId = undefined
@@ -322,6 +326,18 @@ export const packageCheckCapability = defineDomainCapability(
 						baseUrl: ctx.callerContext.baseUrl,
 						expectedPackageScope: owner.ownerScope,
 						...(existingPackage ? { rootPackageId: existingPackage.id } : {}),
+						...(existingSource
+							? {
+									listReusableTargets: (targets) =>
+										publishedPackageArtifactTargetsReusableForFiles({
+											env: ctx.env,
+											userId: owner.ownerUserId,
+											source: existingSource!,
+											targets,
+											files: snapshot.tree.files,
+										}),
+								}
+							: {}),
 					})
 					checks.results[deferredIndex] = built
 					if (!built.ok) {

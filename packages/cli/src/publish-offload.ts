@@ -5,6 +5,7 @@ import {
 	runLocalPublishBuild,
 	type PublishBuilder,
 } from './local-publish-build.js'
+import { executionContextPublishDocsUrl } from './publish-limit-advice.js'
 
 /** Same page the worker links from resource-limit errors. */
 export const publishLargePackagesDocsUrl =
@@ -16,15 +17,20 @@ type Call = (
 ) => Promise<unknown>
 
 export function isResourceLimitRefusal(result: unknown) {
-	return JSON.stringify(result ?? null).includes(publishLargePackagesDocsUrl)
+	const text = JSON.stringify(result ?? null)
+	return (
+		text.includes(publishLargePackagesDocsUrl) ||
+		text.includes(executionContextPublishDocsUrl)
+	)
 }
 
 export function offloadCommandsText(ref: string) {
 	return [
-		'This package is too big to build on Kody cloud. Build it outside the worker instead:',
-		`  kody package publish ${ref} --build local     # on this machine (clean checkout; pushes HEAD first)`,
-		`  kody package publish ${ref} --build context   # on an execution context you operate`,
-		`Docs: ${publishLargePackagesDocsUrl}`,
+		"This package is near Kody cloud's build CPU or memory limit. Build it outside Kody cloud instead:",
+		`  kody package publish ${ref} --build local          # on this machine (clean checkout; pushes HEAD first)`,
+		`  kody package publish ${ref} --context <name>       # on an execution context you operate`,
+		`Docs: ${executionContextPublishDocsUrl}`,
+		`More: ${publishLargePackagesDocsUrl}`,
 	].join('\n')
 }
 

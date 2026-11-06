@@ -77,11 +77,12 @@ Usage:
   kody context revoke <name|ec id> | kody context delete <name|ec id> [--org <slug>] [--json]
   kody context cancel-run <name|ec id> <run id> [--org <slug>] [--json]
   kody context policy [show] | allow <path> [--mode ro|rw] | remove <path> [--json]
+  kody context grant [show] | allow <path> [--mode ro|rw] | remove <path> | lan on|off [--context <name|ec id>] [--json]
   kody chain show | add <name> | remove <name> [--org <slug>] [--json]
   kody connect --name <name> [--org <slug>] [--no-install] [--key-storage keyring|file] [--yes]
   kody daemon [--context <ec id>] [--max-concurrent <n>]
   kody daemon install [--context <ec id>] [--max-concurrent <n>] [--key-storage keyring|file] [--yes]
-  kody daemon status [--context <ec id>] [--json] | logs [--lines <n>] [--follow] | restart
+  kody daemon status [--context <ec id>] [--json] | logs [--lines <n>] [--follow] | restart | start | stop
   kody daemon uninstall [--context <ec id>] [--unregister | --no-unregister]
   kody daemon auto-update [on | off | status] [--json]
   kody update
@@ -95,13 +96,20 @@ Usage:
   kody install [--mcp-url <url>] [--clients <ids>] [--yes] [--project] [--json]
   kody skill install [--project]
 
+  Run \`kody <command> --help\` (or \`kody help <command>\`) for one command's
+  usage, flags, and subcommands.
+
   kody connect registers this machine as an execution context and installs
   \`kody daemon\` as a per-user background service (systemd --user on Linux,
   a LaunchAgent on macOS, a Task Scheduler logon task on Windows, no admin
   needed) so it starts at login and restarts after crashes.
   \`kody daemon status\` names each problem with the command that fixes it;
   re-running \`kody daemon install\` repairs the service. Host folders use
-  native paths (C:\\Users\\you\\project on Windows). \`kody update\`
+  native paths (C:\\Users\\you\\project on Windows). A run can use a host
+  folder only when both layers allow it: this machine's local policy
+  (\`kody context policy allow\`, the machine owner's call) and the
+  context's server grant (\`kody context grant allow\`, needs Contribute
+  or Manage on the context, same as executionContextUpdate). \`kody update\`
   installs the latest CLI and restarts services after runs in flight finish.
   Every daemon also auto-updates: it checks npm on start and every ~4h,
   installs the verified new version, and relaunches once runs and background

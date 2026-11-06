@@ -210,3 +210,32 @@ test('skips expected permission denials and still reports real errors', async ()
 	await vi.waitFor(() => expect(capture).toHaveBeenCalledWith(real, undefined))
 	expect(capture).toHaveBeenCalledTimes(1)
 })
+
+test('skips third-party proxy block pages but reports Kody 503 pages (7830430060)', async () => {
+	vi.stubGlobal('window', new EventTarget())
+	vi.stubGlobal('requestIdleCallback', vi.fn())
+	const { initSentryClient, captureClientException } =
+		await import('./sentry-client.ts')
+	const doc = {
+		querySelector: () => ({
+			getAttribute: () =>
+				JSON.stringify({
+					dsn: 'https://key@o1.ingest.sentry.io/2',
+					environment: 'production',
+					tunnel: '/sentry-tunnel',
+				}),
+		}),
+	} as unknown as Document
+	expect(initSentryClient(doc)).toBe(true)
+	captureClientException(
+		new Error(
+			'<!DOCTYPE html><html><head><title>Error 503</title><link rel="stylesheet" href="https://shared.opendns.com/css/intelligent-proxy/intelligent-proxy.css"></head><body>This page is served by Cisco Secure Access</body></html>',
+		),
+	)
+	const real = new Error(
+		'<!DOCTYPE html><html><head><title>kody.codes | 503: Service unavailable</title></head><body>Cloudflare Ray ID: 8f0c</body></html>',
+	)
+	captureClientException(real)
+	await vi.waitFor(() => expect(capture).toHaveBeenCalledWith(real, undefined))
+	expect(capture).toHaveBeenCalledTimes(1)
+})
