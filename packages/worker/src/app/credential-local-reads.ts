@@ -96,7 +96,7 @@ async function isPackageOwnedKey(db: D1Database, credentialId: string) {
 		.prepare(
 			`SELECT b.scope AS bucket_scope FROM secret_entries e
 			 JOIN secret_buckets b ON b.id = e.bucket_id
-			 WHERE e.id = ?`,
+			 WHERE e.id = ? AND e.deleted_at IS NULL AND b.deleted_at IS NULL`,
 		)
 		.bind(credentialId)
 		.first<{ bucket_scope: string }>()

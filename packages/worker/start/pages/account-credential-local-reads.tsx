@@ -16,7 +16,7 @@ import {
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 
-export const localReadsAnchor = 'local-reads'
+const localReadsAnchor = 'local-reads'
 
 const mutedCss = css({ margin: 0, color: colors.textMuted })
 const tableCss = css({
@@ -31,7 +31,7 @@ const tableCss = css({
 	},
 })
 
-export function localReadsExplanation(vault: boolean) {
+function localReadsExplanation(vault: boolean) {
 	return vault
 		? 'While local reads are on, anyone who can use this secret provider can read every value it returns on their own machine with kody secret get or kody run. Kody fetches each value from the provider at read time.'
 		: 'While local reads are on, anyone who can use this secret can read its value on their own machine with kody secret get or kody run. Agents need a token that allows local reads.'

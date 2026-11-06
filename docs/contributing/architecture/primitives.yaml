@@ -180,6 +180,7 @@ primitives:
       - docs/contributing/decisions/0055-cli-mcp-oauth-local-execute-http.md
       - docs/contributing/decisions/0062-one-access-check.md
       - docs/contributing/decisions/0076-cli-login-device-token.md
+      - docs/contributing/decisions/0097-local-secret-reads.md
 
   - id: scheduled-cron
     group: surfaces
@@ -276,6 +277,7 @@ primitives:
       - docs/contributing/decisions/0070-user-owned-api-tokens-and-git-credentials.md
       - docs/contributing/decisions/0076-cli-login-device-token.md
       - docs/contributing/decisions/0091-auth-md-service-auth-registration.md
+      - docs/contributing/decisions/0097-local-secret-reads.md
 
   - id: rbac
     group: auth
@@ -311,6 +313,7 @@ primitives:
       - docs/contributing/decisions/0063-teams-expand-orgs.md
       - docs/contributing/decisions/0067-cross-org-grants-replace-shares-and-platform-accounts.md
       - docs/contributing/decisions/0088-public-team-org-pages.md
+      - docs/contributing/decisions/0097-local-secret-reads.md
 
   - id: entitlements
     group: auth
@@ -518,6 +521,7 @@ primitives:
       - docs/contributing/decisions/0080-one-resource-lock-capability.md
       - docs/contributing/decisions/0083-context-runs-never-see-credential-values.md
       - docs/contributing/decisions/0090-login-credentials-are-kody-managed-oauth-refresh.md
+      - docs/contributing/decisions/0097-local-secret-reads.md
 
   - id: integrations
     group: assistant

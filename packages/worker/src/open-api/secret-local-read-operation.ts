@@ -66,7 +66,13 @@ export const secretLocalReadDefinition: NativeApiOperationDefinition = {
 			throw new ApiError({
 				status: rateLimited ? 429 : 403,
 				code: rateLimited ? 'rate_limited' : 'insufficient_scope',
-				message: result.refusals.map((refusal) => refusal.message).join(' '),
+				message: result.refusals
+					.map((refusal) =>
+						refusal.approveUrl
+							? `${refusal.message} Turn on local reads: ${refusal.approveUrl}`
+							: refusal.message,
+					)
+					.join('\n'),
 				details: { refusals: result.refusals },
 				...(rateLimited ? { headers: { 'Retry-After': '60' } } : {}),
 			})
