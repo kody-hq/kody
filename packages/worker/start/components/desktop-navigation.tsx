@@ -92,6 +92,7 @@ export function DesktopNavigation({ homeHref }: { homeHref: string }) {
 					zIndex: 100,
 					display: 'flex',
 					alignItems: 'center',
+					justifyContent: 'flex-end',
 					gap: 4,
 					paddingInline:
 						mac && state.integratedTitlebar && !state.fullscreen
@@ -139,7 +140,6 @@ export function DesktopNavigation({ homeHref }: { homeHref: string }) {
 						if (event.key === 'Escape') setAddressOpen(false)
 					}}
 					css={{
-						marginLeft: 'auto',
 						WebkitAppRegion: 'no-drag',
 					}}
 				>

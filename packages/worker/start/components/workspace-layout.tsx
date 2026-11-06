@@ -112,7 +112,8 @@ export function WorkspaceLayout() {
 					css={{
 						position: 'sticky',
 						top: 0,
-						paddingTop: 'var(--desktop-corner-height, 0px)',
+						paddingTop:
+							'max(0px, calc(var(--desktop-corner-height, 0px) - 12px))',
 						height: '100dvh',
 						boxSizing: 'border-box',
 						display: 'flex',
