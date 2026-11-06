@@ -798,6 +798,7 @@ function normalizeShareGrant(
 
 function readSharing(result: Record<string, unknown>): ExecutionContextSharing {
 	const sharing = record(result.sharing) ?? result
+	const roster = record(sharing.accessRoster)
 	return {
 		level:
 			sharing.level === 'people' ||
@@ -812,6 +813,11 @@ function readSharing(result: Record<string, unknown>): ExecutionContextSharing {
 			? (sharing.attachedOrgs as ExecutionContextSharing['attachedOrgs'])
 			: [],
 		allMembers: sharing.allMembers === true,
+		...(roster
+			? {
+					accessRoster: roster as ExecutionContextSharing['accessRoster'],
+				}
+			: {}),
 	}
 }
 

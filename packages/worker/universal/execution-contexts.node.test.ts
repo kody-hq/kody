@@ -2,6 +2,8 @@ import { expect, test } from 'vitest'
 import {
 	type ExecutionChainEntry,
 	type ExecutionContextListItem,
+	accessBitsLabel,
+	buildAccessRoster,
 	chainIsFull,
 	chainPosition,
 	chainWarning,
@@ -237,6 +239,80 @@ test('labels', () => {
 		),
 	).toBe('Only me')
 	expect(sharingSummary(undefined, 'acme')).toBeNull()
+})
+
+test('access roster lists operator, grants, allMembers people, and no-access members', () => {
+	const onlyMeAttached = buildAccessRoster({
+		orgSlug: 'kody',
+		operatorHandle: 'kentcdodds',
+		sharing: { grants: [], allMembers: false },
+		members: [{ handle: 'kentcdodds' }, { handle: 'tannerlinsley' }],
+	})
+	expect(onlyMeAttached.operator).toEqual({
+		handle: 'kentcdodds',
+		execute: true,
+		manage: true,
+		commands: true,
+	})
+	expect(onlyMeAttached.people).toEqual([])
+	expect(onlyMeAttached.teams).toEqual([])
+	expect(onlyMeAttached.noAccess).toEqual([{ handle: 'tannerlinsley' }])
+	expect(accessBitsLabel(onlyMeAttached.operator)).toBe(
+		'execute, manage, commands',
+	)
+
+	const personalAllMembers = buildAccessRoster({
+		orgSlug: 'kentcdodds',
+		operatorHandle: 'kentcdodds',
+		sharing: { grants: [], allMembers: true },
+		members: [{ handle: 'kentcdodds' }],
+	})
+	expect(personalAllMembers.people).toEqual([])
+	expect(personalAllMembers.noAccess).toEqual([])
+
+	const withGrant = buildAccessRoster({
+		orgSlug: 'kody',
+		operatorHandle: 'kentcdodds',
+		sharing: {
+			allMembers: false,
+			grants: [
+				{
+					grantId: 'g1',
+					subject: { kind: 'user', handle: 'tannerlinsley' },
+					preset: 'manage',
+				},
+				{
+					grantId: 'g2',
+					subject: { kind: 'team', slug: 'build', name: 'Build' },
+					preset: 'use',
+				},
+			],
+		},
+		members: [
+			{ handle: 'kentcdodds' },
+			{ handle: 'tannerlinsley' },
+			{ handle: 'alice' },
+		],
+		teamCoveredHandles: ['alice'],
+	})
+	expect(withGrant.people).toEqual([
+		{
+			handle: 'tannerlinsley',
+			source: 'grant',
+			grantId: 'g1',
+			preset: 'manage',
+			execute: true,
+			manage: true,
+			commands: false,
+		},
+	])
+	expect(withGrant.teams[0]).toMatchObject({
+		slug: 'build',
+		execute: true,
+		manage: false,
+		commands: false,
+	})
+	expect(withGrant.noAccess).toEqual([])
 })
 
 test('unutilized note names up to three, then counts', () => {
