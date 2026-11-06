@@ -71,7 +71,7 @@ test('runWithTimeout resolves the child exit code when it finishes in time', asy
 	assert.equal(timers[0]?.ms, 60_000)
 })
 
-test('runWithTimeout returns 124 and kills the process tree on hang', async () => {
+test('runWithTimeout SIGKILLs the tree when the direct child exits after SIGTERM', async () => {
 	const child = new EventEmitter()
 	child.pid = 55
 	const kills = []
@@ -86,7 +86,7 @@ test('runWithTimeout returns 124 and kills the process tree on hang', async () =
 			return pending.length
 		},
 		clearTimeoutImpl: () => {},
-		killGraceMs: 5,
+		killGraceMs: 5_000,
 		killTree: (pid, signal) => {
 			kills.push([pid, signal])
 			if (signal === 'SIGTERM') child.emit('exit', null, 'SIGTERM')
@@ -101,5 +101,45 @@ test('runWithTimeout returns 124 and kills the process tree on hang', async () =
 		timedOut: true,
 		signal: 'SIGTERM',
 	})
-	assert.deepEqual(kills, [[55, 'SIGTERM']])
+	// Escalate immediately on child exit so a TERM-resistant descendant dies
+	// even though the grace timer has not fired yet.
+	assert.deepEqual(kills, [
+		[55, 'SIGTERM'],
+		[55, 'SIGKILL'],
+	])
+})
+
+test('runWithTimeout force-kills after grace when the child ignores SIGTERM', async () => {
+	const child = new EventEmitter()
+	child.pid = 77
+	const kills = []
+	const pending = []
+	const resultPromise = runWithTimeout(10, 'hang', [], {
+		spawnImpl: () => child,
+		setTimeoutImpl: (fn, ms) => {
+			pending.push({ fn, ms })
+			return pending.length
+		},
+		clearTimeoutImpl: () => {},
+		killGraceMs: 5,
+		killTree: (pid, signal) => {
+			kills.push([pid, signal])
+			if (signal === 'SIGKILL') child.emit('exit', null, 'SIGKILL')
+		},
+		platform: 'linux',
+	})
+	pending[0].fn() // timeout → SIGTERM
+	assert.deepEqual(kills, [[77, 'SIGTERM']])
+	assert.equal(pending[1]?.ms, 5)
+	pending[1].fn() // grace → SIGKILL
+	const result = await resultPromise
+	assert.deepEqual(result, {
+		status: TIMED_OUT,
+		timedOut: true,
+		signal: 'SIGKILL',
+	})
+	assert.deepEqual(kills, [
+		[77, 'SIGTERM'],
+		[77, 'SIGKILL'],
+	])
 })

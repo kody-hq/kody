@@ -44,6 +44,10 @@ function killProcessTree(pid, signal, options = {}) {
  * Run a command and kill it after `ms`. Portable replacement for GNU
  * `timeout` / Homebrew `gtimeout`, which are not reliably on PATH for the
  * macOS and Windows GitHub Actions runners used by desktop-release.
+ *
+ * On timeout we SIGTERM the process group, then always escalate to SIGKILL
+ * (either when the direct child exits, or after `killGraceMs`) so a
+ * SIGTERM-resistant descendant cannot leak into the workflow retry.
  */
 function runWithTimeout(ms, command, args, options = {}) {
 	const {
@@ -71,25 +75,35 @@ function runWithTimeout(ms, command, args, options = {}) {
 		})
 		let timedOut = false
 		let forceTimer
-		const timer = setTimeoutImpl(() => {
-			timedOut = true
-			killTree(child.pid, 'SIGTERM')
-			forceTimer = setTimeoutImpl(() => {
-				killTree(child.pid, 'SIGKILL')
-			}, killGraceMs)
-		}, ms)
-
+		let escalated = false
+		let finished = false
 		const finish = (result) => {
+			if (finished) return
+			finished = true
 			clearTimeoutImpl(timer)
 			if (forceTimer) clearTimeoutImpl(forceTimer)
 			resolve(result)
 		}
+		const escalateToKill = () => {
+			if (escalated) return
+			escalated = true
+			killTree(child.pid, 'SIGKILL')
+		}
+
+		const timer = setTimeoutImpl(() => {
+			timedOut = true
+			killTree(child.pid, 'SIGTERM')
+			forceTimer = setTimeoutImpl(escalateToKill, killGraceMs)
+		}, ms)
 
 		child.on('error', (error) => {
 			finish({ status: 1, timedOut: false, error })
 		})
 		child.on('exit', (code, signal) => {
 			if (timedOut) {
+				// Direct child may exit on SIGTERM while a descendant ignores it.
+				// Escalate immediately; do not leave the force-kill pending cleared.
+				escalateToKill()
 				finish({ status: TIMED_OUT, timedOut: true, signal })
 				return
 			}
