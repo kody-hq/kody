@@ -231,7 +231,9 @@ org transfer out of the personal org is blocked while a moved credential still
 has grants. Placeholders, scoped `credential()` clients, and name-based
 `createAuthenticatedFetch` resolve the same set (org credentials the actor can
 Use, plus the actor's own personal credentials granted into the org, org first
-by name). See
+by name). A token acting as a profile also needs every layer of its profile
+chain to hold Use on the personal credential, whether it is listed or named
+(`authorizeActorPersonalUse`). See
 ([ADR 0068](../decisions/0068-credentials-own-placement-scoped-clients.md)).
 
 **Pinned connections** (`integrations/pinned-connect.ts`,

@@ -1238,7 +1238,15 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				.toArray()
 			for (const queued of rows) {
 				if (!this.#liveSocket()) return
-				const outcome = await this.#dispatchQueued(queued)
+				// The drain runs under waitUntil: a throw (e.g. a D1 error) would be
+				// an uncaught rejection that leaves the row without a retry (#4905).
+				const outcome = await this.#dispatchQueued(queued).catch((error) => {
+					Sentry.withScope((scope) => {
+						scope.setTag('execution_context.operation', 'queue_drain')
+						Sentry.captureException(error)
+					})
+					return 'keep' as const
+				})
 				if (outcome === 'keep') {
 					await this.#ensureAlarm(Date.now() + queuedRetryMs)
 					return

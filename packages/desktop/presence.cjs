@@ -1,4 +1,4 @@
-const { Tray, Menu, nativeImage } = require('electron')
+const { Tray, Menu, nativeImage, nativeTheme } = require('electron')
 const {
 	readFileSync,
 	writeFileSync,
@@ -6,6 +6,7 @@ const {
 	mkdirSync,
 } = require('node:fs')
 const { join } = require('node:path')
+const { createTrayIcon } = require('./tray-icon.cjs')
 
 class DesktopPresence {
 	constructor({ app, dialog, show, windows, changed }) {
@@ -27,16 +28,14 @@ class DesktopPresence {
 			this.background = false
 			this.chosen = false
 		}
-		const icon =
-			process.platform === 'darwin'
-				? nativeImage.createFromPath(join(__dirname, 'assets/trayTemplate.png'))
-				: nativeImage
-						.createFromPath(join(__dirname, 'assets/icon.png'))
-						.resize({ width: 20, height: 20 })
-		if (process.platform === 'darwin') icon.setTemplateImage(true)
-		this.tray = new Tray(icon)
+		this.tray = new Tray(createTrayIcon(nativeImage, nativeTheme))
 		this.tray.setToolTip('Kody')
 		this.tray.on('double-click', () => void this.show())
+		this.themeListener = () => {
+			if (!this.tray) return
+			this.tray.setImage(createTrayIcon(nativeImage, nativeTheme))
+		}
+		nativeTheme.on('updated', this.themeListener)
 		this.apply()
 	}
 	menuItems() {

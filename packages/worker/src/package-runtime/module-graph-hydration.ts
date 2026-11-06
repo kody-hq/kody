@@ -1,5 +1,6 @@
 import { publishedArtifactNeedsPackageBindingRebuild } from './pre-binding-artifact-repair.ts'
 import { loadServingPackageSourceBySourceId } from '#worker/package-registry/source.ts'
+import { servingArtifactCommitForSource } from '#worker/repo/serving-commit.ts'
 import {
 	normalizePackageExportKey,
 	resolvePackageExportPath,
@@ -82,7 +83,7 @@ export async function resolveCurrentDynamicPackageArtifact(input: {
 		kind: 'importable-module',
 		artifactName: exportName,
 		entryPoint,
-		commit: loaded.source.published_commit,
+		commit: servingArtifactCommitForSource(loaded.source),
 	})
 	if (
 		loadedArtifact?.artifact &&

@@ -439,10 +439,13 @@ the credential values stay in Kody cloud and never reach the machine. Their runs
 cannot start workflows there, and Kody APIs kept for Kody cloud refuse them
 (`context_run_denied`). The context's runtime allowlist narrows their runs too.
 
-Shares never include host commands or host folders. A share with
-`commands: true` fails with `commands_operator_only`, and command shares made
-before this rule stay listed but do nothing. If you leave the org, your context
-stops taking other people's runs (`operator_left`).
+Shares never include host commands or host folders. Granting `fs` paths still
+only mounts them for the operator's own runs: shared runs get `fs_operator_only`
+if they `requires: ["fs"]`, and the sharing UI labels those paths as
+operator-only. A share with `commands: true` fails with
+`commands_operator_only`, and command shares made before this rule stay listed
+but do nothing. If you leave the org, your context stops taking other people's
+runs (`operator_left`).
 
 Host folders never expose credential stores, even inside a folder you allow: the
 Kody CLI config folder (your login and context keys), `~/.ssh`, `~/.gnupg`, git

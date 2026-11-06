@@ -36,7 +36,7 @@ import { createUnresolvedSecretMessage } from '#mcp/secrets/unresolved-secret.ts
 import type { StorageContext } from '#mcp/storage.ts'
 import { assertCredentialUsesDeclared } from './credential-need-enforcement.ts'
 import {
-	assertCredentialScopeAllows,
+	authorizeActorPersonalUse,
 	authorizeActorUse,
 	type CredentialResolver,
 	type ResolverCall,
@@ -48,7 +48,6 @@ import {
 	type FillPlacementRefusalLinks,
 	refusalLinkOrgSlug,
 } from './fill-placement-enforcement.ts'
-import { authorizePersonalCredentialUse } from './personal-credentials.ts'
 
 function isFoundSecret(secret: ResolvedSecret) {
 	return secret.found && typeof secret.value === 'string'
@@ -132,12 +131,13 @@ async function authorizeSecretNameUse(
 			break
 		case 'personal':
 			call.subject.credentialId = found.credentialId
-			assertCredentialScopeAllows(call, 'secret:use')
-			await authorizePersonalCredentialUse({
-				db: call.input.env.APP_DB,
-				actorPersonId: call.input.actor?.actor?.userId ?? null,
+			await authorizeActorPersonalUse({
+				env: call.input.env,
+				actor: call.input.actor,
 				orgId: call.input.orgId,
-				credentialId: found.credentialId ?? '',
+				credentialId: found.credentialId,
+				name: call.subject.name,
+				permission: 'secret:use',
 			})
 			break
 		default: {

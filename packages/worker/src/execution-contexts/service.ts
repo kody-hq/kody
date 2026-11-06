@@ -52,7 +52,13 @@ import { optInTrustNotice, sharingTrustNotice } from './trust-copy.ts'
 import type { ExecutionContextPause, RunHistoryRow } from './session-do.ts'
 import { kodyCloudTarget } from './routing.ts'
 import { latestCliVersion } from './latest-cli-version.ts'
-import { isOlderCliVersion } from '#universal/execution-contexts.ts'
+import {
+	buildAccessRoster,
+	isOlderCliVersion,
+	type ExecutionContextShareGrant,
+} from '#universal/execution-contexts.ts'
+import { listOrgMembers } from '#worker/orgs/org-members-list.ts'
+import { listTeamMembers } from '#worker/orgs/org-teams-list.ts'
 import type { RunRecord } from '#worker/run-records/types.ts'
 
 /** Shared logic behind the execution-context MCP capabilities and routes. */
@@ -1036,23 +1042,40 @@ export async function loadSharing(
 			: attachments.results.some(
 					(a) => a.org_id === caller.orgId && a.all_members === 1,
 				)
-	const grantViews = grants.results.map((grant) => ({
-		grantId: grant.id,
-		subject:
-			grant.subject_type === 'team'
-				? {
-						kind: 'team' as const,
-						slug: grant.team_slug,
-						name: grant.team_name,
-					}
-				: {
-						kind: 'user' as const,
-						handle: grant.username,
-						outside: grant.is_member === 0,
-					},
-		preset: grant.preset,
-		commands: Number(grant.command) === 1,
-	}))
+	const grantViews: Array<ExecutionContextShareGrant> = []
+	for (const grant of grants.results) {
+		// Authorization treats a null preset as use; keep those grants visible.
+		const preset = grant.preset ?? 'use'
+		if (preset !== 'use' && preset !== 'contribute' && preset !== 'manage') {
+			continue
+		}
+		const commands = Number(grant.command) === 1
+		if (grant.subject_type === 'team') {
+			if (!grant.team_slug) continue
+			grantViews.push({
+				grantId: grant.id,
+				subject: {
+					kind: 'team',
+					slug: grant.team_slug,
+					...(grant.team_name ? { name: grant.team_name } : {}),
+				},
+				preset,
+				...(commands ? { commands: true } : {}),
+			})
+			continue
+		}
+		if (!grant.username) continue
+		grantViews.push({
+			grantId: grant.id,
+			subject: {
+				kind: 'user',
+				handle: grant.username,
+				...(grant.is_member === 0 ? { outside: true } : {}),
+			},
+			preset,
+			...(commands ? { commands: true } : {}),
+		})
+	}
 	const level = allMembers
 		? 'org'
 		: grantViews.some((g) => g.subject.kind === 'team')
@@ -1061,6 +1084,27 @@ export async function loadSharing(
 				? 'people'
 				: 'only_me'
 	const handles = await handlesFor(db, [row.operator_user_id])
+	const operatorHandle = handles.get(row.operator_user_id) ?? 'unknown'
+	const orgSlug = caller.request.org?.slug ?? caller.orgId
+	const members = await listOrgMembers(db, caller.orgId)
+	const teamIds = grants.results.flatMap((grant) =>
+		grant.subject_type === 'team' && grant.team_slug ? [grant.subject_id] : [],
+	)
+	const teamCovered = new Set<string>()
+	for (const teamId of teamIds) {
+		for (const member of await listTeamMembers(db, caller.orgId, teamId)) {
+			if (member.username) teamCovered.add(member.username)
+		}
+	}
+	const accessRoster = buildAccessRoster({
+		orgSlug,
+		operatorHandle,
+		sharing: { grants: grantViews, allMembers },
+		members: members.flatMap((member) =>
+			member.username ? [{ handle: member.username }] : [],
+		),
+		teamCoveredHandles: [...teamCovered],
+	})
 	return {
 		level,
 		allMembers,
@@ -1070,6 +1114,7 @@ export async function loadSharing(
 			slug: a.slug,
 			allMembers: a.all_members === 1,
 		})),
+		accessRoster,
 		notice: sharingTrustNotice({
 			operatorHandle: handles.get(row.operator_user_id) ?? null,
 			localNetwork: parseGrant(row).egress.mode === 'public-and-lan',

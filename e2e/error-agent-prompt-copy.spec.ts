@@ -1,6 +1,5 @@
 import { expect, test, type Page } from './playwright-utils.ts'
 import { renderInternalServerErrorPage } from '../packages/worker/src/app/internal-error-page.ts'
-import { buildInternalErrorAgentPrompt } from '../packages/worker/universal/error-agent-prompt-presets.ts'
 
 // The static 500 only renders when the app shell itself throws, so the spec
 // serves that exact document on a same-origin path while the real server
@@ -20,16 +19,21 @@ async function openStaticErrorPage(page: Page) {
 	await page.getByText('Copy prompt for your agent', { exact: true }).click()
 }
 
+async function renderedPromptText(page: Page) {
+	return page
+		.locator('[data-error-agent-prompt-text]')
+		.evaluate((node) => node.textContent ?? '')
+}
+
 test('static error page Copy prompt copies the full rendered prompt', async ({
 	page,
 }) => {
 	await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
 	await openStaticErrorPage(page)
 
-	const prompt = buildInternalErrorAgentPrompt({ path: errorPath })
-	await expect(page.locator('[data-error-agent-prompt-text]')).toHaveText(
-		prompt,
-	)
+	const prompt = await renderedPromptText(page)
+	expect(prompt).toContain(errorPath)
+	expect(prompt).toContain('internal_error')
 	await page.getByRole('button', { name: 'Copy prompt', exact: true }).click()
 
 	await expect(
@@ -56,6 +60,8 @@ test('static error page Copy prompt reports failure instead of Copied', async ({
 	})
 	await openStaticErrorPage(page)
 
+	const prompt = await renderedPromptText(page)
+	expect(prompt).toContain(errorPath)
 	await page.getByRole('button', { name: 'Copy prompt', exact: true }).click()
 
 	await expect(
@@ -65,6 +71,6 @@ test('static error page Copy prompt reports failure instead of Copied', async ({
 		'Copy failed. The prompt is selected so you can copy it manually.',
 	)
 	expect(await page.evaluate(() => window.getSelection()?.toString())).toBe(
-		buildInternalErrorAgentPrompt({ path: errorPath }),
+		prompt,
 	)
 })

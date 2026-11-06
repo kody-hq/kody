@@ -20,6 +20,7 @@ cloud.
 | Lease authentication on CapabilityProxy and package graph                                 | `packages/worker/src/open-api/authenticate.ts`                                                              |
 | API edge WebSocket forward (rate limited per context and IP)                              | `packages/api-worker/src/edge.ts`                                                                           |
 | CLI (`kody context`, `kody chain`, `kody daemon`)                                         | `packages/cli/src/execution-context/`                                                                       |
+| Website Start functions (page, chain, daemon card, desktop setup)                         | `packages/worker/start/server/execution-contexts.ts`                                                        |
 | Host commands (ADR 0093): process manager, authorize hop, opt-in route                    | `packages/cli/src/execution-context/host-commands.ts`, `packages/worker/src/execution-contexts/commands.ts` |
 
 ## Lifecycle
@@ -115,6 +116,11 @@ uninstall, `kody update`), `auto-update.ts`, and `runner-lock.ts`.
   server-side `1012 replaced` close makes `runDaemon` return `replaced`: the
   daemon logs the other local `kody daemon` processes (by command line) and
   exits instead of reconnecting.
+- Desktop **Manage setup** in a team org (`putDesktopExecutionFirst` with
+  `targetOrgSlug`) attaches the personal registration to that org and puts it
+  first in the org chain; it does not register the machine again. The context
+  page **Daemon** card and desktop **This machine** call
+  `runExecutionContextDaemonAction` (pause, resume, restart, update, logs).
 
 ## Revoke, then delete
 

@@ -122,14 +122,15 @@ Playwright ffmpeg: `npx playwright install ffmpeg` — small download),
 evidence), `--color-scheme light|dark|both` to set `prefers-color-scheme`
 (`both` writes `<shot>-light.png` and `<shot>-dark.png`), `--headless` for
 environments without a display, and `--close-after <ms>` for scripted smoke.
-Headless `--screenshot` closes after the capture when `--close-after` is
-omitted. Prefer MCP/API/`execute` for proof; use `browse` only when UI is under
-test. Walkthrough screenshots of account, approval, and other focused pages must
-come from this live origin (local `dev` or the PR preview), not a `file://` dump
-of `renderToString` HTML — those shots lack SiteHeader, tokens, and real layout.
-Cursor `computerUse` drives its own browser and cannot attach to the CLI-opened
-Chromium — for computerUse, open `/login?redirectTo=<path>` with the public seed
-credentials instead of retyping a long package URL after landing on `/account`.
+`--screenshot` (headed or headless) closes after the capture when
+`--close-after` is omitted. Prefer MCP/API/`execute` for proof; use `browse`
+only when UI is under test. Walkthrough screenshots of account, approval, and
+other focused pages must come from this live origin (local `dev` or the PR
+preview), not a `file://` dump of `renderToString` HTML — those shots lack
+SiteHeader, tokens, and real layout. Cursor `computerUse` drives its own browser
+and cannot attach to the CLI-opened Chromium — for computerUse, open
+`/login?redirectTo=<path>` with the public seed credentials instead of retyping
+a long package URL after landing on `/account`.
 
 `doctor` checks local APP_DB readiness. A failed local `login` (unmigrated or
 unseeded D1) prints:

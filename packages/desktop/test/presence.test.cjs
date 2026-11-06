@@ -66,6 +66,9 @@ for (const platform of ['darwin', 'win32']) {
 				opened = 0,
 				quit = 0,
 				prompts = 0
+			const theme = new EventEmitter()
+			theme.shouldUseDarkColors = false
+			theme.shouldUseDarkColorsForSystemIntegratedUI = false
 			const window = {
 				setSkipTaskbar: (value) => {
 					skipped = value
@@ -99,35 +102,37 @@ for (const platform of ['darwin', 'win32']) {
 			}
 			const electron = {
 				Tray: class extends EventEmitter {
-					constructor() {
+					constructor(icon) {
 						super()
 						tray = this
+						this.image = icon
 					}
 					setToolTip() {}
+					setImage(icon) {
+						this.image = icon
+					}
 					setContextMenu(menu) {
 						this.menu = menu
 					}
 				},
 				Menu: { buildFromTemplate: (items) => items },
 				nativeImage: {
-					createFromPath: () => ({
-						resize() {
-							return this
-						},
-						setTemplateImage() {},
-					}),
+					createFromPath: (path) => ({ path }),
 				},
+				nativeTheme: theme,
 			}
 			const module = { exports: {} }
-			runInNewContext(
-				readFileSync(join(__dirname, '../presence.cjs'), 'utf8'),
-				{
-					require: (name) => (name === 'electron' ? electron : require(name)),
-					module,
-					__dirname: join(__dirname, '..'),
-					process: { platform },
+			const desktopRoot = join(__dirname, '..')
+			runInNewContext(readFileSync(join(desktopRoot, 'presence.cjs'), 'utf8'), {
+				require: (name) => {
+					if (name === 'electron') return electron
+					if (name.startsWith('.')) return require(join(desktopRoot, name))
+					return require(name)
 				},
-			)
+				module,
+				__dirname: desktopRoot,
+				process: { platform },
+			})
 			const options = {
 				app,
 				dialog,
@@ -147,6 +152,24 @@ for (const platform of ['darwin', 'win32']) {
 				presence.start()
 				assert.equal(presence.background, false)
 				assert.equal(presence.chosen, false)
+				assert.equal(
+					tray.image.path,
+					join(__dirname, '../assets/tray-light.png'),
+				)
+				theme.shouldUseDarkColors = true
+				theme.shouldUseDarkColorsForSystemIntegratedUI = true
+				theme.emit('updated')
+				assert.equal(
+					tray.image.path,
+					join(__dirname, '../assets/tray-dark.png'),
+				)
+				theme.shouldUseDarkColors = false
+				theme.shouldUseDarkColorsForSystemIntegratedUI = false
+				theme.emit('updated')
+				assert.equal(
+					tray.image.path,
+					join(__dirname, '../assets/tray-light.png'),
+				)
 				await presence.onboard()
 				if (installation === 'upgraded')
 					assert.deepEqual(

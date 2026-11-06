@@ -229,6 +229,49 @@ test('openBrowseSession writes a screenshot and closes headless without closeAft
 	expect(formatBrowseReport(report)).toContain(`screenshot ${screenshotPath}`)
 })
 
+test('openBrowseSession closes a headed screenshot run without closeAfterMs', async () => {
+	const closed: Array<string> = []
+	const page = {
+		goto: async () => {},
+		url: () => 'https://kody-pr-9.example/@user/pkg/approve-capabilities',
+		waitForLoadState: async () => {},
+		emulateMedia: async () => {},
+		reload: async () => {},
+		screenshot: async () => {},
+		on: () => {},
+	}
+	const browser = {
+		newContext: async () => ({
+			addCookies: async () => {},
+			newPage: async () => page,
+			close: async () => {
+				closed.push('context')
+			},
+		}),
+		close: async () => {
+			closed.push('browser')
+		},
+		on: () => {},
+		isConnected: () => true,
+	}
+	const report = await openBrowseSession({
+		origin: 'https://kody-pr-9.example',
+		path: '/@user/pkg/approve-capabilities',
+		cookieHeader: 'kody_session=seed',
+		headed: true,
+		screenshotPath: path.join(
+			tmpdir(),
+			`control-kody-headed-${Date.now()}.png`,
+		),
+		colorSchemes: ['light', 'dark'],
+		chromium: {
+			launch: async () => browser as never,
+		},
+	})
+	expect(closed).toEqual(['context', 'browser'])
+	expect(report.screenshotPaths).toHaveLength(2)
+})
+
 test('openBrowseSession rejects a login redirect before screenshot', async () => {
 	const screenshotCalls: Array<unknown> = []
 	const page = {

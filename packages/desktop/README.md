@@ -79,9 +79,10 @@ On macOS and Windows, new installs and existing installs upgrading to this
 version see the choice once, even if machine setup is already complete. Choose
 **Run in background** to keep local execution available after closing the window
 and hide the Dock or taskbar icon. Kody stays in the macOS menu bar or Windows
-system tray. Its menu has **Open Kody**, **Run in background**, and **Quit
-Kody**. The same background setting is in the File menu and is saved for this
-installation.
+system tray. The tray mark follows the OS theme: outlined black with a white
+face on light chrome, solid white on dark, and updates when the theme changes.
+Its menu has **Open Kody**, **Run in background**, and **Quit Kody**. The same
+background setting is in the File menu and is saved for this installation.
 
 Turning background mode off restores the Dock or taskbar icon and opens the
 window. Quit still stops the app's runner. This does not start Kody at login or

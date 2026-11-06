@@ -55,6 +55,25 @@ test('CI matrices hash shards, retain crash retry and aggregate every shard at t
 	)
 	expect(e2e).toContain('retry-classifiers.ts e2e e2e-attempt-1.log')
 	expect(e2e).toContain('path: blob-report')
+	expect(e2e).toMatch(
+		/Upload Playwright blob report[\s\S]*?continue-on-error: true[\s\S]*?timeout-minutes: 2[\s\S]*?path: blob-report/,
+	)
+	const e2eReport = workflow.slice(
+		workflow.indexOf('\n  e2e_report:'),
+		workflow.indexOf('\n  host_commands:'),
+	)
+	expect(e2eReport).toContain(
+		'::warning::Playwright blob report download failed (diagnostic only).',
+	)
+	expect(e2eReport).not.toMatch(
+		/gh run download[\s\S]*?echo "\$out" >&2[\s\S]*?exit 1/,
+	)
+	expect(e2eReport).toMatch(
+		/Download blob reports[\s\S]*?continue-on-error: true[\s\S]*?timeout-minutes: 2/,
+	)
+	expect(e2eReport).toMatch(
+		/Upload merged HTML report[\s\S]*?continue-on-error: true[\s\S]*?timeout-minutes: 2[\s\S]*?path: playwright-report/,
+	)
 	const gate = workflow.slice(workflow.indexOf('\n  validate:'))
 	for (const job of [
 		'node',
