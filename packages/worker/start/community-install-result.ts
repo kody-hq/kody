@@ -17,6 +17,18 @@ export class CommunityInstallInProgressError extends Error {
 }
 
 /**
+ * Lost Start envelope with no live fork row yet (or no listing to poll).
+ * UI must hold Fork closed and reconcile — not show a false failure that
+ * invites a duplicate install.
+ */
+export class CommunityInstallLostEnvelopeError extends Error {
+	constructor() {
+		super('Fork response was lost; reconciling.')
+		this.name = 'CommunityInstallLostEnvelopeError'
+	}
+}
+
+/**
  * Normalize a website fork/install server-fn payload. After a successful fork
  * the Start client can still resolve to `undefined` when the RPC envelope's
  * `result` is missing (`return result.result` in createServerFn) — often a
@@ -141,5 +153,5 @@ export async function resolveCommunityInstallResult(input: {
 	if (live.state === 'in_progress') {
 		throw new CommunityInstallInProgressError()
 	}
-	throw new Error('Unable to install this public package.')
+	throw new CommunityInstallLostEnvelopeError()
 }

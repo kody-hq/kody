@@ -1,6 +1,7 @@
 import { expect, test, vi } from 'vitest'
 import {
 	CommunityInstallInProgressError,
+	CommunityInstallLostEnvelopeError,
 	communityInstallOutcomeFromLiveFork,
 	readCommunityInstallResult,
 	resolveCommunityInstallResult,
@@ -121,11 +122,11 @@ test('resolveCommunityInstallResult keeps explicit server failures', async () =>
 	expect(loadForkState).not.toHaveBeenCalled()
 })
 
-test('resolveCommunityInstallResult still fails when the fork never appears', async () => {
+test('resolveCommunityInstallResult signals a lost envelope when the fork never appears', async () => {
 	await expect(
 		resolveCommunityInstallResult({
 			result: undefined,
 			loadForkState: async () => ({ state: 'none' }),
 		}),
-	).rejects.toThrow('Unable to install this public package.')
+	).rejects.toBeInstanceOf(CommunityInstallLostEnvelopeError)
 })
