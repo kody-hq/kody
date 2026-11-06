@@ -367,6 +367,12 @@ export async function callOpenApiOperation(
 }
 
 export function assertApiOperationAllowed(operationId: string): void {
+	if (operationId === 'secretLocalRead') {
+		throw new OpenApiError(
+			'Refusing to call secretLocalRead: it returns secret values. Use `kody secret get` or `kody run` instead.',
+			{ status: null, code: 'refused' },
+		)
+	}
 	if (operationId === cliCredentialBootstrapRedeemOperationId) {
 		throw new OpenApiError(
 			`Refusing to call ${cliCredentialBootstrapRedeemOperationId}: redeem returns a kody_at_… token that must not print to stdout. Use \`kody auth bootstrap --code <kody_bc_…>\` instead (stores the token; never prints it).`,
