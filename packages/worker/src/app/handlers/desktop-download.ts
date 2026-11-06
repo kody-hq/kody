@@ -3,9 +3,9 @@ import {
 	desktopReleasesLatestUrl,
 	desktopUpdaterFeedUrl,
 	detectDesktopDownloadTarget,
-	parseElectronUpdaterAssetNames,
 	pickDesktopInstallerAsset,
 	type DesktopDownloadTarget,
+	type DesktopInstallerAsset,
 } from '#app/desktop-download.ts'
 
 const redirectHeaders = {
@@ -42,14 +42,11 @@ export function createDesktopDownloadHandler(
 async function resolveInstallerAsset(
 	target: DesktopDownloadTarget,
 	fetchFeed: (url: string) => Promise<string | null>,
-) {
+): Promise<DesktopInstallerAsset | null> {
 	try {
 		const yml = await fetchFeed(desktopUpdaterFeedUrl(target))
 		if (!yml) return null
-		return pickDesktopInstallerAsset(
-			parseElectronUpdaterAssetNames(yml),
-			target.platform,
-		)
+		return pickDesktopInstallerAsset(yml, target.platform)
 	} catch {
 		return null
 	}

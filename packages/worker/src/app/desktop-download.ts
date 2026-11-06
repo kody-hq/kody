@@ -9,8 +9,11 @@
 export const desktopReleasesLatestUrl =
 	'https://github.com/kody-hq/kody-desktop/releases/latest'
 
-export const desktopReleaseAssetDownloadBase =
+export const desktopReleaseLatestDownloadBase =
 	'https://github.com/kody-hq/kody-desktop/releases/latest/download'
+
+export const desktopReleaseDownloadBase =
+	'https://github.com/kody-hq/kody-desktop/releases/download'
 
 export type DesktopPlatform = 'mac' | 'win' | 'linux'
 export type DesktopArch = 'arm64' | 'x64'
@@ -18,6 +21,11 @@ export type DesktopArch = 'arm64' | 'x64'
 export type DesktopDownloadTarget = {
 	platform: DesktopPlatform
 	arch: DesktopArch
+}
+
+export type DesktopInstallerAsset = {
+	version: string
+	assetName: string
 }
 
 const installerExtension: Record<DesktopPlatform, string> = {
@@ -35,11 +43,15 @@ export function desktopUpdaterFeedName(target: DesktopDownloadTarget): string {
 }
 
 export function desktopUpdaterFeedUrl(target: DesktopDownloadTarget): string {
-	return `${desktopReleaseAssetDownloadBase}/${desktopUpdaterFeedName(target)}`
+	return `${desktopReleaseLatestDownloadBase}/${desktopUpdaterFeedName(target)}`
 }
 
-export function desktopAssetDownloadUrl(assetName: string): string {
-	return `${desktopReleaseAssetDownloadBase}/${assetName}`
+/**
+ * Tag-specific asset URLs stay valid after a newer release becomes latest, so
+ * a cached `/download` Location cannot 404 when the feed moves forward.
+ */
+export function desktopAssetDownloadUrl(asset: DesktopInstallerAsset): string {
+	return `${desktopReleaseDownloadBase}/v${asset.version}/${asset.assetName}`
 }
 
 /**
@@ -59,6 +71,14 @@ export function detectDesktopDownloadTarget(input: {
 	return { platform, arch }
 }
 
+export function parseElectronUpdaterVersion(yml: string): string | null {
+	const match = /^\s*version:\s*(\S+)\s*$/m.exec(yml)
+	const version = match?.[1]
+	if (!version) return null
+	if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version)) return null
+	return version
+}
+
 export function parseElectronUpdaterAssetNames(yml: string): string[] {
 	const names: string[] = []
 	for (const match of yml.matchAll(/^\s*-\s*url:\s*(\S+)\s*$/gm)) {
@@ -71,11 +91,17 @@ export function parseElectronUpdaterAssetNames(yml: string): string[] {
 }
 
 export function pickDesktopInstallerAsset(
-	assetNames: ReadonlyArray<string>,
+	yml: string,
 	platform: DesktopPlatform,
-): string | null {
+): DesktopInstallerAsset | null {
+	const version = parseElectronUpdaterVersion(yml)
+	if (!version) return null
 	const extension = installerExtension[platform]
-	return assetNames.find((name) => name.endsWith(extension)) ?? null
+	const assetName = parseElectronUpdaterAssetNames(yml).find((name) =>
+		name.endsWith(extension),
+	)
+	if (!assetName) return null
+	return { version, assetName }
 }
 
 function normalizePlatform(

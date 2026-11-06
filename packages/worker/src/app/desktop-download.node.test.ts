@@ -6,9 +6,17 @@ import {
 	desktopUpdaterFeedUrl,
 	detectDesktopDownloadTarget,
 	parseElectronUpdaterAssetNames,
+	parseElectronUpdaterVersion,
 	pickDesktopInstallerAsset,
 } from './desktop-download.ts'
 import { createDesktopDownloadHandler } from './handlers/desktop-download.ts'
+
+const macArm64Feed = `version: 0.1.26
+files:
+  - url: Kody-0.1.26-mac-arm64.zip
+  - url: Kody-0.1.26-mac-arm64.dmg
+path: Kody-0.1.26-mac-arm64.zip
+`
 
 test('detects Mac arm64 from an Apple silicon user agent and query overrides', () => {
 	expect(
@@ -55,7 +63,7 @@ test('detects Windows and Linux targets and rejects mobile agents', () => {
 	expect(detectDesktopDownloadTarget({ userAgent: null })).toBeNull()
 })
 
-test('maps updater feed names and prefers installer assets over updater zips', () => {
+test('maps updater feeds to tag-specific installer URLs that survive a newer latest', () => {
 	expect(desktopUpdaterFeedName({ platform: 'mac', arch: 'arm64' })).toBe(
 		'latest-arm64-mac.yml',
 	)
@@ -65,36 +73,31 @@ test('maps updater feed names and prefers installer assets over updater zips', (
 	expect(desktopUpdaterFeedName({ platform: 'linux', arch: 'arm64' })).toBe(
 		'latest-arm64-linux-arm64.yml',
 	)
-	const names = parseElectronUpdaterAssetNames(`version: 0.1.26
-files:
-  - url: Kody-0.1.26-mac-arm64.zip
-  - url: Kody-0.1.26-mac-arm64.dmg
-path: Kody-0.1.26-mac-arm64.zip
-`)
-	expect(names).toEqual([
+	expect(parseElectronUpdaterVersion(macArm64Feed)).toBe('0.1.26')
+	expect(parseElectronUpdaterAssetNames(macArm64Feed)).toEqual([
 		'Kody-0.1.26-mac-arm64.zip',
 		'Kody-0.1.26-mac-arm64.dmg',
 	])
-	expect(pickDesktopInstallerAsset(names, 'mac')).toBe(
-		'Kody-0.1.26-mac-arm64.dmg',
-	)
+	expect(pickDesktopInstallerAsset(macArm64Feed, 'mac')).toEqual({
+		version: '0.1.26',
+		assetName: 'Kody-0.1.26-mac-arm64.dmg',
+	})
 	expect(desktopUpdaterFeedUrl({ platform: 'mac', arch: 'arm64' })).toBe(
 		'https://github.com/kody-hq/kody-desktop/releases/latest/download/latest-arm64-mac.yml',
 	)
-	expect(desktopAssetDownloadUrl('Kody-0.1.26-mac-arm64.dmg')).toBe(
-		'https://github.com/kody-hq/kody-desktop/releases/latest/download/Kody-0.1.26-mac-arm64.dmg',
+	expect(
+		desktopAssetDownloadUrl({
+			version: '0.1.26',
+			assetName: 'Kody-0.1.26-mac-arm64.dmg',
+		}),
+	).toBe(
+		'https://github.com/kody-hq/kody-desktop/releases/download/v0.1.26/Kody-0.1.26-mac-arm64.dmg',
 	)
 })
 
 test('download handler redirects to the matched installer or the releases page', async () => {
 	const feeds = new Map([
-		[
-			desktopUpdaterFeedUrl({ platform: 'mac', arch: 'arm64' }),
-			`files:
-  - url: Kody-0.1.26-mac-arm64.zip
-  - url: Kody-0.1.26-mac-arm64.dmg
-`,
-		],
+		[desktopUpdaterFeedUrl({ platform: 'mac', arch: 'arm64' }), macArm64Feed],
 	])
 	const handler = createDesktopDownloadHandler({
 		fetchFeed: async (url) => feeds.get(url) ?? null,
@@ -105,7 +108,10 @@ test('download handler redirects to the matched installer or the releases page',
 	})
 	expect(asset.status).toBe(302)
 	expect(asset.headers.get('Location')).toBe(
-		desktopAssetDownloadUrl('Kody-0.1.26-mac-arm64.dmg'),
+		desktopAssetDownloadUrl({
+			version: '0.1.26',
+			assetName: 'Kody-0.1.26-mac-arm64.dmg',
+		}),
 	)
 	expect(asset.headers.get('X-Robots-Tag')).toBe('noindex, nofollow')
 
