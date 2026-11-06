@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { CommandTrigger } from '../commands/provider.tsx'
 import { DemoIndicator } from './demo-indicator.tsx'
 import { workspaceHomeHref } from '#client/routes/account-rail.ts'
 import { dismissOpenPopoverPanel } from '#client/popover-open.ts'
@@ -104,12 +105,17 @@ export function SiteHeader(props: SiteHeaderProps) {
 								<SiteLink href={workspaceHref} css={navLoginCss}>
 									Workspace
 								</SiteLink>
-								<AccountMenu
-									username={props.username}
-									displayName={props.displayName}
-									avatarUrl={props.avatarUrl}
-									organizations={props.organizationSession?.organizations ?? []}
-								/>
+								<div css={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+									<CommandTrigger />
+									<AccountMenu
+										username={props.username}
+										displayName={props.displayName}
+										avatarUrl={props.avatarUrl}
+										organizations={
+											props.organizationSession?.organizations ?? []
+										}
+									/>
+								</div>
 							</>
 						) : (
 							<SiteLink href={props.loginHref} css={navLoginCss}>
@@ -156,12 +162,15 @@ export function SiteHeader(props: SiteHeaderProps) {
 							<SiteLink href={workspaceHref} css={navLoginCss}>
 								Workspace
 							</SiteLink>
-							<AccountMenu
-								organizations={props.organizationSession?.organizations ?? []}
-								username={props.username}
-								displayName={props.displayName}
-								avatarUrl={props.avatarUrl}
-							/>
+							<div css={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+								<CommandTrigger />
+								<AccountMenu
+									organizations={props.organizationSession?.organizations ?? []}
+									username={props.username}
+									displayName={props.displayName}
+									avatarUrl={props.avatarUrl}
+								/>
+							</div>
 							{props.showDemoIndicator ? <DemoIndicator /> : null}
 						</>
 					) : (

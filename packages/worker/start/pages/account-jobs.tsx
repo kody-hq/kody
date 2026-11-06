@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import type { Command } from '../commands/model.ts'
 import {
 	filterAccountJobs,
 	type AccountJobsViewFilter,
@@ -16,6 +17,7 @@ import {
 } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
+import { usePageCommands } from '../commands/context.tsx'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { collectionSearch } from '../filter-search.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
@@ -170,6 +172,42 @@ export function AccountJobsPage({
 		onSettled: (_data, _error, input, submitted) =>
 			submitted ? reconcile(input, submitted) : undefined,
 	})
+	usePageCommands(
+		isMutating
+			? []
+			: jobs.flatMap((job) => [
+					...(job.expired
+						? []
+						: ([
+								{
+									id: `run-job:${orgSlug}:${job.id}`,
+									title: `Run ${job.name} now`,
+									subtitle: job.packageName ?? job.packageId,
+									kind: 'action',
+									icon: 'play',
+									confirm: `Run ${job.name} now? This executes the job with its saved parameters.`,
+									run: async () => {
+										await runMutation.mutateAsync({ id: job.id, orgSlug })
+									},
+								},
+							] as Command[])),
+					{
+						id: `toggle-job:${orgSlug}:${job.id}`,
+						title: `${job.killSwitchEnabled ? 'Resume' : 'Pause'} ${job.name}`,
+						subtitle: job.packageName ?? job.packageId,
+						kind: 'action',
+						icon: 'briefcase',
+						confirm: `${job.killSwitchEnabled ? 'Resume' : 'Pause'} scheduled runs for ${job.name}?`,
+						run: async () => {
+							await killMutation.mutateAsync({
+								id: job.id,
+								orgSlug,
+								killSwitchEnabled: !job.killSwitchEnabled,
+							})
+						},
+					},
+				]),
+	)
 	async function postAction(input: {
 		write: () => Promise<AccountJobsActionPayload>
 		successMessage: (payload: AccountJobsActionPayload) => string | null

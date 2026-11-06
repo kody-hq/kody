@@ -4,6 +4,7 @@ import { expect, test } from 'vitest'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import {
 	getMemoryById,
+	searchMemoryMetadata,
 	deleteMemory,
 	listMemoriesByUserId,
 	listMemoriesByUserIdPage,
@@ -200,4 +201,74 @@ test('permanent deletion requires explicit force for deleted rows and remains ow
 		await getMemoryById(db, owner, 'deleted', { includeDeleted: true }),
 	).toBeNull()
 	expect(await deleteMemory(db, owner, 'live')).toBe(true)
+})
+
+test('command memory search reaches old rows, escapes wildcards, and keeps favorites owner-scoped', async () => {
+	const { sqlite, db } = createMemoryDb()
+	for (let i = 0; i < 205; i++)
+		insertMemory(sqlite, {
+			id: `recent-${i}`,
+			userId: 'owner',
+			status: 'active',
+			subject: `Recent memory ${i}`,
+		})
+	insertMemory(sqlite, {
+		id: 'old',
+		userId: 'owner',
+		status: 'archived',
+		subject: 'Quarterly backup 100%_complete',
+	})
+	sqlite
+		.prepare("UPDATE mcp_memories SET updated_at='2020-01-01' WHERE id='old'")
+		.run()
+	insertMemory(sqlite, {
+		id: 'foreign',
+		userId: 'other',
+		status: 'active',
+		subject: 'Quarterly backup 100%_complete',
+	})
+	insertMemory(sqlite, {
+		id: 'deleted',
+		userId: 'owner',
+		status: 'deleted',
+		subject: 'Quarterly backup 100%_complete',
+		deletedAt: '2026-01-01',
+	})
+	expect(
+		(await searchMemoryMetadata(db, 'owner', 'bkp', ['foreign'])).map(
+			(row) => row.id,
+		),
+	).toEqual(['old'])
+	expect(
+		(await searchMemoryMetadata(db, 'owner', '%_', [])).map((row) => row.id),
+	).toEqual(['old'])
+	expect(
+		(await searchMemoryMetadata(db, 'owner', '', ['old', 'foreign']))[0]?.id,
+	).toBe('old')
+	expect(await searchMemoryMetadata(db, 'owner', "' OR 1=1 --", [])).toEqual([])
+	sqlite.close()
+})
+
+test('command memory candidates normalize accents and keep older exact matches ahead of newer partial matches', async () => {
+	const { sqlite, db } = createMemoryDb()
+	for (let i = 0; i < 205; i++)
+		insertMemory(sqlite, {
+			id: `recent-${i}`,
+			userId: 'owner',
+			status: 'active',
+			subject: `Café notes ${i}`,
+		})
+	insertMemory(sqlite, {
+		id: 'exact',
+		userId: 'owner',
+		status: 'active',
+		subject: 'CAFÉ',
+	})
+	sqlite
+		.prepare("UPDATE mcp_memories SET updated_at='2020-01-01' WHERE id='exact'")
+		.run()
+	const results = await searchMemoryMetadata(db, 'owner', 'cafe', [])
+	expect(results).toHaveLength(200)
+	expect(results[0]?.id).toBe('exact')
+	sqlite.close()
 })

@@ -47,6 +47,15 @@ export async function settleAccountMutation(
 		.map((query) => query.promise)
 	await Promise.allSettled(firstReads)
 	await Promise.all([
+		resources.includes('loadJobsPage')
+			? client.invalidateQueries({
+					predicate: (query) =>
+						query.queryKey[0] === 'command-search' &&
+						query.queryKey[3] === 'job' &&
+						(options.orgSlug === undefined ||
+							query.queryKey[2] === options.orgSlug),
+				})
+			: undefined,
 		invalidatePageResources(
 			client,
 			actorKey,

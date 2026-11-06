@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { usePageCommands } from '../commands/context.tsx'
+import { toast } from '#client/toast.ts'
 import { createListDetailLinks } from '#client/list-detail-route.ts'
 import {
 	clearOnboardingMcpOAuthReturnCookie,
@@ -119,6 +121,23 @@ export function AccountMcpServersPage({
 		? 'busy'
 		: 'idle'
 	const servers = payload.servers
+	usePageCommands(
+		actionState === 'busy'
+			? []
+			: servers.map((server) => ({
+					id: `refresh-mcp:${orgSlug}:${server.id}`,
+					title: `Refresh ${server.name} tools`,
+					kind: 'action',
+					icon: 'refresh',
+					run: async () => {
+						await refreshMutation.mutateAsync({
+							orgSlug: orgSlug ?? undefined,
+							id: server.id,
+						})
+						toast.success('Refreshed server tools')
+					},
+				})),
+	)
 	const savedPackages = payload.savedPackages ?? []
 	const [usageDrafts, setUsageDrafts] = useState(
 		new Map<string, McpServerUsageDraft>(),
