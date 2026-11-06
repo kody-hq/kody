@@ -164,7 +164,7 @@ test('personal org detail soft-fails when selected detail or local reads reject'
 		grants: [],
 		usage: [],
 		usageTruncated: false,
-		usageUnreadable: 0,
+		usageUnreadable: 0, // no packages in the fixture
 		hostSettings: null,
 		fillPlacementObservation: null,
 	})

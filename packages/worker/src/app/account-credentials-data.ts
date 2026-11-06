@@ -69,7 +69,9 @@ export async function loadAccountCredentialsData(input: {
 					grants: [],
 					usage: [],
 					usageTruncated: false,
-					usageUnreadable: 0,
+					// Match listUsage soft-fail: show Used by gap copy instead of
+					// claiming a finished scan found no packages.
+					usageUnreadable: packages.length,
 					hostSettings: null,
 					fillPlacementObservation: null,
 				}
