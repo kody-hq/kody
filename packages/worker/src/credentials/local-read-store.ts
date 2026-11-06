@@ -3,6 +3,7 @@
  * (`credential_local_read_settings`) and the Local reads list
  * (`credential_local_read_events`). Rows never hold a secret value.
  */
+import * as Sentry from '@sentry/cloudflare'
 
 export const localReadEventRetentionDays = 90
 export const localReadListLimit = 100
@@ -86,16 +87,25 @@ export async function listLocalReadSettings(
 	const unique = [...new Set(credentialIds)]
 	for (let start = 0; start < unique.length; start += 90) {
 		const chunk = unique.slice(start, start + 90)
-		const { results } = await db
-			.prepare(
-				`SELECT credential_id, enabled, updated_at, updated_by_user_id, last_read_at
+		try {
+			const { results } = await db
+				.prepare(
+					`SELECT credential_id, enabled, updated_at, updated_by_user_id, last_read_at
 				 FROM credential_local_read_settings
 				 WHERE credential_id IN (${chunk.map(() => '?').join(', ')})`,
-			)
-			.bind(...chunk)
-			.all<SettingRow>()
-		for (const row of results ?? [])
-			settings.set(row.credential_id, toSetting(row))
+				)
+				.bind(...chunk)
+				.all<SettingRow>()
+			for (const row of results ?? [])
+				settings.set(row.credential_id, toSetting(row))
+		} catch (error) {
+			// Keep earlier chunks so list badges do not vanish when a later
+			// IN (...) batch fails.
+			Sentry.captureException(error, {
+				tags: { scope: 'credentials.local_reads.settings' },
+				extra: { chunkStart: start, chunkSize: chunk.length },
+			})
+		}
 	}
 	return settings
 }
