@@ -592,10 +592,17 @@ export function grantSummaryDetail(grant: ExecutionContextGrantSummary) {
 	].join(' · ')
 }
 
-/** "Only me" / "{n} people" / "Team {t}" / "Everyone in @{org}", joined. */
+/**
+ * "Only me" / "{n} people" / "Team {t}" / "Everyone in @{org}", joined.
+ *
+ * `viewerOrgSlug` is the org of the page being viewed. `sharing.allMembers` is
+ * already remapped to that org by loadSharing, so label it with the viewer slug
+ * (not the registration owner). Skip the viewer org when listing attachedOrgs
+ * so an attached-org view does not double-count "Everyone in @current".
+ */
 export function sharingSummary(
 	sharing: ExecutionContextSharing | undefined,
-	ownerOrgSlug: string,
+	viewerOrgSlug: string,
 ): string | null {
 	if (!sharing) return null
 	const people = sharing.grants.filter((grant) => grant.subject.kind === 'user')
@@ -608,9 +615,11 @@ export function sharingSummary(
 	if (people.length > 0)
 		parts.push(pluralize(people.length, 'person', 'people'))
 	for (const team of teams) parts.push(`Team ${team}`)
-	if (sharing.allMembers) parts.push(`Everyone in @${ownerOrgSlug}`)
+	if (sharing.allMembers) parts.push(`Everyone in @${viewerOrgSlug}`)
 	for (const org of sharing.attachedOrgs) {
-		if (org.allMembers) parts.push(`Everyone in @${org.slug}`)
+		if (org.allMembers && org.slug !== viewerOrgSlug) {
+			parts.push(`Everyone in @${org.slug}`)
+		}
 	}
 	return parts.length > 0 ? parts.join(' + ') : 'Only me'
 }

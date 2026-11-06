@@ -38,7 +38,9 @@ Execution contexts are an experiment. Turn them on at
   inputs, logs and results. Without the opt-in the context is skipped
   (`not_opted_in`) and the chain falls through; a run that names the context
   without `fallback: "chain"` fails instead. Their runs start no workflows and
-  get `context_run_denied` from Kody APIs kept for Kody cloud.
+  get `context_run_denied` from Kody APIs kept for Kody cloud. Host folders in
+  the grant stay on the operator's own runs only; shared runs do not mount them
+  (`fs_operator_only` if a run `requires: ["fs"]`).
 - Capabilities: `executionContextList`, `executionContextGet`,
   `executionContextUpdate`, `executionContextRevoke`, `executionContextDelete`,
   `executionContextRunList`, `executionContextRunCancel`, `executionChainGet`,

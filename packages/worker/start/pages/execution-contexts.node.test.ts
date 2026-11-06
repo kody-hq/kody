@@ -175,6 +175,59 @@ test('operator detail shows sharing with levels and no invite links note', async
 	expect(body).not.toContain('Opt into')
 })
 
+test('attached-org detail labels everyone with the current org, keeps Owned by', async () => {
+	const vault = contextFixture({
+		id: 'ec_vault',
+		name: 'family-vault',
+		ownerOrg: { id: 'org_kent', slug: 'kentcdodds' },
+		operator: { handle: 'kentcdodds' },
+		isOperator: true,
+		canAddShares: true,
+		grantSummary: {
+			fs: 1,
+			fsMode: 'read',
+			egress: { mode: 'public' },
+			runtime: 'all',
+			timeoutMs: 90_000,
+		},
+		sharing: {
+			level: 'org',
+			grants: [],
+			// Viewer @kody: loadSharing remaps allMembers to this attachment.
+			attachedOrgs: [{ id: 'org_kody', slug: 'kody', allMembers: true }],
+			allMembers: true,
+		},
+	})
+	const pageHref = `/@kody/-/execution-contexts/${vault.id}`
+	const html = await renderStartPage(
+		route(
+			pageFixture({
+				orgSlug: 'kody',
+				personalOrg: false,
+				contexts: [vault],
+				selected: vault,
+				unutilized: { count: 0, contexts: [], note: '' },
+			}),
+			vault.id,
+			pageHref,
+		),
+		pageHref,
+	)
+	const body = text(html)
+	expect(html).toContain('data-testid="context-sharing"')
+	expect(body).toContain('Owned by @kentcdodds')
+	// Viewer org labels for allMembers; owner org stays on Owned by only.
+	expect(body).toMatch(/Shared with\s+Everyone in @kody(?:\s|$)/)
+	expect(body).toMatch(/Everyone in @kody,\s+Use: run code here/)
+	expect(html).toContain('Everyone in @<!-- -->kody')
+	expect(body).toContain(
+		'files: none (machine has 1 path, read for operator runs only)',
+	)
+	expect(body).toContain(
+		"Host folders are for the operator's own runs only. Shared runs do not mount them.",
+	)
+})
+
 test('a missing context id shows a not-found message, not a crash', async () => {
 	const html = await renderStartPage(
 		route(pageFixture(), 'ec_gone', `${href}/ec_gone`),

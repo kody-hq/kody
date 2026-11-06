@@ -220,6 +220,18 @@ test('labels', () => {
 	).toBe('1 person + Team build + Everyone in @acme + Everyone in @other')
 	expect(
 		sharingSummary(
+			{
+				level: 'org',
+				grants: [],
+				// Viewer is the attached org; allMembers was remapped for @kody.
+				attachedOrgs: [{ slug: 'kody', allMembers: true }],
+				allMembers: true,
+			},
+			'kody',
+		),
+	).toBe('Everyone in @kody')
+	expect(
+		sharingSummary(
 			{ level: 'only_me', grants: [], attachedOrgs: [], allMembers: false },
 			'acme',
 		),

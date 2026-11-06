@@ -241,7 +241,7 @@ export function ExecutionContextDetail(props: {
 				{context.sharing ? (
 					<>
 						<dt>Shared with</dt>
-						<dd>{sharingSummary(context.sharing, context.ownerOrg.slug)}</dd>
+						<dd>{sharingSummary(context.sharing, orgSlug)}</dd>
 					</>
 				) : null}
 			</dl>
@@ -1270,7 +1270,7 @@ function SharingPanel(props: {
 			<h3 id="context-sharing-title" css={{ margin: 0 }}>
 				Sharing
 			</h3>
-			<p css={mutedCss}>{sharingSummary(sharing, context.ownerOrg.slug)}</p>
+			<p css={mutedCss}>{sharingSummary(sharing, props.orgSlug)}</p>
 			{error ? (
 				<AccountManagementMessage tone="error">
 					{error}
@@ -1278,11 +1278,11 @@ function SharingPanel(props: {
 			) : null}
 			{sharing.allMembers ? (
 				<p css={{ margin: 0 }}>
-					Everyone in @{context.ownerOrg.slug}, {presetLabels.use}{' '}
+					Everyone in @{props.orgSlug}, {presetLabels.use}{' '}
 					{!canAdd ? null : confirmRemove === allMembersKey ? (
 						<>
 							<span css={mutedCss}>
-								{stopSharingConfirm(`everyone in @${context.ownerOrg.slug}`)}
+								{stopSharingConfirm(`everyone in @${props.orgSlug}`)}
 							</span>{' '}
 							<button
 								type="button"
@@ -1391,9 +1391,7 @@ function SharingPanel(props: {
 							>
 								<option value="user">A person</option>
 								<option value="team">A team</option>
-								<option value="org">
-									Everyone in @{context.ownerOrg.slug}
-								</option>
+								<option value="org">Everyone in @{props.orgSlug}</option>
 							</select>
 						</label>
 						{kind === 'org' ? null : (
