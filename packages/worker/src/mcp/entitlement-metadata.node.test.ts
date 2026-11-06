@@ -51,6 +51,7 @@ test('entitlement metadata is only for known plan-limit and quota denials', () =
 		upgradeHint,
 		used: 100,
 		remaining: 0,
+		resetAt: quotaDenial.details.resetAt,
 	})
 
 	const intervalDenial = new JobIntervalFloorError({

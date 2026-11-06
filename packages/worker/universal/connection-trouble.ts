@@ -117,12 +117,14 @@ export function integrationAuthFailureCopy(input: {
 		input.providerErrorDescription,
 	)
 
+	const providerLabel = humanizeConnectionName(input.name)
+
 	if (input.reason === 'provider_unavailable') {
 		const status =
 			input.httpStatus != null ? ` (HTTP ${String(input.httpStatus)})` : ''
 		return {
 			title,
-			why: `The provider's token service failed${status}. This is not a dead sign-in.`,
+			why: `${providerLabel}'s token service failed${status}. This is not a dead sign-in, and it is not a Kody plan limit.`,
 			who: 'the-service',
 			doLabel: 'Open integration',
 			href: accountHref,
@@ -141,7 +143,11 @@ export function integrationAuthFailureCopy(input: {
 		}
 	}
 
-	const why = integrationAuthFailureWhy(input.reason, providerDetail)
+	const why = integrationAuthFailureWhy(
+		input.reason,
+		providerDetail,
+		providerLabel,
+	)
 	return {
 		title,
 		why,
@@ -222,20 +228,21 @@ export function isVendorLikelyMcpError(error: string | null | undefined) {
 function integrationAuthFailureWhy(
 	reason: Exclude<IntegrationAuthFailureReason, 'provider_unavailable'>,
 	providerDetail: string | null,
+	providerLabel: string,
 ) {
 	switch (reason) {
 		case 'missing_refresh_token':
-			return 'This sign-in expires, but Kody has no refresh token to renew it.'
+			return `This ${providerLabel} sign-in expires, but Kody has no refresh token to renew it. Reconnect ${providerLabel} under the workspace that should own the connection.`
 		case 'provider_rejected':
 			return providerDetail
-				? `The provider rejected the saved sign-in (${providerDetail}).`
-				: 'The provider rejected the saved sign-in.'
+				? `${providerLabel} rejected the saved sign-in (${providerDetail}). This is a ${providerLabel} auth failure, not a Kody plan limit. Reconnect ${providerLabel} under the workspace that should own the connection.`
+				: `${providerLabel} rejected the saved sign-in. This is a ${providerLabel} auth failure, not a Kody plan limit. Reconnect ${providerLabel} under the workspace that should own the connection.`
 		case 'missing_secret':
-			return 'A required credential for this connection is missing.'
+			return `A required ${providerLabel} credential for this connection is missing.`
 		case 'host_not_approved':
-			return 'This connection is not approved for the token host.'
+			return `This ${providerLabel} connection is not approved for the token host.`
 		case 'invalid_config':
-			return "This connection's OAuth setup is incomplete."
+			return `This ${providerLabel} connection's OAuth setup is incomplete.`
 		default: {
 			const exhaustive: never = reason
 			return exhaustive

@@ -142,7 +142,7 @@ test('execute structured content passes strict client validation for all return 
 			timing,
 			returnedBytes: 0,
 			error:
-				'Plan limit reached: your "free" plan allows at most 10 saved packages and you currently have 10.',
+				'Kody plan limit reached: your "free" plan allows at most 10 saved packages and you currently have 10.',
 			errorDetails: { kind: 'entitlement_limit_exceeded' },
 			entitlement: {
 				code: 'entitlement_limit_exceeded',

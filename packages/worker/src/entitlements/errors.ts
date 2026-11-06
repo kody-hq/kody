@@ -42,6 +42,13 @@ export type EntitlementLimitErrorDetails = {
 	upgradeHint: string
 	/** Which hard window blocked. Omit for stock/count resources. */
 	window?: EntitlementLimitWindow
+	/**
+	 * Org whose plan/meter was charged. Present when the denial path could
+	 * resolve the org; omitted from older stored messages.
+	 */
+	orgSlug?: string
+	/** Absolute reset instant for metered windows (ISO). Derived from the calendar, not hard-coded. */
+	resetAt?: string
 }
 
 /**
@@ -84,6 +91,8 @@ export function buildEntitlementUpgradeHint(input: {
 	plan: PlanName
 	creditWallet?: CreditWalletState
 	billingPath?: string
+	/** Org Usage page for the charged org; preferred recovery link. */
+	usagePath?: string
 	/** Which hard window blocked a `utc_day` resource. Defaults to `day`. */
 	window?: EntitlementLimitWindow
 	now?: Date
@@ -94,6 +103,9 @@ export function buildEntitlementUpgradeHint(input: {
 		deniedWindow: input.window ?? 'day',
 		now: input.now ?? new Date(),
 	})
+	const usageSentence = input.usagePath
+		? `See usage at ${input.usagePath}.`
+		: null
 	const creditsOffer = entitlementCreditsOffer(
 		input.resource,
 		input.plan,
@@ -108,7 +120,39 @@ export function buildEntitlementUpgradeHint(input: {
 	].filter((action) => action !== null)
 	const actionSentence =
 		actions.length > 0 ? capitalizeSentence(actions.join(', or ')) : null
-	return [reset, actionSentence].filter((part) => part !== null).join(' ')
+	return [reset, usageSentence, actionSentence]
+		.filter((part) => part !== null)
+		.join(' ')
+}
+
+/** Absolute reset instant for a metered entitlement window, or null when standing. */
+export function entitlementLimitResetAt(input: {
+	resource: EntitlementResource
+	window?: EntitlementLimitWindow
+	now?: Date
+}): string | null {
+	const resourceWindow = entitlementResourceWindows[input.resource]
+	const now = input.now ?? new Date()
+	switch (resourceWindow) {
+		case 'utc_day': {
+			const resetAt =
+				input.window === 'week' ? nextUtcWeekStart(now) : nextUtcDayStart(now)
+			return resetAt.toISOString()
+		}
+		case 'utc_minute': {
+			const resetAt = new Date(now)
+			resetAt.setUTCSeconds(0, 0)
+			resetAt.setUTCMinutes(resetAt.getUTCMinutes() + 1)
+			return resetAt.toISOString()
+		}
+		case 'standing':
+		case 'per_item':
+			return null
+		default: {
+			const exhaustive: never = resourceWindow
+			throw new Error(`Unknown resource window: ${String(exhaustive)}`)
+		}
+	}
 }
 
 function reduceGuidance(
@@ -185,7 +229,8 @@ function capitalizeSentence(text: string) {
 /**
  * The one user-facing message format for every entitlement denial, across
  * MCP and UI surfaces. Keep changes here only; enforcement points must not
- * compose their own messages.
+ * compose their own messages. Messages always name Kody so they are not
+ * mistaken for a provider (GitHub, etc.) auth or rate-limit failure.
  */
 function entitlementLimitLabel(
 	resource: EntitlementResource,
@@ -201,7 +246,8 @@ export function buildEntitlementLimitMessage(
 	details: EntitlementLimitErrorDetails,
 ) {
 	const label = entitlementLimitLabel(details.resource, details.window)
-	return `Plan limit reached: your "${details.plan}" plan allows at most ${details.limit} ${label} and you currently have ${details.current}. ${details.upgradeHint}`
+	const orgPart = details.orgSlug ? ` for @${details.orgSlug}` : ''
+	return `Kody plan limit reached${orgPart}: your "${details.plan}" plan allows at most ${details.limit} ${label} and you currently have ${details.current}. ${details.upgradeHint}`
 }
 
 export function parseEntitlementLimitMessage(
@@ -224,28 +270,46 @@ export function parseEntitlementLimitMessage(
 		window: undefined as EntitlementLimitWindow | undefined,
 	}))
 	// Weekly labels first so "this week" is not swallowed by "per day".
+	// Accept both the current "Kody plan limit…" form and older stored
+	// "Plan limit reached…" messages (jobs / activity history).
+	const prefixes = [
+		'^Kody plan limit reached(?: for @([^ :]+))?:',
+		'^Plan limit reached:',
+	]
 	for (const entry of [...weeklyLabels, ...dailyLabels]) {
-		const match = new RegExp(
-			`^Plan limit reached: your "([^"]+)" plan allows at most (\\d+) ${escapeRegex(entry.label)} and you currently have (\\d+)\\. (.+)$`,
-		).exec(message)
-		if (!match) continue
+		for (const prefix of prefixes) {
+			const match = new RegExp(
+				`${prefix} your "([^"]+)" plan allows at most (\\d+) ${escapeRegex(entry.label)} and you currently have (\\d+)\\. (.+)$`,
+			).exec(message)
+			if (!match) continue
 
-		const plan = parsePlanName(match[1])
-		if (!plan) return null
-		const limit = Number(match[2])
-		const current = Number(match[3])
-		if (!Number.isSafeInteger(limit) || !Number.isSafeInteger(current)) {
-			return null
-		}
+			const orgSlug =
+				prefix.startsWith('^Kody') && match[1] ? match[1] : undefined
+			const planIndex = prefix.startsWith('^Kody') ? 2 : 1
+			const plan = parsePlanName(match[planIndex])
+			if (!plan) return null
+			const limit = Number(match[planIndex + 1])
+			const current = Number(match[planIndex + 2])
+			const upgradeHint = match[planIndex + 3] ?? ''
+			if (!Number.isSafeInteger(limit) || !Number.isSafeInteger(current)) {
+				return null
+			}
 
-		return {
-			code: entitlementLimitErrorCode,
-			resource: entry.resource,
-			plan,
-			limit,
-			current,
-			upgradeHint: match[4] ?? '',
-			...(entry.window ? { window: entry.window } : {}),
+			const usageMatch = /See usage at (\/@([^/\s]+)\/-\/usage)\./.exec(
+				upgradeHint,
+			)
+			const parsedOrgSlug = orgSlug ?? usageMatch?.[2]
+
+			return {
+				code: entitlementLimitErrorCode,
+				resource: entry.resource,
+				plan,
+				limit,
+				current,
+				upgradeHint,
+				...(entry.window ? { window: entry.window } : {}),
+				...(parsedOrgSlug ? { orgSlug: parsedOrgSlug } : {}),
+			}
 		}
 	}
 	return null
@@ -254,10 +318,24 @@ export function parseEntitlementLimitMessage(
 export class EntitlementLimitError extends Error {
 	readonly details: EntitlementLimitErrorDetails
 
-	constructor(details: Omit<EntitlementLimitErrorDetails, 'code'>) {
+	constructor(
+		details: Omit<EntitlementLimitErrorDetails, 'code' | 'now'> & {
+			now?: Date
+		},
+	) {
+		const { now, ...rest } = details
+		const resetAt =
+			rest.resetAt ??
+			entitlementLimitResetAt({
+				resource: rest.resource,
+				window: rest.window,
+				now,
+			}) ??
+			undefined
 		const fullDetails: EntitlementLimitErrorDetails = {
 			code: entitlementLimitErrorCode,
-			...details,
+			...rest,
+			...(resetAt ? { resetAt } : {}),
 		}
 		super(buildEntitlementLimitMessage(fullDetails))
 		this.name = 'EntitlementLimitError'
