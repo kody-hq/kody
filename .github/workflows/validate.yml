@@ -717,6 +717,12 @@ jobs:
           echo "::warning::Playwright webServer died on start or mid-suite; retrying shard ${shard} once with a fresh server."
           node tools/run-nx.ts run worker:test-e2e
 
+      # Bundles the desktop execution UI with its server fixtures and drives it
+      # in Chromium; nothing else catches fixture drift (#4915).
+      - name: 🖥️ Desktop execution UI smoke
+        if: matrix.shard == 1
+        run: npm run test:execution-ui --workspace @kodycodes/desktop
+
       # Diagnostic only: GitHub's FinalizeArtifact can return an HTML error
       # page after the zip already uploaded (Validate #42065690831: 26 tests
       # passed, then 5 finalize retries over ~10m). e2e_report merges whatever

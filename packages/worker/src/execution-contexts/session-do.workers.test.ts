@@ -1,5 +1,10 @@
-import { env, runInDurableObject } from 'cloudflare:test'
-import { expect, test } from 'vitest'
+import {
+	applyD1Migrations,
+	env,
+	runInDurableObject,
+	type D1Migration,
+} from 'cloudflare:test'
+import { beforeAll, expect, test } from 'vitest'
 import {
 	ecpDefaultGrant,
 	ecpHttpSignaturePrefix,
@@ -26,6 +31,14 @@ import {
 // isolation stayed green (#4469, #4477, #4484). Stay under the workers-unit
 // 40s test budget so a slow first `run.request` is not a false flake.
 const frameWaitMs = 30_000
+
+// Queue drains look up the context row in APP_DB (#4905).
+beforeAll(async () => {
+	const { TEST_MIGRATIONS } = env as Env & {
+		TEST_MIGRATIONS: Array<D1Migration>
+	}
+	await applyD1Migrations(env.APP_DB, TEST_MIGRATIONS)
+})
 
 const contextJwk = testKeys.context as {
 	kty: 'OKP'

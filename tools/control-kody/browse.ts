@@ -230,12 +230,10 @@ export async function openBrowseSession(
 	if (screenshotPath) {
 		await mkdir(path.dirname(screenshotPath), { recursive: true })
 	}
-	// Headless + screenshot with no close budget would hang waiting for a
-	// window the agent cannot see. Capture and exit.
+	// A screenshot run with no close budget would otherwise wait for a window
+	// close the caller never sends (#4911). Capture and exit.
 	const closeAfterMs =
-		input.closeAfterMs == null && screenshotPath && !headed
-			? 0
-			: input.closeAfterMs
+		input.closeAfterMs == null && screenshotPath ? 0 : input.closeAfterMs
 
 	const launcher = input.chromium ?? chromium
 	let browser: Browser
