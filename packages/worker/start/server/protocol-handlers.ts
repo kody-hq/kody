@@ -10,6 +10,7 @@ import {
 	createSecurityTxtHandler,
 	createOpenaiAppsChallengeHandler,
 } from '#app/handlers/agent-discovery.ts'
+import { createAppleAppSiteAssociationHandler } from '#app/desktop-app-links.ts'
 import { createHealthHandler } from '#app/handlers/health.ts'
 import { createHealthComponentsHandler } from '#app/handlers/health-components.ts'
 import { createSentryTunnelHandler } from '#app/handlers/sentry-tunnel.ts'
@@ -105,6 +106,9 @@ export const securityTxtHttp = ({
 
 export const openaiAppsChallengeHttp = () =>
 	createOpenaiAppsChallengeHandler(getStartRequestEnv())()
+
+export const appleAppSiteAssociationHttp = () =>
+	createAppleAppSiteAssociationHandler()()
 
 export const healthHttp = ({ request }: { request: Request; params: {} }) =>
 	createHealthHandler(getStartRequestEnv())({ request })

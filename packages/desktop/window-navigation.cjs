@@ -2,7 +2,7 @@ const { isExternalUrl } = require('./navigation.cjs')
 
 function attachWindowNavigation(
 	window,
-	{ appOrigin, clipboard, shell, integratedTitlebar = false },
+	{ appOrigin, clipboard, openBrowser, integratedTitlebar = false },
 ) {
 	const contents = window.webContents
 	function trustedUrl(url) {
@@ -53,7 +53,7 @@ function attachWindowNavigation(
 				break
 			case 'open-browser': {
 				const url = contents.getURL()
-				if (trustedUrl(url) || isExternalUrl(url)) await shell.openExternal(url)
+				if (trustedUrl(url) || isExternalUrl(url)) await openBrowser(url)
 				break
 			}
 			default:

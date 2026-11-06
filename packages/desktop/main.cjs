@@ -29,6 +29,11 @@ const {
 	isExternalUrl,
 	isNavigationUrl,
 } = require('./navigation.cjs')
+const {
+	browsingWebActivity,
+	createAppLinkRouter,
+	openInBrowser,
+} = require('./app-links.cjs')
 
 app.setName('Kody')
 let appOrigin = productionOrigin
@@ -88,7 +93,7 @@ ipcMain.handle('kody:authentication', async (event, mode) => {
 	loginAttempt = browserLogin({
 		origin: appOrigin,
 		mode,
-		openExternal: (url) => shell.openExternal(url),
+		openExternal: (url) => openInBrowser(url, { app, shell }),
 		exchange: async (data) => {
 			const response = await fetch(`${appOrigin}/desktop/session`, {
 				method: 'POST',
@@ -494,7 +499,7 @@ async function createWindow(path = '/account') {
 	const navigation = attachWindowNavigation(window, {
 		appOrigin,
 		clipboard,
-		shell,
+		openBrowser: (url) => openInBrowser(url, { app, shell }),
 		integratedTitlebar,
 	})
 	const record = { navigation, failedLoadUrl: undefined }
@@ -591,8 +596,27 @@ runner.on('shutdown-error', () => {
 	execution.error = 'Could not stop the runner. Quit Kody and try again.'
 })
 
+// A link opened while a startup window is still loading retargets it; later
+// links get their own window so the current page keeps unfinished input.
+function openAppLink(path) {
+	if (quitting) return
+	if (windowOpening || !windows.size) void showApp(path)
+	else void newWindow(path)
+}
+const appLinks = createAppLinkRouter({
+	origin: productionOrigin,
+	open: openAppLink,
+})
+
 if (!app.requestSingleInstanceLock()) app.quit()
 else {
+	app.on('will-continue-activity', (event, type) => {
+		if (type === browsingWebActivity) event.preventDefault()
+	})
+	app.on('continue-activity', (event, type, _userInfo, details) => {
+		if (type === browsingWebActivity && appLinks.receive(details?.webpageURL))
+			event.preventDefault()
+	})
 	app.on('second-instance', () => showApp())
 	app.on('activate', () => showApp())
 	app.on('window-all-closed', quitWithoutWindows)
@@ -622,7 +646,9 @@ else {
 			})
 			loadState()
 			updateMenu()
-			await showApp()
+			const [launchLink, ...moreLinks] = appLinks.start()
+			await showApp(launchLink)
+			for (const path of moreLinks) void newWindow(path)
 			if (!quitting) void execution.request('state').catch(() => {})
 		})
 		.catch((error) => {

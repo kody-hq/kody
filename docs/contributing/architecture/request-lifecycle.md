@@ -153,10 +153,11 @@ Requests are handled in this order:
   `/.well-known/agent-skills/index.json`, skill markdown under
   `/.well-known/agent-skills/:skillId/SKILL.md`, `/.well-known/security.txt`,
   and OpenAI Apps domain verification at `/.well-known/openai-apps-challenge`
-  (unauthenticated `text/plain` token). The homepage adds RFC 8288 `Link`
-  headers to those documents and serves markdown when `Accept` prefers
-  `text/markdown`. DNS-AID (`_mcp._agents.<apex>` SVCB/HTTPS) is zone DNS, not a
-  Worker route.
+  (unauthenticated `text/plain` token), and the desktop app's macOS universal
+  link allowlist at `/.well-known/apple-app-site-association`
+  (`desktop-app-links.ts`). The homepage adds RFC 8288 `Link` headers to those
+  documents and serves markdown when `Accept` prefers `text/markdown`. DNS-AID
+  (`_mcp._agents.<apex>` SVCB/HTTPS) is zone DNS, not a Worker route.
 
 ## Package-app realtime (WebSocket)
 
