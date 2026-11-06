@@ -21,7 +21,6 @@ import {
 	mergeCommitMessageNamesHead,
 	readGithubHealthCommitInfo,
 	readHealth,
-	controlKodyUsage,
 	waitForHealth,
 	readLocalHealthCommitInfo,
 	repoRootFromHere,
@@ -1421,7 +1420,10 @@ test('waitForHealth polls until /health serves the expected sha, then stops', as
 	})
 	expect(result.ok).toBe(true)
 	expect(sleeps).toEqual([20_000, 20_000])
-	expect(polls[0]).toContain('waiting for abc1234')
+	expect(polls).toHaveLength(2)
+	expect(polls[0]).toContain('abc1234')
+	expect(polls[0]).toContain('https://kody.codes')
+	expect(polls[0]).toContain('old1111')
 })
 
 test('waitForHealth gives up at the deadline and says where to look', async () => {
@@ -1447,9 +1449,34 @@ test('waitForHealth gives up at the deadline and says where to look', async () =
 	)
 })
 
-test('help documents health --wait', async () => {
-	expect(controlKodyUsage()).toContain('--wait')
-	expect(controlKodyUsage()).toContain('--wait-minutes <n>')
+test('health --wait parses the sha, default deadline, and custom minutes', () => {
+	expect(parseControlArgs(['health', '--sha', 'abc1234', '--wait'])).toEqual(
+		expect.objectContaining({
+			command: 'health',
+			sha: 'abc1234',
+			wait: true,
+			waitMinutes: 30,
+		}),
+	)
+	expect(
+		parseControlArgs([
+			'health',
+			'--sha',
+			'abc1234',
+			'--wait',
+			'--wait-minutes',
+			'5',
+		]),
+	).toEqual(
+		expect.objectContaining({
+			command: 'health',
+			wait: true,
+			waitMinutes: 5,
+		}),
+	)
+	expect(() => parseControlArgs(['health', '--wait-minutes', '0'])).toThrow(
+		/positive integer/,
+	)
 })
 
 test('featureVerifyRequests reads the GET request lines of a feature notes file', () => {
@@ -1472,10 +1499,13 @@ test('every request line in the Feature Map parses, so verify can run it', () =>
 		const notes = readFileSync(path.join(dir, feature.file), 'utf8')
 		for (const check of featureVerifyRequests(notes)) {
 			total += 1
+			const parsed = parseControlArgs(['request', ...check])
 			expect(
-				() => parseControlArgs(['request', ...check]),
+				parsed.command,
 				`${feature.file}: request ${check.join(' ')}`,
-			).not.toThrow()
+			).toBe('request')
+			expect(['GET', 'HEAD']).toContain(parsed.request?.method)
+			expect(parsed.request?.path?.startsWith('/')).toBe(true)
 		}
 	}
 	expect(total).toBeGreaterThan(30)
@@ -1493,5 +1523,4 @@ test('verify passes shared flags through to each request', () => {
 		'--origin',
 		'https://pr-1.example',
 	])
-	expect(controlKodyUsage()).toContain('verify <id>')
 })

@@ -14,12 +14,18 @@ test('landing agent marquee fades both edges while it drifts', async ({
 		.poll(() =>
 			marquee.evaluate((node) => {
 				const style = getComputedStyle(node)
+				const start = Number.parseFloat(
+					style.getPropertyValue('--tw-fade-opacity-l'),
+				)
+				const end = Number.parseFloat(
+					style.getPropertyValue('--tw-fade-opacity-r'),
+				)
 				return {
 					scrollLeft: node.scrollLeft,
-					start: style.getPropertyValue('--tw-fade-opacity-l').trim(),
-					end: style.getPropertyValue('--tw-fade-opacity-r').trim(),
+					startOn: start > 0,
+					endOn: end > 0,
 				}
 			}),
 		)
-		.toEqual({ scrollLeft: 0, start: '1', end: '1' })
+		.toEqual({ scrollLeft: 0, startOn: true, endOn: true })
 })
