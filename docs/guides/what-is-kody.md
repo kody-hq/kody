@@ -52,8 +52,8 @@ docs index is at `/llms.txt`.
 > Your Personal Software Factory
 
 Also watch:
-[The home your agents share](https://www.youtube.com/watch?v=6PGKZDcPsvE) and
-[Personal software, connected to everything.](https://www.youtube.com/watch?v=MGOj4NwV0uk).
+[The home your agents share](https://www.youtube.com/watch?v=piChJd1ZIa0) and
+[Personal software, connected to everything.](https://www.youtube.com/watch?v=rRUs0Ui6tl4).
 
 ## What Kody is
 
