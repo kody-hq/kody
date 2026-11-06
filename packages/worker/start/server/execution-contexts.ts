@@ -126,6 +126,7 @@ export const turnOffExecutionContextCommands = createServerFn({
 		)
 	})
 
+/** Daemon card and desktop This machine: pause, resume, restart, update, logs. */
 export const runExecutionContextDaemonAction = createServerFn({
 	method: 'POST',
 })
@@ -396,7 +397,11 @@ export const setAutomationExecution = createServerFn({ method: 'POST' })
 		)
 	})
 
-/** Desktop setup adds only the caller's own machine to their personal chain. */
+/**
+ * Desktop setup puts this machine first in the caller's personal chain.
+ * When `targetOrgSlug` is set, it attaches the personal registration to that
+ * org (does not re-register) and puts it first in that org's chain.
+ */
 export const putDesktopExecutionFirst = createServerFn({ method: 'POST' })
 	.validator(
 		z.object({
