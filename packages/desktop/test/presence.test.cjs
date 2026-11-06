@@ -1,13 +1,25 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { readFileSync, writeFileSync, mkdtempSync, rmSync } = require('node:fs')
+const {
+	readFileSync,
+	writeFileSync,
+	mkdtempSync,
+	mkdirSync,
+	rmSync,
+} = require('node:fs')
 const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 const { runInNewContext } = require('node:vm')
 const { EventEmitter } = require('node:events')
 
 for (const platform of ['darwin', 'win32']) {
-	for (const installation of ['new', 'upgraded']) {
+	for (const installation of [
+		'new',
+		'upgraded',
+		'invalid-json',
+		'null-json',
+		'unreadable',
+	]) {
 		test(`${platform}: ${installation} installation prompts once and preserves its choice`, async () => {
 			const profile = mkdtempSync(join(tmpdir(), 'kody-presence-'))
 			const machine = {
@@ -18,6 +30,12 @@ for (const platform of ['darwin', 'win32']) {
 			}
 			if (installation === 'upgraded')
 				writeFileSync(join(profile, 'machine.json'), JSON.stringify(machine))
+			if (installation === 'invalid-json')
+				writeFileSync(join(profile, 'presence.json'), '{')
+			if (installation === 'null-json')
+				writeFileSync(join(profile, 'presence.json'), 'null')
+			if (installation === 'unreadable')
+				mkdirSync(join(profile, 'presence.json'))
 			let tray,
 				visible = true,
 				skipped = false,
@@ -97,7 +115,14 @@ for (const platform of ['darwin', 'win32']) {
 			}
 			try {
 				const presence = new module.exports.DesktopPresence(options)
+				if (installation === 'unreadable') {
+					assert.throws(() => presence.start(), { code: 'EISDIR' })
+					assert.equal(prompts, 0)
+					return
+				}
 				presence.start()
+				assert.equal(presence.background, false)
+				assert.equal(presence.chosen, false)
 				await presence.onboard()
 				if (installation === 'upgraded')
 					assert.deepEqual(

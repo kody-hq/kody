@@ -18,10 +18,13 @@ class DesktopPresence {
 		this.path = join(this.app.getPath('userData'), 'presence.json')
 		try {
 			const saved = JSON.parse(readFileSync(this.path, 'utf8'))
-			this.background = saved.background === true
-			this.chosen = saved.chosen === true
+			this.background = saved?.background === true
+			this.chosen = saved?.chosen === true
 		} catch (error) {
-			if (error.code !== 'ENOENT') throw error
+			if (error.code !== 'ENOENT' && !(error instanceof SyntaxError))
+				throw error
+			this.background = false
+			this.chosen = false
 		}
 		const icon =
 			process.platform === 'darwin'
