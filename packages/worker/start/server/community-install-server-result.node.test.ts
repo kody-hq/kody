@@ -12,23 +12,22 @@ const successPayload = {
 	alreadyInstalled: false,
 }
 
-test('requireOperationResult on an already-unwrapped install payload used to return undefined (screenshot bug)', () => {
+test('requireOperationResult refuses an already-unwrapped install payload (status string footgun)', () => {
 	// The install *outcome* field is also named `status` (`'installed'`).
-	// Before the operation-result guard, requireOperationResult treated that
-	// string as an HTTP code, returned `.data` (missing), and the serverFn
-	// resolved to undefined after the fork had already succeeded.
-	// It must now throw instead of returning undefined.
+	// requireOperationResult must not treat that string as an HTTP code and
+	// return undefined via `.data`. Community install does not use this
+	// helper on the happy path; this guards other callers and mistaken wraps.
 	expect(() => requireOperationResult(successPayload as never)).toThrow(
 		'Unable to complete operation.',
 	)
 })
 
-test('createServerFn-style result.result unwrap of a bare install payload is undefined', () => {
-	// When the wire body is the payload (no `{ result, error, context }`
-	// wrapper), Start's client `next(payload)` leaves `ctx.result` unset and
-	// `return result.result` is undefined — same UI TypeError.
+test('createServerFn-style result.result unwrap is undefined when the RPC envelope omits result', () => {
+	// Start's client does `return result.result`. A lost/incomplete envelope
+	// after a committed install leaves `result` unset → undefined — the
+	// screenshot TypeError when the UI then reads `.ok`.
 	const middlewareResult = {
-		result: (successPayload as { result?: unknown }).result,
+		result: (undefined as { result?: unknown } | undefined)?.result,
 	}
 	expect(middlewareResult.result).toBeUndefined()
 })

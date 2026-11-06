@@ -1,5 +1,9 @@
-import { expect, test } from 'vitest'
-import { readCommunityInstallResult } from './community-install-result.ts'
+import { expect, test, vi } from 'vitest'
+import {
+	communityInstallOutcomeFromLiveFork,
+	readCommunityInstallResult,
+	resolveCommunityInstallResult,
+} from './community-install-result.ts'
 
 test('readCommunityInstallResult accepts a successful install payload', () => {
 	expect(
@@ -38,4 +42,70 @@ test('readCommunityInstallResult does not throw undefined.ok when the payload is
 	expect(() => readCommunityInstallResult(null)).toThrow(
 		'Unable to install this public package.',
 	)
+})
+
+test('resolveCommunityInstallResult reconciles a lost Start envelope via live fork state', async () => {
+	const loadForkState = vi.fn(async () => ({
+		state: 'installed' as const,
+		targetName: '@nstudio/tanstack-github-dashboard',
+		href: '/@nstudio/tanstack-github-dashboard',
+	}))
+	const outcome = await resolveCommunityInstallResult({
+		result: undefined,
+		loadForkState,
+	})
+	expect(loadForkState).toHaveBeenCalledOnce()
+	expect(outcome).toEqual(
+		communityInstallOutcomeFromLiveFork({
+			state: 'installed',
+			targetName: '@nstudio/tanstack-github-dashboard',
+			href: '/@nstudio/tanstack-github-dashboard',
+		}),
+	)
+	expect(outcome.agentPrompt).toContain('@nstudio/tanstack-github-dashboard')
+})
+
+test('resolveCommunityInstallResult waits once when live fork is still in progress', async () => {
+	const loadForkState = vi
+		.fn()
+		.mockResolvedValueOnce({
+			state: 'in_progress' as const,
+			startedAt: '2026-11-06T21:15:00.000Z',
+		})
+		.mockResolvedValueOnce({
+			state: 'adaptation_required' as const,
+			targetName: '@nstudio/tanstack-github-dashboard',
+			href: '/@nstudio/tanstack-github-dashboard',
+		})
+	const waitMs = vi.fn(async () => {})
+	const outcome = await resolveCommunityInstallResult({
+		result: undefined,
+		loadForkState,
+		waitMs,
+		inProgressPollMs: 1,
+	})
+	expect(waitMs).toHaveBeenCalledWith(1)
+	expect(loadForkState).toHaveBeenCalledTimes(2)
+	expect(outcome.status).toBe('adaptation_required')
+	expect(outcome.targetName).toBe('@nstudio/tanstack-github-dashboard')
+})
+
+test('resolveCommunityInstallResult keeps explicit server failures', async () => {
+	const loadForkState = vi.fn()
+	await expect(
+		resolveCommunityInstallResult({
+			result: { ok: false, error: 'Catalog entry not found.' },
+			loadForkState,
+		}),
+	).rejects.toThrow('Catalog entry not found.')
+	expect(loadForkState).not.toHaveBeenCalled()
+})
+
+test('resolveCommunityInstallResult still fails when the fork never appears', async () => {
+	await expect(
+		resolveCommunityInstallResult({
+			result: undefined,
+			loadForkState: async () => ({ state: 'none' }),
+		}),
+	).rejects.toThrow('Unable to install this public package.')
 })

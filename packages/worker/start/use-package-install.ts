@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouteContext } from '@tanstack/react-router'
 import { useMutation, useQuery } from '@tanstack/react-query'
+import type { CommunityForkState } from '#universal/community-public-types.ts'
 import type { PackageRepoForkAction } from '#universal/package-repo-actions.ts'
 import {
 	forkReadablePackage,
 	installCommunityPackage,
 } from '#start/server/community-mutations'
 import { communityForkStateQuery } from './community-fork-state-query.ts'
-import { readCommunityInstallResult } from './community-install-result.ts'
+import { resolveCommunityInstallResult } from './community-install-result.ts'
 import type { CommunityInstallOutcome } from './community-types.ts'
 import { usePageInvalidation } from './page-invalidation.ts'
 import { useSubmitterScope } from './use-submitter-scope.ts'
@@ -104,7 +105,16 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 							acknowledged: true,
 						},
 					})
-			return readCommunityInstallResult(result)
+			// Start may resolve undefined after a committed fork (lost RPC
+			// envelope). Reconcile through live fork state instead of a false
+			// failure — see docs/contributing/tanstack-start.md Writes.
+			return resolveCommunityInstallResult({
+				result,
+				loadForkState: async () => {
+					const refreshed = await forkStateQuery.refetch()
+					return (refreshed.data ?? { state: 'none' }) as CommunityForkState
+				},
+			})
 		},
 		onMutate: () => ({ reconcile, refetchForkState: forkStateQuery.refetch }),
 		onSettled: (_data, _error, _variables, context) => {

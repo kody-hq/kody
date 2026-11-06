@@ -3,11 +3,16 @@ import type { CommunityInstallApiPayload } from '../community-types.ts'
 /**
  * Website community install handlers return `{ data, status }` like
  * `operationResult`. Start server functions must return the inner `data` POJO
- * (and set the HTTP status separately). Returning the wrapper, or calling
- * `requireOperationResult` on an already-unwrapped payload whose `status` is
- * the install outcome string (`'installed'`), yields `undefined` — which is
- * exactly what made `use-package-install` throw
- * `Cannot read properties of undefined (reading 'ok')` after a successful fork.
+ * and set the HTTP status separately (same pattern as package-mutations).
+ *
+ * Returning the wrapper, or calling `requireOperationResult` on an
+ * already-unwrapped payload whose `status` is the install outcome string
+ * (`'installed'`), yields `undefined` via `.data`. Separately, Start's client
+ * does `return result.result`; a lost/incomplete RPC envelope after a long
+ * committed install also resolves to `undefined` and made the Fork UI throw
+ * `Cannot read properties of undefined (reading 'ok')`. Always rebuild a
+ * plain success POJO here; the UI still reconciles via live fork state when
+ * the envelope is missing.
  */
 export type CommunityInstallHandlerResult = {
 	data: CommunityInstallApiPayload
