@@ -6,7 +6,7 @@
 import { spawn as nodeSpawn, type SpawnOptions } from 'node:child_process'
 import { openApiRequest, type OpenApiClientInput } from './open-api-client.js'
 
-export const localReadOperationPath = 'v1/secrets/local-read'
+const localReadOperationPath = 'v1/secrets/local-read'
 
 export type LocalSecretFormat = 'raw' | 'env' | 'json'
 
