@@ -6,6 +6,7 @@ import type { PackageRepoForkAction } from '#universal/package-repo-actions.ts'
 import {
 	forkReadablePackage,
 	installCommunityPackage,
+	loadCommunityForkState,
 } from '#start/server/community-mutations'
 import { communityForkStateQuery } from './community-fork-state-query.ts'
 import {
@@ -110,14 +111,16 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 						},
 					})
 			// Start may resolve undefined after a committed fork (lost RPC
-			// envelope). Reconcile through live fork state instead of a false
-			// failure — see docs/contributing/tanstack-start.md Writes.
+			// envelope). Reconcile through live fork state for the *target*
+			// org (page ?org= may still be personal) — see
+			// docs/contributing/tanstack-start.md Writes.
+			const listingId = target.listingId ?? ''
 			return resolveCommunityInstallResult({
 				result,
-				loadForkState: async () => {
-					const refreshed = await forkStateQuery.refetch()
-					return (refreshed.data ?? { state: 'none' }) as CommunityForkState
-				},
+				loadForkState: async () =>
+					(await loadCommunityForkState({
+						data: { listingId, org: targetOrg },
+					})) as CommunityForkState,
 			})
 		},
 		onMutate: () => ({ reconcile, refetchForkState: forkStateQuery.refetch }),
@@ -166,35 +169,40 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 		if (!fork) return
 		const isCurrent = capture()
 		setMessage(null)
-		try {
-			const outcome = await mutation.mutateAsync({ fork, org: targetOrg })
-			if (!isCurrent()) return
-			setOutcome(outcome)
+		function carryToTargetOrg() {
 			if (targetOrg !== org && targetSlug && orgPicker) {
 				carryOutcome.current = { org: targetOrg }
 				orgPicker.onSelect(targetSlug)
 			}
+		}
+		try {
+			const outcome = await mutation.mutateAsync({ fork, org: targetOrg })
+			if (!isCurrent()) return
+			setOutcome(outcome)
+			carryToTargetOrg()
 		} catch (error) {
 			if (!isCurrent()) return
 			// Reconcile before offering retry: a lost Start envelope after a
 			// committed write must become success / in-progress UI, never a
-			// second Fork click that could create a duplicate.
+			// second Fork click that could create a duplicate. Always read the
+			// mutation target org — not the page ?org=.
 			if (error instanceof CommunityInstallInProgressError) {
 				setMessage(null)
+				carryToTargetOrg()
 				return
 			}
-			const refreshed = await forkStateQuery.refetch()
-			const live = refreshed.data
-			if (
-				live &&
-				(live.state === 'installed' || live.state === 'adaptation_required')
-			) {
+			const live = (await loadCommunityForkState({
+				data: { listingId: fork.listingId ?? '', org: targetOrg },
+			})) as CommunityForkState
+			if (live.state === 'installed' || live.state === 'adaptation_required') {
 				setMessage(null)
 				setOutcome(communityInstallOutcomeFromLiveFork(live))
+				carryToTargetOrg()
 				return
 			}
-			if (live?.state === 'in_progress') {
+			if (live.state === 'in_progress') {
 				setMessage(null)
+				carryToTargetOrg()
 				return
 			}
 			setMessage(
