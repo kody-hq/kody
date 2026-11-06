@@ -788,6 +788,12 @@ that org only in your own runs: through `credential(key)`, through
 first. Nobody else there can use it, Owners and Automation included.
 `credentialOrgRevoke` removes the grant.
 
+There is no "assign to org" control that moves a credential from one workspace
+to another. If a connection or secret was created under the wrong workspace,
+reconnect or create it under the right org (use that org's Credentials / Connect
+pages, or pass `--org` / `?org=`). Granting a personal credential into a team
+org shares it for your own runs there; it does not transfer ownership.
+
 When a team org has registered an OAuth app, each Member can connect their own
 account through it (**Connect your own account** on the app's page, or
 `/connect/oauth?org=<org>&app=<app>&mode=personal`). The connection is yours and

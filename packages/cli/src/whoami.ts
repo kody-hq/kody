@@ -102,6 +102,17 @@ export async function runWhoami(input: {
 		...(org ? { org } : {}),
 	})
 	const shadowedLines = formatShadowedCredentials({ credential, session })
+	const loginStoredOrg =
+		credential.source === 'login' ? (credential.login?.org ?? null) : null
+	const actingOrgSlug =
+		org ?? loginOrg ?? loginStoredOrg ?? identity.org?.slug ?? null
+	const actingOrgKind =
+		identity.org && identity.org.slug === actingOrgSlug
+			? identity.org.kind
+			: null
+	const workspaceNote = actingOrgSlug
+		? `workspace: acts in @${actingOrgSlug}${actingOrgKind ? ` (${actingOrgKind})` : ''}. Local execute is a compute venue, not a personal-workspace switch. Credentials cannot be moved between orgs — reconnect under the right workspace.`
+		: 'workspace: pass --org or set KODY_ORG (user-owned tokens default to your personal workspace when omitted). Local execute is a compute venue, not a personal-workspace switch. Credentials cannot be moved between orgs — reconnect under the right workspace.'
 	if (json) {
 		write(
 			`${JSON.stringify(
@@ -114,12 +125,30 @@ export async function runWhoami(input: {
 					...(session && session.source !== credential.source
 						? { searchAndCloudExecuteCredential: credentialJson(session) }
 						: {}),
+					...(actingOrgSlug
+						? {
+								org: actingOrgSlug,
+								...(actingOrgKind || identity.org
+									? {
+											workspace: {
+												slug: actingOrgSlug,
+												...(actingOrgKind
+													? {
+															kind: actingOrgKind,
+															personal: actingOrgKind === 'personal',
+														}
+													: identity.org),
+											},
+										}
+									: {}),
+							}
+						: {}),
 					...(credential.source === 'login'
-						? { org: loginOrg, scope: identity.token.scopes }
+						? { scope: identity.token.scopes }
 						: {}),
 					token: identity.token,
 					user: identity.user,
-					...(shadowedLines.length > 0 ? { notes: shadowedLines } : {}),
+					notes: [...shadowedLines, workspaceNote],
 				},
 				null,
 				2,
@@ -136,11 +165,16 @@ export async function runWhoami(input: {
 		[
 			`api: ${identity.apiUrl}`,
 			`credential: ${describeCliCredential(credential)}${credential.source === 'login' ? '' : ` [${identity.token.id}]`}`,
-			...(loginOrg ? [`org: ${loginOrg}`] : []),
+			...(actingOrgSlug
+				? [
+						`org: ${actingOrgSlug}${actingOrgKind ? ` (${actingOrgKind} workspace)` : ''}`,
+					]
+				: []),
 			`user: ${userLine}`,
 			`scopes: ${identity.token.scopes.join(', ') || '(none)'}`,
 			`expires: ${identity.token.expiresAt ?? 'unknown'}`,
 			...shadowedLines,
+			workspaceNote,
 			'',
 		].join('\n'),
 	)
