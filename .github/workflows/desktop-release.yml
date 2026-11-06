@@ -180,9 +180,16 @@ jobs:
           KODY_AZURE_ENDPOINT: ${{ vars.DESKTOP_AZURE_ENDPOINT }}
           KODY_AZURE_ACCOUNT: ${{ vars.DESKTOP_AZURE_ACCOUNT }}
           KODY_AZURE_PROFILE: ${{ vars.DESKTOP_AZURE_PROFILE }}
-        run:
-          npm run dist:release --workspace @kodycodes/desktop -- --${{
-          matrix.platform }} --${{ matrix.arch }}
+        run: |
+          # Apple's notary service occasionally times out mid-poll. Retry once
+          # before failing the matrix job so a transient outage does not drop
+          # an otherwise complete desktop update.
+          if npm run dist:release --workspace @kodycodes/desktop -- --${{ matrix.platform }} --${{ matrix.arch }}; then
+            exit 0
+          fi
+          echo 'First signed build failed; retrying once after a short wait.'
+          sleep 30
+          npm run dist:release --workspace @kodycodes/desktop -- --${{ matrix.platform }} --${{ matrix.arch }}
       - name: Verify Apple signature and notarization ticket
         if: runner.os == 'macOS'
         run: |

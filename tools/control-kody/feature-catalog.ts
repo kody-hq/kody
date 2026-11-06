@@ -297,6 +297,7 @@ export const featureCatalog: ReadonlyArray<Feature> = [
 			'/discord',
 			'/docs',
 			'/docs.md',
+			'/download',
 			'/faq',
 			'/features',
 			'/for',
