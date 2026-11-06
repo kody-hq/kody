@@ -111,19 +111,27 @@ export async function loadAccountCredentialsData(input: {
 						return null
 					})
 				: null
-	const localReadBadges: AccountCredentialsResponse['localReadBadges'] = {}
-	// listLocalReadSettings soft-fails per IN (...) chunk and keeps earlier
-	// rows, so a late D1 blip does not wipe badges already loaded.
-	const settings = await listLocalReadSettings(input.env.APP_DB, [
-		...listed
-			.filter((item) => item.kind === 'secret' && item.packageId === null)
-			.map((item) => item.id),
-		...providers.map((binding) => binding.id),
-	])
-	for (const [credentialId, setting] of settings) {
-		if (setting.enabled) {
-			localReadBadges[credentialId] = { lastReadAt: setting.lastReadAt }
+	let localReadBadges: AccountCredentialsResponse['localReadBadges'] = {}
+	try {
+		// Soft-fail only here: listLocalReadSettings must still throw for CLI
+		// local reads (missing map entry means off, not "query failed").
+		const settings = await listLocalReadSettings(input.env.APP_DB, [
+			...listed
+				.filter((item) => item.kind === 'secret' && item.packageId === null)
+				.map((item) => item.id),
+			...providers.map((binding) => binding.id),
+		])
+		for (const [credentialId, setting] of settings) {
+			if (setting.enabled) {
+				localReadBadges[credentialId] = { lastReadAt: setting.lastReadAt }
+			}
 		}
+	} catch (error) {
+		Sentry.captureException(error, {
+			tags: { scope: 'credentials.detail.local_reads' },
+			extra: { orgId },
+		})
+		localReadBadges = {}
 	}
 	return {
 		ok: true,

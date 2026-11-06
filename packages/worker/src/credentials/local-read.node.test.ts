@@ -348,32 +348,3 @@ test('local-read list helpers tolerate nullish D1 results', async () => {
 		new Map(),
 	)
 })
-
-test('listLocalReadSettings keeps earlier chunks when a later batch fails', async () => {
-	const ids = Array.from({ length: 91 }, (_, i) => `cred-${i}`)
-	let allCalls = 0
-	const db = {
-		prepare: () => ({
-			bind: (...params: Array<string>) => ({
-				all: async () => {
-					allCalls += 1
-					if (params.length === 1) throw new Error('second chunk failed')
-					return {
-						results: params.map((credential_id) => ({
-							credential_id,
-							enabled: 1,
-							updated_at: '2026-11-06T00:00:00.000Z',
-							updated_by_user_id: null,
-							last_read_at: null,
-						})),
-					}
-				},
-			}),
-		}),
-	} as unknown as D1Database
-	const settings = await listLocalReadSettings(db, ids)
-	expect(allCalls).toBe(2)
-	expect(settings.size).toBe(90)
-	expect(settings.get('cred-0')?.enabled).toBe(true)
-	expect(settings.has('cred-90')).toBe(false)
-})
