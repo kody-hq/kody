@@ -20,6 +20,8 @@ for (const platform of ['darwin', 'win32']) {
 		'null-json',
 		'invalid-value',
 		'missing-value',
+		'missing-choice',
+		'unchosen',
 		'unreadable',
 	]) {
 		test(`${platform}: ${installation} installation prompts once and preserves its choice`, async () => {
@@ -45,6 +47,16 @@ for (const platform of ['darwin', 'win32']) {
 				writeFileSync(
 					join(profile, 'presence.json'),
 					JSON.stringify({ chosen: true }),
+				)
+			if (installation === 'missing-choice')
+				writeFileSync(
+					join(profile, 'presence.json'),
+					JSON.stringify({ background: true }),
+				)
+			if (installation === 'unchosen')
+				writeFileSync(
+					join(profile, 'presence.json'),
+					JSON.stringify({ background: true, chosen: false }),
 				)
 			if (installation === 'unreadable')
 				mkdirSync(join(profile, 'presence.json'))

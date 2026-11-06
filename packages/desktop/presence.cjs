@@ -18,9 +18,9 @@ class DesktopPresence {
 		this.path = join(this.app.getPath('userData'), 'presence.json')
 		try {
 			const saved = JSON.parse(readFileSync(this.path, 'utf8'))
-			this.background = saved?.background === true
 			this.chosen =
 				saved?.chosen === true && typeof saved?.background === 'boolean'
+			this.background = this.chosen && saved.background
 		} catch (error) {
 			if (error.code !== 'ENOENT' && !(error instanceof SyntaxError))
 				throw error
