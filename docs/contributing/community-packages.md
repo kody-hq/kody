@@ -374,8 +374,9 @@ Client pages: `packages/worker/start/pages/community*`
   never run on the app origin.
 - `/community/:listingId` — the same page by listing id; redirects to the
   canonical URL. Metadata, ratings, README, one-click install (login required;
-  other-account listings arm via `createDoubleCheck` and fork on the second
-  click), fork prompt, and report link (report requires login)
+  other-account listings send `acknowledged: true` on press — `pressFork` forks
+  into the only org or opens `ForkTargetDialog` when there are several), fork
+  prompt, and report link (report requires login)
 - `/community/:listingId/icon/:iconCommit` — cached package icon or generated
   fallback; serves the current icon commit or the pinned snapshot commit, and
   rejects stale commit URLs
