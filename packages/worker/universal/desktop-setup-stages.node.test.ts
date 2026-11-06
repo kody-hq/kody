@@ -79,6 +79,19 @@ test('personal resume stays on register until the machine is in the chain', () =
 		}),
 	).toBe('register')
 	expect(
+		desktopSetupStages({
+			targetOrgSlug: null,
+			cliReady: true,
+			contextId: 'ec_mac',
+			running: true,
+			inChain: false,
+		}).map((stage) => [stage.id, stage.status]),
+	).toEqual([
+		['sign-in', 'complete'],
+		['register', 'current'],
+		['runner', 'upcoming'],
+	])
+	expect(
 		desktopSetupResumeStep({
 			targetOrgSlug: null,
 			cliReady: true,
@@ -112,6 +125,27 @@ test('team resume treats an existing chain entry as attach complete', () => {
 			inChain: true,
 		}),
 	).toBe('done')
+})
+
+test('team with runner down resumes register without clearing attach readiness', () => {
+	expect(
+		desktopSetupResumeStep({
+			targetOrgSlug: 'acme',
+			cliReady: true,
+			contextId: 'ec_mac',
+			running: false,
+			inChain: true,
+		}),
+	).toBe('register')
+	expect(
+		desktopSetupCompleted({
+			targetOrgSlug: 'acme',
+			cliReady: true,
+			contextId: 'ec_mac',
+			running: false,
+			inChain: true,
+		}),
+	).toEqual(new Set(['sign-in', 'register', 'attach']))
 })
 
 test('desktopSetupContextInChain matches context entries only', () => {

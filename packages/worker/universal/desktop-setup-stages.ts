@@ -73,17 +73,20 @@ export function desktopSetupCompleted(input: {
 }): ReadonlySet<DesktopSetupStageId> {
 	const done = new Set<DesktopSetupStageId>()
 	if (input.cliReady || input.contextId) done.add('sign-in')
-	if (input.contextId) done.add('register')
 	const teamReady = Boolean(
 		input.attached || (input.targetOrgSlug && input.inChain),
 	)
+	// Personal registration is not "done" until the personal chain lists it.
+	// Team flows treat local contextId as enough; attach is a later stage.
+	if (input.contextId && (input.targetOrgSlug || input.inChain)) {
+		done.add('register')
+	}
 	if (input.targetOrgSlug) {
 		if (teamReady) done.add('attach')
 	}
-	// Runner stage requires the process up. Paused-after-success is handled by
-	// Manage setup re-entering register when running is false.
+	// Runner stage requires the process up and the intended workspace listing.
 	if (input.contextId && input.running) {
-		if (!input.targetOrgSlug || teamReady) done.add('runner')
+		if (input.targetOrgSlug ? teamReady : input.inChain) done.add('runner')
 	}
 	return done
 }
@@ -124,11 +127,10 @@ export function desktopSetupResumeStep(input: {
 	inChain?: boolean
 }): DesktopSetupWizardStep {
 	const completed = desktopSetupCompleted(input)
-	if (!completed.has('sign-in') || !completed.has('register')) return 'overview'
+	if (!completed.has('sign-in')) return 'overview'
+	if (!completed.has('register')) return 'register'
 	if (input.targetOrgSlug && !completed.has('attach')) return 'attach'
 	if (!completed.has('runner')) return 'register'
-	// Personal success requires the machine to be listed in the personal chain.
-	if (!input.targetOrgSlug && !input.inChain) return 'register'
 	return 'done'
 }
 

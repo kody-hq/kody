@@ -670,6 +670,44 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 			page.getByRole('heading', { name: 'This machine is ready', exact: true }),
 		).toBeVisible()
 		assert.equal(await page.evaluate(() => window.fixture.starts), 1)
+		// Team machine already in chain with runner down: start, then done
+		// without forcing another attach step.
+		await mount(true, false, false, false, 'acme', true)
+		await page.evaluate(() => {
+			Object.assign(window.fixture.state, { running: false })
+			window.fixture.setup.chain.entries = [
+				{ kind: 'context', id: 'ec_mac' },
+				{ kind: 'cloud' },
+			]
+			window.fixture.puts = []
+			window.fixture.starts = 0
+			const execution = window.kodyDesktop.execution
+			const start = execution.start
+			execution.start = async () => {
+				window.fixture.starts++
+				return start()
+			}
+		})
+		await page.evaluate(() => window.refreshFixture())
+		await page
+			.getByRole('button', { name: 'Manage setup', exact: true })
+			.click()
+		await page
+			.getByRole('dialog')
+			.getByRole('button', { name: 'Resume setup', exact: true })
+			.click()
+		await expect(
+			page.getByRole('heading', { name: 'Register this device personally' }),
+		).toBeVisible()
+		await page.getByRole('button', { name: 'Continue', exact: true }).click()
+		await expect(
+			page.getByRole('heading', {
+				name: 'This machine is ready in @acme',
+				exact: true,
+			}),
+		).toBeVisible()
+		assert.equal(await page.evaluate(() => window.fixture.starts), 1)
+		assert.deepEqual(await page.evaluate(() => window.fixture.puts), [])
 		assert.deepEqual(errors, [])
 		console.log(
 			'Desktop UI: browser hidden, onboarding order, skip/reopen, staged setup, chain replacement/retry, pause, forget, existing-registration adoption, service restart, auto-update toggle, team-org attach, team-first enrollment, and resume chain/runner fixes passed.',

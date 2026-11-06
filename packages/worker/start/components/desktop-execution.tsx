@@ -271,9 +271,8 @@ export function DesktopExecutionProvider({
 				attached,
 				inChain: listed,
 			})
-			if (next === 'done') setStep('done')
-			else if (next === 'overview') setStep('register')
-			else setStep(next)
+			// After sign-in, overview means registration is still open.
+			setStep(next === 'overview' ? 'register' : next)
 		})
 	}
 	async function putMachineFirst(contextId: string) {
@@ -309,11 +308,20 @@ export function DesktopExecutionProvider({
 				)
 			try {
 				if (target) {
-					// Team destination: keep personal registration, attach next.
-					setStep('attach')
-					return
+					const listed = desktopSetupContextInChain(
+						setup?.chain.entries,
+						registered.contextId,
+					)
+					if (listed || attached) {
+						// Already on the team chain; runner start was the missing piece.
+					} else {
+						// Team destination: keep personal registration, attach next.
+						setStep('attach')
+						return
+					}
+				} else {
+					await putMachineFirst(registered.contextId)
 				}
-				await putMachineFirst(registered.contextId)
 			} catch (error) {
 				const current = await loadSetup({
 					data: { orgSlug: target ?? orgSlug, search: [] },
@@ -408,6 +416,10 @@ export function DesktopExecutionProvider({
 						setError(null)
 						setAttached(false)
 						setTarget(targetOrgSlug ?? null)
+						// Drop any prior org's chain snapshot so overview stages do not
+						// treat personal membership as team attach (or the reverse).
+						setSetup(null)
+						setReplace('')
 						// Always start on overview so Continue/Resume loads setup, then
 						// advances to the first incomplete stage.
 						setStep('overview')
