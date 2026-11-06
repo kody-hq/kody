@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { CommandTrigger } from '../commands/provider.tsx'
 import { DemoIndicator } from './demo-indicator.tsx'
 import { workspaceHomeHref } from '#client/routes/account-rail.ts'
 import { dismissOpenPopoverPanel } from '#client/popover-open.ts'
@@ -104,6 +105,7 @@ export function SiteHeader(props: SiteHeaderProps) {
 								<SiteLink href={workspaceHref} css={navLoginCss}>
 									Workspace
 								</SiteLink>
+								<CommandTrigger />
 								<AccountMenu
 									username={props.username}
 									displayName={props.displayName}
@@ -156,6 +158,7 @@ export function SiteHeader(props: SiteHeaderProps) {
 							<SiteLink href={workspaceHref} css={navLoginCss}>
 								Workspace
 							</SiteLink>
+							<CommandTrigger />
 							<AccountMenu
 								organizations={props.organizationSession?.organizations ?? []}
 								username={props.username}

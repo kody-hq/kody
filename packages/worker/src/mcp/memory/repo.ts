@@ -440,3 +440,45 @@ export async function pruneExpiredConversationSuppressions(
 		.bind(cutoff)
 		.run()
 }
+
+/** Bounded metadata search across all live memories, not just the recent page. */
+export async function searchMemoryMetadata(
+	db: D1Database,
+	userId: string,
+	query: string,
+	preferredIds: readonly string[],
+): Promise<
+	Array<{ id: string; subject: string; category: string | null; tags: string }>
+> {
+	const tokens = query.trim().split(/\s+/).filter(Boolean).slice(0, 8)
+	// Subsequence candidates let the shared ranker handle abbreviations. User
+	// wildcard characters stay literal and every token must match the metadata.
+	const patterns = tokens.map(
+		(token) =>
+			`%${Array.from(token)
+				.map((character) => character.replace(/[\\%_]/g, '\\$&'))
+				.join('%')}%`,
+	)
+	const ids = preferredIds.slice(0, 40)
+	const preferred = ids.length
+		? `CASE WHEN id IN (${ids.map(() => '?').join(',')}) THEN 0 ELSE 1 END,`
+		: ''
+	const conditions = patterns
+		.map(
+			() =>
+				"AND (subject || ' ' || COALESCE(category, '') || ' ' || tags_json) LIKE ? ESCAPE '\\'",
+		)
+		.join(' ')
+	const { results } = await db
+		.prepare(
+			`SELECT id, subject, category, tags_json AS tags FROM mcp_memories WHERE user_id = ? AND deleted_at IS NULL AND status IN ('active', 'archived') ${conditions} ORDER BY ${preferred} updated_at DESC LIMIT 200`,
+		)
+		.bind(userId, ...patterns, ...ids)
+		.all<{
+			id: string
+			subject: string
+			category: string | null
+			tags: string
+		}>()
+	return results ?? []
+}

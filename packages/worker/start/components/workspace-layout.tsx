@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { CommandTrigger } from '../commands/provider.tsx'
 import { Outlet, useMatches } from '@tanstack/react-router'
 import { useShellData } from '../routes/__root.tsx'
 import { workspaceLayoutNavigation } from '../workspace-layout-policy.ts'
@@ -176,6 +177,7 @@ export function WorkspaceLayout() {
 								Kody
 							</SiteLink>
 						</BrandContextMenu>
+						<CommandTrigger />
 						<AccountMenu
 							placement="sidebar"
 							organizations={session.organizations ?? []}

@@ -33,3 +33,24 @@ npm run control-kody -- browse --path /account/organizations/new
   `{ profile_visibility }` or the Settings page radios.
 
 Do not delete the shared preview seed to prove account deletion.
+
+## Search and commands
+
+The search button beside the avatar and Cmd+K (Ctrl+K on Windows/Linux) open
+search from both workspace and site headers. Verify with a populated workspace:
+
+- Arrow keys select, Enter opens, Escape backs out and returns focus.
+- `repo:`, `job:`, `credential:`, `memory:`, `workflow:`, and `doc:` filter
+  resources. `>` limits results to commands and destinations.
+- Switch the search workspace and verify results stay scoped to it. Collaborator
+  accounts must not get member-only navigation or resource results.
+- Cmd/Ctrl+P favorites a result. Reopen and reload to verify persistence.
+- Cmd/Ctrl+Right opens result actions. Jobs expose run/pause/resume with a
+  confirmation step. Workflow pages expose cancellation for active runs; MCP
+  server pages expose tool refresh. Repository pages add their own tabs.
+- Keyboard shortcuts supports recording, conflict detection, reset, and saved
+  direct navigation bindings. Ordinary input typing must keep working.
+- Search credential names and check that values never appear in the menu.
+
+Regression coverage: `e2e/command-menu.spec.ts` and the command model, catalog,
+and server search unit tests.
