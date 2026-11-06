@@ -7,6 +7,7 @@ import type { ApiTokenRecord } from '#worker/api-tokens/service.ts'
 import type { CapabilityDomain } from './domain-metadata.ts'
 import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import type { McpReportProgress } from '#mcp/progress.ts'
+import type { PackageStamp } from '#worker/credentials/package-stamp.ts'
 
 export const emptyCapabilityInputSchema = z.object({})
 
@@ -44,6 +45,11 @@ export type CapabilityContext = {
 	 * code cannot clear it. Hosted execute has no `openApiPrincipal`.
 	 */
 	localExecuteHop?: true
+	/**
+	 * Host-set on a `kody.mcp.*` hop from `execute --local` package code: the
+	 * signed local package binding, verified and claimed. Never module args.
+	 */
+	localPackageStamp?: Extract<PackageStamp, { kind: 'claimed' }>
 	/** Host-set run binding the fetch gateway checks before filling a sealed token. */
 	credentialClientBinding?: string
 }

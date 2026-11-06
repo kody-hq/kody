@@ -102,9 +102,13 @@ function createCapabilityFromTool(input: {
 			// callerContext (no storageContext.packageId). The bundler stamp
 			// installs ALS secret authority for the callee package id; honor
 			// that so resourceLock grants still allow the approved package.
-			const { packageStamp } = attestedPackageStampFromCaller({
-				storageContext: ctx.callerContext.storageContext,
-			})
+			// A local `kody.mcp.*` hop acts as its verified package binding,
+			// claimed. Otherwise the stamp is attested from the host run.
+			const packageStamp =
+				ctx.localPackageStamp ??
+				attestedPackageStampFromCaller({
+					storageContext: ctx.callerContext.storageContext,
+				}).packageStamp
 			// Literal kody.mcp.SERVER names are stamp keys. The connection
 			// itself is not checked at the door: client callTool sets
 			// serverName to the credential display name, which can differ.

@@ -106,7 +106,34 @@ ${localGatewayFetchStreamRuntimeSource({
 		'kody:runtime is only available while a local package run is in progress.',
 })}
 
-export const kody = __kodyNamespace(['kody']);
+function __kodyLocalMcpNamespace(path) {
+	return new Proxy(function () {}, {
+		get(_target, property) {
+			if (typeof property === 'symbol' || property === 'then' || property === 'toJSON') {
+				return undefined;
+			}
+			return __kodyLocalMcpNamespace([...path, property]);
+		},
+		apply(_target, _thisArg, args) {
+			// kody.mcp.<server>.<tool>(args): the host acts as this package's
+			// signed binding. Older hosts ignore the second argument.
+			return __kodyCall(
+				path,
+				__kodyPackageBinding && path.length === 4
+					? [args[0], { packageBinding: __kodyPackageBinding }]
+					: args,
+			);
+		},
+	});
+}
+
+const __kodyRootNamespace = __kodyNamespace(['kody']);
+export const kody = new Proxy(__kodyRootNamespace, {
+	get(target, property, receiver) {
+		if (property === 'mcp') return __kodyLocalMcpNamespace(['kody', 'mcp']);
+		return Reflect.get(target, property, receiver);
+	},
+});
 
 export const workflows = {
 	create: async (input) => await __kodyCall(['workflows', 'create'], [input ?? {}]),
