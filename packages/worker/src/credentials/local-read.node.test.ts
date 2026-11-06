@@ -29,6 +29,7 @@ import { secretLocalReadDefinition } from '#worker/open-api/secret-local-read-op
 import { readSecretsLocally } from './local-read.ts'
 import {
 	listLocalReadEvents,
+	listLocalReadSettings,
 	readLocalReadSetting,
 	setLocalReadEnabled,
 } from './local-read-store.ts'
@@ -329,4 +330,21 @@ test('only a website session with write access turns local reads on', async () =
 	})
 	expect(ownerSession.status).toBe(200)
 	expect((await readLocalReadSetting(t.db, credentialId))?.enabled).toBe(true)
+})
+
+test('local-read list helpers tolerate nullish D1 results', async () => {
+	const db = {
+		prepare: () => ({
+			bind: () => ({
+				all: async () => ({ results: null }),
+				first: async () => null,
+			}),
+		}),
+	} as unknown as D1Database
+	await expect(
+		listLocalReadEvents({ db, credentialId: 'cred-1' }),
+	).resolves.toEqual([])
+	await expect(listLocalReadSettings(db, ['cred-1'])).resolves.toEqual(
+		new Map(),
+	)
 })
