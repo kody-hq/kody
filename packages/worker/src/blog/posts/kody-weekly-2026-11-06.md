@@ -37,7 +37,7 @@ Turn on **Local reads** for a secret named `databaseUrl`, then:
 
 ```sh
 kody login
-kody secret get databaseUrl --format env
+kody secret get databaseUrl --format env --reveal
 kody run --secret databaseUrl -- npm run migrate
 ```
 
