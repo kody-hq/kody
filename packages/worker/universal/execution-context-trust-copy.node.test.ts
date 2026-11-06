@@ -103,3 +103,36 @@ test('opt-in copy discloses that the machine can use your credentials and read t
 	expect(text).toContain('Your credential values stay in Kody cloud')
 	expect(text).toContain('Opting in is your consent to this.')
 })
+
+test('share and opt-in copy mark host folders as operator-only when the grant lists paths', () => {
+	const withFiles = shareCopy({
+		name: 'x',
+		operator: 'sam',
+		viewerIsOperator: true,
+		grant: grants.lanWithFiles!,
+	})
+	expect(withFiles.paragraphs.join(' ')).toContain(
+		'files: none (machine has 2 paths, write for operator runs only)',
+	)
+	expect(withFiles.paragraphs.join(' ')).toContain(
+		"Host folders are for the operator's own runs only. Shared runs do not mount them.",
+	)
+	const withoutFiles = shareCopy({
+		name: 'x',
+		operator: 'sam',
+		viewerIsOperator: true,
+		grant: grants.locked!,
+	})
+	expect(withoutFiles.paragraphs.join(' ')).not.toContain(
+		'Host folders are for the operator',
+	)
+	const optIn = optInCopy({
+		name: 'x',
+		operator: 'sam',
+		grant: grants.allowlist!,
+	})
+	expect(optIn.paragraphs.join(' ')).toContain(
+		'files: none (machine has 1 path, read for operator runs only)',
+	)
+	expect(optIn.paragraphs.join(' ')).toContain('Shared runs do not mount them.')
+})

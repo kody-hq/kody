@@ -56,11 +56,47 @@ export type ExecutionContextShareGrant = {
 	commands?: boolean
 }
 
+export type ExecutionContextAccessBits = {
+	execute: boolean
+	manage: boolean
+	/** Host commands stay on the machine operator only. */
+	commands: boolean
+}
+
+/**
+ * Effective who-has-access for the org of the page being viewed. Built from
+ * that org's shares (user/team grants + allMembers) plus live membership;
+ * never invents owner-org invitation language as the current-org roster.
+ */
+export type ExecutionContextAccessRoster = {
+	orgSlug: string
+	operator: { handle: string } & ExecutionContextAccessBits
+	people: Array<
+		{
+			handle: string
+			outside?: boolean
+			source: 'grant' | 'all_members'
+			grantId?: string
+			preset?: ExecutionContextPreset
+		} & ExecutionContextAccessBits
+	>
+	teams: Array<
+		{
+			slug: string
+			name?: string
+			grantId: string
+			preset: ExecutionContextPreset
+		} & ExecutionContextAccessBits
+	>
+	noAccess: Array<{ handle: string }>
+}
+
 export type ExecutionContextSharing = {
 	level: ExecutionContextSharingLevel
 	grants: Array<ExecutionContextShareGrant>
 	attachedOrgs: Array<{ id?: string; slug: string; allMembers?: boolean }>
 	allMembers: boolean
+	accessRoster?: ExecutionContextAccessRoster
 }
 
 export type ExecutionContextGrantSummary = {
@@ -592,10 +628,17 @@ export function grantSummaryDetail(grant: ExecutionContextGrantSummary) {
 	].join(' · ')
 }
 
-/** "Only me" / "{n} people" / "Team {t}" / "Everyone in @{org}", joined. */
+/**
+ * "Only me" / "{n} people" / "Team {t}" / "Everyone in @{org}", joined.
+ *
+ * `viewerOrgSlug` is the org of the page being viewed. `sharing.allMembers` is
+ * already remapped to that org by loadSharing, so label it with the viewer slug
+ * (not the registration owner). Skip the viewer org when listing attachedOrgs
+ * so an attached-org view does not double-count "Everyone in @current".
+ */
 export function sharingSummary(
 	sharing: ExecutionContextSharing | undefined,
-	ownerOrgSlug: string,
+	viewerOrgSlug: string,
 ): string | null {
 	if (!sharing) return null
 	const people = sharing.grants.filter((grant) => grant.subject.kind === 'user')
@@ -608,11 +651,116 @@ export function sharingSummary(
 	if (people.length > 0)
 		parts.push(pluralize(people.length, 'person', 'people'))
 	for (const team of teams) parts.push(`Team ${team}`)
-	if (sharing.allMembers) parts.push(`Everyone in @${ownerOrgSlug}`)
+	if (sharing.allMembers) parts.push(`Everyone in @${viewerOrgSlug}`)
 	for (const org of sharing.attachedOrgs) {
-		if (org.allMembers) parts.push(`Everyone in @${org.slug}`)
+		if (org.allMembers && org.slug !== viewerOrgSlug) {
+			parts.push(`Everyone in @${org.slug}`)
+		}
 	}
 	return parts.length > 0 ? parts.join(' + ') : 'Only me'
+}
+
+function accessBitsForPreset(
+	preset: ExecutionContextPreset,
+): ExecutionContextAccessBits {
+	return {
+		execute: true,
+		manage: preset === 'manage',
+		// Shares never mount host commands (commands_operator_only).
+		commands: false,
+	}
+}
+
+export function accessBitsLabel(bits: ExecutionContextAccessBits): string {
+	const parts: Array<string> = []
+	if (bits.execute) parts.push('execute')
+	if (bits.manage) parts.push('manage')
+	if (bits.commands) parts.push('commands')
+	return parts.length > 0 ? parts.join(', ') : 'none'
+}
+
+/**
+ * Build the current-org access roster from raw shares + live membership.
+ * Operator is always listed separately. Members without a grant (and without
+ * allMembers / a covering team) appear under noAccess. Does not invent
+ * owner-org shares for an attached-org page.
+ */
+export function buildAccessRoster(input: {
+	orgSlug: string
+	operatorHandle: string
+	sharing: Pick<ExecutionContextSharing, 'grants' | 'allMembers'>
+	/** Live members of the viewer org (username required to list). */
+	members: Array<{ handle: string }>
+	/** Handles covered by team grants in this org (expanded membership). */
+	teamCoveredHandles?: ReadonlyArray<string>
+}): ExecutionContextAccessRoster {
+	const operatorHandle = input.operatorHandle
+	const grantedHandles = new Set<string>()
+	const people: ExecutionContextAccessRoster['people'] = []
+	const teams: ExecutionContextAccessRoster['teams'] = []
+
+	for (const grant of input.sharing.grants) {
+		const bits = accessBitsForPreset(grant.preset)
+		if (grant.subject.kind === 'user') {
+			const handle = grant.subject.handle
+			if (!handle || handle === operatorHandle) continue
+			grantedHandles.add(handle)
+			people.push({
+				handle,
+				...(grant.subject.outside ? { outside: true } : {}),
+				source: 'grant',
+				grantId: grant.grantId,
+				preset: grant.preset,
+				...bits,
+			})
+			continue
+		}
+		teams.push({
+			slug: grant.subject.slug,
+			...(grant.subject.name ? { name: grant.subject.name } : {}),
+			grantId: grant.grantId,
+			preset: grant.preset,
+			...bits,
+		})
+	}
+
+	for (const handle of input.teamCoveredHandles ?? []) {
+		if (handle) grantedHandles.add(handle)
+	}
+
+	if (input.sharing.allMembers) {
+		const bits = accessBitsForPreset('use')
+		for (const member of input.members) {
+			if (!member.handle || member.handle === operatorHandle) continue
+			if (people.some((person) => person.handle === member.handle)) continue
+			grantedHandles.add(member.handle)
+			people.push({
+				handle: member.handle,
+				source: 'all_members',
+				preset: 'use',
+				...bits,
+			})
+		}
+	}
+
+	const noAccess = input.members.flatMap((member) => {
+		if (!member.handle || member.handle === operatorHandle) return []
+		if (grantedHandles.has(member.handle)) return []
+		return [{ handle: member.handle }]
+	})
+
+	return {
+		orgSlug: input.orgSlug,
+		operator: {
+			handle: operatorHandle,
+			execute: true,
+			manage: true,
+			commands: true,
+		},
+		people,
+		teams,
+		noAccess,
+	}
 }
 
 export function canOptIntoContext(

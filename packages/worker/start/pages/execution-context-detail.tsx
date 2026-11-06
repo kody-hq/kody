@@ -47,6 +47,7 @@ import {
 	grantSummaryDetail,
 	insertBeforeCloud,
 	loginPredatesPermissionsMessage,
+	accessBitsLabel,
 	ordinal,
 	runFallbackLabel,
 	runOutcomeLabels,
@@ -241,7 +242,7 @@ export function ExecutionContextDetail(props: {
 				{context.sharing ? (
 					<>
 						<dt>Shared with</dt>
-						<dd>{sharingSummary(context.sharing, context.ownerOrg.slug)}</dd>
+						<dd>{sharingSummary(context.sharing, orgSlug)}</dd>
 					</>
 				) : null}
 			</dl>
@@ -1167,6 +1168,76 @@ function OptInControls(props: {
 	)
 }
 
+function AccessRosterPanel(props: {
+	roster: NonNullable<
+		NonNullable<ExecutionContextListItem['sharing']>['accessRoster']
+	>
+}) {
+	const { roster } = props
+	return (
+		<div
+			data-testid="context-access-roster"
+			css={{ display: 'grid', gap: spacing.xs }}
+		>
+			<p css={{ margin: 0, fontWeight: 600 }}>
+				Who has access in @{roster.orgSlug}
+			</p>
+			<ul
+				css={{
+					margin: 0,
+					paddingLeft: '1.2rem',
+					display: 'grid',
+					gap: spacing.xs,
+				}}
+			>
+				<li>
+					Machine operator @{roster.operator.handle} —{' '}
+					{accessBitsLabel(roster.operator)}
+				</li>
+				{roster.people.map((person) => (
+					<li key={`person:${person.handle}:${person.source}`}>
+						@{person.handle}
+						{person.outside ? ' (outside collaborator)' : ''}
+						{person.source === 'all_members'
+							? ` — everyone in @${roster.orgSlug}`
+							: ''}{' '}
+						— {accessBitsLabel(person)}
+					</li>
+				))}
+				{roster.teams.map((team) => (
+					<li key={`team:${team.grantId}`}>
+						Team {team.name ?? team.slug} — {accessBitsLabel(team)}
+					</li>
+				))}
+			</ul>
+			{roster.noAccess.length > 0 ? (
+				<>
+					<p css={{ margin: 0, fontWeight: 600 }}>
+						Members without access in @{roster.orgSlug}
+					</p>
+					<ul
+						css={{
+							margin: 0,
+							paddingLeft: '1.2rem',
+							display: 'grid',
+							gap: spacing.xs,
+						}}
+					>
+						{roster.noAccess.map((member) => (
+							<li key={member.handle}>@{member.handle}</li>
+						))}
+					</ul>
+				</>
+			) : (
+				<p css={mutedCss}>
+					Every listed member of @{roster.orgSlug} has access, or this org has
+					no other members.
+				</p>
+			)}
+		</div>
+	)
+}
+
 function SharingPanel(props: {
 	orgSlug: string
 	context: ExecutionContextListItem
@@ -1270,7 +1341,10 @@ function SharingPanel(props: {
 			<h3 id="context-sharing-title" css={{ margin: 0 }}>
 				Sharing
 			</h3>
-			<p css={mutedCss}>{sharingSummary(sharing, context.ownerOrg.slug)}</p>
+			<p css={mutedCss}>{sharingSummary(sharing, props.orgSlug)}</p>
+			{sharing.accessRoster ? (
+				<AccessRosterPanel roster={sharing.accessRoster} />
+			) : null}
 			{error ? (
 				<AccountManagementMessage tone="error">
 					{error}
@@ -1278,11 +1352,11 @@ function SharingPanel(props: {
 			) : null}
 			{sharing.allMembers ? (
 				<p css={{ margin: 0 }}>
-					Everyone in @{context.ownerOrg.slug}, {presetLabels.use}{' '}
+					Everyone in @{props.orgSlug}, {presetLabels.use}{' '}
 					{!canAdd ? null : confirmRemove === allMembersKey ? (
 						<>
 							<span css={mutedCss}>
-								{stopSharingConfirm(`everyone in @${context.ownerOrg.slug}`)}
+								{stopSharingConfirm(`everyone in @${props.orgSlug}`)}
 							</span>{' '}
 							<button
 								type="button"
@@ -1391,9 +1465,7 @@ function SharingPanel(props: {
 							>
 								<option value="user">A person</option>
 								<option value="team">A team</option>
-								<option value="org">
-									Everyone in @{context.ownerOrg.slug}
-								</option>
+								<option value="org">Everyone in @{props.orgSlug}</option>
 							</select>
 						</label>
 						{kind === 'org' ? null : (
