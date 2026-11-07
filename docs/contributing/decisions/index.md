@@ -290,6 +290,11 @@ Open these before proposing a new primitive, surface, or storage home.
   Per-secret switch set only on the website by write access; `kody login` tokens
   read, agent tokens need `secret:read_local`, profiles need "read locally"; CLI
   HTTP only; every read listed for 90 days (amends 0056, 0076, 0092)
+- [0099: Signing credentials sign HTTP requests Kody canonicalizes; raw RSA signing is owner opt-in](./0099-rsa-request-signing.md)
+  `http-signature` (draft-cavage, Oracle profile) binds method, URL, host, and
+  body digest to the credential's hosts; raw `rsa-sha256` is off until an Owner
+  turns it on on the website; every raw signature listed for 90 days
+  (amends 0068)
 
 ## Historical / UI / implementation
 

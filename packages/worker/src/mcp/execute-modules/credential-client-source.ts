@@ -73,6 +73,13 @@ function __kodyCreateCredentialRuntime(__kodyCredentialCall) {
   };
   const firstExactHost = (hosts) =>
     hosts.find((host) => !String(host).startsWith('*.')) ?? null;
+  const urlHostname = (raw) => {
+    try {
+      return new URL(String(raw)).hostname;
+    } catch {
+      return null;
+    }
+  };
   const resolveUrl = (input, hosts) => {
     const raw = input instanceof Request ? input.url : String(input);
     if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) return raw;
@@ -165,14 +172,17 @@ function __kodyCreateCredentialRuntime(__kodyCredentialCall) {
       // CRC / signature helpers work without re-kinding the Key as signing.
       // JWT sign() still requires kind signing (enforced on the host).
       if (opened.kind === 'signing' || opened.kind === 'secret') {
+        // http-signature signs the request it describes, so its host is the
+        // url's host; it resolves to the headers to add to that request.
         client.sign = async (operation) => {
           const { host, ...rest } = operation ?? {};
+          const httpSignature = rest.type === 'http-signature';
           const result = await invoke(${JSON.stringify(credentialClientToolNames.sign)}, {
             handle: opened.handle,
-            host: host ?? firstExactHost(opened.hosts),
+            host: host ?? (httpSignature ? urlHostname(rest.url) : firstExactHost(opened.hosts)),
             operation: rest,
           });
-          return result?.signature;
+          return httpSignature ? result?.headers : result?.signature;
         };
       }
       if (opened.kind !== 'signing') {

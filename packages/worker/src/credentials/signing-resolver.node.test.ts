@@ -20,6 +20,16 @@ import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.t
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 import { computeWebhookHmacSignature } from '#worker/webhooks/crypto.ts'
 import { saveSecret } from '#mcp/secrets/service.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import {
+	loadCredentialRawSigningView,
+	setCredentialRawSigning,
+} from '#app/credential-raw-signing.ts'
+import { createVerify, generateKeyPairSync } from 'node:crypto'
+import {
+	listRawSigningEvents,
+	readRawSigningSetting,
+} from './raw-signing-store.ts'
 import {
 	CredentialNotFoundError,
 	CredentialRequestRefusedError,
@@ -201,7 +211,7 @@ async function setup() {
 	}
 	valueReads.count = 0
 	scheduledAudits.length = 0
-	return { storeCredential, requestAs, sign, grantUse, audits }
+	return { storeCredential, requestAs, sign, grantUse, audits, db, acmeId, env }
 }
 
 test('a signing credential returns only an HMAC signature, for an actor with Use', async () => {
@@ -362,4 +372,313 @@ test('a signature is only made for a request to one of the credential hosts', as
 	expect(JSON.parse(rows[0]!.details_json)).toMatchObject({
 		host: 'evil.example.net',
 	})
+})
+
+// Generated for this test file only; never a real key.
+const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 })
+const rsaPem = rsa.privateKey.export({ type: 'pkcs8', format: 'pem' }) as string
+const rsaPemBody = rsaPem.split('\n')[1]!
+const oracleHost = 'iaas.us-phoenix-1.oraclecloud.com'
+const oracleGet: SigningOperation = {
+	type: 'http-signature',
+	keyId: 'ocid1.tenancy.oc1..t/ocid1.user.oc1..u/aa:bb',
+	method: 'GET',
+	url: `https://${oracleHost}/20160918/instances?compartmentId=c1`,
+	headers: { date: 'Thu, 05 Jan 2014 21:31:40 GMT' },
+}
+const rawMessage = 'sensitive-payload-for-raw-signing'
+
+function rsaVerify(message: string, signature: string) {
+	const verifier = createVerify('RSA-SHA256')
+	verifier.update(message)
+	return verifier.verify(rsa.publicKey, signature, 'base64')
+}
+
+async function setupRsa() {
+	const t = await setup()
+	const id = await t.storeCredential({
+		name: 'oracle-api-key',
+		value: rsaPem,
+		hosts: [oracleHost, '*.objectstorage.oraclecloud.com'],
+	})
+	const session = (person: 'ann' | 'bea', role: OrgRole) =>
+		({
+			request: deriveRequestContext({
+				user: {
+					userId: personIdFromStored(
+						testStableUserIdFromEmail(`${person}@example.com`),
+					),
+					username: person,
+				},
+				source: { kind: 'session' },
+				orgBinding: { org: { id: t.acmeId, slug: 'acme-signing' }, role },
+			}),
+			mcpUser: { userId: t.acmeId },
+		}) as unknown as AuthenticatedAppUser
+	return { ...t, id, session }
+}
+
+test('http-signature returns only headers for an allowed host, and the audit has no key or signature', async () => {
+	const t = await setupRsa()
+	const signed = (await t.sign({
+		actor: t.requestAs('bea', 'owner'),
+		credentialId: t.id,
+		requestHost: oracleHost,
+		operation: oracleGet,
+	})) as { signature: string; headers: Record<string, string> }
+	expect(Object.keys(signed.headers)).toEqual(['authorization'])
+	expect(signed.signature).toBe(signed.headers.authorization)
+	const signature = /signature="([^"]+)"/.exec(signed.signature)![1]!
+	expect(
+		rsaVerify(
+			[
+				'date: Thu, 05 Jan 2014 21:31:40 GMT',
+				'(request-target): get /20160918/instances?compartmentId=c1',
+				`host: ${oracleHost}`,
+			].join('\n'),
+			signature,
+		),
+	).toBe(true)
+	expect(JSON.stringify(signed)).not.toContain(rsaPemBody)
+	const rows = await t.audits()
+	expect(rows.map((row) => row.result)).toEqual(['success'])
+	expect(JSON.parse(rows[0]!.details_json)).toMatchObject({
+		use: 'signing',
+		host: oracleHost,
+		operation: 'http-signature',
+		algorithm: 'rsa-sha256',
+		scheme: 'draft-cavage',
+		profile: 'oracle',
+	})
+	expect(JSON.stringify(rows)).not.toContain(rsaPemBody)
+	expect(JSON.stringify(rows)).not.toContain(signature)
+})
+
+test('http-signature refuses other hosts, a host that differs from the url, and redirect targets off the hosts', async () => {
+	const t = await setupRsa()
+	const actor = t.requestAs('bea', 'owner')
+	// A wildcard host signs one label below it.
+	await expect(
+		t.sign({
+			actor,
+			credentialId: t.id,
+			requestHost: 'ns.objectstorage.oraclecloud.com',
+			operation: {
+				...oracleGet,
+				url: 'https://ns.objectstorage.oraclecloud.com/n/ns',
+			},
+		}),
+	).resolves.toMatchObject({ headers: { authorization: expect.any(String) } })
+	const refusedCases: Array<{
+		requestHost: string
+		url: string
+		code: string
+	}> = [
+		// Not one of the credential's hosts.
+		{
+			requestHost: 'evil.example.com',
+			url: 'https://evil.example.com/x',
+			code: 'host_not_allowed',
+		},
+		// The client names an allowed host but the url points elsewhere.
+		{
+			requestHost: oracleHost,
+			url: 'https://evil.example.com/x',
+			code: 'host_not_allowed',
+		},
+		// A redirect Location on another host is a new request, so it is refused.
+		{
+			requestHost: 'login.evil.example.com',
+			url: 'https://login.evil.example.com/20160918/instances',
+			code: 'host_not_allowed',
+		},
+		// Lookalike and deeper subdomains do not match.
+		{
+			requestHost: `${oracleHost}.evil.example.com`,
+			url: `https://${oracleHost}.evil.example.com/`,
+			code: 'host_not_allowed',
+		},
+		{
+			requestHost: 'a.b.objectstorage.oraclecloud.com',
+			url: 'https://a.b.objectstorage.oraclecloud.com/',
+			code: 'host_not_allowed',
+		},
+		// Downgrade to http.
+		{
+			requestHost: oracleHost,
+			url: `http://${oracleHost}/x`,
+			code: 'insecure_transport',
+		},
+	]
+	for (const item of refusedCases) {
+		const error = await t
+			.sign({
+				actor,
+				credentialId: t.id,
+				requestHost: item.requestHost,
+				operation: { ...oracleGet, url: item.url },
+			})
+			.then(
+				() => null,
+				(caught: unknown) => caught,
+			)
+		expect(error, item.url).toBeInstanceOf(CredentialRequestRefusedError)
+		expect((error as CredentialRequestRefusedError).code, item.url).toBe(
+			item.code,
+		)
+	}
+	// A refused request never reads the key.
+	expect(valueReads.count).toBe(1)
+})
+
+test('raw RSA signing is refused by default and the refusal is listed without the message', async () => {
+	const t = await setupRsa()
+	await expect(
+		t.sign({
+			actor: t.requestAs('bea', 'owner'),
+			credentialId: t.id,
+			requestHost: oracleHost,
+			operation: { type: 'rsa-sha256', message: rawMessage },
+		}),
+	).rejects.toMatchObject({ code: 'raw_signing_off' })
+	expect(valueReads.count).toBe(0)
+	const events = await listRawSigningEvents({ db: t.db, credentialId: t.id })
+	expect(events).toEqual([
+		expect.objectContaining({
+			actorUsername: 'bea',
+			via: 'mcp-oauth',
+			outcome: 'refused',
+			refusalReason: 'raw_signing_off',
+			messageBytes: null,
+		}),
+	])
+	const rows = await t.audits()
+	expect(rows.map((row) => row.result)).toEqual(['denied'])
+	expect(JSON.stringify([events, rows])).not.toContain(rawMessage)
+})
+
+test('only the owner on a website session turns raw signing on; then each signature is listed; turning it off stops new ones', async () => {
+	const t = await setupRsa()
+	await t.grantUse(t.id)
+	await upsertGrant({
+		db: t.db,
+		orgId: t.acmeId,
+		resourceType: 'credential',
+		resourceId: t.id,
+		family: 'secret',
+		subject: { type: 'user', id: testStableUserIdFromEmail('ann@example.com') },
+		preset: 'manage',
+		permissions: null,
+		createdByUserId: testStableUserIdFromEmail('bea@example.com'),
+		audit: createTestOrgAuditWriter(),
+	})
+	const viaMcp = {
+		request: t.requestAs('bea', 'owner'),
+		mcpUser: { userId: t.acmeId },
+	} as unknown as AuthenticatedAppUser
+	const attempts = [
+		await setCredentialRawSigning({
+			env: t.env,
+			user: viaMcp,
+			credentialId: t.id,
+			enabled: true,
+		}),
+		await setCredentialRawSigning({
+			env: t.env,
+			user: t.session('ann', 'member'),
+			credentialId: t.id,
+			enabled: true,
+		}),
+	]
+	expect(attempts.map((attempt) => attempt.status)).toEqual([403, 403])
+	expect(await readRawSigningSetting(t.db, t.id)).toBeNull()
+	const memberView = await loadCredentialRawSigningView({
+		env: t.env,
+		request: t.session('ann', 'member').request,
+		credentialId: t.id,
+	})
+	expect(memberView).toMatchObject({ canChange: false, enabled: false })
+
+	const owner = await setCredentialRawSigning({
+		env: t.env,
+		user: t.session('bea', 'owner'),
+		credentialId: t.id,
+		enabled: true,
+	})
+	expect(owner.status).toBe(200)
+	const signed = (await t.sign({
+		actor: t.requestAs('ann', 'member'),
+		credentialId: t.id,
+		requestHost: oracleHost,
+		operation: { type: 'rsa-sha256', message: rawMessage },
+	})) as { signature: string }
+	expect(rsaVerify(rawMessage, signed.signature)).toBe(true)
+
+	const off = await setCredentialRawSigning({
+		env: t.env,
+		user: t.session('bea', 'owner'),
+		credentialId: t.id,
+		enabled: false,
+	})
+	expect(off.status).toBe(200)
+	await expect(
+		t.sign({
+			actor: t.requestAs('ann', 'member'),
+			credentialId: t.id,
+			requestHost: oracleHost,
+			operation: { type: 'rsa-sha256', message: rawMessage },
+		}),
+	).rejects.toMatchObject({ code: 'raw_signing_off' })
+
+	const ownerView = await loadCredentialRawSigningView({
+		env: t.env,
+		request: t.session('bea', 'owner').request,
+		credentialId: t.id,
+	})
+	expect(ownerView).toMatchObject({ canChange: true, enabled: false })
+	expect(ownerView?.lastSignedAt).toEqual(expect.any(String))
+	expect(
+		ownerView?.signatures?.map((row) => [
+			row.who,
+			row.signed,
+			row.refusal,
+			row.messageBytes,
+		]),
+	).toEqual([
+		['ann', false, 'Raw signing was off', null],
+		['ann', true, null, rawMessage.length],
+	])
+	const events = await listRawSigningEvents({ db: t.db, credentialId: t.id })
+	const stored = JSON.stringify(events)
+	expect(stored).not.toContain(rawMessage)
+	expect(stored).not.toContain(signed.signature)
+	expect(stored).not.toContain(rsaPemBody)
+	const rows = await t.audits()
+	expect(rows.map((row) => row.result)).toEqual(['success', 'denied'])
+	expect(JSON.stringify(rows)).not.toContain(signed.signature)
+	expect(JSON.stringify(rows)).not.toContain(rawMessage)
+})
+
+test('package code cannot sign raw strings without the switch, and signing other kinds of key is refused', async () => {
+	const t = await setupRsa()
+	const keyId = await t.storeCredential({
+		name: 'plain-key',
+		value: rsaPem,
+		kind: 'secret',
+		hosts: [oracleHost],
+	})
+	for (const operation of [
+		oracleGet,
+		{ type: 'rsa-sha256', message: 'x' },
+	] as Array<SigningOperation>) {
+		await expect(
+			t.sign({
+				actor: t.requestAs('bea', 'owner'),
+				credentialId: keyId,
+				requestHost: oracleHost,
+				operation,
+			}),
+		).rejects.toBeInstanceOf(CredentialNotFoundError)
+	}
+	expect(valueReads.count).toBe(0)
 })

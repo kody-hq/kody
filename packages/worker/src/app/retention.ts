@@ -12,6 +12,10 @@ import {
 	localReadEventRetentionDays,
 	pruneLocalReadEvents,
 } from '#worker/credentials/local-read-store.ts'
+import {
+	pruneRawSigningEvents,
+	rawSigningEventRetentionDays,
+} from '#worker/credentials/raw-signing-store.ts'
 import { agentPackagePopularityMaxAgeDays } from '#worker/usage/agent-package-conversation-uses.ts'
 import {
 	buildPublishedSourceManifestSnapshotKvKey,
@@ -125,6 +129,14 @@ export const retentionPolicies: ReadonlyArray<RetentionPolicy> = [
 			'Local reads of a secret by the Kody CLI (with the real IP) keep 90 days; the last local read time on the secret is kept for good.',
 	},
 	{
+		table: 'credential_raw_signing_events',
+		scope: 'global',
+		retentionDays: rawSigningEventRetentionDays,
+		batchSize: retentionDefaultBatchSize,
+		description:
+			'Raw RSA signatures made with a signing credential keep 90 days; the last raw signature time on the credential is kept for good.',
+	},
+	{
 		table: 'stripe_webhook_events',
 		scope: 'global',
 		retentionDays: stripeWebhookEventRetentionDays,
@@ -171,6 +183,7 @@ export type RetentionPruneResult = {
 	usageRollups: number
 	featureFlagExposureRollups: number
 	credentialLocalReadEvents: number
+	credentialRawSigningEvents: number
 	auditEvents: number
 	stripeWebhookEvents: number
 	agentPackageConversationUses: number
@@ -623,6 +636,7 @@ export async function pruneRetention(input: {
 		usageRollups: 0,
 		featureFlagExposureRollups: 0,
 		credentialLocalReadEvents: 0,
+		credentialRawSigningEvents: 0,
 		auditEvents: 0,
 		stripeWebhookEvents: 0,
 		agentPackageConversationUses: 0,
@@ -706,6 +720,20 @@ export async function pruneRetention(input: {
 			},
 			(count) => {
 				result.credentialLocalReadEvents += count
+			},
+		),
+		countTask(
+			'credential_raw_signing_events',
+			async () => {
+				const deleted = await pruneRawSigningEvents({
+					db,
+					now,
+					batchSize: retentionDefaultBatchSize,
+				})
+				return { selected: deleted, deleted }
+			},
+			(count) => {
+				result.credentialRawSigningEvents += count
 			},
 		),
 		countTask(

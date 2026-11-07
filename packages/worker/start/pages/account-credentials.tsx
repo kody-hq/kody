@@ -385,6 +385,7 @@ export function AccountCredentialsRoute({
 								packagesById,
 								orgSlug,
 								localReads: payload?.selectedLocalReads ?? null,
+								rawSigning: payload?.selectedRawSigning ?? null,
 							})
 						: undefined
 				}

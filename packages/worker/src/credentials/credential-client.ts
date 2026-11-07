@@ -82,7 +82,10 @@ import type {
 	ResolveCredentialInput,
 } from './credential-resolver.ts'
 import { resolveCredential } from './resolve-credential.ts'
-import type { SigningOperation } from './signing-resolver.ts'
+import {
+	signingOperationTypes,
+	type SigningOperation,
+} from './signing-resolver.ts'
 import { findPackageAppGrantCredentialMapping } from '#app/package-app-oauth-grants.ts'
 
 export type CredentialClientErrorCode =
@@ -96,6 +99,7 @@ export type CredentialClientErrorCode =
 	| 'host_not_allowed'
 	| 'insecure_transport'
 	| 'invalid_request'
+	| 'raw_signing_off'
 	| 'login_failed'
 	| 'login_retry_later'
 	| 'login_needs_reconnect'
@@ -1289,11 +1293,11 @@ export async function signWithCredentialClient(
 		if (
 			!operation ||
 			typeof operation !== 'object' ||
-			(operation.type !== 'jwt' && operation.type !== 'hmac')
+			!signingOperationTypes.includes(operation.type)
 		) {
 			throw refusal(
 				'invalid_request',
-				'sign() takes { type: "jwt", ... } or { type: "hmac", ... }.',
+				'sign() takes { type: "jwt" | "hmac" | "http-signature" | "rsa-sha256", ... }.',
 			)
 		}
 		// HMAC may use a Key (`secret`) or a signing credential. JWT signing
