@@ -105,7 +105,7 @@ export function SiteHeader(props: SiteHeaderProps) {
 								<SiteLink href={workspaceHref} css={navLoginCss}>
 									Workspace
 								</SiteLink>
-								<div css={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+								<div css={{ display: 'flex', alignItems: 'center', gap: 4 }}>
 									<CommandTrigger />
 									<AccountMenu
 										username={props.username}
@@ -162,7 +162,7 @@ export function SiteHeader(props: SiteHeaderProps) {
 							<SiteLink href={workspaceHref} css={navLoginCss}>
 								Workspace
 							</SiteLink>
-							<div css={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+							<div css={{ display: 'flex', alignItems: 'center', gap: 4 }}>
 								<CommandTrigger />
 								<AccountMenu
 									organizations={props.organizationSession?.organizations ?? []}
