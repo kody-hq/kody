@@ -22,6 +22,9 @@ npm run control-kody -- browse --path /account/organizations/new
 - Person: `/account`, `/account/security`, `/account/data`,
   `/account/organizations`, `/account/organizations/new`
 - Export: `GET /account/export.json`
+- Account rail stays person-only (no org links). `/account` body has the
+  workspace note (`account-workspace-note`) linking `/@<username>/-/overview`
+  and `/account/organizations`.
 - Team org: `/@{$orgSlug}/-/overview`, `/@{$orgSlug}/-/settings`,
   `/@{$orgSlug}/-/members`, `/@{$orgSlug}/-/teams`, `/@{$orgSlug}/-/grants`,
   `/@{$orgSlug}/-/collaborators`
