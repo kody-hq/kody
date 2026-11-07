@@ -51,6 +51,13 @@ vi.mock('#app/connect-oauth-chooser.ts', () => ({
 	) => mockModule.loadConnectOauthChooser(...args),
 }))
 
+vi.mock('#worker/authorization/authorize.ts', async (importOriginal) => ({
+	...(await importOriginal<
+		typeof import('#worker/authorization/authorize.ts')
+	>()),
+	loadResourceListScope: async () => ({ kind: 'all' }),
+}))
+
 vi.mock('#worker/integrations/pinned-connect.ts', async (importOriginal) => ({
 	...(await importOriginal<
 		typeof import('#worker/integrations/pinned-connect.ts')
@@ -172,6 +179,23 @@ test('bare and provider visits require a session; signed-in bare visits render t
 		integration: null,
 		chooser: { options: [] },
 	})
+})
+
+test('the chooser lists connections saved in the selected org, not the personal org', async () => {
+	const teamOrgId = ownerIdFromStored('org-team')
+	mockModule.requirePageSession.mockResolvedValue(null)
+	mockModule.readAuthenticatedAppUser.mockResolvedValue({
+		mcpUser: { userId: ownerIdFromStored('user-1') },
+		request: { org: { id: teamOrgId } },
+	})
+	mockModule.loadConnectOauthChooser.mockClear()
+	await visit()
+	expect(mockModule.loadConnectOauthChooser).toHaveBeenCalledWith(
+		expect.objectContaining({
+			userId: teamOrgId,
+			listScope: { kind: 'all' },
+		}),
+	)
 })
 
 test('provider visits embed SSR loader data with explicit app and platform selection', async () => {
