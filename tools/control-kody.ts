@@ -851,6 +851,8 @@ function localAppDbSeedEmails() {
 export async function resolveOrigin(options: {
 	origin: string | null
 	probeHealth?: (origin: string) => Promise<boolean>
+	/** Appended to the no-local-origin error. */
+	missingOriginHint?: string
 }) {
 	if (options.origin) return options.origin.replace(/\/$/, '')
 	const probe =
@@ -858,11 +860,19 @@ export async function resolveOrigin(options: {
 	const found = await findHealthyWorkerOrigin(workerPortRange(), { probe })
 	if (!found) {
 		throw new ControlKodyError(
-			'No healthy origin on 3742-3751. Run: node tools/control-kody.ts dev',
+			[
+				'No healthy origin on 3742-3751. Run: node tools/control-kody.ts dev',
+				options.missingOriginHint,
+			]
+				.filter(Boolean)
+				.join('\n'),
 		)
 	}
 	return found
 }
+
+export const healthProductionOriginHint =
+	'Post-merge check? Pass --origin https://kody.codes (health defaults to a local origin).'
 
 export type SessionResult = {
 	ok: boolean
@@ -1756,12 +1766,15 @@ async function runCommand(options: ControlKodyOptions) {
 			return 0
 		}
 		case 'health': {
-			const origin = await resolveOrigin(options)
 			if (options.wait && !options.sha) {
 				throw new ControlKodyError(
 					'health --wait needs --sha <merge-sha> (the commit to wait for)',
 				)
 			}
+			const origin = await resolveOrigin({
+				...options,
+				missingOriginHint: healthProductionOriginHint,
+			})
 			const result = options.wait
 				? await waitForHealth({
 						origin,

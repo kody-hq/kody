@@ -25,6 +25,8 @@ import {
 	readLocalHealthCommitInfo,
 	repoRootFromHere,
 	requestAsSession,
+	resolveOrigin,
+	healthProductionOriginHint,
 	runCommand,
 	runDoctor,
 	runMapCheck,
@@ -1523,4 +1525,22 @@ test('verify passes shared flags through to each request', () => {
 		'--origin',
 		'https://pr-1.example',
 	])
+})
+
+test('resolveOrigin appends a command hint when no local origin is healthy', async () => {
+	await expect(
+		resolveOrigin({
+			origin: null,
+			probeHealth: async () => false,
+			missingOriginHint: healthProductionOriginHint,
+		}),
+	).rejects.toThrow(
+		'No healthy origin on 3742-3751. Run: node tools/control-kody.ts dev\nPost-merge check? Pass --origin https://kody.codes',
+	)
+	expect(
+		await resolveOrigin({
+			origin: 'https://kody.codes/',
+			probeHealth: async () => false,
+		}),
+	).toBe('https://kody.codes')
 })

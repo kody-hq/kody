@@ -53,6 +53,8 @@ export type GitHookCheckPlan = {
 	runSkillsLockCheck: boolean
 	/** Pre-push only: ADR numbers against other open pull requests (#4487). */
 	runDecisionNumbersCheck: boolean
+	/** Pre-push only: CI Static's soft-delete SQL scan, under a second (#4958). */
+	runSoftDeleteReadFilterCheck: boolean
 	summary: string
 }
 
@@ -119,6 +121,9 @@ export function hookScripts(plan: GitHookCheckPlan) {
 	if (plan.runSkillsLockCheck) scripts.push('node tools/check-skills-lock.ts')
 	if (plan.runDecisionNumbersCheck) {
 		scripts.push('node tools/check-decision-record-numbers.ts')
+	}
+	if (plan.runSoftDeleteReadFilterCheck) {
+		scripts.push('node tools/soft-delete-read-filter.ts')
 	}
 	if (plan.runKnip) scripts.push('knip')
 	if (plan.runUnitTests) scripts.push('test:push')
@@ -551,10 +556,19 @@ export async function runGitHookChecks(input: {
 			scripts.includes('test:push') && paths !== null
 				? withoutMainlinePaths({ git, stdin: input.stdin ?? null, paths, log })
 				: paths
+		const globalTestPaths =
+			scripts.includes('test:push') && testPaths !== null
+				? testPaths.filter(isGlobalHookTestPath)
+				: []
+		if (globalTestPaths.length > 0) {
+			log(
+				`pre-push: full test:push because global test inputs changed (${formatPathList(globalTestPaths)})`,
+			)
+		}
 		if (
 			scripts.includes('test:push') &&
 			testPaths !== null &&
-			!testPaths.some(isGlobalHookTestPath)
+			globalTestPaths.length === 0
 		) {
 			const listed = listPushedPaths(git, input.stdin ?? null, true)
 			const nonDeleted =
@@ -583,6 +597,13 @@ export async function runGitHookChecks(input: {
 							: 'pre-push: skipping unit tests (no pushed source paths differ from main)',
 					)
 				}
+			}
+			if (scripts.includes('test:push')) {
+				log(
+					nonDeleted === null
+						? 'pre-push: full test:push because pushed paths could not be listed'
+						: 'pre-push: full test:push because no pushed path is JS/TS source with related tests',
+				)
 			}
 		}
 	}
@@ -679,6 +700,7 @@ function planPreCommit(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 			runUnitTests: false,
 			runSkillsLockCheck: false,
 			runDecisionNumbersCheck: false,
+			runSoftDeleteReadFilterCheck: false,
 			summary:
 				'pre-commit: running install:check and migrations:check (could not list staged paths)',
 		}
@@ -693,6 +715,7 @@ function planPreCommit(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 			runUnitTests: false,
 			runSkillsLockCheck: false,
 			runDecisionNumbersCheck: false,
+			runSoftDeleteReadFilterCheck: false,
 			summary: `pre-commit: skipping install:check and migrations:check (${docsOnlySummary(paths)})`,
 		}
 	}
@@ -705,6 +728,7 @@ function planPreCommit(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 		runUnitTests: false,
 		runSkillsLockCheck: false,
 		runDecisionNumbersCheck: false,
+		runSoftDeleteReadFilterCheck: false,
 		summary: `pre-commit: running install:check and migrations:check (${codePathSummary(paths)})`,
 	}
 }
@@ -716,10 +740,22 @@ function planPrePush(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 	return {
 		...plan,
 		runDecisionNumbersCheck,
+		runSoftDeleteReadFilterCheck:
+			paths === null || paths.some(isSoftDeleteReadFilterHookPath),
 		summary: runDecisionNumbersCheck
 			? `${plan.summary}; checking decision numbers against open pull requests`
 			: plan.summary,
 	}
+}
+
+/** Inputs of `tools/soft-delete-read-filter.ts` (its scan roots and itself). */
+export function isSoftDeleteReadFilterHookPath(filePath: string) {
+	const path = normalizeHookPath(filePath)
+	return (
+		path === 'tools/soft-delete-read-filter.ts' ||
+		(/^packages\/(?:worker|jobs-worker)\/src\//.test(path) &&
+			/\.[cm]?[jt]sx?$/.test(path))
+	)
 }
 
 export function isDecisionRecordHookPath(filePath: string) {
@@ -730,7 +766,10 @@ export function isDecisionRecordHookPath(filePath: string) {
 
 function planPrePushWithoutDecisions(
 	paths: ReadonlyArray<string> | null,
-): Omit<GitHookCheckPlan, 'runDecisionNumbersCheck'> {
+): Omit<
+	GitHookCheckPlan,
+	'runDecisionNumbersCheck' | 'runSoftDeleteReadFilterCheck'
+> {
 	if (paths === null) {
 		return {
 			runInstallCheck: false,
@@ -810,6 +849,11 @@ function docsOnlySummary(paths: ReadonlyArray<string>) {
 	if (paths.length === 0) return 'no file changes'
 	const count = String(paths.length)
 	return `${count} docs-only path${paths.length === 1 ? '' : 's'}`
+}
+
+function formatPathList(paths: ReadonlyArray<string>) {
+	const shown = paths.slice(0, 3).join(', ')
+	return paths.length > 3 ? `${shown}, +${paths.length - 3} more` : shown
 }
 
 function codePathSummary(paths: ReadonlyArray<string>) {

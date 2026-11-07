@@ -14,6 +14,7 @@ import {
 	listHookPaths,
 	parsePrePushUpdates,
 	isSkillsLockHookPath,
+	isSoftDeleteReadFilterHookPath,
 	listInstalledNodeModulesDirs,
 	planGitHookChecks,
 	runGitHookChecks,
@@ -278,6 +279,7 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 				'typecheck',
 				'node tools/check-skills-lock.ts',
 				'node tools/check-decision-record-numbers.ts',
+				'node tools/soft-delete-read-filter.ts',
 				'knip',
 				'test:push',
 			],
@@ -354,6 +356,7 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 			'typecheck',
 			'node tools/check-skills-lock.ts',
 			'node tools/check-decision-record-numbers.ts',
+			'node tools/soft-delete-read-filter.ts',
 			'knip',
 			'test:push',
 		],
@@ -415,6 +418,7 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 		'format:check',
 		'typecheck',
 		'node tools/check-skills-lock.ts',
+		'node tools/soft-delete-read-filter.ts',
 		'knip',
 		'test:push',
 	])
@@ -705,6 +709,7 @@ test('pre-push skips knip and test:push only when each check is already green', 
 			'lint',
 			'format:check',
 			'typecheck',
+			'node tools/soft-delete-read-filter.ts',
 			'knip',
 		])
 		expect(
@@ -743,7 +748,12 @@ test('pre-push skips knip and test:push only when each check is already green', 
 			progressIntervalMs: 60_000,
 		})
 		expect(code).toBe(0)
-		expect(scripts).toEqual(['lint', 'format:check', 'typecheck'])
+		expect(scripts).toEqual([
+			'lint',
+			'format:check',
+			'typecheck',
+			'node tools/soft-delete-read-filter.ts',
+		])
 		expect(logs.some((line) => line.includes('skipping knip'))).toBe(true)
 		expect(logs.some((line) => line.includes('skipping test:push'))).toBe(true)
 		expect(logs.some((line) => line.includes('already green'))).toBe(true)
@@ -772,7 +782,13 @@ test('pre-push fails knip with a clear fix message before test:push', async () =
 		progressIntervalMs: 60_000,
 	})
 	expect(code).toBe(1)
-	expect(scripts).toEqual(['lint', 'format:check', 'typecheck', 'knip'])
+	expect(scripts).toEqual([
+		'lint',
+		'format:check',
+		'typecheck',
+		'node tools/soft-delete-read-filter.ts',
+		'knip',
+	])
 	expect(
 		logs.some((line) =>
 			line.includes(
@@ -1272,4 +1288,84 @@ test('pre-push leaves merged-in main paths to main CI and skips tests for a merg
 	} finally {
 		await rm(root, { recursive: true, force: true })
 	}
+})
+
+test('pre-push runs the soft-delete read-filter scan only when its inputs change', async () => {
+	const cases: Array<[string, boolean]> = [
+		['packages/worker/src/billing/stripe-webhooks.ts', true],
+		['packages/jobs-worker/src/jobs/cleanup.ts', true],
+		['tools/soft-delete-read-filter.ts', true],
+		['packages/worker/start/pages/home.tsx', false],
+		['packages/worker/src/guide.md', false],
+		['tools/git-hook-checks.ts', false],
+	]
+	expect(
+		cases.filter(
+			([path, want]) => isSoftDeleteReadFilterHookPath(path) !== want,
+		),
+	).toEqual([])
+	expect(
+		plannedScripts('pre-push', ['packages/worker/src/billing/a.ts']),
+	).toContain('node tools/soft-delete-read-filter.ts')
+	expect(plannedScripts('pre-push', null)).toContain(
+		'node tools/soft-delete-read-filter.ts',
+	)
+	expect(
+		plannedScripts('pre-push', ['tools/git-hook-checks.ts']),
+	).not.toContain('node tools/soft-delete-read-filter.ts')
+	expect(
+		plannedScripts('pre-commit', ['packages/worker/src/billing/a.ts']),
+	).not.toContain('node tools/soft-delete-read-filter.ts')
+})
+
+test('pre-push names the global inputs that force the full test:push', async () => {
+	const logs: Array<string> = []
+	const git: GitRunner = (args) => {
+		if (args[0] === 'diff')
+			return gitResult(0, 'packages/worker/src/test-support/a.ts\0src/b.ts\0')
+		if (args[0] === 'status' || args[0] === 'stash') return gitResult(0)
+		if (args[0] === 'rev-parse') return gitResult(1)
+		return gitResult(1)
+	}
+	const scripts: Array<string> = []
+	await runGitHookChecks({
+		hook: 'pre-push',
+		stdin: `refs/heads/topic ${localSha} refs/heads/topic ${remoteSha}\n`,
+		git,
+		provenance: createFileProvenanceStore(
+			join(await mkdtemp(join(tmpdir(), 'global-hook-')), 'p.json'),
+		),
+		runScript: (script) => {
+			scripts.push(script)
+			return 0
+		},
+		log: (message) => logs.push(message),
+	})
+	expect(scripts).toContain('test:push')
+	expect(logs).toContain(
+		'pre-push: full test:push because global test inputs changed (packages/worker/src/test-support/a.ts)',
+	)
+})
+
+test('pre-push names why an asset-only push falls back to the full test:push', async () => {
+	const logs: Array<string> = []
+	const scripts: Array<string> = []
+	await runGitHookChecks({
+		hook: 'pre-push',
+		stdin: `refs/heads/topic ${localSha} refs/heads/topic ${remoteSha}\n`,
+		git: (args) =>
+			args[0] === 'diff'
+				? gitResult(0, 'packages/worker/public/logo.png\0')
+				: gitResult(1),
+		runScript: (script) => {
+			scripts.push(script)
+			return 0
+		},
+		log: (message) => logs.push(message),
+		progressIntervalMs: 60_000,
+	})
+	expect(scripts).toContain('test:push')
+	expect(logs).toContain(
+		'pre-push: full test:push because no pushed path is JS/TS source with related tests',
+	)
 })
