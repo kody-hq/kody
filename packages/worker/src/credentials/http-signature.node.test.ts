@@ -270,7 +270,8 @@ test('a bad or encrypted key fails without the key in the error', async () => {
 		cipher: 'aes-256-cbc',
 		passphrase: 'test-only',
 	}) as string
-	const broken = pkcs8Pem.replace(/[A-Za-z0-9]{20}\n/, 'AAAAAAAAAAAAAAAAAAAA\n')
+	const pemLines = pkcs8Pem.trim().split('\n')
+	const broken = [...pemLines.slice(0, 4), pemLines.at(-1)].join('\n')
 	for (const pem of [encrypted, broken, 'not a key']) {
 		const error = await importRsaSigningKey(pem).then(
 			() => null,
