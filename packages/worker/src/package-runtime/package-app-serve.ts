@@ -1026,24 +1026,26 @@ export async function servePackageAppRequest(input: {
 			})
 			if (refusal) return attachPackageAppServerTiming(refusal, serverTiming)
 			return attachPackageAppServerTiming(
-				await servePackageAppAssetRequest({
-					request,
-					env,
-					userId: owner.userId,
-					manifest: packageManifest.manifest,
-					savedPackage: {
-						id: savedPackage.id,
-						kodyId: savedPackage.kodyId,
-						sourceId: savedPackage.sourceId,
-						publishedCommit: packageManifest.source.published_commit,
-						manifestPath: packageManifest.source.manifest_path,
-						sourceRoot: packageManifest.source.source_root,
-					},
-					loadSourceFiles,
-					relativePath: assetRelativePath,
-					appBasePath,
-					hostedUrl: `${requestUrl.origin}${appBasePath}`,
-				}),
+				await pushServerTiming(serverTiming, 'assets', () =>
+					servePackageAppAssetRequest({
+						request,
+						env,
+						userId: owner.userId,
+						manifest: packageManifest.manifest,
+						savedPackage: {
+							id: savedPackage.id,
+							kodyId: savedPackage.kodyId,
+							sourceId: savedPackage.sourceId,
+							publishedCommit: packageManifest.source.published_commit,
+							manifestPath: packageManifest.source.manifest_path,
+							sourceRoot: packageManifest.source.source_root,
+						},
+						loadSourceFiles,
+						relativePath: assetRelativePath,
+						appBasePath,
+						hostedUrl: `${requestUrl.origin}${appBasePath}`,
+					}),
+				),
 				serverTiming,
 			)
 		} catch (error) {

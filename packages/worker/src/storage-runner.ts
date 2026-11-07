@@ -514,6 +514,33 @@ export function isReadOnlyStorageSqlQuery(query: string) {
 	)
 }
 
+const idempotentStorageSqlDdlPattern =
+	/^create\s+(?:unique\s+)?(?:table|index)\s+if\s+not\s+exists\b/
+
+/**
+ * True for a single `CREATE TABLE|INDEX … IF NOT EXISTS` without a
+ * `SELECT` (so never `CREATE TABLE … AS SELECT`). Package apps run these on
+ * every new isolate; they add only schema bytes, so they skip the
+ * storage-byte entitlement baseline. Later writes are still metered.
+ */
+export function isIdempotentStorageSqlDdl(query: string) {
+	const trimmed = query.trim()
+	if (!trimmed || hasMultipleSqlStatements(trimmed)) return false
+	const normalized = maskSqlLiteralsAndComments(trimmed).trim().toLowerCase()
+	return (
+		idempotentStorageSqlDdlPattern.test(normalized) &&
+		!/\bselect\b/.test(normalized)
+	)
+}
+
+/**
+ * True when a writable statement must pass the storage-byte entitlement
+ * check before it runs: not a pure read and not idempotent DDL.
+ */
+export function storageSqlNeedsWriteEntitlement(query: string) {
+	return !isReadOnlyStorageSqlQuery(query) && !isIdempotentStorageSqlDdl(query)
+}
+
 const storageSqlReturningMutationVerbs = [
 	'insert',
 	'update',
@@ -1731,7 +1758,7 @@ export function createStorageKodyTools(input: {
 			// packageStorage()/writable helpers always pass writable:true so
 			// CREATE/INSERT are allowed, but pure reads must not pay the
 			// all-bucket entitlement fan-out.
-			if (writable && !isReadOnlyStorageSqlQuery(query)) {
+			if (writable && storageSqlNeedsWriteEntitlement(query)) {
 				await assertWriteWithinEntitlement(
 					estimateEntitlementStorageSqlWriteBytes({
 						query,
