@@ -287,7 +287,7 @@ async function saveConnectOauthConnection(input: {
 	}
 }
 
-export type ConnectOauthScopeGrantView = {
+type ConnectOauthScopeGrantView = {
 	granted: Array<string> | null
 	missing: Array<string>
 	extra: Array<string>
