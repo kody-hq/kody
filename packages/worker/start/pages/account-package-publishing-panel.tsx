@@ -69,7 +69,7 @@ function primaryPublishLabel(packageDetail: AccountPackageDetail) {
 	return 'Publish HEAD'
 }
 
-export function commitApproveHref(approveHref: string, commit: string) {
+function commitApproveHref(approveHref: string, commit: string) {
 	return `${approveHref}?commit=${encodeURIComponent(commit)}`
 }
 

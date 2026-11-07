@@ -2287,7 +2287,7 @@ export type AccountPackageCommunityFork = {
 	adoptionNote: string | null
 }
 
-export type AccountPackageUnpublishedCommit = {
+type AccountPackageUnpublishedCommit = {
 	commit: string
 	subject: string
 	authoredAt: string | null
