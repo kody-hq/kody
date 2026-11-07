@@ -84,6 +84,12 @@ import {
 	formatFetchBodySecretResolutionWarning,
 } from '#worker/credentials/fetch-body-secret-resolution.ts'
 import {
+	findSecretPlaceholderRequestPlacements,
+	formatSecretPlaceholderRequestPlacementNotice,
+	type SecretPlaceholderRequestPlacementMode,
+	secretPlaceholderRequestPlacementPublishMode,
+} from '#worker/credentials/secret-placeholder-request-placement.ts'
+import {
 	buildCredentialPatternCheck,
 	type CredentialPatternCheckResult,
 } from './credential-pattern-check.ts'
@@ -1965,18 +1971,34 @@ export async function runRepoChecks(input: {
 						'Stamp findings below do not fail this check (community install / platform codemod lane). Authoring publish still enforces the gate.\n',
 					)
 			: credentialPatternCheck.message
+	const placementNotice = credentialCheckOk
+		? secretPlaceholderRequestPlacementNotice({
+				sourceFiles,
+				mode: enforceCredentialStamp
+					? secretPlaceholderRequestPlacementPublishMode
+					: 'warn',
+			})
+		: null
 	const fetchBodyWarning = credentialCheckOk
 		? fetchBodySecretResolutionNotice(sourceFiles)
 		: null
+	const placementBlocks = placementNotice?.mode === 'fail'
 	results.push({
 		kind: credentialPatternCheck.kind,
-		ok: credentialCheckOk,
-		message: fetchBodyWarning
-			? `${credentialCheckMessage}\n\n${fetchBodyWarning}`
-			: credentialCheckMessage,
+		ok: credentialCheckOk && !placementBlocks,
+		message: [
+			credentialCheckMessage,
+			placementNotice?.message,
+			fetchBodyWarning,
+		]
+			.filter((part): part is string => Boolean(part))
+			.join('\n\n'),
 		...platformFailureOrigin([credentialPatternCheck]),
 	})
-	if (enforceCredentialStamp && !credentialPatternCheck.ok) {
+	if (
+		(enforceCredentialStamp && !credentialPatternCheck.ok) ||
+		placementBlocks
+	) {
 		return toRepoCheckRunResult({ results, manifest, sourceFiles })
 	}
 	await input.onStep?.('package-checks')
@@ -2481,6 +2503,21 @@ export async function runRepoSourceWalkChecks(input: {
 		message: `Validated ${fileCount} source file(s) within size limits.`,
 		sourceFiles: collected,
 	}
+}
+
+/**
+ * Credential placeholders a fetch puts in a request body, URL, or query.
+ * `mode` comes from {@link secretPlaceholderRequestPlacementPublishMode}.
+ */
+function secretPlaceholderRequestPlacementNotice(input: {
+	sourceFiles: Record<string, string>
+	mode: SecretPlaceholderRequestPlacementMode
+}): { mode: SecretPlaceholderRequestPlacementMode; message: string } | null {
+	const message = formatSecretPlaceholderRequestPlacementNotice({
+		hits: findSecretPlaceholderRequestPlacements(input.sourceFiles),
+		mode: input.mode,
+	})
+	return message ? { mode: input.mode, message } : null
 }
 
 /**

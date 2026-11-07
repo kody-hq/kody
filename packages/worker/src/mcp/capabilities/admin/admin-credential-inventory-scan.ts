@@ -46,6 +46,17 @@ export const credentialInventoryReportSchema = z.object({
 		failed: count,
 		withPlaceholders: count,
 		withSlots: count,
+		withRequestPlacement: z
+			.object({
+				body: count,
+				query: count,
+				path: count,
+				url: count,
+				any: count,
+			})
+			.describe(
+				'Scanned packages with a secret or integration placeholder a fetch sends in the request body, URL query, URL path, or whole URL; `any` counts each package once. Recomputed from stored items, so re-reading an older complete run fills it.',
+			),
 	}),
 	placeholders: placeholderCountsSchema.describe(
 		'Every placeholder occurrence by kind, including ones that match a declared slot.',
