@@ -40,6 +40,12 @@ export const blogSeries = [
 		description:
 			'Giving a team’s AI agents real access without handing them the keys: storage, scopes, revocation, audit, sharing, and rollout.',
 	},
+	{
+		slug: 'sharing-apps-with-your-team',
+		title: 'Sharing apps with your team',
+		description:
+			'Sharing an AI-built app with teammates, contractors, and clients: forks, grants, sign-in, access presets, who an app runs as, and who pays.',
+	},
 ] as const
 
 export type BlogSeries = (typeof blogSeries)[number]
