@@ -165,6 +165,7 @@ test('backfill preserves access; replaced credential under same name needs appro
 	const afterBackfill = await requireWebhookApplyDestinationGrantOrPending({
 		env,
 		userId: 'org-a' as never,
+		orgSlug: 'org-a',
 		handle: 'whh_ep-1',
 		destination,
 		baseUrl: 'https://heykody.dev',
@@ -207,6 +208,7 @@ test('backfill preserves access; replaced credential under same name needs appro
 	const afterRotation = await requireWebhookApplyDestinationGrantOrPending({
 		env,
 		userId: 'org-a' as never,
+		orgSlug: 'org-a',
 		handle: 'whh_ep-1',
 		destination,
 		baseUrl: 'https://heykody.dev',
@@ -225,6 +227,7 @@ test('backfill preserves access; replaced credential under same name needs appro
 	const afterReplace = await requireWebhookApplyDestinationGrantOrPending({
 		env,
 		userId: 'org-a' as never,
+		orgSlug: 'org-a',
 		handle: 'whh_ep-1',
 		destination,
 		baseUrl: 'https://heykody.dev',
@@ -271,6 +274,7 @@ test("deleted credential's approvals do not transfer to a later recreate", async
 	const gate = await requireWebhookApplyDestinationGrantOrPending({
 		env,
 		userId: 'org-a' as never,
+		orgSlug: 'org-a',
 		handle: 'whh_ep-1',
 		destination,
 		baseUrl: 'https://heykody.dev',

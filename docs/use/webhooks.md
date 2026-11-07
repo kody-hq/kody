@@ -199,10 +199,12 @@ grants, and locked-package publish approval: the capability returns an
 `approval_url` to `/connect/webhook-apply` with the exact method, URL,
 `{{webhookUrl}}` / `{{webhookSecret}}` injection sites, headers, body template,
 and auth mode (including the credential id when `secretName` / `integration` is
-set). The signed-in owner Allows on the website (writing a durable destination
-grant); the agent then retries and the outbound request runs. Package runtimes
-cannot use `http` apply. Agents never grant access and never see the webhook
-credential.
+set). A team org's link names the org (`?org=<slug>`); the page, Allow, and
+Reject re-check that the signed-in person is a member with Write on the
+webhook's package, so the query alone grants nothing. The signed-in owner Allows
+on the website (writing a durable destination grant); the agent then retries and
+the outbound request runs. Package runtimes cannot use `http` apply. Agents
+never grant access and never see the webhook credential.
 
 ```ts
 await kody.webhooks.webhookUrlApply({
