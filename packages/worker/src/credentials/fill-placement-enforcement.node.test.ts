@@ -128,7 +128,10 @@ test('enforcement refuses a part outside the placement and names it', () => {
 	expect(message).toContain('apiKey')
 	expect(message).toContain('body')
 	expect(message).toContain('credential page')
-	expect(message).toContain('slot "apiKey"')
+	expect(message).toContain(
+		'(credential_placement_refused, slot "apiKey", part "body")',
+	)
+	expect((refused as SecretPlacementError).part).toBe('body')
 })
 
 test('a body refusal of a user Key carries its owner-approval link', () => {
