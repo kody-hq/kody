@@ -192,8 +192,9 @@ function formatMatchListItem(match: SearchMatch, index: number) {
 	}
 	if (match.type === 'integration') {
 		const entityRef = buildEntityRef(match.integrationName, 'integration')
-		const trouble = match.lastAuthFailure?.reconnectable
-			? ` ${escapeMarkdownText(match.lastAuthFailure.why)} ${escapeMarkdownText(match.lastAuthFailure.doLabel)} at ${formatMarkdownInlineCode(match.lastAuthFailure.reconnectHref)}.`
+		const failure = match.lastAuthFailure
+		const trouble = failure
+			? ` ${escapeMarkdownText(failure.why)} ${escapeMarkdownText(failure.doLabel)} at ${formatMarkdownInlineCode(failure.reconnectable ? failure.reconnectHref : failure.accountHref)}.`
 			: ''
 		return `${String(index + 1)}. **integration** ${formatMarkdownInlineCode(match.integrationName)} — ${escapeMarkdownText(formatOneLineSentence(match.description))} Entity: ${formatMarkdownInlineCode(entityRef)}${trouble}`
 	}

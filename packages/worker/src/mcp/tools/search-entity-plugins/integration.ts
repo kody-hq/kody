@@ -194,6 +194,9 @@ export const integrationSearchEntityPlugin = {
 			)
 		}
 		if (authorization) {
+			const nonReconnectableFailure =
+				detail.config.lastAuthFailure &&
+				!detail.config.lastAuthFailure.reconnectable
 			lines.push(
 				'',
 				'## OAuth authorization metadata',
@@ -207,7 +210,9 @@ export const integrationSearchEntityPlugin = {
 						: 'none'
 				}`,
 				'',
-				`Reconnect with \`/connect/oauth?provider=${encodeURIComponent(detail.config.name)}\`; Kody derives the provider authorize URL from the saved integration metadata plus the current client credentials.`,
+				nonReconnectableFailure
+					? `Open \`/account/integrations/${encodeURIComponent(detail.config.name).replaceAll('.', '%2E')}\` while the provider limit clears; reconnecting usually does not help. Kody derives the provider authorize URL from the saved integration metadata plus the current client credentials when a reconnect is needed.`
+					: `Reconnect with \`/connect/oauth?provider=${encodeURIComponent(detail.config.name)}\`; Kody derives the provider authorize URL from the saved integration metadata plus the current client credentials.`,
 			)
 		}
 		if (relatedPackageSuggestions.length > 0) {
