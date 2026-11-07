@@ -31,3 +31,13 @@ test('retryHrefFromRequest keeps same-origin paths and rejects protocol-relative
 		'<script src="/error-agent-prompt-copy.js" defer></script>',
 	)
 })
+
+test('illustrated 500 prompt names this path and the internal_error contract', async () => {
+	const path = '/account?tab=usage'
+	const body = await renderInternalServerErrorPage(path).text()
+	expect(body).toContain(`Path: ${path}`)
+	expect(body).toContain('Error code: internal_error')
+	expect(body).toContain('illustrated internal error')
+	expect(body).toContain('runList')
+	expect(body).toContain('guide:sentry_issues')
+})

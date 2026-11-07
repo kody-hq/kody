@@ -1,6 +1,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const {
+	existsSync,
 	readFileSync,
 	writeFileSync,
 	mkdtempSync,
@@ -152,24 +153,6 @@ for (const platform of ['darwin', 'win32']) {
 				presence.start()
 				assert.equal(presence.background, false)
 				assert.equal(presence.chosen, false)
-				assert.equal(
-					tray.image.path,
-					join(__dirname, '../assets/tray-light.png'),
-				)
-				theme.shouldUseDarkColors = true
-				theme.shouldUseDarkColorsForSystemIntegratedUI = true
-				theme.emit('updated')
-				assert.equal(
-					tray.image.path,
-					join(__dirname, '../assets/tray-dark.png'),
-				)
-				theme.shouldUseDarkColors = false
-				theme.shouldUseDarkColorsForSystemIntegratedUI = false
-				theme.emit('updated')
-				assert.equal(
-					tray.image.path,
-					join(__dirname, '../assets/tray-light.png'),
-				)
 				await presence.onboard()
 				if (installation === 'upgraded')
 					assert.deepEqual(
@@ -215,3 +198,76 @@ for (const platform of ['darwin', 'win32']) {
 		})
 	}
 }
+
+test('tray mark swaps to a different existing asset when OS chrome updates', () => {
+	const profile = mkdtempSync(join(tmpdir(), 'kody-presence-tray-'))
+	let tray
+	const theme = new EventEmitter()
+	theme.shouldUseDarkColors = false
+	theme.shouldUseDarkColorsForSystemIntegratedUI = false
+	const electron = {
+		Tray: class extends EventEmitter {
+			constructor(icon) {
+				super()
+				tray = this
+				this.image = icon
+			}
+			setToolTip() {}
+			setImage(icon) {
+				this.image = icon
+			}
+			setContextMenu(menu) {
+				this.menu = menu
+			}
+		},
+		Menu: { buildFromTemplate: (items) => items },
+		nativeImage: {
+			createFromPath: (path) => ({ path }),
+		},
+		nativeTheme: theme,
+	}
+	const module = { exports: {} }
+	const desktopRoot = join(__dirname, '..')
+	runInNewContext(readFileSync(join(desktopRoot, 'presence.cjs'), 'utf8'), {
+		require: (name) => {
+			if (name === 'electron') return electron
+			if (name.startsWith('.')) return require(join(desktopRoot, name))
+			return require(name)
+		},
+		module,
+		__dirname: desktopRoot,
+		process: { platform: 'darwin' },
+	})
+	try {
+		new module.exports.DesktopPresence({
+			app: {
+				getPath: () => profile,
+				setActivationPolicy() {},
+				dock: { hide() {}, show: async () => {} },
+				quit() {},
+			},
+			dialog: {
+				showMessageBox: async () => ({ response: 0 }),
+				showErrorBox: (_, message) => {
+					throw Error(message)
+				},
+			},
+			show() {},
+			windows: () => [],
+			changed() {},
+		}).start()
+		const initial = tray.image.path
+		assert.equal(existsSync(initial), true)
+		theme.shouldUseDarkColors = true
+		theme.shouldUseDarkColorsForSystemIntegratedUI = true
+		theme.emit('updated')
+		assert.notEqual(tray.image.path, initial)
+		assert.equal(existsSync(tray.image.path), true)
+		theme.shouldUseDarkColors = false
+		theme.shouldUseDarkColorsForSystemIntegratedUI = false
+		theme.emit('updated')
+		assert.equal(tray.image.path, initial)
+	} finally {
+		rmSync(profile, { recursive: true, force: true })
+	}
+})
