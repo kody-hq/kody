@@ -215,8 +215,10 @@ const mutationResources = [
 
 const reportResources = ['loadAdminCommunityReports'] as const
 
-function requireSuccess<T extends { ok: boolean; error?: string }>(result: T) {
-	if (!result.ok)
-		throw new Error(result.error ?? 'Unable to complete this action.')
+function requireSuccess<T extends { ok: boolean; error?: string }>(
+	result: T | null | undefined,
+) {
+	if (!result || result.ok !== true)
+		throw new Error(result?.error ?? 'Unable to complete this action.')
 	return result
 }

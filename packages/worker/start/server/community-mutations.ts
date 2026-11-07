@@ -1,5 +1,19 @@
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
+import {
+	type CommunityInstallHandlerResult,
+	unwrapCommunityInstallHandlerResult,
+} from './community-install-server-result.ts'
+
+async function runCommunityInstallMutation(
+	run: () => Promise<CommunityInstallHandlerResult>,
+): Promise<ReturnType<typeof unwrapCommunityInstallHandlerResult>> {
+	const { setResponseStatus } = await import('@tanstack/react-start/server')
+	const result = await run()
+	setResponseStatus(result.status)
+	return unwrapCommunityInstallHandlerResult(result)
+}
+
 export const forkReadablePackage = createServerFn({ method: 'POST' })
 	.validator(
 		z.object({
@@ -10,11 +24,11 @@ export const forkReadablePackage = createServerFn({ method: 'POST' })
 	)
 	.handler(async ({ data }) => {
 		const { withWebsiteMutation } = await import('./mutation-context.ts')
-		return withWebsiteMutation({}, async ({ env, request, user }) => {
-			const { installWebsitePrivatePackageFork } =
-				await import('../../src/app/handlers/community-install.ts')
-			return (
-				await installWebsitePrivatePackageFork({
+		return withWebsiteMutation({}, async ({ env, request, user }) =>
+			runCommunityInstallMutation(async () => {
+				const { installWebsitePrivatePackageFork } =
+					await import('../../src/app/handlers/community-install.ts')
+				return installWebsitePrivatePackageFork({
 					env,
 					request,
 					user,
@@ -22,8 +36,8 @@ export const forkReadablePackage = createServerFn({ method: 'POST' })
 					kodyId: data.kodyId,
 					body: data.org ? { org: data.org } : {},
 				})
-			).data
-		})
+			}),
+		)
 	})
 
 export const installCommunityPackage = createServerFn({ method: 'POST' })
@@ -36,11 +50,11 @@ export const installCommunityPackage = createServerFn({ method: 'POST' })
 	)
 	.handler(async ({ data }) => {
 		const { withWebsiteMutation } = await import('./mutation-context.ts')
-		return withWebsiteMutation({}, async ({ env, request, user }) => {
-			const { installWebsiteCommunityPackage } =
-				await import('../../src/app/handlers/community-install.ts')
-			return (
-				await installWebsiteCommunityPackage({
+		return withWebsiteMutation({}, async ({ env, request, user }) =>
+			runCommunityInstallMutation(async () => {
+				const { installWebsiteCommunityPackage } =
+					await import('../../src/app/handlers/community-install.ts')
+				return installWebsiteCommunityPackage({
 					env,
 					request,
 					user,
@@ -50,8 +64,8 @@ export const installCommunityPackage = createServerFn({ method: 'POST' })
 						...(data.org ? { org: data.org } : {}),
 					},
 				})
-			).data
-		})
+			}),
+		)
 	})
 export const featureCommunityPackage = createServerFn({ method: 'POST' })
 	.validator(z.object({ listingId: z.string().min(1), featured: z.boolean() }))

@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 const state = vi.hoisted(() => ({
 	request: new Request('https://kody.test/_serverFn/org', { method: 'POST' }),
 	write: vi.fn(async (_input: unknown) => ({
-		value: { ok: true },
+		data: { ok: true },
 		status: 200,
 	})),
 	scope: vi.fn(),
