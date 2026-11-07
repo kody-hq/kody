@@ -5,6 +5,7 @@ import {
 import type * as PlatformFeedbackOutcomeEmail from '#worker/platform-feedback/outcome-email.ts'
 import type * as PlatformFeedbackService from '#worker/platform-feedback/service.ts'
 import type * as PlatformFeedbackSubmitterMail from '#worker/platform-feedback/submitter-mail.ts'
+import { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vitest'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
@@ -12,8 +13,11 @@ import {
 	PlatformFeedbackActiveQueueLimitError,
 	PlatformFeedbackInvalidTransitionError,
 	PlatformFeedbackNotFoundError,
+	PlatformFeedbackReopenError,
 	PlatformFeedbackSubmissionRateLimitError,
 } from '#worker/platform-feedback/errors.ts'
+import { platformFeedbackTestSchemaSql } from '#worker/platform-feedback/test-schema.ts'
+import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import {
 	auditEventSummaries,
 	logAuditEventSpy,
@@ -129,6 +133,7 @@ const openFeedback = {
 	resolutionNote: null,
 	resolutionPrUrls: [] as Array<string>,
 	resolutionHistory: [],
+	reopenHistory: [],
 	createdAt: '2026-07-19T00:00:00.000Z',
 	updatedAt: '2026-07-19T00:00:00.000Z',
 }
@@ -849,4 +854,141 @@ test('meta platform feedback list surfaces at-cap quota with next_slot_at', asyn
 		next_slot_at: '2026-07-20T06:00:00.000Z',
 		feedback: [],
 	})
+})
+
+test('admin platform feedback reopen to triaged needs an admin and a note, records server-side history, and sends no email', async () => {
+	const actual = await vi.importActual<typeof PlatformFeedbackService>(
+		'#worker/platform-feedback/service.ts',
+	)
+	const sqlite = new DatabaseSync(':memory:')
+	sqlite.exec(platformFeedbackTestSchemaSql)
+	const feedbackDb = createD1FromSqlite(sqlite)
+	const submitted = await actual.submitPlatformFeedback({
+		db: feedbackDb,
+		submitterUserId: 'reporter-1',
+		submitterUsername: 'reporter-1-name',
+		submitterEmail: 'reporter-1@example.com',
+		category: 'bug',
+		summary: 'Synthetic reopen fixture',
+		details: 'Synthetic details for the reopen capability test.',
+	})
+	await actual.updatePlatformFeedbackForAdmin({
+		db: feedbackDb,
+		feedbackId: submitted.id,
+		reviewerUserId: 'admin-0',
+		action: 'resolve',
+		resolutionNote: 'Shipped.',
+	})
+	const readRow = () =>
+		sqlite
+			.prepare(`SELECT * FROM platform_feedback WHERE id = ?`)
+			.get(submitted.id)
+	mockModule.getPlatformFeedbackForAdmin.mockImplementation(
+		(input: { feedbackId: string }) =>
+			actual.getPlatformFeedbackForAdmin({ ...input, db: feedbackDb }),
+	)
+	mockModule.updatePlatformFeedbackForAdmin.mockImplementation(
+		(input: Parameters<typeof actual.updatePlatformFeedbackForAdmin>[0]) =>
+			actual.updatePlatformFeedbackForAdmin({ ...input, db: feedbackDb }),
+	)
+	mockModule.readPlatformFeedbackSubmitterContact.mockResolvedValue(
+		reachableContact,
+	)
+	mockModule.sendPlatformFeedbackOutcomeEmail.mockReset()
+	mockModule.queueSend.mockReset()
+
+	const resolvedRow = readRow()
+	await expect(
+		adminPlatformFeedbackUpdateCapability.handler(
+			{ id: submitted.id, action: 'triage', admin_note: 'Not an admin.' },
+			createCapabilityContext({
+				userId: ownerIdFromStored('member-1'),
+				roles: ['user'],
+			}),
+		),
+	).rejects.toThrow('lacks required role "admin"')
+	expect(mockModule.updatePlatformFeedbackForAdmin).not.toHaveBeenCalled()
+	expect(readRow()).toEqual(resolvedRow)
+
+	const adminContext = createCapabilityContext({
+		userId: ownerIdFromStored('admin-1'),
+		roles: ['admin'],
+	})
+	for (const admin_note of [undefined, '', '   ']) {
+		await expect(
+			adminPlatformFeedbackUpdateCapability.handler(
+				{ id: submitted.id, action: 'triage', admin_note },
+				adminContext,
+			),
+		).rejects.toSatisfy(
+			(error: unknown) =>
+				error instanceof McpCallerError &&
+				error.cause instanceof PlatformFeedbackReopenError &&
+				/needs a non-empty admin_note/.test(error.message),
+		)
+	}
+	expect(readRow()).toEqual(resolvedRow)
+
+	const reopened = await adminPlatformFeedbackUpdateCapability.handler(
+		{
+			id: submitted.id,
+			action: 'triage',
+			admin_note: 'Reopened: synthetic regression.',
+			// Caller-supplied attribution is not part of the schema and is ignored.
+			...({
+				actor_user_id: 'spoofed-admin',
+				reviewed_at: '1999-01-01T00:00:00.000Z',
+			} as Record<string, unknown>),
+		},
+		adminContext,
+	)
+	expect(reopened.outcome_email).toBeNull()
+	expect(reopened.feedback).toMatchObject({
+		status: 'triaged',
+		reviewed_by_user_id: 'admin-1',
+		admin_note: 'Reopened: synthetic regression.',
+		resolution_note: null,
+		resolution_history: [{ note: 'Shipped.' }],
+		reopen_history: [
+			{
+				from_status: 'resolved',
+				to_status: 'triaged',
+				note: 'Reopened: synthetic regression.',
+				actor_user_id: 'admin-1',
+				recorded_at: reopened.feedback.reviewed_at,
+			},
+		],
+	})
+	expect(reopened.feedback.reviewed_at).not.toBe('1999-01-01T00:00:00.000Z')
+	expect(JSON.stringify(reopened)).not.toContain('spoofed-admin')
+	expect(mockModule.sendPlatformFeedbackOutcomeEmail).not.toHaveBeenCalled()
+	expect(mockModule.queueSend).not.toHaveBeenCalled()
+	expect(logAuditEventSpy).toHaveBeenCalledWith(
+		expect.objectContaining({
+			action: 'adminPlatformFeedbackUpdate',
+			result: 'success',
+			reason: `feedback_id=${submitted.id};status=triaged;action=triage;emailed=n/a;reopened_from=resolved`,
+		}),
+	)
+
+	const retry = await adminPlatformFeedbackUpdateCapability.handler(
+		{
+			id: submitted.id,
+			action: 'triage',
+			admin_note: 'Reopened: synthetic regression.',
+		},
+		adminContext,
+	)
+	expect(retry.feedback.reopen_history).toHaveLength(1)
+	expect(mockModule.sendPlatformFeedbackOutcomeEmail).not.toHaveBeenCalled()
+
+	const submitterView = await actual.getPlatformFeedbackForSubmitter({
+		db: feedbackDb,
+		feedbackId: submitted.id,
+		submitterUserId: 'reporter-1',
+	})
+	expect(JSON.stringify(submitterView)).not.toContain('synthetic regression')
+	mockModule.getPlatformFeedbackForAdmin.mockReset()
+	mockModule.updatePlatformFeedbackForAdmin.mockReset()
+	mockModule.readPlatformFeedbackSubmitterContact.mockReset()
 })

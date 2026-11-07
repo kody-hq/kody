@@ -824,6 +824,18 @@ Sends are skipped when the submitter has no current account email, outbound
 email is paused, or the account is suspended. One email is sent per feedback id
 per terminal status.
 
+Admins can reopen resolved or dismissed feedback to triaged with
+`adminPlatformFeedbackUpdate` `action: "triage"`. A reopen requires a non-empty
+`admin_note`; a missing, empty, or whitespace-only note is refused without any
+change. The same revision-guarded write sets the status, stores the note as
+`admin_note`, moves the closed submitter-visible outcome into
+`resolution_history`, and appends
+`{from_status, to_status, note, actor_user_id, recorded_at}` to the internal
+`reopen_history` using the authenticated admin and server time. A reopen sends
+no email or notification to the submitter, and `reopen_history` is excluded from
+submitter views and account export. No other change out of resolved or dismissed
+is allowed.
+
 After a consent-gated submission is persisted, Kody enqueues its id for durable
 `platform.feedback.submitted` package-subscription delivery. The Queue consumer
 fans out only to packages whose owners hold the admin role when the message is

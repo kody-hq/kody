@@ -26,7 +26,7 @@ export class PlatformFeedbackInvalidTransitionError extends Error {
 		action: PlatformFeedbackAction
 	}) {
 		super(
-			`Cannot ${input.action} platform feedback "${input.feedbackId}" from status "${input.status}". Terminal feedback cannot change to another status.`,
+			`Cannot ${input.action} platform feedback "${input.feedbackId}" from status "${input.status}". Terminal feedback cannot change to another status; the only allowed change is a reopen to "triaged" (action "triage" with a non-empty admin_note).`,
 		)
 		this.name = 'PlatformFeedbackInvalidTransitionError'
 	}
@@ -46,6 +46,14 @@ export class PlatformFeedbackFollowUpError extends Error {
 	constructor(message: string) {
 		super(message)
 		this.name = 'PlatformFeedbackFollowUpError'
+	}
+}
+
+/** A reopen of resolved/dismissed feedback was refused before any write. */
+export class PlatformFeedbackReopenError extends Error {
+	constructor(message: string) {
+		super(message)
+		this.name = 'PlatformFeedbackReopenError'
 	}
 }
 
@@ -84,6 +92,7 @@ export type PlatformFeedbackDomainError =
 	| PlatformFeedbackInvalidTransitionError
 	| PlatformFeedbackConcurrentUpdateError
 	| PlatformFeedbackFollowUpError
+	| PlatformFeedbackReopenError
 	| PlatformFeedbackSubmissionRateLimitError
 	| PlatformFeedbackActiveQueueLimitError
 	| PlatformFeedbackSubmissionConflictError
@@ -96,6 +105,7 @@ export function isPlatformFeedbackDomainError(
 		error instanceof PlatformFeedbackInvalidTransitionError ||
 		error instanceof PlatformFeedbackConcurrentUpdateError ||
 		error instanceof PlatformFeedbackFollowUpError ||
+		error instanceof PlatformFeedbackReopenError ||
 		error instanceof PlatformFeedbackSubmissionRateLimitError ||
 		error instanceof PlatformFeedbackActiveQueueLimitError ||
 		error instanceof PlatformFeedbackSubmissionConflictError

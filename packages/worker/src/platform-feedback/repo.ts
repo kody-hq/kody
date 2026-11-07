@@ -1,4 +1,5 @@
 import {
+	parsePlatformFeedbackReopenHistory,
 	parsePlatformFeedbackResolutionHistory,
 	parsePlatformFeedbackResolutionPrUrls,
 } from './resolution.ts'
@@ -15,7 +16,7 @@ import type {
 const platformFeedbackFullColumns = `id, submitter_user_id, submitter_username,
 	submitter_email, category, summary, details, status, reviewed_by_user_id,
 	reviewed_at, admin_note, resolution_note, resolution_pr_urls,
-	resolution_history, revision, created_at, updated_at`
+	resolution_history, reopen_history, revision, created_at, updated_at`
 
 const platformFeedbackListColumns = `id, submitter_user_id, category, summary,
 	status, reviewed_by_user_id, reviewed_at, created_at, updated_at`
@@ -52,6 +53,7 @@ function mapPlatformFeedbackRow(
 		resolutionHistory: parsePlatformFeedbackResolutionHistory(
 			row['resolution_history'],
 		),
+		reopenHistory: parsePlatformFeedbackReopenHistory(row['reopen_history']),
 		revision: Number(row['revision']),
 		createdAt: String(row['created_at']),
 		updatedAt: String(row['updated_at']),
@@ -427,6 +429,7 @@ export async function updatePlatformFeedbackStatusForAdmin(
 		resolutionNote: string | null | undefined
 		resolutionPrUrlsJson: string | null | undefined
 		resolutionHistoryJson?: string | null
+		reopenHistoryJson?: string | null
 	},
 ): Promise<boolean> {
 	const result = await db
@@ -437,6 +440,7 @@ export async function updatePlatformFeedbackStatusForAdmin(
 				resolution_note = CASE WHEN ? = 1 THEN ? ELSE resolution_note END,
 				resolution_pr_urls = CASE WHEN ? = 1 THEN ? ELSE resolution_pr_urls END,
 				resolution_history = CASE WHEN ? = 1 THEN ? ELSE resolution_history END,
+				reopen_history = CASE WHEN ? = 1 THEN ? ELSE reopen_history END,
 				updated_at = ?, revision = revision + 1
 			WHERE id = ? AND status = ? AND revision = ?`,
 		)
@@ -452,6 +456,8 @@ export async function updatePlatformFeedbackStatusForAdmin(
 			input.resolutionPrUrlsJson ?? null,
 			input.resolutionHistoryJson === undefined ? 0 : 1,
 			input.resolutionHistoryJson ?? null,
+			input.reopenHistoryJson === undefined ? 0 : 1,
+			input.reopenHistoryJson ?? null,
 			input.reviewedAt,
 			input.feedbackId,
 			input.expectedStatus,

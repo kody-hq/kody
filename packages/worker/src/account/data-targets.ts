@@ -1354,7 +1354,12 @@ export const accountExportRedactedColumnsByTable: Readonly<
 	pending_email_changes: ['token_hash'],
 	pending_email_claim_releases: ['token_hash'],
 	pending_email_destination_verifications: ['token_hash'],
-	platform_feedback: ['reviewed_by_user_id', 'reviewed_at', 'admin_note'],
+	platform_feedback: [
+		'reviewed_by_user_id',
+		'reviewed_at',
+		'admin_note',
+		'reopen_history',
+	],
 	secret_entries: ['encrypted_value', 'lookup_hash'],
 	user_integrations: ['access_token_encrypted', 'refresh_token_encrypted'],
 	user_oauth_apps: ['client_secret_encrypted'],
