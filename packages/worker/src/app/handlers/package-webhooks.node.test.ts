@@ -114,6 +114,19 @@ async function setup(sessionUsername = 'owner') {
 	})
 	const sqlite = new DatabaseSync(':memory:')
 	sqlite.exec(`
+		CREATE TABLE orgs (
+			id TEXT PRIMARY KEY,
+			slug TEXT NOT NULL,
+			display_name TEXT,
+			suspended_at TEXT,
+			deleted_at TEXT
+		);
+		CREATE TABLE handles (
+			handle TEXT PRIMARY KEY,
+			user_id TEXT,
+			org_id TEXT,
+			created_at TEXT NOT NULL
+		);
 		CREATE TABLE webhook_endpoints (
 			id TEXT PRIMARY KEY,
 			user_id TEXT NOT NULL,
@@ -157,6 +170,7 @@ async function setup(sessionUsername = 'owner') {
 			updated_at TEXT NOT NULL
 		);
 	`)
+	sqlite.prepare(`INSERT INTO orgs (id, slug) VALUES (?, 'owner')`).run(userId)
 	const db = createD1FromSqlite(sqlite)
 	const env = {
 		APP_DB: db,
