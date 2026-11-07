@@ -70,7 +70,7 @@ import {
 	createPackageStorageAccessDeniedMessage,
 	createPackageStorageOwnerOnlyMessage,
 	createStorageBytesEntitlementRunCache,
-	isReadOnlyStorageSqlQuery,
+	storageSqlNeedsWriteEntitlement,
 	storageRunnerRpc,
 } from '#worker/storage-runner.ts'
 import {
@@ -2513,8 +2513,8 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		billedOrgId?: OwnerId
 	}) {
 		// package app bridges always mark packageStorage SQL writable, so skip
-		// the all-bucket fan-out for pure SELECT/EXPLAIN/PRAGMA statements.
-		if (input.writable && !isReadOnlyStorageSqlQuery(input.query)) {
+		// the all-bucket fan-out for pure reads and idempotent DDL.
+		if (input.writable && storageSqlNeedsWriteEntitlement(input.query)) {
 			await this.assertStorageWriteAllowed({
 				storageId: input.storageId,
 				requested: estimateEntitlementStorageSqlWriteBytes({
@@ -4394,9 +4394,11 @@ export async function buildPackageAppWorker(input: {
 				visit: requestVisit,
 			}
 		}
+		let builtHere = false
 		const build = await packageAppWorkerOptionsCache.getOrCreate({
 			cacheKey,
 			create: async () => {
+				builtHere = true
 				const template = await buildPackageAppWorkerOptionsUncached(
 					input,
 					cacheKey,
@@ -4415,10 +4417,25 @@ export async function buildPackageAppWorker(input: {
 		// would then skip without a `dynamic_worker_day` event. The loopback
 		// bindings are minted in this request: the loader may (re)load the
 		// isolate from any request that reuses the cached build.
+		// Cold-start markers: whether this request built the worker options, and
+		// whether the loader ran the factory (a new isolate for this worker id).
+		input.serverTiming?.push({
+			name: 'appBuild',
+			durationMs: 0,
+			desc: builtHere ? 'built' : 'cached',
+		})
 		const stub = build.workerId
-			? input.env.APP_LOADER.get(build.workerId, () =>
-					materializePackageAppWorkerOptions(build.template, requestVisit),
-				)
+			? input.env.APP_LOADER.get(build.workerId, () => {
+					input.serverTiming?.push({
+						name: 'appIsolate',
+						durationMs: 0,
+						desc: 'new',
+					})
+					return materializePackageAppWorkerOptions(
+						build.template,
+						requestVisit,
+					)
+				})
 			: input.env.APP_LOADER.load(
 					materializePackageAppWorkerOptions(build.template, requestVisit),
 				)
