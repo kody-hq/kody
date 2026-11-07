@@ -296,6 +296,10 @@ Open these before proposing a new primitive, surface, or storage home.
 Accepted or superseded records that do **not** change the next product proposal.
 Do not treat this list as homework. History stays; it is not silently deleted.
 
+- [0098: Kody hosts short-lived build boxes for packages that declare a build step, paid from credits](./0098-kody-hosted-build-boxes.md)
+  Build-only boxes in the publish routing (amends 0025); Pro with enough
+  credits; credits-only meter; framework-neutral (0057 stands); fork-only
+  community listing allowed with a build-step label
 - [0073 — Community listing pin follows promote](./0073-community-listing-follows-promote.md)
   — active listings auto-follow `published_commit`; no separate Update public
   listing step; Settings **Publishing** panel is the owner surface
