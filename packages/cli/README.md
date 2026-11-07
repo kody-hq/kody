@@ -201,10 +201,11 @@ browser login for these commands. There is no API token fallback in this mode,
 and saved API tokens remain unchanged. Unset it for normal CLI precedence.
 
 - The stored API token comes from `kody auth bootstrap` or
-  `kody auth setup-git`. `kody login` stores a login session next to it and does
-  not replace it, so a stored token keeps winning for `api` and the other
-  first-row commands after you log in again. `kody login` prints a note when
-  that happens.
+  `kody auth setup-git`. An explicit `kody login` deletes a stored API token for
+  that API origin and prints which token it removed, so the fresh login is what
+  the first-row commands use. Git pushes mint a new token from the login.
+  `--token` and `KODY_API_TOKEN` still outrank the login. Desktop logins
+  (`KODY_CREDENTIAL_SOURCE=login`) leave the stored token alone.
 - To change the stored token's scopes, run
   `npx @kodycodes/cli auth bootstrap --lifetime short --scopes <every scope you need>`
   (mints with your login and replaces the stored token). `kody logout` clears
@@ -571,7 +572,9 @@ paths, including workerd's `/bundle`, `/tmp`, and `/dev`, stay virtual.
 
 CLI credentials are stored in the OS secret store:
 
-- macOS: Keychain
+- macOS: Keychain, read and written through Apple's `/usr/bin/security`, so one
+  "Always Allow" covers the terminal, `npx`, the background service, and
+  Kody.app instead of each node binary asking separately
 - Windows: Credential Manager
 - Linux: Secret Service / libsecret (not the in-memory kernel keyring)
 

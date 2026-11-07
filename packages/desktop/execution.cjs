@@ -6,6 +6,8 @@ const {
 	shouldAdopt,
 } = require('./machine-runner.cjs')
 
+const commandsStatusMaxAgeMs = 60_000
+
 // This controller exposes fixed machine actions, never arbitrary CLI commands.
 class DesktopExecution {
 	constructor({
@@ -32,6 +34,8 @@ class DesktopExecution {
 		this.error = null
 		this.machine = null
 		this.machineReadAt = 0
+		this.commandsReadAt = 0
+		this.commandsReadFor = null
 	}
 	// What the kody CLI knows about this machine: an installed service, the
 	// runner lock holder, stored registrations, and auto-update. The app and
@@ -244,6 +248,17 @@ class DesktopExecution {
 			} else if (command.startsWith('commands-')) {
 				if (!state.ecid || !this.owns(state, viewer))
 					throw new Error('Set up this machine first.')
+				// The site polls status every 15s. Each read is a fresh CLI process that
+				// unlocks the context key, so reuse a recent read instead of asking the
+				// keychain on every poll. on/off always read fresh.
+				const readFor = `${state.ecid}:${viewer.username}:${viewer.orgSlug}`
+				if (
+					command === 'commands-status' &&
+					this.commandsReadFor === readFor &&
+					this.commandsReadAt > Date.now() - commandsStatusMaxAgeMs
+				)
+					return this.snapshot(viewer)
+				this.commandsReadFor = null
 				if (command === 'commands-on' && !(await this.confirmCommands()))
 					return this.snapshot(await this.viewer())
 				const current = await this.viewer()
@@ -274,6 +289,8 @@ class DesktopExecution {
 				this.commandsEnabled =
 					status.local?.enabled === true &&
 					status.contexts?.[0]?.commands?.enabled === true
+				this.commandsReadFor = readFor
+				this.commandsReadAt = Date.now()
 			} else if (command === 'sign-in') {
 				await this.runner.command(['login', '--org', viewer.orgSlug])
 				const current = await this.viewer()
