@@ -1152,6 +1152,7 @@ export async function loadOAuthAuthorizeData(
 
 	let orgs: Array<OAuthAuthorizeConsentOrg> = []
 	let selectedOrgSlug: string | null = readOrgSlugFromUrl(authorizeUrl.href)
+	let requiredOrgSlug: string | null = null
 	if (!requireCredentials && authorizeSession.stableUserId) {
 		// Match approve: resolve `?org=` from the authorize URL and resource
 		// before auto-selecting. Fail closed when the client named an
@@ -1179,6 +1180,7 @@ export async function loadOAuthAuthorizeData(
 			}
 			throw error
 		}
+		requiredOrgSlug = resolvedRequested?.slug ?? null
 		const accessible = await listOrgsForPerson(
 			env.APP_DB,
 			authorizeSession.stableUserId,
@@ -1203,6 +1205,7 @@ export async function loadOAuthAuthorizeData(
 			requireCredentials,
 			orgs,
 			selectedOrgSlug,
+			requiredOrgSlug,
 		},
 		setCookies: [...clearResetVerificationCookie, sessionSetCookie],
 	}
@@ -1237,6 +1240,7 @@ export async function handleAuthorizeInfo(
 			requireCredentials: data.requireCredentials,
 			orgs: data.orgs,
 			selectedOrgSlug: data.selectedOrgSlug,
+			requiredOrgSlug: data.requiredOrgSlug,
 		},
 		{
 			headers: createSetCookieHeaders(setCookies),

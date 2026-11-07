@@ -104,6 +104,21 @@ test('consent org field hides the picker for a sole org and requires a pick when
 	})
 	expect(
 		oauthAuthorizeOrgField({
+			orgs: [
+				{ slug: 'acme', displayName: 'Acme', role: 'member' },
+				{ slug: 'ada', displayName: 'Ada', role: 'owner' },
+			],
+			selectedOrgSlug: 'ada',
+			signedIn: true,
+			requiredOrgSlug: 'ada',
+		}),
+	).toMatchObject({
+		kind: 'locked',
+		slug: 'ada',
+		reason: expect.stringMatching(/started for @ada/),
+	})
+	expect(
+		oauthAuthorizeOrgField({
 			orgs: [],
 			selectedOrgSlug: null,
 			signedIn: true,

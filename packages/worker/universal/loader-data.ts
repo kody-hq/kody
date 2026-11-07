@@ -3099,6 +3099,11 @@ export type OAuthAuthorizeLoaderData =
 			orgs: Array<OAuthAuthorizeConsentOrg>
 			/** From `?org=`, the sole accessible org, or null when multi and unspecified. */
 			selectedOrgSlug: string | null
+			/**
+			 * When the authorize URL or resource already named an org, consent must
+			 * use that org. Null when the person may choose among several.
+			 */
+			requiredOrgSlug: string | null
 	  }
 	| {
 			ok: false

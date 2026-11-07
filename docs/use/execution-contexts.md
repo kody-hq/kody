@@ -119,10 +119,14 @@ the CLI share this machine's registration and its runner:
 - Setup offers **Use this machine's existing registration** when the CLI already
   registered this machine, instead of creating a second context. It checks first
   that the registration belongs to your account.
-- In an organization, **Manage setup** on **This machine** attaches the
-  machine's existing registration to that organization and puts it first in your
-  chain there. It does not register the machine again, and your personal setup
-  and your other entries in the organization's chain stay as they are.
+- In an organization, **This machine** setup keeps a team destination through
+  personal registration when needed, then **Make available to @team** attaches
+  that registration and puts it first in your chain there. **Manage setup** does
+  the attach step when the machine is already registered personally. It does not
+  register again, and your personal setup and your other entries in the
+  organization's chain stay as they are. Setup resumes from the last completed
+  stage and does not report success before the intended workspace lists the
+  machine.
 - With no service, the app runs the daemon itself, with the same lock and
   auto-update.
 - On macOS, only the app's own runner can control other apps (such as Messages)
