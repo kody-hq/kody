@@ -118,10 +118,15 @@ export function CommandTrigger() {
 				border: 0,
 				borderRadius: 8,
 				background: 'transparent',
-				color: colors.textMuted,
+				color: colors.text,
+				opacity: 0.6,
+				transition: 'opacity 120ms ease',
 				cursor: 'pointer',
-				'&:hover': { background: colors.primarySoft, color: colors.text },
-				'&:focus-visible': { outline: `2px solid ${colors.primary}` },
+				'&:hover, &:focus-visible': { opacity: 1 },
+				'&:focus-visible': {
+					outline: `2px solid ${colors.primary}`,
+					outlineOffset: -4,
+				},
 			}}
 		>
 			{renderIcon('search', { size: '18px' })}

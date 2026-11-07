@@ -177,7 +177,7 @@ export function WorkspaceLayout() {
 								Kody
 							</SiteLink>
 						</BrandContextMenu>
-						<div css={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+						<div css={{ display: 'flex', alignItems: 'center', gap: 4 }}>
 							<CommandTrigger />
 							<AccountMenu
 								placement="sidebar"
