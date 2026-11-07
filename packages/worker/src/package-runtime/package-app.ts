@@ -24,6 +24,13 @@ import {
 } from 'cloudflare:workers'
 import { requireLocalPackageAppRuntimeBridge } from '#worker/runtime-worker-service.ts'
 import {
+	packageAppCpuSampleChannel,
+	packageAppUsageTailLoaderIdSuffix,
+	type DynamicWorkerUsageTailProps,
+} from '#worker/usage/dynamic-worker-cpu.ts'
+import { packageAppWarmCpuSampleRate } from '#universal/package-app-cpu-samples.ts'
+import {
+	packageAppRequestIdHeader,
 	packageAppRuntimeErrorHeader,
 	packageAppRuntimeRunIdHeader,
 } from '#worker/package-runtime/package-app-diagnostics.ts'
@@ -285,6 +292,22 @@ function createPackageAppWorkerSource(input: {
 	return `
 import { DurableObject, WorkerEntrypoint } from 'cloudflare:workers';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { channel as __kodyDiagnosticsChannel } from 'node:diagnostics_channel';
+
+// CPU sampling for Activity: the first fetch on this isolate (cold) and about
+// ${packageAppWarmCpuSampleRate * 100}% of later ones publish a marker; the host tail stores only
+// invocations that carry it. Never billed.
+const __kodyCpuSampleChannel = __kodyDiagnosticsChannel(${JSON.stringify(packageAppCpuSampleChannel)});
+let __kodyIsolateServedFetch = false;
+function __kodyMarkCpuSample(request) {
+	const cold = !__kodyIsolateServedFetch;
+	__kodyIsolateServedFetch = true;
+	if (!cold && Math.random() >= ${packageAppWarmCpuSampleRate}) return;
+	try {
+		const requestId = request.headers.get(${JSON.stringify(packageAppRequestIdHeader)});
+		if (requestId) __kodyCpuSampleChannel.publish({ cold, requestId });
+	} catch {}
+}
 
 const __kodyRuntimeStorageSymbol = Symbol.for('kody.runtimeStorage');
 // Resolve the AsyncLocalStorage instance synchronously at module load,
@@ -1325,6 +1348,7 @@ function tagPackageAppRuntimeRun(response, runtimeRunId) {
 
 export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 	async fetch(request) {
+		__kodyMarkCpuSample(request);
 		const runtimeBridge = __kodySettledBridge(this.env.${packageAppRuntimeBindingName});
 		const requestUrl = new URL(request.url);
 		// Read before any package code runs. Ticket and visitor stay in ALS
@@ -3440,6 +3464,7 @@ const packageAppWorkerOptionsCache =
 export function materializePackageAppWorkerOptions(
 	template: PackageAppWorkerTemplate,
 	requestVisit?: PackageAppRequestVisit | null,
+	tails?: Array<Fetcher> | null,
 ): PackageAppWorkerOptions {
 	const credentialClientBinding =
 		requestVisit?.credentialClientBinding ?? newRunCredentialClientBinding()
@@ -3474,6 +3499,7 @@ export function materializePackageAppWorkerOptions(
 		globalOutbound: workerExports?.KodyFetchGateway
 			? workerExports.KodyFetchGateway({ props: gatewayProps })
 			: null,
+		...(tails && tails.length > 0 ? { tails } : {}),
 	} as PackageAppWorkerOptions
 }
 
@@ -4424,8 +4450,20 @@ export async function buildPackageAppWorker(input: {
 			durationMs: 0,
 			desc: builtHere ? 'built' : 'cached',
 		})
-		const stub = build.workerId
-			? input.env.APP_LOADER.get(build.workerId, () => {
+		// Sampled CPU for Activity rides a tail on the isolate. Gated like the
+		// execute tail: local workerd reports zero CPU. The tail changes the
+		// WorkerCode, so it gets its own loader id; billing keeps build.workerId.
+		const usageTailProps = packageAppUsageTailProps({
+			userId: input.userId,
+			workerId: build.workerId,
+			savedPackage: input.savedPackage,
+		})
+		const loaderId =
+			build.workerId && usageTailProps
+				? `${build.workerId}${packageAppUsageTailLoaderIdSuffix}`
+				: build.workerId
+		const stub = loaderId
+			? input.env.APP_LOADER.get(loaderId, () => {
 					input.serverTiming?.push({
 						name: 'appIsolate',
 						durationMs: 0,
@@ -4434,6 +4472,7 @@ export async function buildPackageAppWorker(input: {
 					return materializePackageAppWorkerOptions(
 						build.template,
 						requestVisit,
+						usageTailProps ? [createPackageAppUsageTail(usageTailProps)] : null,
 					)
 				})
 			: input.env.APP_LOADER.load(
@@ -4461,6 +4500,36 @@ export async function buildPackageAppWorker(input: {
 			visit: requestVisit,
 		}
 	})
+}
+
+function packageAppUsageTailProps(input: {
+	userId: OwnerId
+	workerId: string | null
+	savedPackage: { id: string; name?: string | null }
+}): DynamicWorkerUsageTailProps | null {
+	// Telemetry only writes the owner's RunLog; it never depends on metering.
+	if (!input.workerId) return null
+	if (!workerExports || !('DynamicWorkerUsageTail' in workerExports)) {
+		return null
+	}
+	return {
+		userId: input.userId,
+		workerId: input.workerId,
+		packageApp: {
+			packageId: input.savedPackage.id,
+			packageName: input.savedPackage.name ?? null,
+		},
+	}
+}
+
+function createPackageAppUsageTail(props: DynamicWorkerUsageTailProps) {
+	return (
+		workerExports as unknown as {
+			DynamicWorkerUsageTail: (options: {
+				props: DynamicWorkerUsageTailProps
+			}) => Fetcher
+		}
+	).DynamicWorkerUsageTail({ props })
 }
 
 function schedulePackageAppUniqueWorkerDay(input: {

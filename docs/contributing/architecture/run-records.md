@@ -487,6 +487,18 @@ table.
 | `package_run_successes` | Per-package success counters toward activation.                                                                                                                                                                                               | Never pruned.                                                                                                                                                                            |
 | `activation_milestones` | One row each for `package_run_succeeded` and `package_activated` (`package_id` on the second). High-frequency HTTP surfaces (`webhook`, `app_fetch`) do not count; activation means two unattended capability successes for the same package. | Never pruned.                                                                                                                                                                            |
 
+`package_app_cpu_samples` holds sampled package-app CPU and wall time for
+Activity (see [Activity](../../use/activity.md#app-performance-sampled)). The
+host attaches `DynamicWorkerUsageTail` to package-app isolates (loader id suffix
+`-cpus1`); the app wrapper publishes a `kody:package-app-cpu-sample`
+diagnostics-channel marker on the first fetch of each isolate and on about 5% of
+later fetches, and the tail stores only marked invocations, keyed by the
+`x-kody-request-id` the response exposes. It is observability only: never
+written through `recordUsage`, never billed, never read by entitlements.
+Retention is **7 days** and the newest **5,000** rows, pruned on every insert.
+It is operational telemetry and is not part of account export; account deletion
+`clearAll` removes it with every other table.
+
 Account export pages all of the above through section `run_records` after runs
 and ledger rows (`exportRuns` phases: raw run-id cursor, then
 `invocation-ledger:`, `workflow-projections:`, `job-run-observability:`,

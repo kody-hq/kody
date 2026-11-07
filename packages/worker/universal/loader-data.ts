@@ -1,3 +1,4 @@
+import type { PackageAppCpuSummary } from './package-app-cpu-samples.ts'
 import type {
 	BlogCategorySlug,
 	BlogSeriesSlug,
@@ -2928,6 +2929,8 @@ type AccountActivityLoaderData = {
 	selectedRunId: string | null
 	retentionDays: number
 	toggleChanges: Array<AccountToggleChange> | null
+	/** Sampled package-app CPU and wall time; observability only. */
+	packageAppPerformance: PackageAppCpuSummary | null
 }
 
 /** One job or enablement on/off change from the org audit log. */

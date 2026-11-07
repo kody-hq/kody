@@ -8,6 +8,15 @@ import {
 	summarizeSkillReads,
 	exportSkillReads,
 } from './skill-reads.ts'
+import {
+	initializePackageAppCpuSamples,
+	insertPackageAppCpuSample,
+	summarizePackageAppCpuSampleRows,
+} from './package-app-cpu-samples.ts'
+import type {
+	PackageAppCpuSample,
+	PackageAppCpuSummary,
+} from '#universal/package-app-cpu-samples.ts'
 import type { WorkspaceRunBucket } from '#universal/workspace-charts.ts'
 import * as Sentry from '@sentry/cloudflare'
 import { DurableObject } from 'cloudflare:workers'
@@ -109,7 +118,7 @@ const metaSchemaVersionKey = 'schema_version'
 /** YYYYMMDD coverage floor for warm v12→v13 (no backfill). Fresh DOs omit this. */
 const metaRunDayCountsSinceKey = 'run_day_counts_since'
 /** Bump when initializeSchema's DDL set changes; warm objects skip DDL. */
-const runLogSchemaVersion = 19
+const runLogSchemaVersion = 20
 
 function utcDayToMetaInt(day: string): number {
 	return Number(day.replaceAll('-', ''))
@@ -855,6 +864,12 @@ class RunLogBase extends DurableObject<Env> {
 	}): Promise<SkillReadSummary> {
 		return summarizeSkillReads(this.ctx.storage.sql, input)
 	}
+	async recordPackageAppCpuSample(sample: PackageAppCpuSample): Promise<void> {
+		insertPackageAppCpuSample(this.ctx.storage.sql, sample)
+	}
+	async packageAppCpuSummary(): Promise<PackageAppCpuSummary> {
+		return summarizePackageAppCpuSampleRows(this.ctx.storage.sql)
+	}
 
 	private initializeSchema() {
 		// Schema rebuild (clearAll / DR restore / warm-migration tests) may
@@ -1111,6 +1126,7 @@ class RunLogBase extends DurableObject<Env> {
 			}
 		}
 		initializeSkillReads(this.ctx.storage.sql)
+		initializePackageAppCpuSamples(this.ctx.storage.sql)
 		this.setMeta(metaSchemaVersionKey, runLogSchemaVersion)
 	}
 
@@ -5157,6 +5173,8 @@ export type RunLogRpc = DurableObjectPitrRpc & {
 		since: string
 		packageIds: Array<string>
 	}) => Promise<SkillReadSummary>
+	recordPackageAppCpuSample: (sample: PackageAppCpuSample) => Promise<void>
+	packageAppCpuSummary: () => Promise<PackageAppCpuSummary>
 	startRun: (input: { run: RunLogRowInput }) => Promise<{ ok: true }>
 	claimRun: (input: { run: RunLogRowInput }) => Promise<{
 		claimed: boolean

@@ -14,6 +14,7 @@ import {
 } from './package-app-cookie-httponly.ts'
 import { isPackageAppOwnCookieName } from './package-app-cookie-prefix.ts'
 import {
+	packageAppRequestIdHeader,
 	packageAppRuntimeErrorHeader,
 	packageAppRuntimeRunIdHeader,
 } from './package-app-diagnostics.ts'
@@ -46,6 +47,11 @@ export type PackageAppResponseRewrite = {
 	cacheAudience?: PackageAppAudience
 	appendSetCookies?: Array<string>
 	serverTiming?: Array<ServerTimingEntry>
+	/**
+	 * Exposed as `x-kody-request-id` next to Server-Timing so owners can match
+	 * a response to its sampled CPU time on Activity.
+	 */
+	requestId?: string | null
 	/** Burn this visit nonce when the body finishes. */
 	visitNonce?: string | null
 	onReport?: Array<(report: PackageAppResponseRewriteReport) => void>
@@ -201,6 +207,10 @@ export function applyPackageAppResponseRewrite(
 		}
 		if (rewrite.serverTiming && rewrite.serverTiming.length > 0) {
 			applyServerTimingHeader(headers, rewrite.serverTiming)
+			changed = true
+		}
+		if (rewrite.requestId) {
+			headers.set(packageAppRequestIdHeader, rewrite.requestId)
 			changed = true
 		}
 	}
