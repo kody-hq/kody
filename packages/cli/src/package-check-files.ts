@@ -52,7 +52,7 @@ async function walkFiles(root: string, dir = root): Promise<Array<string>> {
 	return files
 }
 
-export const kodyIgnoreFileName = '.kodyignore'
+const kodyIgnoreFileName = '.kodyignore'
 
 const neverKodyIgnored = new Set(['package.json', kodyIgnoreFileName])
 
