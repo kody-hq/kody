@@ -14,11 +14,10 @@ import {
 	listHookPaths,
 	parsePrePushUpdates,
 	isSkillsLockHookPath,
-	isVitestWorkerCrashWithoutFailures,
+	isSoftDeleteReadFilterHookPath,
 	listInstalledNodeModulesDirs,
 	planGitHookChecks,
 	runGitHookChecks,
-	runVitestWithWorkerCrashRetry,
 	shouldSkipProvenanceCheck,
 	shouldSkipTestPushForProvenance,
 	withStagedTreeForTypecheck,
@@ -280,6 +279,7 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 				'typecheck',
 				'node tools/check-skills-lock.ts',
 				'node tools/check-decision-record-numbers.ts',
+				'node tools/soft-delete-read-filter.ts',
 				'knip',
 				'test:push',
 			],
@@ -356,6 +356,7 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 			'typecheck',
 			'node tools/check-skills-lock.ts',
 			'node tools/check-decision-record-numbers.ts',
+			'node tools/soft-delete-read-filter.ts',
 			'knip',
 			'test:push',
 		],
@@ -417,6 +418,7 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 		'format:check',
 		'typecheck',
 		'node tools/check-skills-lock.ts',
+		'node tools/soft-delete-read-filter.ts',
 		'knip',
 		'test:push',
 	])
@@ -707,6 +709,7 @@ test('pre-push skips knip and test:push only when each check is already green', 
 			'lint',
 			'format:check',
 			'typecheck',
+			'node tools/soft-delete-read-filter.ts',
 			'knip',
 		])
 		expect(
@@ -745,7 +748,12 @@ test('pre-push skips knip and test:push only when each check is already green', 
 			progressIntervalMs: 60_000,
 		})
 		expect(code).toBe(0)
-		expect(scripts).toEqual(['lint', 'format:check', 'typecheck'])
+		expect(scripts).toEqual([
+			'lint',
+			'format:check',
+			'typecheck',
+			'node tools/soft-delete-read-filter.ts',
+		])
 		expect(logs.some((line) => line.includes('skipping knip'))).toBe(true)
 		expect(logs.some((line) => line.includes('skipping test:push'))).toBe(true)
 		expect(logs.some((line) => line.includes('already green'))).toBe(true)
@@ -774,7 +782,13 @@ test('pre-push fails knip with a clear fix message before test:push', async () =
 		progressIntervalMs: 60_000,
 	})
 	expect(code).toBe(1)
-	expect(scripts).toEqual(['lint', 'format:check', 'typecheck', 'knip'])
+	expect(scripts).toEqual([
+		'lint',
+		'format:check',
+		'typecheck',
+		'node tools/soft-delete-read-filter.ts',
+		'knip',
+	])
 	expect(
 		logs.some((line) =>
 			line.includes(
@@ -1276,47 +1290,82 @@ test('pre-push leaves merged-in main paths to main CI and skips tests for a merg
 	}
 })
 
-test('vitest related retries once only on a worker crash with no failed test', async () => {
-	const crash =
-		'Error: [vitest-pool-runner]: Timeout waiting for worker to respond\n\u001b[31mError: Worker exited unexpectedly\u001b[39m\n Test Files  3 passed (3)\n'
-	const failed = `${crash}      Tests  1 failed | 4 passed (5)\n`
-	expect(isVitestWorkerCrashWithoutFailures(crash)).toBe(true)
-	expect(isVitestWorkerCrashWithoutFailures(failed)).toBe(false)
+test('pre-push runs the soft-delete read-filter scan only when its inputs change', async () => {
+	const cases: Array<[string, boolean]> = [
+		['packages/worker/src/billing/stripe-webhooks.ts', true],
+		['packages/jobs-worker/src/jobs/cleanup.ts', true],
+		['tools/soft-delete-read-filter.ts', true],
+		['packages/worker/start/pages/home.tsx', false],
+		['packages/worker/src/guide.md', false],
+		['tools/git-hook-checks.ts', false],
+	]
 	expect(
-		isVitestWorkerCrashWithoutFailures(' Test Files  1 failed (1)\n'),
-	).toBe(false)
+		cases.filter(
+			([path, want]) => isSoftDeleteReadFilterHookPath(path) !== want,
+		),
+	).toEqual([])
+	expect(
+		plannedScripts('pre-push', ['packages/worker/src/billing/a.ts']),
+	).toContain('node tools/soft-delete-read-filter.ts')
+	expect(plannedScripts('pre-push', null)).toContain(
+		'node tools/soft-delete-read-filter.ts',
+	)
+	expect(
+		plannedScripts('pre-push', ['tools/git-hook-checks.ts']),
+	).not.toContain('node tools/soft-delete-read-filter.ts')
+	expect(
+		plannedScripts('pre-commit', ['packages/worker/src/billing/a.ts']),
+	).not.toContain('node tools/soft-delete-read-filter.ts')
+})
 
-	const run = async (outputs: Array<{ code: number; output: string }>) => {
-		const logs: Array<string> = []
-		let calls = 0
-		const code = await runVitestWithWorkerCrashRetry({
-			label: 'vitest related --project node-unit',
-			runOnce: async () => outputs[calls++]!,
-			log: (message) => logs.push(message),
-		})
-		return { code, calls, logs }
+test('pre-push names the global inputs that force the full test:push', async () => {
+	const logs: Array<string> = []
+	const git: GitRunner = (args) => {
+		if (args[0] === 'diff')
+			return gitResult(0, 'packages/worker/src/test-support/a.ts\0src/b.ts\0')
+		if (args[0] === 'status' || args[0] === 'stash') return gitResult(0)
+		if (args[0] === 'rev-parse') return gitResult(1)
+		return gitResult(1)
 	}
-	expect(await run([{ code: 0, output: crash }])).toEqual({
-		code: 0,
-		calls: 1,
-		logs: [],
+	const scripts: Array<string> = []
+	await runGitHookChecks({
+		hook: 'pre-push',
+		stdin: `refs/heads/topic ${localSha} refs/heads/topic ${remoteSha}\n`,
+		git,
+		provenance: createFileProvenanceStore(
+			join(await mkdtemp(join(tmpdir(), 'global-hook-')), 'p.json'),
+		),
+		runScript: (script) => {
+			scripts.push(script)
+			return 0
+		},
+		log: (message) => logs.push(message),
 	})
-	expect(await run([{ code: 1, output: failed }])).toMatchObject({
-		code: 1,
-		calls: 1,
+	expect(scripts).toContain('test:push')
+	expect(logs).toContain(
+		'pre-push: full test:push because global test inputs changed (packages/worker/src/test-support/a.ts)',
+	)
+})
+
+test('pre-push names why an asset-only push falls back to the full test:push', async () => {
+	const logs: Array<string> = []
+	const scripts: Array<string> = []
+	await runGitHookChecks({
+		hook: 'pre-push',
+		stdin: `refs/heads/topic ${localSha} refs/heads/topic ${remoteSha}\n`,
+		git: (args) =>
+			args[0] === 'diff'
+				? gitResult(0, 'packages/worker/public/logo.png\0')
+				: gitResult(1),
+		runScript: (script) => {
+			scripts.push(script)
+			return 0
+		},
+		log: (message) => logs.push(message),
+		progressIntervalMs: 60_000,
 	})
-	const retried = await run([
-		{ code: 1, output: crash },
-		{ code: 1, output: crash },
-	])
-	expect(retried).toMatchObject({ code: 1, calls: 2 })
-	expect(retried.logs).toEqual([
-		'hook: vitest related --project node-unit crashed on a Vitest worker exit with no failed test; retrying once',
-	])
-	expect(
-		await run([
-			{ code: 1, output: crash },
-			{ code: 0, output: '' },
-		]),
-	).toMatchObject({ code: 0, calls: 2 })
+	expect(scripts).toContain('test:push')
+	expect(logs).toContain(
+		'pre-push: full test:push because no pushed path is JS/TS source with related tests',
+	)
 })
