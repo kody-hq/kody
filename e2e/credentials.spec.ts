@@ -125,10 +125,11 @@ test('Credentials lists a key, filters by kind, and opens its detail pane withou
 	)
 	await expect(pane).toHaveCount(0)
 
-	// The indexes Credentials folds together redirect to it, filtered.
+	// The indexes Credentials folds together redirect to it, filtered. The
+	// Integrations catalog and Secret providers keep their own pages.
 	for (const [section, landing] of [
 		['secrets', '/credentials?kind=secret'],
-		['integrations', '/credentials?kind=oauth'],
+		['integrations', '/integrations'],
 		['mcp-servers', '/credentials?kind=mcp'],
 		['secret-providers', '/secret-providers'],
 	] as const) {

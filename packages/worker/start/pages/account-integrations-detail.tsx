@@ -39,6 +39,7 @@ import {
 	detailLabelCss,
 	detailValueCss,
 	getAccentCalloutCss,
+	getGhostButtonCss,
 	getPillButtonCss,
 	hoverMq,
 	insetCardCss,
@@ -51,6 +52,7 @@ import {
 	connectActionLabel,
 	connectionLabel,
 	connectionStatusLabel,
+	credentialsConnectionsHref,
 	dangerButtonCss,
 	shouldShowReconnectAction,
 	formatList,
@@ -557,6 +559,17 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 												}}
 											>
 												{connectActionLabel(status)}
+											</SiteLink>
+										) : null}
+										{orgSlug ? (
+											<SiteLink
+												href={credentialsConnectionsHref(
+													orgSlug,
+													connectionRef.name,
+												)}
+												css={getGhostButtonCss({ size: 'sm' })}
+											>
+												Open in Credentials
 											</SiteLink>
 										) : null}
 										<button

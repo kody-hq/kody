@@ -4,7 +4,7 @@ export const Route = createFileRoute(
 	'/_app/account_/integrations_/apps/$appSlug',
 )({
 	staticData: {
-		navigation: { rail: 'workspace', item: 'credentials' },
+		navigation: { rail: 'workspace', item: 'integrations' },
 	},
 	preload: false,
 	loaderDeps: ({ search }) => search,
