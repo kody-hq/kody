@@ -1,5 +1,6 @@
 const { machineName } = require('./machine-name.cjs')
 const { registrationIdentity } = require('./registration-identity.cjs')
+const { loginAuthorizationUrl } = require('./in-app-approval.cjs')
 const {
 	existingRegistration,
 	runnerView,
@@ -16,6 +17,7 @@ class DesktopExecution {
 		hostname,
 		platform = process.platform,
 		confirmCommands = async () => false,
+		approveSignIn,
 	}) {
 		Object.assign(this, {
 			runner,
@@ -24,6 +26,7 @@ class DesktopExecution {
 			viewer,
 			platform,
 			confirmCommands,
+			approveSignIn,
 		})
 		this.commandsEnabled = null
 		this.name = machineName(hostname)
@@ -114,6 +117,33 @@ class DesktopExecution {
 				'The CLI account does not match this workspace. Sign in to this machine again with the same account.',
 			)
 		return identity
+	}
+	// With `approveSignIn`, the shell approves the CLI's authorize URL itself
+	// (in the app window when its session can, else the system browser).
+	// Closing that approval cancels the CLI login.
+	async login(orgSlug) {
+		if (!this.approveSignIn)
+			return this.runner.command(['login', '--org', orgSlug])
+		const controller = new AbortController()
+		let approval
+		try {
+			await this.runner.command(['login', '--org', orgSlug, '--no-browser'], {
+				signal: controller.signal,
+				onOutput: (output) => {
+					if (approval) return
+					const url = loginAuthorizationUrl(output)
+					if (!url) return
+					approval = this.approveSignIn(url, controller.signal).catch(
+						(error) => {
+							if (!controller.signal.aborted) controller.abort(error)
+						},
+					)
+				},
+			})
+		} finally {
+			controller.abort(new Error('Sign-in finished.'))
+			await approval
+		}
 	}
 	// Matches the CLI's pinned workerd downloads.
 	get supported() {
@@ -275,7 +305,7 @@ class DesktopExecution {
 					status.local?.enabled === true &&
 					status.contexts?.[0]?.commands?.enabled === true
 			} else if (command === 'sign-in') {
-				await this.runner.command(['login', '--org', viewer.orgSlug])
+				await this.login(viewer.orgSlug)
 				const current = await this.viewer()
 				if (
 					current?.username !== viewer.username ||

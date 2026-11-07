@@ -25,6 +25,8 @@ export type DesktopExecutionState = {
 	error: string | null
 }
 export type DesktopExecutionBridge = {
+	/** Sign-in approves in an app window when it can. Older apps omit this. */
+	approvesInApp?: boolean
 	commandsStatus: () => Promise<DesktopExecutionState>
 	enableCommands: () => Promise<DesktopExecutionState>
 	disableCommands: () => Promise<DesktopExecutionState>

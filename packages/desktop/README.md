@@ -13,10 +13,16 @@ npm run desktop:dev
 After normal onboarding, the desktop app offers to set up this machine. Setup is
 personal-first, then optional team access, with clear stages you can resume:
 
-1. **Sign in as this person** (**Continue in browser**) opens the CLI browser
-   login for your personal workspace. When login already named an organization,
-   the authorize page locks that choice and explains why. The desktop verifies
-   that the CLI matches the account signed into the website.
+1. **Sign in as this person** (**Continue to approve**) starts the CLI login for
+   your personal workspace. The authorize page opens in an app window that
+   reuses this app's Kody session, so you only approve. A fresh password or
+   passkey sign-in (no usable session, an unverified email, or a link to sign-in
+   or signup) goes to the system browser instead. The window loads only the
+   authorize page and the CLI's loopback callback, has no desktop bridge, and
+   closing it cancels the login. When login already named an organization, the
+   authorize page locks that choice and explains why; otherwise it preselects
+   the default. The desktop verifies that the CLI matches the account signed
+   into the website.
 2. **Register this device personally** (name the machine, or adopt an existing
    CLI registration). This starts the runner. On a personal workspace it also
    puts the machine first in your personal execution chain.
@@ -182,8 +188,9 @@ websites and shells keep the existing embedded sign-in form.
 
 Browser sign-in uses migration `0215-desktop-browser-login.sql`. The shell
 enables it when the origin advertises `X-Kody-Desktop-Authentication: 1`. CLI
-sign-in still grants the CLI its own scoped credentials through its existing
-browser flow. A website session does not become a CLI API token.
+sign-in still grants the CLI its own scoped credentials through its own OAuth
+consent (approved in the app window when the session allows). A website session
+does not become a CLI API token.
 
 Run
 `npm run test:browser-login --workspace @kodycodes/desktop -- <local-origin>`
@@ -197,6 +204,11 @@ The machine setup checks are separate from live enrollment:
 npm run test:execution-ui --workspace @kodycodes/desktop
 npm run test:execution-shell --workspace @kodycodes/desktop -- <local-origin>
 ```
+
+`npm run test:in-app-approval --workspace @kodycodes/desktop -- <local-origin> [cookie-file]`
+runs the real CLI login against the local origin with an isolated CLI config,
+approves it in the app window, and fails if the system browser opens. The seed
+account must have finished onboarding (one MCP connection).
 
 The first uses fixture native actions and server functions to exercise the real
 wizard, including onboarding order, skipping, full-chain replacement, and retry.
