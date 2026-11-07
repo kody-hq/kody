@@ -212,12 +212,37 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 				orgPicker.onSelect(targetSlug)
 			}
 		}
-		function holdWithoutError(live?: CommunityForkState | null) {
+		function holdInProgress(
+			live: Extract<CommunityForkState, { state: 'in_progress' }>,
+		) {
 			setMessage(null)
 			setHoldForkRetry(true)
-			if (listingId && live) seedForkState(listingId, targetOrg, live)
+			if (listingId) seedForkState(listingId, targetOrg, live)
 			carryToTargetOrg()
 			void reconcile()
+		}
+		function releaseWithLostEnvelopeNotice() {
+			setHoldForkRetry(false)
+			setMessage(
+				'The install response was lost. Check whether the fork already exists before trying again.',
+			)
+		}
+		async function applyLiveForkState(
+			live: CommunityForkState,
+		): Promise<boolean> {
+			if (listingId) seedForkState(listingId, targetOrg, live)
+			if (live.state === 'installed' || live.state === 'adaptation_required') {
+				setMessage(null)
+				setOutcome(communityInstallOutcomeFromLiveFork(live))
+				setHoldForkRetry(false)
+				carryToTargetOrg()
+				return true
+			}
+			if (live.state === 'in_progress') {
+				holdInProgress(live)
+				return true
+			}
+			return false
 		}
 		try {
 			const outcome = await mutation.mutateAsync({
@@ -233,18 +258,34 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 			// Reconcile before offering retry: a lost Start envelope after a
 			// committed write must become success / in-progress UI, never a
 			// second Fork click that could create a duplicate.
-			if (
-				error instanceof CommunityInstallInProgressError ||
-				error instanceof CommunityInstallLostEnvelopeError
-			) {
-				if (listingId && error instanceof CommunityInstallInProgressError) {
-					holdWithoutError({
-						state: 'in_progress',
-						startedAt: new Date().toISOString(),
-					})
+			if (error instanceof CommunityInstallInProgressError) {
+				holdInProgress({
+					state: 'in_progress',
+					startedAt: new Date().toISOString(),
+				})
+				return
+			}
+			if (error instanceof CommunityInstallLostEnvelopeError) {
+				// Hold only while we reconcile once more; if still none, release
+				// with a notice so Fork is not stuck as a spinner forever.
+				setHoldForkRetry(true)
+				setMessage(null)
+				await reconcile()
+				if (!isCurrent()) return
+				if (!listingId) {
+					releaseWithLostEnvelopeNotice()
 					return
 				}
-				holdWithoutError(null)
+				try {
+					const live = (await loadCommunityForkState({
+						data: { listingId, org: targetOrg },
+					})) as CommunityForkState
+					if (await applyLiveForkState(live)) return
+				} catch {
+					// Fall through to the notice.
+				}
+				if (!isCurrent()) return
+				releaseWithLostEnvelopeNotice()
 				return
 			}
 			if (!listingId) {
@@ -269,18 +310,7 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 				)
 				return
 			}
-			seedForkState(listingId, targetOrg, live)
-			if (live.state === 'installed' || live.state === 'adaptation_required') {
-				setMessage(null)
-				setOutcome(communityInstallOutcomeFromLiveFork(live))
-				setHoldForkRetry(false)
-				carryToTargetOrg()
-				return
-			}
-			if (live.state === 'in_progress') {
-				holdWithoutError(live)
-				return
-			}
+			if (await applyLiveForkState(live)) return
 			setMessage(
 				error instanceof Error
 					? error.message
@@ -326,7 +356,7 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 		installMessage,
 		installOutcome,
 		context: {
-			busy: mutation.isPending || holdForkRetry,
+			busy: mutation.isPending || (holdForkRetry && !installMessage),
 			existingFork,
 			inProgress,
 			choosesForkTarget: orgPicker != null,
