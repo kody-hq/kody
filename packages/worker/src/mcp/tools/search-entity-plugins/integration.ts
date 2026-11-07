@@ -194,9 +194,17 @@ export const integrationSearchEntityPlugin = {
 			)
 		}
 		if (authorization) {
-			const nonReconnectableFailure =
-				detail.config.lastAuthFailure &&
-				!detail.config.lastAuthFailure.reconnectable
+			const failure = detail.config.lastAuthFailure
+			const accountHref = `/account/integrations/${encodeURIComponent(detail.config.name).replaceAll('.', '%2E')}`
+			const oauthNextStep = (() => {
+				if (!failure || failure.reconnectable) {
+					return `Reconnect with \`/connect/oauth?provider=${encodeURIComponent(detail.config.name)}\`; Kody derives the provider authorize URL from the saved integration metadata plus the current client credentials.`
+				}
+				if (failure.httpStatus === 429) {
+					return `Open \`${accountHref}\` while the provider rate limit clears; reconnecting usually does not help. Kody derives the provider authorize URL from the saved integration metadata plus the current client credentials when a reconnect is needed.`
+				}
+				return `Open \`${accountHref}\` for status; follow Connection trouble above instead of reconnecting unless that copy says to. Kody derives the provider authorize URL from the saved integration metadata plus the current client credentials when a reconnect is needed.`
+			})()
 			lines.push(
 				'',
 				'## OAuth authorization metadata',
@@ -210,9 +218,7 @@ export const integrationSearchEntityPlugin = {
 						: 'none'
 				}`,
 				'',
-				nonReconnectableFailure
-					? `Open \`/account/integrations/${encodeURIComponent(detail.config.name).replaceAll('.', '%2E')}\` while the provider limit clears; reconnecting usually does not help. Kody derives the provider authorize URL from the saved integration metadata plus the current client credentials when a reconnect is needed.`
-					: `Reconnect with \`/connect/oauth?provider=${encodeURIComponent(detail.config.name)}\`; Kody derives the provider authorize URL from the saved integration metadata plus the current client credentials.`,
+				oauthNextStep,
 			)
 		}
 		if (relatedPackageSuggestions.length > 0) {
