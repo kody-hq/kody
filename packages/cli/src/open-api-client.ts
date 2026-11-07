@@ -627,8 +627,8 @@ export async function whoamiWithApiToken(input: OpenApiClientInput): Promise<{
 	/** Workspace this token acts in, from `GET /v1/me` when available. */
 	org: {
 		slug: string
-		personal: boolean
-		kind: 'personal' | 'team'
+		personal?: boolean
+		kind?: 'personal' | 'team'
 	} | null
 }> {
 	const apiUrl = input.apiUrl || defaultApiUrl
@@ -641,8 +641,8 @@ export async function whoamiWithApiToken(input: OpenApiClientInput): Promise<{
 	let user: { userId: string; email: string; displayName: string } | null = null
 	let org: {
 		slug: string
-		personal: boolean
-		kind: 'personal' | 'team'
+		personal?: boolean
+		kind?: 'personal' | 'team'
 	} | null = null
 	try {
 		const me = (await openApiGet({
@@ -658,16 +658,25 @@ export async function whoamiWithApiToken(input: OpenApiClientInput): Promise<{
 		const meOrg = isRecord(me.org) ? me.org : null
 		const slug = typeof meOrg?.slug === 'string' ? meOrg.slug.trim() : ''
 		if (slug) {
-			const personal = meOrg?.personal === true
+			const kindFromServer =
+				meOrg?.kind === 'team' || meOrg?.kind === 'personal' ? meOrg.kind : null
+			const personalFromServer =
+				typeof meOrg?.personal === 'boolean' ? meOrg.personal : null
+			const kind =
+				kindFromServer ??
+				(personalFromServer === true
+					? 'personal'
+					: personalFromServer === false
+						? 'team'
+						: null)
 			org = {
 				slug,
-				personal,
-				kind:
-					meOrg?.kind === 'team' || meOrg?.kind === 'personal'
-						? meOrg.kind
-						: personal
-							? 'personal'
-							: 'team',
+				...(kind
+					? {
+							kind,
+							personal: kind === 'personal',
+						}
+					: {}),
 			}
 		}
 	} catch (error) {

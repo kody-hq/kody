@@ -182,6 +182,37 @@ test('whoamiWithApiToken uses tokens/current and optional /me', async () => {
 	assert.equal(identity.user?.email, 'me@example.com')
 })
 
+test('whoamiWithApiToken keeps org kind unset when /me only returns slug', async () => {
+	const fetchFn = (async (input: Parameters<typeof fetch>[0]) => {
+		const url = new URL(String(input))
+		if (url.pathname === '/v1/tokens/current') {
+			return new Response(
+				JSON.stringify({ id: 'tok_1', name: 'cli', scopes: ['account:read'] }),
+				{ status: 200, headers: { 'content-type': 'application/json' } },
+			)
+		}
+		if (url.pathname === '/v1/me') {
+			return new Response(
+				JSON.stringify({
+					user_id: 'u1',
+					email: 'me@example.com',
+					display_name: 'Me',
+					org: { slug: 'jane' },
+				}),
+				{ status: 200, headers: { 'content-type': 'application/json' } },
+			)
+		}
+		return new Response('nope', { status: 404 })
+	}) as typeof fetch
+
+	const identity = await whoamiWithApiToken({
+		token: 'tok',
+		apiUrl: 'https://api.kody.codes',
+		fetchFn,
+	})
+	assert.deepEqual(identity.org, { slug: 'jane' })
+})
+
 test('whoamiWithApiToken tolerates missing account:read on /me', async () => {
 	const fetchFn = (async (input: Parameters<typeof fetch>[0]) => {
 		const url = new URL(String(input))
