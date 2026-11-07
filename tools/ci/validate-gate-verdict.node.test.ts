@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 import {
 	classifyValidateNeeds,
+	macosOnMainDetail,
 	renderVerdict,
 	type Needs,
 } from './validate-gate-verdict.ts'
@@ -73,6 +74,37 @@ test('a macOS job that ran and failed or timed out is a failure, not infra', () 
 			classifyValidateNeeds(needs({ host_commands_macos: { result } })).verdict,
 		).toBe('fail')
 	}
+})
+
+test('main pushes skip both macOS jobs without failing the gate', () => {
+	const skippedOnMain = needs({
+		host_commands_macos: { result: 'skipped' },
+		host_commands_macos_fallback: { result: 'skipped' },
+	})
+	const main = classifyValidateNeeds(skippedOnMain, { event: 'push' })
+	expect(main.verdict).toBe('pass')
+	expect(renderVerdict(main).annotations).toEqual([
+		`::notice title=Not gating deploy: host_commands_macos::${macosOnMainDetail}`,
+	])
+	for (const event of ['pull_request', 'merge_group', 'workflow_dispatch']) {
+		expect(classifyValidateNeeds(skippedOnMain, { event }).verdict).toBe('fail')
+	}
+	for (const result of ['failure', 'cancelled']) {
+		expect(
+			classifyValidateNeeds(needs({ host_commands_macos: { result } }), {
+				event: 'push',
+			}).verdict,
+		).toBe('fail')
+	}
+	expect(
+		classifyValidateNeeds(
+			needs({
+				host_commands_macos: { result: 'abandoned' },
+				host_commands_macos_fallback: { result: 'skipped' },
+			}),
+			{ event: 'push' },
+		).verdict,
+	).toBe('fail')
 })
 
 test('skipped is never a pass outside the reused-tree path', () => {
