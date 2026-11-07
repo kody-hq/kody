@@ -4,11 +4,13 @@ import {
 	PlatformFeedbackFollowUpError,
 	PlatformFeedbackInvalidTransitionError,
 	PlatformFeedbackNotFoundError,
+	PlatformFeedbackReopenError,
 	PlatformFeedbackSubmissionConflictError,
 	PlatformFeedbackSubmissionRateLimitError,
 } from './errors.ts'
 import {
 	platformFeedbackActiveQueueLimit,
+	platformFeedbackReopenHistoryMaxEntries,
 	platformFeedbackSubmissionRateLimit,
 	platformFeedbackSubmissionRateLimitWindowMs,
 	platformFeedbackSubmissionRateLimitWindowSeconds,
@@ -29,6 +31,7 @@ import {
 	normalizePlatformFeedbackResolutionPrUrls,
 	parsePlatformFeedbackResolutionHistory,
 	platformFeedbackFollowUpVersion,
+	serializePlatformFeedbackReopenHistory,
 	serializePlatformFeedbackResolutionHistory,
 	serializePlatformFeedbackResolutionPrUrls,
 } from './resolution.ts'
@@ -212,10 +215,11 @@ function planTransition(input: {
 					return 'triaged'
 				case 'triaged':
 					return null
+				// Reopen: allowed only with a required internal note, enforced by
+				// `updatePlatformFeedbackForAdmin`.
 				case 'resolved':
-					return invalidTransition(input)
 				case 'dismissed':
-					return invalidTransition(input)
+					return 'triaged'
 				default: {
 					const exhaustive: never = input.status
 					throw new Error(`Unsupported platform feedback status: ${exhaustive}`)
@@ -349,6 +353,7 @@ export async function submitPlatformFeedback(input: {
 		resolutionNote: row.resolution_note,
 		resolutionPrUrls: [],
 		resolutionHistory: [],
+		reopenHistory: [],
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	}
@@ -449,6 +454,11 @@ export async function updatePlatformFeedbackForAdmin(input: {
 	feedbackId: string
 	reviewerUserId: string
 	action: PlatformFeedbackAction
+	/**
+	 * Internal admin note. Required (non-empty) when `triage` reopens
+	 * resolved/dismissed feedback; that note is also appended to
+	 * `reopen_history` with the reviewer and server time.
+	 */
 	adminNote?: string
 	/**
 	 * Submitter-visible outcome note. Stored as `resolution_note` when this
@@ -483,6 +493,14 @@ export async function updatePlatformFeedbackForAdmin(input: {
 			status: existing.status,
 			action: input.action,
 		})
+		const reopen =
+			input.action === 'triage' && isOutcomeStatus(existing.status)
+				? planReopen({
+						feedbackId: input.feedbackId,
+						existing,
+						adminNote,
+					})
+				: null
 		const adminNoteChanged =
 			adminNote !== undefined && adminNote !== existing.adminNote
 		const storeOutcomeFields =
@@ -527,8 +545,12 @@ export async function updatePlatformFeedbackForAdmin(input: {
 			reviewedByUserId: reviewerUserId,
 			reviewedAt,
 			adminNote,
-			resolutionNote: nextResolutionNote,
-			resolutionPrUrlsJson: nextResolutionPrUrlsJson,
+			...(reopen
+				? reopenWriteFields({ existing, reopen, reviewerUserId, reviewedAt })
+				: {
+						resolutionNote: nextResolutionNote,
+						resolutionPrUrlsJson: nextResolutionPrUrlsJson,
+					}),
 		})
 		if (!updated) continue
 		const feedback = await getPlatformFeedbackByIdForAdmin(
@@ -545,6 +567,76 @@ export async function updatePlatformFeedbackForAdmin(input: {
 		}
 	}
 	throw new PlatformFeedbackConcurrentUpdateError(input.feedbackId)
+}
+
+/**
+ * Validate a reopen (resolved/dismissed to triaged) before any write: it
+ * needs a non-empty internal admin note and room in `reopen_history`.
+ */
+function planReopen(input: {
+	feedbackId: string
+	existing: PlatformFeedbackRecordWithRevision
+	adminNote: string | null | undefined
+}): { fromStatus: PlatformFeedbackOutcomeStatus; note: string } {
+	const fromStatus = input.existing.status
+	if (!isOutcomeStatus(fromStatus)) {
+		throw new Error(`Cannot reopen platform feedback from "${fromStatus}".`)
+	}
+	if (!input.adminNote) {
+		throw new PlatformFeedbackReopenError(
+			`Reopening platform feedback "${input.feedbackId}" from "${fromStatus}" to "triaged" needs a non-empty admin_note explaining why. Nothing was changed.`,
+		)
+	}
+	if (
+		input.existing.reopenHistory.length >=
+		platformFeedbackReopenHistoryMaxEntries
+	) {
+		throw new PlatformFeedbackReopenError(
+			`Platform feedback "${input.feedbackId}" already has ${platformFeedbackReopenHistoryMaxEntries} recorded reopens, the most its history keeps. Nothing was changed.`,
+		)
+	}
+	return { fromStatus, note: input.adminNote }
+}
+
+/**
+ * Columns a reopen writes in the same revision-guarded UPDATE as the status
+ * change, so a reopened record always carries its history entry. The closed
+ * submitter-visible outcome moves to `resolution_history` and is cleared so a
+ * later resolve/dismiss stores a fresh one. No email is sent for a reopen.
+ */
+function reopenWriteFields(input: {
+	existing: PlatformFeedbackRecordWithRevision
+	reopen: { fromStatus: PlatformFeedbackOutcomeStatus; note: string }
+	reviewerUserId: string
+	reviewedAt: string
+}) {
+	const { existing } = input
+	const hadOutcome =
+		existing.resolutionNote !== null || existing.resolutionPrUrls.length > 0
+	return {
+		resolutionNote: null,
+		resolutionPrUrlsJson: null,
+		resolutionHistoryJson: hadOutcome
+			? serializePlatformFeedbackResolutionHistory([
+					...existing.resolutionHistory,
+					{
+						note: existing.resolutionNote,
+						prUrls: existing.resolutionPrUrls,
+						recordedAt: existing.reviewedAt ?? existing.updatedAt,
+					},
+				])
+			: undefined,
+		reopenHistoryJson: serializePlatformFeedbackReopenHistory([
+			...existing.reopenHistory,
+			{
+				fromStatus: input.reopen.fromStatus,
+				toStatus: 'triaged',
+				note: input.reopen.note,
+				actorUserId: input.reviewerUserId,
+				recordedAt: input.reviewedAt,
+			},
+		]),
+	}
 }
 
 function sameStringList(a: ReadonlyArray<string>, b: ReadonlyArray<string>) {

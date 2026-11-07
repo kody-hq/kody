@@ -238,6 +238,7 @@ const openFeedback: PlatformFeedbackRecord = {
 	resolutionNote: null,
 	resolutionPrUrls: [],
 	resolutionHistory: [],
+	reopenHistory: [],
 	createdAt: '2026-07-19T00:00:00.000Z',
 	updatedAt: '2026-07-19T00:00:00.000Z',
 }
