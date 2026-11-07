@@ -78,7 +78,9 @@ class Runner extends EventEmitter {
 
 	// `okCodes`: exit codes that still resolve with stdout (status exits 1 on
 	// problems but prints its JSON).
-	command(args, { okCodes = [0] } = {}) {
+	// `onOutput` sees stdout as it arrives; aborting `signal` stops the command.
+	command(args, { okCodes = [0], onOutput, signal } = {}) {
+		signal?.throwIfAborted()
 		const child = this.launch(args)
 		return new Promise((resolve, reject) => {
 			let output = ''
@@ -87,8 +89,16 @@ class Runner extends EventEmitter {
 				this.stopChild(child)
 				reject(new Error('The CLI command timed out. Try again.'))
 			}, 180_000)
+			const abort = () => {
+				clearTimeout(timer)
+				this.stopChild(child)
+				reject(signal.reason)
+			}
+			signal?.addEventListener('abort', abort, { once: true })
+			child.once('close', () => signal?.removeEventListener('abort', abort))
 			child.stdout.on('data', (chunk) => {
 				output = (output + chunk).slice(-64 * 1024)
+				onOutput?.(output)
 			})
 			child.stderr.on('data', (chunk) => {
 				errors = (errors + chunk).slice(-16 * 1024)

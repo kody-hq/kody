@@ -158,6 +158,7 @@ function fixture(platform = 'darwin', background = false) {
 		},
 		'electron-updater': {},
 		'./navigation.cjs': require('../navigation.cjs'),
+		'./in-app-approval.cjs': require('../in-app-approval.cjs'),
 		'set-cookie-parser': {},
 		'./site-capabilities.cjs': { supportsIntegratedTitlebar: () => capability },
 		'./window-navigation.cjs': require('../window-navigation.cjs'),

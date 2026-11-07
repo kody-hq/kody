@@ -547,10 +547,14 @@ export function DesktopExecutionProvider({
 								{busy
 									? machine.data?.cliReady || machine.data?.contextId
 										? 'Loading…'
-										: 'Opening browser…'
+										: bridge?.approvesInApp
+											? 'Waiting for approval…'
+											: 'Opening browser…'
 									: machine.data?.cliReady || machine.data?.contextId
 										? 'Resume setup'
-										: 'Continue in browser'}
+										: bridge?.approvesInApp
+											? 'Continue to approve'
+											: 'Continue in browser'}
 							</button>
 						</>
 					) : step === 'register' ? (
