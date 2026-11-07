@@ -96,7 +96,7 @@ export function commitsAfter(
 	}>,
 	after: string | null,
 	limit: number,
-): ArtifactCommitsAfter {
+): ArtifactCommitsAfter | null {
 	const commits: Array<ArtifactCommitSummary> = []
 	const stop = after?.toLowerCase() ?? null
 	for (const entry of log) {
@@ -112,5 +112,8 @@ export function commitsAfter(
 				: null,
 		})
 	}
+	// A published commit missing from head's full history means head is not
+	// ahead of it (e.g. a stale pending head), so there is no honest count.
+	if (stop) return null
 	return { commits, truncated: false }
 }
