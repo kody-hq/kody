@@ -1493,6 +1493,46 @@ sequence, skip conditions, audit action, and result shape are documented with
 the rest of the deletion flow in
 [`data-storage.md`](./data-storage.md#account-deletion-inventory).
 
+### Moving a Pro plan to another org
+
+An owner of two orgs can move a Stripe-paid Pro plan from one to the other
+(`@{org}/-/billing/move-plan`, service
+`packages/worker/src/billing/plan-transfer.ts`). This is an explicit billing
+action between two separate per-org wallets (ADR 0065); there is no shared
+billing account and nothing else moves.
+
+- **Who:** the actor must be a live `owner` of both orgs. Billing admins and
+  members cannot start, retry, or cancel a move.
+- **What moves:** only the unused prepaid value of the source subscription.
+  Packages, credentials, connections, memories, inboxes, storage, members, and
+  credit wallets stay in their org. The source keeps its data and drops to Free
+  limits.
+- **Free-org cap:** every live owner of the source must stay within
+  `MAX_FREE_ORGS_PER_USER` once it is Free; a Free target that is being upgraded
+  does not count.
+- **Movable sources:** exactly one active, non-canceling Kody subscription on a
+  current purchasable Pro price, with no manual paid plan. Retired prices,
+  manual plans, and canceling subscriptions are refused.
+- **Targets:** a Free target buys Pro at Stripe Checkout first (transfer id in
+  `metadata[kody_plan_transfer_id]`, one hour `expires_at`). A target that
+  already has one Kody Pro subscription keeps it and only receives the credit.
+  Targets whose Stripe customer also has non-Kody subscriptions, or whose
+  subscription currency differs, are refused so the credit cannot be spent on
+  something else.
+- **Steps:** `org_plan_transfers` is the durable record (one open row per source
+  and per target via partial unique indexes). Finalizing claims a two minute
+  lease, then: out-of-band credit note on the source invoice for the prorated
+  unused time (same math and cap fitting as account deletion, no card refund),
+  cancel the source subscription, negative customer balance transaction on the
+  target customer for the credit note total, refresh both orgs. Stripe writes
+  use `kody-plan-transfer-<id>-*` idempotency keys and are looked up by metadata
+  before retrying.
+- **Point of no return:** the recorded credit note. Before it an owner can
+  cancel and abandoned checkouts expire; after it the row can only be resumed
+  (`needs_retry`).
+- **Triggers:** `checkout.session.completed`, the checkout success page, and
+  billing page loads for either org all call the same idempotent advance.
+
 ### Webhooks (primary sync)
 
 `POST /webhooks/stripe` is the primary path for linking customers and refreshing

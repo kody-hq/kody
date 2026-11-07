@@ -128,7 +128,9 @@ export function orgOwnedSectionForPath(
  * sections), so billing binds team organizations as well as the signup one.
  */
 export function parseOrgBillingPath(pathname: string): { slug: string } | null {
-	const match = /^\/@([^/]+)\/-\/billing(?:\/success)?\/?$/.exec(pathname)
+	const match = /^\/@([^/]+)\/-\/billing(?:\/success|\/move-plan)?\/?$/.exec(
+		pathname,
+	)
 	const slug = match?.[1] ?? ''
 	return isOrganizationSlug(slug) ? { slug } : null
 }

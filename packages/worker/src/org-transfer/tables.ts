@@ -135,6 +135,9 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 		'Bundles name source-org approvals; an agent bundles again in the target org.',
 	),
 	billing_promo_claims: keep(usageHistory),
+	org_plan_transfers: keep(
+		'Billing record between two orgs; it names org ids, not an owner.',
+	),
 	cli_credential_bootstrap_codes: keep(personOwned),
 	community_activity_events: keep('Historical activity log.'),
 	community_bans: keep(personOwned),

@@ -242,6 +242,10 @@ export const routes = {
 		href: (params: { orgSlug: string | number }) =>
 			`/@${segment(params.orgSlug)}/-/billing`,
 	},
+	orgBillingMovePlan: {
+		href: (params: { orgSlug: string | number }) =>
+			`/@${segment(params.orgSlug)}/-/billing/move-plan`,
+	},
 	orgBillingSuccess: {
 		href: (params: { orgSlug: string | number }) =>
 			`/@${segment(params.orgSlug)}/-/billing/success`,

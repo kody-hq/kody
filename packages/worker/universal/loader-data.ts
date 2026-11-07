@@ -3252,6 +3252,7 @@ export type AppLoaderData = {
 	packageAppOauthConsent?: PackageAppOauthConsentLoaderData
 	accountBilling?: AccountBillingLoaderData
 	accountBillingSuccess?: AccountBillingSuccessLoaderData
+	accountBillingMovePlan?: AccountBillingMovePlanLoaderData
 	accountUsage?: AccountUsageLoaderData
 	orgCredits?: OrgCreditsLoaderData
 	accountWaiting?: AccountWaitingLoaderData
@@ -3488,6 +3489,74 @@ export type AccountUsageCreditsWallet = {
 export type AccountBillingSuccessLoaderData = {
 	ok: true
 	needsOnboarding: boolean
+	/** Set when this checkout paid for the target of a plan move. */
+	planTransfer?: { id: string; status: string }
+}
+
+export type PlanTransferOrgSummary = {
+	id: string
+	slug: string
+	displayName: string | null
+	personal: boolean
+	seats: number
+}
+
+export type PlanTransferFreeLimit = { label: string; value: string }
+
+export type PlanTransferPreview = {
+	source: PlanTransferOrgSummary & {
+		interval: 'month' | 'year'
+		periodEndAt: string | null
+		walletBalanceMicroUsd: number
+	}
+	target: PlanTransferOrgSummary & {
+		mode: 'existing_subscription' | 'checkout'
+		interval: 'month' | 'year'
+		pricePerSeatMinor: number
+		/** Charged today at Stripe Checkout, before tax. 0 for existing plans. */
+		dueTodayMinor: number
+		recurringMinor: number
+	}
+	credit: { amountMinor: number; currency: string }
+	freeLimits: Array<PlanTransferFreeLimit>
+	freeOrgsAfter: { owned: number; max: number }
+}
+
+export type PlanTransferSummary = {
+	id: string
+	status:
+		| 'pending_checkout'
+		| 'applying'
+		| 'needs_retry'
+		| 'completed'
+		| 'canceled'
+	/** Which side of the move the page's org is on. */
+	role: 'source' | 'target'
+	sourceSlug: string | null
+	targetSlug: string | null
+	creditAmountMinor: number | null
+	currency: string | null
+	/** Before the credit note is issued, the move can still be canceled. */
+	cancelable: boolean
+	errorMessage: string | null
+	completedAt: string | null
+}
+
+export type AccountBillingMovePlanLoaderData = {
+	ok: true
+	source: { slug: string; displayName: string | null; personal: boolean }
+	targets: Array<{
+		slug: string
+		displayName: string | null
+		personal: boolean
+		paid: boolean
+	}>
+	selectedTargetSlug: string | null
+	interval: 'month' | 'year' | null
+	preview: PlanTransferPreview | null
+	blocked: { reason: string; message: string } | null
+	transfer: PlanTransferSummary | null
+	notice?: string
 }
 
 export type AccountUsageWeekWindow = {

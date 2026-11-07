@@ -76,6 +76,9 @@ vi.mock('#worker/billing/subscription-sync.ts', () => ({
 	linkStripeCustomerFromCheckoutSessionAttribution: (...args: Array<unknown>) =>
 		mocks.linkStripeCustomerFromCheckoutSessionAttribution(...args),
 }))
+vi.mock('#worker/billing/plan-transfer.ts', () => ({
+	advancePlanTransferForCheckoutSession: async () => null,
+}))
 vi.mock('#worker/platform-feedback/service.ts', () => ({
 	submitPlatformFeedback: (...args: Array<unknown>) =>
 		mocks.submitPlatformFeedback(...args),
