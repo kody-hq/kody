@@ -82,8 +82,13 @@ jobs:
       - run: npm ci
       - name: Process-tree timeout helper (SIGTERM-resistant descendant)
         # Confirms run-with-timeout stops descendants on the same runners
-        # Desktop release uses (macos-15 / macos-15-intel / Windows / Linux).
+        # Desktop release uses for notarization stalls (macos-15 / macos-15-intel).
+        # POSIX trap/sleep smoke; Windows covers the helper via unit tests below.
+        if: runner.os != 'Windows'
         run: npm run test:timeout-tree --workspace @kodycodes/desktop
+      - name: Timeout helper unit tests
+        if: runner.os == 'Windows'
+        run: node --test packages/desktop/test/run-with-timeout.test.cjs
       - name: Build bundled CLI
         run: npm run build --workspace @kodycodes/cli
       - name: Validate desktop
