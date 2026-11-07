@@ -21,6 +21,9 @@ export const egressBlockedHeader = 'x-kody-egress-blocked'
 
 export const egressGateModuleName = '__kody_egress_gate.js'
 
+/** Bridge route the egress gate asks why an HTTPS fetch failed. */
+export const localBridgeTlsCheckPath = '/tls-check'
+
 export function egressPolicyFromGrant(egress: {
 	mode: string
 	hosts?: Array<string>
@@ -37,7 +40,7 @@ export function egressPolicyFromGrant(egress: {
 		...(egress.hosts?.length ? { hosts: egress.hosts } : {}),
 		...(egress.ports?.length ? { ports: egress.ports } : {}),
 		setting: "this execution context's network setting",
-		hint: 'The machine owner (or anyone with Contribute on the context) can change it with executionContextUpdate grant.egress, e.g. mode "public-and-lan" or an allowlist that includes {host}.',
+		hint: 'This is the server grant, not local policy. Anyone with Contribute or Manage on the context can turn the local network on with `kody context grant lan on --context <name>`, or set executionContextUpdate grant.egress to an allowlist that includes {host}.',
 	}
 }
 
@@ -119,6 +122,20 @@ export default {
 			return await fetch(request);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
+			// workerd hides TLS failures behind "internal error"; ask Node which cert check failed.
+			if (url.protocol === 'https:' && env.KODY_BRIDGE) {
+				try {
+					const check = await env.KODY_BRIDGE.fetch('http://kody-bridge${localBridgeTlsCheckPath}', {
+						method: 'POST',
+						headers: { [env.KODY_BRIDGE_SECRET_HEADER]: env.KODY_RUN_SECRET, 'content-type': 'application/json' },
+						body: JSON.stringify({ host, port }),
+					});
+					const verdict = await check.json();
+					if (verdict && typeof verdict.message === 'string') {
+						return new Response(verdict.message, { status: 502, headers: { [blockedHeader]: '1', 'content-type': 'text/plain; charset=utf-8' } });
+					}
+				} catch {}
+			}
 			if (policy.mode === 'public' && /internal error/i.test(message)) {
 				return block(host + ' resolves to a private or local network address (or could not be reached)');
 			}

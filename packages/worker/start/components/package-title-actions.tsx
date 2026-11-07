@@ -18,8 +18,8 @@ import {
 	copyPromptTooltipCss,
 } from './fork-outdated-copy-button.tsx'
 import { renderIcon, type IconName } from './icon.tsx'
-import { CommunityInstallOrgSelect } from './community-install-org-select.tsx'
-import type { CommunityInstallOrgPicker } from '../use-community-install-org.ts'
+import { ForkTargetDialog } from './fork-target-dialog.tsx'
+import type { ForkTargetChoice } from '../fork-target.ts'
 import {
 	getGhostButtonCss,
 	getPillButtonCss,
@@ -30,9 +30,9 @@ import {
 import { colors, mq, typography } from '#universal/styles/tokens.ts'
 
 const OTHER_ACCOUNT_FORK_TOOLTIP =
-	'This was built by another user. Verify it before using. Click again to confirm fork.'
+	'This was built by another user. Verify it before using.'
 const READABLE_PACKAGE_FORK_TOOLTIP =
-	'Fork the source into your own Kody. It runs and bills there, and gives you no new access to this package. Click again to confirm fork.'
+	'Fork the source into your own Kody. It runs and bills there, and gives you no new access to this package.'
 const FORK_LABEL = 'Fork'
 const OPEN_FORK_LABEL = 'Open fork'
 const COPY_SETUP_PROMPT_LABEL = 'Copy setup prompt'
@@ -123,7 +123,6 @@ export function renderPackageRepoActions(
 					</span>
 				</SiteLink>
 			) : null}
-			{actions.fork?.loggedIn ? <InstallOrgControl /> : null}
 			{actions.fork ? renderStatusControl(actions.fork) : null}
 			{actions.packageAppHref ? (
 				<a
@@ -255,36 +254,23 @@ function renderSetupPromptControl(
 
 export const PackageInstallContext = createContext<{
 	busy: boolean
-	confirmed: boolean
 	/** A fork the live read found that the page data does not show yet. */
 	existingFork: { targetName: string; href: string } | null
 	/** A fork of this listing for this account is still being created. */
 	inProgress: { startedAt: string } | null
+	/** The viewer can fork into more than one org, so Fork asks which. */
+	choosesForkTarget?: boolean
+	/** The open Fork into chooser, or null. */
+	forkTarget?: ForkTargetChoice | null
 	onInstall: () => void
-	onDisarm: () => void
-	/** Org picker for the fork target; null when only one org can fork. */
-	orgPicker?: CommunityInstallOrgPicker | null
+	onChooseForkTarget?: (slug: string) => void
+	onDismissForkTarget?: () => void
 }>({
 	busy: false,
-	confirmed: false,
 	existingFork: null,
 	inProgress: null,
 	onInstall: () => {},
-	onDisarm: () => {},
-	orgPicker: null,
 })
-
-function InstallOrgControl() {
-	const install = useContext(PackageInstallContext)
-	if (!install.orgPicker) return null
-	return (
-		<CommunityInstallOrgSelect
-			picker={install.orgPicker}
-			disabled={install.busy}
-			compact
-		/>
-	)
-}
 function renderInstallControl(input: {
 	icon: IconName
 	label: string
@@ -327,9 +313,7 @@ function InstallControl({
 		? 'Installing'
 		: inProgress
 			? FORK_IN_PROGRESS_LABEL
-			: install.confirmed
-				? 'Confirm fork'
-				: input.label
+			: input.label
 	const tooltip = inProgress ? FORK_IN_PROGRESS_TOOLTIP : input.tooltip
 
 	const shared = {
@@ -380,16 +364,25 @@ function InstallControl({
 		)
 	}
 	return (
-		<button
-			type="button"
-			{...shared}
-			css={packageActionPrimaryCss}
-			disabled={spinning}
-			onClick={install.onInstall}
-			onBlur={install.onDisarm}
-		>
-			{children}
-		</button>
+		<>
+			<button
+				type="button"
+				{...shared}
+				aria-haspopup={install.choosesForkTarget ? 'dialog' : undefined}
+				css={packageActionPrimaryCss}
+				disabled={spinning}
+				onClick={install.onInstall}
+			>
+				{children}
+			</button>
+			{install.forkTarget ? (
+				<ForkTargetDialog
+					choice={install.forkTarget}
+					onConfirm={(slug) => install.onChooseForkTarget?.(slug)}
+					onDismiss={() => install.onDismissForkTarget?.()}
+				/>
+			) : null}
+		</>
 	)
 }
 

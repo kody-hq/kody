@@ -352,3 +352,113 @@ export async function pruneSystemEmailSends(input: {
 		.run()
 	return Number(result.meta.changes ?? 0)
 }
+
+export type SystemEmailSendRecord = SystemEmailSend & {
+	sentAt: string
+	deliveryStatus: string | null
+	deliveryStatusAt: string | null
+	hardBouncedAt: string | null
+}
+
+type SendRecordRow = {
+	provider_message_id: string
+	recipient: string
+	sender: string
+	kind: string
+	sent_at: string
+	last_status: string | null
+	last_status_at: string | null
+	hard_bounced_at: string | null
+}
+
+function toSendRecord(row: SendRecordRow): SystemEmailSendRecord {
+	return {
+		providerMessageId: row.provider_message_id,
+		recipient: row.recipient,
+		sender: row.sender,
+		kind: row.kind,
+		sentAt: row.sent_at,
+		deliveryStatus: row.last_status,
+		deliveryStatusAt: row.last_status_at,
+		hardBouncedAt: row.hard_bounced_at,
+	}
+}
+
+/**
+ * Newest-first system sends with the latest delivery report Cloudflare sent
+ * for each. A null status means the provider accepted the message but no
+ * delivery or bounce report has matched it yet.
+ */
+export async function listSystemEmailSends(input: {
+	db: D1Database
+	recipient?: string | null
+	kind?: string | null
+	providerMessageId?: string | null
+	since?: string | null
+	limit: number
+}): Promise<{ sends: Array<SystemEmailSendRecord>; hasMore: boolean }> {
+	const where: Array<string> = []
+	const binds: Array<string | number> = []
+	if (input.recipient) {
+		where.push('recipient = ?')
+		binds.push(
+			canonicalSuppressionRecipient(input.recipient) ?? input.recipient,
+		)
+	}
+	if (input.kind) {
+		where.push('kind = ?')
+		binds.push(input.kind)
+	}
+	if (input.providerMessageId) {
+		where.push('provider_message_id = ?')
+		binds.push(input.providerMessageId)
+	}
+	if (input.since) {
+		where.push('sent_at >= ?')
+		binds.push(canonicalIsoTimestamp(input.since))
+	}
+	try {
+		const rows = await input.db
+			.prepare(
+				`SELECT provider_message_id, recipient, sender, kind, sent_at,
+					last_status, last_status_at, hard_bounced_at
+				FROM system_email_sends
+				${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}
+				ORDER BY sent_at DESC, provider_message_id ASC
+				LIMIT ?`,
+			)
+			.bind(...binds, input.limit + 1)
+			.all<SendRecordRow>()
+		const results = rows.results ?? []
+		return {
+			sends: results.slice(0, input.limit).map(toSendRecord),
+			hasMore: results.length > input.limit,
+		}
+	} catch (error) {
+		if (isMissingSuppressionStore(error)) return { sends: [], hasMore: false }
+		throw error
+	}
+}
+
+/** The most recent recorded send of one kind to one recipient. */
+export async function readLatestSystemEmailSend(input: {
+	db: D1Database
+	recipient: string
+	kind: string
+}): Promise<SystemEmailSendRecord | null> {
+	try {
+		const { sends } = await listSystemEmailSends({
+			db: input.db,
+			recipient: input.recipient,
+			kind: input.kind,
+			limit: 1,
+		})
+		return sends[0] ?? null
+	} catch (error) {
+		console.warn('system-email-send-read-failed', {
+			kind: input.kind,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return null
+	}
+}

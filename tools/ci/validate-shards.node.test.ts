@@ -31,8 +31,20 @@ test('CI matrices hash shards, retain crash retry and aggregate every shard at t
 	expect(workers).toContain('WORKERS_TEST_SHARD: ${{ matrix.shard }}/2')
 	expect(workers).toContain('fail-fast: false')
 	expect(workers).toContain('enforce-unit-job-budget.ts --leg workers')
-	expect(workers.match(/npm run test:workers/g)).toHaveLength(2)
-	expect(workers).toContain('attempt_budget_seconds=780')
+	expect(workers).toContain('run: bash tools/ci/workers-unit-attempt.sh')
+	expect(workers).toContain('outcome_1: ${{ steps.attempt.outputs.outcome_1 }}')
+	expect(workers).toContain('outcome_2: ${{ steps.attempt.outputs.outcome_2 }}')
+	const workersRetry = workflow.slice(
+		workflow.indexOf('\n  workers_retry:'),
+		workflow.indexOf('\n  mcp:'),
+	)
+	expect(workersRetry).toContain('shard: [1, 2]')
+	expect(workersRetry).toContain("WORKERS_ATTEMPT: '2'")
+	expect(workersRetry).toContain('run: bash tools/ci/workers-unit-attempt.sh')
+	expect(workersRetry.replace(/\s+/g, ' ')).toContain(
+		"needs.workers.outputs.outcome_1 == 'timeout' || needs.workers.outputs.outcome_2 == 'timeout'",
+	)
+	expect(workersRetry.match(/if: .*env\.RETRY == 'true'/g)).toHaveLength(6)
 	expect(e2e).toContain('shard: [1, 2]')
 	expect(e2e).toContain('E2E_SHARD: ${{ matrix.shard }}/2')
 	expect(e2e).toContain('fail-fast: false')
@@ -43,10 +55,68 @@ test('CI matrices hash shards, retain crash retry and aggregate every shard at t
 	)
 	expect(e2e).toContain('retry-classifiers.ts e2e e2e-attempt-1.log')
 	expect(e2e).toContain('path: blob-report')
-	expect(workflow).toContain("needs.node.result == 'success'")
-	expect(workflow).toContain("needs.node.result != 'success'")
-	expect(workflow).toContain("needs.workers.result == 'success'")
-	expect(workflow).toContain("needs.workers.result != 'success'")
+	expect(e2e).toMatch(
+		/Upload Playwright blob report[\s\S]*?continue-on-error: true[\s\S]*?timeout-minutes: 2[\s\S]*?path: blob-report/,
+	)
+	const e2eReport = workflow.slice(
+		workflow.indexOf('\n  e2e_report:'),
+		workflow.indexOf('\n  host_commands:'),
+	)
+	expect(e2eReport).toContain(
+		'::warning::Playwright blob report download failed (diagnostic only).',
+	)
+	expect(e2eReport).not.toMatch(
+		/gh run download[\s\S]*?echo "\$out" >&2[\s\S]*?exit 1/,
+	)
+	expect(e2eReport).toMatch(
+		/Download blob reports[\s\S]*?continue-on-error: true[\s\S]*?timeout-minutes: 2/,
+	)
+	expect(e2eReport).toMatch(
+		/Upload merged HTML report[\s\S]*?continue-on-error: true[\s\S]*?timeout-minutes: 2[\s\S]*?path: playwright-report/,
+	)
+	const gate = workflow.slice(workflow.indexOf('\n  validate:'))
+	for (const job of [
+		'node',
+		'workers',
+		'workers_retry',
+		'host_commands',
+		'host_commands_macos',
+		'host_commands_macos_fallback',
+	]) {
+		expect(gate).toContain(`      - ${job}\n`)
+	}
+	expect(gate).toContain('NEEDS: ${{ toJSON(needs) }}')
+	expect(gate).toContain('run: node tools/ci/validate-gate-verdict.ts')
+})
+
+test('macOS host commands fall back to the Intel pool only when never assigned', () => {
+	const hostCommands = workflow.slice(
+		workflow.indexOf('\n  host_commands:'),
+		workflow.indexOf('\n  host_commands_macos:'),
+	)
+	const macos = workflow.slice(
+		workflow.indexOf('\n  host_commands_macos:'),
+		workflow.indexOf('\n  host_commands_macos_fallback:'),
+	)
+	const fallback = workflow.slice(
+		workflow.indexOf('\n  host_commands_macos_fallback:'),
+		workflow.indexOf('\n  cli:'),
+	)
+	expect(hostCommands).toContain(
+		'os: [ubuntu-24.04, windows-latest, windows-11-arm]',
+	)
+	expect(macos).toContain('runs-on: macos-15\n')
+	expect(fallback).toContain('runs-on: macos-15-intel')
+	expect(fallback.replace(/\s+/g, ' ')).toContain(
+		"needs.host_commands_macos.result == 'abandoned'",
+	)
+	for (const body of [macos, fallback]) {
+		expect(body.replace(/\s+/g, ' ')).toContain("github.event_name != 'push'")
+	}
+	expect(hostCommands).not.toContain("github.event_name != 'push'")
+	for (const body of [hostCommands, macos, fallback]) {
+		expect(body).toContain('uses: ./.github/actions/host-commands')
+	}
 })
 
 test.each(['', 'bench / iteration-2 / '])(
@@ -158,3 +228,34 @@ test.each([0, 2])(
 		}
 	},
 )
+
+test('main reuses a stamped PR tree only by skipping verification jobs', () => {
+	const jobs = workflow.slice(workflow.indexOf('\njobs:'))
+	const gate = jobs.slice(jobs.indexOf('\n  validate:'))
+	const verificationJobs = [
+		'static',
+		'node',
+		'workers',
+		'mcp',
+		'e2e',
+		'host_commands',
+		'host_commands_macos',
+		'host_commands_macos_fallback',
+		'workers_retry',
+		'cli',
+		'cli_windows',
+	]
+	for (const job of verificationJobs) {
+		const start = jobs.indexOf(`\n  ${job}:`)
+		const body = jobs.slice(start, jobs.indexOf('\n    steps:', start))
+		expect(`${job}: ${body}`).toMatch(/needs: (tested_tree|\[tested_tree,)/)
+		expect(`${job}: ${body}`).toContain(
+			"needs.tested_tree.outputs.skip != 'true'",
+		)
+	}
+	expect(gate).toContain('- tested_tree')
+	expect(gate).toContain('node tools/ci/tested-tree.ts stamp')
+	expect(gate.replace(/\s+/g, ' ')).toContain(
+		'github.event.pull_request.head.repo.full_name == github.repository',
+	)
+})

@@ -139,11 +139,11 @@ wizard itself is connect an agent, make something useful (one prompt), then
 connect a second agent — see [Onboarding process](./architecture/onboarding.md).
 `@kody/*` listings are ordinary community packages from the `@kody` org: an org
 forks them and runs its own copy. One-click install on listing detail puts a
-fork icon beside the name. Listings from another account use `createDoubleCheck`
-(the tooltip is “This was built by another user. Verify it before using. Click
-again to confirm fork.”; the first click arms that control; the second click
-sends `acknowledged: true`; clicking elsewhere, navigating, or leaving the
-control clears the armed state; the endpoint responds `409` without the flag).
+fork icon beside the name. `pressFork` (`start/fork-target.ts`) forks straight
+into the only forkable org, or opens `ForkTargetDialog` (a native modal
+`<dialog>`) when `loadCommunityInstallOrgs` returns more than one. The fork
+request sends `acknowledged: true` after the target is determined (the endpoint
+responds `409` without the flag; cancelling the dialog sends nothing).
 User-facing install UX:
 [Public packages](../use/community-packages.md#one-click-install). `/community`
 cards overlay a per-request `viewerInstall` when the viewer already has a
@@ -376,8 +376,10 @@ Client pages: `packages/worker/start/pages/community*`
   never run on the app origin.
 - `/community/:listingId` — the same page by listing id; redirects to the
   canonical URL. Metadata, ratings, README, one-click install (login required;
-  other-account listings arm via `createDoubleCheck` and fork on the second
-  click), fork prompt, and report link (report requires login)
+  `pressFork` forks into the only org or opens `ForkTargetDialog` when there are
+  several; `acknowledged: true` is sent after the target is determined, and
+  cancelling the dialog sends nothing), fork prompt, and report link (report
+  requires login)
 - `/community/:listingId/icon/:iconCommit` — cached package icon or generated
   fallback; serves the current icon commit or the pinned snapshot commit, and
   rejects stale commit URLs

@@ -60,7 +60,24 @@ export const adminPlatformFeedbackRecordSchema =
 				}),
 			)
 			.describe(
-				'Earlier submitter-visible outcomes replaced by follow_up updates, oldest first. Empty when none.',
+				'Earlier submitter-visible outcomes replaced by follow_up updates or by a reopen to triaged, oldest first. Empty when none.',
+			),
+		reopen_history: z
+			.array(
+				z.object({
+					from_status: z.enum(['resolved', 'dismissed']),
+					to_status: z.literal('triaged'),
+					note: z
+						.string()
+						.describe('Required internal reopen reason (admin_note).'),
+					actor_user_id: z
+						.string()
+						.describe('Authenticated admin who reopened the feedback.'),
+					recorded_at: z.string().describe('Server time of the reopen.'),
+				}),
+			)
+			.describe(
+				'Internal-only admin reopens of resolved/dismissed feedback to triaged, oldest first. Never mailed and never returned to submitters. Empty when none.',
 			),
 	})
 
@@ -121,6 +138,13 @@ export function formatAdminPlatformFeedbackRecord(
 		resolution_history: feedback.resolutionHistory.map((entry) => ({
 			note: entry.note,
 			pr_urls: entry.prUrls,
+			recorded_at: entry.recordedAt,
+		})),
+		reopen_history: feedback.reopenHistory.map((entry) => ({
+			from_status: entry.fromStatus,
+			to_status: entry.toStatus,
+			note: entry.note,
+			actor_user_id: entry.actorUserId,
 			recorded_at: entry.recordedAt,
 		})),
 	}

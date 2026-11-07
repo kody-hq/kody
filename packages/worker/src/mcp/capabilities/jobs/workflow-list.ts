@@ -23,13 +23,31 @@ const workflowRunStatusSchema = z.enum([
 
 const workflowRunSchema = z.object({
 	id: z.string(),
-	source_type: z.enum(['package', 'inline']),
-	package_id: z.string().nullable(),
+	source_type: z
+		.enum(['package', 'inline'])
+		.describe(
+			'How the run executes: package runs a saved package export; inline runs module code passed at create time (including durable handoffs such as packagePublishExternalPush).',
+		),
+	package_id: z
+		.string()
+		.nullable()
+		.describe(
+			'Saved package the run belongs to: the exported package for package runs, or the package an inline run was launched for (for example a durable publish). Null for inline runs with no package.',
+		),
 	kody_id: z.string().nullable(),
-	source_id: z.string().nullable(),
+	source_id: z
+		.string()
+		.nullable()
+		.describe(
+			'Package source the run belongs to, alongside package_id. Null when package_id is null.',
+		),
 	workflow_name: z.string(),
 	export_name: z.string().nullable(),
-	idempotency_key: z.string(),
+	idempotency_key: z
+		.string()
+		.describe(
+			'Opaque dedupe key. Its format is internal, varies by operation and version, and is replaced when a failed run releases it; do not parse it. Use package_id, source_id and enqueued_commit for provenance.',
+		),
 	run_at: z.string(),
 	plan_date: z.string().nullable(),
 	status: workflowRunStatusSchema.nullable(),
@@ -41,7 +59,7 @@ const workflowRunSchema = z.object({
 		.string()
 		.nullable()
 		.describe(
-			'Package workflows: the published commit resolved when the workflow was queued. Each attempt records the commit it actually ran as published_commit on its run (runList / runGet).',
+			'Package workflows: the published commit resolved when the workflow was queued. Each attempt records the commit it actually ran as published_commit on its run (runList / runGet). Package-launched inline runs (such as packagePublishExternalPush): the commit the operation targets. Null when unknown.',
 		),
 	source_revision: z
 		.enum(['latest', 'pinned'])
@@ -57,6 +75,7 @@ const workflowRunListInputKeys = [
 	'package_id',
 	'since',
 	'limit',
+	'cursor',
 ] as const
 
 const workflowRunListInputKeySet = new Set<string>(workflowRunListInputKeys)
@@ -94,7 +113,7 @@ export const workflowRunListInputSchema = z
 				.min(1)
 				.optional()
 				.describe(
-					'Optional saved package id to list package-owned workflow runs only.',
+					'Optional saved package id: lists runs of its exports and inline runs launched for it (such as packagePublishExternalPush).',
 				),
 			since: z
 				.string()
@@ -110,7 +129,14 @@ export const workflowRunListInputSchema = z
 				.max(100)
 				.optional()
 				.describe(
-					'Maximum number of recent workflow runs to return. Defaults to 25.',
+					'Maximum number of recent workflow runs to return per page. Defaults to 25.',
+				),
+			cursor: z
+				.string()
+				.min(1)
+				.optional()
+				.describe(
+					'Opaque pagination cursor from a previous next_cursor value. Keep the same filters across pages.',
 				),
 		},
 		{
@@ -124,6 +150,17 @@ export const workflowRunListInputSchema = z
 	)
 	.strict()
 
+/** Exported for schema-level tests. */
+export const workflowRunListOutputSchema = z.object({
+	workflows: z.array(workflowRunSchema),
+	next_cursor: z
+		.string()
+		.nullable()
+		.describe(
+			'Opaque cursor for the next page, or null when this is the last page.',
+		),
+})
+
 export const workflowListCapability = defineDomainCapability(
 	capabilityDomainNames.jobs,
 	{
@@ -131,7 +168,7 @@ export const workflowListCapability = defineDomainCapability(
 		contextRuns: 'allow',
 		orgPermission: 'job:read',
 		description:
-			'List recent Cloudflare Workflow runs created through kody:runtime workflows.create for durable work that may outlive execute timeouts, including source, status, and completion/error metadata. Filter with workflow_id (exact id), status, package_id, and/or since. Unknown input fields are rejected.',
+			'List recent Cloudflare Workflow runs created through kody:runtime workflows.create for durable work that may outlive execute timeouts, including source, status, and completion/error metadata. Newest first; filter with workflow_id (exact id), status, package_id, and/or since, and pass next_cursor back as cursor for older pages. Unknown input fields are rejected.',
 		keywords: [
 			'workflow',
 			'workflows',
@@ -149,21 +186,20 @@ export const workflowListCapability = defineDomainCapability(
 		idempotent: true,
 		destructive: false,
 		inputSchema: workflowRunListInputSchema,
-		outputSchema: z.object({
-			workflows: z.array(workflowRunSchema),
-		}),
+		outputSchema: workflowRunListOutputSchema,
 		async handler(args, ctx) {
 			requireMcpUser(ctx.callerContext)
 			await authorizeOrgWide(
 				{ env: ctx.env, request: requireMcpRequest(ctx.callerContext) },
 				'job:read',
 			)
-			const { listWorkflowRunsForUser } =
+			const { listWorkflowRunPageForUser } =
 				await import('#worker/package-runtime/package-workflows.ts')
-			const workflows = await listWorkflowRunsForUser({
+			const page = await listWorkflowRunPageForUser({
 				env: ctx.env,
 				userId: ownerIdFromCaller(ctx.callerContext),
 				limit: args.limit,
+				cursor: args.cursor ?? null,
 				filter: {
 					workflowId: args.workflow_id ?? null,
 					status: args.status ?? null,
@@ -172,7 +208,8 @@ export const workflowListCapability = defineDomainCapability(
 				},
 			})
 			return {
-				workflows: workflows.map((workflow) => ({
+				next_cursor: page.nextCursor,
+				workflows: page.workflows.map((workflow) => ({
 					id: workflow.id,
 					source_type: workflow.sourceType,
 					package_id: workflow.packageId,

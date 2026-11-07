@@ -321,6 +321,32 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 	},
 	// A person's org grants of their personal credentials.
 	{ kind: 'user_id', table: 'credential_org_grants' },
+	// Local reads a person made with the Kody CLI (with their IP).
+	{
+		kind: 'user_columns',
+		table: 'credential_local_read_events',
+		columns: ['actor_user_id'],
+	},
+	// Who last turned local reads on or off for a credential.
+	{
+		kind: 'null_user_column',
+		table: 'credential_local_read_settings',
+		matchColumn: 'updated_by_user_id',
+		nullColumns: ['updated_by_user_id'],
+	},
+	// Raw RSA signatures a person's runs made with a signing credential.
+	{
+		kind: 'user_columns',
+		table: 'credential_raw_signing_events',
+		columns: ['actor_user_id'],
+	},
+	// Who last turned raw signing on or off for a credential.
+	{
+		kind: 'null_user_column',
+		table: 'credential_raw_signing_settings',
+		matchColumn: 'updated_by_user_id',
+		nullColumns: ['updated_by_user_id'],
+	},
 	// Execution contexts a person registered (they operate the machine), the
 	// contexts they opted into, their attachments of contexts to other orgs,
 	// and their chains. Registration challenges are short-lived and never
@@ -329,6 +355,13 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		kind: 'user_columns',
 		table: 'execution_contexts',
 		columns: ['operator_user_id', 'login_user_id'],
+	},
+	// Who paused a context: deleting that person keeps the pause, not their id.
+	{
+		kind: 'null_user_column',
+		table: 'execution_contexts',
+		matchColumn: 'paused_by_user_id',
+		nullColumns: ['paused_by_user_id'],
 	},
 	{ kind: 'user_id', table: 'execution_context_opt_ins' },
 	// Excess-access notices about a person (ADR 0096).
@@ -1334,7 +1367,12 @@ export const accountExportRedactedColumnsByTable: Readonly<
 	pending_email_changes: ['token_hash'],
 	pending_email_claim_releases: ['token_hash'],
 	pending_email_destination_verifications: ['token_hash'],
-	platform_feedback: ['reviewed_by_user_id', 'reviewed_at', 'admin_note'],
+	platform_feedback: [
+		'reviewed_by_user_id',
+		'reviewed_at',
+		'admin_note',
+		'reopen_history',
+	],
 	secret_entries: ['encrypted_value', 'lookup_hash'],
 	user_integrations: ['access_token_encrypted', 'refresh_token_encrypted'],
 	user_oauth_apps: ['client_secret_encrypted'],

@@ -8,9 +8,12 @@
 const resourceActions = {
 	package: ['read', 'execute', 'write', 'delete', 'publish', 'manage_access'],
 	app: ['read', 'execute', 'write', 'delete', 'manage_access'],
-	job: ['read', 'execute', 'write', 'delete', 'manage_access'],
+	job: ['read', 'execute', 'write', 'manage_access'],
 	// `secret:read` (reveal a value) is reserved: no surface checks it yet.
-	secret: ['use', 'read', 'write', 'delete', 'manage_access'],
+	// `secret:read_local` lets a CLI token or profile read a secret's value
+	// on the person's own machine, only while that secret allows local reads
+	// (ADR 0096).
+	secret: ['use', 'read', 'read_local', 'write', 'delete', 'manage_access'],
 	integration: ['use', 'read', 'write', 'delete', 'manage_access'],
 	memory: ['read', 'write', 'delete', 'manage_access'],
 	email: ['read', 'send', 'write', 'delete', 'manage_access'],
@@ -135,6 +138,7 @@ export const retiredOrgPermissionNames = [
 	'app:create',
 	'email:create',
 	'job:create',
+	'job:delete',
 ] as const
 
 const retiredOrgPermissions: ReadonlySet<string> = new Set(

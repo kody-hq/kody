@@ -142,6 +142,8 @@ stops working (an expired value, a disconnected OAuth connection, a disabled MCP
 server, or you left the org). Leaving an org deletes your grants there. Granting
 and revoking need a live person (not a job, webhook, or package code) and Write
 on the credential; grants and revokes are audited in your personal org.
+Credentials stay in the org that created them. See
+[Personal credentials](../guides/credentials.md#personal-credentials).
 
 An OAuth connection you make through a team org's own OAuth app (**Connect your
 own account** on the org app's page) is a personal connection pinned to that

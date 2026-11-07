@@ -724,9 +724,13 @@ html.is-settled {
 /* Hero agent marks: 64px monochrome icons (a mask filled with the text
    colour), each a link to its `/with/:agent` page. Hover, focus, or press
    zooms a mark like the video chooser thumbs, slides its neighbours aside,
-   and fades its name in. With JS (`.is-looping`, set by
-   `landing-agent-marquee.tsx`) the loop copies show and the scroll wraps
-   endlessly; without it the row is a plain scroller. */
+   and fades its name in. The track holds the list three times and drifts
+   by one list width per loop as a pure CSS animation, so it moves from
+   first paint and hydration never touches it. `.is-manual` (set by
+   `landing-agent-marquee.tsx` while someone scrolls, drags, or uses the
+   keyboard) stops the drift and JS wraps the scroll instead. The drift never
+   scrolls, so `fade-always-x` pins both edge fades on (tw-fade's default
+   only fades the start edge once scrolled). */
 .landing-agents-row {
 	width: 100%;
 }
@@ -736,6 +740,8 @@ html.is-settled {
 	--agent-zoom: 1.25;
 	--agent-shift: calc(var(--agent-size) * (var(--agent-zoom) - 1) / 2);
 	--agent-fade: clamp(2rem, 8vw, 4.5rem);
+	/* One mark (64px icon + 1.6rem padding) every 3.2s: about 28px/s. */
+	--agent-drift-per-mark: 3.2s;
 	width: min(44rem, 100%);
 	margin: clamp(1.75rem, 4vw, 2.5rem) auto 0;
 	overflow-x: auto;
@@ -750,7 +756,7 @@ html.is-settled {
 .landing-agents-track {
 	list-style: none;
 	margin: 0;
-	padding: 0.75rem var(--agent-fade) 0;
+	padding: 0.75rem 0 0;
 	display: flex;
 	width: max-content;
 }
@@ -760,8 +766,30 @@ html.is-settled {
 	padding-inline: 0.8rem;
 }
 
-.landing-agents-item[aria-hidden] {
-	display: none;
+@keyframes landing-agents-drift {
+	from {
+		translate: var(--agent-drift-from, 0px) 0;
+	}
+	to {
+		translate: calc(var(--agent-drift-from, 0px) - 100% / 3) 0;
+	}
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.landing-agents:not(.is-manual) .landing-agents-track {
+		animation: landing-agents-drift
+			calc(var(--agent-count, 24) * var(--agent-drift-per-mark)) linear infinite;
+	}
+
+	.landing-agents:has(.landing-agent:focus-visible) .landing-agents-track {
+		animation-play-state: paused;
+	}
+}
+
+@media (prefers-reduced-motion: no-preference) and (hover: hover) {
+	.landing-agents:hover .landing-agents-track {
+		animation-play-state: paused;
+	}
 }
 
 .landing-agent {
@@ -862,14 +890,6 @@ html.is-settled {
 	.landing-agents.is-magnifying .landing-agent-icon {
 		transition-duration: 70ms;
 	}
-}
-
-.landing-agents.is-looping .landing-agents-track {
-	padding-inline: 0;
-}
-
-.landing-agents.is-looping .landing-agents-item[aria-hidden] {
-	display: block;
 }
 
 @media (hover: hover) and (pointer: fine) {

@@ -7,6 +7,7 @@
   },
   "dependencies": {
     "croner": "^10.0.1",
-    "remix": "3.0.0"
+    "remix": "3.0.0",
+    "resolve.exports": "^2.0.3"
   }
 }

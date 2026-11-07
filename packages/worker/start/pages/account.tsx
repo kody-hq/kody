@@ -56,6 +56,7 @@ import {
 } from './account-management-components.tsx'
 import { AccountPasswordPanel } from './account-password-panel.tsx'
 import { AccountProfilePanel } from './account-profile-panel.tsx'
+import { AccountWorkspaceNote } from './account-workspace-note.tsx'
 import {
 	renderEmailVerificationPrompt,
 	requestResendVerification,
@@ -410,6 +411,7 @@ export function AccountPage({
 						shouldShowOnboardingChecklist(onboardingChecklist))
 						? renderOnboardingBanner({ checklist: onboardingChecklist })
 						: null}
+					<AccountWorkspaceNote username={username} />
 					<AccountProfilePanel
 						{...{
 							email,

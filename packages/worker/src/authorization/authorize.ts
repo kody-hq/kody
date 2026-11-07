@@ -513,6 +513,19 @@ function profileChainBlock(
 	return null
 }
 
+/**
+ * Only the profile layers: true when the request acts as no profile or every
+ * layer of its chain holds `permission` on `resource`. For a permission no
+ * role holds (`secret:read_local`), where `checkPermission` cannot apply.
+ */
+export function profileChainAllows(
+	access: EffectivePermissions,
+	permission: OrgPermission,
+	resource: OrgResource,
+) {
+	return profileChainBlock(access, permission, resource) === null
+}
+
 function profileDenialMessage(
 	access: EffectivePermissions,
 	permission: OrgPermission,
@@ -520,16 +533,39 @@ function profileDenialMessage(
 ) {
 	const blocked = profileChainBlock(access, permission, resource)
 	if (!blocked) return null
-	const target = resource ? ` on ${describeResource(resource, permission)}` : ''
+	const target = resource
+		? ` on ${describeProfileTarget(resource, permission)}`
+		: ''
 	const { layer } = blocked
 	if (blocked.code === 'profile_inactive') {
 		return layer.self
 			? `Profile "${layer.name}" is ${layer.reason ?? 'revoked'}, so it cannot use ${permission}${target}.`
 			: `Parent profile "${layer.name}" is ${layer.reason ?? 'revoked'}, so the profiles below it cannot use ${permission}${target}.`
 	}
-	return layer.self
-		? `Profile "${layer.name}" was not granted ${permission}${target}. The person it acts for can grant it (accessGrant with subject_type "profile").`
+	const grantHint =
+		resource?.type === 'credential'
+			? 'The person it acts for can share the credential with it under Credentials (or accessGrant with resource_type "credential" and subject_type "profile").'
+			: 'The person it acts for can grant it (accessGrant with subject_type "profile").'
+	const message = layer.self
+		? `Profile "${layer.name}" was not granted ${permission}${target}. ${grantHint}`
 		: `Parent profile "${layer.name}" does not hold ${permission}${target}, so the profiles below it cannot use it.`
+	return access.credentialScopes && !access.credentialScopes.has(permission)
+		? `${message} This token is also not scoped for ${permission}; after the grant, mint one whose scopes include it.`
+		: message
+}
+
+/**
+ * Profile denials name the credential by its display name, never its id: a
+ * credential with no known name reads as "this credential".
+ */
+function describeProfileTarget(
+	resource: OrgResource,
+	permission: OrgPermission,
+) {
+	if (resource.type !== 'credential') {
+		return describeResource(resource, permission)
+	}
+	return resource.label ? `credential "${resource.label}"` : 'this credential'
 }
 
 function ownerCanGrant(
@@ -631,6 +667,29 @@ const packageVisibilityPermissions: ReadonlyArray<OrgPermission> = [
  * least one permission on it. A profile that only grants `execute` still
  * shows the package, so it can be invoked.
  */
+/**
+ * Only the profile-chain layer of `checkPermission` (ADR 0092), for a Use
+ * check that decides person access another way (a granted personal
+ * credential).
+ */
+export function checkProfileChain(
+	access: EffectivePermissions,
+	permission: OrgPermission,
+	resource?: OrgResource,
+): AuthorizationDecision {
+	const blocked = profileChainBlock(access, permission, resource)
+	if (!blocked) return { allowed: true }
+	return deny({
+		code: blocked.code,
+		permission,
+		access,
+		resource,
+		message:
+			profileDenialMessage(access, permission, resource) ??
+			denialMessage(blocked.code, permission, resource),
+	})
+}
+
 export function canSeeResource(
 	access: EffectivePermissions,
 	resource: OrgResource,

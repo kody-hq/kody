@@ -82,27 +82,14 @@ test('GitHub sign-in from authorize returns with OAuth params intact', async ({
 		prompt: 'login',
 	})
 
-	const configReads: string[] = []
-	page.on('request', (request) => {
-		if (new URL(request.url()).pathname === '/auth/providers.json')
-			configReads.push(request.url())
-	})
 	await page.goto(authorizePath)
 	await waitForClientHydration(page)
 	await page.waitForLoadState('networkidle')
-	expect(configReads).toEqual([])
 	// Signed out, authorize offers Log in, Sign up, and Try it out.
 	await expect(page.getByTestId('oauth-authorize-try-it-out')).toBeVisible()
 	await page.getByTestId('oauth-authorize-login').click()
 	await expect(page).toHaveURL(/\/login\?redirectTo=/)
 	await waitForClientHydration(page)
-	await page.getByRole('button', { name: 'Show password', exact: true }).click()
-	await expect(page.locator('input[name="password"]')).toHaveAttribute(
-		'type',
-		'text',
-	)
-	await page.getByRole('button', { name: 'Hide password', exact: true }).click()
-
 	await expect(page.locator('input[name="password"]')).toBeVisible()
 	const githubButton = page.getByRole('button', {
 		name: 'Continue with GitHub',

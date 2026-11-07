@@ -8,6 +8,14 @@ import { purgeProfiles } from '#worker/profiles/store.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { accountRetentionDispositions } from '#app/account-retention-dispositions.ts'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
+import {
+	localReadEventRetentionDays,
+	pruneLocalReadEvents,
+} from '#worker/credentials/local-read-store.ts'
+import {
+	pruneRawSigningEvents,
+	rawSigningEventRetentionDays,
+} from '#worker/credentials/raw-signing-store.ts'
 import { agentPackagePopularityMaxAgeDays } from '#worker/usage/agent-package-conversation-uses.ts'
 import {
 	buildPublishedSourceManifestSnapshotKvKey,
@@ -113,6 +121,22 @@ export const retentionPolicies: ReadonlyArray<RetentionPolicy> = [
 			'Local-dev/test flag exposure rollups keep 90 days, matching Analytics Engine retention for the production exposure stream; the metric readout window is the current month.',
 	},
 	{
+		table: 'credential_local_read_events',
+		scope: 'global',
+		retentionDays: localReadEventRetentionDays,
+		batchSize: retentionDefaultBatchSize,
+		description:
+			'Local reads of a secret by the Kody CLI (with the real IP) keep 90 days; the last local read time on the secret is kept for good.',
+	},
+	{
+		table: 'credential_raw_signing_events',
+		scope: 'global',
+		retentionDays: rawSigningEventRetentionDays,
+		batchSize: retentionDefaultBatchSize,
+		description:
+			'Raw RSA signatures made with a signing credential keep 90 days; the last raw signature time on the credential is kept for good.',
+	},
+	{
 		table: 'stripe_webhook_events',
 		scope: 'global',
 		retentionDays: stripeWebhookEventRetentionDays,
@@ -158,6 +182,8 @@ export type RetentionPruneResult = {
 	}
 	usageRollups: number
 	featureFlagExposureRollups: number
+	credentialLocalReadEvents: number
+	credentialRawSigningEvents: number
 	auditEvents: number
 	stripeWebhookEvents: number
 	agentPackageConversationUses: number
@@ -287,6 +313,13 @@ async function deletePublishedBundleArtifactRowIfStillStale(input: {
 					WHERE source.user_id = published_bundle_artifacts.user_id
 						AND source.id = published_bundle_artifacts.source_id
 						AND source.published_commit = published_bundle_artifacts.published_commit
+				)
+				AND NOT EXISTS (
+					SELECT 1
+					FROM community_listings AS listing
+					WHERE listing.source_id = published_bundle_artifacts.source_id
+						AND listing.pinned_commit = published_bundle_artifacts.published_commit
+						AND listing.status = 'active'
 				)`,
 		)
 			.bind(input.id, input.kvKey, input.cutoff)
@@ -382,6 +415,13 @@ export async function prunePublishedBundleArtifactsForRetention(input: {
 					AND source.id = artifact.source_id
 					AND source.published_commit = artifact.published_commit
 			)
+			AND NOT EXISTS (
+				SELECT 1
+				FROM community_listings AS listing
+				WHERE listing.source_id = artifact.source_id
+					AND listing.pinned_commit = artifact.published_commit
+					AND listing.status = 'active'
+			)
 		ORDER BY artifact.created_at ASC, artifact.id ASC LIMIT ?`,
 		)
 			.bind(cutoff, batchSize)
@@ -430,8 +470,9 @@ export async function prunePublishedBundleArtifactsForRetention(input: {
 		}
 	}
 	// A pruned row already satisfied the safety conditions (commit not current
-	// for any entity_sources row, no active repo session), so the source
-	// snapshot KV keys for that commit are stale too.
+	// for any entity_sources row, not pinned by an active community listing, no
+	// active repo session), so the source snapshot KV keys for that commit are
+	// stale too.
 	for (const pair of prunedSnapshotPairs.values()) {
 		for (const kvKey of [
 			buildPublishedSourceSnapshotKvKey(pair),
@@ -594,6 +635,8 @@ export async function pruneRetention(input: {
 		},
 		usageRollups: 0,
 		featureFlagExposureRollups: 0,
+		credentialLocalReadEvents: 0,
+		credentialRawSigningEvents: 0,
 		auditEvents: 0,
 		stripeWebhookEvents: 0,
 		agentPackageConversationUses: 0,
@@ -663,6 +706,34 @@ export async function pruneRetention(input: {
 			() => pruneFeatureFlagExposuresForRetention({ db, now }),
 			(count) => {
 				result.featureFlagExposureRollups += count
+			},
+		),
+		countTask(
+			'credential_local_read_events',
+			async () => {
+				const deleted = await pruneLocalReadEvents({
+					db,
+					now,
+					batchSize: retentionDefaultBatchSize,
+				})
+				return { selected: deleted, deleted }
+			},
+			(count) => {
+				result.credentialLocalReadEvents += count
+			},
+		),
+		countTask(
+			'credential_raw_signing_events',
+			async () => {
+				const deleted = await pruneRawSigningEvents({
+					db,
+					now,
+					batchSize: retentionDefaultBatchSize,
+				})
+				return { selected: deleted, deleted }
+			},
+			(count) => {
+				result.credentialRawSigningEvents += count
 			},
 		),
 		countTask(

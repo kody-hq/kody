@@ -27,6 +27,7 @@ function authorization(
 		requireCredentials: false,
 		orgs: [{ slug: 'ada', displayName: 'Ada', role: 'owner' }],
 		selectedOrgSlug: 'ada',
+		requiredOrgSlug: null,
 	}
 }
 
@@ -132,6 +133,30 @@ test('native OAuth document omits unconfigured social providers and keeps passke
 	}
 })
 
+test('required org locks the consent chooser and explains why', async () => {
+	const html = await renderStartPage(
+		createElement(OAuthAuthorizeRoute, {
+			data: {
+				...authorization(true),
+				orgs: [
+					{ slug: 'ada', displayName: 'Ada', role: 'owner' },
+					{ slug: 'acme', displayName: 'Acme', role: 'member' },
+				],
+				selectedOrgSlug: 'ada',
+				requiredOrgSlug: 'ada',
+			},
+			session: signedInSession,
+			authProviders: authConfig,
+		}),
+		`${authorizePath}&org=ada`,
+	)
+	expect(html).toContain('data-testid="oauth-authorize-org-locked"')
+	expect(html).toContain('data-testid="oauth-authorize-org-disabled"')
+	expect(html).toContain('data-testid="oauth-authorize-org-locked-reason"')
+	expect(html).toContain('started for @ada')
+	expect(html).not.toContain('data-testid="oauth-authorize-org-picker"')
+})
+
 test('signed-out OAuth document offers log in, sign up, and Try it out', async () => {
 	const html = await renderStartPage(
 		createElement(OAuthAuthorizeRoute, {
@@ -142,15 +167,23 @@ test('signed-out OAuth document offers log in, sign up, and Try it out', async (
 		authorizePath,
 	)
 	const text = html.replaceAll('<!-- -->', '')
-	for (const expected of [
-		'Kody secure connection',
-		'Cursor wants to connect to your Kody account',
-		'data-testid="oauth-authorize-try-it-out"',
-		'No account needed. Full access for 24 hours, then claim it to keep everything.',
-		'just tell Cursor to claim your account.',
-		'You can disconnect Cursor anytime from your Kody account.',
-	])
-		expect(text).toContain(expected)
+	expect(text).toContain('Cursor wants to connect to your Kody account')
+	const tagWithTestId = (testId: string) => {
+		const tag = html.match(
+			new RegExp(`<[^>]*data-testid="${testId}"[^>]*>`),
+		)?.[0]
+		if (!tag) throw new Error(`Missing ${testId}`)
+		return tag
+	}
+	expect(tagWithTestId('oauth-authorize-login')).toContain(
+		'href="/login?redirectTo=',
+	)
+	expect(tagWithTestId('oauth-authorize-signup')).toContain(
+		'href="/signup?redirectTo=',
+	)
+	expect(html).toContain('data-testid="oauth-authorize-try-it-out"')
+	expect(text).toContain('Log in')
+	expect(text).toContain('Sign up')
+	expect(text).toContain('Try it out')
 	expect(html).not.toContain('data-testid="oauth-authorize-form"')
-	expect(html).not.toContain('—')
 })

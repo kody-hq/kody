@@ -9,8 +9,14 @@ const {
 	session,
 	net,
 } = require('electron')
+const { DesktopPresence } = require('./presence.cjs')
 const { startUpdates, finishQuit } = require('./updates.cjs')
 const { browserLogin } = require('./browser-login.cjs')
+const {
+	approvalNavigation,
+	approvalTarget,
+	canApproveInApp,
+} = require('./in-app-approval.cjs')
 const { parseString } = require('set-cookie-parser')
 const { supportsIntegratedTitlebar } = require('./site-capabilities.cjs')
 const { attachWindowNavigation } = require('./window-navigation.cjs')
@@ -29,6 +35,11 @@ const {
 	isExternalUrl,
 	isNavigationUrl,
 } = require('./navigation.cjs')
+const {
+	browsingWebActivity,
+	createAppLinkRouter,
+	openInBrowser,
+} = require('./app-links.cjs')
 
 app.setName('Kody')
 let appOrigin = productionOrigin
@@ -51,29 +62,44 @@ function isCurrentAppUrl(value) {
 		return false
 	}
 }
-let navigation
+const windows = new Map()
+let lastWindow
 let windowOpening
+let pendingWindows = 0
+function currentWindow() {
+	const focused = BrowserWindow.getFocusedWindow()
+	return windows.has(focused) ? focused : lastWindow
+}
+function navigationFor(event) {
+	const window = BrowserWindow.fromWebContents(event.sender)
+	const navigation = windows.get(window)?.navigation
+	return navigation?.accepts(event) ? navigation : undefined
+}
 ipcMain.handle('kody:navigation', (event, command) => {
-	if (!navigation?.accepts(event))
+	const navigation = navigationFor(event)
+	if (!navigation)
 		throw new Error('Navigation is only available to the main Kody document.')
 	return navigation.command(command)
 })
 let loginAttempt
+let loginWindow
 ipcMain.handle('kody:authentication', async (event, mode) => {
-	if (!navigation?.accepts(event))
+	if (!navigationFor(event))
 		throw new Error('Sign-in is only available to the main Kody document.')
+	const window = BrowserWindow.fromWebContents(event.sender)
 	if (mode === 'cancel') {
-		loginAttempt?.cancel()
+		if (loginWindow === window) loginAttempt?.cancel()
 		return
 	}
 	if (mode !== 'login' && mode !== 'signup')
 		throw new Error('Invalid sign-in action.')
 	if (loginAttempt) return { error: 'Browser sign-in is already open.' }
+	loginWindow = window
 	const targetSession = window.webContents.session
 	loginAttempt = browserLogin({
 		origin: appOrigin,
 		mode,
-		openExternal: (url) => shell.openExternal(url),
+		openExternal: (url) => openInBrowser(url, { app, shell }),
 		exchange: async (data) => {
 			const response = await fetch(`${appOrigin}/desktop/session`, {
 				method: 'POST',
@@ -113,23 +139,116 @@ ipcMain.handle('kody:authentication', async (event, mode) => {
 	})
 	try {
 		await loginAttempt.result
-		if (!quitting) {
-			await showApp('/account')
-			window.focus()
-		}
+		if (!quitting && !window.isDestroyed()) await showApp('/account', window)
 		return {}
 	} catch (error) {
 		if (error.message === 'Browser sign-in canceled.') return {}
 		return { error: error.message }
 	} finally {
 		loginAttempt = null
+		loginWindow = null
 	}
 })
+// Machine setup's CLI sign-in. With a usable app session the consent page
+// opens in a sandboxed app window (no desktop bridge) on that session and may
+// only return to the CLI's loopback callback. A fresh sign-in, or any page
+// other than consent, goes to the system browser instead.
+async function approveSignIn(value, signal) {
+	const target = approvalTarget(value, appOrigin)
+	const kody = session.fromPartition('persist:kody')
+	const browser = () => openInBrowser(value, { app, shell })
+	if (
+		!target ||
+		!(await canApproveInApp(target, (url) =>
+			kody.fetch(url, {
+				credentials: 'include',
+				redirect: 'error',
+				cache: 'no-store',
+				signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
+			}),
+		))
+	)
+		return browser()
+	if (signal.aborted || quitting) return
+	const parent = currentWindow()
+	const window = new BrowserWindow({
+		width: 560,
+		height: 760,
+		minWidth: 420,
+		minHeight: 520,
+		title: 'Approve Kody sign-in',
+		icon: join(__dirname, 'assets/icon.png'),
+		...(parent && !parent.isDestroyed() ? { parent, modal: true } : {}),
+		backgroundColor: '#ffffff',
+		webPreferences: {
+			nodeIntegration: false,
+			contextIsolation: true,
+			sandbox: true,
+			webviewTag: false,
+			partition: 'persist:kody',
+		},
+	})
+	window.removeMenu()
+	let finished = false
+	let returned = false
+	await new Promise((resolve, reject) => {
+		const close = () => {
+			signal.removeEventListener('abort', close)
+			finished = true
+			if (!window.isDestroyed()) window.destroy()
+			resolve()
+		}
+		const leave = () => {
+			if (finished) return
+			close()
+			void browser().catch(() => {})
+		}
+		signal.addEventListener('abort', close, { once: true })
+		const guard = (event, url) => {
+			const kind = approvalNavigation(target, url)
+			if (kind === 'callback') returned = true
+			else if (returned) event.preventDefault()
+			else if (kind === 'leave') {
+				event.preventDefault()
+				leave()
+			}
+		}
+		window.webContents.on('will-navigate', guard)
+		window.webContents.on('will-redirect', guard)
+		window.webContents.on('will-attach-webview', (event) =>
+			event.preventDefault(),
+		)
+		window.webContents.setWindowOpenHandler(({ url }) => {
+			try {
+				if (['https:', 'mailto:'].includes(new URL(url).protocol))
+					void shell.openExternal(url).catch(() => {})
+			} catch {}
+			return { action: 'deny' }
+		})
+		window.on('closed', () => {
+			signal.removeEventListener('abort', close)
+			if (finished) return
+			finished = true
+			// Closing before the CLI callback cancels this sign-in.
+			if (returned) resolve()
+			else reject(new Error('Sign-in was canceled. Try again.'))
+		})
+		window.loadURL(target.url.href).catch((error) => {
+			if (!finished && error.code !== 'ERR_ABORTED') leave()
+		})
+	})
+}
 const runner = new Runner()
-let window
 let quitting = false
 let updates
 let restartForUpdate = false
+const presence = new DesktopPresence({
+	app,
+	dialog,
+	show: () => showApp(),
+	windows: () => [...windows.keys()],
+	changed: () => updateMenu(),
+})
 let state = { ecid: null, enabled: false }
 function statePath() {
 	return join(app.getPath('userData'), 'machine.json')
@@ -172,10 +291,13 @@ const execution = new DesktopExecution({
 	runner,
 	read: () => state,
 	write: (next) => {
+		const registered = !!state.ecid
 		state = next
 		saveState()
+		if (registered !== !!state.ecid && app.isReady() && !quitting) updateMenu()
 	},
 	hostname: hostname(),
+	approveSignIn,
 	confirmCommands: async () => {
 		const { response } = await dialog.showMessageBox({
 			type: 'warning',
@@ -218,18 +340,65 @@ const execution = new DesktopExecution({
 	},
 })
 ipcMain.handle('kody:execution', (event, command, input) => {
-	if (!navigation?.accepts(event))
+	if (!navigationFor(event))
 		throw new Error(
 			'Machine controls are only available to the main Kody document.',
 		)
 	if (quitting) throw new Error('Kody is quitting.')
 	return execution.request(command, input)
 })
+let machineMenuCommand = null
+ipcMain.handle('kody:machine-menu', (event) => {
+	if (!navigationFor(event)) return null
+	const command = machineMenuCommand
+	machineMenuCommand = null
+	return command
+})
+function machinePath() {
+	const orgSlug = execution.read().owner?.orgSlug
+	return orgSlug ? `/@${orgSlug}/-/execution-contexts` : '/account'
+}
+async function machineMenu(command) {
+	if (quitting) return
+	if (command === 'pause') {
+		const { response } = await dialog.showMessageBox({
+			type: 'question',
+			message: 'Pause routing to this machine?',
+			detail:
+				'Kody keeps it paused until you resume it, even while this machine is offline. Chains skip it, queued runs fail, and host commands are refused. The runner stays connected.',
+			buttons: ['Pause routing', 'Cancel'],
+			defaultId: 1,
+			cancelId: 1,
+		})
+		if (response !== 0 || quitting) return
+	}
+	machineMenuCommand = command
+	const window = await showApp(machinePath())
+	window?.webContents.send('kody:machine-menu')
+}
+async function machineRunner(command) {
+	try {
+		await execution.request(command)
+	} catch (error) {
+		if (!quitting) dialog.showErrorBox('Kody runner', error.message)
+	}
+}
 function updateMenu() {
 	Menu.setApplicationMenu(
 		Menu.buildFromTemplate([
 			...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
-			{ label: 'File', submenu: [{ role: 'close' }] },
+			{
+				label: 'File',
+				submenu: [
+					...presence.menuItems(),
+					{
+						label: 'New Window',
+						accelerator: 'CmdOrCtrl+N',
+						click: () => void newWindow(),
+					},
+					{ role: 'close' },
+				],
+			},
 			...(updates
 				? [
 						{
@@ -259,12 +428,14 @@ function updateMenu() {
 					{
 						label: 'Back',
 						accelerator: 'CmdOrCtrl+[',
-						click: () => navigation?.command('back'),
+						click: () =>
+							windows.get(currentWindow())?.navigation.command('back'),
 					},
 					{
 						label: 'Forward',
 						accelerator: 'CmdOrCtrl+]',
-						click: () => navigation?.command('forward'),
+						click: () =>
+							windows.get(currentWindow())?.navigation.command('forward'),
 					},
 					{
 						label: 'Home',
@@ -274,36 +445,118 @@ function updateMenu() {
 					{
 						label: 'Copy page address',
 						accelerator: 'CmdOrCtrl+Shift+C',
-						click: () => navigation?.command('copy-address'),
+						click: () =>
+							windows.get(currentWindow())?.navigation.command('copy-address'),
 					},
 				],
 			},
+			...(state.ecid
+				? [
+						{
+							label: 'Machine',
+							submenu: [
+								{
+									label: 'This machine',
+									click: () => void showApp(machinePath()),
+								},
+								{ type: 'separator' },
+								{
+									label: 'Pause routing in Kody…',
+									click: () => void machineMenu('pause'),
+								},
+								{
+									label: 'Resume routing in Kody',
+									click: () => void machineMenu('resume'),
+								},
+								{ type: 'separator' },
+								{
+									label: 'Start runner',
+									click: () => void machineRunner('start'),
+								},
+								{
+									label: 'Stop runner',
+									click: () => void machineRunner('stop'),
+								},
+								{
+									label: 'Restart runner',
+									click: () => void machineRunner('restart'),
+								},
+								{
+									label: 'Update runner now',
+									click: () => void machineMenu('update'),
+								},
+								{
+									label: 'Show runner log',
+									click: () => void machineMenu('logs'),
+								},
+							],
+						},
+					]
+				: []),
 			{ role: 'viewMenu' },
 			{ role: 'windowMenu' },
 		]),
 	)
 }
-async function showApp(path) {
-	const creating = !window || window.isDestroyed()
-	if (creating) {
-		windowOpening ??= createWindow()
+async function showApp(path, window = currentWindow()) {
+	if (quitting) return
+	if (!window || window.isDestroyed()) {
+		const creating = !windowOpening
+		if (creating) windowOpening = createWindow(path)
 		try {
-			await windowOpening
+			window = await windowOpening
 		} finally {
 			windowOpening = null
 		}
+		// createWindow owns the initial navigation for all overlapping launches.
+		if (creating) return window
 	}
-	if (quitting || !window || window.isDestroyed()) return
+	if (!quitting && window && !window.isDestroyed()) showWindow(window, path)
+	return window
+}
+function quitWithoutWindows() {
+	if (
+		process.platform !== 'darwin' &&
+		!presence.background &&
+		!windows.size &&
+		!pendingWindows
+	)
+		app.quit()
+}
+async function newWindow(path) {
+	if (quitting) return
+	pendingWindows++
+	try {
+		return await createWindow(path)
+	} catch (error) {
+		if (!quitting)
+			dialog.showErrorBox('Could not open Kody window', error.message)
+	} finally {
+		pendingWindows--
+		if (!quitting) quitWithoutWindows()
+	}
+}
+function showWindow(window, path) {
+	const record = windows.get(window)
+	if (!record || quitting) return
+	if (window.isMinimized()) window.restore()
 	window.show()
 	window.focus()
-	if (!creating && !path) return
-	const shownWindow = window
-	void shownWindow
-		.loadURL(`${appOrigin}${path ?? '/account'}`)
-		.catch((error) => {
-			if (!quitting && !shownWindow.isDestroyed())
-				dialog.showErrorBox('Could not load Kody', error.message)
-		})
+	const crashed = window.webContents.isCrashed()
+	if (!path && !crashed && !record.failedLoadUrl) return
+	const url = path
+		? `${appOrigin}${path}`
+		: record.failedLoadUrl ||
+			window.webContents.getURL() ||
+			`${appOrigin}/account`
+	record.failedLoadUrl = undefined
+	void window.loadURL(url).catch((error) => {
+		// A newer navigation can cancel this load without failing the page.
+		if (!quitting && !window.isDestroyed() && error.code !== 'ERR_ABORTED') {
+			record.failedLoadUrl = url
+			dialog.showErrorBox('Could not load Kody', error.message)
+		}
+	})
 }
 async function supportsBrowserLogin() {
 	try {
@@ -320,7 +573,7 @@ async function supportsBrowserLogin() {
 		return false
 	}
 }
-async function createWindow() {
+async function createWindow(path = '/account') {
 	const [integratedTitlebar, browserAuthentication] = await Promise.all([
 		process.platform === 'darwin'
 			? supportsIntegratedTitlebar(appOrigin, net.fetch)
@@ -328,7 +581,7 @@ async function createWindow() {
 		supportsBrowserLogin(),
 	])
 	if (quitting) return
-	window = new BrowserWindow({
+	const window = new BrowserWindow({
 		width: 1280,
 		height: 860,
 		minWidth: 720,
@@ -352,11 +605,18 @@ async function createWindow() {
 			],
 		},
 	})
-	navigation = attachWindowNavigation(window, {
+	const navigation = attachWindowNavigation(window, {
 		appOrigin,
 		clipboard,
-		shell,
+		openBrowser: (url) => openInBrowser(url, { app, shell }),
 		integratedTitlebar,
+	})
+	presence.applyWindow(window)
+	const record = { navigation, failedLoadUrl: undefined }
+	windows.set(window, record)
+	lastWindow = window
+	window.on('focus', () => {
+		lastWindow = window
 	})
 	window.webContents.session.setPermissionRequestHandler(
 		(contents, permission, callback, details) => {
@@ -401,14 +661,44 @@ async function createWindow() {
 	})
 	window.webContents.setWindowOpenHandler(({ url }) => {
 		if (isCurrentAppUrl(url))
-			showApp(new URL(url).pathname + new URL(url).search + new URL(url).hash)
+			void newWindow(
+				new URL(url).pathname + new URL(url).search + new URL(url).hash,
+			)
 		else external(url)
 		return { action: 'deny' }
 	})
-	window.on('closed', () => {
-		window = null
-		navigation = null
+	window.on('close', (event) => {
+		if (
+			(process.platform === 'darwin' || presence.background) &&
+			!quitting &&
+			windows.size === 1
+		) {
+			event.preventDefault()
+			window.hide()
+		}
 	})
+	window.webContents.on(
+		'did-fail-load',
+		(_event, errorCode, _description, url, isMainFrame) => {
+			// Chromium uses -3 (ERR_ABORTED) for canceled navigation.
+			if (
+				isMainFrame &&
+				errorCode !== -3 &&
+				(isCurrentAppUrl(url) || isNavigationUrl(url))
+			)
+				record.failedLoadUrl = url
+		},
+	)
+	window.webContents.on('did-finish-load', () => {
+		record.failedLoadUrl = undefined
+	})
+	window.on('closed', () => {
+		windows.delete(window)
+		if (lastWindow === window) lastWindow = Array.from(windows.keys()).at(-1)
+		if (loginWindow === window) loginAttempt?.cancel()
+	})
+	showWindow(window, path)
+	return window
 }
 runner.on('change', () => {
 	if (app.isReady() && !quitting) updateMenu()
@@ -420,15 +710,30 @@ runner.on('shutdown-error', () => {
 	execution.error = 'Could not stop the runner. Quit Kody and try again.'
 })
 
+// A link opened while a startup window is still loading retargets it; later
+// links get their own window so the current page keeps unfinished input.
+function openAppLink(path) {
+	if (quitting) return
+	if (windowOpening || !windows.size) void showApp(path)
+	else void newWindow(path)
+}
+const appLinks = createAppLinkRouter({
+	origin: productionOrigin,
+	open: openAppLink,
+})
+
 if (!app.requestSingleInstanceLock()) app.quit()
 else {
+	app.on('will-continue-activity', (event, type) => {
+		if (type === browsingWebActivity) event.preventDefault()
+	})
+	app.on('continue-activity', (event, type, _userInfo, details) => {
+		if (type === browsingWebActivity && appLinks.receive(details?.webpageURL))
+			event.preventDefault()
+	})
 	app.on('second-instance', () => showApp())
-	app.on('activate', () => {
-		if (!window) showApp()
-	})
-	app.on('window-all-closed', () => {
-		if (process.platform !== 'darwin') app.quit()
-	})
+	app.on('activate', () => showApp())
+	app.on('window-all-closed', quitWithoutWindows)
 	app.on('before-quit', (event) => {
 		loginAttempt?.cancel()
 		if (quitting) return
@@ -454,8 +759,12 @@ else {
 				changed: updateMenu,
 			})
 			loadState()
+			presence.start()
 			updateMenu()
-			await showApp()
+			const [launchLink, ...moreLinks] = appLinks.start()
+			await showApp(launchLink)
+			for (const path of moreLinks) void newWindow(path)
+			await presence.onboard()
 			if (!quitting) void execution.request('state').catch(() => {})
 		})
 		.catch((error) => {

@@ -11,7 +11,10 @@ Each cell:
 1. Signs in as the public preview seed user and mints a short-lived CLI token
    with `mintCliToken` (`tools/preview-rehearsal/seed.ts`).
 2. Registers a throwaway context (`e2e-<os>-<arch>-<run>`) with a passphrase key
-   (`KODY_CONTEXT_KEY_PASSPHRASE`) in a temp home.
+   (`KODY_CONTEXT_KEY_PASSPHRASE`) in a temp home. A first-try `fetch failed`
+   (or other connect-phase miss) against the preview API retries
+   `context register` once. Other CLI hops (`context policy`,
+   `context commands on`, `execute`) are not retried.
 3. Allows a temp folder in the local policy and the server grant (rw), and turns
    host commands on locally (`kody context commands on`).
 4. Starts `kody daemon` as an IPC child (`daemon-host.cjs`, the same stop path

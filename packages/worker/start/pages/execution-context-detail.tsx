@@ -15,6 +15,7 @@ import {
 	optIntoExecutionContext,
 	optOutOfExecutionContext,
 	removeExecutionContextShare,
+	runExecutionContextDaemonAction,
 	setExecutionChain,
 	shareExecutionContext,
 	turnOffExecutionContextCommands,
@@ -46,6 +47,7 @@ import {
 	grantSummaryDetail,
 	insertBeforeCloud,
 	loginPredatesPermissionsMessage,
+	accessBitsLabel,
 	ordinal,
 	runFallbackLabel,
 	runOutcomeLabels,
@@ -240,7 +242,7 @@ export function ExecutionContextDetail(props: {
 				{context.sharing ? (
 					<>
 						<dt>Shared with</dt>
-						<dd>{sharingSummary(context.sharing, context.ownerOrg.slug)}</dd>
+						<dd>{sharingSummary(context.sharing, orgSlug)}</dd>
 					</>
 				) : null}
 			</dl>
@@ -255,6 +257,7 @@ export function ExecutionContextDetail(props: {
 				</AccountManagementMessage>
 			) : null}
 			<NoticesPanel orgSlug={orgSlug} context={context} onChanged={refresh} />
+			<DaemonPanel orgSlug={orgSlug} context={context} onChanged={refresh} />
 			<CommandsPanel orgSlug={orgSlug} context={context} onChanged={refresh} />
 			<OptInControls {...props} onChanged={refresh} />
 			{context.sharing ? <SharingPanel {...props} onChanged={refresh} /> : null}
@@ -472,6 +475,292 @@ function NoticesPanel(props: {
 				</details>
 			) : null}
 			{error ? <p role="alert">{error}</p> : null}
+		</section>
+	)
+}
+
+type DaemonAction = 'pause' | 'resume' | 'restart' | 'update' | 'logs'
+
+const daemonActionBusyLabel: Record<DaemonAction, string> = {
+	pause: 'Pausing…',
+	resume: 'Resuming…',
+	restart: 'Restarting…',
+	update: 'Checking…',
+	logs: 'Loading…',
+}
+
+function DaemonPanel(props: {
+	orgSlug: string
+	context: ExecutionContextListItem
+	onChanged: () => void
+}) {
+	const { context } = props
+	const [busy, setBusy] = useState<DaemonAction | null>(null)
+	const [error, setError] = useState<string | null>(null)
+	const [notice, setNotice] = useState<string | null>(null)
+	const [confirmingPause, setConfirmingPause] = useState(false)
+	const [reason, setReason] = useState('')
+	const [logLines, setLogLines] = useState<Array<string> | null>(null)
+	if (context.status === 'revoked') return null
+	const canPause = context.canPause === true
+	const canResume = context.canResume === true
+	const canControl = context.canControlDaemon === true
+	if (!canPause && !canResume && !canControl && !context.paused) return null
+	const paused = context.paused ?? null
+	const online = context.status === 'online'
+	const serviceManaged = Boolean(context.capabilities?.service)
+
+	async function run(action: DaemonAction) {
+		setBusy(action)
+		setError(null)
+		setNotice(null)
+		try {
+			const result = (await runExecutionContextDaemonAction({
+				data: {
+					orgSlug: props.orgSlug,
+					contextId: context.id,
+					action,
+					...(action === 'pause' && reason.trim()
+						? { reason: reason.trim() }
+						: {}),
+				},
+			})) as
+				| { ok: true; message: string | null; lines: Array<string> | null }
+				| Failure
+			if (!result.ok) {
+				setError(failureText(result))
+				return
+			}
+			if (action === 'logs') {
+				setLogLines(result.lines ?? [])
+				return
+			}
+			setConfirmingPause(false)
+			setReason('')
+			setNotice(
+				action === 'restart'
+					? `${context.name} is restarting. It reconnects in a few seconds.`
+					: action === 'update'
+						? (result.message ?? 'Update check sent.')
+						: null,
+			)
+			props.onChanged()
+		} catch {
+			setError(unexpectedErrorText)
+		} finally {
+			setBusy(null)
+		}
+	}
+
+	const rowCss = css({
+		display: 'flex',
+		flexWrap: 'wrap',
+		gap: spacing.sm,
+		alignItems: 'center',
+	})
+	return (
+		<section
+			css={[
+				sectionCss,
+				{
+					border: `1px solid ${paused ? colors.warning : colors.border}`,
+					borderRadius: radius.lg,
+					padding: spacing.md,
+				},
+			]}
+			aria-labelledby="context-daemon-title"
+			data-testid="context-daemon"
+		>
+			<div css={[rowCss, { justifyContent: 'space-between' }]}>
+				<h2 id="context-daemon-title" css={{ margin: 0, fontSize: '1rem' }}>
+					Daemon
+				</h2>
+				<span
+					data-testid="context-daemon-state"
+					css={{
+						display: 'inline-flex',
+						alignItems: 'center',
+						gap: spacing.xs,
+						fontWeight: 600,
+						color: paused || !online ? colors.textMuted : colors.text,
+					}}
+				>
+					<span
+						aria-hidden
+						css={{
+							width: 8,
+							height: 8,
+							borderRadius: 999,
+							background: paused
+								? colors.warning
+								: online
+									? colors.primary
+									: colors.borderSubtle,
+						}}
+					/>
+					{paused ? 'Paused' : online ? 'Running' : 'Offline'}
+				</span>
+			</div>
+			{paused ? (
+				<p css={mutedCss} data-testid="context-daemon-paused">
+					Paused {formatTimestamp(paused.at)}
+					{paused.by ? ` by @${paused.by}` : ''}
+					{paused.reason ? `: ${paused.reason}` : ''}. Chains skip{' '}
+					{context.name}, queued runs fail and host commands are refused until
+					it is resumed. The daemon stays connected.
+					{!canResume && canPause
+						? ` Only ${context.isOperator ? 'you' : `@${context.operator.handle}`} or someone with Manage on it can resume it.`
+						: ''}
+				</p>
+			) : (
+				<p css={mutedCss}>
+					{online
+						? `${context.name} takes runs from chains it is in.`
+						: `${context.name} is offline, so chains skip it. Start it on the machine with `}
+					{online ? null : <code>kody daemon start</code>}
+					{online ? null : '.'} Pause it to stop routing runs to it from
+					anywhere, even while it is offline.
+				</p>
+			)}
+			{error ? (
+				<AccountManagementMessage tone="error">
+					{error}
+				</AccountManagementMessage>
+			) : null}
+			{notice ? (
+				<AccountManagementMessage>{notice}</AccountManagementMessage>
+			) : null}
+			{confirmingPause ? (
+				<div css={rowCss}>
+					<label css={{ display: 'grid', gap: spacing.xs, flex: '1 1 16rem' }}>
+						<span>Reason (optional, shown on the context)</span>
+						<input
+							css={[accountInputCss, target]}
+							value={reason}
+							maxLength={200}
+							onChange={(event) => setReason(event.target.value)}
+							data-testid="context-daemon-pause-reason"
+						/>
+					</label>
+					<button
+						type="button"
+						css={[getDangerPillCss({ size: 'sm' }), target]}
+						disabled={busy !== null}
+						onClick={() => void run('pause')}
+						data-testid="context-daemon-pause-confirm"
+					>
+						{busy === 'pause' ? daemonActionBusyLabel.pause : 'Pause'}
+					</button>
+					<button
+						type="button"
+						css={[getGhostButtonCss({ size: 'sm' }), target]}
+						disabled={busy !== null}
+						onClick={() => setConfirmingPause(false)}
+					>
+						Cancel
+					</button>
+				</div>
+			) : (
+				<div css={rowCss}>
+					{paused && canResume ? (
+						<button
+							type="button"
+							css={[getPillButtonCss({ size: 'sm' }), target]}
+							disabled={busy !== null}
+							onClick={() => void run('resume')}
+							data-testid="context-daemon-resume"
+						>
+							{busy === 'resume' ? daemonActionBusyLabel.resume : 'Resume'}
+						</button>
+					) : null}
+					{!paused && canPause ? (
+						<button
+							type="button"
+							css={[getGhostButtonCss({ size: 'sm' }), target]}
+							disabled={busy !== null}
+							onClick={() => setConfirmingPause(true)}
+							data-testid="context-daemon-pause"
+						>
+							Pause
+						</button>
+					) : null}
+					{canControl ? (
+						<>
+							<button
+								type="button"
+								css={[getGhostButtonCss({ size: 'sm' }), target]}
+								disabled={busy !== null || !online || !serviceManaged}
+								title={
+									!online
+										? 'The daemon is offline'
+										: !serviceManaged
+											? 'Runs in a terminal: restart it there, or install it as a service'
+											: undefined
+								}
+								onClick={() => void run('restart')}
+								data-testid="context-daemon-restart"
+							>
+								{busy === 'restart' ? daemonActionBusyLabel.restart : 'Restart'}
+							</button>
+							<button
+								type="button"
+								css={[getGhostButtonCss({ size: 'sm' }), target]}
+								disabled={busy !== null || !online}
+								title={!online ? 'The daemon is offline' : undefined}
+								onClick={() => void run('update')}
+								data-testid="context-daemon-update"
+							>
+								{busy === 'update'
+									? daemonActionBusyLabel.update
+									: 'Update now'}
+							</button>
+						</>
+					) : null}
+				</div>
+			)}
+			{context.canReadDaemonLogs ? (
+				<div css={{ display: 'grid', gap: spacing.sm }}>
+					<div css={rowCss}>
+						<button
+							type="button"
+							css={[getGhostButtonCss({ size: 'sm' }), target]}
+							disabled={busy !== null || !online}
+							title={!online ? 'The daemon is offline' : undefined}
+							onClick={() => void run('logs')}
+							data-testid="context-daemon-logs"
+						>
+							{busy === 'logs'
+								? daemonActionBusyLabel.logs
+								: logLines
+									? 'Refresh log'
+									: 'View recent log'}
+						</button>
+						<span css={mutedCss}>
+							Only you see this. Or run{' '}
+							<code>kody daemon logs --context {context.name}</code>
+						</span>
+					</div>
+					{logLines ? (
+						<pre
+							data-testid="context-daemon-log"
+							css={{
+								margin: 0,
+								maxHeight: '16rem',
+								overflow: 'auto',
+								padding: spacing.sm,
+								borderRadius: radius.md,
+								border: `1px solid ${colors.border}`,
+								background: colors.surface,
+								fontSize: '0.75rem',
+								whiteSpace: 'pre-wrap',
+								wordBreak: 'break-word',
+							}}
+						>
+							{logLines.length ? logLines.join('\n') : 'No log lines yet.'}
+						</pre>
+					) : null}
+				</div>
+			) : null}
 		</section>
 	)
 }
@@ -879,6 +1168,76 @@ function OptInControls(props: {
 	)
 }
 
+function AccessRosterPanel(props: {
+	roster: NonNullable<
+		NonNullable<ExecutionContextListItem['sharing']>['accessRoster']
+	>
+}) {
+	const { roster } = props
+	return (
+		<div
+			data-testid="context-access-roster"
+			css={{ display: 'grid', gap: spacing.xs }}
+		>
+			<p css={{ margin: 0, fontWeight: 600 }}>
+				Who has access in @{roster.orgSlug}
+			</p>
+			<ul
+				css={{
+					margin: 0,
+					paddingLeft: '1.2rem',
+					display: 'grid',
+					gap: spacing.xs,
+				}}
+			>
+				<li>
+					Machine operator @{roster.operator.handle} —{' '}
+					{accessBitsLabel(roster.operator)}
+				</li>
+				{roster.people.map((person) => (
+					<li key={`person:${person.handle}:${person.source}`}>
+						@{person.handle}
+						{person.outside ? ' (outside collaborator)' : ''}
+						{person.source === 'all_members'
+							? ` — everyone in @${roster.orgSlug}`
+							: ''}{' '}
+						— {accessBitsLabel(person)}
+					</li>
+				))}
+				{roster.teams.map((team) => (
+					<li key={`team:${team.grantId}`}>
+						Team {team.name ?? team.slug} — {accessBitsLabel(team)}
+					</li>
+				))}
+			</ul>
+			{roster.noAccess.length > 0 ? (
+				<>
+					<p css={{ margin: 0, fontWeight: 600 }}>
+						Members without access in @{roster.orgSlug}
+					</p>
+					<ul
+						css={{
+							margin: 0,
+							paddingLeft: '1.2rem',
+							display: 'grid',
+							gap: spacing.xs,
+						}}
+					>
+						{roster.noAccess.map((member) => (
+							<li key={member.handle}>@{member.handle}</li>
+						))}
+					</ul>
+				</>
+			) : (
+				<p css={mutedCss}>
+					Every listed member of @{roster.orgSlug} has access, or this org has
+					no other members.
+				</p>
+			)}
+		</div>
+	)
+}
+
 function SharingPanel(props: {
 	orgSlug: string
 	context: ExecutionContextListItem
@@ -982,7 +1341,10 @@ function SharingPanel(props: {
 			<h3 id="context-sharing-title" css={{ margin: 0 }}>
 				Sharing
 			</h3>
-			<p css={mutedCss}>{sharingSummary(sharing, context.ownerOrg.slug)}</p>
+			<p css={mutedCss}>{sharingSummary(sharing, props.orgSlug)}</p>
+			{sharing.accessRoster ? (
+				<AccessRosterPanel roster={sharing.accessRoster} />
+			) : null}
 			{error ? (
 				<AccountManagementMessage tone="error">
 					{error}
@@ -990,11 +1352,11 @@ function SharingPanel(props: {
 			) : null}
 			{sharing.allMembers ? (
 				<p css={{ margin: 0 }}>
-					Everyone in @{context.ownerOrg.slug}, {presetLabels.use}{' '}
+					Everyone in @{props.orgSlug}, {presetLabels.use}{' '}
 					{!canAdd ? null : confirmRemove === allMembersKey ? (
 						<>
 							<span css={mutedCss}>
-								{stopSharingConfirm(`everyone in @${context.ownerOrg.slug}`)}
+								{stopSharingConfirm(`everyone in @${props.orgSlug}`)}
 							</span>{' '}
 							<button
 								type="button"
@@ -1103,9 +1465,7 @@ function SharingPanel(props: {
 							>
 								<option value="user">A person</option>
 								<option value="team">A team</option>
-								<option value="org">
-									Everyone in @{context.ownerOrg.slug}
-								</option>
+								<option value="org">Everyone in @{props.orgSlug}</option>
 							</select>
 						</label>
 						{kind === 'org' ? null : (

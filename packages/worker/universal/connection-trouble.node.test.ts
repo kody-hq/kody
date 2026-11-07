@@ -19,6 +19,33 @@ test('connection trouble copy names the actor and keeps vendor items off the you
 		reconnectable: true,
 		href: '/connect/oauth?provider=google&loginHint=kent%40gmail.com',
 	})
+	expect(rejected.why).toContain('Google rejected the saved sign-in')
+	expect(rejected.why).toContain('not a Kody plan limit')
+	expect(rejected.why).toContain('Reconnect Google under the workspace')
+
+	const customNamed = integrationAuthFailureCopy({
+		name: 'solo-app',
+		provider: 'google',
+		reason: 'provider_rejected',
+		providerError: 'invalid_grant',
+	})
+	expect(customNamed.title).toContain('Solo App')
+	expect(customNamed.why).toContain('Google rejected the saved sign-in')
+	expect(customNamed.href).toBe('/connect/oauth?provider=solo-app')
+
+	const rateLimited = integrationAuthFailureCopy({
+		name: 'google',
+		reason: 'provider_rejected',
+		httpStatus: 429,
+	})
+	expect(rateLimited).toMatchObject({
+		who: 'the-service',
+		reconnectable: false,
+		doLabel: 'Open integration',
+	})
+	expect(rateLimited.why).toContain('rate-limited token refresh (HTTP 429)')
+	expect(rateLimited.why).toContain('not a Kody plan limit')
+	expect(rateLimited.why).not.toContain('Reconnect Google')
 
 	const outage = integrationAuthFailureCopy({
 		name: 'google',
@@ -31,6 +58,8 @@ test('connection trouble copy names the actor and keeps vendor items off the you
 		reconnectable: false,
 		href: '/account/integrations/google',
 	})
+	expect(outage.why).toContain("Google's token service failed")
+	expect(outage.why).toContain('not a Kody plan limit')
 
 	const platformSecret = integrationAuthFailureCopy({
 		name: 'google',

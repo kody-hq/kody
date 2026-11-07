@@ -148,32 +148,35 @@ deleted (stable user id, username, email, the create source, the signup
 `created_at` on both events, the delete timestamp, and first-touch marketing
 attribution fields when present). Referral rows are account data (export and
 deletion) and are not included on those lifecycle events. Those lifecycle events
-omit passwords, roles, plan, secrets, and unrelated account content.
-Admin-configured notification packages may also receive a metadata-only
-`user.email_verification.failed` event when signup/verify mail first hits a
-terminal delivery failure (stable user id, username, email, status, `class`
-(`sender_block` / `other` / `null`), an admin user URL, and `occurred_at`). That
-event omits SMTP transcripts, tokens, and unrelated account content.
-Admin-configured notification packages may also receive a metadata-only
-`user.email_verification.stalled` event when signup/verify mail stays `accepted`
-for an hour with no Cloudflare lifecycle event (stable user id, username, email,
-`accepted_at`, stall threshold, an admin user URL, and `occurred_at`). That
-event omits SMTP transcripts, tokens, and unrelated account content.
-Admin-configured notification packages may also receive a metadata-only
-`user.email_outbound.paused` event when outbound sending is paused after a spam
-complaint or repeated bounces (stable user id, username, email, reason, bounce
-threshold when the reason is `bounced`, an admin user URL, and `occurred_at`).
-That event omits SMTP transcripts, message bodies, and unrelated account
-content. Admin-configured notification packages may also receive
-`email.system-message.sent` when operator correspondence leaves a reserved
-system sender (`kody@`, `support@`, and the other system locals). That event
-includes the recipients, subject, and sent text/HTML because outbound system
-mail is not stored on the inbound system-email graph; it is admin-only and omits
+omit passwords, roles, plan, secrets, and unrelated account content. When a
+guest account is claimed they may also receive a `user.guest_claimed` event with
+the resulting account and guest identity, the claim method, the guest
+timestamps, and how many items of each kind the guest had (counts only, never
+their content, claim codes, or secret values). Admin-configured notification
+packages may also receive a metadata-only `user.email_verification.failed` event
+when signup/verify mail first hits a terminal delivery failure (stable user id,
+username, email, status, `class` (`sender_block` / `other` / `null`), an admin
+user URL, and `occurred_at`). That event omits SMTP transcripts, tokens, and
 unrelated account content. Admin-configured notification packages may also
-receive metadata-only `auth.denial.burst` or `email.delivery.burst` events when
-hourly MCP auth denials or shared-domain bounce/complaint counts cross their
-thresholds (count, threshold, window, insights URL, and `observed_at`). Those
-events omit user identities, tokens, recipients, and message content.
+receive a metadata-only `user.email_verification.stalled` event when
+signup/verify mail stays `accepted` for an hour with no Cloudflare lifecycle
+event (stable user id, username, email, `accepted_at`, stall threshold, an admin
+user URL, and `occurred_at`). That event omits SMTP transcripts, tokens, and
+unrelated account content. Admin-configured notification packages may also
+receive a metadata-only `user.email_outbound.paused` event when outbound sending
+is paused after a spam complaint or repeated bounces (stable user id, username,
+email, reason, bounce threshold when the reason is `bounced`, an admin user URL,
+and `occurred_at`). That event omits SMTP transcripts, message bodies, and
+unrelated account content. Admin-configured notification packages may also
+receive `email.system-message.sent` when operator correspondence leaves a
+reserved system sender (`kody@`, `support@`, and the other system locals). That
+event includes the recipients, subject, and sent text/HTML because outbound
+system mail is not stored on the inbound system-email graph; it is admin-only
+and omits unrelated account content. Admin-configured notification packages may
+also receive metadata-only `auth.denial.burst` or `email.delivery.burst` events
+when hourly MCP auth denials or shared-domain bounce/complaint counts cross
+their thresholds (count, threshold, window, insights URL, and `observed_at`).
+Those events omit user identities, tokens, recipients, and message content.
 Admin-configured notification packages may also receive a metadata-only
 `fleet.entitlement.crossed` event when a swept account first crosses 80% or 100%
 of a plan-limit resource, when a non-admin account first exceeds the monthly
@@ -302,7 +305,7 @@ cleanup periods:
 - Durable Object duration attribution: until account deletion
 - Stripe webhook event records: 30 days
 - Non-current published bundle artifacts: at least 30 days, then eligible for
-  removal when no active source or repo session needs them
+  removal when no active source, catalog listing, or repo session needs them
 - Unverified person accounts: seven days after signup when the email is still
   unverified and no sign-in provider is linked
 

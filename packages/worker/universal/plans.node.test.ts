@@ -13,7 +13,6 @@ import {
 	resolvePlanLimit,
 	resolvePlanLimits,
 	resolveWeeklyPlanLimit,
-	unlimitedLimit,
 	type UserEntitlement,
 } from './plans.ts'
 
@@ -333,7 +332,7 @@ test('limit overrides only raise caps, skip expired entries, and never add a mis
 	): UserEntitlement => ({ ...entitlement, limitOverrides })
 
 	expect(resolveEntitlementLimit(pro, 'outbound_fetches_per_day', now)).toBe(
-		resolvePlanLimit('pro', 'outbound_fetches_per_day', 'public', 'funded', 1),
+		750_000,
 	)
 	const raised = withOverrides(pro, [
 		{ key: 'outbound_fetches_per_day', value: 1_000_000, expiresAt: null },
@@ -356,19 +355,7 @@ test('limit overrides only raise caps, skip expired entries, and never add a mis
 		resolveEntitlementLimit(raised, 'job_runs_per_day', now),
 		resolveEntitlementLimit(raised, 'automation_invocations_per_day', now),
 		resolveEntitlementLimit(raised, 'email_sends_per_day', now),
-	]).toEqual([
-		1_000_000,
-		unlimitedLimit,
-		resolvePlanLimit('pro', 'job_runs_per_day', 'public', 'funded', 1),
-		resolvePlanLimit(
-			'pro',
-			'automation_invocations_per_day',
-			'public',
-			'funded',
-			1,
-		),
-		9_000,
-	])
+	]).toEqual([1_000_000, Number.MAX_SAFE_INTEGER, 40_000, 200_000, 9_000])
 
 	// Legacy ladders have no weekly windows; an override does not add one.
 	const legacyLimits = resolvePlanLimits('standard', 'legacy', 'none')
@@ -408,14 +395,14 @@ test('ceiling overrides cap plan limits instead of raising them', () => {
 		now,
 	)
 	expect(capped.maxEmailSendsPerDay).toBe(0)
-	expect(capped.maxJobRunsPerDay).toBe(limits.maxJobRunsPerDay)
+	expect(capped.maxJobRunsPerDay).toBe(10_000)
 	expect(
 		applyLimitOverrides(
 			limits,
 			[{ key: 'email_sends_per_day', value: 0, expiresAt: null }],
 			now,
 		).maxEmailSendsPerDay,
-	).toBe(limits.maxEmailSendsPerDay)
+	).toBe(200)
 })
 
 test('limit override keys parse strictly and map to overridable resources', () => {

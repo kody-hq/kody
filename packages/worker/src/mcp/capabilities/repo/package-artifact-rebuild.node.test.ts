@@ -153,7 +153,6 @@ function rebuild(
 		env?: Env
 		uploadedBuild?: {
 			buildId: string
-			writablePackageIds: Array<string>
 			communityListed: boolean
 		}
 		publishedCommit?: string
@@ -643,7 +642,6 @@ test('optional targets skip listing and only rebuild the supplied set', async ()
 
 const uploadedBuild = {
 	buildId: 'pb_0123456789abcdef01234567',
-	writablePackageIds: [],
 	communityListed: false,
 }
 

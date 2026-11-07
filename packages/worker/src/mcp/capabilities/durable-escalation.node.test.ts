@@ -269,6 +269,12 @@ test('runWithDurableEscalation dispatches once on budget exhaustion and reuses a
 		durableCode:
 			'import { kody } from "kody:runtime"; export default async function main(p) { return await kody.packagePublishExternalPush(p) }',
 		durableParams: { package_id: 'pkg-1' },
+		packageContext: {
+			packageId: 'pkg-1',
+			kodyId: 'pkg-one',
+			sourceId: 'src-1',
+		},
+		enqueuedCommit: 'commit-new',
 		run,
 	})
 	expect(first).toMatchObject({
@@ -279,6 +285,12 @@ test('runWithDurableEscalation dispatches once on budget exhaustion and reuses a
 	expect(mockModule.createDynamicCallableWorkflow).toHaveBeenCalledWith(
 		expect.objectContaining({
 			userId: ownerIdFromStored('user-1'),
+			packageContext: {
+				packageId: 'pkg-1',
+				kodyId: 'pkg-one',
+				sourceId: 'src-1',
+			},
+			enqueuedCommit: 'commit-new',
 			body: expect.objectContaining({
 				idempotencyKey: expectedKey,
 			}),

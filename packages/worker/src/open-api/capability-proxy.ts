@@ -229,6 +229,34 @@ export function createCapabilityProxyCredentialClientTools(
 	}
 }
 
+/**
+ * Package-local workerd sends its signed package binding as the second
+ * argument of `kody.mcp.<server>.<tool>(args, { packageBinding })`. Verify it
+ * (and `package:execute` on the package it names) and act as that package,
+ * claimed. No binding means no package, as before.
+ */
+async function authorizeLocalMcpPackageBinding(
+	ctx: ApiInvocationContext,
+	options: unknown,
+): Promise<{ kind: 'claimed'; packageId: string } | null> {
+	if (options === undefined || options === null) return null
+	if (typeof options !== 'object' || Array.isArray(options)) {
+		throw invalidRequest(
+			'kody.mcp calls take (args, { packageBinding }) at most; the second argument must be an object.',
+		)
+	}
+	const { packageBinding } = options as { packageBinding?: unknown }
+	if (packageBinding === undefined) return null
+	const packageId = await authorizeLocalExecutePackageBinding({
+		db: ctx.env.APP_DB,
+		env: ctx.env,
+		request: ctx.callerContext.request,
+		orgUserId: ownerIdFromCaller(ctx.callerContext),
+		packageBinding,
+	})
+	return { kind: 'claimed', packageId }
+}
+
 async function callKodyPath(input: {
 	ctx: ApiInvocationContext
 	path: ReadonlyArray<string>
@@ -264,10 +292,17 @@ async function callKodyPath(input: {
 		typeof name === 'string' && name.startsWith('credentialClient')
 			? createCapabilityProxyCredentialClientTools(ctx, callMap)
 			: undefined
+	const localPackageStamp =
+		path[1] === 'mcp'
+			? await invokeCapability(() =>
+					authorizeLocalMcpPackageBinding(ctx, args[1]),
+				)
+			: null
 	const { tools, mcpServers } = await buildKodyToolContext(
 		ctx.env,
 		ctx.callerContext,
 		{
+			...(localPackageStamp ? { localPackageStamp } : {}),
 			trackSecretInputValue: (value) => redactor.track(value),
 			additionalTools: packageHostTools,
 			workflowTools: createWorkflowTools({

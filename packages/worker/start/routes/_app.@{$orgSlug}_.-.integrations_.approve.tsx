@@ -9,7 +9,7 @@ export const Route = createFileRoute(
 )({
 	staticData: {
 		workspaceSwitch: { section: 'integrations', suffix: ['approve'] },
-		navigation: { rail: 'workspace', item: 'credentials' },
+		navigation: { rail: 'workspace', item: 'integrations' },
 		orgScope: { section: 'integrations' },
 	},
 	validateSearch: textSearch,

@@ -237,26 +237,26 @@ you on Discord. See
 The listing detail page puts the install control beside the package name as a
 fork icon. `@kody/*` listings are public community packages from the `@kody` org
 and install like any other listing from another account. The tooltip says “This
-was built by another user. Verify it before using. Click again to confirm fork.”
-The first click arms that control and the second click on the same control
-starts the install and sends `acknowledged: true` on
+was built by another user. Verify it before using.” Pressing **Fork** starts the
+install and sends `acknowledged: true` on
 `POST /community/:listingId/install.json` (the endpoint responds `409` without
-that flag). Clicking elsewhere, navigating, or leaving the control clears the
-armed state. Logged-out visitors get the same icon as a login link and sign in
-on the first click. While the fork runs, that slot shows a spinner whose tooltip
+that flag). Logged-out visitors get the same icon as a login link and sign in on
+the first click. While the fork runs, that slot shows a spinner whose tooltip
 names the current stage.
 
 ### Choosing an org
 
-When you can create packages in more than one org, a **Fork into** picker sits
-beside the install control. It defaults to your personal workspace and lists
-only orgs where you hold `package:create`. The picked org rides in the page URL
-as `?org=<slug>` (personal drops it), so switching it reloads the **Installed**,
-**Forked**, **Fork outdated**, and **Fork ahead** badges and the open-fork link
-for that org. `/community` shows the same picker and keeps `?org=` on catalog
-card, category, and sort links. Each org's **Repositories** page has a **Fork a
-community package** button that opens `/community?org=<slug>` with that org
-preselected.
+With only your personal workspace to fork into, **Fork** forks straight into it.
+When you can create packages in more than one org, **Fork** opens a **Fork
+into** dialog instead: it lists only orgs where you hold `package:create`,
+defaults to your personal workspace, and forks when you confirm (Escape or
+**Cancel** closes it). The org rides in the page URL as `?org=<slug>` (personal
+drops it), so the **Installed**, **Forked**, **Fork outdated**, and **Fork
+ahead** badges and the open-fork link show that org; a fork into another org
+switches the URL to it. `/community` shows a **Fork into** picker and keeps
+`?org=` on catalog card, category, and sort links. Each org's **Repositories**
+page has a **Fork a community package** button that opens
+`/community?org=<slug>` with that org preselected.
 
 The install endpoint takes the same choice as an optional body field:
 

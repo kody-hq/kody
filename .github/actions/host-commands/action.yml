@@ -1,0 +1,33 @@
+name: Host commands
+description: >-
+  ADR 0093 host-command suites through a real daemon, workerd, and host
+  processes. Run after actions/checkout.
+runs:
+  using: composite
+  steps:
+    - name: 🟢 Setup Node
+      uses: actions/setup-node@v6
+      with:
+        node-version: 26
+        cache: npm
+
+    - name: 📥 Install
+      shell: bash
+      run: npm ci
+
+    - name: 🧪 OS keychain entries (macOS security CLI)
+      shell: bash
+      working-directory: packages/cli
+      run: ../../node_modules/.bin/tsx --test test/keyring-entry.test.ts
+
+    - name: 🧪 Host command process manager
+      shell: bash
+      working-directory: packages/cli
+      run: ../../node_modules/.bin/tsx --test test/host-commands.test.ts
+
+    - name: 🧪 Host commands through a real daemon and workerd
+      shell: bash
+      working-directory: packages/cli
+      run: >-
+        ../../node_modules/.bin/tsx --test --test-name-pattern="commands on runs
+        a real" test/execution-context.test.ts

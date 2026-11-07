@@ -220,7 +220,7 @@ async function upgradeFromLegacySchema(
 				initializeSchema: () => void
 			}
 			proto.initializeSchema.call(instance)
-			expect(schemaVersion(state)).toBe(18)
+			expect(schemaVersion(state)).toBe(20)
 			verify(state)
 		},
 	)
@@ -1456,6 +1456,133 @@ test('warm schema v13 workflow projections gain insert-only source revision colu
 	})
 })
 
+test('warm schema v18 publish workflow projections backfill package and commit from the key', async () => {
+	const userId = uniqueUserId('schema-v18-publish-backfill')
+	const at = '2026-11-01T00:00:00.000Z'
+	const commit = 'c'.repeat(40)
+	const json = (packageId: string) =>
+		JSON.stringify({
+			allowForce: false,
+			destructiveOverwriteConfirmed: false,
+			newCommit: commit,
+			ownerUserId: 'owner-synthetic',
+			packageId,
+		})
+	const rows: Array<[string, string, string, string | null]> = [
+		[
+			'wf-v2',
+			'packagePublishExternalPush',
+			`u:packagePublishExternalPush:v2:${json('pkg-v2')}`,
+			null,
+		],
+		[
+			'wf-v1',
+			'packagePublishExternalPush',
+			`u:packagePublishExternalPush:${json('pkg-v1')}`,
+			null,
+		],
+		['wf-released', 'packagePublishExternalPush', 'released:wf-released', null],
+		[
+			'wf-filled',
+			'packagePublishExternalPush',
+			`u:packagePublishExternalPush:v2:${json('pkg-key')}`,
+			'pkg-existing',
+		],
+		[
+			'wf-other',
+			'inline-code',
+			`u:packagePublishExternalPush:v2:${json('pkg-other')}`,
+			null,
+		],
+	]
+	await upgradeFromLegacySchema(
+		userId,
+		18,
+		(state) => {
+			state.storage.sql.exec(`
+				CREATE TABLE workflow_projections (
+					id TEXT PRIMARY KEY NOT NULL,
+					binding_name TEXT NOT NULL,
+					source_type TEXT NOT NULL CHECK (source_type IN ('package', 'inline')),
+					package_id TEXT,
+					kody_id TEXT,
+					source_id TEXT,
+					workflow_name TEXT NOT NULL,
+					export_name TEXT,
+					idempotency_key TEXT NOT NULL,
+					run_at TEXT NOT NULL,
+					plan_date TEXT,
+					status TEXT,
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL,
+					completed_at TEXT,
+					last_error TEXT,
+					enqueued_commit TEXT,
+					source_revision TEXT
+				)
+			`)
+			for (const [id, workflowName, key, packageId] of rows) {
+				state.storage.sql.exec(
+					`INSERT INTO workflow_projections (
+						id, binding_name, source_type, package_id, workflow_name,
+						idempotency_key, run_at, status, created_at, updated_at
+					) VALUES (?, ?, 'inline', ?, ?, ?, ?, 'complete', ?, ?)`,
+					id,
+					dynamicBinding,
+					packageId,
+					workflowName,
+					key,
+					at,
+					at,
+					at,
+				)
+			}
+		},
+		(state) => {
+			const byId = new Map(
+				state.storage.sql
+					.exec<{
+						id: string
+						package_id: string | null
+						enqueued_commit: string | null
+						idempotency_key: string
+						updated_at: string
+					}>(
+						`SELECT id, package_id, enqueued_commit, idempotency_key, updated_at
+						FROM workflow_projections`,
+					)
+					.toArray()
+					.map((row) => [row.id, row]),
+			)
+			expect(byId.get('wf-v2')).toMatchObject({
+				package_id: 'pkg-v2',
+				enqueued_commit: commit,
+				updated_at: at,
+			})
+			expect(byId.get('wf-v1')).toMatchObject({
+				package_id: 'pkg-v1',
+				enqueued_commit: commit,
+			})
+			expect(byId.get('wf-released')).toMatchObject({
+				package_id: null,
+				enqueued_commit: null,
+				idempotency_key: 'released:wf-released',
+			})
+			expect(byId.get('wf-filled')).toMatchObject({
+				package_id: 'pkg-existing',
+				enqueued_commit: null,
+			})
+			expect(byId.get('wf-other')).toMatchObject({
+				package_id: null,
+				enqueued_commit: null,
+			})
+			for (const [id, , key] of rows) {
+				expect(byId.get(id)?.idempotency_key).toBe(key)
+			}
+		},
+	)
+})
+
 test('getAdminInsightsSnapshot returns content-free workflow, job, and activation aggregates', async () => {
 	const userId = uniqueUserId('admin-insights')
 	const reachedAt = '2026-08-01T12:00:00.000Z'
@@ -1556,7 +1683,7 @@ test('getSqlBillingStats and inspectRunLogSqlBilling report listRuns/finishRun c
 	)
 
 	const inspection = await inspectRunLogSqlBilling({ env, userId })
-	expect(inspection.schemaVersion).toBe(18)
+	expect(inspection.schemaVersion).toBe(20)
 	expect(inspection.tableCounts.runs).toBeGreaterThanOrEqual(1)
 	expect(inspection.tableCounts.runLogs).toBeGreaterThanOrEqual(1)
 	expect(inspection.runCount.actual).toBe(inspection.tableCounts.runs)

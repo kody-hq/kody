@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
 import type { PublicProfilePackageItem } from './community-public-types.ts'
+import { workspaceAppsAgentPrompt } from './workspace-apps-agent-prompt.ts'
 import { filterWorkspaceApps } from './workspace-apps.ts'
 
 const app = (
@@ -59,4 +60,14 @@ test('sorts by name, update, or creation without changing the input', () => {
 		).toEqual(expected)
 	}
 	expect(apps.map((item) => item.name)).toEqual(['Notes', 'Calendar'])
+})
+
+test('workspace apps agent prompt names the workspace and a dashboard example', () => {
+	const prompt = workspaceAppsAgentPrompt('@acme')
+	expect(prompt).toContain('@acme')
+	expect(prompt).toContain('/@acme/-/apps')
+	expect(prompt.toLowerCase()).toContain('dashboard')
+	expect(prompt).toContain('guide:package_apps')
+	expect(workspaceAppsAgentPrompt('acme')).toContain('@acme')
+	expect(workspaceAppsAgentPrompt('acme')).not.toContain('@@acme')
 })

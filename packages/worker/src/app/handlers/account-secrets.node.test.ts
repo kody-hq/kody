@@ -434,6 +434,7 @@ vi.mock('#worker/integrations/credentials.ts', async (importOriginal) => {
 vi.mock('#worker/integrations/repo.ts', async (importOriginal) => ({
 	...(await importOriginal<typeof IntegrationsRepo>()),
 	listOauthAppsByTokenEndpoint: async () => [],
+	recordIntegrationGrantedScopes: async () => {},
 }))
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
@@ -1684,6 +1685,12 @@ test('published platform apps exchange with the app row credentials and connect 
 		}),
 	)
 	expect(mockModule.upsertIntegration).not.toHaveBeenCalled()
+	expect(connectResponse.data).toHaveProperty('scopeGrant')
+	expect(
+		fetchMock.mock.calls.some(([url]) =>
+			String(url).includes('/applications/'),
+		),
+	).toBe(false)
 	expect(mockModule.persistIntegrationTokens).toHaveBeenCalledWith(
 		expect.objectContaining({
 			name: 'github-platform',

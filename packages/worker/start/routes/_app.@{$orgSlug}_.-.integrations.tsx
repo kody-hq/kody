@@ -1,8 +1,7 @@
 /** @jsxImportSource @emotion/react */
-import { credentialRedirectFor } from '#universal/credential-redirects.ts'
 import { textSearch } from '../filter-search.ts'
 import { loadPageQuery, createPageQuery, usePageQuery } from '../page-query.ts'
-import { redirect, createFileRoute } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { AccountIntegrationsPage } from '../pages/account-integrations.tsx'
 import { loadIntegrationsPage } from '#start/server/account-collections'
 import { documentHead } from '../components/document-head.ts'
@@ -15,19 +14,10 @@ const pageQuery = createPageQuery(
 export const Route = createFileRoute('/_app/@{$orgSlug}_/-/integrations')({
 	staticData: {
 		workspaceSwitch: { section: 'integrations' },
-		navigation: { rail: 'workspace', item: 'credentials' },
+		navigation: { rail: 'workspace', item: 'integrations' },
 		orgScope: { section: 'integrations' },
 	},
 	beforeLoad: ({ location, params }) => {
-		const href = credentialRedirectFor(
-			new URL(location.href, 'https://kody.local'),
-		)
-		if (href)
-			throw redirect({
-				href,
-				statusCode: 302,
-				headers: { 'Cache-Control': 'private, no-store' },
-			})
 		return {
 			pageQueryInput: {
 				orgSlug: params.orgSlug,

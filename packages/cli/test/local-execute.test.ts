@@ -18,6 +18,7 @@ import { after, before, test } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { runCli } from '../src/cli.js'
 import { egressPolicyFromGrant } from '../src/local-egress.js'
+import { startSelfSignedHttps } from './self-signed-https.js'
 import { reapLeftoverWorkers } from '../src/execution-context/worker-tracker.js'
 import {
 	buildLocalExecuteResult,
@@ -1049,14 +1050,12 @@ test('runLocalExecute stops before starting workerd when the token or flag is re
 				error.message,
 				/rejected the API token \(expired, revoked, or malformed\)/,
 			)
+			assert.match(error.message, /Credential used: --token/)
 			assert.match(error.message, /cliCredentialBootstrap/)
 			assert.match(error.message, /cli_command/)
-			assert.match(error.message, /never ask a human to paste a token/)
 			assert.match(error.message, /kody login/)
-			assert.match(
-				error.message,
-				/unset or replace that rejected value before retrying/,
-			)
+			assert.match(error.message, /unset or replace --token/)
+			assert.doesNotMatch(error.message, /kody_at_/)
 			return true
 		},
 	)
@@ -1386,6 +1385,37 @@ test(
 			assert.equal(await run({ mode: 'public-and-lan' }, lanUrl), 'ok: lan ok')
 		} finally {
 			await new Promise((resolve) => lan.close(resolve))
+		}
+	},
+)
+
+test(
+	'a TLS cert failure names the cert problem and the fix instead of internal error',
+	{ timeout: 180_000 },
+	async (t) => {
+		reset()
+		const https = await startSelfSignedHttps('tls ok')
+		if (!https) return t.skip('openssl is not installed')
+		try {
+			const result = await runLocalExecute({
+				code: `export default async () => {
+	try { await fetch('https://127.0.0.1:${https.port}/'); return 'ok' } catch (error) { return error.message }
+}`,
+				token: goodToken,
+				apiUrl,
+				egress: egressPolicyFromGrant({ mode: 'public-and-lan' }),
+			})
+			const message = String(
+				(result.structuredContent as { result: unknown }).result,
+			)
+			assert.match(
+				message,
+				/^HTTPS request to 127\.0\.0\.1 failed: its TLS certificate could not be verified \(DEPTH_ZERO_SELF_SIGNED_CERT: it is self-signed\)\./,
+			)
+			assert.match(message, /kody daemon env set NODE_OPTIONS=--use-system-ca/)
+			assert.doesNotMatch(message, /internal error|BEGIN CERTIFICATE/)
+		} finally {
+			await new Promise((resolve) => https.server.close(resolve))
 		}
 	},
 )

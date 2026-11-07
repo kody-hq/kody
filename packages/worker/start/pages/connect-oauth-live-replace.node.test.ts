@@ -111,9 +111,10 @@ test('wouldReplaceLiveApp flags app-identity edits on a live bring-your-own conn
 	).toBe(false)
 })
 
-test('save-as-new suggests NAME-2 and validates with the integration name rules', () => {
-	expect(suggestNewConnectionName('acme')).toBe('acme-2')
-	expect(newConnectionNameError('acme-2', 'acme')).toBeNull()
+test('save-as-new suggests a name the integration rules accept', () => {
+	expect(
+		newConnectionNameError(suggestNewConnectionName('acme'), 'acme'),
+	).toBeNull()
 	expect(newConnectionNameError('Acme Work', 'acme')).toBeNull()
 	expect(newConnectionNameError('---', 'acme')).toMatch(/letters or numbers/)
 	expect(newConnectionNameError('ACME', 'acme')).toMatch(/other than acme/)

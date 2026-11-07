@@ -1257,3 +1257,27 @@ test('version checks never open stored keychain credentials', async () => {
 		password.mock.restore()
 	}
 })
+
+test('local daemon status never opens stored keychain credentials', async () => {
+	const password = mock.method(Entry.prototype, 'getPassword', () => {
+		throw new Error('daemon status must not read credentials')
+	})
+	try {
+		let stdout = ''
+		let stderr = ''
+		const code = await runCli(['daemon', 'status', '--json'], {
+			stdout: (text) => {
+				stdout += text
+			},
+			stderr: (text) => {
+				stderr += text
+			},
+		})
+		assert.ok(code === 0 || code === 1, stderr)
+		assert.ok(stdout.length > 0 || stderr.length > 0)
+		assert.equal(password.mock.callCount(), 0)
+		assert.doesNotMatch(stderr, /daemon status must not read credentials/)
+	} finally {
+		password.mock.restore()
+	}
+})

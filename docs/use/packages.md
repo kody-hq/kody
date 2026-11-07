@@ -717,10 +717,10 @@ or did not dispatch, or checking which packages subscribe to
 `fleet.package_owner_error_spike`, `fleet.users_affected.elevated`,
 `fleet.users_affected.resolved`, `fleet.entitlement.crossed`,
 `auth.denial.burst`, `email.delivery.burst`, `user.created`, `user.deleted`,
-`user.email_verification.failed`, `user.email_verification.stalled`,
-`user.email_outbound.paused`, and `email.system-message.sent`. After publish,
-smoke-test one declared handler from interactive MCP with
-`packageSubscriptionDispatch`
+`user.guest_claimed`, `user.email_verification.failed`,
+`user.email_verification.stalled`, `user.email_outbound.paused`, and
+`email.system-message.sent`. After publish, smoke-test one declared handler from
+interactive MCP with `packageSubscriptionDispatch`
 ([Synthetic event dispatch](./synthetic-event-dispatch.md)). Reuse another
 package with a static `kody:@` import ([Package reuse](#package-reuse)).
 
@@ -1172,7 +1172,13 @@ the commit it clones, so a dev check result is the best predictor of a publish:
   bundle pre-check; every runtime artifact (app, client, exports, importable
   modules, jobs, subscriptions) is then built the way the publish rebuild builds
   it: the same targets and builders, 4 targets per throwaway isolate, 2 isolates
-  at a time, stopping after a failed wave. Nothing is saved.
+  at a time, stopping after a failed wave. Nothing is saved. Targets whose
+  inputs are unchanged since the published commit are skipped, because publish
+  copies those artifacts instead of building them.
+- **Same retries.** A durable publish retries an attempt that hit a compute
+  limit or timed out, so `kody dev check` runs the server checks up to 3 times
+  when the server reports a memory or CPU limit, answers 502/503/504, or sends
+  no answer before the request times out.
 
 What a dev check cannot run, and says so in its output: cloning the pushed
 commit from Artifacts. `git push` (and the Artifacts push limit) happens before

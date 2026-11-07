@@ -229,9 +229,12 @@ of it. Neither is an invoice line.
   RepoSessionIndex, StripePlanRefresh by stable user id; StorageRunner and
   RepoSession from `user_storage_buckets`; PackageRealtimeSession from
   app-bearing `saved_packages`) and writes absolute daily rows to
-  `durable_object_duration_daily`. It writes fleet totals and the attributed
-  share to `durable_object_duration_coverage_daily`. Admin usage shows GB-s
-  (active seconds × 0.128) and gross dollars at list.
+  `durable_object_duration_daily`, diffing against stored rows: unchanged rows
+  are skipped, changed rows go out as multi-row upserts, stale rows are deleted,
+  and statements go in small paced `batch()` calls so one run never bursts
+  thousands of statements at D1 (KODY-DS). It writes fleet totals and the
+  attributed share to `durable_object_duration_coverage_daily`. Admin usage
+  shows GB-s (active seconds × 0.128) and gross dollars at list.
 - **Not attributed:** MCP session DOs (named by transport session), JobManager
   (lives on `kody-jobs`, no origin binding), repo sessions discarded before the
   lane runs, platform singletons, and objects beyond the top 10,000 by active

@@ -51,6 +51,17 @@ const entityExplainerDefinitions = [
 		],
 	},
 	{
+		id: 'apps',
+		question: 'What is an app?',
+		paragraphs: [
+			'Apps are dashboards and tools your agent builds and hosts in Kody. Each one lives in a package with a hosted entry, and this page lists the ones in this workspace.',
+		],
+		learnMore: [
+			{ href: docHref('package-apps'), label: 'Package apps' },
+			{ href: docHref('package-authoring'), label: 'Package authoring' },
+		],
+	},
+	{
 		id: 'follows',
 		question: 'What are follows?',
 		paragraphs: [

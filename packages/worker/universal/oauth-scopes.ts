@@ -84,12 +84,18 @@ export function buildChangeIntegrationScopesPrompt(input: {
 	const orgSlug = input.orgSlug?.trim()
 	const reconnectHref = `/connect/oauth?provider=${encodeURIComponent(name)}${orgSlug ? `&org=${encodeURIComponent(orgSlug)}` : ''}`
 	if (input.platform) {
+		const allowed = uniqueOauthScopes(input.allowedScopes)
+		const allowedList =
+			allowed.length > 0
+				? allowed.map((scope) => `\`${scope}\``).join(', ')
+				: 'none listed'
 		return [
-			`The "${name}" connection is a built-in (platform) integration that is being retired.`,
-			`It currently requests these scopes: ${currentList}.`,
-			`Do not call integrationSave to change authorization.scopes on a built-in — that capability refuses platform connections.`,
-			`To change access or reconnect, set up a bring-your-own OAuth app at ${reconnectHref} (or a complete /connect/oauth URL after opening guide:oauth and the matching guide:provider_<slug>).`,
-			`Reconnecting replaces this built-in connection with the user's own app. Existing tokens stay valid until then.`,
+			`Change the scopes on the "${name}" connection. It is a built-in (platform) connection and stays built-in.`,
+			`It currently requests: ${currentList}. Scopes this built-in supports: ${allowedList}.`,
+			`Call integrationGet first. Then call integrationSave with name and authorization (the current authorizeUrl plus the full scope list this connection should request). You can add or remove scopes, but only supported ones, and at least one.`,
+			`This changes only this connection. The built-in defaults and every other connection keep their scopes.`,
+			`The current token keeps its old access until I reconnect. Tell me that in plain words and ask whether I want to reconnect at ${reconnectHref}, where the provider asks me to approve the new scopes.`,
+			`After I reconnect, integrationGet shows grantedScopes: what the provider actually granted, with missing and extra scopes versus the request. If either list is not empty, tell me. Do not say the scopes changed when the grant did not.`,
 		].join(' ')
 	}
 	return [
@@ -101,4 +107,47 @@ export function buildChangeIntegrationScopesPrompt(input: {
 		`Use integrationSave to widen authorization.scopes on this connection only.`,
 		`Then tell me in plain language that the saved integration now requests those scopes but existing tokens do not, and ask whether I want to reconnect this account (and any other accounts I name) at ${reconnectHref}.`,
 	].join(' ')
+}
+
+/**
+ * Plain-words note for a connect whose granted scopes differ from the
+ * request. Null when they match or the provider does not report the grant.
+ */
+export function formatScopeGrantNotice(
+	grant:
+		| {
+				granted: ReadonlyArray<string> | null
+				missing: ReadonlyArray<string>
+				extra: ReadonlyArray<string>
+		  }
+		| null
+		| undefined,
+): string | null {
+	if (!grant || grant.granted == null) return null
+	const parts: Array<string> = []
+	if (grant.missing.length > 0) {
+		parts.push(`Not granted: ${grant.missing.join(', ')}.`)
+	}
+	if (grant.extra.length > 0) {
+		parts.push(
+			`The provider kept scopes this connection no longer requests: ${grant.extra.join(', ')}. The token still has them.`,
+		)
+	}
+	return parts.length > 0 ? parts.join(' ') : null
+}
+
+/** Detail-row text for the scopes a provider actually granted. */
+export function formatGrantedScopesDetail(
+	granted:
+		| { scopes: ReadonlyArray<string>; source: string; checkedAt: string }
+		| null
+		| undefined,
+): string {
+	if (!granted) return 'Not checked yet. Reconnect to record it.'
+	const list = granted.scopes.length > 0 ? granted.scopes.join(', ') : 'none'
+	const via =
+		granted.source === 'github-x-oauth-scopes'
+			? 'checked with GitHub'
+			: 'reported by the token response'
+	return `${list} (${via})`
 }

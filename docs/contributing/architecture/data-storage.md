@@ -796,6 +796,12 @@ cleanup, source deletion, or account deletion. This estimate component is
 composed with the authoritative UserMeter D1 payload bytes; it is not reserved
 into UserMeter.
 
+Package delete clears every package-owned bucket before removing the package
+row. For leftover `package:<uuid>` rows whose package row is gone (soft-deleted
+packages still count as present, and so do ids a community fork reserves),
+`adminOrphanPackageStorageCleanup` previews them by default and, with
+`apply: true`, runs the same per-bucket clear. It is admin-only and audited.
+
 ## Durable Objects (`UserMeter`)
 
 Daily rate-style entitlement counters and inbound email delivery-id idempotency
@@ -1907,8 +1913,9 @@ Current retention policies:
   `RunLog` DO (`workflow_projections`; see [Run records](./run-records.md)).
 - `published_bundle_artifacts`: delete D1 rows and their `BUNDLE_ARTIFACTS_KV`
   blobs only when the row is older than 30 days, its `published_commit` is no
-  longer current for any matching `entity_sources` row, and there is no active
-  repo session for the source. When a row is pruned, the matching
+  longer current for any matching `entity_sources` row, no active
+  `community_listings` row pins that commit (`pinned_commit`), and there is no
+  active repo session for the source. When a row is pruned, the matching
   `source-snapshot:v1:{sourceId}:{commit}` and
   `source-manifest-snapshot:v1:{sourceId}:{commit}` KV keys are deleted under
   the same safety conditions, so per-commit snapshots do not accumulate

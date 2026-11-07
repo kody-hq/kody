@@ -1,5 +1,10 @@
-import { env, runInDurableObject } from 'cloudflare:test'
-import { expect, test } from 'vitest'
+import {
+	applyD1Migrations,
+	env,
+	runInDurableObject,
+	type D1Migration,
+} from 'cloudflare:test'
+import { beforeAll, expect, test } from 'vitest'
 import {
 	ecpDefaultGrant,
 	ecpHttpSignaturePrefix,
@@ -26,6 +31,14 @@ import {
 // isolation stayed green (#4469, #4477, #4484). Stay under the workers-unit
 // 40s test budget so a slow first `run.request` is not a false flake.
 const frameWaitMs = 30_000
+
+// Queue drains look up the context row in APP_DB (#4905).
+beforeAll(async () => {
+	const { TEST_MIGRATIONS } = env as Env & {
+		TEST_MIGRATIONS: Array<D1Migration>
+	}
+	await applyD1Migrations(env.APP_DB, TEST_MIGRATIONS)
+})
 
 const contextJwk = testKeys.context as {
 	kty: 'OKP'
@@ -1125,4 +1138,86 @@ test('a queued run whose earlier attempt was refused can still be cancelled', as
 	expect(
 		await stub.cancelRunFor({ runId: 'run_queued_retry', orgId: 'org_test' }),
 	).toEqual({ status: 'finished', state: 'rejected' })
+})
+
+test('pausing fails queued runs, tells the connected daemon, and a reconnect welcome carries the pause', async () => {
+	const ecid = 'ec_pause'
+	const { stub, next } = await connect(ecid)
+	await stub.enqueue({
+		request: runRequest('run_queued_paused'),
+		lease: lease(ecid, 'run_queued_paused'),
+		runRecord: null,
+		requires: [],
+		position: 1,
+		expiresAt: Date.now() + 60_000,
+	})
+	const pause = {
+		at: '2026-11-05T00:00:00.000Z',
+		by: 'kent',
+		reason: 'disk full',
+	}
+	await stub.setPaused({ paused: pause, name: 'build-box' })
+	expect(await stub.listQueued()).toEqual([])
+	expect((await next('state.update')).body).toEqual({ paused: pause })
+	// Still connected: a paused daemon stays online for resume, status and update.
+	expect(await stub.getStatus()).toMatchObject({ online: true })
+
+	const reconnected = await connect(ecid)
+	expect(reconnected.welcome.body).toMatchObject({ paused: pause })
+	await stub.setPaused({ paused: null, name: 'build-box' })
+	expect((await reconnected.next('state.update')).body).toEqual({
+		paused: null,
+	})
+})
+
+test('control requests round-trip over the signed socket, and fail fast when they cannot', async () => {
+	const offline = env.EXECUTION_CONTEXT_SESSION.get(
+		env.EXECUTION_CONTEXT_SESSION.idFromName('ec_control_offline'),
+	)
+	await offline.issueConnectTicket({
+		snapshot: snapshot('ec_control_offline'),
+		nonce: crypto.randomUUID(),
+	})
+	expect(await offline.control({ op: 'status' })).toEqual({
+		ok: false,
+		code: 'context_offline',
+	})
+
+	const old = await connect('ec_control_old')
+	expect(await old.stub.control({ op: 'status' })).toEqual({
+		ok: false,
+		code: 'daemon_outdated',
+	})
+
+	const { stub, next, send } = await connect('ec_control', {
+		capabilities: { features: ['daemon-control'] },
+	})
+	const status = stub.control({ op: 'logs', args: { lines: 2 } })
+	const request = await next('control.request')
+	expect(request.body).toMatchObject({ op: 'logs', args: { lines: 2 } })
+	await send(
+		'control.result',
+		{ id: request.body.id, ok: true, data: { lines: ['a', 'b'] } },
+		{ re: request.seq },
+	)
+	expect(await status).toEqual({ ok: true, data: { lines: ['a', 'b'] } })
+
+	const restart = stub.control({ op: 'restart' })
+	const restartRequest = await next('control.request')
+	await send('control.result', {
+		id: restartRequest.body.id,
+		ok: false,
+		code: 'not_service_managed',
+		message: 'This daemon runs in a terminal.',
+	})
+	expect(await restart).toEqual({
+		ok: false,
+		code: 'not_service_managed',
+		message: 'This daemon runs in a terminal.',
+	})
+
+	expect(await stub.control({ op: 'status', timeoutMs: 1_000 })).toEqual({
+		ok: false,
+		code: 'daemon_timeout',
+	})
 })

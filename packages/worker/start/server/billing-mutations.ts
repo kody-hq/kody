@@ -40,6 +40,26 @@ export const startCheckout = createServerFn({ method: 'POST' })
 				),
 		)
 	})
+export const addReferrer = createServerFn({ method: 'POST' })
+	.validator(orgInput.extend({ referrer: z.string().max(256) }))
+	.handler(async ({ data }) => {
+		const { withWebsiteMutation } = await import('./mutation-context.ts')
+		const { attachWebsiteReferral } =
+			await import('../../src/app/handlers/org-billing.ts')
+		const { requireOperationResult } =
+			await import('../../src/app/operation-result.ts')
+		return withWebsiteMutation(
+			{ scope: { orgSlug: data.orgSlug } },
+			async (context) =>
+				requireOperationResult(
+					await attachWebsiteReferral({
+						...context,
+						orgSlug: data.orgSlug,
+						body: data,
+					}),
+				),
+		)
+	})
 export const startCreditTopUp = createServerFn({ method: 'POST' })
 	.validator(orgInput.extend({ amountCents: z.number() }))
 	.handler(async ({ data }) => {

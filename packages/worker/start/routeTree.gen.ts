@@ -24,6 +24,7 @@ import { Route as ContactRouteImport } from './routes/contact'
 import { Route as DeviceRouteImport } from './routes/device'
 import { Route as DiscordRouteImport } from './routes/discord'
 import { Route as DocsDotmdRouteImport } from './routes/docs[.]md'
+import { Route as DownloadRouteImport } from './routes/download'
 import { Route as FaqRouteImport } from './routes/faq'
 import { Route as FeaturesRouteImport } from './routes/features'
 import { Route as GuidesRouteImport } from './routes/guides'
@@ -51,6 +52,7 @@ import { Route as VerifyEmailChangeRouteImport } from './routes/verify-email-cha
 import { Route as VerifyEmailClaimReleaseRouteImport } from './routes/verify-email-claim-release'
 import { Route as VerifyEmailDestinationRouteImport } from './routes/verify-email-destination'
 import { Route as DotwellKnownApiCatalogRouteImport } from './routes/[.]well-known_.api-catalog'
+import { Route as DotwellKnownAppleAppSiteAssociationRouteImport } from './routes/[.]well-known_.apple-app-site-association'
 import { Route as DotwellKnownOpenaiAppsChallengeRouteImport } from './routes/[.]well-known_.openai-apps-challenge'
 import { Route as DotwellKnownSecurityDottxtRouteImport } from './routes/[.]well-known_.security[.]txt'
 import { Route as AppAtChar123usernameChar125RouteImport } from './routes/_app.@{$username}'
@@ -281,6 +283,7 @@ import { Route as AppAccountPackagesPackageIdApprovePublishRouteImport } from '.
 import { Route as AppAccountSecretsUserSecretNameRouteImport } from './routes/_app.account_.secrets_.user.$secretName'
 import { Route as AccountReposRepoIdIconIconCommitRouteImport } from './routes/account_.repos_.$repoId_.icon_.$iconCommit'
 import { Route as AppAtChar123orgSlugChar125AgentsNewAgentRouteImport } from './routes/_app.@{$orgSlug}_.-.agents_.new_.$agent'
+import { Route as AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRouteImport } from './routes/_app.@{$orgSlug}_.-.credentials_.$credentialId_.local-reads'
 import { Route as AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRouteImport } from './routes/_app.@{$orgSlug}_.-.integrations_.apps.$appSlug'
 import { Route as AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRouteImport } from './routes/_app.@{$orgSlug}_.-.mcp-servers_.$serverId_.authorize'
 import { Route as AppAtChar123orgSlugChar125SecretsUserSecretNameRouteImport } from './routes/_app.@{$orgSlug}_.-.secrets_.user.$secretName'
@@ -363,6 +366,11 @@ const DiscordRoute = DiscordRouteImport.update({
 const DocsDotmdRoute = DocsDotmdRouteImport.update({
   id: '/docs.md',
   path: '/docs.md',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DownloadRoute = DownloadRouteImport.update({
+  id: '/download',
+  path: '/download',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FaqRoute = FaqRouteImport.update({
@@ -500,6 +508,12 @@ const DotwellKnownApiCatalogRoute = DotwellKnownApiCatalogRouteImport.update({
   path: '/.well-known/api-catalog',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DotwellKnownAppleAppSiteAssociationRoute =
+  DotwellKnownAppleAppSiteAssociationRouteImport.update({
+    id: '/.well-known_/apple-app-site-association',
+    path: '/.well-known/apple-app-site-association',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const DotwellKnownOpenaiAppsChallengeRoute =
   DotwellKnownOpenaiAppsChallengeRouteImport.update({
     id: '/.well-known_/openai-apps-challenge',
@@ -1779,6 +1793,14 @@ const AppAtChar123orgSlugChar125AgentsNewAgentRoute =
     path: '/@{$orgSlug}/-/agents/new/$agent',
     getParentRoute: () => AppRoute,
   } as any)
+const AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute =
+  AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRouteImport.update(
+    {
+      id: '/@{$orgSlug}_/-/credentials_/$credentialId_/local-reads',
+      path: '/@{$orgSlug}/-/credentials/$credentialId/local-reads',
+      getParentRoute: () => AppRoute,
+    } as any,
+  )
 const AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute =
   AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRouteImport.update({
     id: '/@{$orgSlug}_/-/integrations_/apps/$appSlug',
@@ -1853,6 +1875,7 @@ export interface FileRoutesByFullPath {
   '/device': typeof DeviceRoute
   '/discord': typeof DiscordRoute
   '/docs.md': typeof DocsDotmdRoute
+  '/download': typeof DownloadRoute
   '/faq': typeof FaqRoute
   '/features': typeof FeaturesRoute
   '/guides': typeof GuidesRoute
@@ -1880,6 +1903,7 @@ export interface FileRoutesByFullPath {
   '/verify-email-claim-release': typeof VerifyEmailClaimReleaseRoute
   '/verify-email-destination': typeof VerifyEmailDestinationRoute
   '/.well-known/api-catalog': typeof DotwellKnownApiCatalogRoute
+  '/.well-known/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
   '/.well-known/openai-apps-challenge': typeof DotwellKnownOpenaiAppsChallengeRoute
   '/.well-known/security.txt': typeof DotwellKnownSecurityDottxtRoute
   '/@{$username}': typeof AppAtChar123usernameChar125Route
@@ -2110,6 +2134,7 @@ export interface FileRoutesByFullPath {
   '/account/secrets/user/$secretName': typeof AppAccountSecretsUserSecretNameRoute
   '/account/repos/$repoId/icon/$iconCommit': typeof AccountReposRepoIdIconIconCommitRoute
   '/@{$orgSlug}/-/agents/new/$agent': typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
+  '/@{$orgSlug}/-/credentials/$credentialId/local-reads': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute
   '/@{$orgSlug}/-/integrations/apps/$appSlug': typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
   '/@{$orgSlug}/-/mcp-servers/$serverId/authorize': typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
   '/@{$orgSlug}/-/secrets/user/$secretName': typeof AppAtChar123orgSlugChar125SecretsUserSecretNameRoute
@@ -2135,6 +2160,7 @@ export interface FileRoutesByTo {
   '/device': typeof DeviceRoute
   '/discord': typeof DiscordRoute
   '/docs.md': typeof DocsDotmdRoute
+  '/download': typeof DownloadRoute
   '/faq': typeof FaqRoute
   '/features': typeof FeaturesRoute
   '/guides': typeof GuidesRoute
@@ -2161,6 +2187,7 @@ export interface FileRoutesByTo {
   '/verify-email-claim-release': typeof VerifyEmailClaimReleaseRoute
   '/verify-email-destination': typeof VerifyEmailDestinationRoute
   '/.well-known/api-catalog': typeof DotwellKnownApiCatalogRoute
+  '/.well-known/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
   '/.well-known/openai-apps-challenge': typeof DotwellKnownOpenaiAppsChallengeRoute
   '/.well-known/security.txt': typeof DotwellKnownSecurityDottxtRoute
   '/@{$username}': typeof AppAtChar123usernameChar125Route
@@ -2391,6 +2418,7 @@ export interface FileRoutesByTo {
   '/account/secrets/user/$secretName': typeof AppAccountSecretsUserSecretNameRoute
   '/account/repos/$repoId/icon/$iconCommit': typeof AccountReposRepoIdIconIconCommitRoute
   '/@{$orgSlug}/-/agents/new/$agent': typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
+  '/@{$orgSlug}/-/credentials/$credentialId/local-reads': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute
   '/@{$orgSlug}/-/integrations/apps/$appSlug': typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
   '/@{$orgSlug}/-/mcp-servers/$serverId/authorize': typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
   '/@{$orgSlug}/-/secrets/user/$secretName': typeof AppAtChar123orgSlugChar125SecretsUserSecretNameRoute
@@ -2418,6 +2446,7 @@ export interface FileRoutesById {
   '/device': typeof DeviceRoute
   '/discord': typeof DiscordRoute
   '/docs.md': typeof DocsDotmdRoute
+  '/download': typeof DownloadRoute
   '/faq': typeof FaqRoute
   '/features': typeof FeaturesRoute
   '/guides': typeof GuidesRoute
@@ -2445,6 +2474,7 @@ export interface FileRoutesById {
   '/verify-email-claim-release': typeof VerifyEmailClaimReleaseRoute
   '/verify-email-destination': typeof VerifyEmailDestinationRoute
   '/.well-known_/api-catalog': typeof DotwellKnownApiCatalogRoute
+  '/.well-known_/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
   '/.well-known_/openai-apps-challenge': typeof DotwellKnownOpenaiAppsChallengeRoute
   '/.well-known_/security.txt': typeof DotwellKnownSecurityDottxtRoute
   '/_app/@{$username}': typeof AppAtChar123usernameChar125Route
@@ -2675,6 +2705,7 @@ export interface FileRoutesById {
   '/_app/account_/secrets_/user/$secretName': typeof AppAccountSecretsUserSecretNameRoute
   '/account_/repos_/$repoId_/icon_/$iconCommit': typeof AccountReposRepoIdIconIconCommitRoute
   '/_app/@{$orgSlug}_/-/agents_/new_/$agent': typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
+  '/_app/@{$orgSlug}_/-/credentials_/$credentialId_/local-reads': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute
   '/_app/@{$orgSlug}_/-/integrations_/apps/$appSlug': typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
   '/_app/@{$orgSlug}_/-/mcp-servers_/$serverId_/authorize': typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
   '/_app/@{$orgSlug}_/-/secrets_/user/$secretName': typeof AppAtChar123orgSlugChar125SecretsUserSecretNameRoute
@@ -2702,6 +2733,7 @@ export interface FileRouteTypes {
     | '/device'
     | '/discord'
     | '/docs.md'
+    | '/download'
     | '/faq'
     | '/features'
     | '/guides'
@@ -2729,6 +2761,7 @@ export interface FileRouteTypes {
     | '/verify-email-claim-release'
     | '/verify-email-destination'
     | '/.well-known/api-catalog'
+    | '/.well-known/apple-app-site-association'
     | '/.well-known/openai-apps-challenge'
     | '/.well-known/security.txt'
     | '/@{$username}'
@@ -2959,6 +2992,7 @@ export interface FileRouteTypes {
     | '/account/secrets/user/$secretName'
     | '/account/repos/$repoId/icon/$iconCommit'
     | '/@{$orgSlug}/-/agents/new/$agent'
+    | '/@{$orgSlug}/-/credentials/$credentialId/local-reads'
     | '/@{$orgSlug}/-/integrations/apps/$appSlug'
     | '/@{$orgSlug}/-/mcp-servers/$serverId/authorize'
     | '/@{$orgSlug}/-/secrets/user/$secretName'
@@ -2984,6 +3018,7 @@ export interface FileRouteTypes {
     | '/device'
     | '/discord'
     | '/docs.md'
+    | '/download'
     | '/faq'
     | '/features'
     | '/guides'
@@ -3010,6 +3045,7 @@ export interface FileRouteTypes {
     | '/verify-email-claim-release'
     | '/verify-email-destination'
     | '/.well-known/api-catalog'
+    | '/.well-known/apple-app-site-association'
     | '/.well-known/openai-apps-challenge'
     | '/.well-known/security.txt'
     | '/@{$username}'
@@ -3240,6 +3276,7 @@ export interface FileRouteTypes {
     | '/account/secrets/user/$secretName'
     | '/account/repos/$repoId/icon/$iconCommit'
     | '/@{$orgSlug}/-/agents/new/$agent'
+    | '/@{$orgSlug}/-/credentials/$credentialId/local-reads'
     | '/@{$orgSlug}/-/integrations/apps/$appSlug'
     | '/@{$orgSlug}/-/mcp-servers/$serverId/authorize'
     | '/@{$orgSlug}/-/secrets/user/$secretName'
@@ -3266,6 +3303,7 @@ export interface FileRouteTypes {
     | '/device'
     | '/discord'
     | '/docs.md'
+    | '/download'
     | '/faq'
     | '/features'
     | '/guides'
@@ -3293,6 +3331,7 @@ export interface FileRouteTypes {
     | '/verify-email-claim-release'
     | '/verify-email-destination'
     | '/.well-known_/api-catalog'
+    | '/.well-known_/apple-app-site-association'
     | '/.well-known_/openai-apps-challenge'
     | '/.well-known_/security.txt'
     | '/_app/@{$username}'
@@ -3523,6 +3562,7 @@ export interface FileRouteTypes {
     | '/_app/account_/secrets_/user/$secretName'
     | '/account_/repos_/$repoId_/icon_/$iconCommit'
     | '/_app/@{$orgSlug}_/-/agents_/new_/$agent'
+    | '/_app/@{$orgSlug}_/-/credentials_/$credentialId_/local-reads'
     | '/_app/@{$orgSlug}_/-/integrations_/apps/$appSlug'
     | '/_app/@{$orgSlug}_/-/mcp-servers_/$serverId_/authorize'
     | '/_app/@{$orgSlug}_/-/secrets_/user/$secretName'
@@ -3550,6 +3590,7 @@ export interface RootRouteChildren {
   DeviceRoute: typeof DeviceRoute
   DiscordRoute: typeof DiscordRoute
   DocsDotmdRoute: typeof DocsDotmdRoute
+  DownloadRoute: typeof DownloadRoute
   FaqRoute: typeof FaqRoute
   FeaturesRoute: typeof FeaturesRoute
   GuidesRoute: typeof GuidesRoute
@@ -3577,6 +3618,7 @@ export interface RootRouteChildren {
   VerifyEmailClaimReleaseRoute: typeof VerifyEmailClaimReleaseRoute
   VerifyEmailDestinationRoute: typeof VerifyEmailDestinationRoute
   DotwellKnownApiCatalogRoute: typeof DotwellKnownApiCatalogRoute
+  DotwellKnownAppleAppSiteAssociationRoute: typeof DotwellKnownAppleAppSiteAssociationRoute
   DotwellKnownOpenaiAppsChallengeRoute: typeof DotwellKnownOpenaiAppsChallengeRoute
   DotwellKnownSecurityDottxtRoute: typeof DotwellKnownSecurityDottxtRoute
   AccountExportDotjsonRoute: typeof AccountExportDotjsonRoute
@@ -3772,6 +3814,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocsDotmdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/download': {
+      id: '/download'
+      path: '/download'
+      fullPath: '/download'
+      preLoaderRoute: typeof DownloadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/faq': {
       id: '/faq'
       path: '/faq'
@@ -3959,6 +4008,13 @@ declare module '@tanstack/react-router' {
       path: '/.well-known/api-catalog'
       fullPath: '/.well-known/api-catalog'
       preLoaderRoute: typeof DotwellKnownApiCatalogRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/.well-known_/apple-app-site-association': {
+      id: '/.well-known_/apple-app-site-association'
+      path: '/.well-known/apple-app-site-association'
+      fullPath: '/.well-known/apple-app-site-association'
+      preLoaderRoute: typeof DotwellKnownAppleAppSiteAssociationRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/.well-known_/openai-apps-challenge': {
@@ -5571,6 +5627,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAtChar123orgSlugChar125AgentsNewAgentRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/@{$orgSlug}_/-/credentials_/$credentialId_/local-reads': {
+      id: '/_app/@{$orgSlug}_/-/credentials_/$credentialId_/local-reads'
+      path: '/@{$orgSlug}/-/credentials/$credentialId/local-reads'
+      fullPath: '/@{$orgSlug}/-/credentials/$credentialId/local-reads'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/@{$orgSlug}_/-/integrations_/apps/$appSlug': {
       id: '/_app/@{$orgSlug}_/-/integrations_/apps/$appSlug'
       path: '/@{$orgSlug}/-/integrations/apps/$appSlug'
@@ -5789,6 +5852,7 @@ interface AppRouteChildren {
   AppAccountPackagesPackageIdApprovePublishRoute: typeof AppAccountPackagesPackageIdApprovePublishRoute
   AppAccountSecretsUserSecretNameRoute: typeof AppAccountSecretsUserSecretNameRoute
   AppAtChar123orgSlugChar125AgentsNewAgentRoute: typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
+  AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute: typeof AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute
   AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute: typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
   AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute: typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
   AppAtChar123orgSlugChar125SecretsUserSecretNameRoute: typeof AppAtChar123orgSlugChar125SecretsUserSecretNameRoute
@@ -5996,6 +6060,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccountSecretsUserSecretNameRoute: AppAccountSecretsUserSecretNameRoute,
   AppAtChar123orgSlugChar125AgentsNewAgentRoute:
     AppAtChar123orgSlugChar125AgentsNewAgentRoute,
+  AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute:
+    AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute,
   AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute:
     AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute,
   AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute:
@@ -6067,6 +6133,7 @@ const rootRouteChildren: RootRouteChildren = {
   DeviceRoute: DeviceRoute,
   DiscordRoute: DiscordRoute,
   DocsDotmdRoute: DocsDotmdRoute,
+  DownloadRoute: DownloadRoute,
   FaqRoute: FaqRoute,
   FeaturesRoute: FeaturesRoute,
   GuidesRoute: GuidesRoute,
@@ -6094,6 +6161,8 @@ const rootRouteChildren: RootRouteChildren = {
   VerifyEmailClaimReleaseRoute: VerifyEmailClaimReleaseRoute,
   VerifyEmailDestinationRoute: VerifyEmailDestinationRoute,
   DotwellKnownApiCatalogRoute: DotwellKnownApiCatalogRoute,
+  DotwellKnownAppleAppSiteAssociationRoute:
+    DotwellKnownAppleAppSiteAssociationRoute,
   DotwellKnownOpenaiAppsChallengeRoute: DotwellKnownOpenaiAppsChallengeRoute,
   DotwellKnownSecurityDottxtRoute: DotwellKnownSecurityDottxtRoute,
   AccountExportDotjsonRoute: AccountExportDotjsonRoute,

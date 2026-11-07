@@ -159,7 +159,12 @@ test('account export includes submitted feedback but excludes reviewer-only rela
 			updated_at: '2026-07-05',
 		}),
 	])
-	const reviewerColumns = ['admin_note', 'reviewed_at', 'reviewed_by_user_id']
+	const reviewerColumns = [
+		'admin_note',
+		'reopen_history',
+		'reviewed_at',
+		'reviewed_by_user_id',
+	]
 	for (const column of reviewerColumns) {
 		expect(feedbackRows[0]).not.toHaveProperty(column)
 	}

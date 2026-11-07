@@ -1073,6 +1073,10 @@ jobs:
       (needs.sha-guard.outputs.deploy_main == 'true' ||
         needs.sha-guard.outputs.deploy_platform == 'true' ||
         needs.sha-guard.outputs.deploy_runtime == 'true')
+    outputs:
+      capability_vector_reindex_required:
+        ${{ steps.resources.outputs.capability_vector_reindex_required }}
+      deploy_url: ${{ steps.deploy.outputs.url }}
     environment:
       name: production
       url: ${{ steps.deploy.outputs.url }}
@@ -1986,6 +1990,51 @@ jobs:
           path: ${{ runner.temp }}/wrangler-logs/
           if-no-files-found: ignore
           retention-days: 5
+
+  reindex-vectors-for-new-metadata-indexes:
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    name: 🧭 Full vector reindex (new metadata indexes)
+    timeout-minutes: 30
+    # Vectorize only filters vectors upserted after a metadata index exists.
+    # When the deploy just added metadata indexes to the production index,
+    # force-reindex every vector kind once so filtered queries (builtin
+    # `kind`, memory/package/job `userId`/`status`) stop returning nothing.
+    # A separate job so re-running it alone retries with the same outputs.
+    needs:
+      - sha-guard
+      - deploy
+    if: >-
+      always() && !cancelled() && needs.deploy.result == 'success' &&
+      needs.deploy.outputs.capability_vector_reindex_required == 'true'
+    environment:
+      name: production
+    steps:
+      - name: 📦 Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ needs.sha-guard.outputs.deploy_sha }}
+
+      - name: 🟢 Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 26
+          cache: npm
+
+      - name: 📥 Install Dependencies
+        run: npm ci
+
+      - name: 🧭 Force-reindex every vector kind
+        env:
+          DEPLOY_URL:
+            ${{ needs.deploy.outputs.deploy_url || vars.APP_BASE_URL }}
+          CAPABILITY_REINDEX_SECRET: ${{ secrets.CAPABILITY_REINDEX_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CAPABILITY_REINDEX_SECRET:-}" ] || [ -z "${DEPLOY_URL:-}" ]; then
+            echo "::error::New Vectorize metadata indexes need a full reindex, but CAPABILITY_REINDEX_SECRET or the deploy URL is missing."
+            exit 1
+          fi
+          node tools/ci/reindex-capabilities.ts --url "$DEPLOY_URL" --force --max-sweeps 60
 
   deploy-status-worker:
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}

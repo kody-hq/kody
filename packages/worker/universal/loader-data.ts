@@ -1,3 +1,4 @@
+import type { PackageAppCpuSummary } from './package-app-cpu-samples.ts'
 import type {
 	BlogCategorySlug,
 	BlogSeriesSlug,
@@ -105,6 +106,9 @@ export type BlogPostSummaryLoaderData = {
 	category: BlogCategorySlug
 	series: BlogSeriesSlug | null
 	readingMinutes: number
+	/** Headline art; list rows show it as a thumbnail. */
+	image: string | null
+	imageAlt: string | null
 }
 
 export type BlogCategoryCountLoaderData = {
@@ -2021,6 +2025,17 @@ export type AccountIntegrationListItem = {
 	allowedPackageIds?: Array<string>
 	/** Last classified OAuth refresh outcome. Absent when the sign-in is healthy. */
 	lastAuthFailure?: IntegrationAuthFailureView
+	/**
+	 * What the provider granted on the stored token, read back after the last
+	 * connect. Absent until a connect records it.
+	 */
+	grantedScopes?: {
+		scopes: Array<string>
+		source: 'github-x-oauth-scopes' | 'token-response'
+		checkedAt: string
+		missing: Array<string>
+		extra: Array<string>
+	}
 }
 
 type AccountOauthAppConnectionRef = {
@@ -2284,6 +2299,30 @@ export type AccountPackageCommunityFork = {
 	adoptionNote: string | null
 }
 
+type AccountPackageUnpublishedCommit = {
+	commit: string
+	subject: string
+	authoredAt: string | null
+}
+
+export type AccountPackageUnpublishedCommits = {
+	commits: Array<AccountPackageUnpublishedCommit>
+	/** True when more commits are waiting than `commits` lists. */
+	truncated: boolean
+}
+
+export type AccountPackageAnonymousVisitorExposureItem = {
+	kind: 'credential' | 'connector'
+	/** Credential name or `mcp:<server>:<tool>`; never a secret value. */
+	name: string
+	/** Need key or hosts, for context. */
+	detail: string | null
+}
+
+export type AccountPackageAnonymousVisitorExposure =
+	| { known: true; items: Array<AccountPackageAnonymousVisitorExposureItem> }
+	| { known: false }
+
 export type AccountPackageDetail = AccountPackageListItem & {
 	searchText: string | null
 	exports: Array<string> | null
@@ -2329,6 +2368,18 @@ export type AccountPackageDetail = AccountPackageListItem & {
 	 * publishes are owner-only unless a grant allows them (manager view only).
 	 */
 	unmappableCredentialsNotice?: string
+	/**
+	 * Commits on HEAD newer than `publishedCommit`, newest first, for the
+	 * Public release commit picker (owner view). Absent when nothing is
+	 * pending or the commit history could not be read.
+	 */
+	unpublishedCommits?: AccountPackageUnpublishedCommits
+	/**
+	 * What anonymous visitors would use as the owner if the app went
+	 * internet-visible (owner view, only while it is not). Absent when not
+	 * checked; `known: false` when the check failed.
+	 */
+	anonymousVisitorExposure?: AccountPackageAnonymousVisitorExposure
 	/**
 	 * Capabilities the published version may call without declaring them,
 	 * which the next publish must add to `kody.app.capabilities` (owner view
@@ -2472,6 +2523,21 @@ export type AccountPackageApproveCapabilitiesLoaderData = {
 		via: Array<string>
 		storageId?: string
 	}>
+	/**
+	 * Declared `kody.credentials` needs no credential fills yet. Not part of the
+	 * fingerprint, but declaring them still needs the owner's approval.
+	 */
+	unboundNeeds: Array<{
+		needKey: string
+		description: string
+		provider?: string
+		secretProviderPackage?: string
+		from?: string
+		invalid?: string
+		via: Array<string>
+	}>
+	/** Declared manifest capability fields (`kody.jobs`, `kody.webhooks`, ...). */
+	declaredFields: Array<{ field: string; via: Array<string> }>
 	fingerprintMatchesApproval: boolean
 	latestApprovedAt: string | null
 	securityAudit: AccountPackageSecurityAudit
@@ -2490,6 +2556,8 @@ export type AccountPackageApproveCapabilitiesLoaderData = {
 			storageId?: string
 			field?: string
 			needCount?: number
+			executorNeedCount?: number
+			needs?: Array<{ key: string; description: string }>
 			credentialId?: string
 			name?: string
 			via?: Array<string>
@@ -2735,6 +2803,8 @@ type AccountJobsAlarm = {
 export type AccountJobsLoaderData = {
 	ok: true
 	username: string
+	/** True when the bound org is a team workspace (not the viewer's personal org). */
+	teamOrg: boolean
 	jobs: Array<AccountJobListItem>
 	selectedJob: AccountJobDetail | null
 	selectedJobId: string | null
@@ -2870,6 +2940,8 @@ type AccountActivityLoaderData = {
 	selectedRunId: string | null
 	retentionDays: number
 	toggleChanges: Array<AccountToggleChange> | null
+	/** Sampled package-app CPU and wall time; observability only. */
+	packageAppPerformance: PackageAppCpuSummary | null
 }
 
 /** One job or enablement on/off change from the org audit log. */
@@ -3079,6 +3151,11 @@ export type OAuthAuthorizeLoaderData =
 			orgs: Array<OAuthAuthorizeConsentOrg>
 			/** From `?org=`, the sole accessible org, or null when multi and unspecified. */
 			selectedOrgSlug: string | null
+			/**
+			 * When the authorize URL or resource already named an org, consent must
+			 * use that org. Null when the person may choose among several.
+			 */
+			requiredOrgSlug: string | null
 	  }
 	| {
 			ok: false

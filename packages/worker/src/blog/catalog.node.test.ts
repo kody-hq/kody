@@ -17,6 +17,7 @@ import {
 	listBlogPosts,
 	listBlogSeriesPosts,
 	normalizeMarkdownPhraseSource,
+	toBlogPostSummary,
 } from './catalog.ts'
 import { parseBlogPostMarkdown } from './parse-frontmatter.ts'
 import { buildBlogRssXml } from './rss.ts'
@@ -165,6 +166,35 @@ test('every catalog post uses the fixed taxonomy and the client slug list', () =
 		listBlogCategoriesWithPosts().reduce((sum, c) => sum + c.count, 0),
 	).toBe(posts.length)
 	expect(getFeaturedBlogPost()?.category).not.toBe('updates')
+})
+
+test('list summaries keep headline image fields and drop body', () => {
+	const withArt = parseBlogPostMarkdown(
+		'with-art',
+		markdown(
+			`title: With art\n${baseFrontmatter}\nimage: /images/openclaw-2-needs-a-home.webp\nimageAlt: Kody hugs OpenClaw.`,
+		),
+	)
+	expect(toBlogPostSummary(withArt)).toEqual({
+		slug: 'with-art',
+		title: 'With art',
+		date: '2026-08-20',
+		updated: null,
+		description: 'Nope',
+		category: 'essays',
+		series: null,
+		readingMinutes: 1,
+		image: '/images/openclaw-2-needs-a-home.webp',
+		imageAlt: 'Kody hugs OpenClaw.',
+	})
+	const plain = parseBlogPostMarkdown(
+		'plain',
+		markdown(`title: Plain\n${baseFrontmatter}`),
+	)
+	expect(toBlogPostSummary(plain)).toMatchObject({
+		image: null,
+		imageAlt: null,
+	})
 })
 
 function collectMarkdownImages(

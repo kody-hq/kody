@@ -47,7 +47,7 @@ test('searchMemories fail-closes on foreign rows and keeps Vectorize misses lexi
 		userId: ownerIdFromStored('user-1'),
 		statuses: ['active', 'archived'],
 		rows: owned,
-		vectorRankedIds: ['mem-weak'],
+		vectorRanked: [{ id: 'mem-weak', score: 0.5 }],
 	})
 	const lexicalOnly = ranked.matches.find((match) => match.id === 'mem-lexical')
 	expect(lexicalOnly).toMatchObject({ id: 'mem-lexical' })
@@ -65,7 +65,7 @@ test('searchMemories fail-closes on foreign rows and keeps Vectorize misses lexi
 		userId: ownerIdFromStored('user-1'),
 		statuses: ['active'],
 		rows: [...owned, row('mem-foreign', 'user-2', 'x', 'summarize inbox')],
-		vectorRankedIds: ['mem-weak'],
+		vectorRanked: [{ id: 'mem-weak', score: 0.5 }],
 	})
 	expect(foreign.matches).toEqual([])
 })

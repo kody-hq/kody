@@ -8,6 +8,15 @@ import {
 	summarizeSkillReads,
 	exportSkillReads,
 } from './skill-reads.ts'
+import {
+	initializePackageAppCpuSamples,
+	insertPackageAppCpuSample,
+	summarizePackageAppCpuSampleRows,
+} from './package-app-cpu-samples.ts'
+import type {
+	PackageAppCpuSample,
+	PackageAppCpuSummary,
+} from '#universal/package-app-cpu-samples.ts'
 import type { WorkspaceRunBucket } from '#universal/workspace-charts.ts'
 import * as Sentry from '@sentry/cloudflare'
 import { DurableObject } from 'cloudflare:workers'
@@ -53,6 +62,7 @@ import {
 	type WorkflowProjectionUpsertInput,
 	creatingWorkflowProjectionStatus,
 	parseWorkflowProjectionSourceRevision,
+	publishProvenanceFromIdempotencyKey,
 	workflowProjectionActiveStatuses,
 	workflowProjectionCreatingTtlMs,
 	workflowProjectionReservationStatuses,
@@ -108,7 +118,7 @@ const metaSchemaVersionKey = 'schema_version'
 /** YYYYMMDD coverage floor for warm v12→v13 (no backfill). Fresh DOs omit this. */
 const metaRunDayCountsSinceKey = 'run_day_counts_since'
 /** Bump when initializeSchema's DDL set changes; warm objects skip DDL. */
-const runLogSchemaVersion = 18
+const runLogSchemaVersion = 20
 
 function utcDayToMetaInt(day: string): number {
 	return Number(day.replaceAll('-', ''))
@@ -854,6 +864,12 @@ class RunLogBase extends DurableObject<Env> {
 	}): Promise<SkillReadSummary> {
 		return summarizeSkillReads(this.ctx.storage.sql, input)
 	}
+	async recordPackageAppCpuSample(sample: PackageAppCpuSample): Promise<void> {
+		insertPackageAppCpuSample(this.ctx.storage.sql, sample)
+	}
+	async packageAppCpuSummary(): Promise<PackageAppCpuSummary> {
+		return summarizePackageAppCpuSampleRows(this.ctx.storage.sql)
+	}
 
 	private initializeSchema() {
 		// Schema rebuild (clearAll / DR restore / warm-migration tests) may
@@ -1027,6 +1043,9 @@ class RunLogBase extends DurableObject<Env> {
 		if (installedVersion != null && installedVersion < 14) {
 			this.migrateWorkflowProjectionSourceRevisionForV14()
 		}
+		if (installedVersion != null && installedVersion < 19) {
+			this.backfillPublishWorkflowProvenanceForV19()
+		}
 		this.ctx.storage.sql.exec(
 			`CREATE INDEX IF NOT EXISTS idx_workflow_projections_created
 			ON workflow_projections(created_at DESC, id DESC)`,
@@ -1107,6 +1126,7 @@ class RunLogBase extends DurableObject<Env> {
 			}
 		}
 		initializeSkillReads(this.ctx.storage.sql)
+		initializePackageAppCpuSamples(this.ctx.storage.sql)
 		this.setMeta(metaSchemaVersionKey, runLogSchemaVersion)
 	}
 
@@ -1249,6 +1269,36 @@ class RunLogBase extends DurableObject<Env> {
 			} catch {
 				// Column already present on a partially migrated object.
 			}
+		}
+	}
+
+	/**
+	 * Additive: durable publish rows queued before package_id/enqueued_commit
+	 * were recorded get them from their unreleased idempotency key. Only null
+	 * columns are filled; keys and timestamps are untouched.
+	 */
+	private backfillPublishWorkflowProvenanceForV19() {
+		const rows = this.ctx.storage.sql
+			.exec<{ id: string; idempotency_key: string }>(
+				`SELECT id, idempotency_key FROM workflow_projections
+				WHERE workflow_name = 'packagePublishExternalPush'
+					AND package_id IS NULL
+					AND idempotency_key NOT LIKE 'released:%'`,
+			)
+			.toArray()
+		for (const row of rows) {
+			const provenance = publishProvenanceFromIdempotencyKey(
+				String(row.idempotency_key),
+			)
+			if (!provenance) continue
+			this.ctx.storage.sql.exec(
+				`UPDATE workflow_projections
+				SET package_id = ?, enqueued_commit = COALESCE(enqueued_commit, ?)
+				WHERE id = ? AND package_id IS NULL`,
+				provenance.packageId,
+				provenance.commit,
+				String(row.id),
+			)
 		}
 	}
 
@@ -1850,6 +1900,14 @@ class RunLogBase extends DurableObject<Env> {
 		startedAt: string
 		parentRunId?: string | null
 		finishedAt?: string
+		/** Overrides for callers that know why the row stopped. */
+		reason?: {
+			errorName: string
+			errorMessage: string
+			errorTriage: RunErrorTriage | null
+			triageNote: string | null
+			triagedBy: string | null
+		}
 	}) {
 		const existing = this.ctx.storage.sql
 			.exec<{
@@ -1873,10 +1931,19 @@ class RunLogBase extends DurableObject<Env> {
 			Number.isFinite(startedMs) && Number.isFinite(finishedMs)
 				? Math.max(0, finishedMs - startedMs)
 				: null
-		const errorTriage = runErrorTriageForPlatformInterrupt({
-			surface: input.surface,
-			idempotencyKey: input.idempotencyKey,
-		})
+		const errorTriage =
+			input.reason !== undefined
+				? input.reason.errorTriage
+				: runErrorTriageForPlatformInterrupt({
+						surface: input.surface,
+						idempotencyKey: input.idempotencyKey,
+					})
+		const triageNote = errorTriage
+			? (input.reason?.triageNote ?? platformInterruptTriageNote)
+			: null
+		const triagedBy = errorTriage
+			? (input.reason?.triagedBy ?? platformInterruptTriagedBy)
+			: null
 		// Scheduled ticks must be able to claim the occurrence again after a
 		// stranded `running` row is interrupted. Clearing the key keeps the
 		// interrupted attempt as visible history without consuming the slot.
@@ -1899,12 +1966,12 @@ class RunLogBase extends DurableObject<Env> {
 			WHERE id = ? AND status = 'running'`,
 			finishedAt,
 			durationMs,
-			runRecordPlatformInterruptedErrorName,
-			runRecordPlatformInterruptedErrorMessage,
+			input.reason?.errorName ?? runRecordPlatformInterruptedErrorName,
+			input.reason?.errorMessage ?? runRecordPlatformInterruptedErrorMessage,
 			errorTriage,
-			errorTriage ? platformInterruptTriageNote : null,
+			triageNote,
 			errorTriage ? finishedAt : null,
-			errorTriage ? platformInterruptTriagedBy : null,
+			triagedBy,
 			finishedAt,
 			releaseScheduledJobKey ? 1 : 0,
 			input.id,
@@ -4195,6 +4262,67 @@ class RunLogBase extends DurableObject<Env> {
 		}
 	}
 
+	/**
+	 * Make every still-`running` row of one durable workflow instance terminal.
+	 * A step attempt whose isolate was killed (CPU or memory limit, eviction)
+	 * never reaches its finish write, so the next attempt, or the workflow's
+	 * own terminal transition, closes those rows here with the given reason.
+	 */
+	async interruptRunningWorkflowRuns(input: {
+		workflowId: string
+		excludeRunId?: string | null
+		errorName: string
+		errorMessage: string
+		errorTriage: RunErrorTriage | null
+		triageNote: string | null
+		triagedBy: string | null
+	}): Promise<Array<RunRecord>> {
+		const workflowId = input.workflowId.trim()
+		if (!workflowId) return []
+		const rows = this.execSqlTracked<{
+			id: string
+			started_at: string
+			idempotency_key: string | null
+		}>(
+			'healStaleRunning',
+			`SELECT id, started_at, idempotency_key FROM runs
+			WHERE workflow_id = ? AND surface = 'workflow' AND status = 'running'
+			LIMIT ?`,
+			workflowId,
+			maxStaleRunningReconcilesPerPass,
+		).toArray()
+		const finishedAt = new Date().toISOString()
+		const ids: Array<string> = []
+		for (const row of rows) {
+			if (input.excludeRunId && row.id === input.excludeRunId) continue
+			this.markRunningInterrupted({
+				id: row.id,
+				surface: 'workflow',
+				idempotencyKey: row.idempotency_key,
+				startedAt: row.started_at,
+				finishedAt,
+				reason: {
+					errorName: input.errorName,
+					errorMessage: input.errorMessage,
+					errorTriage: input.errorTriage,
+					triageNote: input.triageNote,
+					triagedBy: input.triagedBy,
+				},
+			})
+			ids.push(row.id)
+		}
+		if (ids.length === 0) return []
+		await this.ensureRetentionAlarm()
+		const placeholders = ids.map(() => '?').join(', ')
+		return this.execSqlTracked<Record<string, SqlStorageValue>>(
+			'healStaleRunning',
+			`SELECT r.* FROM runs r WHERE r.id IN (${placeholders})`,
+			...ids,
+		)
+			.toArray()
+			.map((row) => mapRunRow(row, Number(row['log_count'] ?? 0) || 0))
+	}
+
 	async dashboardBuckets(input: { since: string; until: string }): Promise<{
 		buckets: Array<WorkspaceRunBucket>
 		countsSince: string | null
@@ -5045,6 +5173,8 @@ export type RunLogRpc = DurableObjectPitrRpc & {
 		since: string
 		packageIds: Array<string>
 	}) => Promise<SkillReadSummary>
+	recordPackageAppCpuSample: (sample: PackageAppCpuSample) => Promise<void>
+	packageAppCpuSummary: () => Promise<PackageAppCpuSummary>
 	startRun: (input: { run: RunLogRowInput }) => Promise<{ ok: true }>
 	claimRun: (input: { run: RunLogRowInput }) => Promise<{
 		claimed: boolean
@@ -5064,6 +5194,15 @@ export type RunLogRpc = DurableObjectPitrRpc & {
 	getRun: (input: {
 		runId: string
 	}) => Promise<{ run: RunRecord; logs: Array<RunRecordLog> } | null>
+	interruptRunningWorkflowRuns: (input: {
+		workflowId: string
+		excludeRunId?: string | null
+		errorName: string
+		errorMessage: string
+		errorTriage: RunErrorTriage | null
+		triageNote: string | null
+		triagedBy: string | null
+	}) => Promise<Array<RunRecord>>
 	getRunByIdempotencyKey: (input: {
 		idempotencyKey: string
 		surface?: RunSurface | null

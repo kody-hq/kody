@@ -6,6 +6,10 @@ export type ServerTimingEntry = {
 
 const tokenPattern = /^[A-Za-z0-9_-]+$/
 
+// When each timed phase started, kept off the entry so the header shape and
+// existing entry comparisons stay unchanged.
+const phaseStartedAt = new WeakMap<ServerTimingEntry, number>()
+
 /**
  * Request-scoped Server-Timing style phase measurement. Same shape as execute
  * `serverTiming`: `{ name, durationMs }`, returned on the response, not stored.
@@ -22,8 +26,51 @@ export async function pushServerTiming<T>(
 	try {
 		return await run()
 	} finally {
-		timings.push({ name, durationMs: Date.now() - startedAt })
+		recordServerTimingPhase(timings, { name, startedAt, endedAt: Date.now() })
 	}
+}
+
+/** Record a phase measured outside `pushServerTiming`, keeping its interval. */
+export function recordServerTimingPhase(
+	timings: Array<ServerTimingEntry>,
+	input: { name: string; startedAt: number; endedAt: number },
+) {
+	const entry = {
+		name: input.name,
+		durationMs: input.endedAt - input.startedAt,
+	}
+	phaseStartedAt.set(entry, input.startedAt)
+	timings.push(entry)
+}
+
+/**
+ * Milliseconds of `[startedAt, endedAt]` no timed phase covers. Nested and
+ * concurrent phases overlap, so this measures the union of their intervals
+ * rather than summing durations. Markers without an interval are ignored.
+ */
+export function unaccountedServerTimingMs(
+	timings: ReadonlyArray<ServerTimingEntry>,
+	window: { startedAt: number; endedAt: number },
+) {
+	const intervals: Array<[number, number]> = []
+	for (const entry of timings) {
+		const start = phaseStartedAt.get(entry)
+		if (start === undefined) continue
+		const from = Math.max(start, window.startedAt)
+		const to = Math.min(start + entry.durationMs, window.endedAt)
+		if (to > from) intervals.push([from, to])
+	}
+	intervals.sort((a, b) => a[0] - b[0])
+	let covered = 0
+	let cursor = window.startedAt
+	for (const [from, to] of intervals) {
+		const start = Math.max(from, cursor)
+		if (to > start) {
+			covered += to - start
+			cursor = to
+		}
+	}
+	return Math.max(0, window.endedAt - window.startedAt - covered)
 }
 
 function quoteDesc(value: string) {

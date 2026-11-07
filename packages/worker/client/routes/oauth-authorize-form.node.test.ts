@@ -102,6 +102,52 @@ test('consent org field hides the picker for a sole org and requires a pick when
 			{ slug: 'ada', displayName: 'Ada', role: 'owner' },
 		],
 	})
+	const requiredOrgs = [
+		{ slug: 'acme', displayName: 'Acme', role: 'member' },
+		{ slug: 'ada', displayName: 'Ada', role: 'owner' },
+	]
+	expect(
+		oauthAuthorizeOrgField({
+			orgs: requiredOrgs,
+			selectedOrgSlug: 'ada',
+			signedIn: true,
+			requiredOrgSlug: 'ada',
+			requiredReason: 'Stay on ada for this client.',
+		}),
+	).toEqual({
+		kind: 'locked',
+		slug: 'ada',
+		reason: 'Stay on ada for this client.',
+		options: requiredOrgs,
+	})
+	expect(
+		oauthAuthorizeOrgField({
+			orgs: requiredOrgs,
+			selectedOrgSlug: 'ada',
+			signedIn: true,
+			requiredOrgSlug: 'ADA',
+		}),
+	).toMatchObject({
+		kind: 'locked',
+		slug: 'ada',
+		reason: expect.stringContaining('@ada'),
+	})
+	expect(
+		oauthAuthorizeOrgField({
+			orgs: [{ slug: 'ada', displayName: 'Ada', role: 'owner' }],
+			selectedOrgSlug: 'ada',
+			signedIn: true,
+			requiredOrgSlug: 'ada',
+		}),
+	).toEqual({ kind: 'hidden', slug: 'ada' })
+	expect(
+		oauthAuthorizeOrgField({
+			orgs: requiredOrgs,
+			selectedOrgSlug: 'acme',
+			signedIn: true,
+			requiredOrgSlug: 'missing',
+		}),
+	).toEqual({ kind: 'missing' })
 	expect(
 		oauthAuthorizeOrgField({
 			orgs: [],

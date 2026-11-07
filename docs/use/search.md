@@ -108,8 +108,10 @@ preference.
 Ranked `search({ query })` calls may include relevant long-term memory metadata
 in structured content. Entity lookups, domain listings, empty/broad discovery,
 and `search({ domain })` do not attach memories. **execute** retrieves memories
-only when its caller opts in with **`memoryContext`**. Archived or very weak
-memory matches are not surfaced automatically.
+only when its caller opts in with **`memoryContext`**. Archived memories, and
+memories below the search relevance floor (query embedding similarity), are not
+surfaced automatically, so an unrelated query shows no memories
+([floor](./memory.md#search-relevance-floor)).
 
 ### Ranked search scoring
 

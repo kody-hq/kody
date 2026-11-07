@@ -84,3 +84,46 @@ for (const [family, resources, orgSlug] of [
 		client.clear()
 	})
 }
+
+test('job mutations invalidate cached command results only for the submitted workspace', async () => {
+	const client = new QueryClient()
+	const jobs = [
+		'command-search',
+		'person',
+		'team',
+		'job',
+		'',
+		[],
+		'owner',
+		'all',
+	]
+	const other = [
+		'command-search',
+		'person',
+		'elsewhere',
+		'job',
+		'',
+		[],
+		'owner',
+		'all',
+	]
+	const credentials = [
+		'command-search',
+		'person',
+		'team',
+		'credential',
+		'',
+		[],
+		'owner',
+		'all',
+	]
+	for (const key of [jobs, other, credentials])
+		client.setQueryData(key, ['cached'])
+	await settleAccountMutation(client, 'actor', jobResources, {
+		orgSlug: 'team',
+	})
+	expect(client.getQueryState(jobs)?.isInvalidated).toBe(true)
+	expect(client.getQueryState(other)?.isInvalidated).toBe(false)
+	expect(client.getQueryState(credentials)?.isInvalidated).toBe(false)
+	client.clear()
+})

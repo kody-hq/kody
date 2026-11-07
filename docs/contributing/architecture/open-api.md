@@ -128,6 +128,13 @@ accepted as Bearer
 reject non-`kody_at_` bearers with `401 Invalid API token`. Older CLIs keep
 using MCP and the local-execute OAuth routes.
 
+`POST /v1/secrets/local-read` returns secret values for `kody secret get` and
+`kody run` only ([ADR 0097](../decisions/0097-local-secret-reads.md)). It takes
+a `kody_at_` bearer over HTTP and refuses the MCP `api` tool, CLI OAuth, and
+execution-context runs. Each secret needs Use, its local reads switch on, and
+`secret:read_local` on agent-minted tokens (`kody login` device tokens count as
+holding it). Refusals are 403 with a plain-language reason per secret.
+
 - Scopes are org permissions (`resource-type:action`: `org:read`, `org:execute`,
   `package:read`, `search:read`, …). Vocabulary:
   [`packages/shared/src/org-permissions.ts`](../../../packages/shared/src/org-permissions.ts).
@@ -217,6 +224,13 @@ module and does not silently hop to `kody.execute`. See
   tokens and any secret values the call wrote. Platform failures outside the
   capability return the generic `internal_error`, and the details are logged
   server-side.
+- Package-local `kody.mcp.<server>.<tool>(args)` calls
+  (`createPackageLocalRuntimeModuleSource` in
+  `packages/cli/src/package-local-runtime-source.ts`) send the signed package
+  binding as a second argument, `{ packageBinding }`. Origin verifies it with
+  `authorizeLocalExecutePackageBinding` and the MCP capability acts as that
+  package, claimed (package locks and declared needs apply; the actor still
+  needs Use). No binding means no package. Older origins ignore the argument.
 - Confused-deputy limits: `POST /v1/capability-proxy/call` is JSON arguments
   only. No caller header or cookie is forwarded into a capability, and the edge
   strips `Cookie` and non-allowlisted `X-Kody-*` before origin sees the request.
@@ -291,18 +305,18 @@ module and does not silently hop to `kody.execute`. See
 Every error is `{ error: { code, message, details? } }` with
 `Cache-Control: no-store`.
 
-| Status | `code`                                                                                                             |
-| ------ | ------------------------------------------------------------------------------------------------------------------ |
-| 400    | `invalid_request`, `package_import_unresolved`, `package_import_unpublished`, `unsupported_dynamic_package_import` |
-| 401    | `unauthorized` (missing, invalid, expired, or revoked token)                                                       |
-| 403    | `insufficient_scope`, `email_verification_required`, `account_suspended`                                           |
-| 404    | `not_found`, `feature_unavailable` (capability or MCP gate)                                                        |
-| 405    | `method_not_allowed` (with `Allow`)                                                                                |
-| 409    | `account_deleting`                                                                                                 |
-| 413    | `payload_too_large`                                                                                                |
-| 415    | `unsupported_media_type`                                                                                           |
-| 429    | `rate_limited` (edge, `Retry-After`), `entitlement_limit`                                                          |
-| 500    | `capability_error`, `internal_error`                                                                               |
+| Status | `code`                                                                                                                                                     |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 400    | `invalid_request`, `package_import_unresolved`, `package_import_unpublished`, `unsupported_dynamic_package_import`                                         |
+| 401    | `unauthorized` (missing, invalid, expired, or revoked token)                                                                                               |
+| 403    | `insufficient_scope`, `profile_grant`, `profile_inactive`, `email_verification_required`, `account_suspended`, `guest_not_allowed`, `guest_claim_required` |
+| 404    | `not_found`, `feature_unavailable` (capability or MCP gate)                                                                                                |
+| 405    | `method_not_allowed` (with `Allow`)                                                                                                                        |
+| 409    | `account_deleting`                                                                                                                                         |
+| 413    | `payload_too_large`                                                                                                                                        |
+| 415    | `unsupported_media_type`                                                                                                                                   |
+| 429    | `rate_limited` (edge, `Retry-After`), `entitlement_limit`                                                                                                  |
+| 500    | `capability_error`, `internal_error`                                                                                                                       |
 
 ## Metering
 

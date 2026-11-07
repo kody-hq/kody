@@ -5,14 +5,20 @@ import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.t
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
 import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
 import { ensureReferralProgramTestSchema } from './test-schema.ts'
-import { consoleWarn } from '#worker/test-support/console-spies.ts'
+import {
+	consoleError,
+	consoleWarn,
+} from '#worker/test-support/console-spies.ts'
 import {
 	resolveUserEntitlementFromRow,
 	userEntitlementColumnsSql,
 	type UserEntitlementRow,
 } from './service.ts'
+import { parseReferrerInput } from '#universal/referral-program.ts'
 import {
 	attributeReferralAtSignup,
+	attributeReferralBeforeFirstPayment,
+	personHasPaidKodyInvoice,
 	isQualifyingPaidReferralInvoice,
 	loadReferralProgramSummary,
 	readStripeInvoicePeriodEndIso,
@@ -388,4 +394,289 @@ test('referral billing summary counts every row, not only the displayed page', a
 	expect(summary.rewardedCount).toBe(3)
 	expect(summary.pendingCount).toBe(49)
 	expect(summary.referrals).toHaveLength(50)
+})
+
+const noPaidInvoices = async () => ({ invoices: [], hasMore: false })
+
+test('existing Free user can add a referrer once, before first payment, and the reward pipeline pays both', async () => {
+	const db = await createDb()
+	const referrer = await insertUser(db, 'alice')
+	const referee = await insertUser(db, 'bob')
+	const other = await insertUser(db, 'carol')
+
+	await expect(
+		attributeReferralBeforeFirstPayment({
+			db,
+			refereeStableUserId: referee.stableUserId,
+			referrerInput: 'https://kody.codes/?ref=Alice',
+			listPaidInvoices: noPaidInvoices,
+			now,
+		}),
+	).resolves.toEqual({ outcome: 'attributed', referrerUsername: 'alice' })
+	await expect(
+		attributeReferralBeforeFirstPayment({
+			db,
+			refereeStableUserId: referee.stableUserId,
+			referrerInput: '@carol',
+			listPaidInvoices: noPaidInvoices,
+			now,
+		}),
+	).resolves.toEqual({ outcome: 'rejected', reason: 'already_attributed' })
+	void other
+
+	await expect(
+		rewardReferralForPaidInvoice({
+			db,
+			refereeStableUserId: referee.stableUserId,
+			invoiceId: 'in_late_1',
+			invoiceQualifies: true,
+			now,
+		}),
+	).resolves.toEqual({ outcome: 'rewarded' })
+	expect(await creditExpiry(db, referrer)).toBe(firstCreditExpiresAt)
+	expect(await creditExpiry(db, referee)).toBe(firstCreditExpiresAt)
+})
+
+test('billing-page referrer never replaces signup attribution', async () => {
+	const db = await createDb()
+	const alice = await insertUser(db, 'alice')
+	await insertUser(db, 'carol')
+	const referee = await insertUser(db, 'bob')
+	await attributeReferralAtSignup({
+		db,
+		refereeStableUserId: referee.stableUserId,
+		refereeUsername: referee.username,
+		referralCode: 'alice',
+		now,
+	})
+	await expect(
+		attributeReferralBeforeFirstPayment({
+			db,
+			refereeStableUserId: referee.stableUserId,
+			referrerInput: 'carol',
+			listPaidInvoices: noPaidInvoices,
+			now,
+		}),
+	).resolves.toEqual({ outcome: 'rejected', reason: 'already_attributed' })
+	const row = await db
+		.prepare(
+			`SELECT referrer_stable_user_id FROM referrals WHERE referee_stable_user_id = ?`,
+		)
+		.bind(referee.stableUserId)
+		.first<{ referrer_stable_user_id: string }>()
+	expect(row?.referrer_stable_user_id).toBe(alice.stableUserId)
+})
+
+test('billing-page referrer rejects invalid, unknown, self, and same-person referrers', async () => {
+	const db = await createDb()
+	const referee = await insertUser(db, 'bob', { email: 'bob@gmail.com' })
+	await insertUser(db, 'bobalt', { email: 'b.o.b+alt@gmail.com' })
+	const attempt = (referrerInput: string) =>
+		attributeReferralBeforeFirstPayment({
+			db,
+			refereeStableUserId: referee.stableUserId,
+			referrerInput,
+			listPaidInvoices: noPaidInvoices,
+			now,
+		})
+	await expect(attempt('not a name!')).resolves.toEqual({
+		outcome: 'rejected',
+		reason: 'invalid_code',
+	})
+	await expect(attempt('nobody')).resolves.toEqual({
+		outcome: 'rejected',
+		reason: 'unknown_referrer',
+	})
+	await expect(attempt('kody.codes/?ref=bob')).resolves.toEqual({
+		outcome: 'rejected',
+		reason: 'self',
+	})
+	await expect(attempt('bobalt')).resolves.toEqual({
+		outcome: 'rejected',
+		reason: 'self',
+	})
+	const count = await db
+		.prepare(`SELECT COUNT(*) AS total FROM referrals`)
+		.first<{ total: number }>()
+	expect(count?.total).toBe(0)
+})
+
+test('billing-page referrer is refused once the person has paid', async () => {
+	const db = await createDb()
+	await insertUser(db, 'alice')
+	const marked = await insertUser(db, 'bob')
+	await db
+		.prepare(`UPDATE orgs SET referral_first_paid_at = ? WHERE id = ?`)
+		.bind(now.toISOString(), marked.stableUserId)
+		.run()
+	await expect(
+		attributeReferralBeforeFirstPayment({
+			db,
+			refereeStableUserId: marked.stableUserId,
+			referrerInput: 'alice',
+			listPaidInvoices: noPaidInvoices,
+			now,
+		}),
+	).resolves.toEqual({ outcome: 'rejected', reason: 'already_paid' })
+
+	const stripePaid = await insertUser(db, 'dana')
+	await db
+		.prepare(`UPDATE orgs SET stripe_customer_id = 'cus_dana' WHERE id = ?`)
+		.bind(stripePaid.stableUserId)
+		.run()
+	const listPaidInvoices = vi.fn(async () => ({
+		invoices: [
+			{
+				id: 'in_old',
+				status: 'paid',
+				amount_paid: 900,
+				billing_reason: 'subscription_create',
+				subscription: 'sub_old',
+			},
+		],
+		hasMore: false,
+	}))
+	await expect(
+		attributeReferralBeforeFirstPayment({
+			db,
+			refereeStableUserId: stripePaid.stableUserId,
+			referrerInput: 'alice',
+			listPaidInvoices,
+			now,
+		}),
+	).resolves.toEqual({ outcome: 'rejected', reason: 'already_paid' })
+	expect(listPaidInvoices).toHaveBeenCalledWith('cus_dana')
+
+	await expect(
+		personHasPaidKodyInvoice({
+			db,
+			stableUserId: stripePaid.stableUserId,
+			listPaidInvoices: async () => ({
+				invoices: [{ id: 'in_zero', status: 'paid', amount_paid: 0 }],
+				hasMore: false,
+			}),
+		}),
+	).resolves.toBe(false)
+	await expect(
+		personHasPaidKodyInvoice({
+			db,
+			stableUserId: stripePaid.stableUserId,
+			listPaidInvoices: async () => ({ invoices: [], hasMore: true }),
+		}),
+	).resolves.toBe(true)
+})
+
+test('billing-page referrer counts payments on orgs the person owns', async () => {
+	const db = await createDb()
+	await insertUser(db, 'alice')
+	const referee = await insertUser(db, 'bob')
+	await db
+		.prepare(
+			`INSERT INTO orgs (
+				id, slug, display_name, created_by_user_id, created_at, updated_at,
+				referral_first_paid_at
+			) VALUES ('org_team', 'team', 'Team', ?, ?, ?, ?)`,
+		)
+		.bind(
+			referee.stableUserId,
+			now.toISOString(),
+			now.toISOString(),
+			now.toISOString(),
+		)
+		.run()
+	await db
+		.prepare(
+			`INSERT INTO org_memberships (org_id, user_id, role, created_at)
+			 VALUES ('org_team', ?, 'owner', ?)`,
+		)
+		.bind(referee.stableUserId, now.toISOString())
+		.run()
+	await expect(
+		attributeReferralBeforeFirstPayment({
+			db,
+			refereeStableUserId: referee.stableUserId,
+			referrerInput: 'alice',
+			listPaidInvoices: noPaidInvoices,
+			now,
+		}),
+	).resolves.toEqual({ outcome: 'rejected', reason: 'already_paid' })
+})
+
+test('billing-page referrer insert loses to an invoice paid mid-request', async () => {
+	const db = await createDb()
+	await insertUser(db, 'alice')
+	const referee = await insertUser(db, 'bob')
+	await db
+		.prepare(`UPDATE orgs SET stripe_customer_id = 'cus_bob' WHERE id = ?`)
+		.bind(referee.stableUserId)
+		.run()
+	await expect(
+		attributeReferralBeforeFirstPayment({
+			db,
+			refereeStableUserId: referee.stableUserId,
+			referrerInput: 'alice',
+			listPaidInvoices: async () => {
+				await db
+					.prepare(`UPDATE orgs SET referral_first_paid_at = ? WHERE id = ?`)
+					.bind(now.toISOString(), referee.stableUserId)
+					.run()
+				return { invoices: [], hasMore: false }
+			},
+			now,
+		}),
+	).resolves.toEqual({ outcome: 'rejected', reason: 'already_paid' })
+	const count = await db
+		.prepare(`SELECT COUNT(*) AS total FROM referrals`)
+		.first<{ total: number }>()
+	expect(count?.total).toBe(0)
+})
+
+test('billing summary reports the Referred by state', async () => {
+	const db = await createDb()
+	await insertUser(db, 'alice')
+	const referee = await insertUser(db, 'bob')
+	const summary = (personHasPaid?: () => Promise<boolean>) =>
+		loadReferralProgramSummary({
+			db,
+			stableUserId: referee.stableUserId,
+			username: referee.username,
+			origin: 'https://kody.codes',
+			personHasPaid,
+			now,
+		}).then((result) => result.referredBy)
+	await expect(summary(async () => false)).resolves.toEqual({ state: 'open' })
+	await expect(summary(async () => true)).resolves.toEqual({ state: 'closed' })
+	await expect(summary()).resolves.toEqual({ state: 'closed' })
+	consoleError.mockImplementation(() => {})
+	await expect(
+		summary(async () => {
+			throw new Error('stripe down')
+		}),
+	).resolves.toEqual({ state: 'closed' })
+	expect(consoleError).toHaveBeenCalledWith(
+		'referral_referred_by_state_failed',
+		{ message: 'stripe down' },
+	)
+	await attributeReferralBeforeFirstPayment({
+		db,
+		refereeStableUserId: referee.stableUserId,
+		referrerInput: 'alice',
+		listPaidInvoices: noPaidInvoices,
+		now,
+	})
+	await expect(summary(async () => true)).resolves.toEqual({
+		state: 'attributed',
+		referrerUsername: 'alice',
+		status: 'pending',
+	})
+})
+
+test('parseReferrerInput accepts usernames, @handles, and share links', () => {
+	expect(parseReferrerInput(' Alice ')).toBe('alice')
+	expect(parseReferrerInput('@alice')).toBe('alice')
+	expect(parseReferrerInput('https://kody.codes/?ref=alice')).toBe('alice')
+	expect(parseReferrerInput('kody.codes/?ref=alice')).toBe('alice')
+	expect(parseReferrerInput('kody.codes/pricing')).toBeNull()
+	expect(parseReferrerInput('')).toBeNull()
+	expect(parseReferrerInput(42)).toBeNull()
 })

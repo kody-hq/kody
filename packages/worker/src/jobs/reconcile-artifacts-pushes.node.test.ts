@@ -344,6 +344,40 @@ test('reconcileArtifactsPushes gives up on a source past its deadline and leaves
 	expect(String(updates[0]?.[0])).not.toContain('external_check_until')
 })
 
+test('reconcileArtifactsPushes skips publish concurrency races without counting errors', async () => {
+	mockModule.pendingApproval = null
+	mockModule.resolveArtifactSourceHead.mockResolvedValue({
+		branch: 'main',
+		commit: 'commit-new',
+	})
+	mockModule.publishFromExternalRef.mockReset()
+	mockModule.publishFromExternalRef.mockRejectedValueOnce(
+		new Error(
+			'The package\'s Artifacts HEAD moved from "commit-old" to "commit-new" while publishing. Retry the publish (or re-run so the newest pushed commit publishes).',
+		),
+	)
+	consoleWarn.mockImplementation(() => {})
+	const updates: Array<Array<unknown>> = []
+	const result = await reconcileArtifactsPushes({
+		env: createPackageSourceEnv({ updates }),
+		baseUrl: 'https://kody.test',
+		now: new Date('2026-08-04T12:00:00.000Z'),
+		batchSize: 10,
+		staleAfterMinutes: 0,
+		timeBudgetMs: 1000,
+	})
+	expect(result.errors).toBe(0)
+	expect(result.published).toBe(0)
+	expect(consoleWarn).toHaveBeenCalledWith(
+		'reconcile_artifacts_pushes publish concurrency race',
+		expect.objectContaining({
+			error: expect.stringContaining('Artifacts HEAD moved from'),
+		}),
+	)
+	expect(updates).toHaveLength(1)
+	expect(String(updates[0]?.[0])).toContain('last_external_check_at = ?')
+})
+
 test('reconcileArtifactsPushes remembers a failed head and skips re-checking it', async () => {
 	mockModule.pendingApproval = null
 	mockModule.resolveArtifactSourceHead.mockResolvedValue({

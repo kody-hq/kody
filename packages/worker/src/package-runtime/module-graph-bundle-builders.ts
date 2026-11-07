@@ -10,6 +10,7 @@ import type { RuntimeBundle } from './runtime-bundle-types.ts'
 import {
 	createRelativeImportSpecifier,
 	joinPath,
+	linkedPackageImportPrefix,
 	normalizeWorkspaceModulePath,
 	resolveRelativeModulePath,
 	rootSourcePrefix,
@@ -26,7 +27,10 @@ import {
 } from './module-graph-import-rewriting.ts'
 import { moduleSourceDeclaresDefaultExport } from './module-export-names.ts'
 import { resolveKodyDependenciesForEntryPoint } from './module-graph-workspace.ts'
-import { assertNoPlatformSuppliedNodeModules } from './package-bundle-node-modules.ts'
+import {
+	assertNoPlatformSuppliedNodeModules,
+	createNodeModulesResolutionPlugin,
+} from './package-bundle-node-modules.ts'
 import { createPackageAppJsxBundleOptions } from './package-app-tsconfig.ts'
 import {
 	createAppEntrypointSource,
@@ -103,10 +107,33 @@ function resolveKodyRuntimeExternalPath(resolveDir: string, specifier: string) {
 
 const kodyRuntimeExternalsPlugin = createKodyRuntimeExternalsPlugin()
 
+/**
+ * Publish offload builds leave other Kody packages as imports of
+ * `.__kody_linked__/…` placeholders; Kody writes those modules when it
+ * commits the upload, so the build never contains another package's code.
+ */
+const kodyLinkedPackageImportsPlugin = {
+	name: 'kody-linked-package-imports',
+	setup(build: EsbuildRuntimePluginBuild) {
+		build.onResolve({ filter: /__kody_linked__\// }, (args) => {
+			if (args.kind === 'entry-point') return
+			const resolved = resolveRelativeModulePath(
+				args.resolveDir
+					? `${normalizeWorkspaceModulePath(args.resolveDir)}/__importer__`
+					: '__importer__',
+				args.path,
+			)
+			if (!resolved?.startsWith(`${linkedPackageImportPrefix}/`)) return
+			return { path: `./${resolved}`, external: true }
+		})
+	},
+}
+
 async function createWorkerBundle(input: {
 	files: Record<string, string>
 	entryPoint: string
 	sourceFiles?: Record<string, string>
+	linkKodyPackageImports?: boolean
 }) {
 	const snapshotFiles = input.sourceFiles ?? input.files
 	assertNoPlatformSuppliedNodeModules({
@@ -122,6 +149,8 @@ async function createWorkerBundle(input: {
 		...createPackageAppJsxBundleOptions(snapshotFiles),
 		__dangerouslyUseEsBuildPluginsDoNotUseOrYouWillBeFired: [
 			kodyRuntimeExternalsPlugin,
+			...(input.linkKodyPackageImports ? [kodyLinkedPackageImportsPlugin] : []),
+			createNodeModulesResolutionPlugin(input.files),
 		],
 	})
 }
@@ -187,6 +216,11 @@ export async function buildKodyModuleBundle(input: {
 	 * the same entry share one prepareKodyGraphFiles pass.
 	 */
 	prepareCache?: PreparedKodyGraphCache
+	/**
+	 * Publish offload builds: other Kody packages stay linked imports and
+	 * `dependencies` is empty; Kody resolves both when it commits the upload.
+	 */
+	linkKodyPackageImports?: boolean
 }) {
 	const prepared = await getOrPrepareKodyGraphFiles({
 		env: input.env,
@@ -196,6 +230,7 @@ export async function buildKodyModuleBundle(input: {
 		entryPoint: input.entryPoint,
 		rootPackageId: input.rootPackageId,
 		prepareCache: input.prepareCache,
+		linkKodyPackageImports: input.linkKodyPackageImports,
 	})
 	const files = clonePreparedGraphFiles(prepared.files)
 	const { packages, publishedArtifactDependencies } = prepared
@@ -218,6 +253,7 @@ export async function buildKodyModuleBundle(input: {
 			files,
 			entryPoint: bootstrapPath,
 			sourceFiles: input.sourceFiles,
+			linkKodyPackageImports: input.linkKodyPackageImports,
 		})
 		const modules = {
 			...stripKodyRuntimeModules(bundle.modules as WorkerLoaderModules),
@@ -240,13 +276,15 @@ export async function buildKodyModuleBundle(input: {
 					}
 				: {}),
 		})
-		const dependencies = mergePublishedArtifactDependencies({
-			dependencies: await resolveKodyDependenciesForEntryPoint({
-				...input,
-				loadedPackages: packages,
-			}),
-			publishedArtifactDependencies,
-		})
+		const dependencies = input.linkKodyPackageImports
+			? []
+			: mergePublishedArtifactDependencies({
+					dependencies: await resolveKodyDependenciesForEntryPoint({
+						...input,
+						loadedPackages: packages,
+					}),
+					publishedArtifactDependencies,
+				})
 		return {
 			mainModule: bundle.mainModule,
 			modules,
@@ -285,6 +323,11 @@ export async function buildKodyImportableModuleBundle(input: {
 	 * the same entry share one prepareKodyGraphFiles pass.
 	 */
 	prepareCache?: PreparedKodyGraphCache
+	/**
+	 * Publish offload builds: other Kody packages stay linked imports and
+	 * `dependencies` is empty; Kody resolves both when it commits the upload.
+	 */
+	linkKodyPackageImports?: boolean
 }) {
 	const prepared = await getOrPrepareKodyGraphFiles({
 		env: input.env,
@@ -294,6 +337,7 @@ export async function buildKodyImportableModuleBundle(input: {
 		entryPoint: input.entryPoint,
 		rootPackageId: input.rootPackageId,
 		prepareCache: input.prepareCache,
+		linkKodyPackageImports: input.linkKodyPackageImports,
 	})
 	const files = clonePreparedGraphFiles(prepared.files)
 	const { packages, publishedArtifactDependencies } = prepared
@@ -310,6 +354,7 @@ export async function buildKodyImportableModuleBundle(input: {
 		files,
 		entryPoint: bootstrapPath,
 		sourceFiles: input.sourceFiles,
+		linkKodyPackageImports: input.linkKodyPackageImports,
 	})
 	const modules = {
 		...stripKodyRuntimeModules(bundle.modules as WorkerLoaderModules),
@@ -326,13 +371,15 @@ export async function buildKodyImportableModuleBundle(input: {
 	return {
 		mainModule: bundle.mainModule,
 		modules,
-		dependencies: mergePublishedArtifactDependencies({
-			dependencies: await resolveKodyDependenciesForEntryPoint({
-				...input,
-				loadedPackages: packages,
-			}),
-			publishedArtifactDependencies,
-		}),
+		dependencies: input.linkKodyPackageImports
+			? []
+			: mergePublishedArtifactDependencies({
+					dependencies: await resolveKodyDependenciesForEntryPoint({
+						...input,
+						loadedPackages: packages,
+					}),
+					publishedArtifactDependencies,
+				}),
 		...includeDynamicDependenciesWhenPresent(modules),
 	}
 }
@@ -348,6 +395,11 @@ export async function buildKodyAppBundle(input: {
 	rootPackageId?: string | null
 	cacheKey?: string | null
 	prepareCache?: PreparedKodyGraphCache
+	/**
+	 * Publish offload builds: other Kody packages stay linked imports and
+	 * `dependencies` is empty; Kody resolves both when it commits the upload.
+	 */
+	linkKodyPackageImports?: boolean
 }) {
 	const buildBundle = async () => {
 		const prepared = await getOrPrepareKodyGraphFiles({
@@ -358,6 +410,7 @@ export async function buildKodyAppBundle(input: {
 			entryPoint: input.entryPoint,
 			rootPackageId: input.rootPackageId,
 			prepareCache: input.prepareCache,
+			linkKodyPackageImports: input.linkKodyPackageImports,
 		})
 		const files = clonePreparedGraphFiles(prepared.files)
 		const { packages, publishedArtifactDependencies } = prepared
@@ -374,6 +427,7 @@ export async function buildKodyAppBundle(input: {
 			files,
 			entryPoint: bootstrapPath,
 			sourceFiles: input.sourceFiles,
+			linkKodyPackageImports: input.linkKodyPackageImports,
 		})
 		const modules = {
 			...stripKodyRuntimeModules(bundle.modules as WorkerLoaderModules),
@@ -390,13 +444,15 @@ export async function buildKodyAppBundle(input: {
 		return {
 			mainModule: bundle.mainModule,
 			modules,
-			dependencies: mergePublishedArtifactDependencies({
-				dependencies: await resolveKodyDependenciesForEntryPoint({
-					...input,
-					loadedPackages: packages,
-				}),
-				publishedArtifactDependencies,
-			}),
+			dependencies: input.linkKodyPackageImports
+				? []
+				: mergePublishedArtifactDependencies({
+						dependencies: await resolveKodyDependenciesForEntryPoint({
+							...input,
+							loadedPackages: packages,
+						}),
+						publishedArtifactDependencies,
+					}),
 			...includeDynamicDependenciesWhenPresent(modules),
 		}
 	}

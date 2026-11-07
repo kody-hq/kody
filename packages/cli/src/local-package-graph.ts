@@ -13,6 +13,7 @@ import {
 	currentStoredTokenLifetimeAlias,
 	featureDisabledMessage,
 	insufficientScopeMessage,
+	profileDenialMessage,
 	isScopedApiToken,
 	readInsufficientScopeDetails,
 	rejectedApiTokenMessage,
@@ -1063,6 +1064,14 @@ function describePackageGraphFailure(
 			status,
 			code,
 		})
+	}
+	const profileDenial = profileDenialMessage({
+		code,
+		body,
+		serverMessage: failure?.message,
+	})
+	if (profileDenial) {
+		return new LocalPackageGraphError(profileDenial, { status, code })
 	}
 	if (code === 'insufficient_scope') {
 		return new LocalPackageGraphError(

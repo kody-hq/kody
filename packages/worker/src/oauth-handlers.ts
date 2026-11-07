@@ -3,6 +3,7 @@ import {
 	guestClaimUrl,
 } from '#worker/guest/guest-accounts.ts'
 import { jsonResponse } from '#worker/json-response.ts'
+import { scheduleUserCreatedEvent } from '#worker/identity/schedule-user-lifecycle-event.ts'
 import {
 	type AuthRequest,
 	CimdFetchError,
@@ -1151,6 +1152,7 @@ export async function loadOAuthAuthorizeData(
 
 	let orgs: Array<OAuthAuthorizeConsentOrg> = []
 	let selectedOrgSlug: string | null = readOrgSlugFromUrl(authorizeUrl.href)
+	let requiredOrgSlug: string | null = null
 	if (!requireCredentials && authorizeSession.stableUserId) {
 		// Match approve: resolve `?org=` from the authorize URL and resource
 		// before auto-selecting. Fail closed when the client named an
@@ -1178,6 +1180,7 @@ export async function loadOAuthAuthorizeData(
 			}
 			throw error
 		}
+		requiredOrgSlug = resolvedRequested?.slug ?? null
 		const accessible = await listOrgsForPerson(
 			env.APP_DB,
 			authorizeSession.stableUserId,
@@ -1202,6 +1205,7 @@ export async function loadOAuthAuthorizeData(
 			requireCredentials,
 			orgs,
 			selectedOrgSlug,
+			requiredOrgSlug,
 		},
 		setCookies: [...clearResetVerificationCookie, sessionSetCookie],
 	}
@@ -1236,6 +1240,7 @@ export async function handleAuthorizeInfo(
 			requireCredentials: data.requireCredentials,
 			orgs: data.orgs,
 			selectedOrgSlug: data.selectedOrgSlug,
+			requiredOrgSlug: data.requiredOrgSlug,
 		},
 		{
 			headers: createSetCookieHeaders(setCookies),
@@ -1665,6 +1670,21 @@ async function completeGuestAuthorization(input: {
 			'guest_rate_limited',
 		)
 	}
+	scheduleUserCreatedEvent({
+		env,
+		user: {
+			id: created.personId,
+			username: created.username,
+			email: created.email,
+		},
+		source: 'guest',
+		createdAt: created.createdAt,
+		guest: {
+			client_name: clientName,
+			expires_at: created.expiresAt,
+			delete_at: created.deleteAt,
+		},
+	})
 	const userId = created.personId
 	const bindingFields = grantBindingFields({
 		orgId: created.personalOrgId,

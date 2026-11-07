@@ -234,3 +234,22 @@ test('Apps is available in personal and team workspace navigation', () => {
 		})
 	}
 })
+
+test('Integrations sits right below Credentials in personal and team workspaces', () => {
+	for (const [groups, slug] of [
+		[rails.personal, 'jane'],
+		[rails.team, 'acme'],
+	] as const) {
+		const credentials = groups.find((group) => group.label === 'Credentials')
+		const ids = credentials?.items.map((item) => item.id) ?? []
+		expect(ids.slice(0, 2)).toEqual(['credentials', 'integrations'])
+		expect(
+			credentials?.items.find((item) => item.id === 'integrations'),
+		).toMatchObject({
+			href: `/@${slug}/-/integrations`,
+			label: 'Integrations',
+		})
+		expect(selected(groups, 'integrations')).toEqual(['integrations'])
+		expect(selected(groups, 'credentials')).toEqual(['credentials'])
+	}
+})

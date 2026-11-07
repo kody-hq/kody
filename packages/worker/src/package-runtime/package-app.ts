@@ -24,6 +24,13 @@ import {
 } from 'cloudflare:workers'
 import { requireLocalPackageAppRuntimeBridge } from '#worker/runtime-worker-service.ts'
 import {
+	packageAppCpuSampleChannel,
+	packageAppUsageTailLoaderIdSuffix,
+	type DynamicWorkerUsageTailProps,
+} from '#worker/usage/dynamic-worker-cpu.ts'
+import { packageAppWarmCpuSampleRate } from '#universal/package-app-cpu-samples.ts'
+import {
+	packageAppRequestIdHeader,
 	packageAppRuntimeErrorHeader,
 	packageAppRuntimeRunIdHeader,
 } from '#worker/package-runtime/package-app-diagnostics.ts'
@@ -39,11 +46,9 @@ import type {
 	PackageAppVisitorNeed,
 } from '#worker/package-registry/types.ts'
 import type { EntitySourceRow } from '#worker/repo/types.ts'
-import {
-	buildKodyFns,
-	collectPackageStorageGrantIds,
-} from '#mcp/run-kody-registry.ts'
+import { collectPackageStorageGrantIds } from '#mcp/run-kody-registry.ts'
 import { getCapabilityRegistryForContext } from '#mcp/capabilities/registry.ts'
+import { createHostIntegrationAuthority } from '#mcp/capabilities/integrations/host-integration-authority.ts'
 import { readIntegrationRuntimeConfig } from '#mcp/capabilities/integrations/integration-runtime-config.ts'
 import { listVisibleEnabledMcpServerRefsCached } from '#worker/mcp-client/settings-service.ts'
 import {
@@ -72,7 +77,7 @@ import {
 	createPackageStorageAccessDeniedMessage,
 	createPackageStorageOwnerOnlyMessage,
 	createStorageBytesEntitlementRunCache,
-	isReadOnlyStorageSqlQuery,
+	storageSqlNeedsWriteEntitlement,
 	storageRunnerRpc,
 } from '#worker/storage-runner.ts'
 import {
@@ -97,7 +102,10 @@ import {
 	issuePackageSecretRef,
 } from '#mcp/secrets/package-secret-ref.ts'
 import { buildSecretPlaceholder } from '#mcp/secrets/placeholders.ts'
-import { attestedPackageStamp } from '#worker/credentials/package-stamp.ts'
+import {
+	attestedPackageStamp,
+	attestedPackageStampFromCaller,
+} from '#worker/credentials/package-stamp.ts'
 import { resolveCredential } from '#worker/credentials/resolve-credential.ts'
 import { newRunCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
 import {
@@ -284,6 +292,22 @@ function createPackageAppWorkerSource(input: {
 	return `
 import { DurableObject, WorkerEntrypoint } from 'cloudflare:workers';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { channel as __kodyDiagnosticsChannel } from 'node:diagnostics_channel';
+
+// CPU sampling for Activity: the first fetch on this isolate (cold) and about
+// ${packageAppWarmCpuSampleRate * 100}% of later ones publish a marker; the host tail stores only
+// invocations that carry it. Never billed.
+const __kodyCpuSampleChannel = __kodyDiagnosticsChannel(${JSON.stringify(packageAppCpuSampleChannel)});
+let __kodyIsolateServedFetch = false;
+function __kodyMarkCpuSample(request) {
+	const cold = !__kodyIsolateServedFetch;
+	__kodyIsolateServedFetch = true;
+	if (!cold && Math.random() >= ${packageAppWarmCpuSampleRate}) return;
+	try {
+		const requestId = request.headers.get(${JSON.stringify(packageAppRequestIdHeader)});
+		if (requestId) __kodyCpuSampleChannel.publish({ cold, requestId });
+	} catch {}
+}
 
 const __kodyRuntimeStorageSymbol = Symbol.for('kody.runtimeStorage');
 // Resolve the AsyncLocalStorage instance synchronously at module load,
@@ -1324,6 +1348,7 @@ function tagPackageAppRuntimeRun(response, runtimeRunId) {
 
 export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 	async fetch(request) {
+		__kodyMarkCpuSample(request);
 		const runtimeBridge = __kodySettledBridge(this.env.${packageAppRuntimeBindingName});
 		const requestUrl = new URL(request.url);
 		// Read before any package code runs. Ticket and visitor stay in ALS
@@ -2213,6 +2238,11 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		if (name === INTEGRATION_RUNTIME_CONFIG_TOOL_NAME) {
 			return await this.integrationRuntimeConfig(capabilityArgs, visitTicket)
 		}
+		// Host functions, not capabilities: no declaration needed, and they
+		// stay scoped to the app package even when an import calls them.
+		if (name === 'appRateLimit') return await this.appRateLimit(capabilityArgs)
+		if (name === 'appSpendGet') return await this.appSpendGet()
+		if (name === 'appPublisherGet') return await this.appPublisherGet()
 		const declared = new Set([
 			...(this.ctx.props.declaredCapabilities ?? []),
 			...(this.ctx.props.capabilityAllowance ?? []),
@@ -2261,6 +2291,9 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 					env: this.env,
 					callerContext,
 					integrationGet,
+					packageStamp: attestedPackageStampFromCaller({
+						storageContext: callerContext.storageContext,
+					}).packageStamp,
 					args,
 				})
 			},
@@ -2504,8 +2537,8 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		billedOrgId?: OwnerId
 	}) {
 		// package app bridges always mark packageStorage SQL writable, so skip
-		// the all-bucket fan-out for pure SELECT/EXPLAIN/PRAGMA statements.
-		if (input.writable && !isReadOnlyStorageSqlQuery(input.query)) {
+		// the all-bucket fan-out for pure reads and idempotent DDL.
+		if (input.writable && storageSqlNeedsWriteEntitlement(input.query)) {
 			await this.assertStorageWriteAllowed({
 				storageId: input.storageId,
 				requested: estimateEntitlementStorageSqlWriteBytes({
@@ -2866,9 +2899,14 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			storageId: this.ctx.props.packageId,
 			visitTicket: input.visitTicket,
 			run: async (callerContext) => {
-				const kody = await buildKodyFns(this.env, callerContext)
 				const authenticatedFetch = await createAuthenticatedFetch(
-					kody,
+					createHostIntegrationAuthority({
+						env: this.env,
+						callerContext,
+						packageStamp: attestedPackageStampFromCaller({
+							storageContext: callerContext.storageContext,
+						}).packageStamp,
+					}),
 					input.providerName,
 				)
 				return await authenticatedFetch(input.request.url, {
@@ -3426,6 +3464,7 @@ const packageAppWorkerOptionsCache =
 export function materializePackageAppWorkerOptions(
 	template: PackageAppWorkerTemplate,
 	requestVisit?: PackageAppRequestVisit | null,
+	tails?: Array<Fetcher> | null,
 ): PackageAppWorkerOptions {
 	const credentialClientBinding =
 		requestVisit?.credentialClientBinding ?? newRunCredentialClientBinding()
@@ -3460,6 +3499,7 @@ export function materializePackageAppWorkerOptions(
 		globalOutbound: workerExports?.KodyFetchGateway
 			? workerExports.KodyFetchGateway({ props: gatewayProps })
 			: null,
+		...(tails && tails.length > 0 ? { tails } : {}),
 	} as PackageAppWorkerOptions
 }
 
@@ -4380,9 +4420,11 @@ export async function buildPackageAppWorker(input: {
 				visit: requestVisit,
 			}
 		}
+		let builtHere = false
 		const build = await packageAppWorkerOptionsCache.getOrCreate({
 			cacheKey,
 			create: async () => {
+				builtHere = true
 				const template = await buildPackageAppWorkerOptionsUncached(
 					input,
 					cacheKey,
@@ -4401,10 +4443,38 @@ export async function buildPackageAppWorker(input: {
 		// would then skip without a `dynamic_worker_day` event. The loopback
 		// bindings are minted in this request: the loader may (re)load the
 		// isolate from any request that reuses the cached build.
-		const stub = build.workerId
-			? input.env.APP_LOADER.get(build.workerId, () =>
-					materializePackageAppWorkerOptions(build.template, requestVisit),
-				)
+		// Cold-start markers: whether this request built the worker options, and
+		// whether the loader ran the factory (a new isolate for this worker id).
+		input.serverTiming?.push({
+			name: 'appBuild',
+			durationMs: 0,
+			desc: builtHere ? 'built' : 'cached',
+		})
+		// Sampled CPU for Activity rides a tail on the isolate. Gated like the
+		// execute tail: local workerd reports zero CPU. The tail changes the
+		// WorkerCode, so it gets its own loader id; billing keeps build.workerId.
+		const usageTailProps = packageAppUsageTailProps({
+			userId: input.userId,
+			workerId: build.workerId,
+			savedPackage: input.savedPackage,
+		})
+		const loaderId =
+			build.workerId && usageTailProps
+				? `${build.workerId}${packageAppUsageTailLoaderIdSuffix}`
+				: build.workerId
+		const stub = loaderId
+			? input.env.APP_LOADER.get(loaderId, () => {
+					input.serverTiming?.push({
+						name: 'appIsolate',
+						durationMs: 0,
+						desc: 'new',
+					})
+					return materializePackageAppWorkerOptions(
+						build.template,
+						requestVisit,
+						usageTailProps ? [createPackageAppUsageTail(usageTailProps)] : null,
+					)
+				})
 			: input.env.APP_LOADER.load(
 					materializePackageAppWorkerOptions(build.template, requestVisit),
 				)
@@ -4430,6 +4500,36 @@ export async function buildPackageAppWorker(input: {
 			visit: requestVisit,
 		}
 	})
+}
+
+function packageAppUsageTailProps(input: {
+	userId: OwnerId
+	workerId: string | null
+	savedPackage: { id: string; name?: string | null }
+}): DynamicWorkerUsageTailProps | null {
+	// Telemetry only writes the owner's RunLog; it never depends on metering.
+	if (!input.workerId) return null
+	if (!workerExports || !('DynamicWorkerUsageTail' in workerExports)) {
+		return null
+	}
+	return {
+		userId: input.userId,
+		workerId: input.workerId,
+		packageApp: {
+			packageId: input.savedPackage.id,
+			packageName: input.savedPackage.name ?? null,
+		},
+	}
+}
+
+function createPackageAppUsageTail(props: DynamicWorkerUsageTailProps) {
+	return (
+		workerExports as unknown as {
+			DynamicWorkerUsageTail: (options: {
+				props: DynamicWorkerUsageTailProps
+			}) => Fetcher
+		}
+	).DynamicWorkerUsageTail({ props })
 }
 
 function schedulePackageAppUniqueWorkerDay(input: {

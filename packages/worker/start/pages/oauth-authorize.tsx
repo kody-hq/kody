@@ -338,8 +338,11 @@ export function OAuthAuthorizeRoute({
 	const [pickedOrgSlug, setPickedOrgSlug] = useState<
 		string | null | undefined
 	>()
-	const displayedOrgSlug =
-		pickedOrgSlug === undefined
+	const requiredOrgSlug =
+		info && 'requiredOrgSlug' in info ? (info.requiredOrgSlug ?? null) : null
+	const displayedOrgSlug = requiredOrgSlug
+		? requiredOrgSlug
+		: pickedOrgSlug === undefined
 			? (info?.selectedOrgSlug ?? null)
 			: pickedOrgSlug
 	useEffect(() => {
@@ -612,6 +615,7 @@ export function OAuthAuthorizeRoute({
 		orgs: info?.orgs ?? [],
 		selectedOrgSlug: displayedOrgSlug,
 		signedIn: isLoggedIn,
+		requiredOrgSlug,
 	})
 	const actionsDisabled =
 		orgField.kind === 'missing' ||
@@ -802,6 +806,7 @@ export function OAuthAuthorizeRoute({
 						orgs={info?.orgs ?? []}
 						selectedOrgSlug={displayedOrgSlug}
 						signedIn={isLoggedIn}
+						requiredOrgSlug={requiredOrgSlug}
 						onChange={setPickedOrgSlug}
 					/>
 					<Honeypot />

@@ -1365,7 +1365,7 @@ test('execute tool attaches entitlement metadata on denials and quota, not on su
 		throw new Error('Expected an entitlement upgrade hint on quota denial')
 	}
 	expect(quotaHint).toMatch(
-		/^This daily limit resets at 00:00 UTC, in (\d+d )?(\d+h )?\d+m\. Rerun code you already ran today and vary params; repeats are free\. Shell-capable hosts can run `npx -y @kodycodes\/cli@latest execute --local` \(Node 22\+\); if it is not signed in, call `api` with `cliCredentialBootstrap` and run its `cli_command`, or upgrade your plan at \/@[^/]+\/-\/billing\.$/,
+		/^This daily limit resets at 00:00 UTC, in (\d+d )?(\d+h )?\d+m\.(?: See usage at \/@[^/]+\/-\/usage\.)? Rerun code you already ran today and vary params; repeats are free\. Shell-capable hosts can run `npx -y @kodycodes\/cli@latest execute --local` \(Node 22\+\); if it is not signed in, call `api` with `cliCredentialBootstrap` and run its `cli_command`, or upgrade your plan at \/@[^/]+\/-\/billing\.$/,
 	)
 	const quotaEntitlement = {
 		code: entitlementLimitErrorCode,
@@ -1375,10 +1375,11 @@ test('execute tool attaches entitlement metadata on denials and quota, not on su
 		current: quotaLimit,
 		upgradeHint: quotaHint,
 	} as const
-	expect(quotaDenied.structuredContent.entitlement).toEqual({
+	expect(quotaDenied.structuredContent.entitlement).toMatchObject({
 		...quotaEntitlement,
 		used: quotaLimit,
 		remaining: 0,
+		resetAt: expect.any(String),
 	})
 })
 

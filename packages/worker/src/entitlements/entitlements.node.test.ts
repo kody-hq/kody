@@ -306,6 +306,7 @@ test('entitlement limit messages always identify a known plan name', () => {
 		}),
 	}
 	const message = buildEntitlementLimitMessage(details)
+	expect(message.startsWith('Kody plan limit reached:')).toBe(true)
 	expect(parseEntitlementLimitMessage(message)).toEqual(details)
 	expect(details.upgradeHint).not.toMatch(/upgrade/i)
 
@@ -316,18 +317,33 @@ test('entitlement limit messages always identify a known plan name', () => {
 		limit: 400,
 		current: 400,
 		window: 'week' as const,
+		orgSlug: 'acme',
 		upgradeHint: buildEntitlementUpgradeHint({
 			resource: 'execute_unique_workers_per_day',
 			plan: 'free',
 			window: 'week',
+			billingPath: '/@acme/-/billing',
+			usagePath: '/@acme/-/usage',
 		}),
 	}
-	expect(
-		parseEntitlementLimitMessage(buildEntitlementLimitMessage(weeklyDetails)),
-	).toEqual(weeklyDetails)
+	const weeklyMessage = buildEntitlementLimitMessage(weeklyDetails)
+	expect(weeklyMessage).toContain('Kody plan limit reached for @acme:')
+	expect(weeklyMessage).toContain('See usage at /@acme/-/usage.')
+	expect(parseEntitlementLimitMessage(weeklyMessage)).toEqual(weeklyDetails)
 	expect(weeklyDetails.upgradeHint).toMatch(
-		/upgrade your plan at \/@<slug>\/-\/billing/,
+		/upgrade your plan at \/@acme\/-\/billing/,
 	)
+	// Older stored messages without the Kody prefix still parse.
+	expect(
+		parseEntitlementLimitMessage(
+			'Plan limit reached: your "free" plan allows at most 10 saved packages and you currently have 10. hint',
+		),
+	).toMatchObject({
+		resource: 'saved_packages',
+		plan: 'free',
+		limit: 10,
+		current: 10,
+	})
 	for (const scope of ['this deployment', 'your "enterprise" plan']) {
 		expect(
 			parseEntitlementLimitMessage(

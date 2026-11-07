@@ -1,4 +1,11 @@
-import { appendFileSync, rmSync, unwatchFile, watchFile } from 'node:fs'
+import {
+	appendFileSync,
+	existsSync,
+	readFileSync,
+	rmSync,
+	unwatchFile,
+	watchFile,
+} from 'node:fs'
 import { cpus, platform, totalmem } from 'node:os'
 import {
 	ed25519JwkThumbprint,
@@ -18,6 +25,7 @@ import {
 import {
 	type CurrentVersion,
 	autoUpdateSetting,
+	checkForUpdate,
 	newerInstalledVersion,
 	relaunchExitCode,
 	startupRefusedExitCode,
@@ -25,7 +33,11 @@ import {
 	superviseNewerVersion,
 	supervisedEnvVar,
 } from './auto-update.js'
-import { runDaemon } from './daemon.js'
+import {
+	isRemoteDaemonCommand,
+	runRemoteDaemonCommand,
+} from './daemon-remote.js'
+import { DaemonControlError, type DaemonPause, runDaemon } from './daemon.js'
 import {
 	type RunnerLauncher,
 	acquireRunnerLock,
@@ -37,6 +49,14 @@ import {
 import { HostCommands } from './host-commands.js'
 import { createPackageGraphCache } from './package-graph-cache.js'
 import {
+	type HostAccessContext,
+	describeMachineGrantNotes,
+	hostAccessNotes,
+	lanState,
+	machineGrantNotes,
+	runGrantCommand,
+} from './host-access.js'
+import {
 	type FsMode,
 	allowLocalPath,
 	effectiveFs,
@@ -44,6 +64,7 @@ import {
 	readLocalCommandsEnabled,
 	readLocalPolicy,
 	removeLocalPath,
+	setLocalAutoUpdateEnabled,
 	setLocalCommandsEnabled,
 } from './fs-access.js'
 import {
@@ -60,6 +81,7 @@ import {
 	offerInstall,
 	offerUninstallAfterRevoke,
 	runAutoUpdateCommand,
+	runDaemonEnvCommand,
 	runDaemonServiceCommand,
 	runUpdate,
 	storedContextIds,
@@ -79,6 +101,7 @@ import {
 	createLocalWorkerTracker,
 	reapLeftoverWorkers,
 } from './worker-tracker.js'
+import { saveServiceEnvAssignments } from './service-env.js'
 
 export type ExecutionContextCommandInput = {
 	command: 'context' | 'chain' | 'daemon' | 'connect' | 'update'
@@ -89,6 +112,8 @@ export type ExecutionContextCommandInput = {
 		mode?: string
 		json?: boolean
 		maxConcurrent?: string
+		/** `kody daemon install --env KEY=VALUE` (repeatable). */
+		env?: Array<string>
 		yes?: boolean
 		/** true: --install, false: --no-install, undefined: ask. */
 		install?: boolean
@@ -96,6 +121,9 @@ export type ExecutionContextCommandInput = {
 		lines?: string
 		follow?: boolean
 		unregister?: boolean
+		reason?: string
+		cancelRuns?: boolean
+		remote?: boolean
 	}
 	apiUrl: string
 	org?: string
@@ -176,6 +204,9 @@ async function runCommand(
 	if (input.command === 'context' && sub === 'policy') {
 		return await runPolicyCommand(input, rest)
 	}
+	if (input.command === 'context' && sub === 'grant') {
+		return await runGrantCommand({ ...input, ...base, positionals: rest })
+	}
 	const serviceEnv: ServiceCommandEnv = {
 		apiUrl: input.apiUrl,
 		clientVersion: input.clientVersion,
@@ -194,8 +225,47 @@ async function runCommand(
 			: maxConcurrentRuns(input.values.maxConcurrent)
 	}
 	if (input.command === 'update') return await runUpdate(serviceEnv)
+	if (input.command === 'daemon' && sub === 'env') {
+		return await runDaemonEnvCommand(serviceEnv, {
+			action: rest[0],
+			args: rest.slice(1),
+			...(input.values.context ? { context: input.values.context } : {}),
+		})
+	}
+	if (
+		input.command === 'daemon' &&
+		sub === 'install' &&
+		input.values.env?.length
+	) {
+		await saveServiceEnvAssignments(input.values.env)
+	}
 	if (input.command === 'daemon' && sub === 'auto-update') {
 		return await runAutoUpdateCommand(serviceEnv, rest[0])
+	}
+	if (
+		input.command === 'daemon' &&
+		isRemoteDaemonCommand({
+			sub,
+			apiUrl: input.apiUrl,
+			...(input.values.context ? { context: input.values.context } : {}),
+			...(input.values.remote ? { remote: true } : {}),
+		})
+	) {
+		return await runRemoteDaemonCommand({
+			...base,
+			sub: sub!,
+			args: rest,
+			token: input.token,
+			write: input.write,
+			...(input.values.context ? { context: input.values.context } : {}),
+			...(input.values.reason ? { reason: input.values.reason } : {}),
+			...(input.values.cancelRuns ? { cancelRuns: true } : {}),
+			...(input.values.lines ? { lines: input.values.lines } : {}),
+			...(input.values.json ? { json: true } : {}),
+		})
+	}
+	if (input.command === 'daemon' && sub === 'update') {
+		return await runUpdate(serviceEnv)
 	}
 	if (input.command === 'daemon' && sub !== undefined) {
 		const maxConcurrent = maxConcurrentFlag()
@@ -374,22 +444,44 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 			method: 'GET',
 			path: '/v1/execution-contexts',
 		})
-		const contexts = (body.contexts ?? []) as Array<{
-			id: string
-			name: string
-			status: string
-			usable: boolean
-			unusableReason?: string
-		}>
+		const contexts = (body.contexts ?? []) as Array<
+			HostAccessContext & {
+				status: string
+				usable: boolean
+				unusableReason?: string
+			}
+		>
+		const local = new Set(storedContextIds(input.apiUrl))
+		const policyFs = contexts.some((c) => local.has(c.id))
+			? (await readLocalPolicy()).fs
+			: []
+		const notesFor = (c: HostAccessContext) =>
+			local.has(c.id) ? hostAccessNotes(c, policyFs) : []
 		out(
 			input,
-			body,
+			{
+				...body,
+				...(local.size > 0
+					? {
+							thisMachine: {
+								localPolicy: policyFs,
+								notes: Object.fromEntries(
+									contexts
+										.filter((c) => local.has(c.id))
+										.map((c) => [c.name, notesFor(c)]),
+								),
+							},
+						}
+					: {}),
+			},
 			contexts.length === 0
 				? 'No execution contexts yet. Register this machine with `kody context register --name <name>`.'
 				: contexts
-						.map(
-							(c) =>
-								`${c.name} (${c.id}) ${c.status}${c.usable ? '' : `, not usable: ${c.unusableReason}`}`,
+						.map((c) =>
+							[
+								`${c.name} (${c.id}) ${c.status}${c.usable ? '' : `, not usable: ${c.unusableReason}`}${c.grantSummary ? `; server grant: ${c.grantSummary.fs} host folder${c.grantSummary.fs === 1 ? '' : 's'}, LAN ${lanState(c.grantSummary.egress.mode)}` : ''}${local.has(c.id) ? ' (this machine)' : ''}`,
+								...notesFor(c).map((note) => `  ${note}`),
+							].join('\n'),
 						)
 						.join('\n'),
 		)
@@ -563,7 +655,12 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 				? []
 				: ['--max-concurrent', input.values.maxConcurrent]),
 		]
-		const log = (line: string) => input.write(`${line}\n`)
+		const recentLog: Array<string> = []
+		const log = (line: string) => {
+			recentLog.push(`${new Date().toISOString()} ${line}`)
+			if (recentLog.length > daemonLogBufferLines) recentLog.shift()
+			input.write(`${line}\n`)
+		}
 		// A newer verified CLI is installed (by this or another daemon): run it.
 		if (!supervised && (await readAutoUpdate()).enabled) {
 			const newer = newerInstalledVersion({ selfVersion: input.clientVersion })
@@ -680,6 +777,9 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 		let signalledAt = 0
 		let updateTo: CurrentVersion | null = null
 		let forcedUpdate = false
+		let restartRequested = false
+		let paused: DaemonPause | null = null
+		const startedAt = new Date().toISOString()
 		const onSignal = () => {
 			if (signalled) {
 				// A supervisor forwards the signal the terminal or service manager
@@ -727,6 +827,7 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 		const packageGraphCache = createPackageGraphCache()
 		let stop: Awaited<ReturnType<typeof runDaemon>> = 'shutdown'
 		let autoUpdateEnabled = (await readAutoUpdate()).enabled
+		let reportedServerFsOff = false
 		const activity = { runs: 0 }
 		const updater = startDaemonUpdater({
 			selfVersion: input.clientVersion,
@@ -808,6 +909,13 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 					effective: async (grantFs) => {
 						const policy = await readLocalPolicy()
 						autoUpdateEnabled = autoUpdateSetting(policy).enabled
+						const serverOff = grantFs.length === 0 && policy.fs.length > 0
+						if (serverOff && !reportedServerFsOff) {
+							log(
+								"This machine's local policy allows host folders, but this context's server grant (grant.fs) lists none, so runs get no host folders. Someone with Contribute or Manage on the context can turn it on with: kody context grant allow <folder> --mode ro|rw",
+							)
+						}
+						reportedServerFsOff = serverOff
 						return await effectiveFs(grantFs, policy.fs)
 					},
 					onChange: (listener) => {
@@ -817,6 +925,125 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 					},
 				},
 				log,
+				onPaused: (next) => {
+					if (JSON.stringify(next) === JSON.stringify(paused)) return
+					log(
+						next
+							? `Paused in Kody${next.by ? ` by @${next.by}` : ''}${next.reason ? `: ${next.reason}` : ''}. This daemon stays connected but gets no runs and no host commands until it is resumed (kody daemon resume).`
+							: paused
+								? 'Resumed in Kody. Taking runs again.'
+								: '',
+					)
+					paused = next
+				},
+				control: async (op, args) => {
+					const restartable = Boolean(manager) || supervised
+					const busyDraining = () => {
+						if (drain.signal.aborted) {
+							throw new DaemonControlError(
+								'daemon_busy',
+								'This daemon is already stopping for a restart or update.',
+							)
+						}
+					}
+					switch (op) {
+						case 'status':
+							return {
+								version: input.clientVersion,
+								service: manager,
+								supervised,
+								pid: process.pid,
+								platform: platform(),
+								startedAt,
+								autoUpdate: autoUpdateEnabled ? 'on' : 'off',
+								maxConcurrent,
+								runs: activity.runs,
+								backgroundCommands: hostCommands.runningBackground(),
+								draining: drain.signal.aborted,
+								paused,
+							}
+						case 'restart': {
+							if (!restartable) {
+								throw new DaemonControlError(
+									'not_service_managed',
+									'This daemon runs in a terminal, so nothing would start it again.',
+								)
+							}
+							busyDraining()
+							log(
+								'Restart requested from Kody. Stopping after runs in flight finish; the service manager starts it again.',
+							)
+							restartRequested = true
+							// Answer first, then drain.
+							setTimeout(() => {
+								if (!drain.signal.aborted) drain.abort()
+							}, 250).unref()
+							return { restarting: true, runs: activity.runs }
+						}
+						case 'update': {
+							busyDraining()
+							const result = await checkForUpdate({
+								selfVersion: input.clientVersion,
+								enabled: true,
+							})
+							if (result.kind === 'ready') {
+								log(
+									`Update requested from Kody: moving kody ${input.clientVersion} to ${result.current.version} after runs in flight finish.`,
+								)
+								updateTo = result.current
+								setTimeout(() => {
+									if (!drain.signal.aborted) drain.abort()
+								}, 250).unref()
+								return {
+									version: input.clientVersion,
+									updatingTo: result.current.version,
+									message: `Updating to kody ${result.current.version} after runs in flight finish.`,
+								}
+							}
+							if (result.kind === 'up-to-date') {
+								return {
+									version: input.clientVersion,
+									latest: result.latest,
+									message: `Already on the latest kody (${input.clientVersion}).`,
+								}
+							}
+							throw new DaemonControlError(
+								'daemon_control_failed',
+								result.kind === 'failed'
+									? `Could not update to ${result.version}: ${result.error}`
+									: result.kind === 'backoff'
+										? `${result.version} failed before; next try after ${result.until}.`
+										: 'Another update check is running. Try again shortly.',
+							)
+						}
+						case 'auto-update': {
+							const enabled = args.enabled === true
+							await setLocalAutoUpdateEnabled({ enabled })
+							autoUpdateEnabled = (await readAutoUpdate()).enabled
+							log(
+								`Auto-update turned ${enabled ? 'on' : 'off'} from Kody (for every kody daemon on this machine).`,
+							)
+							return { autoUpdate: autoUpdateEnabled ? 'on' : 'off' }
+						}
+						case 'logs': {
+							const lines = Math.max(
+								1,
+								Math.min(
+									daemonLogBufferLines,
+									typeof args.lines === 'number' ? Math.floor(args.lines) : 100,
+								),
+							)
+							return {
+								lines: recentDaemonLog(paths?.logPath, recentLog, lines),
+							}
+						}
+						default:
+							throw new DaemonControlError(
+								'daemon_control_failed',
+								`Unknown daemon operation ${op}. Update kody on this machine.`,
+							)
+					}
+				},
 				signal: abort.signal,
 				drainSignal: drain.signal,
 			})
@@ -846,6 +1073,9 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 			return supervised ? startupRefusedExitCode : 1
 		}
 		const target: CurrentVersion | null = updateTo
+		if (stop === 'shutdown' && restartRequested && !target && !signalled) {
+			return relaunchExitCode
+		}
 		if (stop === 'shutdown' && target && !signalled) {
 			// Services and supervised daemons exit so they come back on the new
 			// version; a terminal daemon runs it in place.
@@ -881,7 +1111,7 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 		return stayStoppedExitCode
 	}
 	throw new Error(
-		'Usage: kody context register --name <name> [--org <slug>] | kody context list | kody context revoke <name> | kody context delete <name> | kody context cancel-run <name> <run id> | kody context policy [show | allow <path> [--mode ro|rw] | remove <path>] | kody context commands [status | on | off] [--context <name>] | kody chain show | add <name> | remove <name> | kody connect --name <name> | kody daemon [--context <ec id>] [--max-concurrent <n>] | kody daemon install | status | logs | restart | start | stop | uninstall | auto-update [on | off | status] | kody update',
+		'Usage: kody context register --name <name> [--org <slug>] | kody context list | kody context revoke <name> | kody context delete <name> | kody context cancel-run <name> <run id> | kody context policy [show | allow <path> [--mode ro|rw] | remove <path>] | kody context grant [show | allow <path> [--mode ro|rw] | remove <path> | lan on|off] [--context <name>] | kody context commands [status | on | off] [--context <name>] | kody chain show | add <name> | remove <name> | kody connect --name <name> | kody daemon [--context <ec id>] [--max-concurrent <n>] | kody daemon install | status | logs | restart | start | stop | uninstall | auto-update [on | off | status] | kody update',
 	)
 }
 
@@ -910,7 +1140,12 @@ function chainOf(body: Record<string, unknown>) {
 	return (body.chain ?? {}) as Record<string, unknown>
 }
 
-type ContextSummary = { id: string; name?: string | null; status?: string }
+type ContextSummary = {
+	id: string
+	name?: string | null
+	status?: string
+	paused?: unknown
+}
 
 function contextsById(body: Record<string, unknown>) {
 	const contexts = (body.contexts ?? []) as Array<ContextSummary>
@@ -933,8 +1168,11 @@ function describeChain(
 		const known = entry.id ? contexts.get(entry.id) : undefined
 		const name = entry.name ?? known?.name
 		const label = name ? `${name} (${entry.id})` : String(entry.id)
-		const offline =
-			known?.status && known.status !== 'online' ? ` [${known.status}]` : ''
+		const offline = known?.paused
+			? ' [paused]'
+			: known?.status && known.status !== 'online'
+				? ` [${known.status}]`
+				: ''
 		const skipped =
 			entry.usable === false ? ` (skipped: ${entry.unusableReason})` : ''
 		return `${index + 1}. ${label}${offline}${skipped}`
@@ -1057,11 +1295,24 @@ async function runPolicyCommand(
 			: [
 					`Host folders this machine allows (${file}):`,
 					...rules.map((rule) => `  ${rule.mode}  ${rule.path}`),
-					'A run can use a folder only if its context grant (grant.fs) also lists it; the narrower mode wins.',
+					'This is the local policy. A run can use a folder only if its context server grant (grant.fs) also lists it; the narrower mode wins.',
 				].join('\n')
+	const grantNotes = (fs: Array<{ path: string; mode: FsMode }>) =>
+		machineGrantNotes({
+			apiUrl: input.apiUrl,
+			...(input.org ? { org: input.org } : {}),
+			...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
+			token: input.token,
+			policyFs: fs,
+		})
 	if (action === undefined || action === 'show') {
 		const policy = await readLocalPolicy(file)
-		out(input, { path: file, ...policy }, describe(policy.fs))
+		const serverGrant = await grantNotes(policy.fs)
+		out(
+			input,
+			{ path: file, ...policy, serverGrant },
+			`${describe(policy.fs)}${describeMachineGrantNotes(serverGrant)}`,
+		)
 		return 0
 	}
 	if (!path || extra.length > 0) throw new Error(policyUsage)
@@ -1075,10 +1326,11 @@ async function runPolicyCommand(
 			mode,
 			policyPath: file,
 		})
+		const serverGrant = await grantNotes(policy.fs)
 		out(
 			input,
-			{ path: file, ...policy },
-			`Allowed ${added.path} (${added.mode}). Running daemons pick this up within a few seconds.\n${describe(policy.fs)}`,
+			{ path: file, ...policy, serverGrant },
+			`Allowed ${added.path} (${added.mode}) in this machine's local policy. Running daemons pick this up within a few seconds. This does not change the context's server grant.\n${describe(policy.fs)}${describeMachineGrantNotes(serverGrant)}`,
 		)
 		return 0
 	}
@@ -1095,6 +1347,25 @@ async function runPolicyCommand(
 		return 0
 	}
 	throw new Error(policyUsage)
+}
+
+const daemonLogBufferLines = 500
+
+/** Last lines of the service log, or of this process's own log lines. */
+function recentDaemonLog(
+	logPath: string | undefined,
+	buffered: ReadonlyArray<string>,
+	lines: number,
+) {
+	if (logPath && existsSync(logPath)) {
+		try {
+			const text = readFileSync(logPath, 'utf8')
+			return text.split(/\r?\n/).filter(Boolean).slice(-lines)
+		} catch {
+			// Fall back to this process's lines.
+		}
+	}
+	return buffered.slice(-lines)
 }
 
 function appendOutputTo(path: string) {

@@ -19,6 +19,8 @@ import {
 	claimPackageInvocationRecord,
 	bulkUpdateRunErrorTriage,
 	claimRunRecord,
+	closeStoppedWorkflowAttemptRuns,
+	ensureRunRecordStarted,
 	finishPackageInvocationRecord,
 	finishRunRecord,
 	getRunRecord,
@@ -1941,4 +1943,55 @@ test('started_by persists on begin/finish and filters runList', async () => {
 	})
 	expect(filtered.runs.map((run) => run.name)).toEqual(['alice-run'])
 	expect(filtered.runs[0]?.startedBy?.username).toBe('alice')
+})
+
+test("closeStoppedWorkflowAttemptRuns closes only that workflow instance's running rows", async () => {
+	const userId = uniqueUserId('workflow-attempts')
+	const start = async (workflowId: string) => {
+		const handle = beginRunRecord({
+			env,
+			userId,
+			context: { surface: 'workflow', name: 'publish', workflowId },
+		})
+		await ensureRunRecordStarted({ env, handle })
+		return handle!.id
+	}
+	const killed = await start('wf-1')
+	const other = await start('wf-2')
+	expect(
+		await closeStoppedWorkflowAttemptRuns({
+			env,
+			userId,
+			workflowId: 'wf-1',
+			outcome: 'retried',
+		}),
+	).toEqual([killed])
+	expect((await getRun(userId, killed))?.run).toMatchObject({
+		status: 'error',
+		errorName: 'workflow_attempt_stopped',
+		errorTriage: 'ignored',
+		triagedBy: 'system:workflow-retry',
+	})
+	expect((await getRun(userId, other))?.run.status).toBe('running')
+	expect(
+		await closeStoppedWorkflowAttemptRuns({
+			env,
+			userId,
+			workflowId: 'wf-1',
+			outcome: 'succeeded',
+		}),
+	).toEqual([])
+
+	const finalKilled = await start('wf-3')
+	await closeStoppedWorkflowAttemptRuns({
+		env,
+		userId,
+		workflowId: 'wf-3',
+		outcome: 'failed',
+	})
+	expect((await getRun(userId, finalKilled))?.run).toMatchObject({
+		status: 'error',
+		errorName: 'workflow_attempt_stopped',
+		errorTriage: null,
+	})
 })

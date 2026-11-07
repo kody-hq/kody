@@ -30,3 +30,9 @@ export const platformFeedbackResolutionPrUrlsJsonMaxLength =
 
 /** Max superseded outcome notes kept in `resolution_history` (oldest dropped). */
 export const platformFeedbackResolutionHistoryMaxEntries = 10
+
+/**
+ * Max admin reopens kept in `reopen_history`. A reopen past the cap is
+ * refused instead of dropping older audit entries.
+ */
+export const platformFeedbackReopenHistoryMaxEntries = 50

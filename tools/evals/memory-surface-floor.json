@@ -1,0 +1,850 @@
+{
+	"description": "Synthetic memories and queries used to pick searchMemorySurfaceMinVectorScore. Scores are cosine similarity from bge-small-en-v1.5 (CLS pooling, normalized; fp32 ONNX replica of the Workers AI model) between the query and the memory embed text (buildMemoryEmbedText). related.targetScore is the intended memory; unrelated.maxScore is the closest memory.",
+	"model": "@cf/baai/bge-small-en-v1.5 (pooling: cls)",
+	"memories": [
+		{
+			"id": "m-release-notes",
+			"category": "workflow",
+			"subject": "Release notes format",
+			"summary": "Release notes use a Highlights section, then Fixes, then Breaking changes, each as short bullets.",
+			"details": "",
+			"tags": ["release", "changelog"],
+			"dedupeKey": "release-notes-format"
+		},
+		{
+			"id": "m-timezone",
+			"category": "preference",
+			"subject": "Default timezone is America/Denver",
+			"summary": "Schedule jobs and show times in Mountain Time unless told otherwise.",
+			"details": "",
+			"tags": ["timezone", "schedule"],
+			"dedupeKey": "default-timezone"
+		},
+		{
+			"id": "m-email-signoff",
+			"category": "preference",
+			"subject": "Email sign-off",
+			"summary": "Sign customer emails with 'Thanks, Sam' and keep replies under five sentences.",
+			"details": "",
+			"tags": ["email", "writing"],
+			"dedupeKey": null
+		},
+		{
+			"id": "m-deploy-friday",
+			"category": "constraint",
+			"subject": "No production deploys on Fridays",
+			"summary": "Hold production deploys from Friday noon until Monday morning.",
+			"details": "",
+			"tags": ["deploy", "production"],
+			"dedupeKey": "no-friday-deploys"
+		},
+		{
+			"id": "m-pkg-manager",
+			"category": "preference",
+			"subject": "Use pnpm in the web repo",
+			"summary": "The web repo uses pnpm workspaces; never run npm install there.",
+			"details": "",
+			"tags": ["pnpm", "tooling"],
+			"dedupeKey": null
+		},
+		{
+			"id": "m-github-org",
+			"category": "fact",
+			"subject": "GitHub organization is acme-labs",
+			"summary": "Repositories live under the acme-labs GitHub org; default branch is main.",
+			"details": "",
+			"tags": ["github"],
+			"dedupeKey": "github-org"
+		},
+		{
+			"id": "m-invoice",
+			"category": "workflow",
+			"subject": "Monthly invoice reminder",
+			"summary": "On the first business day of each month, remind the bookkeeper to send client invoices.",
+			"details": "",
+			"tags": ["billing", "invoices"],
+			"dedupeKey": null
+		},
+		{
+			"id": "m-diet",
+			"category": "preference",
+			"subject": "Vegetarian meal planning",
+			"summary": "Meal plans and recipe suggestions should be vegetarian and avoid mushrooms.",
+			"details": "",
+			"tags": ["food", "recipes"],
+			"dedupeKey": null
+		},
+		{
+			"id": "m-home-lights",
+			"category": "fact",
+			"subject": "Living room lights are on the Hue bridge",
+			"summary": "The living room and kitchen lights are Philips Hue; the porch light is a separate smart plug.",
+			"details": "",
+			"tags": ["home", "lights"],
+			"dedupeKey": null
+		},
+		{
+			"id": "m-standup",
+			"category": "workflow",
+			"subject": "Daily standup summary",
+			"summary": "Post a standup summary to the team chat at 9:30 with yesterday, today, and blockers.",
+			"details": "",
+			"tags": ["standup", "team"],
+			"dedupeKey": null
+		},
+		{
+			"id": "m-api-token-rotation",
+			"category": "constraint",
+			"subject": "Rotate API tokens every 90 days",
+			"summary": "Third-party API tokens must be rotated every 90 days and stored as secrets, never in code.",
+			"details": "",
+			"tags": ["security", "secrets"],
+			"dedupeKey": null
+		},
+		{
+			"id": "m-blog-tone",
+			"category": "preference",
+			"subject": "Blog post voice",
+			"summary": "Blog posts are casual first person, short paragraphs, one code example per idea.",
+			"details": "",
+			"tags": ["blog", "writing"],
+			"dedupeKey": null
+		},
+		{
+			"id": "m-travel",
+			"category": "preference",
+			"subject": "Flight booking preferences",
+			"summary": "Prefer aisle seats and nonstop flights; avoid red-eyes.",
+			"details": "",
+			"tags": ["travel"],
+			"dedupeKey": null
+		},
+		{
+			"id": "m-pr-review",
+			"category": "workflow",
+			"subject": "Pull request review checklist",
+			"summary": "Before approving a PR, check tests, migrations, and that the description explains why.",
+			"details": "",
+			"tags": ["github", "review"],
+			"dedupeKey": null
+		},
+		{
+			"id": "m-calendar",
+			"category": "constraint",
+			"subject": "No meetings before 10am",
+			"summary": "Do not schedule calendar events before 10am local time.",
+			"details": "",
+			"tags": ["calendar"],
+			"dedupeKey": null
+		},
+		{
+			"id": "m-db-backups",
+			"category": "fact",
+			"subject": "Database backups run nightly",
+			"summary": "The Postgres database is backed up nightly at 2am to object storage with 30-day retention.",
+			"details": "",
+			"tags": ["database", "backup"],
+			"dedupeKey": null
+		}
+	],
+	"related": [
+		{
+			"split": "train",
+			"query": "write release notes for this version",
+			"target": "m-release-notes",
+			"targetScore": 0.749
+		},
+		{
+			"split": "train",
+			"query": "changelog for the new release",
+			"target": "m-release-notes",
+			"targetScore": 0.663
+		},
+		{
+			"split": "train",
+			"query": "schedule a cron job every morning",
+			"target": "m-timezone",
+			"targetScore": 0.597
+		},
+		{
+			"split": "train",
+			"query": "what timezone should I use",
+			"target": "m-timezone",
+			"targetScore": 0.761
+		},
+		{
+			"split": "train",
+			"query": "reply to a customer email",
+			"target": "m-email-signoff",
+			"targetScore": 0.751
+		},
+		{
+			"split": "train",
+			"query": "draft a response to this support message",
+			"target": "m-email-signoff",
+			"targetScore": 0.649
+		},
+		{
+			"split": "train",
+			"query": "deploy to production",
+			"target": "m-deploy-friday",
+			"targetScore": 0.75
+		},
+		{
+			"split": "train",
+			"query": "can I ship this release on Friday",
+			"target": "m-deploy-friday",
+			"targetScore": 0.68
+		},
+		{
+			"split": "train",
+			"query": "install dependencies in the web repo",
+			"target": "m-pkg-manager",
+			"targetScore": 0.728
+		},
+		{
+			"split": "train",
+			"query": "pnpm workspace setup",
+			"target": "m-pkg-manager",
+			"targetScore": 0.758
+		},
+		{
+			"split": "train",
+			"query": "create a GitHub repository",
+			"target": "m-github-org",
+			"targetScore": 0.705
+		},
+		{
+			"split": "train",
+			"query": "open a pull request on github",
+			"target": "m-github-org",
+			"targetScore": 0.579
+		},
+		{
+			"split": "train",
+			"query": "send client invoices this month",
+			"target": "m-invoice",
+			"targetScore": 0.815
+		},
+		{
+			"split": "train",
+			"query": "billing reminder for the bookkeeper",
+			"target": "m-invoice",
+			"targetScore": 0.807
+		},
+		{
+			"split": "train",
+			"query": "plan meals for the week",
+			"target": "m-diet",
+			"targetScore": 0.676
+		},
+		{
+			"split": "train",
+			"query": "find a dinner recipe",
+			"target": "m-diet",
+			"targetScore": 0.68
+		},
+		{
+			"split": "train",
+			"query": "turn off the living room lights",
+			"target": "m-home-lights",
+			"targetScore": 0.675
+		},
+		{
+			"split": "train",
+			"query": "control my smart home lights",
+			"target": "m-home-lights",
+			"targetScore": 0.696
+		},
+		{
+			"split": "train",
+			"query": "post the daily standup",
+			"target": "m-standup",
+			"targetScore": 0.814
+		},
+		{
+			"split": "train",
+			"query": "summarize yesterday's work for the team",
+			"target": "m-standup",
+			"targetScore": 0.821
+		},
+		{
+			"split": "train",
+			"query": "store an API token as a secret",
+			"target": "m-api-token-rotation",
+			"targetScore": 0.736
+		},
+		{
+			"split": "train",
+			"query": "rotate credentials for a third-party API",
+			"target": "m-api-token-rotation",
+			"targetScore": 0.784
+		},
+		{
+			"split": "train",
+			"query": "write a blog post",
+			"target": "m-blog-tone",
+			"targetScore": 0.784
+		},
+		{
+			"split": "train",
+			"query": "draft an article for my blog",
+			"target": "m-blog-tone",
+			"targetScore": 0.747
+		},
+		{
+			"split": "train",
+			"query": "book a flight to Chicago",
+			"target": "m-travel",
+			"targetScore": 0.647
+		},
+		{
+			"split": "train",
+			"query": "search for plane tickets",
+			"target": "m-travel",
+			"targetScore": 0.684
+		},
+		{
+			"split": "train",
+			"query": "review this pull request",
+			"target": "m-pr-review",
+			"targetScore": 0.765
+		},
+		{
+			"split": "train",
+			"query": "code review checklist",
+			"target": "m-pr-review",
+			"targetScore": 0.781
+		},
+		{
+			"split": "train",
+			"query": "schedule a meeting tomorrow morning",
+			"target": "m-calendar",
+			"targetScore": 0.766
+		},
+		{
+			"split": "train",
+			"query": "add an event to my calendar",
+			"target": "m-calendar",
+			"targetScore": 0.719
+		},
+		{
+			"split": "train",
+			"query": "restore the database from backup",
+			"target": "m-db-backups",
+			"targetScore": 0.647
+		},
+		{
+			"split": "train",
+			"query": "postgres backup schedule",
+			"target": "m-db-backups",
+			"targetScore": 0.812
+		},
+		{
+			"split": "holdout",
+			"query": "prepare the notes we publish when we cut a new version",
+			"target": "m-release-notes",
+			"targetScore": 0.729
+		},
+		{
+			"split": "holdout",
+			"query": "what time zone do my scheduled jobs run in",
+			"target": "m-timezone",
+			"targetScore": 0.792
+		},
+		{
+			"split": "holdout",
+			"query": "set up a recurring daily reminder at 8am",
+			"target": "m-timezone",
+			"targetScore": 0.599
+		},
+		{
+			"split": "holdout",
+			"query": "how should I sign off emails to customers",
+			"target": "m-email-signoff",
+			"targetScore": 0.797
+		},
+		{
+			"split": "holdout",
+			"query": "write back to a client who asked about pricing",
+			"target": "m-email-signoff",
+			"targetScore": 0.626
+		},
+		{
+			"split": "holdout",
+			"query": "is it ok to push the hotfix to prod this afternoon",
+			"target": "m-deploy-friday",
+			"targetScore": 0.614
+		},
+		{
+			"split": "holdout",
+			"query": "run npm install in the web app",
+			"target": "m-pkg-manager",
+			"targetScore": 0.707
+		},
+		{
+			"split": "holdout",
+			"query": "which github org owns our repos",
+			"target": "m-github-org",
+			"targetScore": 0.783
+		},
+		{
+			"split": "holdout",
+			"query": "remind the accountant about invoices",
+			"target": "m-invoice",
+			"targetScore": 0.788
+		},
+		{
+			"split": "holdout",
+			"query": "suggest something to cook tonight",
+			"target": "m-diet",
+			"targetScore": 0.601
+		},
+		{
+			"split": "holdout",
+			"query": "grocery list for vegetarian dinners",
+			"target": "m-diet",
+			"targetScore": 0.712
+		},
+		{
+			"split": "holdout",
+			"query": "dim the kitchen lights",
+			"target": "m-home-lights",
+			"targetScore": 0.673
+		},
+		{
+			"split": "holdout",
+			"query": "turn on the porch light at sunset",
+			"target": "m-home-lights",
+			"targetScore": 0.652
+		},
+		{
+			"split": "holdout",
+			"query": "share my status update with the team",
+			"target": "m-standup",
+			"targetScore": 0.725
+		},
+		{
+			"split": "holdout",
+			"query": "save this new API key",
+			"target": "m-api-token-rotation",
+			"targetScore": 0.591
+		},
+		{
+			"split": "holdout",
+			"query": "how often should tokens be rotated",
+			"target": "m-api-token-rotation",
+			"targetScore": 0.868
+		},
+		{
+			"split": "holdout",
+			"query": "edit my draft post about testing",
+			"target": "m-blog-tone",
+			"targetScore": 0.659
+		},
+		{
+			"split": "holdout",
+			"query": "find me a nonstop to New York next week",
+			"target": "m-travel",
+			"targetScore": 0.597
+		},
+		{
+			"split": "holdout",
+			"query": "approve this PR",
+			"target": "m-pr-review",
+			"targetScore": 0.65
+		},
+		{
+			"split": "holdout",
+			"query": "what should I check before merging",
+			"target": "m-pr-review",
+			"targetScore": 0.667
+		},
+		{
+			"split": "holdout",
+			"query": "find a time for a call with the design team",
+			"target": "m-calendar",
+			"targetScore": 0.628
+		},
+		{
+			"split": "holdout",
+			"query": "book a 30 minute sync early next week",
+			"target": "m-calendar",
+			"targetScore": 0.686
+		},
+		{
+			"split": "holdout",
+			"query": "when was the last database snapshot taken",
+			"target": "m-db-backups",
+			"targetScore": 0.642
+		},
+		{
+			"split": "holdout",
+			"query": "recover deleted rows from last night",
+			"target": "m-db-backups",
+			"targetScore": 0.573
+		}
+	],
+	"unrelated": [
+		{
+			"split": "train",
+			"query": "convert a PDF to text",
+			"maxScore": 0.562,
+			"maxScoreMemory": "m-release-notes"
+		},
+		{
+			"split": "train",
+			"query": "resize an image",
+			"maxScore": 0.49,
+			"maxScoreMemory": "m-release-notes"
+		},
+		{
+			"split": "train",
+			"query": "weather forecast",
+			"maxScore": 0.575,
+			"maxScoreMemory": "m-calendar"
+		},
+		{
+			"split": "train",
+			"query": "translate text to Spanish",
+			"maxScore": 0.55,
+			"maxScoreMemory": "m-email-signoff"
+		},
+		{
+			"split": "train",
+			"query": "generate a QR code",
+			"maxScore": 0.538,
+			"maxScoreMemory": "m-email-signoff"
+		},
+		{
+			"split": "train",
+			"query": "parse a CSV file",
+			"maxScore": 0.461,
+			"maxScoreMemory": "m-standup"
+		},
+		{
+			"split": "train",
+			"query": "list my packages",
+			"maxScore": 0.621,
+			"maxScoreMemory": "m-pr-review"
+		},
+		{
+			"split": "train",
+			"query": "fetch a web page and extract links",
+			"maxScore": 0.522,
+			"maxScoreMemory": "m-pr-review"
+		},
+		{
+			"split": "train",
+			"query": "check DNS records for a domain",
+			"maxScore": 0.552,
+			"maxScoreMemory": "m-pr-review"
+		},
+		{
+			"split": "train",
+			"query": "send an SMS",
+			"maxScore": 0.595,
+			"maxScoreMemory": "m-email-signoff"
+		},
+		{
+			"split": "train",
+			"query": "play music on spotify",
+			"maxScore": 0.5,
+			"maxScoreMemory": "m-standup"
+		},
+		{
+			"split": "train",
+			"query": "stock price lookup",
+			"maxScore": 0.53,
+			"maxScoreMemory": "m-standup"
+		},
+		{
+			"split": "train",
+			"query": "count words in a document",
+			"maxScore": 0.55,
+			"maxScoreMemory": "m-email-signoff"
+		},
+		{
+			"split": "train",
+			"query": "create a webhook",
+			"maxScore": 0.559,
+			"maxScoreMemory": "m-standup"
+		},
+		{
+			"split": "train",
+			"query": "search hacker news",
+			"maxScore": 0.538,
+			"maxScoreMemory": "m-standup"
+		},
+		{
+			"split": "train",
+			"query": "transcribe an audio file",
+			"maxScore": 0.53,
+			"maxScoreMemory": "m-release-notes"
+		},
+		{
+			"split": "train",
+			"query": "compute a sha256 hash",
+			"maxScore": 0.541,
+			"maxScoreMemory": "m-api-token-rotation"
+		},
+		{
+			"split": "train",
+			"query": "random number generator",
+			"maxScore": 0.556,
+			"maxScoreMemory": "m-api-token-rotation"
+		},
+		{
+			"split": "train",
+			"query": "unit conversion miles to kilometers",
+			"maxScore": 0.51,
+			"maxScoreMemory": "m-api-token-rotation"
+		},
+		{
+			"split": "train",
+			"query": "youtube video captions",
+			"maxScore": 0.589,
+			"maxScoreMemory": "m-blog-tone"
+		},
+		{
+			"split": "train",
+			"query": "upload a file to storage",
+			"maxScore": 0.556,
+			"maxScoreMemory": "m-db-backups"
+		},
+		{
+			"split": "train",
+			"query": "markdown to html",
+			"maxScore": 0.536,
+			"maxScoreMemory": "m-release-notes"
+		},
+		{
+			"split": "train",
+			"query": "track a package shipment",
+			"maxScore": 0.573,
+			"maxScoreMemory": "m-pr-review"
+		},
+		{
+			"split": "train",
+			"query": "sports scores",
+			"maxScore": 0.574,
+			"maxScoreMemory": "m-standup"
+		},
+		{
+			"split": "train",
+			"query": "kody",
+			"maxScore": 0.486,
+			"maxScoreMemory": "m-email-signoff"
+		},
+		{
+			"split": "train",
+			"query": "help",
+			"maxScore": 0.594,
+			"maxScoreMemory": "m-standup"
+		},
+		{
+			"split": "train",
+			"query": "how do I use this",
+			"maxScore": 0.575,
+			"maxScoreMemory": "m-standup"
+		},
+		{
+			"split": "train",
+			"query": "notion",
+			"maxScore": 0.551,
+			"maxScoreMemory": "m-blog-tone"
+		},
+		{
+			"split": "train",
+			"query": "todo list",
+			"maxScore": 0.61,
+			"maxScoreMemory": "m-pr-review"
+		},
+		{
+			"split": "train",
+			"query": "slack",
+			"maxScore": 0.641,
+			"maxScoreMemory": "m-standup"
+		},
+		{
+			"split": "holdout",
+			"query": "how do I convert a video to a gif",
+			"maxScore": 0.545,
+			"maxScoreMemory": "m-release-notes"
+		},
+		{
+			"split": "holdout",
+			"query": "show me the current bitcoin price",
+			"maxScore": 0.545,
+			"maxScoreMemory": "m-standup"
+		},
+		{
+			"split": "holdout",
+			"query": "what is the capital of australia",
+			"maxScore": 0.503,
+			"maxScoreMemory": "m-timezone"
+		},
+		{
+			"split": "holdout",
+			"query": "run a speed test on my internet connection",
+			"maxScore": 0.531,
+			"maxScoreMemory": "m-standup"
+		},
+		{
+			"split": "holdout",
+			"query": "extract tables from a scanned document",
+			"maxScore": 0.53,
+			"maxScoreMemory": "m-release-notes"
+		},
+		{
+			"split": "holdout",
+			"query": "generate a strong random password",
+			"maxScore": 0.587,
+			"maxScoreMemory": "m-email-signoff"
+		},
+		{
+			"split": "holdout",
+			"query": "find the distance between two coordinates",
+			"maxScore": 0.496,
+			"maxScoreMemory": "m-api-token-rotation"
+		},
+		{
+			"split": "holdout",
+			"query": "summarize this wikipedia article",
+			"maxScore": 0.645,
+			"maxScoreMemory": "m-standup"
+		},
+		{
+			"split": "holdout",
+			"query": "create a new package that returns the current time",
+			"maxScore": 0.628,
+			"maxScoreMemory": "m-calendar"
+		},
+		{
+			"split": "holdout",
+			"query": "what packages do I have installed",
+			"maxScore": 0.633,
+			"maxScoreMemory": "m-pr-review"
+		},
+		{
+			"split": "holdout",
+			"query": "check if a website is down",
+			"maxScore": 0.577,
+			"maxScoreMemory": "m-pr-review"
+		},
+		{
+			"split": "holdout",
+			"query": "look up the definition of a word",
+			"maxScore": 0.555,
+			"maxScoreMemory": "m-standup"
+		},
+		{
+			"split": "holdout",
+			"query": "make a bar chart from this data",
+			"maxScore": 0.555,
+			"maxScoreMemory": "m-standup"
+		},
+		{
+			"split": "holdout",
+			"query": "decode a base64 string",
+			"maxScore": 0.486,
+			"maxScoreMemory": "m-api-token-rotation"
+		},
+		{
+			"split": "holdout",
+			"query": "find a podcast about history",
+			"maxScore": 0.606,
+			"maxScoreMemory": "m-standup"
+		},
+		{
+			"split": "holdout",
+			"query": "get the moon phase for tonight",
+			"maxScore": 0.629,
+			"maxScoreMemory": "m-timezone"
+		},
+		{
+			"split": "holdout",
+			"query": "validate a JSON schema",
+			"maxScore": 0.57,
+			"maxScoreMemory": "m-pr-review"
+		},
+		{
+			"split": "holdout",
+			"query": "list my connected integrations",
+			"maxScore": 0.561,
+			"maxScoreMemory": "m-pr-review"
+		},
+		{
+			"split": "holdout",
+			"query": "compress a folder into a zip file",
+			"maxScore": 0.509,
+			"maxScoreMemory": "m-release-notes"
+		},
+		{
+			"split": "holdout",
+			"query": "detect the language of a sentence",
+			"maxScore": 0.56,
+			"maxScoreMemory": "m-blog-tone"
+		},
+		{
+			"split": "holdout",
+			"query": "send a message to the team on discord",
+			"maxScore": 0.717,
+			"maxScoreMemory": "m-standup"
+		},
+		{
+			"split": "holdout",
+			"query": "query an sqlite database",
+			"maxScore": 0.528,
+			"maxScoreMemory": "m-calendar"
+		},
+		{
+			"split": "holdout",
+			"query": "find nearby coffee shops",
+			"maxScore": 0.487,
+			"maxScoreMemory": "m-travel"
+		},
+		{
+			"split": "holdout",
+			"query": "read an RSS feed",
+			"maxScore": 0.55,
+			"maxScoreMemory": "m-email-signoff"
+		},
+		{
+			"split": "holdout",
+			"query": "how many steps did I walk today",
+			"maxScore": 0.579,
+			"maxScoreMemory": "m-standup"
+		},
+		{
+			"split": "holdout",
+			"query": "crop a photo to a square",
+			"maxScore": 0.501,
+			"maxScoreMemory": "m-release-notes"
+		},
+		{
+			"split": "holdout",
+			"query": "lookup ip address geolocation",
+			"maxScore": 0.527,
+			"maxScoreMemory": "m-timezone"
+		},
+		{
+			"split": "holdout",
+			"query": "what is the exchange rate for euros",
+			"maxScore": 0.514,
+			"maxScoreMemory": "m-api-token-rotation"
+		},
+		{
+			"split": "holdout",
+			"query": "list running jobs",
+			"maxScore": 0.583,
+			"maxScoreMemory": "m-pr-review"
+		},
+		{
+			"split": "holdout",
+			"query": "show recent errors from sentry",
+			"maxScore": 0.624,
+			"maxScoreMemory": "m-pr-review"
+		}
+	]
+}

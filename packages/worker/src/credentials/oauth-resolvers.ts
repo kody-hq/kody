@@ -17,7 +17,7 @@ import { refreshIntegrationTokens } from '#worker/integrations/token-refresh.ts'
 import { assertIntegrationAllowsHost } from '#mcp/execute-modules/integration-host-allowlist.ts'
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
-	assertActorScopeAllowsCredential,
+	authorizeActorPersonalUse,
 	authorizeActorUse,
 	type CredentialResolver,
 	type CredentialTargetFor,
@@ -30,10 +30,7 @@ import {
 	type FillPlacementRefusalLinks,
 	refusalLinkOrgSlug,
 } from './fill-placement-enforcement.ts'
-import {
-	authorizePersonalCredentialUse,
-	loadPinnedOrgId,
-} from './personal-credentials.ts'
+import { loadPinnedOrgId } from './personal-credentials.ts'
 
 export type IntegrationNameLookup = {
 	owner: 'org' | 'personal'
@@ -47,27 +44,13 @@ export type IntegrationNameLookup = {
  * grant to the run org (Owners and Automation included in the refusal).
  */
 export async function authorizePersonalIntegrationLookup(input: {
-	env: Pick<Env, 'APP_DB'>
+	env: Env
 	orgId: OwnerId
 	actor: RequestContext | null | undefined
 	credentialId: string | null
 	name: string
 }) {
-	assertActorScopeAllowsCredential(
-		{
-			actor: input.actor,
-			orgId: input.orgId,
-			credentialId: input.credentialId,
-			name: input.name,
-		},
-		'integration:use',
-	)
-	await authorizePersonalCredentialUse({
-		db: input.env.APP_DB,
-		actorPersonId: input.actor?.actor?.userId ?? null,
-		orgId: input.orgId,
-		credentialId: input.credentialId ?? '',
-	})
+	await authorizeActorPersonalUse({ ...input, permission: 'integration:use' })
 }
 
 async function authorizeIntegrationUse(

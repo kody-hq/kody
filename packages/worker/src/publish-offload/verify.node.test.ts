@@ -8,7 +8,6 @@ import { preparePublishBuildSourceTree } from './source-tree.ts'
 import type { PublishBuildTargetEntry } from './types.ts'
 import {
 	PublishBuildVerificationError,
-	assertInlinedDependenciesWritable,
 	assertServerRebuildMatches,
 	matchUploadedTargets,
 	pickServerRebuildSample,
@@ -91,7 +90,7 @@ test('the uploaded target set must equal the declared targets', async () => {
 	const ok = await uploadedTarget({ 'index.js': 'export default 1' })
 	expect(
 		matchUploadedTargets({ expected: expected as never, uploaded: [ok] }),
-	).toHaveLength(1)
+	).toEqual([{ target: expected[0], uploaded: ok }])
 	expect(() =>
 		matchUploadedTargets({ expected: expected as never, uploaded: [] }),
 	).toThrow(/missing/)
@@ -108,21 +107,25 @@ test('the uploaded target set must equal the declared targets', async () => {
 })
 
 test('a tampered module is refused by hash', async () => {
-	const uploaded = await uploadedTarget({ 'index.js': 'export default 1' })
+	const source = 'export default 1'
+	const uploaded = await uploadedTarget({ 'index.js': source })
 	await expect(
 		verifyUploadedTargetModules({
 			uploaded,
-			modules: { 'index.js': 'export default 1' },
+			modules: { 'index.js': source },
 			ownPackageId: 'pkg-1',
-			allowedActsAsPackageIds: new Set(['pkg-1']),
+			linkedImports: new Map(),
 		}),
-	).resolves.not.toThrow()
+	).resolves.toEqual({
+		totalBytes: 19,
+		referencedLinkedImports: new Set(),
+	})
 	await expect(
 		verifyUploadedTargetModules({
 			uploaded,
 			modules: { 'index.js': 'export default "evil"' },
 			ownPackageId: 'pkg-1',
-			allowedActsAsPackageIds: new Set(['pkg-1']),
+			linkedImports: new Map(),
 		}),
 	).rejects.toBeInstanceOf(PublishBuildVerificationError)
 })
@@ -139,7 +142,7 @@ test('unsafe module paths and a missing main module are refused', async () => {
 				uploaded,
 				modules: { 'index.js': 'a', [path]: 'b' },
 				ownPackageId: 'pkg-1',
-				allowedActsAsPackageIds: new Set(['pkg-1']),
+				linkedImports: new Map(),
 			}),
 		).rejects.toBeInstanceOf(PublishBuildVerificationError)
 	}
@@ -149,32 +152,9 @@ test('unsafe module paths and a missing main module are refused', async () => {
 			uploaded: noMain,
 			modules: { 'other.js': 'a' },
 			ownPackageId: 'pkg-1',
-			allowedActsAsPackageIds: new Set(['pkg-1']),
+			linkedImports: new Map(),
 		}),
 	).rejects.toThrow(/main module/i)
-})
-
-test('an outside build may only inline packages the publisher can write', () => {
-	const dependencies = [
-		{ packageId: 'pkg-mine', packageName: '@me/dep', kodyId: 'k1' },
-		{ packageId: 'pkg-theirs', packageName: '@them/dep', kodyId: 'k2' },
-	]
-	expect(() =>
-		assertInlinedDependenciesWritable({
-			entryPoint: 'src/index.ts',
-			ownPackageId: 'pkg-1',
-			dependencies: dependencies.slice(0, 1) as never,
-			writablePackageIds: new Set(['pkg-mine']),
-		}),
-	).not.toThrow()
-	expect(() =>
-		assertInlinedDependenciesWritable({
-			entryPoint: 'src/index.ts',
-			ownPackageId: 'pkg-1',
-			dependencies: dependencies as never,
-			writablePackageIds: new Set(['pkg-mine']),
-		}),
-	).toThrow(/@them\/dep|pkg-theirs/)
 })
 
 test('the server rebuild sample must hash the same as the upload', async () => {
@@ -274,7 +254,7 @@ for (const [label, source] of [
 				uploaded,
 				modules: { 'index.js': source },
 				ownPackageId: 'pkg-1',
-				allowedActsAsPackageIds: new Set(),
+				linkedImports: new Map(),
 			}),
 		).rejects.toBeInstanceOf(PublishBuildVerificationError)
 	})
@@ -295,7 +275,96 @@ test('binding checks accept the bundler output for the package itself', async ()
 			uploaded,
 			modules: { 'index.js': source },
 			ownPackageId: 'pkg-1',
-			allowedActsAsPackageIds: new Set(),
+			linkedImports: new Map(),
 		}),
-	).resolves.not.toThrow()
+	).resolves.toEqual({
+		totalBytes: 444,
+		referencedLinkedImports: new Set(),
+	})
 })
+
+const linkedNotes = '.__kody_linked__/@them__notes/list.js'
+const linkedImports = new Map([[linkedNotes, 'kody:@them/notes/list']])
+
+test('an upload may import the linked placeholders the source imports', async () => {
+	const source = [
+		'import list from "./.__kody_linked__/@them__notes/list.js";',
+		'export default async () => await list();',
+	].join('\n')
+	const uploaded = await uploadedTarget({ 'index.js': source })
+	const result = await verifyUploadedTargetModules({
+		uploaded,
+		modules: { 'index.js': source },
+		ownPackageId: 'pkg-1',
+		linkedImports,
+	})
+	expect([...result.referencedLinkedImports]).toEqual([linkedNotes])
+})
+
+for (const [label, modules, message] of [
+	[
+		'inlined dependency code (another package bound by id)',
+		{
+			'index.js': [
+				'import { __kodyCreatePackageBoundStorage } from "./.__kody_virtual__/runtime.js";',
+				'var packageStorage = __kodyCreatePackageBoundStorage("pkg-them");',
+				'export default async () => await packageStorage().get("secret-notes");',
+			].join('\n'),
+		},
+		/package "pkg-them", not this package/,
+	],
+	[
+		"another package's runtime facade",
+		{
+			'index.js':
+				'import { packageSecrets } from "./.__kody_virtual__/package-runtime/70.js";\nexport default packageSecrets;',
+		},
+		/not part of this package/,
+	],
+	[
+		'a placeholder the source does not import',
+		{
+			'index.js':
+				'import x from "./.__kody_linked__/@them__other/x.js";\nexport default x;',
+		},
+		/not a Kody package this source imports/,
+	],
+	[
+		"a linked artifact's internals",
+		{
+			'index.js':
+				'import x from "./.__kody_linked__/artifacts/a/b/index.js";\nexport default x;',
+		},
+		/not a Kody package this source imports/,
+	],
+	[
+		'a module uploaded at a linked placeholder path',
+		{
+			'index.js':
+				'import list from "./.__kody_linked__/@them__notes/list.js";\nexport default list;',
+			[linkedNotes]:
+				'import { __kodyCreatePackageBoundStorage } from "../.__kody_virtual__/runtime.js";\nexport default () => __kodyCreatePackageBoundStorage("pkg-1");',
+		},
+		/linked by Kody and cannot come from a build/,
+	],
+	[
+		'a forged metered proxy',
+		{
+			'index.js':
+				'import { __kodyMeterStaticPackageExport } from "./.__kody_virtual__/runtime.js";\nexport default __kodyMeterStaticPackageExport("pkg-them", () => 1);',
+		},
+		/reserved runtime name __kodyMeterStaticPackageExport/,
+	],
+] as const) {
+	test(`an upload is refused for ${label}`, async () => {
+		const uploaded = await uploadedTarget(modules)
+		await expect(
+			verifyUploadedTargetModules({
+				uploaded,
+				modules: { ...modules },
+				ownPackageId: 'pkg-1',
+				linkedImports,
+			}),
+		).rejects.toThrow(message)
+	})
+}

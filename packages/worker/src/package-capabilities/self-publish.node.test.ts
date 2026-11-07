@@ -273,12 +273,27 @@ test('self-publish is blocked when the capability set has entries or the tree de
 		'source-root': {},
 		'source-dep': { credentials: { resend: { description: 'Mail.' } } },
 	})
-	await expect(evaluate()).resolves.toEqual(
+	const declared = await evaluate()
+	expect(declared).toEqual(
 		expect.objectContaining({
 			eligible: false,
 			blocker: 'declares_credentials',
+			reasons: [
+				{
+					kind: 'credential_needs',
+					sourceId: 'source-dep',
+					needCount: 1,
+					needs: [{ key: 'resend', description: 'Mail.' }],
+				},
+			],
 		}),
 	)
+	expect(
+		buildSelfPublishBlockerDetail({
+			blocker: 'declares_credentials',
+			reasons: declared.eligible ? [] : declared.reasons,
+		}).message,
+	).toContain('1 credential need(s) (resend) in its published closure')
 
 	publishTree({ 'source-root': {}, 'source-dep': {} })
 	mockModule.loadPublishedCredentialNeeds.mockImplementation(
@@ -310,6 +325,7 @@ test('self-publish is blocked when the capability set has entries or the tree de
 					sourceId: 'source-dep',
 					needCount: 1,
 					executorNeedCount: 1,
+					needs: [{ key: 'github', description: '' }],
 				},
 			],
 		}),

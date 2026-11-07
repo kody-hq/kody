@@ -44,6 +44,8 @@ const keyScopeDescriptions: Partial<Record<OrgPermission, string>> = {
 	'package:publish': 'Publish packages to the community catalog.',
 	'package:manage_access': 'Manage package access grants.',
 	'secret:use': 'Use secrets without reading plaintext.',
+	'secret:read_local':
+		'Read secret values on this machine with the Kody CLI, only for secrets a person turned on local reads for.',
 	'secret:write': 'Change existing secrets (plaintext is never returned).',
 	'secret:create': 'Create new secrets.',
 	'memory:read': 'Read memories and MCP server instructions.',

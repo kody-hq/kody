@@ -145,7 +145,13 @@ This project uses the following resources:
   - Preview and local runtimes without this production-only queue binding run
     the same registry inline so maintenance behavior remains testable.
 - Vectorize indexes for MCP capability search (`CAPABILITY_VECTOR_INDEX`)
-  - Production: `kody-capabilities-prod`
+  - Production: `kody-capabilities-prod`. The Deploy workflow
+    (`tools/ci/production-resources.ts`) adds any missing metadata index
+    (`kind`, `userId`, `status`, `category`, `domain`) without touching the
+    index itself. When it creates one, the
+    `reindex-vectors-for-new-metadata-indexes` job runs a full `--force`
+    reindex, because Vectorize only filters vectors upserted after the index
+    exists.
   - Preview: `<preview-worker-name>-vectors`, created and deleted per preview by
     `tools/ci/preview-resources.ts` (with metadata indexes) and filled by the
     preview workflow's builtin reindex. `kody-capabilities-preview` is only the

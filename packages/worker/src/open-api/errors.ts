@@ -102,6 +102,8 @@ const platformApiErrorCodes = [
 	'invalid_request',
 	'unauthorized',
 	'insufficient_scope',
+	'profile_grant',
+	'profile_inactive',
 	'email_verification_required',
 	'account_suspended',
 	'guest_not_allowed',
@@ -240,6 +242,20 @@ export function toApiError(
 				status: 401,
 				code: 'unauthorized',
 				message: error.message,
+				cause: error,
+			})
+		}
+		// The token's scopes passed; the profile chain denied. A new token
+		// cannot help, so this is not `insufficient_scope`.
+		if (error.code === 'profile_grant' || error.code === 'profile_inactive') {
+			return new ApiError({
+				status: 403,
+				code: error.code,
+				message: error.message,
+				details: {
+					required_permission: error.permission,
+					denial: error.code,
+				},
 				cause: error,
 			})
 		}

@@ -38,50 +38,81 @@ const grants: Record<string, ExecutionContextGrantSummary> = {
 	},
 }
 
-test('opt-in copy for every access combination', () => {
-	for (const [key, grant] of Object.entries(grants)) {
+test('opt-in copy names the machine and interpolates each access combination', () => {
+	for (const grant of Object.values(grants)) {
+		const copy = optInCopy({ name: 'buildbox', operator: 'sam', grant })
+		const text = copy.paragraphs.join(' ')
+		expect(copy.title).toContain('buildbox')
+		expect(text).toContain('@sam')
+		expect(text).toMatch(/files:.*local network:.*internet:.*Kody APIs:/)
+		expect(copy.lan === null).toBe(grant.egress.mode !== 'public-and-lan')
 		expect(
-			optInCopy({ name: 'buildbox', operator: 'sam', grant }),
-		).toMatchSnapshot(key)
+			text.includes("Host folders are for the operator's own runs only"),
+		).toBe(grant.fs > 0)
 	}
 })
 
-test('share copy for every access combination, as operator and as manager', () => {
-	for (const [key, grant] of Object.entries(grants)) {
-		for (const viewerIsOperator of [true, false]) {
-			expect(
-				shareCopy({
-					name: 'buildbox',
-					operator: 'sam',
-					viewerIsOperator,
-					grant,
-				}),
-			).toMatchSnapshot(`${key}:${viewerIsOperator ? 'operator' : 'manager'}`)
-		}
+test('share copy distinguishes the operator from a manager on every access combination', () => {
+	for (const grant of Object.values(grants)) {
+		const asOperator = shareCopy({
+			name: 'buildbox',
+			operator: 'sam',
+			viewerIsOperator: true,
+			grant,
+		})
+		const asManager = shareCopy({
+			name: 'buildbox',
+			operator: 'sam',
+			viewerIsOperator: false,
+			grant,
+		})
+		expect(asOperator.title).toContain('buildbox')
+		expect(asOperator.paragraphs.join(' ')).toContain('You will')
+		expect(asOperator.paragraphs.join(' ')).not.toContain('@sam will')
+		expect(asManager.paragraphs.join(' ')).toContain('@sam will')
+		expect(asManager.lan === null).toBe(grant.egress.mode !== 'public-and-lan')
+		expect(
+			asOperator.paragraphs
+				.join(' ')
+				.includes("Host folders are for the operator's own runs only"),
+		).toBe(grant.fs > 0)
 	}
 })
 
-test('sharing levels and presets', () => {
-	const levels = Object.keys(sharingLevelLabels) as Array<
-		keyof typeof sharingLevelLabels
-	>
+test('sharing levels interpolate org and team; presets keep Use/Contribute/Manage', () => {
+	expect(Object.keys(sharingLevelLabels).sort()).toEqual(
+		['only_me', 'org', 'people', 'team'].sort(),
+	)
+	expect(sharingLevelHelp({ level: 'people', orgSlug: 'acme' })).toContain(
+		'@acme',
+	)
 	expect(
-		levels.map((level) => ({
-			label: sharingLevelLabels[level],
-			help: sharingLevelHelp({ level, orgSlug: 'acme', team: 'build' }),
-		})),
-	).toMatchSnapshot()
-	expect(presetLabels).toMatchSnapshot()
+		sharingLevelHelp({ level: 'team', orgSlug: 'acme', team: 'build' }),
+	).toMatch(/team build.*@acme/)
+	expect(sharingLevelHelp({ level: 'org', orgSlug: 'acme' })).toContain('@acme')
+	expect(presetLabels.use).toMatch(/^Use:/)
+	expect(presetLabels.contribute).toMatch(/^Contribute:/)
+	expect(presetLabels.manage).toMatch(/^Manage:/)
 })
 
 test('register copy, personal and team, names kody login', () => {
 	const personal = registerCopy({ orgSlug: null })
 	const team = registerCopy({ orgSlug: 'acme' })
-	expect(personal).toMatchSnapshot('personal')
-	expect(team).toMatchSnapshot('team')
-	expect(team.commands).toContain('kody connect --name my-machine --org acme')
+	expect(personal.commands).toEqual([
+		'npm install -g @kodycodes/cli',
+		'kody login',
+		'kody connect --name my-machine',
+	])
+	expect(team.commands).toEqual([
+		'npm install -g @kodycodes/cli',
+		'kody login',
+		'kody connect --name my-machine --org acme',
+	])
 	for (const copy of [personal, team]) {
 		expect(copy.login).toContain('`kody login`')
+		expect(copy.trust.join(' ')).toContain(
+			'Host folders apply only to your own runs',
+		)
 	}
 })
 
@@ -102,4 +133,37 @@ test('opt-in copy discloses that the machine can use your credentials and read t
 	)
 	expect(text).toContain('Your credential values stay in Kody cloud')
 	expect(text).toContain('Opting in is your consent to this.')
+})
+
+test('share and opt-in copy mark host folders as operator-only when the grant lists paths', () => {
+	const withFiles = shareCopy({
+		name: 'x',
+		operator: 'sam',
+		viewerIsOperator: true,
+		grant: grants.lanWithFiles!,
+	})
+	expect(withFiles.paragraphs.join(' ')).toContain(
+		'files: none (machine has 2 paths, write for operator runs only)',
+	)
+	expect(withFiles.paragraphs.join(' ')).toContain(
+		"Host folders are for the operator's own runs only. Shared runs do not mount them.",
+	)
+	const withoutFiles = shareCopy({
+		name: 'x',
+		operator: 'sam',
+		viewerIsOperator: true,
+		grant: grants.locked!,
+	})
+	expect(withoutFiles.paragraphs.join(' ')).not.toContain(
+		'Host folders are for the operator',
+	)
+	const optIn = optInCopy({
+		name: 'x',
+		operator: 'sam',
+		grant: grants.allowlist!,
+	})
+	expect(optIn.paragraphs.join(' ')).toContain(
+		'files: none (machine has 1 path, read for operator runs only)',
+	)
+	expect(optIn.paragraphs.join(' ')).toContain('Shared runs do not mount them.')
 })

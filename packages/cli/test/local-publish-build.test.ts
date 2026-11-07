@@ -38,7 +38,7 @@ function repo(files: Record<string, string>) {
 
 const encoder = new TextEncoder()
 const fakeBuilder = async () => ({
-	publishBuilderVersion: 1,
+	publishBuilderVersion: 2,
 	close: async () => {},
 	buildPublishTargets: async (input: {
 		files: Array<{ path: string; base64: string }>
@@ -67,7 +67,6 @@ const fakeBuilder = async () => ({
 							`js\0${bytes('index.ts').toString('utf8')}`,
 						),
 					},
-					inlinedPackageIds: [],
 				},
 			],
 		}
@@ -184,6 +183,157 @@ test('local publish build refuses a dirty tree or a HEAD that is not the pushed 
 	)
 })
 
+function repoWithKodyRemote(files: Record<string, string>) {
+	const local = repo(files)
+	const remote = mkdtempSync(join(tmpdir(), 'kody-publish-remote-'))
+	git(remote, 'init', '--quiet', '--bare')
+	git(local.dir, 'remote', 'add', 'kody', remote)
+	git(local.dir, 'push', '--quiet', '-u', 'kody', 'HEAD:main')
+	return { ...local, remote }
+}
+
+function fakePublishCall(input: {
+	remote: string
+	confirm?: (expected: string) => string
+}) {
+	const calls: Array<{ operationId: string; params: Record<string, unknown> }> =
+		[]
+	const call = async (operationId: string, params: Record<string, unknown>) => {
+		calls.push({ operationId, params })
+		if (operationId === 'packagePublishBuildCreate') {
+			const expected = String(params.expected_commit)
+			// Kody resolves the commit from its own copy of the repo.
+			const serverHead = git(input.remote, 'rev-parse', 'refs/heads/main')
+			return {
+				build_id: 'pb_1',
+				package_id: 'pkg-1',
+				commit: input.confirm ? input.confirm(expected) : serverHead,
+				upload_path: '/v1/publish-builds/pb_1',
+				upload_ticket: 'kpb_ticket',
+			}
+		}
+		return { status: 'published' }
+	}
+	return { call, calls }
+}
+
+test('--build local refuses a dirty tree before pushing or asking Kody', async () => {
+	const { dir, remote } = repoWithKodyRemote({
+		'package.json': '{}',
+		'index.ts': 'export default 1',
+	})
+	writeFileSync(join(dir, 'index.ts'), 'export default 2')
+	const kody = fakePublishCall({ remote })
+	await assert.rejects(
+		runPublishWithBuild({
+			build: 'local',
+			target: { kody_id: '@me/pkg' },
+			call: kody.call,
+			apiUrl: 'https://kody.test',
+			cwd: dir,
+			interactive: false,
+			writeErr: () => {},
+			fetchFn: fakeServer().fetchFn,
+			loadBuilder: fakeBuilder,
+		}),
+		/clean working tree/,
+	)
+	assert.equal(kody.calls.length, 0)
+})
+
+test('--build local pushes an unpushed HEAD, has Kody confirm it, then builds it', async () => {
+	const {
+		dir,
+		remote,
+		commit: pushedBefore,
+	} = repoWithKodyRemote({
+		'package.json': '{}',
+		'index.ts': 'export default 1',
+	})
+	writeFileSync(join(dir, 'index.ts'), 'export default 2')
+	git(dir, 'commit', '--quiet', '-am', 'local change')
+	const head = git(dir, 'rev-parse', 'HEAD')
+	assert.notEqual(head, pushedBefore)
+	assert.equal(git(remote, 'rev-parse', 'refs/heads/main'), pushedBefore)
+	const kody = fakePublishCall({ remote })
+	const server = fakeServer()
+	const result = await runPublishWithBuild({
+		build: 'local',
+		target: { kody_id: '@me/pkg' },
+		call: kody.call,
+		apiUrl: 'https://kody.test',
+		cwd: dir,
+		interactive: false,
+		writeErr: () => {},
+		fetchFn: server.fetchFn,
+		loadBuilder: fakeBuilder,
+	})
+	assert.deepEqual(result, { status: 'published' })
+	// Pushed as-is: no new commit, and the remote is at HEAD.
+	assert.equal(git(dir, 'rev-parse', 'HEAD'), head)
+	assert.equal(git(remote, 'rev-parse', 'refs/heads/main'), head)
+	assert.deepEqual(
+		kody.calls.map((entry) => entry.operationId),
+		['packagePublishBuildCreate', 'packagePublishExternalPush'],
+	)
+	assert.equal(kody.calls[0]!.params.expected_commit, head)
+	assert.equal((server.sealed() as { commit: string }).commit, head)
+})
+
+test('--build local never builds or uploads a commit Kody does not confirm', async () => {
+	const { dir, remote } = repoWithKodyRemote({
+		'package.json': '{}',
+		'index.ts': 'export default 1',
+	})
+	let builderStarted = false
+	const loadBuilder = async () => {
+		builderStarted = true
+		return await fakeBuilder()
+	}
+	const server = fakeServer()
+	const kody = fakePublishCall({ remote, confirm: () => '0'.repeat(40) })
+	await assert.rejects(
+		runPublishWithBuild({
+			build: 'local',
+			target: { kody_id: '@me/pkg' },
+			call: kody.call,
+			apiUrl: 'https://kody.test',
+			cwd: dir,
+			interactive: false,
+			writeErr: () => {},
+			fetchFn: server.fetchFn,
+			loadBuilder,
+		}),
+		/Nothing was built or uploaded/,
+	)
+	// The server's own refusal (expected_commit mismatch) stops it the same way.
+	await assert.rejects(
+		runPublishWithBuild({
+			build: 'local',
+			target: { kody_id: '@me/pkg' },
+			call: async () => {
+				throw new Error(
+					'Kody sees abc, not your commit def. Nothing was built.',
+				)
+			},
+			apiUrl: 'https://kody.test',
+			cwd: dir,
+			interactive: false,
+			writeErr: () => {},
+			fetchFn: server.fetchFn,
+			loadBuilder,
+		}),
+		/Nothing was built/,
+	)
+	assert.equal(builderStarted, false)
+	assert.equal(server.puts.length, 0)
+	assert.equal(server.sealed(), null)
+	assert.deepEqual(
+		kody.calls.map((entry) => entry.operationId),
+		['packagePublishBuildCreate'],
+	)
+})
+
 test('a cloud resource-limit refusal prints the offload commands and docs link for agents', async () => {
 	const refusal = {
 		status: 'refused',
@@ -205,7 +355,8 @@ test('a cloud resource-limit refusal prints the offload commands and docs link f
 	})
 	assert.equal(result, refusal)
 	assert.match(stderr, /--build local/)
-	assert.match(stderr, /--build context/)
+	assert.match(stderr, /--context <name>/)
+	assert.match(stderr, /execution-contexts#try-publishing-from-a-context/)
 	assert.ok(stderr.includes(publishLargePackagesDocsUrl))
 	assert.ok(offloadCommandsText('@me/big').includes('@me/big'))
 })
@@ -313,4 +464,36 @@ test('a builder that fails to start leaves no temp folder', async () => {
 		else process.env.KODY_PUBLISH_BUILDER_DIR = previous
 	}
 	assert.equal(leftovers(), before)
+})
+
+test('--context asks Kody to build on that context and is refused with --build local', async () => {
+	const calls: Array<{ operationId: string; params: Record<string, unknown> }> =
+		[]
+	const call = async (operationId: string, params: Record<string, unknown>) => {
+		calls.push({ operationId, params })
+		return { status: 'published' }
+	}
+	const base = {
+		target: { kody_id: '@me/pkg' },
+		call,
+		apiUrl: 'https://kody.test',
+		cwd: tmpdir(),
+		interactive: false,
+		writeErr: () => {},
+	}
+	assert.deepEqual(
+		await runPublishWithBuild({ ...base, build: null, context: 'build-box' }),
+		{ status: 'published' },
+	)
+	assert.deepEqual(calls, [
+		{
+			operationId: 'packagePublishExternalPush',
+			params: { kody_id: '@me/pkg', context: 'build-box' },
+		},
+	])
+	await assert.rejects(
+		runPublishWithBuild({ ...base, build: 'local', context: 'build-box' }),
+		/cannot be combined with --build local/,
+	)
+	assert.equal(calls.length, 1)
 })

@@ -2,7 +2,7 @@
  * Trust-boundary copy for execution contexts (protocol 8.6). Every place a
  * context is registered, shared or opted into states whose machine runs the
  * code, what its operator can see, what local access it exposes, and what the
- * sharing level means. One module so the snapshot test covers every string.
+ * sharing level means. One module so every surface shares that wording.
  *
  * "Credential values stay on Kody" depends on `kody.oauthClientCredentials`
  * returning only a handle (decision 10).
@@ -17,7 +17,14 @@ import {
 function filesLabel(grant: ExecutionContextGrantSummary) {
 	if (grant.fs === 0) return 'none'
 	const paths = grant.fs === 1 ? '1 path' : `${grant.fs} paths`
-	return grant.fsMode ? `${paths}, ${grant.fsMode}` : paths
+	const base = grant.fsMode ? `${paths}, ${grant.fsMode}` : paths
+	// Shared/opt-in trust copy: host folders are fs_operator_only.
+	return `none (machine has ${base} for operator runs only)`
+}
+
+function hostFoldersOperatorOnlyNote(grant: ExecutionContextGrantSummary) {
+	if (grant.fs === 0) return null
+	return "Host folders are for the operator's own runs only. Shared runs do not mount them."
 }
 
 function internetLabel(grant: ExecutionContextGrantSummary) {
@@ -67,11 +74,13 @@ export function optInCopy(input: {
 	grant: ExecutionContextGrantSummary
 }): OptInCopy {
 	const op = `@${input.operator}`
+	const foldersNote = hostFoldersOperatorOnlyNote(input.grant)
 	return {
 		title: `Opt into ${input.name}?`,
 		paragraphs: [
 			`Your runs will execute on ${input.name}, a machine operated by ${op}. ${op} can see the code, inputs, logs and results of your runs.`,
 			`Your runs get this machine's network position and access: ${accessLine(input.grant)}.`,
+			...(foldersNote ? [foldersNote] : []),
 			`While your run is active, ${op}'s machine can make Kody API calls as you (within that Kody API access), can use your credentials (GitHub, email and any others you've connected) and read the responses, and can change the results your run returns. Your credential values stay in Kody cloud and never reach the machine. Opting in is your consent to this.`,
 		],
 		lan: lanEnabled(input.grant)
@@ -138,11 +147,13 @@ export function shareCopy(input: {
 }): ShareCopy {
 	const op = `@${input.operator}`
 	const who = input.viewerIsOperator ? 'You will' : `${op} will`
+	const foldersNote = hostFoldersOperatorOnlyNote(input.grant)
 	return {
 		title: `Share ${input.name}`,
 		paragraphs: [
 			`Anyone you share with can run code on this machine (operated by ${op}) after they opt in. ${who} be able to see their code, inputs, logs and results.`,
 			`Their runs get: ${accessLine(input.grant)}.`,
+			...(foldersNote ? [foldersNote] : []),
 			"While their run is active, this machine can make Kody API calls as them (within that Kody API access), can use their credentials (GitHub, email and any others they've connected) and read the responses, and can change their results. Credential values stay in Kody cloud and never reach this machine.",
 		],
 		lan: lanEnabled(input.grant)
@@ -181,7 +192,7 @@ export function registerCopy(input: { orgSlug: string | null }): RegisterCopy {
 		trust: [
 			'Code sent to this context runs on that machine, under the account that runs kody daemon.',
 			'It starts as Only me. Your runs on it use your credentials as in Kody cloud: those requests leave from Kody cloud, so the values never reach that machine. Its Kody API allowlist can narrow what runs there may call. If you share it, the people who opt in run code on that machine with their own credentials, and you can see their code, inputs, logs and results, including responses to their credentialed requests. Their runs cannot start workflows there, and Kody APIs kept for Kody cloud refuse them.',
-			'What it exposes (files, local network, internet) is set on the machine; the CLI prints it.',
+			'What it exposes (files, local network, internet) is set on the machine; the CLI prints it. Host folders apply only to your own runs; shared runs do not mount them.',
 		],
 		after:
 			'kody connect registers the machine and offers to install kody daemon as a background service (Linux, macOS, and Windows), so it keeps running after reboots and crashes. Check it with kody daemon status. If you skip that, run kody daemon in a terminal or kody daemon install later. It appears here within a few seconds, marked Not in any chain. Add it to your chain to start using it, or share it.',

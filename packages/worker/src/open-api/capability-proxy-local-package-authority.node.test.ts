@@ -10,6 +10,7 @@ import type { ApiInvocationContext } from './context.ts'
 import { runCapabilityProxyAuthenticatedFetch } from './capability-proxy-authenticated-fetch.ts'
 import { runCapabilityProxyOauthClientCredentials } from './capability-proxy-oauth-client-credentials.ts'
 import { createCapabilityProxyPackageHostTools } from './capability-proxy-package-grants.ts'
+import { runCapabilityProxyCall } from './capability-proxy.ts'
 
 const storageToolCalls = vi.hoisted(
 	() =>
@@ -49,8 +50,51 @@ vi.mock('#worker/credentials/resolve-credential.ts', () => ({
 	}),
 }))
 
+const mcpToolCalls = vi.hoisted(
+	() => [] as Array<{ localPackageStamp: unknown; args: unknown }>,
+)
+
 vi.mock('#mcp/run-kody-registry.ts', () => ({
 	buildKodyFns: async () => ({}),
+	createWorkflowTools: () => ({ create: async () => null }),
+	buildKodyToolContext: async (
+		_env: unknown,
+		_callerContext: unknown,
+		options?: { localPackageStamp?: unknown },
+	) => ({
+		mcpServers: [
+			{
+				name: 'home',
+				serverId: 'home-server',
+				status: {
+					state: 'ready',
+					connected: true,
+					toolCount: 1,
+					message: 'connected',
+					unavailableMessage: 'unavailable',
+				},
+				capabilities: [{ name: 'lights_on', dispatchName: 'mcphomelights_on' }],
+			},
+		],
+		tools: {
+			'mcp:home:lights_on': async (args: unknown) => {
+				mcpToolCalls.push({
+					localPackageStamp: options?.localPackageStamp ?? null,
+					args,
+				})
+				return { ok: true }
+			},
+		},
+	}),
+}))
+
+const authorityStamps = vi.hoisted(() => [] as Array<unknown>)
+
+vi.mock('#mcp/capabilities/integrations/host-integration-authority.ts', () => ({
+	createHostIntegrationAuthority: (input: { packageStamp: unknown }) => {
+		authorityStamps.push(input.packageStamp)
+		return { readConfig: async () => null, refresh: async () => null }
+	},
 }))
 
 vi.mock('#mcp/execute-modules/kody-runtime-utils.ts', () => ({
@@ -278,4 +322,100 @@ test('packageStorage acts as the verified package, not the wire value', async ()
 	expect(call?.runPackageId).toBe(ownedPackageId)
 	expect([...(call?.grantedPackageIds ?? [])]).toEqual([ownedPackageId])
 	expect(call?.args).toEqual({ key: 'cursor', packageId: ownedPackageId })
+})
+
+test('authenticatedFetch config read and refresh act as the verified package, claimed (#4889)', async () => {
+	const { db } = createDb()
+	authorityStamps.length = 0
+	await runCapabilityProxyAuthenticatedFetch({
+		ctx: createContext(db),
+		args: [
+			{
+				providerName: 'slack',
+				packageId: await bindingFor(db, ownedPackageId),
+				request: { url: 'https://slack.example.test/api' },
+			},
+		],
+	})
+	expect(authorityStamps).toEqual([
+		{ kind: 'claimed', packageId: ownedPackageId },
+	])
+})
+
+test('authenticatedFetch without a package binding acts as no package', async () => {
+	const { db } = createDb()
+	authorityStamps.length = 0
+	await runCapabilityProxyAuthenticatedFetch({
+		ctx: createContext(db),
+		args: [
+			{
+				providerName: 'slack',
+				request: { url: 'https://slack.example.test/api' },
+			},
+		],
+	})
+	expect(authorityStamps).toEqual([null])
+})
+
+async function localMcpCall(db: D1Database, args: Array<unknown>) {
+	return await runCapabilityProxyCall({
+		ctx: createContext(db),
+		call: { path: ['kody', 'mcp', 'home', 'lights_on'], args },
+	})
+}
+
+test('local kody.mcp calls act as the verified package binding, claimed', async () => {
+	const { db } = createDb()
+	mcpToolCalls.length = 0
+	await expect(
+		localMcpCall(db, [
+			{ room: 'office' },
+			{ packageBinding: await bindingFor(db, ownedPackageId) },
+		]),
+	).resolves.toEqual({ result: { ok: true } })
+	expect(mcpToolCalls).toEqual([
+		{
+			localPackageStamp: { kind: 'claimed', packageId: ownedPackageId },
+			args: { room: 'office' },
+		},
+	])
+})
+
+test('local kody.mcp calls without a package binding act as no package', async () => {
+	const { db } = createDb()
+	mcpToolCalls.length = 0
+	await localMcpCall(db, [{ room: 'office' }])
+	await localMcpCall(db, [{ room: 'den' }, {}])
+	expect(mcpToolCalls).toEqual([
+		{ localPackageStamp: null, args: { room: 'office' } },
+		{ localPackageStamp: null, args: { room: 'den' } },
+	])
+})
+
+test('local kody.mcp calls refuse a binding for another package or a bare claim', async () => {
+	const { db } = createDb()
+	mcpToolCalls.length = 0
+	await expect(
+		localMcpCall(db, [
+			{},
+			{ packageBinding: await bindingFor(db, otherOrgPackageId) },
+		]),
+	).rejects.toThrow(/not authorized for storage access/)
+	await expect(
+		localMcpCall(db, [
+			{},
+			{
+				packageBinding: await bindingFor(db, ownedPackageId, {
+					actor: 'someone-else',
+				}),
+			},
+		]),
+	).rejects.toThrow(/package identity is not valid for this local run/)
+	await expect(
+		localMcpCall(db, [{}, { packageBinding: ownedPackageId }]),
+	).rejects.toThrow(/package identity is not valid for this local run/)
+	await expect(
+		localMcpCall(db, [{}, await bindingFor(db, ownedPackageId)]),
+	).rejects.toThrow(/second argument must be an object/)
+	expect(mcpToolCalls).toEqual([])
 })

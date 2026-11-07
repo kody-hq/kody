@@ -2,6 +2,7 @@ import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { boundOrgSlugForUrls } from '#universal/community-links.ts'
+import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import {
 	buildJobInspectionOutput,
 	buildJobManagerDebugOutput,
@@ -85,6 +86,8 @@ export type AccountJobsAlarm = {
 export type AccountJobsLoaderData = {
 	ok: true
 	username: string
+	/** True when the bound org is a team workspace (not the viewer's personal org). */
+	teamOrg: boolean
 	jobs: Array<AccountJobListItem>
 	selectedJob: AccountJobDetail | null
 	selectedJobId: string | null
@@ -225,6 +228,8 @@ export async function loadAccountJobsData(input: {
 		request: input.user.request,
 		user: input.user.mcpUser,
 	})
+	const personalId = personalOrgIdForPerson(input.user.mcpUser)
+	const teamOrg = userId !== personalId
 	const selectedJobId = input.selectedJobId
 	const [inspection, savedPackages] = await Promise.all([
 		inspectJobsForUser({
@@ -246,6 +251,7 @@ export async function loadAccountJobsData(input: {
 	return {
 		ok: true,
 		username: boundOrgSlugForUrls(input.user),
+		teamOrg,
 		jobs: inspection.jobs.map((job) => toListItem(job, packagesById)),
 		selectedJob: selectedRecord
 			? await toDetail({

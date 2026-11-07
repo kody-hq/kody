@@ -26,6 +26,14 @@ visibility and sort filters work, and icon, card, and list views retain their
 URL state. Reload a bare Apps URL after choosing a view to verify the device
 preference. A package without an app must not appear.
 
+Empty workspace (no `kody.app` packages): `/@{$orgSlug}/-/apps` shows the
+first-use panel (`data-testid="workspace-apps-empty"`), header explainer
+(`data-entity-explainer="apps"`), Copy a prompt for my agent, and Explore apps
+you can fork (`data-testid="workspace-apps-explore-forks"` →
+`/community?category=apps&org={$orgSlug}`). Copying the prompt must not create
+packages. With apps present, a no-match search keeps
+`data-testid="workspace-apps-filtered-empty"`.
+
 ## Assert
 
 - Profile / detail: `/@{$username}`, `/@{$username}/$kodyId`,

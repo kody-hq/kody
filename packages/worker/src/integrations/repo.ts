@@ -32,6 +32,10 @@ import {
 	serializeCredentialFillPlacement,
 } from '#worker/credentials/fill-placement.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import {
+	grantedScopesSourceValues,
+	type GrantedScopes,
+} from '#worker/integrations/granted-scopes.ts'
 import type {
 	JoinedIntegration,
 	UserIntegrationConnection,
@@ -68,6 +72,9 @@ type JoinedIntegrationRow = NullablePrefixed<UserOauthAppRow, 'a_'> &
 		auth_failed_http_status: number | null
 		auth_failed_reconnectable: number | null
 		refresh_policy: string | null
+		granted_scopes_json: string | null
+		granted_scopes_source: string | null
+		granted_scopes_checked_at: string | null
 		connection_created_at: string
 		connection_updated_at: string
 	}
@@ -162,6 +169,9 @@ const joinedSelectColumns = `
 	i.auth_failed_http_status AS auth_failed_http_status,
 	i.auth_failed_reconnectable AS auth_failed_reconnectable,
 	i.refresh_policy AS refresh_policy,
+	i.granted_scopes_json AS granted_scopes_json,
+	i.granted_scopes_source AS granted_scopes_source,
+	i.granted_scopes_checked_at AS granted_scopes_checked_at,
 	i.created_at AS connection_created_at,
 	i.updated_at AS connection_updated_at
 `
@@ -991,6 +1001,74 @@ export function mapOauthAppRow(row: UserOauthAppRow): UserOauthApp {
 	}
 }
 
+function mapGrantedScopes(row: UserIntegrationRow): GrantedScopes | null {
+	const source = row.granted_scopes_source
+	if (
+		row.granted_scopes_json == null ||
+		!row.granted_scopes_checked_at ||
+		!grantedScopesSourceValues.some((value) => value === source)
+	) {
+		return null
+	}
+	return {
+		scopes: parseJsonStringArray(row.granted_scopes_json),
+		source: source as GrantedScopes['source'],
+		checkedAt: row.granted_scopes_checked_at,
+	}
+}
+
+/** Records what the provider granted on the token just stored for one connection. */
+export async function recordIntegrationGrantedScopes(input: {
+	db: D1Database
+	userId: string
+	name: string
+	granted: GrantedScopes | null
+}): Promise<void> {
+	await input.db
+		.prepare(
+			`UPDATE user_integrations
+			SET granted_scopes_json = ?,
+				granted_scopes_source = ?,
+				granted_scopes_checked_at = ?
+			WHERE user_id = ? AND name = ?${andLiveDeletedAtSql()}`,
+		)
+		.bind(
+			input.granted ? JSON.stringify(input.granted.scopes) : null,
+			input.granted?.source ?? null,
+			input.granted?.checkedAt ?? null,
+			input.userId,
+			input.name,
+		)
+		.run()
+}
+
+/**
+ * Changes the scopes one platform connection requests on its next connect.
+ * Touches only that connection row: the platform app's default and allowed
+ * scopes and every sibling connection keep their own lists.
+ */
+export async function updatePlatformIntegrationRequestedScopes(input: {
+	db: D1Database
+	userId: string
+	name: string
+	scopes: Array<string>
+}): Promise<boolean> {
+	const result = await input.db
+		.prepare(
+			`UPDATE user_integrations
+			SET scopes_json = ?, updated_at = ?
+			WHERE user_id = ? AND name = ? AND platform_app_slug IS NOT NULL${andLiveDeletedAtSql()}`,
+		)
+		.bind(
+			JSON.stringify(input.scopes),
+			new Date().toISOString(),
+			input.userId,
+			input.name,
+		)
+		.run()
+	return (result.meta.changes ?? 0) > 0
+}
+
 export function mapIntegrationRow(
 	row: UserIntegrationRow,
 ): UserIntegrationConnection {
@@ -1013,6 +1091,7 @@ export function mapIntegrationRow(
 		tokenRefreshedAt: row.token_refreshed_at,
 		lastAuthFailure: mapLastAuthFailure(row, refreshPolicy),
 		refreshPolicy,
+		grantedScopes: mapGrantedScopes(row),
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	}
@@ -1235,6 +1314,9 @@ function mapJoinedRow(row: JoinedIntegrationRow): JoinedIntegration {
 		auth_failed_http_status: row.auth_failed_http_status,
 		auth_failed_reconnectable: row.auth_failed_reconnectable,
 		refresh_policy: row.refresh_policy,
+		granted_scopes_json: row.granted_scopes_json,
+		granted_scopes_source: row.granted_scopes_source,
+		granted_scopes_checked_at: row.granted_scopes_checked_at,
 		created_at: row.connection_created_at,
 		updated_at: row.connection_updated_at,
 	})

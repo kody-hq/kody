@@ -40,7 +40,7 @@ import {
 	buildEntitlementUpgradeHint,
 	isBudgetLimitError,
 } from './errors.ts'
-import { orgBillingPath } from '#universal/org-pages.ts'
+import { orgBillingPath, orgUsagePath } from '#universal/org-pages.ts'
 import { countLiveSeats } from '#worker/orgs/billing.ts'
 import { joinOrgsOnPersonalOrgIdSql } from '#worker/orgs/personal-org-sql.ts'
 import { getOrgById } from '#worker/orgs/repo.ts'
@@ -1523,16 +1523,44 @@ const storageBytesBootstrapMaxAttempts = 2
  * The `env` / `USER_METER` binding is required for the DO reserve path and
  * throws immediately when absent — failing closed for real users.
  */
-/** Signup org billing page, or a placeholder when the org cannot be read. */
-export async function entitlementBillingPath(db: D1Database, userId: string) {
+/** Charged-org paths for plan-limit denials (Usage first; Billing for upgrades). */
+export type EntitlementOrgPaths = {
+	orgSlug: string | null
+	billingPath: string
+	usagePath: string | null
+}
+
+/**
+ * Signup/charged org slug plus Usage and Billing paths. Billing falls back to
+ * a placeholder when the org cannot be read so denials still render.
+ */
+export async function entitlementOrgPaths(
+	db: D1Database,
+	userId: string,
+): Promise<EntitlementOrgPaths> {
 	try {
 		const org = await getOrgById(db, userId)
-		if (org?.slug) return orgBillingPath(org.slug)
+		if (org?.slug) {
+			return {
+				orgSlug: org.slug,
+				billingPath: orgBillingPath(org.slug),
+				usagePath: orgUsagePath(org.slug),
+			}
+		}
 	} catch {
 		// A test double that does not model orgs still owes the caller a limit
 		// error. Production D1 returns null when the org is missing.
 	}
-	return '/@<slug>/-/billing'
+	return {
+		orgSlug: null,
+		billingPath: '/@<slug>/-/billing',
+		usagePath: null,
+	}
+}
+
+/** Signup org billing page, or a placeholder when the org cannot be read. */
+export async function entitlementBillingPath(db: D1Database, userId: string) {
+	return (await entitlementOrgPaths(db, userId)).billingPath
 }
 
 export async function assertWithinStorageBytesEntitlement(input: {
@@ -1594,18 +1622,23 @@ export async function assertWithinStorageBytesEntitlement(input: {
 				// non-existent account. Apply free-plan allow/deny without DO.
 				const current = 0
 				if (current + requested <= limit) return
-				throw new EntitlementLimitError({
-					resource: 'storage_bytes',
-					plan,
-					limit,
-					current,
-					upgradeHint: buildEntitlementUpgradeHint({
+				{
+					const paths = await entitlementOrgPaths(input.db, input.userId)
+					throw new EntitlementLimitError({
 						resource: 'storage_bytes',
 						plan,
-						creditWallet: entitlement.creditWallet,
-						billingPath: await entitlementBillingPath(input.db, input.userId),
-					}),
-				})
+						limit,
+						current,
+						...(paths.orgSlug ? { orgSlug: paths.orgSlug } : {}),
+						upgradeHint: buildEntitlementUpgradeHint({
+							resource: 'storage_bytes',
+							plan,
+							creditWallet: entitlement.creditWallet,
+							billingPath: paths.billingPath,
+							...(paths.usagePath ? { usagePath: paths.usagePath } : {}),
+						}),
+					})
+				}
 			}
 			// Real owner with no DO row: lazy-enqueue a shared per-owner
 			// physical reconcile (one SUM for concurrent cold callers), then
@@ -1631,16 +1664,19 @@ export async function assertWithinStorageBytesEntitlement(input: {
 		}
 
 		if (!result.reserved) {
+			const paths = await entitlementOrgPaths(input.db, input.userId)
 			throw new EntitlementLimitError({
 				resource: 'storage_bytes',
 				plan,
 				limit,
 				current: result.bytes,
+				...(paths.orgSlug ? { orgSlug: paths.orgSlug } : {}),
 				upgradeHint: buildEntitlementUpgradeHint({
 					resource: 'storage_bytes',
 					plan,
 					creditWallet: entitlement.creditWallet,
-					billingPath: await entitlementBillingPath(input.db, input.userId),
+					billingPath: paths.billingPath,
+					...(paths.usagePath ? { usagePath: paths.usagePath } : {}),
 				}),
 			})
 		}
@@ -1706,17 +1742,19 @@ export async function assertWithinEntitlement(
 				now,
 			})
 	if (current + requested > limit) {
-		const billingPath = await entitlementBillingPath(input.db, input.userId)
+		const paths = await entitlementOrgPaths(input.db, input.userId)
 		throw new EntitlementLimitError({
 			resource: input.resource,
 			plan,
 			limit,
 			current,
+			...(paths.orgSlug ? { orgSlug: paths.orgSlug } : {}),
 			upgradeHint: buildEntitlementUpgradeHint({
 				resource: input.resource,
 				plan,
 				creditWallet: entitlement.creditWallet,
-				billingPath,
+				billingPath: paths.billingPath,
+				...(paths.usagePath ? { usagePath: paths.usagePath } : {}),
 				now,
 			}),
 		})
@@ -1979,13 +2017,15 @@ async function throwDailyEntitlementDenial(input: {
 	result: { count: number; deniedWindow?: 'day' | 'week'; weekCount?: number }
 }): Promise<never> {
 	const { entitlement, now, limit, weekLimit } = input.window
-	const billingPath = await entitlementBillingPath(input.db, input.userId)
+	const paths = await entitlementOrgPaths(input.db, input.userId)
+	const orgFields = paths.orgSlug ? { orgSlug: paths.orgSlug } : {}
 	const upgradeHint = (window: 'day' | 'week') =>
 		buildEntitlementUpgradeHint({
 			resource: input.resource,
 			plan: entitlement.plan,
 			creditWallet: entitlement.creditWallet,
-			billingPath,
+			billingPath: paths.billingPath,
+			...(paths.usagePath ? { usagePath: paths.usagePath } : {}),
 			window,
 			now,
 		})
@@ -1996,7 +2036,9 @@ async function throwDailyEntitlementDenial(input: {
 			limit: weekLimit,
 			current: input.result.weekCount ?? 0,
 			window: 'week',
+			...orgFields,
 			upgradeHint: upgradeHint('week'),
+			now,
 		})
 	}
 	throw new EntitlementLimitError({
@@ -2004,7 +2046,9 @@ async function throwDailyEntitlementDenial(input: {
 		plan: entitlement.plan,
 		limit,
 		current: input.result.count,
+		...orgFields,
 		upgradeHint: upgradeHint('day'),
+		now,
 	})
 }
 

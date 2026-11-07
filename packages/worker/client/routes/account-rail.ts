@@ -416,8 +416,8 @@ function agentsRailItem(orgSlug: string | null | undefined): AccountRailItem {
 }
 
 /**
- * One home for every credential kind. The Key, OAuth, and MCP server editors
- * still live on their own pages, so those count as Credentials too.
+ * One home for every credential kind. The Key and MCP server editors still
+ * live on their own pages, so those count as Credentials too.
  */
 function credentialsRailItem(
 	orgSlug: string | null | undefined,
@@ -429,6 +429,20 @@ function credentialsRailItem(
 		icon: 'key',
 		description:
 			'Keys, OAuth connections, MCP servers, and vaults Kody uses for you.',
+	}
+}
+
+/** The services you can connect, with which of them you already have. */
+function integrationsRailItem(
+	orgSlug: string | null | undefined,
+): AccountRailItem {
+	return {
+		href: orgSectionHref(orgSlug, 'integrations'),
+		id: 'integrations',
+		label: 'Integrations',
+		icon: 'plug',
+		description:
+			'Services you can connect over OAuth, and which are connected.',
 	}
 }
 
@@ -556,6 +570,7 @@ function workspaceResourceGroups(
 			label: 'Credentials',
 			items: [
 				credentialsRailItem(orgSlug),
+				integrationsRailItem(orgSlug),
 				{
 					href: orgSectionHref(orgSlug, 'secret-providers'),
 					id: 'secret-providers',

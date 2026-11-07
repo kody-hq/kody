@@ -16,6 +16,7 @@ import type { EntitySourceRow } from '#worker/repo/types.ts'
 import {
 	listUsableCredentialsByPackage,
 	resolveNeedCandidates,
+	type UsableCredential,
 } from './credential-candidates.ts'
 import { readCredentialHostSettings } from './credential-hosts.ts'
 import { loadPublishedCredentialNeeds } from './credential-needs-closure.ts'
@@ -56,21 +57,32 @@ export function credentialPlaceholder(credential: CredentialListItem) {
 }
 
 async function listGrants(db: D1Database, credentialId: string) {
-	const result = await db
-		.prepare(
-			`SELECT o.slug AS slug, COALESCE(o.display_name, o.slug) AS name,
+	// Personal-org detail always loads grants (`ownedByViewer`). Soft-fail so a
+	// D1 blip cannot 500 the whole credentials pane (and often never reaches
+	// http-entry Sentry when Start renders InternalErrorPage instead).
+	try {
+		const result = await db
+			.prepare(
+				`SELECT o.slug AS slug, COALESCE(o.display_name, o.slug) AS name,
 				g.created_at AS created_at
 			FROM credential_org_grants g JOIN orgs o ON o.id = g.org_id
 			WHERE g.credential_id = ? AND o.deleted_at IS NULL
 			ORDER BY o.slug`,
-		)
-		.bind(credentialId)
-		.all<{ slug: string; name: string; created_at: string }>()
-	return (result.results ?? []).map((row) => ({
-		orgSlug: row.slug,
-		orgName: row.name,
-		grantedAt: row.created_at,
-	}))
+			)
+			.bind(credentialId)
+			.all<{ slug: string; name: string; created_at: string }>()
+		return (result.results ?? []).map((row) => ({
+			orgSlug: row.slug,
+			orgName: row.name,
+			grantedAt: row.created_at,
+		}))
+	} catch (error) {
+		Sentry.captureException(error, {
+			tags: { scope: 'credentials.detail.grants' },
+			extra: { credentialId },
+		})
+		return []
+	}
 }
 
 async function listUsage(input: {
@@ -101,20 +113,32 @@ async function listUsage(input: {
 		})
 		return { usage: [], unreadable: input.packages.length }
 	}
-	const [usableByPackage, needResults] = await Promise.all([
-		listUsableCredentialsByPackage({
-			env: input.env,
-			request: input.request,
-			packageIds: input.packages.map((pkg) => pkg.id),
-		}),
-		loadPackageNeeds({
-			env: input.env,
-			request: input.request,
-			orgId: input.orgId,
-			packages: input.packages,
-			supplierSemanticsEnabled,
-		}),
-	])
+	let usableByPackage: Map<string, Array<UsableCredential>>
+	let needResults: Awaited<ReturnType<typeof loadPackageNeeds>>
+	try {
+		;[usableByPackage, needResults] = await Promise.all([
+			listUsableCredentialsByPackage({
+				env: input.env,
+				request: input.request,
+				packageIds: input.packages.map((pkg) => pkg.id),
+			}),
+			loadPackageNeeds({
+				env: input.env,
+				request: input.request,
+				orgId: input.orgId,
+				packages: input.packages,
+				supplierSemanticsEnabled,
+			}),
+		])
+	} catch (error) {
+		// Usable-credential load was uncaught before: any org with packages
+		// turned every credential detail into a 500 while the list still worked.
+		Sentry.captureException(error, {
+			tags: { scope: 'credentials.detail.usage' },
+			extra: { orgId: input.orgId },
+		})
+		return { usage: [], unreadable: input.packages.length }
+	}
 	const packageViews = needResults.map(({ pkg, needs }) => ({
 		pkg,
 		needs,
@@ -283,9 +307,24 @@ export async function loadCredentialDetail(input: {
 				db: input.env.APP_DB,
 				orgId: input.orgId,
 				credential: input.credential,
+			}).catch((error: unknown) => {
+				Sentry.captureException(error, {
+					tags: { scope: 'credentials.detail.hosts' },
+					extra: { credentialId: input.credential.id },
+				})
+				return null
 			}),
 			showsFillPlacementObservation(input.credential.kind)
-				? readFillPlacementObservation(input.env.APP_DB, input.credential.id)
+				? readFillPlacementObservation(
+						input.env.APP_DB,
+						input.credential.id,
+					).catch((error: unknown) => {
+						Sentry.captureException(error, {
+							tags: { scope: 'credentials.detail.fill_placement' },
+							extra: { credentialId: input.credential.id },
+						})
+						return null
+					})
 				: null,
 		])
 	return {

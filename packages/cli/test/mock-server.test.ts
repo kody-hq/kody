@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -9,6 +9,7 @@ import {
 	startMockServer,
 	withMockServer,
 } from '../src/mock/mock-server.js'
+import { mutateMockSession } from '../src/mock/mock-storage.js'
 
 test('mock session + search + metaGetCurrentUser work', async () => {
 	const cache = await mkdtemp(join(tmpdir(), 'kody-mock-cache-'))
@@ -173,13 +174,18 @@ test('ensureMockTarget mints a bearer and can reset storage', async () => {
 			sessionId: 'ensure',
 			resetStorage: true,
 		})
-		first.server.state().packageStorage['p'] = { rows: { a: 1 } }
+		await mutateMockSession({ sessionId: 'ensure' }, (state) => {
+			state.packageStorage['p'] = { rows: { a: 1 } }
+		})
+		assert.deepEqual((await first.server.state()).packageStorage, {
+			p: { rows: { a: 1 } },
+		})
 		await first.server.close()
 		const second = await ensureMockTarget({
 			sessionId: 'ensure',
 			resetStorage: true,
 		})
-		assert.deepEqual(second.server.state().packageStorage, {})
+		assert.deepEqual((await second.server.state()).packageStorage, {})
 		await second.server.close()
 		assert.ok(second.token.startsWith('kody_mock_'))
 	} finally {
@@ -363,6 +369,96 @@ test('mock credentials OpenAll + authenticatedFetch + adminUserList fixtures', a
 			},
 		)
 	} finally {
+		await rm(cache, {
+			recursive: true,
+			force: true,
+			maxRetries: 10,
+			retryDelay: 100,
+		})
+	}
+})
+
+async function storageCall(
+	server: { url: string; sessionId: string },
+	name: string,
+	input: unknown,
+) {
+	const res = await fetch(`${server.url}/v1/capability-proxy/call`, {
+		method: 'POST',
+		headers: {
+			authorization: `Bearer ${mintMockApiToken(server.sessionId)}`,
+			'content-type': 'application/json',
+		},
+		body: JSON.stringify({ path: ['kody', name], args: [input] }),
+	})
+	return { status: res.status, body: (await res.json()) as any }
+}
+
+test('a running mock sees outside writes and never overwrites them', async () => {
+	const cache = await mkdtemp(join(tmpdir(), 'kody-mock-cache-'))
+	const env = { ...process.env, KODY_CACHE_DIR: cache }
+	// `kody dev` and a separate `kody execute --target mock` each start a mock
+	// on the same session store.
+	const dev = await startMockServer({
+		sessionId: 'shared',
+		packageId: 'p',
+		env,
+	})
+	const outside = await startMockServer({
+		sessionId: 'shared',
+		packageId: 'p',
+		env,
+	})
+	try {
+		await storageCall(dev, 'packageStorageSet', { key: 'a', value: 'dev' })
+		const set = await storageCall(outside, 'packageStorageSet', {
+			key: 'b',
+			value: 'outside',
+		})
+		assert.deepEqual(set.body, { result: { ok: true } })
+		const seen = await storageCall(dev, 'packageStorageGet', { key: 'b' })
+		assert.deepEqual(seen.body, { result: { value: 'outside' } })
+
+		const statePath = join(cache, 'mock-sessions', 'shared', 'state.json')
+		const onDisk = JSON.parse(await readFile(statePath, 'utf8'))
+		onDisk.packageStorage.p.rows.c = 'hand edit'
+		await writeFile(statePath, JSON.stringify(onDisk))
+
+		await storageCall(dev, 'packageStorageSet', { key: 'd', value: 'dev' })
+		await Promise.all(
+			Array.from({ length: 10 }, (_, i) =>
+				storageCall(i % 2 ? dev : outside, 'packageStorageSet', {
+					key: `k${i}`,
+					value: i,
+				}),
+			),
+		)
+		const list = await storageCall(dev, 'packageStorageList', {})
+		const rows = Object.fromEntries(
+			list.body.result.entries.map((e: { key: string; value: unknown }) => [
+				e.key,
+				e.value,
+			]),
+		)
+		assert.equal(rows.a, 'dev')
+		assert.equal(rows.b, 'outside')
+		assert.equal(rows.c, 'hand edit')
+		assert.equal(rows.d, 'dev')
+		for (let i = 0; i < 10; i++) assert.equal(rows[`k${i}`], i)
+
+		await writeFile(statePath, '{ "version": 1, ')
+		const refused = await storageCall(dev, 'packageStorageSet', {
+			key: 'e',
+			value: 'lost?',
+		})
+		assert.equal(refused.status, 409)
+		assert.equal(refused.body.error.code, 'mock_store_unreadable')
+		assert.match(refused.body.error.message, /not valid JSON/)
+		assert.match(refused.body.error.message, /--reset-storage/)
+		assert.equal(await readFile(statePath, 'utf8'), '{ "version": 1, ')
+	} finally {
+		await dev.close()
+		await outside.close()
 		await rm(cache, {
 			recursive: true,
 			force: true,

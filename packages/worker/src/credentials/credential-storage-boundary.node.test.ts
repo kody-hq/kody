@@ -39,6 +39,7 @@ type StorageRule = {
 const accountSecretsHandler =
 	'packages/worker/src/app/handlers/account-secrets.ts'
 const accountSecretsData = 'packages/worker/src/app/account-secrets-data.ts'
+const localRead = 'packages/worker/src/credentials/local-read.ts'
 
 const storageRules: ReadonlyArray<StorageRule> = [
 	{
@@ -57,6 +58,8 @@ const storageRules: ReadonlyArray<StorageRule> = [
 				'Account management: keeps the stored value when an edit leaves it blank.',
 			[accountSecretsData]:
 				'Account management: the owner reveals a stored secret on /account/secrets.',
+			[localRead]:
+				"Local reads (ADR 0097): the CLI reads a value only after Use, the secret's switch, and the token scope pass.",
 		},
 	},
 	{
@@ -116,7 +119,10 @@ const storageRules: ReadonlyArray<StorageRule> = [
 	{
 		module: 'packages/worker/src/mcp/secrets/secret-providers/service.ts',
 		symbols: ['resolveProviderSecret'],
-		allowed: {},
+		allowed: {
+			[localRead]:
+				'Local reads (ADR 0097): a vault value is fetched live only after Use, the switch, and the token scope pass.',
+		},
 	},
 	{
 		module: 'packages/worker/src/mcp/secrets/secret-providers/cache.ts',

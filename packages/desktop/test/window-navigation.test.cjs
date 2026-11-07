@@ -26,7 +26,7 @@ function fixture() {
 	const navigation = attachWindowNavigation(window, {
 		appOrigin: 'https://kody.codes',
 		clipboard: { writeText: (url) => calls.push(['copy', url]) },
-		shell: { openExternal: async (url) => calls.push(['open', url]) },
+		openBrowser: async (url) => calls.push(['open', url]),
 	})
 	return { navigation, contents, frame, calls }
 }
@@ -53,10 +53,12 @@ test('history, home, and address actions stay scoped to the owning window', asyn
 	await navigation.command('forward')
 	await navigation.command('home')
 	await navigation.command('copy-address')
+	await navigation.command('open-browser')
 	assert.deepEqual(calls, [
 		['back'],
 		['load', 'https://kody.codes/account'],
 		['copy', 'https://kody.codes/account'],
+		['open', 'https://kody.codes/account'],
 	])
 	contents.emit('did-navigate-in-page')
 	assert.equal(calls.at(-1)[0], 'kody:navigation-state')

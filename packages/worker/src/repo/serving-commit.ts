@@ -26,3 +26,16 @@ export function toServingSourceView<
 		? source
 		: { ...source, published_commit: servingCommit }
 }
+
+/**
+ * The commit runtime readers pin commit-keyed artifact payloads to, or null
+ * to read each identity row's newest saved build. Without a serving pointer
+ * no complete build is proven at `published_commit` (the backfill leaves it
+ * null when artifacts lag), so pinning there misses saved payloads and forces
+ * a live rebuild of the whole import graph.
+ */
+export function servingArtifactCommitForSource(
+	source: Pick<EntitySourceRow, 'serving_commit'>,
+): string | null {
+	return source.serving_commit ?? null
+}

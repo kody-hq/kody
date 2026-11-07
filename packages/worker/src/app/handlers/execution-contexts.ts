@@ -57,10 +57,18 @@ export const executionContextCapabilityNames = {
 	shareList: 'executionContextShareList',
 	shareSet: 'executionContextShareSet',
 	shareRemove: 'executionContextShareRemove',
+	attach: 'executionContextAttach',
 	sharePreview: 'executionContextSharePreview',
 	noticeDismiss: 'executionContextNoticeDismiss',
 	automationGet: 'automationExecutionGet',
 	automationSet: 'automationExecutionSet',
+	pause: 'executionContextPause',
+	resume: 'executionContextResume',
+	daemonStatus: 'executionContextDaemonStatus',
+	daemonRestart: 'executionContextDaemonRestart',
+	daemonUpdate: 'executionContextDaemonUpdate',
+	daemonConfig: 'executionContextDaemonConfig',
+	daemonLogs: 'executionContextDaemonLogs',
 } as const
 
 type CapabilityName =
@@ -477,6 +485,29 @@ async function runScoped<T>(
 	}
 }
 
+/** Attach the caller's context (seen from its owner org) to another org they belong to. */
+export async function attachExecutionContextForUser(
+	input: ScopedInput & { contextId: string; targetOrgSlug: string },
+) {
+	const target = await loadExecutionContextsScope({
+		...input,
+		orgSlug: input.targetOrgSlug,
+	})
+	if (!target || target.personal)
+		return {
+			ok: false as const,
+			error: 'not_found',
+			message: 'Organization not found.',
+		}
+	return runScoped(input, async (scope) => {
+		await callCapability(scope, executionContextCapabilityNames.attach, {
+			id: input.contextId,
+			org_id: target.org.id,
+		})
+		return { ok: true as const }
+	})
+}
+
 export async function optIntoExecutionContextForUser(
 	input: ScopedInput & { contextId: string },
 ) {
@@ -535,6 +566,53 @@ export async function turnOffExecutionContextCommandsForUser(
 			grant: { commands: { enabled: false } },
 		})
 		return { ok: true as const }
+	})
+}
+
+export type ExecutionContextDaemonAction =
+	| 'pause'
+	| 'resume'
+	| 'restart'
+	| 'update'
+	| 'logs'
+
+/** Daemon card actions: server-side pause/resume and live restart/update. */
+export async function runExecutionContextDaemonActionForUser(
+	input: ScopedInput & {
+		contextId: string
+		action: ExecutionContextDaemonAction
+		reason?: string
+	},
+) {
+	return runScoped(input, async (scope) => {
+		const name = {
+			pause: executionContextCapabilityNames.pause,
+			resume: executionContextCapabilityNames.resume,
+			restart: executionContextCapabilityNames.daemonRestart,
+			update: executionContextCapabilityNames.daemonUpdate,
+			logs: executionContextCapabilityNames.daemonLogs,
+		}[input.action]
+		const result = await callCapability(scope, name, {
+			id: input.contextId,
+			...(input.action === 'pause' && input.reason
+				? { reason: input.reason }
+				: {}),
+			...(input.action === 'logs' ? { lines: 200 } : {}),
+		})
+		return {
+			ok: true as const,
+			lines: Array.isArray(result.lines)
+				? result.lines.filter(
+						(line): line is string => typeof line === 'string',
+					)
+				: null,
+			message:
+				typeof result.message === 'string'
+					? result.message
+					: typeof result.note === 'string'
+						? result.note
+						: null,
+		}
 	})
 }
 
@@ -720,6 +798,7 @@ function normalizeShareGrant(
 
 function readSharing(result: Record<string, unknown>): ExecutionContextSharing {
 	const sharing = record(result.sharing) ?? result
+	const roster = record(sharing.accessRoster)
 	return {
 		level:
 			sharing.level === 'people' ||
@@ -734,6 +813,11 @@ function readSharing(result: Record<string, unknown>): ExecutionContextSharing {
 			? (sharing.attachedOrgs as ExecutionContextSharing['attachedOrgs'])
 			: [],
 		allMembers: sharing.allMembers === true,
+		...(roster
+			? {
+					accessRoster: roster as ExecutionContextSharing['accessRoster'],
+				}
+			: {}),
 	}
 }
 

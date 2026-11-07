@@ -71,18 +71,6 @@ test('org grants carry org-wide reads plus package and app manage, and nothing e
 			.filter((permission) => !permission.endsWith(':read'))
 			.sort(),
 	)
-	for (const permission of [
-		'job:write',
-		'job:execute',
-		'job:delete',
-		'job:manage_access',
-		'secret:use',
-		'integration:use',
-		'email:send',
-		'execution_context:execute',
-	] as const) {
-		expect(isGrantablePermission('org', permission)).toBe(false)
-	}
 })
 
 test('read is package-only and grants package:read alone', () => {

@@ -72,6 +72,7 @@ export type RoutingAttempt = {
 		| 'skipped'
 		| 'queued'
 		| 'expired'
+		| 'paused'
 	reason?: string
 }
 
@@ -205,6 +206,7 @@ const passPhrases: Record<RoutingAttempt['outcome'], string> = {
 	skipped: 'was skipped',
 	queued: 'was queued',
 	expired: 'did not take it before the queue expired',
+	paused: 'was paused',
 }
 
 function describePass(attempt: RoutingAttempt) {
@@ -519,6 +521,11 @@ export async function routeExecute(input: {
 			skip(access.unusableReason ?? 'not_granted')
 			continue
 		}
+		// Paused contexts are skipped like offline ones but never queued on.
+		if (row.paused_at) {
+			attempts.push({ target: row.id, name: row.name, outcome: 'paused' })
+			continue
+		}
 		const grant = parseGrant(row)
 		const sharedRun = row.operator_user_id !== input.request.userId
 		if (sharedRun) {
@@ -739,9 +746,11 @@ export async function routeExecute(input: {
 		const namedAttempt = attempts.find((a) => a.target === named.id)
 		noContext(
 			attempts,
-			namedAttempt?.outcome === 'busy'
-				? `${named.name} is busy: it is already running as many runs as it allows at once, so it could not take this run. A named context never falls back; try again when one of its runs finishes, or pass fallback: "chain" to use your chain instead.`
-				: `${named.name} could not take this run (${describeAttempts(attempts)}). A named context never falls back; pass fallback: "chain" to use your chain instead.`,
+			namedAttempt?.outcome === 'paused'
+				? `${named.name} is paused, so it takes no runs. Its operator or someone with Manage on it can resume it with \`kody daemon resume --context ${named.name}\` or executionContextResume. A named context never falls back; pass fallback: "chain" to use your chain instead.`
+				: namedAttempt?.outcome === 'busy'
+					? `${named.name} is busy: it is already running as many runs as it allows at once, so it could not take this run. A named context never falls back; try again when one of its runs finishes, or pass fallback: "chain" to use your chain instead.`
+					: `${named.name} could not take this run (${describeAttempts(attempts)}). A named context never falls back; pass fallback: "chain" to use your chain instead.`,
 		)
 	}
 	noContext(
@@ -767,9 +776,12 @@ const contextReasonText: Record<string, string> = {
 		'not_operator: publish builds run only on contexts you operate yourself',
 	profile_grant:
 		'profile_grant: the profile this credential acts as, or a parent profile, was not granted execution_context:execute on it',
-	no_fs: 'no_fs: its server grant lists no host folders (grant.fs)',
+	no_fs:
+		'no_fs: its server grant lists no host folders (grant.fs is off on the server, whatever the local policy allows); someone with Contribute or Manage on it can turn it on with `kody context grant allow <folder> --context {name}`',
 	no_local_fs:
-		"no_local_fs: its server grant lists host folders, but the machine's local policy allows none of them (`kody context policy allow <folder>`)",
+		"no_local_fs: its server grant lists host folders, but the machine's local policy allows none of them; the machine owner can allow one there with `kody context policy allow <folder>`",
+	no_lan:
+		'no_lan: its server grant does not allow the local network (grant.egress is not public-and-lan); someone with Contribute or Manage on it can turn it on with `kody context grant lan on --context {name}`',
 	fs_operator_only:
 		"fs_operator_only: host folders are only for the operator's own runs",
 	fs_daemon_outdated:
@@ -778,12 +790,15 @@ const contextReasonText: Record<string, string> = {
 		'operator_left: the person who runs this machine is no longer a member of this org',
 }
 
-function describeAttempts(attempts: ReadonlyArray<RoutingAttempt>) {
+export function describeAttempts(attempts: ReadonlyArray<RoutingAttempt>) {
 	return attempts
 		.map((a) => {
 			const reason =
 				a.reason && a.target !== 'cloud'
-					? (contextReasonText[a.reason] ?? a.reason)
+					? (contextReasonText[a.reason]?.replaceAll(
+							'{name}',
+							a.name ?? '<context>',
+						) ?? a.reason)
 					: a.reason
 			return `${a.name ?? a.target}: ${a.outcome}${reason ? ` (${reason})` : ''}`
 		})

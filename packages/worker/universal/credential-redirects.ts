@@ -3,7 +3,9 @@
  * index pages move; approval and OAuth flows under them keep serving, and
  * `/connect/oauth` never moves because it is a registered OAuth redirect URI.
  * Secret providers keep their page: it is where package access to a vault is
- * granted and revoked, and the Credentials list links to it.
+ * granted and revoked, and the Credentials list links to it. Integrations
+ * keeps its page too: it is the catalog of services you can connect, which
+ * the Credentials list (your connections) does not show.
  */
 import {
 	credentialCreatePath,
@@ -12,7 +14,6 @@ import {
 
 const orgIndexRedirects: Record<string, CredentialKind> = {
 	secrets: 'secret',
-	integrations: 'oauth',
 	'mcp-servers': 'mcp',
 }
 

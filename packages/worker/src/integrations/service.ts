@@ -1,3 +1,4 @@
+import { compareRequestedAndGrantedScopes } from '#worker/integrations/granted-scopes.ts'
 import { base64ToBytes } from '@kody-internal/shared/base64.ts'
 import { safeParseHost } from '@kody-internal/shared/url-hosts.ts'
 import { toIntegrationAuthFailureView } from '#universal/connection-trouble.ts'
@@ -201,7 +202,22 @@ export function toJoinedIntegrationConfig(
 			}
 		}
 	})()
-	const withId = { ...config, credentialId: joined.connection.credentialId }
+	const granted = joined.connection.grantedScopes
+	const withId = {
+		...config,
+		credentialId: joined.connection.credentialId,
+		...(granted
+			? {
+					grantedScopes: {
+						...granted,
+						...compareRequestedAndGrantedScopes(
+							joined.connection.scopes,
+							granted.scopes,
+						),
+					},
+				}
+			: {}),
+	}
 	const snapshot = joined.connection.lastAuthFailure
 	if (!snapshot) return withId
 	return {
@@ -215,6 +231,7 @@ export function toJoinedIntegrationConfig(
 			providerError: snapshot.providerError,
 			providerErrorDescription: snapshot.providerErrorDescription,
 			httpStatus: snapshot.httpStatus,
+			provider: joined.app.provider,
 		}),
 	}
 }

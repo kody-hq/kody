@@ -14,8 +14,12 @@ import {
 	CredentialNotFoundError,
 	CredentialRequestRefusedError,
 } from './credential-request.ts'
-import { authorizeActorUse, type ResolverCall } from './credential-resolver.ts'
-import { authorizePersonalCredentialUse } from './personal-credentials.ts'
+import {
+	authorizeActorPersonalUse,
+	authorizeActorUse,
+	permissionForUse,
+	type ResolverCall,
+} from './credential-resolver.ts'
 
 export type StoredCredentialLookup = {
 	owner: 'org' | 'personal'
@@ -68,11 +72,13 @@ export async function authorizeStoredCredential(
 			break
 		case 'personal':
 			call.subject.credentialId = found.credentialId
-			await authorizePersonalCredentialUse({
-				db: call.input.env.APP_DB,
-				actorPersonId: call.input.actor?.actor?.userId ?? null,
+			await authorizeActorPersonalUse({
+				env: call.input.env,
+				actor: call.input.actor,
 				orgId: call.input.orgId,
 				credentialId: found.credentialId,
+				name: found.name,
+				permission: permissionForUse(call.credential.use),
 			})
 			break
 		default: {

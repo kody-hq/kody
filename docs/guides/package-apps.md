@@ -312,10 +312,25 @@ anyone.
 From app server code, `kody.appPublisherGet({})` returns that person:
 `{ user_id, username, email, display_name, org: { slug }, source }`, where
 `source` is `"explicit"` (an Owner chose them), `"publisher"`, or
-`"personal-org"`. It needs no `kody.app.capabilities` entry, and it throws the
-same runs-as error as other calls when the app has no one to run as. Use it when
-the app wants the publisher (for example a "contact the owner" link); use
-`kody.metaGetCurrentUser({})` for the visitor.
+`"personal-org"`. Fields are snake_case, like `metaGetCurrentUser`. It needs no
+`kody.app.capabilities` entry, and it throws the same runs-as error as other
+calls when the app has no one to run as. Use it when the app wants the publisher
+(for example a "contact the owner" link); use `kody.metaGetCurrentUser({})` for
+the visitor.
+
+To check whether the visitor is the person the app runs as, compare user ids:
+
+```ts
+const me = await kody.metaGetCurrentUser({})
+const publisher = await kody.appPublisherGet({})
+const isPublisher = me.user_id === publisher.user_id
+```
+
+The `X-Kody-Visitor` header's `userId` and the OAuth helper's user id are the
+same value as `me.user_id`. Don't use `role === 'owner'` as the owner check: it
+means an Owner of the owning org, which is the publisher only in a personal org.
+`packageAppRunsAsGet` (an MCP capability, not an app function) returns only
+`runs_as: { username, source }`, with no user id.
 
 - The person is checked live on every call. Someone who left the org, or whose
   account is suspended or deleted, stops the app from acting as them, with an
@@ -530,6 +545,16 @@ the same local runtime bridge for these cells.
 | `execute --local` **prod** | Same as `kody dev` prod (working-tree throws)                      | Same as `kody dev` prod (throws)             | Same as `kody dev` prod                                                                                 | Package-graph from prod (no working-tree localDeps mapping)                                                                                        | Same as `kody dev` prod                                                                                                                                                       |
 
 Share previews for unpublished apps are out of scope — publish to share.
+
+On mock, the working-tree `packageStorage` key/value rows live in one file per
+mock session (`state.json` under the CLI cache's `mock-sessions/`), and that
+file is the source of truth. A running `kody dev` reads it on every call, and
+each write updates the latest file under a lock. So writes from a separate
+`kody execute --target mock`, a one-shot `kody dev job|webhook|emit`, or a hand
+edit show up in the preview right away, and a later preview write keeps them
+(last write wins per key). If the file is not valid JSON, mock storage calls
+fail with `mock_store_unreadable` and leave it untouched: fix the JSON, or
+delete it (or pass `--reset-storage`) to start empty.
 
 Optional outbound HTTP mocking: add `.kody/mocks.ts` (MSW `handlers`) so the CLI
 Node gateway answers package `fetch` calls under mock. Unmatched requests return
@@ -1541,6 +1566,12 @@ Billing follows who is visiting
   use `kody.appRateLimit` below for that.
 
 ### App-owned limits and spend
+
+`kody.appRateLimit`, `kody.appSpendGet`, and `kody.appPublisherGet` are host
+functions of `kody:runtime`, not Kody capabilities. They need no
+`kody.app.capabilities` entry (listing them is harmless), they are scoped to the
+app's own package even when a package the app imports calls them, and they do
+not show up in `search` capability results.
 
 `kody.appRateLimit({ key, limit, windowSeconds })` is an atomic fixed-window
 limit scoped to this saved package. Bounds are 1–1,000,000 requests, 1–86,400

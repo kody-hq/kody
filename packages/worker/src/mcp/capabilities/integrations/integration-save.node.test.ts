@@ -20,7 +20,10 @@ import {
 	integrationConfigSchema,
 	mergeIntegrationConfig,
 } from './integration-shared.ts'
-import { upsertPlatformOauthApp } from '#worker/integrations/platform-apps.ts'
+import {
+	getPlatformOauthAppBySlug,
+	upsertPlatformOauthApp,
+} from '#worker/integrations/platform-apps.ts'
 import {
 	getJoinedIntegration,
 	upsertPlatformIntegration,
@@ -399,7 +402,7 @@ test('integration capabilities deny cross-user reads and require authentication'
 	).rejects.toThrow('Authenticated MCP user is required for this capability.')
 })
 
-test('integrationSave refuses platform (built-in) connections and persists accountLabel on user-lane connections', async () => {
+test('integrationSave changes scopes on one platform connection only and persists accountLabel on user-lane connections', async () => {
 	const { env } = createEnv()
 	const as = ctx(env, 'user-123')
 	await upsertPlatformOauthApp({
@@ -412,24 +415,90 @@ test('integrationSave refuses platform (built-in) connections and persists accou
 			tokenUrl: 'https://github.com/login/oauth/access_token',
 			authorizeUrl: 'https://github.com/login/oauth/authorize',
 			flow: 'confidential',
-			allowedScopes: ['read:user'],
+			allowedScopes: ['read:user', 'repo', 'gist'],
+			defaultScopes: ['read:user'],
 		},
 	})
-	await upsertPlatformIntegration({
-		env,
-		userId: ownerIdFromStored('user-123'),
-		platformAppSlug: 'github',
-		scopes: ['read:user'],
-		audit: null,
-	})
+	for (const name of ['github', 'github-work']) {
+		await upsertPlatformIntegration({
+			env,
+			userId: ownerIdFromStored('user-123'),
+			platformAppSlug: 'github',
+			name,
+			scopes: ['read:user'],
+			audit: null,
+		})
+	}
+	const authorizeUrl = 'https://github.com/login/oauth/authorize'
 	await expect(
 		integrationSaveCapability.handler(
 			{ name: 'github', requiredHosts: ['api.github.com'] },
 			as,
 		),
-	).rejects.toThrow(/platform \(built-in\) connection/)
-	const got = await integrationGetCapability.handler({ name: 'github' }, as)
-	expect(got.integration?.platform).toBe(true)
+	).rejects.toThrow(/only changes its authorization.scopes/)
+	await expect(
+		integrationSaveCapability.handler(
+			{
+				name: 'github',
+				authorization: {
+					authorizeUrl: 'https://evil.example/authorize',
+					scopes: ['repo'],
+				},
+			},
+			as,
+		),
+	).rejects.toThrow(/authorization.authorizeUrl/)
+	await expect(
+		integrationSaveCapability.handler(
+			{
+				name: 'github',
+				authorization: { authorizeUrl, scopes: ['admin:org'] },
+			},
+			as,
+		),
+	).rejects.toThrow(/Scopes not allowed.*admin:org.*Supported scopes: .*gist/)
+	await expect(
+		integrationSaveCapability.handler(
+			{ name: 'github', authorization: { authorizeUrl, scopes: [] } },
+			as,
+		),
+	).rejects.toThrow(/at least one scope/)
+
+	const expanded = await integrationSaveCapability.handler(
+		{
+			name: 'github',
+			authorization: { authorizeUrl, scopes: ['read:user', 'repo', 'gist'] },
+		},
+		as,
+	)
+	expect(expanded.integration.platform).toBe(true)
+	expect(expanded.integration.authorization?.scopes).toEqual([
+		'read:user',
+		'repo',
+		'gist',
+	])
+	const contracted = await integrationSaveCapability.handler(
+		{ name: 'github', authorization: { authorizeUrl, scopes: ['repo'] } },
+		as,
+	)
+	expect(contracted.integration.platform).toBe(true)
+	expect(contracted.integration.authorization?.scopes).toEqual(['repo'])
+
+	const sibling = await integrationGetCapability.handler(
+		{ name: 'github-work' },
+		as,
+	)
+	expect(sibling.integration?.authorization?.scopes).toEqual(['read:user'])
+	const app = await getPlatformOauthAppBySlug({
+		db: env.APP_DB,
+		slug: 'github',
+	})
+	expect(app?.defaultScopes).toEqual(['read:user'])
+	expect([...(app?.allowedScopes ?? [])].sort()).toEqual([
+		'gist',
+		'read:user',
+		'repo',
+	])
 
 	await integrationSaveCapability.handler(spotifyBase, as)
 	await integrationSaveCapability.handler(

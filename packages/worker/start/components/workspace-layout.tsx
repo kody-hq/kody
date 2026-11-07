@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { CommandTrigger } from '../commands/provider.tsx'
 import { Outlet, useMatches } from '@tanstack/react-router'
 import { useShellData } from '../routes/__root.tsx'
 import { workspaceLayoutNavigation } from '../workspace-layout-policy.ts'
@@ -112,7 +113,8 @@ export function WorkspaceLayout() {
 					css={{
 						position: 'sticky',
 						top: 0,
-						paddingTop: 'var(--desktop-corner-height, 0px)',
+						paddingTop:
+							'max(0px, calc(var(--desktop-corner-height, 0px) - 12px))',
 						height: '100dvh',
 						boxSizing: 'border-box',
 						display: 'flex',
@@ -175,13 +177,16 @@ export function WorkspaceLayout() {
 								Kody
 							</SiteLink>
 						</BrandContextMenu>
-						<AccountMenu
-							placement="sidebar"
-							organizations={session.organizations ?? []}
-							username={session.username}
-							displayName={session.username || session.email}
-							avatarUrl={session.avatarUrl}
-						/>
+						<div css={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+							<CommandTrigger />
+							<AccountMenu
+								placement="sidebar"
+								organizations={session.organizations ?? []}
+								username={session.username}
+								displayName={session.username || session.email}
+								avatarUrl={session.avatarUrl}
+							/>
+						</div>
 					</div>
 					<ShellWorkspaceSwitcher navigation={navigation} />
 					<div

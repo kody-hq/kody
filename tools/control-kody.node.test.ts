@@ -11,6 +11,7 @@ import { readFileSync, statSync } from 'node:fs'
 import {
 	controlKodyUserAgent,
 	defaultFeaturesDir,
+	featureVerifyRequests,
 	defaultRoutesPath,
 	loginToOrigin,
 	localSeedEmail,
@@ -20,9 +21,12 @@ import {
 	mergeCommitMessageNamesHead,
 	readGithubHealthCommitInfo,
 	readHealth,
+	waitForHealth,
 	readLocalHealthCommitInfo,
 	repoRootFromHere,
 	requestAsSession,
+	resolveOrigin,
+	healthProductionOriginHint,
 	runCommand,
 	runDoctor,
 	runMapCheck,
@@ -1387,4 +1391,156 @@ test('control-kody map --check reports unmapped required routes and unknown note
 		featuresDir: temp.dir,
 	})
 	expect(incidental.ok).toBe(true)
+})
+
+test('waitForHealth polls until /health serves the expected sha, then stops', async () => {
+	const served = ['old1111', 'old1111', 'abc1234']
+	const polls: Array<string> = []
+	const sleeps: Array<number> = []
+	let clock = 0
+	const result = await waitForHealth({
+		origin: 'https://kody.codes',
+		expectedSha: 'abc1234',
+		timeoutMs: 60_000,
+		intervalMs: 20_000,
+		read: async (expectedSha) => {
+			const commitSha = served.shift()!
+			return {
+				ok: commitSha === expectedSha,
+				status: 200,
+				origin: 'https://kody.codes',
+				commitSha,
+				detail: `commitSha ${commitSha}`,
+			}
+		},
+		sleep: async (ms) => {
+			sleeps.push(ms)
+			clock += ms
+		},
+		now: () => clock,
+		onPoll: (line) => polls.push(line),
+	})
+	expect(result.ok).toBe(true)
+	expect(sleeps).toEqual([20_000, 20_000])
+	expect(polls).toHaveLength(2)
+	expect(polls[0]).toContain('abc1234')
+	expect(polls[0]).toContain('https://kody.codes')
+	expect(polls[0]).toContain('old1111')
+})
+
+test('waitForHealth gives up at the deadline and says where to look', async () => {
+	let clock = 0
+	const result = await waitForHealth({
+		origin: 'https://kody.codes',
+		expectedSha: 'abc1234',
+		timeoutMs: 60_000,
+		intervalMs: 20_000,
+		read: async () => {
+			throw new Error('ECONNRESET')
+		},
+		sleep: async (ms) => {
+			clock += ms
+		},
+		now: () => clock,
+	})
+	expect(result.ok).toBe(false)
+	expect(result.detail).toContain('fetch failed: ECONNRESET')
+	expect(result.detail).toContain('Still not live after 1 min')
+	expect(result.detail).toContain(
+		"gh run list --workflow '🚀 Deploy (production)'",
+	)
+})
+
+test('health --wait parses the sha, default deadline, and custom minutes', () => {
+	expect(parseControlArgs(['health', '--sha', 'abc1234', '--wait'])).toEqual(
+		expect.objectContaining({
+			command: 'health',
+			sha: 'abc1234',
+			wait: true,
+			waitMinutes: 30,
+		}),
+	)
+	expect(
+		parseControlArgs([
+			'health',
+			'--sha',
+			'abc1234',
+			'--wait',
+			'--wait-minutes',
+			'5',
+		]),
+	).toEqual(
+		expect.objectContaining({
+			command: 'health',
+			wait: true,
+			waitMinutes: 5,
+		}),
+	)
+	expect(() => parseControlArgs(['health', '--wait-minutes', '0'])).toThrow(
+		/positive integer/,
+	)
+})
+
+test('featureVerifyRequests reads the GET request lines of a feature notes file', () => {
+	const notes = [
+		'```bash',
+		'npm run control-kody -- login',
+		"npm run control-kody -- request GET /@jane/-/waiting --dump --contains 'Waiting'",
+		'npm run control-kody -- request POST /account/delete',
+		'```',
+	].join('\n')
+	expect(featureVerifyRequests(notes)).toEqual([
+		['GET', '/@jane/-/waiting', '--dump', '--contains', 'Waiting'],
+	])
+})
+
+test('every request line in the Feature Map parses, so verify can run it', () => {
+	const dir = defaultFeaturesDir(repoRootFromHere())
+	let total = 0
+	for (const feature of featureCatalog) {
+		const notes = readFileSync(path.join(dir, feature.file), 'utf8')
+		for (const check of featureVerifyRequests(notes)) {
+			total += 1
+			const parsed = parseControlArgs(['request', ...check])
+			expect(
+				parsed.command,
+				`${feature.file}: request ${check.join(' ')}`,
+			).toBe('request')
+			expect(['GET', 'HEAD']).toContain(parsed.request?.method)
+			expect(parsed.request?.path?.startsWith('/')).toBe(true)
+		}
+	}
+	expect(total).toBeGreaterThan(30)
+})
+
+test('verify passes shared flags through to each request', () => {
+	const options = parseControlArgs([
+		'verify',
+		'waiting',
+		'--origin',
+		'https://pr-1.example',
+	])
+	expect(options.featureId).toBe('waiting')
+	expect(options.verifyPassthrough).toEqual([
+		'--origin',
+		'https://pr-1.example',
+	])
+})
+
+test('resolveOrigin appends a command hint when no local origin is healthy', async () => {
+	await expect(
+		resolveOrigin({
+			origin: null,
+			probeHealth: async () => false,
+			missingOriginHint: healthProductionOriginHint,
+		}),
+	).rejects.toThrow(
+		'No healthy origin on 3742-3751. Run: node tools/control-kody.ts dev\nPost-merge check? Pass --origin https://kody.codes',
+	)
+	expect(
+		await resolveOrigin({
+			origin: 'https://kody.codes/',
+			probeHealth: async () => false,
+		}),
+	).toBe('https://kody.codes')
 })

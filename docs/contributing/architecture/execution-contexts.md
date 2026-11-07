@@ -20,6 +20,7 @@ cloud.
 | Lease authentication on CapabilityProxy and package graph                                 | `packages/worker/src/open-api/authenticate.ts`                                                              |
 | API edge WebSocket forward (rate limited per context and IP)                              | `packages/api-worker/src/edge.ts`                                                                           |
 | CLI (`kody context`, `kody chain`, `kody daemon`)                                         | `packages/cli/src/execution-context/`                                                                       |
+| Website Start functions (page, chain, daemon card, desktop setup)                         | `packages/worker/start/server/execution-contexts.ts`                                                        |
 | Host commands (ADR 0093): process manager, authorize hop, opt-in route                    | `packages/cli/src/execution-context/host-commands.ts`, `packages/worker/src/execution-contexts/commands.ts` |
 
 ## Lifecycle
@@ -115,6 +116,13 @@ uninstall, `kody update`), `auto-update.ts`, and `runner-lock.ts`.
   server-side `1012 replaced` close makes `runDaemon` return `replaced`: the
   daemon logs the other local `kody daemon` processes (by command line) and
   exits instead of reconnecting.
+- Desktop setup is staged (sign in → personal register → optional team attach →
+  runner). **Manage setup** / team-first setup in a team org
+  (`putDesktopExecutionFirst` with `targetOrgSlug`) attaches the personal
+  registration to that org and puts it first in the org chain; it does not
+  register the machine again. The context page **Daemon** card and desktop
+  **This machine** call `runExecutionContextDaemonAction` (pause, resume,
+  restart, update, logs).
 
 ## Revoke, then delete
 
@@ -211,7 +219,10 @@ commands), `packages/cli/test/execution-context.test.ts` (real daemon and
 workerd against a fake ECP server), and
 `packages/worker/src/execution-contexts/commands.node.test.ts` (authorization,
 denials, sharing, audit). CI runs the CLI ones on Linux, macOS, Windows x64, and
-Windows ARM (`host-commands` job in `validate.yml`).
+Windows ARM (`host-commands` jobs in `validate.yml`). On main pushes, Validate
+skips the macOS jobs and `macos-main.yml` runs them outside the deploy gate, so
+a macOS runner shortage cannot hold production. A failure there opens the "main:
+macOS host commands failing" issue.
 
 ### End-to-end check
 
@@ -253,6 +264,13 @@ preview (see the TEST ONLY rule below).
   `*.workers.dev` preview or `localhost` (`serverKeyRootsFor` in
   `packages/cli/src/execution-context/client.ts`); kody.codes and every other
   host ignore the variable. Never set it on a real machine.
+- Sharing with all members is the `all_members` flag on the context or its
+  attachment, never an `org`-subject grant (access-writes refuses one on
+  `execution_context`). Compiled access turns the flag into Use
+  (`execution_context:read`, `:execute`) on that context for every live Member,
+  so they pass the capability surface check like a person or team share;
+  `executionContextShareSet` and detach bump `access_epoch` so the change
+  applies on the next request.
 - Every API hop a run makes re-checks the requester's current access (account
   state, org membership, share, opt-in, attachment). Lost access ends the lease
   with `access_lost`. Leaving a team or org, opting out, detaching and narrowing

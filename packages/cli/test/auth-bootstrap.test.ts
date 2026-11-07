@@ -532,7 +532,12 @@ test('redeemBootstrapCode surfaces already-used codes clearly', async () => {
 				apiUrl,
 				fetchFn: fetch,
 			}),
-		/already used|expired|invalid/i,
+		(error: unknown) => {
+			const text = String(error)
+			assert.match(text, /already used/)
+			assert.match(text, /cliCredentialBootstrap/)
+			return true
+		},
 	)
 })
 

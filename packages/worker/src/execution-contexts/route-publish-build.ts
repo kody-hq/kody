@@ -8,8 +8,10 @@ import { routeExecute } from './routing.ts'
  * Publish offload: send a builder run to an execution context through the
  * same chain, lease, and dispatch path as `execute`. The run carries the
  * daemon's builder (not user code), no credential picks, and only contexts
- * the requester operates may take it (4A). A named context never falls back,
- * and nothing falls back to Kody cloud: the caller asked for a context build.
+ * the requester operates may take it (4A). A named context never falls back.
+ * Without `fallbackToCloud`, nothing falls back to Kody cloud (the caller
+ * asked for a context build); with it, a chain that ends in Kody cloud
+ * returns `{ kind: 'cloud' }` so the caller publishes on Kody cloud.
  */
 export async function routePublishBuild(input: {
 	env: Env
@@ -18,8 +20,19 @@ export async function routePublishBuild(input: {
 	context: string | null
 	source: EcpPublishBuildSource
 	limits: { timeoutMs: number; memoryMb: number }
+	fallbackToCloud?: boolean
 	signal?: AbortSignal
-}) {
+}): Promise<
+	| { kind: 'cloud' }
+	| {
+			kind: 'context'
+			result: Extract<
+				Awaited<ReturnType<typeof routeExecute>>,
+				{ kind: 'ran' }
+			>['result']
+			contextName: string
+	  }
+> {
 	const request = input.request
 	if (!request.actor) {
 		throw new ExecutionContextError({
@@ -61,6 +74,9 @@ export async function routePublishBuild(input: {
 		...(input.signal ? { signal: input.signal } : {}),
 		publishBuild: { source: input.source, limits: input.limits },
 	})
+	if (outcome.kind === 'cloud' && input.fallbackToCloud) {
+		return { kind: 'cloud' }
+	}
 	if (outcome.kind === 'cloud' || outcome.kind === 'queued') {
 		throw new ExecutionContextError({
 			status: 409,
@@ -76,5 +92,9 @@ export async function routePublishBuild(input: {
 			message: `The publish build on ${outcome.metadata.name} did not finish in time.`,
 		})
 	}
-	return { result: outcome.result, contextName: outcome.metadata.name }
+	return {
+		kind: 'context',
+		result: outcome.result,
+		contextName: outcome.metadata.name ?? 'an execution context',
+	}
 }

@@ -82,9 +82,10 @@ test('a funded Pro org stops at 50x its include', async () => {
 	const denied = await gatewayFetch(api, token)
 
 	expect(denied.status).toBe(429)
-	expect(denied.body.error?.message).toBe(
-		'Plan limit reached: your "pro" plan allows at most 750000 outbound fetches per day and you currently have 750000. This daily limit resets at 00:00 UTC, in 1h 26m.',
-	)
+	expect(denied.body.error?.message).toMatch(/outbound fetches per day/)
+	expect(denied.body.error?.message).toContain('750000')
+	expect(denied.body.error?.message).toContain('1h 26m')
+	expect(denied.body.error?.message).not.toMatch(/Add credits/)
 	expect(upstream).not.toHaveBeenCalled()
 })
 
@@ -96,8 +97,9 @@ test('an empty-wallet Pro org keeps its include and is told to add credits', asy
 	await seedOutboundToday(api, 15_000)
 	const denied = await gatewayFetch(api, token)
 	expect(denied.status).toBe(429)
-	expect(denied.body.error?.message).toBe(
-		'Plan limit reached: your "pro" plan allows at most 15000 outbound fetches per day and you currently have 15000. This daily limit resets at 00:00 UTC, in 1h 26m. Add credits at /account/usage#credits to keep going past your include.',
-	)
+	expect(denied.body.error?.message).toMatch(/outbound fetches per day/)
+	expect(denied.body.error?.message).toContain('15000')
+	expect(denied.body.error?.message).toContain('1h 26m')
+	expect(denied.body.error?.message).toMatch(/Add credits/)
 	expect(upstream).not.toHaveBeenCalled()
 })

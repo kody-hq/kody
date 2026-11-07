@@ -25,12 +25,14 @@ import {
 	closePackageSqlDbsForSession,
 	defaultMockSessionId,
 	loadMockSession,
+	MockStoreFileError,
+	mutateMockSession,
 	packageStorageDelete,
 	packageStorageGet,
 	packageStorageList,
 	packageStorageSet,
 	packageStorageSql,
-	persistMockSession,
+	readMockSession,
 	type MockSessionState,
 } from './mock-storage.js'
 
@@ -51,7 +53,8 @@ export type MockServer = {
 	port: number
 	sessionId: string
 	close: () => Promise<void>
-	state: () => MockSessionState
+	/** The mock store as it is on disk now (other processes may write it). */
+	state: () => Promise<MockSessionState>
 }
 
 const mockTokenPrefix = 'kody_mock_'
@@ -76,22 +79,20 @@ export async function startMockServer(
 		// does not leave a live connection to a deleted file.
 		closePackageSqlDbsForSession(sessionIdForClose)
 	}
-	let state = await loadMockSession({
+	const { sessionId } = await loadMockSession({
 		sessionId: options.sessionId,
 		env: options.env,
 		reset: options.resetStorage,
 	})
-	const packageId = options.packageId ?? `local-${state.sessionId}`
+	const packageId = options.packageId ?? `local-${sessionId}`
 	const orgSlug = options.orgSlug?.trim() || 'mock-org'
 	const env = options.env
+	const getState = () => readMockSession({ sessionId, env })
 
 	const server = createServer((req, res) => {
 		void handleRequest(req, res, {
-			getState: () => state,
-			setState: async (next) => {
-				state = next
-				await persistMockSession(state, env)
-			},
+			getState,
+			mutateState: (change) => mutateMockSession({ sessionId, env }, change),
 			packageId,
 			orgSlug,
 			env,
@@ -110,8 +111,8 @@ export async function startMockServer(
 	return {
 		url,
 		port: address.port,
-		sessionId: state.sessionId,
-		state: () => state,
+		sessionId,
+		state: getState,
 		close: () =>
 			new Promise((resolve, reject) => {
 				server.close((error) => {
@@ -165,8 +166,8 @@ export async function ensureMockTarget(input: {
 }
 
 type RequestCtx = {
-	getState: () => MockSessionState
-	setState: (state: MockSessionState) => Promise<void>
+	getState: () => Promise<MockSessionState>
+	mutateState: <T>(change: (state: MockSessionState) => T) => Promise<T>
 	packageId: string
 	orgSlug: string
 	env?: NodeJS.ProcessEnv
@@ -232,6 +233,11 @@ async function handleRequest(
 					const status = error.code === 'unmocked_request' ? 400 : 501
 					return sendJson(res, status, { error: error.toJSON() })
 				}
+				if (error instanceof MockStoreFileError) {
+					return sendJson(res, 409, {
+						error: { code: 'mock_store_unreadable', message: error.message },
+					})
+				}
 				throw error
 			}
 		}
@@ -259,7 +265,7 @@ async function handleRequest(
 			return sendJson(
 				res,
 				200,
-				mockSearch(callCtx.getState(), { query, entity }),
+				mockSearch(await callCtx.getState(), { query, entity }),
 			)
 		}
 
@@ -271,7 +277,7 @@ async function handleRequest(
 			return sendJson(
 				res,
 				200,
-				mockSearch(callCtx.getState(), { query, entity, limit }),
+				mockSearch(await callCtx.getState(), { query, entity, limit }),
 			)
 		}
 
@@ -280,7 +286,7 @@ async function handleRequest(
 			return sendJson(
 				res,
 				200,
-				mockCurrentUser(callCtx.getState(), callCtx.orgSlug),
+				mockCurrentUser(await callCtx.getState(), callCtx.orgSlug),
 			)
 		}
 
@@ -340,7 +346,7 @@ async function dispatchCapabilityCall(
 	args: Array<unknown>,
 	ctx: RequestCtx,
 ): Promise<unknown> {
-	const state = ctx.getState()
+	const state = await ctx.getState()
 	switch (pathKey) {
 		case 'kody.metaGetCurrentUser':
 			return mockCurrentUser(state, ctx.orgSlug)
@@ -373,20 +379,22 @@ async function dispatchCapabilityCall(
 		case 'kody.__mockPackageStorageSet':
 		case 'kody.packageStorageSet': {
 			const input = args[0] as { key?: string; value?: unknown }
-			packageStorageSet(
-				state,
-				ctx.packageId,
-				String(input?.key ?? ''),
-				input?.value,
+			await ctx.mutateState((latest) =>
+				packageStorageSet(
+					latest,
+					ctx.packageId,
+					String(input?.key ?? ''),
+					input?.value,
+				),
 			)
-			await ctx.setState(state)
 			return { ok: true }
 		}
 		case 'kody.__mockPackageStorageDelete':
 		case 'kody.packageStorageDelete': {
 			const key = String((args[0] as { key?: string })?.key ?? '')
-			const deleted = packageStorageDelete(state, ctx.packageId, key)
-			await ctx.setState(state)
+			const deleted = await ctx.mutateState((latest) =>
+				packageStorageDelete(latest, ctx.packageId, key),
+			)
 			return { deleted }
 		}
 		case 'kody.__mockPackageStorageList':

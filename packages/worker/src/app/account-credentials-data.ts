@@ -1,6 +1,13 @@
+import * as Sentry from '@sentry/cloudflare'
 import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
-import { loadCredentialDetail } from '#worker/credentials/credential-detail.ts'
+import {
+	credentialPlaceholder,
+	loadCredentialDetail,
+} from '#worker/credentials/credential-detail.ts'
+import { listLocalReadSettings } from '#worker/credentials/local-read-store.ts'
+import { loadCredentialLocalReadsView } from '#app/credential-local-reads.ts'
+import { loadCredentialRawSigningView } from '#app/credential-raw-signing.ts'
 import { listCredentialsForViewer } from '#worker/credentials/credential-list.ts'
 import { listCredentialProviderBindings } from '#worker/credentials/credential-provider-bindings.ts'
 import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
@@ -50,11 +57,108 @@ export async function loadAccountCredentialsData(input: {
 				ownedByViewer: !teamOrg || selectedItem.scope === 'personal',
 				credential: selectedItem,
 				packages,
+			}).catch((error: unknown) => {
+				// A null selected with a listed row looks like "Loading…" forever
+				// in the expand pane. Degrade to empty detail sections instead.
+				Sentry.captureException(error, {
+					tags: { scope: 'credentials.detail' },
+					extra: { credentialId: selectedItem.id, orgId, teamOrg },
+				})
+				return {
+					id: selectedItem.id,
+					placeholder: credentialPlaceholder(selectedItem),
+					grants: [],
+					usage: [],
+					usageTruncated: false,
+					// Match listUsage soft-fail: show Used by gap copy instead of
+					// claiming a finished scan found no packages.
+					usageUnreadable: packages.length,
+					hostSettings: null,
+					fillPlacementObservation: null,
+				}
 			})
 		: null
+	const selectedProvider = selectedItem
+		? undefined
+		: providers.find((binding) => binding.id === input.selectedId)
+	const selectedLocalReads =
+		selectedItem &&
+		selectedItem.kind === 'secret' &&
+		selectedItem.packageId === null
+			? await loadCredentialLocalReadsView({
+					env: input.env,
+					request: input.user.request,
+					credentialId: selectedItem.id,
+					...(teamOrg && selectedItem.scope === 'personal'
+						? { personalOrgSlug }
+						: {}),
+				}).catch((error: unknown) => {
+					Sentry.captureException(error, {
+						tags: { scope: 'credentials.detail.local_reads' },
+						extra: { credentialId: selectedItem.id },
+					})
+					return null
+				})
+			: selectedProvider
+				? await loadCredentialLocalReadsView({
+						env: input.env,
+						request: input.user.request,
+						credentialId: selectedProvider.id,
+					}).catch((error: unknown) => {
+						Sentry.captureException(error, {
+							tags: { scope: 'credentials.detail.local_reads' },
+							extra: { credentialId: selectedProvider.id },
+						})
+						return null
+					})
+				: null
+	const selectedRawSigning =
+		selectedItem &&
+		selectedItem.kind === 'signing' &&
+		selectedItem.packageId === null
+			? await loadCredentialRawSigningView({
+					env: input.env,
+					request: input.user.request,
+					credentialId: selectedItem.id,
+					...(teamOrg && selectedItem.scope === 'personal'
+						? { personalOrgSlug }
+						: {}),
+				}).catch((error: unknown) => {
+					Sentry.captureException(error, {
+						tags: { scope: 'credentials.detail.raw_signing' },
+						extra: { credentialId: selectedItem.id },
+					})
+					return null
+				})
+			: null
+	let localReadBadges: AccountCredentialsResponse['localReadBadges'] = {}
+	try {
+		// Soft-fail only here: listLocalReadSettings must still throw for CLI
+		// local reads (missing map entry means off, not "query failed").
+		const settings = await listLocalReadSettings(input.env.APP_DB, [
+			...listed
+				.filter((item) => item.kind === 'secret' && item.packageId === null)
+				.map((item) => item.id),
+			...providers.map((binding) => binding.id),
+		])
+		for (const [credentialId, setting] of settings) {
+			if (setting.enabled) {
+				localReadBadges[credentialId] = { lastReadAt: setting.lastReadAt }
+			}
+		}
+	} catch (error) {
+		Sentry.captureException(error, {
+			tags: { scope: 'credentials.detail.local_reads' },
+			extra: { orgId },
+		})
+		localReadBadges = {}
+	}
 	return {
 		ok: true,
 		selected,
+		selectedLocalReads,
+		selectedRawSigning,
+		localReadBadges,
 		credentials: input.filters
 			? filterCredentialList(listed, input.filters)
 			: listed,

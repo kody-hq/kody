@@ -903,7 +903,9 @@ routed from `packages/worker/src/index.ts`.
   signup lands on `/pending-verification` with that safe `redirectTo` preserved
   for continue-after-verify. The authorize tab itself should stay open when the
   email link is opened elsewhere, so the original OAuth query remains resumable.
-  Signup never auto-approves; the person clicks Approve after they return.
+  Signup never auto-approves; the person clicks Approve after they return. **Try
+  it out** creates a guest person and finishes authorization in the same
+  request. Unclaimed guest sessions carry `guest` from `loadSessionInfo`.
   Signed-in vs signed-out chrome on that page comes from the SSR-embedded app
   session; the route does not wait on a separate browser `/session` fetch before
   rendering approve or login. Social buttons use the same SSR-embedded provider

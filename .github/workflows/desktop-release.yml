@@ -136,6 +136,14 @@ jobs:
           API_KEY: ${{ secrets.DESKTOP_APPLE_API_KEY_BASE64 }}
         run: |
           node -e 'const fs = require("node:fs"); if (!process.env.API_KEY) throw new Error("Missing DESKTOP_APPLE_API_KEY_BASE64"); fs.writeFileSync(process.env.RUNNER_TEMP + "/notary.p8", Buffer.from(process.env.API_KEY, "base64"), {mode: 0o600})'
+      - name: Restore Developer ID provisioning profile
+        if: runner.os == 'macOS'
+        env:
+          PROFILE: ${{ secrets.DESKTOP_MAC_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          if [ -z "$PROFILE" ]; then echo 'No provisioning profile; building without universal links.'; exit 0; fi
+          node -e 'require("node:fs").writeFileSync(process.env.RUNNER_TEMP + "/kody.provisionprofile", Buffer.from(process.env.PROFILE, "base64"), {mode: 0o600})'
+          echo "KODY_MAC_PROVISIONING_PROFILE=$RUNNER_TEMP/kody.provisionprofile" >> "$GITHUB_ENV"
       - name: Build signed and notarized installers
         env:
           CSC_LINK:
@@ -172,9 +180,19 @@ jobs:
           KODY_AZURE_ENDPOINT: ${{ vars.DESKTOP_AZURE_ENDPOINT }}
           KODY_AZURE_ACCOUNT: ${{ vars.DESKTOP_AZURE_ACCOUNT }}
           KODY_AZURE_PROFILE: ${{ vars.DESKTOP_AZURE_PROFILE }}
-        run:
-          npm run dist:release --workspace @kodycodes/desktop -- --${{
-          matrix.platform }} --${{ matrix.arch }}
+        run: |
+          # Bound the first attempt so a stuck notarization poll cannot consume
+          # the whole job timeout; keep time for one retry plus verification.
+          # Apple's notary service occasionally times out mid-poll.
+          # Use the Node helper: GNU `timeout` / Homebrew `gtimeout` are not
+          # reliably on PATH for macos-15, macos-15-intel, or Windows runners.
+          if node packages/desktop/scripts/run-with-timeout.cjs 25m \
+            npm run dist:release --workspace @kodycodes/desktop -- --${{ matrix.platform }} --${{ matrix.arch }}; then
+            exit 0
+          fi
+          echo 'First signed build failed; retrying once after a short wait.'
+          sleep 30
+          npm run dist:release --workspace @kodycodes/desktop -- --${{ matrix.platform }} --${{ matrix.arch }}
       - name: Verify Apple signature and notarization ticket
         if: runner.os == 'macOS'
         run: |
@@ -187,8 +205,11 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.personal-information.addressbook' "$RUNNER_TEMP/desktop-entitlements.plist")" = true
           contacts_purpose=$(/usr/libexec/PlistBuddy -c 'Print :NSContactsUsageDescription' "$bundle/Contents/Info.plist")
           test -n "$contacts_purpose"
-          xcrun stapler validate "$bundle"
-          spctl --assess --type execute --verbose "$bundle"
+          if [ -n "$KODY_MAC_PROVISIONING_PROFILE" ]; then
+            test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.associated-domains:0' "$RUNNER_TEMP/desktop-entitlements.plist")" = applinks:kody.codes
+            test -f "$bundle/Contents/embedded.provisionprofile"
+          fi
+          node packages/desktop/scripts/verify-mac-notarization.cjs "$bundle"
       - name: Verify Windows signatures
         if: runner.os == 'Windows'
         env:

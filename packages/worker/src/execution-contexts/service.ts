@@ -16,7 +16,10 @@ import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
 import { upsertGrant, softDeleteGrant } from '#worker/orgs/access-writes.ts'
 import { chainCloudOrderError, selfShareError } from './chain-rules.ts'
-import { ExecutionContextError } from './errors.ts'
+import {
+	ExecutionContextError,
+	type ExecutionContextErrorCode,
+} from './errors.ts'
 import { isExecutionContextsEnabledFor } from './flag.ts'
 import {
 	ChainConflictError,
@@ -26,8 +29,10 @@ import {
 	chainIsTooLong,
 	getChain,
 	getExecutionContext,
+	getExecutionContexts,
 	listOrgExecutionContexts,
 	loadContextAccess,
+	loadContextsAccess,
 	parseCapabilities,
 	parseGrant,
 	parsePublicKey,
@@ -44,10 +49,16 @@ import {
 	executionContextCommandPermission,
 } from './store.ts'
 import { optInTrustNotice, sharingTrustNotice } from './trust-copy.ts'
-import type { RunHistoryRow } from './session-do.ts'
+import type { ExecutionContextPause, RunHistoryRow } from './session-do.ts'
 import { kodyCloudTarget } from './routing.ts'
 import { latestCliVersion } from './latest-cli-version.ts'
-import { isOlderCliVersion } from '#universal/execution-contexts.ts'
+import {
+	buildAccessRoster,
+	isOlderCliVersion,
+	type ExecutionContextShareGrant,
+} from '#universal/execution-contexts.ts'
+import { listOrgMembers } from '#worker/orgs/org-members-list.ts'
+import { listTeamMembers } from '#worker/orgs/org-teams-list.ts'
 import type { RunRecord } from '#worker/run-records/types.ts'
 
 /** Shared logic behind the execution-context MCP capabilities and routes. */
@@ -225,9 +236,10 @@ export async function formatContexts(
 			entry.kind === 'context' ? [entry.id] : [],
 		),
 	)
+	const accessById = await loadContextsAccess(db, rows, caller)
 	return await Promise.all(
 		rows.map(async (row) => {
-			const access = await loadContextAccess(db, row, caller)
+			const access = accessById.get(row.id)!
 			const grant = parseGrant(row)
 			const live = await liveStatus(caller.env, row)
 			const capabilities = parseCapabilities(row)
@@ -244,6 +256,13 @@ export async function formatContexts(
 				acceptingRuns: live.acceptingRuns,
 				lastSeenAt: live.lastSeenAt ?? row.last_seen_at,
 				revokedAt: row.revoked_at,
+				paused: await pauseView(db, row),
+				canPause:
+					!row.revoked_at &&
+					(access.isOperator || manage || isOrgAdmin(caller)),
+				canResume: !row.revoked_at && (access.isOperator || manage),
+				canControlDaemon: !row.revoked_at && (access.isOperator || manage),
+				canReadDaemonLogs: !row.revoked_at && access.isOperator,
 				client: {
 					name: row.client_name,
 					version: row.client_version,
@@ -269,6 +288,10 @@ export async function formatContexts(
 					features: capabilities.features ?? [],
 				},
 				grantSummary: grantSummary(grant),
+				// Full host access for callers who may already change it.
+				...(canWriteContext(access)
+					? { hostAccess: { fs: grant.fs, egress: grant.egress } }
+					: {}),
 				optedIn: access.optedIn,
 				canOptIn:
 					!row.revoked_at &&
@@ -414,32 +437,39 @@ function chainUpdatedBy(caller: ExecutionContextCaller) {
 export async function chainView(caller: ExecutionContextCaller) {
 	const db = caller.env.APP_DB
 	const chain = await getChain(db, caller)
-	const entries = await Promise.all(
-		chain.entries.map(async (entry) => {
-			if (entry.kind === 'cloud') return entry
-			const row = await getExecutionContext(db, entry.id)
-			if (!row) {
-				return {
-					kind: 'context' as const,
-					id: entry.id,
-					name: null,
-					usable: false,
-					unusableReason: 'revoked' as UnusableReason,
-				}
-			}
-			const access = await loadContextAccess(db, row, caller)
+	const contextIds = chain.entries.flatMap((entry) =>
+		entry.kind === 'context' ? [entry.id] : [],
+	)
+	const rowsById = await getExecutionContexts(db, contextIds)
+	const accessById = await loadContextsAccess(
+		db,
+		[...rowsById.values()],
+		caller,
+	)
+	const entries = chain.entries.map((entry) => {
+		if (entry.kind === 'cloud') return entry
+		const row = rowsById.get(entry.id)
+		if (!row) {
 			return {
 				kind: 'context' as const,
 				id: entry.id,
-				// Lost access hides a rename made after it.
-				name: access.unusableReason === 'not_granted' ? null : row.name,
-				usable: access.usable,
-				...(access.unusableReason
-					? { unusableReason: access.unusableReason }
-					: {}),
+				name: null,
+				usable: false,
+				unusableReason: 'revoked' as UnusableReason,
 			}
-		}),
-	)
+		}
+		const access = accessById.get(row.id)!
+		return {
+			kind: 'context' as const,
+			id: entry.id,
+			// Lost access hides a rename made after it.
+			name: access.unusableReason === 'not_granted' ? null : row.name,
+			usable: access.usable,
+			...(access.unusableReason
+				? { unusableReason: access.unusableReason }
+				: {}),
+		}
+	})
 	return {
 		entries,
 		strict: !chain.entries.some((entry) => entry.kind === 'cloud'),
@@ -501,6 +531,10 @@ export async function setChain(
 			entry.kind === 'context' ? [entry.id] : [],
 		),
 	)
+	const resolved: Array<{
+		entry: ChainEntry
+		row: ExecutionContextRow | null
+	}> = []
 	for (const entry of input.entries) {
 		const key = entry.kind === 'cloud' ? 'cloud' : entry.id
 		if (seen.has(key)) {
@@ -513,24 +547,38 @@ export async function setChain(
 		}
 		seen.add(key)
 		if (entry.kind === 'context') {
-			const row = await resolveExecutionContextRef(db, caller.orgId, entry.id)
-			const access = row ? await loadContextAccess(db, row, caller) : null
-			// Already-stored entries may stay even if they became unusable (r4).
-			if (!row || (!access?.usable && !stored.has(row.id))) {
-				throw new ExecutionContextError({
-					status: 422,
-					code: 'context_not_usable',
-					message: `${entry.id} is not usable by you in this org (${access?.unusableReason ?? 'not_attached'}).`,
-					details: {
-						contextId: entry.id,
-						reason: access?.unusableReason ?? 'not_attached',
-					},
-				})
-			}
-			normalized.push({ kind: 'context', id: row.id })
+			resolved.push({
+				entry,
+				row: await resolveExecutionContextRef(db, caller.orgId, entry.id),
+			})
 		} else {
-			normalized.push(entry)
+			resolved.push({ entry, row: null })
 		}
+	}
+	const accessById = await loadContextsAccess(
+		db,
+		resolved.flatMap(({ row }) => (row ? [row] : [])),
+		caller,
+	)
+	for (const { entry, row } of resolved) {
+		if (entry.kind !== 'context') {
+			normalized.push(entry)
+			continue
+		}
+		const access = row ? (accessById.get(row.id) ?? null) : null
+		// Already-stored entries may stay even if they became unusable (r4).
+		if (!row || (!access?.usable && !stored.has(row.id))) {
+			throw new ExecutionContextError({
+				status: 422,
+				code: 'context_not_usable',
+				message: `${entry.id} is not usable by you in this org (${access?.unusableReason ?? 'not_attached'}).`,
+				details: {
+					contextId: entry.id,
+					reason: access?.unusableReason ?? 'not_attached',
+				},
+			})
+		}
+		normalized.push({ kind: 'context', id: row.id })
 	}
 	try {
 		await writeChain(db, {
@@ -904,6 +952,7 @@ export async function deleteContext(
 	await removeFromChains(caller, row.id)
 	const now = new Date().toISOString()
 	const epochOrgs = new Set([
+		...(row.all_members === 1 ? [row.org_id] : []),
 		...attachedOrgs.results.map((entry) => entry.org_id),
 		...grantOrgs.results.map((entry) => entry.org_id),
 	])
@@ -994,23 +1043,40 @@ export async function loadSharing(
 			: attachments.results.some(
 					(a) => a.org_id === caller.orgId && a.all_members === 1,
 				)
-	const grantViews = grants.results.map((grant) => ({
-		grantId: grant.id,
-		subject:
-			grant.subject_type === 'team'
-				? {
-						kind: 'team' as const,
-						slug: grant.team_slug,
-						name: grant.team_name,
-					}
-				: {
-						kind: 'user' as const,
-						handle: grant.username,
-						outside: grant.is_member === 0,
-					},
-		preset: grant.preset,
-		commands: Number(grant.command) === 1,
-	}))
+	const grantViews: Array<ExecutionContextShareGrant> = []
+	for (const grant of grants.results) {
+		// Authorization treats a null preset as use; keep those grants visible.
+		const preset = grant.preset ?? 'use'
+		if (preset !== 'use' && preset !== 'contribute' && preset !== 'manage') {
+			continue
+		}
+		const commands = Number(grant.command) === 1
+		if (grant.subject_type === 'team') {
+			if (!grant.team_slug) continue
+			grantViews.push({
+				grantId: grant.id,
+				subject: {
+					kind: 'team',
+					slug: grant.team_slug,
+					...(grant.team_name ? { name: grant.team_name } : {}),
+				},
+				preset,
+				...(commands ? { commands: true } : {}),
+			})
+			continue
+		}
+		if (!grant.username) continue
+		grantViews.push({
+			grantId: grant.id,
+			subject: {
+				kind: 'user',
+				handle: grant.username,
+				...(grant.is_member === 0 ? { outside: true } : {}),
+			},
+			preset,
+			...(commands ? { commands: true } : {}),
+		})
+	}
 	const level = allMembers
 		? 'org'
 		: grantViews.some((g) => g.subject.kind === 'team')
@@ -1019,6 +1085,27 @@ export async function loadSharing(
 				? 'people'
 				: 'only_me'
 	const handles = await handlesFor(db, [row.operator_user_id])
+	const operatorHandle = handles.get(row.operator_user_id) ?? 'unknown'
+	const orgSlug = caller.request.org?.slug ?? caller.orgId
+	const members = await listOrgMembers(db, caller.orgId)
+	const teamIds = grants.results.flatMap((grant) =>
+		grant.subject_type === 'team' && grant.team_slug ? [grant.subject_id] : [],
+	)
+	const teamCovered = new Set<string>()
+	for (const teamId of teamIds) {
+		for (const member of await listTeamMembers(db, caller.orgId, teamId)) {
+			if (member.username) teamCovered.add(member.username)
+		}
+	}
+	const accessRoster = buildAccessRoster({
+		orgSlug,
+		operatorHandle,
+		sharing: { grants: grantViews, allMembers },
+		members: members.flatMap((member) =>
+			member.username ? [{ handle: member.username }] : [],
+		),
+		teamCoveredHandles: [...teamCovered],
+	})
 	return {
 		level,
 		allMembers,
@@ -1028,6 +1115,7 @@ export async function loadSharing(
 			slug: a.slug,
 			allMembers: a.all_members === 1,
 		})),
+		accessRoster,
 		notice: sharingTrustNotice({
 			operatorHandle: handles.get(row.operator_user_id) ?? null,
 			localNetwork: parseGrant(row).egress.mode === 'public-and-lan',
@@ -1123,19 +1211,23 @@ export async function setSharing(
 	}
 	if (input.allMembers !== undefined) {
 		const value = input.allMembers ? 1 : 0
-		if (row.org_id === caller.orgId) {
-			await db
-				.prepare(`UPDATE execution_contexts SET all_members = ? WHERE id = ?`)
-				.bind(value, row.id)
-				.run()
-		} else {
-			await db
-				.prepare(
-					`UPDATE execution_context_org_attachments SET all_members = ? WHERE context_id = ? AND org_id = ?`,
-				)
-				.bind(value, row.id, caller.orgId)
-				.run()
-		}
+		// Compiled access derives Use from all_members, so a change recompiles.
+		await db.batch([
+			row.org_id === caller.orgId
+				? db
+						.prepare(
+							`UPDATE execution_contexts SET all_members = ? WHERE id = ? AND all_members != ?`,
+						)
+						.bind(value, row.id, value)
+				: db
+						.prepare(
+							`UPDATE execution_context_org_attachments SET all_members = ? WHERE context_id = ? AND org_id = ? AND all_members != ?`,
+						)
+						.bind(value, row.id, caller.orgId, value),
+			bumpAccessEpochStatement(db, caller.orgId, {
+				onlyIfPreviousChanged: true,
+			}),
+		])
 		await recordContextAudit(
 			caller,
 			row.id,
@@ -1239,7 +1331,8 @@ export async function detachContext(
 				row.id,
 				targetOrgId,
 			),
-		bumpAccessEpochStatement(db, targetOrgId, { onlyIfPreviousChanged: true }),
+		// Unconditional: an all_members attachment grants Use with no grant row.
+		bumpAccessEpochStatement(db, targetOrgId),
 		db
 			.prepare(
 				`DELETE FROM execution_context_opt_ins WHERE context_id = ? AND org_id = ?`,
@@ -1628,4 +1721,307 @@ async function noticesView(
 				}
 			: {}),
 	}
+}
+
+// ---------- daemon management ----------
+
+const pauseReasonMax = 200
+const daemonLogLinesMax = 500
+
+/** Org owners are Kody's org admins: they may pause (never resume) any attached context. */
+function isOrgAdmin(caller: ExecutionContextCaller) {
+	return isOrgOwner(caller)
+}
+
+async function liveContext(caller: ExecutionContextCaller, ref: string) {
+	const loaded = await loadVisibleContext(caller, ref)
+	if (loaded.row.revoked_at) {
+		throw new ExecutionContextError({
+			status: 409,
+			code: 'context_revoked',
+			message: `${loaded.row.name} was revoked.`,
+		})
+	}
+	return loaded
+}
+
+function requireManage(
+	caller: ExecutionContextCaller,
+	access: ContextAccess,
+	what: string,
+	options: { orgAdmin?: boolean } = {},
+) {
+	if (
+		access.isOperator ||
+		canManageContext(access) ||
+		(options.orgAdmin && isOrgAdmin(caller))
+	)
+		return
+	throw new ExecutionContextError({
+		status: 403,
+		code: 'not_granted',
+		message: `${what} needs Manage on this context${options.orgAdmin ? ' (or org owner/admin)' : ''}.`,
+	})
+}
+
+export async function pauseView(
+	db: D1Database,
+	row: ExecutionContextRow,
+): Promise<ExecutionContextPause | null> {
+	if (!row.paused_at) return null
+	const by = row.paused_by_user_id
+		? ((await handlesFor(db, [row.paused_by_user_id])).get(
+				row.paused_by_user_id,
+			) ?? null)
+		: null
+	return { at: row.paused_at, by, reason: row.pause_reason ?? null }
+}
+
+/**
+ * Server-side pause (remote "stop"): routing skips the context, queued runs
+ * fail, host commands are refused; the daemon stays connected. Org
+ * owners/admins may pause as a kill switch but not resume.
+ */
+export async function pauseContext(
+	caller: ExecutionContextCaller,
+	ref: string,
+	input: { reason?: string | null; cancelRuns?: boolean } = {},
+) {
+	const { row, access } = await liveContext(caller, ref)
+	requireManage(caller, access, 'Pausing', { orgAdmin: true })
+	const reason = input.reason?.trim().slice(0, pauseReasonMax) || null
+	const db = caller.env.APP_DB
+	const at = row.paused_at ?? new Date().toISOString()
+	if (!row.paused_at) {
+		await db
+			.prepare(
+				`UPDATE execution_contexts SET paused_at = ?, paused_by_user_id = ?, pause_reason = ? WHERE id = ?`,
+			)
+			.bind(at, caller.userId, reason, row.id)
+			.run()
+	}
+	const fresh = (await getExecutionContext(db, row.id)) ?? row
+	const paused = await pauseView(db, fresh)
+	await sessionStub(caller.env, row.id).setPaused({ paused, name: row.name })
+	let cancelled = 0
+	if (input.cancelRuns) {
+		const stub = sessionStub(caller.env, row.id)
+		for (const lease of await stub.activeLeases()) {
+			const result = await stub.cancel({
+				runId: lease.runId,
+				reason: 'user_cancelled',
+			})
+			if (result.cancelled) cancelled += 1
+		}
+	}
+	if (!row.paused_at) {
+		await recordContextAudit(caller, row.id, 'paused', {
+			...(reason ? { reason } : {}),
+			...(input.cancelRuns ? { cancelledRuns: cancelled } : {}),
+		})
+	}
+	return {
+		id: row.id,
+		name: row.name,
+		paused,
+		alreadyPaused: Boolean(row.paused_at),
+		...(input.cancelRuns ? { cancelledRuns: cancelled } : {}),
+		note: `Kody routes no runs to ${row.name} until it is resumed: chains skip it, queued runs fail, and host commands are refused. Runs already in flight ${input.cancelRuns ? 'were cancelled' : 'finish'}. Resume with \`kody daemon resume --context ${row.name}\` or executionContextResume.`,
+	}
+}
+
+export async function resumeContext(
+	caller: ExecutionContextCaller,
+	ref: string,
+) {
+	const { row, access } = await liveContext(caller, ref)
+	requireManage(caller, access, 'Resuming')
+	const db = caller.env.APP_DB
+	if (row.paused_at) {
+		await db
+			.prepare(
+				`UPDATE execution_contexts SET paused_at = NULL, paused_by_user_id = NULL, pause_reason = NULL WHERE id = ?`,
+			)
+			.bind(row.id)
+			.run()
+		await recordContextAudit(caller, row.id, 'resumed')
+	}
+	await sessionStub(caller.env, row.id).setPaused({
+		paused: null,
+		name: row.name,
+	})
+	return {
+		id: row.id,
+		name: row.name,
+		paused: null,
+		wasPaused: Boolean(row.paused_at),
+	}
+}
+
+const controlErrorText: Record<string, (name: string) => string> = {
+	context_offline: (name) =>
+		`${name} is offline, so it cannot take this right now. Start it on the machine with \`kody daemon start\` (or \`kody daemon install\`), then try again. Pause and resume work while it is offline.`,
+	daemon_outdated: (name) =>
+		`The daemon on ${name} predates remote management. Run \`kody update\` on the machine once (or turn on auto-update), then try again.`,
+	daemon_timeout: (name) =>
+		`${name} did not answer in time. Check it with \`kody daemon status\` and \`kody daemon logs\` on the machine.`,
+	not_service_managed: (name) =>
+		`${name} runs \`kody daemon\` in a terminal, not as a background service, so nothing would start it again after a restart or update. Restart it there, or run \`kody daemon install\` on the machine.`,
+	daemon_busy: (name) =>
+		`${name} is already draining for a restart or update. Try again once it reconnects.`,
+	context_revoked: (name) => `${name} was revoked.`,
+}
+
+async function daemonControl(
+	caller: ExecutionContextCaller,
+	row: ExecutionContextRow,
+	op: string,
+	args: Record<string, unknown> = {},
+	timeoutMs?: number,
+) {
+	const result = await sessionStub(caller.env, row.id).control({
+		op,
+		args,
+		...(timeoutMs ? { timeoutMs } : {}),
+	})
+	if ('data' in result) return result.data as Record<string, unknown>
+	const failed = result as { code: string; message?: string }
+	const code = failed.code as keyof typeof controlErrorText
+	throw new ExecutionContextError({
+		status: code === 'context_offline' || code === 'daemon_timeout' ? 503 : 409,
+		code: (controlErrorText[code]
+			? code
+			: 'daemon_control_failed') as ExecutionContextErrorCode,
+		message:
+			controlErrorText[code]?.(row.name) ??
+			`${row.name} could not do that: ${failed.message ?? failed.code}.`,
+	})
+}
+
+/** Live daemon snapshot: state, version, manager, problems, pause. */
+export async function daemonStatus(
+	caller: ExecutionContextCaller,
+	ref: string,
+) {
+	const { row, access } = await loadVisibleContext(caller, ref)
+	const db = caller.env.APP_DB
+	const live = await liveStatus(caller.env, row)
+	const paused = await pauseView(db, row)
+	const detailed =
+		access.isOperator || canManageContext(access) || isOrgAdmin(caller)
+	let daemon: Record<string, unknown> | null = null
+	if (detailed && live.status === 'online') {
+		daemon = await daemonControl(caller, row, 'status').catch(() => null)
+	}
+	return {
+		id: row.id,
+		name: row.name,
+		state: row.revoked_at
+			? 'revoked'
+			: paused
+				? 'paused'
+				: live.status === 'online'
+					? 'online'
+					: 'offline',
+		online: live.status === 'online',
+		acceptingRuns: live.acceptingRuns,
+		lastSeenAt: live.lastSeenAt ?? row.last_seen_at,
+		paused,
+		client: { name: row.client_name, version: row.client_version },
+		...(detailed ? { daemon } : {}),
+	}
+}
+
+export async function daemonRestart(
+	caller: ExecutionContextCaller,
+	ref: string,
+) {
+	const { row, access } = await liveContext(caller, ref)
+	requireManage(caller, access, 'Restarting the daemon')
+	const data = await daemonControl(caller, row, 'restart')
+	await recordContextAudit(caller, row.id, 'daemon_restarted')
+	return { id: row.id, name: row.name, ...data }
+}
+
+export async function daemonUpdate(
+	caller: ExecutionContextCaller,
+	ref: string,
+) {
+	const { row, access } = await liveContext(caller, ref)
+	requireManage(caller, access, 'Updating the daemon')
+	const data = await daemonControl(caller, row, 'update', {}, 45_000)
+	await recordContextAudit(
+		caller,
+		row.id,
+		'daemon_update_checked',
+		typeof data.version === 'string' ? { version: data.version } : {},
+	)
+	return { id: row.id, name: row.name, ...data }
+}
+
+/** Remote config: concurrency cap (a grant limit, works offline) and auto-update (live). */
+export async function daemonConfig(
+	caller: ExecutionContextCaller,
+	ref: string,
+	input: { maxConcurrent?: number; autoUpdate?: 'on' | 'off' },
+) {
+	const { row, access } = await liveContext(caller, ref)
+	requireManage(caller, access, 'Changing daemon config')
+	if (input.maxConcurrent !== undefined) {
+		await updateContext(caller, row.id, {
+			grant: {
+				limits: {
+					...parseGrant(row).limits,
+					maxConcurrent: input.maxConcurrent,
+				},
+			},
+		})
+	}
+	let autoUpdate: unknown = undefined
+	if (input.autoUpdate) {
+		const data = await daemonControl(caller, row, 'auto-update', {
+			enabled: input.autoUpdate === 'on',
+		})
+		autoUpdate = data.autoUpdate ?? input.autoUpdate
+		await recordContextAudit(caller, row.id, 'daemon_config_changed', {
+			autoUpdate: input.autoUpdate,
+		})
+	}
+	const fresh = (await getExecutionContext(caller.env.APP_DB, row.id)) ?? row
+	return {
+		id: row.id,
+		name: row.name,
+		maxConcurrent: parseGrant(fresh).limits.maxConcurrent,
+		...(autoUpdate !== undefined ? { autoUpdate } : {}),
+	}
+}
+
+/** Recent daemon log lines: operator only, at most 500. */
+export async function daemonLogs(
+	caller: ExecutionContextCaller,
+	ref: string,
+	input: { lines?: number } = {},
+) {
+	const { row, access } = await liveContext(caller, ref)
+	if (!access.isOperator) {
+		throw new ExecutionContextError({
+			status: 403,
+			code: 'not_granted',
+			message: `Only ${row.name}'s operator can read its daemon log (it can include host paths and command output).`,
+		})
+	}
+	const lines = Math.max(
+		1,
+		Math.min(daemonLogLinesMax, Math.floor(input.lines ?? 100)),
+	)
+	const data = await daemonControl(caller, row, 'logs', { lines })
+	const raw: Array<unknown> = Array.isArray(data.lines) ? data.lines : []
+	const logLines = raw
+		.filter((line): line is string => typeof line === 'string')
+		.slice(-lines)
+		.map((line) => line.slice(0, 2000))
+	await recordContextAudit(caller, row.id, 'daemon_logs_read', {
+		lines: logLines.length,
+	})
+	return { id: row.id, name: row.name, lines: logLines }
 }

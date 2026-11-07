@@ -1,10 +1,9 @@
-import { Entry } from '@napi-rs/keyring'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { defaultApiUrl, keyringService } from './defaults.js'
+import { defaultApiUrl } from './defaults.js'
+import { createKeyringEntry } from './keyring-entry.js'
 import {
 	createFileBackend,
-	secretServiceKeyringOptions,
 	type SecretBackend,
 	type StoreResolution,
 } from './store.js'
@@ -45,11 +44,7 @@ export function apiTokenFileStorePath(
 }
 
 function createApiTokenKeyringBackend(apiUrl: string): SecretBackend {
-	const entry = new Entry(
-		keyringService,
-		accountForApiUrl(apiUrl),
-		secretServiceKeyringOptions,
-	)
+	const entry = createKeyringEntry(accountForApiUrl(apiUrl))
 	return {
 		kind: 'keyring',
 		get() {

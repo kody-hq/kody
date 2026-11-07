@@ -95,6 +95,7 @@ export const nativeApiOperationIds = [
 	'execute',
 	'searchTool',
 	'cliLoginDeviceToken',
+	'secretLocalRead',
 ] as const
 
 export type NativeApiOperationId = (typeof nativeApiOperationIds)[number]
@@ -539,6 +540,33 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['PATCH', '/v1/execution-contexts/{id}', 'executionContextUpdate'],
 		['DELETE', '/v1/execution-contexts/{id}', 'executionContextRevoke'],
 		['POST', '/v1/execution-contexts/{id}/delete', 'executionContextDelete'],
+		['POST', '/v1/execution-contexts/{id}/pause', 'executionContextPause'],
+		['POST', '/v1/execution-contexts/{id}/resume', 'executionContextResume'],
+		[
+			'GET',
+			'/v1/execution-contexts/{id}/daemon',
+			'executionContextDaemonStatus',
+		],
+		[
+			'POST',
+			'/v1/execution-contexts/{id}/daemon/restart',
+			'executionContextDaemonRestart',
+		],
+		[
+			'POST',
+			'/v1/execution-contexts/{id}/daemon/update',
+			'executionContextDaemonUpdate',
+		],
+		[
+			'PATCH',
+			'/v1/execution-contexts/{id}/daemon/config',
+			'executionContextDaemonConfig',
+		],
+		[
+			'GET',
+			'/v1/execution-contexts/{id}/daemon/logs',
+			'executionContextDaemonLogs',
+		],
 		['POST', '/v1/execution-contexts/{id}/opt-in', 'executionContextOptIn'],
 		['DELETE', '/v1/execution-contexts/{id}/opt-in', 'executionContextOptOut'],
 		[
@@ -668,6 +696,10 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		tag: 'search',
 	}),
 	nativeRoute('POST', '/v1/tokens/device', 'cliLoginDeviceToken', 'none'),
+	// Use is checked per secret in the handler (grants, not a role).
+	nativeRoute('POST', '/v1/secrets/local-read', 'secretLocalRead', 'none', {
+		tag: 'secrets',
+	}),
 ]
 
 export const apiOperationsById: ReadonlyMap<string, ApiOperation> = new Map(

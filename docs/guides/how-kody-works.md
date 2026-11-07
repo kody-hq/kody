@@ -64,7 +64,7 @@ This page is the playbook. The same story is an interactive transcript at
 > Your Agents a Shared Home
 
 Also watch:
-[Build once. Every agent can use it.](https://www.youtube.com/watch?v=QLpTHlQ15Zs).
+[Build once. Every agent can use it.](https://www.youtube.com/watch?v=V4XfDVWq0ws).
 
 ## The loop
 

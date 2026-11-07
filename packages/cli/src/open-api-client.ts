@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import {
 	currentStoredTokenLifetimeAlias,
 	insufficientScopeMessage,
+	profileDenialMessage,
 	readInsufficientScopeDetails,
 	rejectedApiTokenMessage,
 } from './api-token.js'
@@ -366,6 +367,12 @@ export async function callOpenApiOperation(
 }
 
 export function assertApiOperationAllowed(operationId: string): void {
+	if (operationId === 'secretLocalRead') {
+		throw new OpenApiError(
+			'Refusing to call secretLocalRead: it returns secret values. Use `kody secret get` or `kody run` instead.',
+			{ status: null, code: 'refused' },
+		)
+	}
 	if (operationId === cliCredentialBootstrapRedeemOperationId) {
 		throw new OpenApiError(
 			`Refusing to call ${cliCredentialBootstrapRedeemOperationId}: redeem returns a kody_at_… token that must not print to stdout. Use \`kody auth bootstrap --code <kody_bc_…>\` instead (stores the token; never prints it).`,
@@ -617,6 +624,12 @@ export async function whoamiWithApiToken(input: OpenApiClientInput): Promise<{
 		maxExpiresAt: string | null
 	}
 	user: { userId: string; email: string; displayName: string } | null
+	/** Workspace this token acts in, from `GET /v1/me` when available. */
+	org: {
+		slug: string
+		personal?: boolean
+		kind?: 'personal' | 'team'
+	} | null
 }> {
 	const apiUrl = input.apiUrl || defaultApiUrl
 	const current = (await openApiGet({
@@ -626,6 +639,11 @@ export async function whoamiWithApiToken(input: OpenApiClientInput): Promise<{
 	})) as Record<string, unknown>
 
 	let user: { userId: string; email: string; displayName: string } | null = null
+	let org: {
+		slug: string
+		personal?: boolean
+		kind?: 'personal' | 'team'
+	} | null = null
 	try {
 		const me = (await openApiGet({
 			...input,
@@ -636,6 +654,30 @@ export async function whoamiWithApiToken(input: OpenApiClientInput): Promise<{
 			userId: String(me.user_id ?? ''),
 			email: String(me.email ?? ''),
 			displayName: String(me.display_name ?? ''),
+		}
+		const meOrg = isRecord(me.org) ? me.org : null
+		const slug = typeof meOrg?.slug === 'string' ? meOrg.slug.trim() : ''
+		if (slug) {
+			const kindFromServer =
+				meOrg?.kind === 'team' || meOrg?.kind === 'personal' ? meOrg.kind : null
+			const personalFromServer =
+				typeof meOrg?.personal === 'boolean' ? meOrg.personal : null
+			const kind =
+				kindFromServer ??
+				(personalFromServer === true
+					? 'personal'
+					: personalFromServer === false
+						? 'team'
+						: null)
+			org = {
+				slug,
+				...(kind
+					? {
+							kind,
+							personal: kind === 'personal',
+						}
+					: {}),
+			}
 		}
 	} catch (error) {
 		// account:read is optional; tokens/current needs no scope.
@@ -660,6 +702,7 @@ export async function whoamiWithApiToken(input: OpenApiClientInput): Promise<{
 					: null,
 		},
 		user,
+		org,
 	}
 }
 
@@ -709,6 +752,11 @@ function describeOpenApiFailure(
 	if (status === 401) {
 		return new OpenApiError(rejectedApiTokenMessage(detail), meta)
 	}
+	const profileDenial =
+		status === 403
+			? profileDenialMessage({ code, body, serverMessage: failure?.message })
+			: null
+	if (profileDenial) return new OpenApiError(profileDenial, meta)
 	if (status === 403 && code === 'insufficient_scope') {
 		return new OpenApiError(
 			`${insufficientScopeMessage({

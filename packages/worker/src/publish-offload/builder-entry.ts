@@ -4,9 +4,9 @@
  * bundled into the Kody CLI as `dist/publish-builder.js` so a CLI or
  * execution-context build produces the bytes a server rebuild would.
  *
- * There is no D1 or KV off the worker. A `kody:@…` import needs the
- * registry to inline that package, so off-worker builds refuse it for now
- * with a clear message; the server's 6A check still guards the upload.
+ * There is no D1 or KV off the worker, and none is needed: other Kody
+ * packages stay `.__kody_linked__/…` imports (6C) that Kody fills in from
+ * the registry when it commits the upload.
  */
 import { buildPublishedPackageArtifactTargetBundle } from '#worker/package-runtime/published-bundle-artifact-persist.ts'
 import { collectPublishedPackageArtifactTargets } from '#worker/package-runtime/package-artifact-targets.ts'
@@ -22,8 +22,8 @@ import { publishBuilderVersion } from './types.ts'
 
 export { publishBuilderVersion, sha256Hex, workerLoaderModuleBytes }
 
-export const offWorkerRegistryMessage =
-	'This package imports another Kody package (`kody:@…`). Builds made outside Kody cloud cannot inline other packages yet; publish on Kody cloud (drop --build).'
+const offWorkerRegistryMessage =
+	'The publish builder tried to read the Kody registry, which builds made outside Kody cloud never do. Update the Kody CLI and try again.'
 
 function offWorkerEnv(): Env {
 	const refuse = () => {
@@ -98,6 +98,7 @@ export async function buildPublishTargets(input: {
 		sourceFiles,
 		rootPackageId: input.rootPackageId,
 		prepareCache: new Map(),
+		linkKodyPackageImports: true,
 	}
 	const builders = {
 		buildAppBundle: async ({ entryPoint }: { entryPoint: string }) =>
@@ -126,9 +127,6 @@ export async function buildPublishTargets(input: {
 			mainModule: bundle.mainModule,
 			modules: bundle.modules,
 			moduleHashes: await hashWorkerLoaderModules(bundle.modules),
-			inlinedPackageIds: (bundle.dependencies ?? []).flatMap((dependency) =>
-				dependency.packageId ? [dependency.packageId] : [],
-			),
 		})
 	}
 	return { files: tree.manifest, targets: built }
@@ -161,7 +159,6 @@ export default {
 				targets: built.targets.map((entry) => ({
 					target: entry.target,
 					mainModule: entry.mainModule,
-					inlinedPackageIds: entry.inlinedPackageIds,
 					modules: Object.fromEntries(
 						Object.entries(entry.modules).map(([path, module]) => [
 							path,

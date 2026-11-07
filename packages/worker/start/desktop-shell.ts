@@ -25,6 +25,8 @@ export type DesktopExecutionState = {
 	error: string | null
 }
 export type DesktopExecutionBridge = {
+	/** Sign-in approves in an app window when it can. Older apps omit this. */
+	approvesInApp?: boolean
 	commandsStatus: () => Promise<DesktopExecutionState>
 	enableCommands: () => Promise<DesktopExecutionState>
 	disableCommands: () => Promise<DesktopExecutionState>
@@ -39,7 +41,10 @@ export type DesktopExecutionBridge = {
 	disableAutoUpdate?: () => Promise<DesktopExecutionState>
 	dismissOnboarding: () => Promise<DesktopExecutionState>
 	completeOnboarding: () => Promise<DesktopExecutionState>
+	takeMenuCommand?: () => Promise<DesktopMachineMenuCommand | null>
+	onMenuCommand?: (callback: () => void) => () => void
 }
+export type DesktopMachineMenuCommand = 'pause' | 'resume' | 'update' | 'logs'
 export type DesktopNavigationState = {
 	platform: string
 	integratedTitlebar: boolean

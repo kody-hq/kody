@@ -9,10 +9,13 @@ import { highlightJsonValue } from '#app/highlight-code.ts'
 import type { ServerTimingEntry } from '#worker/server-timing.ts'
 import { listToggleAudit } from '#worker/jobs/toggle-audit.ts'
 import type { AccountToggleChange } from '#universal/loader-data.ts'
+import type { PackageAppCpuSummary } from '#universal/package-app-cpu-samples.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import type { HighlightedCode } from '#universal/highlighted-code.ts'
 import {
 	getRunRecord,
 	listRunRecords,
+	runLogRpc,
 	summarizeRunRecords,
 } from '#worker/run-records/service.ts'
 import {
@@ -123,9 +126,33 @@ export type AccountActivityLoaderData = {
 	 * null for everyone else, on later pages, and when the read fails.
 	 */
 	toggleChanges: Array<AccountToggleChange> | null
+	/**
+	 * Sampled package-app CPU and wall time (not billed). Same visibility as
+	 * the runs above; null on later pages and when the read fails.
+	 */
+	packageAppPerformance: PackageAppCpuSummary | null
 }
 
 export type { AccountToggleChange }
+
+async function loadPackageAppPerformance(input: {
+	env: Env
+	userId: OwnerId
+	cursor: string | null
+}): Promise<PackageAppCpuSummary | null> {
+	if (input.cursor) return null
+	try {
+		return await runLogRpc({
+			env: input.env,
+			userId: input.userId,
+		}).packageAppCpuSummary()
+	} catch (error) {
+		console.warn('activity-package-app-performance-failed', {
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return null
+	}
+}
 
 const toggleChangesLimit = 20
 
@@ -278,39 +305,41 @@ export async function loadAccountActivityData(input: {
 	} = input
 	const since = summarySince(now)
 
-	const [summary, page, selectedRecord, toggleChanges] = await Promise.all([
-		summarizeRunRecords({
-			env: input.env,
-			userId,
-			since,
-		}),
-		listRunRecords({
-			env: input.env,
-			userId,
-			filter: {
-				status: statusFilterToRunStatus(statusFilter),
-				surface: surfaceFilterToRunSurface(surfaceFilter),
+	const [summary, page, selectedRecord, toggleChanges, packageAppPerformance] =
+		await Promise.all([
+			summarizeRunRecords({
+				env: input.env,
+				userId,
 				since,
-				errorTriage: triageFilter,
-			},
-			limit: defaultPageSize,
-			cursor,
-		}),
-		selectedRunId
-			? getRunRecord({
-					env: input.env,
-					userId,
-					runId: selectedRunId,
-				})
-			: Promise.resolve(null),
-		loadToggleChanges({
-			env: input.env,
-			user: input.user,
-			orgId: userId,
-			since,
-			cursor,
-		}),
-	])
+			}),
+			listRunRecords({
+				env: input.env,
+				userId,
+				filter: {
+					status: statusFilterToRunStatus(statusFilter),
+					surface: surfaceFilterToRunSurface(surfaceFilter),
+					since,
+					errorTriage: triageFilter,
+				},
+				limit: defaultPageSize,
+				cursor,
+			}),
+			selectedRunId
+				? getRunRecord({
+						env: input.env,
+						userId,
+						runId: selectedRunId,
+					})
+				: Promise.resolve(null),
+			loadToggleChanges({
+				env: input.env,
+				user: input.user,
+				orgId: userId,
+				since,
+				cursor,
+			}),
+			loadPackageAppPerformance({ env: input.env, userId, cursor }),
+		])
 
 	return {
 		ok: true,
@@ -339,5 +368,6 @@ export async function loadAccountActivityData(input: {
 		selectedRunId,
 		retentionDays: runRecordRetentionDays,
 		toggleChanges,
+		packageAppPerformance,
 	}
 }

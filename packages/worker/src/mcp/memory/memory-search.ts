@@ -33,9 +33,12 @@ function buildMemoryVectorFilter(input: {
 	}
 }
 
+/** A memory id with its cosine similarity to the query embedding. */
+export type MemoryVectorHit = { id: string; score: number }
+
 /**
  * Queries Vectorize for the user's memory vectors (strict metadata filter on
- * kind, userId, status, and optional category) and returns memory ids ordered
+ * kind, userId, status, and optional category) and returns memory hits ordered
  * by similarity. Returns an empty list when the vector index is unavailable.
  */
 export async function queryMemoryVectorIds(input: {
@@ -46,7 +49,7 @@ export async function queryMemoryVectorIds(input: {
 	category?: string | null
 	topK: number
 	embedText?: EmbedTextFn
-}): Promise<Array<string>> {
+}): Promise<Array<MemoryVectorHit>> {
 	const index = getCapabilityVectorIndex(input.env)
 	if (!index || !input.userId) return []
 	const queryVector = await (
@@ -58,7 +61,7 @@ export async function queryMemoryVectorIds(input: {
 		returnMetadata: 'none',
 		filter: buildMemoryVectorFilter(input),
 	})
-	const memoryIds: Array<string> = []
+	const hits: Array<MemoryVectorHit> = []
 	const seen = new Set<string>()
 	for (const match of vectorMatches.matches) {
 		if (typeof match.id !== 'string') continue
@@ -68,9 +71,9 @@ export async function queryMemoryVectorIds(input: {
 		})
 		if (!memoryId || seen.has(memoryId)) continue
 		seen.add(memoryId)
-		memoryIds.push(memoryId)
+		hits.push({ id: memoryId, score: match.score })
 	}
-	return memoryIds
+	return hits
 }
 
 /**
@@ -84,7 +87,7 @@ export async function rankMemoryVectorIdsWithin(input: {
 	userId: OwnerId
 	memoryIds: ReadonlyArray<string>
 	embedText?: EmbedTextFn
-}): Promise<Array<string>> {
+}): Promise<Array<MemoryVectorHit>> {
 	const index = getCapabilityVectorIndex(input.env)
 	if (!index || !input.userId || input.memoryIds.length === 0) return []
 	const [queryVector, vectors] = await Promise.all([
@@ -108,7 +111,7 @@ export async function rankMemoryVectorIdsWithin(input: {
 	}
 	return sortIdsByScore([...similarityById.keys()], (id) =>
 		similarityById.get(id)!,
-	)
+	).map((id) => ({ id, score: similarityById.get(id)! }))
 }
 
 export async function searchMemories(input: {
@@ -119,7 +122,7 @@ export async function searchMemories(input: {
 	statuses: ReadonlyArray<McpMemoryRow['status']>
 	category?: string | null
 	rows: Array<McpMemoryRow>
-	vectorRankedIds?: ReadonlyArray<string>
+	vectorRanked?: ReadonlyArray<MemoryVectorHit>
 	embedText?: EmbedTextFn
 }): Promise<{ matches: Array<MemorySearchMatch>; offline: boolean }> {
 	const query = input.query.trim()
@@ -149,8 +152,15 @@ export async function searchMemories(input: {
 	)
 
 	let vectorOrder: Array<string>
-	if (input.vectorRankedIds) {
-		vectorOrder = input.vectorRankedIds.filter((id) => rowsById.has(id))
+	// Real embedding similarity only; the offline stand-in hash has no meaning.
+	const vectorScoreById = new Map<string, number>()
+	if (input.vectorRanked) {
+		vectorOrder = []
+		for (const hit of input.vectorRanked) {
+			if (!rowsById.has(hit.id)) continue
+			vectorOrder.push(hit.id)
+			vectorScoreById.set(hit.id, hit.score)
+		}
 	} else if (offline) {
 		const queryVector = deterministicEmbedding(query)
 		const similarityById = Object.fromEntries(
@@ -187,6 +197,7 @@ export async function searchMemories(input: {
 			if (!memoryId || !rowsById.has(memoryId)) continue
 			seen.add(match.id)
 			fromIndex.push(memoryId)
+			vectorScoreById.set(memoryId, match.score)
 		}
 		vectorOrder = fromIndex
 	}
@@ -213,6 +224,7 @@ export async function searchMemories(input: {
 		matches: ordered.map((id) => {
 			const row = rowsById.get(id)!
 			const vectorRank = vectorRankById.get(id)
+			const vectorScore = vectorScoreById.get(id)
 			return {
 				id: row.id,
 				category: row.category,
@@ -230,6 +242,7 @@ export async function searchMemories(input: {
 				score: fused.get(id) ?? 0,
 				lexicalRank: lexicalRankById.get(id),
 				...(vectorRank != null ? { vectorRank } : {}),
+				...(vectorScore != null ? { vectorScore } : {}),
 			}
 		}),
 		offline,
