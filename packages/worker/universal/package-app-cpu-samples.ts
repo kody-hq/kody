@@ -31,7 +31,7 @@ export type PackageAppCpuSample = {
 	outcome: 'ok' | 'error'
 }
 
-export type PackageAppCpuPercentiles = {
+type PackageAppCpuPercentiles = {
 	samples: number
 	coldSamples: number
 	cpuP50Ms: number
@@ -40,7 +40,7 @@ export type PackageAppCpuPercentiles = {
 	wallP95Ms: number
 }
 
-export type PackageAppCpuAppSummary = PackageAppCpuPercentiles & {
+type PackageAppCpuAppSummary = PackageAppCpuPercentiles & {
 	packageId: string
 	packageName: string | null
 }

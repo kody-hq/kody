@@ -10,7 +10,7 @@ import {
 	typography,
 } from '#universal/styles/tokens.ts'
 
-export function formatSampleMs(value: number) {
+function formatSampleMs(value: number) {
 	if (value >= 1000) return `${(value / 1000).toFixed(2)} s`
 	if (value >= 10) return `${Math.round(value)} ms`
 	return `${value.toFixed(1)} ms`
