@@ -699,7 +699,7 @@ async function dispatch(
 					onDeviceCode: (prompt) => write(formatDeviceLoginNotice(prompt)),
 				})
 				write(formatLoginSuccess(result))
-				write(storedApiTokenAfterLoginNotice(loginApiUrl))
+				write(supersedeStoredApiTokenAfterLogin(loginApiUrl))
 				return 0
 			}
 			const headlessReason = openBrowser ? detectHeadlessLoginReason() : null
@@ -718,7 +718,7 @@ async function dispatch(
 				},
 			})
 			write(formatLoginSuccess(result))
-			write(storedApiTokenAfterLoginNotice(loginApiUrl))
+			write(supersedeStoredApiTokenAfterLogin(loginApiUrl))
 			return 0
 		}
 		case 'logout': {
@@ -2500,22 +2500,46 @@ export async function resolvePackagePublishTarget(
 	return { ...rest, package_id: matches[0]!.package_id }
 }
 
-/** After `kody login`: warn when a stored API token still outranks the login. */
-export function storedApiTokenAfterLoginNotice(
+/**
+ * After an explicit `kody login`: delete the leftover stored API token so the
+ * fresh login is what `api`, `package`, `context`, … use. Desktop logins
+ * (`KODY_CREDENTIAL_SOURCE=login`) leave it alone. `--token` /
+ * `KODY_API_TOKEN` still outrank the login, so say so when one is set.
+ */
+export function supersedeStoredApiTokenAfterLogin(
 	apiUrl: string,
-	loadApiToken: typeof loadStoredApiToken = loadStoredApiToken,
+	deps: {
+		env?: NodeJS.ProcessEnv
+		loadApiToken?: typeof loadStoredApiToken
+		deleteApiToken?: typeof deleteStoredApiToken
+	} = {},
 ): string {
+	const env = deps.env ?? process.env
+	const envTokenNote = env.KODY_API_TOKEN?.trim()
+		? 'Note: KODY_API_TOKEN is set in this shell and still takes precedence over this login. Unset it to use the login.\n'
+		: ''
+	if (env.KODY_CREDENTIAL_SOURCE?.trim()) return envTokenNote
 	let stored: ReturnType<typeof loadStoredApiToken>
 	try {
-		stored = loadApiToken(apiUrl)
+		stored = (deps.loadApiToken ?? loadStoredApiToken)(apiUrl)
 	} catch {
-		return ''
+		return envTokenNote
 	}
-	if (!stored) return ''
+	if (!stored) return envTokenNote
 	const label = describeCliCredential({
 		source: 'stored-api-token',
 		token: stored.token,
 		stored,
 	})
-	return `Note: a ${label} is still stored and \`kody login\` does not replace it. api, package, execute --local, context, daemon, and dev keep using it (scopes: ${stored.scopes?.join(', ') || 'unknown'}). To change its scopes run \`${replaceStoredTokenCommand(stored.scopes)}\`, or \`kody logout\` to clear it. Check with \`kody whoami\`.\n`
+	const scopes = stored.scopes?.join(', ') || 'unknown'
+	let deleted = false
+	try {
+		deleted = (deps.deleteApiToken ?? deleteStoredApiToken)(apiUrl).deleted
+	} catch {
+		deleted = false
+	}
+	if (!deleted) {
+		return `${envTokenNote}Warning: could not remove the ${label} (scopes: ${scopes}), so api, package, execute --local, context, daemon, and dev keep using it instead of this login. Run \`kody logout\` and log in again.\n`
+	}
+	return `${envTokenNote}Removed the ${label} (scopes: ${scopes}); api, package, execute --local, context, daemon, and dev now use this login. Git pushes mint a new token from this login. To use a scoped token again, run \`${replaceStoredTokenCommand(stored.scopes)}\`.\n`
 }

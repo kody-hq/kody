@@ -285,6 +285,41 @@ test('host commands require native confirmation and verified ownership, and stat
 	await assert.rejects(f.execution.request('commands-on'), /another workspace/)
 })
 
+test('host command status polls reuse a recent read; on/off and account changes read fresh', async () => {
+	const f = fixture({
+		ecid: 'ec_test',
+		enabled: false,
+		owner: { username: 'jane', orgSlug: 'jane' },
+	})
+	f.execution.confirmCommands = async () => true
+	let enabled = false
+	const statusReads = () =>
+		f.calls.filter((args) => args[1] === 'commands' && args[2] === 'status')
+			.length
+	f.runner.command = async (args) => {
+		if (args[0] === 'daemon') return '{}'
+		f.calls.push(args)
+		if (args[2] === 'on') enabled = true
+		return JSON.stringify({
+			local: { enabled },
+			contexts: [{ commands: { enabled } }],
+		})
+	}
+	await f.execution.request('commands-status')
+	await f.execution.request('commands-status')
+	assert.equal(statusReads(), 1)
+	assert.equal((await f.execution.request('commands-on')).commandsEnabled, true)
+	assert.equal(statusReads(), 2)
+	await f.execution.request('commands-status')
+	assert.equal(statusReads(), 2)
+	f.execution.commandsReadAt = Date.now() - 61_000
+	await f.execution.request('commands-status')
+	assert.equal(statusReads(), 3)
+	f.viewer({ username: 'sam', email: 'sam@example.com', orgSlug: 'jane' })
+	await assert.rejects(f.execution.request('commands-status'))
+	assert.equal(statusReads(), 3)
+})
+
 test('an existing CLI registration and service are adopted, not duplicated', async () => {
 	const f = fixture()
 	f.machine({
@@ -298,7 +333,10 @@ test('an existing CLI registration and service are adopted, not duplicated', asy
 		autoUpdate: { enabled: true },
 	})
 	const before = await f.execution.request('state')
-	assert.deepEqual(before.existingContext, { id: 'ec_old', name: 'old-laptop' })
+	assert.deepEqual(before.existingContext, {
+		id: 'ec_old',
+		name: 'old-laptop',
+	})
 	assert.equal(before.autoUpdate, true)
 	await f.execution.request('sign-in')
 	const result = await f.execution.request('connect', 'old-laptop')

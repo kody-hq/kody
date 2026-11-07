@@ -12,7 +12,7 @@ import {
 	saveStoredApiToken,
 	type StoredApiToken,
 } from '../src/api-token-store.js'
-import { runCli, storedApiTokenAfterLoginNotice } from '../src/cli.js'
+import { runCli, supersedeStoredApiTokenAfterLogin } from '../src/cli.js'
 import {
 	credentialRejectedNote,
 	resolveCliCredential,
@@ -298,18 +298,69 @@ test('insufficientScopeMessage names KODY_API_TOKEN and the login session', () =
 	)
 })
 
-test('storedApiTokenAfterLoginNotice warns that login does not replace a stored token', () => {
+test('kody login removes a leftover stored API token and says so', () => {
+	const deleted: Array<string> = []
+	const deleteApiToken = (url?: string) => {
+		deleted.push(url ?? '')
+		return { deleted: true, backend: null as never }
+	}
 	assert.equal(
-		storedApiTokenAfterLoginNotice(apiUrl, () => null),
+		supersedeStoredApiTokenAfterLogin(apiUrl, {
+			env: {},
+			loadApiToken: () => null,
+			deleteApiToken,
+		}),
 		'',
 	)
-	const notice = storedApiTokenAfterLoginNotice(apiUrl, () => stored)
-	assert.match(notice, /does not replace it/)
+	assert.deepEqual(deleted, [])
+
+	const notice = supersedeStoredApiTokenAfterLogin(apiUrl, {
+		env: {},
+		loadApiToken: () => stored,
+		deleteApiToken,
+	})
+	assert.deepEqual(deleted, [apiUrl])
+	assert.match(notice, /Removed the stored .*tok_stored_old/)
+	assert.match(notice, /now use this login/)
 	assert.match(
 		notice,
 		/auth bootstrap --lifetime short --scopes account:read,org:execute/,
 	)
 	assert.doesNotMatch(notice, /kody_at_/)
+})
+
+test('kody login keeps env precedence and desktop-only logins leave the stored token', () => {
+	const deleted: Array<string> = []
+	const deleteApiToken = (url?: string) => {
+		deleted.push(url ?? '')
+		return { deleted: true, backend: null as never }
+	}
+	const withEnv = supersedeStoredApiTokenAfterLogin(apiUrl, {
+		env: { KODY_API_TOKEN: 'kody_at_env' },
+		loadApiToken: () => stored,
+		deleteApiToken,
+	})
+	assert.match(withEnv, /KODY_API_TOKEN is set .* still takes precedence/)
+	assert.match(withEnv, /Removed the stored/)
+	assert.doesNotMatch(withEnv, /kody_at_env/)
+
+	deleted.length = 0
+	assert.equal(
+		supersedeStoredApiTokenAfterLogin(apiUrl, {
+			env: { KODY_CREDENTIAL_SOURCE: 'login' },
+			loadApiToken: () => stored,
+			deleteApiToken,
+		}),
+		'',
+	)
+	assert.deepEqual(deleted, [])
+
+	const failed = supersedeStoredApiTokenAfterLogin(apiUrl, {
+		env: {},
+		loadApiToken: () => stored,
+		deleteApiToken: () => ({ deleted: false, backend: null as never }),
+	})
+	assert.match(failed, /could not remove the stored .*keep using it/)
 })
 
 async function withStoredTokenAndLogin(

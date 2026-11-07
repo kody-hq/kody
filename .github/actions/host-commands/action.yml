@@ -15,6 +15,11 @@ runs:
       shell: bash
       run: npm ci
 
+    - name: 🧪 OS keychain entries (macOS security CLI)
+      shell: bash
+      working-directory: packages/cli
+      run: ../../node_modules/.bin/tsx --test test/keyring-entry.test.ts
+
     - name: 🧪 Host command process manager
       shell: bash
       working-directory: packages/cli
