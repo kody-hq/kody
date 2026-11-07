@@ -1,4 +1,4 @@
-import { type z } from 'zod'
+import type { z } from 'zod'
 import { createServerFn, createServerOnlyFn } from '@tanstack/react-start'
 import { redirect, notFound } from '@tanstack/react-router'
 import {
