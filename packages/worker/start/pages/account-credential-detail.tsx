@@ -12,6 +12,7 @@ import { CredentialHostsEditor } from './account-credential-hosts-editor.tsx'
 import { CredentialFillPlacementEditor } from './account-credential-fill-placement-editor.tsx'
 import { RecordChips, recordBodyCss } from './record-table.tsx'
 import { CredentialLocalReadsSection } from './account-credential-local-reads.tsx'
+import { CredentialRawSigningSection } from './account-credential-raw-signing.tsx'
 import { formatFillPlacementSummary } from '#universal/credential-fill-placement.ts'
 import { fillPlacementAnchor } from '#universal/credential-placement-approval.ts'
 import type {
@@ -23,6 +24,7 @@ import {
 	type AccountCredentialDetail,
 	type CredentialFillPlacementObservationView,
 	type CredentialLocalReadsView,
+	type CredentialRawSigningView,
 	type CredentialNeedFit,
 	credentialKindLabel,
 	credentialStatusLabel,
@@ -269,6 +271,7 @@ export function renderCredentialDetail(input: {
 	/** The organization whose credential is being edited. */
 	orgSlug: string
 	localReads?: CredentialLocalReadsView | null
+	rawSigning?: CredentialRawSigningView | null
 }) {
 	const { credential, detail, packagesById } = input
 	const lockedTo = credential.lockedToPackageIds.map((id) =>
@@ -527,6 +530,14 @@ export function renderCredentialDetail(input: {
 					view={input.localReads}
 					orgSlug={input.orgSlug}
 					vault={false}
+				/>
+			) : null}
+
+			{input.rawSigning && input.rawSigning.credentialId === credential.id ? (
+				<CredentialRawSigningSection
+					key={`${credential.id}:raw-signing`}
+					view={input.rawSigning}
+					orgSlug={input.orgSlug}
 				/>
 			) : null}
 

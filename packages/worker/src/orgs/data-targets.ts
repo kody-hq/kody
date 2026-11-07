@@ -98,6 +98,8 @@ const orgStructuralHardPurgeTargets: ReadonlyArray<UserScopedDataTarget> = [
 	{ kind: 'org_id', table: 'credential_org_grants' },
 	{ kind: 'org_id', table: 'credential_local_read_settings' },
 	{ kind: 'org_id', table: 'credential_local_read_events' },
+	{ kind: 'org_id', table: 'credential_raw_signing_settings' },
+	{ kind: 'org_id', table: 'credential_raw_signing_events' },
 	{ kind: 'org_id', table: 'automation_execution_settings' },
 	{ kind: 'org_id', table: 'execution_context_chain_entries' },
 	{ kind: 'org_id', table: 'execution_context_chains' },

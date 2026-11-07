@@ -114,6 +114,11 @@ function createRetentionDb() {
 			credential_id TEXT NOT NULL,
 			created_at TEXT NOT NULL
 		);
+		CREATE TABLE credential_raw_signing_events (
+			id TEXT PRIMARY KEY NOT NULL,
+			credential_id TEXT NOT NULL,
+			created_at TEXT NOT NULL
+		);
 		CREATE TABLE platform_feedback (
 			id TEXT PRIMARY KEY NOT NULL,
 			submitter_user_id TEXT NOT NULL,

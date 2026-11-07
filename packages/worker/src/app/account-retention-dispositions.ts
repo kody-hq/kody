@@ -15,6 +15,7 @@ export const accountRetentionDispositions: ReadonlyArray<AccountRetentionDisposi
 		{ table: 'feature_flag_exposure_rollups', kind: 'scheduled_policy' },
 		{ table: 'stripe_webhook_events', kind: 'scheduled_policy' },
 		{ table: 'credential_local_read_events', kind: 'scheduled_policy' },
+		{ table: 'credential_raw_signing_events', kind: 'scheduled_policy' },
 		{
 			table: 'agent_package_conversation_uses',
 			kind: 'scheduled_policy',

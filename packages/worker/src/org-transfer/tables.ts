@@ -159,6 +159,12 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	credential_local_read_events: keep(
 		'Local reads history stays with the credential in its owning org.',
 	),
+	credential_raw_signing_settings: keep(
+		'Raw signing stays with the credential in its owning org; a moved credential starts with raw signing off.',
+	),
+	credential_raw_signing_events: keep(
+		'Raw signing history stays with the credential in its owning org.',
+	),
 	execution_contexts: keep(
 		'Execution contexts are machines their operator controls; they stay in the owning org and are not moved by a resource transfer.',
 	),

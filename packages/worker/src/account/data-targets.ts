@@ -334,6 +334,19 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		matchColumn: 'updated_by_user_id',
 		nullColumns: ['updated_by_user_id'],
 	},
+	// Raw RSA signatures a person's runs made with a signing credential.
+	{
+		kind: 'user_columns',
+		table: 'credential_raw_signing_events',
+		columns: ['actor_user_id'],
+	},
+	// Who last turned raw signing on or off for a credential.
+	{
+		kind: 'null_user_column',
+		table: 'credential_raw_signing_settings',
+		matchColumn: 'updated_by_user_id',
+		nullColumns: ['updated_by_user_id'],
+	},
 	// Execution contexts a person registered (they operate the machine), the
 	// contexts they opted into, their attachments of contexts to other orgs,
 	// and their chains. Registration challenges are short-lived and never

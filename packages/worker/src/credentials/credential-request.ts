@@ -12,6 +12,8 @@ export type CredentialRequestRefusal =
 	| 'insecure_transport'
 	/** The request does not have the shape the credential's kind takes. */
 	| 'invalid_request'
+	/** Raw RSA signing is off for this signing credential (ADR 0099). */
+	| 'raw_signing_off'
 
 export class CredentialRequestRefusedError extends Error {
 	readonly code: CredentialRequestRefusal
