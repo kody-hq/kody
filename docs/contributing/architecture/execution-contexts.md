@@ -264,6 +264,13 @@ preview (see the TEST ONLY rule below).
   `*.workers.dev` preview or `localhost` (`serverKeyRootsFor` in
   `packages/cli/src/execution-context/client.ts`); kody.codes and every other
   host ignore the variable. Never set it on a real machine.
+- Sharing with all members is the `all_members` flag on the context or its
+  attachment, never an `org`-subject grant (access-writes refuses one on
+  `execution_context`). Compiled access turns the flag into Use
+  (`execution_context:read`, `:execute`) on that context for every live Member,
+  so they pass the capability surface check like a person or team share;
+  `executionContextShareSet` and detach bump `access_epoch` so the change
+  applies on the next request.
 - Every API hop a run makes re-checks the requester's current access (account
   state, org membership, share, opt-in, attachment). Lost access ends the lease
   with `access_lost`. Leaving a team or org, opting out, detaching and narrowing

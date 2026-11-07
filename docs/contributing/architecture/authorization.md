@@ -118,9 +118,11 @@ rides along: outside packages and apps, `use`, `execute`, `write`, `delete`,
 `publish`, and `manage_access` are never grantable on the org, so triage
 (`runUpdate`), edits, and runs still need their own permission. `secret:read`
 (reveals values), `memory:read` (memories are personal, ADR 0072), and
-`execution_context:read` (machines are listed per share) are left out. Owners
-set these from the Grants page or with `accessGrant` (`resource_type: "org"`); a
-denial for one of them says so.
+`execution_context:read` (machines are listed per share; an execution context
+shared with all members compiles into Use on that one context for every live
+Member instead, `loadAllMembersContextGrantRows` in `access-compile.ts`) are
+left out. Owners set these from the Grants page or with `accessGrant`
+(`resource_type: "org"`); a denial for one of them says so.
 
 **Org-wide package and app manage.** An `org` grant may also carry
 `orgWideManagePermissions` (`packages/shared/src/grant-presets.ts`): the
