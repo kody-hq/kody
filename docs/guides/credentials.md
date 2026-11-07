@@ -794,6 +794,10 @@ reconnect or create it under the right org (use that org's Credentials / Connect
 pages, or pass `--org` / `?org=`). Granting a personal credential into a team
 org shares it for your own runs there; it does not transfer ownership.
 
+Grant APIs (`credentialOrgGrant`, `credentialOrgRevoke`,
+`credentialOrgGrantList`) are in
+[Personal credentials in a team org](../use/secrets-and-values.md#personal-credentials-in-a-team-org).
+
 When a team org has registered an OAuth app, each Member can connect their own
 account through it (**Connect your own account** on the app's page, or
 `/connect/oauth?org=<org>&app=<app>&mode=personal`). The connection is yours and
