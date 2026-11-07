@@ -74,6 +74,15 @@ const { mockModule, pickMocks } = vi.hoisted(() => {
 		deleteCommunitySnapshot: vi.fn(),
 		setCommunityListingStatus: vi.fn(),
 		resolveCommunityReportRow: vi.fn(),
+		resolveArtifactSourceHead: vi.fn(async () => ({
+			commit: null as string | null,
+			branch: 'main',
+		})),
+		readArtifactTreeAtCommit: vi.fn(
+			async () => null as Record<string, string> | null,
+		),
+		readPublishedSourceSnapshot: vi.fn(async () => null),
+		readArtifactSourceSnapshot: vi.fn(async () => null),
 	}
 	const pickMocks = (...names: Array<keyof typeof mockModule>) =>
 		Object.fromEntries(names.map((name) => [name, mockModule[name]]))
@@ -126,6 +135,23 @@ vi.mock('#worker/repo/entity-sources.ts', () =>
 )
 vi.mock('#worker/repo/artifact-repo-cleanup.ts', () =>
 	pickMocks('cleanupArtifactReposForPackage', 'deleteUserScopedArtifactRepo'),
+)
+vi.mock('#worker/repo/artifacts.ts', async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import('#worker/repo/artifacts.ts')>()
+	return {
+		...actual,
+		resolveArtifactSourceHead: mockModule.resolveArtifactSourceHead,
+	}
+})
+vi.mock('#worker/repo/artifact-file.ts', () =>
+	pickMocks('readArtifactTreeAtCommit'),
+)
+vi.mock('#worker/package-runtime/published-runtime-artifacts.ts', () =>
+	pickMocks('readPublishedSourceSnapshot'),
+)
+vi.mock('#worker/repo/artifact-source-snapshot.ts', () =>
+	pickMocks('readArtifactSourceSnapshot'),
 )
 vi.mock('./repo.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof CommunityRepo>()
@@ -1684,6 +1710,78 @@ test('forkCommunityListing maps isolate memory resets to CommunityForkResourceLi
 			error instanceof CommunityForkResourceLimitError &&
 			/too large to finish forking/.test(error.message) &&
 			!/isolate exceeded/.test(error.message),
+	)
+	expect(mockModule.insertCommunityFork).not.toHaveBeenCalled()
+})
+
+test('forkCommunityListing recovers when listing and published snapshots miss but origin git has the commit', async () => {
+	mockForkable()
+	mockModule.readCommunitySnapshot.mockResolvedValue(null)
+	mockModule.getEntitySourceById.mockResolvedValue({
+		id: 'source-1',
+		repo_id: 'package-origin-1',
+		published_commit: '3f45921ca1964c49a3be12b5a836117829adccb0',
+	})
+	mockModule.resolveArtifactSourceHead.mockResolvedValue({
+		commit: '3f45921ca1964c49a3be12b5a836117829adccb0',
+		branch: 'main',
+	})
+	mockModule.readPublishedSourceSnapshot.mockResolvedValue(null)
+	mockModule.readArtifactSourceSnapshot.mockResolvedValue(null)
+	mockModule.readArtifactTreeAtCommit.mockResolvedValue(
+		forkSnapshotFiles(
+			{ '@owner/other': '*' },
+			'export default async function main() { return "from-git" }',
+		),
+	)
+	mockModule.forkArtifactRepo.mockResolvedValue({
+		id: 'repo-fork',
+		name: 'package-dest',
+	})
+	mockModule.ensureEntitySource.mockResolvedValue({
+		id: 'fork-source-1',
+		repo_id: 'package-dest',
+		user_id: ownerIdFromStored('user-2'),
+	})
+	mockModule.persistForkedArtifactRepoContents.mockResolvedValue({
+		copiedOriginCommit: '3f45921ca1964c49a3be12b5a836117829adccb0',
+		destCommit: 'commit-rewritten',
+	})
+
+	const result = await fork({ kodyId: 'my-discord-gateway' })
+
+	expect(result.filesCount).toBeGreaterThan(0)
+	expect(result.originCommit).toBe('3f45921ca1964c49a3be12b5a836117829adccb0')
+	expect(mockModule.readArtifactTreeAtCommit).toHaveBeenCalledWith({
+		env: expect.anything(),
+		repoId: 'package-origin-1',
+		commit: '3f45921ca1964c49a3be12b5a836117829adccb0',
+	})
+	expect(mockModule.insertCommunityFork).toHaveBeenCalled()
+})
+
+test('forkCommunityListing surfaces a clear caller error when the origin revision cannot be recovered', async () => {
+	mockForkable()
+	mockModule.readCommunitySnapshot.mockResolvedValue(null)
+	mockModule.getEntitySourceById.mockResolvedValue({
+		id: 'source-1',
+		repo_id: 'package-origin-1',
+		published_commit: 'missing-commit',
+	})
+	mockModule.resolveArtifactSourceHead.mockResolvedValue({
+		commit: 'missing-commit',
+		branch: 'main',
+	})
+	mockModule.readPublishedSourceSnapshot.mockResolvedValue(null)
+	mockModule.readArtifactSourceSnapshot.mockResolvedValue(null)
+	mockModule.readArtifactTreeAtCommit.mockResolvedValue(null)
+
+	await expect(fork({ kodyId: 'my-discord-gateway' })).rejects.toSatisfy(
+		(error: unknown) =>
+			error instanceof CommunityActionError &&
+			/Catalog entry snapshot for "listing-1" was not found and could not be recovered/.test(
+				error.message,
+			),
 	)
 	expect(mockModule.insertCommunityFork).not.toHaveBeenCalled()
 })

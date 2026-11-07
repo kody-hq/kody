@@ -35,7 +35,6 @@ import {
 	deleteEntitySource,
 	getEntitySourceById,
 } from '#worker/repo/entity-sources.ts'
-import { readArtifactSourceSnapshot } from '#worker/repo/artifact-source-snapshot.ts'
 import {
 	buildEntityRepoId,
 	resolveArtifactSourceHead,
@@ -47,7 +46,11 @@ import {
 	shouldFallbackFromArtifactFork,
 	shouldFallbackFromForkedArtifactPersist,
 } from '#worker/repo/artifact-repo-fork.ts'
-import { readPublishedSourceSnapshot } from '#worker/package-runtime/published-runtime-artifacts.ts'
+import {
+	missingCommunityForkSnapshotMessage,
+	missingPrivateForkSnapshotMessage,
+	resolveForkOriginSourceFiles,
+} from './fork-origin-source.ts'
 import {
 	ensureEntitySource,
 	type EnsuredEntitySource,
@@ -1416,53 +1419,30 @@ export async function prepareCommunityFork(
 		)
 	}
 	const source = await getEntitySourceById(input.env.APP_DB, listing.sourceId)
-	let originCommit = listing.pinnedCommit
+	let preferredCommit = listing.pinnedCommit
 	if (source) {
 		try {
 			const head = await resolveArtifactSourceHead(input.env, source.repo_id)
-			if (head.commit) originCommit = head.commit
+			if (head.commit) preferredCommit = head.commit
 		} catch {
-			originCommit = source.published_commit || listing.pinnedCommit
+			preferredCommit = source.published_commit || listing.pinnedCommit
 		}
 	}
-	let files = snapshot?.files ?? null
-	let filesCommit = listing.pinnedCommit
-	if (source && originCommit) {
-		try {
-			const published = await readPublishedSourceSnapshot({
-				env: input.env,
-				sourceId: listing.sourceId,
-				publishedCommit: originCommit,
-			})
-			if (published?.files) {
-				files = published.files
-				filesCommit = originCommit
-			}
-		} catch {
-			// Fall through to git snapshot / listing pin.
-		}
-		if (files === snapshot?.files || files == null) {
-			try {
-				const treeSnapshot = await readArtifactSourceSnapshot({
-					env: input.env,
-					repoId: source.repo_id,
-					commit: originCommit,
-				})
-				if (treeSnapshot?.files) {
-					files = treeSnapshot.files
-					filesCommit = originCommit
-				}
-			} catch {
-				// Fall through to listing pin snapshot.
-			}
-		}
-	}
-	if (!files) {
-		throw new Error(
-			`Catalog entry snapshot for "${input.listingId}" was not found.`,
+	const resolved = await resolveForkOriginSourceFiles({
+		env: input.env,
+		sourceId: listing.sourceId,
+		repoId: source?.repo_id ?? null,
+		preferredCommit,
+		fallbackCommits: [listing.pinnedCommit, source?.published_commit],
+		listingSnapshotFiles: snapshot?.files ?? null,
+		listingSnapshotCommit: listing.pinnedCommit,
+	})
+	if (!resolved) {
+		throw new CommunityActionError(
+			missingCommunityForkSnapshotMessage(input.listingId),
 		)
 	}
-	originCommit = filesCommit
+	const originCommit = resolved.commit
 	if (
 		input.expectedPinnedCommit &&
 		originCommit !== input.expectedPinnedCommit
@@ -1474,7 +1454,7 @@ export async function prepareCommunityFork(
 
 	return await prepareForkFromOriginFiles({
 		input,
-		files,
+		files: resolved.files,
 		originCommit,
 		originName: listing.name,
 		originKodyId: listing.kodyId,
@@ -2117,40 +2097,45 @@ export async function preparePrivatePackageFork(
 			'This package has no source to fork yet. Ask the owner to push it first.',
 		)
 	}
-	let originCommit: string | null = source.published_commit ?? null
+	let preferredCommit: string | null = source.published_commit ?? null
 	try {
 		const head = await resolveArtifactSourceHead(input.env, source.repo_id)
-		if (head.commit) originCommit = head.commit
+		if (head.commit) preferredCommit = head.commit
 	} catch {
 		// Fall back to the published commit, like community forks.
 	}
-	if (!originCommit) {
+	if (!preferredCommit) {
 		throw new CommunityActionError(
 			'This package has no commits to fork yet. Ask the owner to push it first.',
 		)
 	}
 	if (
 		input.expectedOriginCommit &&
-		originCommit !== input.expectedOriginCommit
+		preferredCommit !== input.expectedOriginCommit
 	) {
 		throw new CommunityActionError(
 			'This package changed after you opened it. Reload the page and try again.',
 		)
 	}
-	const snapshot = await readArtifactSourceSnapshot({
+	const resolved = await resolveForkOriginSourceFiles({
 		env: input.env,
+		sourceId: source.id,
 		repoId: source.repo_id,
-		commit: originCommit,
+		preferredCommit,
+		fallbackCommits: [source.published_commit],
 	})
-	if (!snapshot?.files) {
-		throw new Error(
-			`Source snapshot for package "${saved.id}" at ${originCommit} was not found.`,
+	if (!resolved) {
+		throw new CommunityActionError(
+			missingPrivateForkSnapshotMessage({
+				packageId: saved.id,
+				commit: preferredCommit,
+			}),
 		)
 	}
 	return await prepareForkFromOriginFiles({
 		input,
-		files: snapshot.files,
-		originCommit,
+		files: resolved.files,
+		originCommit: resolved.commit,
 		originName: saved.name,
 		originKodyId: saved.kodyId,
 		originRepoId: source.repo_id,
