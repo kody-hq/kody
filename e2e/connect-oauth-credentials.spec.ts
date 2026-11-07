@@ -125,7 +125,7 @@ test('connect page names the destination org and asks multi-org users to pick on
 	await waitForClientHydration(page)
 	await expect(page.getByTestId('connect-oauth-org-picker')).toHaveCount(0)
 	await expect(page.getByTestId('connect-oauth-org-target')).toContainText(
-		'personal organization',
+		'personal workspace',
 	)
 	await expect(page.locator('input[name="oauthClientId"]')).toBeVisible()
 
