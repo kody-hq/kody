@@ -42,7 +42,7 @@ test.each([
 	['/account/two-factor', 'account', 'security', null],
 	['/account/connected-apps', 'account', 'connected-apps', null],
 	['/account/mcp-oauth-clients', 'workspace', 'agents', null],
-	['/@acme/-/integrations/apps/google', 'workspace', 'credentials', 'acme'],
+	['/@acme/-/integrations/apps/google', 'workspace', 'integrations', 'acme'],
 	['/@acme/-/mcp-servers/server/authorize', 'workspace', 'credentials', 'acme'],
 	['/@acme/-/workflows/run', 'workspace', 'workflows', 'acme'],
 	['/@acme/-/waiting', 'workspace', 'waiting', 'acme'],

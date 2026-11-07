@@ -22,6 +22,7 @@ export type PageNavigation = {
 		| 'follows'
 		| 'grants'
 		| 'insights'
+		| 'integrations'
 		| 'jobs'
 		| 'members'
 		| 'memories'

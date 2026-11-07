@@ -37,16 +37,21 @@ import {
 	AccountPageHeader,
 } from './account-management-components.tsx'
 import { RecordTable, RecordTableSearch } from './record-table.tsx'
-import { primaryLinkCss } from '#universal/styles/style-primitives.ts'
+import {
+	getGhostButtonCss,
+	primaryLinkCss,
+} from '#universal/styles/style-primitives.ts'
 import {
 	type IntegrationUsageDraft,
 	buildIntegrationHref,
 	connectionLabel,
+	credentialsConnectionsHref,
 	deletedAppCopy,
 	filterOauthApps,
 	hostFromUrl,
 	integrationListId,
 	isBuiltInApp,
+	oauthAppStatusLabel,
 	oauthAppTitle,
 	type IntegrationsSelection,
 	resolveIntegrationsSelection,
@@ -451,6 +456,16 @@ export function AccountIntegrationsPage({
 				title="Integrations"
 				description="Services you connect so Kody can use them."
 				currentHref={currentHref}
+				actions={
+					orgSlug ? (
+						<SiteLink
+							href={credentialsConnectionsHref(orgSlug)}
+							css={getGhostButtonCss({ size: 'sm' })}
+						>
+							Connections in Credentials
+						</SiteLink>
+					) : null
+				}
 			/>
 
 			{message ? (
@@ -497,6 +512,7 @@ export function AccountIntegrationsPage({
 						}
 						columns={[
 							{ key: 'name', label: 'Integration', primary: true },
+							{ key: 'status', label: 'Status' },
 							{
 								key: 'accounts',
 								label: 'Accounts',
@@ -516,6 +532,7 @@ export function AccountIntegrationsPage({
 									host: hostFromUrl(app.authorizeUrl ?? app.tokenUrl),
 									builtIn: isBuiltInApp(app),
 								}),
+								status: oauthAppStatusLabel(app, integrations),
 								accounts: String(app.connectionCount),
 							},
 						}))}
