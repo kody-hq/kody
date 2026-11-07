@@ -151,7 +151,7 @@ for (const width of [1280, 390]) {
 			['mcp-servers', 'Search credentials'],
 			['mcp-servers/new', 'Search servers'],
 			['secrets/new', 'Search secrets'],
-			['integrations', 'Search credentials'],
+			['integrations', 'Search integrations'],
 			['email', 'Search messages'],
 		]) {
 			await page.goto(`/@${user.username}/-/${section}`)
