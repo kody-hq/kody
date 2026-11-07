@@ -1,8 +1,9 @@
 // `kody login --no-browser` prints its authorize URL. Machine setup approves
 // it in an app window that reuses the app's Kody session, and keeps the
-// system browser for anything that needs a fresh sign-in.
+// system browser for anything that needs a fresh sign-in. Output arrives in
+// chunks, so a URL counts only once whitespace ends it.
 function loginAuthorizationUrl(text) {
-	for (const match of text.matchAll(/https?:\/\/[^\s]+/g)) {
+	for (const match of text.matchAll(/https?:\/\/\S+(?=\s)/g)) {
 		const target = approvalTarget(match[0])
 		if (target) return target.url.href
 	}

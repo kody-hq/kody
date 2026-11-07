@@ -15,6 +15,9 @@ test('finds the CLI authorize URL in kody login output', () => {
 	assert.equal(loginAuthorizationUrl(output), authorize)
 	assert.equal(loginAuthorizationUrl('Waiting…\nhttps://kody.codes/docs'), null)
 	assert.equal(loginAuthorizationUrl('Open this link'), null)
+	const split = output.indexOf('&state=')
+	assert.equal(loginAuthorizationUrl(output.slice(0, split)), null)
+	assert.equal(loginAuthorizationUrl(output.slice(0, split + 9)), null)
 })
 
 test('approval targets only the app consent page and a loopback callback', () => {
