@@ -11,12 +11,13 @@ import {
 } from './credential-inventory-scan.ts'
 
 /**
- * The single switch for this check. `warn` appends a warning and publishes;
- * `fail` fails authoring publish (community installs and platform codemods
- * still only warn).
+ * The single switch for this check. `fail` fails authoring publish; `warn`
+ * appends a warning and publishes. Community installs and platform codemods
+ * (`enforceCredentialStamp: false`) always only warn, so republishing existing
+ * packages never breaks.
  */
 export const secretPlaceholderRequestPlacementPublishMode: SecretPlaceholderRequestPlacementMode =
-	'warn'
+	'fail'
 
 export type SecretPlaceholderRequestPlacementMode = 'warn' | 'fail'
 
@@ -114,9 +115,9 @@ export function formatSecretPlaceholderRequestPlacementNotice(input: {
 		...shown.map(formatHit),
 		...(extra > 0 ? [`- and ${extra} more`] : []),
 		"The fetch gateway fills a credential there only when the credential's owner allowed that part in its fill placement; otherwise Kody refuses the request (credential_placement_refused) and the run fails.",
-		"Fix: send the credential in a request header the API reads (for example headers: { Authorization: 'Bearer {{secret:name}}' }); new credentials fill headers only. If the API only reads it from that part, ask the credential's owner to allow the part on the credential page. A value that is not a credential, such as an account id, can be a constant in the package source instead.",
+		"Fix: move the credential into a request header the API reads (for example headers: { Authorization: 'Bearer {{secret:name}}' }). A value that is not a credential, such as an account id, can be a constant in the package source instead.",
 		input.mode === 'fail'
 			? 'This blocks publish.'
-			: 'This does not block publish.',
+			: "If the API only reads it from that part, the credential's owner can allow the part on the credential page. This does not block publish.",
 	].join('\n')
 }

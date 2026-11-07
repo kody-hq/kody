@@ -1434,7 +1434,7 @@ test('runRepoChecks warns when a fetch body is not opted out of secret resolutio
 	)
 })
 
-test('runRepoChecks warns, without failing, on credential placeholders in a fetch body or query', async () => {
+test('runRepoChecks fails publish on credential placeholders in a fetch body', async () => {
 	const { result } = await runChecks(
 		packageFiles(
 			manifest('body-placeholder', {
@@ -1460,13 +1460,42 @@ test('runRepoChecks warns, without failing, on credential placeholders in a fetc
 			},
 		),
 	)
-	expect(result.ok).toBe(true)
+	expect(result.ok).toBe(false)
 	const check = findCheck(result, 'credentials')
-	expect(check?.ok).toBe(true)
+	expect(check?.ok).toBe(false)
+	expect(check?.message).toContain('Publish failed:')
 	expect(check?.message).toContain(
 		'- src/index.ts:9: secret "clerkReviewUserId" in the request body',
 	)
 	expect(check?.message).not.toContain('"apiKey"')
+	expect(check?.message).toContain('This blocks publish.')
+})
+
+test('community installs and platform codemods only warn on credential placeholders in a fetch body', async () => {
+	const { result } = await runChecks(
+		packageFiles(
+			manifest('body-placeholder-codemod', {
+				credentials: {
+					clerkReviewUserId: { kind: 'secret', description: 'Account id.' },
+				},
+			}),
+			{
+				'src/index.ts': [
+					'export const ready = true',
+					'export async function post() {',
+					"  await fetch('https://api.example.com/reviews', {",
+					"    method: 'POST',",
+					"    body: JSON.stringify({ userId: '{{secret:clerkReviewUserId}}' }),",
+					'  })',
+					'}',
+				].join('\n'),
+			},
+		),
+		{ enforceCredentialStamp: false },
+	)
+	const check = findCheck(result, 'credentials')
+	expect(check?.ok).toBe(true)
+	expect(check?.message).toContain('WARNING:')
 	expect(check?.message).toContain('This does not block publish.')
 })
 
@@ -1526,8 +1555,11 @@ test('runRepoChecks offers optional credential types only for placements one fit
 			},
 		),
 	)
-	expect(result.ok).toBe(true)
+	// The URL path and login body placeholders fail publish on their own.
+	expect(result.ok).toBe(false)
 	const message = findCheck(result, 'credentials')!.message
+	expect(message).toContain('secret "HOOK_PATH" in the URL path')
+	expect(message).toContain('secret "LOGIN_SECRET" in the request body')
 	expect(message).toMatch(
 		/Credential stamp keys \(sorted\): HOOK_PATH, LOGIN_SECRET, github/,
 	)
