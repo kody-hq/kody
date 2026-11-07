@@ -24,7 +24,10 @@ import {
 	buildPackageAppClientModuleName,
 	clientModuleHashLength,
 } from './package-app-client-module-name.ts'
-import { assertNoPlatformSuppliedNodeModules } from './package-bundle-node-modules.ts'
+import {
+	assertNoPlatformSuppliedNodeModules,
+	createNodeModulesResolutionPlugin,
+} from './package-bundle-node-modules.ts'
 import { createPackageAppJsxBundleOptions } from './package-app-tsconfig.ts'
 import type { RuntimeBundle } from './runtime-bundle-types.ts'
 import { iterateModuleSourceTexts } from './runtime-source-modules.ts'
@@ -298,13 +301,10 @@ export async function buildKodyAppClientBundle(input: {
 		bundle: true,
 		target: 'es2022',
 		...createPackageAppJsxBundleOptions(input.sourceFiles),
-		...(externals.length > 0
-			? {
-					__dangerouslyUseEsBuildPluginsDoNotUseOrYouWillBeFired: [
-						createClientExternalsPlugin(externals),
-					],
-				}
-			: {}),
+		__dangerouslyUseEsBuildPluginsDoNotUseOrYouWillBeFired: [
+			...(externals.length > 0 ? [createClientExternalsPlugin(externals)] : []),
+			createNodeModulesResolutionPlugin(files),
+		],
 	})
 	const bundledModule = bundle.modules[bundle.mainModule]
 	const source =

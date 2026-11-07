@@ -27,7 +27,10 @@ import {
 } from './module-graph-import-rewriting.ts'
 import { moduleSourceDeclaresDefaultExport } from './module-export-names.ts'
 import { resolveKodyDependenciesForEntryPoint } from './module-graph-workspace.ts'
-import { assertNoPlatformSuppliedNodeModules } from './package-bundle-node-modules.ts'
+import {
+	assertNoPlatformSuppliedNodeModules,
+	createNodeModulesResolutionPlugin,
+} from './package-bundle-node-modules.ts'
 import { createPackageAppJsxBundleOptions } from './package-app-tsconfig.ts'
 import {
 	createAppEntrypointSource,
@@ -147,6 +150,7 @@ async function createWorkerBundle(input: {
 		__dangerouslyUseEsBuildPluginsDoNotUseOrYouWillBeFired: [
 			kodyRuntimeExternalsPlugin,
 			...(input.linkKodyPackageImports ? [kodyLinkedPackageImportsPlugin] : []),
+			createNodeModulesResolutionPlugin(input.files),
 		],
 	})
 }

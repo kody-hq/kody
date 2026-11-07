@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { test } from 'node:test'
 import {
 	BundleError,
@@ -9,6 +10,10 @@ import {
 	bundleLocalUserModule,
 } from '../src/local-bundle.js'
 import { listSavedPackageImports } from '../src/local-package-graph.js'
+import {
+	dualMajorNodeModulesFixture,
+	dualMajorNodeModulesFixtureResult,
+} from '@kody-internal/shared/node-modules-resolution.fixture.ts'
 
 function writeFixture(files: Record<string, string>): string {
 	const dir = mkdtempSync(join(tmpdir(), 'kody-local-bundle-'))
@@ -208,4 +213,15 @@ test('bundleInputs drops node_modules segments, not node_modules-named files', (
 			join(workingDir, 'src/node_modules-generated.ts'),
 		]),
 	)
+})
+
+test('bundleLocalUserModule resolves nested dual-major node_modules like hosted publish', async () => {
+	const dir = writeFixture(dualMajorNodeModulesFixture)
+	const source = await bundleLocalUserModule(join(dir, 'src/index.ts'))
+	const bundlePath = join(dir, 'bundle.mjs')
+	writeFileSync(bundlePath, source)
+	const bundled = (await import(pathToFileURL(bundlePath).href)) as {
+		default: () => Promise<unknown>
+	}
+	assert.deepEqual(await bundled.default(), dualMajorNodeModulesFixtureResult)
 })
