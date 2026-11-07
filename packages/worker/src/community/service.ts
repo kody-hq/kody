@@ -36,6 +36,7 @@ import {
 	getEntitySourceById,
 } from '#worker/repo/entity-sources.ts'
 import { readArtifactSourceSnapshot } from '#worker/repo/artifact-source-snapshot.ts'
+import { readArtifactTreeAtCommit } from '#worker/repo/artifact-file.ts'
 import {
 	buildEntityRepoId,
 	resolveArtifactSourceHead,
@@ -2137,19 +2138,19 @@ export async function preparePrivatePackageFork(
 			'This package changed after you opened it. Reload the page and try again.',
 		)
 	}
-	const snapshot = await readArtifactSourceSnapshot({
+	const files = await readArtifactTreeAtCommit({
 		env: input.env,
 		repoId: source.repo_id,
 		commit: originCommit,
 	})
-	if (!snapshot?.files) {
+	if (!files) {
 		throw new Error(
 			`Source snapshot for package "${saved.id}" at ${originCommit} was not found.`,
 		)
 	}
 	return await prepareForkFromOriginFiles({
 		input,
-		files: snapshot.files,
+		files,
 		originCommit,
 		originName: saved.name,
 		originKodyId: saved.kodyId,

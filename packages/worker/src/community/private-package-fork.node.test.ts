@@ -3,7 +3,7 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { accessGrantCapability } from '#mcp/capabilities/access/access-grants.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
@@ -20,10 +20,47 @@ import {
 	findExistingPrivatePackageFork,
 	forkPrivatePackage,
 	loadReadablePrivateForkSource,
+	preparePrivatePackageFork,
 	privatePackageForkNotFoundMessage,
 } from './service.ts'
 
+const artifacts = vi.hoisted(() => ({ readTree: vi.fn() }))
+vi.mock('#worker/repo/artifact-file.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#worker/repo/artifact-file.ts')>()),
+	readArtifactTreeAtCommit: artifacts.readTree,
+}))
+
 const migrationsDirectory = new URL('../../migrations/', import.meta.url)
+
+test('private forks read the selected commit from the real artifact tree', async () => {
+	const { env, people, sourcePackage, viewer } = await seed()
+	artifacts.readTree.mockResolvedValueOnce({
+		'package.json': JSON.stringify({
+			name: '@pf-owner/notes',
+			version: '1.0.0',
+			license: 'MIT',
+			exports: { '.': './index.ts' },
+			kody: { id: 'notes', description: 'notes' },
+		}),
+		'index.ts': 'export default 42',
+	})
+	const prepared = await preparePrivatePackageFork({
+		env,
+		baseUrl: 'https://heykody.dev',
+		userId: ownerIdFromStored(people.reader),
+		expectedPackageScope: 'pf-reader',
+		sourcePackage,
+		reader: viewer('reader'),
+		actor: 'human',
+	})
+	expect(artifacts.readTree).toHaveBeenCalledWith({
+		env,
+		repoId: `repo-${sourcePackage.packageId}`,
+		commit: 'commit-1',
+	})
+	expect(prepared.originCommit).toBe('commit-1')
+	expect(prepared.files['index.ts']).toBe('export default 42')
+})
 
 async function seed() {
 	silenceIncidentalRuntimeWarnings()
