@@ -561,7 +561,9 @@ async function fetchThroughGateway(
 			pathSegmentEncodedNames,
 		)
 		return credentialClient
-			? withCredentialClientHint(redacted, credentialClient.shape)
+			? withCredentialClientHint(redacted, credentialClient.shape, {
+					providerLabel: credentialClient.providerLabel,
+				})
 			: redacted
 	} catch (error) {
 		deadline?.fail()

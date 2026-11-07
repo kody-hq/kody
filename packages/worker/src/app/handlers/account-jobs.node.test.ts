@@ -288,6 +288,7 @@ test('jobs API lists package jobs and selected detail', async () => {
 	expect(listPayload).toMatchObject({
 		ok: true,
 		username: 'test-user',
+		teamOrg: false,
 		selectedJobId: null,
 		selectedJob: null,
 		jobs: [
