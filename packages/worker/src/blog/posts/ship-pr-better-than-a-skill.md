@@ -6,7 +6,7 @@ date: 2026-11-07
 description:
   A long PR-shipping skill became one Kody package export. What maintained code
   handles that instructions alone cannot, with a real read-only run.
-order: 1
+order: 5
 category: essays
 ---
 

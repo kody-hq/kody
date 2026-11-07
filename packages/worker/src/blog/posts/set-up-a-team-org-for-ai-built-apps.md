@@ -1,10 +1,10 @@
 ---
 title: How to set up a team org for your AI-built apps
-date: 2026-12-15
+date: 2026-11-07
 description:
   Your personal Kody org stays yours. Create a separate team org, decide what
   moves into it, set member permissions, and invite people with links.
-order: 1
+order: 3
 category: how-to
 series: sharing-apps-with-your-team
 ---

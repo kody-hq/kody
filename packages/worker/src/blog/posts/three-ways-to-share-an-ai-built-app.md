@@ -1,10 +1,10 @@
 ---
 title: Three ways to share an AI-built app, and whose keys each one uses
-date: 2026-12-11
+date: 2026-11-07
 description:
   Fork it, grant it, or let people sign in. How to share an AI-built app by
   deciding whose credentials it runs on and who pays for the work.
-order: 1
+order: 2
 category: essays
 series: sharing-apps-with-your-team
 ---

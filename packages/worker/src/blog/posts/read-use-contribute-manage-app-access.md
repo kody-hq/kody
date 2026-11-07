@@ -1,11 +1,11 @@
 ---
 title:
   Read, Use, Contribute, or Manage? Picking the right access for each teammate
-date: 2026-12-18
+date: 2026-11-07
 description:
   What each Kody access preset lets a teammate run, read, change, and publish,
   what no preset grants, and how to check the access you gave.
-order: 1
+order: 4
 category: how-to
 series: sharing-apps-with-your-team
 ---

@@ -18,6 +18,7 @@ export const blogPostSlugs = [
 	'early-kody-users',
 	'engineers-are-handing-private-keys-to-ai-agents',
 	'every-install-is-a-fork-you-own',
+	'every-personal-agent-needs-a-cloud',
 	'first-useful-kody-workflow',
 	'gateways-connect-homes-accumulate',
 	'how-to-roll-out-ai-agents-to-your-team',

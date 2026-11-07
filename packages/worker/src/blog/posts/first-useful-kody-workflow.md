@@ -4,7 +4,7 @@ date: 2026-11-07
 description:
   Find a public Kody package, read it before you run it, and get a real air
   quality and daylight report for your city. No keys, no migration.
-order: 3
+order: 7
 category: how-to
 ---
 

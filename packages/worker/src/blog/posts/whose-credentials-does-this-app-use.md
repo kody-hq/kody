@@ -5,7 +5,7 @@ date: 2026-11-07
 description:
   Before you share an AI-built app, check five things. Which org owns it, who it
   runs as, which credentials fill it, who can open it, and who pays.
-order: 2
+order: 6
 category: how-to
 ---
 
