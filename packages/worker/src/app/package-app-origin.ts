@@ -67,7 +67,10 @@ import {
 	findLivePackageAppOauthGrant,
 	notePackageAppOauthGrantUse,
 } from '#app/package-app-oauth-grants.ts'
-import { handlePackageAppOauthHostAuth } from '#app/package-app-oauth-host-auth.ts'
+import {
+	handlePackageAppOauthHostAuth,
+	isPackageAppOauthHostAuthPath,
+} from '#app/package-app-oauth-host-auth.ts'
 import {
 	resolvePackageAppOrgOwnerByHandle,
 	resolvePackageAppOwnerByStableUserId,
@@ -105,7 +108,9 @@ import { buildUnmatchedPackageAppOriginPathMessage } from '#worker/package-runti
 import { isWebSocketUpgradeRequest } from '#worker/package-runtime/websocket-upgrade.ts'
 import {
 	pushServerTiming,
+	recordServerTimingPhase,
 	type ServerTimingEntry,
+	unaccountedServerTimingMs,
 } from '#worker/server-timing.ts'
 import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import {
@@ -424,32 +429,40 @@ export async function authorizePackageAppVisitorForOrg(input: {
 	/** Package slug so app:execute is checked on that app, not any grant. */
 	kodyId?: string
 }): Promise<AuthorizedPackageAppServe> {
-	const person = await resolvePackageAppOwnerByStableUserId({
-		env: input.env,
-		stableUserId: input.stableUserId,
-		issuedAt: input.issuedAt,
-	})
-	const org = await resolvePackageAppOrgOwnerByHandle({
-		env: input.env,
-		handle: input.handle,
-	})
+	// Independent reads run together; outcomes are taken in the original
+	// order, so a failure or a miss resolves exactly as the sequential reads did.
+	const [personRead, orgRead] = await Promise.allSettled([
+		resolvePackageAppOwnerByStableUserId({
+			env: input.env,
+			stableUserId: input.stableUserId,
+			issuedAt: input.issuedAt,
+		}),
+		resolvePackageAppOrgOwnerByHandle({
+			env: input.env,
+			handle: input.handle,
+		}),
+	])
+	const person = settledValue(personRead)
+	const org = settledValue(orgRead)
 	if (!person || !org) return { kind: 'session-required' }
 
 	const viewer = {
 		userId: personIdFromStored(input.stableUserId),
 		username: person.username,
 	}
-	let appId: string | null = null
 	const kodyId = input.kodyId?.trim()
-	if (kodyId) {
-		const lookup = await resolveSavedPackageForPackageAppSlug({
-			db: input.env.APP_DB,
-			userId: org.userId,
-			slug: kodyId,
-		})
-		appId = lookup?.savedPackage.id ?? null
-	}
-	const epoch = await readOrgAccessEpoch(input.env.APP_DB, org.userId)
+	const [lookupRead, epochRead] = await Promise.allSettled([
+		kodyId
+			? resolveSavedPackageForPackageAppSlug({
+					db: input.env.APP_DB,
+					userId: org.userId,
+					slug: kodyId,
+				})
+			: null,
+		readOrgAccessEpoch(input.env.APP_DB, org.userId),
+	])
+	const appId = settledValue(lookupRead)?.savedPackage.id ?? null
+	const epoch = settledValue(epochRead)
 	if (epoch === null) return { kind: 'session-required' }
 	const decisionScope = {
 		env: input.env,
@@ -501,6 +514,11 @@ export async function authorizePackageAppVisitorForOrg(input: {
 		visitorEmail: person.email,
 		sessionIssuedAt: input.issuedAt,
 	}
+}
+
+function settledValue<T>(result: PromiseSettledResult<T>): T {
+	if (result.status === 'rejected') throw result.reason
+	return result.value
 }
 
 /**
@@ -725,46 +743,67 @@ async function handleAppOriginPackageAppPath(input: {
 
 	// Resolve retired slugs before minting a handoff bound to the URL slug.
 	// The 308 stays on the app origin.
-	const retiredRedirect = await redirectRetiredPackageAppSlug({
-		env,
-		url,
-		packagePath,
-		buildLocation: (currentSlug) =>
-			buildPackageAppOpenPath({
-				username: packagePath.username,
-				kodyId: currentSlug,
-				restPath: packagePath.restPath === '/' ? null : packagePath.restPath,
+	const serverTiming = packageAppServerTiming()
+	const retiredRedirect = await pushServerTiming(
+		serverTiming,
+		'retiredSlug',
+		() =>
+			redirectRetiredPackageAppSlug({
+				env,
+				url,
+				packagePath,
+				buildLocation: (currentSlug) =>
+					buildPackageAppOpenPath({
+						username: packagePath.username,
+						kodyId: currentSlug,
+						restPath:
+							packagePath.restPath === '/' ? null : packagePath.restPath,
+					}),
 			}),
-	})
+	)
 	if (retiredRedirect) return retiredRedirect
 
-	const org = await resolvePackageAppOrgOwnerByHandle({
-		env,
-		handle: packagePath.username,
-	})
-	const slugLookup = org
-		? await resolveSavedPackageForPackageAppSlug({
-				db: env.APP_DB,
-				userId: org.userId,
-				slug: packagePath.kodyId,
-			})
-		: null
-	const internetVisible = Boolean(
-		await resolveInternetVisibleApprovedCommit({
+	const org = await pushServerTiming(serverTiming, 'org', () =>
+		resolvePackageAppOrgOwnerByHandle({
 			env,
-			lookup: slugLookup,
-			requestUrl: request.url,
+			handle: packagePath.username,
 		}),
 	)
-	const user = await readAuthenticatedAppUser(request, env)
+	const slugLookup = org
+		? await pushServerTiming(serverTiming, 'appSlug', () =>
+				resolveSavedPackageForPackageAppSlug({
+					db: env.APP_DB,
+					userId: org.userId,
+					slug: packagePath.kodyId,
+				}),
+			)
+		: null
+	// The approved commit and the visitor's access are independent reads;
+	// outcomes are taken in the original order.
+	const [approvedCommitRead, userRead] = await Promise.allSettled([
+		pushServerTiming(serverTiming, 'approvedCommit', () =>
+			resolveInternetVisibleApprovedCommit({
+				env,
+				lookup: slugLookup,
+				requestUrl: request.url,
+			}),
+		),
+		pushServerTiming(serverTiming, 'appUser', () =>
+			readAuthenticatedAppUser(request, env),
+		),
+	])
+	const internetVisible = Boolean(settledValue(approvedCommitRead))
+	const user = settledValue(userRead)
 	const canExecute =
 		user && org
-			? await viewerCanExecutePackageApp({
-					env,
-					viewer: user.mcpUser,
-					ownerId: org.userId,
-					appId: slugLookup?.savedPackage.id ?? null,
-				})
+			? await pushServerTiming(serverTiming, 'owner', () =>
+					viewerCanExecutePackageApp({
+						env,
+						viewer: user.mcpUser,
+						ownerId: org.userId,
+						appId: slugLookup?.savedPackage.id ?? null,
+					}),
+				)
 			: false
 
 	if (!user || !org || !canExecute) {
@@ -1168,18 +1207,21 @@ async function servePackageAppForSession(input: {
 	packagePath: PackageAppPath
 }) {
 	const { request, env, url, appBaseUrl, handle, packagePath } = input
+	const serverTiming = packageAppServerTiming()
 	const handoffToken = url.searchParams.get(packageAppHandoffQueryParam)
 	if (handoffToken) {
 		const now = Date.now()
-		const claims = await consumePackageAppHandoffToken({
-			env,
-			token: handoffToken,
-			expected: {
-				username: packagePath.username,
-				kodyId: packagePath.kodyId,
-			},
-			now,
-		})
+		const claims = await pushServerTiming(serverTiming, 'appHandoff', () =>
+			consumePackageAppHandoffToken({
+				env,
+				token: handoffToken,
+				expected: {
+					username: packagePath.username,
+					kodyId: packagePath.kodyId,
+				},
+				now,
+			}),
+		)
 		if (claims) {
 			return redirectResponse({
 				location: withoutHandoffToken(url).toString(),
@@ -1206,7 +1248,6 @@ async function servePackageAppForSession(input: {
 	const servedRequest = url.searchParams.has(packageAppHandoffQueryParam)
 		? new Request(withoutHandoffToken(url), request)
 		: request
-	const serverTiming = packageAppServerTiming()
 	const parsedSession = await pushServerTiming(serverTiming, 'appSession', () =>
 		readPackageAppSession({
 			request,
@@ -1438,6 +1479,17 @@ function handlePackageAppHostRootFiles(input: {
 	return new Response(packageAppHostDefaultRobotsTxt, { status: 200, headers })
 }
 
+async function timePackageAppOauthHostAuth(input: {
+	request: Request
+	env: Env
+	url: URL
+}) {
+	if (!isPackageAppOauthHostAuthPath(input.url.pathname)) return null
+	return await pushServerTiming(packageAppServerTiming(), 'hostAuth', () =>
+		handlePackageAppOauthHostAuth(input),
+	)
+}
+
 async function handleUserSubdomainRequest(input: {
 	request: Request
 	env: Env
@@ -1450,7 +1502,7 @@ async function handleUserSubdomainRequest(input: {
 	const rootFiles = handlePackageAppHostRootFiles({ request, url })
 	if (rootFiles) return rootFiles
 	const appBaseUrl = getAppBaseUrl({ env })
-	const hostAuth = await handlePackageAppOauthHostAuth({ request, env, url })
+	const hostAuth = await timePackageAppOauthHostAuth({ request, env, url })
 	if (hostAuth) return hostAuth
 	const packagePath = parsePackageAppSubdomainPath({
 		pathname: url.pathname,
@@ -1545,7 +1597,7 @@ async function handleOrgCustomHostnameRequest(input: {
 	const rootFiles = handlePackageAppHostRootFiles({ request, url })
 	if (rootFiles) return rootFiles
 	const appBaseUrl = getAppBaseUrl({ env })
-	const hostAuth = await handlePackageAppOauthHostAuth({ request, env, url })
+	const hostAuth = await timePackageAppOauthHostAuth({ request, env, url })
 	if (hostAuth) return hostAuth
 	const packagePath = parsePackageAppSubdomainPath({
 		pathname: url.pathname,
@@ -1558,11 +1610,16 @@ async function handleOrgCustomHostnameRequest(input: {
 		return createUnmatchedPackageAppPathResponse()
 	}
 
-	const slugLookup = await resolveSavedPackageForPackageAppSlug({
-		db: env.APP_DB,
-		userId: mapping.orgId,
-		slug: packagePath.kodyId,
-	})
+	const slugLookup = await pushServerTiming(
+		packageAppServerTiming(),
+		'appSlug',
+		() =>
+			resolveSavedPackageForPackageAppSlug({
+				db: env.APP_DB,
+				userId: mapping.orgId,
+				slug: packagePath.kodyId,
+			}),
+	)
 	if (
 		!slugLookup ||
 		!slugLookup.savedPackage.hasApp ||
@@ -1592,7 +1649,7 @@ async function handleCustomHostnameRequest(input: {
 		return createUnmatchedPackageAppPathResponse()
 	}
 	const appBaseUrl = getAppBaseUrl({ env })
-	const hostAuth = await handlePackageAppOauthHostAuth({ request, env, url })
+	const hostAuth = await timePackageAppOauthHostAuth({ request, env, url })
 	if (hostAuth) return hostAuth
 	const packagePath = parsePackageAppCustomHostnamePath({
 		pathname: url.pathname,
@@ -1618,6 +1675,10 @@ async function handleCustomHostnameRequest(input: {
 	})
 }
 
+// First request this isolate serves through the package-app boundary: a cold
+// start whose script load ran before any phase could start.
+let workerIsolateServed = false
+
 /**
  * Route a request according to the configured package-app origin.
  *
@@ -1629,26 +1690,56 @@ export async function handlePackageAppOriginRequest(
 	request: Request,
 	env: Env,
 	ctx?: Pick<ExecutionContext, 'waitUntil'>,
+	options?: {
+		/** When the Worker received the request, so its pre-handler checks show as `pre`. */
+		receivedAt?: number
+	},
 ) {
 	// One request context per package-app request so per-request memos (org
 	// binding, handle) dedupe across the auth gate and serve. Audit rows and
 	// access-decision writes run after the response via `ctx.waitUntil`.
 	const startedAt = Date.now()
+	const receivedAt = Math.min(options?.receivedAt ?? startedAt, startedAt)
 	const url = new URL(request.url)
 	return await runWithDeferredWork(
 		ctx ? (promise) => ctx.waitUntil(promise) : undefined,
 		() =>
-			runWithRequestContext(request, () =>
-				runWithPackageAppResponseRewrite(
+			runWithRequestContext(request, () => {
+				// Every phase from here on lands in this list, and the boundary
+				// reports whatever no phase covered as `unaccounted`.
+				const serverTiming = packageAppServerTiming()
+				if (!workerIsolateServed) {
+					workerIsolateServed = true
+					serverTiming.push({
+						name: 'workerIsolate',
+						durationMs: 0,
+						desc: 'new',
+					})
+				}
+				if (options?.receivedAt !== undefined) {
+					recordServerTimingPhase(serverTiming, {
+						name: 'pre',
+						startedAt: receivedAt,
+						endedAt: startedAt,
+					})
+				}
+				return runWithPackageAppResponseRewrite(
 					() => dispatchPackageAppOriginRequest(request, env),
 					// Serve, cache headers, and ticket cookies registered their
 					// parts; this boundary adds its own and the response is
 					// rewritten once.
 					({ reported }) => {
-						const serverTiming = packageAppServerTiming()
+						const endedAt = Date.now()
+						serverTiming.push({
+							name: 'unaccounted',
+							durationMs: unaccountedServerTimingMs(serverTiming, {
+								startedAt: receivedAt,
+								endedAt,
+							}),
+						})
 						serverTiming.push({
 							name: 'total',
-							durationMs: Date.now() - startedAt,
+							durationMs: endedAt - receivedAt,
 						})
 						return {
 							// servePackageAppRequest logs x-kody-runtime-run-id; a
@@ -1679,8 +1770,8 @@ export async function handlePackageAppOriginRequest(
 									],
 						}
 					},
-				),
-			),
+				)
+			}),
 	)
 }
 
@@ -1702,9 +1793,10 @@ async function dispatchPackageAppOriginRequest(request: Request, env: Env) {
 	}
 
 	if (!requestHost) {
-		const customHostname = await resolveVerifiedCustomHostnameIfEnabled(
-			request,
-			env,
+		const customHostname = await pushServerTiming(
+			packageAppServerTiming(),
+			'customHost',
+			() => resolveVerifiedCustomHostnameIfEnabled(request, env),
 		)
 		if (customHostname) {
 			if (customHostname.bindingKind === 'org') {
