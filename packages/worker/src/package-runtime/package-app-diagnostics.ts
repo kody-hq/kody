@@ -32,6 +32,21 @@ export function packageAppRequestIdFromRequest(
  * Keep a valid request id, or assign a new one. Client-supplied values that
  * are not UUIDs are replaced so logs cannot be stuffed with arbitrary text.
  */
+/**
+ * Copies the request id onto the request forwarded to package code, which
+ * the serve path strips of every `x-kody-*` header first. The app wrapper
+ * reads it to tag a CPU sample with the id the response exposes.
+ */
+export function withForwardedPackageAppRequestId(
+	forwarded: Request,
+	requestId: string | null,
+): Request {
+	if (!requestId) return forwarded
+	const headers = new Headers(forwarded.headers)
+	headers.set(packageAppRequestIdHeader, requestId)
+	return new Request(forwarded, { headers })
+}
+
 export function withPackageAppRequestId(request: Request): {
 	request: Request
 	requestId: string

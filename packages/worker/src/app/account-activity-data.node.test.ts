@@ -15,6 +15,15 @@ const mockModule = vi.hoisted(() => ({
 	listRunRecords: vi.fn(),
 	getRunRecord: vi.fn(),
 	summarizeRunRecords: vi.fn(),
+	runLogRpc: vi.fn(() => ({
+		packageAppCpuSummary: async () => ({
+			since: '2026-01-01T00:00:00.000Z',
+			retentionDays: 7,
+			warmSampleRate: 0.05,
+			apps: [],
+			slowColdRequests: [],
+		}),
+	})),
 }))
 
 vi.mock('#worker/run-records/service.ts', () => mockModule)

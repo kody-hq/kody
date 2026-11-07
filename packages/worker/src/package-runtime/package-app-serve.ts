@@ -56,6 +56,9 @@ import {
 	logPackageAppHttpError,
 	packageAppRuntimeRunIdHeader,
 	runtimeRunIdFromError,
+	packageAppRequestIdFromRequest,
+	withForwardedPackageAppRequestId,
+	withPackageAppRequestId,
 } from '#worker/package-runtime/package-app-diagnostics.ts'
 import { isComputeOverageLimitError } from '#worker/entitlements/errors.ts'
 import { beginRunRecord, finishRunRecord } from '#worker/run-records/service.ts'
@@ -766,7 +769,32 @@ export async function recordPackageAppEntrypointFailure(input: {
 	}
 }
 
-export async function servePackageAppRequest(input: {
+type ServePackageAppRequestInput = Parameters<
+	typeof servePackageAppRequestWithId
+>[0]
+
+/**
+ * Every served response carries `x-kody-request-id` (alongside
+ * Server-Timing); a sampled request stores CPU and wall time under the same id.
+ */
+export async function servePackageAppRequest(
+	input: ServePackageAppRequestInput,
+) {
+	// The slim origin forwards to RUNTIME_WORKER, which tags the response itself.
+	if (!hasLocalPackageAppRuntimeBridge()) {
+		return servePackageAppRequestWithId(input)
+	}
+	const tagged = withPackageAppRequestId(input.request)
+	const response = await servePackageAppRequestWithId({
+		...input,
+		request: tagged.request,
+	})
+	return deferPackageAppResponseRewrite(response, {
+		requestId: tagged.requestId,
+	})
+}
+
+async function servePackageAppRequestWithId(input: {
 	request: Request
 	env: Env
 	owner: PackageAppServeOwner
@@ -1327,6 +1355,10 @@ export async function servePackageAppRequest(input: {
 				appWorker.visit.ticket,
 			),
 			dispatch,
+		)
+		forwardedRequest = withForwardedPackageAppRequestId(
+			forwardedRequest,
+			packageAppRequestIdFromRequest(request),
 		)
 	} catch (error) {
 		endPackageAppVisit(visitNonce)
