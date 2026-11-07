@@ -103,6 +103,42 @@ export default () => label
 	assert.doesNotMatch(source, /from\s+['"]tiny-dep['"]/)
 })
 
+test('bundleLocalUserModule resolves package.json main away from index.js, like hosted publish', async () => {
+	// deepmerge@4 layout: `main` is the built CJS file; index.js is source that
+	// requires a devDependency that is not installed.
+	const dir = writeFixture({
+		'entry.mjs': `import merge from 'main-field-dep'
+export default () => merge()
+`,
+		'node_modules/main-field-dep/package.json': `{"name":"main-field-dep","main":"dist/cjs.js"}
+`,
+		'node_modules/main-field-dep/index.js': `module.exports = require('dev-only-dep')
+`,
+		'node_modules/main-field-dep/dist/cjs.js': `module.exports = function merge() { return 'from-dist-cjs' }
+`,
+	})
+	const source = await bundleLocalUserModule(join(dir, 'entry.mjs'))
+	assert.match(source, /from-dist-cjs/)
+	assert.doesNotMatch(source, /dev-only-dep/)
+})
+
+test('bundleLocalUserModule prefers package.json module over main, like hosted publish', async () => {
+	const dir = writeFixture({
+		'entry.mjs': `import { label } from 'dual-dep'
+export default () => label
+`,
+		'node_modules/dual-dep/package.json': `{"name":"dual-dep","main":"dist/cjs.js","module":"dist/esm.js"}
+`,
+		'node_modules/dual-dep/dist/cjs.js': `exports.label = 'from-cjs'
+`,
+		'node_modules/dual-dep/dist/esm.js': `export const label = 'from-esm'
+`,
+	})
+	const source = await bundleLocalUserModule(join(dir, 'entry.mjs'))
+	assert.match(source, /from-esm/)
+	assert.doesNotMatch(source, /from-cjs/)
+})
+
 test('bundleLocalUserModule fails clearly for an unresolvable relative import', async () => {
 	const dir = writeFixture({
 		'entry.mjs': `import { missing } from './nope.js'

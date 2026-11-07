@@ -120,6 +120,9 @@ export function localBundleOptions(entry: string) {
 		write: false,
 		format: 'esm' as const,
 		platform: 'neutral' as const,
+		// Neutral defaults to no mainFields; match the hosted rebuild's legacy
+		// fallback (`@cloudflare/worker-bundler`: exports, then module, main).
+		mainFields: ['module', 'main'],
 		target: 'esnext',
 		logLevel: 'silent' as const,
 		packages: 'bundle' as const,
