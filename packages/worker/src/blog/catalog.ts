@@ -73,6 +73,9 @@ import howToRollOutAiAgentsToYourTeam from './posts/how-to-roll-out-ai-agents-to
 import threeWaysToShareAnAiBuiltApp from './posts/three-ways-to-share-an-ai-built-app.md'
 import setUpATeamOrgForAiBuiltApps from './posts/set-up-a-team-org-for-ai-built-apps.md'
 import readUseContributeManageAppAccess from './posts/read-use-contribute-manage-app-access.md'
+import shipPrBetterThanASkill from './posts/ship-pr-better-than-a-skill.md'
+import whoseCredentialsDoesThisAppUse from './posts/whose-credentials-does-this-app-use.md'
+import firstUsefulKodyWorkflow from './posts/first-useful-kody-workflow.md'
 
 /**
  * Static post sources. When adding a post, drop a `.md` file under `posts/`
@@ -234,6 +237,18 @@ const postSources: Array<{ slug: string; raw: string }> = [
 	{
 		slug: 'read-use-contribute-manage-app-access',
 		raw: readUseContributeManageAppAccess,
+	},
+	{
+		slug: 'ship-pr-better-than-a-skill',
+		raw: shipPrBetterThanASkill,
+	},
+	{
+		slug: 'whose-credentials-does-this-app-use',
+		raw: whoseCredentialsDoesThisAppUse,
+	},
+	{
+		slug: 'first-useful-kody-workflow',
+		raw: firstUsefulKodyWorkflow,
 	},
 ]
 
