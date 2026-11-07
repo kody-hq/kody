@@ -233,11 +233,11 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 			// Always seed the query cache — even if this submitter is stale —
 			// so a committed installed / in_progress row settles and Fork
 			// cannot reopen for a duplicate. Imperative UI updates stay gated.
+			// Do not clear holdForkRetry on stale: that would reopen Fork before
+			// the seeded live state is observed; the live-state effect clears
+			// the hold once installed / in_progress lands in the query.
 			if (listingId) seedForkState(listingId, targetOrg, live)
-			if (!isCurrent()) {
-				setHoldForkRetry(false)
-				return true
-			}
+			if (!isCurrent()) return true
 			if (live.state === 'installed' || live.state === 'adaptation_required') {
 				setMessage(null)
 				setOutcome(communityInstallOutcomeFromLiveFork(live))
@@ -278,10 +278,7 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 				setHoldForkRetry(true)
 				setMessage(null)
 				await reconcile()
-				if (!isCurrent()) {
-					setHoldForkRetry(false)
-					return
-				}
+				if (!isCurrent()) return
 				if (!listingId) {
 					releaseWithLostEnvelopeNotice()
 					return
@@ -294,10 +291,7 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 				} catch {
 					// Fall through to the notice.
 				}
-				if (!isCurrent()) {
-					setHoldForkRetry(false)
-					return
-				}
+				if (!isCurrent()) return
 				releaseWithLostEnvelopeNotice()
 				return
 			}
