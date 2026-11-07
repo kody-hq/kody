@@ -687,6 +687,38 @@ export async function listPaidInvoicesForSubscription(
 	return parsed.value.data
 }
 
+/**
+ * One page (up to 100, newest first) of a customer's paid invoices as raw
+ * Stripe objects, plus whether more exist.
+ */
+export async function listPaidInvoicesForCustomer(
+	env: StripeEnv,
+	customerId: string,
+): Promise<{ invoices: Array<Record<string, unknown>>; hasMore: boolean }> {
+	const trimmed = customerId.trim()
+	if (!trimmed) {
+		throw new StripeApiError('Customer id is required.', { status: 400 })
+	}
+	const body = await stripeRequest(env, {
+		method: 'GET',
+		path: '/v1/invoices',
+		query: { customer: trimmed, status: 'paid', limit: '100' },
+	})
+	const list = body as { data?: unknown; has_more?: unknown } | null
+	if (!list || !Array.isArray(list.data)) {
+		throw new StripeApiError('Unexpected Stripe invoice list shape.', {
+			status: 502,
+		})
+	}
+	return {
+		invoices: list.data.filter(
+			(item): item is Record<string, unknown> =>
+				typeof item === 'object' && item !== null,
+		),
+		hasMore: list.has_more === true,
+	}
+}
+
 const creditNoteListPageSize = 100
 /**
  * 2,000 credit notes on one invoice or customer is far beyond anything Kody

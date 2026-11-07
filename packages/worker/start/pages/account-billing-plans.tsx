@@ -352,7 +352,8 @@ export function renderAccountBillingPlans(input: {
 												}
 											/>
 											<span css={descriptionCss}>
-												Promo codes apply to monthly billing.
+												A Stripe discount for monthly billing. Referral links
+												are not promo codes.
 											</span>
 										</label>
 									)}

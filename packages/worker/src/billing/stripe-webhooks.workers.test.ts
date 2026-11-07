@@ -398,6 +398,17 @@ test('invoice.paid rewards both parties once and ignores $0 trial invoices', asy
 		amount_paid,
 	})
 	const rewardState = () => readReferral(referee, 'status, reward_invoice_id')
+	const firstPaidMarker = async () =>
+		(
+			await env.APP_DB.prepare(
+				`SELECT o.referral_first_paid_at
+				 FROM users u
+				 INNER JOIN orgs o ON o.id = u.stable_user_id
+				 WHERE u.id = ?`,
+			)
+				.bind(referee.id)
+				.first<{ referral_first_paid_at: string | null }>()
+		)?.referral_first_paid_at ?? null
 
 	expect(
 		await deliver(
@@ -412,6 +423,7 @@ test('invoice.paid rewards both parties once and ignores $0 trial invoices', asy
 		status: 'pending',
 		reward_invoice_id: null,
 	})
+	expect(await firstPaidMarker()).toBeNull()
 
 	expect(
 		await deliver(
@@ -424,6 +436,8 @@ test('invoice.paid rewards both parties once and ignores $0 trial invoices', asy
 	).toEqual({ status: 200, body: { ok: true } })
 	const rewarded = { status: 'rewarded', reward_invoice_id: 'in_paid' }
 	expect(await rewardState()).toEqual(rewarded)
+	const marker = await firstPaidMarker()
+	expect(marker).toEqual(expect.any(String))
 	const expiries = await env.APP_DB.prepare(
 		`SELECT o.referral_standard_credit_expires_at
 		 FROM users u
@@ -447,6 +461,7 @@ test('invoice.paid rewards both parties once and ignores $0 trial invoices', asy
 		),
 	).toEqual({ status: 200, body: { ok: true } })
 	expect(await rewardState()).toEqual(rewarded)
+	expect(await firstPaidMarker()).toBe(marker)
 })
 
 test('invoice.paid acks when a qualifying invoice has no linked live user', async () => {
