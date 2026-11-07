@@ -2539,7 +2539,7 @@ export function supersedeStoredApiTokenAfterLogin(
 		deleted = false
 	}
 	if (!deleted) {
-		return `${envTokenNote}Warning: could not remove the stored ${label} (scopes: ${scopes}), so api, package, execute --local, context, daemon, and dev keep using it instead of this login. Run \`kody logout\` and log in again.\n`
+		return `${envTokenNote}Warning: could not remove the ${label} (scopes: ${scopes}), so api, package, execute --local, context, daemon, and dev keep using it instead of this login. Run \`kody logout\` and log in again.\n`
 	}
-	return `${envTokenNote}Removed the stored ${label} (scopes: ${scopes}); api, package, execute --local, context, daemon, and dev now use this login. Git pushes mint a new token from this login. To use a scoped token again, run \`${replaceStoredTokenCommand(stored.scopes)}\`.\n`
+	return `${envTokenNote}Removed the ${label} (scopes: ${scopes}); api, package, execute --local, context, daemon, and dev now use this login. Git pushes mint a new token from this login. To use a scoped token again, run \`${replaceStoredTokenCommand(stored.scopes)}\`.\n`
 }
