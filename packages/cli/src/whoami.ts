@@ -107,12 +107,12 @@ export async function runWhoami(input: {
 	const requestedOrgSlug = org ?? loginOrg ?? loginStoredOrg ?? null
 	// Prefer the server-reported workspace: org-bound tokens ignore a mismatched
 	// `--org` / login org hint, so local request flags are not authoritative.
-	const actingOrgSlug = identity.org?.slug ?? requestedOrgSlug
+	const serverOrgSlug = identity.org?.slug ?? null
+	const actingOrgSlug = serverOrgSlug ?? requestedOrgSlug
 	const actingOrgKind = identity.org?.kind ?? null
+	const workspaceVerified = serverOrgSlug !== null
 	const ignoredRequestedOrg =
-		requestedOrgSlug &&
-		identity.org?.slug &&
-		requestedOrgSlug !== identity.org.slug
+		requestedOrgSlug && serverOrgSlug && requestedOrgSlug !== serverOrgSlug
 			? requestedOrgSlug
 			: null
 	const sessionOrgSlug =
@@ -122,7 +122,7 @@ export async function runWhoami(input: {
 			? `search/cloud-execute session credential may still act in @${sessionOrgSlug} (distinct from this call credential's workspace).`
 			: null
 	const workspaceNote = actingOrgSlug
-		? `workspace: call credential acts in @${actingOrgSlug}${actingOrgKind ? ` (${actingOrgKind})` : ''}${ignoredRequestedOrg ? ` (server ignored requested @${ignoredRequestedOrg})` : ''}. Local execute is a compute venue, not a personal-workspace switch. Credentials cannot be moved between orgs — reconnect under the right workspace.`
+		? `workspace: call credential acts in @${actingOrgSlug}${actingOrgKind ? ` (${actingOrgKind})` : ''}${workspaceVerified ? '' : ' (local fallback; not server-confirmed)'}${ignoredRequestedOrg ? ` (server ignored requested @${ignoredRequestedOrg})` : ''}. Local execute is a compute venue, not a personal-workspace switch. Credentials cannot be moved between orgs — reconnect under the right workspace.`
 		: 'workspace: pass --org or set KODY_ORG (user-owned tokens default to your personal workspace when omitted). Local execute is a compute venue, not a personal-workspace switch. Credentials cannot be moved between orgs — reconnect under the right workspace.'
 	if (json) {
 		write(
@@ -139,19 +139,16 @@ export async function runWhoami(input: {
 					...(actingOrgSlug
 						? {
 								org: actingOrgSlug,
-								...(actingOrgKind || identity.org
-									? {
-											workspace: {
-												slug: actingOrgSlug,
-												...(actingOrgKind
-													? {
-															kind: actingOrgKind,
-															personal: actingOrgKind === 'personal',
-														}
-													: identity.org),
-											},
-										}
-									: {}),
+								workspace: {
+									slug: actingOrgSlug,
+									verified: workspaceVerified,
+									...(actingOrgKind
+										? {
+												kind: actingOrgKind,
+												personal: actingOrgKind === 'personal',
+											}
+										: {}),
+								},
 							}
 						: {}),
 					...(credential.source === 'login'
@@ -182,7 +179,7 @@ export async function runWhoami(input: {
 			`credential: ${describeCliCredential(credential)}${credential.source === 'login' ? '' : ` [${identity.token.id}]`}`,
 			...(actingOrgSlug
 				? [
-						`org: ${actingOrgSlug}${actingOrgKind ? ` (${actingOrgKind} workspace)` : ''}`,
+						`org: ${actingOrgSlug}${actingOrgKind ? ` (${actingOrgKind} workspace)` : ''}${workspaceVerified ? '' : ' (unverified local fallback)'}`,
 					]
 				: []),
 			`user: ${userLine}`,
