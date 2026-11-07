@@ -71,8 +71,15 @@ class RuntimeWorkerServiceEntrypoint
 	implements RuntimeWorkerServiceContract
 {
 	async fetch(request: Request): Promise<Response> {
+		const receivedAt = Date.now()
 		return runWithDynamicWorkerEvaluationBudget(
-			async () => await fetchRuntimeWorkerRequest(request, this.env, this.ctx),
+			async () =>
+				await fetchRuntimeWorkerRequest(
+					request,
+					this.env,
+					this.ctx,
+					receivedAt,
+				),
 		)
 	}
 
@@ -102,8 +109,10 @@ export type RuntimeWorkerService = RuntimeWorkerServiceEntrypoint
 
 const runtimeWorkerHandler = {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+		const receivedAt = Date.now()
 		return runWithDynamicWorkerEvaluationBudget(
-			async () => await fetchRuntimeWorkerRequest(request, env, ctx),
+			async () =>
+				await fetchRuntimeWorkerRequest(request, env, ctx, receivedAt),
 		)
 	},
 } satisfies ExportedHandler<Env>
@@ -112,6 +121,7 @@ async function fetchRuntimeWorkerRequest(
 	request: Request,
 	env: Env,
 	ctx: Pick<ExecutionContext, 'waitUntil'>,
+	receivedAt?: number,
 ) {
 	const url = new URL(request.url)
 
@@ -150,6 +160,7 @@ async function fetchRuntimeWorkerRequest(
 		request,
 		env,
 		ctx,
+		receivedAt === undefined ? undefined : { receivedAt },
 	)
 	if (packageAppOriginResponse) return packageAppOriginResponse
 
