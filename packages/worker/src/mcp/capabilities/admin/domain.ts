@@ -32,6 +32,7 @@ import { adminPackageCodemodOwnerNoticeCapability } from './admin-package-codemo
 import { adminPackageCodemodRevertCapability } from './admin-package-codemod-revert.ts'
 import { adminPackageCodemodScanCapability } from './admin-package-codemod-scan.ts'
 import { adminPackagePlacementFailuresCapability } from './admin-package-placement-failures.ts'
+import { adminPackageProvenanceCapability } from './admin-package-provenance.ts'
 import { adminPlatformOauthAppDeleteCapability } from './admin-platform-oauth-app-delete.ts'
 import { adminPlatformOauthAppListCapability } from './admin-platform-oauth-app-list.ts'
 import { adminPlatformOauthAppSaveCapability } from './admin-platform-oauth-app-save.ts'
@@ -198,6 +199,7 @@ export const adminDomain = defineDomain({
 		adminRunLogSqlBillingCapability,
 		adminWorkflowStoppedAttemptsCloseCapability,
 		adminPackagePlacementFailuresCapability,
+		adminPackageProvenanceCapability,
 		adminUserMeterStorageReconcileCapability,
 		adminMailboxMaintenanceCapability,
 		adminAccountWriteLeaseListCapability,
