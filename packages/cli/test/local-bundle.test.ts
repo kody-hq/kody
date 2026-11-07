@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { test } from 'node:test'
 import {
 	BundleError,
@@ -219,7 +220,7 @@ test('bundleLocalUserModule resolves nested dual-major node_modules like hosted 
 	const source = await bundleLocalUserModule(join(dir, 'src/index.ts'))
 	const bundlePath = join(dir, 'bundle.mjs')
 	writeFileSync(bundlePath, source)
-	const bundled = (await import(bundlePath)) as {
+	const bundled = (await import(pathToFileURL(bundlePath).href)) as {
 		default: () => Promise<unknown>
 	}
 	assert.deepEqual(await bundled.default(), dualMajorNodeModulesFixtureResult)
