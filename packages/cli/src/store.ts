@@ -7,8 +7,10 @@ import {
 } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
-import { Entry } from '@napi-rs/keyring'
-import { defaultMcpUrl, keyringService } from './defaults.js'
+import { defaultMcpUrl } from './defaults.js'
+import { createKeyringEntry } from './keyring-entry.js'
+
+export { secretServiceKeyringOptions } from './keyring-entry.js'
 
 /**
  * Per-org OAuth credentials used by login / MCP / local-execute Bearer.
@@ -66,11 +68,6 @@ export type SecretBackend = {
 	set(value: string): void
 	delete(): boolean
 }
-
-/** Linux-only: require Secret Service. Ignored on macOS and Windows. */
-export const secretServiceKeyringOptions = {
-	linux: { store: 'secret-service' },
-} as const
 
 export type StoreResolution = {
 	createKeyring?: (mcpUrl: string) => SecretBackend
@@ -130,11 +127,7 @@ export function createFileBackend(path: string): SecretBackend {
 }
 
 export function createKeyringBackend(mcpUrl: string): SecretBackend {
-	const entry = new Entry(
-		keyringService,
-		accountForMcpUrl(mcpUrl),
-		secretServiceKeyringOptions,
-	)
+	const entry = createKeyringEntry(accountForMcpUrl(mcpUrl))
 	return {
 		kind: 'keyring',
 		get() {

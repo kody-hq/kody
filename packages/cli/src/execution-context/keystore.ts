@@ -13,10 +13,8 @@ import {
 	writeFileSync,
 } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { Entry } from '@napi-rs/keyring'
 import { apiTokenFileStorePath } from '../api-token-store.js'
-import { keyringService } from '../defaults.js'
-import { secretServiceKeyringOptions } from '../store.js'
+import { createKeyringEntry } from '../keyring-entry.js'
 
 const contextKeyPassphraseEnvVar = 'KODY_CONTEXT_KEY_PASSPHRASE'
 
@@ -94,7 +92,7 @@ export function resolveWrappingKey(input: {
 	try {
 		entry = input.keyringFactory
 			? input.keyringFactory(account)
-			: new Entry(keyringService, account, secretServiceKeyringOptions)
+			: createKeyringEntry(account)
 	} catch {
 		throw noWrappingKeyError()
 	}

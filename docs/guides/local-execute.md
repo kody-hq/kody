@@ -219,7 +219,7 @@ still auth or permission — use the Failure section below. Two workarounds for
   local execute. See [Secrets](./secrets.md#scopes).
 - The module imports `kody:@…`. Keep `--local`.
 - Auth priority for `--local`: `--token` / `KODY_API_TOKEN`, then the stored API
-  token, then `kody login`. `kody whoami` reports the same credential.
-  `kody login` does not replace a stored API token; replace it with
-  `npx @kodycodes/cli auth bootstrap --lifetime short --scopes <list>` or clear
-  it with `kody logout`.
+  token, then `kody login`. `kody whoami` reports the same credential. An
+  explicit `kody login` deletes a leftover stored API token and says so; mint a
+  scoped one again with
+  `npx @kodycodes/cli auth bootstrap --lifetime short --scopes <list>`.
