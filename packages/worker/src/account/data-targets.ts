@@ -282,6 +282,15 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 	{ kind: 'user_id', table: 'credit_ledger_entries' },
 	{ kind: 'user_id', table: 'credit_wallets' },
 	{ kind: 'user_id', table: 'billing_promo_claims' },
+	// Plan transfers are the billing record for both orgs; only the
+	// requesting owner is anonymized.
+	{
+		kind: 'replace_user_column',
+		table: 'org_plan_transfers',
+		matchColumn: 'requested_by_user_id',
+		setColumn: 'requested_by_user_id',
+		value: 'deleted-user',
+	},
 	{
 		kind: 'user_columns',
 		table: 'referrals',

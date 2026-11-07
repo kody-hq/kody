@@ -22,6 +22,30 @@ export function AccountBillingSuccessPage({
 	billingPath: string
 	data: AccountBillingSuccessLoaderData
 }) {
+	if (data.planTransfer) {
+		const completed = data.planTransfer.status === 'completed'
+		return (
+			<section css={pageCss}>
+				<header css={pageHeaderCss}>
+					<h1 css={pageTitleCss}>
+						{completed ? 'Plan moved' : 'Finishing your plan move'}
+					</h1>
+					<p css={pageDescriptionCss}>
+						{completed
+							? 'Pro is active here. The other organization switched to Free and the unused value from its plan is now a credit on this organization. Nothing was deleted or moved between them.'
+							: 'Pro is active here. Kody is still switching the other organization to Free and crediting its unused value. This page and the billing page retry automatically.'}
+					</p>
+				</header>
+				<div css={cardCss}>
+					<div css={ctaRowCss}>
+						<SiteLink href={billingPath} css={primaryCtaCss}>
+							View billing
+						</SiteLink>
+					</div>
+				</div>
+			</section>
+		)
+	}
 	return (
 		<section css={pageCss}>
 			<header css={pageHeaderCss}>

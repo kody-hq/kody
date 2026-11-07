@@ -75,6 +75,12 @@ export const accountRetentionDispositions: ReadonlyArray<AccountRetentionDisposi
 				'Prepaid credit balances and wallet settings are current billing state removed only by account deletion.',
 		},
 		{
+			table: 'org_plan_transfers',
+			kind: 'durable_forever',
+			reason:
+				'Plan moves between orgs are the billing record for the Stripe credit note, cancellation, and customer balance credit; the requesting owner is anonymized on account deletion.',
+		},
+		{
 			table: 'credit_ledger_entries',
 			kind: 'durable_forever',
 			reason:

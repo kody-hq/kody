@@ -143,6 +143,7 @@ test('account deletion cancels Stripe billing before cleanup and keeps customer 
 			status: 'active',
 			cancel_at: null,
 			current_period_end: undefined,
+			currency: undefined,
 			metadata: undefined,
 			items: {
 				data: [

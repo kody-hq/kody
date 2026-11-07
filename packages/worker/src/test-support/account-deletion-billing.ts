@@ -11,6 +11,7 @@ export function stripeSubscription(
 		status,
 		cancel_at: null,
 		current_period_end: undefined,
+		currency: undefined,
 		// Kody ownership via metadata so deletion tests stay valid even when
 		// the stub env omits STRIPE_PRO_* price ids (shared-account filter).
 		metadata: { kody_plan: 'pro' },
