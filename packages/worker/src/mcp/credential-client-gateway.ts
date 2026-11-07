@@ -159,7 +159,9 @@ export function withCredentialClientHint(
 	const attribution =
 		response.status === 429
 			? `${provider} rate-limited this request (HTTP 429). This is a provider limit, not a Kody plan limit.`
-			: `${provider} rejected this credential (HTTP ${String(response.status)}). This is a provider auth failure, not a Kody plan limit.`
+			: response.status === 403
+				? `${provider} denied this request (HTTP 403). This may be auth, permissions, or a provider rate limit - not a Kody plan limit.`
+				: `${provider} rejected this credential (HTTP ${String(response.status)}). This is a provider auth failure, not a Kody plan limit.`
 	const headers = new Headers(response.headers)
 	headers.set(credentialClientHintHeaderName, shape)
 	headers.set(credentialProviderErrorHeaderName, attribution)

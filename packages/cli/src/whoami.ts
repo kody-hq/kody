@@ -104,14 +104,19 @@ export async function runWhoami(input: {
 	const shadowedLines = formatShadowedCredentials({ credential, session })
 	const loginStoredOrg =
 		credential.source === 'login' ? (credential.login?.org ?? null) : null
-	const actingOrgSlug =
-		org ?? loginOrg ?? loginStoredOrg ?? identity.org?.slug ?? null
-	const actingOrgKind =
-		identity.org && identity.org.slug === actingOrgSlug
-			? identity.org.kind
+	const requestedOrgSlug = org ?? loginOrg ?? loginStoredOrg ?? null
+	// Prefer the server-reported workspace: org-bound tokens ignore a mismatched
+	// `--org` / login org hint, so local request flags are not authoritative.
+	const actingOrgSlug = identity.org?.slug ?? requestedOrgSlug
+	const actingOrgKind = identity.org?.kind ?? null
+	const ignoredRequestedOrg =
+		requestedOrgSlug &&
+		identity.org?.slug &&
+		requestedOrgSlug !== identity.org.slug
+			? requestedOrgSlug
 			: null
 	const workspaceNote = actingOrgSlug
-		? `workspace: acts in @${actingOrgSlug}${actingOrgKind ? ` (${actingOrgKind})` : ''}. Local execute is a compute venue, not a personal-workspace switch. Credentials cannot be moved between orgs — reconnect under the right workspace.`
+		? `workspace: acts in @${actingOrgSlug}${actingOrgKind ? ` (${actingOrgKind})` : ''}${ignoredRequestedOrg ? ` (server ignored requested @${ignoredRequestedOrg})` : ''}. Local execute is a compute venue, not a personal-workspace switch. Credentials cannot be moved between orgs — reconnect under the right workspace.`
 		: 'workspace: pass --org or set KODY_ORG (user-owned tokens default to your personal workspace when omitted). Local execute is a compute venue, not a personal-workspace switch. Credentials cannot be moved between orgs — reconnect under the right workspace.'
 	if (json) {
 		write(

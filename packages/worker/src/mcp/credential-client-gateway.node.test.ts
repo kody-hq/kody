@@ -107,3 +107,14 @@ test('a 429 hint names the provider rate limit and keeps the inject shape', () =
 		'GitHub rate-limited this request (HTTP 429). This is a provider limit, not a Kody plan limit.',
 	)
 })
+
+test('a 403 hint stays neutral instead of blaming auth', () => {
+	const hinted = withCredentialClientHint(
+		new Response('forbidden', { status: 403 }),
+		'header Authorization Bearer',
+		{ providerLabel: 'GitHub' },
+	)
+	expect(hinted.headers.get('x-kody-provider-error')).toBe(
+		'GitHub denied this request (HTTP 403). This may be auth, permissions, or a provider rate limit - not a Kody plan limit.',
+	)
+})

@@ -23,6 +23,15 @@ test('connection trouble copy names the actor and keeps vendor items off the you
 	expect(rejected.why).toContain('not a Kody plan limit')
 	expect(rejected.why).toContain('Reconnect Google under the workspace')
 
+	const rateLimited = integrationAuthFailureCopy({
+		name: 'google',
+		reason: 'provider_rejected',
+		httpStatus: 429,
+	})
+	expect(rateLimited.why).toContain('rate-limited token refresh (HTTP 429)')
+	expect(rateLimited.why).toContain('not a Kody plan limit')
+	expect(rateLimited.why).not.toContain('Reconnect Google')
+
 	const outage = integrationAuthFailureCopy({
 		name: 'google',
 		accountLabel: 'kent@gmail.com',

@@ -147,6 +147,7 @@ export function integrationAuthFailureCopy(input: {
 		input.reason,
 		providerDetail,
 		providerLabel,
+		input.httpStatus ?? null,
 	)
 	return {
 		title,
@@ -229,11 +230,15 @@ function integrationAuthFailureWhy(
 	reason: Exclude<IntegrationAuthFailureReason, 'provider_unavailable'>,
 	providerDetail: string | null,
 	providerLabel: string,
+	httpStatus: number | null,
 ) {
 	switch (reason) {
 		case 'missing_refresh_token':
 			return `This ${providerLabel} sign-in expires, but Kody has no refresh token to renew it. Reconnect ${providerLabel} under the workspace that should own the connection.`
 		case 'provider_rejected':
+			if (httpStatus === 429) {
+				return `${providerLabel} rate-limited token refresh (HTTP 429). This is a provider limit, not a Kody plan limit. Wait and retry; reconnecting usually does not help.`
+			}
 			return providerDetail
 				? `${providerLabel} rejected the saved sign-in (${providerDetail}). This is a ${providerLabel} auth failure, not a Kody plan limit. Reconnect ${providerLabel} under the workspace that should own the connection.`
 				: `${providerLabel} rejected the saved sign-in. This is a ${providerLabel} auth failure, not a Kody plan limit. Reconnect ${providerLabel} under the workspace that should own the connection.`

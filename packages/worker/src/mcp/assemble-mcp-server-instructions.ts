@@ -22,9 +22,13 @@ export async function assembleMcpServerInstructionsForCaller(input: {
 	const request = input.callerContext.request
 	const slug = request?.org.slug?.trim()
 	if (!slug || !request) return base
-	const personal = await isPersonalOrg(input.env.APP_DB, request.org.id).catch(
-		() => false,
-	)
+	let personal: boolean
+	try {
+		personal = await isPersonalOrg(input.env.APP_DB, request.org.id)
+	} catch {
+		// Kind unknown: omit the note rather than guessing team.
+		return base
+	}
 	return `${base}
 
 ${workspaceScopeAgentNote({
