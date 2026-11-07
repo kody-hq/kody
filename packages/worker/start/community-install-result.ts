@@ -138,14 +138,28 @@ export async function resolveCommunityInstallResult(input: {
 	const pollMs = input.inProgressPollMs ?? LOST_ENVELOPE_IN_PROGRESS_WAIT_MS
 	const maxPolls =
 		input.maxInProgressPolls ?? LOST_ENVELOPE_IN_PROGRESS_MAX_POLLS
-	let live = await input.loadForkState()
+	let live: CommunityForkState
+	try {
+		live = await input.loadForkState()
+	} catch {
+		// Failed initial reconcile after a missing Start body — keep the
+		// lost-envelope path (UI holds/reconciles) instead of surfacing a
+		// generic read error that invites a duplicate fork.
+		throw new CommunityInstallLostEnvelopeError()
+	}
 	for (
 		let attempt = 0;
 		live.state === 'in_progress' && attempt < maxPolls;
 		attempt += 1
 	) {
 		await wait(pollMs)
-		live = await input.loadForkState()
+		try {
+			live = await input.loadForkState()
+		} catch {
+			// Already saw in_progress; a later poll failure must not reopen
+			// Fork as a hard error.
+			throw new CommunityInstallInProgressError()
+		}
 	}
 	if (live.state === 'installed' || live.state === 'adaptation_required') {
 		return communityInstallOutcomeFromLiveFork(live)

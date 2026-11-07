@@ -230,6 +230,7 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 		async function applyLiveForkState(
 			live: CommunityForkState,
 		): Promise<boolean> {
+			if (!isCurrent()) return true
 			if (listingId) seedForkState(listingId, targetOrg, live)
 			if (live.state === 'installed' || live.state === 'adaptation_required') {
 				setMessage(null)
@@ -280,6 +281,7 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 					const live = (await loadCommunityForkState({
 						data: { listingId, org: targetOrg },
 					})) as CommunityForkState
+					if (!isCurrent()) return
 					if (await applyLiveForkState(live)) return
 				} catch {
 					// Fall through to the notice.
@@ -310,6 +312,7 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 				)
 				return
 			}
+			if (!isCurrent()) return
 			if (await applyLiveForkState(live)) return
 			setMessage(
 				error instanceof Error

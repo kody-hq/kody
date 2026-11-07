@@ -130,3 +130,35 @@ test('resolveCommunityInstallResult signals a lost envelope when the fork never 
 		}),
 	).rejects.toBeInstanceOf(CommunityInstallLostEnvelopeError)
 })
+
+test('resolveCommunityInstallResult treats a failed initial live-state read as lost envelope', async () => {
+	await expect(
+		resolveCommunityInstallResult({
+			result: undefined,
+			loadForkState: async () => {
+				throw new Error('network down')
+			},
+		}),
+	).rejects.toBeInstanceOf(CommunityInstallLostEnvelopeError)
+})
+
+test('resolveCommunityInstallResult keeps in_progress when a later poll fails', async () => {
+	const loadForkState = vi
+		.fn()
+		.mockResolvedValueOnce({
+			state: 'in_progress' as const,
+			startedAt: '2026-11-06T21:15:00.000Z',
+		})
+		.mockRejectedValueOnce(new Error('transient'))
+	const waitMs = vi.fn(async () => {})
+	await expect(
+		resolveCommunityInstallResult({
+			result: undefined,
+			loadForkState,
+			waitMs,
+			inProgressPollMs: 1,
+			maxInProgressPolls: 2,
+		}),
+	).rejects.toBeInstanceOf(CommunityInstallInProgressError)
+	expect(loadForkState).toHaveBeenCalledTimes(2)
+})
