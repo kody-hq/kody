@@ -1,3 +1,4 @@
+import { grantedScopesSourceValues } from '#worker/integrations/granted-scopes.ts'
 import { normalizeProviderKey } from '@kody-internal/shared/url-hosts.ts'
 import { z } from 'zod'
 import {
@@ -96,6 +97,21 @@ export const integrationConfigSchema = z.object({
 	allowedPackageIds: z.array(z.string()).optional(),
 	/** Stable credential id for accessGrant. Output-only; save ignores it. */
 	credentialId: z.string().optional(),
+	/**
+	 * What the provider actually granted on the stored token, read back after
+	 * the last connect. `missing` were requested but not granted; `extra` were
+	 * granted but not requested. Absent until a connect records the grant.
+	 * Output-only; save ignores it.
+	 */
+	grantedScopes: z
+		.object({
+			scopes: z.array(z.string()),
+			source: z.enum(grantedScopesSourceValues),
+			checkedAt: z.string().min(1),
+			missing: z.array(z.string()),
+			extra: z.array(z.string()),
+		})
+		.optional(),
 	/** Last classified OAuth refresh outcome. Output-only; save ignores it. */
 	lastAuthFailure: z
 		.object({

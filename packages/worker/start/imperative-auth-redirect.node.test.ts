@@ -237,6 +237,7 @@ test('connection operations retain token results and propagate ordinary failures
 		accessTokenSaved: true,
 		refreshTokenSaved: false,
 		nextSteps: null,
+		scopeGrant: null,
 	})
 	state.exchange.mockRejectedValue(new Error('Provider unavailable'))
 	await expect(

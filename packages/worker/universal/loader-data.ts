@@ -2025,6 +2025,17 @@ export type AccountIntegrationListItem = {
 	allowedPackageIds?: Array<string>
 	/** Last classified OAuth refresh outcome. Absent when the sign-in is healthy. */
 	lastAuthFailure?: IntegrationAuthFailureView
+	/**
+	 * What the provider granted on the stored token, read back after the last
+	 * connect. Absent until a connect records it.
+	 */
+	grantedScopes?: {
+		scopes: Array<string>
+		source: 'github-x-oauth-scopes' | 'token-response'
+		checkedAt: string
+		missing: Array<string>
+		extra: Array<string>
+	}
 }
 
 type AccountOauthAppConnectionRef = {
