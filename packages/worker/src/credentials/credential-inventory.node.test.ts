@@ -188,6 +188,7 @@ test('the inventory counts every placeholder and attributes it to credential ids
 			failed: 1,
 			withPlaceholders: 2,
 			withSlots: 2,
+			withRequestPlacement: { body: 0, query: 2, path: 0, url: 0, any: 2 },
 		},
 		placeholders: {
 			secret: 5,

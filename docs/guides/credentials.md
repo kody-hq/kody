@@ -145,6 +145,13 @@ that build headers in a variable and header spreads — the scanner cannot see
 `headers-only` on those bags. Variable whole-`init` values (`fetch(url, init)`)
 are still skipped. The warning does not fail the check or block publish.
 
+Publish also warns when a fetch puts a credential placeholder in the request
+body, URL path, URL query, or whole URL. The warning lists each file, line, and
+credential name (never a value) and says to send the credential in a request
+header instead. It does not block publish today; one switch in the publish check
+(`secretPlaceholderRequestPlacementPublishMode`) turns it into a publish failure
+for authoring publishes.
+
 Each credential also stores an allowed **fill placement** (headers, optionally
 named; query; path; and/or body). New credentials default to headers-only. The
 per-request header **intersects** with that placement (it never widens it).

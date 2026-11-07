@@ -1434,6 +1434,42 @@ test('runRepoChecks warns when a fetch body is not opted out of secret resolutio
 	)
 })
 
+test('runRepoChecks warns, without failing, on credential placeholders in a fetch body or query', async () => {
+	const { result } = await runChecks(
+		packageFiles(
+			manifest('body-placeholder', {
+				credentials: {
+					apiKey: { kind: 'secret', description: 'API key.' },
+					clerkReviewUserId: { kind: 'secret', description: 'Account id.' },
+				},
+			}),
+			{
+				'src/index.ts': [
+					'export const ready = true',
+					'export async function post() {',
+					"  await fetch('https://api.example.com/reviews', {",
+					"    method: 'POST',",
+					'    headers: {',
+					"      Authorization: 'Bearer {{secret:apiKey}}',",
+					"      'x-kody-secret-resolution': 'on',",
+					'    },',
+					"    body: JSON.stringify({ userId: '{{secret:clerkReviewUserId}}' }),",
+					'  })',
+					'}',
+				].join('\n'),
+			},
+		),
+	)
+	expect(result.ok).toBe(true)
+	const check = findCheck(result, 'credentials')
+	expect(check?.ok).toBe(true)
+	expect(check?.message).toContain(
+		'- src/index.ts:9: secret "clerkReviewUserId" in the request body',
+	)
+	expect(check?.message).not.toContain('"apiKey"')
+	expect(check?.message).toContain('This does not block publish.')
+})
+
 test('runRepoChecks fails plain http credential fetches', async () => {
 	const { result } = await runChecks(
 		packageFiles(
