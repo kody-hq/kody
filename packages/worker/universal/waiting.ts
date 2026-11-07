@@ -112,6 +112,8 @@ export type WaitingIntegrationAuthSignal = {
 	accountLabel: string | null
 	lane: 'user' | 'platform'
 	reason: IntegrationAuthFailureReason
+	/** When set, copy can tell rate-limit 429 from auth rejection. */
+	httpStatus?: number | null
 }
 
 export type WaitingExpiredSecretSignal = {

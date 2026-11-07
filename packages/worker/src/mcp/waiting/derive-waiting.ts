@@ -380,6 +380,7 @@ function reconnectableIntegrationAuth(
 			accountLabel: joined.connection.accountLabel,
 			lane: joined.lane,
 			reason: failure.reason,
+			httpStatus: failure.httpStatus ?? null,
 		})
 	}
 	return items

@@ -115,8 +115,14 @@ export async function runWhoami(input: {
 		requestedOrgSlug !== identity.org.slug
 			? requestedOrgSlug
 			: null
+	const sessionOrgSlug =
+		session && session.source === 'login' ? (session.login?.org ?? null) : null
+	const sessionWorkspaceNote =
+		sessionOrgSlug && actingOrgSlug && sessionOrgSlug !== actingOrgSlug
+			? `search/cloud-execute session credential may still act in @${sessionOrgSlug} (distinct from this call credential's workspace).`
+			: null
 	const workspaceNote = actingOrgSlug
-		? `workspace: acts in @${actingOrgSlug}${actingOrgKind ? ` (${actingOrgKind})` : ''}${ignoredRequestedOrg ? ` (server ignored requested @${ignoredRequestedOrg})` : ''}. Local execute is a compute venue, not a personal-workspace switch. Credentials cannot be moved between orgs — reconnect under the right workspace.`
+		? `workspace: call credential acts in @${actingOrgSlug}${actingOrgKind ? ` (${actingOrgKind})` : ''}${ignoredRequestedOrg ? ` (server ignored requested @${ignoredRequestedOrg})` : ''}. Local execute is a compute venue, not a personal-workspace switch. Credentials cannot be moved between orgs — reconnect under the right workspace.`
 		: 'workspace: pass --org or set KODY_ORG (user-owned tokens default to your personal workspace when omitted). Local execute is a compute venue, not a personal-workspace switch. Credentials cannot be moved between orgs — reconnect under the right workspace.'
 	if (json) {
 		write(
@@ -153,7 +159,11 @@ export async function runWhoami(input: {
 						: {}),
 					token: identity.token,
 					user: identity.user,
-					notes: [...shadowedLines, workspaceNote],
+					notes: [
+						...shadowedLines,
+						workspaceNote,
+						...(sessionWorkspaceNote ? [sessionWorkspaceNote] : []),
+					],
 				},
 				null,
 				2,
@@ -180,6 +190,7 @@ export async function runWhoami(input: {
 			`expires: ${identity.token.expiresAt ?? 'unknown'}`,
 			...shadowedLines,
 			workspaceNote,
+			...(sessionWorkspaceNote ? [sessionWorkspaceNote] : []),
 			'',
 		].join('\n'),
 	)

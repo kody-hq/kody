@@ -878,6 +878,7 @@ async function persistAuthFailureRow(input: {
 		accountLabel: input.accountLabel,
 		lane: input.lane,
 		reason: input.reason,
+		httpStatus: input.httpStatus ?? null,
 	})
 	try {
 		await writeIntegrationAuthFailure({
