@@ -7,7 +7,7 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { beforeEach, expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
@@ -105,6 +105,18 @@ async function setup() {
 			name: 'annToken',
 		})
 	)[0]!
+	for (const [id, kodyId] of [
+		['pkg-a', 'alpha'],
+		['pkg-b', 'beta'],
+	] as const) {
+		await db
+			.prepare(
+				`INSERT INTO saved_packages (id, user_id, name, kody_id, description, source_id)
+				 VALUES (?, ?, ?, ?, '', ?)`,
+			)
+			.bind(id, personalOrgId, kodyId, kodyId, `src-${id}`)
+			.run()
+	}
 	const request = deriveRequestContext({
 		user: {
 			userId: personId,
@@ -127,29 +139,10 @@ async function setup() {
 	return { env, user, credentialId, personalOrgId }
 }
 
-beforeEach(() => {
+test('personal org credential detail keeps the list and local-reads pane', async () => {
 	mocks.detailError = null
 	mocks.localReadsError = null
-})
-
-test('personal org credential detail loads without throwing', async () => {
 	const t = await setup()
-	const page = await loadAccountCredentialsData({
-		env: t.env,
-		user: t.user,
-		selectedId: t.credentialId,
-	})
-	expect(page.ok).toBe(true)
-	expect(page.teamOrg).toBe(false)
-	expect(page.selected?.id).toBe(t.credentialId)
-	expect(page.selected?.grants).toEqual([])
-	expect(page.selectedLocalReads?.credentialId).toBe(t.credentialId)
-})
-
-test('personal org detail soft-fails when selected detail or local reads reject', async () => {
-	const t = await setup()
-	mocks.detailError = new Error('detail blew up')
-	mocks.localReadsError = new Error('local reads blew up')
 	const page = await loadAccountCredentialsData({
 		env: t.env,
 		user: t.user,
@@ -158,15 +151,58 @@ test('personal org detail soft-fails when selected detail or local reads reject'
 	expect(page.ok).toBe(true)
 	expect(page.teamOrg).toBe(false)
 	expect(page.credentials.some((item) => item.id === t.credentialId)).toBe(true)
+	expect(page.packages).toHaveLength(2)
+	expect(page.selected?.id).toBe(t.credentialId)
+	expect(page.selected?.placeholder).toBe('{{secret:annToken}}')
+	expect(page.selected?.grants).toEqual([])
+	expect(page.selected?.usageUnreadable).toBe(0)
+	expect(page.selectedLocalReads).toEqual(
+		expect.objectContaining({
+			credentialId: t.credentialId,
+			enabled: false,
+			canChange: true,
+			manageHref: null,
+		}),
+	)
+})
+
+test('personal org detail degrades selected sections when detail load rejects', async () => {
+	mocks.detailError = new Error('detail blew up')
+	mocks.localReadsError = null
+	const t = await setup()
+	const page = await loadAccountCredentialsData({
+		env: t.env,
+		user: t.user,
+		selectedId: t.credentialId,
+	})
+	expect(page.ok).toBe(true)
+	expect(page.credentials.some((item) => item.id === t.credentialId)).toBe(true)
 	expect(page.selected).toEqual({
 		id: t.credentialId,
 		placeholder: '{{secret:annToken}}',
 		grants: [],
 		usage: [],
 		usageTruncated: false,
-		usageUnreadable: 0, // no packages in the fixture
+		usageUnreadable: 2,
 		hostSettings: null,
 		fillPlacementObservation: null,
 	})
+	expect(page.selectedLocalReads).toEqual(
+		expect.objectContaining({ credentialId: t.credentialId, canChange: true }),
+	)
+})
+
+test('personal org detail keeps selected metadata when local reads reject', async () => {
+	mocks.detailError = null
+	mocks.localReadsError = new Error('local reads blew up')
+	const t = await setup()
+	const page = await loadAccountCredentialsData({
+		env: t.env,
+		user: t.user,
+		selectedId: t.credentialId,
+	})
+	expect(page.ok).toBe(true)
+	expect(page.selected?.id).toBe(t.credentialId)
+	expect(page.selected?.usageUnreadable).toBe(0)
 	expect(page.selectedLocalReads).toBeNull()
 })

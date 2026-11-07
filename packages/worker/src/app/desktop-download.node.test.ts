@@ -1,13 +1,16 @@
 import { expect, test } from 'vitest'
 import {
 	desktopAssetDownloadUrl,
-	desktopLatestReleaseApiUrl,
-	desktopReleasesLatestUrl,
 	detectDesktopDownloadTarget,
 	pickDesktopInstallerAsset,
 	versionFromDesktopReleaseTag,
 } from './desktop-download.ts'
 import { createDesktopDownloadHandler } from './handlers/desktop-download.ts'
+
+const latestReleasesPage =
+	'https://github.com/kody-hq/kody-desktop/releases/latest'
+const macArmDmgUrl =
+	'https://github.com/kody-hq/kody-desktop/releases/download/v0.1.26/Kody-0.1.26-mac-arm64.dmg'
 
 const macRelease = {
 	tag_name: 'v0.1.26',
@@ -84,12 +87,7 @@ test('picks tag-specific installer assets from the GitHub latest release', () =>
 			version: '0.1.26',
 			assetName: 'Kody-0.1.26-mac-arm64.dmg',
 		}),
-	).toBe(
-		'https://github.com/kody-hq/kody-desktop/releases/download/v0.1.26/Kody-0.1.26-mac-arm64.dmg',
-	)
-	expect(desktopLatestReleaseApiUrl).toContain(
-		'/repos/kody-hq/kody-desktop/releases/latest',
-	)
+	).toBe(macArmDmgUrl)
 })
 
 test('download handler redirects to the matched installer or the releases page', async () => {
@@ -101,19 +99,14 @@ test('download handler redirects to the matched installer or the releases page',
 		request: new Request('https://kody.codes/download?platform=mac&arch=arm64'),
 	})
 	expect(asset.status).toBe(302)
-	expect(asset.headers.get('Location')).toBe(
-		desktopAssetDownloadUrl({
-			version: '0.1.26',
-			assetName: 'Kody-0.1.26-mac-arm64.dmg',
-		}),
-	)
+	expect(asset.headers.get('Location')).toBe(macArmDmgUrl)
 	expect(asset.headers.get('Cache-Control')).toBe('private, max-age=300')
 	expect(asset.headers.get('X-Robots-Tag')).toBe('noindex, nofollow')
 
 	const page = await handler({
 		request: new Request('https://kody.codes/download?page=1'),
 	})
-	expect(page.headers.get('Location')).toBe(desktopReleasesLatestUrl)
+	expect(page.headers.get('Location')).toBe(latestReleasesPage)
 	expect(page.headers.get('Cache-Control')).toBe('private, no-store')
 
 	const unknown = await handler({
@@ -121,7 +114,7 @@ test('download handler redirects to the matched installer or the releases page',
 			headers: { 'user-agent': 'curl/8.0' },
 		}),
 	})
-	expect(unknown.headers.get('Location')).toBe(desktopReleasesLatestUrl)
+	expect(unknown.headers.get('Location')).toBe(latestReleasesPage)
 	expect(unknown.headers.get('Cache-Control')).toBe('private, no-store')
 
 	const missingAsset = createDesktopDownloadHandler({
@@ -133,6 +126,6 @@ test('download handler redirects to the matched installer or the releases page',
 	const missing = await missingAsset({
 		request: new Request('https://kody.codes/download?platform=win&arch=x64'),
 	})
-	expect(missing.headers.get('Location')).toBe(desktopReleasesLatestUrl)
+	expect(missing.headers.get('Location')).toBe(latestReleasesPage)
 	expect(missing.headers.get('Cache-Control')).toBe('private, no-store')
 })

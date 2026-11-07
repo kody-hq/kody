@@ -141,8 +141,7 @@ test('execute structured content passes strict client validation for all return 
 			conversationId: 'c1',
 			timing,
 			returnedBytes: 0,
-			error:
-				'Kody plan limit reached: your "free" plan allows at most 10 saved packages and you currently have 10.',
+			error: 'Plan limit reached.',
 			errorDetails: { kind: 'entitlement_limit_exceeded' },
 			entitlement: {
 				code: 'entitlement_limit_exceeded',
@@ -150,7 +149,7 @@ test('execute structured content passes strict client validation for all return 
 				plan: 'free',
 				limit: 10,
 				current: 10,
-				upgradeHint: 'upgrade your plan at /@<slug>/-/billing.',
+				upgradeHint: 'upgrade your plan.',
 			},
 			logs: [],
 			usage,

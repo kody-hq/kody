@@ -205,43 +205,40 @@ test('a granted personal credential by name needs every profile layer, like the 
 			credentialId: t.credentialId,
 			name: 'notes-key',
 			permission: 'secret:use',
-		}).then(
-			() => 'allowed',
-			(error: { code?: string; message?: string }) => error,
-		)
+		})
 
-	// Allowed before and after: the owner without a profile.
-	expect(await useAs({})).toBe('allowed')
-	expect(await useAs({ scopes: ['secret:use'] })).toBe('allowed')
-	// Allowed: every layer of the profile chain was granted Use.
-	expect(await useAs({ profileId: 'prf_granted' })).toBe('allowed')
-	expect(
-		await useAs({ profileId: 'prf_granted', scopes: ['secret:use'] }),
-	).toBe('allowed')
+	// Owner without a profile, and a chain where every layer has Use.
+	await expect(useAs({})).resolves.toBeUndefined()
+	await expect(useAs({ scopes: ['secret:use'] })).resolves.toBeUndefined()
+	await expect(useAs({ profileId: 'prf_granted' })).resolves.toBeUndefined()
+	await expect(
+		useAs({ profileId: 'prf_granted', scopes: ['secret:use'] }),
+	).resolves.toBeUndefined()
 
-	// Denied before and after.
-	expect(await useAs({ scopes: ['package:read'] })).toMatchObject({
+	await expect(useAs({ scopes: ['package:read'] })).rejects.toMatchObject({
 		code: 'credential_scope',
 	})
-	expect(await useAs({ person: 'bea' })).toMatchObject({
+	await expect(useAs({ person: 'bea' })).rejects.toMatchObject({
 		code: 'missing_permission',
 	})
-	expect(
-		await useAs({ person: 'bea', profileId: 'prf_granted' }),
-	).toMatchObject({ code: 'missing_permission' })
-	expect(
-		await useAs({ profileId: 'prf_granted', scopes: ['package:read'] }),
-	).toMatchObject({ code: 'credential_scope' })
+	await expect(
+		useAs({ person: 'bea', profileId: 'prf_granted' }),
+	).rejects.toMatchObject({ code: 'missing_permission' })
+	await expect(
+		useAs({ profileId: 'prf_granted', scopes: ['package:read'] }),
+	).rejects.toMatchObject({ code: 'credential_scope' })
 
-	// Newly denied: a profile chain without the grant.
-	const ungranted = await useAs({ profileId: 'prf_ungranted' })
-	expect(ungranted).toMatchObject({ code: 'profile_grant' })
-	expect((ungranted as Error).message).toContain('Profile "helper"')
-	expect(await useAs({ profileId: 'prf_parent_ungranted' })).toMatchObject({
+	await expect(useAs({ profileId: 'prf_ungranted' })).rejects.toMatchObject({
+		code: 'profile_grant',
+		message: expect.stringContaining('Profile "helper"'),
+	})
+	await expect(
+		useAs({ profileId: 'prf_parent_ungranted' }),
+	).rejects.toMatchObject({
 		code: 'profile_grant',
 		message: expect.stringContaining('Parent profile "agent"'),
 	})
-	expect(await useAs({ profileId: 'prf_inactive' })).toMatchObject({
+	await expect(useAs({ profileId: 'prf_inactive' })).rejects.toMatchObject({
 		code: 'profile_inactive',
 	})
 })
