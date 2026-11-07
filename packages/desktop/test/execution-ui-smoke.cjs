@@ -267,6 +267,8 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 			)
 			await page.addScriptTag({ content: bundled.outputFiles[0].text })
 		}
+		const stage = (id) =>
+			page.getByTestId('desktop-setup-stages').locator(`[data-stage="${id}"]`)
 		await mount(false)
 		await expect(
 			page.getByRole('heading', { name: 'This machine', exact: true }),
@@ -288,9 +290,10 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 		await page
 			.getByRole('button', { name: 'Set up this machine', exact: true })
 			.click()
-		await expect(page.getByTestId('desktop-setup-stages')).toContainText(
-			'Sign in as this person',
-		)
+		await expect(stage('sign-in')).toHaveAttribute('data-status', 'current')
+		await expect(stage('register')).toHaveAttribute('data-status', 'upcoming')
+		await expect(stage('runner')).toHaveAttribute('data-status', 'upcoming')
+		await expect(stage('attach')).toHaveCount(0)
 		for (const colorScheme of ['light', 'dark']) {
 			await page.emulateMedia({ colorScheme })
 			await page.screenshot({
@@ -305,9 +308,9 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 			.getByRole('button', { name: 'Continue in browser', exact: true })
 			.click()
 		await expect(page.getByLabel('Machine name')).toHaveValue('my-mac')
-		await expect(page.getByTestId('desktop-setup-stages')).toContainText(
-			'Register this device personally',
-		)
+		await expect(stage('sign-in')).toHaveAttribute('data-status', 'complete')
+		await expect(stage('register')).toHaveAttribute('data-status', 'current')
+		await expect(stage('attach')).toHaveCount(0)
 		for (const colorScheme of ['light', 'dark']) {
 			await page.emulateMedia({ colorScheme })
 			await page.screenshot({
@@ -499,15 +502,17 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 		await page
 			.getByRole('button', { name: 'Manage setup', exact: true })
 			.click()
-		await expect(page.getByTestId('desktop-setup-stages')).toContainText(
-			'Make available to @acme',
-		)
+		await expect(stage('sign-in')).toHaveAttribute('data-status', 'complete')
+		await expect(stage('register')).toHaveAttribute('data-status', 'complete')
+		await expect(stage('attach')).toHaveAttribute('data-status', 'current')
+		await expect(stage('runner')).toHaveAttribute('data-status', 'upcoming')
 		await page
 			.getByRole('button', { name: 'Resume setup', exact: true })
 			.click()
 		await expect(
 			page.getByRole('heading', { name: 'Make available to @acme' }),
 		).toBeVisible()
+		await expect(stage('attach')).toHaveAttribute('data-status', 'current')
 		await expect(page.getByLabel('Machine name')).toHaveCount(0)
 		await expect(page.getByRole('dialog')).toContainText(
 			'keeps its personal setup',
@@ -569,18 +574,21 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 		await page
 			.getByRole('button', { name: 'Set up this machine', exact: true })
 			.click()
-		await expect(page.getByTestId('desktop-setup-stages')).toContainText(
-			'Make available to @acme',
-		)
+		await expect(stage('sign-in')).toHaveAttribute('data-status', 'current')
+		await expect(stage('attach')).toHaveAttribute('data-status', 'upcoming')
 		await page
 			.getByRole('button', { name: 'Continue in browser', exact: true })
 			.click()
+		await expect(stage('sign-in')).toHaveAttribute('data-status', 'complete')
+		await expect(stage('register')).toHaveAttribute('data-status', 'current')
+		await expect(stage('attach')).toHaveAttribute('data-status', 'upcoming')
 		await page
 			.getByRole('button', { name: 'Register this device', exact: true })
 			.click()
 		await expect(
 			page.getByRole('heading', { name: 'Make available to @acme' }),
 		).toBeVisible()
+		await expect(stage('attach')).toHaveAttribute('data-status', 'current')
 		await page
 			.getByRole('button', { name: 'Make available to @acme', exact: true })
 			.click()
@@ -623,6 +631,8 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 		await expect(
 			page.getByRole('heading', { name: 'Register this device personally' }),
 		).toBeVisible()
+		await expect(stage('register')).toHaveAttribute('data-status', 'current')
+		await expect(stage('attach')).toHaveCount(0)
 		await page
 			.getByRole('button', { name: 'Enable this machine', exact: true })
 			.click()
@@ -663,6 +673,9 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 			.getByRole('dialog')
 			.getByRole('button', { name: 'Resume setup', exact: true })
 			.click()
+		await expect(stage('register')).toHaveAttribute('data-status', 'complete')
+		await expect(stage('runner')).toHaveAttribute('data-status', 'current')
+		await expect(stage('attach')).toHaveCount(0)
 		await page
 			.getByRole('button', { name: 'Enable this machine', exact: true })
 			.click()
@@ -699,6 +712,9 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 		await expect(
 			page.getByRole('heading', { name: 'Register this device personally' }),
 		).toBeVisible()
+		await expect(stage('register')).toHaveAttribute('data-status', 'complete')
+		await expect(stage('attach')).toHaveAttribute('data-status', 'complete')
+		await expect(stage('runner')).toHaveAttribute('data-status', 'current')
 		await page.getByRole('button', { name: 'Continue', exact: true }).click()
 		await expect(
 			page.getByRole('heading', {

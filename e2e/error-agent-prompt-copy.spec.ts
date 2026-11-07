@@ -25,24 +25,39 @@ async function renderedPromptText(page: Page) {
 		.evaluate((node) => node.textContent ?? '')
 }
 
-test('static error page Copy prompt copies the full rendered prompt', async ({
+async function replacePromptWithSentinel(page: Page) {
+	const sentinel = `copy-oracle-${crypto.randomUUID()}`
+	await page
+		.locator('[data-error-agent-prompt-text]')
+		.evaluate((node, text) => {
+			node.textContent = text
+		}, sentinel)
+	return sentinel
+}
+
+test('static error page Copy prompt copies the pre text, not a baked-in string', async ({
 	page,
 }) => {
 	await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
 	await openStaticErrorPage(page)
 
 	const prompt = await renderedPromptText(page)
-	expect(prompt).toContain(errorPath)
-	expect(prompt).toContain('internal_error')
+	expect(prompt).toContain(`Path: ${errorPath}`)
+	expect(prompt).toContain('Error code: internal_error')
+	expect(prompt).toContain('illustrated internal error')
+	expect(prompt).toContain('runList')
+	expect(prompt).toContain('guide:sentry_issues')
+
+	const sentinel = await replacePromptWithSentinel(page)
 	await page.getByRole('button', { name: 'Copy prompt', exact: true }).click()
 
-	await expect(
-		page.getByRole('button', { name: 'Copied', exact: true }),
-	).toBeVisible()
-	await expect(page.getByRole('status')).toHaveText(
-		'Copied prompt to clipboard',
+	await expect(page.locator('[data-error-agent-prompt-copy]')).toHaveAttribute(
+		'data-state',
+		'copied',
 	)
-	expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(prompt)
+	expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+		sentinel,
+	)
 	await expect(
 		page.getByRole('button', { name: 'Copy prompt', exact: true }),
 	).toBeVisible({ timeout: 5_000 })
@@ -60,17 +75,14 @@ test('static error page Copy prompt reports failure instead of Copied', async ({
 	})
 	await openStaticErrorPage(page)
 
-	const prompt = await renderedPromptText(page)
-	expect(prompt).toContain(errorPath)
+	const sentinel = await replacePromptWithSentinel(page)
 	await page.getByRole('button', { name: 'Copy prompt', exact: true }).click()
 
-	await expect(
-		page.getByRole('button', { name: 'Copy failed', exact: true }),
-	).toBeVisible()
-	await expect(page.getByRole('status')).toHaveText(
-		'Copy failed. The prompt is selected so you can copy it manually.',
+	await expect(page.locator('[data-error-agent-prompt-copy]')).toHaveAttribute(
+		'data-state',
+		'error',
 	)
 	expect(await page.evaluate(() => window.getSelection()?.toString())).toBe(
-		prompt,
+		sentinel,
 	)
 })
