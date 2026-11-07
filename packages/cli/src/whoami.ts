@@ -115,8 +115,15 @@ export async function runWhoami(input: {
 		requestedOrgSlug && serverOrgSlug && requestedOrgSlug !== serverOrgSlug
 			? requestedOrgSlug
 			: null
+	// Only warn when search/cloud-execute actually pick a different credential
+	// than this call. Same-source login still carries a stored org hint that
+	// org-bound tokens may ignore — that is already covered by ignoredRequestedOrg.
+	const distinctSessionCredential =
+		session != null && session.source !== credential.source
 	const sessionOrgSlug =
-		session && session.source === 'login' ? (session.login?.org ?? null) : null
+		distinctSessionCredential && session.source === 'login'
+			? (session.login?.org ?? null)
+			: null
 	const sessionWorkspaceNote =
 		sessionOrgSlug && actingOrgSlug && sessionOrgSlug !== actingOrgSlug
 			? `search/cloud-execute session credential may still act in @${sessionOrgSlug} (distinct from this call credential's workspace).`

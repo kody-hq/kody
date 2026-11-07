@@ -138,9 +138,16 @@ export const integrationSearchEntityPlugin = {
 			requiredHosts: match.requiredHosts,
 			clientId: match.clientId,
 			authorization: match.authorization ?? null,
-			nextStep: match.lastAuthFailure?.reconnectable
-				? `${match.lastAuthFailure.why} ${match.lastAuthFailure.doLabel} at ${match.lastAuthFailure.reconnectHref}.`
-				: `Inspect integration detail with search({ entity: "integration:${match.integrationName}" }), then smoke-test with createAuthenticatedFetch('${match.integrationName}'). Do not persist tokens with secretSet or secretSetMany.`,
+			nextStep: (() => {
+				const failure = match.lastAuthFailure
+				if (!failure) {
+					return `Inspect integration detail with search({ entity: "integration:${match.integrationName}" }), then smoke-test with createAuthenticatedFetch('${match.integrationName}'). Do not persist tokens with secretSet or secretSetMany.`
+				}
+				if (failure.reconnectable) {
+					return `${failure.why} ${failure.doLabel} at ${failure.reconnectHref}.`
+				}
+				return `${failure.why} ${failure.doLabel} at ${failure.accountHref}.`
+			})(),
 		}
 	},
 	formatEntityDetail(detail) {
@@ -172,15 +179,18 @@ export const integrationSearchEntityPlugin = {
 			`- Client ID: \`${detail.config.clientId}\``,
 			`- Access and refresh tokens live on this connection. Call \`createAuthenticatedFetch('${detail.config.name}')\` or \`integrationTokenRefresh\`. Do not read or write them with \`secretSet\`, \`secretSetMany\`, or \`secretList\`.`,
 		]
-		if (detail.config.lastAuthFailure?.reconnectable) {
+		if (detail.config.lastAuthFailure) {
 			const failure = detail.config.lastAuthFailure
+			const href = failure.reconnectable
+				? failure.reconnectHref
+				: failure.accountHref
 			lines.push(
 				'',
-				'## Needs you',
+				failure.reconnectable ? '## Needs you' : '## Connection trouble',
 				'',
 				escapeMarkdownText(failure.why),
 				'',
-				`${escapeMarkdownText(failure.doLabel)} at ${formatMarkdownInlineCode(failure.reconnectHref)}.`,
+				`${escapeMarkdownText(failure.doLabel)} at ${formatMarkdownInlineCode(href)}.`,
 			)
 		}
 		if (authorization) {
