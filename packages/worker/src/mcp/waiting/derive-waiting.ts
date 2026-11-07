@@ -381,6 +381,7 @@ function reconnectableIntegrationAuth(
 			lane: joined.lane,
 			reason: failure.reason,
 			httpStatus: failure.httpStatus ?? null,
+			provider: joined.app.provider,
 		})
 	}
 	return items

@@ -102,6 +102,12 @@ export function integrationAuthFailureCopy(input: {
 	providerError?: string | null
 	providerErrorDescription?: string | null
 	httpStatus?: number | null
+	/**
+	 * OAuth app provider slug when it differs from the connection `name`
+	 * (custom connections). Used only in failure attribution copy; titles and
+	 * reconnect links still use `name`.
+	 */
+	provider?: string | null
 	/** Team org that owns the connection; omit for the personal org. */
 	orgSlug?: string | null
 }): ConnectionTroubleCopy {
@@ -117,7 +123,8 @@ export function integrationAuthFailureCopy(input: {
 		input.providerErrorDescription,
 	)
 
-	const providerLabel = humanizeConnectionName(input.name)
+	const providerSlug = input.provider?.trim() || input.name
+	const providerLabel = humanizeConnectionName(providerSlug)
 
 	if (input.reason === 'provider_unavailable') {
 		const status =
@@ -186,6 +193,8 @@ export function toIntegrationAuthFailureView(input: {
 	providerError?: string | null
 	providerErrorDescription?: string | null
 	httpStatus?: number | null
+	/** OAuth app provider when it differs from the connection name. */
+	provider?: string | null
 	/** Team org that owns the connection; omit for the personal org. */
 	orgSlug?: string | null
 }): IntegrationAuthFailureView {

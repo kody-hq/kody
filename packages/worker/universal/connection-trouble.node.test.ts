@@ -23,6 +23,16 @@ test('connection trouble copy names the actor and keeps vendor items off the you
 	expect(rejected.why).toContain('not a Kody plan limit')
 	expect(rejected.why).toContain('Reconnect Google under the workspace')
 
+	const customNamed = integrationAuthFailureCopy({
+		name: 'solo-app',
+		provider: 'google',
+		reason: 'provider_rejected',
+		providerError: 'invalid_grant',
+	})
+	expect(customNamed.title).toContain('Solo App')
+	expect(customNamed.why).toContain('Google rejected the saved sign-in')
+	expect(customNamed.href).toBe('/connect/oauth?provider=solo-app')
+
 	const rateLimited = integrationAuthFailureCopy({
 		name: 'google',
 		reason: 'provider_rejected',

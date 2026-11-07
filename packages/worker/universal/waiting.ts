@@ -114,6 +114,8 @@ export type WaitingIntegrationAuthSignal = {
 	reason: IntegrationAuthFailureReason
 	/** When set, copy can tell rate-limit 429 from auth rejection. */
 	httpStatus?: number | null
+	/** OAuth app provider when it differs from the connection name. */
+	provider?: string | null
 }
 
 export type WaitingExpiredSecretSignal = {

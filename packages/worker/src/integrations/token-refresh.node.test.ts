@@ -354,6 +354,40 @@ test('provider HTTP status classifies refresh failures as caller errors or Sentr
 	}
 })
 
+test('provider HTTP 429 persists non-reconnectable without emitting auth.failed', async () => {
+	const { env } = createHarness()
+	const userId = ownerIdFromStored('user-google-provider-429')
+	await seedPlatformConnection(env, userId, 'google')
+	const fetchMock = vi
+		.fn()
+		.mockResolvedValueOnce(
+			jsonResponse({ error: 'temporarily_unavailable' }, 429),
+		)
+	vi.stubGlobal('fetch', fetchMock)
+	try {
+		const waitUntil = vi.fn()
+		await expect(
+			refreshIntegrationTokens({ env, userId, name: 'google', waitUntil }),
+		).rejects.toSatisfy(
+			(error: unknown) =>
+				error instanceof IntegrationTokenRefreshCallerError &&
+				error.reason === 'provider_rejected' &&
+				error.httpStatus === 429 &&
+				error.message.includes('Wait and retry') &&
+				!error.message.includes('Reconnect at'),
+		)
+		expect(waitUntil).not.toHaveBeenCalled()
+		expect(failedEvents).not.toHaveBeenCalled()
+		expect(await readAuthFailure(env, userId, 'google')).toMatchObject({
+			auth_failed_reason: 'provider_rejected',
+			auth_failed_reconnectable: 0,
+			auth_failed_http_status: 429,
+		})
+	} finally {
+		vi.unstubAllGlobals()
+	}
+})
+
 test('user-lane refresh resolves the ciphertext client secret and enforces required hosts', async () => {
 	const { env } = createHarness()
 	const userId = ownerIdFromStored('user-lane-refresh')
