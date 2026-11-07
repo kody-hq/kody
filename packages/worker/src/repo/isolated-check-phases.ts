@@ -267,7 +267,7 @@ export function authoringChecksResourceLimitMessage(
 			'the same limits, so it is likely to fail the same way. ' +
 			resourceLimitVarianceNote,
 		repoCheckStepResourceLimitAdvice(step),
-		formatPublishSizeHints(sizeHints),
+		formatPublishSizeHints(sizeHints, step),
 	]
 		.filter(Boolean)
 		.join(' ')
