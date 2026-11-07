@@ -437,6 +437,14 @@ async function handleInvoicePaid(input: {
 		return
 	}
 
+	await input.env.APP_DB.prepare(
+		`UPDATE orgs
+		 SET referral_first_paid_at = COALESCE(referral_first_paid_at, ?)
+		 WHERE id = ?`,
+	)
+		.bind((input.now ?? new Date()).toISOString(), user.stable_user_id)
+		.run()
+
 	const pending = await input.env.APP_DB.prepare(
 		`SELECT referrer_stable_user_id
 		 FROM referrals

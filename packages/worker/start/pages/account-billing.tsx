@@ -36,6 +36,7 @@ import {
 	billingCheckoutMutationOptions,
 	billingPortalMutationOptions,
 } from '../billing-checkout.ts'
+import { ReferredByPanel } from './account-billing-referred-by.tsx'
 
 import {
 	colors,
@@ -454,7 +455,7 @@ export function AccountBillingPage({
 					{billing.referralProgram ? (
 						<AccountManagementPanel
 							title="Refer a friend"
-							description="Share your link. When someone new creates an account, verifies their email, and pays their first invoice, you both get one month of Pro. There is no cap."
+							description="Share your link. When someone signs up with it, or an existing Free user adds you under Referred by before their first payment, you both get one month of Pro once they verify their email and pay their first invoice. There is no cap."
 						>
 							<div
 								css={{
@@ -545,7 +546,7 @@ export function AccountBillingPage({
 														'earned you a month'
 													)
 												) : (
-													'signed up and has not paid yet'
+													'is referred and has not paid yet'
 												)}
 											</li>
 										))}
@@ -555,6 +556,13 @@ export function AccountBillingPage({
 								)}
 							</div>
 						</AccountManagementPanel>
+					) : null}
+
+					{billing.referralProgram ? (
+						<ReferredByPanel
+							orgSlug={payload.org.slug}
+							referredBy={billing.referralProgram.referredBy}
+						/>
 					) : null}
 
 					{billing.cancelAt ? (

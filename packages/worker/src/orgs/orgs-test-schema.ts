@@ -22,6 +22,7 @@ export async function ensureOrgsTestSchema(db: D1Database) {
 				second_agent_standard_gift_granted_at TEXT,
 				second_agent_standard_gift_expires_at TEXT,
 				referral_standard_credit_expires_at TEXT,
+				referral_first_paid_at TEXT,
 				signup_welcome_credits_pending INTEGER NOT NULL DEFAULT 0,
 				email_outbound_paused_at TEXT,
 				email_outbound_delivery_paused_at TEXT,
