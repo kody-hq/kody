@@ -440,7 +440,7 @@ async function handleInvoicePaid(input: {
 	await input.env.APP_DB.prepare(
 		`UPDATE orgs
 		 SET referral_first_paid_at = COALESCE(referral_first_paid_at, ?)
-		 WHERE id = ?`,
+		 WHERE id = ? AND deleted_at IS NULL`,
 	)
 		.bind((input.now ?? new Date()).toISOString(), user.stable_user_id)
 		.run()
