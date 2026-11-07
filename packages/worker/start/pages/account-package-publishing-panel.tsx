@@ -8,7 +8,12 @@ import {
 	getAccentCalloutCss,
 	getPillButtonCss,
 } from '#universal/styles/style-primitives.ts'
-import { colors, spacing, typography } from '#universal/styles/tokens.ts'
+import {
+	colors,
+	radius,
+	spacing,
+	typography,
+} from '#universal/styles/tokens.ts'
 import type { AccountPackageDetail } from '#universal/loader-data.ts'
 
 function hasUnpublishedPackageCommit(packageDetail: AccountPackageDetail) {
@@ -29,7 +34,7 @@ function liveVersionLabel(packageDetail: AccountPackageDetail) {
 	return null
 }
 
-function visibilityAudienceCopy(packageDetail: AccountPackageDetail) {
+export function visibilityAudienceCopy(packageDetail: AccountPackageDetail) {
 	if (!packageDetail.isPrivate) {
 		return 'Anyone can see it on the community'
 	}
@@ -64,17 +69,34 @@ function primaryPublishLabel(packageDetail: AccountPackageDetail) {
 	return 'Publish HEAD'
 }
 
+export function commitApproveHref(approveHref: string, commit: string) {
+	return `${approveHref}?commit=${encodeURIComponent(commit)}`
+}
+
+function unpublishedCommitCountCopy(packageDetail: AccountPackageDetail) {
+	if (!hasUnpublishedPackageCommit(packageDetail)) return null
+	const list = packageDetail.unpublishedCommits
+	if (!list || list.commits.length === 0) return null
+	const count = list.commits.length
+	if (list.truncated) return `More than ${count} commits not yet published`
+	return `${count} commit${count === 1 ? '' : 's'} not yet published`
+}
+
 /**
- * One publishing panel for package settings: what is live, what is newer, and
- * a single primary publish/promote action (plus lock / empty states).
+ * Public release: what is live, what is newer, a commit picker into the
+ * approve flow, and a single primary publish/promote action (plus lock /
+ * empty states).
  */
 export function PackagePublishingPanel(input: {
 	ownerUsername: string
 	packageDetail: AccountPackageDetail
+	headingId?: string
 }): ReactNode {
 	const { packageDetail, ownerUsername } = input
+	const headingId = input.headingId ?? 'package-public-release-heading'
 	const liveVersion = liveVersionLabel(packageDetail)
-	const newer = newerChangesCopy(packageDetail)
+	const commitCount = unpublishedCommitCountCopy(packageDetail)
+	const newer = commitCount ?? newerChangesCopy(packageDetail)
 	const approveHref = routes.communityPackageApprovePublish.href({
 		username: ownerUsername,
 		kodyId: packageDetail.kodyId,
@@ -85,34 +107,51 @@ export function PackagePublishingPanel(input: {
 	const emptyState =
 		packageDetail.pendingCommitKnown &&
 		!hasUnpublishedPackageCommit(packageDetail)
+	const pickerCommits = hasUnpublishedPackageCommit(packageDetail)
+		? (packageDetail.unpublishedCommits?.commits ?? [])
+		: []
 
 	return (
 		<section
 			data-testid="package-publishing-panel"
+			aria-labelledby={headingId}
 			css={css({
 				...getAccentCalloutCss(),
 				display: 'grid',
 				gap: spacing.sm,
+				minWidth: 0,
 			})}
 		>
 			<div css={css({ display: 'grid', gap: spacing.xs })}>
-				<h3
-					css={css({
-						margin: 0,
-						fontSize: typography.fontSize.base,
-						fontWeight: typography.fontWeight.semibold,
-						color: colors.text,
-					})}
-				>
-					Publishing
+				<h3 id={headingId} css={headingCss}>
+					Public release
 				</h3>
+				<p
+					css={css({ margin: 0, color: colors.textMuted })}
+					data-testid="package-public-release-intro"
+				>
+					Choose which version of this package is live.
+				</p>
+			</div>
+			<div css={css({ display: 'grid', gap: spacing.xs })}>
 				<p
 					css={css({ margin: 0, color: colors.text })}
 					data-testid="package-publishing-live"
 				>
-					{liveVersion
-						? `Live: ${liveVersion}. ${visibilityAudienceCopy(packageDetail)}.`
-						: `Nothing published yet. ${visibilityAudienceCopy(packageDetail)}.`}
+					{liveVersion ? `Live: ${liveVersion}.` : 'Nothing published yet.'}
+					{packageDetail.publishedCommit ? (
+						<>
+							{' '}
+							Published commit{' '}
+							<code
+								data-testid="package-published-commit"
+								title={packageDetail.publishedCommit}
+							>
+								{shortCommunityCommit(packageDetail.publishedCommit)}
+							</code>
+							.
+						</>
+					) : null}
 				</p>
 				{newer ? (
 					<p
@@ -168,17 +207,111 @@ export function PackagePublishingPanel(input: {
 					{primaryPublishLabel(packageDetail)}
 				</SiteLink>
 			</div>
+			{pickerCommits.length > 0 ? (
+				<details data-testid="package-release-commit-picker" css={pickerCss}>
+					<summary>Choose a commit to approve</summary>
+					<ol css={pickerListCss}>
+						{pickerCommits.map((commit, index) => (
+							<li key={commit.commit}>
+								<SiteLink
+									href={commitApproveHref(approveHref, commit.commit)}
+									data-testid="package-release-commit-option"
+									data-commit={commit.commit}
+									css={pickerLinkCss}
+								>
+									<code>{shortCommunityCommit(commit.commit)}</code>
+									<span css={pickerSubjectCss}>
+										{commit.subject || '(no message)'}
+									</span>
+									{index === 0 ? <span css={pickerTagCss}>HEAD</span> : null}
+								</SiteLink>
+							</li>
+						))}
+					</ol>
+					{packageDetail.unpublishedCommits?.truncated ? (
+						<p
+							css={css({
+								margin: 0,
+								color: colors.textMuted,
+								fontSize: typography.fontSize.sm,
+							})}
+						>
+							Showing the newest {pickerCommits.length}.
+						</p>
+					) : null}
+				</details>
+			) : null}
 			<p
 				css={css({
 					margin: 0,
 					color: colors.textMuted,
 					fontSize: typography.fontSize.sm,
 				})}
+				data-testid="package-public-release-lock"
 			>
 				{packageDetail.lockedAt
-					? 'This package is locked. Agents cannot publish without your approval.'
-					: 'Publishes are unlocked. Click the lock icon above so agents cannot publish without your approval.'}
+					? 'Publish lock is on. Agents cannot publish without your approval.'
+					: 'Publish lock is off. Click the lock icon above so agents cannot publish without your approval.'}
 			</p>
 		</section>
 	)
 }
+
+const headingCss = css({
+	margin: 0,
+	fontSize: typography.fontSize.base,
+	fontWeight: typography.fontWeight.semibold,
+	color: colors.text,
+})
+
+const pickerCss = css({
+	display: 'grid',
+	gap: spacing.xs,
+	minWidth: 0,
+	'& > summary': {
+		cursor: 'pointer',
+		color: colors.primaryText,
+		fontSize: typography.fontSize.sm,
+		fontWeight: typography.fontWeight.semibold,
+	},
+})
+
+const pickerListCss = css({
+	listStyle: 'none',
+	margin: 0,
+	padding: 0,
+	display: 'grid',
+	gap: spacing.xs,
+	maxHeight: '16rem',
+	overflowY: 'auto',
+})
+
+const pickerLinkCss = css({
+	display: 'flex',
+	alignItems: 'baseline',
+	gap: spacing.sm,
+	minWidth: 0,
+	padding: `${spacing.xs} ${spacing.sm}`,
+	borderRadius: radius.md,
+	border: `1px solid ${colors.border}`,
+	backgroundColor: colors.surface,
+	color: colors.text,
+	textDecoration: 'none',
+	'&:hover': { borderColor: colors.primaryText },
+	'& code': { color: colors.primaryText, flexShrink: 0 },
+})
+
+const pickerSubjectCss = css({
+	minWidth: 0,
+	overflow: 'hidden',
+	textOverflow: 'ellipsis',
+	whiteSpace: 'nowrap',
+	flex: 1,
+})
+
+const pickerTagCss = css({
+	flexShrink: 0,
+	color: colors.textMuted,
+	fontSize: typography.fontSize.xs,
+	fontWeight: typography.fontWeight.semibold,
+})

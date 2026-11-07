@@ -2287,6 +2287,30 @@ export type AccountPackageCommunityFork = {
 	adoptionNote: string | null
 }
 
+export type AccountPackageUnpublishedCommit = {
+	commit: string
+	subject: string
+	authoredAt: string | null
+}
+
+export type AccountPackageUnpublishedCommits = {
+	commits: Array<AccountPackageUnpublishedCommit>
+	/** True when more commits are waiting than `commits` lists. */
+	truncated: boolean
+}
+
+export type AccountPackageAnonymousVisitorExposureItem = {
+	kind: 'credential' | 'connector'
+	/** Credential name or `mcp:<server>:<tool>`; never a secret value. */
+	name: string
+	/** Need key or hosts, for context. */
+	detail: string | null
+}
+
+export type AccountPackageAnonymousVisitorExposure =
+	| { known: true; items: Array<AccountPackageAnonymousVisitorExposureItem> }
+	| { known: false }
+
 export type AccountPackageDetail = AccountPackageListItem & {
 	searchText: string | null
 	exports: Array<string> | null
@@ -2332,6 +2356,18 @@ export type AccountPackageDetail = AccountPackageListItem & {
 	 * publishes are owner-only unless a grant allows them (manager view only).
 	 */
 	unmappableCredentialsNotice?: string
+	/**
+	 * Commits on HEAD newer than `publishedCommit`, newest first, for the
+	 * Public release commit picker (owner view). Absent when nothing is
+	 * pending or the commit history could not be read.
+	 */
+	unpublishedCommits?: AccountPackageUnpublishedCommits
+	/**
+	 * What anonymous visitors would use as the owner if the app went
+	 * internet-visible (owner view, only while it is not). Absent when not
+	 * checked; `known: false` when the check failed.
+	 */
+	anonymousVisitorExposure?: AccountPackageAnonymousVisitorExposure
 	/**
 	 * Capabilities the published version may call without declaring them,
 	 * which the next publish must add to `kody.app.capabilities` (owner view
