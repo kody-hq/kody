@@ -514,14 +514,14 @@ export function isReadOnlyStorageSqlQuery(query: string) {
 	)
 }
 
-const idempotentStorageSqlDdlPattern =
-	/^create\s+(?:unique\s+)?(?:table|index)\s+if\s+not\s+exists\b/
+const idempotentStorageSqlDdlPattern = /^create\s+table\s+if\s+not\s+exists\b/
 
 /**
- * True for a single `CREATE TABLE|INDEX … IF NOT EXISTS` without a
- * `SELECT` (so never `CREATE TABLE … AS SELECT`). Package apps run these on
- * every new isolate; they add only schema bytes, so they skip the
- * storage-byte entitlement baseline. Later writes are still metered.
+ * True for a single `CREATE TABLE … IF NOT EXISTS` without a `SELECT` (so
+ * never `CREATE TABLE … AS SELECT`). Package apps run these on every new
+ * isolate; a new table starts empty and adds only schema bytes, so they skip
+ * the storage-byte entitlement baseline. Later writes are still metered.
+ * `CREATE INDEX` is excluded: on a populated table it materializes rows.
  */
 export function isIdempotentStorageSqlDdl(query: string) {
 	const trimmed = query.trim()

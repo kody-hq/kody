@@ -355,19 +355,21 @@ test('entitlement run cache drops a rejected baseline so later writes retry', as
 	expect(cache.reservedBytes).toBe(1)
 })
 
-test('only single CREATE TABLE|INDEX IF NOT EXISTS without SELECT skips the write entitlement', async () => {
+test('only a single CREATE TABLE IF NOT EXISTS without SELECT skips the write entitlement', async () => {
 	const { isIdempotentStorageSqlDdl, storageSqlNeedsWriteEntitlement } =
 		await import('./storage-runner.ts')
 	for (const query of [
 		'CREATE TABLE IF NOT EXISTS skills (id TEXT)',
-		'  create unique index if not exists skills_id on skills (id)',
-		'create index if not exists by_name on notes (name)',
+		'  create table if not exists notes (name text)',
 	]) {
 		expect(isIdempotentStorageSqlDdl(query)).toBe(true)
 		expect(storageSqlNeedsWriteEntitlement(query)).toBe(false)
 	}
 	for (const query of [
 		'CREATE TABLE skills (id TEXT)',
+		// A new index on a populated table materializes its rows.
+		'create index if not exists by_name on notes (name)',
+		'CREATE UNIQUE INDEX IF NOT EXISTS skills_id ON skills (id)',
 		'CREATE TABLE IF NOT EXISTS copy AS SELECT * FROM skills',
 		'CREATE TABLE IF NOT EXISTS a (id TEXT); INSERT INTO a VALUES (1)',
 		'CREATE TRIGGER IF NOT EXISTS t AFTER INSERT ON a BEGIN SELECT 1; END',
