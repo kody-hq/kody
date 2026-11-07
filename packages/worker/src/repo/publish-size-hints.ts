@@ -1,5 +1,6 @@
 import { shouldStoreArtifactBlobAsLatin1 } from '#universal/package-file-media.ts'
 import { requiredPackageDocNames } from './required-package-docs.ts'
+import type { RepoCheckStep } from './isolated-runner-limit-message.ts'
 import { kodyIgnoreFileName, omitKodyIgnoredFiles } from './kodyignore.ts'
 
 export type LargePathHint = { path: string; bytes: number }
@@ -201,16 +202,35 @@ export function publishSizeHints(input: {
 	}
 }
 
-/** Sentences naming what drove the limit, or '' when nothing is known. */
-export function formatPublishSizeHints(hints: PublishSizeHints | null) {
+/**
+ * Steps that bundle (or could have, when the step is unknown). The other
+ * steps read source text only, so naming npm dependencies or the runtime
+ * import graph there blames work that never ran.
+ */
+function stepBundles(step: RepoCheckStep | null) {
+	return step === null || step === 'bundle' || step === 'rebuild'
+}
+
+function stepReadsRuntimeGraph(step: RepoCheckStep | null) {
+	return stepBundles(step) || step === 'typecheck'
+}
+
+/**
+ * Sentences naming what drove the limit at `step`, or '' when nothing is
+ * known. Pass `null` only when the step is unknown.
+ */
+export function formatPublishSizeHints(
+	hints: PublishSizeHints | null,
+	step: RepoCheckStep | null = null,
+) {
 	if (!hints) return ''
 	const parts: Array<string> = []
-	if (hints.runtime.fileCount > 0) {
+	if (hints.runtime.fileCount > 0 && stepReadsRuntimeGraph(step)) {
 		parts.push(
 			`Runtime code reachable from the entry points: ${hints.runtime.fileCount} file(s), ${formatBytes(hints.runtime.bytes)}; the largest are ${formatHintList(hints.runtime.largest)}.`,
 		)
 	}
-	if (hints.npmDependencies.length > 0) {
+	if (hints.npmDependencies.length > 0 && stepBundles(step)) {
 		const shown = hints.npmDependencies.slice(0, 10)
 		const more = hints.npmDependencies.length - shown.length
 		parts.push(

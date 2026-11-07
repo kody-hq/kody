@@ -168,7 +168,7 @@ test('every publish work step runs on its own fresh throwaway isolate', async ()
 	).toBeNull()
 })
 
-test('a compute-limit error names the runtime inputs and large files runtime code does not import', async () => {
+test('a credential-step compute-limit error names large ignorable files, not the runtime graph', async () => {
 	const fake = createFakeNamespace(async () => {
 		throw new Error(
 			"Durable Object's isolate exceeded its memory limit and was reset.",
@@ -205,7 +205,9 @@ test('a compute-limit error names the runtime inputs and large files runtime cod
 	expect((error as Error).message).toContain('the credential stamp scan')
 	expect((error as Error).message).toContain('`scripts/generate.ts`')
 	expect((error as Error).message).toContain('`.kodyignore`')
-	expect((error as Error).message).toContain('`src/index.ts`')
+	// The credential scan reads source text and never bundles, so the
+	// runtime import graph is not what it ran out on.
+	expect((error as Error).message).not.toContain('Runtime code reachable')
 	expect((error as Error).message).not.toContain('tsconfig.json')
 })
 
