@@ -230,8 +230,14 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 		async function applyLiveForkState(
 			live: CommunityForkState,
 		): Promise<boolean> {
-			if (!isCurrent()) return true
+			// Always seed the query cache — even if this submitter is stale —
+			// so a committed installed / in_progress row settles and Fork
+			// cannot reopen for a duplicate. Imperative UI updates stay gated.
 			if (listingId) seedForkState(listingId, targetOrg, live)
+			if (!isCurrent()) {
+				setHoldForkRetry(false)
+				return true
+			}
 			if (live.state === 'installed' || live.state === 'adaptation_required') {
 				setMessage(null)
 				setOutcome(communityInstallOutcomeFromLiveFork(live))
@@ -272,7 +278,10 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 				setHoldForkRetry(true)
 				setMessage(null)
 				await reconcile()
-				if (!isCurrent()) return
+				if (!isCurrent()) {
+					setHoldForkRetry(false)
+					return
+				}
 				if (!listingId) {
 					releaseWithLostEnvelopeNotice()
 					return
@@ -281,12 +290,14 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 					const live = (await loadCommunityForkState({
 						data: { listingId, org: targetOrg },
 					})) as CommunityForkState
-					if (!isCurrent()) return
 					if (await applyLiveForkState(live)) return
 				} catch {
 					// Fall through to the notice.
 				}
-				if (!isCurrent()) return
+				if (!isCurrent()) {
+					setHoldForkRetry(false)
+					return
+				}
 				releaseWithLostEnvelopeNotice()
 				return
 			}
@@ -312,8 +323,8 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 				)
 				return
 			}
-			if (!isCurrent()) return
 			if (await applyLiveForkState(live)) return
+			if (!isCurrent()) return
 			setMessage(
 				error instanceof Error
 					? error.message
