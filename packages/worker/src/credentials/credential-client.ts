@@ -1372,17 +1372,35 @@ export type AppliedCredentialClient = {
 	substitutedValues: ReadonlyArray<string>
 	/** The inject shape with no value, for a 401 / 403 hint. */
 	shape: string
+	/**
+	 * Human-facing provider/credential label for 401/403/429 attribution
+	 * (`x-kody-provider-error`). From the signed handle name (provider slug or
+	 * credential name).
+	 */
+	providerLabel: string | null
 	/** A login credential's session id (never the session), for a 401 retry. */
 	login?: { sessionId: string | null }
 }
 
+function providerLabelFromHandleName(name: string) {
+	const trimmed = name.trim()
+	if (!trimmed) return null
+	return trimmed
+		.split('-')
+		.filter((part) => part.length > 0)
+		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+		.join(' ')
+}
+
 function fromResolved(
 	placed: ResolvedClientPlacement,
+	providerLabel: string | null,
 ): AppliedCredentialClient {
 	return {
 		placement: placed.placement,
 		substitutedValues: placed.substitutedValues,
 		shape: placed.shape,
+		providerLabel,
 	}
 }
 
@@ -1425,6 +1443,7 @@ export async function applyCredentialClient(input: {
 		)
 		const { handle } = use
 		const { requestUrl } = input
+		const providerLabel = providerLabelFromHandleName(handle.name)
 		switch (handle.kind) {
 			case 'secret':
 				return fromResolved(
@@ -1435,6 +1454,7 @@ export async function applyCredentialClient(input: {
 							requestUrl,
 						}),
 					),
+					providerLabel,
 				)
 			case 'oauth':
 				return fromResolved(
@@ -1445,6 +1465,7 @@ export async function applyCredentialClient(input: {
 							requestUrl,
 						}),
 					),
+					providerLabel,
 				)
 			case 'url': {
 				const resolved = await resolveCredential(
@@ -1458,6 +1479,7 @@ export async function applyCredentialClient(input: {
 					placement: { kind: 'url', url: resolved.url },
 					substitutedValues: resolved.substitutedValues,
 					shape: 'url',
+					providerLabel,
 				}
 			}
 			case 'login': {
@@ -1478,6 +1500,7 @@ export async function applyCredentialClient(input: {
 						placement.kind === 'header'
 							? `login session in header ${placement.name}`
 							: `login session in query ${placement.param}`,
+					providerLabel,
 				}
 			}
 			case 'mcp':

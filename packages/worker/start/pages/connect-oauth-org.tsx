@@ -78,7 +78,9 @@ export function ConnectOauthOrgTarget(props: {
 				<span css={mutedCss}>Saving to</span>{' '}
 				<strong css={targetNameCss}>{identity.name}</strong>{' '}
 				<span css={mutedCss}>
-					{props.org.personal ? 'personal organization' : identity.handle}
+					{props.org.personal
+						? `${identity.handle} · personal workspace`
+						: `${identity.handle} · team workspace`}
 				</span>
 			</p>
 		</div>

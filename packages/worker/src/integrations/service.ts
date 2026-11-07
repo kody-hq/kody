@@ -215,6 +215,7 @@ export function toJoinedIntegrationConfig(
 			providerError: snapshot.providerError,
 			providerErrorDescription: snapshot.providerErrorDescription,
 			httpStatus: snapshot.httpStatus,
+			provider: joined.app.provider,
 		}),
 	}
 }

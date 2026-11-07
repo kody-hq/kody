@@ -339,8 +339,11 @@ function scheduleSubscriptionEmit(
  * Reconnectable caller-errors emit `integration.auth.failed` once per attempt
  * and persist a last-failure snapshot for Waiting / Integrations. Provider
  * HTTP 5xx and timeouts persist `provider_unavailable` without emitting
- * failed or inventing a Waiting row. Successful refreshes clear the snapshot
- * and emit `integration.auth.succeeded`. Sequential attempts each emit;
+ * failed or inventing a Waiting row. Provider HTTP 429 persists a
+ * non-reconnectable `provider_rejected` snapshot without emitting failed
+ * (subscribers would otherwise treat `reconnect_url` as actionable). Successful
+ * refreshes clear the snapshot and emit `integration.auth.succeeded`. Sequential
+ * attempts each emit;
  * notifier packages edge-detect working ↔ failed. Concurrent in-flight
  * refreshes of the same connection in one isolate share one attempt, and
  * across isolates the `user_integrations` refresh lease lets one provider POST
@@ -401,6 +404,11 @@ async function refreshIntegrationTokensAttempt(input: {
 				userId: input.userId,
 				error,
 			})
+			// Token-endpoint 429 is a provider limit, not a dead grant. Persist
+			// the snapshot for Integrations UI, but do not emit
+			// `integration.auth.failed` (that topic carries reconnect_url and
+			// is for notifier packages that ask someone to reconnect).
+			if (error.httpStatus === 429) throw error
 			const pending = emitIntegrationAuthFailedEvent({
 				env: input.env,
 				userId: input.userId,
@@ -728,8 +736,12 @@ async function exchangeRefreshTokenWithLease({
 		// defect worth a Sentry issue. 5xx / timeout persist
 		// `provider_unavailable` for Integrations without emitting failed.
 		if (response.status >= 400 && response.status < 500) {
+			const reconnectHint =
+				response.status === 429
+					? 'Wait and retry; reconnecting usually does not help.'
+					: `Reconnect at ${reconnectPath}.`
 			throw fail(
-				`Token refresh was rejected for integration "${connection.name}" with HTTP ${response.status}${detailSuffix}. Reconnect at ${reconnectPath}.`,
+				`Token refresh was rejected for integration "${connection.name}" with HTTP ${response.status}${detailSuffix}. ${reconnectHint}`,
 				{
 					reason: 'provider_rejected',
 					providerError: provider.error,
@@ -832,6 +844,7 @@ async function persistAuthFailureSnapshot(input: {
 		lane: snapshot.lane,
 		accountLabel: snapshot.accountLabel,
 		reason,
+		provider: snapshot.provider,
 		providerError: input.error.providerError,
 		providerErrorDescription: input.error.providerErrorDescription,
 		httpStatus: input.error.httpStatus,
@@ -854,6 +867,7 @@ async function persistProviderUnavailableSnapshot(input: {
 		lane: input.joined.lane,
 		accountLabel: input.joined.connection.accountLabel,
 		reason: 'provider_unavailable',
+		provider: input.joined.app.provider,
 		providerError: input.providerError ?? null,
 		providerErrorDescription: input.providerErrorDescription ?? null,
 		httpStatus: input.httpStatus ?? null,
@@ -868,6 +882,7 @@ async function persistAuthFailureRow(input: {
 	lane: 'user' | 'platform'
 	accountLabel: string | null
 	reason: IntegrationAuthFailureReason
+	provider?: string | null
 	providerError?: string | null
 	providerErrorDescription?: string | null
 	httpStatus?: number | null
@@ -878,6 +893,8 @@ async function persistAuthFailureRow(input: {
 		accountLabel: input.accountLabel,
 		lane: input.lane,
 		reason: input.reason,
+		httpStatus: input.httpStatus ?? null,
+		provider: input.provider ?? null,
 	})
 	try {
 		await writeIntegrationAuthFailure({

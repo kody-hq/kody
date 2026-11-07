@@ -114,6 +114,7 @@ function loginPlacement(session: string, sessionId: string | null) {
 		},
 		substitutedValues: [session, `Bearer ${session}`],
 		shape: 'Authorization: Bearer <session>',
+		providerLabel: 'Example',
 		login: { sessionId },
 	}
 }
@@ -173,6 +174,9 @@ test('a second 401 is returned as is: the retry never loops', async () => {
 	expect(response.status).toBe(401)
 	expect(seen).toHaveLength(2)
 	expect(resolvePlacement).toHaveBeenCalledTimes(2)
+	expect(response.headers.get('x-kody-provider-error')).toBe(
+		'Example rejected this credential (HTTP 401). This is a provider auth failure, not a Kody plan limit.',
+	)
 })
 
 test('a request with a body, or a credential that is not a login, is not retried', async () => {

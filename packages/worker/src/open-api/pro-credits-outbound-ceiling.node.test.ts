@@ -83,7 +83,7 @@ test('a funded Pro org stops at 50x its include', async () => {
 
 	expect(denied.status).toBe(429)
 	expect(denied.body.error?.message).toBe(
-		'Plan limit reached: your "pro" plan allows at most 750000 outbound fetches per day and you currently have 750000. This daily limit resets at 00:00 UTC, in 1h 26m.',
+		'Kody plan limit reached for @api-user: your "pro" plan allows at most 750000 outbound fetches per day and you currently have 750000. This daily limit resets at 00:00 UTC, in 1h 26m. See usage at /@api-user/-/usage.',
 	)
 	expect(upstream).not.toHaveBeenCalled()
 })
@@ -97,7 +97,7 @@ test('an empty-wallet Pro org keeps its include and is told to add credits', asy
 	const denied = await gatewayFetch(api, token)
 	expect(denied.status).toBe(429)
 	expect(denied.body.error?.message).toBe(
-		'Plan limit reached: your "pro" plan allows at most 15000 outbound fetches per day and you currently have 15000. This daily limit resets at 00:00 UTC, in 1h 26m. Add credits at /account/usage#credits to keep going past your include.',
+		'Kody plan limit reached for @api-user: your "pro" plan allows at most 15000 outbound fetches per day and you currently have 15000. This daily limit resets at 00:00 UTC, in 1h 26m. See usage at /@api-user/-/usage. Add credits at /account/usage#credits to keep going past your include.',
 	)
 	expect(upstream).not.toHaveBeenCalled()
 })

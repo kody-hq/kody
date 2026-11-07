@@ -58,8 +58,14 @@ export class CredentialLoginFailedError extends Error {
 	) {
 		const failed =
 			status == null
-				? 'The login exchange did not complete.'
-				: `The login exchange did not return a session (HTTP ${status}).`
+				? 'The login provider exchange did not complete.'
+				: status === 429
+					? 'The login provider rate-limited the exchange (HTTP 429). This is a provider limit, not a Kody plan limit.'
+					: status === 401
+						? 'The login provider rejected the exchange (HTTP 401). This is a provider auth failure, not a Kody plan limit.'
+						: status === 403
+							? 'The login provider denied the exchange (HTTP 403). This may be auth, permissions, or a provider limit - not a Kody plan limit.'
+							: `The login provider exchange did not return a session (HTTP ${status}).`
 		super(
 			options.retryAfterSeconds == null
 				? failed
@@ -97,7 +103,7 @@ export class CredentialLoginNeedsReconnectError extends Error {
 	readonly code = 'login_needs_reconnect'
 	constructor() {
 		super(
-			"The provider rejected this login's saved refresh token (invalid_grant), so Kody stopped running its exchange. The credential's owner reconnects it by saving a new value; until then, requests with it fail.",
+			"The login provider rejected this login's saved refresh token (invalid_grant), so Kody stopped running its exchange. This is a provider auth failure, not a Kody plan limit. Reconnect by saving a new value on this credential in its current workspace (creating one under another workspace leaves this id broken; credentials cannot be moved between orgs); until then, requests with it fail.",
 		)
 		this.name = 'CredentialLoginNeedsReconnectError'
 	}

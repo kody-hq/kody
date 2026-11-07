@@ -2755,6 +2755,8 @@ type AccountJobsAlarm = {
 export type AccountJobsLoaderData = {
 	ok: true
 	username: string
+	/** True when the bound org is a team workspace (not the viewer's personal org). */
+	teamOrg: boolean
 	jobs: Array<AccountJobListItem>
 	selectedJob: AccountJobDetail | null
 	selectedJobId: string | null

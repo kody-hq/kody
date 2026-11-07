@@ -4,13 +4,13 @@ import {
 	type OAuthAuthorizeConsentOrg,
 } from '#client/routes/oauth-authorize-form.ts'
 import {
+	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
 	inputCss,
 	getAlertCardCss,
-	descriptionCss,
 } from '#universal/styles/style-primitives.ts'
-import { colors, spacing } from '#universal/styles/tokens.ts'
+import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 
 export function AuthorizeOrgField(props: {
 	orgs: readonly OAuthAuthorizeConsentOrg[]
@@ -83,31 +83,48 @@ export function AuthorizeOrgField(props: {
 		)
 	if (field.kind === 'pending') return null
 	return (
-		<label css={fieldCss} data-testid="oauth-authorize-org-picker">
-			<span css={fieldLabelCss}>Organization</span>
-			<select
-				name="org"
-				required
-				data-testid="oauth-authorize-org"
-				css={inputCss}
-				value={field.selectedSlug ?? ''}
-				onChange={(event) =>
-					props.onChange(event.currentTarget.value.trim() || null)
-				}
-			>
-				{field.selectedSlug ? null : (
-					<option value="" disabled>
-						Choose an organization
-					</option>
-				)}
-				{field.options.map((org) => (
-					<option key={org.slug} value={org.slug}>
-						{org.displayName
-							? `${org.displayName} (@${org.slug})`
-							: `@${org.slug}`}
-					</option>
-				))}
-			</select>
-		</label>
+		<div css={fieldCss} data-testid="oauth-authorize-org-picker">
+			<label css={labelBlockCss}>
+				<span css={fieldLabelCss}>Organization</span>
+				<select
+					name="org"
+					required
+					data-testid="oauth-authorize-org"
+					css={inputCss}
+					value={field.selectedSlug ?? ''}
+					onChange={(event) =>
+						props.onChange(event.currentTarget.value.trim() || null)
+					}
+				>
+					{field.selectedSlug ? null : (
+						<option value="" disabled>
+							Choose an organization
+						</option>
+					)}
+					{field.options.map((org) => (
+						<option key={org.slug} value={org.slug}>
+							{org.displayName
+								? `${org.displayName} (@${org.slug})`
+								: `@${org.slug}`}
+						</option>
+					))}
+				</select>
+			</label>
+			<p css={hintCss}>
+				The agent runs as this workspace. Local compute is separate from which
+				workspace it acts in.
+			</p>
+		</div>
 	)
+}
+
+const labelBlockCss = {
+	display: 'grid',
+	gap: spacing.xs,
+}
+
+const hintCss = {
+	margin: 0,
+	fontSize: typography.fontSize.sm,
+	color: colors.textMuted,
 }
