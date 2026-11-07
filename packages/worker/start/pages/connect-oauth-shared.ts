@@ -240,6 +240,7 @@ async function saveConnectOauthConnection(input: {
 			accessTokenSaved: boolean
 			refreshTokenSaved: boolean
 			nextSteps: unknown
+			scopeGrant: ConnectOauthScopeGrantView | null
 	  }
 	| { ok: false; error: string }
 > {
@@ -282,6 +283,31 @@ async function saveConnectOauthConnection(input: {
 		accessTokenSaved: payload.accessTokenSaved === true,
 		refreshTokenSaved: payload.refreshTokenSaved === true,
 		nextSteps: payload.nextSteps,
+		scopeGrant: parseScopeGrant(payload.scopeGrant),
+	}
+}
+
+export type ConnectOauthScopeGrantView = {
+	granted: Array<string> | null
+	missing: Array<string>
+	extra: Array<string>
+}
+
+function readStringList(value: unknown): Array<string> {
+	return Array.isArray(value)
+		? value.filter((entry): entry is string => typeof entry === 'string')
+		: []
+}
+
+function parseScopeGrant(value: unknown): ConnectOauthScopeGrantView | null {
+	if (!value || typeof value !== 'object') return null
+	const record = value as Record<string, unknown>
+	return {
+		granted: Array.isArray(record.granted)
+			? readStringList(record.granted)
+			: null,
+		missing: readStringList(record.missing),
+		extra: readStringList(record.extra),
 	}
 }
 

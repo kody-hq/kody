@@ -6,6 +6,7 @@ import {
 } from '#mcp/capabilities/integrations/integration-shared.ts'
 import type { PlatformOauthApp } from './platform-apps.ts'
 import type { IntegrationRefreshPolicy } from './refresh-policy.ts'
+import type { GrantedScopes } from './granted-scopes.ts'
 import { integrationUsageModeValues } from './usage-mode.ts'
 export const oauthAppFlowSchema = z.enum(integrationFlowValues)
 export const oauthTokenExchangeStyleSchema = z.enum(tokenExchangeStyleValues)
@@ -62,6 +63,8 @@ export type UserIntegrationConnection = z.infer<
 > & {
 	lastAuthFailure?: IntegrationAuthFailureSnapshot | null
 	refreshPolicy?: IntegrationRefreshPolicy | null
+	/** What the provider granted on the stored token; null when unknown. */
+	grantedScopes?: GrantedScopes | null
 }
 
 export type UserOauthAppWithConnectionCount = UserOauthApp & {
@@ -132,6 +135,9 @@ export type UserIntegrationRow = {
 	auth_failed_http_status?: number | null
 	auth_failed_reconnectable?: number | null
 	refresh_policy?: string | null
+	granted_scopes_json?: string | null
+	granted_scopes_source?: string | null
+	granted_scopes_checked_at?: string | null
 	created_at: string
 	updated_at: string
 }

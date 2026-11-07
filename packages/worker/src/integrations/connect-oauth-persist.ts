@@ -26,7 +26,15 @@ import {
 	type LiveConnectionGuard,
 } from '#worker/integrations/service.ts'
 import type { PlatformOauthApp } from '#worker/integrations/platform-apps.ts'
-import { listOauthAppsByTokenEndpoint } from '#worker/integrations/repo.ts'
+import {
+	listOauthAppsByTokenEndpoint,
+	recordIntegrationGrantedScopes,
+} from '#worker/integrations/repo.ts'
+import {
+	compareRequestedAndGrantedScopes,
+	readGrantedScopes,
+	type GrantedScopesSource,
+} from '#worker/integrations/granted-scopes.ts'
 import {
 	persistIntegrationTokens,
 	persistUserOauthAppClientSecret,
@@ -76,8 +84,60 @@ export type PersistConnectOauthTokensResult =
 			allowedHosts: Array<string>
 			hostApprovalLinks: Array<ConnectOauthHostApprovalLink>
 			nextSteps: ReturnType<typeof buildConnectOauthNextSteps>
+			scopeGrant: ConnectOauthScopeGrant
 	  }
 	| { ok: false; error: string; status: number }
+
+/** Requested vs actually granted scopes for the token a connect just stored. */
+export type ConnectOauthScopeGrant = {
+	requested: Array<string>
+	/** Null when the provider does not report the grant. */
+	granted: Array<string> | null
+	source: GrantedScopesSource | null
+	missing: Array<string>
+	extra: Array<string>
+}
+
+/**
+ * Reads back what the provider granted on the new token and stores it on the
+ * connection. Only reads; it never revokes the token or the app
+ * authorization, so sibling connections for the same provider account keep
+ * their tokens.
+ */
+export async function recordConnectGrantedScopes(input: {
+	env: Pick<Env, 'APP_DB'>
+	userId: OwnerId
+	name: string
+	app: { provider: string | null; tokenUrl: string }
+	accessToken: string
+	tokenRecord: Record<string, unknown>
+	requestedScopes: Array<string>
+	fetchImpl?: typeof fetch
+}): Promise<ConnectOauthScopeGrant> {
+	const granted = await readGrantedScopes({
+		app: input.app,
+		accessToken: input.accessToken,
+		tokenRecord: input.tokenRecord,
+		fetchImpl: input.fetchImpl,
+	})
+	await recordIntegrationGrantedScopes({
+		db: input.env.APP_DB,
+		userId: input.userId,
+		name: input.name,
+		granted,
+	})
+	const requested = Array.from(
+		new Set(input.requestedScopes.map((scope) => scope.trim()).filter(Boolean)),
+	)
+	return {
+		requested,
+		granted: granted?.scopes ?? null,
+		source: granted?.source ?? null,
+		...(granted
+			? compareRequestedAndGrantedScopes(requested, granted.scopes)
+			: { missing: [], extra: [] }),
+	}
+}
 
 export async function persistConnectOauthTokens(
 	input: PersistConnectOauthTokensInput,
@@ -174,6 +234,18 @@ export async function persistConnectOauthTokens(
 		userId: ownerId,
 		name: integrationName,
 	})
+	const scopeGrant = await recordConnectGrantedScopes({
+		env: input.env,
+		userId: ownerId,
+		name: integrationName,
+		app: {
+			provider: input.platformApp?.provider ?? connected?.app.provider ?? null,
+			tokenUrl: input.tokenUrl,
+		},
+		accessToken,
+		tokenRecord: input.tokenRecord,
+		requestedScopes: connected?.connection.scopes ?? input.scopes,
+	})
 	if (!input.platformApp && connected?.lane === 'user') {
 		const clientSecret = await resolveTokenEndpointClientSecret({
 			env: input.env,
@@ -232,6 +304,7 @@ export async function persistConnectOauthTokens(
 		allowedHosts: input.allowedHosts,
 		hostApprovalLinks,
 		nextSteps,
+		scopeGrant,
 	}
 }
 

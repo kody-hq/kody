@@ -1,4 +1,7 @@
-import { resolveTokenEndpointClientSecret } from '#worker/integrations/connect-oauth-persist.ts'
+import {
+	recordConnectGrantedScopes,
+	resolveTokenEndpointClientSecret,
+} from '#worker/integrations/connect-oauth-persist.ts'
 import {
 	resolvePinnedConnectClientSecret,
 	resolvePinnedConnectTarget,
@@ -549,6 +552,18 @@ export async function connectAccountOAuth(input: {
 		userId: ownerId,
 		name: integrationName,
 	})
+	const scopeGrant = await recordConnectGrantedScopes({
+		env: input.env,
+		userId: ownerId,
+		name: integrationName,
+		app: {
+			provider: platformApp?.provider ?? connected?.app.provider ?? null,
+			tokenUrl,
+		},
+		accessToken,
+		tokenRecord,
+		requestedScopes: connected?.connection.scopes ?? scopes,
+	})
 	if (!platformApp && connected?.lane === 'user') {
 		const clientSecret = await resolveTokenEndpointClientSecret({
 			env: input.env,
@@ -607,6 +622,7 @@ export async function connectAccountOAuth(input: {
 		allowedHosts,
 		integrationName,
 		nextSteps,
+		scopeGrant,
 	})
 }
 
