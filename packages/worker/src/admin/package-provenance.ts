@@ -125,7 +125,7 @@ async function resolvePackageForProvenance(
 
 async function loadOwnerHandle(db: D1Database, ownerId: string) {
 	const row = await db
-		.prepare(`SELECT slug FROM orgs WHERE id = ?`)
+		.prepare(`SELECT slug FROM orgs WHERE id = ? AND deleted_at IS NULL`)
 		.bind(ownerId)
 		.first<{ slug: string | null }>()
 	return row?.slug ?? null
