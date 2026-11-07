@@ -2,7 +2,7 @@
  * Trust-boundary copy for execution contexts (protocol 8.6). Every place a
  * context is registered, shared or opted into states whose machine runs the
  * code, what its operator can see, what local access it exposes, and what the
- * sharing level means. One module so the snapshot test covers every string.
+ * sharing level means. One module so every surface shares that wording.
  *
  * "Credential values stay on Kody" depends on `kody.oauthClientCredentials`
  * returning only a handle (decision 10).

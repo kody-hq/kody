@@ -1,19 +1,36 @@
 import { expect, test } from 'vitest'
 import { operationResult, requireOperationResult } from './operation-result.ts'
 
-test('requireOperationResult returns data for a 2xx operationResult wrapper', () => {
+test('operationResult wraps data with an HTTP status', () => {
+	expect(operationResult({ ok: true as const, name: 'demo' }, 200)).toEqual({
+		data: { ok: true, name: 'demo' },
+		status: 200,
+		headers: undefined,
+	})
 	expect(
-		requireOperationResult(
-			operationResult({ ok: true as const, name: 'demo' }, 200),
-		),
+		operationResult({ ok: false as const, error: 'Nope.' }, { status: 400 }),
+	).toEqual({
+		data: { ok: false, error: 'Nope.' },
+		status: 400,
+		headers: undefined,
+	})
+})
+
+test('requireOperationResult returns data for a 2xx wrapper', () => {
+	expect(
+		requireOperationResult({
+			data: { ok: true as const, name: 'demo' },
+			status: 200,
+		}),
 	).toEqual({ ok: true, name: 'demo' })
 })
 
 test('requireOperationResult throws on 4xx/5xx with the payload error string', () => {
 	expect(() =>
-		requireOperationResult(
-			operationResult({ ok: false as const, error: 'Nope.' }, 400),
-		),
+		requireOperationResult({
+			data: { ok: false as const, error: 'Nope.' },
+			status: 400,
+		}),
 	).toThrow('Nope.')
 })
 
