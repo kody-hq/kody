@@ -15,23 +15,27 @@ pushes. See the [setup index](./index.md) for the other setup pages.
   CI's `npm run lint` and `npm run format:check` (a few seconds each, and they
   parse every file without the Nx cache), `npm run typecheck`, `npm run knip`,
   then `vitest related --run` separately for `node-unit` and `workers-unit`,
-  with `CI=1`. Related inputs are the pushed, non-deleted JavaScript/TypeScript
-  source and test paths (all updated refs, not just the last commit). Projects
-  with no related tests pass. CI and `npm run validate` remain the full gates;
-  local `test:node` and validate are unsharded.
+  with `CI=1`. Pushes touching `packages/worker/src` or
+  `packages/jobs-worker/src` scripts also run CI Static's
+  `node tools/soft-delete-read-filter.ts` (under a second). Related inputs are
+  the pushed, non-deleted JavaScript/TypeScript source and test paths (all
+  updated refs, not just the last commit). Projects with no related tests pass.
+  CI and `npm run validate` remain the full gates; local `test:node` and
+  validate are unsharded.
 - Global pushed paths fall back to full `npm run test:push`: any package.json,
   package-lock.json, vitest*.ts, vite.config.ts, tsconfig*, nx.json,
   project.json, wrangler*.jsonc, migrations directory, `patches/**`,
   `tools/vitest-global-setup*`, or `packages/worker/src/test-support/**`.
-  Deleted globals also force full tests. Unreadable pushed paths, or changes
-  without usable related sources (such as assets), fall back to full tests.
-  Deleted-only source changes have no related inputs but still typecheck. Pushed
-  paths whose content matches `origin/main` (else `main`) came from merging
-  main, so they are left to main's CI: they neither force full tests nor feed
-  related selection, and a merge-only push skips unit tests. Runtime filesystem
-  reads, generated/virtual modules and computed dynamic imports can escape
-  dependency selection: related tests are fast feedback, not proof equivalent to
-  the complete CI gate.
+  Deleted globals also force full tests. The hook logs why it chose the full
+  suite (which global paths, or which fallback below). Unreadable pushed paths,
+  or changes without usable related sources (such as assets), fall back to full
+  tests. Deleted-only source changes have no related inputs but still typecheck.
+  Pushed paths whose content matches `origin/main` (else `main`) came from
+  merging main, so they are left to main's CI: they neither force full tests nor
+  feed related selection, and a merge-only push skips unit tests. Runtime
+  filesystem reads, generated/virtual modules and computed dynamic imports can
+  escape dependency selection: related tests are fast feedback, not proof
+  equivalent to the complete CI gate.
 - Knip and full `test:push` retain independent tree-SHA provenance skips from
   `npm run validate` or successful full pre-push checks, stored in
   `.tmp/git-hook-provenance.json`. Related tests **never** record full

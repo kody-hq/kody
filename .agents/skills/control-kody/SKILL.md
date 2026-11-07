@@ -18,7 +18,7 @@ npm run control-kody -- dev
 npm run control-kody -- request GET /@user-me/-/waiting --contains 'Waiting'
 npm run control-kody -- map waiting
 npm run control-kody -- verify waiting   # every request check in that notes file
-npm run control-kody -- health --sha <merge-sha> --wait
+npm run control-kody -- health --origin https://kody.codes --sha <merge-sha> --wait
 ```
 
 Use `request` for HTML and JSON assertions. Website actions (profile uploads,
