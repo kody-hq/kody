@@ -101,8 +101,6 @@ test('consent org field hides the picker for a sole org and requires a pick when
 			{ slug: 'acme', displayName: 'Acme', role: 'member' },
 			{ slug: 'ada', displayName: 'Ada', role: 'owner' },
 		],
-		disabled: false,
-		disabledReason: null,
 	})
 	expect(
 		oauthAuthorizeOrgField({
@@ -110,15 +108,14 @@ test('consent org field hides the picker for a sole org and requires a pick when
 				{ slug: 'acme', displayName: 'Acme', role: 'member' },
 				{ slug: 'ada', displayName: 'Ada', role: 'owner' },
 			],
-			selectedOrgSlug: 'acme',
-			fixedOrgSlug: 'acme',
+			selectedOrgSlug: 'ada',
 			signedIn: true,
+			requiredOrgSlug: 'ada',
 		}),
 	).toMatchObject({
-		kind: 'picker',
-		selectedSlug: 'acme',
-		disabled: true,
-		disabledReason: expect.stringContaining('@acme'),
+		kind: 'locked',
+		slug: 'ada',
+		reason: expect.stringMatching(/started for @ada/),
 	})
 	expect(
 		oauthAuthorizeOrgField({
