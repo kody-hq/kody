@@ -138,11 +138,9 @@ export function PackagePublishingPanel(input: {
 					css={css({ margin: 0, color: colors.text })}
 					data-testid="package-publishing-live"
 				>
-					{liveVersion ? `Live: ${liveVersion}.` : 'Nothing published yet.'}
 					{packageDetail.publishedCommit ? (
 						<>
-							{' '}
-							Published commit{' '}
+							{`Live: ${packageDetail.publishedVersion ? `${packageDetail.publishedVersion}, ` : ''}published commit `}
 							<code
 								data-testid="package-published-commit"
 								title={packageDetail.publishedCommit}
@@ -151,7 +149,11 @@ export function PackagePublishingPanel(input: {
 							</code>
 							.
 						</>
-					) : null}
+					) : liveVersion ? (
+						`Live: ${liveVersion}.`
+					) : (
+						'Nothing published yet.'
+					)}
 				</p>
 				{newer ? (
 					<p
