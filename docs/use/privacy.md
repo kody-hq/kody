@@ -305,7 +305,7 @@ cleanup periods:
 - Durable Object duration attribution: until account deletion
 - Stripe webhook event records: 30 days
 - Non-current published bundle artifacts: at least 30 days, then eligible for
-  removal when no active source or repo session needs them
+  removal when no active source, catalog listing, or repo session needs them
 - Unverified person accounts: seven days after signup when the email is still
   unverified and no sign-in provider is linked
 

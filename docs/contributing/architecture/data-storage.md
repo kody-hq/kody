@@ -1913,8 +1913,9 @@ Current retention policies:
   `RunLog` DO (`workflow_projections`; see [Run records](./run-records.md)).
 - `published_bundle_artifacts`: delete D1 rows and their `BUNDLE_ARTIFACTS_KV`
   blobs only when the row is older than 30 days, its `published_commit` is no
-  longer current for any matching `entity_sources` row, and there is no active
-  repo session for the source. When a row is pruned, the matching
+  longer current for any matching `entity_sources` row, no active
+  `community_listings` row pins that commit (`pinned_commit`), and there is no
+  active repo session for the source. When a row is pruned, the matching
   `source-snapshot:v1:{sourceId}:{commit}` and
   `source-manifest-snapshot:v1:{sourceId}:{commit}` KV keys are deleted under
   the same safety conditions, so per-commit snapshots do not accumulate
