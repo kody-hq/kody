@@ -217,7 +217,10 @@ commands), `packages/cli/test/execution-context.test.ts` (real daemon and
 workerd against a fake ECP server), and
 `packages/worker/src/execution-contexts/commands.node.test.ts` (authorization,
 denials, sharing, audit). CI runs the CLI ones on Linux, macOS, Windows x64, and
-Windows ARM (`host-commands` job in `validate.yml`).
+Windows ARM (`host-commands` jobs in `validate.yml`). On main pushes, Validate
+skips the macOS jobs and `macos-main.yml` runs them outside the deploy gate, so
+a macOS runner shortage cannot hold production. A failure there opens the "main:
+macOS host commands failing" issue.
 
 ### End-to-end check
 
