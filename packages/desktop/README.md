@@ -234,10 +234,17 @@ using a separate local packaging directory.
 
 ## Production releases and updates
 
-Desktop downloads and updates live in the public `kody-hq/kody-desktop`
-repository. This keeps the update feed separate from the website's daily
-releases. Users do not need a GitHub token. Every architecture has its own
-update manifest so parallel jobs cannot overwrite another architecture's feed.
+Desktop downloads and updates live in the public
+[`kody-hq/kody-desktop` releases](https://github.com/kody-hq/kody-desktop/releases/latest)
+page. That releases page is the canonical install source. Share the unlisted
+shortcut [https://kody.codes/download](https://kody.codes/download) when you
+need one link: it redirects to the latest installer only when the visitor's
+platform and architecture can be detected and that installer is present on the
+latest release; otherwise it redirects to the latest release page. Do not
+publish demo builds from `kody-hq/kody` releases for installs. This keeps the
+update feed separate from the website's daily releases. Users do not need a
+GitHub token. Every architecture has its own update manifest so parallel jobs
+cannot overwrite another architecture's feed.
 
 Production apps check on launch and every five minutes, download automatically,
 and install on Quit. **Updates > Restart to update** quits and relaunches with
@@ -255,7 +262,13 @@ same version and source commit. Re-running an already published source skips
 publication. Obsolete queued runs also skip publication so older source cannot
 replace a newer build. Missing source history fails before signing. Matching
 drafts resume after a failed upload, while conflicting drafts reserve their
-version so the next run advances past them automatically.
+version so the next run advances past them automatically. Each selected
+platform's `dist:release` build is retried once after a 30-second wait when the
+first attempt fails. The first attempt is capped at 25 minutes via
+`packages/desktop/scripts/run-with-timeout.cjs` (portable across macOS, Windows,
+and Linux runners) so a stuck notarization poll leaves time for that retry plus
+verification; a failed retry fails that matrix job so a workflow re-run can
+finish the release.
 
 The default `auto` scope preserves the platforms in the published feed, starting
 with Apple silicon and Intel Mac installers. Run the workflow manually on main

@@ -24,6 +24,7 @@ import { Route as ContactRouteImport } from './routes/contact'
 import { Route as DeviceRouteImport } from './routes/device'
 import { Route as DiscordRouteImport } from './routes/discord'
 import { Route as DocsDotmdRouteImport } from './routes/docs[.]md'
+import { Route as DownloadRouteImport } from './routes/download'
 import { Route as FaqRouteImport } from './routes/faq'
 import { Route as FeaturesRouteImport } from './routes/features'
 import { Route as GuidesRouteImport } from './routes/guides'
@@ -365,6 +366,11 @@ const DiscordRoute = DiscordRouteImport.update({
 const DocsDotmdRoute = DocsDotmdRouteImport.update({
   id: '/docs.md',
   path: '/docs.md',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DownloadRoute = DownloadRouteImport.update({
+  id: '/download',
+  path: '/download',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FaqRoute = FaqRouteImport.update({
@@ -1869,6 +1875,7 @@ export interface FileRoutesByFullPath {
   '/device': typeof DeviceRoute
   '/discord': typeof DiscordRoute
   '/docs.md': typeof DocsDotmdRoute
+  '/download': typeof DownloadRoute
   '/faq': typeof FaqRoute
   '/features': typeof FeaturesRoute
   '/guides': typeof GuidesRoute
@@ -2153,6 +2160,7 @@ export interface FileRoutesByTo {
   '/device': typeof DeviceRoute
   '/discord': typeof DiscordRoute
   '/docs.md': typeof DocsDotmdRoute
+  '/download': typeof DownloadRoute
   '/faq': typeof FaqRoute
   '/features': typeof FeaturesRoute
   '/guides': typeof GuidesRoute
@@ -2438,6 +2446,7 @@ export interface FileRoutesById {
   '/device': typeof DeviceRoute
   '/discord': typeof DiscordRoute
   '/docs.md': typeof DocsDotmdRoute
+  '/download': typeof DownloadRoute
   '/faq': typeof FaqRoute
   '/features': typeof FeaturesRoute
   '/guides': typeof GuidesRoute
@@ -2724,6 +2733,7 @@ export interface FileRouteTypes {
     | '/device'
     | '/discord'
     | '/docs.md'
+    | '/download'
     | '/faq'
     | '/features'
     | '/guides'
@@ -3008,6 +3018,7 @@ export interface FileRouteTypes {
     | '/device'
     | '/discord'
     | '/docs.md'
+    | '/download'
     | '/faq'
     | '/features'
     | '/guides'
@@ -3292,6 +3303,7 @@ export interface FileRouteTypes {
     | '/device'
     | '/discord'
     | '/docs.md'
+    | '/download'
     | '/faq'
     | '/features'
     | '/guides'
@@ -3578,6 +3590,7 @@ export interface RootRouteChildren {
   DeviceRoute: typeof DeviceRoute
   DiscordRoute: typeof DiscordRoute
   DocsDotmdRoute: typeof DocsDotmdRoute
+  DownloadRoute: typeof DownloadRoute
   FaqRoute: typeof FaqRoute
   FeaturesRoute: typeof FeaturesRoute
   GuidesRoute: typeof GuidesRoute
@@ -3799,6 +3812,13 @@ declare module '@tanstack/react-router' {
       path: '/docs.md'
       fullPath: '/docs.md'
       preLoaderRoute: typeof DocsDotmdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/download': {
+      id: '/download'
+      path: '/download'
+      fullPath: '/download'
+      preLoaderRoute: typeof DownloadRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/faq': {
@@ -6113,6 +6133,7 @@ const rootRouteChildren: RootRouteChildren = {
   DeviceRoute: DeviceRoute,
   DiscordRoute: DiscordRoute,
   DocsDotmdRoute: DocsDotmdRoute,
+  DownloadRoute: DownloadRoute,
   FaqRoute: FaqRoute,
   FeaturesRoute: FeaturesRoute,
   GuidesRoute: GuidesRoute,

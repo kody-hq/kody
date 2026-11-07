@@ -106,7 +106,11 @@ another daemon still replaces this one on the server (an older CLI without the
 lock, or the same key on another machine), the daemon logs one explanation
 naming the other process and stops instead of reconnecting in a loop.
 
-The desktop app and the CLI share this machine's registration and its runner:
+Install the desktop app from
+[kody-hq/kody-desktop releases](https://github.com/kody-hq/kody-desktop/releases/latest)
+(canonical) or the shareable shortcut
+[https://kody.codes/download](https://kody.codes/download). The desktop app and
+the CLI share this machine's registration and its runner:
 
 - When `kody daemon install` set up a service, or a daemon already runs, the app
   adopts it. **This machine** shows that runner and its version, and Pause,
