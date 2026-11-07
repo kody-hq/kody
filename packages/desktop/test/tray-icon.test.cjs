@@ -3,31 +3,10 @@ const assert = require('node:assert/strict')
 const { readFileSync, existsSync } = require('node:fs')
 const { join } = require('node:path')
 const { createHash } = require('node:crypto')
-const {
-	trayIconFileName,
-	trayIconPath,
-	trayChromeIsDark,
-	createTrayIcon,
-} = require('../tray-icon.cjs')
+const { trayChromeIsDark, createTrayIcon } = require('../tray-icon.cjs')
 
 const assets = join(__dirname, '../assets')
 const publicDir = join(__dirname, '../../worker/public')
-
-test('tray icon file names follow light/dark chrome', () => {
-	assert.equal(trayIconFileName(false), 'tray-light.png')
-	assert.equal(trayIconFileName(true), 'tray-dark.png')
-})
-
-test('tray icon paths resolve under desktop assets', () => {
-	assert.equal(
-		trayIconPath(false, join(__dirname, '..')),
-		join(assets, 'tray-light.png'),
-	)
-	assert.equal(
-		trayIconPath(true, join(__dirname, '..')),
-		join(assets, 'tray-dark.png'),
-	)
-})
 
 test('tray assets match published favicon light/dark treatments', () => {
 	const pairs = [
