@@ -143,6 +143,24 @@ export function integrationAuthFailureCopy(input: {
 		}
 	}
 
+	// Token-endpoint 429 is a provider limit, not a dead grant. Keep it off the
+	// "Needs you / Reconnect" queue so people wait instead of reconnecting.
+	if (input.reason === 'provider_rejected' && input.httpStatus === 429) {
+		return {
+			title,
+			why: integrationAuthFailureWhy(
+				input.reason,
+				providerDetail,
+				providerLabel,
+				429,
+			),
+			who: 'the-service',
+			doLabel: 'Open integration',
+			href: accountHref,
+			reconnectable: false,
+		}
+	}
+
 	const why = integrationAuthFailureWhy(
 		input.reason,
 		providerDetail,

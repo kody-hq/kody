@@ -28,6 +28,11 @@ test('connection trouble copy names the actor and keeps vendor items off the you
 		reason: 'provider_rejected',
 		httpStatus: 429,
 	})
+	expect(rateLimited).toMatchObject({
+		who: 'the-service',
+		reconnectable: false,
+		doLabel: 'Open integration',
+	})
 	expect(rateLimited.why).toContain('rate-limited token refresh (HTTP 429)')
 	expect(rateLimited.why).toContain('not a Kody plan limit')
 	expect(rateLimited.why).not.toContain('Reconnect Google')
