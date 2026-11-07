@@ -24,6 +24,8 @@ if (process.isMainFrame && location.origin === origin) {
 				}
 			: {}),
 		execution: {
+			// Machine sign-in approves in an app window when the session allows.
+			approvesInApp: true,
 			commandsStatus: () =>
 				ipcRenderer.invoke('kody:execution', 'commands-status'),
 			enableCommands: () => ipcRenderer.invoke('kody:execution', 'commands-on'),
