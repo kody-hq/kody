@@ -12,6 +12,7 @@
  */
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
+	type CredentialPlacementRefusedPart,
 	credentialPlacementRefusedCode,
 	formatCredentialPlacementRefusalTag,
 } from '#worker/credentials/placement-refusal.ts'
@@ -28,16 +29,23 @@ import {
 } from './placeholders.ts'
 
 /**
- * The message ends with a `(credential_placement_refused, slot "…")` tag so
- * the cause survives the sandbox boundary, where only the message crosses.
+ * The message ends with a `(credential_placement_refused, slot "…", part "…")`
+ * tag so the cause survives the sandbox boundary, where only the message
+ * crosses. `part` is set when a fill placement refused that request part.
  */
 export class SecretPlacementError extends McpCallerError {
 	readonly code = credentialPlacementRefusedCode
 	readonly slot: string | null
-	constructor(message: string, slot: string | null) {
-		super(`${message} ${formatCredentialPlacementRefusalTag(slot)}`)
+	readonly part: CredentialPlacementRefusedPart | null
+	constructor(
+		message: string,
+		slot: string | null,
+		part: CredentialPlacementRefusedPart | null = null,
+	) {
+		super(`${message} ${formatCredentialPlacementRefusalTag(slot, part)}`)
 		this.name = 'SecretPlacementError'
 		this.slot = slot
+		this.part = part
 	}
 }
 

@@ -1102,7 +1102,7 @@ export async function handleWebhookIngressRequest(
 		const placementRefusal = ok
 			? null
 			: readCredentialPlacementRefusalFromInvocationBody(response.body)
-		await recordWebhookDelivery({
+		const deliveryRun = await recordWebhookDelivery({
 			env,
 			endpoint: liveEndpoint,
 			kodyId: savedPackage.kodyId,
@@ -1126,11 +1126,9 @@ export async function handleWebhookIngressRequest(
 				{
 					ok: false,
 					error: placementRefusal
-						? buildCredentialPlacementRefusedWebhookError(placementRefusal.slot)
-						: {
-								code: 'invocation_failed',
-								message: 'Bound package export invocation failed.',
-							},
+						? buildCredentialPlacementRefusedWebhookError(placementRefusal)
+						: invocationFailedWebhookError,
+					...webhookRunReference(deliveryRun),
 				},
 				{ status: 502 },
 			)
@@ -1146,7 +1144,7 @@ export async function handleWebhookIngressRequest(
 		})
 		return jsonResponse(response.body, { status: response.status })
 	} catch (error) {
-		await recordWebhookDelivery({
+		const deliveryRun = await recordWebhookDelivery({
 			env,
 			endpoint: liveEndpoint,
 			kodyId: savedPackage.kodyId,
@@ -1161,12 +1159,25 @@ export async function handleWebhookIngressRequest(
 		return jsonResponse(
 			{
 				ok: false,
-				error: {
-					code: 'invocation_failed',
-					message: 'Bound package export invocation failed.',
-				},
+				error: invocationFailedWebhookError,
+				...webhookRunReference(deliveryRun),
 			},
 			{ status: 502 },
 		)
 	}
+}
+
+const invocationFailedWebhookError = {
+	code: 'invocation_failed',
+	message:
+		'Bound package export invocation failed. The package owner can open this run in Activity to see why.',
+}
+
+/**
+ * The delivery run's id, so a caller can hand the owner a reference to the
+ * Activity run that holds the full error. Omitted when the run was not
+ * recorded.
+ */
+function webhookRunReference(run: { id: string } | null) {
+	return run ? { runId: run.id } : {}
 }

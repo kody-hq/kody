@@ -784,7 +784,7 @@ test('a sync webhook whose package was refused for credential placement returns 
 		body: JSON.stringify({ ticket: 1 }),
 	})
 	expect(response.status).toBe(502)
-	const body = await response.json()
+	const body = (await response.json()) as { runId?: string }
 	expect(body).toEqual({
 		ok: false,
 		error: {
@@ -793,6 +793,7 @@ test('a sync webhook whose package was refused for credential placement returns 
 				'The package tried to send a credential (slot "clerkReviewUserId") to a host the credential does not allow, over plain HTTP, or in the URL host, so Kody refused the request. The package owner or the credential\'s owner needs to fix it.',
 			slot: 'clerkReviewUserId',
 		},
+		runId: expect.any(String),
 	})
 	const serialized = JSON.stringify(body)
 	expect(serialized).not.toContain('request body')
@@ -803,6 +804,7 @@ test('a sync webhook whose package was refused for credential placement returns 
 		(run) => run.metadata?.['outcome'] === 'failed',
 	)
 	expect(failed?.metadata).toMatchObject({ httpStatus: 502 })
+	expect(body.runId).toBe(failed?.id)
 	// The owner's webhook run keeps the stable code first, then the export's
 	// own (sanitized) error so Activity says why it failed.
 	expect(failed?.errorMessage).toMatch(
@@ -812,6 +814,80 @@ test('a sync webhook whose package was refused for credential placement returns 
 	expect(mocks.invokePackageExport.mock.calls.at(-1)?.[0]).not.toHaveProperty(
 		'executorTimeoutMs',
 	)
+})
+
+test('a sync webhook refused for body fill placement names the part and the run, never the value', async () => {
+	const userId = await setupOwnerWithWebhooks(['sync-hook'])
+	declareWebhook({ name: 'sync-hook', responseMode: 'sync' })
+	mocks.invokePackageExport.mockResolvedValue({
+		status: 500,
+		body: {
+			ok: false,
+			error: {
+				code: 'execution_failed',
+				message:
+					'Error: Credential "acmeApiKey" may not fill the body. Allowed parts: headers. Its owner can allow the body on the credential page, which warns that the host may store the value there. (credential_placement_refused, slot "acmeApiKey", part "body")',
+			},
+			logs: ['POST https://api.acme.test/v1/items'],
+		},
+	})
+
+	const response = await sendWebhook('sync-hook', {
+		body: JSON.stringify({ item: 1 }),
+	})
+	expect(response.status).toBe(502)
+	const body = (await response.json()) as {
+		error: Record<string, unknown>
+		runId?: string
+	}
+	expect(body.error).toEqual({
+		code: 'credential_placement_refused',
+		message:
+			"The package tried to send a credential (slot \"acmeApiKey\") in the request body, which the credential's fill placement does not allow, so Kody refused the request. The credential's owner can allow it in the credential's fill placement setting, or the package owner can send the credential where it is allowed.",
+		slot: 'acmeApiKey',
+		part: 'body',
+	})
+	expect(JSON.stringify(body)).not.toContain('api.acme.test')
+
+	const failed = (await listDeliveries(userId, 'sync-hook')).find(
+		(run) => run.metadata?.['outcome'] === 'failed',
+	)
+	expect(failed?.id).toBeTruthy()
+	expect(body.runId).toBe(failed?.id)
+	expect(failed?.errorMessage).toMatch(
+		/^credential_placement_refused: Error: Credential "acmeApiKey" may not fill the body\./,
+	)
+})
+
+test('a sync webhook whose export failed returns a run reference with the generic cause', async () => {
+	const userId = await setupOwnerWithWebhooks(['sync-hook'])
+	declareWebhook({ name: 'sync-hook', responseMode: 'sync' })
+	mocks.invokePackageExport.mockResolvedValue({
+		status: 500,
+		body: {
+			ok: false,
+			error: { code: 'execution_failed', message: 'Error: boom' },
+		},
+	})
+
+	const response = await sendWebhook('sync-hook', {
+		body: JSON.stringify({ item: 1 }),
+	})
+	expect(response.status).toBe(502)
+	const body = (await response.json()) as { runId?: string }
+	const failed = (await listDeliveries(userId, 'sync-hook')).find(
+		(run) => run.metadata?.['outcome'] === 'failed',
+	)
+	expect(body).toEqual({
+		ok: false,
+		error: {
+			code: 'invocation_failed',
+			message:
+				'Bound package export invocation failed. The package owner can open this run in Activity to see why.',
+		},
+		runId: failed?.id,
+	})
+	expect(JSON.stringify(body)).not.toContain('boom')
 })
 
 test('webhook ingress rejects suspended owners before any dispatch', async () => {
