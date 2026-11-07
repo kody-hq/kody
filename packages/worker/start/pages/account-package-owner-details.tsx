@@ -480,7 +480,7 @@ export function AccountPackageOwnerDetails(props: {
 									status={visibilityAudienceCopy(packageDetail)}
 									statusTestId="package-source-sharing-status"
 								/>
-								<div css={{ display: 'grid', gap: spacing.xs }}>
+								<div css={{ display: 'grid', gap: spacing.xs, minWidth: 0 }}>
 									{packageDetail.isPrivate ? (
 										<p
 											css={{ margin: 0, color: colors.textMuted }}
@@ -520,6 +520,7 @@ export function AccountPackageOwnerDetails(props: {
 												border: `1px solid ${colors.border}`,
 												backgroundColor: colors.surface,
 												color: colors.text,
+												minWidth: 0,
 											}}
 											onChange={(event) => {
 												if (

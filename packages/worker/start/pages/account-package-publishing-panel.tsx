@@ -284,8 +284,10 @@ const pickerListCss = css({
 	padding: 0,
 	display: 'grid',
 	gap: spacing.xs,
+	minWidth: 0,
 	maxHeight: '16rem',
 	overflowY: 'auto',
+	'& > li': { minWidth: 0 },
 })
 
 const pickerLinkCss = css({
