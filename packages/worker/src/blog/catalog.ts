@@ -77,6 +77,7 @@ import shipPrBetterThanASkill from './posts/ship-pr-better-than-a-skill.md'
 import whoseCredentialsDoesThisAppUse from './posts/whose-credentials-does-this-app-use.md'
 import firstUsefulKodyWorkflow from './posts/first-useful-kody-workflow.md'
 import everyPersonalAgentNeedsACloud from './posts/every-personal-agent-needs-a-cloud.md'
+import giveStaffAndTheirBotsAccessToYourKodyOrg from './posts/give-staff-and-their-bots-access-to-your-kody-org.md'
 
 /**
  * Static post sources. When adding a post, drop a `.md` file under `posts/`
@@ -254,6 +255,10 @@ const postSources: Array<{ slug: string; raw: string }> = [
 	{
 		slug: 'every-personal-agent-needs-a-cloud',
 		raw: everyPersonalAgentNeedsACloud,
+	},
+	{
+		slug: 'give-staff-and-their-bots-access-to-your-kody-org',
+		raw: giveStaffAndTheirBotsAccessToYourKodyOrg,
 	},
 ]
 
