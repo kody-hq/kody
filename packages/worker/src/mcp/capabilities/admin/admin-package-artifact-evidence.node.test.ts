@@ -8,26 +8,22 @@ import { DatabaseSync } from 'node:sqlite'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { jobsData } from '#worker/jobs/jobs-data.ts'
-import { parseAuthoredPackageJson } from '#worker/package-registry/manifest.ts'
 import { persistPublishedBundleArtifact } from '#worker/package-runtime/published-bundle-artifact-persist.ts'
-import { buildPublishedBundleArtifactKvKey } from '#worker/package-runtime/published-runtime-artifacts.ts'
+import {
+	buildPackageAppClientPointerKvKey,
+	buildPublishedBundleArtifactKvKey,
+	buildPublishedSourceManifestSnapshotKvKey,
+} from '#worker/package-runtime/published-runtime-artifacts.ts'
 import type { EntitySourceRow } from '#worker/repo/types.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 
 const mocks = vi.hoisted(() => ({
-	loadServingPackageManifestBySourceId: vi.fn(),
 	refreshSavedPackageProjection: vi.fn(),
 	rebuild: vi.fn(() => {
 		throw new Error('rebuild must not run')
 	}),
-}))
-
-vi.mock('#worker/package-registry/source.ts', async (importOriginal) => ({
-	...(await importOriginal<Record<string, unknown>>()),
-	loadServingPackageManifestBySourceId:
-		mocks.loadServingPackageManifestBySourceId,
 }))
 
 vi.mock('#worker/package-registry/service.ts', async (importOriginal) => ({
@@ -69,29 +65,27 @@ const users = [
 	{ username: 'bob', roles: ['user'] as const },
 ]
 
-const manifest = parseAuthoredPackageJson({
-	content: JSON.stringify({
-		name: '@bob/factory',
-		exports: {
-			'.': './src/index.ts',
-			'./readiness': './src/readiness.ts',
-		},
-		kody: {
-			id: 'factory',
-			description: 'Synthetic fixture',
-			app: { entry: './src/app.ts', client: './src/client.ts' },
-			jobs: {
-				'reconcile-active': {
-					entry: './src/jobs/reconcile.ts',
-					schedule: { type: 'interval', every: '1h' },
-				},
-				'project-a-periodic': {
-					entry: './src/jobs/periodic.ts',
-					schedule: { type: 'interval', every: '1h' },
-				},
+const manifestContent = JSON.stringify({
+	name: '@bob/factory',
+	exports: {
+		'.': './src/index.ts',
+		'./readiness': './src/readiness.ts',
+	},
+	kody: {
+		id: 'factory',
+		description: 'Synthetic fixture',
+		app: { entry: './src/app.ts', client: './src/client.ts' },
+		jobs: {
+			'reconcile-active': {
+				entry: './src/jobs/reconcile.ts',
+				schedule: { type: 'interval', every: '1h' },
+			},
+			'project-a-periodic': {
+				entry: './src/jobs/periodic.ts',
+				schedule: { type: 'interval', every: '1h' },
 			},
 		},
-	}),
+	},
 })
 
 function createTest() {
@@ -186,6 +180,21 @@ function createTest() {
 		source: 'src-other',
 	})
 	const kvStore = new Map<string, string>()
+	const manifestSnapshotKey = buildPublishedSourceManifestSnapshotKvKey({
+		sourceId,
+		publishedCommit: oldCommit,
+	})
+	kvStore.set(
+		manifestSnapshotKey,
+		JSON.stringify({
+			version: 1,
+			sourceId,
+			publishedCommit: oldCommit,
+			manifestPath: 'package.json',
+			manifestContent,
+			createdAt: now,
+		}),
+	)
 	const kvPut = vi.fn()
 	const kv = {
 		async get(key: string, type?: 'text' | 'json') {
@@ -284,6 +293,7 @@ function createTest() {
 		env,
 		kv,
 		kvPut,
+		manifestSnapshotKey,
 		loader,
 		writeArtifact,
 		jobRow,
@@ -421,12 +431,6 @@ function projectionRefreshThatSyncsJobPins(env: Env) {
 }
 
 beforeEach(() => {
-	mocks.loadServingPackageManifestBySourceId
-		.mockReset()
-		.mockImplementation(async () => ({
-			source: { published_commit: oldCommit },
-			manifest,
-		}))
 	mocks.refreshSavedPackageProjection.mockReset()
 	mocks.rebuild.mockClear()
 })
@@ -501,12 +505,30 @@ test('evidence reports every declared target with the serving bytes runtime sele
 		selected: { commit: oldCommit, status: 'valid' },
 		newestRow: { commit: failedCommit },
 	})
+	// The app serves its publish-time template, read before the row path.
+	const app = byKey['app||src/app.ts']!
+	expect(app).toMatchObject({
+		servedFrom: 'template',
+		runtimeLoads: true,
+		template: { commit: oldCommit, status: 'valid' },
+		selected: { commit: oldCommit, status: 'valid' },
+		clientPointer: null,
+	})
+	expect(app.template?.bundleSha256).toBe(app.selected?.bundleSha256)
+	expect(mainModule).toMatchObject({
+		servedFrom: 'identity_row',
+		template: null,
+		clientPointer: null,
+	})
 	// Declared but never built: reported, not dropped.
 	expect(byKey['app-client||src/client.ts']).toMatchObject({
 		declared: true,
 		identityRow: null,
 		selected: { commit: oldCommit, status: 'missing', bundleSha256: null },
+		servedFrom: 'none',
 		runtimeLoads: false,
+		template: null,
+		clientPointer: { status: 'missing', mainModule: null },
 	})
 	expect(byKey['job|legacy-sweep|']).toMatchObject({
 		declared: false,
@@ -622,19 +644,102 @@ test('evidence reports missing, malformed, and mismatched payloads explicitly', 
 	})
 	expect(JSON.stringify(targets)).not.toContain(secretMarker)
 
-	// Manifest unavailable: identity rows and jobs are still reported.
-	mocks.loadServingPackageManifestBySourceId.mockRejectedValue(
-		new Error(`artifacts down ${secretMarker}`),
+	// One KV read failing reports that target, not an aborted page.
+	const realGet = t.kv.get.bind(t.kv)
+	const brokenKey = key('module', '.', 'src/index.ts')
+	const mutableKv = t.kv as unknown as { get: typeof realGet }
+	mutableKv.get = (async (k: string, type?: 'text' | 'json') => {
+		if (k === brokenKey) throw new Error(`kv down ${secretMarker}`)
+		return realGet(k, type as 'text')
+	}) as typeof realGet
+	const outage = await evidence(t)
+	mutableKv.get = realGet
+	const outageByKey = Object.fromEntries(
+		outage.targets.map((target) => [target.key, target]),
 	)
+	expect(outageByKey['module|.|src/index.ts']).toMatchObject({
+		selected: { status: 'kv_unavailable', bundleSha256: null },
+		runtimeLoads: false,
+	})
+	expect(outageByKey['importable-module|.|src/index.ts']).toMatchObject({
+		selected: { status: 'valid' },
+	})
+	expect(JSON.stringify(outage.targets)).not.toContain(secretMarker)
+
+	// Manifest snapshot missing: never recovered or written on read, and
+	// identity rows and jobs are still reported.
+	await t.kv.delete(t.manifestSnapshotKey)
+	const putsBeforeDegraded = t.kvPut.mock.calls.length
 	const degraded = await adminPackageArtifactEvidenceCapability.handler(
 		{ packageId, limit: 20 },
 		t.admin,
 	)
-	expect(degraded.manifest).toEqual({ status: 'unavailable', commit: null })
+	expect(t.kvPut.mock.calls.length).toBe(putsBeforeDegraded)
+	expect(degraded.manifest).toEqual({
+		status: 'snapshot_missing',
+		commit: oldCommit,
+	})
 	// Rows and jobs only: the never-built app client is unknowable here.
 	expect(degraded.page.total).toBe(8)
 	expect(degraded.targets.every((target) => !target.declared)).toBe(true)
 	expect(JSON.stringify(degraded)).not.toContain(secretMarker)
+
+	await t.kv.put(t.manifestSnapshotKey, `{bad ${secretMarker}`)
+	const unreadable = await adminPackageArtifactEvidenceCapability.handler(
+		{ packageId, limit: 20 },
+		t.admin,
+	)
+	expect(unreadable.manifest).toEqual({ status: 'unavailable', commit: null })
+	expect(unreadable.page.total).toBe(8)
+})
+
+test('evidence reports the app template runtime serves even without an identity row', async () => {
+	const t = createTest()
+	await seedOldPublish(t)
+	t.sqlite
+		.prepare(
+			`DELETE FROM published_bundle_artifacts WHERE artifact_kind IN ('app', 'app-client')`,
+		)
+		.run()
+	const first = await evidence(t)
+	const firstByKey = Object.fromEntries(
+		first.targets.map((target) => [target.key, target]),
+	)
+	expect(firstByKey['app||src/app.ts']).toMatchObject({
+		declared: true,
+		identityRow: null,
+		servedFrom: 'template',
+		runtimeLoads: true,
+		template: { commit: oldCommit, status: 'valid' },
+	})
+	expect(firstByKey['app-client||src/client.ts']).toMatchObject({
+		servedFrom: 'none',
+		clientPointer: { status: 'missing' },
+	})
+
+	// An unreadable client pointer makes the runtime template read fail, so
+	// runtime falls back to the (missing) identity row: nothing is served.
+	await t.kv.put(
+		buildPackageAppClientPointerKvKey({ sourceId, publishedCommit: oldCommit }),
+		`{bad ${secretMarker}`,
+	)
+	const { targets } = await evidence(t)
+	const byKey = Object.fromEntries(
+		targets.map((target) => [target.key, target]),
+	)
+	expect(byKey['app||src/app.ts']).toMatchObject({
+		servedFrom: 'none',
+		runtimeLoads: false,
+		template: { status: 'valid' },
+	})
+	expect(byKey['app-client||src/client.ts']).toMatchObject({
+		servedFrom: 'none',
+		clientPointer: { status: 'malformed', mainModule: null },
+	})
+	expect(JSON.stringify(targets)).not.toContain(secretMarker)
+	expect(t.loader.get).not.toHaveBeenCalled()
+	expect(t.loader.load).not.toHaveBeenCalled()
+	expect(mocks.rebuild).not.toHaveBeenCalled()
 })
 
 test('evidence cursors refuse a page after the package state changed', async () => {
@@ -645,10 +750,21 @@ test('evidence cursors refuse a page after the package state changed', async () 
 		t.admin,
 	)
 	expect(first.page).toMatchObject({ total: 9, returned: 2, offset: 0 })
-	t.setSource(newerCommit, oldCommit)
+	t.setJobPins(failedCommit)
 	await expect(
 		adminPackageArtifactEvidenceCapability.handler(
 			{ packageId, limit: 2, cursor: first.page.nextCursor! },
+			t.admin,
+		),
+	).rejects.toThrow(/cursor_state_changed/)
+	const second = await adminPackageArtifactEvidenceCapability.handler(
+		{ packageId, limit: 2 },
+		t.admin,
+	)
+	t.setSource(newerCommit, oldCommit)
+	await expect(
+		adminPackageArtifactEvidenceCapability.handler(
+			{ packageId, limit: 2, cursor: second.page.nextCursor! },
 			t.admin,
 		),
 	).rejects.toThrow(/cursor_state_changed/)
@@ -863,7 +979,7 @@ test('admin capabilities reject non-admin callers, including the owner', async (
 	expect(
 		t.auditEvents().some((event) => event.action?.startsWith('adminPackage')),
 	).toBe(false)
-	expect(mocks.loadServingPackageManifestBySourceId).not.toHaveBeenCalled()
+	expect(mocks.rebuild).not.toHaveBeenCalled()
 })
 
 test('failed-publish settlement resumes after a refresh failure and restores old serving bytes and job pins', async () => {

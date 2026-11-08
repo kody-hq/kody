@@ -611,8 +611,11 @@ Targets are every artifact the serving-commit manifest declares
 and an `importable-module` per export, subscription modules, and each job),
 followed by any extra identity rows and any package job rows with no declared
 target. A declared target with no identity row or no KV payload is still
-reported. When the manifest cannot be read, `manifest.status` is `unavailable`
-and targets come from identity rows and jobs only.
+reported. Declared targets come from the serving commit's KV manifest snapshot
+only: the read never recovers a missing snapshot from Artifacts (that path
+writes KV). When the snapshot is missing, `manifest.status` is
+`snapshot_missing`; when it cannot be read or parsed, `unavailable`. Either way
+targets come from identity rows and jobs only.
 
 Each target reports:
 
@@ -631,8 +634,21 @@ Each target reports:
   field names, or `kv_unavailable`), the embedded commit, the main module name,
   SHA-256 per module (first 32 by path; `moduleCount` is always the full count),
   `bundleSha256` over the main module name and the sorted path and hash pairs,
-  and the payload size. `runtimeLoads` is true only when an identity row exists
-  and the payload is valid.
+  and the payload size. A KV read that throws is `kv_unavailable` for that
+  target; the rest of the page is still reported.
+- `servedFrom`: which stored bytes runtime serves. The package app reads its
+  publish-time worker template (`package-app-template` key at the serving
+  commit) before the identity-row path, so an app with a usable template is
+  `template` even with no identity row; this uses the runtime's own KV-only
+  `readPackageAppWorkerTemplate` acceptance rule. Otherwise `identity_row` when
+  an identity row exists and `selected` is valid, else `none`. `runtimeLoads` is
+  `servedFrom !== 'none'`.
+- `template` (app only): evidence for the template payload, same fields as
+  `selected`.
+- `clientPointer` (app client only): the template's client pointer (`kvKey`,
+  `status`, the client module file name, and whether it matches `selected`). A
+  valid pointer picks the client module URL; client bytes still come from the
+  identity-row path.
 - `newestRow`: the same evidence for the row's own payload, only when the row
   names a different commit, plus `selectedMatchesNewestRowBytes`.
 - `jobs`: the package jobs for a job target (id, enabled, recorded commit).
@@ -642,8 +658,11 @@ platform code and bytes never leave it. The read never loads, executes,
 compiles, or rebuilds package code, and never writes KV or D1 except the audit
 row. Pages hold up to 20 targets (`limit`, default 10); follow
 `page.nextCursor`. The cursor carries a `stateFingerprint` of the source
-pointers and target list; a cursor from a different state is refused, so a page
-walk never silently skips or repeats targets.
+pointers, the target list, every identity row's commit and `updatedAt`, and
+every package job's pin and enabled state; a cursor from a different state is
+refused, so a page walk never silently skips or repeats targets or mixes two
+publishes. Payload bytes are read per page and are not part of the fingerprint
+(commit-keyed payloads are written once per commit).
 
 ### Admin package job attribution repair
 

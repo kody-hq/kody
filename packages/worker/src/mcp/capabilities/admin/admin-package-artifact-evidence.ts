@@ -109,7 +109,11 @@ const outputSchema = z.object({
 		})
 		.nullable(),
 	manifest: z.object({
-		status: z.enum(['loaded', 'unavailable']),
+		status: z
+			.enum(['loaded', 'snapshot_missing', 'unavailable'])
+			.describe(
+				'Declared targets come from the KV manifest snapshot only (never recovered or written on read). snapshot_missing and unavailable fall back to identity rows and jobs.',
+			),
 		commit: nullableString.describe(
 			'Commit the declared targets were read from (the serving commit).',
 		),
@@ -137,7 +141,26 @@ const outputSchema = z.object({
 			selected: payloadSchema
 				.nullable()
 				.describe('Payload a runtime reader selects for this target.'),
+			servedFrom: z
+				.enum(['template', 'identity_row', 'none'])
+				.describe(
+					'Stored bytes runtime serves: the app publish-time worker template (read first), the identity-row path, or none.',
+				),
 			runtimeLoads: z.boolean(),
+			template: payloadSchema
+				.nullable()
+				.describe('App only: publish-time worker template payload.'),
+			clientPointer: z
+				.object({
+					kvKey: z.string(),
+					status: payloadStatusSchema,
+					mainModule: nullableString,
+					matchesSelectedMainModule: z.boolean().nullable(),
+				})
+				.nullable()
+				.describe(
+					'App client only: template client pointer (picks the client module URL; bytes still come from selected).',
+				),
 			newestRow: z
 				.object(payloadFields)
 				.nullable()

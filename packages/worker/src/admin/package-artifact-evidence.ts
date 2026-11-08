@@ -5,16 +5,22 @@ import {
 	type PackageProvenanceTarget,
 } from '#worker/admin/package-provenance.ts'
 import { jobsData } from '#worker/jobs/jobs-data.ts'
-import { loadServingPackageManifestBySourceId } from '#worker/package-registry/source.ts'
+import { parseAuthoredPackageJson } from '#worker/package-registry/manifest.ts'
 import { collectPublishedPackageArtifactTargets } from '#worker/package-runtime/package-artifact-targets.ts'
 import {
 	matchesPublishedBundleArtifactIdentity,
 	normalizeArtifactName,
 	normalizeEntryPoint,
 } from '#worker/package-runtime/published-bundle-artifact-persist.ts'
+import { isUnrepairablePreBindingArtifact } from '#worker/package-runtime/pre-binding-artifact-repair.ts'
 import {
+	buildPackageAppClientPointerKvKey,
+	buildPackageAppWorkerTemplateKvKey,
 	buildPublishedBundleArtifactKvKey,
+	hasPublishedRuntimeArtifacts,
 	isUsableStoredPublishedBundleArtifact,
+	readPackageAppWorkerTemplate,
+	readPublishedSourceManifestSnapshot,
 	type BundleArtifactKind,
 	type PublishedBundleArtifact,
 } from '#worker/package-runtime/published-runtime-artifacts.ts'
@@ -94,6 +100,14 @@ export type ArtifactPayloadEvidence = {
 	sizeBytes: number | null
 }
 
+export type ClientPointerEvidence = {
+	kvKey: string
+	status: ArtifactPayloadStatus
+	/** Client module file name the pointer names (a name, never bytes). */
+	mainModule: string | null
+	matchesSelectedMainModule: boolean | null
+}
+
 export type ArtifactEvidenceTarget = {
 	key: string
 	kind: BundleArtifactKind
@@ -113,8 +127,22 @@ export type ArtifactEvidenceTarget = {
 	 * commit-keyed key so missing and orphaned payloads are visible.
 	 */
 	selected: ArtifactPayloadEvidence | null
-	/** Runtime would load `selected` (identity row present and payload valid). */
+	/**
+	 * Which stored bytes runtime serves: `template` (app only: the publish-time
+	 * worker template, read before the identity-row path), `identity_row`
+	 * (identity row present and `selected` valid), or `none`.
+	 */
+	servedFrom: 'template' | 'identity_row' | 'none'
+	/** Runtime serves stored bytes for this target (`servedFrom` is not `none`). */
 	runtimeLoads: boolean
+	/** App only: the publish-time worker template payload at the serving commit. */
+	template: ArtifactPayloadEvidence | null
+	/**
+	 * App client only: the template's client pointer at the serving commit. A
+	 * valid pointer picks the client module URL; client bytes still come from
+	 * the identity-row path (`selected`).
+	 */
+	clientPointer: ClientPointerEvidence | null
 	/** Newest identity row payload, only when it names a different commit. */
 	newestRow: Omit<ArtifactPayloadEvidence, 'modules'> | null
 	selectedMatchesNewestRowBytes: boolean | null
@@ -138,7 +166,7 @@ export type PackageArtifactEvidence = {
 		servingArtifactCommit: string | null
 	} | null
 	manifest: {
-		status: 'loaded' | 'unavailable'
+		status: 'loaded' | 'snapshot_missing' | 'unavailable'
 		commit: string | null
 	}
 	targets: Array<ArtifactEvidenceTarget>
@@ -273,7 +301,12 @@ async function inspectPayload(input: {
 		kvKeyDerived: input.kvKeyDerived,
 	}
 	if (!input.kv) return emptyEvidence({ ...base, status: 'kv_unavailable' })
-	const raw = await input.kv.get(input.kvKey, 'text')
+	let raw: string | null
+	try {
+		raw = await input.kv.get(input.kvKey, 'text')
+	} catch {
+		return emptyEvidence({ ...base, status: 'kv_unavailable' })
+	}
 	if (raw == null) return emptyEvidence({ ...base, status: 'missing' })
 	const sizeBytes = new TextEncoder().encode(raw).byteLength
 	let stored: unknown
@@ -397,6 +430,107 @@ async function inspectPayload(input: {
 	}
 }
 
+type AppTemplateEvidence = {
+	template: ArtifactPayloadEvidence
+	/** Same acceptance rule as `readPublishedPackageAppWorkerTemplate`. */
+	servesApp: boolean
+	clientPointer: ClientPointerEvidence | null
+}
+
+async function inspectClientPointer(input: {
+	kv: KVNamespace | undefined
+	kvKey: string
+	runtimeAccepts: boolean
+}): Promise<ClientPointerEvidence> {
+	const base = {
+		kvKey: input.kvKey,
+		mainModule: null,
+		matchesSelectedMainModule: null,
+	}
+	if (!input.kv) return { ...base, status: 'kv_unavailable' }
+	let raw: string | null
+	try {
+		raw = await input.kv.get(input.kvKey, 'text')
+	} catch {
+		return { ...base, status: 'kv_unavailable' }
+	}
+	if (raw == null) return { ...base, status: 'missing' }
+	let stored: unknown
+	try {
+		stored = JSON.parse(raw)
+	} catch {
+		return { ...base, status: 'malformed' }
+	}
+	const mainModule =
+		stored && typeof stored === 'object' && !Array.isArray(stored)
+			? (stored as Record<string, unknown>).mainModule
+			: undefined
+	if (typeof mainModule !== 'string') return { ...base, status: 'malformed' }
+	return {
+		...base,
+		status: input.runtimeAccepts ? 'valid' : 'identity_mismatch',
+		mainModule: mainModule.length <= 512 ? mainModule : null,
+	}
+}
+
+/**
+ * The package app reads a publish-time worker template (and client pointer)
+ * before its identity-row path. Probe both keys for hashes, and run the
+ * runtime's own KV-only template reader to decide whether the template is
+ * what gets served. Never loads or runs the template.
+ */
+async function inspectAppTemplate(input: {
+	env: Env
+	kv: KVNamespace | undefined
+	sourceId: string
+	servingCommit: string | null
+	appEntry: string | null
+	clientEntry: string | null
+}): Promise<AppTemplateEvidence | null> {
+	const { servingCommit, appEntry } = input
+	if (!servingCommit || !appEntry) return null
+	const identity = { sourceId: input.sourceId, publishedCommit: servingCommit }
+	let servesApp = false
+	let runtimeClient: { mainModule: string } | null | undefined = undefined
+	if (input.kv && hasPublishedRuntimeArtifacts(input.env)) {
+		try {
+			const parts = await readPackageAppWorkerTemplate({
+				env: input.env,
+				sourceId: input.sourceId,
+				publishedCommit: servingCommit,
+				appEntry,
+				clientEntry: input.clientEntry,
+			})
+			servesApp =
+				parts.app != null && !isUnrepairablePreBindingArtifact(parts.app)
+			runtimeClient = parts.client
+		} catch {
+			servesApp = false
+			runtimeClient = undefined
+		}
+	}
+	const [template, clientPointer] = await Promise.all([
+		inspectPayload({
+			kv: input.kv,
+			kvKey: buildPackageAppWorkerTemplateKvKey(identity),
+			kvKeyDerived: true,
+			sourceId: input.sourceId,
+			commit: servingCommit,
+			kind: 'app',
+			artifactName: null,
+			entryPoint: appEntry,
+		}),
+		input.clientEntry
+			? inspectClientPointer({
+					kv: input.kv,
+					kvKey: buildPackageAppClientPointerKvKey(identity),
+					runtimeAccepts: runtimeClient != null,
+				})
+			: null,
+	])
+	return { template, servesApp, clientPointer }
+}
+
 function derivedKvKey(input: {
 	sourceId: string
 	commit: string
@@ -428,7 +562,8 @@ async function planTargets(input: {
 	sourceId: string
 	rows: Array<PublishedBundleArtifactRecord>
 	jobs: Array<JobRecord>
-	hasSource: boolean
+	servingCommit: string | null
+	manifestPath: string | null
 }): Promise<{
 	plans: Array<TargetPlan>
 	manifest: PackageArtifactEvidence['manifest']
@@ -444,21 +579,30 @@ async function planTargets(input: {
 		byKey.set(plan.key, plan)
 		plans.push(plan)
 	}
-	if (input.hasSource) {
+	// Snapshot read only: the shared manifest loader recovers a missing
+	// snapshot from Artifacts and writes it back to KV, which a read must not.
+	const servingCommit = input.servingCommit
+	if (servingCommit) {
 		try {
-			const loaded = await loadServingPackageManifestBySourceId({
+			const snapshot = await readPublishedSourceManifestSnapshot({
 				env: input.env,
-				baseUrl: 'https://kody.invalid',
-				userId: input.ownerId,
 				sourceId: input.sourceId,
+				publishedCommit: servingCommit,
 			})
+			const declared = snapshot
+				? collectPublishedPackageArtifactTargets(
+						parseAuthoredPackageJson({
+							content: snapshot.manifestContent,
+							manifestPath: input.manifestPath ?? undefined,
+							mode: 'published',
+						}),
+					)
+				: []
 			manifest = {
-				status: 'loaded',
-				commit: safeCommit(loaded.source.published_commit),
+				status: snapshot ? 'loaded' : 'snapshot_missing',
+				commit: safeCommit(servingCommit),
 			}
-			for (const target of collectPublishedPackageArtifactTargets(
-				loaded.manifest,
-			)) {
+			for (const target of declared) {
 				const artifactName = normalizeArtifactName(target.artifactName)
 				const entryPoint = normalizeEntryPoint(target.entryPoint)
 				add({
@@ -528,6 +672,7 @@ async function inspectTarget(input: {
 	servingCommit: string | null
 	servingArtifactCommit: string | null
 	plan: TargetPlan
+	appTemplate: AppTemplateEvidence | null
 }): Promise<ArtifactEvidenceTarget> {
 	const { plan } = input
 	const kv = (input.env as Env & { BUNDLE_ARTIFACTS_KV?: KVNamespace })
@@ -592,6 +737,18 @@ async function inspectTarget(input: {
 			}
 		}
 	}
+	const identityRowServes = row != null && selected?.status === 'valid'
+	const isApp = plan.kind === 'app' && plan.artifactName == null
+	const isAppClient = plan.kind === 'app-client' && plan.artifactName == null
+	const servedFrom: ArtifactEvidenceTarget['servedFrom'] =
+		isApp && input.appTemplate?.servesApp
+			? 'template'
+			: identityRowServes
+				? 'identity_row'
+				: 'none'
+	const pointer = isAppClient
+		? (input.appTemplate?.clientPointer ?? null)
+		: null
 	return {
 		key: plan.key,
 		kind: plan.kind,
@@ -607,7 +764,18 @@ async function inspectTarget(input: {
 				}
 			: null,
 		selected,
-		runtimeLoads: row != null && selected?.status === 'valid',
+		servedFrom,
+		runtimeLoads: servedFrom !== 'none',
+		template: isApp ? (input.appTemplate?.template ?? null) : null,
+		clientPointer: pointer
+			? {
+					...pointer,
+					matchesSelectedMainModule:
+						pointer.mainModule != null && selected?.mainModule != null
+							? pointer.mainModule === selected.mainModule
+							: null,
+				}
+			: null,
 		newestRow,
 		selectedMatchesNewestRowBytes:
 			newestRow?.bundleSha256 && selected?.bundleSha256
@@ -667,7 +835,8 @@ export async function loadPackageArtifactEvidence(input: {
 		sourceId: pkg.sourceId,
 		rows,
 		jobs,
-		hasSource: liveSource != null,
+		servingCommit,
+		manifestPath: liveSource?.manifest_path ?? null,
 	})
 	const stateFingerprint = (
 		await sha256Hex(
@@ -676,6 +845,18 @@ export async function loadPackageArtifactEvidence(input: {
 				liveSource?.serving_commit ?? null,
 				manifest.status,
 				plans.map((plan) => plan.key),
+				rows
+					.map((row) =>
+						[
+							row.artifactKind,
+							row.artifactName ?? '',
+							row.entryPoint,
+							row.publishedCommit,
+							row.updatedAt,
+						].join('\u0000'),
+					)
+					.sort(),
+				jobs.map((job) => [job.id, job.publishedCommit, job.enabled]),
 			]),
 		)
 	).slice(0, 16)
@@ -683,6 +864,25 @@ export async function loadPackageArtifactEvidence(input: {
 		throw new PackageArtifactEvidenceCursorError('cursor_state_changed')
 	}
 	const page = plans.slice(cursor.offset, cursor.offset + limit)
+	const appPlan = plans.find(
+		(plan) => plan.kind === 'app' && plan.artifactName == null,
+	)
+	const clientPlan = plans.find(
+		(plan) => plan.kind === 'app-client' && plan.artifactName == null,
+	)
+	const appTemplate = page.some(
+		(plan) => plan === appPlan || plan === clientPlan,
+	)
+		? await inspectAppTemplate({
+				env: input.env,
+				kv: (input.env as Env & { BUNDLE_ARTIFACTS_KV?: KVNamespace })
+					.BUNDLE_ARTIFACTS_KV,
+				sourceId: pkg.sourceId,
+				servingCommit,
+				appEntry: appPlan?.entryPoint ?? null,
+				clientEntry: clientPlan?.entryPoint ?? null,
+			})
+		: null
 	const targets = await mapWithConcurrency(page, kvReadConcurrency, (plan) =>
 		inspectTarget({
 			env: input.env,
@@ -690,6 +890,7 @@ export async function loadPackageArtifactEvidence(input: {
 			servingCommit,
 			servingArtifactCommit,
 			plan,
+			appTemplate,
 		}),
 	)
 	const nextOffset = cursor.offset + page.length
