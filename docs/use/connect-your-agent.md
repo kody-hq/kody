@@ -172,14 +172,23 @@ you only have the MCP URL.
   [OAuth over SSH guide](https://hermes-agent.nousresearch.com/docs/guides/oauth-over-ssh)
   and
   [MCP docs](https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp).
-- **Muse** — [Muse Code](https://dev.meta.ai/docs/muse-code/) reads MCP from
+- **Muse Code**: [Muse Code](https://dev.meta.ai/docs/muse-code/) reads MCP from
   `~/.config/muse/settings.json` under `mcp_servers`. Add a remote
   `streamable_http` server with this deployment’s MCP URL (see
   [Muse extending docs](https://dev.meta.ai/docs/muse-code/extending/)), then
   run `muse mcp login kody`. Do not paste `npx @kodycodes/cli install` into Muse
-  chat — that runs in Muse's Linux VM and cannot configure Muse. After OAuth
+  chat: that runs in Muse's Linux VM and cannot configure Muse. After OAuth
   succeeds, headless Muse may ask you to paste a localhost URL into the Muse
   chat.
+- **Muse chat**: Muse chat at [muse.ai](https://muse.ai) (formerly
+  agent.meta.ai) has no native MCP settings screen. Pre-register a confidential
+  client at Workspace → Agents → Advanced → MCP OAuth clients with the redirect
+  URIs `https://muse.ai/api/hatch/oauth/callback` and
+  `https://agent.meta.ai/api/hatch/oauth/callback`, ask Muse to create a custom
+  connector for this deployment's MCP URL, and enter the Client ID and Client
+  secret only in Muse's Secure credentials store. See
+  [Connect Muse chat to Kody](/docs/muse-chat) for the connector values, the
+  search-only proof step, and Cloudflare 1010 troubleshooting.
 - **Wajo** — [Wajo](https://wajo.ai) (Fo) connects ChatGPT and Claude through
   Wajo sign-in. Paste the MCP URL where Wajo asks for a custom MCP server, then
   complete OAuth.
