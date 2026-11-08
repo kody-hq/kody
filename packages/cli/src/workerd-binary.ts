@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { createReadStream, createWriteStream, existsSync } from 'node:fs'
 import { chmod, mkdir, rename, rm } from 'node:fs/promises'
+import { get as httpsGet } from 'node:https'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { Readable, Transform } from 'node:stream'
@@ -126,7 +127,7 @@ export async function ensureWorkerdBinary(
 			url,
 			sha256: workerdAssetDigests[target],
 			destination: binaryPath,
-			fetchFn: input.fetchFn ?? fetch,
+			fetchFn: input.fetchFn ?? http1Fetch,
 			idleTimeoutMs: input.idleTimeoutMs,
 		})
 	}
@@ -157,6 +158,47 @@ export async function ensureWorkerdBinary(
 		}
 	}
 	return binaryPath
+}
+
+/**
+ * GET over HTTP/1.1 (`node:https`), following redirects. Node's fetch can
+ * negotiate HTTP/2 with GitHub release downloads and fail every attempt with
+ * `ERR_HTTP2_STREAM_ERROR` while HTTP/1.1 succeeds (#5010).
+ */
+export function http1Fetch(
+	url: Parameters<typeof fetch>[0],
+	init?: RequestInit,
+	redirectsLeft = 5,
+): Promise<Response> {
+	return new Promise((resolve, reject) => {
+		const href = url instanceof Request ? url.url : String(url)
+		const request = httpsGet(
+			href,
+			{
+				signal: init?.signal ?? undefined,
+				headers: { 'user-agent': 'kody-cli' },
+			},
+			(response) => {
+				const status = response.statusCode ?? 502
+				const location = response.headers.location
+				if (status >= 300 && status < 400 && location) {
+					response.resume()
+					if (redirectsLeft <= 0) {
+						reject(new Error(`too many redirects from ${href}`))
+						return
+					}
+					resolve(http1Fetch(new URL(location, href), init, redirectsLeft - 1))
+					return
+				}
+				resolve(
+					new Response(Readable.toWeb(response) as ReadableStream<Uint8Array>, {
+						status,
+					}),
+				)
+			},
+		)
+		request.on('error', reject)
+	})
 }
 
 export async function downloadVerifiedGzip(input: {
