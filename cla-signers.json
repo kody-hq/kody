@@ -34,6 +34,11 @@
 			"github": "Cherry",
 			"signedAt": "2026-10-25",
 			"cla": "individual"
+		},
+		{
+			"github": "hypercubed-machine",
+			"signedAt": "2026-10-28",
+			"cla": "individual"
 		}
 	]
 }
