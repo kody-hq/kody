@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { afterEach, expect, test, vi } from 'vitest'
 import { credentialClientHeaderName } from '#worker/credentials/credential-client-header.ts'
 import { createCredentialClientRuntimeSource } from './credential-client-source.ts'
@@ -45,14 +46,18 @@ function openedAs(kind: string, hosts = ['api.example.com']): Opened {
 }
 
 function stubFetch(
-	respond: (request: Request) => Response | Promise<Response>,
+	respond: (
+		request: Request,
+		init: RequestInit | undefined,
+	) => Response | Promise<Response>,
 ) {
 	const seen: Array<Request> = []
 	vi.stubGlobal(
 		'fetch',
-		vi.fn(async (request: Request) => {
+		vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const request = new Request(input, init)
 			seen.push(request)
-			return await respond(request)
+			return await respond(request, init)
 		}),
 	)
 	return seen
@@ -344,4 +349,180 @@ test('http-signature sign() names the url host and resolves to the headers to ad
 			operation,
 		},
 	])
+})
+
+function oauthRuntime(calls: Array<string>, refreshed = true) {
+	return createRuntime(async (name) => {
+		calls.push(name)
+		if (name === 'credentialClientRefresh') {
+			return { ok: true, value: { refreshed } }
+		}
+		return { ok: true, value: openedAs('oauth') }
+	})
+}
+
+test("a refresh replay resends the caller's own in-memory body, even one over the stream threshold", async () => {
+	const calls: Array<string> = []
+	const runtime = oauthRuntime(calls)
+	const sentBodies: Array<unknown> = []
+	let attempt = 0
+	stubFetch(async (_request, init) => {
+		sentBodies.push(init?.body)
+		attempt += 1
+		return new Response(attempt === 1 ? 'expired' : null, {
+			status: attempt === 1 ? 401 : 200,
+		})
+	})
+	const client = await runtime.credential('google')
+	// One byte over the 3 MiB JSON-hop threshold, so the shim streams it.
+	const bytes = new Uint8Array(3 * 1024 * 1024 + 1).fill(7)
+	const blob = new Blob([bytes])
+	for (const body of [bytes, bytes.buffer, blob, 'text-body']) {
+		attempt = 0
+		sentBodies.length = 0
+		const response = await client.fetch!('https://api.example.com/upload', {
+			method: 'PUT',
+			body,
+		})
+		expect(response.status).toBe(200)
+		// The same object both times: no copy is held for the replay.
+		expect(sentBodies).toHaveLength(2)
+		expect(sentBodies[0]).toBe(body)
+		expect(sentBodies[1]).toBe(body)
+	}
+	expect(
+		calls.filter((name) => name === 'credentialClientRefresh'),
+	).toHaveLength(4)
+})
+
+test('a ReadableStream body is sent once: after the refresh its 401 comes back to the caller', async () => {
+	const calls: Array<string> = []
+	const runtime = oauthRuntime(calls)
+	let sends = 0
+	stubFetch(async (request) => {
+		sends += 1
+		await request.arrayBuffer()
+		return new Response('expired', { status: 401 })
+	})
+	const client = await runtime.credential('google')
+	let pulls = 0
+	const body = new ReadableStream<Uint8Array>({
+		pull(controller) {
+			pulls += 1
+			if (pulls > 3) return controller.close()
+			controller.enqueue(new Uint8Array(1024))
+		},
+	})
+	const response = await client.fetch!('https://api.example.com/upload', {
+		method: 'PUT',
+		body,
+		duplex: 'half',
+	} as RequestInit)
+	expect(response.status).toBe(401)
+	// The 401 body is the caller's to read or cancel.
+	expect(await response.text()).toBe('expired')
+	expect(sends).toBe(1)
+	expect(calls).toEqual(['credentialClientOpen', 'credentialClientRefresh'])
+})
+
+test('429, 5xx, and a 308 without a location come back unchanged with no retry', async () => {
+	const calls: Array<string> = []
+	const runtime = oauthRuntime(calls)
+	const statuses = [429, 500, 503, 308]
+	let sends = 0
+	stubFetch(() => {
+		const status = statuses[sends]!
+		sends += 1
+		return new Response(`status-${status}`, {
+			status,
+			headers: status === 308 ? { range: 'bytes=0-9' } : {},
+		})
+	})
+	const client = await runtime.credential('google')
+	for (const status of statuses) {
+		const response = await client.fetch!('https://api.example.com/upload', {
+			method: 'PUT',
+			body: new Uint8Array(10),
+		})
+		expect(response.status).toBe(status)
+		expect(await response.text()).toBe(`status-${status}`)
+	}
+	expect(sends).toBe(statuses.length)
+	expect(calls).toEqual(['credentialClientOpen'])
+})
+
+test('a redirect that keeps the body returns to the caller when the body is a stream', async () => {
+	const runtime = createRuntime(async () => ({
+		ok: true,
+		value: openedAs('secret'),
+	}))
+	const seen = stubFetch(
+		() =>
+			new Response(null, {
+				status: 307,
+				headers: { location: 'https://api.example.com/other' },
+			}),
+	)
+	const client = await runtime.credential('key')
+	const response = await client.fetch!('https://api.example.com/upload', {
+		method: 'PUT',
+		body: new Blob(['x']).stream(),
+		duplex: 'half',
+	} as RequestInit)
+	expect(response.status).toBe(307)
+	expect(seen).toHaveLength(1)
+})
+
+test('a Request input still refreshes and replays, and its replay clone is released', async () => {
+	const calls: Array<string> = []
+	const runtime = oauthRuntime(calls)
+	const bodies: Array<string> = []
+	let attempt = 0
+	stubFetch(async (request) => {
+		bodies.push(await request.text())
+		attempt += 1
+		return attempt === 1
+			? new Response('expired', { status: 401 })
+			: new Response(null, { status: 200 })
+	})
+	const cancelSpy = vi.spyOn(ReadableStream.prototype, 'cancel')
+	try {
+		const client = await runtime.credential('google')
+		const response = await client.fetch!(
+			new Request('https://api.example.com/x', {
+				method: 'POST',
+				body: 'payload',
+			}),
+		)
+		expect(response.status).toBe(200)
+		expect(bodies).toEqual(['payload', 'payload'])
+		// The 401 body and the unused replay branch are both cancelled.
+		expect(cancelSpy.mock.calls.length).toBeGreaterThanOrEqual(2)
+	} finally {
+		cancelSpy.mockRestore()
+	}
+})
+
+test('the CLI credential client copy matches this source', () => {
+	const cliSource = readFileSync(
+		new URL(
+			'../../../../cli/src/credential-client-runtime-source.ts',
+			import.meta.url,
+		),
+		'utf8',
+	)
+	const marker = 'export const credentialClientRuntimeSource =\n\t'
+	const literal = cliSource.slice(
+		cliSource.indexOf(marker) + marker.length,
+		cliSource.lastIndexOf('"') + 1,
+	)
+	const cli = JSON.parse(literal) as string
+	const fetchBlock = (source: string) =>
+		source.slice(
+			source.indexOf('  const isReplayableBody'),
+			source.indexOf('  const toClient'),
+		)
+	const worker = createCredentialClientRuntimeSource()
+	expect(fetchBlock(worker).length).toBeGreaterThan(1000)
+	expect(fetchBlock(cli)).toBe(fetchBlock(worker))
 })

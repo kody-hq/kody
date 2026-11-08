@@ -83,6 +83,7 @@
     "preview:manual-test": "node tools/preview-manual-test.ts",
     "control-kody": "node tools/control-kody.ts",
     "latency-bench": "node tools/latency-bench/run.ts",
+    "local-execute:upload-memory": "node --import tsx tools/local-execute-upload-memory.ts",
     "maintenance-mode": "node tools/maintenance-mode.ts",
     "site-perf": "node tools/site-perf/collect.ts",
     "generate-types": "node tools/generate-worker-configuration-types.ts",

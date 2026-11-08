@@ -51,7 +51,10 @@ import {
 	operationAllowsCliOauth,
 	isCliCredentialBootstrapRedeemOperation,
 } from './invoke.ts'
-import { runCapabilityProxyGatewayFetchStream } from './capability-proxy-gateway-fetch-stream.ts'
+import {
+	gatewayFetchErrorHeaderName,
+	runCapabilityProxyGatewayFetchStream,
+} from './capability-proxy-gateway-fetch-stream.ts'
 import { parseNativeInput } from './native-operation-helpers.ts'
 import {
 	apiOperationUsesQueryInputs,
@@ -443,6 +446,9 @@ async function handleCapabilityProxyGatewayFetchStream(input: {
 		if (apiError.status >= 500 && !(error instanceof ApiError)) {
 			console.error('open-api-operation-failed', input.operationId, error)
 		}
+		// Marks Kody's own error so the CLI never mistakes an upstream JSON
+		// error response for a gateway failure.
+		apiError.headers[gatewayFetchErrorHeaderName] = apiError.code
 		throw apiError
 	} finally {
 		input.waitUntil(
@@ -516,6 +522,11 @@ export async function handleOpenApiRequest(input: {
 		const apiError = toApiError(error)
 		if (apiError.status >= 500 && !(error instanceof ApiError)) {
 			console.error('open-api-request-failed', url.pathname, error)
+		}
+		// Auth and routing failures on the streaming gateway hop are Kody's
+		// own errors too, so mark them like the handler's.
+		if (url.pathname === '/v1/capability-proxy/gateway-fetch') {
+			apiError.headers[gatewayFetchErrorHeaderName] = apiError.code
 		}
 		return apiErrorResponse(apiError)
 	}

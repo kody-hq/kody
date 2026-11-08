@@ -857,6 +857,51 @@ use it or read its tokens. Revoking, leaving the org, or deleting the app wipes
 it and revokes it with the provider where the provider supports that. See
 [OAuth](./oauth.md#connect-your-own-account-through-an-orgs-app).
 
+## Large bodies on local execute
+
+`kody execute --local` sends a `credential()` fetch through Kody's gateway
+without copying or base64-encoding the body. This is what a resumable upload can
+rely on:
+
+- **Body types**: `ArrayBuffer`, typed arrays, `DataView`, `Blob`,
+  `ReadableStream`, and `string`. Binary and stream bodies stream with
+  backpressure through the gateway stream hop as the object you passed. Other
+  bodies up to 3 MiB take a JSON hop (base64 plus envelope fits the 5 MiB API
+  limit); larger ones stream.
+- **Size and time**: up to 100 MiB per request (the Worker upload limit; above
+  it the request throws `payload_too_large`). The gateway allows 5 minutes per
+  request and aborts after 60 seconds with no bytes.
+- **Memory**: the transport holds no copy of an in-memory body and a fixed
+  socket-buffer window for a stream, so memory does not grow with body size or
+  with how many requests run in a row.
+- **Responses**: the body streams back. Read it or call
+  `response.body?.cancel()`; the transport cancels the copies it makes itself.
+- **Statuses**: every HTTP status from the service (including `308`, `401`,
+  `429`, and `5xx`) comes back as a `Response`. With `redirect: 'manual'`, a
+  `308` comes back as it is, `Location` and `Range` included.
+- **Retries**: none, except the one OAuth refresh replay on a `401`. That replay
+  resends in-memory bodies (any size, the same object). A `ReadableStream` body
+  is sent once: the client refreshes the token and returns the `401`, so resend
+  it yourself. A redirect that would resend a stream body also comes back to
+  you.
+- **Errors**: a failure that is not an HTTP status throws one of:
+
+| `name`             | `code`                                                         | When                                                              |
+| ------------------ | -------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `AbortError`       | (none)                                                         | Your `AbortSignal` fired. The upload and the gateway hop stop.    |
+| `KodyGatewayError` | Kody's error code (`payload_too_large`, `host_not_allowed`, …) | Kody refused or failed the hop. `status` is Kody's HTTP status.   |
+| `KodyGatewayError` | `gateway_fetch_failed`, `gateway_failed`                       | The CLI could not finish the hop to Kody (network, disconnect).   |
+| `KodyGatewayError` | `stream_host_missing`                                          | The CLI is too old to stream this body. Upgrade `@kodycodes/cli`. |
+
+Each has `mayHaveReachedOrigin` (boolean). `false` means no byte of this request
+reached the service, so it is safe to resend. `true` means some may have: ask
+the service for its state (for a resumable upload, query the session's received
+range) before resending.
+
+Use chunks that are a multiple of 256 KiB; 8 MiB is a good default. Bigger
+chunks mean fewer requests but more to resend after a failure, and each must
+stay under 100 MiB.
+
 ## Limits
 
 - Using a personal MCP server through `credential()`. Add the MCP server to the

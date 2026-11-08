@@ -81,6 +81,50 @@ function __kodyCall(path, args) {
 
 const __kodyGatewayNullBodyStatuses = new Set([101, 103, 204, 205, 304]);
 const __kodySecretResolutionHeader = 'x-kody-secret-resolution';
+const __kodyGatewayErrorHeader = 'x-kody-gateway-error';
+
+// Thrown when Kody or the bridge fails the hop. HTTP statuses from the origin
+// come back as Responses instead. mayHaveReachedOrigin is false only when
+// no request byte can have reached the origin.
+function __kodyGatewayError(code, message, mayHaveReachedOrigin, status) {
+	const error = new Error(message);
+	error.name = 'KodyGatewayError';
+	error.code = code;
+	error.mayHaveReachedOrigin = mayHaveReachedOrigin;
+	if (typeof status === 'number') error.status = status;
+	return error;
+}
+
+function __kodyMarkAbort(error, mayHaveReachedOrigin) {
+	const abort =
+		error?.name === 'AbortError'
+			? error
+			: new DOMException('The operation was aborted.', 'AbortError');
+	try {
+		abort.mayHaveReachedOrigin = mayHaveReachedOrigin;
+	} catch {
+		// A frozen reason keeps its own shape.
+	}
+	return abort;
+}
+
+async function __kodyGatewayErrorFromResponse(response, code) {
+	let message = 'gatewayFetchStream failed.';
+	let mayHaveReachedOrigin = response.status >= 500;
+	try {
+		const parsed = JSON.parse(await response.text());
+		const err = parsed?.error;
+		if (typeof err === 'string') message = err;
+		else if (typeof err?.message === 'string') message = err.message;
+		if (typeof err?.code === 'string' && !code) code = err.code;
+		if (typeof err?.mayHaveReachedOrigin === 'boolean') {
+			mayHaveReachedOrigin = err.mayHaveReachedOrigin;
+		}
+	} catch {
+		// Not JSON: keep the status-based answer.
+	}
+	return __kodyGatewayError(code || 'gateway_failed', message, mayHaveReachedOrigin, response.status);
+}
 
 /**
  * Streaming CapabilityProxy hop (POST /v1/capability-proxy/gateway-fetch via the
@@ -89,8 +133,10 @@ const __kodySecretResolutionHeader = 'x-kody-secret-resolution';
  */
 async function gatewayFetchStream(input) {
 	if (__kodyBridge === null || typeof __kodyBridge.gatewayFetch !== 'function') {
-		throw new Error(
-			'Local execute needs kody.gatewayFetchStream on the host runtime to stream a secret-aware fetch body (multipart, large, or ReadableStream). Upgrade @kodycodes/cli, or buffer the body under 4 MiB for the JSON gatewayFetch hop.',
+		throw __kodyGatewayError(
+			'stream_host_missing',
+			'Local execute needs kody.gatewayFetchStream on the host runtime to stream a secret-aware fetch body. Upgrade @kodycodes/cli.',
+			false,
 		);
 	}
 	const record = input != null && typeof input === 'object' && !Array.isArray(input) ? input : null;
@@ -156,32 +202,38 @@ async function gatewayFetchStream(input) {
 		init.duplex = 'half';
 	}
 	if (requestValue.signal != null) init.signal = requestValue.signal;
-	if (requestValue.redirect != null) init.redirect = requestValue.redirect;
-	const response = await __kodyBridge.gatewayFetch(init);
-	const cacheControl = response.headers.get('cache-control') ?? '';
-	const contentTypeHeader = response.headers.get('content-type') ?? '';
-	if (response.status === 413 && !contentTypeHeader.includes('application/json')) {
-		throw new Error(
-			'Request body exceeds the Worker upload limit of 104857600 bytes (100 MiB).',
+	// The bridge answers with the origin's response. The gateway already
+	// followed or held its redirects, so workerd must never follow a
+	// Location from it (that would leave the hop with the hop's headers).
+	init.redirect = 'manual';
+	const signal = requestValue.signal ?? null;
+	if (signal?.aborted) throw __kodyMarkAbort(signal.reason, false);
+	let response;
+	try {
+		response = await __kodyBridge.gatewayFetch(init);
+	} catch (error) {
+		if (signal?.aborted || error?.name === 'AbortError') {
+			throw __kodyMarkAbort(signal?.reason ?? error, true);
+		}
+		throw __kodyGatewayError(
+			'gateway_failed',
+			'The local Kody bridge failed during gatewayFetchStream.',
+			true,
 		);
 	}
-	if (cacheControl.includes('no-store') && contentTypeHeader.includes('application/json')) {
-		const text = await response.clone().text();
-		try {
-			const parsed = JSON.parse(text);
-			if (parsed != null && typeof parsed === 'object' && parsed.error != null) {
-				const err = parsed.error;
-				const message =
-					typeof err === 'string'
-						? err
-						: typeof err?.message === 'string'
-							? err.message
-							: 'gatewayFetchStream failed.';
-				throw new Error(message);
-			}
-		} catch (error) {
-			if (!(error instanceof SyntaxError)) throw error;
-		}
+	const contentTypeHeader = response.headers.get('content-type') ?? '';
+	const gatewayErrorCode = response.headers.get(__kodyGatewayErrorHeader);
+	if (gatewayErrorCode) {
+		throw await __kodyGatewayErrorFromResponse(response, gatewayErrorCode);
+	}
+	if (response.status === 413 && !contentTypeHeader.includes('application/json')) {
+		await response.body?.cancel();
+		throw __kodyGatewayError(
+			'payload_too_large',
+			'Request body exceeds the Worker upload limit of 104857600 bytes (100 MiB).',
+			false,
+			413,
+		);
 	}
 	if (__kodyGatewayNullBodyStatuses.has(response.status)) {
 		return new Response(null, {

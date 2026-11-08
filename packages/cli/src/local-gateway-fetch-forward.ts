@@ -6,6 +6,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import {
 	callCapabilityProxyGatewayFetchStream,
+	gatewayFetchErrorHeaderName,
 	gatewayFetchHeadersHeaderName,
 	gatewayFetchMethodHeaderName,
 	gatewayFetchPackageIdHeaderName,
@@ -47,7 +48,13 @@ export async function forwardLocalGatewayFetchStream(input: {
 							'X-Kody-Gateway-Url is required and must be a non-empty absolute URL.',
 					},
 				},
-				{ status: 400, headers: { 'Cache-Control': 'no-store' } },
+				{
+					status: 400,
+					headers: {
+						'Cache-Control': 'no-store',
+						[gatewayFetchErrorHeaderName]: 'invalid_request',
+					},
+				},
 			),
 		)
 		return
@@ -95,7 +102,13 @@ export async function forwardLocalGatewayFetchStream(input: {
 									'X-Kody-Gateway-Headers must be valid JSON: an object of header names to string values.',
 							},
 						},
-						{ status: 400, headers: { 'Cache-Control': 'no-store' } },
+						{
+							status: 400,
+							headers: {
+								'Cache-Control': 'no-store',
+								[gatewayFetchErrorHeaderName]: 'invalid_request',
+							},
+						},
 					),
 				)
 				return
@@ -179,7 +192,13 @@ export async function forwardLocalGatewayFetchStream(input: {
 								'X-Kody-Gateway-Headers must be valid JSON: an object of header names to string values.',
 						},
 					},
-					{ status: 400, headers: { 'Cache-Control': 'no-store' } },
+					{
+						status: 400,
+						headers: {
+							'Cache-Control': 'no-store',
+							[gatewayFetchErrorHeaderName]: 'invalid_request',
+						},
+					},
 				),
 			)
 			return
