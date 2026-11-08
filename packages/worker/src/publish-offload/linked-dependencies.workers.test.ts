@@ -12,7 +12,11 @@ import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { ensurePersonalOrg } from '#worker/orgs/provision.ts'
 import { mergePublishedArtifactDependencies } from '#worker/package-runtime/module-graph-import-rewriting.ts'
 import { resolveKodyDependenciesForEntryPoint } from '#worker/package-runtime/module-graph-workspace.ts'
-import { buildKodyImportableModuleBundle } from '#worker/package-runtime/module-graph.ts'
+import {
+	buildKodyImportableModuleBundle,
+	buildKodyModuleBundle,
+} from '#worker/package-runtime/module-graph.ts'
+import { buildPublishedPackageArtifactTargetBundle } from '#worker/package-runtime/published-bundle-artifact-persist.ts'
 import { persistPublishedBundleArtifact } from '#worker/package-runtime/published-bundle-artifacts.ts'
 import { persistPublishedSourceSnapshot } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { communityForksTableSql } from '#worker/community/community-forks-test-schema.ts'
@@ -33,6 +37,7 @@ import {
 	sha256Hex,
 	workerLoaderModuleBytes,
 } from './module-hashes.ts'
+import { createUploadedTargetBuilders } from './persist-uploaded.ts'
 import type { PublishBuildTargetEntry } from './types.ts'
 import {
 	PublishBuildVerificationError,
@@ -515,5 +520,159 @@ test(
 				modules: forged,
 			}),
 		).rejects.toThrow(/not this package/)
+	},
+)
+
+test(
+	'an uploaded package with a separate app entry keeps its root exports importable by name',
+	{ timeout: 120_000 },
+	async () => {
+		silenceIncidentalRuntimeWarnings()
+		await ensureSchema()
+		const userId = `user-${crypto.randomUUID()}`
+		await ensurePersonalOrg(env.APP_DB, {
+			stableUserId: userId,
+			username: `os-${userId.slice(-12)}`,
+		})
+		const files = {
+			'package.json': JSON.stringify({
+				name: '@kentcdodds/os',
+				exports: { '.': './src/index.ts' },
+				kody: {
+					id: 'os',
+					description: 'OS',
+					app: { entry: './src/app.ts' },
+				},
+			}),
+			'src/index.ts': `export async function install_from_catalog(name: string) {
+	return { installed: name }
+}
+export function list_catalog() {
+	return ['notes']
+}`,
+			'src/app.ts': `export function getTheme() {
+	return 'dark'
+}
+export default {
+	async fetch() {
+		return new Response(getTheme())
+	},
+}`,
+		}
+		const os = await insertPackage({
+			userId,
+			name: '@kentcdodds/os',
+			kodyId: 'os',
+		})
+		await persistPublishedSourceSnapshot({
+			env,
+			userId,
+			source: os.source,
+			snapshot: { files },
+		})
+		const built = await buildPublishTargets({
+			files: builderFiles(files),
+			rootPackageId: os.packageId,
+			userId,
+			baseUrl,
+		})
+		const byKind = (bundleKind: string) => {
+			const entry = built.targets.find(
+				(candidate) => candidate.target.bundleKind === bundleKind,
+			)
+			if (!entry) throw new Error(`no ${bundleKind} target`)
+			return entry
+		}
+		const app = byKind('app')
+		const callable = byKind('module')
+		const importable = byKind('importable-module')
+		expect(app.target.entryPoint).toBe('src/app.ts')
+		// The collision that matters: both export targets build from one file.
+		expect(callable.target.entryPoint).toBe('src/index.ts')
+		expect(importable.target.entryPoint).toBe('src/index.ts')
+
+		const prepared = new Map(
+			built.targets.map((entry) => [
+				entry.target,
+				{
+					mainModule: entry.mainModule,
+					modules: entry.modules,
+					dependencies: [],
+				},
+			]),
+		)
+		const builders = createUploadedTargetBuilders(prepared)
+		for (const entry of built.targets) {
+			const bundle = await buildPublishedPackageArtifactTargetBundle({
+				...builders,
+				target: entry.target,
+			})
+			expect(bundle, entry.target.bundleKind).toBe(prepared.get(entry.target))
+		}
+		const appBundle = await buildPublishedPackageArtifactTargetBundle({
+			...builders,
+			target: app.target,
+		})
+		expect(JSON.stringify(appBundle.modules)).toContain('getTheme')
+
+		const importableBundle = await buildPublishedPackageArtifactTargetBundle({
+			...builders,
+			target: importable.target,
+		})
+		await persistPublishedBundleArtifact({
+			env,
+			userId,
+			source: os.source,
+			kind: 'importable-module',
+			artifactName: '.',
+			entryPoint: importable.target.entryPoint,
+			mainModule: importableBundle.mainModule,
+			modules: importableBundle.modules,
+			dependencies: importableBundle.dependencies,
+			packageContext: {
+				packageId: os.packageId,
+				kodyId: 'os',
+				sourceId: os.sourceId,
+			},
+		})
+		const consumer = await buildKodyModuleBundle({
+			env,
+			baseUrl,
+			userId,
+			bundleContext: 'ad-hoc-execute',
+			sourceFiles: {
+				'entry.ts': `import { install_from_catalog } from 'kody:@kentcdodds/os'
+import * as os from 'kody:@kentcdodds/os'
+export default async function run() {
+	return {
+		installed: await install_from_catalog('notes'),
+		catalog: os.list_catalog(),
+		names: Object.keys(os).filter((name) => name !== 'default').sort(),
+	}
+}`,
+			},
+			entryPoint: 'entry.ts',
+		})
+		const run = await runBundledModuleWithRegistry(
+			env,
+			createMcpCallerContext({
+				source: { kind: 'mcp-oauth' },
+				baseUrl,
+				user: {
+					userId: personIdFromStored(userId),
+					email: 'worker@example.com',
+					displayName: 'Worker Test',
+				},
+			}),
+			consumer,
+			undefined,
+			{ skipCapabilityRegistry: true },
+		)
+		expect(run.error).toBeUndefined()
+		expect(run.result).toEqual({
+			installed: { installed: 'notes' },
+			catalog: ['notes'],
+			names: ['install_from_catalog', 'list_catalog'],
+		})
 	},
 )
