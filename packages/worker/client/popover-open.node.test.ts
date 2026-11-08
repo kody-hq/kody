@@ -1,5 +1,9 @@
 import { expect, test, vi } from 'vitest'
-import { dismissOpenPopoverPanel, isPopoverOpen } from './popover-open.ts'
+import {
+	dismissOpenPopoverPanel,
+	isPopoverOpen,
+	showPopoverPanel,
+} from './popover-open.ts'
 
 test('isPopoverOpen returns false when matches throws for :popover-open', () => {
 	const throwingMatches = vi.fn(() => {
@@ -53,4 +57,17 @@ test('dismissOpenPopoverPanel hides open popovers and no-ops when unavailable or
 	expect(() => dismissOpenPopoverPanel(throwingPanel)).not.toThrow()
 	expect(throwingMatches).toHaveBeenCalledWith(':popover-open')
 	expect(throwingHide).not.toHaveBeenCalled()
+})
+
+test('showPopoverPanel shows popovers and no-ops when unavailable or null', () => {
+	expect(() => showPopoverPanel(null)).not.toThrow()
+
+	// Chrome < 114: the panel exists but showPopover is undefined.
+	const unavailablePanel = {} as unknown as HTMLElement
+	expect(() => showPopoverPanel(unavailablePanel)).not.toThrow()
+
+	const showPopover = vi.fn()
+	const panel = { showPopover } as unknown as HTMLElement
+	showPopoverPanel(panel)
+	expect(showPopover).toHaveBeenCalledOnce()
 })

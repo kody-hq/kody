@@ -1,5 +1,8 @@
 /** @jsxImportSource @emotion/react */
-import { dismissOpenPopoverPanel } from '#client/popover-open.ts'
+import {
+	dismissOpenPopoverPanel,
+	showPopoverPanel,
+} from '#client/popover-open.ts'
 import { useEffect, useId, useRef, useState } from 'react'
 import { colors, radius, shadows, spacing } from '#universal/styles/tokens.ts'
 import {
@@ -61,7 +64,7 @@ export function Combobox(props: ComboboxProps) {
 			dismissOpenPopoverPanel(panel)
 			return
 		}
-		panel.showPopover()
+		showPopoverPanel(panel)
 		function position() {
 			if (!panel || !field) return
 			const rect = field.getBoundingClientRect()

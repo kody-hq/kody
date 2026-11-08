@@ -1,6 +1,10 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset } from '../public-assets.ts'
-import { dismissOpenPopoverPanel } from '#client/popover-open.ts'
+import {
+	dismissOpenPopoverPanel,
+	isPopoverOpen,
+	showPopoverPanel,
+} from '#client/popover-open.ts'
 import type { CSSObject } from '@emotion/react'
 import { useEffect, useRef, useState } from 'react'
 import { useLocation } from '@tanstack/react-router'
@@ -56,7 +60,7 @@ export function FeaturesMenu(props: Props) {
 	}
 	function openOnHover() {
 		cancelClose()
-		panel.current?.showPopover()
+		showPopoverPanel(panel.current)
 	}
 	function closeAfterLeaving() {
 		cancelClose()
@@ -141,7 +145,7 @@ export function FeaturesMenu(props: Props) {
 					closeAfterLeaving()
 			}}
 			onKeyDown={(event) => {
-				if (event.key === 'Escape' && panel.current?.matches(':popover-open')) {
+				if (event.key === 'Escape' && isPopoverOpen(panel.current)) {
 					event.preventDefault()
 					dismissOpenPopoverPanel(panel.current)
 					trigger.current?.focus()
