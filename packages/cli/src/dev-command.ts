@@ -43,6 +43,7 @@ import {
 } from './package-check-files.js'
 import { formatDevEvent, type DevEvent } from './dev/dev-events.js'
 import { defaultDevPort } from './dev/dev-port.js'
+import { assertDevHostAllowed, devHostExposureWarning } from './dev/dev-host.js'
 import {
 	devStatusPath,
 	findRunningDevServer,
@@ -51,6 +52,7 @@ import {
 } from './dev/dev-registry.js'
 
 export { parseDevPort } from './dev/dev-port.js'
+export { parseDevHost } from './dev/dev-host.js'
 
 export type DevIo = {
 	stdout: (text: string) => void
@@ -130,6 +132,10 @@ export async function resolveDevAuth(input: {
 export async function runDevServe(input: {
 	target: KodyTarget
 	auth: DevAuth
+	/** Proxy listen address (`--host`); default 127.0.0.1. */
+	host?: string
+	/** `--expose-prod`: allow a non-loopback `--host` with `--target prod`. */
+	exposeProd?: boolean
 	port?: number
 	appBasePath?: string
 	allowPrivateNetwork?: boolean
@@ -145,6 +151,13 @@ export async function runDevServe(input: {
 	/** Injected for tests — when set, serve returns immediately after start. */
 	serveOnce?: boolean
 }): Promise<number> {
+	if (input.host !== undefined) {
+		assertDevHostAllowed({
+			bindHost: input.host,
+			target: input.target,
+			exposeProd: input.exposeProd === true,
+		})
+	}
 	const manifest = await loadPackageManifest(input.cwd)
 	if (input.port === undefined) {
 		const running = await findRunningDevServer({
@@ -172,6 +185,7 @@ export async function runDevServe(input: {
 			token: input.auth.token,
 			apiUrl: input.auth.apiUrl,
 			target: input.target,
+			...(input.host !== undefined ? { host: input.host } : {}),
 			port: input.port,
 			defaultPort: defaultDevPort(manifest.kodyId),
 			appBasePath: input.appBasePath,
@@ -192,11 +206,11 @@ export async function runDevServe(input: {
 			// stealing the next free port and overwriting the registry.
 			// Explicit `--port` starts a second server on purpose — leave the
 			// primary attach registry alone so fetch keeps talking to it.
-			onListening: async ({ port, hostedUrl, appBasePath }) => {
+			onListening: async ({ port, localUrl, appBasePath }) => {
 				if (input.port !== undefined) return
 				await writeDevRegistration({
 					pid: process.pid,
-					origin: hostedUrl,
+					origin: localUrl,
 					port,
 					basePath: appBasePath,
 					target: input.target,
@@ -227,13 +241,29 @@ export async function runDevServe(input: {
 	}
 	try {
 		const status = server.status()
-		const statusUrl = `${server.hostedUrl}${devStatusPath}`
+		const statusUrl = `${server.localUrl}${devStatusPath}`
+		const networkUrls = server.networkUrls.map(
+			(origin) => `${origin}${server.appBasePath || '/'}`,
+		)
 		const ready = {
 			url: status.url,
 			port: server.port,
 			basePath: server.appBasePath,
 			pid: process.pid,
 			statusUrl,
+			...(input.host !== undefined ? { networkUrls } : {}),
+		}
+		const exposure =
+			input.host !== undefined
+				? devHostExposureWarning({ bindHost: input.host, target: input.target })
+				: null
+		if (exposure) {
+			input.io.stderr(exposure)
+			if (networkUrls.length === 0) {
+				input.io.stderr(
+					'warning: no non-internal network address found on this machine; other devices cannot reach kody dev yet.\n',
+				)
+			}
 		}
 		if (input.readyFile) {
 			await mkdir(dirname(input.readyFile), { recursive: true })
@@ -254,6 +284,13 @@ export async function runDevServe(input: {
 		} else {
 			input.io.stdout(
 				`kody dev listening on ${status.url}\n` +
+					(server.localUrl !== server.hostedUrl
+						? `local: ${server.localUrl}${server.appBasePath || '/'}\n`
+						: '') +
+					networkUrls
+						.filter((url) => url !== status.url)
+						.map((url) => `network: ${url}\n`)
+						.join('') +
 					`target: ${input.target}\n` +
 					`package: ${manifest.name} (${manifest.kodyId})\n` +
 					`status: ${statusUrl}\n` +

@@ -89,7 +89,7 @@ Usage:
   kody daemon auto-update [on | off | status] [--json]
   kody update
                [--credential <key=name>]… [--context <id|name>] [--fallback chain] [--requires fs,lan] [--chain <a,b,cloud>] [--target prod|mock] [--token <token>] [--api-url <url>] [--local] [--allow-private-network]
-  kody dev [serve] [--org <slug>] [--target prod|mock] [--reset-storage] [--port <n>] [--app-base-path <path>] [--allow-private-network] [--no-live-reload] [--json] [--ready-file <path>]
+  kody dev [serve] [--org <slug>] [--target prod|mock] [--reset-storage] [--host <addr>] [--expose-prod] [--port <n>] [--app-base-path <path>] [--allow-private-network] [--no-live-reload] [--json] [--ready-file <path>]
   kody dev fetch <path> [--method <verb>] [--body <file>] [--target prod|mock] [--json] [--no-attach]
   kody dev job <name> [--target prod|mock] [--dry-run] [--json]
   kody dev webhook <name> --body <file.json> [--target prod|mock] [--dry-run] [--json]
@@ -381,6 +381,21 @@ ${orgBlock}
              Default is empty (serve at \`/\`). Use
              \`--app-base-path /<package-name>\` to match the
              hosted app mount while iterating locally.
+
+  --host <addr>
+             With \`kody dev serve\`, the address the dev server listens on
+             (default \`127.0.0.1\`). \`0.0.0.0\`, \`::\`, or a LAN IP lets
+             phones, tablets, and other devices on your network open the
+             app; kody dev prints the LAN URLs and warns on stderr that
+             anyone who can reach the port can use the app. Only this
+             machine's own addresses are accepted as Host. Non-loopback
+             hosts with \`--target prod\` are refused unless
+             \`--expose-prod\` is also passed.
+
+  --expose-prod
+             With \`kody dev --host <non-loopback>\`, allow \`--target prod\`:
+             every device that can reach the port acts with your real Kody
+             credentials.
 
   --dry-run  With \`kody dev job|webhook|emit\`, print the module path and
              params that would run without invoking (safe against prod side
