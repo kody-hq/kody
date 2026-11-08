@@ -411,7 +411,7 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 				summary:
 					'Serve kody.app.entry on localhost with hot reload (the default)',
 				usage: [
-					'kody dev serve [--org <slug>] [--target prod|mock] [--reset-storage] [--passthrough <host,…>] [--port <n>] [--app-base-path <path>] [--allow-private-network] [--no-live-reload] [--json] [--ready-file <path>]',
+					'kody dev serve [--org <slug>] [--target prod|mock] [--reset-storage] [--passthrough <host,…>] [--host <addr>] [--expose-prod] [--port <n>] [--app-base-path <path>] [--allow-private-network] [--no-live-reload] [--json] [--ready-file <path>]',
 				],
 				flags: [
 					orgFlag,
@@ -419,6 +419,14 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 					[
 						'--reset-storage',
 						'With --target mock, wipe mock scratch storage first',
+					],
+					[
+						'--host <addr>',
+						'Listen address (default 127.0.0.1); 0.0.0.0, ::, or a LAN IP lets phones and other devices on your network open the app',
+					],
+					[
+						'--expose-prod',
+						'Allow a non-loopback --host with --target prod (anyone on the network acts as you)',
 					],
 					['--port <n>', 'Exact port (0 = any; default is stable per package)'],
 					[

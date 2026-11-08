@@ -121,7 +121,7 @@ flags, and subcommands.
 | `kody package publish`                            | Thin wrapper for `packagePublishExternalPush`. Optional positional `@owner/leaf`, bare leaf name, or package UUID (names are resolved to the package UUID via `packageList`); extra fields via `--params`. Same auth as `kody api`. Prints the API JSON. Exit **0** for `published`, `already_published` (including `artifacts_rebuilt: true`), and `dispatched` (poll `workflowRunList({ workflow_id })`). Exit **1** for refusal/rejection statuses (`checks_failed`, `locked`, `approval_required`, `not_fast_forward`) with the API `message` (or a checks summary) on stderr, like npm. Auth / permission / network failures also exit 1; `--json` adds `{ error, message, sent }` on stdout for network errors (`sent: false` = not sent; `sent: "unknown"` = maybe sent — prefer `kody api workflowRunList` with `workflow_id` when known, otherwise a recent list, before retry). Re-publishing the same commit is safe (durable dedupe / `already_published`). |
 | `kody package collaborators` / `grant` / `revoke` | Who can use one package, and add or remove teams and members of the org (`--org`). `<package>` is `@owner/leaf`, the name leaf, or the package id. `grant <package> --team <slug>\|--user <username> [--preset read\|use\|contribute\|manage]` (default `use`) adds or changes a collaborator via `packageCollaboratorSet`; `--preset read` shares source only (read, clone, and fork — no execute). People outside the org are refused. `revoke <package> --team\|--user\|--grant <grant_id>` removes one via `packageCollaboratorRemove`. Needs Manage on the package and a token with `package:manage_access` (`auth bootstrap --scopes …,package:manage_access`). Prints a summary, or JSON with `--json`.                                                                                                                                                                                                                                                          |
 | `kody execute`                                    | Calls Kody `execute` from the CLI (`--invoke`, `--code`, `--file`, or stdin via `--file -`). `--invoke` is client-side sugar: the CLI writes the one-export import passthrough and sends it as `code`, the only module field hosted execute accepts. With a scoped API token and no login (or with `--token`), cloud execute goes through CapabilityProxy → `kody.execute` — no `kody login`. Add `--local` to run the module (and static `kody:@…` package modules) on this machine instead. `--credential key=name` (repeatable; `org:name` / `personal:name` / empty `=` for none) picks ADR 0068 credentials for `--local` or a `kody login` MCP session. `--allow-private-network` opts local execution into private and local network access. `--target prod\|mock` (default `prod`) sends CapabilityProxy / search hops to prod or the built-in CLI mock; `--target mock` implies local workerd.                                                                 |
-| `kody dev`                                        | Local testing for unpublished packages. Serves `kody.app.entry` on localhost via workerd with hot reload. Subcommands: `fetch`, `job`, `webhook`, `emit`, `check`. Default `--target mock` (scratch storage, fake credentials). Covers exports, webhooks, schedules (run-once), and subscriptions. See [Local package testing](#local-package-testing-kody-dev).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `kody dev`                                        | Local testing for unpublished packages. Serves `kody.app.entry` on localhost (`--host 0.0.0.0` for LAN devices) via workerd with hot reload. Subcommands: `fetch`, `job`, `webhook`, `emit`, `check`. Default `--target mock` (scratch storage, fake credentials). Covers exports, webhooks, schedules (run-once), and subscriptions. See [Local package testing](#local-package-testing-kody-dev).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 `kody package publish --build local|context` builds off Kody cloud
 (`--build local` pushes HEAD first). `--context <name|cloud>` names the context
@@ -313,6 +313,33 @@ kody execute --target prod --invoke ./greet --params '{"name":"kent"}'
 kody execute --local --invoke kody:@scope/pkg/export --params '{}'
 kody search --target mock local
 ```
+
+### Testing from other devices (`--host`)
+
+`kody dev` listens on `127.0.0.1` only. To open the app from a phone, tablet, or
+e-reader on the same network, pass a listen address:
+
+```bash
+kody dev --host 0.0.0.0     # every IPv4 interface; prints a network: URL per LAN address
+kody dev --host ::          # IPv4 and IPv6 interfaces
+kody dev --host 192.168.1.20   # one address of this machine
+```
+
+`--host` takes an IP address (or `localhost`); anything else is refused. On a
+non-loopback address `kody dev` prints a warning on stderr: the server is
+exposed to every device on the network, and anyone who can reach the port can
+use the app. Prefer the default `--target mock` (fake credentials, scratch
+storage) for device testing. `--host` with `--target prod` is refused unless you
+also pass `--expose-prod`, because the app would then act with your real Kody
+credentials for whoever reaches it.
+
+The proxy still rejects unknown `Host` headers (DNS rebinding guard). With
+`0.0.0.0` / `::` it accepts this machine's own non-internal interface addresses
+(re-read from `os.networkInterfaces()` per request, so a new Wi-Fi address
+works) plus the loopback names; with a specific IP it accepts only that IP.
+`request.url` uses the address the device opened, so same-origin CSRF checks
+pass on LAN requests. The workerd sockets, the CLI bridge, and the run secret
+stay on loopback. `--json` / `--ready-file` add `networkUrls` to `ready`.
 
 ### What `kody dev` does while it runs
 

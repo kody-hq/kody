@@ -586,6 +586,12 @@ While it runs, `kody dev`:
   the local client bundle.
 - uses a stable port per package and moves to the next free port when that one
   is taken. `--port <n>` is used exactly.
+- listens on `127.0.0.1` only. Pass `--host 0.0.0.0` (or `::`, or one LAN IP) to
+  open the app from a phone or e-reader on the same network; it prints the
+  `network:` URLs to open and a stderr warning that anyone on the network can
+  use the app. Unknown `Host` headers are still rejected. Use it with the
+  default `--target mock`; `--target prod` also needs `--expose-prod`. See
+  [Testing from other devices](../../packages/cli/README.md#testing-from-other-devices---host).
 
 Local-only settings live in `package.json#kody.dev`. Publish ignores them.
 `prebuild` is a shell command run from the package root before every `kody dev`

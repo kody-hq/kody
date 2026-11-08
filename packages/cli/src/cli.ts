@@ -249,6 +249,8 @@ const cliFlagOptions = {
 	debug: { type: 'boolean' },
 	passthrough: { type: 'string' },
 	port: { type: 'string' },
+	host: { type: 'string' },
+	'expose-prod': { type: 'boolean' },
 	'app-base-path': { type: 'string' },
 	'no-live-reload': { type: 'boolean' },
 	'ready-file': { type: 'string' },
@@ -1481,6 +1483,7 @@ async function dispatch(
 		case 'dev': {
 			const { resolveTarget } = await import('./target.js')
 			const {
+				parseDevHost,
 				parseDevPort,
 				parseDevSubcommand,
 				resolveDevAuth,
@@ -1510,6 +1513,25 @@ async function dispatch(
 			const io = { stdout: write, stderr: writeErr }
 			const bodyPath =
 				typeof parsed.values.body === 'string' ? parsed.values.body : undefined
+			const devHost =
+				typeof parsed.values.host === 'string'
+					? parseDevHost(parsed.values.host)
+					: undefined
+			if (devHost !== undefined && subcommand !== 'serve') {
+				throw new Error(
+					'`--host` applies to `kody dev serve` only (the address the dev server listens on).',
+				)
+			}
+			const exposeProd = parsed.values['expose-prod'] === true
+			if (exposeProd && devHost === undefined) {
+				throw new Error(
+					'`--expose-prod` only applies together with a non-loopback `kody dev --host`.',
+				)
+			}
+			if (devHost !== undefined) {
+				const { assertDevHostAllowed } = await import('./dev/dev-host.js')
+				assertDevHostAllowed({ bindHost: devHost, target, exposeProd })
+			}
 			// `check` bundles + validates the package tree locally, then runs the
 			// server publish checks (`packageCheck`) on prod with the stored login,
 			// whatever the target: those checks run no package code and read no
@@ -1732,6 +1754,7 @@ async function dispatch(
 						return await runDevServe({
 							target,
 							auth,
+							...(devHost !== undefined ? { host: devHost, exposeProd } : {}),
 							port,
 							appBasePath,
 							allowPrivateNetwork,

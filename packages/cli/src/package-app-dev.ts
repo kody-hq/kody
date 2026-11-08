@@ -52,7 +52,7 @@ import {
 	buildDevProxyUpstreamHeaders,
 	buildTrustedDevForwardUrl,
 	buildTrustedDevPublicUrl,
-	isAllowedDevHost,
+	resolveAllowedDevHost,
 	trustedDevHostFromHostedUrl,
 } from './dev/dev-proxy-origin.js'
 import { listenDevServer } from './dev/dev-port.js'
@@ -119,12 +119,17 @@ import {
 import { redact } from './redact.js'
 import type { KodyTarget } from './target.js'
 import { ensureWorkerdBinary } from './workerd-binary.js'
+import { defaultDevHost, planDevListen } from './dev/dev-host.js'
 
 export type PackageAppDevOptions = {
 	manifest: KodyPackageManifest
 	token: string
 	apiUrl: string
 	target: KodyTarget
+	/**
+	 * Proxy listen address (default 127.0.0.1). Non-loopback binds also accept
+	 * this machine's LAN addresses as Host; workerd stays on loopback.
+	 */
 	host?: string
 	/** Listen on exactly this port (0 = any free port); EADDRINUSE is an error. */
 	port?: number
@@ -185,6 +190,8 @@ export type PackageAppDevOptions = {
 	onListening?: (info: {
 		port: number
 		hostedUrl: string
+		/** Loopback origin for this machine when bound to 0.0.0.0 / ::. */
+		localUrl: string
 		appBasePath: string
 	}) => void | Promise<void>
 }
@@ -193,6 +200,10 @@ export type PackageAppDevServer = {
 	url: string
 	port: number
 	hostedUrl: string
+	/** Origin this machine uses to reach the server (attach, fetchPath). */
+	localUrl: string
+	/** URLs for other devices; empty on a loopback bind. */
+	networkUrls: Array<string>
 	appBasePath: string
 	packageContext: PackageLocalContext
 	fetchPath: (
@@ -249,7 +260,7 @@ export async function startPackageAppDev(
 	}
 	assertTokenSafeApiUrl(options.apiUrl)
 
-	const host = options.host ?? '127.0.0.1'
+	const host = options.host ?? defaultDevHost
 	const appBasePath = normalizeBasePath(options.appBasePath ?? '')
 	const root = options.manifest.root
 	const runSecret = randomBytes(32).toString('hex')
@@ -333,11 +344,13 @@ export async function startPackageAppDev(
 		throw error
 	}
 	const address = proxy.address() as AddressInfo
-	const hostedUrl = `http://${host}:${address.port}`
+	const listenPlan = planDevListen({ bindHost: host, port: address.port })
+	const { hostedUrl, localUrl, networkUrls } = listenPlan
 	try {
 		await options.onListening?.({
 			port: address.port,
 			hostedUrl,
+			localUrl,
 			appBasePath,
 		})
 	} catch (error) {
@@ -801,14 +814,15 @@ export async function startPackageAppDev(
 		res: ServerResponse,
 	): Promise<void> {
 		try {
-			const trustedHost = trustedDevHostFromHostedUrl(hostedUrl)
-			if (
-				!isAllowedDevHost({
-					incomingHost: req.headers.host,
-					trustedHost,
-					aliases: options.hostAliases,
-				})
-			) {
+			const publicHost = resolveAllowedDevHost({
+				incomingHost: req.headers.host,
+				trustedHost: trustedDevHostFromHostedUrl(hostedUrl),
+				aliases: [
+					...(options.hostAliases ?? []),
+					...listenPlan.extraAllowedHosts(),
+				],
+			})
+			if (!publicHost) {
 				res.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' })
 				res.end(
 					`Unrecognized Host ${JSON.stringify(req.headers.host ?? '')}. ` +
@@ -852,7 +866,7 @@ export async function startPackageAppDev(
 			}
 			generation.inflight += 1
 			try {
-				await forwardRequest(generation, req, res)
+				await forwardRequest(generation, req, res, publicHost)
 			} finally {
 				generation.inflight -= 1
 				if (generation.retired && generation.inflight === 0) {
@@ -875,12 +889,13 @@ export async function startPackageAppDev(
 		generation: Generation,
 		req: IncomingMessage,
 		res: ServerResponse,
+		/** Allowlisted Host this request came in on (LAN or loopback alias). */
+		trustedHost: string,
 	): Promise<void> {
-		const trustedHost = trustedDevHostFromHostedUrl(hostedUrl)
 		const incomingUrl = new URL(req.url ?? '/', hostedUrl)
 		const restPath = stripMount(incomingUrl.pathname, appBasePath)
 		const publicUrl = buildTrustedDevPublicUrl({
-			hostedUrl,
+			hostedUrl: `http://${trustedHost}`,
 			restPath,
 			search: incomingUrl.search,
 		})
@@ -1131,7 +1146,7 @@ export async function startPackageAppDev(
 		path,
 		init = {},
 	) => {
-		const url = new URL(joinUrlPath(appBasePath, path), hostedUrl)
+		const url = new URL(joinUrlPath(appBasePath, path), localUrl)
 		const response = await fetch(url, {
 			method: init.method ?? 'GET',
 			headers: init.headers,
@@ -1149,6 +1164,8 @@ export async function startPackageAppDev(
 		url: hostedUrl,
 		port: address.port,
 		hostedUrl,
+		localUrl,
+		networkUrls,
 		appBasePath,
 		get packageContext() {
 			return contextFor(active?.client ?? null)
