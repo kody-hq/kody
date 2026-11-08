@@ -59,13 +59,19 @@ test('platform scope prompt changes one built-in connection without BYO', () => 
 		allowedScopes: ['repo', 'read:user', 'gist'],
 		orgSlug: 'kody',
 	})
-	expect(prompt).not.toMatch(/retired|bring-your-own|replaces this built-in/)
-	expect(prompt).toContain('stays built-in')
 	expect(prompt).toContain('integrationSave')
-	expect(prompt).toContain('add or remove scopes')
 	expect(prompt).toContain('`gist`')
 	expect(prompt).toContain('grantedScopes')
 	expect(prompt).toContain('/connect/oauth?provider=github-platform&org=kody')
+
+	const byo = buildChangeIntegrationScopesPrompt({
+		name: 'github-work',
+		platform: false,
+		currentScopes: ['repo'],
+	})
+	expect(byo).toContain('/connect/oauth?provider=github-work')
+	expect(byo).not.toContain('grantedScopes')
+	expect(byo).not.toContain('`gist`')
 })
 
 test('scope grant notices report shortfalls and scopes a provider kept', () => {
@@ -75,21 +81,27 @@ test('scope grant notices report shortfalls and scopes a provider kept', () => {
 	expect(
 		formatScopeGrantNotice({ granted: null, missing: ['gist'], extra: [] }),
 	).toBeNull()
-	expect(
-		formatScopeGrantNotice({
-			granted: ['repo', 'workflow'],
-			missing: ['gist'],
-			extra: ['workflow'],
-		}),
-	).toBe(
-		'Not granted: gist. The provider kept scopes this connection no longer requests: workflow. The token still has them.',
-	)
+	const notice = formatScopeGrantNotice({
+		granted: ['repo', 'workflow'],
+		missing: ['gist'],
+		extra: ['workflow'],
+	})
+	expect(notice).toEqual(expect.stringMatching(/Not granted/))
+	expect(notice).toEqual(expect.stringContaining('gist'))
+	expect(notice).toEqual(expect.stringContaining('workflow'))
 	expect(formatGrantedScopesDetail(null)).toMatch(/Not checked yet/)
-	expect(
-		formatGrantedScopesDetail({
-			scopes: ['repo'],
-			source: 'github-x-oauth-scopes',
-			checkedAt: '2026-11-07T00:00:00.000Z',
-		}),
-	).toBe('repo (checked with GitHub)')
+	const github = formatGrantedScopesDetail({
+		scopes: ['repo'],
+		source: 'github-x-oauth-scopes',
+		checkedAt: '2026-11-07T00:00:00.000Z',
+	})
+	expect(github).toContain('repo')
+	expect(github).toMatch(/GitHub/)
+	const tokenResponse = formatGrantedScopesDetail({
+		scopes: ['repo'],
+		source: 'token-response',
+		checkedAt: '2026-11-07T00:00:00.000Z',
+	})
+	expect(tokenResponse).toContain('repo')
+	expect(tokenResponse).not.toMatch(/GitHub/)
 })

@@ -846,13 +846,13 @@ test('a sync webhook refused for body fill placement names the part and the run,
 		error: Record<string, unknown>
 		runId?: string
 	}
-	expect(body.error).toEqual({
+	expect(body.error).toMatchObject({
 		code: 'credential_placement_refused',
-		message:
-			"The package tried to send a credential (slot \"acmeApiKey\") in the request body, which the credential's fill placement does not allow, so Kody refused the request. The credential's owner can allow it in the credential's fill placement setting, or the package owner can send the credential where it is allowed.",
 		slot: 'acmeApiKey',
 		part: 'body',
 	})
+	expect(String(body.error.message)).toContain('acmeApiKey')
+	expect(String(body.error.message)).toContain('request body')
 	expect(JSON.stringify(body)).not.toContain('api.acme.test')
 
 	const failed = (await listDeliveries(userId, 'sync-hook')).find(

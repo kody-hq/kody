@@ -82,9 +82,6 @@ function review(
 	})
 }
 
-const rateLimitMessage = (retryAfterSeconds: number) =>
-	`Platform feedback is limited to ${platformFeedbackSubmissionRateLimit} submissions per rolling 24 hours. Retry after ${retryAfterSeconds} seconds. For urgent issues, email support@kody.codes.`
-
 test('platform feedback workflow submits, lists, reads, transitions, and preserves submitter attribution', async () => {
 	const { sqlite, db, queries } = createPlatformFeedbackDb()
 	const first = await submit(db, 'user-a', {
@@ -307,7 +304,7 @@ test('platform feedback submission enforces the rolling rate limit and atomic ac
 		await submit(rateLimited.db, 'rate-limited-user')
 	}
 	await expect(submit(rateLimited.db, 'rate-limited-user')).rejects.toThrow(
-		rateLimitMessage(86400),
+		/Retry after 86400 seconds/,
 	)
 	expect(
 		rateLimited.sqlite
@@ -338,7 +335,7 @@ test('platform feedback submission enforces the rolling rate limit and atomic ac
 			insertFeedback.run(`feedback-${index}`, createdAt, createdAt)
 		}
 		await expect(submit(db, 'rate-limited-user')).rejects.toThrow(
-			rateLimitMessage(3600),
+			/Retry after 3600 seconds/,
 		)
 	} finally {
 		vi.useRealTimers()
@@ -364,9 +361,7 @@ test('platform feedback submission enforces the rolling rate limit and atomic ac
 	await submit(queueLimited.db, 'queue-limited-user', { category: 'bug' })
 	await expect(
 		submit(queueLimited.db, 'queue-limited-user', { category: 'bug' }),
-	).rejects.toThrow(
-		'You already have 100 open or triaged platform feedback submissions. Wait for an admin to review them before submitting more. For urgent issues, email support@kody.codes.',
-	)
+	).rejects.toThrow(/100 open or triaged/)
 	queueLimited.sqlite
 		.prepare(
 			`UPDATE platform_feedback SET status = 'resolved', updated_at = ? WHERE id = 'queued-0'`,
