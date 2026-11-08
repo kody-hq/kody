@@ -172,11 +172,14 @@ names only, always keeps the app's API base and token hosts (refresh needs the
 token host), and commits with a `credential.hosts_updated` org audit event.
 There is no capability for it: an agent that could add a host could send the
 token anywhere. Platform-lane connections are refused: reconnect resets them to
-the app's hosts. Connections whose app mints tokens at Dropbox's token endpoint
-keep `api`, `content`, and `notify.dropboxapi.com` on their host allowlists
-(migration `0143`; [Dropbox guide](../../guides/providers/dropbox.md)). Support
-can check a connection's hosts with the `adminOauthConnectionHostsList`
-capability.
+the app's hosts. Migration `0143` backfilled `api.dropboxapi.com`,
+`content.dropboxapi.com`, and `notify.dropboxapi.com` onto the host allowlists
+of existing connections whose app mints tokens at Dropbox's token endpoint
+([Dropbox guide](../../guides/providers/dropbox.md)). Nothing keeps them there
+afterward: `saveCredentialHosts` only pins the app's API base and token hosts,
+so a later user-lane host edit can remove `content.dropboxapi.com` and
+`notify.dropboxapi.com`. Support can check a connection's hosts with the
+`adminOauthConnectionHostsList` capability.
 
 Each `/connect/oauth` token persist writes `user_integrations.refresh_policy`
 from the provider token response (`refresh-policy.ts`): `required` when it
@@ -385,12 +388,15 @@ client-secret values.
 
 `/@<slug>/-/integrations` is a list of integrations (the services you connect:
 Google, GitHub). Selecting a row shows that integration and the connections
-(signed-in accounts) on it. Each connection shows **Requested scopes** (the next
-reconnect) and **Granted scopes** (what the provider actually granted, with
-missing and extra versus the request), plus how many requested scopes sit on the
-built-in menu when one exists. A mismatch asks the user to reconnect. A
-copy-prompt asks an agent to change that connection's reconnect scopes, then
-reconnect so the token matches. Existing built-in connections show a small
+(signed-in accounts) on it. Each connection shows **Requested scopes** (the
+saved request for the next reconnect; on a built-in app, scopes no longer on the
+app's current menu are dropped from the authorize request) and **Granted
+scopes** (what the provider actually granted, with missing and extra versus the
+request), plus how many requested scopes sit on the built-in menu when one
+exists. A mismatch asks the user to reconnect. Reconnecting requests the scopes
+again but does not guarantee what the provider grants, so check **Granted
+scopes** afterward. A copy-prompt asks an agent to change that connection's
+reconnect scopes, then reconnect. Existing built-in connections show a small
 “Provided by Kody” indicator. Reconnect and add-account links resolve to the
 built-in lane while the app is discoverable and to bring-your-own
 `/connect/oauth` setup otherwise. A **Connect with Kody** section lists

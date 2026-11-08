@@ -124,16 +124,20 @@ is skipped when the submitter has no current email, outbound email is paused,
 the account is suspended, or the update is a no-op of an already resolved or
 dismissed row. Admins reopen resolved or dismissed feedback to triaged with
 `adminPlatformFeedbackUpdate` (`action: "triage"`) and a required non-empty
-`admin_note`. A reopen sends no email; the note stays internal. Admin list
-results intentionally omit the full submission; a detail read exposes only the
-approved feedback, not unrelated account content. This delivery exception is
-limited to feedback the user explicitly approved; it does not expose other
-account content. Each account can create at most 20 feedback submissions in a
-rolling 24-hour period and have at most 100 active submissions (open or
-triaged). Before asking the user to approve multiple submissions, call
+`admin_note`. A reopen sends no email; the note stays internal. Reopening is
+refused once a row has 50 recorded reopens, even with a note. Admin list results
+intentionally omit the full submission; a detail read exposes only the approved
+feedback, not unrelated account content. This delivery exception is limited to
+feedback the user explicitly approved; it does not expose other account content.
+Each account can create at most 20 feedback submissions in a rolling 24-hour
+period. New submissions are refused while the account has 100 or more active
+submissions (open or triaged); an admin reopen can still push the active count
+above 100. Before asking the user to approve multiple submissions, call
 `metaPlatformFeedbackList` and check `submissions_remaining` (and `next_slot_at`
 when the cap is hit) so you do not collect approvals that will fail the rate
-limit.
+limit. Also check active capacity: list with `status: "open"` and with
+`status: "triaged"` and add the two `total` values. Counts can change before you
+submit, so approvals can still exceed the active limit.
 
 Before asking for approval, also disclose that Kody cannot recall notification
 copies already delivered outside Kody. Admin notification copies may remain
@@ -144,8 +148,9 @@ and attribution described above, never unrelated content.
 Open and triaged feedback remains until an admin resolves or dismisses it, or
 the submitting account is deleted. Reopening a closed row returns it to triaged;
 the previous submitter-visible outcome moves to resolution history. Resolved and
-dismissed feedback is removed 365 days after its last update. To check status
-later (including triaged, when no outcome email is sent), call
+dismissed feedback becomes eligible for pruning 365 days after its last update;
+scheduled pruning removes it in batches, so it can stay somewhat longer. To
+check status later (including triaged, when no outcome email is sent), call
 `metaPlatformFeedbackGet` with the returned `feedback_id`, or
 `metaPlatformFeedbackList` for the signed-in user's submissions. Those reads
 return the same submitter-visible fields as account export (id, category,

@@ -430,8 +430,11 @@ seats. See [Share a package](/docs/package-sharing) for grants vs membership.
 An Owner of two orgs can move unused prepaid Pro value from one org to another
 they own: **Usage and billing** → **Move this plan to another organization**
 (`/@<slug>/-/billing/move-plan`). Packages, credentials, members, and wallets
-stay put. The source org drops to Free limits. Only a live Owner of both orgs
-can start, retry, or cancel the move. Billing admins cannot. A Free target buys
-Pro at Stripe Checkout first; a target that already has Pro only receives the
-credit. Retired prices, canceling subscriptions, and mismatched currencies are
-refused.
+stay put. The source org drops to Free limits. Starting a move needs a live
+Owner of both orgs. Until the target is credited, a live Owner of either org can
+cancel it. Retry needs a live Owner of the org whose billing page you use;
+before the credit, the move re-checks that the person who started it still owns
+both orgs, and after the credit it finishes without that check. Billing admins
+cannot start, retry, or cancel a move. A Free target buys Pro at Stripe Checkout
+first; a target that already has Pro only receives the credit. Retired prices,
+canceling subscriptions, and mismatched currencies are refused.
