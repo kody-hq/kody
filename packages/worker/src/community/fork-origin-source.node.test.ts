@@ -212,6 +212,28 @@ test('resolveForkOriginSourceFiles returns null when refs-shaped commits have no
 	).toContain('pkg-1')
 })
 
+test('resolveForkOriginSourceFiles treats known git missing-ref and bad-oid errors as misses', async () => {
+	resetMocks()
+	mocks.readArtifactTreeAtCommit.mockImplementation(
+		async (input: { commit: string }) => {
+			if (input.commit === 'head-commit') {
+				throw new Error('Failed to resolve ref "head-commit"')
+			}
+			throw new Error('"pin-commit" is not a valid oid')
+		},
+	)
+
+	const resolved = await resolveForkOriginSourceFiles({
+		env,
+		sourceId: 'source-1',
+		repoId: 'repo-1',
+		preferredCommit: 'head-commit',
+		fallbackCommits: ['pin-commit'],
+	})
+
+	expect(resolved).toBeNull()
+})
+
 test('resolveForkOriginSourceFiles uses the mock snapshot API before git walk', async () => {
 	resetMocks()
 	mocks.readArtifactSourceSnapshot.mockResolvedValue({

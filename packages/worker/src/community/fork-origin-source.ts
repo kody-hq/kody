@@ -3,6 +3,7 @@ import { readPublishedSourceSnapshot } from '#worker/package-runtime/published-r
 import { readArtifactTreeAtCommit } from '#worker/repo/artifact-file.ts'
 import { artifactsBindingErrorCode } from '#worker/repo/artifacts.ts'
 import {
+	isArtifactsGitMissingObjectError,
 	isArtifactsGitTransientRemapError,
 	toArtifactsGitUnavailableError,
 } from '#worker/repo/artifacts-git-retry.ts'
@@ -86,6 +87,7 @@ async function readMockSnapshotAtCommit(input: {
 }
 
 function isMissingOriginObjectError(error: unknown) {
+	if (isArtifactsGitMissingObjectError(error)) return true
 	return getErrorCauseChain(error).some((entry) => {
 		if (artifactsBindingErrorCode(entry) === 'NOT_FOUND') return true
 		if (!(entry instanceof Error)) return false
