@@ -112,6 +112,7 @@ test('the webhook error names the refused slot and part', () => {
 	expect(hostOnly.code).toBe('credential_placement_refused')
 	expect(hostOnly).not.toHaveProperty('slot')
 	expect(hostOnly).not.toHaveProperty('part')
+	expect(Object.keys(hostOnly).sort()).toEqual(['code', 'message'])
 	expect(hostOnly.message).toContain('host')
 	expect(hostOnly.message).toContain('plain HTTP')
 	expect(hostOnly.message).toContain('URL host')

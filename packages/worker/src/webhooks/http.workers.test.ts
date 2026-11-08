@@ -825,21 +825,22 @@ test('a sync webhook whose package was refused for credential placement returns 
 test('a sync webhook refused for body fill placement names the part and the run, never the value', async () => {
 	const userId = await setupOwnerWithWebhooks(['sync-hook'])
 	declareWebhook({ name: 'sync-hook', responseMode: 'sync' })
+	const requestCanary = 'webhook-request-canary-9f3c'
+	const invocationCanary = 'invocation-error-canary-7b2e'
 	mocks.invokePackageExport.mockResolvedValue({
 		status: 500,
 		body: {
 			ok: false,
 			error: {
 				code: 'execution_failed',
-				message:
-					'Error: Credential "acmeApiKey" may not fill the body. Allowed parts: headers. Its owner can allow the body on the credential page, which warns that the host may store the value there. (credential_placement_refused, slot "acmeApiKey", part "body")',
+				message: `Error: Credential "acmeApiKey" may not fill the body. ${invocationCanary} (credential_placement_refused, slot "acmeApiKey", part "body")`,
 			},
 			logs: ['POST https://api.acme.test/v1/items'],
 		},
 	})
 
 	const response = await sendWebhook('sync-hook', {
-		body: JSON.stringify({ item: 1 }),
+		body: JSON.stringify({ item: 1, token: requestCanary }),
 	})
 	expect(response.status).toBe(502)
 	const body = (await response.json()) as {
@@ -853,7 +854,10 @@ test('a sync webhook refused for body fill placement names the part and the run,
 	})
 	expect(body.error.message).toEqual(expect.stringContaining('acmeApiKey'))
 	expect(body.error.message).toEqual(expect.stringContaining('request body'))
-	expect(JSON.stringify(body)).not.toContain('api.acme.test')
+	const serialized = JSON.stringify(body)
+	expect(serialized).not.toContain('api.acme.test')
+	expect(serialized).not.toContain(requestCanary)
+	expect(serialized).not.toContain(invocationCanary)
 
 	const failed = (await listDeliveries(userId, 'sync-hook')).find(
 		(run) => run.metadata?.['outcome'] === 'failed',

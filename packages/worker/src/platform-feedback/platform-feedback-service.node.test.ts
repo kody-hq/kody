@@ -361,7 +361,7 @@ test('platform feedback submission enforces the rolling rate limit and atomic ac
 	await submit(queueLimited.db, 'queue-limited-user', { category: 'bug' })
 	await expect(
 		submit(queueLimited.db, 'queue-limited-user', { category: 'bug' }),
-	).rejects.toThrow(/\b100 open or triaged/)
+	).rejects.toThrow(/You already have 100 open or triaged/)
 	queueLimited.sqlite
 		.prepare(
 			`UPDATE platform_feedback SET status = 'resolved', updated_at = ? WHERE id = 'queued-0'`,
