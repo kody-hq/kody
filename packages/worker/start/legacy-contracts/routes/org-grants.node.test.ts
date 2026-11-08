@@ -187,6 +187,7 @@ test('people are grouped into one row each with a summary and an Access link', a
 		orgWideRead: null,
 		subjects: [
 			{ userId: 'owner-1', label: '@olive', kind: 'member', role: 'owner' },
+			{ userId: 'admin-1', label: '@ada', kind: 'member', role: 'admin' },
 			{ userId: 'work-1', label: '@work', kind: 'member', role: 'member' },
 			{ userId: 'idle-1', label: '@idle', kind: 'member', role: 'member' },
 		],
@@ -213,7 +214,11 @@ test('people are grouped into one row each with a summary and an Access link', a
 	expect(html).toContain('No direct grants')
 	expect(html).toContain('Full access')
 	expect(html).not.toContain('href="/@zeta-co/-/grants/user/owner-1"')
-	expect(html.match(/data-testid="org-grant-person-summary"/g)).toHaveLength(3)
+	expect(html).toContain(
+		'Full access except deleting the organization or changing Owners',
+	)
+	expect(html).toContain('>Admin<')
+	expect(html.match(/data-testid="org-grant-person-summary"/g)).toHaveLength(4)
 	// Direct grants to people are changed on the Access page, not listed here.
 	expect(html).not.toContain('data-grant-id="g-1"')
 	expect(html).toContain('Search people')

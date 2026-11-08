@@ -6,7 +6,6 @@ import type {
 import {
 	orgCollaboratorsPath,
 	orgGrantAccessPath,
-	orgRoleHasFullAccess,
 	orgRoleLabel,
 	orgTeamsPath,
 } from '#universal/org-pages.ts'
@@ -34,6 +33,7 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import type { QueryKey } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { renderIcon } from '../components/icon.tsx'
@@ -225,6 +225,15 @@ const peopleColumns: Array<RecordTableColumn> = [
 
 const orgGrantsPageSize = 25
 
+/** Owners and Admins hold access through their role, not through grants. */
+function roleAccessSummary(role: OrgRole | null) {
+	if (role === 'owner') return 'Full access'
+	if (role === 'admin') {
+		return 'Full access except deleting the organization or changing Owners'
+	}
+	return null
+}
+
 function OrgGrantsPeopleTable({ data }: { data: OrgGrantsLoaderData }) {
 	const [query, setQuery] = useState('')
 	const [kind, setKind] = useState<'' | GrantSubjectKind>('')
@@ -280,17 +289,16 @@ function OrgGrantsPeopleTable({ data }: { data: OrgGrantsLoaderData }) {
 		return [
 			...subjects.map((subject) => {
 				const grants = byUser.get(subject.userId) ?? []
-				const fullAccess = orgRoleHasFullAccess(subject.role)
+				const roleSummary = roleAccessSummary(subject.role)
 				return row({
 					id: `user:${subject.userId}`,
 					name: subject.label,
 					kind: subject.kind,
 					role: orgRoleLabel(subject.role),
-					access: fullAccess
-						? 'Full access'
-						: grantCountsSummary(grants) || 'No direct grants',
+					access:
+						roleSummary ?? (grantCountsSummary(grants) || 'No direct grants'),
 					grants,
-					href: fullAccess
+					href: roleSummary
 						? undefined
 						: orgGrantAccessPath(data.org.slug, subject.userId),
 				})
