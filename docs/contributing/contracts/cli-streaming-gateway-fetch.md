@@ -7,6 +7,8 @@ returns a real `Response`.
 
 This is a **native Open API route**, not `POST /v1/capability-proxy/call` with
 `path: ['kody', 'gatewayFetch']`. Keep that JSON hop for small buffered bodies.
+The package-facing promises (body types, memory, errors, retries) are in
+[Credentials: large bodies on local execute](../../guides/credentials.md#large-bodies-on-local-execute).
 
 Hosted gateway streaming fill (origin / `fetch-gateway` in this repo) is out of
 scope for the CLI agent. Direct-upload host tokens are out of scope; the gateway
@@ -111,11 +113,14 @@ the JSON hop.
 
 Failures that happen before origin sends the request upstream use the standard
 Open API JSON envelope `{ error: { code, message } }` with the usual codes
-(`invalid_request`, `unauthorized`, `insufficient_scope`, `payload_too_large`, …
-— see [Open API errors](../architecture/open-api.md#errors)),
-`Cache-Control: no-store`. Surface those as API errors the same way as
-`POST /v1/capability-proxy/call`. Do not wrap them in a successful `Response`
-for package code.
+(`invalid_request`, `unauthorized`, `insufficient_scope`, `payload_too_large`,
+and so on; see [Open API errors](../architecture/open-api.md#errors)),
+`Cache-Control: no-store`, and `X-Kody-Gateway-Error: <code>`. That header is
+how the host tells Kody's own error from an upstream JSON error with `no-store`;
+only a marked response (or a small unmarked envelope from an older origin)
+throws. The CLI bridge marks its own failures the same way and adds
+`mayHaveReachedOrigin` to the envelope. Package code gets a `KodyGatewayError`,
+never a successful `Response`, for these.
 
 Once origin has a status from upstream, the hop returns that status, those
 headers, and that body — including upstream 4xx/5xx — as the real `Response`.
@@ -135,7 +140,11 @@ This hop has **no 4 MiB cap**. Respect the Cloudflare Worker upload limit: about
   still close the request with a raw `413` once the upload exceeds the platform
   cap.
 
-The JSON `gatewayFetch` hop keeps its 4 MiB request- and response-body cap.
+The JSON `gatewayFetch` hop keeps its 4 MiB request- and response-body cap, but
+the shim only sends it bodies up to `maxGatewayFetchJsonHopBodyBytes` (3 MiB,
+`packages/worker/src/open-api/api-body-limits.ts`): base64 of that plus 1 MiB of
+envelope headroom fits the 5 MiB `maxApiRequestBodyBytes`. A raw 4 MiB body is
+5,592,408 bytes as base64 alone, so it streams.
 
 ## Shared gateway policy
 
@@ -173,9 +182,11 @@ kody.gatewayFetchStream({
 }): Promise<Response>
 ```
 
-When `signal` aborts, cancel the outbound upload and reject (or abort the
-upstream `fetch`). Honor `redirect` on the Open API hop the same way a normal
-`fetch` would for the reconstructed upstream response.
+When `signal` aborts, cancel the outbound upload and reject with an
+`AbortError`. The bridge gives each hop its own signal, so a caller abort or a
+mid-body disconnect also stops the upstream hop. The bridge hop always uses
+`redirect: 'manual'`: the gateway already followed or held back the origin's
+redirects, and workerd must never follow a `Location` from the bridge response.
 
 CLI `kody:runtime` host must:
 
@@ -203,11 +214,15 @@ The host does not choose which hop to use. The shim does.
 
 ## Which hop the shim uses
 
-| Condition                                                            | Hop                                                                    |
-| -------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Small buffered body that carries a placeholder                       | existing `gatewayFetch` (JSON / base64, 4 MiB)                         |
-| Streamed body, `multipart/*` body, or a body that would exceed 4 MiB | `gatewayFetchStream`                                                   |
-| No placeholders, and not a multipart body that needs fill            | native `fetch` (unchanged for non-secret uploads without placeholders) |
+| Condition                                                                                | Hop                                                                    |
+| ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Credential handle or URL/header placeholder, `headers-only`/`off`, binary or stream body | `gatewayFetchStream`, the caller's own body object                     |
+| Body that carries a placeholder (or any hop body) up to 3 MiB                            | `gatewayFetch` (JSON / base64)                                         |
+| Streamed body, `multipart/*` body, or a body over 3 MiB                                  | `gatewayFetchStream`                                                   |
+| No credential handle, no placeholders, and not a multipart body that needs fill          | native `fetch` (unchanged for non-secret uploads without placeholders) |
+
+A request that carries a credential handle or a placeholder never takes native
+`fetch`, whatever its body or resolution mode.
 
 Multipart parts **are** filled when they contain literal `{{…}}` placeholders,
 matching hosted. A multipart upload with no placeholders still uses native
