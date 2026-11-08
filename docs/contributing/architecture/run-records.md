@@ -597,6 +597,102 @@ It returns:
 The only write is the audit row. Like other RunLog reads, the first RPC to an
 owner with no RunLog writes its empty schema.
 
+### Admin package artifact evidence
+
+`adminPackageArtifactEvidence` is the byte-level companion to
+`adminPackageProvenance`: it shows which stored bundle bytes runtime readers
+select, so an identity row that names a newer build can be told apart from the
+payload actually served. It is role-gated, read-only, and audit-logged (action
+`adminPackageArtifactEvidence`; the reason holds the package id, owner id, page
+offset, returned count, and total). Target it with `packageId` or `packageName`.
+
+Targets are every artifact the serving-commit manifest declares
+(`collectPublishedPackageArtifactTargets`: app, app client, a callable `module`
+and an `importable-module` per export, subscription modules, and each job),
+followed by any extra identity rows and any package job rows with no declared
+target. A declared target with no identity row or no KV payload is still
+reported. When the manifest cannot be read, `manifest.status` is `unavailable`
+and targets come from identity rows and jobs only.
+
+Each target reports:
+
+- `selector`: the pointer the runtime reader passes as `commit` to
+  `loadPublishedBundleArtifactByIdentity`. `serving_commit`
+  (`servingCommitForSource`) for callable modules, subscriptions, app, app
+  client, and jobs; `serving_artifact_commit` (`servingArtifactCommitForSource`)
+  for importable modules, where null means the newest row is used as-is.
+- `identityRow`: the newest-build `published_bundle_artifacts` row
+  (`builtFromCommit`, `updatedAt`).
+- `selected`: the payload the reader selects, using the same rule as
+  `hydratePublishedBundleArtifactRow` (the commit-keyed key when the requested
+  commit differs from the row, else the row's key). It carries the KV key (only
+  when it is the derived commit-keyed form), `status` (`valid`, `missing`,
+  `malformed` with `malformedReason`, `identity_mismatch` with the mismatched
+  field names, or `kv_unavailable`), the embedded commit, the main module name,
+  SHA-256 per module (first 32 by path; `moduleCount` is always the full count),
+  `bundleSha256` over the main module name and the sorted path and hash pairs,
+  and the payload size. `runtimeLoads` is true only when an identity row exists
+  and the payload is valid.
+- `newestRow`: the same evidence for the row's own payload, only when the row
+  names a different commit, plus `selectedMatchesNewestRowBytes`.
+- `jobs`: the package jobs for a job target (id, enabled, recorded commit).
+
+Module hashes cover each stored module's type and content; hashing happens in
+platform code and bytes never leave it. The read never loads, executes,
+compiles, or rebuilds package code, and never writes KV or D1 except the audit
+row. Pages hold up to 20 targets (`limit`, default 10); follow
+`page.nextCursor`. The cursor carries a `stateFingerprint` of the source
+pointers and target list; a cursor from a different state is refused, so a page
+walk never silently skips or repeats targets.
+
+### Admin package job attribution repair
+
+`adminPackageJobAttributionRepair` sets one package job's recorded commit
+(`jobs.published_commit`) to the package's current serving commit, for job pins
+left on a failed publish's commit. It is admin-only and audit-logged (action
+`adminPackageJobAttributionRepair`; the reason holds package, owner, and job
+ids, mode, outcome, the expected commits, refusal reasons, and whether a write
+was compensated).
+
+Input: `packageId` or `packageName`, `jobId`, `expectedRecordedCommit` (the
+job's current pin), `expectedServingCommit` (the value it will record), and
+`apply` (default false, a dry run). The result has `outcome` (`would_update`,
+`updated`, `already_current`, or `refused`), `refusalReasons`, the exact `diff`
+(`jobs.published_commit` from and to), the source pointers, and the job's id,
+name, enabled state, and recorded commit.
+
+Safety contract:
+
+- Refuses (`refusalReasons`) when the source or job is missing, the job belongs
+  to another source, the serving commit is unknown or differs from
+  `expectedServingCommit`, a publish is in progress (`published_commit` differs
+  from a set `serving_commit`), or the pin differs from
+  `expectedRecordedCommit`. A pin already at the serving commit is
+  `already_current`, so a retried apply is a no-op.
+- The write (`repairPackageJobPublishedCommit` on the jobs store) updates only
+  `published_commit` and `updated_at`, compare-and-set on job id, owner, source
+  id, the expected old commit, and a live row. Enabled state, disabled reason,
+  schedule, timezone, params, caller context, claims, retries, and last and next
+  run fields are untouched. A missed compare-and-set is refused as
+  `write_conflict`.
+- Jobs live in the jobs D1 database, apart from `entity_sources`, so the source
+  guard is a re-read after the write. If the serving pointer moved, the pin is
+  compare-and-set back to the expected old commit (`compensated`) and the apply
+  is refused as `source_changed_during_apply`.
+- Never rebuilds, republishes, runs the job, changes enablement or the source
+  pointers, or writes any other row.
+
+### Failed publish settlement
+
+`settleFailedPublishRebuild` moves the published pointer back to the last good
+commit (compare-and-set on the failed commit), then refreshes the projection and
+job pins with `rebuildArtifacts: false`. The two writes are separate, so a
+refresh that throws leaves the pointer restored and the pins on the failed
+commit. A retry whose compare-and-set misses re-reads the pointer: when it
+already names the restore commit, the retry finishes the refresh and returns
+`restored`; any other pointer is a newer publish and the result is `superseded`
+with nothing touched.
+
 ## Related
 
 - [Usage metering](./usage-metering.md)

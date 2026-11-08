@@ -24,7 +24,7 @@ const packageProvenanceRecentRunLimit = 20
 /** Durable workflows that publish a package (see `publish-external-push.ts`). */
 const publishWorkflowNames = new Set(['packagePublishExternalPush'])
 
-type PackageProvenanceTarget =
+export type PackageProvenanceTarget =
 	| { packageId: string; packageName?: undefined }
 	| { packageName: string; packageId?: undefined }
 
@@ -106,7 +106,7 @@ function classifyStoredError(text: string | null | undefined): string | null {
 	return 'error'
 }
 
-async function resolvePackageForProvenance(
+export async function resolvePackageForProvenance(
 	db: D1Database,
 	target: PackageProvenanceTarget,
 ): Promise<SavedPackageRecord | null> {

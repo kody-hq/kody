@@ -2,7 +2,10 @@ import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import * as Sentry from '@sentry/cloudflare'
 import { clearPublishedPublishChecksVersion } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { refreshSavedPackageProjection } from '#worker/package-registry/service.ts'
-import { revertEntitySourcePublishedCommit } from '#worker/repo/entity-sources.ts'
+import {
+	getEntitySourceByIdForUser,
+	revertEntitySourcePublishedCommit,
+} from '#worker/repo/entity-sources.ts'
 
 /**
  * RepoSession promotes and seals the tip (pointer, projection, job pins)
@@ -14,6 +17,12 @@ import { revertEntitySourcePublishedCommit } from '#worker/repo/entity-sources.t
  *
  * Returns `restored` when the pointer moved back, `superseded` when a newer
  * publish already owns it, and `unchanged` when there was nothing to restore.
+ *
+ * Resumable: the pointer CAS and the projection refresh are separate writes,
+ * so a refresh that throws leaves the pointer already at `restoreCommit`. A
+ * retry whose CAS misses re-reads the pointer and, when it still names
+ * `restoreCommit`, finishes the refresh instead of reporting `superseded`.
+ * Any other pointer (a newer publish) stays untouched.
  */
 export async function settleFailedPublishRebuild(input: {
 	env: Env
@@ -40,9 +49,15 @@ export async function settleFailedPublishRebuild(input: {
 		failedCommit: input.failedCommit,
 		restoreCommit,
 	})
-	// A newer publish already moved the pointer; its own finalize owns the
-	// projection now.
-	if (!reverted) return 'superseded'
+	if (!reverted) {
+		const current = await getEntitySourceByIdForUser(input.env.APP_DB, {
+			id: input.sourceId,
+			userId: input.ownerUserId,
+		})
+		// A newer publish already moved the pointer; its own finalize owns the
+		// projection now.
+		if (current?.published_commit !== restoreCommit) return 'superseded'
+	}
 	try {
 		await refreshSavedPackageProjection({
 			env: input.env,

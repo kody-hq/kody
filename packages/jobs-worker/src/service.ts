@@ -139,6 +139,17 @@ export class JobsService
 		return jobsStore(this.env).recordJobRunNowOutcome(input)
 	}
 
+	async repairPackageJobPublishedCommit(input: {
+		userId: string
+		jobId: string
+		sourceId: string
+		expectedPublishedCommit: string
+		publishedCommit: string
+		updatedAt: string
+	}): Promise<boolean> {
+		return jobsStore(this.env).repairPackageJobPublishedCommit(input)
+	}
+
 	async updateJobCallerContextJson(input: {
 		userId: string
 		jobId: string
