@@ -379,13 +379,17 @@ async function loadPublicTreeFilesUncached(input: {
 		input.env.BUNDLE_ARTIFACTS_KV &&
 		commit !== input.pinnedCommit
 	) {
-		const pinnedSnapshot = await readPublishedSourceSnapshot({
-			env: input.env,
-			sourceId: input.sourceId,
-			publishedCommit: input.pinnedCommit,
-		})
-		if (pinnedSnapshot?.files) {
-			return { files: pinnedSnapshot.files, fromPinnedSnapshot: true }
+		try {
+			const pinnedSnapshot = await readPublishedSourceSnapshot({
+				env: input.env,
+				sourceId: input.sourceId,
+				publishedCommit: input.pinnedCommit,
+			})
+			if (pinnedSnapshot?.files) {
+				return { files: pinnedSnapshot.files, fromPinnedSnapshot: true }
+			}
+		} catch {
+			// Same empty-tree result as a missing pinned snapshot.
 		}
 	}
 	return { files: {}, fromPinnedSnapshot: Boolean(input.listingId) }

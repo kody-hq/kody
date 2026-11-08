@@ -259,6 +259,8 @@ async function loadCommunityIconSource(input: {
 	// Icons come straight from the owner package's Artifacts repo at the icon
 	// commit so raster bytes stay byte-accurate.
 	const source = await getValidatedListingPackageSource(input)
+	// A listing whose package source row is gone renders the monogram.
+	if (!source) return null
 	const found = await readFirstArtifactFileAtCommit({
 		env: input.env,
 		repoId: source.repo_id,
@@ -273,13 +275,13 @@ async function loadCommunityIconSource(input: {
 async function getValidatedListingPackageSource(input: {
 	env: Env
 	listing: CommunityListingRecord
-}): Promise<EntitySourceRow> {
+}): Promise<EntitySourceRow | null> {
 	const source = await getEntitySourceById(
 		input.env.APP_DB,
 		input.listing.sourceId,
 	)
+	if (!source) return null
 	if (
-		!source ||
 		source.user_id !== input.listing.ownerUserId ||
 		source.entity_kind !== 'package' ||
 		source.entity_id !== input.listing.packageId

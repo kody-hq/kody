@@ -298,6 +298,19 @@ test('pinned SVG icons load from Artifacts at the pinned commit', async () => {
 	)
 })
 
+test('community icons fall back to the monogram when the package source row is gone', async () => {
+	mocks.getEntitySourceById.mockResolvedValue(null)
+	mocks.getCommunityListingById.mockResolvedValue(listing)
+
+	const result = await getPinnedIcon(createIconEnv().env)
+
+	expect(result.descriptor).toMatchObject({
+		sourcePath: null,
+		contentType: 'image/webp',
+	})
+	expect(mocks.readFirstArtifactFileAtCommit).not.toHaveBeenCalled()
+})
+
 test('community icon descriptor caches the R2 reference and repairs a dangling reference', async () => {
 	const { env, kvValues, r2Values } = createIconEnv()
 	mockArtifactIcon('community-icon.png', createPngHeader(128, 128))
