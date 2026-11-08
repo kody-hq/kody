@@ -438,6 +438,11 @@ export function orgSwitcherEntries(
 	]
 }
 
+/** Roles whose members can touch everything in the organization without grants. */
+export function orgRoleHasFullAccess(role: OrgRole | null) {
+	return role === 'owner'
+}
+
 export function orgRoleLabel(role: OrgRole | null) {
 	switch (role) {
 		case 'owner':

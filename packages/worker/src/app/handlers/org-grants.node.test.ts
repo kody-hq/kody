@@ -419,6 +419,28 @@ async function bobOrgPermissions() {
 	return compiled.orgPermissions
 }
 
+test('the grants list names every member once with their role for a manager', async () => {
+	const env = createEnv()
+	const listReq = new Request('https://kody.test/@zeta-co/-/grants')
+	await signIn('ada', listReq)
+	const data = (
+		await testOrgGrantsApiHandler(env).execute({ request: listReq } as never)
+	).data as {
+		subjects: Array<{ userId: string; label: string; role: string | null }>
+	}
+	const byLabel = new Map(
+		data.subjects.map((subject) => [subject.label, subject]),
+	)
+	expect(byLabel.get('@ada')?.role).toBe('owner')
+	expect(byLabel.get('@bob')).toMatchObject({
+		userId: people.bob.personId,
+		role: 'member',
+	})
+	expect(new Set(data.subjects.map((subject) => subject.userId)).size).toBe(
+		data.subjects.length,
+	)
+})
+
 test('an owner grants a member org-wide read access; no write comes with it', async () => {
 	const env = createEnv()
 	const listReq = new Request('https://kody.test/@zeta-co/-/grants')
