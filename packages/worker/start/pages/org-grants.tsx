@@ -147,7 +147,7 @@ const resourceTypeNouns: Record<string, [string, string]> = {
 const resourceTypeOrder = Object.keys(resourceTypeNouns)
 
 /** "3 packages, 2 credentials" for one subject's direct grants. */
-export function grantCountsSummary(grants: ReadonlyArray<OrgGrantView>) {
+function grantCountsSummary(grants: ReadonlyArray<OrgGrantView>) {
 	const counts = new Map<string, number>()
 	for (const grant of grants) {
 		const type =
@@ -223,7 +223,7 @@ const peopleColumns: Array<RecordTableColumn> = [
 	},
 ]
 
-export const orgGrantsPageSize = 25
+const orgGrantsPageSize = 25
 
 function OrgGrantsPeopleTable({ data }: { data: OrgGrantsLoaderData }) {
 	const [query, setQuery] = useState('')
