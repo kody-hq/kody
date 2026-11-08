@@ -160,19 +160,17 @@ report row.
 
 ### KV snapshots
 
-Pinned file trees live in `BUNDLE_ARTIFACTS_KV` under:
+A listing's pinned file tree is the owner package's SHA-keyed source snapshot,
+`source-snapshot:v1:{sourceId}:{pinnedCommit}` in `BUNDLE_ARTIFACTS_KV`. Bundle
+retention keeps that snapshot while an active listing pins the commit. Fork
+preparation, the public `/@owner/kody-id/tree/:ref` explorer, README assets, and
+the listing version read it when the published-commit snapshot and Artifacts
+miss. Community icons read Artifacts at the icon commit.
 
-`community-snapshot:v1:{listingId}`
-
-`packages/worker/src/community/snapshot.ts` reads and writes `CommunitySnapshot`
-(`version`, `listingId`, `pinnedCommit`, `files`, optional `communityIconPath`,
-`createdAt`). Publish and re-publish overwrite the snapshot; unpublish and hard
-delete remove it. Raster list-mark bytes (`.kody/icon.*`, root `icon.*`, and
-`community-icon.*`) are omitted from the text-backed `files` map; the path
-metadata lets the icon route retrieve bytes from Artifacts. Package-app
-`icons/icon-192.png` stays in the snapshot so forks keep their PWA icon. The
-public `/@owner/kody-id/tree/:ref` explorer reads this snapshot (not a live git
-checkout). Leftover `/files` URLs 301 to `/tree/{defaultBranch}`.
+Older listings may still have a legacy `community-snapshot:v1:{listingId}` key.
+Nothing writes or reads it anymore; unpublish, hard delete, account export, and
+account deletion still address it (`packages/worker/src/community/snapshot.ts`).
+Leftover `/files` URLs 301 to `/tree/{defaultBranch}`.
 
 ### Community icon cache
 
