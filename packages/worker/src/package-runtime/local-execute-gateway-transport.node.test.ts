@@ -55,6 +55,7 @@ function loadShim(
 		stream?: boolean
 		respond?: (hop: StreamHop) => Response | Promise<Response>
 		kind?: string
+		jsonError?: Error
 	} = {},
 ) {
 	const shim = createLocalExecuteRuntimeShimSource(runtimeModulePath)
