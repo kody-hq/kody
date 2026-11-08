@@ -22,3 +22,13 @@ export function dismissOpenPopoverPanel(panel: Element | null) {
 		element.hidePopover()
 	}
 }
+
+/**
+ * Show a popover panel. Older browsers lack `showPopover` when the Popover API
+ * is unavailable (Chrome < 114, Safari < 17), so this no-ops there.
+ */
+export function showPopoverPanel(panel: Element | null) {
+	if (!panel || typeof (panel as HTMLElement).showPopover !== 'function') return
+	const element = panel as HTMLElement
+	element.showPopover()
+}

@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
+import { dismissOpenPopoverPanel } from '#client/popover-open.ts'
 import type { CSSObject } from '@emotion/react'
 import { useEffect } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
@@ -409,7 +410,7 @@ export function EntityExplainer(props: EntityExplainerProps) {
 	const panelId = `entity-explainer-${props.copy.id}`
 	const href = useMatchedPageScope().pageLocation.href
 	useEffect(() => {
-		document.getElementById(panelId)?.hidePopover()
+		dismissOpenPopoverPanel(document.getElementById(panelId))
 	}, [href, panelId])
 
 	{
