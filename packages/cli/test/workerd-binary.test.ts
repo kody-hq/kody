@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import {
+	chmodSync,
 	existsSync,
+	mkdirSync,
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
@@ -16,6 +18,7 @@ import {
 	downloadVerifiedGzip,
 	ensureWorkerdBinary,
 	userCacheDir,
+	WorkerdDownloadNetworkError,
 	WorkerdDownloadStalledError,
 	workerdAssetUrl,
 	workerdTargetFor,
@@ -230,7 +233,7 @@ test('downloadVerifiedGzip aborts with a stall error when bytes stop arriving', 
 	assert.deepEqual(readdirSync(dirname(destination)), [])
 })
 
-test('ensureWorkerdBinary retries a stalled download once', async () => {
+test('ensureWorkerdBinary retries a stalled download', async () => {
 	const cacheDir = mkdtempSync(join(tmpdir(), 'kody-wd-'))
 	const server = serveStallingThen(
 		Buffer.from('x'),
@@ -244,6 +247,7 @@ test('ensureWorkerdBinary retries a stalled download once', async () => {
 			target: 'linux-64',
 			fetchFn: server.fetchFn,
 			idleTimeoutMs: 50,
+			retryDelayMs: 0,
 			onDownload: (url) => downloads.push(url),
 		}),
 		/failed verification/,
@@ -252,7 +256,7 @@ test('ensureWorkerdBinary retries a stalled download once', async () => {
 	assert.equal(downloads.length, 2)
 })
 
-test('ensureWorkerdBinary names the download step when both attempts stall', async () => {
+test('ensureWorkerdBinary names the download step when every attempt stalls', async () => {
 	const cacheDir = mkdtempSync(join(tmpdir(), 'kody-wd-'))
 	const server = serveStallingThen(Buffer.from('x'), null)
 	await assert.rejects(
@@ -262,8 +266,155 @@ test('ensureWorkerdBinary names the download step when both attempts stall', asy
 			target: 'linux-64',
 			fetchFn: server.fetchFn,
 			idleTimeoutMs: 50,
+			retryDelayMs: 0,
 		}),
-		/Downloading workerd for local execute stalled twice: no bytes arrived/,
+		/Downloading workerd for local execute failed 3 times: no bytes arrived/,
 	)
-	assert.equal(server.calls(), 2)
+	assert.equal(server.calls(), 3)
 })
+
+test('ensureWorkerdBinary retries resets, HTTP/2 stream errors, and 5xx', async () => {
+	const failures: Array<() => Response> = [
+		() => {
+			throw Object.assign(new TypeError('fetch failed'), {
+				cause: Object.assign(new Error('read ECONNRESET'), {
+					code: 'ECONNRESET',
+				}),
+			})
+		},
+		() => {
+			throw Object.assign(new TypeError('fetch failed'), {
+				cause: Object.assign(new Error('Stream closed with error code'), {
+					code: 'ERR_HTTP2_STREAM_ERROR',
+				}),
+			})
+		},
+		() => new Response('busy', { status: 503 }),
+	]
+	const cacheDir = mkdtempSync(join(tmpdir(), 'kody-wd-'))
+	let calls = 0
+	const fetchFn = (async () => {
+		calls += 1
+		return failures[calls - 1]!()
+	}) as typeof fetch
+	await assert.rejects(
+		ensureWorkerdBinary({
+			env: {},
+			cacheDir,
+			target: 'linux-64',
+			fetchFn,
+			retryDelayMs: 0,
+		}),
+		(error: unknown) =>
+			error instanceof WorkerdDownloadNetworkError &&
+			/failed 3 times: Could not download workerd .*HTTP 503/.test(
+				error.message,
+			),
+	)
+	assert.equal(calls, 3)
+
+	let recovered = 0
+	const recovering = (async () => {
+		recovered += 1
+		if (recovered === 1) return failures[0]!()
+		return new Response(new Uint8Array(gzipSync(Buffer.from('tampered'))))
+	}) as typeof fetch
+	await assert.rejects(
+		ensureWorkerdBinary({
+			env: {},
+			cacheDir,
+			target: 'linux-64',
+			fetchFn: recovering,
+			retryDelayMs: 0,
+		}),
+		/failed verification/,
+	)
+	assert.equal(recovered, 2)
+})
+
+test('ensureWorkerdBinary retries a body that breaks off mid-download', async () => {
+	const cacheDir = mkdtempSync(join(tmpdir(), 'kody-wd-'))
+	let calls = 0
+	const fetchFn = (async () => {
+		calls += 1
+		if (calls > 1) {
+			return new Response(new Uint8Array(gzipSync(Buffer.from('tampered'))))
+		}
+		return new Response(
+			new ReadableStream<Uint8Array>({
+				start(controller) {
+					controller.enqueue(new Uint8Array([0x1f, 0x8b]))
+					setImmediate(() =>
+						controller.error(
+							Object.assign(new Error('read ECONNRESET'), {
+								code: 'ECONNRESET',
+							}),
+						),
+					)
+				},
+			}),
+		)
+	}) as typeof fetch
+	await assert.rejects(
+		ensureWorkerdBinary({
+			env: {},
+			cacheDir,
+			target: 'linux-64',
+			fetchFn,
+			retryDelayMs: 0,
+		}),
+		/failed verification/,
+	)
+	assert.equal(calls, 2)
+})
+
+test('ensureWorkerdBinary does not retry a 404', async () => {
+	const cacheDir = mkdtempSync(join(tmpdir(), 'kody-wd-'))
+	let calls = 0
+	const fetchFn = (async () => {
+		calls += 1
+		return new Response('missing', { status: 404 })
+	}) as typeof fetch
+	await assert.rejects(
+		ensureWorkerdBinary({
+			env: {},
+			cacheDir,
+			target: 'linux-64',
+			fetchFn,
+			retryDelayMs: 0,
+		}),
+		/HTTP 404/,
+	)
+	assert.equal(calls, 1)
+})
+
+test(
+	'ensureWorkerdBinary does not retry a local write failure',
+	{
+		skip:
+			process.platform === 'win32' || process.getuid?.() === 0
+				? 'needs POSIX directory permissions'
+				: false,
+	},
+	async () => {
+		const cacheDir = mkdtempSync(join(tmpdir(), 'kody-wd-'))
+		const binaryPath = cachedWorkerdPath(cacheDir, 'linux-64')
+		mkdirSync(dirname(binaryPath), { recursive: true })
+		chmodSync(dirname(binaryPath), 0o500)
+		const { fetchFn, urls } = serve(gzipSync(Buffer.from('#!/bin/sh\n')))
+		await assert.rejects(
+			ensureWorkerdBinary({
+				env: {},
+				cacheDir,
+				target: 'linux-64',
+				fetchFn,
+				retryDelayMs: 0,
+			}),
+			(error: unknown) =>
+				!(error instanceof WorkerdDownloadNetworkError) &&
+				(error as { code?: string }).code === 'EACCES',
+		)
+		assert.equal(urls.length, 1)
+		chmodSync(dirname(binaryPath), 0o700)
+	},
+)

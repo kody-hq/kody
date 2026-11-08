@@ -27,7 +27,7 @@ import {
 	type ExecutionContextsPageData,
 } from '#universal/execution-contexts.ts'
 import {
-	desktopSetupContextInChain,
+	desktopSetupContextFirst,
 	desktopSetupPanelAction,
 	desktopSetupResumeStep,
 	desktopSetupStages,
@@ -228,7 +228,7 @@ export function DesktopExecutionProvider({
 		if (step === 'overview') return 'sign-in'
 		return null
 	}
-	const inChain = desktopSetupContextInChain(
+	const inChain = desktopSetupContextFirst(
 		setup?.chain.entries,
 		machine.data?.contextId ?? null,
 	)
@@ -259,7 +259,7 @@ export function DesktopExecutionProvider({
 				throw new Error('Execution contexts could not be enabled. Try again.')
 			setSetup(page.payload)
 			setReplace('')
-			const listed = desktopSetupContextInChain(
+			const first = desktopSetupContextFirst(
 				page.payload.chain.entries,
 				signedIn?.contextId ?? null,
 			)
@@ -269,7 +269,7 @@ export function DesktopExecutionProvider({
 				contextId: signedIn?.contextId ?? null,
 				running: !!signedIn?.running,
 				attached,
-				inChain: listed,
+				inChain: first,
 			})
 			// After sign-in, overview means registration is still open.
 			setStep(next === 'overview' ? 'register' : next)
@@ -308,12 +308,12 @@ export function DesktopExecutionProvider({
 				)
 			try {
 				if (target) {
-					const listed = desktopSetupContextInChain(
+					const first = desktopSetupContextFirst(
 						setup?.chain.entries,
 						registered.contextId,
 					)
-					if (listed || attached) {
-						// Already on the team chain; runner start was the missing piece.
+					if (first || attached) {
+						// Already first on the team chain; runner start was the missing piece.
 					} else {
 						// Team destination: keep personal registration, attach next.
 						setStep('attach')
