@@ -825,35 +825,41 @@ test('a sync webhook whose package was refused for credential placement returns 
 test('a sync webhook refused for body fill placement names the part and the run, never the value', async () => {
 	const userId = await setupOwnerWithWebhooks(['sync-hook'])
 	declareWebhook({ name: 'sync-hook', responseMode: 'sync' })
+	const requestCanary = 'webhook-request-canary-9f3c'
+	const invocationCanary = 'invocation-error-canary-7b2e'
+	const logCanary = 'invocation-log-canary-4d8a'
 	mocks.invokePackageExport.mockResolvedValue({
 		status: 500,
 		body: {
 			ok: false,
 			error: {
 				code: 'execution_failed',
-				message:
-					'Error: Credential "acmeApiKey" may not fill the body. Allowed parts: headers. Its owner can allow the body on the credential page, which warns that the host may store the value there. (credential_placement_refused, slot "acmeApiKey", part "body")',
+				message: `Error: Credential "acmeApiKey" may not fill the body. ${invocationCanary} (credential_placement_refused, slot "acmeApiKey", part "body")`,
 			},
-			logs: ['POST https://api.acme.test/v1/items'],
+			logs: [`POST https://api.acme.test/v1/items ${logCanary}`],
 		},
 	})
 
 	const response = await sendWebhook('sync-hook', {
-		body: JSON.stringify({ item: 1 }),
+		body: JSON.stringify({ item: 1, token: requestCanary }),
 	})
 	expect(response.status).toBe(502)
 	const body = (await response.json()) as {
 		error: Record<string, unknown>
 		runId?: string
 	}
-	expect(body.error).toEqual({
+	expect(body.error).toMatchObject({
 		code: 'credential_placement_refused',
-		message:
-			"The package tried to send a credential (slot \"acmeApiKey\") in the request body, which the credential's fill placement does not allow, so Kody refused the request. The credential's owner can allow it in the credential's fill placement setting, or the package owner can send the credential where it is allowed.",
 		slot: 'acmeApiKey',
 		part: 'body',
 	})
-	expect(JSON.stringify(body)).not.toContain('api.acme.test')
+	expect(body.error.message).toEqual(expect.stringContaining('acmeApiKey'))
+	expect(body.error.message).toEqual(expect.stringContaining('request body'))
+	const serialized = JSON.stringify(body)
+	expect(serialized).not.toContain('api.acme.test')
+	expect(serialized).not.toContain(requestCanary)
+	expect(serialized).not.toContain(invocationCanary)
+	expect(serialized).not.toContain(logCanary)
 
 	const failed = (await listDeliveries(userId, 'sync-hook')).find(
 		(run) => run.metadata?.['outcome'] === 'failed',

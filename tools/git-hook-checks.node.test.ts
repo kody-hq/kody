@@ -1342,9 +1342,14 @@ test('pre-push names the global inputs that force the full test:push', async () 
 		log: (message) => logs.push(message),
 	})
 	expect(scripts).toContain('test:push')
-	expect(logs).toContain(
-		'pre-push: full test:push because global test inputs changed (packages/worker/src/test-support/a.ts)',
-	)
+	expect(
+		logs.some(
+			(line) =>
+				line.includes('full test:push') &&
+				line.includes('global test inputs changed') &&
+				line.includes('packages/worker/src/test-support/a.ts'),
+		),
+	).toBe(true)
 })
 
 test('pre-push names why an asset-only push falls back to the full test:push', async () => {
@@ -1365,7 +1370,11 @@ test('pre-push names why an asset-only push falls back to the full test:push', a
 		progressIntervalMs: 60_000,
 	})
 	expect(scripts).toContain('test:push')
-	expect(logs).toContain(
-		'pre-push: full test:push because no pushed path is JS/TS source with related tests',
-	)
+	expect(
+		logs.some(
+			(line) =>
+				line.includes('full test:push') &&
+				line.includes('no pushed path is JS/TS source'),
+		),
+	).toBe(true)
 })

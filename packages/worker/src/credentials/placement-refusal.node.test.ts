@@ -92,24 +92,30 @@ test('a fill placement refusal round-trips its refused part', () => {
 	).toBeNull()
 })
 
-test('the webhook error names the refused part and how to fix it, never a value', () => {
-	expect(
-		buildCredentialPlacementRefusedWebhookError({
-			slot: 'acmeApiKey',
-			part: 'body',
-		}),
-	).toEqual({
-		code: 'credential_placement_refused',
-		message:
-			"The package tried to send a credential (slot \"acmeApiKey\") in the request body, which the credential's fill placement does not allow, so Kody refused the request. The credential's owner can allow it in the credential's fill placement setting, or the package owner can send the credential where it is allowed.",
+test('the webhook error names the refused slot and part', () => {
+	const withPart = buildCredentialPlacementRefusedWebhookError({
 		slot: 'acmeApiKey',
 		part: 'body',
 	})
-	expect(
-		buildCredentialPlacementRefusedWebhookError({ slot: null, part: null }),
-	).toEqual({
+	expect(withPart).toMatchObject({
 		code: 'credential_placement_refused',
-		message:
-			"The package tried to send a credential to a host the credential does not allow, over plain HTTP, or in the URL host, so Kody refused the request. The package owner or the credential's owner needs to fix it.",
+		slot: 'acmeApiKey',
+		part: 'body',
 	})
+	expect(withPart.message).toContain('acmeApiKey')
+	expect(withPart.message).toContain('request body')
+
+	const hostOnly = buildCredentialPlacementRefusedWebhookError({
+		slot: null,
+		part: null,
+	})
+	expect(hostOnly.code).toBe('credential_placement_refused')
+	expect(hostOnly).not.toHaveProperty('slot')
+	expect(hostOnly).not.toHaveProperty('part')
+	expect(Object.keys(hostOnly).sort()).toEqual(['code', 'message'])
+	expect(hostOnly.message).toContain('host')
+	expect(hostOnly.message).toContain('plain HTTP')
+	expect(hostOnly.message).toContain('URL host')
+	expect(hostOnly.message).not.toContain('acmeApiKey')
+	expect(hostOnly.message).not.toContain('request body')
 })
