@@ -3,6 +3,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { expect, test } from 'vitest'
 import {
+	d1LockRetryBaseDelayMs,
+	d1LockRetryMaxAttempts,
+} from '@kody-internal/shared/d1-retry.ts'
+import {
 	executeWranglerD1,
 	runWranglerD1,
 	type WranglerD1SpawnInput,
@@ -189,4 +193,83 @@ test('non-zero exit and bad JSON fail with the SQL and output', () => {
 		expect(message).toContain(sql)
 		expect(message).toContain('secret-context')
 	}
+})
+
+test('executeWranglerD1 retries SQLITE_BUSY then returns rows', () => {
+	const calls: Array<WranglerD1SpawnInput> = []
+	const delays: Array<number> = []
+	const busy: WranglerD1SpawnResult = {
+		status: 1,
+		stdout: '',
+		stderr: 'database is locked: SQLITE_BUSY (extended: SQLITE_BUSY_RECOVERY)',
+	}
+	const rows = executeWranglerD1({
+		binding: 'APP_DB',
+		sql,
+		mode: '--local',
+		persistTo: '.wrangler/state/e2e',
+		envFilePath: 'missing.env',
+		sleep: (ms) => delays.push(ms),
+		spawnImpl: (input) => {
+			calls.push(input)
+			if (calls.length === 1) return busy
+			return {
+				status: 0,
+				stdout: jsonResult([{ name: '0001-squashed-init.sql' }]),
+				stderr: '',
+			}
+		},
+	})
+	expect(rows).toEqual([{ name: '0001-squashed-init.sql' }])
+	expect(calls).toHaveLength(2)
+	expect(delays).toEqual([d1LockRetryBaseDelayMs])
+})
+
+test('executeWranglerD1 does not retry a permanent execute failure', () => {
+	let calls = 0
+	expect(() =>
+		executeWranglerD1({
+			binding: 'APP_DB',
+			sql,
+			mode: '--local',
+			envFilePath: 'missing.env',
+			sleep: () => {
+				throw new Error('sleep should not run')
+			},
+			spawnImpl: () => {
+				calls += 1
+				return { status: 1, stdout: '', stderr: 'no such table' }
+			},
+		}),
+	).toThrow('no such table')
+	expect(calls).toBe(1)
+})
+
+test('executeWranglerD1 exhausts SQLITE_BUSY retries then throws', () => {
+	let calls = 0
+	const delays: Array<number> = []
+	expect(() =>
+		executeWranglerD1({
+			binding: 'APP_DB',
+			sql,
+			mode: '--local',
+			envFilePath: 'missing.env',
+			sleep: (ms) => delays.push(ms),
+			spawnImpl: () => {
+				calls += 1
+				return {
+					status: 1,
+					stdout: '',
+					stderr: 'database is locked: SQLITE_BUSY',
+				}
+			},
+		}),
+	).toThrow('SQLITE_BUSY')
+	expect(calls).toBe(d1LockRetryMaxAttempts)
+	expect(delays).toEqual(
+		Array.from(
+			{ length: d1LockRetryMaxAttempts - 1 },
+			(_, index) => d1LockRetryBaseDelayMs * 2 ** index,
+		),
+	)
 })

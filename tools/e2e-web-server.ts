@@ -2,7 +2,12 @@ import { startStripeMock } from '../e2e/stripe-mock-server.ts'
 import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
+import { isRetryableD1LockMessage } from '@kody-internal/shared/d1-retry.ts'
 import { startCloudflareMock } from '#worker/test-support/cloudflare-mock-server.ts'
+import {
+	disposableE2ePersistPath,
+	resetDisposableE2ePersist,
+} from './check-stale-local-migrations.ts'
 import {
 	e2eCloudflareMockAccountId,
 	writeE2eCloudflareMockState,
@@ -95,6 +100,51 @@ export async function startCloudflareMockWithRetry<Mock>(input: {
 	}
 }
 
+export type E2eMigrateRunResult = {
+	status: number | null
+	output: string
+}
+
+/**
+ * Playwright's in-job webServer retry can start while the previous workerd
+ * still holds `.wrangler/state/e2e` (`SQLITE_BUSY_RECOVERY`). Wipe that
+ * disposable persist dir and retry migrate once so the shard does not fail
+ * before any spec runs.
+ */
+export function shouldRetryE2eMigrate(input: {
+	allowRetry: boolean
+	status: number | null
+	output: string
+}) {
+	return (
+		input.allowRetry &&
+		(input.status ?? 1) !== 0 &&
+		isRetryableD1LockMessage(input.output)
+	)
+}
+
+export function runE2eMigrateWithLockRetry(input: {
+	run: () => E2eMigrateRunResult
+	resetPersist: () => void
+	log: (message: string) => void
+}) {
+	const first = input.run()
+	if (
+		!shouldRetryE2eMigrate({
+			allowRetry: true,
+			status: first.status,
+			output: first.output,
+		})
+	) {
+		return first
+	}
+	input.log(
+		'e2e migrate hit a transient local D1 lock; resetting persist and retrying once.',
+	)
+	input.resetPersist()
+	return input.run()
+}
+
 function runSetup(command: string, args: Array<string>) {
 	const result = spawnSync(command, args, {
 		stdio: 'inherit',
@@ -102,6 +152,20 @@ function runSetup(command: string, args: Array<string>) {
 	})
 	const status = result.status ?? 1
 	if (status !== 0) process.exit(status)
+}
+
+function runMigrateE2e(): E2eMigrateRunResult {
+	const result = spawnSync(resolveNpmCommand(), ['run', 'migrate:e2e'], {
+		encoding: 'utf8',
+		env: process.env,
+		maxBuffer: 16 * 1024 * 1024,
+	})
+	if (result.stdout) process.stdout.write(result.stdout)
+	if (result.stderr) process.stderr.write(result.stderr)
+	return {
+		status: result.status,
+		output: `${result.stdout ?? ''}\n${result.stderr ?? ''}`,
+	}
 }
 
 async function startE2eWebServer() {
@@ -121,7 +185,12 @@ async function startE2eWebServer() {
 	process.env.SENTRY_ENVIRONMENT = 'test'
 
 	runSetup(process.execPath, ['tools/prepare-e2e-env.ts'])
-	runSetup(resolveNpmCommand(), ['run', 'migrate:e2e'])
+	const migrate = runE2eMigrateWithLockRetry({
+		run: runMigrateE2e,
+		resetPersist: () => resetDisposableE2ePersist(disposableE2ePersistPath),
+		log: (message) => console.error(message),
+	})
+	if ((migrate.status ?? 1) !== 0) process.exit(migrate.status ?? 1)
 
 	const mock = await startCloudflareMockWithRetry({
 		start: startCloudflareMock,
