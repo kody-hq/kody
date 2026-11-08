@@ -49,7 +49,7 @@ permission fixes are verified on the preview; see
   package-app host behavior (per-host subdomains, cookie `Domain` scrub, the
   cross-site handoff) cannot be checked there. Verify it locally with
   `PACKAGE_APP_BASE_URL=http://packages.localhost:<port>` in
-  `packages/worker/.env`, or in `packages/worker/.dev.vars` if that file exists,
+  `packages/worker/.env`, or in the `.dev.vars` beside it if that file exists,
   since Wrangler then ignores `.env` (see
   [security](../../../docs/contributing/security.md#hosted-package-app-origin-isolation))
   plus Workers tests.
