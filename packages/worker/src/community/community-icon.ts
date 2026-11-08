@@ -23,7 +23,6 @@ import {
 	findIdentityIconPath,
 	identityIconSourcePaths,
 	isIdentityIconSourcePath,
-	isSnapshotRetainedIdentityIconPath,
 	type IdentityIconSourcePath,
 } from '#worker/repo/identity-icon-paths.ts'
 import { buildCommunityIconFallbackSvg } from './community-icon-fallback.ts'
@@ -31,7 +30,6 @@ import {
 	getCommunityListingById,
 	getCommunityListingByOwnerAndPackage,
 } from './repo.ts'
-import { readCommunitySnapshot } from './snapshot.ts'
 import type { CommunityListingRecord } from './types.ts'
 
 export const communityIconVersion = 3 as const
@@ -258,51 +256,8 @@ async function loadCommunityIconSource(input: {
 	path: IdentityIconSourcePath
 	bytes: Uint8Array
 } | null> {
-	if (input.iconCommit === input.listing.pinnedCommit) {
-		const snapshot = await readCommunitySnapshot(
-			input.env.BUNDLE_ARTIFACTS_KV,
-			input.listing.id,
-		)
-		if (!snapshot || snapshot.pinnedCommit !== input.listing.pinnedCommit) {
-			throw new Error(
-				`Catalog entry snapshot for "${input.listing.id}" at "${input.listing.pinnedCommit}" was not found.`,
-			)
-		}
-		const sourcePath =
-			(snapshot.communityIconPath &&
-			isIdentityIconSourcePath(snapshot.communityIconPath)
-				? snapshot.communityIconPath
-				: null) ?? findCommunityIconPath(snapshot.files)
-		if (!sourcePath) return null
-		if (isSnapshotRetainedIdentityIconPath(sourcePath)) {
-			const source = snapshot.files[sourcePath]
-			if (source != null) {
-				return {
-					path: sourcePath,
-					bytes: new TextEncoder().encode(source),
-				}
-			}
-			// Pre-identity-icon listings stored `icon.svg` (and later
-			// `.kody/icon.svg`) in `communityIconPath` but stripped those
-			// files from the text snapshot. Fall through to Artifacts.
-		}
-		const source = await getValidatedListingPackageSource(input)
-		const found = await readFirstArtifactFileAtCommit({
-			env: input.env,
-			repoId: source.repo_id,
-			commit: input.iconCommit,
-			filePaths: [sourcePath],
-		})
-		if (!found) {
-			throw new Error(
-				`Community icon "${sourcePath}" was not found at pinned commit "${input.listing.pinnedCommit}".`,
-			)
-		}
-		return { path: sourcePath, bytes: found.bytes }
-	}
-
-	// Icon commits ahead of the pinned snapshot come straight from the owner
-	// package's Artifacts repo at the published commit.
+	// Icons come straight from the owner package's Artifacts repo at the icon
+	// commit so raster bytes stay byte-accurate.
 	const source = await getValidatedListingPackageSource(input)
 	const found = await readFirstArtifactFileAtCommit({
 		env: input.env,

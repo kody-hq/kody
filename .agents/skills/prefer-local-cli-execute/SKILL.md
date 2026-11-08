@@ -49,6 +49,12 @@ npx @kodycodes/cli execute --local --code 'import { kody } from "kody:runtime"; 
 
 Saved packages keep `--local` and a static `kody:@…` import.
 
+Omit `scopes`: the default set already covers saved package modules that call
+integrations, such as `@kentcdodds/ship-pr` (`integration:use`). Passed `scopes`
+replace the defaults, so a hand-picked list often misses `integration:use`,
+`org:execute`, or `secret:use` and fails with `insufficient_scope`. Add a scope
+to the full default list rather than picking a short one.
+
 ## Failure
 
 The CLI errors name the fix for a missing lifetime, a rejected bootstrap code,

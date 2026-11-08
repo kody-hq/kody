@@ -10,7 +10,6 @@ import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { getOwnerUsernameFromListingName } from '#worker/community/public-urls.ts'
 import { getCommunityListingById } from '#worker/community/repo.ts'
 import { getUserSocialRowByUsername } from '#worker/community/profile-repo.ts'
-import { readCommunitySnapshot } from '#worker/community/snapshot.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
 import { readPublishedSourceSnapshot } from '#worker/package-runtime/published-runtime-artifacts.ts'
@@ -344,7 +343,7 @@ async function loadPublicTreeFilesUncached(input: {
 	pinnedCommit: string
 }): Promise<{
 	files: Record<string, string>
-	fromListingSnapshot: boolean
+	fromPinnedSnapshot: boolean
 }> {
 	const commit = input.commit
 	if (commit && input.env.BUNDLE_ARTIFACTS_KV) {
@@ -355,10 +354,10 @@ async function loadPublicTreeFilesUncached(input: {
 				publishedCommit: commit,
 			})
 			if (snapshot?.files) {
-				return { files: snapshot.files, fromListingSnapshot: false }
+				return { files: snapshot.files, fromPinnedSnapshot: false }
 			}
 		} catch {
-			// Fall through to git / listing snapshot.
+			// Fall through to git / the pinned snapshot.
 		}
 	}
 	if (input.sourceRepoId && commit) {
@@ -369,32 +368,41 @@ async function loadPublicTreeFilesUncached(input: {
 				commit,
 			})
 			if (treeSnapshot?.files) {
-				return { files: treeSnapshot.files, fromListingSnapshot: false }
+				return { files: treeSnapshot.files, fromPinnedSnapshot: false }
 			}
 		} catch {
-			// Fall through to the listing pin snapshot.
+			// Fall through to the pinned snapshot.
 		}
 	}
-	if (input.listingId && input.env.BUNDLE_ARTIFACTS_KV) {
-		const listingSnapshot = await readCommunitySnapshot(
-			input.env.BUNDLE_ARTIFACTS_KV,
-			input.listingId,
-		)
-		if (listingSnapshot?.files) {
-			return { files: listingSnapshot.files, fromListingSnapshot: true }
+	if (
+		input.listingId &&
+		input.env.BUNDLE_ARTIFACTS_KV &&
+		commit !== input.pinnedCommit
+	) {
+		try {
+			const pinnedSnapshot = await readPublishedSourceSnapshot({
+				env: input.env,
+				sourceId: input.sourceId,
+				publishedCommit: input.pinnedCommit,
+			})
+			if (pinnedSnapshot?.files) {
+				return { files: pinnedSnapshot.files, fromPinnedSnapshot: true }
+			}
+		} catch {
+			// Same empty-tree result as a missing pinned snapshot.
 		}
 	}
-	return { files: {}, fromListingSnapshot: Boolean(input.listingId) }
+	return { files: {}, fromPinnedSnapshot: Boolean(input.listingId) }
 }
 
-function listingSnapshotMissesRequestedHex(input: {
+function pinnedSnapshotMissesRequestedHex(input: {
 	treeRef: string
-	fromListingSnapshot: boolean
+	fromPinnedSnapshot: boolean
 	resolvedCommit: string | null
 	pinnedCommit: string
 }) {
 	if (!/^[0-9a-f]{7,40}$/i.test(input.treeRef)) return false
-	if (!input.fromListingSnapshot) return false
+	if (!input.fromPinnedSnapshot) return false
 	if (input.resolvedCommit === input.pinnedCommit) return false
 	return !(
 		input.pinnedCommit.startsWith(input.treeRef) ||
@@ -434,9 +442,9 @@ async function loadCommunityListingPublicTree(input: {
 		pinnedCommit: input.listing.pinnedCommit,
 	})
 	if (
-		listingSnapshotMissesRequestedHex({
+		pinnedSnapshotMissesRequestedHex({
 			treeRef: input.treeRef,
-			fromListingSnapshot: loaded.fromListingSnapshot,
+			fromPinnedSnapshot: loaded.fromPinnedSnapshot,
 			resolvedCommit: resolved.commit,
 			pinnedCommit: input.listing.pinnedCommit,
 		})
@@ -853,10 +861,17 @@ export async function loadPackagePageHasAgentsDocs(input: {
 }): Promise<boolean> {
 	if (input.listingId && input.env.BUNDLE_ARTIFACTS_KV) {
 		try {
-			const snapshot = await readCommunitySnapshot(
-				input.env.BUNDLE_ARTIFACTS_KV,
-				input.listingId,
-			)
+			const listing = await getCommunityListingById(input.env.APP_DB, {
+				listingId: input.listingId,
+				includeDelisted: false,
+			})
+			const snapshot = listing
+				? await readPublishedSourceSnapshot({
+						env: input.env,
+						sourceId: listing.sourceId,
+						publishedCommit: listing.pinnedCommit,
+					})
+				: null
 			if (snapshot?.files) {
 				return findRootPackageDoc(snapshot.files, 'AGENTS.md') != null
 			}

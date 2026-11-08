@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { createReadStream, createWriteStream, existsSync } from 'node:fs'
 import { chmod, mkdir, rename, rm } from 'node:fs/promises'
+import { get as httpsGet } from 'node:https'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { Readable, Transform } from 'node:stream'
@@ -29,6 +30,11 @@ const workerdAssetDigests = {
 const workerdDownloadIdleTimeoutMs = 60_000
 
 export class WorkerdDownloadStalledError extends Error {}
+/** A reset, refused connection, HTTP/2 stream error, or 5xx: worth a retry. */
+export class WorkerdDownloadNetworkError extends Error {}
+
+const workerdDownloadAttempts = 3
+const workerdDownloadRetryDelayMs = 1_000
 
 export type WorkerdTarget = keyof typeof workerdAssetDigests
 
@@ -102,6 +108,7 @@ export async function ensureWorkerdBinary(
 		fetchFn?: typeof fetch
 		onDownload?: (url: string) => void
 		idleTimeoutMs?: number
+		retryDelayMs?: number
 	} = {},
 ): Promise<string> {
 	const env = input.env ?? process.env
@@ -120,24 +127,78 @@ export async function ensureWorkerdBinary(
 			url,
 			sha256: workerdAssetDigests[target],
 			destination: binaryPath,
-			fetchFn: input.fetchFn ?? fetch,
+			fetchFn: input.fetchFn ?? http1Fetch,
 			idleTimeoutMs: input.idleTimeoutMs,
 		})
 	}
-	try {
-		await download()
-	} catch (error) {
-		if (!(error instanceof WorkerdDownloadStalledError)) throw error
+	for (let attempt = 1; ; attempt += 1) {
 		try {
 			await download()
-		} catch (retryError) {
-			if (!(retryError instanceof WorkerdDownloadStalledError)) throw retryError
-			throw new WorkerdDownloadStalledError(
-				`Downloading workerd for local execute stalled twice: ${retryError.message} Check the network, or set KODY_WORKERD_PATH to a local workerd binary.`,
+			break
+		} catch (error) {
+			const retryable =
+				error instanceof WorkerdDownloadStalledError ||
+				error instanceof WorkerdDownloadNetworkError
+			if (!retryable) throw error
+			if (attempt >= workerdDownloadAttempts) {
+				const ErrorClass =
+					error instanceof WorkerdDownloadStalledError
+						? WorkerdDownloadStalledError
+						: WorkerdDownloadNetworkError
+				throw new ErrorClass(
+					`Downloading workerd for local execute failed ${attempt} times: ${error.message} Check the network, or set KODY_WORKERD_PATH to a local workerd binary.`,
+				)
+			}
+			await new Promise((resolve) =>
+				setTimeout(
+					resolve,
+					(input.retryDelayMs ?? workerdDownloadRetryDelayMs) * attempt,
+				),
 			)
 		}
 	}
 	return binaryPath
+}
+
+/**
+ * GET over HTTP/1.1 (`node:https`), following redirects. Node's fetch can
+ * negotiate HTTP/2 with GitHub release downloads and fail every attempt with
+ * `ERR_HTTP2_STREAM_ERROR` while HTTP/1.1 succeeds (#5010).
+ */
+function http1Fetch(
+	url: Parameters<typeof fetch>[0],
+	init?: RequestInit,
+	redirectsLeft = 5,
+): Promise<Response> {
+	return new Promise((resolve, reject) => {
+		const href = url instanceof Request ? url.url : String(url)
+		const request = httpsGet(
+			href,
+			{
+				signal: init?.signal ?? undefined,
+				headers: { 'user-agent': 'kody-cli' },
+			},
+			(response) => {
+				const status = response.statusCode ?? 502
+				const location = response.headers.location
+				if (status >= 300 && status < 400 && location) {
+					response.resume()
+					if (redirectsLeft <= 0) {
+						reject(new Error(`too many redirects from ${href}`))
+						return
+					}
+					resolve(http1Fetch(new URL(location, href), init, redirectsLeft - 1))
+					return
+				}
+				resolve(
+					new Response(Readable.toWeb(response) as ReadableStream<Uint8Array>, {
+						status,
+					}),
+				)
+			},
+		)
+		request.on('error', reject)
+	})
 }
 
 export async function downloadVerifiedGzip(input: {
@@ -184,12 +245,14 @@ async function fetchAndWrite(input: {
 		response = await input.fetchFn(input.url, { signal: input.signal })
 	} catch (error) {
 		if (input.signal.aborted) throw input.signal.reason
-		throw new Error(
+		throw new WorkerdDownloadNetworkError(
 			`Could not download workerd from ${input.url} (${describeNetworkError(error)}).`,
 		)
 	}
 	if (!response.ok || !response.body) {
-		throw new Error(
+		const ErrorClass =
+			response.status >= 500 ? WorkerdDownloadNetworkError : Error
+		throw new ErrorClass(
 			`Could not download workerd from ${input.url} (HTTP ${response.status}).`,
 		)
 	}
@@ -204,13 +267,30 @@ async function fetchAndWrite(input: {
 			callback(null, chunk)
 		},
 	})
+	const body = Readable.fromWeb(
+		response.body as Parameters<typeof Readable.fromWeb>[0],
+	)
+	const gzipFile = createWriteStream(gzipPath)
+	// pipeline destroys every stream with the first error, so only the side
+	// that failed first says whether the network or the disk broke.
+	let firstFailure: 'body' | 'write' | null = null
+	body.once('error', () => {
+		firstFailure ??= 'body'
+	})
+	gzipFile.once('error', () => {
+		firstFailure ??= 'write'
+	})
 	try {
-		await pipeline(
-			Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]),
-			hashing,
-			createWriteStream(gzipPath),
-			{ signal: input.signal },
-		)
+		try {
+			await pipeline(body, hashing, gzipFile, { signal: input.signal })
+		} catch (error) {
+			if (input.signal.aborted) throw input.signal.reason
+			// Disk full, read-only cache, and the like: another download won't help.
+			if (firstFailure === 'write') throw error
+			throw new WorkerdDownloadNetworkError(
+				`Downloading workerd from ${input.url} broke off (${describeNetworkError(error)}).`,
+			)
+		}
 		input.stopIdle()
 		const digest = hash.digest('hex')
 		if (digest !== input.sha256) {

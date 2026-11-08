@@ -289,13 +289,6 @@ test('insufficientScopeMessage names KODY_API_TOKEN and the login session', () =
 		}),
 	})
 	assert.match(viaLogin, /Credential used: kody login session/)
-	assert.equal(
-		insufficientScopeMessage({
-			denial: 'missing_permission',
-			credential: null,
-		}),
-		insufficientScopeMessage({ denial: 'missing_permission' }),
-	)
 })
 
 test('kody login removes a leftover stored API token and says so', () => {

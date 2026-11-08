@@ -545,14 +545,18 @@ The schema is defined by migrations in `packages/worker/migrations/`:
   `required_hosts_json`, `usage_mode` / `allowed_packages_json`, and access /
   refresh token ciphertext. The non-secret `client_id` is stored inline on the
   owning app row. `0202-integration-app-owner.sql` rebuilds the table to add
-  nullable `app_owner_id`, the org whose app the connection uses; the app FK is
-  now `(app_owner_id, app_slug) → user_oauth_apps(user_id, slug)`, and user-lane
-  rows were backfilled with `app_owner_id = user_id`. A row whose `app_owner_id`
-  differs from `user_id` is a member's personal connection pinned to that org
-  (ADR 0068 amendment 2026-10-29): tokens live with the member's personal org,
-  the client secret with the org's app. Deleting the org's app, the member
-  leaving, or org purge (`account/data-targets.ts`) wipes those rows; org
-  transfer rewrites `app_owner_id` with the apps.
+  nullable `app_owner_id`, the org whose app the connection uses. The app FK is
+  `(app_owner_id, app_slug) → user_oauth_apps(user_id, slug)`. User-lane rows
+  set `app_owner_id = user_id`. A row whose `app_owner_id` differs from
+  `user_id` is a member's personal connection pinned to that org (ADR 0068
+  amendment 2026-10-29): tokens live with the member's personal org, the client
+  secret with the org's app. Deleting the org's app or the member leaving wipes
+  those rows; org transfer rewrites `app_owner_id` with the apps. Team-org soft
+  delete and hard purge do not wipe them today: soft delete does not offboard
+  members, and the `user_integrations_pinned_to_org_apps` target in
+  `account/data-targets.ts` is outside the org hard-purge inventory
+  (`appliesToOrgHardPurge`). A member's pinned row can outlive the org and,
+  through the `ON DELETE RESTRICT` app FK, block deleting the org's app rows.
 
 App access pattern:
 
@@ -634,8 +638,8 @@ Two D1 reporting projections deliberately remain:
 
 OAuth provider state is stored in `OAUTH_KV` through the
 `@cloudflare/workers-oauth-provider` integration. Published package source
-snapshots, bundle artifacts, and community listing snapshots are stored in
-`BUNDLE_ARTIFACTS_KV`. That binding also holds the platform-owned
+snapshots, bundle artifacts, and legacy community listing snapshots are stored
+in `BUNDLE_ARTIFACTS_KV`. That binding also holds the platform-owned
 `platform-settings:v1:reserved-usernames` runtime reserved-username override and
 short-lived encrypted MCP OAuth refresh-family snapshots
 (`derived-cache:v1:mcp-oauth-refresh-family:` /
@@ -1693,7 +1697,8 @@ app-owned keys in it. App-owned `BUNDLE_ARTIFACTS_KV` keys are:
   Publish rebuild copies unchanged targets from the previous commit onto this
   new key (D1 identity row retargets) so a partial export bump does not leave
   the new `published_commit` missing artifacts.
-- `community-snapshot:v1:{listingId}`.
+- `community-snapshot:v1:{listingId}` (legacy listing-id file tree; no longer
+  written or read, still deleted and exported).
 - `package-skills-index:v1:{userId}:{packageId}:{publishedCommit}` — per-version
   Agent Skills index (frontmatter + digests, no file contents) written at
   publish; served by Skills-over-MCP when `mcp-skills-extension` is on.

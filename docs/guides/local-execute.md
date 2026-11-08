@@ -220,6 +220,6 @@ still auth or permission — use the Failure section below. Two workarounds for
 - The module imports `kody:@…`. Keep `--local`.
 - Auth priority for `--local`: `--token` / `KODY_API_TOKEN`, then the stored API
   token, then `kody login`. `kody whoami` reports the same credential. An
-  explicit `kody login` deletes a leftover stored API token and says so; mint a
-  scoped one again with
+  explicit terminal `kody login` deletes a leftover stored API token and says so
+  (a desktop login leaves it in place); mint a scoped one again with
   `npx @kodycodes/cli auth bootstrap --lifetime short --scopes <list>`.

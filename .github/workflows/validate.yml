@@ -873,8 +873,9 @@ jobs:
   host_commands_macos:
     # Own job (not a host_commands leg) so a macos-15 job GitHub never assigns
     # a runner to (result `abandoned`) is visible on its own and can fall back.
-    # Skipped on main pushes: macos-main.yml runs it there, outside the deploy
-    # gate, so a macOS runner shortage cannot hold production (#4932).
+    # Skipped on main (pushes and the watchdog's dispatches): macos-main.yml
+    # runs it there, outside the deploy gate, so a macOS runner shortage
+    # cannot hold production (#4932).
     runs-on: macos-15
     defaults:
       run:
@@ -883,8 +884,8 @@ jobs:
     timeout-minutes: 20
     needs: tested_tree
     if: >-
-      !cancelled() && needs.tested_tree.outputs.skip != 'true' &&
-      github.event_name != 'push' && (github.event_name != 'pull_request' ||
+      !cancelled() && needs.tested_tree.outputs.skip != 'true' && github.ref !=
+      'refs/heads/main' && (github.event_name != 'pull_request' ||
       github.event.pull_request.draft == false)
     env:
       KODY_SKIP_SKILL_REFRESH: '1'
@@ -910,8 +911,8 @@ jobs:
     timeout-minutes: 20
     needs: [tested_tree, host_commands_macos]
     if: >-
-      !cancelled() && needs.tested_tree.outputs.skip != 'true' &&
-      github.event_name != 'push' && (github.event_name != 'pull_request' ||
+      !cancelled() && needs.tested_tree.outputs.skip != 'true' && github.ref !=
+      'refs/heads/main' && (github.event_name != 'pull_request' ||
       github.event.pull_request.draft == false) &&
       needs.host_commands_macos.result == 'abandoned'
     env:

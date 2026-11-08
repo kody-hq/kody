@@ -321,15 +321,6 @@ export type CommunityBanRecord = {
 	createdAt: string
 }
 
-export type CommunitySnapshot = {
-	version: 1
-	listingId: string
-	pinnedCommit: string
-	files: Record<string, string>
-	communityIconPath?: string | null
-	createdAt: string
-}
-
 export type CrossScopeReference = {
 	file: string
 	specifier: string

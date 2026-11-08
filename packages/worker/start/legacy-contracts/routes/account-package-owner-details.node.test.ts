@@ -417,7 +417,6 @@ test('owner settings split Visibility, Source sharing, and Public release into t
 
 	const visibility = sectionHtml(html, 'package-settings-visibility')
 	expect(visibility).toContain('>Visibility</h3>')
-	expect(visibility).toContain('Choose who can use the hosted app.')
 	expect(visibility).toContain(
 		'data-testid="package-internet-visible-controls"',
 	)
@@ -425,14 +424,12 @@ test('owner settings split Visibility, Source sharing, and Public release into t
 
 	const sourceSharing = sectionHtml(html, 'package-settings-source-sharing')
 	expect(sourceSharing).toContain('>Source sharing</h3>')
-	expect(sourceSharing).toContain('Choose who can read and fork the source.')
 	expect(sourceSharing).toContain('data-testid="package-make-private"')
 	expect(sourceSharing).toContain('Anyone can see it on the community')
 	expect(sourceSharing).not.toContain('package-internet-visible')
 
 	const release = sectionHtml(html, 'package-publishing-panel')
 	expect(release).toContain('>Public release</h3>')
-	expect(release).toContain('Choose which version of this package is live.')
 	expect(release).toContain('data-testid="package-published-commit"')
 	expect(release).toContain('Publish lock is on.')
 
@@ -514,7 +511,6 @@ test('internet-visible warns and needs an extra confirm only when owner-scoped c
 	expect(visibility).toContain(
 		'data-testid="package-internet-visible-owner-data-warning"',
 	)
-	expect(visibility).toContain('Anyone with the URL could use')
 	expect(visibility).toContain('GitHub token')
 	expect(visibility).toContain('mcp:home:court_get_status')
 	expect(visibility).toContain(

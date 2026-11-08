@@ -71,8 +71,8 @@ test('the notice names the fix and the switch decides whether it blocks', () => 
 	expect(warning).toContain(
 		'- src/index.ts:9: integration token "telegram" in the URL path',
 	)
-	expect(warning).toContain('move the credential into a request header')
 	expect(warning).toContain('This does not block publish.')
+	expect(warning).toContain('owner can allow')
 	const failure = formatSecretPlaceholderRequestPlacementNotice({
 		hits,
 		mode: 'fail',

@@ -57,6 +57,11 @@ credential.
    kody login
    ```
 
+   From the **Kody desktop app**, while you are already signed in there, machine
+   setup can approve that login in a sandboxed app window (**Continue to
+   approve**). Closing the window cancels. Otherwise the CLI opens the system
+   browser, or use `kody login --device` / `--no-browser` on a remote machine.
+
 3. Register the machine, give it a name, and install the daemon as a background
    service so it keeps running after reboots and crashes:
 
@@ -443,9 +448,9 @@ Shares never include host commands or host folders. Granting `fs` paths still
 only mounts them for the operator's own runs: shared runs get `fs_operator_only`
 if they `requires: ["fs"]`, and the sharing UI labels those paths as
 operator-only. A share with `commands: true` fails with
-`commands_operator_only`, and command shares made before this rule stay listed
-but do nothing. If you leave the org, your context stops taking other people's
-runs (`operator_left`).
+`commands_operator_only`, and legacy command shares stay listed but confer
+nothing. If you leave the org, your context stops taking other people's runs
+(`operator_left`).
 
 Host folders never expose credential stores, even inside a folder you allow: the
 Kody CLI config folder (your login and context keys), `~/.ssh`, `~/.gnupg`, git
