@@ -1,11 +1,11 @@
 import { isRecord } from '@kody-internal/shared/is-record.ts'
 import { readRequestBodyUpTo } from '#worker/read-request-body-up-to.ts'
+import { maxApiRequestBodyBytes } from './api-body-limits.ts'
 import { invalidRequest } from './errors.ts'
 
-type JsonSchema = Record<string, unknown>
+export { maxApiRequestBodyBytes }
 
-/** Largest JSON request body the API accepts, in bytes. */
-export const maxApiRequestBodyBytes = 5 * 1024 * 1024
+type JsonSchema = Record<string, unknown>
 
 function schemaTypes(schema: JsonSchema | undefined): Set<string> {
 	const types = new Set<string>()
