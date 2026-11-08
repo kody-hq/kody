@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import {
+	chmodSync,
 	existsSync,
+	mkdirSync,
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
@@ -349,3 +351,34 @@ test('ensureWorkerdBinary does not retry a 404', async () => {
 	)
 	assert.equal(calls, 1)
 })
+
+test(
+	'ensureWorkerdBinary does not retry a local write failure',
+	{
+		skip:
+			process.platform === 'win32' || process.getuid?.() === 0
+				? 'needs POSIX directory permissions'
+				: false,
+	},
+	async () => {
+		const cacheDir = mkdtempSync(join(tmpdir(), 'kody-wd-'))
+		const binaryPath = cachedWorkerdPath(cacheDir, 'linux-64')
+		mkdirSync(dirname(binaryPath), { recursive: true })
+		chmodSync(dirname(binaryPath), 0o500)
+		const { fetchFn, urls } = serve(gzipSync(Buffer.from('#!/bin/sh\n')))
+		await assert.rejects(
+			ensureWorkerdBinary({
+				env: {},
+				cacheDir,
+				target: 'linux-64',
+				fetchFn,
+				retryDelayMs: 0,
+			}),
+			(error: unknown) =>
+				!(error instanceof WorkerdDownloadNetworkError) &&
+				(error as { code?: string }).code === 'EACCES',
+		)
+		assert.equal(urls.length, 1)
+		chmodSync(dirname(binaryPath), 0o700)
+	},
+)

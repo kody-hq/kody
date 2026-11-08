@@ -9,17 +9,20 @@ import {
 const committedAt = '2026-11-06T10:38:53Z'
 const committedAtMs = Date.parse(committedAt)
 
-function fakeGh(runCount: number) {
+type FakeRun = { event: string; head_branch: string }
+
+function fakeGh(runs: Array<FakeRun>, headAfterCheck = 'abc123') {
 	const calls: Array<Array<string>> = []
 	const gh: Gh = (args) => {
 		calls.push(args)
 		if (args[0] === 'api' && args[1]?.endsWith('/commits/main')) {
+			if (args.includes('--jq')) return `${headAfterCheck}\n`
 			return JSON.stringify({
 				sha: 'abc123',
 				commit: { committer: { date: committedAt } },
 			})
 		}
-		if (args[0] === 'api') return JSON.stringify({ total_count: runCount })
+		if (args[0] === 'api') return JSON.stringify({ workflow_runs: runs })
 		return ''
 	}
 	return { gh, calls }
@@ -63,13 +66,13 @@ test('dispatches Validate on main only when an old enough HEAD has no run', () =
 
 test('the dispatch targets main with caching on', () => {
 	const now = committedAtMs + missingPushGraceMs * 2
-	const missing = fakeGh(0)
+	const missing = fakeGh([])
 	expect(
 		runMainValidateWatchdog({ repo: 'o/r', gh: missing.gh, now }).decision
 			.action,
 	).toBe('dispatch')
 	expect(missing.calls[1]?.[1]).toBe(
-		'repos/o/r/actions/workflows/validate.yml/runs?head_sha=abc123&per_page=1',
+		'repos/o/r/actions/workflows/validate.yml/runs?head_sha=abc123&branch=main&per_page=100',
 	)
 	expect(missing.calls.at(-1)).toEqual([
 		'workflow',
@@ -83,7 +86,32 @@ test('the dispatch targets main with caching on', () => {
 		'no_cache=false',
 	])
 
-	const present = fakeGh(2)
+	const present = fakeGh([{ event: 'push', head_branch: 'main' }])
 	runMainValidateWatchdog({ repo: 'o/r', gh: present.gh, now })
 	expect(present.calls.some((args) => args[0] === 'workflow')).toBe(false)
+})
+
+test('a merge-queue or off-main run on the same SHA does not count', () => {
+	const now = committedAtMs + missingPushGraceMs * 2
+	const queued = fakeGh([
+		{ event: 'merge_group', head_branch: 'gh-readonly-queue/main/pr-1' },
+		{ event: 'workflow_dispatch', head_branch: 'feature' },
+	])
+	expect(
+		runMainValidateWatchdog({ repo: 'o/r', gh: queued.gh, now }).decision
+			.action,
+	).toBe('dispatch')
+	expect(queued.calls.at(-1)?.[0]).toBe('workflow')
+})
+
+test('skips the dispatch when main moved while checking', () => {
+	const now = committedAtMs + missingPushGraceMs * 2
+	const moved = fakeGh([], 'def456')
+	const { decision } = runMainValidateWatchdog({
+		repo: 'o/r',
+		gh: moved.gh,
+		now,
+	})
+	expect(decision.action).toBe('none')
+	expect(moved.calls.some((args) => args[0] === 'workflow')).toBe(false)
 })

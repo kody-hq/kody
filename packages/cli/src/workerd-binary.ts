@@ -237,6 +237,7 @@ async function fetchAndWrite(input: {
 			)
 		} catch (error) {
 			if (input.signal.aborted) throw input.signal.reason
+			if (isLocalWriteError(error)) throw error
 			throw new WorkerdDownloadNetworkError(
 				`Downloading workerd from ${input.url} broke off (${describeNetworkError(error)}).`,
 			)
@@ -265,4 +266,26 @@ async function fetchAndWrite(input: {
 		await rm(gzipPath, { force: true })
 		await rm(partialPath, { force: true })
 	}
+}
+
+const localWriteErrorCodes = new Set([
+	'EACCES',
+	'EDQUOT',
+	'EISDIR',
+	'EMFILE',
+	'ENFILE',
+	'ENOENT',
+	'ENOSPC',
+	'ENOTDIR',
+	'EPERM',
+	'EROFS',
+])
+
+function isLocalWriteError(error: unknown) {
+	const code = (error as { code?: unknown } | null)?.code
+	return (
+		typeof code === 'string' &&
+		localWriteErrorCodes.has(code) &&
+		typeof (error as { syscall?: unknown }).syscall === 'string'
+	)
 }

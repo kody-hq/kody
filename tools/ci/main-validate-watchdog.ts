@@ -7,8 +7,9 @@ import { isExecutedDirectly } from '../node-runtime.ts'
  * Validate run on main HEAD, Deploy never starts and production stays behind
  * until the next merge. `.github/workflows/main-validate-watchdog.yml` runs
  * this on a schedule: when main HEAD is old enough to have had its push run
- * and no ✅ Validate run exists for it at all, it dispatches Validate on main.
- * Deploy accepts that dispatched run like a push run, and sha-guard still
+ * and no main push or dispatched ✅ Validate run exists for it (a merge-queue
+ * run on the same SHA does not deploy), it dispatches Validate on main.
+ * Deploy accepts that `github-actions[bot]` dispatch like a push run, and sha-guard still
  * refuses anything that is not forward of production.
  *
  *   GH_TOKEN=... node tools/ci/main-validate-watchdog.ts
@@ -66,15 +67,24 @@ export function runMainValidateWatchdog(input: {
 	const runs = JSON.parse(
 		input.gh([
 			'api',
-			`repos/${input.repo}/actions/workflows/${validateWorkflowFile}/runs?head_sha=${head.sha}&per_page=1`,
+			`repos/${input.repo}/actions/workflows/${validateWorkflowFile}/runs?head_sha=${head.sha}&branch=main&per_page=100`,
 		]),
-	) as { total_count: number }
+	) as { workflow_runs: Array<{ event: string; head_branch: string | null }> }
 	const decision = decideMainValidateRecovery({
 		headSha: head.sha,
 		committedAt: head.commit.committer.date,
 		now: input.now,
-		validateRunCount: runs.total_count,
+		validateRunCount: runs.workflow_runs.filter(isDeployEligibleRun).length,
 	})
+	if (decision.action === 'dispatch' && readMainHeadSha(input) !== head.sha) {
+		return {
+			headSha: head.sha,
+			decision: {
+				action: 'none',
+				reason: `main moved past ${head.sha} while checking; its push run covers the new HEAD`,
+			} satisfies WatchdogDecision,
+		}
+	}
 	if (decision.action === 'dispatch') {
 		input.gh([
 			'workflow',
@@ -89,6 +99,23 @@ export function runMainValidateWatchdog(input: {
 		])
 	}
 	return { headSha: head.sha, decision }
+}
+
+/** Only these Validate runs can start a production deploy (deploy.yml). */
+function isDeployEligibleRun(run: {
+	event: string
+	head_branch: string | null
+}) {
+	return (
+		run.head_branch === 'main' &&
+		(run.event === 'push' || run.event === 'workflow_dispatch')
+	)
+}
+
+function readMainHeadSha(input: { repo: string; gh: Gh }) {
+	return input
+		.gh(['api', `repos/${input.repo}/commits/main`, '--jq', '.sha'])
+		.trim()
 }
 
 function gh(args: Array<string>) {
