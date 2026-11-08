@@ -10,7 +10,7 @@
  * and SHA-256 with an independent Node computation while sampling Node and
  * workerd RSS separately. Synthetic only: no network, no real credentials.
  *
- *   node --import tsx tools/local-execute-upload-memory.ts --bytes 426916543
+ *   npm run local-execute:upload-memory -- --bytes 426916543
  *
  * Flags: --bytes N, --chunk N (default 3 MiB), --body uint8|arraybuffer|blob|stream,
  * --kind secret|oauth, --unauthorized-every N (sink 401s every Nth chunk once),
