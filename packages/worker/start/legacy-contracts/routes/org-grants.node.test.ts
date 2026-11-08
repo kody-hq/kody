@@ -44,82 +44,103 @@ const org: OrgGrantsLoaderData['org'] = {
 	role: 'member',
 }
 
-function row(html: string, grantId: string) {
-	const marker = `data-grant-id="${grantId}"`
-	const start = html.indexOf(marker)
-	expect(start).toBeGreaterThan(-1)
-	const end = html.indexOf('</li>', start)
-	expect(end).toBeGreaterThan(start)
-	return html.slice(start, end)
+function teamGrant(
+	id: string,
+	overrides: Partial<OrgGrantsLoaderData['grants'][number]> = {},
+): OrgGrantsLoaderData['grants'][number] {
+	return {
+		...grant(id, true),
+		subjectId: 'team-1',
+		subjectLabel: 'Platform (@platform)',
+		resourceId: `pkg-${id}`,
+		...overrides,
+	}
 }
 
-test('revoke is offered only for grants the viewer may revoke', async () => {
+const orgPermissions = [
+	'package:read',
+	'app:read',
+	'job:read',
+	'integration:read',
+	'email:read',
+	'team:read',
+	'member:read',
+	'package:create',
+	'integration:create',
+]
+
+test('teams and the whole organization get one row each with a compact summary and an Access link', async () => {
 	const html = await renderGrants({
 		ok: true,
-		org,
+		org: { ...org, role: 'owner' },
 		canManage: true,
 		people: [],
 		subjects: [],
 		orgWideRead: null,
-		grants: [grant('grant-ok', true), grant('grant-denied', false)],
-	})
-
-	expect(row(html, 'grant-ok')).toMatch(
-		/<button(?=[^>]*type="button")(?=[^>]*data-testid="org-grant-revoke")[^>]*>/,
-	)
-	expect(row(html, 'grant-ok')).toMatch(/Revoke<\/button>/)
-	expect(row(html, 'grant-denied')).toContain('@grant-denied')
-	expect(row(html, 'grant-denied')).not.toContain(
-		'data-testid="org-grant-revoke"',
-	)
-	expect(html.match(/data-testid="org-grant-revoke"/g)).toHaveLength(1)
-})
-
-test('a viewer who cannot manage members sees no revoke buttons', async () => {
-	const html = await renderGrants({
-		ok: true,
-		org,
-		canManage: false,
-		people: [],
-		subjects: [],
-		orgWideRead: null,
-		grants: [grant('grant-resource-ok', true)],
-	})
-	expect(html).toContain('data-grant-id="grant-resource-ok"')
-	expect(html).toContain('@grant-resource-ok')
-	expect(html).not.toContain('data-testid="org-grant-revoke"')
-})
-
-test('organization grants read as labels, not raw permission ids', async () => {
-	const html = await renderGrants({
-		ok: true,
-		org,
-		canManage: false,
-		people: [],
-		subjects: [],
-		orgWideRead: null,
+		memberCount: 12,
+		teams: [
+			{ teamId: 'team-1', slug: 'platform', name: 'Platform', memberCount: 3 },
+			{ teamId: 'team-2', slug: 'design', name: 'Design', memberCount: 1 },
+		],
 		grants: [
-			{
-				...grant('grant-org-read', false),
+			teamGrant('org', {
 				resourceType: 'org',
 				resourceId: 'org-zeta',
 				resourceLabel: 'Organization',
 				preset: null,
 				presetLabel: null,
-				permissions: ['job:read', 'integration:read', 'team:read'],
+				permissions: orgPermissions,
+			}),
+			...Array.from({ length: 14 }, (_, index) => teamGrant(`p${index}`)),
+			teamGrant('a1', { resourceType: 'app' }),
+			teamGrant('a2', { resourceType: 'app', resourceId: 'pkg-p2' }),
+			{
+				...grant('everyone-1', true),
+				subjectType: 'org',
+				subjectId: 'org-zeta',
+				subjectLabel: 'Everyone in this organization',
 			},
 		],
 	})
-	const orgRow = row(html, 'grant-org-read')
-	expect(orgRow).toContain('Organization-wide access')
-	expect(orgRow).toContain('Read: Jobs and run history, Credentials')
-	expect(orgRow).not.toContain('org-zeta')
-	expect(orgRow).not.toContain('job:read')
+	expect(html).toContain('Org: 9 permissions, 14 packages, 2 apps')
+	expect(html).toContain('href="/@zeta-co/-/grants/team/team-1"')
+	expect(html).toContain('href="/@zeta-co/-/grants/team/team-2"')
+	expect(html).toContain('href="/@zeta-co/-/grants/everyone"')
+	expect(html).toContain('Team · 3 members')
+	expect(html).toContain('Team · 1 member')
+	expect(html).toContain('Everyone · 12 members')
+	expect(html).toContain('No grants')
+	expect(html).toContain('1 package')
+	expect(html.match(/data-testid="org-grant-person-summary"/g)).toHaveLength(3)
+	// Grants are listed and revoked on each Access page, not one card each here.
+	expect(html).not.toContain('data-grant-id=')
+	expect(html).not.toContain('org-grant-revoke')
+	expect(html).not.toContain('package:read')
+})
+
+test('a viewer who cannot manage sees only teams that hold grants and no empty organization row', async () => {
+	const html = await renderGrants({
+		ok: true,
+		org,
+		canManage: false,
+		people: [],
+		subjects: [],
+		orgWideRead: null,
+		memberCount: 4,
+		teams: [],
+		grants: [teamGrant('p1')],
+	})
+	expect(html).toContain('Platform (@platform)')
+	expect(html).toContain('1 package')
+	expect(html).not.toContain('Everyone in this organization')
+	expect(html).not.toContain('org-grant-revoke')
 })
 
 test('the read access form lists members and teams with read-only options', async () => {
 	const html = await renderGrants({
 		ok: true,
+		teams: [],
+		memberCount: 0,
 		org: { ...org, role: 'owner' },
 		canManage: true,
 		grants: [],
@@ -167,6 +188,8 @@ test('the read access form lists members and teams with read-only options', asyn
 test('the read access form is hidden from viewers who cannot grant', async () => {
 	const html = await renderGrants({
 		ok: true,
+		teams: [],
+		memberCount: 0,
 		org,
 		canManage: false,
 		grants: [],
@@ -181,6 +204,8 @@ test('the read access form is hidden from viewers who cannot grant', async () =>
 test('people are grouped into one row each with a summary and an Access link', async () => {
 	const html = await renderGrants({
 		ok: true,
+		teams: [],
+		memberCount: 0,
 		org: { ...org, role: 'owner' },
 		canManage: true,
 		people: [],
@@ -218,11 +243,13 @@ test('people are grouped into one row each with a summary and an Access link', a
 		'Full access except deleting the organization or changing Owners',
 	)
 	expect(html).toContain('>Admin<')
-	expect(html.match(/data-testid="org-grant-person-summary"/g)).toHaveLength(4)
+	// Four people plus the whole-organization row a manager can open.
+	expect(html.match(/data-testid="org-grant-person-summary"/g)).toHaveLength(5)
+	expect(html).toContain('href="/@zeta-co/-/grants/everyone"')
 	// Direct grants to people are changed on the Access page, not listed here.
 	expect(html).not.toContain('data-grant-id="g-1"')
-	expect(html).toContain('Search people')
-	expect(html).toContain('Filter by person')
+	expect(html).toContain('Search people and teams')
+	expect(html).toContain('Filter by who')
 	expect(html).toContain('Filter by resource type')
 })
 
@@ -235,6 +262,8 @@ test('a large organization is paged instead of rendering every person', async ()
 	}))
 	const html = await renderGrants({
 		ok: true,
+		teams: [],
+		memberCount: 0,
 		org,
 		canManage: true,
 		people: [],

@@ -388,6 +388,14 @@ export const routes = {
 		href: (params: { orgSlug: string | number; userId: string | number }) =>
 			`/@${segment(params.orgSlug)}/-/grants/user/${segment(params.userId)}`,
 	},
+	orgGrantTeamAccess: {
+		href: (params: { orgSlug: string | number; teamId: string | number }) =>
+			`/@${segment(params.orgSlug)}/-/grants/team/${segment(params.teamId)}`,
+	},
+	orgGrantEveryoneAccess: {
+		href: (params: { orgSlug: string | number }) =>
+			`/@${segment(params.orgSlug)}/-/grants/everyone`,
+	},
 	orgCollaborators: {
 		href: (params: { orgSlug: string | number }) =>
 			`/@${segment(params.orgSlug)}/-/collaborators`,

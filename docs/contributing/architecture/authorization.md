@@ -124,8 +124,10 @@ Member instead, `loadAllMembersContextGrantRows` in `access-compile.ts`) are
 left out. Owners set org-wide presets from the Grants page or with `accessGrant`
 (`resource_type: "org"`). Per-person package, app, and credential grants live on
 **Access** (`/@<slug>/-/grants/user/<userId>`), linked from Members,
-Collaborators, and person-linked Grants rows. A denial for one of the org-wide
-reads says so.
+Collaborators, and person-linked Grants rows. Team and everyone grants live on
+`/@<slug>/-/grants/team/<teamId>` and `/@<slug>/-/grants/everyone`; bulk removal
+(`revokeOrganizationGrants`) checks each grant like `accessRevoke` and reports
+per-grant results. A denial for one of the org-wide reads says so.
 
 **Org-wide package and app manage.** An `org` grant may also carry
 `orgWideManagePermissions` (`packages/shared/src/grant-presets.ts`): the

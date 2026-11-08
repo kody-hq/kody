@@ -12,6 +12,7 @@ import {
 	organizationsWithSignupFallback,
 	parseOrgBillingPath,
 	orgGrantAccessPath,
+	orgTeamGrantAccessPath,
 	parseOrgManagementPath,
 	parseOrgOverviewPath,
 	parseOrgResourcePath,
@@ -134,6 +135,17 @@ test('management paths name settings and members under the /- separator', () => 
 		slug: 'acme',
 		section: 'grants',
 	})
+	expect(parseOrgManagementPath('/@acme/-/grants/team/t-1')).toEqual({
+		slug: 'acme',
+		section: 'grants',
+	})
+	expect(parseOrgManagementPath('/@acme/-/grants/everyone')).toEqual({
+		slug: 'acme',
+		section: 'grants',
+	})
+	expect(orgTeamGrantAccessPath('acme', 't 1')).toBe(
+		'/@acme/-/grants/team/t%201',
+	)
 	expect(parseOrgManagementPath('/@acme/-/members/user/u-1')).toBeNull()
 	expect(orgGrantAccessPath('acme', 'u 1')).toBe('/@acme/-/grants/user/u%201')
 	expect(parseOrgManagementPath('/@acme/settings')).toBeNull()

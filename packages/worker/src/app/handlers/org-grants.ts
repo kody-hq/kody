@@ -16,8 +16,10 @@ import {
 } from '#mcp/capabilities/access/shared.ts'
 import type {
 	OrgGrantPersonView,
+	OrgGrantRevokeResult,
 	OrgGrantSubjectView,
 	OrgGrantsLoaderData,
+	OrgGrantTeamView,
 	OrgWideReadSubjectView,
 } from '#universal/loader-data.ts'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
@@ -122,7 +124,54 @@ export async function loadOrgGrantsData(input: {
 			grants,
 			includeEveryone: canManage && !input.org.personal,
 		}),
+		teams: await listGrantTeams(input.env.APP_DB, {
+			orgId: input.org.id,
+			grants,
+			includeEveryone: canManage && !input.org.personal,
+		}),
+		memberCount: await countOrgMembers(input.env.APP_DB, input.org.id),
 	}
+}
+
+/** Members of an organization, every role. */
+export async function countOrgMembers(db: D1Database, orgId: string) {
+	const row = await db
+		.prepare(
+			`SELECT COUNT(*) AS count FROM org_memberships
+			 WHERE org_id = ? AND deleted_at IS NULL`,
+		)
+		.bind(orgId)
+		.first<{ count: number }>()
+	return row?.count ?? 0
+}
+
+/**
+ * Teams for the grouped Grants list. A manager sees every team so they can
+ * open its access page; anyone else sees only teams that hold a grant here.
+ */
+async function listGrantTeams(
+	db: D1Database,
+	input: {
+		orgId: string
+		grants: ReadonlyArray<ListedOrgGrant>
+		includeEveryone: boolean
+	},
+): Promise<Array<OrgGrantTeamView>> {
+	const granted = new Set(
+		input.grants
+			.filter((grant) => grant.subjectType === 'team')
+			.map((grant) => grant.subjectId),
+	)
+	if (!input.includeEveryone && granted.size === 0) return []
+	const teams = await listTeams(db, input.orgId)
+	return teams
+		.filter((team) => input.includeEveryone || granted.has(team.id))
+		.map((team) => ({
+			teamId: team.id,
+			slug: team.slug,
+			name: team.name,
+			memberCount: team.memberCount,
+		}))
 }
 
 /**
@@ -232,16 +281,40 @@ export async function revokeOrganizationGrant({
 	if (!grantId) {
 		return operationResult({ ok: false, error: 'A grant id is required.' }, 400)
 	}
-	const grant = await getGrantById({
-		db: env.APP_DB,
+	const revoked = await revokeOneGrant({
+		env,
+		user,
 		orgId: access.org.id,
 		grantId,
 	})
+	if (!revoked.ok) {
+		return operationResult({ ok: false, error: revoked.error }, revoked.status)
+	}
+	return operationResult({ ok: true as const })
+}
+
+/**
+ * Revoke one grant in an organization after the same resource check as
+ * `accessRevoke`. The caller has already resolved `member:write`.
+ */
+async function revokeOneGrant({
+	env,
+	user,
+	orgId,
+	grantId,
+}: {
+	env: Env
+	user: AuthenticatedAppUser
+	orgId: string
+	grantId: string
+}): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
+	const grant = await getGrantById({ db: env.APP_DB, orgId, grantId })
 	if (!grant || !isGrantResourceType(grant.resourceType)) {
-		return operationResult(
-			{ ok: false, error: 'Grant was not found in this organization.' },
-			400,
-		)
+		return {
+			ok: false,
+			error: 'Grant was not found in this organization.',
+			status: 400,
+		}
 	}
 	try {
 		await authorizeGrantRevoke(
@@ -257,26 +330,71 @@ export async function revokeOrganizationGrant({
 		)
 	} catch (error) {
 		if (error instanceof AuthorizationError) {
-			return operationResult({ ok: false, error: error.message }, 403)
+			return { ok: false, error: error.message, status: 403 }
 		}
 		if (error instanceof McpCallerError) {
-			return operationResult({ ok: false, error: error.message }, 400)
+			return { ok: false, error: error.message, status: 400 }
 		}
 		throw error
 	}
 	try {
 		await softDeleteGrant({
 			db: env.APP_DB,
-			orgId: access.org.id,
+			orgId,
 			grantId: grant.id,
 			audit: orgAuditWriterFromRequest(env, user.request),
 		})
 	} catch (error) {
 		const message =
 			error instanceof Error ? error.message : 'Unable to revoke that grant.'
-		return operationResult({ ok: false, error: message }, 400)
+		return { ok: false, error: message, status: 400 }
 	}
-	return operationResult({ ok: true as const })
+	return { ok: true }
+}
+
+/**
+ * Revoke several grants at once. Each grant gets the same check as a single
+ * revoke; one failure does not undo the others, and each reports its result.
+ */
+export async function revokeOrganizationGrants({
+	request,
+	env,
+	user,
+	orgSlug,
+	grantIds,
+}: {
+	request: Request
+	env: Env
+	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
+	grantIds: ReadonlyArray<string>
+	orgSlug?: string
+}) {
+	const access = await resolveOrgManagementAccess({
+		request,
+		orgSlug,
+		env,
+		user,
+		permission: 'member:write',
+	})
+	if (!access.ok) {
+		return operationResult({ ok: false, error: access.error }, access.status)
+	}
+	const results: Array<OrgGrantRevokeResult> = []
+	for (const grantId of new Set(grantIds.map((id) => id.trim()))) {
+		if (!grantId) continue
+		const revoked = await revokeOneGrant({
+			env,
+			user,
+			orgId: access.org.id,
+			grantId,
+		})
+		results.push(
+			revoked.ok
+				? { grantId, ok: true }
+				: { grantId, ok: false, error: revoked.error },
+		)
+	}
+	return operationResult({ ok: true as const, results })
 }
 
 function subjectKey(subject: GrantSubject) {

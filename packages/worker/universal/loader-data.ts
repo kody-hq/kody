@@ -1634,6 +1634,20 @@ export type OrgGrantsLoaderData = {
 	 * who hold a direct grant. `role` is null for outside collaborators.
 	 */
 	subjects: Array<OrgGrantSubjectView>
+	/**
+	 * Teams on the grouped Grants list: every team when the viewer can manage,
+	 * otherwise only teams that hold a grant here.
+	 */
+	teams: Array<OrgGrantTeamView>
+	/** Members of this organization, for the whole-organization row. */
+	memberCount: number
+}
+
+export type OrgGrantTeamView = {
+	teamId: string
+	slug: string
+	name: string
+	memberCount: number
 }
 
 /** A grant that reaches one person: made to them, a team they are on, or everyone. */
@@ -1653,18 +1667,31 @@ export type OrgSubjectAccessOption = {
 	appGrantable: boolean
 }
 
+/** Who an access page describes: a person, a team, or everyone in the organization. */
+type OrgSubjectAccessSubject =
+	| {
+			kind: 'user'
+			userId: string
+			username: string | null
+			displayName: string | null
+			avatarUrl: string | null
+			/** Null for an outside collaborator. */
+			role: 'owner' | 'admin' | 'member' | 'billing' | null
+	  }
+	| {
+			kind: 'team'
+			teamId: string
+			slug: string
+			name: string
+			memberCount: number
+	  }
+	| { kind: 'org'; memberCount: number }
+
 export type OrgSubjectAccessLoaderData = {
 	ok: true
 	org: OrgManagementOrg
 	canManage: boolean
-	subject: {
-		userId: string
-		username: string | null
-		displayName: string | null
-		avatarUrl: string | null
-		/** Null for an outside collaborator. */
-		role: 'owner' | 'admin' | 'member' | 'billing' | null
-	}
+	subject: OrgSubjectAccessSubject
 	grants: Array<OrgSubjectAccessGrant>
 	/** Null when the viewer cannot add access or the person is an Owner. */
 	options: {
@@ -1672,6 +1699,11 @@ export type OrgSubjectAccessLoaderData = {
 		credentials: Array<OrgSubjectAccessOption>
 	} | null
 }
+
+export type OrgGrantRevokeResult = { grantId: string } & (
+	| { ok: true }
+	| { ok: false; error: string }
+)
 
 export type OrgSubjectAccessWriteResult = {
 	resourceType: 'package' | 'app' | 'credential'

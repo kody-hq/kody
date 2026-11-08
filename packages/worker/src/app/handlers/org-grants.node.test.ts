@@ -846,3 +846,55 @@ test('a delegate saving reads cannot revive an expired Owner-only grant', async 
 	expect(refused.status).toBe(400)
 	expect((await bobOrgPermissions()).has('package:publish')).toBe(false)
 })
+
+test('a manager sees every team with its member count; a member sees only teams holding grants', async () => {
+	const env = createEnv()
+	const now = '2026-01-01T00:00:00.000Z'
+	for (const [id, slug] of [
+		['team-ops', 'ops'],
+		['team-idle', 'idle'],
+	] as const) {
+		sqlite
+			.prepare(
+				`INSERT INTO teams (id, org_id, slug, name, created_at, updated_at)
+				 VALUES (?, ?, ?, ?, ?, ?)`,
+			)
+			.run(id, acmeId, slug, slug.toUpperCase(), now, now)
+	}
+	sqlite
+		.prepare(
+			`INSERT INTO team_members (team_id, user_id, created_at) VALUES ('team-ops', ?, ?)`,
+		)
+		.run(people.bob.personId, now)
+	sqlite
+		.prepare(
+			`INSERT INTO grants (
+			   id, org_id, resource_type, resource_id, subject_type, subject_id,
+			   preset, created_by_user_id, created_at, updated_at
+			 ) VALUES ('grant-team', ?, 'package', 'pkg-1', 'team', 'team-ops', 'use', ?, ?, ?)`,
+		)
+		.run(acmeId, people.ada.personId, now, now)
+	type Teams = {
+		teams: Array<{ teamId: string; memberCount: number }>
+		memberCount: number
+	}
+	const listReq = new Request('https://kody.test/@zeta-co/-/grants')
+	await signIn('ada', listReq)
+	const managed = (
+		await testOrgGrantsApiHandler(env).execute({ request: listReq } as never)
+	).data as Teams
+	expect(managed.memberCount).toBe(2)
+	expect(managed.teams).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({ teamId: 'team-ops', memberCount: 1 }),
+			expect.objectContaining({ teamId: 'team-idle', memberCount: 0 }),
+		]),
+	)
+
+	const memberReq = new Request('https://kody.test/@zeta-co/-/grants')
+	await signIn('bob', memberReq)
+	const member = (
+		await testOrgGrantsApiHandler(env).execute({ request: memberReq } as never)
+	).data as Teams
+	expect(member.teams.map((team) => team.teamId)).toEqual(['team-ops'])
+})
