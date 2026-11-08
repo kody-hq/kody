@@ -298,16 +298,13 @@ test('pinned SVG icons load from Artifacts at the pinned commit', async () => {
 	)
 })
 
-test('community icons fall back to the monogram when the package source row is gone', async () => {
+test('community icons without a package source row throw so the route serves an uncached monogram', async () => {
 	mocks.getEntitySourceById.mockResolvedValue(null)
 	mocks.getCommunityListingById.mockResolvedValue(listing)
 
-	const result = await getPinnedIcon(createIconEnv().env)
-
-	expect(result.descriptor).toMatchObject({
-		sourcePath: null,
-		contentType: 'image/webp',
-	})
+	await expect(getPinnedIcon(createIconEnv().env)).rejects.toThrow(
+		'has an invalid package source',
+	)
 	expect(mocks.readFirstArtifactFileAtCommit).not.toHaveBeenCalled()
 })
 
