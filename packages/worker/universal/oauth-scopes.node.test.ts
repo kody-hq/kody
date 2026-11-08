@@ -68,6 +68,7 @@ test('platform scope prompt changes one built-in connection without BYO', () => 
 		name: 'github-work',
 		platform: false,
 		currentScopes: ['repo'],
+		allowedScopes: ['gist'],
 	})
 	expect(byo).toContain('/connect/oauth?provider=github-work')
 	expect(byo).not.toContain('grantedScopes')

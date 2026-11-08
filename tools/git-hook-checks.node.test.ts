@@ -1346,6 +1346,7 @@ test('pre-push names the global inputs that force the full test:push', async () 
 		logs.some(
 			(line) =>
 				line.includes('full test:push') &&
+				line.includes('global test inputs changed') &&
 				line.includes('packages/worker/src/test-support/a.ts'),
 		),
 	).toBe(true)
@@ -1373,7 +1374,7 @@ test('pre-push names why an asset-only push falls back to the full test:push', a
 		logs.some(
 			(line) =>
 				line.includes('full test:push') &&
-				/related tests|JS\/TS source/.test(line),
+				line.includes('no pushed path is JS/TS source'),
 		),
 	).toBe(true)
 })

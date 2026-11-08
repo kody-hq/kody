@@ -851,8 +851,8 @@ test('a sync webhook refused for body fill placement names the part and the run,
 		slot: 'acmeApiKey',
 		part: 'body',
 	})
-	expect(String(body.error.message)).toContain('acmeApiKey')
-	expect(String(body.error.message)).toContain('request body')
+	expect(body.error.message).toEqual(expect.stringContaining('acmeApiKey'))
+	expect(body.error.message).toEqual(expect.stringContaining('request body'))
 	expect(JSON.stringify(body)).not.toContain('api.acme.test')
 
 	const failed = (await listDeliveries(userId, 'sync-hook')).find(
