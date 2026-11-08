@@ -122,15 +122,18 @@ Kody may email the submitter from the platform sender with the decision, thanks,
 and an invitation to send more feedback through their agent. That outcome mail
 is skipped when the submitter has no current email, outbound email is paused,
 the account is suspended, or the update is a no-op of an already resolved or
-dismissed row. Admin list results intentionally omit the full submission; a
-detail read exposes only the approved feedback, not unrelated account content.
-This delivery exception is limited to feedback the user explicitly approved; it
-does not expose other account content. Each account can create at most 20
-feedback submissions in a rolling 24-hour period and have at most 100 active
-submissions (open or triaged). Before asking the user to approve multiple
-submissions, call `metaPlatformFeedbackList` and check `submissions_remaining`
-(and `next_slot_at` when the cap is hit) so you do not collect approvals that
-will fail the rate limit.
+dismissed row. Admins reopen resolved or dismissed feedback to triaged with
+`adminPlatformFeedbackUpdate` (`action: "triage"`) and a required non-empty
+`admin_note`. A reopen sends no email; the note stays internal. Admin list
+results intentionally omit the full submission; a detail read exposes only the
+approved feedback, not unrelated account content. This delivery exception is
+limited to feedback the user explicitly approved; it does not expose other
+account content. Each account can create at most 20 feedback submissions in a
+rolling 24-hour period and have at most 100 active submissions (open or
+triaged). Before asking the user to approve multiple submissions, call
+`metaPlatformFeedbackList` and check `submissions_remaining` (and `next_slot_at`
+when the cap is hit) so you do not collect approvals that will fail the rate
+limit.
 
 Before asking for approval, also disclose that Kody cannot recall notification
 copies already delivered outside Kody. Admin notification copies may remain
@@ -139,18 +142,20 @@ deletion controls. This applies only to copies of the exact approved feedback
 and attribution described above, never unrelated content.
 
 Open and triaged feedback remains until an admin resolves or dismisses it, or
-the submitting account is deleted. Resolved and dismissed feedback is removed
-365 days after its last update. To check status later (including triaged, when
-no outcome email is sent), call `metaPlatformFeedbackGet` with the returned
-`feedback_id`, or `metaPlatformFeedbackList` for the signed-in user's
-submissions. Those reads return the same submitter-visible fields as account
-export (id, category, summary, details on get, status, resolution_note,
-resolution_pr_urls, created_at, updated_at) and never expose reviewer identity
-or admin notes. When an admin resolves or dismisses with a `user_message` or
-`pr_urls`, those values are stored as `resolution_note` and `resolution_pr_urls`
-so later polls match the close-the-loop email. `metaPlatformFeedbackList` also
-returns `submission_rate_limit`, `submissions_remaining`, and `next_slot_at` for
-the rolling submission cap. The submitting user's account export includes the
+the submitting account is deleted. Reopening a closed row returns it to triaged;
+the previous submitter-visible outcome moves to resolution history. Resolved and
+dismissed feedback is removed 365 days after its last update. To check status
+later (including triaged, when no outcome email is sent), call
+`metaPlatformFeedbackGet` with the returned `feedback_id`, or
+`metaPlatformFeedbackList` for the signed-in user's submissions. Those reads
+return the same submitter-visible fields as account export (id, category,
+summary, details on get, status, resolution_note, resolution_pr_urls,
+created_at, updated_at) and never expose reviewer identity or admin notes. When
+an admin resolves or dismisses with a `user_message` or `pr_urls`, those values
+are stored as `resolution_note` and `resolution_pr_urls` so later polls match
+the close-the-loop email. `metaPlatformFeedbackList` also returns
+`submission_rate_limit`, `submissions_remaining`, and `next_slot_at` for the
+rolling submission cap. The submitting user's account export includes the
 submission, status, and submitter-visible resolution fields, but redacts
 internal reviewer identity, notes, and timestamps. Account deletion removes any
 remaining submissions. Kody rechecks a queued submission immediately before

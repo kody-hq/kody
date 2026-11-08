@@ -121,8 +121,11 @@ rides along: outside packages and apps, `use`, `execute`, `write`, `delete`,
 `execution_context:read` (machines are listed per share; an execution context
 shared with all members compiles into Use on that one context for every live
 Member instead, `loadAllMembersContextGrantRows` in `access-compile.ts`) are
-left out. Owners set these from the Grants page or with `accessGrant`
-(`resource_type: "org"`); a denial for one of them says so.
+left out. Owners set org-wide presets from the Grants page or with `accessGrant`
+(`resource_type: "org"`). Per-person package, app, and credential grants live on
+**Access** (`/@<slug>/-/grants/user/<userId>`), linked from Members,
+Collaborators, and person-linked Grants rows. A denial for one of the org-wide
+reads says so.
 
 **Org-wide package and app manage.** An `org` grant may also carry
 `orgWideManagePermissions` (`packages/shared/src/grant-presets.ts`): the

@@ -44,11 +44,9 @@ export const localPackageGraphPlatformIssueUrl =
 	'https://github.com/kody-hq/kody/issues/2808'
 
 /**
- * Historical threshold: package-graph used to POST the full entry `code` below
- * this size and a synthetic imports-only entry above it. The request is now
- * always built from the imports that still need published modules (kody#4067),
- * so the size no longer changes the request shape. Kept for callers/tests that
- * reference it.
+ * Package-graph requests include the imports that still need published
+ * modules (kody#4067). Size does not change the request shape. Callers and
+ * tests still reference this constant.
  */
 export const packageGraphInlineCodePreferImportsChars = 400_000
 

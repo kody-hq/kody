@@ -324,6 +324,10 @@ algorithms:
 - **ECDSA:** `ES256`, `ES384`, `ES512`
 - **EdDSA:** Ed25519 PKCS#8 keys (Cursor Origin app JWTs)
 
+HMAC, RSA HTTP request signatures (`http-signature`), and owner-opt-in raw RSA
+(`rsa-sha256`) use `credential().sign`, not this primitive. See
+[Credentials — Signing](../guides/credentials.md#signing).
+
 ## Mentioning placeholders without resolving them
 
 The gateway scans the **final serialized URL, headers, and body**, so a literal

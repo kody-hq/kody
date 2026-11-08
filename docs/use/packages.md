@@ -38,11 +38,16 @@ Think in terms of:
 - package-owned webhooks
 
 Packages are the saved-entity unit across search, execute, repo editing, and UI
-hosting. The package page tabs are **Repo**, **Files**
-(`/@username/:name/tree/:ref` — the same URL whether the package is public or
-private), and **Settings**. Visibility keeps private source off the public web.
-Owner controls (lock, visibility, webhooks, delete) live at
-`/@username/:name/settings`. Public listings also expose a read-only
+hosting. The package page tabs depend on what you can do. Everyone with access
+sees **Repo** and **Files** (`/@username/:name/tree/:ref` — the same URL whether
+the package is public or private). Owners also see **Credentials**, **Default
+mappings**, and **Triggers**. **Collaborators** needs Manage on access;
+**Connected people** needs Manage on a package with an app. Owner **Settings**
+live at `/@username/:name/settings` and split three independent controls:
+**Visibility** (who can use the hosted app — internet-visible vs signed-in),
+**Source sharing** (who can read and fork the source — public vs private), and
+**Public release** (which published commit is live). Changing one never changes
+the others. Public listings also expose a read-only
 [`.git` clone URL](./community-packages.md#clone-a-public-package-read-only-git).
 Inbound HTTP uses [webhooks](./webhooks.md). To let someone use a package
 without getting a copy, [grant them access](../guides/package-sharing.md). To
@@ -88,8 +93,10 @@ Important fields:
   saved-package UUID `package_id` only when the name is not known, or for a
   stable ref. Never pass both. The leaf after `/` is the URL slug. Create flows
   pass the `@owner/leaf` name or the name leaf.
-- `private` — leftover npm-style field; ignored for catalog listing. Visibility
-  is a repo setting (`packageUpdate` `changes.visibility`), default private.
+- `private` — leftover npm-style field; ignored for catalog listing. **Source
+  sharing** on Settings is the repo setting (`packageUpdate`
+  `changes.visibility`), default private. **Visibility** on the same page is who
+  can use the hosted app, not this field.
 - `exports` — authoritative import/export map. Optional: omitting it means no
   exports, the same as `"exports": {}` (e.g. a data-only package with an app)
 - `kody.description` — short public tagline for search, detail, community

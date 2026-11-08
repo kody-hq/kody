@@ -63,8 +63,9 @@ Activity actor columns store the MCP **stable user id**
 (`users.stable_user_id`), matching other community ownership columns such as
 `community_listings.owner_user_id`.
 
-`saved_packages.is_private` defaults to `1`. Visibility is a repo setting
-(`packageUpdate` / `repoUpdate`), not a `package.json#private` projection.
+`saved_packages.is_private` defaults to `1`. **Source sharing** is a repo
+setting (`packageUpdate` / `repoUpdate`), shown on Settings separately from app
+**Visibility** (internet-visible), not a `package.json#private` projection.
 Active community listings backfill to public; leftover `"private": false`
 teasers stay private.
 

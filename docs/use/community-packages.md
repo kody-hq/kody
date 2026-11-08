@@ -8,13 +8,14 @@ appear on **Apps** (`/@slug/-/apps`). This catalog is only published public
 listings (see
 [Packages](./packages.md#repositories-page-vs-package-in-the-api)).
 
-Public **packages** appear in that catalog. Visibility lives on the **repo
-record in D1** (default private), not `package.json#private`. Making a package
-public lists it on `/community` and `/@handle/:name` with full source and fork.
-Public plain repos store the same visibility flag and inherit it on promote;
-they do not appear on `/community`. Package **runtime** uses `published_commit`;
-pushing to a public default branch is world-readable at HEAD even before the
-next package publish.
+Public **packages** appear in that catalog. **Source sharing** lives on the
+**repo record in D1** (default private; Settings, or `packageUpdate`
+`changes.visibility`), not `package.json#private`. Making a package public lists
+it on `/community` and `/@handle/:name` with full source and fork. Public plain
+repos store the same visibility flag and inherit it on promote; they do not
+appear on `/community`. Package **runtime** uses `published_commit`; pushing to
+a public default branch is world-readable at HEAD even before the next package
+publish.
 
 One-click install forks the listing into your account and publishes it when
 checks pass. If checks fail, the fork stays inert until you adapt and publish.

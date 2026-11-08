@@ -172,10 +172,11 @@ names only, always keeps the app's API base and token hosts (refresh needs the
 token host), and commits with a `credential.hosts_updated` org audit event.
 There is no capability for it: an agent that could add a host could send the
 token anywhere. Platform-lane connections are refused: reconnect resets them to
-the app's hosts. Migration 0143 backfilled `api`, `content`, and
-`notify.dropboxapi.com` onto connections whose app mints tokens at Dropbox's
-token endpoint ([Dropbox guide](../../guides/providers/dropbox.md)); support can
-check a connection's hosts with the `adminOauthConnectionHostsList` capability.
+the app's hosts. Connections whose app mints tokens at Dropbox's token endpoint
+keep `api`, `content`, and `notify.dropboxapi.com` on their host allowlists
+(migration `0143`; [Dropbox guide](../../guides/providers/dropbox.md)). Support
+can check a connection's hosts with the `adminOauthConnectionHostsList`
+capability.
 
 Each `/connect/oauth` token persist writes `user_integrations.refresh_policy`
 from the provider token response (`refresh-policy.ts`): `required` when it
@@ -384,33 +385,36 @@ client-secret values.
 
 `/@<slug>/-/integrations` is a list of integrations (the services you connect:
 Google, GitHub). Selecting a row shows that integration and the connections
-(signed-in accounts) on it. Each connection shows how many scopes it requests
-versus the built-in menu when one exists, and a copy-prompt asks an agent to
-widen the integration's reconnect scopes (then ask the user to reconnect).
-Existing built-in connections show a small “Provided by Kody” indicator.
-Reconnect and add-account links resolve to the built-in lane while the app is
-discoverable and to bring-your-own `/connect/oauth` setup otherwise. A **Connect
-with Kody** section lists discoverable built-ins the user has not connected; it
-renders nothing while every app is draft. Deep links to a connection
-(`/@<slug>/-/integrations/:name`) open the parent integration and highlight that
-connection. User-registered integrations also have
-`/@<slug>/-/integrations/apps/:appSlug` (a connection named `apps` resolves at
-`/@<slug>/-/integrations/apps`). Endpoints, host allowlists, flow / PKCE /
-exchange style, and credential rotation stay behind an advanced disclosure. Each
-connection also shows a usage grant: **any context** (execute and every package)
-or **specific packages** only. Agents tighten that grant with
-`resourceLock({ kind: 'integration', name, package_id })` (switch to packages
-mode and add a saved package id; unlocking or removing a grant is website-only).
-One-click approval lives at `/@<slug>/-/integrations/approve?name=&package_id=`;
-approving a package while the connection is still `any` leaves it `any` so
-execute stays usable. Rotate (`rotateOauthAppCredentials`) stores a new
-client-secret value on the app, then calls `rotateOauthAppClientCredentials` so
-every sibling connection picks up the new client id on the next join. Each
-connection has a double-checked Disconnect control; user-registered integrations
-also have Delete integration. Both are delayed-commit undoable actions: the UI
-updates immediately, and `disconnectIntegration` / `deleteOauthApp` run only
-after the undo window (or when the user leaves). Built-in apps cannot be
-deleted; disconnect their connections instead.
+(signed-in accounts) on it. Each connection shows **Requested scopes** (the next
+reconnect) and **Granted scopes** (what the provider actually granted, with
+missing and extra versus the request), plus how many requested scopes sit on the
+built-in menu when one exists. A mismatch asks the user to reconnect. A
+copy-prompt asks an agent to change that connection's reconnect scopes, then
+reconnect so the token matches. Existing built-in connections show a small
+“Provided by Kody” indicator. Reconnect and add-account links resolve to the
+built-in lane while the app is discoverable and to bring-your-own
+`/connect/oauth` setup otherwise. A **Connect with Kody** section lists
+discoverable built-ins the user has not connected; it renders nothing while
+every app is draft. Deep links to a connection (`/@<slug>/-/integrations/:name`)
+open the parent integration and highlight that connection. User-registered
+integrations also have `/@<slug>/-/integrations/apps/:appSlug` (a connection
+named `apps` resolves at `/@<slug>/-/integrations/apps`). Endpoints, host
+allowlists, flow / PKCE / exchange style, and credential rotation stay behind an
+advanced disclosure. Each connection also shows a usage grant: **any context**
+(execute and every package) or **specific packages** only. Agents tighten that
+grant with `resourceLock({ kind: 'integration', name, package_id })` (switch to
+packages mode and add a saved package id; unlocking or removing a grant is
+website-only). One-click approval lives at
+`/@<slug>/-/integrations/approve?name=&package_id=`; approving a package while
+the connection is still `any` leaves it `any` so execute stays usable. Rotate
+(`rotateOauthAppCredentials`) stores a new client-secret value on the app, then
+calls `rotateOauthAppClientCredentials` so every sibling connection picks up the
+new client id on the next join. Each connection has a double-checked Disconnect
+control; user-registered integrations also have Delete integration. Both are
+delayed-commit undoable actions: the UI updates immediately, and
+`disconnectIntegration` / `deleteOauthApp` run only after the undo window (or
+when the user leaves). Built-in apps cannot be deleted; disconnect their
+connections instead.
 
 ## Capability surface
 
