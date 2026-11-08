@@ -74,7 +74,7 @@ test('named member write validates role and retains explicit org plus original a
 			data: {
 				orgSlug: 'team-a',
 				userId: 'person-a',
-				role: 'admin' as 'billing',
+				role: 'superuser' as 'billing',
 			},
 		}),
 	).toThrow(/Invalid/)

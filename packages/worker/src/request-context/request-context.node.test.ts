@@ -205,7 +205,7 @@ test('downstream runs keep the starter role instead of the org identity Owner ro
 		}).membership,
 	).toEqual({ role: 'owner' })
 	expect(
-		parseRequestLineage({ ...legacy, membership: { role: 'admin' } }),
+		parseRequestLineage({ ...legacy, membership: { role: 'superuser' } }),
 	).toBeNull()
 })
 
