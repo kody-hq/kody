@@ -17,6 +17,7 @@ import {
 	listJobStorageIdRowsForUser,
 	recordJobRunNowOutcomeRow,
 	refreshPackageJobRowIdentity,
+	repairPackageJobRowPublishedCommit,
 	renewClaimedJobRow,
 	restoreJobRowsForUser,
 	retryClaimedJobRow,
@@ -110,6 +111,18 @@ export type JobsStore = {
 		nextRunAt: string
 		scheduleJson: string
 		timezone: string
+	}): Promise<boolean>
+	/**
+	 * Narrow `published_commit` rewrite guarded by the expected previous
+	 * commit and source. See `repairPackageJobRowPublishedCommit`.
+	 */
+	repairPackageJobPublishedCommit(input: {
+		userId: string
+		jobId: string
+		sourceId: string
+		expectedPublishedCommit: string
+		publishedCommit: string
+		updatedAt: string
 	}): Promise<boolean>
 	/**
 	 * Narrow caller-context rewrite with an optimistic concurrency guard on
@@ -210,6 +223,8 @@ export function createD1JobsStore(db: D1Database): JobsStore {
 			refreshPackageJobRowIdentity({ db, ...input }),
 		recordJobRunNowOutcome: (input) =>
 			recordJobRunNowOutcomeRow({ db, ...input }),
+		repairPackageJobPublishedCommit: (input) =>
+			repairPackageJobRowPublishedCommit({ db, ...input }),
 		updateJobCallerContextJson: (input) =>
 			updateJobRowCallerContextJson({ db, ...input }),
 		deleteJob: (input) => deleteJobRow(db, input.userId, input.jobId),

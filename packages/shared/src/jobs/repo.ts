@@ -729,6 +729,39 @@ export async function refreshPackageJobRowIdentity(input: {
 }
 
 /**
+ * Admin attribution repair: replace only `published_commit` (and
+ * `updated_at`) when the row still records `expectedPublishedCommit` for
+ * `sourceId`. Does not touch enabled, schedule, params, caller context,
+ * claims, retries, or last/next-run fields.
+ */
+export async function repairPackageJobRowPublishedCommit(input: {
+	db: D1Database
+	userId: string
+	jobId: string
+	sourceId: string
+	expectedPublishedCommit: string
+	publishedCommit: string
+	updatedAt: string
+}) {
+	const result = await input.db
+		.prepare(
+			`UPDATE jobs SET published_commit = ?, updated_at = ?
+			WHERE id = ? AND user_id = ? AND source_id = ? AND published_commit = ?
+				AND deleted_at IS NULL`,
+		)
+		.bind(
+			input.publishedCommit,
+			input.updatedAt,
+			input.jobId,
+			input.userId,
+			input.sourceId,
+			input.expectedPublishedCommit,
+		)
+		.run()
+	return (result.meta.changes ?? 0) > 0
+}
+
+/**
  * Replace only `caller_context_json` (and `updated_at`) when the row still
  * holds `expectedCallerContextJson`. Does not touch schedule, claims, or
  * retry fields — for repair backfills that must not race a live tick.
