@@ -332,6 +332,42 @@ test('ensureWorkerdBinary retries resets, HTTP/2 stream errors, and 5xx', async 
 	assert.equal(recovered, 2)
 })
 
+test('ensureWorkerdBinary retries a body that breaks off mid-download', async () => {
+	const cacheDir = mkdtempSync(join(tmpdir(), 'kody-wd-'))
+	let calls = 0
+	const fetchFn = (async () => {
+		calls += 1
+		if (calls > 1) {
+			return new Response(new Uint8Array(gzipSync(Buffer.from('tampered'))))
+		}
+		return new Response(
+			new ReadableStream<Uint8Array>({
+				start(controller) {
+					controller.enqueue(new Uint8Array([0x1f, 0x8b]))
+					setImmediate(() =>
+						controller.error(
+							Object.assign(new Error('read ECONNRESET'), {
+								code: 'ECONNRESET',
+							}),
+						),
+					)
+				},
+			}),
+		)
+	}) as typeof fetch
+	await assert.rejects(
+		ensureWorkerdBinary({
+			env: {},
+			cacheDir,
+			target: 'linux-64',
+			fetchFn,
+			retryDelayMs: 0,
+		}),
+		/failed verification/,
+	)
+	assert.equal(calls, 2)
+})
+
 test('ensureWorkerdBinary does not retry a 404', async () => {
 	const cacheDir = mkdtempSync(join(tmpdir(), 'kody-wd-'))
 	let calls = 0

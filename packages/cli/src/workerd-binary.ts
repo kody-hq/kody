@@ -165,7 +165,7 @@ export async function ensureWorkerdBinary(
  * negotiate HTTP/2 with GitHub release downloads and fail every attempt with
  * `ERR_HTTP2_STREAM_ERROR` while HTTP/1.1 succeeds (#5010).
  */
-export function http1Fetch(
+function http1Fetch(
 	url: Parameters<typeof fetch>[0],
 	init?: RequestInit,
 	redirectsLeft = 5,
@@ -267,25 +267,26 @@ async function fetchAndWrite(input: {
 			callback(null, chunk)
 		},
 	})
+	const body = Readable.fromWeb(
+		response.body as Parameters<typeof Readable.fromWeb>[0],
+	)
 	const gzipFile = createWriteStream(gzipPath)
-	let writeFailed = false
+	// pipeline destroys every stream with the first error, so only the side
+	// that failed first says whether the network or the disk broke.
+	let firstFailure: 'body' | 'write' | null = null
+	body.once('error', () => {
+		firstFailure ??= 'body'
+	})
 	gzipFile.once('error', () => {
-		writeFailed = true
+		firstFailure ??= 'write'
 	})
 	try {
 		try {
-			await pipeline(
-				Readable.fromWeb(
-					response.body as Parameters<typeof Readable.fromWeb>[0],
-				),
-				hashing,
-				gzipFile,
-				{ signal: input.signal },
-			)
+			await pipeline(body, hashing, gzipFile, { signal: input.signal })
 		} catch (error) {
 			if (input.signal.aborted) throw input.signal.reason
 			// Disk full, read-only cache, and the like: another download won't help.
-			if (writeFailed) throw error
+			if (firstFailure === 'write') throw error
 			throw new WorkerdDownloadNetworkError(
 				`Downloading workerd from ${input.url} broke off (${describeNetworkError(error)}).`,
 			)
