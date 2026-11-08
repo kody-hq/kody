@@ -234,9 +234,9 @@ Contacts if the run looks up names. The runner then stops when you quit the app.
   with `commands_opt_in_local`.
 - Permission: `execution_context:command`. Only the operator has it, on their
   own context. `executionContextShareSet` with `commands: true` fails with
-  `commands_operator_only`, and command shares made before that confer nothing.
-  Commands get the daemon's environment without `KODY_*` variables and cannot
-  use a credential folder as `cwd`.
+  `commands_operator_only`, and legacy command shares confer nothing. Commands
+  get the daemon's environment without `KODY_*` variables and cannot use a
+  credential folder as `cwd`.
 - Errors: `execution_context_commands_off` (the machine has not opted in),
   `execution_context_command_not_granted` (the caller lacks the command grant),
   `execution_context_command_requires_context` (the run is in Kody cloud or a

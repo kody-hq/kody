@@ -233,6 +233,13 @@ the current access token. After saving, tell the user the token is unchanged
 until they reconnect, then ask whether to reconnect each affected account.
 Scopes are per connection.
 
+Each connection's detail page (`/@<slug>/-/integrations/:name`) shows
+**Requested scopes** (the next reconnect) and **Granted scopes** (what the
+provider actually granted, with missing and extra versus the request). A
+mismatch asks you to reconnect so the token matches. Owners edit scopes on that
+connection, save, then reconnect. `integrationGet` / `integrationList` expose
+`grantedScopes` the same way.
+
 A `?provider=` visit that has no stored authorize/token URLs and no query
 endpoints shows a copy-prompt so an agent can return a complete connect URL
 instead of a dead-end error.

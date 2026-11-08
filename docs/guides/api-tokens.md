@@ -51,6 +51,9 @@ using the token gets `401 API token was revoked.`
 - **CLI**: `npx @kodycodes/cli api tokenList` and
   `npx @kodycodes/cli api tokenRevoke --params '{"token_id":"<id>"}'` after
   `npx @kodycodes/cli login` (see [Local CLI execute](./local-execute.md)).
+  Interactive `kody login` prefers the login session and deletes a leftover
+  stored `kody_at_` bootstrap token. `kody whoami` reports the active
+  credential. `KODY_API_TOKEN` in the environment still wins over both.
 - **HTTPS**: `GET /v1/tokens` and `DELETE /v1/tokens/{token_id}` on
   [api.kody.codes](https://api.kody.codes) with a token that holds `token:read`
   / `token:delete`.
