@@ -49,7 +49,8 @@ permission fixes are verified on the preview; see
   package-app host behavior (per-host subdomains, cookie `Domain` scrub, the
   cross-site handoff) cannot be checked there. Verify it locally with
   `PACKAGE_APP_BASE_URL=http://packages.localhost:<port>` in
-  `packages/worker/.env` (see
+  `packages/worker/.env`, or in `packages/worker/.dev.vars` if that file exists,
+  since Wrangler then ignores `.env` (see
   [security](../../../docs/contributing/security.md#hosted-package-app-origin-isolation))
   plus Workers tests.
 - `/mcp` 401 and `/admin` 403 are expected. Admin-gated states (suspension,

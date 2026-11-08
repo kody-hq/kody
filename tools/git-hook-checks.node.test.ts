@@ -15,6 +15,7 @@ import {
 	parsePrePushUpdates,
 	isSkillsLockHookPath,
 	isVitestWorkerCrashWithoutFailures,
+	createVitestCrashScanner,
 	isSoftDeleteReadFilterHookPath,
 	listInstalledNodeModulesDirs,
 	planGitHookChecks,
@@ -1302,12 +1303,40 @@ test('vitest related retries once only on a worker crash with no failed test', a
 		isVitestWorkerCrashWithoutFailures(' Test Files  1 failed (1)\n'),
 	).toBe(false)
 
+	const rule = '\u23af'.repeat(8)
+	const section = (body: string) =>
+		`${rule} Unhandled Error ${rule}\n${body}\n${rule}${rule}\n`
+	expect(
+		isVitestWorkerCrashWithoutFailures(
+			section('Error: [vitest-pool]: Worker exited unexpectedly'),
+		),
+	).toBe(true)
+	expect(
+		isVitestWorkerCrashWithoutFailures(
+			section('Error: Worker exited unexpectedly') +
+				section('TypeError: boom from a test teardown'),
+		),
+	).toBe(false)
+	const scanner = createVitestCrashScanner()
+	scanner.write(' Test Files  1 fai')
+	scanner.write('led (1)\n')
+	scanner.write('x'.repeat(512 * 1024))
+	scanner.write('\nError: Worker exited unexpectedly\n')
+	expect(scanner.finish()).toEqual({ sawCrash: true, sawFailure: true })
+
 	const run = async (outputs: Array<{ code: number; output: string }>) => {
 		const logs: Array<string> = []
 		let calls = 0
 		const code = await runVitestWithWorkerCrashRetry({
 			label: 'vitest related --project node-unit',
-			runOnce: async () => outputs[calls++]!,
+			runOnce: async () => {
+				const { code, output } = outputs[calls++]!
+				return {
+					code,
+					workerCrashWithoutFailures:
+						isVitestWorkerCrashWithoutFailures(output),
+				}
+			},
 			log: (message) => logs.push(message),
 		})
 		return { code, calls, logs }
