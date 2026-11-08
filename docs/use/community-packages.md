@@ -13,9 +13,10 @@ Public **packages** appear in that catalog. **Source sharing** lives on the
 `changes.visibility`), not `package.json#private`. Making a package public lists
 it on `/community` and `/@handle/:name` with full source and fork. Public plain
 repos store the same visibility flag and inherit it on promote; they do not
-appear on `/community`. Package **runtime** uses `published_commit`; pushing to
-a public default branch is world-readable at HEAD even before the next package
-publish.
+appear on `/community`. Package **runtime** uses `published_commit`. The public
+**Files** view of the default branch shows HEAD, so a push there is
+world-readable even before the next package publish. An anonymous `git clone` of
+a public package gets the published snapshot commit, not unpublished HEAD.
 
 One-click install forks the listing into your account and publishes it when
 checks pass. If checks fail, the fork stays inert until you adapt and publish.

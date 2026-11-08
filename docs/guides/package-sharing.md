@@ -169,13 +169,13 @@ teams. Team orgs use member and team controls on this tab.
 
 ## Access for one person
 
-In a team org, an Owner opens **Members**, **Collaborators**, or a person-linked
-row on **Grants**, then **Access**. That page is
-`/@<slug>/-/grants/user/<userId>` (`Access for {name}`). It lists what that
-person can use in this organization and **Give access** grants or revokes a
-preset on specific packages, apps, and credentials in one submit. Team and
-everyone grants appear as read-only. Owners already hold everything, so there is
-nothing to grant them. A person with no membership or grant 404s.
+In a team org, an Owner selects **Access** on a non-Owner row in **Members** or
+on a row in **Collaborators**, or selects a person-linked grant on **Grants**.
+That page is `/@<slug>/-/grants/user/<userId>` (`Access for {name}`). It lists
+what that person can use in this organization and **Give access** grants or
+revokes a preset on specific packages, apps, and credentials in one submit. Team
+and everyone grants appear as read-only. Owners already hold everything, so
+there is nothing to grant them. A person with no membership or grant 404s.
 
 The package **Collaborators** tab stays the place to share one package. Use
 **Access** when the work is one person across packages, apps, and credentials.

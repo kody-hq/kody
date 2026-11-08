@@ -550,9 +550,13 @@ The schema is defined by migrations in `packages/worker/migrations/`:
   set `app_owner_id = user_id`. A row whose `app_owner_id` differs from
   `user_id` is a member's personal connection pinned to that org (ADR 0068
   amendment 2026-10-29): tokens live with the member's personal org, the client
-  secret with the org's app. Deleting the org's app, the member leaving, or org
-  purge (`account/data-targets.ts`) wipes those rows; org transfer rewrites
-  `app_owner_id` with the apps.
+  secret with the org's app. Deleting the org's app or the member leaving wipes
+  those rows; org transfer rewrites `app_owner_id` with the apps. Team-org soft
+  delete and hard purge do not wipe them today: soft delete does not offboard
+  members, and the `user_integrations_pinned_to_org_apps` target in
+  `account/data-targets.ts` is outside the org hard-purge inventory
+  (`appliesToOrgHardPurge`). A member's pinned row can outlive the org and,
+  through the `ON DELETE RESTRICT` app FK, block deleting the org's app rows.
 
 App access pattern:
 
