@@ -384,6 +384,10 @@ export const routes = {
 		href: (params: { orgSlug: string | number }) =>
 			`/@${segment(params.orgSlug)}/-/grants`,
 	},
+	orgGrantAccess: {
+		href: (params: { orgSlug: string | number; userId: string | number }) =>
+			`/@${segment(params.orgSlug)}/-/grants/user/${segment(params.userId)}`,
+	},
 	orgCollaborators: {
 		href: (params: { orgSlug: string | number }) =>
 			`/@${segment(params.orgSlug)}/-/collaborators`,

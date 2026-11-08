@@ -329,11 +329,11 @@ export function parseOrgManagementPath(
 	pathname: string,
 ): { slug: string; section: OrgManagementSection } | null {
 	const match = new RegExp(
-		`^/@([^/]+)/${orgPageSeparator}/(settings|members|teams|grants|collaborators)/?$`,
+		`^/@([^/]+)/${orgPageSeparator}/(settings|members|teams|collaborators|grants(?:/user/[^/.]+)?)/?$`,
 	).exec(pathname)
 	if (!match) return null
 	const slug = match[1] ?? ''
-	const section = match[2]
+	const section = match[2]?.replace(/\/user\/.*$/, '')
 	if (
 		!isOrganizationSlug(slug) ||
 		!section ||
@@ -377,6 +377,10 @@ export function orgTeamsPath(slug: string) {
 
 export function orgGrantsPath(slug: string) {
 	return `/@${slug}/${orgPageSeparator}/grants`
+}
+
+export function orgGrantAccessPath(slug: string, userId: string) {
+	return `/@${slug}/${orgPageSeparator}/grants/user/${encodeURIComponent(userId)}`
 }
 
 export function orgCollaboratorsPath(slug: string) {
