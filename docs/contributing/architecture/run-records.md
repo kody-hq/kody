@@ -557,6 +557,46 @@ secrets, and it sends nothing. `complete` is false when an owner's RunLog read
 failed or the owner list hit its cap. Like other RunLog reads, the first RPC to
 an owner with no RunLog writes its empty schema.
 
+### Admin package provenance
+
+`adminPackageProvenance` is a role-gated, read-only read of one package of any
+owner, for feedback triage questions such as "which commit is a package
+serving", "job pinned commit", "is commit ancestor", or "stuck publish other
+owner package". Target it with `packageId` or `packageName` (`@owner/name`);
+pass `ancestry: { ancestor, descendant }` (full SHAs) to also check whether one
+commit is an ancestor of the other. Every call is audit-logged
+(`category: 'admin'`, action `adminPackageProvenance`) with the acting admin
+identity, the target package id and owner id, and the time. Failures are logged
+too, with the requested target.
+
+It returns:
+
+- `source`: `publishedCommit` (`entity_sources.published_commit`),
+  `servingCommit` (`serving_commit`, else `published_commit`; what runtime
+  serves), and `servingArtifactCommit` (`serving_commit` only; null when no
+  complete build is proven at the published commit).
+- `artifacts`: kind, name, entry point, and `builtFromCommit` for each saved
+  bundle artifact. Never the KV key or bundle bytes.
+- `jobs`: `recordedCommit` (`jobs.published_commit`, written when the job was
+  created or refreshed) and `runsCommit` (the serving commit a run resolves),
+  with schedule type, enabled state, and last and next run times.
+- `triggers` (cron, subscription, and webhook enablements) and `webhooks`
+  (endpoint id and name). They are not pinned to a commit: `pinnedCommit` is
+  always null and `runsCommit` is the serving commit. Never URL secrets, HMAC
+  secrets, their hashes, or credential mappings.
+- `publishRuns`: up to 20 recent `packagePublishExternalPush` workflow
+  projections from the owner's RunLog and uploaded `publish_builds`, each with
+  id, status, commit, timestamps, and `errorClass` (a leading error name or
+  snake_case code, else `error`; never the message). `publishRunsComplete` is
+  false when the owner's RunLog could not be read.
+- `ancestry`: `ancestor`, `not_ancestor`, `unknown_commit` (with
+  `unknownCommits`), or `repo_unavailable`. The platform fetches the package's
+  Artifacts repo with a short-lived read token that never leaves the function;
+  any fetch failure collapses to `repo_unavailable` without a message.
+
+The only write is the audit row. Like other RunLog reads, the first RPC to an
+owner with no RunLog writes its empty schema.
+
 ## Related
 
 - [Usage metering](./usage-metering.md)

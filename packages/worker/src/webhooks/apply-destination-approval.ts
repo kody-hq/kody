@@ -218,14 +218,21 @@ export async function fingerprintHttpApplyDestinationLegacy(
 	return sha256Hex(material)
 }
 
+/**
+ * Pending and granted rows are keyed by the owning org, so the link names
+ * that org. The website re-verifies the session's membership before reading.
+ */
 export function buildWebhookApplyDestinationApprovalUrl(input: {
 	baseUrl: string
 	handle: string
 	fingerprint: string
+	orgSlug?: string | null
 }) {
 	const url = new URL(connectWebhookApplyPath, input.baseUrl)
 	url.searchParams.set('handle', input.handle)
 	url.searchParams.set('fingerprint', input.fingerprint)
+	const orgSlug = input.orgSlug?.trim()
+	if (orgSlug) url.searchParams.set('org', orgSlug)
 	return url.toString()
 }
 
@@ -728,6 +735,8 @@ export async function loadWebhookApplyDestinationApprovalView(input: {
 export async function requireWebhookApplyDestinationGrantOrPending(input: {
 	env: Pick<Env, 'APP_DB'>
 	userId: OwnerId
+	/** Slug of the verified caller org that owns `userId`'s rows. */
+	orgSlug: string | null
 	handle: string
 	destination: WebhookUrlApplyHttpDestination
 	baseUrl: string
@@ -792,6 +801,7 @@ export async function requireWebhookApplyDestinationGrantOrPending(input: {
 		baseUrl: input.baseUrl,
 		handle: formatWebhookUrlHandle(endpoint.id),
 		fingerprint,
+		orgSlug: input.orgSlug,
 	})
 	return {
 		status: 'approval_required',

@@ -135,6 +135,17 @@ once and revoking the grant removes access everywhere.
 - Secrets, connections, jobs, and email are not covered. Grant those per
   resource.
 
+## Access for one person
+
+In a team org, an Owner opens **Members**, **Collaborators**, or a person-linked
+row on **Grants**, then **Access** (`/@<slug>/-/grants/user/<userId>`). That
+page lists what one person can use in the org and **Give access** grants or
+revokes a preset on specific packages, apps, and credentials. Team and everyone
+grants show as read-only. Owners already hold everything. Use the package
+**Collaborators** tab to share one package; use **Access** for one person across
+resource types. Details:
+[Share a package](/docs/package-sharing#access-for-one-person).
+
 ## Delete a team
 
 `teamDelete` (`DELETE /v1/orgs/teams/{team_id}`, or pass `team_slug`) needs
@@ -151,7 +162,7 @@ no grants.
 | ------------------ | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Created            | At signup (slug = username)                             | `orgCreate` or Create organization                                                                                                                                                                                                                                 |
 | Members / teams    | No. Create a team org to invite people or group them    | Yes                                                                                                                                                                                                                                                                |
-| Package grants     | `accessGrant` / grant invites / package invite links    | Same, plus the Grants web page                                                                                                                                                                                                                                     |
+| Package grants     | `accessGrant` / grant invites / package invite links    | Same, plus the Grants page and per-person **Access** (`/@<slug>/-/grants/user/<userId>`)                                                                                                                                                                           |
 | Resource web pages | Secrets, jobs, repositories, apps, agents, and the rest | Every resource page reads the org. Agents lists connections approved for that org; **Repositories** lists packages you can see plus every plain repo the org owns (API/CLI still say `package`); **Apps** (`/@<slug>/-/apps`) lists packages with `kody.app.entry` |
 
 Switch orgs from the workspace name at the top of the workspace rail (it keeps
@@ -413,3 +424,17 @@ until one is paid or deleted.
 When an org is Pro, each live Owner and Member is a seat, and each seat grows
 the org's execute pool. Billing-only members and outside collaborators are not
 seats. See [Share a package](/docs/package-sharing) for grants vs membership.
+
+## Move a Pro plan
+
+An Owner of two orgs can move unused prepaid Pro value from one org to another
+they own: **Usage and billing** → **Move this plan to another organization**
+(`/@<slug>/-/billing/move-plan`). Packages, credentials, members, and wallets
+stay put. The source org drops to Free limits. Starting a move needs a live
+Owner of both orgs. Until the target is credited, a live Owner of either org can
+cancel it. Retry needs a live Owner of the org whose billing page you use;
+before the credit, the move re-checks that the person who started it still owns
+both orgs, and after the credit it finishes without that check. Billing admins
+cannot start, retry, or cancel a move. A Free target buys Pro at Stripe Checkout
+first; a target that already has Pro only receives the credit. Retired prices,
+canceling subscriptions, and mismatched currencies are refused.

@@ -5,6 +5,7 @@
  * (handlers are idempotent), then records the event id so later deliveries can
  * short-circuit as duplicates. Failures do not insert, so Stripe can retry.
  */
+import { advancePlanTransferForCheckoutSession } from './plan-transfer.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { releasePromoReservationForCheckoutSession } from './checkout-promo.ts'
 import {
@@ -34,6 +35,7 @@ import {
 } from './subscription-sync.ts'
 import {
 	listSubscriptions,
+	planTransferMetadataKey,
 	readStripeSubscriptionPeriodEndUnix,
 } from './stripe-client.ts'
 import {
@@ -175,6 +177,17 @@ async function handleCheckoutSessionCompleted(input: {
 			userId: stableUserIdHint,
 			plan: session.metadata?.kody_plan,
 		})
+		const planTransferId = session.metadata?.[planTransferMetadataKey]?.trim()
+		if (planTransferId) {
+			// Errors are recorded on the transfer row (needs_retry) and resumed
+			// from the billing page; the link above already succeeded.
+			await advancePlanTransferForCheckoutSession({
+				env: input.env,
+				sessionId: session.id,
+				transferId: planTransferId,
+				now: input.now,
+			})
+		}
 	} catch (error) {
 		if (error instanceof BillingLinkError) {
 			switch (error.code) {

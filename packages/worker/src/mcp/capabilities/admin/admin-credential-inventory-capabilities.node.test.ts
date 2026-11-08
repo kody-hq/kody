@@ -47,6 +47,7 @@ const fullReport = {
 		failed: 0,
 		withPlaceholders: 1,
 		withSlots: 0,
+		withRequestPlacement: { body: 0, query: 0, path: 0, url: 0, any: 0 },
 	},
 	placeholders: {
 		secret: 1,

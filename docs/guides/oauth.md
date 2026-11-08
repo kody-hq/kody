@@ -233,6 +233,21 @@ the current access token. After saving, tell the user the token is unchanged
 until they reconnect, then ask whether to reconnect each affected account.
 Scopes are per connection.
 
+Each connection's detail page (`/@<slug>/-/integrations/:name`) shows
+**Requested scopes** (the next reconnect) and **Granted scopes** (what the
+provider reported at the last connect, with missing and extra versus the
+request). Granted scopes are a snapshot from that connect; token refreshes do
+not update them. When no grant was recorded, the page shows **Not checked yet**
+and `integrationGet` / `integrationList` omit `grantedScopes`. That means the
+grant is unknown, not empty. Kody reads it from the token response (or GitHub's
+scope header), so a provider that reports neither stays unknown after a
+reconnect. A mismatch asks you to reconnect. Reconnecting requests the scopes
+again but does not guarantee what the provider grants: check **Granted scopes**
+afterward, and use the provider's own controls if unwanted access remains. The
+page has no scope editor. To change scopes, copy the scope prompt, let an agent
+save the new list with `integrationSave`, then reconnect. `integrationGet` /
+`integrationList` expose `grantedScopes` the same way.
+
 A `?provider=` visit that has no stored authorize/token URLs and no query
 endpoints shows a copy-prompt so an agent can return a complete connect URL
 instead of a dead-end error.

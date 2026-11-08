@@ -6,7 +6,11 @@ import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { formatTimestampDate as formatCancelDate } from '../components/local-timestamp.tsx'
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { orgIdentity, orgOverviewPath } from '#universal/org-pages.ts'
+import {
+	orgBillingPath,
+	orgIdentity,
+	orgOverviewPath,
+} from '#universal/org-pages.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import { adminGrantDiffersFromSubscription } from '#universal/account-plan-display.ts'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
@@ -667,6 +671,17 @@ export function AccountBillingPage({
 								>
 									Manage subscription
 								</button>
+								{billing.creditsEligible &&
+								billing.manualPlan === 'free' &&
+								billing.stripePlan === 'pro' &&
+								!billing.cancelAt ? (
+									<SiteLink
+										href={`${orgBillingPath(payload.org.slug)}/move-plan`}
+										css={mutedLinkCss}
+									>
+										Move this plan to another organization
+									</SiteLink>
+								) : null}
 							</div>
 						</AccountManagementPanel>
 					) : null}

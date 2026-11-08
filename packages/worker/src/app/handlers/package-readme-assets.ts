@@ -28,7 +28,6 @@ async function servePublishedPackageReadmeAsset(input: {
 	commit: string
 	relativePath: string
 	cacheControl: string
-	listingId?: string | null
 }) {
 	if (!isPackageReadmeImagePath(input.relativePath)) return notFound()
 	const bytes = await loadPackageReadmeAssetBytes({
@@ -36,7 +35,6 @@ async function servePublishedPackageReadmeAsset(input: {
 		sourceId: input.sourceId,
 		commit: input.commit,
 		relativePath: input.relativePath,
-		listingId: input.listingId,
 	})
 	if (!bytes) return notFound()
 	const contentType = sniffPackageReadmeImageContentType(
@@ -86,7 +84,6 @@ export function createCommunityPackageAssetHandler(env: Env) {
 				sourceId: listing.sourceId,
 				commit: listing.pinnedCommit,
 				relativePath,
-				listingId: listing.id,
 				cacheControl: packageReadmeAssetCacheControl,
 			})
 		}
@@ -130,7 +127,6 @@ export function createCommunityDetailAssetHandler(env: Env) {
 			sourceId: listing.sourceId,
 			commit: listing.pinnedCommit,
 			relativePath,
-			listingId: listing.id,
 			cacheControl: packageReadmeAssetCacheControl,
 		})
 	}

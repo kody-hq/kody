@@ -151,12 +151,15 @@ or in-progress Deploy or `main` Validate run.
 
 1. Freeze merges to `main` (no squash-merges, no Path B land, no
    `workflow_dispatch` of Deploy) until Path A is verified or you switch to Path
-   B. That freeze is what keeps a new Deploy from queueing.
+   B. That freeze is what keeps a new Deploy from queueing. Also run
+   `gh workflow disable main-validate-watchdog.yml`: it dispatches Validate on
+   `main` HEAD when GitHub dropped that commit's push run, and a dispatched main
+   Validate deploys like a push run. Re-enable it after the freeze.
 2. Inspect queued and in-progress Deploy runs and `main` Validate runs:
 
 ```sh
 gh run list --workflow=deploy.yml --limit 5
-gh run list --workflow=validate.yml --branch main --event push --limit 5
+gh run list --workflow=validate.yml --branch main --limit 5
 ```
 
 3. If any Deploy or `main` Validate run is **queued** or **in progress**, wait

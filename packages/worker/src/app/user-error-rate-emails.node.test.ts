@@ -3,6 +3,7 @@ import { expect, test, vi } from 'vitest'
 import type * as cloudflareEmail from '#app/email/cloudflare-email.ts'
 import type * as packageRepo from '#worker/package-registry/repo.ts'
 import type * as runRecordsService from '#worker/run-records/service.ts'
+import type { RunRecord } from '#worker/run-records/types.ts'
 
 const sendCloudflareEmail = vi.fn<typeof cloudflareEmail.sendCloudflareEmail>(
 	async () => ({ ok: true }),
@@ -233,4 +234,63 @@ test('summarizeRunError keeps the first non-empty line and redacts Kody tokens',
 		errorMessage: `Unauthorized with ${token}`,
 	})
 	expect(redacted).toBe('Unauthorized with kody_at_[redacted]')
+})
+
+test('the email names each failing package export, its error, and its run', async () => {
+	sendCloudflareEmail.mockClear()
+	const failed = (overrides: Partial<RunRecord>): RunRecord =>
+		({
+			id: 'run-1',
+			surface: 'webhook',
+			status: 'error',
+			name: 'review',
+			packageId: 'pkg-1',
+			errorMessage: 'Secret "clerkReviewUserId" is in the request body.',
+			...overrides,
+		}) as RunRecord
+	listRunRecords.mockResolvedValueOnce({
+		runs: [
+			failed({ id: 'run-1' }),
+			failed({ id: 'run-older', errorMessage: 'older failure' }),
+			failed({
+				id: 'run-2',
+				surface: 'export',
+				name: './sync',
+				errorMessage: `x${'y'.repeat(400)}`,
+			}),
+		],
+		nextCursor: null,
+	})
+	getSavedPackageByIdInAnyOrg.mockResolvedValue({
+		name: '@ada/tickets',
+	} as Awaited<ReturnType<typeof packageRepo.getSavedPackageByIdInAnyOrg>>)
+	const { kv } = createKv()
+	await sendUserErrorRateEmails({
+		env: createEnv({
+			users: [
+				{
+					stable_user_id: 'user-runs',
+					email: 'runs@example.com',
+					event_count: 20,
+					error_count: 10,
+				},
+			],
+			kv,
+		}),
+		now: new Date('2026-08-15T12:00:00.000Z'),
+	})
+	const payload = sendCloudflareEmail.mock.calls[0]?.[1] as {
+		html: string
+		text: string
+	}
+	expect(payload.text).toContain(
+		'Package @ada/tickets (webhook export review) failed: Secret "clerkReviewUserId" is in the request body.',
+	)
+	expect(payload.text).toContain('https://kody.codes/account/activity/run-1')
+	expect(payload.text).toContain('Package @ada/tickets (export ./sync) failed:')
+	expect(payload.text).toContain('https://kody.codes/account/activity/run-2')
+	expect(payload.text).not.toContain('older failure')
+	expect(payload.text).not.toContain('y'.repeat(300))
+	getSavedPackageByIdInAnyOrg.mockReset()
+	getSavedPackageByIdInAnyOrg.mockResolvedValue(null)
 })

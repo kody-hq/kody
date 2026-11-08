@@ -210,19 +210,20 @@ account content. Agents must omit secrets and unrelated private content from the
 feedback they prepare.
 
 Each account can create at most 20 feedback submissions in a rolling 24-hour
-period and have at most 100 active submissions (open or triaged). Agents can
-read remaining quota from `metaPlatformFeedbackList` (`submissions_remaining`
-and `next_slot_at`). Open and triaged feedback remains until it is resolved,
-dismissed, or your account is deleted. Resolved and dismissed feedback is
-removed 365 days after its last update. Account deletion removes any remaining
-submissions. When an admin resolves or dismisses your feedback, Kody may email
-you from the platform sender with the decision, thanks, and a way to send more
-feedback through your agent. That mail can include a short outcome note and
-related PR links when the admin provides them; the same values are stored on
-your feedback as `resolution_note` and `resolution_pr_urls` so your agent can
-read them later. That mail is skipped if your account has no email, outbound
-email is paused, or the account is suspended. Internal admin notes are not
-included.
+period. New submissions are refused while it has 100 or more active submissions
+(open or triaged). Agents can read remaining quota from
+`metaPlatformFeedbackList` (`submissions_remaining` and `next_slot_at`). Open
+and triaged feedback remains until it is resolved, dismissed, or your account is
+deleted. Resolved and dismissed feedback becomes eligible for pruning 365 days
+after its last update and is removed by a later scheduled prune. Account
+deletion removes any remaining submissions. When an admin resolves or dismisses
+your feedback, Kody may email you from the platform sender with the decision,
+thanks, and a way to send more feedback through your agent. That mail can
+include a short outcome note and related PR links when the admin provides them;
+the same values are stored on your feedback as `resolution_note` and
+`resolution_pr_urls` so your agent can read them later. That mail is skipped if
+your account has no email, outbound email is paused, or the account is
+suspended. Internal admin notes are not included.
 
 When a notification is still queued, Kody rechecks that the feedback exists
 immediately before delivery and cancels it after account deletion when possible.

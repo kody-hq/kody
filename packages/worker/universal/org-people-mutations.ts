@@ -43,6 +43,17 @@ export const grantOrganizationReadAccessSchema = z.object({
 	permissions: z.array(z.string()).max(20),
 })
 
+const orgSubjectAccessItemSchema = z.object({
+	resourceType: z.enum(['package', 'app', 'credential']),
+	resourceId: z.string().trim().min(1),
+	preset: z.enum(['read', 'use', 'contribute', 'manage']),
+})
+export type OrgSubjectAccessItem = z.infer<typeof orgSubjectAccessItemSchema>
+export const grantOrganizationSubjectAccessSchema = z.object({
+	userId: z.string().trim().min(1),
+	items: z.array(orgSubjectAccessItemSchema).min(1).max(50),
+})
+
 export const grantOrganizationCreateAccessSchema =
 	grantOrganizationReadAccessSchema
 

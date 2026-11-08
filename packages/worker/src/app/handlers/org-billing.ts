@@ -58,6 +58,7 @@ import { isPlatformFeedbackDomainError } from '#worker/platform-feedback/errors.
 import { submitPlatformFeedback } from '#worker/platform-feedback/service.ts'
 import { recordCheckoutFunnelEvent } from '#worker/identity/onboarding-funnel.ts'
 import { buildOrgBillingMetadata } from '#worker/billing/org-stripe-metadata.ts'
+import { advancePlanTransferForCheckoutSession } from '#worker/billing/plan-transfer.ts'
 import {
 	countLiveSeats,
 	readOrgStripeCustomerId,
@@ -272,6 +273,17 @@ export async function completeOrgBillingCheckout({
 			ip: requestIp,
 			path: `${orgBillingPath(orgSlug)}/success`,
 		})
+		const planTransfer = await advancePlanTransferForCheckoutSession({
+			env,
+			sessionId,
+		})
+		if (planTransfer && planTransfer.target_org_id === org.id) {
+			return {
+				ok: true as const,
+				needsOnboarding: false,
+				planTransfer: { id: planTransfer.id, status: planTransfer.status },
+			}
+		}
 		const hasMcpClient = await userHasMcpOAuthGrants(
 			env,
 			personalOrgIdForPerson(user.mcpUser),

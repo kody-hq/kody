@@ -3,7 +3,11 @@ import type {
 	OrgGrantsLoaderData,
 	OrgGrantView,
 } from '#universal/loader-data.ts'
-import { orgCollaboratorsPath, orgTeamsPath } from '#universal/org-pages.ts'
+import {
+	orgCollaboratorsPath,
+	orgGrantAccessPath,
+	orgTeamsPath,
+} from '#universal/org-pages.ts'
 import {
 	orgWideReadAccessLabel,
 	orgWideReadAccessOptions,
@@ -150,6 +154,9 @@ function OrgGrantsContent({
 					{message.text}
 				</AccountManagementMessage>
 			) : null}
+			{data?.ok && data.people.length > 0 ? (
+				<GiveAccessPicker orgSlug={data.org.slug} people={data.people} />
+			) : null}
 			{data?.ok ? (
 				<AccountManagementPanel
 					title="Access grants"
@@ -157,9 +164,8 @@ function OrgGrantsContent({
 				>
 					{data.grants.length === 0 ? (
 						<p css={mutedCopyCss} data-testid="org-grants-empty">
-							No grants yet. Grant access with{' '}
-							<code css={codeCss}>accessGrant</code> or invite someone to a
-							package. Outside collaborators appear on{' '}
+							No grants yet. Use Give someone access above, or invite someone to
+							a package. Outside collaborators appear on{' '}
 							<SiteLink href={orgCollaboratorsPath(data.org.slug)}>
 								Collaborators
 							</SiteLink>
@@ -194,7 +200,21 @@ function OrgGrantsContent({
 												)}
 											</span>
 											<span css={rowTextCss}>
-												<span css={rowNameCss}>{grantSummary(grant)}</span>
+												<span css={rowNameCss}>
+													{grant.subjectType === 'user' ? (
+														<SiteLink
+															href={orgGrantAccessPath(
+																data.org.slug,
+																grant.subjectId,
+															)}
+															data-testid="org-grant-subject"
+														>
+															{grantSummary(grant)}
+														</SiteLink>
+													) : (
+														grantSummary(grant)
+													)}
+												</span>
 												<span css={rowDetailCss}>{grantDetail(grant)}</span>
 											</span>
 											{data.canManage && grant.canRevoke ? (
@@ -276,6 +296,82 @@ function OrgGrantsContent({
 				</>
 			) : null}
 		</AccountManagementShell>
+	)
+}
+
+function GiveAccessPicker({
+	orgSlug,
+	people,
+}: {
+	orgSlug: string
+	people: OrgGrantsLoaderData['people']
+}) {
+	const [userId, setUserId] = useState('')
+	const members = people.filter((person) => person.kind === 'member')
+	const outside = people.filter((person) => person.kind === 'collaborator')
+	return (
+		<AccountManagementPanel
+			title="Give someone access"
+			description="Open one person's access page to see everything they can use here, add packages and credentials in one go, or trim what they have."
+		>
+			<div css={formCss} data-testid="org-give-access">
+				<label css={accountFieldCss}>
+					<span css={accountFieldLabelCss}>Person</span>
+					<select
+						value={userId}
+						data-field-ring
+						data-testid="org-give-access-person"
+						css={selectCss}
+						onChange={(event) => setUserId(event.currentTarget.value)}
+					>
+						<option value="">Choose a member or collaborator…</option>
+						{members.length > 0 ? (
+							<optgroup label="Members">
+								{members.map((person) => (
+									<option key={person.userId} value={person.userId}>
+										{person.label}
+									</option>
+								))}
+							</optgroup>
+						) : null}
+						{outside.length > 0 ? (
+							<optgroup label="Outside collaborators">
+								{outside.map((person) => (
+									<option key={person.userId} value={person.userId}>
+										{person.label}
+									</option>
+								))}
+							</optgroup>
+						) : null}
+					</select>
+					<span css={accountFieldNoteCss}>
+						Someone new? Invite them on Members first. Owners already have full
+						access.
+					</span>
+				</label>
+				<div css={accountActionsCss}>
+					{userId ? (
+						<SiteLink
+							href={orgGrantAccessPath(orgSlug, userId)}
+							data-testid="org-give-access-open"
+							css={getPillButtonCss({ size: 'sm' })}
+						>
+							{renderIcon('key', { size: '1.05rem' })}
+							Open access page
+						</SiteLink>
+					) : (
+						<button
+							type="button"
+							disabled
+							css={getPillButtonCss({ size: 'sm' })}
+						>
+							{renderIcon('key', { size: '1.05rem' })}
+							Open access page
+						</button>
+					)}
+				</div>
+			</div>
+		</AccountManagementPanel>
 	)
 }
 
@@ -521,10 +617,6 @@ const mutedCopyCss = {
 	margin: 0,
 	color: colors.textMuted,
 	lineHeight: 1.5,
-}
-
-const codeCss = {
-	fontSize: '0.9em',
 }
 
 const listCss = {

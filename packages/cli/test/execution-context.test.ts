@@ -924,7 +924,14 @@ export default async function main(p) {
 	const { signed, serverKeys } = await serverFrames([
 		{
 			t: 'welcome',
-			body: { sid: 'sid_test', grantVersion: 1, grant: { fs: [] } },
+			// The fake server never answers pings; a slow workerd start must not
+			// hit the 30s ping + 10s pong heartbeat close first.
+			body: {
+				sid: 'sid_test',
+				grantVersion: 1,
+				grant: { fs: [] },
+				pingMs: 300_000,
+			},
 		},
 		{
 			t: 'grant.update',
@@ -996,7 +1003,8 @@ export default async function main(p) {
 		['host-operator-only', 'fs'],
 	)
 	const result = frames.find((frame) => frame.t === 'run.result')
-	assert.equal(result?.body.isError, false, JSON.stringify(result?.body))
+	assert.ok(result, 'the daemon never sent run.result')
+	assert.equal(result.body.isError, false, JSON.stringify(result.body))
 	// Outside the mounts the host is unreachable: EACCES from the bridge, or
 	// ENOENT when the path falls in workerd's own virtual /tmp (Linux tmpdir).
 	assert.match(
@@ -1328,6 +1336,8 @@ export default async function main(p) {
 				sid: 'sid_test',
 				grantVersion: 1,
 				grant: { fs: [], commands: { enabled: true } },
+				// See the fs test: keep the heartbeat out of a slow workerd run.
+				pingMs: 300_000,
 			},
 		},
 		{
@@ -1399,7 +1409,8 @@ export default async function main(p) {
 	hostCommands.killAll('shutdown')
 	const frames = decoded()
 	const result = frames.find((frame) => frame.t === 'run.result')
-	assert.equal(result?.body.isError, false, JSON.stringify(result?.body))
+	assert.ok(result, 'the daemon never sent run.result')
+	assert.equal(result.body.isError, false, JSON.stringify(result.body))
 	const value = (result?.body.structuredContent as { result: any }).result
 	assert.equal(value.fg.exitCode, 2)
 	assert.equal(

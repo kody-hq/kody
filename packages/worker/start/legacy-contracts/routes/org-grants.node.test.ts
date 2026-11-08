@@ -57,6 +57,7 @@ test('revoke is offered only for grants the viewer may revoke', async () => {
 		ok: true,
 		org,
 		canManage: true,
+		people: [],
 		orgWideRead: null,
 		grants: [grant('grant-ok', true), grant('grant-denied', false)],
 	})
@@ -77,6 +78,7 @@ test('a viewer who cannot manage members sees no revoke buttons', async () => {
 		ok: true,
 		org,
 		canManage: false,
+		people: [],
 		orgWideRead: null,
 		grants: [grant('grant-resource-ok', true)],
 	})
@@ -90,6 +92,7 @@ test('organization grants read as labels, not raw permission ids', async () => {
 		ok: true,
 		org,
 		canManage: false,
+		people: [],
 		orgWideRead: null,
 		grants: [
 			{
@@ -116,6 +119,7 @@ test('the read access form lists members and teams with read-only options', asyn
 		org: { ...org, role: 'owner' },
 		canManage: true,
 		grants: [],
+		people: [],
 		orgWideRead: {
 			subjects: [
 				{
@@ -161,6 +165,7 @@ test('the read access form is hidden from viewers who cannot grant', async () =>
 		org,
 		canManage: false,
 		grants: [],
+		people: [],
 		orgWideRead: null,
 	})
 	expect(html).not.toContain('data-testid="org-wide-read-form"')
