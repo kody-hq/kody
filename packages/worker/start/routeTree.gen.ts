@@ -264,6 +264,7 @@ import { Route as AppAtChar123orgSlugChar125CredentialsCredentialIdRouteImport }
 import { Route as AppAtChar123orgSlugChar125CredentialsNewRouteImport } from './routes/_app.@{$orgSlug}_.-.credentials_.new'
 import { Route as AppAtChar123orgSlugChar125EmailMessageIdRouteImport } from './routes/_app.@{$orgSlug}_.-.email_.$messageId'
 import { Route as AppAtChar123orgSlugChar125ExecutionContextsContextIdRouteImport } from './routes/_app.@{$orgSlug}_.-.execution-contexts_.$contextId'
+import { Route as AppAtChar123orgSlugChar125GrantsEveryoneRouteImport } from './routes/_app.@{$orgSlug}_.-.grants_.everyone'
 import { Route as AppAtChar123orgSlugChar125IntegrationsIntegrationNameRouteImport } from './routes/_app.@{$orgSlug}_.-.integrations_.$integrationName'
 import { Route as AppAtChar123orgSlugChar125IntegrationsApproveRouteImport } from './routes/_app.@{$orgSlug}_.-.integrations_.approve'
 import { Route as AppAtChar123orgSlugChar125JobsJobIdRouteImport } from './routes/_app.@{$orgSlug}_.-.jobs_.$jobId'
@@ -285,6 +286,7 @@ import { Route as AppAccountSecretsUserSecretNameRouteImport } from './routes/_a
 import { Route as AccountReposRepoIdIconIconCommitRouteImport } from './routes/account_.repos_.$repoId_.icon_.$iconCommit'
 import { Route as AppAtChar123orgSlugChar125AgentsNewAgentRouteImport } from './routes/_app.@{$orgSlug}_.-.agents_.new_.$agent'
 import { Route as AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRouteImport } from './routes/_app.@{$orgSlug}_.-.credentials_.$credentialId_.local-reads'
+import { Route as AppAtChar123orgSlugChar125GrantsTeamTeamIdRouteImport } from './routes/_app.@{$orgSlug}_.-.grants_.team.$teamId'
 import { Route as AppAtChar123orgSlugChar125GrantsUserUserIdRouteImport } from './routes/_app.@{$orgSlug}_.-.grants_.user.$userId'
 import { Route as AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRouteImport } from './routes/_app.@{$orgSlug}_.-.integrations_.apps.$appSlug'
 import { Route as AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRouteImport } from './routes/_app.@{$orgSlug}_.-.mcp-servers_.$serverId_.authorize'
@@ -1681,6 +1683,12 @@ const AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute =
     path: '/@{$orgSlug}/-/execution-contexts/$contextId',
     getParentRoute: () => AppRoute,
   } as any)
+const AppAtChar123orgSlugChar125GrantsEveryoneRoute =
+  AppAtChar123orgSlugChar125GrantsEveryoneRouteImport.update({
+    id: '/@{$orgSlug}_/-/grants_/everyone',
+    path: '/@{$orgSlug}/-/grants/everyone',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute =
   AppAtChar123orgSlugChar125IntegrationsIntegrationNameRouteImport.update({
     id: '/@{$orgSlug}_/-/integrations_/$integrationName',
@@ -1809,6 +1817,12 @@ const AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute =
       getParentRoute: () => AppRoute,
     } as any,
   )
+const AppAtChar123orgSlugChar125GrantsTeamTeamIdRoute =
+  AppAtChar123orgSlugChar125GrantsTeamTeamIdRouteImport.update({
+    id: '/@{$orgSlug}_/-/grants_/team/$teamId',
+    path: '/@{$orgSlug}/-/grants/team/$teamId',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAtChar123orgSlugChar125GrantsUserUserIdRoute =
   AppAtChar123orgSlugChar125GrantsUserUserIdRouteImport.update({
     id: '/@{$orgSlug}_/-/grants_/user/$userId',
@@ -2129,6 +2143,7 @@ export interface FileRoutesByFullPath {
   '/@{$orgSlug}/-/credentials/new': typeof AppAtChar123orgSlugChar125CredentialsNewRoute
   '/@{$orgSlug}/-/email/$messageId': typeof AppAtChar123orgSlugChar125EmailMessageIdRoute
   '/@{$orgSlug}/-/execution-contexts/$contextId': typeof AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute
+  '/@{$orgSlug}/-/grants/everyone': typeof AppAtChar123orgSlugChar125GrantsEveryoneRoute
   '/@{$orgSlug}/-/integrations/$integrationName': typeof AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute
   '/@{$orgSlug}/-/integrations/approve': typeof AppAtChar123orgSlugChar125IntegrationsApproveRoute
   '/@{$orgSlug}/-/jobs/$jobId': typeof AppAtChar123orgSlugChar125JobsJobIdRoute
@@ -2150,6 +2165,7 @@ export interface FileRoutesByFullPath {
   '/account/repos/$repoId/icon/$iconCommit': typeof AccountReposRepoIdIconIconCommitRoute
   '/@{$orgSlug}/-/agents/new/$agent': typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
   '/@{$orgSlug}/-/credentials/$credentialId/local-reads': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute
+  '/@{$orgSlug}/-/grants/team/$teamId': typeof AppAtChar123orgSlugChar125GrantsTeamTeamIdRoute
   '/@{$orgSlug}/-/grants/user/$userId': typeof AppAtChar123orgSlugChar125GrantsUserUserIdRoute
   '/@{$orgSlug}/-/integrations/apps/$appSlug': typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
   '/@{$orgSlug}/-/mcp-servers/$serverId/authorize': typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
@@ -2415,6 +2431,7 @@ export interface FileRoutesByTo {
   '/@{$orgSlug}/-/credentials/new': typeof AppAtChar123orgSlugChar125CredentialsNewRoute
   '/@{$orgSlug}/-/email/$messageId': typeof AppAtChar123orgSlugChar125EmailMessageIdRoute
   '/@{$orgSlug}/-/execution-contexts/$contextId': typeof AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute
+  '/@{$orgSlug}/-/grants/everyone': typeof AppAtChar123orgSlugChar125GrantsEveryoneRoute
   '/@{$orgSlug}/-/integrations/$integrationName': typeof AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute
   '/@{$orgSlug}/-/integrations/approve': typeof AppAtChar123orgSlugChar125IntegrationsApproveRoute
   '/@{$orgSlug}/-/jobs/$jobId': typeof AppAtChar123orgSlugChar125JobsJobIdRoute
@@ -2436,6 +2453,7 @@ export interface FileRoutesByTo {
   '/account/repos/$repoId/icon/$iconCommit': typeof AccountReposRepoIdIconIconCommitRoute
   '/@{$orgSlug}/-/agents/new/$agent': typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
   '/@{$orgSlug}/-/credentials/$credentialId/local-reads': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute
+  '/@{$orgSlug}/-/grants/team/$teamId': typeof AppAtChar123orgSlugChar125GrantsTeamTeamIdRoute
   '/@{$orgSlug}/-/grants/user/$userId': typeof AppAtChar123orgSlugChar125GrantsUserUserIdRoute
   '/@{$orgSlug}/-/integrations/apps/$appSlug': typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
   '/@{$orgSlug}/-/mcp-servers/$serverId/authorize': typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
@@ -2704,6 +2722,7 @@ export interface FileRoutesById {
   '/_app/@{$orgSlug}_/-/credentials_/new': typeof AppAtChar123orgSlugChar125CredentialsNewRoute
   '/_app/@{$orgSlug}_/-/email_/$messageId': typeof AppAtChar123orgSlugChar125EmailMessageIdRoute
   '/_app/@{$orgSlug}_/-/execution-contexts_/$contextId': typeof AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute
+  '/_app/@{$orgSlug}_/-/grants_/everyone': typeof AppAtChar123orgSlugChar125GrantsEveryoneRoute
   '/_app/@{$orgSlug}_/-/integrations_/$integrationName': typeof AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute
   '/_app/@{$orgSlug}_/-/integrations_/approve': typeof AppAtChar123orgSlugChar125IntegrationsApproveRoute
   '/_app/@{$orgSlug}_/-/jobs_/$jobId': typeof AppAtChar123orgSlugChar125JobsJobIdRoute
@@ -2725,6 +2744,7 @@ export interface FileRoutesById {
   '/account_/repos_/$repoId_/icon_/$iconCommit': typeof AccountReposRepoIdIconIconCommitRoute
   '/_app/@{$orgSlug}_/-/agents_/new_/$agent': typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
   '/_app/@{$orgSlug}_/-/credentials_/$credentialId_/local-reads': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute
+  '/_app/@{$orgSlug}_/-/grants_/team/$teamId': typeof AppAtChar123orgSlugChar125GrantsTeamTeamIdRoute
   '/_app/@{$orgSlug}_/-/grants_/user/$userId': typeof AppAtChar123orgSlugChar125GrantsUserUserIdRoute
   '/_app/@{$orgSlug}_/-/integrations_/apps/$appSlug': typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
   '/_app/@{$orgSlug}_/-/mcp-servers_/$serverId_/authorize': typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
@@ -2993,6 +3013,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/credentials/new'
     | '/@{$orgSlug}/-/email/$messageId'
     | '/@{$orgSlug}/-/execution-contexts/$contextId'
+    | '/@{$orgSlug}/-/grants/everyone'
     | '/@{$orgSlug}/-/integrations/$integrationName'
     | '/@{$orgSlug}/-/integrations/approve'
     | '/@{$orgSlug}/-/jobs/$jobId'
@@ -3014,6 +3035,7 @@ export interface FileRouteTypes {
     | '/account/repos/$repoId/icon/$iconCommit'
     | '/@{$orgSlug}/-/agents/new/$agent'
     | '/@{$orgSlug}/-/credentials/$credentialId/local-reads'
+    | '/@{$orgSlug}/-/grants/team/$teamId'
     | '/@{$orgSlug}/-/grants/user/$userId'
     | '/@{$orgSlug}/-/integrations/apps/$appSlug'
     | '/@{$orgSlug}/-/mcp-servers/$serverId/authorize'
@@ -3279,6 +3301,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/credentials/new'
     | '/@{$orgSlug}/-/email/$messageId'
     | '/@{$orgSlug}/-/execution-contexts/$contextId'
+    | '/@{$orgSlug}/-/grants/everyone'
     | '/@{$orgSlug}/-/integrations/$integrationName'
     | '/@{$orgSlug}/-/integrations/approve'
     | '/@{$orgSlug}/-/jobs/$jobId'
@@ -3300,6 +3323,7 @@ export interface FileRouteTypes {
     | '/account/repos/$repoId/icon/$iconCommit'
     | '/@{$orgSlug}/-/agents/new/$agent'
     | '/@{$orgSlug}/-/credentials/$credentialId/local-reads'
+    | '/@{$orgSlug}/-/grants/team/$teamId'
     | '/@{$orgSlug}/-/grants/user/$userId'
     | '/@{$orgSlug}/-/integrations/apps/$appSlug'
     | '/@{$orgSlug}/-/mcp-servers/$serverId/authorize'
@@ -3567,6 +3591,7 @@ export interface FileRouteTypes {
     | '/_app/@{$orgSlug}_/-/credentials_/new'
     | '/_app/@{$orgSlug}_/-/email_/$messageId'
     | '/_app/@{$orgSlug}_/-/execution-contexts_/$contextId'
+    | '/_app/@{$orgSlug}_/-/grants_/everyone'
     | '/_app/@{$orgSlug}_/-/integrations_/$integrationName'
     | '/_app/@{$orgSlug}_/-/integrations_/approve'
     | '/_app/@{$orgSlug}_/-/jobs_/$jobId'
@@ -3588,6 +3613,7 @@ export interface FileRouteTypes {
     | '/account_/repos_/$repoId_/icon_/$iconCommit'
     | '/_app/@{$orgSlug}_/-/agents_/new_/$agent'
     | '/_app/@{$orgSlug}_/-/credentials_/$credentialId_/local-reads'
+    | '/_app/@{$orgSlug}_/-/grants_/team/$teamId'
     | '/_app/@{$orgSlug}_/-/grants_/user/$userId'
     | '/_app/@{$orgSlug}_/-/integrations_/apps/$appSlug'
     | '/_app/@{$orgSlug}_/-/mcp-servers_/$serverId_/authorize'
@@ -5520,6 +5546,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAtChar123orgSlugChar125ExecutionContextsContextIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/@{$orgSlug}_/-/grants_/everyone': {
+      id: '/_app/@{$orgSlug}_/-/grants_/everyone'
+      path: '/@{$orgSlug}/-/grants/everyone'
+      fullPath: '/@{$orgSlug}/-/grants/everyone'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125GrantsEveryoneRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/@{$orgSlug}_/-/integrations_/$integrationName': {
       id: '/_app/@{$orgSlug}_/-/integrations_/$integrationName'
       path: '/@{$orgSlug}/-/integrations/$integrationName'
@@ -5665,6 +5698,13 @@ declare module '@tanstack/react-router' {
       path: '/@{$orgSlug}/-/credentials/$credentialId/local-reads'
       fullPath: '/@{$orgSlug}/-/credentials/$credentialId/local-reads'
       preLoaderRoute: typeof AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/grants_/team/$teamId': {
+      id: '/_app/@{$orgSlug}_/-/grants_/team/$teamId'
+      path: '/@{$orgSlug}/-/grants/team/$teamId'
+      fullPath: '/@{$orgSlug}/-/grants/team/$teamId'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125GrantsTeamTeamIdRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/@{$orgSlug}_/-/grants_/user/$userId': {
@@ -5874,6 +5914,7 @@ interface AppRouteChildren {
   AppAtChar123orgSlugChar125CredentialsNewRoute: typeof AppAtChar123orgSlugChar125CredentialsNewRoute
   AppAtChar123orgSlugChar125EmailMessageIdRoute: typeof AppAtChar123orgSlugChar125EmailMessageIdRoute
   AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute: typeof AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute
+  AppAtChar123orgSlugChar125GrantsEveryoneRoute: typeof AppAtChar123orgSlugChar125GrantsEveryoneRoute
   AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute: typeof AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute
   AppAtChar123orgSlugChar125IntegrationsApproveRoute: typeof AppAtChar123orgSlugChar125IntegrationsApproveRoute
   AppAtChar123orgSlugChar125JobsJobIdRoute: typeof AppAtChar123orgSlugChar125JobsJobIdRoute
@@ -5894,6 +5935,7 @@ interface AppRouteChildren {
   AppAccountSecretsUserSecretNameRoute: typeof AppAccountSecretsUserSecretNameRoute
   AppAtChar123orgSlugChar125AgentsNewAgentRoute: typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
   AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute: typeof AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute
+  AppAtChar123orgSlugChar125GrantsTeamTeamIdRoute: typeof AppAtChar123orgSlugChar125GrantsTeamTeamIdRoute
   AppAtChar123orgSlugChar125GrantsUserUserIdRoute: typeof AppAtChar123orgSlugChar125GrantsUserUserIdRoute
   AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute: typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
   AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute: typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
@@ -6069,6 +6111,8 @@ const AppRouteChildren: AppRouteChildren = {
     AppAtChar123orgSlugChar125EmailMessageIdRoute,
   AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute:
     AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute,
+  AppAtChar123orgSlugChar125GrantsEveryoneRoute:
+    AppAtChar123orgSlugChar125GrantsEveryoneRoute,
   AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute:
     AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute,
   AppAtChar123orgSlugChar125IntegrationsApproveRoute:
@@ -6106,6 +6150,8 @@ const AppRouteChildren: AppRouteChildren = {
     AppAtChar123orgSlugChar125AgentsNewAgentRoute,
   AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute:
     AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute,
+  AppAtChar123orgSlugChar125GrantsTeamTeamIdRoute:
+    AppAtChar123orgSlugChar125GrantsTeamTeamIdRoute,
   AppAtChar123orgSlugChar125GrantsUserUserIdRoute:
     AppAtChar123orgSlugChar125GrantsUserUserIdRoute,
   AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute:

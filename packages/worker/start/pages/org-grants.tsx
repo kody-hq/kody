@@ -4,35 +4,20 @@ import type {
 	OrgGrantView,
 } from '#universal/loader-data.ts'
 import {
-	orgCollaboratorsPath,
+	orgEveryoneGrantAccessPath,
 	orgGrantAccessPath,
 	orgRoleLabel,
-	orgTeamsPath,
+	orgTeamGrantAccessPath,
 } from '#universal/org-pages.ts'
-import {
-	orgWideReadAccessLabel,
-	orgWideReadAccessOptions,
-} from '#universal/org-wide-read-access.ts'
-import {
-	orgCreateAccessLabel,
-	orgCreateAccessOptions,
-} from '#universal/org-create-access.ts'
+import { orgWideReadAccessOptions } from '#universal/org-wide-read-access.ts'
+import { orgCreateAccessOptions } from '#universal/org-create-access.ts'
 import {
 	heldOrgWideManageOptions,
-	orgWideManageAccessLabel,
 	orgWideManageAccessOptions,
 	orgWideManagePermissionsFor,
 } from '#universal/org-wide-manage-access.ts'
-import {
-	getDangerPillCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
-import {
-	colors,
-	radius,
-	spacing,
-	typography,
-} from '#universal/styles/tokens.ts'
+import { getPillButtonCss } from '#universal/styles/style-primitives.ts'
+import { colors, radius, spacing } from '#universal/styles/tokens.ts'
 import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import type { QueryKey } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
@@ -54,9 +39,9 @@ import {
 	grantOrganizationCreateAccess,
 	grantOrganizationManageAccess,
 	grantOrganizationReadAccess,
-	revokeOrganizationGrant,
 } from '#start/server/org-mutations'
 import { useOrgPeopleMutation } from './org-people-mutation.ts'
+import { grantCountsSummary, grantedTypes } from './org-grant-summary.ts'
 import {
 	RecordTable,
 	RecordTableSearch,
@@ -64,110 +49,11 @@ import {
 	type RecordTableColumn,
 	type RecordTableRow,
 } from './record-table.tsx'
-function grantSummary(grant: OrgGrantView) {
-	if (grant.resourceType === 'org') {
-		return `${grant.subjectLabel} · Organization-wide access`
-	}
-	const access = grant.presetLabel ?? 'Custom permissions'
-	return `${grant.subjectLabel} · ${access} on ${grant.resourceLabel}`
-}
-
-function grantDetail(grant: OrgGrantView) {
-	if (grant.preset) return resourceTypeLabel(grant.resourceType)
-	const reads = grant.permissions.flatMap(
-		(permission) => orgWideReadAccessLabel(permission) ?? [],
-	)
-	const creates = grant.permissions.flatMap(
-		(permission) => orgCreateAccessLabel(permission) ?? [],
-	)
-	const manages = orgWideManageAccessOptions
-		.filter((option) =>
-			heldOrgWideManageOptions(grant.permissions).includes(option.permission),
-		)
-		.map((option) => option.label)
-	const other = grant.permissions.filter(
-		(permission) =>
-			!orgWideReadAccessLabel(permission) &&
-			!orgCreateAccessLabel(permission) &&
-			!(
-				orgWideManageAccessLabel(permission) &&
-				manages.includes(orgWideManageAccessLabel(permission) ?? '')
-			),
-	)
-	const parts = [
-		...(manages.length > 0 ? [`Manage: ${manages.join(', ')}`] : []),
-		...(creates.length > 0 ? [`Create: ${creates.join(', ')}`] : []),
-		...(reads.length > 0 ? [`Read: ${reads.join(', ')}`] : []),
-		...other,
-	]
-	return `${resourceTypeLabel(grant.resourceType)} · ${parts.join(', ') || 'no permissions'}`
-}
-
-function resourceTypeLabel(resourceType: string) {
-	switch (resourceType) {
-		case 'org':
-			return 'Organization'
-		case 'package':
-			return 'Package'
-		case 'app':
-			return 'Package app'
-		case 'job':
-			return 'Job'
-		case 'credential':
-			return 'Credential'
-		case 'memory':
-			return 'Memory'
-		case 'email':
-			return 'Email'
-		case 'execution_context':
-			return 'Execution context'
-		default:
-			return resourceType
-	}
-}
-
 export function OrgGrantsPage(props: {
 	data: OrgGrantsLoaderData
 	queryKey: QueryKey
 }) {
 	return <OrgGrantsContent key={JSON.stringify(props.queryKey)} {...props} />
-}
-
-const resourceTypeNouns: Record<string, [string, string]> = {
-	package: ['package', 'packages'],
-	app: ['app', 'apps'],
-	credential: ['credential', 'credentials'],
-	org: ['organization-wide grant', 'organization-wide grants'],
-	job: ['job', 'jobs'],
-	memory: ['memory', 'memories'],
-	email: ['email inbox', 'email inboxes'],
-	execution_context: ['execution context', 'execution contexts'],
-}
-
-const resourceTypeOrder = Object.keys(resourceTypeNouns)
-
-/** "3 packages, 2 credentials" for one subject's direct grants. */
-function grantCountsSummary(grants: ReadonlyArray<OrgGrantView>) {
-	const counts = new Map<string, number>()
-	for (const grant of grants) {
-		const type =
-			grant.resourceType in resourceTypeNouns ? grant.resourceType : 'other'
-		counts.set(type, (counts.get(type) ?? 0) + 1)
-	}
-	return [...counts.entries()]
-		.sort(
-			([a], [b]) =>
-				(resourceTypeOrder.indexOf(a) >>> 0) -
-				(resourceTypeOrder.indexOf(b) >>> 0),
-		)
-		.map(([type, count]) => {
-			const [one, many] = resourceTypeNouns[type] ?? [
-				'other grant',
-				'other grants',
-			]
-			return `${count} ${count === 1 ? one : many}`
-		})
-		.join(', ')
 }
 
 type GrantSubjectKind = 'member' | 'collaborator' | 'team' | 'everyone'
@@ -192,19 +78,6 @@ const resourceTypeFilters = [
 	{ value: 'other', label: 'Other resources' },
 ]
 
-function grantedTypes(grants: ReadonlyArray<OrgGrantView>) {
-	return [
-		...new Set(
-			grants.map((grant) =>
-				grant.resourceType in resourceTypeNouns &&
-				['package', 'app', 'credential', 'org'].includes(grant.resourceType)
-					? grant.resourceType
-					: 'other',
-			),
-		),
-	].join(' ')
-}
-
 const peopleColumns: Array<RecordTableColumn> = [
 	{ key: 'name', label: 'Who', primary: true },
 	{
@@ -224,6 +97,10 @@ const peopleColumns: Array<RecordTableColumn> = [
 ]
 
 const orgGrantsPageSize = 25
+
+function memberCountLabel(count: number) {
+	return `${count} ${count === 1 ? 'member' : 'members'}`
+}
 
 /** Owners and Admins hold access through their role, not through grants. */
 function roleAccessSummary(role: OrgRole | null) {
@@ -260,9 +137,20 @@ function OrgGrantsPeopleTable({ data }: { data: OrgGrantsLoaderData }) {
 				role: null,
 			})
 		}
+		const teams = [...data.teams]
+		for (const [teamId, grants] of byTeam) {
+			if (teams.some((team) => team.teamId === teamId)) continue
+			teams.push({
+				teamId,
+				slug: teamId,
+				name: grants[0]?.subjectLabel ?? teamId,
+				memberCount: 0,
+			})
+		}
 		const row = (input: {
 			id: string
 			name: string
+			detail?: string
 			kind: GrantSubjectKind
 			role: string
 			access: string
@@ -271,8 +159,9 @@ function OrgGrantsPeopleTable({ data }: { data: OrgGrantsLoaderData }) {
 		}): RecordTableRow => ({
 			id: input.id,
 			href: input.href,
+			selectionLabel: input.name,
 			values: {
-				name: input.name,
+				name: input.detail ? `${input.name} ${input.detail}` : input.name,
 				kind: input.kind,
 				role: input.role,
 				access: input.access,
@@ -303,26 +192,29 @@ function OrgGrantsPeopleTable({ data }: { data: OrgGrantsLoaderData }) {
 						: orgGrantAccessPath(data.org.slug, subject.userId),
 				})
 			}),
-			...[...byTeam.values()].map((grants) =>
-				row({
-					id: `team:${grants[0]!.subjectId}`,
-					name: grants[0]!.subjectLabel,
+			...teams.map((team) => {
+				const grants = byTeam.get(team.teamId) ?? []
+				return row({
+					id: `team:${team.teamId}`,
+					name: team.name,
+					detail: `@${team.slug}`,
 					kind: 'team',
-					role: 'Team',
-					access: grantCountsSummary(grants),
+					role: `Team · ${memberCountLabel(team.memberCount)}`,
+					access: grantCountsSummary(grants) || 'No grants',
 					grants,
-					href: orgTeamsPath(data.org.slug),
-				}),
-			),
-			...(everyone.length > 0
+					href: orgTeamGrantAccessPath(data.org.slug, team.teamId),
+				})
+			}),
+			...(everyone.length > 0 || (data.canManage && !data.org.personal)
 				? [
 						row({
 							id: 'org',
 							name: 'Everyone in this organization',
 							kind: 'everyone',
-							role: 'Everyone',
-							access: grantCountsSummary(everyone),
+							role: `Everyone · ${memberCountLabel(data.memberCount)}`,
+							access: grantCountsSummary(everyone) || 'No grants',
 							grants: everyone,
+							href: orgEveryoneGrantAccessPath(data.org.slug),
 						}),
 					]
 				: []),
@@ -331,13 +223,15 @@ function OrgGrantsPeopleTable({ data }: { data: OrgGrantsLoaderData }) {
 	const filtered = Boolean(query || kind || type)
 	return (
 		<AccountManagementPanel
-			title="People with access"
-			ariaLabel="People with access"
+			title="Who has access"
+			description="People, teams, and everyone in the organization. Open a row to see and change its grants."
+			ariaLabel="Who has access"
 		>
 			<RecordTable
 				mode="none"
 				dense
-				ariaLabel="People with access"
+				stackWhenNarrow
+				ariaLabel="Who has access"
 				columns={peopleColumns}
 				rows={rows}
 				emptyLabel={
@@ -362,7 +256,7 @@ function OrgGrantsPeopleTable({ data }: { data: OrgGrantsLoaderData }) {
 				toolbar={
 					<>
 						<RecordTableSearch
-							label="Search people"
+							label="Search people and teams"
 							placeholder="Search people or teams"
 							value={query}
 							onInput={(value) => {
@@ -371,7 +265,7 @@ function OrgGrantsPeopleTable({ data }: { data: OrgGrantsLoaderData }) {
 							}}
 						/>
 						<RecordTableSelect
-							label="Filter by person"
+							label="Filter by who"
 							value={kind}
 							onChange={(value) => {
 								setKind(value as '' | GrantSubjectKind)
@@ -425,16 +319,6 @@ function OrgGrantsContent({
 	data: OrgGrantsLoaderData
 	queryKey: QueryKey
 }) {
-	const capture = useSubmitterScope()
-	const [armed, setArmed] = useState<string | null>(null)
-	const [message, setMessage] = useState<{
-		tone: 'info' | 'error'
-		text: string
-	} | null>(null)
-	const mutation = useOrgPeopleMutation(queryKey, revokeOrganizationGrant)
-	const sharedGrants = data.grants.filter(
-		(grant) => grant.subjectType !== 'user',
-	)
 	return (
 		<AccountManagementShell
 			layout="list"
@@ -446,118 +330,10 @@ function OrgGrantsContent({
 				description="Who can use packages and other resources in this organization."
 				currentHref={`/@${data.org.slug}/-/grants`}
 			/>
-			{message ? (
-				<AccountManagementMessage tone={message.tone}>
-					{message.text}
-				</AccountManagementMessage>
-			) : null}
 			{data?.ok && data.people.length > 0 ? (
 				<GiveAccessPicker orgSlug={data.org.slug} people={data.people} />
 			) : null}
 			{data?.ok ? <OrgGrantsPeopleTable data={data} /> : null}
-			{data?.ok ? (
-				<AccountManagementPanel
-					title="Team and organization-wide grants"
-					ariaLabel="Team and organization-wide grants"
-				>
-					{sharedGrants.length === 0 ? (
-						<p css={mutedCopyCss} data-testid="org-grants-empty">
-							No team or organization-wide grants. Outside collaborators appear
-							on{' '}
-							<SiteLink href={orgCollaboratorsPath(data.org.slug)}>
-								Collaborators
-							</SiteLink>
-							{data.org.role === 'owner' ||
-							data.org.role === 'admin' ||
-							data.org.role === 'member' ? (
-								<>
-									; team subjects are managed under{' '}
-									<SiteLink href={orgTeamsPath(data.org.slug)}>Teams</SiteLink>
-								</>
-							) : null}
-							.
-						</p>
-					) : (
-						<ul css={listCss} data-testid="org-grants">
-							{sharedGrants.map((grant) => {
-								const confirmed = armed === grant.id
-								return (
-									<li
-										key={grant.id}
-										data-testid="org-grant"
-										data-grant-id={grant.id}
-										css={rowItemCss}
-									>
-										<div css={rowCss}>
-											<span aria-hidden="true" css={iconCss}>
-												{renderIcon(
-													grant.subjectType === 'org'
-														? 'globe'
-														: grant.subjectType === 'team'
-															? 'users'
-															: 'user',
-													{ size: '1.25rem' },
-												)}
-											</span>
-											<span css={rowTextCss}>
-												<span css={rowNameCss}>{grantSummary(grant)}</span>
-												<span css={rowDetailCss}>{grantDetail(grant)}</span>
-											</span>
-											{data.canManage && grant.canRevoke ? (
-												<button
-													type="button"
-													data-testid="org-grant-revoke"
-													css={getDangerPillCss({ size: 'sm' })}
-													disabled={mutation.isPending}
-													onBlur={() => setArmed(null)}
-													onKeyDown={(event) => {
-														if (event.key === 'Escape') setArmed(null)
-													}}
-													onClick={() => {
-														if (!confirmed) {
-															setArmed(grant.id)
-															return
-														}
-														const isCurrent = capture()
-														setMessage(null)
-														mutation.mutate(
-															{
-																orgSlug: data.org.slug,
-																grantId: grant.id,
-															},
-															{
-																onSuccess: () => {
-																	if (isCurrent()) {
-																		setArmed(null)
-																		setMessage({
-																			tone: 'info',
-																			text: 'Grant revoked.',
-																		})
-																	}
-																},
-																onError: (error) => {
-																	if (isCurrent())
-																		setMessage({
-																			tone: 'error',
-																			text: error.message,
-																		})
-																},
-															},
-														)
-													}}
-												>
-													{renderIcon('close', { size: '1.05rem' })}
-													{confirmed ? 'Confirm revoke' : 'Revoke'}
-												</button>
-											) : null}
-										</div>
-									</li>
-								)
-							})}
-						</ul>
-					)}
-				</AccountManagementPanel>
-			) : null}
 			{data?.ok && data.orgWideRead ? (
 				<>
 					<OrgWideAccessForm
@@ -903,60 +679,6 @@ const mutedCopyCss = {
 	margin: 0,
 	color: colors.textMuted,
 	lineHeight: 1.5,
-}
-
-const listCss = {
-	listStyle: 'none',
-	margin: 0,
-	padding: 0,
-	display: 'grid',
-	gap: spacing.sm,
-}
-
-const rowItemCss = {
-	minWidth: 0,
-}
-
-const rowCss = {
-	display: 'flex',
-	alignItems: 'center',
-	gap: spacing.md,
-	minWidth: 0,
-	padding: '0.85rem 1rem',
-	borderRadius: radius.card,
-	border: `1.5px solid ${colors.border}`,
-	backgroundColor: colors.surface,
-}
-
-const rowTextCss = {
-	display: 'grid',
-	gap: '0.15rem',
-	minWidth: 0,
-	flex: '1 1 auto',
-}
-
-const rowNameCss = {
-	fontWeight: 650,
-	overflow: 'hidden',
-	textOverflow: 'ellipsis',
-	whiteSpace: 'nowrap' as const,
-}
-
-const rowDetailCss = {
-	fontSize: typography.fontSize.sm,
-	color: colors.textMuted,
-}
-
-const iconCss = {
-	display: 'inline-flex',
-	alignItems: 'center',
-	justifyContent: 'center',
-	width: '2.75rem',
-	height: '2.75rem',
-	borderRadius: radius.full,
-	color: colors.textMuted,
-	backgroundColor: colors.background,
-	flexShrink: 0,
 }
 
 const formCss = {

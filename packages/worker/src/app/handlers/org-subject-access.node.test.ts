@@ -20,9 +20,11 @@ import {
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
 import { resolveOrgManagementAccess } from '#app/org-management-access.ts'
+import { revokeOrganizationGrants } from './org-grants.ts'
 import {
 	grantOrganizationSubjectAccess,
 	loadOrgSubjectAccessData,
+	parseOrgAccessSubjectKey,
 } from './org-subject-access.ts'
 
 const now = '2026-10-13T00:00:00.000Z'
@@ -169,7 +171,52 @@ async function setup() {
 			userId: ids[subject],
 			items,
 		})
-	return { ids, tokenId, load, grant }
+	const loadSubject = async (viewer: Person, key: string) => {
+		const user = await signIn(viewer)
+		const access = await resolveOrgManagementAccess({
+			env,
+			request,
+			user,
+			orgSlug: 'work-co',
+			permission: 'member:read',
+		})
+		if (!access.ok) throw new Error(access.error)
+		const subject = parseOrgAccessSubjectKey(key)
+		if (!subject) throw new Error(`bad subject ${key}`)
+		return loadOrgSubjectAccessData({ env, user, org: access.org, subject })
+	}
+	const grantTo = async (
+		viewer: Person,
+		subject: string,
+		items: Parameters<typeof grantOrganizationSubjectAccess>[0]['items'],
+	) =>
+		grantOrganizationSubjectAccess({
+			request,
+			env,
+			user: await signIn(viewer),
+			orgSlug: 'work-co',
+			subject,
+			items,
+		})
+	const revokeMany = async (viewer: Person, grantIds: Array<string>) =>
+		revokeOrganizationGrants({
+			request,
+			env,
+			user: await signIn(viewer),
+			orgSlug: 'work-co',
+			grantIds,
+		})
+	return {
+		ids,
+		tokenId,
+		orgId,
+		sqlite,
+		load,
+		grant,
+		loadSubject,
+		grantTo,
+		revokeMany,
+	}
 }
 
 test('an Owner gives a member several packages, an app, and a credential in one save', async () => {
@@ -229,7 +276,7 @@ test('an Owner gives a member several packages, an app, and a credential in one 
 test('an outside collaborator with a grant has a page; a stranger and an Owner do not take grants', async () => {
 	const { load, grant } = await setup()
 	const cy = await load('bea', 'cy')
-	expect(cy?.subject.role).toBeNull()
+	expect(cy?.subject).toMatchObject({ kind: 'user', role: null })
 	expect(cy?.grants).toEqual([
 		expect.objectContaining({ id: 'grant-cy', via: 'direct' }),
 	])
@@ -256,4 +303,112 @@ test('a member without member:write sees access read-only and cannot grant', asy
 		{ resourceType: 'package', resourceId: 'pkg-inbox', preset: 'use' },
 	])
 	expect(denied.status).toBe(403)
+})
+
+test('an Owner gives a team access, sees everyone grants as inherited, and bulk revokes', async () => {
+	const { ids, tokenId, orgId, sqlite, loadSubject, grantTo, revokeMany } =
+		await setup()
+	sqlite
+		.prepare(
+			`INSERT INTO teams (id, org_id, slug, name, created_at, updated_at)
+			 VALUES ('team-ops', ?, 'ops', 'Ops', ?, ?)`,
+		)
+		.run(orgId, now, now)
+	sqlite
+		.prepare(
+			`INSERT INTO team_members (team_id, user_id, created_at) VALUES ('team-ops', ?, ?)`,
+		)
+		.run(ids.ann, now)
+	sqlite
+		.prepare(
+			`INSERT INTO grants (id, org_id, resource_type, resource_id, subject_type, subject_id, preset, created_by_user_id, created_at, updated_at)
+			 VALUES ('grant-everyone', ?, 'package', 'pkg-deploy', 'org', ?, 'use', ?, ?, ?)`,
+		)
+		.run(orgId, orgId, ids.bea, now, now)
+
+	const saved = await grantTo('bea', 'team:team-ops', [
+		{ resourceType: 'package', resourceId: 'pkg-inbox', preset: 'use' },
+		{ resourceType: 'app', resourceId: 'pkg-inbox', preset: 'use' },
+		{ resourceType: 'credential', resourceId: tokenId, preset: 'use' },
+	])
+	expect(saved.status).toBe(200)
+
+	const team = await loadSubject('bea', 'team:team-ops')
+	expect(team?.subject).toMatchObject({
+		kind: 'team',
+		teamId: 'team-ops',
+		slug: 'ops',
+		name: 'Ops',
+		memberCount: 1,
+	})
+	expect(team?.canManage).toBe(true)
+	const direct = team!.grants.filter((entry) => entry.via === 'direct')
+	expect(direct.map((entry) => entry.resourceType).sort()).toEqual([
+		'app',
+		'credential',
+		'package',
+	])
+	expect(direct.every((entry) => entry.canRevoke)).toBe(true)
+	expect(team?.grants).toContainEqual(
+		expect.objectContaining({
+			id: 'grant-everyone',
+			via: 'everyone',
+			canRevoke: false,
+		}),
+	)
+
+	// Ann, a team member, inherits the team grants on her own page.
+	const ann = await loadSubject('bea', `user:${ids.ann}`)
+	expect(
+		ann?.grants
+			.filter((entry) => entry.via === 'team')
+			.map((entry) => entry.id),
+	).toEqual(expect.arrayContaining(direct.map((entry) => entry.id)))
+
+	const everyone = await loadSubject('bea', 'org')
+	expect(everyone?.subject).toEqual({ kind: 'org', memberCount: 2 })
+	expect(everyone?.grants).toEqual([
+		expect.objectContaining({ id: 'grant-everyone', via: 'direct' }),
+	])
+
+	const revoked = await revokeMany('bea', [
+		...direct.map((entry) => entry.id),
+		'grant-missing',
+	])
+	expect(revoked.status).toBe(200)
+	if (!revoked.data.ok) throw new Error(revoked.data.error)
+	const body = revoked.data
+	expect(body.results.filter((entry) => entry.ok)).toHaveLength(3)
+	expect(body.results).toContainEqual(
+		expect.objectContaining({ grantId: 'grant-missing', ok: false }),
+	)
+	const after = await loadSubject('bea', 'team:team-ops')
+	expect(after?.grants.filter((entry) => entry.via === 'direct')).toEqual([])
+})
+
+test('a member cannot grant to a team or bulk revoke, and unknown teams have no page', async () => {
+	const { orgId, sqlite, loadSubject, grantTo, revokeMany } = await setup()
+	sqlite
+		.prepare(
+			`INSERT INTO teams (id, org_id, slug, name, created_at, updated_at)
+			 VALUES ('team-ops', ?, 'ops', 'Ops', ?, ?)`,
+		)
+		.run(orgId, now, now)
+	expect(await loadSubject('bea', 'team:team-missing')).toBeNull()
+	const view = await loadSubject('ann', 'team:team-ops')
+	expect(view?.canManage).toBe(false)
+	expect(view?.options).toBeNull()
+	const denied = await grantTo('ann', 'team:team-ops', [
+		{ resourceType: 'package', resourceId: 'pkg-inbox', preset: 'use' },
+	])
+	expect(denied.status).toBe(403)
+	const deniedBulk = await revokeMany('ann', ['grant-cy'])
+	expect(deniedBulk.status).toBe(403)
+	expect(
+		(
+			await grantTo('bea', 'team:team-missing', [
+				{ resourceType: 'package', resourceId: 'pkg-inbox', preset: 'use' },
+			])
+		).status,
+	).toBe(400)
 })

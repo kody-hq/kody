@@ -11,6 +11,7 @@ import {
 	addOrganizationTeamMemberSchema,
 	removeOrganizationTeamMemberSchema,
 	revokeOrganizationGrantSchema,
+	revokeOrganizationGrantsSchema,
 	grantOrganizationReadAccessSchema,
 	grantOrganizationCreateAccessSchema,
 	grantOrganizationManageAccessSchema,
@@ -193,6 +194,27 @@ export const revokeOrganizationGrant = createServerFn({ method: 'POST' })
 			async (context) =>
 				requireOperationResult(
 					await revokeOrganizationGrant({ ...context, ...data }),
+				),
+		)
+	})
+
+export const revokeOrganizationGrants = createServerFn({ method: 'POST' })
+	.validator(
+		revokeOrganizationGrantsSchema.extend({
+			orgSlug: z.string().regex(/^[a-zA-Z0-9_-]+$/),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const { withWebsiteMutation } = await import('./mutation-context.ts')
+		const { revokeOrganizationGrants } =
+			await import('../../src/app/handlers/org-grants.ts')
+		const { requireOperationResult } =
+			await import('../../src/app/operation-result.ts')
+		return withWebsiteMutation(
+			{ scope: { orgSlug: data.orgSlug } },
+			async (context) =>
+				requireOperationResult(
+					await revokeOrganizationGrants({ ...context, ...data }),
 				),
 		)
 	})

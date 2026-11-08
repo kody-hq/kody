@@ -146,6 +146,14 @@ grants show as read-only. Owners already hold everything. Use the package
 resource types. Details:
 [Share a package](/docs/package-sharing#access-for-one-person).
 
+Teams and everyone in the org get the same treatment. **Grants** lists one row
+per person, team, and the whole org with a short summary (for example
+`Org: 9 permissions, 14 packages, 2 apps`). A team row opens
+`/@<slug>/-/grants/team/<teamId>` and the everyone row opens
+`/@<slug>/-/grants/everyone`. Those pages group grants by resource type, change
+presets in place, and remove one grant or a selected set at once. A team page
+shows everyone grants as read-only.
+
 ## Delete a team
 
 `teamDelete` (`DELETE /v1/orgs/teams/{team_id}`, or pass `team_slug`) needs

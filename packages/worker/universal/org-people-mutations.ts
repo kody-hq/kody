@@ -38,6 +38,9 @@ export const removeOrganizationTeamMemberSchema = z.object({
 	userId: z.string(),
 })
 export const revokeOrganizationGrantSchema = z.object({ grantId: z.string() })
+export const revokeOrganizationGrantsSchema = z.object({
+	grantIds: z.array(z.string().trim().min(1)).min(1).max(100),
+})
 export const grantOrganizationReadAccessSchema = z.object({
 	subject: z.string(),
 	permissions: z.array(z.string()).max(20),
@@ -49,8 +52,13 @@ const orgSubjectAccessItemSchema = z.object({
 	preset: z.enum(['read', 'use', 'contribute', 'manage']),
 })
 export type OrgSubjectAccessItem = z.infer<typeof orgSubjectAccessItemSchema>
+/**
+ * `subject` is `user:<id>`, `team:<id>`, or `org` (everyone in the
+ * organization). `userId` is the older spelling of `user:<id>`.
+ */
 export const grantOrganizationSubjectAccessSchema = z.object({
-	userId: z.string().trim().min(1),
+	userId: z.string().trim().min(1).optional(),
+	subject: z.string().trim().min(1).max(220).optional(),
 	items: z.array(orgSubjectAccessItemSchema).min(1).max(50),
 })
 

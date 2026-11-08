@@ -129,14 +129,21 @@ export const loadOrgGrants = createServerFn({ method: 'GET' })
 	})
 
 export const loadOrgSubjectAccess = createServerFn({ method: 'GET' })
-	.validator(slugInput.extend({ userId: z.string().trim().min(1).max(200) }))
+	.validator(
+		slugInput.extend({
+			/** `user:<id>`, `team:<id>`, or `org`. */
+			subject: z.string().trim().min(1).max(220),
+		}),
+	)
 	.handler(async ({ data }) => {
 		const input = await orgContext(data.slug, 'grants')
-		const [{ resolveOrgManagementAccess }, { loadOrgSubjectAccessData }] =
-			await Promise.all([
-				import('../../src/app/org-management-access.ts'),
-				import('../../src/app/handlers/org-subject-access.ts'),
-			])
+		const [
+			{ resolveOrgManagementAccess },
+			{ loadOrgSubjectAccessData, parseOrgAccessSubjectKey },
+		] = await Promise.all([
+			import('../../src/app/org-management-access.ts'),
+			import('../../src/app/handlers/org-subject-access.ts'),
+		])
 		const access = await resolveOrgManagementAccess({
 			...input,
 			permission: 'member:read',
@@ -147,10 +154,12 @@ export const loadOrgSubjectAccess = createServerFn({ method: 'GET' })
 			setResponseStatus(403)
 			throw new PermissionDeniedError(access.error)
 		}
+		const subject = parseOrgAccessSubjectKey(data.subject)
+		if (!subject) throw notFound()
 		const loaded = await loadOrgSubjectAccessData({
 			...input,
 			org: access.org,
-			userId: data.userId,
+			subject,
 		})
 		if (!loaded) throw notFound()
 		return loaded

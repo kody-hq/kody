@@ -34,8 +34,9 @@ import {
 import { listCredentialsForViewer } from '#worker/credentials/credential-list.ts'
 import { listGrants } from '#worker/orgs/access-writes.ts'
 import { listOrgGrantsForView } from '#worker/orgs/org-grants-view.ts'
+import { listTeams } from '#worker/orgs/org-teams-list.ts'
 import type { OrgRole } from '@kody-internal/shared/request-context.ts'
-import { grantRevokeAllowed } from './org-grants.ts'
+import { countOrgMembers, grantRevokeAllowed } from './org-grants.ts'
 
 const maxPackageOptions = 200
 const maxCredentialOptions = 200
@@ -118,12 +119,103 @@ async function listSubjectTeamIds(
 	return new Set((rows.results ?? []).map((row) => row.team_id))
 }
 
+/** Whose access a page or grant form is about. */
+export type OrgAccessSubjectRef =
+	| { kind: 'user'; userId: string }
+	| { kind: 'team'; teamId: string }
+	| { kind: 'org' }
+
+/** Read `user:<id>`, `team:<id>`, or `org`. Null for anything else. */
+export function parseOrgAccessSubjectKey(
+	key: string,
+): OrgAccessSubjectRef | null {
+	if (key === 'org') return { kind: 'org' }
+	const [kind, ...rest] = key.split(':')
+	const id = rest.join(':').trim()
+	if (!id) return null
+	if (kind === 'user') return { kind: 'user', userId: id }
+	if (kind === 'team') return { kind: 'team', teamId: id }
+	return null
+}
+
+async function loadAccessTeam(db: D1Database, orgId: string, teamId: string) {
+	const teams = await listTeams(db, orgId)
+	return teams.find((team) => team.id === teamId) ?? null
+}
+
 /**
- * One person's access in this organization: grants made to them directly,
- * through a team, or to everyone in the organization, plus what the viewer
- * may add. Null when the person is not a subject here.
+ * One subject's access in this organization: for a person, grants made to
+ * them directly, through a team, or to everyone in the organization; for a
+ * team, its own grants plus what everyone in the organization has; for the
+ * whole organization, its own grants. Also what the viewer may add. Null
+ * when the subject is not one here.
  */
 export async function loadOrgSubjectAccessData(input: {
+	env: Env
+	user: AuthenticatedAppUser
+	org: ManagedOrg
+	userId?: string
+	subject?: OrgAccessSubjectRef
+}): Promise<OrgSubjectAccessLoaderData | null> {
+	const ref: OrgAccessSubjectRef | null =
+		input.subject ??
+		(input.userId ? { kind: 'user', userId: input.userId } : null)
+	if (!ref) return null
+	if (ref.kind === 'user') {
+		return loadPersonAccess({ ...input, userId: ref.userId })
+	}
+	if (input.org.personal) return null
+	const db = input.env.APP_DB
+	const team =
+		ref.kind === 'team'
+			? await loadAccessTeam(db, input.org.id, ref.teamId)
+			: null
+	if (ref.kind === 'team' && !team) return null
+	const [canManage, allGrants, memberCount] = await Promise.all([
+		orgHasPermission(input.env, input.user, 'member:write'),
+		listOrgGrantsForView(db, input.org.id),
+		countOrgMembers(db, input.org.id),
+	])
+	const grants: Array<OrgSubjectAccessGrant> = []
+	for (const grant of allGrants) {
+		const via = team
+			? grant.subjectType === 'team' && grant.subjectId === team.id
+				? 'direct'
+				: grant.subjectType === 'org'
+					? 'everyone'
+					: null
+			: grant.subjectType === 'org'
+				? 'direct'
+				: null
+		if (!via) continue
+		grants.push({
+			...grant,
+			via,
+			canRevoke:
+				via === 'direct' && canManage
+					? await grantRevokeAllowed(input.env, input.user, grant)
+					: false,
+		})
+	}
+	return {
+		ok: true,
+		org: input.org,
+		canManage,
+		subject: team
+			? {
+					kind: 'team',
+					teamId: team.id,
+					slug: team.slug,
+					name: team.name,
+					memberCount: team.memberCount,
+				}
+			: { kind: 'org', memberCount },
+		grants,
+		options: canManage ? await loadGrantOptions(input, grants) : null,
+	}
+}
+
+async function loadPersonAccess(input: {
 	env: Env
 	user: AuthenticatedAppUser
 	org: ManagedOrg
@@ -166,6 +258,7 @@ export async function loadOrgSubjectAccessData(input: {
 		org: input.org,
 		canManage,
 		subject: {
+			kind: 'user',
 			userId: subject.userId,
 			username: subject.username,
 			displayName: subject.displayName,
@@ -321,10 +414,11 @@ function credentialKindLabel(kind: string) {
 }
 
 /**
- * Add or change several grants for one person. Each item runs `accessGrant`
- * as the signed-in person, so every authorization, audit, and warning is the
- * same as an agent's call. Items are independent: one failure does not undo
- * the others, and each reports its own result.
+ * Add or change several grants for one person, a team, or everyone in the
+ * organization. Each item runs `accessGrant` as the signed-in person, so every
+ * authorization, audit, and warning is the same as an agent's call. Items are
+ * independent: one failure does not undo the others, and each reports its own
+ * result.
  */
 export async function grantOrganizationSubjectAccess({
 	request,
@@ -332,13 +426,15 @@ export async function grantOrganizationSubjectAccess({
 	user,
 	orgSlug,
 	userId,
+	subject: subjectKey,
 	items,
 }: {
 	request: Request
 	env: Env
 	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
 	orgSlug?: string
-	userId: string
+	userId?: string
+	subject?: string
 	items: ReadonlyArray<OrgSubjectAccessItem>
 }) {
 	const access = await resolveOrgManagementAccess({
@@ -354,26 +450,21 @@ export async function grantOrganizationSubjectAccess({
 	if (user.request.org.id !== access.org.id) {
 		return operationResult({ ok: false, error: 'Organization not found.' }, 404)
 	}
-	const subject = await loadAccessSubject(env.APP_DB, access.org.id, userId)
-	if (!subject) {
+	const ref: OrgAccessSubjectRef | null =
+		userId && !subjectKey
+			? { kind: 'user', userId }
+			: subjectKey && !userId
+				? parseOrgAccessSubjectKey(subjectKey)
+				: null
+	if (!ref) {
 		return operationResult(
-			{
-				ok: false,
-				error:
-					'Choose a member or someone who already has access in this organization. Invite new people first.',
-			},
+			{ ok: false, error: 'Choose one person, team, or the organization.' },
 			400,
 		)
 	}
-	if (subject.role === 'owner' || subject.role === 'admin') {
-		return operationResult(
-			{
-				ok: false,
-				error:
-					'Owners and Admins already have full access to this organization.',
-			},
-			400,
-		)
+	const target = await resolveGrantTarget(env.APP_DB, access.org, ref)
+	if (!target.ok) {
+		return operationResult({ ok: false, error: target.error }, 400)
 	}
 	const ctx = {
 		env,
@@ -395,8 +486,8 @@ export async function grantOrganizationSubjectAccess({
 				{
 					resource_type: item.resourceType,
 					resource_id: item.resourceId,
-					subject_type: 'user',
-					subject_id: subject.userId,
+					subject_type: target.subjectType,
+					subject_id: target.subjectId,
 					preset: item.preset,
 				},
 				ctx,
@@ -412,4 +503,45 @@ export async function grantOrganizationSubjectAccess({
 		}
 	}
 	return operationResult({ ok: true as const, results })
+}
+
+async function resolveGrantTarget(
+	db: D1Database,
+	org: ManagedOrg,
+	ref: OrgAccessSubjectRef,
+): Promise<
+	| { ok: true; subjectType: 'user' | 'team' | 'org'; subjectId: string }
+	| { ok: false; error: string }
+> {
+	if (ref.kind === 'team') {
+		const team = org.personal
+			? null
+			: await loadAccessTeam(db, org.id, ref.teamId)
+		return team
+			? { ok: true, subjectType: 'team', subjectId: team.id }
+			: { ok: false, error: 'Team was not found in this organization.' }
+	}
+	if (ref.kind === 'org') {
+		return org.personal
+			? {
+					ok: false,
+					error: 'A personal account has no one else to give access to.',
+				}
+			: { ok: true, subjectType: 'org', subjectId: org.id }
+	}
+	const subject = await loadAccessSubject(db, org.id, ref.userId)
+	if (!subject) {
+		return {
+			ok: false,
+			error:
+				'Choose a member or someone who already has access in this organization. Invite new people first.',
+		}
+	}
+	if (subject.role === 'owner' || subject.role === 'admin') {
+		return {
+			ok: false,
+			error: 'Owners and Admins already have full access to this organization.',
+		}
+	}
+	return { ok: true, subjectType: 'user', subjectId: subject.userId }
 }

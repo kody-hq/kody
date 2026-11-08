@@ -23,7 +23,7 @@ export const Route = createFileRoute(
 			context.queryClient,
 			pageQuery(context.actorKey, {
 				slug: params.orgSlug,
-				userId: params.userId,
+				subject: `user:${params.userId}`,
 			}),
 			preload,
 		),
@@ -33,7 +33,10 @@ export const Route = createFileRoute(
 function Page() {
 	const { actorKey } = Route.useRouteContext()
 	const { orgSlug, userId } = Route.useParams()
-	const query = pageQuery(actorKey, { slug: orgSlug, userId })
+	const query = pageQuery(actorKey, {
+		slug: orgSlug,
+		subject: `user:${userId}`,
+	})
 	const { data } = usePageQuery(query)
 	return <OrgSubjectAccessPage data={data} queryKey={query.queryKey} />
 }

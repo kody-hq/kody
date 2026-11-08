@@ -1,11 +1,18 @@
 /** @jsxImportSource @emotion/react */
 import type {
+	OrgGrantRevokeResult,
 	OrgSubjectAccessGrant,
 	OrgSubjectAccessLoaderData,
 	OrgSubjectAccessOption,
 	OrgSubjectAccessWriteResult,
 } from '#universal/loader-data.ts'
-import { orgGrantsPath, orgIdentity } from '#universal/org-pages.ts'
+import {
+	orgEveryoneGrantAccessPath,
+	orgGrantAccessPath,
+	orgGrantsPath,
+	orgIdentity,
+	orgTeamGrantAccessPath,
+} from '#universal/org-pages.ts'
 import type { OrgSubjectAccessItem } from '#universal/org-people-mutations.ts'
 import {
 	getDangerPillCss,
@@ -18,8 +25,9 @@ import {
 	typography,
 } from '#universal/styles/tokens.ts'
 import type { QueryKey } from '@tanstack/react-query'
-import { useState } from 'react'
-import { renderIcon, type IconName } from '../components/icon.tsx'
+import type { RowSelectionState } from '@tanstack/react-table'
+import { useMemo, useState } from 'react'
+import { renderIcon } from '../components/icon.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import { UserAvatar } from '../components/user-avatar.tsx'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
@@ -37,8 +45,22 @@ import {
 import {
 	grantOrganizationSubjectAccess,
 	revokeOrganizationGrant,
+	revokeOrganizationGrants,
 } from '#start/server/org-mutations'
+import {
+	grantAccessSummary,
+	orgPermissionGroups,
+	resourceFilterType,
+	resourceTypeLabel,
+} from './org-grant-summary.ts'
 import { useOrgPeopleMutation } from './org-people-mutation.ts'
+import {
+	RecordTable,
+	RecordTableSearch,
+	RecordTableSelect,
+	type RecordTableColumn,
+	type RecordTableRow,
+} from './record-table.tsx'
 
 type Preset = OrgSubjectAccessItem['preset']
 type Message = { tone: 'info' | 'error'; text: string }
@@ -74,17 +96,42 @@ function isEditableType(
 	)
 }
 
-function subjectLabel(subject: OrgSubjectAccessLoaderData['subject']) {
+type AccessSubject = OrgSubjectAccessLoaderData['subject']
+
+function subjectLabel(subject: AccessSubject) {
+	if (subject.kind === 'team') return subject.name
+	if (subject.kind === 'org') return 'Everyone in this organization'
 	return (
 		subject.displayName?.trim() ||
 		(subject.username ? `@${subject.username}` : subject.userId)
 	)
 }
 
-function roleNote(
-	subject: OrgSubjectAccessLoaderData['subject'],
-	orgSlug: string,
-) {
+/** `user:<id>`, `team:<id>`, or `org`, as the grant mutation takes it. */
+function subjectKey(subject: AccessSubject) {
+	if (subject.kind === 'team') return `team:${subject.teamId}`
+	if (subject.kind === 'org') return 'org'
+	return `user:${subject.userId}`
+}
+
+function subjectHref(subject: AccessSubject, orgSlug: string) {
+	if (subject.kind === 'team')
+		return orgTeamGrantAccessPath(orgSlug, subject.teamId)
+	if (subject.kind === 'org') return orgEveryoneGrantAccessPath(orgSlug)
+	return orgGrantAccessPath(orgSlug, subject.userId)
+}
+
+function memberCountLabel(count: number) {
+	return `${count} ${count === 1 ? 'member' : 'members'}`
+}
+
+function subjectNote(subject: AccessSubject, orgSlug: string) {
+	if (subject.kind === 'team') {
+		return `Team @${subject.slug} · ${memberCountLabel(subject.memberCount)}. Everyone on the team gets these grants, plus what everyone in the organization has.`
+	}
+	if (subject.kind === 'org') {
+		return `${memberCountLabel(subject.memberCount)}. Every member of @${orgSlug} gets these grants, now and when they join. Outside collaborators do not.`
+	}
 	switch (subject.role) {
 		case 'owner':
 			return `Owner of @${orgSlug}. Owners can use and manage everything in this organization, so there is nothing to grant.`
@@ -97,39 +144,37 @@ function roleNote(
 	}
 }
 
-function grantIcon(grant: OrgSubjectAccessGrant): IconName {
-	if (grant.via === 'team') return 'users'
-	if (grant.via === 'everyone') return 'globe'
-	return grant.resourceType === 'credential' ? 'key' : 'box'
+const typeGroups = [
+	{ value: 'org', label: 'Organization permissions' },
+	{ value: 'package', label: 'Packages' },
+	{ value: 'app', label: 'Package apps' },
+	{ value: 'credential', label: 'Credentials' },
+	{ value: 'other', label: 'Other resources' },
+] as const
+
+function typeGroup(resourceType: string) {
+	return resourceFilterType(resourceType)
 }
 
-function resourceKind(resourceType: string) {
-	switch (resourceType) {
-		case 'package':
-			return 'Package'
-		case 'app':
-			return 'Package app'
-		case 'credential':
-			return 'Credential'
-		case 'org':
-			return 'Organization-wide'
-		case 'job':
-			return 'Job'
-		case 'memory':
-			return 'Memory'
-		case 'email':
-			return 'Email'
-		default:
-			return resourceType
-	}
+function typeGroupLabel(resourceType: string) {
+	const group = typeGroup(resourceType)
+	return typeGroups.find((entry) => entry.value === group)?.label ?? group
 }
 
-function grantDetail(grant: OrgSubjectAccessGrant) {
-	const access = grant.presetLabel ?? grant.permissions.join(', ')
-	const parts = [resourceKind(grant.resourceType), access || 'No permissions']
-	if (grant.via === 'team') parts.push(`Through ${grant.subjectLabel}`)
-	if (grant.via === 'everyone') parts.push('Everyone in this organization')
-	return parts.join(' · ')
+function sortByGroup(grants: ReadonlyArray<OrgSubjectAccessGrant>) {
+	const order: ReadonlyArray<string> = typeGroups.map((group) => group.value)
+	return [...grants].sort(
+		(a, b) =>
+			order.indexOf(typeGroup(a.resourceType)) -
+				order.indexOf(typeGroup(b.resourceType)) ||
+			a.resourceLabel.localeCompare(b.resourceLabel),
+	)
+}
+
+function viaLabel(grant: OrgSubjectAccessGrant) {
+	if (grant.via === 'team') return `Through ${grant.subjectLabel}`
+	if (grant.via === 'everyone') return 'Everyone in this organization'
+	return 'Direct'
 }
 
 function summarize(
@@ -165,28 +210,15 @@ function OrgSubjectAccessContent({
 	queryKey: QueryKey
 }) {
 	const [message, setMessage] = useState<Message | null>(null)
-	const label = subjectLabel(data.subject)
-	const href = `/@${data.org.slug}/-/grants/user/${encodeURIComponent(data.subject.userId)}`
-	const identity = orgIdentity(
-		{
-			slug: data.subject.username ?? data.subject.userId,
-			displayName: data.subject.displayName,
-			personal: false,
-			avatarUrl: data.subject.avatarUrl,
-		},
-		{ displayName: '', avatarUrl: null },
+	const subject = data.subject
+	const label = subjectLabel(subject)
+	const href = subjectHref(subject, data.org.slug)
+	const direct = sortByGroup(
+		data.grants.filter((grant) => grant.via === 'direct'),
 	)
-	const direct = data.grants.filter((grant) => grant.via === 'direct')
-	const packages = direct.filter(
-		(grant) => grant.resourceType === 'package' || grant.resourceType === 'app',
+	const inherited = sortByGroup(
+		data.grants.filter((grant) => grant.via !== 'direct'),
 	)
-	const credentials = direct.filter(
-		(grant) => grant.resourceType === 'credential',
-	)
-	const other = [
-		...direct.filter((grant) => !isEditableType(grant.resourceType)),
-		...data.grants.filter((grant) => grant.via !== 'direct'),
-	]
 	const labelFor = (result: OrgSubjectAccessWriteResult) => {
 		const known =
 			data.grants.find(
@@ -201,12 +233,14 @@ function OrgSubjectAccessContent({
 			result.resourceId
 		return result.resourceType === 'app' ? `the ${known} app` : known
 	}
+	const title =
+		subject.kind === 'org' ? 'Access for everyone' : `Access for ${label}`
 	return (
 		<AccountManagementShell layout="list" currentHref={href}>
 			<AccountPageHeader
 				entity="grants"
-				title={`Access for ${label}`}
-				description={`What ${label} can use in @${data.org.slug}. Grants apply only inside this organization, and credentials stay here.`}
+				title={title}
+				description={`What ${subject.kind === 'org' ? 'every member' : label} can use in @${data.org.slug}. Grants apply only inside this organization, and credentials stay here.`}
 				currentHref={href}
 			/>
 			<p css={backCss}>
@@ -215,18 +249,38 @@ function OrgSubjectAccessContent({
 					All grants
 				</SiteLink>
 			</p>
-			<div css={personCss} data-testid="access-subject">
-				<UserAvatar
-					displayName={identity.avatarName}
-					avatarUrl={data.subject.avatarUrl}
-					size={44}
-					variant="well"
-				/>
+			<div
+				css={personCss}
+				data-testid="access-subject"
+				data-subject-kind={subject.kind}
+			>
+				{subject.kind === 'user' ? (
+					<UserAvatar
+						displayName={
+							orgIdentity(
+								{
+									slug: subject.username ?? subject.userId,
+									displayName: subject.displayName,
+									personal: false,
+									avatarUrl: subject.avatarUrl,
+								},
+								{ displayName: '', avatarUrl: null },
+							).avatarName
+						}
+						avatarUrl={subject.avatarUrl}
+						size={44}
+						variant="well"
+					/>
+				) : (
+					<span aria-hidden="true" css={iconCss}>
+						{renderIcon(subject.kind === 'team' ? 'users' : 'globe', {
+							size: '1.25rem',
+						})}
+					</span>
+				)}
 				<span css={rowTextCss}>
 					<span css={rowNameCss}>{label}</span>
-					<span css={rowDetailCss}>
-						{roleNote(data.subject, data.org.slug)}
-					</span>
+					<span css={rowDetailCss}>{subjectNote(subject, data.org.slug)}</span>
 				</span>
 			</div>
 			{message ? (
@@ -234,44 +288,53 @@ function OrgSubjectAccessContent({
 					{message.text}
 				</AccountManagementMessage>
 			) : null}
-			<GrantSection
-				title="Packages"
-				testId="access-packages"
-				empty={`${label} has no package grants here yet.`}
-				grants={packages}
-				data={data}
-				queryKey={queryKey}
-				setMessage={setMessage}
-				labelFor={labelFor}
-			/>
-			<GrantSection
-				title="Credentials"
-				testId="access-credentials"
-				empty={`${label} has no credential grants here yet.`}
-				grants={credentials}
-				data={data}
-				queryKey={queryKey}
-				setMessage={setMessage}
-				labelFor={labelFor}
-			/>
-			{other.length > 0 ? (
-				<GrantSection
-					title="Other access"
-					description="Organization-wide grants are changed on the Grants page. Team access is changed on that team."
-					testId="access-other"
-					empty=""
-					grants={other}
+			<AccountManagementPanel
+				title="Grants"
+				description={
+					subject.kind === 'org'
+						? 'Grouped by resource type. Select rows to remove several at once.'
+						: `Made to ${label} directly, grouped by resource type. Select rows to remove several at once.`
+				}
+				ariaLabel="Grants"
+			>
+				<AccessGrantTable
+					testId="access-direct"
+					ariaLabel={`Grants for ${label}`}
+					emptyLabel={`${label} has no grants here yet.`}
+					grants={direct}
 					data={data}
 					queryKey={queryKey}
 					setMessage={setMessage}
 					labelFor={labelFor}
 				/>
+			</AccountManagementPanel>
+			{inherited.length > 0 ? (
+				<AccountManagementPanel
+					title={
+						subject.kind === 'team'
+							? 'From everyone in the organization'
+							: 'Through teams and the organization'
+					}
+					description="Read-only here. Change these on the team or on everyone in the organization."
+					ariaLabel="Inherited access"
+				>
+					<AccessGrantTable
+						testId="access-inherited"
+						ariaLabel={`Inherited access for ${label}`}
+						emptyLabel=""
+						grants={inherited}
+						data={data}
+						queryKey={queryKey}
+						setMessage={setMessage}
+						labelFor={labelFor}
+					/>
+				</AccountManagementPanel>
 			) : null}
 			{data.options ? (
 				<AddAccessForm
 					data={data}
 					options={data.options}
-					label={label}
+					label={subject.kind === 'org' ? 'every member' : label}
 					queryKey={queryKey}
 					labelFor={labelFor}
 				/>
@@ -280,42 +343,238 @@ function OrgSubjectAccessContent({
 	)
 }
 
-function GrantSection(props: {
-	title: string
-	description?: string
+const accessPageSize = 25
+
+function accessColumns(inherited: boolean): Array<RecordTableColumn> {
+	return [
+		// Group headings already name each type, so the filter rides on the
+		// resource column instead of a Type column a phone has no room for.
+		{
+			key: 'resource',
+			label: 'Resource',
+			primary: true,
+			filter: (_value, filter, row) => row.values?.type === filter,
+		},
+		{ key: 'access', label: 'Access', sortable: false },
+		inherited
+			? { key: 'via', label: 'From', sortable: false }
+			: {
+					key: 'actions',
+					label: 'Actions',
+					sortable: false,
+					searchable: false,
+				},
+	]
+}
+
+function AccessGrantTable(props: {
 	testId: string
-	empty: string
+	ariaLabel: string
+	emptyLabel: string
 	grants: ReadonlyArray<OrgSubjectAccessGrant>
 	data: OrgSubjectAccessLoaderData
 	queryKey: QueryKey
 	setMessage: (message: Message | null) => void
 	labelFor: (result: OrgSubjectAccessWriteResult) => string
 }) {
+	const { data, setMessage } = props
+	const inherited = props.testId === 'access-inherited'
+	const capture = useSubmitterScope()
+	const [query, setQuery] = useState('')
+	const [type, setType] = useState('')
+	const [page, setPage] = useState(0)
+	const [selection, setSelection] = useState<RowSelectionState>({})
+	const [armed, setArmed] = useState(false)
+	const bulk = useOrgPeopleMutation(props.queryKey, revokeOrganizationGrants)
+	const columns = useMemo(() => accessColumns(inherited), [inherited])
+	const types = new Set(
+		props.grants.map((grant) => typeGroup(grant.resourceType)),
+	)
+	const rows: Array<RecordTableRow> = props.grants.map((grant) => ({
+		id: grant.id,
+		selectionLabel: grant.resourceLabel,
+		values: {
+			resource: `${grant.resourceLabel} ${resourceTypeLabel(grant.resourceType)}`,
+			type: typeGroup(grant.resourceType),
+			access: grantAccessSummary(grant),
+			via: viaLabel(grant),
+			canRevoke: grant.canRevoke && data.canManage,
+		},
+		cells: {
+			resource: (
+				<span
+					css={cellTextCss}
+					data-testid="access-grant"
+					data-grant-id={grant.id}
+					data-via={grant.via}
+				>
+					<span css={cellNameCss}>{grant.resourceLabel}</span>
+					<span css={rowDetailCss}>
+						{resourceTypeLabel(grant.resourceType)}
+					</span>
+				</span>
+			),
+			access: <GrantAccessCell grant={grant} {...props} />,
+			via: viaLabel(grant),
+			actions:
+				grant.canRevoke && data.canManage ? (
+					<RemoveGrantButton grant={grant} {...props} />
+				) : null,
+		},
+	}))
+	if (props.grants.length === 0) {
+		return (
+			<p css={mutedCopyCss} data-testid={`${props.testId}-empty`}>
+				{props.emptyLabel}
+			</p>
+		)
+	}
+	const filtered = Boolean(query || type)
+	const canBulk = !inherited && data.canManage
 	return (
-		<AccountManagementPanel title={props.title} description={props.description}>
-			{props.grants.length === 0 ? (
-				<p css={mutedCopyCss} data-testid={`${props.testId}-empty`}>
-					{props.empty}
-				</p>
-			) : (
-				<ul css={listCss} data-testid={props.testId}>
-					{props.grants.map((grant) => (
-						<GrantRow
-							key={grant.id}
-							grant={grant}
-							data={props.data}
-							queryKey={props.queryKey}
-							setMessage={props.setMessage}
-							labelFor={props.labelFor}
+		<div data-testid={props.testId} css={accessTableCss}>
+			<RecordTable
+				mode="none"
+				dense
+				stackWhenNarrow
+				ariaLabel={props.ariaLabel}
+				columns={columns}
+				rows={rows}
+				rowGroup={(row) => typeGroupLabel(String(row.values?.type ?? ''))}
+				emptyLabel="No grants match these filters."
+				dataControls={{
+					state: {
+						globalFilter: query.trim(),
+						columnFilters: type ? [{ id: 'resource', value: type }] : [],
+						sorting: [],
+						pagination: { pageIndex: page, pageSize: accessPageSize },
+					},
+					onStateChange: (patch) => {
+						if (patch.pagination) setPage(patch.pagination.pageIndex)
+					},
+					selection: canBulk
+						? {
+								value: selection,
+								onChange: (value) => {
+									setSelection(value)
+									setArmed(false)
+								},
+								canSelect: (row) => row.values?.canRevoke === true,
+								actions: (_selected, selectedIds) => (
+									<button
+										type="button"
+										data-testid="access-bulk-remove"
+										css={getDangerPillCss({ size: 'sm' })}
+										disabled={bulk.isPending}
+										onBlur={() => setArmed(false)}
+										onKeyDown={(event) => {
+											if (event.key === 'Escape') setArmed(false)
+										}}
+										onClick={() => {
+											if (!armed) {
+												setArmed(true)
+												return
+											}
+											const isCurrent = capture()
+											setMessage(null)
+											bulk.mutate(
+												{ orgSlug: data.org.slug, grantIds: selectedIds },
+												{
+													onSuccess: (result) => {
+														if (!isCurrent()) return
+														setArmed(false)
+														setSelection({})
+														setMessage(
+															revokeSummary(result.results, props.grants),
+														)
+													},
+													onError: (error) => {
+														if (isCurrent())
+															setMessage({ tone: 'error', text: error.message })
+													},
+												},
+											)
+										}}
+									>
+										{renderIcon('close', { size: '1.05rem' })}
+										{armed
+											? `Confirm remove ${selectedIds.length}`
+											: 'Remove selected'}
+									</button>
+								),
+							}
+						: undefined,
+				}}
+				toolbar={
+					<>
+						<RecordTableSearch
+							label="Search grants"
+							placeholder="Search resources"
+							value={query}
+							onInput={(value) => {
+								setQuery(value)
+								setPage(0)
+							}}
 						/>
-					))}
-				</ul>
-			)}
-		</AccountManagementPanel>
+						{types.size > 1 ? (
+							<RecordTableSelect
+								label="Filter by resource type"
+								value={type}
+								onChange={(value) => {
+									setType(value)
+									setPage(0)
+								}}
+							>
+								<option value="">All resources</option>
+								{typeGroups
+									.filter((group) => types.has(group.value))
+									.map((group) => (
+										<option key={group.value} value={group.value}>
+											{group.label}
+										</option>
+									))}
+							</RecordTableSelect>
+						) : null}
+						{filtered ? (
+							<button
+								type="button"
+								onClick={() => {
+									setQuery('')
+									setType('')
+									setPage(0)
+								}}
+							>
+								Clear filters
+							</button>
+						) : null}
+					</>
+				}
+			/>
+		</div>
 	)
 }
 
-function GrantRow({
+function revokeSummary(
+	results: ReadonlyArray<OrgGrantRevokeResult>,
+	grants: ReadonlyArray<OrgSubjectAccessGrant>,
+): Message {
+	const removed = results.filter((result) => result.ok).length
+	const failed = results.flatMap((result) => (result.ok ? [] : [result]))
+	const parts = removed > 0 ? [`Removed ${removed}.`] : []
+	for (const result of failed) {
+		const name =
+			grants.find((grant) => grant.id === result.grantId)?.resourceLabel ??
+			result.grantId
+		parts.push(`Could not remove ${name}: ${result.error}`)
+	}
+	return { tone: failed.length > 0 ? 'error' : 'info', text: parts.join(' ') }
+}
+
+/**
+ * A preset grant gets a select to change it; an explicit permission list
+ * stays one short line, with every permission one click away.
+ */
+function GrantAccessCell({
 	grant,
 	data,
 	queryKey,
@@ -329,127 +588,138 @@ function GrantRow({
 	labelFor: (result: OrgSubjectAccessWriteResult) => string
 }) {
 	const capture = useSubmitterScope()
+	const change = useOrgPeopleMutation(queryKey, grantOrganizationSubjectAccess)
+	const resourceType = grant.resourceType
+	if (
+		grant.via === 'direct' &&
+		grant.canRevoke &&
+		data.canManage &&
+		isEditableType(resourceType)
+	) {
+		return (
+			<select
+				aria-label={`Access to ${grant.resourceLabel}`}
+				data-testid="access-grant-preset"
+				value={
+					change.isPending
+						? (change.variables?.items[0]?.preset ?? '')
+						: (grant.preset ?? '')
+				}
+				disabled={change.isPending}
+				data-field-ring
+				css={selectCss}
+				onChange={(event) => {
+					const preset = event.currentTarget.value as Preset
+					const isCurrent = capture()
+					setMessage(null)
+					change.mutate(
+						{
+							orgSlug: data.org.slug,
+							subject: subjectKey(data.subject),
+							items: [{ resourceType, resourceId: grant.resourceId, preset }],
+						},
+						{
+							onSuccess: (result) => {
+								if (isCurrent()) setMessage(summarize(result.results, labelFor))
+							},
+							onError: (error) => {
+								if (isCurrent())
+									setMessage({ tone: 'error', text: error.message })
+							},
+						},
+					)
+				}}
+			>
+				{grant.preset ? null : (
+					<option value="" disabled>
+						Custom permissions
+					</option>
+				)}
+				{presetChoices[resourceType].map((choice) => (
+					<option key={choice.value} value={choice.value}>
+						{choice.label.split(':')[0]}
+					</option>
+				))}
+			</select>
+		)
+	}
+	const groups =
+		grant.presetLabel || grant.permissions.length === 0
+			? []
+			: grant.resourceType === 'org'
+				? orgPermissionGroups(grant.permissions)
+				: [{ label: 'Permissions', items: [...grant.permissions] }]
+	const summary = grantAccessSummary(grant)
+	if (groups.length === 0) return <span>{summary}</span>
+	return (
+		<details css={permissionDetailsCss} data-testid="access-grant-permissions">
+			<summary>{summary}</summary>
+			<dl css={permissionListCss}>
+				{groups.map((group) => (
+					<div key={group.label}>
+						<dt>{group.label}</dt>
+						<dd>{group.items.join(', ')}</dd>
+					</div>
+				))}
+			</dl>
+		</details>
+	)
+}
+
+function RemoveGrantButton({
+	grant,
+	data,
+	queryKey,
+	setMessage,
+}: {
+	grant: OrgSubjectAccessGrant
+	data: OrgSubjectAccessLoaderData
+	queryKey: QueryKey
+	setMessage: (message: Message | null) => void
+}) {
+	const capture = useSubmitterScope()
 	const [armed, setArmed] = useState(false)
 	const revoke = useOrgPeopleMutation(queryKey, revokeOrganizationGrant)
-	const change = useOrgPeopleMutation(queryKey, grantOrganizationSubjectAccess)
-	const editable = grant.canRevoke && data.canManage
-	const resourceType = grant.resourceType
-	const choices = isEditableType(resourceType)
-		? presetChoices[resourceType]
-		: []
-	const pending = revoke.isPending || change.isPending
 	return (
-		<li
-			data-testid="access-grant"
-			data-grant-id={grant.id}
-			data-via={grant.via}
-			css={rowItemCss}
+		<button
+			type="button"
+			data-testid="access-grant-remove"
+			aria-label={`${armed ? 'Confirm remove' : 'Remove'} ${grant.resourceLabel}`}
+			css={getDangerPillCss({ size: 'sm' })}
+			disabled={revoke.isPending}
+			onBlur={() => setArmed(false)}
+			onKeyDown={(event) => {
+				if (event.key === 'Escape') setArmed(false)
+			}}
+			onClick={() => {
+				if (!armed) {
+					setArmed(true)
+					return
+				}
+				const isCurrent = capture()
+				setMessage(null)
+				revoke.mutate(
+					{ orgSlug: data.org.slug, grantId: grant.id },
+					{
+						onSuccess: () => {
+							if (!isCurrent()) return
+							setArmed(false)
+							setMessage({
+								tone: 'info',
+								text: `Removed access to ${grant.resourceLabel}.`,
+							})
+						},
+						onError: (error) => {
+							if (isCurrent())
+								setMessage({ tone: 'error', text: error.message })
+						},
+					},
+				)
+			}}
 		>
-			<div css={rowCss}>
-				<span aria-hidden="true" css={iconCss}>
-					{renderIcon(grantIcon(grant), { size: '1.25rem' })}
-				</span>
-				<span css={rowTextCss}>
-					<span css={rowNameCss}>{grant.resourceLabel}</span>
-					<span css={rowDetailCss}>{grantDetail(grant)}</span>
-				</span>
-				{editable ? (
-					<span css={rowActionsCss}>
-						{isEditableType(resourceType) ? (
-							<select
-								aria-label={`Access to ${grant.resourceLabel}`}
-								data-testid="access-grant-preset"
-								value={
-									change.isPending
-										? (change.variables?.items[0]?.preset ?? '')
-										: (grant.preset ?? '')
-								}
-								disabled={pending}
-								data-field-ring
-								css={selectCss}
-								onChange={(event) => {
-									const preset = event.currentTarget.value as Preset
-									const isCurrent = capture()
-									setMessage(null)
-									change.mutate(
-										{
-											orgSlug: data.org.slug,
-											userId: data.subject.userId,
-											items: [
-												{
-													resourceType,
-													resourceId: grant.resourceId,
-													preset,
-												},
-											],
-										},
-										{
-											onSuccess: (result) => {
-												if (isCurrent())
-													setMessage(summarize(result.results, labelFor))
-											},
-											onError: (error) => {
-												if (isCurrent())
-													setMessage({ tone: 'error', text: error.message })
-											},
-										},
-									)
-								}}
-							>
-								{grant.preset ? null : (
-									<option value="" disabled>
-										Custom permissions
-									</option>
-								)}
-								{choices.map((choice) => (
-									<option key={choice.value} value={choice.value}>
-										{choice.label.split(':')[0]}
-									</option>
-								))}
-							</select>
-						) : null}
-						<button
-							type="button"
-							data-testid="access-grant-remove"
-							css={getDangerPillCss({ size: 'sm' })}
-							disabled={pending}
-							onBlur={() => setArmed(false)}
-							onKeyDown={(event) => {
-								if (event.key === 'Escape') setArmed(false)
-							}}
-							onClick={() => {
-								if (!armed) {
-									setArmed(true)
-									return
-								}
-								const isCurrent = capture()
-								setMessage(null)
-								revoke.mutate(
-									{ orgSlug: data.org.slug, grantId: grant.id },
-									{
-										onSuccess: () => {
-											if (!isCurrent()) return
-											setArmed(false)
-											setMessage({
-												tone: 'info',
-												text: `Removed access to ${grant.resourceLabel}.`,
-											})
-										},
-										onError: (error) => {
-											if (isCurrent())
-												setMessage({ tone: 'error', text: error.message })
-										},
-									},
-								)
-							}}
-						>
-							{renderIcon('close', { size: '1.05rem' })}
-							{armed ? 'Confirm remove' : 'Remove'}
-						</button>
-					</span>
-				) : null}
-			</div>
-		</li>
+			{renderIcon('close', { size: '1.05rem' })}
+			{armed ? 'Confirm' : 'Remove'}
+		</button>
 	)
 }
 
@@ -534,7 +804,7 @@ function AddAccessForm({
 						mutation.mutate(
 							{
 								orgSlug: data.org.slug,
-								userId: data.subject.userId,
+								subject: subjectKey(data.subject),
 								items,
 							},
 							{
@@ -744,6 +1014,20 @@ function AddAccessForm({
 	)
 }
 
+/** Phone cards: name on top, then access with Remove beside it. */
+const accessTableCss = {
+	'@container (max-width: 620px)': {
+		'& tbody tr:has(> td[data-primary])': {
+			gridTemplateColumns: 'auto minmax(0, 1fr) auto',
+		},
+		'& td[data-primary], & td[data-label="From"]': { gridColumn: '2 / -1' },
+		'& td[data-label="Actions"]': { gridColumn: 3, gridRow: 2 },
+		'& td[data-label="Access"]::before, & td[data-label="Actions"]::before': {
+			content: 'none',
+		},
+	},
+} as const
+
 const mutedCopyCss = {
 	margin: 0,
 	color: colors.textMuted,
@@ -767,30 +1051,6 @@ const personCss = {
 	minWidth: 0,
 }
 
-const listCss = {
-	listStyle: 'none',
-	margin: 0,
-	padding: 0,
-	display: 'grid',
-	gap: spacing.sm,
-}
-
-const rowItemCss = {
-	minWidth: 0,
-}
-
-const rowCss = {
-	display: 'flex',
-	alignItems: 'center',
-	flexWrap: 'wrap' as const,
-	gap: spacing.md,
-	minWidth: 0,
-	padding: '0.85rem 1rem',
-	borderRadius: radius.card,
-	border: `1.5px solid ${colors.border}`,
-	backgroundColor: colors.surface,
-}
-
 const rowTextCss = {
 	display: 'grid',
 	gap: '0.15rem',
@@ -805,16 +1065,41 @@ const rowNameCss = {
 	whiteSpace: 'nowrap' as const,
 }
 
+const cellTextCss = {
+	display: 'grid',
+	gap: '0.1rem',
+	minWidth: 0,
+}
+
+const cellNameCss = {
+	fontWeight: 650,
+	overflowWrap: 'anywhere' as const,
+}
+
+const permissionDetailsCss = {
+	minWidth: 0,
+	'& > summary': {
+		cursor: 'pointer',
+		overflowWrap: 'anywhere' as const,
+	},
+}
+
+const permissionListCss = {
+	display: 'grid',
+	gap: spacing.xs,
+	margin: `${spacing.xs} 0 0`,
+	fontSize: typography.fontSize.sm,
+	'& dt': { fontWeight: 650 },
+	'& dd': {
+		margin: 0,
+		color: colors.textMuted,
+		overflowWrap: 'anywhere' as const,
+	},
+}
+
 const rowDetailCss = {
 	fontSize: typography.fontSize.sm,
 	color: colors.textMuted,
-}
-
-const rowActionsCss = {
-	display: 'flex',
-	alignItems: 'center',
-	gap: spacing.sm,
-	flexShrink: 0,
 }
 
 const iconCss = {
