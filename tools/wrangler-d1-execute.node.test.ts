@@ -245,6 +245,26 @@ test('executeWranglerD1 does not retry a permanent execute failure', () => {
 	expect(calls).toBe(1)
 })
 
+test('executeWranglerD1 does not retry when only the submitted SQL mentions SQLITE_BUSY', () => {
+	let calls = 0
+	expect(() =>
+		executeWranglerD1({
+			binding: 'APP_DB',
+			sql: "SELECT 'SQLITE_BUSY' AS name;",
+			mode: '--local',
+			envFilePath: 'missing.env',
+			sleep: () => {
+				throw new Error('sleep should not run')
+			},
+			spawnImpl: () => {
+				calls += 1
+				return { status: 1, stdout: '', stderr: 'no such table' }
+			},
+		}),
+	).toThrow('no such table')
+	expect(calls).toBe(1)
+})
+
 test('executeWranglerD1 exhausts SQLITE_BUSY retries then throws', () => {
 	let calls = 0
 	const delays: Array<number> = []

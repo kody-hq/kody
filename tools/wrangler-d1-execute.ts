@@ -125,8 +125,11 @@ export function executeWranglerD1(
 			}
 		}
 		lastError = failedExecuteError({ sql: input.sql, result })
+		// Classify Wrangler stdout/stderr only. The thrown message also
+		// repeats the submitted SQL, which must not make a permanent
+		// execute failure retryable.
 		if (
-			!isRetryableD1LockMessage(lastError.message) ||
+			!isRetryableD1LockMessage(`${result.stdout}\n${result.stderr}`) ||
 			attempt === maxAttempts
 		) {
 			throw lastError

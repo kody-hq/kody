@@ -94,6 +94,7 @@ test('e2e migrate retries SQLITE_BUSY once after resetting persist', () => {
 		run: () => {
 			runs.push('migrate')
 			if (runs.length === 1) return { status: 1, output: busy }
+			expect(persistResets).toBe(1)
 			return { status: 0, output: 'applied' }
 		},
 		resetPersist: () => {
@@ -107,6 +108,24 @@ test('e2e migrate retries SQLITE_BUSY once after resetting persist', () => {
 	expect(logs).toEqual([
 		'e2e migrate hit a transient local D1 lock; resetting persist and retrying once.',
 	])
+
+	let busyRuns = 0
+	let busyResets = 0
+	const secondBusy = { status: 1, output: `${busy}\nsecond attempt` }
+	const repeatedBusy = runE2eMigrateWithLockRetry({
+		run: () => {
+			busyRuns += 1
+			if (busyRuns > 2) throw new Error('unexpected third migration')
+			return busyRuns === 1 ? { status: 1, output: busy } : secondBusy
+		},
+		resetPersist: () => {
+			busyResets += 1
+		},
+		log: () => {},
+	})
+	expect(repeatedBusy).toEqual(secondBusy)
+	expect(busyRuns).toBe(2)
+	expect(busyResets).toBe(1)
 
 	const firstPass = runE2eMigrateWithLockRetry({
 		run: () => ({ status: 0, output: 'already applied' }),
