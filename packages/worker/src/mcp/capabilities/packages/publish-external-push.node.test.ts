@@ -1001,3 +1001,20 @@ test('durable publish code fails the run for any outcome that did not publish', 
 		'kody-terminal: packagePublishExternalPush returned not_fast_forward: not a descendant',
 	)
 })
+
+test('an uploaded build is checked against the person who made it, not the org a durable re-entry runs as', async () => {
+	const { publishRequesterPersonId } =
+		await import('./publish-external-push.ts')
+	expect(
+		publishRequesterPersonId({
+			user: { userId: 'org-kody' },
+			request: { actor: { userId: 'person-kent' } },
+		} as never),
+	).toBe('person-kent')
+	expect(
+		publishRequesterPersonId({
+			user: { userId: 'person-solo' },
+			request: null,
+		} as never),
+	).toBe('person-solo')
+})

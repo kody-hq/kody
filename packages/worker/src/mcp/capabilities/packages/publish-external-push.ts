@@ -1,4 +1,5 @@
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { showBuildOrigin } from '#worker/publish-offload/policy.ts'
 import {
 	resolveUploadedPublishBuildForPublish,
@@ -170,6 +171,19 @@ const publishBuildOriginSchema = z
 	.describe(
 		"Where this version was built: Kody cloud, the publisher's CLI (--build local), or one of their execution contexts (--build context).",
 	)
+
+/**
+ * The person publishing. Durable re-entry runs as the package-owning org
+ * (`resolveBackgroundMcpUser(payload.userId)`), so a team package's caller
+ * user is the org there; the person who made the build is the lineage actor.
+ */
+export function publishRequesterPersonId(
+	callerContext: Pick<Partial<McpCallerContext>, 'user' | 'request'>,
+) {
+	return (
+		callerContext.request?.actor?.userId ?? requireMcpUser(callerContext).userId
+	)
+}
 
 export const durablePublishWorkflowCode = `import { kody } from 'kody:runtime'
 const publishedStatuses = ${JSON.stringify(publishedExternalPushStatuses)}
@@ -1734,7 +1748,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 							packageId,
 							sourceId: source.id,
 							commit: newCommit,
-							requesterUserId: user.userId,
+							requesterUserId: publishRequesterPersonId(ctx.callerContext),
 							orgId: requireMcpRequest(ctx.callerContext).org.id,
 						})
 					: null,
