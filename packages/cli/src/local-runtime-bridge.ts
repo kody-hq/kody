@@ -13,6 +13,10 @@ import {
 } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { Readable } from 'node:stream'
+import {
+	CapabilityProxyError,
+	gatewayFetchErrorHeaderName,
+} from './capability-proxy.js'
 import { redact } from './redact.js'
 import { runSecretHeader } from './local-runtime-source.js'
 import { localBridgeTlsCheckPath } from './local-egress.js'
@@ -56,6 +60,11 @@ export type LocalRuntimeBridgeInput = {
 	forwardHostFs?: (body: unknown) => Promise<unknown>
 }
 
+/** False only when the hop failed before any request byte left the CLI. */
+function gatewayHopMayHaveReachedOrigin(error: unknown): boolean {
+	return !(error instanceof CapabilityProxyError && error.sent === false)
+}
+
 export async function startLocalRuntimeBridge(
 	input: LocalRuntimeBridgeInput,
 ): Promise<LocalRuntimeBridge> {
@@ -72,16 +81,17 @@ export async function startLocalRuntimeBridge(
 			})
 			response.end(JSON.stringify(body))
 		}
-		/** Open API-shaped error so workerd `gatewayFetchStream` throws (needs no-store). */
+		/** Marked Open API-shaped error so workerd `gatewayFetchStream` throws. */
 		const replyGatewayFetchError = (
 			status: number,
 			message: string,
 			code: string,
+			mayHaveReachedOrigin: boolean,
 		) => {
 			replyJson(
 				status,
-				{ error: { code, message } },
-				{ 'Cache-Control': 'no-store' },
+				{ error: { code, message, mayHaveReachedOrigin } },
+				{ 'Cache-Control': 'no-store', [gatewayFetchErrorHeaderName]: code },
 			)
 		}
 		if (request.headers[runSecretHeader] !== input.runSecret) {
@@ -107,11 +117,22 @@ export async function startLocalRuntimeBridge(
 			request.method === 'POST' &&
 			request.url === localBridgeGatewayFetchPath
 		) {
+			// One hop's signal: the run ending or workerd dropping this request
+			// (caller AbortSignal, mid-body disconnect) stops the upstream hop.
+			const hop = new AbortController()
+			const abortHop = () =>
+				hop.abort(new Error('The local gateway fetch was cancelled.'))
+			if (inFlight.signal.aborted) abortHop()
+			else inFlight.signal.addEventListener('abort', abortHop, { once: true })
+			response.once('close', () => {
+				inFlight.signal.removeEventListener('abort', abortHop)
+				if (!response.writableFinished) abortHop()
+			})
 			try {
 				await input.forwardGatewayFetchStream({
 					request,
 					response,
-					signal: inFlight.signal,
+					signal: hop.signal,
 				})
 			} catch (error) {
 				if (response.headersSent) {
@@ -127,6 +148,7 @@ export async function startLocalRuntimeBridge(
 						? certErrorMessage(certCode, 'the Kody API')
 						: redact(error instanceof Error ? error.message : String(error)),
 					certCode ? 'tls_certificate_error' : 'gateway_fetch_failed',
+					!certCode && gatewayHopMayHaveReachedOrigin(error),
 				)
 			}
 			return

@@ -51,7 +51,10 @@ import {
 	operationAllowsCliOauth,
 	isCliCredentialBootstrapRedeemOperation,
 } from './invoke.ts'
-import { runCapabilityProxyGatewayFetchStream } from './capability-proxy-gateway-fetch-stream.ts'
+import {
+	gatewayFetchErrorHeaderName,
+	runCapabilityProxyGatewayFetchStream,
+} from './capability-proxy-gateway-fetch-stream.ts'
 import { parseNativeInput } from './native-operation-helpers.ts'
 import {
 	apiOperationUsesQueryInputs,
@@ -443,6 +446,9 @@ async function handleCapabilityProxyGatewayFetchStream(input: {
 		if (apiError.status >= 500 && !(error instanceof ApiError)) {
 			console.error('open-api-operation-failed', input.operationId, error)
 		}
+		// Marks Kody's own error so the CLI never mistakes an upstream JSON
+		// error response for a gateway failure.
+		apiError.headers[gatewayFetchErrorHeaderName] = apiError.code
 		throw apiError
 	} finally {
 		input.waitUntil(

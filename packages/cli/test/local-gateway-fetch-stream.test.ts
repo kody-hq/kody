@@ -7,6 +7,7 @@ import {
 	callCapabilityProxyGatewayFetchStream,
 	gatewayFetchHeadersHeaderName,
 	gatewayFetchMethodHeaderName,
+	gatewayFetchErrorHeaderName,
 	gatewayFetchUrlHeaderName,
 } from '../src/capability-proxy.js'
 import { forwardLocalGatewayFetchStream } from '../src/local-gateway-fetch-forward.js'
@@ -148,8 +149,17 @@ test('bridge gateway-fetch failures return Open API error envelopes (no-store)',
 		)
 		assert.equal(response.status, 502)
 		assert.match(response.headers.get('cache-control') ?? '', /no-store/)
+		assert.equal(
+			response.headers.get(gatewayFetchErrorHeaderName),
+			'gateway_fetch_failed',
+		)
+		// An unclassified failure may have sent bytes, so say so.
 		assert.deepEqual(await response.json(), {
-			error: { code: 'gateway_fetch_failed', message: 'upstream blew up' },
+			error: {
+				code: 'gateway_fetch_failed',
+				message: 'upstream blew up',
+				mayHaveReachedOrigin: true,
+			},
 		})
 	} finally {
 		await bridge.close()

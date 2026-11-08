@@ -61,6 +61,8 @@ export const gatewayFetchUrlHeaderName = 'X-Kody-Gateway-Url'
 export const gatewayFetchMethodHeaderName = 'X-Kody-Gateway-Method'
 export const gatewayFetchPackageIdHeaderName = 'X-Kody-Gateway-Package-Id'
 export const gatewayFetchHeadersHeaderName = 'X-Kody-Gateway-Headers'
+/** Marks Kody's (or the bridge's) own gateway-fetch error; value is the code. */
+export const gatewayFetchErrorHeaderName = 'X-Kody-Gateway-Error'
 export const secretResolutionHeaderName = 'x-kody-secret-resolution'
 
 /**
