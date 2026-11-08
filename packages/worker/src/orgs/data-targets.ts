@@ -106,6 +106,7 @@ const orgStructuralHardPurgeTargets: ReadonlyArray<UserScopedDataTarget> = [
 	{ kind: 'org_id', table: 'execution_context_opt_ins' },
 	{ kind: 'org_id', table: 'execution_context_org_attachments' },
 	{ kind: 'org_id', table: 'execution_context_registration_challenges' },
+	{ kind: 'org_id', table: 'execution_context_notices' },
 	{ kind: 'org_id', table: 'execution_contexts' },
 	{ kind: 'org_id', table: 'profiles' },
 	{ kind: 'org_id', table: 'org_memberships' },
@@ -173,12 +174,15 @@ function appliesToOrgHardPurge(target: UserScopedDataTarget): boolean {
 		case 'community_listing_child':
 			return true
 		case 'user_columns':
-			// Owner id columns (community listings, package approvals, …)
-			// plus org-owned follows (`follower_org_id`).
+			// Owner id columns (community listings, package approvals, …),
+			// org-owned follows and their update feed (`follower_org_id`), and
+			// members' connections pinned to the org's OAuth apps
+			// (`app_owner_id`, ordered before the apps).
 			return (
 				target.columns.includes('owner_user_id') ||
-				(target.table === 'follows' &&
-					target.columns.includes('follower_org_id'))
+				target.columns.includes('follower_org_id') ||
+				(target.table === 'user_integrations' &&
+					target.columns.includes('app_owner_id'))
 			)
 		case 'db_user_id':
 		case 'db_user_target':

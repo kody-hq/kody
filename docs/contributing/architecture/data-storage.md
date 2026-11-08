@@ -552,11 +552,12 @@ The schema is defined by migrations in `packages/worker/migrations/`:
   amendment 2026-10-29): tokens live with the member's personal org, the client
   secret with the org's app. Deleting the org's app or the member leaving wipes
   those rows; org transfer rewrites `app_owner_id` with the apps. Team-org soft
-  delete and hard purge do not wipe them today: soft delete does not offboard
-  members, and the `user_integrations_pinned_to_org_apps` target in
-  `account/data-targets.ts` is outside the org hard-purge inventory
-  (`appliesToOrgHardPurge`). A member's pinned row can outlive the org and,
-  through the `ON DELETE RESTRICT` app FK, block deleting the org's app rows.
+  delete wipes and revokes them (`wipePinnedConnectionsForOrg`, reason
+  `org_deleted`) before tombstoning the apps; restore does not bring them back.
+  Hard purge runs the same wipe, then the `user_integrations_pinned_to_org_apps`
+  target in `account/data-targets.ts` (inside `appliesToOrgHardPurge`) deletes
+  any row the wipe cannot see, before `user_oauth_apps`, so the
+  `ON DELETE RESTRICT` app FK never blocks the purge.
 
 App access pattern:
 

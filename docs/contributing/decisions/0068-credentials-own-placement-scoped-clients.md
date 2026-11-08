@@ -1209,9 +1209,10 @@ but never use it or read its tokens.**
   (`credential.pinned_connection_revoked`) and in the owner's personal org
   (`credential.pinned_connection_wiped`). Revoking never gives the admin the
   token.
-- **Cut-off.** Leaving or removal (`offboardOrgMember`) and deleting the org's
-  app wipe every connection pinned to it and revoke upstream first, so deleting
-  the app is never blocked by members' connections.
+- **Cut-off.** Leaving or removal (`offboardOrgMember`), deleting the org's app,
+  and deleting the org (soft delete and hard purge) wipe every connection pinned
+  to it and revoke upstream first, so deleting the app is never blocked by
+  members' connections.
 - **Upstream revoke.** GitHub OAuth Apps:
   `DELETE /applications/{client_id}/token` with the app's client credentials.
   Providers with an RFC 7009 endpoint: a revocation request for the refresh

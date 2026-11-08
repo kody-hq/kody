@@ -406,6 +406,26 @@ export async function wipePinnedConnections(input: {
 }
 
 /** Org access ended: wipe the person's connections pinned to `orgId`. */
+/** Every member's connection pinned to an org that is being deleted. */
+export async function wipePinnedConnectionsForOrg(input: {
+	env: WipeEnv
+	orgId: OwnerId
+	audit: OrgAuditWriter | null
+	fetchImpl?: typeof fetch
+}) {
+	const connections = await listPinnedConnectionsForOrg({
+		db: input.env.APP_DB,
+		pinnedOrgId: input.orgId,
+	})
+	return wipePinnedConnections({
+		env: input.env,
+		connections,
+		reason: 'org_deleted',
+		audit: input.audit,
+		fetchImpl: input.fetchImpl,
+	})
+}
+
 export async function wipePinnedConnectionsForMember(input: {
 	env: WipeEnv
 	orgId: OwnerId

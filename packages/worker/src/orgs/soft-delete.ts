@@ -28,6 +28,7 @@ import {
 } from '#worker/soft-delete/window.ts'
 import {
 	logOrgAuditEvent,
+	optionalOrgAuditWriter,
 	orgAuditWriterForPerson,
 } from '#worker/orgs/org-audit.ts'
 import { jobsData } from '#worker/jobs/jobs-data.ts'
@@ -51,6 +52,7 @@ import { onMemberSoftRemoved } from '#worker/orgs/member-offboarding.ts'
 import { resolveOAuthHelpers } from '#worker/oauth-helpers.ts'
 import type { OAuthGrantHelpers } from '#worker/oauth-grants.ts'
 import { revokeOAuthGrantsForOrg } from '#worker/orgs/offboarding.ts'
+import { wipePinnedConnectionsForOrg } from '#worker/integrations/pinned-connections.ts'
 
 export { AccountDeletionWritersActiveError }
 
@@ -398,6 +400,16 @@ export async function softDeleteOrg(input: {
 			})
 		}
 	}
+
+	// Before the org's apps are tombstoned: upstream revoke needs the live app.
+	await wipePinnedConnectionsForOrg({
+		env: input.env,
+		orgId: input.orgId,
+		audit: optionalOrgAuditWriter(input.env, {
+			userId: input.actorUserId ?? null,
+			username: input.actorUsername ?? null,
+		}),
+	})
 
 	const resourceRowsSoftDeleted = await softDeleteOrgOwnedAppRows({
 		appDb,
