@@ -27,7 +27,11 @@ npm run control-kody -- browse --path /account/organizations/new
   (username slug) and `/account/organizations`.
 - Team org: `/@{$orgSlug}/-/overview`, `/@{$orgSlug}/-/settings`,
   `/@{$orgSlug}/-/members`, `/@{$orgSlug}/-/teams`, `/@{$orgSlug}/-/grants`,
-  `/@{$orgSlug}/-/collaborators`
+  `/@{$orgSlug}/-/collaborators`, `/@{$orgSlug}/-/grants/user/$userId`
+- Person access: as an Owner, Members and Collaborators rows link **Access** to
+  `/@{$orgSlug}/-/grants/user/$userId`, which lists direct package, app, and
+  credential grants (team and everyone grants read-only) and the **Give access**
+  batch form. Cold users with no membership or grant are 404.
 - Invite: `/join/$token`
 - Public team org page: signed out, `request GET /@<slug>` is 200 for a public
   org (only public, non-hidden packages; no members) and the same 404 as an

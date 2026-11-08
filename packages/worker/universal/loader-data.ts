@@ -1625,6 +1625,58 @@ export type OrgGrantsLoaderData = {
 	orgWideRead: {
 		subjects: Array<OrgWideReadSubjectView>
 	} | null
+	/** Non-owner members and outside collaborators, when the viewer can manage. */
+	people: Array<OrgGrantPersonView>
+}
+
+/** A grant that reaches one person: made to them, a team they are on, or everyone. */
+export type OrgSubjectAccessGrant = OrgGrantView & {
+	via: 'direct' | 'team' | 'everyone'
+	/** Direct grants only: the viewer may change or remove it here. */
+	canRevoke: boolean
+}
+
+/** A package or credential the viewer may share with this person. */
+export type OrgSubjectAccessOption = {
+	resourceType: 'package' | 'credential'
+	resourceId: string
+	label: string
+	detail: string | null
+	/** Package has an app the viewer may also share (an app grant). */
+	appGrantable: boolean
+}
+
+export type OrgSubjectAccessLoaderData = {
+	ok: true
+	org: OrgManagementOrg
+	canManage: boolean
+	subject: {
+		userId: string
+		username: string | null
+		displayName: string | null
+		avatarUrl: string | null
+		/** Null for an outside collaborator. */
+		role: 'owner' | 'member' | 'billing' | null
+	}
+	grants: Array<OrgSubjectAccessGrant>
+	/** Null when the viewer cannot add access or the person is an Owner. */
+	options: {
+		packages: Array<OrgSubjectAccessOption>
+		credentials: Array<OrgSubjectAccessOption>
+	} | null
+}
+
+export type OrgSubjectAccessWriteResult = {
+	resourceType: 'package' | 'app' | 'credential'
+	resourceId: string
+	preset: 'read' | 'use' | 'contribute' | 'manage'
+} & ({ ok: true; warnings: Array<string> } | { ok: false; error: string })
+
+/** Someone the Grants page can open an access page for. */
+export type OrgGrantPersonView = {
+	userId: string
+	label: string
+	kind: 'member' | 'collaborator'
 }
 
 export type OrgWideReadSubjectView = {
@@ -3264,6 +3316,7 @@ export type AppLoaderData = {
 	orgInviteJoin?: OrgInviteJoinLoaderData
 	orgTeams?: OrgTeamsLoaderData
 	orgGrants?: OrgGrantsLoaderData
+	orgGrantAccess?: OrgSubjectAccessLoaderData
 	orgCollaborators?: OrgCollaboratorsLoaderData
 	accountConnections?: AccountConnectionsLoaderData
 	accountEmailDestinations?: AccountEmailDestinationsLoaderData

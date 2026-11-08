@@ -15,6 +15,7 @@ import {
 	resolveAuthorizedGrantPermissions,
 } from '#mcp/capabilities/access/shared.ts'
 import type {
+	OrgGrantPersonView,
 	OrgGrantsLoaderData,
 	OrgWideReadSubjectView,
 } from '#universal/loader-data.ts'
@@ -33,6 +34,7 @@ import {
 	type ListedOrgGrant,
 } from '#worker/orgs/org-grants-view.ts'
 import { listOrgMembers } from '#worker/orgs/org-members-list.ts'
+import { listOutsideCollaborators } from '#worker/orgs/org-collaborators-list.ts'
 import { listTeams } from '#worker/orgs/org-teams-list.ts'
 import {
 	isOrgWideManagePermission,
@@ -53,7 +55,7 @@ import {
  * Same resource check as grant revoke. Authorization and caller denials mean
  * this viewer cannot revoke the grant; anything else still fails the request.
  */
-async function grantRevokeAllowed(
+export async function grantRevokeAllowed(
 	env: Env,
 	user: AuthenticatedAppUser,
 	grant: { resourceType: string; resourceId: string },
@@ -110,7 +112,36 @@ export async function loadOrgGrantsData(input: {
 				canRevoke: await grantRevokeAllowed(input.env, input.user, grant),
 			})),
 		),
+		people:
+			canManage && !input.org.personal
+				? await listGrantPeople(input.env.APP_DB, input.org.id)
+				: [],
 	}
+}
+
+/** Non-owner members, then outside collaborators, for "Give someone access". */
+async function listGrantPeople(
+	db: D1Database,
+	orgId: string,
+): Promise<Array<OrgGrantPersonView>> {
+	const [members, outside] = await Promise.all([
+		listOrgMembers(db, orgId),
+		listOutsideCollaborators(db, orgId),
+	])
+	return [
+		...members
+			.filter((member) => member.role !== 'owner')
+			.map((member) => ({
+				userId: member.userId,
+				label: memberLabel(member),
+				kind: 'member' as const,
+			})),
+		...outside.map((person) => ({
+			userId: person.userId,
+			label: memberLabel(person),
+			kind: 'collaborator' as const,
+		})),
+	]
 }
 
 export async function revokeOrganizationGrant({
