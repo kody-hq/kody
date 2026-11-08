@@ -997,7 +997,7 @@ export function hookCommandLabel(script: string) {
 const vitestWorkerCrashPattern =
 	/Worker exited unexpectedly|Timeout waiting for worker to respond/
 const vitestFailedSummaryPattern = /^\s*(?:Test Files|Tests)\s+.*\b\d+ failed\b/
-const vitestUnhandledHeadingPattern = /Unhandled (?:Error|Rejection)/
+const vitestUnhandledHeadingPattern = /Unhandled (?:Error|Rejection)(?!s)/
 const vitestSectionRulePattern = /^\s*\u23af{3,}/
 
 /**

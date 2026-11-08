@@ -1317,6 +1317,17 @@ test('vitest related retries once only on a worker crash with no failed test', a
 				section('TypeError: boom from a test teardown'),
 		),
 	).toBe(false)
+	const banner = `${rule} Unhandled Errors ${rule}\n\nVitest caught 1 unhandled error during the test run.\n\n`
+	expect(
+		isVitestWorkerCrashWithoutFailures(
+			banner + section('Error: Worker exited unexpectedly'),
+		),
+	).toBe(true)
+	expect(
+		isVitestWorkerCrashWithoutFailures(
+			banner + section('TypeError: boom from a test teardown'),
+		),
+	).toBe(false)
 	const scanner = createVitestCrashScanner()
 	scanner.write(' Test Files  1 fai')
 	scanner.write('led (1)\n')
