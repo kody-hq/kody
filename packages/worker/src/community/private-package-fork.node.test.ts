@@ -16,6 +16,7 @@ import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.t
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { insertCommunityFork } from './repo.ts'
+import { CommunityActionError } from './errors.ts'
 import {
 	findExistingPrivatePackageFork,
 	forkPrivatePackage,
@@ -320,4 +321,45 @@ test('a private fork checks the expected commit against the tree it resolved, no
 	const prepared = await prepareReaderFork(seeded)
 	expect(prepared.originCommit).toBe('commit-1')
 	expect(prepared.files['README.md']).toBe('# published')
+})
+
+test('a private fork rewrites self-imports using the recovered manifest name', async () => {
+	const seeded = await seed()
+	artifactMocks.resolveArtifactSourceHead.mockResolvedValue({
+		commit: 'commit-2',
+		branch: 'main',
+	})
+	artifactMocks.readArtifactTreeAtCommit.mockResolvedValue({
+		...noteFiles('# renamed'),
+		'package.json': JSON.stringify({
+			name: '@pf-owner/notes-next',
+			version: '1.0.0',
+			kody: { id: 'notes', description: 'notes' },
+		}),
+		'src/index.ts': "export { helper } from '@pf-owner/notes-next/helper'\n",
+	})
+
+	const prepared = await prepareReaderFork(seeded, 'commit-2')
+
+	expect(prepared.files['src/index.ts']).toBe(
+		"export { helper } from '@pf-reader/notes/helper'\n",
+	)
+})
+
+test('a private fork without package.json at HEAD is a caller error', async () => {
+	const seeded = await seed()
+	artifactMocks.resolveArtifactSourceHead.mockResolvedValue({
+		commit: 'commit-2',
+		branch: 'main',
+	})
+	artifactMocks.readArtifactTreeAtCommit.mockResolvedValue({
+		'README.md': '# readme only',
+	})
+
+	await expect(prepareReaderFork(seeded, 'commit-2')).rejects.toSatisfy(
+		(error: unknown) =>
+			error instanceof CommunityActionError &&
+			error.message ===
+				'This package has no package.json on its default branch.',
+	)
 })

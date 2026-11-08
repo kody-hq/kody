@@ -1,6 +1,11 @@
+import { getErrorCauseChain } from '@kody-internal/shared/error-message.ts'
 import { readPublishedSourceSnapshot } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { readArtifactTreeAtCommit } from '#worker/repo/artifact-file.ts'
-import { isArtifactsGitTransientRemapError } from '#worker/repo/artifacts-git-retry.ts'
+import { artifactsBindingErrorCode } from '#worker/repo/artifacts.ts'
+import {
+	isArtifactsGitTransientRemapError,
+	toArtifactsGitUnavailableError,
+} from '#worker/repo/artifacts-git-retry.ts'
 import { readArtifactSourceSnapshot } from '#worker/repo/artifact-source-snapshot.ts'
 import {
 	isCommunityForkResourceLimitCause,
@@ -48,8 +53,11 @@ async function readPublishedAtCommit(input: {
 		if (published?.files && Object.keys(published.files).length > 0) {
 			return published.files
 		}
-	} catch {
-		// Try the next source for this commit.
+	} catch (error) {
+		// Try the next source for this commit, unless the isolate ran out.
+		if (isCommunityForkResourceLimitCause(error)) {
+			rethrowCommunityForkFailure(error)
+		}
 	}
 	return null
 }
@@ -68,17 +76,43 @@ async function readMockSnapshotAtCommit(input: {
 		if (treeSnapshot?.files && Object.keys(treeSnapshot.files).length > 0) {
 			return treeSnapshot.files
 		}
-	} catch {
-		// Fall through to git for this commit.
+	} catch (error) {
+		// Fall through to git for this commit, unless the isolate ran out.
+		if (isCommunityForkResourceLimitCause(error)) {
+			rethrowCommunityForkFailure(error)
+		}
 	}
 	return null
 }
+
+function isMissingOriginObjectError(error: unknown) {
+	return getErrorCauseChain(error).some((entry) => {
+		if (artifactsBindingErrorCode(entry) === 'NOT_FOUND') return true
+		if (!(entry instanceof Error)) return false
+		const code = (entry as { code?: unknown }).code
+		if (
+			typeof code === 'string' &&
+			['NotFoundError', 'ResolveTreeError', 'CommitNotFetchedError'].includes(
+				code,
+			)
+		) {
+			return true
+		}
+		return /(could not find|not found|no such|resolve.*tree)/i.test(
+			entry.message,
+		)
+	})
+}
+
+type GitTreeRead =
+	| { files: Record<string, string> }
+	| { files: null; failure?: unknown }
 
 async function readGitTreeAtCommit(input: {
 	env: Env
 	repoId: string
 	commit: string
-}): Promise<Record<string, string> | null> {
+}): Promise<GitTreeRead> {
 	try {
 		const files = await readArtifactTreeAtCommit({
 			env: input.env,
@@ -86,20 +120,23 @@ async function readGitTreeAtCommit(input: {
 			commit: input.commit,
 		})
 		if (files && Object.keys(files).length > 0) {
-			return files
+			return { files }
 		}
-		return null
+		return { files: null }
 	} catch (error) {
-		// Missing commit / empty tree: try the next candidate. Transient
-		// Artifacts HTTP and isolate memory limits must stay 503 / resource
-		// errors — do not mask them as a missing snapshot.
+		// Transient Artifacts HTTP and isolate memory limits must stay 503 /
+		// resource errors — do not mask them as a missing snapshot.
 		if (
 			isCommunityForkResourceLimitCause(error) ||
 			isArtifactsGitTransientRemapError(error)
 		) {
 			rethrowCommunityForkFailure(error)
 		}
-		return null
+		// Missing commit / repo: try the next candidate. Anything else (REST
+		// info/token failures, unexpected fetch errors) also tries the next
+		// candidate, but is surfaced as unavailable if nothing resolves.
+		if (isMissingOriginObjectError(error)) return { files: null }
+		return { files: null, failure: error }
 	}
 }
 
@@ -124,6 +161,7 @@ export async function resolveForkOriginSourceFiles(input: {
 	})
 	const sourceId = input.sourceId?.trim() || null
 	const repoId = input.repoId?.trim() || null
+	let gitFailure: unknown = null
 
 	for (const commit of commits) {
 		if (sourceId) {
@@ -155,21 +193,23 @@ export async function resolveForkOriginSourceFiles(input: {
 				}
 			}
 
-			const gitFiles = await readGitTreeAtCommit({
+			const git = await readGitTreeAtCommit({
 				env: input.env,
 				repoId,
 				commit,
 			})
-			if (gitFiles) {
+			if (git.files) {
 				return {
-					files: gitFiles,
+					files: git.files,
 					commit,
 					source: 'artifact-git-tree',
 				}
 			}
+			if ('failure' in git && gitFailure === null) gitFailure = git.failure
 		}
 	}
 
+	if (gitFailure !== null) throw toArtifactsGitUnavailableError(gitFailure)
 	return null
 }
 

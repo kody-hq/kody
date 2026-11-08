@@ -1421,7 +1421,7 @@ async function prepareForkFromOriginFiles(args: {
 	const { input, files, originCommit, subject } = args
 	const packageJsonContent = files['package.json']
 	if (!packageJsonContent) {
-		throw new Error(
+		throw new CommunityActionError(
 			subject === 'listing'
 				? 'Catalog entry snapshot is missing package.json.'
 				: 'This package has no package.json on its default branch.',
@@ -1551,7 +1551,7 @@ async function prepareForkFromOriginFiles(args: {
 			...originFiles,
 			'package.json': rewrittenManifest.content,
 		},
-		originPackageName: args.originName,
+		originPackageName: rewrittenManifest.originName ?? args.originName,
 		nextPackageName: rewrittenManifest.targetName,
 	})
 	const crossScopeReferences = scanCrossScopeReferences({

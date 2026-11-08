@@ -277,3 +277,71 @@ test('resolveForkOriginSourceFiles rethrows isolate memory limit failures', asyn
 		}),
 	).rejects.toBeInstanceOf(CommunityForkResourceLimitError)
 })
+
+test('resolveForkOriginSourceFiles tries the next candidate after an unexpected git failure', async () => {
+	resetMocks()
+	mocks.readArtifactTreeAtCommit.mockImplementation(
+		async (input: { commit: string }) => {
+			if (input.commit === 'head-commit') {
+				throw new Error('Artifacts createToken failed: HTTP 500')
+			}
+			return gitFiles
+		},
+	)
+
+	const resolved = await resolveForkOriginSourceFiles({
+		env,
+		sourceId: 'source-1',
+		repoId: 'repo-1',
+		preferredCommit: 'head-commit',
+		fallbackCommits: ['pin-commit'],
+	})
+
+	expect(resolved).toEqual({
+		files: gitFiles,
+		commit: 'pin-commit',
+		source: 'artifact-git-tree',
+	})
+})
+
+test('resolveForkOriginSourceFiles reports unexpected git failures as unavailable, not missing', async () => {
+	resetMocks()
+	consoleError.mockImplementation(() => {})
+	mocks.readArtifactTreeAtCommit.mockImplementation(
+		async (input: { commit: string }) => {
+			if (input.commit === 'head-commit') {
+				throw new Error('Artifacts createToken failed: HTTP 500')
+			}
+			throw new Error('Artifacts git fetch failed: commit not found')
+		},
+	)
+
+	await expect(
+		resolveForkOriginSourceFiles({
+			env,
+			sourceId: 'source-1',
+			repoId: 'repo-1',
+			preferredCommit: 'head-commit',
+			fallbackCommits: ['pin-commit'],
+		}),
+	).rejects.toMatchObject({ name: 'ArtifactsGitUnavailableError' })
+})
+
+test('resolveForkOriginSourceFiles rethrows memory limits from snapshot reads', async () => {
+	resetMocks()
+	mocks.readPublishedSourceSnapshot.mockRejectedValue(
+		Object.assign(new Error('Worker exceeded memory limit'), {
+			code: 'MEMORY_LIMIT',
+		}),
+	)
+
+	await expect(
+		resolveForkOriginSourceFiles({
+			env,
+			sourceId: 'source-1',
+			repoId: 'repo-1',
+			preferredCommit: 'head-commit',
+		}),
+	).rejects.toBeInstanceOf(CommunityForkResourceLimitError)
+	expect(mocks.readArtifactTreeAtCommit).not.toHaveBeenCalled()
+})
