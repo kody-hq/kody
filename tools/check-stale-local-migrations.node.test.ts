@@ -8,6 +8,7 @@ import {
 	disposableE2ePersistPath,
 	formatDisposableStaleLocalMigrationsReset,
 	isDisposableLocalPersistPath,
+	resetDisposableE2ePersist,
 	resolveStaleLocalMigrationsAction,
 } from './check-stale-local-migrations.ts'
 
@@ -146,6 +147,25 @@ test('only the e2e persist path is disposable', () => {
 	expect(isDisposableLocalPersistPath('.wrangler/state')).toBe(false)
 	expect(isDisposableLocalPersistPath('.wrangler/state/v3')).toBe(false)
 	expect(isDisposableLocalPersistPath('.wrangler/state/e2e-backup')).toBe(false)
+})
+
+test('resetDisposableE2ePersist deletes only the e2e persist path', async () => {
+	const directory = await mkdtemp(path.join(os.tmpdir(), 'kody-e2e-persist-'))
+	const persistTo = path.join(directory, disposableE2ePersistPath)
+	try {
+		await mkdir(persistTo, { recursive: true })
+		await writeFile(path.join(persistTo, 'marker'), '1')
+		resetDisposableE2ePersist(persistTo)
+		expect(existsSync(persistTo)).toBe(false)
+		expect(() => resetDisposableE2ePersist('.wrangler/state')).toThrow(
+			'non-disposable persist path',
+		)
+		expect(() =>
+			resetDisposableE2ePersist(path.join(directory, '.wrangler/state')),
+		).toThrow('non-disposable persist path')
+	} finally {
+		await rm(directory, { recursive: true, force: true })
+	}
 })
 
 test('stale e2e persist resets; other persist dirs still fail', () => {

@@ -1,6 +1,11 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
+import {
+	d1LockRetryBaseDelayMs,
+	d1LockRetryMaxAttempts,
+	isRetryableD1LockMessage,
+} from '@kody-internal/shared/d1-retry.ts'
 import { workerEnvFileRelativePath } from './local-d1-persist.ts'
 
 const outputTruncateLimit = 2_000
@@ -35,6 +40,8 @@ export type WranglerD1Target = {
 	env?: NodeJS.ProcessEnv
 	envFilePath?: string
 	spawnImpl?: WranglerD1Spawn
+	sleep?: (ms: number) => void
+	maxAttempts?: number
 }
 
 export function runWranglerD1(
@@ -65,10 +72,28 @@ export function runWranglerD1(
 	})
 }
 
+function sleepSync(ms: number) {
+	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
+function failedExecuteError(input: {
+	sql: string
+	result: WranglerD1SpawnResult
+}) {
+	return new Error(
+		`wrangler d1 execute failed (exit ${String(input.result.status)}) for: ${input.sql}\n${truncate(input.result.stdout)}\n${truncate(input.result.stderr)}`,
+	)
+}
+
 /**
  * `wrangler d1 execute <binding> --json --command <sql>`. Returns the first
  * statement's rows. Non-zero exit, invalid JSON, or a result object that is
  * not `{ results: object[] }` throws.
+ *
+ * Local Miniflare and remote D1 both emit transient `SQLITE_BUSY` /
+ * `database is locked` (including `SQLITE_BUSY_RECOVERY` after a crashed
+ * workerd). Retry those with the same backoff as production D1 helpers so
+ * e2e migration bookkeeping does not fail a whole Playwright shard.
  */
 export function executeWranglerD1(
 	input: WranglerD1Target & { binding: string; sql: string },
@@ -79,25 +104,45 @@ export function executeWranglerD1(
 	if (!input.sql) {
 		throw new Error('wrangler d1 execute requires SQL.')
 	}
-	const result = runWranglerD1(input, [
-		'execute',
-		input.binding,
-		'--json',
-		'--command',
-		input.sql,
-	])
-	if (result.status !== 0) {
-		throw new Error(
-			`wrangler d1 execute failed (exit ${String(result.status)}) for: ${input.sql}\n${truncate(result.stdout)}\n${truncate(result.stderr)}`,
-		)
+	const maxAttempts = input.maxAttempts ?? d1LockRetryMaxAttempts
+	const sleep = input.sleep ?? sleepSync
+	let lastError: Error | undefined
+	for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+		const result = runWranglerD1(input, [
+			'execute',
+			input.binding,
+			'--json',
+			'--command',
+			input.sql,
+		])
+		if (result.status === 0) {
+			try {
+				return readWranglerD1ExecuteRows(result.stdout)
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error)
+				if (!result.stderr) throw error
+				throw new Error(`${message}\n${truncate(result.stderr)}`)
+			}
+		}
+		lastError = failedExecuteError({ sql: input.sql, result })
+		// Classify Wrangler stdout/stderr only. The thrown message also
+		// repeats the submitted SQL, which must not make a permanent
+		// execute failure retryable.
+		if (
+			!isRetryableD1LockMessage(`${result.stdout}\n${result.stderr}`) ||
+			attempt === maxAttempts
+		) {
+			throw lastError
+		}
+		sleep(d1LockRetryBaseDelayMs * 2 ** (attempt - 1))
 	}
-	try {
-		return readWranglerD1ExecuteRows(result.stdout)
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error)
-		if (!result.stderr) throw error
-		throw new Error(`${message}\n${truncate(result.stderr)}`)
-	}
+	throw (
+		lastError ??
+		failedExecuteError({
+			sql: input.sql,
+			result: { status: 1, stdout: '', stderr: '' },
+		})
+	)
 }
 
 function readWranglerD1ExecuteRows(
