@@ -728,6 +728,62 @@ test('admin platform feedback follow_up stores and emails a new note on closed f
 	mockModule.getPlatformFeedbackForAdmin.mockReset()
 })
 
+test('admin platform feedback update rejects misnamed outcome fields before any read, write, or email', async () => {
+	const adminContext = createCapabilityContext({
+		userId: ownerIdFromStored('admin-1'),
+		roles: ['admin'],
+	})
+	const sideEffects = [
+		mockModule.getPlatformFeedbackForAdmin,
+		mockModule.readPlatformFeedbackSubmitterContact,
+		mockModule.updatePlatformFeedbackForAdmin,
+		mockModule.recordPlatformFeedbackFollowUpForAdmin,
+		mockModule.sendPlatformFeedbackOutcomeEmail,
+	]
+	for (const mock of sideEffects) mock.mockClear()
+	const cases = [
+		{
+			args: {
+				action: 'resolve',
+				resolution_note: 'Sorry about that; we fixed it.',
+				resolution_pr_urls: ['https://github.com/example/repo/pull/42'],
+			},
+			hints: [
+				'resolution_note is not a parameter; did you mean user_message?',
+				'resolution_pr_urls is not a parameter; did you mean pr_urls?',
+			],
+		},
+		{
+			args: { action: 'resolve', userMessage: 'Sorry about that.' },
+			hints: ['userMessage is not a parameter; did you mean user_message?'],
+		},
+		{
+			args: { action: 'dismiss', outcomeMessage: 'Sorry about that.' },
+			hints: ['outcomeMessage is not a parameter; did you mean user_message?'],
+		},
+		{
+			args: { action: 'follow_up', resolutionNote: 'Sorry about that.' },
+			hints: ['resolutionNote is not a parameter; did you mean user_message?'],
+		},
+		{
+			args: { action: 'resolve', apology: 'Sorry about that.' },
+			hints: ['apology is not a parameter.'],
+		},
+	]
+	for (const { args, hints } of cases) {
+		const error = await adminPlatformFeedbackUpdateCapability
+			.handler({ id: 'feedback-1', ...args }, adminContext)
+			.catch((caught: unknown) => caught)
+		expect(error).toBeInstanceOf(McpCallerError)
+		const message = (error as Error).message
+		for (const hint of hints) expect(message).toContain(hint)
+		expect(message).toContain(
+			'Valid fields: id, action, admin_note, user_message, pr_urls. Nothing was stored or emailed.',
+		)
+	}
+	for (const mock of sideEffects) expect(mock).not.toHaveBeenCalled()
+})
+
 test('meta platform feedback get and list scope to the signed-in submitter and redact reviewer fields', async () => {
 	const owned = {
 		id: 'feedback-1',
@@ -929,16 +985,28 @@ test('admin platform feedback reopen to triaged needs an admin and a note, recor
 	}
 	expect(readRow()).toEqual(resolvedRow)
 
+	// Caller-supplied attribution is not part of the schema and is refused.
+	await expect(
+		adminPlatformFeedbackUpdateCapability.handler(
+			{
+				id: submitted.id,
+				action: 'triage',
+				admin_note: 'Reopened: synthetic regression.',
+				...({
+					actor_user_id: 'spoofed-admin',
+					reviewed_at: '1999-01-01T00:00:00.000Z',
+				} as Record<string, unknown>),
+			},
+			adminContext,
+		),
+	).rejects.toThrow('actor_user_id is not a parameter.')
+	expect(readRow()).toEqual(resolvedRow)
+
 	const reopened = await adminPlatformFeedbackUpdateCapability.handler(
 		{
 			id: submitted.id,
 			action: 'triage',
 			admin_note: 'Reopened: synthetic regression.',
-			// Caller-supplied attribution is not part of the schema and is ignored.
-			...({
-				actor_user_id: 'spoofed-admin',
-				reviewed_at: '1999-01-01T00:00:00.000Z',
-			} as Record<string, unknown>),
 		},
 		adminContext,
 	)
