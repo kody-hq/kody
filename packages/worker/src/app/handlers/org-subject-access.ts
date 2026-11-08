@@ -158,7 +158,7 @@ export async function loadOrgSubjectAccessData(input: {
 		})
 	}
 	const options =
-		canManage && subject.role !== 'owner'
+		canManage && subject.role !== 'owner' && subject.role !== 'admin'
 			? await loadGrantOptions(input, grants)
 			: null
 	return {
@@ -365,11 +365,12 @@ export async function grantOrganizationSubjectAccess({
 			400,
 		)
 	}
-	if (subject.role === 'owner') {
+	if (subject.role === 'owner' || subject.role === 'admin') {
 		return operationResult(
 			{
 				ok: false,
-				error: 'Owners already have full access to this organization.',
+				error:
+					'Owners and Admins already have full access to this organization.',
 			},
 			400,
 		)

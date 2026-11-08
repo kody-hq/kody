@@ -674,7 +674,7 @@ export function PackageCollaboratorsRoute({
 			<AccountManagementPanel title="Add an org member">
 				{view.options.members.length === 0 ? (
 					<p css={mutedCopyCss}>
-						No members left to add. Owners already have full access.
+						No members left to add. Owners and Admins already have full access.
 					</p>
 				) : (
 					<form

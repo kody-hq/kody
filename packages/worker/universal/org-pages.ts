@@ -221,7 +221,7 @@ export function orgOverviewPath(slug: string) {
  * show; the billing routes authorize every request.
  */
 export function orgRoleManagesBilling(role: OrgRole | null) {
-	return role === 'owner' || role === 'billing'
+	return role === 'owner' || role === 'admin' || role === 'billing'
 }
 
 /** Slug of `/@slug` or `/@slug/...`, when the first segment is a handle. */
@@ -442,6 +442,8 @@ export function orgRoleLabel(role: OrgRole | null) {
 	switch (role) {
 		case 'owner':
 			return 'Owner'
+		case 'admin':
+			return 'Admin'
 		case 'member':
 			return 'Member'
 		case 'billing':

@@ -12,6 +12,7 @@ import {
 	authorize,
 	checkPermission,
 	computeEffectivePermissions,
+	hasOwnerAuthority,
 	packageResource,
 } from '#worker/authorization/authorize.ts'
 import {
@@ -993,7 +994,7 @@ export async function disableEnablementForCaller(input: {
 			request: input.request,
 		})
 		// Someone else's enablement is invisible to non-Owners.
-		if (!access.isOwner) throw notFound
+		if (!hasOwnerAuthority(access)) throw notFound
 	}
 	const toggle = planEnablementToggle({
 		env: input.env,
@@ -1028,9 +1029,9 @@ export async function listEnablementsForCaller(input: {
 			env: input.env,
 			request: input.request,
 		})
-		if (!access.isOwner) {
+		if (!hasOwnerAuthority(access)) {
 			throw new McpCallerError(
-				'Only an Owner can list every enablement in the org.',
+				'Only an Owner or Admin can list every enablement in the org.',
 			)
 		}
 	}

@@ -93,7 +93,7 @@ function renderOrgHomeMain(input: {
 								</SiteLink>
 							),
 						})
-					: input.role === 'owner'
+					: input.role === 'owner' || input.role === 'admin'
 						? renderStep({
 								icon: 'users',
 								title: 'Invite members and share access',

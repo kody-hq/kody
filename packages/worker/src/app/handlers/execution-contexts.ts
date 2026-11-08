@@ -437,7 +437,11 @@ export async function loadExecutionContextsPageData(input: {
 				orgSlug,
 			})),
 			attachableOrgs: orgs
-				.filter((org) => org.id !== scope.org.id && org.role === 'owner')
+				.filter(
+					(org) =>
+						org.id !== scope.org.id &&
+						(org.role === 'owner' || org.role === 'admin'),
+				)
 				.map((org) => ({ slug: org.slug })),
 			contexts: selected
 				? contexts.map((context) =>

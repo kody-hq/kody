@@ -6,7 +6,10 @@ import {
 	requireOrgPermission,
 	resolvePersonId,
 } from '#mcp/capabilities/access/shared.ts'
-import { computeEffectivePermissions } from '#worker/authorization/authorize.ts'
+import {
+	computeEffectivePermissions,
+	hasOwnerAuthority,
+} from '#worker/authorization/authorize.ts'
 import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import {
@@ -53,9 +56,9 @@ export const packageAppRunsAsSetCapability = defineDomainCapability(
 				env: ctx.env,
 				request,
 			})
-			if (!access.isOwner) {
+			if (!hasOwnerAuthority(access)) {
 				throw new McpCallerError(
-					'Only an Owner can choose who a package app runs as.',
+					'Only an Owner or Admin can choose who a package app runs as.',
 				)
 			}
 			const saved = await getSavedPackageById(db, {

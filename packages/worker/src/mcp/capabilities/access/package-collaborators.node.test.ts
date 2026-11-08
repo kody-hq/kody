@@ -237,7 +237,7 @@ test('set refuses owners and ambiguous subjects', async () => {
 			{ package_id: 'pkg-1', username: 'ada', preset: 'use' },
 			ctx,
 		),
-	).rejects.toThrow(/Owners already have full access/)
+	).rejects.toThrow(/Owners and Admins already have full access/)
 	await expect(
 		packageCollaboratorSetCapability.handler(
 			{

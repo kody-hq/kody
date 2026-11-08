@@ -122,7 +122,10 @@ function readOrganizations(value: unknown): Array<OrganizationSummary> {
 		const row = item as Record<string, unknown>
 		if (typeof row.slug !== 'string' || !row.slug.trim()) continue
 		const role =
-			row.role === 'owner' || row.role === 'member' || row.role === 'billing'
+			row.role === 'owner' ||
+			row.role === 'admin' ||
+			row.role === 'member' ||
+			row.role === 'billing'
 				? row.role
 				: null
 		organizations.push({

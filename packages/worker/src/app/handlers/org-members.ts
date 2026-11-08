@@ -17,6 +17,12 @@ import {
 	readInviteLinkOptions,
 } from '#app/invite-link-options.ts'
 import { computeEffectivePermissions } from '#worker/authorization/authorize.ts'
+import {
+	inviteRoleDenial,
+	isSeatRole,
+	removalDenial,
+	roleChangeDenial,
+} from '#worker/orgs/admin-role-rules.ts'
 import { buildUserAvatarUrl } from '#worker/community/public-urls.ts'
 import { normalizeEmailAddress } from '#worker/email/address.ts'
 import {
@@ -55,7 +61,7 @@ import { toHex } from '@kody-internal/shared/hex.ts'
 import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { sha256Hex } from '@kody-internal/shared/sha256.ts'
 
-const orgRoleValues = ['owner', 'member', 'billing'] as const
+const orgRoleValues = ['owner', 'admin', 'member', 'billing'] as const
 
 function isOrgRole(value: unknown): value is OrgRole {
 	return (
@@ -65,7 +71,7 @@ function isOrgRole(value: unknown): value is OrgRole {
 }
 
 function seatRole(role: string) {
-	return role === 'owner' || role === 'member'
+	return isSeatRole(role)
 }
 
 function generateInviteToken() {
@@ -231,17 +237,13 @@ export async function setOrganizationMemberRole({
 			404,
 		)
 	}
-	if (membership.role === 'owner' || role === 'owner') {
-		const permissions = await computeEffectivePermissions({
-			env,
-			request: user.request,
-		})
-		if (!permissions.isOwner) {
-			return operationResult(
-				{ ok: false, error: 'Only an Owner can change the Owner role.' },
-				403,
-			)
-		}
+	const roleDenial = roleChangeDenial({
+		actor: await computeEffectivePermissions({ env, request: user.request }),
+		currentRole: membership.role,
+		nextRole: role,
+	})
+	if (roleDenial) {
+		return operationResult({ ok: false, error: roleDenial }, 403)
 	}
 	const demotingOwner = membership.role === 'owner' && role !== 'owner'
 	if (demotingOwner) {
@@ -326,18 +328,15 @@ export async function removeOrganizationMember({
 			404,
 		)
 	}
+	const removeDenial = removalDenial({
+		actor: await computeEffectivePermissions({ env, request: user.request }),
+		targetRole: membership.role,
+	})
+	if (removeDenial) {
+		return operationResult({ ok: false, error: removeDenial }, 403)
+	}
 	const removingOwner = membership.role === 'owner'
 	if (removingOwner) {
-		const permissions = await computeEffectivePermissions({
-			env,
-			request: user.request,
-		})
-		if (!permissions.isOwner) {
-			return operationResult(
-				{ ok: false, error: 'Only an Owner can remove an Owner.' },
-				403,
-			)
-		}
 		const owners = await countLiveOwners(env.APP_DB, access.org.id)
 		if (owners <= 1) {
 			return operationResult(
@@ -427,17 +426,12 @@ export async function inviteOrganizationMember({
 		}
 		inviteeUsername = username
 	}
-	if (role === 'owner') {
-		const permissions = await computeEffectivePermissions({
-			env,
-			request: user.request,
-		})
-		if (!permissions.isOwner) {
-			return operationResult(
-				{ ok: false, error: 'Only an Owner can invite another Owner.' },
-				403,
-			)
-		}
+	const inviteDenial = inviteRoleDenial({
+		actor: await computeEffectivePermissions({ env, request: user.request }),
+		role,
+	})
+	if (inviteDenial) {
+		return operationResult({ ok: false, error: inviteDenial }, 403)
 	}
 	const token = generateInviteToken()
 	const tokenHash = await sha256Hex(token)
@@ -499,11 +493,11 @@ export async function createOrganizationInviteLink({
 	if (access.org.personal) return personalOrgMembershipWriteResponse()
 
 	if (fields.role !== undefined && !isInviteLinkRole(fields.role)) {
-		if (fields.role === 'owner') {
+		if (fields.role === 'owner' || fields.role === 'admin') {
 			return operationResult(
 				{
 					ok: false,
-					error: 'Invite links cannot grant the Owner role.',
+					error: 'Invite links cannot grant the Owner or Admin role.',
 				},
 				400,
 			)
@@ -668,9 +662,24 @@ export async function revokeOrganizationMemberInvite({
 			404,
 		)
 	}
-	if (invite.role === 'owner' && access.org.role !== 'owner') {
+	if (
+		invite.role &&
+		inviteRoleDenial({
+			actor: {
+				isOwner: access.org.role === 'owner',
+				isAdmin: access.org.role === 'admin',
+			},
+			role: invite.role,
+		})
+	) {
 		return operationResult(
-			{ ok: false, error: 'Only an Owner can revoke an Owner invite.' },
+			{
+				ok: false,
+				error:
+					invite.role === 'owner'
+						? 'Only an Owner can revoke an Owner invite.'
+						: 'Only an Owner or Admin can revoke an Admin invite.',
+			},
 			403,
 		)
 	}

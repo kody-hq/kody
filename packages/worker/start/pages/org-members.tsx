@@ -49,7 +49,9 @@ import {
 } from './account-management-components.tsx'
 import { OrgMembersInviteLinks } from './org-members-invite-links.tsx'
 import { useOrgPeopleMutation } from './org-people-mutation.ts'
-const memberRoles = ['owner', 'member', 'billing'] as const
+const memberRoles = ['owner', 'admin', 'member', 'billing'] as const
+const adminLimitsCopy =
+	'Admins can do everything an Owner can, except remove, demote, or change an Owner, make anyone an Owner, or delete the organization.'
 function memberName(member: OrgMemberView) {
 	return (
 		member.displayName?.trim() ||
@@ -93,9 +95,9 @@ function OrgMembersContent({
 		tone: 'info' | 'error'
 	} | null>(null)
 	const [invitee, setInvitee] = useState(''),
-		[inviteRole, setInviteRole] = useState<'owner' | 'member' | 'billing'>(
-			'member',
-		),
+		[inviteRole, setInviteRole] = useState<
+			'owner' | 'admin' | 'member' | 'billing'
+		>('member'),
 		[invitePrompt, setInvitePrompt] = useState<string | null>(null),
 		[confirmed, setConfirmed] = useState<string | null>(null),
 		[inviteRevision, setInviteRevision] = useState(0)
@@ -103,6 +105,13 @@ function OrgMembersContent({
 	const ownerCount = data.members.filter(
 		(member) => member.role === 'owner',
 	).length
+	const viewerIsOwner = data.org.role === 'owner'
+	const viewerHasOwnerAuthority = viewerIsOwner || data.org.role === 'admin'
+	function roleLocked(role: (typeof memberRoles)[number]) {
+		if (role === 'owner') return !viewerIsOwner
+		if (role === 'admin') return !viewerHasOwnerAuthority
+		return false
+	}
 	async function post<T>(
 		perform: () => Promise<T>,
 		success: string,
@@ -147,9 +156,22 @@ function OrgMembersContent({
 				</pre>
 			) : null}
 			<AccountManagementPanel title="People" ariaLabel="Organization members">
+				{data.canManage && !viewerIsOwner ? (
+					<p css={accountFieldNoteCss} data-testid="org-members-role-limits">
+						{viewerHasOwnerAuthority
+							? 'As an Admin, you cannot change or remove an Owner, or make anyone an Owner.'
+							: 'Only an Owner or Admin can change or remove an Owner or Admin.'}
+					</p>
+				) : null}
 				<ul css={listCss} data-testid="org-members">
 					{data.members.map((member) => {
 						const lastOwner = member.role === 'owner' && ownerCount <= 1
+						const targetLocked = roleLocked(member.role)
+						const lockedTitle = targetLocked
+							? member.role === 'owner'
+								? 'Only an Owner can change or remove an Owner.'
+								: 'Only an Owner or Admin can change or remove an Admin.'
+							: undefined
 						const identity = orgIdentity(
 							{
 								slug: member.username ?? member.userId,
@@ -179,7 +201,7 @@ function OrgMembersContent({
 												: member.roleLabel}
 										</span>
 									</span>
-									{member.role === 'owner' ? null : (
+									{member.role === 'owner' || member.role === 'admin' ? null : (
 										<SiteLink
 											href={orgGrantAccessPath(data.org.slug, member.userId)}
 											data-testid="org-member-access"
@@ -199,7 +221,8 @@ function OrgMembersContent({
 														? String(roleMutation.variables?.role)
 														: member.role
 												}
-												disabled={lastOwner || pending}
+												disabled={lastOwner || targetLocked || pending}
+												title={lockedTitle}
 												css={selectCss}
 												onChange={(event) =>
 													post(
@@ -215,14 +238,19 @@ function OrgMembersContent({
 												}
 											>
 												{memberRoles.map((role) => (
-													<option key={role} value={role}>
+													<option
+														key={role}
+														value={role}
+														disabled={role !== member.role && roleLocked(role)}
+													>
 														{orgRoleLabel(role)}
 													</option>
 												))}
 											</select>
 											<button
 												type="button"
-												disabled={lastOwner || pending}
+												disabled={lastOwner || targetLocked || pending}
+												title={lockedTitle}
 												css={getDangerPillCss({ size: 'sm' })}
 												onBlur={() => setConfirmed(null)}
 												onClick={() => {
@@ -318,11 +346,18 @@ function OrgMembersContent({
 									}
 								>
 									{memberRoles.map((role) => (
-										<option key={role} value={role}>
+										<option key={role} value={role} disabled={roleLocked(role)}>
 											{orgRoleLabel(role)}
 										</option>
 									))}
 								</select>
+								<p
+									css={accountFieldNoteCss}
+									data-testid="org-invite-admin-note"
+								>
+									{adminLimitsCopy}
+									{viewerIsOwner ? null : ' Only an Owner can invite an Owner.'}
+								</p>
 							</label>
 							<div css={accountActionsCss}>
 								<button

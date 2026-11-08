@@ -1,3 +1,4 @@
+import { inviteRoleDenial, isSeatRole } from '#worker/orgs/admin-role-rules.ts'
 import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
 import {
 	type GrantPreset,
@@ -167,6 +168,14 @@ async function assertInviterStillValid(db: D1Database, invite: StoredInvite) {
 		if (!inviter || inviter.role !== 'owner') {
 			throw new McpCallerError(
 				'This owner invite is no longer valid because the inviter is not an Owner.',
+			)
+		}
+		return
+	}
+	if (invite.kind === 'membership' && invite.role === 'admin') {
+		if (!inviter || (inviter.role !== 'owner' && inviter.role !== 'admin')) {
+			throw new McpCallerError(
+				'This admin invite is no longer valid because the inviter is not an Owner or Admin.',
 			)
 		}
 		return
@@ -351,7 +360,7 @@ async function acceptStoredInvite(input: {
 					audit: input.audit,
 				})
 			}
-			if (role === 'owner' || role === 'member') {
+			if (isSeatRole(role)) {
 				await syncSeatsAfterMembershipChange({
 					db: input.db,
 					env: input.env,
@@ -536,17 +545,14 @@ export const inviteCreateCapability = defineDomainCapability(
 							)
 						}
 						role = args.role ?? 'member'
-						if (role === 'owner') {
-							const access = await computeEffectivePermissions({
+						const inviteDenial = inviteRoleDenial({
+							actor: await computeEffectivePermissions({
 								env: ctx.env,
 								request,
-							})
-							if (!access.isOwner) {
-								throw new McpCallerError(
-									'Only an Owner can invite another Owner.',
-								)
-							}
-						}
+							}),
+							role,
+						})
+						if (inviteDenial) throw new McpCallerError(inviteDenial)
 						const ids = args.team_ids ?? []
 						await assertTeamsInOrg(db, request.org.id, ids)
 						teamIds = ids.length > 0 ? ids : null

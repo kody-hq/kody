@@ -29,7 +29,7 @@ function stubStripeFetch(
 async function seedPaidOrg(input: {
 	orgId: string
 	stripeCustomerId: string
-	seatRoles: Array<'owner' | 'member' | 'billing'>
+	seatRoles: Array<'owner' | 'admin' | 'member' | 'billing'>
 	plan?: string
 	stripePlan?: string | null
 }) {

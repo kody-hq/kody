@@ -367,7 +367,10 @@ function liveStarterMembership(
 	if (!stored) return stored
 	if (!liveRole) return null
 	if (stored.role === liveRole || liveRole === 'owner') return stored
-	if (stored.role === 'owner') return { role: liveRole }
+	if (liveRole === 'admin' && stored.role !== 'owner') return stored
+	if (stored.role === 'owner' || stored.role === 'admin') {
+		return { role: liveRole }
+	}
 	// Member and Billing do not cover each other: keep only live grants.
 	return null
 }

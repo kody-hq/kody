@@ -57,7 +57,10 @@ async function setup() {
 			.bind(ownerId)
 			.run()
 	}
-	function requestFor(userId: string, role: 'owner' | 'member' | 'billing') {
+	function requestFor(
+		userId: string,
+		role: 'owner' | 'admin' | 'member' | 'billing',
+	) {
 		return createMcpCallerContext({
 			source: { kind: 'session' },
 			baseUrl: 'https://kody.example',

@@ -64,7 +64,7 @@ type StoredTicket = {
 	oe: string
 }
 
-const orgRoles: ReadonlyArray<OrgRole> = ['owner', 'member', 'billing']
+const orgRoles: ReadonlyArray<OrgRole> = ['owner', 'admin', 'member', 'billing']
 
 export function parsePackageAppTicketKeys(raw: string | undefined) {
 	return (raw ?? '')

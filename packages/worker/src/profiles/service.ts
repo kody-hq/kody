@@ -6,6 +6,7 @@ import { experimentOffMessage } from '#universal/feature-flags/experiments.ts'
 import {
 	checkPermission,
 	computeEffectivePermissions,
+	hasOwnerAuthority,
 } from '#worker/authorization/authorize.ts'
 import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
@@ -104,7 +105,7 @@ export async function requireProfilesCaller(input: {
 		actor: {
 			userId: request.actor.userId,
 			profileId: request.credential.profileId ?? null,
-			isOwner: effective.isOwner,
+			isOwner: hasOwnerAuthority(effective),
 		},
 		holds: (resourceType, resourceId, permission) =>
 			checkPermission(
@@ -432,7 +433,7 @@ export async function listProfiles(
 		throw new ProfileError({
 			status: 403,
 			code: 'not_allowed',
-			message: 'Only an org Owner can list every member’s profiles.',
+			message: 'Only an org Owner or Admin can list every member’s profiles.',
 		})
 	}
 	const rows = await listProfileRows(caller.env.APP_DB, {

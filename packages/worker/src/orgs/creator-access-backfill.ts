@@ -136,7 +136,7 @@ async function classifyCreation(
 			out.push({ ...detail, outcome: 'creator_not_member' })
 			continue
 		}
-		if (role === 'owner') {
+		if (role === 'owner' || role === 'admin') {
 			out.push({ ...detail, outcome: 'creator_is_owner' })
 			continue
 		}

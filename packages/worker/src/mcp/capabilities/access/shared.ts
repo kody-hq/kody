@@ -23,6 +23,7 @@ import {
 import {
 	authorize,
 	computeEffectivePermissions,
+	hasOwnerAuthority,
 	type OrgResource,
 } from '#worker/authorization/authorize.ts'
 import {
@@ -97,7 +98,7 @@ export async function resolveGrantTarget(
 	}
 }
 
-export const orgRoleSchema = z.enum(['owner', 'member', 'billing'])
+export const orgRoleSchema = z.enum(['owner', 'admin', 'member', 'billing'])
 
 export const accessGrantSchema = z.object({
 	id: z.string(),
@@ -448,7 +449,12 @@ export async function resolveAuthorizedGrantPermissions(
 		env: ctx.env,
 		request,
 	})
-	if (!access.isOwner) {
+	// An Admin holds every Owner permission but org:delete, so it may hand
+	// out the rest.
+	const allowed = access.isOwner
+		? true
+		: hasOwnerAuthority(access) && !ownerOnly.includes('org:delete')
+	if (!allowed) {
 		throw new McpCallerError(
 			`Only an Owner can grant ${ownerOnly.join(', ')} on an organization.`,
 		)

@@ -2,9 +2,10 @@ import { McpCallerError } from '#mcp/caller-error.ts'
 import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { requireMcpRequest } from '#mcp/capabilities/meta/require-user.ts'
 import {
-	computeEffectivePermissions,
-	packageResource,
 	checkPermission,
+	computeEffectivePermissions,
+	hasOwnerAuthority,
+	packageResource,
 } from '#worker/authorization/authorize.ts'
 import {
 	isUnmappableCredentialLockedPermission,
@@ -100,11 +101,11 @@ export async function assertCanSetUnmappableCredentialChanges(
 		userId: request.org.id,
 	})
 	if (
-		!access.isOwner ||
+		!hasOwnerAuthority(access) ||
 		!checkPermission(access, 'package:manage_access', resource).allowed
 	) {
 		throw new McpCallerError(
-			'Only an org Owner can allow changes despite unmappable credentials. Ask an Owner of this organization to turn it on for this grant.',
+			'Only an org Owner or Admin can allow changes despite unmappable credentials. Ask an Owner or Admin of this organization to turn it on for this grant.',
 		)
 	}
 }

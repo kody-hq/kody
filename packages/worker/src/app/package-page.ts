@@ -538,7 +538,9 @@ async function resolvePackagePageForViewer(
 		const viewerCanPublish = allows('package:publish')
 		const viewerCanDelete = allows('package:delete')
 		const viewerCanManageAccess = allows('package:manage_access')
-		const viewerCanAdoptCommunityFork = viewerAccess?.binding.role === 'owner'
+		const viewerCanAdoptCommunityFork =
+			viewerAccess?.binding.role === 'owner' ||
+			viewerAccess?.binding.role === 'admin'
 		const viewerMayRun = savedPackageViewerMayRunApp(viewerAccess, {
 			ownerId,
 			appId: packageId,

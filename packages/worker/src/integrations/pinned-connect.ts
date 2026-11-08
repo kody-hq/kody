@@ -146,14 +146,18 @@ export async function resolvePinnedConnectOrg(input: {
 			status: 403,
 		}
 	}
-	// Members and Owners may connect their own account: the connection is
+	// Members, Admins, and Owners may connect their own account: the connection is
 	// theirs, usable only in their own runs here. Billing and outside
 	// collaborators may not (ADR 0068 amendment 2026-10-29).
-	if (binding.role !== 'owner' && binding.role !== 'member') {
+	if (
+		binding.role !== 'owner' &&
+		binding.role !== 'admin' &&
+		binding.role !== 'member'
+	) {
 		return {
 			ok: false,
 			error:
-				'Connecting your own account through an org app needs the Member or Owner role in that org.',
+				'Connecting your own account through an org app needs the Member, Admin, or Owner role in that org.',
 			status: 403,
 		}
 	}

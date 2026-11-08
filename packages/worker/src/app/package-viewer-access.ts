@@ -162,14 +162,16 @@ export async function viewerCanManageSavedPackageAccess(input: {
 	)
 }
 
-/** Org owner role on the package's owning org (personal or team). */
+/** Org Owner or Admin role on the package's owning org (personal or team). */
 export async function viewerIsSavedPackageOrgOwner(input: {
 	env: Env
 	viewer: Pick<McpUserContext, 'userId' | 'username'> | null
 	ownerId: string
 }): Promise<boolean> {
 	const resolved = await loadSavedPackageViewerAccess(input)
-	return resolved?.binding.role === 'owner'
+	return (
+		resolved?.binding.role === 'owner' || resolved?.binding.role === 'admin'
+	)
 }
 
 /**

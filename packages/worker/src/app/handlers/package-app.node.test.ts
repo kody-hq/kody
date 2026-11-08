@@ -112,7 +112,7 @@ const mockModule = vi.hoisted(() => ({
 	loadOrgBindingForOrg: vi.fn(
 		async (): Promise<{
 			org: { id: ReturnType<typeof ownerIdFromStored>; slug: string }
-			role: 'owner' | 'member' | 'billing' | null
+			role: 'owner' | 'admin' | 'member' | 'billing' | null
 		}> => ({
 			org: { id: ownerIdFromStored('user-1'), slug: 'test-user' },
 			role: 'owner',

@@ -103,7 +103,9 @@ export async function listMemoryReadersForOrgMemory(input: {
 	const readers = new Set<string>()
 	const members = await listOrgMembers(input.db, input.orgId)
 	for (const member of members) {
-		if (member.role === 'owner') readers.add(member.userId)
+		if (member.role === 'owner' || member.role === 'admin') {
+			readers.add(member.userId)
+		}
 	}
 
 	const orgGrants = await listGrants({

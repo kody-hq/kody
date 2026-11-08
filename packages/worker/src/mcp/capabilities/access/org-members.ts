@@ -4,6 +4,11 @@ import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { computeEffectivePermissions } from '#worker/authorization/authorize.ts'
+import {
+	isSeatRole,
+	removalDenial,
+	roleChangeDenial,
+} from '#worker/orgs/admin-role-rules.ts'
 import { createOrg, updateOrgMemberRole } from '#worker/orgs/access-writes.ts'
 import { orgAuditWriterFromRequest } from '#worker/orgs/org-audit.ts'
 import {
@@ -23,7 +28,7 @@ import {
 } from './shared.ts'
 
 function seatRole(role: string) {
-	return role === 'owner' || role === 'member'
+	return isSeatRole(role)
 }
 
 async function liveMembership(db: D1Database, orgId: string, userId: string) {
@@ -169,8 +174,8 @@ export const orgMemberUpdateCapability = defineDomainCapability(
 		orgPermission: 'member:write',
 		requiresLivePerson: true,
 		description:
-			'Change the role of a live member of the organization this request is bound to. Only an Owner can grant or change the Owner role. The last Owner cannot be demoted.',
-		keywords: ['member', 'role', 'owner', 'billing'],
+			'Change the role of a live member of the organization this request is bound to. Only an Owner can grant or change the Owner role. Only an Owner or Admin can grant or change the Admin role. The last Owner cannot be demoted.',
+		keywords: ['member', 'role', 'owner', 'admin', 'billing'],
 		readOnly: false,
 		idempotent: true,
 		destructive: false,
@@ -196,15 +201,12 @@ export const orgMemberUpdateCapability = defineDomainCapability(
 						'That person is not a member of this organization.',
 					)
 				}
-				if (membership.role === 'owner' || args.role === 'owner') {
-					const access = await computeEffectivePermissions({
-						env: ctx.env,
-						request,
-					})
-					if (!access.isOwner) {
-						throw new McpCallerError('Only an Owner can change the Owner role.')
-					}
-				}
+				const roleDenial = roleChangeDenial({
+					actor: await computeEffectivePermissions({ env: ctx.env, request }),
+					currentRole: membership.role,
+					nextRole: args.role,
+				})
+				if (roleDenial) throw new McpCallerError(roleDenial)
 				const demotingOwner =
 					membership.role === 'owner' && args.role !== 'owner'
 				if (demotingOwner) {
@@ -283,15 +285,11 @@ export const orgMemberRemoveCapability = defineDomainCapability(
 							'That person is not a member of this organization.',
 						)
 					}
-					if (tombstone.role === 'owner') {
-						const access = await computeEffectivePermissions({
-							env: ctx.env,
-							request,
-						})
-						if (!access.isOwner) {
-							throw new McpCallerError('Only an Owner can remove an Owner.')
-						}
-					}
+					const tombstoneDenial = removalDenial({
+						actor: await computeEffectivePermissions({ env: ctx.env, request }),
+						targetRole: tombstone.role,
+					})
+					if (tombstoneDenial) throw new McpCallerError(tombstoneDenial)
 					await onMemberSoftRemoved({
 						env: ctx.env,
 						orgId: request.org.id,
@@ -309,15 +307,13 @@ export const orgMemberRemoveCapability = defineDomainCapability(
 					}
 					return { user_id: userId, removed: true as const }
 				}
+				const removeDenial = removalDenial({
+					actor: await computeEffectivePermissions({ env: ctx.env, request }),
+					targetRole: membership.role,
+				})
+				if (removeDenial) throw new McpCallerError(removeDenial)
 				const removingOwner = membership.role === 'owner'
 				if (removingOwner) {
-					const access = await computeEffectivePermissions({
-						env: ctx.env,
-						request,
-					})
-					if (!access.isOwner) {
-						throw new McpCallerError('Only an Owner can remove an Owner.')
-					}
 					const owners = await liveOwnerCount(db, request.org.id)
 					if (owners <= 1) {
 						throw new McpCallerError('The last Owner cannot be removed.')

@@ -309,7 +309,11 @@ export function teamOrgManagementItems(input: {
 		},
 	]
 	// Billing has member:read but not team:read.
-	if (input.role === 'owner' || input.role === 'member') {
+	if (
+		input.role === 'owner' ||
+		input.role === 'admin' ||
+		input.role === 'member'
+	) {
 		items.push({
 			href: orgTeamsPath(orgSlug),
 			id: 'teams',
@@ -502,7 +506,7 @@ function grantsRailItem(orgSlug: string | null | undefined): AccountRailItem {
 function membersRailItem(orgSlug: string, role: OrgRole): AccountRailItem {
 	const tabs: Array<AccountRailTab> = [
 		{ href: orgMembersPath(orgSlug), id: 'members', label: 'Members' },
-		...(role === 'owner' || role === 'member'
+		...(role === 'owner' || role === 'admin' || role === 'member'
 			? [{ href: orgTeamsPath(orgSlug), id: 'teams', label: 'Teams' }]
 			: []),
 		{

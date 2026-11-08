@@ -164,7 +164,8 @@ async function loadToggleChanges(input: {
 	cursor: string | null
 }): Promise<Array<AccountToggleChange> | null> {
 	if (input.cursor) return null
-	if (input.user.request.membership?.role !== 'owner') return null
+	const role = input.user.request.membership?.role
+	if (role !== 'owner' && role !== 'admin') return null
 	try {
 		const entries = await listToggleAudit({
 			env: input.env,
