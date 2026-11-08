@@ -192,10 +192,25 @@ function resolveBundlerLocalImportPath(input: {
  * reached through relative `require('./helper')`. Unparseable sources are
  * recorded so the gate can fail closed instead of skipping them.
  */
+/** Bundler specifiers per module path; null when the module does not parse. */
+type BundlerSpecifiersCache = Map<string, Array<string> | null>
+
+function bundlerSpecifiersFor(
+	cache: BundlerSpecifiersCache,
+	filePath: string,
+	source: string,
+) {
+	if (cache.has(filePath)) return cache.get(filePath) ?? null
+	const specifiers = collectBundlerResolvedSpecifiers(source)
+	cache.set(filePath, specifiers)
+	return specifiers
+}
+
 function collectBundlerReachableSourceFilePaths(input: {
 	files: Record<string, string>
 	entryPoint: string
 	rootPackage: ReturnType<typeof readRootPackage>
+	specifiersCache: BundlerSpecifiersCache
 }) {
 	const reachable = new Set<string>()
 	const unparseableFiles = new Set<string>()
@@ -220,7 +235,11 @@ function collectBundlerReachableSourceFilePaths(input: {
 		if (!isBundlerParsedModuleSourcePath(filePath)) {
 			continue
 		}
-		const specifiers = collectBundlerResolvedSpecifiers(source)
+		const specifiers = bundlerSpecifiersFor(
+			input.specifiersCache,
+			filePath,
+			source,
+		)
 		if (specifiers == null) {
 			unparseableFiles.add(filePath)
 			continue
@@ -296,6 +315,9 @@ export function collectUndeclaredBarePackageImports(input: {
 		{ entryPoints: Set<string>; specifiers: Set<string> }
 	>()
 	const unparseableFiles = new Set<string>()
+	// Entries share most modules (about 100 targets on big packages): parse
+	// each module once for the whole walk, not twice per entry.
+	const specifiersCache: BundlerSpecifiersCache = new Map()
 
 	for (const target of input.entryPoints) {
 		const entryPoint = normalizePackageWorkspacePath(target.path)
@@ -303,6 +325,7 @@ export function collectUndeclaredBarePackageImports(input: {
 			files: input.sourceFiles,
 			entryPoint,
 			rootPackage,
+			specifiersCache,
 		})
 		for (const filePath of reachable.unparseableFiles) {
 			unparseableFiles.add(filePath)
@@ -311,7 +334,7 @@ export function collectUndeclaredBarePackageImports(input: {
 			if (!isBundlerParsedModuleSourcePath(filePath)) continue
 			const source = input.sourceFiles[filePath]
 			if (source == null) continue
-			const specifiers = collectBundlerResolvedSpecifiers(source)
+			const specifiers = bundlerSpecifiersFor(specifiersCache, filePath, source)
 			if (specifiers == null) {
 				unparseableFiles.add(filePath)
 				continue

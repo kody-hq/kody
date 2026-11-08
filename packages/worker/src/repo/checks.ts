@@ -1,3 +1,4 @@
+import type { ModuleImportNodesCache } from '#worker/package-runtime/import-specifiers.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import {
 	getPackageAppAssetsDirectory,
@@ -1040,12 +1041,14 @@ function collectReachableTypecheckSourceFiles(input: {
 }) {
 	const rootPackage = readRootPackage(input.sourceFiles)
 	const paths = new Set<string>()
+	const importNodesCache: ModuleImportNodesCache = new Map()
 	for (const target of input.targets) {
 		for (const path of collectReachableSourceFilePaths({
 			files: input.sourceFiles,
 			entryPoint: target.path,
 			rootPackage,
 			includeTypeOnly: true,
+			importNodesCache,
 		})) {
 			if (typecheckableSourceFilePattern.test(path)) paths.add(path)
 		}
