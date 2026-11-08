@@ -1225,6 +1225,50 @@ test('an isolate reset during the credential scan names that step', async () => 
 	expect(credentials?.message).toContain('credential stamp scan')
 })
 
+test('the request-placement scan comes from the isolated credentials phase, not this isolate', async () => {
+	const filler = `export const filler = ${JSON.stringify('x'.repeat(1024))}\n`
+	const fillerFiles = Object.fromEntries(
+		Array.from(
+			{
+				length: Math.ceil(isolatedCredentialScanMinSourceBytes / filler.length),
+			},
+			(_, index) => [`src/generated/filler-${index}.ts`, filler],
+		),
+	)
+	const { env } = isolatedEnv(async (request) => {
+		if (request.phase === 'credentials') {
+			return {
+				ok: true,
+				message: 'Credential stamp ok (isolated).',
+				changedFiles: {},
+				stampKeys: [],
+				requestPlacementHits: [
+					{
+						path: 'src/index.ts',
+						line: 2,
+						nameKind: 'secret',
+						name: 'apiKey',
+						part: 'query',
+					},
+				],
+				fetchBodyHits: [],
+			}
+		}
+		return { ok: true, message: 'ok (isolated)' }
+	})
+	// The source itself has no placement: only the phase's hits can fail it.
+	const { result } = await runChecks(
+		packageFiles(manifest('large-tree-package'), {
+			'src/index.ts': `export default async function main() {\n\treturn 'ok'\n}\n`,
+			...fillerFiles,
+		}),
+		{ env, baseUrl: '/', userId: ownerIdFromStored('user-123') },
+	)
+	const credentials = findCheck(result, 'credentials')
+	expect(credentials?.ok).toBe(false)
+	expect(credentials?.message).toContain('src/index.ts:2')
+})
+
 test('runRepoChecks validates package skills and fails publish on malformed SKILL.md frontmatter', async () => {
 	const okFiles = packageFiles(
 		manifest('skilled', {}, { name: '@kentcdodds/skilled' }),

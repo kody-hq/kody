@@ -228,10 +228,26 @@ async function reconcileSource(input: {
 			})
 		}
 		try {
+			// A HEAD whose publish outlives the deadline is too heavy for this
+			// lane: back it off like a checks_failed HEAD instead of starting the
+			// same cloud publish again every tick. The abandoned publish still
+			// finishes on its own; if it lands, the next tick sees the tip match.
+			const timedOutHead =
+				error instanceof ReconcileSourceTimeoutError
+					? await resolveArtifactSourceHead(env, source.repo_id)
+							.then((head) => head.commit)
+							.catch(() => null)
+					: null
 			await updateEntitySource(env.APP_DB, {
 				id: source.id,
 				userId: source.user_id,
 				lastExternalCheckAt: now.toISOString(),
+				...(timedOutHead
+					? {
+							externalCheckFailedCommit: timedOutHead,
+							externalCheckFailedAt: now.toISOString(),
+						}
+					: {}),
 			})
 		} catch (updateError) {
 			console.warn('reconcile_artifacts_pushes cursor update failed', {

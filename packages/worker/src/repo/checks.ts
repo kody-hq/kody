@@ -86,6 +86,7 @@ import {
 import {
 	findSecretPlaceholderRequestPlacements,
 	formatSecretPlaceholderRequestPlacementNotice,
+	type SecretPlaceholderRequestPlacementHit,
 	type SecretPlaceholderRequestPlacementMode,
 	secretPlaceholderRequestPlacementPublishMode,
 } from '#worker/credentials/secret-placeholder-request-placement.ts'
@@ -1711,6 +1712,12 @@ async function runCredentialPatternCheck(input: {
 					? { ...input.sourceFiles, ...outcome.changedFiles }
 					: input.sourceFiles,
 			stampKeys: outcome.stampKeys ?? [],
+			...(outcome.requestPlacementHits
+				? { requestPlacementHits: outcome.requestPlacementHits }
+				: {}),
+			...(outcome.fetchBodyHits
+				? { fetchBodyHits: outcome.fetchBodyHits }
+				: {}),
 		}
 	} finally {
 		await runner.discard(stagingKey)
@@ -1971,16 +1978,24 @@ export async function runRepoChecks(input: {
 						'Stamp findings below do not fail this check (community install / platform codemod lane). Authoring publish still enforces the gate.\n',
 					)
 			: credentialPatternCheck.message
+	// The isolated credentials phase already parsed every module, so it
+	// returns these hits too; this isolate never re-parses the whole tree.
 	const placementNotice = credentialCheckOk
 		? secretPlaceholderRequestPlacementNotice({
 				sourceFiles,
 				mode: enforceCredentialStamp
 					? secretPlaceholderRequestPlacementPublishMode
 					: 'warn',
+				...(credentialPatternCheck.requestPlacementHits
+					? { hits: credentialPatternCheck.requestPlacementHits }
+					: {}),
 			})
 		: null
 	const fetchBodyWarning = credentialCheckOk
-		? fetchBodySecretResolutionNotice(sourceFiles)
+		? fetchBodySecretResolutionNotice(
+				sourceFiles,
+				credentialPatternCheck.fetchBodyHits,
+			)
 		: null
 	const placementBlocks = placementNotice?.mode === 'fail'
 	results.push({
@@ -2512,9 +2527,12 @@ export async function runRepoSourceWalkChecks(input: {
 function secretPlaceholderRequestPlacementNotice(input: {
 	sourceFiles: Record<string, string>
 	mode: SecretPlaceholderRequestPlacementMode
+	/** Already found by the isolated credentials phase. */
+	hits?: ReadonlyArray<SecretPlaceholderRequestPlacementHit>
 }): { mode: SecretPlaceholderRequestPlacementMode; message: string } | null {
 	const message = formatSecretPlaceholderRequestPlacementNotice({
-		hits: findSecretPlaceholderRequestPlacements(input.sourceFiles),
+		hits:
+			input.hits ?? findSecretPlaceholderRequestPlacements(input.sourceFiles),
 		mode: input.mode,
 	})
 	return message ? { mode: input.mode, message } : null
@@ -2526,7 +2544,17 @@ function secretPlaceholderRequestPlacementNotice(input: {
  */
 function fetchBodySecretResolutionNotice(
 	sourceFiles: Record<string, string>,
+	hits?: ReadonlyArray<{ path: string; line: number }>,
 ): string | null {
+	return formatFetchBodySecretResolutionWarning(
+		hits ?? findFetchBodySecretResolutionHits(sourceFiles),
+	)
+}
+
+/** Every fetch whose body the gateway would still scan, by module and line. */
+export function findFetchBodySecretResolutionHits(
+	sourceFiles: Record<string, string>,
+): Array<{ path: string; line: number }> {
 	const hits: Array<{ path: string; line: number }> = []
 	for (const path of listScannableModulePaths(sourceFiles)) {
 		const source = sourceFiles[path]
@@ -2535,5 +2563,5 @@ function fetchBodySecretResolutionNotice(
 			hits.push({ path, line: hit.line })
 		}
 	}
-	return formatFetchBodySecretResolutionWarning(hits)
+	return hits
 }

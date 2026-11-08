@@ -190,6 +190,17 @@ export default async function main(params = {}) {
 	)
 }`
 
+/** Memory/CPU limit errors {@link throwIfExternalPublishResourceLimit} turns terminal. */
+function isExternalPublishResourceLimitError(error: unknown) {
+	if (error instanceof McpCallerError) return false
+	if (isDurableObjectIsolateResourceLimitResetError(error)) return true
+	const message = getErrorMessage(error)
+	return (
+		isExternalPublishSnapshotTooLargeMessage(message) ||
+		isPublishComputeLimitMessage(message)
+	)
+}
+
 function throwIfExternalPublishResourceLimit(
 	error: unknown,
 	step: RepoCheckStep | null = null,
@@ -1146,6 +1157,22 @@ async function runExternalPublishAttempt(input: {
 									rebuiltTargetCount: rebuild.rebuiltTargetCount,
 								}
 							} catch (error) {
+								if (isExternalPublishResourceLimitError(error)) {
+									// Terminal: settle like any failed rebuild so the pointer
+									// and job pins stay on the last good commit.
+									await settleFailedPublishRebuild({
+										env: input.env,
+										baseUrl: input.baseUrl,
+										ownerUserId: input.ownerUserId,
+										packageId: input.packageId,
+										sourceId: input.source.id,
+										failedCommit: publishedCommit,
+										restoreCommit: tipMoved
+											? input.baselinePublishedCommit
+											: null,
+										sentryScope: externalPushRestoreSentryScope,
+									})
+								}
 								throwIfExternalPublishResourceLimit(error, 'rebuild')
 								if (isTransientDurableObjectResetError(error)) {
 									throw error
@@ -1388,6 +1415,20 @@ async function runExternalPublishAttempt(input: {
 							})
 							return { ok: true as const }
 						} catch (error) {
+							if (isExternalPublishResourceLimitError(error)) {
+								// Terminal: settle like any failed rebuild so the pointer and
+								// job pins go back to the last good commit.
+								await settleFailedPublishRebuild({
+									env: input.env,
+									baseUrl: input.baseUrl,
+									ownerUserId: input.ownerUserId,
+									packageId: input.packageId,
+									sourceId: input.source.id,
+									failedCommit: result.published_commit,
+									restoreCommit: input.baselinePublishedCommit,
+									sentryScope: externalPushRestoreSentryScope,
+								})
+							}
 							throwIfExternalPublishResourceLimit(error, 'rebuild')
 							if (isTransientDurableObjectResetError(error)) {
 								throw error

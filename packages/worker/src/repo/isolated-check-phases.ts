@@ -1,3 +1,4 @@
+import type { SecretPlaceholderRequestPlacementHit } from '#worker/credentials/secret-placeholder-request-placement.ts'
 import { errorCauseChainIncludes } from '@kody-internal/shared/error-message.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { isDurableObjectIsolateResourceLimitResetMessage } from '#worker/sentry-options.ts'
@@ -111,6 +112,10 @@ export type IsolatedCheckPhaseOutcome = {
 	changedFiles?: Record<string, string>
 	/** `credentials` phase only. */
 	stampKeys?: Array<string>
+	/** `credentials` phase only: fetches putting a placeholder in a request part. */
+	requestPlacementHits?: Array<SecretPlaceholderRequestPlacementHit>
+	/** `credentials` phase only: fetch bodies the gateway would still scan. */
+	fetchBodyHits?: Array<{ path: string; line: number }>
 }
 
 type IsolatedCheckPhaseStub = {
@@ -347,11 +352,10 @@ export async function runAuthoringChecksInIsolate(input: {
 		{ expirationTtl: stagingTtlSeconds },
 	)
 	try {
-		const stub = namespace.get(
-			namespace.idFromName(
-				`isolated-authoring-checks-${input.userId}-${crypto.randomUUID()}`,
-			),
-		) as unknown as IsolatedAuthoringChecksStub
+		const stubId = namespace.idFromName(
+			`isolated-authoring-checks-${input.userId}-${crypto.randomUUID()}`,
+		)
+		const stub = namespace.get(stubId) as unknown as IsolatedAuthoringChecksStub
 		try {
 			return await stub.runIsolatedAuthoringChecks({
 				stagingKey,
@@ -370,9 +374,11 @@ export async function runAuthoringChecksInIsolate(input: {
 			})
 		} catch (error) {
 			if (isDurableObjectResourceLimitResetError(error)) {
-				// The step marker lives in the reset instance's storage; the
-				// next call reaches a fresh isolate for the same id.
-				const step = await readLastCheckStep(stub)
+				// The step marker lives in the reset instance's storage. The reset
+				// stub stays broken, so a new stub for the same id reads it.
+				const step = await readLastCheckStep(
+					namespace.get(stubId) as unknown as IsolatedAuthoringChecksStub,
+				)
 				return {
 					ok: false,
 					results: [

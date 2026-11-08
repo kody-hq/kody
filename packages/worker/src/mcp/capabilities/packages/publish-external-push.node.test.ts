@@ -540,6 +540,25 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 		}),
 	)
 
+	// A rebuild that hits the isolate CPU limit is terminal too: the publish
+	// stops, and the pointer and job pins still go back to the last good commit.
+	setupDefaultMocks({ publish: publishedResult(), targets: [moduleTarget] })
+	mockModule.rebuildPublishedPackageArtifact.mockRejectedValueOnce(
+		new Error('Durable Object exceeded its CPU time limit and was reset.'),
+	)
+	await expect(publish()).rejects.toThrow(/memory or CPU limit/)
+	expect(mockModule.revertEntitySourcePublishedCommit).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({
+			id: 'source-1',
+			failedCommit: 'commit-new',
+			restoreCommit: 'commit-old',
+		}),
+	)
+	expect(mockModule.refreshSavedPackageProjection).toHaveBeenCalledWith(
+		expect.objectContaining({ sourceId: 'source-1', rebuildArtifacts: false }),
+	)
+
 	setupDefaultMocks({
 		head: 'commit-old',
 		publish: alreadyPublishedOld,

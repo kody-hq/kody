@@ -307,7 +307,7 @@ function createPackageSourceEnv(input: {
 	} as unknown as Env
 }
 
-test('reconcileArtifactsPushes gives up on a source past its deadline and leaves it selectable', async () => {
+test('reconcileArtifactsPushes gives up on a source past its deadline and backs off that HEAD', async () => {
 	mockModule.pendingApproval = null
 	mockModule.resolveArtifactSourceHead.mockResolvedValue({
 		branch: 'main',
@@ -337,10 +337,13 @@ test('reconcileArtifactsPushes gives up on a source past its deadline and leaves
 			error: expect.stringContaining('deadline'),
 		}),
 	)
-	// Only the cursor moves; `external_check_until` stays so a later tick
-	// selects the source again.
+	// The timed-out HEAD is recorded like a checks_failed HEAD so the next
+	// ticks skip it instead of starting the same publish every few minutes.
+	// `external_check_until` stays so a newer push is still selected.
 	expect(updates).toHaveLength(1)
 	expect(String(updates[0]?.[0])).toContain('last_external_check_at = ?')
+	expect(String(updates[0]?.[0])).toContain('external_check_failed_commit = ?')
+	expect(updates[0]).toContain('commit-new')
 	expect(String(updates[0]?.[0])).not.toContain('external_check_until')
 })
 

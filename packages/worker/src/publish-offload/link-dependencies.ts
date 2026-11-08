@@ -1,3 +1,4 @@
+import type { ModuleImportNodesCache } from '#worker/package-runtime/import-specifiers.ts'
 /**
  * 6C: a bundle built outside Kody cloud never contains another Kody
  * package. Each `kody:@…` import is left as an import of a
@@ -41,6 +42,7 @@ import { PublishBuildVerificationError } from './verify.ts'
 export function collectLinkedPackageImports(input: {
 	sourceFiles: Record<string, string>
 	entryPoint: string
+	importNodesCache?: ModuleImportNodesCache
 }) {
 	const rootPackage = readRootPackage(input.sourceFiles)
 	const entryPoint =
@@ -52,6 +54,9 @@ export function collectLinkedPackageImports(input: {
 		files: input.sourceFiles,
 		entryPoint,
 		rootPackage,
+		...(input.importNodesCache
+			? { importNodesCache: input.importNodesCache }
+			: {}),
 	})
 	const linked = new Map<string, string>()
 	for (const imported of collectStaticKodyPackageImportsFromFiles(
