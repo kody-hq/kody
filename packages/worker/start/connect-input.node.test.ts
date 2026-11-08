@@ -4,6 +4,7 @@ import {
 	connectOauthSchema,
 	connectSecretsInput,
 	connectWebhookInput,
+	connectWebhookDecisionSchema,
 	connectSecretsSchema,
 } from './connect-input.ts'
 
@@ -52,4 +53,29 @@ test('OAuth accepts absent personal scope and preserves valid first organization
 		connectOauthSchema.parse(connectOauthInput('?org=%20team%20&org=other'))
 			.orgSlug,
 	).toBe('team')
+})
+
+test('webhook apply decisions carry the link org and reject malformed scope', () => {
+	const input = connectWebhookInput('?handle=h&fingerprint=f&org=acme-team')
+	expect(input.orgSlug).toBe('acme-team')
+	expect(
+		connectWebhookDecisionSchema.parse({
+			orgSlug: input.orgSlug,
+			handle: input.handle,
+			fingerprint: input.fingerprint,
+		}),
+	).toEqual({ orgSlug: 'acme-team', handle: 'h', fingerprint: 'f' })
+	expect(
+		connectWebhookDecisionSchema.parse({ handle: 'h', fingerprint: 'f' })
+			.orgSlug,
+	).toBeUndefined()
+	for (const search of ['?org=', '?org=../other']) {
+		expect(
+			connectWebhookDecisionSchema.safeParse({
+				orgSlug: connectWebhookInput(search).orgSlug,
+				handle: 'h',
+				fingerprint: 'f',
+			}).success,
+		).toBe(false)
+	}
 })

@@ -72,6 +72,9 @@ const robotsDisallowPaths = [
 	'/connect/secrets',
 	'/connect/secret-set',
 	'/connect/credential',
+	// Unlisted shareable desktop install shortcut; keep crawlers on the
+	// public marketing pages instead of the GitHub redirect.
+	'/download',
 ] as const
 
 export type AgentSkillDefinition = {

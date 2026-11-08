@@ -27,6 +27,7 @@ function authorization(
 		requireCredentials: false,
 		orgs: [{ slug: 'ada', displayName: 'Ada', role: 'owner' }],
 		selectedOrgSlug: 'ada',
+		requiredOrgSlug: null,
 	}
 }
 
@@ -130,6 +131,30 @@ test('native OAuth document omits unconfigured social providers and keeps passke
 	for (const label of ['GitHub', 'Google']) {
 		expect(html).not.toContain(`aria-label="Continue with ${label}"`)
 	}
+})
+
+test('required org locks the consent chooser and explains why', async () => {
+	const html = await renderStartPage(
+		createElement(OAuthAuthorizeRoute, {
+			data: {
+				...authorization(true),
+				orgs: [
+					{ slug: 'ada', displayName: 'Ada', role: 'owner' },
+					{ slug: 'acme', displayName: 'Acme', role: 'member' },
+				],
+				selectedOrgSlug: 'ada',
+				requiredOrgSlug: 'ada',
+			},
+			session: signedInSession,
+			authProviders: authConfig,
+		}),
+		`${authorizePath}&org=ada`,
+	)
+	expect(html).toContain('data-testid="oauth-authorize-org-locked"')
+	expect(html).toContain('data-testid="oauth-authorize-org-disabled"')
+	expect(html).toContain('data-testid="oauth-authorize-org-locked-reason"')
+	expect(html).toContain('started for @ada')
+	expect(html).not.toContain('data-testid="oauth-authorize-org-picker"')
 })
 
 test('signed-out OAuth document offers log in, sign up, and Try it out', async () => {

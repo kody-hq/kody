@@ -70,6 +70,14 @@ import avoidAiAssistantLockIn from './posts/avoid-ai-assistant-lock-in.md'
 import whyAwsLambdaBreaksDownForAiAgentTeams from './posts/why-aws-lambda-breaks-down-for-ai-agent-teams.md'
 import internalToolsBuiltWithAiTeamCredentials from './posts/internal-tools-built-with-ai-team-credentials.md'
 import howToRollOutAiAgentsToYourTeam from './posts/how-to-roll-out-ai-agents-to-your-team.md'
+import threeWaysToShareAnAiBuiltApp from './posts/three-ways-to-share-an-ai-built-app.md'
+import setUpATeamOrgForAiBuiltApps from './posts/set-up-a-team-org-for-ai-built-apps.md'
+import readUseContributeManageAppAccess from './posts/read-use-contribute-manage-app-access.md'
+import shipPrBetterThanASkill from './posts/ship-pr-better-than-a-skill.md'
+import whoseCredentialsDoesThisAppUse from './posts/whose-credentials-does-this-app-use.md'
+import firstUsefulKodyWorkflow from './posts/first-useful-kody-workflow.md'
+import everyPersonalAgentNeedsACloud from './posts/every-personal-agent-needs-a-cloud.md'
+import giveStaffAndTheirBotsAccessToYourKodyOrg from './posts/give-staff-and-their-bots-access-to-your-kody-org.md'
 
 /**
  * Static post sources. When adding a post, drop a `.md` file under `posts/`
@@ -220,6 +228,38 @@ const postSources: Array<{ slug: string; raw: string }> = [
 	{ slug: 'kody-weekly-2026-10-23', raw: kodyWeekly20261023 },
 	{ slug: 'kody-weekly-2026-10-30', raw: kodyWeekly20261030 },
 	{ slug: 'kody-weekly-2026-11-06', raw: kodyWeekly20261106 },
+	{
+		slug: 'three-ways-to-share-an-ai-built-app',
+		raw: threeWaysToShareAnAiBuiltApp,
+	},
+	{
+		slug: 'set-up-a-team-org-for-ai-built-apps',
+		raw: setUpATeamOrgForAiBuiltApps,
+	},
+	{
+		slug: 'read-use-contribute-manage-app-access',
+		raw: readUseContributeManageAppAccess,
+	},
+	{
+		slug: 'ship-pr-better-than-a-skill',
+		raw: shipPrBetterThanASkill,
+	},
+	{
+		slug: 'whose-credentials-does-this-app-use',
+		raw: whoseCredentialsDoesThisAppUse,
+	},
+	{
+		slug: 'first-useful-kody-workflow',
+		raw: firstUsefulKodyWorkflow,
+	},
+	{
+		slug: 'every-personal-agent-needs-a-cloud',
+		raw: everyPersonalAgentNeedsACloud,
+	},
+	{
+		slug: 'give-staff-and-their-bots-access-to-your-kody-org',
+		raw: giveStaffAndTheirBotsAccessToYourKodyOrg,
+	},
 ]
 
 function compareBlogPosts(a: BlogPost, b: BlogPost): number {

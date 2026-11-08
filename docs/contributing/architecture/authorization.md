@@ -118,9 +118,14 @@ rides along: outside packages and apps, `use`, `execute`, `write`, `delete`,
 `publish`, and `manage_access` are never grantable on the org, so triage
 (`runUpdate`), edits, and runs still need their own permission. `secret:read`
 (reveals values), `memory:read` (memories are personal, ADR 0072), and
-`execution_context:read` (machines are listed per share) are left out. Owners
-set these from the Grants page or with `accessGrant` (`resource_type: "org"`); a
-denial for one of them says so.
+`execution_context:read` (machines are listed per share; an execution context
+shared with all members compiles into Use on that one context for every live
+Member instead, `loadAllMembersContextGrantRows` in `access-compile.ts`) are
+left out. Owners set org-wide presets from the Grants page or with `accessGrant`
+(`resource_type: "org"`). Per-person package, app, and credential grants live on
+**Access** (`/@<slug>/-/grants/user/<userId>`), linked from Members,
+Collaborators, and person-linked Grants rows. A denial for one of the org-wide
+reads says so.
 
 **Org-wide package and app manage.** An `org` grant may also carry
 `orgWideManagePermissions` (`packages/shared/src/grant-presets.ts`): the
@@ -821,6 +826,18 @@ or rewrite resolution fields, so existing terminal records are not backfilled.
 Sends are skipped when the submitter has no current account email, outbound
 email is paused, or the account is suspended. One email is sent per feedback id
 per terminal status.
+
+Admins can reopen resolved or dismissed feedback to triaged with
+`adminPlatformFeedbackUpdate` `action: "triage"`. A reopen requires a non-empty
+`admin_note`; a missing, empty, or whitespace-only note is refused without any
+change. The same revision-guarded write sets the status, stores the note as
+`admin_note`, moves the closed submitter-visible outcome into
+`resolution_history`, and appends
+`{from_status, to_status, note, actor_user_id, recorded_at}` to the internal
+`reopen_history` using the authenticated admin and server time. A reopen sends
+no email or notification to the submitter, and `reopen_history` is excluded from
+submitter views and account export. No other change out of resolved or dismissed
+is allowed.
 
 After a consent-gated submission is persisted, Kody enqueues its id for durable
 `platform.feedback.submitted` package-subscription delivery. The Queue consumer

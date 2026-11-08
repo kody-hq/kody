@@ -264,7 +264,7 @@ test('plan limits surface as a form error', async () => {
 	})
 	expect(result).toMatchObject({ ok: false, field: null })
 	if (result.ok) throw new Error('expected refusal')
-	expect(result.error).toContain('Plan limit reached')
+	expect(result.error).toContain('Kody plan limit reached')
 })
 
 test('unexpected failures are not swallowed', async () => {

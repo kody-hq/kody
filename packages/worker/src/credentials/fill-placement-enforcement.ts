@@ -203,5 +203,6 @@ export function enforceFillPlacement(input: {
 			links: input.links,
 		})}`,
 		input.slot,
+		refused.part,
 	)
 }

@@ -9,12 +9,17 @@ import type {
 	OrgMembersLoaderData,
 	OrgMemberView,
 } from '#universal/loader-data.ts'
-import { orgIdentity, orgRoleLabel } from '#universal/org-pages.ts'
+import {
+	orgGrantAccessPath,
+	orgIdentity,
+	orgRoleLabel,
+} from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
 import {
 	getDangerPillCss,
 	getPillButtonCss,
 	getSelectCss,
+	getGhostButtonCss,
 } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
@@ -27,6 +32,7 @@ import type { CSSObject } from '@emotion/react'
 import type { QueryKey } from '@tanstack/react-query'
 import { useState } from 'react'
 import { renderIcon } from '../components/icon.tsx'
+import { SiteLink } from '../components/site-link.tsx'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
 import { UserAvatar } from '../components/user-avatar.tsx'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
@@ -173,6 +179,17 @@ function OrgMembersContent({
 												: member.roleLabel}
 										</span>
 									</span>
+									{member.role === 'owner' ? null : (
+										<SiteLink
+											href={orgGrantAccessPath(data.org.slug, member.userId)}
+											data-testid="org-member-access"
+											aria-label={`Access for ${memberName(member)}`}
+											css={getGhostButtonCss({ size: 'sm' })}
+										>
+											{renderIcon('key', { size: '1.05rem' })}
+											Access
+										</SiteLink>
+									)}
 									{data.canManage ? (
 										<span css={rowActionsCss}>
 											<select

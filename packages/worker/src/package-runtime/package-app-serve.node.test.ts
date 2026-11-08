@@ -1085,6 +1085,7 @@ test('/_assets/ serves the fingerprinted client module with immutable caching an
 	})
 	expect(await response.text()).toBe('export const hello = "hi"')
 	expect(mockModule.buildPackageAppWorker).not.toHaveBeenCalled()
+	expect(response.headers.get('Server-Timing')).toMatch(/\bassets;dur=/)
 
 	const revalidated = await asset(clientModuleName, {
 		headers: { 'If-None-Match': `"${clientModuleName}"` },

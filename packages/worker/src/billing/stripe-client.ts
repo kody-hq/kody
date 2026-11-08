@@ -85,6 +85,7 @@ const checkoutSessionSchema = object({
 	customer: nullable(string()),
 	client_reference_id: nullable(string()),
 	metadata: optional(nullable(record(string(), string()))),
+	status: optional(nullable(string())),
 })
 
 const createdCheckoutSessionSchema = object({
@@ -106,6 +107,7 @@ const subscriptionSchema = object({
 	status: string(),
 	cancel_at: nullable(number()),
 	current_period_end: optional(nullable(number())),
+	currency: optional(nullable(string())),
 	metadata: optional(record(string(), string())),
 	items: object({
 		data: array(subscriptionItemSchema),
@@ -418,6 +420,8 @@ export async function createCheckoutSession(
 		quantity?: number
 		/** A promotion code Kody already validated (`promo_...`). */
 		promotionCodeId?: string
+		/** Unix seconds; Stripe accepts 30 minutes to 24 hours from now. */
+		expiresAtUnix?: number
 	},
 ): Promise<{ id: string; url: string }> {
 	const priceId = input.priceId.trim()
@@ -465,6 +469,14 @@ export async function createCheckoutSession(
 	// monthly and annual are one product, so Stripe's own code box would let a
 	// one-month code zero out a year. Kody checks the interval first
 	// (checkout-promo.ts) and attaches the code here.
+	if (input.expiresAtUnix !== undefined) {
+		if (!Number.isSafeInteger(input.expiresAtUnix)) {
+			throw new StripeApiError('Checkout expiry must be unix seconds.', {
+				status: 400,
+			})
+		}
+		form.expires_at = String(input.expiresAtUnix)
+	}
 	const promotionCodeId = input.promotionCodeId?.trim()
 	if (promotionCodeId) {
 		form['discounts[0][promotion_code]'] = promotionCodeId
@@ -687,6 +699,38 @@ export async function listPaidInvoicesForSubscription(
 	return parsed.value.data
 }
 
+/**
+ * One page (up to 100, newest first) of a customer's paid invoices as raw
+ * Stripe objects, plus whether more exist.
+ */
+export async function listPaidInvoicesForCustomer(
+	env: StripeEnv,
+	customerId: string,
+): Promise<{ invoices: Array<Record<string, unknown>>; hasMore: boolean }> {
+	const trimmed = customerId.trim()
+	if (!trimmed) {
+		throw new StripeApiError('Customer id is required.', { status: 400 })
+	}
+	const body = await stripeRequest(env, {
+		method: 'GET',
+		path: '/v1/invoices',
+		query: { customer: trimmed, status: 'paid', limit: '100' },
+	})
+	const list = body as { data?: unknown; has_more?: unknown } | null
+	if (!list || !Array.isArray(list.data)) {
+		throw new StripeApiError('Unexpected Stripe invoice list shape.', {
+			status: 502,
+		})
+	}
+	return {
+		invoices: list.data.filter(
+			(item): item is Record<string, unknown> =>
+				typeof item === 'object' && item !== null,
+		),
+		hasMore: list.has_more === true,
+	}
+}
+
 const creditNoteListPageSize = 100
 /**
  * 2,000 credit notes on one invoice or customer is far beyond anything Kody
@@ -855,6 +899,268 @@ export type ProratedRefundCreditNoteOutcome =
 	 */
 	| { outcome: 'unfittable'; lastPreviewMinor: number }
 
+type FittedCreditNote =
+	| {
+			outcome: 'fitted'
+			linesForm: Record<string, string>
+			total: number
+			cap: number
+	  }
+	| Exclude<ProratedRefundCreditNoteOutcome, { outcome: 'issued' }>
+
+/**
+ * Previews the credit note and scales its lines until the previewed total
+ * (net of discounts, tax inclusive) fits under `cap`. Read-only: nothing is
+ * created in Stripe.
+ */
+async function fitCreditNoteUnderCap(
+	env: StripeEnv,
+	input: {
+		invoiceId: string
+		lines: ReadonlyArray<CreditNoteLineInput>
+		cap: number
+	},
+): Promise<FittedCreditNote> {
+	const invoiceId = input.invoiceId.trim()
+	if (!invoiceId) {
+		throw new StripeApiError('Invoice id is required.', { status: 400 })
+	}
+	if (!Number.isSafeInteger(input.cap) || input.cap <= 0) {
+		throw new StripeApiError('Refund cap must be a positive integer.', {
+			status: 400,
+		})
+	}
+	let lines: ReadonlyArray<CreditNoteLineInput> = input.lines.map((line) => ({
+		invoiceLineItemId: line.invoiceLineItemId.trim(),
+		amount: line.amount,
+	}))
+	if (lines.length === 0) {
+		throw new StripeApiError('At least one credit note line is required.', {
+			status: 400,
+		})
+	}
+	for (const line of lines) {
+		if (!line.invoiceLineItemId) {
+			throw new StripeApiError('Invoice line item id is required.', {
+				status: 400,
+			})
+		}
+		if (!Number.isSafeInteger(line.amount) || line.amount <= 0) {
+			throw new StripeApiError(
+				'Credit note line amount must be a positive integer.',
+				{ status: 400 },
+			)
+		}
+	}
+	const cap = input.cap
+
+	let linesForm = buildCreditNoteLinesForm({ invoiceId, lines })
+	let total = await previewCreditNoteTotal(env, linesForm)
+	if (total <= 0) return { outcome: 'nothing_to_refund' }
+	for (
+		let attempt = 0;
+		total > cap && attempt < creditNoteCapFitAttempts;
+		attempt++
+	) {
+		lines = scaleCreditNoteLines(lines, cap, total)
+		if (lines.length === 0) return { outcome: 'nothing_to_refund' }
+		linesForm = buildCreditNoteLinesForm({ invoiceId, lines })
+		total = await previewCreditNoteTotal(env, linesForm)
+		if (total <= 0) return { outcome: 'nothing_to_refund' }
+	}
+	if (total > cap) return { outcome: 'unfittable', lastPreviewMinor: total }
+	return { outcome: 'fitted', linesForm, total, cap }
+}
+
+/**
+ * Marks the credit note that records unused Pro time leaving a source org
+ * during a plan transfer. The value is credited to the target org's customer
+ * balance, so the note settles out of band: no money returns to the card.
+ */
+export const planTransferMetadataKey = 'kody_plan_transfer_id'
+export const planTransferCreditNoteMemo =
+	'Unused Pro time moved to another Kody organization'
+
+export function isPlanTransferCreditNote(
+	creditNote: StripeCreditNote,
+	transferId: string,
+) {
+	return (
+		creditNote.status === 'issued' &&
+		creditNote.metadata?.[planTransferMetadataKey] === transferId
+	)
+}
+
+/** Read-only: what a plan transfer credit note would total right now. */
+export async function previewPlanTransferCreditNote(
+	env: StripeEnv,
+	input: {
+		invoiceId: string
+		lines: ReadonlyArray<CreditNoteLineInput>
+		maxCreditMinor: number
+	},
+): Promise<
+	| { outcome: 'previewed'; total: number }
+	| { outcome: 'nothing_to_refund' }
+	| { outcome: 'unfittable'; lastPreviewMinor: number }
+> {
+	const fitted = await fitCreditNoteUnderCap(env, {
+		invoiceId: input.invoiceId,
+		lines: input.lines,
+		cap: input.maxCreditMinor,
+	})
+	if (fitted.outcome !== 'fitted') return fitted
+	return { outcome: 'previewed', total: fitted.total }
+}
+
+/**
+ * Issues the source-side credit note for a plan transfer. Uses
+ * `out_of_band_amount` so the invoice records the unused time as credited
+ * without refunding the card; the same value lands on the target customer
+ * balance. The idempotency key and metadata let a retry find the same note.
+ */
+export async function createPlanTransferCreditNote(
+	env: StripeEnv,
+	input: {
+		invoiceId: string
+		subscriptionId: string
+		transferId: string
+		lines: ReadonlyArray<CreditNoteLineInput>
+		maxCreditMinor: number
+	},
+): Promise<ProratedRefundCreditNoteOutcome> {
+	const transferId = input.transferId.trim()
+	if (!transferId) {
+		throw new StripeApiError('Transfer id is required.', { status: 400 })
+	}
+	const fitted = await fitCreditNoteUnderCap(env, {
+		invoiceId: input.invoiceId,
+		lines: input.lines,
+		cap: input.maxCreditMinor,
+	})
+	if (fitted.outcome !== 'fitted') return fitted
+	const body = await stripeRequest(env, {
+		method: 'POST',
+		path: '/v1/credit_notes',
+		idempotencyKey: `kody-plan-transfer-${transferId}-credit-note`,
+		form: {
+			...fitted.linesForm,
+			out_of_band_amount: String(fitted.total),
+			reason: 'order_change',
+			memo: planTransferCreditNoteMemo,
+			[`metadata[${planTransferMetadataKey}]`]: transferId,
+			[`metadata[${accountDeletionCreditNoteSubscriptionMetadataKey}]`]:
+				input.subscriptionId.trim(),
+		},
+	})
+	const parsed = parseSafe(creditNoteSchema, body)
+	if (!parsed.success) {
+		throw new StripeApiError('Unexpected Stripe credit note shape.', {
+			status: 502,
+		})
+	}
+	return {
+		outcome: 'issued',
+		id: parsed.value.id,
+		total: parsed.value.total,
+		currency: parsed.value.currency,
+	}
+}
+
+const customerBalanceTransactionSchema = object({
+	id: string(),
+	amount: number(),
+	currency: string(),
+	metadata: optional(nullable(record(string(), string()))),
+})
+
+const customerBalanceTransactionListSchema = object({
+	data: array(customerBalanceTransactionSchema),
+	has_more: boolean(),
+})
+
+export type StripeCustomerBalanceTransaction = InferOutput<
+	typeof customerBalanceTransactionSchema
+>
+
+/**
+ * Credits a customer's invoice balance. Stripe applies a negative balance to
+ * the customer's next invoices before charging the card.
+ */
+export async function createCustomerBalanceCredit(
+	env: StripeEnv,
+	input: {
+		customerId: string
+		amountMinor: number
+		currency: string
+		description: string
+		metadata: Record<string, string>
+		idempotencyKey: string
+	},
+): Promise<StripeCustomerBalanceTransaction> {
+	const customerId = input.customerId.trim()
+	if (!customerId) {
+		throw new StripeApiError('Customer id is required.', { status: 400 })
+	}
+	if (!Number.isSafeInteger(input.amountMinor) || input.amountMinor <= 0) {
+		throw new StripeApiError('Credit amount must be a positive integer.', {
+			status: 400,
+		})
+	}
+	const form: Record<string, string> = {
+		amount: String(-input.amountMinor),
+		currency: input.currency.trim().toLowerCase(),
+		description: input.description,
+	}
+	for (const [key, value] of Object.entries(input.metadata)) {
+		if (key.trim() && value.trim()) form[`metadata[${key.trim()}]`] = value
+	}
+	const body = await stripeRequest(env, {
+		method: 'POST',
+		path: `/v1/customers/${encodeURIComponent(customerId)}/balance_transactions`,
+		form,
+		idempotencyKey: input.idempotencyKey,
+	})
+	const parsed = parseSafe(customerBalanceTransactionSchema, body)
+	if (!parsed.success) {
+		throw new StripeApiError(
+			'Unexpected Stripe customer balance transaction shape.',
+			{ status: 502 },
+		)
+	}
+	return parsed.value
+}
+
+/**
+ * The newest 100 balance transactions on a customer. `hasMore` tells the
+ * caller the list may be missing older rows.
+ */
+export async function listCustomerBalanceTransactions(
+	env: StripeEnv,
+	customerId: string,
+): Promise<{
+	transactions: Array<StripeCustomerBalanceTransaction>
+	hasMore: boolean
+}> {
+	const trimmed = customerId.trim()
+	if (!trimmed) {
+		throw new StripeApiError('Customer id is required.', { status: 400 })
+	}
+	const body = await stripeRequest(env, {
+		method: 'GET',
+		path: `/v1/customers/${encodeURIComponent(trimmed)}/balance_transactions`,
+		query: { limit: '100' },
+	})
+	const parsed = parseSafe(customerBalanceTransactionListSchema, body)
+	if (!parsed.success) {
+		throw new StripeApiError(
+			'Unexpected Stripe customer balance transaction list shape.',
+			{ status: 502 },
+		)
+	}
+	return { transactions: parsed.value.data, hasMore: parsed.value.has_more }
+}
+
 /**
  * Issues a credit note that refunds part of one or more invoice line items to
  * the original payment method. A credit note (rather than a raw refund)
@@ -899,53 +1205,13 @@ export async function createProratedRefundCreditNote(
 	if (!subscriptionId) {
 		throw new StripeApiError('Subscription id is required.', { status: 400 })
 	}
-	if (
-		!Number.isSafeInteger(input.maxRefundMinor) ||
-		input.maxRefundMinor <= 0
-	) {
-		throw new StripeApiError('Refund cap must be a positive integer.', {
-			status: 400,
-		})
-	}
-	let lines: ReadonlyArray<CreditNoteLineInput> = input.lines.map((line) => ({
-		invoiceLineItemId: line.invoiceLineItemId.trim(),
-		amount: line.amount,
-	}))
-	if (lines.length === 0) {
-		throw new StripeApiError('At least one credit note line is required.', {
-			status: 400,
-		})
-	}
-	for (const line of lines) {
-		if (!line.invoiceLineItemId) {
-			throw new StripeApiError('Invoice line item id is required.', {
-				status: 400,
-			})
-		}
-		if (!Number.isSafeInteger(line.amount) || line.amount <= 0) {
-			throw new StripeApiError(
-				'Credit note line amount must be a positive integer.',
-				{ status: 400 },
-			)
-		}
-	}
-	const cap = input.maxRefundMinor
-
-	let linesForm = buildCreditNoteLinesForm({ invoiceId, lines })
-	let total = await previewCreditNoteTotal(env, linesForm)
-	if (total <= 0) return { outcome: 'nothing_to_refund' }
-	for (
-		let attempt = 0;
-		total > cap && attempt < creditNoteCapFitAttempts;
-		attempt++
-	) {
-		lines = scaleCreditNoteLines(lines, cap, total)
-		if (lines.length === 0) return { outcome: 'nothing_to_refund' }
-		linesForm = buildCreditNoteLinesForm({ invoiceId, lines })
-		total = await previewCreditNoteTotal(env, linesForm)
-		if (total <= 0) return { outcome: 'nothing_to_refund' }
-	}
-	if (total > cap) return { outcome: 'unfittable', lastPreviewMinor: total }
+	const fitted = await fitCreditNoteUnderCap(env, {
+		invoiceId,
+		lines: input.lines,
+		cap: input.maxRefundMinor,
+	})
+	if (fitted.outcome !== 'fitted') return fitted
+	const { linesForm, total, cap } = fitted
 
 	let body: unknown
 	try {

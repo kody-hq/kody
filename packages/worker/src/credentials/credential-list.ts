@@ -198,7 +198,7 @@ async function loadSecretRows(input: {
 			: expired
 				? 'This credential has expired.'
 				: reconnect
-					? 'The provider rejected the saved refresh token (invalid_grant). Save a new value to reconnect.'
+					? 'The login provider rejected the saved refresh token (invalid_grant). This is a provider auth failure, not a Kody plan limit. Save a new value on this credential in its current workspace to reconnect (creating one under another workspace leaves this id broken; credentials cannot be moved between orgs).'
 					: null
 		return [
 			{

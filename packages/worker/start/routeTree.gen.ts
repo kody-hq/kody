@@ -24,6 +24,7 @@ import { Route as ContactRouteImport } from './routes/contact'
 import { Route as DeviceRouteImport } from './routes/device'
 import { Route as DiscordRouteImport } from './routes/discord'
 import { Route as DocsDotmdRouteImport } from './routes/docs[.]md'
+import { Route as DownloadRouteImport } from './routes/download'
 import { Route as FaqRouteImport } from './routes/faq'
 import { Route as FeaturesRouteImport } from './routes/features'
 import { Route as GuidesRouteImport } from './routes/guides'
@@ -257,6 +258,7 @@ import { Route as AppAtChar123orgSlugChar125ActivityRunIdRouteImport } from './r
 import { Route as AppAtChar123orgSlugChar125AgentsNewRouteImport } from './routes/_app.@{$orgSlug}_.-.agents_.new'
 import { Route as AppAtChar123orgSlugChar125AgentsUsageRouteImport } from './routes/_app.@{$orgSlug}_.-.agents_.usage'
 import { Route as AppAtChar123orgSlugChar125ApprovalsBundleIdRouteImport } from './routes/_app.@{$orgSlug}_.-.approvals.$bundleId'
+import { Route as AppAtChar123orgSlugChar125BillingMovePlanRouteImport } from './routes/_app.@{$orgSlug}_.-.billing_.move-plan'
 import { Route as AppAtChar123orgSlugChar125BillingSuccessRouteImport } from './routes/_app.@{$orgSlug}_.-.billing_.success'
 import { Route as AppAtChar123orgSlugChar125CredentialsCredentialIdRouteImport } from './routes/_app.@{$orgSlug}_.-.credentials_.$credentialId'
 import { Route as AppAtChar123orgSlugChar125CredentialsNewRouteImport } from './routes/_app.@{$orgSlug}_.-.credentials_.new'
@@ -283,6 +285,7 @@ import { Route as AppAccountSecretsUserSecretNameRouteImport } from './routes/_a
 import { Route as AccountReposRepoIdIconIconCommitRouteImport } from './routes/account_.repos_.$repoId_.icon_.$iconCommit'
 import { Route as AppAtChar123orgSlugChar125AgentsNewAgentRouteImport } from './routes/_app.@{$orgSlug}_.-.agents_.new_.$agent'
 import { Route as AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRouteImport } from './routes/_app.@{$orgSlug}_.-.credentials_.$credentialId_.local-reads'
+import { Route as AppAtChar123orgSlugChar125GrantsUserUserIdRouteImport } from './routes/_app.@{$orgSlug}_.-.grants_.user.$userId'
 import { Route as AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRouteImport } from './routes/_app.@{$orgSlug}_.-.integrations_.apps.$appSlug'
 import { Route as AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRouteImport } from './routes/_app.@{$orgSlug}_.-.mcp-servers_.$serverId_.authorize'
 import { Route as AppAtChar123orgSlugChar125SecretsUserSecretNameRouteImport } from './routes/_app.@{$orgSlug}_.-.secrets_.user.$secretName'
@@ -365,6 +368,11 @@ const DiscordRoute = DiscordRouteImport.update({
 const DocsDotmdRoute = DocsDotmdRouteImport.update({
   id: '/docs.md',
   path: '/docs.md',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DownloadRoute = DownloadRouteImport.update({
+  id: '/download',
+  path: '/download',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FaqRoute = FaqRouteImport.update({
@@ -1637,6 +1645,12 @@ const AppAtChar123orgSlugChar125ApprovalsBundleIdRoute =
     path: '/@{$orgSlug}/-/approvals/$bundleId',
     getParentRoute: () => AppRoute,
   } as any)
+const AppAtChar123orgSlugChar125BillingMovePlanRoute =
+  AppAtChar123orgSlugChar125BillingMovePlanRouteImport.update({
+    id: '/@{$orgSlug}_/-/billing_/move-plan',
+    path: '/@{$orgSlug}/-/billing/move-plan',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAtChar123orgSlugChar125BillingSuccessRoute =
   AppAtChar123orgSlugChar125BillingSuccessRouteImport.update({
     id: '/@{$orgSlug}_/-/billing_/success',
@@ -1795,6 +1809,12 @@ const AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute =
       getParentRoute: () => AppRoute,
     } as any,
   )
+const AppAtChar123orgSlugChar125GrantsUserUserIdRoute =
+  AppAtChar123orgSlugChar125GrantsUserUserIdRouteImport.update({
+    id: '/@{$orgSlug}_/-/grants_/user/$userId',
+    path: '/@{$orgSlug}/-/grants/user/$userId',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute =
   AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRouteImport.update({
     id: '/@{$orgSlug}_/-/integrations_/apps/$appSlug',
@@ -1869,6 +1889,7 @@ export interface FileRoutesByFullPath {
   '/device': typeof DeviceRoute
   '/discord': typeof DiscordRoute
   '/docs.md': typeof DocsDotmdRoute
+  '/download': typeof DownloadRoute
   '/faq': typeof FaqRoute
   '/features': typeof FeaturesRoute
   '/guides': typeof GuidesRoute
@@ -2102,6 +2123,7 @@ export interface FileRoutesByFullPath {
   '/@{$orgSlug}/-/agents/new': typeof AppAtChar123orgSlugChar125AgentsNewRoute
   '/@{$orgSlug}/-/agents/usage': typeof AppAtChar123orgSlugChar125AgentsUsageRoute
   '/@{$orgSlug}/-/approvals/$bundleId': typeof AppAtChar123orgSlugChar125ApprovalsBundleIdRoute
+  '/@{$orgSlug}/-/billing/move-plan': typeof AppAtChar123orgSlugChar125BillingMovePlanRoute
   '/@{$orgSlug}/-/billing/success': typeof AppAtChar123orgSlugChar125BillingSuccessRoute
   '/@{$orgSlug}/-/credentials/$credentialId': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
   '/@{$orgSlug}/-/credentials/new': typeof AppAtChar123orgSlugChar125CredentialsNewRoute
@@ -2128,6 +2150,7 @@ export interface FileRoutesByFullPath {
   '/account/repos/$repoId/icon/$iconCommit': typeof AccountReposRepoIdIconIconCommitRoute
   '/@{$orgSlug}/-/agents/new/$agent': typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
   '/@{$orgSlug}/-/credentials/$credentialId/local-reads': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute
+  '/@{$orgSlug}/-/grants/user/$userId': typeof AppAtChar123orgSlugChar125GrantsUserUserIdRoute
   '/@{$orgSlug}/-/integrations/apps/$appSlug': typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
   '/@{$orgSlug}/-/mcp-servers/$serverId/authorize': typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
   '/@{$orgSlug}/-/secrets/user/$secretName': typeof AppAtChar123orgSlugChar125SecretsUserSecretNameRoute
@@ -2153,6 +2176,7 @@ export interface FileRoutesByTo {
   '/device': typeof DeviceRoute
   '/discord': typeof DiscordRoute
   '/docs.md': typeof DocsDotmdRoute
+  '/download': typeof DownloadRoute
   '/faq': typeof FaqRoute
   '/features': typeof FeaturesRoute
   '/guides': typeof GuidesRoute
@@ -2385,6 +2409,7 @@ export interface FileRoutesByTo {
   '/@{$orgSlug}/-/agents/new': typeof AppAtChar123orgSlugChar125AgentsNewRoute
   '/@{$orgSlug}/-/agents/usage': typeof AppAtChar123orgSlugChar125AgentsUsageRoute
   '/@{$orgSlug}/-/approvals/$bundleId': typeof AppAtChar123orgSlugChar125ApprovalsBundleIdRoute
+  '/@{$orgSlug}/-/billing/move-plan': typeof AppAtChar123orgSlugChar125BillingMovePlanRoute
   '/@{$orgSlug}/-/billing/success': typeof AppAtChar123orgSlugChar125BillingSuccessRoute
   '/@{$orgSlug}/-/credentials/$credentialId': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
   '/@{$orgSlug}/-/credentials/new': typeof AppAtChar123orgSlugChar125CredentialsNewRoute
@@ -2411,6 +2436,7 @@ export interface FileRoutesByTo {
   '/account/repos/$repoId/icon/$iconCommit': typeof AccountReposRepoIdIconIconCommitRoute
   '/@{$orgSlug}/-/agents/new/$agent': typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
   '/@{$orgSlug}/-/credentials/$credentialId/local-reads': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute
+  '/@{$orgSlug}/-/grants/user/$userId': typeof AppAtChar123orgSlugChar125GrantsUserUserIdRoute
   '/@{$orgSlug}/-/integrations/apps/$appSlug': typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
   '/@{$orgSlug}/-/mcp-servers/$serverId/authorize': typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
   '/@{$orgSlug}/-/secrets/user/$secretName': typeof AppAtChar123orgSlugChar125SecretsUserSecretNameRoute
@@ -2438,6 +2464,7 @@ export interface FileRoutesById {
   '/device': typeof DeviceRoute
   '/discord': typeof DiscordRoute
   '/docs.md': typeof DocsDotmdRoute
+  '/download': typeof DownloadRoute
   '/faq': typeof FaqRoute
   '/features': typeof FeaturesRoute
   '/guides': typeof GuidesRoute
@@ -2671,6 +2698,7 @@ export interface FileRoutesById {
   '/_app/@{$orgSlug}_/-/agents_/new': typeof AppAtChar123orgSlugChar125AgentsNewRoute
   '/_app/@{$orgSlug}_/-/agents_/usage': typeof AppAtChar123orgSlugChar125AgentsUsageRoute
   '/_app/@{$orgSlug}_/-/approvals/$bundleId': typeof AppAtChar123orgSlugChar125ApprovalsBundleIdRoute
+  '/_app/@{$orgSlug}_/-/billing_/move-plan': typeof AppAtChar123orgSlugChar125BillingMovePlanRoute
   '/_app/@{$orgSlug}_/-/billing_/success': typeof AppAtChar123orgSlugChar125BillingSuccessRoute
   '/_app/@{$orgSlug}_/-/credentials_/$credentialId': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
   '/_app/@{$orgSlug}_/-/credentials_/new': typeof AppAtChar123orgSlugChar125CredentialsNewRoute
@@ -2697,6 +2725,7 @@ export interface FileRoutesById {
   '/account_/repos_/$repoId_/icon_/$iconCommit': typeof AccountReposRepoIdIconIconCommitRoute
   '/_app/@{$orgSlug}_/-/agents_/new_/$agent': typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
   '/_app/@{$orgSlug}_/-/credentials_/$credentialId_/local-reads': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute
+  '/_app/@{$orgSlug}_/-/grants_/user/$userId': typeof AppAtChar123orgSlugChar125GrantsUserUserIdRoute
   '/_app/@{$orgSlug}_/-/integrations_/apps/$appSlug': typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
   '/_app/@{$orgSlug}_/-/mcp-servers_/$serverId_/authorize': typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
   '/_app/@{$orgSlug}_/-/secrets_/user/$secretName': typeof AppAtChar123orgSlugChar125SecretsUserSecretNameRoute
@@ -2724,6 +2753,7 @@ export interface FileRouteTypes {
     | '/device'
     | '/discord'
     | '/docs.md'
+    | '/download'
     | '/faq'
     | '/features'
     | '/guides'
@@ -2957,6 +2987,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/agents/new'
     | '/@{$orgSlug}/-/agents/usage'
     | '/@{$orgSlug}/-/approvals/$bundleId'
+    | '/@{$orgSlug}/-/billing/move-plan'
     | '/@{$orgSlug}/-/billing/success'
     | '/@{$orgSlug}/-/credentials/$credentialId'
     | '/@{$orgSlug}/-/credentials/new'
@@ -2983,6 +3014,7 @@ export interface FileRouteTypes {
     | '/account/repos/$repoId/icon/$iconCommit'
     | '/@{$orgSlug}/-/agents/new/$agent'
     | '/@{$orgSlug}/-/credentials/$credentialId/local-reads'
+    | '/@{$orgSlug}/-/grants/user/$userId'
     | '/@{$orgSlug}/-/integrations/apps/$appSlug'
     | '/@{$orgSlug}/-/mcp-servers/$serverId/authorize'
     | '/@{$orgSlug}/-/secrets/user/$secretName'
@@ -3008,6 +3040,7 @@ export interface FileRouteTypes {
     | '/device'
     | '/discord'
     | '/docs.md'
+    | '/download'
     | '/faq'
     | '/features'
     | '/guides'
@@ -3240,6 +3273,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/agents/new'
     | '/@{$orgSlug}/-/agents/usage'
     | '/@{$orgSlug}/-/approvals/$bundleId'
+    | '/@{$orgSlug}/-/billing/move-plan'
     | '/@{$orgSlug}/-/billing/success'
     | '/@{$orgSlug}/-/credentials/$credentialId'
     | '/@{$orgSlug}/-/credentials/new'
@@ -3266,6 +3300,7 @@ export interface FileRouteTypes {
     | '/account/repos/$repoId/icon/$iconCommit'
     | '/@{$orgSlug}/-/agents/new/$agent'
     | '/@{$orgSlug}/-/credentials/$credentialId/local-reads'
+    | '/@{$orgSlug}/-/grants/user/$userId'
     | '/@{$orgSlug}/-/integrations/apps/$appSlug'
     | '/@{$orgSlug}/-/mcp-servers/$serverId/authorize'
     | '/@{$orgSlug}/-/secrets/user/$secretName'
@@ -3292,6 +3327,7 @@ export interface FileRouteTypes {
     | '/device'
     | '/discord'
     | '/docs.md'
+    | '/download'
     | '/faq'
     | '/features'
     | '/guides'
@@ -3525,6 +3561,7 @@ export interface FileRouteTypes {
     | '/_app/@{$orgSlug}_/-/agents_/new'
     | '/_app/@{$orgSlug}_/-/agents_/usage'
     | '/_app/@{$orgSlug}_/-/approvals/$bundleId'
+    | '/_app/@{$orgSlug}_/-/billing_/move-plan'
     | '/_app/@{$orgSlug}_/-/billing_/success'
     | '/_app/@{$orgSlug}_/-/credentials_/$credentialId'
     | '/_app/@{$orgSlug}_/-/credentials_/new'
@@ -3551,6 +3588,7 @@ export interface FileRouteTypes {
     | '/account_/repos_/$repoId_/icon_/$iconCommit'
     | '/_app/@{$orgSlug}_/-/agents_/new_/$agent'
     | '/_app/@{$orgSlug}_/-/credentials_/$credentialId_/local-reads'
+    | '/_app/@{$orgSlug}_/-/grants_/user/$userId'
     | '/_app/@{$orgSlug}_/-/integrations_/apps/$appSlug'
     | '/_app/@{$orgSlug}_/-/mcp-servers_/$serverId_/authorize'
     | '/_app/@{$orgSlug}_/-/secrets_/user/$secretName'
@@ -3578,6 +3616,7 @@ export interface RootRouteChildren {
   DeviceRoute: typeof DeviceRoute
   DiscordRoute: typeof DiscordRoute
   DocsDotmdRoute: typeof DocsDotmdRoute
+  DownloadRoute: typeof DownloadRoute
   FaqRoute: typeof FaqRoute
   FeaturesRoute: typeof FeaturesRoute
   GuidesRoute: typeof GuidesRoute
@@ -3799,6 +3838,13 @@ declare module '@tanstack/react-router' {
       path: '/docs.md'
       fullPath: '/docs.md'
       preLoaderRoute: typeof DocsDotmdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/download': {
+      id: '/download'
+      path: '/download'
+      fullPath: '/download'
+      preLoaderRoute: typeof DownloadRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/faq': {
@@ -5432,6 +5478,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAtChar123orgSlugChar125ApprovalsBundleIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/@{$orgSlug}_/-/billing_/move-plan': {
+      id: '/_app/@{$orgSlug}_/-/billing_/move-plan'
+      path: '/@{$orgSlug}/-/billing/move-plan'
+      fullPath: '/@{$orgSlug}/-/billing/move-plan'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125BillingMovePlanRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/@{$orgSlug}_/-/billing_/success': {
       id: '/_app/@{$orgSlug}_/-/billing_/success'
       path: '/@{$orgSlug}/-/billing/success'
@@ -5612,6 +5665,13 @@ declare module '@tanstack/react-router' {
       path: '/@{$orgSlug}/-/credentials/$credentialId/local-reads'
       fullPath: '/@{$orgSlug}/-/credentials/$credentialId/local-reads'
       preLoaderRoute: typeof AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/grants_/user/$userId': {
+      id: '/_app/@{$orgSlug}_/-/grants_/user/$userId'
+      path: '/@{$orgSlug}/-/grants/user/$userId'
+      fullPath: '/@{$orgSlug}/-/grants/user/$userId'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125GrantsUserUserIdRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/@{$orgSlug}_/-/integrations_/apps/$appSlug': {
@@ -5808,6 +5868,7 @@ interface AppRouteChildren {
   AppAtChar123orgSlugChar125AgentsNewRoute: typeof AppAtChar123orgSlugChar125AgentsNewRoute
   AppAtChar123orgSlugChar125AgentsUsageRoute: typeof AppAtChar123orgSlugChar125AgentsUsageRoute
   AppAtChar123orgSlugChar125ApprovalsBundleIdRoute: typeof AppAtChar123orgSlugChar125ApprovalsBundleIdRoute
+  AppAtChar123orgSlugChar125BillingMovePlanRoute: typeof AppAtChar123orgSlugChar125BillingMovePlanRoute
   AppAtChar123orgSlugChar125BillingSuccessRoute: typeof AppAtChar123orgSlugChar125BillingSuccessRoute
   AppAtChar123orgSlugChar125CredentialsCredentialIdRoute: typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
   AppAtChar123orgSlugChar125CredentialsNewRoute: typeof AppAtChar123orgSlugChar125CredentialsNewRoute
@@ -5833,6 +5894,7 @@ interface AppRouteChildren {
   AppAccountSecretsUserSecretNameRoute: typeof AppAccountSecretsUserSecretNameRoute
   AppAtChar123orgSlugChar125AgentsNewAgentRoute: typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
   AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute: typeof AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute
+  AppAtChar123orgSlugChar125GrantsUserUserIdRoute: typeof AppAtChar123orgSlugChar125GrantsUserUserIdRoute
   AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute: typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
   AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute: typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
   AppAtChar123orgSlugChar125SecretsUserSecretNameRoute: typeof AppAtChar123orgSlugChar125SecretsUserSecretNameRoute
@@ -5995,6 +6057,8 @@ const AppRouteChildren: AppRouteChildren = {
     AppAtChar123orgSlugChar125AgentsUsageRoute,
   AppAtChar123orgSlugChar125ApprovalsBundleIdRoute:
     AppAtChar123orgSlugChar125ApprovalsBundleIdRoute,
+  AppAtChar123orgSlugChar125BillingMovePlanRoute:
+    AppAtChar123orgSlugChar125BillingMovePlanRoute,
   AppAtChar123orgSlugChar125BillingSuccessRoute:
     AppAtChar123orgSlugChar125BillingSuccessRoute,
   AppAtChar123orgSlugChar125CredentialsCredentialIdRoute:
@@ -6042,6 +6106,8 @@ const AppRouteChildren: AppRouteChildren = {
     AppAtChar123orgSlugChar125AgentsNewAgentRoute,
   AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute:
     AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute,
+  AppAtChar123orgSlugChar125GrantsUserUserIdRoute:
+    AppAtChar123orgSlugChar125GrantsUserUserIdRoute,
   AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute:
     AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute,
   AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute:
@@ -6113,6 +6179,7 @@ const rootRouteChildren: RootRouteChildren = {
   DeviceRoute: DeviceRoute,
   DiscordRoute: DiscordRoute,
   DocsDotmdRoute: DocsDotmdRoute,
+  DownloadRoute: DownloadRoute,
   FaqRoute: FaqRoute,
   FeaturesRoute: FeaturesRoute,
   GuidesRoute: GuidesRoute,

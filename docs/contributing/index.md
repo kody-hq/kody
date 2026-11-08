@@ -49,7 +49,10 @@ style, tests, MCP capabilities, and runtime architecture.
 - PR system recaps (visual plan/recap blocks in PR descriptions):
   [visual-recap skill](../../.agents/skills/visual-recap/SKILL.md)
 
-- [Desktop Electron shell](../../packages/desktop/README.md)
+- [Desktop Electron shell](../../packages/desktop/README.md) — production
+  downloads:
+  [kody-hq/kody-desktop releases](https://github.com/kody-hq/kody-desktop/releases/latest)
+  (canonical) or [https://kody.codes/download](https://kody.codes/download)
 
 ## Code and tooling
 

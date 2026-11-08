@@ -3,6 +3,9 @@ import {
 	applyServerTimingHeader,
 	formatServerTimingHeader,
 	parseServerTimingHeader,
+	recordServerTimingPhase,
+	type ServerTimingEntry,
+	unaccountedServerTimingMs,
 } from './server-timing.ts'
 
 test('format and parse Server-Timing keep page phases and quoted desc', () => {
@@ -53,4 +56,21 @@ test('applyServerTimingHeader appends to an existing header', () => {
 	expect(headers.get('Server-Timing')).toBe(
 		'cfEdge;dur=4, session;dur=8, ssr;dur=11',
 	)
+})
+
+test('unaccounted time is the request window no phase interval covers', () => {
+	const timings: Array<ServerTimingEntry> = []
+	// Nested and concurrent phases overlap; markers carry no interval.
+	recordServerTimingPhase(timings, { name: 'pre', startedAt: 0, endedAt: 10 })
+	recordServerTimingPhase(timings, { name: 'a', startedAt: 30, endedAt: 80 })
+	recordServerTimingPhase(timings, { name: 'b', startedAt: 40, endedAt: 60 })
+	recordServerTimingPhase(timings, { name: 'c', startedAt: 70, endedAt: 90 })
+	timings.push({ name: 'appBuild', durationMs: 500, desc: 'cached' })
+	// Phase time outside the window does not count.
+	recordServerTimingPhase(timings, { name: 'd', startedAt: 95, endedAt: 130 })
+
+	expect(
+		unaccountedServerTimingMs(timings, { startedAt: 0, endedAt: 100 }),
+	).toBe(25)
+	expect(unaccountedServerTimingMs([], { startedAt: 5, endedAt: 5 })).toBe(0)
 })

@@ -1,10 +1,13 @@
 const { machineName } = require('./machine-name.cjs')
 const { registrationIdentity } = require('./registration-identity.cjs')
+const { loginAuthorizationUrl } = require('./in-app-approval.cjs')
 const {
 	existingRegistration,
 	runnerView,
 	shouldAdopt,
 } = require('./machine-runner.cjs')
+
+const commandsStatusMaxAgeMs = 60_000
 
 // This controller exposes fixed machine actions, never arbitrary CLI commands.
 class DesktopExecution {
@@ -16,6 +19,7 @@ class DesktopExecution {
 		hostname,
 		platform = process.platform,
 		confirmCommands = async () => false,
+		approveSignIn,
 	}) {
 		Object.assign(this, {
 			runner,
@@ -24,6 +28,7 @@ class DesktopExecution {
 			viewer,
 			platform,
 			confirmCommands,
+			approveSignIn,
 		})
 		this.commandsEnabled = null
 		this.name = machineName(hostname)
@@ -32,6 +37,8 @@ class DesktopExecution {
 		this.error = null
 		this.machine = null
 		this.machineReadAt = 0
+		this.commandsReadAt = 0
+		this.commandsReadFor = null
 	}
 	// What the kody CLI knows about this machine: an installed service, the
 	// runner lock holder, stored registrations, and auto-update. The app and
@@ -114,6 +121,33 @@ class DesktopExecution {
 				'The CLI account does not match this workspace. Sign in to this machine again with the same account.',
 			)
 		return identity
+	}
+	// With `approveSignIn`, the shell approves the CLI's authorize URL itself
+	// (in the app window when its session can, else the system browser).
+	// Closing that approval cancels the CLI login.
+	async login(orgSlug) {
+		if (!this.approveSignIn)
+			return this.runner.command(['login', '--org', orgSlug])
+		const controller = new AbortController()
+		let approval
+		try {
+			await this.runner.command(['login', '--org', orgSlug, '--no-browser'], {
+				signal: controller.signal,
+				onOutput: (output) => {
+					if (approval) return
+					const url = loginAuthorizationUrl(output)
+					if (!url) return
+					approval = this.approveSignIn(url, controller.signal).catch(
+						(error) => {
+							if (!controller.signal.aborted) controller.abort(error)
+						},
+					)
+				},
+			})
+		} finally {
+			controller.abort(new Error('Sign-in finished.'))
+			await approval
+		}
 	}
 	// Matches the CLI's pinned workerd downloads.
 	get supported() {
@@ -244,6 +278,17 @@ class DesktopExecution {
 			} else if (command.startsWith('commands-')) {
 				if (!state.ecid || !this.owns(state, viewer))
 					throw new Error('Set up this machine first.')
+				// The site polls status every 15s. Each read is a fresh CLI process that
+				// unlocks the context key, so reuse a recent read instead of asking the
+				// keychain on every poll. on/off always read fresh.
+				const readFor = `${state.ecid}:${viewer.username}:${viewer.orgSlug}`
+				if (
+					command === 'commands-status' &&
+					this.commandsReadFor === readFor &&
+					this.commandsReadAt > Date.now() - commandsStatusMaxAgeMs
+				)
+					return this.snapshot(viewer)
+				this.commandsReadFor = null
 				if (command === 'commands-on' && !(await this.confirmCommands()))
 					return this.snapshot(await this.viewer())
 				const current = await this.viewer()
@@ -274,8 +319,10 @@ class DesktopExecution {
 				this.commandsEnabled =
 					status.local?.enabled === true &&
 					status.contexts?.[0]?.commands?.enabled === true
+				this.commandsReadFor = readFor
+				this.commandsReadAt = Date.now()
 			} else if (command === 'sign-in') {
-				await this.runner.command(['login', '--org', viewer.orgSlug])
+				await this.login(viewer.orgSlug)
 				const current = await this.viewer()
 				if (
 					current?.username !== viewer.username ||

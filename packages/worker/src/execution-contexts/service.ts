@@ -952,6 +952,7 @@ export async function deleteContext(
 	await removeFromChains(caller, row.id)
 	const now = new Date().toISOString()
 	const epochOrgs = new Set([
+		...(row.all_members === 1 ? [row.org_id] : []),
 		...attachedOrgs.results.map((entry) => entry.org_id),
 		...grantOrgs.results.map((entry) => entry.org_id),
 	])
@@ -1210,19 +1211,23 @@ export async function setSharing(
 	}
 	if (input.allMembers !== undefined) {
 		const value = input.allMembers ? 1 : 0
-		if (row.org_id === caller.orgId) {
-			await db
-				.prepare(`UPDATE execution_contexts SET all_members = ? WHERE id = ?`)
-				.bind(value, row.id)
-				.run()
-		} else {
-			await db
-				.prepare(
-					`UPDATE execution_context_org_attachments SET all_members = ? WHERE context_id = ? AND org_id = ?`,
-				)
-				.bind(value, row.id, caller.orgId)
-				.run()
-		}
+		// Compiled access derives Use from all_members, so a change recompiles.
+		await db.batch([
+			row.org_id === caller.orgId
+				? db
+						.prepare(
+							`UPDATE execution_contexts SET all_members = ? WHERE id = ? AND all_members != ?`,
+						)
+						.bind(value, row.id, value)
+				: db
+						.prepare(
+							`UPDATE execution_context_org_attachments SET all_members = ? WHERE context_id = ? AND org_id = ? AND all_members != ?`,
+						)
+						.bind(value, row.id, caller.orgId, value),
+			bumpAccessEpochStatement(db, caller.orgId, {
+				onlyIfPreviousChanged: true,
+			}),
+		])
 		await recordContextAudit(
 			caller,
 			row.id,
@@ -1326,7 +1331,8 @@ export async function detachContext(
 				row.id,
 				targetOrgId,
 			),
-		bumpAccessEpochStatement(db, targetOrgId, { onlyIfPreviousChanged: true }),
+		// Unconditional: an all_members attachment grants Use with no grant row.
+		bumpAccessEpochStatement(db, targetOrgId),
 		db
 			.prepare(
 				`DELETE FROM execution_context_opt_ins WHERE context_id = ? AND org_id = ?`,

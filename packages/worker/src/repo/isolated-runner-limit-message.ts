@@ -200,7 +200,7 @@ export function publishComputeLimitMessage(
 			`memory)${where}, so it stopped before it finished. This is not a ` +
 			`storage outage. ${resourceLimitVarianceNote}`,
 		repoCheckStepResourceLimitAdvice(step),
-		formatPublishSizeHints(sizeHints),
+		formatPublishSizeHints(sizeHints, step),
 		'`kody dev check` runs the same checks under the same limits, so use ' +
 			'it to confirm a fix before publishing again.',
 	]

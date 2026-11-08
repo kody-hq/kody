@@ -6,7 +6,14 @@ import {
 	getPlatformFeedbackByIdForAdmin,
 	updatePlatformFeedbackStatusForAdmin,
 } from './repo.ts'
-import { platformFeedbackSubmissionRateLimit } from './limits.ts'
+import {
+	PlatformFeedbackInvalidTransitionError,
+	PlatformFeedbackReopenError,
+} from './errors.ts'
+import {
+	platformFeedbackReopenHistoryMaxEntries,
+	platformFeedbackSubmissionRateLimit,
+} from './limits.ts'
 import {
 	buildPlatformFeedbackSubmissionQuota,
 	getPlatformFeedbackForAdmin,
@@ -74,9 +81,6 @@ function review(
 			: { resolutionPrUrls: outcome.resolutionPrUrls }),
 	})
 }
-
-const rateLimitMessage = (retryAfterSeconds: number) =>
-	`Platform feedback is limited to ${platformFeedbackSubmissionRateLimit} submissions per rolling 24 hours. Retry after ${retryAfterSeconds} seconds. For urgent issues, email support@kody.codes.`
 
 test('platform feedback workflow submits, lists, reads, transitions, and preserves submitter attribution', async () => {
 	const { sqlite, db, queries } = createPlatformFeedbackDb()
@@ -300,7 +304,7 @@ test('platform feedback submission enforces the rolling rate limit and atomic ac
 		await submit(rateLimited.db, 'rate-limited-user')
 	}
 	await expect(submit(rateLimited.db, 'rate-limited-user')).rejects.toThrow(
-		rateLimitMessage(86400),
+		/Retry after 86400 seconds/,
 	)
 	expect(
 		rateLimited.sqlite
@@ -331,7 +335,7 @@ test('platform feedback submission enforces the rolling rate limit and atomic ac
 			insertFeedback.run(`feedback-${index}`, createdAt, createdAt)
 		}
 		await expect(submit(db, 'rate-limited-user')).rejects.toThrow(
-			rateLimitMessage(3600),
+			/Retry after 3600 seconds/,
 		)
 	} finally {
 		vi.useRealTimers()
@@ -357,9 +361,7 @@ test('platform feedback submission enforces the rolling rate limit and atomic ac
 	await submit(queueLimited.db, 'queue-limited-user', { category: 'bug' })
 	await expect(
 		submit(queueLimited.db, 'queue-limited-user', { category: 'bug' }),
-	).rejects.toThrow(
-		'You already have 100 open or triaged platform feedback submissions. Wait for an admin to review them before submitting more. For urgent issues, email support@kody.codes.',
-	)
+	).rejects.toThrow(/You already have 100 open or triaged/)
 	queueLimited.sqlite
 		.prepare(
 			`UPDATE platform_feedback SET status = 'resolved', updated_at = ? WHERE id = 'queued-0'`,
@@ -969,4 +971,244 @@ test('resolution PR URL validation rejects non-https, oversize lists, and overlo
 		resolutionNote: null,
 		resolutionPrUrls: [],
 	})
+})
+
+function readFeedbackRow(sqlite: DatabaseSync, feedbackId: string) {
+	return sqlite
+		.prepare(`SELECT * FROM platform_feedback WHERE id = ?`)
+		.get(feedbackId)
+}
+
+test('admin reopen moves resolved and dismissed feedback to triaged and records actor, server time, and note in reopen_history', async () => {
+	const { db } = createPlatformFeedbackDb()
+	const resolvedSubmission = await submit(db, 'user-a')
+	const dismissedSubmission = await submit(db, 'user-a')
+	const resolved = await review(
+		db,
+		resolvedSubmission.id,
+		'admin-a',
+		'resolve',
+		'Closed after deploy.',
+		{
+			resolutionNote: 'Shipped.',
+			resolutionPrUrls: ['https://example.com/pull/1'],
+		},
+	)
+	await review(db, dismissedSubmission.id, 'admin-a', 'dismiss')
+
+	vi.useFakeTimers({ toFake: ['Date'] })
+	try {
+		vi.setSystemTime(new Date('2026-11-07T16:30:00.000Z'))
+		const reopened = await review(
+			db,
+			resolvedSubmission.id,
+			'admin-b',
+			'triage',
+			'  Regressed after the last deploy.  ',
+		)
+		expect(reopened).toMatchObject({
+			previousStatus: 'resolved',
+			didChangeStatus: true,
+			feedback: {
+				status: 'triaged',
+				reviewedByUserId: 'admin-b',
+				reviewedAt: '2026-11-07T16:30:00.000Z',
+				adminNote: 'Regressed after the last deploy.',
+				resolutionNote: null,
+				resolutionPrUrls: [],
+				resolutionHistory: [
+					{
+						note: 'Shipped.',
+						prUrls: ['https://example.com/pull/1'],
+						recordedAt: resolved.feedback.reviewedAt,
+					},
+				],
+				reopenHistory: [
+					{
+						fromStatus: 'resolved',
+						toStatus: 'triaged',
+						note: 'Regressed after the last deploy.',
+						actorUserId: 'admin-b',
+						recordedAt: '2026-11-07T16:30:00.000Z',
+					},
+				],
+			},
+		})
+
+		vi.setSystemTime(new Date('2026-11-07T16:31:00.000Z'))
+		const retry = await review(
+			db,
+			resolvedSubmission.id,
+			'admin-b',
+			'triage',
+			'Regressed after the last deploy.',
+		)
+		expect(retry.didChangeStatus).toBe(false)
+		expect(retry.feedback.updatedAt).toBe('2026-11-07T16:30:00.000Z')
+		expect(retry.feedback.reopenHistory).toHaveLength(1)
+
+		const reopenedDismissed = await review(
+			db,
+			dismissedSubmission.id,
+			'admin-c',
+			'triage',
+			'Dismissed by mistake.',
+		)
+		expect(reopenedDismissed).toMatchObject({
+			previousStatus: 'dismissed',
+			didChangeStatus: true,
+			feedback: {
+				status: 'triaged',
+				adminNote: 'Dismissed by mistake.',
+				resolutionHistory: [],
+				reopenHistory: [
+					{
+						fromStatus: 'dismissed',
+						toStatus: 'triaged',
+						note: 'Dismissed by mistake.',
+						actorUserId: 'admin-c',
+						recordedAt: '2026-11-07T16:31:00.000Z',
+					},
+				],
+			},
+		})
+
+		vi.setSystemTime(new Date('2026-11-07T17:00:00.000Z'))
+		await review(db, resolvedSubmission.id, 'admin-a', 'resolve', undefined, {
+			resolutionNote: 'Fixed again.',
+		})
+		vi.setSystemTime(new Date('2026-11-07T18:00:00.000Z'))
+		const secondReopen = await review(
+			db,
+			resolvedSubmission.id,
+			'admin-a',
+			'triage',
+			'Second regression.',
+		)
+		expect(
+			secondReopen.feedback.reopenHistory.map((entry) => [
+				entry.note,
+				entry.actorUserId,
+				entry.recordedAt,
+			]),
+		).toEqual([
+			[
+				'Regressed after the last deploy.',
+				'admin-b',
+				'2026-11-07T16:30:00.000Z',
+			],
+			['Second regression.', 'admin-a', '2026-11-07T18:00:00.000Z'],
+		])
+		expect(
+			secondReopen.feedback.resolutionHistory.map((entry) => entry.note),
+		).toEqual(['Shipped.', 'Fixed again.'])
+	} finally {
+		vi.useRealTimers()
+	}
+
+	const submitterView = await getPlatformFeedbackForSubmitter({
+		db,
+		feedbackId: resolvedSubmission.id,
+		submitterUserId: 'user-a',
+	})
+	expect(submitterView).toMatchObject({
+		status: 'triaged',
+		resolutionNote: null,
+	})
+	expect(JSON.stringify(submitterView)).not.toMatch(/regression|reopen|admin-/i)
+	const submitterList = await listPlatformFeedbackForSubmitter({
+		db,
+		submitterUserId: 'user-a',
+	})
+	expect(JSON.stringify(submitterList.items)).not.toMatch(
+		/regression|reopen|mistake|admin-/i,
+	)
+})
+
+test('admin reopen refuses a missing, empty, or whitespace-only note without changing the record', async () => {
+	const { sqlite, db } = createPlatformFeedbackDb()
+	const resolvedSubmission = await submit(db, 'user-a')
+	const dismissedSubmission = await submit(db, 'user-a')
+	await review(db, resolvedSubmission.id, 'admin-a', 'resolve', 'Kept note.', {
+		resolutionNote: 'Shipped.',
+	})
+	await review(db, dismissedSubmission.id, 'admin-a', 'dismiss')
+	for (const feedbackId of [resolvedSubmission.id, dismissedSubmission.id]) {
+		const before = readFeedbackRow(sqlite, feedbackId)
+		for (const adminNote of [undefined, '', '   \n\t ']) {
+			await expect(
+				review(db, feedbackId, 'admin-b', 'triage', adminNote),
+			).rejects.toSatisfy(
+				(error: unknown) =>
+					error instanceof PlatformFeedbackReopenError &&
+					/needs a non-empty admin_note.*Nothing was changed/.test(
+						error.message,
+					),
+			)
+		}
+		expect(readFeedbackRow(sqlite, feedbackId)).toEqual(before)
+	}
+})
+
+test('terminal changes other than a reopen to triaged stay refused', async () => {
+	const { sqlite, db } = createPlatformFeedbackDb()
+	const resolvedSubmission = await submit(db, 'user-a')
+	const dismissedSubmission = await submit(db, 'user-a')
+	await review(db, resolvedSubmission.id, 'admin-a', 'resolve')
+	await review(db, dismissedSubmission.id, 'admin-a', 'dismiss')
+	const cases = [
+		[resolvedSubmission.id, 'dismiss'],
+		[dismissedSubmission.id, 'resolve'],
+	] as const
+	for (const [feedbackId, action] of cases) {
+		const before = readFeedbackRow(sqlite, feedbackId)
+		await expect(
+			review(db, feedbackId, 'admin-b', action, 'A note does not unlock this.'),
+		).rejects.toSatisfy(
+			(error: unknown) =>
+				error instanceof PlatformFeedbackInvalidTransitionError &&
+				/Terminal feedback cannot change to another status/.test(error.message),
+		)
+		expect(readFeedbackRow(sqlite, feedbackId)).toEqual(before)
+	}
+})
+
+test('admin reopen refuses past the reopen_history cap instead of dropping entries', async () => {
+	const { sqlite, db } = createPlatformFeedbackDb()
+	const submitted = await submit(db, 'user-a')
+	await review(db, submitted.id, 'admin-a', 'resolve')
+	const fullHistory = JSON.stringify(
+		Array.from({ length: platformFeedbackReopenHistoryMaxEntries }, (_, i) => ({
+			from_status: 'resolved',
+			to_status: 'triaged',
+			note: `Reopen ${i}`,
+			actor_user_id: 'admin-a',
+			recorded_at: `2026-11-01T00:00:${String(i).padStart(2, '0')}.000Z`,
+		})),
+	)
+	sqlite
+		.prepare(`UPDATE platform_feedback SET reopen_history = ? WHERE id = ?`)
+		.run(fullHistory, submitted.id)
+	const before = readFeedbackRow(sqlite, submitted.id)
+	await expect(
+		review(db, submitted.id, 'admin-b', 'triage', 'One more reopen.'),
+	).rejects.toThrow(PlatformFeedbackReopenError)
+	expect(readFeedbackRow(sqlite, submitted.id)).toEqual(before)
+})
+
+test('concurrent admin reopens record exactly one reopen_history entry', async () => {
+	const { db } = createPlatformFeedbackDb()
+	const submitted = await submit(db, 'user-a')
+	await review(db, submitted.id, 'admin-a', 'resolve')
+	const results = await Promise.all([
+		review(db, submitted.id, 'admin-a', 'triage', 'Reopen from admin A.'),
+		review(db, submitted.id, 'admin-b', 'triage', 'Reopen from admin B.'),
+	])
+	expect(results.filter((result) => result.didChangeStatus)).toHaveLength(1)
+	const stored = await getPlatformFeedbackForAdmin({
+		db,
+		feedbackId: submitted.id,
+	})
+	expect(stored?.status).toBe('triaged')
+	expect(stored?.reopenHistory).toHaveLength(1)
 })

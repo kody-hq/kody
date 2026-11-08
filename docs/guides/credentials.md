@@ -145,6 +145,14 @@ that build headers in a variable and header spreads — the scanner cannot see
 `headers-only` on those bags. Variable whole-`init` values (`fetch(url, init)`)
 are still skipped. The warning does not fail the check or block publish.
 
+Publish fails when a fetch puts a credential placeholder in the request body,
+URL path, URL query, or whole URL. The error lists each file, line, and
+credential name (never a value) and says to send the credential in a request
+header instead. Community installs and platform codemods only warn, so existing
+published packages keep running and republishing; the next authoring publish has
+to move the credential. The switch is
+`secretPlaceholderRequestPlacementPublishMode` in the publish check.
+
 Each credential also stores an allowed **fill placement** (headers, optionally
 named; query; path; and/or body). New credentials default to headers-only. The
 per-request header **intersects** with that placement (it never widens it).
@@ -582,11 +590,11 @@ the sealed token in the run that minted it and mint it again next run.
 
 ### Signing
 
-For APIs that want a signed JWT or an HMAC. Code gets the signature, never the
-key. Declare `kind: "signing"` for JWT key material. HMAC also works through
-`sign({ type: "hmac", ... })` on an ordinary Key (`secret`) — the same Key a
-webhook `verification.secretName` already uses — so you do not need to re-kind a
-webhook consumer secret as `signing`.
+For APIs that want a signed JWT, an HMAC, or an RSA-signed HTTP request. Code
+gets the signature, never the key. Declare `kind: "signing"` for JWT key
+material. HMAC also works through `sign({ type: "hmac", ... })` on an ordinary
+Key (`secret`) — the same Key a webhook `verification.secretName` already uses —
+so you do not need to re-kind a webhook consumer secret as `signing`.
 
 ```ts
 const appleMusic = await credential('apple-music')
@@ -614,6 +622,46 @@ const signature = await partner.sign({
 JWTs support `RS*`, `PS*`, `ES*`, `EdDSA` (PKCS#8 PEM private keys), and `HS256`
 / `HS384` / `HS512`. Kody signs only for one of the credential's hosts; pass
 `host` to pick one, or it uses the first exact host.
+
+For APIs that sign whole HTTP requests with an RSA key, like Oracle Cloud, use
+`http-signature`. Code describes the request; Kody builds the draft-cavage
+signing string, checks the url host is one of the credential's hosts, and
+returns only the headers to add. The signature always covers `(request-target)`
+and `host`, so it is not valid for any other request.
+
+```ts
+const oci = await credential('oracle-api-key')
+const url = `https://iaas.us-ashburn-1.oraclecloud.com/20160918/instances?compartmentId=${compartmentId}`
+const headers = await oci.sign({
+	type: 'http-signature',
+	keyId: `${tenancyOcid}/${userOcid}/${fingerprint}`,
+	method: 'GET',
+	url,
+})
+await fetch(url, { headers })
+```
+
+`profile: 'oracle'` (the default) signs `date (request-target) host`, and for
+`POST`, `PUT`, and `PATCH` also `content-length content-type x-content-sha256`
+over `body`, and puts the signature in `Authorization`. `profile: 'generic'`
+signs `(request-target) host date` plus `digest` for a body, in a `Signature`
+header. `signedHeaders` picks other headers, and `placement` picks the header.
+Kody adds `date`, the body digest, and the length when missing, and refuses a
+digest or length that does not match the body. Send the body exactly as signed.
+The key is an unencrypted RSA PEM (`BEGIN PRIVATE KEY` or
+`BEGIN RSA PRIVATE KEY`). A redirect to another URL needs a new signature, and
+Kody signs it only if that host is one of the credential's hosts.
+
+Raw signing, `sign({ type: 'rsa-sha256', message })`, signs any string with the
+key and returns the RSA-SHA256 signature (`encoding` is `base64`, `base64url`,
+or `hex`). It is off for every credential. Only an owner of the account or org,
+signed in on the website, can turn it on, under **Raw signing** on the
+credential's page, because a key that signs anything can impersonate its
+identity for requests outside the credential's hosts. Agents, API tokens, MCP,
+and packages cannot turn it on. Every raw signature and refusal is listed on
+that page for 90 days, with who, how, the package, and the message size; never
+the key, the message, or the signature. Turning it off stops new signatures at
+once. See [ADR 0099](../contributing/decisions/0099-rsa-request-signing.md).
 
 ## Creating credentials
 
@@ -787,6 +835,16 @@ that org only in your own runs: through `credential(key)`, through
 `createAuthenticatedFetch(name)`. An org credential with the same name wins
 first. Nobody else there can use it, Owners and Automation included.
 `credentialOrgRevoke` removes the grant.
+
+There is no "assign to org" control that moves a credential from one workspace
+to another. If a connection or secret was created under the wrong workspace,
+reconnect or create it under the right org (use that org's Credentials / Connect
+pages, or pass `--org` / `?org=`). Granting a personal credential into a team
+org shares it for your own runs there; it does not transfer ownership.
+
+Grant APIs (`credentialOrgGrant`, `credentialOrgRevoke`,
+`credentialOrgGrantList`) are in
+[Personal credentials in a team org](../use/secrets-and-values.md#personal-credentials-in-a-team-org).
 
 When a team org has registered an OAuth app, each Member can connect their own
 account through it (**Connect your own account** on the app's page, or

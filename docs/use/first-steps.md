@@ -11,6 +11,15 @@ are available, run one-off modules with local CLI execute
 
 ## Habits that help
 
+- **Read the workspace this connection uses.** Call `metaGetCurrentUser` (or
+  read the MCP server instructions) for `org.slug` and `org.kind` (`personal` |
+  `team`). One connection binds one org.
+  [Local CLI execute](../guides/local-execute.md) is a compute venue, not a
+  workspace, but the CLI has its own credential and org. Before writing through
+  local execute, check its org separately (`npx @kodycodes/cli whoami`, or
+  `metaGetCurrentUser` through local execute) and log in or bootstrap the CLI
+  again if it differs. Credentials created under the wrong org cannot be moved;
+  reconnect under the right workspace.
 - **Reuse returned `conversationId` values.** If a prior tool response included
   one, pass it back unchanged on follow-up calls. Otherwise omit the field and
   use the server-generated value the tool returns. Do not make one up locally.

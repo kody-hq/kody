@@ -102,6 +102,44 @@ async function readTargetModules(input: {
 	return modules
 }
 
+type UploadedTargetBundle = Awaited<
+	ReturnType<PublishedPackageArtifactBuilders['buildModuleBundle']>
+>
+
+/**
+ * Serves each target its own verified upload. An export's `module` and
+ * `importable-module` targets share an entry point, so match the bundle kind
+ * as well, or the importable slot gets the callable (default-only) bundle.
+ */
+export function createUploadedTargetBuilders(
+	prepared: ReadonlyMap<
+		PublishedPackageArtifactBuildTarget,
+		UploadedTargetBundle
+	>,
+): PublishedPackageArtifactBuilders {
+	const fromUpload =
+		(bundleKind: PublishedPackageArtifactBuildTarget['bundleKind']) =>
+		async ({ entryPoint }: { entryPoint: string }) => {
+			for (const [target, bundle] of prepared) {
+				if (
+					target.bundleKind === bundleKind &&
+					target.entryPoint === entryPoint
+				) {
+					return bundle
+				}
+			}
+			throw new PublishBuildVerificationError(
+				`no verified ${bundleKind} upload for "${entryPoint}".`,
+			)
+		}
+	return {
+		buildAppBundle: fromUpload('app'),
+		buildAppClientBundle: fromUpload('app-client'),
+		buildModuleBundle: fromUpload('module'),
+		buildImportableModuleBundle: fromUpload('importable-module'),
+	}
+}
+
 /**
  * Publish offload commit step, run on the RepoSession that owns the publish:
  * verify the sealed upload against the pushed commit, link the Kody
@@ -229,24 +267,13 @@ export async function persistUploadedPublishBuild(input: {
 			}
 			assertServerRebuildMatches({ uploaded: entry.uploaded, rebuilt: result })
 		}
-		const fromUpload = async ({ entryPoint }: { entryPoint: string }) => {
-			for (const [target, bundle] of prepared) {
-				if (target.entryPoint === entryPoint) return bundle
-			}
-			throw new PublishBuildVerificationError(
-				`no verified upload for "${entryPoint}".`,
-			)
-		}
 		const results = await persistPublishedPackageArtifactTargets({
 			env: input.env,
 			userId: input.userId,
 			source: { ...input.source, published_commit: input.publishedCommit },
 			savedPackage: input.savedPackage,
 			targets: input.targets,
-			buildAppBundle: fromUpload,
-			buildAppClientBundle: fromUpload,
-			buildModuleBundle: fromUpload,
-			buildImportableModuleBundle: fromUpload,
+			...createUploadedTargetBuilders(prepared),
 		})
 		const failed = results.filter((result) => !result.ok)
 		if (failed.length > 0) {

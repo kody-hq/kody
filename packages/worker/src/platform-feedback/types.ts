@@ -50,6 +50,21 @@ export type PlatformFeedbackResolutionHistoryEntry = {
 	recordedAt: string
 }
 
+/**
+ * One admin reopen of closed feedback back to triaged. Internal only: never
+ * mailed and never returned to submitters.
+ */
+export type PlatformFeedbackReopenHistoryEntry = {
+	fromStatus: PlatformFeedbackOutcomeStatus
+	toStatus: 'triaged'
+	/** Required internal reason for the reopen (same text stored as admin_note). */
+	note: string
+	/** Authenticated admin who reopened it (server-resolved, never caller-supplied). */
+	actorUserId: string
+	/** Server timestamp of the reopen. */
+	recordedAt: string
+}
+
 export type PlatformFeedbackRow = {
 	id: string
 	submitter_user_id: string
@@ -65,6 +80,7 @@ export type PlatformFeedbackRow = {
 	resolution_note: string | null
 	resolution_pr_urls: string | null
 	resolution_history?: string | null
+	reopen_history?: string | null
 	created_at: string
 	updated_at: string
 }
@@ -87,6 +103,8 @@ export type PlatformFeedbackRecord = {
 	resolutionPrUrls: Array<string>
 	/** Earlier outcome notes replaced by follow-ups, oldest first. */
 	resolutionHistory: Array<PlatformFeedbackResolutionHistoryEntry>
+	/** Internal-only admin reopens (resolved/dismissed to triaged), oldest first. */
+	reopenHistory: Array<PlatformFeedbackReopenHistoryEntry>
 	createdAt: string
 	updatedAt: string
 }
@@ -109,6 +127,7 @@ export type PlatformFeedbackListItem = Omit<
 	| 'resolutionNote'
 	| 'resolutionPrUrls'
 	| 'resolutionHistory'
+	| 'reopenHistory'
 	| 'submitterUsername'
 	| 'submitterEmail'
 >

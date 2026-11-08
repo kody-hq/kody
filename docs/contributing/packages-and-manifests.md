@@ -19,8 +19,10 @@ Use `package.json` as the canonical source of truth for saved package metadata.
   pass the `@owner/leaf` name or the name leaf.
 - `exports` — authoritative import/export map. Optional: omitting it means no
   exports, the same as `"exports": {}` (e.g. a data-only package with an app)
-- `private` — leftover npm-style field; ignored for catalog listing. Visibility
-  is a repo setting (`packageUpdate` `changes.visibility`), default private
+- `private` — leftover npm-style field; ignored for catalog listing. **Source
+  sharing** on Settings is the repo setting (`packageUpdate`
+  `changes.visibility`), default private. **Visibility** on that page is who can
+  use the hosted app, not this field
 - `kody.description` — short public tagline for search/detail (max 200)
 - `kody.tags` — search tags
 - `kody.category` — optional community browse category (`integrations`,

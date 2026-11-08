@@ -17,6 +17,7 @@ import type {
 } from '#universal/loader-data.ts'
 
 import {
+	formatScopeGrantNotice,
 	resolveOauthScopeMenu,
 	uniqueOauthScopes,
 } from '#universal/oauth-scopes.ts'
@@ -744,7 +745,12 @@ export function ConnectOauthRoute({
 					accessTokenSaved: payload.accessTokenSaved === true,
 					refreshTokenSaved: payload.refreshTokenSaved === true,
 					nextSteps: parseConnectOauthNextSteps(payload.nextSteps),
-					statusMessage: 'OAuth tokens saved.',
+					statusMessage: [
+						'OAuth tokens saved.',
+						formatScopeGrantNotice(payload.scopeGrant),
+					]
+						.filter(Boolean)
+						.join(' '),
 					statusTone: 'info',
 					currentStep: 'success',
 				})

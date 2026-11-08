@@ -13,6 +13,7 @@ import {
 	type EntitlementLimitErrorDetails,
 	type JobIntervalFloorErrorDetails,
 } from '#worker/entitlements/errors.ts'
+import { orgUsagePath } from '#universal/org-pages.ts'
 import { isDailyEntitlementResource } from '#universal/plans.ts'
 
 /**
@@ -31,6 +32,12 @@ export type McpEntitlementMetadata =
 			used?: number
 			remaining?: number
 			window?: 'day' | 'week'
+			/** Charged org slug when known. */
+			orgSlug?: string
+			/** Absolute meter reset instant (ISO) when the resource is windowed. */
+			resetAt?: string
+			/** Org Usage page for the charged org. */
+			usagePath?: string
 	  }
 	| {
 			code: typeof jobIntervalFloorErrorCode
@@ -86,6 +93,7 @@ export function entitlementStructuredContent(error: unknown) {
 function toEntitlementLimitMetadata(
 	details: EntitlementLimitErrorDetails,
 ): McpEntitlementMetadata {
+	const usagePath = details.orgSlug ? orgUsagePath(details.orgSlug) : undefined
 	const metadata = {
 		code: entitlementLimitErrorCode,
 		resource: details.resource,
@@ -94,6 +102,9 @@ function toEntitlementLimitMetadata(
 		current: details.current,
 		upgradeHint: details.upgradeHint,
 		...(details.window ? { window: details.window } : {}),
+		...(details.orgSlug ? { orgSlug: details.orgSlug } : {}),
+		...(details.resetAt ? { resetAt: details.resetAt } : {}),
+		...(usagePath ? { usagePath } : {}),
 	} as const
 	if (!isDailyEntitlementResource(details.resource)) return metadata
 	return {

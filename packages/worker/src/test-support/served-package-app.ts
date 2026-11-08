@@ -112,6 +112,10 @@ async function ensureSchema() {
 export async function setupServedPackageApp(input: {
 	appSource: string
 	capabilities?: Array<string>
+	credentials?: Record<string, unknown>
+	visitorNeeds?: Array<unknown>
+	/** Owned by a team org (the owner person is its Owner) instead of a personal org. */
+	teamOrg?: boolean
 }) {
 	silenceIncidentalRuntimeWarnings()
 	await ensureSchema()
@@ -126,11 +130,34 @@ export async function setupServedPackageApp(input: {
 		.bind(username, `${username}@example.com`, ownerId)
 		.run()
 	await ensurePersonalOrg(env.APP_DB, { stableUserId: ownerId, username })
+	// A team org app: the owner is an Owner member and the app runs as them.
+	const appOwnerId = input.teamOrg ? (mintPersonId() as string) : ownerId
+	const appSlug = input.teamOrg ? `team-${appOwnerId.slice(-12)}` : username
+	if (input.teamOrg) {
+		const createdAt = new Date().toISOString()
+		await env.APP_DB.prepare(
+			`INSERT INTO orgs (id, slug, display_name, plan, created_at, updated_at)
+			 VALUES (?, ?, 'Team app org', 'free', ?, ?)`,
+		)
+			.bind(appOwnerId, appSlug, createdAt, createdAt)
+			.run()
+		await env.APP_DB.prepare(
+			`INSERT INTO handles (handle, org_id, created_at) VALUES (?, ?, ?)`,
+		)
+			.bind(appSlug, appOwnerId, createdAt)
+			.run()
+		await env.APP_DB.prepare(
+			`INSERT INTO org_memberships (org_id, user_id, role, created_at)
+			 VALUES (?, ?, 'owner', ?)`,
+		)
+			.bind(appOwnerId, ownerId, createdAt)
+			.run()
+	}
 	const unique = crypto.randomUUID()
 	const savedPackage = {
 		id: `pkg-${unique}`,
 		kodyId: 'visitor-app',
-		name: `@${username}/visitor-app`,
+		name: `@${appSlug}/visitor-app`,
 		sourceId: `source-${unique}`,
 		publishedCommit: `commit-${unique}`,
 		manifestPath: 'package.json',
@@ -143,7 +170,7 @@ export async function setupServedPackageApp(input: {
 			is_internet_visible, created_at, updated_at
 		) VALUES (?, ?, ?, ?, 'Visitor app', ?, 1, 1, ?, ?)`,
 		savedPackage.id,
-		ownerId,
+		appOwnerId,
 		savedPackage.name,
 		savedPackage.kodyId,
 		savedPackage.sourceId,
@@ -156,7 +183,7 @@ export async function setupServedPackageApp(input: {
 			indexed_commit, manifest_path, source_root, created_at, updated_at
 		) VALUES (?, ?, 'package', ?, ?, ?, NULL, 'package.json', '/', ?, ?)`,
 		savedPackage.sourceId,
-		ownerId,
+		appOwnerId,
 		savedPackage.id,
 		`repo-${savedPackage.sourceId}`,
 		savedPackage.publishedCommit,
@@ -165,7 +192,7 @@ export async function setupServedPackageApp(input: {
 	)
 	const source = {
 		id: savedPackage.sourceId,
-		user_id: ownerIdFromStored(ownerId),
+		user_id: ownerIdFromStored(appOwnerId),
 		entity_kind: 'package' as const,
 		entity_id: savedPackage.id,
 		repo_id: `repo-${savedPackage.sourceId}`,
@@ -185,20 +212,25 @@ export async function setupServedPackageApp(input: {
 			kody: {
 				id: savedPackage.kodyId,
 				description: 'Visitor app',
-				app: { entry: 'src/app.ts', capabilities: input.capabilities },
+				...(input.credentials ? { credentials: input.credentials } : {}),
+				app: {
+					entry: 'src/app.ts',
+					capabilities: input.capabilities,
+					...(input.visitorNeeds ? { visitorNeeds: input.visitorNeeds } : {}),
+				},
 			},
 		}),
 		'src/app.ts': input.appSource,
 	}
 	await persistPublishedSourceSnapshot({
 		env,
-		userId: ownerId,
+		userId: appOwnerId,
 		source,
 		snapshot: { files: sourceFiles },
 	})
 	const owner = {
-		userId: ownerIdFromStored(ownerId),
-		username,
+		userId: ownerIdFromStored(appOwnerId),
+		username: appSlug,
 		email: 'owner@example.com',
 	}
 
@@ -206,6 +238,11 @@ export async function setupServedPackageApp(input: {
 		visitor: RuntimePackageAppVisitor | null
 		identity?: { userId: string; username: string } | null
 		inboundHeaders?: Record<string, string>
+		executorVisit?: {
+			visitor: RuntimePackageAppVisitor
+			grantId: string
+			scopes: ReadonlyArray<string>
+		} | null
 	}) {
 		const callerContext = await createPackageAppCallerContext({
 			baseUrl: 'https://kody.dev',
@@ -224,9 +261,13 @@ export async function setupServedPackageApp(input: {
 			waitUntil: (promise) => {
 				void promise.catch(() => {})
 			},
-			runtime: { callerContext, servingUsername: username },
+			runtime: {
+				callerContext,
+				servingUsername: appSlug,
+				executorVisit: input.executorVisit ?? null,
+			},
 		})
-		const inbound = new Request(`https://${username}.packages.isolated.test/`, {
+		const inbound = new Request(`https://${appSlug}.packages.isolated.test/`, {
 			headers: input.inboundHeaders,
 		})
 		const identity = input.identity
@@ -250,5 +291,13 @@ export async function setupServedPackageApp(input: {
 		return JSON.parse(text) as Record<string, unknown>
 	}
 
-	return { ownerId, username, packageId: savedPackage.id, serve }
+	return {
+		ownerId,
+		username,
+		appOwnerId,
+		appSlug,
+		packageId: savedPackage.id,
+		savedPackage,
+		serve,
+	}
 }

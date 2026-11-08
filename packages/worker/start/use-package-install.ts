@@ -1,16 +1,24 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouteContext } from '@tanstack/react-router'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { CommunityForkState } from '#universal/community-public-types.ts'
 import type { PackageRepoForkAction } from '#universal/package-repo-actions.ts'
 import {
 	forkReadablePackage,
 	installCommunityPackage,
+	loadCommunityForkState,
 } from '#start/server/community-mutations'
-import { communityForkStateQuery } from './community-fork-state-query.ts'
-import type {
-	CommunityInstallApiPayload,
-	CommunityInstallOutcome,
-} from './community-types.ts'
+import {
+	communityForkStateQuery,
+	communityForkStateQueryKey,
+} from './community-fork-state-query.ts'
+import {
+	CommunityInstallInProgressError,
+	CommunityInstallLostEnvelopeError,
+	communityInstallOutcomeFromLiveFork,
+	resolveCommunityInstallResult,
+} from './community-install-result.ts'
+import type { CommunityInstallOutcome } from './community-types.ts'
 import { usePageInvalidation } from './page-invalidation.ts'
 import { useSubmitterScope } from './use-submitter-scope.ts'
 import { useCommunityInstallOrg } from './use-community-install-org.ts'
@@ -63,6 +71,7 @@ function useCommunityForkState(
 
 export function usePackageInstall(fork: PackageRepoForkAction | null) {
 	const { actorKey } = useRouteContext({ from: '__root__' })
+	const queryClient = useQueryClient()
 	const capture = useSubmitterScope()
 	const reconcile = usePageInvalidation(resources)
 	const {
@@ -80,6 +89,9 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 	const [installOutcome, setOutcome] = useState<CommunityInstallOutcome | null>(
 		null,
 	)
+	// After a lost Start envelope, keep Fork closed until live state or
+	// page reconcile proves the install — never invite a duplicate click.
+	const [holdForkRetry, setHoldForkRetry] = useState(false)
 	useEffect(() => {
 		const carried = carryOutcome.current
 		carryOutcome.current = null
@@ -87,7 +99,20 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 		setForkTarget(null)
 		setMessage(null)
 		setOutcome(null)
+		setHoldForkRetry(false)
 	}, [fork?.listingId, actorKey, org])
+
+	function seedForkState(
+		listingId: string,
+		targetOrg: string | null,
+		state: CommunityForkState,
+	) {
+		queryClient.setQueryData(
+			communityForkStateQueryKey(actorKey, listingId, targetOrg),
+			state,
+		)
+	}
+
 	const mutation = useMutation({
 		gcTime: 0,
 		mutationFn: async (input: {
@@ -95,36 +120,34 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 			org: string | null
 		}) => {
 			const { fork: target, org: targetOrg } = input
-			const result = (
-				target.source
-					? await forkReadablePackage({
-							data: { ...target.source, org: targetOrg },
-						})
-					: await installCommunityPackage({
-							data: {
-								listingId: target.listingId ?? '',
-								org: targetOrg,
-								acknowledged: true,
-							},
-						})
-			) as CommunityInstallApiPayload
-			if (
-				!result.ok ||
-				!result.status ||
-				!result.targetName ||
-				!result.agentPrompt
-			)
-				throw new Error(
-					result.error ?? 'Unable to install this public package.',
-				)
-			return {
-				status: result.status,
-				targetName: result.targetName,
-				agentPrompt: result.agentPrompt,
-				packageId: result.packageId ?? null,
-				failedChecks: result.failedChecks ?? [],
-				alreadyInstalled: result.alreadyInstalled === true,
-			}
+			const result = target.source
+				? await forkReadablePackage({
+						data: { ...target.source, org: targetOrg },
+					})
+				: await installCommunityPackage({
+						data: {
+							listingId: target.listingId ?? '',
+							org: targetOrg,
+							acknowledged: true,
+						},
+					})
+			// Start may resolve undefined after a committed fork (lost RPC
+			// envelope). Reconcile through live fork state for the *target*
+			// org (page ?org= may still be personal) — see
+			// docs/contributing/tanstack-start.md Writes. Readable-package
+			// forks have no listingId; skip the community fork-state read.
+			const listingId = target.listingId?.trim() || null
+			return resolveCommunityInstallResult({
+				result,
+				loadForkState: async () => {
+					if (!listingId) return { state: 'none' as const }
+					const live = (await loadCommunityForkState({
+						data: { listingId, org: targetOrg },
+					})) as CommunityForkState
+					seedForkState(listingId, targetOrg, live)
+					return live
+				},
+			})
 		},
 		onMutate: () => ({ reconcile, refetchForkState: forkStateQuery.refetch }),
 		onSettled: (_data, _error, _variables, context) => {
@@ -149,6 +172,14 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 		reconciledFor.current = key
 		void reconcile()
 	}, [liveDone, fork?.viewerInstall, fork?.listingId, org, reconcile])
+	useEffect(() => {
+		if (
+			liveDone ||
+			fork?.viewerInstall ||
+			liveForkState?.state === 'in_progress'
+		)
+			setHoldForkRetry(false)
+	}, [liveDone, fork?.viewerInstall, liveForkState?.state])
 	const existingFork =
 		fork?.viewerInstall || !liveDone
 			? null
@@ -164,29 +195,135 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 			!installOutcome &&
 			!existingFork &&
 			!inProgress &&
+			!holdForkRetry &&
 			!forkTarget &&
 			!pressing.current,
 		)
 	}
 	async function runFork(targetOrg: string | null, targetSlug?: string) {
 		if (!fork) return
+		const target = fork
+		const listingId = target.listingId?.trim() || null
 		const isCurrent = capture()
 		setMessage(null)
-		try {
-			const outcome = await mutation.mutateAsync({ fork, org: targetOrg })
-			if (!isCurrent()) return
-			setOutcome(outcome)
+		function carryToTargetOrg() {
 			if (targetOrg !== org && targetSlug && orgPicker) {
 				carryOutcome.current = { org: targetOrg }
 				orgPicker.onSelect(targetSlug)
 			}
+		}
+		function holdInProgress(
+			live: Extract<CommunityForkState, { state: 'in_progress' }>,
+		) {
+			setMessage(null)
+			setHoldForkRetry(true)
+			if (listingId) seedForkState(listingId, targetOrg, live)
+			carryToTargetOrg()
+			void reconcile()
+		}
+		function releaseWithLostEnvelopeNotice() {
+			setHoldForkRetry(false)
+			setMessage(
+				'The install response was lost. Check whether the fork already exists before trying again.',
+			)
+		}
+		async function applyLiveForkState(
+			live: CommunityForkState,
+		): Promise<boolean> {
+			// Always seed the query cache — even if this submitter is stale —
+			// so a committed installed / in_progress row settles and Fork
+			// cannot reopen for a duplicate. Imperative UI updates stay gated.
+			// Do not clear holdForkRetry on stale: that would reopen Fork before
+			// the seeded live state is observed; the live-state effect clears
+			// the hold once installed / in_progress lands in the query.
+			if (listingId) seedForkState(listingId, targetOrg, live)
+			if (!isCurrent()) return true
+			if (live.state === 'installed' || live.state === 'adaptation_required') {
+				setMessage(null)
+				setOutcome(communityInstallOutcomeFromLiveFork(live))
+				setHoldForkRetry(false)
+				carryToTargetOrg()
+				return true
+			}
+			if (live.state === 'in_progress') {
+				holdInProgress(live)
+				return true
+			}
+			return false
+		}
+		try {
+			const outcome = await mutation.mutateAsync({
+				fork: target,
+				org: targetOrg,
+			})
+			if (!isCurrent()) return
+			setOutcome(outcome)
+			setHoldForkRetry(false)
+			carryToTargetOrg()
 		} catch (error) {
-			if (isCurrent())
+			if (!isCurrent()) return
+			// Reconcile before offering retry: a lost Start envelope after a
+			// committed write must become success / in-progress UI, never a
+			// second Fork click that could create a duplicate.
+			if (error instanceof CommunityInstallInProgressError) {
+				holdInProgress({
+					state: 'in_progress',
+					startedAt: new Date().toISOString(),
+				})
+				return
+			}
+			if (error instanceof CommunityInstallLostEnvelopeError) {
+				// Hold only while we reconcile once more; if still none, release
+				// with a notice so Fork is not stuck as a spinner forever.
+				setHoldForkRetry(true)
+				setMessage(null)
+				await reconcile()
+				if (!isCurrent()) return
+				if (!listingId) {
+					releaseWithLostEnvelopeNotice()
+					return
+				}
+				try {
+					const live = (await loadCommunityForkState({
+						data: { listingId, org: targetOrg },
+					})) as CommunityForkState
+					if (await applyLiveForkState(live)) return
+				} catch {
+					// Fall through to the notice.
+				}
+				if (!isCurrent()) return
+				releaseWithLostEnvelopeNotice()
+				return
+			}
+			if (!listingId) {
+				// Readable-package forks have no community listing fork-state.
 				setMessage(
 					error instanceof Error
 						? error.message
 						: 'Unable to install this public package.',
 				)
+				return
+			}
+			let live: CommunityForkState
+			try {
+				live = (await loadCommunityForkState({
+					data: { listingId, org: targetOrg },
+				})) as CommunityForkState
+			} catch {
+				setMessage(
+					error instanceof Error
+						? error.message
+						: 'Unable to install this public package.',
+				)
+				return
+			}
+			if (await applyLiveForkState(live)) return
+			if (!isCurrent()) return
+			setMessage(
+				error instanceof Error
+					? error.message
+					: 'Unable to install this public package.',
+			)
 		}
 	}
 	async function install() {
@@ -227,7 +364,7 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 		installMessage,
 		installOutcome,
 		context: {
-			busy: mutation.isPending,
+			busy: mutation.isPending || (holdForkRetry && !installMessage),
 			existingFork,
 			inProgress,
 			choosesForkTarget: orgPicker != null,

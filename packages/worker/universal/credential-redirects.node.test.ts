@@ -5,12 +5,9 @@ import { credentialRedirectFor } from './credential-redirects.ts'
 const redirect = (path: string) =>
 	credentialRedirectFor(new URL(path, 'https://kody.test'))
 
-test('old org index pages go to the Credentials list filtered by kind', () => {
+test('old org index pages go to the Credentials list filtered by kind, except the Integrations catalog', () => {
 	expect(redirect('/@acme/-/secrets')).toBe('/@acme/-/credentials?kind=secret')
 	expect(redirect('/@acme/-/secrets/')).toBe('/@acme/-/credentials?kind=secret')
-	expect(redirect('/@acme/-/integrations')).toBe(
-		'/@acme/-/credentials?kind=oauth',
-	)
 	expect(redirect('/@acme/-/mcp-servers?url=https%3A%2F%2Fmcp.test')).toBe(
 		'/@acme/-/credentials?url=https%3A%2F%2Fmcp.test&kind=mcp',
 	)
@@ -27,6 +24,8 @@ test('old org index pages go to the Credentials list filtered by kind', () => {
 		'/@jane%2Bold/-/credentials?kind=secret',
 	)
 	expect(redirect('/@acme/-/secret-providers')).toBeNull()
+	expect(redirect('/@acme/-/integrations')).toBeNull()
+	expect(redirect('/@acme/-/integrations?q=git')).toBeNull()
 	expect(redirect('/@acme/-/integrations/github')).toBeNull()
 	expect(redirect('/@acme/-/mcp-servers/srv-1/authorize')).toBeNull()
 	expect(redirect('/@acme/-/credentials')).toBeNull()

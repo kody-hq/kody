@@ -32,7 +32,6 @@ const { mockModule, pickMocks } = vi.hoisted(() => {
 		countCommunityForksByListingIds: vi.fn(),
 		insertCommunityActivityEvent: vi.fn(),
 		deleteCommunityActivityEventsByListingId: vi.fn(),
-		writeCommunitySnapshot: vi.fn(),
 		insertCommunityListing: vi.fn(),
 		repointOrphanedCommunityForksToListing: vi.fn(),
 		updateCommunityListing: vi.fn(),
@@ -44,7 +43,6 @@ const { mockModule, pickMocks } = vi.hoisted(() => {
 		upsertCommunityRating: vi.fn(),
 		insertCommunityReport: vi.fn(),
 		getCommunityReportById: vi.fn(),
-		readCommunitySnapshot: vi.fn(),
 		resolveSavedPackageRef: vi.fn(),
 		getSavedPackageByName: vi.fn(),
 		updateSavedPackage: vi.fn(),
@@ -81,7 +79,6 @@ const { mockModule, pickMocks } = vi.hoisted(() => {
 		readArtifactTreeAtCommit: vi.fn(
 			async () => null as Record<string, string> | null,
 		),
-		readPublishedSourceSnapshot: vi.fn(async () => null),
 		readArtifactSourceSnapshot: vi.fn(async () => null),
 	}
 	const pickMocks = (...names: Array<keyof typeof mockModule>) =>
@@ -147,9 +144,6 @@ vi.mock('#worker/repo/artifacts.ts', async (importOriginal) => {
 vi.mock('#worker/repo/artifact-file.ts', () =>
 	pickMocks('readArtifactTreeAtCommit'),
 )
-vi.mock('#worker/package-runtime/published-runtime-artifacts.ts', () =>
-	pickMocks('readPublishedSourceSnapshot'),
-)
 vi.mock('#worker/repo/artifact-source-snapshot.ts', () =>
 	pickMocks('readArtifactSourceSnapshot'),
 )
@@ -191,13 +185,7 @@ vi.mock('./package-url.ts', async (importOriginal) => ({
 	...pickMocks('deletePackageSlugRedirects'),
 }))
 vi.mock('#app/data-cache.ts', () => pickMocks('invalidateCommunityPublicCache'))
-vi.mock('./snapshot.ts', () =>
-	pickMocks(
-		'writeCommunitySnapshot',
-		'readCommunitySnapshot',
-		'deleteCommunitySnapshot',
-	),
-)
+vi.mock('./snapshot.ts', () => pickMocks('deleteCommunitySnapshot'))
 vi.mock('./profile-repo.ts', () =>
 	pickMocks(
 		'insertCommunityActivityEvent',
@@ -218,8 +206,11 @@ const {
 	COMMUNITY_SEARCH_CANDIDATE_LIMIT,
 } = await import('./service.ts')
 
+const testBundleArtifactsKvGet = vi.fn<(key: string) => Promise<unknown>>(
+	async () => null,
+)
 const testBundleArtifactsKv = {
-	get: vi.fn(async () => null),
+	get: testBundleArtifactsKvGet,
 	delete: vi.fn(async () => undefined),
 	list: vi.fn(async () => ({
 		keys: [{ name: 'derived-cache:v1:community-icon:v1:listing-1:commit-1' }],
@@ -402,7 +393,6 @@ function mockPublishable() {
 	mockModule.loadPackageSourceBySourceId.mockResolvedValue(validPublishSource())
 	mockModule.getCommunityListingByOwnerAndPackage.mockResolvedValue(null)
 	mockModule.insertCommunityListing.mockResolvedValue(undefined)
-	mockModule.writeCommunitySnapshot.mockResolvedValue(undefined)
 	mockModule.getCommunityListingById.mockResolvedValue(sampleListing())
 }
 
@@ -420,13 +410,16 @@ function mockForkable(
 	files: Record<string, string> = validPublishSource().files,
 ) {
 	mockModule.getCommunityListingById.mockResolvedValue(sampleListing())
-	mockModule.readCommunitySnapshot.mockResolvedValue({
-		version: 1,
-		listingId: 'listing-1',
-		pinnedCommit: 'commit-1',
-		createdAt: '2026-07-01T00:00:00.000Z',
-		files,
-	})
+	testBundleArtifactsKvGet.mockImplementation(async (key: string) =>
+		key === 'source-snapshot:v1:source-1:commit-1'
+			? {
+					version: 1,
+					sourceId: 'source-1',
+					publishedCommit: 'commit-1',
+					files,
+				}
+			: null,
+	)
 	mockModule.resolveSavedPackageRef.mockResolvedValue(null)
 	mockModule.getSavedPackageByName.mockResolvedValue(null)
 	mockModule.listCommunityForksByListingAndUser.mockResolvedValue([])
@@ -518,44 +511,6 @@ test('community operations reject banned users', async () => {
 			listingId: 'listing-1',
 		}),
 	).rejects.toThrow(/banned from community participation/)
-})
-
-test('publishCommunityListing rolls back D1 when KV snapshot write fails', async () => {
-	mockPublishable()
-	mockModule.deleteCommunityListing.mockResolvedValue(true)
-	const insertCallOrder: Array<string> = []
-	mockModule.insertCommunityListing.mockImplementation(async () => {
-		insertCallOrder.push('insert')
-	})
-	mockModule.writeCommunitySnapshot.mockImplementation(async () => {
-		insertCallOrder.push('snapshot')
-		throw new Error('kv down')
-	})
-
-	await expect(publish()).rejects.toThrow('kv down')
-	expect(insertCallOrder).toEqual(['insert', 'snapshot'])
-	expect(mockModule.deleteCommunityListing).toHaveBeenCalledWith(
-		expect.anything(),
-		expect.objectContaining({ ownerUserId: ownerIdFromStored('user-1') }),
-	)
-
-	const existingListing = sampleListing({ version: '1.0.3' })
-	mockModule.getCommunityListingByOwnerAndPackage.mockResolvedValue(
-		existingListing,
-	)
-	mockModule.updateCommunityListing.mockResolvedValue(true)
-
-	await expect(publish()).rejects.toThrow('kv down')
-	expect(mockModule.updateCommunityListing).toHaveBeenCalledTimes(2)
-	expect(mockModule.updateCommunityListing).toHaveBeenLastCalledWith(
-		expect.anything(),
-		expect.objectContaining({
-			listingId: existingListing.id,
-			packageVersion: '1.0.3',
-			pinnedCommit: existingListing.pinnedCommit,
-			publishedAt: existingListing.publishedAt,
-		}),
-	)
 })
 
 test('a failed publish gives the listing it displaced its page back', async () => {
@@ -809,7 +764,7 @@ test('searchCommunityListings reads past a full prefilter page the scorer reject
 	)
 })
 
-test('publishCommunityListing stores long README content and drops binary icon bytes from snapshots', async () => {
+test('publishCommunityListing stores long README content', async () => {
 	mockPublishable()
 	const source = validPublishSource()
 	mockModule.loadPackageSourceBySourceId.mockResolvedValue({
@@ -834,27 +789,6 @@ test('publishCommunityListing stores long README content and drops binary icon b
 			readme_content: expect.stringContaining('## Intent'),
 			category: 'integrations',
 			package_version: '1.0.4',
-		}),
-	)
-	expect(mockModule.writeCommunitySnapshot).toHaveBeenCalledWith(
-		expect.anything(),
-		expect.objectContaining({
-			communityIconPath: '.kody/icon.svg',
-			files: expect.objectContaining({
-				'.kody/icon.svg':
-					'<svg xmlns="http://www.w3.org/2000/svg"><circle /></svg>',
-				'icons/icon-192.png': 'package-app pwa icon bytes',
-			}),
-		}),
-	)
-	expect(mockModule.writeCommunitySnapshot).toHaveBeenCalledWith(
-		expect.anything(),
-		expect.objectContaining({
-			files: expect.not.objectContaining({
-				'.kody/icon.png': expect.anything(),
-				'community-icon.png': expect.anything(),
-				'community-icon.jpg': expect.anything(),
-			}),
 		}),
 	)
 })
@@ -1716,7 +1650,6 @@ test('forkCommunityListing maps isolate memory resets to CommunityForkResourceLi
 
 test('forkCommunityListing recovers when listing and published snapshots miss but origin git has the commit', async () => {
 	mockForkable()
-	mockModule.readCommunitySnapshot.mockResolvedValue(null)
 	mockModule.getEntitySourceById.mockResolvedValue({
 		id: 'source-1',
 		repo_id: 'package-origin-1',
@@ -1726,7 +1659,6 @@ test('forkCommunityListing recovers when listing and published snapshots miss bu
 		commit: '3f45921ca1964c49a3be12b5a836117829adccb0',
 		branch: 'main',
 	})
-	mockModule.readPublishedSourceSnapshot.mockResolvedValue(null)
 	mockModule.readArtifactSourceSnapshot.mockResolvedValue(null)
 	mockModule.readArtifactTreeAtCommit.mockResolvedValue(
 		forkSnapshotFiles(
@@ -1762,7 +1694,6 @@ test('forkCommunityListing recovers when listing and published snapshots miss bu
 
 test('forkCommunityListing surfaces a clear caller error when the origin revision cannot be recovered', async () => {
 	mockForkable()
-	mockModule.readCommunitySnapshot.mockResolvedValue(null)
 	mockModule.getEntitySourceById.mockResolvedValue({
 		id: 'source-1',
 		repo_id: 'package-origin-1',
@@ -1772,7 +1703,7 @@ test('forkCommunityListing surfaces a clear caller error when the origin revisio
 		commit: 'missing-commit',
 		branch: 'main',
 	})
-	mockModule.readPublishedSourceSnapshot.mockResolvedValue(null)
+	testBundleArtifactsKvGet.mockResolvedValue(null)
 	mockModule.readArtifactSourceSnapshot.mockResolvedValue(null)
 	mockModule.readArtifactTreeAtCommit.mockResolvedValue(null)
 

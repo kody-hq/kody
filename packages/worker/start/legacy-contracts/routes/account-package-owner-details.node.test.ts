@@ -385,3 +385,163 @@ test('owner details omit the custom domain section when the package has none', a
 	)
 	expect(html).not.toContain('package-custom-domains')
 })
+
+function renderOwner(overrides: Partial<AccountPackageDetail> = {}) {
+	return renderToString(
+		jsx(AccountPackageOwnerDetails, {
+			ownerUsername: 'kentcdodds',
+			packageDetail: packageDetail(overrides),
+			lockInFlight: false,
+			viewerCanPublish: true,
+			viewerCanDelete: true,
+			viewerCanAdoptCommunityFork: false,
+			onToggleLock: () => {},
+		}),
+	)
+}
+
+function sectionHtml(html: string, testId: string) {
+	const start = html.indexOf(`data-testid="${testId}"`)
+	expect(start).toBeGreaterThan(-1)
+	const sectionStart = html.lastIndexOf('<section', start)
+	const end = html.indexOf('</section>', start)
+	return html.slice(sectionStart, end)
+}
+
+test('owner settings split Visibility, Source sharing, and Public release into titled sections', async () => {
+	const html = await renderOwner({
+		publishedCommit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+		pendingCommit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+		lockedAt: '2026-09-12T00:00:00.000Z',
+	})
+
+	const visibility = sectionHtml(html, 'package-settings-visibility')
+	expect(visibility).toContain('>Visibility</h3>')
+	expect(visibility).toContain(
+		'data-testid="package-internet-visible-controls"',
+	)
+	expect(visibility).not.toContain('package-make-public')
+
+	const sourceSharing = sectionHtml(html, 'package-settings-source-sharing')
+	expect(sourceSharing).toContain('>Source sharing</h3>')
+	expect(sourceSharing).toContain('data-testid="package-make-private"')
+	expect(sourceSharing).toContain('Anyone can see it on the community')
+	expect(sourceSharing).not.toContain('package-internet-visible')
+
+	const release = sectionHtml(html, 'package-publishing-panel')
+	expect(release).toContain('>Public release</h3>')
+	expect(release).toContain('data-testid="package-published-commit"')
+	expect(release).toContain('Publish lock is on.')
+
+	expect(html).toContain('data-testid="package-settings-independent-note"')
+	expect(html.indexOf('package-settings-visibility')).toBeLessThan(
+		html.indexOf('package-settings-source-sharing'),
+	)
+	expect(html.indexOf('package-settings-source-sharing')).toBeLessThan(
+		html.indexOf('package-publishing-panel'),
+	)
+	expect(html.match(/data-testid="package-publishing-panel"/g)).toHaveLength(1)
+})
+
+test('public release counts unpublished commits and links each into the approve flow', async () => {
+	const published = 'a'.repeat(40)
+	const commits = ['d'.repeat(40), 'c'.repeat(40), 'b'.repeat(40)]
+	const html = await renderOwner({
+		publishedCommit: published,
+		pendingCommit: commits[0]!,
+		unpublishedChangeCount: 7,
+		unpublishedCommits: {
+			truncated: false,
+			commits: commits.map((commit, index) => ({
+				commit,
+				subject: `Change ${index}`,
+				authoredAt: null,
+			})),
+		},
+	})
+	expect(html).toContain('3 commits not yet published')
+	expect(html).toContain('data-testid="package-release-commit-picker"')
+	for (const commit of commits) {
+		expect(html).toContain(
+			`href="/@kentcdodds/demo-app/approve-publish?commit=${commit}"`,
+		)
+	}
+	expect(html.match(/package-release-commit-option/g)).toHaveLength(3)
+	expect(html).toContain('href="/@kentcdodds/demo-app/approve-publish"')
+
+	const one = await renderOwner({
+		publishedCommit: published,
+		pendingCommit: commits[0]!,
+		unpublishedCommits: {
+			truncated: true,
+			commits: [{ commit: commits[0]!, subject: 'Only', authoredAt: null }],
+		},
+	})
+	expect(one).toContain('More than 1 commits not yet published')
+
+	const upToDate = await renderOwner({
+		publishedCommit: published,
+		pendingCommit: published,
+		unpublishedCommits: {
+			truncated: false,
+			commits: [{ commit: commits[0]!, subject: 'Stale', authoredAt: null }],
+		},
+	})
+	expect(upToDate).not.toContain('package-release-commit-picker')
+	expect(upToDate).not.toContain('not yet published')
+})
+
+test('internet-visible warns and needs an extra confirm only when owner-scoped capabilities exist', async () => {
+	const owned = await renderOwner({
+		publishedCommit: 'a'.repeat(40),
+		pendingCommit: 'a'.repeat(40),
+		anonymousVisitorExposure: {
+			known: true,
+			items: [
+				{
+					kind: 'credential',
+					name: 'GitHub token',
+					detail: 'credential("github")',
+				},
+				{ kind: 'connector', name: 'mcp:home:court_get_status', detail: null },
+			],
+		},
+	})
+	const visibility = sectionHtml(owned, 'package-settings-visibility')
+	expect(visibility).toContain(
+		'data-testid="package-internet-visible-owner-data-warning"',
+	)
+	expect(visibility).toContain('GitHub token')
+	expect(visibility).toContain('mcp:home:court_get_status')
+	expect(visibility).toContain(
+		'data-testid="package-internet-visible-owner-data-confirm"',
+	)
+	expect(visibility).toMatch(
+		/<button[^>]*disabled=""[^>]*data-testid="package-internet-visible-on"/,
+	)
+
+	const unknown = await renderOwner({
+		anonymousVisitorExposure: { known: false },
+	})
+	expect(unknown).toContain(
+		'data-testid="package-internet-visible-owner-data-confirm"',
+	)
+
+	for (const html of [
+		await renderOwner({ anonymousVisitorExposure: { known: true, items: [] } }),
+		await renderOwner({}),
+		await renderOwner({
+			isInternetVisible: true,
+			anonymousVisitorExposure: {
+				known: true,
+				items: [{ kind: 'credential', name: 'GitHub token', detail: null }],
+			},
+		}),
+	]) {
+		expect(html).not.toContain('package-internet-visible-owner-data-warning')
+		expect(html).not.toContain('package-internet-visible-owner-data-confirm')
+		expect(html).not.toMatch(
+			/<button[^>]*disabled=""[^>]*data-testid="package-internet-visible-o/,
+		)
+	}
+})

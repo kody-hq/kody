@@ -12,6 +12,11 @@ const {
 const { DesktopPresence } = require('./presence.cjs')
 const { startUpdates, finishQuit } = require('./updates.cjs')
 const { browserLogin } = require('./browser-login.cjs')
+const {
+	approvalNavigation,
+	approvalTarget,
+	canApproveInApp,
+} = require('./in-app-approval.cjs')
 const { parseString } = require('set-cookie-parser')
 const { supportsIntegratedTitlebar } = require('./site-capabilities.cjs')
 const { attachWindowNavigation } = require('./window-navigation.cjs')
@@ -144,6 +149,95 @@ ipcMain.handle('kody:authentication', async (event, mode) => {
 		loginWindow = null
 	}
 })
+// Machine setup's CLI sign-in. With a usable app session the consent page
+// opens in a sandboxed app window (no desktop bridge) on that session and may
+// only return to the CLI's loopback callback. A fresh sign-in, or any page
+// other than consent, goes to the system browser instead.
+async function approveSignIn(value, signal) {
+	const target = approvalTarget(value, appOrigin)
+	const kody = session.fromPartition('persist:kody')
+	const browser = () => openInBrowser(value, { app, shell })
+	if (
+		!target ||
+		!(await canApproveInApp(target, (url) =>
+			kody.fetch(url, {
+				credentials: 'include',
+				redirect: 'error',
+				cache: 'no-store',
+				signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
+			}),
+		))
+	)
+		return browser()
+	if (signal.aborted || quitting) return
+	const parent = currentWindow()
+	const window = new BrowserWindow({
+		width: 560,
+		height: 760,
+		minWidth: 420,
+		minHeight: 520,
+		title: 'Approve Kody sign-in',
+		icon: join(__dirname, 'assets/icon.png'),
+		...(parent && !parent.isDestroyed() ? { parent, modal: true } : {}),
+		backgroundColor: '#ffffff',
+		webPreferences: {
+			nodeIntegration: false,
+			contextIsolation: true,
+			sandbox: true,
+			webviewTag: false,
+			partition: 'persist:kody',
+		},
+	})
+	window.removeMenu()
+	let finished = false
+	let returned = false
+	await new Promise((resolve, reject) => {
+		const close = () => {
+			signal.removeEventListener('abort', close)
+			finished = true
+			if (!window.isDestroyed()) window.destroy()
+			resolve()
+		}
+		const leave = () => {
+			if (finished) return
+			close()
+			void browser().catch(() => {})
+		}
+		signal.addEventListener('abort', close, { once: true })
+		const guard = (event, url) => {
+			const kind = approvalNavigation(target, url)
+			if (kind === 'callback') returned = true
+			else if (returned) event.preventDefault()
+			else if (kind === 'leave') {
+				event.preventDefault()
+				leave()
+			}
+		}
+		window.webContents.on('will-navigate', guard)
+		window.webContents.on('will-redirect', guard)
+		window.webContents.on('will-attach-webview', (event) =>
+			event.preventDefault(),
+		)
+		window.webContents.setWindowOpenHandler(({ url }) => {
+			try {
+				if (['https:', 'mailto:'].includes(new URL(url).protocol))
+					void shell.openExternal(url).catch(() => {})
+			} catch {}
+			return { action: 'deny' }
+		})
+		window.on('closed', () => {
+			signal.removeEventListener('abort', close)
+			if (finished) return
+			finished = true
+			// Closing before the CLI callback cancels this sign-in.
+			if (returned) resolve()
+			else reject(new Error('Sign-in was canceled. Try again.'))
+		})
+		window.loadURL(target.url.href).catch((error) => {
+			if (!finished && error.code !== 'ERR_ABORTED') leave()
+		})
+	})
+}
 const runner = new Runner()
 let quitting = false
 let updates
@@ -203,6 +297,7 @@ const execution = new DesktopExecution({
 		if (registered !== !!state.ecid && app.isReady() && !quitting) updateMenu()
 	},
 	hostname: hostname(),
+	approveSignIn,
 	confirmCommands: async () => {
 		const { response } = await dialog.showMessageBox({
 			type: 'warning',

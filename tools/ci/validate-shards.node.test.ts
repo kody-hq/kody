@@ -110,6 +110,12 @@ test('macOS host commands fall back to the Intel pool only when never assigned',
 	expect(fallback.replace(/\s+/g, ' ')).toContain(
 		"needs.host_commands_macos.result == 'abandoned'",
 	)
+	for (const body of [macos, fallback]) {
+		expect(body.replace(/\s+/g, ' ')).toContain(
+			"github.ref != 'refs/heads/main'",
+		)
+	}
+	expect(hostCommands).not.toContain("github.ref != 'refs/heads/main'")
 	for (const body of [hostCommands, macos, fallback]) {
 		expect(body).toContain('uses: ./.github/actions/host-commands')
 	}

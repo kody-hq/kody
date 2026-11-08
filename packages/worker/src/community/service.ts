@@ -46,6 +46,7 @@ import {
 	shouldFallbackFromArtifactFork,
 	shouldFallbackFromForkedArtifactPersist,
 } from '#worker/repo/artifact-repo-fork.ts'
+import { readPublishedSourceSnapshot } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import {
 	missingCommunityForkSnapshotMessage,
 	missingPrivateForkSnapshotMessage,
@@ -56,7 +57,6 @@ import {
 	type EnsuredEntitySource,
 } from '#worker/repo/source-service.ts'
 import { syncArtifactSourceSnapshot } from '#worker/repo/source-sync.ts'
-import { shouldStripIdentityIconFromCommunitySnapshot } from '#worker/repo/identity-icon-paths.ts'
 import {
 	pushServerTiming,
 	type ServerTimingEntry,
@@ -135,16 +135,8 @@ import {
 } from './fork-scan.ts'
 import { rethrowCommunityForkFailure } from './fork-resource-limit.ts'
 import { withCommunityForkClaim } from './fork-claims.ts'
-import {
-	deleteCommunitySnapshot,
-	readCommunitySnapshot,
-	writeCommunitySnapshot,
-} from './snapshot.ts'
-import {
-	communityIconPaths,
-	deleteCommunityIconAssets,
-	findCommunityIconPath,
-} from './community-icon.ts'
+import { deleteCommunitySnapshot } from './snapshot.ts'
+import { deleteCommunityIconAssets } from './community-icon.ts'
 import type {
 	CommunityForkActor,
 	CommunityForkRecord,
@@ -559,44 +551,6 @@ async function restoreReleasedCommunityPackageUrl(input: {
 	}
 }
 
-async function restoreCommunityListingAfterPublishFailure(input: {
-	env: Env
-	ownerUserId: string
-	listingId: string
-	existingListing: CommunityListingRecord | null
-}) {
-	try {
-		if (input.existingListing) {
-			await updateCommunityListing(input.env.APP_DB, {
-				listingId: input.listingId,
-				ownerUserId: input.ownerUserId,
-				sourceId: input.existingListing.sourceId,
-				kodyId: input.existingListing.kodyId,
-				name: input.existingListing.name,
-				description: input.existingListing.description,
-				tagsJson: JSON.stringify(input.existingListing.tags),
-				category: input.existingListing.category,
-				searchText: input.existingListing.searchText,
-				readmeContent: input.existingListing.readmeContent,
-				license: input.existingListing.license,
-				packageVersion: input.existingListing.version ?? null,
-				pinnedCommit: input.existingListing.pinnedCommit,
-				publishedAt: input.existingListing.publishedAt,
-			})
-		} else {
-			await deleteCommunityListing(input.env.APP_DB, {
-				listingId: input.listingId,
-				ownerUserId: input.ownerUserId,
-			})
-		}
-	} catch (revertError) {
-		console.error(
-			'Failed to revert community listing after publish failure:',
-			revertError,
-		)
-	}
-}
-
 export async function publishCommunityListing(input: {
 	env: Env
 	baseUrl: string
@@ -685,25 +639,6 @@ export async function publishCommunityListing(input: {
 		category: loadedSource.manifest.kody.category,
 		tags: savedPackage.tags,
 	})
-	const communityIconPath = findCommunityIconPath(loadedSource.files)
-	const snapshotFiles = { ...loadedSource.files }
-	for (const iconPath of communityIconPaths) {
-		if (!shouldStripIdentityIconFromCommunitySnapshot(iconPath)) continue
-		// Package source snapshots are text-backed. Keep the selected binary
-		// list-mark path as metadata for public artifact reads, but do not put
-		// corrupted UTF-8 raster bytes into community forks. Package-app
-		// `icons/icon-192.png` stays so forks keep their PWA icon.
-		delete snapshotFiles[iconPath]
-	}
-	const snapshot = {
-		version: 1 as const,
-		listingId,
-		pinnedCommit: publishedCommit,
-		files: snapshotFiles,
-		communityIconPath,
-		createdAt: now,
-	}
-
 	// A released listing is delisted before this one exists, so every failure
 	// from here on has to hand its page back.
 	try {
@@ -760,18 +695,6 @@ export async function publishCommunityListing(input: {
 			listingName: savedPackage.name,
 			listingKodyId: savedPackage.kodyId,
 		})
-
-		try {
-			await writeCommunitySnapshot(input.env.BUNDLE_ARTIFACTS_KV, snapshot)
-		} catch (snapshotError) {
-			await restoreCommunityListingAfterPublishFailure({
-				env: input.env,
-				ownerUserId: input.userId,
-				listingId,
-				existingListing,
-			})
-			throw snapshotError
-		}
 	} catch (publishError) {
 		await restoreReleasedCommunityPackageUrl({
 			env: input.env,
@@ -986,10 +909,11 @@ async function withSnapshotPackageVersion(
 ): Promise<CommunityListingRecord> {
 	if (listing.version || !env.BUNDLE_ARTIFACTS_KV) return listing
 	try {
-		const snapshot = await readCommunitySnapshot(
-			env.BUNDLE_ARTIFACTS_KV,
-			listing.id,
-		)
+		const snapshot = await readPublishedSourceSnapshot({
+			env,
+			sourceId: listing.sourceId,
+			publishedCommit: listing.pinnedCommit,
+		})
 		const version = resolveListingPackageVersion({
 			stored: listing.version,
 			packageJson: snapshot?.files['package.json'],
@@ -997,7 +921,7 @@ async function withSnapshotPackageVersion(
 		return version ? { ...listing, version } : listing
 	} catch (error) {
 		console.error(
-			'Failed to read community snapshot for listing package version:',
+			'Failed to read pinned source snapshot for listing package version:',
 			error,
 		)
 		return listing
@@ -1391,17 +1315,17 @@ function logCommunityPhaseTiming(input: {
 }
 
 /**
- * Rewrite the listing snapshot and run collision checks without touching
+ * Rewrite the listing source files and run collision checks without touching
  * Artifacts. One-click install overlaps the subsequent git bootstrap with
  * publish checks against these in-memory files.
  */
 export async function prepareCommunityFork(
 	input: PrepareCommunityForkInput,
 ): Promise<PreparedCommunityFork> {
-	// Ban check, listing row, and pinned KV snapshot are independent reads —
-	// overlapping them shaves fork preflight latency before the Artifacts
-	// bootstrap (the dominant cost) begins.
-	const [, , listing, snapshot] = await Promise.all([
+	// Ban checks and the listing row are independent reads; overlapping them
+	// shaves fork preflight latency before the Artifacts bootstrap (the
+	// dominant cost) begins.
+	const [, , listing] = await Promise.all([
 		assertNotCommunityBanned(input.env.APP_DB, input.userId),
 		// Bans bind to the acting person, not just the owning org.
 		input.creatorUserId && input.creatorUserId !== input.userId
@@ -1411,7 +1335,6 @@ export async function prepareCommunityFork(
 			listingId: input.listingId,
 			includeDelisted: false,
 		}),
-		readCommunitySnapshot(input.env.BUNDLE_ARTIFACTS_KV, input.listingId),
 	])
 	if (!listing) {
 		throw new CommunityActionError(
@@ -1434,8 +1357,6 @@ export async function prepareCommunityFork(
 		repoId: source?.repo_id ?? null,
 		preferredCommit,
 		fallbackCommits: [listing.pinnedCommit, source?.published_commit],
-		listingSnapshotFiles: snapshot?.files ?? null,
-		listingSnapshotCommit: listing.pinnedCommit,
 	})
 	if (!resolved) {
 		throw new CommunityActionError(
@@ -1747,7 +1668,7 @@ export async function persistPreparedCommunityFork(
 				// persistent Artifacts HTTP 5xx / corrupt pack even when origin
 				// is healthy. Fall back to writing a full tree into a fresh empty
 				// repo. Prefer dest HEAD from origin when preparation still holds
-				// an older listing-pin snapshot.
+				// an older pinned snapshot.
 				if (!shouldFallbackFromForkedArtifactPersist(error)) {
 					throw error
 				}
@@ -2109,14 +2030,6 @@ export async function preparePrivatePackageFork(
 			'This package has no commits to fork yet. Ask the owner to push it first.',
 		)
 	}
-	if (
-		input.expectedOriginCommit &&
-		preferredCommit !== input.expectedOriginCommit
-	) {
-		throw new CommunityActionError(
-			'This package changed after you opened it. Reload the page and try again.',
-		)
-	}
 	const resolved = await resolveForkOriginSourceFiles({
 		env: input.env,
 		sourceId: source.id,
@@ -2130,6 +2043,14 @@ export async function preparePrivatePackageFork(
 				packageId: saved.id,
 				commit: preferredCommit,
 			}),
+		)
+	}
+	if (
+		input.expectedOriginCommit &&
+		resolved.commit !== input.expectedOriginCommit
+	) {
+		throw new CommunityActionError(
+			'This package changed after you opened it. Reload the page and try again.',
 		)
 	}
 	return await prepareForkFromOriginFiles({

@@ -11,17 +11,13 @@ export type ForkOriginSourceFiles = {
 	files: Record<string, string>
 	commit: string
 	/** Where the tree came from. Never writes owner KV on recovery. */
-	source:
-		| 'listing-snapshot'
-		| 'published-snapshot'
-		| 'artifact-snapshot-api'
-		| 'artifact-git-tree'
+	source: 'published-snapshot' | 'artifact-snapshot-api' | 'artifact-git-tree'
 }
 
 /**
  * Unique non-empty commits to try when resolving fork origin files.
  * Preferred (usually default-branch HEAD) first, then pinned / published
- * fallbacks so a missing HEAD-keyed KV snapshot can still hit the listing pin.
+ * fallbacks so a missing HEAD snapshot can still use the listing pin's.
  */
 export function forkOriginCommitCandidates(input: {
 	preferredCommit: string | null | undefined
@@ -112,8 +108,8 @@ async function readGitTreeAtCommit(input: {
  * preferred first), try published KV, then the mock snapshot API, then a
  * shallow Artifacts git walk before moving on. That way a pin-keyed snapshot
  * never wins over a recoverable HEAD tree (website installs bind
- * `expectedPinnedCommit` to HEAD). Listing pin is last-resort only. Does not
- * persist recovered trees into another account's published-source KV.
+ * `expectedPinnedCommit` to HEAD). Does not persist recovered trees into
+ * another account's published-source KV.
  */
 export async function resolveForkOriginSourceFiles(input: {
 	env: Env
@@ -121,8 +117,6 @@ export async function resolveForkOriginSourceFiles(input: {
 	repoId: string | null | undefined
 	preferredCommit: string | null | undefined
 	fallbackCommits?: Array<string | null | undefined>
-	listingSnapshotFiles?: Record<string, string> | null
-	listingSnapshotCommit?: string | null
 }): Promise<ForkOriginSourceFiles | null> {
 	const commits = forkOriginCommitCandidates({
 		preferredCommit: input.preferredCommit,
@@ -130,11 +124,6 @@ export async function resolveForkOriginSourceFiles(input: {
 	})
 	const sourceId = input.sourceId?.trim() || null
 	const repoId = input.repoId?.trim() || null
-	const listingFiles = input.listingSnapshotFiles
-	const listingCommit = input.listingSnapshotCommit?.trim() || null
-	const hasListingPin =
-		Boolean(listingFiles && Object.keys(listingFiles).length > 0) &&
-		Boolean(listingCommit)
 
 	for (const commit of commits) {
 		if (sourceId) {
@@ -178,14 +167,6 @@ export async function resolveForkOriginSourceFiles(input: {
 					source: 'artifact-git-tree',
 				}
 			}
-		}
-	}
-
-	if (hasListingPin && listingFiles && listingCommit) {
-		return {
-			files: listingFiles,
-			commit: listingCommit,
-			source: 'listing-snapshot',
 		}
 	}
 

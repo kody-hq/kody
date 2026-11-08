@@ -26,6 +26,14 @@ import {
 	chainIsFull,
 	type ExecutionContextsPageData,
 } from '#universal/execution-contexts.ts'
+import {
+	desktopSetupContextFirst,
+	desktopSetupPanelAction,
+	desktopSetupResumeStep,
+	desktopSetupStages,
+	type DesktopSetupStageId,
+	type DesktopSetupWizardStep,
+} from '#universal/desktop-setup-stages.ts'
 import type {
 	DesktopExecutionBridge,
 	DesktopExecutionState,
@@ -45,6 +53,7 @@ const DesktopMachineContext = createContext<null | {
 	orgSlug: string | null
 	menuCommand: DesktopMachineMenuCommand | null
 	clearMenuCommand: () => void
+	needsAccountOnboarding: boolean | null
 }>(null)
 
 const oneRunnerCopy =
@@ -53,6 +62,54 @@ const oneRunnerCopy =
 type SetupData = Extract<ExecutionContextsPageData, { enabled: true }>
 const buttonCss = getPillButtonCss({ size: 'sm' })
 const secondaryCss = getGhostButtonCss({ size: 'sm' })
+
+function SetupStageList({
+	stages,
+}: {
+	stages: ReturnType<typeof desktopSetupStages>
+}) {
+	return (
+		<ol
+			data-testid="desktop-setup-stages"
+			css={{
+				margin: `0 0 ${spacing.md}`,
+				padding: 0,
+				listStyle: 'none',
+				display: 'grid',
+				gap: spacing.xs,
+			}}
+		>
+			{stages.map((stage, index) => (
+				<li
+					key={stage.id}
+					data-stage={stage.id}
+					data-status={stage.status}
+					css={{
+						display: 'flex',
+						gap: spacing.sm,
+						alignItems: 'baseline',
+						color: stage.status === 'upcoming' ? colors.textMuted : colors.text,
+						fontWeight: stage.status === 'current' ? 600 : undefined,
+					}}
+				>
+					<span aria-hidden css={{ minWidth: '1.5rem' }}>
+						{stage.status === 'complete'
+							? '✓'
+							: stage.status === 'current'
+								? '→'
+								: `${index + 1}.`}
+					</span>
+					<span>
+						{stage.label}
+						{stage.status === 'current' ? (
+							<span css={{ color: colors.textMuted }}> (current)</span>
+						) : null}
+					</span>
+				</li>
+			))}
+		</ol>
+	)
+}
 
 export function DesktopExecutionProvider({
 	children,
@@ -69,14 +126,13 @@ export function DesktopExecutionProvider({
 }) {
 	const [bridge, setBridge] = useState<DesktopExecutionBridge | null>(null)
 	const [opened, setOpened] = useState(false)
-	const [step, setStep] = useState<'intro' | 'machine' | 'done' | 'forget'>(
-		'intro',
-	)
+	const [step, setStep] = useState<DesktopSetupWizardStep>('overview')
 	const [name, setName] = useState('')
 	const [replace, setReplace] = useState('')
 	const [setup, setSetup] = useState<SetupData | null>(null)
-	// A team org to attach this machine's personal registration to.
+	// Team org this machine should become available to after personal registration.
 	const [target, setTarget] = useState<string | null>(null)
+	const [attached, setAttached] = useState(false)
 	const [busy, setBusy] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 	const dialog = useRef<HTMLDialogElement>(null)
@@ -166,6 +222,25 @@ export function DesktopExecutionProvider({
 			setOpened(false)
 		})
 	}
+	function stageFocus(): DesktopSetupStageId | null {
+		if (step === 'register') return 'register'
+		if (step === 'attach') return 'attach'
+		if (step === 'overview') return 'sign-in'
+		return null
+	}
+	const inChain = desktopSetupContextFirst(
+		setup?.chain.entries,
+		machine.data?.contextId ?? null,
+	)
+	const stages = desktopSetupStages({
+		targetOrgSlug: target,
+		cliReady: !!machine.data?.cliReady,
+		contextId: machine.data?.contextId ?? null,
+		running: !!machine.data?.running,
+		attached,
+		inChain,
+		focus: opened ? stageFocus() : null,
+	})
 	async function prepare() {
 		if (!bridge || !orgSlug) return
 		await run(async () => {
@@ -173,7 +248,7 @@ export function DesktopExecutionProvider({
 				data: { experiment: 'execution-contexts', enabled: true },
 			})
 			const signedIn =
-				machine.data?.cliReady || (target && machine.data?.contextId)
+				machine.data?.cliReady || machine.data?.contextId
 					? machine.data
 					: await bridge.signIn()
 			client.setQueryData(['desktop-machine', actorKey], signedIn)
@@ -184,30 +259,69 @@ export function DesktopExecutionProvider({
 				throw new Error('Execution contexts could not be enabled. Try again.')
 			setSetup(page.payload)
 			setReplace('')
-			setStep('machine')
+			const first = desktopSetupContextFirst(
+				page.payload.chain.entries,
+				signedIn?.contextId ?? null,
+			)
+			const next = desktopSetupResumeStep({
+				targetOrgSlug: target,
+				cliReady: !!signedIn?.cliReady,
+				contextId: signedIn?.contextId ?? null,
+				running: !!signedIn?.running,
+				attached,
+				inChain: first,
+			})
+			// After sign-in, overview means registration is still open.
+			setStep(next === 'overview' ? 'register' : next)
 		})
 	}
-	async function connect() {
+	async function putMachineFirst(contextId: string) {
+		if (!orgSlug || !username) return
+		await putFirst({
+			data: {
+				orgSlug,
+				username,
+				contextId,
+				...(target ? { targetOrgSlug: target } : {}),
+				...(needsReplacement && replace ? { replaceContextId: replace } : {}),
+			},
+		})
+		if (target) setAttached(true)
+	}
+	async function registerMachine() {
 		if (!bridge || !orgSlug || !username) return
 		await run(async () => {
-			// Attaching reuses the personal registration as is.
-			const registered = target ? machine.data : await bridge.connect(name)
-			if (!target)
+			let registered = machine.data
+			if (!registered?.contextId) {
+				registered = await bridge.connect(name)
 				client.setQueryData(['desktop-machine', actorKey], registered)
+			} else if (!registered.running) {
+				// Resume after a stopped runner: start it before claiming success.
+				registered = await bridge.start()
+				client.setQueryData(['desktop-machine', actorKey], registered)
+			}
 			if (!registered?.contextId)
 				throw new Error('The machine could not be registered. Try again.')
+			if (!registered.running)
+				throw new Error(
+					'The runner is not connected yet. Start it from This machine, then resume setup.',
+				)
 			try {
-				await putFirst({
-					data: {
-						orgSlug,
-						username,
-						contextId: registered.contextId,
-						...(target ? { targetOrgSlug: target } : {}),
-						...(needsReplacement && replace
-							? { replaceContextId: replace }
-							: {}),
-					},
-				})
+				if (target) {
+					const first = desktopSetupContextFirst(
+						setup?.chain.entries,
+						registered.contextId,
+					)
+					if (first || attached) {
+						// Already first on the team chain; runner start was the missing piece.
+					} else {
+						// Team destination: keep personal registration, attach next.
+						setStep('attach')
+						return
+					}
+				} else {
+					await putMachineFirst(registered.contextId)
+				}
 			} catch (error) {
 				const current = await loadSetup({
 					data: { orgSlug: target ?? orgSlug, search: [] },
@@ -216,7 +330,39 @@ export function DesktopExecutionProvider({
 				setReplace('')
 				throw error
 			}
-			if (!target) await bridge.completeOnboarding()
+			await bridge.completeOnboarding()
+			await client.invalidateQueries({ queryKey: ['shell'] })
+			await client.invalidateQueries({ queryKey: ['page'] })
+			await router.invalidate()
+			setStep('done')
+		})
+	}
+	async function attachMachine() {
+		if (!bridge || !orgSlug || !username || !target) return
+		await run(async () => {
+			let registered = machine.data
+			const contextId = registered?.contextId
+			if (!contextId)
+				throw new Error('Register this device personally before attaching it.')
+			if (!registered?.running) {
+				registered = await bridge.start()
+				client.setQueryData(['desktop-machine', actorKey], registered)
+			}
+			if (!registered?.running)
+				throw new Error(
+					'The runner is not connected yet. Start it from This machine, then resume setup.',
+				)
+			try {
+				await putMachineFirst(contextId)
+			} catch (error) {
+				const current = await loadSetup({
+					data: { orgSlug: target, search: [] },
+				})
+				if (current.payload.enabled) setSetup(current.payload)
+				setReplace('')
+				throw error
+			}
+			await bridge.completeOnboarding()
 			await client.invalidateQueries({ queryKey: ['shell'] })
 			await client.invalidateQueries({ queryKey: ['page'] })
 			await router.invalidate()
@@ -237,6 +383,8 @@ export function DesktopExecutionProvider({
 					orgSlug,
 					menuCommand,
 					clearMenuCommand: () => setMenuCommand(null),
+					needsAccountOnboarding:
+						onboarding.data?.payload.needsOnboarding ?? null,
 					commands: async (action: 'status' | 'on' | 'off') => {
 						if (action === 'status') {
 							try {
@@ -259,14 +407,22 @@ export function DesktopExecutionProvider({
 					forget: () => {
 						setError(null)
 						setTarget(null)
+						setAttached(false)
 						setStep('forget')
 						setOpened(true)
 					},
 					error: error ?? machine.data?.error ?? machine.error?.message ?? null,
 					open: (targetOrgSlug?: string | null) => {
 						setError(null)
+						setAttached(false)
 						setTarget(targetOrgSlug ?? null)
-						setStep('intro')
+						// Drop any prior org's chain snapshot so overview stages do not
+						// treat personal membership as team attach (or the reverse).
+						setSetup(null)
+						setReplace('')
+						// Always start on overview so Continue/Resume loads setup, then
+						// advances to the first incomplete stage.
+						setStep('overview')
 						setOpened(true)
 					},
 					toggle: () =>
@@ -291,6 +447,18 @@ export function DesktopExecutionProvider({
 							: null,
 				}
 			: null
+	const title =
+		step === 'forget'
+			? 'Forget desktop setup?'
+			: step === 'done'
+				? target
+					? `This machine is ready in @${target}`
+					: 'This machine is ready'
+				: step === 'attach' && target
+					? `Make available to @${target}`
+					: step === 'register'
+						? 'Register this device personally'
+						: 'Run Kody on this machine'
 	return (
 		<DesktopMachineContext value={value}>
 			{children}
@@ -318,16 +486,11 @@ export function DesktopExecutionProvider({
 					}}
 				>
 					<h2 id="desktop-execution-title" css={{ marginTop: 0 }}>
-						{step === 'forget'
-							? 'Forget desktop setup?'
-							: step === 'done'
-								? 'This machine is ready'
-								: step === 'machine'
-									? target
-										? `Add this machine to @${target}`
-										: 'Enable this machine'
-									: 'Run Kody on this machine'}
+						{title}
 					</h2>
+					{step !== 'forget' && step !== 'done' ? (
+						<SetupStageList stages={stages} />
+					) : null}
 					{step === 'forget' ? (
 						<>
 							<p>
@@ -344,7 +507,8 @@ export function DesktopExecutionProvider({
 										await bridge.forgetSetup()
 										setName('')
 										setSetup(null)
-										setStep('intro')
+										setAttached(false)
+										setStep('overview')
 										setOpened(false)
 									})
 								}
@@ -360,7 +524,7 @@ export function DesktopExecutionProvider({
 								Cancel
 							</button>
 						</>
-					) : step === 'intro' ? (
+					) : step === 'overview' ? (
 						<>
 							<p>
 								Kody can run work here while the desktop app is open.{' '}
@@ -369,8 +533,10 @@ export function DesktopExecutionProvider({
 									: 'Quitting stops execution.'}
 							</p>
 							<p>
-								Local folders require separate permission. Your cloud
-								credentials stay in Kody cloud.
+								A machine is registered to you personally
+								{target ? `, then made available to @${target}` : ''}. Local
+								folders require separate permission. Your cloud credentials stay
+								in Kody cloud.
 							</p>
 							<button
 								type="button"
@@ -378,27 +544,35 @@ export function DesktopExecutionProvider({
 								disabled={busy}
 								onClick={() => void prepare()}
 							>
-								{target
-									? busy
+								{busy
+									? machine.data?.cliReady || machine.data?.contextId
 										? 'Loading…'
-										: 'Continue'
-									: busy
-										? 'Opening browser…'
-										: 'Continue in browser'}
+										: bridge?.approvesInApp
+											? 'Waiting for approval…'
+											: 'Opening browser…'
+									: machine.data?.cliReady || machine.data?.contextId
+										? 'Resume setup'
+										: bridge?.approvesInApp
+											? 'Continue to approve'
+											: 'Continue in browser'}
 							</button>
 						</>
-					) : step === 'machine' ? (
+					) : step === 'register' ? (
 						<>
-							{target ? (
-								<p>
-									{`${name} will be first in your execution chain in @${target}. It keeps its personal setup, and your other entries in @${target} stay in their current order.`}
-								</p>
-							) : existingContext ? (
+							{existingContext ? (
 								<p>
 									The kody CLI already registered this machine
 									{existingContext.name ? ` as ${existingContext.name}` : ''}.
 									This app uses that registration and its runner instead of
 									creating a second one. {oneRunnerCopy}
+								</p>
+							) : machine.data?.contextId ? (
+								<p>
+									{`${name} is already registered to you personally. Continue to confirm the runner and ${
+										target
+											? `make it available to @${target}`
+											: 'put it first in your personal execution chain'
+									}.`}
 								</p>
 							) : (
 								<label css={{ display: 'grid', gap: spacing.sm }}>
@@ -413,14 +587,19 @@ export function DesktopExecutionProvider({
 									/>
 								</label>
 							)}
-							{target ? null : (
+							{target ? (
+								<p>
+									Registration stays personal. The next step makes this machine
+									available in @{target}.
+								</p>
+							) : (
 								<p>
 									This machine will be first in your personal execution chain.
 									Your other entries and cloud fallback settings stay in their
 									current order.
 								</p>
 							)}
-							{needsReplacement ? (
+							{!target && needsReplacement ? (
 								<label css={{ display: 'grid', gap: spacing.sm }}>
 									Your chain is full. Replace an entry
 									<select
@@ -449,26 +628,67 @@ export function DesktopExecutionProvider({
 								css={buttonCss}
 								disabled={
 									busy ||
-									(!target && !/^[a-z0-9][a-z0-9-]{0,62}$/.test(name)) ||
-									(!!needsReplacement && !replace)
+									(!machine.data?.contextId &&
+										!/^[a-z0-9][a-z0-9-]{0,62}$/.test(name)) ||
+									(!target && !!needsReplacement && !replace)
 								}
-								onClick={() => void connect()}
+								onClick={() => void registerMachine()}
 							>
 								{busy
-									? 'Enabling…'
-									: target
-										? `Add to @${target}`
-										: existingContext
-											? 'Use this machine’s existing registration'
-											: 'Enable this machine'}
+									? 'Registering…'
+									: existingContext
+										? 'Use this machine’s existing registration'
+										: machine.data?.contextId
+											? target
+												? 'Continue'
+												: 'Enable this machine'
+											: 'Register this device'}
+							</button>
+						</>
+					) : step === 'attach' && target ? (
+						<>
+							<p>
+								{`${name} will be first in your execution chain in @${target}. It keeps its personal setup, and your other entries in @${target} stay in their current order.`}
+							</p>
+							{needsReplacement ? (
+								<label css={{ display: 'grid', gap: spacing.sm }}>
+									Your chain is full. Replace an entry
+									<select
+										css={inputCss}
+										value={replace}
+										onChange={(event) => setReplace(event.target.value)}
+										disabled={busy}
+									>
+										<option value="">Choose a machine</option>
+										{setup?.chain.entries.flatMap((entry) =>
+											entry.kind === 'context'
+												? [
+														<option key={entry.id} value={entry.id}>
+															{setup.contexts.find(
+																(context) => context.id === entry.id,
+															)?.name ?? entry.id}
+														</option>,
+													]
+												: [],
+										)}
+									</select>
+								</label>
+							) : null}
+							<button
+								type="button"
+								css={buttonCss}
+								disabled={busy || (!!needsReplacement && !replace)}
+								onClick={() => void attachMachine()}
+							>
+								{busy ? 'Adding…' : `Make available to @${target}`}
 							</button>
 						</>
 					) : (
 						<>
 							<p>
 								This machine is first in your execution chain
-								{target ? ` in @${target}` : ''}. You can pause or resume it
-								from Execution contexts.
+								{target ? ` in @${target}` : ''} and its runner is connected.
+								You can pause or resume it from Execution contexts.
 							</p>
 							<button
 								type="button"
@@ -572,6 +792,10 @@ export function DesktopMachinePanel({
 	const state = machine.state
 	const serverContext = server.data ?? null
 	const pausedInKody = serverContext?.paused ?? null
+	const panelAction = desktopSetupPanelAction({
+		state,
+		needsAccountOnboarding: machine.needsAccountOnboarding,
+	})
 	return (
 		<section
 			aria-labelledby="desktop-machine-heading"
@@ -608,7 +832,9 @@ export function DesktopMachinePanel({
 										: ' · Runner paused'
 							: state.existingContext
 								? ' · Registered with the kody CLI'
-								: ' · Not set up'}
+								: state.cliReady
+									? ' · Signed in · Setup incomplete'
+									: ' · Not set up'}
 					</p>
 					{state.runner?.mode === 'service' ||
 					state.runner?.mode === 'external' ||
@@ -714,21 +940,21 @@ export function DesktopMachinePanel({
 							{logLines.length ? logLines.join('\n') : 'No log lines yet.'}
 						</pre>
 					) : null}
+					{panelAction.kind === 'unavailable' ? (
+						<p
+							data-testid="desktop-setup-unavailable"
+							css={{ color: colors.textMuted }}
+						>
+							{panelAction.reason}
+						</p>
+					) : null}
 					<button
 						type="button"
 						css={{ ...buttonCss, marginLeft: state.contextId ? spacing.sm : 0 }}
-						disabled={state.busy}
-						onClick={() =>
-							machine.open(state.contextId ? selectedOrgSlug : null)
-						}
+						disabled={state.busy || panelAction.kind === 'unavailable'}
+						onClick={() => machine.open(selectedOrgSlug)}
 					>
-						{state.contextId
-							? 'Manage setup'
-							: state.needsVerification
-								? 'Verify this machine'
-								: state.existingContext
-									? 'Use this machine’s existing registration'
-									: 'Set up this machine'}
+						{panelAction.label}
 					</button>
 					{typeof state.autoUpdate === 'boolean' && machine.autoUpdate ? (
 						<p>

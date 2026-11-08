@@ -542,7 +542,9 @@ test('invalid_grant from the token endpoint needs reconnecting and stops the exc
 	const listed = await listCredentialsForViewer({ env: t.env, request: actor })
 	expect(listed.find((item) => item.id === id)).toMatchObject({
 		status: 'needs_attention',
-		statusMessage: expect.stringContaining('Save a new value to reconnect'),
+		statusMessage: expect.stringContaining(
+			'Save a new value on this credential in its current workspace to reconnect',
+		),
 	})
 	expect(JSON.stringify(listed)).not.toContain('dummy-refresh')
 })

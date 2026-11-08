@@ -20,7 +20,10 @@ import {
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { getUniqueConstraintField } from '#worker/database-errors.ts'
 import { listEnablementsForInstance } from '#worker/enablements/repo.ts'
-import { resolvePublicUsername } from '#worker/identity/user-lookup.ts'
+import {
+	resolvePublicHandleForOwner,
+	resolvePublicUsername,
+} from '#worker/identity/user-lookup.ts'
 import {
 	listPackageWebhooks,
 	type PackageWebhookManifestEntry,
@@ -150,22 +153,32 @@ export type {
 	WebhookUrlApplyResult,
 } from './apply.ts'
 
-async function resolveOwnerUsername(input: {
+/**
+ * Public handle for a minted URL's `/@handle` segment: the namespace that
+ * owns the package (a team org's slug, not the acting person's username),
+ * verified to route back to that owner at ingress.
+ */
+async function resolveWebhookUrlOwnerHandle(input: {
 	db: D1Database
+	ownerId: OwnerId
 	email?: string | null
 	username?: string | null
 }) {
-	if (input.username?.trim()) return input.username.trim()
-	const resolved = await resolvePublicUsername({
+	const handle = await resolvePublicHandleForOwner({
 		db: input.db,
-		email: input.email,
+		ownerId: input.ownerId,
+		preferredHandle: await resolvePublicUsername({
+			db: input.db,
+			username: input.username,
+			email: input.email,
+		}),
 	})
-	if (!resolved) {
+	if (!handle) {
 		throw new Error(
-			'A public username is required to mint webhook endpoint URLs.',
+			'A public handle for the package owner is required to mint webhook endpoint URLs.',
 		)
 	}
-	return resolved
+	return handle
 }
 
 async function authorizeWebhookPackageWrite(input: {
@@ -712,14 +725,15 @@ async function resolveMintedWebhookUrl(input: {
 		env: input.env,
 		requestUrl: input.requestUrl,
 	})
-	const username = await resolveOwnerUsername({
+	const ownerHandle = await resolveWebhookUrlOwnerHandle({
 		db: input.env.APP_DB,
+		ownerId: endpoint.userId,
 		email: input.email,
 		username: input.username,
 	})
 	const url = buildWebhookEndpointUrl({
 		origin: baseUrl,
-		username,
+		username: ownerHandle,
 		packageKodyId: savedPackage.kodyId,
 		webhookName: endpoint.webhookName,
 		urlSecret,

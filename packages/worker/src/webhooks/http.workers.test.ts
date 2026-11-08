@@ -39,7 +39,13 @@ import { consoleInfo, consoleWarn } from '#worker/test-support/console-spies.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
 
-import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	ownerIdFromStored,
+	personIdFromStored,
+} from '@kody-internal/shared/owner-person-ids.ts'
+import { loadOrgBindingForSlug } from '#worker/orgs/repo.ts'
+import { deriveRequestContext } from '#worker/request-context/request-context.ts'
+import { applyWebhookUrlForUser, mintWebhookUrlForUser } from './service.ts'
 import { communityForksTableSql } from '#worker/community/community-forks-test-schema.ts'
 const mocks = vi.hoisted(() => ({
 	enqueueWebhookDispatch: vi.fn(),
@@ -784,7 +790,7 @@ test('a sync webhook whose package was refused for credential placement returns 
 		body: JSON.stringify({ ticket: 1 }),
 	})
 	expect(response.status).toBe(502)
-	const body = await response.json()
+	const body = (await response.json()) as { runId?: string }
 	expect(body).toEqual({
 		ok: false,
 		error: {
@@ -793,6 +799,7 @@ test('a sync webhook whose package was refused for credential placement returns 
 				'The package tried to send a credential (slot "clerkReviewUserId") to a host the credential does not allow, over plain HTTP, or in the URL host, so Kody refused the request. The package owner or the credential\'s owner needs to fix it.',
 			slot: 'clerkReviewUserId',
 		},
+		runId: expect.any(String),
 	})
 	const serialized = JSON.stringify(body)
 	expect(serialized).not.toContain('request body')
@@ -803,6 +810,7 @@ test('a sync webhook whose package was refused for credential placement returns 
 		(run) => run.metadata?.['outcome'] === 'failed',
 	)
 	expect(failed?.metadata).toMatchObject({ httpStatus: 502 })
+	expect(body.runId).toBe(failed?.id)
 	// The owner's webhook run keeps the stable code first, then the export's
 	// own (sanitized) error so Activity says why it failed.
 	expect(failed?.errorMessage).toMatch(
@@ -812,6 +820,86 @@ test('a sync webhook whose package was refused for credential placement returns 
 	expect(mocks.invokePackageExport.mock.calls.at(-1)?.[0]).not.toHaveProperty(
 		'executorTimeoutMs',
 	)
+})
+
+test('a sync webhook refused for body fill placement names the part and the run, never the value', async () => {
+	const userId = await setupOwnerWithWebhooks(['sync-hook'])
+	declareWebhook({ name: 'sync-hook', responseMode: 'sync' })
+	const requestCanary = 'webhook-request-canary-9f3c'
+	const invocationCanary = 'invocation-error-canary-7b2e'
+	const logCanary = 'invocation-log-canary-4d8a'
+	mocks.invokePackageExport.mockResolvedValue({
+		status: 500,
+		body: {
+			ok: false,
+			error: {
+				code: 'execution_failed',
+				message: `Error: Credential "acmeApiKey" may not fill the body. ${invocationCanary} (credential_placement_refused, slot "acmeApiKey", part "body")`,
+			},
+			logs: [`POST https://api.acme.test/v1/items ${logCanary}`],
+		},
+	})
+
+	const response = await sendWebhook('sync-hook', {
+		body: JSON.stringify({ item: 1, token: requestCanary }),
+	})
+	expect(response.status).toBe(502)
+	const body = (await response.json()) as {
+		error: Record<string, unknown>
+		runId?: string
+	}
+	expect(body.error).toMatchObject({
+		code: 'credential_placement_refused',
+		slot: 'acmeApiKey',
+		part: 'body',
+	})
+	expect(body.error.message).toEqual(expect.stringContaining('acmeApiKey'))
+	expect(body.error.message).toEqual(expect.stringContaining('request body'))
+	const serialized = JSON.stringify(body)
+	expect(serialized).not.toContain('api.acme.test')
+	expect(serialized).not.toContain(requestCanary)
+	expect(serialized).not.toContain(invocationCanary)
+	expect(serialized).not.toContain(logCanary)
+
+	const failed = (await listDeliveries(userId, 'sync-hook')).find(
+		(run) => run.metadata?.['outcome'] === 'failed',
+	)
+	expect(failed?.id).toBeTruthy()
+	expect(body.runId).toBe(failed?.id)
+	expect(failed?.errorMessage).toMatch(
+		/^credential_placement_refused: Error: Credential "acmeApiKey" may not fill the body\./,
+	)
+})
+
+test('a sync webhook whose export failed returns a run reference with the generic cause', async () => {
+	const userId = await setupOwnerWithWebhooks(['sync-hook'])
+	declareWebhook({ name: 'sync-hook', responseMode: 'sync' })
+	mocks.invokePackageExport.mockResolvedValue({
+		status: 500,
+		body: {
+			ok: false,
+			error: { code: 'execution_failed', message: 'Error: boom' },
+		},
+	})
+
+	const response = await sendWebhook('sync-hook', {
+		body: JSON.stringify({ item: 1 }),
+	})
+	expect(response.status).toBe(502)
+	const body = (await response.json()) as { runId?: string }
+	const failed = (await listDeliveries(userId, 'sync-hook')).find(
+		(run) => run.metadata?.['outcome'] === 'failed',
+	)
+	expect(body).toEqual({
+		ok: false,
+		error: {
+			code: 'invocation_failed',
+			message:
+				'Bound package export invocation failed. The package owner can open this run in Activity to see why.',
+		},
+		runId: failed?.id,
+	})
+	expect(JSON.stringify(body)).not.toContain('boom')
 })
 
 test('webhook ingress rejects suspended owners before any dispatch', async () => {
@@ -1773,4 +1861,163 @@ test('subscription challenges answer on minted URLs without invoking exports', a
 	mockSecretValue('consumer-secret')
 	expect((await getChallenge(crcQuery)).status).toBe(403)
 	expect(await listDeliveries(userId, hook)).toEqual([])
+})
+
+test('a GitHub ping to the URL webhookUrlApply registered for a team-org package reaches ingress and records a delivery', async () => {
+	const personId = await setupOwnerWithWebhooks([])
+	const teamOrgId = 'org-kody-team'
+	const now = '2026-11-07T00:00:00.000Z'
+	await env.APP_DB.batch([
+		env.APP_DB.prepare(
+			`INSERT INTO orgs (id, slug, display_name, created_at, updated_at)
+			VALUES (?, 'kody', 'Kody', ?, ?)`,
+		).bind(teamOrgId, now, now),
+		env.APP_DB.prepare(
+			`INSERT INTO handles (handle, user_id, org_id, created_at)
+			VALUES ('kody', NULL, ?, ?)`,
+		).bind(teamOrgId, now),
+		env.APP_DB.prepare(
+			`INSERT INTO org_memberships (org_id, user_id, role, created_at)
+			VALUES (?, ?, 'owner', ?)`,
+		).bind(teamOrgId, personId, now),
+		env.APP_DB.prepare(
+			`INSERT INTO saved_packages (
+				id, user_id, name, kody_id, description, tags_json, source_id,
+				has_app, hidden, is_private, created_at, updated_at
+			) VALUES (
+				'pkg-team', ?, '@kody/kody-factory', 'kody-factory', 'Factory',
+				'[]', 'src-team', 0, 0, 1, ?, ?
+			)`,
+		).bind(teamOrgId, now, now),
+	])
+	await clearRunRecords({ env, userId: ownerIdFromStored(teamOrgId) })
+	mocks.loadPackageManifestBySourceId.mockResolvedValue({
+		manifest: {
+			name: '@kody/kody-factory',
+			exports: { './on-github': './src/on-github.ts' },
+			kody: {
+				id: 'kody-factory',
+				description: 'Factory',
+				webhooks: [
+					{
+						name: 'github',
+						export: './on-github',
+						responseMode: 'sync',
+						verification: {
+							type: 'hmac-sha256',
+							header: 'x-hub-signature-256',
+							encoding: 'hex',
+							prefix: 'sha256=',
+						},
+					},
+				],
+			},
+		},
+	})
+	const binding = await loadOrgBindingForSlug(env.APP_DB, personId, 'kody')
+	if (!binding) throw new Error('expected team org membership')
+	const request = deriveRequestContext({
+		user: { userId: personIdFromStored(personId), username: 'alice' },
+		source: { kind: 'session' },
+		orgBinding: binding,
+	})
+	const ownerId = ownerIdFromStored(teamOrgId)
+	const minted = await mintWebhookUrlForUser({
+		env,
+		request,
+		userId: ownerId,
+		email: 'alice@example.com',
+		username: 'alice',
+		kodyId: 'kody-factory',
+		webhookName: 'github',
+		requestUrl: 'https://test.kody.dev',
+	})
+	await insertEnablement({
+		db: env.APP_DB,
+		enablement: {
+			orgId: ownerId,
+			packageId: 'pkg-team',
+			triggerKind: 'webhook',
+			triggerName: 'github',
+			instanceId: minted.endpointId,
+			enablerUserId: personId,
+			origin: 'enabled',
+		},
+	})
+
+	const registration = vi.fn(
+		async (_url: string, _init?: RequestInit) =>
+			new Response(JSON.stringify({ id: 4242 }), { status: 201 }),
+	)
+	vi.stubGlobal('fetch', registration)
+	try {
+		await expect(
+			applyWebhookUrlForUser({
+				env,
+				request,
+				userId: ownerId,
+				email: 'alice@example.com',
+				username: 'alice',
+				handle: minted.handle,
+				requestUrl: 'https://test.kody.dev',
+				destination: {
+					type: 'http',
+					url: 'https://api.github.com/repos/acme/api/hooks',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						name: 'web',
+						events: ['issues', 'issue_comment'],
+						config: {
+							url: '{{webhookUrl}}',
+							secret: '{{webhookSecret}}',
+							content_type: 'json',
+						},
+					}),
+				},
+			}),
+		).resolves.toMatchObject({ ok: true, remoteId: '4242' })
+	} finally {
+		vi.unstubAllGlobals()
+	}
+	const registered = JSON.parse(String(registration.mock.calls[0]![1]!.body))
+		.config as { url: string; secret: string }
+	const hookUrl = new URL(registered.url)
+	expect(hookUrl.pathname).toMatch(/^\/@kody\/webhooks\/kody-factory\/github\//)
+
+	// GitHub's automatic ping right after the hook is created.
+	const ping = JSON.stringify({
+		zen: 'Keep it logically awesome.',
+		hook_id: 4242,
+	})
+	const deliver = async (url: string) => {
+		const ctx = createExecutionContext()
+		const response = await handleWebhookIngressRequest(
+			new Request(url, {
+				method: 'POST',
+				headers: {
+					'content-type': 'application/json',
+					'x-github-event': 'ping',
+					'x-hub-signature-256': await sign(ping, 'sha256=', registered.secret),
+				},
+				body: ping,
+			}),
+			env,
+			ctx,
+		)
+		await waitOnExecutionContext(ctx)
+		return response
+	}
+	// The pre-fix URL named the acting person and missed the package.
+	expect(
+		(await deliver(registered.url.replace('/@kody/', '/@alice/'))).status,
+	).toBe(404)
+	expect(mocks.invokePackageExport).not.toHaveBeenCalled()
+
+	const response = await deliver(registered.url)
+	expect(response.status).toBe(200)
+	expect(mocks.invokePackageExport).toHaveBeenCalledTimes(1)
+	expect(invoked(-1).params.request.json).toEqual(JSON.parse(ping))
+	expect((await listDeliveries(teamOrgId, 'github'))[0]).toMatchObject({
+		status: 'success',
+	})
 })

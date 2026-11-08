@@ -106,7 +106,11 @@ another daemon still replaces this one on the server (an older CLI without the
 lock, or the same key on another machine), the daemon logs one explanation
 naming the other process and stops instead of reconnecting in a loop.
 
-The desktop app and the CLI share this machine's registration and its runner:
+Install the desktop app from
+[kody-hq/kody-desktop releases](https://github.com/kody-hq/kody-desktop/releases/latest)
+(canonical) or the shareable shortcut
+[https://kody.codes/download](https://kody.codes/download). The desktop app and
+the CLI share this machine's registration and its runner:
 
 - When `kody daemon install` set up a service, or a daemon already runs, the app
   adopts it. **This machine** shows that runner and its version, and Pause,
@@ -115,10 +119,14 @@ The desktop app and the CLI share this machine's registration and its runner:
 - Setup offers **Use this machine's existing registration** when the CLI already
   registered this machine, instead of creating a second context. It checks first
   that the registration belongs to your account.
-- In an organization, **Manage setup** on **This machine** attaches the
-  machine's existing registration to that organization and puts it first in your
-  chain there. It does not register the machine again, and your personal setup
-  and your other entries in the organization's chain stay as they are.
+- In an organization, **This machine** setup keeps a team destination through
+  personal registration when needed, then **Make available to @team** attaches
+  that registration and puts it first in your chain there. **Manage setup** does
+  the attach step when the machine is already registered personally. It does not
+  register again, and your personal setup and your other entries in the
+  organization's chain stay as they are. Setup resumes from the last completed
+  stage and does not report success before the intended workspace lists the
+  machine.
 - With no service, the app runs the daemon itself, with the same lock and
   auto-update.
 - On macOS, only the app's own runner can control other apps (such as Messages)
@@ -226,9 +234,9 @@ Contacts if the run looks up names. The runner then stops when you quit the app.
   with `commands_opt_in_local`.
 - Permission: `execution_context:command`. Only the operator has it, on their
   own context. `executionContextShareSet` with `commands: true` fails with
-  `commands_operator_only`, and command shares made before that confer nothing.
-  Commands get the daemon's environment without `KODY_*` variables and cannot
-  use a credential folder as `cwd`.
+  `commands_operator_only`, and legacy command shares confer nothing. Commands
+  get the daemon's environment without `KODY_*` variables and cannot use a
+  credential folder as `cwd`.
 - Errors: `execution_context_commands_off` (the machine has not opted in),
   `execution_context_command_not_granted` (the caller lacks the command grant),
   `execution_context_command_requires_context` (the run is in Kody cloud or a

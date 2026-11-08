@@ -99,6 +99,29 @@ beforeEach(() => {
 
 test('a usable-credentials failure marks usage unreadable without failing detail', async () => {
 	const { env } = setup()
+	mocks.usable = [
+		{
+			id: 'openai-1',
+			name: 'OPENAI',
+			kind: 'secret',
+			provider: 'openai',
+			hosts: [],
+			scope: 'org',
+			packageId: null,
+			expired: false,
+		},
+	]
+	for (const source of ['src-triage', 'src-digest']) {
+		mocks.needs.set(source, [
+			{
+				key: 'openai',
+				kind: 'secret',
+				provider: 'openai',
+				description: '',
+				multiple: false,
+			},
+		])
+	}
 	mocks.usableByPackageError = new Error('usable load failed')
 	const detail = await loadCredentialDetail({
 		env,
@@ -225,7 +248,13 @@ test("the viewer's own credential lists the team orgs it is granted to", async (
 })
 
 test('a grants query failure leaves detail usable with empty shared-with', async () => {
-	const { env } = setup()
+	const { sqlite, env } = setup()
+	sqlite.exec(`
+		INSERT INTO orgs (id, slug, display_name, created_at, updated_at)
+		VALUES ('org-acme', 'acme', 'Acme', '2026-10-01', '2026-10-01');
+		INSERT INTO credential_org_grants (credential_id, user_id, org_id, created_at)
+		VALUES ('mine', 'ann', 'org-acme', '2026-10-05T00:00:00.000Z');
+	`)
 	const originalPrepare = env.APP_DB.prepare.bind(env.APP_DB)
 	env.APP_DB.prepare = ((query: string) => {
 		if (query.includes('credential_org_grants')) {

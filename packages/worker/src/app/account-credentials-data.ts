@@ -7,6 +7,7 @@ import {
 } from '#worker/credentials/credential-detail.ts'
 import { listLocalReadSettings } from '#worker/credentials/local-read-store.ts'
 import { loadCredentialLocalReadsView } from '#app/credential-local-reads.ts'
+import { loadCredentialRawSigningView } from '#app/credential-raw-signing.ts'
 import { listCredentialsForViewer } from '#worker/credentials/credential-list.ts'
 import { listCredentialProviderBindings } from '#worker/credentials/credential-provider-bindings.ts'
 import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
@@ -111,6 +112,25 @@ export async function loadAccountCredentialsData(input: {
 						return null
 					})
 				: null
+	const selectedRawSigning =
+		selectedItem &&
+		selectedItem.kind === 'signing' &&
+		selectedItem.packageId === null
+			? await loadCredentialRawSigningView({
+					env: input.env,
+					request: input.user.request,
+					credentialId: selectedItem.id,
+					...(teamOrg && selectedItem.scope === 'personal'
+						? { personalOrgSlug }
+						: {}),
+				}).catch((error: unknown) => {
+					Sentry.captureException(error, {
+						tags: { scope: 'credentials.detail.raw_signing' },
+						extra: { credentialId: selectedItem.id },
+					})
+					return null
+				})
+			: null
 	let localReadBadges: AccountCredentialsResponse['localReadBadges'] = {}
 	try {
 		// Soft-fail only here: listLocalReadSettings must still throw for CLI
@@ -137,6 +157,7 @@ export async function loadAccountCredentialsData(input: {
 		ok: true,
 		selected,
 		selectedLocalReads,
+		selectedRawSigning,
 		localReadBadges,
 		credentials: input.filters
 			? filterCredentialList(listed, input.filters)

@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict')
 const { test } = require('node:test')
 const { DesktopExecution } = require('../execution.cjs')
-function fixture(saved = {}) {
+function fixture(saved = {}, { approveSignIn, login } = {}) {
 	let state = { ecid: null, enabled: false, ...saved }
 	let viewer = { username: 'jane', email: 'jane@example.com', orgSlug: 'jane' }
 	let identity = {
@@ -15,11 +15,11 @@ function fixture(saved = {}) {
 	let machine = { installed: false, contexts: [], runner: null }
 	const runner = {
 		daemon: null,
-		async command(args) {
+		async command(args, options) {
 			if (args[0] === 'daemon' && args[1] === 'status')
 				return JSON.stringify(machine)
 			calls.push(args)
-			if (args[0] === 'login') return ''
+			if (args[0] === 'login') return login ? login(args, options) : ''
 			if (args[0] === 'whoami') return JSON.stringify(identity)
 			if (args[1] === 'register') return JSON.stringify({ ecid: 'ec_test' })
 			if (args[1] === 'list')
@@ -55,6 +55,7 @@ function fixture(saved = {}) {
 		viewer: async () => viewer,
 		hostname: 'My-Mac.local',
 		platform: 'darwin',
+		approveSignIn,
 	})
 	return {
 		execution,
@@ -284,6 +285,41 @@ test('host commands require native confirmation and verified ownership, and stat
 	await assert.rejects(f.execution.request('commands-on'), /another workspace/)
 })
 
+test('host command status polls reuse a recent read; on/off and account changes read fresh', async () => {
+	const f = fixture({
+		ecid: 'ec_test',
+		enabled: false,
+		owner: { username: 'jane', orgSlug: 'jane' },
+	})
+	f.execution.confirmCommands = async () => true
+	let enabled = false
+	const statusReads = () =>
+		f.calls.filter((args) => args[1] === 'commands' && args[2] === 'status')
+			.length
+	f.runner.command = async (args) => {
+		if (args[0] === 'daemon') return '{}'
+		f.calls.push(args)
+		if (args[2] === 'on') enabled = true
+		return JSON.stringify({
+			local: { enabled },
+			contexts: [{ commands: { enabled } }],
+		})
+	}
+	await f.execution.request('commands-status')
+	await f.execution.request('commands-status')
+	assert.equal(statusReads(), 1)
+	assert.equal((await f.execution.request('commands-on')).commandsEnabled, true)
+	assert.equal(statusReads(), 2)
+	await f.execution.request('commands-status')
+	assert.equal(statusReads(), 2)
+	f.execution.commandsReadAt = Date.now() - 61_000
+	await f.execution.request('commands-status')
+	assert.equal(statusReads(), 3)
+	f.viewer({ username: 'sam', email: 'sam@example.com', orgSlug: 'jane' })
+	await assert.rejects(f.execution.request('commands-status'))
+	assert.equal(statusReads(), 3)
+})
+
 test('an existing CLI registration and service are adopted, not duplicated', async () => {
 	const f = fixture()
 	f.machine({
@@ -297,7 +333,10 @@ test('an existing CLI registration and service are adopted, not duplicated', asy
 		autoUpdate: { enabled: true },
 	})
 	const before = await f.execution.request('state')
-	assert.deepEqual(before.existingContext, { id: 'ec_old', name: 'old-laptop' })
+	assert.deepEqual(before.existingContext, {
+		id: 'ec_old',
+		name: 'old-laptop',
+	})
 	assert.equal(before.autoUpdate, true)
 	await f.execution.request('sign-in')
 	const result = await f.execution.request('connect', 'old-laptop')
@@ -379,4 +418,76 @@ test('the auto-update switch is the shared CLI policy', async () => {
 	assert.deepEqual(f.calls.at(-1), ['daemon', 'auto-update', 'off', '--json'])
 	await f.execution.request('auto-update-on')
 	assert.deepEqual(f.calls.at(-1), ['daemon', 'auto-update', 'on', '--json'])
+})
+
+const authorize = `https://kody.codes/oauth/authorize?redirect_uri=${encodeURIComponent('http://127.0.0.1:41234/callback')}&state=s`
+test('the shell approves the CLI sign-in instead of the CLI opening a browser', async () => {
+	const approvals = []
+	const f = fixture(
+		{},
+		{
+			approveSignIn: async (url, signal) => {
+				approvals.push(url)
+				assert.equal(signal.aborted, false)
+			},
+			login: async (args, { onOutput, signal }) => {
+				onOutput('Open this link in your browser to sign in to Kody:\n\n')
+				onOutput(`Open this link…\n\n  ${authorize}\n`)
+				onOutput(`Open this link…\n\n  ${authorize}\n\nWaiting…\n`)
+				assert.equal(signal.aborted, false)
+				return ''
+			},
+		},
+	)
+	await f.execution.request('sign-in')
+	assert.deepEqual(f.calls[0], ['login', '--org', 'jane', '--no-browser'])
+	assert.deepEqual(approvals, [authorize])
+	assert.equal((await f.execution.request('state')).cliReady, true)
+})
+test('closing the approval window cancels the CLI login', async () => {
+	let stopped
+	const f = fixture(
+		{},
+		{
+			approveSignIn: async () => {
+				throw new Error('Sign-in was canceled. Try again.')
+			},
+			login: (args, { onOutput, signal }) =>
+				new Promise((resolve, reject) => {
+					signal.addEventListener('abort', () => {
+						stopped = true
+						reject(signal.reason)
+					})
+					onOutput(`  ${authorize}\n`)
+				}),
+		},
+	)
+	await assert.rejects(f.execution.request('sign-in'), /Sign-in was canceled/)
+	assert.equal(stopped, true)
+	assert.equal((await f.execution.request('state')).cliReady, false)
+	assert.equal(
+		f.calls.some((args) => args[0] === 'whoami'),
+		false,
+	)
+})
+test('a finished CLI login closes a still-open approval', async () => {
+	let closed
+	const f = fixture(
+		{},
+		{
+			approveSignIn: (url, signal) =>
+				new Promise((resolve) => {
+					signal.addEventListener('abort', () => {
+						closed = true
+						resolve()
+					})
+				}),
+			login: async (args, { onOutput }) => {
+				onOutput(`  ${authorize}\n`)
+				return ''
+			},
+		},
+	)
+	await f.execution.request('sign-in')
+	assert.equal(closed, true)
 })

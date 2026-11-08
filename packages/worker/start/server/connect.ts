@@ -1,10 +1,11 @@
-import { z } from 'zod'
+import type { z } from 'zod'
 import { createServerFn, createServerOnlyFn } from '@tanstack/react-start'
 import { redirect, notFound } from '@tanstack/react-router'
 import {
 	connectSecretsSchema,
 	connectOauthSchema,
 	connectWebhookSchema,
+	connectWebhookDecisionSchema,
 } from '../connect-input.ts'
 async function context(
 	path:
@@ -189,27 +190,29 @@ export const loadConnectOauth = createServerFn({ method: 'GET' })
 		}
 	})
 
-const webhookApplyDecisionInput = z.object({
-	handle: z.string().trim().min(1),
-	fingerprint: z.string().trim().min(1),
-})
 export const approveWebhookApply = createServerFn({ method: 'POST' })
-	.validator(webhookApplyDecisionInput)
+	.validator(connectWebhookDecisionSchema)
 	.handler(async ({ data }) => {
 		const { withWebsiteMutation } = await import('./mutation-context.ts')
 		const { approveConnectWebhookApply } =
 			await import('../../src/app/connect-webhook-apply-data.ts')
-		return withWebsiteMutation({}, async ({ env, user }) =>
-			approveConnectWebhookApply({ env, user, ...data }),
+		const { orgSlug, handle, fingerprint } = data
+		return withWebsiteMutation(
+			{ scope: orgSlug ? { orgSlug } : undefined },
+			async ({ env, user }) =>
+				approveConnectWebhookApply({ env, user, handle, fingerprint }),
 		)
 	})
 export const rejectWebhookApply = createServerFn({ method: 'POST' })
-	.validator(webhookApplyDecisionInput)
+	.validator(connectWebhookDecisionSchema)
 	.handler(async ({ data }) => {
 		const { withWebsiteMutation } = await import('./mutation-context.ts')
 		const { rejectConnectWebhookApply } =
 			await import('../../src/app/connect-webhook-apply-data.ts')
-		return withWebsiteMutation({}, async ({ env, user }) =>
-			rejectConnectWebhookApply({ env, user, ...data }),
+		const { orgSlug, handle, fingerprint } = data
+		return withWebsiteMutation(
+			{ scope: orgSlug ? { orgSlug } : undefined },
+			async ({ env, user }) =>
+				rejectConnectWebhookApply({ env, user, handle, fingerprint }),
 		)
 	})

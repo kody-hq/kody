@@ -48,26 +48,29 @@ platform overhead per call, not about what user code does inside the call.
 
 Phases, in request order (a phase appears only when its work ran):
 
-| Phase                 | Work                                                                                      |
-| --------------------- | ----------------------------------------------------------------------------------------- |
-| `retiredSlug`         | retired-slug 308 check on a user subdomain                                                |
-| `appSession`          | host-only session cookie read                                                             |
-| `appTicket`           | signed access-ticket read (signed-in visitor fast path)                                   |
-| `owner`               | org + visitor authorization when no ticket                                                |
-| `org`                 | internet-visible serve: org owner by handle                                               |
-| `appSlug`             | internet-visible serve: saved package by slug                                             |
-| `approvedCommit`      | internet-visible serve: approved published commit                                         |
-| `identity`            | Sign in with Kody identity for a signed-in visitor who cannot run the app                 |
-| `resolveSavedPackage` | saved package for the slug (serve)                                                        |
-| `manifest`            | cached invoke manifest                                                                    |
-| `billing`             | cross-org billing context (ADR 0094), in parallel with `manifest`                         |
-| `credentialSuppliers` | `package-credential-suppliers` flag, in parallel with `manifest`                          |
-| `credentialNeeds`     | published credential needs (only when the flag is on)                                     |
-| `executorGrant`       | outsider grant for executor needs                                                         |
-| `usageGate`           | compute include / credits gate                                                            |
-| `appLoader`           | worker build (cached) + loader stub; nested `appTemplate` on a cold build, `visitorGrant` |
-| `entrypoint`          | the app's own `fetch`                                                                     |
-| `total`               | origin boundary entry to response headers                                                 |
+| Phase                 | Work                                                                                               |
+| --------------------- | -------------------------------------------------------------------------------------------------- |
+| `retiredSlug`         | retired-slug 308 check on a user subdomain                                                         |
+| `appSession`          | host-only session cookie read                                                                      |
+| `appTicket`           | signed access-ticket read (signed-in visitor fast path)                                            |
+| `owner`               | org + visitor authorization when no ticket                                                         |
+| `org`                 | internet-visible serve: org owner by handle                                                        |
+| `appSlug`             | internet-visible serve: saved package by slug                                                      |
+| `approvedCommit`      | internet-visible serve: approved published commit                                                  |
+| `identity`            | Sign in with Kody identity for a signed-in visitor who cannot run the app                          |
+| `resolveSavedPackage` | saved package for the slug (serve)                                                                 |
+| `manifest`            | cached invoke manifest                                                                             |
+| `billing`             | cross-org billing context (ADR 0094), in parallel with `manifest`                                  |
+| `credentialSuppliers` | `package-credential-suppliers` flag, in parallel with `manifest`                                   |
+| `credentialNeeds`     | published credential needs (only when the flag is on)                                              |
+| `executorGrant`       | outsider grant for executor needs                                                                  |
+| `usageGate`           | compute include / credits gate                                                                     |
+| `appLoader`           | worker build (cached) + loader stub; nested `appTemplate` on a cold build, `visitorGrant`          |
+| `assets`              | `/_assets/*` client module or declared asset file                                                  |
+| `appBuild`            | marker (`dur=0`): `desc` is `built` when this request built the worker options, `cached` otherwise |
+| `appIsolate`          | marker (`dur=0`, `desc=new`): the loader ran the worker factory, a new isolate                     |
+| `entrypoint`          | the app's own `fetch`                                                                              |
+| `total`               | origin boundary entry to response headers                                                          |
 
 `total` minus the sum of phases is platform CPU and any unlisted awaits; keep it
 near zero. Because parallel phases overlap, phases can sum to more than `total`.

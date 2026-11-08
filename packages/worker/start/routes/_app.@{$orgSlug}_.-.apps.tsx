@@ -9,6 +9,7 @@ import {
 	AccountPageHeader,
 } from '../pages/account-management-components.tsx'
 import { SiteLink } from '../components/site-link.tsx'
+import { WorkspaceAppsEmptyState } from '../components/workspace-apps-empty-state.tsx'
 import { routes } from '#universal/routes.ts'
 import { colors } from '#universal/styles/tokens.ts'
 import {
@@ -72,6 +73,7 @@ export const Route = createFileRoute('/_app/@{$orgSlug}_/-/apps')({
 function Page() {
 	const { actorKey, pageQueryInput, pageLocation } = Route.useRouteContext()
 	const { data } = usePageQuery(pageQuery(actorKey, pageQueryInput))
+	const { orgSlug } = Route.useParams()
 	const { q, visibility, sort, view: urlView } = Route.useSearch()
 	const navigate = Route.useNavigate()
 	const view = urlView ?? 'cards'
@@ -94,7 +96,11 @@ function Page() {
 	const apps = filterWorkspaceApps(data.apps, { query: q, visibility, sort })
 	return (
 		<AccountManagementShell layout="list" currentHref={pageLocation.href}>
-			<AccountPageHeader title="Apps" currentHref={pageLocation.href} />
+			<AccountPageHeader
+				entity="apps"
+				title="Apps"
+				currentHref={pageLocation.href}
+			/>
 			{data.apps.length > 0 && (
 				<div css={toolbarCss}>
 					<label css={searchLabelCss}>
@@ -191,12 +197,11 @@ function Page() {
 				</div>
 			)}
 			{data.apps.length === 0 ? (
-				<p>
-					No apps in this workspace yet. Apps are hosted by packages in your
-					repositories.
-				</p>
+				<WorkspaceAppsEmptyState orgSlug={orgSlug} />
 			) : apps.length === 0 ? (
-				<p>No apps match your search or filters.</p>
+				<p data-testid="workspace-apps-filtered-empty">
+					No apps match your search or filters.
+				</p>
 			) : (
 				<ul
 					css={

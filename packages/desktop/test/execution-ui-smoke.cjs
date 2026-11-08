@@ -85,12 +85,20 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 			full = false,
 			existing = false,
 			teamOrg = null,
+			teamHasRegistration = true,
 		) {
 			await page.goto('about:blank')
 			await page.setContent('<div id="root"></div>')
 			await page.addStyleTag({ content: styles })
 			await page.evaluate(
-				({ native, needsOnboarding, full, existing, teamOrg }) => {
+				({
+					native,
+					needsOnboarding,
+					full,
+					existing,
+					teamOrg,
+					teamHasRegistration,
+				}) => {
 					const state = {
 						name: 'my-mac',
 						platform: 'darwin',
@@ -138,21 +146,24 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 						},
 					}
 					if (teamOrg) {
-						Object.assign(state, {
-							contextId: 'ec_mac',
-							hasSetup: true,
-							running: true,
-							onboardingSeen: true,
-						})
+						// Team-page setup is opened from This machine (not the personal
+						// first-run auto-wizard), so mark onboarding seen either way.
+						state.onboardingSeen = true
+						if (teamHasRegistration) {
+							Object.assign(state, {
+								contextId: 'ec_mac',
+								hasSetup: true,
+								running: true,
+							})
+						}
 						window.fixture.panelOrg = teamOrg
 						Object.assign(window.fixture.setup, {
 							orgSlug: teamOrg,
 							personalOrg: false,
 							chain: {
-								entries: [
-									{ kind: 'context', id: 'ec_build' },
-									{ kind: 'cloud' },
-								],
+								entries: teamHasRegistration
+									? [{ kind: 'context', id: 'ec_build' }, { kind: 'cloud' }]
+									: [{ kind: 'cloud' }],
 								strict: false,
 							},
 						})
@@ -245,10 +256,19 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 							},
 						}
 				},
-				{ native, needsOnboarding, full, existing, teamOrg },
+				{
+					native,
+					needsOnboarding,
+					full,
+					existing,
+					teamOrg,
+					teamHasRegistration,
+				},
 			)
 			await page.addScriptTag({ content: bundled.outputFiles[0].text })
 		}
+		const stage = (id) =>
+			page.getByTestId('desktop-setup-stages').locator(`[data-stage="${id}"]`)
 		await mount(false)
 		await expect(
 			page.getByRole('heading', { name: 'This machine', exact: true }),
@@ -270,19 +290,56 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 		await page
 			.getByRole('button', { name: 'Set up this machine', exact: true })
 			.click()
+		await expect(stage('sign-in')).toHaveAttribute('data-status', 'current')
+		await expect(stage('register')).toHaveAttribute('data-status', 'upcoming')
+		await expect(stage('runner')).toHaveAttribute('data-status', 'upcoming')
+		await expect(stage('attach')).toHaveCount(0)
+		for (const colorScheme of ['light', 'dark']) {
+			await page.emulateMedia({ colorScheme })
+			await page.screenshot({
+				path: resolve(
+					root,
+					`artifacts/desktop-setup-stage-overview-${colorScheme}.png`,
+				),
+			})
+		}
+		await page.emulateMedia({ colorScheme: 'light' })
 		await page
 			.getByRole('button', { name: 'Continue in browser', exact: true })
 			.click()
 		await expect(page.getByLabel('Machine name')).toHaveValue('my-mac')
+		await expect(stage('sign-in')).toHaveAttribute('data-status', 'complete')
+		await expect(stage('register')).toHaveAttribute('data-status', 'current')
+		await expect(stage('attach')).toHaveCount(0)
+		for (const colorScheme of ['light', 'dark']) {
+			await page.emulateMedia({ colorScheme })
+			await page.screenshot({
+				path: resolve(
+					root,
+					`artifacts/desktop-setup-stage-register-${colorScheme}.png`,
+				),
+			})
+		}
+		await page.emulateMedia({ colorScheme: 'light' })
 		await page.screenshot({
 			path: resolve(root, 'artifacts/desktop-machine-wizard.png'),
 		})
 		await page
-			.getByRole('button', { name: 'Enable this machine', exact: true })
+			.getByRole('button', { name: 'Register this device', exact: true })
 			.click()
 		await expect(
 			page.getByRole('heading', { name: 'This machine is ready', exact: true }),
 		).toBeVisible()
+		for (const colorScheme of ['light', 'dark']) {
+			await page.emulateMedia({ colorScheme })
+			await page.screenshot({
+				path: resolve(
+					root,
+					`artifacts/desktop-setup-stage-done-${colorScheme}.png`,
+				),
+			})
+		}
+		await page.emulateMedia({ colorScheme: 'light' })
 		assert.deepEqual(await page.evaluate(() => window.fixture.puts), [
 			{ orgSlug: 'jane', username: 'jane', contextId: 'ec_mac' },
 		])
@@ -322,7 +379,7 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 			.getByRole('button', { name: 'Continue in browser', exact: true })
 			.click()
 		await expect(
-			page.getByRole('button', { name: 'Enable this machine', exact: true }),
+			page.getByRole('button', { name: 'Register this device', exact: true }),
 		).toBeDisabled()
 		await page
 			.getByLabel('Your chain is full. Replace an entry')
@@ -331,7 +388,7 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 			window.fixture.failChain = true
 		})
 		await page
-			.getByRole('button', { name: 'Enable this machine', exact: true })
+			.getByRole('button', { name: 'Register this device', exact: true })
 			.click()
 		await expect(page.getByRole('dialog').getByRole('alert')).toContainText(
 			'Your chain changed',
@@ -339,6 +396,7 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 		await page
 			.getByLabel('Your chain is full. Replace an entry')
 			.selectOption('ec_two')
+		// Registration already succeeded; retry only updates the chain.
 		await page
 			.getByRole('button', { name: 'Enable this machine', exact: true })
 			.click()
@@ -362,13 +420,15 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 			window.fixture.setup.chain.entries = [{ kind: 'cloud' }]
 		})
 		await page
-			.getByRole('button', { name: 'Set up this machine', exact: true })
+			.getByRole('region')
+			.getByRole('button', { name: 'Resume setup', exact: true })
 			.click()
 		await page
-			.getByRole('button', { name: 'Continue in browser', exact: true })
+			.getByRole('dialog')
+			.getByRole('button', { name: 'Resume setup', exact: true })
 			.click()
 		await page
-			.getByRole('button', { name: 'Enable this machine', exact: true })
+			.getByRole('button', { name: 'Register this device', exact: true })
 			.click()
 		await expect(
 			page.getByRole('heading', { name: 'This machine is ready', exact: true }),
@@ -442,10 +502,17 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 		await page
 			.getByRole('button', { name: 'Manage setup', exact: true })
 			.click()
-		await page.getByRole('button', { name: 'Continue', exact: true }).click()
+		await expect(stage('sign-in')).toHaveAttribute('data-status', 'complete')
+		await expect(stage('register')).toHaveAttribute('data-status', 'complete')
+		await expect(stage('attach')).toHaveAttribute('data-status', 'current')
+		await expect(stage('runner')).toHaveAttribute('data-status', 'upcoming')
+		await page
+			.getByRole('button', { name: 'Resume setup', exact: true })
+			.click()
 		await expect(
-			page.getByRole('heading', { name: 'Add this machine to @acme' }),
+			page.getByRole('heading', { name: 'Make available to @acme' }),
 		).toBeVisible()
+		await expect(stage('attach')).toHaveAttribute('data-status', 'current')
 		await expect(page.getByLabel('Machine name')).toHaveCount(0)
 		await expect(page.getByRole('dialog')).toContainText(
 			'keeps its personal setup',
@@ -455,16 +522,25 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 			await page.screenshot({
 				path: resolve(
 					root,
+					`artifacts/desktop-setup-stage-attach-${colorScheme}.png`,
+				),
+			})
+			await page.screenshot({
+				path: resolve(
+					root,
 					`artifacts/desktop-machine-attach-org-${colorScheme}.png`,
 				),
 			})
 		}
 		await page.emulateMedia({ colorScheme: 'light' })
 		await page
-			.getByRole('button', { name: 'Add to @acme', exact: true })
+			.getByRole('button', { name: 'Make available to @acme', exact: true })
 			.click()
 		await expect(
-			page.getByRole('heading', { name: 'This machine is ready', exact: true }),
+			page.getByRole('heading', {
+				name: 'This machine is ready in @acme',
+				exact: true,
+			}),
 		).toBeVisible()
 		await expect(page.getByRole('dialog')).toContainText(
 			'first in your execution chain in @acme',
@@ -492,9 +568,165 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 				state: 'ec_mac',
 			},
 		)
+		// First-time setup from a team page keeps the team destination through
+		// personal registration, then attach — success only after @acme.
+		await mount(true, false, false, false, 'acme', false)
+		await page
+			.getByRole('button', { name: 'Set up this machine', exact: true })
+			.click()
+		await expect(stage('sign-in')).toHaveAttribute('data-status', 'current')
+		await expect(stage('attach')).toHaveAttribute('data-status', 'upcoming')
+		await page
+			.getByRole('button', { name: 'Continue in browser', exact: true })
+			.click()
+		await expect(stage('sign-in')).toHaveAttribute('data-status', 'complete')
+		await expect(stage('register')).toHaveAttribute('data-status', 'current')
+		await expect(stage('attach')).toHaveAttribute('data-status', 'upcoming')
+		await page
+			.getByRole('button', { name: 'Register this device', exact: true })
+			.click()
+		await expect(
+			page.getByRole('heading', { name: 'Make available to @acme' }),
+		).toBeVisible()
+		await expect(stage('attach')).toHaveAttribute('data-status', 'current')
+		await page
+			.getByRole('button', { name: 'Make available to @acme', exact: true })
+			.click()
+		await expect(
+			page.getByRole('heading', {
+				name: 'This machine is ready in @acme',
+				exact: true,
+			}),
+		).toBeVisible()
+		assert.deepEqual(await page.evaluate(() => window.fixture.puts.at(-1)), {
+			orgSlug: 'jane',
+			username: 'jane',
+			contextId: 'ec_mac',
+			targetOrgSlug: 'acme',
+		})
+		assert.equal(await page.evaluate(() => window.fixture.registers), 1)
+		// Registered + running but missing from the personal chain must not skip
+		// putFirst on resume (failed chain put / dismissed wizard).
+		await mount(true)
+		await page.evaluate(() => {
+			Object.assign(window.fixture.state, {
+				contextId: 'ec_mac',
+				hasSetup: true,
+				running: true,
+				cliReady: true,
+				onboardingSeen: true,
+			})
+			window.fixture.setup.chain.entries = [{ kind: 'cloud' }]
+			window.fixture.puts = []
+			window.fixture.starts = 0
+		})
+		await page.evaluate(() => window.refreshFixture())
+		await page
+			.getByRole('button', { name: 'Manage setup', exact: true })
+			.click()
+		await page
+			.getByRole('dialog')
+			.getByRole('button', { name: 'Resume setup', exact: true })
+			.click()
+		await expect(
+			page.getByRole('heading', { name: 'Register this device personally' }),
+		).toBeVisible()
+		await expect(stage('register')).toHaveAttribute('data-status', 'current')
+		await expect(stage('attach')).toHaveCount(0)
+		await page
+			.getByRole('button', { name: 'Enable this machine', exact: true })
+			.click()
+		await expect(
+			page.getByRole('heading', { name: 'This machine is ready', exact: true }),
+		).toBeVisible()
+		assert.deepEqual(await page.evaluate(() => window.fixture.puts), [
+			{ orgSlug: 'jane', username: 'jane', contextId: 'ec_mac' },
+		])
+		// Registered + in chain but runner down must start before success.
+		await mount(true)
+		await page.evaluate(() => {
+			Object.assign(window.fixture.state, {
+				contextId: 'ec_mac',
+				hasSetup: true,
+				running: false,
+				cliReady: true,
+				onboardingSeen: true,
+			})
+			window.fixture.setup.chain.entries = [
+				{ kind: 'context', id: 'ec_mac' },
+				{ kind: 'cloud' },
+			]
+			window.fixture.puts = []
+			window.fixture.starts = 0
+			const execution = window.kodyDesktop.execution
+			const start = execution.start
+			execution.start = async () => {
+				window.fixture.starts++
+				return start()
+			}
+		})
+		await page.evaluate(() => window.refreshFixture())
+		await page
+			.getByRole('button', { name: 'Manage setup', exact: true })
+			.click()
+		await page
+			.getByRole('dialog')
+			.getByRole('button', { name: 'Resume setup', exact: true })
+			.click()
+		await expect(stage('register')).toHaveAttribute('data-status', 'complete')
+		await expect(stage('runner')).toHaveAttribute('data-status', 'current')
+		await expect(stage('attach')).toHaveCount(0)
+		await page
+			.getByRole('button', { name: 'Enable this machine', exact: true })
+			.click()
+		await expect(
+			page.getByRole('heading', { name: 'This machine is ready', exact: true }),
+		).toBeVisible()
+		assert.equal(await page.evaluate(() => window.fixture.starts), 1)
+		// Team machine already in chain with runner down: start, then done
+		// without forcing another attach step.
+		await mount(true, false, false, false, 'acme', true)
+		await page.evaluate(() => {
+			Object.assign(window.fixture.state, { running: false })
+			window.fixture.setup.chain.entries = [
+				{ kind: 'context', id: 'ec_mac' },
+				{ kind: 'cloud' },
+			]
+			window.fixture.puts = []
+			window.fixture.starts = 0
+			const execution = window.kodyDesktop.execution
+			const start = execution.start
+			execution.start = async () => {
+				window.fixture.starts++
+				return start()
+			}
+		})
+		await page.evaluate(() => window.refreshFixture())
+		await page
+			.getByRole('button', { name: 'Manage setup', exact: true })
+			.click()
+		await page
+			.getByRole('dialog')
+			.getByRole('button', { name: 'Resume setup', exact: true })
+			.click()
+		await expect(
+			page.getByRole('heading', { name: 'Register this device personally' }),
+		).toBeVisible()
+		await expect(stage('register')).toHaveAttribute('data-status', 'complete')
+		await expect(stage('attach')).toHaveAttribute('data-status', 'complete')
+		await expect(stage('runner')).toHaveAttribute('data-status', 'current')
+		await page.getByRole('button', { name: 'Continue', exact: true }).click()
+		await expect(
+			page.getByRole('heading', {
+				name: 'This machine is ready in @acme',
+				exact: true,
+			}),
+		).toBeVisible()
+		assert.equal(await page.evaluate(() => window.fixture.starts), 1)
+		assert.deepEqual(await page.evaluate(() => window.fixture.puts), [])
 		assert.deepEqual(errors, [])
 		console.log(
-			'Desktop UI: browser hidden, onboarding order, skip/reopen, setup, chain replacement/retry, pause, forget, existing-registration adoption, service restart, auto-update toggle, and team-org attach passed.',
+			'Desktop UI: browser hidden, onboarding order, skip/reopen, staged setup, chain replacement/retry, pause, forget, existing-registration adoption, service restart, auto-update toggle, team-org attach, team-first enrollment, and resume chain/runner fixes passed.',
 		)
 	} finally {
 		await browser.close()

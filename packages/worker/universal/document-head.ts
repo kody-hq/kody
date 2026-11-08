@@ -261,6 +261,7 @@ const routeDocumentHeads = {
 	accountData: titleOnly('Data & deletion'),
 	accountOrganizations: titleOnly('Organizations'),
 	orgBilling: titleOnly('Billing'),
+	orgBillingMovePlan: titleOnly('Move your plan'),
 	orgBillingSuccess: titleOnly("You're in"),
 	orgUsage: titleOnly('Usage'),
 	orgCredits: titleOnly('Credits'),

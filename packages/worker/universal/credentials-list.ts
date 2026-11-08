@@ -165,6 +165,32 @@ export type CredentialLocalReadsView = {
 	reads: Array<CredentialLocalReadView> | null
 }
 
+/** One raw RSA signature (or refusal) made with a signing credential. */
+export type CredentialRawSignatureView = {
+	id: string
+	createdAt: string
+	who: string | null
+	/** How the request reached Kody, e.g. `mcp-oauth` or `session`. */
+	via: string | null
+	packageId: string | null
+	messageBytes: number | null
+	signed: boolean
+	refusal: string | null
+}
+
+/** Raw RSA signing (ADR 0099) for the signing credential the pane shows. */
+export type CredentialRawSigningView = {
+	credentialId: string
+	enabled: boolean
+	/** True when the signed-in person owns the credential on the website. */
+	canChange: boolean
+	/** Where the owner changes it, when this page cannot. */
+	manageHref: string | null
+	lastSignedAt: string | null
+	/** Null when the viewer may not see who signed. */
+	signatures: Array<CredentialRawSignatureView> | null
+}
+
 /** The list badge for a secret with local reads on. */
 export type CredentialLocalReadBadge = { lastReadAt: string | null }
 
@@ -173,6 +199,8 @@ export type AccountCredentialsResponse = CredentialListResponse & {
 	selected: AccountCredentialDetail | null
 	/** Local reads for the selected secret or vault, when it supports them. */
 	selectedLocalReads: CredentialLocalReadsView | null
+	/** Raw RSA signing for the selected signing credential. */
+	selectedRawSigning: CredentialRawSigningView | null
 	/** Secrets and vaults with local reads on, by credential. */
 	localReadBadges: Record<string, CredentialLocalReadBadge>
 	orgSlug: string

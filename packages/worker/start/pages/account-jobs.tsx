@@ -39,6 +39,7 @@ import {
 	type AccountJobsActionPayload,
 	type AccountJobsMessageTone,
 } from './account-jobs-shared.ts'
+import { WorkspaceScopeNotice } from '../components/workspace-scope-notice.tsx'
 import {
 	AccountManagementMessage,
 	AccountManagementShell,
@@ -82,7 +83,7 @@ export function AccountJobsPage({
 				: data,
 		savedPayload,
 	)
-	const { username, jobs, selectedJob } = payload
+	const { username, teamOrg, jobs, selectedJob } = payload
 
 	const [message, setMessage] = useState<string | null>(null)
 	const [messageTone, setMessageTone] = useState<AccountJobsMessageTone>('info')
@@ -264,6 +265,15 @@ export function AccountJobsPage({
 				description="Inspect scheduled package jobs, toggle the kill switch, and run jobs now. To change or remove a job, edit its package and publish."
 				currentHref={currentHref}
 			/>
+
+			{orgSlug ? (
+				<WorkspaceScopeNotice
+					action="Running as"
+					slug={orgSlug}
+					personal={!teamOrg}
+					detail="Jobs belong to this workspace and run as it. Where they compute (cloud or a local machine) is separate from which workspace they act for."
+				/>
+			) : null}
 
 			{message ? (
 				<AccountManagementMessage

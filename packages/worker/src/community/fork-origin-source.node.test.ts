@@ -32,11 +32,6 @@ vi.mock('#worker/repo/artifact-file.ts', () => ({
 
 const env = { BUNDLE_ARTIFACTS_KV: {} } as Env
 
-const listingPinFiles = {
-	'package.json': '{"name":"@owner/demo","kody":{"id":"demo"}}',
-	'README.md': '# pin',
-}
-
 const publishedFiles = {
 	'package.json': '{"name":"@owner/demo","kody":{"id":"demo"}}',
 	'README.md': '# published',
@@ -81,8 +76,6 @@ test('resolveForkOriginSourceFiles prefers a published KV snapshot at HEAD', asy
 		repoId: 'repo-1',
 		preferredCommit: 'head-commit',
 		fallbackCommits: ['pin-commit'],
-		listingSnapshotFiles: listingPinFiles,
-		listingSnapshotCommit: 'pin-commit',
 	})
 
 	expect(resolved).toEqual({
@@ -110,8 +103,6 @@ test('resolveForkOriginSourceFiles tries HEAD git before accepting a pin-keyed p
 		repoId: 'repo-1',
 		preferredCommit: 'head-commit',
 		fallbackCommits: ['pin-commit'],
-		listingSnapshotFiles: listingPinFiles,
-		listingSnapshotCommit: 'pin-commit',
 	})
 
 	expect(resolved).toEqual({
@@ -127,36 +118,6 @@ test('resolveForkOriginSourceFiles tries HEAD git before accepting a pin-keyed p
 	expect(mocks.readPublishedSourceSnapshot).not.toHaveBeenCalledWith(
 		expect.objectContaining({ publishedCommit: 'pin-commit' }),
 	)
-})
-
-test('resolveForkOriginSourceFiles falls back to the listing pin after HEAD and pin cascades miss', async () => {
-	resetMocks()
-
-	const resolved = await resolveForkOriginSourceFiles({
-		env,
-		sourceId: 'source-1',
-		repoId: 'repo-1',
-		preferredCommit: 'head-commit',
-		fallbackCommits: ['pin-commit'],
-		listingSnapshotFiles: listingPinFiles,
-		listingSnapshotCommit: 'pin-commit',
-	})
-
-	expect(resolved).toEqual({
-		files: listingPinFiles,
-		commit: 'pin-commit',
-		source: 'listing-snapshot',
-	})
-	expect(mocks.readArtifactTreeAtCommit).toHaveBeenCalledWith({
-		env,
-		repoId: 'repo-1',
-		commit: 'head-commit',
-	})
-	expect(mocks.readArtifactTreeAtCommit).toHaveBeenCalledWith({
-		env,
-		repoId: 'repo-1',
-		commit: 'pin-commit',
-	})
 })
 
 test('resolveForkOriginSourceFiles recovers a missing target revision from origin git objects', async () => {
@@ -177,8 +138,6 @@ test('resolveForkOriginSourceFiles recovers a missing target revision from origi
 		repoId: 'repo-origin',
 		preferredCommit: '3f45921ca1964c49a3be12b5a836117829adccb0',
 		fallbackCommits: ['3f45921ca1964c49a3be12b5a836117829adccb0'],
-		listingSnapshotFiles: null,
-		listingSnapshotCommit: '3f45921ca1964c49a3be12b5a836117829adccb0',
 	})
 
 	expect(resolved).toEqual({
@@ -207,7 +166,6 @@ test('resolveForkOriginSourceFiles tries the pinned commit when HEAD published, 
 		repoId: 'repo-1',
 		preferredCommit: 'head-commit',
 		fallbackCommits: ['pin-commit'],
-		listingSnapshotFiles: null,
 	})
 
 	expect(resolved).toEqual({
@@ -240,7 +198,6 @@ test('resolveForkOriginSourceFiles returns null when refs-shaped commits have no
 		repoId: 'repo-1',
 		preferredCommit: 'missing-commit',
 		fallbackCommits: ['also-missing'],
-		listingSnapshotFiles: null,
 	})
 
 	expect(resolved).toBeNull()
@@ -267,7 +224,6 @@ test('resolveForkOriginSourceFiles uses the mock snapshot API before git walk', 
 		sourceId: 'source-1',
 		repoId: 'repo-1',
 		preferredCommit: 'head-commit',
-		listingSnapshotFiles: null,
 	})
 
 	expect(resolved).toEqual({
@@ -297,7 +253,6 @@ test('resolveForkOriginSourceFiles rethrows transient Artifacts git failures', a
 			sourceId: 'source-1',
 			repoId: 'repo-1',
 			preferredCommit: 'head-commit',
-			listingSnapshotFiles: null,
 		}),
 	).rejects.toMatchObject({ name: 'ArtifactsGitUnavailableError' })
 	expect(consoleError).toHaveBeenCalled()
@@ -319,7 +274,6 @@ test('resolveForkOriginSourceFiles rethrows isolate memory limit failures', asyn
 			sourceId: 'source-1',
 			repoId: 'repo-1',
 			preferredCommit: 'head-commit',
-			listingSnapshotFiles: null,
 		}),
 	).rejects.toBeInstanceOf(CommunityForkResourceLimitError)
 })

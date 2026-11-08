@@ -70,6 +70,22 @@ normal retention prunes it. Payload bodies for inbound webhooks are never stored
 logs. Stored execute runs, package exports, and webhook deliveries keep a small
 `metadata.result` snapshot (truncated when large).
 
+## App performance (sampled)
+
+Activity also shows **App performance (sampled)** for package apps: p50 and p95
+CPU time and wall time per app, plus the slowest cold requests. Every cold
+request (the first request on a new isolate) and about 5% of warm requests are
+sampled. Each sample keeps the request id from the app response's
+`x-kody-request-id` header (sent next to `Server-Timing`), so you can match a
+slow response to its CPU time. CPU is measured after the response finishes, so
+it never appears in that response's `Server-Timing`.
+
+Samples are observability only: they are not billed and do not count toward plan
+limits or entitlements. They are kept **7 days**, capped at the newest 5,000 per
+account, and contain no request bodies, query strings, or headers (only the
+path, status, timings, and request id). Anyone who can see Activity for the
+account sees them.
+
 ## Ad-hoc `execute` runs are listed
 
 Ad-hoc MCP **`execute`** calls are written to Activity on success and on

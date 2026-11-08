@@ -189,11 +189,25 @@ the webhook so Stripe can retry instead of stacking from now. Email-verify
 leaves a held row pending if that lookup fails; the referrer’s later
 `invoice.paid` retries it. Stripe subscriptions are not mutated.
 
-Fraud basics before a reward: both emails verified, new-account attribution only
-(persisted at signup from the last-wins cookie), no self-referral, no plus-tag /
-Gmail-dot email collapse, and no shared Stripe customer. An unverified party
-holds the qualifying invoice id on the pending row; email verification retries
-the grant. `/@<slug>/-/billing` shows the share link and simple referrer status.
+Existing accounts without an attribution can add one from **Referred by** on
+their personal `/@<slug>/-/billing` page (username, `@username`, or share link).
+It is write-once (the unique referee index; a signup attribution is never
+replaced) and only before the person's first paid Kody invoice: refused when any
+live org they own or bill has `orgs.referral_first_paid_at` or a qualifying paid
+Stripe invoice (a full page of paid invoices with none qualifying also counts).
+`invoice.paid` stamps that marker before it looks for a pending referral, and
+the insert re-checks the marker in the same statement, so an invoice paid
+mid-request either blocks the row or rewards it. The panel is hidden once the
+person has paid so it never implies a retroactive reward. It is a referral, not
+a Stripe promo code, and earns the same month of Pro through the same reward
+path.
+
+Fraud basics before a reward: both emails verified, attribution persisted at
+signup or from Referred by before the first payment, no self-referral, no
+plus-tag / Gmail-dot email collapse, and no shared Stripe customer. An
+unverified party holds the qualifying invoice id on the pending row; email
+verification retries the grant. `/@<slug>/-/billing` shows the share link,
+simple referrer status, and Referred by.
 
 `getUserEntitlement` overlays Pro through the later of the second-agent gift and
 this referral credit (retired Pro table, no wallet).
@@ -1479,6 +1493,46 @@ sequence, skip conditions, audit action, and result shape are documented with
 the rest of the deletion flow in
 [`data-storage.md`](./data-storage.md#account-deletion-inventory).
 
+### Moving a Pro plan to another org
+
+An owner of two orgs can move a Stripe-paid Pro plan from one to the other
+(`@{org}/-/billing/move-plan`, service
+`packages/worker/src/billing/plan-transfer.ts`). This is an explicit billing
+action between two separate per-org wallets (ADR 0065); there is no shared
+billing account and nothing else moves.
+
+- **Who:** the actor must be a live `owner` of both orgs. Billing admins and
+  members cannot start, retry, or cancel a move.
+- **What moves:** only the unused prepaid value of the source subscription.
+  Packages, credentials, connections, memories, inboxes, storage, members, and
+  credit wallets stay in their org. The source keeps its data and drops to Free
+  limits.
+- **Free-org cap:** every live owner of the source must stay within
+  `MAX_FREE_ORGS_PER_USER` once it is Free; a Free target that is being upgraded
+  does not count.
+- **Movable sources:** exactly one active, non-canceling Kody subscription on a
+  current purchasable Pro price, with no manual paid plan. Retired prices,
+  manual plans, and canceling subscriptions are refused.
+- **Targets:** a Free target buys Pro at Stripe Checkout first (transfer id in
+  `metadata[kody_plan_transfer_id]`, one hour `expires_at`). A target that
+  already has one Kody Pro subscription keeps it and only receives the credit.
+  Targets whose Stripe customer also has non-Kody subscriptions, or whose
+  subscription currency differs, are refused so the credit cannot be spent on
+  something else.
+- **Steps:** `org_plan_transfers` is the durable record (one open row per source
+  and per target via partial unique indexes). Finalizing claims a two minute
+  lease, then: out-of-band credit note on the source invoice for the prorated
+  unused time (same math and cap fitting as account deletion, no card refund),
+  cancel the source subscription, negative customer balance transaction on the
+  target customer for the credit note total, refresh both orgs. Stripe writes
+  use `kody-plan-transfer-<id>-*` idempotency keys and are looked up by metadata
+  before retrying.
+- **Point of no return:** the recorded credit note. Before it an owner can
+  cancel and abandoned checkouts expire; after it the row can only be resumed
+  (`needs_retry`).
+- **Triggers:** `checkout.session.completed`, the checkout success page, and
+  billing page loads for either org all call the same idempotent advance.
+
 ### Webhooks (primary sync)
 
 `POST /webhooks/stripe` is the primary path for linking customers and refreshing
@@ -1497,8 +1551,10 @@ Handled event types:
   the user by `orgs.stripe_customer_id` and call `refreshStripePlanForUser`
 - `invoice.payment_failed` — same customer lookup + refresh (surfaces
   `subscriptionStatus` such as `past_due` for UX; does not email users)
-- `invoice.paid` — customer lookup, then the referral reward path when the
-  invoice is the referee's first qualifying paid subscription invoice
+- `invoice.paid` — customer lookup, stamps write-once
+  `orgs.referral_first_paid_at` on qualifying invoices, then the referral reward
+  path when the invoice is the referee's first qualifying paid subscription
+  invoice
 - `checkout.session.completed` with `metadata.kody_credit_top_up=1` — credits
   the prepaid wallet instead of linking a subscription (see
   [Prepaid credits](#prepaid-credits))

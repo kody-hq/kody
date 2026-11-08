@@ -19,7 +19,7 @@ type Client = {
 		input: string | URL | Request,
 		init?: RequestInit,
 	) => Promise<Response>
-	sign?: (operation: Record<string, unknown>) => Promise<string>
+	sign?: (operation: Record<string, unknown>) => Promise<unknown>
 }
 
 type CredentialError = Error & {
@@ -305,5 +305,43 @@ test('named opens through the open tool, credentials through open-all, and signi
 			},
 		],
 		['credentialClientOpenAll', { key: 'k' }],
+	])
+})
+
+test('http-signature sign() names the url host and resolves to the headers to add', async () => {
+	const calls: Array<[string, unknown]> = []
+	const runtime = createRuntime(async (name, args) => {
+		calls.push([name, args])
+		if (name === 'credentialClientSign') {
+			return {
+				ok: true,
+				value: {
+					signature: 'Signature version="1"',
+					headers: { authorization: 'Signature version="1"' },
+				},
+			}
+		}
+		return {
+			ok: true,
+			value: openedAs('signing', ['iaas.us-phoenix-1.oraclecloud.com']),
+		}
+	})
+	const client = await runtime.credential('oracle')
+	const operation = {
+		type: 'http-signature',
+		keyId: 'k',
+		method: 'GET',
+		url: 'https://iaas.us-phoenix-1.oraclecloud.com/20160918/instances',
+	}
+	await expect(client.sign!(operation)).resolves.toEqual({
+		authorization: 'Signature version="1"',
+	})
+	expect(calls[1]).toEqual([
+		'credentialClientSign',
+		{
+			handle: 'kch1.handle.sig',
+			host: 'iaas.us-phoenix-1.oraclecloud.com',
+			operation,
+		},
 	])
 })

@@ -83,12 +83,11 @@ export function ConnectWebhookApplyRoute({
 			invalidate: typeof invalidatePages
 			queryKey: ReturnType<typeof connectWebhookApplyQuery>['queryKey']
 		}) => {
-			const search = new URL(href, 'https://kody.local').searchParams
+			const { orgSlug, handle, fingerprint } = connectWebhookInput(
+				new URL(href, 'https://kody.local').search,
+			)
 			return (action === 'approve' ? approveWebhookApply : rejectWebhookApply)({
-				data: {
-					handle: search.get('handle') ?? '',
-					fingerprint: search.get('fingerprint') ?? '',
-				},
+				data: { orgSlug, handle: handle ?? '', fingerprint: fingerprint ?? '' },
 			})
 		},
 		onSuccess: async (payload, input) => {

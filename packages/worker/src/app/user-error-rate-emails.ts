@@ -127,8 +127,8 @@ export async function sendUserErrorRateEmails(input: {
 }
 
 /**
- * Most recent open error per package (or per run name when the run has no
- * package), so the email names what is failing instead of only a count. A
+ * Most recent open error per package export (or per run name when the run has
+ * no package), so the email names what is failing instead of only a count. A
  * lookup failure degrades to the count-only email rather than skipping it.
  */
 async function loadFailingRuns(input: {
@@ -158,7 +158,9 @@ async function loadFailingRuns(input: {
 	const seen = new Set<string>()
 	const picked: Array<RunRecord> = []
 	for (const run of runs) {
-		const key = run.packageId ? `package:${run.packageId}` : `name:${run.name}`
+		const key = run.packageId
+			? `package:${run.packageId}:${run.surface}:${run.name ?? ''}`
+			: `name:${run.name}`
 		if (seen.has(key)) continue
 		seen.add(key)
 		picked.push(run)
@@ -184,12 +186,37 @@ async function failingRunLabel(input: { env: Env; run: RunRecord }) {
 				input.env.APP_DB,
 				input.run.packageId,
 			)
-			if (saved) return `Package ${saved.name}`
+			if (saved) {
+				const part = packageRunPart(input.run)
+				return part
+					? `Package ${saved.name} (${part})`
+					: `Package ${saved.name}`
+			}
 		} catch (error) {
 			console.warn('user-error-rate-email-package-lookup-failed', error)
 		}
 	}
 	return input.run.name?.trim() || 'A run'
+}
+
+const packageRunNouns: Record<RunRecord['surface'], string | null> = {
+	export: 'export',
+	webhook: 'webhook export',
+	subscription: 'subscription',
+	workflow: 'workflow',
+	job: 'job',
+	app_fetch: 'app',
+	app_realtime: 'app',
+	execute: null,
+}
+
+/** Which part of a package failed, for example `export ./send` or `app`. */
+function packageRunPart(run: Pick<RunRecord, 'surface' | 'name'>) {
+	const noun = packageRunNouns[run.surface]
+	const name = run.name?.trim()
+	if (!noun) return name || null
+	if (!name || noun === 'app') return noun
+	return `${noun} ${name}`
 }
 
 /**

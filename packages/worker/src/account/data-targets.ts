@@ -282,6 +282,15 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 	{ kind: 'user_id', table: 'credit_ledger_entries' },
 	{ kind: 'user_id', table: 'credit_wallets' },
 	{ kind: 'user_id', table: 'billing_promo_claims' },
+	// Plan transfers are the billing record for both orgs; only the
+	// requesting owner is anonymized.
+	{
+		kind: 'replace_user_column',
+		table: 'org_plan_transfers',
+		matchColumn: 'requested_by_user_id',
+		setColumn: 'requested_by_user_id',
+		value: 'deleted-user',
+	},
 	{
 		kind: 'user_columns',
 		table: 'referrals',
@@ -331,6 +340,19 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 	{
 		kind: 'null_user_column',
 		table: 'credential_local_read_settings',
+		matchColumn: 'updated_by_user_id',
+		nullColumns: ['updated_by_user_id'],
+	},
+	// Raw RSA signatures a person's runs made with a signing credential.
+	{
+		kind: 'user_columns',
+		table: 'credential_raw_signing_events',
+		columns: ['actor_user_id'],
+	},
+	// Who last turned raw signing on or off for a credential.
+	{
+		kind: 'null_user_column',
+		table: 'credential_raw_signing_settings',
 		matchColumn: 'updated_by_user_id',
 		nullColumns: ['updated_by_user_id'],
 	},
@@ -1354,7 +1376,12 @@ export const accountExportRedactedColumnsByTable: Readonly<
 	pending_email_changes: ['token_hash'],
 	pending_email_claim_releases: ['token_hash'],
 	pending_email_destination_verifications: ['token_hash'],
-	platform_feedback: ['reviewed_by_user_id', 'reviewed_at', 'admin_note'],
+	platform_feedback: [
+		'reviewed_by_user_id',
+		'reviewed_at',
+		'admin_note',
+		'reopen_history',
+	],
 	secret_entries: ['encrypted_value', 'lookup_hash'],
 	user_integrations: ['access_token_encrypted', 'refresh_token_encrypted'],
 	user_oauth_apps: ['client_secret_encrypted'],

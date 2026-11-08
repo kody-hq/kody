@@ -105,7 +105,7 @@ export function SiteHeader(props: SiteHeaderProps) {
 								<SiteLink href={workspaceHref} css={navLoginCss}>
 									Workspace
 								</SiteLink>
-								<div css={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+								<div css={{ display: 'flex', alignItems: 'center', gap: 4 }}>
 									<CommandTrigger />
 									<AccountMenu
 										username={props.username}
@@ -162,7 +162,7 @@ export function SiteHeader(props: SiteHeaderProps) {
 							<SiteLink href={workspaceHref} css={navLoginCss}>
 								Workspace
 							</SiteLink>
-							<div css={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+							<div css={{ display: 'flex', alignItems: 'center', gap: 4 }}>
 								<CommandTrigger />
 								<AccountMenu
 									organizations={props.organizationSession?.organizations ?? []}
@@ -242,7 +242,10 @@ const headerCss: CSSObject = {
 	position: 'sticky' as const,
 	top: 0,
 	zIndex: 10,
-	background: `oklch(from ${colors.background} l c h / 0.85)`,
+	background: colors.background,
+	'@supports (background: oklch(from white l c h / 0.85))': {
+		background: `oklch(from ${colors.background} l c h / 0.85)`,
+	},
 	'@supports (backdrop-filter: blur(1px))': {
 		backdropFilter: 'blur(14px)',
 	},

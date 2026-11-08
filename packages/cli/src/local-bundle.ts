@@ -1,4 +1,10 @@
+import {
+	nodeModulesImportKind,
+	parseBarePackageSpecifier,
+	resolveNodeModulesImport,
+} from '@kody-internal/shared/node-modules-resolution.ts'
 import * as esbuild from 'esbuild'
+import { readFileSync, realpathSync, statSync } from 'node:fs'
 import { relative, resolve } from 'node:path'
 
 /** One esbuild diagnostic with a 1-based line/column and a code frame. */
@@ -128,7 +134,57 @@ export function localBundleOptions(entry: string) {
 			'node:*',
 			...nodeBuiltinModuleNames.flatMap((name) => [name, `${name}/*`]),
 		],
+		plugins: [nodeModulesResolutionPlugin],
 	} satisfies esbuild.BuildOptions
+}
+
+const nodeModulesFileSystem = {
+	readFile(path: string) {
+		try {
+			return readFileSync(path, 'utf8')
+		} catch {
+			return null
+		}
+	},
+	fileExists(path: string) {
+		try {
+			return statSync(path).isFile()
+		} catch {
+			return false
+		}
+	},
+}
+
+const nodeBuiltinModuleNameSet = new Set<string>(nodeBuiltinModuleNames)
+
+/**
+ * npm imports resolve through the same shared resolver hosted publish uses
+ * (`@kody-internal/shared/node-modules-resolution`), so the local check and
+ * the publish rebuild pick the same file for nested dual-major trees,
+ * `exports` conditions, and `module`/`main` entries.
+ */
+const nodeModulesResolutionPlugin: esbuild.Plugin = {
+	name: 'kody-node-modules-resolution',
+	setup(build) {
+		build.onResolve({ filter: /^[^./]/ }, (args) => {
+			if (args.kind === 'entry-point' || args.namespace !== 'file') return
+			const parsed = parseBarePackageSpecifier(args.path)
+			if (!parsed || nodeBuiltinModuleNameSet.has(parsed.packageName)) return
+			const resolution = resolveNodeModulesImport({
+				specifier: args.path,
+				importerDirectory: args.resolveDir.replaceAll('\\', '/'),
+				kind: nodeModulesImportKind(args.kind),
+				fs: nodeModulesFileSystem,
+			})
+			if (resolution.kind === 'resolved') {
+				return { path: realpathSync(resolution.path) }
+			}
+			if (resolution.kind === 'error') {
+				return { errors: [{ text: resolution.message }] }
+			}
+			return undefined
+		})
+	},
 }
 
 export type LocalUserBundle = {

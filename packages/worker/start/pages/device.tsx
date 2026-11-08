@@ -276,6 +276,12 @@ function ConsentCard(props: {
 						orgs={request.orgs}
 						selectedOrgSlug={orgSlug}
 						signedIn
+						requiredOrgSlug={request.requestedOrgSlug}
+						requiredReason={
+							request.requestedOrgSlug
+								? `This sign-in was started for @${request.requestedOrgSlug}. The organization cannot be changed here.`
+								: null
+						}
 						onChange={setOrgSlug}
 					/>
 				)}

@@ -118,11 +118,13 @@ function findShellResult(
 }
 
 async function main() {
-	const session = await openRehearsalSession(appOrigin, {
-		email: 'me@kentcdodds.com',
-		username: 'user-me',
-		password: 'ilikecode',
-	})
+	// With `preview-seed:team-org` the seed user is in two orgs and OAuth makes
+	// it pick one; the context lives in the personal org.
+	const session = await openRehearsalSession(
+		appOrigin,
+		{ email: 'me@kentcdodds.com', username: 'user-me', password: 'ilikecode' },
+		{ orgSlug: 'user-me' },
+	)
 	let ecid: string | null = null
 	try {
 		const token = await mintCliToken(

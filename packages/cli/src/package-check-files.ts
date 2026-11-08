@@ -11,6 +11,7 @@ import { execFile } from 'node:child_process'
 import { readdir, readFile } from 'node:fs/promises'
 import { isAbsolute, join, relative, sep } from 'node:path'
 import { promisify } from 'node:util'
+import ignore from 'ignore'
 
 const execFileAsync = promisify(execFile)
 
@@ -51,19 +52,56 @@ async function walkFiles(root: string, dir = root): Promise<Array<string>> {
 	return files
 }
 
+const kodyIgnoreFileName = '.kodyignore'
+
+const neverKodyIgnored = new Set(['package.json', kodyIgnoreFileName])
+
+/**
+ * Same semantics as the server's `createKodyIgnoreMatcher`
+ * (packages/worker/src/repo/kodyignore.ts): gitignore syntax via `ignore`,
+ * `package.json` and `.kodyignore` always kept, null when there is nothing
+ * to ignore.
+ */
+export function createKodyIgnoreMatcher(
+	content: string | null | undefined,
+): ((relativePath: string) => boolean) | null {
+	if (content == null || content.trim() === '') return null
+	const matcher = ignore().add(content)
+	return (relativePath) => {
+		const path = relativePath.replace(/^\/+/, '')
+		if (path === '' || neverKodyIgnored.has(path)) return false
+		try {
+			return matcher.ignores(path)
+		} catch {
+			return false
+		}
+	}
+}
+
+async function readKodyIgnore(root: string) {
+	try {
+		return await readFile(join(root, kodyIgnoreFileName), 'utf8')
+	} catch {
+		return null
+	}
+}
+
 /**
  * Relative paths in the publish snapshot file set (git tracked + untracked
- * non-ignored, or a full walk when not in git). Same path set
+ * non-ignored, or a full walk when not in git), minus `.kodyignore` matches,
+ * which publish never reads or keeps. Same path set
  * {@link collectPackageCheckFiles} reads; does not load file contents.
  */
 export async function listPackageCheckPaths(
 	root: string,
 ): Promise<Array<string>> {
 	const paths = (await listGitFiles(root)) ?? (await walkFiles(root))
+	const isKodyIgnored = createKodyIgnoreMatcher(await readKodyIgnore(root))
 	return paths
 		.filter(
 			(path) =>
-				!path.split('/').some((segment) => skippedDirectories.has(segment)),
+				!path.split('/').some((segment) => skippedDirectories.has(segment)) &&
+				!isKodyIgnored?.(path),
 		)
 		.sort()
 }
@@ -94,13 +132,13 @@ export function unpublishedBundleInputPaths(input: {
 
 /**
  * Message when a local bundle imports a file that will not be in the published
- * git snapshot (gitignored or untracked-and-ignored).
+ * snapshot (gitignored, untracked-and-ignored, or `.kodyignore`d).
  */
 export function formatUnpublishedBundleInputMessage(
 	relativePath: string,
 	options?: { hasPrebuild?: boolean },
 ): string {
-	const base = `${relativePath} is imported but will not be in the published snapshot (gitignored or untracked). Commit it, or generate it somewhere publish can see.`
+	const base = `${relativePath} is imported but will not be in the published snapshot (gitignored, untracked, or matched by .kodyignore). Commit it and keep it out of .kodyignore, or generate it somewhere publish can see.`
 	if (options?.hasPrebuild === true) {
 		return `${base} Note: kody.dev.prebuild runs only in \`kody dev\`; publish builds the git snapshot, so commit generated output.`
 	}

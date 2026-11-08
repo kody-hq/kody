@@ -21,7 +21,9 @@ import { integrationDisplayName } from '#client/routes/integration-filter.ts'
 import { buildConnectOauthHref } from '#universal/oauth-connect.ts'
 import {
 	buildChangeIntegrationScopesPrompt,
+	formatGrantedScopesDetail,
 	formatOauthScopeSummary,
+	formatScopeGrantNotice,
 	resolveOauthScopeMenu,
 } from '#universal/oauth-scopes.ts'
 import {
@@ -39,6 +41,7 @@ import {
 	detailLabelCss,
 	detailValueCss,
 	getAccentCalloutCss,
+	getGhostButtonCss,
 	getPillButtonCss,
 	hoverMq,
 	insetCardCss,
@@ -51,6 +54,7 @@ import {
 	connectActionLabel,
 	connectionLabel,
 	connectionStatusLabel,
+	credentialsConnectionsHref,
 	dangerButtonCss,
 	shouldShowReconnectAction,
 	formatList,
@@ -559,6 +563,17 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 												{connectActionLabel(status)}
 											</SiteLink>
 										) : null}
+										{orgSlug ? (
+											<SiteLink
+												href={credentialsConnectionsHref(
+													orgSlug,
+													connectionRef.name,
+												)}
+												css={getGhostButtonCss({ size: 'sm' })}
+											>
+												Open in Credentials
+											</SiteLink>
+										) : null}
 										<button
 											type="button"
 											data-testid="disconnect-connection"
@@ -661,6 +676,12 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 									'Requested scopes',
 									formatList(highlightedConnection.authorization?.scopes),
 								)}
+								{renderIntegrationDetail(
+									'Granted scopes',
+									formatGrantedScopesDetail(
+										highlightedConnection.grantedScopes,
+									),
+								)}
 								{highlightedConnection.platformAllowedScopes &&
 								highlightedConnection.platformAllowedScopes.length > 0
 									? renderIntegrationDetail(
@@ -673,9 +694,28 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 									formatList(highlightedConnection.requiredHosts),
 								)}
 							</div>
+							{highlightedConnection.grantedScopes &&
+							formatScopeGrantNotice({
+								granted: highlightedConnection.grantedScopes.scopes,
+								missing: highlightedConnection.grantedScopes.missing,
+								extra: highlightedConnection.grantedScopes.extra,
+							}) ? (
+								<p
+									css={descriptionCss}
+									data-testid="integration-scope-grant-mismatch"
+								>
+									{formatScopeGrantNotice({
+										granted: highlightedConnection.grantedScopes.scopes,
+										missing: highlightedConnection.grantedScopes.missing,
+										extra: highlightedConnection.grantedScopes.extra,
+									})}{' '}
+									Reconnect to request the current list again.
+								</p>
+							) : null}
 							<p css={descriptionCss}>
-								Need more access? Copy this prompt for your agent. It explains
-								how to request more scopes and reconnect so the token matches.
+								Need different access? Copy this prompt for your agent. It
+								explains how to add or remove scopes on this connection and
+								reconnect so the token matches.
 							</p>
 							<CopyTextButton
 								value={buildChangeIntegrationScopesPrompt({

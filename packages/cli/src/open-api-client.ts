@@ -624,6 +624,12 @@ export async function whoamiWithApiToken(input: OpenApiClientInput): Promise<{
 		maxExpiresAt: string | null
 	}
 	user: { userId: string; email: string; displayName: string } | null
+	/** Workspace this token acts in, from `GET /v1/me` when available. */
+	org: {
+		slug: string
+		personal?: boolean
+		kind?: 'personal' | 'team'
+	} | null
 }> {
 	const apiUrl = input.apiUrl || defaultApiUrl
 	const current = (await openApiGet({
@@ -633,6 +639,11 @@ export async function whoamiWithApiToken(input: OpenApiClientInput): Promise<{
 	})) as Record<string, unknown>
 
 	let user: { userId: string; email: string; displayName: string } | null = null
+	let org: {
+		slug: string
+		personal?: boolean
+		kind?: 'personal' | 'team'
+	} | null = null
 	try {
 		const me = (await openApiGet({
 			...input,
@@ -643,6 +654,30 @@ export async function whoamiWithApiToken(input: OpenApiClientInput): Promise<{
 			userId: String(me.user_id ?? ''),
 			email: String(me.email ?? ''),
 			displayName: String(me.display_name ?? ''),
+		}
+		const meOrg = isRecord(me.org) ? me.org : null
+		const slug = typeof meOrg?.slug === 'string' ? meOrg.slug.trim() : ''
+		if (slug) {
+			const kindFromServer =
+				meOrg?.kind === 'team' || meOrg?.kind === 'personal' ? meOrg.kind : null
+			const personalFromServer =
+				typeof meOrg?.personal === 'boolean' ? meOrg.personal : null
+			const kind =
+				kindFromServer ??
+				(personalFromServer === true
+					? 'personal'
+					: personalFromServer === false
+						? 'team'
+						: null)
+			org = {
+				slug,
+				...(kind
+					? {
+							kind,
+							personal: kind === 'personal',
+						}
+					: {}),
+			}
 		}
 	} catch (error) {
 		// account:read is optional; tokens/current needs no scope.
@@ -667,6 +702,7 @@ export async function whoamiWithApiToken(input: OpenApiClientInput): Promise<{
 					: null,
 		},
 		user,
+		org,
 	}
 }
 

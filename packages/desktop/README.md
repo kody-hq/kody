@@ -10,18 +10,30 @@ npm install
 npm run desktop:dev
 ```
 
-After normal onboarding, the desktop app offers to set up this machine:
+After normal onboarding, the desktop app offers to set up this machine. Setup is
+personal-first, then optional team access, with clear stages you can resume:
 
-1. **Continue in browser** opens the CLI browser login for your personal
-   workspace. The desktop verifies that it matches the account signed into the
-   website.
-2. Choose a machine name and select **Enable this machine**. This registers the
-   device, starts its runner, and puts it first in your personal execution
-   chain. Other entries keep their order and cloud fallback keeps its current
-   setting. A full chain asks which existing entry to replace.
-3. **Not now** skips the wizard for this account on this installation. Open
-   **This machine** in the web account menu to return to setup, pause or resume
-   execution, or forget this app’s setup. These controls appear only in desktop.
+1. **Sign in as this person** (**Continue to approve**) starts the CLI login for
+   your personal workspace. The authorize page opens in an app window that
+   reuses this app's Kody session, so you only approve. A fresh password or
+   passkey sign-in (no usable session, an unverified email, or a link to sign-in
+   or signup) goes to the system browser instead. The window loads only the
+   authorize page and the CLI's loopback callback, has no desktop bridge, and
+   closing it cancels the login. When login already named an organization, the
+   authorize page locks that choice and explains why; otherwise it preselects
+   the default. The desktop verifies that the CLI matches the account signed
+   into the website.
+2. **Register this device personally** (name the machine, or adopt an existing
+   CLI registration). This starts the runner. On a personal workspace it also
+   puts the machine first in your personal execution chain.
+3. **Make available to @team** when you start setup from a team workspace (or
+   use **Manage setup** there later). That attaches the same personal
+   registration to the team chain without registering again.
+4. Success only after the intended workspace lists the machine and the runner is
+   connected. **Not now** skips the wizard for this account on this
+   installation; **This machine** always offers **Set up this machine** /
+   **Resume setup** / **Manage setup**, and explains when the wizard is
+   unavailable.
 
 One runner per machine: the app and the kody CLI share this machine’s
 registration and runner. When the CLI already registered the machine, setup
@@ -176,8 +188,9 @@ websites and shells keep the existing embedded sign-in form.
 
 Browser sign-in uses migration `0215-desktop-browser-login.sql`. The shell
 enables it when the origin advertises `X-Kody-Desktop-Authentication: 1`. CLI
-sign-in still grants the CLI its own scoped credentials through its existing
-browser flow. A website session does not become a CLI API token.
+sign-in still grants the CLI its own scoped credentials through its own OAuth
+consent (approved in the app window when the session allows). A website session
+does not become a CLI API token.
 
 Run
 `npm run test:browser-login --workspace @kodycodes/desktop -- <local-origin>`
@@ -191,6 +204,11 @@ The machine setup checks are separate from live enrollment:
 npm run test:execution-ui --workspace @kodycodes/desktop
 npm run test:execution-shell --workspace @kodycodes/desktop -- <local-origin>
 ```
+
+`npm run test:in-app-approval --workspace @kodycodes/desktop -- <local-origin> [cookie-file]`
+runs the real CLI login against the local origin with an isolated CLI config,
+approves it in the app window, and fails if the system browser opens. The seed
+account must have finished onboarding (one MCP connection).
 
 The first uses fixture native actions and server functions to exercise the real
 wizard, including onboarding order, skipping, full-chain replacement, and retry.
@@ -234,10 +252,17 @@ using a separate local packaging directory.
 
 ## Production releases and updates
 
-Desktop downloads and updates live in the public `kody-hq/kody-desktop`
-repository. This keeps the update feed separate from the website's daily
-releases. Users do not need a GitHub token. Every architecture has its own
-update manifest so parallel jobs cannot overwrite another architecture's feed.
+Desktop downloads and updates live in the public
+[`kody-hq/kody-desktop` releases](https://github.com/kody-hq/kody-desktop/releases/latest)
+page. That releases page is the canonical install source. Share the unlisted
+shortcut [https://kody.codes/download](https://kody.codes/download) when you
+need one link: it redirects to the latest installer only when the visitor's
+platform and architecture can be detected and that installer is present on the
+latest release; otherwise it redirects to the latest release page. Do not
+publish demo builds from `kody-hq/kody` releases for installs. This keeps the
+update feed separate from the website's daily releases. Users do not need a
+GitHub token. Every architecture has its own update manifest so parallel jobs
+cannot overwrite another architecture's feed.
 
 Production apps check on launch and every five minutes, download automatically,
 and install on Quit. **Updates > Restart to update** quits and relaunches with
@@ -255,7 +280,13 @@ same version and source commit. Re-running an already published source skips
 publication. Obsolete queued runs also skip publication so older source cannot
 replace a newer build. Missing source history fails before signing. Matching
 drafts resume after a failed upload, while conflicting drafts reserve their
-version so the next run advances past them automatically.
+version so the next run advances past them automatically. Each selected
+platform's `dist:release` build is retried once after a 30-second wait when the
+first attempt fails. The first attempt is capped at 25 minutes via
+`packages/desktop/scripts/run-with-timeout.cjs` (portable across macOS, Windows,
+and Linux runners) so a stuck notarization poll leaves time for that retry plus
+verification; a failed retry fails that matrix job so a workflow re-run can
+finish the release.
 
 The default `auto` scope preserves the platforms in the published feed, starting
 with Apple silicon and Intel Mac installers. Run the workflow manually on main

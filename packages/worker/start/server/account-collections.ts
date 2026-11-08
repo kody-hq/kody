@@ -772,3 +772,72 @@ export const loadIntegrationsPage = createServerFn({ method: 'GET' })
 			),
 		}
 	})
+
+export const loadMovePlanPage = createServerFn({ method: 'GET' })
+	.validator(
+		z.object({
+			orgSlug: z.string().regex(/^[a-zA-Z0-9_-]+$/),
+			to: z.string().max(64).nullable(),
+			interval: z.string().max(8).nullable(),
+			billing: z.string().max(64).nullable(),
+			transfer: z.string().max(64).nullable(),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const [
+			{ loadScopedCollection },
+			{ resolveOrgBillingAccess },
+			{ loadPlanTransferPageData },
+			{ loadDocumentHead },
+			{ orgBillingPath },
+		] = await Promise.all([
+			import('./collection-context.ts'),
+			import('../../src/app/handlers/org-billing.ts'),
+			import('../../src/app/handlers/plan-transfer.ts'),
+			import('./document-head.ts'),
+			import('../../universal/org-pages.ts'),
+		])
+		const pathname = `${orgBillingPath(data.orgSlug)}/move-plan`
+		const params = new URLSearchParams()
+		for (const key of ['to', 'interval', 'billing', 'transfer'] as const) {
+			const value = data[key]
+			if (value !== null) params.set(key, value)
+		}
+		const search = params.size ? `?${params}` : ''
+		const { bindings, request, user } = await loadScopedCollection({
+			orgSlug: data.orgSlug,
+			section: 'billing',
+			returnTo: pathname + search,
+		})
+		const access = await resolveOrgBillingAccess({
+			orgSlug: data.orgSlug,
+			request,
+			env: bindings,
+			user,
+			permission: 'billing:read',
+		})
+		if (!access.ok) {
+			if (access.status === 404) throw notFound()
+			const { setResponseStatus } = await import('@tanstack/react-start/server')
+			setResponseStatus(access.status)
+			throw new PermissionDeniedError(access.error)
+		}
+		const payload = await loadPlanTransferPageData({
+			env: bindings,
+			user,
+			org: access.org,
+			targetSlug: data.to,
+			interval: data.interval,
+			noticeCode: data.billing,
+			transferId: data.transfer,
+		})
+		return {
+			payload,
+			head: loadDocumentHead(
+				'orgBillingMovePlan',
+				pathname,
+				{ accountBillingMovePlan: payload },
+				search,
+			),
+		}
+	})

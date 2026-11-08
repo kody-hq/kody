@@ -3,7 +3,7 @@ import {
 	buildEntitlementUpgradeHint,
 	EntitlementLimitError,
 } from '#worker/entitlements/errors.ts'
-import { entitlementBillingPath } from '#worker/entitlements/service.ts'
+import { entitlementOrgPaths } from '#worker/entitlements/service.ts'
 import type { PlanName } from '#universal/plans.ts'
 import {
 	userMeterRpc,
@@ -325,15 +325,18 @@ export function createUserInboundDeliveryAuthority(
 			}
 		}
 		if (!meterResult.consumed && !meterResult.replayed) {
+			const paths = await entitlementOrgPaths(env.APP_DB, userId)
 			throw new EntitlementLimitError({
 				resource: 'email_receives_per_day',
 				plan: chargeInput.plan,
 				limit: chargeInput.limit,
 				current: meterResult.count,
+				...(paths.orgSlug ? { orgSlug: paths.orgSlug } : {}),
 				upgradeHint: buildEntitlementUpgradeHint({
 					resource: 'email_receives_per_day',
 					plan: chargeInput.plan,
-					billingPath: await entitlementBillingPath(env.APP_DB, userId),
+					billingPath: paths.billingPath,
+					...(paths.usagePath ? { usagePath: paths.usagePath } : {}),
 					now: chargeInput.now,
 				}),
 			})

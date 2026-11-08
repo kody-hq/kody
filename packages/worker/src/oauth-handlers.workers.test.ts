@@ -590,6 +590,7 @@ test('authorize info, denial, approval, and default scopes follow the OAuth work
 		requireCredentials: true,
 		orgs: [],
 		selectedOrgSlug: null,
+		requiredOrgSlug: null,
 	})
 
 	// Initial HTML and social controls are covered by oauth-documents.mcp-e2e.
@@ -604,6 +605,7 @@ test('authorize info, denial, approval, and default scopes follow the OAuth work
 		ok: true,
 		orgs: [{ slug: 'test-user', displayName: null, role: 'owner' }],
 		selectedOrgSlug: 'test-user',
+		requiredOrgSlug: null,
 	})
 
 	const resourceOrgInfo = await handleAuthorizeInfo(
@@ -624,6 +626,7 @@ test('authorize info, denial, approval, and default scopes follow the OAuth work
 	await expect(resourceOrgInfo.json()).resolves.toMatchObject({
 		ok: true,
 		selectedOrgSlug: 'test-user',
+		requiredOrgSlug: 'test-user',
 	})
 
 	const orgMismatchInfo = await handleAuthorizeInfo(

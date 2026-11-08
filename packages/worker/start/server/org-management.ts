@@ -128,6 +128,34 @@ export const loadOrgGrants = createServerFn({ method: 'GET' })
 		return loadOrgGrantsData({ ...input, org: access.org })
 	})
 
+export const loadOrgSubjectAccess = createServerFn({ method: 'GET' })
+	.validator(slugInput.extend({ userId: z.string().trim().min(1).max(200) }))
+	.handler(async ({ data }) => {
+		const input = await orgContext(data.slug, 'grants')
+		const [{ resolveOrgManagementAccess }, { loadOrgSubjectAccessData }] =
+			await Promise.all([
+				import('../../src/app/org-management-access.ts'),
+				import('../../src/app/handlers/org-subject-access.ts'),
+			])
+		const access = await resolveOrgManagementAccess({
+			...input,
+			permission: 'member:read',
+		})
+		if (!access.ok) {
+			if (access.status === 404) throw notFound()
+			const { setResponseStatus } = await import('@tanstack/react-start/server')
+			setResponseStatus(403)
+			throw new PermissionDeniedError(access.error)
+		}
+		const loaded = await loadOrgSubjectAccessData({
+			...input,
+			org: access.org,
+			userId: data.userId,
+		})
+		if (!loaded) throw notFound()
+		return loaded
+	})
+
 export const loadOrgCollaborators = createServerFn({ method: 'GET' })
 	.validator(slugInput)
 	.handler(async ({ data }) => {

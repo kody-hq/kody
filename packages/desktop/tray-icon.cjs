@@ -46,8 +46,6 @@ function createTrayIcon(nativeImage, nativeTheme, options = {}) {
 }
 
 module.exports = {
-	trayIconFileName,
-	trayIconPath,
 	trayChromeIsDark,
 	createTrayIcon,
 }

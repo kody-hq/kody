@@ -30,7 +30,22 @@ export type ReferralProgramSummary = {
 	creditExpiresAt: string | null
 	creditActive: boolean
 	referrals: Array<ReferralProgramListItem>
+	referredBy: ReferredByState
 }
+
+/**
+ * Whether this person can still add who referred them. `open` only before
+ * their first paid Kody invoice and with no attribution recorded; `closed`
+ * hides the entry (already paid, rejected, or unknown).
+ */
+export type ReferredByState =
+	| { state: 'open' }
+	| {
+			state: 'attributed'
+			referrerUsername: string | null
+			status: 'pending' | 'rewarded'
+	  }
+	| { state: 'closed' }
 
 export type ReferralProgramListItem = {
 	refereeUsername: string | null
@@ -189,4 +204,29 @@ export function unixSecondsToIso(value: unknown): string | null {
 		return null
 	}
 	return new Date(value * 1000).toISOString()
+}
+
+/**
+ * A referrer as typed on the billing page: `alice`, `@alice`, or a share link
+ * such as `https://kody.codes/?ref=alice`.
+ */
+export function parseReferrerInput(value: unknown): string | null {
+	if (typeof value !== 'string') return null
+	const trimmed = value.trim()
+	if (!trimmed || trimmed.length > 256) return null
+	if (/[/?=]/.test(trimmed)) {
+		try {
+			const url = new URL(
+				/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)
+					? trimmed
+					: `https://${trimmed}`,
+			)
+			return normalizeReferralCode(
+				url.searchParams.get('ref') ?? url.searchParams.get('referral'),
+			)
+		} catch {
+			return null
+		}
+	}
+	return normalizeReferralCode(trimmed.replace(/^@/, ''))
 }

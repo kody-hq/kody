@@ -142,6 +142,7 @@ function assertInteractiveHttpApplyCaller(callerContext: {
 async function assertHttpApplyDestinationApproved(input: {
 	env: Env
 	userId: ReturnType<typeof ownerIdFromCaller>
+	orgSlug: string | null
 	handle: string
 	destination: HttpApplyDestinationInput
 	baseUrl: string
@@ -150,6 +151,7 @@ async function assertHttpApplyDestinationApproved(input: {
 		const gate = await requireWebhookApplyDestinationGrantOrPending({
 			env: input.env,
 			userId: input.userId,
+			orgSlug: input.orgSlug,
 			handle: input.handle,
 			destination: input.destination,
 			baseUrl: input.baseUrl,
@@ -213,6 +215,7 @@ export const webhookUrlApplyCapability = defineDomainCapability(
 			const approved = await assertHttpApplyDestinationApproved({
 				env: ctx.env,
 				userId,
+				orgSlug: ctx.callerContext.request?.org.slug?.trim() || null,
 				handle: args.handle,
 				destination: args.destination,
 				baseUrl: ctx.callerContext.baseUrl,

@@ -167,6 +167,20 @@ people instead:
 The tab also links to creating a team org for group sharing through members and
 teams. Team orgs use member and team controls on this tab.
 
+## Access for one person
+
+In a team org, an Owner selects **Access** on a non-Owner row in **Members** or
+on a row in **Collaborators**, or selects a person-linked grant on **Grants**.
+That page is `/@<slug>/-/grants/user/<userId>` (`Access for {name}`). It lists
+what that person can use in this organization and **Give access** grants or
+revokes a preset on specific packages, apps, and credentials in one submit. Team
+and everyone grants appear as read-only. Owners already hold everything, so
+there is nothing to grant them. A person with no membership or grant 404s.
+
+The package **Collaborators** tab stays the place to share one package. Use
+**Access** when the work is one person across packages, apps, and credentials.
+Agents still call `accessGrant`, `accessRevoke`, and `packageCollaboratorSet`.
+
 ## Open API
 
 The same calls are on the [Open API](/docs/open-api) (`/openapi.json`):
@@ -208,9 +222,9 @@ granted. Owners hold everything. Membership invites are refused on a personal
 
 Personal orgs can still grant Use/Contribute/Manage on packages via
 `accessGrant` / `inviteCreate` `kind: "grant"` and revoke with `accessRevoke`.
-The web Grants page is aimed at team orgs. In a personal org, invite and remove
-collaborators from the package's [Collaborators tab](#on-the-web), or use those
-capabilities.
+The web Grants page and per-person **Access** page are aimed at team orgs. In a
+personal org, invite and remove collaborators from the package's
+[Collaborators tab](#on-the-web), or use those capabilities.
 
 ## Unmappable credentials
 

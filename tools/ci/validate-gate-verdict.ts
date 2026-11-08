@@ -7,10 +7,14 @@
  * - `host_commands_macos` that GitHub never assigned a runner (`abandoned`)
  *   passes when `host_commands_macos_fallback` (macos-15-intel) passes.
  *
+ * On `push` (main) both macOS jobs are skipped: they run in
+ * `.github/workflows/macos-main.yml` instead, so a macOS runner shortage
+ * cannot hold a production deploy. PR Validate still requires them.
+ *
  * A job that never got a runner is `infra`, not a code failure: it gets its own
  * annotation, and the gate still fails so an unverified tree is never stamped.
  *
- *   NEEDS='${{ toJSON(needs) }}' node tools/ci/validate-gate-verdict.ts
+ *   NEEDS='${{ toJSON(needs) }}' GITHUB_EVENT_NAME=push node tools/ci/validate-gate-verdict.ts
  */
 import { appendFileSync } from 'node:fs'
 import { isExecutedDirectly } from '../node-runtime.ts'
@@ -21,6 +25,8 @@ export type Verdict = 'pass' | 'infra' | 'fail'
 export type JobVerdict = { job: string; verdict: Verdict; detail: string }
 
 const neverAssigned = 'abandoned'
+export const macosOnMainDetail =
+	'skipped on main; runs in macos-main.yml, outside the deploy gate'
 const workersShards = [1, 2]
 const recoveryJobs = new Set([
 	'tested_tree',
@@ -81,7 +87,7 @@ function workersShard(needs: Needs, shard: number): JobVerdict {
 	}
 }
 
-function macos(needs: Needs): JobVerdict {
+export function classifyMacosNeeds(needs: Needs): JobVerdict {
 	const job = 'host_commands_macos'
 	const primary = needs.host_commands_macos?.result ?? 'missing'
 	if (primary === 'success') return { job, verdict: 'pass', detail: 'success' }
@@ -109,13 +115,34 @@ function macos(needs: Needs): JobVerdict {
 	}
 }
 
-export function classifyValidateNeeds(needs: Needs) {
+function macos(
+	needs: Needs,
+	options: { event?: string; ref?: string },
+): JobVerdict {
+	const skippedOnMain =
+		(options.event === 'push' || options.ref === 'refs/heads/main') &&
+		needs.host_commands_macos?.result === 'skipped' &&
+		needs.host_commands_macos_fallback?.result === 'skipped'
+	if (skippedOnMain) {
+		return {
+			job: 'host_commands_macos',
+			verdict: 'pass',
+			detail: macosOnMainDetail,
+		}
+	}
+	return classifyMacosNeeds(needs)
+}
+
+export function classifyValidateNeeds(
+	needs: Needs,
+	options: { event?: string; ref?: string } = {},
+) {
 	const jobs: Array<JobVerdict> = [
 		...Object.keys(needs)
 			.filter((job) => !recoveryJobs.has(job))
 			.map((job) => plain(job, needs[job])),
 		...workersShards.map((shard) => workersShard(needs, shard)),
-		macos(needs),
+		macos(needs, options),
 	]
 	const verdict: Verdict = jobs.some((job) => job.verdict === 'fail')
 		? 'fail'
@@ -136,6 +163,9 @@ export function renderVerdict(
 			return [
 				`::error title=CI infrastructure, not a code failure: ${job.job}::${job.detail}. No code ran; re-run the job once a runner is available.`,
 			]
+		}
+		if (job.detail === macosOnMainDetail) {
+			return [`::notice title=Not gating deploy: ${job.job}::${job.detail}`]
 		}
 		return job.detail === 'success' || job.detail === 'passed'
 			? []
@@ -163,7 +193,10 @@ export function renderVerdict(
 }
 
 if (isExecutedDirectly(import.meta.url)) {
-	const result = classifyValidateNeeds(JSON.parse(process.env.NEEDS ?? '{}'))
+	const result = classifyValidateNeeds(JSON.parse(process.env.NEEDS ?? '{}'), {
+		event: process.env.GITHUB_EVENT_NAME,
+		ref: process.env.GITHUB_REF,
+	})
 	const { annotations, summary } = renderVerdict(result)
 	for (const line of annotations) console.log(line)
 	for (const job of result.jobs)

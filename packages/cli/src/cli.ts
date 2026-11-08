@@ -27,6 +27,7 @@ import {
 import { defaultApiUrl, defaultMcpUrl } from './defaults.js'
 import { buildCommandHelp } from './command-help.js'
 import { buildUsage } from './help.js'
+import { isRemoteDaemonCommand } from './execution-context/daemon-remote.js'
 import { orgSlugFromFlag, resolveOrgSlug } from './org-resolve.js'
 import { refreshGitCredentialHelperPinIfNeeded } from './setup-git.js'
 import {
@@ -120,6 +121,61 @@ const orgScopedCommands = new Set<CommandName>([
 	'dev',
 	'auth',
 ])
+
+/**
+ * Whether resolving this command's org may read the stored active org.
+ * Local `daemon status` (desktop polls this) and other keychain-free commands
+ * must not open the login keychain just to discover activeOrg — `--org` /
+ * `KODY_ORG` still apply via {@link resolveOrgSlug}, and authenticated
+ * subcommands open credentials when they call `token()` / whoami.
+ * Remote daemon control still needs activeOrg for person-owned tokens.
+ */
+function commandUsesStoredActiveOrg(input: {
+	command: CommandName
+	positionals: Array<string>
+	remote?: boolean
+	context?: string
+	apiUrl: string
+}): boolean {
+	const { command } = input
+	switch (command) {
+		case 'version':
+		case 'help':
+		case 'status':
+		case 'org':
+		case 'login':
+		case 'logout':
+		case 'update':
+		case 'install':
+		case 'skill':
+		case 'git-credential':
+			return false
+		case 'daemon':
+			return isRemoteDaemonCommand({
+				sub: input.positionals[0],
+				apiUrl: input.apiUrl,
+				...(input.context ? { context: input.context } : {}),
+				...(input.remote ? { remote: true } : {}),
+			})
+		case 'context':
+		case 'connect':
+		case 'chain':
+		case 'whoami':
+		case 'search':
+		case 'api':
+		case 'package':
+		case 'execute':
+		case 'dev':
+		case 'auth':
+		case 'secret':
+		case 'run':
+			return true
+		default: {
+			const exhaustive: never = command
+			throw new Error(`Unhandled CLI command: ${String(exhaustive)}`)
+		}
+	}
+}
 
 function mcpUrlFrom(values: { mcpUrl?: string }): string {
 	return values.mcpUrl || process.env.KODY_MCP_URL || defaultMcpUrl
@@ -506,10 +562,34 @@ async function dispatch(
 	// org-scoped commands and must not bind browser login or change logout).
 	const orgFlagOnly =
 		orgFlag !== undefined ? orgSlugFromFlag(orgFlag) : undefined
-	const org = resolveOrgSlug({
-		flag: orgFlag,
-		activeOrg: loadCredentialStore(mcpUrl)?.activeOrg,
-	})
+	// Prefer --org / KODY_ORG without touching the keychain. Only open the
+	// credential store for activeOrg when a command actually uses that org.
+	const orgFromFlagOrEnv = resolveOrgSlug({ flag: orgFlag })
+	const earlyApiUrl = apiUrlFrom(
+		{
+			apiUrl:
+				typeof parsed.values['api-url'] === 'string'
+					? parsed.values['api-url']
+					: undefined,
+		},
+		process.env,
+		mcpUrl,
+	)
+	const org =
+		orgFromFlagOrEnv ??
+		(commandUsesStoredActiveOrg({
+			command: parsed.command,
+			positionals: parsed.positionals,
+			apiUrl: earlyApiUrl,
+			...(parsed.values.remote === true ? { remote: true } : {}),
+			...(typeof parsed.values.context === 'string'
+				? { context: parsed.values.context }
+				: {}),
+		})
+			? resolveOrgSlug({
+					activeOrg: loadCredentialStore(mcpUrl)?.activeOrg,
+				})
+			: undefined)
 
 	switch (parsed.command) {
 		case 'help':
@@ -524,12 +604,9 @@ async function dispatch(
 		case 'daemon':
 		case 'connect':
 		case 'update': {
-			const apiUrl = apiUrlFrom({
-				apiUrl:
-					typeof parsed.values['api-url'] === 'string'
-						? parsed.values['api-url']
-						: undefined,
-			})
+			// Same paired apiUrl used for remote/local classification above
+			// (preview --mcp-url without --api-url must not diverge).
+			const apiUrl = earlyApiUrl
 			const { runExecutionContextCommand } =
 				await import('./execution-context/commands.js')
 			return await runExecutionContextCommand({
@@ -622,7 +699,7 @@ async function dispatch(
 					onDeviceCode: (prompt) => write(formatDeviceLoginNotice(prompt)),
 				})
 				write(formatLoginSuccess(result))
-				write(storedApiTokenAfterLoginNotice(loginApiUrl))
+				write(supersedeStoredApiTokenAfterLogin(loginApiUrl))
 				return 0
 			}
 			const headlessReason = openBrowser ? detectHeadlessLoginReason() : null
@@ -641,7 +718,7 @@ async function dispatch(
 				},
 			})
 			write(formatLoginSuccess(result))
-			write(storedApiTokenAfterLoginNotice(loginApiUrl))
+			write(supersedeStoredApiTokenAfterLogin(loginApiUrl))
 			return 0
 		}
 		case 'logout': {
@@ -2423,22 +2500,46 @@ export async function resolvePackagePublishTarget(
 	return { ...rest, package_id: matches[0]!.package_id }
 }
 
-/** After `kody login`: warn when a stored API token still outranks the login. */
-export function storedApiTokenAfterLoginNotice(
+/**
+ * After an explicit `kody login`: delete the leftover stored API token so the
+ * fresh login is what `api`, `package`, `context`, … use. Desktop logins
+ * (`KODY_CREDENTIAL_SOURCE=login`) leave it alone. `--token` /
+ * `KODY_API_TOKEN` still outrank the login, so say so when one is set.
+ */
+export function supersedeStoredApiTokenAfterLogin(
 	apiUrl: string,
-	loadApiToken: typeof loadStoredApiToken = loadStoredApiToken,
+	deps: {
+		env?: NodeJS.ProcessEnv
+		loadApiToken?: typeof loadStoredApiToken
+		deleteApiToken?: typeof deleteStoredApiToken
+	} = {},
 ): string {
+	const env = deps.env ?? process.env
+	const envTokenNote = env.KODY_API_TOKEN?.trim()
+		? 'Note: KODY_API_TOKEN is set in this shell and still takes precedence over this login. Unset it to use the login.\n'
+		: ''
+	if (env.KODY_CREDENTIAL_SOURCE?.trim()) return envTokenNote
 	let stored: ReturnType<typeof loadStoredApiToken>
 	try {
-		stored = loadApiToken(apiUrl)
+		stored = (deps.loadApiToken ?? loadStoredApiToken)(apiUrl)
 	} catch {
-		return ''
+		return envTokenNote
 	}
-	if (!stored) return ''
+	if (!stored) return envTokenNote
 	const label = describeCliCredential({
 		source: 'stored-api-token',
 		token: stored.token,
 		stored,
 	})
-	return `Note: a ${label} is still stored and \`kody login\` does not replace it. api, package, execute --local, context, daemon, and dev keep using it (scopes: ${stored.scopes?.join(', ') || 'unknown'}). To change its scopes run \`${replaceStoredTokenCommand(stored.scopes)}\`, or \`kody logout\` to clear it. Check with \`kody whoami\`.\n`
+	const scopes = stored.scopes?.join(', ') || 'unknown'
+	let deleted = false
+	try {
+		deleted = (deps.deleteApiToken ?? deleteStoredApiToken)(apiUrl).deleted
+	} catch {
+		deleted = false
+	}
+	if (!deleted) {
+		return `${envTokenNote}Warning: could not remove the ${label} (scopes: ${scopes}), so api, package, execute --local, context, daemon, and dev keep using it instead of this login. Run \`kody logout\` and log in again.\n`
+	}
+	return `${envTokenNote}Removed the ${label} (scopes: ${scopes}); api, package, execute --local, context, daemon, and dev now use this login. Git pushes mint a new token from this login. To use a scoped token again, run \`${replaceStoredTokenCommand(stored.scopes)}\`.\n`
 }
