@@ -163,7 +163,7 @@ test('the JSON-hop threshold is derived from the API body limit with envelope he
 
 test('chunked base64 matches Buffer at window edges, with and without native helpers', () => {
 	const shim = loadShim()
-	const sizes = [0, 1, 2, 3, 24575, 24576, 24577, 3 * mib + 1]
+	const sizes = [0, 1, 2, 3, 24575, 24576, 24577, 3 * 24576 + 1, 256 * 1024 + 2]
 	const proto = Uint8Array.prototype as { toBase64?: unknown }
 	const ctor = Uint8Array as { fromBase64?: unknown }
 	const nativeTo = proto.toBase64
@@ -178,9 +178,11 @@ test('chunked base64 matches Buffer at window edges, with and without native hel
 				const bytes = patterned(size)
 				const expected = Buffer.from(bytes).toString('base64')
 				expect(shim.__kodyBytesToBase64(bytes)).toBe(expected)
-				expect(Buffer.from(shim.__kodyBase64ToBytes(expected))).toEqual(
-					Buffer.from(bytes),
-				)
+				expect(
+					Buffer.from(shim.__kodyBase64ToBytes(expected)).equals(
+						Buffer.from(bytes),
+					),
+				).toBe(true)
 			}
 		} finally {
 			proto.toBase64 = nativeTo
