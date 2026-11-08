@@ -16,6 +16,7 @@ import {
 } from '#mcp/capabilities/access/shared.ts'
 import type {
 	OrgGrantPersonView,
+	OrgGrantSubjectView,
 	OrgGrantsLoaderData,
 	OrgWideReadSubjectView,
 } from '#universal/loader-data.ts'
@@ -116,7 +117,65 @@ export async function loadOrgGrantsData(input: {
 			canManage && !input.org.personal
 				? await listGrantPeople(input.env.APP_DB, input.org.id)
 				: [],
+		subjects: await listGrantSubjects(input.env.APP_DB, {
+			orgId: input.org.id,
+			grants,
+			includeEveryone: canManage && !input.org.personal,
+		}),
 	}
+}
+
+/**
+ * People for the grouped Grants list. A manager sees every member and outside
+ * collaborator; anyone else sees only people who hold a direct grant here.
+ */
+async function listGrantSubjects(
+	db: D1Database,
+	input: {
+		orgId: string
+		grants: ReadonlyArray<ListedOrgGrant>
+		includeEveryone: boolean
+	},
+): Promise<Array<OrgGrantSubjectView>> {
+	const [members, outside] = await Promise.all([
+		listOrgMembers(db, input.orgId),
+		listOutsideCollaborators(db, input.orgId),
+	])
+	const granted = new Set(
+		input.grants
+			.filter((grant) => grant.subjectType === 'user')
+			.map((grant) => grant.subjectId),
+	)
+	const subjects = new Map<string, OrgGrantSubjectView>()
+	for (const member of members) {
+		subjects.set(member.userId, {
+			userId: member.userId,
+			label: memberLabel(member),
+			kind: 'member',
+			role: member.role,
+		})
+	}
+	for (const person of outside) {
+		if (subjects.has(person.userId)) continue
+		subjects.set(person.userId, {
+			userId: person.userId,
+			label: memberLabel(person),
+			kind: 'collaborator',
+			role: null,
+		})
+	}
+	for (const grant of input.grants) {
+		if (grant.subjectType !== 'user' || subjects.has(grant.subjectId)) continue
+		subjects.set(grant.subjectId, {
+			userId: grant.subjectId,
+			label: grant.subjectLabel,
+			kind: 'collaborator',
+			role: null,
+		})
+	}
+	return [...subjects.values()].filter(
+		(subject) => input.includeEveryone || granted.has(subject.userId),
+	)
 }
 
 /** Non-owner members, then outside collaborators, for "Give someone access". */

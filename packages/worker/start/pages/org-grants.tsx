@@ -6,6 +6,7 @@ import type {
 import {
 	orgCollaboratorsPath,
 	orgGrantAccessPath,
+	orgRoleLabel,
 	orgTeamsPath,
 } from '#universal/org-pages.ts'
 import {
@@ -32,8 +33,9 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import type { QueryKey } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { renderIcon } from '../components/icon.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
@@ -55,6 +57,13 @@ import {
 	revokeOrganizationGrant,
 } from '#start/server/org-mutations'
 import { useOrgPeopleMutation } from './org-people-mutation.ts'
+import {
+	RecordTable,
+	RecordTableSearch,
+	RecordTableSelect,
+	type RecordTableColumn,
+	type RecordTableRow,
+} from './record-table.tsx'
 function grantSummary(grant: OrgGrantView) {
 	if (grant.resourceType === 'org') {
 		return `${grant.subjectLabel} · Organization-wide access`
@@ -124,6 +133,291 @@ export function OrgGrantsPage(props: {
 	return <OrgGrantsContent key={JSON.stringify(props.queryKey)} {...props} />
 }
 
+const resourceTypeNouns: Record<string, [string, string]> = {
+	package: ['package', 'packages'],
+	app: ['app', 'apps'],
+	credential: ['credential', 'credentials'],
+	org: ['organization-wide grant', 'organization-wide grants'],
+	job: ['job', 'jobs'],
+	memory: ['memory', 'memories'],
+	email: ['email inbox', 'email inboxes'],
+	execution_context: ['execution context', 'execution contexts'],
+}
+
+const resourceTypeOrder = Object.keys(resourceTypeNouns)
+
+/** "3 packages, 2 credentials" for one subject's direct grants. */
+function grantCountsSummary(grants: ReadonlyArray<OrgGrantView>) {
+	const counts = new Map<string, number>()
+	for (const grant of grants) {
+		const type =
+			grant.resourceType in resourceTypeNouns ? grant.resourceType : 'other'
+		counts.set(type, (counts.get(type) ?? 0) + 1)
+	}
+	return [...counts.entries()]
+		.sort(
+			([a], [b]) =>
+				(resourceTypeOrder.indexOf(a) >>> 0) -
+				(resourceTypeOrder.indexOf(b) >>> 0),
+		)
+		.map(([type, count]) => {
+			const [one, many] = resourceTypeNouns[type] ?? [
+				'other grant',
+				'other grants',
+			]
+			return `${count} ${count === 1 ? one : many}`
+		})
+		.join(', ')
+}
+
+type GrantSubjectKind = 'member' | 'collaborator' | 'team' | 'everyone'
+
+const subjectKindFilters: Array<{
+	value: '' | GrantSubjectKind
+	label: string
+}> = [
+	{ value: '', label: 'Everyone listed' },
+	{ value: 'member', label: 'Members' },
+	{ value: 'collaborator', label: 'Outside collaborators' },
+	{ value: 'team', label: 'Teams' },
+	{ value: 'everyone', label: 'Whole organization' },
+]
+
+const resourceTypeFilters = [
+	{ value: '', label: 'All resources' },
+	{ value: 'package', label: 'Packages' },
+	{ value: 'app', label: 'Package apps' },
+	{ value: 'credential', label: 'Credentials' },
+	{ value: 'org', label: 'Organization-wide' },
+	{ value: 'other', label: 'Other resources' },
+]
+
+function grantedTypes(grants: ReadonlyArray<OrgGrantView>) {
+	return [
+		...new Set(
+			grants.map((grant) =>
+				grant.resourceType in resourceTypeNouns &&
+				['package', 'app', 'credential', 'org'].includes(grant.resourceType)
+					? grant.resourceType
+					: 'other',
+			),
+		),
+	].join(' ')
+}
+
+const peopleColumns: Array<RecordTableColumn> = [
+	{ key: 'name', label: 'Who', primary: true },
+	{
+		key: 'role',
+		label: 'Role',
+		filter: (_value, filter, row) => row.values?.kind === filter,
+	},
+	{
+		key: 'access',
+		label: 'Direct access',
+		sortable: false,
+		filter: (_value, filter, row) =>
+			String(row.values?.types ?? '')
+				.split(' ')
+				.includes(String(filter)),
+	},
+]
+
+const orgGrantsPageSize = 25
+
+/** Owners and Admins hold access through their role, not through grants. */
+function roleAccessSummary(role: OrgRole | null) {
+	if (role === 'owner') return 'Full access'
+	if (role === 'admin') {
+		return 'Full access except deleting the organization or changing Owners'
+	}
+	return null
+}
+
+function OrgGrantsPeopleTable({ data }: { data: OrgGrantsLoaderData }) {
+	const [query, setQuery] = useState('')
+	const [kind, setKind] = useState<'' | GrantSubjectKind>('')
+	const [type, setType] = useState('')
+	const [page, setPage] = useState(0)
+	const rows = useMemo<Array<RecordTableRow>>(() => {
+		const byUser = new Map<string, Array<OrgGrantView>>()
+		const byTeam = new Map<string, Array<OrgGrantView>>()
+		const everyone: Array<OrgGrantView> = []
+		for (const grant of data.grants) {
+			if (grant.subjectType === 'org') everyone.push(grant)
+			else {
+				const map = grant.subjectType === 'team' ? byTeam : byUser
+				map.set(grant.subjectId, [...(map.get(grant.subjectId) ?? []), grant])
+			}
+		}
+		const subjects = [...data.subjects]
+		for (const [userId, grants] of byUser) {
+			if (subjects.some((subject) => subject.userId === userId)) continue
+			subjects.push({
+				userId,
+				label: grants[0]?.subjectLabel ?? userId,
+				kind: 'collaborator',
+				role: null,
+			})
+		}
+		const row = (input: {
+			id: string
+			name: string
+			kind: GrantSubjectKind
+			role: string
+			access: string
+			grants: ReadonlyArray<OrgGrantView>
+			href?: string
+		}): RecordTableRow => ({
+			id: input.id,
+			href: input.href,
+			values: {
+				name: input.name,
+				kind: input.kind,
+				role: input.role,
+				access: input.access,
+				types: grantedTypes(input.grants),
+			},
+			cells: {
+				name: input.name,
+				role: input.role,
+				access: (
+					<span data-testid="org-grant-person-summary">{input.access}</span>
+				),
+			},
+		})
+		return [
+			...subjects.map((subject) => {
+				const grants = byUser.get(subject.userId) ?? []
+				const roleSummary = roleAccessSummary(subject.role)
+				return row({
+					id: `user:${subject.userId}`,
+					name: subject.label,
+					kind: subject.kind,
+					role: orgRoleLabel(subject.role),
+					access:
+						roleSummary ?? (grantCountsSummary(grants) || 'No direct grants'),
+					grants,
+					href: roleSummary
+						? undefined
+						: orgGrantAccessPath(data.org.slug, subject.userId),
+				})
+			}),
+			...[...byTeam.values()].map((grants) =>
+				row({
+					id: `team:${grants[0]!.subjectId}`,
+					name: grants[0]!.subjectLabel,
+					kind: 'team',
+					role: 'Team',
+					access: grantCountsSummary(grants),
+					grants,
+					href: orgTeamsPath(data.org.slug),
+				}),
+			),
+			...(everyone.length > 0
+				? [
+						row({
+							id: 'org',
+							name: 'Everyone in this organization',
+							kind: 'everyone',
+							role: 'Everyone',
+							access: grantCountsSummary(everyone),
+							grants: everyone,
+						}),
+					]
+				: []),
+		]
+	}, [data])
+	const filtered = Boolean(query || kind || type)
+	return (
+		<AccountManagementPanel
+			title="People with access"
+			ariaLabel="People with access"
+		>
+			<RecordTable
+				mode="none"
+				dense
+				ariaLabel="People with access"
+				columns={peopleColumns}
+				rows={rows}
+				emptyLabel={
+					rows.length > 0
+						? 'No one matches these filters.'
+						: 'No grants yet. Use Give someone access above, or invite someone to a package.'
+				}
+				dataControls={{
+					state: {
+						globalFilter: query.trim(),
+						columnFilters: [
+							...(kind ? [{ id: 'role', value: kind }] : []),
+							...(type ? [{ id: 'access', value: type }] : []),
+						],
+						sorting: [],
+						pagination: { pageIndex: page, pageSize: orgGrantsPageSize },
+					},
+					onStateChange: (patch) => {
+						if (patch.pagination) setPage(patch.pagination.pageIndex)
+					},
+				}}
+				toolbar={
+					<>
+						<RecordTableSearch
+							label="Search people"
+							placeholder="Search people or teams"
+							value={query}
+							onInput={(value) => {
+								setQuery(value)
+								setPage(0)
+							}}
+						/>
+						<RecordTableSelect
+							label="Filter by person"
+							value={kind}
+							onChange={(value) => {
+								setKind(value as '' | GrantSubjectKind)
+								setPage(0)
+							}}
+						>
+							{subjectKindFilters.map((option) => (
+								<option key={option.value} value={option.value}>
+									{option.label}
+								</option>
+							))}
+						</RecordTableSelect>
+						<RecordTableSelect
+							label="Filter by resource type"
+							value={type}
+							onChange={(value) => {
+								setType(value)
+								setPage(0)
+							}}
+						>
+							{resourceTypeFilters.map((option) => (
+								<option key={option.value} value={option.value}>
+									{option.label}
+								</option>
+							))}
+						</RecordTableSelect>
+						{filtered ? (
+							<button
+								type="button"
+								onClick={() => {
+									setQuery('')
+									setKind('')
+									setType('')
+									setPage(0)
+								}}
+							>
+								Clear filters
+							</button>
+						) : null}
+					</>
+				}
+			/>
+		</AccountManagementPanel>
+	)
+}
+
 function OrgGrantsContent({
 	data,
 	queryKey,
@@ -138,6 +432,9 @@ function OrgGrantsContent({
 		text: string
 	} | null>(null)
 	const mutation = useOrgPeopleMutation(queryKey, revokeOrganizationGrant)
+	const sharedGrants = data.grants.filter(
+		(grant) => grant.subjectType !== 'user',
+	)
 	return (
 		<AccountManagementShell
 			layout="list"
@@ -157,15 +454,16 @@ function OrgGrantsContent({
 			{data?.ok && data.people.length > 0 ? (
 				<GiveAccessPicker orgSlug={data.org.slug} people={data.people} />
 			) : null}
+			{data?.ok ? <OrgGrantsPeopleTable data={data} /> : null}
 			{data?.ok ? (
 				<AccountManagementPanel
-					title="Access grants"
-					ariaLabel="Organization grants"
+					title="Team and organization-wide grants"
+					ariaLabel="Team and organization-wide grants"
 				>
-					{data.grants.length === 0 ? (
+					{sharedGrants.length === 0 ? (
 						<p css={mutedCopyCss} data-testid="org-grants-empty">
-							No grants yet. Use Give someone access above, or invite someone to
-							a package. Outside collaborators appear on{' '}
+							No team or organization-wide grants. Outside collaborators appear
+							on{' '}
 							<SiteLink href={orgCollaboratorsPath(data.org.slug)}>
 								Collaborators
 							</SiteLink>
@@ -181,7 +479,7 @@ function OrgGrantsContent({
 						</p>
 					) : (
 						<ul css={listCss} data-testid="org-grants">
-							{data.grants.map((grant) => {
+							{sharedGrants.map((grant) => {
 								const confirmed = armed === grant.id
 								return (
 									<li
@@ -202,21 +500,7 @@ function OrgGrantsContent({
 												)}
 											</span>
 											<span css={rowTextCss}>
-												<span css={rowNameCss}>
-													{grant.subjectType === 'user' ? (
-														<SiteLink
-															href={orgGrantAccessPath(
-																data.org.slug,
-																grant.subjectId,
-															)}
-															data-testid="org-grant-subject"
-														>
-															{grantSummary(grant)}
-														</SiteLink>
-													) : (
-														grantSummary(grant)
-													)}
-												</span>
+												<span css={rowNameCss}>{grantSummary(grant)}</span>
 												<span css={rowDetailCss}>{grantDetail(grant)}</span>
 											</span>
 											{data.canManage && grant.canRevoke ? (

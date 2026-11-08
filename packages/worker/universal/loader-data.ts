@@ -16,6 +16,7 @@ import type {
 } from '#universal/community-public-types.ts'
 import type { McpOAuthClientMode } from '@kody-internal/shared/mcp-servers.ts'
 import type { GrantPreset } from '@kody-internal/shared/grant-presets.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import type { PermissionString, RoleName } from '#universal/permissions.ts'
 import type { AdminFeatureFlag } from '#universal/feature-flags/types.ts'
 import type { OnboardingChecklistItemId } from '#universal/onboarding-checklist-types.ts'
@@ -1627,6 +1628,12 @@ export type OrgGrantsLoaderData = {
 	} | null
 	/** Non-owner members and outside collaborators, when the viewer can manage. */
 	people: Array<OrgGrantPersonView>
+	/**
+	 * One entry per person on the grouped Grants list: every member and
+	 * outside collaborator when the viewer can manage, otherwise only people
+	 * who hold a direct grant. `role` is null for outside collaborators.
+	 */
+	subjects: Array<OrgGrantSubjectView>
 }
 
 /** A grant that reaches one person: made to them, a team they are on, or everyone. */
@@ -1677,6 +1684,10 @@ export type OrgGrantPersonView = {
 	userId: string
 	label: string
 	kind: 'member' | 'collaborator'
+}
+
+export type OrgGrantSubjectView = OrgGrantPersonView & {
+	role: OrgRole | null
 }
 
 export type OrgWideReadSubjectView = {
