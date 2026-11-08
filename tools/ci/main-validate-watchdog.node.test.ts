@@ -9,7 +9,11 @@ import {
 const committedAt = '2026-11-06T10:38:53Z'
 const committedAtMs = Date.parse(committedAt)
 
-type FakeRun = { event: string; head_branch: string }
+type FakeRun = {
+	event: string
+	head_branch: string
+	actor?: { login: string }
+}
 
 function fakeGh(runs: Array<FakeRun>, headAfterCheck = 'abc123') {
 	const calls: Array<Array<string>> = []
@@ -91,11 +95,20 @@ test('the dispatch targets main with caching on', () => {
 	expect(present.calls.some((args) => args[0] === 'workflow')).toBe(false)
 })
 
-test('a merge-queue or off-main run on the same SHA does not count', () => {
+test('a merge-queue, off-main, or human-dispatched run on the same SHA does not count', () => {
 	const now = committedAtMs + missingPushGraceMs * 2
 	const queued = fakeGh([
 		{ event: 'merge_group', head_branch: 'gh-readonly-queue/main/pr-1' },
-		{ event: 'workflow_dispatch', head_branch: 'feature' },
+		{
+			event: 'workflow_dispatch',
+			head_branch: 'feature',
+			actor: { login: 'github-actions[bot]' },
+		},
+		{
+			event: 'workflow_dispatch',
+			head_branch: 'main',
+			actor: { login: 'a-human' },
+		},
 	])
 	expect(
 		runMainValidateWatchdog({ repo: 'o/r', gh: queued.gh, now }).decision
@@ -114,4 +127,17 @@ test('skips the dispatch when main moved while checking', () => {
 	})
 	expect(decision.action).toBe('none')
 	expect(moved.calls.some((args) => args[0] === 'workflow')).toBe(false)
+})
+
+test('a watchdog dispatch on main counts, even after a human re-run', () => {
+	const now = committedAtMs + missingPushGraceMs * 2
+	const recovered = fakeGh([
+		{
+			event: 'workflow_dispatch',
+			head_branch: 'main',
+			actor: { login: 'github-actions[bot]' },
+		},
+	])
+	runMainValidateWatchdog({ repo: 'o/r', gh: recovered.gh, now })
+	expect(recovered.calls.some((args) => args[0] === 'workflow')).toBe(false)
 })

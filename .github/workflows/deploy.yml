@@ -53,7 +53,8 @@ permissions:
 # the replacement targets a newer commit, so dropping the older one only skips
 # an intermediate deploy (sha-guard never moves production backwards).
 # A Validate on main dispatched by the main Validate watchdog (GITHUB_TOKEN,
-# so `github-actions[bot]`) counts like a push run; it only fires when GitHub
+# so `github-actions[bot]`; `actor` keeps it across re-runs) counts like a
+# push run; it only fires when GitHub
 # dropped the push event (#4929). Manual dispatches (benchmarks) never deploy,
 # so they cannot replace a newer pending deploy.
 # Runs that sha-guard would skip (failed, cancelled, or PR/merge-group
@@ -66,14 +67,13 @@ concurrency:
     'success' && github.event.workflow_run.head_branch == 'main' &&
     (github.event.workflow_run.event == 'push' ||
     (github.event.workflow_run.event == 'workflow_dispatch' &&
-    github.event.workflow_run.triggering_actor.login ==
-    'github-actions[bot]')))) && 'deploy-production' || ((github.event_name ==
-    'workflow_dispatch' && github.ref_name == 'taren/tanstack-start-migration'
-    && (inputs.mode == 'prepare-start-opt-in' || inputs.mode ==
-    'deploy-start-opt-in' || inputs.mode == 'activate-start-opt-in' ||
-    inputs.mode == 'verify-start-opt-in' || inputs.mode ==
-    'rollback-start-opt-in')) && 'deploy-start-opt-in' ||
-    format('deploy-skipped-{0}', github.run_id)) }}
+    github.event.workflow_run.actor.login == 'github-actions[bot]')))) &&
+    'deploy-production' || ((github.event_name == 'workflow_dispatch' &&
+    github.ref_name == 'taren/tanstack-start-migration' && (inputs.mode ==
+    'prepare-start-opt-in' || inputs.mode == 'deploy-start-opt-in' ||
+    inputs.mode == 'activate-start-opt-in' || inputs.mode ==
+    'verify-start-opt-in' || inputs.mode == 'rollback-start-opt-in')) &&
+    'deploy-start-opt-in' || format('deploy-skipped-{0}', github.run_id)) }}
   cancel-in-progress: false
 
 jobs:
@@ -416,7 +416,7 @@ jobs:
         github.event.workflow_run.head_branch == 'main' &&
         (github.event.workflow_run.event == 'push' ||
           (github.event.workflow_run.event == 'workflow_dispatch' &&
-            github.event.workflow_run.triggering_actor.login ==
+            github.event.workflow_run.actor.login ==
               'github-actions[bot]'))) ||
       (github.event_name == 'workflow_dispatch' && github.ref_name == 'main' &&
       inputs.mode == 'production')

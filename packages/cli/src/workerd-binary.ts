@@ -225,6 +225,11 @@ async function fetchAndWrite(input: {
 			callback(null, chunk)
 		},
 	})
+	const gzipFile = createWriteStream(gzipPath)
+	let writeFailed = false
+	gzipFile.once('error', () => {
+		writeFailed = true
+	})
 	try {
 		try {
 			await pipeline(
@@ -232,12 +237,13 @@ async function fetchAndWrite(input: {
 					response.body as Parameters<typeof Readable.fromWeb>[0],
 				),
 				hashing,
-				createWriteStream(gzipPath),
+				gzipFile,
 				{ signal: input.signal },
 			)
 		} catch (error) {
 			if (input.signal.aborted) throw input.signal.reason
-			if (isLocalWriteError(error)) throw error
+			// Disk full, read-only cache, and the like: another download won't help.
+			if (writeFailed) throw error
 			throw new WorkerdDownloadNetworkError(
 				`Downloading workerd from ${input.url} broke off (${describeNetworkError(error)}).`,
 			)
@@ -266,26 +272,4 @@ async function fetchAndWrite(input: {
 		await rm(gzipPath, { force: true })
 		await rm(partialPath, { force: true })
 	}
-}
-
-const localWriteErrorCodes = new Set([
-	'EACCES',
-	'EDQUOT',
-	'EISDIR',
-	'EMFILE',
-	'ENFILE',
-	'ENOENT',
-	'ENOSPC',
-	'ENOTDIR',
-	'EPERM',
-	'EROFS',
-])
-
-function isLocalWriteError(error: unknown) {
-	const code = (error as { code?: unknown } | null)?.code
-	return (
-		typeof code === 'string' &&
-		localWriteErrorCodes.has(code) &&
-		typeof (error as { syscall?: unknown }).syscall === 'string'
-	)
 }

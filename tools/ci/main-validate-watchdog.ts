@@ -17,6 +17,7 @@ import { isExecutedDirectly } from '../node-runtime.ts'
 
 export const validateWorkflowFile = 'validate.yml'
 export const missingPushGraceMs = 10 * 60 * 1000
+export const watchdogDispatchActor = 'github-actions[bot]'
 
 export type Gh = (args: Array<string>) => string
 
@@ -69,7 +70,7 @@ export function runMainValidateWatchdog(input: {
 			'api',
 			`repos/${input.repo}/actions/workflows/${validateWorkflowFile}/runs?head_sha=${head.sha}&branch=main&per_page=100`,
 		]),
-	) as { workflow_runs: Array<{ event: string; head_branch: string | null }> }
+	) as { workflow_runs: Array<ValidateRun> }
 	const decision = decideMainValidateRecovery({
 		headSha: head.sha,
 		committedAt: head.commit.committer.date,
@@ -101,14 +102,23 @@ export function runMainValidateWatchdog(input: {
 	return { headSha: head.sha, decision }
 }
 
-/** Only these Validate runs can start a production deploy (deploy.yml). */
-function isDeployEligibleRun(run: {
+type ValidateRun = {
 	event: string
 	head_branch: string | null
-}) {
+	actor?: { login?: string } | null
+}
+
+/**
+ * Only these Validate runs can start a production deploy (deploy.yml): main
+ * pushes and this watchdog's own dispatches. `actor` is the original
+ * dispatcher and survives re-runs.
+ */
+export function isDeployEligibleRun(run: ValidateRun) {
+	if (run.head_branch !== 'main') return false
+	if (run.event === 'push') return true
 	return (
-		run.head_branch === 'main' &&
-		(run.event === 'push' || run.event === 'workflow_dispatch')
+		run.event === 'workflow_dispatch' &&
+		run.actor?.login === watchdogDispatchActor
 	)
 }
 
