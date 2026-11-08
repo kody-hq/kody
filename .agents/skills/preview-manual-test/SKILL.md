@@ -45,6 +45,14 @@ permission fixes are verified on the preview; see
   `tools/preview-seed-flag-allowlist.ts`) before 🔎 Preview seeds; then open the
   page in the signed-in browser. An HTML check alone does not prove the flagged
   interaction.
+- Previews leave `PACKAGE_APP_BASE_URL` unset and serve package apps inline, so
+  package-app host behavior (per-host subdomains, cookie `Domain` scrub, the
+  cross-site handoff) cannot be checked there. Verify it locally with
+  `PACKAGE_APP_BASE_URL=http://packages.localhost:<port>` in
+  `packages/worker/.env`, or in the `.dev.vars` beside it if that file exists,
+  since Wrangler then ignores `.env` (see
+  [security](../../../docs/contributing/security.md#hosted-package-app-origin-isolation))
+  plus Workers tests.
 - `/mcp` 401 and `/admin` 403 are expected. Admin-gated states (suspension,
   outbound-email pause, account deletion) need the local admin seed plus Workers
   or unit tests.

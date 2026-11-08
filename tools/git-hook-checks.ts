@@ -9,6 +9,7 @@ import {
 } from 'node:fs'
 import { dirname, join, resolve as resolvePath } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { stripVTControlCharacters } from 'node:util'
 import {
 	envWithNodeHeapFloor,
 	isExecutedDirectly,
@@ -993,48 +994,167 @@ export function hookCommandLabel(script: string) {
 		: `npm run ${script}`
 }
 
+const vitestWorkerCrashPattern =
+	/Worker exited unexpectedly|Timeout waiting for worker to respond/
+const vitestFailedSummaryPattern = /^\s*(?:Test Files|Tests)\s+.*\b\d+ failed\b/
+const vitestUnhandledHeadingPattern = /Unhandled (?:Error|Rejection)(?!s)/
+const vitestSectionRulePattern = /^\s*\u23af{3,}/
+
+/**
+ * Streams Vitest output line by line so a long report cannot evict the failed
+ * summary. Each `Unhandled Error` section must be the worker crash itself;
+ * any other unhandled error blocks the retry.
+ */
+export function createVitestCrashScanner() {
+	let carry = ''
+	let sawCrash = false
+	let sawFailure = false
+	let section: { hasCrash: boolean } | null = null
+	const closeSection = () => {
+		if (section && !section.hasCrash) sawFailure = true
+		section = null
+	}
+	const scanLine = (line: string) => {
+		const plain = stripVTControlCharacters(line)
+		if (vitestFailedSummaryPattern.test(plain)) sawFailure = true
+		const isCrash = vitestWorkerCrashPattern.test(plain)
+		if (isCrash) sawCrash = true
+		if (vitestUnhandledHeadingPattern.test(plain)) {
+			closeSection()
+			section = { hasCrash: false }
+		} else if (section && vitestSectionRulePattern.test(plain)) {
+			closeSection()
+		}
+		if (section && isCrash) section.hasCrash = true
+	}
+	return {
+		write(chunk: string) {
+			const lines = (carry + chunk).split('\n')
+			carry = lines.pop() ?? ''
+			for (const line of lines) scanLine(line)
+		},
+		finish() {
+			if (carry) {
+				scanLine(carry)
+				carry = ''
+			}
+			closeSection()
+			return { sawCrash, sawFailure }
+		},
+	}
+}
+
+/**
+ * A Vitest pool worker that times out while terminating crashes the run with
+ * no failed test (#4809). Real test failures still print a failed summary.
+ */
+export function isVitestWorkerCrashWithoutFailures(output: string) {
+	const scanner = createVitestCrashScanner()
+	scanner.write(output)
+	const { sawCrash, sawFailure } = scanner.finish()
+	return sawCrash && !sawFailure
+}
+
+export async function runVitestWithWorkerCrashRetry(input: {
+	label: string
+	runOnce: () => Promise<{ code: number; workerCrashWithoutFailures: boolean }>
+	log?: (message: string) => void
+}) {
+	const log = input.log ?? console.log
+	const first = await input.runOnce()
+	if (first.code === 0 || !first.workerCrashWithoutFailures) {
+		return first.code
+	}
+	log(
+		`hook: ${input.label} crashed on a Vitest worker exit with no failed test; retrying once`,
+	)
+	return (await input.runOnce()).code
+}
+
+function runVitestRelatedOnce(
+	project: string,
+	paths: ReadonlyArray<string>,
+	cwd?: string,
+): Promise<{ code: number; workerCrashWithoutFailures: boolean }> {
+	return new Promise((resolve) => {
+		const child = spawn(
+			process.execPath,
+			[
+				fileURLToPath(
+					new URL('../node_modules/vitest/vitest.mjs', import.meta.url),
+				),
+				'related',
+				'--run',
+				'--project',
+				project,
+				'--passWithNoTests',
+				...paths.map((path) => resolvePath(path)),
+			],
+			{
+				stdio: ['inherit', 'pipe', 'pipe'],
+				env: {
+					...gitHookScriptEnv(),
+					CI: '1',
+					...(process.stdout.isTTY ? { FORCE_COLOR: '1' } : {}),
+				},
+				cwd,
+			},
+		)
+		const scanners = [createVitestCrashScanner(), createVitestCrashScanner()]
+		const tee =
+			(target: NodeJS.WriteStream, scanner: (typeof scanners)[number]) =>
+			(chunk: Buffer) => {
+				target.write(chunk)
+				scanner.write(chunk.toString('utf8'))
+			}
+		const result = (code: number) => {
+			const states = scanners.map((scanner) => scanner.finish())
+			return {
+				code,
+				workerCrashWithoutFailures:
+					states.some((state) => state.sawCrash) &&
+					!states.some((state) => state.sawFailure),
+			}
+		}
+		child.stdout?.on('data', tee(process.stdout, scanners[0]!))
+		child.stderr?.on('data', tee(process.stderr, scanners[1]!))
+		child.once('error', (error) => {
+			console.error(error.message)
+			resolve(result(1))
+		})
+		child.once('close', (code) => {
+			resolve(result(code ?? 1))
+		})
+	})
+}
+
 function defaultRunNpmScript(
 	script: string,
 	cwd?: string,
 	paths: ReadonlyArray<string> = [],
 ): Promise<number> {
+	if (script.startsWith('vitest related --project ')) {
+		const project = script.slice('vitest related --project '.length)
+		return runVitestWithWorkerCrashRetry({
+			label: script,
+			runOnce: () => runVitestRelatedOnce(project, paths, cwd),
+		})
+	}
 	return new Promise((resolve) => {
-		// Repo paths go straight to node, never through a shell, so spaces and
-		// metacharacters in paths stay intact on Windows.
-		const child = script.startsWith('vitest related --project ')
-			? spawn(
-					process.execPath,
-					[
-						fileURLToPath(
-							new URL('../node_modules/vitest/vitest.mjs', import.meta.url),
-						),
-						'related',
-						'--run',
-						'--project',
-						script.slice('vitest related --project '.length),
-						'--passWithNoTests',
-						...paths.map((path) => resolvePath(path)),
-					],
-					{
-						stdio: 'inherit',
-						env: { ...gitHookScriptEnv(), CI: '1' },
-						cwd,
-					},
-				)
-			: script.startsWith('node ')
-				? spawn(process.execPath, script.slice('node '.length).split(' '), {
-						stdio: 'inherit',
-						env: gitHookScriptEnv(),
-						cwd,
-					})
-				: spawn(resolveNpmCommand(), ['run', script], {
-						stdio: 'inherit',
-						env: gitHookScriptEnv(),
-						cwd,
-						// Node refuses to spawn `npm.cmd` without a shell on Windows; the
-						// only arg is a fixed script name.
-						shell: process.platform === 'win32',
-					})
+		const child = script.startsWith('node ')
+			? spawn(process.execPath, script.slice('node '.length).split(' '), {
+					stdio: 'inherit',
+					env: gitHookScriptEnv(),
+					cwd,
+				})
+			: spawn(resolveNpmCommand(), ['run', script], {
+					stdio: 'inherit',
+					env: gitHookScriptEnv(),
+					cwd,
+					// Node refuses to spawn `npm.cmd` without a shell on Windows; the
+					// only arg is a fixed script name.
+					shell: process.platform === 'win32',
+				})
 		child.once('error', (error) => {
 			console.error(error.message)
 			resolve(1)
