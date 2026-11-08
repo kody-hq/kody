@@ -1,4 +1,5 @@
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { showBuildOrigin } from '#worker/publish-offload/policy.ts'
 import {
 	resolveUploadedPublishBuildForPublish,
@@ -171,6 +172,19 @@ const publishBuildOriginSchema = z
 		"Where this version was built: Kody cloud, the publisher's CLI (--build local), or one of their execution contexts (--build context).",
 	)
 
+/**
+ * The person publishing. Durable re-entry runs as the package-owning org
+ * (`resolveBackgroundMcpUser(payload.userId)`), so a team package's caller
+ * user is the org there; the person who made the build is the lineage actor.
+ */
+export function publishRequesterPersonId(
+	callerContext: Pick<Partial<McpCallerContext>, 'user' | 'request'>,
+) {
+	return (
+		callerContext.request?.actor?.userId ?? requireMcpUser(callerContext).userId
+	)
+}
+
 export const durablePublishWorkflowCode = `import { kody } from 'kody:runtime'
 const publishedStatuses = ${JSON.stringify(publishedExternalPushStatuses)}
 export default async function main(params = {}) {
@@ -189,6 +203,17 @@ export default async function main(params = {}) {
 			'packagePublishExternalPush returned ' + String(status) + (detail ? ': ' + detail : ''),
 	)
 }`
+
+/** Memory/CPU limit errors {@link throwIfExternalPublishResourceLimit} turns terminal. */
+function isExternalPublishResourceLimitError(error: unknown) {
+	if (error instanceof McpCallerError) return false
+	if (isDurableObjectIsolateResourceLimitResetError(error)) return true
+	const message = getErrorMessage(error)
+	return (
+		isExternalPublishSnapshotTooLargeMessage(message) ||
+		isPublishComputeLimitMessage(message)
+	)
+}
 
 function throwIfExternalPublishResourceLimit(
 	error: unknown,
@@ -1146,6 +1171,22 @@ async function runExternalPublishAttempt(input: {
 									rebuiltTargetCount: rebuild.rebuiltTargetCount,
 								}
 							} catch (error) {
+								if (isExternalPublishResourceLimitError(error)) {
+									// Terminal: settle like any failed rebuild so the pointer
+									// and job pins stay on the last good commit.
+									await settleFailedPublishRebuild({
+										env: input.env,
+										baseUrl: input.baseUrl,
+										ownerUserId: input.ownerUserId,
+										packageId: input.packageId,
+										sourceId: input.source.id,
+										failedCommit: publishedCommit,
+										restoreCommit: tipMoved
+											? input.baselinePublishedCommit
+											: null,
+										sentryScope: externalPushRestoreSentryScope,
+									})
+								}
 								throwIfExternalPublishResourceLimit(error, 'rebuild')
 								if (isTransientDurableObjectResetError(error)) {
 									throw error
@@ -1388,6 +1429,20 @@ async function runExternalPublishAttempt(input: {
 							})
 							return { ok: true as const }
 						} catch (error) {
+							if (isExternalPublishResourceLimitError(error)) {
+								// Terminal: settle like any failed rebuild so the pointer and
+								// job pins go back to the last good commit.
+								await settleFailedPublishRebuild({
+									env: input.env,
+									baseUrl: input.baseUrl,
+									ownerUserId: input.ownerUserId,
+									packageId: input.packageId,
+									sourceId: input.source.id,
+									failedCommit: result.published_commit,
+									restoreCommit: input.baselinePublishedCommit,
+									sentryScope: externalPushRestoreSentryScope,
+								})
+							}
 							throwIfExternalPublishResourceLimit(error, 'rebuild')
 							if (isTransientDurableObjectResetError(error)) {
 								throw error
@@ -1693,7 +1748,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 							packageId,
 							sourceId: source.id,
 							commit: newCommit,
-							requesterUserId: user.userId,
+							requesterUserId: publishRequesterPersonId(ctx.callerContext),
 							orgId: requireMcpRequest(ctx.callerContext).org.id,
 						})
 					: null,

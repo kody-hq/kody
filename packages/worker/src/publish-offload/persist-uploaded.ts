@@ -4,7 +4,11 @@ import {
 	type PublishedPackageArtifactBuilders,
 } from '#worker/package-runtime/published-bundle-artifact-persist.ts'
 import { mergePublishedArtifactDependencies } from '#worker/package-runtime/module-graph-import-rewriting.ts'
-import { resolveKodyDependenciesForEntryPoint } from '#worker/package-runtime/module-graph-workspace.ts'
+import {
+	type LoadedDependencyPackage,
+	resolveKodyDependenciesForEntryPoint,
+} from '#worker/package-runtime/module-graph-workspace.ts'
+import type { ModuleImportNodesCache } from '#worker/package-runtime/import-specifiers.ts'
 import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import type { EntitySourceRow } from '#worker/repo/types.ts'
 import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
@@ -205,6 +209,10 @@ export async function persistUploadedPublishBuild(input: {
 			PublishedPackageArtifactBuildTarget,
 			Awaited<ReturnType<PublishedPackageArtifactBuilders['buildModuleBundle']>>
 		>()
+		// One parse per module and one load per Kody dependency for the whole
+		// build, instead of once per target (about 100 targets on big packages).
+		const importNodesCache: ModuleImportNodesCache = new Map()
+		const loadedPackages = new Map<string, LoadedDependencyPackage>()
 		for (const { target, uploaded } of matched) {
 			const dependencies =
 				target.bundleKind === 'app-client'
@@ -215,6 +223,8 @@ export async function persistUploadedPublishBuild(input: {
 							userId: input.userId,
 							sourceFiles: input.sourceFiles,
 							entryPoint: target.entryPoint,
+							importNodesCache,
+							loadedPackages,
 						})
 			const linkedImports =
 				target.bundleKind === 'app-client'
@@ -222,6 +232,7 @@ export async function persistUploadedPublishBuild(input: {
 					: collectLinkedPackageImports({
 							sourceFiles: input.sourceFiles,
 							entryPoint: target.entryPoint,
+							importNodesCache,
 						})
 			const modules = await readTargetModules({
 				bucket,

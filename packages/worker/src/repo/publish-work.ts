@@ -812,12 +812,14 @@ export function createIsolatedPublishWorkRunner(
 	const kv = (env as (Env & { BUNDLE_ARTIFACTS_KV?: KVNamespace }) | undefined)
 		?.BUNDLE_ARTIFACTS_KV
 	if (!namespace || !kv) return null
+	const freshStubId = (userId: string, label: string) =>
+		namespace.idFromName(
+			`isolated-publish-${label}-${userId}-${crypto.randomUUID()}`,
+		)
+	const stubFor = (id: DurableObjectId) =>
+		namespace.get(id) as unknown as PublishWorkStub
 	const freshStub = (userId: string, label: string) =>
-		namespace.get(
-			namespace.idFromName(
-				`isolated-publish-${label}-${userId}-${crypto.randomUUID()}`,
-			),
-		) as unknown as PublishWorkStub
+		stubFor(freshStubId(userId, label))
 	return {
 		isolated: true,
 		async stage(input) {
@@ -828,7 +830,8 @@ export function createIsolatedPublishWorkRunner(
 			})
 		},
 		async run(request) {
-			const stub = freshStub(request.userId, request.op)
+			const stubId = freshStubId(request.userId, request.op)
+			const stub = stubFor(stubId)
 			try {
 				return (await stub.runIsolatedPublishWork(
 					request,
@@ -837,8 +840,10 @@ export function createIsolatedPublishWorkRunner(
 				if (!isResourceLimitReset(error)) throw error
 				// Nothing recorded: the reset came before the step's own first
 				// marker (loading the staged tree, for checks).
+				// A reset stub stays broken; a new stub for the same id reaches the
+				// restarted instance and the step it recorded.
 				const step =
-					(await readLastCheckStep(stub)) ??
+					(await readLastCheckStep(stubFor(stubId))) ??
 					publishWorkOpSteps[request.op] ??
 					'staging'
 				const sizeHints = await stagedPublishSizeHints({

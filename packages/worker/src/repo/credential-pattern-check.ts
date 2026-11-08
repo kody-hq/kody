@@ -1,3 +1,4 @@
+import type { SecretPlaceholderRequestPlacementHit } from '#worker/credentials/secret-placeholder-request-placement.ts'
 import type { ResolvedSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
 import {
 	detectLegacyCredentialPatternsCodemod,
@@ -234,6 +235,10 @@ export type CredentialPatternCheckResult = {
 	/** Manifest may gain auto-written stamp keys (never overwrites descriptions). */
 	sourceFiles: Record<string, string>
 	stampKeys: Array<string>
+	/** Set by the isolated scan, which also runs the request-placement scan. */
+	requestPlacementHits?: Array<SecretPlaceholderRequestPlacementHit>
+	/** Set by the isolated scan, which also runs the fetch-body scan. */
+	fetchBodyHits?: Array<{ path: string; line: number }>
 }
 
 /**

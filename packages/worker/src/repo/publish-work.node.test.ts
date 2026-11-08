@@ -367,3 +367,58 @@ test('a staged step records the staging step before it loads the tree', async ()
 	).rejects.toThrow(/staging data expired or is missing/)
 	expect(steps).toEqual(['staging'])
 })
+
+test('a checks reset reads the recorded step through a new stub, not the broken one', async () => {
+	const kv = createFakeKv()
+	const stubsById = new Map<string, number>()
+	const namespace = {
+		idFromName: (name: string) => ({ name }),
+		get: (id: { name: string }) => {
+			const seen = stubsById.get(id.name) ?? 0
+			stubsById.set(id.name, seen + 1)
+			const broken = seen === 0
+			return {
+				runIsolatedPublishWork: async () => {
+					throw new Error(
+						'Durable Object exceeded its CPU time limit and was reset.',
+					)
+				},
+				// A reset stub stays broken; only a new stub reaches the restarted
+				// instance and the step it recorded before the reset.
+				takeLastCheckStep: async () => {
+					if (broken) throw new Error('This stub is broken.')
+					return 'credentials'
+				},
+			}
+		},
+	}
+	const runner = createIsolatedPublishWorkRunner({
+		REPO_SESSION: namespace,
+		BUNDLE_ARTIFACTS_KV: kv,
+	} as unknown as Env)
+	const stagingKey = await runner!.stage({
+		userId,
+		tree: createPublishWorkTree({
+			files: { 'package.json': '{}' },
+			sourceRoot: '/',
+		}),
+	})
+	const result = (await runner!.run({
+		op: 'checks',
+		stagingKey,
+		userId,
+		input: {
+			mode: 'authoring',
+			manifestPath: 'package.json',
+			sourceRoot: '/',
+			baseUrl: 'https://kody.test',
+		},
+	} as never)) as {
+		ok: boolean
+		results: Array<{ kind: string; message: string }>
+	}
+	expect(result.ok).toBe(false)
+	expect(result.results[0]?.kind).toBe('credentials')
+	expect(result.results[0]?.message).toContain('credential stamp scan')
+	expect(result.results[0]?.message).not.toContain('staging the package files')
+})

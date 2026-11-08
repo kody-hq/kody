@@ -540,6 +540,25 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 		}),
 	)
 
+	// A rebuild that hits the isolate CPU limit is terminal too: the publish
+	// stops, and the pointer and job pins still go back to the last good commit.
+	setupDefaultMocks({ publish: publishedResult(), targets: [moduleTarget] })
+	mockModule.rebuildPublishedPackageArtifact.mockRejectedValueOnce(
+		new Error('Durable Object exceeded its CPU time limit and was reset.'),
+	)
+	await expect(publish()).rejects.toThrow(/memory or CPU limit/)
+	expect(mockModule.revertEntitySourcePublishedCommit).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({
+			id: 'source-1',
+			failedCommit: 'commit-new',
+			restoreCommit: 'commit-old',
+		}),
+	)
+	expect(mockModule.refreshSavedPackageProjection).toHaveBeenCalledWith(
+		expect.objectContaining({ sourceId: 'source-1', rebuildArtifacts: false }),
+	)
+
 	setupDefaultMocks({
 		head: 'commit-old',
 		publish: alreadyPublishedOld,
@@ -981,4 +1000,21 @@ test('durable publish code fails the run for any outcome that did not publish', 
 	).rejects.toThrow(
 		'kody-terminal: packagePublishExternalPush returned not_fast_forward: not a descendant',
 	)
+})
+
+test('an uploaded build is checked against the person who made it, not the org a durable re-entry runs as', async () => {
+	const { publishRequesterPersonId } =
+		await import('./publish-external-push.ts')
+	expect(
+		publishRequesterPersonId({
+			user: { userId: 'org-kody' },
+			request: { actor: { userId: 'person-kent' } },
+		} as never),
+	).toBe('person-kent')
+	expect(
+		publishRequesterPersonId({
+			user: { userId: 'person-solo' },
+			request: null,
+		} as never),
+	).toBe('person-solo')
 })

@@ -80,7 +80,9 @@ import {
 	runPackageTypecheckLanguageService,
 	runRepoSourceWalkChecks,
 	validatePackageBundles,
+	findFetchBodySecretResolutionHits,
 } from './checks.ts'
+import { findSecretPlaceholderRequestPlacements } from '#worker/credentials/secret-placeholder-request-placement.ts'
 import { createRepoChecksError } from './repo-checks-failed-error.ts'
 import { confirmRemoteRefAtCommit } from './confirm-remote-ref.ts'
 import { readRemoteRefNotConfirmedError } from './remote-ref-not-confirmed-error.ts'
@@ -3120,11 +3122,23 @@ class RepoSessionBase extends DurableObject<Env> {
 			for (const [path, content] of Object.entries(check.sourceFiles)) {
 				if (sourceFiles[path] !== content) changedFiles[path] = content
 			}
+			// Same isolate as the stamp scan, so the checks run never parses
+			// the whole tree again for these.
 			return {
 				ok: check.ok,
 				message: check.message,
 				changedFiles,
 				stampKeys: check.stampKeys,
+				...(check.ok
+					? {
+							requestPlacementHits: findSecretPlaceholderRequestPlacements(
+								check.sourceFiles,
+							),
+							fetchBodyHits: findFetchBodySecretResolutionHits(
+								check.sourceFiles,
+							),
+						}
+					: {}),
 			}
 		}
 		const exhaustive: never = input

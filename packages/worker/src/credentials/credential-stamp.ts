@@ -44,7 +44,10 @@ import {
 	type PackageCredentialSlotKind,
 	type PackageCredentialSlot,
 } from '#worker/package-registry/types.ts'
-import { collectDynamicImportExpressionNodes } from '#worker/package-runtime/import-specifiers.ts'
+import {
+	collectDynamicImportExpressionNodes,
+	type ModuleImportNodesCache,
+} from '#worker/package-runtime/import-specifiers.ts'
 import { collectReachableSourceFilePaths } from '#worker/package-runtime/module-graph-workspace.ts'
 import { collectPublishedPackageArtifactTargets } from '#worker/package-runtime/package-artifact-targets.ts'
 import {
@@ -751,11 +754,14 @@ export function collectServerRuntimeModulePaths(
 	// directory prefix: a server import of an asset module must still follow
 	// the server_eval rule and stay stamp-scanned via listScannableModulePaths.
 	const serverReachable = new Set<string>()
+	// About 100 entries share most modules; parse each module once.
+	const importNodesCache: ModuleImportNodesCache = new Map()
 	for (const entry of serverEntries) {
 		for (const path of collectReachableSourceFilePaths({
 			files,
 			entryPoint: entry,
 			rootPackage,
+			importNodesCache,
 		})) {
 			if (scannableModuleFilePattern.test(path)) {
 				serverReachable.add(path)
