@@ -82,8 +82,6 @@ function __kodyCall(path, args) {
 const __kodyGatewayNullBodyStatuses = new Set([101, 103, 204, 205, 304]);
 const __kodySecretResolutionHeader = 'x-kody-secret-resolution';
 const __kodyGatewayErrorHeader = 'x-kody-gateway-error';
-// Older origins send no error marker; their error envelopes are small.
-const __kodyLegacyGatewayErrorMaxBytes = 64 * 1024;
 
 // Thrown when Kody or the bridge fails the hop. HTTP statuses from the origin
 // come back as Responses instead. mayHaveReachedOrigin is false only when
@@ -223,7 +221,6 @@ async function gatewayFetchStream(input) {
 			true,
 		);
 	}
-	const cacheControl = response.headers.get('cache-control') ?? '';
 	const contentTypeHeader = response.headers.get('content-type') ?? '';
 	const gatewayErrorCode = response.headers.get(__kodyGatewayErrorHeader);
 	if (gatewayErrorCode) {
@@ -237,30 +234,6 @@ async function gatewayFetchStream(input) {
 			false,
 			413,
 		);
-	}
-	const declaredLength = Number(response.headers.get('content-length') ?? 'NaN');
-	if (
-		response.status >= 400 &&
-		cacheControl.includes('no-store') &&
-		contentTypeHeader.includes('application/json') &&
-		declaredLength <= __kodyLegacyGatewayErrorMaxBytes
-	) {
-		const text = await response.clone().text();
-		let parsed = null;
-		try {
-			parsed = JSON.parse(text);
-		} catch {
-			// An upstream body, not a Kody error envelope.
-		}
-		if (
-			parsed != null &&
-			typeof parsed === 'object' &&
-			parsed.error != null &&
-			(typeof parsed.error === 'string' || typeof parsed.error?.code === 'string')
-		) {
-			await response.body?.cancel();
-			throw await __kodyGatewayErrorFromResponse(new Response(text, response), null);
-		}
 	}
 	if (__kodyGatewayNullBodyStatuses.has(response.status)) {
 		return new Response(null, {

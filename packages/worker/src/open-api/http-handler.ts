@@ -523,6 +523,11 @@ export async function handleOpenApiRequest(input: {
 		if (apiError.status >= 500 && !(error instanceof ApiError)) {
 			console.error('open-api-request-failed', url.pathname, error)
 		}
+		// Auth and routing failures on the streaming gateway hop are Kody's
+		// own errors too, so mark them like the handler's.
+		if (url.pathname === '/v1/capability-proxy/gateway-fetch') {
+			apiError.headers[gatewayFetchErrorHeaderName] = apiError.code
+		}
 		return apiErrorResponse(apiError)
 	}
 }

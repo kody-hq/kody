@@ -117,10 +117,9 @@ Open API JSON envelope `{ error: { code, message } }` with the usual codes
 and so on; see [Open API errors](../architecture/open-api.md#errors)),
 `Cache-Control: no-store`, and `X-Kody-Gateway-Error: <code>`. That header is
 how the host tells Kody's own error from an upstream JSON error with `no-store`;
-only a marked response (or a small unmarked envelope from an older origin)
-throws. The CLI bridge marks its own failures the same way and adds
-`mayHaveReachedOrigin` to the envelope. Package code gets a `KodyGatewayError`,
-never a successful `Response`, for these.
+only a marked response throws. The CLI bridge marks its own failures the same
+way and adds `mayHaveReachedOrigin` to the envelope. Package code gets a
+`KodyGatewayError`, never a successful `Response`, for these.
 
 Once origin has a status from upstream, the hop returns that status, those
 headers, and that body — including upstream 4xx/5xx — as the real `Response`.
