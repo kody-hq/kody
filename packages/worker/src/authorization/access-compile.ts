@@ -31,8 +31,18 @@ import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 const allOrgPermissions: ReadonlySet<OrgPermission> = new Set(orgPermissions)
 
+/**
+ * Admin holds every Owner permission except deleting the org. The Owner-only
+ * membership rules (no changing, removing, or promoting to Owner) live in the
+ * membership writes, since they depend on the target, not on a permission.
+ */
+const adminOrgPermissions: ReadonlySet<OrgPermission> = new Set(
+	orgPermissions.filter((permission) => permission !== 'org:delete'),
+)
+
 export const rolePresets: Record<OrgRole, ReadonlySet<OrgPermission>> = {
 	owner: allOrgPermissions,
+	admin: adminOrgPermissions,
 	member: new Set([
 		'org:read',
 		'member:read',
@@ -59,6 +69,8 @@ export type CompiledAccess = {
 	epoch: number
 	/** True when the actor is a live Owner of the org. */
 	isOwner: boolean
+	/** True when the actor is a live Admin: Owner authority without `org:delete`. */
+	isAdmin?: boolean
 	/** Org-level permissions from role + grants on the org resource. */
 	orgPermissions: ReadonlySet<OrgPermission>
 	/**
@@ -491,6 +503,18 @@ function compileFromRoleAndGrants(input: {
 	}
 }
 
+function adminCompiledAccess(orgId: OwnerId, epoch: number): CompiledAccess {
+	return {
+		orgId,
+		epoch,
+		isOwner: false,
+		isAdmin: true,
+		orgPermissions: adminOrgPermissions,
+		resourcePermissions: new Map(),
+		validUntil: null,
+	}
+}
+
 function noCompiledAccess(orgId: OwnerId): CompiledAccess {
 	return {
 		orgId,
@@ -517,9 +541,9 @@ function ownerCompiledAccess(orgId: OwnerId, epoch: number): CompiledAccess {
  * Compile what `request`'s actor may do in `request.org`. Results are cached
  * in access_cache by epoch.
  *
- * Owners hold every permission without reading grants or access_epoch (the
- * role alone decides). Member, Billing, and outside collaborator paths load
- * grants and require a real APP_DB. A request with no person holds nothing:
+ * Owners and Admins hold their role's permissions without reading grants or
+ * access_epoch (the role alone decides). Member, Billing, and outside
+ * collaborator paths load grants and require a real APP_DB. A request with no person holds nothing:
  * every run acts as a real person (a trigger as its enabler).
  */
 export async function compileAccessForRequest(input: {
@@ -550,6 +574,7 @@ export async function compileAccessForActor(input: {
 }): Promise<CompiledAccess> {
 	const { orgId, userId, role } = input
 	if (role === 'owner') return ownerCompiledAccess(orgId, 0)
+	if (role === 'admin') return adminCompiledAccess(orgId, 0)
 
 	// One HTTP request can derive many request contexts for the same person
 	// (a page checking several package permissions), so share the compile

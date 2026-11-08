@@ -169,7 +169,9 @@ function OrgGrantsContent({
 							<SiteLink href={orgCollaboratorsPath(data.org.slug)}>
 								Collaborators
 							</SiteLink>
-							{data.org.role === 'owner' || data.org.role === 'member' ? (
+							{data.org.role === 'owner' ||
+							data.org.role === 'admin' ||
+							data.org.role === 'member' ? (
 								<>
 									; team subjects are managed under{' '}
 									<SiteLink href={orgTeamsPath(data.org.slug)}>Teams</SiteLink>
@@ -279,7 +281,7 @@ function OrgGrantsContent({
 						orgSlug={data.org.slug}
 						subjects={data.orgWideRead.subjects}
 						queryKey={queryKey}
-						canEdit={data.org.role === 'owner'}
+						canEdit={data.org.role === 'owner' || data.org.role === 'admin'}
 					/>
 					<OrgWideAccessForm
 						kind="create"

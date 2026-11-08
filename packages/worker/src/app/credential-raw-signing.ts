@@ -88,12 +88,13 @@ async function canWrite(
 	}
 }
 
-/** The owner: an Owner of the org holding it, on a website session. */
+/** The owner: an Owner or Admin of the org holding it, on a website session. */
 function isWebsiteOwner(request: RequestContext) {
+	const role = request.membership?.role
 	return (
 		request.credential.kind === 'session' &&
 		request.actor !== null &&
-		request.membership?.role === 'owner'
+		(role === 'owner' || role === 'admin')
 	)
 }
 

@@ -69,7 +69,7 @@ type AdminOrgMemberRow = {
 }
 
 export type AdminOrgKind = 'personal' | 'team'
-export type AdminOrgRole = 'owner' | 'member' | 'billing'
+export type AdminOrgRole = 'owner' | 'admin' | 'member' | 'billing'
 export type AdminOrgStatus = 'live' | 'deleted' | 'all'
 
 export type AdminOrgListItem = {
@@ -176,7 +176,7 @@ const liveSeatsSql = `(SELECT COUNT(*)
 		ON su.stable_user_id = sm.user_id
 		AND su.deleted_at IS NULL
 	WHERE sm.org_id = o.id
-		AND sm.role IN ('owner', 'member')
+		AND sm.role IN ('owner', 'admin', 'member')
 		AND sm.deleted_at IS NULL)`
 const billingOnlySql = `(SELECT COUNT(*)
 	FROM org_memberships bm

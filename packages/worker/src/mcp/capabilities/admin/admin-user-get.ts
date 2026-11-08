@@ -33,7 +33,7 @@ const outputSchema = z.object({
 					slug: z.string(),
 					displayName: z.string().nullable(),
 					kind: z.enum(['personal', 'team']),
-					role: z.enum(['owner', 'member', 'billing']),
+					role: z.enum(['owner', 'admin', 'member', 'billing']),
 					effectivePlan: z.enum(['free', 'standard', 'pro', 'max']),
 					deleted: z.boolean(),
 				}),

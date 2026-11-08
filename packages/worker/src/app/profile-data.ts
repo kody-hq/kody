@@ -101,6 +101,7 @@ function filterProfileRepositoriesForViewer(input: {
 			return (
 				!pkg.isPrivate ||
 				input.binding.role === 'owner' ||
+				input.binding.role === 'admin' ||
 				input.binding.role === 'member'
 			)
 		}

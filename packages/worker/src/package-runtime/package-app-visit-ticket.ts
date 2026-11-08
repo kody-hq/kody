@@ -61,7 +61,7 @@ export const packageAppAnonymousVisitTicketPrefix = 'kva1.'
 const ticketPurpose = 'kody-package-app-visit@v1'
 const anonymousTicketPurpose = 'kody-package-app-anonymous-visit@v1'
 const signingInfo = new TextEncoder().encode('kody-package-app-visit-ticket-v1')
-const orgRoles: ReadonlyArray<OrgRole> = ['owner', 'member', 'billing']
+const orgRoles: ReadonlyArray<OrgRole> = ['owner', 'admin', 'member', 'billing']
 
 export type PackageAppVisitAudience = {
 	host: string

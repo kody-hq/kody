@@ -74,7 +74,9 @@ async function grantPersonCreatorAccess(input: {
 		orgId: input.orgId,
 		userId: creatorUserId,
 	})
-	if (role == null || role === 'owner') return { granted: 0 }
+	if (role == null || role === 'owner' || role === 'admin') {
+		return { granted: 0 }
+	}
 	const audit =
 		input.audit ??
 		orgAuditWriterForPerson(input.env as Env, { userId: creatorUserId })

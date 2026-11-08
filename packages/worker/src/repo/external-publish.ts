@@ -394,7 +394,7 @@ async function recordPublisherOfPackage(input: {
 		db: input.db,
 		scope: { orgId: input.orgId, packageId: input.packageId },
 		personId: input.personId,
-		publisherIsOwner: binding?.role === 'owner',
+		publisherIsOwner: binding?.role === 'owner' || binding?.role === 'admin',
 	})
 }
 

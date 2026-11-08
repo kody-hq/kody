@@ -490,6 +490,7 @@ function parseAttribution(value: unknown): RequestAttribution | null {
 
 const orgRoles: ReadonlySet<string> = new Set<OrgRole>([
 	'owner',
+	'admin',
 	'member',
 	'billing',
 ])

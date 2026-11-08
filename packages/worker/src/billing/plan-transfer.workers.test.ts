@@ -393,7 +393,10 @@ async function seedOrg(input: {
 	plan?: string
 	stripePlan?: string | null
 	stripeCustomerId?: string | null
-	members: Array<{ userId: string; role: 'owner' | 'member' | 'billing' }>
+	members: Array<{
+		userId: string
+		role: 'owner' | 'admin' | 'member' | 'billing'
+	}>
 }) {
 	const orgId = `org-${input.label}-${uniqueSuffix()}`
 	const iso = now.toISOString()

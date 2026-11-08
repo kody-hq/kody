@@ -164,7 +164,7 @@ export function isGrantResourceType(value: string): value is GrantResourceType {
 	return (grantResourceTypes as ReadonlyArray<string>).includes(value)
 }
 
-const orgRoleValues = ['owner', 'member', 'billing'] as const
+const orgRoleValues = ['owner', 'admin', 'member', 'billing'] as const
 
 function isOrgRole(value: string): value is OrgRole {
 	return (orgRoleValues as ReadonlyArray<string>).includes(value)

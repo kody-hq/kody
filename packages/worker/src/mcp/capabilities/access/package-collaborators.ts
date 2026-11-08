@@ -14,7 +14,10 @@ import {
 	removePackageProfileGrant,
 } from '#worker/profiles/package-grants.ts'
 import type { PackageCollaboratorView } from '#universal/package-collaborators.ts'
-import { computeEffectivePermissions } from '#worker/authorization/authorize.ts'
+import {
+	computeEffectivePermissions,
+	hasOwnerAuthority,
+} from '#worker/authorization/authorize.ts'
 import {
 	allowUnmappableCredentialChangesDescription,
 	describeCollaboratorUnmappableCredentials,
@@ -137,7 +140,7 @@ async function decorateCollaborators(
 		packageId: managed.package.id,
 		packageName: managed.package.name,
 		collaborators,
-		viewerIsOwner: access.isOwner,
+		viewerIsOwner: hasOwnerAuthority(access),
 		request,
 	})
 	return {
@@ -220,9 +223,9 @@ async function resolveCollaboratorSubject(
 	}
 	const userId = await resolvePersonId(db, { userId: userIdInput, username })
 	const membership = await getLiveOrgMembership(db, orgId, userId)
-	if (membership?.role === 'owner') {
+	if (membership?.role === 'owner' || membership?.role === 'admin') {
 		throw new McpCallerError(
-			'Owners already have full access to every package in this organization.',
+			'Owners and Admins already have full access to every package in this organization.',
 		)
 	}
 	if (!membership && userIdInput) {

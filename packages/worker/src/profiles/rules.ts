@@ -113,7 +113,8 @@ export function chainExpiry(
 /**
  * Who is asking. `profileId` is the profile the credential acts as, or null
  * for the person themselves (the live mirror). `isOwner` is the person's org
- * role, which lets them list and revoke any profile but never edit one.
+ * role (Owner or Admin), which lets them list and revoke any profile but never
+ * edit one.
  */
 export type ProfileActor = {
 	userId: string

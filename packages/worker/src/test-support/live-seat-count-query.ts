@@ -9,7 +9,7 @@ const liveSeatCountSql = `SELECT COUNT(*) AS count
 			   ON u.stable_user_id = m.user_id
 			  AND u.deleted_at IS NULL
 			 WHERE m.org_id = ?
-			   AND m.role IN ('owner', 'member')
+			   AND m.role IN ('owner', 'admin', 'member')
 			   AND m.deleted_at IS NULL`
 
 function normalizeD1Query(query: string) {

@@ -16,6 +16,7 @@ import {
 	AuthorizationError,
 	checkPermission,
 	computeEffectivePermissions,
+	hasOwnerAuthority,
 	packageResource,
 } from '#worker/authorization/authorize.ts'
 import { operationResult } from '../operation-result.ts'
@@ -153,7 +154,7 @@ async function buildCollaboratorsView(
 		packageId: scope.savedPackage.id,
 		packageName: scope.savedPackage.name,
 		collaborators: listed.collaborators,
-		viewerIsOwner: access?.isOwner ?? false,
+		viewerIsOwner: access ? hasOwnerAuthority(access) : false,
 		request,
 	})
 	return {

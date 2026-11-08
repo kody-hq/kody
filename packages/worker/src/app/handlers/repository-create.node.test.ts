@@ -9,7 +9,7 @@ const state = vi.hoisted(() => ({
 	organizations: [] as Array<{
 		slug: string
 		displayName: string | null
-		role: 'owner' | 'member' | 'billing' | null
+		role: 'owner' | 'admin' | 'member' | 'billing' | null
 		personal: boolean
 		avatarKey: string | null
 	}>,

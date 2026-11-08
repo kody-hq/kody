@@ -97,7 +97,7 @@ export function commandCatalog(
 		kind: 'action',
 		icon: 'plus',
 	})
-	if (org?.role === 'owner' || org?.role === 'member')
+	if (org?.role === 'owner' || org?.role === 'admin' || org?.role === 'member')
 		commands.push(
 			{
 				id: `new-repo:${slug}`,

@@ -397,7 +397,10 @@ export async function loadProfilesPageData(
 	if (!(await isProfilesEnabledFor(db, userId, org.id))) {
 		return { enabled: false, orgSlug: input.orgSlug }
 	}
-	const isOwner = scope.personal || scope.binding.role === 'owner'
+	const isOwner =
+		scope.personal ||
+		scope.binding.role === 'owner' ||
+		scope.binding.role === 'admin'
 	const allMembers = input.allMembers && isOwner && !scope.personal
 	const viewer = { userId, username: input.user.username, isOwner }
 	try {

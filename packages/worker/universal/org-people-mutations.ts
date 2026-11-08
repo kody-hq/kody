@@ -1,14 +1,14 @@
 import { z } from 'zod'
 export const setOrganizationMemberRoleSchema = z.object({
 	userId: z.string(),
-	role: z.enum(['owner', 'member', 'billing']),
+	role: z.enum(['owner', 'admin', 'member', 'billing']),
 })
 export const removeOrganizationMemberSchema = z.object({ userId: z.string() })
 export const inviteOrganizationMemberSchema = z.object({
 	invitee: z.string().optional(),
 	email: z.string().optional(),
 	username: z.string().optional(),
-	role: z.enum(['owner', 'member', 'billing']).optional(),
+	role: z.enum(['owner', 'admin', 'member', 'billing']).optional(),
 })
 export const createOrganizationInviteLinkSchema = z.object({
 	role: z.enum(['member', 'billing']).optional(),

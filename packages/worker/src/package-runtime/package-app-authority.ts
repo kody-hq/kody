@@ -340,7 +340,7 @@ export async function recordPackageAppPublish(input: {
 		db: input.db,
 		scope: input.scope,
 		personId: input.personId,
-		publisherIsOwner: binding?.role === 'owner',
+		publisherIsOwner: binding?.role === 'owner' || binding?.role === 'admin',
 	})
 }
 

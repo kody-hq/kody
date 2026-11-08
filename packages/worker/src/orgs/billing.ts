@@ -10,7 +10,7 @@ import {
 
 export const MAX_FREE_ORGS_PER_USER = 2
 
-export const SEAT_ROLES = ['owner', 'member'] as const
+export const SEAT_ROLES = ['owner', 'admin', 'member'] as const
 
 export type OrgSeatRole = (typeof SEAT_ROLES)[number]
 
@@ -84,7 +84,7 @@ export async function countLiveSeats(
 			   ON u.stable_user_id = m.user_id
 			  AND u.deleted_at IS NULL
 			 WHERE m.org_id = ?
-			   AND m.role IN ('owner', 'member')
+			   AND m.role IN ('owner', 'admin', 'member')
 			   AND m.deleted_at IS NULL`,
 		)
 		.bind(orgId)

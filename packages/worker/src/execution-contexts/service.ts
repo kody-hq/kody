@@ -328,7 +328,8 @@ export async function formatContexts(
 export type ContextView = Awaited<ReturnType<typeof formatContexts>>[number]
 
 function isOrgOwner(caller: ExecutionContextCaller) {
-	return caller.request.membership?.role === 'owner'
+	const role = caller.request.membership?.role
+	return role === 'owner' || role === 'admin'
 }
 
 /** Protocol 7.1: usable contexts that are in none of the caller's chain. */

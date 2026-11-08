@@ -30,7 +30,11 @@ async function createDb() {
 function context(input: {
 	db: D1Database
 	userId: string
-	org: { id: string; slug: string; role: 'owner' | 'member' | 'billing' }
+	org: {
+		id: string
+		slug: string
+		role: 'owner' | 'admin' | 'member' | 'billing'
+	}
 }) {
 	return {
 		env: { APP_DB: input.db, AUDIT_DB: createAuditTestDb() } as Env,

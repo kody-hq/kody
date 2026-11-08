@@ -56,7 +56,7 @@ function toOrgMemberView(member: {
 	username: string | null
 	displayName: string | null
 	avatarKey: string | null
-	role: 'owner' | 'member' | 'billing'
+	role: 'owner' | 'admin' | 'member' | 'billing'
 }): OrgMemberView {
 	return {
 		userId: member.userId,

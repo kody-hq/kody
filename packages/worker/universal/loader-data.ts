@@ -527,7 +527,7 @@ export type AdminUserOrgMembership = {
 	slug: string
 	displayName: string | null
 	kind: 'personal' | 'team'
-	role: 'owner' | 'member' | 'billing'
+	role: 'owner' | 'admin' | 'member' | 'billing'
 	effectivePlan: AdminPlanName
 	seats: number
 	membershipDeletedAt: string | null
@@ -1306,7 +1306,7 @@ export type AccountFormerEmail = {
 export type AccountOrganizationSummary = {
 	slug: string
 	displayName: string | null
-	role: 'owner' | 'member' | 'billing' | null
+	role: 'owner' | 'admin' | 'member' | 'billing' | null
 	personal: boolean
 	avatarUrl?: string | null
 }
@@ -1377,7 +1377,7 @@ type OrgManagementOrg = {
 	displayName: string | null
 	avatarUrl: string | null
 	personal: boolean
-	role: 'owner' | 'member' | 'billing'
+	role: 'owner' | 'admin' | 'member' | 'billing'
 }
 
 type OrgSettingsCustomHostnameDnsRecord = {
@@ -1432,14 +1432,14 @@ export type OrgMemberView = {
 	username: string | null
 	displayName: string | null
 	avatarUrl: string | null
-	role: 'owner' | 'member' | 'billing'
+	role: 'owner' | 'admin' | 'member' | 'billing'
 	roleLabel: string
 }
 
 export type OrgInviteView = {
 	id: string
 	kind: string
-	role: 'owner' | 'member' | 'billing' | null
+	role: 'owner' | 'admin' | 'member' | 'billing' | null
 	roleLabel: string | null
 	inviteeEmail: string | null
 	inviteeUsername: string | null
@@ -1656,7 +1656,7 @@ export type OrgSubjectAccessLoaderData = {
 		displayName: string | null
 		avatarUrl: string | null
 		/** Null for an outside collaborator. */
-		role: 'owner' | 'member' | 'billing' | null
+		role: 'owner' | 'admin' | 'member' | 'billing' | null
 	}
 	grants: Array<OrgSubjectAccessGrant>
 	/** Null when the viewer cannot add access or the person is an Owner. */

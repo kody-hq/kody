@@ -130,7 +130,7 @@ async function listGrantPeople(
 	])
 	return [
 		...members
-			.filter((member) => member.role !== 'owner')
+			.filter((member) => member.role !== 'owner' && member.role !== 'admin')
 			.map((member) => ({
 				userId: member.userId,
 				label: memberLabel(member),
@@ -266,7 +266,7 @@ async function listOrgWideReadSubjects(
 	])
 	const subjects: Array<OrgWideReadSubjectView> = []
 	for (const member of members) {
-		if (member.role === 'owner') continue
+		if (member.role === 'owner' || member.role === 'admin') continue
 		const key = subjectKey({ type: 'user', id: member.userId })
 		subjects.push({
 			key,
@@ -306,7 +306,7 @@ async function resolveOrgWideReadSubject(
 			)
 			.bind(orgId, id)
 			.first<{ role: string }>()
-		if (!row || row.role === 'owner') return null
+		if (!row || row.role === 'owner' || row.role === 'admin') return null
 		return { type: 'user', id }
 	}
 	if (type === 'team') {

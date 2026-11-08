@@ -56,6 +56,8 @@ export type EffectivePermissions = {
 	permissions: ReadonlySet<OrgPermission>
 	/** True when the actor is an Owner. */
 	isOwner: boolean
+	/** True when the actor is an Admin (see {@link hasOwnerAuthority}). */
+	isAdmin?: boolean
 	/** Per-resource grants keyed by `${type}:${id}`. */
 	resourcePermissions: ReadonlyMap<string, ReadonlySet<OrgPermission>>
 	credentialScopes: ReadonlySet<OrgPermission> | null
@@ -236,6 +238,18 @@ function earliest(a: string | null | undefined, b: string | null | undefined) {
 	return a < b ? a : b
 }
 
+/**
+ * Owner-level authority: an Owner, or an Admin. Admins pass the gates written
+ * for Owners except the ones about Owners themselves (changing, removing, or
+ * promoting to Owner) and deleting the org, which they lack `org:delete` for.
+ */
+export function hasOwnerAuthority(access: {
+	isOwner: boolean
+	isAdmin?: boolean
+}): boolean {
+	return access.isOwner || access.isAdmin === true
+}
+
 function toEffective(
 	compiled: CompiledAccess,
 	request: RequestContext,
@@ -251,6 +265,7 @@ function toEffective(
 		orgId: compiled.orgId,
 		permissions: compiled.orgPermissions,
 		isOwner: compiled.isOwner,
+		...(compiled.isAdmin ? { isAdmin: true } : {}),
 		resourcePermissions: compiled.resourcePermissions,
 		credentialScopes: request.credential.scopes
 			? new Set(request.credential.scopes)
@@ -273,7 +288,7 @@ async function loadUnmappableCredentialLocks(
 	compiled: CompiledAccess,
 	request: RequestContext,
 ): Promise<Map<string, ReadonlyArray<UnmappableCredential>> | null> {
-	if (compiled.isOwner) return null
+	if (hasOwnerAuthority(compiled)) return null
 	const packageIds = new Set<string>()
 	for (const [key, granted] of compiled.resourcePermissions) {
 		if (!key.startsWith('package:')) continue
@@ -322,7 +337,7 @@ function unmappableCredentialLock(
 	permission: OrgPermission,
 	resource: OrgResource | undefined,
 ) {
-	if (access.isOwner || resource?.type !== 'package') return null
+	if (hasOwnerAuthority(access) || resource?.type !== 'package') return null
 	if (!isUnmappableCredentialLockedPermission(permission)) return null
 	return (
 		access.unmappableCredentialLocks?.get(
@@ -773,7 +788,7 @@ function unmappableLockedKey(
 	key: string,
 ) {
 	return (
-		!access.isOwner &&
+		!hasOwnerAuthority(access) &&
 		isUnmappableCredentialLockedPermission(permission) &&
 		(access.unmappableCredentialLocks?.has(key) ?? false)
 	)

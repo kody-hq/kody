@@ -18,7 +18,7 @@ export type ListedOrgInvite = {
 	createdAt: string
 }
 
-const orgRoleValues = ['owner', 'member', 'billing'] as const
+const orgRoleValues = ['owner', 'admin', 'member', 'billing'] as const
 
 function isOrgRole(value: string): value is OrgRole {
 	return (orgRoleValues as ReadonlyArray<string>).includes(value)
@@ -48,9 +48,10 @@ export async function listOrgMembers(
 			 ORDER BY
 			   CASE m.role
 			     WHEN 'owner' THEN 0
-			     WHEN 'member' THEN 1
-			     WHEN 'billing' THEN 2
-			     ELSE 3
+			     WHEN 'admin' THEN 1
+			     WHEN 'member' THEN 2
+			     WHEN 'billing' THEN 3
+			     ELSE 4
 			   END,
 			   COALESCE(u.username, m.user_id) ASC`,
 		)
