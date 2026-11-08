@@ -363,29 +363,35 @@ test('workflow projections track binding name, idempotency, and active counts', 
 
 test('listWorkflowProjections filters by id, packageId, and since', async () => {
 	const userId = uniqueUserId('wf-list-filters')
+	// Relative to now: terminal rows past the 90-day retention window can be
+	// pruned by the retention alarm mid-test.
+	const day = 24 * 60 * 60 * 1000
+	const at = (daysAgo: number) =>
+		new Date(Date.now() - daysAgo * day).toISOString()
+	const since = at(10)
 	await upsertWorkflow(userId, 'wf-old', {
 		sourceType: 'package',
 		packageId: 'pkg-a',
 		workflowName: 'old',
-		createdAt: '2026-07-01T00:00:00.000Z',
-		updatedAt: '2026-07-01T00:00:00.000Z',
+		createdAt: at(40),
+		updatedAt: at(40),
 		status: 'complete',
-		completedAt: '2026-07-01T00:01:00.000Z',
+		completedAt: at(39),
 	})
 	await upsertWorkflow(userId, 'wf-new-a', {
 		sourceType: 'package',
 		packageId: 'pkg-a',
 		workflowName: 'new-a',
-		createdAt: '2026-07-31T12:00:00.000Z',
-		updatedAt: '2026-07-31T12:00:00.000Z',
+		createdAt: at(5),
+		updatedAt: at(5),
 		status: 'running',
 	})
 	await upsertWorkflow(userId, 'wf-new-b', {
 		sourceType: 'package',
 		packageId: 'pkg-b',
 		workflowName: 'new-b',
-		createdAt: '2026-07-31T13:00:00.000Z',
-		updatedAt: '2026-07-31T13:00:00.000Z',
+		createdAt: at(4),
+		updatedAt: at(4),
 		status: 'queued',
 	})
 
@@ -411,7 +417,7 @@ test('listWorkflowProjections filters by id, packageId, and since', async () => 
 	const bySince = await listWorkflowProjections({
 		env,
 		userId,
-		since: '2026-07-31T00:00:00.000Z',
+		since,
 		limit: 10,
 	})
 	expect(bySince.projections.map((row) => row.id).sort()).toEqual([
@@ -423,7 +429,7 @@ test('listWorkflowProjections filters by id, packageId, and since', async () => 
 		env,
 		userId,
 		packageId: 'pkg-a',
-		since: '2026-07-31T00:00:00.000Z',
+		since,
 		status: 'running',
 		limit: 10,
 	})

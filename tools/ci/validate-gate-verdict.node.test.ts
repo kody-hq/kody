@@ -76,7 +76,7 @@ test('a macOS job that ran and failed or timed out is a failure, not infra', () 
 	}
 })
 
-test('main pushes skip both macOS jobs without failing the gate', () => {
+test('main runs skip both macOS jobs without failing the gate', () => {
 	const skippedOnMain = needs({
 		host_commands_macos: { result: 'skipped' },
 		host_commands_macos_fallback: { result: 'skipped' },
@@ -86,8 +86,19 @@ test('main pushes skip both macOS jobs without failing the gate', () => {
 	expect(renderVerdict(main).annotations).toEqual([
 		`::notice title=Not gating deploy: host_commands_macos::${macosOnMainDetail}`,
 	])
+	expect(
+		classifyValidateNeeds(skippedOnMain, {
+			event: 'workflow_dispatch',
+			ref: 'refs/heads/main',
+		}).verdict,
+	).toBe('pass')
 	for (const event of ['pull_request', 'merge_group', 'workflow_dispatch']) {
-		expect(classifyValidateNeeds(skippedOnMain, { event }).verdict).toBe('fail')
+		expect(
+			classifyValidateNeeds(skippedOnMain, {
+				event,
+				ref: 'refs/heads/feature',
+			}).verdict,
+		).toBe('fail')
 	}
 	for (const result of ['failure', 'cancelled']) {
 		expect(

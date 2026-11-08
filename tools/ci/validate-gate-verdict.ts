@@ -115,9 +115,12 @@ export function classifyMacosNeeds(needs: Needs): JobVerdict {
 	}
 }
 
-function macos(needs: Needs, event: string | undefined): JobVerdict {
+function macos(
+	needs: Needs,
+	options: { event?: string; ref?: string },
+): JobVerdict {
 	const skippedOnMain =
-		event === 'push' &&
+		(options.event === 'push' || options.ref === 'refs/heads/main') &&
 		needs.host_commands_macos?.result === 'skipped' &&
 		needs.host_commands_macos_fallback?.result === 'skipped'
 	if (skippedOnMain) {
@@ -132,14 +135,14 @@ function macos(needs: Needs, event: string | undefined): JobVerdict {
 
 export function classifyValidateNeeds(
 	needs: Needs,
-	options: { event?: string } = {},
+	options: { event?: string; ref?: string } = {},
 ) {
 	const jobs: Array<JobVerdict> = [
 		...Object.keys(needs)
 			.filter((job) => !recoveryJobs.has(job))
 			.map((job) => plain(job, needs[job])),
 		...workersShards.map((shard) => workersShard(needs, shard)),
-		macos(needs, options.event),
+		macos(needs, options),
 	]
 	const verdict: Verdict = jobs.some((job) => job.verdict === 'fail')
 		? 'fail'
@@ -192,6 +195,7 @@ export function renderVerdict(
 if (isExecutedDirectly(import.meta.url)) {
 	const result = classifyValidateNeeds(JSON.parse(process.env.NEEDS ?? '{}'), {
 		event: process.env.GITHUB_EVENT_NAME,
+		ref: process.env.GITHUB_REF,
 	})
 	const { annotations, summary } = renderVerdict(result)
 	for (const line of annotations) console.log(line)

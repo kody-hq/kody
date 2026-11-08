@@ -65,8 +65,8 @@ export function desktopSetupCompleted(input: {
 	/** Team attach succeeded for this open (wizard-local). */
 	attached?: boolean
 	/**
-	 * The machine is already an entry in the intended workspace chain
-	 * (personal when no target, team when target is set).
+	 * The machine already leads the intended workspace chain (personal when no
+	 * target, team when target is set).
 	 */
 	inChain?: boolean
 	targetOrgSlug: string | null
@@ -76,7 +76,7 @@ export function desktopSetupCompleted(input: {
 	const teamReady = Boolean(
 		input.attached || (input.targetOrgSlug && input.inChain),
 	)
-	// Personal registration is not "done" until the personal chain lists it.
+	// Personal registration is not "done" until it leads the personal chain.
 	// Team flows treat local contextId as enough; attach is a later stage.
 	if (input.contextId && (input.targetOrgSlug || input.inChain)) {
 		done.add('register')
@@ -84,7 +84,7 @@ export function desktopSetupCompleted(input: {
 	if (input.targetOrgSlug) {
 		if (teamReady) done.add('attach')
 	}
-	// Runner stage requires the process up and the intended workspace listing.
+	// Runner stage requires the process up and this machine first in the chain.
 	if (input.contextId && input.running) {
 		if (input.targetOrgSlug ? teamReady : input.inChain) done.add('runner')
 	}
@@ -195,13 +195,15 @@ export function desktopSetupPanelAction(input: {
 	return { kind: 'setup', label: 'Set up this machine' }
 }
 
-/** True when the context is already an entry in the loaded execution chain. */
-export function desktopSetupContextInChain(
+/**
+ * True when the context leads the loaded execution chain. Listed but behind
+ * another entry still needs the chain update, so setup is not done.
+ */
+export function desktopSetupContextFirst(
 	chainEntries: ReadonlyArray<{ kind: string; id?: string }> | undefined,
 	contextId: string | null,
 ) {
 	if (!contextId || !chainEntries) return false
-	return chainEntries.some(
-		(entry) => entry.kind === 'context' && entry.id === contextId,
-	)
+	const first = chainEntries[0]
+	return first?.kind === 'context' && first.id === contextId
 }

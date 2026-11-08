@@ -29,6 +29,11 @@ const workerdAssetDigests = {
 const workerdDownloadIdleTimeoutMs = 60_000
 
 export class WorkerdDownloadStalledError extends Error {}
+/** A reset, refused connection, HTTP/2 stream error, or 5xx: worth a retry. */
+export class WorkerdDownloadNetworkError extends Error {}
+
+const workerdDownloadAttempts = 3
+const workerdDownloadRetryDelayMs = 1_000
 
 export type WorkerdTarget = keyof typeof workerdAssetDigests
 
@@ -102,6 +107,7 @@ export async function ensureWorkerdBinary(
 		fetchFn?: typeof fetch
 		onDownload?: (url: string) => void
 		idleTimeoutMs?: number
+		retryDelayMs?: number
 	} = {},
 ): Promise<string> {
 	const env = input.env ?? process.env
@@ -124,16 +130,29 @@ export async function ensureWorkerdBinary(
 			idleTimeoutMs: input.idleTimeoutMs,
 		})
 	}
-	try {
-		await download()
-	} catch (error) {
-		if (!(error instanceof WorkerdDownloadStalledError)) throw error
+	for (let attempt = 1; ; attempt += 1) {
 		try {
 			await download()
-		} catch (retryError) {
-			if (!(retryError instanceof WorkerdDownloadStalledError)) throw retryError
-			throw new WorkerdDownloadStalledError(
-				`Downloading workerd for local execute stalled twice: ${retryError.message} Check the network, or set KODY_WORKERD_PATH to a local workerd binary.`,
+			break
+		} catch (error) {
+			const retryable =
+				error instanceof WorkerdDownloadStalledError ||
+				error instanceof WorkerdDownloadNetworkError
+			if (!retryable) throw error
+			if (attempt >= workerdDownloadAttempts) {
+				const ErrorClass =
+					error instanceof WorkerdDownloadStalledError
+						? WorkerdDownloadStalledError
+						: WorkerdDownloadNetworkError
+				throw new ErrorClass(
+					`Downloading workerd for local execute failed ${attempt} times: ${error.message} Check the network, or set KODY_WORKERD_PATH to a local workerd binary.`,
+				)
+			}
+			await new Promise((resolve) =>
+				setTimeout(
+					resolve,
+					(input.retryDelayMs ?? workerdDownloadRetryDelayMs) * attempt,
+				),
 			)
 		}
 	}
@@ -184,12 +203,14 @@ async function fetchAndWrite(input: {
 		response = await input.fetchFn(input.url, { signal: input.signal })
 	} catch (error) {
 		if (input.signal.aborted) throw input.signal.reason
-		throw new Error(
+		throw new WorkerdDownloadNetworkError(
 			`Could not download workerd from ${input.url} (${describeNetworkError(error)}).`,
 		)
 	}
 	if (!response.ok || !response.body) {
-		throw new Error(
+		const ErrorClass =
+			response.status >= 500 ? WorkerdDownloadNetworkError : Error
+		throw new ErrorClass(
 			`Could not download workerd from ${input.url} (HTTP ${response.status}).`,
 		)
 	}
@@ -205,12 +226,21 @@ async function fetchAndWrite(input: {
 		},
 	})
 	try {
-		await pipeline(
-			Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]),
-			hashing,
-			createWriteStream(gzipPath),
-			{ signal: input.signal },
-		)
+		try {
+			await pipeline(
+				Readable.fromWeb(
+					response.body as Parameters<typeof Readable.fromWeb>[0],
+				),
+				hashing,
+				createWriteStream(gzipPath),
+				{ signal: input.signal },
+			)
+		} catch (error) {
+			if (input.signal.aborted) throw input.signal.reason
+			throw new WorkerdDownloadNetworkError(
+				`Downloading workerd from ${input.url} broke off (${describeNetworkError(error)}).`,
+			)
+		}
 		input.stopIdle()
 		const digest = hash.digest('hex')
 		if (digest !== input.sha256) {

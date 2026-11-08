@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import {
 	desktopSetupCompleted,
-	desktopSetupContextInChain,
+	desktopSetupContextFirst,
 	desktopSetupPanelAction,
 	desktopSetupResumeStep,
 	desktopSetupStages,
@@ -148,15 +148,30 @@ test('team with runner down resumes register without clearing attach readiness',
 	).toEqual(new Set(['sign-in', 'register', 'attach']))
 })
 
-test('desktopSetupContextInChain matches context entries only', () => {
+test('desktopSetupContextFirst needs this machine to lead the chain', () => {
 	expect(
-		desktopSetupContextInChain(
+		desktopSetupContextFirst(
 			[{ kind: 'context', id: 'ec_mac' }, { kind: 'cloud' }],
 			'ec_mac',
 		),
 	).toBe(true)
-	expect(desktopSetupContextInChain([{ kind: 'cloud' }], 'ec_mac')).toBe(false)
-	expect(desktopSetupContextInChain(undefined, 'ec_mac')).toBe(false)
+	const behind = [
+		{ kind: 'context', id: 'ec_other' },
+		{ kind: 'context', id: 'ec_mac' },
+		{ kind: 'cloud' },
+	]
+	expect(desktopSetupContextFirst(behind, 'ec_mac')).toBe(false)
+	expect(
+		desktopSetupResumeStep({
+			targetOrgSlug: null,
+			cliReady: true,
+			contextId: 'ec_mac',
+			running: true,
+			inChain: desktopSetupContextFirst(behind, 'ec_mac'),
+		}),
+	).toBe('register')
+	expect(desktopSetupContextFirst([{ kind: 'cloud' }], 'ec_mac')).toBe(false)
+	expect(desktopSetupContextFirst(undefined, 'ec_mac')).toBe(false)
 })
 
 test('panel actions stay available and name resume versus unavailable reasons', () => {
