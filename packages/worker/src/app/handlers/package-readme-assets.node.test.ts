@@ -3,7 +3,6 @@ import { expect, test, vi } from 'vitest'
 import type * as PackagePage from '#app/package-page.ts'
 import type * as CommunityPackageUrl from '#worker/community/package-url.ts'
 import type * as CommunityRepo from '#worker/community/repo.ts'
-import type * as CommunitySnapshot from '#worker/community/snapshot.ts'
 import type * as PublishedRuntimeArtifacts from '#worker/package-runtime/published-runtime-artifacts.ts'
 import type * as ArtifactFile from '#worker/repo/artifact-file.ts'
 import type * as EntitySources from '#worker/repo/entity-sources.ts'
@@ -47,12 +46,6 @@ const mocks = vi.hoisted(() => ({
 				>
 			) => Promise<unknown>
 		>(),
-	readCommunitySnapshot:
-		vi.fn<
-			(
-				...args: Parameters<typeof CommunitySnapshot.readCommunitySnapshot>
-			) => Promise<unknown>
-		>(),
 	loadPackagePage:
 		vi.fn<
 			(
@@ -91,12 +84,6 @@ vi.mock('#worker/package-runtime/published-runtime-artifacts.ts', () => ({
 			typeof PublishedRuntimeArtifacts.readPublishedSourceSnapshot
 		>
 	) => mocks.readPublishedSourceSnapshot(...args),
-}))
-
-vi.mock('#worker/community/snapshot.ts', () => ({
-	readCommunitySnapshot: (
-		...args: Parameters<typeof CommunitySnapshot.readCommunitySnapshot>
-	) => mocks.readCommunitySnapshot(...args),
 }))
 
 vi.mock('#app/package-page.ts', () => ({
@@ -184,7 +171,6 @@ test('package README asset handlers serve published image bytes and refuse unsaf
 	mocks.getEntitySourceById.mockResolvedValue({ repo_id: 'repo-1' })
 	mocks.readArtifactFileAtCommit.mockResolvedValue(tinyPngBytes)
 	mocks.readPublishedSourceSnapshot.mockResolvedValue(null)
-	mocks.readCommunitySnapshot.mockResolvedValue(null)
 
 	const response = await callPackageHandler()
 	expect(Object.fromEntries(response.headers)).toMatchObject({
@@ -230,19 +216,23 @@ test('package README asset handlers serve published image bytes and refuse unsaf
 		expect.any(Error),
 	)
 
-	// With git unavailable, published and listing snapshots still serve bytes.
+	// With git unavailable, the pinned published snapshot still serves bytes.
 	mocks.readPublishedSourceSnapshot.mockResolvedValue(posterSnapshot)
 	expect(await bytesOf(await callPackageHandler())).toEqual({
 		status: 200,
 		bytes: tinyPngBytes,
 	})
-	mocks.readPublishedSourceSnapshot.mockResolvedValue(null)
-	mocks.readCommunitySnapshot.mockResolvedValue(posterSnapshot)
 	expect(await bytesOf(await callListingHandler())).toEqual({
 		status: 200,
 		bytes: tinyPngBytes,
 	})
-	mocks.readCommunitySnapshot.mockResolvedValue(null)
+	expect(mocks.readPublishedSourceSnapshot).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			sourceId: listing.sourceId,
+			publishedCommit: listing.pinnedCommit,
+		}),
+	)
+	mocks.readPublishedSourceSnapshot.mockResolvedValue(null)
 
 	// Unlisted packages serve the owner's published commit privately, owner only.
 	mocks.resolveCommunityPackageUrl.mockResolvedValue(null)

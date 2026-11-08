@@ -634,8 +634,8 @@ Two D1 reporting projections deliberately remain:
 
 OAuth provider state is stored in `OAUTH_KV` through the
 `@cloudflare/workers-oauth-provider` integration. Published package source
-snapshots, bundle artifacts, and community listing snapshots are stored in
-`BUNDLE_ARTIFACTS_KV`. That binding also holds the platform-owned
+snapshots, bundle artifacts, and legacy community listing snapshots are stored
+in `BUNDLE_ARTIFACTS_KV`. That binding also holds the platform-owned
 `platform-settings:v1:reserved-usernames` runtime reserved-username override and
 short-lived encrypted MCP OAuth refresh-family snapshots
 (`derived-cache:v1:mcp-oauth-refresh-family:` /
@@ -1693,7 +1693,8 @@ app-owned keys in it. App-owned `BUNDLE_ARTIFACTS_KV` keys are:
   Publish rebuild copies unchanged targets from the previous commit onto this
   new key (D1 identity row retargets) so a partial export bump does not leave
   the new `published_commit` missing artifacts.
-- `community-snapshot:v1:{listingId}`.
+- `community-snapshot:v1:{listingId}` (legacy listing-id file tree; no longer
+  written or read, still deleted and exported).
 - `package-skills-index:v1:{userId}:{packageId}:{publishedCommit}` — per-version
   Agent Skills index (frontmatter + digests, no file contents) written at
   publish; served by Skills-over-MCP when `mcp-skills-extension` is on.
