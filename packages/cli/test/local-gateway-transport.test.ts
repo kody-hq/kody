@@ -5,6 +5,7 @@ import { gatewayFetchErrorHeaderName } from '../src/capability-proxy.js'
 import {
 	localBridgeGatewayFetchPath,
 	startLocalRuntimeBridge,
+	writeWebResponse,
 } from '../src/local-runtime-bridge.js'
 import {
 	localGatewayFetchStreamRuntimeSource,
@@ -72,10 +73,13 @@ test('upstream statuses come back as Responses, including a manual 308 with Loca
 		new Response('slow down', { status: 429, headers: { 'retry-after': '1' } }),
 		new Response('boom', { status: 503 }),
 		new Response('expired', { status: 401 }),
-		// An upstream JSON error that is not Kody's (large, unmarked) stays a Response.
+		// An upstream JSON error is never Kody's unless marked, even small.
 		Response.json(
-			{ error: { code: 'upstream', message: 'x'.repeat(70_000) } },
-			{ status: 400, headers: { 'cache-control': 'no-store' } },
+			{ error: { code: 'upstream', message: 'bad' } },
+			{
+				status: 400,
+				headers: { 'cache-control': 'no-store', 'content-length': '45' },
+			},
 		),
 	]
 	const { gatewayFetchStream, seen } = loadRuntime(async () =>
@@ -151,19 +155,6 @@ test('Kody gateway errors throw KodyGatewayError with code and mayHaveReachedOri
 			code: 'payload_too_large',
 			reached: false,
 			status: 413,
-		},
-		// Older origins: a small unmarked no-store envelope still throws.
-		{
-			response: Response.json(
-				{ error: { code: 'invalid_request', message: 'bad' } },
-				{
-					status: 400,
-					headers: { 'cache-control': 'no-store', 'content-length': '58' },
-				},
-			),
-			code: 'invalid_request',
-			reached: false,
-			status: 400,
 		},
 	]
 	for (const entry of cases) {
@@ -386,4 +377,41 @@ test('bridge failures are marked and say whether bytes may have reached the orig
 			},
 		)
 	}
+})
+
+test('a reader that leaves early cancels the upstream response body', async () => {
+	let cancelled = false
+	await withBridge(
+		async ({ response }) => {
+			let sent = 0
+			const upstream = new Response(
+				new ReadableStream<Uint8Array>({
+					async pull(controller) {
+						await delay(5)
+						sent += 1
+						controller.enqueue(new Uint8Array(64 * 1024))
+						if (sent > 10_000) controller.close()
+					},
+					cancel() {
+						cancelled = true
+					},
+				}),
+			)
+			await writeWebResponse(response, upstream)
+		},
+		async (url) => {
+			const response = await fetch(url, {
+				method: 'POST',
+				headers: { [runSecretHeader]: 'secret' },
+				body: 'x',
+			})
+			const reader = response.body!.getReader()
+			await reader.read()
+			await reader.cancel()
+			for (let attempt = 0; attempt < 100 && !cancelled; attempt += 1) {
+				await delay(20)
+			}
+		},
+	)
+	assert.equal(cancelled, true)
 })

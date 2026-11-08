@@ -272,6 +272,13 @@ export async function writeWebResponse(
 		nodeStream.on('error', reject)
 		response.on('error', reject)
 		response.on('finish', () => resolve())
+		// A reader that goes away before the end cancels the upstream body
+		// instead of leaving it open.
+		response.on('close', () => {
+			if (response.writableFinished) return
+			nodeStream.destroy()
+			resolve()
+		})
 		nodeStream.pipe(response)
 	})
 }
