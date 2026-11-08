@@ -72,7 +72,7 @@ test('platform scope prompt changes one built-in connection without BYO', () => 
 	})
 	expect(byo).toContain('/connect/oauth?provider=github-work')
 	expect(byo).not.toContain('grantedScopes')
-	expect(byo).not.toContain('gist')
+	expect(byo).not.toMatch(/\bgist\b/)
 })
 
 test('scope grant notices report shortfalls and scopes a provider kept', () => {

@@ -827,6 +827,7 @@ test('a sync webhook refused for body fill placement names the part and the run,
 	declareWebhook({ name: 'sync-hook', responseMode: 'sync' })
 	const requestCanary = 'webhook-request-canary-9f3c'
 	const invocationCanary = 'invocation-error-canary-7b2e'
+	const logCanary = 'invocation-log-canary-4d8a'
 	mocks.invokePackageExport.mockResolvedValue({
 		status: 500,
 		body: {
@@ -835,7 +836,7 @@ test('a sync webhook refused for body fill placement names the part and the run,
 				code: 'execution_failed',
 				message: `Error: Credential "acmeApiKey" may not fill the body. ${invocationCanary} (credential_placement_refused, slot "acmeApiKey", part "body")`,
 			},
-			logs: ['POST https://api.acme.test/v1/items'],
+			logs: [`POST https://api.acme.test/v1/items ${logCanary}`],
 		},
 	})
 
@@ -858,6 +859,7 @@ test('a sync webhook refused for body fill placement names the part and the run,
 	expect(serialized).not.toContain('api.acme.test')
 	expect(serialized).not.toContain(requestCanary)
 	expect(serialized).not.toContain(invocationCanary)
+	expect(serialized).not.toContain(logCanary)
 
 	const failed = (await listDeliveries(userId, 'sync-hook')).find(
 		(run) => run.metadata?.['outcome'] === 'failed',
