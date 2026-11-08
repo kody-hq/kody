@@ -1,5 +1,8 @@
 import { createD1JobsStore } from '@kody-internal/shared/jobs/store.ts'
-import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	ownerIdFromStored,
+	personIdFromStored,
+} from '@kody-internal/shared/owner-person-ids.ts'
 import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { beforeEach, expect, test, vi } from 'vitest'
@@ -779,7 +782,7 @@ test('job attribution repair guards CAS mismatch and pointer races at write time
 	t.setJobPins(failedCommit)
 	const d1Store = createD1JobsStore(t.env.APP_DB)
 	let race: (() => void) | null = null
-	;(t.env as Env & { JOBS: unknown }).JOBS = {
+	;(t.env as unknown as { JOBS: unknown }).JOBS = {
 		...d1Store,
 		async repairPackageJobPublishedCommit(
 			input: Parameters<typeof d1Store.repairPackageJobPublishedCommit>[0],
@@ -816,8 +819,8 @@ test('job attribution repair guards CAS mismatch and pointer races at write time
 
 	// A newer publish moved the serving pointer while the pin was written.
 	t.setJobPins(failedCommit)
-	const original = (t.env as Env & { JOBS: Record<string, unknown> }).JOBS
-	;(t.env as Env & { JOBS: unknown }).JOBS = {
+	const original = (t.env as unknown as { JOBS: Record<string, unknown> }).JOBS
+	;(t.env as unknown as { JOBS: unknown }).JOBS = {
 		...original,
 		async repairPackageJobPublishedCommit(
 			input: Parameters<typeof d1Store.repairPackageJobPublishedCommit>[0],
@@ -872,7 +875,7 @@ test('failed-publish settlement resumes after a refresh failure and restores old
 		settleFailedPublishRebuild({
 			env: t.env,
 			baseUrl: 'https://example.com',
-			ownerUserId: ownerId,
+			ownerUserId: ownerIdFromStored(ownerId),
 			packageId,
 			sourceId,
 			failedCommit,
@@ -936,7 +939,7 @@ test('failed-publish settlement never touches a pointer a newer publish owns', a
 		await settleFailedPublishRebuild({
 			env: t.env,
 			baseUrl: 'https://example.com',
-			ownerUserId: ownerId,
+			ownerUserId: ownerIdFromStored(ownerId),
 			packageId,
 			sourceId,
 			failedCommit,
