@@ -43,6 +43,12 @@ test('package-app icon is last and only when requested', () => {
 			{ includePackageAppIcon: true },
 		),
 	).toBe('icons/icon-192.png')
+	expect(
+		findIdentityIconPath(
+			{ '.kody/icon.png': '', 'icons/icon-192.png': '' },
+			{ includePackageAppIcon: true },
+		),
+	).toBe('.kody/icon.png')
 })
 
 test('identity source paths exclude other icon files', () => {
