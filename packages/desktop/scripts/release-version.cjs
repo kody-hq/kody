@@ -3,7 +3,7 @@ const { spawnSync } = require('node:child_process')
 const {
 	assertFeedCoverage,
 	releaseNotes,
-	releasePlan,
+	releaseAssetNames,
 	assertDraft,
 } = require('./release-plan.cjs')
 
@@ -56,35 +56,6 @@ function stableTagVersion(tag) {
 	} catch {
 		return null
 	}
-}
-
-function releaseAssetNames(version, scope) {
-	return releasePlan(scope, {}).matrix.include.flatMap(({ platform, arch }) => {
-		const os = platform
-		const suffix =
-			platform === 'mac'
-				? '-mac'
-				: platform === 'linux'
-					? `-linux${arch === 'x64' ? '' : `-${arch}`}`
-					: ''
-		const artifactArch =
-			platform === 'linux' && arch === 'x64' ? 'x86_64' : arch
-		const extensions =
-			platform === 'mac'
-				? ['dmg', 'zip']
-				: platform === 'win'
-					? ['exe']
-					: ['AppImage']
-		return [
-			`latest-${arch}${suffix}.yml`,
-			`SHA256SUMS-${os}-${arch}.txt`,
-			`build-info-${os}-${arch}.json`,
-			...extensions.flatMap((extension) => {
-				const name = `Kody-${version}-${os}-${artifactArch}.${extension}`
-				return [name, `${name}.blockmap`]
-			}),
-		]
-	})
 }
 
 function planVersion({
