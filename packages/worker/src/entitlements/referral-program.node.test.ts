@@ -49,7 +49,7 @@ type TestUser = { email: string; username: string; stableUserId: string }
 async function insertUser(
 	db: D1Database,
 	username: string,
-	input: { email?: string; verified?: boolean } = {},
+	input: { email?: string; verified?: boolean; createdAt?: string } = {},
 ): Promise<TestUser> {
 	const email = input.email ?? `${username}@example.com`
 	const stableUserId = testStableUserIdFromEmail(email)
@@ -57,14 +57,15 @@ async function insertUser(
 		.prepare(
 			`INSERT INTO users (
 				username, email, password_hash, stable_user_id,
-				email_verified_at
-			) VALUES (?, ?, 'hash', ?, ?)`,
+				email_verified_at, created_at
+			) VALUES (?, ?, 'hash', ?, ?, ?)`,
 		)
 		.bind(
 			username,
 			email,
 			stableUserId,
 			input.verified === false ? null : now.toISOString(),
+			input.createdAt ?? now.toISOString(),
 		)
 		.run()
 	await provisionPersonalOrg(db, {
@@ -669,6 +670,76 @@ test('billing summary reports the Referred by state', async () => {
 		referrerUsername: 'alice',
 		status: 'pending',
 	})
+})
+
+test('billing-page referrer is only open within 72 hours of signup', async () => {
+	const db = await createDb()
+	await insertUser(db, 'alice')
+	await insertUser(db, 'carol')
+	const hour = 60 * 60 * 1000
+	const inside = await insertUser(db, 'bob', {
+		createdAt: '2026-09-04 12:00:01',
+	})
+	const outside = await insertUser(db, 'dana', {
+		createdAt: new Date(now.getTime() - 72 * hour).toISOString(),
+	})
+	const paidInside = await insertUser(db, 'erin', {
+		createdAt: new Date(now.getTime() - hour).toISOString(),
+	})
+	await db
+		.prepare(`UPDATE orgs SET referral_first_paid_at = ? WHERE id = ?`)
+		.bind(now.toISOString(), paidInside.stableUserId)
+		.run()
+	const attributedOutside = await insertUser(db, 'fran', {
+		createdAt: new Date(now.getTime() - 100 * hour).toISOString(),
+	})
+	await attributeReferralAtSignup({
+		db,
+		refereeStableUserId: attributedOutside.stableUserId,
+		refereeUsername: attributedOutside.username,
+		referralCode: 'carol',
+		now,
+	})
+	const attempt = (user: TestUser) =>
+		attributeReferralBeforeFirstPayment({
+			db,
+			refereeStableUserId: user.stableUserId,
+			referrerInput: 'alice',
+			listPaidInvoices: noPaidInvoices,
+			now,
+		})
+	const referredBy = (user: TestUser) =>
+		loadReferralProgramSummary({
+			db,
+			stableUserId: user.stableUserId,
+			username: user.username,
+			origin: 'https://kody.codes',
+			personHasPaid: async () => false,
+			now,
+		}).then((result) => result.referredBy)
+
+	await expect(referredBy(inside)).resolves.toEqual({ state: 'open' })
+	await expect(referredBy(outside)).resolves.toEqual({ state: 'closed' })
+	await expect(attempt(outside)).resolves.toEqual({
+		outcome: 'rejected',
+		reason: 'window_closed',
+	})
+	await expect(attempt(paidInside)).resolves.toEqual({
+		outcome: 'rejected',
+		reason: 'already_paid',
+	})
+	await expect(attempt(attributedOutside)).resolves.toEqual({
+		outcome: 'rejected',
+		reason: 'already_attributed',
+	})
+	await expect(attempt(inside)).resolves.toEqual({
+		outcome: 'attributed',
+		referrerUsername: 'alice',
+	})
+	const count = await db
+		.prepare(`SELECT COUNT(*) AS total FROM referrals`)
+		.first<{ total: number }>()
+	expect(count?.total).toBe(2)
 })
 
 test('parseReferrerInput accepts usernames, @handles, and share links', () => {

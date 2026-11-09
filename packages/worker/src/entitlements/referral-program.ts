@@ -12,6 +12,7 @@ import {
 	normalizeEmailForReferralFraud,
 	normalizeReferralCode,
 	parseReferrerInput,
+	lateReferralWindowMs,
 	referralSharePath,
 	referralStandardCreditDurationMs,
 	unixSecondsToIso,
@@ -37,6 +38,7 @@ export type LateReferralAttributionOutcome =
 				| 'self'
 				| 'already_attributed'
 				| 'already_paid'
+				| 'window_closed'
 	  }
 
 export type ReferralRewardOutcome =
@@ -280,7 +282,8 @@ export async function personHasPaidKodyInvoice(input: {
 
 /**
  * Billing-page "Referred by" for an existing account. Write-once (unique
- * referee index) and only before the person's first paid Kody invoice. The
+ * referee index), only within 72 hours of signup, and only before the
+ * person's first paid Kody invoice. The
  * insert re-checks the paid marker in the same statement, and invoice.paid
  * stamps that marker before it looks for a pending referral, so an invoice
  * paid during this call either blocks the insert or rewards it.
@@ -326,6 +329,16 @@ export async function attributeReferralBeforeFirstPayment(input: {
 		.bind(input.refereeStableUserId)
 		.first<{ found: number }>()
 	if (existing) return { outcome: 'rejected', reason: 'already_attributed' }
+	const now = input.now ?? new Date()
+	if (
+		!(await signedUpWithinLateReferralWindow(
+			input.db,
+			input.refereeStableUserId,
+			now,
+		))
+	) {
+		return { outcome: 'rejected', reason: 'window_closed' }
+	}
 	if (
 		await personHasPaidKodyInvoice({
 			db: input.db,
@@ -335,7 +348,6 @@ export async function attributeReferralBeforeFirstPayment(input: {
 	) {
 		return { outcome: 'rejected', reason: 'already_paid' }
 	}
-	const now = input.now ?? new Date()
 	try {
 		const result = await input.db
 			.prepare(
@@ -370,10 +382,32 @@ export async function attributeReferralBeforeFirstPayment(input: {
 	}
 }
 
+async function signedUpWithinLateReferralWindow(
+	db: D1Database,
+	stableUserId: string,
+	now: Date,
+) {
+	const row = await db
+		.prepare(
+			`SELECT created_at FROM users
+			 WHERE stable_user_id = ?${andLiveDeletedAtSql()}`,
+		)
+		.bind(stableUserId)
+		.first<{ created_at: string | null }>()
+	const createdAt = row?.created_at?.trim()
+	if (!createdAt) return false
+	const createdMs = Date.parse(
+		createdAt.includes('T') ? createdAt : `${createdAt.replace(' ', 'T')}Z`,
+	)
+	if (!Number.isFinite(createdMs)) return false
+	return now.getTime() < createdMs + lateReferralWindowMs
+}
+
 async function loadReferredByState(input: {
 	db: D1Database
 	stableUserId: string
 	personHasPaid?: () => Promise<boolean>
+	now: Date
 }): Promise<ReferredByState> {
 	const row = await input.db
 		.prepare(
@@ -397,6 +431,15 @@ async function loadReferredByState(input: {
 		}
 	}
 	if (!input.personHasPaid) return { state: 'closed' }
+	if (
+		!(await signedUpWithinLateReferralWindow(
+			input.db,
+			input.stableUserId,
+			input.now,
+		))
+	) {
+		return { state: 'closed' }
+	}
 	try {
 		return (await input.personHasPaid())
 			? { state: 'closed' }
@@ -740,6 +783,7 @@ export async function loadReferralProgramSummary(input: {
 			db: input.db,
 			stableUserId: input.stableUserId,
 			personHasPaid: input.personHasPaid,
+			now,
 		}),
 	])
 	const referrals: Array<ReferralProgramListItem> = (rows.results ?? []).map(
