@@ -1,9 +1,9 @@
 import { Plugin } from '@tiptap/pm/state'
 import { Mapping } from '@tiptap/pm/transform'
 import { fileIdSchema } from '#universal/files.ts'
-import { type JSONContent } from '@tiptap/core'
-import { type Node as DocumentNode } from '@tiptap/pm/model'
-import { type PageBlock } from '#universal/workspace-page.ts'
+import type { JSONContent } from '@tiptap/core'
+import type { Node as DocumentNode } from '@tiptap/pm/model'
+import type { PageBlock } from '#universal/workspace-page.ts'
 
 export function blocksToDocument(blocks: PageBlock[]): JSONContent {
 	return {

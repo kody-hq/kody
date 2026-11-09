@@ -1,7 +1,7 @@
 import { parseCsvPreview } from './csv-preview.ts'
 import { fileViewerKind } from './file-viewers.ts'
 import * as Y from 'yjs'
-import { type CommentAnchor } from './file-collaboration.ts'
+import type { CommentAnchor } from './file-collaboration.ts'
 import { collaborativeContent } from './collaborative-document.ts'
 import { readWorkspacePage, workspacePageMediaType } from './workspace-page.ts'
 

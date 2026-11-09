@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { fileTreePermission, filePublicParentAllows } from './tree-access.ts'
-import { type EffectivePermissions } from '#worker/authorization/authorize.ts'
-import { type FileMetadata } from '#universal/files.ts'
+import type { EffectivePermissions } from '#worker/authorization/authorize.ts'
+import type { FileMetadata } from '#universal/files.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 function fixture() {
 	const orgId = ownerIdFromStored('org_test')

@@ -6,9 +6,9 @@ import {
 	relativePositionToAbsolutePosition,
 	ySyncPluginKey,
 } from '@tiptap/y-tiptap'
-import {
-	type FileThread,
-	type CommentAnchor,
+import type {
+	FileThread,
+	CommentAnchor,
 } from '#universal/file-collaboration.ts'
 
 export function workspaceCommentMarks(

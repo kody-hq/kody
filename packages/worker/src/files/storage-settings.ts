@@ -1,4 +1,4 @@
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { requireMcpRequest } from '#mcp/capabilities/meta/require-user.ts'
 import { loadLiveOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import {
@@ -8,7 +8,7 @@ import {
 import { checkPermission } from '#worker/authorization/authorize.ts'
 import { listSecrets } from '#mcp/secrets/service.ts'
 import { fileStoreRpc } from './client.ts'
-import { type FileStorageConfig } from '#universal/file-storage.ts'
+import type { FileStorageConfig } from '#universal/file-storage.ts'
 import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
 import { storageEndpoint } from './object-storage.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'

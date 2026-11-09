@@ -3,8 +3,8 @@ import { isCredentialInvalidatedByStoredPasswordChange } from '#worker/password-
 import { DurableObject } from 'cloudflare:workers'
 import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
 import * as Y from 'yjs'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { fileStoreRpc } from './client.ts'
 import { fileCollaborationAccess } from './collaboration-access.ts'
 import { commentAnchorExists } from '#universal/comment-anchor.ts'
@@ -26,7 +26,7 @@ import {
 	type RoomServerMessage,
 	type CommentCommand,
 } from '#universal/file-collaboration.ts'
-import { type FileMetadata } from '#universal/files.ts'
+import type { FileMetadata } from '#universal/files.ts'
 import { sha256Hex } from '@kody-internal/shared/sha256.ts'
 
 type RoomState = {

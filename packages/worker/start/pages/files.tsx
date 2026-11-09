@@ -7,7 +7,7 @@ import {
 	RecordTableSearch,
 	type RecordTableRow,
 } from './record-table.tsx'
-import { type RecordTableOptions } from './record-table-model.ts'
+import type { RecordTableOptions } from './record-table-model.ts'
 import { useFileItemHotkeys } from '../components/use-file-item-hotkeys.ts'
 import { workspaceUploadTarget } from '../components/workspace-upload-target.ts'
 import { useHotkey } from '@tanstack/react-hotkeys'

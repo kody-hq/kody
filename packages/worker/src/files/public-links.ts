@@ -4,9 +4,9 @@ import {
 	type FileAssetSettings,
 } from '#universal/file-assets.ts'
 import { isWorkspaceContainer } from '#universal/workspace-page.ts'
-import { type FileMetadata } from '#universal/files.ts'
+import type { FileMetadata } from '#universal/files.ts'
 import { sealFileShareValue, openFileShareValue } from '#mcp/secrets/crypto.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { requireMcpRequest } from '#mcp/capabilities/meta/require-user.ts'
 import { fileCollaborationAccess } from './collaboration-access.ts'
 import { fileCollaborationEnabled } from './feature.ts'

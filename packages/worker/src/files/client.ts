@@ -1,5 +1,5 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type FileStoreRpc } from './store.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { FileStoreRpc } from './store.ts'
 
 export function fileStoreName(ownerId: OwnerId) {
 	return `${ownerId}:files:v1`

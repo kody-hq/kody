@@ -5,7 +5,7 @@ import {
 } from './feature.ts'
 import { fileTreePermission, loadFileAncestors } from './tree-access.ts'
 import { fileRoomRpc, type FileSessionProof } from './room.ts'
-import { type CommentCommand } from '#universal/file-collaboration.ts'
+import type { CommentCommand } from '#universal/file-collaboration.ts'
 import { parseFileRange } from '#universal/file-assets.ts'
 import { fileBlobKey } from './object-keys.ts'
 import {
@@ -14,26 +14,26 @@ import {
 	workspacePageMediaType,
 	workspaceDirectoryMediaType,
 } from '#universal/workspace-page.ts'
-import { type z } from 'zod'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { z } from 'zod'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import {
 	requireMcpRequest,
 	requireMcpUser,
 } from '#mcp/capabilities/meta/require-user.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { checkPermission } from '#worker/authorization/authorize.ts'
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
 import { grantCreatorAccess } from '#worker/orgs/creator-access.ts'
 import {
 	optionalOrgAuditWriter,
 	recordCommittedOrgAuditEvent,
 } from '#worker/orgs/org-audit.ts'
-import {
-	type FileMetadata,
-	type fileCreateSchema,
-	type fileWriteSchema,
-	type fileManageSchema,
+import type {
+	FileMetadata,
+	fileCreateSchema,
+	fileWriteSchema,
+	fileManageSchema,
 } from '#universal/files.ts'
 import { fileStoreRpc } from './client.ts'
 

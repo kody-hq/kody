@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { Menu } from '@base-ui/react/menu'
 import { overlayPopupCss, overlayPositionerCss } from './overlay-styles.ts'
 import { SiteLink } from './site-link.tsx'

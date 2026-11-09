@@ -2,7 +2,7 @@
 import { Global } from '@emotion/react'
 import { useLayoutEffect, useRef, useState } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
-import { type FileMetadata } from '#universal/files.ts'
+import type { FileMetadata } from '#universal/files.ts'
 import { colors } from '#universal/styles/tokens.ts'
 
 type BreadcrumbEntry = Pick<FileMetadata, 'id' | 'name' | 'parentId'>

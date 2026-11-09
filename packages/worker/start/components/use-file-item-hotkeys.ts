@@ -1,4 +1,4 @@
-import { type RefObject } from 'react'
+import type { RefObject } from 'react'
 import { useHotkeys } from '@tanstack/react-hotkeys'
 
 export function useFileItemHotkeys({

@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { WorkspaceEmptyFolder } from './workspace-empty-folder.tsx'
-import { type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { colors } from '#universal/styles/tokens.ts'
 import { workspaceDirectoryMediaType } from '#universal/workspace-page.ts'
 import { kodyLogoOutlinedSvgMarkup } from '../brand/kody-logo.ts'

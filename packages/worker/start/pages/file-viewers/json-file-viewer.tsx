@@ -11,11 +11,11 @@ import {
 	useState,
 } from 'react'
 import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual'
-import {
-	type JsonLine,
-	type JsonNode,
-	type JsonRequest,
-	type JsonResponse,
+import type {
+	JsonLine,
+	JsonNode,
+	JsonRequest,
+	JsonResponse,
 } from '#universal/json-preview.ts'
 import { colors } from '#universal/styles/tokens.ts'
 import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'

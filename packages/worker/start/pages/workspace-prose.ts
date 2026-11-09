@@ -1,4 +1,4 @@
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { colors, typography } from '#universal/styles/tokens.ts'
 
 // The document rhythm belongs to the content, not its renderer or edit state.

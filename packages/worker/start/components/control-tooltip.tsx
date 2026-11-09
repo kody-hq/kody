@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { Tooltip } from '@base-ui/react/tooltip'
-import { type ReactElement, type ReactNode } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 import { colors } from '#universal/styles/tokens.ts'
 import { overlayPopupCss, overlayPositionerCss } from './overlay-styles.ts'
 

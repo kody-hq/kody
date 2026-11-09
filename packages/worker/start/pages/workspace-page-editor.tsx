@@ -23,15 +23,15 @@ import CollaborationCaret from '@tiptap/extension-collaboration-caret'
 import { workspaceCommentMarks } from './workspace-comment-marks.ts'
 import { useHotkey } from '@tanstack/react-hotkeys'
 import { CommentSelectionToolbar } from './comment-selection-toolbar.tsx'
-import {
-	type FileThread,
-	type CommentAnchor,
+import type {
+	FileThread,
+	CommentAnchor,
 } from '#universal/file-collaboration.ts'
 import {
 	absolutePositionToRelativePosition,
 	ySyncPluginKey,
 } from '@tiptap/y-tiptap'
-import { type FileRoomClient } from './file-room-client.ts'
+import type { FileRoomClient } from './file-room-client.ts'
 import { actorColor } from '#universal/collaboration-color.ts'
 import { replaceCollaborativeContent } from '#universal/collaborative-document.ts'
 import {
@@ -39,7 +39,7 @@ import {
 	documentToBlocks,
 	stableBlockIdsPlugin,
 } from './workspace-document.ts'
-import { type FileMetadata } from '#universal/files.ts'
+import type { FileMetadata } from '#universal/files.ts'
 import {
 	readWorkspacePage,
 	writeWorkspacePage,

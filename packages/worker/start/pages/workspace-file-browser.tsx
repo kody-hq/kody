@@ -17,7 +17,7 @@ import {
 	isWorkspaceContainer,
 } from '#universal/workspace-page.ts'
 import { fileAssetUrl } from '#universal/file-assets.ts'
-import { type FileMetadata } from '#universal/files.ts'
+import type { FileMetadata } from '#universal/files.ts'
 import { WorkspaceEmptyFolder } from './workspace-empty-folder.tsx'
 
 export type BrowserFile = FileMetadata

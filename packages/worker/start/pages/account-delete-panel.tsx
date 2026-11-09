@@ -2,7 +2,7 @@
 import { ModalDialog } from '../components/modal-dialog.tsx'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { PasswordRevealInput } from '../components/password-reveal-input.tsx'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useState, type FormEvent } from 'react'
 import {
 	accountDeletedHomePath,

@@ -29,7 +29,7 @@ import {
 	type FileThread,
 	type CommentCommand,
 } from '#universal/file-collaboration.ts'
-import { type FileMetadata } from '#universal/files.ts'
+import type { FileMetadata } from '#universal/files.ts'
 import { colors, typography } from '#universal/styles/tokens.ts'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { fileAssetUrl } from '#universal/file-assets.ts'

@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { useContext } from 'react'
 import { colors } from '#universal/styles/tokens.ts'
-import { type CommentAnchor } from '#universal/file-collaboration.ts'
+import type { CommentAnchor } from '#universal/file-collaboration.ts'
 import { FileAnchorContext } from './file-anchor-context.ts'
 import { CommentIcon } from './file-comments.tsx'
 

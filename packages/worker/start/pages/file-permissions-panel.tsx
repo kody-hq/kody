@@ -8,7 +8,7 @@ import {
 	assetCacheControls,
 	defaultFileAssetSettings,
 } from '#universal/file-assets.ts'
-import { type FileMetadata } from '#universal/files.ts'
+import type { FileMetadata } from '#universal/files.ts'
 import {
 	filePermissionOptions,
 	type FilePermission,

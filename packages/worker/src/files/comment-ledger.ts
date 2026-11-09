@@ -1,12 +1,12 @@
 import { allStorageRows } from './storage-pages.ts'
-import {
-	type FileNotification,
-	type CommentAnchor,
-	type CollaborationActor,
-	type CommentCommand,
-	type FileThread,
-	type FileComment,
-	type CollaborationAccess,
+import type {
+	FileNotification,
+	CommentAnchor,
+	CollaborationActor,
+	CommentCommand,
+	FileThread,
+	FileComment,
+	CollaborationAccess,
 } from '#universal/file-collaboration.ts'
 
 type Storage = Pick<

@@ -1,4 +1,4 @@
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import {
 	requireMcpRequest,
 	requireMcpUser,

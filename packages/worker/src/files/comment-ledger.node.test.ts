@@ -1,8 +1,8 @@
 import { expect, test } from 'vitest'
 import { CommentLedger } from './comment-ledger.ts'
-import {
-	type CollaborationActor,
-	type CommentCommand,
+import type {
+	CollaborationActor,
+	CommentCommand,
 } from '#universal/file-collaboration.ts'
 function fixture() {
 	let data = new Map<string, unknown>()

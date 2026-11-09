@@ -1,4 +1,4 @@
-import { type websiteCapabilityContext as WebsiteCapabilityContext } from '../../src/app/website-capability.ts'
+import type { websiteCapabilityContext as WebsiteCapabilityContext } from '../../src/app/website-capability.ts'
 import { notFound } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'

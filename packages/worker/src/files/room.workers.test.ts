@@ -10,7 +10,7 @@ import {
 	sealFileShareValue,
 	userSecretContext,
 } from '#mcp/secrets/crypto.ts'
-import { type FileStore } from './store.ts'
+import type { FileStore } from './store.ts'
 import { fileStoreName, fileStoreRpc } from './client.ts'
 import { fileObjectReader, storageEndpoint } from './object-storage.ts'
 import { fileBlobKey } from './object-keys.ts'

@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import { type MiniflareOptions } from 'miniflare'
+import type { MiniflareOptions } from 'miniflare'
 
 export async function spikeRuntimeOptions(
 	persistence?: string,

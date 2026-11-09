@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 export function fileBlobPrefix(ownerId: OwnerId, fileId?: string) {
 	return `files:v1/${ownerId}/${fileId ? `${fileId}/` : ''}`
 }

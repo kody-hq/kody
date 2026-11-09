@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { AlertDialog } from '@base-ui/react/alert-dialog'
 import { Dialog } from '@base-ui/react/dialog'
-import { type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { colors, radius, shadows } from '#universal/styles/tokens.ts'
 
 export function ModalDialog({

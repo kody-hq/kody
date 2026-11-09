@@ -1,4 +1,4 @@
-import { type FileMetadata } from '#universal/files.ts'
+import type { FileMetadata } from '#universal/files.ts'
 import { isWorkspaceContainer } from '#universal/workspace-page.ts'
 
 /** The nearest row or column wins, including an explicit workspace root. */

@@ -1,7 +1,7 @@
 import { createContext } from 'react'
-import {
-	type CommentAnchor,
-	type FileThread,
+import type {
+	CommentAnchor,
+	FileThread,
 } from '#universal/file-collaboration.ts'
 
 export const FileAnchorContext = createContext<{

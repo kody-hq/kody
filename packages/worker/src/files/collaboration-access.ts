@@ -4,11 +4,11 @@ import {
 } from './feature.ts'
 import { fileTreePermission, loadFileAncestors } from './tree-access.ts'
 import { fileStoreRpc } from './client.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { loadLiveOrgBindingForOrg } from '#worker/orgs/repo.ts'
-import {
-	type CollaborationAccess,
-	type CollaborationActor,
+import type {
+	CollaborationAccess,
+	CollaborationActor,
 } from '#universal/file-collaboration.ts'
 
 /** Room callers supply server-derived contexts. Never accept one from client JSON. */

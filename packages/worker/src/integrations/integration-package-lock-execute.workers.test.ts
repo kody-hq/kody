@@ -707,6 +707,7 @@ function localContext(person: Person): ApiInvocationContext {
 		principal: { kind: 'mcp' },
 		getFeatureFlags: async () => ({
 			'demo-indicator': false,
+			'files-workspace': false,
 			profiles: false,
 			'mcp-skills-extension': false,
 			'mcp-events-extension': false,

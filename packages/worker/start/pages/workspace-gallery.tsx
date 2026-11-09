@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual'
-import { type FileMetadata } from '#universal/files.ts'
+import type { FileMetadata } from '#universal/files.ts'
 import { workspaceDirectoryMediaType } from '#universal/workspace-page.ts'
 import { fileAssetUrl } from '#universal/file-assets.ts'
 import { colors } from '#universal/styles/tokens.ts'

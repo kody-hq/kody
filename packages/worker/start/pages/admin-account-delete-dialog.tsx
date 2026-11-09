@@ -2,7 +2,7 @@
 import { ModalDialog } from '../components/modal-dialog.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useState, type FormEvent } from 'react'
 import {
 	deleteAdminUserAccount,

@@ -1,14 +1,14 @@
 /** @jsxImportSource @emotion/react */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import * as Y from 'yjs'
-import {
-	type CommentAnchor,
-	type FilePresence,
-	type FileThread,
+import type {
+	CommentAnchor,
+	FilePresence,
+	FileThread,
 } from '#universal/file-collaboration.ts'
 import { replaceCollaborativeText } from '#universal/collaborative-document.ts'
 import { colors, typography } from '#universal/styles/tokens.ts'
-import { type FileRoomClient } from './file-room-client.ts'
+import type { FileRoomClient } from './file-room-client.ts'
 import { actorColor } from '#universal/collaboration-color.ts'
 import { useHotkey } from '@tanstack/react-hotkeys'
 import { CommentIcon } from './file-comments.tsx'

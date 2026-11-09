@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { type Locator, type WebSocketRoute } from '@playwright/test'
+import type { Locator, WebSocketRoute } from '@playwright/test'
 import { test, expect, waitForClientHydration } from './playwright-utils.ts'
 
 test('collaborators jump to a live caret and merge edits after a disconnect', async ({

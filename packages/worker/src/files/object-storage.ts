@@ -8,7 +8,7 @@ import {
 	personIdFromStored,
 	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type FileStorageConfig } from '#universal/file-storage.ts'
+import type { FileStorageConfig } from '#universal/file-storage.ts'
 import { fileStoreRpc } from './client.ts'
 
 export type FileBlobObject = Pick<

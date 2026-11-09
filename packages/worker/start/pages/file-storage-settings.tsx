@@ -1,8 +1,8 @@
 /** @jsxImportSource @emotion/react */
 import { ModalDialog } from '../components/modal-dialog.tsx'
 import { useEffect, useRef, useState } from 'react'
-import { type z } from 'zod'
-import { type fileStorageStatusSchema } from '#universal/file-storage.ts'
+import type { z } from 'zod'
+import type { fileStorageStatusSchema } from '#universal/file-storage.ts'
 import { readFileStorage, setFileStorage } from '#start/server/file-storage'
 import { accountInputCss } from './account-management-components.tsx'
 import { colors } from '#universal/styles/tokens.ts'

@@ -433,7 +433,7 @@ test('expired secrets, package secrets, and suspended personal orgs are not pers
 		grantPersonalCredentialToOrg({
 			db: t.db,
 			ownerPersonId: ann,
-			credentialId: packageToken!.id,
+			credentialId: packageTokenId,
 			orgId: t.acmeId,
 			now: later,
 		}),

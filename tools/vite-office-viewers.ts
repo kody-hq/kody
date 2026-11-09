@@ -1,7 +1,7 @@
 import { build } from 'esbuild'
 import { createHash } from 'node:crypto'
 import path from 'node:path'
-import { type Plugin } from 'vite'
+import type { Plugin } from 'vite'
 const id = 'virtual:kody-office-viewers'
 export async function buildOfficeViewerAssets() {
 	const assets = new Map<string, { name: string; script: Uint8Array }>()

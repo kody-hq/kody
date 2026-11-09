@@ -1,4 +1,4 @@
-import { type FileMetadata, type FileRevision } from '#universal/files.ts'
+import type { FileMetadata, FileRevision } from '#universal/files.ts'
 import { allStorageRows } from './storage-pages.ts'
 
 /** The catalog and history share the FileStore's SQLite transaction boundary. */

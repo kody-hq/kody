@@ -1,9 +1,9 @@
-import { type FileMetadata } from '#universal/files.ts'
+import type { FileMetadata } from '#universal/files.ts'
 import {
 	checkPermission,
 	type EffectivePermissions,
 } from '#worker/authorization/authorize.ts'
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 /** Restrictions intersect down the tree. Explicit child shares cannot reopen a restricted ancestor. */
 export function fileTreePermission(
 	access: EffectivePermissions,

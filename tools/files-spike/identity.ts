@@ -1,4 +1,4 @@
-import { type Principal } from './contracts.ts'
+import type { Principal } from './contracts.ts'
 
 /** Public local fixtures. These identities must never authorize a production route. */
 export const spikePeople: Record<string, Principal> = {

@@ -1,4 +1,4 @@
-import { type FileMetadata } from '#universal/files.ts'
+import type { FileMetadata } from '#universal/files.ts'
 import { inviteCreateCapability } from '#mcp/capabilities/access/invites.ts'
 import { fileInvitationOffer, acceptFileInvitation } from './invitations.ts'
 import { createProfile, revokeProfile } from '#worker/profiles/service.ts'
@@ -10,7 +10,7 @@ import {
 	ownerIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import {
 	createMigratedDb,
 	insertTestUser,

@@ -17,7 +17,7 @@ import {
 import { useEffect, useRef } from 'react'
 import { useLoaderData, useLocation } from '@tanstack/react-router'
 import { workspaceHomeHref } from '#client/routes/account-rail.ts'
-import { type IconName } from './icon.tsx'
+import type { IconName } from './icon.tsx'
 import { UserAvatar } from './user-avatar.tsx'
 import {
 	urlOrgSlug,

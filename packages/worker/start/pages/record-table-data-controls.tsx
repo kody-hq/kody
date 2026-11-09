@@ -1,10 +1,10 @@
 /** @jsxImportSource @emotion/react */
 import { useEffect, useRef } from 'react'
-import {
-	type useRecordTableModel,
-	type RecordTableOptions,
+import type {
+	useRecordTableModel,
+	RecordTableOptions,
 } from './record-table-model.ts'
-import { type RecordTableColumn } from './record-table.tsx'
+import type { RecordTableColumn } from './record-table.tsx'
 import { Menu } from '@base-ui/react/menu'
 import {
 	overlayItemCss,

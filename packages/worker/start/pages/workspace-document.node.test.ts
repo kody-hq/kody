@@ -6,7 +6,7 @@ import {
 	documentToBlocks,
 	stableBlockIdsPlugin,
 } from './workspace-document.ts'
-import { type PageBlock } from '#universal/workspace-page.ts'
+import type { PageBlock } from '#universal/workspace-page.ts'
 const schema = new Schema({
 	nodes: {
 		doc: { content: 'block+' },

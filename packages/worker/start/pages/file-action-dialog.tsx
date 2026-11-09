@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { ModalDialog } from '../components/modal-dialog.tsx'
 import { useEffect, useState } from 'react'
-import { type FileMetadata } from '#universal/files.ts'
+import type { FileMetadata } from '#universal/files.ts'
 import { colors } from '#universal/styles/tokens.ts'
 import { accountInputCss } from './account-management-components.tsx'
 import {

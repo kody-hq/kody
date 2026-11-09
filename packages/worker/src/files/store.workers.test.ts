@@ -2,7 +2,7 @@ import { env, runInDurableObject } from 'cloudflare:test'
 import { expect, test } from 'vitest'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { fileStoreRpc, fileStoreName } from './client.ts'
-import { type FileStore } from './store.ts'
+import type { FileStore } from './store.ts'
 
 async function expectWriteError(
 	input: Parameters<FileStore['write']>[0],

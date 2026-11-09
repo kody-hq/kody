@@ -6,8 +6,8 @@ import {
 	overlayPopupCss,
 	overlayPositionerCss,
 } from '../components/overlay-styles.ts'
-import { type FileMetadata } from '#universal/files.ts'
-import { type PageBlock } from '#universal/workspace-page.ts'
+import type { FileMetadata } from '#universal/files.ts'
+import type { PageBlock } from '#universal/workspace-page.ts'
 import { colors, typography } from '#universal/styles/tokens.ts'
 
 type TextKind = Exclude<PageBlock['kind'], 'file'>

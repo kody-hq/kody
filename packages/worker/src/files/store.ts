@@ -1,4 +1,4 @@
-import { type FileAssetSettings } from '#universal/file-assets.ts'
+import type { FileAssetSettings } from '#universal/file-assets.ts'
 import { allStorageRows } from './storage-pages.ts'
 import { providerObjectStore, storageEndpoint } from './object-storage.ts'
 import {
@@ -16,7 +16,7 @@ import {
 	workspacePageMediaType,
 } from '#universal/workspace-page.ts'
 import { DurableObject } from 'cloudflare:workers'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { base64ToBytes, bytesToBase64 } from '@kody-internal/shared/base64.ts'
 import { sha256Hex } from '@kody-internal/shared/sha256.ts'
 import {
