@@ -1801,8 +1801,8 @@ stateDiagram-v2
 
 ## desktop.update_readiness
 
-Downloaded readiness survives later failed checks; installation is fenced until
-the app quits.
+Downloaded readiness survives failed checks; a new download resets installation
+readiness until the app quits.
 
 Source: [`packages/desktop/updates.cjs`](../../packages/desktop/updates.cjs)
 
@@ -1813,20 +1813,16 @@ Final states: None
 ```mermaid
 stateDiagram-v2
     [*] --> waiting
-    waiting --> downloaded
-    downloaded --> downloaded
-    downloaded --> installing
-    installing --> downloaded
-    installing --> installing
+    waiting --> downloaded: DOWNLOAD
+    downloaded --> installing: INSTALL
+    installing --> downloaded: DOWNLOAD
 ```
 
-Legacy transition table (no named events yet).
-
-| State      | May transition to      |
-| ---------- | ---------------------- |
-| waiting    | downloaded             |
-| downloaded | downloaded, installing |
-| installing | downloaded, installing |
+| Event    | From       | To         | Guard |
+| -------- | ---------- | ---------- | ----- |
+| DOWNLOAD | waiting    | downloaded | —     |
+| INSTALL  | downloaded | installing | —     |
+| DOWNLOAD | installing | downloaded | —     |
 
 ## desktop.update_check
 
@@ -1842,21 +1838,19 @@ Final states: None
 ```mermaid
 stateDiagram-v2
     [*] --> idle
-    idle --> checking
-    checking --> idle
+    idle --> checking: CHECK
+    checking --> idle: SETTLED
 ```
 
-Legacy transition table (no named events yet).
-
-| State    | May transition to |
-| -------- | ----------------- |
-| idle     | checking          |
-| checking | idle              |
+| Event   | From     | To       | Guard |
+| ------- | -------- | -------- | ----- |
+| CHECK   | idle     | checking | —     |
+| SETTLED | checking | idle     | —     |
 
 ## desktop.machine_operation
 
-Connection and daemon actions run exclusively; a retry clears earlier errors
-while OS runner observations remain external.
+Connection and daemon actions run exclusively; errors observed during an
+operation remain notices until settlement.
 
 Source: [`packages/desktop/execution.cjs`](../../packages/desktop/execution.cjs)
 
@@ -1867,23 +1861,28 @@ Final states: None
 ```mermaid
 stateDiagram-v2
     [*] --> idle
-    idle --> running
-    idle --> error
-    running --> idle
-    running --> running
-    running --> error
-    error --> idle
-    error --> running
-    error --> error
+    idle --> running: START_OPERATION
+    idle --> error: SET_ERROR
+    running --> running: SET_ERROR
+    running --> running: CLEAR_ERROR
+    running --> error: SETTLED
+    running --> idle: SETTLED
+    error --> running: START_OPERATION
+    error --> error: SET_ERROR
+    error --> idle: CLEAR_ERROR
 ```
 
-Legacy transition table (no named events yet).
-
-| State   | May transition to    |
-| ------- | -------------------- |
-| idle    | running, error       |
-| running | idle, running, error |
-| error   | idle, running, error |
+| Event           | From    | To      | Guard |
+| --------------- | ------- | ------- | ----- |
+| START_OPERATION | idle    | running | —     |
+| SET_ERROR       | idle    | error   | —     |
+| SET_ERROR       | running | running | —     |
+| CLEAR_ERROR     | running | running | —     |
+| SETTLED         | running | error   | guard |
+| SETTLED         | running | idle    | —     |
+| START_OPERATION | error   | running | —     |
+| SET_ERROR       | error   | error   | —     |
+| CLEAR_ERROR     | error   | idle    | —     |
 
 ## Status enums (not state machines)
 

@@ -155,11 +155,15 @@ test('every declared lifecycle event is handled by the machine', () => {
 			if (
 				ts.isPropertyAssignment(node) &&
 				node.name.getText(source) === 'events' &&
-				ts.isAsExpression(node.initializer)
+				(ts.isAsExpression(node.initializer) ||
+					ts.getJSDocType(node.initializer))
 			) {
-				const types = ts.isUnionTypeNode(node.initializer.type)
-					? node.initializer.type.types
-					: [node.initializer.type]
+				const eventType = ts.isAsExpression(node.initializer)
+					? node.initializer.type
+					: ts.getJSDocType(node.initializer)!
+				const types = ts.isUnionTypeNode(eventType)
+					? eventType.types
+					: [eventType]
 				for (const type of types) {
 					if (!ts.isTypeLiteralNode(type))
 						throw new Error(`Expected inline event union in ${file}`)
@@ -211,7 +215,7 @@ test('documentation separates replacement enums from legacy and event-driven gra
 	const [machines, enums] = rendered.split(
 		'## Status enums (not state machines)',
 	)
-	expect(machines).toContain('Legacy transition table')
+	expect(machines).not.toContain('Legacy transition table')
 	expect(machines).toContain('| CONSUME | pending | consumed | — |')
 	expect(machines).toContain('pending --> consumed: CONSUME')
 	expect(machines).not.toContain('consumed --> expired')
