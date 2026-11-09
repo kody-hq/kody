@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers'
-import { expect, test, vi } from 'vitest'
+import { expect, test } from 'vitest'
 import { handleInboundEmail } from './inbound.ts'
 import { maxSurvivableInboundRawBytes } from './parser.ts'
 import { mailboxRpc } from './mailbox-client.ts'
@@ -24,10 +24,7 @@ import {
 import { createForwardableEmailMessage } from './test-fixtures.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
 import { ensureEmailTestSchema } from './test-schema.ts'
-import {
-	consoleError,
-	consoleWarn,
-} from '#worker/test-support/console-spies.ts'
+import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
 import { ensureUsageRollupsTestSchema } from '#worker/usage/test-schema.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
@@ -769,52 +766,16 @@ test('system email retention drains delivery-event backlogs larger than one batc
 	).toBe(0)
 })
 
-test('kent@ mail is stored in the system inbox and then forwarded; a failed or unconfigured forward keeps the inbox copy', async () => {
+test('kent@ mail reaching the Worker lands in the system inbox', async () => {
 	await ensureEmailTestSchema(env.APP_DB)
 	await ensureUsageRollupsTestSchema(env.APP_DB)
 	const kentTo = `kent@${systemDomain}`
-	const forwarded = buildInboundMessage({ to: kentTo, subject: 'Hi Kent' })
-	const forwardSpy = vi.fn(async () => ({ messageId: 'fwd-1' }))
-	forwarded.forward = forwardSpy
-	await handleInboundEmail(
-		forwarded,
-		createInboundEnv({ FOUNDER_EMAIL_FORWARD_TO: 'founder@example.com' }),
-	)
-	expect(forwarded.rejectedReason).toBeNull()
-	expect(forwardSpy).toHaveBeenCalledWith('founder@example.com')
+	expect(
+		await deliver({ to: kentTo, subject: 'Hi Kent' }, createInboundEnv()),
+	).toBeNull()
 	expect((await listSystemMessages())[0]).toMatchObject({
 		subject: 'Hi Kent',
 		toAddresses: [kentTo],
 	})
 	expect(await systemInboxNames()).toContain('kent')
-
-	consoleError.mockImplementation(() => {})
-	const failing = buildInboundMessage({ to: kentTo, subject: 'Forward fails' })
-	failing.forward = async () => {
-		throw new Error('destination address not verified')
-	}
-	await handleInboundEmail(
-		failing,
-		createInboundEnv({ FOUNDER_EMAIL_FORWARD_TO: 'founder@example.com' }),
-	)
-	expect(failing.rejectedReason).toBeNull()
-
-	expect(
-		await deliver(
-			{ to: kentTo, subject: 'No destination' },
-			createInboundEnv({ FOUNDER_EMAIL_FORWARD_TO: undefined }),
-		),
-	).toBeNull()
-	const subjects = (await listSystemMessages()).map((row) => row.subject)
-	expect(subjects).toEqual(
-		expect.arrayContaining(['Hi Kent', 'Forward fails', 'No destination']),
-	)
-	expect(consoleError).toHaveBeenCalledWith(
-		'system-inbound-forward-failed',
-		expect.objectContaining({ localPart: 'kent' }),
-	)
-	expect(consoleError).toHaveBeenCalledWith(
-		'system-inbound-forward-unconfigured',
-		expect.objectContaining({ localPart: 'kent' }),
-	)
 }, 30_000)

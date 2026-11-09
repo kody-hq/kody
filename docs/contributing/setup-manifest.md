@@ -38,6 +38,10 @@ This project uses the following resources:
     (`DMARC_REPORT_FORWARD_TO`, default `me@kentcdodds.com`) so DMARC aggregate
     reports land in an operator mailbox. Destination verification is
     dashboard-only (Cloudflare sends a confirm link).
+  - `kent@<SYSTEM_EMAIL_DOMAIN>` (the founder welcome Reply-To) has a zone
+    Routing rule that forwards straight to Kent's verified destination. It
+    bypasses the Worker, so it has no system inbox copy; without the rule the
+    catch-all still stores it in the system inbox.
 - DMARC reporting TXT
   - Production CI upserts `_dmarc.<SYSTEM_EMAIL_DOMAIN>` and
     `_dmarc.<USER_EMAIL_DOMAIN>` (when distinct) to
@@ -692,11 +696,6 @@ Configure these GitHub Actions secrets and variables for workflows:
   audience. Create a Kit API key at
   https://app.kit.com/account_settings/developer_settings and use the same value
   as the Kody user secret `kitApiKey` when convenient.)
-- `FOUNDER_EMAIL_FORWARD_TO` (optional GitHub / Worker secret; destination for
-  mail to `kent@<system domain>`. The message is stored in the system inbox
-  first, then forwarded with `message.forward`. It must be a verified Cloudflare
-  Email Routing destination address on the account. Production deploy syncs it
-  when set; unset or failed forwards log an error and keep the inbox copy.)
 - `STRIPE_SECRET_KEY` (optional GitHub / Worker secret; Stripe secret API key
   for account billing. Production deploy syncs it when set. The Standard and Pro
   price ids are public Wrangler vars committed in
