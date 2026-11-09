@@ -14,6 +14,9 @@ import type { PlanName } from '#universal/plans.ts'
 /** 30 days. Observed through grant `expires_at`, not this export alone. */
 export const referralStandardCreditDurationMs = 30 * 24 * 60 * 60 * 1000
 
+/** Existing accounts can add a referrer for this long after signup. */
+export const lateReferralWindowMs = 72 * 60 * 60 * 1000
+
 const referralRejectReasons = [
 	'self_referral',
 	'same_email',
@@ -34,9 +37,10 @@ export type ReferralProgramSummary = {
 }
 
 /**
- * Whether this person can still add who referred them. `open` only before
- * their first paid Kody invoice and with no attribution recorded; `closed`
- * hides the entry (already paid, rejected, or unknown).
+ * Whether this person can still add who referred them. `open` only within
+ * 72 hours of signup, before their first paid Kody invoice, and with no
+ * attribution recorded; `closed` hides the entry (window over, already paid,
+ * rejected, or unknown).
  */
 export type ReferredByState =
 	| { state: 'open' }

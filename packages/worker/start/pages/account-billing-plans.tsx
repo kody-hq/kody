@@ -352,8 +352,9 @@ export function renderAccountBillingPlans(input: {
 												}
 											/>
 											<span css={descriptionCss}>
-												A Stripe discount for monthly billing. Referral links
-												are not promo codes.
+												A Stripe discount on your monthly price. Referral links
+												and usernames are not promo codes; a referral goes under
+												Referred by.
 											</span>
 										</label>
 									)}

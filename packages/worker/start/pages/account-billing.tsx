@@ -459,7 +459,7 @@ export function AccountBillingPage({
 					{billing.referralProgram ? (
 						<AccountManagementPanel
 							title="Refer a friend"
-							description="Share your link. When someone signs up with it, or an existing Free user adds you under Referred by before their first payment, you both get one month of Pro once they verify their email and pay their first invoice. There is no cap."
+							description="Share your link. When someone signs up with it, or an existing Free user adds you under Referred by within 72 hours of signing up and before their first payment, you both get one month of Pro once they verify their email and pay their first invoice. There is no cap."
 						>
 							<div
 								css={{

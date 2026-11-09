@@ -17,8 +17,9 @@ import {
 
 /**
  * "Referred by" for an existing account. A referral, not a discount: it
- * credits whoever sent you once your first invoice is paid. Hidden once the
- * person has paid (`closed`) so it never implies a retroactive reward.
+ * credits whoever sent you once your first invoice is paid. Hidden after the
+ * 72-hour signup window or once the person has paid (`closed`) so it never
+ * implies a retroactive reward.
  */
 export function ReferredByPanel(props: {
 	orgSlug: string
@@ -69,7 +70,7 @@ export function ReferredByPanel(props: {
 	return (
 		<AccountManagementPanel
 			title="Referred by"
-			description="Did someone send you to Kody? Add their username or referral link before your first paid invoice. Once you both verify your email and that invoice is paid, you each get one month of Pro. This is not a discount code, and it can be set once."
+			description="Did someone send you to Kody? Add their username or referral link within 72 hours of signing up, before your first paid invoice. This credits them: once you both verify your email and that invoice is paid, you each get one month of Pro. It is not a promo code and takes nothing off your price. It can be set once."
 		>
 			<form
 				css={{ display: 'grid', gap: spacing.sm }}

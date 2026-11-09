@@ -330,9 +330,14 @@ const lateReferralRejections: Record<
 		error:
 			'A referrer can only be added before your first paid invoice. Referral rewards are not applied retroactively.',
 	},
+	window_closed: {
+		status: 409,
+		error:
+			'A referrer can only be added within 72 hours of signing up for Kody.',
+	},
 }
 
-/** Billing-page "Referred by": personal billing only, before first payment. */
+/** Billing-page "Referred by": personal billing only, within 72 hours of signup and before first payment. */
 export async function attachWebsiteReferral(input: {
 	env: Env
 	request: Request

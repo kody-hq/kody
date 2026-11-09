@@ -192,22 +192,23 @@ leaves a held row pending if that lookup fails; the referrer’s later
 Existing accounts without an attribution can add one from **Referred by** on
 their personal `/@<slug>/-/billing` page (username, `@username`, or share link).
 It is write-once (the unique referee index; a signup attribution is never
-replaced) and only before the person's first paid Kody invoice: refused when any
-live org they own or bill has `orgs.referral_first_paid_at` or a qualifying paid
-Stripe invoice (a full page of paid invoices with none qualifying also counts).
+replaced), only within 72 hours of the account's signup (`users.created_at`),
+and only before the person's first paid Kody invoice: refused when any live org
+they own or bill has `orgs.referral_first_paid_at` or a qualifying paid Stripe
+invoice (a full page of paid invoices with none qualifying also counts).
 `invoice.paid` stamps that marker before it looks for a pending referral, and
 the insert re-checks the marker in the same statement, so an invoice paid
-mid-request either blocks the row or rewards it. The panel is hidden once the
-person has paid so it never implies a retroactive reward. It is a referral, not
-a Stripe promo code, and earns the same month of Pro through the same reward
-path.
+mid-request either blocks the row or rewards it. The panel is hidden after the
+72-hour window or once the person has paid so it never implies a retroactive
+reward. It is a referral, not a Stripe promo code, and earns the same month of
+Pro through the same reward path.
 
 Fraud basics before a reward: both emails verified, attribution persisted at
-signup or from Referred by before the first payment, no self-referral, no
-plus-tag / Gmail-dot email collapse, and no shared Stripe customer. An
-unverified party holds the qualifying invoice id on the pending row; email
-verification retries the grant. `/@<slug>/-/billing` shows the share link,
-simple referrer status, and Referred by.
+signup or from Referred by within 72 hours of signup and before the first
+payment, no self-referral, no plus-tag / Gmail-dot email collapse, and no shared
+Stripe customer. An unverified party holds the qualifying invoice id on the
+pending row; email verification retries the grant. `/@<slug>/-/billing` shows
+the share link, simple referrer status, and Referred by.
 
 `getUserEntitlement` overlays Pro through the later of the second-agent gift and
 this referral credit (retired Pro table, no wallet).
