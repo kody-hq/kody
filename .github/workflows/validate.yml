@@ -955,6 +955,9 @@ jobs:
       - name: 🔌 OpenAPI client check
         run: npm run cli:openapi:check
 
+      - name: State machine reference check
+        run: npm run state-machines:check
+
       - name: 🧪 CLI validate
         run: npm run cli:validate
 

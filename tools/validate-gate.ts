@@ -148,7 +148,7 @@ const parallelValidateLegs = [
 	},
 	{
 		name: 'cli-openapi',
-		command: 'npm run cli:openapi:check',
+		command: 'npm run cli:openapi:check && npm run state-machines:check',
 		weight: 'check',
 	},
 	{ name: 'audit', command: 'npm run audit:prod', weight: 'check' },
