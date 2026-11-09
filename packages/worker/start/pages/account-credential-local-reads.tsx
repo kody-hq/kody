@@ -80,6 +80,18 @@ function useLocalReadsSwitch(input: {
 	return { enabled, change, error, pending: mutation.isPending }
 }
 
+/** Local reads failed to load, which is not the same as "not supported". */
+export function CredentialLocalReadsUnavailable() {
+	return (
+		<div css={fieldCss} id={localReadsAnchor}>
+			<span css={fieldLabelCss}>Local reads</span>
+			<p css={mutedCss} data-testid="local-reads-unavailable">
+				Kody could not load local reads right now. Reload to try again.
+			</p>
+		</div>
+	)
+}
+
 export function CredentialLocalReadsSection(props: {
 	view: CredentialLocalReadsView
 	orgSlug: string

@@ -241,13 +241,16 @@ test("the viewer's own credential lists the team orgs it is granted to", async (
 			credential: item({ id: 'mine', name: 'mine' }),
 			packages: [],
 		})
-	expect((await load(true)).grants).toEqual([
+	const owned = await load(true)
+	expect(owned.grants).toEqual([
 		{ orgSlug: 'acme', orgName: 'Acme', grantedAt: '2026-10-05T00:00:00.000Z' },
 	])
+	expect(owned.grantsUnavailable).toBe(false)
 	expect((await load(false)).grants).toEqual([])
+	expect((await load(false)).grantsUnavailable).toBe(false)
 })
 
-test('a grants query failure leaves detail usable with empty shared-with', async () => {
+test('a grants query failure leaves detail usable with shared-with unavailable', async () => {
 	const { sqlite, env } = setup()
 	sqlite.exec(`
 		INSERT INTO orgs (id, slug, display_name, created_at, updated_at)
@@ -271,6 +274,7 @@ test('a grants query failure leaves detail usable with empty shared-with', async
 		packages: [],
 	})
 	expect(detail.grants).toEqual([])
+	expect(detail.grantsUnavailable).toBe(true)
 	expect(detail.placeholder).toBe('{{secret:mine}}')
 })
 

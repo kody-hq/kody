@@ -385,7 +385,11 @@ export function AccountCredentialsRoute({
 								packagesById,
 								orgSlug,
 								localReads: payload?.selectedLocalReads ?? null,
+								localReadsUnavailableFor:
+									payload?.selectedLocalReadsUnavailableFor ?? null,
 								rawSigning: payload?.selectedRawSigning ?? null,
+								rawSigningUnavailableFor:
+									payload?.selectedRawSigningUnavailableFor ?? null,
 							})
 						: undefined
 				}
@@ -574,6 +578,8 @@ export function AccountCredentialsRoute({
 								? renderVaultCredentialDetail({
 										binding: selectedProvider,
 										localReads: payload?.selectedLocalReads ?? null,
+										localReadsUnavailableFor:
+											payload?.selectedLocalReadsUnavailableFor ?? null,
 										packageName:
 											packagesById.get(selectedProvider.packageId)?.kodyId ??
 											'a package',

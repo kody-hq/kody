@@ -155,7 +155,9 @@ test('personal org credential detail keeps the list and local-reads pane', async
 	expect(page.selected?.id).toBe(t.credentialId)
 	expect(page.selected?.placeholder).toBe('{{secret:annToken}}')
 	expect(page.selected?.grants).toEqual([])
+	expect(page.selected?.grantsUnavailable).toBe(false)
 	expect(page.selected?.usageUnreadable).toBe(0)
+	expect(page.selectedLocalReadsUnavailableFor).toBeNull()
 	expect(page.selectedLocalReads).toEqual(
 		expect.objectContaining({
 			credentialId: t.credentialId,
@@ -181,6 +183,7 @@ test('personal org detail degrades selected sections when detail load rejects', 
 		id: t.credentialId,
 		placeholder: '{{secret:annToken}}',
 		grants: [],
+		grantsUnavailable: true,
 		usage: [],
 		usageTruncated: false,
 		usageUnreadable: 2,
@@ -205,4 +208,5 @@ test('personal org detail keeps selected metadata when local reads reject', asyn
 	expect(page.selected?.id).toBe(t.credentialId)
 	expect(page.selected?.usageUnreadable).toBe(0)
 	expect(page.selectedLocalReads).toBeNull()
+	expect(page.selectedLocalReadsUnavailableFor).toBe(t.credentialId)
 })
