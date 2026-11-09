@@ -109,10 +109,13 @@ git -C ../cla-signatures push origin HEAD:cla-signatures
 git worktree remove ../cla-signatures
 ```
 
-The comment file holds the original signing comment body. If `cla-signers.json`
-did not change, the signer is already recorded: skip the commit and push. If the
-push is rejected because the branch moved, remove the worktree and start again.
-Then re-run the check. Do not ask the contributor to sign a second time.
+The comment file holds the original signing comment body. Read the recorder
+output before committing: `added=true` means commit and push; `skipped=false`
+with `added=false` means the signer is already recorded, so skip the commit and
+push; `skipped=true` means the comment file is not the exact signing text, so
+fix the file and run the recorder again. If the push is rejected because the
+branch moved, remove the worktree and start again. Then re-run the check. Do not
+ask the contributor to sign a second time.
 
 Make the `CLA` check required for `main` in GitHub branch protection so a green
 review cannot skip it.
