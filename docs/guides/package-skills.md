@@ -19,6 +19,9 @@ A package skill is an [Agent Skill](https://agentskills.io/specification) that
 lives inside a Kody package. The package stays the source of truth; Kody
 validates it at publish and, for hosts that ask, serves it over MCP.
 
+> [!WATCH] https://www.youtube.com/watch?v=MWdrwqbWqSo Watch: Kody package
+> skills: ship Agent Skills with your package
+
 ## Layout
 
 ```text

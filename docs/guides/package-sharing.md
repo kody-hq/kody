@@ -19,6 +19,9 @@ secrets, integrations, memory, email) live in one org, and a **grant** gives one
 person or team a preset on one resource. To let someone use a package without
 sharing a login, grant them **Use** on it.
 
+> [!WATCH] https://www.youtube.com/watch?v=1P5AcX_BJSw Watch: Kody package
+> access: from just you to the whole internet
+
 > [!TIP] Grants and forks work together. Grant **Read** when someone should see
 > your private source and fork their own copy; grant **Use** when they should
 > run **your** live package. See

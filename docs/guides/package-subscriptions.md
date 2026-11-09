@@ -21,7 +21,9 @@ topics. The saved package remains the top-level entity; subscriptions are nested
 manifest metadata and package runtime handlers.
 
 Watch:
-[Kody subscriptions: email and Discord events wake your agents](https://www.youtube.com/watch?v=8Tx8YpLh2y8).
+[Kody subscriptions: email and Discord events wake your agents](https://www.youtube.com/watch?v=8Tx8YpLh2y8)
+and
+[Kody triggers by example: schedules, webhooks, email, and events](https://www.youtube.com/watch?v=Atn8dO_ZGs0).
 
 ## Manifest shape
 

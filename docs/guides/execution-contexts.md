@@ -22,6 +22,9 @@ always there as the fallback.
 Use one when code needs something only a machine has: a folder on disk, a device
 on your local network, or a tool installed there.
 
+> [!WATCH] https://www.youtube.com/watch?v=i5qCOaIiYc8 Watch: Where Kody code
+> runs: the cloud, your laptop, or your own machine
+
 > [!NOTE] Execution contexts are an experiment, off until you turn them on at
 > [Experiments](https://kody.codes/account/experiments). An agent can turn them
 > on for you with `experimentSet` (see How to turn it on below).
