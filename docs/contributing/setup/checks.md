@@ -71,7 +71,7 @@ pushes. See the [setup index](./index.md) for the other setup pages.
   `tools/validate-gate.ts` and `tools/run-validate.ts` runs it. Sibling checks
   are not aborted on the first failure. Suite legs (typecheck, node unit,
   workers unit, Playwright, MCP) are sized like a dedicated CI job. On a machine
-  with at most 8 cores, or with less than 48GB of RAM, the gate runs one suite
+  with at most 8 cores, or with less than 48 GiB of RAM, the gate runs one suite
   leg and one build leg (worker dry-runs, startup bundles, knip) at a time.
   Starting all of them together exhausts a 4-core 16GB VM (#3147). Larger
   machines still start every leg together. `worker-startup-time:check` runs

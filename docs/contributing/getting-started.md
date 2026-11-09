@@ -148,7 +148,7 @@ highlight/api/api-docs/runtime/platform dry-run builds, structure checks
 (including `docs:check`, `deps:check`, `soft-delete-read-filter:check`,
 `error-agent-prompt:check`, `slop-ratchet:check`, and `knip`), and the
 production dependency audit (`audit:prod`), then `worker-startup-time:check`. On
-a machine with at most 8 cores, or under 48GB of RAM, suite and build legs run
+a machine with at most 8 cores, or under 48 GiB of RAM, suite and build legs run
 one at a time so they do not exhaust the machine. Larger machines start every
 leg together. CI runs the same checks as separate jobs (node and workers unit
 suites on separate runners).

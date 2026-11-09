@@ -109,21 +109,16 @@ export function resolveCachedArtifactSourceHead(
 	})
 }
 
-/**
- * Live HEAD for `repoId`, written back to the cache. Owner Settings must see a
- * push the moment it lands (#4981): a cached HEAD can lag an external git push
- * for the whole TTL when the push event misses the cache (nobody had viewed
- * the repo) or arrives late. Refreshing the entry here also lets the next
- * package page view see the same commit.
- */
-export async function resolveFreshArtifactSourceHead(
+const freshHeadTimeoutMs = 3_000
+
+function writeArtifactSourceHead(
 	env: Env,
 	repoId: string,
-): Promise<ArtifactSourceHead> {
-	const head = await resolveArtifactSourceHead(env, repoId)
+	head: ArtifactSourceHead,
+) {
 	const kv = readHeadCacheKv(env)
-	if (!kv) return head
-	await createKvCachifiedCache(kv).set(
+	if (!kv) return Promise.resolve()
+	return createKvCachifiedCache(kv).set(
 		buildArtifactSourceHeadCacheKey(env, repoId),
 		createCacheEntry(
 			head,
@@ -132,7 +127,54 @@ export async function resolveFreshArtifactSourceHead(
 				: { ttl: missingHeadTtlMs, swr: 0 },
 		),
 	)
-	return head
+}
+
+async function readCachedArtifactSourceHead(env: Env, repoId: string) {
+	const kv = readHeadCacheKv(env)
+	if (!kv) return null
+	const entry = await createKvCachifiedCache(kv).get(
+		buildArtifactSourceHeadCacheKey(env, repoId),
+	)
+	return entry && isArtifactSourceHead(entry.value) ? entry.value : null
+}
+
+/**
+ * Live HEAD for `repoId`, written back to the cache. Owner Settings must see a
+ * push the moment it lands (#4981): a cached HEAD can lag an external git push
+ * for the whole TTL when the push event misses the cache (nobody had viewed
+ * the repo) or arrives late. When the live lookup fails or outlasts
+ * `timeoutMs`, the last cached HEAD is returned and a slow lookup still
+ * refreshes the cache in the background.
+ */
+export async function resolveFreshArtifactSourceHead(
+	env: Env,
+	repoId: string,
+	options?: { timeoutMs?: number },
+): Promise<ArtifactSourceHead> {
+	const live = resolveArtifactSourceHead(env, repoId).then(async (head) => {
+		await writeArtifactSourceHead(env, repoId, head)
+		return head
+	})
+	let timer: ReturnType<typeof setTimeout> | undefined
+	const timedOut = new Promise<'timeout'>((resolve) => {
+		timer = setTimeout(
+			() => resolve('timeout'),
+			options?.timeoutMs ?? freshHeadTimeoutMs,
+		)
+	})
+	try {
+		const result = await Promise.race([live, timedOut])
+		if (result !== 'timeout') return result
+		void deferWork('artifact-head-fresh-refresh', () => live)
+	} catch (error) {
+		const cached = await readCachedArtifactSourceHead(env, repoId)
+		if (cached) return cached
+		throw error
+	} finally {
+		clearTimeout(timer)
+	}
+	const cached = await readCachedArtifactSourceHead(env, repoId)
+	return cached ?? (await live)
 }
 
 /**
