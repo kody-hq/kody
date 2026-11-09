@@ -110,6 +110,32 @@ export function resolveCachedArtifactSourceHead(
 }
 
 /**
+ * Live HEAD for `repoId`, written back to the cache. Owner Settings must see a
+ * push the moment it lands (#4981): a cached HEAD can lag an external git push
+ * for the whole TTL when the push event misses the cache (nobody had viewed
+ * the repo) or arrives late. Refreshing the entry here also lets the next
+ * package page view see the same commit.
+ */
+export async function resolveFreshArtifactSourceHead(
+	env: Env,
+	repoId: string,
+): Promise<ArtifactSourceHead> {
+	const head = await resolveArtifactSourceHead(env, repoId)
+	const kv = readHeadCacheKv(env)
+	if (!kv) return head
+	await createKvCachifiedCache(kv).set(
+		buildArtifactSourceHeadCacheKey(env, repoId),
+		createCacheEntry(
+			head,
+			head.commit
+				? { ttl: headTtlMs, swr: headStaleWhileRevalidateMs }
+				: { ttl: missingHeadTtlMs, swr: 0 },
+		),
+	)
+	return head
+}
+
+/**
  * Apply a push to the cached HEAD. A push to the cached default branch
  * rewrites the commit in place from the event payload — no Artifacts call —
  * a push to another branch leaves HEAD alone, and a repo nobody has viewed

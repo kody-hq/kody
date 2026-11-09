@@ -65,7 +65,7 @@ import { applySavedPackageForkListingAncestry } from '#worker/community/fork-lis
 import { parseAuthoredPackageJson } from '#worker/package-registry/manifest.ts'
 import { loadPackageSourceRowForUser } from '#worker/package-registry/source.ts'
 import { loadPublishedEntityManifest } from '#worker/repo/published-source.ts'
-import { resolveCachedArtifactSourceHead } from '#worker/repo/artifact-head-cache.ts'
+import { resolveFreshArtifactSourceHead } from '#worker/repo/artifact-head-cache.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import type {
 	SavedPackageRecord,
@@ -256,7 +256,6 @@ async function loadPackageExportsAndPublishedVersion(input: {
 
 async function resolveOwnerPendingCommit(input: {
 	env: Env
-	requestUrl: string
 	userId: string
 	source: Awaited<ReturnType<typeof getEntitySourceById>>
 }): Promise<{ commit: string | null; known: boolean }> {
@@ -265,10 +264,9 @@ async function resolveOwnerPendingCommit(input: {
 	}
 	if (!input.source.repo_id) return { commit: null, known: true }
 	try {
-		const head = await resolveCachedArtifactSourceHead(
+		const head = await resolveFreshArtifactSourceHead(
 			input.env,
 			input.source.repo_id,
-			{ request: new Request(input.requestUrl) },
 		)
 		return { commit: head.commit, known: true }
 	} catch {
@@ -299,7 +297,6 @@ async function toDetail(input: {
 					const ownedSource = source?.user_id === input.userId ? source : null
 					const pending = await resolveOwnerPendingCommit({
 						env: input.env,
-						requestUrl: input.requestUrl,
 						userId: input.userId,
 						source: ownedSource,
 					})

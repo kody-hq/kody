@@ -251,9 +251,10 @@ count, so typecheck, workers, MCP, and Playwright time out or crash even though
 each one passes on its own (#3147).
 
 `tools/run-validate.ts` runs one suite leg and one build leg at a time when the
-machine has at most 4 cores or under 24GB of RAM. It does not drop checks and it
-does not change the GitHub Actions jobs. Larger machines still start every leg
-together.
+machine has at most 8 cores or under 48GB of RAM (an 8-core 31GB VM still failed
+the Playwright webServer with every leg running, #4987). It does not drop checks
+and it does not change the GitHub Actions jobs. Larger machines still start
+every leg together.
 
 ## Focused Vitest runs
 

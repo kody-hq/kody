@@ -94,6 +94,14 @@ accepted Entity CLA, add each authorized username to `cla-signers.json` on the
 `cla-signatures` branch with `signedAt` as an ISO date (`YYYY-MM-DD`) and `cla`
 of `entity`. Allowlist edits go in the same file.
 
+When a successor pull request carries a contributor's commits from a closed or
+superseded one, the `CLA` check reads comments on the successor only. Link the
+original signing comment on the successor, then record that signer on the
+`cla-signatures` branch with
+`node tools/ci/check-cla.ts --signers cla-signers.json --record-signer <login> --signed-at <YYYY-MM-DD> --comment-file <file>`
+(the comment file holds the original signing comment body) and re-run the check.
+Do not ask the contributor to sign a second time.
+
 Make the `CLA` check required for `main` in GitHub branch protection so a green
 review cannot skip it.
 

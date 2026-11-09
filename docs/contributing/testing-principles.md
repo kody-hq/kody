@@ -89,8 +89,8 @@ other packages that share the root projects, for example
     runs have separate Nx cache keys. Full `npm run validate` sets
     `KODY_VALIDATE_LOAD=1` on `test:workers`, which only lowers `maxWorkers` to
     2; node-unit keeps the shared 20s budget. That flag does not loosen
-    production startup CPU budgets. On a machine with at most 4 cores, or under
-    24GB of RAM, the gate also runs one suite leg at a time (#3147).
+    production startup CPU budgets. On a machine with at most 8 cores, or under
+    48GB of RAM, the gate also runs one suite leg at a time (#3147).
   - Pool cold load is inherent today; suite wall clock will not match production
     RPC latency until the upstream pool improves.
 - Vitest is configured with `clearMocks` and `mockReset` globally

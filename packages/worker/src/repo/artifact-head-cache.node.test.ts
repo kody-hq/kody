@@ -18,6 +18,7 @@ const {
 	applyArtifactSourcePushToHeadCache,
 	buildArtifactSourceHeadCacheKey,
 	resolveCachedArtifactSourceHead,
+	resolveFreshArtifactSourceHead,
 } = await import('./artifact-head-cache.ts')
 
 type StoredEntry = { value: string; expirationTtl: number | undefined }
@@ -205,4 +206,34 @@ test('deleting the default branch drops the cached HEAD', async () => {
 		after: '0000000000000000000000000000000000000000',
 	})
 	expect(storedHead(kv, env, 'repo-1')).toBeUndefined()
+})
+
+test('a fresh read sees an external push the cached entry missed and rewrites it', async () => {
+	const { kv, env } = setup()
+	await resolveCachedArtifactSourceHead(env, 'repo-1')
+	mocks.resolveArtifactSourceHead.mockResolvedValue({
+		branch: 'main',
+		commit: 'commit-pushed',
+	})
+
+	await expect(resolveFreshArtifactSourceHead(env, 'repo-1')).resolves.toEqual({
+		branch: 'main',
+		commit: 'commit-pushed',
+	})
+	expect(storedHead(kv, env, 'repo-1')).toEqual({
+		branch: 'main',
+		commit: 'commit-pushed',
+	})
+	await expect(resolveCachedArtifactSourceHead(env, 'repo-1')).resolves.toEqual(
+		{ branch: 'main', commit: 'commit-pushed' },
+	)
+	expect(mocks.resolveArtifactSourceHead).toHaveBeenCalledTimes(2)
+})
+
+test('a fresh read without a KV binding returns the live HEAD', async () => {
+	const { env } = setup(false)
+	await expect(resolveFreshArtifactSourceHead(env, 'repo-1')).resolves.toEqual({
+		branch: 'main',
+		commit: 'commit-live',
+	})
 })
