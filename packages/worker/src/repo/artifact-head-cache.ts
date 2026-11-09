@@ -129,22 +129,14 @@ function writeArtifactSourceHead(
 	)
 }
 
-async function readCachedArtifactSourceHead(env: Env, repoId: string) {
-	const kv = readHeadCacheKv(env)
-	if (!kv) return null
-	const entry = await createKvCachifiedCache(kv).get(
-		buildArtifactSourceHeadCacheKey(env, repoId),
-	)
-	return entry && isArtifactSourceHead(entry.value) ? entry.value : null
-}
-
 /**
  * Live HEAD for `repoId`, written back to the cache. Owner Settings must see a
  * push the moment it lands (#4981): a cached HEAD can lag an external git push
  * for the whole TTL when the push event misses the cache (nobody had viewed
  * the repo) or arrives late. When the live lookup fails or outlasts
- * `timeoutMs`, the last cached HEAD is returned (or the lookup error when
- * nothing is cached); the cache write always runs in the background.
+ * `timeoutMs`, this throws so the caller reports the HEAD as unknown rather
+ * than trusting a possibly stale cached commit; the cache write runs in the
+ * background.
  */
 export async function resolveFreshArtifactSourceHead(
 	env: Env,
@@ -165,18 +157,15 @@ export async function resolveFreshArtifactSourceHead(
 			options?.timeoutMs ?? freshHeadTimeoutMs,
 		)
 	})
-	let failure: unknown = new Error('Artifacts HEAD lookup timed out')
 	try {
 		const result = await Promise.race([live, timedOut])
-		if (result !== 'timeout') return result
-	} catch (error) {
-		failure = error
+		if (result === 'timeout') {
+			throw new Error('Artifacts HEAD lookup timed out')
+		}
+		return result
 	} finally {
 		clearTimeout(timer)
 	}
-	const cached = await readCachedArtifactSourceHead(env, repoId)
-	if (cached) return cached
-	throw failure
 }
 
 /**

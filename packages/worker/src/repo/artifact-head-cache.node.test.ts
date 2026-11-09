@@ -238,19 +238,9 @@ test('a fresh read without a KV binding returns the live HEAD', async () => {
 	})
 })
 
-test('a failed fresh read falls back to the last cached HEAD', async () => {
+test('a failed fresh read rejects even when a HEAD is cached', async () => {
 	const { env } = setup()
 	await resolveCachedArtifactSourceHead(env, 'repo-1')
-	mocks.resolveArtifactSourceHead.mockRejectedValue(new Error('artifacts down'))
-
-	await expect(resolveFreshArtifactSourceHead(env, 'repo-1')).resolves.toEqual({
-		branch: 'main',
-		commit: 'commit-live',
-	})
-})
-
-test('a failed fresh read with nothing cached rethrows', async () => {
-	const { env } = setup()
 	mocks.resolveArtifactSourceHead.mockRejectedValue(new Error('artifacts down'))
 
 	await expect(resolveFreshArtifactSourceHead(env, 'repo-1')).rejects.toThrow(
@@ -258,18 +248,9 @@ test('a failed fresh read with nothing cached rethrows', async () => {
 	)
 })
 
-test('a stalled fresh read returns the cached HEAD within the timeout', async () => {
+test('a stalled fresh read rejects at the timeout even when a HEAD is cached', async () => {
 	const { env } = setup()
 	await resolveCachedArtifactSourceHead(env, 'repo-1')
-	mocks.resolveArtifactSourceHead.mockReturnValue(new Promise(() => {}))
-
-	await expect(
-		resolveFreshArtifactSourceHead(env, 'repo-1', { timeoutMs: 10 }),
-	).resolves.toEqual({ branch: 'main', commit: 'commit-live' })
-})
-
-test('a stalled fresh read with nothing cached fails at the timeout', async () => {
-	const { env } = setup()
 	mocks.resolveArtifactSourceHead.mockReturnValue(new Promise(() => {}))
 
 	await expect(

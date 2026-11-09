@@ -101,7 +101,7 @@ lives on `main` and the signer file lives on `cla-signatures`, so from a `main`
 checkout whose `origin` is `kody-hq/kody`:
 
 ```sh
-git fetch origin cla-signatures
+git fetch origin cla-signatures:refs/remotes/origin/cla-signatures
 git worktree add --detach ../cla-signatures origin/cla-signatures
 node tools/ci/check-cla.ts --signers ../cla-signatures/cla-signers.json --record-signer <login> --signed-at <YYYY-MM-DD> --comment-file <file>
 git -C ../cla-signatures commit -am "cla: record <login> from #<original PR>"
@@ -109,9 +109,10 @@ git -C ../cla-signatures push origin HEAD:cla-signatures
 git worktree remove ../cla-signatures
 ```
 
-The comment file holds the original signing comment body. If the push is
-rejected because the branch moved, remove the worktree and start again. Then
-re-run the check. Do not ask the contributor to sign a second time.
+The comment file holds the original signing comment body. If `cla-signers.json`
+did not change, the signer is already recorded: skip the commit and push. If the
+push is rejected because the branch moved, remove the worktree and start again.
+Then re-run the check. Do not ask the contributor to sign a second time.
 
 Make the `CLA` check required for `main` in GitHub branch protection so a green
 review cannot skip it.
