@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { packageWebhookMutationOptions } from '../package-webhook-mutation.ts'
 import { orgResourcePath } from '#universal/org-pages.ts'
@@ -40,8 +41,12 @@ export function PackageWebhookSettings({
 	const read = useQuery({ ...query, retry: false, retryOnMount: false })
 	const webhooks = read.data?.webhooks ?? []
 	const status = read.isError ? 'error' : read.data ? 'ready' : 'loading'
-	const [message, setMessage] = useState<string | null>(null)
-	const [messageTone, setMessageTone] = useState<'info' | 'error'>('info')
+	const [feedback, setFeedback] = useState<UiFeedback | null>(() =>
+		createUiFeedback(null, 'info'),
+	)
+	const message = feedback?.message ?? null
+	const messageTone = feedback?.tone ?? 'info'
+
 	const [revealedUrls, setRevealedUrls] = useState<Map<string, string>>(
 		new Map(),
 	)
@@ -59,7 +64,7 @@ export function PackageWebhookSettings({
 		if (mutating) return
 		const currentSubmission = ++submissionId.current
 		const isCurrent = capture()
-		setMessage(null)
+		setFeedback(createUiFeedback(null))
 		try {
 			const accepted = await mutation.mutateAsync({
 				username,
@@ -83,14 +88,17 @@ export function PackageWebhookSettings({
 					next.set(accepted.revealed.id, accepted.revealed.url)
 				return next
 			})
-			setMessage(webhookSuccessMessage(intent))
-			setMessageTone('info')
+			setFeedback(createUiFeedback(webhookSuccessMessage(intent), 'info'))
 		} catch (error) {
 			if (!isCurrent()) return
-			setMessage(
-				error instanceof Error ? error.message : webhookFailureMessage(intent),
+			setFeedback(
+				createUiFeedback(
+					error instanceof Error
+						? error.message
+						: webhookFailureMessage(intent),
+					'error',
+				),
 			)
-			setMessageTone('error')
 		}
 	}
 	function confirmation(webhook: PackageWebhookListItem, intent: 'rotate') {

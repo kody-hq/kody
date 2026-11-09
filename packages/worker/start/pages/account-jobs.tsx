@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import type { Command } from '../commands/model.ts'
 import {
 	filterAccountJobs,
@@ -85,8 +86,12 @@ export function AccountJobsPage({
 	)
 	const { username, teamOrg, jobs, selectedJob } = payload
 
-	const [message, setMessage] = useState<string | null>(null)
-	const [messageTone, setMessageTone] = useState<AccountJobsMessageTone>('info')
+	const [feedback, setFeedback] = useState<UiFeedback | null>(() =>
+		createUiFeedback(null, 'info'),
+	)
+	const message = feedback?.message ?? null
+	const messageTone = feedback?.tone ?? 'info'
+
 	const router = useRouter()
 	const navigate = (href: string) =>
 		void router.navigate({ to: href, resetScroll: false })
@@ -133,8 +138,7 @@ export function AccountJobsPage({
 		nextMessage: string | null,
 		tone: AccountJobsMessageTone = 'info',
 	) {
-		setMessage(nextMessage)
-		setMessageTone(tone)
+		setFeedback(createUiFeedback(nextMessage, tone))
 	}
 
 	const queryClient = useQueryClient()

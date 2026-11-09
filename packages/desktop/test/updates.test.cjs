@@ -222,3 +222,17 @@ test('unsigned CI packages never check or install production updates', () => {
 	assert.equal(fixture.checks, 0)
 	assert.equal(fixture.installs, 0)
 })
+
+test('a later failed check preserves a downloaded update and installation is single flight', async () => {
+	const fixture = setup()
+	await fixture.updates.check()
+	fixture.updater.emit('update-downloaded')
+	fixture.updater.checkForUpdates = async () => {
+		throw new Error('Offline')
+	}
+	await fixture.updates.check()
+	assert.equal(fixture.updates.downloaded, true)
+	assert.equal(fixture.updates.install(), true)
+	assert.equal(fixture.updates.install(), true)
+	assert.equal(fixture.installs, 1)
+})

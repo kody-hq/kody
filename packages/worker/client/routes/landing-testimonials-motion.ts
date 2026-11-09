@@ -1,3 +1,6 @@
+import type { PointerIntent, FlickSample } from './landing-pointer-state.ts'
+export type { PointerIntent, FlickSample } from './landing-pointer-state.ts'
+
 /** Slow walk of one lap around the real card set. */
 export const TESTIMONIALS_LAP_MS = 45_000
 
@@ -20,13 +23,6 @@ const FLICK_FRICTION_PER_MS = 0.003
 
 /** Cap so a wild sample cannot sling the lane a full lap. */
 const FLICK_MAX_VELOCITY_PX_PER_MS = 3
-
-export type FlickSample = {
-	t: number
-	x: number
-}
-
-export type PointerIntent = 'pending' | 'drag' | 'scroll'
 
 export function classifyPointerIntent(input: {
 	dx: number

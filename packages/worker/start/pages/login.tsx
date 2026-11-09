@@ -1,4 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { useStateMachine } from '#client/use-state-machine.ts'
+import { loginState, type AuthFormState } from '#client/routes/login-state.ts'
+import type { StateOf } from '@kody-internal/shared/state-machine.ts'
 import { useServerFn } from '@tanstack/react-start'
 import {
 	getHandleFormatError,
@@ -61,7 +64,7 @@ import { useSocialSignIn, type PublicAuthConfig } from '../social-sign-in.ts'
 import type { UsernameAvailabilityView } from '../components/username-choice-field.tsx'
 import { AuthForm, formMessageCss } from './login-sections.tsx'
 
-export type AuthStatus = 'idle' | 'submitting' | 'success' | 'error'
+export type AuthStatus = Exclude<StateOf<typeof loginState>, 'confirming'>
 function buildAuthPath(mode: 'login' | 'signup', redirectTo: string | null) {
 	return buildAuthLink(mode === 'signup' ? '/signup' : '/login', redirectTo)
 }
@@ -83,8 +86,12 @@ export function LoginPage({
 		webauthnAuthenticationVerifyFn,
 	)
 	const hydrated = useHydrated()
-	const [status, setStatus] = useState<AuthStatus>('idle')
-	const [message, setMessage] = useState<string | null>(null)
+	const [flow, transition, getFlow] = useStateMachine<AuthFormState>(
+		loginState,
+		{ status: 'idle' },
+	)
+	const status = flow.status === 'confirming' ? 'idle' : flow.status
+	const message = 'message' in flow ? flow.message : null
 	// The `formError` query from a plain HTML post stays until the next edit.
 	const [formErrorDismissed, setFormErrorDismissed] = useState(false)
 	const [signupUsername, setSignupUsername] = useState('')
@@ -117,9 +124,12 @@ export function LoginPage({
 		}
 	}, [mode, currentHref, turnstileSiteKey])
 	function setState(nextStatus: AuthStatus, nextMessage: string | null = null) {
-		if (lifecycle.current?.signal.aborted) return
-		setStatus(nextStatus)
-		setMessage(nextMessage)
+		if (lifecycle.current?.signal.aborted) return false
+		if (nextStatus === 'error' || nextStatus === 'success')
+			return transition({ status: nextStatus, message: nextMessage ?? '' })
+		if (nextStatus === 'idle' && nextMessage !== null)
+			return transition({ status: 'confirming', message: nextMessage })
+		return transition({ status: nextStatus })
 	}
 
 	/**
@@ -141,6 +151,7 @@ export function LoginPage({
 
 	async function handleSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault()
+		if (getFlow().status === 'submitting') return
 		setFormErrorDismissed(true)
 		if (!(event.currentTarget instanceof HTMLFormElement)) return
 		const form = event.currentTarget
@@ -189,7 +200,7 @@ export function LoginPage({
 			}
 		}
 
-		setState('submitting')
+		if (!setState('submitting')) return
 
 		try {
 			const attribution =
@@ -258,7 +269,7 @@ export function LoginPage({
 	}
 
 	async function handleProviderSignIn(providerId: string) {
-		setState('submitting')
+		if (!setState('submitting')) return
 		try {
 			const authForm = document.querySelector<HTMLFormElement>(
 				'form[data-public-auth-form]',
@@ -284,7 +295,7 @@ export function LoginPage({
 	}
 
 	async function handlePasskeySignIn() {
-		setState('submitting')
+		if (!setState('submitting')) return
 
 		try {
 			const optionsPayload = await webauthnAuthenticationOptions({ data: {} })

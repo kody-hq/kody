@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { useSingleFlight } from '#client/use-single-flight.ts'
+import { createUiFeedback } from '#client/ui-feedback.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { toast } from '#client/toast.ts'
 import {
@@ -162,10 +164,11 @@ export function AccountEmailPage({
 	const [deleteArmedId, setDeleteArmedId] = useState<string | null>(null)
 	const deleteArmed =
 		deleteArmedId !== null && deleteArmedId === data.selectedMessage?.id
-	const [resendStatus, setResendStatus] = useState<'idle' | 'sending'>('idle')
-	const [resendMessage, setResendMessage] = useState<string | null>(null)
-	const [resendTone, setResendTone] = useState<'error' | 'info'>('info')
-	const [resendAccepted, setResendAccepted] = useState(false)
+	const runResend = useSingleFlight()
+	const [resendReceipt, setResendReceipt] = useState<{
+		actorKey: string | null
+		email: string | null
+	} | null>(null)
 	const accountEmailDestinations = useAccountEmailDestinations(
 		destinations,
 		actorKey,
@@ -239,33 +242,40 @@ export function AccountEmailPage({
 	}
 
 	const resendMutation = useMutation({
-		mutationFn: requestResendVerification,
+		mutationFn: (_input: { isCurrent: () => boolean }) =>
+			requestResendVerification(),
 		onMutate: () => invalidatePages,
 		onSettled: (_data, _error, _variables, reconcile) => reconcile?.(),
 		gcTime: 0,
 	})
 
+	const resendStatus = resendMutation.isPending ? 'sending' : 'idle'
+	const resendCurrent = resendMutation.variables?.isCurrent() ?? false
+	const resendFeedback = !resendCurrent
+		? null
+		: resendMutation.isError
+			? createUiFeedback('Unable to send the verification email.', 'error')
+			: resendMutation.isSuccess && resendMutation.data
+				? createUiFeedback(
+						resendMutation.data.message,
+						resendMutation.data.ok ? 'info' : 'error',
+					)
+				: null
+	const resendMessage = resendFeedback?.message ?? null
+	const resendTone = resendFeedback?.tone ?? 'info'
+	const resendAccepted =
+		resendReceipt !== null &&
+		resendReceipt.actorKey === actorKey &&
+		resendReceipt.email === (session?.email ?? null)
 	async function handleResendVerification() {
-		const isCurrentSubmitter = captureSubmitter()
-		setResendStatus('sending')
-		setResendMessage(null)
-		setResendTone('info')
-
-		try {
-			const result = await resendMutation.mutateAsync()
-			if (!isCurrentSubmitter()) return
-			setResendTone(result.ok ? 'info' : 'error')
-			setResendMessage(result.message)
-			if (result.ok) {
-				setResendAccepted(true)
-			}
-		} catch {
-			if (!isCurrentSubmitter()) return
-			setResendTone('error')
-			setResendMessage('Unable to send the verification email.')
-		} finally {
-			if (isCurrentSubmitter()) setResendStatus('idle')
-		}
+		return runResend(async () => {
+			const isCurrent = captureSubmitter()
+			try {
+				const result = await resendMutation.mutateAsync({ isCurrent })
+				if (isCurrent() && result.ok)
+					setResendReceipt({ actorKey, email: session?.email ?? null })
+			} catch {}
+		})
 	}
 
 	const captureSubmitter = useSubmitterScope()

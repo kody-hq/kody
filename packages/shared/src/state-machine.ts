@@ -127,12 +127,19 @@ export function defineStateMachine<const S extends string>(definition: {
 export function renderStateMachineMermaid<S extends string>(
 	machine: StateMachine<S>,
 ): string {
+	const id = (state: S) =>
+		state.includes('-') ? `__state_${machine.states.indexOf(state)}` : state
 	return [
 		'stateDiagram-v2',
-		...machine.initial.map((state) => `    [*] --> ${state}`),
+		...machine.states
+			.filter((state) => state.includes('-'))
+			.map((state) => `    state "${state}" as ${id(state)}`),
+		...machine.initial.map((state) => `    [*] --> ${id(state)}`),
 		...machine.states.flatMap((state) =>
-			machine.transitions[state].map((target) => `    ${state} --> ${target}`),
+			machine.transitions[state].map(
+				(target) => `    ${id(state)} --> ${id(target)}`,
+			),
 		),
-		...machine.terminal.map((state) => `    ${state} --> [*]`),
+		...machine.terminal.map((state) => `    ${id(state)} --> [*]`),
 	].join('\n')
 }

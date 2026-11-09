@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import type { CSSObject } from '@emotion/react'
 import { useState, useRef, type FormEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -74,17 +75,20 @@ export function AdminOrgLimitsPanel({
 	const [valueText, setValueText] = useState('')
 	const [expiresText, setExpiresText] = useState('')
 	const [reasonText, setReasonText] = useState('')
-	const [message, setMessage] = useState<string | null>(null)
-	const [messageTone, setMessageTone] = useState<'info' | 'error'>('info')
+	const [feedback, setFeedback] = useState<UiFeedback | null>(() =>
+		createUiFeedback(null, 'info'),
+	)
+	const message = feedback?.message ?? null
+	const messageTone = feedback?.tone ?? 'info'
+
 	async function save(change: LimitChange) {
 		if (busy.current) return
 		if (!reasonText.trim()) {
-			setMessage('A reason is required.')
-			setMessageTone('error')
+			setFeedback(createUiFeedback('A reason is required.', 'error'))
 			return
 		}
 		busy.current = true
-		setMessage(null)
+		setFeedback(createUiFeedback(null))
 		const isCurrent = capture()
 		try {
 			await mutation.mutateAsync({
@@ -94,21 +98,25 @@ export function AdminOrgLimitsPanel({
 				reason: reasonText.trim(),
 			})
 			if (isCurrent()) {
-				setMessage(
-					change.value === null ? 'Override removed.' : 'Override saved.',
+				setFeedback(
+					createUiFeedback(
+						change.value === null ? 'Override removed.' : 'Override saved.',
+						'info',
+					),
 				)
-				setMessageTone('info')
 				setValueText('')
 				setExpiresText('')
 			}
 		} catch (error) {
 			if (isCurrent()) {
-				setMessage(
-					error instanceof Error
-						? error.message
-						: 'Unable to save the override.',
+				setFeedback(
+					createUiFeedback(
+						error instanceof Error
+							? error.message
+							: 'Unable to save the override.',
+						'error',
+					),
 				)
-				setMessageTone('error')
 			}
 		} finally {
 			busy.current = false
@@ -118,14 +126,14 @@ export function AdminOrgLimitsPanel({
 		event.preventDefault()
 		const value = parseValueText(valueText)
 		if (value === null) {
-			setMessage('Enter a whole number or "unlimited".')
-			setMessageTone('error')
+			setFeedback(
+				createUiFeedback('Enter a whole number or "unlimited".', 'error'),
+			)
 			return
 		}
 		const date = expiresText ? new Date(expiresText) : null
 		if (date && Number.isNaN(date.getTime())) {
-			setMessage('Enter a valid expiration date.')
-			setMessageTone('error')
+			setFeedback(createUiFeedback('Enter a valid expiration date.', 'error'))
 			return
 		}
 		void save({ key, value, expiresAt: date?.toISOString() ?? null })

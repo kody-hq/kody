@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { useSingleFlight } from '#client/use-single-flight.ts'
 import { connectSecretsInput } from '../connect-input.ts'
 import type { ListDetailSelection } from '#client/list-detail-route.ts'
 import {
@@ -119,16 +120,12 @@ export function AccountSecretsPage({
 	const [message, setMessage] = useState<string | null>(
 		readAccountSecretsSaveWarning(payload) ?? payload.approvalError ?? null,
 	)
-	const [submittingApprovalAction, setSubmittingApprovalAction] =
-		useState<ApprovalAction | null>(null)
 	const [completedPackageApproval, setCompletedPackageApproval] =
 		useState<ApprovalAction | null>(null)
 	const [packageApprovalHref, setPackageApprovalHref] = useState<string | null>(
 		currentHref,
 	)
-	const [saveState, setSaveState] = useState<
-		'idle' | 'saving' | 'deleting' | 'disconnecting'
-	>('idle')
+	const runExclusive = useSingleFlight()
 	const [showSecretValue, setShowSecretValue] = useState(false)
 	const queryClient = useQueryClient()
 	const { actorKey, orgSlug, pageLocation } = useMatchedPageScope()
@@ -178,6 +175,18 @@ export function AccountSecretsPage({
 			rejectSecretAccess,
 		),
 	)
+	const saveState = save.isPending
+		? 'saving'
+		: remove.isPending
+			? 'deleting'
+			: disconnect.isPending
+				? 'disconnecting'
+				: 'idle'
+	const submittingApprovalAction = approve.isPending
+		? 'approve'
+		: reject.isPending
+			? 'reject'
+			: null
 	const router = useRouter()
 	const [deleteArmed, setDeleteArmed] = useState(false)
 	const [disconnectArmed, setDisconnectArmed] = useState(false)
@@ -276,8 +285,6 @@ export function AccountSecretsPage({
 					? 'Secret not found.'
 					: null),
 		)
-		setSubmittingApprovalAction(null)
-		setSaveState('idle')
 	}
 
 	function formatAllowedPackageLabel(packageId: string) {
@@ -288,299 +295,310 @@ export function AccountSecretsPage({
 	}
 
 	async function submitApproval(action: ApprovalAction) {
-		if (!approval || submittingApprovalAction != null) return
-		setSubmittingApprovalAction(action)
-		setMessage(null)
+		return runExclusive(async () => {
+			if (!approval || submittingApprovalAction != null) return
 
-		const isCurrent = capture()
-		try {
-			const currentUrl = new URL(getCurrentHref(), 'http://localhost')
-			const requestUrl = new URL(currentUrl)
-			requestUrl.search = currentUrl.search
-			if (selection.selectedId) {
-				requestUrl.searchParams.set('selected', selection.selectedId)
-			}
-			const input = {
-				orgSlug: orgSlug ?? undefined,
-				refresh: connectSecretsInput(requestUrl.search),
-			}
-			const outcome =
-				action === 'approve'
-					? await approve.mutateAsync(input)
-					: await reject.mutateAsync(input)
-			if (!isCurrent()) return
-			save.reset()
-			remove.reset()
-			disconnect.reset()
-			approve.reset()
-			reject.reset()
-			const isPackageApproval = Boolean(approval.requestedPackageId)
-			setSubmittingApprovalAction(null)
-			setMessage(
-				isPackageApproval
-					? null
-					: outcome.action === 'approve'
-						? 'Approved requested host.'
-						: 'Rejected host approval request.',
-			)
-			if (isPackageApproval) {
-				setCompletedPackageApproval(action)
-				return
-			}
+			setMessage(null)
 
-			if (typeof window !== 'undefined' && window.location.search) {
-				const nextHref = payload.selectedSecret
-					? buildHrefWithUpdatedFilters(
-							{},
-							{
-								pathname: buildAccountSecretPath({
-									name: payload.selectedSecret.name,
-									scope: payload.selectedSecret.scope,
-									packageId: payload.selectedSecret.packageId,
-								}),
-							},
-						)
-					: buildHrefWithUpdatedFilters({}, { pathname: secretsBasePath })
-				const nextUrl = new URL(nextHref, window.location.href)
-				nextUrl.searchParams.delete('allowed-host')
-				nextUrl.searchParams.delete('capability')
-				nextUrl.searchParams.delete('package_id')
-				nextUrl.searchParams.delete('package')
-				nextUrl.searchParams.delete('names')
-				nextUrl.searchParams.delete('name')
-				// `navigate` is async (preload-then-commit); the commit render
-				// consumes its preloaded data through `secretsData`.
-				navigate(`${nextUrl.pathname}${nextUrl.search}`)
-			}
-		} catch (error) {
-			if (!isCurrent()) return
-			save.reset()
-			remove.reset()
-			disconnect.reset()
-			approve.reset()
-			reject.reset()
-			setSubmittingApprovalAction(null)
-			setMessage(
-				error instanceof Error ? error.message : 'Unable to process approval.',
-			)
-		} finally {
-			if (isCurrent()) {
+			const isCurrent = capture()
+			try {
+				const currentUrl = new URL(getCurrentHref(), 'http://localhost')
+				const requestUrl = new URL(currentUrl)
+				requestUrl.search = currentUrl.search
+				if (selection.selectedId) {
+					requestUrl.searchParams.set('selected', selection.selectedId)
+				}
+				const input = {
+					orgSlug: orgSlug ?? undefined,
+					refresh: connectSecretsInput(requestUrl.search),
+				}
+				const outcome =
+					action === 'approve'
+						? await approve.mutateAsync(input)
+						: await reject.mutateAsync(input)
+				if (!isCurrent()) return
 				save.reset()
 				remove.reset()
 				disconnect.reset()
 				approve.reset()
 				reject.reset()
+				const isPackageApproval = Boolean(approval.requestedPackageId)
+
+				setMessage(
+					isPackageApproval
+						? null
+						: outcome.action === 'approve'
+							? 'Approved requested host.'
+							: 'Rejected host approval request.',
+				)
+				if (isPackageApproval) {
+					setCompletedPackageApproval(action)
+					return
+				}
+
+				if (typeof window !== 'undefined' && window.location.search) {
+					const nextHref = payload.selectedSecret
+						? buildHrefWithUpdatedFilters(
+								{},
+								{
+									pathname: buildAccountSecretPath({
+										name: payload.selectedSecret.name,
+										scope: payload.selectedSecret.scope,
+										packageId: payload.selectedSecret.packageId,
+									}),
+								},
+							)
+						: buildHrefWithUpdatedFilters({}, { pathname: secretsBasePath })
+					const nextUrl = new URL(nextHref, window.location.href)
+					nextUrl.searchParams.delete('allowed-host')
+					nextUrl.searchParams.delete('capability')
+					nextUrl.searchParams.delete('package_id')
+					nextUrl.searchParams.delete('package')
+					nextUrl.searchParams.delete('names')
+					nextUrl.searchParams.delete('name')
+					// `navigate` is async (preload-then-commit); the commit render
+					// consumes its preloaded data through `secretsData`.
+					navigate(`${nextUrl.pathname}${nextUrl.search}`)
+				}
+			} catch (error) {
+				if (!isCurrent()) return
+				save.reset()
+				remove.reset()
+				disconnect.reset()
+				approve.reset()
+				reject.reset()
+
+				setMessage(
+					error instanceof Error
+						? error.message
+						: 'Unable to process approval.',
+				)
+			} finally {
+				if (isCurrent()) {
+					save.reset()
+					remove.reset()
+					disconnect.reset()
+					approve.reset()
+					reject.reset()
+				}
 			}
-		}
+		})
 	}
 
 	async function saveSecretChanges(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault()
-		if (saveState !== 'idle') return
+		return runExclusive(async () => {
+			if (saveState !== 'idle') return
 
-		const form = event.currentTarget as HTMLFormElement
-		const submittedEditorState = editorState
+			const form = event.currentTarget as HTMLFormElement
+			const submittedEditorState = editorState
 
-		setSaveState('saving')
-		setMessage(null)
+			setMessage(null)
 
-		const isCurrent = capture()
-		try {
-			const allowedHosts = normalizeAllowedHosts(
-				collectRepeatedTextRows(form, 'allowed-hosts'),
-			)
-			const allowedPackages =
-				submittedEditorState.scope === 'user'
-					? [...submittedEditorState.allowedPackages].sort((left, right) =>
-							left.localeCompare(right),
-						)
-					: []
-			const placement = fillPlacementViewFromDraft(
-				submittedEditorState.fillPlacement,
-			)
-			if (
-				placement === null &&
-				!(
-					submittedEditorState.fillPlacement.headers &&
-					submittedEditorState.fillPlacement.query &&
-					submittedEditorState.fillPlacement.path &&
-					submittedEditorState.fillPlacement.body
+			const isCurrent = capture()
+			try {
+				const allowedHosts = normalizeAllowedHosts(
+					collectRepeatedTextRows(form, 'allowed-hosts'),
 				)
-			) {
-				throw new Error('Choose at least one fill-placement part.')
-			}
-			const payload = await save.mutateAsync({
-				orgSlug: orgSlug ?? undefined,
-				fields: {
-					currentId: submittedEditorState.currentId,
-					name: submittedEditorState.name,
-					scope: submittedEditorState.scope,
-					packageId:
-						submittedEditorState.scope === 'package'
-							? submittedEditorState.packageId
-							: null,
-					description: submittedEditorState.description,
-					expiresAt: submittedEditorState.expiresAt || null,
-					value: submittedEditorState.value,
-					allowedHosts,
-					allowedPackages,
-					placement,
-				},
-			})
-			if (!isCurrent()) return
-			save.reset()
-			remove.reset()
-			disconnect.reset()
-			approve.reset()
-			reject.reset()
-			if (!payload.ok) {
-				const recovered = applyStuckRenameRecovery({
-					editor: submittedEditorState,
-					stuck: payload.selectedSecret,
-					search: getCurrentSearch(),
+				const allowedPackages =
+					submittedEditorState.scope === 'user'
+						? [...submittedEditorState.allowedPackages].sort((left, right) =>
+								left.localeCompare(right),
+							)
+						: []
+				const placement = fillPlacementViewFromDraft(
+					submittedEditorState.fillPlacement,
+				)
+				if (
+					placement === null &&
+					!(
+						submittedEditorState.fillPlacement.headers &&
+						submittedEditorState.fillPlacement.query &&
+						submittedEditorState.fillPlacement.path &&
+						submittedEditorState.fillPlacement.body
+					)
+				) {
+					throw new Error('Choose at least one fill-placement part.')
+				}
+				const payload = await save.mutateAsync({
+					orgSlug: orgSlug ?? undefined,
+					fields: {
+						currentId: submittedEditorState.currentId,
+						name: submittedEditorState.name,
+						scope: submittedEditorState.scope,
+						packageId:
+							submittedEditorState.scope === 'package'
+								? submittedEditorState.packageId
+								: null,
+						description: submittedEditorState.description,
+						expiresAt: submittedEditorState.expiresAt || null,
+						value: submittedEditorState.value,
+						allowedHosts,
+						allowedPackages,
+						placement,
+					},
 				})
-				setEditorState(recovered.editor)
-				setSaveState('idle')
-				setDisconnectArmed(false)
-				toast.error(payload.error)
-				navigate(recovered.href)
-				return
-			}
-
-			const warning = readAccountSecretsSaveWarning(payload)
-			if (warning) toast.error(warning)
-			const wasCreating = !submittedEditorState.currentId
-			const savedEditor = createEditorStateFromSecret(payload.selectedSecret)
-			setEditorState(savedEditor)
-			setSavedEditorState(savedEditor)
-			setShowSecretValue(false)
-			setDeleteArmed(false)
-			setDisconnectArmed(false)
-			setSaveState('idle')
-			setMessage(warning ?? (wasCreating ? 'Created secret.' : 'Saved secret.'))
-
-			if (payload.selectedSecret) {
-				navigate(
-					buildSecretHref(
-						payload.selectedSecret,
-						wasCreating ? '' : getCurrentSearch(),
-					),
-				)
-			}
-		} catch (error) {
-			if (!isCurrent()) return
-			save.reset()
-			remove.reset()
-			disconnect.reset()
-			approve.reset()
-			reject.reset()
-			setSaveState('idle')
-			setMessage(
-				error instanceof Error ? error.message : 'Unable to save secret.',
-			)
-		} finally {
-			if (isCurrent()) {
+				if (!isCurrent()) return
 				save.reset()
 				remove.reset()
 				disconnect.reset()
 				approve.reset()
 				reject.reset()
+				if (!payload.ok) {
+					const recovered = applyStuckRenameRecovery({
+						editor: submittedEditorState,
+						stuck: payload.selectedSecret,
+						search: getCurrentSearch(),
+					})
+					setEditorState(recovered.editor)
+
+					setDisconnectArmed(false)
+					toast.error(payload.error)
+					navigate(recovered.href)
+					return
+				}
+
+				const warning = readAccountSecretsSaveWarning(payload)
+				if (warning) toast.error(warning)
+				const wasCreating = !submittedEditorState.currentId
+				const savedEditor = createEditorStateFromSecret(payload.selectedSecret)
+				setEditorState(savedEditor)
+				setSavedEditorState(savedEditor)
+				setShowSecretValue(false)
+				setDeleteArmed(false)
+				setDisconnectArmed(false)
+
+				setMessage(
+					warning ?? (wasCreating ? 'Created secret.' : 'Saved secret.'),
+				)
+
+				if (payload.selectedSecret) {
+					navigate(
+						buildSecretHref(
+							payload.selectedSecret,
+							wasCreating ? '' : getCurrentSearch(),
+						),
+					)
+				}
+			} catch (error) {
+				if (!isCurrent()) return
+				save.reset()
+				remove.reset()
+				disconnect.reset()
+				approve.reset()
+				reject.reset()
+
+				setMessage(
+					error instanceof Error ? error.message : 'Unable to save secret.',
+				)
+			} finally {
+				if (isCurrent()) {
+					save.reset()
+					remove.reset()
+					disconnect.reset()
+					approve.reset()
+					reject.reset()
+				}
 			}
-		}
+		})
 	}
 
 	async function deleteSelectedSecret() {
-		if (!editorState.currentId || saveState !== 'idle') return
+		return runExclusive(async () => {
+			if (!editorState.currentId || saveState !== 'idle') return
 
-		setSaveState('deleting')
-		setMessage(null)
+			setMessage(null)
 
-		const isCurrent = capture()
-		try {
-			await remove.mutateAsync({
-				orgSlug: orgSlug ?? undefined,
-				fields: {
-					currentId: editorState.currentId,
-				},
-			})
-			if (!isCurrent()) return
-			save.reset()
-			remove.reset()
-			disconnect.reset()
-			approve.reset()
-			reject.reset()
-
-			navigate(buildBaseSecretsHref(getCurrentSearch()))
-		} catch (error) {
-			if (!isCurrent()) return
-			save.reset()
-			remove.reset()
-			disconnect.reset()
-			approve.reset()
-			reject.reset()
-			setSaveState('idle')
-			setMessage(
-				error instanceof Error ? error.message : 'Unable to delete secret.',
-			)
-		} finally {
-			if (isCurrent()) {
+			const isCurrent = capture()
+			try {
+				await remove.mutateAsync({
+					orgSlug: orgSlug ?? undefined,
+					fields: {
+						currentId: editorState.currentId,
+					},
+				})
+				if (!isCurrent()) return
 				save.reset()
 				remove.reset()
 				disconnect.reset()
 				approve.reset()
 				reject.reset()
+
+				navigate(buildBaseSecretsHref(getCurrentSearch()))
+			} catch (error) {
+				if (!isCurrent()) return
+				save.reset()
+				remove.reset()
+				disconnect.reset()
+				approve.reset()
+				reject.reset()
+
+				setMessage(
+					error instanceof Error ? error.message : 'Unable to delete secret.',
+				)
+			} finally {
+				if (isCurrent()) {
+					save.reset()
+					remove.reset()
+					disconnect.reset()
+					approve.reset()
+					reject.reset()
+				}
 			}
-		}
+		})
 	}
 
 	async function disconnectSelectedSecret() {
-		if (!editorState.currentId || saveState !== 'idle') return
+		return runExclusive(async () => {
+			if (!editorState.currentId || saveState !== 'idle') return
 
-		setSaveState('disconnecting')
-		setMessage(null)
+			setMessage(null)
 
-		const isCurrent = capture()
-		try {
-			await disconnect.mutateAsync({
-				orgSlug: orgSlug ?? undefined,
-				fields: {
-					currentId: editorState.currentId,
-				},
-			})
-			if (!isCurrent()) return
-			save.reset()
-			remove.reset()
-			disconnect.reset()
-			approve.reset()
-			reject.reset()
-			setDisconnectArmed(false)
-			setDeleteArmed(false)
-			setSaveState('idle')
-			setMessage(
-				'Disconnected. The credential record and placement remain. Save a value to reconnect.',
-			)
-			setEditorState({ ...editorState, value: '' })
-			setShowSecretValue(false)
-		} catch (error) {
-			if (!isCurrent()) return
-			save.reset()
-			remove.reset()
-			disconnect.reset()
-			approve.reset()
-			reject.reset()
-			setSaveState('idle')
-			setMessage(
-				error instanceof Error ? error.message : 'Unable to disconnect secret.',
-			)
-		} finally {
-			if (isCurrent()) {
+			const isCurrent = capture()
+			try {
+				await disconnect.mutateAsync({
+					orgSlug: orgSlug ?? undefined,
+					fields: {
+						currentId: editorState.currentId,
+					},
+				})
+				if (!isCurrent()) return
 				save.reset()
 				remove.reset()
 				disconnect.reset()
 				approve.reset()
 				reject.reset()
+				setDisconnectArmed(false)
+				setDeleteArmed(false)
+
+				setMessage(
+					'Disconnected. The credential record and placement remain. Save a value to reconnect.',
+				)
+				setEditorState({ ...editorState, value: '' })
+				setShowSecretValue(false)
+			} catch (error) {
+				if (!isCurrent()) return
+				save.reset()
+				remove.reset()
+				disconnect.reset()
+				approve.reset()
+				reject.reset()
+
+				setMessage(
+					error instanceof Error
+						? error.message
+						: 'Unable to disconnect secret.',
+				)
+			} finally {
+				if (isCurrent()) {
+					save.reset()
+					remove.reset()
+					disconnect.reset()
+					approve.reset()
+					reject.reset()
+				}
 			}
-		}
+		})
 	}
 
 	function updateAllowedHost(index: number, value: string) {

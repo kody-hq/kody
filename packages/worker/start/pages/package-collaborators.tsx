@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { useRef, useState, type FormEvent } from 'react'
 import { PackageInviteLinksPanel } from './package-collaborators-invite-links.tsx'
 import { PackageCollaboratorInvites } from './package-collaborators-invites.tsx'
@@ -91,8 +92,12 @@ export function PackageCollaboratorsRoute({
 	const mutationKey = collaboratorsMutationKey(actorKey, page)
 	const captureSubmitter = useSubmitterScope()
 	const [confirmed, setConfirmed] = useState<string | null>(null)
-	const [message, setMessage] = useState<string | null>(null)
-	const [messageTone, setMessageTone] = useState<'info' | 'error'>('info')
+	const [feedback, setFeedback] = useState<UiFeedback | null>(() =>
+		createUiFeedback(null, 'info'),
+	)
+	const message = feedback?.message ?? null
+	const messageTone = feedback?.tone ?? 'info'
+
 	const [warnings, setWarnings] = useState<Array<string>>([])
 	const [teamId, setTeamId] = useState('')
 	const [memberId, setMemberId] = useState('')
@@ -174,22 +179,23 @@ export function PackageCollaboratorsRoute({
 			return null
 		const isCurrent = captureSubmitter()
 		inFlight.current = true
-		setMessage(null)
+		setFeedback(createUiFeedback(null))
 		setWarnings([])
 		try {
 			const result = await mutation.mutateAsync({ key, change })
 			if (result) onSaved?.(result)
 			if (!isCurrent()) return null
-			setMessage(success)
-			setMessageTone('info')
+			setFeedback(createUiFeedback(success, 'info'))
 			setWarnings(result?.warnings ?? [])
 			return result
 		} catch (error) {
 			if (!isCurrent()) return null
-			setMessage(
-				error instanceof Error ? error.message : 'Kody could not save that.',
+			setFeedback(
+				createUiFeedback(
+					error instanceof Error ? error.message : 'Kody could not save that.',
+					'error',
+				),
 			)
-			setMessageTone('error')
 			return null
 		} finally {
 			inFlight.current = false

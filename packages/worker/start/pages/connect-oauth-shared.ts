@@ -50,12 +50,7 @@ import {
 } from '#client/routes/connect-oauth-config.ts'
 
 export type ConnectOauthStatusTone = 'info' | 'warn' | 'error'
-export type ConnectOauthStep =
-	| 'setup'
-	| 'connect'
-	| 'device'
-	| 'callback'
-	| 'success'
+export type { ConnectOauthStep } from '#client/routes/connect-oauth-state.ts'
 
 export type ConnectOauthDeviceStartResult =
 	| {

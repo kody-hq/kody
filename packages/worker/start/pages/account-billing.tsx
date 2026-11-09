@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { sendCancellationFeedback } from '#start/server/billing-mutations'
 import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.tsx'
 import { buildBillingFailureAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
@@ -174,12 +175,15 @@ export function AccountBillingPage({
 }) {
 	const capture = useSubmitterScope()
 	const [promoCode, setPromoCode] = useState('')
-	const [message, setMessage] = useState<string | null>(
-		payload.error ?? payload.notice ?? null,
+	const [feedback, setFeedback] = useState<UiFeedback | null>(() =>
+		createUiFeedback(
+			payload.error ?? payload.notice ?? null,
+			payload.error ? 'error' : 'info',
+		),
 	)
-	const [messageTone, setMessageTone] = useState<'error' | 'info'>(
-		payload.error ? 'error' : 'info',
-	)
+	const message = feedback?.message ?? null
+	const messageTone = feedback?.tone ?? 'info'
+
 	const [planCheckoutError, setPlanCheckoutError] = useState<string | null>(
 		null,
 	)
@@ -213,8 +217,12 @@ export function AccountBillingPage({
 		Record<PaidTier, BillingInterval>
 	>({ pro: 'month' })
 	function applyPayload(payload: AccountBillingLoaderData) {
-		setMessage(payload.error ?? payload.notice ?? null)
-		setMessageTone(payload.error ? 'error' : 'info')
+		setFeedback(
+			createUiFeedback(
+				payload.error ?? payload.notice ?? null,
+				payload.error ? 'error' : 'info',
+			),
+		)
 	}
 
 	async function startCheckout(
@@ -223,7 +231,7 @@ export function AccountBillingPage({
 		errorPlacement: 'page' | 'plan-card' = 'plan-card',
 	) {
 		if (checkoutPending) return
-		setMessage(null)
+		setFeedback(createUiFeedback(null))
 		setPlanCheckoutError(null)
 		const isCurrent = capture()
 		const result = await checkoutMutation.mutateAsync({
@@ -237,8 +245,7 @@ export function AccountBillingPage({
 			if (result.mode === 'portal') {
 				// More than one active subscription: the portal update flow
 				// cannot pick one, so the customer manages them in Stripe.
-				setMessage(multipleSubscriptionsMessage)
-				setMessageTone('info')
+				setFeedback(createUiFeedback(multipleSubscriptionsMessage, 'info'))
 			}
 			window.location.assign(result.url)
 			return
@@ -246,8 +253,7 @@ export function AccountBillingPage({
 		if (errorPlacement === 'plan-card') {
 			setPlanCheckoutError(result.error)
 		} else {
-			setMessage(result.error)
-			setMessageTone('error')
+			setFeedback(createUiFeedback(result.error, 'error'))
 		}
 	}
 
@@ -652,12 +658,14 @@ export function AccountBillingPage({
 											if (isCurrent()) window.location.assign(result.url)
 										} catch (error) {
 											if (!isCurrent()) return
-											setMessage(
-												error instanceof Error
-													? error.message
-													: 'Unable to open billing portal.',
+											setFeedback(
+												createUiFeedback(
+													error instanceof Error
+														? error.message
+														: 'Unable to open billing portal.',
+													'error',
+												),
 											)
-											setMessageTone('error')
 										}
 									}}
 									css={{

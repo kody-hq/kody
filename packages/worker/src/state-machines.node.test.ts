@@ -77,5 +77,11 @@ test('every production defineStateMachine call is registered for documentation',
 	expect(
 		found.sort(),
 		'Register each defineStateMachine call with its machine and file in its package state-machines.ts registry, include that registry in tools/state-machines.ts, then run npm run state-machines:generate.',
-	).toEqual(stateMachines.map(({ file }) => file).sort())
+	).toEqual(
+		stateMachines
+			.map((entry) =>
+				'definitionFile' in entry ? entry.definitionFile : entry.file,
+			)
+			.sort(),
+	)
 })

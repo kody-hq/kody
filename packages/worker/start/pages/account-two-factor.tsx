@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import {
 	startTwoFactorSetup,
 	confirmTwoFactorSetup,
@@ -59,8 +60,12 @@ export function AccountTwoFactorPage({
 	const [setup, setSetup] = useState<TwoFactorSetup | null>(null)
 	const [confirmCode, setConfirmCode] = useState('')
 	const [disableCode, setDisableCode] = useState('')
-	const [message, setMessage] = useState<string | null>(null)
-	const [messageTone, setMessageTone] = useState<'error' | 'info'>('info')
+	const [feedback, setFeedback] = useState<UiFeedback | null>(() =>
+		createUiFeedback(null, 'info'),
+	)
+	const message = feedback?.message ?? null
+	const messageTone = feedback?.tone ?? 'info'
+
 	const capture = useSubmitterScope()
 	const invalidate = usePageInvalidation(mutationResources, {
 		refreshShell: true,
@@ -123,18 +128,20 @@ export function AccountTwoFactorPage({
 
 	async function handleStartSetup() {
 		const isCurrent = capture()
-		setMessage(null)
+		setFeedback(createUiFeedback(null))
 
 		try {
 			await setupMutation.mutateAsync(isCurrent)
 		} catch (error) {
 			if (!isCurrent()) return
-			setMessage(
-				error instanceof Error
-					? error.message
-					: 'Unable to start two-factor setup.',
+			setFeedback(
+				createUiFeedback(
+					error instanceof Error
+						? error.message
+						: 'Unable to start two-factor setup.',
+					'error',
+				),
 			)
-			setMessageTone('error')
 		}
 	}
 
@@ -142,13 +149,17 @@ export function AccountTwoFactorPage({
 		event.preventDefault()
 		const code = confirmCode.trim()
 		if (!code) {
-			setMessage('Enter the code from your authenticator app.')
-			setMessageTone('error')
+			setFeedback(
+				createUiFeedback(
+					'Enter the code from your authenticator app.',
+					'error',
+				),
+			)
 			return
 		}
 
 		const isCurrent = capture()
-		setMessage(null)
+		setFeedback(createUiFeedback(null))
 
 		try {
 			await confirmMutation.mutateAsync(code)
@@ -156,22 +167,25 @@ export function AccountTwoFactorPage({
 			// Retire older setup loads before publishing the confirmed state.
 			setSetup(null)
 			setConfirmCode('')
-			setMessage('Two-factor authentication is enabled.')
-			setMessageTone('info')
+			setFeedback(
+				createUiFeedback('Two-factor authentication is enabled.', 'info'),
+			)
 		} catch (error) {
 			if (!isCurrent()) return
-			setMessage(
-				error instanceof Error
-					? error.message
-					: 'Unable to confirm two-factor setup.',
+			setFeedback(
+				createUiFeedback(
+					error instanceof Error
+						? error.message
+						: 'Unable to confirm two-factor setup.',
+					'error',
+				),
 			)
-			setMessageTone('error')
 		}
 	}
 
 	async function handleCancelSetup() {
 		const isCurrent = capture()
-		setMessage(null)
+		setFeedback(createUiFeedback(null))
 
 		try {
 			await cancelMutation.mutateAsync()
@@ -180,12 +194,14 @@ export function AccountTwoFactorPage({
 			setConfirmCode('')
 		} catch (error) {
 			if (!isCurrent()) return
-			setMessage(
-				error instanceof Error
-					? error.message
-					: 'Unable to cancel two-factor setup.',
+			setFeedback(
+				createUiFeedback(
+					error instanceof Error
+						? error.message
+						: 'Unable to cancel two-factor setup.',
+					'error',
+				),
 			)
-			setMessageTone('error')
 		}
 	}
 
@@ -193,28 +209,35 @@ export function AccountTwoFactorPage({
 		event.preventDefault()
 		const code = disableCode.trim()
 		if (!code) {
-			setMessage('Enter a current code to disable two-factor authentication.')
-			setMessageTone('error')
+			setFeedback(
+				createUiFeedback(
+					'Enter a current code to disable two-factor authentication.',
+					'error',
+				),
+			)
 			return
 		}
 
 		const isCurrent = capture()
-		setMessage(null)
+		setFeedback(createUiFeedback(null))
 
 		try {
 			await disableMutation.mutateAsync(code)
 			if (!isCurrent()) return
 			setDisableCode('')
-			setMessage('Two-factor authentication is disabled.')
-			setMessageTone('info')
+			setFeedback(
+				createUiFeedback('Two-factor authentication is disabled.', 'info'),
+			)
 		} catch (error) {
 			if (!isCurrent()) return
-			setMessage(
-				error instanceof Error
-					? error.message
-					: 'Unable to disable two-factor authentication.',
+			setFeedback(
+				createUiFeedback(
+					error instanceof Error
+						? error.message
+						: 'Unable to disable two-factor authentication.',
+					'error',
+				),
 			)
-			setMessageTone('error')
 		}
 	}
 

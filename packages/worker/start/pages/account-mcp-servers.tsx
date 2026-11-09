@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { usePageCommands } from '../commands/context.tsx'
 import { toast } from '#client/toast.ts'
 import { createListDetailLinks } from '#client/list-detail-route.ts'
@@ -155,12 +156,15 @@ export function AccountMcpServersPage({
 		}
 	}, [creating, prefill.name, prefill.url])
 	const [addBearerToken, setAddBearerToken] = useState('')
-	const [message, setMessage] = useState<string | null>(
-		readOAuthResultFromHref(currentHref)?.message ?? null,
+	const [feedback, setFeedback] = useState<UiFeedback | null>(() =>
+		createUiFeedback(
+			readOAuthResultFromHref(currentHref)?.message ?? null,
+			readOAuthResultFromHref(currentHref)?.tone ?? 'info',
+		),
 	)
-	const [messageTone, setMessageTone] = useState<MessageTone>(
-		readOAuthResultFromHref(currentHref)?.tone ?? 'info',
-	)
+	const message = feedback?.message ?? null
+	const messageTone = feedback?.tone ?? 'info'
+
 	const [deleteArmed, setDeleteArmed] = useState(false)
 	const router = useRouter()
 	const navigate = (href: string) =>
@@ -199,8 +203,7 @@ export function AccountMcpServersPage({
 	}
 
 	function showMessage(nextMessage: string | null, tone: MessageTone = 'info') {
-		setMessage(nextMessage)
-		setMessageTone(tone)
+		setFeedback(createUiFeedback(nextMessage, tone))
 	}
 
 	function applyPayload(

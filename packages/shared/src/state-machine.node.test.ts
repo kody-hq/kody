@@ -179,6 +179,32 @@ test('rejects malformed definitions at module initialization', () => {
 	).toThrow('unreachable')
 })
 
+test('renders hyphenated states with collision-free Mermaid aliases', () => {
+	const machine = defineStateMachine({
+		name: 'hyphenated',
+		description: '',
+		initial: ['needs-retry', 'state_0'],
+		transitions: {
+			'needs-retry': ['state_0', 'orphan-cleaned'],
+			state_0: [],
+			'orphan-cleaned': [],
+		},
+	})
+	expect(renderStateMachineMermaid(machine)).toBe(
+		[
+			'stateDiagram-v2',
+			'    state "needs-retry" as __state_0',
+			'    state "orphan-cleaned" as __state_2',
+			'    [*] --> __state_0',
+			'    [*] --> state_0',
+			'    __state_0 --> state_0',
+			'    __state_0 --> __state_2',
+			'    state_0 --> [*]',
+			'    __state_2 --> [*]',
+		].join('\n'),
+	)
+})
+
 test('copies input arrays and supports multiple initial states and cycles', () => {
 	const targets: Array<'a' | 'b'> = ['b']
 	const machine = defineStateMachine({

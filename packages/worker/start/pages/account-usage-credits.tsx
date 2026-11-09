@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import {
 	startCreditTopUp,
 	saveCreditSettings,
@@ -116,23 +117,30 @@ export function AccountUsageCreditsSection(
 		),
 	)
 	const [appliedCredits, setAppliedCredits] = useState(props.credits)
-	const [message, setMessage] = useState<string | null>(
-		props.error ?? props.notice ?? null,
+	const [feedback, setFeedback] = useState<UiFeedback | null>(() =>
+		createUiFeedback(
+			props.error ?? props.notice ?? null,
+			props.error ? 'error' : 'info',
+		),
 	)
+	const message = feedback?.message ?? null
+	const messageTone = feedback?.tone ?? 'info'
 	const [incomingNotice, setIncomingNotice] = useState({
 		error: props.error,
 		notice: props.notice,
 	})
-	const [messageTone, setMessageTone] = useState<'info' | 'error'>(
-		props.error ? 'error' : 'info',
-	)
+
 	if (
 		incomingNotice.error !== props.error ||
 		incomingNotice.notice !== props.notice
 	) {
 		setIncomingNotice({ error: props.error, notice: props.notice })
-		setMessage(props.error ?? props.notice ?? null)
-		setMessageTone(props.error ? 'error' : 'info')
+		setFeedback(
+			createUiFeedback(
+				props.error ?? props.notice ?? null,
+				props.error ? 'error' : 'info',
+			),
+		)
 	}
 	const [draft, setDraft] = useState<SettingsDraft | null>(
 		props.credits.eligible ? draftFromWallet(props.credits) : null,
@@ -150,8 +158,7 @@ export function AccountUsageCreditsSection(
 	}
 
 	function showMessage(text: string, tone: 'info' | 'error') {
-		setMessage(text)
-		setMessageTone(tone)
+		setFeedback(createUiFeedback(text, tone))
 	}
 
 	async function startTopUp(amountCents: number) {
@@ -163,7 +170,7 @@ export function AccountUsageCreditsSection(
 		}
 		const isCurrent = capture()
 		setTopUpPendingCents(amount.cents)
-		setMessage(null)
+		setFeedback(createUiFeedback(null))
 		try {
 			const result = await startCreditTopUp({
 				data: { orgSlug: props.orgSlug, amountCents: amount.cents },
@@ -193,7 +200,7 @@ export function AccountUsageCreditsSection(
 			return
 		}
 		const isCurrent = capture()
-		setMessage(null)
+		setFeedback(createUiFeedback(null))
 		try {
 			await settingsMutation.mutateAsync({
 				orgSlug: props.orgSlug,
@@ -217,7 +224,7 @@ export function AccountUsageCreditsSection(
 	async function switchToPro() {
 		if (switchPending) return
 		setSwitchPending(true)
-		setMessage(null)
+		setFeedback(createUiFeedback(null))
 		const orgSlug = props.orgSlug
 		if (!orgSlug) {
 			setSwitchPending(false)

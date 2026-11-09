@@ -1,4 +1,9 @@
 /** @jsxImportSource @emotion/react */
+import { useStateMachine } from '#client/use-state-machine.ts'
+import {
+	avatarCropState,
+	type AvatarCropState,
+} from '#client/routes/avatar-crop-state.ts'
 import type { CSSObject } from '@emotion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
@@ -65,12 +70,20 @@ export function AccountAvatarEditor({
 		offsetY: 0,
 	})
 	const [viewportSize, setViewportSize] = useState(280)
-	const [imageSize, setImageSize] = useState({ width: 0, height: 0 })
-	const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-	const [status, setStatus] = useState<
-		'idle' | 'decoding' | 'ready' | 'applying'
-	>('decoding')
-	const [error, setError] = useState<string | null>(null)
+	const [crop, transitionCrop, getCrop] = useStateMachine<AvatarCropState>(
+		avatarCropState,
+		{ status: 'decoding' },
+	)
+	const status =
+		crop.status === 'decode_error'
+			? 'idle'
+			: crop.status === 'prepare_error'
+				? 'ready'
+				: crop.status
+	const error = 'error' in crop ? crop.error : null
+	const previewUrl = 'previewUrl' in crop ? crop.previewUrl : null
+	const imageSize =
+		'imageSize' in crop ? crop.imageSize : { width: 0, height: 0 }
 	const bounds = useCallback(
 		(): AvatarCropBounds | null =>
 			bitmap.current
@@ -110,6 +123,7 @@ export function AccountAvatarEditor({
 	useEffect(() => {
 		const generationRef = generation
 		const ownGeneration = ++generationRef.current
+		transitionCrop({ status: 'decoding' })
 		let ownedBitmap: AvatarImageBitmap | null = null
 		let ownedUrl: string | null = null
 		const oldOverflow = document.body.style.overflow
@@ -140,7 +154,6 @@ export function AccountAvatarEditor({
 				const viewport = stage.current?.clientWidth || 280
 				geometry.current.viewportSize = viewport
 				setViewportSize(viewport)
-				setImageSize({ width: decoded.width, height: decoded.height })
 				updateTransform(
 					initialCoverTransform({
 						imageWidth: decoded.width,
@@ -148,16 +161,20 @@ export function AccountAvatarEditor({
 						viewportSize: viewport,
 					}),
 				)
-				setPreviewUrl(url)
-				setStatus('ready')
+				transitionCrop({
+					status: 'ready',
+					previewUrl: url,
+					imageSize: { width: decoded.width, height: decoded.height },
+				})
 			} catch (caught) {
 				if (ownGeneration !== generationRef.current) return
-				setError(
-					caught instanceof Error
-						? caught.message
-						: 'Could not read that image in the browser.',
-				)
-				setStatus('idle')
+				transitionCrop({
+					status: 'decode_error',
+					error:
+						caught instanceof Error
+							? caught.message
+							: 'Could not read that image in the browser.',
+				})
 			}
 		})()
 		return () => {
@@ -268,17 +285,30 @@ export function AccountAvatarEditor({
 		}
 	}, [status, bounds, updateTransform])
 	function close() {
-		if (status === 'applying') return
+		if (getCrop().status === 'applying') return
 		dialog.current?.close()
 		onCancel()
 	}
 	async function apply() {
 		const box = bounds()
 		const image = bitmap.current
-		if (!file || !box || !image || status !== 'ready') return
+		const current = getCrop()
+		if (
+			!file ||
+			!box ||
+			!image ||
+			(current.status !== 'ready' && current.status !== 'prepare_error')
+		)
+			return
 		const ownGeneration = generation.current
-		setStatus('applying')
-		setError(null)
+		if (
+			!transitionCrop({
+				status: 'applying',
+				previewUrl: current.previewUrl,
+				imageSize: current.imageSize,
+			})
+		)
+			return
 		onBusyChange(true)
 		try {
 			const prepared = await prepareDecodedAvatarImage(
@@ -292,12 +322,15 @@ export function AccountAvatarEditor({
 			onApply(prepared)
 		} catch (caught) {
 			if (ownGeneration !== generation.current) return
-			setError(
-				caught instanceof Error
-					? caught.message
-					: 'Unable to prepare that avatar.',
-			)
-			setStatus('ready')
+			transitionCrop({
+				status: 'prepare_error',
+				previewUrl: current.previewUrl,
+				imageSize: current.imageSize,
+				error:
+					caught instanceof Error
+						? caught.message
+						: 'Unable to prepare that avatar.',
+			})
 			onBusyChange(false)
 		}
 	}
@@ -314,6 +347,7 @@ export function AccountAvatarEditor({
 	const busy = status === 'decoding' || status === 'applying'
 	return (
 		<dialog
+			aria-busy={busy}
 			ref={dialog}
 			aria-labelledby="avatar-editor-title"
 			data-testid="account-avatar-editor"
@@ -441,7 +475,7 @@ export function AccountAvatarEditor({
 					</button>
 					<button
 						type="button"
-						disabled={busy || status !== 'ready' || !!error}
+						disabled={busy || status !== 'ready'}
 						css={editorApplyButtonCss}
 						onClick={() => void apply()}
 					>

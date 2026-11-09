@@ -1,4 +1,15 @@
 /** @jsxImportSource @emotion/react */
+import { useStateMachine } from '#client/use-state-machine.ts'
+import {
+	connectOauthStepState,
+	connectOauthOperationState,
+} from '#client/routes/connect-oauth-state.ts'
+import {
+	toConnectOauthUi,
+	projectConnectOauthUi,
+	type OauthState,
+	type ConnectOauthUiState,
+} from './connect-oauth-ui-state.ts'
 import { useRouter } from '@tanstack/react-router'
 import { normalizeProviderKey } from '@kody-internal/shared/url-hosts.ts'
 import { createOAuthCallbackNavigationScope } from '../oauth-callback-navigation.ts'
@@ -102,32 +113,6 @@ import {
 	toStoredIntegrationConfig,
 } from '#client/routes/connect-oauth-config.ts'
 
-type OauthState = {
-	statusMessage: string
-	statusTone: ConnectOauthStatusTone
-	currentStep: ConnectOauthStep
-	config: ConnectOauthConfig | null
-	existingIntegrationConfig: StoredIntegrationConfig | null
-	accessTokenSaved: boolean
-	refreshTokenSaved: boolean
-	hasConfigError: boolean
-	existingConnection: ConnectOauthExistingConnection | null
-	replaceConfirmed: boolean
-	/** Set while the setup save waits on the live-app replace choice. */
-	liveReplace: LiveReplaceState | null
-	chooserOptions: Array<ConnectOauthChooserOption>
-	chooserFilter: string
-	requestedProvider: string | null
-	offeredScopeMenu: Array<string>
-	nextSteps: ConnectOauthNextSteps | null
-	submitting: boolean
-	ssrRedirectUri: string | null
-	clientIdInput: string
-	clientSecretInput: string
-	hasStoredClientId: boolean
-	hasStoredClientSecret: boolean
-	revealStoredClientSecretField: boolean
-}
 function initialOauthState(
 	routeData: ConnectOauthLoaderData,
 	href: string,
@@ -326,22 +311,46 @@ export function ConnectOauthRoute({
 		avatarUrl: session?.avatarUrl ?? null,
 	}
 	const invalidatePages = usePageInvalidation(mutationResources)
-	const [state, setState] = useState(() =>
-		initialOauthState(
-			{
-				...initialData,
-				chooser: initialData.chooser
-					? {
-							options: withConnectOauthChooserOrg(
-								initialData.chooser.options,
-								flowOrg,
-							),
-						}
-					: undefined,
-			},
-			currentHref,
+	const [initialFlow] = useState(() =>
+		toConnectOauthUi(
+			initialOauthState(
+				{
+					...initialData,
+					chooser: initialData.chooser
+						? {
+								options: withConnectOauthChooserOrg(
+									initialData.chooser.options,
+									flowOrg,
+								),
+							}
+						: undefined,
+				},
+				currentHref,
+			),
 		),
 	)
+	const [flow, transitionFlow, getFlow] = useStateMachine<ConnectOauthUiState>(
+		connectOauthStepState,
+		initialFlow,
+	)
+	const state = projectConnectOauthUi(flow)
+	function isSubmitting() {
+		const current = getFlow()
+		return current.status !== 'success' && current.request === 'submitting'
+	}
+	function setState(update: (previous: OauthState) => OauthState) {
+		const previous = projectConnectOauthUi(getFlow())
+		const next = update(previous)
+		if (
+			previous.submitting !== next.submitting &&
+			!connectOauthOperationState.can(
+				previous.submitting ? 'submitting' : 'idle',
+				next.submitting ? 'submitting' : 'idle',
+			)
+		)
+			return
+		transitionFlow(toConnectOauthUi(next))
+	}
 	const {
 		statusMessage,
 		statusTone,
@@ -384,7 +393,6 @@ export function ConnectOauthRoute({
 			<ConnectOauthOrgTarget org={targetOrg} viewer={viewer} />
 		) : null
 	const mounted = useRef(false),
-		inFlight = useRef(false),
 		callbackStarted = useRef(false)
 	const isFlowActive = useCallback(
 		() => mounted.current && navigationScope.isActive(),
@@ -408,9 +416,8 @@ export function ConnectOauthRoute({
 		() =>
 			createConnectOauthDeviceStep({
 				getConfig: () => stateRef.current.config,
-				getSubmitting: () => stateRef.current.submitting || inFlight.current,
+				getSubmitting: isSubmitting,
 				setSubmitting: (value) => {
-					inFlight.current = value
 					setState((previous) => ({ ...previous, submitting: value }))
 				},
 				setStatus: (message, tone = 'info') => {
@@ -426,6 +433,7 @@ export function ConnectOauthRoute({
 				onSuccess: (result) => {
 					setState((previous) => ({
 						...previous,
+						currentStep: 'success',
 						accessTokenSaved: result.accessTokenSaved,
 						refreshTokenSaved: result.refreshTokenSaved,
 						nextSteps: result.nextSteps,
@@ -466,8 +474,8 @@ export function ConnectOauthRoute({
 		})
 	}
 	async function submitSetup(choice: { replace?: boolean; newName?: string }) {
-		if (!config || inFlight.current) return
-		inFlight.current = true
+		if (!config || isSubmitting()) return
+
 		update({ submitting: true })
 		try {
 			const clientId = clientIdInput.trim(),
@@ -564,7 +572,6 @@ export function ConnectOauthRoute({
 					'error',
 				)
 		} finally {
-			inFlight.current = false
 			if (isFlowActive()) update({ submitting: false })
 		}
 	}
@@ -588,12 +595,12 @@ export function ConnectOauthRoute({
 		update({ config: nextConfig })
 	}
 	async function handleConnect() {
-		if (!config || inFlight.current) return
+		if (!config || isSubmitting()) return
 		if (config.flow === 'device') {
 			await deviceStep.handleDeviceConnect()
 			return
 		}
-		inFlight.current = true
+
 		update({ submitting: true })
 		try {
 			persistConnectOauthOrgSlug(flowOrg)
@@ -610,7 +617,6 @@ export function ConnectOauthRoute({
 					'error',
 				)
 		} finally {
-			inFlight.current = false
 			if (isFlowActive()) update({ submitting: false })
 		}
 	}
