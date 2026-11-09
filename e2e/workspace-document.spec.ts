@@ -87,11 +87,19 @@ test('block controls, splitting, shortcuts, and read-only mode keep working', as
 		)
 		.toBe('bullet')
 	const editor = page.getByRole('textbox', { name: 'Page content' })
-	await editor.click()
-	await editor.press('ControlOrMeta+a')
-	await editor.press('ArrowRight')
-	await editor.press('Enter')
-	await editor.press('/')
+	await expect(editor).toBeFocused()
+	await editor
+		.getByText('Notes for the team.', { exact: true })
+		.evaluate((paragraph) => {
+			const range = document.createRange()
+			range.selectNodeContents(paragraph)
+			range.collapse(false)
+			const selection = window.getSelection()
+			selection?.removeAllRanges()
+			selection?.addRange(range)
+		})
+	await page.keyboard.press('Enter')
+	await page.keyboard.press('/')
 	await page.getByRole('option', { name: /Quote/ }).click()
 	await expect
 		.poll(

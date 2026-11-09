@@ -120,8 +120,8 @@ export function ContextMenuSurface({
 	return (
 		<ContextMenuOpener
 			value={(target) => {
-				const actions = actionsAt(target)
-				if (!actions) return
+				const actions = resolve(target)
+				if (!actions?.length) return
 				const box = target.getBoundingClientRect()
 				show(target, box.left, box.bottom + 4, actions)
 			}}
