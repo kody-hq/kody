@@ -267,3 +267,12 @@ test('a stalled fresh read returns the cached HEAD within the timeout', async ()
 		resolveFreshArtifactSourceHead(env, 'repo-1', { timeoutMs: 10 }),
 	).resolves.toEqual({ branch: 'main', commit: 'commit-live' })
 })
+
+test('a stalled fresh read with nothing cached fails at the timeout', async () => {
+	const { env } = setup()
+	mocks.resolveArtifactSourceHead.mockReturnValue(new Promise(() => {}))
+
+	await expect(
+		resolveFreshArtifactSourceHead(env, 'repo-1', { timeoutMs: 10 }),
+	).rejects.toThrow('timed out')
+})

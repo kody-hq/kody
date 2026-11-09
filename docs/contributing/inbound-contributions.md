@@ -98,11 +98,20 @@ When a successor pull request carries a contributor's commits from a closed or
 superseded one, the `CLA` check reads comments on the successor only. Link the
 original signing comment on the successor, then record that signer. The recorder
 lives on `main` and the signer file lives on `cla-signatures`, so from a `main`
-checkout run `git worktree add ../cla-signatures cla-signatures`, then
-`node tools/ci/check-cla.ts --signers ../cla-signatures/cla-signers.json --record-signer <login> --signed-at <YYYY-MM-DD> --comment-file <file>`
-(the comment file holds the original signing comment body). Commit and push
-`cla-signers.json` from that worktree, then re-run the check. Do not ask the
-contributor to sign a second time.
+checkout whose `origin` is `kody-hq/kody`:
+
+```sh
+git fetch origin cla-signatures
+git worktree add --detach ../cla-signatures origin/cla-signatures
+node tools/ci/check-cla.ts --signers ../cla-signatures/cla-signers.json --record-signer <login> --signed-at <YYYY-MM-DD> --comment-file <file>
+git -C ../cla-signatures commit -am "cla: record <login> from #<original PR>"
+git -C ../cla-signatures push origin HEAD:cla-signatures
+git worktree remove ../cla-signatures
+```
+
+The comment file holds the original signing comment body. If the push is
+rejected because the branch moved, remove the worktree and start again. Then
+re-run the check. Do not ask the contributor to sign a second time.
 
 Make the `CLA` check required for `main` in GitHub branch protection so a green
 review cannot skip it.

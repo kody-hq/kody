@@ -143,18 +143,21 @@ async function readCachedArtifactSourceHead(env: Env, repoId: string) {
  * push the moment it lands (#4981): a cached HEAD can lag an external git push
  * for the whole TTL when the push event misses the cache (nobody had viewed
  * the repo) or arrives late. When the live lookup fails or outlasts
- * `timeoutMs`, the last cached HEAD is returned and a slow lookup still
- * refreshes the cache in the background.
+ * `timeoutMs`, the last cached HEAD is returned (or the lookup error when
+ * nothing is cached); the cache write always runs in the background.
  */
 export async function resolveFreshArtifactSourceHead(
 	env: Env,
 	repoId: string,
 	options?: { timeoutMs?: number },
 ): Promise<ArtifactSourceHead> {
-	const live = resolveArtifactSourceHead(env, repoId).then(async (head) => {
-		await writeArtifactSourceHead(env, repoId, head)
-		return head
-	})
+	const live = resolveArtifactSourceHead(env, repoId)
+	void deferWork('artifact-head-fresh-write', () =>
+		live.then(
+			(head) => writeArtifactSourceHead(env, repoId, head),
+			() => undefined,
+		),
+	)
 	let timer: ReturnType<typeof setTimeout> | undefined
 	const timedOut = new Promise<'timeout'>((resolve) => {
 		timer = setTimeout(
@@ -162,19 +165,18 @@ export async function resolveFreshArtifactSourceHead(
 			options?.timeoutMs ?? freshHeadTimeoutMs,
 		)
 	})
+	let failure: unknown = new Error('Artifacts HEAD lookup timed out')
 	try {
 		const result = await Promise.race([live, timedOut])
 		if (result !== 'timeout') return result
-		void deferWork('artifact-head-fresh-refresh', () => live)
 	} catch (error) {
-		const cached = await readCachedArtifactSourceHead(env, repoId)
-		if (cached) return cached
-		throw error
+		failure = error
 	} finally {
 		clearTimeout(timer)
 	}
 	const cached = await readCachedArtifactSourceHead(env, repoId)
-	return cached ?? (await live)
+	if (cached) return cached
+	throw failure
 }
 
 /**
