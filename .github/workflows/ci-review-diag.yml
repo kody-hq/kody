@@ -1,0 +1,62 @@
+name: ci-review diag (temporary)
+
+on:
+  push:
+    branches: [ci-review/2026-11-09-speed]
+
+permissions:
+  contents: read
+
+jobs:
+  diag:
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [baseline, devdrive]
+    runs-on: windows-11-arm
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Drives
+        shell: pwsh
+        run: |
+          Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize
+          Get-Volume | Format-Table -AutoSize
+          [System.Environment]::OSVersion.Version
+      - uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+      - name: Mount a Dev Drive at node_modules
+        if: matrix.variant == 'devdrive'
+        shell: pwsh
+        run: |
+          $vhd = 'C:\kody-node-modules.vhdx'
+          "create vdisk file=`"$vhd`" maximum=40960 type=expandable`nselect vdisk file=`"$vhd`"`nattach vdisk" | Set-Content "$env:RUNNER_TEMP\dp.txt"
+          diskpart /s "$env:RUNNER_TEMP\dp.txt"
+          $disk = Get-DiskImage -ImagePath $vhd | Get-Disk
+          Initialize-Disk -Number $disk.Number -PartitionStyle GPT
+          $part = New-Partition -DiskNumber $disk.Number -UseMaximumSize
+          Format-Volume -Partition $part -DevDrive -Confirm:$false -Force | Format-List
+          $nm = Join-Path $PWD 'node_modules'
+          New-Item -ItemType Directory -Force $nm | Out-Null
+          Add-PartitionAccessPath -DiskNumber $disk.Number -PartitionNumber $part.PartitionNumber -AccessPath "$nm\"
+          fsutil devdrv query "$nm\"
+          Get-Item $nm | Format-List
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 26
+          cache: npm
+      - name: npm ci
+        run: time npm ci --timing
+      - name: npm timing summary
+        if: always()
+        run: |
+          cd "$(npm config get cache)/_logs"
+          grep -hE "timing (reify:unpack|reify:audit|build:run|command:ci)" *-debug-0.log || true
+      - name: Smoke the installed tree
+        run: |
+          node -e "console.log(process.platform, process.arch)"
+          npx --no-install tsc --version
+          npm ls --depth=0 --workspaces=false > /dev/null && echo "npm ls ok"
