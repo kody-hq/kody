@@ -35,8 +35,9 @@ export const systemEmailLocals = [
 	'admin',
 	// Public Suffix List contact for the kody.run listing (#1405).
 	'psl',
-	// Founder replies (the founder welcome Reply-To); also forwarded to
-	// FOUNDER_EMAIL_FORWARD_TO after it is stored.
+	// Founder replies (the founder welcome Reply-To). A zone Email Routing rule
+	// forwards kent@ straight to Kent; accepting it here keeps a catch-all
+	// fallback that lands in the system inbox if that rule is ever removed.
 	'kent',
 ] as const
 
