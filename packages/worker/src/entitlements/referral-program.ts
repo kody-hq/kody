@@ -1,3 +1,8 @@
+import {
+	sqlSourcesOf,
+	nextState,
+	parseState,
+} from '@kody-internal/shared/state-machine.ts'
 /**
  * Referral attribution at signup and invoice-gated Standard credit.
  * Reward is one stacked month for both parties; there is no annual or
@@ -24,14 +29,10 @@ import {
 } from '#universal/referral-program.ts'
 
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
-const rejectReferralGuard = referralState.guard({
-	from: 'pending',
-	to: 'rejected',
-})
-const rewardReferralGuard = referralState.guard({
-	from: 'pending',
-	to: 'rewarded',
-})
+const rejectReferralGuard = sqlSourcesOf(referralState, 'REJECT_FRAUD', [
+	'pending',
+])
+const rewardReferralGuard = sqlSourcesOf(referralState, 'REWARD', ['pending'])
 
 export type ReferralAttributionOutcome =
 	| { outcome: 'attributed' }
@@ -621,7 +622,7 @@ export async function rewardReferralForPaidInvoice(input: {
 		return { outcome: 'held_unverified' }
 	}
 
-	referralState.assert(pending.status, 'rewarded')
+	nextState(referralState, pending.status, { type: 'REWARD' })
 	const rewardedAt = now.toISOString()
 	const invoiceId =
 		pending.status === 'rewarded'
@@ -801,7 +802,9 @@ export async function loadReferralProgramSummary(input: {
 		(row) => ({
 			refereeUsername: row.referee_username,
 			status:
-				referralState.parse(row.status) === 'rewarded' ? 'rewarded' : 'pending',
+				parseState(referralState, row.status) === 'rewarded'
+					? 'rewarded'
+					: 'pending',
 			createdAt: row.created_at,
 			rewardedAt: row.rewarded_at,
 		}),

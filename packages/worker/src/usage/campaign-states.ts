@@ -13,7 +13,7 @@ import {
 import { describeSecondAgentStandardGift } from '#universal/second-agent-standard-gift.ts'
 
 export const usageCampaignStates = Object.freeze(
-	usageCampaignState.states.map((phase) => usageCampaignTags[phase]),
+	usageCampaignState.values.map((phase) => usageCampaignTags[phase]),
 )
 
 export type { UsageCampaignState } from './usage-campaign-state.ts'

@@ -1,4 +1,13 @@
 import {
+	IllegalStateTransitionError,
+	sqlSourcesOf,
+	sqlStatesOf,
+	isState,
+	nextState,
+	finalStatesOf,
+	parseState,
+} from '@kody-internal/shared/state-machine.ts'
+import {
 	runDispatchState,
 	type RunDispatchState,
 } from './run-dispatch-state.ts'
@@ -194,23 +203,23 @@ export type DaemonControlResult =
 export const daemonControlFeature = 'daemon-control'
 const controlTimeoutMs = 15_000
 
-const redispatchGuard = runDispatchState.guard({
-	from: ['aborted', 'rejected'],
-	to: 'dispatched',
-})
-const commitDispatchGuard = runDispatchState.guard({
-	from: 'dispatched',
-	to: 'committed',
-})
-const abortDispatchGuard = runDispatchState.guard({
-	from: 'dispatched',
-	to: 'aborted',
-})
-const finishDispatchGuard = runDispatchState.guard({
-	from: 'committed',
-	to: ['succeeded', 'failed', 'cancelled', 'lost'],
-})
-const finalRunSql = runDispatchState.sql(runDispatchState.terminal)
+const redispatchGuard = sqlSourcesOf(runDispatchState, 'OFFER', [
+	'aborted',
+	'rejected',
+])
+const commitDispatchGuard = sqlSourcesOf(runDispatchState, 'COMMIT', [
+	'dispatched',
+])
+const abortDispatchGuard = sqlSourcesOf(runDispatchState, 'ABORT', [
+	'dispatched',
+])
+const finishDispatchGuard = sqlSourcesOf(runDispatchState, 'SUCCEED', [
+	'committed',
+])
+const finalRunSql = sqlStatesOf(
+	runDispatchState,
+	finalStatesOf(runDispatchState),
+)
 
 type RunRow = {
 	run_id: string
@@ -334,7 +343,7 @@ function cancelledSummary(reason: string) {
 
 function terminalOutcome(state: string): RunHistoryOutcome | null {
 	if (
-		!runDispatchState.is(state) ||
+		!isState(runDispatchState, state) ||
 		state === 'dispatched' ||
 		state === 'committed'
 	)
@@ -1101,8 +1110,8 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			record('busy')
 			return { outcome: 'busy' }
 		}
-		if (existing && runDispatchState.is(existing.state))
-			runDispatchState.assert(existing.state, 'dispatched')
+		if (existing && isState(runDispatchState, existing.state))
+			nextState(runDispatchState, existing.state, { type: 'OFFER' })
 		this.ctx.storage.sql.exec(
 			`INSERT INTO runs (run_id, state, lease_json, deadline, accept_by,
 			   run_record_json, created_at)
@@ -1169,7 +1178,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			await this.#send(live.ws, 'run.abort', { runId: lease.runId })
 			return { outcome: 'aborted' }
 		}
-		runDispatchState.assert('dispatched', 'committed')
+		nextState(runDispatchState, 'dispatched', { type: 'COMMIT' })
 		const committed = this.ctx.storage.sql.exec(
 			`UPDATE runs SET state = 'committed', started_at = ? WHERE run_id = ? AND state IN ${commitDispatchGuard}`,
 			Date.now(),
@@ -1311,9 +1320,31 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 	#dispatchingQueued = new Set<string>()
 
 	#assertQueuedTransition(runId: string, to: QueuedRunState) {
-		queuedRunState.assert(
+		nextState(
+			queuedRunState,
 			this.#dispatchingQueued.has(runId) ? 'starting' : 'queued',
-			to,
+			{
+				type: (() => {
+					switch (to as string) {
+						case 'queued':
+							return 'RELEASE_HANDOFF' as const
+						case 'starting':
+							return 'START_HANDOFF' as const
+						case 'finished':
+							return 'FINISH' as const
+						case 'cancelled':
+							return 'CANCEL' as const
+						case 'expired':
+							return 'EXPIRE' as const
+						default:
+							throw new IllegalStateTransitionError(
+								queuedRunState.id,
+								this.#dispatchingQueued.has(runId) ? 'starting' : 'queued',
+								{ type: String(to) },
+							)
+					}
+				})(),
+			},
 		)
 	}
 
@@ -1503,10 +1534,39 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		const current = this.#run(runId)
 		if (
 			current &&
-			runDispatchState.is(current.state) &&
-			!runDispatchState.isTerminal(current.state)
+			isState(runDispatchState, current.state) &&
+			!finalStatesOf(runDispatchState).includes(
+				parseState(runDispatchState, current.state),
+			)
 		)
-			runDispatchState.assert(current.state, state)
+			nextState(runDispatchState, current.state, {
+				type: (() => {
+					switch (state as string) {
+						case 'dispatched':
+							return 'OFFER' as const
+						case 'committed':
+							return 'COMMIT' as const
+						case 'succeeded':
+							return 'SUCCEED' as const
+						case 'failed':
+							return 'FAIL' as const
+						case 'cancelled':
+							return 'CANCEL' as const
+						case 'lost':
+							return 'LOSE' as const
+						case 'rejected':
+							return 'REJECT' as const
+						case 'aborted':
+							return 'ABORT' as const
+						default:
+							throw new IllegalStateTransitionError(
+								runDispatchState.id,
+								current.state,
+								{ type: String(state) },
+							)
+					}
+				})(),
+			})
 		this.ctx.storage.sql.exec(
 			`UPDATE runs SET state = ?, ended_at = ? WHERE run_id = ?
 			   AND state NOT IN ${finalRunSql}`,
@@ -1540,7 +1600,34 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			errorSummary?: string
 		} = {},
 	) {
-		runDispatchState.assert('committed', state)
+		nextState(runDispatchState, 'committed', {
+			type: (() => {
+				switch (state as string) {
+					case 'dispatched':
+						return 'OFFER' as const
+					case 'committed':
+						return 'COMMIT' as const
+					case 'succeeded':
+						return 'SUCCEED' as const
+					case 'failed':
+						return 'FAIL' as const
+					case 'cancelled':
+						return 'CANCEL' as const
+					case 'lost':
+						return 'LOSE' as const
+					case 'rejected':
+						return 'REJECT' as const
+					case 'aborted':
+						return 'ABORT' as const
+					default:
+						throw new IllegalStateTransitionError(
+							runDispatchState.id,
+							'committed',
+							{ type: String(state) },
+						)
+				}
+			})(),
+		})
 		const now = Date.now()
 		const changed = this.ctx.storage.sql
 			.exec(
@@ -2404,7 +2491,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				await this.#finishRunRecord(run, { lost: true })
 			}
 		}
-		runDispatchState.assert('dispatched', 'aborted')
+		nextState(runDispatchState, 'dispatched', { type: 'ABORT' })
 		this.ctx.storage.sql.exec(
 			`UPDATE runs SET state = 'aborted', ended_at = ?
 			 WHERE state IN ${abortDispatchGuard} AND accept_by + ? <= ?`,

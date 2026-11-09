@@ -1,3 +1,4 @@
+import { isState, sqlSourcesOf } from '@kody-internal/shared/state-machine.ts'
 import { enablementState } from './enablement-state.ts'
 import {
 	isOrgPermission,
@@ -91,7 +92,7 @@ function toSenderKind(value: string | null): EnablementSenderKind | null {
 }
 
 function toState(value: string): EnablementState {
-	if (enablementState.is(value)) return value
+	if (isState(enablementState, value)) return value
 	throw new Error(`Unknown enablement state: ${value}`)
 }
 
@@ -484,15 +485,14 @@ export async function listEnablementsForOrg(input: {
 	return (result.results ?? []).map(toRecord)
 }
 
-const resumeEnablementGuard = enablementState.guard({
-	from: 'paused',
-	to: 'on',
-})
-const pauseEnablementGuard = enablementState.guard({ from: 'on', to: 'paused' })
-const rewritePauseGuard = enablementState.guard({
-	from: ['on', 'paused'],
-	to: 'paused',
-})
+const resumeEnablementGuard = sqlSourcesOf(enablementState, 'RESUME', [
+	'paused',
+])
+const pauseEnablementGuard = sqlSourcesOf(enablementState, 'PAUSE', ['on'])
+const rewritePauseGuard = sqlSourcesOf(enablementState, 'PAUSE', [
+	'on',
+	'paused',
+])
 
 export type EnablementPauseInput = {
 	reason: EnablementPausedReason

@@ -1,3 +1,7 @@
+import {
+	IllegalStateTransitionError,
+	sqlSourceOf,
+} from '@kody-internal/shared/state-machine.ts'
 import { platformFeedbackState } from './platform-feedback-state.ts'
 import {
 	parsePlatformFeedbackReopenHistory,
@@ -433,9 +437,25 @@ export async function updatePlatformFeedbackStatusForAdmin(
 		reopenHistoryJson?: string | null
 	},
 ): Promise<boolean> {
-	const statusGuard = platformFeedbackState.guard({
-		from: input.expectedStatus,
-		to: input.status,
+	const statusGuard = sqlSourceOf(platformFeedbackState, input.expectedStatus, {
+		type: (() => {
+			switch (input.status as string) {
+				case 'open':
+					return 'REVIEW_OPEN' as const
+				case 'triaged':
+					return 'TRIAGE' as const
+				case 'resolved':
+					return 'RESOLVE' as const
+				case 'dismissed':
+					return 'DISMISS' as const
+				default:
+					throw new IllegalStateTransitionError(
+						platformFeedbackState.id,
+						input.expectedStatus,
+						{ type: String(input.status) },
+					)
+			}
+		})(),
 	})
 	const result = await db
 		.prepare(

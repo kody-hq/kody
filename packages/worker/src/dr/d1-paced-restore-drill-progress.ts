@@ -1,3 +1,7 @@
+import {
+	IllegalStateTransitionError,
+	nextState,
+} from '@kody-internal/shared/state-machine.ts'
 import type { D1PacedRestoreDrillSourceStatus } from './d1-paced-restore-drill-source-state.ts'
 import type { PacedRestoreDrillCheckpoint } from '@kody-internal/shared/backup-d1-paced-drill-alert.ts'
 import {
@@ -332,7 +336,22 @@ export async function finishD1PacedRestoreDrillRun(
 		nowIso: string
 	},
 ) {
-	d1PacedRestoreDrillRunState.assert('running', input.status)
+	nextState(d1PacedRestoreDrillRunState, 'running', {
+		type: (() => {
+			switch (input.status as string) {
+				case 'passed':
+					return 'PASS' as const
+				case 'failed':
+					return 'FAIL' as const
+				default:
+					throw new IllegalStateTransitionError(
+						d1PacedRestoreDrillRunState.id,
+						'running',
+						{ type: String(input.status) },
+					)
+			}
+		})(),
+	})
 	await db
 		.prepare(
 			`UPDATE dr_paced_restore_drill_runs

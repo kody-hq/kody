@@ -1,3 +1,4 @@
+import { isState } from '@kody-internal/shared/state-machine.ts'
 import {
 	inboundSubscriptionEffectState,
 	type InboundSubscriptionEffectState,
@@ -147,7 +148,7 @@ export function parseInboundDeliveryDetailJson(
 		) {
 			return null
 		}
-		const state = inboundDeliveryState.is(detail.state)
+		const state = isState(inboundDeliveryState, detail.state)
 			? detail.state
 			: 'pending'
 		return {
@@ -218,7 +219,10 @@ export function parseInboundDeliveryDetailJson(
 			...(typeof detail.usageEffectLeaseAt === 'string'
 				? { usageEffectLeaseAt: detail.usageEffectLeaseAt }
 				: {}),
-			...(inboundSubscriptionEffectState.is(detail.subscriptionEffectState)
+			...(isState(
+				inboundSubscriptionEffectState,
+				detail.subscriptionEffectState,
+			)
 				? { subscriptionEffectState: detail.subscriptionEffectState }
 				: {}),
 			...(typeof detail.subscriptionEffectLease === 'string'

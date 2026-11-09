@@ -1,3 +1,7 @@
+import {
+	IllegalStateTransitionError,
+	nextState,
+} from '@kody-internal/shared/state-machine.ts'
 /**
  * Admin fleet inventory of credential placeholders in published package
  * source, and the `provider` / `inject_json` backfill it drives (ADR 0068).
@@ -449,10 +453,22 @@ export async function runCredentialInventoryScanStep(input: {
 		)
 	}
 	const complete = packages.length < limit
-	credentialInventoryRunState.assert(
-		run.status,
-		complete ? 'complete' : 'scanning',
-	)
+	nextState(credentialInventoryRunState, run.status, {
+		type: (() => {
+			switch ((complete ? 'complete' : 'scanning') as string) {
+				case 'scanning':
+					return 'SCAN_PAGE' as const
+				case 'complete':
+					return 'COMPLETE' as const
+				default:
+					throw new IllegalStateTransitionError(
+						credentialInventoryRunState.id,
+						run.status,
+						{ type: String(complete ? 'complete' : 'scanning') },
+					)
+			}
+		})(),
+	})
 	statements.push(
 		db
 			.prepare(

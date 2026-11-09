@@ -1,3 +1,4 @@
+import { statesOf } from '@kody-internal/shared/state-machine.ts'
 import {
 	platformFeedbackState,
 	type PlatformFeedbackStatus,
@@ -15,7 +16,7 @@ export const platformFeedbackCategories = [
 export type PlatformFeedbackCategory =
 	(typeof platformFeedbackCategories)[number]
 
-export const platformFeedbackStatuses = platformFeedbackState.states
+export const platformFeedbackStatuses = statesOf(platformFeedbackState)
 
 export type { PlatformFeedbackStatus } from './platform-feedback-state.ts'
 

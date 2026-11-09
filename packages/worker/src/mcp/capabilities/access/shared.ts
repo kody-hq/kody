@@ -1,3 +1,4 @@
+import { statesOf } from '@kody-internal/shared/state-machine.ts'
 import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import {
 	grantPresets,
@@ -135,7 +136,7 @@ export const inviteSchema = z.object({
 	permissions: z.array(z.string()).nullable(),
 	invitee_email: z.string().nullable(),
 	invitee_username: z.string().nullable(),
-	status: z.enum(inviteState.states),
+	status: z.enum(statesOf(inviteState)),
 	expires_at: z.string(),
 })
 

@@ -1,14 +1,14 @@
-import {
-	defineStateMachine,
-	type StateOf,
-} from '@kody-internal/shared/state-machine.ts'
+import { setup } from 'xstate'
+import type { LifecycleStateOf } from '@kody-internal/shared/state-machine.ts'
 
-export const inviteLinkState = defineStateMachine({
-	name: 'org_invite_links.status',
+export const inviteLinkState = setup({
+	types: { events: {} as { type: 'REVOKE' } },
+}).createMachine({
+	id: 'org_invite_links.status',
 	description:
 		'An active invite link can be explicitly revoked; expiry and exhaustion are derived eligibility conditions.',
 	initial: 'active',
-	transitions: { active: ['revoked'], revoked: [] },
+	states: { active: { on: { REVOKE: 'revoked' } }, revoked: { type: 'final' } },
 })
 
-export type OrgInviteLinkStatus = StateOf<typeof inviteLinkState>
+export type OrgInviteLinkStatus = LifecycleStateOf<typeof inviteLinkState>

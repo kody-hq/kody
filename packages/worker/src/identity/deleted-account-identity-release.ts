@@ -1,3 +1,4 @@
+import { sqlSourcesOf } from '@kody-internal/shared/state-machine.ts'
 /**
  * soft-delete-read-filter: opt-out
  *
@@ -7,10 +8,7 @@
 import { emailClaimState } from './email-claim-state.ts'
 import { normalizeEmail } from '#worker/identity/normalize-email.ts'
 
-const releaseClaimGuard = emailClaimState.guard({
-	from: 'claimed',
-	to: 'released',
-})
+const releaseClaimGuard = sqlSourcesOf(emailClaimState, 'RELEASE', ['claimed'])
 
 /**
  * Released tombstones move email and username to values no signup can ever

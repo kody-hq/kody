@@ -1,3 +1,9 @@
+import {
+	IllegalStateTransitionError,
+	sqlSourcesOf,
+	parseState,
+	nextState,
+} from '@kody-internal/shared/state-machine.ts'
 /**
  * Writes that change org access (memberships, teams, grants, invites) and bump
  * access_epoch in the same D1 batch so the next request recompiles.
@@ -37,10 +43,7 @@ import { inviteState, type InviteStatus } from './invite-state.ts'
 
 export type { InviteStatus } from './invite-state.ts'
 
-const inviteDecisionGuard = inviteState.guard({
-	from: 'pending',
-	to: ['accepted', 'revoked', 'expired'],
-})
+const inviteDecisionGuard = sqlSourcesOf(inviteState, 'ACCEPT', ['pending'])
 
 async function runAccessBatchWithAudit(input: {
 	db: D1Database
@@ -1098,7 +1101,7 @@ function parseStoredInvite(row: InviteRow): StoredInvite {
 	if (row.kind !== 'membership' && row.kind !== 'grant') {
 		throw new Error(`Invite ${row.id} has kind ${row.kind}.`)
 	}
-	const status = inviteState.parse(row.status)
+	const status = parseState(inviteState, row.status)
 	const role = row.role
 	if (role !== null && !isOrgRole(role)) {
 		throw new Error(`Invite ${row.id} has role ${role}.`)
@@ -1183,7 +1186,22 @@ async function setInviteStatus(input: {
 	to: InviteStatus
 	acceptedByUserId?: string | null
 }) {
-	inviteState.assert(input.from, input.to)
+	nextState(inviteState, input.from, {
+		type: (() => {
+			switch (input.to as string) {
+				case 'accepted':
+					return 'ACCEPT' as const
+				case 'revoked':
+					return 'REVOKE' as const
+				case 'expired':
+					return 'EXPIRE' as const
+				default:
+					throw new IllegalStateTransitionError(inviteState.id, input.from, {
+						type: String(input.to),
+					})
+			}
+		})(),
+	})
 	const now = new Date().toISOString()
 	const result =
 		input.to === 'accepted'

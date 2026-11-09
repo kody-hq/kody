@@ -1,19 +1,27 @@
-import {
-	defineStateMachine,
-	type StateOf,
-} from '@kody-internal/shared/state-machine.ts'
+import { setup } from 'xstate'
+import type { LifecycleStateOf } from '@kody-internal/shared/state-machine.ts'
 
-export const agentRegistrationState = defineStateMachine({
-	name: 'agent_registrations.status',
+export const agentRegistrationState = setup({
+	types: {
+		events: {} as
+			| { type: 'CLAIM' }
+			| { type: 'DENY' }
+			| { type: 'CONSUME' }
+			| { type: 'RESTORE' },
+	},
+}).createMachine({
+	id: 'agent_registrations.status',
 	description:
 		'Registrations await a claim decision, then consumption with retry rollback when token minting fails.',
 	initial: 'pending',
-	transitions: {
-		pending: ['claimed', 'denied'],
-		claimed: ['consumed'],
-		denied: [],
-		consumed: ['claimed'],
+	states: {
+		pending: { on: { CLAIM: 'claimed', DENY: 'denied' } },
+		claimed: { on: { CONSUME: 'consumed' } },
+		denied: { type: 'final' },
+		consumed: { on: { RESTORE: 'claimed' } },
 	},
 })
 
-export type AgentRegistrationStatus = StateOf<typeof agentRegistrationState>
+export type AgentRegistrationStatus = LifecycleStateOf<
+	typeof agentRegistrationState
+>

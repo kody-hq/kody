@@ -1,4 +1,8 @@
 import {
+	sqlSourcesOf,
+	parseState,
+} from '@kody-internal/shared/state-machine.ts'
+import {
 	deviceAuthorizationRetentionSeconds,
 	deviceSlowDownIncrementSeconds,
 } from './device-grant.ts'
@@ -43,14 +47,12 @@ export type DeviceAuthorizationRow = {
 }
 
 const table = 'oauth_device_authorizations'
-const decisionGuard = deviceAuthorizationState.guard({
-	from: 'pending',
-	to: ['approved', 'denied'],
-})
-const consumeGuard = deviceAuthorizationState.guard({
-	from: 'approved',
-	to: 'consumed',
-})
+const decisionGuard = sqlSourcesOf(deviceAuthorizationState, 'APPROVE', [
+	'pending',
+])
+const consumeGuard = sqlSourcesOf(deviceAuthorizationState, 'CONSUME', [
+	'approved',
+])
 
 export function nowSeconds() {
 	return Math.floor(Date.now() / 1000)
@@ -121,7 +123,7 @@ export async function findDeviceAuthorizationByDeviceCodeHash(
 		.bind(deviceCodeHash)
 		.first<DeviceAuthorizationRow>()
 	return row
-		? { ...row, status: deviceAuthorizationState.parse(row.status) }
+		? { ...row, status: parseState(deviceAuthorizationState, row.status) }
 		: null
 }
 
@@ -139,7 +141,7 @@ export async function findPendingDeviceAuthorizationByUserCode(
 		.bind(userCode, now)
 		.first<DeviceAuthorizationRow>()
 	return row
-		? { ...row, status: deviceAuthorizationState.parse(row.status) }
+		? { ...row, status: parseState(deviceAuthorizationState, row.status) }
 		: null
 }
 

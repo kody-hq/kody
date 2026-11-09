@@ -1,6 +1,9 @@
 import { stateMachines as cliStateMachines } from '../packages/cli/src/state-machines.ts'
 import { stateMachines as backupStateMachines } from '../packages/backup-control-plane/state-machines.ts'
-import { stateMachines as workerStateMachines } from '../packages/worker/src/state-machines.ts'
+import {
+	stateMachines as workerStateMachines,
+	statusEnums as workerStatusEnums,
+} from '../packages/worker/src/state-machines.ts'
 import { stateMachines as statusStateMachines } from '../packages/status/state-machines.ts'
 
 import { stateMachines as uiStateMachines } from '../packages/worker/client/state-machines.ts'
@@ -15,3 +18,5 @@ export const stateMachines = [
 	...uiStateMachines,
 	...desktopStateMachines,
 ] as const
+
+export const statusEnums = [...workerStatusEnums] as const

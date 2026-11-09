@@ -1,7 +1,8 @@
+import { sqlSourcesOf } from '@kody-internal/shared/state-machine.ts'
 import { inviteState } from '#worker/orgs/invite-state.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
-const revokeInviteGuard = inviteState.guard({ from: 'pending', to: 'revoked' })
+const revokeInviteGuard = sqlSourcesOf(inviteState, 'REVOKE', ['pending'])
 
 /**
  * Removes what names a credential by id before the credential row goes:

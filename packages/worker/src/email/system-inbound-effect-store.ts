@@ -1,3 +1,8 @@
+import {
+	IllegalStateTransitionError,
+	sqlSourcesOf,
+	nextState,
+} from '@kody-internal/shared/state-machine.ts'
 import { inboundSubscriptionEffectState } from './inbound-subscription-effect-state.ts'
 import { systemEmailOwnerId } from './email-owner.ts'
 import type { InboundDelivery } from './inbound-delivery.ts'
@@ -10,14 +15,16 @@ import { commitSystemInboundEventMutation } from './system-inbound-delivery-tran
 
 const systemInboundProvider = 'cloudflare-email-routing'
 
-const claimPendingEffectGuard = inboundSubscriptionEffectState.guard({
-	from: 'pending',
-	to: 'processing',
-})
-const reclaimProcessingEffectGuard = inboundSubscriptionEffectState.guard({
-	from: 'processing',
-	to: 'processing',
-})
+const claimPendingEffectGuard = sqlSourcesOf(
+	inboundSubscriptionEffectState,
+	'CLAIM',
+	['pending'],
+)
+const reclaimProcessingEffectGuard = sqlSourcesOf(
+	inboundSubscriptionEffectState,
+	'CLAIM',
+	['processing'],
+)
 
 export async function listDueSystemInboundEffects(input: {
 	db: D1Database
@@ -81,8 +88,8 @@ export async function claimSystemInboundSubscriptionEffect(input: {
 	now: Date
 }) {
 	await assertSystemEmailGraphAuthority(input.db)
-	inboundSubscriptionEffectState.assert('pending', 'processing')
-	inboundSubscriptionEffectState.assert('processing', 'processing')
+	nextState(inboundSubscriptionEffectState, 'pending', { type: 'CLAIM' })
+	nextState(inboundSubscriptionEffectState, 'processing', { type: 'CLAIM' })
 	const lease = crypto.randomUUID()
 	const expiredBefore = new Date(
 		input.now.getTime() - inboundEffectLeaseMs,
@@ -142,7 +149,7 @@ export async function completeSystemInboundSubscriptionEffect(input: {
 	detailField?: string
 }) {
 	await assertSystemEmailGraphAuthority(input.db)
-	inboundSubscriptionEffectState.assert('processing', 'complete')
+	nextState(inboundSubscriptionEffectState, 'processing', { type: 'COMPLETE' })
 	const path = input.detailField ?? '$.subscriptionEffectCompletedAt'
 	const { dedicatedResult } = await commitSystemInboundEventMutation({
 		db: input.db,
@@ -193,10 +200,26 @@ export async function failSystemInboundSubscriptionEffect(input: {
 	now: Date
 }) {
 	await assertSystemEmailGraphAuthority(input.db)
-	inboundSubscriptionEffectState.assert(
-		'processing',
-		input.deadLettered ? 'dead-letter' : 'pending',
-	)
+	nextState(inboundSubscriptionEffectState, 'processing', {
+		type: (() => {
+			switch ((input.deadLettered ? 'dead-letter' : 'pending') as string) {
+				case 'pending':
+					return 'RESET' as const
+				case 'processing':
+					return 'CLAIM' as const
+				case 'complete':
+					return 'COMPLETE' as const
+				case 'dead-letter':
+					return 'DEAD_LETTER' as const
+				default:
+					throw new IllegalStateTransitionError(
+						inboundSubscriptionEffectState.id,
+						'processing',
+						{ type: String(input.deadLettered ? 'dead-letter' : 'pending') },
+					)
+			}
+		})(),
+	})
 	const retryAt = input.deadLettered
 		? null
 		: new Date(input.now.getTime() + inboundEffectRetryMs).toISOString()

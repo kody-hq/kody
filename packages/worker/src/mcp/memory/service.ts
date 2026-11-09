@@ -288,8 +288,7 @@ export async function upsertMemory(input: MemoryUpsertInput): Promise<{
 
 			const fields = existing ? changedMemoryFields(existing, row) : []
 			if (existing) {
-				if (memoryState.is(existing.status))
-					memoryState.assert(existing.status, row.status)
+				if (memoryState.is(existing.status)) memoryState.parse(row.status)
 				const updated = await updateMemory(
 					input.env.APP_DB,
 					input.userId,
@@ -415,8 +414,6 @@ export async function deleteMemory(
 			}
 
 			const now = new Date().toISOString()
-			if (memoryState.is(existing.status))
-				memoryState.assert(existing.status, 'deleted')
 			const updated = await updateMemory(
 				input.env.APP_DB,
 				input.userId,

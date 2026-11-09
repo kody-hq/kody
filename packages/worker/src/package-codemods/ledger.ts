@@ -1,4 +1,10 @@
 import {
+	IllegalStateTransitionError,
+	sqlSourcesOf,
+	isState,
+	sqlSourceOf,
+} from '@kody-internal/shared/state-machine.ts'
+import {
 	maxRestorableTextColumnBytes,
 	truncateToUtf8Bytes,
 	utf8ByteLength,
@@ -12,10 +18,9 @@ import {
 
 export type { PackageCodemodRunStatus } from './package-codemod-run-state.ts'
 
-const abandonGuard = packageCodemodRunState.guard({
-	from: 'running',
-	to: 'abandoned',
-})
+const abandonGuard = sqlSourcesOf(packageCodemodRunState, 'ABANDON', [
+	'running',
+])
 
 export type PackageCodemodRunRecord = {
 	id: string
@@ -136,7 +141,7 @@ function mapRunRow(row: Record<string, unknown>): PackageCodemodRunRecord {
 			row['scope_user_id'] == null ? null : String(row['scope_user_id']),
 		initiatedByUserId: String(row['initiated_by_user_id']),
 		filtersJson: String(row['filters_json'] ?? '{}'),
-		status: packageCodemodRunState.is(status) ? status : 'failed',
+		status: isState(packageCodemodRunState, status) ? status : 'failed',
 		revertOfRunId:
 			row['revert_of_run_id'] == null ? null : String(row['revert_of_run_id']),
 		createdAt: String(row['created_at']),
@@ -253,7 +258,30 @@ export async function updatePackageCodemodRunStatus(
 	const updatedAt = input.updatedAt ?? new Date().toISOString()
 	const statusCondition =
 		input.expectedStatus != null
-			? ` AND status IN ${packageCodemodRunState.guard({ from: input.expectedStatus, to: input.status })}`
+			? ` AND status IN ${sqlSourceOf(
+					packageCodemodRunState,
+					input.expectedStatus,
+					{
+						type: (() => {
+							switch (input.status as string) {
+								case 'running':
+									return 'CONTINUE' as const
+								case 'completed':
+									return 'COMPLETE' as const
+								case 'failed':
+									return 'FAIL' as const
+								case 'abandoned':
+									return 'ABANDON' as const
+								default:
+									throw new IllegalStateTransitionError(
+										packageCodemodRunState.id,
+										input.expectedStatus,
+										{ type: String(input.status) },
+									)
+							}
+						})(),
+					},
+				)}`
 			: ''
 	const params: Array<unknown> = [input.status, updatedAt, input.id]
 	const result = await db

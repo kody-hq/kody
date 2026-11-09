@@ -1,13 +1,21 @@
-import {
-	defineStateMachine,
-	type StateOf,
-} from '@kody-internal/shared/state-machine.ts'
+import { setup } from 'xstate'
+import type { LifecycleStateOf } from '@kody-internal/shared/state-machine.ts'
 
-export const communityReportState = defineStateMachine({
-	name: 'community_reports.status',
+export const communityReportState = setup({
+	types: {
+		events: {} as { type: 'RESOLVE' } | { type: 'DISMISS' },
+	},
+}).createMachine({
+	id: 'community_reports.status',
 	description: 'Open community reports resolve or dismiss once.',
 	initial: 'open',
-	transitions: { open: ['resolved', 'dismissed'], resolved: [], dismissed: [] },
+	states: {
+		open: { on: { RESOLVE: 'resolved', DISMISS: 'dismissed' } },
+		resolved: { type: 'final' },
+		dismissed: { type: 'final' },
+	},
 })
 
-export type CommunityReportStatus = StateOf<typeof communityReportState>
+export type CommunityReportStatus = LifecycleStateOf<
+	typeof communityReportState
+>

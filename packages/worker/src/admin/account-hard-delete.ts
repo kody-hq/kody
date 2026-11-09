@@ -17,6 +17,7 @@
  * those organizations is removed by the soft-delete offboarding path.
  */
 import { accountDeletionApprovalState } from '#universal/account-deletion-approval-state.ts'
+import { nextState } from '@kody-internal/shared/state-machine.ts'
 import {
 	ownerIdFromStored,
 	type OwnerId,
@@ -745,7 +746,7 @@ export async function readAdminAccountDeletionApproval(input: {
 	if (row.consumed_at) return { status: 'consumed' }
 	const now = input.now ?? new Date()
 	if (Date.parse(row.expires_at) <= now.getTime()) {
-		accountDeletionApprovalState.assert('pending', 'expired')
+		nextState(accountDeletionApprovalState, 'pending', { type: 'EXPIRE' })
 		return { status: 'expired' }
 	}
 	const summary = await loadApprovalSummary(
@@ -761,7 +762,7 @@ async function claimApproval(input: {
 	approvalId: string
 	nowIso: string
 }) {
-	accountDeletionApprovalState.assert('pending', 'consumed')
+	nextState(accountDeletionApprovalState, 'pending', { type: 'CONSUME' })
 	const claim = await input.db
 		.prepare(
 			`UPDATE admin_account_deletion_approvals
@@ -780,7 +781,7 @@ async function releaseApproval(input: {
 	approvalId: string
 	consumedAt: string
 }) {
-	accountDeletionApprovalState.assert('consumed', 'pending')
+	nextState(accountDeletionApprovalState, 'consumed', { type: 'ROLLBACK' })
 	await input.db
 		.prepare(
 			`UPDATE admin_account_deletion_approvals

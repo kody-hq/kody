@@ -39,7 +39,7 @@ export type EntitySourceRow = Omit<
 	user_id: OwnerId
 }
 
-export const repoSessionStatusValues = repoSessionState.states
+export const repoSessionStatusValues = repoSessionState.values
 
 export type { RepoSessionStatus } from './repo-session-state.ts'
 

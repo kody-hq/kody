@@ -62,7 +62,6 @@ export const stateMachines = [
 		machine: packageCodemodRunState,
 		file: 'packages/worker/src/package-codemods/package-codemod-run-state.ts',
 	},
-	{ machine: runState, file: 'packages/worker/src/run-records/run-state.ts' },
 	{
 		machine: d1PacedRestoreDrillRunState,
 		file: 'packages/worker/src/dr/d1-paced-restore-drill-run-state.ts',
@@ -76,10 +75,6 @@ export const stateMachines = [
 		file: 'packages/worker/universal/account-deletion-approval-state.ts',
 	},
 	{
-		machine: communityListingState,
-		file: 'packages/worker/src/community/community-listing-state.ts',
-	},
-	{
 		machine: communityReportState,
 		file: 'packages/worker/src/community/community-report-state.ts',
 	},
@@ -90,10 +85,6 @@ export const stateMachines = [
 	{
 		machine: d1PacedRestoreDrillSourceState,
 		file: 'packages/worker/src/dr/d1-paced-restore-drill-source-state.ts',
-	},
-	{
-		machine: emailProcessingState,
-		file: 'packages/worker/src/email/email-processing-state.ts',
 	},
 	{
 		machine: inboundDedupePointerState,
@@ -129,10 +120,6 @@ export const stateMachines = [
 		file: 'packages/worker/src/identity/email-claim-state.ts',
 	},
 	{
-		machine: memoryState,
-		file: 'packages/worker/src/mcp/memory/memory-state.ts',
-	},
-	{
 		machine: inviteLinkState,
 		file: 'packages/worker/src/orgs/invite-link-state.ts',
 	},
@@ -141,15 +128,34 @@ export const stateMachines = [
 		file: 'packages/worker/src/platform-feedback/platform-feedback-state.ts',
 	},
 	{
-		machine: repoSessionState,
-		file: 'packages/worker/src/repo/repo-session-state.ts',
-	},
-	{
 		machine: packageInvocationState,
 		file: 'packages/worker/src/run-records/package-invocation-state.ts',
 	},
+] as const
+
+export const statusEnums = [
 	{
-		machine: usageCampaignState,
+		statusEnum: runState,
+		file: 'packages/worker/src/run-records/run-state.ts',
+	},
+	{
+		statusEnum: communityListingState,
+		file: 'packages/worker/src/community/community-listing-state.ts',
+	},
+	{
+		statusEnum: emailProcessingState,
+		file: 'packages/worker/src/email/email-processing-state.ts',
+	},
+	{
+		statusEnum: repoSessionState,
+		file: 'packages/worker/src/repo/repo-session-state.ts',
+	},
+	{
+		statusEnum: usageCampaignState,
 		file: 'packages/worker/src/usage/usage-campaign-state.ts',
+	},
+	{
+		statusEnum: memoryState,
+		file: 'packages/worker/src/mcp/memory/memory-state.ts',
 	},
 ] as const

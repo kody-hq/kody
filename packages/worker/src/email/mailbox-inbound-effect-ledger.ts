@@ -1,3 +1,8 @@
+import {
+	IllegalStateTransitionError,
+	sqlSourcesOf,
+	nextState,
+} from '@kody-internal/shared/state-machine.ts'
 import { inboundSubscriptionEffectState } from './inbound-subscription-effect-state.ts'
 /**
  * Mailbox USER inbound effect authority CAS primitives.
@@ -115,14 +120,16 @@ export type MailboxInboundEffectLedgerRpc = {
 	}) => Promise<MailboxListDueInboundEffectWorkResult>
 }
 
-const claimPendingEffectGuard = inboundSubscriptionEffectState.guard({
-	from: 'pending',
-	to: 'processing',
-})
-const reclaimProcessingEffectGuard = inboundSubscriptionEffectState.guard({
-	from: 'processing',
-	to: 'processing',
-})
+const claimPendingEffectGuard = sqlSourcesOf(
+	inboundSubscriptionEffectState,
+	'CLAIM',
+	['pending'],
+)
+const reclaimProcessingEffectGuard = sqlSourcesOf(
+	inboundSubscriptionEffectState,
+	'CLAIM',
+	['processing'],
+)
 
 export function claimMailboxInboundUsageEffect(
 	sql: SqlStorage,
@@ -371,9 +378,10 @@ export function claimMailboxInboundSubscriptionEffect(
 	) {
 		return { status: 'not-claimable', delivery: current }
 	}
-	inboundSubscriptionEffectState.assert(
+	nextState(
+		inboundSubscriptionEffectState,
 		current.subscriptionEffectState ?? 'pending',
-		'processing',
+		{ type: 'CLAIM' },
 	)
 	const subscriptionEffectLease = crypto.randomUUID()
 	const next: MailboxInboundDeliverySnapshot = {
@@ -484,9 +492,10 @@ export function completeMailboxInboundSubscriptionEffect(
 						: {}),
 				}
 			: undefined
-	inboundSubscriptionEffectState.assert(
+	nextState(
+		inboundSubscriptionEffectState,
 		current.subscriptionEffectState ?? 'pending',
-		'complete',
+		{ type: 'COMPLETE' },
 	)
 	const next: MailboxInboundDeliverySnapshot = {
 		...current,
@@ -568,9 +577,31 @@ export function failMailboxInboundSubscriptionEffect(
 	const failure = resolveMailboxSubscriptionEffectFailure(
 		current.subscriptionEffectAttemptCount ?? 0,
 	)
-	inboundSubscriptionEffectState.assert(
+	nextState(
+		inboundSubscriptionEffectState,
 		current.subscriptionEffectState ?? 'pending',
-		failure.deadLettered ? 'dead-letter' : 'pending',
+		{
+			type: (() => {
+				switch ((failure.deadLettered ? 'dead-letter' : 'pending') as string) {
+					case 'pending':
+						return 'RESET' as const
+					case 'processing':
+						return 'CLAIM' as const
+					case 'complete':
+						return 'COMPLETE' as const
+					case 'dead-letter':
+						return 'DEAD_LETTER' as const
+					default:
+						throw new IllegalStateTransitionError(
+							inboundSubscriptionEffectState.id,
+							current.subscriptionEffectState ?? 'pending',
+							{
+								type: String(failure.deadLettered ? 'dead-letter' : 'pending'),
+							},
+						)
+				}
+			})(),
+		},
 	)
 	const next: MailboxInboundDeliverySnapshot = {
 		...current,

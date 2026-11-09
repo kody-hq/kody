@@ -1,3 +1,4 @@
+import { nextState } from '@kody-internal/shared/state-machine.ts'
 import {
 	hostCommandState,
 	type HostCommandState,
@@ -700,7 +701,7 @@ export class HostCommands {
 		child.stderr?.on('data', (chunk: Buffer) => job.stderr.write(chunk))
 		job.timer = setTimeout(() => {
 			if (job.state !== 'running') return
-			hostCommandState.assert(job.state, 'timed_out')
+			nextState(hostCommandState, job.state, { type: 'TIMEOUT' })
 			job.state = 'timed_out'
 			killTree(child, 'SIGKILL')
 		}, prepared.timeoutMs)
@@ -721,11 +722,11 @@ export class HostCommands {
 				job.exitCode = code
 				job.signal = signal
 				if (error) {
-					hostCommandState.assert(job.state, 'failed')
+					nextState(hostCommandState, job.state, { type: 'SPAWN_ERROR' })
 					job.state = 'failed'
 					job.error = error
 				} else if (job.state === 'running') {
-					hostCommandState.assert(job.state, 'exited')
+					nextState(hostCommandState, job.state, { type: 'EXIT' })
 					job.state = 'exited'
 				}
 				this.#report({
@@ -848,7 +849,7 @@ export class HostCommands {
 				? requested
 				: 'SIGTERM'
 		if (job.state === 'running') {
-			hostCommandState.assert(job.state, 'killed')
+			nextState(hostCommandState, job.state, { type: 'KILL' })
 			job.state = 'killed'
 			killTree(job.child, signal)
 			if (signal !== 'SIGKILL') {
@@ -876,7 +877,7 @@ export class HostCommands {
 		}
 		for (const job of this.#jobs.values()) {
 			if (job.state !== 'running') continue
-			hostCommandState.assert(job.state, 'killed')
+			nextState(hostCommandState, job.state, { type: 'KILL' })
 			job.state = 'killed'
 			job.error = reason === 'commands_off' ? 'commands_off' : null
 			killTree(job.child, 'SIGKILL')

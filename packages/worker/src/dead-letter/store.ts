@@ -1,3 +1,4 @@
+import { sqlSourcesOf } from '@kody-internal/shared/state-machine.ts'
 import type { DeadLetterPayloadMetadata } from './metadata.ts'
 import {
 	deadLetterMessageState,
@@ -6,10 +7,9 @@ import {
 
 export type { DeadLetterMessageStatus } from './dead-letter-message-state.ts'
 
-const replayGuard = deadLetterMessageState.guard({
-	from: 'parked',
-	to: 'replaying',
-})
+const replayGuard = sqlSourcesOf(deadLetterMessageState, 'CLAIM_REPLAY', [
+	'parked',
+])
 
 export type ParkedDeadLetterMessage = {
 	deadLetterQueue: string

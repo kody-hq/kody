@@ -1,3 +1,4 @@
+import { sqlSourcesOf } from '@kody-internal/shared/state-machine.ts'
 import { McpCallerError } from '#worker/mcp/caller-error.ts'
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { isPublishOffloadEnabledFor } from './flag.ts'
@@ -39,11 +40,11 @@ export type PublishBuildRow = {
 }
 
 const ticketPrefix = 'kpb_'
-const sealGuard = publishBuildState.guard({ from: 'uploading', to: 'sealed' })
-const finishGuard = publishBuildState.guard({
-	from: ['sealed', 'committed'],
-	to: ['committed', 'rejected'],
-})
+const sealGuard = sqlSourcesOf(publishBuildState, 'SEAL', ['uploading'])
+const finishGuard = sqlSourcesOf(publishBuildState, 'COMMIT', [
+	'sealed',
+	'committed',
+])
 
 export function publishBuildBlobKey(buildId: string, sha256: string) {
 	return `publish-builds/${buildId}/${sha256}`

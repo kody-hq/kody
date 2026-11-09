@@ -1,3 +1,4 @@
+import { sqlSourcesOf, isState } from '@kody-internal/shared/state-machine.ts'
 /**
  * Shareable invite links. Token plaintext is shown once at create; only the
  * SHA-256 hash is stored. Links never grant Owner.
@@ -24,7 +25,7 @@ import { isOrgActive } from '#worker/orgs/repo.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { recordOrgAuditEvent, type OrgAuditWriter } from './org-audit.ts'
 
-const revokeLinkGuard = inviteLinkState.guard({ from: 'active', to: 'revoked' })
+const revokeLinkGuard = sqlSourcesOf(inviteLinkState, 'REVOKE', ['active'])
 
 export type InviteLinkRole = 'member' | 'billing'
 
@@ -339,7 +340,7 @@ export function rowToStored(row: InviteLinkRow): StoredInviteLink {
 	if (!target) {
 		throw new Error(`Invite link ${row.id} has an unknown target.`)
 	}
-	if (!inviteLinkState.is(row.status)) {
+	if (!isState(inviteLinkState, row.status)) {
 		throw new Error(`Invite link ${row.id} has status ${row.status}.`)
 	}
 	const domains = readAllowedDomainsOrBlock(row.allowed_email_domains_json)

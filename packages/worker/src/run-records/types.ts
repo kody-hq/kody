@@ -41,7 +41,7 @@ export const runSurfaceValues = [
 
 export type RunSurface = (typeof runSurfaceValues)[number]
 
-export const runStatusValues = runState.states
+export const runStatusValues = runState.values
 
 export type { RunStatus, RunTerminalStatus } from './run-state.ts'
 

@@ -22,7 +22,8 @@
   "dependencies": {
     "@kodycodes/cli": "file:../cli",
     "electron-updater": "^6.8.11",
-    "set-cookie-parser": "^3.1.2"
+    "set-cookie-parser": "^3.1.2",
+    "xstate": "5.33.3"
   },
   "devDependencies": {
     "electron": "45.2.0",

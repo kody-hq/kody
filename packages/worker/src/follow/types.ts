@@ -1,3 +1,4 @@
+import { statesOf } from '@kody-internal/shared/state-machine.ts'
 import { followState, type FollowStatus } from './follow-state.ts'
 import {
 	followCreateLimitPerHour,
@@ -20,7 +21,7 @@ export const followTargetKinds = ['package', 'repo'] as const
 
 export type FollowTargetKind = (typeof followTargetKinds)[number]
 
-export const followStatuses = followState.states
+export const followStatuses = statesOf(followState)
 
 export type { FollowStatus } from './follow-state.ts'
 

@@ -83,7 +83,11 @@ export function updateMailboxMessageDelivery(
 	if (existing == null) return { status: 'missing' }
 	if (existing.updated_at > updatedAt) return { status: 'stale' }
 	if (emailProcessingState.is(existing.processing_status))
-		emailProcessingState.assert(existing.processing_status, processingStatus)
+		emailProcessingState.parse(
+			emailProcessingState.is(existing.processing_status)
+				? processingStatus
+				: existing.processing_status,
+		)
 
 	sql.exec(
 		`UPDATE email_messages

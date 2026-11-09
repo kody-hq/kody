@@ -53,17 +53,18 @@
     "@napi-rs/keyring": "^2.1.0",
     "esbuild": "^0.25.12",
     "ignore": "^7.0.5",
-    "ps-list": "^9.0.0"
+    "ps-list": "^9.0.0",
+    "xstate": "5.33.3"
   },
   "devDependencies": {
     "@inquirer/checkbox": "^5.2.2",
     "@jridgewell/trace-mapping": "^0.3.31",
     "@types/node": "^24.5.2",
-    "oauth4webapi": "^3.8.6",
     "add-mcp": "^2.4.0",
     "chokidar": "^4.0.3",
     "es-module-lexer": "^3.0.3",
     "msw": "3.0.3",
+    "oauth4webapi": "^3.8.6",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2"
   }

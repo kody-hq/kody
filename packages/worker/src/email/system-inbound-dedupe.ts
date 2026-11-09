@@ -1,3 +1,4 @@
+import { nextState } from '@kody-internal/shared/state-machine.ts'
 import { inboundDedupePointerState } from './inbound-dedupe-pointer-state.ts'
 
 export const systemInboundProvider = 'cloudflare-email-routing'
@@ -56,8 +57,8 @@ export function tombstoneSystemInboundDedupePointerStatement(input: {
 	messageId: string
 	now: string
 }) {
-	inboundDedupePointerState.assert('pending', 'rejected')
-	inboundDedupePointerState.assert('rejected', 'rejected')
+	nextState(inboundDedupePointerState, 'pending', { type: 'TOMBSTONE' })
+	nextState(inboundDedupePointerState, 'rejected', { type: 'TOMBSTONE' })
 	return input.db
 		.prepare(
 			`UPDATE system_email_delivery_events

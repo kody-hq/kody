@@ -1,15 +1,34 @@
+import {
+	finalStatesOf,
+	nextState,
+} from '@kody-internal/shared/state-machine.ts'
 import { expect, test } from 'vitest'
 import { queuedRunState } from './queued-run-state.ts'
 
 test('execution_context_queued.lifecycle pins transitions and terminal fencing', () => {
-	expect(queuedRunState.initial).toEqual(['queued'])
-	expect(queuedRunState.transitions).toEqual({
-		queued: ['starting', 'finished', 'cancelled', 'expired'],
-		starting: ['queued', 'finished', 'expired'],
-		finished: [],
-		cancelled: [],
-		expired: [],
+	expect([queuedRunState.config.initial]).toEqual(['queued'])
+	expect(queuedRunState.config.states).toEqual({
+		queued: {
+			on: {
+				START_HANDOFF: 'starting',
+				FINISH: 'finished',
+				CANCEL: 'cancelled',
+				EXPIRE: 'expired',
+			},
+		},
+		starting: {
+			on: { RELEASE_HANDOFF: 'queued', FINISH: 'finished', EXPIRE: 'expired' },
+		},
+		finished: { type: 'final' },
+		cancelled: { type: 'final' },
+		expired: { type: 'final' },
 	})
-	expect(queuedRunState.terminal).toEqual(['finished', 'cancelled', 'expired'])
-	expect(() => queuedRunState.assert('queued', 'queued')).toThrow('Illegal')
+	expect(finalStatesOf(queuedRunState)).toEqual([
+		'finished',
+		'cancelled',
+		'expired',
+	])
+	expect(() =>
+		nextState(queuedRunState, 'queued', { type: 'RELEASE_HANDOFF' }),
+	).toThrow('Illegal')
 })

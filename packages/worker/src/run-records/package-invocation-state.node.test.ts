@@ -1,12 +1,18 @@
+import {
+	canHandle,
+	finalStatesOf,
+} from '@kody-internal/shared/state-machine.ts'
 import { expect, test } from 'vitest'
 import { packageInvocationState } from './package-invocation-state.ts'
 
 test('invocation claims heartbeat in progress and cannot rewrite a completed or failed response', () => {
-	expect(packageInvocationState.can('in_progress', 'in_progress')).toBe(true)
-	expect(packageInvocationState.can('in_progress', 'completed')).toBe(true)
-	expect(packageInvocationState.can('in_progress', 'failed')).toBe(true)
-	expect(packageInvocationState.isTerminal('completed')).toBe(true)
-	expect(packageInvocationState.isTerminal('failed')).toBe(true)
-	expect(packageInvocationState.can('completed', 'failed')).toBe(false)
-	expect(packageInvocationState.can('failed', 'in_progress')).toBe(false)
+	expect(canHandle(packageInvocationState, 'in_progress', 'CLAIM')).toBe(true)
+	expect(canHandle(packageInvocationState, 'in_progress', 'COMPLETE')).toBe(
+		true,
+	)
+	expect(canHandle(packageInvocationState, 'in_progress', 'FAIL')).toBe(true)
+	expect(finalStatesOf(packageInvocationState).includes('completed')).toBe(true)
+	expect(finalStatesOf(packageInvocationState).includes('failed')).toBe(true)
+	expect(canHandle(packageInvocationState, 'completed', 'FAIL')).toBe(false)
+	expect(canHandle(packageInvocationState, 'failed', 'CLAIM')).toBe(false)
 })

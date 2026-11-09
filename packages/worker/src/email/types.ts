@@ -16,7 +16,7 @@ import {
 export const emailDirectionValues = ['inbound', 'outbound'] as const
 export type EmailDirection = (typeof emailDirectionValues)[number]
 
-export const emailProcessingStatusValues = emailProcessingState.states
+export const emailProcessingStatusValues = emailProcessingState.values
 export type { EmailProcessingStatus } from './email-processing-state.ts'
 
 export const emailDeliveryStatusValues = [

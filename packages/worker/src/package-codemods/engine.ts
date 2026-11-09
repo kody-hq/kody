@@ -1,3 +1,4 @@
+import { nextState } from '@kody-internal/shared/state-machine.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { listOwnerIdsPendingDeletion } from '#worker/account/owner-deletion-state.ts'
@@ -482,7 +483,7 @@ async function ensureRun(input: {
 			// `updated_at`, so stale-run reconciliation only marks runs nobody is
 			// paging. This also reopens runs previously marked failed or
 			// abandoned when a caller resumes them.
-			packageCodemodRunState.assert(existing.status, 'running')
+			nextState(packageCodemodRunState, existing.status, { type: 'CONTINUE' })
 			await updatePackageCodemodRunStatus(input.env.APP_DB, {
 				id: existing.id,
 				status: 'running',
@@ -1266,7 +1267,7 @@ async function processRevertStep(input: {
 			...(scopeUserIdFilter != null ? { userId: scopeUserIdFilter } : {}),
 		})
 		if (page.length === 0) {
-			packageCodemodRunState.assert(input.run.status, 'completed')
+			nextState(packageCodemodRunState, input.run.status, { type: 'COMPLETE' })
 			await updatePackageCodemodRunStatus(input.env.APP_DB, {
 				id: input.run.id,
 				status: 'completed',
@@ -1617,7 +1618,7 @@ async function processRevertStep(input: {
 			}
 		}
 		if (page.length < fleetScanPageSize) {
-			packageCodemodRunState.assert(input.run.status, 'completed')
+			nextState(packageCodemodRunState, input.run.status, { type: 'COMPLETE' })
 			await updatePackageCodemodRunStatus(input.env.APP_DB, {
 				id: input.run.id,
 				status: 'completed',
@@ -1903,7 +1904,7 @@ export async function runPackageCodemodStep(input: {
 			limit: stepLimit,
 		})
 		if (nextCursor == null) {
-			packageCodemodRunState.assert(run.status, 'completed')
+			nextState(packageCodemodRunState, run.status, { type: 'COMPLETE' })
 			await updatePackageCodemodRunStatus(input.env.APP_DB, {
 				id: run.id,
 				status: 'completed',
@@ -1933,7 +1934,7 @@ export async function runPackageCodemodStep(input: {
 					limit: stepLimit,
 				})
 			}
-			packageCodemodRunState.assert(run.status, 'failed')
+			nextState(packageCodemodRunState, run.status, { type: 'FAIL' })
 			await updatePackageCodemodRunStatus(input.env.APP_DB, {
 				id: run.id,
 				status: 'failed',

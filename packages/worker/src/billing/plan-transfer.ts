@@ -1,3 +1,10 @@
+import {
+	statesOf,
+	finalStatesOf,
+	parseState,
+	sqlStatesOf,
+	sqlSourcesOf,
+} from '@kody-internal/shared/state-machine.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import type {
 	PlanTransferFreeLimit,
@@ -177,38 +184,32 @@ const proSeatPriceMinor: Record<BillingInterval, number> = {
 const leaseMs = 2 * 60 * 1000
 const checkoutLifetimeSeconds = 60 * 60
 const checkoutExpiryGraceMs = 10 * 60 * 1000
-const openStatuses = planTransferState.states.filter(
-	(status) => !planTransferState.isTerminal(status),
+const openStatuses = statesOf(planTransferState).filter(
+	(status) =>
+		!finalStatesOf(planTransferState).includes(
+			parseState(planTransferState, status),
+		),
 )
-const openStatusSql = planTransferState.sql(openStatuses)
-const cancelOpenGuard = planTransferState.guard({
-	from: openStatuses,
-	to: 'canceled',
-})
-const cancelUnleasedGuard = planTransferState.guard({
-	from: ['pending_checkout', 'needs_retry'],
-	to: 'canceled',
-})
-const cancelExpiredLeaseGuard = planTransferState.guard({
-	from: 'applying',
-	to: 'canceled',
-})
-const claimLeaseGuard = planTransferState.guard({
-	from: ['pending_checkout', 'needs_retry'],
-	to: 'applying',
-})
-const reclaimLeaseGuard = planTransferState.guard({
-	from: 'applying',
-	to: 'applying',
-})
-const releaseLeaseGuard = planTransferState.guard({
-	from: 'applying',
-	to: ['pending_checkout', 'needs_retry'],
-})
-const completeGuard = planTransferState.guard({
-	from: 'applying',
-	to: 'completed',
-})
+const openStatusSql = sqlStatesOf(planTransferState, openStatuses)
+const cancelOpenGuard = sqlSourcesOf(planTransferState, 'CANCEL', openStatuses)
+const cancelUnleasedGuard = sqlSourcesOf(planTransferState, 'CANCEL', [
+	'pending_checkout',
+	'needs_retry',
+])
+const cancelExpiredLeaseGuard = sqlSourcesOf(planTransferState, 'CANCEL', [
+	'applying',
+])
+const claimLeaseGuard = sqlSourcesOf(planTransferState, 'CLAIM_LEASE', [
+	'pending_checkout',
+	'needs_retry',
+])
+const reclaimLeaseGuard = sqlSourcesOf(planTransferState, 'CLAIM_LEASE', [
+	'applying',
+])
+const releaseLeaseGuard = sqlSourcesOf(planTransferState, 'RELEASE_CHECKOUT', [
+	'applying',
+])
+const completeGuard = sqlSourcesOf(planTransferState, 'COMPLETE', ['applying'])
 
 function blocked(reason: PlanTransferBlockReason): PlanTransferPreviewResult {
 	return { ok: false, reason, message: blockMessages[reason] }
