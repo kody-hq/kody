@@ -932,6 +932,7 @@ test(
 				encoding: 'utf8',
 				env: {
 					...scratchGitEnv,
+					FORCE_COLOR: undefined,
 					GITHUB_BASE_REF: '',
 					MIGRATION_VALIDATION_BASE: 'main',
 					GH_TOKEN: '',
