@@ -289,21 +289,22 @@ starting over. Classifier and backoff live in
 `packages/desktop/scripts/release-retry.cjs`.
 
 The publish job still runs when a build fails. It uploads only assets the
-matching draft does not already have, then publishes as latest only when every
-expected installer and update feed is present and consistent. Otherwise it
-leaves the draft. Re-run failed jobs, or dispatch the same source again, and
-complete targets are skipped.
+matching draft does not already have, then publishes as latest only when the
+matching draft has every expected installer and update feed, and those feeds
+match the uploaded files. Otherwise it leaves the draft. Re-run failed jobs, or
+dispatch the same source again, and complete targets are skipped. If a complete
+target's feed hash is wrong, fix that mismatch, remove the draft, and dispatch
+the source again so the assets rebuild.
 
 The default `auto` scope preserves the platforms in the published feed, starting
 with Apple silicon and Intel Mac installers. Run the workflow manually on main
 with `all` to add Windows and Linux after configuring their signing credentials.
-Subsequent automatic releases keep those platforms in the update feed. Every
-selected build must succeed before publishing. macOS builds require Developer ID
-signing, Apple's notarization service, and a valid stapled ticket. Windows
-builds require valid signatures on the application and installer. The final job
-uploads all installers, blockmaps, manifests, and checksums to a draft, then
-publishes it. Published versions cannot be replaced. The normal Desktop binaries
-workflow still produces unsigned CI artifacts.
+Subsequent automatic releases keep those platforms in the update feed. macOS
+builds require Developer ID signing, Apple's notarization service, and a valid
+stapled ticket. Windows builds require valid signatures on the application and
+installer. The final job uploads all installers, blockmaps, manifests, and
+checksums to a draft, then publishes it. Published versions cannot be replaced.
+The normal Desktop binaries workflow still produces unsigned CI artifacts.
 
 A repository admin must create the `desktop-release` GitHub environment in
 `kody-hq/kody` and restrict its deployment branches to main. The first Mac

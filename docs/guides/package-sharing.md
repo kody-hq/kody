@@ -274,7 +274,9 @@ credentials however they like, so Kody surfaces and guards it:
 - **Owner notice.** Owners and Admins see a notice explaining the lock on the
   package page, the Collaborators tab (`unmappable_credentials` on
   `packageCollaboratorList`), `kody dev check` / `packageCheck` (`notices`), and
-  publish output (`unmappable_credentials_notice`). No email is sent.
+  inline `published` / `already_published` publish output
+  (`unmappable_credentials_notice`). Dispatched publish output does not include
+  that notice. No email is sent.
 - **Profiles.** The check uses the acting principal through the profile chain. A
   profile acting for an Owner changes the package only when every layer of its
   chain holds the permission; a profile acting for a collaborator follows that

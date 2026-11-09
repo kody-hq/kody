@@ -18,13 +18,13 @@ belong to one org. Handles are permanent: `@slug` does not rename.
 The org is the billing and data boundary: its resources, usage, limits, and bill
 stay inside it. Inside an org, grants control access.
 
-| Role                 | Holds                                                                                                                                |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| **Owner**            | Every org permission, including deleting the org and changing Owners                                                                 |
-| **Admin**            | Everything an Owner can except deleting the org and changing, removing, or promoting Owners. Invite links cannot grant Admin.        |
-| **Member**           | Org basics (`org:read`, `member:read`, `team:read`, `search:read`), what [member permissions](#member-permissions) allow, and grants |
-| **Billing**          | Org basics plus `billing:read` / `billing:write`. Not a paid seat.                                                                   |
-| Outside collaborator | Catalog search (`search:read`) plus their grants. Not a member.                                                                      |
+| Role                 | Holds                                                                                                                                                                                          |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Owner**            | Every org permission, including deleting the org and changing Owners                                                                                                                           |
+| **Admin**            | Everything an Owner can except deleting the org; changing, removing, or promoting Owners; and [moving a Pro plan](#move-a-pro-plan) (that still needs Owner). Invite links cannot grant Admin. |
+| **Member**           | Org basics (`org:read`, `member:read`, `team:read`, `search:read`), what [member permissions](#member-permissions) allow, and grants                                                           |
+| **Billing**          | Org basics plus `billing:read` / `billing:write`. Not a paid seat.                                                                                                                             |
+| Outside collaborator | Catalog search (`search:read`) plus their grants. Not a member.                                                                                                                                |
 
 See [Share a package](/docs/package-sharing) for presets and grants.
 

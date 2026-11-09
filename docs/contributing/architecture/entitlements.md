@@ -1502,8 +1502,13 @@ An owner of two orgs can move a Stripe-paid Pro plan from one to the other
 action between two separate per-org wallets (ADR 0065); there is no shared
 billing account and nothing else moves.
 
-- **Who:** the actor must be a live `owner` of both orgs. Admins, Billing
-  members, and Members cannot start, retry, or cancel a move.
+- **Who:** starting a move needs a live `owner` of both orgs. Until the credit
+  amount is recorded, a live `owner` of either org can cancel it. Retry needs a
+  live `owner` of the org in the URL, even when that person is only an Admin of
+  the other org; before the credit, advancement re-checks that the original
+  requester still owns both orgs, and after the credit it finishes without that
+  check. Admins, Billing members, and Members cannot start, retry, or cancel a
+  move from those roles.
 - **What moves:** only the unused prepaid value of the source subscription.
   Packages, credentials, connections, memories, inboxes, storage, members, and
   credit wallets stay in their org. The source keeps its data and drops to Free
