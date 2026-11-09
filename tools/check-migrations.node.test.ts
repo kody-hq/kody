@@ -406,6 +406,7 @@ test(
 			)
 			await cp('tools/migration-ledger', ledgerDir, { recursive: true })
 			runGit('init', '-b', 'main')
+			runGit('config', 'maintenance.auto', 'false')
 			runGit('config', 'user.name', 'Migration Test')
 			runGit('config', 'user.email', 'migration-test@example.com')
 			runGit('add', '.')
@@ -951,6 +952,7 @@ test(
 				`${JSON.stringify({ version: 1, baselineCount: 1, baselineMaximumPrefix: 1, baselineSha256: expectedMigrationBaselineSha256, migrations: ledger.migrations }, null, '\t')}\n`,
 			)
 			runGit('init', '-b', 'main')
+			runGit('config', 'maintenance.auto', 'false')
 			runGit('config', 'user.name', 'Migration Test')
 			runGit('config', 'user.email', 'migration-test@example.com')
 			runGit('add', '.')

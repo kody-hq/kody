@@ -324,6 +324,7 @@ export function AccountMenu(props: {
 		<div css={orgSwitcherCss}>
 			<Menu.Root modal={false} actionsRef={menuActions}>
 				<Menu.Trigger
+					id={`account-menu-${props.placement ?? 'header'}`}
 					aria-label={`${name}: your account`}
 					data-testid="account-menu"
 					css={[

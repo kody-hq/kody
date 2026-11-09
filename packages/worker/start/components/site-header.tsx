@@ -103,14 +103,23 @@ export function SiteHeader(props: SiteHeaderProps) {
 								</SiteLink>
 								<div css={{ display: 'flex', alignItems: 'center', gap: 4 }}>
 									<CommandTrigger />
-									<AccountMenu
-										username={props.username}
-										displayName={props.displayName}
-										avatarUrl={props.avatarUrl}
-										organizations={
-											props.organizationSession?.organizations ?? []
+									<Suspense
+										fallback={
+											<span
+												aria-hidden="true"
+												css={{ width: 44, height: 44 }}
+											/>
 										}
-									/>
+									>
+										<AccountMenu
+											username={props.username}
+											displayName={props.displayName}
+											avatarUrl={props.avatarUrl}
+											organizations={
+												props.organizationSession?.organizations ?? []
+											}
+										/>
+									</Suspense>
 								</div>
 							</>
 						) : (
@@ -160,12 +169,20 @@ export function SiteHeader(props: SiteHeaderProps) {
 							</SiteLink>
 							<div css={{ display: 'flex', alignItems: 'center', gap: 4 }}>
 								<CommandTrigger />
-								<AccountMenu
-									organizations={props.organizationSession?.organizations ?? []}
-									username={props.username}
-									displayName={props.displayName}
-									avatarUrl={props.avatarUrl}
-								/>
+								<Suspense
+									fallback={
+										<span aria-hidden="true" css={{ width: 44, height: 44 }} />
+									}
+								>
+									<AccountMenu
+										organizations={
+											props.organizationSession?.organizations ?? []
+										}
+										username={props.username}
+										displayName={props.displayName}
+										avatarUrl={props.avatarUrl}
+									/>
+								</Suspense>
 							</div>
 							{props.showDemoIndicator ? <DemoIndicator /> : null}
 						</>

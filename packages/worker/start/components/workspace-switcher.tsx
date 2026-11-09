@@ -172,6 +172,7 @@ export function WorkspaceSwitcher(
 		<div data-account-nav-heading css={headingCss}>
 			<Menu.Root modal={false} actionsRef={menuActions}>
 				<Menu.Trigger
+					id={triggerTestId(placement)}
 					ref={trigger}
 					aria-label={`${label}: switch organization`}
 					title={current?.displayName ?? undefined}
