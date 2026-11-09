@@ -1,11 +1,10 @@
 import { expect, test } from 'vitest'
 import { inviteLinkState } from './invite-link-state.ts'
 
-test('org_invite_links.status preserves the lifecycle graph', () => {
-	expect(inviteLinkState.initial).toEqual(['active'])
-	expect(inviteLinkState.transitions).toEqual({
-		active: ['revoked'],
-		revoked: [],
-	})
-	expect(inviteLinkState.terminal).toEqual(['revoked'])
+test('invite links revoke permanently; expiry is not a stored status', () => {
+	expect(inviteLinkState.can('active', 'revoked')).toBe(true)
+	expect(inviteLinkState.isTerminal('revoked')).toBe(true)
+	expect(inviteLinkState.can('revoked', 'active')).toBe(false)
+	expect(inviteLinkState.is('expired')).toBe(false)
+	expect(inviteLinkState.is('exhausted')).toBe(false)
 })
