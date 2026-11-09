@@ -604,7 +604,7 @@ read-modify-write of one shared value (for example an index array) can lose
 updates when package code runs concurrently. Store one key or one SQL row per
 record and derive the index with `list({ prefix })` or a `SELECT`. Examples and
 the anti-pattern live in
-[Package authoring → Concurrency and multi-key updates](../guides/package-authoring.md#concurrency-and-multi-key-updates).
+[Kody factory: Concurrency and multi-key updates](../guides/kody-factory.md#concurrency-and-multi-key-updates).
 
 ### Ambient `storage` is not a `kody:runtime` export
 
