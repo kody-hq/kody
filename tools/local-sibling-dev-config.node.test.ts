@@ -202,3 +202,38 @@ test('forwards the ECP frame signing keys so local daemons can connect', async (
 		await rm(dir, { recursive: true, force: true })
 	}
 })
+
+test('replaces the committed package-app origin with the local one when set', async () => {
+	const dir = await mkdtemp(path.join(tmpdir(), 'sibling-dev-package-app-'))
+	const previous = process.env.PACKAGE_APP_BASE_URL
+	try {
+		const configPath = await writeSiblingFixture(dir, {
+			name: 'kody-runtime',
+			env: {
+				production: { vars: { PACKAGE_APP_BASE_URL: 'https://kody.run' } },
+			},
+		})
+		const options = {
+			configPath,
+			envName: 'production',
+			mainWorkerDevName: 'kody-production',
+			port: '3742',
+		}
+		const readVars = async (output: string) =>
+			JSON.parse(await readFile(output, 'utf8')).env.production.vars
+		delete process.env.PACKAGE_APP_BASE_URL
+		expect(
+			(await readVars(await writeLocalSiblingDevConfig(options)))
+				.PACKAGE_APP_BASE_URL,
+		).toBe('https://kody.run')
+		process.env.PACKAGE_APP_BASE_URL = 'http://packages.localhost:3742'
+		expect(
+			(await readVars(await writeLocalSiblingDevConfig(options)))
+				.PACKAGE_APP_BASE_URL,
+		).toBe('http://packages.localhost:3742')
+	} finally {
+		if (previous === undefined) delete process.env.PACKAGE_APP_BASE_URL
+		else process.env.PACKAGE_APP_BASE_URL = previous
+		await rm(dir, { recursive: true, force: true })
+	}
+})
