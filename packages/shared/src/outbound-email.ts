@@ -46,10 +46,6 @@ const outboundEmailAttachmentSchema = object({
 	contentId: optional(nonEmptyStringSchema),
 })
 
-export type OutboundEmailAttachment = InferOutput<
-	typeof outboundEmailAttachmentSchema
->
-
 const outboundEmailSchema = object({
 	from: nonEmptyStringSchema,
 	to: union([nonEmptyStringSchema, array(nonEmptyStringSchema)]),

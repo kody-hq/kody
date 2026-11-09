@@ -363,7 +363,6 @@ export const jobRunNowOutputSchema = z.object({
 	execution: jobExecutionOutputSchema,
 })
 
-export type JobGetCapabilityInput = z.infer<typeof jobGetInputSchema>
 export type JobRunNowCapabilityInput = z.infer<typeof jobRunNowInputSchema>
 export type JobUpdateCapabilityInput = z.infer<typeof jobUpdateInputSchema>
 

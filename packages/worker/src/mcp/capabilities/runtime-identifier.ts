@@ -56,10 +56,6 @@ export function snakeToCamelIdentifier(name: string) {
 	)
 }
 
-export function isJavaScriptIdentifier(name: string) {
-	return identifierPattern.test(name) && !javascriptReservedWords.has(name)
-}
-
 export function assertKodyRuntimeIdentifier(
 	kind: 'capability' | 'domain',
 	name: string,
