@@ -69,7 +69,9 @@ test('virtual table reaches every row without pagination and keeps sorting, sear
 		.poll(() => page.locator('tbody tr[data-index]').count())
 		.toBeLessThan(80)
 	await page.getByRole('button', { name: 'Columns', exact: true }).click()
-	await page.getByRole('checkbox', { name: 'Size', exact: true }).uncheck()
+	await page
+		.getByRole('menuitemcheckbox', { name: 'Size', exact: true })
+		.click()
 	await expect(
 		page.getByRole('columnheader', { name: 'Size', exact: true }),
 	).toHaveCount(0)
@@ -109,7 +111,7 @@ test('compact datagrid search and icon controls render in the supplied header', 
 	).toBeVisible()
 	await columns.click()
 	await expect(
-		page.getByRole('checkbox', { name: 'Size', exact: true }),
+		page.getByRole('menuitemcheckbox', { name: 'Size', exact: true }),
 	).toBeVisible()
 	await expect(
 		page
