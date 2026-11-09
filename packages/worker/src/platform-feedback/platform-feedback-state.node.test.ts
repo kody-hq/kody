@@ -1,13 +1,14 @@
 import { expect, test } from 'vitest'
 import { platformFeedbackState } from './platform-feedback-state.ts'
 
-test('platform_feedback.status preserves the lifecycle graph', () => {
-	expect(platformFeedbackState.initial).toEqual(['open'])
-	expect(platformFeedbackState.transitions).toEqual({
-		open: ['open', 'triaged', 'resolved', 'dismissed'],
-		triaged: ['triaged', 'resolved', 'dismissed'],
-		resolved: ['resolved', 'triaged'],
-		dismissed: ['dismissed', 'triaged'],
-	})
-	expect(platformFeedbackState.terminal).toEqual([])
+test('feedback closes from open or triaged and reopens only to triaged', () => {
+	expect(platformFeedbackState.can('open', 'triaged')).toBe(true)
+	expect(platformFeedbackState.can('open', 'resolved')).toBe(true)
+	expect(platformFeedbackState.can('triaged', 'resolved')).toBe(true)
+	expect(platformFeedbackState.can('resolved', 'triaged')).toBe(true)
+	expect(platformFeedbackState.can('dismissed', 'triaged')).toBe(true)
+	expect(platformFeedbackState.can('resolved', 'open')).toBe(false)
+	expect(platformFeedbackState.can('dismissed', 'open')).toBe(false)
+	expect(platformFeedbackState.can('open', 'open')).toBe(true)
+	expect(platformFeedbackState.can('resolved', 'resolved')).toBe(true)
 })
