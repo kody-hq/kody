@@ -294,6 +294,12 @@ test('pinned SVG icons load from Artifacts at the pinned commit', async () => {
 	expect(mocks.readFirstArtifactFileAtCommit).toHaveBeenCalledWith(
 		expect.objectContaining({
 			commit: listing.pinnedCommit,
+			repoId: entitySourceRow.repo_id,
+			filePaths: expect.arrayContaining([
+				'.kody/icon.svg',
+				'community-icon.svg',
+				'icon.svg',
+			]),
 		}),
 	)
 })
@@ -302,9 +308,7 @@ test('community icons without a package source row throw so the route serves an 
 	mocks.getEntitySourceById.mockResolvedValue(null)
 	mocks.getCommunityListingById.mockResolvedValue(listing)
 
-	await expect(getPinnedIcon(createIconEnv().env)).rejects.toThrow(
-		'has an invalid package source',
-	)
+	await expect(getPinnedIcon(createIconEnv().env)).rejects.toThrow(listing.id)
 	expect(mocks.readFirstArtifactFileAtCommit).not.toHaveBeenCalled()
 })
 

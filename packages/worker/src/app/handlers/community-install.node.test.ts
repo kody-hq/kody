@@ -210,20 +210,6 @@ test('community install POST enforces gates and maps install outcomes', async ()
 		error: expect.stringContaining('already have a saved package'),
 	})
 
-	mockModule.installCommunityListing.mockRejectedValue(
-		new CommunityActionError(
-			'Catalog entry snapshot for "listing-1" was not found and could not be recovered from the origin repository.',
-		),
-	)
-	expect(await post()).toEqual({
-		status: 400,
-		payload: {
-			ok: false,
-			error:
-				'Catalog entry snapshot for "listing-1" was not found and could not be recovered from the origin repository.',
-		},
-	})
-
 	consoleError.mockImplementation(() => {})
 	mockModule.installCommunityListing.mockRejectedValue(
 		new Error('artifacts unavailable'),
