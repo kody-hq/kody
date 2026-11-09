@@ -228,6 +228,9 @@ personal org, invite and remove collaborators from the package's
 
 ## Unmappable credentials
 
+> [!WATCH] https://www.youtube.com/watch?v=YlbJd-amFoQ Watch: Kody packages and
+> credentials: declare, map, and lock
+
 A credential is **unmappable** when nobody who runs or visits the package can
 swap in their own, so it always acts as the owning org. A package has one while
 its published version declares a need with `supplier: "publisher"` (while the
