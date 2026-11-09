@@ -280,13 +280,26 @@ same version and source commit. Re-running an already published source skips
 publication. Obsolete queued runs also skip publication so older source cannot
 replace a newer build. Missing source history fails before signing. Matching
 drafts resume after a failed upload, while conflicting drafts reserve their
-version so the next run advances past them automatically. Each selected
-platform's `dist:release` build is retried once after a 30-second wait when the
-first attempt fails. The first attempt is capped at 25 minutes via
-`packages/desktop/scripts/run-with-timeout.cjs` (portable across macOS, Windows,
-and Linux runners) so a stuck notarization poll leaves time for that retry plus
-verification; a failed retry fails that matrix job so a workflow re-run can
-finish the release.
+version so the next run advances past them automatically.
+
+On macOS, electron-builder signs the app (`--dir`), then
+`packages/desktop/scripts/mac-notarize.cjs` notarizes it with `notarytool`,
+staples and validates the ticket, and electron-builder packages the DMG and zip
+from that stapled app (`--prepackaged`). Each Apple call retries only transient
+network failures (NSURLErrorDomain -1001, -1005, -1009, HTTP 5xx) six times over
+about ten minutes. Rejections and signature errors fail at once. A poll that
+times out after upload resumes the same submission ID instead of resubmitting,
+and a stapling retry never re-notarizes.
+`packages/desktop/scripts/release-retry.cjs` holds the shared classifier and
+backoff.
+
+The publish job runs even when a build fails. It uploads only assets the draft
+does not already have (matching SHA-256 digest), then publishes as latest only
+when every expected installer, blockmap, checksum, build-info file, and
+`latest*.yml` feed is present and each feed's version, sizes, and SHA-512 hashes
+match the uploaded installers. Otherwise it fails and leaves the draft. Re-run
+failed jobs, or dispatch again for the same source, and the credentials job
+skips any target whose assets are already complete on the matching draft.
 
 The default `auto` scope preserves the platforms in the published feed, starting
 with Apple silicon and Intel Mac installers. Run the workflow manually on main
