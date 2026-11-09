@@ -1,6 +1,15 @@
 import type { DeadLetterPayloadMetadata } from './metadata.ts'
+import {
+	deadLetterMessageState,
+	type DeadLetterMessageStatus,
+} from './dead-letter-message-state.ts'
 
-export type DeadLetterMessageStatus = 'parked' | 'replaying'
+export type { DeadLetterMessageStatus } from './dead-letter-message-state.ts'
+
+const replayGuard = deadLetterMessageState.guard({
+	from: 'parked',
+	to: 'replaying',
+})
 
 export type ParkedDeadLetterMessage = {
 	deadLetterQueue: string
@@ -218,7 +227,7 @@ export async function claimDeadLetterMessageForReplay(
 			`UPDATE dead_letter_messages
 			 SET status = 'replaying', claimed_at_ms = ?
 			 WHERE dead_letter_queue = ? AND message_id = ?
-				AND (status = 'parked' OR claimed_at_ms < ?)`,
+				AND (status IN ${replayGuard} OR claimed_at_ms < ?)`,
 		)
 		.bind(
 			input.nowMs,

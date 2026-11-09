@@ -6,6 +6,10 @@ import {
 } from './aggregate-rollups.ts'
 import { fleetPackageErrorRateMetrics } from './fleet-package-error-rate-subscription-event.ts'
 import { alignToUtcHour, countsOf } from './fleet-package-error-rate.ts'
+import {
+	packageOwnerSpikeState,
+	type PackageOwnerSpikeStateStatus,
+} from './package-owner-spike-state.ts'
 
 /**
  * Hourly package-owner error spike: when an owner's packages (any caller)
@@ -99,7 +103,7 @@ export type PackageOwnerSpikeWindow = {
 	byMetric: Array<PackageOwnerSpikeMetricSummary>
 }
 
-export type PackageOwnerSpikeStateStatus = 'ok' | 'pending' | 'alerted'
+export type { PackageOwnerSpikeStateStatus } from './package-owner-spike-state.ts'
 
 export type PackageOwnerSpikeSnapshot = {
 	startedAt: string
@@ -181,7 +185,18 @@ export function isPackageOwnerErrorSpikeHealthy(input: {
  * max age. Alerted stays quiet while elevated; re-arm after consecutive
  * healthy windows, or after inactivity with no activity for 24h.
  */
-export function evaluatePackageOwnerSpikeTransition(input: {
+export function evaluatePackageOwnerSpikeTransition(
+	input: Parameters<typeof evaluateSpikeTransition>[0],
+): PackageOwnerSpikeTransition {
+	const transition = evaluateSpikeTransition(input)
+	packageOwnerSpikeState.assert(
+		input.previous?.status ?? 'ok',
+		transition.next.status,
+	)
+	return transition
+}
+
+function evaluateSpikeTransition(input: {
 	previous: PackageOwnerSpikeState | null
 	window: PackageOwnerSpikeWindow | null
 	now: Date
@@ -206,6 +221,7 @@ export function evaluatePackageOwnerSpikeTransition(input: {
 				pendingMaxAgeMs,
 			})
 		) {
+			packageOwnerSpikeState.assert(previous.status, 'ok')
 			if (input.window) {
 				// Drop the expired episode, then evaluate the current window as
 				// a fresh ok owner so a same-hour new spike is not written as
@@ -429,13 +445,7 @@ export function parsePackageOwnerSpikeState(
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return null
 	const record = value as Record<string, unknown>
 	if (record.version !== 1) return null
-	if (
-		record.status !== 'ok' &&
-		record.status !== 'alerted' &&
-		record.status !== 'pending'
-	) {
-		return null
-	}
+	if (!packageOwnerSpikeState.is(record.status)) return null
 	const spike = parseSpikeSnapshot(record.spike)
 	if (record.status === 'pending' && spike == null) return null
 	return {
@@ -776,6 +786,9 @@ export async function writePackageOwnerSpikeState(input: {
 	/** When set, index membership is deferred to one write at end of sweep. */
 	indexDraft?: AlertedOwnerIndexDraft
 }) {
+	if (input.previousStatus != null) {
+		packageOwnerSpikeState.assert(input.previousStatus, input.state.status)
+	}
 	await input.kv.put(
 		packageOwnerErrorSpikeKvKey(input.ownerId),
 		JSON.stringify(input.state),
@@ -1072,6 +1085,7 @@ async function applyPackageOwnerSpikeTransition(input: {
 			return { alerted: 0, rearmed: 1 }
 		}
 
+		packageOwnerSpikeState.assert(transition.next.status, 'pending')
 		const pendingBase: PackageOwnerSpikeState = {
 			...transition.next,
 			status: 'pending',
@@ -1133,6 +1147,7 @@ async function applyPackageOwnerSpikeTransition(input: {
 
 		// Persist alerted only after a successful (or no-op) notify so a
 		// failed send cannot suppress the one email for this spike.
+		packageOwnerSpikeState.assert(pendingBase.status, 'alerted')
 		await writePackageOwnerSpikeState({
 			kv: input.kv,
 			ownerId: input.ownerId,

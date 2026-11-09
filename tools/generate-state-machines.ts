@@ -5,7 +5,7 @@ import {
 	renderStateMachineMermaid,
 	type StateMachine,
 } from '../packages/shared/src/state-machine.ts'
-import { stateMachines } from '../packages/worker/src/state-machines.ts'
+import { stateMachines } from './state-machines.ts'
 import { isExecutedDirectly } from './node-runtime.ts'
 
 export function renderStateMachines(
@@ -23,7 +23,9 @@ validation, SQL transition guards, and this agent-readable reference.
 
 Declare a dependency-light module next to the domain, export the machine and
 a \`StateOf<typeof machine>\` type alias, and register its machine and source path
-in \`packages/worker/src/state-machines.ts\`. Run \`npm run state-machines:generate\`
+in the package's \`state-machines.ts\` registry. The tooling-only aggregate at
+\`tools/state-machines.ts\` includes each package registry without adding runtime
+dependencies between packages. Run \`npm run state-machines:generate\`
 and add focused graph tests. Existing stored values and wire contracts stay unchanged.
 
 Declare SQL guards with \`machine.guard({ from: 'approved', to: 'consumed' })\`.

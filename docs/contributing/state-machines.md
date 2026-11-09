@@ -10,9 +10,10 @@ validation, SQL transition guards, and this agent-readable reference.
 
 Declare a dependency-light module next to the domain, export the machine and a
 `StateOf<typeof machine>` type alias, and register its machine and source path
-in `packages/worker/src/state-machines.ts`. Run
-`npm run state-machines:generate` and add focused graph tests. Existing stored
-values and wire contracts stay unchanged.
+in the package's `state-machines.ts` registry. The tooling-only aggregate at
+`tools/state-machines.ts` includes each package registry without adding runtime
+dependencies between packages. Run `npm run state-machines:generate` and add
+focused graph tests. Existing stored values and wire contracts stay unchanged.
 
 Declare SQL guards with `machine.guard({ from: 'approved', to: 'consumed' })`.
 The guard validates every source-to-target pair and returns a SQL literal list
@@ -96,3 +97,237 @@ stateDiagram-v2
 | accepted | — (terminal)               |
 | revoked  | — (terminal)               |
 | expired  | — (terminal)               |
+
+## publish_builds.status
+
+Builds upload, seal and commit or reject; a committed build may be finalized
+again or rejected by a later verification.
+
+Source:
+[`packages/worker/src/publish-offload/publish-build-state.ts`](../../packages/worker/src/publish-offload/publish-build-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> uploading
+    uploading --> sealed
+    sealed --> committed
+    sealed --> rejected
+    committed --> committed
+    committed --> rejected
+    rejected --> [*]
+```
+
+| State     | May transition to   |
+| --------- | ------------------- |
+| uploading | sealed              |
+| sealed    | committed, rejected |
+| committed | committed, rejected |
+| rejected  | — (terminal)        |
+
+## dead_letter_messages.status
+
+Messages park, claim or reclaim replay, and return to parked on release;
+successful replay deletes the row.
+
+Source:
+[`packages/worker/src/dead-letter/dead-letter-message-state.ts`](../../packages/worker/src/dead-letter/dead-letter-message-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> parked
+    parked --> parked
+    parked --> replaying
+    replaying --> parked
+    replaying --> replaying
+```
+
+| State     | May transition to |
+| --------- | ----------------- |
+| parked    | parked, replaying |
+| replaying | parked, replaying |
+
+## package_approval_requests.status
+
+Pending package approvals resolve by owner approval or supersession by another
+publish.
+
+Source:
+[`packages/worker/src/package-capabilities/package-approval-state.ts`](../../packages/worker/src/package-capabilities/package-approval-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending
+    pending --> approved
+    pending --> superseded
+    approved --> [*]
+    superseded --> [*]
+```
+
+| State      | May transition to    |
+| ---------- | -------------------- |
+| pending    | approved, superseded |
+| approved   | — (terminal)         |
+| superseded | — (terminal)         |
+
+## org_plan_transfers.status
+
+Transfers begin at checkout or retry, acquire or reclaim an applying lease, and
+complete or cancel; applying can release back to checkout or retry.
+
+Source:
+[`packages/worker/src/billing/plan-transfer-state.ts`](../../packages/worker/src/billing/plan-transfer-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending_checkout
+    [*] --> needs_retry
+    pending_checkout --> applying
+    pending_checkout --> canceled
+    applying --> applying
+    applying --> pending_checkout
+    applying --> needs_retry
+    applying --> completed
+    applying --> canceled
+    needs_retry --> applying
+    needs_retry --> canceled
+    completed --> [*]
+    canceled --> [*]
+```
+
+| State            | May transition to                                            |
+| ---------------- | ------------------------------------------------------------ |
+| pending_checkout | applying, canceled                                           |
+| applying         | applying, pending_checkout, needs_retry, completed, canceled |
+| needs_retry      | applying, canceled                                           |
+| completed        | — (terminal)                                                 |
+| canceled         | — (terminal)                                                 |
+
+## package_codemod_runs.status
+
+Codemod runs heartbeat, finish, fail or abandon; failed and abandoned runs
+resume, while a repeated completed continuation may complete again or fail.
+
+Source:
+[`packages/worker/src/package-codemods/package-codemod-run-state.ts`](../../packages/worker/src/package-codemods/package-codemod-run-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> running
+    running --> running
+    running --> completed
+    running --> failed
+    running --> abandoned
+    completed --> completed
+    completed --> failed
+    failed --> running
+    abandoned --> running
+```
+
+| State     | May transition to                     |
+| --------- | ------------------------------------- |
+| running   | running, completed, failed, abandoned |
+| completed | completed, failed                     |
+| failed    | running                               |
+| abandoned | running                               |
+
+## runs.status
+
+Runs normally finish with success or error, including finish without begin;
+non-scheduled replace upserts accept any status, while scheduled ticks fence
+terminal rewrites.
+
+Source:
+[`packages/worker/src/run-records/run-state.ts`](../../packages/worker/src/run-records/run-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> running
+    [*] --> success
+    [*] --> error
+    running --> running
+    running --> success
+    running --> error
+    success --> running
+    success --> success
+    success --> error
+    error --> running
+    error --> success
+    error --> error
+```
+
+| State   | May transition to       |
+| ------- | ----------------------- |
+| running | running, success, error |
+| success | running, success, error |
+| error   | running, success, error |
+
+## dr_paced_restore_drill_runs.status
+
+A leased restore drill remains running until its sources finish and the
+aggregate passes or fails.
+
+Source:
+[`packages/worker/src/dr/d1-paced-restore-drill-run-state.ts`](../../packages/worker/src/dr/d1-paced-restore-drill-run-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> running
+    running --> passed
+    running --> failed
+    passed --> [*]
+    failed --> [*]
+```
+
+| State   | May transition to |
+| ------- | ----------------- |
+| running | passed, failed    |
+| passed  | — (terminal)      |
+| failed  | — (terminal)      |
+
+## package_owner_error_spike.status
+
+Owners trigger pending delivery, become alerted after success, and rearm after
+health, inactivity or abandoned delivery; immediate delivery may persist alerted
+directly from ok.
+
+Source:
+[`packages/worker/src/usage/package-owner-spike-state.ts`](../../packages/worker/src/usage/package-owner-spike-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> ok
+    ok --> ok
+    ok --> pending
+    ok --> alerted
+    pending --> pending
+    pending --> ok
+    pending --> alerted
+    alerted --> alerted
+    alerted --> ok
+```
+
+| State   | May transition to    |
+| ------- | -------------------- |
+| ok      | ok, pending, alerted |
+| pending | pending, ok, alerted |
+| alerted | alerted, ok          |
+
+## component_probe.status
+
+Consecutive failure and recovery thresholds move a component between operational
+and down.
+
+Source:
+[`packages/status/incident-state.ts`](../../packages/status/incident-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> operational
+    operational --> down
+    down --> operational
+```
+
+| State       | May transition to |
+| ----------- | ----------------- |
+| operational | down              |
+| down        | operational       |

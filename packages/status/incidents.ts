@@ -4,11 +4,16 @@
  * thresholds keep a single lucky probe from resolving one.
  */
 
+import {
+	componentIncidentState,
+	type ComponentIncidentStatus,
+} from './incident-state.ts'
+
 export const failureThreshold = 3
 export const recoveryThreshold = 2
 
 export type ComponentProbeState = {
-	status: 'operational' | 'down'
+	status: ComponentIncidentStatus
 	consecutiveFailures: number
 	consecutiveSuccesses: number
 }
@@ -28,6 +33,7 @@ export function applyProbeResult(
 	if (ok) {
 		const consecutiveSuccesses = state.consecutiveSuccesses + 1
 		if (state.status === 'down' && consecutiveSuccesses >= recoveryThreshold) {
+			componentIncidentState.assert(state.status, 'operational')
 			return {
 				state: {
 					status: 'operational',
@@ -51,6 +57,7 @@ export function applyProbeResult(
 		state.status === 'operational' &&
 		consecutiveFailures >= failureThreshold
 	) {
+		componentIncidentState.assert(state.status, 'down')
 		return {
 			state: {
 				status: 'down',

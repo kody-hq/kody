@@ -36,6 +36,7 @@ import {
 	hasPackageCodemodRunItemForPackage,
 } from './ledger.ts'
 import { getPackageCodemodById } from './registry.ts'
+import { packageCodemodRunState } from './package-codemod-run-state.ts'
 import {
 	createPackageCodemodSubscriptionCache,
 	dispatchPackageCodemodSubscriptionEvent,
@@ -481,6 +482,7 @@ async function ensureRun(input: {
 			// `updated_at`, so stale-run reconciliation only marks runs nobody is
 			// paging. This also reopens runs previously marked failed or
 			// abandoned when a caller resumes them.
+			packageCodemodRunState.assert(existing.status, 'running')
 			await updatePackageCodemodRunStatus(input.env.APP_DB, {
 				id: existing.id,
 				status: 'running',
@@ -1264,6 +1266,7 @@ async function processRevertStep(input: {
 			...(scopeUserIdFilter != null ? { userId: scopeUserIdFilter } : {}),
 		})
 		if (page.length === 0) {
+			packageCodemodRunState.assert(input.run.status, 'completed')
 			await updatePackageCodemodRunStatus(input.env.APP_DB, {
 				id: input.run.id,
 				status: 'completed',
@@ -1614,6 +1617,7 @@ async function processRevertStep(input: {
 			}
 		}
 		if (page.length < fleetScanPageSize) {
+			packageCodemodRunState.assert(input.run.status, 'completed')
 			await updatePackageCodemodRunStatus(input.env.APP_DB, {
 				id: input.run.id,
 				status: 'completed',
@@ -1899,6 +1903,7 @@ export async function runPackageCodemodStep(input: {
 			limit: stepLimit,
 		})
 		if (nextCursor == null) {
+			packageCodemodRunState.assert(run.status, 'completed')
 			await updatePackageCodemodRunStatus(input.env.APP_DB, {
 				id: run.id,
 				status: 'completed',
@@ -1928,6 +1933,7 @@ export async function runPackageCodemodStep(input: {
 					limit: stepLimit,
 				})
 			}
+			packageCodemodRunState.assert(run.status, 'failed')
 			await updatePackageCodemodRunStatus(input.env.APP_DB, {
 				id: run.id,
 				status: 'failed',

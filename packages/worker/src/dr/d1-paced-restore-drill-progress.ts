@@ -1,4 +1,8 @@
 import type { PacedRestoreDrillCheckpoint } from '@kody-internal/shared/backup-d1-paced-drill-alert.ts'
+import {
+	d1PacedRestoreDrillRunState,
+	type D1PacedRestoreDrillRunStatus,
+} from './d1-paced-restore-drill-run-state.ts'
 
 /**
  * D1 (APP_DB) progress rows for the weekly paced restore drill. Each tick
@@ -6,7 +10,7 @@ import type { PacedRestoreDrillCheckpoint } from '@kody-internal/shared/backup-d
  * per-source progress is visible without opening the R2 report.
  */
 
-export type D1PacedRestoreDrillRunStatus = 'running' | 'passed' | 'failed'
+export type { D1PacedRestoreDrillRunStatus } from './d1-paced-restore-drill-run-state.ts'
 export type D1PacedRestoreDrillSourceStatus =
 	| 'pending'
 	| 'running'
@@ -331,6 +335,7 @@ export async function finishD1PacedRestoreDrillRun(
 		nowIso: string
 	},
 ) {
+	d1PacedRestoreDrillRunState.assert('running', input.status)
 	await db
 		.prepare(
 			`UPDATE dr_paced_restore_drill_runs

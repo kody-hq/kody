@@ -1,5 +1,7 @@
 import type { PublishBuildOrigin } from './policy.ts'
 
+export type { PublishBuildStatus } from './publish-build-state.ts'
+
 /**
  * Bump when the builder's output or the build document changes shape. The
  * server rejects documents from any other version so a stale CLI or daemon
@@ -38,12 +40,6 @@ export type PublishBuildDocument = {
 	/** Builder timing, shown to the publisher; never trusted. */
 	buildMs?: number
 }
-
-export type PublishBuildStatus =
-	| 'uploading'
-	| 'sealed'
-	| 'committed'
-	| 'rejected'
 
 export type UploadedPublishBuildRef = {
 	buildId: string

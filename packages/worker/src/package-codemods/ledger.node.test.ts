@@ -165,6 +165,21 @@ test('package codemod ledger pages runs and items with filters', async () => {
 	).toBeNull()
 })
 
+test('package codemod ledger retains its unknown-status fallback and missing-row behavior', async () => {
+	const db = createLedgerDb()
+	await createRun(db, { id: 'unknown-status' })
+	await db
+		.prepare(
+			`UPDATE package_codemod_runs SET status = 'unexpected' WHERE id = ?`,
+		)
+		.bind('unknown-status')
+		.run()
+	expect(await getPackageCodemodRunById(db, 'unknown-status')).toMatchObject({
+		status: 'failed',
+	})
+	expect(await getPackageCodemodRunById(db, 'missing')).toBeNull()
+})
+
 test('package codemod ledger marks only stale running runs abandoned', async () => {
 	const db = createLedgerDb()
 	await createRun(db, { id: 'run-stale-running' })

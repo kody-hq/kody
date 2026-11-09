@@ -2,10 +2,13 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import ts from 'typescript'
 import { expect, test } from 'vitest'
-import { stateMachines } from './state-machines.ts'
+import { stateMachines } from '../../../tools/state-machines.ts'
+import { stateMachines as workerStateMachines } from './state-machines.ts'
 
 test('pins migrated lifecycle graphs including token-mint rollback', () => {
-	expect(stateMachines.map(({ machine }) => machine.transitions)).toEqual([
+	expect(
+		workerStateMachines.slice(0, 3).map(({ machine }) => machine.transitions),
+	).toEqual([
 		{
 			pending: ['approved', 'denied'],
 			approved: ['consumed'],
@@ -73,6 +76,6 @@ test('every production defineStateMachine call is registered for documentation',
 	scan('packages')
 	expect(
 		found.sort(),
-		'Register each defineStateMachine call with its machine and file in packages/worker/src/state-machines.ts, then run npm run state-machines:generate.',
+		'Register each defineStateMachine call with its machine and file in its package state-machines.ts registry, include that registry in tools/state-machines.ts, then run npm run state-machines:generate.',
 	).toEqual(stateMachines.map(({ file }) => file).sort())
 })

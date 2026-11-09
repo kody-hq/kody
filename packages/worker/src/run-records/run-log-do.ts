@@ -101,9 +101,11 @@ import {
 	workflowProjectionRetentionDays,
 } from './types.ts'
 import { normalizeRunStartedBy, type RunStartedBy } from './run-started-by.ts'
+import { runState } from './run-state.ts'
 import { recordDurableObjectPlatformRowsRead } from '#worker/usage/durable-object-rows.ts'
 
 const textEncoder = new TextEncoder()
+const interruptGuard = runState.guard({ from: 'running', to: 'error' })
 const maxAgeDeletesPerFinish = 100
 const maxExcessDeletesPerFinish = 100
 const maxStaleRunningReconcilesPerPass = 100
@@ -1642,6 +1644,8 @@ class RunLogBase extends DurableObject<Env> {
 			'surface' | 'parentRunId' | 'startedAt' | 'status'
 		>
 	}) {
+		if (input.previousStatus != null)
+			runState.assert(input.previousStatus, input.run.status)
 		if (!this.countsTowardDashboard(input.run)) return
 		// Clamp pre-migration startedAt days up to the warm coverage floor so
 		// MIN(day) cannot drift before the no-backfill boundary.
@@ -1963,7 +1967,7 @@ class RunLogBase extends DurableObject<Env> {
 				triaged_by = ?,
 				updated_at = ?,
 				idempotency_key = CASE WHEN ? THEN NULL ELSE idempotency_key END
-			WHERE id = ? AND status = 'running'`,
+			WHERE id = ? AND status IN ${interruptGuard}`,
 			finishedAt,
 			durationMs,
 			input.reason?.errorName ?? runRecordPlatformInterruptedErrorName,
@@ -2706,10 +2710,7 @@ class RunLogBase extends DurableObject<Env> {
 			.toArray()[0]
 		if (!row) return null
 		const status = String(row.status)
-		if (status === 'running' || status === 'success' || status === 'error') {
-			return status
-		}
-		return null
+		return runState.is(status) ? status : null
 	}
 
 	private hasActivationMilestone(milestone: ActivationMilestone): boolean {
@@ -4349,9 +4350,7 @@ class RunLogBase extends DurableObject<Env> {
 				surface: (isRunSurface(String(row.surface))
 					? String(row.surface)
 					: 'execute') as WorkspaceRunBucket['surface'],
-				status: (row.status === 'success' ||
-				row.status === 'error' ||
-				row.status === 'running'
+				status: (runState.is(row.status)
 					? row.status
 					: 'error') as WorkspaceRunBucket['status'],
 				count: Number(row.count ?? 0) || 0,

@@ -22,6 +22,10 @@ import {
 } from './billing-config.ts'
 import { readCreditWallet } from './credit-wallet.ts'
 import { buildOrgBillingMetadata } from './org-stripe-metadata.ts'
+import {
+	planTransferState,
+	type PlanTransferStatus,
+} from './plan-transfer-state.ts'
 import { selectPurchasableSeatSubscription } from './seat-sync.ts'
 import {
 	cancelSubscription,
@@ -65,12 +69,7 @@ import {
  * transfer can only be finished.
  */
 
-export type PlanTransferStatus =
-	| 'pending_checkout'
-	| 'applying'
-	| 'needs_retry'
-	| 'completed'
-	| 'canceled'
+export type { PlanTransferStatus } from './plan-transfer-state.ts'
 
 export type PlanTransferRow = {
 	id: string
@@ -178,11 +177,38 @@ const proSeatPriceMinor: Record<BillingInterval, number> = {
 const leaseMs = 2 * 60 * 1000
 const checkoutLifetimeSeconds = 60 * 60
 const checkoutExpiryGraceMs = 10 * 60 * 1000
-const openStatuses: ReadonlyArray<PlanTransferStatus> = [
-	'pending_checkout',
-	'applying',
-	'needs_retry',
-]
+const openStatuses = planTransferState.states.filter(
+	(status) => !planTransferState.isTerminal(status),
+)
+const openStatusSql = planTransferState.sql(openStatuses)
+const cancelOpenGuard = planTransferState.guard({
+	from: openStatuses,
+	to: 'canceled',
+})
+const cancelUnleasedGuard = planTransferState.guard({
+	from: ['pending_checkout', 'needs_retry'],
+	to: 'canceled',
+})
+const cancelExpiredLeaseGuard = planTransferState.guard({
+	from: 'applying',
+	to: 'canceled',
+})
+const claimLeaseGuard = planTransferState.guard({
+	from: ['pending_checkout', 'needs_retry'],
+	to: 'applying',
+})
+const reclaimLeaseGuard = planTransferState.guard({
+	from: 'applying',
+	to: 'applying',
+})
+const releaseLeaseGuard = planTransferState.guard({
+	from: 'applying',
+	to: ['pending_checkout', 'needs_retry'],
+})
+const completeGuard = planTransferState.guard({
+	from: 'applying',
+	to: 'completed',
+})
 
 function blocked(reason: PlanTransferBlockReason): PlanTransferPreviewResult {
 	return { ok: false, reason, message: blockMessages[reason] }
@@ -459,7 +485,7 @@ async function hasOpenTransfer(db: D1Database, orgIds: Array<string>) {
 	const row = await db
 		.prepare(
 			`SELECT id FROM org_plan_transfers
-			 WHERE status IN ('pending_checkout', 'applying', 'needs_retry')
+			 WHERE status IN ${openStatusSql}
 			   AND (source_org_id IN (?, ?) OR target_org_id IN (?, ?))
 			 LIMIT 1`,
 		)
@@ -660,7 +686,7 @@ export async function readLatestPlanTransferForOrg(
 		.prepare(
 			`SELECT * FROM org_plan_transfers
 			 WHERE source_org_id = ? OR target_org_id = ?
-			 ORDER BY (status IN ('pending_checkout', 'applying', 'needs_retry')) DESC,
+			 ORDER BY (status IN ${openStatusSql}) DESC,
 			          created_at DESC
 			 LIMIT 1`,
 		)
@@ -836,7 +862,7 @@ async function markCanceled(
 			`UPDATE org_plan_transfers
 			 SET status = 'canceled', last_error_code = ?, lease_expires_at = NULL, updated_at = ?
 			 WHERE id = ? AND credit_amount_minor IS NULL
-			   AND status IN ('pending_checkout', 'applying', 'needs_retry')`,
+			   AND status IN ${cancelOpenGuard}`,
 		)
 		.bind(code, now.toISOString(), transferId)
 		.run()
@@ -868,8 +894,8 @@ export async function cancelPlanTransfer(input: {
 			 SET status = 'canceled', last_error_code = 'canceled_by_owner',
 			     lease_expires_at = NULL, updated_at = ?
 			 WHERE id = ? AND credit_amount_minor IS NULL
-			   AND (status IN ('pending_checkout', 'needs_retry')
-			        OR (status = 'applying' AND lease_expires_at < ?))`,
+			   AND (status IN ${cancelUnleasedGuard}
+			        OR (status IN ${cancelExpiredLeaseGuard} AND lease_expires_at < ?))`,
 		)
 		.bind(now.toISOString(), input.transferId, now.toISOString())
 		.run()
@@ -894,8 +920,8 @@ async function claimLease(db: D1Database, transferId: string, now: Date) {
 			`UPDATE org_plan_transfers
 			 SET status = 'applying', lease_expires_at = ?, updated_at = ?
 			 WHERE id = ?
-			   AND (status IN ('pending_checkout', 'needs_retry')
-			        OR (status = 'applying' AND lease_expires_at < ?))`,
+			   AND (status IN ${claimLeaseGuard}
+			        OR (status IN ${reclaimLeaseGuard} AND lease_expires_at < ?))`,
 		)
 		.bind(
 			new Date(now.valueOf() + leaseMs).toISOString(),
@@ -918,7 +944,7 @@ async function releaseLease(
 		.prepare(
 			`UPDATE org_plan_transfers
 			 SET status = ?, last_error_code = ?, lease_expires_at = NULL, updated_at = ?
-			 WHERE id = ? AND status = 'applying'`,
+			 WHERE id = ? AND status IN ${releaseLeaseGuard}`,
 		)
 		.bind(status, code, now.toISOString(), transferId)
 		.run()
@@ -1116,7 +1142,7 @@ export async function advancePlanTransfer(input: {
 				`UPDATE org_plan_transfers
 				 SET status = 'completed', completed_at = ?, lease_expires_at = NULL,
 				     last_error_code = NULL, updated_at = ?
-				 WHERE id = ? AND status = 'applying'`,
+				 WHERE id = ? AND status IN ${completeGuard}`,
 			)
 			.bind(now.toISOString(), now.toISOString(), row.id)
 			.run()
