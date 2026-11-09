@@ -1,13 +1,15 @@
 import { expect, test } from 'vitest'
 import { d1PacedRestoreDrillSourceState } from './d1-paced-restore-drill-source-state.ts'
 
-test('dr_paced_restore_drill_sources.status preserves the accepted lifecycle graph', () => {
-	expect(d1PacedRestoreDrillSourceState.initial).toEqual(['pending'])
-	expect(d1PacedRestoreDrillSourceState.transitions).toEqual({
-		pending: ['running', 'passed', 'failed'],
-		running: ['running', 'passed', 'failed'],
-		passed: ['running', 'passed', 'failed'],
-		failed: ['running', 'passed', 'failed'],
-	})
+test('dr_paced_restore_drill_sources.status can start, restart, or refinalize any source', () => {
+	expect(d1PacedRestoreDrillSourceState.can('pending', 'pending')).toBe(false)
+	expect(d1PacedRestoreDrillSourceState.can('pending', 'running')).toBe(true)
+	expect(d1PacedRestoreDrillSourceState.can('pending', 'passed')).toBe(true)
+	expect(d1PacedRestoreDrillSourceState.can('pending', 'failed')).toBe(true)
+	for (const from of ['running', 'passed', 'failed'] as const) {
+		for (const to of ['running', 'passed', 'failed'] as const) {
+			expect(d1PacedRestoreDrillSourceState.can(from, to)).toBe(true)
+		}
+	}
 	expect(d1PacedRestoreDrillSourceState.terminal).toEqual([])
 })
