@@ -80,6 +80,18 @@ function useRawSigningSwitch(input: {
 	return { enabled, change, error, pending: mutation.isPending }
 }
 
+/** Raw signing failed to load, which is not the same as "not supported". */
+export function CredentialRawSigningUnavailable() {
+	return (
+		<div css={fieldCss} id={rawSigningAnchor}>
+			<span css={fieldLabelCss}>Raw signing</span>
+			<p css={mutedCss} data-testid="raw-signing-unavailable">
+				Kody could not load raw signing right now. Reload to try again.
+			</p>
+		</div>
+	)
+}
+
 export function CredentialRawSigningSection(props: {
 	view: CredentialRawSigningView
 	orgSlug: string

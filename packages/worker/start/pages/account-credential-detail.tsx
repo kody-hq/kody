@@ -11,8 +11,14 @@ import {
 import { CredentialHostsEditor } from './account-credential-hosts-editor.tsx'
 import { CredentialFillPlacementEditor } from './account-credential-fill-placement-editor.tsx'
 import { RecordChips, recordBodyCss } from './record-table.tsx'
-import { CredentialLocalReadsSection } from './account-credential-local-reads.tsx'
-import { CredentialRawSigningSection } from './account-credential-raw-signing.tsx'
+import {
+	CredentialLocalReadsSection,
+	CredentialLocalReadsUnavailable,
+} from './account-credential-local-reads.tsx'
+import {
+	CredentialRawSigningSection,
+	CredentialRawSigningUnavailable,
+} from './account-credential-raw-signing.tsx'
 import { formatFillPlacementSummary } from '#universal/credential-fill-placement.ts'
 import { fillPlacementAnchor } from '#universal/credential-placement-approval.ts'
 import type {
@@ -271,7 +277,11 @@ export function renderCredentialDetail(input: {
 	/** The organization whose credential is being edited. */
 	orgSlug: string
 	localReads?: CredentialLocalReadsView | null
+	/** The credential id whose local reads failed to load, if any. */
+	localReadsUnavailableFor?: string | null
 	rawSigning?: CredentialRawSigningView | null
+	/** The credential id whose raw signing failed to load, if any. */
+	rawSigningUnavailableFor?: string | null
 }) {
 	const { credential, detail, packagesById } = input
 	const lockedTo = credential.lockedToPackageIds.map((id) =>
@@ -448,6 +458,11 @@ export function renderCredentialDetail(input: {
 						'Shared with',
 						detail === null ? (
 							<p css={mutedCss}>Loading…</p>
+						) : detail.grantsUnavailable ? (
+							<p css={mutedCss} data-testid="shared-with-unavailable">
+								Kody could not load which team orgs this is shared with right
+								now. Reload to try again.
+							</p>
 						) : detail.grants.length === 0 ? (
 							<p css={mutedCss}>Not granted to any team org.</p>
 						) : (
@@ -531,6 +546,8 @@ export function renderCredentialDetail(input: {
 					orgSlug={input.orgSlug}
 					vault={false}
 				/>
+			) : input.localReadsUnavailableFor === credential.id ? (
+				<CredentialLocalReadsUnavailable />
 			) : null}
 
 			{input.rawSigning && input.rawSigning.credentialId === credential.id ? (
@@ -539,6 +556,8 @@ export function renderCredentialDetail(input: {
 					view={input.rawSigning}
 					orgSlug={input.orgSlug}
 				/>
+			) : input.rawSigningUnavailableFor === credential.id ? (
+				<CredentialRawSigningUnavailable />
 			) : null}
 
 			<p css={mutedCss}>Values never appear here.</p>
