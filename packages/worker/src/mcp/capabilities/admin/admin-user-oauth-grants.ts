@@ -29,7 +29,7 @@ const grantSchema = z.object({
 		.string()
 		.nullable()
 		.describe(
-			"Org id stamped on the grant (metadata.orgId). Pre-stamp grants fall back to the person's personal org id.",
+			'Org id stamped on the grant (metadata.orgId). Null when the grant has no stamp.',
 		),
 	createdAt: z.string().nullable(),
 	lastUsedAt: z
@@ -62,7 +62,7 @@ export const adminUserOauthGrantsCapability = defineDomainCapability(
 		name: 'adminUserOauthGrants',
 		contextRuns: 'deny',
 		description:
-			"List one person's MCP OAuth grants with client id, bound org id, created time, and last-used time. Bound org prefers stamped metadata.orgId; older grants fall back to the personal org id. Admin-only; never returns tokens or user content.",
+			"List one person's MCP OAuth grants with client id, bound org id, created time, and last-used time. Bound org is stamped metadata.orgId (null when missing). Admin-only; never returns tokens or user content.",
 		keywords: [
 			'admin',
 			'oauth',

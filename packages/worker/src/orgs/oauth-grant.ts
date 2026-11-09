@@ -34,19 +34,6 @@ export function readOrgIdFromGrantMetadata(metadata: unknown): string | null {
 	return readOrgIdField(metadata, 'orgId')
 }
 
-/**
- * True when a stored OAuth grant value has a non-empty plaintext
- * `metadata.orgId`. Props stay encrypted and are never consulted here — same
- * predicate as the Teams production OAuth inventory.
- */
-export function grantHasMetadataOrgId(value: unknown): boolean {
-	if (typeof value !== 'object' || value === null) return false
-	return (
-		readOrgIdFromGrantMetadata((value as { metadata?: unknown }).metadata) !==
-		null
-	)
-}
-
 export function grantMatchesConsentOrg(input: {
 	metadata: unknown
 	userId: string

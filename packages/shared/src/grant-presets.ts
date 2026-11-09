@@ -22,15 +22,6 @@ const readByType: Partial<
 	package: ['package:read'],
 }
 
-/** Whether `preset` expands to anything on `family`. */
-export function grantPresetAppliesTo(
-	family: OrgResourceType | 'org',
-	preset: GrantPreset,
-): boolean {
-	if (family === 'org') return false
-	return preset !== 'read' || readByType[family] !== undefined
-}
-
 const useByType: Record<OrgResourceType, ReadonlyArray<OrgPermission>> = {
 	package: ['package:read', 'package:execute'],
 	app: ['app:read', 'app:execute'],

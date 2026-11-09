@@ -35,5 +35,4 @@ org.
 
 `/mcp` and the CLI OAuth Open API path read `orgId` from grant props and load
 that org (`loadOrgBindingForOrg`), not always the person's personal org. Public
-surfaces keep showing `@slug`. Revisit at P9 to drop the `userId` fallback once
-every live grant has `orgId`.
+surfaces keep showing `@slug`. Grants without `orgId` fail closed.

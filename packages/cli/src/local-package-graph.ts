@@ -35,7 +35,6 @@ const esModuleLexerReady = initEsModuleLexer()
  * `execute --local` can embed them in workerd (no whole-module cloud execute).
  *
  * Platform tracking: https://github.com/kody-hq/kody/issues/2808
- * TODO(kody#2808): keep this path + response shape aligned with the shipped API.
  */
 export const localPackageGraphPath = 'v1/local-execute/package-graph'
 

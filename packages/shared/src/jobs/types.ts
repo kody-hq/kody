@@ -65,17 +65,6 @@ export type JobSourceInspection = {
 	error: string | null
 }
 
-export type JobSearchProjection = {
-	id: string
-	name: string
-	description: string
-	scheduleSummary: string
-	sourceId: string
-	publishedCommit: string | null
-	storageId: string
-	updatedAt: string
-}
-
 export type JobExecutionResult =
 	| {
 			ok: true

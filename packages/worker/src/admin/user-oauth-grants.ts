@@ -16,7 +16,7 @@ import { readOrgIdFromGrantMetadata } from '#worker/orgs/oauth-grant.ts'
 export type AdminUserOauthGrant = {
 	grantId: string
 	clientId: string
-	/** Org id stamped on the grant (metadata.orgId), or personal-org fallback. */
+	/** Org id stamped on the grant (metadata.orgId), or null if missing. */
 	boundOrgId: string | null
 	createdAt: string | null
 	lastUsedAt: string | null

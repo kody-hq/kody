@@ -1,4 +1,4 @@
-import { errorCauseChainIncludes, getErrorMessage } from './error-message.ts'
+import { errorCauseChainIncludes } from './error-message.ts'
 
 /**
  * Cloudflare Workers hang detection (formerly "The script will never generate
@@ -37,8 +37,4 @@ export function isWorkersHungRequestCanceledError(error: unknown) {
 		return isWorkersHungRequestCanceledMessage(error)
 	}
 	return errorCauseChainIncludes(error, isWorkersHungRequestCanceledMessage)
-}
-
-export function workersHungRequestErrorMessage(error: unknown) {
-	return getErrorMessage(error)
 }
