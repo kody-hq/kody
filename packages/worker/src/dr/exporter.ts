@@ -1395,8 +1395,11 @@ async function exportArtifactsPhase(input: {
 			sourceId: item.sourceId,
 			publishedCommit: item.publishedCommit,
 		})
-		const snapshotText = await env.BUNDLE_ARTIFACTS_KV.get(kvKey)
-		if (snapshotText === null) {
+		// Read raw bytes: a text read plus re-encode held the snapshot twice
+		// (string + Uint8Array) and pushed the shared JobsHost isolate past
+		// its memory limit on large snapshots.
+		const snapshot = await env.BUNDLE_ARTIFACTS_KV.get(kvKey, 'arrayBuffer')
+		if (snapshot === null) {
 			progress.warnings.push(
 				`Missing source snapshot KV key ${kvKey} for source ${item.sourceId}`,
 			)
@@ -1405,7 +1408,7 @@ async function exportArtifactsPhase(input: {
 			await persistProgress(s3, session)
 			continue
 		}
-		const bytes = new TextEncoder().encode(snapshotText)
+		const bytes = new Uint8Array(snapshot)
 		const digest = await sha256Hex(bytes)
 		await putBlobIfAbsent({ s3, sha256: digest, bytes, progress })
 		progress.artifactPendingEntries.push({

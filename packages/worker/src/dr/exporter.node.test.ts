@@ -361,8 +361,16 @@ test('exporter progresses phases with mocked bindings and S3, writing summary la
 		}),
 		EMAIL_BLOBS: createR2({ 'raw/one': blobBytes }),
 		BUNDLE_ARTIFACTS_KV: {
-			get: async (key: string) =>
-				key === 'source-snapshot:v1:src-1:commit-1' ? kvSnapshot : null,
+			// Snapshots must be read as raw bytes; a text read plus re-encode
+			// held each snapshot twice and OOMed the shared isolate.
+			get: async (key: string, type?: string) => {
+				if (type !== 'arrayBuffer') {
+					throw new Error(`artifact snapshot read as ${type ?? 'text'}`)
+				}
+				return key === 'source-snapshot:v1:src-1:commit-1'
+					? encode(kvSnapshot).buffer
+					: null
+			},
 		},
 	})
 
@@ -380,6 +388,12 @@ test('exporter progresses phases with mocked bindings and S3, writing summary la
 		runLogDumpsCompleted: 1,
 	})
 	expect(first.blobsReused).toBeGreaterThanOrEqual(1)
+	const snapshotBlob = objects.get(
+		backupBlobKey(await sha256Hex(encode(kvSnapshot))),
+	)
+	expect(snapshotBlob && new TextDecoder().decode(snapshotBlob.bytes)).toBe(
+		kvSnapshot,
+	)
 
 	const mailboxDumpKey = stagingMailboxDumpKey(day, 'user-a')
 	const mailboxDump = await readText(mailboxDumpKey)
