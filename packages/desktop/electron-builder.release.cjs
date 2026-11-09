@@ -63,7 +63,9 @@ module.exports = {
 		...config.mac,
 		identity: undefined,
 		hardenedRuntime: true,
-		notarize: true,
+		// scripts/mac-notarize.cjs notarizes and staples the signed app before
+		// installers are packaged from it (see desktop-release.yml).
+		notarize: false,
 		...(provisioningProfile
 			? {
 					provisioningProfile,

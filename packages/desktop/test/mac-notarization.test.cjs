@@ -57,7 +57,7 @@ test('retries a lost connection and succeeds on a later attempt', () => {
 		},
 	)
 	assert.deepEqual(result, { attempts: 2 })
-	assert.deepEqual(delays, [15_000])
+	assert.deepEqual(delays, [20_000])
 	assert.equal(fake.calls.length, 2)
 })
 
@@ -82,7 +82,7 @@ test('a real rejection fails at once without retrying', () => {
 
 test('gives up after the bounded number of network retries', () => {
 	const fake = fakeRun(
-		Array.from({ length: 5 }, () => ({
+		Array.from({ length: 8 }, () => ({
 			status: 68,
 			stdout: '',
 			stderr: lostConnection,
@@ -94,7 +94,7 @@ test('gives up after the bounded number of network retries', () => {
 				...quiet,
 				run: fake.run,
 			}),
-		/after 3 attempts/,
+		/after 6 attempts/,
 	)
-	assert.equal(fake.calls.length, 3)
+	assert.equal(fake.calls.length, 6)
 })
