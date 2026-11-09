@@ -1,4 +1,4 @@
-const { appendFileSync, readFileSync, readdirSync } = require('node:fs')
+const { appendFileSync, readFileSync } = require('node:fs')
 
 const targets = [
 	{ platform: 'mac', arch: 'arm64', runner: 'macos-15' },
@@ -49,6 +49,68 @@ function releasePlan(scope, env) {
 		missing: required.filter((name) => !env[name]),
 	}
 }
+function targetAssetNames(version, { platform, arch }) {
+	const os = platform
+	const suffix =
+		platform === 'mac'
+			? '-mac'
+			: platform === 'linux'
+				? `-linux${arch === 'x64' ? '' : `-${arch}`}`
+				: ''
+	const artifactArch = platform === 'linux' && arch === 'x64' ? 'x86_64' : arch
+	const extensions =
+		platform === 'mac'
+			? ['dmg', 'zip']
+			: platform === 'win'
+				? ['exe']
+				: ['AppImage']
+	return [
+		`latest-${arch}${suffix}.yml`,
+		`SHA256SUMS-${os}-${arch}.txt`,
+		`build-info-${os}-${arch}.json`,
+		...extensions.flatMap((extension) => {
+			const name = `Kody-${version}-${os}-${artifactArch}.${extension}`
+			return [name, `${name}.blockmap`]
+		}),
+	]
+}
+function releaseAssetNames(version, scope) {
+	return releasePlan(scope, {}).matrix.include.flatMap((target) =>
+		targetAssetNames(version, target),
+	)
+}
+function uploadedAssetNames(release) {
+	return (release?.assets ?? [])
+		.filter(
+			(asset) => (asset.state ?? 'uploaded') === 'uploaded' && asset.size > 0,
+		)
+		.map((asset) => asset.name)
+}
+// A matching draft already holds every asset of some targets when an earlier
+// attempt failed after they uploaded. Build only the rest.
+function pendingTargets({ include, version, sha, scope, releases = [] }) {
+	const draft = releases.find(
+		(release) => release.draft && release.tag_name === `v${version}`,
+	)
+	if (!draft) return include
+	try {
+		assertDraft(
+			{ ...draft, isDraft: draft.draft },
+			sha,
+			scope,
+			releaseAssetNames(version, scope),
+		)
+	} catch {
+		return include
+	}
+	const uploaded = uploadedAssetNames(draft)
+	return include.filter(
+		(target) =>
+			!targetAssetNames(version, target).every((name) =>
+				uploaded.includes(name),
+			),
+	)
+}
 function assertFeedCoverage(scope, assets) {
 	if (!['mac', 'all'].includes(scope))
 		throw new Error('Choose mac or all release platforms.')
@@ -90,7 +152,7 @@ if (require.main === module) {
 			JSON.parse(readFileSync(0, 'utf8')),
 			process.env.SOURCE_SHA,
 			scope,
-			readdirSync('release-assets'),
+			releaseAssetNames(process.env.RELEASE_VERSION, scope),
 		)
 	} else if (process.argv.includes('--notes')) {
 		process.stdout.write(releaseNotes(process.env.SOURCE_SHA, scope))
@@ -102,9 +164,23 @@ if (require.main === module) {
 		)
 	} else {
 		const plan = releasePlan(scope, process.env)
+		const include = pendingTargets({
+			include: plan.matrix.include,
+			version: process.env.RELEASE_VERSION,
+			sha: process.env.SOURCE_SHA,
+			scope,
+			releases: process.env.RELEASES_FILE
+				? JSON.parse(readFileSync(process.env.RELEASES_FILE, 'utf8')).flat()
+				: [],
+		})
+		for (const target of plan.matrix.include)
+			if (!include.includes(target))
+				console.log(
+					`${target.platform} ${target.arch} assets are already on the draft; skipping its build.`,
+				)
 		appendFileSync(
 			process.env.GITHUB_OUTPUT,
-			`matrix=${JSON.stringify(plan.matrix)}\n`,
+			`matrix=${JSON.stringify({ include })}\npending=${include.length > 0}\n`,
 		)
 		if (plan.missing.length) {
 			console.error(
@@ -114,4 +190,13 @@ if (require.main === module) {
 		}
 	}
 }
-module.exports = { releasePlan, assertFeedCoverage, releaseNotes, assertDraft }
+module.exports = {
+	releasePlan,
+	assertFeedCoverage,
+	releaseNotes,
+	assertDraft,
+	targetAssetNames,
+	releaseAssetNames,
+	uploadedAssetNames,
+	pendingTargets,
+}
