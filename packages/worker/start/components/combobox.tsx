@@ -59,7 +59,9 @@ export function Combobox(props: ComboboxProps) {
 			ref={(element) => {
 				if (element)
 					setPortalContainer(
-						element.closest<HTMLElement>('dialog, [popover], :fullscreen'),
+						element.closest<HTMLElement>(
+							'dialog, [role="dialog"], [role="alertdialog"], [popover], :fullscreen',
+						),
 					)
 			}}
 			css={{ display: 'grid', gap: spacing.xs, minWidth: 0 }}
