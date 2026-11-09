@@ -57,6 +57,8 @@ export async function renderNativeDocument(
 			},
 		})
 	}
+	// An upgraded socket has immutable headers and no document timing.
+	if (response.status === 101) return response
 	const secured = secureNativeResponse(
 		request,
 		response,
