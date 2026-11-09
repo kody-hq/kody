@@ -1,3 +1,8 @@
+import {
+	platformFeedbackState,
+	type PlatformFeedbackStatus,
+} from './platform-feedback-state.ts'
+
 export const platformFeedbackCategories = [
 	'friction',
 	'bug',
@@ -10,14 +15,9 @@ export const platformFeedbackCategories = [
 export type PlatformFeedbackCategory =
 	(typeof platformFeedbackCategories)[number]
 
-export const platformFeedbackStatuses = [
-	'open',
-	'triaged',
-	'resolved',
-	'dismissed',
-] as const
+export const platformFeedbackStatuses = platformFeedbackState.states
 
-export type PlatformFeedbackStatus = (typeof platformFeedbackStatuses)[number]
+export type { PlatformFeedbackStatus } from './platform-feedback-state.ts'
 
 export const platformFeedbackOutcomeStatuses = [
 	'resolved',

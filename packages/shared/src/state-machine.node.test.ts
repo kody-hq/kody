@@ -95,6 +95,39 @@ test('validates membership, transitions, terminals and SQL without side effects'
 	expect(Object.isFrozen(machine.transitions.pending)).toBe(true)
 })
 
+test('accepts existing hyphenated states without admitting SQL metacharacters', () => {
+	const machine = defineStateMachine({
+		name: 'email.state',
+		description: '',
+		initial: 'cleaning',
+		transitions: {
+			cleaning: ['orphan-cleaned'],
+			'orphan-cleaned': ['cleaning'],
+		},
+	})
+	expect(machine.parse('orphan-cleaned')).toBe('orphan-cleaned')
+	expect(machine.guard({ from: 'cleaning', to: 'orphan-cleaned' })).toBe(
+		"('cleaning')",
+	)
+	expect(machine.sql(['orphan-cleaned'])).toBe("('orphan-cleaned')")
+	for (const state of [
+		"bad'value",
+		'bad value',
+		'bad;value',
+		'bad/value',
+		'-bad',
+	]) {
+		expect(() =>
+			defineStateMachine<string>({
+				name: 'unsafe',
+				description: '',
+				initial: state,
+				transitions: { [state]: [] },
+			}),
+		).toThrow('invalid state identifier')
+	}
+})
+
 test('rejects malformed definitions at module initialization', () => {
 	expect(() =>
 		defineStateMachine({

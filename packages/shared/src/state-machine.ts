@@ -52,7 +52,7 @@ export function defineStateMachine<const S extends string>(definition: {
 	}
 	if (!states.length) throw new Error(`${definition.name}: no states`)
 	for (const state of states) {
-		if (!/^[a-z][a-z0-9_]*$/.test(state))
+		if (!/^[a-z][a-z0-9_-]*$/.test(state))
 			throw new Error(`${definition.name}: invalid state identifier ${state}`)
 	}
 	const initial = Object.freeze(

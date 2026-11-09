@@ -1,3 +1,7 @@
+import {
+	packageInvocationState,
+	type PackageInvocationLedgerStatus,
+} from './package-invocation-state.ts'
 import type {
 	SkillReadEvent,
 	SkillReadSummary,
@@ -293,10 +297,7 @@ export type RunLogEntryInput = {
 	fieldsJson: string | null
 }
 
-export type PackageInvocationLedgerStatus =
-	| 'in_progress'
-	| 'completed'
-	| 'failed'
+export type { PackageInvocationLedgerStatus } from './package-invocation-state.ts'
 
 /**
  * One keyed package-invocation idempotency row. Same shape as the legacy D1
@@ -713,9 +714,7 @@ function mapInvocationLedgerRow(
 		source: row['source'] == null ? null : String(row['source']),
 		topic: row['topic'] == null ? null : String(row['topic']),
 		claimOwner: row['claim_owner'] == null ? null : String(row['claim_owner']),
-		status: (status === 'completed' || status === 'failed'
-			? status
-			: 'in_progress') as PackageInvocationLedgerStatus,
+		status: packageInvocationState.is(status) ? status : 'in_progress',
 		responseJson:
 			row['response_json'] == null ? null : String(row['response_json']),
 		createdAt: String(row['created_at']),
@@ -3081,6 +3080,7 @@ class RunLogBase extends DurableObject<Env> {
 			if (!reclaimable) {
 				return { outcome: 'existing', record: existing }
 			}
+			packageInvocationState.assert(existing.status, 'in_progress')
 			this.ctx.storage.sql.exec(
 				`UPDATE package_invocation_ledger
 				SET updated_at = ?, claim_owner = ?
@@ -3174,6 +3174,7 @@ class RunLogBase extends DurableObject<Env> {
 				current.status === 'in_progress' &&
 				current.updatedAt === input.claimUpdatedAt
 			if (ledgerUpdated) {
+				packageInvocationState.assert('in_progress', input.status)
 				this.ctx.storage.sql.exec(
 					`UPDATE package_invocation_ledger
 					SET status = ?, response_json = ?, updated_at = ?

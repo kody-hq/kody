@@ -1,3 +1,4 @@
+import { backupExportState } from './backup-export-state.ts'
 import {
 	BackupError,
 	assertRemoteDatabaseIdentity,
@@ -358,7 +359,9 @@ export async function awaitExportReady(
 					)
 				}
 				restarts += 1
-				state = await startD1Export(env, options)
+				const next = await startD1Export(env, options)
+				backupExportState.assert(state.kind, next.kind)
+				state = next
 				continue
 			}
 			case 'pending': {
@@ -369,7 +372,9 @@ export async function awaitExportReady(
 					)
 				}
 				polls += 1
-				state = await pollD1Export(env, state.bookmark, options)
+				const next = await pollD1Export(env, state.bookmark, options)
+				backupExportState.assert(state.kind, next.kind)
+				state = next
 				if (state.kind === 'complete') return state
 				if (state.kind === 'lost') continue
 				if (polls < maxPolls) {

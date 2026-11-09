@@ -312,6 +312,629 @@ stateDiagram-v2
 | pending | pending, ok, alerted |
 | alerted | alerted, ok          |
 
+## admin_account_deletion_approvals.lifecycle
+
+Approvals expire or are consumed for deletion, with consumption rolled back on
+failure and expiry assessed on the next read.
+
+Source:
+[`packages/worker/universal/account-deletion-approval-state.ts`](../../packages/worker/universal/account-deletion-approval-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending
+    pending --> consumed
+    pending --> expired
+    consumed --> pending
+    consumed --> expired
+    expired --> [*]
+```
+
+| State    | May transition to |
+| -------- | ----------------- |
+| pending  | consumed, expired |
+| consumed | pending, expired  |
+| expired  | — (terminal)      |
+
+## community_listings.status
+
+Listings can be published, delisted or republished; status updates may repeat
+the current value.
+
+Source:
+[`packages/worker/src/community/community-listing-state.ts`](../../packages/worker/src/community/community-listing-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> active
+    active --> active
+    active --> delisted
+    delisted --> active
+    delisted --> delisted
+```
+
+| State    | May transition to |
+| -------- | ----------------- |
+| active   | active, delisted  |
+| delisted | active, delisted  |
+
+## community_reports.status
+
+Open community reports resolve or dismiss once.
+
+Source:
+[`packages/worker/src/community/community-report-state.ts`](../../packages/worker/src/community/community-report-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> open
+    open --> resolved
+    open --> dismissed
+    resolved --> [*]
+    dismissed --> [*]
+```
+
+| State     | May transition to   |
+| --------- | ------------------- |
+| open      | resolved, dismissed |
+| resolved  | — (terminal)        |
+| dismissed | — (terminal)        |
+
+## credential_inventory_runs.status
+
+Inventory scans advance a cursor while scanning and complete at the last page.
+
+Source:
+[`packages/worker/src/credentials/credential-inventory-run-state.ts`](../../packages/worker/src/credentials/credential-inventory-run-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> scanning
+    scanning --> scanning
+    scanning --> complete
+    complete --> [*]
+```
+
+| State    | May transition to  |
+| -------- | ------------------ |
+| scanning | scanning, complete |
+| complete | — (terminal)       |
+
+## dr_paced_restore_drill_sources.status
+
+Per-source progress setters can start, restart or refinalize any source; the
+coordinator normally skips completed sources.
+
+Source:
+[`packages/worker/src/dr/d1-paced-restore-drill-source-state.ts`](../../packages/worker/src/dr/d1-paced-restore-drill-source-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending
+    pending --> running
+    pending --> passed
+    pending --> failed
+    running --> running
+    running --> passed
+    running --> failed
+    passed --> running
+    passed --> passed
+    passed --> failed
+    failed --> running
+    failed --> passed
+    failed --> failed
+```
+
+| State   | May transition to       |
+| ------- | ----------------------- |
+| pending | running, passed, failed |
+| running | running, passed, failed |
+| passed  | running, passed, failed |
+| failed  | running, passed, failed |
+
+## email_messages.processing_status
+
+Email metadata inserts and timestamp-fenced partial updates accept all
+processing statuses; normal outbound sends move stored to sent or failed.
+
+Source:
+[`packages/worker/src/email/email-processing-state.ts`](../../packages/worker/src/email/email-processing-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> stored
+    [*] --> sent
+    [*] --> failed
+    stored --> stored
+    stored --> sent
+    stored --> failed
+    sent --> stored
+    sent --> sent
+    sent --> failed
+    failed --> stored
+    failed --> sent
+    failed --> failed
+```
+
+| State  | May transition to    |
+| ------ | -------------------- |
+| stored | stored, sent, failed |
+| sent   | stored, sent, failed |
+| failed | stored, sent, failed |
+
+## email_inbound_dedupe_pointer.state
+
+Dedupe windows start pending, tombstone on message deletion, and reset after
+expiry; repeat tombstones are idempotent.
+
+Source:
+[`packages/worker/src/email/inbound-dedupe-pointer-state.ts`](../../packages/worker/src/email/inbound-dedupe-pointer-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending
+    pending --> pending
+    pending --> rejected
+    rejected --> pending
+    rejected --> rejected
+```
+
+| State    | May transition to |
+| -------- | ----------------- |
+| pending  | pending, rejected |
+| rejected | pending, rejected |
+
+## email_inbound_delivery.state
+
+Inbound deliveries acquire storage or cleanup leases, release or reclaim them,
+finalize receipt, or reject; missing stored messages permit refinalization.
+
+Source:
+[`packages/worker/src/email/inbound-delivery-state.ts`](../../packages/worker/src/email/inbound-delivery-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending
+    pending --> storing
+    pending --> cleaning
+    pending --> rejected
+    storing --> storing
+    storing --> pending
+    storing --> received
+    storing --> cleaning
+    storing --> rejected
+    cleaning --> cleaning
+    cleaning --> pending
+    cleaning --> orphan-cleaned
+    cleaning --> rejected
+    received --> storing
+    orphan-cleaned --> cleaning
+    orphan-cleaned --> rejected
+    rejected --> [*]
+```
+
+| State          | May transition to                              |
+| -------------- | ---------------------------------------------- |
+| pending        | storing, cleaning, rejected                    |
+| storing        | storing, pending, received, cleaning, rejected |
+| cleaning       | cleaning, pending, orphan-cleaned, rejected    |
+| received       | storing                                        |
+| rejected       | — (terminal)                                   |
+| orphan-cleaned | cleaning, rejected                             |
+
+## email_inbound_subscription_effect.state
+
+Subscription delivery claims or reclaims processing, completes or retries to
+dead-letter, and refinalization resets the effect to pending.
+
+Source:
+[`packages/worker/src/email/inbound-subscription-effect-state.ts`](../../packages/worker/src/email/inbound-subscription-effect-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending
+    pending --> pending
+    pending --> processing
+    pending --> complete
+    pending --> dead-letter
+    processing --> processing
+    processing --> pending
+    processing --> complete
+    processing --> dead-letter
+    complete --> pending
+    complete --> complete
+    complete --> dead-letter
+    dead-letter --> pending
+    dead-letter --> complete
+    dead-letter --> dead-letter
+```
+
+| State       | May transition to                          |
+| ----------- | ------------------------------------------ |
+| pending     | pending, processing, complete, dead-letter |
+| processing  | processing, pending, complete, dead-letter |
+| complete    | pending, complete, dead-letter             |
+| dead-letter | pending, complete, dead-letter             |
+
+## enablements.state
+
+Enablements start on, pause or rewrite a pause cause, resume after access
+recovers, and turn off permanently.
+
+Source:
+[`packages/worker/src/enablements/enablement-state.ts`](../../packages/worker/src/enablements/enablement-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> on
+    on --> paused
+    on --> off
+    paused --> paused
+    paused --> on
+    paused --> off
+    off --> [*]
+```
+
+| State  | May transition to |
+| ------ | ----------------- |
+| on     | paused, off       |
+| paused | paused, on, off   |
+| off    | — (terminal)      |
+
+## referrals.status
+
+Pending referrals reject fraud or reward qualifying invoices; incomplete reward
+delivery may retry.
+
+Source:
+[`packages/worker/src/entitlements/referral-state.ts`](../../packages/worker/src/entitlements/referral-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending
+    pending --> rejected
+    pending --> rewarded
+    rewarded --> rewarded
+    rejected --> [*]
+```
+
+| State    | May transition to  |
+| -------- | ------------------ |
+| pending  | rejected, rewarded |
+| rewarded | rewarded           |
+| rejected | — (terminal)       |
+
+## execution_context_queued.lifecycle
+
+Queued rows enter a starting handoff that always releases its cancellation
+fence, then retry or leave the queue after dispatch, cancellation, failure or
+expiry.
+
+Source:
+[`packages/worker/src/execution-contexts/queued-run-state.ts`](../../packages/worker/src/execution-contexts/queued-run-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> queued
+    queued --> starting
+    queued --> finished
+    queued --> cancelled
+    queued --> expired
+    starting --> queued
+    starting --> finished
+    starting --> expired
+    finished --> [*]
+    cancelled --> [*]
+    expired --> [*]
+```
+
+| State     | May transition to                      |
+| --------- | -------------------------------------- |
+| queued    | starting, finished, cancelled, expired |
+| starting  | queued, finished, expired              |
+| finished  | — (terminal)                           |
+| cancelled | — (terminal)                           |
+| expired   | — (terminal)                           |
+
+## execution_context_runs.state
+
+Dispatch offers commit or abort and rejected offers can retry; committed runs
+finish once, while the existing offer-failure setter can still abort or reject
+any nonfinal row.
+
+Source:
+[`packages/worker/src/execution-contexts/run-dispatch-state.ts`](../../packages/worker/src/execution-contexts/run-dispatch-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> dispatched
+    dispatched --> committed
+    dispatched --> aborted
+    dispatched --> rejected
+    committed --> succeeded
+    committed --> failed
+    committed --> cancelled
+    committed --> lost
+    committed --> aborted
+    committed --> rejected
+    rejected --> dispatched
+    rejected --> rejected
+    rejected --> aborted
+    aborted --> dispatched
+    aborted --> rejected
+    aborted --> aborted
+    succeeded --> [*]
+    failed --> [*]
+    cancelled --> [*]
+    lost --> [*]
+```
+
+| State      | May transition to                                     |
+| ---------- | ----------------------------------------------------- |
+| dispatched | committed, aborted, rejected                          |
+| committed  | succeeded, failed, cancelled, lost, aborted, rejected |
+| succeeded  | — (terminal)                                          |
+| failed     | — (terminal)                                          |
+| cancelled  | — (terminal)                                          |
+| lost       | — (terminal)                                          |
+| rejected   | dispatched, rejected, aborted                         |
+| aborted    | dispatched, rejected, aborted                         |
+
+## follows.status
+
+Active follows pause when delivery access fails and resume after a creator
+reauthorizes them.
+
+Source:
+[`packages/worker/src/follow/follow-state.ts`](../../packages/worker/src/follow/follow-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> active
+    active --> paused
+    paused --> active
+```
+
+| State  | May transition to |
+| ------ | ----------------- |
+| active | paused            |
+| paused | active            |
+
+## user_email_claims.status
+
+Email addresses can be claimed, released and reclaimed; either state may be
+inserted.
+
+Source:
+[`packages/worker/src/identity/email-claim-state.ts`](../../packages/worker/src/identity/email-claim-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> claimed
+    [*] --> released
+    claimed --> released
+    released --> claimed
+```
+
+| State    | May transition to |
+| -------- | ----------------- |
+| claimed  | released          |
+| released | claimed           |
+
+## mcp_memories.status
+
+Memory insert and update APIs accept all status replacements, including archive,
+restore and deletion; soft deletion remains separate.
+
+Source:
+[`packages/worker/src/mcp/memory/memory-state.ts`](../../packages/worker/src/mcp/memory/memory-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> active
+    [*] --> deleted
+    [*] --> archived
+    active --> active
+    active --> deleted
+    active --> archived
+    deleted --> active
+    deleted --> deleted
+    deleted --> archived
+    archived --> active
+    archived --> deleted
+    archived --> archived
+```
+
+| State    | May transition to         |
+| -------- | ------------------------- |
+| active   | active, deleted, archived |
+| deleted  | active, deleted, archived |
+| archived | active, deleted, archived |
+
+## org_invite_links.status
+
+An active invite link can be explicitly revoked; expiry and exhaustion are
+derived eligibility conditions.
+
+Source:
+[`packages/worker/src/orgs/invite-link-state.ts`](../../packages/worker/src/orgs/invite-link-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> active
+    active --> revoked
+    revoked --> [*]
+```
+
+| State   | May transition to |
+| ------- | ----------------- |
+| active  | revoked           |
+| revoked | — (terminal)      |
+
+## platform_feedback.status
+
+Feedback triages or closes, closed feedback reopens to triaged, and review edits
+may preserve status.
+
+Source:
+[`packages/worker/src/platform-feedback/platform-feedback-state.ts`](../../packages/worker/src/platform-feedback/platform-feedback-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> open
+    open --> open
+    open --> triaged
+    open --> resolved
+    open --> dismissed
+    triaged --> triaged
+    triaged --> resolved
+    triaged --> dismissed
+    resolved --> resolved
+    resolved --> triaged
+    dismissed --> dismissed
+    dismissed --> triaged
+```
+
+| State     | May transition to                  |
+| --------- | ---------------------------------- |
+| open      | open, triaged, resolved, dismissed |
+| triaged   | triaged, resolved, dismissed       |
+| resolved  | resolved, triaged                  |
+| dismissed | dismissed, triaged                 |
+
+## repo_sessions.status
+
+Repo session storage accepts all status replacements; normal sessions publish or
+discard, including repeated finalization.
+
+Source:
+[`packages/worker/src/repo/repo-session-state.ts`](../../packages/worker/src/repo/repo-session-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> active
+    [*] --> published
+    [*] --> discarded
+    active --> active
+    active --> published
+    active --> discarded
+    published --> active
+    published --> published
+    published --> discarded
+    discarded --> active
+    discarded --> published
+    discarded --> discarded
+```
+
+| State     | May transition to            |
+| --------- | ---------------------------- |
+| active    | active, published, discarded |
+| published | active, published, discarded |
+| discarded | active, published, discarded |
+
+## package_invocation_ledger.status
+
+Invocation claims heartbeat or reclaim an in-progress attempt and atomically
+persist its completed or failed response.
+
+Source:
+[`packages/worker/src/run-records/package-invocation-state.ts`](../../packages/worker/src/run-records/package-invocation-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> in_progress
+    in_progress --> in_progress
+    in_progress --> completed
+    in_progress --> failed
+    completed --> [*]
+    failed --> [*]
+```
+
+| State       | May transition to              |
+| ----------- | ------------------------------ |
+| in_progress | in_progress, completed, failed |
+| completed   | — (terminal)                   |
+| failed      | — (terminal)                   |
+
+## user_usage_campaigns.lifecycle
+
+Ledger phase replacements preserve legacy PascalCase stored tags via the
+exported mapping; evaluator activation and cooling history gates remain
+unchanged.
+
+Source:
+[`packages/worker/src/usage/usage-campaign-state.ts`](../../packages/worker/src/usage/usage-campaign-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> verified_no_mcp
+    [*] --> connected_no_package
+    [*] --> packaged_single_client
+    [*] --> activated
+    [*] --> cooling
+    [*] --> limit_aware
+    [*] --> paid
+    verified_no_mcp --> verified_no_mcp
+    verified_no_mcp --> connected_no_package
+    verified_no_mcp --> packaged_single_client
+    verified_no_mcp --> activated
+    verified_no_mcp --> cooling
+    verified_no_mcp --> limit_aware
+    verified_no_mcp --> paid
+    connected_no_package --> verified_no_mcp
+    connected_no_package --> connected_no_package
+    connected_no_package --> packaged_single_client
+    connected_no_package --> activated
+    connected_no_package --> cooling
+    connected_no_package --> limit_aware
+    connected_no_package --> paid
+    packaged_single_client --> verified_no_mcp
+    packaged_single_client --> connected_no_package
+    packaged_single_client --> packaged_single_client
+    packaged_single_client --> activated
+    packaged_single_client --> cooling
+    packaged_single_client --> limit_aware
+    packaged_single_client --> paid
+    activated --> verified_no_mcp
+    activated --> connected_no_package
+    activated --> packaged_single_client
+    activated --> activated
+    activated --> cooling
+    activated --> limit_aware
+    activated --> paid
+    cooling --> verified_no_mcp
+    cooling --> connected_no_package
+    cooling --> packaged_single_client
+    cooling --> activated
+    cooling --> cooling
+    cooling --> limit_aware
+    cooling --> paid
+    limit_aware --> verified_no_mcp
+    limit_aware --> connected_no_package
+    limit_aware --> packaged_single_client
+    limit_aware --> activated
+    limit_aware --> cooling
+    limit_aware --> limit_aware
+    limit_aware --> paid
+    paid --> verified_no_mcp
+    paid --> connected_no_package
+    paid --> packaged_single_client
+    paid --> activated
+    paid --> cooling
+    paid --> limit_aware
+    paid --> paid
+```
+
+| State                  | May transition to                                                                                    |
+| ---------------------- | ---------------------------------------------------------------------------------------------------- |
+| verified_no_mcp        | verified_no_mcp, connected_no_package, packaged_single_client, activated, cooling, limit_aware, paid |
+| connected_no_package   | verified_no_mcp, connected_no_package, packaged_single_client, activated, cooling, limit_aware, paid |
+| packaged_single_client | verified_no_mcp, connected_no_package, packaged_single_client, activated, cooling, limit_aware, paid |
+| activated              | verified_no_mcp, connected_no_package, packaged_single_client, activated, cooling, limit_aware, paid |
+| cooling                | verified_no_mcp, connected_no_package, packaged_single_client, activated, cooling, limit_aware, paid |
+| limit_aware            | verified_no_mcp, connected_no_package, packaged_single_client, activated, cooling, limit_aware, paid |
+| paid                   | verified_no_mcp, connected_no_package, packaged_single_client, activated, cooling, limit_aware, paid |
+
 ## component_probe.status
 
 Consecutive failure and recovery thresholds move a component between operational
@@ -331,3 +954,60 @@ stateDiagram-v2
 | ----------- | ----------------- |
 | operational | down              |
 | down        | operational       |
+
+## host_background_command.state
+
+Background commands exit, time out, kill or fail; a spawn error can finish a
+command already stopped by timeout or kill.
+
+Source:
+[`packages/cli/src/execution-context/host-command-state.ts`](../../packages/cli/src/execution-context/host-command-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> running
+    running --> timed_out
+    running --> failed
+    running --> exited
+    running --> killed
+    killed --> failed
+    timed_out --> failed
+    exited --> [*]
+    failed --> [*]
+```
+
+| State     | May transition to                 |
+| --------- | --------------------------------- |
+| running   | timed_out, failed, exited, killed |
+| exited    | — (terminal)                      |
+| killed    | failed                            |
+| timed_out | failed                            |
+| failed    | — (terminal)                      |
+
+## backup_export_controller.kind
+
+The owned export controller polls pending exports and restarts lost exports
+until complete, preserving its bounded retry and polling rules.
+
+Source:
+[`packages/backup-control-plane/backup-export-state.ts`](../../packages/backup-control-plane/backup-export-state.ts)
+
+```mermaid
+stateDiagram-v2
+    [*] --> complete
+    [*] --> pending
+    [*] --> lost
+    pending --> pending
+    pending --> complete
+    pending --> lost
+    lost --> pending
+    lost --> complete
+    lost --> lost
+    complete --> [*]
+```
+
+| State    | May transition to       |
+| -------- | ----------------------- |
+| complete | — (terminal)            |
+| pending  | pending, complete, lost |
+| lost     | pending, complete, lost |

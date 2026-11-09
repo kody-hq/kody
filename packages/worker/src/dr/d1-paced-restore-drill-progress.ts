@@ -1,3 +1,4 @@
+import type { D1PacedRestoreDrillSourceStatus } from './d1-paced-restore-drill-source-state.ts'
 import type { PacedRestoreDrillCheckpoint } from '@kody-internal/shared/backup-d1-paced-drill-alert.ts'
 import {
 	d1PacedRestoreDrillRunState,
@@ -11,11 +12,7 @@ import {
  */
 
 export type { D1PacedRestoreDrillRunStatus } from './d1-paced-restore-drill-run-state.ts'
-export type D1PacedRestoreDrillSourceStatus =
-	| 'pending'
-	| 'running'
-	| 'passed'
-	| 'failed'
+export type { D1PacedRestoreDrillSourceStatus } from './d1-paced-restore-drill-source-state.ts'
 
 export type D1PacedRestoreDrillTableProgress = {
 	table: string

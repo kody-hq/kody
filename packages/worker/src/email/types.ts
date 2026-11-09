@@ -1,3 +1,7 @@
+import {
+	emailProcessingState,
+	type EmailProcessingStatus,
+} from './email-processing-state.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	defaultEmailMessageView,
@@ -12,8 +16,8 @@ import {
 export const emailDirectionValues = ['inbound', 'outbound'] as const
 export type EmailDirection = (typeof emailDirectionValues)[number]
 
-export const emailProcessingStatusValues = ['stored', 'sent', 'failed'] as const
-export type EmailProcessingStatus = (typeof emailProcessingStatusValues)[number]
+export const emailProcessingStatusValues = emailProcessingState.states
+export type { EmailProcessingStatus } from './email-processing-state.ts'
 
 export const emailDeliveryStatusValues = [
 	'delivered',

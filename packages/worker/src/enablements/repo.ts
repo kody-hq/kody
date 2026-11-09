@@ -1,3 +1,4 @@
+import { enablementState } from './enablement-state.ts'
 import {
 	isOrgPermission,
 	type OrgPermission,
@@ -90,7 +91,7 @@ function toSenderKind(value: string | null): EnablementSenderKind | null {
 }
 
 function toState(value: string): EnablementState {
-	if (value === 'on' || value === 'paused' || value === 'off') return value
+	if (enablementState.is(value)) return value
 	throw new Error(`Unknown enablement state: ${value}`)
 }
 
@@ -483,6 +484,16 @@ export async function listEnablementsForOrg(input: {
 	return (result.results ?? []).map(toRecord)
 }
 
+const resumeEnablementGuard = enablementState.guard({
+	from: 'paused',
+	to: 'on',
+})
+const pauseEnablementGuard = enablementState.guard({ from: 'on', to: 'paused' })
+const rewritePauseGuard = enablementState.guard({
+	from: ['on', 'paused'],
+	to: 'paused',
+})
+
 export type EnablementPauseInput = {
 	reason: EnablementPausedReason
 	permission?: string | null
@@ -510,9 +521,7 @@ export async function pauseEnablement(input: {
 			 SET state = 'paused', paused_reason = ?, paused_permission = ?,
 			     paused_resource_type = ?, paused_resource_id = ?,
 			     paused_credential_id = ?, paused_at = ?, updated_at = ?
-			 WHERE id = ? AND org_id = ? AND state IN (${
-					input.replace ? `'on', 'paused'` : `'on'`
-				})`,
+			 WHERE id = ? AND org_id = ? AND state IN ${input.replace ? rewritePauseGuard : pauseEnablementGuard}`,
 		)
 		.bind(
 			input.pause.reason,
@@ -585,7 +594,7 @@ export async function rebindProfilePausedEnablement(input: {
 			     paused_permission = NULL, paused_resource_type = NULL,
 			     paused_resource_id = NULL, paused_credential_id = NULL,
 			     paused_at = NULL, updated_at = ?
-			 WHERE id = ? AND org_id = ? AND state = 'paused'
+			 WHERE id = ? AND org_id = ? AND state IN ${resumeEnablementGuard}
 			   AND paused_reason = 'profile_inactive'`,
 		)
 		.bind(
@@ -613,7 +622,7 @@ export async function resumeEnablement(input: {
 			 SET state = 'on', paused_reason = NULL, paused_permission = NULL,
 			     paused_resource_type = NULL, paused_resource_id = NULL,
 			     paused_credential_id = NULL, paused_at = NULL, updated_at = ?
-			 WHERE id = ? AND org_id = ? AND state = 'paused'`,
+			 WHERE id = ? AND org_id = ? AND state IN ${resumeEnablementGuard}`,
 		)
 		.bind(now, input.id, input.orgId)
 		.run()

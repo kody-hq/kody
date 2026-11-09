@@ -1,3 +1,5 @@
+import { inboundDedupePointerState } from './inbound-dedupe-pointer-state.ts'
+
 export const systemInboundProvider = 'cloudflare-email-routing'
 export const systemInboundDedupeProvider = 'cloudflare-email-routing-dedupe'
 export const systemInboundDeletedRejectionReason = 'Message deleted.'
@@ -54,6 +56,8 @@ export function tombstoneSystemInboundDedupePointerStatement(input: {
 	messageId: string
 	now: string
 }) {
+	inboundDedupePointerState.assert('pending', 'rejected')
+	inboundDedupePointerState.assert('rejected', 'rejected')
 	return input.db
 		.prepare(
 			`UPDATE system_email_delivery_events

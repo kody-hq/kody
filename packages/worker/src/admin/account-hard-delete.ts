@@ -16,6 +16,7 @@
  * Organizations the person does not solely own are not purged. Membership in
  * those organizations is removed by the soft-delete offboarding path.
  */
+import { accountDeletionApprovalState } from '#universal/account-deletion-approval-state.ts'
 import {
 	ownerIdFromStored,
 	type OwnerId,
@@ -743,7 +744,10 @@ export async function readAdminAccountDeletionApproval(input: {
 	if (!row) return { status: 'missing' }
 	if (row.consumed_at) return { status: 'consumed' }
 	const now = input.now ?? new Date()
-	if (Date.parse(row.expires_at) <= now.getTime()) return { status: 'expired' }
+	if (Date.parse(row.expires_at) <= now.getTime()) {
+		accountDeletionApprovalState.assert('pending', 'expired')
+		return { status: 'expired' }
+	}
 	const summary = await loadApprovalSummary(
 		input.env,
 		row.target_stable_user_id,
@@ -757,6 +761,7 @@ async function claimApproval(input: {
 	approvalId: string
 	nowIso: string
 }) {
+	accountDeletionApprovalState.assert('pending', 'consumed')
 	const claim = await input.db
 		.prepare(
 			`UPDATE admin_account_deletion_approvals
@@ -775,6 +780,7 @@ async function releaseApproval(input: {
 	approvalId: string
 	consumedAt: string
 }) {
+	accountDeletionApprovalState.assert('consumed', 'pending')
 	await input.db
 		.prepare(
 			`UPDATE admin_account_deletion_approvals

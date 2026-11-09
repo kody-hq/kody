@@ -1,9 +1,11 @@
+import type { CommunityListingStatus } from './community-listing-state.ts'
+import type { CommunityReportStatus } from './community-report-state.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import type { CommunityListingCategory } from '#universal/community-categories.ts'
 
-export type CommunityListingStatus = 'active' | 'delisted'
+export type { CommunityListingStatus } from './community-listing-state.ts'
 
-export type CommunityReportStatus = 'open' | 'resolved' | 'dismissed'
+export type { CommunityReportStatus } from './community-report-state.ts'
 
 export type CommunityListingRow = {
 	id: string

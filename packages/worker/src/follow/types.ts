@@ -1,3 +1,4 @@
+import { followState, type FollowStatus } from './follow-state.ts'
 import {
 	followCreateLimitPerHour,
 	followEventsForKind,
@@ -19,9 +20,9 @@ export const followTargetKinds = ['package', 'repo'] as const
 
 export type FollowTargetKind = (typeof followTargetKinds)[number]
 
-export const followStatuses = ['active', 'paused'] as const
+export const followStatuses = followState.states
 
-export type FollowStatus = (typeof followStatuses)[number]
+export type { FollowStatus } from './follow-state.ts'
 
 export const followPublishedTopic = 'follow.published'
 export const followPushedTopic = 'follow.pushed'
