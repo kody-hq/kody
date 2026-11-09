@@ -741,9 +741,12 @@ export async function listInstalls() {
 	const installs: Array<Install> = []
 	let afterId: string | null = null
 	for (;;) {
+		// Separate first-page query so later pages seek the primary key index.
 		const result = (await packageStorage().sql(
-			'SELECT id, name, installed_at FROM installs WHERE ? IS NULL OR id > ? ORDER BY id LIMIT 1000',
-			[afterId, afterId],
+			afterId === null
+				? 'SELECT id, name, installed_at FROM installs ORDER BY id LIMIT 1000'
+				: 'SELECT id, name, installed_at FROM installs WHERE id > ? ORDER BY id LIMIT 1000',
+			afterId === null ? [] : [afterId],
 		)) as StorageSqlResult
 		for (const row of result.rows) {
 			installs.push({
