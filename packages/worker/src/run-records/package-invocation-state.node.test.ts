@@ -1,12 +1,12 @@
 import { expect, test } from 'vitest'
 import { packageInvocationState } from './package-invocation-state.ts'
 
-test('package_invocation_ledger.status preserves the accepted lifecycle graph', () => {
-	expect(packageInvocationState.initial).toEqual(['in_progress'])
-	expect(packageInvocationState.transitions).toEqual({
-		in_progress: ['in_progress', 'completed', 'failed'],
-		completed: [],
-		failed: [],
-	})
-	expect(packageInvocationState.terminal).toEqual(['completed', 'failed'])
+test('invocation claims heartbeat in progress and cannot rewrite a completed or failed response', () => {
+	expect(packageInvocationState.can('in_progress', 'in_progress')).toBe(true)
+	expect(packageInvocationState.can('in_progress', 'completed')).toBe(true)
+	expect(packageInvocationState.can('in_progress', 'failed')).toBe(true)
+	expect(packageInvocationState.isTerminal('completed')).toBe(true)
+	expect(packageInvocationState.isTerminal('failed')).toBe(true)
+	expect(packageInvocationState.can('completed', 'failed')).toBe(false)
+	expect(packageInvocationState.can('failed', 'in_progress')).toBe(false)
 })

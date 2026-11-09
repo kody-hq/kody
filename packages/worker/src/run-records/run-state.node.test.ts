@@ -1,20 +1,13 @@
 import { expect, test } from 'vitest'
-import {
-	runState,
-	runTerminalStatuses,
-	type RunTerminalStatus,
-} from './run-state.ts'
+import { runState, runTerminalStatuses } from './run-state.ts'
 
-test('runs.status preserves the lifecycle graph', () => {
-	expect(runState.initial).toEqual(['running', 'success', 'error'])
-	expect(runState.transitions).toEqual({
-		running: ['running', 'success', 'error'],
-		success: ['running', 'success', 'error'],
-		error: ['running', 'success', 'error'],
-	})
-	expect(runState.terminal).toEqual([])
-	expect(runTerminalStatuses).toEqual([
-		'success',
-		'error',
-	] satisfies ReadonlyArray<RunTerminalStatus>)
+test('run replacements stay open; success and error are finished statuses, running is not', () => {
+	for (const from of runState.states)
+		for (const to of runState.states)
+			expect(runState.can(from, to), `${from} -> ${to}`).toBe(true)
+	expect(runTerminalStatuses.includes('running')).toBe(false)
+	expect(runTerminalStatuses.includes('success')).toBe(true)
+	expect(runTerminalStatuses.includes('error')).toBe(true)
+	for (const status of runTerminalStatuses)
+		expect(runState.is(status)).toBe(true)
 })

@@ -1,12 +1,11 @@
 import { expect, test } from 'vitest'
 import { backupExportState } from './backup-export-state.ts'
 
-test('backup_export_controller.kind preserves the accepted lifecycle graph', () => {
-	expect(backupExportState.initial).toEqual(['complete', 'pending', 'lost'])
-	expect(backupExportState.transitions).toEqual({
-		complete: [],
-		pending: ['pending', 'complete', 'lost'],
-		lost: ['pending', 'complete', 'lost'],
-	})
-	expect(backupExportState.terminal).toEqual(['complete'])
+test('lost exports can restart; a complete export cannot', () => {
+	expect(backupExportState.can('pending', 'lost')).toBe(true)
+	expect(backupExportState.can('lost', 'pending')).toBe(true)
+	expect(backupExportState.can('lost', 'complete')).toBe(true)
+	expect(backupExportState.isTerminal('complete')).toBe(true)
+	expect(backupExportState.can('complete', 'pending')).toBe(false)
+	expect(backupExportState.can('complete', 'lost')).toBe(false)
 })

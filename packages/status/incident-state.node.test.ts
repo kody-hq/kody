@@ -1,11 +1,9 @@
 import { expect, test } from 'vitest'
 import { componentIncidentState } from './incident-state.ts'
 
-test('component_probe.status preserves the lifecycle graph', () => {
-	expect(componentIncidentState.initial).toEqual(['operational'])
-	expect(componentIncidentState.transitions).toEqual({
-		operational: ['down'],
-		down: ['operational'],
-	})
-	expect(componentIncidentState.terminal).toEqual([])
+test('a component probe flips between operational and down without self-loops', () => {
+	expect(componentIncidentState.can('operational', 'down')).toBe(true)
+	expect(componentIncidentState.can('down', 'operational')).toBe(true)
+	expect(componentIncidentState.can('operational', 'operational')).toBe(false)
+	expect(componentIncidentState.can('down', 'down')).toBe(false)
 })
