@@ -275,17 +275,26 @@ function LoadedAppLayout() {
 	// Loader data commits with the displayed matches, unlike the pending URL.
 	const pathname = shellLocation.pathname
 	const previousPathname = useRef(pathname)
+	const fileColumnNavigation = useRouterState({
+		select: (state) =>
+			(state.resolvedLocation ?? state.location).state.fileColumnNavigation,
+	})
 	useEffect(() => {
 		if (previousPathname.current === pathname) return
 		previousPathname.current = pathname
-		const frame = requestAnimationFrame(() =>
-			(
+		const frame = requestAnimationFrame(() => {
+			if (
+				fileColumnNavigation &&
+				document.activeElement?.closest('[data-file-column-browser]')
+			)
+				return
+			const target =
 				document.querySelector<HTMLElement>('[data-docs-heading]') ??
 				document.getElementById('main')
-			)?.focus({ preventScroll: true }),
-		)
+			target?.focus({ preventScroll: true })
+		})
 		return () => cancelAnimationFrame(frame)
-	}, [pathname])
+	}, [pathname, fileColumnNavigation])
 	const illustratedError = useRouterState({
 		select: (state) =>
 			state.matches.some(
@@ -302,6 +311,7 @@ function LoadedAppLayout() {
 		appShell.preserveLoginReturn ? authReturnHref : null,
 	)
 	const authShell = appShell.mode === 'auth'
+	const standalone = appShell.mode === 'standalone'
 	const focused = appShell.mode === 'focused'
 	const workspace = Boolean(workspaceLayoutNavigation(useMatches(), session))
 	const Content = workspace ? 'div' : 'main'
@@ -316,12 +326,12 @@ function LoadedAppLayout() {
 			<div
 				data-app-frame
 				data-app-interface={pageNavigation ? '' : undefined}
-				css={appFrameCss}
+				css={[appFrameCss, standalone && { minHeight: '100dvh' }]}
 			>
 				<a href="#main" css={visuallyHiddenUntilFocusedCss}>
 					Skip to content
 				</a>
-				{authShell || workspace ? null : (
+				{authShell || standalone || workspace ? null : (
 					<SiteHeader
 						focused={focused}
 						loggedIn={session !== null}
@@ -348,7 +358,7 @@ function LoadedAppLayout() {
 				>
 					<Outlet />
 				</Content>
-				{authShell || focused || workspace ? null : (
+				{authShell || standalone || focused || workspace ? null : (
 					<SiteFooter
 						loggedIn={session !== null}
 						loginHref={loginHref}

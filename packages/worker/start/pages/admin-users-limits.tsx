@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { type CSSObject } from '@emotion/react'
 import { useState, useRef, type FormEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -298,7 +299,7 @@ export function AdminOrgLimitsPanel({
 					</form>
 				</>
 			) : message || query.error ? null : (
-				<p css={{ margin: 0, color: colors.textMuted }}>Loading limits…</p>
+				<LoadingIndicator label="Loading limits…" />
 			)}
 		</AccountManagementPanel>
 	)

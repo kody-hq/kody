@@ -1,10 +1,16 @@
 /** @jsxImportSource @emotion/react */
-import { useEffect, useRef, useId } from 'react'
+import { useEffect, useRef } from 'react'
 import {
 	type useRecordTableModel,
 	type RecordTableOptions,
 } from './record-table-model.ts'
 import { type RecordTableColumn } from './record-table.tsx'
+import { Menu } from '@base-ui/react/menu'
+import {
+	overlayItemCss,
+	overlayPopupCss,
+	overlayPositionerCss,
+} from '../components/overlay-styles.ts'
 import { colors } from '#universal/styles/tokens.ts'
 type Model = ReturnType<typeof useRecordTableModel>
 const control = {
@@ -47,31 +53,13 @@ export function RecordTableDataControls({
 	model,
 	columns,
 	options,
+	iconOnly = false,
 }: {
 	model: Model
+	iconOnly?: boolean
 	columns: Array<RecordTableColumn>
 	options: RecordTableOptions
 }) {
-	const menuId = useId()
-	const trigger = useRef<HTMLButtonElement>(null)
-	const panel = useRef<HTMLDivElement>(null)
-	useEffect(() => {
-		const reposition = () => {
-			if (!panel.current || !trigger.current) return
-			const rect = trigger.current.getBoundingClientRect()
-			panel.current.style.left = `${Math.max(8, Math.min(rect.right - 208, window.innerWidth - 216))}px`
-			panel.current.style.top = `${Math.min(rect.bottom + 4, window.innerHeight - panel.current.offsetHeight - 8)}px`
-		}
-		const menu = panel.current
-		menu?.addEventListener('toggle', reposition)
-		window.addEventListener('resize', reposition)
-		window.addEventListener('scroll', reposition, true)
-		return () => {
-			menu?.removeEventListener('toggle', reposition)
-			window.removeEventListener('resize', reposition)
-			window.removeEventListener('scroll', reposition, true)
-		}
-	}, [])
 	const selectedIds = Object.entries(options.selection?.value ?? {})
 		.filter(([, selected]) => selected)
 		.map(([id]) => id)
@@ -84,57 +72,78 @@ export function RecordTableDataControls({
 					{options.selection.actions(selected, selectedIds)}
 				</>
 			) : null}
-			<button
-				ref={trigger}
-				type="button"
-				popoverTarget={menuId}
-				css={{ ...control, marginLeft: 'auto', cursor: 'pointer' }}
-			>
-				Columns
-			</button>
-			<div
-				ref={panel}
-				id={menuId}
-				popover="auto"
-				css={{
-					position: 'fixed',
-					margin: 0,
-					width: '13rem',
-					maxWidth: 'calc(100vw - 16px)',
-					maxHeight: 'calc(100dvh - 16px)',
-					overflowY: 'auto',
-					padding: '0.5rem',
-					background: colors.surface,
-					color: colors.text,
-					border: `1px solid ${colors.border}`,
-					borderRadius: '0.25rem',
-					boxShadow: '0 4px 16px #0002',
-				}}
-			>
-				{columns.map((column) => (
-					<label
-						key={column.key}
-						css={{
-							display: 'flex',
-							gap: '0.5rem',
-							padding: '0.25rem',
-							fontSize: '0.8rem',
-						}}
+			<Menu.Root modal={false}>
+				<Menu.Trigger
+					aria-label="Columns"
+					title="Choose columns"
+					css={{
+						...control,
+						marginLeft: 'auto',
+						cursor: 'pointer',
+						...(iconOnly
+							? {
+									width: 28,
+									height: 28,
+									padding: 4,
+									display: 'grid',
+									placeItems: 'center',
+									border: 0,
+									background: 'transparent',
+									'&:hover': { background: colors.borderSubtle },
+								}
+							: {}),
+					}}
+				>
+					{iconOnly ? (
+						<svg
+							aria-hidden="true"
+							width="16"
+							height="16"
+							viewBox="0 0 16 16"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="1.2"
+						>
+							<path d="M3 2v12M8 2v12m5-12v12" />
+							<path d="M1 5h4M6 10h4m1-5h4" strokeWidth="2.5" />
+						</svg>
+					) : (
+						'Columns'
+					)}
+				</Menu.Trigger>
+				<Menu.Portal>
+					<Menu.Positioner
+						align="end"
+						sideOffset={4}
+						css={overlayPositionerCss}
 					>
-						<input
-							type="checkbox"
-							checked={model.getColumn(column.key)!.getIsVisible()}
-							disabled={!model.getColumn(column.key)!.getCanHide()}
-							onChange={(event) =>
-								model
-									.getColumn(column.key)!
-									.toggleVisibility(event.target.checked)
-							}
-						/>
-						{column.label}
-					</label>
-				))}
-			</div>
+						<Menu.Popup
+							aria-label="Choose columns"
+							css={{ ...overlayPopupCss, width: '13rem' }}
+						>
+							{columns.map((column) => {
+								const modelColumn = model.getColumn(column.key)!
+								return (
+									<Menu.CheckboxItem
+										key={column.key}
+										checked={modelColumn.getIsVisible()}
+										disabled={!modelColumn.getCanHide()}
+										onCheckedChange={(checked) =>
+											modelColumn.toggleVisibility(checked)
+										}
+										css={overlayItemCss}
+									>
+										<span css={{ width: '1rem' }}>
+											<Menu.CheckboxItemIndicator>✓</Menu.CheckboxItemIndicator>
+										</span>
+										{column.label}
+									</Menu.CheckboxItem>
+								)
+							})}
+						</Menu.Popup>
+					</Menu.Positioner>
+				</Menu.Portal>
+			</Menu.Root>
 		</div>
 	)
 }

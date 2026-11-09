@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useServerFn } from '@tanstack/react-start'
@@ -143,7 +144,9 @@ function SkillHistoryView({
 					) : null}
 				</p>
 			) : null}
-			{loading && !result ? <p role="status">Loading history…</p> : null}
+			{loading && !result ? (
+				<LoadingIndicator label="Loading history…" />
+			) : null}
 			{notice ? (
 				<p role="status">
 					{notice.message}{' '}

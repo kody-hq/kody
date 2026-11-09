@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { useEffect, useRef, useId } from 'react'
+import { ModalDialog } from '../components/modal-dialog.tsx'
+import { useEffect, useState, useId } from 'react'
 import { type CSSObject } from '@emotion/react'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
@@ -13,7 +14,6 @@ import {
 import {
 	colors,
 	radius,
-	shadows,
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
@@ -39,13 +39,13 @@ export function PackageSecurityAuditField({
 	packageName: string
 	hasPausedPublish: boolean
 }) {
-	const dialog = useRef<HTMLDialogElement>(null)
+	const [open, setOpen] = useState(false)
 	const dialogTitleId = useId()
 	function openDialog() {
-		if (dialog.current && !dialog.current.open) dialog.current.showModal()
+		setOpen(true)
 	}
 	function closeDialog() {
-		dialog.current?.close()
+		setOpen(false)
 	}
 	useEffect(() => {
 		if (
@@ -113,19 +113,18 @@ export function PackageSecurityAuditField({
 					? 'Informational only. It covers this published version; a new publish or capability change needs a new audit.'
 					: 'Informational only. Have your agent review this version before you approve. It never approves anything for you.'}
 			</p>
-			{audit.status === 'unpublished' ? null : (
-				<dialog
-					aria-labelledby={dialogTitleId}
-					data-testid="package-security-audit-dialog"
-					css={dialogCss}
-					ref={dialog}
-					onCancel={(event) => {
-						event.preventDefault()
-						closeDialog()
-					}}
-					onClick={(event) => {
-						if (event.target === event.currentTarget) closeDialog()
-					}}
+			{open && audit.status !== 'unpublished' && (
+				<ModalDialog
+					label={
+						audit.status === 'not_audited'
+							? 'Ask your agent for a security audit'
+							: 'Security audit summary'
+					}
+					testId="package-security-audit-dialog"
+					width={640}
+					flush
+					dismissOnOutside
+					onClose={closeDialog}
 				>
 					<div css={dialogBodyCss}>
 						{audit.status === 'not_audited' ? (
@@ -194,7 +193,7 @@ export function PackageSecurityAuditField({
 							</>
 						)}
 					</div>
-				</dialog>
+				</ModalDialog>
 			)}
 		</section>
 	)
@@ -274,20 +273,6 @@ const concernsPillCss: CSSObject = {
 	...communityStatusPillBoxCss,
 	color: colors.warningText,
 	backgroundColor: 'color-mix(in srgb, var(--color-warning) 18%, transparent)',
-}
-
-const dialogCss: CSSObject = {
-	width: 'min(40rem, calc(100vw - 2rem))',
-	maxWidth: '40rem',
-	padding: 0,
-	border: `1px solid ${colors.border}`,
-	borderRadius: radius.lg,
-	boxShadow: shadows.md,
-	backgroundColor: colors.surface,
-	color: colors.text,
-	'&::backdrop': {
-		backgroundColor: 'oklch(0 0 0 / 0.45)',
-	},
 }
 
 const dialogBodyCss: CSSObject = {

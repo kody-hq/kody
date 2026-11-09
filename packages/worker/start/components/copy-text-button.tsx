@@ -1,7 +1,14 @@
 /** @jsxImportSource @emotion/react */
 import { renderIcon } from './icon.tsx'
 import { type CSSObject } from '@emotion/react'
-import { useEffect, useId, useState, useRef, type ReactNode } from 'react'
+import {
+	useEffect,
+	useId,
+	useState,
+	useRef,
+	type ReactNode,
+	type ReactElement,
+} from 'react'
 import { writeClipboardText } from '#client/clipboard.ts'
 import {
 	getChipButtonCss,
@@ -38,6 +45,8 @@ type CopyTextButtonProps = {
 	 * "Copy" entries says nothing about which id each one takes.
 	 */
 	ariaLabel?: string
+	title?: string
+	wrapButton?: (button: ReactElement) => ReactElement
 	/**
 	 * Onboarding connect only: copying this command is a deliberate connect
 	 * action, so the wizard may start waiting on the grant.
@@ -151,7 +160,7 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 		)
 	}
 
-	return (
+	const button = (
 		<button
 			type="button"
 			className={props.class}
@@ -160,7 +169,10 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 			// button's own name: `aria-label` overrides the label text, so a named
 			// button would keep reading "Copy package id" after it had copied.
 			aria-describedby={`${id}-copy-status`}
-			title={props.iconOnly ? (props.ariaLabel ?? 'Copy') : undefined}
+			title={
+				props.title ??
+				(props.iconOnly ? (props.ariaLabel ?? 'Copy') : undefined)
+			}
 			css={
 				props.iconOnly
 					? {
@@ -197,4 +209,5 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 			</span>
 		</button>
 	)
+	return props.wrapButton ? props.wrapButton(button) : button
 }

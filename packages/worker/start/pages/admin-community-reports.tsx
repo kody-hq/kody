@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import {
 	dismissAdminCommunityReport,
 	delistAdminCommunityReport,
@@ -157,9 +158,7 @@ export function AdminCommunityReportsPage({
 			/>
 
 			{status === 'loading' ? (
-				<p css={{ color: colors.textMuted, margin: 0 }}>
-					Loading community reports…
-				</p>
+				<LoadingIndicator label="Loading community reports…" />
 			) : null}
 			{message ? (
 				<AccountManagementMessage tone={status === 'error' ? 'error' : 'info'}>

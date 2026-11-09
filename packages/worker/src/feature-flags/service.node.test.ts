@@ -312,6 +312,7 @@ function createFeatureFlagsTestDb(
 }
 
 const registryKeys = [
+	'files-workspace',
 	'demo-indicator',
 	'mcp-skills-extension',
 	'mcp-events-extension',

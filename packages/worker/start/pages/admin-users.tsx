@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { isAdminUserVerificationFilter } from '#universal/email-verification-delivery.ts'
 import {
@@ -558,7 +559,11 @@ export function AdminUsersPage(props: {
 								onClick={() => void loadMoreUsers()}
 								css={{ ...secondaryButtonCss, width: '100%' }}
 							>
-								{isLoadingMore ? 'Loading more…' : 'Load more'}
+								{isLoadingMore ? (
+									<LoadingIndicator inline label="Loading more…" />
+								) : (
+									'Load more'
+								)}
 							</button>
 						</div>
 					) : null

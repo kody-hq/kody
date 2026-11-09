@@ -19,6 +19,7 @@ export type PageNavigation = {
 		| 'execution-contexts'
 		| 'experiments'
 		| 'feature-flags'
+		| 'files'
 		| 'follows'
 		| 'grants'
 		| 'insights'

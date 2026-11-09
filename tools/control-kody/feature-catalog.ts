@@ -192,6 +192,21 @@ export const featureCatalog: ReadonlyArray<Feature> = [
 		],
 	},
 	{
+		id: 'files',
+		title: 'Files',
+		file: 'files.md',
+		prefixes: [
+			'/@{$orgSlug}/-/files',
+			'/files/invites',
+			'/html-preview',
+			'/file-assets',
+			'/file-session',
+			'/shared-files',
+			'/shared-file-assets',
+			'/office-preview',
+		],
+	},
+	{
 		id: 'profiles',
 		title: 'Agent profiles',
 		file: 'profiles.md',

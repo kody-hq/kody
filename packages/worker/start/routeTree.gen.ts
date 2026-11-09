@@ -89,6 +89,7 @@ import { Route as FeaturesTriggersRouteImport } from './routes/features_.trigger
 import { Route as ForBusinessRouteImport } from './routes/for.business'
 import { Route as GuidesSplatRouteImport } from './routes/guides_.$'
 import { Route as HealthComponentsRouteImport } from './routes/health_.components'
+import { Route as HtmlPreviewOrgSlugRouteImport } from './routes/html-preview_.$orgSlug'
 import { Route as IntegrationsClaudeRouteImport } from './routes/integrations_.claude'
 import { Route as IntegrationsGmailRouteImport } from './routes/integrations_.gmail'
 import { Route as IntegrationsSlackRouteImport } from './routes/integrations_.slack'
@@ -161,10 +162,14 @@ import { Route as AuthProviderCallbackRouteImport } from './routes/auth_.$provid
 import { Route as BlogSlugOgDotpngRouteImport } from './routes/blog_.$slug_.og[.]png'
 import { Route as CommunityListingIdOgDotpngRouteImport } from './routes/community_.$listingId_.og[.]png'
 import { Route as DocsSlugOgDotpngRouteImport } from './routes/docs_.$slug_.og[.]png'
+import { Route as FileAssetsOrgSlugFileIdRouteImport } from './routes/file-assets_.$orgSlug.$fileId'
+import { Route as FileSessionOrgSlugFileIdRouteImport } from './routes/file-session_.$orgSlug.$fileId'
+import { Route as FilesInvitesTokenRouteImport } from './routes/files.invites.$token'
 import { Route as IntegrationsLogosIntegrationSlugRouteImport } from './routes/integrations_.logos_.$integrationSlug'
 import { Route as IntegrationsProviderMarksSlugRouteImport } from './routes/integrations_.provider-marks_.$slug'
 import { Route as OauthPackageAppAuthorizeRouteImport } from './routes/oauth.package-app.authorize'
 import { Route as OauthPackageAppDeviceRouteImport } from './routes/oauth.package-app.device'
+import { Route as OfficePreviewOrgSlugKindRouteImport } from './routes/office-preview_.$orgSlug.$kind'
 import { Route as OnboardingStep1AgentRouteImport } from './routes/onboarding.step-1_.$agent'
 import { Route as OnboardingStep2ServiceRouteImport } from './routes/onboarding.step-2_.$service'
 import { Route as OnboardingStep3AgentRouteImport } from './routes/onboarding.step-3_.$agent'
@@ -181,6 +186,7 @@ import { Route as AppAtChar123orgSlugChar125CredentialsRouteImport } from './rou
 import { Route as AppAtChar123orgSlugChar125CreditsRouteImport } from './routes/_app.@{$orgSlug}_.-.credits'
 import { Route as AppAtChar123orgSlugChar125EmailRouteImport } from './routes/_app.@{$orgSlug}_.-.email'
 import { Route as AppAtChar123orgSlugChar125ExecutionContextsRouteImport } from './routes/_app.@{$orgSlug}_.-.execution-contexts'
+import { Route as AppAtChar123orgSlugChar125FilesRouteImport } from './routes/_app.@{$orgSlug}_.-.files'
 import { Route as AppAtChar123orgSlugChar125FollowsRouteImport } from './routes/_app.@{$orgSlug}_.-.follows'
 import { Route as AppAtChar123orgSlugChar125GrantsRouteImport } from './routes/_app.@{$orgSlug}_.-.grants'
 import { Route as AppAtChar123orgSlugChar125IntegrationsRouteImport } from './routes/_app.@{$orgSlug}_.-.integrations'
@@ -244,6 +250,7 @@ import { Route as CommunityListingIdIconIconCommitRouteImport } from './routes/c
 import { Route as CommunityListingIdRawSplatRouteImport } from './routes/community_.$listingId_.raw_.$'
 import { Route as OrgsOrgSlugAvatarFileRouteImport } from './routes/orgs_.$orgSlug_.avatar_.$file'
 import { Route as ProfilesUsernameAvatarFileRouteImport } from './routes/profiles_.$username_.avatar_.$file'
+import { Route as SharedFilesOrgSlugRootIdTokenRouteImport } from './routes/shared-files.$orgSlug.$rootId.$token'
 import { Route as AtChar123usernameChar125KodyIdRawRefSplatRouteImport } from './routes/@{$username}_.$kodyId_.raw_.$ref_.$'
 import { Route as AtChar123usernameChar125WebhooksPackageKodyIdWebhookNameUrlSecretRouteImport } from './routes/@{$username}_.webhooks_.$packageKodyId_.$webhookName_.$urlSecret'
 import { Route as AppAtChar123orgSlugChar125ActivityRunIdRouteImport } from './routes/_app.@{$orgSlug}_.-.activity_.$runId'
@@ -274,6 +281,7 @@ import { Route as AppAccountPackagesPackageIdApproveCapabilitiesRouteImport } fr
 import { Route as AppAccountPackagesPackageIdApprovePublishRouteImport } from './routes/_app.account_.packages.$packageId_.approve-publish'
 import { Route as AppAccountSecretsUserSecretNameRouteImport } from './routes/_app.account_.secrets_.user.$secretName'
 import { Route as AccountReposRepoIdIconIconCommitRouteImport } from './routes/account_.repos_.$repoId_.icon_.$iconCommit'
+import { Route as SharedFileAssetsOrgSlugRootIdTokenItemIdRouteImport } from './routes/shared-file-assets_.$orgSlug.$rootId.$token.$itemId'
 import { Route as AppAtChar123orgSlugChar125AgentsNewAgentRouteImport } from './routes/_app.@{$orgSlug}_.-.agents_.new_.$agent'
 import { Route as AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRouteImport } from './routes/_app.@{$orgSlug}_.-.integrations_.apps.$appSlug'
 import { Route as AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRouteImport } from './routes/_app.@{$orgSlug}_.-.mcp-servers_.$serverId_.authorize'
@@ -691,6 +699,11 @@ const HealthComponentsRoute = HealthComponentsRouteImport.update({
   path: '/health/components',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HtmlPreviewOrgSlugRoute = HtmlPreviewOrgSlugRouteImport.update({
+  id: '/html-preview_/$orgSlug',
+  path: '/html-preview/$orgSlug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IntegrationsClaudeRoute = IntegrationsClaudeRouteImport.update({
   id: '/integrations_/claude',
   path: '/integrations/claude',
@@ -1068,6 +1081,22 @@ const DocsSlugOgDotpngRoute = DocsSlugOgDotpngRouteImport.update({
   path: '/docs/$slug/og.png',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FileAssetsOrgSlugFileIdRoute = FileAssetsOrgSlugFileIdRouteImport.update({
+  id: '/file-assets_/$orgSlug/$fileId',
+  path: '/file-assets/$orgSlug/$fileId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FileSessionOrgSlugFileIdRoute =
+  FileSessionOrgSlugFileIdRouteImport.update({
+    id: '/file-session_/$orgSlug/$fileId',
+    path: '/file-session/$orgSlug/$fileId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const FilesInvitesTokenRoute = FilesInvitesTokenRouteImport.update({
+  id: '/files/invites/$token',
+  path: '/files/invites/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IntegrationsLogosIntegrationSlugRoute =
   IntegrationsLogosIntegrationSlugRouteImport.update({
     id: '/integrations_/logos_/$integrationSlug',
@@ -1091,6 +1120,12 @@ const OauthPackageAppDeviceRoute = OauthPackageAppDeviceRouteImport.update({
   path: '/oauth/package-app/device',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OfficePreviewOrgSlugKindRoute =
+  OfficePreviewOrgSlugKindRouteImport.update({
+    id: '/office-preview_/$orgSlug/$kind',
+    path: '/office-preview/$orgSlug/$kind',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const OnboardingStep1AgentRoute = OnboardingStep1AgentRouteImport.update({
   id: '/step-1_/$agent',
   path: '/step-1/$agent',
@@ -1182,6 +1217,12 @@ const AppAtChar123orgSlugChar125ExecutionContextsRoute =
   AppAtChar123orgSlugChar125ExecutionContextsRouteImport.update({
     id: '/@{$orgSlug}_/-/execution-contexts',
     path: '/@{$orgSlug}/-/execution-contexts',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125FilesRoute =
+  AppAtChar123orgSlugChar125FilesRouteImport.update({
+    id: '/@{$orgSlug}_/-/files',
+    path: '/@{$orgSlug}/-/files',
     getParentRoute: () => AppRoute,
   } as any)
 const AppAtChar123orgSlugChar125FollowsRoute =
@@ -1553,6 +1594,12 @@ const ProfilesUsernameAvatarFileRoute =
     path: '/profiles/$username/avatar/$file',
     getParentRoute: () => rootRouteImport,
   } as any)
+const SharedFilesOrgSlugRootIdTokenRoute =
+  SharedFilesOrgSlugRootIdTokenRouteImport.update({
+    id: '/shared-files/$orgSlug/$rootId/$token',
+    path: '/shared-files/$orgSlug/$rootId/$token',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AtChar123usernameChar125KodyIdRawRefSplatRoute =
   AtChar123usernameChar125KodyIdRawRefSplatRouteImport.update({
     id: '/@{$username}_/$kodyId_/raw_/$ref_/$',
@@ -1735,6 +1782,12 @@ const AccountReposRepoIdIconIconCommitRoute =
     path: '/account/repos/$repoId/icon/$iconCommit',
     getParentRoute: () => rootRouteImport,
   } as any)
+const SharedFileAssetsOrgSlugRootIdTokenItemIdRoute =
+  SharedFileAssetsOrgSlugRootIdTokenItemIdRouteImport.update({
+    id: '/shared-file-assets_/$orgSlug/$rootId/$token/$itemId',
+    path: '/shared-file-assets/$orgSlug/$rootId/$token/$itemId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AppAtChar123orgSlugChar125AgentsNewAgentRoute =
   AppAtChar123orgSlugChar125AgentsNewAgentRouteImport.update({
     id: '/@{$orgSlug}_/-/agents_/new_/$agent',
@@ -1878,6 +1931,7 @@ export interface FileRoutesByFullPath {
   '/for/business': typeof ForBusinessRoute
   '/guides/$': typeof GuidesSplatRoute
   '/health/components': typeof HealthComponentsRoute
+  '/html-preview/$orgSlug': typeof HtmlPreviewOrgSlugRoute
   '/integrations/claude': typeof IntegrationsClaudeRoute
   '/integrations/gmail': typeof IntegrationsGmailRoute
   '/integrations/slack': typeof IntegrationsSlackRoute
@@ -1951,10 +2005,14 @@ export interface FileRoutesByFullPath {
   '/blog/$slug/og.png': typeof BlogSlugOgDotpngRoute
   '/community/$listingId/og.png': typeof CommunityListingIdOgDotpngRoute
   '/docs/$slug/og.png': typeof DocsSlugOgDotpngRoute
+  '/file-assets/$orgSlug/$fileId': typeof FileAssetsOrgSlugFileIdRoute
+  '/file-session/$orgSlug/$fileId': typeof FileSessionOrgSlugFileIdRoute
+  '/files/invites/$token': typeof FilesInvitesTokenRoute
   '/integrations/logos/$integrationSlug': typeof IntegrationsLogosIntegrationSlugRoute
   '/integrations/provider-marks/$slug': typeof IntegrationsProviderMarksSlugRoute
   '/oauth/package-app/authorize': typeof OauthPackageAppAuthorizeRoute
   '/oauth/package-app/device': typeof OauthPackageAppDeviceRoute
+  '/office-preview/$orgSlug/$kind': typeof OfficePreviewOrgSlugKindRoute
   '/onboarding/step-1/$agent': typeof OnboardingStep1AgentRoute
   '/onboarding/step-2/$service': typeof OnboardingStep2ServiceRoute
   '/onboarding/step-3/$agent': typeof OnboardingStep3AgentRoute
@@ -1972,6 +2030,7 @@ export interface FileRoutesByFullPath {
   '/@{$orgSlug}/-/credits': typeof AppAtChar123orgSlugChar125CreditsRoute
   '/@{$orgSlug}/-/email': typeof AppAtChar123orgSlugChar125EmailRoute
   '/@{$orgSlug}/-/execution-contexts': typeof AppAtChar123orgSlugChar125ExecutionContextsRoute
+  '/@{$orgSlug}/-/files': typeof AppAtChar123orgSlugChar125FilesRoute
   '/@{$orgSlug}/-/follows': typeof AppAtChar123orgSlugChar125FollowsRoute
   '/@{$orgSlug}/-/grants': typeof AppAtChar123orgSlugChar125GrantsRoute
   '/@{$orgSlug}/-/integrations': typeof AppAtChar123orgSlugChar125IntegrationsRoute
@@ -2034,6 +2093,7 @@ export interface FileRoutesByFullPath {
   '/community/$listingId/raw/$': typeof CommunityListingIdRawSplatRoute
   '/orgs/$orgSlug/avatar/$file': typeof OrgsOrgSlugAvatarFileRoute
   '/profiles/$username/avatar/$file': typeof ProfilesUsernameAvatarFileRoute
+  '/shared-files/$orgSlug/$rootId/$token': typeof SharedFilesOrgSlugRootIdTokenRoute
   '/account/packages/': typeof AppAccountPackagesIndexRoute
   '/@{$username}/$kodyId/raw/$ref/$': typeof AtChar123usernameChar125KodyIdRawRefSplatRoute
   '/@{$username}/webhooks/$packageKodyId/$webhookName/$urlSecret': typeof AtChar123usernameChar125WebhooksPackageKodyIdWebhookNameUrlSecretRoute
@@ -2065,6 +2125,7 @@ export interface FileRoutesByFullPath {
   '/account/packages/$packageId/approve-publish': typeof AppAccountPackagesPackageIdApprovePublishRoute
   '/account/secrets/user/$secretName': typeof AppAccountSecretsUserSecretNameRoute
   '/account/repos/$repoId/icon/$iconCommit': typeof AccountReposRepoIdIconIconCommitRoute
+  '/shared-file-assets/$orgSlug/$rootId/$token/$itemId': typeof SharedFileAssetsOrgSlugRootIdTokenItemIdRoute
   '/@{$orgSlug}/-/agents/new/$agent': typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
   '/@{$orgSlug}/-/integrations/apps/$appSlug': typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
   '/@{$orgSlug}/-/mcp-servers/$serverId/authorize': typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
@@ -2153,6 +2214,7 @@ export interface FileRoutesByTo {
   '/for/business': typeof ForBusinessRoute
   '/guides/$': typeof GuidesSplatRoute
   '/health/components': typeof HealthComponentsRoute
+  '/html-preview/$orgSlug': typeof HtmlPreviewOrgSlugRoute
   '/integrations/claude': typeof IntegrationsClaudeRoute
   '/integrations/gmail': typeof IntegrationsGmailRoute
   '/integrations/slack': typeof IntegrationsSlackRoute
@@ -2226,10 +2288,14 @@ export interface FileRoutesByTo {
   '/blog/$slug/og.png': typeof BlogSlugOgDotpngRoute
   '/community/$listingId/og.png': typeof CommunityListingIdOgDotpngRoute
   '/docs/$slug/og.png': typeof DocsSlugOgDotpngRoute
+  '/file-assets/$orgSlug/$fileId': typeof FileAssetsOrgSlugFileIdRoute
+  '/file-session/$orgSlug/$fileId': typeof FileSessionOrgSlugFileIdRoute
+  '/files/invites/$token': typeof FilesInvitesTokenRoute
   '/integrations/logos/$integrationSlug': typeof IntegrationsLogosIntegrationSlugRoute
   '/integrations/provider-marks/$slug': typeof IntegrationsProviderMarksSlugRoute
   '/oauth/package-app/authorize': typeof OauthPackageAppAuthorizeRoute
   '/oauth/package-app/device': typeof OauthPackageAppDeviceRoute
+  '/office-preview/$orgSlug/$kind': typeof OfficePreviewOrgSlugKindRoute
   '/onboarding/step-1/$agent': typeof OnboardingStep1AgentRoute
   '/onboarding/step-2/$service': typeof OnboardingStep2ServiceRoute
   '/onboarding/step-3/$agent': typeof OnboardingStep3AgentRoute
@@ -2247,6 +2313,7 @@ export interface FileRoutesByTo {
   '/@{$orgSlug}/-/credits': typeof AppAtChar123orgSlugChar125CreditsRoute
   '/@{$orgSlug}/-/email': typeof AppAtChar123orgSlugChar125EmailRoute
   '/@{$orgSlug}/-/execution-contexts': typeof AppAtChar123orgSlugChar125ExecutionContextsRoute
+  '/@{$orgSlug}/-/files': typeof AppAtChar123orgSlugChar125FilesRoute
   '/@{$orgSlug}/-/follows': typeof AppAtChar123orgSlugChar125FollowsRoute
   '/@{$orgSlug}/-/grants': typeof AppAtChar123orgSlugChar125GrantsRoute
   '/@{$orgSlug}/-/integrations': typeof AppAtChar123orgSlugChar125IntegrationsRoute
@@ -2309,6 +2376,7 @@ export interface FileRoutesByTo {
   '/community/$listingId/raw/$': typeof CommunityListingIdRawSplatRoute
   '/orgs/$orgSlug/avatar/$file': typeof OrgsOrgSlugAvatarFileRoute
   '/profiles/$username/avatar/$file': typeof ProfilesUsernameAvatarFileRoute
+  '/shared-files/$orgSlug/$rootId/$token': typeof SharedFilesOrgSlugRootIdTokenRoute
   '/account/packages': typeof AppAccountPackagesIndexRoute
   '/@{$username}/$kodyId/raw/$ref/$': typeof AtChar123usernameChar125KodyIdRawRefSplatRoute
   '/@{$username}/webhooks/$packageKodyId/$webhookName/$urlSecret': typeof AtChar123usernameChar125WebhooksPackageKodyIdWebhookNameUrlSecretRoute
@@ -2340,6 +2408,7 @@ export interface FileRoutesByTo {
   '/account/packages/$packageId/approve-publish': typeof AppAccountPackagesPackageIdApprovePublishRoute
   '/account/secrets/user/$secretName': typeof AppAccountSecretsUserSecretNameRoute
   '/account/repos/$repoId/icon/$iconCommit': typeof AccountReposRepoIdIconIconCommitRoute
+  '/shared-file-assets/$orgSlug/$rootId/$token/$itemId': typeof SharedFileAssetsOrgSlugRootIdTokenItemIdRoute
   '/@{$orgSlug}/-/agents/new/$agent': typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
   '/@{$orgSlug}/-/integrations/apps/$appSlug': typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
   '/@{$orgSlug}/-/mcp-servers/$serverId/authorize': typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
@@ -2431,6 +2500,7 @@ export interface FileRoutesById {
   '/for/business': typeof ForBusinessRoute
   '/guides_/$': typeof GuidesSplatRoute
   '/health_/components': typeof HealthComponentsRoute
+  '/html-preview_/$orgSlug': typeof HtmlPreviewOrgSlugRoute
   '/integrations_/claude': typeof IntegrationsClaudeRoute
   '/integrations_/gmail': typeof IntegrationsGmailRoute
   '/integrations_/slack': typeof IntegrationsSlackRoute
@@ -2504,10 +2574,14 @@ export interface FileRoutesById {
   '/blog_/$slug_/og.png': typeof BlogSlugOgDotpngRoute
   '/community_/$listingId_/og.png': typeof CommunityListingIdOgDotpngRoute
   '/docs_/$slug_/og.png': typeof DocsSlugOgDotpngRoute
+  '/file-assets_/$orgSlug/$fileId': typeof FileAssetsOrgSlugFileIdRoute
+  '/file-session_/$orgSlug/$fileId': typeof FileSessionOrgSlugFileIdRoute
+  '/files/invites/$token': typeof FilesInvitesTokenRoute
   '/integrations_/logos_/$integrationSlug': typeof IntegrationsLogosIntegrationSlugRoute
   '/integrations_/provider-marks_/$slug': typeof IntegrationsProviderMarksSlugRoute
   '/oauth/package-app/authorize': typeof OauthPackageAppAuthorizeRoute
   '/oauth/package-app/device': typeof OauthPackageAppDeviceRoute
+  '/office-preview_/$orgSlug/$kind': typeof OfficePreviewOrgSlugKindRoute
   '/onboarding/step-1_/$agent': typeof OnboardingStep1AgentRoute
   '/onboarding/step-2_/$service': typeof OnboardingStep2ServiceRoute
   '/onboarding/step-3_/$agent': typeof OnboardingStep3AgentRoute
@@ -2525,6 +2599,7 @@ export interface FileRoutesById {
   '/_app/@{$orgSlug}_/-/credits': typeof AppAtChar123orgSlugChar125CreditsRoute
   '/_app/@{$orgSlug}_/-/email': typeof AppAtChar123orgSlugChar125EmailRoute
   '/_app/@{$orgSlug}_/-/execution-contexts': typeof AppAtChar123orgSlugChar125ExecutionContextsRoute
+  '/_app/@{$orgSlug}_/-/files': typeof AppAtChar123orgSlugChar125FilesRoute
   '/_app/@{$orgSlug}_/-/follows': typeof AppAtChar123orgSlugChar125FollowsRoute
   '/_app/@{$orgSlug}_/-/grants': typeof AppAtChar123orgSlugChar125GrantsRoute
   '/_app/@{$orgSlug}_/-/integrations': typeof AppAtChar123orgSlugChar125IntegrationsRoute
@@ -2587,6 +2662,7 @@ export interface FileRoutesById {
   '/community_/$listingId_/raw_/$': typeof CommunityListingIdRawSplatRoute
   '/orgs_/$orgSlug_/avatar_/$file': typeof OrgsOrgSlugAvatarFileRoute
   '/profiles_/$username_/avatar_/$file': typeof ProfilesUsernameAvatarFileRoute
+  '/shared-files/$orgSlug/$rootId/$token': typeof SharedFilesOrgSlugRootIdTokenRoute
   '/_app/account_/packages/': typeof AppAccountPackagesIndexRoute
   '/@{$username}_/$kodyId_/raw_/$ref_/$': typeof AtChar123usernameChar125KodyIdRawRefSplatRoute
   '/@{$username}_/webhooks_/$packageKodyId_/$webhookName_/$urlSecret': typeof AtChar123usernameChar125WebhooksPackageKodyIdWebhookNameUrlSecretRoute
@@ -2618,6 +2694,7 @@ export interface FileRoutesById {
   '/_app/account_/packages/$packageId_/approve-publish': typeof AppAccountPackagesPackageIdApprovePublishRoute
   '/_app/account_/secrets_/user/$secretName': typeof AppAccountSecretsUserSecretNameRoute
   '/account_/repos_/$repoId_/icon_/$iconCommit': typeof AccountReposRepoIdIconIconCommitRoute
+  '/shared-file-assets_/$orgSlug/$rootId/$token/$itemId': typeof SharedFileAssetsOrgSlugRootIdTokenItemIdRoute
   '/_app/@{$orgSlug}_/-/agents_/new_/$agent': typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
   '/_app/@{$orgSlug}_/-/integrations_/apps/$appSlug': typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
   '/_app/@{$orgSlug}_/-/mcp-servers_/$serverId_/authorize': typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
@@ -2709,6 +2786,7 @@ export interface FileRouteTypes {
     | '/for/business'
     | '/guides/$'
     | '/health/components'
+    | '/html-preview/$orgSlug'
     | '/integrations/claude'
     | '/integrations/gmail'
     | '/integrations/slack'
@@ -2782,10 +2860,14 @@ export interface FileRouteTypes {
     | '/blog/$slug/og.png'
     | '/community/$listingId/og.png'
     | '/docs/$slug/og.png'
+    | '/file-assets/$orgSlug/$fileId'
+    | '/file-session/$orgSlug/$fileId'
+    | '/files/invites/$token'
     | '/integrations/logos/$integrationSlug'
     | '/integrations/provider-marks/$slug'
     | '/oauth/package-app/authorize'
     | '/oauth/package-app/device'
+    | '/office-preview/$orgSlug/$kind'
     | '/onboarding/step-1/$agent'
     | '/onboarding/step-2/$service'
     | '/onboarding/step-3/$agent'
@@ -2803,6 +2885,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/credits'
     | '/@{$orgSlug}/-/email'
     | '/@{$orgSlug}/-/execution-contexts'
+    | '/@{$orgSlug}/-/files'
     | '/@{$orgSlug}/-/follows'
     | '/@{$orgSlug}/-/grants'
     | '/@{$orgSlug}/-/integrations'
@@ -2865,6 +2948,7 @@ export interface FileRouteTypes {
     | '/community/$listingId/raw/$'
     | '/orgs/$orgSlug/avatar/$file'
     | '/profiles/$username/avatar/$file'
+    | '/shared-files/$orgSlug/$rootId/$token'
     | '/account/packages/'
     | '/@{$username}/$kodyId/raw/$ref/$'
     | '/@{$username}/webhooks/$packageKodyId/$webhookName/$urlSecret'
@@ -2896,6 +2980,7 @@ export interface FileRouteTypes {
     | '/account/packages/$packageId/approve-publish'
     | '/account/secrets/user/$secretName'
     | '/account/repos/$repoId/icon/$iconCommit'
+    | '/shared-file-assets/$orgSlug/$rootId/$token/$itemId'
     | '/@{$orgSlug}/-/agents/new/$agent'
     | '/@{$orgSlug}/-/integrations/apps/$appSlug'
     | '/@{$orgSlug}/-/mcp-servers/$serverId/authorize'
@@ -2984,6 +3069,7 @@ export interface FileRouteTypes {
     | '/for/business'
     | '/guides/$'
     | '/health/components'
+    | '/html-preview/$orgSlug'
     | '/integrations/claude'
     | '/integrations/gmail'
     | '/integrations/slack'
@@ -3057,10 +3143,14 @@ export interface FileRouteTypes {
     | '/blog/$slug/og.png'
     | '/community/$listingId/og.png'
     | '/docs/$slug/og.png'
+    | '/file-assets/$orgSlug/$fileId'
+    | '/file-session/$orgSlug/$fileId'
+    | '/files/invites/$token'
     | '/integrations/logos/$integrationSlug'
     | '/integrations/provider-marks/$slug'
     | '/oauth/package-app/authorize'
     | '/oauth/package-app/device'
+    | '/office-preview/$orgSlug/$kind'
     | '/onboarding/step-1/$agent'
     | '/onboarding/step-2/$service'
     | '/onboarding/step-3/$agent'
@@ -3078,6 +3168,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/credits'
     | '/@{$orgSlug}/-/email'
     | '/@{$orgSlug}/-/execution-contexts'
+    | '/@{$orgSlug}/-/files'
     | '/@{$orgSlug}/-/follows'
     | '/@{$orgSlug}/-/grants'
     | '/@{$orgSlug}/-/integrations'
@@ -3140,6 +3231,7 @@ export interface FileRouteTypes {
     | '/community/$listingId/raw/$'
     | '/orgs/$orgSlug/avatar/$file'
     | '/profiles/$username/avatar/$file'
+    | '/shared-files/$orgSlug/$rootId/$token'
     | '/account/packages'
     | '/@{$username}/$kodyId/raw/$ref/$'
     | '/@{$username}/webhooks/$packageKodyId/$webhookName/$urlSecret'
@@ -3171,6 +3263,7 @@ export interface FileRouteTypes {
     | '/account/packages/$packageId/approve-publish'
     | '/account/secrets/user/$secretName'
     | '/account/repos/$repoId/icon/$iconCommit'
+    | '/shared-file-assets/$orgSlug/$rootId/$token/$itemId'
     | '/@{$orgSlug}/-/agents/new/$agent'
     | '/@{$orgSlug}/-/integrations/apps/$appSlug'
     | '/@{$orgSlug}/-/mcp-servers/$serverId/authorize'
@@ -3261,6 +3354,7 @@ export interface FileRouteTypes {
     | '/for/business'
     | '/guides_/$'
     | '/health_/components'
+    | '/html-preview_/$orgSlug'
     | '/integrations_/claude'
     | '/integrations_/gmail'
     | '/integrations_/slack'
@@ -3334,10 +3428,14 @@ export interface FileRouteTypes {
     | '/blog_/$slug_/og.png'
     | '/community_/$listingId_/og.png'
     | '/docs_/$slug_/og.png'
+    | '/file-assets_/$orgSlug/$fileId'
+    | '/file-session_/$orgSlug/$fileId'
+    | '/files/invites/$token'
     | '/integrations_/logos_/$integrationSlug'
     | '/integrations_/provider-marks_/$slug'
     | '/oauth/package-app/authorize'
     | '/oauth/package-app/device'
+    | '/office-preview_/$orgSlug/$kind'
     | '/onboarding/step-1_/$agent'
     | '/onboarding/step-2_/$service'
     | '/onboarding/step-3_/$agent'
@@ -3355,6 +3453,7 @@ export interface FileRouteTypes {
     | '/_app/@{$orgSlug}_/-/credits'
     | '/_app/@{$orgSlug}_/-/email'
     | '/_app/@{$orgSlug}_/-/execution-contexts'
+    | '/_app/@{$orgSlug}_/-/files'
     | '/_app/@{$orgSlug}_/-/follows'
     | '/_app/@{$orgSlug}_/-/grants'
     | '/_app/@{$orgSlug}_/-/integrations'
@@ -3417,6 +3516,7 @@ export interface FileRouteTypes {
     | '/community_/$listingId_/raw_/$'
     | '/orgs_/$orgSlug_/avatar_/$file'
     | '/profiles_/$username_/avatar_/$file'
+    | '/shared-files/$orgSlug/$rootId/$token'
     | '/_app/account_/packages/'
     | '/@{$username}_/$kodyId_/raw_/$ref_/$'
     | '/@{$username}_/webhooks_/$packageKodyId_/$webhookName_/$urlSecret'
@@ -3448,6 +3548,7 @@ export interface FileRouteTypes {
     | '/_app/account_/packages/$packageId_/approve-publish'
     | '/_app/account_/secrets_/user/$secretName'
     | '/account_/repos_/$repoId_/icon_/$iconCommit'
+    | '/shared-file-assets_/$orgSlug/$rootId/$token/$itemId'
     | '/_app/@{$orgSlug}_/-/agents_/new_/$agent'
     | '/_app/@{$orgSlug}_/-/integrations_/apps/$appSlug'
     | '/_app/@{$orgSlug}_/-/mcp-servers_/$serverId_/authorize'
@@ -3537,6 +3638,7 @@ export interface RootRouteChildren {
   ForBusinessRoute: typeof ForBusinessRoute
   GuidesSplatRoute: typeof GuidesSplatRoute
   HealthComponentsRoute: typeof HealthComponentsRoute
+  HtmlPreviewOrgSlugRoute: typeof HtmlPreviewOrgSlugRoute
   IntegrationsClaudeRoute: typeof IntegrationsClaudeRoute
   IntegrationsGmailRoute: typeof IntegrationsGmailRoute
   IntegrationsSlackRoute: typeof IntegrationsSlackRoute
@@ -3565,10 +3667,14 @@ export interface RootRouteChildren {
   BlogSlugOgDotpngRoute: typeof BlogSlugOgDotpngRoute
   CommunityListingIdOgDotpngRoute: typeof CommunityListingIdOgDotpngRoute
   DocsSlugOgDotpngRoute: typeof DocsSlugOgDotpngRoute
+  FileAssetsOrgSlugFileIdRoute: typeof FileAssetsOrgSlugFileIdRoute
+  FileSessionOrgSlugFileIdRoute: typeof FileSessionOrgSlugFileIdRoute
+  FilesInvitesTokenRoute: typeof FilesInvitesTokenRoute
   IntegrationsLogosIntegrationSlugRoute: typeof IntegrationsLogosIntegrationSlugRoute
   IntegrationsProviderMarksSlugRoute: typeof IntegrationsProviderMarksSlugRoute
   OauthPackageAppAuthorizeRoute: typeof OauthPackageAppAuthorizeRoute
   OauthPackageAppDeviceRoute: typeof OauthPackageAppDeviceRoute
+  OfficePreviewOrgSlugKindRoute: typeof OfficePreviewOrgSlugKindRoute
   ProfilesUsernameOgDotpngRoute: typeof ProfilesUsernameOgDotpngRoute
   DotwellKnownAgentSkillsSkillIdSKILLDotmdRoute: typeof DotwellKnownAgentSkillsSkillIdSKILLDotmdRoute
   AtChar123orgSlugChar125ConnectionsSplatRoute: typeof AtChar123orgSlugChar125ConnectionsSplatRoute
@@ -3581,9 +3687,11 @@ export interface RootRouteChildren {
   CommunityListingIdRawSplatRoute: typeof CommunityListingIdRawSplatRoute
   OrgsOrgSlugAvatarFileRoute: typeof OrgsOrgSlugAvatarFileRoute
   ProfilesUsernameAvatarFileRoute: typeof ProfilesUsernameAvatarFileRoute
+  SharedFilesOrgSlugRootIdTokenRoute: typeof SharedFilesOrgSlugRootIdTokenRoute
   AtChar123usernameChar125KodyIdRawRefSplatRoute: typeof AtChar123usernameChar125KodyIdRawRefSplatRoute
   AtChar123usernameChar125WebhooksPackageKodyIdWebhookNameUrlSecretRoute: typeof AtChar123usernameChar125WebhooksPackageKodyIdWebhookNameUrlSecretRoute
   AccountReposRepoIdIconIconCommitRoute: typeof AccountReposRepoIdIconIconCommitRoute
+  SharedFileAssetsOrgSlugRootIdTokenItemIdRoute: typeof SharedFileAssetsOrgSlugRootIdTokenItemIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -4148,6 +4256,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HealthComponentsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/html-preview_/$orgSlug': {
+      id: '/html-preview_/$orgSlug'
+      path: '/html-preview/$orgSlug'
+      fullPath: '/html-preview/$orgSlug'
+      preLoaderRoute: typeof HtmlPreviewOrgSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/integrations_/claude': {
       id: '/integrations_/claude'
       path: '/integrations/claude'
@@ -4652,6 +4767,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocsSlugOgDotpngRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/file-assets_/$orgSlug/$fileId': {
+      id: '/file-assets_/$orgSlug/$fileId'
+      path: '/file-assets/$orgSlug/$fileId'
+      fullPath: '/file-assets/$orgSlug/$fileId'
+      preLoaderRoute: typeof FileAssetsOrgSlugFileIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/file-session_/$orgSlug/$fileId': {
+      id: '/file-session_/$orgSlug/$fileId'
+      path: '/file-session/$orgSlug/$fileId'
+      fullPath: '/file-session/$orgSlug/$fileId'
+      preLoaderRoute: typeof FileSessionOrgSlugFileIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/files/invites/$token': {
+      id: '/files/invites/$token'
+      path: '/files/invites/$token'
+      fullPath: '/files/invites/$token'
+      preLoaderRoute: typeof FilesInvitesTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/integrations_/logos_/$integrationSlug': {
       id: '/integrations_/logos_/$integrationSlug'
       path: '/integrations/logos/$integrationSlug'
@@ -4678,6 +4814,13 @@ declare module '@tanstack/react-router' {
       path: '/oauth/package-app/device'
       fullPath: '/oauth/package-app/device'
       preLoaderRoute: typeof OauthPackageAppDeviceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/office-preview_/$orgSlug/$kind': {
+      id: '/office-preview_/$orgSlug/$kind'
+      path: '/office-preview/$orgSlug/$kind'
+      fullPath: '/office-preview/$orgSlug/$kind'
+      preLoaderRoute: typeof OfficePreviewOrgSlugKindRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/onboarding/step-1_/$agent': {
@@ -4790,6 +4933,13 @@ declare module '@tanstack/react-router' {
       path: '/@{$orgSlug}/-/execution-contexts'
       fullPath: '/@{$orgSlug}/-/execution-contexts'
       preLoaderRoute: typeof AppAtChar123orgSlugChar125ExecutionContextsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/files': {
+      id: '/_app/@{$orgSlug}_/-/files'
+      path: '/@{$orgSlug}/-/files'
+      fullPath: '/@{$orgSlug}/-/files'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125FilesRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/@{$orgSlug}_/-/follows': {
@@ -5233,6 +5383,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProfilesUsernameAvatarFileRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/shared-files/$orgSlug/$rootId/$token': {
+      id: '/shared-files/$orgSlug/$rootId/$token'
+      path: '/shared-files/$orgSlug/$rootId/$token'
+      fullPath: '/shared-files/$orgSlug/$rootId/$token'
+      preLoaderRoute: typeof SharedFilesOrgSlugRootIdTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/@{$username}_/$kodyId_/raw_/$ref_/$': {
       id: '/@{$username}_/$kodyId_/raw_/$ref_/$'
       path: '/@{$username}/$kodyId/raw/$ref/$'
@@ -5443,6 +5600,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AccountReposRepoIdIconIconCommitRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/shared-file-assets_/$orgSlug/$rootId/$token/$itemId': {
+      id: '/shared-file-assets_/$orgSlug/$rootId/$token/$itemId'
+      path: '/shared-file-assets/$orgSlug/$rootId/$token/$itemId'
+      fullPath: '/shared-file-assets/$orgSlug/$rootId/$token/$itemId'
+      preLoaderRoute: typeof SharedFileAssetsOrgSlugRootIdTokenItemIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app/@{$orgSlug}_/-/agents_/new_/$agent': {
       id: '/_app/@{$orgSlug}_/-/agents_/new_/$agent'
       path: '/@{$orgSlug}/-/agents/new/$agent'
@@ -5584,6 +5748,7 @@ interface AppRouteChildren {
   AppAtChar123orgSlugChar125CreditsRoute: typeof AppAtChar123orgSlugChar125CreditsRoute
   AppAtChar123orgSlugChar125EmailRoute: typeof AppAtChar123orgSlugChar125EmailRoute
   AppAtChar123orgSlugChar125ExecutionContextsRoute: typeof AppAtChar123orgSlugChar125ExecutionContextsRoute
+  AppAtChar123orgSlugChar125FilesRoute: typeof AppAtChar123orgSlugChar125FilesRoute
   AppAtChar123orgSlugChar125FollowsRoute: typeof AppAtChar123orgSlugChar125FollowsRoute
   AppAtChar123orgSlugChar125GrantsRoute: typeof AppAtChar123orgSlugChar125GrantsRoute
   AppAtChar123orgSlugChar125IntegrationsRoute: typeof AppAtChar123orgSlugChar125IntegrationsRoute
@@ -5737,6 +5902,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAtChar123orgSlugChar125EmailRoute: AppAtChar123orgSlugChar125EmailRoute,
   AppAtChar123orgSlugChar125ExecutionContextsRoute:
     AppAtChar123orgSlugChar125ExecutionContextsRoute,
+  AppAtChar123orgSlugChar125FilesRoute: AppAtChar123orgSlugChar125FilesRoute,
   AppAtChar123orgSlugChar125FollowsRoute:
     AppAtChar123orgSlugChar125FollowsRoute,
   AppAtChar123orgSlugChar125GrantsRoute: AppAtChar123orgSlugChar125GrantsRoute,
@@ -6005,6 +6171,7 @@ const rootRouteChildren: RootRouteChildren = {
   ForBusinessRoute: ForBusinessRoute,
   GuidesSplatRoute: GuidesSplatRoute,
   HealthComponentsRoute: HealthComponentsRoute,
+  HtmlPreviewOrgSlugRoute: HtmlPreviewOrgSlugRoute,
   IntegrationsClaudeRoute: IntegrationsClaudeRoute,
   IntegrationsGmailRoute: IntegrationsGmailRoute,
   IntegrationsSlackRoute: IntegrationsSlackRoute,
@@ -6035,10 +6202,14 @@ const rootRouteChildren: RootRouteChildren = {
   BlogSlugOgDotpngRoute: BlogSlugOgDotpngRoute,
   CommunityListingIdOgDotpngRoute: CommunityListingIdOgDotpngRoute,
   DocsSlugOgDotpngRoute: DocsSlugOgDotpngRoute,
+  FileAssetsOrgSlugFileIdRoute: FileAssetsOrgSlugFileIdRoute,
+  FileSessionOrgSlugFileIdRoute: FileSessionOrgSlugFileIdRoute,
+  FilesInvitesTokenRoute: FilesInvitesTokenRoute,
   IntegrationsLogosIntegrationSlugRoute: IntegrationsLogosIntegrationSlugRoute,
   IntegrationsProviderMarksSlugRoute: IntegrationsProviderMarksSlugRoute,
   OauthPackageAppAuthorizeRoute: OauthPackageAppAuthorizeRoute,
   OauthPackageAppDeviceRoute: OauthPackageAppDeviceRoute,
+  OfficePreviewOrgSlugKindRoute: OfficePreviewOrgSlugKindRoute,
   ProfilesUsernameOgDotpngRoute: ProfilesUsernameOgDotpngRoute,
   DotwellKnownAgentSkillsSkillIdSKILLDotmdRoute:
     DotwellKnownAgentSkillsSkillIdSKILLDotmdRoute,
@@ -6055,11 +6226,14 @@ const rootRouteChildren: RootRouteChildren = {
   CommunityListingIdRawSplatRoute: CommunityListingIdRawSplatRoute,
   OrgsOrgSlugAvatarFileRoute: OrgsOrgSlugAvatarFileRoute,
   ProfilesUsernameAvatarFileRoute: ProfilesUsernameAvatarFileRoute,
+  SharedFilesOrgSlugRootIdTokenRoute: SharedFilesOrgSlugRootIdTokenRoute,
   AtChar123usernameChar125KodyIdRawRefSplatRoute:
     AtChar123usernameChar125KodyIdRawRefSplatRoute,
   AtChar123usernameChar125WebhooksPackageKodyIdWebhookNameUrlSecretRoute:
     AtChar123usernameChar125WebhooksPackageKodyIdWebhookNameUrlSecretRoute,
   AccountReposRepoIdIconIconCommitRoute: AccountReposRepoIdIconIconCommitRoute,
+  SharedFileAssetsOrgSlugRootIdTokenItemIdRoute:
+    SharedFileAssetsOrgSlugRootIdTokenItemIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

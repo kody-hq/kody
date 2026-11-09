@@ -47,3 +47,6 @@ packages/start-routing-worker/wrangler-*.generated.json
 packages/start-routing-worker/start-entry.generated.ts
 
 artifacts/
+
+# Local files spike provider credentials
+/tools/files-spike/.dev.vars*

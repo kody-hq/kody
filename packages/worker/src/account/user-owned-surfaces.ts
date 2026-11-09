@@ -10,6 +10,7 @@ export type UserOwnedDurableObjectSurface = {
 		| 'stripe_plan_refresh'
 		| 'mailbox'
 		| 'repo_session_index'
+		| 'file_store'
 		| 'mcp'
 		| 'execution_context_session'
 	binding: string
@@ -63,6 +64,7 @@ export type UserOwnedKvKeyScheme = {
 
 export type UserOwnedR2Surface = {
 	id:
+		| 'file_revision'
 		| 'email_raw_mime'
 		| 'email_attachment_storage_key'
 		| 'community_icon'
@@ -74,7 +76,10 @@ export type UserOwnedR2Surface = {
 	keyTemplate?: string
 	notes?: string
 } & (
-	| { binding: 'EMAIL_BLOBS' | 'COMMUNITY_ASSETS'; export: 'chunked_bytes' }
+	| {
+			binding: 'EMAIL_BLOBS' | 'COMMUNITY_ASSETS' | 'FILE_BLOBS'
+			export: 'chunked_bytes'
+	  }
 	| { binding: 'OPERATOR_BACKUPS'; export: 'exclude'; excludeReason: string }
 )
 
@@ -165,6 +170,14 @@ export const accountUserOwnedDurableObjectSurfaces: ReadonlyArray<UserOwnedDurab
 			export: 'include',
 			notes:
 				'Per-user authoritative email metadata and R2-reference inventory (MAILBOX binding; idFromName(userId)). Account export pages the sole USER email graph through exportMailbox. Account deletion lists Mailbox blob references before deleting R2 objects and purging the DO; D1 retains only thin provider, due-work, alert, and configuration rows.',
+		},
+		{
+			id: 'file_store',
+			binding: 'FILE_STORE',
+			deletionResultKey: 'fileStores',
+			export: 'include',
+			notes:
+				'Org file catalog, immutable revision manifest and quota coordinator. File bytes live in FILE_BLOBS. Purge deletes bytes before catalog state.',
 		},
 		{
 			id: 'repo_session_index',
@@ -310,6 +323,13 @@ export const accountUserOwnedKvKeySchemes: ReadonlyArray<UserOwnedKvKeyScheme> =
 	] as const
 
 export const accountUserOwnedR2Surfaces: ReadonlyArray<UserOwnedR2Surface> = [
+	{
+		id: 'file_revision',
+		binding: 'FILE_BLOBS',
+		export: 'chunked_bytes',
+		sourceTable: 'FileStore',
+		keyTemplate: 'files:v1/{ownerId}/{fileId}/{revisionId}',
+	},
 	{
 		id: 'email_raw_mime',
 		binding: 'EMAIL_BLOBS',

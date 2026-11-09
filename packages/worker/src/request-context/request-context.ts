@@ -63,6 +63,7 @@ export type RequestSource =
 	| { kind: 'cli' }
 	| { kind: 'api-token'; tokenId: string }
 	| { kind: 'package-app' }
+	| { kind: 'file-storage'; connectionId: string }
 	/** A run on a registered execution context, acting as its requester. */
 	| { kind: 'execution-context-run'; ecid: string; runId: string }
 	| { kind: 'schedule'; jobId: string; enablement?: EnablementRun }
@@ -191,12 +192,15 @@ function credentialIdFor(
 				| 'cli'
 				| 'api-token'
 				| 'package-app'
+				| 'file-storage'
 				| 'execution-context-run'
 		}
 	>,
 	oauthClientId: string | null | undefined,
 ): string | null {
 	switch (source.kind) {
+		case 'file-storage':
+			return source.connectionId
 		case 'api-token':
 			return source.tokenId
 		case 'execution-context-run':
@@ -244,6 +248,7 @@ export function deriveRequestContext(input: {
 		case 'cli':
 		case 'api-token':
 		case 'package-app':
+		case 'file-storage':
 		case 'execution-context-run': {
 			const actor = actorFor(input.user)
 			return {
@@ -432,6 +437,7 @@ export function backgroundRunBilledActor(
 		case 'cli':
 		case 'api-token':
 		case 'package-app':
+		case 'file-storage':
 		case 'execution-context-run':
 			return null
 		default: {
@@ -447,6 +453,7 @@ const credentialKinds: ReadonlySet<string> = new Set<RequestCredentialKind>([
 	'api-token',
 	'cli',
 	'package-app',
+	'file-storage',
 	'inbound-email',
 	'webhook',
 	'schedule',

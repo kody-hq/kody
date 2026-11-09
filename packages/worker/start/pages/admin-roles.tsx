@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	AccountManagementMessage,
@@ -30,7 +31,7 @@ export function AdminRolesPage({
 				currentHref={currentHref}
 			/>
 			{status === 'loading' ? (
-				<p css={{ color: colors.textMuted, margin: 0 }}>Loading roles…</p>
+				<LoadingIndicator label="Loading roles…" />
 			) : null}
 			{message ? (
 				<AccountManagementMessage tone={status === 'error' ? 'error' : 'info'}>

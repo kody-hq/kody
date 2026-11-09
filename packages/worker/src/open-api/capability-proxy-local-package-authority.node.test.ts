@@ -113,6 +113,7 @@ function createContext(db: D1Database): ApiInvocationContext {
 		callerContext: { ...callerContext, user: callerContext.user },
 		principal: { kind: 'mcp' },
 		getFeatureFlags: async () => ({
+			'files-workspace': false,
 			'demo-indicator': false,
 			profiles: false,
 			'mcp-skills-extension': false,

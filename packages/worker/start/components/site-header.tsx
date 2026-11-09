@@ -7,12 +7,8 @@ import { BrandContextMenu } from './brand-context-menu.tsx'
 import { FeaturesMenu } from './features-menu.tsx'
 import { KodyMark } from './kody-mark.tsx'
 import { SiteLink } from './site-link.tsx'
-import { useEffect, useState } from 'react'
-import {
-	PhoneAccountGroups,
-	AccountMenu,
-	type OrganizationSession,
-} from './org-switcher.tsx'
+import { lazy, Suspense, useEffect, useState } from 'react'
+import { type OrganizationSession } from './org-switcher.tsx'
 import {
 	colors,
 	shadows,
@@ -104,12 +100,20 @@ export function SiteHeader(props: SiteHeaderProps) {
 								<SiteLink href={workspaceHref} css={navLoginCss}>
 									Workspace
 								</SiteLink>
-								<AccountMenu
-									username={props.username}
-									displayName={props.displayName}
-									avatarUrl={props.avatarUrl}
-									organizations={props.organizationSession?.organizations ?? []}
-								/>
+								<Suspense
+									fallback={
+										<span aria-hidden="true" css={{ width: 44, height: 44 }} />
+									}
+								>
+									<AccountMenu
+										username={props.username}
+										displayName={props.displayName}
+										avatarUrl={props.avatarUrl}
+										organizations={
+											props.organizationSession?.organizations ?? []
+										}
+									/>
+								</Suspense>
 							</>
 						) : (
 							<SiteLink href={props.loginHref} css={navLoginCss}>
@@ -156,12 +160,18 @@ export function SiteHeader(props: SiteHeaderProps) {
 							<SiteLink href={workspaceHref} css={navLoginCss}>
 								Workspace
 							</SiteLink>
-							<AccountMenu
-								organizations={props.organizationSession?.organizations ?? []}
-								username={props.username}
-								displayName={props.displayName}
-								avatarUrl={props.avatarUrl}
-							/>
+							<Suspense
+								fallback={
+									<span aria-hidden="true" css={{ width: 44, height: 44 }} />
+								}
+							>
+								<AccountMenu
+									organizations={props.organizationSession?.organizations ?? []}
+									username={props.username}
+									displayName={props.displayName}
+									avatarUrl={props.avatarUrl}
+								/>
+							</Suspense>
 							{props.showDemoIndicator ? <DemoIndicator /> : null}
 						</>
 					) : (
@@ -214,10 +224,12 @@ export function SiteHeader(props: SiteHeaderProps) {
 						) : null}
 					</div>
 					{props.organizationSession ? (
-						<PhoneAccountGroups
-							session={props.organizationSession}
-							currentPathname={props.currentPathname}
-						/>
+						<Suspense fallback={null}>
+							<PhoneAccountGroups
+								session={props.organizationSession}
+								currentPathname={props.currentPathname}
+							/>
+						</Suspense>
 					) : (
 						<div css={menuGroupCss}>
 							<SiteLink href={props.loginHref}>Log in</SiteLink>
@@ -228,6 +240,18 @@ export function SiteHeader(props: SiteHeaderProps) {
 		</header>
 	)
 }
+
+// Signed-out pages can render their header without loading the account menu.
+const AccountMenu = lazy(() =>
+	import('./org-switcher.tsx').then((module) => ({
+		default: module.AccountMenu,
+	})),
+)
+const PhoneAccountGroups = lazy(() =>
+	import('./org-switcher.tsx').then((module) => ({
+		default: module.PhoneAccountGroups,
+	})),
+)
 
 const headerCss: CSSObject = {
 	position: 'sticky' as const,

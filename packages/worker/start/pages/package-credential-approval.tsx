@@ -1,8 +1,13 @@
 /** @jsxImportSource @emotion/react */
+import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { useParams } from '@tanstack/react-router'
 import {
 	parseCredentialApprovalQuery,
 	readCredentialProposalId,
+	type CredentialApprovalChangeView,
+	type CredentialApprovalEnableView,
+	type CredentialApprovalView,
+	type CredentialProposalSender,
 } from '#universal/credential-contracts.ts'
 import { approvePackageCredentials } from '#start/server/credential-approval-mutation'
 import { SiteLink } from '../components/site-link.tsx'
@@ -12,12 +17,6 @@ import { useCredentialMutation } from '../credential-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { NotFoundPage } from '../components/not-found-page.tsx'
-import {
-	type CredentialApprovalChangeView,
-	type CredentialApprovalEnableView,
-	type CredentialApprovalView,
-	type CredentialProposalSender,
-} from '#universal/credential-contracts.ts'
 import { credentialKindLabel } from '#universal/credentials-list.ts'
 import {
 	type CredentialApprovalGroup,
@@ -381,7 +380,7 @@ export function PackageCredentialApprovalRoute({
 				</section>
 			) : null}
 			{!view && snapshot.kind !== 'error' ? (
-				<p css={mutedCss}>Loading the proposed mappings…</p>
+				<LoadingIndicator label="Loading the proposed mappings…" />
 			) : null}
 
 			{view?.reason ? (

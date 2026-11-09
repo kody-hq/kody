@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { useRouteContext } from '@tanstack/react-router'
 import { AdminUserDestinationPanel } from './admin-users-destination-panel.tsx'
 import { useState } from 'react'
@@ -537,7 +538,7 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 				description="Metered usage rollups and entitlement consumption for this account. Warnings appear above 80% of a numeric limit."
 			>
 				{!selectedUsage && props.usageStatus === 'loading' ? (
-					<p css={{ margin: 0, color: colors.textMuted }}>Loading usage…</p>
+					<LoadingIndicator label="Loading usage…" />
 				) : null}
 				{props.usageStatus === 'error' &&
 				props.usageFailedForStableUserId === selectedUser.stableUserId &&

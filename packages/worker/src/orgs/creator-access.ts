@@ -54,6 +54,7 @@ export async function grantCreatorAccess(input: {
 					profileId: input.creatorProfileId,
 					createdByUserId: creatorUserId,
 					resources: input.resources,
+					neverRegrant: input.neverRegrant,
 				})
 			).granted
 		: 0

@@ -1,0 +1,12 @@
+{
+	"extends": "@epic-web/config/typescript",
+	"compilerOptions": {
+		"composite": false,
+		"noEmit": true,
+		"lib": ["DOM", "DOM.Iterable", "ES2023"],
+		"types": [],
+		"moduleResolution": "bundler",
+		"allowImportingTsExtensions": true
+	},
+	"files": ["browser.ts"]
+}

@@ -1,3 +1,4 @@
+import { fileStoreRpc } from '#worker/files/client.ts'
 /**
  * soft-delete-read-filter: opt-out
  *
@@ -1575,6 +1576,16 @@ export async function purgeOwnerOutOfBandSurfaces(input: {
 		return 0
 	})
 
+	if (input.env.FILE_STORE) {
+		try {
+			await fileStoreRpc(input.env, input.ownerId).purge(input.ownerId)
+			result.clearedDurableObjects.fileStores = 1
+		} catch (error) {
+			warnings.push(`File store purge failed: ${getErrorMessage(error)}`)
+			throw new AccountDeletionCleanupError(warnings, result)
+		}
+	}
+
 	result.clearedDurableObjects.repoSessions = await purgeRepoSessions({
 		env: input.env,
 		userId: input.ownerId,
@@ -1904,6 +1915,16 @@ export async function deleteUserAccount(input: {
 		warnings.push(`Artifact repo cleanup failed unexpectedly: ${message}`)
 		return 0
 	})
+
+	if (input.env.FILE_STORE) {
+		try {
+			await fileStoreRpc(input.env, input.mcpUserId).purge(input.mcpUserId)
+			result.clearedDurableObjects.fileStores = 1
+		} catch (error) {
+			warnings.push(`File store purge failed: ${getErrorMessage(error)}`)
+			throw new AccountDeletionCleanupError(warnings, result)
+		}
+	}
 
 	result.clearedDurableObjects.repoSessions = await purgeRepoSessions({
 		env: input.env,

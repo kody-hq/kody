@@ -295,6 +295,8 @@ export const EnvSchema = object({
 	// canonical SYSTEM_EMAIL_DOMAIN.
 	LEGACY_SYSTEM_EMAIL_DOMAINS: optionalNonEmptyStringSchema,
 	APP_COMMIT_SHA: optionalCommitShaSchema,
+	FILES_INCLUDED_BYTES: optionalNonEmptyStringSchema,
+	FILES_COLLABORATION_ENABLED: optionalNonEmptyStringSchema,
 	// Opaque deploy metadata (JSON or base64url JSON) for GET /health. Set
 	// automatically by deploy workflows; invalid values must not fail env
 	// validation because that would take the worker down.

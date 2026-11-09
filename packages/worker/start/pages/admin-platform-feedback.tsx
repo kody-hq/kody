@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import { css } from '@emotion/react'
 import { useRouter } from '@tanstack/react-router'
@@ -136,9 +137,7 @@ export function AdminPlatformFeedbackPage({
 			/>
 
 			{status === 'loading' ? (
-				<p css={{ color: colors.textMuted, margin: 0 }}>
-					Loading platform feedback…
-				</p>
+				<LoadingIndicator label="Loading platform feedback…" />
 			) : null}
 			{message ? (
 				<AccountManagementMessage tone={status === 'error' ? 'error' : 'info'}>

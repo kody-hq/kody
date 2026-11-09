@@ -1,5 +1,5 @@
 export type AppShell = {
-	mode: 'standard' | 'auth' | 'focused'
+	mode: 'standard' | 'auth' | 'focused' | 'standalone'
 	gutters: 'app' | 'page'
 	preserveLoginReturn: boolean
 }

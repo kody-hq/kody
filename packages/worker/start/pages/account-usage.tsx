@@ -1,4 +1,9 @@
 /** @jsxImportSource @emotion/react */
+import { Popover } from '@base-ui/react/popover'
+import {
+	overlayPopupCss,
+	overlayPositionerCss,
+} from '../components/overlay-styles.ts'
 import { type QueryKey } from '@tanstack/react-query'
 import { WhereItWentPanel } from './account-usage-where-it-went.tsx'
 import { type CSSObject } from '@emotion/react'
@@ -21,7 +26,6 @@ import { chartColor, formatIntegerNumber } from '#client/charts/chart-theme.ts'
 import {
 	colors,
 	radius,
-	shadows,
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
@@ -194,8 +198,6 @@ function UsageResourceName({
 	howToReduce,
 	note,
 }: UsageResourceNameProps) {
-	const panelId = `usage-resource-${id}`
-	const anchor = `--usage-resource-${id}`
 	return (
 		<span
 			css={{
@@ -222,33 +224,38 @@ function UsageResourceName({
 			>
 				{label}
 			</span>
-			<button
-				type="button"
-				popoverTarget={panelId}
-				aria-label={`What counts toward ${label}`}
-				data-usage-resource-tip={id}
-				css={{
-					...usageTipButtonCss,
-					anchorName: anchor,
-				}}
-			>
-				{renderIcon('information', { size: '1.05rem' })}
-			</button>
-			<div
-				id={panelId}
-				popover="auto"
-				role="dialog"
-				aria-label={label}
-				data-usage-resource-panel={id}
-				css={{
-					...usageTipPanelCss,
-					positionAnchor: anchor,
-				}}
-			>
-				<p css={usageTipBodyCss}>{whatCounts}</p>
-				<p css={usageTipBodyCss}>{howToReduce}</p>
-				{note ? <p css={usageTipBodyCss}>{note}</p> : null}
-			</div>
+			<Popover.Root>
+				<Popover.Trigger
+					aria-label={`What counts toward ${label}`}
+					data-usage-resource-tip={id}
+					css={usageTipButtonCss}
+				>
+					{renderIcon('information', { size: '1.05rem' })}
+				</Popover.Trigger>
+				<Popover.Portal>
+					<Popover.Positioner
+						align="start"
+						sideOffset={6}
+						css={overlayPositionerCss}
+					>
+						<Popover.Popup
+							aria-label={label}
+							data-usage-resource-panel={id}
+							css={{
+								...overlayPopupCss,
+								display: 'grid',
+								width: '24rem',
+								gap: '0.55rem',
+								padding: '0.85rem 1rem',
+							}}
+						>
+							<p css={usageTipBodyCss}>{whatCounts}</p>
+							<p css={usageTipBodyCss}>{howToReduce}</p>
+							{note ? <p css={usageTipBodyCss}>{note}</p> : null}
+						</Popover.Popup>
+					</Popover.Positioner>
+				</Popover.Portal>
+			</Popover.Root>
 		</span>
 	)
 }
@@ -275,28 +282,6 @@ const usageTipButtonCss: CSSObject = {
 	'&:focus-visible': {
 		outline: `2px solid ${colors.primary}`,
 		outlineOffset: '2px',
-	},
-}
-
-const usageTipPanelCss: CSSObject = {
-	// Leave `display` unset so a closed popover keeps the UA `display: none`.
-	positionArea: 'bottom span-right',
-	positionTryFallbacks: 'flip-block, flip-inline',
-	inset: 'auto',
-	width: 'min(24rem, calc(100vw - 2.5rem))',
-	maxHeight: 'min(70dvh, 20rem)',
-	overflow: 'auto',
-	gap: '0.55rem',
-	margin: '0.35rem',
-	padding: '0.85rem 1rem',
-	border: `1px solid ${colors.border}`,
-	borderRadius: radius.lg,
-	background: colors.surface,
-	color: colors.text,
-	boxShadow: shadows.md,
-	boxSizing: 'border-box' as const,
-	'&:popover-open': {
-		display: 'grid',
 	},
 }
 

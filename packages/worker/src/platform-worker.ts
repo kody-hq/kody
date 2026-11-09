@@ -1,3 +1,5 @@
+import { FileRoom } from '#worker/files/room.ts'
+import { FileStore } from '#worker/files/store.ts'
 import * as Sentry from '@sentry/cloudflare'
 import {
 	buildPlatformWorkerHealth,
@@ -35,6 +37,8 @@ import { getWorkerSentryOptions } from './sentry-options.ts'
  * `kody-runtime` exports its own gateway instead of calling back into origin.
  */
 export {
+	FileStore,
+	FileRoom,
 	MCP,
 	McpClientHub,
 	OAuthPurgeCoordinator,

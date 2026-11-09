@@ -63,6 +63,10 @@ export function SiteLink({
 	}
 	return (
 		<RouterAnchor
+			viewTransition={
+				location.pathname.endsWith('/-/files') &&
+				destination.pathname === location.pathname
+			}
 			to={destination.pathname}
 			search={router.options.parseSearch!(destination.search)}
 			hash={destination.hash.slice(1)}

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { formatFindings } from '#client/routes/admin-codemods-shared.ts'
 import {
 	type AdminCodemodListItem,
@@ -222,9 +223,11 @@ export function RunHistoryPanel(input: {
 											}}
 											css={secondaryButtonCss}
 										>
-											{selectedHistoryRunId === run.id && historyLoading
-												? 'Loading…'
-												: 'Details'}
+											{selectedHistoryRunId === run.id && historyLoading ? (
+												<LoadingIndicator inline label="Loading details" />
+											) : (
+												'Details'
+											)}
 										</button>
 										{canRevert ? (
 											<button
@@ -257,14 +260,7 @@ export function RunHistoryPanel(input: {
 										: ''}
 								</p>
 								{historyLoading && historyItems.length === 0 ? (
-									<p
-										css={{
-											margin: 0,
-											color: colors.textMuted,
-										}}
-									>
-										Loading items…
-									</p>
+									<LoadingIndicator label="Loading items…" />
 								) : null}
 								{historyItems.length > 0 ? (
 									renderCodemodItemsTable({
@@ -290,7 +286,11 @@ export function RunHistoryPanel(input: {
 										}}
 										css={secondaryButtonCss}
 									>
-										{historyLoading ? 'Loading…' : 'Load more'}
+										{historyLoading ? (
+											<LoadingIndicator inline label="Loading…" />
+										) : (
+											'Load more'
+										)}
 									</button>
 								) : null}
 							</div>

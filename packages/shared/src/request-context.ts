@@ -37,6 +37,7 @@ export type RequestCredentialKind =
 	| 'api-token'
 	| 'cli'
 	| 'package-app'
+	| 'file-storage'
 	| 'inbound-email'
 	| 'webhook'
 	| 'schedule'

@@ -192,3 +192,50 @@ export const loadPackageFiles = createServerFn({ method: 'GET' })
 			statusCode: 302,
 		})
 	})
+
+// Uses the same package and repository authorization as the standalone tree.
+export const loadWorkspaceRepoFiles = createServerFn({ method: 'GET' })
+	.validator(
+		z.object({
+			username: z.string().min(1),
+			kodyId: z.string().min(1),
+			path: z.string(),
+			ref: z.string().optional(),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const path = normalizePackageFilesPath(data.path)
+		if (path == null) throw notFound()
+		const [
+			{ env },
+			{ getEnv },
+			{ getRequest, setResponseHeader },
+			{ setAuthSessionSecret },
+			{ loadAccessiblePackageFilesData },
+		] = await Promise.all([
+			import('cloudflare:workers'),
+			import('../../src/app/env.ts'),
+			import('@tanstack/react-start/server'),
+			import('../../src/app/auth-session.ts'),
+			import('../../src/app/package-files-data.ts'),
+		])
+		const bindings = getEnv(env)
+		setAuthSessionSecret(bindings.COOKIE_SECRET)
+		setResponseHeader('Cache-Control', 'private, no-store')
+		const payload = await loadAccessiblePackageFilesData({
+			env: bindings,
+			request: getRequest(),
+			username: data.username,
+			kodyId: data.kodyId,
+			selectedPath: path,
+			ref: data.ref,
+		})
+		if (!payload) throw notFound()
+		return {
+			paths: payload.paths,
+			commit: payload.viewedCommit ?? undefined,
+			content: payload.content,
+			rawHref: payload.rawHref,
+			mediaHref: payload.mediaHref,
+		}
+	})

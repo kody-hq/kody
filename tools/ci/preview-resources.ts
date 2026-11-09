@@ -208,6 +208,11 @@ export function buildPreviewResourceNames(workerName: string) {
 		repoSessionBlobsSuffix,
 		maxLen,
 	)
+	const fileBlobsBucketName = truncateWithSuffix(
+		workerName,
+		'-file-blobs',
+		maxLen,
+	)
 	const operatorBackupsBucketName = truncateWithSuffix(
 		workerName,
 		operatorBackupsSuffix,
@@ -241,6 +246,7 @@ export function buildPreviewResourceNames(workerName: string) {
 		communityAssetsBucketName,
 		emailBlobsBucketName,
 		repoSessionBlobsBucketName,
+		fileBlobsBucketName,
 		operatorBackupsBucketName,
 		webhookDispatchQueueName,
 		webhookDispatchDeadLetterQueueName,
@@ -549,6 +555,7 @@ async function ensurePreviewResources(options: CliOptions) {
 		communityAssetsBucketName,
 		emailBlobsBucketName,
 		repoSessionBlobsBucketName,
+		fileBlobsBucketName,
 		operatorBackupsBucketName,
 		webhookDispatchQueueName,
 		webhookDispatchDeadLetterQueueName,
@@ -595,6 +602,10 @@ async function ensurePreviewResources(options: CliOptions) {
 	})
 	const repoSessionBlobs = await ensureR2Bucket({
 		name: repoSessionBlobsBucketName,
+		dryRun: options.dryRun,
+	})
+	const fileBlobs = await ensureR2Bucket({
+		name: fileBlobsBucketName,
 		dryRun: options.dryRun,
 	})
 	const operatorBackups = await ensureR2Bucket({
@@ -691,6 +702,7 @@ async function ensurePreviewResources(options: CliOptions) {
 		communityAssetsBucketName: communityAssets.name,
 		emailBlobsBucketName: emailBlobs.name,
 		repoSessionBlobsBucketName: repoSessionBlobs.name,
+		fileBlobsBucketName: fileBlobs.name,
 		operatorBackupsBucketName: operatorBackups.name,
 		artifactsNamespace,
 		workerVars: {
@@ -827,6 +839,7 @@ export async function cleanupPreviewResources(options: PreviewCleanupOptions) {
 		communityAssetsBucketName,
 		emailBlobsBucketName,
 		repoSessionBlobsBucketName,
+		fileBlobsBucketName,
 		operatorBackupsBucketName,
 		artifactsNamespace,
 	} = buildPreviewResourceNames(options.workerName)
@@ -843,6 +856,7 @@ export async function cleanupPreviewResources(options: PreviewCleanupOptions) {
 		[communityAssetsBucketName, 'r2'] as const,
 		[emailBlobsBucketName, 'r2'] as const,
 		[repoSessionBlobsBucketName, 'r2'] as const,
+		[fileBlobsBucketName, 'r2'] as const,
 		[operatorBackupsBucketName, 'r2'] as const,
 		...queuePlan.queueNames.map((name) => [name, 'queue'] as const),
 		[artifactsNamespace, 'artifacts'] as const,
@@ -920,6 +934,7 @@ export async function cleanupPreviewResources(options: PreviewCleanupOptions) {
 		communityAssetsBucketName,
 		emailBlobsBucketName,
 		repoSessionBlobsBucketName,
+		fileBlobsBucketName,
 		operatorBackupsBucketName,
 	]) {
 		await attempt(`r2 ${name}`, async () => {

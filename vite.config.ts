@@ -1,3 +1,4 @@
+import { officeViewers } from './tools/vite-office-viewers.ts'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { cloudflare } from '@cloudflare/vite-plugin'
@@ -183,6 +184,7 @@ export default defineConfig(async ({ command }) => {
 			outDir: process.env.KODY_VITE_OUTDIR ?? 'dist',
 		},
 		plugins: [
+			officeViewers(),
 			harfbuzzWorker(),
 			markdownAsText(),
 			inlineCssText(),

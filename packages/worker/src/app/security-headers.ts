@@ -61,7 +61,7 @@ const contentSecurityPolicy = [
 	"style-src 'self' 'unsafe-inline'",
 	`script-src 'self' https://cdn.usefathom.com https://static.cloudflareinsights.com https://challenges.cloudflare.com`,
 	"connect-src 'self' https://cdn.usefathom.com https://cloudflareinsights.com https://challenges.cloudflare.com",
-	'frame-src https://challenges.cloudflare.com https://www.youtube-nocookie.com',
+	"frame-src 'self' https://challenges.cloudflare.com https://www.youtube-nocookie.com",
 	"worker-src 'self' blob:",
 ].join('; ')
 

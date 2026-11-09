@@ -41,7 +41,8 @@ export function orgSectionDenial(
 	if (
 		resolution.role == null &&
 		section !== 'agents' &&
-		section !== 'execution-contexts'
+		section !== 'execution-contexts' &&
+		section !== 'files'
 	) {
 		return 'Organization resources unavailable'
 	}

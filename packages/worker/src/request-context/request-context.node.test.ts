@@ -474,3 +474,20 @@ test('a triggered run as a sub-profile records its whole chain', () => {
 		profileChain: ['prf_root', 'prf_child'],
 	})
 })
+
+test('file storage carries its connection identity and only credential-use scope', () => {
+	const request = deriveRequestContext({
+		user,
+		source: { kind: 'file-storage', connectionId: 'storage-connection' },
+		scopes: ['secret:use'],
+	})
+	expect(request.credential).toMatchObject({
+		kind: 'file-storage',
+		id: 'storage-connection',
+		scopes: ['secret:use'],
+	})
+	expect(request.actor?.userId).toBe(user.userId)
+	expect(parseRequestLineage(requestLineage(request))?.credential.kind).toBe(
+		'file-storage',
+	)
+})

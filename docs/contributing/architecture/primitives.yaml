@@ -625,6 +625,39 @@ primitives:
     adrs:
       - docs/contributing/decisions/0024-packages-outrank-synthesized-providers.md
 
+  - id: org-file-store
+    group: assistant
+    name: Org files
+    summary:
+      Per-org FileStore catalog and quota coordinator with immutable revisions
+      in FILE_BLOBS, stable file identities, existing resource grants, and
+      account export and deletion coverage. Hosted writes require an explicit
+      included-byte allowance. The signed-in Files page and discoverable agent
+      capabilities share authorization, profile intersection, and write leases.
+    code:
+      - packages/worker/src/files/
+      - packages/worker/universal/files.ts
+      - packages/worker/src/mcp/capabilities/files/
+      - packages/worker/start/pages/files.tsx
+      - packages/worker/start/server/files.ts
+    docs:
+      - docs/contributing/architecture/file-collaboration-spike.md
+    adrs:
+      - docs/contributing/decisions/0060-owner-and-person-ids.md
+      - docs/contributing/decisions/0092-profiles-are-scoped-agent-identities.md
+
+  - id: files-collaboration-spike
+    group: assistant
+    name: Local files collaboration spike
+    summary:
+      Local-only Markdown collaboration and storage migration proof, isolated
+      from production identities, grants, billing, and Worker deployments.
+    code:
+      - tools/files-spike/
+    docs:
+      - docs/contributing/architecture/file-collaboration-spike.md
+    adrs: []
+
   - id: realtime-sessions
     group: assistant
     name: Realtime sessions

@@ -5,6 +5,7 @@ const assetDirectories = new Set([
 	'og',
 	'feature-scenes',
 	'assets',
+	'office-viewers',
 	// BIMI logo (default._bimi TXT points at /bimi/kody-mark.svg).
 	'bimi',
 ])

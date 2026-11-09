@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { connectWebhookInput } from '../connect-input.ts'
 import { approveWebhookApply, rejectWebhookApply } from '#start/server/connect'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
@@ -174,9 +175,7 @@ export function ConnectWebhookApplyRoute({
 			) : null}
 
 			{!payload ? (
-				<p css={{ color: colors.textMuted, textAlign: 'center' }}>
-					Loading approval…
-				</p>
+				<LoadingIndicator label="Loading approval…" />
 			) : !payload.ok ? (
 				<section css={cardCss} data-testid="connect-webhook-apply-error">
 					<p css={{ margin: 0 }}>{payload.error}</p>

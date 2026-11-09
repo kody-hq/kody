@@ -1,3 +1,4 @@
+import { filesWorkspaceOverride } from '#worker/files/feature.ts'
 /**
  * Per-request feature-flag evaluation cache.
  *
@@ -103,6 +104,8 @@ async function resolveRequestFeatureFlags(
 		for (const key of featureFlagKeys) {
 			flags[key] = evaluations[key].enabled
 		}
+		flags['files-workspace'] =
+			filesWorkspaceOverride(env) ?? flags['files-workspace']
 		return flags
 	} catch (error) {
 		console.error('Failed to load feature flags for authenticated user:', error)

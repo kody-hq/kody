@@ -44,13 +44,8 @@ test('admin user moderation offers Delete account next to Suspend', async () => 
 	expect(html).toContain('Suspend account')
 	expect(html).toContain('Delete account')
 	expect(html).toContain('data-testid="admin-delete-account"')
-	expect(html).toContain('data-testid="admin-delete-account-dialog"')
-	expect(html).toContain('data-testid="admin-delete-account-handle"')
-	expect(html).toContain('Type ')
-	expect(html).toContain('ada-lovelace')
-	expect(html).toContain(' to confirm')
-	expect(html).toContain('data-testid="admin-delete-account-confirm"')
-	expect(html).toContain('disabled=""')
+	expect(html).not.toContain('data-testid="admin-delete-account-dialog"')
+	expect(html).not.toContain('data-testid="admin-delete-account-confirm"')
 })
 
 test('the approval page shows the summary and the acknowledgement checkbox', async () => {

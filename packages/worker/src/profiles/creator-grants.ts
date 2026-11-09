@@ -1,3 +1,4 @@
+/** soft-delete-read-filter: opt-out (creator retries inspect revoked grants to avoid restoring access) */
 import { permissionsForGrantPreset } from '@kody-internal/shared/grant-presets.ts'
 import { type CreatedResource } from '#worker/orgs/creator-access.ts'
 import { profileStatus } from './rules.ts'
@@ -16,6 +17,7 @@ export async function grantProfileCreatorAccess(input: {
 	profileId: string
 	createdByUserId: string
 	resources: ReadonlyArray<CreatedResource>
+	neverRegrant?: boolean
 }): Promise<{ granted: number }> {
 	const chain = await loadProfileChain(input.db, {
 		orgId: input.orgId,
@@ -33,9 +35,15 @@ export async function grantProfileCreatorAccess(input: {
 				`SELECT 1 AS live FROM grants
 				 WHERE org_id = ? AND resource_type = ? AND resource_id = ?
 				   AND subject_type = 'profile' AND subject_id = ?
-				   AND deleted_at IS NULL`,
+				   AND (deleted_at IS NULL OR ? = 1)`,
 			)
-			.bind(input.orgId, resource.resourceType, resource.resourceId, self.id)
+			.bind(
+				input.orgId,
+				resource.resourceType,
+				resource.resourceId,
+				self.id,
+				input.neverRegrant ? 1 : 0,
+			)
 			.first<{ live: number }>()
 		if (live) continue
 		const family = resource.family ?? resource.resourceType

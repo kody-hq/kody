@@ -843,6 +843,10 @@
 		{
 			"filename": "0235-platform-feedback-resolution-history.sql",
 			"sha256": "74639db5cc16bae52c6b49835ce86c611d29a04dc51d965054af5658d2431270"
+		},
+		{
+			"filename": "0236-file-resources.sql",
+			"sha256": "d065aee484547c12b2bb439fdc3e88735f398193cdbc04fb5f6ebbf85150fcc2"
 		}
 	]
 }

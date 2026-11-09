@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { packageWebhookMutationOptions } from '../package-webhook-mutation.ts'
 import { orgResourcePath } from '#universal/org-pages.ts'
@@ -124,9 +125,7 @@ export function PackageWebhookSettings({
 			</p>
 
 			{status === 'loading' ? (
-				<p role="status" css={mutedCss}>
-					Loading webhooks…
-				</p>
+				<LoadingIndicator label="Loading webhooks…" />
 			) : null}
 			{read.isError ? (
 				<AccountManagementMessage tone="error">

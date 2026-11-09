@@ -746,6 +746,15 @@ export const accountRailGapBelowHeader = `calc(${accountRailContentTop} - ${site
  * whisper so switching tabs does not change background. The app shell leaves
  * these routes unpadded; gutters live here.
  */
+export const workspaceTextureCss = {
+	...pageHeadCss['&::before'],
+	inset: 'auto',
+	top: '-3rem',
+	insetInline: 0,
+	height: '44rem',
+	background: `radial-gradient(ellipse 46% 55% at 70% 22%, oklch(from ${colors.text} l c h / 0.025), transparent 72%)`,
+}
+
 export const packageDetailPageCss = {
 	position: 'relative' as const,
 	isolation: 'isolate' as const,
@@ -756,14 +765,10 @@ export const packageDetailPageCss = {
 		padding: `${spacing.md} ${pageGutter} ${spacing.xl}`,
 	},
 	'&::before': {
-		...pageHeadCss['&::before'],
-		inset: 'auto',
-		top: '-3rem',
-		left: '-30%',
-		right: '-30%',
-		height: '44rem',
-		background: `radial-gradient(ellipse 46% 55% at 70% 22%, oklch(from ${colors.text} l c h / 0.05), transparent 72%)`,
+		...workspaceTextureCss,
+		insetInline: '-30%',
 	},
+	'[data-workspace-panel] &::before': { display: 'none' },
 }
 
 export const pageHeaderCss = {

@@ -54,7 +54,7 @@ test('org grants carry read-only resource permissions and nothing that writes', 
 	const grantableResourceActions = orgPermissions.filter(
 		(permission) =>
 			isGrantablePermission('org', permission) &&
-			/^(package|app|job|secret|integration|memory|email|execution_context):/.test(
+			/^(file|package|app|job|secret|integration|memory|email|execution_context):/.test(
 				permission,
 			) &&
 			!permission.endsWith(':create'),

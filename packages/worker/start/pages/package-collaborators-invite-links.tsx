@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { useState, type FormEvent } from 'react'
 import { useInviteHandoff } from '../use-invite-handoff.ts'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -375,9 +376,7 @@ function PackageInviteLinksContent({
 					{loadError}
 				</p>
 			) : query.isPending ? (
-				<p role="status" css={linksEmptyCss}>
-					Loading invite links…
-				</p>
+				<LoadingIndicator label="Loading invite links…" />
 			) : links.length > 0 ? (
 				<ul css={linksListCss} data-testid="package-invite-links">
 					{links.map(renderLink)}

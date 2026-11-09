@@ -73,6 +73,20 @@ export type FeatureFlagDefinition = {
 
 export const featureFlagDefinitions = [
 	{
+		key: 'files-workspace',
+		defaultEnabled: false,
+		defaultAudience: 'experiments_opt_in',
+		description:
+			'Workspace Files, including comments, presence, and agent tools. Off by default for controlled rollout.',
+		successMetric: {
+			eventType: 'execute',
+			measure: 'event_count',
+			goal: 'increase',
+			hypothesis:
+				'A shared file workspace lets teams complete more useful agent work.',
+		},
+	},
+	{
 		key: 'demo-indicator',
 		defaultEnabled: false,
 		description:

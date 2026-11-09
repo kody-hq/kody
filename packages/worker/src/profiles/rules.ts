@@ -50,6 +50,7 @@ export function isProfileOrgLevelPermission(permission: OrgPermission) {
 export const profileGrantResourceTypes = [
 	'org',
 	'package',
+	'file',
 	'app',
 	'job',
 	'credential',

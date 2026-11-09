@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import {
 	addAdminReservedUsernames,
 	removeAdminReservedUsernames,
@@ -122,9 +123,7 @@ export function AdminReservedUsernamesPage(props: {
 				currentHref={currentHref}
 			/>
 			{status === 'loading' ? (
-				<p css={{ color: colors.textMuted, margin: 0 }}>
-					Loading reserved usernames…
-				</p>
+				<LoadingIndicator label="Loading reserved usernames…" />
 			) : null}
 			{message ? (
 				<AccountManagementMessage tone={messageTone}>

@@ -479,7 +479,20 @@ export function stripOriginCrossScriptClassBindings(
 		const durableObjects = asRecord(target.durable_objects)
 		const bindings = durableObjects?.bindings
 		if (Array.isArray(bindings)) {
-			for (const entry of bindings) {
+			// Native destination classes have no origin namespace to transfer.
+			// Omit them until their owning script has been created.
+			const bootstrapBindings = bindings.filter((entry) => {
+				const binding = asRecord(entry)
+				return !(
+					typeof binding?.script_name === 'string' &&
+					scriptNames.has(binding.script_name) &&
+					typeof binding.class_name === 'string' &&
+					!transferredClassNames.some((name) => name === binding.class_name)
+				)
+			})
+			if (durableObjects) durableObjects.bindings = bootstrapBindings
+
+			for (const entry of bootstrapBindings) {
 				const binding = asRecord(entry)
 				if (!binding) continue
 				if (

@@ -28,6 +28,7 @@ type Slot = ReactNode
 /** Keep typing immediate while the owning navigation commits its search value. */
 export function RecordTableSearch(props: {
 	label: string
+	variant?: 'plain'
 	placeholder: string
 	value: string
 	onInput: (value: string) => void | Promise<void>
@@ -59,7 +60,7 @@ export function RecordTableSearch(props: {
 			autoComplete="off"
 			autoCorrect="off"
 			spellCheck={false}
-			data-field-ring
+			data-field-ring={props.variant === 'plain' ? undefined : true}
 			disabled={props.disabled}
 			value={draft ?? props.value}
 			placeholder={props.placeholder}
@@ -72,6 +73,21 @@ export function RecordTableSearch(props: {
 				flex: '1 1 12rem',
 				minWidth: '7rem',
 				width: 'auto',
+				...(props.variant === 'plain'
+					? {
+							background: 'transparent',
+							border: 0,
+							borderRadius: 0,
+							boxShadow: 'none',
+							outline: 'none',
+							padding: '4px 6px',
+							minHeight: 28,
+							fontSize: 13,
+							'&:focus-visible': {
+								boxShadow: `inset 0 -1px ${colors.primary}`,
+							},
+						}
+					: {}),
 			}}
 		/>
 	)

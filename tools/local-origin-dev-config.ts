@@ -6,6 +6,8 @@ import { parseJsonc } from './ci/resource-utils.ts'
 type JsonRecord = Record<string, unknown>
 
 const localOriginDevVarKeys = [
+	'FILES_INCLUDED_BYTES',
+	'FILES_COLLABORATION_ENABLED',
 	'WRANGLER_IS_LOCAL_DEV',
 	'CLOUDFLARE_API_BASE_URL',
 	'CLOUDFLARE_API_TOKEN',

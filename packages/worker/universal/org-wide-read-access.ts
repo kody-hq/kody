@@ -10,6 +10,12 @@ export const orgWideReadAccessOptions: ReadonlyArray<{
 	description: string
 }> = [
 	{
+		permission: 'file:read',
+		label: 'Files and pages',
+		description:
+			'Files and pages that inherit organization access. Restricted items still need an explicit share.',
+	},
+	{
 		permission: 'job:read',
 		label: 'Jobs and run history',
 		description:

@@ -20,6 +20,7 @@ const readByType: Partial<
 	Record<OrgResourceType, ReadonlyArray<OrgPermission>>
 > = {
 	package: ['package:read'],
+	file: ['file:read'],
 }
 
 /** Whether `preset` expands to anything on `family`. */
@@ -32,6 +33,7 @@ export function grantPresetAppliesTo(
 }
 
 const useByType: Record<OrgResourceType, ReadonlyArray<OrgPermission>> = {
+	file: ['file:read'],
 	package: ['package:read', 'package:execute'],
 	app: ['app:read', 'app:execute'],
 	job: ['job:read', 'job:execute'],
@@ -46,6 +48,7 @@ const contributeExtraByType: Record<
 	OrgResourceType,
 	ReadonlyArray<OrgPermission>
 > = {
+	file: ['file:write', 'file:comment'],
 	package: ['package:write'],
 	app: ['app:write'],
 	job: ['job:write'],
@@ -60,6 +63,7 @@ const manageExtraByType: Record<
 	OrgResourceType,
 	ReadonlyArray<OrgPermission>
 > = {
+	file: ['file:delete', 'file:manage_access'],
 	package: ['package:delete', 'package:manage_access', 'package:publish'],
 	app: ['app:delete', 'app:manage_access'],
 	job: ['job:delete', 'job:manage_access'],
@@ -82,6 +86,7 @@ const manageExtraByType: Record<
  * `execute`, `write`, `delete`, `publish`, and `manage_access` action.
  */
 export const orgWideReadPermissions = [
+	'file:read',
 	'package:read',
 	'app:read',
 	'job:read',
@@ -105,6 +110,7 @@ const orgResourceGrantable: ReadonlyArray<OrgPermission> = [
 	'org:delete',
 	'org:execute',
 	'package:create',
+	'file:create',
 	'app:create',
 	'job:create',
 	'secret:create',

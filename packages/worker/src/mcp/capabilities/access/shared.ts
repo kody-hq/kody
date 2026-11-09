@@ -46,6 +46,7 @@ import {
 	OrgSlugValidationError,
 } from '#worker/orgs/access-writes.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import { fileStoreRpc } from '#worker/files/client.ts'
 import { assertMemoryGrantsAllowedOnOrg } from '#mcp/memory/memory-owner.ts'
 
 export const grantPresetSchema = z.enum(grantPresets)
@@ -211,6 +212,8 @@ export async function requireOrgPermission(
 
 function manageAccessPermission(resourceType: OrgResourceType): OrgPermission {
 	switch (resourceType) {
+		case 'file':
+			return 'file:manage_access'
 		case 'package':
 			return 'package:manage_access'
 		case 'app':
@@ -288,6 +291,19 @@ async function grantTargetCheck(
 				family,
 				permission: manageAccessPermission(family),
 				resource: credentialResource(orgId, credential),
+			}
+		}
+		case 'file': {
+			const file = await fileStoreRpc(ctx.env, orgId).metadata(
+				orgId,
+				resourceId,
+			)
+			if (!file?.revisionId && purpose === 'grant')
+				throw new McpCallerError('File was not found in this organization.')
+			return {
+				family: 'file',
+				permission: 'file:manage_access',
+				resource: { type: 'file', id: resourceId, orgId },
 			}
 		}
 		case 'execution_context':
@@ -369,7 +385,18 @@ async function authorizeGrantChange(
 		resourceId,
 		purpose,
 	)
-	await authorize({ env: ctx.env, request }, check.permission, check.resource)
+	if (resourceType === 'file') {
+		const { fileCollaborationAccess } =
+			await import('#worker/files/collaboration-access.ts')
+		const { access } = await fileCollaborationAccess(
+			ctx.env,
+			request,
+			resourceId,
+		)
+		if (!access.manage)
+			throw new McpCallerError('File access management is required.')
+	} else
+		await authorize({ env: ctx.env, request }, check.permission, check.resource)
 	return { user, request, db: ctx.env.APP_DB, family: check.family }
 }
 

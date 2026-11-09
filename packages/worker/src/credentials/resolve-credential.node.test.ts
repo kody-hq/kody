@@ -1534,3 +1534,50 @@ test("a run on someone else's execution context resolves the requester's own cre
 	])
 	expect(JSON.stringify(rows)).not.toContain(secretValue)
 })
+
+test('org-only storage resolution never decrypts a matching personal credential', async () => {
+	const t = await setup()
+	const created = await createOrganization(
+		t.db,
+		{} as Pick<Env, 'BUNDLE_ARTIFACTS_KV'>,
+		{
+			personId: personIdFromStored(t.ownerStableId),
+			audit: createTestOrgAuditWriter(),
+			slug: 'storage-team',
+			displayName: 'Storage team',
+		},
+	)
+	if (!created.ok) throw new Error(created.error)
+	const org = await t.db
+		.prepare("SELECT id FROM orgs WHERE slug='storage-team'")
+		.first<{ id: string }>()
+	const orgId = ownerIdFromStored(org!.id)
+	const actor = deriveRequestContext({
+		user: { userId: personIdFromStored(t.ownerStableId), username: 'owner' },
+		orgBinding: { org: { id: orgId, slug: 'storage-team' }, role: 'owner' },
+		source: { kind: 'file-storage', connectionId: 'connection-fixture' },
+		scopes: ['secret:use'],
+	})
+	valueReads.length = 0
+	const result = await resolveCredential({
+		env: t.env,
+		orgId,
+		actor,
+		baseUrl: 'https://example.com',
+		credential: {
+			use: 'secret',
+			orgOnly: true,
+			name: 'orgToken',
+			scope: 'user',
+			storageContext: { sessionId: null, appId: null },
+		},
+	})
+	expect(result.found).toBe(false)
+	expect(valueReads).toEqual([])
+	const rows = await t.auditRows()
+	expect(rows.at(-1)).toMatchObject({
+		credential_kind: 'file-storage',
+		credential_id: 'connection-fixture',
+		result: 'failure',
+	})
+})

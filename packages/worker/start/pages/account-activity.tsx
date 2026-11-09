@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { surfaceCardCss } from '#universal/styles/surface.ts'
 import { formatTimestamp } from '../components/local-timestamp.tsx'
 import { useInfiniteQuery, hashKey } from '@tanstack/react-query'
@@ -451,7 +452,11 @@ export function AccountActivityPage({
 									onClick={() => void loadMoreRuns()}
 									css={{ ...secondaryButtonCss, width: '100%' }}
 								>
-									{loadingMore ? 'Loading more…' : 'Load more'}
+									{loadingMore ? (
+										<LoadingIndicator inline label="Loading more…" />
+									) : (
+										'Load more'
+									)}
 								</button>
 							) : null
 						}

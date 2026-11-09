@@ -117,6 +117,8 @@ export type ResolvedApiOperation = {
 }
 
 const tagDescriptions: Record<ApiOperation['tag'], string> = {
+	files:
+		'Private workspace files, immutable revisions, and conflict-aware saves.',
 	account: 'Account profile, usage, waiting items, export, and feedback.',
 	search: 'Unified Kody search.',
 	memories: 'Memories and the MCP server-instruction overlay.',

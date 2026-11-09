@@ -547,6 +547,7 @@ function subscriptionEnablerScope(
 		case 'mcp-oauth':
 		case 'cli':
 		case 'api-token':
+		case 'file-storage':
 		case 'package-app':
 		case 'execution-context-run':
 			return null

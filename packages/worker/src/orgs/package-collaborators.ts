@@ -122,12 +122,28 @@ export async function listPackageCollaborators(input: {
 	orgId: string
 	packageId: string
 }): Promise<PackageCollaborators> {
-	const { db, orgId, packageId } = input
+	return listResourceCollaborators({
+		...input,
+		resourceType: 'package',
+		resourceId: input.packageId,
+	})
+}
+
+/** Shared subject projection for package and file access panels. Callers authorize first. */
+export async function listResourceCollaborators(input: {
+	db: D1Database
+	orgId: string
+	resourceType: 'package' | 'file'
+	resourceId: string
+}): Promise<PackageCollaborators> {
+	const { db, orgId, resourceType, resourceId } = input
 	const [grants, members, teams, profileGrants] = await Promise.all([
-		listGrants({ db, orgId, resourceType: 'package', resourceId: packageId }),
+		listGrants({ db, orgId, resourceType, resourceId }),
 		listOrgMembers(db, orgId),
 		listTeams(db, orgId),
-		listPackageProfileGrants({ db, orgId, packageId }),
+		resourceType === 'package'
+			? listPackageProfileGrants({ db, orgId, packageId: resourceId })
+			: Promise.resolve([]),
 	])
 	const memberIds = new Set(members.map((member) => member.userId))
 	const teamsById = new Map(teams.map((team) => [team.id, team]))
@@ -147,6 +163,7 @@ export async function listPackageCollaborators(input: {
 				preset: readPreset(grant.preset),
 				permissions: grant.permissions,
 				createdAt: grant.createdAt,
+				expiresAt: grant.expiresAt,
 				allowUnmappableCredentialChanges:
 					grant.allowUnmappableCredentialChanges,
 			}

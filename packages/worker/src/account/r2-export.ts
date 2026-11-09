@@ -1,3 +1,5 @@
+import { fileObjectReader } from '#worker/files/object-storage.ts'
+import { fileStoreRpc } from '#worker/files/client.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { buildCommunityIconR2Key } from '#worker/community/community-icon.ts'
@@ -29,6 +31,7 @@ type R2ScanState =
 	| { stage: 'community_icon'; afterRowid: number }
 	| { stage: 'identity_icon'; afterRowid: number }
 	| { stage: 'mailbox_email_blob'; startAfter: string | null }
+	| { stage: 'file_blob'; startAfter: string | null }
 	| { stage: 'done' }
 
 type R2ObjectSource =
@@ -44,6 +47,7 @@ type R2ObjectSource =
 			rowid: number
 			repoId: string
 	  }
+	| { kind: 'file_blob' }
 	| AccountMailboxEmailObjectSource
 
 type StableR2Ref = AccountR2ObjectRef & { source: R2ObjectSource }
@@ -108,7 +112,7 @@ function isScanState(value: unknown): value is R2ScanState {
 	if (!value || typeof value !== 'object' || !('stage' in value)) return false
 	const stage = (value as { stage: unknown }).stage
 	if (stage === 'avatar' || stage === 'done') return true
-	if (stage === 'mailbox_email_blob') {
+	if (stage === 'mailbox_email_blob' || stage === 'file_blob') {
 		return (
 			'startAfter' in value &&
 			((value as { startAfter: unknown }).startAfter === null ||
@@ -159,6 +163,7 @@ async function decodeCursor(
 }
 
 function bucketFor(env: Env, binding: AccountR2Binding) {
+	if (binding === 'FILE_BLOBS') return env.FILE_BLOBS
 	return binding === 'EMAIL_BLOBS' ? env.EMAIL_BLOBS : env.COMMUNITY_ASSETS
 }
 
@@ -347,7 +352,7 @@ async function findNextRef(input: {
 					}
 					cursor = {
 						v: accountR2CursorVersion,
-						state: { stage: 'done' },
+						state: { stage: 'file_blob', startAfter: null },
 					}
 					break
 				}
@@ -359,12 +364,35 @@ async function findNextRef(input: {
 									stage: 'mailbox_email_blob',
 									startAfter: page.nextStartAfter,
 								}
-							: { stage: 'done' },
+							: { stage: 'file_blob', startAfter: null },
 					current: {
 						ref: reference,
 						offset: 0,
 					},
 				}
+				break
+			}
+			case 'file_blob': {
+				const keys = input.env.FILE_STORE
+					? await fileStoreRpc(input.env, input.userId).inventory(input.userId)
+					: []
+				const after = cursor.state.startAfter
+				const key = keys.find((key) => after === null || key > after)
+				cursor = key
+					? {
+							v: accountR2CursorVersion,
+							state: { stage: 'file_blob', startAfter: key },
+							current: {
+								offset: 0,
+								ref: {
+									surfaceId: 'file_revision',
+									binding: 'FILE_BLOBS',
+									key,
+									source: { kind: 'file_blob' },
+								},
+							},
+						}
+					: { v: accountR2CursorVersion, state: { stage: 'done' } }
 				break
 			}
 			case 'done': {
@@ -460,6 +488,14 @@ async function resolveCurrentRef(input: {
 				? input.ref
 				: null
 		}
+		case 'file_blob': {
+			if (input.ref.binding !== 'FILE_BLOBS' || !input.env.FILE_STORE)
+				return null
+			const keys = await fileStoreRpc(input.env, input.userId).inventory(
+				input.userId,
+			)
+			return keys.includes(input.ref.key) ? input.ref : null
+		}
 		case 'mailbox_email_blob': {
 			return await resolveMailboxEmailObjectRef({
 				env: input.env,
@@ -537,7 +573,10 @@ export async function readAccountR2ExportPage(input: {
 			nextStartAfter: await encodeCursor(input.env, input.userId, after),
 		}
 	}
-	const bucket = bucketFor(input.env, ref.binding)
+	const bucket =
+		ref.binding === 'FILE_BLOBS'
+			? fileObjectReader(input.env, input.userId)
+			: bucketFor(input.env, ref.binding)
 	try {
 		if (current.offset > 0) {
 			const head = await bucket.head(ref.key)
@@ -693,6 +732,10 @@ export async function countAccountR2ObjectRefs(input: {
 			.first<{ count: number }>(),
 	])
 	return (
+		(input.env.FILE_STORE
+			? (await fileStoreRpc(input.env, input.userId).inventory(input.userId))
+					.length
+			: 0) +
 		emailBlobs +
 		Number(icons?.count ?? 0) +
 		Number(identityIcons?.count ?? 0) +

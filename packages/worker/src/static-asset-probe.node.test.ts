@@ -76,3 +76,15 @@ test('unknown document paths do not require an asset lookup or route registry', 
 	expect(requestSkipsAssetProbe('/@kent/-/activity')).toBe(true)
 	expect(requestSkipsAssetProbe('/feature-scenes/packages.css')).toBe(false)
 })
+
+test('Office renderer scripts remain static assets instead of application routes', () => {
+	expect(requestSkipsAssetProbe('/office-viewers/docx-123456789abc.js')).toBe(
+		false,
+	)
+	expect(requestSkipsAssetProbe('/office-preview/team/docx')).toBe(true)
+	expect(
+		requestSkipsAssetProbe(
+			'/file-assets/team/00000000-0000-4000-8000-000000000001',
+		),
+	).toBe(true)
+})

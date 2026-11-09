@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { useMatches, useRouteContext } from '@tanstack/react-router'
 import { type MatchedPageNavigation } from '../page-navigation.ts'
 import { appShellForMatches } from '../app-shell.ts'
@@ -267,19 +268,7 @@ export function AccountManagementShell(props: AccountManagementShellProps) {
 					},
 				}}
 			>
-				{props.busy ? (
-					<p
-						role="status"
-						css={{
-							position: 'absolute',
-							width: 1,
-							height: 1,
-							overflow: 'hidden',
-						}}
-					>
-						Loading…
-					</p>
-				) : null}
+				{props.busy ? <LoadingIndicator label="Loading…" /> : null}
 				{props.children}
 			</div>
 		</section>
@@ -296,9 +285,11 @@ export function ShellWorkspaceSwitcher({
 	if (navigation.rail === 'admin' || !rail.workspaceSwitcher) return null
 	return (
 		<div
+			data-rail-switcher
 			css={{
 				flexShrink: 0,
 				padding: '0 1rem 0.75rem',
+				transition: 'padding 240ms cubic-bezier(.22,1,.36,1)',
 				// Narrow layouts use the drawer switcher inside the mobile menu.
 				[accountManagementNarrowMq]: { display: 'none' },
 			}}
@@ -598,6 +589,7 @@ function pageRail(input: {
 			profileUsername: session?.username,
 			executionContexts: isFeatureFlagEnabled(session, 'execution-contexts'),
 			profiles: isFeatureFlagEnabled(session, 'profiles'),
+			files: isFeatureFlagEnabled(session, 'files-workspace'),
 		}),
 	}
 }

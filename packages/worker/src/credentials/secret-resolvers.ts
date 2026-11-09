@@ -85,6 +85,13 @@ async function findSecretByName(
 			readValue: orgLookup.readValue,
 		}
 	}
+	if (call.credential.use === 'secret' && call.credential.orgOnly)
+		return {
+			owner: 'org',
+			ownerId: call.input.orgId,
+			found: orgLookup.found,
+			readValue: orgLookup.readValue,
+		}
 	const person = call.input.actor?.actor?.userId
 	if (!person) {
 		return {

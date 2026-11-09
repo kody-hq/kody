@@ -486,3 +486,35 @@ test('originBootstrapConfigPath writes beside the generated config and rejects o
 		originBootstrapConfigPath('packages/worker/wrangler-production.json'),
 	).toThrow(/\.generated\.json/)
 })
+
+test('origin bootstrap omits native platform classes instead of creating stray origin namespaces', () => {
+	const config = {
+		env: {
+			production: {
+				durable_objects: {
+					bindings: [
+						{
+							name: 'MCP_OBJECT',
+							class_name: 'MCP',
+							script_name: productionPlatformScriptName,
+						},
+						{
+							name: 'FILE_STORE',
+							class_name: 'FileStore',
+							script_name: productionPlatformScriptName,
+						},
+						{
+							name: 'EXECUTION_CONTEXT_SESSION',
+							class_name: 'ExecutionContextSessionV1',
+							script_name: productionPlatformScriptName,
+						},
+					],
+				},
+			},
+		},
+	}
+	stripOriginCrossScriptClassBindings(config)
+	expect(config.env.production.durable_objects.bindings).toEqual([
+		{ name: 'MCP_OBJECT', class_name: 'MCP' },
+	])
+})

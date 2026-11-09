@@ -1,21 +1,16 @@
 /** @jsxImportSource @emotion/react */
+import { ModalDialog } from '../components/modal-dialog.tsx'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { PasswordRevealInput } from '../components/password-reveal-input.tsx'
 import { type CSSObject } from '@emotion/react'
-import { useState, useRef, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import {
 	accountDeletedHomePath,
 	accountDeletionConfirmationPhrase,
 } from '#universal/account-deletion-confirmation.ts'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 import { deleteOwnAccount } from '#start/server/security-mutations'
-import {
-	colors,
-	radius,
-	shadows,
-	spacing,
-	typography,
-} from '#universal/styles/tokens.ts'
+import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	getAccentCalloutCss,
 	getDangerPillCss,
@@ -33,21 +28,21 @@ export function AccountDeletePanel(props: { hasUsablePassword: boolean }) {
 	const [confirmation, setConfirmation] = useState('')
 	const [password, setPassword] = useState('')
 	const queryClient = useQueryClient()
-	const dialogNode = useRef<HTMLDialogElement>(null)
+	const [open, setOpen] = useState(false)
 
 	function closeDialog() {
 		if (deletion.isPending) return
 		setConfirmation('')
 		setPassword('')
 		deletion.reset()
-		dialogNode.current?.close()
+		setOpen(false)
 	}
 
 	function openDialog() {
 		setConfirmation('')
 		setPassword('')
 		deletion.reset()
-		dialogNode.current?.showModal()
+		setOpen(true)
 	}
 
 	function updateConfirmation(event: FormEvent<HTMLInputElement>) {
@@ -119,124 +114,104 @@ export function AccountDeletePanel(props: { hasUsablePassword: boolean }) {
 						</button>
 					</div>
 				</div>
-				<dialog
-					aria-labelledby="delete-account-title"
-					data-testid="delete-account-dialog"
-					ref={dialogNode}
-					css={deleteDialogCss}
-					onCancel={(event) => {
-						event.preventDefault()
-						closeDialog()
-					}}
-					onClick={(event) => {
-						if (event.target === event.currentTarget) closeDialog()
-					}}
-				>
-					<form
-						method="dialog"
-						css={deleteDialogFormCss}
-						onSubmit={handleDeleteSubmit}
+				{open && (
+					<ModalDialog
+						alert
+						flush
+						label="Delete your Kody account?"
+						width={512}
+						testId="delete-account-dialog"
+						onClose={closeDialog}
 					>
-						<h3 id="delete-account-title" css={deleteDialogTitleCss}>
-							Delete your Kody account?
-						</h3>
-						<div
-							css={getAccentCalloutCss({
-								accentColor: colors.error,
-							})}
-						>
-							<p css={{ margin: 0 }}>
-								This cannot be undone. Type{' '}
-								<strong>{accountDeletionConfirmationPhrase}</strong> to confirm.
-							</p>
-						</div>
-						<label css={accountFieldCss}>
-							<span css={accountFieldLabelCss}>
-								Type {accountDeletionConfirmationPhrase}
-							</span>
-							<input
-								type="text"
-								name="confirmation"
-								data-testid="delete-account-confirmation"
-								data-field-ring
-								autoComplete="off"
-								spellCheck={false}
-								required
-								value={confirmation}
-								css={accountInputCss}
-								onInput={updateConfirmation}
-							/>
-						</label>
-						{props.hasUsablePassword ? (
-							<div css={accountFieldCss}>
-								<label
-									htmlFor="delete-account-current-password"
-									css={accountFieldLabelCss}
-								>
-									Current password
-								</label>
-								<PasswordRevealInput
-									id="delete-account-current-password"
-									name="password"
-									data-testid="delete-account-password"
-									data-field-ring
-									required
-									{...passwordManagerIgnoreProps}
-									value={password}
-									css={accountInputCss}
-									onInput={updatePassword}
-								/>
+						<form css={deleteDialogFormCss} onSubmit={handleDeleteSubmit}>
+							<h3 id="delete-account-title" css={deleteDialogTitleCss}>
+								Delete your Kody account?
+							</h3>
+							<div
+								css={getAccentCalloutCss({
+									accentColor: colors.error,
+								})}
+							>
+								<p css={{ margin: 0 }}>
+									This cannot be undone. Type{' '}
+									<strong>{accountDeletionConfirmationPhrase}</strong> to
+									confirm.
+								</p>
 							</div>
-						) : null}
-						{error ? (
-							<p
-								role="alert"
-								css={{
-									margin: 0,
-									color: colors.error,
-									fontSize: typography.fontSize.sm,
-								}}
-							>
-								{error}
-							</p>
-						) : null}
-						<div css={accountActionsCss}>
-							<button
-								type="button"
-								disabled={isDeleting}
-								css={getGhostButtonCss({ size: 'sm' })}
-								onClick={closeDialog}
-							>
-								Cancel
-							</button>
-							<button
-								type="submit"
-								disabled={!canSubmit}
-								data-testid="delete-account-confirm"
-								css={getDangerPillCss({ size: 'sm' })}
-							>
-								{isDeleting ? 'Deleting…' : 'Delete account'}
-							</button>
-						</div>
-					</form>
-				</dialog>
+							<label css={accountFieldCss}>
+								<span css={accountFieldLabelCss}>
+									Type {accountDeletionConfirmationPhrase}
+								</span>
+								<input
+									type="text"
+									name="confirmation"
+									data-testid="delete-account-confirmation"
+									data-field-ring
+									autoComplete="off"
+									spellCheck={false}
+									required
+									value={confirmation}
+									css={accountInputCss}
+									onInput={updateConfirmation}
+								/>
+							</label>
+							{props.hasUsablePassword ? (
+								<div css={accountFieldCss}>
+									<label
+										htmlFor="delete-account-current-password"
+										css={accountFieldLabelCss}
+									>
+										Current password
+									</label>
+									<PasswordRevealInput
+										id="delete-account-current-password"
+										name="password"
+										data-testid="delete-account-password"
+										data-field-ring
+										required
+										{...passwordManagerIgnoreProps}
+										value={password}
+										css={accountInputCss}
+										onInput={updatePassword}
+									/>
+								</div>
+							) : null}
+							{error ? (
+								<p
+									role="alert"
+									css={{
+										margin: 0,
+										color: colors.error,
+										fontSize: typography.fontSize.sm,
+									}}
+								>
+									{error}
+								</p>
+							) : null}
+							<div css={accountActionsCss}>
+								<button
+									type="button"
+									disabled={isDeleting}
+									css={getGhostButtonCss({ size: 'sm' })}
+									onClick={closeDialog}
+								>
+									Cancel
+								</button>
+								<button
+									type="submit"
+									disabled={!canSubmit}
+									data-testid="delete-account-confirm"
+									css={getDangerPillCss({ size: 'sm' })}
+								>
+									{isDeleting ? 'Deleting…' : 'Delete account'}
+								</button>
+							</div>
+						</form>
+					</ModalDialog>
+				)}
 			</>
 		)
 	}
-}
-
-const deleteDialogCss: CSSObject = {
-	width: 'min(32rem, calc(100vw - 2rem))',
-	maxWidth: '32rem',
-	padding: 0,
-	border: `1px solid ${colors.border}`,
-	borderRadius: radius.lg,
-	boxShadow: shadows.md,
-	backgroundColor: colors.surface,
-	color: colors.text,
-	'&::backdrop': {
-		backgroundColor: 'oklch(0 0 0 / 0.45)',
-	},
 }
 
 const deleteDialogFormCss: CSSObject = {

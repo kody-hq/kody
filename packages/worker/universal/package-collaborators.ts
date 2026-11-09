@@ -112,6 +112,7 @@ export type PackageCollaboratorView = {
 	preset: PackageCollaboratorPreset | null
 	permissions: Array<string>
 	createdAt: string
+	expiresAt?: string | null
 	/** An org Owner allowed changes despite unmappable credentials on this grant. */
 	allowUnmappableCredentialChanges?: boolean
 	/**
