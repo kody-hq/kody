@@ -7,6 +7,7 @@ import { getSelectCss } from '#universal/styles/style-primitives.ts'
 import {
 	assetCacheControls,
 	defaultFileAssetSettings,
+	type FileAssetSettings,
 } from '#universal/file-assets.ts'
 import type { FileMetadata } from '#universal/files.ts'
 import {
@@ -208,6 +209,7 @@ export default function FilePermissionsPanel({
 	const [inviteLink, setInviteLink] = useState('')
 	const [publicLink, setPublicLink] = useState('')
 	const [signedAssetLink, setSignedAssetLink] = useState('')
+	const [assetDraft, setAssetDraft] = useState<Partial<FileAssetSettings>>({})
 	const [copied, setCopied] = useState('')
 	const [tab, setTab] = useState<'sharing' | 'details'>('sharing')
 	const [confirmRotate, setConfirmRotate] = useState(false)
@@ -1006,27 +1008,15 @@ export default function FilePermissionsPanel({
 										)}
 										<form
 											css={linkField}
-											key={JSON.stringify(assetSettings)}
 											onSubmit={(event) => {
 												event.preventDefault()
-												const form = new FormData(event.currentTarget)
-												const cacheControl = assetCacheControls.find(
-													(value) => value === form.get('cacheControl'),
-												)
-												const disposition = form.get('disposition')
-												if (
-													!cacheControl ||
-													(disposition !== 'inline' &&
-														disposition !== 'attachment')
-												)
-													return
 												void mutate(() =>
 													configureFileAsset({
 														data: {
 															orgSlug,
 															fileId: item.id,
-															cacheControl,
-															disposition,
+															...assetSettings,
+															...assetDraft,
 														},
 													}),
 												)
@@ -1038,7 +1028,21 @@ export default function FilePermissionsPanel({
 													css={getSelectCss()}
 													name="cacheControl"
 													disabled={busy}
-													defaultValue={assetSettings.cacheControl}
+													value={
+														assetDraft.cacheControl ??
+														assetSettings.cacheControl
+													}
+													onChange={(event) => {
+														const value = event.currentTarget.value
+														const cacheControl = assetCacheControls.find(
+															(entry) => entry === value,
+														)
+														if (cacheControl)
+															setAssetDraft((draft) => ({
+																...draft,
+																cacheControl,
+															}))
+													}}
 												>
 													<option value="no-store">Do not cache</option>
 													<option value="public, max-age=60">1 minute</option>
@@ -1052,7 +1056,20 @@ export default function FilePermissionsPanel({
 													css={getSelectCss()}
 													name="disposition"
 													disabled={busy}
-													defaultValue={assetSettings.disposition}
+													value={
+														assetDraft.disposition ?? assetSettings.disposition
+													}
+													onChange={(event) => {
+														const disposition = event.currentTarget.value
+														if (
+															disposition === 'inline' ||
+															disposition === 'attachment'
+														)
+															setAssetDraft((draft) => ({
+																...draft,
+																disposition,
+															}))
+													}}
 												>
 													<option value="inline">Display when supported</option>
 													<option value="attachment">Download</option>
