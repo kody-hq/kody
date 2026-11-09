@@ -2,9 +2,9 @@
 id: organizations
 title: Organizations
 summary:
-  Personal vs team orgs, invite links, who automation runs as, the org-wide
-  execute pool, connecting one client to several orgs, free-org limits, and paid
-  seats.
+  Personal vs team orgs, Owner/Admin/Member/Billing roles, invite links, who
+  automation runs as, the org-wide execute pool, connecting one client to
+  several orgs, free-org limits, and paid seats.
 category: platform
 audience: agents
 ---
@@ -16,18 +16,23 @@ create **team** organizations. Resources (packages, secrets, jobs, and so on)
 belong to one org. Handles are permanent: `@slug` does not rename.
 
 The org is the billing and data boundary: its resources, usage, limits, and bill
-stay inside it. Inside an org, grants control access. Owners hold everything,
-Members hold the org basics (`org:read`, `member:read`, `team:read`,
-`search:read`), what [member permissions](#member-permissions) allow, and what
-they are granted. An outside collaborator holds catalog search (`search:read`)
-plus their grants. See [Share a package](/docs/package-sharing) for presets and
-grants.
+stay inside it. Inside an org, grants control access.
+
+| Role                 | Holds                                                                                                                                |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| **Owner**            | Every org permission, including deleting the org and changing Owners                                                                 |
+| **Admin**            | Everything an Owner can except deleting the org and changing, removing, or promoting Owners. Invite links cannot grant Admin.        |
+| **Member**           | Org basics (`org:read`, `member:read`, `team:read`, `search:read`), what [member permissions](#member-permissions) allow, and grants |
+| **Billing**          | Org basics plus `billing:read` / `billing:write`. Not a paid seat.                                                                   |
+| Outside collaborator | Catalog search (`search:read`) plus their grants. Not a member.                                                                      |
+
+See [Share a package](/docs/package-sharing) for presets and grants.
 
 ## Member permissions
 
-Like a code host's "members can create repositories" setting, an Owner chooses
-what every Member of a team org can create without a grant: **Organization
-settings**, **Member permissions**, or `orgUpdate`.
+Like a code host's "members can create repositories" setting, an Owner or Admin
+chooses what every Member of a team org can create without a grant:
+**Organization settings**, **Member permissions**, or `orgUpdate`.
 
 | Setting                              | Default | Gives every Member                                                                 |
 | ------------------------------------ | ------- | ---------------------------------------------------------------------------------- |
@@ -38,19 +43,19 @@ settings**, **Member permissions**, or `orgUpdate`.
 { "members_can_create_packages": true, "members_can_create_credentials": true }
 ```
 
-Owners can always create. Whoever creates something gets full (`manage`) access
-to it. Changing an existing package or credential still needs its own write
-permission, so these settings never let a Member edit what someone else made.
-The settings are enforced on the server for every path (MCP, the API, the CLI's
-first publish and repo push, and the website). A Member who is refused gets an
-error naming the setting and the Grants page.
+Owners and Admins can always create. Whoever creates something gets full
+(`manage`) access to it. Changing an existing package or credential still needs
+its own write permission, so these settings never let a Member edit what someone
+else made. The settings are enforced on the server for every path (MCP, the API,
+the CLI's first publish and repo push, and the website). A Member who is refused
+gets an error naming the setting and the Grants page.
 
 To let only some people or teams create, leave a setting off and use **Grants**,
 **Create access** (or `accessGrant` with `resource_type: "org"` and
 `permissions: ["package:create"]`, `["secret:create"]`, or
 `["integration:create"]`). Those grants still apply when a setting is off.
 
-Owners can also turn off
+Owners and Admins can also turn off
 [usage warnings](/docs/platform-efficiency#usage-warnings) (the 80% and 100%
 usage emails and the monthly execute heads-up) with `orgUpdate`
 `{ "usage_warnings": false }` or **Organization settings**, **Usage warnings**.
@@ -58,7 +63,7 @@ usage emails and the monthly execute heads-up) with `orgUpdate`
 ## Org-wide read access
 
 To let a Member read everything of one kind without making them an Owner, an
-Owner grants read access on the organization: **Grants** page,
+Owner or Admin grants read access on the organization: **Grants** page,
 **Organization-wide read access**, or `accessGrant` with `resource_type: "org"`:
 
 ```json
@@ -93,9 +98,9 @@ grantable org-wide.
 ## Org-wide manage for packages and apps
 
 To let a member or team run, change, publish, delete, and share every package
-and app in the organization, including ones created later, an Owner grants
-manage on the organization: **Grants** page, **Manage every package and app**,
-or `accessGrant` with `resource_type: "org"`:
+and app in the organization, including ones created later, an Owner or Admin
+grants manage on the organization: **Grants** page, **Manage every package and
+app**, or `accessGrant` with `resource_type: "org"`:
 
 ```json
 {
@@ -121,27 +126,28 @@ Any subset works, for example only `package:execute` and `app:execute` to run
 everything. The grant resolves live, so a package created tomorrow is covered at
 once and revoking the grant removes access everywhere.
 
-- **Owner only.** A member with `member:write` can manage read and create access
-  but cannot add these, the same as `org:write`.
+- **Owner or Admin.** A member with `member:write` can manage read and create
+  access but cannot add these, the same as `org:write`.
 - **Members and teams only.** Everyone in the organization
   (`subject_type: "org"`) and agent profiles cannot hold them org-wide; share
   one package with everyone instead.
 - **Unmappable credentials still lock changes.** On a package whose credentials
   cannot be mapped in this organization, `package:write` and `package:publish`
-  stay owner-only even with this grant. Running it still works. An Owner unlocks
-  changes per package with a grant on that package that sets
-  `allow_changes_despite_unmappable_credentials: true`. See
+  stay Owner-or-Admin-only even with this grant. Running it still works. An
+  Owner or Admin unlocks changes per package with a grant on that package that
+  sets `allow_changes_despite_unmappable_credentials: true`. See
   [Package sharing](./package-sharing.md).
 - Secrets, connections, jobs, and email are not covered. Grant those per
   resource.
 
 ## Access for one person
 
-In a team org, an Owner opens **Members**, **Collaborators**, or a person-linked
-row on **Grants**, then **Access** (`/@<slug>/-/grants/user/<userId>`). That
-page lists what one person can use in the org and **Give access** grants or
-revokes a preset on specific packages, apps, and credentials. Team and everyone
-grants show as read-only. Owners already hold everything. Use the package
+In a team org, an Owner or Admin opens **Members**, **Collaborators**, or a
+person-linked row on **Grants**, then **Access**
+(`/@<slug>/-/grants/user/<userId>`). That page lists what one person can use in
+the org and **Give access** grants or revokes a preset on specific packages,
+apps, and credentials. Team and everyone grants show as read-only. Owners and
+Admins already hold everything that page can grant. Use the package
 **Collaborators** tab to share one package; use **Access** for one person across
 resource types. Details:
 [Share a package](/docs/package-sharing#access-for-one-person).
@@ -204,10 +210,10 @@ the real slug for team orgs: `/@me` never points at a team org.
 A team org's page at `kody.codes/@<slug>` is **Public** by default: anyone can
 see its name, photo, bio, and public packages. Members are never listed, and
 private or hidden packages never show. Pick **Private** when you create the org,
-or later in **Settings** (Owners only), or pass `profile_visibility` (`public` |
-`private`) to `orgCreate` / `orgUpdate`. A private org's page is a not-found
-page for everyone outside it, the same as a handle that doesn't exist. Members
-of a public org see the public page with an **Organization home** link
+or later in **Settings** (Owners and Admins), or pass `profile_visibility`
+(`public` | `private`) to `orgCreate` / `orgUpdate`. A private org's page is a
+not-found page for everyone outside it, the same as a handle that doesn't exist.
+Members of a public org see the public page with an **Organization home** link
 (`/@<slug>?view=home`); on a private org the home is at `/@<slug>`. A personal
 org's page is your account profile, set on Account.
 
@@ -235,7 +241,7 @@ invites.
 
 Use a **Members** invite link when you do not know every email yet, or when many
 people should join with the same role. Prefer addressed `inviteCreate` only when
-you need to invite one known person (and optionally Owner).
+you need to invite one known person (and optionally Owner or Admin).
 
 1. On the web: open `/@<org>/-/members`, create an invite link (Member by
    default; optional label, default teams, domains, max uses, expiry), copy the
@@ -330,9 +336,9 @@ that person's personal org or any team org they enabled (or clicked run-now in)
 may call them, and every such call is audited with its trigger type and id.
 
 Publishing a package never turns anything on, and nobody can enable a trigger
-for someone else. `enablementList` shows your enablements (an Owner can list the
-whole org's). `enablementDisable` turns one off; its enabler or an Owner may do
-that.
+for someone else. `enablementList` shows your enablements (an Owner or Admin can
+list the whole org's). `enablementDisable` turns one off; its enabler or an
+Owner or Admin may do that.
 
 Every time a job or an enablement turns on or off, the org audit log records who
 did it (a person, an automation run, or a site admin), when, the old and new
@@ -355,10 +361,10 @@ per org, not per person:
 
 - **Free**: one pool for the whole org (see the table below).
 - **Pro**: the pool is the per-seat include times paid seats, so it grows with
-  every Owner and Member. Funded credits carry it further, up to a ceiling that
-  also scales with seats.
+  every Owner, Admin, and Member. Funded credits carry it further, up to a
+  ceiling that also scales with seats.
 - The runaway brake (execute calls started per minute) is also per org: 300 for
-  each Owner and Member, at least 300, on every plan.
+  each Owner, Admin, and Member, at least 300, on every plan.
 
 A connection draws from the pool of the org it is bound to:
 
@@ -402,21 +408,21 @@ picks your only org or asks you to choose. For the CLI, use
 A new team org starts on the **same Free plan** as a personal org
 ([/pricing](/pricing)). There is no separate free-team SKU.
 
-| Limit                                   | Free                                                                                      |
-| --------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Free orgs you **own** (personal counts) | **2**, so one free team org beside personal                                               |
-| Seats                                   | No seat charge on Free. Paid Pro seats are Owners + Members only ($12/seat/mo or $120/yr) |
-| Saved packages                          | 10                                                                                        |
-| Repos                                   | 20                                                                                        |
-| Scheduled jobs                          | 5 (fastest interval 15 minutes)                                                           |
-| Execute (unique workers) / day · week   | 150 · 400                                                                                 |
-| Outbound fetches / day · week           | 1,000 · 2,500                                                                             |
-| Job runs / day                          | 500                                                                                       |
-| Automation invocations / day            | 1,000                                                                                     |
-| Secrets                                 | 25                                                                                        |
-| Storage                                 | 16 MiB                                                                                    |
-| Concurrent workflows                    | 1                                                                                         |
-| Active repo sessions                    | 5                                                                                         |
+| Limit                                   | Free                                                                                            |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Free orgs you **own** (personal counts) | **2**, so one free team org beside personal                                                     |
+| Seats                                   | No seat charge on Free. Paid Pro seats are Owners, Admins, and Members ($12/seat/mo or $120/yr) |
+| Saved packages                          | 10                                                                                              |
+| Repos                                   | 20                                                                                              |
+| Scheduled jobs                          | 5 (fastest interval 15 minutes)                                                                 |
+| Execute (unique workers) / day · week   | 150 · 400                                                                                       |
+| Outbound fetches / day · week           | 1,000 · 2,500                                                                                   |
+| Job runs / day                          | 500                                                                                             |
+| Automation invocations / day            | 1,000                                                                                           |
+| Secrets                                 | 25                                                                                              |
+| Storage                                 | 16 MiB                                                                                          |
+| Concurrent workflows                    | 1                                                                                               |
+| Active repo sessions                    | 5                                                                                               |
 
 Credits: Free has no prepaid debit wallet. New accounts get a $5 welcome grant
 held until the account is **credit-eligible Pro** (purchasable Pro subscription,
@@ -429,9 +435,10 @@ until one is paid or deleted.
 
 ## Paid seats
 
-When an org is Pro, each live Owner and Member is a seat, and each seat grows
-the org's execute pool. Billing-only members and outside collaborators are not
-seats. See [Share a package](/docs/package-sharing) for grants vs membership.
+When an org is Pro, each live Owner, Admin, and Member is a seat, and each seat
+grows the org's execute pool. Billing-only members and outside collaborators are
+not seats. See [Share a package](/docs/package-sharing) for grants vs
+membership.
 
 ## Move a Pro plan
 
@@ -442,7 +449,7 @@ stay put. The source org drops to Free limits. Starting a move needs a live
 Owner of both orgs. Until the target is credited, a live Owner of either org can
 cancel it. Retry needs a live Owner of the org whose billing page you use;
 before the credit, the move re-checks that the person who started it still owns
-both orgs, and after the credit it finishes without that check. Billing admins
-cannot start, retry, or cancel a move. A Free target buys Pro at Stripe Checkout
-first; a target that already has Pro only receives the credit. Retired prices,
-canceling subscriptions, and mismatched currencies are refused.
+both orgs, and after the credit it finishes without that check. Admins and
+Billing members cannot start, retry, or cancel a move. A Free target buys Pro at
+Stripe Checkout first; a target that already has Pro only receives the credit.
+Retired prices, canceling subscriptions, and mismatched currencies are refused.

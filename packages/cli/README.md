@@ -316,8 +316,10 @@ kody search --target mock local
 
 ### Testing from other devices (`--host`)
 
-`kody dev` listens on `127.0.0.1` only. To open the app from a phone, tablet, or
-e-reader on the same network, pass a listen address:
+`kody dev serve` listens on `127.0.0.1` by default. `--host` applies to serve
+only (`kody dev fetch`, `job`, `webhook`, `emit`, and `check` refuse it). To
+open the app from a phone, tablet, or e-reader on the same network, pass a
+listen address:
 
 ```bash
 kody dev --host 0.0.0.0     # every IPv4 interface; prints a network: URL per LAN address
@@ -333,13 +335,12 @@ storage) for device testing. `--host` with `--target prod` is refused unless you
 also pass `--expose-prod`, because the app would then act with your real Kody
 credentials for whoever reaches it.
 
-The proxy still rejects unknown `Host` headers (DNS rebinding guard). With
-`0.0.0.0` / `::` it accepts this machine's own non-internal interface addresses
-(re-read from `os.networkInterfaces()` per request, so a new Wi-Fi address
-works) plus the loopback names; with a specific IP it accepts only that IP.
-`request.url` uses the address the device opened, so same-origin CSRF checks
-pass on LAN requests. The workerd sockets, the CLI bridge, and the run secret
-stay on loopback. `--json` / `--ready-file` add `networkUrls` to `ready`.
+The proxy still rejects unknown `Host` headers. With `0.0.0.0` / `::` it accepts
+this machine's own non-internal addresses plus loopback names; with a specific
+IP it accepts only that IP. `request.url` uses the address the device opened, so
+same-origin CSRF checks pass on LAN requests. The workerd sockets, the CLI
+bridge, and the run secret stay on loopback. `--json` / `--ready-file` include
+`networkUrls` on `ready` when `--host` is passed.
 
 ### What `kody dev` does while it runs
 

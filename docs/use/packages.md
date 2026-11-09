@@ -572,6 +572,11 @@ least 1,000,000 rows is allowed, metered, and reported on `warning`; a single
 read stops after 1,000,000,000 rows examined. See
 [Execute → Storage](./execute.md#storage) for the full result shape.
 
+Each `get`, `set`, and `delete` call is an independent request, with no
+multi-key transaction or compare-and-swap. For indexes that concurrent writers
+share, see
+[Concurrency and multi-key updates](../guides/kody-factory.md#concurrency-and-multi-key-updates).
+
 `packageStorage()` identity comes from the bundler, not from source code: the
 publish pipeline stamps each module with the saved package it originated from,
 and execution grants bucket access only from that recorded provenance — the
@@ -595,16 +600,6 @@ to `kody.packageSecretGet` / `Has`. See
 warn when a package fills a user credential whose `allowed_packages` list is
 non-empty and does not include that package, because Kody denies that use at
 runtime for every package, including ones you authored or adopted.
-
-### Concurrency and multi-key updates
-
-Each `get`, `set`, and `delete` call is an independent request. The key-value
-API has no multi-key atomicity, no compare-and-swap, and no transaction, so a
-read-modify-write of one shared value (for example an index array) can lose
-updates when package code runs concurrently. Store one key or one SQL row per
-record and derive the index with `list({ prefix })` or a `SELECT`. Examples and
-the anti-pattern live in
-[Kody factory: Concurrency and multi-key updates](../guides/kody-factory.md#concurrency-and-multi-key-updates).
 
 ### Ambient `storage` is not a `kody:runtime` export
 

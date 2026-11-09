@@ -99,6 +99,7 @@ export async function resolveGrantTarget(
 	}
 }
 
+/** Org membership roles, including Admin (Owner authority without `org:delete`). */
 export const orgRoleSchema = z.enum(['owner', 'admin', 'member', 'billing'])
 
 export const accessGrantSchema = z.object({
@@ -116,10 +117,11 @@ export const accessGrantSchema = z.object({
 	allow_changes_despite_unmappable_credentials: z
 		.boolean()
 		.describe(
-			'True when an org Owner let this subject change or publish the package even while it has unmappable credentials.',
+			'True when an org Owner or Admin let this subject change or publish the package even while it has unmappable credentials.',
 		),
 })
 
+/** Invite payload. `status` follows `inviteState` (pending, accepted, revoked, expired). */
 export const inviteSchema = z.object({
 	id: z.string(),
 	org_id: z.string(),
@@ -379,13 +381,14 @@ async function authorizeGrantChange(
 }
 
 /**
- * Org-level permissions only an Owner may put on an org grant. org:write and
- * org:delete would let a delegate elevate past Owner; member:write would let a
- * delegate re-delegate; member:delete is an Owner-held control a member:write
- * holder must not hand out (to anyone, including themselves). The org-wide
- * package and app manage permissions reach every package anyone in the org
- * made, so only an Owner hands them out. billing:* never appears here because
- * it is not grantable on an org grant at all.
+ * Org-level permissions that need Owner authority to put on an org grant.
+ * Admin may hand out all of these except `org:delete`. `org:write` and
+ * `org:delete` would let a delegate elevate past Owner; `member:write` would
+ * let a delegate re-delegate; `member:delete` is an Owner-held control a
+ * `member:write` holder must not hand out (to anyone, including themselves).
+ * The org-wide package and app manage permissions reach every package anyone
+ * in the org made, so only Owner authority hands them out. `billing:*` never
+ * appears here because it is not grantable on an org grant at all.
  */
 const ownerOnlyOrgGrantPermissions: ReadonlySet<OrgPermission> =
 	new Set<OrgPermission>([
@@ -413,8 +416,9 @@ export function grantChangesMemberOrBilling(input: {
 }
 
 /**
- * Resolve grant permissions for a resource, and require an Owner when an
- * organization grant includes any of `ownerOnlyOrgGrantPermissions`.
+ * Resolve grant permissions for a resource, and require Owner authority when
+ * an organization grant includes any of `ownerOnlyOrgGrantPermissions`.
+ * Admin may grant those except `org:delete`, which stays Owner-only.
  */
 export async function resolveAuthorizedGrantPermissions(
 	ctx: GrantChangeContext,

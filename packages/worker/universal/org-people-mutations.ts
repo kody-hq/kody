@@ -1,4 +1,5 @@
 import { z } from 'zod'
+/** Role change on Members. Admin is selectable; only an Owner may assign Owner. */
 export const setOrganizationMemberRoleSchema = z.object({
 	userId: z.string(),
 	role: z.enum(['owner', 'admin', 'member', 'billing']),
@@ -10,6 +11,7 @@ export const inviteOrganizationMemberSchema = z.object({
 	username: z.string().optional(),
 	role: z.enum(['owner', 'admin', 'member', 'billing']).optional(),
 })
+/** Invite links cannot grant Owner or Admin; addressed invites can. */
 export const createOrganizationInviteLinkSchema = z.object({
 	role: z.enum(['member', 'billing']).optional(),
 	label: z.string().optional(),
@@ -38,6 +40,7 @@ export const removeOrganizationTeamMemberSchema = z.object({
 	userId: z.string(),
 })
 export const revokeOrganizationGrantSchema = z.object({ grantId: z.string() })
+/** Bulk revoke on a team or everyone Access page (max 100). */
 export const revokeOrganizationGrantsSchema = z.object({
 	grantIds: z.array(z.string().trim().min(1)).min(1).max(100),
 })

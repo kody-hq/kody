@@ -1398,14 +1398,14 @@ Checkout sessions are created server-side for authenticated users via
 `POST /@:orgSlug/-/billing/checkout.json` for the organization in the URL
 (Stripe Checkout Session, JSON body
 `{ plan: "pro", interval: "month" | "year", promoCode?: string }`,
-`mode=subscription`, quantity = live seats (owners plus members, at least 1),
-with a signed `client_reference_id` and `metadata.kody_org_id`). Only
-`billing:write` (owners and billing admins) may call it; `/@<slug>/-/billing`
-redirects to the signup organization's billing page. Sessions enable Stripe
-automatic tax (`automatic_tax[enabled]`; Stripe Tax is active on the account and
-computes 0 until a registration exists) and tax-ID collection for business
-customers; when an existing `customer` is passed, `customer_update` address/name
-are `auto` so Checkout can store what tax needs.
+`mode=subscription`, quantity = live seats (owners, admins, and members, at
+least 1), with a signed `client_reference_id` and `metadata.kody_org_id`). Only
+`billing:write` (Owners, Admins, and Billing members) may call it;
+`/@<slug>/-/billing` redirects to the signup organization's billing page.
+Sessions enable Stripe automatic tax (`automatic_tax[enabled]`; Stripe Tax is
+active on the account and computes 0 until a registration exists) and tax-ID
+collection for business customers; when an existing `customer` is passed,
+`customer_update` address/name are `auto` so Checkout can store what tax needs.
 
 Sessions never set `allow_promotion_codes`. Stripe can restrict a coupon to a
 product but not a price, and monthly and annual Pro are one product, so a
@@ -1502,8 +1502,8 @@ An owner of two orgs can move a Stripe-paid Pro plan from one to the other
 action between two separate per-org wallets (ADR 0065); there is no shared
 billing account and nothing else moves.
 
-- **Who:** the actor must be a live `owner` of both orgs. Billing admins and
-  members cannot start, retry, or cancel a move.
+- **Who:** the actor must be a live `owner` of both orgs. Admins, Billing
+  members, and Members cannot start, retry, or cancel a move.
 - **What moves:** only the unused prepaid value of the source subscription.
   Packages, credentials, connections, memories, inboxes, storage, members, and
   credit wallets stay in their org. The source keeps its data and drops to Free
