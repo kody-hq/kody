@@ -8,6 +8,12 @@
 import type { OrgPermission } from './org-permissions.ts'
 import type { OwnerId, PersonId } from './owner-person-ids.ts'
 
+/**
+ * Membership role in the request's org. Owner holds every org permission.
+ * Admin is Owner authority without `org:delete` and without changing,
+ * removing, or promoting Owners. Member and Billing hold their presets plus
+ * grants. `null` membership is Automation or an outside collaborator.
+ */
 export type OrgRole = 'owner' | 'admin' | 'member' | 'billing'
 
 export type RequestOrg = {

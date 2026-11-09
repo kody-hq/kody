@@ -169,13 +169,20 @@ teams. Team orgs use member and team controls on this tab.
 
 ## Access for one person
 
-In a team org, an Owner selects **Access** on a non-Owner row in **Members** or
-on a row in **Collaborators**, or selects a person-linked grant on **Grants**.
-That page is `/@<slug>/-/grants/user/<userId>` (`Access for {name}`). It lists
-what that person can use in this organization and **Give access** grants or
-revokes a preset on specific packages, apps, and credentials in one submit. Team
-and everyone grants appear as read-only. Owners already hold everything, so
-there is nothing to grant them. A person with no membership or grant 404s.
+In a team org, an Owner or Admin selects **Access** on a non-Owner, non-Admin
+row in **Members** or on a row in **Collaborators**, or selects a person-linked
+grant on **Grants**. That page is `/@<slug>/-/grants/user/<userId>`
+(`Access for {name}`). It lists what that person can use in this organization
+and **Give access** grants or revokes a preset on specific packages, apps, and
+credentials in one submit. Team and everyone grants appear as read-only. Owners
+and Admins already hold everything that page can grant, so there is nothing to
+grant them. A person with no membership or grant 404s.
+
+Teams and everyone in the org get the same treatment:
+`/@<slug>/-/grants/team/<teamId>` and `/@<slug>/-/grants/everyone`. Those pages
+group grants by resource type, change presets in place, and remove one grant or
+a selected set at once (`revokeOrganizationGrants`). A team page shows everyone
+grants as read-only.
 
 The package **Collaborators** tab stays the place to share one package. Use
 **Access** when the work is one person across packages, apps, and credentials.
@@ -217,8 +224,9 @@ there). Nothing attaches before they accept. Invites expire after 7 days;
 
 Use `kind: "membership"` to add someone to the whole **team** org instead (with
 a role and optional teams). Members hold the org-level basics plus what they are
-granted. Owners hold everything. Membership invites are refused on a personal
-(signup) org; create a team org to invite people.
+granted. Owners hold everything; Admins hold everything except deleting the org
+and changing Owners. Membership invites are refused on a personal (signup) org;
+create a team org to invite people.
 
 Personal orgs can still grant Use/Contribute/Manage on packages via
 `accessGrant` / `inviteCreate` `kind: "grant"` and revoke with `accessRevoke`.
@@ -248,25 +256,27 @@ credentials however they like, so Kody surfaces and guards it:
   `packageCollaboratorSet`, `accessGrant`, `inviteCreate`, and
   `inviteLinkCreate`. The Collaborators tab also shows it on each existing grant
   it affects.
-- **Owner-only changes.** While the package has unmappable credentials, only org
-  Owners (the owner of a personal org) can push, publish, or otherwise change
-  its code or manifest. Existing collaborators are locked too, with no
-  grandfathering, and the lock applies as soon as a credential becomes
+- **Owner-or-Admin changes.** While the package has unmappable credentials, only
+  org Owners and Admins (the owner of a personal org) can push, publish, or
+  otherwise change its code or manifest. Existing collaborators are locked too,
+  with no grandfathering, and the lock applies as soon as a credential becomes
   unmappable. Read and Use are unaffected: collaborators keep running it.
   Denials have code `unmappable_credentials`, name the credentials, and say how
-  an Owner can allow the collaborator.
-- **Allow one collaborator anyway.** An org Owner can let one person or team
-  change it despite the risk, per grant: the **Allow changes despite unmappable
-  credentials** checkbox on their row in the Collaborators tab,
+  an Owner or Admin can allow the collaborator.
+- **Allow one collaborator anyway.** An org Owner or Admin can let one person or
+  team change it despite the risk, per grant: the **Allow changes despite
+  unmappable credentials** checkbox on their row in the Collaborators tab,
   `kody package grant <package> --user <name> --preset contribute --allow-changes-despite-unmappable-credentials`
   (`--disallow-changes-despite-unmappable-credentials` turns it off), or
   `allow_changes_despite_unmappable_credentials: true` on
   `packageCollaboratorSet` or `accessGrant`. Omitting it keeps the grant's
   current choice. It is not available on everyone-in-org or profile grants.
-- **Owner notice.** Owners see a notice explaining the lock on the package page,
-  the Collaborators tab (`unmappable_credentials` on `packageCollaboratorList`),
-  `kody dev check` / `packageCheck` (`notices`), and publish output
-  (`unmappable_credentials_notice`). No email is sent.
+- **Owner notice.** Owners and Admins see a notice explaining the lock on the
+  package page, the Collaborators tab (`unmappable_credentials` on
+  `packageCollaboratorList`), `kody dev check` / `packageCheck` (`notices`), and
+  inline `published` / `already_published` publish output
+  (`unmappable_credentials_notice`). Dispatched publish output does not include
+  that notice. No email is sent.
 - **Profiles.** The check uses the acting principal through the profile chain. A
   profile acting for an Owner changes the package only when every layer of its
   chain holds the permission; a profile acting for a collaborator follows that

@@ -282,35 +282,29 @@ replace a newer build. Missing source history fails before signing. Matching
 drafts resume after a failed upload, while conflicting drafts reserve their
 version so the next run advances past them automatically.
 
-On macOS, electron-builder signs the app (`--dir`), then
-`packages/desktop/scripts/mac-notarize.cjs` notarizes it with `notarytool`,
-staples and validates the ticket, and electron-builder packages the DMG and zip
-from that stapled app (`--prepackaged`). Each Apple call retries only transient
-network failures (NSURLErrorDomain -1001, -1005, -1009, HTTP 5xx) six times over
-about ten minutes. Rejections and signature errors fail at once. A poll that
-times out after upload resumes the same submission ID instead of resubmitting,
-and a stapling retry never re-notarizes.
-`packages/desktop/scripts/release-retry.cjs` holds the shared classifier and
-backoff.
+On macOS, electron-builder signs the app, notarizes it, staples the ticket, then
+packages the DMG and zip from that stapled app. Transient Apple network failures
+retry; a timed-out notarization poll resumes the same submission instead of
+starting over. Classifier and backoff live in
+`packages/desktop/scripts/release-retry.cjs`.
 
-The publish job runs even when a build fails. It uploads only assets the draft
-does not already have (matching SHA-256 digest), then publishes as latest only
-when every expected installer, blockmap, checksum, build-info file, and
-`latest*.yml` feed is present and each feed's version, sizes, and SHA-512 hashes
-match the uploaded installers. Otherwise it fails and leaves the draft. Re-run
-failed jobs, or dispatch again for the same source, and the credentials job
-skips any target whose assets are already complete on the matching draft.
+The publish job still runs when a build fails. It uploads only assets the
+matching draft does not already have, then publishes as latest only when the
+matching draft has every expected installer and update feed, and those feeds
+match the uploaded files. Otherwise it leaves the draft. Re-run failed jobs, or
+dispatch the same source again, and complete targets are skipped. If a complete
+target's feed hash is wrong, fix that mismatch, remove the draft, and dispatch
+the source again so the assets rebuild.
 
 The default `auto` scope preserves the platforms in the published feed, starting
 with Apple silicon and Intel Mac installers. Run the workflow manually on main
 with `all` to add Windows and Linux after configuring their signing credentials.
-Subsequent automatic releases keep those platforms in the update feed. Every
-selected build must succeed before publishing. macOS builds require Developer ID
-signing, Apple's notarization service, and a valid stapled ticket. Windows
-builds require valid signatures on the application and installer. The final job
-uploads all installers, blockmaps, manifests, and checksums to a draft, then
-publishes it. Published versions cannot be replaced. The normal Desktop binaries
-workflow still produces unsigned CI artifacts.
+Subsequent automatic releases keep those platforms in the update feed. macOS
+builds require Developer ID signing, Apple's notarization service, and a valid
+stapled ticket. Windows builds require valid signatures on the application and
+installer. The final job uploads all installers, blockmaps, manifests, and
+checksums to a draft, then publishes it. Published versions cannot be replaced.
+The normal Desktop binaries workflow still produces unsigned CI artifacts.
 
 A repository admin must create the `desktop-release` GitHub environment in
 `kody-hq/kody` and restrict its deployment branches to main. The first Mac

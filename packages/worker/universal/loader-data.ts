@@ -1657,7 +1657,7 @@ export type OrgSubjectAccessGrant = OrgGrantView & {
 	canRevoke: boolean
 }
 
-/** A package or credential the viewer may share with this person. */
+/** A package or credential the viewer may share with this subject. */
 export type OrgSubjectAccessOption = {
 	resourceType: 'package' | 'credential'
 	resourceId: string
@@ -1693,7 +1693,7 @@ export type OrgSubjectAccessLoaderData = {
 	canManage: boolean
 	subject: OrgSubjectAccessSubject
 	grants: Array<OrgSubjectAccessGrant>
-	/** Null when the viewer cannot add access or the person is an Owner. */
+	/** Null when the viewer cannot add access, or the person is an Owner or Admin. */
 	options: {
 		packages: Array<OrgSubjectAccessOption>
 		credentials: Array<OrgSubjectAccessOption>

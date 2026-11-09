@@ -75,6 +75,12 @@ request so cookie signing and verification are available to handlers.
 
 ## Login and signup
 
+The `/login` and `/signup` pages (`packages/worker/start/pages/login.tsx`) share
+the `login.form` machine (`packages/worker/client/routes/login-state.ts`): one
+submission fence, retryable errors, and username-confirmation (`confirming`,
+shown as idle plus a message). See
+[Explicit state machines](../state-machines.md#loginform).
+
 `POST /auth` is implemented by `packages/worker/src/app/handlers/auth.ts`.
 
 - Accepts JSON body with `email`, `password`, `mode` (`login` or `signup`), and

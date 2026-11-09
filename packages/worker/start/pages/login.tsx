@@ -64,10 +64,16 @@ import { useSocialSignIn, type PublicAuthConfig } from '../social-sign-in.ts'
 import type { UsernameAvailabilityView } from '../components/username-choice-field.tsx'
 import { AuthForm, formMessageCss } from './login-sections.tsx'
 
+/**
+ * Display status for `/login` and `/signup`. `confirming` (username
+ * permanence) is a `login.form` machine state; the page shows it as idle plus
+ * a message via `setState('idle', message)`.
+ */
 export type AuthStatus = Exclude<StateOf<typeof loginState>, 'confirming'>
 function buildAuthPath(mode: 'login' | 'signup', redirectTo: string | null) {
 	return buildAuthLink(mode === 'signup' ? '/signup' : '/login', redirectTo)
 }
+/** Password, provider, and passkey sign-in/sign-up. Uses `login.form`. */
 export function LoginPage({
 	mode,
 	currentHref,
