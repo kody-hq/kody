@@ -52,6 +52,9 @@ Add new steering records to the steering list, not a catch-all numbered dump.
 
 ## Steering list
 
+- [0100: Declare lifecycle graphs once, not as scattered status checks](./0100-explicit-state-machines.md)
+  Domain-owned graphs drive types, parsing, SQL guards and generated reference
+
 Open these before proposing a new primitive, surface, or storage home.
 
 - [0001 — No user-facing package versioning or import pins](./0001-no-package-versioning.md)

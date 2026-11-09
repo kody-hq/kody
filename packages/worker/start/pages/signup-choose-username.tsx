@@ -1,4 +1,9 @@
 /** @jsxImportSource @emotion/react */
+import { useStateMachine } from '#client/use-state-machine.ts'
+import {
+	usernameSignupState,
+	type UsernameSignupState,
+} from '#client/routes/username-signup-state.ts'
 import { useServerFn } from '@tanstack/react-start'
 import { handlePermanenceConfirmMessage } from '@kody-internal/shared/handle-permanence.ts'
 import { completeOauthPendingSignup } from '#start/server/auth-mutations'
@@ -60,8 +65,12 @@ export function SignupChooseUsernamePage(props: {
 	const [confirmedUsername, setConfirmedUsername] = useState<string | null>(
 		null,
 	)
-	const [status, setStatus] = useState<'idle' | 'submitting' | 'error'>('idle')
-	const [message, setMessage] = useState<string | null>(null)
+	const [flow, transition, getFlow] = useStateMachine<UsernameSignupState>(
+		usernameSignupState,
+		{ status: 'idle' },
+	)
+	const status = flow.status === 'confirming' ? 'idle' : flow.status
+	const message = 'message' in flow ? flow.message : null
 
 	const confirming =
 		confirmedUsername !== null &&
@@ -77,10 +86,10 @@ export function SignupChooseUsernamePage(props: {
 
 	async function handleSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault()
+		if (getFlow().status === 'submitting') return
 		const nextUsername = username.trim().toLowerCase()
 		if (!nextUsername) {
-			setStatus('error')
-			setMessage('Username is required.')
+			transition({ status: 'error', message: 'Username is required.' })
 			return
 		}
 		if (
@@ -88,24 +97,29 @@ export function SignupChooseUsernamePage(props: {
 			availability.status === 'reserved' ||
 			availability.status === 'invalid'
 		) {
-			setStatus('error')
-			setMessage(availability.reason ?? 'That username cannot be used.')
+			transition({
+				status: 'error',
+				message: availability.reason ?? 'That username cannot be used.',
+			})
 			return
 		}
 		if (confirmedUsername !== nextUsername) {
 			setConfirmedUsername(nextUsername)
-			setStatus('idle')
-			setMessage(handlePermanenceConfirmMessage(nextUsername))
+			transition({
+				status: 'confirming',
+				message: handlePermanenceConfirmMessage(nextUsername),
+			})
 			return
 		}
 		if (availability.status === 'checking') {
-			setStatus('error')
-			setMessage('Wait for the availability check to finish.')
+			transition({
+				status: 'error',
+				message: 'Wait for the availability check to finish.',
+			})
 			return
 		}
 
-		setStatus('submitting')
-		setMessage(null)
+		if (!transition({ status: 'submitting' })) return
 		try {
 			const payload = await completeSignup({
 				signal: lifecycle.current?.signal,
@@ -116,12 +130,13 @@ export function SignupChooseUsernamePage(props: {
 			})
 			if (!payload) return
 			if (!payload.successful || payload.ok !== true) {
-				setStatus('error')
-				setMessage(
-					typeof payload.error === 'string'
-						? payload.error
-						: 'Unable to create your account.',
-				)
+				transition({
+					status: 'error',
+					message:
+						typeof payload.error === 'string'
+							? payload.error
+							: 'Unable to create your account.',
+				})
 				if (
 					payload.code === 'pending_expired' ||
 					payload.code === 'pending_csrf'
@@ -136,8 +151,10 @@ export function SignupChooseUsernamePage(props: {
 					: '/onboarding',
 			)
 		} catch {
-			setStatus('error')
-			setMessage('Network error. Please try again.')
+			transition({
+				status: 'error',
+				message: 'Network error. Please try again.',
+			})
 		}
 	}
 
@@ -164,6 +181,7 @@ export function SignupChooseUsernamePage(props: {
 					</header>
 
 					<form
+						aria-busy={isSubmitting}
 						data-rise
 						style={{ '--rise': '1' } as CSSProperties}
 						css={formCss}
@@ -178,8 +196,7 @@ export function SignupChooseUsernamePage(props: {
 								setConfirmedUsername(null)
 								// Clear confirm and error copy so the form never still
 								// claims the previous handle is about to be locked.
-								setStatus('idle')
-								setMessage(null)
+								transition({ status: 'idle' })
 							}}
 							onAvailabilityChange={setAvailability}
 							seeds={{

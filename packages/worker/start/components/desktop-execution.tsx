@@ -1,4 +1,10 @@
 /** @jsxImportSource @emotion/react */
+import { useStateMachine } from '#client/use-state-machine.ts'
+import { desktopSetupStepState } from '#universal/desktop-setup-step-state.ts'
+import {
+	desktopSetupOperationState,
+	type DesktopSetupOperation,
+} from '#client/routes/desktop-setup-operation-state.ts'
 import {
 	createContext,
 	useContext,
@@ -7,7 +13,7 @@ import {
 	useState,
 	type ReactNode,
 } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { useServerFn } from '@tanstack/react-start'
 import { setExperiment } from '#start/server/experiment-opt-in'
@@ -126,15 +132,23 @@ export function DesktopExecutionProvider({
 }) {
 	const [bridge, setBridge] = useState<DesktopExecutionBridge | null>(null)
 	const [opened, setOpened] = useState(false)
-	const [step, setStep] = useState<DesktopSetupWizardStep>('overview')
+	const [wizard, transitionStep] = useStateMachine<{
+		status: DesktopSetupWizardStep
+	}>(desktopSetupStepState, { status: 'overview' })
+	const step = wizard.status
+	const setStep = (status: DesktopSetupWizardStep) => transitionStep({ status })
 	const [name, setName] = useState('')
 	const [replace, setReplace] = useState('')
 	const [setup, setSetup] = useState<SetupData | null>(null)
 	// Team org this machine should become available to after personal registration.
 	const [target, setTarget] = useState<string | null>(null)
 	const [attached, setAttached] = useState(false)
-	const [busy, setBusy] = useState(false)
-	const [error, setError] = useState<string | null>(null)
+	const [operation, transitionOperation, getOperation] =
+		useStateMachine<DesktopSetupOperation>(desktopSetupOperationState, {
+			status: 'idle',
+		})
+	const busy = operation.status === 'running'
+	const error = operation.status === 'error' ? operation.message : null
 	const dialog = useRef<HTMLDialogElement>(null)
 	const client = useQueryClient()
 	const router = useRouter()
@@ -202,21 +216,36 @@ export function DesktopExecutionProvider({
 	async function refresh() {
 		await client.invalidateQueries({ queryKey: ['desktop-machine', actorKey] })
 	}
+	const commandsStatus = useMutation({
+		mutationFn: () => bridge!.commandsStatus(),
+		onSuccess: (result) =>
+			client.setQueryData(['desktop-machine', actorKey], result),
+	})
+	function clearError() {
+		if (getOperation().status === 'error')
+			transitionOperation({ status: 'idle' })
+		commandsStatus.reset()
+	}
 	async function run(action: () => Promise<void>) {
-		if (busy) return
-		setBusy(true)
-		setError(null)
+		if (!transitionOperation({ status: 'running' })) return
+		commandsStatus.reset()
 		try {
-			await action()
+			try {
+				await action()
+			} finally {
+				await refresh()
+			}
+			transitionOperation({ status: 'idle' })
 		} catch (error) {
-			setError(error instanceof Error ? error.message : String(error))
-		} finally {
-			setBusy(false)
-			await refresh()
+			transitionOperation({
+				status: 'error',
+				message: error instanceof Error ? error.message : String(error),
+			})
 		}
 	}
+
 	async function close() {
-		if (!bridge || busy) return
+		if (!bridge || getOperation().status === 'running') return
 		await run(async () => {
 			await bridge.dismissOnboarding()
 			setOpened(false)
@@ -387,14 +416,7 @@ export function DesktopExecutionProvider({
 						onboarding.data?.payload.needsOnboarding ?? null,
 					commands: async (action: 'status' | 'on' | 'off') => {
 						if (action === 'status') {
-							try {
-								client.setQueryData(
-									['desktop-machine', actorKey],
-									await bridge.commandsStatus(),
-								)
-							} catch (error) {
-								setError(error instanceof Error ? error.message : String(error))
-							}
+							await commandsStatus.mutateAsync().catch(() => undefined)
 							return
 						}
 						await run(async () => {
@@ -405,15 +427,19 @@ export function DesktopExecutionProvider({
 						})
 					},
 					forget: () => {
-						setError(null)
+						clearError()
 						setTarget(null)
 						setAttached(false)
 						setStep('forget')
 						setOpened(true)
 					},
-					error: error ?? machine.data?.error ?? machine.error?.message ?? null,
+					error:
+						error ??
+						commandsStatus.error?.message ??
+						(busy ? null : (machine.data?.error ?? machine.error?.message)) ??
+						null,
 					open: (targetOrgSlug?: string | null) => {
-						setError(null)
+						clearError()
 						setAttached(false)
 						setTarget(targetOrgSlug ?? null)
 						// Drop any prior org's chain snapshot so overview stages do not
@@ -464,12 +490,13 @@ export function DesktopExecutionProvider({
 			{children}
 			{bridge && username ? (
 				<dialog
+					aria-busy={busy}
 					ref={dialog}
 					aria-labelledby="desktop-execution-title"
 					onCancel={(event) => {
 						event.preventDefault()
 						if (step === 'forget') {
-							if (!busy) setOpened(false)
+							if (getOperation().status !== 'running') setOpened(false)
 						} else void close()
 					}}
 					css={{

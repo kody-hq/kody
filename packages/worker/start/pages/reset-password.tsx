@@ -1,4 +1,10 @@
 /** @jsxImportSource @emotion/react */
+import { useStateMachine } from '#client/use-state-machine.ts'
+import {
+	passwordResetState,
+	type PasswordResetState,
+} from '#client/routes/password-reset-state.ts'
+import type { StateOf } from '@kody-internal/shared/state-machine.ts'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 import {
 	readPublicFormProtection,
@@ -23,19 +29,23 @@ import {
 	stackedPageCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-import { useState, type FormEvent } from 'react'
+import type { FormEvent } from 'react'
 import { Honeypot } from '../components/honeypot-field.tsx'
 import { usePublicAuthProtection } from '../components/public-auth-protection.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import { useHydrated } from '../components/use-hydrated.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 
-type ResetStatus = 'idle' | 'submitting' | 'success' | 'error'
+type ResetStatus = StateOf<typeof passwordResetState>
 
 export function ResetPasswordRoute() {
 	const hydrated = useHydrated()
-	const [status, setStatus] = useState<ResetStatus>('idle')
-	const [message, setMessage] = useState<string | null>(null)
+	const [flow, transition, getFlow] = useStateMachine<PasswordResetState>(
+		passwordResetState,
+		{ status: 'idle' },
+	)
+	const status = flow.status
+	const message = 'message' in flow ? flow.message : null
 	const turnstileSiteKey = usePublicAuthProtection()
 	const search = useMatchedPageScope().pageLocation.searchStr
 
@@ -43,13 +53,17 @@ export function ResetPasswordRoute() {
 		nextStatus: ResetStatus,
 		nextMessage: string | null = null,
 	) {
-		setStatus(nextStatus)
-		setMessage(nextMessage)
-		if (nextStatus === 'error') resetTurnstileWidgets()
+		const accepted =
+			nextStatus === 'error' || nextStatus === 'success'
+				? transition({ status: nextStatus, message: nextMessage ?? '' })
+				: transition({ status: nextStatus })
+		if (accepted && nextStatus === 'error') resetTurnstileWidgets()
+		return accepted
 	}
 
 	async function submitResetRequest(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault()
+		if (getFlow().status === 'submitting') return
 		if (!(event.currentTarget instanceof HTMLFormElement)) return
 		const form = event.currentTarget
 
@@ -61,7 +75,7 @@ export function ResetPasswordRoute() {
 			return
 		}
 
-		setState('submitting')
+		if (!setState('submitting')) return
 		try {
 			const payload = await requestWebsitePasswordReset({
 				data: { email, ...protection },
@@ -88,6 +102,7 @@ export function ResetPasswordRoute() {
 		token: string,
 	) {
 		event.preventDefault()
+		if (getFlow().status === 'submitting') return
 		if (!(event.currentTarget instanceof HTMLFormElement)) return
 		const form = event.currentTarget
 
@@ -99,7 +114,7 @@ export function ResetPasswordRoute() {
 			return
 		}
 
-		setState('submitting')
+		if (!setState('submitting')) return
 		try {
 			const payload = await confirmWebsitePasswordReset({
 				data: { token, password, ...protection },
@@ -136,6 +151,7 @@ export function ResetPasswordRoute() {
 				<p css={pageDescriptionCss}>{description}</p>
 			</header>
 			<form
+				aria-busy={isSubmitting}
 				method="post"
 				{...passwordManagerIgnoreProps}
 				css={cardCss}

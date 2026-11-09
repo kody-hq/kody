@@ -90,6 +90,7 @@ export function SecretEditor(props: SecretEditorProps) {
 	} = props
 	return (
 		<form
+			aria-busy={isMutating}
 			method="post"
 			{...passwordManagerIgnoreProps}
 			onSubmit={onSave}

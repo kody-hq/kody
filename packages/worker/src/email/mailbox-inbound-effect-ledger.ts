@@ -1,3 +1,4 @@
+import { inboundSubscriptionEffectState } from './inbound-subscription-effect-state.ts'
 /**
  * Mailbox USER inbound effect authority CAS primitives.
  *
@@ -113,6 +114,15 @@ export type MailboxInboundEffectLedgerRpc = {
 		limit?: number
 	}) => Promise<MailboxListDueInboundEffectWorkResult>
 }
+
+const claimPendingEffectGuard = inboundSubscriptionEffectState.guard({
+	from: 'pending',
+	to: 'processing',
+})
+const reclaimProcessingEffectGuard = inboundSubscriptionEffectState.guard({
+	from: 'processing',
+	to: 'processing',
+})
 
 export function claimMailboxInboundUsageEffect(
 	sql: SqlStorage,
@@ -361,6 +371,10 @@ export function claimMailboxInboundSubscriptionEffect(
 	) {
 		return { status: 'not-claimable', delivery: current }
 	}
+	inboundSubscriptionEffectState.assert(
+		current.subscriptionEffectState ?? 'pending',
+		'processing',
+	)
 	const subscriptionEffectLease = crypto.randomUUID()
 	const next: MailboxInboundDeliverySnapshot = {
 		...current,
@@ -387,9 +401,9 @@ export function claimMailboxInboundSubscriptionEffect(
 			)
 			AND (
 				subscription_effect_state IS NULL
-				OR subscription_effect_state = 'pending'
+				OR subscription_effect_state IN ${claimPendingEffectGuard}
 				OR (
-					subscription_effect_state = 'processing'
+					subscription_effect_state IN ${reclaimProcessingEffectGuard}
 					AND (
 						subscription_effect_lease_at IS NULL
 						OR subscription_effect_lease_at < ?
@@ -470,6 +484,10 @@ export function completeMailboxInboundSubscriptionEffect(
 						: {}),
 				}
 			: undefined
+	inboundSubscriptionEffectState.assert(
+		current.subscriptionEffectState ?? 'pending',
+		'complete',
+	)
 	const next: MailboxInboundDeliverySnapshot = {
 		...current,
 		subscriptionEffectState: 'complete',
@@ -549,6 +567,10 @@ export function failMailboxInboundSubscriptionEffect(
 	}
 	const failure = resolveMailboxSubscriptionEffectFailure(
 		current.subscriptionEffectAttemptCount ?? 0,
+	)
+	inboundSubscriptionEffectState.assert(
+		current.subscriptionEffectState ?? 'pending',
+		failure.deadLettered ? 'dead-letter' : 'pending',
 	)
 	const next: MailboxInboundDeliverySnapshot = {
 		...current,

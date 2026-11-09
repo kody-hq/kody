@@ -1,4 +1,9 @@
 /** @jsxImportSource @emotion/react */
+import { useStateMachine } from '#client/use-state-machine.ts'
+import {
+	twoFactorVerifyState,
+	type TwoFactorVerifyState,
+} from '#client/routes/two-factor-verify-state.ts'
 import {
 	readPublicFormProtection,
 	resetTurnstileWidgets,
@@ -44,8 +49,12 @@ function buildLoginHref(redirectTo: string | null) {
 
 export function VerifyRoute() {
 	const verifyTwoFactor = useServerFn(verifyWebsiteTwoFactor)
-	const [status, setStatus] = useState<'idle' | 'submitting'>('idle')
-	const [message, setMessage] = useState<string | null>(null)
+	const [flow, transition, getFlow] = useStateMachine<TwoFactorVerifyState>(
+		twoFactorVerifyState,
+		{ status: 'idle' },
+	)
+	const status = flow.status
+	const message = 'message' in flow ? flow.message : null
 	const [formErrorDismissed, setFormErrorDismissed] = useState(false)
 	const turnstileSiteKey = usePublicAuthProtection()
 	const search = useMatchedPageScope().pageLocation.searchStr
@@ -66,6 +75,7 @@ export function VerifyRoute() {
 
 	async function handleSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault()
+		if (getFlow().status === 'submitting') return
 		if (!(event.currentTarget instanceof HTMLFormElement)) return
 		const form = event.currentTarget
 
@@ -73,13 +83,15 @@ export function VerifyRoute() {
 		const code = String(formData.get('code') ?? '').trim()
 		const protection = readPublicFormProtection(formData, form)
 		if (!code) {
-			setMessage('Enter the 6-digit code from your authenticator app.')
+			transition({
+				status: 'error',
+				message: 'Enter the 6-digit code from your authenticator app.',
+			})
 			return
 		}
 
 		setFormErrorDismissed(true)
-		setStatus('submitting')
-		setMessage(null)
+		if (!transition({ status: 'submitting' })) return
 
 		try {
 			const payload = await verifyTwoFactor({
@@ -91,12 +103,13 @@ export function VerifyRoute() {
 					window.location.assign(buildLoginHref(getRedirectTo()))
 					return
 				}
-				setStatus('idle')
-				setMessage(
-					typeof payload?.error === 'string'
-						? payload.error
-						: 'Unable to verify the code.',
-				)
+				transition({
+					status: 'error',
+					message:
+						typeof payload?.error === 'string'
+							? payload.error
+							: 'Unable to verify the code.',
+				})
 				resetTurnstileWidgets()
 				return
 			}
@@ -105,8 +118,10 @@ export function VerifyRoute() {
 				resolvePostAuthLandingPath(getRedirectTo()) ?? '/account',
 			)
 		} catch {
-			setStatus('idle')
-			setMessage('Network error. Please try again.')
+			transition({
+				status: 'error',
+				message: 'Network error. Please try again.',
+			})
 			resetTurnstileWidgets()
 		}
 	}
@@ -122,7 +137,12 @@ export function VerifyRoute() {
 					in.
 				</p>
 			</header>
-			<form method="post" css={cardCss} onSubmit={handleSubmit}>
+			<form
+				method="post"
+				aria-busy={isSubmitting}
+				css={cardCss}
+				onSubmit={handleSubmit}
+			>
 				<Honeypot />
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>Verification code</span>

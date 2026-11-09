@@ -1071,6 +1071,57 @@ test('a failed source cancel is retried and does not reissue the credit note', a
 	expect(stripe.creditNotes).toHaveLength(1)
 })
 
+test.each([
+	{ leaseExpiresAt: null, expired: false },
+	{ leaseExpiresAt: now.toISOString(), expired: false },
+	{ leaseExpiresAt: new Date(now.valueOf() + 1).toISOString(), expired: false },
+	{ leaseExpiresAt: new Date(now.valueOf() - 1).toISOString(), expired: true },
+])(
+	'applying lease $leaseExpiresAt preserves reclaim and cancellation boundaries',
+	async ({ leaseExpiresAt, expired }) => {
+		using stripe = createFakeStripe()
+		for (const operation of ['advance', 'cancel'] as const) {
+			const seeded = await seedMove({ interval: 'month', stripe })
+			const transferId = crypto.randomUUID()
+			await startPlanTransfer({
+				env: testEnv(),
+				actorUserId: seeded.ownerId,
+				actorEmail: null,
+				transferId,
+				sourceOrgId: seeded.sourceOrgId,
+				targetOrgId: seeded.targetOrgId,
+				targetInterval: 'month',
+				origin: 'https://kody.test',
+				now,
+			})
+			await env.APP_DB.prepare(
+				`UPDATE org_plan_transfers SET status = 'applying', lease_expires_at = ? WHERE id = ?`,
+			)
+				.bind(leaseExpiresAt, transferId)
+				.run()
+			if (operation === 'advance') {
+				expect(
+					await advancePlanTransfer({ env: testEnv(), transferId, now }),
+				).toMatchObject({ status: expired ? 'needs_retry' : 'applying' })
+			} else {
+				expect(
+					await cancelPlanTransfer({
+						env: testEnv(),
+						actorUserId: seeded.ownerId,
+						transferId,
+						now,
+					}),
+				).toMatchObject({
+					ok: expired,
+					transfer: { status: expired ? 'canceled' : 'applying' },
+				})
+			}
+			expect(seeded.sourceSubscription.status).toBe('active')
+		}
+		expect(stripe.creditNotes).toHaveLength(0)
+	},
+)
+
 test('an owner can cancel before the point of no return', async () => {
 	using stripe = createFakeStripe()
 	const seeded = await seedMove({ interval: 'month', stripe })

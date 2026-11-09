@@ -969,6 +969,47 @@ test('dispatching a run that is already committed leaves the live run alone', as
 	).toMatchObject({ state: 'succeeded' })
 }, 60_000)
 
+test.each(['aborted', 'rejected'])(
+	'a %s offer can redispatch and commit',
+	async (state) => {
+		const ecid = `ec_retry_${state}`
+		const runId = `run_retry_${state}`
+		const { stub, next, send } = await connect(ecid)
+		await runInDurableObject(stub, async (_instance, ctx) => {
+			ctx.storage.sql.exec(
+				`INSERT INTO runs (run_id, state, lease_json, deadline, accept_by, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?)`,
+				runId,
+				state,
+				JSON.stringify(lease(ecid, runId)),
+				Date.now() + 60_000,
+				Date.now() + 30_000,
+				Date.now(),
+			)
+		})
+		const dispatching = stub.dispatch({
+			request: runRequest(runId),
+			lease: lease(ecid, runId),
+			runRecord: null,
+			position: 1,
+		})
+		const request = await next('run.request')
+		await send('run.accept', { runId }, { re: request.seq })
+		expect(await dispatching).toEqual({ outcome: 'committed' })
+		await next('run.commit')
+		await runInDurableObject(stub, async (_instance, ctx) => {
+			expect(
+				ctx.storage.sql
+					.exec<{ state: string }>(
+						'SELECT state FROM runs WHERE run_id = ?',
+						runId,
+					)
+					.one().state,
+			).toBe('committed')
+		})
+	},
+)
+
 test('a person cancels their own running run with user_cancelled, and only theirs', async () => {
 	const ecid = 'ec_user_cancel'
 	const { stub, next, send } = await connect(ecid)

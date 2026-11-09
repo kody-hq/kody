@@ -1,3 +1,4 @@
+import { backupExportState } from './backup-export-state.ts'
 import {
 	pollD1Export,
 	startD1Export,
@@ -130,11 +131,13 @@ export async function runDurableExport(
 					)
 				}
 				restarts += 1
-				state = await step.do(
+				const next = await step.do(
 					`${stepNamePrefix}restart-d1-export-${restarts}`,
 					API_STEP_CONFIG,
 					async () => startD1Export(env, options.api),
 				)
+				backupExportState.assert(state.kind, next.kind)
+				state = next
 				continue
 			}
 			case 'pending': {
@@ -148,11 +151,13 @@ export async function runDurableExport(
 				polls += 1
 				const bookmark = state.bookmark
 				// Poll immediately after start/restart and after each wait.
-				state = await step.do(
+				const next = await step.do(
 					`${stepNamePrefix}poll-d1-export-${polls}`,
 					API_STEP_CONFIG,
 					async () => pollD1Export(env, bookmark, options.api),
 				)
+				backupExportState.assert(state.kind, next.kind)
+				state = next
 				if (state.kind === 'complete') return state
 				if (state.kind === 'lost') continue
 				if (polls < maxPolls) {

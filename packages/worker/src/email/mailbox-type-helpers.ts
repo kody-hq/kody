@@ -1,4 +1,12 @@
 import {
+	inboundDeliveryState,
+	type InboundDeliveryState,
+} from './inbound-delivery-state.ts'
+import {
+	inboundSubscriptionEffectState,
+	type InboundSubscriptionEffectState,
+} from './inbound-subscription-effect-state.ts'
+import {
 	emailClassificationValues,
 	emailDeliveryEventTypeValues,
 	emailDeliveryStatusValues,
@@ -31,25 +39,12 @@ export const mailboxStorageKindValues = [
 ] as const
 export type MailboxStorageKind = (typeof mailboxStorageKindValues)[number]
 
-export const mailboxInboundDeliveryStateValues = [
-	'pending',
-	'storing',
-	'cleaning',
-	'received',
-	'rejected',
-	'orphan-cleaned',
-] as const
-export type MailboxInboundDeliveryState =
-	(typeof mailboxInboundDeliveryStateValues)[number]
+export const mailboxInboundDeliveryStateValues = inboundDeliveryState.states
+export type MailboxInboundDeliveryState = InboundDeliveryState
 
-export const mailboxSubscriptionEffectStateValues = [
-	'pending',
-	'processing',
-	'complete',
-	'dead-letter',
-] as const
-export type MailboxSubscriptionEffectState =
-	(typeof mailboxSubscriptionEffectStateValues)[number]
+export const mailboxSubscriptionEffectStateValues =
+	inboundSubscriptionEffectState.states
+export type MailboxSubscriptionEffectState = InboundSubscriptionEffectState
 
 /** Canonical UTC ISO-8601 with milliseconds — lexical order matches time order. */
 export const mailboxCanonicalIsoTimestampPattern =
@@ -201,11 +196,7 @@ export function assertMailboxStorageKind(value: string): MailboxStorageKind {
 export function assertMailboxInboundDeliveryState(
 	value: string,
 ): MailboxInboundDeliveryState {
-	if (
-		!(mailboxInboundDeliveryStateValues as ReadonlyArray<string>).includes(
-			value,
-		)
-	) {
+	if (!inboundDeliveryState.is(value)) {
 		throw new Error(
 			`Mailbox delivery event state is invalid; got ${JSON.stringify(value)}.`,
 		)
@@ -216,11 +207,7 @@ export function assertMailboxInboundDeliveryState(
 export function assertMailboxSubscriptionEffectState(
 	value: string,
 ): MailboxSubscriptionEffectState {
-	if (
-		!(mailboxSubscriptionEffectStateValues as ReadonlyArray<string>).includes(
-			value,
-		)
-	) {
+	if (!inboundSubscriptionEffectState.is(value)) {
 		throw new Error(
 			`Mailbox subscriptionEffectState is invalid; got ${JSON.stringify(value)}.`,
 		)

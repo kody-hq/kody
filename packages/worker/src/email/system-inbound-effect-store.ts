@@ -1,3 +1,4 @@
+import { inboundSubscriptionEffectState } from './inbound-subscription-effect-state.ts'
 import { systemEmailOwnerId } from './email-owner.ts'
 import type { InboundDelivery } from './inbound-delivery.ts'
 import {
@@ -8,6 +9,15 @@ import { assertSystemEmailGraphAuthority } from './system-email-authority.ts'
 import { commitSystemInboundEventMutation } from './system-inbound-delivery-transaction.ts'
 
 const systemInboundProvider = 'cloudflare-email-routing'
+
+const claimPendingEffectGuard = inboundSubscriptionEffectState.guard({
+	from: 'pending',
+	to: 'processing',
+})
+const reclaimProcessingEffectGuard = inboundSubscriptionEffectState.guard({
+	from: 'processing',
+	to: 'processing',
+})
 
 export async function listDueSystemInboundEffects(input: {
 	db: D1Database
@@ -71,6 +81,8 @@ export async function claimSystemInboundSubscriptionEffect(input: {
 	now: Date
 }) {
 	await assertSystemEmailGraphAuthority(input.db)
+	inboundSubscriptionEffectState.assert('pending', 'processing')
+	inboundSubscriptionEffectState.assert('processing', 'processing')
 	const lease = crypto.randomUUID()
 	const expiredBefore = new Date(
 		input.now.getTime() - inboundEffectLeaseMs,
@@ -96,9 +108,9 @@ export async function claimSystemInboundSubscriptionEffect(input: {
 					)
 					AND (
 						subscription_effect_state IS NULL
-						OR subscription_effect_state = 'pending'
+						OR subscription_effect_state IN ${claimPendingEffectGuard}
 						OR (
-							subscription_effect_state = 'processing'
+							subscription_effect_state IN ${reclaimProcessingEffectGuard}
 							AND (
 								subscription_effect_lease_at IS NULL
 								OR subscription_effect_lease_at < ?
@@ -130,6 +142,7 @@ export async function completeSystemInboundSubscriptionEffect(input: {
 	detailField?: string
 }) {
 	await assertSystemEmailGraphAuthority(input.db)
+	inboundSubscriptionEffectState.assert('processing', 'complete')
 	const path = input.detailField ?? '$.subscriptionEffectCompletedAt'
 	const { dedicatedResult } = await commitSystemInboundEventMutation({
 		db: input.db,
@@ -180,6 +193,10 @@ export async function failSystemInboundSubscriptionEffect(input: {
 	now: Date
 }) {
 	await assertSystemEmailGraphAuthority(input.db)
+	inboundSubscriptionEffectState.assert(
+		'processing',
+		input.deadLettered ? 'dead-letter' : 'pending',
+	)
 	const retryAt = input.deadLettered
 		? null
 		: new Date(input.now.getTime() + inboundEffectRetryMs).toISOString()

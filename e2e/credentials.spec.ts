@@ -149,6 +149,55 @@ test('Credentials lists a key, filters by kind, and opens its detail pane withou
 	).toBeVisible()
 })
 
+test('the legacy secret editor confirms creations and metadata saves', async ({
+	page,
+	seedE2eUser,
+	login,
+}) => {
+	test.setTimeout(process.env.CI ? 90_000 : 60_000)
+	const runId = Date.now()
+	const user = await seedE2eUser({
+		email: `legacy-secret-${runId}@example.com`,
+		username: `legacy-secret-${runId}`,
+		password: 'legacy-secret-password',
+	})
+	await login({ email: user.email, password: user.password, mode: 'login' })
+	await saveKeyThroughUi(page, {
+		name: 'EXISTING_KEY',
+		value: `existing-${runId}`,
+	})
+	await page.goto(`/@${user.username}/-/credentials`)
+	await waitForClientHydration(page)
+	await page.getByRole('link', { name: /EXISTING_KEY/ }).click()
+	await page.getByRole('link', { name: 'Edit', exact: true }).click()
+	await page.getByRole('button', { name: 'New secret', exact: true }).click()
+	await expect(page).toHaveURL(new RegExp(`/@${user.username}/-/secrets/new$`))
+	await expect(
+		page.getByRole('heading', { name: 'New secret', exact: true }),
+	).toBeVisible()
+	await page.getByRole('textbox', { name: 'Name', exact: true }).fill('NEW_KEY')
+	await page.getByLabel('Secret value', { exact: true }).fill(`new-${runId}`)
+	await page.getByRole('button', { name: 'Save', exact: true }).click()
+	await expect(page).toHaveURL(
+		new RegExp(`/@${user.username}/-/secrets/user/NEW_KEY$`),
+	)
+	await expect(
+		page.getByRole('heading', { name: 'NEW_KEY', exact: true }),
+	).toBeVisible()
+	await expect(page.getByText('Created secret.', { exact: true })).toBeVisible()
+	await page.getByRole('button', { name: 'Dismiss notification' }).click()
+	await page
+		.getByRole('textbox', { name: 'Description', exact: true })
+		.fill('Updated legacy description')
+	await page.getByRole('button', { name: 'Save', exact: true }).click()
+	await expect(page.getByText('Saved secret.', { exact: true })).toBeVisible()
+	await page.reload()
+	await waitForClientHydration(page)
+	await expect(
+		page.getByRole('textbox', { name: 'Description', exact: true }),
+	).toHaveValue('Updated legacy description')
+})
+
 test('the creation link saves Key, URL, and login credentials from their prefill', async ({
 	page,
 	seedE2eUser,

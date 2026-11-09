@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { useSingleFlight } from '#client/use-single-flight.ts'
+import type { FormFlowState } from '#client/state-machine-store.ts'
 import {
 	featureCommunityPackage,
 	reportCommunityPackage,
@@ -42,15 +44,9 @@ export function CommunityDetailRoute({
 	const capture = useSubmitterScope()
 	const packageInstall = usePackageInstall(header.repoActions?.fork ?? null)
 	const { installMessage, installOutcome } = packageInstall
-	const [featureState, setFeatureState] = useState<
-		'idle' | 'submitting' | 'error'
-	>('idle')
-	const [featureMessage, setFeatureMessage] = useState<string | null>(null)
+	const runFeature = useSingleFlight()
+	const runReport = useSingleFlight()
 	const [reportReason, setReportReason] = useState('')
-	const [reportState, setReportState] = useState<
-		'idle' | 'submitting' | 'success' | 'error'
-	>('idle')
-	const [reportMessage, setReportMessage] = useState<string | null>(null)
 	const listing = data.listing
 	const listingId = listing?.id
 	const readme = useMemo(
@@ -89,7 +85,11 @@ export function CommunityDetailRoute({
 	}
 	const featureMutation = useMutation({
 		...lifecycle,
-		mutationFn: (input: { id: string; featured: boolean }) =>
+		mutationFn: (input: {
+			id: string
+			featured: boolean
+			isCurrent: () => boolean
+		}) =>
 			featureCommunityPackage({
 				data: { listingId: input.id, featured: input.featured },
 			}).then(requireSuccess),
@@ -97,54 +97,72 @@ export function CommunityDetailRoute({
 	const reportMutation = useMutation({
 		...lifecycle,
 		onMutate: () => ({ reconcile: invalidateReports }),
-		mutationFn: (input: { id: string; reason: string }) =>
+		mutationFn: (input: {
+			id: string
+			reason: string
+			isCurrent: () => boolean
+		}) =>
 			reportCommunityPackage({
 				data: { listingId: input.id, reason: input.reason },
 			}).then(requireSuccess),
 	})
+	const featureState: FormFlowState<'idle' | 'submitting' | 'error'> =
+		featureMutation.isPending
+			? { status: 'submitting' }
+			: featureMutation.isError && featureMutation.variables?.isCurrent()
+				? {
+						status: 'error',
+						message:
+							featureMutation.error instanceof Error
+								? featureMutation.error.message
+								: 'Unable to update featured status.',
+					}
+				: { status: 'idle' }
+	const reportState: FormFlowState<
+		'idle' | 'submitting' | 'success' | 'error'
+	> = reportMutation.isPending
+		? { status: 'submitting' }
+		: reportMutation.isError && reportMutation.variables?.isCurrent()
+			? {
+					status: 'error',
+					message:
+						reportMutation.error instanceof Error
+							? reportMutation.error.message
+							: 'Unable to submit report.',
+				}
+			: reportMutation.isSuccess && reportMutation.variables?.isCurrent()
+				? { status: 'success', message: 'Report submitted. Thank you.' }
+				: { status: 'idle' }
 	async function feature() {
-		if (!listing || featureMutation.isPending) return
-		const isCurrent = capture()
-		setFeatureState('submitting')
-		setFeatureMessage(null)
-		try {
-			await featureMutation.mutateAsync({
-				id: listing.id,
-				featured: !listing.featured,
-			})
-			if (isCurrent()) setFeatureState('idle')
-		} catch (error) {
-			if (isCurrent()) {
-				setFeatureState('error')
-				setFeatureMessage(
-					error instanceof Error
-						? error.message
-						: 'Unable to update featured status.',
-				)
-			}
-		}
+		return runFeature(async () => {
+			if (!listing || featureMutation.isPending) return
+			const isCurrent = capture()
+			try {
+				await featureMutation.mutateAsync({
+					id: listing.id,
+					featured: !listing.featured,
+					isCurrent,
+				})
+			} catch {}
+		})
 	}
 	async function report() {
-		if (!listingId || reportMutation.isPending) return
-		const isCurrent = capture()
-		setReportState('submitting')
-		setReportMessage(null)
-		try {
-			await reportMutation.mutateAsync({ id: listingId, reason: reportReason })
-			if (isCurrent()) {
-				setReportState('success')
-				setReportMessage('Report submitted. Thank you.')
-				setReportReason('')
+		return runReport(async () => {
+			if (!listingId || reportMutation.isPending) return
+			const isCurrent = capture()
+			try {
+				await reportMutation.mutateAsync({
+					id: listingId,
+					reason: reportReason,
+					isCurrent,
+				})
+				if (isCurrent()) setReportReason('')
+			} catch {
+				/* The mutation owns failure feedback. */
 			}
-		} catch (error) {
-			if (isCurrent()) {
-				setReportState('error')
-				setReportMessage(
-					error instanceof Error ? error.message : 'Unable to submit report.',
-				)
-			}
-		}
+		})
 	}
+
 	return (
 		<PackageFollowProvider
 			username={data.username}
@@ -179,7 +197,6 @@ export function CommunityDetailRoute({
 								{...{
 									featured: listing?.featured ?? false,
 									featureState,
-									featureMessage,
 									onToggleFeature: () => void feature(),
 								}}
 							/>
@@ -190,7 +207,6 @@ export function CommunityDetailRoute({
 									loggedIn: data.loggedIn,
 									reportReason,
 									reportState,
-									reportMessage,
 									onReasonInput: setReportReason,
 									onSubmitReport: () => void report(),
 								}}

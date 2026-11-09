@@ -1,3 +1,5 @@
+import type { BackupExportPhase } from './backup-export-state.ts'
+
 export { type BackupManifest } from '@kody-internal/shared/backup-manifest.ts'
 
 export type RetentionTier = 'daily' | 'weekly'
@@ -54,19 +56,19 @@ export type ScheduledBackupWorkflowPayload =
 export type BackupPayload = ScheduledBackupPayload
 
 export interface ExportReady {
-	kind: 'complete'
+	kind: Extract<BackupExportPhase, 'complete'>
 	bookmark: string
 	signedUrl: string
 }
 
 interface ExportPending {
-	kind: 'pending'
+	kind: Extract<BackupExportPhase, 'pending'>
 	bookmark: string
 }
 
 /** Polling result expired from D1's short retention window. */
 interface ExportLost {
-	kind: 'lost'
+	kind: Extract<BackupExportPhase, 'lost'>
 }
 
 export type ExportState = ExportReady | ExportPending | ExportLost

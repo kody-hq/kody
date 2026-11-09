@@ -1,3 +1,4 @@
+import { repoSessionState } from './repo-session-state.ts'
 import { assertProfileCanPublishImports } from '#worker/profiles/publish-imports.ts'
 import { createIsolatedArtifactRebuildRunner } from '#worker/repo/isolated-artifact-rebuild.ts'
 import type { PersistUploadedPublishBuildResult } from '#worker/publish-offload/types.ts'
@@ -2271,6 +2272,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		if (sessionRow.user_id !== input.userId) {
 			throw new Error(buildRepoSessionNotFoundForUserMessage(input.sessionId))
 		}
+		repoSessionState.assert(sessionRow.status, 'discarded')
 		await updateRepoSession(this.env, {
 			id: sessionRow.id,
 			userId: sessionRow.user_id,
@@ -4190,6 +4192,7 @@ class RepoSessionBase extends DurableObject<Env> {
 			checks: null,
 			scope: 'repo.publishPlainRepoSession.publish-git-note',
 		})
+		repoSessionState.assert(input.sessionRow.status, 'published')
 		await updateRepoSession(this.env, {
 			id: input.sessionRow.id,
 			userId: input.sessionRow.user_id,
@@ -4628,6 +4631,7 @@ class RepoSessionBase extends DurableObject<Env> {
 					scope: 'repo.publishSession.publish-git-note',
 				})
 			}
+			repoSessionState.assert(sessionRow.status, 'published')
 			await updateRepoSession(this.env, {
 				id: sessionRow.id,
 				userId: sessionRow.user_id,

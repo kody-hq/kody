@@ -4,6 +4,7 @@
  * lifetime cap on how many a referrer can earn.
  */
 
+import { referralState } from './referral-state.ts'
 import { utcSqliteTimestamp } from '@kody-internal/shared/date-keys.ts'
 import { computeOverageInvoiceMetadataKey } from '#worker/billing/stripe-client.ts'
 import {
@@ -23,6 +24,15 @@ import {
 } from '#universal/referral-program.ts'
 
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+const rejectReferralGuard = referralState.guard({
+	from: 'pending',
+	to: 'rejected',
+})
+const rewardReferralGuard = referralState.guard({
+	from: 'pending',
+	to: 'rewarded',
+})
+
 export type ReferralAttributionOutcome =
 	| { outcome: 'attributed' }
 	| { outcome: 'ignored'; reason: 'missing_code' | 'unknown_referrer' | 'self' }
@@ -505,7 +515,7 @@ async function markRejected(
 		.prepare(
 			`UPDATE referrals
 			 SET status = 'rejected', reject_reason = ?, rewarded_at = NULL
-			 WHERE id = ? AND status = 'pending'`,
+			 WHERE id = ? AND status IN ${rejectReferralGuard}`,
 		)
 		.bind(reason, referralId)
 		.run()
@@ -611,6 +621,7 @@ export async function rewardReferralForPaidInvoice(input: {
 		return { outcome: 'held_unverified' }
 	}
 
+	referralState.assert(pending.status, 'rewarded')
 	const rewardedAt = now.toISOString()
 	const invoiceId =
 		pending.status === 'rewarded'
@@ -625,7 +636,7 @@ export async function rewardReferralForPaidInvoice(input: {
 				     reward_invoice_id = COALESCE(reward_invoice_id, ?),
 				     held_invoice_id = NULL,
 				     held_period_end_at = NULL
-				 WHERE id = ? AND (status = 'pending' OR credits_granted_at IS NULL)`,
+				 WHERE id = ? AND (status IN ${rewardReferralGuard} OR credits_granted_at IS NULL)`,
 			)
 			.bind(rewardedAt, invoiceId, pending.id),
 		stackReferralCreditStatement({
@@ -789,7 +800,8 @@ export async function loadReferralProgramSummary(input: {
 	const referrals: Array<ReferralProgramListItem> = (rows.results ?? []).map(
 		(row) => ({
 			refereeUsername: row.referee_username,
-			status: row.status === 'rewarded' ? 'rewarded' : 'pending',
+			status:
+				referralState.parse(row.status) === 'rewarded' ? 'rewarded' : 'pending',
 			createdAt: row.created_at,
 			rewardedAt: row.rewarded_at,
 		}),

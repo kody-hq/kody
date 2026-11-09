@@ -1,7 +1,13 @@
 /** @jsxImportSource @emotion/react */
+import { useStateMachine } from '#client/use-state-machine.ts'
+import {
+	clipboardFeedbackState,
+	type ClipboardFeedbackState,
+	type CopyState,
+} from '#client/routes/clipboard-feedback-state.ts'
 import { renderIcon } from './icon.tsx'
 import type { CSSObject } from '@emotion/react'
-import { useEffect, useId, useState, useRef, type ReactNode } from 'react'
+import { useEffect, useId, useRef, type ReactNode } from 'react'
 import { writeClipboardText } from '#client/clipboard.ts'
 import {
 	getChipButtonCss,
@@ -44,8 +50,6 @@ type CopyTextButtonProps = {
 	 */
 	signalsConnectAction?: boolean
 }
-
-type CopyState = 'idle' | 'copied' | 'error'
 
 const visuallyHiddenCss = {
 	position: 'absolute' as const,
@@ -107,20 +111,29 @@ function getCopyButtonCss(
  * changes size when the label swaps — the swap is a blur crossfade instead.
  */
 export function CopyTextButton(props: CopyTextButtonProps) {
-	const [copyState, setCopyState] = useState<CopyState>('idle')
-	const id = useId()
-	const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-	useEffect(
-		() => () => {
-			if (resetTimer.current !== null) clearTimeout(resetTimer.current)
-		},
-		[],
+	const [copyFlow, transitionCopy] = useStateMachine<ClipboardFeedbackState>(
+		clipboardFeedbackState,
+		{ status: 'idle' },
 	)
+	const copyState = copyFlow.status === 'copying' ? 'idle' : copyFlow.status
+	const id = useId()
+	const mounted = useRef(false)
+	const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+	useEffect(() => {
+		mounted.current = true
+		return () => {
+			mounted.current = false
+			if (resetTimer.current !== null) clearTimeout(resetTimer.current)
+		}
+	}, [])
 
 	async function copyValue(source: EventTarget | null) {
+		if (!transitionCopy({ status: 'copying' })) return
+		if (resetTimer.current !== null) clearTimeout(resetTimer.current)
 		try {
 			await writeClipboardText(props.value)
-			setCopyState('copied')
+			if (!mounted.current) return
+			transitionCopy({ status: 'copied' })
 			if (props.signalsConnectAction && source instanceof HTMLElement) {
 				source.dispatchEvent(
 					new CustomEvent(onboardingCopiedConnectActionEvent, {
@@ -129,12 +142,13 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 				)
 			}
 		} catch {
-			setCopyState('error')
+			if (!mounted.current) return
+			transitionCopy({ status: 'error' })
 		}
 		if (resetTimer.current != null) clearTimeout(resetTimer.current)
 		resetTimer.current = setTimeout(() => {
 			resetTimer.current = null
-			setCopyState('idle')
+			transitionCopy({ status: 'idle' })
 		}, 2000)
 	}
 
@@ -153,6 +167,8 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 
 	return (
 		<button
+			aria-busy={copyFlow.status === 'copying'}
+			disabled={copyFlow.status === 'copying'}
 			type="button"
 			className={props.class}
 			aria-label={props.ariaLabel}

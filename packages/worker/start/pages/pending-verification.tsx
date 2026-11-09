@@ -1,4 +1,9 @@
 /** @jsxImportSource @emotion/react */
+import { useStateMachine } from '#client/use-state-machine.ts'
+import {
+	emailVerificationState,
+	type EmailVerificationState,
+} from '#client/routes/email-verification-state.ts'
 import { publicAsset } from '../public-assets.ts'
 import { useSessionInfo } from '../session-info.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
@@ -44,9 +49,15 @@ export function PendingVerificationPage({
 	const [delivery, setDelivery] = useState(
 		data.emailVerificationDelivery ?? null,
 	)
-	const [resendStatus, setResendStatus] = useState<'idle' | 'sending'>('idle')
-	const [resendMessage, setResendMessage] = useState<string | null>(null)
-	const [resendTone, setResendTone] = useState<'error' | 'info'>('info')
+	const [verification, transition] = useStateMachine<EmailVerificationState>(
+		emailVerificationState,
+		{ status: 'idle' },
+	)
+	const resendStatus =
+		verification.status === 'sending' ? ('sending' as const) : ('idle' as const)
+	const resendMessage = 'message' in verification ? verification.message : null
+	const resendTone =
+		verification.status === 'error' ? ('error' as const) : ('info' as const)
 	useEffect(() => {
 		let disposed = false
 		let timer: ReturnType<typeof setTimeout>
@@ -95,30 +106,37 @@ export function PendingVerificationPage({
 		}
 	}, [redirectTo, router, fetchSessionInfo, deliveryPoll])
 	async function resend() {
-		setResendStatus('sending')
-		setResendMessage(null)
-		setResendTone('info')
+		if (!transition({ status: 'sending' })) return
 		try {
 			const result = await requestResendVerification(redirectTo)
-			if (!result) return
+			if (!result) {
+				transition({ status: 'idle' })
+				return
+			}
 			if (result.ok) void invalidatePages()
-			setResendTone(result.ok ? 'info' : 'error')
-			setResendMessage(result.message)
+			transition({
+				status: result.ok ? 'success' : 'error',
+				message: result.message,
+			})
 			if (result.ok) {
 				deliveryPoll.invalidate()
 				setDelivery(acceptedEmailVerificationDelivery())
 			}
 		} catch {
-			setResendTone('error')
-			setResendMessage('Unable to resend the verification email.')
-		} finally {
-			setResendStatus('idle')
+			transition({
+				status: 'error',
+				message: 'Unable to resend the verification email.',
+			})
 		}
 	}
 	async function continueAfterVerification() {
+		if (!transition({ status: 'checking' })) return
 		try {
 			const session = await fetchSessionInfo()
-			if (session === undefined) return
+			if (session === undefined) {
+				transition({ status: 'idle' })
+				return
+			}
 			const feedback = resolveContinueVerificationFeedback(session)
 			if (feedback.status === 'verified') {
 				await router.navigate({
@@ -126,11 +144,15 @@ export function PendingVerificationPage({
 				})
 				return
 			}
-			setResendTone(feedback.tone)
-			setResendMessage(feedback.message)
+			transition({
+				status: feedback.tone === 'error' ? 'error' : 'success',
+				message: feedback.message,
+			})
 		} catch {
-			setResendTone('error')
-			setResendMessage('Unable to check verification status. Try again.')
+			transition({
+				status: 'error',
+				message: 'Unable to check verification status. Try again.',
+			})
 		}
 	}
 	return (
@@ -157,6 +179,7 @@ export function PendingVerificationPage({
 							'We sent a verification link to your inbox. MCP access stays locked until you verify. Keep this browser signed in so you can resend the email or continue once the link works.',
 						delivery,
 						resendStatus,
+						checking: verification.status === 'checking',
 						resendMessage,
 						resendTone,
 						onResend: () => {

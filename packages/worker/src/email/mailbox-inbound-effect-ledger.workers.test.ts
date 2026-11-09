@@ -527,3 +527,36 @@ test('processing subscription rows with null lease_at remain reclaimable and due
 	}
 	expect(subscription.delivery.subscriptionEffectLease).not.toBe('stale-lease')
 })
+
+test('Mailbox completes a legacy pending subscription effect with its matching held lease', async () => {
+	silenceIncidentalRuntimeWarnings()
+	const ownerId = uniqueUserId('effect-legacy-completion')
+	const mailbox = rpcFor(ownerId)
+	const now = '2026-07-22T00:00:00.000Z'
+	const delivery = insertInput(ownerId)
+	const received = await insertClaimAndReceive(mailbox, ownerId, delivery, now)
+	await runInDurableObject(stubFor(ownerId), async (_instance, state) => {
+		state.storage.sql.exec(
+			`UPDATE email_delivery_events
+    SET subscription_effect_state = NULL,
+        subscription_effect_lease = 'legacy-held-lease',
+        detail_json = json_remove(detail_json, '$.subscriptionEffectState')
+    WHERE id = ? AND provider = ?`,
+			delivery.deliveryId,
+			mailboxInboundProvider,
+		)
+	})
+	expect(
+		await mailbox.completeInboundSubscriptionEffect({
+			ownerId,
+			deliveryId: delivery.deliveryId,
+			subscriptionEffectLease: 'legacy-held-lease',
+			expectedFinalizationToken: received.delivery.finalizationToken!,
+			mode: 'complete',
+			now,
+		}),
+	).toMatchObject({
+		status: 'complete',
+		delivery: { subscriptionEffectState: 'complete' },
+	})
+})

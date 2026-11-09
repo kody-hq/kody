@@ -1,5 +1,5 @@
+export type { RunPhase } from './admin-codemod-run-state.ts'
 export type RunMode = 'scan' | 'dry-run' | 'apply' | 'revert'
-export type RunPhase = 'idle' | 'running' | 'complete' | 'error'
 
 export type LiveRunItem = {
 	itemId: string

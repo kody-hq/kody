@@ -7,6 +7,12 @@ const {
 	shouldAdopt,
 } = require('./machine-runner.cjs')
 
+const executionOperationTransitions = Object.freeze({
+	idle: Object.freeze(['running', 'error']),
+	running: Object.freeze(['idle', 'running', 'error']),
+	error: Object.freeze(['idle', 'running', 'error']),
+})
+
 const commandsStatusMaxAgeMs = 60_000
 
 // This controller exposes fixed machine actions, never arbitrary CLI commands.
@@ -32,13 +38,48 @@ class DesktopExecution {
 		})
 		this.commandsEnabled = null
 		this.name = machineName(hostname)
-		this.busy = false
+		this.operation = { status: 'idle' }
 		this.authorized = null
-		this.error = null
 		this.machine = null
 		this.machineReadAt = 0
 		this.commandsReadAt = 0
 		this.commandsReadFor = null
+	}
+	transition(next) {
+		if (
+			!executionOperationTransitions[this.operation.status].includes(
+				next.status,
+			)
+		)
+			throw new Error('Illegal machine operation transition.')
+		this.operation = next
+	}
+	get busy() {
+		return this.operation.status === 'running'
+	}
+	get error() {
+		return this.operation.status === 'error'
+			? this.operation.message
+			: this.operation.status === 'running'
+				? (this.operation.notice?.message ?? null)
+				: null
+	}
+	set error(message) {
+		if (this.busy)
+			this.transition({
+				...this.operation,
+				notice: message === null ? null : { tone: 'error', message },
+			})
+		else if (message !== null) this.transition({ status: 'error', message })
+		else if (this.operation.status === 'error')
+			this.transition({ status: 'idle' })
+	}
+	finishOperation() {
+		if (!this.busy) return
+		const message = this.operation.notice?.message
+		this.transition(
+			message !== undefined ? { status: 'error', message } : { status: 'idle' },
+		)
 	}
 	// What the kody CLI knows about this machine: an installed service, the
 	// runner lock holder, stored registrations, and auto-update. The app and
@@ -214,7 +255,7 @@ class DesktopExecution {
 			throw new Error('Sign in to Kody before setting up this machine.')
 		const state = this.read()
 		if (command === 'forget') {
-			this.busy = true
+			this.transition({ status: 'running', command })
 			try {
 				await this.runner.stop()
 				this.write({
@@ -229,7 +270,7 @@ class DesktopExecution {
 				this.authorized = null
 				this.error = null
 			} finally {
-				this.busy = false
+				this.finishOperation()
 			}
 			return this.snapshot(viewer)
 		}
@@ -265,7 +306,7 @@ class DesktopExecution {
 			throw new Error('Unknown machine action.')
 		if (!this.supported)
 			throw new Error('Local execution is not available on this platform.')
-		this.busy = true
+		this.transition({ status: 'running', command })
 		try {
 			if (command.startsWith('auto-update-')) {
 				await this.runner.command([
@@ -445,9 +486,9 @@ class DesktopExecution {
 				}
 			}
 		} finally {
-			this.busy = false
+			this.finishOperation()
 		}
 		return this.snapshot(await this.viewer())
 	}
 }
-module.exports = { DesktopExecution }
+module.exports = { DesktopExecution, executionOperationTransitions }

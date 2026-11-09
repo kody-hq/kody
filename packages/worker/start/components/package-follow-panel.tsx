@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -101,8 +102,12 @@ function FollowProvider({
 		slug: string
 		events: FollowEvent[]
 	} | null>(null)
-	const [message, setMessage] = useState<string | null>(null)
-	const [messageTone, setMessageTone] = useState<'info' | 'error'>('info')
+	const [feedback, setFeedback] = useState<UiFeedback | null>(() =>
+		createUiFeedback(null, 'info'),
+	)
+	const message = feedback?.message ?? null
+	const messageTone = feedback?.tone ?? 'info'
+
 	const [confirmed, setConfirmed] = useState(false)
 	const read = useQuery({
 		...packageFollowQuery(actorKey, { username, kodyId, kind: follow?.kind }),
@@ -174,7 +179,7 @@ function FollowProvider({
 			name: state.target.name,
 			kind: state.target.kind,
 		}
-		setMessage(null)
+		setFeedback(createUiFeedback(null))
 		try {
 			const payload =
 				intent === 'follow'
@@ -189,21 +194,26 @@ function FollowProvider({
 				events: initialFollowEventChoice(state, payload.follow),
 			})
 			setConfirmed(false)
-			setMessageTone(payload.follow?.status === 'paused' ? 'error' : 'info')
-			setMessage(
-				intent === 'unfollow'
-					? `Unfollowed in ${workspaceLabel(submittedWorkspace)}.`
-					: payload.follow?.status === 'paused'
-						? (describePausedFollow(payload.follow) ?? 'This follow is paused.')
-						: `${wasFollowing ? 'Saved.' : 'Following.'} ${describeFollowEvents(payload.follow?.events ?? [])} go to ${workspaceLabel(submittedWorkspace)}.`,
+			setFeedback(
+				createUiFeedback(
+					intent === 'unfollow'
+						? `Unfollowed in ${workspaceLabel(submittedWorkspace)}.`
+						: payload.follow?.status === 'paused'
+							? (describePausedFollow(payload.follow) ??
+								'This follow is paused.')
+							: `${wasFollowing ? 'Saved.' : 'Following.'} ${describeFollowEvents(payload.follow?.events ?? [])} go to ${workspaceLabel(submittedWorkspace)}.`,
+					payload.follow?.status === 'paused' ? 'error' : 'info',
+				),
 			)
 		} catch (error) {
 			if (isCurrent()) {
-				setMessageTone('error')
-				setMessage(
-					error instanceof Error
-						? error.message
-						: 'Unable to update this follow. Try again.',
+				setFeedback(
+					createUiFeedback(
+						error instanceof Error
+							? error.message
+							: 'Unable to update this follow. Try again.',
+						'error',
+					),
 				)
 			}
 		}
@@ -293,7 +303,7 @@ function FollowProvider({
 							value={workspace.slug}
 							onChange={(event) => {
 								selectWorkspace(event.currentTarget.value)
-								setMessage(null)
+								setFeedback(createUiFeedback(null))
 								setConfirmed(false)
 							}}
 						>

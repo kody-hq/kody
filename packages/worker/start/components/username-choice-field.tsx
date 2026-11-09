@@ -1,4 +1,9 @@
 /** @jsxImportSource @emotion/react */
+import { useStateMachine } from '#client/use-state-machine.ts'
+import {
+	usernameAvailabilityState,
+	type UsernameAvailabilityView as AvailabilityView,
+} from '#client/routes/username-availability-state.ts'
 import { useServerFn } from '@tanstack/react-start'
 import {
 	handleFormatHint,
@@ -25,18 +30,10 @@ import {
 	hoverMq,
 } from '#universal/styles/style-primitives.ts'
 import type { CSSObject } from '@emotion/react'
-import { useEffect, useId, useRef, useState, type ChangeEvent } from 'react'
+import { useEffect, useId, useRef, type ChangeEvent } from 'react'
 import { renderIcon } from './icon.tsx'
 
-export type UsernameAvailabilityView =
-	| { status: 'idle' }
-	| { status: 'checking' }
-	| {
-			status: 'available' | 'taken' | 'reserved' | 'invalid' | 'unknown'
-			username: string
-			reason: string | null
-			suggestions: Array<string>
-	  }
+export type UsernameAvailabilityView = AvailabilityView
 
 export type UsernameChoiceSeeds = {
 	email?: string | null
@@ -67,9 +64,10 @@ export function UsernameChoiceField(props: {
 	const tipId = `${generatedId}-username-tip`
 	const tipAnchor = `--${generatedId.replace(/:/g, '')}-username-tip`
 	const availabilityId = `${generatedId}-username-availability`
-	const [availability, setAvailability] = useState<UsernameAvailabilityView>({
-		status: 'idle',
-	})
+	const [availability, setAvailability] =
+		useStateMachine<UsernameAvailabilityView>(usernameAvailabilityState, {
+			status: 'idle',
+		})
 	const requestSeq = useRef(0)
 	const lifecycle = useRef<AbortController | null>(null)
 
@@ -85,6 +83,7 @@ export function UsernameChoiceField(props: {
 	}, [availability, onAvailabilityChange])
 
 	useEffect(() => {
+		const seq = ++requestSeq.current
 		const trimmed = props.value.trim()
 		if (!trimmed) {
 			setAvailability({ status: 'idle' })
@@ -102,7 +101,6 @@ export function UsernameChoiceField(props: {
 			return
 		}
 
-		const seq = ++requestSeq.current
 		setAvailability({ status: 'checking' })
 		const timer = setTimeout(() => {
 			void (async () => {

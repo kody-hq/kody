@@ -1,4 +1,7 @@
+import { inviteState } from '#worker/orgs/invite-state.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+
+const revokeInviteGuard = inviteState.guard({ from: 'pending', to: 'revoked' })
 
 /**
  * Removes what names a credential by id before the credential row goes:
@@ -42,7 +45,7 @@ export function credentialGrantCleanupStatements(
 			.prepare(
 				`UPDATE invites SET status = 'revoked'
 				WHERE org_id = ? AND kind = 'grant' AND resource_type = 'credential'
-					AND status = 'pending' AND resource_id IN (${input.credentialIdSql})`,
+					AND status IN ${revokeInviteGuard} AND resource_id IN (${input.credentialIdSql})`,
 			)
 			.bind(input.ownerId, ...input.credentialIdBindings),
 		db

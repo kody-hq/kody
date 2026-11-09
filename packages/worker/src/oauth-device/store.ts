@@ -3,11 +3,11 @@ import {
 	deviceSlowDownIncrementSeconds,
 } from './device-grant.ts'
 
-export type DeviceAuthorizationStatus =
-	| 'pending'
-	| 'approved'
-	| 'denied'
-	| 'consumed'
+import {
+	deviceAuthorizationState,
+	type DeviceAuthorizationStatus,
+} from './device-authorization-state.ts'
+export type { DeviceAuthorizationStatus } from './device-authorization-state.ts'
 
 export type DeviceAuthorizationKind = 'cli' | 'package_app' | 'account'
 
@@ -43,6 +43,14 @@ export type DeviceAuthorizationRow = {
 }
 
 const table = 'oauth_device_authorizations'
+const decisionGuard = deviceAuthorizationState.guard({
+	from: 'pending',
+	to: ['approved', 'denied'],
+})
+const consumeGuard = deviceAuthorizationState.guard({
+	from: 'approved',
+	to: 'consumed',
+})
 
 export function nowSeconds() {
 	return Math.floor(Date.now() / 1000)
@@ -108,10 +116,13 @@ export async function findDeviceAuthorizationByDeviceCodeHash(
 	db: D1Database,
 	deviceCodeHash: string,
 ) {
-	return await db
+	const row = await db
 		.prepare(`SELECT * FROM ${table} WHERE device_code_hash = ?`)
 		.bind(deviceCodeHash)
 		.first<DeviceAuthorizationRow>()
+	return row
+		? { ...row, status: deviceAuthorizationState.parse(row.status) }
+		: null
 }
 
 /** A pending, unexpired request by its normalized user code. */
@@ -120,13 +131,16 @@ export async function findPendingDeviceAuthorizationByUserCode(
 	userCode: string,
 	now = nowSeconds(),
 ) {
-	return await db
+	const row = await db
 		.prepare(
 			`SELECT * FROM ${table}
 			WHERE user_code = ? AND status = 'pending' AND expires_at > ?`,
 		)
 		.bind(userCode, now)
 		.first<DeviceAuthorizationRow>()
+	return row
+		? { ...row, status: deviceAuthorizationState.parse(row.status) }
+		: null
 }
 
 /**
@@ -185,7 +199,7 @@ export async function decideDeviceAuthorization(
 		.prepare(
 			`UPDATE ${table}
 			SET status = ?, user_id = ?, org_id = ?, decided_at = ?
-			WHERE id = ? AND status = 'pending' AND expires_at > ?
+			WHERE id = ? AND status IN ${decisionGuard} AND expires_at > ?
 				AND kind = 'cli'`,
 		)
 		.bind(
@@ -221,7 +235,7 @@ export async function decidePackageAppDeviceAuthorization(
 		.prepare(
 			`UPDATE ${table}
 			SET status = ?, user_id = ?, approved_scope = ?, decided_at = ?
-			WHERE id = ? AND status = 'pending' AND expires_at > ?
+			WHERE id = ? AND status IN ${decisionGuard} AND expires_at > ?
 				AND kind = 'package_app'`,
 		)
 		.bind(
@@ -249,7 +263,7 @@ export async function decideAccountDeviceAuthorization(
 		.prepare(
 			`UPDATE ${table}
 			SET status = ?, user_id = ?, decided_at = ?
-			WHERE id = ? AND status = 'pending' AND expires_at > ?
+			WHERE id = ? AND status IN ${decisionGuard} AND expires_at > ?
 				AND kind = 'account'`,
 		)
 		.bind(input.decision, input.userId, now, input.id, now)
@@ -266,7 +280,7 @@ export async function consumeApprovedDeviceAuthorization(
 	const result = await db
 		.prepare(
 			`UPDATE ${table} SET status = 'consumed', consumed_at = ?
-			WHERE id = ? AND status = 'approved' AND expires_at > ?`,
+			WHERE id = ? AND status IN ${consumeGuard} AND expires_at > ?`,
 		)
 		.bind(now, id, now)
 		.run()

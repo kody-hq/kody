@@ -5,6 +5,9 @@ style, tests, MCP capabilities, and runtime architecture.
 
 ## Setup and workflow
 
+- [Explicit state machines](./state-machines.md) (lifecycle graphs and SQL
+  guards)
+
 - [Engineering principles](../principles/index.md) (including
   [error prompt for agents](../principles/error-prompt-for-agents.md))
 - [Getting started](./getting-started.md), [project intent](./project-intent.md)

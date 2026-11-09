@@ -12,6 +12,10 @@
  * (or from their Organizations page once they have opened it); see
  * `invite-link-redeem.ts` and `invite-link-pending.ts`.
  */
+import {
+	inviteLinkState,
+	type OrgInviteLinkStatus,
+} from './invite-link-state.ts'
 import { toHex } from '@kody-internal/shared/hex.ts'
 import { sha256Hex } from '@kody-internal/shared/sha256.ts'
 import { normalizeEmailAddress } from '#worker/email/address.ts'
@@ -19,6 +23,8 @@ import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import { isOrgActive } from '#worker/orgs/repo.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { recordOrgAuditEvent, type OrgAuditWriter } from './org-audit.ts'
+
+const revokeLinkGuard = inviteLinkState.guard({ from: 'active', to: 'revoked' })
 
 export type InviteLinkRole = 'member' | 'billing'
 
@@ -74,7 +80,7 @@ export type StoredInviteLink = {
 	maxUses: number | null
 	useCount: number
 	lastUsedAt: string | null
-	status: 'active' | 'revoked'
+	status: OrgInviteLinkStatus
 	createdByUserId: string
 	expiresAt: string
 	createdAt: string
@@ -333,7 +339,7 @@ export function rowToStored(row: InviteLinkRow): StoredInviteLink {
 	if (!target) {
 		throw new Error(`Invite link ${row.id} has an unknown target.`)
 	}
-	if (row.status !== 'active' && row.status !== 'revoked') {
+	if (!inviteLinkState.is(row.status)) {
 		throw new Error(`Invite link ${row.id} has status ${row.status}.`)
 	}
 	const domains = readAllowedDomainsOrBlock(row.allowed_email_domains_json)
@@ -794,7 +800,7 @@ export async function revokeOrgInviteLink(input: {
 		.prepare(
 			`UPDATE org_invite_links
 			 SET status = 'revoked', revoked_at = ?
-			 WHERE id = ? AND org_id = ? AND status = 'active'${filter.sql}`,
+			 WHERE id = ? AND org_id = ? AND status IN ${revokeLinkGuard}${filter.sql}`,
 		)
 		.bind(now, input.linkId, input.orgId, ...filter.binds)
 		.run()

@@ -14,6 +14,7 @@ import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { sha256Hex } from '@kody-internal/shared/sha256.ts'
 import { toHex } from '@kody-internal/shared/hex.ts'
 import { z } from 'zod'
+import { inviteState } from '#worker/orgs/invite-state.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import {
@@ -132,7 +133,7 @@ export const inviteSchema = z.object({
 	permissions: z.array(z.string()).nullable(),
 	invitee_email: z.string().nullable(),
 	invitee_username: z.string().nullable(),
-	status: z.enum(['pending', 'accepted', 'revoked', 'expired']),
+	status: z.enum(inviteState.states),
 	expires_at: z.string(),
 })
 

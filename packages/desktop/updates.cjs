@@ -1,6 +1,17 @@
 const { existsSync } = require('node:fs')
 const { join } = require('node:path')
 
+const updateReadinessTransitions = Object.freeze({
+	waiting: Object.freeze(['downloaded']),
+	downloaded: Object.freeze(['downloaded', 'installing']),
+	installing: Object.freeze(['downloaded', 'installing']),
+})
+
+const updateCheckTransitions = Object.freeze({
+	idle: Object.freeze(['checking']),
+	checking: Object.freeze(['idle']),
+})
+
 // Updates stay in the main process. Quitting is owned by main.cjs so the
 // execution runner always finishes shutting down before replacing the app.
 function startUpdates({
@@ -13,8 +24,18 @@ function startUpdates({
 	setIntervalFn = setInterval,
 }) {
 	if (!app.isPackaged || !hasUpdateFeed) return null
-	let downloaded = false
-	let checking
+	let readiness = 'waiting'
+	let checkState = { status: 'idle' }
+	const setReadiness = (next) => {
+		if (!updateReadinessTransitions[readiness].includes(next))
+			throw new Error('Illegal update readiness transition.')
+		readiness = next
+	}
+	const setCheck = (next) => {
+		if (!updateCheckTransitions[checkState.status].includes(next.status))
+			throw new Error('Illegal update check transition.')
+		checkState = next
+	}
 	updater.autoDownload = true
 	updater.autoInstallOnAppQuit = true
 	updater.allowPrerelease = false
@@ -23,12 +44,12 @@ function startUpdates({
 		console.warn('Kody update failed, it will retry.')
 	})
 	updater.on('update-downloaded', () => {
-		downloaded = true
+		setReadiness('downloaded')
 		changed()
 	})
 	async function check(manual = false) {
-		if (checking) return checking
-		checking = Promise.resolve().then(async () => {
+		if (checkState.status === 'checking') return checkState.promise
+		const promise = Promise.resolve().then(async () => {
 			try {
 				const result = await updater.checkForUpdates()
 				await result?.downloadPromise
@@ -44,10 +65,11 @@ function startUpdates({
 						buttons: ['OK'],
 					})
 			} finally {
-				checking = null
+				setCheck({ status: 'idle' })
 			}
 		})
-		return checking
+		setCheck({ status: 'checking', promise })
+		return promise
 	}
 	void check()
 	const timer = setIntervalFn(() => void check(), 5 * 60 * 1000)
@@ -55,11 +77,13 @@ function startUpdates({
 	return {
 		check: () => check(true),
 		get downloaded() {
-			return downloaded
+			return readiness !== 'waiting'
 		},
 		stop: () => clearInterval(timer),
 		install: () => {
-			if (!downloaded) return false
+			if (readiness === 'waiting') return false
+			if (readiness === 'installing') return true
+			setReadiness('installing')
 			// Some installers report failure through an event instead of throwing.
 			// Finish the requested quit even when installation cannot start.
 			updater.once('error', () => app.quit())
@@ -72,4 +96,9 @@ async function finishQuit({ runner, updates, app, restart = false }) {
 	await runner.close()
 	if (!restart || !updates?.install()) app.quit()
 }
-module.exports = { startUpdates, finishQuit }
+module.exports = {
+	startUpdates,
+	finishQuit,
+	updateReadinessTransitions,
+	updateCheckTransitions,
+}

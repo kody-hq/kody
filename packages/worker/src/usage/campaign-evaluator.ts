@@ -1,4 +1,8 @@
 import {
+	usageCampaignState,
+	usageCampaignPhases,
+} from './usage-campaign-state.ts'
+import {
 	isAdvocateCampaignTemplate,
 	usageCampaignAdvocateMinTenureMs,
 	usageCampaignAdvocateSendIndex,
@@ -142,6 +146,11 @@ export function evaluateUsageCampaign(
 	}
 
 	const state = resolveUsageCampaignState(snapshot, persisted)
+	if (persisted.state != null)
+		usageCampaignState.assert(
+			usageCampaignPhases[persisted.state],
+			usageCampaignPhases[state],
+		)
 	const coolingTerminal =
 		persisted.coolingTerminal ||
 		(state === 'Cooling' &&
@@ -402,6 +411,11 @@ export function nextUsageCampaignRow(input: {
 			: stateChanged
 				? null
 				: input.persisted.lastSentAt
+	if (input.persisted.state != null)
+		usageCampaignState.assert(
+			usageCampaignPhases[input.persisted.state],
+			usageCampaignPhases[input.decision.state],
+		)
 	const everActivated =
 		input.persisted.everActivated ||
 		input.decision.everActivated ||

@@ -33,6 +33,14 @@ import {
 	type OrgAuditOutboxEvent,
 	type OrgAuditWriter,
 } from './org-audit.ts'
+import { inviteState, type InviteStatus } from './invite-state.ts'
+
+export type { InviteStatus } from './invite-state.ts'
+
+const inviteDecisionGuard = inviteState.guard({
+	from: 'pending',
+	to: ['accepted', 'revoked', 'expired'],
+})
 
 async function runAccessBatchWithAudit(input: {
 	db: D1Database
@@ -1031,10 +1039,6 @@ export async function addOrgMember(input: {
 	})
 }
 
-const inviteStatuses = ['pending', 'accepted', 'revoked', 'expired'] as const
-
-export type InviteStatus = (typeof inviteStatuses)[number]
-
 export type StoredInvite = {
 	id: string
 	orgId: string
@@ -1094,9 +1098,7 @@ function parseStoredInvite(row: InviteRow): StoredInvite {
 	if (row.kind !== 'membership' && row.kind !== 'grant') {
 		throw new Error(`Invite ${row.id} has kind ${row.kind}.`)
 	}
-	if (!(inviteStatuses as ReadonlyArray<string>).includes(row.status)) {
-		throw new Error(`Invite ${row.id} has status ${row.status}.`)
-	}
+	const status = inviteState.parse(row.status)
 	const role = row.role
 	if (role !== null && !isOrgRole(role)) {
 		throw new Error(`Invite ${row.id} has role ${role}.`)
@@ -1133,7 +1135,7 @@ function parseStoredInvite(row: InviteRow): StoredInvite {
 		inviteeEmail: row.invitee_email,
 		inviteeUsername: row.invitee_username,
 		tokenHash: row.token_hash,
-		status: row.status as InviteStatus,
+		status,
 		invitedByUserId: row.invited_by_user_id,
 		expiresAt: row.expires_at,
 		createdAt: row.created_at,
@@ -1181,6 +1183,7 @@ async function setInviteStatus(input: {
 	to: InviteStatus
 	acceptedByUserId?: string | null
 }) {
+	inviteState.assert(input.from, input.to)
 	const now = new Date().toISOString()
 	const result =
 		input.to === 'accepted'
@@ -1188,7 +1191,7 @@ async function setInviteStatus(input: {
 					.prepare(
 						`UPDATE invites
 						 SET status = 'accepted', accepted_by_user_id = ?, accepted_at = ?
-						 WHERE id = ? AND status = ?`,
+						 WHERE id = ? AND status = ? AND status IN ${inviteDecisionGuard}`,
 					)
 					.bind(input.acceptedByUserId ?? null, now, input.inviteId, input.from)
 					.run()
@@ -1196,7 +1199,7 @@ async function setInviteStatus(input: {
 					.prepare(
 						`UPDATE invites
 						 SET status = ?
-						 WHERE id = ? AND status = ?`,
+						 WHERE id = ? AND status = ? AND status IN ${inviteDecisionGuard}`,
 					)
 					.bind(input.to, input.inviteId, input.from)
 					.run()
@@ -1241,7 +1244,7 @@ export async function markInviteRevoked(input: {
 				.prepare(
 					`UPDATE invites
 					 SET status = 'revoked'
-					 WHERE id = ? AND status = 'pending'`,
+					 WHERE id = ? AND status IN ${inviteDecisionGuard}`,
 				)
 				.bind(input.inviteId),
 		],
@@ -1278,7 +1281,7 @@ export async function markInviteDeclined(input: {
 				.prepare(
 					`UPDATE invites
 					 SET status = 'revoked'
-					 WHERE id = ? AND status = 'pending'`,
+					 WHERE id = ? AND status IN ${inviteDecisionGuard}`,
 				)
 				.bind(input.inviteId),
 		],

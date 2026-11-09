@@ -491,3 +491,30 @@ test('a finished CLI login closes a still-open approval', async () => {
 	await f.execution.request('sign-in')
 	assert.equal(closed, true)
 })
+
+test('independent status feedback never releases an active daemon action fence', async () => {
+	const f = fixture()
+	let release
+	f.runner.command = () =>
+		new Promise((resolve) => {
+			release = resolve
+		})
+	const pending = f.execution.request('auto-update-on')
+	await Promise.resolve()
+	await Promise.resolve()
+	assert.equal(f.execution.busy, true)
+	f.execution.error = 'Status probe failed.'
+	assert.equal(f.execution.busy, true)
+	assert.equal(f.execution.error, 'Status probe failed.')
+	await assert.rejects(
+		f.execution.request('connect', 'laptop'),
+		/already running/,
+	)
+	f.execution.error = null
+	assert.equal(f.execution.busy, true)
+	f.runner.command = async () => '{}'
+	release('{}')
+	await pending
+	assert.equal(f.execution.busy, false)
+	assert.equal(f.execution.error, null)
+})

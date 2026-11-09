@@ -1,3 +1,6 @@
+import { inboundDedupePointerState } from './inbound-dedupe-pointer-state.ts'
+import { inboundDeliveryState } from './inbound-delivery-state.ts'
+import { inboundSubscriptionEffectState } from './inbound-subscription-effect-state.ts'
 /**
  * Mailbox USER inbound ledger authority CAS primitives.
  *
@@ -215,6 +218,27 @@ export type MailboxInboundDeliveryLedgerRpc = {
 	}) => Promise<MailboxListDueStaleInboundDeliveriesResult>
 }
 
+const deliveryStoringToPendingGuard = inboundDeliveryState.guard({
+	from: 'storing',
+	to: 'pending',
+})
+const deliveryPendingToStoringGuard = inboundDeliveryState.guard({
+	from: 'pending',
+	to: 'storing',
+})
+const deliveryStoringToStoringGuard = inboundDeliveryState.guard({
+	from: 'storing',
+	to: 'storing',
+})
+const deliveryReceivedToStoringGuard = inboundDeliveryState.guard({
+	from: 'received',
+	to: 'storing',
+})
+const deliveryStoringToReceivedGuard = inboundDeliveryState.guard({
+	from: 'storing',
+	to: 'received',
+})
+
 export function mailboxInboundDedupePointerId(fingerprint: string) {
 	return `email-inbound-dedupe:${assertMailboxNonEmptyString(fingerprint, 'fingerprint')}`
 }
@@ -336,6 +360,8 @@ export function claimMailboxInboundDeliveryWindow(
 	const ownerId = assertMailboxNonEmptyString(input.ownerId, 'ownerId')
 	const validated = assertInsertInput(ownerId, input.delivery)
 	const pointerId = mailboxInboundDedupePointerId(validated.fingerprint)
+	inboundDedupePointerState.assert('pending', 'pending')
+	inboundDedupePointerState.assert('rejected', 'pending')
 	const base = pendingSnapshotFromInsert(
 		input.delivery,
 		validated,
@@ -486,6 +512,9 @@ export function claimMailboxInboundDeliveryStorage(
 	 * `detail_json`); promoted Mailbox columns must clear explicitly so a stale
 	 * effect worker cannot complete against a later re-finalization.
 	 */
+	inboundDeliveryState.assert(current.state, 'storing')
+	if (current.subscriptionEffectState === 'processing')
+		inboundSubscriptionEffectState.assert('processing', 'pending')
 	const next: MailboxInboundDeliverySnapshot = {
 		...current,
 		state: 'storing',
@@ -530,10 +559,10 @@ export function claimMailboxInboundDeliveryStorage(
 		WHERE id = ?
 			AND provider = ?
 			AND (
-				state = 'pending'
-				OR (state = 'storing' AND storage_lease_at < ?)
+				state IN ${deliveryPendingToStoringGuard}
+				OR (state IN ${deliveryStoringToStoringGuard} AND storage_lease_at < ?)
 				OR (
-					state = 'received'
+					state IN ${deliveryReceivedToStoringGuard}
 					AND NOT EXISTS (SELECT 1 FROM email_messages WHERE id = ?)
 				)
 			)`,
@@ -577,6 +606,7 @@ export function releaseMailboxInboundDeliveryStorage(
 	) {
 		return { status: 'not-held' }
 	}
+	inboundDeliveryState.assert(current.state, 'pending')
 	const next: MailboxInboundDeliverySnapshot = {
 		...current,
 		state: 'pending',
@@ -593,7 +623,7 @@ export function releaseMailboxInboundDeliveryStorage(
 			updated_at = ?
 		WHERE id = ?
 			AND provider = ?
-			AND state = 'storing'
+			AND state IN ${deliveryStoringToPendingGuard}
 			AND storage_lease = ?`,
 		detailJsonFromMailboxInboundSnapshot(next),
 		now,
@@ -638,6 +668,7 @@ export function markMailboxInboundDeliveryRejected(
 	) {
 		return { status: 'lease-lost' }
 	}
+	inboundDeliveryState.assert(current.state, 'rejected')
 	const next: MailboxInboundDeliverySnapshot = {
 		...current,
 		state: 'rejected',
@@ -717,6 +748,12 @@ export function markMailboxInboundDeliveryReceived(
 	const usageBytes = Math.round(
 		assertMailboxInboundNonNegativeFiniteNumber(input.usageBytes, 'usageBytes'),
 	)
+	inboundDeliveryState.assert(current.state, 'received')
+	if (current.subscriptionEffectState)
+		inboundSubscriptionEffectState.assert(
+			current.subscriptionEffectState,
+			'pending',
+		)
 	const next: MailboxInboundDeliverySnapshot = {
 		...current,
 		state: 'received',
@@ -750,7 +787,7 @@ export function markMailboxInboundDeliveryReceived(
 			updated_at = ?
 		WHERE id = ?
 			AND provider = ?
-			AND state = 'storing'
+			AND state IN ${deliveryStoringToReceivedGuard}
 			AND storage_lease = ?`,
 		attachedMessageId,
 		detailJsonFromMailboxInboundSnapshot(next),

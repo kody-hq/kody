@@ -1069,37 +1069,63 @@ test('package codemod step-level throw marks the run failed instead of leaving i
 	expect(runs[0]).toMatchObject({ status: 'failed' })
 })
 
-test('package codemod continuation steps heartbeat the run and reopen abandoned runs', async () => {
-	setupMocks()
-	const { env } = createEnv()
-	mocks.listSavedPackagesByUserId.mockResolvedValue([
-		savedPackage('hb-a'),
-		savedPackage('hb-b'),
-	])
-	mockSourcesByIdWith(cleanFiles)
-	await createPackageCodemodRun(env.APP_DB, {
-		id: 'run-heartbeat',
-		codemodId,
-		mode: 'scan',
-		scopeUserId: 'user-1',
-		initiatedByUserId: 'admin-1',
-		status: 'abandoned',
-		createdAt: '2026-07-30T10:00:00.000Z',
-		updatedAt: '2026-07-30T10:00:00.000Z',
-	})
+test.each(['running', 'failed', 'abandoned'] as const)(
+	'package codemod continuation steps heartbeat and reopen $0 runs',
+	async (status) => {
+		setupMocks()
+		const { env } = createEnv()
+		mocks.listSavedPackagesByUserId.mockResolvedValue([
+			savedPackage('hb-a'),
+			savedPackage('hb-b'),
+		])
+		mockSourcesByIdWith(cleanFiles)
+		await createPackageCodemodRun(env.APP_DB, {
+			id: 'run-heartbeat',
+			codemodId,
+			mode: 'scan',
+			scopeUserId: 'user-1',
+			initiatedByUserId: 'admin-1',
+			status,
+			createdAt: '2026-07-30T10:00:00.000Z',
+			updatedAt: '2026-07-30T10:00:00.000Z',
+		})
 
-	const heartbeat = await step(env, {
-		initiatedByUserId: 'admin-1',
-		runId: 'run-heartbeat',
-		limit: 1,
-	})
-	expect(heartbeat.nextCursor).not.toBeNull()
-	const reopened = await getPackageCodemodRunById(env.APP_DB, 'run-heartbeat')
-	expect(reopened).toMatchObject({ status: 'running' })
-	expect(reopened!.updatedAt > '2026-07-30T10:00:00.000Z').toBe(true)
-})
+		const heartbeat = await step(env, {
+			initiatedByUserId: 'admin-1',
+			runId: 'run-heartbeat',
+			limit: 1,
+		})
+		expect(heartbeat.nextCursor).not.toBeNull()
+		const reopened = await getPackageCodemodRunById(env.APP_DB, 'run-heartbeat')
+		expect(reopened).toMatchObject({ status: 'running' })
+		expect(reopened!.updatedAt > '2026-07-30T10:00:00.000Z').toBe(true)
+	},
+)
 
 const publishedOnlyCodemodId = publishedOnlyFixtureCodemod.id
+
+test('a completed continuation can complete again or fail without reopening', async () => {
+	setupMocks()
+	const { env } = createEnv()
+	mocks.listSavedPackagesByUserId.mockResolvedValue([])
+	const first = await step(env, { initiatedByUserId: 'admin-1' })
+	expect(await getPackageCodemodRunById(env.APP_DB, first.runId)).toMatchObject(
+		{ status: 'completed' },
+	)
+	await step(env, { initiatedByUserId: 'admin-1', runId: first.runId })
+	expect(await getPackageCodemodRunById(env.APP_DB, first.runId)).toMatchObject(
+		{ status: 'completed' },
+	)
+	mocks.listSavedPackagesByUserId.mockRejectedValue(
+		new Error('completed continuation failed'),
+	)
+	await expect(
+		step(env, { initiatedByUserId: 'admin-1', runId: first.runId }),
+	).rejects.toThrow('completed continuation failed')
+	expect(await getPackageCodemodRunById(env.APP_DB, first.runId)).toMatchObject(
+		{ status: 'failed' },
+	)
+})
 
 function undeclaredWebhookFiles() {
 	return {

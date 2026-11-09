@@ -17,6 +17,7 @@
 
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import type { RunStartedBy } from './run-started-by.ts'
+import { runState, type RunStatus } from './run-state.ts'
 
 export type { RunStartedBy, RunStartedByClient } from './run-started-by.ts'
 export {
@@ -40,11 +41,9 @@ export const runSurfaceValues = [
 
 export type RunSurface = (typeof runSurfaceValues)[number]
 
-export const runStatusValues = ['running', 'success', 'error'] as const
+export const runStatusValues = runState.states
 
-export type RunStatus = (typeof runStatusValues)[number]
-
-export type RunTerminalStatus = Exclude<RunStatus, 'running'>
+export type { RunStatus, RunTerminalStatus } from './run-state.ts'
 
 /**
  * Soft triage for retained **error** runs. Separate from {@link RunStatus}

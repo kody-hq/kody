@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { useSingleFlight } from '#client/use-single-flight.ts'
+import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 import {
 	addAccountAnchorId,
@@ -310,70 +312,92 @@ export function RotateCredentialsForm(props: {
 	const [clientId, setClientId] = useState(props.app.clientId)
 	const [clientSecret, setClientSecret] = useState('')
 	const [confirmed, setConfirmed] = useState(false)
-	const [status, setStatus] = useState<'idle' | 'saving'>('idle')
-	const [message, setMessage] = useState<string | null>(null)
-	const [messageTone, setMessageTone] = useState<'error' | 'info'>('info')
+	const runExclusive = useSingleFlight()
+	const status = mutation.isPending ? 'saving' : 'idle'
+	const [feedback, setFeedback] = useState<UiFeedback | null>(() =>
+		createUiFeedback(null, 'info'),
+	)
+	const message = feedback?.message ?? null
+	const messageTone = feedback?.tone ?? 'info'
+
 	const [boundAppId, setBoundAppId] = useState(integrationListId(props.app))
 
 	function reset(app: AccountOauthAppListItem) {
 		setClientId(app.clientId)
 		setClientSecret('')
 		setConfirmed(false)
-		setStatus('idle')
-		setMessage(null)
-		setMessageTone('info')
+
+		setFeedback(createUiFeedback(null, 'info'))
 		setBoundAppId(integrationListId(app))
 	}
 
 	async function submit(app: AccountOauthAppListItem) {
-		if (status === 'saving') return
-		const nextClientId = clientId.trim()
-		const nextClientSecret = clientSecret.trim()
-		if (!confirmed) {
-			setMessage(
-				'Confirm that every connection on this app should use the new credentials.',
-			)
-			setMessageTone('error')
-			return
-		}
-		if (!nextClientId && !nextClientSecret) {
-			setMessage('Provide a new client id and/or client secret.')
-			setMessageTone('error')
-			return
-		}
-		if (nextClientId === app.clientId && !nextClientSecret) {
-			setMessage('Enter a new client id or client secret to rotate.')
-			setMessageTone('error')
-			return
-		}
-		setStatus('saving')
-		setMessage(null)
-		const isCurrentSubmitter = captureSubmitter()
-		try {
-			const rotatedApp = await mutation.mutateAsync({
-				orgSlug,
-				body: {
-					appSlug: app.slug,
-					...(nextClientId ? { clientId: nextClientId } : {}),
-					...(nextClientSecret ? { clientSecret: nextClientSecret } : {}),
-					confirm: true,
-				},
-			})
-			if (!isCurrentSubmitter()) return
-			reset(rotatedApp)
-			setMessage('Rotated shared credentials for this integration.')
-			setMessageTone('info')
-			props.onRotated(rotatedApp)
-		} catch (error) {
-			if (!isCurrentSubmitter()) return
-			setStatus('idle')
-			setMessage(
-				error instanceof Error
-					? error.message
-					: 'Unable to rotate credentials.',
-			)
-			setMessageTone('error')
-		}
+		return runExclusive(async () => {
+			if (status === 'saving') return
+			const nextClientId = clientId.trim()
+			const nextClientSecret = clientSecret.trim()
+			if (!confirmed) {
+				setFeedback(
+					createUiFeedback(
+						'Confirm that every connection on this app should use the new credentials.',
+						'error',
+					),
+				)
+				return
+			}
+			if (!nextClientId && !nextClientSecret) {
+				setFeedback(
+					createUiFeedback(
+						'Provide a new client id and/or client secret.',
+						'error',
+					),
+				)
+				return
+			}
+			if (nextClientId === app.clientId && !nextClientSecret) {
+				setFeedback(
+					createUiFeedback(
+						'Enter a new client id or client secret to rotate.',
+						'error',
+					),
+				)
+				return
+			}
+
+			setFeedback(createUiFeedback(null))
+			const isCurrentSubmitter = captureSubmitter()
+			try {
+				const rotatedApp = await mutation.mutateAsync({
+					orgSlug,
+					body: {
+						appSlug: app.slug,
+						...(nextClientId ? { clientId: nextClientId } : {}),
+						...(nextClientSecret ? { clientSecret: nextClientSecret } : {}),
+						confirm: true,
+					},
+				})
+				if (!isCurrentSubmitter()) return
+				reset(rotatedApp)
+				setFeedback(
+					createUiFeedback(
+						'Rotated shared credentials for this integration.',
+						'info',
+					),
+				)
+				props.onRotated(rotatedApp)
+			} catch (error) {
+				if (!isCurrentSubmitter()) return
+
+				setFeedback(
+					createUiFeedback(
+						error instanceof Error
+							? error.message
+							: 'Unable to rotate credentials.',
+						'error',
+					),
+				)
+			}
+		})
 	}
 
 	if (integrationListId(props.app) !== boundAppId) {

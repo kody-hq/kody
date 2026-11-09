@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { useState, type FormEvent } from 'react'
 import { useInviteHandoff } from '../use-invite-handoff.ts'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -121,8 +122,12 @@ function PackageInviteLinksContent({
 	const [maxUses, setMaxUses] = useState('1')
 	const [expiresInDays, setExpiresInDays] = useState('7')
 	const [created, setCreated] = useInviteHandoff<CreatedLink>(query.data)
-	const [message, setMessage] = useState<string | null>(null)
-	const [messageTone, setMessageTone] = useState<'info' | 'error'>('info')
+	const [feedback, setFeedback] = useState<UiFeedback | null>(() =>
+		createUiFeedback(null, 'info'),
+	)
+	const message = feedback?.message ?? null
+	const messageTone = feedback?.tone ?? 'info'
+
 	const [warnings, setWarnings] = useState<Array<string>>([])
 	const createdUrl = created?.url
 	const lifecycle = {
@@ -172,7 +177,7 @@ function PackageInviteLinksContent({
 		event.preventDefault()
 		if (busy) return
 		const active = capture()
-		setMessage(null)
+		setFeedback(createUiFeedback(null))
 		setWarnings([])
 		try {
 			const result = await createMutation.mutateAsync({
@@ -187,41 +192,46 @@ function PackageInviteLinksContent({
 			setWarnings((result as { warnings?: Array<string> }).warnings ?? [])
 			const copied = await copyText(link.url)
 			if (!active()) return
-			setMessage(
-				copied
-					? 'Invite link copied to clipboard.'
-					: 'Invite link created. Copy it below; it is shown only once.',
+			setFeedback(
+				createUiFeedback(
+					copied
+						? 'Invite link copied to clipboard.'
+						: 'Invite link created. Copy it below; it is shown only once.',
+					'info',
+				),
 			)
-			setMessageTone('info')
 		} catch (error) {
 			if (active()) {
-				setMessage(
-					error instanceof Error
-						? error.message
-						: 'Unable to create invite link.',
+				setFeedback(
+					createUiFeedback(
+						error instanceof Error
+							? error.message
+							: 'Unable to create invite link.',
+						'error',
+					),
 				)
-				setMessageTone('error')
 			}
 		}
 	}
 	async function revoke(linkId: string) {
 		if (busy) return
 		const active = capture()
-		setMessage(null)
+		setFeedback(createUiFeedback(null))
 		try {
 			await revokeMutation.mutateAsync(linkId)
 			if (!active()) return
 			if (created?.id === linkId) setCreated(null)
-			setMessage('Invite link revoked.')
-			setMessageTone('info')
+			setFeedback(createUiFeedback('Invite link revoked.', 'info'))
 		} catch (error) {
 			if (active()) {
-				setMessage(
-					error instanceof Error
-						? error.message
-						: 'Unable to revoke invite link.',
+				setFeedback(
+					createUiFeedback(
+						error instanceof Error
+							? error.message
+							: 'Unable to revoke invite link.',
+						'error',
+					),
 				)
-				setMessageTone('error')
 			}
 		}
 	}
@@ -230,12 +240,14 @@ function PackageInviteLinksContent({
 		const active = capture()
 		const copied = await copyText(createdUrl)
 		if (active()) {
-			setMessage(
-				copied
-					? 'Invite link copied to clipboard.'
-					: 'Could not copy the link. Select it manually.',
+			setFeedback(
+				createUiFeedback(
+					copied
+						? 'Invite link copied to clipboard.'
+						: 'Could not copy the link. Select it manually.',
+					copied ? 'info' : 'error',
+				),
 			)
-			setMessageTone(copied ? 'info' : 'error')
 		}
 	}
 

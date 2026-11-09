@@ -9,6 +9,10 @@
  * provider slug, and `inject_json` when every placement of the credential is
  * the same header or the same query param.
  */
+import {
+	credentialInventoryRunState,
+	type CredentialInventoryRunStatus,
+} from './credential-inventory-run-state.ts'
 import { listSavedPackagesPage } from '#worker/package-registry/repo.ts'
 import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
 import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
@@ -133,7 +137,7 @@ export const credentialInventoryFailureListMax = 50
 
 type InventoryRunRow = {
 	id: string
-	status: 'scanning' | 'complete'
+	status: CredentialInventoryRunStatus
 	cursor: string | null
 }
 
@@ -445,6 +449,10 @@ export async function runCredentialInventoryScanStep(input: {
 		)
 	}
 	const complete = packages.length < limit
+	credentialInventoryRunState.assert(
+		run.status,
+		complete ? 'complete' : 'scanning',
+	)
 	statements.push(
 		db
 			.prepare(

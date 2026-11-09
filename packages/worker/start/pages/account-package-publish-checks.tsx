@@ -1,18 +1,16 @@
 /** @jsxImportSource @emotion/react */
 import type { CSSObject } from '@emotion/react'
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
+import { useStateMachine } from '#client/use-state-machine.ts'
+import {
+	publishCommitCheckState,
+	type PublishCheckAttempt,
+	type PublishCommitChecksState as CommitChecksState,
+} from '#client/routes/publish-commit-check-state.ts'
 import type { AccountPackagePublishCheckPayload } from '#universal/loader-data.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 
-export type PublishCommitChecksState =
-	| { status: 'idle' }
-	| { status: 'running' }
-	| { status: 'passed' }
-	| {
-			status: 'failed'
-			failedChecks: Array<{ kind: string; message: string }>
-	  }
-	| { status: 'unavailable'; error: string }
+export type PublishCommitChecksState = CommitChecksState
 
 type CheckPublishCommit = (input: {
 	data: { packageId: string; commit: string }
@@ -28,42 +26,47 @@ export function usePublishCommitChecks(input: {
 	check: CheckPublishCommit
 }): PublishCommitChecksState {
 	const { packageId, commit, check } = input
-	// Results are keyed by commit so a new commit reads as running without a
-	// synchronous reset inside the effect.
-	const [settled, setSettled] = useState<{
-		key: string
-		state: PublishCommitChecksState
-	} | null>(null)
 	const key = commit ? `${packageId}:${commit}` : null
+	const [attempt, transition] = useStateMachine<PublishCheckAttempt>(
+		publishCommitCheckState,
+		key ? { status: 'running', key } : { status: 'idle' },
+	)
 	useEffect(() => {
-		if (!commit || !key) return
+		if (!commit || !key) {
+			transition({ status: 'idle' })
+			return
+		}
+		transition({ status: 'running', key })
 		let current = true
-		const settle = (state: PublishCommitChecksState) => {
-			if (current) setSettled({ key, state })
+		const settle = (
+			state: Exclude<PublishCommitChecksState, { status: 'idle' }>,
+		) => {
+			if (current) transition({ ...state, key })
 		}
 		check({ data: { packageId, commit } })
 			.then((result) => {
-				if (!result.ok) {
-					settle({ status: 'unavailable', error: result.error })
-				} else if (result.checksOk) {
-					settle({ status: 'passed' })
-				} else {
-					settle({ status: 'failed', failedChecks: result.failedChecks })
-				}
+				if (!result.ok) settle({ status: 'unavailable', error: result.error })
+				else if (result.checksOk) settle({ status: 'passed' })
+				else settle({ status: 'failed', failedChecks: result.failedChecks })
 			})
-			.catch((error: unknown) => {
+			.catch((error: unknown) =>
 				settle({
 					status: 'unavailable',
 					error: error instanceof Error ? error.message : String(error),
-				})
-			})
+				}),
+			)
 		return () => {
 			current = false
 		}
-	}, [packageId, commit, key, check])
+	}, [packageId, commit, key, check, transition])
 	if (!key) return { status: 'idle' }
-	if (settled?.key !== key) return { status: 'running' }
-	return settled.state
+	if (attempt.status === 'idle' || attempt.key !== key)
+		return { status: 'running' }
+	if (attempt.status === 'failed')
+		return { status: 'failed', failedChecks: attempt.failedChecks }
+	if (attempt.status === 'unavailable')
+		return { status: 'unavailable', error: attempt.error }
+	return { status: attempt.status }
 }
 
 export function PublishChecksPanel(props: {
