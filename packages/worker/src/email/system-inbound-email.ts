@@ -8,6 +8,7 @@ import {
 	systemInboundQuotaDay,
 } from './inbound-delivery.ts'
 import { scheduleInboundDeliveryEffects } from './inbound-effect-scheduler.ts'
+import { forwardStoredSystemInboundEmail } from './system-inbound-forward.ts'
 import { evaluateEmailSenderRules } from './sender-rules.ts'
 import {
 	InboundRawMimeTooLargeError,
@@ -82,6 +83,7 @@ export async function handleSystemInboundEmail(input: {
 		| 'USAGE_EVENTS'
 		| 'MAILBOX'
 		| 'USER_METER'
+		| 'FOUNDER_EMAIL_FORWARD_TO'
 	>
 	recipient: string
 	localPart: SystemEmailLocal
@@ -381,6 +383,12 @@ export async function handleSystemInboundEmail(input: {
 		throw error
 	}
 	if (!storedResult.wonFinalization) return
+	await forwardStoredSystemInboundEmail({
+		message: input.message,
+		env: input.env,
+		localPart: input.localPart,
+		deliveryId: storedResult.finalizedDelivery.deliveryId,
+	})
 	await scheduleInboundDeliveryEffects({
 		env: input.env,
 		userId: systemEmailOwnerId,

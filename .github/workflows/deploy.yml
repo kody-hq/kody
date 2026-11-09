@@ -876,6 +876,7 @@ jobs:
           DISCORD_STANDARD_ROLE_ID: ${{ secrets.DISCORD_STANDARD_ROLE_ID }}
           DISCORD_PRO_ROLE_ID: ${{ secrets.DISCORD_PRO_ROLE_ID }}
           KIT_API_KEY: ${{ secrets.KIT_API_KEY }}
+          FOUNDER_EMAIL_FORWARD_TO: ${{ secrets.FOUNDER_EMAIL_FORWARD_TO }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
           STATUS_INCIDENT_EVENT_SECRET:
@@ -903,12 +904,13 @@ jobs:
           --set-from-env-optional DISCORD_MEMBER_ROLE_ID --set-from-env-optional
           DISCORD_STANDARD_ROLE_ID --set-from-env-optional DISCORD_PRO_ROLE_ID
           --set-from-env-optional KIT_API_KEY --set-from-env-optional
-          STRIPE_SECRET_KEY --set-from-env-optional STRIPE_WEBHOOK_SECRET
-          --set-from-env-optional STATUS_INCIDENT_EVENT_SECRET
-          --set-from-env-optional YOUTUBE_DATA_API_KEY --set-from-env
-          OIDC_SIGNING_PRIVATE_KEY_PEM --set-from-env OIDC_SIGNING_KEY_ID
-          --set-from-env-optional CLOUDFLARE_CUSTOM_HOSTNAMES_API_TOKEN
-          --set-from-env-optional PACKAGE_APP_TICKET_KEYS
+          FOUNDER_EMAIL_FORWARD_TO --set-from-env-optional STRIPE_SECRET_KEY
+          --set-from-env-optional STRIPE_WEBHOOK_SECRET --set-from-env-optional
+          STATUS_INCIDENT_EVENT_SECRET --set-from-env-optional
+          YOUTUBE_DATA_API_KEY --set-from-env OIDC_SIGNING_PRIVATE_KEY_PEM
+          --set-from-env OIDC_SIGNING_KEY_ID --set-from-env-optional
+          CLOUDFLARE_CUSTOM_HOSTNAMES_API_TOKEN --set-from-env-optional
+          PACKAGE_APP_TICKET_KEYS
 
       # Runtime-lane secret allowlist (ADR 0016): only the secrets the
       # package runtime lane actually reads. COOKIE_SECRET/SECRET_STORE_KEY
@@ -984,6 +986,7 @@ jobs:
           DISCORD_STANDARD_ROLE_ID: ${{ secrets.DISCORD_STANDARD_ROLE_ID }}
           DISCORD_PRO_ROLE_ID: ${{ secrets.DISCORD_PRO_ROLE_ID }}
           KIT_API_KEY: ${{ secrets.KIT_API_KEY }}
+          FOUNDER_EMAIL_FORWARD_TO: ${{ secrets.FOUNDER_EMAIL_FORWARD_TO }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
           STATUS_INCIDENT_EVENT_SECRET:
@@ -1011,8 +1014,9 @@ jobs:
           --set-from-env-optional DISCORD_MEMBER_ROLE_ID --set-from-env-optional
           DISCORD_STANDARD_ROLE_ID --set-from-env-optional DISCORD_PRO_ROLE_ID
           --set-from-env-optional KIT_API_KEY --set-from-env-optional
-          STRIPE_SECRET_KEY --set-from-env-optional STRIPE_WEBHOOK_SECRET
-          --set-from-env-optional STATUS_INCIDENT_EVENT_SECRET --set-from-env
+          FOUNDER_EMAIL_FORWARD_TO --set-from-env-optional STRIPE_SECRET_KEY
+          --set-from-env-optional STRIPE_WEBHOOK_SECRET --set-from-env-optional
+          STATUS_INCIDENT_EVENT_SECRET --set-from-env
           OIDC_SIGNING_PRIVATE_KEY_PEM --set-from-env OIDC_SIGNING_KEY_ID
           --set-from-env-optional CLOUDFLARE_CUSTOM_HOSTNAMES_API_TOKEN
           --set-from-env-optional ECP_FRAME_SIGNING_KEYS
@@ -1611,8 +1615,9 @@ jobs:
             toJSON(secrets.DISCORD_STANDARD_ROLE_ID) }},
             "ECP_FRAME_SIGNING_KEYS": ${{ toJSON(secrets.ECP_FRAME_SIGNING_KEYS)
             }}, "GITHUB_TOKEN": ${{ toJSON(secrets.GITHUB_TOKEN) }},
-            "KIT_API_KEY": ${{ toJSON(secrets.KIT_API_KEY) }},
-            "OAUTH_DISCORD_CLIENT_ID": ${{
+            "FOUNDER_EMAIL_FORWARD_TO": ${{
+            toJSON(secrets.FOUNDER_EMAIL_FORWARD_TO) }}, "KIT_API_KEY": ${{
+            toJSON(secrets.KIT_API_KEY) }}, "OAUTH_DISCORD_CLIENT_ID": ${{
             toJSON(secrets.OAUTH_DISCORD_CLIENT_ID) }},
             "OAUTH_DISCORD_CLIENT_SECRET": ${{
             toJSON(secrets.OAUTH_DISCORD_CLIENT_SECRET) }},

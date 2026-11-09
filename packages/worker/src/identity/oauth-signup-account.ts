@@ -1,3 +1,4 @@
+import { scheduleFounderWelcomeEmail } from '#app/founder-welcome-email.ts'
 import { maybeTagKitSubscriberOnSignup } from '#app/kit-signup.ts'
 import {
 	findSoftDeletedAccountsHoldingEmail,
@@ -326,6 +327,7 @@ export async function createOauthSignupAccount(input: {
 		source: 'oauth',
 		attribution: input.attribution,
 	})
+	scheduleFounderWelcomeEmail({ env, email, stableUserId })
 	await maybeGrantSignupWelcomeCredits({
 		db: env.APP_DB,
 		userId: signupPersonalOrgId,

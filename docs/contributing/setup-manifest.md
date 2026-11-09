@@ -692,6 +692,11 @@ Configure these GitHub Actions secrets and variables for workflows:
   audience. Create a Kit API key at
   https://app.kit.com/account_settings/developer_settings and use the same value
   as the Kody user secret `kitApiKey` when convenient.)
+- `FOUNDER_EMAIL_FORWARD_TO` (optional GitHub / Worker secret; destination for
+  mail to `kent@<system domain>`. The message is stored in the system inbox
+  first, then forwarded with `message.forward`. It must be a verified Cloudflare
+  Email Routing destination address on the account. Production deploy syncs it
+  when set; unset or failed forwards log an error and keep the inbox copy.)
 - `STRIPE_SECRET_KEY` (optional GitHub / Worker secret; Stripe secret API key
   for account billing. Production deploy syncs it when set. The Standard and Pro
   price ids are public Wrangler vars committed in

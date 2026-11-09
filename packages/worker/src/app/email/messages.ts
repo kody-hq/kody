@@ -368,6 +368,42 @@ function entitlementWarningCopy(kind: UserEntitlementWarningKind) {
 	}
 }
 
+export const founderWelcomeFromName = 'Kent C. Dodds (Kody)'
+export const founderWelcomeHeadshotPath = '/images/email/kent-c-dodds.png'
+
+/**
+ * One-time personal note from Kent on a new account's first verification.
+ * Essential mail: no tips unsubscribe. Replies go to `kent@` (see
+ * `sendFounderWelcomeEmail`).
+ */
+export function buildFounderWelcomeEmail(input: {
+	appBaseUrl: string
+	onboardingUrl: string
+}) {
+	return renderTransactionalEmail({
+		appBaseUrl: input.appBaseUrl,
+		subject: 'Thanks for trying Kody',
+		preheader:
+			'A quick note from Kent. Hit reply any time, it comes straight to me.',
+		heading: 'Thanks for trying Kody',
+		body: [
+			"Hi, I'm Kent C. Dodds. I built Kody, and I wanted to personally say thank you for signing up. It means a lot.",
+			{
+				text: 'If you do one thing next, connect the agent you already use (Cursor, Claude, ChatGPT, or any MCP client). It takes about a minute, and then your packages, memory, and secrets follow you everywhere.',
+				link: { label: 'Connect your agent', url: input.onboardingUrl },
+			},
+			'Replying to this email goes straight to me, the founder. Not a support queue and not a bot. I read every reply, so tell me what brought you here, what you hope Kody can do for you, or anything that felt confusing.',
+		],
+		signature: {
+			name: 'Kent C. Dodds',
+			title: 'Founder of Kody',
+			imagePath: founderWelcomeHeadshotPath,
+		},
+		footnote:
+			"You're receiving this one-time note because you just created a Kody account.",
+	})
+}
+
 type CampaignUnsubscribe = {
 	label: string
 	url: string

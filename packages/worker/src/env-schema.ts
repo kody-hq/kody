@@ -376,6 +376,9 @@ export const EnvSchema = object({
 	// subscribers; never fails signup when Kit is unset or errors).
 	KIT_API_KEY: optionalNonEmptyStringSchema,
 	KIT_SIGNED_UP_TAG_ID: optionalNonEmptyStringSchema,
+	// Verified Cloudflare Email Routing destination for mail to kent@<system
+	// domain>. Optional; unset keeps the system-inbox copy and logs an error.
+	FOUNDER_EMAIL_FORWARD_TO: optionalNonEmptyStringSchema,
 	// Stripe billing — optional; when STRIPE_SECRET_KEY is unset, billing
 	// surfaces render a "not configured" notice and sync/cron/portal skip.
 	STRIPE_SECRET_KEY: optionalNonEmptyStringSchema,

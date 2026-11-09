@@ -6,7 +6,8 @@ import {
 } from '#worker/audit-log.ts'
 import { verifyEmailToken } from '#app/email-verification.ts'
 import { scheduleKitSubscriberSync } from '#worker/kit/subscriber-sync.ts'
-import { sendConnectAgentEmail } from '#app/user-account-emails.ts'
+import { sendFounderWelcomeEmail } from '#app/founder-welcome-email.ts'
+import { openVerifiedNoMcpCampaignEvent } from '#app/user-usage-campaign-emails.ts'
 import { resolveVerifyEmailSuccessCta } from '#universal/safe-redirect.ts'
 import { waitUntil } from 'cloudflare:workers'
 import { maybeRewardHeldReferralAfterEmailVerified } from '#worker/entitlements/referral-program.ts'
@@ -81,14 +82,23 @@ export async function executeVerifyEmail({
 		})
 	}
 	if (result.newlyVerified) {
+		// Kent's welcome goes out now; the connect-agent tip waits for the
+		// usage campaign sweep's first-send dwell (about a day) so the two
+		// do not land seconds apart.
 		waitUntil(
-			sendConnectAgentEmail({
+			sendFounderWelcomeEmail({
 				env,
 				email: result.email,
-				userId: result.stableUserId,
+				stableUserId: result.stableUserId,
 				requestUrl: request.url,
 			}).catch((error) => {
-				console.warn('connect-agent-email-failed', error)
+				console.warn('founder-welcome-email-failed', error)
+			}),
+		)
+		waitUntil(
+			openVerifiedNoMcpCampaignEvent({
+				env,
+				userId: result.stableUserId,
 			}),
 		)
 		scheduleKitSubscriberSync({

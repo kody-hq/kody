@@ -220,6 +220,7 @@ export async function handleInboundEmail(
 		| 'USER_METER'
 		| 'MAILBOX'
 		| 'EMAIL_EVENTS'
+		| 'FOUNDER_EMAIL_FORWARD_TO'
 	> &
 		EmailReportingEnv &
 		InboundMailboxEnv,

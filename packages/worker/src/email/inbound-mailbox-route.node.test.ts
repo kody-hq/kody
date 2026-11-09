@@ -103,6 +103,17 @@ test('plus tags on org inbox hosts are never reserved system locals', () => {
 		localBase: 'support',
 		systemDomain,
 	})
+	// Founder replies: kent@apex is its own system inbox (also forwarded).
+	expect(routeFor(`Kent@${systemDomain}`)).toEqual({
+		kind: 'system',
+		recipient: `kent@${systemDomain}`,
+		localBase: 'kent',
+		systemDomain,
+	})
+	expect(routeFor(`kent@${userDomain}`)).toEqual({
+		kind: 'reject',
+		reason: 'This address is reserved for system mail.',
+	})
 	// Inbound-only alias: team@apex stores in the support system inbox.
 	expect(routeFor(`team@${systemDomain}`)).toEqual({
 		kind: 'system',

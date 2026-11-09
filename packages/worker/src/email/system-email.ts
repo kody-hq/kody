@@ -35,6 +35,9 @@ export const systemEmailLocals = [
 	'admin',
 	// Public Suffix List contact for the kody.run listing (#1405).
 	'psl',
+	// Founder replies (the founder welcome Reply-To); also forwarded to
+	// FOUNDER_EMAIL_FORWARD_TO after it is stored.
+	'kent',
 ] as const
 
 export type SystemEmailLocal = (typeof systemEmailLocals)[number]
