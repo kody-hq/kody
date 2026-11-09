@@ -33,7 +33,9 @@ is just not the hero.
 > Stripe webhook after a domain rename
 
 Also watch:
-[Shade automation from an INTENT.md — deterministic code, no model in the loop](https://www.youtube.com/watch?v=OZKDO9Pzmo0).
+[Shade automation from an INTENT.md — deterministic code, no model in the loop](https://www.youtube.com/watch?v=OZKDO9Pzmo0)
+and
+[Kody packages and credentials: declare, map, and lock](https://www.youtube.com/watch?v=YlbJd-amFoQ).
 
 ## Jobs — recurring schedules that travel with the package
 
