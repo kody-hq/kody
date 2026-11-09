@@ -59,6 +59,7 @@ module.exports = {
 		releaseType: 'draft',
 	},
 	forceCodeSigning: process.platform !== 'linux',
+	afterPack: './scripts/mac-app-update-config.cjs',
 	mac: {
 		...config.mac,
 		identity: undefined,
