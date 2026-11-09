@@ -55,6 +55,7 @@ export const test = base.extend<{
 	 * we do not burn CI retries on ECONNREFUSED for every remaining test.
 	 */
 	ensureE2eWebServerAlive: void
+	ensureNoHydrationDiagnostics: void
 	insertNewUser(options?: {
 		email?: string
 		username?: string
@@ -74,6 +75,47 @@ export const test = base.extend<{
 		mode?: 'login' | 'signup'
 	}): Promise<{ email: string; username: string; password: string }>
 }>({
+	ensureNoHydrationDiagnostics: [
+		async ({ context }, use, testInfo) => {
+			const diagnostics: Array<string> = []
+			const documents = new Set<string>()
+			const hydrationError =
+				/hydrat|server.rendered HTML|did not match|matching .* in|extra attributes from the server|minified (?:react|redact) error #(418|419|421|422|423|425)\b/i
+			const watch = (page: Page) => {
+				page.on('console', (message) => {
+					if (
+						['warning', 'error'].includes(message.type()) &&
+						hydrationError.test(message.text())
+					)
+						diagnostics.push(message.text())
+				})
+				page.on('pageerror', (error) => {
+					if (hydrationError.test(error.message))
+						diagnostics.push(error.message)
+				})
+				page.on('response', (response) => {
+					if (response.request().resourceType() === 'document')
+						documents.add(new URL(response.url()).pathname)
+				})
+			}
+			context.pages().forEach(watch)
+			context.on('page', watch)
+			await use()
+			await testInfo.attach('hydration-diagnostics', {
+				body: JSON.stringify(
+					{ documents: [...documents].sort(), diagnostics },
+					null,
+					2,
+				),
+				contentType: 'application/json',
+			})
+			expect(
+				diagnostics,
+				'SSR hydration must not emit mismatch diagnostics',
+			).toEqual([])
+		},
+		{ auto: true },
+	],
 	ensureE2eWebServerAlive: [
 		async ({ baseURL }, use, testInfo) => {
 			await assertE2eWebServerAlive(baseURL)
