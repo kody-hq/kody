@@ -545,6 +545,15 @@ async function handleDashboard(
 	})
 }
 
+/** REST accepts `from: { address, name }`; the shared schema stores the parts flat. */
+function flattenNamedFrom(body: unknown) {
+	if (typeof body !== 'object' || body === null) return body
+	const from = (body as { from?: unknown }).from
+	if (typeof from !== 'object' || from === null) return body
+	const named = from as { address?: unknown; name?: unknown }
+	return { ...body, from: named.address, fromName: named.name }
+}
+
 async function handleEmailSend(
 	request: Request,
 	env: MockCloudflareEnv,
@@ -554,7 +563,7 @@ async function handleEmailSend(
 	if (body === null) {
 		return errorEnvelope(400, 1001, 'invalid JSON body')
 	}
-	const parsed = parseSafe(outboundEmailSchema, body)
+	const parsed = parseSafe(outboundEmailSchema, flattenNamedFrom(body))
 	if (!parsed.success) {
 		return errorEnvelope(400, 'E_VALIDATION_ERROR', 'Invalid email payload.')
 	}

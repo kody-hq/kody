@@ -36,6 +36,12 @@ import { afterAll, afterEach, beforeAll, expect, test, vi } from 'vitest'
 const lifecycleMocks = vi.hoisted(() => ({
 	scheduleUserCreatedEvent: vi.fn(),
 	scheduleGuestClaimedEvent: vi.fn(),
+	scheduleFounderWelcomeEmail: vi.fn(),
+}))
+
+vi.mock('#app/founder-welcome-email.ts', () => ({
+	scheduleFounderWelcomeEmail: (...args: Array<unknown>) =>
+		lifecycleMocks.scheduleFounderWelcomeEmail(...args),
 }))
 
 vi.mock('#worker/identity/schedule-user-lifecycle-event.ts', () => ({
@@ -606,6 +612,7 @@ test('google sign-in reclaims an unverified password account matching the provid
 })
 
 test('discord sign-in creates a verified account and assigns the guild role', async () => {
+	lifecycleMocks.scheduleFounderWelcomeEmail.mockClear()
 	const { sqlite, db } = createMigratedDb()
 	const env = createAppEnv(db, {
 		DISCORD_BOT_TOKEN: 'bot-token-test',
@@ -751,6 +758,8 @@ test('discord sign-in creates a verified account and assigns the guild role', as
 	expect(
 		roleDeletes.filter((roleId) => roleId === '222222222222222222'),
 	).toEqual(['222222222222222222'])
+	// A verified social signup gets the founder welcome exactly once.
+	expect(lifecycleMocks.scheduleFounderWelcomeEmail).toHaveBeenCalledTimes(1)
 })
 
 test('discord and x sign-ins without a verified email fail with a helpful error', async () => {
@@ -1293,6 +1302,7 @@ async function runConnectionsOperation(
 }
 
 test('claiming a guest with GitHub emits one user.guest_claimed and no user.created', async () => {
+	lifecycleMocks.scheduleFounderWelcomeEmail.mockClear()
 	const { sqlite, db } = createMigratedDb()
 	const env = createAppEnv(db)
 	const created = await createGuestAccount({
@@ -1355,4 +1365,6 @@ test('claiming a guest with GitHub emits one user.guest_claimed and no user.crea
 			renamedPackages: 0,
 		}),
 	)
+	// Converting the guest into a new verified account sends the founder welcome once.
+	expect(lifecycleMocks.scheduleFounderWelcomeEmail).toHaveBeenCalledTimes(1)
 })

@@ -34,6 +34,7 @@ export type TransactionalEmailCategory =
 
 export const essentialTransactionalEmailKinds = [
 	'email_verification',
+	'founder_welcome',
 	'email_change',
 	'email_changed',
 	'account_device_sign_in',
@@ -225,8 +226,13 @@ export async function sendGatedTransactionalEmail(input: {
 	config: CloudflareConfig
 	category: TransactionalEmailCategory
 	kind: string
-	message: Omit<OutboundEmail, 'replyTo' | 'headers' | 'attachments'> &
-		Partial<Pick<OutboundEmail, 'replyTo' | 'headers' | 'attachments'>>
+	message: Omit<
+		OutboundEmail,
+		'replyTo' | 'headers' | 'attachments' | 'fromName'
+	> &
+		Partial<
+			Pick<OutboundEmail, 'replyTo' | 'headers' | 'attachments' | 'fromName'>
+		>
 	now?: Date
 	fetchImpl?: typeof fetch
 }): Promise<GatedTransactionalSendResult> {

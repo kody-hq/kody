@@ -1,5 +1,6 @@
 import { personalOrgId } from '@kody-internal/shared/owner-person-ids.ts'
 import { deleteUserAccount } from '#app/account-deletion.ts'
+import { scheduleFounderWelcomeEmail } from '#app/founder-welcome-email.ts'
 import { auditDatabaseFromEnv, logAuditEvent } from '#worker/audit-log.ts'
 import { maybeGrantSignupWelcomeCredits } from '#worker/billing/signup-welcome-credits.ts'
 import { isUsernameClaimedInIdentity } from '#worker/identity/generated-username.ts'
@@ -253,6 +254,11 @@ export async function convertGuestInPlace(
 		claimedAt: now,
 		counts,
 		renamedPackages: 0,
+	})
+	scheduleFounderWelcomeEmail({
+		env,
+		email: input.email,
+		stableUserId: guest.personId,
 	})
 	return {
 		mode: 'new',
