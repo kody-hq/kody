@@ -43,9 +43,17 @@ test('4 cores stay capped when RAM is large', () => {
 	expect(slots.build).toBe(1)
 })
 
-test('8-core machine at the memory floor does not cap pools', () => {
+test('8-core 31GB machine runs one suite and one build at a time', () => {
 	const slots = validateConcurrency({
-		availableParallelism: saturatedSuiteParallelism + 4,
+		availableParallelism: 8,
+		totalMemoryBytes: 31 * GiB,
+	})
+	expect(slots).toEqual({ suite: 1, build: 1, check: 8 })
+})
+
+test('16-core machine at the memory floor does not cap pools', () => {
+	const slots = validateConcurrency({
+		availableParallelism: saturatedSuiteParallelism + 8,
 		totalMemoryBytes: saturatedSuiteMemoryBytes,
 	})
 	expect(slots).toEqual({
@@ -55,14 +63,14 @@ test('8-core machine at the memory floor does not cap pools', () => {
 	})
 })
 
-test('8 cores under the memory floor still cap suite and build legs', () => {
+test('16 cores under the memory floor still cap suite and build legs', () => {
 	const slots = validateConcurrency({
-		availableParallelism: 8,
+		availableParallelism: 16,
 		totalMemoryBytes: saturatedSuiteMemoryBytes - 1,
 	})
 	expect(slots.suite).toBe(1)
 	expect(slots.build).toBe(1)
-	expect(slots.check).toBe(8)
+	expect(slots.check).toBe(16)
 })
 
 test('small machine skips the startup-time check after a suite failure', async () => {

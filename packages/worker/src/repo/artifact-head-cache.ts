@@ -109,6 +109,65 @@ export function resolveCachedArtifactSourceHead(
 	})
 }
 
+const freshHeadTimeoutMs = 3_000
+
+function writeArtifactSourceHead(
+	env: Env,
+	repoId: string,
+	head: ArtifactSourceHead,
+) {
+	const kv = readHeadCacheKv(env)
+	if (!kv) return Promise.resolve()
+	return createKvCachifiedCache(kv).set(
+		buildArtifactSourceHeadCacheKey(env, repoId),
+		createCacheEntry(
+			head,
+			head.commit
+				? { ttl: headTtlMs, swr: headStaleWhileRevalidateMs }
+				: { ttl: missingHeadTtlMs, swr: 0 },
+		),
+	)
+}
+
+/**
+ * Live HEAD for `repoId`, written back to the cache. Owner Settings must see a
+ * push the moment it lands (#4981): a cached HEAD can lag an external git push
+ * for the whole TTL when the push event misses the cache (nobody had viewed
+ * the repo) or arrives late. When the live lookup fails or outlasts
+ * `timeoutMs`, this throws so the caller reports the HEAD as unknown rather
+ * than trusting a possibly stale cached commit; the cache write runs in the
+ * background.
+ */
+export async function resolveFreshArtifactSourceHead(
+	env: Env,
+	repoId: string,
+	options?: { timeoutMs?: number },
+): Promise<ArtifactSourceHead> {
+	const live = resolveArtifactSourceHead(env, repoId)
+	void deferWork('artifact-head-fresh-write', () =>
+		live.then(
+			(head) => writeArtifactSourceHead(env, repoId, head),
+			() => undefined,
+		),
+	)
+	let timer: ReturnType<typeof setTimeout> | undefined
+	const timedOut = new Promise<'timeout'>((resolve) => {
+		timer = setTimeout(
+			() => resolve('timeout'),
+			options?.timeoutMs ?? freshHeadTimeoutMs,
+		)
+	})
+	try {
+		const result = await Promise.race([live, timedOut])
+		if (result === 'timeout') {
+			throw new Error('Artifacts HEAD lookup timed out')
+		}
+		return result
+	} finally {
+		clearTimeout(timer)
+	}
+}
+
 /**
  * Apply a push to the cached HEAD. A push to the cached default branch
  * rewrites the commit in place from the event payload — no Artifacts call —

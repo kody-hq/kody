@@ -38,8 +38,8 @@ Workers shard's 3; both caps respect available CPU affinity. CI uses two
 `WORKERS_TEST_SHARD=i/2` jobs with separate Nx hashes; local runs are unsharded
 when that variable is unset. Workers-unit's `testTimeout`/`hookTimeout` is 40s
 everywhere (not only under the flag) so the budget a cached `test-workers`
-result passed under is the one CI enforces. On machines with at most 4 cores or
-under 24GB RAM, `tools/run-validate.ts` also runs suite legs one at a time so
+result passed under is the one CI enforces. On machines with at most 8 cores or
+under 48 GiB RAM, `tools/run-validate.ts` also runs suite legs one at a time so
 they do not exhaust the VM (#3147). The load flag stays for larger machines,
 where those legs still share the box. The override stays on the workers project
 only (not `sharedProjectConfig`) so node-unit Nx caches stay keyed to the 20s
