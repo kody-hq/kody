@@ -1,3 +1,6 @@
+import { setFeatureFlagOrgOverride } from '#worker/feature-flags/service.ts'
+import { resolvePublicFileScope } from './public-links.ts'
+import { filesDomain } from '#mcp/capabilities/files/domain.ts'
 import type { FileMetadata } from '#universal/files.ts'
 import { inviteCreateCapability } from '#mcp/capabilities/access/invites.ts'
 import { fileInvitationOffer, acceptFileInvitation } from './invitations.ts'
@@ -505,4 +508,70 @@ test('private range reads authorize once, use the owning namespace, and do not d
 	)
 	expect(invalid.range).toBe(false)
 	expect(read).not.toHaveBeenCalled()
+})
+
+test('an org opt-out suspends public links without replacing their tokens', async () => {
+	const f = await fixture()
+	Object.assign(f.store, { publicLinkMatches: vi.fn(async () => true) })
+	const openLink = () =>
+		resolvePublicFileScope(f.env, 'file-owner', f.file.id, 'a'.repeat(64))
+	const setRollout = (enabled: boolean) =>
+		setFeatureFlagOrgOverride(f.db, {
+			key: 'files-workspace',
+			orgId: f.owner,
+			enabled,
+			updatedByStableUserId: null,
+		})
+	await setRollout(true)
+	await expect(openLink()).resolves.toMatchObject({ file: { id: f.file.id } })
+	await setRollout(false)
+	await expect(openLink()).rejects.toThrow('Shared file unavailable.')
+	await setRollout(true)
+	await expect(openLink()).resolves.toMatchObject({ file: { id: f.file.id } })
+	f.sqlite.close()
+})
+
+test('folder contributors can create inside their folder without root creation access', async () => {
+	const f = await fixture()
+	const folder = {
+		...f.file,
+		mediaType: 'application/vnd.kody.directory' as const,
+	}
+	f.store.metadata.mockImplementation(async (_owner, id) =>
+		id === folder.id ? folder : f.hidden,
+	)
+	f.store.write.mockImplementation(async (input) => ({
+		ok: true,
+		file: { ...f.file, id: input.fileId, content: input.content },
+	}))
+	await f.grant('file', folder.id, ['file:read', 'file:write'])
+	await f.grant('file', f.hidden.id, ['file:read'])
+	f.env.FILES_COLLABORATION_ENABLED = 'true'
+	f.env.WRANGLER_IS_LOCAL_DEV = 'true'
+	Object.assign(f.env, {
+		FILE_ROOM: {
+			idFromName: (id: string) => id,
+			get: () => ({ noteActivity: async () => {} }),
+		},
+	})
+	const create = filesDomain.capabilities.find(
+		(capability) => capability.name === 'fileCreate',
+	)!
+	const createChild = (parent_id?: string) =>
+		create.handler(
+			{
+				file_id: crypto.randomUUID(),
+				write_id: crypto.randomUUID(),
+				name: 'Notes.md',
+				media_type: 'text/markdown',
+				content: 'Draft',
+				parent_id,
+			},
+			f.context(f.reader, null),
+		)
+	await expect(createChild(folder.id)).resolves.toMatchObject({ ok: true })
+	await expect(createChild()).rejects.toThrow(/access/)
+	await expect(createChild(f.hidden.id)).rejects.toThrow(/access/)
+	expect(f.store.write).toHaveBeenCalledTimes(1)
+	f.sqlite.close()
 })

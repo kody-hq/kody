@@ -254,12 +254,21 @@ export function FilesPage({
 	const finderHover = useState(true)
 	const fileSurface = useRef<HTMLElement>(null)
 	const [browseDestination, setBrowseDestination] = useState<
-		string | undefined
-	>(undefined)
+		string | undefined | null
+	>(null)
 	const [dropTarget, setDropTarget] = useState<string | null>(null)
 	const dragDepth = useRef(0)
 	const [explorerVisible, setExplorerVisible] = useState(true)
 	const selected = data.selected
+	const canCreateIn = (id?: string) =>
+		id
+			? !!data.files.find((file) => file.id === id)?.access.write
+			: data.can_create
+	const explorerCreationParent =
+		selected && isWorkspaceContainer(selected.file.mediaType)
+			? selected.file.id
+			: selected?.file.parentId
+
 	const packagesExpanded = !collapsed.has('system:packages')
 	const setPackagesExpanded = (expanded: boolean) => {
 		if (expanded !== packagesExpanded) onToggleBranch('system:packages')
@@ -390,7 +399,7 @@ export function FilesPage({
 	const editable =
 		data.writes_enabled &&
 		!(selected?.file.collaboration && !data.collaborationEnabled) &&
-		(creating ? data.can_create : selected?.access.write)
+		(creating ? canCreateIn(parentId) : selected?.access.write)
 	const latestDraft = useRef(draft)
 	useLayoutEffect(() => {
 		latestDraft.current = draft
@@ -589,14 +598,7 @@ export function FilesPage({
 			? data.files.find((file) => file.id === destinationId)
 			: undefined
 
-		if (
-			!data.writes_enabled ||
-			!data.can_create ||
-			(destinationId &&
-				!data.files.find((file) => file.id === destinationId)?.access.write) ||
-			(container &&
-				!data.files.find((file) => file.id === container.id)?.access?.write)
-		) {
+		if (!data.writes_enabled || !canCreateIn(destinationId)) {
 			setMessage('You do not have permission to upload here.')
 			return
 		}
@@ -809,14 +811,13 @@ export function FilesPage({
 		if (!item) {
 			if (
 				!target.closest('[data-workspace-background]') ||
-				!data.can_create ||
+				!canCreateIn(explorerCreationParent) ||
 				!data.writes_enabled
 			)
 				return
-			const parent =
-				selected && isWorkspaceContainer(selected.file.mediaType)
-					? `&parent=${selected.file.id}`
-					: ''
+			const parent = explorerCreationParent
+				? `&parent=${explorerCreationParent}`
+				: ''
 			return [
 				{
 					id: 'new-page',
@@ -922,7 +923,6 @@ export function FilesPage({
 		if (
 			isWorkspaceContainer(item.mediaType) &&
 			item.access.write &&
-			data.can_create &&
 			data.writes_enabled
 		)
 			actions.push(
@@ -1113,7 +1113,7 @@ export function FilesPage({
 					const destination = resolveDrop(event.target as Element)
 					const allowed =
 						destination &&
-						data.can_create &&
+						canCreateIn(destination.id) &&
 						data.writes_enabled &&
 						!creating &&
 						!showPackages &&
@@ -1248,17 +1248,13 @@ export function FilesPage({
 									<FileGlyph mediaType={workspaceDirectoryMediaType} />
 									Files
 								</SiteLink>
-								{data.can_create && (
+								{canCreateIn(explorerCreationParent) && (
 									<WorkspaceCreateMenu
 										canManageStorage={
 											data.canManageStorage && data.collaborationEnabled
 										}
 										orgSlug={data.orgSlug}
-										parentId={
-											selected && isWorkspaceContainer(selected.file.mediaType)
-												? selected.file.id
-												: selected?.file.parentId
-										}
+										parentId={explorerCreationParent}
 										disabled={!data.writes_enabled || busy}
 										onUpload={() => uploadInput.current?.click()}
 									/>
@@ -1637,7 +1633,7 @@ export function FilesPage({
 										}
 										search={search}
 										orgSlug={data.orgSlug}
-										canCreate={data.can_create && data.writes_enabled}
+										canCreate={(id) => data.writes_enabled && canCreateIn(id)}
 										onDestinationChange={setBrowseDestination}
 										onUpload={() => uploadInput.current?.click()}
 									/>
@@ -1734,17 +1730,18 @@ export function FilesPage({
 														}
 														orgSlug={data.orgSlug}
 													/>
-													{data.can_create && data.writes_enabled && (
-														<WorkspaceCreateMenu
-															canManageStorage={
-																data.canManageStorage &&
-																data.collaborationEnabled
-															}
-															orgSlug={data.orgSlug}
-															parentId={selected?.file.parentId ?? parentId}
-															onUpload={() => uploadInput.current?.click()}
-														/>
-													)}
+													{canCreateIn(selected?.file.parentId ?? parentId) &&
+														data.writes_enabled && (
+															<WorkspaceCreateMenu
+																canManageStorage={
+																	data.canManageStorage &&
+																	data.collaborationEnabled
+																}
+																orgSlug={data.orgSlug}
+																parentId={selected?.file.parentId ?? parentId}
+																onUpload={() => uploadInput.current?.click()}
+															/>
+														)}
 												</>
 											)}
 											<span css={{ flex: 1 }} />
@@ -2181,10 +2178,8 @@ export function FilesPage({
 												files={data.files}
 												search={search}
 												orgSlug={data.orgSlug}
-												canCreate={
-													data.can_create &&
-													data.writes_enabled &&
-													selected.access.write
+												canCreate={(id) =>
+													data.writes_enabled && canCreateIn(id)
 												}
 												directory={selected.file}
 												onDestinationChange={setBrowseDestination}
@@ -2715,7 +2710,7 @@ function WorkspaceRepoBrowser({
 				}}
 				search={search}
 				orgSlug={orgSlug}
-				canCreate={false}
+				canCreate={() => false}
 				repoBrowser={{
 					loadingFolderId: query.isPending ? packagesFolder.id : loadingRepoId,
 					columnFiles: [
@@ -2920,7 +2915,7 @@ function WorkspaceHome({
 	files: PageData['files']
 	search: string
 	orgSlug: string
-	canCreate: boolean
+	canCreate: (id?: string) => boolean
 	onUpload?: () => void
 	directory?: FileMetadata
 	onDestinationChange?: (id: string | undefined) => void
@@ -3115,7 +3110,7 @@ function WorkspaceHome({
 						/>
 					)}
 					{repoBrowser?.actions}
-					{canCreate && (
+					{canCreate(creationParent) && (
 						<WorkspaceCreateMenu
 							canManageStorage={
 								pageData?.canManageStorage && pageData.collaborationEnabled

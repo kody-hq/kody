@@ -492,7 +492,7 @@ export const filesDomain = defineDomain({
 		defineDomainCapability(domain, {
 			...common,
 			name: 'fileCreate',
-			orgPermission: 'file:create',
+			orgPermission: ['file:create', 'file:write'],
 			readOnly: false,
 			destructive: false,
 			description:

@@ -117,6 +117,15 @@ export async function resolvePublicFileScope(
 	const org = await getOrgBySlug(env.APP_DB, orgSlug)
 	if (!org || !(await isOrgActive(env.APP_DB, org.id)))
 		throw new Error('Shared file unavailable.')
+	// Anonymous visitors have no personal flag assignment. An explicit org
+	// opt-out suspends existing links without replacing their tokens.
+	const rollout = await env.APP_DB.prepare(
+		`SELECT enabled FROM feature_flag_org_overrides
+		 WHERE org_id = ? AND flag_key = 'files-workspace'`,
+	)
+		.bind(org.id)
+		.first<{ enabled: number }>()
+	if (rollout?.enabled === 0) throw new Error('Shared file unavailable.')
 	const ownerId = ownerIdFromStored(org.id),
 		store = fileStoreRpc(env, ownerId)
 	if (!(await store.publicLinkMatches(ownerId, rootId, await sha256(token))))

@@ -230,16 +230,16 @@ export async function writeFile(
 ) {
 	const s = await scope(ctx, 'name' in input ? input.parent_id : input.file_id)
 	const creating = 'name' in input
-	s.require(
-		creating ? 'file:create' : 'file:write',
-		creating ? undefined : input.file_id,
-	)
-	if (!creating) s.require('file:read', input.file_id)
-	if (creating && input.parent_id) {
-		s.require('file:read', input.parent_id)
-		s.require('file:write', input.parent_id)
-	}
-	if (!creating) {
+	if (creating) {
+		if (input.parent_id) {
+			s.require('file:read', input.parent_id)
+			s.require('file:write', input.parent_id)
+		} else {
+			s.require('file:create')
+		}
+	} else {
+		s.require('file:read', input.file_id)
+		s.require('file:write', input.file_id)
 		const enabled = await fileCollaborationEnabled(ctx.env, s.request)
 		const metadata = await s.store.metadata(s.request.org.id, input.file_id)
 		if (metadata?.collaboration && !enabled)
