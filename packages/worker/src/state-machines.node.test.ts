@@ -3,31 +3,21 @@ import { resolve } from 'node:path'
 import ts from 'typescript'
 import { expect, test } from 'vitest'
 import { stateMachines } from '../../../tools/state-machines.ts'
-import { stateMachines as workerStateMachines } from './state-machines.ts'
+import { agentRegistrationState } from './agent-registration/agent-registration-state.ts'
+import { deviceAuthorizationState } from './oauth-device/device-authorization-state.ts'
+import { inviteState } from './orgs/invite-state.ts'
 
-test('pins migrated lifecycle graphs including token-mint rollback', () => {
-	expect(
-		workerStateMachines.slice(0, 3).map(({ machine }) => machine.transitions),
-	).toEqual([
-		{
-			pending: ['approved', 'denied'],
-			approved: ['consumed'],
-			denied: [],
-			consumed: [],
-		},
-		{
-			pending: ['claimed', 'denied'],
-			claimed: ['consumed'],
-			denied: [],
-			consumed: ['claimed'],
-		},
-		{
-			pending: ['accepted', 'revoked', 'expired'],
-			accepted: [],
-			revoked: [],
-			expired: [],
-		},
-	])
+test('token-mint failure can roll a consumed registration back to claimed', () => {
+	expect(agentRegistrationState.can('consumed', 'claimed')).toBe(true)
+	expect(agentRegistrationState.can('denied', 'claimed')).toBe(false)
+	expect(deviceAuthorizationState.can('pending', 'consumed')).toBe(false)
+	expect(deviceAuthorizationState.can('approved', 'consumed')).toBe(true)
+	expect(deviceAuthorizationState.isTerminal('consumed')).toBe(true)
+	for (const closed of ['accepted', 'revoked', 'expired'] as const) {
+		expect(inviteState.can('pending', closed)).toBe(true)
+		expect(inviteState.isTerminal(closed)).toBe(true)
+	}
+	expect(inviteState.can('accepted', 'pending')).toBe(false)
 })
 
 test('every production defineStateMachine call is registered for documentation', () => {

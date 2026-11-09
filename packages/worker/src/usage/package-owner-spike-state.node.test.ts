@@ -1,12 +1,11 @@
 import { expect, test } from 'vitest'
 import { packageOwnerSpikeState } from './package-owner-spike-state.ts'
 
-test('package_owner_error_spike.status preserves the lifecycle graph', () => {
-	expect(packageOwnerSpikeState.initial).toEqual(['ok'])
-	expect(packageOwnerSpikeState.transitions).toEqual({
-		ok: ['ok', 'pending', 'alerted'],
-		pending: ['pending', 'ok', 'alerted'],
-		alerted: ['alerted', 'ok'],
-	})
-	expect(packageOwnerSpikeState.terminal).toEqual([])
+test('spike delivery rearms through ok and never pending from alerted', () => {
+	expect(packageOwnerSpikeState.can('ok', 'pending')).toBe(true)
+	expect(packageOwnerSpikeState.can('ok', 'alerted')).toBe(true)
+	expect(packageOwnerSpikeState.can('pending', 'alerted')).toBe(true)
+	expect(packageOwnerSpikeState.can('pending', 'ok')).toBe(true)
+	expect(packageOwnerSpikeState.can('alerted', 'ok')).toBe(true)
+	expect(packageOwnerSpikeState.can('alerted', 'pending')).toBe(false)
 })

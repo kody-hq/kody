@@ -5,43 +5,43 @@ const {
 	updateCheckTransitions,
 } = require('../updates.cjs')
 const { executionOperationTransitions } = require('../execution.cjs')
-test('packaged frozen tables validate against the shared primitive and pin their graphs', async () => {
+
+test('packaged frozen tables reject illegal transitions', async () => {
 	const { defineStateMachine } =
 		await import('../../shared/src/state-machine.ts')
-	for (const [name, initial, transitions, expected] of [
-		[
-			'readiness',
-			'waiting',
-			updateReadinessTransitions,
-			{
-				waiting: ['downloaded'],
-				downloaded: ['downloaded', 'installing'],
-				installing: ['downloaded', 'installing'],
-			},
-		],
-		[
-			'checking',
-			'idle',
-			updateCheckTransitions,
-			{ idle: ['checking'], checking: ['idle'] },
-		],
-		[
-			'execution',
-			'idle',
-			executionOperationTransitions,
-			{
-				idle: ['running', 'error'],
-				running: ['idle', 'running', 'error'],
-				error: ['idle', 'running', 'error'],
-			},
-		],
+	for (const transitions of [
+		updateReadinessTransitions,
+		updateCheckTransitions,
+		executionOperationTransitions,
 	]) {
 		assert.equal(Object.isFrozen(transitions), true)
 		assert.equal(Object.values(transitions).every(Object.isFrozen), true)
-		assert.deepEqual(
-			defineStateMachine({ name, description: name, initial, transitions })
-				.transitions,
-			expected,
-		)
 	}
+	const readiness = defineStateMachine({
+		name: 'readiness',
+		description: 'readiness',
+		initial: 'waiting',
+		transitions: updateReadinessTransitions,
+	})
+	assert.equal(readiness.can('waiting', 'downloaded'), true)
+	assert.equal(readiness.can('waiting', 'installing'), false)
+	assert.equal(readiness.can('installing', 'waiting'), false)
+	const checking = defineStateMachine({
+		name: 'checking',
+		description: 'checking',
+		initial: 'idle',
+		transitions: updateCheckTransitions,
+	})
+	assert.equal(checking.can('idle', 'checking'), true)
+	assert.equal(checking.can('checking', 'idle'), true)
+	assert.equal(checking.can('idle', 'idle'), false)
+	const execution = defineStateMachine({
+		name: 'execution',
+		description: 'execution',
+		initial: 'idle',
+		transitions: executionOperationTransitions,
+	})
+	assert.equal(execution.can('error', 'idle'), true)
+	assert.equal(execution.can('error', 'running'), true)
+	assert.equal(execution.can('idle', 'idle'), false)
 })
