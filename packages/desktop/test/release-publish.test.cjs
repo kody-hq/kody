@@ -2,7 +2,7 @@ const assert = require('node:assert/strict')
 const { createHash } = require('node:crypto')
 const { mkdtempSync, mkdirSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
-const { join } = require('node:path')
+const { basename, join } = require('node:path')
 const { test } = require('node:test')
 const {
 	releaseAssetNames,
@@ -79,7 +79,7 @@ function fakeGitHub({ contents, draftAssets = [], latest = null }) {
 		state.calls.push(args.join(' '))
 		const path = args.find((arg) => arg.startsWith('repos/'))
 		if (args[0] === 'release' && args[1] === 'upload') {
-			const name = args[3].split('/').pop()
+			const name = basename(args[3])
 			state.uploads.push(name)
 			state.release.assets = state.release.assets.filter((a) => a.name !== name)
 			state.release.assets.push(asset(name))
