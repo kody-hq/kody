@@ -739,11 +739,11 @@ export async function registerInstall(install: Install) {
 export async function listInstalls() {
 	await ensureInstallsTable()
 	const installs: Array<Install> = []
-	let afterId = ''
+	let afterId: string | null = null
 	for (;;) {
 		const result = (await packageStorage().sql(
-			'SELECT id, name, installed_at FROM installs WHERE id > ? ORDER BY id LIMIT 1000',
-			[afterId],
+			'SELECT id, name, installed_at FROM installs WHERE ? IS NULL OR id > ? ORDER BY id LIMIT 1000',
+			[afterId, afterId],
 		)) as StorageSqlResult
 		for (const row of result.rows) {
 			installs.push({
