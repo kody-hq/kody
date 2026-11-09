@@ -355,6 +355,11 @@ when more matched — page with `LIMIT`/`OFFSET` (or a keyset) for larger result
 Mutating statements that yield rows (`INSERT`/`UPDATE`/`DELETE … RETURNING`)
 still finish the write when truncated; only the returned row list is capped.
 
+Each `get` / `set` / `delete` / `sql` call is an independent request, with no
+multi-key transaction or compare-and-swap. For indexes that concurrent writers
+share, see
+[Concurrency and multi-key updates](./packages.md#concurrency-and-multi-key-updates).
+
 A read that examines a lot of rows is allowed and metered on the monthly Rows
 read include. `warning` is a string once the statement examines at least
 1,000,000 rows (usage past the include is billed from credits). One read stops
