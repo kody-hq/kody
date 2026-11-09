@@ -119,7 +119,7 @@ export function Combobox(props: ComboboxProps) {
 				<BaseCombobox.Root
 					autoHighlight
 					items={props.options}
-					value={selected}
+					value={selected?.id ? selected : null}
 					onValueChange={(option) => {
 						if (option) props.onChange(option.id)
 					}}

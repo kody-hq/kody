@@ -174,7 +174,7 @@ export function WorkspaceSwitcher(
 				<Menu.Trigger
 					ref={trigger}
 					aria-label={`${label}: switch organization`}
-					title={current?.name}
+					title={current?.displayName ?? undefined}
 					data-testid={triggerTestId(placement)}
 					css={triggerCss}
 				>

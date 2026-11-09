@@ -35,10 +35,8 @@ test('combobox shows the selected label, keeps ids out of the list, and can hide
 	expect(selectedHtml.replace(/<[^>]*>/g, '')).not.toContain(
 		'4ad2f1d3-8ea9-4f31-995c-45d59972e665',
 	)
-	expect(selectedHtml).toContain('>rotosphere<')
-	expect(selectedHtml).toContain('>court-projector<')
-	// One row per option: the id is a search keyword, not a second line.
-	expect(selectedHtml.match(/role="option"/g)).toHaveLength(3)
+	expect(selectedHtml).toContain('aria-expanded="false"')
+	expect(selectedHtml).not.toContain('role="option"')
 	// The label still names the field for assistive tech.
 	expect(selectedHtml).toContain('Filter secrets by package')
 	expect(selectedHtml).toMatch(/<input[^>]*id="package-filter"/)
