@@ -170,7 +170,7 @@ Open these before proposing a new primitive, surface, or storage home.
 - [0064 — OAuth consent binds a grant to one org](./0064-oauth-org-binding.md) —
   stamp `orgId` on grant props and metadata; `?org=` plus consent picker (no
   flag; one org = no picker); connection profiles stay org-bound narrowing, not
-  OAuth scopes; `userId` fallback for grants without `orgId`
+  OAuth scopes; grants without `orgId` fail closed
 - [0065 — Org seats and prepaid credits](./0065-org-seats-and-prepaid-credits.md)
   — org-billed seats and credits; usage past the include follows 0051 (an empty
   wallet keeps the full Pro include and never drops to Free limits); Stripe
