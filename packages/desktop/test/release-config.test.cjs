@@ -119,3 +119,16 @@ test('Mac releases claim associated domains only with a provisioning profile', a
 	for (const key of base.matchAll(/<key>([^<]+)<\/key>/g))
 		assert.ok(entitlements.includes(key[0]), key[1])
 })
+
+test('Mac releases write the update feed into the app before signing', () => {
+	const config = configuration('darwin', macCredentials)
+	assert.equal(config.afterPack, './scripts/mac-app-update-config.cjs')
+	const hook = require(resolve(__dirname, '..', config.afterPack))
+	assert.equal(typeof hook.afterPack, 'function')
+	const builderLoad = createRequire(require.resolve('electron-builder'))
+	assert.equal(
+		typeof builderLoad('app-builder-lib/out/publish/PublishManager')
+			.getAppUpdatePublishConfiguration,
+		'function',
+	)
+})
