@@ -1,0 +1,38 @@
+name: ci-review diag (temporary)
+
+on:
+  push:
+    branches: [ci-review/2026-11-09-speed]
+
+permissions:
+  contents: read
+
+jobs:
+  diag:
+    runs-on: windows-11-arm
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      NPM_CONFIG_SCRIPT_SHELL: C:\Program Files\Git\bin\bash.exe
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 26
+          cache: npm
+      - name: npm cache contents
+        run: |
+          cache="$(npm config get cache)"
+          du -sh "$cache" || true
+          grep -rl "workerd-windows-64" "$cache/_cacache/index-v5" | wc -l || true
+      - name: npm ci (foreground scripts, timing)
+        run: npm ci --foreground-scripts --loglevel=timing 2>&1 | grep -v "^npm timing .*idealTree:node_modules\|timing reifyNode:" | head -3000
+      - name: workerd emulated startup
+        run: |
+          ls node_modules/wrangler/node_modules/workerd/lib || true
+          time node node_modules/wrangler/node_modules/workerd/bin/workerd --version
+          time node node_modules/wrangler/node_modules/workerd/bin/workerd --version
