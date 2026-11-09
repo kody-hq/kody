@@ -468,9 +468,9 @@ export function AccountSecretsPage({
 				setDeleteArmed(false)
 				setDisconnectArmed(false)
 
-				setMessage(
-					warning ?? (wasCreating ? 'Created secret.' : 'Saved secret.'),
-				)
+				setMessage(warning)
+				if (!warning)
+					toast.success(wasCreating ? 'Created secret.' : 'Saved secret.')
 
 				if (payload.selectedSecret) {
 					navigate(
