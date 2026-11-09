@@ -55,7 +55,10 @@ before adapting or invoking it as yours.
 Each package gets isolated durable **`packageStorage()`** for runtime state such
 as cursors, preferences, and checkpoints. Source and versioned configuration
 belong in the package repository; credentials belong in secrets; changing
-runtime state belongs in `packageStorage()`.
+runtime state belongs in `packageStorage()`. Each storage call is independent
+(no multi-key transaction), so give each record its own key or SQL row instead
+of rewriting a shared index. See
+[Concurrency and multi-key updates](./package-authoring.md#concurrency-and-multi-key-updates).
 
 ### Jobs and schedules
 
