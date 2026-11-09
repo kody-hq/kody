@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import { ecpDefaultGrant } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { runChainShapeError } from './chain-rules.ts'
 import {
+	describeAttempts,
 	describeCloudFallback,
 	describeRanOn,
 	historyRanOn,
@@ -11,8 +12,9 @@ import {
 	markQueuedAttemptRan,
 	planTargets,
 	withRunTiming,
+	sharedRunHostRefusal,
 } from './routing.ts'
-import { type ExecutionContextRow } from './store.ts'
+import type { ExecutionContextRow } from './store.ts'
 
 const a = { kind: 'context', id: 'ec_a' } as const
 const b = { kind: 'context', id: 'ec_b' } as const
@@ -106,6 +108,7 @@ test('requires fs needs both a server grant folder and an advertised local mount
 		grantRefusal({
 			grant,
 			requires: ['fs'],
+			sharedRun: false,
 			capabilities: {},
 		}),
 	).toBe('no_local_fs')
@@ -113,6 +116,7 @@ test('requires fs needs both a server grant folder and an advertised local mount
 		grantRefusal({
 			grant,
 			requires: ['fs'],
+			sharedRun: false,
 			capabilities: { features: ['fs'] },
 		}),
 	).toBeNull()
@@ -120,6 +124,7 @@ test('requires fs needs both a server grant folder and an advertised local mount
 		grantRefusal({
 			grant: ecpDefaultGrant,
 			requires: ['fs'],
+			sharedRun: false,
 			capabilities: { features: ['fs'] },
 		}),
 	).toBe('no_fs')
@@ -128,6 +133,7 @@ test('requires fs needs both a server grant folder and an advertised local mount
 test('a grant refuses runs it cannot serve', () => {
 	expect(
 		grantRefusal({
+			sharedRun: false,
 			capabilities: {},
 			grant: ecpDefaultGrant,
 			requires: ['fs'],
@@ -135,6 +141,7 @@ test('a grant refuses runs it cannot serve', () => {
 	).toBe('no_fs')
 	expect(
 		grantRefusal({
+			sharedRun: false,
 			capabilities: {},
 			grant: ecpDefaultGrant,
 			requires: ['lan'],
@@ -144,6 +151,7 @@ test('a grant refuses runs it cannot serve', () => {
 		grantRefusal({
 			grant: ecpDefaultGrant,
 			requires: [],
+			sharedRun: false,
 			capabilities: {},
 		}),
 	).toBeNull()
@@ -402,4 +410,105 @@ test('ranOn carries the timing a context reported, and cloud never does', () => 
 			timing,
 		}),
 	).not.toHaveProperty('timing')
+})
+
+test('every credential kind needs execution_context:execute to reach a context', async () => {
+	const { hasContextScope } = await import('./routing.ts')
+	// CLI logins, API tokens and OAuth grants all carry scopes now; none of
+	// them reach a context without the execution-context scope.
+	expect(hasContextScope({ request: { scopes: ['org:execute'] } })).toBe(false)
+	expect(
+		hasContextScope({
+			request: { scopes: ['org:execute', 'execution_context:execute'] },
+		}),
+	).toBe(true)
+	// Unscoped credentials (a signed-in browser session) keep full access.
+	expect(hasContextScope({ request: { scopes: null } })).toBe(true)
+})
+
+test('host folders stay with the operator: shared runs skip fs and outdated daemons with folders', () => {
+	const withFs = {
+		...ecpDefaultGrant,
+		fs: [{ path: '/Users/k/Desktop', mode: 'rw' as const }],
+	}
+	const current = { features: ['host-operator-only', 'fs'] }
+	expect(
+		sharedRunHostRefusal({
+			grant: withFs,
+			requires: ['fs'],
+			capabilities: current,
+			sharedRun: false,
+		}),
+	).toBeNull()
+	expect(
+		sharedRunHostRefusal({
+			grant: withFs,
+			requires: ['fs'],
+			capabilities: current,
+			sharedRun: true,
+		}),
+	).toBe('fs_operator_only')
+	expect(
+		sharedRunHostRefusal({
+			grant: withFs,
+			requires: [],
+			capabilities: { features: ['fs'] },
+			sharedRun: true,
+		}),
+	).toBe('fs_daemon_outdated')
+	// The queue drain on reconnect checks the same rule through grantRefusal.
+	expect(
+		grantRefusal({
+			grant: withFs,
+			requires: [],
+			capabilities: { features: ['fs'] },
+			sharedRun: true,
+		}),
+	).toBe('fs_daemon_outdated')
+	expect(
+		sharedRunHostRefusal({
+			grant: withFs,
+			requires: [],
+			capabilities: current,
+			sharedRun: true,
+		}),
+	).toBeNull()
+	expect(
+		sharedRunHostRefusal({
+			grant: ecpDefaultGrant,
+			requires: [],
+			capabilities: {},
+			sharedRun: true,
+		}),
+	).toBeNull()
+})
+
+test('fs and lan skips name the server grant layer and the command that turns it on', () => {
+	const text = describeAttempts([
+		{
+			target: 'ec_box',
+			name: 'wsl-box',
+			outcome: 'skipped',
+			reason: 'no_fs',
+		},
+		{
+			target: 'ec_lan',
+			name: 'lan-box',
+			outcome: 'skipped',
+			reason: 'no_lan',
+		},
+	])
+	expect(text).toContain('grant.fs is off on the server')
+	expect(text).toContain('kody context grant allow <folder> --context wsl-box')
+	expect(text).toContain('grant.egress is not public-and-lan')
+	expect(text).toContain('kody context grant lan on --context lan-box')
+})
+
+test('a paused context is described as paused, not offline', () => {
+	expect(
+		describeAttempts([
+			{ target: 'ec_a', name: 'laptop', outcome: 'paused' },
+			{ target: 'ec_b', name: 'desk', outcome: 'offline' },
+		]),
+	).toContain('laptop: paused')
 })

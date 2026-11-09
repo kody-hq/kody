@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import {
 	isGrantablePermission,
+	isOrgWideManagePermission,
 	isOrgWideReadPermission,
 } from '@kody-internal/shared/grant-presets.ts'
 import {
@@ -12,7 +13,7 @@ import {
 	ownerIdFromStored,
 	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	compiledAccessExpired,
@@ -29,6 +30,7 @@ import { memberCreationKindFor } from './member-creation-permissions.ts'
 import {
 	describeUnmappableCredentials,
 	isUnmappableCredentialLockedPermission,
+	listLiveOrgPackageIds,
 	loadPackageUnmappableCredentials,
 	unmappableCredentialAllowHint,
 	unmappableCredentialLockedPermissions,
@@ -54,6 +56,8 @@ export type EffectivePermissions = {
 	permissions: ReadonlySet<OrgPermission>
 	/** True when the actor is an Owner. */
 	isOwner: boolean
+	/** True when the actor is an Admin (see {@link hasOwnerAuthority}). */
+	isAdmin?: boolean
 	/** Per-resource grants keyed by `${type}:${id}`. */
 	resourcePermissions: ReadonlyMap<string, ReadonlySet<OrgPermission>>
 	credentialScopes: ReadonlySet<OrgPermission> | null
@@ -234,6 +238,18 @@ function earliest(a: string | null | undefined, b: string | null | undefined) {
 	return a < b ? a : b
 }
 
+/**
+ * Owner-level authority: an Owner, or an Admin. Admins pass the gates written
+ * for Owners except the ones about Owners themselves (changing, removing, or
+ * promoting to Owner) and deleting the org, which they lack `org:delete` for.
+ */
+export function hasOwnerAuthority(access: {
+	isOwner: boolean
+	isAdmin?: boolean
+}): boolean {
+	return access.isOwner || access.isAdmin === true
+}
+
 function toEffective(
 	compiled: CompiledAccess,
 	request: RequestContext,
@@ -249,6 +265,7 @@ function toEffective(
 		orgId: compiled.orgId,
 		permissions: compiled.orgPermissions,
 		isOwner: compiled.isOwner,
+		...(compiled.isAdmin ? { isAdmin: true } : {}),
 		resourcePermissions: compiled.resourcePermissions,
 		credentialScopes: request.credential.scopes
 			? new Set(request.credential.scopes)
@@ -262,19 +279,19 @@ function toEffective(
 /**
  * Unmappable-credential locks on the packages a non-Owner may write or
  * publish by grant, read live so a credential that becomes unmappable locks
- * existing collaborators at once. Grants that allow changes are skipped.
- * Non-Owners never hold `package:write` or `package:publish` org-wide.
+ * existing collaborators at once. Grants that allow changes are skipped. An
+ * org-wide `package:write` or `package:publish` grant reaches every live
+ * package in the org, so every one of them is checked.
  */
 async function loadUnmappableCredentialLocks(
 	env: Env,
 	compiled: CompiledAccess,
 	request: RequestContext,
 ): Promise<Map<string, ReadonlyArray<UnmappableCredential>> | null> {
-	if (compiled.isOwner) return null
-	const packageIds: Array<string> = []
+	if (hasOwnerAuthority(compiled)) return null
+	const packageIds = new Set<string>()
 	for (const [key, granted] of compiled.resourcePermissions) {
 		if (!key.startsWith('package:')) continue
-		if (compiled.unmappableChangesAllowed?.has(key)) continue
 		if (
 			!unmappableCredentialLockedPermissions.some((permission) =>
 				granted.has(permission),
@@ -282,13 +299,29 @@ async function loadUnmappableCredentialLocks(
 		) {
 			continue
 		}
-		packageIds.push(key.slice('package:'.length))
+		packageIds.add(key.slice('package:'.length))
 	}
-	if (packageIds.length === 0) return null
+	if (
+		unmappableCredentialLockedPermissions.some((permission) =>
+			compiled.orgPermissions.has(permission),
+		)
+	) {
+		for (const id of await listLiveOrgPackageIds(env.APP_DB, compiled.orgId)) {
+			packageIds.add(id)
+		}
+	}
+	for (const id of packageIds) {
+		if (
+			compiled.unmappableChangesAllowed?.has(resourceGrantKey('package', id))
+		) {
+			packageIds.delete(id)
+		}
+	}
+	if (packageIds.size === 0) return null
 	const locks = await loadPackageUnmappableCredentials({
 		env,
 		orgId: compiled.orgId,
-		packageIds,
+		packageIds: [...packageIds],
 		request,
 	})
 	return new Map(
@@ -304,7 +337,7 @@ function unmappableCredentialLock(
 	permission: OrgPermission,
 	resource: OrgResource | undefined,
 ) {
-	if (access.isOwner || resource?.type !== 'package') return null
+	if (hasOwnerAuthority(access) || resource?.type !== 'package') return null
 	if (!isUnmappableCredentialLockedPermission(permission)) return null
 	return (
 		access.unmappableCredentialLocks?.get(
@@ -496,6 +529,19 @@ function profileChainBlock(
 	return null
 }
 
+/**
+ * Only the profile layers: true when the request acts as no profile or every
+ * layer of its chain holds `permission` on `resource`. For a permission no
+ * role holds (`secret:read_local`), where `checkPermission` cannot apply.
+ */
+export function profileChainAllows(
+	access: EffectivePermissions,
+	permission: OrgPermission,
+	resource: OrgResource,
+) {
+	return profileChainBlock(access, permission, resource) === null
+}
+
 function profileDenialMessage(
 	access: EffectivePermissions,
 	permission: OrgPermission,
@@ -503,16 +549,39 @@ function profileDenialMessage(
 ) {
 	const blocked = profileChainBlock(access, permission, resource)
 	if (!blocked) return null
-	const target = resource ? ` on ${describeResource(resource, permission)}` : ''
+	const target = resource
+		? ` on ${describeProfileTarget(resource, permission)}`
+		: ''
 	const { layer } = blocked
 	if (blocked.code === 'profile_inactive') {
 		return layer.self
 			? `Profile "${layer.name}" is ${layer.reason ?? 'revoked'}, so it cannot use ${permission}${target}.`
 			: `Parent profile "${layer.name}" is ${layer.reason ?? 'revoked'}, so the profiles below it cannot use ${permission}${target}.`
 	}
-	return layer.self
-		? `Profile "${layer.name}" was not granted ${permission}${target}. The person it acts for can grant it (accessGrant with subject_type "profile").`
+	const grantHint =
+		resource?.type === 'credential'
+			? 'The person it acts for can share the credential with it under Credentials (or accessGrant with resource_type "credential" and subject_type "profile").'
+			: 'The person it acts for can grant it (accessGrant with subject_type "profile").'
+	const message = layer.self
+		? `Profile "${layer.name}" was not granted ${permission}${target}. ${grantHint}`
 		: `Parent profile "${layer.name}" does not hold ${permission}${target}, so the profiles below it cannot use it.`
+	return access.credentialScopes && !access.credentialScopes.has(permission)
+		? `${message} This token is also not scoped for ${permission}; after the grant, mint one whose scopes include it.`
+		: message
+}
+
+/**
+ * Profile denials name the credential by its display name, never its id: a
+ * credential with no known name reads as "this credential".
+ */
+function describeProfileTarget(
+	resource: OrgResource,
+	permission: OrgPermission,
+) {
+	if (resource.type !== 'credential') {
+		return describeResource(resource, permission)
+	}
+	return resource.label ? `credential "${resource.label}"` : 'this credential'
 }
 
 function ownerCanGrant(
@@ -528,7 +597,10 @@ function ownerCanGrant(
 				: 'Members can create credentials'
 		return `An org Owner controls this: they can turn on "${setting}" in organization settings, or grant ${permission} to you or your team on the Grants page.`
 	}
-	if (isOrgWideReadPermission(permission)) {
+	if (
+		isOrgWideReadPermission(permission) ||
+		isOrgWideManagePermission(permission)
+	) {
 		return 'An org Owner can grant it org-wide on the Grants page or with accessGrant resource_type org.'
 	}
 	if (isGrantablePermission('org', permission)) {
@@ -611,6 +683,29 @@ const packageVisibilityPermissions: ReadonlyArray<OrgPermission> = [
  * least one permission on it. A profile that only grants `execute` still
  * shows the package, so it can be invoked.
  */
+/**
+ * Only the profile-chain layer of `checkPermission` (ADR 0092), for a Use
+ * check that decides person access another way (a granted personal
+ * credential).
+ */
+export function checkProfileChain(
+	access: EffectivePermissions,
+	permission: OrgPermission,
+	resource?: OrgResource,
+): AuthorizationDecision {
+	const blocked = profileChainBlock(access, permission, resource)
+	if (!blocked) return { allowed: true }
+	return deny({
+		code: blocked.code,
+		permission,
+		access,
+		resource,
+		message:
+			profileDenialMessage(access, permission, resource) ??
+			denialMessage(blocked.code, permission, resource),
+	})
+}
+
 export function canSeeResource(
 	access: EffectivePermissions,
 	resource: OrgResource,
@@ -694,7 +789,7 @@ function unmappableLockedKey(
 	key: string,
 ) {
 	return (
-		!access.isOwner &&
+		!hasOwnerAuthority(access) &&
 		isUnmappableCredentialLockedPermission(permission) &&
 		(access.unmappableCredentialLocks?.has(key) ?? false)
 	)

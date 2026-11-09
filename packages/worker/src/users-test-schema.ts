@@ -72,6 +72,7 @@ const alwaysAdditiveColumns: Record<string, UsersColumnDefinition> = {
 	deleting_at: { create: 'TEXT' },
 	deleted_at: { create: 'TEXT' },
 	suspended_at: { create: 'TEXT' },
+	guest_expires_at: { create: 'TEXT' },
 	email_verification_delivery_status: { create: 'TEXT' },
 	email_verification_delivery_at: { create: 'TEXT' },
 	email_verification_delivery_detail: { create: 'TEXT' },

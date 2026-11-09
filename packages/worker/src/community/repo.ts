@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { d1ContainsLikePattern } from '#worker/d1-like-pattern.ts'
 import { chunkArray } from '@kody-internal/shared/chunk.ts'
 import { parseTagsJson } from '@kody-internal/shared/tags-json.ts'
@@ -17,24 +17,24 @@ import {
 import { liveGrantForPersonSql } from '#worker/orgs/repo.ts'
 import { CommunityForkClaimLostError } from './errors.ts'
 import { normalizePackageManifestVersion } from './package-version.ts'
-import {
-	type CommunityActivityKind,
-	type CommunityActivityRecord,
-	type CommunityBanRecord,
-	type CommunityBanRow,
-	type CommunityForkRecord,
-	type ListingCommunityForkRecord,
-	type CommunityForkActor,
-	type CommunityForkRow,
-	type CommunityListingRecord,
-	type CommunityListingRow,
-	type CommunityListingStatus,
-	type CommunityRatingAggregate,
-	type CommunityRatingRecord,
-	type CommunityRatingRow,
-	type CommunityReportRecord,
-	type CommunityReportRow,
-	type CommunityReportStatus,
+import type {
+	CommunityActivityKind,
+	CommunityActivityRecord,
+	CommunityBanRecord,
+	CommunityBanRow,
+	CommunityForkRecord,
+	ListingCommunityForkRecord,
+	CommunityForkActor,
+	CommunityForkRow,
+	CommunityListingRecord,
+	CommunityListingRow,
+	CommunityListingStatus,
+	CommunityRatingAggregate,
+	CommunityRatingRecord,
+	CommunityRatingRow,
+	CommunityReportRecord,
+	CommunityReportRow,
+	CommunityReportStatus,
 } from './types.ts'
 
 export function mapCommunityListingRow(
@@ -562,14 +562,21 @@ export async function listActiveCommunityListingsBehindPublished(
 	Array<{
 		listing: CommunityListingRecord
 		publishedCommit: string
+		/** Person recorded as the last publisher, so backfill re-checks their ban. */
+		publisherPersonId: string | null
 	}>
 > {
 	const rows = await db
 		.prepare(
 			`SELECT ${communityListingSelectColumns},
-				entity_sources.published_commit AS source_published_commit
+				entity_sources.published_commit AS source_published_commit,
+				package_app_authority.published_by_person_id AS publisher_person_id
 			FROM community_listings
 			${communityListingSourceJoin}
+			LEFT JOIN package_app_authority
+				ON package_app_authority.package_id = community_listings.package_id
+				AND package_app_authority.owner_id = community_listings.owner_user_id
+				AND COALESCE(package_app_authority.publisher_unknown, 0) = 0
 			WHERE community_listings.status = 'active'
 				AND entity_sources.published_commit IS NOT NULL
 				AND TRIM(entity_sources.published_commit) != ''
@@ -587,6 +594,8 @@ export async function listActiveCommunityListingsBehindPublished(
 			{
 				listing: mapCommunityListingRow(row),
 				publishedCommit,
+				publisherPersonId:
+					String(row['publisher_person_id'] ?? '').trim() || null,
 			},
 		]
 	})

@@ -7,9 +7,9 @@ import { expect, test } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { beginRunRecord, finishRunRecord } from '#worker/run-records/service.ts'
-import {
-	type RunRecordContext,
-	type RunRecordHandle,
+import type {
+	RunRecordContext,
+	RunRecordHandle,
 } from '#worker/run-records/types.ts'
 import { runGetCapability } from './run-get.ts'
 import { runListCapability } from './run-list.ts'
@@ -460,6 +460,7 @@ test(
 		])
 
 		const detail = await owner.get('run-execute-attr')
+		expect(detail.result).toEqual({ ok: true })
 		expect(detail.run.metadata).toMatchObject({
 			entry: 'invoke',
 			workerId: 'kody-abcdefghijklmnopqrstuvwxyz0123456789ABCDE',

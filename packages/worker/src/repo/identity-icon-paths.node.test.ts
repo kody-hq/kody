@@ -4,8 +4,6 @@ import {
 	identityIconLeafName,
 	identityIconMonogramLetter,
 	isIdentityIconSourcePath,
-	isSnapshotRetainedIdentityIconPath,
-	shouldStripIdentityIconFromCommunitySnapshot,
 	packageAppIdentityIconPath,
 } from './identity-icon-paths.ts'
 
@@ -42,20 +40,10 @@ test('package-app icon is last and only when requested', () => {
 	).toBe(packageAppIdentityIconPath)
 })
 
-test('snapshot retention keeps SVG identity marks and drops rasters', () => {
-	expect(isSnapshotRetainedIdentityIconPath('.kody/icon.svg')).toBe(true)
-	expect(isSnapshotRetainedIdentityIconPath('icon.svg')).toBe(true)
-	expect(isSnapshotRetainedIdentityIconPath('community-icon.svg')).toBe(true)
-	expect(isSnapshotRetainedIdentityIconPath('.kody/icon.png')).toBe(false)
-	expect(isSnapshotRetainedIdentityIconPath('icons/icon-192.png')).toBe(false)
+test('identity source paths exclude other icon files', () => {
+	expect(isIdentityIconSourcePath('.kody/icon.png')).toBe(true)
+	expect(isIdentityIconSourcePath(packageAppIdentityIconPath)).toBe(true)
 	expect(isIdentityIconSourcePath('public/icon.png')).toBe(false)
-	expect(shouldStripIdentityIconFromCommunitySnapshot('.kody/icon.png')).toBe(
-		true,
-	)
-	expect(shouldStripIdentityIconFromCommunitySnapshot('icon.svg')).toBe(false)
-	expect(
-		shouldStripIdentityIconFromCommunitySnapshot(packageAppIdentityIconPath),
-	).toBe(false)
 })
 
 test('leaf name and monogram letter come from the package/repo leaf', () => {

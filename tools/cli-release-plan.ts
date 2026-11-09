@@ -37,8 +37,9 @@ function bumpForCommit(commit: ReleaseCommit): ReleaseBump {
 	}
 	if (breaking) return 'major'
 	// docs / chore / ci / test / build / style / refactor: patch when they
-	// touch packages/cli so help and other CLI-facing source still publishes
-	// (#3975). feat stays minor; fix / perf / revert stay patch via releasableTypes.
+	// touch published CLI paths so help and other CLI-facing source still
+	// publishes (#3975). README-only edits do not set touchesCli (#4607).
+	// feat stays minor; fix / perf / revert stay patch via releasableTypes.
 	if (!releasableTypes.has(match.groups.type)) {
 		return commit.touchesCli ? 'patch' : 'none'
 	}
@@ -92,12 +93,22 @@ function nextVersion(current: string, bump: ReleaseBump): string | null {
 }
 
 /**
+ * Paths under `packages/cli` that should start a CLI release. npm still
+ * includes the root README in the tarball, but a README-only docs edit
+ * must not patch-bump or publish (#4607).
+ */
+export function cliPathAffectsPublishedPackage(path: string): boolean {
+	return path.startsWith('packages/cli/') && path !== 'packages/cli/README.md'
+}
+
+/**
  * Publish when a commit touches the CLI (`feat` → minor; `fix` / `perf` /
  * `revert` → patch; `docs` / `chore` / `ci` / `test` / `build` / `style` /
  * `refactor` → patch per #3975; a subject without a conventional prefix →
  * patch per #4363), or when the generated route table changed (spec/shared
  * input) even if those commits are not `feat`/`fix`. Commits that do not
- * touch the CLI (and do not change the generated client) do not publish.
+ * touch published CLI paths (and do not change the generated client) do
+ * not publish. Callers set `touchesCli` from `cliPathAffectsPublishedPackage`.
  */
 export function planCliRelease(input: {
 	currentVersion: string
@@ -125,4 +136,35 @@ export function planCliRelease(input: {
 	}
 	const version = nextVersion(input.currentVersion, bump)
 	return version ? { version } : null
+}
+
+function compareVersions(a: string, b: string): number {
+	const left = a.split('.').map(Number)
+	const right = b.split('.').map(Number)
+	for (let index = 0; index < 3; index++) {
+		const diff = (left[index] ?? 0) - (right[index] ?? 0)
+		if (diff !== 0) return diff
+	}
+	return 0
+}
+
+/**
+ * Where the next release counts from. npm is the record of what shipped: a
+ * publish whose tag push failed leaves npm ahead of the tags, so count from
+ * the published commit instead of planning a version npm already has.
+ */
+export function pickReleaseBase(input: {
+	tag: { name: string; version: string }
+	published: { version: string; gitHead: string | null } | null
+}): { ref: string; version: string } {
+	const { tag, published } = input
+	if (!published || compareVersions(published.version, tag.version) <= 0) {
+		return { ref: tag.name, version: tag.version }
+	}
+	if (!published.gitHead) {
+		throw new Error(
+			`${cliPackageName}@${published.version} is on npm without a gitHead and ahead of ${tag.name}; push tag cli-v${published.version} at the commit it was published from.`,
+		)
+	}
+	return { ref: published.gitHead, version: published.version }
 }

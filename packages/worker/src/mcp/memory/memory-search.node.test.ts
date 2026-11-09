@@ -3,7 +3,7 @@ import { expect, test, vi } from 'vitest'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import * as embedding from '#worker/vectorize/embedding.ts'
 import { queryMemoryVectorIds, searchMemories } from './memory-search.ts'
-import { type McpMemoryRow } from './types.ts'
+import type { McpMemoryRow } from './types.ts'
 
 function row(
 	id: string,
@@ -47,7 +47,7 @@ test('searchMemories fail-closes on foreign rows and keeps Vectorize misses lexi
 		userId: ownerIdFromStored('user-1'),
 		statuses: ['active', 'archived'],
 		rows: owned,
-		vectorRankedIds: ['mem-weak'],
+		vectorRanked: [{ id: 'mem-weak', score: 0.5 }],
 	})
 	const lexicalOnly = ranked.matches.find((match) => match.id === 'mem-lexical')
 	expect(lexicalOnly).toMatchObject({ id: 'mem-lexical' })
@@ -65,7 +65,7 @@ test('searchMemories fail-closes on foreign rows and keeps Vectorize misses lexi
 		userId: ownerIdFromStored('user-1'),
 		statuses: ['active'],
 		rows: [...owned, row('mem-foreign', 'user-2', 'x', 'summarize inbox')],
-		vectorRankedIds: ['mem-weak'],
+		vectorRanked: [{ id: 'mem-weak', score: 0.5 }],
 	})
 	expect(foreign.matches).toEqual([])
 })

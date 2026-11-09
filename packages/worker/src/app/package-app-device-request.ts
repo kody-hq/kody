@@ -1,4 +1,4 @@
-import { type DeviceAuthorizationRow } from '#worker/oauth-device/store.ts'
+import type { DeviceAuthorizationRow } from '#worker/oauth-device/store.ts'
 
 /**
  * The stored half of a package-app visitor device sign-in (ADR 0094): what

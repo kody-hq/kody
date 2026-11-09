@@ -1,9 +1,14 @@
+import { pruneExpiredGuestAccounts } from '#worker/guest/guest-account-purge.ts'
 import { reconcileSecondAgentStandardGifts } from '#worker/entitlements/second-agent-gift-reconciliation.ts'
 import * as Sentry from '@sentry/cloudflare'
+import {
+	applyPacedRestoreDrillSentryScope,
+	classifyPacedRestoreDrillFailure,
+	pacedRestoreDrillLane,
+} from '@kody-internal/shared/backup-d1-paced-drill-alert.ts'
 import { checkAuthDenialBurstAndNotify } from '#app/auth-denial-alerts.ts'
 import { checkEmailDeliveryBurstAndNotify } from '#app/email-delivery-alerts.ts'
 import { checkEmailVerificationStallsAndNotify } from '#app/email-verification-stall-alerts.ts'
-import { refreshFleetPackageErrorRateAndMaybeAlert } from '#app/fleet-package-error-rate-alerts.ts'
 import { refreshFleetUsersAffectedAndMaybeAlert } from '#app/fleet-users-affected-alerts.ts'
 import { refreshPackageOwnerErrorSpikesAndMaybeAlert } from '#app/package-owner-error-spike-alerts.ts'
 import { pruneRetention } from '#app/retention.ts'
@@ -20,7 +25,10 @@ import {
 	runD1PacedBackupWatchdogTick,
 	runD1PacedFreshnessTick,
 } from '#worker/dr/d1-paced-backup.ts'
-import { runD1PacedRestoreDrillTick } from '#worker/dr/d1-paced-restore-drill.ts'
+import {
+	D1PacedRestoreDrillError,
+	runD1PacedRestoreDrillTick,
+} from '#worker/dr/d1-paced-restore-drill.ts'
 import {
 	runDrExportTick,
 	runDrExportWatchdogTick,
@@ -34,6 +42,7 @@ import { cleanupRepoSessionBranches } from '#worker/repo/repo-session-cleanup.ts
 import { backfillCommunityListingsBehindPublished } from '#worker/community/listing-behind-backfill.ts'
 import { backfillStorageBucketEstimates } from '#worker/storage-buckets/estimate-backfill.ts'
 import { refreshAdminInsightsRunLogSnapshot } from '#worker/admin/insights-runlog-snapshot.ts'
+import { refreshFleetPackageErrorRateSnapshot } from '#worker/usage/fleet-package-error-rate.ts'
 import { aggregateUsageRollups } from '#worker/usage/aggregate-rollups.ts'
 import { aggregateConnectionUsageDaily } from '#worker/usage/connection-usage-rollup.ts'
 import { aggregateCreditAttributionDaily } from '#worker/usage/credit-attribution.ts'
@@ -44,6 +53,11 @@ import { checkWebhookAuthRegressionsAndAlert } from '#worker/webhooks/auth-regre
 import { reconcilePackageAppCustomHostnames } from '#worker/package-app-custom-hostnames/reconcile.ts'
 import { runFollowMaintenance } from '#worker/follow/maintenance.ts'
 import { checkDlqDepthAndAlert } from './dlq-depth-alert.ts'
+import {
+	acquireScheduledLaneLease,
+	releaseScheduledLaneLease,
+	scheduledLaneLeaseMs,
+} from './scheduled-lane-lease.ts'
 
 export {
 	isScheduledLaneName,
@@ -142,11 +156,17 @@ export async function runScheduledLane(input: {
 			})
 		case 'retention':
 			return pruneRetention({ env: input.env, now: input.scheduledAt })
-		case 'unverified_account_purge':
-			return pruneUnverifiedAccounts({
+		case 'unverified_account_purge': {
+			const unverified = await pruneUnverifiedAccounts({
 				env: input.env,
 				now: input.scheduledAt,
 			})
+			const guests = await pruneExpiredGuestAccounts({
+				env: input.env,
+				now: input.scheduledAt,
+			})
+			return { ...unverified, guests }
+		}
 		case 'soft_delete_purge':
 			return pruneSoftDeleted({
 				env: input.env,
@@ -165,16 +185,18 @@ export async function runScheduledLane(input: {
 			} catch (error) {
 				console.warn('connection-usage-aggregation-failed', error)
 			}
-			let fleetPackageErrorRate: Awaited<
-				ReturnType<typeof refreshFleetPackageErrorRateAndMaybeAlert>
-			>
+			let fleetPackageErrorRate:
+				| { status: 'skipped'; reason: string }
+				| { status: 'refreshed'; elevated: boolean }
 			try {
-				fleetPackageErrorRate = await refreshFleetPackageErrorRateAndMaybeAlert(
-					{
-						env: input.env,
-						now: input.scheduledAt,
-					},
-				)
+				const refreshed = await refreshFleetPackageErrorRateSnapshot({
+					env: input.env,
+					now: input.scheduledAt,
+				})
+				fleetPackageErrorRate =
+					refreshed.status === 'refreshed'
+						? { status: 'refreshed', elevated: refreshed.elevation !== null }
+						: refreshed
 			} catch (error) {
 				console.warn('fleet-package-error-rate-lane-failed', error)
 				fleetPackageErrorRate = {
@@ -376,12 +398,28 @@ export async function runScheduledLaneWithFailureIsolation(input: {
 	message: ScheduledLaneMessage
 }): Promise<'completed' | 'd1_lock_contention' | 'failed'> {
 	const scheduledAt = new Date(input.message.scheduledTime)
+	const lane = input.message.lane
+	const leaseMs = scheduledLaneLeaseMs[lane]
+	let leaseHolder: string | null = null
 	try {
-		await runScheduledLane({
-			env: input.env,
-			lane: input.message.lane,
-			scheduledAt,
-		})
+		if (leaseMs !== undefined) {
+			const holder = crypto.randomUUID()
+			const acquired = await acquireScheduledLaneLease(input.env.APP_DB, {
+				lane,
+				holder,
+				leaseMs,
+				now: new Date(),
+			})
+			if (!acquired) {
+				console.warn('scheduled_lane_skipped_overlap', {
+					lane,
+					scheduledTime: scheduledAt.toISOString(),
+				})
+				return 'completed'
+			}
+			leaseHolder = holder
+		}
+		await runScheduledLane({ env: input.env, lane, scheduledAt })
 		return 'completed'
 	} catch (error) {
 		if (isRetryableD1LockError(error)) {
@@ -399,8 +437,33 @@ export async function runScheduledLaneWithFailureIsolation(input: {
 				scheduledTime: scheduledAt.toISOString(),
 				cron: input.message.cron,
 			})
+			if (input.message.lane === pacedRestoreDrillLane) {
+				applyPacedRestoreDrillSentryScope(scope, {
+					kind:
+						error instanceof D1PacedRestoreDrillError
+							? error.kind
+							: classifyPacedRestoreDrillFailure(error),
+					checkpoint:
+						error instanceof D1PacedRestoreDrillError ? error.checkpoint : null,
+				})
+			}
 			Sentry.captureException(error)
 		})
 		return 'failed'
+	} finally {
+		if (leaseHolder !== null) {
+			try {
+				await releaseScheduledLaneLease(input.env.APP_DB, {
+					lane,
+					holder: leaseHolder,
+				})
+			} catch (releaseError) {
+				// The lease expires on its own; the next tick after it lapses runs.
+				console.warn('scheduled_lane_lease_release_failed', {
+					lane,
+					error: releaseError,
+				})
+			}
+		}
 	}
 }

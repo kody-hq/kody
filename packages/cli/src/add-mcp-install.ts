@@ -4,7 +4,7 @@ import {
 	type InstallResult,
 	type McpServerConfig,
 } from 'add-mcp'
-import { type HostId } from './host-catalog.js'
+import type { HostId } from './host-catalog.js'
 
 /**
  * Hosts whose on-disk MCP config `add-mcp` already knows how to merge.

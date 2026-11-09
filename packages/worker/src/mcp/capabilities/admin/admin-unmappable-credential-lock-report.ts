@@ -74,6 +74,10 @@ function emptyCounts(): ReportCounts {
 
 const changeGrantSql = `g.resource_type = 'package'
 	AND (g.expires_at IS NULL OR g.expires_at > ?)
+	AND (g.subject_type != 'team' OR EXISTS (
+		SELECT 1 FROM teams t
+		WHERE t.id = g.subject_id AND t.org_id = g.org_id AND t.deleted_at IS NULL
+	))
 	AND EXISTS (
 		SELECT 1 FROM grant_permissions gp
 		WHERE gp.grant_id = g.id

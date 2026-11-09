@@ -1,5 +1,5 @@
 import { secretScopeValues, type SecretScope } from './types.ts'
-import { type StorageContext } from '#mcp/storage.ts'
+import type { StorageContext } from '#mcp/storage.ts'
 
 export const defaultSecretLookupOrder = [
 	...secretScopeValues,

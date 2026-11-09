@@ -3,10 +3,10 @@
  * success. Scope validation, upsert, token persist (ADR 0052), optional BYO
  * client-secret store, and auth.succeeded events.
  */
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { waitUntil } from 'cloudflare:workers'
-import { type McpUserContext } from '@kody-internal/shared/chat.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { McpUserContext } from '@kody-internal/shared/chat.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
 	orgAuditWriterFromRequest,
 	type OrgAuditWriter,
@@ -20,13 +20,21 @@ import {
 } from '#mcp/capabilities/integrations/integration-shared.ts'
 import {
 	assertScopesAllowedForPlatformApp,
-	findOauthAppForProviderSetup,
 	getJoinedIntegration,
 	upsertIntegration,
 	upsertPlatformIntegration,
 	type LiveConnectionGuard,
 } from '#worker/integrations/service.ts'
-import { type PlatformOauthApp } from '#worker/integrations/platform-apps.ts'
+import type { PlatformOauthApp } from '#worker/integrations/platform-apps.ts'
+import {
+	listOauthAppsByTokenEndpoint,
+	recordIntegrationGrantedScopes,
+} from '#worker/integrations/repo.ts'
+import {
+	compareRequestedAndGrantedScopes,
+	readGrantedScopes,
+	type GrantedScopesSource,
+} from '#worker/integrations/granted-scopes.ts'
 import {
 	persistIntegrationTokens,
 	persistUserOauthAppClientSecret,
@@ -76,8 +84,60 @@ export type PersistConnectOauthTokensResult =
 			allowedHosts: Array<string>
 			hostApprovalLinks: Array<ConnectOauthHostApprovalLink>
 			nextSteps: ReturnType<typeof buildConnectOauthNextSteps>
+			scopeGrant: ConnectOauthScopeGrant
 	  }
 	| { ok: false; error: string; status: number }
+
+/** Requested vs actually granted scopes for the token a connect just stored. */
+export type ConnectOauthScopeGrant = {
+	requested: Array<string>
+	/** Null when the provider does not report the grant. */
+	granted: Array<string> | null
+	source: GrantedScopesSource | null
+	missing: Array<string>
+	extra: Array<string>
+}
+
+/**
+ * Reads back what the provider granted on the new token and stores it on the
+ * connection. Only reads; it never revokes the token or the app
+ * authorization, so sibling connections for the same provider account keep
+ * their tokens.
+ */
+export async function recordConnectGrantedScopes(input: {
+	env: Pick<Env, 'APP_DB'>
+	userId: OwnerId
+	name: string
+	app: { provider: string | null; tokenUrl: string }
+	accessToken: string
+	tokenRecord: Record<string, unknown>
+	requestedScopes: Array<string>
+	fetchImpl?: typeof fetch
+}): Promise<ConnectOauthScopeGrant> {
+	const granted = await readGrantedScopes({
+		app: input.app,
+		accessToken: input.accessToken,
+		tokenRecord: input.tokenRecord,
+		fetchImpl: input.fetchImpl,
+	})
+	await recordIntegrationGrantedScopes({
+		db: input.env.APP_DB,
+		userId: input.userId,
+		name: input.name,
+		granted,
+	})
+	const requested = Array.from(
+		new Set(input.requestedScopes.map((scope) => scope.trim()).filter(Boolean)),
+	)
+	return {
+		requested,
+		granted: granted?.scopes ?? null,
+		source: granted?.source ?? null,
+		...(granted
+			? compareRequestedAndGrantedScopes(requested, granted.scopes)
+			: { missing: [], extra: [] }),
+	}
+}
 
 export async function persistConnectOauthTokens(
 	input: PersistConnectOauthTokensInput,
@@ -174,14 +234,28 @@ export async function persistConnectOauthTokens(
 		userId: ownerId,
 		name: integrationName,
 	})
-	if (!input.platformApp) {
-		const clientSecret = await resolveConnectClientSecret({
+	const scopeGrant = await recordConnectGrantedScopes({
+		env: input.env,
+		userId: ownerId,
+		name: integrationName,
+		app: {
+			provider: input.platformApp?.provider ?? connected?.app.provider ?? null,
+			tokenUrl: input.tokenUrl,
+		},
+		accessToken,
+		tokenRecord: input.tokenRecord,
+		requestedScopes: connected?.connection.scopes ?? input.scopes,
+	})
+	if (!input.platformApp && connected?.lane === 'user') {
+		const clientSecret = await resolveTokenEndpointClientSecret({
 			env: input.env,
 			userId: ownerId,
 			provider: integrationName,
+			clientId: connected.app.clientId,
+			tokenUrl: connected.app.tokenUrl,
 			clientSecret: input.clientSecret,
 		})
-		if (clientSecret && connected?.lane === 'user') {
+		if (clientSecret) {
 			await persistUserOauthAppClientSecret({
 				env: input.env,
 				userId: ownerId,
@@ -230,23 +304,44 @@ export async function persistConnectOauthTokens(
 		allowedHosts: input.allowedHosts,
 		hostApprovalLinks,
 		nextSteps,
+		scopeGrant,
 	}
 }
 
-export async function resolveConnectClientSecret(input: {
+/**
+ * The stored secret for a token exchange the caller describes. A stored
+ * secret only goes to its own app's token URL with its own client id, so a
+ * request naming a provider cannot send that app's secret elsewhere. Matching
+ * on the endpoint also finds an app reused under another provider name.
+ */
+export async function resolveTokenEndpointClientSecret(input: {
 	env: Env
 	userId: OwnerId
 	provider: string
+	clientId: string | null
+	tokenUrl: string
 	clientSecret?: string | null
 }): Promise<string | null> {
 	const inline = input.clientSecret?.trim()
 	if (inline) return inline
-	const slugs = await listConnectClientSecretSlugs(input)
-	for (const slug of slugs) {
+	const clientId = input.clientId?.trim()
+	const tokenUrl = input.tokenUrl.trim()
+	if (!clientId || !tokenUrl) return null
+	const apps = await listOauthAppsByTokenEndpoint({
+		db: input.env.APP_DB,
+		userId: input.userId,
+		clientId,
+		tokenUrl,
+	})
+	const preferred = canonicalIntegrationName(input.provider)
+	apps.sort(
+		(a, b) => Number(b.slug === preferred) - Number(a.slug === preferred),
+	)
+	for (const app of apps) {
 		const fromApp = await resolveUserOauthAppClientSecret({
 			env: input.env,
 			userId: input.userId,
-			slug,
+			slug: app.slug,
 		})
 		if (fromApp) return fromApp
 	}
@@ -306,32 +401,6 @@ async function saveIntegrationConfig(input: {
 		liveConnectionGuard: input.liveConnectionGuard,
 	})
 	return integration.name
-}
-
-async function listConnectClientSecretSlugs(input: {
-	env: Env
-	userId: OwnerId
-	provider: string
-}): Promise<Array<string>> {
-	const slugs: Array<string> = []
-	const add = (slug: string | null | undefined) => {
-		const normalized = slug?.trim()
-		if (normalized && !slugs.includes(normalized)) slugs.push(normalized)
-	}
-	add(canonicalIntegrationName(input.provider))
-	const joined = await getJoinedIntegration({
-		env: input.env,
-		userId: input.userId,
-		name: input.provider,
-	})
-	if (joined?.lane === 'user') add(joined.app.slug)
-	const setup = await findOauthAppForProviderSetup({
-		env: input.env,
-		userId: input.userId,
-		name: input.provider,
-	})
-	add(setup?.slug)
-	return slugs
 }
 
 export async function emitConnectOauthAuthSucceeded(input: {

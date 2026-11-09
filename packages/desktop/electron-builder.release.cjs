@@ -40,6 +40,12 @@ if (
 ) {
 	throw new Error('Missing release credential: CSC_LINK or CSC_NAME')
 }
+// Associated Domains is a restricted entitlement: a Developer ID build that
+// claims it without the matching provisioning profile is killed at launch.
+const provisioningProfile =
+	process.platform === 'darwin'
+		? process.env.KODY_MAC_PROVISIONING_PROFILE
+		: undefined
 module.exports = {
 	...config,
 	// Architecture channels keep parallel Windows and Mac jobs from
@@ -53,11 +59,20 @@ module.exports = {
 		releaseType: 'draft',
 	},
 	forceCodeSigning: process.platform !== 'linux',
+	afterPack: './scripts/mac-app-update-config.cjs',
 	mac: {
 		...config.mac,
 		identity: undefined,
 		hardenedRuntime: true,
-		notarize: true,
+		// scripts/mac-notarize.cjs notarizes and staples the signed app before
+		// installers are packaged from it (see desktop-release.yml).
+		notarize: false,
+		...(provisioningProfile
+			? {
+					provisioningProfile,
+					entitlements: 'assets/entitlements.mac.app-links.plist',
+				}
+			: {}),
 	},
 	win: {
 		...config.win,

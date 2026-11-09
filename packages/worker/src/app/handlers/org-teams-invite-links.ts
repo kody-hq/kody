@@ -1,4 +1,4 @@
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { personalOrgTeamWriteResponse } from '#app/handlers/org-teams.ts'
 import {
 	inviteLinkUrl,

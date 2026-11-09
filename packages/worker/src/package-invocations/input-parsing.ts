@@ -1,6 +1,6 @@
-import {
-	type PackageInvokeInput,
-	type PackageInvokeNormalizedInput,
+import type {
+	PackageInvokeInput,
+	PackageInvokeNormalizedInput,
 } from '#mcp/run-kody-registry.ts'
 import {
 	packageSpecifierPrefix,

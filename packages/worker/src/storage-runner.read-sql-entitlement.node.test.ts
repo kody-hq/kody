@@ -237,6 +237,19 @@ test('writable storageSql skips read-only fan-out and enforces mutating entitlem
 			writable: true,
 		}),
 	).resolves.toMatchObject({ rowsWritten: 1 })
+	// Idempotent DDL adds only schema bytes, so it skips the baseline.
+	expect(mockModule.listUserStorageBucketEstimates).not.toHaveBeenCalled()
+	expect(mockModule.getEstimatedBytes).not.toHaveBeenCalled()
+	expect(mockModule.maybeRefreshStorageBucketEstimate).toHaveBeenCalledTimes(1)
+
+	clearCalls()
+	await expect(
+		tools.storageSql({
+			query: 'INSERT INTO skills (id) VALUES (?)',
+			params: ['a'],
+			writable: true,
+		}),
+	).resolves.toMatchObject({ rowsWritten: 1 })
 	expect(mockModule.listUserStorageBucketEstimates).toHaveBeenCalledTimes(1)
 	// Inventoried buckets without stored estimates plus the
 	// not-yet-registered target id.
@@ -340,4 +353,30 @@ test('entitlement run cache drops a rejected baseline so later writes retry', as
 
 	await expect(assertWrite('bucket-a', { env, cache })).resolves.toBeUndefined()
 	expect(cache.reservedBytes).toBe(1)
+})
+
+test('only a single CREATE TABLE IF NOT EXISTS without SELECT skips the write entitlement', async () => {
+	const { isIdempotentStorageSqlDdl, storageSqlNeedsWriteEntitlement } =
+		await import('./storage-runner.ts')
+	for (const query of [
+		'CREATE TABLE IF NOT EXISTS skills (id TEXT)',
+		'  create table if not exists notes (name text)',
+	]) {
+		expect(isIdempotentStorageSqlDdl(query)).toBe(true)
+		expect(storageSqlNeedsWriteEntitlement(query)).toBe(false)
+	}
+	for (const query of [
+		'CREATE TABLE skills (id TEXT)',
+		// A new index on a populated table materializes its rows.
+		'create index if not exists by_name on notes (name)',
+		'CREATE UNIQUE INDEX IF NOT EXISTS skills_id ON skills (id)',
+		'CREATE TABLE IF NOT EXISTS copy AS SELECT * FROM skills',
+		'CREATE TABLE IF NOT EXISTS a (id TEXT); INSERT INTO a VALUES (1)',
+		'CREATE TRIGGER IF NOT EXISTS t AFTER INSERT ON a BEGIN SELECT 1; END',
+		'INSERT INTO skills (id) VALUES (1)',
+	]) {
+		expect(isIdempotentStorageSqlDdl(query)).toBe(false)
+		expect(storageSqlNeedsWriteEntitlement(query)).toBe(true)
+	}
+	expect(storageSqlNeedsWriteEntitlement('SELECT 1')).toBe(false)
 })

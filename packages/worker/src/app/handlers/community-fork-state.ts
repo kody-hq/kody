@@ -1,12 +1,12 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { getActiveCommunityForkClaim } from '#worker/community/fork-claims.ts'
 import { findExistingCommunityFork } from '#worker/community/service.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { getPackageScopeByUserId } from '#worker/package-registry/user-scope.ts'
 import { getCommunityPackageHrefFromName } from '#universal/community-links.ts'
-import { type CommunityForkState } from '#universal/community-public-types.ts'
+import type { CommunityForkState } from '#universal/community-public-types.ts'
 
 /**
  * The viewer's fork of a listing in the org one-click install writes to (the

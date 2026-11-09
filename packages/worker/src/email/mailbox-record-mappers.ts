@@ -1,13 +1,13 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import {
-	type MailboxAttachmentRecord,
-	type MailboxDeliveryEventRecord,
-	type MailboxMessageRecord,
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type {
+	MailboxAttachmentRecord,
+	MailboxDeliveryEventRecord,
+	MailboxMessageRecord,
 } from './mailbox-types.ts'
-import {
-	type EmailAttachmentRecord,
-	type EmailDeliveryEventRecord,
-	type EmailMessageRecord,
+import type {
+	EmailAttachmentRecord,
+	EmailDeliveryEventRecord,
+	EmailMessageRecord,
 } from './types.ts'
 
 /** Map an owner-bound Mailbox message to the shared product record shape. */

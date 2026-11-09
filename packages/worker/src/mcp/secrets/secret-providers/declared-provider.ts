@@ -1,5 +1,5 @@
 import { loadPackageManifestBySourceId } from '#worker/package-registry/source.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 
 export async function readDeclaredSecretProviderId(input: {
 	env: Env

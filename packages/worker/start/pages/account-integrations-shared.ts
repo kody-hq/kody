@@ -1,10 +1,10 @@
 import { createListDetailLinks } from '#client/list-detail-route.ts'
 import { matchesSearchQuery } from '#client/search-filter.ts'
-import {
-	type AccountIntegrationListItem,
-	type AccountOauthAppListItem,
+import type {
+	AccountIntegrationListItem,
+	AccountOauthAppListItem,
 } from '#universal/loader-data.ts'
-import { relocateAccountHref } from '#universal/org-pages.ts'
+import { orgResourcePath, relocateAccountHref } from '#universal/org-pages.ts'
 import { getDangerPillCss } from '#universal/styles/style-primitives.ts'
 
 export const integrationsRoute = createListDetailLinks('/account/integrations')
@@ -179,6 +179,33 @@ export function connectionStatusLabel(integration: AccountIntegrationListItem) {
 		return failure.who === 'you' ? 'Needs you' : 'Service issue'
 	}
 	return integration.authorization?.authorizeUrl ? 'Connected' : 'Needs setup'
+}
+
+export type OauthAppStatusLabel = ConnectionStatusLabel | 'Not connected'
+
+/** One status for an integration row: the connection that most needs attention wins. */
+export function oauthAppStatusLabel(
+	app: Pick<AccountOauthAppListItem, 'connections'>,
+	integrations: ReadonlyArray<AccountIntegrationListItem>,
+): OauthAppStatusLabel {
+	if (app.connections.length === 0) return 'Not connected'
+	const statuses = new Set(
+		app.connections.map((ref) => {
+			const connection = integrations.find((entry) => entry.name === ref.name)
+			return connection ? connectionStatusLabel(connection) : 'Needs setup'
+		}),
+	)
+	for (const status of ['Needs you', 'Service issue', 'Connected'] as const) {
+		if (statuses.has(status)) return status
+	}
+	return 'Needs setup'
+}
+
+/** The OAuth connections in the Credentials list, narrowed to one name when given. */
+export function credentialsConnectionsHref(orgSlug: string, name?: string) {
+	const search = new URLSearchParams({ kind: 'oauth' })
+	if (name) search.set('q', name)
+	return `${orgResourcePath(orgSlug, 'credentials')}?${search}`
 }
 
 export function shouldShowReconnectAction(

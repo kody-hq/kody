@@ -3,8 +3,8 @@ import { testAccountConnectionsApiHandler } from '#app/handlers/account-connecti
 import { publicAuthProvidersLoaderData } from '#app/public-auth-providers.ts'
 import { emptyPublicFormProtection } from '#universal/public-form-protection.ts'
 import { startWebsiteOAuth } from '#worker/identity/oauth-start-operation.ts'
+import { createGuestAccount } from '#worker/guest/guest-accounts.ts'
 import { reservedUsernamesKvKey } from '#worker/identity/reserved-username-settings.ts'
-import { unusablePasswordHash } from '#worker/identity/usable-password.ts'
 import { getUsernameValidationError } from '#worker/identity/username.ts'
 import {
 	auditEventSummaries,
@@ -30,17 +30,20 @@ import {
 } from '@kody-internal/shared/password-hash.ts'
 import { quoteSqlString } from '@kody-internal/shared/sql-literals.ts'
 import { HttpResponse, http } from 'msw'
-import { type DatabaseSync } from 'node:sqlite'
+import type { DatabaseSync } from 'node:sqlite'
 import { afterAll, afterEach, beforeAll, expect, test, vi } from 'vitest'
 
 const lifecycleMocks = vi.hoisted(() => ({
 	scheduleUserCreatedEvent: vi.fn(),
+	scheduleGuestClaimedEvent: vi.fn(),
 }))
 
 vi.mock('#worker/identity/schedule-user-lifecycle-event.ts', () => ({
 	scheduleUserCreatedEvent: (...args: Array<unknown>) =>
 		lifecycleMocks.scheduleUserCreatedEvent(...args),
 	scheduleUserDeletedEvent: vi.fn(),
+	scheduleGuestClaimedEvent: (...args: Array<unknown>) =>
+		lifecycleMocks.scheduleGuestClaimedEvent(...args),
 }))
 
 const { createAuthProviderCallbackHandler } =
@@ -570,7 +573,7 @@ test('google sign-in reclaims an unverified password account matching the provid
 		.prepare(`SELECT password_hash, email_verified_at FROM users WHERE id = 8`)
 		.get() as { password_hash: string; email_verified_at: string | null }
 	expect(user.email_verified_at).toBeTruthy()
-	expect(user.password_hash).toBe(unusablePasswordHash.reclaimedUnverified)
+	expect(user.password_hash).toBe('reclaimed_unverified_no_usable_password')
 	expect(await verifyPassword('test-password', user.password_hash)).toBe(false)
 	expect([
 		countRows(sqlite, 'verifications', `WHERE target = '8'`),
@@ -1052,6 +1055,43 @@ test('signed-in users link and disconnect providers from their account', async (
 	expect(countRows(sqlite, 'oauth_connections')).toBe(0)
 })
 
+test('a session cookie revoked by a password change cannot link a provider', async () => {
+	const { sqlite, db } = createMigratedDb()
+	const env = createAppEnv(db, {
+		GITHUB_CLIENT_ID: 'MOCK_GITHUB_CLIENT_ID',
+		GITHUB_CLIENT_SECRET: 'MOCK_GITHUB_CLIENT_SECRET',
+	})
+	await seedUser(sqlite, {
+		id: 31,
+		email: 'revoked-linker@example.com',
+		username: 'revoked-linker',
+		emailVerified: true,
+	})
+	const cookie = getCookiePair(
+		await createAuthCookie(
+			{
+				stableUserId: testStableUserIdFromEmail('revoked-linker@example.com'),
+				email: 'revoked-linker@example.com',
+				rememberMe: false,
+			},
+			false,
+			Date.now() - 60_000,
+		),
+	)
+	sqlite
+		.prepare(`UPDATE users SET password_changed_at = ? WHERE id = 31`)
+		.run(new Date().toISOString())
+
+	const { response } = await completeProviderFlow(env, 'github', {
+		cookie,
+		mockMode: true,
+	})
+	expect(new Headers(response.headers).get('Location')).not.toContain(
+		'oauthLinked',
+	)
+	expect(countRows(sqlite, 'oauth_connections', 'WHERE user_id = 31')).toBe(0)
+})
+
 test('MOCK_ client ids run the whole flow in-worker and refuse disconnecting the only sign-in method', async () => {
 	const { sqlite, db } = createMigratedDb()
 	// onUnhandledFrame: 'error' in the shared MSW server means any real
@@ -1251,3 +1291,68 @@ async function runConnectionsOperation(
 ) {
 	return operation.execute({ request })
 }
+
+test('claiming a guest with GitHub emits one user.guest_claimed and no user.created', async () => {
+	const { sqlite, db } = createMigratedDb()
+	const env = createAppEnv(db)
+	const created = await createGuestAccount({
+		db,
+		requestIp: '203.0.113.9',
+		clientName: 'Claim Agent',
+	})
+	if (!created.ok) throw new Error('guest was not created')
+	sqlite.exec(`
+		INSERT INTO mcp_memories (id, user_id, subject, summary)
+		VALUES ('guest-memory', '${created.personalOrgId}', 'Likes', 'Tea');
+	`)
+	mockGithubProfileExchange('claimer@example.com', 99077)
+	lifecycleMocks.scheduleUserCreatedEvent.mockClear()
+	lifecycleMocks.scheduleGuestClaimedEvent.mockClear()
+	const startUrl = 'http://example.com/auth/github'
+	const started = await startWebsiteOAuth({
+		env,
+		provider: 'github',
+		url: new URL(startUrl),
+		request: new Request(startUrl),
+		body: {},
+		guestClaim: { code: created.claimCode, username: 'claimer' },
+	})
+	if (!('authorizeUrl' in started.data) || !started.data.authorizeUrl) {
+		throw new Error('Expected OAuth authorization URL')
+	}
+	const state = new URL(started.data.authorizeUrl).searchParams.get('state')
+	const response = await runHandler(
+		createAuthProviderCallbackHandler(env),
+		new Request(
+			`http://example.com/auth/github/callback?code=github-auth-code&state=${state}`,
+			{
+				headers: {
+					Cookie: getCookiePair(started.headers.get('Set-Cookie') ?? ''),
+				},
+			},
+		),
+		{ provider: 'github' },
+	)
+	expect(response.status).toBe(302)
+	expect(lifecycleMocks.scheduleUserCreatedEvent).not.toHaveBeenCalled()
+	expect(lifecycleMocks.scheduleGuestClaimedEvent).toHaveBeenCalledOnce()
+	expect(lifecycleMocks.scheduleGuestClaimedEvent).toHaveBeenCalledWith(
+		expect.objectContaining({
+			mode: 'new',
+			method: 'social',
+			provider: 'github',
+			user: {
+				id: created.personId,
+				username: 'claimer',
+				email: 'claimer@example.com',
+			},
+			guest: expect.objectContaining({
+				id: created.personId,
+				username: created.username,
+				clientName: 'Claim Agent',
+			}),
+			counts: expect.objectContaining({ memories: 1, packages: 0 }),
+			renamedPackages: 0,
+		}),
+	)
+})

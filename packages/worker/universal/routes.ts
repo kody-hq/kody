@@ -137,6 +137,18 @@ export const routes = {
 	adminSystemEmail: { href: () => '/admin/system-email' },
 	blog: { href: () => '/blog' },
 	blogRss: { href: () => '/blog/rss.xml' },
+	blogCategory: {
+		href: (params: { category: string }) =>
+			`/blog/category/${segment(params.category)}`,
+	},
+	blogCategoryRss: {
+		href: (params: { category: string }) =>
+			`/blog/category/${segment(params.category)}/rss.xml`,
+	},
+	blogSeries: {
+		href: (params: { series: string }) =>
+			`/blog/series/${segment(params.series)}`,
+	},
 	blogPost: {
 		href: (params: { slug: string | number }) =>
 			`/blog/${segment(params.slug)}`,
@@ -229,6 +241,10 @@ export const routes = {
 	orgBilling: {
 		href: (params: { orgSlug: string | number }) =>
 			`/@${segment(params.orgSlug)}/-/billing`,
+	},
+	orgBillingMovePlan: {
+		href: (params: { orgSlug: string | number }) =>
+			`/@${segment(params.orgSlug)}/-/billing/move-plan`,
 	},
 	orgBillingSuccess: {
 		href: (params: { orgSlug: string | number }) =>
@@ -371,6 +387,18 @@ export const routes = {
 	orgGrants: {
 		href: (params: { orgSlug: string | number }) =>
 			`/@${segment(params.orgSlug)}/-/grants`,
+	},
+	orgGrantAccess: {
+		href: (params: { orgSlug: string | number; userId: string | number }) =>
+			`/@${segment(params.orgSlug)}/-/grants/user/${segment(params.userId)}`,
+	},
+	orgGrantTeamAccess: {
+		href: (params: { orgSlug: string | number; teamId: string | number }) =>
+			`/@${segment(params.orgSlug)}/-/grants/team/${segment(params.teamId)}`,
+	},
+	orgGrantEveryoneAccess: {
+		href: (params: { orgSlug: string | number }) =>
+			`/@${segment(params.orgSlug)}/-/grants/everyone`,
 	},
 	orgCollaborators: {
 		href: (params: { orgSlug: string | number }) =>

@@ -1,3 +1,4 @@
+import { toServingSourceView } from '#worker/repo/serving-commit.ts'
 import {
 	isUnrepairablePreBindingArtifact,
 	publishedArtifactNeedsPackageBindingRebuild,
@@ -8,13 +9,13 @@ import {
 	type PublishedBundleArtifact,
 	readPackageAppWorkerTemplate,
 } from './published-runtime-artifacts.ts'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	billedOrgIdOf,
 	type RequestBilling,
 } from '@kody-internal/shared/request-context.ts'
-import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
+import type { RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
 import { withRequestBilling } from './package-app-billing.ts'
 import {
 	WorkerEntrypoint,
@@ -23,6 +24,13 @@ import {
 } from 'cloudflare:workers'
 import { requireLocalPackageAppRuntimeBridge } from '#worker/runtime-worker-service.ts'
 import {
+	packageAppCpuSampleChannel,
+	packageAppUsageTailLoaderIdSuffix,
+	type DynamicWorkerUsageTailProps,
+} from '#worker/usage/dynamic-worker-cpu.ts'
+import { packageAppWarmCpuSampleRate } from '#universal/package-app-cpu-samples.ts'
+import {
+	packageAppRequestIdHeader,
 	packageAppRuntimeErrorHeader,
 	packageAppRuntimeRunIdHeader,
 } from '#worker/package-runtime/package-app-diagnostics.ts'
@@ -33,16 +41,14 @@ import {
 	getPackageAppEntryPath,
 	parseAuthoredPackageJson,
 } from '#worker/package-registry/manifest.ts'
-import {
-	type AuthoredPackageJson,
-	type PackageAppVisitorNeed,
+import type {
+	AuthoredPackageJson,
+	PackageAppVisitorNeed,
 } from '#worker/package-registry/types.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
-import {
-	buildKodyFns,
-	collectPackageStorageGrantIds,
-} from '#mcp/run-kody-registry.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
+import { collectPackageStorageGrantIds } from '#mcp/run-kody-registry.ts'
 import { getCapabilityRegistryForContext } from '#mcp/capabilities/registry.ts'
+import { createHostIntegrationAuthority } from '#mcp/capabilities/integrations/host-integration-authority.ts'
 import { readIntegrationRuntimeConfig } from '#mcp/capabilities/integrations/integration-runtime-config.ts'
 import { listVisibleEnabledMcpServerRefsCached } from '#worker/mcp-client/settings-service.ts'
 import {
@@ -61,17 +67,17 @@ import {
 	loadPublishedBundleArtifactByIdentity,
 	persistPublishedBundleArtifact,
 } from './published-bundle-artifacts.ts'
-import { PromiseLruCache } from '#worker/package-registry/published-package-cache.ts'
+import { createPublishedPackagePromiseCache } from '#worker/package-registry/published-package-cache.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
-import { type FetchGatewayProps } from '#mcp/fetch-gateway.ts'
+import type { FetchGatewayProps } from '#mcp/fetch-gateway.ts'
 import { buildPackageStorageId } from '#worker/storage-ids.ts'
 import {
 	assertStorageRunnerWriteWithinEntitlement,
 	createPackageStorageAccessDeniedMessage,
 	createPackageStorageOwnerOnlyMessage,
 	createStorageBytesEntitlementRunCache,
-	isReadOnlyStorageSqlQuery,
+	storageSqlNeedsWriteEntitlement,
 	storageRunnerRpc,
 } from '#worker/storage-runner.ts'
 import {
@@ -96,7 +102,10 @@ import {
 	issuePackageSecretRef,
 } from '#mcp/secrets/package-secret-ref.ts'
 import { buildSecretPlaceholder } from '#mcp/secrets/placeholders.ts'
-import { attestedPackageStamp } from '#worker/credentials/package-stamp.ts'
+import {
+	attestedPackageStamp,
+	attestedPackageStampFromCaller,
+} from '#worker/credentials/package-stamp.ts'
 import { resolveCredential } from '#worker/credentials/resolve-credential.ts'
 import { newRunCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
 import {
@@ -112,7 +121,7 @@ import {
 	createCredentialClientKodyTools,
 	resolveCallerCredentialPackageId,
 } from '#worker/mcp/credential-client-tools.ts'
-import { type AdditionalKodyTools } from '#worker/mcp/runtime-helper-manifest.ts'
+import type { AdditionalKodyTools } from '#worker/mcp/runtime-helper-manifest.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import {
 	runWithCurrentSecretAuthority,
@@ -126,10 +135,10 @@ import {
 } from '#mcp/secrets/execution-secret-redactor.ts'
 import { pathSegmentEncodingWarningHeaderName } from '#mcp/secrets/path-segment-encoding-warning.ts'
 import { beginRunRecord, finishRunRecord } from '#worker/run-records/service.ts'
-import {
-	type RunRecordHandle,
-	type RunRecordLogInput,
-	type RunTerminalStatus,
+import type {
+	RunRecordHandle,
+	RunRecordLogInput,
+	RunTerminalStatus,
 } from '#worker/run-records/types.ts'
 import {
 	buildPackageAppPath,
@@ -201,12 +210,59 @@ import {
 	modulesContainUnboundPackagesInvokeAccess,
 } from './unbound-runtime-helpers.ts'
 import { modulesReferenceKodyMcp } from './package-app-mcp-preload.ts'
+import { createGatewayResponseUnwrapSource } from '#mcp/sandbox-rpc-outcome.ts'
 import {
 	createRandomPackageBindingToken,
 	packageAppBindingTokenFor,
 } from './package-app-binding-token.ts'
 
 const packageAppEntrypointName = 'PackageAppWorker'
+
+/** Bridge methods the package-app sandbox calls through `settle`. */
+const packageAppSandboxBridgeMethods = [
+	'appPublisherGet',
+	'appRateLimit',
+	'appSpendGet',
+	'authenticatedFetch',
+	'callCapability',
+	'credentialClientCall',
+	'listMcpServerNames',
+	'packageBoundCall',
+	'packageBoundFetch',
+	'packageEventDispatch',
+	'packageRuntimeRunFinish',
+	'packageRuntimeRunStart',
+	'packageSecretGet',
+	'packageSecretHas',
+	'packageStorageClear',
+	'packageStorageDelete',
+	'packageStorageGet',
+	'packageStorageList',
+	'packageStorageSet',
+	'packageStorageSql',
+	'realtimeBroadcast',
+	'realtimeDisconnect',
+	'realtimeEmit',
+	'realtimeListSessions',
+	'storageClear',
+	'storageDelete',
+	'storageGet',
+	'storageList',
+	'storageSet',
+	'workflowCreate',
+] as const satisfies ReadonlyArray<keyof PackageAppRuntimeBridge>
+
+type PackageAppSandboxBridgeMethod =
+	(typeof packageAppSandboxBridgeMethods)[number]
+
+function isPackageAppSandboxBridgeMethod(
+	name: unknown,
+): name is PackageAppSandboxBridgeMethod {
+	return (
+		typeof name === 'string' &&
+		(packageAppSandboxBridgeMethods as ReadonlyArray<string>).includes(name)
+	)
+}
 const packageAppRuntimeBindingName = 'KODY_RUNTIME'
 
 function createPackageAppWorkerSource(input: {
@@ -236,6 +292,22 @@ function createPackageAppWorkerSource(input: {
 	return `
 import { DurableObject, WorkerEntrypoint } from 'cloudflare:workers';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { channel as __kodyDiagnosticsChannel } from 'node:diagnostics_channel';
+
+// CPU sampling for Activity: the first fetch on this isolate (cold) and about
+// ${packageAppWarmCpuSampleRate * 100}% of later ones publish a marker; the host tail stores only
+// invocations that carry it. Never billed.
+const __kodyCpuSampleChannel = __kodyDiagnosticsChannel(${JSON.stringify(packageAppCpuSampleChannel)});
+let __kodyIsolateServedFetch = false;
+function __kodyMarkCpuSample(request) {
+	const cold = !__kodyIsolateServedFetch;
+	__kodyIsolateServedFetch = true;
+	if (!cold && Math.random() >= ${packageAppWarmCpuSampleRate}) return;
+	try {
+		const requestId = request.headers.get(${JSON.stringify(packageAppRequestIdHeader)});
+		if (requestId) __kodyCpuSampleChannel.publish({ cold, requestId });
+	} catch {}
+}
 
 const __kodyRuntimeStorageSymbol = Symbol.for('kody.runtimeStorage');
 // Resolve the AsyncLocalStorage instance synchronously at module load,
@@ -390,9 +462,31 @@ function __kodyCaptureRuntimeBridge(env) {
 	// First capture happens on the first request, before the user module is
 	// imported, so later package code cannot swap the binding it calls.
 	if (__kodyCapturedRuntimeBridge == null) {
-		__kodyCapturedRuntimeBridge = env.${packageAppRuntimeBindingName};
+		__kodyCapturedRuntimeBridge = __kodySettledBridge(env.${packageAppRuntimeBindingName});
 	}
 	return __kodyCapturedRuntimeBridge;
+}
+${createGatewayResponseUnwrapSource()}
+const __kodyProxyCaptured = Proxy;
+const __kodySettledBridgeMethods = __kodyObjectFreezeCaptured(${JSON.stringify(packageAppSandboxBridgeMethods)});
+const __kodyArrayIncludesCaptured = Array.prototype.includes;
+// Bridge calls go through settle() so a refusal comes back as a value and is
+// rethrown here instead of crossing RPC as a workerd uncaught exception.
+function __kodySettledBridge(raw) {
+	if (raw == null) return raw;
+	return new __kodyProxyCaptured({}, {
+		get(_target, name) {
+			if (typeof name !== 'string' || name === 'then') return undefined;
+			if (!__kodyReflectApplyCaptured(__kodyArrayIncludesCaptured, __kodySettledBridgeMethods, [name])) {
+				return raw[name];
+			}
+			return async (...args) => {
+				const outcome = await raw.settle(name, args);
+				if (outcome?.ok === true) return outcome.value;
+				throw outcome?.error;
+			};
+		},
+	});
 }
 function __kodyCreateAppPackageBindings(bridge, identity) {
 	const map = new __kodyMapCaptured();
@@ -428,11 +522,13 @@ function __kodyCreateAppPackageBindings(bridge, identity) {
 				return mcp;
 			},
 			fetch: async (requestInput, init) =>
-				await bridge.packageBoundFetch(
-					token,
-					packageId,
-					new __kodyRequestCaptured(requestInput, init),
-					__kodyCurrentVisitTicket(),
+				await __kodyUnwrapGatewayResponse(
+					await bridge.packageBoundFetch(
+						token,
+						packageId,
+						new __kodyRequestCaptured(requestInput, init),
+						__kodyCurrentVisitTicket(),
+					),
 				),
 			kodyCall: async (name, args) => await boundCapability({ name, args }),
 			// credential() for this package only (GHSA-5fv3).
@@ -508,7 +604,7 @@ if (!globalThis[__kodyEvaluateFetchPatchedSymbol]) {
 		// matches it against the run binding on its props and places the
 		// credential. Stripping it would send an unauthenticated upstream
 		// request; throwing would block legitimate credential().fetch.
-		return __kodyNativeFetch(input, { ...init, headers }).then((response) => {
+		return __kodyNativeFetch(input, { ...init, headers }).then(__kodyUnwrapGatewayResponse).then((response) => {
 			const warning = response.headers.get(
 				${JSON.stringify(pathSegmentEncodingWarningHeaderName)},
 			);
@@ -948,10 +1044,13 @@ function createDurableObjectNamespace(runtimeBridge, runtimeEnv, packageId, expo
 }
 
 function createPackageAppEnv(env, userModule) {
-	const runtimeBridge = env.${packageAppRuntimeBindingName};
+	const runtimeBridge = __kodySettledBridge(env.${packageAppRuntimeBindingName});
 	const packageContext = env.__kodyPackageContext ?? null;
 	const packageId = packageContext?.packageId ?? '';
 	const runtimeEnv = Object.create(env);
+	// Package code reaching env.KODY_RUNTIME gets the same settled view, so a
+	// refused call still rejects here without a workerd uncaught exception.
+	runtimeEnv.${packageAppRuntimeBindingName} = runtimeBridge;
 	for (const [exportName, exported] of Object.entries(userModule)) {
 		if (exportName !== 'default' && typeof exported === 'function') {
 			const namespace = createDurableObjectNamespace(
@@ -1249,7 +1348,8 @@ function tagPackageAppRuntimeRun(response, runtimeRunId) {
 
 export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 	async fetch(request) {
-		const runtimeBridge = this.env.${packageAppRuntimeBindingName};
+		__kodyMarkCpuSample(request);
+		const runtimeBridge = __kodySettledBridge(this.env.${packageAppRuntimeBindingName});
 		const requestUrl = new URL(request.url);
 		// Read before any package code runs. Ticket and visitor stay in ALS
 		// for this request only; they never enter module scope.
@@ -1365,7 +1465,7 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 	}
 
 	async handleRealtimeEvent(payload) {
-		const runtimeBridge = this.env.${packageAppRuntimeBindingName};
+		const runtimeBridge = __kodySettledBridge(this.env.${packageAppRuntimeBindingName});
 		const visitTicket =
 			payload && typeof payload.__kodyVisitTicket === 'string'
 				? payload.__kodyVisitTicket
@@ -1535,8 +1635,38 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 	private readonly secretRedactor: ExecutionSecretRedactor =
 		createExecutionSecretRedactor()
 
+	/**
+	 * Sandbox entry for the allowlisted bridge methods. A rejection comes back
+	 * as a value the sandbox rethrows, so expected denials do not cross RPC as
+	 * workerd uncaught exceptions (#4534). Same authority as calling the
+	 * method directly.
+	 */
+	async settle(
+		method: string,
+		args: Array<unknown>,
+	): Promise<{ ok: true; value: unknown } | { ok: false; error: unknown }> {
+		if (!isPackageAppSandboxBridgeMethod(method)) {
+			return {
+				ok: false,
+				error: new Error(`Unknown package app bridge method "${method}".`),
+			}
+		}
+		try {
+			const call = this[method] as (...input: Array<unknown>) => unknown
+			return {
+				ok: true,
+				value: await call.apply(this, Array.isArray(args) ? args : []),
+			}
+		} catch (error) {
+			return { ok: false, error }
+		}
+	}
+
 	private authorityScope(): PackageAppAuthorityScope {
-		return { orgId: this.ctx.props.userId, packageId: this.ctx.props.packageId }
+		return {
+			orgId: this.ctx.props.userId,
+			packageId: this.ctx.props.packageId,
+		}
 	}
 
 	/** The app's runs-as person in the owning org, with their live role. */
@@ -2108,6 +2238,11 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		if (name === INTEGRATION_RUNTIME_CONFIG_TOOL_NAME) {
 			return await this.integrationRuntimeConfig(capabilityArgs, visitTicket)
 		}
+		// Host functions, not capabilities: no declaration needed, and they
+		// stay scoped to the app package even when an import calls them.
+		if (name === 'appRateLimit') return await this.appRateLimit(capabilityArgs)
+		if (name === 'appSpendGet') return await this.appSpendGet()
+		if (name === 'appPublisherGet') return await this.appPublisherGet()
 		const declared = new Set([
 			...(this.ctx.props.declaredCapabilities ?? []),
 			...(this.ctx.props.capabilityAllowance ?? []),
@@ -2156,6 +2291,9 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 					env: this.env,
 					callerContext,
 					integrationGet,
+					packageStamp: attestedPackageStampFromCaller({
+						storageContext: callerContext.storageContext,
+					}).packageStamp,
 					args,
 				})
 			},
@@ -2399,8 +2537,8 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		billedOrgId?: OwnerId
 	}) {
 		// package app bridges always mark packageStorage SQL writable, so skip
-		// the all-bucket fan-out for pure SELECT/EXPLAIN/PRAGMA statements.
-		if (input.writable && !isReadOnlyStorageSqlQuery(input.query)) {
+		// the all-bucket fan-out for pure reads and idempotent DDL.
+		if (input.writable && storageSqlNeedsWriteEntitlement(input.query)) {
 			await this.assertStorageWriteAllowed({
 				storageId: input.storageId,
 				requested: estimateEntitlementStorageSqlWriteBytes({
@@ -2761,9 +2899,14 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			storageId: this.ctx.props.packageId,
 			visitTicket: input.visitTicket,
 			run: async (callerContext) => {
-				const kody = await buildKodyFns(this.env, callerContext)
 				const authenticatedFetch = await createAuthenticatedFetch(
-					kody,
+					createHostIntegrationAuthority({
+						env: this.env,
+						callerContext,
+						packageStamp: attestedPackageStampFromCaller({
+							storageContext: callerContext.storageContext,
+						}).packageStamp,
+					}),
 					input.providerName,
 				)
 				return await authenticatedFetch(input.request.url, {
@@ -3308,7 +3451,7 @@ type PackageAppWorkerBuild = {
 // behalf of a different request" whenever it (re)loaded the dynamic isolate
 // from any request other than the one that built the options.
 const packageAppWorkerOptionsCache =
-	new PromiseLruCache<PackageAppWorkerBuild>()
+	createPublishedPackagePromiseCache<PackageAppWorkerBuild>()
 
 /**
  * Mint the request-bound loopback bindings for one loader call. Call it inside
@@ -3321,6 +3464,7 @@ const packageAppWorkerOptionsCache =
 export function materializePackageAppWorkerOptions(
 	template: PackageAppWorkerTemplate,
 	requestVisit?: PackageAppRequestVisit | null,
+	tails?: Array<Fetcher> | null,
 ): PackageAppWorkerOptions {
 	const credentialClientBinding =
 		requestVisit?.credentialClientBinding ?? newRunCredentialClientBinding()
@@ -3355,6 +3499,7 @@ export function materializePackageAppWorkerOptions(
 		globalOutbound: workerExports?.KodyFetchGateway
 			? workerExports.KodyFetchGateway({ props: gatewayProps })
 			: null,
+		...(tails && tails.length > 0 ? { tails } : {}),
 	} as PackageAppWorkerOptions
 }
 
@@ -3618,7 +3763,7 @@ async function resolvePersistablePackageSource(input: {
 	if (!source || source.user_id !== input.userId) {
 		throw new Error(`Saved package source "${input.sourceId}" was not found.`)
 	}
-	return source
+	return toServingSourceView(source)
 }
 
 async function resolvePackageAppBundledArtifact(input: {
@@ -3678,6 +3823,7 @@ async function resolvePackageAppBundledArtifact(input: {
 		kind: 'app',
 		artifactName: null,
 		entryPoint: appEntry,
+		commit: input.savedPackage.publishedCommit,
 	})
 	const currentArtifact =
 		loadedArtifact?.artifact &&
@@ -4274,9 +4420,11 @@ export async function buildPackageAppWorker(input: {
 				visit: requestVisit,
 			}
 		}
+		let builtHere = false
 		const build = await packageAppWorkerOptionsCache.getOrCreate({
 			cacheKey,
 			create: async () => {
+				builtHere = true
 				const template = await buildPackageAppWorkerOptionsUncached(
 					input,
 					cacheKey,
@@ -4295,10 +4443,38 @@ export async function buildPackageAppWorker(input: {
 		// would then skip without a `dynamic_worker_day` event. The loopback
 		// bindings are minted in this request: the loader may (re)load the
 		// isolate from any request that reuses the cached build.
-		const stub = build.workerId
-			? input.env.APP_LOADER.get(build.workerId, () =>
-					materializePackageAppWorkerOptions(build.template, requestVisit),
-				)
+		// Cold-start markers: whether this request built the worker options, and
+		// whether the loader ran the factory (a new isolate for this worker id).
+		input.serverTiming?.push({
+			name: 'appBuild',
+			durationMs: 0,
+			desc: builtHere ? 'built' : 'cached',
+		})
+		// Sampled CPU for Activity rides a tail on the isolate. Gated like the
+		// execute tail: local workerd reports zero CPU. The tail changes the
+		// WorkerCode, so it gets its own loader id; billing keeps build.workerId.
+		const usageTailProps = packageAppUsageTailProps({
+			userId: input.userId,
+			workerId: build.workerId,
+			savedPackage: input.savedPackage,
+		})
+		const loaderId =
+			build.workerId && usageTailProps
+				? `${build.workerId}${packageAppUsageTailLoaderIdSuffix}`
+				: build.workerId
+		const stub = loaderId
+			? input.env.APP_LOADER.get(loaderId, () => {
+					input.serverTiming?.push({
+						name: 'appIsolate',
+						durationMs: 0,
+						desc: 'new',
+					})
+					return materializePackageAppWorkerOptions(
+						build.template,
+						requestVisit,
+						usageTailProps ? [createPackageAppUsageTail(usageTailProps)] : null,
+					)
+				})
 			: input.env.APP_LOADER.load(
 					materializePackageAppWorkerOptions(build.template, requestVisit),
 				)
@@ -4324,6 +4500,36 @@ export async function buildPackageAppWorker(input: {
 			visit: requestVisit,
 		}
 	})
+}
+
+function packageAppUsageTailProps(input: {
+	userId: OwnerId
+	workerId: string | null
+	savedPackage: { id: string; name?: string | null }
+}): DynamicWorkerUsageTailProps | null {
+	// Telemetry only writes the owner's RunLog; it never depends on metering.
+	if (!input.workerId) return null
+	if (!workerExports || !('DynamicWorkerUsageTail' in workerExports)) {
+		return null
+	}
+	return {
+		userId: input.userId,
+		workerId: input.workerId,
+		packageApp: {
+			packageId: input.savedPackage.id,
+			packageName: input.savedPackage.name ?? null,
+		},
+	}
+}
+
+function createPackageAppUsageTail(props: DynamicWorkerUsageTailProps) {
+	return (
+		workerExports as unknown as {
+			DynamicWorkerUsageTail: (options: {
+				props: DynamicWorkerUsageTailProps
+			}) => Fetcher
+		}
+	).DynamicWorkerUsageTail({ props })
 }
 
 function schedulePackageAppUniqueWorkerDay(input: {

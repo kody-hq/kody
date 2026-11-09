@@ -1,4 +1,4 @@
-import { type AccountCreditsLedgerItem } from '#universal/loader-data.ts'
+import type { AccountCreditsLedgerItem } from '#universal/loader-data.ts'
 
 export function formatAdminCreditLedgerKind(
 	kind: AccountCreditsLedgerItem['kind'],
@@ -16,9 +16,15 @@ export function formatAdminEntitlementLadder(ladder: 'public' | 'legacy') {
 }
 
 export function formatAdminOrganizationRole(
-	role: 'owner' | 'member' | 'billing',
+	role: 'owner' | 'admin' | 'member' | 'billing',
 ) {
-	return role === 'owner' ? 'Owner' : role === 'billing' ? 'Billing' : 'Member'
+	return role === 'owner'
+		? 'Owner'
+		: role === 'admin'
+			? 'Admin'
+			: role === 'billing'
+				? 'Billing'
+				: 'Member'
 }
 
 export function formatAdminPlanLabel(plan: string) {

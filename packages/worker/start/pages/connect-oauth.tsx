@@ -11,12 +11,13 @@ import {
 	useMemo,
 	type FormEvent,
 } from 'react'
-import {
-	type ConnectOauthExistingConnection,
-	type ConnectOauthLoaderData,
+import type {
+	ConnectOauthExistingConnection,
+	ConnectOauthLoaderData,
 } from '#universal/loader-data.ts'
 
 import {
+	formatScopeGrantNotice,
 	resolveOauthScopeMenu,
 	uniqueOauthScopes,
 } from '#universal/oauth-scopes.ts'
@@ -63,6 +64,7 @@ import {
 	type LiveReplaceState,
 	newConnectionNameError,
 	suggestNewConnectionName,
+	storedClientSecretApplies,
 	wouldReplaceDifferentApp,
 	wouldReplaceLiveApp,
 } from './connect-oauth-sections.tsx'
@@ -456,6 +458,13 @@ export function ConnectOauthRoute({
 	 * warning; without either, a save that would rewrite the app behind a
 	 * live connection stops and asks first.
 	 */
+	function storedSecretApplies(current: ConnectOauthConfig, clientId: string) {
+		return storedClientSecretApplies({
+			hasStoredClientSecret,
+			storedClientId: current.clientId,
+			nextClientId: clientId,
+		})
+	}
 	async function submitSetup(choice: { replace?: boolean; newName?: string }) {
 		if (!config || inFlight.current) return
 		inFlight.current = true
@@ -467,19 +476,25 @@ export function ConnectOauthRoute({
 				setStatus('Client ID is required.', 'error')
 				return
 			}
+			const keepsStoredSecret = storedSecretApplies(config, clientId)
 			if (
 				config.flow === 'confidential' &&
-				(!hasStoredClientSecret || revealStoredClientSecretField) &&
+				(!keepsStoredSecret || revealStoredClientSecretField) &&
 				!clientSecret
 			) {
-				setStatus('Client secret is required for confidential flow.', 'error')
+				setStatus(
+					keepsStoredSecret || !hasStoredClientSecret
+						? 'Client secret is required for confidential flow.'
+						: 'Enter the client secret for the new client ID.',
+					'error',
+				)
 				return
 			}
 			const sameNameConfig = {
 				...config,
 				clientId,
 				hasClientSecret:
-					hasStoredClientSecret ||
+					keepsStoredSecret ||
 					(config.flow === 'confidential' && Boolean(clientSecret)),
 			}
 			if (
@@ -730,7 +745,12 @@ export function ConnectOauthRoute({
 					accessTokenSaved: payload.accessTokenSaved === true,
 					refreshTokenSaved: payload.refreshTokenSaved === true,
 					nextSteps: parseConnectOauthNextSteps(payload.nextSteps),
-					statusMessage: 'OAuth tokens saved.',
+					statusMessage: [
+						'OAuth tokens saved.',
+						formatScopeGrantNotice(payload.scopeGrant),
+					]
+						.filter(Boolean)
+						.join(' '),
 					statusTone: 'info',
 					currentStep: 'success',
 				})
@@ -869,7 +889,11 @@ export function ConnectOauthRoute({
 					config={currentConfig}
 					existingIntegrationConfig={existingIntegrationConfig}
 					hasStoredClientId={hasStoredClientId}
-					hasStoredClientSecret={hasStoredClientSecret}
+					hasStoredClientSecret={
+						currentConfig
+							? storedSecretApplies(currentConfig, clientIdInput)
+							: false
+					}
 					revealStoredClientSecretField={revealStoredClientSecretField}
 					clientIdInput={clientIdInput}
 					clientSecretInput={clientSecretInput}

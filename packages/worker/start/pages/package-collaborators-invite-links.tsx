@@ -10,6 +10,7 @@ import {
 } from '#start/server/invite-links'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 
+import { DetailParts } from '../components/detail-parts.tsx'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
 import {
 	AccountManagementPanel,
@@ -20,7 +21,7 @@ import {
 	accountInputCss,
 } from './account-management-components.tsx'
 import { renderIcon } from '../components/icon.tsx'
-import { type ScopedInviteLinkView } from '#universal/loader-data.ts'
+import type { ScopedInviteLinkView } from '#universal/loader-data.ts'
 import {
 	type PackageCollaboratorPreset,
 	packageCollaboratorPresetDescription,
@@ -248,11 +249,13 @@ function PackageInviteLinksContent({
 				<span css={rowTextCss}>
 					<span css={rowNameCss}>{link.label} link</span>
 					<span css={rowDetailCss}>
-						{[
-							`${link.useCount}${link.maxUses != null ? ` / ${link.maxUses}` : ''} uses`,
-							`Expires ${formatTimestampDate(link.expiresAt)}`,
-							`Created by ${creatorLabel(link)}`,
-						].join(' · ')}
+						<DetailParts
+							parts={[
+								`${link.useCount}${link.maxUses != null ? ` / ${link.maxUses}` : ''} uses`,
+								<>Expires {formatTimestampDate(link.expiresAt)}</>,
+								`Created by ${creatorLabel(link)}`,
+							]}
+						/>
 					</span>
 				</span>
 				<span css={rowActionsCss}>

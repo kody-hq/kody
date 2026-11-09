@@ -19,8 +19,10 @@ Use `package.json` as the canonical source of truth for saved package metadata.
   pass the `@owner/leaf` name or the name leaf.
 - `exports` — authoritative import/export map. Optional: omitting it means no
   exports, the same as `"exports": {}` (e.g. a data-only package with an app)
-- `private` — leftover npm-style field; ignored for catalog listing. Visibility
-  is a repo setting (`packageUpdate` `changes.visibility`), default private
+- `private` — leftover npm-style field; ignored for catalog listing. **Source
+  sharing** on Settings is the repo setting (`packageUpdate`
+  `changes.visibility`), default private. **Visibility** on that page is who can
+  use the hosted app, not this field
 - `kody.description` — short public tagline for search/detail (max 200)
 - `kody.tags` — search tags
 - `kody.category` — optional community browse category (`integrations`,
@@ -102,7 +104,8 @@ Important behavior:
   way so publish cannot skip the check.
 - An isolate memory or CPU reset during bundle validation is the same class of
   failure: the npm graph does not fit a Worker isolate. The check message points
-  at `search({ entity: "guide:heavy_work_offload" })`.
+  at `search({ entity: "guide:heavy_work_offload" })` and, when only publish
+  bundling is too big, `search({ entity: "guide:publish_large_packages" })`.
 - Runtime execution does not invent a new dependency policy or ask callers to
   choose one. Dependency handling is part of the saved-package pipeline itself.
 
@@ -517,16 +520,6 @@ Queue for these topics; sweep polling of `/status.json` remains the backstop
 when the secret is unset or the POST fails. See
 [Package subscriptions](../guides/package-subscriptions.md).
 
-Fleet package-runtime error-rate elevation is a separate admin-only, best-effort
-path. The hourly `usage_aggregation` lane writes an Analytics Engine snapshot
-and fans `fleet.package_error_rate.elevated` only to packages whose owners hold
-the admin role at dispatch time. The payload is window bounds, per-metric counts
-and rates, `status_url`, and `insights_url`. When one account or a few accounts
-own the recent-window errors, it also names those usernames and package kody
-ids. It omits user ids, package UUIDs, emails, error strings, and all other user
-content. There is no Queue for this topic. See
-[Admin events](../guides/admin-events.md#fleetpackageerrorrateelevated-admins).
-
 Fleet entitlement crossings are a separate admin-only, best-effort path. The
 hourly `usage_entitlement_alert` lane fans `fleet.entitlement.crossed` only to
 packages whose owners hold the admin role at dispatch time, once per 80% or 100%
@@ -672,11 +665,14 @@ refreshes the credential stamp, writes the current checks version, and returns
 Check failures before promotion return the failed checks and do not mutate D1,
 KV snapshots, published bundle artifacts, package projections, or vectors. A
 rebuild failure after promotion returns `checks_failed` with a bundle check;
-re-run the publish capability to repair artifacts. Non-fast-forward external
-heads are refused unless the caller passes `allow_force: true`. When
-`saved_packages.locked_at` is set, checks still run and the result is `locked`
-with an approval URL; `published_commit` does not move until the owner promotes
-that commit on the website.
+Kody drops that commit's publish-checks seal and moves `published_commit`, the
+package projection, and job pins back to the last good commit (a first publish
+has no earlier commit, so only the seal is dropped). Re-run the publish
+capability to repair artifacts. Non-fast-forward external heads are refused
+unless the caller passes `allow_force: true`. When `saved_packages.locked_at` is
+set, checks still run and the result is `locked` with an approval URL;
+`published_commit` does not move until the owner promotes that commit on the
+website.
 
 When publish succeeds, `packagePublishExternalPush` decorates the response with
 `static_dependents`, a bounded summary of direct saved packages whose published

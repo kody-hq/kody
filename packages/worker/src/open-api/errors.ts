@@ -1,4 +1,5 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import { GuestRestrictionError } from '#worker/guest/guest-errors.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	redactKodyCredentials,
 	redactKodyCredentialsDeep,
@@ -8,7 +9,10 @@ import {
 	getErrorMessage,
 } from '@kody-internal/shared/error-message.ts'
 import { McpCallerError, isMcpCallerError } from '#mcp/caller-error.ts'
-import { isExecutionContextError } from '#worker/execution-contexts/errors.ts'
+import {
+	executionContextErrorCodes,
+	isExecutionContextError,
+} from '#worker/execution-contexts/errors.ts'
 import { EncodedPlaceholderError } from '#mcp/secrets/encoded-placeholder.ts'
 import {
 	AuthorizationError,
@@ -25,9 +29,12 @@ import {
 } from '#worker/entitlements/errors.ts'
 import { isQuarantinedInboundReplyError } from '#worker/email/quarantined-inbound-reply.ts'
 import {
+	classifyRetryableD1Error,
 	isRetryableD1LockMessage,
+	readD1RetryAttempts,
 	transientDatabaseUnavailableMessage,
 } from '#worker/d1-retry.ts'
+import { reportInfraHiccup } from '#worker/infra-hiccup-sentry.ts'
 import { isPublishComputeLimitMessage } from '#worker/repo/isolated-runner-limit-message.ts'
 import { readRemoteRefNotConfirmedError } from '#worker/repo/remote-ref-not-confirmed-error.ts'
 import {
@@ -91,28 +98,18 @@ function classifyBareDurableObjectReset(
 	return null
 }
 
-export const apiErrorCodes = [
+const platformApiErrorCodes = [
 	'invalid_request',
 	'unauthorized',
 	'insufficient_scope',
+	'profile_grant',
+	'profile_inactive',
 	'email_verification_required',
 	'account_suspended',
+	'guest_not_allowed',
+	'guest_claim_required',
 	'feature_unavailable',
 	'feature_disabled',
-	'not_granted',
-	'context_revoked',
-	'chain_changed',
-	'chain_too_long',
-	'context_not_usable',
-	'no_execution_context_available',
-	'execution_context_unavailable',
-	'execution_context_lease_invalid',
-	'execution_context_access_lost',
-	'context_not_revoked',
-	'commands_opt_in_local',
-	'execution_context_commands_off',
-	'execution_context_command_not_granted',
-	'execution_context_command_requires_context',
 	'not_found',
 	'method_not_allowed',
 	'account_deleting',
@@ -129,7 +126,17 @@ export const apiErrorCodes = [
 	'internal_error',
 ] as const
 
-export type ApiErrorCode = (typeof apiErrorCodes)[number]
+/** Execution-context codes come from their own list, so a new one is one edit. */
+export const apiErrorCodes: ReadonlyArray<ApiErrorCode> = [
+	...new Set<ApiErrorCode>([
+		...platformApiErrorCodes,
+		...executionContextErrorCodes,
+	]),
+]
+
+export type ApiErrorCode =
+	| (typeof platformApiErrorCodes)[number]
+	| (typeof executionContextErrorCodes)[number]
 
 export type ApiErrorBody = {
 	error: {
@@ -208,14 +215,47 @@ export function notFound(message: string) {
  * 503 `internal_error` with `Retry-After`, so clients can tell it from a real
  * defect and retry.
  */
-export function toApiError(error: unknown): ApiError {
+export function toApiError(
+	error: unknown,
+	context?: {
+		/** Static operation id or capability name for infra hiccup reports. */
+		operation?: string
+	},
+): ApiError {
 	if (error instanceof ApiError) return error
+	if (error instanceof GuestRestrictionError) {
+		return new ApiError({
+			status: 403,
+			code: error.payload.error,
+			message: error.payload.error_description,
+			details: {
+				claim_url: error.payload.claim_url,
+				claim_capability: error.payload.claim_capability,
+				claim_finish_capability: error.payload.claim_finish_capability,
+			},
+			cause: error,
+		})
+	}
 	if (error instanceof AuthorizationError) {
 		if (error.code === 'unauthenticated') {
 			return new ApiError({
 				status: 401,
 				code: 'unauthorized',
 				message: error.message,
+				cause: error,
+			})
+		}
+		// The token's scopes passed; the profile chain denied. A new token
+		// cannot help, so this is not `insufficient_scope`.
+		if (error.code === 'profile_grant' || error.code === 'profile_inactive') {
+			return new ApiError({
+				status: 403,
+				code: error.code,
+				message: error.message,
+				details: {
+					required_permission: error.permission,
+					denial: error.code,
+				},
 				cause: error,
 			})
 		}
@@ -375,13 +415,18 @@ export function toApiError(error: unknown): ApiError {
 	// with Retry-After rather than becoming a 400 invalid_request. Match only
 	// non-caller entries: a McpCallerError message can echo caller input (for
 	// example a job id of "SQLITE_BUSY") and must not turn a 404 into a 503.
-	if (
-		getErrorCauseChain(error).some(
-			(entry) =>
-				!(entry instanceof McpCallerError) &&
-				isRetryableD1LockMessage(getErrorMessage(entry)),
-		)
-	) {
+	const transientD1Entry = getErrorCauseChain(error).find(
+		(entry) =>
+			!(entry instanceof McpCallerError) &&
+			isRetryableD1LockMessage(getErrorMessage(entry)),
+	)
+	if (transientD1Entry !== undefined) {
+		void reportInfraHiccup({
+			kind: 'd1_transient',
+			operation: context?.operation ?? 'open_api',
+			attempts: readD1RetryAttempts(error),
+			errorClass: classifyRetryableD1Error(transientD1Entry) ?? 'unknown',
+		})
 		return new ApiError({
 			status: 503,
 			code: 'internal_error',

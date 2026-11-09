@@ -1,8 +1,5 @@
 import { getSearchEntityPluginForMatch } from './search-entity-registry.ts'
-import {
-	type SearchMatch,
-	type SlimSearchMatch,
-} from './search-format-types.ts'
+import type { SearchMatch, SlimSearchMatch } from './search-format-types.ts'
 
 export function toSlimStructuredMatches(input: {
 	matches: Array<SearchMatch>

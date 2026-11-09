@@ -1,12 +1,13 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import { commandTextScore } from '#universal/command-search.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	chunkArray,
 	maxD1BoundParameters,
 } from '@kody-internal/shared/chunk.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
-import {
-	type McpMemoryConversationSuppressionRow,
-	type McpMemoryRow,
+import type {
+	McpMemoryConversationSuppressionRow,
+	McpMemoryRow,
 } from './types.ts'
 
 function mapMemoryRow(row: Record<string, unknown>): McpMemoryRow {
@@ -439,4 +440,62 @@ export async function pruneExpiredConversationSuppressions(
 		)
 		.bind(cutoff)
 		.run()
+}
+
+/** Bounded metadata search across all live memories, not just the recent page. */
+export async function searchMemoryMetadata(
+	db: D1Database,
+	userId: string,
+	query: string,
+	preferredIds: readonly string[],
+): Promise<
+	Array<{ id: string; subject: string; category: string | null; tags: string }>
+> {
+	type Row = {
+		id: string
+		subject: string
+		category: string | null
+		tags: string
+		updated_at: string
+	}
+	const preferred = new Set(preferredIds.slice(0, 40))
+	let cursor: Row | undefined
+	let best: Array<{ row: Row; score: number }> = []
+	// Scan metadata in bounded keyset pages so SQL's ASCII-only LIKE and a
+	// recency cutoff cannot discard the ranker's best normalized matches.
+	while (true) {
+		const after = cursor
+			? 'AND (updated_at < ? OR (updated_at = ? AND id < ?))'
+			: ''
+		const statement = db.prepare(
+			`SELECT id, subject, category, tags_json AS tags, updated_at FROM mcp_memories WHERE user_id = ? AND deleted_at IS NULL AND status IN ('active', 'archived') ${after} ORDER BY updated_at DESC, id DESC LIMIT 200`,
+		)
+		const { results } = await statement
+			.bind(
+				userId,
+				...(cursor ? [cursor.updated_at, cursor.updated_at, cursor.id] : []),
+			)
+			.all<Row>()
+		const rows = results ?? []
+		for (const row of rows) {
+			const score = commandTextScore(
+				row.subject,
+				`${row.category ?? ''} ${row.tags}`,
+				query,
+			)
+			if (score !== null)
+				best.push({ row, score: score + (preferred.has(row.id) ? 18 : 0) })
+		}
+		best = best
+			.sort(
+				(a, b) =>
+					b.score - a.score ||
+					b.row.updated_at.localeCompare(a.row.updated_at) ||
+					b.row.id.localeCompare(a.row.id),
+			)
+			.slice(0, 200)
+		if (rows.length < 200) break
+		cursor = rows[rows.length - 1]
+	}
+	return best.map(({ row: { updated_at: _updated, ...row } }) => row)
 }

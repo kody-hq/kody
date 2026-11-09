@@ -1,4 +1,5 @@
 import { createCookie } from 'remix/cookie'
+import { isSecureRequest } from '#app/auth-session.ts'
 import { sha256Base64Url } from '@kody-internal/shared/sha256.ts'
 import { parsePersonId } from '@kody-internal/shared/owner-person-ids.ts'
 
@@ -307,55 +308,36 @@ export async function readPackageAppSession(input: {
 	const cookieHeader = input.request.headers.get('Cookie')
 	if (!cookieHeader) return null
 
+	// Only the names for this request's scheme. On HTTPS the `__Host-` prefix
+	// is what stops a sibling subdomain from tossing a `Domain`-wide cookie;
+	// the unprefixed names exist only for plain-HTTP local dev.
+	const secure = isSecureRequest(input.request)
 	const slug = input.slug.trim().toLowerCase()
-	const appCookieNames = await Promise.all([
-		packageAppSessionCookieName(slug, true),
-		packageAppSessionCookieName(slug, false),
-	])
-	const cookieNames = [
-		...appCookieNames,
-		legacySecurePackageAppSessionCookieName,
-		legacyInsecurePackageAppSessionCookieName,
-	]
-	if (!cookieNames.some((name) => cookieHeaderHasName(cookieHeader, name))) {
+	const appCookieName = await packageAppSessionCookieName(slug, secure)
+	const legacyCookieName = secure
+		? legacySecurePackageAppSessionCookieName
+		: legacyInsecurePackageAppSessionCookieName
+	if (
+		!cookieHeaderHasName(cookieHeader, appCookieName) &&
+		!cookieHeaderHasName(cookieHeader, legacyCookieName)
+	) {
 		return null
 	}
 
 	const now = input.now ?? Date.now()
-	const secureCookie = await getPackageAppSessionCookie(input.env, slug, true)
-	const insecureCookie = await getPackageAppSessionCookie(
-		input.env,
-		slug,
-		false,
-	)
-	const secureSession = parseStoredPackageAppSession(
-		await secureCookie.parse(cookieHeader),
+	const appCookie = await getPackageAppSessionCookie(input.env, slug, secure)
+	const appSession = parseStoredPackageAppSession(
+		await appCookie.parse(cookieHeader),
 		now,
 		slug,
 	)
-	if (secureSession) return secureSession
-	const insecureSession = parseStoredPackageAppSession(
-		await insecureCookie.parse(cookieHeader),
-		now,
-		slug,
-	)
-	if (insecureSession) return insecureSession
+	if (appSession) return appSession
 
 	// Legacy host-wide cookie (pre-per-app). Accept for any app until the
 	// next login/handoff or logout clears it.
-	const legacySecure = await getLegacyPackageAppSessionCookie(input.env, true)
-	const legacySecureSession = parseStoredPackageAppSession(
-		await legacySecure.parse(cookieHeader),
-		now,
-		slug,
-	)
-	if (legacySecureSession) return legacySecureSession
-	const legacyInsecure = await getLegacyPackageAppSessionCookie(
-		input.env,
-		false,
-	)
+	const legacyCookie = await getLegacyPackageAppSessionCookie(input.env, secure)
 	return parseStoredPackageAppSession(
-		await legacyInsecure.parse(cookieHeader),
+		await legacyCookie.parse(cookieHeader),
 		now,
 		slug,
 	)

@@ -2,11 +2,16 @@ import {
 	type EcpCancelReason,
 	type EcpCapabilities,
 	type EcpGrant,
+	type EcpPublishBuildSource,
 	type EcpRunRequestBody,
 	sha256Base64Url,
+	ecpHostOperatorOnlyFeature,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
-import { type CredentialCallMap } from '#worker/credentials/credential-call-map.ts'
-import { type RunRecordHandle } from '#worker/run-records/types.ts'
+import {
+	credentialCallMapToJson,
+	type CredentialCallMap,
+} from '#worker/credentials/credential-call-map.ts'
+import type { RunRecordHandle } from '#worker/run-records/types.ts'
 import {
 	checkPermission,
 	computeEffectivePermissions,
@@ -14,16 +19,17 @@ import {
 } from '#worker/authorization/authorize.ts'
 import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
-import {
-	type OwnerId,
-	type PersonId,
+import type {
+	OwnerId,
+	PersonId,
 } from '@kody-internal/shared/owner-person-ids.ts'
+import { refreshContextNotices } from './box-notices.ts'
 import { ExecutionContextError } from './errors.ts'
-import {
-	type ExecutionContextLease,
-	type ExecutionContextRunResult,
+import type {
+	ExecutionContextLease,
+	ExecutionContextRunResult,
 } from './session-do.ts'
-import { type ExecutionContextRunTiming } from './run-timing.ts'
+import type { ExecutionContextRunTiming } from './run-timing.ts'
 import { runChainShapeError, type ExecuteRequirement } from './chain-rules.ts'
 import {
 	type ChainEntry,
@@ -66,6 +72,7 @@ export type RoutingAttempt = {
 		| 'skipped'
 		| 'queued'
 		| 'expired'
+		| 'paused'
 	reason?: string
 }
 
@@ -199,6 +206,7 @@ const passPhrases: Record<RoutingAttempt['outcome'], string> = {
 	skipped: 'was skipped',
 	queued: 'was queued',
 	expired: 'did not take it before the queue expired',
+	paused: 'was paused',
 }
 
 function describePass(attempt: RoutingAttempt) {
@@ -294,14 +302,40 @@ export function requirementRefusal(
 	return null
 }
 
+/**
+ * Host folders are for the operator's own runs only. A shared run cannot
+ * require them, and skips a context with host folders whose daemon predates
+ * that rule (it would still mount them for every run).
+ */
+export function sharedRunHostRefusal(input: {
+	grant: EcpGrant
+	requires: ReadonlyArray<ExecuteRequirement>
+	capabilities: EcpCapabilities
+	sharedRun: boolean
+}): string | null {
+	if (!input.sharedRun) return null
+	if (input.requires.includes('fs')) return 'fs_operator_only'
+	if (input.grant.fs.length === 0) return null
+	return (input.capabilities.features ?? []).includes(
+		ecpHostOperatorOnlyFeature,
+	)
+		? null
+		: 'fs_daemon_outdated'
+}
+
 /** Why a context cannot take this run, or null when it can. */
 export function grantRefusal(input: {
 	grant: EcpGrant
 	requires: ReadonlyArray<ExecuteRequirement>
 	/** What the daemon advertised; `fs` means its effective mount set is non-empty. */
 	capabilities: EcpCapabilities
+	/** The requester is not the operator (see {@link sharedRunHostRefusal}). */
+	sharedRun: boolean
 }): string | null {
-	return requirementRefusal(input.grant, input.requires, input.capabilities)
+	return (
+		requirementRefusal(input.grant, input.requires, input.capabilities) ??
+		sharedRunHostRefusal(input)
+	)
 }
 
 function noContext(attempts: Array<RoutingAttempt>, message: string): never {
@@ -355,6 +389,15 @@ export async function routeExecute(input: {
 	queue?: { expiresAt: number } | null
 	/** `skip` records an unknown chain entry as skipped instead of a 404. */
 	unknownChainRef?: 'error' | 'skip'
+	/**
+	 * Publish offload: run the daemon's builder instead of user code. Only
+	 * contexts the requester operates may take it, it carries no credential
+	 * picks or params, and it gets the publish-build limits.
+	 */
+	publishBuild?: {
+		source: EcpPublishBuildSource
+		limits: { timeoutMs: number; memoryMb: number }
+	} | null
 }): Promise<RoutingOutcome> {
 	const requires = [...new Set(input.args.requires ?? [])]
 	const db = input.env.APP_DB
@@ -452,7 +495,9 @@ export async function routeExecute(input: {
 				outcome: 'skipped',
 				reason,
 			})
-		if (input.request.credentialKind === 'cli' && !hasContextScope(input)) {
+		// Every credential kind, not only CLI logins: a scoped token without
+		// execution_context:execute never reaches a context.
+		if (!hasContextScope(input)) {
 			skip('credential_scope')
 			continue
 		}
@@ -476,19 +521,39 @@ export async function routeExecute(input: {
 			skip(access.unusableReason ?? 'not_granted')
 			continue
 		}
+		// Paused contexts are skipped like offline ones but never queued on.
+		if (row.paused_at) {
+			attempts.push({ target: row.id, name: row.name, outcome: 'paused' })
+			continue
+		}
 		const grant = parseGrant(row)
 		const sharedRun = row.operator_user_id !== input.request.userId
-		const refusal = requirementRefusal(grant, requires, parseCapabilities(row))
+		if (sharedRun) {
+			await refreshContextNotices(db, row, input.request.orgId, {
+				userIds: [input.request.userId],
+			})
+		}
+		const refusal = grantRefusal({
+			grant,
+			requires,
+			capabilities: parseCapabilities(row),
+			sharedRun,
+		})
 		if (refusal) {
 			skip(refusal)
 			continue
 		}
-		if (!input.code) {
+		if (input.publishBuild && sharedRun) {
+			skip('not_operator')
+			continue
+		}
+		if (!input.code && !input.publishBuild) {
 			skip('invoke_not_supported')
 			continue
 		}
 		const now = Date.now()
-		const deadline = now + grant.limits.timeoutMs
+		const deadline =
+			now + (input.publishBuild?.limits.timeoutMs ?? grant.limits.timeoutMs)
 		const lease: ExecutionContextLease = {
 			runId: input.runId,
 			ecid: row.id,
@@ -504,6 +569,7 @@ export async function routeExecute(input: {
 			runtime: grant.runtime,
 			deadline,
 			sharedRun,
+			credentials: credentialCallMapToJson(input.credentials),
 		}
 		const request: EcpRunRequestBody = {
 			runId: input.runId,
@@ -515,18 +581,25 @@ export async function routeExecute(input: {
 				orgId: input.request.orgId,
 				orgSlug: input.request.orgSlug,
 			},
-			source: {
-				kind: 'code',
-				code: input.code,
-				sha256: await sha256Base64Url(new TextEncoder().encode(input.code)),
-			},
-			params: input.params ?? {},
+			source: input.publishBuild
+				? input.publishBuild.source
+				: {
+						kind: 'code',
+						code: input.code!,
+						sha256: await sha256Base64Url(
+							new TextEncoder().encode(input.code!),
+						),
+					},
+			params: input.publishBuild ? {} : (input.params ?? {}),
 			...(input.conversationId ? { conversationId: input.conversationId } : {}),
-			credentialPicks: credentialPicks(input.credentials),
+			credentialPicks: input.publishBuild
+				? {}
+				: credentialPicks(input.credentials),
 			limits: {
-				timeoutMs: grant.limits.timeoutMs,
+				timeoutMs:
+					input.publishBuild?.limits.timeoutMs ?? grant.limits.timeoutMs,
 				maxResultBytes: grant.payload.maxResultBytes,
-				memoryMb: grant.limits.memoryMb,
+				memoryMb: input.publishBuild?.limits.memoryMb ?? grant.limits.memoryMb,
 			},
 			grantVersion: row.grant_version,
 			apiUrl: input.apiUrl,
@@ -673,9 +746,11 @@ export async function routeExecute(input: {
 		const namedAttempt = attempts.find((a) => a.target === named.id)
 		noContext(
 			attempts,
-			namedAttempt?.outcome === 'busy'
-				? `${named.name} is busy: it is already running as many runs as it allows at once, so it could not take this run. A named context never falls back; try again when one of its runs finishes, or pass fallback: "chain" to use your chain instead.`
-				: `${named.name} could not take this run (${describeAttempts(attempts)}). A named context never falls back; pass fallback: "chain" to use your chain instead.`,
+			namedAttempt?.outcome === 'paused'
+				? `${named.name} is paused, so it takes no runs. Its operator or someone with Manage on it can resume it with \`kody daemon resume --context ${named.name}\` or executionContextResume. A named context never falls back; pass fallback: "chain" to use your chain instead.`
+				: namedAttempt?.outcome === 'busy'
+					? `${named.name} is busy: it is already running as many runs as it allows at once, so it could not take this run. A named context never falls back; try again when one of its runs finishes, or pass fallback: "chain" to use your chain instead.`
+					: `${named.name} could not take this run (${describeAttempts(attempts)}). A named context never falls back; pass fallback: "chain" to use your chain instead.`,
 		)
 	}
 	noContext(
@@ -688,25 +763,42 @@ export async function routeExecute(input: {
 	)
 }
 
-function hasContextScope(input: { request: { scopes: Array<string> | null } }) {
+/** Scope gate for every credential kind (CLI login, API token, OAuth, ...). */
+export function hasContextScope(input: {
+	request: { scopes: Array<string> | null }
+}) {
 	const scopes = input.request.scopes
 	return scopes === null || scopes.includes('execution_context:execute')
 }
 
 const contextReasonText: Record<string, string> = {
+	not_operator:
+		'not_operator: publish builds run only on contexts you operate yourself',
 	profile_grant:
 		'profile_grant: the profile this credential acts as, or a parent profile, was not granted execution_context:execute on it',
-	no_fs: 'no_fs: its server grant lists no host folders (grant.fs)',
+	no_fs:
+		'no_fs: its server grant lists no host folders (grant.fs is off on the server, whatever the local policy allows); someone with Contribute or Manage on it can turn it on with `kody context grant allow <folder> --context {name}`',
 	no_local_fs:
-		"no_local_fs: its server grant lists host folders, but the machine's local policy allows none of them (`kody context policy allow <folder>`)",
+		"no_local_fs: its server grant lists host folders, but the machine's local policy allows none of them; the machine owner can allow one there with `kody context policy allow <folder>`",
+	no_lan:
+		'no_lan: its server grant does not allow the local network (grant.egress is not public-and-lan); someone with Contribute or Manage on it can turn it on with `kody context grant lan on --context {name}`',
+	fs_operator_only:
+		"fs_operator_only: host folders are only for the operator's own runs",
+	fs_daemon_outdated:
+		"fs_daemon_outdated: it has host folders and its daemon is too old to keep them to the operator's runs; the operator can update it with `kody daemon update`",
+	operator_left:
+		'operator_left: the person who runs this machine is no longer a member of this org',
 }
 
-function describeAttempts(attempts: ReadonlyArray<RoutingAttempt>) {
+export function describeAttempts(attempts: ReadonlyArray<RoutingAttempt>) {
 	return attempts
 		.map((a) => {
 			const reason =
 				a.reason && a.target !== 'cloud'
-					? (contextReasonText[a.reason] ?? a.reason)
+					? (contextReasonText[a.reason]?.replaceAll(
+							'{name}',
+							a.name ?? '<context>',
+						) ?? a.reason)
 					: a.reason
 			return `${a.name ?? a.target}: ${a.outcome}${reason ? ` (${reason})` : ''}`
 		})

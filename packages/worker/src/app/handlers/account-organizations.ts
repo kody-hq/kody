@@ -1,14 +1,14 @@
 import { loadAccountOrganizationSnapshot } from '#app/account-organizations-data.ts'
 import { loadAccountProfileData } from '#app/account-profile-data.ts'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
-import { type AccountOrganizationsLoaderData } from '#universal/loader-data.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AccountOrganizationsLoaderData } from '#universal/loader-data.ts'
 import {
 	AuthorizationError,
 	authorize,
 } from '#worker/authorization/authorize.ts'
 import { FreeOrgLimitError } from '#worker/orgs/billing.ts'
 import { createOrganization } from '#worker/orgs/create-organization.ts'
-import { type OrgProfileVisibility } from '#worker/orgs/org-public-profile.ts'
+import type { OrgProfileVisibility } from '#worker/orgs/org-public-profile.ts'
 import {
 	loadRestorableOrganizationBySlugForPerson,
 	OrgRestoreWindowExpiredError,

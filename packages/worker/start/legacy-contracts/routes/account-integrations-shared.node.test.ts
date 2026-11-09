@@ -1,8 +1,10 @@
 import { expect, test } from 'vitest'
-import { type AccountIntegrationListItem } from '#universal/loader-data.ts'
+import type { AccountIntegrationListItem } from '#universal/loader-data.ts'
 import { toIntegrationAuthFailureView } from '#universal/connection-trouble.ts'
 import {
 	connectionStatusLabel,
+	credentialsConnectionsHref,
+	oauthAppStatusLabel,
 	shouldShowReconnectAction,
 } from '../../pages/account-integrations-shared.ts'
 
@@ -60,4 +62,34 @@ test('connection status names who can fix a last auth failure', () => {
 	})
 	expect(connectionStatusLabel(vendor)).toBe('Service issue')
 	expect(shouldShowReconnectAction(vendor)).toBe(false)
+})
+
+test('an integration row shows the status of the connection that most needs attention', () => {
+	const connected = integration({ name: 'google' })
+	const needsYou = integration({
+		name: 'google-work',
+		lastAuthFailure: toIntegrationAuthFailureView({
+			name: 'google-work',
+			reason: 'provider_rejected',
+			occurredAt: '2026-09-01T00:00:00.000Z',
+		}),
+	})
+	const refs = (...names: Array<string>) => ({
+		connections: names.map((name) => ({ name, accountLabel: null })),
+	})
+	expect(oauthAppStatusLabel(refs(), [connected])).toBe('Not connected')
+	expect(oauthAppStatusLabel(refs('google'), [connected])).toBe('Connected')
+	expect(oauthAppStatusLabel(refs('missing'), [connected])).toBe('Needs setup')
+	expect(
+		oauthAppStatusLabel(refs('google', 'google-work'), [connected, needsYou]),
+	).toBe('Needs you')
+})
+
+test('connections link to the OAuth rows in the Credentials list', () => {
+	expect(credentialsConnectionsHref('acme')).toBe(
+		'/@acme/-/credentials?kind=oauth',
+	)
+	expect(credentialsConnectionsHref('acme', 'work github')).toBe(
+		'/@acme/-/credentials?kind=oauth&q=work+github',
+	)
 })

@@ -1,4 +1,4 @@
-import { type Query } from '@tanstack/react-query'
+import type { Query } from '@tanstack/react-query'
 
 export function pageResourceKey(actorKey: string | null, resource: string) {
 	return ['page', actorKey, resource] as const

@@ -6,7 +6,7 @@ import {
 import { expect, test } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
-import { type RequestSource } from '#worker/request-context/request-context.ts'
+import type { RequestSource } from '#worker/request-context/request-context.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { metaGetCurrentUserCapability } from './meta-get-current-user.ts'
 
@@ -18,6 +18,12 @@ const teamOrgUser = {
 }
 
 test('metaGetCurrentUser accepts an empty email for a team org caller', async () => {
+	const sqlite = new DatabaseSync(':memory:')
+	applyAllMigrations(
+		sqlite,
+		new URL('../../../../migrations/', import.meta.url),
+	)
+	const db = createD1FromSqlite(sqlite)
 	const callerContext = createMcpCallerContext({
 		baseUrl: 'https://example.com',
 		source: { kind: 'schedule', jobId: 'job-1' },
@@ -25,10 +31,14 @@ test('metaGetCurrentUser accepts an empty email for a team org caller', async ()
 	})
 	const result = await metaGetCurrentUserCapability.handler(
 		{},
-		{ env: {} as Env, callerContext },
+		{ env: { APP_DB: db } as Env, callerContext },
 	)
 	expect(result.email).toBe('')
-	expect(result.org).toEqual({ slug: 'acme' })
+	expect(result.org).toEqual({
+		slug: 'acme',
+		personal: false,
+		kind: 'team',
+	})
 })
 
 test('metaGetCurrentUser reports a member sender only while that account is live and in the org', async () => {

@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { createUnresolvedSecretMessage } from '#mcp/secrets/unresolved-secret.ts'
 import { secretPageOrgSlugFromCaller } from '#mcp/secrets/package-approval-url.ts'
@@ -12,10 +12,20 @@ import { resolveCredential } from '#worker/credentials/resolve-credential.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import {
 	anySealedTokenDomain,
+	jwtSignMayFillAnyHost,
+	jwtSignSendToHostRequiredDate,
 	sealToken,
 	sealedTokenDomainForUrl,
 } from '#worker/credentials/sealed-token.ts'
 import { secretScopeValues } from '#mcp/secrets/types.ts'
+import {
+	inferJwtSignSendToHost,
+	isJwtSignAnyHostCallerGrandfathered,
+	jwtSignAnyHostEventKinds,
+	jwtSignNewAnyHostCallerCutoffDate,
+	type JwtSignAnyHostCaller,
+	recordJwtSignAnyHostEvent,
+} from '#worker/credentials/jwt-sign-any-host.ts'
 import {
 	jwtAlgorithms,
 	jwtKeyEncodings,
@@ -58,7 +68,7 @@ const jwtSignInputSchema = z.object({
 		.min(1)
 		.optional()
 		.describe(
-			'Host the sealed JWT will be sent to, for example "api.github.com". Recommended when the "aud" claim is not an https URL: the sealed JWT then fills only on that host\'s registrable domain.',
+			`Host the sealed JWT will be sent to, for example "api.github.com". The sealed JWT then fills only on that host's registrable domain. Required when the "aud" claim is not an https URL, starting ${jwtSignSendToHostRequiredDate}.`,
 		),
 	header: z
 		.record(z.string(), z.unknown())
@@ -75,8 +85,7 @@ export const jwtSignCapability = defineDomainCapability(
 		name: 'secretJwtSign',
 		contextRuns: 'deny',
 		orgPermission: 'secret:use',
-		description:
-			"Sign a JWT with a key stored in a saved secret without revealing the key or the JWT. The returned jwt is a sealed handle: put it in a fetch header or body to the aud URL's domain (or send_to_host) and Kody fills the signed JWT there; a token endpoint's access_token comes back sealed the same way. HMAC algorithms (HS256, HS384, HS512) use key material from the secret; RS*, PS*, ES*, and EdDSA use a PKCS#8 PEM private key. This generic primitive only signs caller-provided header and claims; package or execute code should perform any OAuth token exchange separately.",
+		description: `Sign a JWT with a key stored in a saved secret without revealing the key or the JWT. The returned jwt is a sealed handle: put it in a fetch header or body to the domain of an https aud claim or of send_to_host and Kody fills the signed JWT there. Pass send_to_host when aud is not an https URL; starting ${jwtSignSendToHostRequiredDate} (America/Denver) a call with neither is refused. A token endpoint's access_token comes back sealed the same way. HMAC algorithms (HS256, HS384, HS512) use key material from the secret; RS*, PS*, ES*, and EdDSA use a PKCS#8 PEM private key. This generic primitive only signs caller-provided header and claims; package or execute code should perform any OAuth token exchange separately.`,
 		keywords: [
 			'jwt',
 			'sign',
@@ -105,7 +114,7 @@ export const jwtSignCapability = defineDomainCapability(
 				.string()
 				.optional()
 				.describe(
-					'Deprecation notice when the sealed JWT may fill on any host. Pass send_to_host to bind it.',
+					`Deprecation notice when the sealed JWT may fill on any host. Pass send_to_host to bind it; starting ${jwtSignSendToHostRequiredDate} the call is refused instead.`,
 				),
 		}),
 		async handler(args, ctx: CapabilityContext) {
@@ -150,12 +159,16 @@ export const jwtSignCapability = defineDomainCapability(
 				)
 			}
 
-			// Without an https aud or send_to_host the JWT stays sealed and
-			// org-bound but may fill on any host, so existing callers keep working
-			// until send_to_host is required (kody-hq/kody#4456).
 			const audienceDomains = sealedJwtDomains(args.claims, args.send_to_host)
-			const domains =
-				audienceDomains.length > 0 ? audienceDomains : [anySealedTokenDomain]
+			const binding = audienceDomains.length
+				? { domains: audienceDomains }
+				: await bindAnyHostJwt({
+						env: ctx.env,
+						caller: {
+							ownerId: secretUserId,
+							packageId: packageStamp?.packageId ?? '',
+						},
+					})
 			const jwt = await signJwtWithSecret(resolved.value, {
 				algorithm: args.algorithm,
 				keyEncoding: args.key_encoding,
@@ -171,23 +184,88 @@ export const jwtSignCapability = defineDomainCapability(
 					to: {
 						org: secretUserId,
 						binding: ctx.credentialClientBinding ?? null,
-						domains,
+						domains: binding.domains,
 						source: 'jwt-sign',
+						...(binding.anyHostPackageId === undefined
+							? {}
+							: { anyHostPackageId: binding.anyHostPackageId }),
 					},
 					expiresInSeconds:
 						exp === null ? null : exp - Math.floor(Date.now() / 1000),
 				}),
 				algorithm: args.algorithm,
-				...(audienceDomains.length > 0
-					? {}
-					: { warning: secretJwtSignAnyHostWarning }),
+				...(binding.warning ? { warning: binding.warning } : {}),
 			}
 		},
 	},
 )
 
-export const secretJwtSignAnyHostWarning =
-	'Deprecated: this sealed JWT may fill on any host because the "aud" claim is not an https URL and send_to_host was not passed. Pass send_to_host (for example "api.example.com"); a future release will require it.'
+export const secretJwtSignAnyHostWarning = `Deprecated: this sealed JWT may fill on any host because the "aud" claim is not an https URL and send_to_host was not passed. Pass send_to_host (for example "api.example.com"). Starting ${jwtSignSendToHostRequiredDate} (America/Denver), secretJwtSign refuses this call.`
+
+export const secretJwtSignSendToHostRequiredMessage = `secretJwtSign needs send_to_host (for example "api.example.com") when the "aud" claim is not an https URL. Since ${jwtSignSendToHostRequiredDate} a sealed JWT no longer fills on any host. Pass the host this JWT is sent to as send_to_host.`
+
+export const secretJwtSignNewAnyHostCallerMessage = `secretJwtSign needs send_to_host (for example "api.example.com") when the "aud" claim is not an https URL. A sealed JWT that fills on any host is deprecated: only callers that used it before ${jwtSignNewAnyHostCallerCutoffDate} keep it, until ${jwtSignSendToHostRequiredDate}. Pass the host this JWT is sent to as send_to_host.`
+
+function secretJwtSignInferredHostWarning(host: string) {
+	return `send_to_host was not passed, so Kody bound this sealed JWT to the domain of ${host}, the only domain this caller's earlier any-host JWTs were sent to. Pass send_to_host: "${host}" to make it explicit.`
+}
+
+/**
+ * Seal target for a JWT with neither an https `aud` nor `send_to_host`
+ * (kody-hq/kody#4456). Before the required date only grandfathered callers
+ * (pairs seen before the new-caller cutoff)
+ * get an any-host JWT; from then a caller whose any-host JWTs all went to
+ * one registrable domain is bound there, and any other is refused.
+ */
+async function bindAnyHostJwt(input: {
+	env: CapabilityContext['env']
+	caller: JwtSignAnyHostCaller
+}): Promise<{
+	domains: Array<string>
+	anyHostPackageId?: string
+	warning?: string
+}> {
+	const { env, caller } = input
+	if (!jwtSignMayFillAnyHost()) {
+		const host = await inferJwtSignSendToHost({ env, caller })
+		const domain = host ? sealedTokenDomainForUrl(`https://${host}`) : null
+		if (!host || !domain) {
+			recordJwtSignAnyHostEvent({
+				env,
+				kind: jwtSignAnyHostEventKinds.refused,
+				caller,
+			})
+			throw new McpCallerError(secretJwtSignSendToHostRequiredMessage)
+		}
+		recordJwtSignAnyHostEvent({
+			env,
+			kind: jwtSignAnyHostEventKinds.inferred,
+			caller,
+		})
+		return {
+			domains: [domain],
+			warning: secretJwtSignInferredHostWarning(host),
+		}
+	}
+	if (!(await isJwtSignAnyHostCallerGrandfathered({ env, caller }))) {
+		recordJwtSignAnyHostEvent({
+			env,
+			kind: jwtSignAnyHostEventKinds.refused,
+			caller,
+		})
+		throw new McpCallerError(secretJwtSignNewAnyHostCallerMessage)
+	}
+	recordJwtSignAnyHostEvent({
+		env,
+		kind: jwtSignAnyHostEventKinds.sealed,
+		caller,
+	})
+	return {
+		domains: [anySealedTokenDomain],
+		anyHostPackageId: caller.packageId,
+		warning: secretJwtSignAnyHostWarning,
+	}
+}
 
 function sealedJwtDomains(
 	claims: Record<string, unknown>,

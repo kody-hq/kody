@@ -10,7 +10,10 @@ import {
 	assertTokenSafeApiUrl,
 	callCapabilityProxy,
 	capabilityProxyGatewayDeadlineMs,
+	CapabilityProxyError,
 	capabilityProxyHttpTimeoutMs,
+	capabilityProxyTimeoutEnvVar,
+	capabilityProxyTimeoutMs,
 	capabilityProxyUrl,
 	checkCredentialCallMap,
 	createCapabilityProxyFetch,
@@ -450,6 +453,47 @@ test('CapabilityProxy HTTP timeouts outlast the 5-minute gateway deadline plus o
 	)
 })
 
+test('KODY_CAPABILITY_PROXY_TIMEOUT_MS overrides the CapabilityProxy idle limit', () => {
+	assert.equal(capabilityProxyTimeoutMs({}), capabilityProxyHttpTimeoutMs)
+	assert.equal(
+		capabilityProxyTimeoutMs({ [capabilityProxyTimeoutEnvVar]: ' ' }),
+		capabilityProxyHttpTimeoutMs,
+	)
+	assert.equal(
+		capabilityProxyTimeoutMs({ [capabilityProxyTimeoutEnvVar]: '1800000' }),
+		1_800_000,
+	)
+	for (const bad of ['0', '-5', '1.5', 'ten']) {
+		assert.throws(
+			() => capabilityProxyTimeoutMs({ [capabilityProxyTimeoutEnvVar]: bad }),
+			/KODY_CAPABILITY_PROXY_TIMEOUT_MS must be a whole number/,
+		)
+	}
+})
+
+test('createCapabilityProxyFetch reads KODY_CAPABILITY_PROXY_TIMEOUT_MS', async () => {
+	const previous = process.env[capabilityProxyTimeoutEnvVar]
+	process.env[capabilityProxyTimeoutEnvVar] = '1000'
+	try {
+		await withDelayedHeadersServer(2_500, async (apiUrl) => {
+			await assert.rejects(
+				() =>
+					callCapabilityProxy({
+						apiUrl,
+						token,
+						fetchFn: createCapabilityProxyFetch({ useEnvProxy: false }),
+						path: ['kody', 'emailSend'],
+						args: [{}],
+					}),
+				/sent nothing for 1000ms/,
+			)
+		})
+	} finally {
+		if (previous === undefined) delete process.env[capabilityProxyTimeoutEnvVar]
+		else process.env[capabilityProxyTimeoutEnvVar] = previous
+	}
+})
+
 test('the CapabilityProxy sender governs how long a call waits for headers', async () => {
 	await withDelayedHeadersServer(2_500, async (apiUrl) => {
 		const call = (timeoutMs: number) =>
@@ -462,7 +506,16 @@ test('the CapabilityProxy sender governs how long a call waits for headers', asy
 			})
 		await assert.rejects(
 			() => call(1_000),
-			/Could not reach the Kody API[\s\S]*sent nothing for 1000ms/,
+			(error: unknown) => {
+				assert.ok(error instanceof CapabilityProxyError)
+				assert.equal(error.code, 'capability_proxy_timeout')
+				assert.equal(error.sent, 'unknown')
+				assert.doesNotMatch(error.message, /Could not reach/)
+				assert.match(error.message, /sent nothing for 1000ms/)
+				assert.match(error.message, /may still be running/)
+				assert.match(error.message, /KODY_CAPABILITY_PROXY_TIMEOUT_MS=<ms>/)
+				return true
+			},
 		)
 		assert.deepEqual(await call(10_000), { ok: true })
 	})
@@ -696,4 +749,71 @@ test('with env proxy enabled, CapabilityProxy calls go through HTTP_PROXY', asyn
 			await new Promise<void>((resolve) => proxy.close(() => resolve()))
 		}
 	})
+})
+
+test('callCapabilityProxy reports a profile denial without a re-mint hint', async () => {
+	const serverMessage =
+		'Profile "helper" was not granted secret:use on credential "notes-api-key".'
+	for (const error of [
+		{
+			code: 'profile_grant',
+			message: serverMessage,
+			details: { required_permission: 'secret:use', denial: 'profile_grant' },
+		},
+		// Older servers sent profile denials as insufficient_scope.
+		{
+			code: 'insufficient_scope',
+			message: serverMessage,
+			details: { required_permission: 'secret:use', denial: 'profile_grant' },
+		},
+	]) {
+		const { fetchFn } = respondWith(403, { error })
+		await assert.rejects(
+			() =>
+				callCapabilityProxy({
+					apiUrl: 'https://api.kody.codes',
+					token,
+					fetchFn,
+					path: ['kody', 'secretUse'],
+					args: [{}],
+				}),
+			(thrown: Error) => {
+				assert.match(thrown.message, /^Kody returned profile_grant: /)
+				assert.match(thrown.message, /Profile "helper" was not granted/)
+				assert.match(thrown.message, /credential "notes-api-key"/)
+				assert.doesNotMatch(thrown.message, /token is missing/)
+				assert.doesNotMatch(thrown.message, /cliCredentialBootstrap/)
+				return true
+			},
+		)
+	}
+})
+
+test('callCapabilityProxy does not suggest a grant for an inactive profile', async () => {
+	const { fetchFn } = respondWith(403, {
+		error: {
+			code: 'profile_inactive',
+			message: 'Profile "helper" is revoked, so it cannot use secret:use.',
+			details: {
+				required_permission: 'secret:use',
+				denial: 'profile_inactive',
+			},
+		},
+	})
+	await assert.rejects(
+		() =>
+			callCapabilityProxy({
+				apiUrl: 'https://api.kody.codes',
+				token,
+				fetchFn,
+				path: ['kody', 'secretUse'],
+				args: [{}],
+			}),
+		(thrown: Error) => {
+			assert.match(thrown.message, /^Kody returned profile_inactive: /)
+			assert.match(thrown.message, /active profile/)
+			assert.doesNotMatch(thrown.message, /has to grant it/)
+			return true
+		},
+	)
 })

@@ -1,12 +1,12 @@
 /** @jsxImportSource @emotion/react */
 
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
-import { type FormEvent } from 'react'
+import type { FormEvent } from 'react'
 import { normalizeProviderKey } from '@kody-internal/shared/url-hosts.ts'
 import { SiteLink } from '../components/site-link.tsx'
-import {
-	type ConnectOauthExistingConnection,
-	type ConnectOauthLoaderData,
+import type {
+	ConnectOauthExistingConnection,
+	ConnectOauthLoaderData,
 } from '#universal/loader-data.ts'
 import { docHref } from '#universal/docs-nav.ts'
 import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.tsx'
@@ -35,7 +35,7 @@ import {
 	connectOauthChooserOptionMarkSize,
 	filterConnectOauthChooserOptions,
 } from '#client/routes/connect-oauth-chooser-list.ts'
-import { type ConnectOauthConfig } from '#client/routes/connect-oauth-config.ts'
+import type { ConnectOauthConfig } from '#client/routes/connect-oauth-config.ts'
 import {
 	type ConnectOauthChooserOption,
 	type ConnectOauthStatusTone,
@@ -66,6 +66,22 @@ export function wouldReplaceLiveApp(input: {
 		(identity.deviceAuthorizationUrl ?? null) !==
 			(input.next.deviceAuthorizationUrl ?? null) ||
 		identity.flow !== input.next.flow
+	)
+}
+
+/**
+ * A stored confidential secret is bound to the saved client ID. Editing the
+ * client ID must collect a new secret before token exchange, or the callback
+ * fails with "No saved client secret matches this client ID and token URL."
+ */
+export function storedClientSecretApplies(input: {
+	hasStoredClientSecret: boolean
+	storedClientId: string
+	nextClientId: string
+}) {
+	return (
+		input.hasStoredClientSecret &&
+		input.nextClientId.trim() === input.storedClientId.trim()
 	)
 }
 

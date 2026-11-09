@@ -7,10 +7,10 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
-import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
 import { sha256Base64Url } from '@kody-internal/shared/sha256.ts'
-import { type PackageAppServeOwner } from '#worker/package-runtime/package-app-serve.ts'
+import type { PackageAppServeOwner } from '#worker/package-runtime/package-app-serve.ts'
 
 /**
  * Short-lived signed access ticket for one visitor on one package app.
@@ -64,7 +64,7 @@ type StoredTicket = {
 	oe: string
 }
 
-const orgRoles: ReadonlyArray<OrgRole> = ['owner', 'member', 'billing']
+const orgRoles: ReadonlyArray<OrgRole> = ['owner', 'admin', 'member', 'billing']
 
 export function parsePackageAppTicketKeys(raw: string | undefined) {
 	return (raw ?? '')

@@ -6,7 +6,7 @@ import { secretAuthorityHeaderName } from '#mcp/secrets/secret-authority.ts'
 import { capabilityProxyCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { authorizeLocalExecutePackageBinding } from './capability-proxy-package-grants.ts'
-import { type ApiInvocationContext } from './context.ts'
+import type { ApiInvocationContext } from './context.ts'
 import { ApiError, invalidRequest } from './errors.ts'
 import {
 	assertContextRunRuntimePathAllowed,
@@ -24,6 +24,8 @@ export const gatewayFetchUrlHeaderName = 'X-Kody-Gateway-Url'
 export const gatewayFetchMethodHeaderName = 'X-Kody-Gateway-Method'
 export const gatewayFetchPackageIdHeaderName = 'X-Kody-Gateway-Package-Id'
 export const gatewayFetchHeadersHeaderName = 'X-Kody-Gateway-Headers'
+/** Set on Kody's own error responses for this route; the value is the error code. */
+export const gatewayFetchErrorHeaderName = 'X-Kody-Gateway-Error'
 
 export function gatewayFetchUploadLimitMessage() {
 	return `Request body exceeds the Worker upload limit of ${maxGatewayFetchUploadBytes} bytes (100 MiB).`

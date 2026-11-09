@@ -2,7 +2,7 @@ import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
 import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
 import { assertPackageCanAccessResolvedSecret } from '#mcp/secrets/package-access.ts'
@@ -20,7 +20,7 @@ export const secretDisconnectCapability = defineDomainCapability(
 		contextRuns: 'deny',
 		orgPermission: 'secret:write',
 		description:
-			'Disconnect a secret: clear its value but keep the credential row, placement, hosts, and grants. Reconnect with secretSet (same name) to restore the value into the same row. Distinct from secretDelete, which removes the credential and every record of it. Package Connect/Disconnect flows that previously called secretDelete on package-scope secrets should use this instead; package-runtime secretDelete on package scope also disconnects for compatibility.',
+			'Disconnect a secret: clear its value but keep the credential row, placement, hosts, and grants. Reconnect with secretSet (same name) to restore the value into the same row. Distinct from secretDelete, which removes the credential and every record of it. Package Connect/Disconnect uses secretDisconnect on package-scope secrets; package-runtime secretDelete on package scope also disconnects.',
 		keywords: [
 			'secret',
 			'disconnect',

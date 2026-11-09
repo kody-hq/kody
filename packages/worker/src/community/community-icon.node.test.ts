@@ -12,7 +12,7 @@ import {
 	refreshCommunityIconForPackagePublish,
 	renderCommunityIconFallbackPng,
 } from './community-icon.ts'
-import { type CommunityListingRecord } from './types.ts'
+import type { CommunityListingRecord } from './types.ts'
 import {
 	createFakeImagesBinding,
 	tinyWebpBytes,
@@ -24,7 +24,6 @@ const mocks = vi.hoisted(() => ({
 	getEntitySourceById: vi.fn(),
 	getCommunityListingById: vi.fn(),
 	getCommunityListingByOwnerAndPackage: vi.fn(),
-	readCommunitySnapshot: vi.fn(),
 }))
 
 vi.mock('#worker/repo/artifact-file.ts', () => ({
@@ -41,9 +40,7 @@ vi.mock('./repo.ts', () => ({
 		mocks.getCommunityListingByOwnerAndPackage,
 }))
 
-vi.mock('./snapshot.ts', () => ({
-	readCommunitySnapshot: mocks.readCommunitySnapshot,
-}))
+vi.mock('./snapshot.ts', () => ({}))
 
 const svgSource =
 	'<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><circle cx="32" cy="32" r="30" fill="#2563eb"/></svg>'
@@ -211,20 +208,6 @@ const entitySourceRow = {
 	updated_at: '2026-07-10T00:00:00.000Z',
 }
 
-function mockSnapshot(
-	communityIconPath: string,
-	files: Record<string, string> = {},
-) {
-	mocks.readCommunitySnapshot.mockResolvedValue({
-		version: 1,
-		listingId: listing.id,
-		pinnedCommit: listing.pinnedCommit,
-		files,
-		communityIconPath,
-		createdAt: '2026-07-10T00:00:00.000Z',
-	})
-}
-
 function mockArtifactIcon(path: string, bytes: Uint8Array) {
 	mocks.getEntitySourceById.mockResolvedValue(entitySourceRow)
 	mocks.getCommunityListingById.mockResolvedValue(listing)
@@ -302,8 +285,7 @@ test('community raster icon formats are validated then fitted to WebP', async ()
 	expect(findCommunityIconPath({ 'package.json': '{}' })).toBeNull()
 })
 
-test('pinned root SVG icons missing from older snapshots load from Artifacts', async () => {
-	mockSnapshot('icon.svg')
+test('pinned SVG icons load from Artifacts at the pinned commit', async () => {
 	mockArtifactIcon('icon.svg', svgBytes)
 
 	const result = await getPinnedIcon(createIconEnv().env)
@@ -312,31 +294,22 @@ test('pinned root SVG icons missing from older snapshots load from Artifacts', a
 	expect(mocks.readFirstArtifactFileAtCommit).toHaveBeenCalledWith(
 		expect.objectContaining({
 			commit: listing.pinnedCommit,
-			filePaths: ['icon.svg'],
 		}),
 	)
 })
 
-test('community SVG icons load directly from the retained listing snapshot', async () => {
-	mockSnapshot('community-icon.svg', { 'community-icon.svg': svgSource })
+test('community icons without a package source row throw so the route serves an uncached monogram', async () => {
+	mocks.getEntitySourceById.mockResolvedValue(null)
 	mocks.getCommunityListingById.mockResolvedValue(listing)
 
-	const result = await getPinnedIcon(createIconEnv().env)
-
-	expect(result.descriptor).toMatchObject({
-		sourcePath: 'community-icon.svg',
-		contentType: 'image/webp',
-	})
-	expect(
-		new Uint8Array(await new Response(result.object.body).arrayBuffer()),
-	).toEqual(tinyWebpBytes)
-	expect(mocks.getEntitySourceById).not.toHaveBeenCalled()
+	await expect(getPinnedIcon(createIconEnv().env)).rejects.toThrow(
+		'has an invalid package source',
+	)
 	expect(mocks.readFirstArtifactFileAtCommit).not.toHaveBeenCalled()
 })
 
 test('community icon descriptor caches the R2 reference and repairs a dangling reference', async () => {
 	const { env, kvValues, r2Values } = createIconEnv()
-	mockSnapshot('community-icon.png')
 	mockArtifactIcon('community-icon.png', createPngHeader(128, 128))
 
 	const first = await getPinnedIcon(env)
@@ -364,7 +337,6 @@ test('community icon cache write loses the race to account deletion', async () =
 	const { env, kvValues } = createIconEnv(
 		createCommunityIconDeletionRaceDbMock(),
 	)
-	mockSnapshot('community-icon.png')
 	mockArtifactIcon('community-icon.png', createPngHeader(128, 128))
 	await getPinnedIcon(env)
 	// The deletion race is detected via the D1 deleting_at point gate:
@@ -373,10 +345,9 @@ test('community icon cache write loses the race to account deletion', async () =
 	expect(kvValues.size).toBe(0)
 })
 
-test('community icons ahead of the pinned snapshot load from the artifact repo at the icon commit', async () => {
+test('community icons ahead of the pinned commit load from the artifact repo at the icon commit', async () => {
 	const iconCommit = 'def456'
 	const publishedListing = { ...listing, iconCommit }
-	mocks.readCommunitySnapshot.mockResolvedValue(null)
 	mockArtifactIcon('community-icon.png', createPngHeader(128, 128))
 	mocks.getEntitySourceById.mockResolvedValue({
 		...entitySourceRow,
@@ -396,8 +367,6 @@ test('community icons ahead of the pinned snapshot load from the artifact repo a
 	expect(mocks.readFirstArtifactFileAtCommit).toHaveBeenCalledWith(
 		expect.objectContaining({ commit: iconCommit }),
 	)
-	// The pinned snapshot is never consulted for ahead-of-snapshot commits.
-	expect(mocks.readCommunitySnapshot).not.toHaveBeenCalled()
 })
 
 test('deleteCommunityIconAssets removes superseded revisions and keeps servable commits', async () => {

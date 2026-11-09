@@ -1,9 +1,9 @@
 import { utcMonthKey } from '@kody-internal/shared/date-keys.ts'
-import {
-	type AccountCreditsDebitMeter,
-	type AccountCreditsLimit,
-	type AccountUsageComputeOverage,
-	type AccountUsageCredits,
+import type {
+	AccountCreditsDebitMeter,
+	AccountCreditsLimit,
+	AccountUsageComputeOverage,
+	AccountUsageCredits,
 } from '#universal/loader-data.ts'
 import {
 	creditAutoRefillMinThresholdCents,
@@ -14,7 +14,7 @@ import {
 	creditTopUpPackCents,
 } from '#universal/credits.ts'
 import { isCustomerFacingComputeMeter } from '#universal/compute-overage.ts'
-import { type CreditsAlarmAutoRefill } from '#universal/usage-presentation.ts'
+import type { CreditsAlarmAutoRefill } from '#universal/usage-presentation.ts'
 import {
 	creditsUnlockedResources,
 	entitlementResourceLabels,
@@ -96,7 +96,8 @@ export function listCreditsCeilingLimits(
 
 export type AccountCreditsUser = {
 	id: number
-	stableUserId: string
+	/** `orgs.id` keying the wallet, Stripe metadata, and top-up reference. */
+	orgId: string
 	stripeCustomerId: string | null
 	entitlement: UserEntitlement
 	/** Paying for the purchasable Pro, independent of Stripe customer id. */
@@ -119,55 +120,18 @@ export function canBuyCreditsForUser(input: {
 }
 
 /**
- * Credits buyer for one organization. Personal orgs keep the users⋈orgs
- * join; team orgs read plan/customer columns from `orgs` and use that org's
- * id as the wallet key (same `user_id` column as metering).
+ * Credits buyer for one organization. Personal and team orgs alike use
+ * `orgs.id` as the wallet key (same `user_id` column as metering) — for a
+ * personal org that is `users.personal_org_id`, which is not always
+ * `users.stable_user_id`. Top-up completion verifies against the same id.
  */
 export async function loadAccountCreditsUser(input: {
 	env: Env
 	userId: number
 	/** Organization whose wallet and Stripe customer this mutates. */
 	orgId: string
-	/** When true, `orgId` is the signed-in person's signup organization. */
-	personal: boolean
 	now?: Date
 }): Promise<AccountCreditsUser | null> {
-	if (input.personal) {
-		const row = await input.env.APP_DB.prepare(
-			`SELECT u.id, u.stable_user_id, o.stripe_customer_id, ${userEntitlementColumnsSql('o')}
-			 FROM users u
-			 INNER JOIN orgs o ON o.id = COALESCE(NULLIF(TRIM(u.personal_org_id), ''), u.stable_user_id)
-			 WHERE u.id = ?${andLiveDeletedAtSql('u')}${andLiveDeletedAtSql('o')}`,
-		)
-			.bind(input.userId)
-			.first<
-				UserEntitlementRow & {
-					id: number
-					stable_user_id: string
-					stripe_customer_id: string | null
-				}
-			>()
-		if (!row) return null
-		const entitlement = await resolveUserEntitlementFromRow({
-			db: input.env.APP_DB,
-			stableUserId: row.stable_user_id,
-			row,
-			now: input.now,
-		})
-		const stripeCustomerId = row.stripe_customer_id?.trim() || null
-		return {
-			id: row.id,
-			stableUserId: row.stable_user_id,
-			stripeCustomerId,
-			entitlement,
-			hasPaidProSubscription: isPayingForCreditsPro(row),
-			canBuyCredits: canBuyCreditsForUser({
-				row,
-				entitlement,
-				stripeCustomerId,
-			}),
-		}
-	}
 	const row = await input.env.APP_DB.prepare(
 		`SELECT stripe_customer_id, ${userEntitlementColumnsSql()}
 		 FROM orgs
@@ -185,7 +149,7 @@ export async function loadAccountCreditsUser(input: {
 	const stripeCustomerId = row.stripe_customer_id?.trim() || null
 	return {
 		id: input.userId,
-		stableUserId: input.orgId,
+		orgId: input.orgId,
 		stripeCustomerId,
 		entitlement,
 		hasPaidProSubscription: isPayingForCreditsPro(row),

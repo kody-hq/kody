@@ -8,13 +8,22 @@ import {
 	readAccountActivityFilters,
 	readAccountActivitySelectedRunId,
 } from '#app/account-activity-data.ts'
-import { type RunRecord } from '#worker/run-records/types.ts'
+import type { RunRecord } from '#worker/run-records/types.ts'
 import { sessionRequestContext } from '#worker/test-support/request-context.ts'
 
 const mockModule = vi.hoisted(() => ({
 	listRunRecords: vi.fn(),
 	getRunRecord: vi.fn(),
 	summarizeRunRecords: vi.fn(),
+	runLogRpc: vi.fn(() => ({
+		packageAppCpuSummary: async () => ({
+			since: '2026-01-01T00:00:00.000Z',
+			retentionDays: 7,
+			warmSampleRate: 0.05,
+			apps: [],
+			slowColdRequests: [],
+		}),
+	})),
 }))
 
 vi.mock('#worker/run-records/service.ts', () => mockModule)

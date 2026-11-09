@@ -2,7 +2,8 @@ import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 
 /**
- * Advisory scan of migration filenames on open pull requests. Pagination
+ * Advisory scan of files other open pull requests add under one directory
+ * (migration prefixes, decision-record numbers). Pagination
  * follows tools/ci/merge-conflict-check.ts `listOpenPullRequests`: open pulls
  * against one base ref, 100 per page, hard stop past the page cap. A missing
  * token or repository skips the scan. Callers must not fail migration checks
@@ -24,7 +25,7 @@ export type OpenPullRequestFileClaim = {
 	filenames: Array<string>
 }
 
-export type OpenPullRequestMigrationScan =
+export type OpenPullRequestFileScan =
 	| {
 			status: 'skipped'
 			reason: 'no-token' | 'no-repository' | 'unauthorized' | 'error'
@@ -33,9 +34,18 @@ export type OpenPullRequestMigrationScan =
 	| {
 			status: 'ok'
 			claims: Array<OpenPullRequestFileClaim>
+			/** Open pull requests with too many files to list; not scanned. */
+			oversizedPullNumbers?: Array<number>
 	  }
 
 type FetchLike = typeof fetch
+
+/** One file from a pull request file list, relative to the scanned directory. */
+export type OpenPullRequestFile = {
+	basename: string
+	/** GitHub file status: added, modified, removed, renamed, copied, ... */
+	status: string
+}
 
 export function githubTokenFromEnv(env: NodeJS.ProcessEnv): string | null {
 	const ghToken = env.GH_TOKEN?.trim()
@@ -84,8 +94,7 @@ function repositorySlug(owner: string | undefined, repo: string | undefined) {
 	return repositorySlugPattern.test(slug) ? slug : null
 }
 
-export async function scanOpenPullRequestMigrationPrefixes(input: {
-	migrationsDir: string
+type OpenPullRequestScanOptions = {
 	env?: NodeJS.ProcessEnv
 	cwd?: string
 	fetchImpl?: FetchLike
@@ -93,7 +102,29 @@ export async function scanOpenPullRequestMigrationPrefixes(input: {
 	token?: string | null
 	baseRef?: string
 	currentPullNumber?: number | null
-}): Promise<OpenPullRequestMigrationScan> {
+}
+
+export function scanOpenPullRequestMigrationPrefixes(
+	input: OpenPullRequestScanOptions & { migrationsDir: string },
+): Promise<OpenPullRequestFileScan> {
+	return scanOpenPullRequestFiles({
+		...input,
+		directory: input.migrationsDir,
+		claimsFile: (file) =>
+			file.status !== 'removed' && file.basename.endsWith('.sql'),
+	})
+}
+
+/**
+ * Lists, per other open pull request, the files directly inside `directory`
+ * that `claimsFile` accepts.
+ */
+export async function scanOpenPullRequestFiles(
+	input: OpenPullRequestScanOptions & {
+		directory: string
+		claimsFile: (file: OpenPullRequestFile) => boolean
+	},
+): Promise<OpenPullRequestFileScan> {
 	const env = input.env ?? process.env
 	const cwd = input.cwd ?? process.cwd()
 	const repository =
@@ -121,15 +152,16 @@ export async function scanOpenPullRequestMigrationPrefixes(input: {
 			? input.currentPullNumber
 			: resolveCurrentPullNumber(env, cwd)
 	try {
-		const claims = await listClaimedMigrationFiles({
+		const { claims, oversizedPullNumbers } = await listClaimedFiles({
 			repository,
 			token,
 			baseRef,
-			migrationsDir: relativeMigrationsDir(input.migrationsDir, cwd),
+			directory: relativeDirectory(input.directory, cwd),
+			claimsFile: input.claimsFile,
 			currentPullNumber,
 			fetchImpl: input.fetchImpl ?? fetch,
 		})
-		return { status: 'ok', claims }
+		return { status: 'ok', claims, oversizedPullNumbers }
 	} catch (error) {
 		if (
 			error instanceof GithubRequestError &&
@@ -224,8 +256,8 @@ function commandOutput(
 	return stdout.length > 0 ? stdout : null
 }
 
-function relativeMigrationsDir(migrationsDir: string, cwd: string) {
-	const relative = path.relative(cwd, path.resolve(cwd, migrationsDir))
+function relativeDirectory(directory: string, cwd: string) {
+	const relative = path.relative(cwd, path.resolve(cwd, directory))
 	return relative.split(path.sep).join('/').replace(/\/$/, '')
 }
 
@@ -239,11 +271,12 @@ class GithubRequestError extends Error {
 	}
 }
 
-async function listClaimedMigrationFiles(input: {
+async function listClaimedFiles(input: {
 	repository: string
 	token: string
 	baseRef: string
-	migrationsDir: string
+	directory: string
+	claimsFile: (file: OpenPullRequestFile) => boolean
 	currentPullNumber: number | null
 	fetchImpl: FetchLike
 }) {
@@ -264,21 +297,37 @@ async function listClaimedMigrationFiles(input: {
 		(pull) => pull.number !== input.currentPullNumber,
 	)
 	const claims: Array<OpenPullRequestFileClaim> = []
+	const oversizedPullNumbers: Array<number> = []
 	await mapPool(selected, openPullRequestScanConcurrency, async (pull) => {
-		const filenames = await listMigrationFilenames({
+		const filenames = await listClaimedFilenames({
 			owner,
 			repo,
 			pullNumber: pull.number,
-			migrationsDir: input.migrationsDir,
+			directory: input.directory,
+			claimsFile: input.claimsFile,
 			token: input.token,
 			fetchImpl: input.fetchImpl,
 			signal,
 		})
+		if (filenames === null) {
+			oversizedPullNumbers.push(pull.number)
+			return
+		}
 		if (filenames.length === 0) return
 		claims.push({ number: pull.number, filenames })
 	})
 	claims.sort((left, right) => left.number - right.number)
-	return claims
+	oversizedPullNumbers.sort((left, right) => left - right)
+	return { claims, oversizedPullNumbers }
+}
+
+/** Advisory line naming open pull requests too large to scan, or null. */
+export function formatOversizedPullRequestsWarning(
+	label: string,
+	pullNumbers: ReadonlyArray<number> = [],
+) {
+	if (pullNumbers.length === 0) return null
+	return `${label} scan skipped ${pullNumbers.map((number) => `#${String(number)}`).join(', ')} (more than ${String(pullFilesMaxPages * pullFilesPageSize)} changed files).`
 }
 
 async function listOpenPullRequests(input: {
@@ -314,17 +363,19 @@ async function listOpenPullRequests(input: {
 	)
 }
 
-async function listMigrationFilenames(input: {
+async function listClaimedFilenames(input: {
 	owner: string
 	repo: string
 	pullNumber: number
-	migrationsDir: string
+	directory: string
+	claimsFile: (file: OpenPullRequestFile) => boolean
 	token: string
 	fetchImpl: FetchLike
 	signal: AbortSignal
 }) {
 	const filenames: Array<string> = []
-	for (let page = 1; page <= pullFilesMaxPages; page += 1) {
+	// One page past the cap tells "exactly at the cap" apart from "over it".
+	for (let page = 1; page <= pullFilesMaxPages + 1; page += 1) {
 		const url = new URL(
 			`https://api.github.com/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.repo)}/pulls/${String(input.pullNumber)}/files`,
 		)
@@ -337,8 +388,13 @@ async function listMigrationFilenames(input: {
 			signal: input.signal,
 		})
 		const files = parsePullFiles(payload, input.pullNumber)
+		if (page > pullFilesMaxPages && files.length > 0) return null
 		for (const file of files) {
-			if (claimsMigrationFile(file, input.migrationsDir)) {
+			const basename = basenameInDirectory(file.filename, input.directory)
+			if (
+				basename !== null &&
+				input.claimsFile({ basename, status: file.status })
+			) {
 				filenames.push(file.filename)
 			}
 		}
@@ -347,21 +403,14 @@ async function listMigrationFilenames(input: {
 			return filenames
 		}
 	}
-	throw new GithubRequestError(
-		`Pull request ${String(input.pullNumber)} has more than ${String(pullFilesMaxPages * pullFilesPageSize)} files.`,
-		'error',
-	)
+	return null
 }
 
-function claimsMigrationFile(
-	file: { filename: string; status: string },
-	migrationsDir: string,
-) {
-	if (file.status === 'removed') return false
-	const normalizedFile = file.filename.replaceAll('\\', '/')
-	if (!normalizedFile.startsWith(`${migrationsDir}/`)) return false
-	const base = normalizedFile.slice(migrationsDir.length + 1)
-	return base.length > 0 && !base.includes('/') && base.endsWith('.sql')
+function basenameInDirectory(filename: string, directory: string) {
+	const normalizedFile = filename.replaceAll('\\', '/')
+	if (!normalizedFile.startsWith(`${directory}/`)) return null
+	const base = normalizedFile.slice(directory.length + 1)
+	return base.length > 0 && !base.includes('/') ? base : null
 }
 
 async function githubGet(input: {
@@ -377,7 +426,7 @@ async function githubGet(input: {
 			headers: {
 				Accept: 'application/vnd.github+json',
 				Authorization: `Bearer ${input.token}`,
-				'User-Agent': 'kody-migration-prefix-check',
+				'User-Agent': 'kody-open-pull-request-file-scan',
 				'X-GitHub-Api-Version': githubApiVersion,
 			},
 			signal: input.signal,
@@ -387,8 +436,8 @@ async function githubGet(input: {
 			error instanceof Error &&
 			(error.name === 'TimeoutError' || error.name === 'AbortError')
 		const message = timedOut
-			? 'GitHub migration prefix scan timed out.'
-			: `GitHub migration prefix scan failed: ${error instanceof Error ? error.message : String(error)}`
+			? 'GitHub open pull request file scan timed out.'
+			: `GitHub open pull request file scan failed: ${error instanceof Error ? error.message : String(error)}`
 		throw new GithubRequestError(redactToken(message, input.token), 'error')
 	}
 	const text = await response.text()

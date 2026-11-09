@@ -10,6 +10,8 @@ import {
 	createSecurityTxtHandler,
 	createOpenaiAppsChallengeHandler,
 } from '#app/handlers/agent-discovery.ts'
+import { createAppleAppSiteAssociationHandler } from '#app/desktop-app-links.ts'
+import { createDesktopDownloadHandler } from '#app/handlers/desktop-download.ts'
 import { createHealthHandler } from '#app/handlers/health.ts'
 import { createHealthComponentsHandler } from '#app/handlers/health-components.ts'
 import { createSentryTunnelHandler } from '#app/handlers/sentry-tunnel.ts'
@@ -106,6 +108,16 @@ export const securityTxtHttp = ({
 export const openaiAppsChallengeHttp = () =>
 	createOpenaiAppsChallengeHandler(getStartRequestEnv())()
 
+export const appleAppSiteAssociationHttp = () =>
+	createAppleAppSiteAssociationHandler()()
+
+export const desktopDownloadHttp = ({
+	request,
+}: {
+	request: Request
+	params: {}
+}) => createDesktopDownloadHandler()({ request })
+
 export const healthHttp = ({ request }: { request: Request; params: {} }) =>
 	createHealthHandler(getStartRequestEnv())({ request })
 
@@ -144,6 +156,18 @@ export const ogPageImageHttp = ({
 
 export const blogRssHttp = ({ request }: { request: Request; params: {} }) =>
 	createBlogRssHandler(getStartRequestEnv())({ request })
+
+export const blogCategoryRssHttp = ({
+	request,
+	params,
+}: {
+	request: Request
+	params: { category: string }
+}) =>
+	createBlogRssHandler(getStartRequestEnv())({
+		request,
+		category: params.category,
+	})
 
 export const blogPostMarkdownHttp = ({
 	params,
@@ -330,12 +354,14 @@ export const communityDetailAssetHttp = ({
 	})
 
 export const communityDetailIconHttp = ({
+	request,
 	params,
 }: {
 	request: Request
 	params: { listingId: string; iconCommit: string }
 }) =>
 	createCommunityIconHandler(getStartRequestEnv())({
+		request,
 		params: {
 			listingId: params.listingId,
 			iconCommit: params.iconCommit,

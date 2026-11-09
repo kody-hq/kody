@@ -1,14 +1,14 @@
 /**
  * `kody:runtime` for unpublished package runs (`kody dev`, local export/job/
  * webhook/subscription). Same CapabilityProxy bridge as local-execute, plus a
- * real `packageContext` and mock-backed `packageStorage()` hops.
+ * real `packageContext` and mock-backed `packageStorage()` hops. Package-local
+ * `kody.mcp.<server>.<tool>(args)` hops send the signed package binding as a
+ * second argument so origin acts as that package, claimed.
  */
 
 import { credentialClientRuntimeSource } from './credential-client-runtime-source.js'
 import {
 	kodyRuntimeStorageSymbolDescription,
-	localExecuteCompatibilityDate,
-	localExecuteCompatibilityFlags,
 	localGatewayFetchStreamRuntimeSource,
 	localWorkerModuleNames,
 	runSecretEnvVar,
@@ -33,13 +33,7 @@ export type PackageLocalContext = {
 	cookiePrefix: string
 }
 
-export {
-	localExecuteCompatibilityDate,
-	localExecuteCompatibilityFlags,
-	localWorkerModuleNames,
-	runSecretEnvVar,
-	runSecretHeader,
-}
+export { localWorkerModuleNames, runSecretEnvVar, runSecretHeader }
 
 /**
  * Runtime module for package-local workerd. `packageStorage()` hops through the
@@ -48,7 +42,10 @@ export {
  *
  * `packageBinding` must be a signed `kpb1.…` token from package-graph. Bare
  * package UUIDs are never accepted here — CapabilityProxy only trusts bindings
- * verified by `authorizeLocalExecutePackageBinding`.
+ * verified by `authorizeLocalExecutePackageBinding`. When a binding is set, CAF
+ * and oauthClientCredentials send it as `packageId`; `kody.mcp.<server>.<tool>`
+ * sends `{ packageBinding }` as a second argument so origin acts as that
+ * package. Older hosts ignore that second argument.
  */
 export function createPackageLocalRuntimeModuleSource(input: {
 	packageContext: PackageLocalContext
@@ -56,7 +53,9 @@ export function createPackageLocalRuntimeModuleSource(input: {
 	mockStorage: boolean
 	/**
 	 * Signed local-execute package binding (`kpb1.…`). When set, CAF and
-	 * oauthClientCredentials send it as `packageId` on CapabilityProxy hops.
+	 * oauthClientCredentials send it as `packageId` on CapabilityProxy hops;
+	 * `kody.mcp.<server>.<tool>` sends `{ packageBinding }` as a second
+	 * argument.
 	 */
 	packageBinding?: string
 }): string {
@@ -114,7 +113,34 @@ ${localGatewayFetchStreamRuntimeSource({
 		'kody:runtime is only available while a local package run is in progress.',
 })}
 
-export const kody = __kodyNamespace(['kody']);
+function __kodyLocalMcpNamespace(path) {
+	return new Proxy(function () {}, {
+		get(_target, property) {
+			if (typeof property === 'symbol' || property === 'then' || property === 'toJSON') {
+				return undefined;
+			}
+			return __kodyLocalMcpNamespace([...path, property]);
+		},
+		apply(_target, _thisArg, args) {
+			// kody.mcp.<server>.<tool>(args): the host acts as this package's
+			// signed binding. Older hosts ignore the second argument.
+			return __kodyCall(
+				path,
+				__kodyPackageBinding && path.length === 4
+					? [args[0], { packageBinding: __kodyPackageBinding }]
+					: args,
+			);
+		},
+	});
+}
+
+const __kodyRootNamespace = __kodyNamespace(['kody']);
+export const kody = new Proxy(__kodyRootNamespace, {
+	get(target, property, receiver) {
+		if (property === 'mcp') return __kodyLocalMcpNamespace(['kody', 'mcp']);
+		return Reflect.get(target, property, receiver);
+	},
+});
 
 export const workflows = {
 	create: async (input) => await __kodyCall(['workflows', 'create'], [input ?? {}]),

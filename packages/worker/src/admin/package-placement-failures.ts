@@ -6,7 +6,7 @@
  * secrets.
  */
 
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { mapWithConcurrency } from '#worker/admin/insights-runlog-snapshot.ts'
 import { listPackageCodemodRunItems } from '#worker/package-codemods/ledger.ts'
 import {

@@ -1,6 +1,7 @@
-import { type CommunityDetailApiPayload } from '../community-types.ts'
+import type { CommunityDetailApiPayload } from '../community-types.ts'
 import { createServerFn } from '@tanstack/react-start'
 import { notFound } from '@tanstack/react-router'
+import { parseRouteInput } from './route-input.ts'
 
 import { z } from 'zod'
 
@@ -40,13 +41,15 @@ export const loadCommunity = createServerFn({ method: 'GET' })
 		}
 	})
 
+const profileInput = z.object({
+	username: z.string().min(1),
+	query: z.string(),
+	limit: z.number().int().positive().max(100).optional(),
+})
+
 export const loadProfile = createServerFn({ method: 'GET' })
-	.validator(
-		z.object({
-			username: z.string().min(1),
-			query: z.string(),
-			limit: z.number().int().positive().max(100).optional(),
-		}),
+	.validator((data: z.input<typeof profileInput>) =>
+		parseRouteInput(profileInput, data),
 	)
 	.handler(async ({ data }) => {
 		const [

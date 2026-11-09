@@ -16,7 +16,7 @@ import { roleNames } from '#universal/permissions.ts'
 import { planNames } from '#universal/plans.ts'
 import { shouldDeferSiteAccessToActor } from '#mcp/capabilities/access-control.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 export type ActingAdminPerson = {
@@ -76,7 +76,7 @@ export const adminUserMetadataSchema = z.object({
 		.nullable()
 		.describe('Raw users.email_verified_at timestamp, or null if unverified.'),
 	plan: planNameSchema.describe(
-		'Manual entitlement grant (orgs.plan on the personal org). Manage plan writes this column. Ordinary Stripe subscribers keep this as free.',
+		'Manual entitlement grant (orgs.plan on the personal org). The org admin Plan panel and adminOrgPlanSet write this column. Ordinary Stripe subscribers keep this as free.',
 	),
 	manualPlan: planNameSchema.describe(
 		'Same as plan: the admin/manual grant on orgs.plan.',

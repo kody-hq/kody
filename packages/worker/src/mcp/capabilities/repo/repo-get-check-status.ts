@@ -4,7 +4,7 @@ import { defineDomainCapability } from '#mcp/capabilities/define-domain-capabili
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
-import { type RepoCheckKind } from '#worker/repo/checks.ts'
+import type { RepoCheckKind } from '#worker/repo/checks.ts'
 import {
 	repoCheckStatusOutputSchema,
 	repoSessionIdSchema,

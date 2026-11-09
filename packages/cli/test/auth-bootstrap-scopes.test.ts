@@ -20,6 +20,7 @@ import {
 } from '../src/auth-bootstrap.js'
 import { openCapabilityProxySession } from '../src/capability-proxy.js'
 import { runCli } from '../src/cli.js'
+import { localExecuteScopes } from '../src/defaults.js'
 import {
 	createFileBackend,
 	fileStorePath,
@@ -594,6 +595,42 @@ test('insufficientScopeMessage names the missing scope and the exact mint comman
 	)
 })
 
+test('local execute insufficient_scope lists every local-execute scope in one remint', async () => {
+	const fetchFn = (async () =>
+		json(
+			{
+				error: {
+					code: 'insufficient_scope',
+					message: 'This credential is not scoped for package:execute.',
+					details: {
+						required_permission: 'package:execute',
+						denial: 'credential_scope',
+						mint_scopes: ['org:execute', 'package:execute', 'package:write'],
+					},
+				},
+			},
+			403,
+		)) as typeof fetch
+	await withCliEnv(fetchFn, async () => {
+		await assert.rejects(
+			() => openCapabilityProxySession({ apiUrl, token: 'kody_at_x', fetchFn }),
+			(error: Error) => {
+				const scopes = [
+					...new Set([...localExecuteScopes, 'package:write']),
+				].sort()
+				assert.ok(
+					error.message.includes(
+						`npx @kodycodes/cli auth bootstrap --lifetime short --scopes ${scopes.join(',')}`,
+					),
+					error.message,
+				)
+				assert.match(error.message, /adds them all at once/)
+				return true
+			},
+		)
+	})
+})
+
 test('CapabilityProxy insufficient_scope prints the platform mint scopes as commands', async () => {
 	const fetchFn = (async () =>
 		json(
@@ -610,21 +647,23 @@ test('CapabilityProxy insufficient_scope prints the platform mint scopes as comm
 			},
 			403,
 		)) as typeof fetch
-	await assert.rejects(
-		() =>
-			openCapabilityProxySession({
-				apiUrl: 'https://api.kody.codes',
-				token: 'kody_at_x',
-				fetchFn,
-			}),
-		(error: Error) => {
-			assert.ok(
-				error.message.includes(
-					'npx @kodycodes/cli auth bootstrap --lifetime short --scopes org:execute,package:write',
-				),
-				error.message,
-			)
-			return true
-		},
-	)
+	await withCliEnv(fetchFn, async () => {
+		await assert.rejects(
+			() =>
+				openCapabilityProxySession({
+					apiUrl,
+					token: 'kody_at_x',
+					fetchFn,
+				}),
+			(error: Error) => {
+				assert.ok(
+					error.message.includes(
+						'npx @kodycodes/cli auth bootstrap --lifetime short --scopes org:execute,package:write',
+					),
+					error.message,
+				)
+				return true
+			},
+		)
+	})
 })

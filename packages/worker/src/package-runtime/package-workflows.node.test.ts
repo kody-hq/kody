@@ -1,7 +1,11 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type WorkflowStep } from 'cloudflare:workers'
+import type { WorkflowStep } from 'cloudflare:workers'
 import { NonRetryableError } from 'cloudflare:workflows'
 import { expect, test, vi } from 'vitest'
+import type {
+	OrgRole,
+	RequestLineage,
+} from '@kody-internal/shared/request-context.ts'
 import { sessionRequestLineage } from '#worker/test-support/request-context.ts'
 import type * as PackageInvocationsService from '#worker/package-invocations/service.ts'
 import type * as RunKodyRegistry from '#mcp/run-kody-registry.ts'
@@ -10,8 +14,8 @@ import {
 	AccountSuspendedError,
 	accountSuspendedMessage,
 } from '#worker/account/account-suspension.ts'
-import { type PackageInvocationStoredResponse } from '#worker/package-invocations/repo.ts'
-import { type WorkflowProjectionUpsertInput } from '#worker/run-records/service.ts'
+import type { PackageInvocationStoredResponse } from '#worker/package-invocations/repo.ts'
+import type { WorkflowProjectionUpsertInput } from '#worker/run-records/service.ts'
 import { UserCodeError, isUserCodeError } from '#worker/user-code-error.ts'
 import { backgroundExecutorTimeoutMs } from '#mcp/executor-budgets.ts'
 import {
@@ -61,6 +65,11 @@ vi.mock('#worker/run-records/service.ts', () => ({
 	finishRunRecord: (
 		...args: Parameters<typeof RunRecordsServiceModule.finishRunRecord>
 	) => runRecordMocks.finishRunRecord(...args),
+	closeStoppedWorkflowAttemptRuns: (
+		...args: Parameters<
+			typeof RunRecordsServiceModule.closeStoppedWorkflowAttemptRuns
+		>
+	) => runRecordMocks.closeStoppedWorkflowAttemptRuns(...args),
 	updateRunErrorTriage: vi.fn(async () => ({ ok: true as const, run: {} })),
 	upsertWorkflowProjection: (...args: Array<unknown>) =>
 		runRecordMocks.upsertWorkflowProjection(
@@ -197,7 +206,11 @@ async function queueWorkflow(
 		kodyId: string
 		sourceId: string
 	} | null = null,
-	options: { publishedCommit?: string; step?: WorkflowStep } = {},
+	options: {
+		publishedCommit?: string
+		step?: WorkflowStep
+		lineage?: RequestLineage
+	} = {},
 ) {
 	const binding = createStatefulWorkflowBinding()
 	const env = createWorkflowEnv(
@@ -207,7 +220,7 @@ async function queueWorkflow(
 	const created = await createDynamicCallableWorkflow({
 		env,
 		userId: ownerIdFromStored('user-1'),
-		lineage: sessionRequestLineage('user-1'),
+		lineage: options.lineage ?? sessionRequestLineage('user-1'),
 		packageContext,
 		body: body as never,
 	})
@@ -596,6 +609,45 @@ test('suspended owners fail inline and package workflow steps once without retri
 	}
 })
 
+test('inline code that throws a kody-terminal error fails its step once with that reason', async () => {
+	runRecordMocks.resetProjections()
+	const { step, attempts } = createRetryingStep()
+	const { created, run } = await queueWorkflow(
+		{
+			code: 'export default async function main() { return null }',
+			runAt,
+			idempotencyKey: 'terminal-inline',
+		},
+		null,
+		{ step },
+	)
+	invocationMocks.runModuleWithRegistry.mockReset()
+	invocationMocks.runModuleWithRegistry.mockResolvedValue({
+		result: undefined,
+		error:
+			'Error: kody-terminal: packagePublishExternalPush returned checks_failed: bundle: too big',
+		logs: [],
+	})
+
+	await expect(run()).rejects.toSatisfy(
+		(error: unknown) =>
+			error instanceof NonRetryableError &&
+			error.message ===
+				'packagePublishExternalPush returned checks_failed: bundle: too big',
+	)
+	expect(attempts.get('execute inline workflow code')).toBe(1)
+	expect(findRun(created.id)).toMatchObject({
+		status: 'errored',
+		lastError:
+			'packagePublishExternalPush returned checks_failed: bundle: too big',
+	})
+	const [finish] = runRecordMocks.finishRunRecord.mock.lastCall as unknown as [
+		FinishArgs,
+	]
+	expect(finish).toMatchObject({ status: 'error' })
+	invocationMocks.runModuleWithRegistry.mockReset()
+})
+
 test('package and inline workflows each record exactly one workflow run with workflowId', async () => {
 	runRecordMocks.resetProjections()
 	const packageRun = await queueWorkflow({
@@ -738,6 +790,107 @@ test('workflow steps inherit the request that started the workflow', async () =>
 		undefined,
 		expect.anything(),
 	)
+})
+
+/** `person-2` started a workflow in team org `user-1` while holding `role`. */
+function teamStarterLineage(role: OrgRole): RequestLineage {
+	const base = sessionRequestLineage('person-2')
+	return {
+		...base,
+		credential: { ...base.credential, orgId: ownerIdFromStored('user-1') },
+		membership: { role },
+	}
+}
+
+async function seedTeamOrg(db: D1Database, starterRole: OrgRole | null) {
+	const now = '2026-05-03T00:00:00.000Z'
+	await db
+		.prepare(
+			`INSERT INTO orgs (id, slug, plan, created_at, updated_at)
+			 VALUES ('user-1', 'team', 'free', ?, ?)`,
+		)
+		.bind(now, now)
+		.run()
+	if (starterRole) {
+		await db
+			.prepare(
+				`INSERT INTO org_memberships (org_id, user_id, role, created_at)
+				 VALUES ('user-1', 'person-2', ?, ?)`,
+			)
+			.bind(starterRole, now)
+			.run()
+	}
+}
+
+test('workflow steps use the live org role of their starter, not the enqueue snapshot', async () => {
+	const bodies = [
+		{
+			code: 'export default async function main() { return { ok: true } }',
+			idempotencyKey: 'live-role-inline',
+		},
+		{ ...packageBody, idempotencyKey: 'live-role-package' },
+	]
+	const requestOf = () =>
+		invocationMocks.invokePackageExport.mock.lastCall?.[0].token.request ?? null
+	for (const body of bodies) {
+		for (const [liveRole, expected] of [
+			['owner', { role: 'owner' }],
+			['member', { role: 'member' }],
+		] as const) {
+			runRecordMocks.resetProjections()
+			invocationMocks.runModuleWithRegistry.mockReset()
+			invocationMocks.invokePackageExport.mockReset()
+			invocationMocks.runModuleWithRegistry.mockResolvedValueOnce({
+				result: { ok: true },
+				logs: [],
+			})
+			invocationMocks.invokePackageExport.mockResolvedValueOnce({
+				status: 200,
+				body: { result: { ok: true } },
+			})
+			const { env, run } = await queueWorkflow({ ...body, runAt }, null, {
+				lineage: teamStarterLineage('owner'),
+			})
+			await seedTeamOrg(env.APP_DB, liveRole)
+			await run()
+			if ('code' in body) {
+				expect(
+					invocationMocks.runModuleWithRegistry.mock.lastCall?.[1],
+				).toMatchObject({ request: { membership: expected } })
+			} else {
+				expect(requestOf()).toMatchObject({
+					kind: 'inherited',
+					lineage: { membership: expected },
+				})
+			}
+		}
+
+		runRecordMocks.resetProjections()
+		invocationMocks.runModuleWithRegistry.mockReset()
+		invocationMocks.invokePackageExport.mockReset()
+		const { step, attempts } = createRetryingStep()
+		const { env, created, run } = await queueWorkflow(
+			{ ...body, runAt },
+			null,
+			{ step, lineage: teamStarterLineage('owner') },
+		)
+		await seedTeamOrg(env.APP_DB, null)
+		await expect(run()).rejects.toSatisfy(
+			(error: unknown) =>
+				error instanceof NonRetryableError &&
+				error.message.includes('no longer has access'),
+		)
+		expect(invocationMocks.runModuleWithRegistry).not.toHaveBeenCalled()
+		expect(invocationMocks.invokePackageExport).not.toHaveBeenCalled()
+		expect(
+			attempts.get(
+				'code' in body
+					? 'execute inline workflow code'
+					: 'invoke saved package workflow export',
+			),
+		).toBe(1)
+		expect(findRun(created.id)).toMatchObject({ status: 'errored' })
+	}
 })
 
 type InvokeInput = Parameters<
@@ -917,4 +1070,89 @@ test('workflows.create validates sourceRevision', async () => {
 			sourceRevision: 'pinned',
 		}),
 	).rejects.toThrow('it has no published revision yet')
+})
+
+test('only the attempt that ends the workflow notifies run error subscribers, and later attempts close stopped ones', async () => {
+	runRecordMocks.resetProjections()
+	runRecordMocks.finishRunRecord.mockClear()
+	runRecordMocks.closeStoppedWorkflowAttemptRuns.mockClear()
+	const { step, attempts } = createRetryingStep()
+	const { created, run } = await queueWorkflow(
+		{
+			code: 'export default async function main() { return null }',
+			runAt,
+			idempotencyKey: 'retry-then-pass',
+		},
+		null,
+		{ step },
+	)
+	invocationMocks.runModuleWithRegistry.mockReset()
+	invocationMocks.runModuleWithRegistry
+		.mockResolvedValueOnce({
+			result: undefined,
+			error: 'Error: Execution timed out after 300s',
+			logs: [],
+		})
+		.mockResolvedValueOnce({
+			result: undefined,
+			error: 'Error: Execution timed out after 300s',
+			logs: [],
+		})
+		.mockResolvedValueOnce({ result: { ok: true }, logs: [] })
+
+	await run()
+	expect(attempts.get('execute inline workflow code')).toBe(3)
+	const finishes = runRecordMocks.finishRunRecord.mock.calls.map(([input]) => ({
+		status: input.status,
+		skip: input.skipErrorSubscriptions ?? false,
+	}))
+	expect(finishes).toEqual([
+		{ status: 'error', skip: true },
+		{ status: 'error', skip: true },
+		{ status: 'success', skip: false },
+	])
+	const outcomes =
+		runRecordMocks.closeStoppedWorkflowAttemptRuns.mock.calls.map(([input]) => [
+			input.workflowId,
+			input.outcome,
+		])
+	expect(outcomes).toEqual([
+		[created.id, 'retried'],
+		[created.id, 'retried'],
+		[created.id, 'succeeded'],
+	])
+	invocationMocks.runModuleWithRegistry.mockReset()
+})
+
+test('the final failed attempt notifies subscribers and closes stopped attempts as a failure', async () => {
+	runRecordMocks.resetProjections()
+	runRecordMocks.finishRunRecord.mockClear()
+	runRecordMocks.closeStoppedWorkflowAttemptRuns.mockClear()
+	const { step, attempts } = createRetryingStep()
+	const { created, run } = await queueWorkflow(
+		{
+			code: 'export default async function main() { return null }',
+			runAt,
+			idempotencyKey: 'always-fails',
+		},
+		null,
+		{ step },
+	)
+	invocationMocks.runModuleWithRegistry.mockReset()
+	invocationMocks.runModuleWithRegistry.mockResolvedValue({
+		result: undefined,
+		error: 'Error: boom',
+		logs: [],
+	})
+
+	await expect(run()).rejects.toThrow(/boom/)
+	expect(attempts.get('execute inline workflow code')).toBe(4)
+	const skips = runRecordMocks.finishRunRecord.mock.calls.map(
+		([input]) => input.skipErrorSubscriptions ?? false,
+	)
+	expect(skips).toEqual([true, true, true, false])
+	expect(
+		runRecordMocks.closeStoppedWorkflowAttemptRuns.mock.lastCall?.[0],
+	).toMatchObject({ workflowId: created.id, outcome: 'failed' })
+	invocationMocks.runModuleWithRegistry.mockReset()
 })

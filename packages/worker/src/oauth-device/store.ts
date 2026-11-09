@@ -9,7 +9,7 @@ export type DeviceAuthorizationStatus =
 	| 'denied'
 	| 'consumed'
 
-export type DeviceAuthorizationKind = 'cli' | 'package_app'
+export type DeviceAuthorizationKind = 'cli' | 'package_app' | 'account'
 
 export type DeviceAuthorizationRow = {
 	id: string
@@ -28,9 +28,15 @@ export type DeviceAuthorizationRow = {
 	org_id: string | null
 	decided_at: number | null
 	consumed_at: number | null
-	/** `package_app` rows are package-app visitor sign-ins (ADR 0094). */
+	/**
+	 * `package_app` rows are package-app visitor sign-ins and `account` rows
+	 * are full Kody account sign-ins (ADR 0094).
+	 */
 	kind: DeviceAuthorizationKind
-	/** Package-app rows only: the rest of the authorize request, as JSON. */
+	/**
+	 * Package-app rows: the rest of the authorize request. Account rows: the
+	 * requesting browser and where it lands. JSON either way.
+	 */
 	request_json: string | null
 	/** Package-app rows only: the scopes the approver allowed. */
 	approved_scope: string | null
@@ -226,6 +232,27 @@ export async function decidePackageAppDeviceAuthorization(
 			input.id,
 			now,
 		)
+		.run()
+	return (result.meta.changes ?? 0) > 0
+}
+
+/**
+ * Records the decision on a pending full-account sign-in (ADR 0094). The
+ * requesting browser gets a Kody session for `userId` when it next checks in.
+ */
+export async function decideAccountDeviceAuthorization(
+	db: D1Database,
+	input: { id: string; decision: 'approved' | 'denied'; userId: string },
+	now = nowSeconds(),
+) {
+	const result = await db
+		.prepare(
+			`UPDATE ${table}
+			SET status = ?, user_id = ?, decided_at = ?
+			WHERE id = ? AND status = 'pending' AND expires_at > ?
+				AND kind = 'account'`,
+		)
+		.bind(input.decision, input.userId, now, input.id, now)
 		.run()
 	return (result.meta.changes ?? 0) > 0
 }

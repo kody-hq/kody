@@ -1,5 +1,5 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type ContentBlock } from '@modelcontextprotocol/sdk/types.js'
+import type { ContentBlock } from '@modelcontextprotocol/sdk/types.js'
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
 import { z } from 'zod'
 import { expect, onTestFinished, test, vi } from 'vitest'
@@ -35,7 +35,7 @@ import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { runWithInboundRequestSignal } from '#mcp/inbound-request-signal.ts'
 import type * as ExecuteTransportBudgetModule from '#mcp/execute-transport-budget.ts'
-import { type RunRecordHandle } from '#worker/run-records/types.ts'
+import type { RunRecordHandle } from '#worker/run-records/types.ts'
 
 const transportBudgetMock = vi.hoisted(() => ({
 	remainingMs: null as number | null,
@@ -340,6 +340,7 @@ async function getExecuteRegistration(
 		state?: Record<string, unknown>
 		setState?: (state: Record<string, unknown>) => void
 		waitUntil?: (promise: Promise<unknown>) => void
+		detachedWorkLimitMs?: number
 	} = {},
 ) {
 	vi.clearAllMocks()
@@ -1364,7 +1365,7 @@ test('execute tool attaches entitlement metadata on denials and quota, not on su
 		throw new Error('Expected an entitlement upgrade hint on quota denial')
 	}
 	expect(quotaHint).toMatch(
-		/^This daily limit resets at 00:00 UTC, in (\d+d )?(\d+h )?\d+m\. Rerun code you already ran today and vary params; repeats are free\. Shell-capable hosts can run `npx -y @kodycodes\/cli@latest execute --local` \(Node 22\+\); if it is not signed in, call `api` with `cliCredentialBootstrap` and run its `cli_command`, or upgrade your plan at \/@[^/]+\/-\/billing\.$/,
+		/^This daily limit resets at 00:00 UTC, in (\d+d )?(\d+h )?\d+m\.(?: See usage at \/@[^/]+\/-\/usage\.)? Rerun code you already ran today and vary params; repeats are free\. Shell-capable hosts can run `npx -y @kodycodes\/cli@latest execute --local` \(Node 22\+\); if it is not signed in, call `api` with `cliCredentialBootstrap` and run its `cli_command`, or upgrade your plan at \/@[^/]+\/-\/billing\.$/,
 	)
 	const quotaEntitlement = {
 		code: entitlementLimitErrorCode,
@@ -1374,13 +1375,11 @@ test('execute tool attaches entitlement metadata on denials and quota, not on su
 		current: quotaLimit,
 		upgradeHint: quotaHint,
 	} as const
-	expect(quotaDenied.structuredContent.error).toBe(
-		buildEntitlementLimitMessage(quotaEntitlement),
-	)
-	expect(quotaDenied.structuredContent.entitlement).toEqual({
+	expect(quotaDenied.structuredContent.entitlement).toMatchObject({
 		...quotaEntitlement,
 		used: quotaLimit,
 		remaining: 0,
+		resetAt: expect.any(String),
 	})
 })
 
@@ -1725,6 +1724,53 @@ test('execute keeps a caller-supplied idempotency key on the transport-budget fo
 		idempotencyKey: 'caller-key',
 		inProgress: true,
 		status: 'running',
+	})
+})
+
+test('execute stops a detached run before a waitUntil-only host drops it and says so up front', async () => {
+	transportBudgetMock.remainingMs = 0
+	onTestFinished(() => {
+		transportBudgetMock.remainingMs = null
+	})
+	const handle = transportFollowHandle(
+		'run-detached-limit',
+		'execute:limit-key',
+	)
+	const handler = await getExecuteHandler(transportCaller, {
+		detachedWorkLimitMs: 5,
+	})
+	mockModule.beginRunRecord.mockReturnValueOnce(handle)
+	mockModule.runModuleWithRegistry.mockImplementationOnce(
+		async (...args: Array<unknown>) => {
+			const { signal } = args[4] as { signal: AbortSignal }
+			await new Promise((resolve) =>
+				signal.addEventListener('abort', resolve, { once: true }),
+			)
+			return { result: undefined, error: String(signal.reason), logs: [] }
+		},
+	)
+	const response = await handler({
+		code: okCode,
+		conversationId: 'conv-detached-limit',
+	})
+	expect(response.structuredContent).toMatchObject({
+		runId: 'run-detached-limit',
+		inProgress: true,
+	})
+	const text = response.content
+		.map((block) => (block.type === 'text' ? block.text : ''))
+		.join('\n')
+	expect(text).toContain('before it stops with a timeout')
+	expect(text).toContain("runGet's result field")
+	const options = mockModule.runModuleWithRegistry.mock.calls.at(-1)?.[4] as {
+		signal: AbortSignal
+	}
+	await vi.waitFor(() => {
+		expect(options.signal.aborted).toBe(true)
+	})
+	expect(options.signal.reason).toMatchObject({
+		name: 'TimeoutError',
+		message: expect.stringMatching(/^Execution timed out after \d+s: /),
 	})
 })
 

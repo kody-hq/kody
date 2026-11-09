@@ -9,11 +9,11 @@ import {
 	walkAst,
 } from '#worker/credentials/module-placeholder-scan.ts'
 import { packageCredentialSlotNamePattern } from '#worker/package-registry/types.ts'
-import {
-	type PackageCodemod,
-	type PackageCodemodContext,
-	type PackageCodemodFinding,
-	type PackageCodemodTransformResult,
+import type {
+	PackageCodemod,
+	PackageCodemodContext,
+	PackageCodemodFinding,
+	PackageCodemodTransformResult,
 } from '../types.ts'
 import {
 	type CredentialReferenceVia,

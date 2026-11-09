@@ -1,12 +1,13 @@
 import { publishedArtifactNeedsPackageBindingRebuild } from './pre-binding-artifact-repair.ts'
-import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
+import { loadServingPackageSourceBySourceId } from '#worker/package-registry/source.ts'
+import { servingArtifactCommitForSource } from '#worker/repo/serving-commit.ts'
 import {
 	normalizePackageExportKey,
 	resolvePackageExportPath,
 } from '#worker/package-registry/manifest.ts'
 import { assertNotSealedSecretProviderExport } from '#mcp/secrets/secret-providers/sealed-export.ts'
-import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
-import { type PublishedBundleArtifact } from './published-runtime-artifacts.ts'
+import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import type { PublishedBundleArtifact } from './published-runtime-artifacts.ts'
 import {
 	parseKodyPackageSpecifier,
 	resolveSavedPackageImport,
@@ -59,7 +60,7 @@ export async function resolveCurrentDynamicPackageArtifact(input: {
 		)
 	}
 	const { row } = resolution
-	const loaded = await loadPackageSourceBySourceId({
+	const loaded = await loadServingPackageSourceBySourceId({
 		env: input.env,
 		baseUrl: input.baseUrl,
 		userId: input.userId,
@@ -82,6 +83,7 @@ export async function resolveCurrentDynamicPackageArtifact(input: {
 		kind: 'importable-module',
 		artifactName: exportName,
 		entryPoint,
+		commit: servingArtifactCommitForSource(loaded.source),
 	})
 	if (
 		loadedArtifact?.artifact &&

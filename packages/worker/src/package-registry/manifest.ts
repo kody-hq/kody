@@ -7,6 +7,13 @@ import {
 import { z } from 'zod'
 import { parseModuleSource, type ModuleAstNode } from '#worker/module-source.ts'
 import {
+	collectLocalValueDeclarations,
+	collectValueReferenceNames,
+	describeReferencedValue,
+	type LocalValueDeclaration,
+	type ResolveLocalValue,
+} from './export-value-types.ts'
+import {
 	authoredPackageJsonSchema,
 	packageCredentialsSchema,
 	packageAppVisitorNeedKeyPattern,
@@ -583,7 +590,7 @@ export type PackageExportFunctionProjection = {
 
 export type PackageReferencedTypeProjection = {
 	name: string
-	kind: 'type' | 'interface' | 'enum'
+	kind: 'type' | 'interface' | 'enum' | 'const'
 	definition: string
 }
 
@@ -635,6 +642,8 @@ type LocalTypeDeclaration = PackageReferencedTypeProjection & {
 const maxReferencedTypesPerExport = 8
 const maxReferencedTypeCharsPerExport = 12_000
 const maxReferencedTypeDepth = 2
+/** Queue keys for values reached through `typeof Name` (types and values are separate namespaces). */
+const typeofReferencePrefix = 'typeof:'
 const builtinTypeNames = new Set([
 	'AbortController',
 	'AbortSignal',
@@ -839,6 +848,14 @@ function collectTypeReferenceNamesFromNodes(nodes: Array<unknown>) {
 				readTypeReferenceName((node as { expression?: unknown }).expression),
 			)
 		}
+		if (type === 'TSTypeQuery') {
+			const valueName = readTypeReferenceName(
+				(node as { exprName?: unknown }).exprName,
+			)
+			if (valueName) {
+				pushUniqueTypeName(names, `${typeofReferencePrefix}${valueName}`)
+			}
+		}
 		for (const [key, value] of Object.entries(node)) {
 			if (
 				key === 'loc' ||
@@ -920,23 +937,69 @@ function getVariableFunctionReferenceNodes(declarator: ModuleAstNode) {
 function collectReferencedTypes(input: {
 	typeNames: Array<string>
 	localTypes: Map<string, LocalTypeDeclaration>
+	localValues: Map<string, LocalValueDeclaration>
+	resolveValue: ResolveLocalValue
+	mergeImportedTypes: (typeNames: Array<string>) => void
 }) {
 	const referencedTypes: Array<PackageReferencedTypeProjection> = []
 	const seen = new Set<string>()
 	const queued = new Set<string>()
 	const queue: Array<{ name: string; depth: number }> = []
 	let totalChars = 0
+	function lookup(name: string) {
+		return name.startsWith(typeofReferencePrefix)
+			? input.localValues.get(name.slice(typeofReferencePrefix.length))
+			: input.localTypes.get(name)
+	}
 	function enqueue(name: string, depth: number) {
-		if (
-			builtinTypeNames.has(name) ||
-			queued.has(name) ||
-			seen.has(name) ||
-			!input.localTypes.has(name)
-		) {
+		if (builtinTypeNames.has(name) || queued.has(name) || seen.has(name)) {
 			return
 		}
+		if (!lookup(name)) input.mergeImportedTypes([name])
+		if (!lookup(name)) return
 		queued.add(name)
 		queue.push({ name, depth })
+	}
+	function project(name: string): {
+		type: PackageReferencedTypeProjection
+		nestedNames: Array<string>
+	} | null {
+		if (name.startsWith(typeofReferencePrefix)) {
+			const declaration = input.localValues.get(
+				name.slice(typeofReferencePrefix.length),
+			)
+			if (!declaration) return null
+			const described = describeReferencedValue({
+				declaration,
+				resolveValue: input.resolveValue,
+			})
+			return {
+				type: {
+					name: declaration.name,
+					kind: 'const',
+					definition: described.definition,
+				},
+				nestedNames: described.resolved
+					? []
+					: [
+							...collectTypeReferenceNamesFromNodes([declaration.declarator]),
+							...collectValueReferenceNames(
+								declaration.init,
+								input.localValues,
+							).map((valueName) => `${typeofReferencePrefix}${valueName}`),
+						],
+			}
+		}
+		const declaration = input.localTypes.get(name)
+		if (!declaration) return null
+		return {
+			type: {
+				name: declaration.name,
+				kind: declaration.kind,
+				definition: declaration.definition,
+			},
+			nestedNames: collectTypeReferenceNamesFromNodes([declaration.node]),
+		}
 	}
 	for (const name of input.typeNames) enqueue(name, 0)
 	while (
@@ -944,29 +1007,29 @@ function collectReferencedTypes(input: {
 		referencedTypes.length < maxReferencedTypesPerExport
 	) {
 		const next = queue.shift()
-		if (!next) break
-		const declaration = input.localTypes.get(next.name)
-		if (!declaration || seen.has(next.name)) continue
-		const nextChars = totalChars + declaration.definition.length
+		if (!next || seen.has(next.name)) continue
+		const projected = project(next.name)
+		if (!projected) continue
+		const nextChars = totalChars + projected.type.definition.length
 		if (nextChars > maxReferencedTypeCharsPerExport) {
 			if (maxReferencedTypeCharsPerExport - totalChars <= 0) break
 			continue
 		}
 		seen.add(next.name)
 		totalChars = nextChars
-		referencedTypes.push({
-			name: declaration.name,
-			kind: declaration.kind,
-			definition: declaration.definition,
-		})
+		referencedTypes.push(projected.type)
 		if (next.depth >= maxReferencedTypeDepth) continue
-		for (const nestedName of collectTypeReferenceNamesFromNodes([
-			declaration.node,
-		])) {
+		for (const nestedName of projected.nestedNames) {
 			enqueue(nestedName, next.depth + 1)
 		}
 	}
 	return referencedTypes
+}
+
+function referencedTypeKey(type: PackageReferencedTypeProjection) {
+	return type.kind === 'const'
+		? `${typeofReferencePrefix}${type.name}`
+		: type.name
 }
 
 function mergeReferencedTypes(
@@ -976,13 +1039,13 @@ function mergeReferencedTypes(
 	const seen = new Set<string>()
 	let totalChars = 0
 	for (const type of typeGroups.flat()) {
-		if (seen.has(type.name)) continue
+		if (seen.has(referencedTypeKey(type))) continue
 		const nextChars = totalChars + type.definition.length
 		if (nextChars > maxReferencedTypeCharsPerExport) {
 			if (maxReferencedTypeCharsPerExport - totalChars <= 0) break
 			continue
 		}
-		seen.add(type.name)
+		seen.add(referencedTypeKey(type))
 		totalChars = nextChars
 		referencedTypes.push(type)
 		if (referencedTypes.length >= maxReferencedTypesPerExport) break
@@ -1291,18 +1354,122 @@ function collectImportedTypeSpecifiers(body: Array<ModuleAstNode>) {
 	return specifiers
 }
 
-function remapAliasedImportedType(input: {
-	localTypes: Map<string, LocalTypeDeclaration>
+function remapAliasedImport<Declaration extends { name: string }>(input: {
+	declarations: Map<string, Declaration>
 	specifier: ImportedTypeSpecifier
 }) {
 	if (input.specifier.importedName === input.specifier.localName) return
-	if (input.localTypes.has(input.specifier.localName)) return
-	const declaration = input.localTypes.get(input.specifier.importedName)
+	if (input.declarations.has(input.specifier.localName)) return
+	const declaration = input.declarations.get(input.specifier.importedName)
 	if (!declaration) return
-	input.localTypes.set(input.specifier.localName, {
+	input.declarations.set(input.specifier.localName, {
 		...declaration,
 		name: input.specifier.localName,
 	})
+}
+
+/** Named `export { a as b } from './x'` re-exports, read like imports of `a` bound to `b`. */
+function collectReExportSpecifiers(body: Array<ModuleAstNode>) {
+	const specifiers: Array<ImportedTypeSpecifier> = []
+	for (const statement of body) {
+		if (statement.type !== 'ExportNamedDeclaration') continue
+		const moduleSpecifier = readImportSourceSpecifier(statement)
+		if (
+			!moduleSpecifier ||
+			(!moduleSpecifier.startsWith('./') && !moduleSpecifier.startsWith('../'))
+		) {
+			continue
+		}
+		const rawSpecifiers = (statement as { specifiers?: unknown }).specifiers
+		if (!Array.isArray(rawSpecifiers)) continue
+		for (const specifier of rawSpecifiers) {
+			if (getNodeType(specifier) !== 'ExportSpecifier') continue
+			const importedName = readIdentifierName(
+				(specifier as { local?: unknown }).local,
+			)
+			if (!importedName) continue
+			specifiers.push({
+				localName:
+					readIdentifierName((specifier as { exported?: unknown }).exported) ??
+					importedName,
+				importedName,
+				moduleSpecifier,
+			})
+		}
+	}
+	return specifiers
+}
+
+const maxValueImportHops = 4
+
+/**
+ * Resolves a const by name in the scope of a package module, following
+ * relative imports and named re-exports across package files (bounded hops).
+ */
+function createLocalValueResolver(input: {
+	sourcePath: string | null
+	files?: Record<string, string>
+	body: Array<ModuleAstNode>
+	localValues: Map<string, LocalValueDeclaration>
+}): ResolveLocalValue {
+	type ModuleValueScope = {
+		values: Map<string, LocalValueDeclaration>
+		imports: Array<ImportedTypeSpecifier>
+	}
+	const entryScope: ModuleValueScope = {
+		values: input.localValues,
+		imports: [
+			...collectImportedTypeSpecifiers(input.body),
+			...collectReExportSpecifiers(input.body),
+		],
+	}
+	const scopes = new Map<string, ModuleValueScope | null>()
+	if (input.sourcePath) scopes.set(input.sourcePath, entryScope)
+	function getScope(path: string | null) {
+		if (path == null) return entryScope
+		if (scopes.has(path)) return scopes.get(path) ?? null
+		const source = input.files?.[path]
+		let scope: ModuleValueScope | null = null
+		if (source != null) {
+			try {
+				const body = getProgramBody(parseModuleSource(source))
+				scope = {
+					values: collectLocalValueDeclarations(source, body, path),
+					imports: [
+						...collectImportedTypeSpecifiers(body),
+						...collectReExportSpecifiers(body),
+					],
+				}
+			} catch {
+				scope = null
+			}
+		}
+		scopes.set(path, scope)
+		return scope
+	}
+	return (fromPath, name) => {
+		let path = fromPath ?? input.sourcePath
+		let lookupName = name
+		for (let hop = 0; hop <= maxValueImportHops; hop += 1) {
+			const scope = getScope(path)
+			if (!scope) return undefined
+			const found = scope.values.get(lookupName)
+			if (found) return found
+			const specifier = scope.imports.find(
+				(candidate) => candidate.localName === lookupName,
+			)
+			if (!specifier || !path || !input.files) return undefined
+			const nextPath = resolveSamePackageTypeImportPath({
+				files: input.files,
+				fromPath: path,
+				specifier: specifier.moduleSpecifier,
+			})
+			if (!nextPath) return undefined
+			path = nextPath
+			lookupName = specifier.importedName
+		}
+		return undefined
+	}
 }
 
 function createImportedTypeMerger(input: {
@@ -1310,13 +1477,19 @@ function createImportedTypeMerger(input: {
 	files?: Record<string, string>
 	body: Array<ModuleAstNode>
 	localTypes: Map<string, LocalTypeDeclaration>
+	localValues: Map<string, LocalValueDeclaration>
 }) {
 	const importedSpecifiers = collectImportedTypeSpecifiers(input.body)
 	const resolvedModules = new Set<string>()
 	return (typeNames: Array<string>) => {
 		if (!input.sourcePath || !input.files || typeNames.length === 0) return
+		const localNames = typeNames.map((name) =>
+			name.startsWith(typeofReferencePrefix)
+				? name.slice(typeofReferencePrefix.length)
+				: name,
+		)
 		for (const specifier of importedSpecifiers) {
-			if (!typeNames.includes(specifier.localName)) continue
+			if (!localNames.includes(specifier.localName)) continue
 			if (!resolvedModules.has(specifier.moduleSpecifier)) {
 				const resolvedPath = resolveSamePackageTypeImportPath({
 					files: input.files,
@@ -1341,11 +1514,18 @@ function createImportedTypeMerger(input: {
 						input.localTypes.set(name, declaration)
 					}
 				}
+				for (const [name, declaration] of collectLocalValueDeclarations(
+					importedSource,
+					importedBody,
+					resolvedPath,
+				)) {
+					if (!input.localValues.has(name)) {
+						input.localValues.set(name, declaration)
+					}
+				}
 			}
-			remapAliasedImportedType({
-				localTypes: input.localTypes,
-				specifier,
-			})
+			remapAliasedImport({ declarations: input.localTypes, specifier })
+			remapAliasedImport({ declarations: input.localValues, specifier })
 		}
 	}
 }
@@ -1411,6 +1591,11 @@ function collectExportedFunctionsFromSource(input: {
 		return []
 	}
 	const localTypes = collectLocalTypeDeclarations(source, body)
+	const localValues = collectLocalValueDeclarations(
+		source,
+		body,
+		input.sourcePath ?? null,
+	)
 	const localFunctions = collectLocalFunctionBindings(body)
 	const importedBindings = collectImportedBindingNames(body)
 	const mergeImportedTypes = createImportedTypeMerger({
@@ -1418,12 +1603,22 @@ function collectExportedFunctionsFromSource(input: {
 		files: input.files,
 		body,
 		localTypes,
+		localValues,
+	})
+	const resolveValue = createLocalValueResolver({
+		sourcePath: input.sourcePath ?? null,
+		files: input.files,
+		body,
+		localValues,
 	})
 	function referencedTypesFor(typeNames: Array<string>) {
 		mergeImportedTypes(typeNames)
 		return collectReferencedTypes({
 			typeNames,
 			localTypes,
+			localValues,
+			resolveValue,
+			mergeImportedTypes,
 		})
 	}
 	const functions: Array<PackageExportFunctionProjection> = []

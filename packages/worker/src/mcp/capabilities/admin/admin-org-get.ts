@@ -40,7 +40,7 @@ export const adminOrgDetailSchema = z.object({
 		z.object({
 			stableUserId: z.string(),
 			username: z.string(),
-			role: z.enum(['owner', 'member', 'billing']),
+			role: z.enum(['owner', 'admin', 'member', 'billing']),
 			joinedAt: z.string(),
 			membershipDeletedAt: z.string().nullable(),
 			userDeletedAt: z.string().nullable(),

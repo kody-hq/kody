@@ -1,10 +1,10 @@
-import { type resolveSavedPackageForPackageAppSlug } from '#worker/package-invocations/module-artifacts.ts'
+import type { resolveSavedPackageForPackageAppSlug } from '#worker/package-invocations/module-artifacts.ts'
 import { getLatestPackageCapabilityApproval } from '#worker/package-capabilities/capability-approvals-repo.ts'
 import {
 	approvePackageCapabilitySet,
 	loadCapabilityApprovalSummary,
 } from '#worker/package-capabilities/capability-approval-service.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { approvedCommitCache } from '#worker/package-capabilities/approved-commit-cache.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 
@@ -72,12 +72,16 @@ async function loadApprovedCommit(input: {
 }): Promise<string | null> {
 	const { env, savedPackage } = input
 	const ownerUserId = savedPackage.userId
+	// Both reads are independent, so a cold lookup pays one D1 round trip.
+	// The source outcome only matters once an approval exists.
+	const sourcePending = getEntitySourceById(env.APP_DB, savedPackage.sourceId)
+	sourcePending.catch(() => {})
 	const approval = await getLatestPackageCapabilityApproval(env.APP_DB, {
 		packageId: savedPackage.id,
 		ownerUserId,
 	})
 	if (!approval) return null
-	const source = await getEntitySourceById(env.APP_DB, savedPackage.sourceId)
+	const source = await sourcePending
 	const liveCommit =
 		source?.user_id === savedPackage.userId ? source.published_commit : null
 	if (!liveCommit || liveCommit === approval.publishedCommit) {

@@ -1,6 +1,8 @@
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
 import { systemEmailOwnerId } from './email-owner.ts'
 import { maxRawMimeBytes } from './parser.ts'
+import { pruneRecipientSuppressionTracking } from './recipient-suppression.ts'
+import { pruneSystemEmailSends } from './system-email-sends.ts'
 import { buildPlatformEmailAddress } from './platform-address.ts'
 import {
 	createEmailInbox,
@@ -11,7 +13,7 @@ import {
 	getEmailInboxById,
 	getEmailInboxByName,
 } from './repo.ts'
-import { type EmailInboxAddressRecord, type EmailInboxRecord } from './types.ts'
+import type { EmailInboxAddressRecord, EmailInboxRecord } from './types.ts'
 import {
 	assertSystemEmailGraphAuthority,
 	commitSystemEmailAuthorityBatch,
@@ -485,6 +487,10 @@ export type SystemEmailRetentionResult = {
 	deletedDeliveryEvents: number
 	deletedCounters: number
 	deletedThreads: number
+	/** `system_email_sends` rows past their retention window. */
+	deletedSendRecords: number
+	/** Unsuppressed below-threshold `email_recipient_suppressions` rows. */
+	deletedSuppressionTracking: number
 	deletedRawMimeBlobs: number
 	deletedAttachmentBlobs: number
 	blobDeleteErrors: number
@@ -513,6 +519,8 @@ export async function pruneSystemEmailRetention(input: {
 		deletedDeliveryEvents: 0,
 		deletedCounters: 0,
 		deletedThreads: 0,
+		deletedSendRecords: 0,
+		deletedSuppressionTracking: 0,
 		deletedRawMimeBlobs: 0,
 		deletedAttachmentBlobs: 0,
 		blobDeleteErrors: 0,
@@ -614,6 +622,29 @@ export async function pruneSystemEmailRetention(input: {
 		.bind(cutoffDay)
 		.run()
 	result.deletedCounters = counterDelete.meta.changes ?? 0
+	let deletedInBatch = 0
+	do {
+		deletedInBatch = await pruneSystemEmailSends({
+			db: input.db,
+			now,
+			limit: systemEmailLimits.pruneBatchSize,
+		})
+		result.deletedSendRecords += deletedInBatch
+	} while (
+		deletedInBatch >= systemEmailLimits.pruneBatchSize &&
+		Date.now() < deadlineMs
+	)
+	do {
+		deletedInBatch = await pruneRecipientSuppressionTracking({
+			db: input.db,
+			now,
+			limit: systemEmailLimits.pruneBatchSize,
+		})
+		result.deletedSuppressionTracking += deletedInBatch
+	} while (
+		deletedInBatch >= systemEmailLimits.pruneBatchSize &&
+		Date.now() < deadlineMs
+	)
 
 	if (Date.now() < deadlineMs) {
 		const threadRows = await input.db

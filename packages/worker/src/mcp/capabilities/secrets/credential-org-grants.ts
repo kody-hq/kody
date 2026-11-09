@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type CredentialPermissionFamily } from '@kody-internal/shared/org-permissions.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { CredentialPermissionFamily } from '@kody-internal/shared/org-permissions.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { authorizeCredentialScope } from '#worker/authorization/authorize.ts'
 import {
 	credentialPermissionFamily,
@@ -22,7 +22,7 @@ import { getOrgById, getOrgBySlug } from '#worker/orgs/repo.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { requireMcpRequest } from '#mcp/capabilities/meta/require-user.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { resolveCallerSecretAuthority } from '#mcp/secrets/secret-authority.ts'
 
@@ -139,8 +139,16 @@ export const credentialOrgGrantCapability = defineDomainCapability(
 		orgPermission: 'none',
 		requiresLivePerson: true,
 		description:
-			'Grant one of your personal credentials (a secret, OAuth connection, or MCP server in your personal org) to an org you belong to (ADR 0068). It then works in that org only in your own runs: through `{{secret:name}}` and `{{integration-token:name}}` placeholders and `createAuthenticatedFetch(name)` (an org credential with the same name wins first), and through scoped `credential(key)` clients for secrets and OAuth connections (when an org credential also matches the need, `credential(key)` reports it as ambiguous until a mapping picks one; personal MCP servers are not usable through `credential(key)` yet). Nobody else there can use it, Owners and Automation included. Granting again is a no-op. Needs Write on the credential (a token needs secret:write, or integration:write for OAuth connections and MCP servers) and a live person, and is audited in your personal org. Never takes or returns a value.',
-		keywords: ['credential', 'personal', 'grant', 'share', 'org', 'team'],
+			'Grant one of your personal credentials (a secret, OAuth connection, or MCP server in your personal org) to an org you belong to (ADR 0068). It then works in that org only in your own runs: through `{{secret:name}}` and `{{integration-token:name}}` placeholders and `createAuthenticatedFetch(name)` (an org credential with the same name wins first), and through scoped `credential(key)` clients for secrets and OAuth connections (when an org credential also matches the need, `credential(key)` reports it as ambiguous until a mapping picks one; personal MCP servers are not usable through `credential(key)` yet). Nobody else there can use it, Owners and Automation included. Granting again is a no-op. Needs Write on the credential (a token needs secret:write, or integration:write for OAuth connections and MCP servers) and a live person, and is audited in your personal org. Never takes or returns a value. This is not an "assign to org" move: credentials cannot be transferred between orgs. If a credential was created under the wrong workspace, reconnect or create it under the right org instead of granting or inventing a move control.',
+		keywords: [
+			'credential',
+			'personal',
+			'grant',
+			'share',
+			'org',
+			'team',
+			'reconnect',
+		],
 		readOnly: false,
 		idempotent: true,
 		destructive: false,

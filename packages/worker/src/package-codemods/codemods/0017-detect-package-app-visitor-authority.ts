@@ -6,10 +6,10 @@ import {
 	parseModule,
 	walkAst,
 } from '#worker/credentials/module-placeholder-scan.ts'
-import {
-	type PackageCodemod,
-	type PackageCodemodFinding,
-	type PackageCodemodTransformResult,
+import type {
+	PackageCodemod,
+	PackageCodemodFinding,
+	PackageCodemodTransformResult,
 } from '../types.ts'
 import { scanModuleCredentialReferences } from './0010-detect-legacy-credential-patterns.ts'
 

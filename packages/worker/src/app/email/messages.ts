@@ -1,6 +1,6 @@
 import { renderTransactionalEmail } from '#app/email/template.ts'
 import { platformFeedbackAcknowledgementSubject } from '#worker/platform-feedback/email-threading.ts'
-import { type PlatformFeedbackOutcomeStatus } from '#worker/platform-feedback/types.ts'
+import type { PlatformFeedbackOutcomeStatus } from '#worker/platform-feedback/types.ts'
 import { ERROR_AGENT_PROMPT_ATTR } from '#universal/error-agent-prompt.ts'
 import { buildBillingFailureAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
 import { formatCappedPercent } from '#universal/usage-presentation.ts'
@@ -152,6 +152,43 @@ export function buildEmailChangedSecurityEmail(input: {
 			`This wasn't you? Reset your password, review sign-in methods on your account, and email ${supportEmail}.`,
 		],
 		footnote: `We sent this to ${input.oldEmail} because it was the previous login address. Contact ${supportEmail} if you need help recovering access.`,
+	})
+}
+
+export function buildAccountDeviceSignInApprovedEmail(input: {
+	appBaseUrl: string
+	email: string
+	approvedAt: Date
+	requester: string
+	location: string | null
+	accountUrl: string
+	resetPasswordUrl: string
+	supportEmail?: string
+}) {
+	const supportEmail = input.supportEmail?.trim() || 'support@kody.codes'
+	const body = [
+		`You approved a sign-in on another device, so a browser is now signed in to your full Kody account (${input.email}).`,
+		`When: ${formatEmailChangeWhen(input.approvedAt)}.`,
+		`Browser: ${input.requester}.`,
+		`Approximate location: ${input.location ?? 'unknown'}.`,
+		'If this was you, no action is needed. If it was not, someone may have tricked you into approving a code: secure the account immediately.',
+	]
+	return renderTransactionalEmail({
+		appBaseUrl: input.appBaseUrl,
+		subject: 'A browser signed in to your Kody account',
+		preheader: `New sign-in from ${input.requester}.`,
+		heading: 'A browser signed in to your account',
+		body,
+		action: { label: 'Open account settings', url: input.accountUrl },
+		secondaryAction: {
+			label: 'Reset your password',
+			url: input.resetPasswordUrl,
+		},
+		afterAction: [
+			`This wasn't you? Reset your password (that signs every browser out) and email ${supportEmail}.`,
+		],
+		footnote:
+			'We send this every time a sign-in on another device is approved for your account.',
 	})
 }
 

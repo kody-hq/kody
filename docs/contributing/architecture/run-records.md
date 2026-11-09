@@ -487,6 +487,18 @@ table.
 | `package_run_successes` | Per-package success counters toward activation.                                                                                                                                                                                               | Never pruned.                                                                                                                                                                            |
 | `activation_milestones` | One row each for `package_run_succeeded` and `package_activated` (`package_id` on the second). High-frequency HTTP surfaces (`webhook`, `app_fetch`) do not count; activation means two unattended capability successes for the same package. | Never pruned.                                                                                                                                                                            |
 
+`package_app_cpu_samples` holds sampled package-app CPU and wall time for
+Activity (see [Activity](../../use/activity.md#app-performance-sampled)). The
+host attaches `DynamicWorkerUsageTail` to package-app isolates (loader id suffix
+`-cpus1`); the app wrapper publishes a `kody:package-app-cpu-sample`
+diagnostics-channel marker on the first fetch of each isolate and on about 5% of
+later fetches, and the tail stores only marked invocations, keyed by the
+`x-kody-request-id` the response exposes. It is observability only: never
+written through `recordUsage`, never billed, never read by entitlements.
+Retention is **7 days** and the newest **5,000** rows, pruned on every insert.
+It is operational telemetry and is not part of account export; account deletion
+`clearAll` removes it with every other table.
+
 Account export pages all of the above through section `run_records` after runs
 and ledger rows (`exportRuns` phases: raw run-id cursor, then
 `invocation-ledger:`, `workflow-projections:`, `job-run-observability:`,
@@ -544,6 +556,161 @@ timestamps. The read never returns run inputs, outputs, logs, error messages, or
 secrets, and it sends nothing. `complete` is false when an owner's RunLog read
 failed or the owner list hit its cap. Like other RunLog reads, the first RPC to
 an owner with no RunLog writes its empty schema.
+
+### Admin package provenance
+
+`adminPackageProvenance` is a role-gated, read-only read of one package of any
+owner, for feedback triage questions such as "which commit is a package
+serving", "job pinned commit", "is commit ancestor", or "stuck publish other
+owner package". Target it with `packageId` or `packageName` (`@owner/name`);
+pass `ancestry: { ancestor, descendant }` (full SHAs) to also check whether one
+commit is an ancestor of the other. Every call is audit-logged
+(`category: 'admin'`, action `adminPackageProvenance`) with the acting admin
+identity, the target package id and owner id, and the time. Failures are logged
+too, with the requested target.
+
+It returns:
+
+- `source`: `publishedCommit` (`entity_sources.published_commit`),
+  `servingCommit` (`serving_commit`, else `published_commit`; what runtime
+  serves), and `servingArtifactCommit` (`serving_commit` only; null when no
+  complete build is proven at the published commit).
+- `artifacts`: kind, name, entry point, and `builtFromCommit` for each saved
+  bundle artifact. Never the KV key or bundle bytes.
+- `jobs`: `recordedCommit` (`jobs.published_commit`, written when the job was
+  created or refreshed) and `runsCommit` (the serving commit a run resolves),
+  with schedule type, enabled state, and last and next run times.
+- `triggers` (cron, subscription, and webhook enablements) and `webhooks`
+  (endpoint id and name). They are not pinned to a commit: `pinnedCommit` is
+  always null and `runsCommit` is the serving commit. Never URL secrets, HMAC
+  secrets, their hashes, or credential mappings.
+- `publishRuns`: up to 20 recent `packagePublishExternalPush` workflow
+  projections from the owner's RunLog and uploaded `publish_builds`, each with
+  id, status, commit, timestamps, and `errorClass` (a leading error name or
+  snake_case code, else `error`; never the message). `publishRunsComplete` is
+  false when the owner's RunLog could not be read.
+- `ancestry`: `ancestor`, `not_ancestor`, `unknown_commit` (with
+  `unknownCommits`), or `repo_unavailable`. The platform fetches the package's
+  Artifacts repo with a short-lived read token that never leaves the function;
+  any fetch failure collapses to `repo_unavailable` without a message.
+
+The only write is the audit row. Like other RunLog reads, the first RPC to an
+owner with no RunLog writes its empty schema.
+
+### Admin package artifact evidence
+
+`adminPackageArtifactEvidence` is the byte-level companion to
+`adminPackageProvenance`: it shows which stored bundle bytes runtime readers
+select, so an identity row that names a newer build can be told apart from the
+payload actually served. It is role-gated, read-only, and audit-logged (action
+`adminPackageArtifactEvidence`; the reason holds the package id, owner id, page
+offset, returned count, and total). Target it with `packageId` or `packageName`.
+
+Targets are every artifact the serving-commit manifest declares
+(`collectPublishedPackageArtifactTargets`: app, app client, a callable `module`
+and an `importable-module` per export, subscription modules, and each job),
+followed by any extra identity rows and any package job rows with no declared
+target. A declared target with no identity row or no KV payload is still
+reported. Declared targets come from the serving commit's KV manifest snapshot
+only: the read never recovers a missing snapshot from Artifacts (that path
+writes KV). When the snapshot is missing, `manifest.status` is
+`snapshot_missing`; when it cannot be read or parsed, `unavailable`. Either way
+targets come from identity rows and jobs only.
+
+Each target reports:
+
+- `selector`: the pointer the runtime reader passes as `commit` to
+  `loadPublishedBundleArtifactByIdentity`. `serving_commit`
+  (`servingCommitForSource`) for callable modules, subscriptions, app, app
+  client, and jobs; `serving_artifact_commit` (`servingArtifactCommitForSource`)
+  for importable modules, where null means the newest row is used as-is.
+- `identityRow`: the newest-build `published_bundle_artifacts` row
+  (`builtFromCommit`, `updatedAt`).
+- `selected`: the payload the reader selects, using the same rule as
+  `hydratePublishedBundleArtifactRow` (the commit-keyed key when the requested
+  commit differs from the row, else the row's key). It carries the KV key (only
+  when it is the derived commit-keyed form), `status` (`valid`, `missing`,
+  `malformed` with `malformedReason`, `identity_mismatch` with the mismatched
+  field names, or `kv_unavailable`), the embedded commit, the main module name,
+  SHA-256 per module (first 32 by path; `moduleCount` is always the full count),
+  `bundleSha256` over the main module name and the sorted path and hash pairs,
+  and the payload size. A KV read that throws is `kv_unavailable` for that
+  target; the rest of the page is still reported.
+- `servedFrom`: which stored bytes runtime serves. The package app reads its
+  publish-time worker template (`package-app-template` key at the serving
+  commit) before the identity-row path, so an app with a usable template is
+  `template` even with no identity row; this uses the runtime's own KV-only
+  `readPackageAppWorkerTemplate` acceptance rule. Otherwise `identity_row` when
+  an identity row exists and `selected` is valid, else `none`. `runtimeLoads` is
+  `servedFrom !== 'none'`.
+- `template` (app only): evidence for the template payload, same fields as
+  `selected`.
+- `clientPointer` (app client only): the template's client pointer (`kvKey`,
+  `status`, the client module file name, and whether it matches `selected`). A
+  valid pointer picks the client module URL; client bytes still come from the
+  identity-row path.
+- `newestRow`: the same evidence for the row's own payload, only when the row
+  names a different commit, plus `selectedMatchesNewestRowBytes`.
+- `jobs`: the package jobs for a job target (id, enabled, recorded commit).
+
+Module hashes cover each stored module's type and content; hashing happens in
+platform code and bytes never leave it. The read never loads, executes,
+compiles, or rebuilds package code, and never writes KV or D1 except the audit
+row. Pages hold up to 20 targets (`limit`, default 10); follow
+`page.nextCursor`. The cursor carries a `stateFingerprint` of the source
+pointers, the target list, every identity row's commit and `updatedAt`, and
+every package job's pin and enabled state; a cursor from a different state is
+refused, so a page walk never silently skips or repeats targets or mixes two
+publishes. Payload bytes are read per page and are not part of the fingerprint
+(commit-keyed payloads are written once per commit).
+
+### Admin package job attribution repair
+
+`adminPackageJobAttributionRepair` sets one package job's recorded commit
+(`jobs.published_commit`) to the package's current serving commit, for job pins
+left on a failed publish's commit. It is admin-only and audit-logged (action
+`adminPackageJobAttributionRepair`; the reason holds package, owner, and job
+ids, mode, outcome, the expected commits, refusal reasons, and whether a write
+was compensated).
+
+Input: `packageId` or `packageName`, `jobId`, `expectedRecordedCommit` (the
+job's current pin), `expectedServingCommit` (the value it will record), and
+`apply` (default false, a dry run). The result has `outcome` (`would_update`,
+`updated`, `already_current`, or `refused`), `refusalReasons`, the exact `diff`
+(`jobs.published_commit` from and to), the source pointers, and the job's id,
+name, enabled state, and recorded commit.
+
+Safety contract:
+
+- Refuses (`refusalReasons`) when the source or job is missing, the job belongs
+  to another source, the serving commit is unknown or differs from
+  `expectedServingCommit`, a publish is in progress (`published_commit` differs
+  from a set `serving_commit`), or the pin differs from
+  `expectedRecordedCommit`. A pin already at the serving commit is
+  `already_current`, so a retried apply is a no-op.
+- The write (`repairPackageJobPublishedCommit` on the jobs store) updates only
+  `published_commit` and `updated_at`, compare-and-set on job id, owner, source
+  id, the expected old commit, and a live row. Enabled state, disabled reason,
+  schedule, timezone, params, caller context, claims, retries, and last and next
+  run fields are untouched. A missed compare-and-set is refused as
+  `write_conflict`.
+- Jobs live in the jobs D1 database, apart from `entity_sources`, so the source
+  guard is a re-read after the write. If the serving pointer moved, the pin is
+  compare-and-set back to the expected old commit (`compensated`) and the apply
+  is refused as `source_changed_during_apply`.
+- Never rebuilds, republishes, runs the job, changes enablement or the source
+  pointers, or writes any other row.
+
+### Failed publish settlement
+
+`settleFailedPublishRebuild` moves the published pointer back to the last good
+commit (compare-and-set on the failed commit), then refreshes the projection and
+job pins with `rebuildArtifacts: false`. The two writes are separate, so a
+refresh that throws leaves the pointer restored and the pins on the failed
+commit. A retry whose compare-and-set misses re-reads the pointer: when it
+already names the restore commit, the retry finishes the refresh and returns
+`restored`; any other pointer is a newer publish and the result is `superseded`
+with nothing touched.
 
 ## Related
 

@@ -20,6 +20,7 @@ cloud.
 | Lease authentication on CapabilityProxy and package graph                                 | `packages/worker/src/open-api/authenticate.ts`                                                              |
 | API edge WebSocket forward (rate limited per context and IP)                              | `packages/api-worker/src/edge.ts`                                                                           |
 | CLI (`kody context`, `kody chain`, `kody daemon`)                                         | `packages/cli/src/execution-context/`                                                                       |
+| Website Start functions (page, chain, daemon card, desktop setup)                         | `packages/worker/start/server/execution-contexts.ts`                                                        |
 | Host commands (ADR 0093): process manager, authorize hop, opt-in route                    | `packages/cli/src/execution-context/host-commands.ts`, `packages/worker/src/execution-contexts/commands.ts` |
 
 ## Lifecycle
@@ -115,6 +116,13 @@ uninstall, `kody update`), `auto-update.ts`, and `runner-lock.ts`.
   server-side `1012 replaced` close makes `runDaemon` return `replaced`: the
   daemon logs the other local `kody daemon` processes (by command line) and
   exits instead of reconnecting.
+- Desktop setup is staged (sign in → personal register → optional team attach →
+  runner). **Manage setup** / team-first setup in a team org
+  (`putDesktopExecutionFirst` with `targetOrgSlug`) attaches the personal
+  registration to that org and puts it first in the org chain; it does not
+  register the machine again. The context page **Daemon** card and desktop
+  **This machine** call `runExecutionContextDaemonAction` (pause, resume,
+  restart, update, logs).
 
 ## Revoke, then delete
 
@@ -154,12 +162,20 @@ must both be on, and either one turns it off:
   `commands_opt_in_local`. Either write bumps `grant_version` and pushes a
   `grant.update`, so a daemon applies it at once.
 
-Then the caller needs `execution_context:command`. `loadContextAccess` computes
-`canRunCommands`: always for the operator, otherwise only with a grant row whose
-`command` column is set. Presets and `all_members` never set it;
-`executionContextShareSet` with `commands: true` does (`extraPermissions` in
-`access-writes.ts`). A future profile withholds it by leaving the permission
-out; there is no other special case.
+Then the caller needs `execution_context:command`, and only the operator has it:
+`loadContextAccess` sets `canRunCommands` for the operator alone. Commands run
+as the machine's OS user, which holds the machine's Kody login and context key,
+so anyone else with commands could act as the machine and see other people's
+runs. `executionContextShareSet` refuses `commands: true` with
+`commands_operator_only`; command grants written earlier stay in `grants` and
+confer nothing. The daemon also never hands `hostCommands` to a shared run
+(`sharedRun` on `run.request`). A profile withholds it by leaving the permission
+out.
+
+Commands inherit the daemon's environment minus every `KODY_*` variable (the CLI
+token, `KODY_CONTEXT_KEY_PASSPHRASE`), and a `cwd` inside the credential
+denylist (below) is refused. Both are defense in depth: a command runs as the
+same OS user and can still read those files.
 
 Call path:
 
@@ -203,7 +219,10 @@ commands), `packages/cli/test/execution-context.test.ts` (real daemon and
 workerd against a fake ECP server), and
 `packages/worker/src/execution-contexts/commands.node.test.ts` (authorization,
 denials, sharing, audit). CI runs the CLI ones on Linux, macOS, Windows x64, and
-Windows ARM (`host-commands` job in `validate.yml`).
+Windows ARM (`host-commands` jobs in `validate.yml`). On main pushes, Validate
+skips the macOS jobs and `macos-main.yml` runs them outside the deploy gate, so
+a macOS runner shortage cannot hold production. A failure there opens the "main:
+macOS host commands failing" issue.
 
 ### End-to-end check
 
@@ -220,9 +239,9 @@ KODY_API_TOKEN=<token with execution_context:create, execution_context:execute, 
   npm run e2e:context-commands -- --api-url https://api.kody.codes
 ```
 
-The account needs the `execution-contexts` experiment on. PR previews lack
-`ECP_FRAME_SIGNING_KEYS`, so the daemon cannot connect there; run it against
-production (or any deployment with signing keys).
+The account needs the `execution-contexts` experiment on. PR previews sign with
+the committed test key set; set `KODY_ECP_TRUST_TEST_ROOT=1` to run it against a
+preview (see the TEST ONLY rule below).
 
 ## Rules that matter
 
@@ -245,6 +264,13 @@ production (or any deployment with signing keys).
   `*.workers.dev` preview or `localhost` (`serverKeyRootsFor` in
   `packages/cli/src/execution-context/client.ts`); kody.codes and every other
   host ignore the variable. Never set it on a real machine.
+- Sharing with all members is the `all_members` flag on the context or its
+  attachment, never an `org`-subject grant (access-writes refuses one on
+  `execution_context`). Compiled access turns the flag into Use
+  (`execution_context:read`, `:execute`) on that context for every live Member,
+  so they pass the capability surface check like a person or team share;
+  `executionContextShareSet` and detach bump `access_epoch` so the change
+  applies on the next request.
 - Every API hop a run makes re-checks the requester's current access (account
   state, org membership, share, opt-in, attachment). Lost access ends the lease
   with `access_lost`. Leaving a team or org, opting out, detaching and narrowing
@@ -302,10 +328,28 @@ production (or any deployment with signing keys).
   narrower mode wins. Mounts are re-applied on `grant.update` and policy edits.
   The daemon advertises `features: ["fs"]` in `hello` / `capabilities.update`
   only while a folder is mounted, and routing refuses `requires: ["fs"]` with
-  `no_fs` (grant lists none) or `no_local_fs` (local policy allows none). In the
-  run, a `node:fs` shim sends host paths over the run-secret loopback bridge,
-  which enforces the mounts on the Node side; see
+  `no_fs` (grant lists none) or `no_local_fs` (local policy allows none). Host
+  folders are for the operator's own runs: the daemon mounts nothing for a
+  `sharedRun`, and routing refuses a shared run with `requires: ["fs"]`
+  (`fs_operator_only`). Daemons that follow that rule advertise
+  `host-operator-only` (`ecpHostOperatorOnlyFeature`); older daemons mount
+  folders for every run, so routing skips shared runs on a context with
+  `grant.fs` whose daemon lacks it (`fs_daemon_outdated`). A credential denylist
+  (`credentialDenylist` in `fs-access.ts`: the Kody CLI config dir with its
+  tokens, context keys and this policy, SSH, GPG, git, cloud CLI and
+  package-manager credentials, OS keyring files) is never mounted and is refused
+  inside a mounted folder, symlinks included. In the run, a `node:fs` shim sends
+  host paths over the run-secret loopback bridge, which enforces the mounts on
+  the Node side; see
   [CLI README](../../../packages/cli/README.md#execution-context-host-folders).
+- A context's operator must stay a live member of the run's org. Once they
+  leave, `loadContextAccess` reports `operator_left` for everyone else, so their
+  machine stops taking other members' runs (fail closed).
+- A run's credential call map (`execute` `credentials`) is stored on its lease
+  in the session DO (`ExecutionContextLease.credentials`). CapabilityProxy
+  applies it to the run's lease-authenticated callbacks and refuses a
+  `credentials` field from the machine, so the machine cannot pick other
+  credentials for the requester.
 - A run (`execute` `chain`) or automation (`execution` on jobs, webhooks,
   subscriptions and workflow steps) can set its own `context` or `chain`, which
   overrides the default chain. API/MCP/UI overrides beat the manifest.

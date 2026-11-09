@@ -11,21 +11,32 @@ import {
 	type Server,
 	type ServerResponse,
 } from 'node:http'
-import { type AddressInfo } from 'node:net'
+import type { AddressInfo } from 'node:net'
 import { Readable } from 'node:stream'
+import {
+	CapabilityProxyError,
+	gatewayFetchErrorHeaderName,
+} from './capability-proxy.js'
 import { redact } from './redact.js'
 import { runSecretHeader } from './local-runtime-source.js'
+import { localBridgeTlsCheckPath } from './local-egress.js'
+import {
+	certErrorCode,
+	certErrorMessage,
+	checkTlsCertificate,
+	isCertErrorCode,
+} from './tls-errors.js'
 
-export const localBridgeCallPath = '/call'
+const localBridgeCallPath = '/call'
 export const localBridgeGatewayFetchPath = '/gateway-fetch'
-export const localBridgeHostFsPath = '/fs'
+const localBridgeHostFsPath = '/fs'
 
 export type LocalRuntimeBridge = {
 	port: number
 	close: () => Promise<void>
 }
 
-export type LocalRuntimeBridgeCall = {
+type LocalRuntimeBridgeCall = {
 	path: Array<string>
 	args: Array<unknown>
 }
@@ -49,6 +60,11 @@ export type LocalRuntimeBridgeInput = {
 	forwardHostFs?: (body: unknown) => Promise<unknown>
 }
 
+/** False only when the hop failed before any request byte left the CLI. */
+function gatewayHopMayHaveReachedOrigin(error: unknown): boolean {
+	return !(error instanceof CapabilityProxyError && error.sent === false)
+}
+
 export async function startLocalRuntimeBridge(
 	input: LocalRuntimeBridgeInput,
 ): Promise<LocalRuntimeBridge> {
@@ -65,16 +81,17 @@ export async function startLocalRuntimeBridge(
 			})
 			response.end(JSON.stringify(body))
 		}
-		/** Open API-shaped error so workerd `gatewayFetchStream` throws (needs no-store). */
+		/** Marked Open API-shaped error so workerd `gatewayFetchStream` throws. */
 		const replyGatewayFetchError = (
 			status: number,
 			message: string,
 			code: string,
+			mayHaveReachedOrigin: boolean,
 		) => {
 			replyJson(
 				status,
-				{ error: { code, message } },
-				{ 'Cache-Control': 'no-store' },
+				{ error: { code, message, mayHaveReachedOrigin } },
+				{ 'Cache-Control': 'no-store', [gatewayFetchErrorHeaderName]: code },
 			)
 		}
 		if (request.headers[runSecretHeader] !== input.runSecret) {
@@ -100,11 +117,22 @@ export async function startLocalRuntimeBridge(
 			request.method === 'POST' &&
 			request.url === localBridgeGatewayFetchPath
 		) {
+			// One hop's signal: the run ending or workerd dropping this request
+			// (caller AbortSignal, mid-body disconnect) stops the upstream hop.
+			const hop = new AbortController()
+			const abortHop = () =>
+				hop.abort(new Error('The local gateway fetch was cancelled.'))
+			if (inFlight.signal.aborted) abortHop()
+			else inFlight.signal.addEventListener('abort', abortHop, { once: true })
+			response.once('close', () => {
+				inFlight.signal.removeEventListener('abort', abortHop)
+				if (!response.writableFinished) abortHop()
+			})
 			try {
 				await input.forwardGatewayFetchStream({
 					request,
 					response,
-					signal: inFlight.signal,
+					signal: hop.signal,
 				})
 			} catch (error) {
 				if (response.headersSent) {
@@ -113,11 +141,36 @@ export async function startLocalRuntimeBridge(
 					)
 					return
 				}
+				const certCode = certErrorCode(error)
 				replyGatewayFetchError(
 					502,
-					redact(error instanceof Error ? error.message : String(error)),
-					'gateway_fetch_failed',
+					certCode
+						? certErrorMessage(certCode, 'the Kody API')
+						: redact(error instanceof Error ? error.message : String(error)),
+					certCode ? 'tls_certificate_error' : 'gateway_fetch_failed',
+					!certCode && gatewayHopMayHaveReachedOrigin(error),
 				)
+			}
+			return
+		}
+		if (request.method === 'POST' && request.url === localBridgeTlsCheckPath) {
+			try {
+				const body = JSON.parse(await readBodyText(request)) as {
+					host?: unknown
+					port?: unknown
+				}
+				const host = typeof body.host === 'string' ? body.host : ''
+				const port = Number(body.port)
+				if (!host || !Number.isInteger(port) || port < 1 || port > 65535) {
+					replyJson(400, { message: null })
+					return
+				}
+				const code = await checkTlsCertificate({ host, port })
+				replyJson(200, {
+					message: isCertErrorCode(code) ? certErrorMessage(code, host) : null,
+				})
+			} catch {
+				replyJson(200, { message: null })
 			}
 			return
 		}
@@ -160,7 +213,7 @@ export async function startLocalRuntimeBridge(
 	}
 }
 
-export function parseBridgeCall(body: string): LocalRuntimeBridgeCall {
+function parseBridgeCall(body: string): LocalRuntimeBridgeCall {
 	const parsed = JSON.parse(body) as { path?: unknown; args?: unknown }
 	if (
 		!Array.isArray(parsed.path) ||
@@ -175,7 +228,7 @@ export function parseBridgeCall(body: string): LocalRuntimeBridgeCall {
 	}
 }
 
-export async function readBodyText(stream: IncomingMessage): Promise<string> {
+async function readBodyText(stream: IncomingMessage): Promise<string> {
 	const chunks: Array<Buffer> = []
 	for await (const chunk of stream) {
 		chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
@@ -219,6 +272,13 @@ export async function writeWebResponse(
 		nodeStream.on('error', reject)
 		response.on('error', reject)
 		response.on('finish', () => resolve())
+		// A reader that goes away before the end cancels the upstream body
+		// instead of leaving it open.
+		response.on('close', () => {
+			if (response.writableFinished) return
+			nodeStream.destroy()
+			resolve()
+		})
 		nodeStream.pipe(response)
 	})
 }

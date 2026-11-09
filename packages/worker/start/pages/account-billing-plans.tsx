@@ -1,15 +1,15 @@
 /** @jsxImportSource @emotion/react */
 import { SiteLink } from '../components/site-link.tsx'
-import {
-	type AccountBillingLoaderData,
-	type AdminPlanName,
+import type {
+	AccountBillingLoaderData,
+	AdminPlanName,
 } from '#universal/loader-data.ts'
 import {
 	accountInputCss,
 	AccountManagementMessage,
 	AccountManagementPanel,
 } from './account-management-components.tsx'
-import { type BillingInterval } from '../billing-checkout.ts'
+import type { BillingInterval } from '../billing-checkout.ts'
 import {
 	colors,
 	mq,
@@ -352,7 +352,9 @@ export function renderAccountBillingPlans(input: {
 												}
 											/>
 											<span css={descriptionCss}>
-												Promo codes apply to monthly billing.
+												A Stripe discount on your monthly price. Referral links
+												and usernames are not promo codes; a referral goes under
+												Referred by.
 											</span>
 										</label>
 									)}

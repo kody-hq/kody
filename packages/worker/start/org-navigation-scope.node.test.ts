@@ -58,6 +58,7 @@ test('every native organization route declares its verification policy', () => {
 	const sections = new Set([
 		'activity',
 		'agents',
+		'apps',
 		'credentials',
 		'email',
 		'execution-contexts',

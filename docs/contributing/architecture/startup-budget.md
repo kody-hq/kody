@@ -132,14 +132,16 @@ non-library caller to find which of our modules imported it.
    the same lane. `patches/acorn+8.17.0.patch` marks acorn side-effect free so
    esbuild drops it once `normalizeCode` is off the graph; refresh that patch
    when codemode bumps acorn.
-8. **Type deferred packages with `typeof import(...)` queries.** esbuild walks
-   `import type` and `import { type … }` edges into Wrangler main, and keeps the
-   target package's side-effecting module code. The lint autofix rewrites
-   `import type` to the inline form. Export the types from the loader as type
-   queries instead (see `postal-mime-load.ts`). The same trap applies to in-repo
-   modules: a type-only import of a module whose top level builds something
-   heavy (for example a validator instance) still evaluates it at startup, so
-   keep such modules free of top-level work.
+8. **Type deferred packages with `typeof import(...)` queries.** With
+   `verbatimModuleSyntax`, `import { type X }` compiles to a bare
+   `import 'pkg'`, so the target module and its side effects stay in Wrangler
+   main. A top-level `import type` is erased. The
+   `kody-custom/no-inline-type-only-import` lint rule rewrites type-only
+   specifier lists to `import type`. For deferred packages, still export the
+   types from the loader as type queries (see `postal-mime-load.ts`) so the
+   loader is the only place that names the package. A value import of a module
+   whose top level builds something heavy (for example a validator instance)
+   still evaluates it at startup, so keep such modules free of top-level work.
 
 ## CI tripwire
 
@@ -147,10 +149,12 @@ non-library caller to find which of our modules imported it.
 serial tail of `npm run validate` and a dedicated CI static step) profiles each
 production entry three times with `wrangler check startup` and compares the best
 sample to `tools/worker-startup-budget.json`. Local validate runs this after the
-parallel jobs so sampled CPU is not inflated by e2e and Worker builds. Budgets
-sit well above the steady-state reading and well below the level that made
-uploads flaky, so the check catches a re-eagerised domain graph or a new heavy
-import without failing on runner noise. It complements
+parallel jobs so sampled CPU is not inflated by e2e and Worker builds. A worker
+over budget is profiled three more times once the load average settles (bounded
+wait) before the check fails, so a busy machine does not read as a regression.
+Budgets sit well above the steady-state reading and well below the level that
+made uploads flaky, so the check catches a re-eagerised domain graph or a new
+heavy import without failing on runner noise. It complements
 `worker-startup-bundles:check`, which measures bytes and enforces import-graph
 boundaries deterministically. Byte ceilings live in
 `tools/worker-startup-bundle-budget.json`. Append measured notes to

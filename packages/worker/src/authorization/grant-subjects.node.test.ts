@@ -5,7 +5,7 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { expect, test } from 'vitest'
 import {
 	contextGrantSubjects,
@@ -35,7 +35,7 @@ import {
 	compileAccessForRequest,
 	liveGrantRowSubjects,
 } from './access-compile.ts'
-import { type GrantSubjectChoices } from './grant-subjects.ts'
+import type { GrantSubjectChoices } from './grant-subjects.ts'
 
 const workerSrc = fileURLToPath(new URL('../', import.meta.url))
 
@@ -55,6 +55,11 @@ const handWrittenSubjectMatches: Record<
 	string,
 	{ count: number; reason: string }
 > = {
+	'execution-contexts/box-notices.ts': {
+		count: 2,
+		reason:
+			"Lists a context's grantees (ADR 0096) by expanding its user and team grants, not matching a person to a grant.",
+	},
 	'orgs/access-writes.ts': {
 		count: 3,
 		reason:
@@ -90,9 +95,13 @@ const handWrittenSubjectMatches: Record<
 			"Reads the person's own direct grant row to merge the link preset into.",
 	},
 	'execution-contexts/service.ts': {
-		count: 4,
+		count: 5,
 		reason:
-			'loadSharing keeps only user and team rows and joins their labels for display.',
+			'loadSharing keeps only user and live-team rows and joins their labels for display.',
+	},
+	'mcp/capabilities/admin/admin-unmappable-credential-lock-report.ts': {
+		count: 1,
+		reason: 'Report filter: a team grant counts only while its team is live.',
 	},
 	'orgs/repo.ts': {
 		count: 2,

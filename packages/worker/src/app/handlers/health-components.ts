@@ -1,6 +1,6 @@
 import { runD1WithRetry } from '#worker/d1-retry.ts'
 import { readFleetExecuteLastSuccess } from '#worker/execute-health-heartbeat.ts'
-import { type AppEnv } from '#worker/env-schema.ts'
+import type { AppEnv } from '#worker/env-schema.ts'
 
 /**
  * Component-level health for operators and the public status prober

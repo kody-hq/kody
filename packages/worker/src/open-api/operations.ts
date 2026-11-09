@@ -1,4 +1,4 @@
-import { type SurfacePermission } from '#worker/authorization/authorize.ts'
+import type { SurfacePermission } from '#worker/authorization/authorize.ts'
 
 export const apiOperationMethods = [
 	'GET',
@@ -96,6 +96,7 @@ export const nativeApiOperationIds = [
 	'execute',
 	'searchTool',
 	'cliLoginDeviceToken',
+	'secretLocalRead',
 ] as const
 
 export type NativeApiOperationId = (typeof nativeApiOperationIds)[number]
@@ -201,6 +202,8 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['GET', '/v1/account/feedback', 'metaPlatformFeedbackList'],
 		['GET', '/v1/account/feedback/{feedback_id}', 'metaPlatformFeedbackGet'],
 		['POST', '/v1/account/feedback', 'metaPlatformFeedbackSubmit'],
+		['POST', '/v1/account/guest-claim', 'guestClaimStart'],
+		['POST', '/v1/account/guest-claim/finish', 'guestClaimFinish'],
 		// Teams access (grants, invites, orgs, teams). Tagged account until
 		// token scopes move to the org vocabulary (P4/P5).
 		['GET', '/v1/access/grants', 'accessList'],
@@ -244,6 +247,7 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['DELETE', '/v1/orgs/members/{user_id}', 'orgMemberRemove'],
 		['GET', '/v1/orgs/teams', 'teamList'],
 		['POST', '/v1/orgs/teams', 'teamCreate'],
+		['DELETE', '/v1/orgs/teams/{team_id}', 'teamDelete'],
 		['POST', '/v1/orgs/teams/{team_id}/members', 'teamMemberAdd'],
 		[
 			'DELETE',
@@ -411,6 +415,12 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 				aliasPaths: ['/v1/packages/{package_id}/external-push'],
 			},
 		],
+		[
+			'POST',
+			'/v1/packages/publish-builds',
+			'packagePublishBuildCreate',
+			{ aliasPaths: ['/v1/packages/{package_id}/publish-builds'] },
+		],
 		['GET', '/v1/package-subscriptions', 'packageSubscriptionsList'],
 		['GET', '/v1/enablements', 'enablementList'],
 		['POST', '/v1/enablements', 'enablementEnable'],
@@ -562,8 +572,45 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['PATCH', '/v1/execution-contexts/{id}', 'executionContextUpdate'],
 		['DELETE', '/v1/execution-contexts/{id}', 'executionContextRevoke'],
 		['POST', '/v1/execution-contexts/{id}/delete', 'executionContextDelete'],
+		['POST', '/v1/execution-contexts/{id}/pause', 'executionContextPause'],
+		['POST', '/v1/execution-contexts/{id}/resume', 'executionContextResume'],
+		[
+			'GET',
+			'/v1/execution-contexts/{id}/daemon',
+			'executionContextDaemonStatus',
+		],
+		[
+			'POST',
+			'/v1/execution-contexts/{id}/daemon/restart',
+			'executionContextDaemonRestart',
+		],
+		[
+			'POST',
+			'/v1/execution-contexts/{id}/daemon/update',
+			'executionContextDaemonUpdate',
+		],
+		[
+			'PATCH',
+			'/v1/execution-contexts/{id}/daemon/config',
+			'executionContextDaemonConfig',
+		],
+		[
+			'GET',
+			'/v1/execution-contexts/{id}/daemon/logs',
+			'executionContextDaemonLogs',
+		],
 		['POST', '/v1/execution-contexts/{id}/opt-in', 'executionContextOptIn'],
 		['DELETE', '/v1/execution-contexts/{id}/opt-in', 'executionContextOptOut'],
+		[
+			'POST',
+			'/v1/execution-contexts/{id}/notices/dismiss',
+			'executionContextNoticeDismiss',
+		],
+		[
+			'POST',
+			'/v1/execution-contexts/{id}/sharing/preview',
+			'executionContextSharePreview',
+		],
 		['GET', '/v1/execution-contexts/{id}/sharing', 'executionContextShareList'],
 		['PUT', '/v1/execution-contexts/{id}/sharing', 'executionContextShareSet'],
 		[
@@ -681,6 +728,10 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		tag: 'search',
 	}),
 	nativeRoute('POST', '/v1/tokens/device', 'cliLoginDeviceToken', 'none'),
+	// Use is checked per secret in the handler (grants, not a role).
+	nativeRoute('POST', '/v1/secrets/local-read', 'secretLocalRead', 'none', {
+		tag: 'secrets',
+	}),
 ]
 
 export const apiOperationsById: ReadonlyMap<string, ApiOperation> = new Map(

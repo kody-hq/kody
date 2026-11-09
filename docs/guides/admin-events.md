@@ -289,103 +289,6 @@ event omits probe logs, health-check bodies, user identities, secrets, and
 unrelated account content. Idempotency keys include the topic, component,
 timestamps, and package id so a retried POST does not double-invoke.
 
-## `fleet.package_error_rate.elevated` (admins)
-
-The hourly `usage_aggregation` lane queries Analytics Engine for anonymous fleet
-totals of `package_export`, `package_static_call`, `job_run`, and
-`workflow_run`. It compares the last completed hour to the hour before it, and
-the last 24 hours to the 24 hours before that. Error totals use
-`blob4 = 'error'` only: `package_static_call` throws that a successful run
-handled are recorded as `caught` and do not inflate this alert (they remain in
-admin usage rollups as `caughtCount` / `caught_count`, and in AE for per-package
-drill-down via `blob3`). When the combined error rate rises past a volume floor,
-Kody writes a KV snapshot for `/admin/insights` and fans
-`fleet.package_error_rate.elevated` to packages saved by users who hold the
-admin role at dispatch time. A second query then groups recent-window errors by
-owner. One account at ≥80% of those errors, or three accounts together at ≥80%,
-is concentrated; a true multi-user spike stays fleet-wide. Concentrated pages
-still fan out to admin packages — they name the owning accounts instead of
-looking like a fleet outage. A non-admin package may declare the topic, but it
-never receives the event. Role revocation stops delivery on the next elevation.
-
-There is no Queue / DLQ for this topic. A missed invoke is logged and does not
-fail usage rollup aggregation. Hour elevations use a six-hour cooldown; day
-elevations use a 24-hour cooldown. The same completed window end plus top owner
-never re-pages even when the event id string would otherwise change hourly.
-
-Handlers receive operator telemetry only:
-
-```ts
-type FleetPackageErrorRateElevatedEvent = {
-	event: 'fleet.package_error_rate.elevated'
-	event_id: string
-	status_url: string
-	insights_url: string
-	environment: string
-	observed_at: string
-	trigger: {
-		window: 'hour' | 'day'
-		reason: 'absolute_delta' | 'relative_factor' | 'from_zero'
-		recent: {
-			start: string
-			end: string
-			combined: { events: number; errors: number; rate: number | null }
-			by_metric: Array<{
-				metric:
-					'package_export' | 'package_static_call' | 'job_run' | 'workflow_run'
-				events: number
-				errors: number
-				rate: number | null
-			}>
-		}
-		previous: {
-			start: string
-			end: string
-			combined: { events: number; errors: number; rate: number | null }
-			by_metric: Array<{
-				metric:
-					'package_export' | 'package_static_call' | 'job_run' | 'workflow_run'
-				events: number
-				errors: number
-				rate: number | null
-			}>
-		}
-	}
-	by_metric: Array<{
-		metric:
-			'package_export' | 'package_static_call' | 'job_run' | 'workflow_run'
-		events: number
-		errors: number
-		rate: number | null
-	}>
-	concentration: {
-		kind: 'one_account' | 'few_accounts' | 'fleet'
-		recent_errors: number
-		owner_count: number
-		package_count: number
-		top_owner_share: number
-		owners: Array<{
-			username: string
-			error_share: number
-			packages: Array<{ kody_id: string }>
-		}>
-	} | null
-}
-```
-
-`status_url` is the public status page. `insights_url` is the operator insights
-dashboard. Counts are fleet-wide and weighted by Analytics Engine
-`_sample_interval`. `concentration` is present when the elevation query
-succeeds. `owners` is populated only for `one_account` and `few_accounts` after
-D1 resolves usernames and package name leaves. The event omits user ids, package
-UUIDs, emails, error strings, logs, and unrelated account content. Idempotency
-keys include the topic, event id, and subscriber package id.
-
-Use this topic for notifier packages that enqueue a Kody-repo investigation
-request. Agent spawning stays on the scheduled sweep, not in the subscription
-handler. Do not treat this topic as permission to read another user's Activity
-or package source.
-
 ## `fleet.package_owner_error_spike` (admins)
 
 The hourly `usage_aggregation` lane also evaluates each package **owner** (the
@@ -473,9 +376,8 @@ One `fleet.users_affected.elevated` fan-out per incident (no repeats while
 firing). After two consecutive clear windows, one
 `fleet.users_affected.resolved` fan-out re-arms the incident. Operator notifier
 packages (for example `@kentcdodds/admin-event-notify`) should **page on
-elevated** and send a single resolved notice on resolved — this is the platform
-replacement for paging on concentrated `fleet.package_error_rate.elevated`
-spikes.
+elevated** and send a single resolved notice on resolved. It replaced the
+retired `fleet.package_error_rate.elevated` page.
 
 Handlers receive (elevated):
 
@@ -628,21 +530,27 @@ crosses the unique-worker cost line. Filter on `kind` if a busy-day 80% crossing
 is too noisy. Do not treat this topic as permission to read another user's
 packages, secrets, or Activity.
 
-## User created and deleted (admins)
+## User created, deleted, and guest claimed (admins)
 
-Password signup, social-login signup, and admin-created person accounts dispatch
-`user.created` after the account row and default `user` role exist. Self-service
-account deletion at `/account` and admin hard-delete dispatch `user.deleted`
-after the per-user cascade finishes. Creating an org (`orgCreate`) does not emit
-`user.created`.
+Password signup, social-login signup, admin-created person accounts, and guest
+accounts (the OAuth screen's Try it out) dispatch `user.created` after the
+account row and default `user` role exist. Self-service account deletion at
+`/account`, admin hard-delete, and the hourly purge of guests whose hold ended
+without a claim dispatch `user.deleted` after the per-user cascade finishes.
+Creating an org (`orgCreate`) does not emit `user.created`.
+
+Each person gets one `user.created`. Claiming a guest never emits a second
+`user.created`, and merging a guest into an existing account never emits
+`user.deleted` for the guest; both emit one `user.guest_claimed` instead.
 
 Production fan-out selects only packages whose owners hold the admin role at
 dispatch time. A non-admin package may declare the topic, but it never receives
-the event. Role revocation stops delivery on the next create or delete.
+the event. Role revocation stops delivery on the next create, delete, or claim.
 
 There is no Queue / DLQ for these topics. Dispatch is best-effort after the
-account change commits: a failed invoke is logged and does not fail signup,
-admin create, or account deletion.
+account change commits (`waitUntil`): a failed or slow invoke is logged and
+never fails or delays signup, guest creation, a guest claim, admin create, or
+account deletion.
 
 Handlers receive a metadata-only identity snapshot:
 
@@ -654,7 +562,7 @@ type UserCreatedEvent = {
 		username: string
 		email: string
 	}
-	source: 'signup' | 'oauth' | 'admin'
+	source: 'signup' | 'oauth' | 'admin' | 'guest'
 	created_at: string
 	attribution: {
 		utm_source: string | null
@@ -664,6 +572,12 @@ type UserCreatedEvent = {
 		utm_term: string | null
 		landing_path: string | null
 		referrer: string | null
+	}
+	/** Only when `source` is `guest`. */
+	guest?: {
+		client_name: string | null
+		expires_at: string
+		delete_at: string
 	}
 }
 
@@ -677,7 +591,66 @@ type UserDeletedEvent = {
 	created_at: string
 	deleted_at: string
 }
+
+type UserGuestClaimedEvent = {
+	event: 'user.guest_claimed'
+	mode: 'new' | 'merge'
+	user_created: boolean
+	method: 'social' | 'email_code' | 'signed_in_merge' | 'agent'
+	provider: string | null
+	user: {
+		id: string
+		username: string
+		email: string
+	}
+	guest: {
+		id: string
+		username: string
+		client_name: string | null
+		created_at: string
+		expires_at: string
+		claimed_at: string
+		phase: 'active' | 'hold'
+	}
+	claimed_at: string
+	counts: {
+		packages: number
+		repos: number
+		memories: number
+		secrets: number
+		connections: number
+		mcp_servers: number
+		apps: number
+		jobs: number
+		webhooks: number
+		runs: number
+	}
+	renamed_packages: number
+}
 ```
+
+A guest `user.created` has a `guest-…` username, a `@guest.kody.invalid` email,
+null attribution, and `guest` with the requesting OAuth client name, when full
+access ends (`expires_at`), and when the unclaimed guest is deleted
+(`delete_at`). A purged guest's `user.deleted` carries the guest identity and
+the guest's `created_at`.
+
+`user.guest_claimed` fires once per successful claim, after it commits, from
+every entry point: social sign-in on the claim page (`method: 'social'`,
+`provider` such as `github`), the claim page email code (`email_code`), merging
+into the signed-in account on the claim page (`signed_in_merge`), and the agent
+`guestClaimFinish` capability (`agent`). `mode: 'new'` means the claim created a
+new account (the guest converted in place, so `user.id` equals `guest.id` and
+`user_created` is true); `mode: 'merge'` means it moved everything into an
+existing account, and `user` is that account. `guest.created_at` to `claimed_at`
+is how long the person took to claim, and `phase` says whether the guest was
+still in full access or already in its read-only hold. `counts` are non-deleted
+rows the guest's personal org owned, read before anything moved: saved packages,
+plain repos, memories, stored secrets, OAuth connections, remote MCP servers,
+packages that declare an app, jobs, webhook endpoints, and run history.
+`renamed_packages` is how many guest packages a merge renamed to avoid a name
+clash (always 0 for `new`). The event never includes claim links or codes,
+tokens, or secret values.
 
 `user.id` is the stable account user id. `source` is the create path that
 committed. On `user.deleted`, `created_at` is the account's signup time (read
@@ -690,7 +663,8 @@ cannot be parsed, it is sent unchanged, so handlers should not assume it always
 parses. The event omits passwords, roles, plan, secrets, packages, and unrelated
 account content. Notification copies already delivered outside Kody cannot be
 recalled after account deletion. Idempotency keys include the topic, user id,
-timestamp, and package id.
+timestamp, and package id; `user.guest_claimed` keys use the guest id and
+`claimed_at`.
 
 ## `user.email_verification.failed` (admins)
 

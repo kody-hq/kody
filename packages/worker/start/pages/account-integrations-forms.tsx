@@ -6,9 +6,9 @@ import {
 	resolveAddAccountConnectionName,
 } from '#client/routes/integration-provider-catalog.ts'
 import { rotateOauthAppCredentials } from '#start/server/account-mutations'
-import {
-	type AccountIntegrationListItem,
-	type AccountOauthAppListItem,
+import type {
+	AccountIntegrationListItem,
+	AccountOauthAppListItem,
 } from '#universal/loader-data.ts'
 import { buildConnectOauthHref } from '#universal/oauth-connect.ts'
 import {
@@ -19,7 +19,7 @@ import {
 	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useMutation } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { useState } from 'react'

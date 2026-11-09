@@ -4,9 +4,9 @@
  * state and Step 3 / account lists share one unique-`clientId` rule.
  */
 
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { loadInboundMcpConnectionState } from '#worker/connected-mcp-agents.ts'
-import { type OAuthGrantListHelpers } from '#worker/oauth-grants.ts'
+import type { OAuthGrantListHelpers } from '#worker/oauth-grants.ts'
 
 export async function countDistinctInboundClientIds(
 	helpers: OAuthGrantListHelpers | undefined,

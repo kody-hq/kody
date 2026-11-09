@@ -1,17 +1,18 @@
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { operationResult } from '../operation-result.ts'
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import {
 	BillingPlanUnavailableError,
 	loadAccountBillingData,
 	type BillingPageOrg,
+	referralPaidInvoiceLister,
 } from '#app/account-billing-data.ts'
 import {
 	auditDatabaseFromEnv,
 	getRequestIp,
 	logAuditEvent,
 } from '#worker/audit-log.ts'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { userHasMcpOAuthGrants } from '#app/onboarding-data.ts'
 import { loadRequestOrgResolution } from '#app/org-request-binding.ts'
 import {
@@ -57,11 +58,16 @@ import { isPlatformFeedbackDomainError } from '#worker/platform-feedback/errors.
 import { submitPlatformFeedback } from '#worker/platform-feedback/service.ts'
 import { recordCheckoutFunnelEvent } from '#worker/identity/onboarding-funnel.ts'
 import { buildOrgBillingMetadata } from '#worker/billing/org-stripe-metadata.ts'
+import { advancePlanTransferForCheckoutSession } from '#worker/billing/plan-transfer.ts'
 import {
 	countLiveSeats,
 	readOrgStripeCustomerId,
 } from '#worker/orgs/billing.ts'
 import { getOrgById, loadOrgBindingForSlug } from '#worker/orgs/repo.ts'
+import {
+	attributeReferralBeforeFirstPayment,
+	type LateReferralAttributionOutcome,
+} from '#worker/entitlements/referral-program.ts'
 
 type OrgBillingAccess =
 	| { ok: true; org: BillingPageOrg }
@@ -267,6 +273,17 @@ export async function completeOrgBillingCheckout({
 			ip: requestIp,
 			path: `${orgBillingPath(orgSlug)}/success`,
 		})
+		const planTransfer = await advancePlanTransferForCheckoutSession({
+			env,
+			sessionId,
+		})
+		if (planTransfer && planTransfer.target_org_id === org.id) {
+			return {
+				ok: true as const,
+				needsOnboarding: false,
+				planTransfer: { id: planTransfer.id, status: planTransfer.status },
+			}
+		}
 		const hasMcpClient = await userHasMcpOAuthGrants(
 			env,
 			personalOrgIdForPerson(user.mcpUser),
@@ -287,6 +304,84 @@ export async function completeOrgBillingCheckout({
 		})
 		return billingErrorRedirect(request, org.slug, code)
 	}
+}
+
+const lateReferralRejections: Record<
+	Extract<LateReferralAttributionOutcome, { outcome: 'rejected' }>['reason'],
+	{ status: number; error: string }
+> = {
+	invalid_code: {
+		status: 400,
+		error:
+			'Enter a Kody username or referral link, like @alice or kody.codes/?ref=alice.',
+	},
+	unknown_referrer: {
+		status: 404,
+		error:
+			'No Kody account uses that username. Check the spelling or their link.',
+	},
+	self: { status: 400, error: 'You can’t refer yourself.' },
+	already_attributed: {
+		status: 409,
+		error: 'A referrer is already recorded for your account.',
+	},
+	already_paid: {
+		status: 409,
+		error:
+			'A referrer can only be added before your first paid invoice. Referral rewards are not applied retroactively.',
+	},
+	window_closed: {
+		status: 409,
+		error:
+			'A referrer can only be added within 72 hours of signing up for Kody.',
+	},
+}
+
+/** Billing-page "Referred by": personal billing only, within 72 hours of signup and before first payment. */
+export async function attachWebsiteReferral(input: {
+	env: Env
+	request: Request
+	user: AuthenticatedAppUser
+	orgSlug?: string
+	body: unknown
+}) {
+	const access = await resolveOrgBillingAccess({
+		request: input.request,
+		env: input.env,
+		user: input.user,
+		permission: 'billing:write',
+		orgSlug: input.orgSlug,
+	})
+	if (!access.ok) {
+		return operationResult({ ok: false, error: access.error }, access.status)
+	}
+	if (!access.org.personal) {
+		return operationResult(
+			{
+				ok: false,
+				error: 'Add a referrer from your personal billing page.',
+			},
+			400,
+		)
+	}
+	const body = input.body as { referrer?: unknown } | null
+	const result = await attributeReferralBeforeFirstPayment({
+		db: input.env.APP_DB,
+		refereeStableUserId: input.user.mcpUser.userId,
+		referrerInput: body?.referrer,
+		listPaidInvoices: referralPaidInvoiceLister(input.env),
+	})
+	if (result.outcome === 'rejected') {
+		const rejection = lateReferralRejections[result.reason]
+		return operationResult(
+			{ ok: false, error: rejection.error },
+			rejection.status,
+		)
+	}
+	return operationResult({
+		ok: true,
+		referrerUsername: result.referrerUsername,
+	})
 }
 
 export async function startWebsiteCheckout(input: {

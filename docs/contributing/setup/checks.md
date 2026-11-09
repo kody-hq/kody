@@ -12,22 +12,30 @@ pushes. See the [setup index](./index.md) for the other setup pages.
   LICENCE / COPYING / NOTICE text file. Source renames to markdown still count
   as code.
 - `git push` runs `node tools/git-hook-checks.ts pre-push`. Non-docs pushes run
-  `npm run typecheck`, `npm run knip`, then `vitest related --run` separately
-  for `node-unit` and `workers-unit`, with `CI=1`. Related inputs are the
-  pushed, non-deleted JavaScript/TypeScript source and test paths (all updated
-  refs, not just the last commit). Projects with no related tests pass. CI and
-  `npm run validate` remain the full gates; local `test:node` and validate are
-  unsharded.
+  CI's `npm run lint` and `npm run format:check` (a few seconds each, and they
+  parse every file without the Nx cache), `npm run typecheck`, `npm run knip`,
+  then `vitest related --run` separately for `node-unit` and `workers-unit`,
+  with `CI=1`. Pushes touching `packages/worker/src` or
+  `packages/jobs-worker/src` scripts also run CI Static's
+  `node tools/soft-delete-read-filter.ts` (under a second). Related inputs are
+  the pushed, non-deleted JavaScript/TypeScript source and test paths (all
+  updated refs, not just the last commit). Projects with no related tests pass.
+  CI and `npm run validate` remain the full gates; local `test:node` and
+  validate are unsharded.
 - Global pushed paths fall back to full `npm run test:push`: any package.json,
   package-lock.json, vitest*.ts, vite.config.ts, tsconfig*, nx.json,
   project.json, wrangler*.jsonc, migrations directory, `patches/**`,
   `tools/vitest-global-setup*`, or `packages/worker/src/test-support/**`.
-  Deleted globals also force full tests. Unreadable pushed paths, or changes
-  without usable related sources (such as assets), fall back to full tests.
-  Deleted-only source changes have no related inputs but still typecheck.
-  Runtime filesystem reads, generated/virtual modules and computed dynamic
-  imports can escape dependency selection: related tests are fast feedback, not
-  proof equivalent to the complete CI gate.
+  Deleted globals also force full tests. The hook logs why it chose the full
+  suite (which global paths, or which fallback below). Unreadable pushed paths,
+  or changes without usable related sources (such as assets), fall back to full
+  tests. Deleted-only source changes have no related inputs but still typecheck.
+  Pushed paths whose content matches `origin/main` (else `main`) came from
+  merging main, so they are left to main's CI: they neither force full tests nor
+  feed related selection, and a merge-only push skips unit tests. Runtime
+  filesystem reads, generated/virtual modules and computed dynamic imports can
+  escape dependency selection: related tests are fast feedback, not proof
+  equivalent to the complete CI gate.
 - Knip and full `test:push` retain independent tree-SHA provenance skips from
   `npm run validate` or successful full pre-push checks, stored in
   `.tmp/git-hook-provenance.json`. Related tests **never** record full
@@ -56,25 +64,26 @@ pushes. See the [setup index](./index.md) for the other setup pages.
   E2E, MCP E2E, and repo-wide format checks remain explicit checks because they
   are heavier than the push gate.
 - `npm run validate` is the single authoritative local gate. It is read-only.
-  `prevalidate` runs `install:check` first so a snapshot whose `node_modules`
-  lags `package-lock.json` fails with `run npm ci` instead of type/bundle
-  errors. The check list lives in `tools/validate-gate.ts` and
-  `tools/run-validate.ts` runs it. Sibling checks are not aborted on the first
-  failure. Suite legs (typecheck, node unit, workers unit, Playwright, MCP) are
-  sized like a dedicated CI job. On a machine with at most 4 cores, or with less
-  than 24GB of RAM, the gate runs one suite leg and one build leg (worker
-  dry-runs, startup bundles, knip) at a time. Starting all of them together
-  exhausts a 4-core 16GB VM (#3147). Larger machines still start every leg
-  together. `worker-startup-time:check` runs after that phase so the CPU budget
-  measures the bundle, not contention from e2e and Worker builds (#2475, #2759).
-  The unit-test and Playwright legs set `CI=1` so timeouts, worker limits, and
-  Nx cache hashes match GitHub Actions. CI runs the same checks as separate jobs
-  (🧹 Static, two 🧪 Node shards, ☁️ Workers, 🔌 MCP, two 🎭 E2E shards,
-  aggregated by ✅ Validate). Two E2E shards split the pruned 30-test suite's
-  ~420s serial load into roughly 245s including ~35s setup per runner, without
-  six copies of setup. Node remains sharded: its pruned full suite still took
-  ~379s locally (versus ~479s before pruning). These are local estimates, not
-  new CI percentiles. Heavy Validate jobs use
+  `prevalidate` runs `install:check`, then builds the worker-bundler and
+  guide-catalog modules, so a snapshot whose `node_modules` lags
+  `package-lock.json` fails with `run npm ci` instead of type/bundle errors, and
+  validate sees current generated catalog sources. The check list lives in
+  `tools/validate-gate.ts` and `tools/run-validate.ts` runs it. Sibling checks
+  are not aborted on the first failure. Suite legs (typecheck, node unit,
+  workers unit, Playwright, MCP) are sized like a dedicated CI job. On a machine
+  with at most 4 cores, or with less than 24GB of RAM, the gate runs one suite
+  leg and one build leg (worker dry-runs, startup bundles, knip) at a time.
+  Starting all of them together exhausts a 4-core 16GB VM (#3147). Larger
+  machines still start every leg together. `worker-startup-time:check` runs
+  after that phase so the CPU budget measures the bundle, not contention from
+  e2e and Worker builds (#2475, #2759). The unit-test and Playwright legs set
+  `CI=1` so timeouts, worker limits, and Nx cache hashes match GitHub Actions.
+  CI runs the same checks as separate jobs (🧹 Static, two 🧪 Node shards, ☁️
+  Workers, 🔌 MCP, two 🎭 E2E shards, aggregated by ✅ Validate). Two E2E shards
+  split the pruned 30-test suite's ~420s serial load into roughly 245s including
+  ~35s setup per runner, without six copies of setup. Node remains sharded: its
+  pruned full suite still took ~379s locally (versus ~479s before pruning).
+  These are local estimates, not new CI percentiles. Heavy Validate jobs use
   `runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}` (set repo variable
   `CI_RUNNER` to another runner label to move them in one place); the final ✅
   Validate gate always runs on GitHub-hosted `ubuntu-latest`. If

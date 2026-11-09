@@ -4,6 +4,8 @@ import { getStaticRegistry } from '#mcp/capabilities/registry.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { importGuideCatalog } from '#worker/guide-catalog-modules.ts'
 
+import { guideSearchBodyBudget } from '../guide-search-budget.ts'
+import { maxChars } from '../search-constants.ts'
 import { searchUnified } from '../search-core.ts'
 import { buildSearchableEntityDescriptors } from '../search-descriptors.ts'
 import { formatEntityDetailMarkdown } from '../search-format-detail.ts'
@@ -178,6 +180,22 @@ test('searchUnified ranks advertised guides for doc queries and keeps them out o
 
 test('guide entity detail returns full bodies, a TOC for oversized guides, and focused sections', () => {
 	const authoring = guides.find((guide) => guide.id === 'package_authoring')!
+	const authoringBudget = guideSearchBodyBudget({
+		id: authoring.id,
+		description: authoring.summary,
+		category: authoring.category,
+		slug: authoring.slug,
+		provider: authoring.provider,
+		lastVerified: authoring.lastVerified,
+		maxChars,
+	})
+	// Keep room for a short clarifying paragraph in this START HERE guide.
+	const authoringMinimumHeadroom = 256
+	const authoringHeadroom = authoringBudget - authoring.body.length
+	expect(
+		authoringHeadroom,
+		`package_authoring full-body headroom is ${authoringHeadroom} characters (budget ${authoringBudget}, minimum ${authoringMinimumHeadroom}). Tighten the summary, move detail to a linked guide, or open a heading with \`guide:package_authoring#{slug}\` instead of growing the full body.`,
+	).toBeGreaterThanOrEqual(authoringMinimumHeadroom)
 	const detail = guideDetail('package_authoring')
 	expect(detail.markdown).toContain(authoring.body.slice(0, 40))
 	expect(detail.structured).toMatchObject({

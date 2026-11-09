@@ -101,18 +101,19 @@ dispatcher with Husky: `core.hooksPath` stays on the dispatcher,
 `.cursor-original-hooks-path` points at `.husky/_`, and `pre-push` /
 `pre-commit` / `commit-msg` become dispatcher symlinks when those user scripts
 exist. Pre-commit keeps lint-staged, install:check and migrations:check, but no
-longer typechecks. Hook Node processes and `tools/run-nx.ts` raise the heap to
-8GB unless `NODE_OPTIONS` already sets `--max-old-space-size`, so Cloud Agent
-VMs do not OOM at Node's default ~2GB limit during pre-push typecheck (#4114).
-Non-docs pushes run typecheck, Knip and `vitest related --run` for node-unit and
-workers-unit over pushed non-deleted source/test paths. Global
-configuration/setup/migration inputs or unreadable paths fall back to full
-`npm run test:push`; only full suites record test provenance. Existing
-validate-recorded Knip/test tree skips remain. See [checks](./setup/checks.md)
-for the fallback list. CI remains the full gate, with two Node shards, two
-Workers shards and two cacheable E2E shards; local validate is unsharded. A
-docs-only push skips typecheck, Knip and the suites. A push that touches
-`skills-lock.json` or `.agents/skills/` still runs
+longer typechecks. Hook Node processes, `tools/run-nx.ts`, and
+`tools/run-tsc.ts` (`npm run typecheck:start`) raise the heap to 8GB unless
+`NODE_OPTIONS` already sets `--max-old-space-size`, so Cloud Agent VMs do not
+OOM at Node's default ~2GB limit during pre-push typecheck or parallel
+`validate` (#4114, #4531). Non-docs pushes run typecheck, Knip and
+`vitest related --run` for node-unit and workers-unit over pushed non-deleted
+source/test paths. Global configuration/setup/migration inputs or unreadable
+paths fall back to full `npm run test:push`; only full suites record test
+provenance. Existing validate-recorded Knip/test tree skips remain. See
+[checks](./setup/checks.md) for the fallback list. CI remains the full gate,
+with two Node shards, two Workers shards and two cacheable E2E shards; local
+validate is unsharded. A docs-only push skips typecheck, Knip and the suites. A
+push that touches `skills-lock.json` or `.agents/skills/` still runs
 `node tools/check-skills-lock.ts` (also part of `npm run deps:check`).
 
 Playwright E2E is not in the push hook: that suite is heavier than the unit
@@ -360,6 +361,24 @@ token into chat. Guide: [Local CLI execute](../guides/local-execute.md). Skill:
 [prefer-local-cli-execute](../../.agents/skills/prefer-local-cli-execute/SKILL.md).
 Open API fallback: [Open API](../guides/open-api.md).
 
+### CLI against local dev
+
+Local dev has no separate API worker, so on `http://localhost:<port>` the origin
+itself answers `/v1/*` and `/openapi.json` (only when
+`WRANGLER_IS_LOCAL_DEV=true` and the host is loopback). It also registers the
+CLI OAuth client in `OAUTH_KV`, since plain-HTTP origins cannot fetch the CLI's
+Client ID Metadata Document. So `kody login` (or `--device`), `kody context`,
+and `kody daemon` work against local dev:
+
+```bash
+kody login --device --mcp-url http://localhost:3742/mcp --api-url http://localhost:3742
+KODY_ECP_TRUST_TEST_ROOT=1 kody daemon --mcp-url http://localhost:3742/mcp
+```
+
+Approve the device code at `/device` (pick the org when the account has more
+than one). The daemon needs `KODY_ECP_TRUST_TEST_ROOT=1` because local and
+preview server keys are signed by the committed test root.
+
 ### CLI against a PR preview
 
 A preview deploys the Open API edge as its own worker,
@@ -371,10 +390,13 @@ with an HTML 404, so `auth bootstrap` against it fails with
 code is still unused; retry it against the API host instead of minting a new
 one. `npm run control-kody -- preview --pr <n>` prints the host as `API:` plus
 an `export KODY_API_URL=…` line (`snapshot.apiUrl` with `--json`). Mint the
-bootstrap code on the same preview, then pass the host with `--api-url` or the
-exported `KODY_API_URL`:
+bootstrap code on the same preview with `control-kody api` (seed login, no
+browser device approval), then pass the host with `--api-url` or the exported
+`KODY_API_URL`:
 
 ```bash
+npm run control-kody -- api --origin https://kody-pr-<n>.kody-a99.workers.dev \
+  --operation cliCredentialBootstrap --json
 export KODY_API_URL=https://kody-pr-<n>-api.kody-a99.workers.dev
 npx @kodycodes/cli auth bootstrap --code 'kody_bc_…' --lifetime short
 ```
@@ -432,5 +454,10 @@ seed write D1 under `.wrangler/state`, the directory Vite persists.
   `CLOUDFLARE_API_BASE_URL` to a mock). Prefer local verification:
   `npm run migrate:local && node tools/seed-test-data.ts --local`, then
   `control-kody dev` / `execute` (admin seed `kody@example.com` for admin-owned
-  automation). Production and preview keep the real binding; use a PR preview
-  only when you need that remote Artifacts namespace.
+  automation). Mock repo remotes are real git: `cli.ts` serves them from bare
+  repos under `.wrangler/state/mock-artifacts-git`
+  (`tools/mock-artifacts-git-server.ts`), so plain repos (`repoCreate`, push
+  through `repoGetGitRemote`, then `repoOpenSession`) exercise RepoSession
+  locally. Saved packages still use mock source snapshots, so a package repo
+  session needs a preview. Production and preview keep the real binding; use a
+  PR preview only when you need that remote Artifacts namespace.

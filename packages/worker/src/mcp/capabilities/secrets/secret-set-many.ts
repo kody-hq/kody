@@ -4,7 +4,7 @@ import { defineDomainCapability } from '#mcp/capabilities/define-domain-capabili
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
 import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { assertCanSetSecrets } from '#mcp/secrets/package-access.ts'
 import { secretPageOrgSlugFromCaller } from '#mcp/secrets/package-approval-url.ts'

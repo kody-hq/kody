@@ -14,11 +14,12 @@ import {
 	orgPermissions,
 	type OrgPermission,
 } from '@kody-internal/shared/org-permissions.ts'
-import { type PersonId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { PersonId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	checkPermission,
 	computeEffectivePermissions,
 	type EffectivePermissions,
+	hasOwnerAuthority,
 	type OrgResource,
 } from '#worker/authorization/authorize.ts'
 import {
@@ -50,10 +51,10 @@ import {
 	enablementMatchesInboundSender,
 	type InboundSenderMatch,
 } from './sender-match.ts'
-import {
-	type EnablementPause,
-	type EnablementRecord,
-	type EnablementTriggerKind,
+import type {
+	EnablementPause,
+	EnablementRecord,
+	EnablementTriggerKind,
 } from './types.ts'
 
 export type EnablementTrigger = {
@@ -109,7 +110,7 @@ export function enablerCanSee(
 	access: EffectivePermissions,
 	audience: EnablementAudience,
 ): boolean {
-	if (access.isOwner) return true
+	if (hasOwnerAuthority(access)) return true
 	if (audience.orgPermission) {
 		return checkPermission(access, audience.orgPermission).allowed
 	}

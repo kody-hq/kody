@@ -11,7 +11,7 @@
  */
 import { listSavedPackagesPage } from '#worker/package-registry/repo.ts'
 import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
 	type CredentialEndpoint,
 	type CredentialOtherContext,
@@ -22,7 +22,11 @@ import {
 	emptyPlaceholderCounts,
 	scanPackageCredentials,
 } from './credential-inventory-scan.ts'
-import { type PlaceholderMatchKind } from './module-placeholder-scan.ts'
+import type { PlaceholderMatchKind } from './module-placeholder-scan.ts'
+import {
+	requestPartOfPlacement,
+	type SecretPlaceholderRequestPart,
+} from './secret-placeholder-request-placement.ts'
 
 export const credentialInventoryScanLimitDefault = 25
 export const credentialInventoryScanLimitMax = 50
@@ -77,6 +81,11 @@ export type CredentialInventoryReport = {
 	packages: Record<InventoryItemStatus, number> & {
 		withPlaceholders: number
 		withSlots: number
+		/**
+		 * Scanned packages with a secret or integration placeholder a request
+		 * sends in each part (`any` counts each package once).
+		 */
+		withRequestPlacement: Record<SecretPlaceholderRequestPart | 'any', number>
 	}
 	placeholders: Record<PlaceholderMatchKind, number>
 	unparsedModules: number
@@ -524,6 +533,7 @@ export function summarizeCredentialInventory(
 			failed: 0,
 			withPlaceholders: 0,
 			withSlots: 0,
+			withRequestPlacement: { body: 0, query: 0, path: 0, url: 0, any: 0 },
 		},
 		placeholders: emptyPlaceholderCounts(),
 		unparsedModules: 0,
@@ -572,6 +582,15 @@ export function summarizeCredentialInventory(
 			report.placeholders[kind as PlaceholderMatchKind] += count
 		}
 		report.unparsedModules += result.unparsedModules
+		const requestParts = new Set<SecretPlaceholderRequestPart>()
+		for (const reference of result.references) {
+			const part = requestPartOfPlacement(reference.placement)
+			if (part) requestParts.add(part)
+		}
+		for (const part of requestParts) {
+			report.packages.withRequestPlacement[part] += 1
+		}
+		if (requestParts.size > 0) report.packages.withRequestPlacement.any += 1
 		let signs = (result.jwtSignCalls ?? 0) > 0
 		report.signing.jwtSignCalls += result.jwtSignCalls ?? 0
 		for (const reference of result.references) {

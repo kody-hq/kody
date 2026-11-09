@@ -89,6 +89,9 @@
 				"suiteSupport",
 				{
 					"env": "CI"
+				},
+				{
+					"env": "GITHUB_ACTIONS"
 				}
 			]
 		},
@@ -157,6 +160,58 @@
 				"{workspaceRoot}/packages/worker/**/*",
 				"{workspaceRoot}/packages/shared/**/*",
 				"{workspaceRoot}/packages/mock-servers/**/*"
+			]
+		},
+		"typecheck-start-server": {
+			"cache": true,
+			"inputs": [
+				"default",
+				"^default",
+				"{workspaceRoot}/packages/worker/**/*",
+				"{workspaceRoot}/packages/shared/**/*",
+				"{workspaceRoot}/packages/mock-servers/**/*",
+				"{workspaceRoot}/tools/run-tsc.ts",
+				"{workspaceRoot}/tools/node-runtime.ts",
+				"!{workspaceRoot}/packages/worker/.generated/start-types/**/*"
+			]
+		},
+		"typecheck-start": {
+			"cache": true,
+			"inputs": [
+				"default",
+				"^default",
+				"{workspaceRoot}/packages/worker/**/*",
+				"{workspaceRoot}/packages/shared/**/*",
+				"{workspaceRoot}/packages/mock-servers/**/*",
+				"{workspaceRoot}/tools/run-tsc.ts",
+				"{workspaceRoot}/tools/node-runtime.ts",
+				"!{workspaceRoot}/packages/worker/.generated/start-types/**/*"
+			]
+		},
+		"typecheck-start-tests": {
+			"cache": true,
+			"inputs": [
+				"default",
+				"^default",
+				"{workspaceRoot}/packages/worker/**/*",
+				"{workspaceRoot}/packages/shared/**/*",
+				"{workspaceRoot}/packages/mock-servers/**/*",
+				"{workspaceRoot}/tools/run-tsc.ts",
+				"{workspaceRoot}/tools/node-runtime.ts",
+				"!{workspaceRoot}/packages/worker/.generated/start-types/**/*"
+			]
+		},
+		"typecheck-start-server-tests": {
+			"cache": true,
+			"inputs": [
+				"default",
+				"^default",
+				"{workspaceRoot}/packages/worker/**/*",
+				"{workspaceRoot}/packages/shared/**/*",
+				"{workspaceRoot}/packages/mock-servers/**/*",
+				"{workspaceRoot}/tools/run-tsc.ts",
+				"{workspaceRoot}/tools/node-runtime.ts",
+				"!{workspaceRoot}/packages/worker/.generated/start-types/**/*"
 			]
 		}
 	},

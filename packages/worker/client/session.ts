@@ -14,7 +14,7 @@ import {
 	featureFlagKeys,
 	type FeatureFlagKey,
 } from '#universal/feature-flags/registry.ts'
-import { type OrganizationSummary } from '#universal/org-pages.ts'
+import type { OrganizationSummary } from '#universal/org-pages.ts'
 
 export type SessionInfo = {
 	email: string
@@ -27,6 +27,33 @@ export type SessionInfo = {
 	featureFlags: Record<FeatureFlagKey, boolean>
 	organizations?: Array<OrganizationSummary>
 	inviteCount?: number
+	guest?: SessionGuestInfo | null
+}
+
+type SessionGuestInfo = {
+	phase: 'active' | 'hold'
+	claimUrl: string
+	fullAccessUntil: string
+	deleteAt: string
+}
+
+function readGuest(value: unknown): SessionGuestInfo | null {
+	if (!value || typeof value !== 'object') return null
+	const row = value as Record<string, unknown>
+	if (row.phase !== 'active' && row.phase !== 'hold') return null
+	if (
+		typeof row.claimUrl !== 'string' ||
+		typeof row.fullAccessUntil !== 'string' ||
+		typeof row.deleteAt !== 'string'
+	) {
+		return null
+	}
+	return {
+		phase: row.phase,
+		claimUrl: row.claimUrl,
+		fullAccessUntil: row.fullAccessUntil,
+		deleteAt: row.deleteAt,
+	}
 }
 
 export function getSessionDisplayName(session: SessionInfo | null) {
@@ -76,6 +103,7 @@ export function parseSessionInfo(value: unknown): SessionInfo | null {
 				featureFlags,
 				organizations: readOrganizations(payload?.session?.organizations),
 				inviteCount: readInviteCount(payload?.session?.inviteCount),
+				guest: readGuest(payload?.session?.guest),
 			}
 		: null
 }
@@ -94,7 +122,10 @@ function readOrganizations(value: unknown): Array<OrganizationSummary> {
 		const row = item as Record<string, unknown>
 		if (typeof row.slug !== 'string' || !row.slug.trim()) continue
 		const role =
-			row.role === 'owner' || row.role === 'member' || row.role === 'billing'
+			row.role === 'owner' ||
+			row.role === 'admin' ||
+			row.role === 'member' ||
+			row.role === 'billing'
 				? row.role
 				: null
 		organizations.push({

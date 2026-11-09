@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { canonicalJsonStringify } from '@kody-internal/shared/canonical-json.ts'
 import { toHex } from '@kody-internal/shared/hex.ts'
 import {

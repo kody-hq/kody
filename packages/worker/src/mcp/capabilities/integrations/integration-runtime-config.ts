@@ -7,19 +7,19 @@
  * integration-token gateway resolves. Non-secret config only; tokens stay
  * host-side.
  */
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
 import {
 	authorizePersonalIntegrationLookup,
 	findIntegrationLookupByName,
 } from '#worker/credentials/oauth-resolvers.ts'
-import { attestedPackageStampFromCaller } from '#worker/credentials/package-stamp.ts'
+import type { PackageStamp } from '#worker/credentials/package-stamp.ts'
 import { assertCanUseIntegration } from '#worker/integrations/package-access.ts'
 import { getIntegration } from '#worker/integrations/service.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { assertCallerCanAccessCapability } from '#mcp/capabilities/access-control.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
-import { type Capability } from '#mcp/capabilities/types.ts'
+import type { Capability } from '#mcp/capabilities/types.ts'
 import { canonicalIntegrationName } from './integration-shared.ts'
 
 export type IntegrationRuntimeConfig = {
@@ -47,6 +47,7 @@ async function readGrantedPersonalConfig(input: {
 	env: Env
 	callerContext: McpCallerContext
 	integrationGet: Capability
+	packageStamp: PackageStamp | null
 	name: string
 }): Promise<IntegrationRuntimeConfig | null> {
 	const { env, callerContext, name } = input
@@ -79,15 +80,12 @@ async function readGrantedPersonalConfig(input: {
 		if (error instanceof AuthorizationError) return null
 		throw error
 	}
-	const { packageStamp } = attestedPackageStampFromCaller({
-		storageContext: callerContext.storageContext,
-	})
 	await assertCanUseIntegration({
 		env,
 		baseUrl: callerContext.baseUrl,
 		userId: lookup.ownerId,
 		name,
-		packageId: packageStamp?.packageId ?? null,
+		packageId: input.packageStamp?.packageId ?? null,
 	})
 	return toRuntimeConfig(
 		await getIntegration({ env, userId: lookup.ownerId, name }),
@@ -99,15 +97,21 @@ export async function readIntegrationRuntimeConfig(input: {
 	callerContext: McpCallerContext
 	/** The public run-org read; every other answer comes from it unchanged. */
 	integrationGet: Capability
+	/**
+	 * The package this read acts as, the same stamp the token gateway and
+	 * refresh use. Required so a caller cannot silently drop it (#4889).
+	 */
+	packageStamp: PackageStamp | null
 	args: unknown
 }): Promise<{ integration: IntegrationRuntimeConfig | null }> {
-	const { env, callerContext, integrationGet, args } = input
+	const { env, callerContext, integrationGet, packageStamp, args } = input
 	const rawName = (args as { name?: unknown } | null)?.name
 	if (typeof rawName === 'string' && rawName.trim()) {
 		const personal = await readGrantedPersonalConfig({
 			env,
 			callerContext,
 			integrationGet,
+			packageStamp,
 			name: canonicalIntegrationName(rawName),
 		})
 		if (personal) return { integration: personal }

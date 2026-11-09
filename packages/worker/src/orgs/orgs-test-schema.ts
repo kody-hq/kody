@@ -22,6 +22,7 @@ export async function ensureOrgsTestSchema(db: D1Database) {
 				second_agent_standard_gift_granted_at TEXT,
 				second_agent_standard_gift_expires_at TEXT,
 				referral_standard_credit_expires_at TEXT,
+				referral_first_paid_at TEXT,
 				signup_welcome_credits_pending INTEGER NOT NULL DEFAULT 0,
 				email_outbound_paused_at TEXT,
 				email_outbound_delivery_paused_at TEXT,
@@ -124,9 +125,14 @@ export async function ensureOrgsTestSchema(db: D1Database) {
 				created_by_user_id TEXT,
 				created_at TEXT NOT NULL,
 				updated_at TEXT NOT NULL,
-				deleted_at TEXT,
-				UNIQUE (org_id, slug)
+				deleted_at TEXT
 			)`,
+		)
+		.run()
+	await db
+		.prepare(
+			`CREATE UNIQUE INDEX IF NOT EXISTS teams_live_org_slug ON teams (org_id, slug)
+			 WHERE deleted_at IS NULL`,
 		)
 		.run()
 	await db

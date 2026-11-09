@@ -1,13 +1,13 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
-import { type ContentBlock } from '@modelcontextprotocol/sdk/types.js'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { ContentBlock } from '@modelcontextprotocol/sdk/types.js'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import {
 	acknowledgeSurfacedMemories,
 	searchMemoryRecords,
 } from '#mcp/memory/service.ts'
-import { type MemoryRecord } from '#mcp/memory/types.ts'
-import { type EmbedTextFn } from '#worker/vectorize/embedding.ts'
+import type { MemoryRecord } from '#mcp/memory/types.ts'
+import type { EmbedTextFn } from '#worker/vectorize/embedding.ts'
 
 export type MemoryToolSummary = {
 	memories: Array<{
@@ -23,8 +23,15 @@ export type MemoryToolSummary = {
 
 /** Single-list RRF rank-1 at k=60 is 1/61. Used by tests as the inject floor. */
 export const automaticMemorySingleListRankOneScore = 1 / 61
-/** Auto-surface keeps the top ranked active hits, not an absolute score cut. */
+/** Auto-surface keeps at most the top two ranked active hits. */
 const automaticMemorySurfaceLimit = 2
+/**
+ * Minimum query-to-memory cosine similarity (bge-small-en-v1.5, CLS pooling)
+ * for `search` to auto-surface a memory. RRF scores are rank-only, so without
+ * this floor the top two memories surface for every query. Chosen from
+ * related/unrelated query fixtures; see docs/use/memory.md.
+ */
+export const searchMemorySurfaceMinVectorScore = 0.64
 
 function memoryDedupeKey(match: { dedupeKey?: string | null }) {
 	const key = match.dedupeKey?.trim() ?? ''
@@ -35,12 +42,19 @@ function selectAutomaticMemories<
 	T extends {
 		status: string
 		dedupeKey?: string | null
+		vectorScore?: number
 	},
->(matches: Array<T>) {
+>(matches: Array<T>, minVectorScore: number | null) {
 	const selected: Array<T> = []
 	const seenKeys = new Set<string>()
 	for (const match of matches) {
 		if (match.status !== 'active') continue
+		if (
+			minVectorScore !== null &&
+			(match.vectorScore ?? Number.NEGATIVE_INFINITY) < minVectorScore
+		) {
+			continue
+		}
 		const key = memoryDedupeKey(match)
 		if (key !== null) {
 			if (seenKeys.has(key)) continue
@@ -61,6 +75,7 @@ async function loadAutomaticMemories(input: {
 	limit?: number
 	acknowledgeSurfaced?: boolean
 	embedText?: EmbedTextFn
+	minVectorScore?: number
 }) {
 	const result = await searchMemoryRecords({
 		env: input.env,
@@ -79,7 +94,13 @@ async function loadAutomaticMemories(input: {
 		includeSuppressedInConversation: true,
 		...(input.embedText ? { embedText: input.embedText } : {}),
 	})
-	const memories = selectAutomaticMemories(result.matches)
+	// Offline ranking uses a hash stand-in with no semantic similarity to floor.
+	const memories = selectAutomaticMemories(
+		result.matches,
+		input.minVectorScore === undefined || result.offline
+			? null
+			: input.minVectorScore,
+	)
 	return {
 		memories,
 		suppressedCount: result.suppressedCount,
@@ -115,6 +136,7 @@ export async function loadRelevantMemoriesForTool(input: {
 		conversationId: input.conversationId,
 		limit: input.limit,
 		acknowledgeSurfaced: input.acknowledgeSurfaced,
+		minVectorScore: searchMemorySurfaceMinVectorScore,
 		...(input.embedText ? { embedText: input.embedText } : {}),
 	})
 	return {

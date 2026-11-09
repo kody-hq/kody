@@ -10,8 +10,6 @@ vi.mock('#worker/worker-bundler-modules.ts', () => ({
 	}),
 }))
 
-import { packageAppClientModuleNamePattern } from './package-app-client-module-name.ts'
-
 const { buildKodyAppClientBundle, isDeclaredClientExternal } =
 	await import('./module-graph-client-bundle.ts')
 
@@ -56,7 +54,7 @@ test('buildKodyAppClientBundle bundles only the browser graph and names the outp
 		entryPoint: './src/client.ts',
 	})
 
-	expect(bundle.mainModule).toMatch(packageAppClientModuleNamePattern)
+	expect(bundle.mainModule).toMatch(/^client\.[A-Za-z0-9_-]{16}\.js$/)
 	expect(bundle.modules).toEqual({
 		[bundle.mainModule]: 'console.log("hello from the browser");\n',
 	})
@@ -220,7 +218,7 @@ test('buildKodyAppClientBundle fails when the bundled output still imports unres
 		sourceFiles,
 		entryPoint: 'src/client.ts',
 	})
-	expect(urlImports.mainModule).toMatch(packageAppClientModuleNamePattern)
+	expect(urlImports.mainModule).toMatch(/^client\.[A-Za-z0-9_-]{16}\.js$/)
 })
 
 test('buildKodyAppClientBundle keeps declared externals as bare imports for an import map and passes them to the bundler', async () => {
@@ -246,7 +244,7 @@ render(html, useState);
 		sourceFiles,
 		entryPoint: 'src/client.ts',
 	})
-	expect(bundle.mainModule).toMatch(packageAppClientModuleNamePattern)
+	expect(bundle.mainModule).toMatch(/^client\.[A-Za-z0-9_-]{16}\.js$/)
 	expect(bundle.modules[bundle.mainModule]).toContain('from "lit"')
 	// Externals reach esbuild through a plugin with exact-or-subpath matching
 	// (the bundler's own `externals` option is a raw prefix match).

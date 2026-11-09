@@ -8,7 +8,6 @@ import {
 } from './defaults.js'
 import {
 	authBootstrapWithScopes,
-	cliTokenLifetimeAliases,
 	resolveCliTokenLifetime,
 	type ResolvedCliTokenLifetime,
 } from './auth-bootstrap.js'
@@ -18,7 +17,7 @@ import {
 	type StoredApiToken,
 } from './api-token-store.js'
 import { OpenApiError, openApiGet, openApiRequest } from './open-api-client.js'
-import { type SecretBackend, type StoreResolution } from './store.js'
+import type { SecretBackend, StoreResolution } from './store.js'
 import { which as whichOnPath } from './which.js'
 
 /** Scopes setup-git always requires for clone/fetch (+ push). */
@@ -84,7 +83,7 @@ export function ensureSetupGitScopes(
 	return out
 }
 
-export async function fetchTokenCurrentMetadata(input: {
+async function fetchTokenCurrentMetadata(input: {
 	token: string
 	apiUrl?: string
 	fetchFn?: typeof fetch
@@ -186,7 +185,7 @@ export type GitConfigRunner = (args: ReadonlyArray<string>) => {
 	stderr: string
 }
 
-export function defaultGitConfigRunner(args: ReadonlyArray<string>): {
+function defaultGitConfigRunner(args: ReadonlyArray<string>): {
 	status: number
 	stderr: string
 } {
@@ -234,13 +233,13 @@ export function installGitCredentialConfig(input: {
 }
 
 /** Refresh git HTTPS tokens this long before `expiresAt` (or when past it). */
-export const gitApiTokenRefreshSkewMs = 60 * 60 * 1000
+const gitApiTokenRefreshSkewMs = 60 * 60 * 1000
 
 /**
  * First published CLI line that includes `git-credential` / `auth setup-git`.
  * Global installs older than this must not be preferred as the helper binary.
  */
-export const gitCredentialMinCliVersion = '1.16.0'
+const gitCredentialMinCliVersion = '1.16.0'
 
 /**
  * Fallback exact pin for local `0.0.0-semantically-released` builds. Published
@@ -248,11 +247,11 @@ export const gitCredentialMinCliVersion = '1.16.0'
  * recent published line that includes `git-credential` (not merely the
  * minimum) so local/dev pins are not stuck on an ancient helper.
  */
-export const gitCredentialHelperPinFallbackVersion = '1.18.0'
+const gitCredentialHelperPinFallbackVersion = '1.18.0'
 
 const requireFromSetupGit = createRequire(import.meta.url)
 
-export function readCliPackageVersion(): string {
+function readCliPackageVersion(): string {
 	try {
 		const pkg = requireFromSetupGit('../package.json') as { version?: string }
 		return typeof pkg.version === 'string'
@@ -276,10 +275,10 @@ export function isEphemeralNpxEntryPath(entryPath: string): boolean {
 	)
 }
 
-export type CliSemver = { major: number; minor: number; patch: number }
+type CliSemver = { major: number; minor: number; patch: number }
 
 /** Parse a leading `x.y.z` from a CLI version string (ignores prerelease tags). */
-export function parseCliSemver(version: string): CliSemver | null {
+function parseCliSemver(version: string): CliSemver | null {
 	const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version.trim())
 	if (!match) return null
 	return {
@@ -289,21 +288,21 @@ export function parseCliSemver(version: string): CliSemver | null {
 	}
 }
 
-export function compareCliSemver(a: CliSemver, b: CliSemver): number {
+function compareCliSemver(a: CliSemver, b: CliSemver): number {
 	if (a.major !== b.major) return a.major < b.major ? -1 : 1
 	if (a.minor !== b.minor) return a.minor < b.minor ? -1 : 1
 	if (a.patch !== b.patch) return a.patch < b.patch ? -1 : 1
 	return 0
 }
 
-export function cliVersionGte(version: string, minimum: string): boolean {
+function cliVersionGte(version: string, minimum: string): boolean {
 	const left = parseCliSemver(version)
 	const right = parseCliSemver(minimum)
 	if (!left || !right) return false
 	return compareCliSemver(left, right) >= 0
 }
 
-export function cliVersionGt(version: string, other: string): boolean {
+function cliVersionGt(version: string, other: string): boolean {
 	const left = parseCliSemver(version)
 	const right = parseCliSemver(other)
 	if (!left || !right) return false
@@ -351,7 +350,7 @@ export type KodyVersionReader = (binPath: string) => string | null
  * Always sets `KODY_SKIP_GIT_HELPER_REFRESH=1` so a nested CLI does not re-enter
  * pin refresh (which itself may spawn `--version` — an 8s recursive stall).
  */
-export function readVersionFromKodyBinary(
+function readVersionFromKodyBinary(
 	binPath: string,
 	args: ReadonlyArray<string> = ['--version'],
 ): string | null {
@@ -492,7 +491,7 @@ export type GitConfigGetRunner = (args: ReadonlyArray<string>) => {
 	stderr: string
 }
 
-export function defaultGitConfigGetRunner(args: ReadonlyArray<string>): {
+function defaultGitConfigGetRunner(args: ReadonlyArray<string>): {
 	status: number
 	stdout: string
 	stderr: string
@@ -573,7 +572,7 @@ export function refreshGitCredentialHelperPinIfNeeded(input?: {
 	return true
 }
 
-export type SetupGitCredentialSource = 'flag' | 'stored'
+type SetupGitCredentialSource = 'flag' | 'stored'
 
 /**
  * Name the kind of credential without echoing it. Only the prefix is read.
@@ -588,7 +587,7 @@ export function describeKodyCredentialKind(token: string): string {
 }
 
 /** Actionable copy for a 401 from GET /v1/tokens/current during setup-git. */
-export function describeSetupGitUnauthorized(input: {
+function describeSetupGitUnauthorized(input: {
 	apiUrl: string
 	token: string
 	source: SetupGitCredentialSource
@@ -781,11 +780,11 @@ export async function authSetupGit(input: {
 }
 
 /** Git config scopes `setup-git` may write (never `--system`). */
-export const setupGitConfigScopes = ['--global', '--local'] as const
+const setupGitConfigScopes = ['--global', '--local'] as const
 
-export type GitConfigScope = (typeof setupGitConfigScopes)[number]
+type GitConfigScope = (typeof setupGitConfigScopes)[number]
 
-export type RemovedGitConfigEntry = {
+type RemovedGitConfigEntry = {
 	scope: GitConfigScope
 	key: string
 	value: string
@@ -975,5 +974,3 @@ export function formatAuthRemoveGitReport(result: AuthRemoveGitResult): string {
 	lines.push('')
 	return lines.join('\n')
 }
-
-export { cliTokenLifetimeAliases }

@@ -1,17 +1,18 @@
-import { type OrgAuditCause } from '#worker/orgs/org-audit.ts'
+import type { OrgAuditCause } from '#worker/orgs/org-audit.ts'
 /**
  * Enablement writes from people (credentials plan v4, section 3.3). Each
  * person turns triggers on for themselves; nobody enables a trigger for
  * someone else, and publishing never turns anything on. An enabler, or an
  * Owner, can turn an enablement off.
  */
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	authorize,
 	checkPermission,
 	computeEffectivePermissions,
+	hasOwnerAuthority,
 	packageResource,
 } from '#worker/authorization/authorize.ts'
 import {
@@ -33,7 +34,7 @@ import {
 	webhookHmacVerification,
 } from '#worker/package-registry/manifest.ts'
 import { loadPackageManifestBySourceId } from '#worker/package-registry/source.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
 	buildCredentialApprovalHref,
 	isInboundEmailApprovalTopic,
@@ -65,10 +66,10 @@ import {
 	canonicalizeEnablementSender,
 	isCompleteEnablementSender,
 } from './sender-match.ts'
-import {
-	type EnablementRecord,
-	type EnablementSenderKind,
-	type EnablementTriggerKind,
+import type {
+	EnablementRecord,
+	EnablementSenderKind,
+	EnablementTriggerKind,
 } from './types.ts'
 
 export type TriggerEnablementErrorCode =
@@ -993,7 +994,7 @@ export async function disableEnablementForCaller(input: {
 			request: input.request,
 		})
 		// Someone else's enablement is invisible to non-Owners.
-		if (!access.isOwner) throw notFound
+		if (!hasOwnerAuthority(access)) throw notFound
 	}
 	const toggle = planEnablementToggle({
 		env: input.env,
@@ -1028,9 +1029,9 @@ export async function listEnablementsForCaller(input: {
 			env: input.env,
 			request: input.request,
 		})
-		if (!access.isOwner) {
+		if (!hasOwnerAuthority(access)) {
 			throw new McpCallerError(
-				'Only an Owner can list every enablement in the org.',
+				'Only an Owner or Admin can list every enablement in the org.',
 			)
 		}
 	}

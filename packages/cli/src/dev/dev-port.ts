@@ -46,8 +46,12 @@ export async function listenDevServer(
 			await listenOnce(server, input.host, port)
 			return (server.address() as AddressInfo).port
 		} catch (error) {
-			if (!isAddressInUse(error)) throw error
-			if (input.explicit) throw portInUseError(input.host, port)
+			if (isAddressUnavailable(error)) throw hostUnavailableError(input.host)
+			if (input.explicit) {
+				if (isAddressInUse(error)) throw portInUseError(input.host, port)
+				throw error
+			}
+			if (!isAddressInUse(error) && !isPortReserved(error)) throw error
 		}
 	}
 	throw new StructuredCliError({
@@ -63,6 +67,18 @@ function portInUseError(host: string, port: number): StructuredCliError {
 		message: `Port ${port} on ${host} is already in use.`,
 		fix: `Find the owner with \`lsof -nP -iTCP:${port} -sTCP:LISTEN\` and stop it, pass another --port, or omit --port to use this package’s default (it moves to the next free port automatically).`,
 	})
+}
+
+function hostUnavailableError(host: string): StructuredCliError {
+	return new StructuredCliError({
+		code: 'dev_host_unavailable',
+		message: `Cannot listen on ${host}: it is not an address of this machine.`,
+		fix: 'Pass one of this machine’s IP addresses, or --host 0.0.0.0 to listen on all of them.',
+	})
+}
+
+function isAddressUnavailable(error: unknown): boolean {
+	return (error as NodeJS.ErrnoException | undefined)?.code === 'EADDRNOTAVAIL'
 }
 
 function wrapPort(port: number): number {
@@ -87,4 +103,9 @@ function listenOnce(server: Server, host: string, port: number): Promise<void> {
 
 function isAddressInUse(error: unknown): boolean {
 	return (error as NodeJS.ErrnoException | undefined)?.code === 'EADDRINUSE'
+}
+
+/** Windows answers EACCES for ports inside an excluded (reserved) range. */
+function isPortReserved(error: unknown): boolean {
+	return (error as NodeJS.ErrnoException | undefined)?.code === 'EACCES'
 }

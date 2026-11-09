@@ -1,4 +1,4 @@
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	callCapabilityAsWebsite,
 	websiteCapabilityContext,
@@ -6,7 +6,7 @@ import {
 import { isMcpCallerError } from '#mcp/caller-error.ts'
 import { resolvePersonId } from '#mcp/capabilities/access/shared.ts'
 import { getStaticRegistry } from '#mcp/capabilities/registry.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { isFeatureEnabled } from '#worker/feature-flags/service.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import {
@@ -16,7 +16,7 @@ import {
 	type OrgBinding,
 } from '#worker/orgs/repo.ts'
 import { listTeams } from '#worker/orgs/org-teams-list.ts'
-import { type AutomationExecutionSettingView } from '#universal/automation-execution.ts'
+import type { AutomationExecutionSettingView } from '#universal/automation-execution.ts'
 import { executionContextsFlagKey } from '#universal/feature-flags/registry.ts'
 import {
 	type ExecutionChain,
@@ -57,8 +57,18 @@ export const executionContextCapabilityNames = {
 	shareList: 'executionContextShareList',
 	shareSet: 'executionContextShareSet',
 	shareRemove: 'executionContextShareRemove',
+	attach: 'executionContextAttach',
+	sharePreview: 'executionContextSharePreview',
+	noticeDismiss: 'executionContextNoticeDismiss',
 	automationGet: 'automationExecutionGet',
 	automationSet: 'automationExecutionSet',
+	pause: 'executionContextPause',
+	resume: 'executionContextResume',
+	daemonStatus: 'executionContextDaemonStatus',
+	daemonRestart: 'executionContextDaemonRestart',
+	daemonUpdate: 'executionContextDaemonUpdate',
+	daemonConfig: 'executionContextDaemonConfig',
+	daemonLogs: 'executionContextDaemonLogs',
 } as const
 
 type CapabilityName =
@@ -427,7 +437,11 @@ export async function loadExecutionContextsPageData(input: {
 				orgSlug,
 			})),
 			attachableOrgs: orgs
-				.filter((org) => org.id !== scope.org.id && org.role === 'owner')
+				.filter(
+					(org) =>
+						org.id !== scope.org.id &&
+						(org.role === 'owner' || org.role === 'admin'),
+				)
 				.map((org) => ({ slug: org.slug })),
 			contexts: selected
 				? contexts.map((context) =>
@@ -473,6 +487,29 @@ async function runScoped<T>(
 		if (failure) return failure
 		throw error
 	}
+}
+
+/** Attach the caller's context (seen from its owner org) to another org they belong to. */
+export async function attachExecutionContextForUser(
+	input: ScopedInput & { contextId: string; targetOrgSlug: string },
+) {
+	const target = await loadExecutionContextsScope({
+		...input,
+		orgSlug: input.targetOrgSlug,
+	})
+	if (!target || target.personal)
+		return {
+			ok: false as const,
+			error: 'not_found',
+			message: 'Organization not found.',
+		}
+	return runScoped(input, async (scope) => {
+		await callCapability(scope, executionContextCapabilityNames.attach, {
+			id: input.contextId,
+			org_id: target.org.id,
+		})
+		return { ok: true as const }
+	})
 }
 
 export async function optIntoExecutionContextForUser(
@@ -533,6 +570,101 @@ export async function turnOffExecutionContextCommandsForUser(
 			grant: { commands: { enabled: false } },
 		})
 		return { ok: true as const }
+	})
+}
+
+export type ExecutionContextDaemonAction =
+	| 'pause'
+	| 'resume'
+	| 'restart'
+	| 'update'
+	| 'logs'
+
+/** Daemon card actions: server-side pause/resume and live restart/update. */
+export async function runExecutionContextDaemonActionForUser(
+	input: ScopedInput & {
+		contextId: string
+		action: ExecutionContextDaemonAction
+		reason?: string
+	},
+) {
+	return runScoped(input, async (scope) => {
+		const name = {
+			pause: executionContextCapabilityNames.pause,
+			resume: executionContextCapabilityNames.resume,
+			restart: executionContextCapabilityNames.daemonRestart,
+			update: executionContextCapabilityNames.daemonUpdate,
+			logs: executionContextCapabilityNames.daemonLogs,
+		}[input.action]
+		const result = await callCapability(scope, name, {
+			id: input.contextId,
+			...(input.action === 'pause' && input.reason
+				? { reason: input.reason }
+				: {}),
+			...(input.action === 'logs' ? { lines: 200 } : {}),
+		})
+		return {
+			ok: true as const,
+			lines: Array.isArray(result.lines)
+				? result.lines.filter(
+						(line): line is string => typeof line === 'string',
+					)
+				: null,
+			message:
+				typeof result.message === 'string'
+					? result.message
+					: typeof result.note === 'string'
+						? result.note
+						: null,
+		}
+	})
+}
+
+export async function dismissExecutionContextNoticeForUser(
+	input: ScopedInput & { contextId: string; fingerprint: string },
+) {
+	return runScoped(input, async (scope) => {
+		await callCapability(scope, executionContextCapabilityNames.noticeDismiss, {
+			id: input.contextId,
+			fingerprint: input.fingerprint,
+		})
+		return { ok: true as const }
+	})
+}
+
+export async function previewExecutionContextShareForUser(
+	input: ScopedInput & {
+		contextId: string
+		subject:
+			| { kind: 'user'; username: string }
+			| { kind: 'team'; slug: string }
+			| { kind: 'org' }
+	},
+) {
+	const { subject } = input
+	return runScoped(input, async (scope) => {
+		const result = await callCapability(
+			scope,
+			executionContextCapabilityNames.sharePreview,
+			{
+				id: input.contextId,
+				...(subject.kind === 'user'
+					? { username: subject.username.replace(/^@/, '') }
+					: subject.kind === 'team'
+						? { team_slug: subject.slug }
+						: { all_members: true }),
+			},
+		)
+		const people = Array.isArray(result.people) ? result.people : []
+		return {
+			ok: true as const,
+			excessCount: people.reduce(
+				(total: number, person: { excess?: Array<unknown> }) =>
+					total + (Array.isArray(person.excess) ? person.excess.length : 0),
+				typeof result.unchecked === 'number' ? result.unchecked : 0,
+			),
+			people: people.length,
+		}
 	})
 }
 
@@ -670,6 +802,7 @@ function normalizeShareGrant(
 
 function readSharing(result: Record<string, unknown>): ExecutionContextSharing {
 	const sharing = record(result.sharing) ?? result
+	const roster = record(sharing.accessRoster)
 	return {
 		level:
 			sharing.level === 'people' ||
@@ -684,6 +817,11 @@ function readSharing(result: Record<string, unknown>): ExecutionContextSharing {
 			? (sharing.attachedOrgs as ExecutionContextSharing['attachedOrgs'])
 			: [],
 		allMembers: sharing.allMembers === true,
+		...(roster
+			? {
+					accessRoster: roster as ExecutionContextSharing['accessRoster'],
+				}
+			: {}),
 	}
 }
 
@@ -695,7 +833,6 @@ export async function setExecutionContextShareForUser(
 			| { kind: 'team'; slug: string }
 			| { kind: 'org'; enabled?: boolean }
 		preset: 'use' | 'contribute' | 'manage'
-		commands?: boolean
 	},
 ) {
 	return runScoped(input, async (scope) => {
@@ -710,9 +847,6 @@ export async function setExecutionContextShareForUser(
 						? { team_slug: input.subject.slug }
 						: { all_members: input.subject.enabled ?? true }),
 				preset: input.preset,
-				...(input.commands && input.subject.kind !== 'org'
-					? { commands: true }
-					: {}),
 			},
 		)
 		return {

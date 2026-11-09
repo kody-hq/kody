@@ -1,7 +1,7 @@
-import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
-import {
-	type BundleArtifactDependency,
-	type BundleArtifactDynamicDependency,
+import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import type {
+	BundleArtifactDependency,
+	BundleArtifactDynamicDependency,
 } from './published-runtime-artifacts.ts'
 
 export type RuntimeBundle = {

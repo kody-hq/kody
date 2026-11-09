@@ -26,9 +26,11 @@ Kent decided on 2026-10-30:
    daemon. No sudo handling: sudo prompts or fails as it would in their
    terminal.
 3. **A grant, `execution_context:command`.** The operator has it on their own
-   context. Shares get it only when granted explicitly (`commands: true`);
-   presets and everyone-in-the-org sharing leave it out. It is an ordinary
-   permission so profiles can withhold it later.
+   context. It is an ordinary permission so profiles can withhold it. _Amended
+   Nov 2026:_ shares can no longer grant it (`commands_operator_only`) and older
+   command shares confer nothing. Commands run as the machine's OS user with its
+   Kody login and context key, so a grantee with commands could act as the
+   machine. Shared command access waits for a later shared mode.
 4. **`kody.command.*` in `kody:runtime`.** `run` returns bounded stdout and
    stderr, exit code, signal, and duration. `start`, `status`, `output` (offset
    chunks), `kill`, and `list` manage background jobs held by the daemon, so

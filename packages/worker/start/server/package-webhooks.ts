@@ -11,7 +11,7 @@ export const loadPackageWebhooks = createServerFn({ method: 'GET' })
 			!input.username ||
 			!input.kodyId
 		)
-			throw new Error('Invalid package')
+			throw notFound()
 		return { username: input.username, kodyId: input.kodyId }
 	})
 	.handler(async ({ data }) => {

@@ -1,13 +1,22 @@
 name: Desktop release
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/desktop/**'
+      - 'packages/cli/**'
+      - 'packages/shared/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/desktop-release.yml'
   workflow_dispatch:
     inputs:
       platforms:
         description: Platforms to publish, use all after adding Windows or Linux
         type: choice
-        options: [mac, all]
-        default: mac
+        options: [auto, mac, all]
+        default: auto
 
 permissions:
   contents: read
@@ -23,14 +32,43 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.check.outputs.matrix }}
+      pending: ${{ steps.check.outputs.pending }}
+      version: ${{ steps.version.outputs.version }}
+      platforms: ${{ steps.version.outputs.platforms }}
+      release: ${{ steps.version.outputs.release }}
     steps:
       - uses: actions/checkout@v6.0.2
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - name: Choose version and platforms
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.DESKTOP_RELEASE_TOKEN }}
+          SOURCE_SHA: ${{ github.sha }}
+          RELEASE_PLATFORMS:
+            ${{ inputs.platforms != 'auto' && inputs.platforms || '' }}
+        run: |
+          gh() { node packages/desktop/scripts/release-retry.cjs gh "$@"; }
+          if gh api repos/kody-hq/kody-desktop/releases/latest > latest.json 2> release-lookup-error.txt; then
+            :
+          else
+            case "$(cat release-lookup-error.txt)" in
+              *'HTTP 404'*) echo null > latest.json ;;
+              *) cat release-lookup-error.txt; exit 1 ;;
+            esac
+          fi
+          gh api --paginate --slurp repos/kody-hq/kody-desktop/releases > releases.json
+          node packages/desktop/scripts/release-version.cjs --releases releases.json < latest.json
       - name: Check release credentials
         id: check
+        if: steps.version.outputs.release == 'true'
         env:
-          RELEASE_PLATFORMS: ${{ inputs.platforms }}
+          RELEASE_PLATFORMS: ${{ steps.version.outputs.platforms }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          SOURCE_SHA: ${{ github.sha }}
+          # Targets whose assets already sit on a matching draft are not rebuilt.
+          RELEASES_FILE: releases.json
           DESKTOP_MAC_CERTIFICATE_BASE64:
             ${{ secrets.DESKTOP_MAC_CERTIFICATE_BASE64 }}
           DESKTOP_MAC_CERTIFICATE_PASSWORD:
@@ -57,7 +95,9 @@ jobs:
         run: node packages/desktop/scripts/release-plan.cjs
   build:
     needs: credentials
-    if: github.ref == 'refs/heads/main'
+    if:
+      github.ref == 'refs/heads/main' && needs.credentials.outputs.release ==
+      'true' && needs.credentials.outputs.pending == 'true'
     environment: desktop-release
     strategy:
       fail-fast: false
@@ -87,6 +127,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-0t64 libnss3 libxss1 libasound2t64 libgbm1 libsecret-1-0
+      - name: Set release version
+        env:
+          RELEASE_VERSION: ${{ needs.credentials.outputs.version }}
+        run:
+          node packages/desktop/scripts/release-version.cjs --apply
+          "$RELEASE_VERSION"
       - run: npm ci
       - run: npm run build --workspace @kodycodes/cli
       - run: npm run desktop:validate
@@ -96,21 +142,56 @@ jobs:
           API_KEY: ${{ secrets.DESKTOP_APPLE_API_KEY_BASE64 }}
         run: |
           node -e 'const fs = require("node:fs"); if (!process.env.API_KEY) throw new Error("Missing DESKTOP_APPLE_API_KEY_BASE64"); fs.writeFileSync(process.env.RUNNER_TEMP + "/notary.p8", Buffer.from(process.env.API_KEY, "base64"), {mode: 0o600})'
-      - name: Build signed and notarized installers
+      - name: Restore Developer ID provisioning profile
+        if: runner.os == 'macOS'
         env:
-          CSC_LINK:
-            ${{ runner.os == 'macOS' && secrets.DESKTOP_MAC_CERTIFICATE_BASE64
-            || '' }}
-          CSC_KEY_PASSWORD:
-            ${{ runner.os == 'macOS' && secrets.DESKTOP_MAC_CERTIFICATE_PASSWORD
-            || '' }}
+          PROFILE: ${{ secrets.DESKTOP_MAC_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          if [ -z "$PROFILE" ]; then echo 'No provisioning profile; building without universal links.'; exit 0; fi
+          node -e 'require("node:fs").writeFileSync(process.env.RUNNER_TEMP + "/kody.provisionprofile", Buffer.from(process.env.PROFILE, "base64"), {mode: 0o600})'
+          echo "KODY_MAC_PROVISIONING_PROFILE=$RUNNER_TEMP/kody.provisionprofile" >> "$GITHUB_ENV"
+      - name: Build signed Mac app
+        if: runner.os == 'macOS'
+        env:
+          CSC_LINK: ${{ secrets.DESKTOP_MAC_CERTIFICATE_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.DESKTOP_MAC_CERTIFICATE_PASSWORD }}
           APPLE_API_KEY: ${{ runner.temp }}/notary.p8
-          APPLE_API_KEY_ID:
-            ${{ runner.os == 'macOS' && secrets.DESKTOP_APPLE_API_KEY_ID || ''
-            }}
-          APPLE_API_ISSUER:
-            ${{ runner.os == 'macOS' && secrets.DESKTOP_APPLE_API_ISSUER || ''
-            }}
+          APPLE_API_KEY_ID: ${{ secrets.DESKTOP_APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.DESKTOP_APPLE_API_ISSUER }}
+        run: |
+          npm run dist:release --workspace @kodycodes/desktop -- --mac --${{ matrix.arch }} --dir
+          if [ "$KODY_DESKTOP_ARCH" = arm64 ]; then bundle=artifacts/desktop/mac-arm64/Kody.app; else bundle=artifacts/desktop/mac/Kody.app; fi
+          echo "KODY_MAC_APP=$PWD/$bundle" >> "$GITHUB_ENV"
+      # Notarize, staple, and package are separate steps so an Apple network
+      # drop retries only that step (with backoff) instead of re-signing and
+      # re-notarizing the whole build.
+      - name: Notarize Mac app
+        if: runner.os == 'macOS'
+        env:
+          APPLE_API_KEY: ${{ runner.temp }}/notary.p8
+          APPLE_API_KEY_ID: ${{ secrets.DESKTOP_APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.DESKTOP_APPLE_API_ISSUER }}
+        run:
+          node packages/desktop/scripts/mac-notarize.cjs notarize
+          "$KODY_MAC_APP"
+      - name: Staple and validate notarization ticket
+        if: runner.os == 'macOS'
+        run:
+          node packages/desktop/scripts/mac-notarize.cjs staple "$KODY_MAC_APP"
+      - name: Package notarized Mac installers
+        if: runner.os == 'macOS'
+        env:
+          CSC_LINK: ${{ secrets.DESKTOP_MAC_CERTIFICATE_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.DESKTOP_MAC_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY: ${{ runner.temp }}/notary.p8
+          APPLE_API_KEY_ID: ${{ secrets.DESKTOP_APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.DESKTOP_APPLE_API_ISSUER }}
+        run:
+          npm run dist:release --workspace @kodycodes/desktop -- --mac --${{
+          matrix.arch }} --prepackaged "$KODY_MAC_APP"
+      - name: Build signed installers
+        if: runner.os != 'macOS'
+        env:
           WIN_CSC_LINK:
             ${{ runner.os == 'Windows' &&
             secrets.DESKTOP_WINDOWS_CERTIFICATE_BASE64 || '' }}
@@ -138,7 +219,7 @@ jobs:
       - name: Verify Apple signature and notarization ticket
         if: runner.os == 'macOS'
         run: |
-          if [ "$KODY_DESKTOP_ARCH" = arm64 ]; then bundle=artifacts/desktop/mac-arm64/Kody.app; else bundle=artifacts/desktop/mac/Kody.app; fi
+          bundle="$KODY_MAC_APP"
           codesign --verify --deep --strict "$bundle"
           codesign --display --entitlements - --xml "$bundle" > "$RUNNER_TEMP/desktop-entitlements.plist"
           test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.automation.apple-events' "$RUNNER_TEMP/desktop-entitlements.plist")" = true
@@ -147,8 +228,17 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.personal-information.addressbook' "$RUNNER_TEMP/desktop-entitlements.plist")" = true
           contacts_purpose=$(/usr/libexec/PlistBuddy -c 'Print :NSContactsUsageDescription' "$bundle/Contents/Info.plist")
           test -n "$contacts_purpose"
-          xcrun stapler validate "$bundle"
-          spctl --assess --type execute --verbose "$bundle"
+          if [ -n "$KODY_MAC_PROVISIONING_PROFILE" ]; then
+            test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.associated-domains:0' "$RUNNER_TEMP/desktop-entitlements.plist")" = applinks:kody.codes
+            test -f "$bundle/Contents/embedded.provisionprofile"
+          fi
+          node packages/desktop/scripts/verify-mac-notarization.cjs "$bundle"
+          # The updater installs from the zip, so its copy must carry the ticket.
+          zip=$(ls artifacts/desktop/Kody-*-mac-"$KODY_DESKTOP_ARCH".zip)
+          rm -rf "$RUNNER_TEMP/zip-check"
+          ditto -x -k "$zip" "$RUNNER_TEMP/zip-check"
+          codesign --verify --deep --strict "$RUNNER_TEMP/zip-check/Kody.app"
+          node packages/desktop/scripts/verify-mac-notarization.cjs "$RUNNER_TEMP/zip-check/Kody.app"
       - name: Verify Windows signatures
         if: runner.os == 'Windows'
         env:
@@ -172,6 +262,7 @@ jobs:
           name: release-${{ matrix.platform }}-${{ matrix.arch }}
           if-no-files-found: error
           compression-level: 0
+          overwrite: true
           path: |
             artifacts/desktop/*.dmg
             artifacts/desktop/*.zip
@@ -186,7 +277,13 @@ jobs:
         run: rm -f "$RUNNER_TEMP/notary.p8"
 
   publish:
-    needs: build
+    needs: [credentials, build]
+    # Also runs after a failed or skipped build so finished targets reach the
+    # draft and a re-run builds only what is missing. The script publishes only
+    # a complete draft; otherwise it fails and the draft stays a draft.
+    if:
+      ${{ !cancelled() && needs.credentials.result == 'success' &&
+      needs.credentials.outputs.release == 'true' }}
     environment: desktop-release
     runs-on: ubuntu-24.04
     steps:
@@ -198,34 +295,13 @@ jobs:
           pattern: release-*
           merge-multiple: true
           path: release-assets
-      - name: Publish completed release
+      - name: Upload missing assets and publish a complete release
         env:
           GH_TOKEN: ${{ secrets.DESKTOP_RELEASE_TOKEN }}
           GH_REPO: kody-hq/kody-desktop
           SOURCE_SHA: ${{ github.sha }}
-          RELEASE_PLATFORMS: ${{ inputs.platforms }}
+          RELEASE_PLATFORMS: ${{ needs.credentials.outputs.platforms }}
+          RELEASE_VERSION: ${{ needs.credentials.outputs.version }}
         run: |
-          version=$(node -p 'require("./packages/desktop/package.json").version')
-          tag="v$version"
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Desktop releases must use a stable version.'; exit 1; }
-          if latest_json=$(gh api "repos/$GH_REPO/releases/latest" 2> release-lookup-error.txt); then
-            latest=$(printf '%s' "$latest_json" | node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync(0,"utf8")).tag_name)')
-            printf '%s' "$latest_json" | node packages/desktop/scripts/release-plan.cjs --check-feed
-            [[ "$latest" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Unexpected published desktop tag.'; exit 1; }
-            newest=$(printf '%s\n%s\n' "$version" "${latest#v}" | sort -V | tail -n 1)
-            test "$newest" = "$version" && test "$version" != "${latest#v}" || { echo 'Bump the desktop version above the published release.'; exit 1; }
-          else
-            case "$(cat release-lookup-error.txt)" in
-              *'HTTP 404'*) ;; # First release.
-              *) cat release-lookup-error.txt; exit 1 ;;
-            esac
-          fi
-          # Never replace a published version. Drafts may be resumed after an upload failure.
-          node packages/desktop/scripts/release-plan.cjs --notes > release-notes.txt
-          if gh release view "$tag" --json isDraft,body,assets > draft.json 2>/dev/null; then
-            node packages/desktop/scripts/release-plan.cjs --check-draft < draft.json
-          else
-            gh release create "$tag" --draft --title "Kody $version" --notes-file release-notes.txt
-          fi
-          gh release upload "$tag" release-assets/* --clobber
-          gh release edit "$tag" --draft=false --latest --notes-file release-notes.txt
+          mkdir -p release-assets
+          node packages/desktop/scripts/release-publish.cjs release-assets

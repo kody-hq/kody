@@ -46,6 +46,12 @@ export const connectWebhookSchema = z.object({
 	handle: z.string().nullable(),
 	fingerprint: z.string().nullable(),
 })
+/** Allow/Reject re-binds the page's org; absent means the personal org. */
+export const connectWebhookDecisionSchema = z.object({
+	orgSlug: locationFields.orgSlug,
+	handle: z.string().trim().min(1),
+	fingerprint: z.string().trim().min(1),
+})
 function connectionLocation(search: string) {
 	const params = new URLSearchParams(search)
 	return {

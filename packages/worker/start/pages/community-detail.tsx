@@ -7,7 +7,7 @@ import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import { useMemo, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { type CommunityDetailApiPayload } from '../community-types.ts'
+import type { CommunityDetailApiPayload } from '../community-types.ts'
 import { getPackageTreeHref } from '#universal/package-files.ts'
 import { withInstallOrg } from '#universal/community-search.ts'
 import {
@@ -215,8 +215,10 @@ const mutationResources = [
 
 const reportResources = ['loadAdminCommunityReports'] as const
 
-function requireSuccess<T extends { ok: boolean; error?: string }>(result: T) {
-	if (!result.ok)
-		throw new Error(result.error ?? 'Unable to complete this action.')
+function requireSuccess<T extends { ok: boolean; error?: string }>(
+	result: T | null | undefined,
+) {
+	if (!result || result.ok !== true)
+		throw new Error(result?.error ?? 'Unable to complete this action.')
 	return result
 }

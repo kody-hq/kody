@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { nativeDisclosureCss } from '#universal/styles/style-primitives.ts'
 import {
 	type PackageCollaboratorPermission,

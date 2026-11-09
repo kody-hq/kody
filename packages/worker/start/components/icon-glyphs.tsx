@@ -1,12 +1,12 @@
 /** @jsxImportSource react */
 /** @jsxRuntime automatic */
-import { type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 
 /**
  * Inner paths from Iconic (https://iconic.app) SVG icons.
  * 24×24 bounding box, 1.5px stroke. Cropping lives in `icon.tsx`.
  */
-import { type IconName } from '#universal/icon-names.ts'
+import type { IconName } from '#universal/icon-names.ts'
 export type { IconName } from '#universal/icon-names.ts'
 
 export const iconGlyphs = {
@@ -62,6 +62,78 @@ export const iconGlyphs = {
 				strokeLinejoin="round"
 				strokeWidth="1.5"
 				d="M14.25 9.75L9.75 14.25"
+			/>
+		</>
+	),
+	'view-cards': () => (
+		<>
+			<rect
+				x="4.75"
+				y="5"
+				width="6.25"
+				height="14"
+				rx="1"
+				stroke="currentColor"
+				strokeWidth="1.5"
+			/>
+			<rect
+				x="13"
+				y="5"
+				width="6.25"
+				height="14"
+				rx="1"
+				stroke="currentColor"
+				strokeWidth="1.5"
+			/>
+		</>
+	),
+	'view-list': () => (
+		<>
+			<path
+				d="M5 7H19M5 12H19M5 17H19"
+				stroke="currentColor"
+				strokeWidth="1.5"
+				strokeLinecap="round"
+			/>
+		</>
+	),
+	apps: () => (
+		<>
+			<rect
+				x="4.75"
+				y="4.75"
+				width="6"
+				height="6"
+				rx="1.25"
+				stroke="currentColor"
+				strokeWidth="1.5"
+			/>
+			<rect
+				x="13.25"
+				y="4.75"
+				width="6"
+				height="6"
+				rx="1.25"
+				stroke="currentColor"
+				strokeWidth="1.5"
+			/>
+			<rect
+				x="4.75"
+				y="13.25"
+				width="6"
+				height="6"
+				rx="1.25"
+				stroke="currentColor"
+				strokeWidth="1.5"
+			/>
+			<rect
+				x="13.25"
+				y="13.25"
+				width="6"
+				height="6"
+				rx="1.25"
+				stroke="currentColor"
+				strokeWidth="1.5"
 			/>
 		</>
 	),

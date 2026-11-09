@@ -12,7 +12,7 @@ import { resolveContinueVerificationFeedback } from '#client/routes/pending-veri
 import { resolvePostVerificationRedirect } from '#client/routes/pending-verification-path.ts'
 import { buildAuthLink } from '#client/auth-links.ts'
 import { acceptedEmailVerificationDelivery } from '#universal/email-verification-delivery.ts'
-import { type PendingVerificationLoaderData } from '#universal/loader-data.ts'
+import type { PendingVerificationLoaderData } from '#universal/loader-data.ts'
 import { mq, spacing } from '#universal/styles/tokens.ts'
 import { layoutMaxWidths } from '#universal/styles/style-primitives.ts'
 import {

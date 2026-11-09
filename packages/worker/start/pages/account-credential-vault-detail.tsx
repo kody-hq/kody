@@ -3,9 +3,13 @@ import { css } from '@emotion/react'
 import { SiteLink } from '../components/site-link.tsx'
 import { MetadataGrid } from './account-management-components.tsx'
 import { CredentialFillPlacementEditor } from './account-credential-fill-placement-editor.tsx'
+import { CredentialLocalReadsSection } from './account-credential-local-reads.tsx'
 import { recordBodyCss } from './record-table.tsx'
 import { fillPlacementAnchor } from '#universal/credential-placement-approval.ts'
-import { type CredentialProviderBindingItem } from '#universal/credentials-list.ts'
+import type {
+	CredentialLocalReadsView,
+	CredentialProviderBindingItem,
+} from '#universal/credentials-list.ts'
 import { orgResourcePath } from '#universal/org-pages.ts'
 import {
 	cardTitleCss,
@@ -23,6 +27,7 @@ export function renderVaultCredentialDetail(input: {
 	binding: CredentialProviderBindingItem
 	packageName: string
 	orgSlug: string
+	localReads?: CredentialLocalReadsView | null
 }) {
 	const { binding } = input
 	const name = binding.provider ?? binding.providerId
@@ -63,6 +68,15 @@ export function renderVaultCredentialDetail(input: {
 					</p>
 				</div>
 			</div>
+
+			{input.localReads && input.localReads.credentialId === binding.id ? (
+				<CredentialLocalReadsSection
+					key={`${binding.id}:local-reads`}
+					view={input.localReads}
+					orgSlug={input.orgSlug}
+					vault
+				/>
+			) : null}
 
 			<div>
 				<SiteLink

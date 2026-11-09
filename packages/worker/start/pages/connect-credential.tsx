@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { type SaveSecretInput } from '#universal/secret-mutations.ts'
+import type { SaveSecretInput } from '#universal/secret-mutations.ts'
 import { saveSecret } from '#start/server/account-mutations'
 import { readAccountSecretsSaveWarning } from './account-secrets-shared.ts'
 import { persistConnectOauthOrgSlug } from './connect-oauth-shared.ts'
@@ -18,6 +18,7 @@ import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 import { PasswordRevealInput } from '../components/password-reveal-input.tsx'
 
+import { WorkspaceScopeNotice } from '../components/workspace-scope-notice.tsx'
 import { AccountManagementShell } from './account-management-components.tsx'
 import {
 	credentialCreateHandoffHref,
@@ -596,6 +597,15 @@ export function ConnectCredentialRoute({
 						appears to agents or package code.
 					</p>
 				</header>
+
+				{orgSlug ? (
+					<WorkspaceScopeNotice
+						action="Creating in"
+						slug={orgSlug}
+						personal={!data?.teamOrg}
+						detail="This credential will belong to this workspace and run as it. Credentials cannot be moved between workspaces — reconnect under the right one instead. Local compute is separate from which workspace owns the credential."
+					/>
+				) : null}
 
 				{renderMatches({ matches, orgSlug })}
 

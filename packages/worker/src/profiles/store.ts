@@ -6,7 +6,7 @@
  * type `profile`) never feed a person's roles or org binding, so these writes
  * do not bump `orgs.access_epoch`.
  */
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import {
 	maxProfileDepth,
 	profilePurgeAfterDays,
@@ -14,9 +14,10 @@ import {
 	type RequestedProfileGrant,
 } from './rules.ts'
 
-const profileColumns = `id, org_id, owner_kind, acting_user_id, parent_profile_id, name,
+const profileInsertColumns = `id, org_id, owner_kind, acting_user_id, parent_profile_id, name,
 	depth, expires_at, revoked_at, revoked_by_user_id, created_by_user_id,
 	created_by_profile_id, created_at, updated_at`
+const profileColumns = `${profileInsertColumns}, assigned_team_id`
 
 /**
  * The chain from the root down to `profileId` (root first), in one recursive
@@ -34,7 +35,7 @@ export async function loadProfileChain(
 				SELECT p.id, p.org_id, p.owner_kind, p.acting_user_id,
 					p.parent_profile_id, p.name, p.depth, p.expires_at, p.revoked_at,
 					p.revoked_by_user_id, p.created_by_user_id, p.created_by_profile_id,
-					p.created_at, p.updated_at, chain.hop + 1
+					p.created_at, p.updated_at, p.assigned_team_id, chain.hop + 1
 				FROM profiles p JOIN chain ON p.id = chain.parent_profile_id
 				WHERE chain.hop < ? AND p.org_id = chain.org_id
 			)
@@ -179,7 +180,7 @@ export async function insertProfile(
 	const statements: Array<D1PreparedStatement> = [
 		db
 			.prepare(
-				`INSERT INTO profiles (${profileColumns})
+				`INSERT INTO profiles (${profileInsertColumns})
 				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			)
 			.bind(

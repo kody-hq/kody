@@ -1,4 +1,4 @@
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { auditDatabaseFromEnv } from '#worker/audit-log.ts'
 import {
 	recordOrgAuditEvent,

@@ -7,9 +7,9 @@ import {
 	parseAuthoredPackageJson,
 	resolvePackageExportPath,
 } from '#worker/package-registry/manifest.ts'
-import {
-	type AuthoredPackageJson,
-	type SavedPackageRecord,
+import type {
+	AuthoredPackageJson,
+	SavedPackageRecord,
 } from '#worker/package-registry/types.ts'
 import {
 	buildPlainRepoPromotionErrorMessage,
@@ -30,7 +30,7 @@ import {
 	type ModuleImportNodesCache,
 } from './import-specifiers.ts'
 import { declaredCapabilitiesOf } from './package-app-effective-capabilities.ts'
-import { type BundleArtifactDependency } from './published-runtime-artifacts.ts'
+import type { BundleArtifactDependency } from './published-runtime-artifacts.ts'
 import {
 	dirname,
 	joinPath,
@@ -167,7 +167,7 @@ export function collectReachableSourceFilePaths(input: {
 	return reachable
 }
 
-type LoadedDependencyPackage = LoadedPackageSource & {
+export type LoadedDependencyPackage = LoadedPackageSource & {
 	row: SavedPackageRecord
 	prefix: string
 }
@@ -277,6 +277,8 @@ export async function resolveKodyDependenciesForEntryPoint(input: {
 	sourceFiles: Record<string, string>
 	entryPoint: string
 	loadedPackages?: Map<string, LoadedDependencyPackage>
+	/** Shared across targets so each module is parsed once per publish step. */
+	importNodesCache?: ModuleImportNodesCache
 }) {
 	const rootPackage = readRootPackage(input.sourceFiles)
 	const entryPoint =
@@ -288,6 +290,9 @@ export async function resolveKodyDependenciesForEntryPoint(input: {
 		files: input.sourceFiles,
 		entryPoint,
 		rootPackage,
+		...(input.importNodesCache
+			? { importNodesCache: input.importNodesCache }
+			: {}),
 	})
 	const reachableFiles = Object.fromEntries(
 		Object.entries(input.sourceFiles).filter(([filePath]) =>

@@ -4,9 +4,9 @@
  * (curl, agents, `kody dev fetch`).
  */
 
-import { type IncomingMessage, type ServerResponse } from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 
-export type DevErrorKind = 'build' | 'runtime'
+type DevErrorKind = 'build' | 'runtime'
 
 export type DevErrorView = {
 	kind: DevErrorKind
@@ -17,7 +17,7 @@ export type DevErrorView = {
 	request?: string
 }
 
-export function wantsHtml(req: IncomingMessage): boolean {
+function wantsHtml(req: IncomingMessage): boolean {
 	const accept = req.headers.accept ?? ''
 	return /\btext\/html\b/.test(accept)
 }
@@ -54,7 +54,7 @@ export function sendDevError(
 	)
 }
 
-export function renderDevErrorPage(view: DevErrorView): string {
+function renderDevErrorPage(view: DevErrorView): string {
 	const label = view.kind === 'build' ? 'Build error' : 'Runtime error'
 	return `<!doctype html>
 <html lang="en">
@@ -84,7 +84,7 @@ export function renderDevErrorPage(view: DevErrorView): string {
 `
 }
 
-export function escapeHtml(value: string): string {
+function escapeHtml(value: string): string {
 	return value
 		.replace(/&/g, '&amp;')
 		.replace(/</g, '&lt;')

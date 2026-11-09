@@ -1,14 +1,15 @@
 /** @jsxImportSource @emotion/react */
+import { CommandTrigger } from '../commands/provider.tsx'
 import { DemoIndicator } from './demo-indicator.tsx'
 import { workspaceHomeHref } from '#client/routes/account-rail.ts'
 import { dismissOpenPopoverPanel } from '#client/popover-open.ts'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { BrandContextMenu } from './brand-context-menu.tsx'
 import { FeaturesMenu } from './features-menu.tsx'
 import { KodyMark } from './kody-mark.tsx'
 import { SiteLink } from './site-link.tsx'
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { type OrganizationSession } from './org-switcher.tsx'
+import type { OrganizationSession } from './org-switcher.tsx'
 import {
 	colors,
 	shadows,
@@ -100,11 +101,8 @@ export function SiteHeader(props: SiteHeaderProps) {
 								<SiteLink href={workspaceHref} css={navLoginCss}>
 									Workspace
 								</SiteLink>
-								<Suspense
-									fallback={
-										<span aria-hidden="true" css={{ width: 44, height: 44 }} />
-									}
-								>
+								<div css={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+									<CommandTrigger />
 									<AccountMenu
 										username={props.username}
 										displayName={props.displayName}
@@ -113,7 +111,7 @@ export function SiteHeader(props: SiteHeaderProps) {
 											props.organizationSession?.organizations ?? []
 										}
 									/>
-								</Suspense>
+								</div>
 							</>
 						) : (
 							<SiteLink href={props.loginHref} css={navLoginCss}>
@@ -160,18 +158,15 @@ export function SiteHeader(props: SiteHeaderProps) {
 							<SiteLink href={workspaceHref} css={navLoginCss}>
 								Workspace
 							</SiteLink>
-							<Suspense
-								fallback={
-									<span aria-hidden="true" css={{ width: 44, height: 44 }} />
-								}
-							>
+							<div css={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+								<CommandTrigger />
 								<AccountMenu
 									organizations={props.organizationSession?.organizations ?? []}
 									username={props.username}
 									displayName={props.displayName}
 									avatarUrl={props.avatarUrl}
 								/>
-							</Suspense>
+							</div>
 							{props.showDemoIndicator ? <DemoIndicator /> : null}
 						</>
 					) : (
@@ -257,7 +252,10 @@ const headerCss: CSSObject = {
 	position: 'sticky' as const,
 	top: 0,
 	zIndex: 10,
-	background: `oklch(from ${colors.background} l c h / 0.85)`,
+	background: colors.background,
+	'@supports (background: oklch(from white l c h / 0.85))': {
+		background: `oklch(from ${colors.background} l c h / 0.85)`,
+	},
 	'@supports (backdrop-filter: blur(1px))': {
 		backdropFilter: 'blur(14px)',
 	},

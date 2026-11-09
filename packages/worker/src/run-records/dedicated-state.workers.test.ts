@@ -35,11 +35,10 @@ import {
 	workflowProjectionCreatingTtlMs,
 } from './service.ts'
 import {
-	runRecordMaxRunsPerUser,
 	runRecordRetentionEveryNFinishes,
 	type RunRecordContext,
 } from './types.ts'
-import { type WorkflowProjectionUpsertInput } from './workflow-projection.ts'
+import type { WorkflowProjectionUpsertInput } from './workflow-projection.ts'
 
 const dynamicBinding = 'DYNAMIC_CALLABLE_WORKFLOWS'
 const dayMs = 24 * 60 * 60 * 1000
@@ -221,7 +220,7 @@ async function upgradeFromLegacySchema(
 				initializeSchema: () => void
 			}
 			proto.initializeSchema.call(instance)
-			expect(schemaVersion(state)).toBe(18)
+			expect(schemaVersion(state)).toBe(20)
 			verify(state)
 		},
 	)
@@ -364,29 +363,35 @@ test('workflow projections track binding name, idempotency, and active counts', 
 
 test('listWorkflowProjections filters by id, packageId, and since', async () => {
 	const userId = uniqueUserId('wf-list-filters')
+	// Relative to now: terminal rows past the 90-day retention window can be
+	// pruned by the retention alarm mid-test.
+	const day = 24 * 60 * 60 * 1000
+	const at = (daysAgo: number) =>
+		new Date(Date.now() - daysAgo * day).toISOString()
+	const since = at(10)
 	await upsertWorkflow(userId, 'wf-old', {
 		sourceType: 'package',
 		packageId: 'pkg-a',
 		workflowName: 'old',
-		createdAt: '2026-07-01T00:00:00.000Z',
-		updatedAt: '2026-07-01T00:00:00.000Z',
+		createdAt: at(40),
+		updatedAt: at(40),
 		status: 'complete',
-		completedAt: '2026-07-01T00:01:00.000Z',
+		completedAt: at(39),
 	})
 	await upsertWorkflow(userId, 'wf-new-a', {
 		sourceType: 'package',
 		packageId: 'pkg-a',
 		workflowName: 'new-a',
-		createdAt: '2026-07-31T12:00:00.000Z',
-		updatedAt: '2026-07-31T12:00:00.000Z',
+		createdAt: at(5),
+		updatedAt: at(5),
 		status: 'running',
 	})
 	await upsertWorkflow(userId, 'wf-new-b', {
 		sourceType: 'package',
 		packageId: 'pkg-b',
 		workflowName: 'new-b',
-		createdAt: '2026-07-31T13:00:00.000Z',
-		updatedAt: '2026-07-31T13:00:00.000Z',
+		createdAt: at(4),
+		updatedAt: at(4),
 		status: 'queued',
 	})
 
@@ -412,7 +417,7 @@ test('listWorkflowProjections filters by id, packageId, and since', async () => 
 	const bySince = await listWorkflowProjections({
 		env,
 		userId,
-		since: '2026-07-31T00:00:00.000Z',
+		since,
 		limit: 10,
 	})
 	expect(bySince.projections.map((row) => row.id).sort()).toEqual([
@@ -424,7 +429,7 @@ test('listWorkflowProjections filters by id, packageId, and since', async () => 
 		env,
 		userId,
 		packageId: 'pkg-a',
-		since: '2026-07-31T00:00:00.000Z',
+		since,
 		status: 'running',
 		limit: 10,
 	})
@@ -859,7 +864,7 @@ test('retention prunes runs but never dedicated workflow/job/activation state', 
 	// the fresh rows still exceed the cap, so excess prune runs too.
 	const agedStartedAt = new Date(Date.now() - 40 * dayMs).toISOString()
 	const freshStartedAt = new Date().toISOString()
-	const excessCount = runRecordMaxRunsPerUser + 10
+	const excessCount = 2_000 + 10
 	await runInDurableObject(
 		runLogStub(userId),
 		async (instance: RunLog, state) => {
@@ -891,7 +896,7 @@ test('retention prunes runs but never dedicated workflow/job/activation state', 
 					.one().n,
 		)
 	expect(await countRuns(`id LIKE 'aged-%'`)).toBe(0)
-	expect(await countRuns('1 = 1')).toBe(runRecordMaxRunsPerUser)
+	expect(await countRuns('1 = 1')).toBe(2_000)
 	expect(
 		await getWorkflowProjection({ env, userId, id: 'wf-keep' }),
 	).toMatchObject({ id: 'wf-keep', bindingName: dynamicBinding })
@@ -1457,6 +1462,133 @@ test('warm schema v13 workflow projections gain insert-only source revision colu
 	})
 })
 
+test('warm schema v18 publish workflow projections backfill package and commit from the key', async () => {
+	const userId = uniqueUserId('schema-v18-publish-backfill')
+	const at = '2026-11-01T00:00:00.000Z'
+	const commit = 'c'.repeat(40)
+	const json = (packageId: string) =>
+		JSON.stringify({
+			allowForce: false,
+			destructiveOverwriteConfirmed: false,
+			newCommit: commit,
+			ownerUserId: 'owner-synthetic',
+			packageId,
+		})
+	const rows: Array<[string, string, string, string | null]> = [
+		[
+			'wf-v2',
+			'packagePublishExternalPush',
+			`u:packagePublishExternalPush:v2:${json('pkg-v2')}`,
+			null,
+		],
+		[
+			'wf-v1',
+			'packagePublishExternalPush',
+			`u:packagePublishExternalPush:${json('pkg-v1')}`,
+			null,
+		],
+		['wf-released', 'packagePublishExternalPush', 'released:wf-released', null],
+		[
+			'wf-filled',
+			'packagePublishExternalPush',
+			`u:packagePublishExternalPush:v2:${json('pkg-key')}`,
+			'pkg-existing',
+		],
+		[
+			'wf-other',
+			'inline-code',
+			`u:packagePublishExternalPush:v2:${json('pkg-other')}`,
+			null,
+		],
+	]
+	await upgradeFromLegacySchema(
+		userId,
+		18,
+		(state) => {
+			state.storage.sql.exec(`
+				CREATE TABLE workflow_projections (
+					id TEXT PRIMARY KEY NOT NULL,
+					binding_name TEXT NOT NULL,
+					source_type TEXT NOT NULL CHECK (source_type IN ('package', 'inline')),
+					package_id TEXT,
+					kody_id TEXT,
+					source_id TEXT,
+					workflow_name TEXT NOT NULL,
+					export_name TEXT,
+					idempotency_key TEXT NOT NULL,
+					run_at TEXT NOT NULL,
+					plan_date TEXT,
+					status TEXT,
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL,
+					completed_at TEXT,
+					last_error TEXT,
+					enqueued_commit TEXT,
+					source_revision TEXT
+				)
+			`)
+			for (const [id, workflowName, key, packageId] of rows) {
+				state.storage.sql.exec(
+					`INSERT INTO workflow_projections (
+						id, binding_name, source_type, package_id, workflow_name,
+						idempotency_key, run_at, status, created_at, updated_at
+					) VALUES (?, ?, 'inline', ?, ?, ?, ?, 'complete', ?, ?)`,
+					id,
+					dynamicBinding,
+					packageId,
+					workflowName,
+					key,
+					at,
+					at,
+					at,
+				)
+			}
+		},
+		(state) => {
+			const byId = new Map(
+				state.storage.sql
+					.exec<{
+						id: string
+						package_id: string | null
+						enqueued_commit: string | null
+						idempotency_key: string
+						updated_at: string
+					}>(
+						`SELECT id, package_id, enqueued_commit, idempotency_key, updated_at
+						FROM workflow_projections`,
+					)
+					.toArray()
+					.map((row) => [row.id, row]),
+			)
+			expect(byId.get('wf-v2')).toMatchObject({
+				package_id: 'pkg-v2',
+				enqueued_commit: commit,
+				updated_at: at,
+			})
+			expect(byId.get('wf-v1')).toMatchObject({
+				package_id: 'pkg-v1',
+				enqueued_commit: commit,
+			})
+			expect(byId.get('wf-released')).toMatchObject({
+				package_id: null,
+				enqueued_commit: null,
+				idempotency_key: 'released:wf-released',
+			})
+			expect(byId.get('wf-filled')).toMatchObject({
+				package_id: 'pkg-existing',
+				enqueued_commit: null,
+			})
+			expect(byId.get('wf-other')).toMatchObject({
+				package_id: null,
+				enqueued_commit: null,
+			})
+			for (const [id, , key] of rows) {
+				expect(byId.get(id)?.idempotency_key).toBe(key)
+			}
+		},
+	)
+})
+
 test('getAdminInsightsSnapshot returns content-free workflow, job, and activation aggregates', async () => {
 	const userId = uniqueUserId('admin-insights')
 	const reachedAt = '2026-08-01T12:00:00.000Z'
@@ -1557,7 +1689,7 @@ test('getSqlBillingStats and inspectRunLogSqlBilling report listRuns/finishRun c
 	)
 
 	const inspection = await inspectRunLogSqlBilling({ env, userId })
-	expect(inspection.schemaVersion).toBe(18)
+	expect(inspection.schemaVersion).toBe(20)
 	expect(inspection.tableCounts.runs).toBeGreaterThanOrEqual(1)
 	expect(inspection.tableCounts.runLogs).toBeGreaterThanOrEqual(1)
 	expect(inspection.runCount.actual).toBe(inspection.tableCounts.runs)

@@ -261,6 +261,18 @@ test('profile filters and identity are independent of the RPC URL', async () => 
 		{ query: 'private', limit: 10 },
 	)
 })
+test('empty profile username is not-found, not a Zod validation error', () => {
+	expect(() => loadProfile({ data: { username: '', query: '' } })).toThrow(
+		expect.objectContaining({ isNotFound: true }),
+	)
+	expect(mocks.profileRead).not.toHaveBeenCalled()
+})
+test('empty package username is not-found, not a Zod validation error', () => {
+	expect(() =>
+		loadPackage({ data: { username: '', kodyId: 'helper' } }),
+	).toThrow(expect.objectContaining({ isNotFound: true }))
+	expect(mocks.packageRead).not.toHaveBeenCalled()
+})
 test('package domain authorization sees the original request', async () => {
 	mocks.kind = 'unauthorized'
 	await loadPackage({ data: { username: 'owner', kodyId: 'private' } })

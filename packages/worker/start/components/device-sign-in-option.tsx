@@ -1,6 +1,7 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSObject } from '@emotion/react'
-import { type CSSProperties } from 'react'
+import type { CSSObject } from '@emotion/react'
+import type { CSSProperties } from 'react'
+import { accountDeviceSignInPath } from '#universal/oauth-paths.ts'
 import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
 import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
 import { colors } from '#universal/styles/tokens.ts'
@@ -38,6 +39,46 @@ export function DeviceSignInOption(props: { target: string; rise?: number }) {
 }
 
 /**
+ * "Sign in on another device" for Kody's own sign-in (ADR 0094): approve this
+ * browser from a device already signed in to Kody. `redirectTo` is where the
+ * browser lands once approved.
+ */
+export function AccountDeviceSignInOption(props: {
+	redirectTo: string | null
+	rise?: number
+}) {
+	return (
+		<form
+			method="post"
+			action={accountDeviceSignInPath}
+			data-rise={props.rise === undefined ? undefined : ''}
+			style={
+				props.rise === undefined
+					? undefined
+					: ({ '--rise': String(props.rise) } as CSSProperties)
+			}
+			css={deviceSignInCss}
+			data-testid="account-sign-in-on-another-device"
+		>
+			{props.redirectTo ? (
+				<input type="hidden" name="redirectTo" value={props.redirectTo} />
+			) : null}
+			<p>
+				<strong>On an e-reader or an older browser?</strong> Approve this
+				browser from a phone or computer where you are already signed in to
+				Kody. You get a short code and a QR code.
+			</p>
+			<label css={rememberCss}>
+				<input type="checkbox" name="rememberMe" /> Keep this browser signed in
+			</label>
+			<button type="submit" css={deviceSignInButtonCss}>
+				Sign in on another device
+			</button>
+		</form>
+	)
+}
+
+/**
  * Shown by `public/auth-fallback.js` when the Turnstile check reports an
  * error or an unsupported browser, so the visitor is not left guessing.
  */
@@ -64,6 +105,14 @@ const deviceSignInCss: CSSObject = {
 		color: colors.textMuted,
 	},
 	'& strong': { color: colors.text },
+}
+
+const rememberCss: CSSObject = {
+	display: 'flex',
+	alignItems: 'center',
+	gap: '0.45rem',
+	fontSize: '0.92rem',
+	color: colors.textMuted,
 }
 
 const deviceSignInButtonCss: CSSObject = {

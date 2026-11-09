@@ -75,6 +75,45 @@ export async function findPublicOwnerIdentityByHandle(input: {
 	}
 }
 
+/**
+ * A public handle that {@link findPublicOwnerIdentityByHandle} resolves back
+ * to `ownerId`, for building `/@handle/...` URLs that must route to that
+ * owner. Tries `preferredHandle` first (a person's username keeps personal
+ * URLs stable), then the owner's org slug and claimed handles. Every
+ * candidate must round-trip, so a caller-supplied handle can never point a
+ * URL at a different owner.
+ */
+export async function resolvePublicHandleForOwner(input: {
+	db: D1Database
+	ownerId: OwnerId
+	preferredHandle?: string | null
+}): Promise<string | null> {
+	const candidates = [input.preferredHandle?.trim() ?? '']
+	const org = await input.db
+		.prepare(`SELECT slug FROM orgs WHERE id = ?${andLiveDeletedAtSql()}`)
+		.bind(input.ownerId)
+		.first<{ slug: string | null }>()
+	candidates.push(org?.slug?.trim() ?? '')
+	const claimed = await input.db
+		.prepare(
+			`SELECT handle FROM handles WHERE org_id = ? ORDER BY created_at, handle`,
+		)
+		.bind(input.ownerId)
+		.all<{ handle: string }>()
+	for (const row of claimed.results ?? []) candidates.push(row.handle.trim())
+	const tried = new Set<string>()
+	for (const candidate of candidates) {
+		if (!candidate || tried.has(candidate)) continue
+		tried.add(candidate)
+		const owner = await findPublicOwnerIdentityByHandle({
+			db: input.db,
+			handle: candidate,
+		})
+		if (owner?.ownerId === input.ownerId) return candidate
+	}
+	return null
+}
+
 export async function findPublicUserIdentityByStableUserId(input: {
 	db: D1Database
 	userId: string

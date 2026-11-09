@@ -1,13 +1,14 @@
+import type { SecretPlaceholderRequestPlacementHit } from '#worker/credentials/secret-placeholder-request-placement.ts'
 import { errorCauseChainIncludes } from '@kody-internal/shared/error-message.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { isDurableObjectIsolateResourceLimitResetMessage } from '#worker/sentry-options.ts'
-import {
-	type PackageBundleTarget,
-	type PackageTypecheckTarget,
-	type RepoCheckKind,
-	type RepoCheckResult,
+import type {
+	PackageBundleTarget,
+	PackageTypecheckTarget,
+	RepoCheckKind,
+	RepoCheckResult,
 } from './checks.ts'
-import { type ResolvedSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
+import type { ResolvedSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
 import {
 	isRepoCheckStep,
 	repoCheckStepLabel,
@@ -18,9 +19,9 @@ import {
 	type RepoCheckStep,
 } from './isolated-runner-limit-message.ts'
 import {
-	formatLargestNonRuntimePaths,
-	largestNonRuntimePaths,
-	type LargePathHint,
+	formatPublishSizeHints,
+	publishSizeHints,
+	type PublishSizeHints,
 } from './publish-size-hints.ts'
 
 /**
@@ -59,6 +60,9 @@ export const isolatedBundleChunkSize = 4
  * check request may start together.
  */
 export const isolatedBundleChunkConcurrency = 2
+
+/** Typecheck targets per throwaway isolate (see runChunkedTypecheck). */
+export const isolatedTypecheckChunkSize = 20
 
 export type IsolatedCheckPhaseRequest =
 	| {
@@ -102,10 +106,16 @@ export function isolatedCheckStagingKeyBelongsToUser(input: {
 export type IsolatedCheckPhaseOutcome = {
 	ok: boolean
 	message: string
+	/** Staging expired or missing: a Kody failure, not an authored one. */
+	failureOrigin?: 'platform'
 	/** `credentials` phase only: staged files the stamp merge rewrote. */
 	changedFiles?: Record<string, string>
 	/** `credentials` phase only. */
 	stampKeys?: Array<string>
+	/** `credentials` phase only: fetches putting a placeholder in a request part. */
+	requestPlacementHits?: Array<SecretPlaceholderRequestPlacementHit>
+	/** `credentials` phase only: fetch bodies the gateway would still scan. */
+	fetchBodyHits?: Array<{ path: string; line: number }>
 }
 
 type IsolatedCheckPhaseStub = {
@@ -124,6 +134,8 @@ export type IsolatedAuthoringChecksRequest = {
 	baseUrl: string
 	sourceId?: string
 	expectedPackageScope?: string
+	deferBundleCheckToRebuild?: boolean
+	typecheckRanOffWorker?: boolean
 }
 
 export type IsolatedAuthoringChecksOutcome = {
@@ -251,7 +263,7 @@ export function createIsolatedCheckPhaseRunner(
  */
 export function authoringChecksResourceLimitMessage(
 	step: RepoCheckStep | null = null,
-	largestPaths: Array<LargePathHint> = [],
+	sizeHints: PublishSizeHints | null = null,
 ) {
 	const where = step ? ` during ${repoCheckStepLabel(step)}` : ''
 	return [
@@ -260,7 +272,7 @@ export function authoringChecksResourceLimitMessage(
 			'the same limits, so it is likely to fail the same way. ' +
 			resourceLimitVarianceNote,
 		repoCheckStepResourceLimitAdvice(step),
-		formatLargestNonRuntimePaths(largestPaths),
+		formatPublishSizeHints(sizeHints, step),
 	]
 		.filter(Boolean)
 		.join(' ')
@@ -314,6 +326,9 @@ export async function runAuthoringChecksInIsolate(input: {
 	binaryFileSizes?: Record<string, number>
 	sourceId?: string
 	expectedPackageScope?: string
+	deferBundleCheckToRebuild?: boolean
+	typecheckRanOffWorker?: boolean
+	kodyIgnoredDeclarationFiles?: Array<string>
 }): Promise<IsolatedAuthoringChecksOutcome | null> {
 	const namespace = (
 		input.env as (Env & { REPO_SESSION?: DurableObjectNamespace }) | undefined
@@ -330,15 +345,17 @@ export async function runAuthoringChecksInIsolate(input: {
 			...(input.binaryFileSizes
 				? { binaryFileSizes: input.binaryFileSizes }
 				: {}),
+			...(input.kodyIgnoredDeclarationFiles?.length
+				? { kodyIgnoredDeclarationFiles: input.kodyIgnoredDeclarationFiles }
+				: {}),
 		}),
 		{ expirationTtl: stagingTtlSeconds },
 	)
 	try {
-		const stub = namespace.get(
-			namespace.idFromName(
-				`isolated-authoring-checks-${input.userId}-${crypto.randomUUID()}`,
-			),
-		) as unknown as IsolatedAuthoringChecksStub
+		const stubId = namespace.idFromName(
+			`isolated-authoring-checks-${input.userId}-${crypto.randomUUID()}`,
+		)
+		const stub = namespace.get(stubId) as unknown as IsolatedAuthoringChecksStub
 		try {
 			return await stub.runIsolatedAuthoringChecks({
 				stagingKey,
@@ -348,12 +365,20 @@ export async function runAuthoringChecksInIsolate(input: {
 				...(input.expectedPackageScope !== undefined
 					? { expectedPackageScope: input.expectedPackageScope }
 					: {}),
+				...(input.deferBundleCheckToRebuild === true
+					? { deferBundleCheckToRebuild: true }
+					: {}),
+				...(input.typecheckRanOffWorker === true
+					? { typecheckRanOffWorker: true }
+					: {}),
 			})
 		} catch (error) {
 			if (isDurableObjectResourceLimitResetError(error)) {
-				// The step marker lives in the reset instance's storage; the
-				// next call reaches a fresh isolate for the same id.
-				const step = await readLastCheckStep(stub)
+				// The step marker lives in the reset instance's storage. The reset
+				// stub stays broken, so a new stub for the same id reads it.
+				const step = await readLastCheckStep(
+					namespace.get(stubId) as unknown as IsolatedAuthoringChecksStub,
+				)
 				return {
 					ok: false,
 					results: [
@@ -362,7 +387,7 @@ export async function runAuthoringChecksInIsolate(input: {
 							ok: false,
 							message: authoringChecksResourceLimitMessage(
 								step,
-								largestNonRuntimePaths({ files: input.files }),
+								publishSizeHints({ files: input.files }),
 							),
 						},
 					],

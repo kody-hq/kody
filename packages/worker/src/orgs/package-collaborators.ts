@@ -278,7 +278,9 @@ export async function listResourceCollaborators(input: {
 			members: members
 				.filter(
 					(member) =>
-						member.role !== 'owner' && !grantedUsers.has(member.userId),
+						member.role !== 'owner' &&
+						member.role !== 'admin' &&
+						!grantedUsers.has(member.userId),
 				)
 				.map((member) => ({
 					userId: member.userId,

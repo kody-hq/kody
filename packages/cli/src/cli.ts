@@ -1,6 +1,7 @@
 import { parseArgs } from 'node:util'
+import { statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { cliBootstrapMintCall } from './api-token.js'
+import { cliBootstrapMintCall, expectedPairedApiOrigin } from './api-token.js'
 import { deleteStoredApiToken, loadStoredApiToken } from './api-token-store.js'
 import {
 	describeCliCredential,
@@ -24,7 +25,9 @@ import {
 	type CredentialCallMapInput,
 } from './credential-call-map.js'
 import { defaultApiUrl, defaultMcpUrl } from './defaults.js'
+import { buildCommandHelp } from './command-help.js'
 import { buildUsage } from './help.js'
+import { isRemoteDaemonCommand } from './execution-context/daemon-remote.js'
 import { orgSlugFromFlag, resolveOrgSlug } from './org-resolve.js'
 import { refreshGitCredentialHelperPinIfNeeded } from './setup-git.js'
 import {
@@ -101,6 +104,8 @@ export type CommandName =
 	| 'daemon'
 	| 'connect'
 	| 'update'
+	| 'secret'
+	| 'run'
 
 const orgScopedCommands = new Set<CommandName>([
 	'context',
@@ -117,15 +122,79 @@ const orgScopedCommands = new Set<CommandName>([
 	'auth',
 ])
 
+/**
+ * Whether resolving this command's org may read the stored active org.
+ * Local `daemon status` (desktop polls this) and other keychain-free commands
+ * must not open the login keychain just to discover activeOrg — `--org` /
+ * `KODY_ORG` still apply via {@link resolveOrgSlug}, and authenticated
+ * subcommands open credentials when they call `token()` / whoami.
+ * Remote daemon control still needs activeOrg for person-owned tokens.
+ */
+function commandUsesStoredActiveOrg(input: {
+	command: CommandName
+	positionals: Array<string>
+	remote?: boolean
+	context?: string
+	apiUrl: string
+}): boolean {
+	const { command } = input
+	switch (command) {
+		case 'version':
+		case 'help':
+		case 'status':
+		case 'org':
+		case 'login':
+		case 'logout':
+		case 'update':
+		case 'install':
+		case 'skill':
+		case 'git-credential':
+			return false
+		case 'daemon':
+			return isRemoteDaemonCommand({
+				sub: input.positionals[0],
+				apiUrl: input.apiUrl,
+				...(input.context ? { context: input.context } : {}),
+				...(input.remote ? { remote: true } : {}),
+			})
+		case 'context':
+		case 'connect':
+		case 'chain':
+		case 'whoami':
+		case 'search':
+		case 'api':
+		case 'package':
+		case 'execute':
+		case 'dev':
+		case 'auth':
+		case 'secret':
+		case 'run':
+			return true
+		default: {
+			const exhaustive: never = command
+			throw new Error(`Unhandled CLI command: ${String(exhaustive)}`)
+		}
+	}
+}
+
 function mcpUrlFrom(values: { mcpUrl?: string }): string {
 	return values.mcpUrl || process.env.KODY_MCP_URL || defaultMcpUrl
 }
 
+/**
+ * `--api-url`, then `KODY_API_URL`, then the Open API host paired with
+ * `mcpUrl` when given (a PR preview's `-api` host), then production.
+ */
 export function apiUrlFrom(
 	values: { apiUrl?: string },
 	env: NodeJS.ProcessEnv = process.env,
+	mcpUrl?: string,
 ): string {
-	return values.apiUrl || env.KODY_API_URL || defaultApiUrl
+	if (values.apiUrl || env.KODY_API_URL) {
+		return (values.apiUrl || env.KODY_API_URL) as string
+	}
+	const paired = mcpUrl ? expectedPairedApiOrigin(mcpUrl) : null
+	return paired?.startsWith('https://') ? paired : defaultApiUrl
 }
 
 const cliFlagOptions = {
@@ -140,6 +209,7 @@ const cliFlagOptions = {
 	file: { type: 'string' },
 	invoke: { type: 'string' },
 	params: { type: 'string' },
+	build: { type: 'string' },
 	'conversation-id': { type: 'string' },
 	local: { type: 'boolean' },
 	'allow-private-network': { type: 'boolean' },
@@ -158,6 +228,7 @@ const cliFlagOptions = {
 	context: { type: 'string' },
 	mode: { type: 'string' },
 	'max-concurrent': { type: 'string' },
+	env: { type: 'string', multiple: true },
 	install: { type: 'boolean' },
 	'no-install': { type: 'boolean' },
 	'key-storage': { type: 'string' },
@@ -165,6 +236,9 @@ const cliFlagOptions = {
 	follow: { type: 'boolean', short: 'f' },
 	unregister: { type: 'boolean' },
 	'no-unregister': { type: 'boolean' },
+	reason: { type: 'string' },
+	'cancel-runs': { type: 'boolean' },
+	remote: { type: 'boolean' },
 	fallback: { type: 'string' },
 	requires: { type: 'string' },
 	chain: { type: 'string' },
@@ -175,6 +249,8 @@ const cliFlagOptions = {
 	debug: { type: 'boolean' },
 	passthrough: { type: 'string' },
 	port: { type: 'string' },
+	host: { type: 'string' },
+	'expose-prod': { type: 'boolean' },
 	'app-base-path': { type: 'string' },
 	'no-live-reload': { type: 'boolean' },
 	'ready-file': { type: 'string' },
@@ -189,9 +265,12 @@ const cliFlagOptions = {
 	grant: { type: 'string' },
 	'allow-changes-despite-unmappable-credentials': { type: 'boolean' },
 	'disallow-changes-despite-unmappable-credentials': { type: 'boolean' },
+	secret: { type: 'string', multiple: true },
+	format: { type: 'string' },
+	reveal: { type: 'boolean' },
 } as const
 
-const cliFlagNames = Object.keys(cliFlagOptions)
+export const cliFlagNames = Object.keys(cliFlagOptions)
 
 function parseKnown(args: Array<string>) {
 	const { tokens, values, positionals } = parseArgs({
@@ -241,6 +320,8 @@ export function resolveCommand(argv: Array<string>): {
 		case 'daemon':
 		case 'connect':
 		case 'update':
+		case 'secret':
+		case 'run':
 			return { command: raw, positionals: positionals.slice(1), values }
 		default:
 			// Never embed full usage here: git credential helpers treat any
@@ -255,7 +336,12 @@ export function resolveCommand(argv: Array<string>): {
 
 export async function runCli(
 	argv: Array<string> = process.argv.slice(2),
-	io: { stdout?: (text: string) => void; stderr?: (text: string) => void } = {},
+	io: {
+		stdout?: (text: string) => void
+		stderr?: (text: string) => void
+		/** Whether stdout is an interactive terminal (tests override it). */
+		isTTY?: boolean
+	} = {},
 ): Promise<number> {
 	const write = io.stdout ?? ((text: string) => process.stdout.write(text))
 	const writeErr = io.stderr ?? ((text: string) => process.stderr.write(text))
@@ -323,11 +409,20 @@ export async function runCli(
 					? parsed.values['mcp-url']
 					: undefined,
 		})
-		if (parsed.values.help && parsed.command !== 'help') {
-			write(buildUsage({ mcpUrl: helpMcpUrl }))
+		if (
+			parsed.values.help &&
+			(parsed.command !== 'help' || argv[0] === 'help')
+		) {
+			const helpPath =
+				parsed.command === 'help'
+					? parsed.positionals.length > 0
+						? parsed.positionals
+						: ['help']
+					: [parsed.command, ...parsed.positionals]
+			write(buildCommandHelp(helpPath) ?? buildUsage({ mcpUrl: helpMcpUrl }))
 			return 0
 		}
-		return await dispatch(parsed, write, writeErr)
+		return await dispatch(parsed, write, writeErr, io.isTTY)
 	} catch (error) {
 		const redacted = redactError(error)
 		if (jsonFlag) {
@@ -387,6 +482,7 @@ async function dispatch(
 	parsed: ReturnType<typeof resolveCommand>,
 	write: (text: string) => void,
 	writeErr: (text: string) => void,
+	stdoutIsTTY?: boolean,
 ): Promise<number> {
 	const mcpUrl = mcpUrlFrom({
 		mcpUrl:
@@ -468,26 +564,51 @@ async function dispatch(
 	// org-scoped commands and must not bind browser login or change logout).
 	const orgFlagOnly =
 		orgFlag !== undefined ? orgSlugFromFlag(orgFlag) : undefined
-	const org = resolveOrgSlug({
-		flag: orgFlag,
-		activeOrg: loadCredentialStore(mcpUrl)?.activeOrg,
-	})
+	// Prefer --org / KODY_ORG without touching the keychain. Only open the
+	// credential store for activeOrg when a command actually uses that org.
+	const orgFromFlagOrEnv = resolveOrgSlug({ flag: orgFlag })
+	const earlyApiUrl = apiUrlFrom(
+		{
+			apiUrl:
+				typeof parsed.values['api-url'] === 'string'
+					? parsed.values['api-url']
+					: undefined,
+		},
+		process.env,
+		mcpUrl,
+	)
+	const org =
+		orgFromFlagOrEnv ??
+		(commandUsesStoredActiveOrg({
+			command: parsed.command,
+			positionals: parsed.positionals,
+			apiUrl: earlyApiUrl,
+			...(parsed.values.remote === true ? { remote: true } : {}),
+			...(typeof parsed.values.context === 'string'
+				? { context: parsed.values.context }
+				: {}),
+		})
+			? resolveOrgSlug({
+					activeOrg: loadCredentialStore(mcpUrl)?.activeOrg,
+				})
+			: undefined)
 
 	switch (parsed.command) {
 		case 'help':
-			write(buildUsage({ mcpUrl }))
+			write(
+				(parsed.positionals.length > 0
+					? buildCommandHelp(parsed.positionals)
+					: null) ?? buildUsage({ mcpUrl }),
+			)
 			return 0
 		case 'context':
 		case 'chain':
 		case 'daemon':
 		case 'connect':
 		case 'update': {
-			const apiUrl = apiUrlFrom({
-				apiUrl:
-					typeof parsed.values['api-url'] === 'string'
-						? parsed.values['api-url']
-						: undefined,
-			})
+			// Same paired apiUrl used for remote/local classification above
+			// (preview --mcp-url without --api-url must not diverge).
+			const apiUrl = earlyApiUrl
 			const { runExecutionContextCommand } =
 				await import('./execution-context/commands.js')
 			return await runExecutionContextCommand({
@@ -506,6 +627,9 @@ async function dispatch(
 					...(parsed.values['max-concurrent'] !== undefined
 						? { maxConcurrent: String(parsed.values['max-concurrent']) }
 						: {}),
+					...(Array.isArray(parsed.values.env)
+						? { env: parsed.values.env.map(String) }
+						: {}),
 					...(parsed.values.yes === true ? { yes: true } : {}),
 					...(parsed.values['no-install'] === true
 						? { install: false }
@@ -519,6 +643,13 @@ async function dispatch(
 						? { lines: parsed.values.lines }
 						: {}),
 					...(parsed.values.follow === true ? { follow: true } : {}),
+					...(typeof parsed.values.reason === 'string'
+						? { reason: parsed.values.reason }
+						: {}),
+					...(parsed.values['cancel-runs'] === true
+						? { cancelRuns: true }
+						: {}),
+					...(parsed.values.remote === true ? { remote: true } : {}),
 					...(parsed.values['no-unregister'] === true
 						? { unregister: false }
 						: parsed.values.unregister === true
@@ -551,12 +682,16 @@ async function dispatch(
 									: ('long' as const),
 						}
 					: {}
-			const loginApiUrl = apiUrlFrom({
-				apiUrl:
-					typeof parsed.values['api-url'] === 'string'
-						? parsed.values['api-url']
-						: undefined,
-			})
+			const loginApiUrl = apiUrlFrom(
+				{
+					apiUrl:
+						typeof parsed.values['api-url'] === 'string'
+							? parsed.values['api-url']
+							: undefined,
+				},
+				process.env,
+				mcpUrl,
+			)
 			if (parsed.values.device === true) {
 				const result = await loginWithDevice({
 					mcpUrl,
@@ -566,7 +701,7 @@ async function dispatch(
 					onDeviceCode: (prompt) => write(formatDeviceLoginNotice(prompt)),
 				})
 				write(formatLoginSuccess(result))
-				write(storedApiTokenAfterLoginNotice(loginApiUrl))
+				write(supersedeStoredApiTokenAfterLogin(loginApiUrl))
 				return 0
 			}
 			const headlessReason = openBrowser ? detectHeadlessLoginReason() : null
@@ -585,16 +720,20 @@ async function dispatch(
 				},
 			})
 			write(formatLoginSuccess(result))
-			write(storedApiTokenAfterLoginNotice(loginApiUrl))
+			write(supersedeStoredApiTokenAfterLogin(loginApiUrl))
 			return 0
 		}
 		case 'logout': {
-			const apiUrl = apiUrlFrom({
-				apiUrl:
-					typeof parsed.values['api-url'] === 'string'
-						? parsed.values['api-url']
-						: undefined,
-			})
+			const apiUrl = apiUrlFrom(
+				{
+					apiUrl:
+						typeof parsed.values['api-url'] === 'string'
+							? parsed.values['api-url']
+							: undefined,
+				},
+				process.env,
+				mcpUrl,
+			)
 			const oauth = deleteCredentials(
 				mcpUrl,
 				undefined,
@@ -657,12 +796,16 @@ async function dispatch(
 			throw new Error('Usage: kody org list [--json] | kody org use [<slug>]')
 		}
 		case 'status': {
-			const apiUrl = apiUrlFrom({
-				apiUrl:
-					typeof parsed.values['api-url'] === 'string'
-						? parsed.values['api-url']
-						: undefined,
-			})
+			const apiUrl = apiUrlFrom(
+				{
+					apiUrl:
+						typeof parsed.values['api-url'] === 'string'
+							? parsed.values['api-url']
+							: undefined,
+				},
+				process.env,
+				mcpUrl,
+			)
 			// Status always reports the active (or pending) login — not KODY_ORG.
 			const credentials = loadCredentials(mcpUrl)
 			const orgs = listStoredOrgs(mcpUrl)
@@ -694,7 +837,7 @@ async function dispatch(
 					`api: ${storedApi.apiUrl}`,
 					`stored API token: yes (${storedApi.tokenId})`,
 					`API token scopes: ${scopes}`,
-					`API token expires: ${storedApi.expiresAt ?? 'unknown'}`,
+					`API token expires: ${storedApi.expiresAt ?? 'unknown'} (saved at mint; idle tokens slide on use, \`kody whoami\` shows the live deadline)`,
 					`API token via: ${storedApi.createdVia ?? 'unknown'}`,
 				)
 			} else {
@@ -1063,7 +1206,13 @@ async function dispatch(
 				)
 			}
 			if (local) assertLocalExecuteNodeEngine()
-			const fileArg = hasFileFlag ? (parsed.values.file as string) : undefined
+			const positionalFile =
+				!hasCodeFlag && !hasFileFlag && invoke === undefined
+					? positionalModuleFile(positionalModule)
+					: undefined
+			const fileArg = hasFileFlag
+				? (parsed.values.file as string)
+				: positionalFile
 			// `--code` wins over `--file`. Only attribute the path when the file is the source.
 			const modulePath =
 				localPackageInvoke?.modulePath ??
@@ -1334,6 +1483,7 @@ async function dispatch(
 		case 'dev': {
 			const { resolveTarget } = await import('./target.js')
 			const {
+				parseDevHost,
 				parseDevPort,
 				parseDevSubcommand,
 				resolveDevAuth,
@@ -1363,6 +1513,25 @@ async function dispatch(
 			const io = { stdout: write, stderr: writeErr }
 			const bodyPath =
 				typeof parsed.values.body === 'string' ? parsed.values.body : undefined
+			const devHost =
+				typeof parsed.values.host === 'string'
+					? parseDevHost(parsed.values.host)
+					: undefined
+			if (devHost !== undefined && subcommand !== 'serve') {
+				throw new Error(
+					'`--host` applies to `kody dev serve` only (the address the dev server listens on).',
+				)
+			}
+			const exposeProd = parsed.values['expose-prod'] === true
+			if (exposeProd && devHost === undefined) {
+				throw new Error(
+					'`--expose-prod` only applies together with a non-loopback `kody dev --host`.',
+				)
+			}
+			if (devHost !== undefined) {
+				const { assertDevHostAllowed } = await import('./dev/dev-host.js')
+				assertDevHostAllowed({ bindHost: devHost, target, exposeProd })
+			}
 			// `check` bundles + validates the package tree locally, then runs the
 			// server publish checks (`packageCheck`) on prod with the stored login,
 			// whatever the target: those checks run no package code and read no
@@ -1376,10 +1545,13 @@ async function dispatch(
 					json,
 					io,
 					offline,
+					...(parsed.values.build === 'local'
+						? { localBuild: { apiUrl: prodApiUrl } }
+						: {}),
 					...(offline
 						? {}
 						: {
-								runPublishChecks: async (files, binaryFiles) => {
+								runPublishChecks: async (tree) => {
 									const [
 										{ callOpenApiOperation, formatOpenApiHttpDebugLine },
 										{ parsePackageCheckResult, PublishChecksAuthError },
@@ -1405,9 +1577,12 @@ async function dispatch(
 										await callOpenApiOperation({
 											operationId: 'packageCheck',
 											params: {
-												files,
-												...(Object.keys(binaryFiles).length > 0
-													? { binary_files: binaryFiles }
+												files: tree.files,
+												...(Object.keys(tree.binaryFiles).length > 0
+													? {
+															binary_files: tree.binaryFiles,
+															binary_contents: tree.binaryContents,
+														}
 													: {}),
 											},
 											token,
@@ -1579,6 +1754,7 @@ async function dispatch(
 						return await runDevServe({
 							target,
 							auth,
+							...(devHost !== undefined ? { host: devHost, exposeProd } : {}),
 							port,
 							appBasePath,
 							allowPrivateNetwork,
@@ -1670,6 +1846,78 @@ async function dispatch(
 				throw error
 			}
 		}
+		case 'secret':
+		case 'run': {
+			const apiUrl = apiUrlFrom({
+				apiUrl:
+					typeof parsed.values['api-url'] === 'string'
+						? parsed.values['api-url']
+						: undefined,
+			})
+			const local = await import('./local-secrets.js')
+			const token = () =>
+				accessTokenForOpenApi({
+					tokenValues: tokenFlagValues(parsed.values),
+					apiUrl,
+					mcpUrl,
+					org,
+				})
+			if (parsed.command === 'secret') {
+				const [action, ...names] = parsed.positionals
+				if (action !== 'get' || names.length === 0) {
+					throw new Error(
+						'Usage: kody secret get <name>… [--format raw|env|json] [--reveal] [--org <slug>]',
+					)
+				}
+				const format = local.parseSecretFormat(parsed.values.format)
+				if (format === 'raw' && names.length > 1) {
+					throw new Error(
+						'Raw output prints one secret. Use --format env or --format json for more.',
+					)
+				}
+				const isTTY = stdoutIsTTY ?? process.stdout.isTTY === true
+				if (isTTY && parsed.values.reveal !== true) {
+					throw new Error(local.revealRequiredMessage)
+				}
+				const secrets = await local.fetchLocalSecrets({
+					token: await token(),
+					apiUrl,
+					...(org ? { org } : {}),
+					names,
+					command: 'get',
+				})
+				write(local.formatLocalSecrets(secrets, format))
+				return 0
+			}
+			const flags = Array.isArray(parsed.values.secret)
+				? parsed.values.secret.filter(
+						(value): value is string => typeof value === 'string',
+					)
+				: []
+			if (flags.length === 0 || parsed.positionals.length === 0) {
+				throw new Error(
+					'Usage: kody run --secret <name>[=ENV_NAME]… [--org <slug>] -- <command> [args…]',
+				)
+			}
+			const wanted = local.parseRunSecretFlags(flags)
+			const secrets = await local.fetchLocalSecrets({
+				token: await token(),
+				apiUrl,
+				...(org ? { org } : {}),
+				names: wanted.map((entry) => entry.name),
+				command: 'run',
+			})
+			const values = new Map(secrets.map((entry) => [entry.name, entry.value]))
+			const env: Record<string, string> = {}
+			for (const entry of wanted) {
+				const value = values.get(entry.name)
+				if (value === undefined) {
+					throw new Error(`Kody did not return "${entry.name}".`)
+				}
+				env[entry.envName] = value
+			}
+			return await local.runWithSecrets({ argv: parsed.positionals, env })
+		}
 		case 'api': {
 			const operationId = parsed.positionals[0]?.trim() ?? ''
 			if (!operationId || parsed.positionals.length > 1) {
@@ -1746,7 +1994,7 @@ async function dispatch(
 			}
 			if (action !== 'publish') {
 				throw new Error(
-					`Usage: kody package publish [<@owner/leaf|package_id>] [--params <json>] [--token <token>] [--api-url <url>] [--org <slug>]\n${packageCollaboratorUsage}`,
+					`Usage: kody package publish [<@owner/leaf|package_id>] [--build local|context] [--context <name|cloud>] [--params <json>] [--token <token>] [--api-url <url>] [--org <slug>]\n${packageCollaboratorUsage}`,
 				)
 			}
 			const params = packagePublishParams({
@@ -1774,10 +2022,23 @@ async function dispatch(
 					apiUrl,
 					...(org ? { org } : {}),
 				})
-			const result = await call(
-				'packagePublishExternalPush',
-				await resolvePackagePublishTarget(params, call),
-			)
+			const buildMode =
+				typeof parsed.values.build === 'string' ? parsed.values.build : null
+			const publishTarget = await resolvePackagePublishTarget(params, call)
+			const { runPublishWithBuild } = await import('./publish-offload.js')
+			const result = await runPublishWithBuild({
+				build: buildMode,
+				context:
+					typeof parsed.values.context === 'string'
+						? parsed.values.context
+						: null,
+				target: publishTarget,
+				call,
+				apiUrl,
+				cwd: process.cwd(),
+				interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
+				writeErr,
+			})
 			// Always print the API body (agents/scripts inspect `status`).
 			write(`${JSON.stringify(result, null, 2)}\n`)
 			const unmappableNotice =
@@ -1893,6 +2154,32 @@ export function executeSourcesConflict(input: {
 			input.hasFileFlag ||
 			input.positionalModule.length > 0)
 	)
+}
+
+const moduleFileExtension = /\.(?:[cm]?[jt]sx?)$/i
+
+/**
+ * A lone positional that names a module file is a path, not source text
+ * (`kody execute --local ./tick.ts` behaves like `--file ./tick.ts`).
+ */
+export function positionalModuleFile(
+	positionalModule: string,
+	exists: (path: string) => boolean = (path) => {
+		try {
+			return statSync(path).isFile()
+		} catch {
+			return false
+		}
+	},
+): string | undefined {
+	if (!positionalModule || /\s/.test(positionalModule)) return undefined
+	if (exists(positionalModule)) return positionalModule
+	if (moduleFileExtension.test(positionalModule)) {
+		throw new Error(
+			`No module file at ${JSON.stringify(positionalModule)}. Pass an existing path (or --file <path>), or the module source with --code.`,
+		)
+	}
+	return undefined
 }
 
 /**
@@ -2236,22 +2523,46 @@ export async function resolvePackagePublishTarget(
 	return { ...rest, package_id: matches[0]!.package_id }
 }
 
-/** After `kody login`: warn when a stored API token still outranks the login. */
-export function storedApiTokenAfterLoginNotice(
+/**
+ * After an explicit `kody login`: delete the leftover stored API token so the
+ * fresh login is what `api`, `package`, `context`, … use. Desktop logins
+ * (`KODY_CREDENTIAL_SOURCE=login`) leave it alone. `--token` /
+ * `KODY_API_TOKEN` still outrank the login, so say so when one is set.
+ */
+export function supersedeStoredApiTokenAfterLogin(
 	apiUrl: string,
-	loadApiToken: typeof loadStoredApiToken = loadStoredApiToken,
+	deps: {
+		env?: NodeJS.ProcessEnv
+		loadApiToken?: typeof loadStoredApiToken
+		deleteApiToken?: typeof deleteStoredApiToken
+	} = {},
 ): string {
+	const env = deps.env ?? process.env
+	const envTokenNote = env.KODY_API_TOKEN?.trim()
+		? 'Note: KODY_API_TOKEN is set in this shell and still takes precedence over this login. Unset it to use the login.\n'
+		: ''
+	if (env.KODY_CREDENTIAL_SOURCE?.trim()) return envTokenNote
 	let stored: ReturnType<typeof loadStoredApiToken>
 	try {
-		stored = loadApiToken(apiUrl)
+		stored = (deps.loadApiToken ?? loadStoredApiToken)(apiUrl)
 	} catch {
-		return ''
+		return envTokenNote
 	}
-	if (!stored) return ''
+	if (!stored) return envTokenNote
 	const label = describeCliCredential({
 		source: 'stored-api-token',
 		token: stored.token,
 		stored,
 	})
-	return `Note: a ${label} is still stored and \`kody login\` does not replace it. api, package, execute --local, context, daemon, and dev keep using it (scopes: ${stored.scopes?.join(', ') || 'unknown'}). To change its scopes run \`${replaceStoredTokenCommand(stored.scopes)}\`, or \`kody logout\` to clear it. Check with \`kody whoami\`.\n`
+	const scopes = stored.scopes?.join(', ') || 'unknown'
+	let deleted = false
+	try {
+		deleted = (deps.deleteApiToken ?? deleteStoredApiToken)(apiUrl).deleted
+	} catch {
+		deleted = false
+	}
+	if (!deleted) {
+		return `${envTokenNote}Warning: could not remove the ${label} (scopes: ${scopes}), so api, package, execute --local, context, daemon, and dev keep using it instead of this login. Run \`kody logout\` and log in again.\n`
+	}
+	return `${envTokenNote}Removed the ${label} (scopes: ${scopes}); api, package, execute --local, context, daemon, and dev now use this login. Git pushes mint a new token from this login. To use a scoped token again, run \`${replaceStoredTokenCommand(stored.scopes)}\`.\n`
 }

@@ -1,6 +1,6 @@
-import { type Query, type QueryClient } from '@tanstack/react-query'
-import { type updateAvatar } from '#start/server/account-mutations'
-import { type loadAccountPage } from '#start/server/account-page'
+import type { Query, QueryClient } from '@tanstack/react-query'
+import type { updateAvatar } from '#start/server/account-mutations'
+import type { loadAccountPage } from '#start/server/account-page'
 import { invalidateShellQueries } from '../shell-query.ts'
 
 type Submission = {

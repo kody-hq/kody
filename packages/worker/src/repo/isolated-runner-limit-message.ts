@@ -1,9 +1,36 @@
 import {
-	formatLargestNonRuntimePaths,
-	type LargePathHint,
+	formatPublishSizeHints,
+	type PublishSizeHints,
 } from './publish-size-hints.ts'
 
 const heavyWorkOffloadGuideId = 'heavy_work_offload'
+
+export const publishLargePackagesDocsUrl =
+	'https://kody.codes/docs/publish-large-packages'
+
+/**
+ * How to publish when Kody cloud runs out of room: build on this machine or
+ * on an execution context you operate. Not flag-gated: the docs page says
+ * when those builds are available.
+ */
+export const executionContextPublishDocsUrl =
+	'https://kody.codes/docs/execution-contexts#try-publishing-from-a-context'
+
+/**
+ * The long-term path for packages that hit Kody cloud's compute limits:
+ * build on this machine or on an execution context the publisher operates.
+ * Every compute-limit failure in dev check and publish ends with this.
+ */
+export function publishOutsideCloudAdvice() {
+	return (
+		"This package is near Kody cloud's build CPU or memory limit. Build it " +
+		'on your machine with `kody package publish --build local`, or on an ' +
+		'execution context with `--context <name>` ' +
+		`(docs: ${executionContextPublishDocsUrl}). ` +
+		'`kody dev check --build local` checks the same local build before you ' +
+		`publish. More: ${publishLargePackagesDocsUrl}`
+	)
+}
 
 const isolatedCheckRunnerLimitPhrase =
 	"exceeded the isolated check runner's memory or CPU limits"
@@ -33,10 +60,11 @@ export function isRepoCheckResourceLimitMessage(message: string) {
  */
 export function isolatedRunnerResourceLimitAdvice() {
 	return (
-		'This usually means the npm dependency graph — not just the package ' +
-		'source — is too large to bundle inside a Worker isolate. Shrink the ' +
-		'graph, or keep the Kody package as a thin orchestrator and offload ' +
-		'the heavy work to a process you operate. Load ' +
+		'This step bundles the modules reachable from the package exports, ' +
+		'jobs, and handlers, plus any npm dependencies they import, so its ' +
+		'cost grows with that import graph. Split very large entrypoints, ' +
+		'drop heavy dependencies, or keep the Kody package as a thin ' +
+		'orchestrator and offload the heavy work to a process you operate. Load ' +
 		`\`search({ entity: "guide:${heavyWorkOffloadGuideId}" })\`.`
 	)
 }
@@ -48,6 +76,7 @@ export function isolatedRunnerResourceLimitAdvice() {
  */
 export type RepoCheckStep =
 	| 'clone'
+	| 'staging'
 	| 'source-walk'
 	| 'credentials'
 	| 'package-checks'
@@ -59,6 +88,7 @@ export type RepoCheckStep =
 
 const repoCheckStepLabels: Record<RepoCheckStep, string> = {
 	clone: 'cloning the package repo',
+	staging: 'staging the package files for the publish steps',
 	'source-walk': 'reading the package source tree',
 	credentials: 'the credential stamp scan',
 	'package-checks':
@@ -79,12 +109,14 @@ export function isRepoCheckStep(value: unknown): value is RepoCheckStep {
 }
 
 const sourceTreeAdvice =
-	'This step reads every non-test .js/.ts module under the package source ' +
-	'root, so its cost grows with the total source size even when the ' +
-	'runtime code is small. Move scripts, fixtures, generated or vendored ' +
-	'code, and examples out of the package source root, list them in a ' +
-	'`.kodyignore` file next to package.json, or name test-only modules ' +
-	'*.test.ts, then run `kody dev check` again.'
+	'The checks read every file under the package source root that ' +
+	'`.kodyignore` does not exclude (code, tests, and docs), and typecheck ' +
+	'and bundle what the package exports, jobs, and handlers import, so ' +
+	'their cost grows with that source even when the runtime code is small. ' +
+	'Move scripts, fixtures, generated or vendored code, and examples out of ' +
+	'the package source root or list them in a `.kodyignore` file next to ' +
+	'package.json (never README.md or AGENTS.md, which publish requires), ' +
+	'then run `kody dev check` again.'
 
 /**
  * Isolate memory and CPU use is not exactly repeatable: garbage collection
@@ -98,12 +130,17 @@ export const resourceLimitVarianceNote =
 
 /** What the author can do when `step` hits the isolate memory/CPU limit. */
 export function repoCheckStepResourceLimitAdvice(step: RepoCheckStep | null) {
+	return `${repoCheckStepShrinkAdvice(step)} ${publishOutsideCloudAdvice()}`
+}
+
+function repoCheckStepShrinkAdvice(step: RepoCheckStep | null) {
 	switch (step) {
 		case 'clone':
 			return (
 				'Remove large files that should not be published (build output, ' +
 				'vendored dependencies, data files) from the repo and push again.'
 			)
+		case 'staging':
 		case 'source-walk':
 		case 'credentials':
 		case 'package-checks':
@@ -151,11 +188,11 @@ const publishComputeLimitPhrase = 'exceeded a Kody compute limit'
  * Caller-facing copy when one publish step, already running in its own
  * throwaway isolate, still hits the Durable Object CPU time or memory limit.
  * A plain retry of the same tree usually hits the same limit; this is never
- * a storage outage. `largestPaths` names what the author could `.kodyignore`.
+ * a storage outage. `sizeHints` names what the step had to process.
  */
 export function publishComputeLimitMessage(
 	step: RepoCheckStep | null = null,
-	largestPaths: Array<LargePathHint> = [],
+	sizeHints: PublishSizeHints | null = null,
 ) {
 	const where = step ? ` during ${repoCheckStepLabel(step)}` : ''
 	return [
@@ -163,7 +200,7 @@ export function publishComputeLimitMessage(
 			`memory)${where}, so it stopped before it finished. This is not a ` +
 			`storage outage. ${resourceLimitVarianceNote}`,
 		repoCheckStepResourceLimitAdvice(step),
-		formatLargestNonRuntimePaths(largestPaths),
+		formatPublishSizeHints(sizeHints, step),
 		'`kody dev check` runs the same checks under the same limits, so use ' +
 			'it to confirm a fix before publishing again.',
 	]

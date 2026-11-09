@@ -4,7 +4,7 @@ import {
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { beforeEach, expect, test, vi } from 'vitest'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { createInvite } from '#worker/orgs/access-writes.ts'
 import { createOrganization } from '#worker/orgs/create-organization.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'

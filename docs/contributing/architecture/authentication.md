@@ -37,9 +37,9 @@ Session cookie behavior is implemented in
   rejected the same way.
 
 Referral share links set a separate last-wins `kody_ref` cookie (one week, not
-`httpOnly`) so a later `/signup?ref=` overwrites the previous referrer. Signup
-persists a `referrals` row from that cookie. See
-[Referral Pro credit](./entitlements.md#referral-pro-credit).
+`httpOnly`) so a later `?ref=` on any page (for example `/?ref=<username>`)
+overwrites the previous referrer. Signup persists a `referrals` row from that
+cookie. See [Referral Pro credit](./entitlements.md#referral-pro-credit).
 
 The cookie payload stores:
 
@@ -241,25 +241,47 @@ cooldowns in `email_recipient_cooldowns` and mark rejecting MX providers in
 `email_rejecting_providers`. Holdable mail, such as campaigns and plan-limit
 nudges, is skipped for rejecting providers until rejections age out or delivery
 succeeds. Essential verification, password, security, and billing mail remains
-subject to recipient cooldowns. The hard-bounce suppression applies to
-verification and password-reset mail, and the 5/24h cap applies to verification
-mail only. `email_verification_hard_bounces` records a per-recipient hard bounce
-(a Cloudflare `bounced` event, or `failed` / `rejected` with a permanent 5xx)
-from verification mail and from `password_reset` / `password_reset_confirmed`.
-Later verification sends and both password-reset emails to that address are
-skipped until a `delivered` event clears the row. A skipped reset still returns
-the generic success response. Sender-domain blocklist hits stay on the temporary
-cooldown and are not stored there. Mailbox and forwarding events do not write
-the suppression row. The per-recipient verification cap is the other stop and is
-not consumed by password resets. `/pending-verification` polls the native
-`readWebsiteSessionInfo` server function (session cookie only; no email input)
-for delivery indicators without exposing other users' delivery state. Polls time
-out after ten seconds, and successful resend invalidates earlier reads. The
-first terminal failure fans `user.email_verification.failed` to admin-owned
-packages. When a send stays `accepted` for an hour with no lifecycle event, the
-hourly `email_verification_stall_alert` lane fans
-`user.email_verification.stalled`. `/admin/users` and `adminUserList` accept
-`verification=stalled` for the same derived set. See
+subject to recipient cooldowns, and the 5/24h cap applies to verification mail
+only.
+
+Every system send (gated `kody@` transactional mail and `sendSystemEmail`
+operator mail) writes one `system_email_sends` row per recipient keyed by the
+Cloudflare message id, so delivery and bounce reports for system mail match a
+send instead of arriving unmatched. A hard bounce is a Cloudflare `bounced`
+event, or `failed` / `rejected` with a permanent 5xx.
+`email_recipient_suppressions` holds one row per recipient with two levels:
+
+- **Verification suppression** (decision: one bounce is enough). A single hard
+  bounce of verification mail or `password_reset` / `password_reset_confirmed`
+  skips later verification sends and both password-reset emails to that address,
+  from any account. A dead verification target cannot verify anyway, and
+  retrying it only burns `kody.codes` reputation; the user picks another address
+  or asks support. A skipped reset still returns the generic success response.
+- **Full suppression.** Two hard bounces of any recorded system send
+  (onboarding, usage and billing notices, verification, operator mail) with no
+  delivery in between skip all system mail to the address, verification included
+  (`recipient_suppressed`). Each send counts once across queue retries, and a
+  bounce older than a delivery already recorded for the address (reports can
+  arrive out of order) does not count. A multi-recipient message is held when
+  any recipient is held. Below-threshold rows that suppress nothing age out
+  after 90 days, with the 90-day `system_email_sends` retention, in the
+  `system_email_retention` lane.
+
+A `delivered` event to the address deletes the row, and so does
+`adminEmailSuppressionClear`; `adminEmailSuppressionList` shows suppressed
+addresses (`include_tracking` adds below-threshold rows). Sender-domain
+blocklist hits stay on the temporary cooldown and never count. Mailbox and
+forwarding events do not write the suppression row. The per-recipient
+verification cap is the other stop and is not consumed by password resets.
+`/pending-verification` polls the native `readWebsiteSessionInfo` server
+function (session cookie only; no email input) for delivery indicators without
+exposing other users' delivery state. Polls time out after ten seconds, and
+successful resend invalidates earlier reads. The first terminal failure fans
+`user.email_verification.failed` to admin-owned packages. When a send stays
+`accepted` for an hour with no lifecycle event, the hourly
+`email_verification_stall_alert` lane fans `user.email_verification.stalled`.
+`/admin/users` and `adminUserList` accept `verification=stalled` for the same
+derived set. See
 [the admin events guide](../../guides/admin-events.md#useremailverificationfailed-admins)
 and
 [stalled verification](../../guides/admin-events.md#useremailverificationstalled-admins).
@@ -843,9 +865,10 @@ routed from `packages/worker/src/index.ts`.
   (`kid` = `OIDC_SIGNING_KEY_ID`). Discovery:
   `/.well-known/openid-configuration`; JWKS: `/.well-known/jwks.json`; UserInfo:
   `/oauth/userinfo` (Bearer access token; fail-closed when email is unverified).
-  RP-Initiated Logout: `/oauth/logout`. RFC 7009 revocation is the token
-  endpoint (`/oauth/token`); both `/.well-known/openid-configuration` and
-  `/.well-known/oauth-authorization-server` advertise that URL as
+  RP-Initiated Logout: `/oauth/logout` (`post_logout_redirect_uri` needs a valid
+  `id_token_hint` and an exact registered redirect URI). RFC 7009 revocation is
+  the token endpoint (`/oauth/token`); both `/.well-known/openid-configuration`
+  and `/.well-known/oauth-authorization-server` advertise that URL as
   `revocation_endpoint`. OpenID Connect discovery also lists
   `revocation_endpoint_auth_methods_supported` matching
   `token_endpoint_auth_methods_supported` (`none`, `client_secret_basic`,
@@ -880,7 +903,9 @@ routed from `packages/worker/src/index.ts`.
   signup lands on `/pending-verification` with that safe `redirectTo` preserved
   for continue-after-verify. The authorize tab itself should stay open when the
   email link is opened elsewhere, so the original OAuth query remains resumable.
-  Signup never auto-approves; the person clicks Approve after they return.
+  Signup never auto-approves; the person clicks Approve after they return. **Try
+  it out** creates a guest person and finishes authorization in the same
+  request. Unclaimed guest sessions carry `guest` from `loadSessionInfo`.
   Signed-in vs signed-out chrome on that page comes from the SSR-embedded app
   session; the route does not wait on a separate browser `/session` fetch before
   rendering approve or login. Social buttons use the same SSR-embedded provider

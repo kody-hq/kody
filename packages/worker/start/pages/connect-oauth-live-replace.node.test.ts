@@ -1,10 +1,11 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, test } from 'vitest'
-import { type ConnectOauthConfig } from '#client/routes/connect-oauth-config.ts'
-import { type ConnectOauthExistingConnection } from '#universal/loader-data.ts'
+import type { ConnectOauthConfig } from '#client/routes/connect-oauth-config.ts'
+import type { ConnectOauthExistingConnection } from '#universal/loader-data.ts'
 import {
 	newConnectionNameError,
 	renderLiveAppReplaceWarning,
+	storedClientSecretApplies,
 	suggestNewConnectionName,
 	wouldReplaceLiveApp,
 } from './connect-oauth-sections.tsx'
@@ -32,6 +33,37 @@ function next(overrides: Partial<ConnectOauthConfig> = {}) {
 		...overrides,
 	} as ConnectOauthConfig
 }
+
+test('storedClientSecretApplies is only true for the saved client ID', () => {
+	expect(
+		storedClientSecretApplies({
+			hasStoredClientSecret: true,
+			storedClientId: 'client-a',
+			nextClientId: 'client-a',
+		}),
+	).toBe(true)
+	expect(
+		storedClientSecretApplies({
+			hasStoredClientSecret: true,
+			storedClientId: 'client-a',
+			nextClientId: ' client-a ',
+		}),
+	).toBe(true)
+	expect(
+		storedClientSecretApplies({
+			hasStoredClientSecret: true,
+			storedClientId: 'client-a',
+			nextClientId: 'client-b',
+		}),
+	).toBe(false)
+	expect(
+		storedClientSecretApplies({
+			hasStoredClientSecret: false,
+			storedClientId: 'client-a',
+			nextClientId: 'client-a',
+		}),
+	).toBe(false)
+})
 
 test('wouldReplaceLiveApp flags app-identity edits on a live bring-your-own connection only', () => {
 	const existingConnection = liveConnection
@@ -79,9 +111,10 @@ test('wouldReplaceLiveApp flags app-identity edits on a live bring-your-own conn
 	).toBe(false)
 })
 
-test('save-as-new suggests NAME-2 and validates with the integration name rules', () => {
-	expect(suggestNewConnectionName('acme')).toBe('acme-2')
-	expect(newConnectionNameError('acme-2', 'acme')).toBeNull()
+test('save-as-new suggests a name the integration rules accept', () => {
+	expect(
+		newConnectionNameError(suggestNewConnectionName('acme'), 'acme'),
+	).toBeNull()
 	expect(newConnectionNameError('Acme Work', 'acme')).toBeNull()
 	expect(newConnectionNameError('---', 'acme')).toMatch(/letters or numbers/)
 	expect(newConnectionNameError('ACME', 'acme')).toMatch(/other than acme/)

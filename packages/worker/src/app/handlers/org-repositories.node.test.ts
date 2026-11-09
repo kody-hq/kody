@@ -13,6 +13,7 @@ vi.mock('#app/authenticated-user.ts', () => ({
 }))
 
 const { loadOrgRepositoriesData } = await import('../org-repositories-data.ts')
+const { resolvePackageAppLinks } = await import('../package-repo-actions.ts')
 const { loadOrgBindingForSlug } = await import('#worker/orgs/repo.ts')
 
 const ownerId = 'person-owner'
@@ -233,4 +234,118 @@ test('team repositories list what each member role can see', async () => {
 		ok: false,
 		error: 'Not found.',
 	})
+})
+
+test('app inventory includes an app-only grant without exposing the package link', async () => {
+	const env = createEnv()
+	await env.APP_DB.prepare(
+		`UPDATE saved_packages SET has_app = 1, is_private = 1 WHERE id = ?`,
+	)
+		.bind('pkg-secret')
+		.run()
+	await env.APP_DB.prepare(
+		`INSERT INTO entity_sources (id, user_id, entity_kind, entity_id, repo_id, published_commit, created_at, updated_at) VALUES (?, ?, 'package', ?, ?, ?, ?, ?)`,
+	)
+		.bind(
+			'src-2',
+			teamId,
+			'pkg-secret',
+			'repo-secret',
+			'published-commit',
+			now,
+			now,
+		)
+		.run()
+	await env.APP_DB.prepare(
+		`INSERT INTO grants (id, org_id, resource_type, resource_id, subject_type, subject_id, preset, created_by_user_id, created_at, updated_at) VALUES (?, ?, 'app', ?, 'user', ?, 'use', ?, ?, ?)`,
+	)
+		.bind('grant-app-only', teamId, 'pkg-secret', memberId, ownerId, now, now)
+		.run()
+	await env.APP_DB.prepare(
+		`INSERT INTO grant_permissions (grant_id, permission) VALUES (?, 'app:execute')`,
+	)
+		.bind('grant-app-only')
+		.run()
+	const binding = await loadOrgBindingForSlug(
+		env.APP_DB,
+		memberId as never,
+		'acme',
+	)
+	if (!binding) throw new Error('Missing test membership')
+	const user = { mcpUser: { userId: memberId, username: 'member' } } as never
+	const repositories = await loadOrgRepositoriesData({
+		env,
+		user,
+		binding,
+		query: '',
+	})
+	expect(repositories.packages.some((pkg) => pkg.kodyId === 'secret')).toBe(
+		false,
+	)
+	const apps = await loadOrgRepositoriesData({
+		env,
+		user,
+		binding,
+		query: '',
+		includeAppGrants: true,
+	})
+	const ownerBinding = await loadOrgBindingForSlug(
+		env.APP_DB,
+		ownerId as never,
+		'acme',
+	)
+	if (!ownerBinding) throw new Error('Missing owner membership')
+	const ownerApps = await loadOrgRepositoriesData({
+		env,
+		user: { mcpUser: { userId: ownerId, username: 'owner' } } as never,
+		binding: ownerBinding,
+		query: '',
+		includeAppGrants: true,
+	})
+	expect(
+		ownerApps.packages.find((pkg) => pkg.kodyId === 'secret')?.iconUrl,
+	).toBeTruthy()
+	const secretApp = apps.packages.find((pkg) => pkg.kodyId === 'secret')
+	expect(secretApp).toMatchObject({
+		hasApp: true,
+		canOpenDetail: false,
+		iconUrl: null,
+	})
+	// Same enrichment `loadOrgApps` applies: app:execute without package:read
+	// still gets a direct Open link, while the package detail stays closed.
+	const envWithAppOrigin = {
+		...env,
+		PACKAGE_APP_BASE_URL: 'https://packages.isolated.test',
+		APP_BASE_URL: 'https://kody.test',
+	} as unknown as Env
+	await expect(
+		resolvePackageAppLinks({
+			env: envWithAppOrigin,
+			username: 'acme',
+			kodyId: 'secret',
+			viewer: { userId: memberId as never, username: 'member' },
+			ownerUserId: teamId,
+			hasPackage: true,
+			hasApp: true,
+			requestUrl: 'https://kody.test/@acme/-/apps',
+		}),
+	).resolves.toMatchObject({
+		packageAppHref: '/@acme/packages/secret/open',
+	})
+	expect(secretApp?.canOpenDetail).toBe(false)
+	await env.APP_DB.prepare(
+		`UPDATE saved_packages SET is_private = 0 WHERE id = ?`,
+	)
+		.bind('pkg-secret')
+		.run()
+	const publicApps = await loadOrgRepositoriesData({
+		env,
+		user,
+		binding,
+		query: '',
+		includeAppGrants: true,
+	})
+	expect(
+		publicApps.packages.find((pkg) => pkg.kodyId === 'secret')?.iconUrl,
+	).toBeTruthy()
 })

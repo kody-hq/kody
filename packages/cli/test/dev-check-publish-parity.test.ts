@@ -91,7 +91,7 @@ test('kody dev check fails the stamped |scope=package case that publish refuses'
 			target: 'mock',
 			cwd: root,
 			io: out.io,
-			runPublishChecks: async (files) => {
+			runPublishChecks: async ({ files }) => {
 				sent = files
 				return refusesLikePublish()
 			},
@@ -137,7 +137,7 @@ test('kody dev check passes a data-only app package with no exports field', asyn
 			target: 'mock',
 			cwd: root,
 			io: out.io,
-			runPublishChecks: async (files) => {
+			runPublishChecks: async ({ files }) => {
 				sentManifest = JSON.parse(files['package.json'] ?? '{}')
 				return {
 					ok: true,
@@ -157,7 +157,7 @@ test('kody dev check passes a data-only app package with no exports field', asyn
 	}
 })
 
-test('kody dev check sends binary files by path and size so binary-only app assets count', async () => {
+test('kody dev check sends binary file bytes and sizes so binary-only app assets count', async () => {
 	await withPackage(async (root) => {
 		const png = Buffer.from([
 			0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff,
@@ -167,14 +167,16 @@ test('kody dev check sends binary files by path and size so binary-only app asse
 		await writeFile(join(root, 'icons/icon-512.png'), Buffer.concat([png, png]))
 		let sentFiles: Record<string, string> = {}
 		let sentBinary: Record<string, number> = {}
+		let sentContents: Record<string, string> = {}
 		const out = capture()
 		const code = await runDevCheck({
 			target: 'mock',
 			cwd: root,
 			io: out.io,
-			runPublishChecks: async (files, binaryFiles) => {
+			runPublishChecks: async ({ files, binaryFiles, binaryContents }) => {
 				sentFiles = files
 				sentBinary = binaryFiles
+				sentContents = binaryContents
 				return { ok: true, checks: [{ kind: 'bundle', ok: true, message: '' }] }
 			},
 		})
@@ -184,7 +186,14 @@ test('kody dev check sends binary files by path and size so binary-only app asse
 			'icons/icon-512.png': png.byteLength * 2,
 		})
 		assert.ok(!Object.keys(sentFiles).some((path) => path.startsWith('icons/')))
-		assert.match(out.stdout, /sent 2 binary file\(s\) by path and size only/)
+		assert.deepEqual(sentContents, {
+			'icons/icon-192.png': png.toString('base64'),
+			'icons/icon-512.png': Buffer.concat([png, png]).toString('base64'),
+		})
+		assert.match(
+			out.stdout,
+			/Not run: cloning the pushed commit from Artifacts/,
+		)
 	})
 })
 
@@ -250,6 +259,7 @@ test('kody dev check shows the login hint only for auth failures', async () => {
 				cwd: root,
 				json: true,
 				io: serverDown.io,
+				publishChecksRetryDelayMs: 0,
 				runPublishChecks: async () => {
 					throw new OpenApiError(
 						'The Kody API ran out of server memory or CPU time before it answered this request (request id ray-1).',
@@ -398,5 +408,78 @@ test('kody dev check prints the unmappable-credential lock notice as a warning',
 			}),
 		})
 		assert.match(out.stdout, /unmappable credentials.*"Prod DB"/)
+	})
+})
+
+test('kody dev check retries the publish checks after a compute limit or response timeout, as publish does', async () => {
+	await withPackage(async (root) => {
+		const limited: PackageCheckResult = {
+			ok: false,
+			checks: [
+				{
+					kind: 'bundle',
+					ok: false,
+					message:
+						'The publish checks ran out of memory or CPU time in the check runner during bundle validation before they finished.',
+				},
+			],
+		}
+		const passing: PackageCheckResult = {
+			ok: true,
+			checks: [{ kind: 'manifest', ok: true, message: 'Validated.' }],
+		}
+		let calls = 0
+		let stderr = ''
+		const out = capture()
+		const code = await runDevCheck({
+			target: 'mock',
+			cwd: root,
+			io: {
+				stdout: out.io.stdout,
+				stderr: (text) => {
+					stderr += text
+				},
+			},
+			publishChecksRetryDelayMs: 0,
+			runPublishChecks: async () => {
+				calls += 1
+				if (calls === 1) return limited
+				if (calls === 2) {
+					throw new OpenApiError(
+						"The Kody API at https://api.kody.codes accepted the request but sent no answer within the CLI's wait (UND_ERR_HEADERS_TIMEOUT, about 5 minutes).",
+					)
+				}
+				return passing
+			},
+		})
+		assert.equal(calls, 3)
+		assert.equal(code, 0)
+		assert.match(stderr, /attempt 1 of 3\); retrying/)
+		assert.match(stderr, /attempt 2 of 3\); retrying/)
+
+		const exhausted = capture()
+		await runDevCheck({
+			target: 'mock',
+			cwd: root,
+			io: exhausted.io,
+			publishChecksRetryDelayMs: 0,
+			runPublishChecks: async () => limited,
+		})
+		assert.match(exhausted.stdout, /build outside Kody cloud/)
+		assert.match(exhausted.stdout, /kody package publish --build local/)
+		assert.match(exhausted.stdout, /--context <name>/)
+
+		let refusedCalls = 0
+		await runDevCheck({
+			target: 'mock',
+			cwd: root,
+			io: capture().io,
+			publishChecksRetryDelayMs: 0,
+			runPublishChecks: async () => {
+				refusedCalls += 1
+				return refusesLikePublish()
+			},
+		})
+		assert.equal(refusedCalls, 1)
 	})
 })

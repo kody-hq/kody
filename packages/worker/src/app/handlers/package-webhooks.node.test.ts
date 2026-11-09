@@ -11,9 +11,9 @@ import {
 import { logAuditEventSpy } from '#worker/test-support/audit-log-spy.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
-import {
-	type PackageWebhooksActionPayload,
-	type PackageWebhooksLoaderData,
+import type {
+	PackageWebhooksActionPayload,
+	PackageWebhooksLoaderData,
 } from '#universal/loader-data.ts'
 import { sessionRequestContext } from '#worker/test-support/request-context.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
@@ -114,6 +114,19 @@ async function setup(sessionUsername = 'owner') {
 	})
 	const sqlite = new DatabaseSync(':memory:')
 	sqlite.exec(`
+		CREATE TABLE orgs (
+			id TEXT PRIMARY KEY,
+			slug TEXT NOT NULL,
+			display_name TEXT,
+			suspended_at TEXT,
+			deleted_at TEXT
+		);
+		CREATE TABLE handles (
+			handle TEXT PRIMARY KEY,
+			user_id TEXT,
+			org_id TEXT,
+			created_at TEXT NOT NULL
+		);
 		CREATE TABLE webhook_endpoints (
 			id TEXT PRIMARY KEY,
 			user_id TEXT NOT NULL,
@@ -124,7 +137,6 @@ async function setup(sessionUsername = 'owner') {
 			hmac_secret_encrypted TEXT,
 			previous_url_secret_hash TEXT,
 			previous_url_secret_expires_at TEXT,
-			enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
 			deleted_at TEXT,
 			instance_label TEXT,
 			created_at TEXT NOT NULL,
@@ -158,6 +170,7 @@ async function setup(sessionUsername = 'owner') {
 			updated_at TEXT NOT NULL
 		);
 	`)
+	sqlite.prepare(`INSERT INTO orgs (id, slug) VALUES (?, 'owner')`).run(userId)
 	const db = createD1FromSqlite(sqlite)
 	const env = {
 		APP_DB: db,

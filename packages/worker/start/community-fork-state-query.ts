@@ -1,15 +1,17 @@
 import { queryOptions } from '@tanstack/react-query'
-import { type CommunityForkState } from '#universal/community-public-types.ts'
+import type { CommunityForkState } from '#universal/community-public-types.ts'
 import { loadCommunityForkState } from '#start/server/community-mutations'
 
 /** How often to re-read a fork that is still being created. */
 export const FORK_IN_PROGRESS_POLL_MS = 2_000
 
-const communityForkStateKey = (
+export function communityForkStateQueryKey(
 	actorKey: string | null,
 	listingId: string | null,
 	org: string | null,
-) => ['community-fork-state', actorKey, listingId, org] as const
+) {
+	return ['community-fork-state', actorKey, listingId, org] as const
+}
 
 /**
  * Live fork state for the viewer, one listing, and the install org (`org`,
@@ -37,7 +39,7 @@ export function communityForkStateQuery(input: {
 				signal,
 			}) as Promise<CommunityForkState>)
 	return queryOptions({
-		queryKey: communityForkStateKey(input.actorKey, input.listingId, org),
+		queryKey: communityForkStateQueryKey(input.actorKey, input.listingId, org),
 		queryFn: ({ signal }) => load(input.listingId ?? '', signal),
 		enabled: input.enabled && Boolean(input.listingId),
 		staleTime: 0,

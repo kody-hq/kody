@@ -1,6 +1,6 @@
 import { platformIntegrationSaveSchema } from '#universal/admin-provider-mutations.ts'
 import type * as AuthenticatedUser from '#app/authenticated-user.ts'
-import { type PermissionString, type RoleName } from '#universal/permissions.ts'
+import type { PermissionString, RoleName } from '#universal/permissions.ts'
 import type * as AuditLog from '#worker/audit-log.ts'
 import { adminOperationOutcome } from '#worker/test-support/admin-operation-outcome.ts'
 import { applyAllMigrations as applyRepositoryMigrations } from '#worker/test-support/apply-all-migrations.ts'

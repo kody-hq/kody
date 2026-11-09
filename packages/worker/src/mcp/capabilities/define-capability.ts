@@ -1,3 +1,4 @@
+import { assertGuestCapabilityAllowed } from '#worker/guest/guest-policy.ts'
 import { z } from 'zod'
 import {
 	callerContextFields,
@@ -5,13 +6,13 @@ import {
 	logMcpEvent,
 } from '#mcp/observability.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
-import {
-	type Capability,
-	type CapabilityDefinition,
-	type CapabilityJsonSchema,
-	type CapabilityOutput,
-	type CapabilitySchemaDefinition,
-	type InferCapabilitySchema,
+import type {
+	Capability,
+	CapabilityDefinition,
+	CapabilityJsonSchema,
+	CapabilityOutput,
+	CapabilitySchemaDefinition,
+	InferCapabilitySchema,
 } from './types.ts'
 import {
 	createCapabilityTypeName,
@@ -141,6 +142,13 @@ export function defineCapability<
 			}
 			await assertCallerCanAccessCapability(ctx.callerContext, definition, {
 				env: ctx.env,
+			})
+			await assertGuestCapabilityAllowed({
+				db: ctx.env.APP_DB,
+				callerContext: ctx.callerContext,
+				capabilityName: definition.name,
+				readOnly: definition.readOnly === true,
+				args,
 			})
 			const siteAccessTrigger = requiresSiteAccess(definition)
 				? siteAccessActorTriggerOf(ctx.callerContext)

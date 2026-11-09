@@ -1030,10 +1030,17 @@ JWT, and a manual token request returned whatever the token endpoint sent.
   separate auth domain still reaches the API the credential is approved for,
   with no new `oauthClientCredentials` option), or of the JWT's https `aud` or
   `send_to_host`, never in a URL query or path, and for at most one hour. A JWT
-  with neither an https `aud` nor `send_to_host` stays sealed and org-bound but
-  may fill on any host, so existing callers keep working; the result carries a
-  deprecation `warning`, and requiring `send_to_host` is tracked in
-  kody-hq/kody#4456.
+  with neither an https `aud` nor `send_to_host` is refused with an error
+  pointing at `send_to_host`, except for an org + package pair that made such a
+  call before the new-caller cutoff (2026-11-10 America/Denver), as recorded in
+  `jwt_sign_any_host_callers` or, for calls before that table existed, in
+  Analytics Engine (`kody_jwt_sign_any_host_events`). That pair keeps a sealed,
+  org-bound handle that may fill on any host, with a deprecation `warning`,
+  until 2026-12-02 (America/Denver). Each host such a handle fills on is counted
+  per pair in `jwt_sign_any_host_destinations` (never the JWT). From that date
+  an any-host handle stops filling, and a call without `send_to_host` is bound
+  to the pair's only destination domain when it has exactly one, and refused
+  otherwise (kody-hq/kody#4456).
 - **Refresh tokens.** A sealed `refresh_token` shares the one-run, one-hour cap.
   Kody holding refresh tokens server side is tracked in kody-hq/kody#4457.
 - **Server-side.** `oauthClientCredentials` runs its token request through the
@@ -1202,9 +1209,10 @@ but never use it or read its tokens.**
   (`credential.pinned_connection_revoked`) and in the owner's personal org
   (`credential.pinned_connection_wiped`). Revoking never gives the admin the
   token.
-- **Cut-off.** Leaving or removal (`offboardOrgMember`) and deleting the org's
-  app wipe every connection pinned to it and revoke upstream first, so deleting
-  the app is never blocked by members' connections.
+- **Cut-off.** Leaving or removal (`offboardOrgMember`), deleting the org's app,
+  and deleting the org (soft delete and hard purge) wipe every connection pinned
+  to it and revoke upstream first, so deleting the app is never blocked by
+  members' connections.
 - **Upstream revoke.** GitHub OAuth Apps:
   `DELETE /applications/{client_id}/token` with the app's client credentials.
   Providers with an RFC 7009 endpoint: a revocation request for the refresh

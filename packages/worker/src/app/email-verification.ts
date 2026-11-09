@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { isNonProductionRuntime } from '#app/deployment-env.ts'
 import { buildVerificationEmail } from '#app/email/messages.ts'
 import { resolveTransactionalEmailConfig } from '#app/email/sender-config.ts'

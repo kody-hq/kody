@@ -1,4 +1,4 @@
-import { type HostCommandFinished, type HostCommands } from './host-commands.js'
+import type { HostCommandFinished, HostCommands } from './host-commands.js'
 import { type EffectiveFs, emptyEffectiveFs, fsFeatures } from './fs-access.js'
 import {
 	classifyFrameText,
@@ -8,6 +8,7 @@ import {
 	ecpProtocolVersion,
 	importEd25519PublicKey,
 	ecpDefaultGrant,
+	ecpHostOperatorOnlyFeature,
 	publishedKeyJwk,
 	signFrame,
 	verifyFrame,
@@ -133,13 +134,52 @@ type DaemonInput = {
 	activity?: { runs: number }
 	/** Capabilities that can change while connected (sent on the next policy change). */
 	extraCapabilities?: () => Record<string, unknown>
+	/**
+	 * Remote daemon management (`control.request`): returns the result data,
+	 * or throws a {@link DaemonControlError}. Advertises `daemon-control`.
+	 */
+	control?: (
+		op: string,
+		args: Record<string, unknown>,
+	) => Promise<Record<string, unknown>>
+	/** Kody's server-side pause for this context (welcome and state.update). */
+	onPaused?: (paused: DaemonPause | null) => void
+}
+
+const daemonControlFeature = 'daemon-control'
+
+export type DaemonPause = {
+	at: string
+	by: string | null
+	reason: string | null
+}
+
+export class DaemonControlError extends Error {
+	constructor(
+		readonly code: string,
+		message: string,
+	) {
+		super(message)
+		this.name = 'DaemonControlError'
+	}
+}
+
+function pauseOf(value: unknown): DaemonPause | null {
+	const pause = value as Partial<DaemonPause> | null
+	return pause && typeof pause.at === 'string'
+		? {
+				at: pause.at,
+				by: typeof pause.by === 'string' ? pause.by : null,
+				reason: typeof pause.reason === 'string' ? pause.reason : null,
+			}
+		: null
 }
 
 /** Why runDaemon returned. `revoked` and `unknown_context` are permanent. */
 /** `replaced`: another daemon connected for this context, so this one stands down. */
 export type DaemonStop = 'shutdown' | 'revoked' | 'unknown_context' | 'replaced'
 
-export type DaemonFsAccess = {
+type DaemonFsAccess = {
 	effective: (
 		grantFs: Array<{ path: string; mode: string }>,
 	) => Promise<EffectiveFs>
@@ -158,15 +198,16 @@ function grantFsOf(grant: unknown) {
 
 const layerLabel = {
 	server_grant: 'server grant',
+	credential_denylist: 'credential denylist',
 	local_policy: 'local policy',
 }
 
-export const welcomeTimeoutMs = 15_000
+const welcomeTimeoutMs = 15_000
 export const welcomeTimeoutCloseCode = 4000
 /** How long a client-initiated close may wait for the close event. */
-export const closeSettleMs = 5_000
-export const defaultPingMs = 30_000
-export const defaultPongTimeoutMs = 10_000
+const closeSettleMs = 5_000
+const defaultPingMs = 30_000
+const defaultPongTimeoutMs = 10_000
 /** Kody stopped answering pings: the socket is half-dead. */
 export const heartbeatTimeoutCloseCode = 4001
 /**
@@ -222,7 +263,12 @@ export async function runDaemonConnection(input: DaemonInput) {
 			...input.extraCapabilities?.(),
 			maxConcurrent,
 			features: [
-				...base.filter((feature) => feature !== 'fs'),
+				...base.filter(
+					(feature) =>
+						feature !== 'fs' && feature !== ecpHostOperatorOnlyFeature,
+				),
+				ecpHostOperatorOnlyFeature,
+				...(input.control ? [daemonControlFeature] : []),
 				...fsFeatures(hostFs),
 			],
 		}
@@ -362,12 +408,16 @@ export async function runDaemonConnection(input: DaemonInput) {
 		let result: Awaited<ReturnType<ContextRunExecutor>>
 		try {
 			if (input.fs) hostFs = await effectiveFsNow()
+			// Host folders and commands are for the operator's own runs only.
+			const operatorRun = run.request.sharedRun !== true
 			result = await input.execute({
 				request: run.request,
 				// A getter, so a grant.update or policy change narrows runs already in flight.
-				...(input.fs ? { hostFs: () => hostFs } : {}),
+				...(input.fs && operatorRun ? { hostFs: () => hostFs } : {}),
 				signal: run.abort.signal,
-				...(input.hostCommands ? { hostCommands: input.hostCommands } : {}),
+				...(input.hostCommands && operatorRun
+					? { hostCommands: input.hostCommands }
+					: {}),
 				egress: grantEgress,
 				fetchFn: runScopedFetch({
 					apiUrl: input.apiUrl,
@@ -439,6 +489,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 				}
 				grantFs = grantFsOf(body.grant)
 				await applyFs()
+				input.onPaused?.(pauseOf(body.paused))
 				welcomed = true
 				await send('hello', {
 					protocol: { min: ecpProtocolVersion, max: ecpProtocolVersion },
@@ -504,6 +555,47 @@ export async function runDaemonConnection(input: DaemonInput) {
 				await refreshFs(before)
 				await send('grant.ack', { grantVersion: body.grantVersion }, frame.seq)
 				if (limitsChanged) await send('status', status())
+				return
+			}
+			case 'state.update':
+				input.onPaused?.(pauseOf(body.paused))
+				return
+			case 'control.request': {
+				const id = typeof body.id === 'string' ? body.id : ''
+				const op = typeof body.op === 'string' ? body.op : ''
+				const args =
+					body.args && typeof body.args === 'object'
+						? (body.args as Record<string, unknown>)
+						: {}
+				const control = input.control
+				const re = frame.seq
+				// Off the inbound queue: an update check can take a while.
+				void (async () => {
+					try {
+						if (!control) {
+							throw new DaemonControlError(
+								'daemon_outdated',
+								'This daemon does not take remote control requests.',
+							)
+						}
+						const data = await control(op, args)
+						await send('control.result', { id, ok: true, data }, re)
+					} catch (error) {
+						await send(
+							'control.result',
+							{
+								id,
+								ok: false,
+								code:
+									error instanceof DaemonControlError
+										? error.code
+										: 'daemon_control_failed',
+								message: error instanceof Error ? error.message : String(error),
+							},
+							re,
+						).catch(() => {})
+					}
+				})()
 				return
 			}
 			case 'revoke':

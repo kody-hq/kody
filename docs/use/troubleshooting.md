@@ -21,9 +21,10 @@ authorization. Open the verification link sent at signup, or sign in and use
 authorize page. Resend is limited to 3 requests every 15 minutes for the account
 and 5 verification emails every 24 hours for that address. Password resets do
 not count toward that cap. A hard bounce stops further verification mail and
-password-reset mail to the address; use a different address or contact support.
-A password-reset request still shows the same generic success message. Keep an
-open `/oauth/authorize` tab so you can continue the same OAuth request after
+password-reset mail to the address, and repeated hard bounces stop all Kody
+email to it; use a different address or contact support. A password-reset
+request still shows the same generic success message. Keep an open
+`/oauth/authorize` tab so you can continue the same OAuth request after
 verifying in another tab, then reconnect or approve again.
 
 ## Codex keeps asking for `codex mcp login kody`
@@ -191,14 +192,10 @@ Cloudflare Tunnel and Access, also see
 
 ## The `api` tool is missing (only `search` and `execute`)
 
-- **ChatGPT:** Kody's tool updates are not currently being picked up in ChatGPT.
-  If `api` is missing, add Kody manually in developer mode (see
-  [Connect your agent](./connect-your-agent.md)), or use the Kody CLI, for
-  example `npx @kodycodes/cli api tokenList` and
-  `npx @kodycodes/cli api tokenRevoke --params '{"token_id":"<id>"}'`.
-- **Other clients:** refresh the Kody server's tools (reconnect, or restart the
-  client). Until then, use `npx @kodycodes/cli api <operationId>`. See
-  [API tokens](../guides/api-tokens.md).
+See
+[API tokens](../guides/api-tokens.md#only-search-and-execute-in-your-tool-list)
+for ChatGPT (developer mode or the CLI) and other clients (refresh the tool
+list). Until the client shows `api`, use `npx @kodycodes/cli api <operationId>`.
 
 ## Search returns no good matches
 
@@ -212,12 +209,27 @@ Cloudflare Tunnel and Access, also see
 
 ## Package checks fail with isolate memory or CPU limits
 
-Bundle validation and publish artifact rebuild run in a short-lived isolate. A
-large npm dependency graph can exceed that isolate even when ad hoc `execute`
-imported the same library. The failure is the graph, not a missing file. Do not
-vendor the library or switch to a dynamic import. Keep the package as a thin
-orchestrator and run the heavy work in a process the owner operates. See
-[Offload work that does not fit a Worker isolate](../guides/heavy-work-offload.md).
+Typecheck, bundle validation, and publish artifact rebuild each run in
+short-lived isolates over a chunk of the package. Advice depends on which step
+hit the limit:
+
+- **Typecheck, lint, source walk, and package checks** read every file under the
+  source root that `.kodyignore` does not exclude. List scripts, fixtures,
+  generated code, and examples in `.kodyignore` when no check and no reachable
+  bundle entrypoint imports them — excluding an imported file fails bundle
+  validation. Never exclude `README.md` or `AGENTS.md`, which publish requires.
+- **Bundle validation and artifact rebuild** grow with the import graph from
+  exports, jobs, and handlers (including npm dependencies). Keep the package as
+  a thin orchestrator and run the heavy work in a process the owner operates.
+  See
+  [Offload work that does not fit a Worker isolate](../guides/heavy-work-offload.md).
+  If the package runs once built and only publish bundling exceeds the isolate,
+  build outside Kody cloud:
+  [Publish packages too big for Kody cloud](../guides/publish-large-packages.md).
+
+Do not vendor a heavy library or switch to a dynamic import to dodge a bundle
+limit. Memory and CPU use vary between runs, so shrink what the checks read
+instead of retrying the same tree.
 
 ## Saved packages missing
 

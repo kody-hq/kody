@@ -1,8 +1,9 @@
+import { retiredOrgPermissionNames } from '@kody-internal/shared/org-permissions.ts'
 import { personalOrgId } from '@kody-internal/shared/owner-person-ids.ts'
 import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	cliCredentialBootstrapPolicy,
@@ -25,6 +26,12 @@ const scopeSchema = z.enum(
 	apiTokenScopes as [ApiTokenScope, ...Array<ApiTokenScope>],
 )
 
+/** Older clients may still request retired scopes; minting drops them. */
+const requestedScopeSchema = z.union([
+	scopeSchema,
+	z.enum(retiredOrgPermissionNames),
+])
+
 const scopeListDescription = Object.entries(apiTokenScopeDescriptions)
 	.map(([scope, description]) => `\`${scope}\`: ${description}`)
 	.join('\n')
@@ -44,7 +51,7 @@ const inputSchema = z
 				`Label for the eventual API token (default \`${cliCredentialBootstrapPolicy.defaultName}\`).`,
 			),
 		scopes: z
-			.array(scopeSchema)
+			.array(requestedScopeSchema)
 			.min(1)
 			.optional()
 			.describe(
@@ -151,19 +158,27 @@ export const cliCredentialBootstrapCapability = defineDomainCapability(
 					'cliCredentialBootstrap is not available to a profile. Mint a profile token with tokenCreate (profile_id) or profileHandoff instead.',
 				)
 			}
-			const parent =
+			const parentToken =
 				ctx.openApiPrincipal?.kind === 'token'
-					? {
-							scopes: ctx.openApiPrincipal.token.scopes,
-							maxExpiresAt: ctx.openApiPrincipal.token.max_expires_at,
-						}
+					? ctx.openApiPrincipal.token
 					: undefined
+			const parent = parentToken
+				? {
+						scopes: parentToken.scopes,
+						maxExpiresAt: parentToken.max_expires_at,
+					}
+				: undefined
+			// An org-bound parent token must not widen into a user-owned child.
+			const orgBoundParent =
+				parentToken?.org_binding === 'org' ? parentToken : undefined
 			return mintCliCredentialBootstrap({
 				db: ctx.env.APP_DB,
 				// person-keyed (not personal org): api_tokens.user_id is the person
 				userId: personalOrgId(user.userId),
-				orgId:
-					ctx.callerContext.request?.org.id ?? personalOrgIdForPerson(user),
+				orgId: orgBoundParent
+					? orgBoundParent.org_id
+					: (ctx.callerContext.request?.org.id ?? personalOrgIdForPerson(user)),
+				...(orgBoundParent ? { orgBinding: 'org' as const } : {}),
 				...(input.name === undefined ? {} : { name: input.name }),
 				...(input.scopes === undefined ? {} : { scopes: input.scopes }),
 				...(input.lifetime === undefined ? {} : { lifetime: input.lifetime }),

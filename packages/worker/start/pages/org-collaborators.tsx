@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { type QueryKey } from '@tanstack/react-query'
+import type { QueryKey } from '@tanstack/react-query'
 import {
 	AccountManagementPanel,
 	AccountManagementShell,
@@ -12,11 +12,17 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import {
-	type OrgCollaboratorsLoaderData,
-	type OrgCollaboratorView,
+import type {
+	OrgCollaboratorsLoaderData,
+	OrgCollaboratorView,
 } from '#universal/loader-data.ts'
-import { orgGrantsPath, orgIdentity } from '#universal/org-pages.ts'
+import {
+	orgGrantAccessPath,
+	orgGrantsPath,
+	orgIdentity,
+} from '#universal/org-pages.ts'
+import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
+import { renderIcon } from '../components/icon.tsx'
 import { UserAvatar } from '../components/user-avatar.tsx'
 function personLabel(person: OrgCollaboratorView) {
 	return (
@@ -96,6 +102,15 @@ export function OrgCollaboratorsPage({
 													</ul>
 												) : null}
 											</span>
+											<SiteLink
+												href={orgGrantAccessPath(data.org.slug, person.userId)}
+												data-testid="org-collaborator-access"
+												aria-label={`Access for ${personLabel(person)}`}
+												css={getGhostButtonCss({ size: 'sm' })}
+											>
+												{renderIcon('key', { size: '1.05rem' })}
+												Access
+											</SiteLink>
 										</div>
 									</li>
 								)

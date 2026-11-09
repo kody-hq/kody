@@ -1,4 +1,4 @@
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { createOrganization } from '#worker/orgs/create-organization.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
@@ -34,6 +34,7 @@ vi.mock('#app/page-auth.ts', () => ({
 const { loadOrgCollaboratorsData } = await import('./org-collaborators.ts')
 const {
 	grantOrganizationCreateAccess,
+	grantOrganizationManageAccess,
 	grantOrganizationReadAccess,
 	testOrgGrantsApiHandler,
 	testOrgGrantsRevokePostHandler,
@@ -418,6 +419,28 @@ async function bobOrgPermissions() {
 	return compiled.orgPermissions
 }
 
+test('the grants list names every member once with their role for a manager', async () => {
+	const env = createEnv()
+	const listReq = new Request('https://kody.test/@zeta-co/-/grants')
+	await signIn('ada', listReq)
+	const data = (
+		await testOrgGrantsApiHandler(env).execute({ request: listReq } as never)
+	).data as {
+		subjects: Array<{ userId: string; label: string; role: string | null }>
+	}
+	const byLabel = new Map(
+		data.subjects.map((subject) => [subject.label, subject]),
+	)
+	expect(byLabel.get('@ada')?.role).toBe('owner')
+	expect(byLabel.get('@bob')).toMatchObject({
+		userId: people.bob.personId,
+		role: 'member',
+	})
+	expect(new Set(data.subjects.map((subject) => subject.userId)).size).toBe(
+		data.subjects.length,
+	)
+})
+
 test('an owner grants a member org-wide read access; no write comes with it', async () => {
 	const env = createEnv()
 	const listReq = new Request('https://kody.test/@zeta-co/-/grants')
@@ -437,6 +460,7 @@ test('an owner grants a member org-wide read access; no write comes with it', as
 			label: '@bob',
 			reads: [],
 			creates: [],
+			manages: [],
 		},
 	])
 	expect(await bobOrgPermissions()).not.toContain('job:read')
@@ -635,4 +659,242 @@ test('an owner grants and revokes create access without touching read access', a
 		).status,
 	).toBe(403)
 	expect((await bobOrgPermissions()).has('package:create')).toBe(false)
+})
+
+async function grantManages(
+	env: Env,
+	person: Person,
+	fields: { subject: string; permissions: Array<string> },
+) {
+	const request = new Request('https://kody.test/@zeta-co/-/grants', {
+		method: 'POST',
+	})
+	await signIn(person, request)
+	const user = await mocks.readAuthenticatedAppUser(request, env)
+	return await grantOrganizationManageAccess({
+		request,
+		env,
+		user,
+		orgSlug: 'zeta-co',
+		...fields,
+	})
+}
+
+test('only an owner grants org-wide manage, which brings reads and stays when other forms save', async () => {
+	const env = createEnv()
+	const subject = `user:${people.bob.personId}`
+	expect(
+		(
+			await grantManages(env, 'bob', {
+				subject,
+				permissions: ['package:write'],
+			})
+		).status,
+	).toBe(403)
+
+	const saved = await grantManages(env, 'ada', {
+		subject,
+		permissions: ['package:execute', 'package:publish', 'app:execute'],
+	})
+	expect(saved.status).toBe(200)
+	let permissions = await bobOrgPermissions()
+	for (const permission of [
+		'package:read',
+		'package:execute',
+		'package:publish',
+		'app:read',
+		'app:execute',
+	]) {
+		expect(permissions.has(permission as never)).toBe(true)
+	}
+	expect(permissions.has('package:delete')).toBe(false)
+
+	expect(
+		(
+			await grantReads(env, 'ada', {
+				subject,
+				permissions: ['package:read', 'app:read', 'job:read'],
+			})
+		).status,
+	).toBe(200)
+	expect((await bobOrgPermissions()).has('package:publish')).toBe(true)
+	const listReq = new Request('https://kody.test/@zeta-co/-/grants')
+	await signIn('ada', listReq)
+	const listed = (
+		await testOrgGrantsApiHandler(env).execute({ request: listReq } as never)
+	).data as {
+		orgWideRead: { subjects: Array<{ manages: Array<string> }> }
+	}
+	expect([...listed.orgWideRead.subjects[0]!.manages].sort()).toEqual([
+		'app:execute',
+		'package:execute',
+		'package:publish',
+	])
+
+	for (const refused of [['job:write'], ['package:read'], ['secret:use']]) {
+		expect(
+			(await grantManages(env, 'ada', { subject, permissions: refused }))
+				.status,
+		).toBe(400)
+	}
+	expect(
+		(await grantManages(env, 'ada', { subject, permissions: [] })).status,
+	).toBe(200)
+	permissions = await bobOrgPermissions()
+	expect(permissions.has('package:publish')).toBe(false)
+	expect(permissions.has('package:read')).toBe(true)
+	expect(permissions.has('job:read')).toBe(true)
+})
+
+test('a member:write delegate edits read access for a subject holding Owner-granted manage', async () => {
+	const env = createEnv()
+	const now = '2026-01-01T00:00:00.000Z'
+	sqlite
+		.prepare(
+			`INSERT INTO grants (
+			   id, org_id, resource_type, resource_id, subject_type, subject_id,
+			   created_by_user_id, created_at, updated_at
+			 ) VALUES ('grant-bob-delegate', ?, 'org', ?, 'user', ?, ?, ?, ?)`,
+		)
+		.run(acmeId, acmeId, people.bob.personId, people.ada.personId, now, now)
+	sqlite
+		.prepare(
+			`INSERT INTO grant_permissions (grant_id, permission)
+			 VALUES ('grant-bob-delegate', 'member:write')`,
+		)
+		.run()
+	const subject = `user:${people.bob.personId}`
+	expect(
+		(
+			await grantManages(env, 'ada', {
+				subject,
+				permissions: ['package:execute', 'package:publish'],
+			})
+		).status,
+	).toBe(200)
+
+	expect(
+		(await grantReads(env, 'bob', { subject, permissions: ['job:read'] }))
+			.status,
+	).toBe(200)
+	const permissions = await bobOrgPermissions()
+	expect(permissions.has('job:read')).toBe(true)
+	expect(permissions.has('package:publish')).toBe(true)
+	expect(permissions.has('member:write')).toBe(true)
+
+	const added = await grantManages(env, 'bob', {
+		subject,
+		permissions: ['package:execute', 'package:publish', 'app:execute'],
+	})
+	expect(added.status).toBe(400)
+	expect((await bobOrgPermissions()).has('app:execute')).toBe(false)
+})
+
+test('a delegate saving reads cannot revive an expired Owner-only grant', async () => {
+	const env = createEnv()
+	const now = '2026-01-01T00:00:00.000Z'
+	sqlite
+		.prepare(
+			`INSERT INTO teams (id, org_id, slug, name, created_at, updated_at)
+			 VALUES ('team-delegates', ?, 'delegates', 'Delegates', ?, ?)`,
+		)
+		.run(acmeId, now, now)
+	sqlite
+		.prepare(
+			`INSERT INTO team_members (team_id, user_id, created_at)
+			 VALUES ('team-delegates', ?, ?)`,
+		)
+		.run(people.bob.personId, now)
+	const insertGrant = sqlite.prepare(
+		`INSERT INTO grants (
+		   id, org_id, resource_type, resource_id, subject_type, subject_id,
+		   created_by_user_id, created_at, updated_at, expires_at
+		 ) VALUES (?, ?, 'org', ?, ?, ?, ?, ?, ?, ?)`,
+	)
+	const insertPermission = sqlite.prepare(
+		`INSERT INTO grant_permissions (grant_id, permission) VALUES (?, ?)`,
+	)
+	insertGrant.run(
+		'grant-team-delegate',
+		acmeId,
+		acmeId,
+		'team',
+		'team-delegates',
+		people.ada.personId,
+		now,
+		now,
+		null,
+	)
+	insertPermission.run('grant-team-delegate', 'member:write')
+	insertGrant.run(
+		'grant-bob-expired',
+		acmeId,
+		acmeId,
+		'user',
+		people.bob.personId,
+		people.ada.personId,
+		now,
+		now,
+		'2026-01-02T00:00:00.000Z',
+	)
+	insertPermission.run('grant-bob-expired', 'package:publish')
+
+	const refused = await grantReads(env, 'bob', {
+		subject: `user:${people.bob.personId}`,
+		permissions: ['job:read'],
+	})
+	expect(refused.status).toBe(400)
+	expect((await bobOrgPermissions()).has('package:publish')).toBe(false)
+})
+
+test('a manager sees every team with its member count; a member sees only teams holding grants', async () => {
+	const env = createEnv()
+	const now = '2026-01-01T00:00:00.000Z'
+	for (const [id, slug] of [
+		['team-ops', 'ops'],
+		['team-idle', 'idle'],
+	] as const) {
+		sqlite
+			.prepare(
+				`INSERT INTO teams (id, org_id, slug, name, created_at, updated_at)
+				 VALUES (?, ?, ?, ?, ?, ?)`,
+			)
+			.run(id, acmeId, slug, slug.toUpperCase(), now, now)
+	}
+	sqlite
+		.prepare(
+			`INSERT INTO team_members (team_id, user_id, created_at) VALUES ('team-ops', ?, ?)`,
+		)
+		.run(people.bob.personId, now)
+	sqlite
+		.prepare(
+			`INSERT INTO grants (
+			   id, org_id, resource_type, resource_id, subject_type, subject_id,
+			   preset, created_by_user_id, created_at, updated_at
+			 ) VALUES ('grant-team', ?, 'package', 'pkg-1', 'team', 'team-ops', 'use', ?, ?, ?)`,
+		)
+		.run(acmeId, people.ada.personId, now, now)
+	type Teams = {
+		teams: Array<{ teamId: string; memberCount: number }>
+		memberCount: number
+	}
+	const listReq = new Request('https://kody.test/@zeta-co/-/grants')
+	await signIn('ada', listReq)
+	const managed = (
+		await testOrgGrantsApiHandler(env).execute({ request: listReq } as never)
+	).data as Teams
+	expect(managed.memberCount).toBe(2)
+	expect(managed.teams).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({ teamId: 'team-ops', memberCount: 1 }),
+			expect.objectContaining({ teamId: 'team-idle', memberCount: 0 }),
+		]),
+	)
+
+	const memberReq = new Request('https://kody.test/@zeta-co/-/grants')
+	await signIn('bob', memberReq)
+	const member = (
+		await testOrgGrantsApiHandler(env).execute({ request: memberReq } as never)
+	).data as Teams
+	expect(member.teams.map((team) => team.teamId)).toEqual(['team-ops'])
 })

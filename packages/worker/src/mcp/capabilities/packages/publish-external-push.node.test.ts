@@ -5,6 +5,7 @@ import {
 import { expect, test, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { consoleInfo, consoleWarn } from '#worker/test-support/console-spies.ts'
+import type * as PublishedRuntimeArtifactsModule from '#worker/package-runtime/published-runtime-artifacts.ts'
 
 const mockModule = vi.hoisted(() => ({
 	getSavedPackageById: vi.fn(),
@@ -20,7 +21,28 @@ const mockModule = vi.hoisted(() => ({
 	getCommunityListingByOwnerAndPackage: vi.fn(),
 	runWithDurableEscalation: vi.fn(),
 	listPublisherEnablementGaps: vi.fn(),
+	clearPublishedPublishChecksVersion: vi.fn(
+		async (..._args: Array<unknown>) => {},
+	),
+	revertEntitySourcePublishedCommit: vi.fn(
+		async (..._args: Array<unknown>) => true,
+	),
+	refreshSavedPackageProjection: vi.fn(async (..._args: Array<unknown>) => {}),
 }))
+
+vi.mock('#worker/package-registry/service.ts', () => ({
+	refreshSavedPackageProjection: (...args: Array<unknown>) =>
+		mockModule.refreshSavedPackageProjection(...args),
+}))
+
+vi.mock(
+	'#worker/package-runtime/published-runtime-artifacts.ts',
+	async (importOriginal) => ({
+		...(await importOriginal<typeof PublishedRuntimeArtifactsModule>()),
+		clearPublishedPublishChecksVersion: (...args: Array<unknown>) =>
+			mockModule.clearPublishedPublishChecksVersion(...args),
+	}),
+)
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
 	getSavedPackageById: (...args: Array<unknown>) =>
@@ -35,8 +57,11 @@ vi.mock('#worker/enablements/publisher-enablement-gaps.ts', () => ({
 }))
 
 vi.mock('#worker/repo/entity-sources.ts', () => ({
+	advanceEntitySourceServingCommit: async () => true,
 	getEntitySourceByIdForUser: (...args: Array<unknown>) =>
 		mockModule.getEntitySourceByIdForUser(...args),
+	revertEntitySourcePublishedCommit: (...args: Array<unknown>) =>
+		mockModule.revertEntitySourcePublishedCommit(...args),
 }))
 
 vi.mock('#worker/repo/artifacts.ts', () => ({
@@ -98,6 +123,7 @@ const { publishExternalPushCapability } =
 
 const defaultPublishIdempotencyParts = [
 	'packagePublishExternalPush',
+	'v2',
 	'{"allowForce":false,"destructiveOverwriteConfirmed":false,"newCommit":"commit-new","ownerUserId":"user-1","packageId":"package-1"}',
 ]
 const moduleTarget = {
@@ -490,8 +516,48 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 			}),
 		],
 		manifest: {},
-		run_id: expect.any(String),
 	})
+	// The failed rebuild is not a successful publish: drop the tip's seal so
+	// retrying the same commit re-runs checks instead of a sealed no-op.
+	expect(mockModule.clearPublishedPublishChecksVersion).toHaveBeenCalledWith(
+		expect.objectContaining({ publishedCommit: 'commit-new' }),
+	)
+	// The pointer, projection, and job pins go back to the last good commit.
+	expect(mockModule.revertEntitySourcePublishedCommit).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({
+			id: 'source-1',
+			failedCommit: 'commit-new',
+			restoreCommit: 'commit-old',
+		}),
+	)
+	expect(mockModule.refreshSavedPackageProjection).toHaveBeenCalledWith(
+		expect.objectContaining({
+			packageId: 'package-1',
+			sourceId: 'source-1',
+			rebuildArtifacts: false,
+			audit: null,
+		}),
+	)
+
+	// A rebuild that hits the isolate CPU limit is terminal too: the publish
+	// stops, and the pointer and job pins still go back to the last good commit.
+	setupDefaultMocks({ publish: publishedResult(), targets: [moduleTarget] })
+	mockModule.rebuildPublishedPackageArtifact.mockRejectedValueOnce(
+		new Error('Durable Object exceeded its CPU time limit and was reset.'),
+	)
+	await expect(publish()).rejects.toThrow(/memory or CPU limit/)
+	expect(mockModule.revertEntitySourcePublishedCommit).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({
+			id: 'source-1',
+			failedCommit: 'commit-new',
+			restoreCommit: 'commit-old',
+		}),
+	)
+	expect(mockModule.refreshSavedPackageProjection).toHaveBeenCalledWith(
+		expect.objectContaining({ sourceId: 'source-1', rebuildArtifacts: false }),
+	)
 
 	setupDefaultMocks({
 		head: 'commit-old',
@@ -511,8 +577,13 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 			}),
 		],
 		manifest: null,
-		run_id: expect.any(String),
 	})
+	expect(mockModule.clearPublishedPublishChecksVersion).toHaveBeenCalledWith(
+		expect.objectContaining({ publishedCommit: 'commit-old' }),
+	)
+	// A true no-op retry did not move the tip, so there is nothing to restore.
+	expect(mockModule.revertEntitySourcePublishedCommit).not.toHaveBeenCalled()
+	expect(mockModule.refreshSavedPackageProjection).not.toHaveBeenCalled()
 })
 
 test('force publish passes destructive confirmation through and refuses without allow_force', async () => {
@@ -552,7 +623,9 @@ test('ineligible publishes return structured results without durable escalation 
 	}
 	setupDefaultMocks({ publish: checksFailed })
 
-	expect(await publish()).toEqual(checksFailed)
+	// The RepoSession check-attempt id is not a runGet run, so it is dropped.
+	const { run_id: _checkAttemptId, ...expected } = checksFailed
+	expect(await publish()).toEqual(expected)
 	// RunLog workflow projections are scoped by acting userId; parts keep full
 	// semantic input.
 	expect(mockModule.runWithDurableEscalation.mock.calls).toEqual([
@@ -887,4 +960,61 @@ test('publishExternalPush returns locked with pending_commit and an approval URL
 			'Package "@kentcdodds/demo-package" is locked. Publishes require approval at https://kody.test/@user/demo-package/approve-publish?commit=commit-new.',
 	})
 	expect(mockModule.rebuildPublishedPackageArtifact).not.toHaveBeenCalled()
+})
+
+test('durable publish code fails the run for any outcome that did not publish', async () => {
+	const { durablePublishWorkflowCode } =
+		await import('./publish-external-push.ts')
+	const runDurable = async (result: unknown) => {
+		const source = durablePublishWorkflowCode.replace(
+			"import { kody } from 'kody:runtime'",
+			'const kody = { packagePublishExternalPush: async () => globalThis.__durablePublishResult }',
+		)
+		;(
+			globalThis as { __durablePublishResult?: unknown }
+		).__durablePublishResult = result
+		const module = (await import(
+			`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
+		)) as { default: (params?: unknown) => Promise<unknown> }
+		return await module.default({})
+	}
+	const published = { status: 'published', published_commit: 'commit-new' }
+	await expect(runDurable(published)).resolves.toEqual(published)
+	await expect(
+		runDurable({ status: 'already_published', published_commit: 'c' }),
+	).resolves.toMatchObject({ status: 'already_published' })
+	await expect(
+		runDurable({
+			status: 'checks_failed',
+			failed_checks: [
+				{ kind: 'typecheck', ok: true, message: 'fine' },
+				{ kind: 'bundle', ok: false, message: 'ran out of memory' },
+			],
+			manifest: null,
+		}),
+	).rejects.toThrow(
+		'kody-terminal: packagePublishExternalPush returned checks_failed: bundle: ran out of memory',
+	)
+	await expect(
+		runDurable({ status: 'not_fast_forward', message: 'not a descendant' }),
+	).rejects.toThrow(
+		'kody-terminal: packagePublishExternalPush returned not_fast_forward: not a descendant',
+	)
+})
+
+test('an uploaded build is checked against the person who made it, not the org a durable re-entry runs as', async () => {
+	const { publishRequesterPersonId } =
+		await import('./publish-external-push.ts')
+	expect(
+		publishRequesterPersonId({
+			user: { userId: 'org-kody' },
+			request: { actor: { userId: 'person-kent' } },
+		} as never),
+	).toBe('person-kent')
+	expect(
+		publishRequesterPersonId({
+			user: { userId: 'person-solo' },
+			request: null,
+		} as never),
+	).toBe('person-solo')
 })

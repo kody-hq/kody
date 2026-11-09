@@ -1,4 +1,4 @@
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	inviteCreateCapability,
 	inviteRevokeCapability,
@@ -8,7 +8,7 @@ import {
 	packageCollaboratorRemoveCapability,
 	setPackageCollaboratorAccess,
 } from '#mcp/capabilities/access/package-collaborators.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { describeCollaboratorUnmappableCredentials } from '#mcp/capabilities/access/unmappable-credential-warnings.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
@@ -16,6 +16,7 @@ import {
 	AuthorizationError,
 	checkPermission,
 	computeEffectivePermissions,
+	hasOwnerAuthority,
 	packageResource,
 } from '#worker/authorization/authorize.ts'
 import { operationResult } from '../operation-result.ts'
@@ -153,7 +154,7 @@ async function buildCollaboratorsView(
 		packageId: scope.savedPackage.id,
 		packageName: scope.savedPackage.name,
 		collaborators: listed.collaborators,
-		viewerIsOwner: access?.isOwner ?? false,
+		viewerIsOwner: access ? hasOwnerAuthority(access) : false,
 		request,
 	})
 	return {

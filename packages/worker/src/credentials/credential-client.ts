@@ -12,11 +12,11 @@
  * No error carries a value, and option lists hold only credentials the actor
  * can Use.
  */
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
-import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js'
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
@@ -50,9 +50,9 @@ import {
 	resolveNeedCandidates,
 	type UsableCredential,
 } from './credential-candidates.ts'
-import {
-	type CredentialCallMap,
-	type CredentialPick,
+import type {
+	CredentialCallMap,
+	CredentialPick,
 } from './credential-call-map.ts'
 import {
 	type CredentialMappingRowTarget,
@@ -76,13 +76,16 @@ import {
 	CredentialNotFoundError,
 	CredentialRequestRefusedError,
 } from './credential-request.ts'
-import {
-	type CredentialTarget,
-	type ResolvedClientPlacement,
-	type ResolveCredentialInput,
+import type {
+	CredentialTarget,
+	ResolvedClientPlacement,
+	ResolveCredentialInput,
 } from './credential-resolver.ts'
 import { resolveCredential } from './resolve-credential.ts'
-import { type SigningOperation } from './signing-resolver.ts'
+import {
+	signingOperationTypes,
+	type SigningOperation,
+} from './signing-resolver.ts'
 import { findPackageAppGrantCredentialMapping } from '#app/package-app-oauth-grants.ts'
 
 export type CredentialClientErrorCode =
@@ -96,6 +99,7 @@ export type CredentialClientErrorCode =
 	| 'host_not_allowed'
 	| 'insecure_transport'
 	| 'invalid_request'
+	| 'raw_signing_off'
 	| 'login_failed'
 	| 'login_retry_later'
 	| 'login_needs_reconnect'
@@ -1289,11 +1293,11 @@ export async function signWithCredentialClient(
 		if (
 			!operation ||
 			typeof operation !== 'object' ||
-			(operation.type !== 'jwt' && operation.type !== 'hmac')
+			!signingOperationTypes.includes(operation.type)
 		) {
 			throw refusal(
 				'invalid_request',
-				'sign() takes { type: "jwt", ... } or { type: "hmac", ... }.',
+				'sign() takes { type: "jwt" | "hmac" | "http-signature" | "rsa-sha256", ... }.',
 			)
 		}
 		// HMAC may use a Key (`secret`) or a signing credential. JWT signing
@@ -1372,17 +1376,35 @@ export type AppliedCredentialClient = {
 	substitutedValues: ReadonlyArray<string>
 	/** The inject shape with no value, for a 401 / 403 hint. */
 	shape: string
+	/**
+	 * Human-facing provider/credential label for 401/403/429 attribution
+	 * (`x-kody-provider-error`). From the signed handle name (provider slug or
+	 * credential name).
+	 */
+	providerLabel: string | null
 	/** A login credential's session id (never the session), for a 401 retry. */
 	login?: { sessionId: string | null }
 }
 
+function providerLabelFromHandleName(name: string) {
+	const trimmed = name.trim()
+	if (!trimmed) return null
+	return trimmed
+		.split('-')
+		.filter((part) => part.length > 0)
+		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+		.join(' ')
+}
+
 function fromResolved(
 	placed: ResolvedClientPlacement,
+	providerLabel: string | null,
 ): AppliedCredentialClient {
 	return {
 		placement: placed.placement,
 		substitutedValues: placed.substitutedValues,
 		shape: placed.shape,
+		providerLabel,
 	}
 }
 
@@ -1425,6 +1447,7 @@ export async function applyCredentialClient(input: {
 		)
 		const { handle } = use
 		const { requestUrl } = input
+		const providerLabel = providerLabelFromHandleName(handle.name)
 		switch (handle.kind) {
 			case 'secret':
 				return fromResolved(
@@ -1435,6 +1458,7 @@ export async function applyCredentialClient(input: {
 							requestUrl,
 						}),
 					),
+					providerLabel,
 				)
 			case 'oauth':
 				return fromResolved(
@@ -1445,6 +1469,7 @@ export async function applyCredentialClient(input: {
 							requestUrl,
 						}),
 					),
+					providerLabel,
 				)
 			case 'url': {
 				const resolved = await resolveCredential(
@@ -1458,6 +1483,7 @@ export async function applyCredentialClient(input: {
 					placement: { kind: 'url', url: resolved.url },
 					substitutedValues: resolved.substitutedValues,
 					shape: 'url',
+					providerLabel,
 				}
 			}
 			case 'login': {
@@ -1478,6 +1504,7 @@ export async function applyCredentialClient(input: {
 						placement.kind === 'header'
 							? `login session in header ${placement.name}`
 							: `login session in query ${placement.param}`,
+					providerLabel,
 				}
 			}
 			case 'mcp':

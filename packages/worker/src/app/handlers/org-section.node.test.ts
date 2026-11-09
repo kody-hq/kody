@@ -133,7 +133,7 @@ test('workspace repositories JSON lists the owner by current username after a re
 test('team Connections are open to every member role and to grant-only collaborators', async () => {
 	const { orgSectionDenial } = await import('#app/org-request-binding.ts')
 	const team = { id: 'org-acme', slug: 'acme' } as never
-	for (const role of ['owner', 'member', 'billing', null] as const) {
+	for (const role of ['owner', 'admin', 'member', 'billing', null] as const) {
 		expect(orgSectionDenial({ org: team, role }, 'agents')).toBeNull()
 	}
 	expect(orgSectionDenial({ org: team, role: null }, 'secrets')).toBe(

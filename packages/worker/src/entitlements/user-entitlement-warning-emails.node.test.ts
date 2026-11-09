@@ -1,7 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
-import { type EntitlementResource } from '#universal/plans.ts'
+import type { EntitlementResource } from '#universal/plans.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import type * as cloudflareEmail from '#app/email/cloudflare-email.ts'
 
@@ -27,10 +27,7 @@ const {
 	listUsersForEntitlementWarningSweep,
 	sendEntitlementWarningNow,
 	sendUserEntitlementWarningEmails,
-	userEntitlementWarningDailyClaimTtlSeconds,
 	userEntitlementWarningKvKey,
-	userEntitlementWarningStockClaimTtlSeconds,
-	userEntitlementWarningSweepLimit,
 } = await import('#worker/entitlements/user-entitlement-warning-emails.ts')
 
 const stableUserId = ownerIdFromStored('a').repeat(64)
@@ -379,14 +376,14 @@ test('user entitlement warnings mail once per entitlement crossing through lifec
 	expect(
 		puts.find((put) => put.key === instanceKey('reached', 'saved_packages'))
 			?.options?.expirationTtl,
-	).toBe(userEntitlementWarningStockClaimTtlSeconds)
+	).toBe(2_592_000)
 	expect(
 		puts.find(
 			(put) =>
 				put.key ===
 				instanceKey('approaching', 'execute_unique_workers_per_day', now),
 		)?.options?.expirationTtl,
-	).toBe(userEntitlementWarningDailyClaimTtlSeconds)
+	).toBe(129_600)
 
 	setConsumption(row('saved_packages', 9, 10))
 	expect(await sendAt(env, '2026-07-27T06:00:00.000Z')).toEqual({
@@ -444,7 +441,7 @@ test('user entitlement warning infra edges: missing bindings, TTL refresh, KV fa
 		{
 			key: instanceKey('reached', 'saved_packages'),
 			value: at(later),
-			options: { expirationTtl: userEntitlementWarningStockClaimTtlSeconds },
+			options: { expirationTtl: 2_592_000 },
 		},
 	])
 	expect(
@@ -658,17 +655,15 @@ test('compute warning sweep ranks Worker compute and Rows read separately and re
 
 	const capped = await listUsersForEntitlementWarningSweep(
 		createDb([], [], {
-			activeUsers: Array.from(
-				{ length: userEntitlementWarningSweepLimit },
-				(_, index) =>
-					sweepUser(`active-${index}`, `active-${index}@example.com`),
+			activeUsers: Array.from({ length: 100 }, (_, index) =>
+				sweepUser(`active-${index}`, `active-${index}@example.com`),
 			),
 			computeUwdUsers: [sweepUser('compute', 'compute-reserved@example.com')],
 			computeDorowsUsers: [],
 		}),
 		now,
 	)
-	expect(capped).toHaveLength(userEntitlementWarningSweepLimit)
+	expect(capped).toHaveLength(100)
 	expect(
 		capped.some((user) => user.email === 'compute-reserved@example.com'),
 	).toBe(true)

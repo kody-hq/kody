@@ -21,6 +21,7 @@ import {
 	writeGeneratedWranglerConfig,
 } from './resource-utils.ts'
 import { parseProductionQueueResources } from './production-queue-resources.ts'
+import { ensureExistingVectorizeMetadataIndexes } from './vectorize-resources.ts'
 import { defaultProductionEntryPath } from '../check-origin-production-exports.ts'
 import { isExecutedDirectly } from '../node-runtime.ts'
 import {
@@ -60,6 +61,7 @@ type ResolvedProductionBindings = {
 	repoSessionBlobsBucketName: string
 	fileBlobsBucketName: string
 	operatorBackupsBucketName: string
+	capabilityVectorIndexName: string
 	emailDeliveryQueueName: string
 	emailDeliveryDeadLetterQueueName: string
 	artifactsRepoEventsQueueName: string
@@ -590,8 +592,25 @@ async function resolveProductionBindings({
 		}
 	}
 
+	const vectorize = (productionEnv as Record<string, unknown>).vectorize
+	const capabilityVectorIndex = Array.isArray(vectorize)
+		? (vectorize as Array<Record<string, unknown>>).find(
+				(entry) => entry.binding === 'CAPABILITY_VECTOR_INDEX',
+			)
+		: undefined
+	const capabilityVectorIndexName = capabilityVectorIndex?.index_name
+	if (
+		typeof capabilityVectorIndexName !== 'string' ||
+		capabilityVectorIndexName.length === 0
+	) {
+		fail(
+			`wrangler config "${wranglerConfigPath}" has no production Vectorize "index_name" for "CAPABILITY_VECTOR_INDEX".`,
+		)
+	}
+
 	const resolved: ResolvedProductionBindings = {
 		workerName,
+		capabilityVectorIndexName,
 		d1DatabaseName,
 		d1ConfiguredId,
 		auditD1DatabaseName,
@@ -689,6 +708,9 @@ async function ensureProductionResources(options: CliOptions) {
 		apiToken: apiToken ?? 'dry-run-token',
 		dryRun: options.dryRun,
 	}
+	const capabilityVectorMetadata = await ensureExistingVectorizeMetadataIndexes(
+		{ ...queueClient, name: bindings.capabilityVectorIndexName },
+	)
 	const existingQueues = options.dryRun
 		? []
 		: await listCloudflareQueues(queueClient)
@@ -980,6 +1002,12 @@ async function ensureProductionResources(options: CliOptions) {
 	if (bootstrapConfigPath) {
 		console.log(`origin_bootstrap_wrangler_config=${bootstrapConfigPath}`)
 	}
+	console.log(
+		`capability_vector_index_name=${bindings.capabilityVectorIndexName}`,
+	)
+	console.log(
+		`capability_vector_reindex_required=${capabilityVectorMetadata.created.length > 0 ? 'true' : 'false'}`,
+	)
 	console.log(`d1_database_name=${d1.name}`)
 	console.log(`d1_database_id=${d1.id}`)
 	console.log(`audit_d1_database_name=${auditD1.name}`)

@@ -1,10 +1,10 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	type ConnectedMcpAgent,
 	labelInboundMcpClient,
 	oauthGrantCreatedAtIso,
 } from '#universal/connected-mcp-agents.ts'
-import { type UserMeterEnv } from '#worker/entitlements/user-meter-client.ts'
+import type { UserMeterEnv } from '#worker/entitlements/user-meter-client.ts'
 import {
 	forgetInboundMcpConnectionLastUsed,
 	listInboundMcpConnectionLastUsed,
@@ -74,6 +74,49 @@ export async function loadInboundMcpConnectionState(
 	} catch {
 		return { uniqueClientCount: 0, agents: [], listingFailed: true }
 	}
+}
+
+/**
+ * Kinds of the person's connected agents across all orgs, for counting
+ * ecosystems. Pages grants keeping only each client's first redirect URI, so
+ * a person with many grants never holds every grant (and its metadata) at
+ * once. Throws when listing fails.
+ */
+export async function loadInboundMcpAgentKinds(
+	helpers: OAuthGrantListHelpers,
+	userId: OwnerId,
+): Promise<Array<Pick<ConnectedMcpAgent, 'kind'>>> {
+	const redirectUriByClient = new Map<string, string | undefined>()
+	let cursor: string | undefined
+	do {
+		const page = await helpers.listUserGrants(userId, { cursor })
+		for (const grant of page.items) {
+			const clientId = grant.clientId?.trim() ?? ''
+			if (!grant.id || !clientId) continue
+			if (redirectUriByClient.get(clientId) !== undefined) continue
+			redirectUriByClient.set(
+				clientId,
+				typeof grant.redirectUri === 'string' && grant.redirectUri
+					? grant.redirectUri
+					: undefined,
+			)
+		}
+		cursor = page.cursor
+	} while (cursor)
+	const clientCache = new Map<string, OAuthClientInfo | null>()
+	const kinds = new Array<Pick<ConnectedMcpAgent, 'kind'>>()
+	for (const [clientId, grantRedirectUri] of redirectUriByClient) {
+		const client = await lookupClientBestEffort(helpers, clientCache, clientId)
+		const labeled = labelInboundMcpClient({
+			clientId,
+			clientName: client?.clientName,
+			redirectUris: client?.redirectUris,
+			clientUri: client?.clientUri,
+			grantRedirectUri,
+		})
+		kinds.push({ kind: labeled.kind })
+	}
+	return kinds
 }
 
 /**

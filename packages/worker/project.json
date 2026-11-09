@@ -33,8 +33,38 @@
 			"dependsOn": [
 				"typecheck-src",
 				"typecheck-worker-test",
-				"typecheck-client-test"
+				"typecheck-client-test",
+				"typecheck-start",
+				"typecheck-start-tests",
+				"typecheck-start-server-tests"
 			]
+		},
+		"typecheck-start-server": {
+			"executor": "nx:run-commands",
+			"outputs": ["{projectRoot}/.generated/start-types"],
+			"options": {
+				"command": "node tools/run-tsc.ts -p packages/worker/tsconfig-start-server.json"
+			}
+		},
+		"typecheck-start": {
+			"executor": "nx:run-commands",
+			"dependsOn": ["typecheck-start-server"],
+			"options": {
+				"command": "node tools/run-tsc.ts -p packages/worker/tsconfig-start.json"
+			}
+		},
+		"typecheck-start-tests": {
+			"executor": "nx:run-commands",
+			"dependsOn": ["typecheck-start-server"],
+			"options": {
+				"command": "node tools/run-tsc.ts -p packages/worker/tsconfig-start-tests.json"
+			}
+		},
+		"typecheck-start-server-tests": {
+			"executor": "nx:run-commands",
+			"options": {
+				"command": "node tools/run-tsc.ts -p packages/worker/tsconfig-start-server-tests.json"
+			}
 		},
 		"typecheck-src": {
 			"executor": "nx:run-commands",

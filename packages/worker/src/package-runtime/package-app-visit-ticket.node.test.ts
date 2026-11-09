@@ -3,7 +3,7 @@ import {
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
+import type { RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
 import {
 	createPackageAppRequestVisit,
 	endPackageAppVisit,
@@ -333,7 +333,7 @@ test('an anonymous ticket names nobody, binds one request, and follows the ticke
 		verify(first.ticket!, { ...audience, publishedCommit: 'commit-other' }),
 	).rejects.toBeInstanceOf(PackageAppVisitTicketError)
 	await expect(
-		verify(`${first.ticket!.slice(0, -2)}xx`),
+		verify(withFlippedSignatureChar(first.ticket!)),
 	).rejects.toBeInstanceOf(PackageAppVisitTicketError)
 	await expect(
 		verify(
@@ -581,3 +581,10 @@ test('a visit ticket carries the billed org of a cross-org visit into the rebuil
 	expect(member.billing).toBeUndefined()
 	expect(requestContextFromVisitClaims(member).billing).toBeUndefined()
 })
+
+/** Changes one full-6-bit base64url char near the end, so the signature bytes always differ. */
+function withFlippedSignatureChar(ticket: string) {
+	const index = ticket.length - 3
+	const replacement = ticket[index] === 'A' ? 'B' : 'A'
+	return `${ticket.slice(0, index)}${replacement}${ticket.slice(index + 1)}`
+}

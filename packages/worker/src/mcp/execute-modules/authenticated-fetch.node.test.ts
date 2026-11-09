@@ -9,6 +9,7 @@ import {
 } from './kody-runtime-utils.ts'
 import { assertIntegrationHostAllowed } from './integration-host-allowlist.ts'
 import { createMswNodeServer } from '#worker/test-support/msw-node-server.ts'
+import { hostAuthorityFromKody } from '#worker/test-support/host-integration-authority.ts'
 
 type RecordedRequest = Pick<Request, 'url' | 'headers'>
 
@@ -70,7 +71,10 @@ test('createAuthenticatedFetch enforces integration host allowlists and fails cl
 	const fetchCalls: Array<RecordedRequest> = []
 
 	using _server = createMswNodeServer(createSpotifyHandlers(fetchCalls))
-	const authenticatedFetch = await createAuthenticatedFetch(kody, 'spotify')
+	const authenticatedFetch = await createAuthenticatedFetch(
+		hostAuthorityFromKody(kody),
+		'spotify',
+	)
 
 	const fetchCallsAfterSetup = fetchCalls.length
 
@@ -124,11 +128,13 @@ test('createAuthenticatedFetch enforces integration host allowlists and fails cl
 		}),
 	])
 	const emptyAllowlistFetch = await createAuthenticatedFetch(
-		createKody({
-			...spotifyIntegration,
-			requiredHosts: [],
-			apiBaseUrl: null,
-		}),
+		hostAuthorityFromKody(
+			createKody({
+				...spotifyIntegration,
+				requiredHosts: [],
+				apiBaseUrl: null,
+			}),
+		),
 		'spotify',
 	)
 	const fetchCallsBefore = emptyAllowlistFetchCalls.length

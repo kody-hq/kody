@@ -3,7 +3,7 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { expect, test } from 'vitest'
 import { applyMigrations } from '#worker/test-support/account-export.ts'
 import { createAuditTestDb } from '#worker/test-support/create-audit-db.ts'
@@ -94,7 +94,13 @@ test('the actor is a person, an automation run, or a site admin outside the org'
 	expect(toggleActorFromRequest(request(), { siteAdmin: true }).kind).toBe(
 		'person',
 	)
-	expect(toggleActorFromRequest(null)).toEqual(automationToggleActor())
+	expect(toggleActorFromRequest(null)).toEqual({
+		kind: 'automation',
+		userId: null,
+		username: null,
+		credentialKind: null,
+		credentialId: null,
+	})
 })
 
 test('reasons are trimmed, blank reasons dropped, long reasons capped', () => {

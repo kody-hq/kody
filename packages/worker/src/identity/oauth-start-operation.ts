@@ -1,7 +1,8 @@
 import { authOperationResult } from './auth-operation-result.ts'
 import { getCallbackRedirectUri } from './oauth-provider-redirect.ts'
 import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
-import { readAuthSessionResult, isSecureRequest } from '#app/auth-session.ts'
+import { isSecureRequest } from '#app/auth-session.ts'
+import { readLiveAuthSession } from '#app/request-auth-cache.ts'
 import {
 	parseFirstTouchAttribution,
 	hasFirstTouchAttribution,
@@ -28,21 +29,26 @@ export async function startWebsiteOAuth({
 	url,
 	body,
 	provider,
+	guestClaim = null,
 }: {
 	env: Env
 	request: Request
 	url: URL
 	body: Record<string, unknown>
 	provider: string
+	/** Server-side claim page starts only; the claim code is the proof. */
+	guestClaim?: { code: string; username: string | null } | null
 }) {
-	const redirectTo = normalizeRedirectTo(url.searchParams.get('redirectTo'))
+	const redirectTo = guestClaim
+		? `/claim/${encodeURIComponent(guestClaim.code)}`
+		: normalizeRedirectTo(url.searchParams.get('redirectTo'))
 	const attribution = parseFirstTouchAttribution({
 		searchParams: url.searchParams,
 		body: null,
 	})
-	const { session } = await readAuthSessionResult(request)
+	const session = (await readLiveAuthSession(request, env)).parsed?.session
 
-	if (!session) {
+	if (!session && !guestClaim) {
 		const protection = await checkPublicFormProtection({
 			env,
 			request,
@@ -84,6 +90,7 @@ export async function startWebsiteOAuth({
 			codeVerifier,
 			redirectTo,
 			attribution: hasFirstTouchAttribution(attribution) ? attribution : null,
+			guestClaim,
 		},
 		isSecureRequest(request),
 	)

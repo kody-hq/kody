@@ -14,6 +14,7 @@
     "test:execution-shell": "node test/execution-shell-smoke.cjs",
     "test:explorer": "node test/explorer-smoke.cjs",
     "test:browser-login": "node test/browser-login-smoke.cjs",
+    "test:in-app-approval": "node test/in-app-approval-smoke.cjs",
     "dist": "electron-builder --config electron-builder.cjs --publish never",
     "test:packaged-cli": "node test/packaged-cli.cjs",
     "dist:release": "electron-builder --config electron-builder.release.cjs --publish never"
@@ -40,6 +41,7 @@
       "*.cjs",
       "package.json",
       "assets/icon.png",
+      "assets/tray-*.png",
       "!electron-builder*.cjs"
     ],
     "mac": {

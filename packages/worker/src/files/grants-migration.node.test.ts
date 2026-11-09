@@ -41,7 +41,7 @@ test('file grants migration preserves existing grants, permissions and credentia
 		INSERT INTO grant_permissions (grant_id, permission) VALUES ('existing', 'credential:read');`)
 	const before = db.prepare('SELECT * FROM grants').all()
 	const permissions = db.prepare('SELECT * FROM grant_permissions').all()
-	db.exec(readFileSync(new URL('0236-file-resources.sql', directory), 'utf8'))
+	db.exec(readFileSync(new URL('0262-file-resources.sql', directory), 'utf8'))
 	expect(db.prepare('SELECT * FROM grants').all()).toEqual(before)
 	expect(db.prepare('SELECT * FROM grant_permissions').all()).toEqual(
 		permissions,

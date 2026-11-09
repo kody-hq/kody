@@ -6,7 +6,7 @@ import { processCloudflareEmailDeliveryEvent } from './delivery-events.ts'
 import { applyOutboundEmailAbusePause } from './outbound-abuse.ts'
 import { applyOutboundConsecutiveFailureTracking } from './outbound-consecutive-failures.ts'
 import { dispatchEmailDeliverySubscriptionEvents } from './package-subscriptions.ts'
-import { type EmailReportingEnv } from './reporting-events.ts'
+import type { EmailReportingEnv } from './reporting-events.ts'
 import { notifyAdminsOfVerificationDeliveryFailure } from './verification-delivery-notify.ts'
 import { transactionalEmailVerificationKind } from './verification-delivery.ts'
 
@@ -36,6 +36,10 @@ export async function handleEmailDeliveryQueue(
 			})
 			switch (result.outcome) {
 				case 'invalid':
+					queueMessage.ack()
+					break
+				case 'stale_system':
+				case 'recorded_system':
 					queueMessage.ack()
 					break
 				case 'stale_transactional':

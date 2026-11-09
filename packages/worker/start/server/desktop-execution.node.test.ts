@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
 	username: 'jane',
 	page: vi.fn(),
 	set: vi.fn(),
+	attach: vi.fn(),
 	mutation: vi.fn(),
 }))
 vi.mock('@tanstack/react-start', () => ({
@@ -16,10 +17,6 @@ vi.mock('@tanstack/react-start', () => ({
 		const builder = {
 			validator(value: typeof schema) {
 				schema = value
-				return builder
-			},
-			inputValidator(value: (input: unknown) => unknown) {
-				schema = { parse: value }
 				return builder
 			},
 			handler(fn: (input: { data: unknown }) => unknown) {
@@ -47,6 +44,7 @@ vi.mock('./mutation-context.ts', () => ({
 vi.mock('../../src/app/handlers/execution-contexts.ts', () => ({
 	loadExecutionContextsPageData: state.page,
 	setExecutionChainForUser: state.set,
+	attachExecutionContextForUser: state.attach,
 }))
 import { putDesktopExecutionFirst } from './execution-contexts.ts'
 const data = { orgSlug: 'jane', username: 'jane', contextId: 'ec_laptop' }
@@ -64,6 +62,7 @@ beforeEach(() => {
 		},
 	})
 	state.set.mockResolvedValue({ ok: true, chain: {}, unutilized: null })
+	state.attach.mockResolvedValue({ ok: true })
 })
 test('private desktop chain setup authenticates, scopes the mutation, and uses the current chain version', async () => {
 	await putDesktopExecutionFirst({ data })
@@ -133,5 +132,94 @@ test('desktop setup cannot change team chains or run with the experiment disable
 	await expect(putDesktopExecutionFirst({ data })).rejects.toThrow(
 		'not registered',
 	)
+	expect(state.set).not.toHaveBeenCalled()
+})
+
+test('managing setup from a team org attaches the personal registration and puts it first there', async () => {
+	state.page.mockImplementation(async (input: { orgSlug: string }) =>
+		input.orgSlug === 'acme'
+			? {
+					...pageFixture({ personalOrg: false }),
+					orgSlug: 'acme',
+					chain: {
+						entries: [{ kind: 'context', id: 'ec_build' }, { kind: 'cloud' }],
+						strict: true,
+						updatedAt: 'acme-revision',
+						updatedBy: 'jane',
+					},
+				}
+			: {
+					...pageFixture({ personalOrg: true, contexts: [contextFixture()] }),
+					chain: {
+						entries: [{ kind: 'context', id: 'ec_laptop' }, { kind: 'cloud' }],
+						strict: false,
+						updatedAt: 'test-revision',
+						updatedBy: 'jane',
+					},
+				},
+	)
+	await putDesktopExecutionFirst({ data: { ...data, targetOrgSlug: 'acme' } })
+	expect(state.mutation).toHaveBeenCalledWith({
+		scope: { orgSlug: 'jane', requireMembership: false },
+	})
+	expect(state.attach).toHaveBeenCalledWith(
+		expect.objectContaining({
+			orgSlug: 'jane',
+			contextId: 'ec_laptop',
+			targetOrgSlug: 'acme',
+		}),
+	)
+	expect(state.set).toHaveBeenCalledTimes(1)
+	expect(state.set).toHaveBeenCalledWith(
+		expect.objectContaining({
+			orgSlug: 'acme',
+			ifMatch: 'acme-revision',
+			strict: true,
+			entries: [
+				{ kind: 'context', id: 'ec_laptop' },
+				{ kind: 'context', id: 'ec_build' },
+				{ kind: 'cloud' },
+			],
+		}),
+	)
+})
+
+test('a team attach never runs for a foreign registration, and attach failures stop before the chain', async () => {
+	state.page.mockResolvedValue(
+		pageFixture({
+			personalOrg: true,
+			contexts: [contextFixture({ operator: { handle: 'sam' } })],
+		}),
+	)
+	await expect(
+		putDesktopExecutionFirst({ data: { ...data, targetOrgSlug: 'acme' } }),
+	).rejects.toThrow('not registered')
+	expect(state.attach).not.toHaveBeenCalled()
+	state.page.mockImplementation(async (input: { orgSlug: string }) =>
+		input.orgSlug === 'acme'
+			? pageFixture({ personalOrg: false })
+			: pageFixture({ personalOrg: true, contexts: [contextFixture()] }),
+	)
+	state.attach.mockResolvedValue({
+		ok: false,
+		error: 'not_found',
+		message: 'Organization not found.',
+	})
+	await expect(
+		putDesktopExecutionFirst({ data: { ...data, targetOrgSlug: 'acme' } }),
+	).rejects.toThrow('Organization not found')
+	expect(state.set).not.toHaveBeenCalled()
+})
+
+test('a team attach never runs when the target org has execution contexts off', async () => {
+	state.page.mockImplementation(async (input: { orgSlug: string }) =>
+		input.orgSlug === 'acme'
+			? { ...pageFixture({ personalOrg: false }), enabled: false }
+			: pageFixture({ personalOrg: true, contexts: [contextFixture()] }),
+	)
+	await expect(
+		putDesktopExecutionFirst({ data: { ...data, targetOrgSlug: 'acme' } }),
+	).rejects.toThrow('not available in @acme')
+	expect(state.attach).not.toHaveBeenCalled()
 	expect(state.set).not.toHaveBeenCalled()
 })

@@ -5,7 +5,7 @@ import {
 	d1LockRetryBaseDelayMs,
 	d1LockRetryMaxAttempts,
 } from '#worker/d1-retry.ts'
-import { type JobRecord } from './types.ts'
+import type { JobRecord } from './types.ts'
 
 const mockModule = vi.hoisted(() => ({
 	embedTextForVectorize: vi.fn(),

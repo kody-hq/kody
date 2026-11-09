@@ -3,7 +3,7 @@ import { expect, test, vi } from 'vitest'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import { createCommunityIconHandler } from './community-icon.ts'
 import type * as CommunityIconModule from '#worker/community/community-icon.ts'
-import { type CommunityListingRecord } from '#worker/community/types.ts'
+import type { CommunityListingRecord } from '#worker/community/types.ts'
 
 const mocks = vi.hoisted(() => ({
 	getCommunityIconObject: vi.fn(),

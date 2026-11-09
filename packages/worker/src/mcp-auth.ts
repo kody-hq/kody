@@ -1,3 +1,14 @@
+import {
+	guestClaimCapabilityName,
+	guestClaimFinishCapabilityName,
+	guestClaimUrl,
+	guestPhase,
+	readGuestAccountByPerson,
+} from '#worker/guest/guest-accounts.ts'
+import {
+	createGuestErrorResponse,
+	guestErrorPayload,
+} from '#worker/guest/guest-errors.ts'
 import { personalOrgId } from '@kody-internal/shared/owner-person-ids.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import {
@@ -611,6 +622,22 @@ export async function handleMcpRequest({
 						})
 			return guardLegacyLaneSseResponse(legacyRequestIds, response)
 		}
+		const guestExpiresAt = authContext.context.guestExpiresAt
+		if (
+			guestExpiresAt &&
+			guestPhase(guestExpiresAt) === 'hold' &&
+			mcpParsedBodyNeedsAccountWriteLease(classification.parsedBody) &&
+			!mentionsGuestClaimCapability(classification.parsedBody)
+		) {
+			const guest = await readGuestAccountByPerson(env.APP_DB, mcpUser.userId)
+			return createGuestErrorResponse(
+				guestErrorPayload({
+					code: 'guest_claim_required',
+					blocked: 'running code and saving changes',
+					claimUrl: guest ? guestClaimUrl(origin, guest.claimCode) : null,
+				}),
+			)
+		}
 		if (mcpParsedBodyNeedsAccountWriteLease(classification.parsedBody)) {
 			return await withAccountWriteLease({
 				db: env.APP_DB,
@@ -631,4 +658,13 @@ export async function handleMcpRequest({
 		}
 		throw error
 	}
+}
+
+/** Held guests may still run code that claims the account. */
+function mentionsGuestClaimCapability(parsedBody: unknown) {
+	const text = JSON.stringify(parsedBody ?? null)
+	return (
+		text.includes(guestClaimCapabilityName) ||
+		text.includes(guestClaimFinishCapabilityName)
+	)
 }

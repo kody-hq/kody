@@ -21,7 +21,7 @@ import {
 	defaultFeatureFlagAudience,
 	type FeatureFlagAudience,
 } from './audiences.ts'
-import { type UsageEventType } from '#universal/usage-event-types.ts'
+import type { UsageEventType } from '#universal/usage-event-types.ts'
 
 export type FeatureFlagSuccessMetricMeasure =
 	| 'event_count'
@@ -176,6 +176,13 @@ export const featureFlagDefinitions = [
 		},
 	},
 	{
+		key: 'publish-offload',
+		defaultEnabled: false,
+		defaultAudience: 'experiments_opt_in',
+		description:
+			"Publish offload: build a package on the CLI machine or an execution context the publisher runs, upload the bundles, and let the server verify them before it serves the commit. Off by default. Publishing on an execution context (by chain, a named context, or a package's kody.publish.execution.context binding) also needs execution-contexts; `--build local` needs only this flag. Product choices live in #worker/publish-offload/policy.ts.",
+	},
+	{
 		key: 'credential-need-enforcement',
 		defaultEnabled: false,
 		description:
@@ -210,6 +217,8 @@ export const executionContextsFlagKey =
 	'execution-contexts' satisfies FeatureFlagKey
 
 export const profilesFlagKey = 'profiles' satisfies FeatureFlagKey
+
+export const publishOffloadFlagKey = 'publish-offload' satisfies FeatureFlagKey
 
 export const credentialNeedEnforcementFlagKey =
 	'credential-need-enforcement' satisfies FeatureFlagKey

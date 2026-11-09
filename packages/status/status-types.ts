@@ -3,9 +3,9 @@
  * state, and the snapshot shape the public page renders.
  */
 
-import { type ExecuteHealthSnapshot } from './execute-health.ts'
-import { type IncidentRetrospective } from './retrospective.ts'
-import { type ProviderIncident } from './provider-incidents.ts'
+import type { ExecuteHealthSnapshot } from './execute-health.ts'
+import type { IncidentRetrospective } from './retrospective.ts'
+import type { ProviderIncident } from './provider-incidents.ts'
 
 export type { ExecuteHealthSnapshot, ProviderIncident }
 

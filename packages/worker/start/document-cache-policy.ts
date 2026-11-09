@@ -1,5 +1,5 @@
-import { type AnyRouter } from '@tanstack/react-router'
-import { type AnonymousDocumentCachePolicy } from '../src/app/anonymous-html-cache.ts'
+import type { AnyRouter } from '@tanstack/react-router'
+import type { AnonymousDocumentCachePolicy } from '../src/app/anonymous-html-cache.ts'
 
 declare module '@tanstack/router-core' {
 	interface StaticDataRouteOption {

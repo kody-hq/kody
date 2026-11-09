@@ -1,6 +1,6 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { type RepositoryOwnerOption } from '#universal/repository-create.ts'
+import type { RepositoryOwnerOption } from '#universal/repository-create.ts'
 import { loadCommunityInstallOrgs } from '#start/server/community-mutations'
 import { useMatchedPageScope } from './use-matched-page-scope.ts'
 
@@ -25,17 +25,25 @@ function requestedInstallOrg(searchStr: string): string | null {
 export function useCommunityInstallOrg(loggedIn: boolean): {
 	org: string | null
 	picker: CommunityInstallOrgPicker | null
+	/** The forkable orgs, fetched now if the list has not loaded yet. */
+	loadOwners: () => Promise<Array<RepositoryOwnerOption>>
 } {
 	const { actorKey, pageLocation } = useMatchedPageScope()
 	const navigate = useNavigate()
+	const queryClient = useQueryClient()
 	const requested = requestedInstallOrg(pageLocation.searchStr)
-	const query = useQuery({
+	const queryOptions = {
 		queryKey: ['community-install-orgs', actorKey],
 		queryFn: () => loadCommunityInstallOrgs({ data: {} }),
-		enabled: loggedIn && actorKey != null,
 		staleTime: 60_000,
 		meta: { actorKey },
+	}
+	const query = useQuery({
+		...queryOptions,
+		enabled: loggedIn && actorKey != null,
 	})
+	const loadOwners = async () =>
+		(await queryClient.fetchQuery(queryOptions)).owners
 	const owners = query.data?.owners ?? []
 	const match = requested
 		? owners.find((owner) => owner.slug.toLowerCase() === requested)
@@ -46,9 +54,10 @@ export function useCommunityInstallOrg(loggedIn: boolean): {
 			? match.slug
 			: null
 		: requested
-	if (owners.length < 2) return { org, picker: null }
+	if (owners.length < 2) return { org, picker: null, loadOwners }
 	return {
 		org,
+		loadOwners,
 		picker: {
 			owners,
 			selected: org,

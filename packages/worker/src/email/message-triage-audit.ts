@@ -1,5 +1,5 @@
 import { auditDatabaseFromEnv, logAuditEvent } from '#worker/audit-log.ts'
-import { type EmailClassification } from './types.ts'
+import type { EmailClassification } from './types.ts'
 
 export type EmailMessageTriageChange = {
 	messageId: string

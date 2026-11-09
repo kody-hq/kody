@@ -5,10 +5,10 @@
  * authenticated the request and may narrow it. `authorize` reads only this
  * shape. See docs/contributing/architecture/authorization.md.
  */
-import { type OrgPermission } from './org-permissions.ts'
-import { type OwnerId, type PersonId } from './owner-person-ids.ts'
+import type { OrgPermission } from './org-permissions.ts'
+import type { OwnerId, PersonId } from './owner-person-ids.ts'
 
-export type OrgRole = 'owner' | 'member' | 'billing'
+export type OrgRole = 'owner' | 'admin' | 'member' | 'billing'
 
 export type RequestOrg = {
 	id: OwnerId

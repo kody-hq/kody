@@ -10,18 +10,30 @@ npm install
 npm run desktop:dev
 ```
 
-After normal onboarding, the desktop app offers to set up this machine:
+After normal onboarding, the desktop app offers to set up this machine. Setup is
+personal-first, then optional team access, with clear stages you can resume:
 
-1. **Continue in browser** opens the CLI browser login for your personal
-   workspace. The desktop verifies that it matches the account signed into the
-   website.
-2. Choose a machine name and select **Enable this machine**. This registers the
-   device, starts its runner, and puts it first in your personal execution
-   chain. Other entries keep their order and cloud fallback keeps its current
-   setting. A full chain asks which existing entry to replace.
-3. **Not now** skips the wizard for this account on this installation. Open
-   **This machine** in the web account menu to return to setup, pause or resume
-   execution, or forget this app’s setup. These controls appear only in desktop.
+1. **Sign in as this person** (**Continue to approve**) starts the CLI login for
+   your personal workspace. The authorize page opens in an app window that
+   reuses this app's Kody session, so you only approve. A fresh password or
+   passkey sign-in (no usable session, an unverified email, or a link to sign-in
+   or signup) goes to the system browser instead. The window loads only the
+   authorize page and the CLI's loopback callback, has no desktop bridge, and
+   closing it cancels the login. When login already named an organization, the
+   authorize page locks that choice and explains why; otherwise it preselects
+   the default. The desktop verifies that the CLI matches the account signed
+   into the website.
+2. **Register this device personally** (name the machine, or adopt an existing
+   CLI registration). This starts the runner. On a personal workspace it also
+   puts the machine first in your personal execution chain.
+3. **Make available to @team** when you start setup from a team workspace (or
+   use **Manage setup** there later). That attaches the same personal
+   registration to the team chain without registering again.
+4. Success only after the intended workspace lists the machine and the runner is
+   connected. **Not now** skips the wizard for this account on this
+   installation; **This machine** always offers **Set up this machine** /
+   **Resume setup** / **Manage setup**, and explains when the wizard is
+   unavailable.
 
 One runner per machine: the app and the kody CLI share this machine’s
 registration and runner. When the CLI already registered the machine, setup
@@ -35,11 +47,18 @@ macOS an adopted runner does not get the app's Automation entitlement; see
 itself, under the same lock. Every runner auto-updates; **Turn off automatic
 updates** sets the shared CLI policy (`kody daemon auto-update off`).
 
-On macOS, closing all windows keeps the runner available. Quit stops the CLI and
-its workerd processes. On Windows and Linux, closing all windows quits the app.
-Pausing persists across launches. Sleep and network reconnects use the CLI's
-reconnect behavior, a sleeping machine cannot run compute. A running process is
-not necessarily connected, the website shows the context's status.
+Use File > New Window or Cmd+N (Ctrl+N on Windows and Linux) to open another
+window. Windows share your login and runner, and each keeps its own navigation.
+On macOS, closing the last window hides it and keeps the page and runner alive.
+Clicking the Dock icon brings back the same page without reloading, preserving
+navigation history, scroll position, and unfinished input. Quit stops the CLI
+and its workerd processes. On Windows, closing all windows quits unless
+background mode is on. On Linux, closing all windows quits. Pausing persists
+across launches. **Pause routing** in **This machine** is the server-side pause
+(`kody daemon pause`): chains skip this machine from anywhere until **Resume
+routing**, while the runner stays connected. Sleep and network reconnects use
+the CLI's reconnect behavior, a sleeping machine cannot run compute. A running
+process is not necessarily connected, the website shows the context's status.
 
 Keys, credentials, grants, and host-folder policy stay owned by the CLI. The
 shell saves the context ID, name, account, enabled state, and onboarding
@@ -65,6 +84,21 @@ authenticated shell actions. Browser permissions are denied by default. The
 shell bundles the workspace CLI and runs it in a separate process using
 Electron's Node runtime, without needing Node or a global CLI on PATH. Native
 Node-API dependencies keep their normal Node build, not an Electron rebuild.
+
+## Background mode
+
+On macOS and Windows, new installs and existing installs upgrading to this
+version see the choice once, even if machine setup is already complete. Choose
+**Run in background** to keep local execution available after closing the window
+and hide the Dock or taskbar icon. Kody stays in the macOS menu bar or Windows
+system tray. The tray mark follows the OS theme: outlined black with a white
+face on light chrome, solid white on dark, and updates when the theme changes.
+Its menu has **Open Kody**, **Run in background**, and **Quit Kody**. The same
+background setting is in the File menu and is saved for this installation.
+
+Turning background mode off restores the Dock or taskbar icon and opens the
+window. Quit still stops the app's runner. This does not start Kody at login or
+keep a sleeping computer awake.
 
 ## Platform support
 
@@ -103,6 +137,14 @@ production installers once release credentials are configured. Application files
 are unpacked so CLI chunks, Node-API modules, and native executables have normal
 filesystem paths.
 
+On macOS, `node packages/desktop/test/window-lifetime-smoke.cjs` uses an
+isolated profile and a local fixture page to verify that closing and reopening
+preserves the document, URL, history, scroll position, and unfinished input.
+After local control-kody login,
+`node packages/desktop/test/multiple-windows-smoke.cjs <local-origin>` verifies
+that windows share sign-in, keep independent navigation, and preserve the last
+window when closed.
+
 The smoke check needs a graphical desktop and the live website. To check a
 packaged build, pass its executable after `--`, for example:
 
@@ -117,14 +159,12 @@ in, register a real device, or change an execution chain.
 For local UI development, start the website with control-kody, then run
 `npm start --workspace @kodycodes/desktop -- --app-url=http://localhost:3743`
 using the origin printed by control-kody. The override accepts only loopback
-origins in unpackaged builds. Production builds always load the live site. The
-integrated controls require the website release containing the desktop
-navigation component.
-
-The website advertises `X-Kody-Desktop-Navigation: 1` on HTML responses. On
-macOS the shell checks that capability before hiding the native titlebar, so
-older website releases and offline launches retain usable window controls. The
-web UI and shell can ship independently.
+origins in unpackaged builds. Production builds always load the live site.
+Integrated chrome appears when the origin advertises
+`X-Kody-Desktop-Navigation: 1` on HTML responses. On macOS the shell checks that
+capability before hiding the native titlebar, so older website releases and
+offline launches retain usable window controls. The web UI and shell can ship
+independently.
 
 After `control-kody login --origin <local-origin>`, run
 `npm run test:explorer --workspace @kodycodes/desktop -- <local-origin>`. It
@@ -146,10 +186,11 @@ state, or session. A callback with the matching state and an OAuth-style `error`
 ends the attempt right away (`access_denied` shows a canceled page). Older
 websites and shells keep the existing embedded sign-in form.
 
-The website release includes migration `0215-desktop-browser-login.sql` and must
-ship before the shell enables browser authentication on the live site. CLI
-sign-in still grants the CLI its own scoped credentials through its existing
-browser flow. A website session does not become a CLI API token.
+Browser sign-in uses migration `0215-desktop-browser-login.sql`. The shell
+enables it when the origin advertises `X-Kody-Desktop-Authentication: 1`. CLI
+sign-in still grants the CLI its own scoped credentials through its own OAuth
+consent (approved in the app window when the session allows). A website session
+does not become a CLI API token.
 
 Run
 `npm run test:browser-login --workspace @kodycodes/desktop -- <local-origin>`
@@ -163,6 +204,11 @@ The machine setup checks are separate from live enrollment:
 npm run test:execution-ui --workspace @kodycodes/desktop
 npm run test:execution-shell --workspace @kodycodes/desktop -- <local-origin>
 ```
+
+`npm run test:in-app-approval --workspace @kodycodes/desktop -- <local-origin> [cookie-file]`
+runs the real CLI login against the local origin with an isolated CLI config,
+approves it in the app window, and fails if the system browser opens. The seed
+account must have finished onboarding (one MCP connection).
 
 The first uses fixture native actions and server functions to exercise the real
 wizard, including onboarding order, skipping, full-chain replacement, and retry.
@@ -206,10 +252,17 @@ using a separate local packaging directory.
 
 ## Production releases and updates
 
-Desktop downloads and updates live in the public `kody-hq/kody-desktop`
-repository. This keeps the update feed separate from the website's daily
-releases. Users do not need a GitHub token. Every architecture has its own
-update manifest so parallel jobs cannot overwrite another architecture's feed.
+Desktop downloads and updates live in the public
+[`kody-hq/kody-desktop` releases](https://github.com/kody-hq/kody-desktop/releases/latest)
+page. That releases page is the canonical install source. Share the unlisted
+shortcut [https://kody.codes/download](https://kody.codes/download) when you
+need one link: it redirects to the latest installer only when the visitor's
+platform and architecture can be detected and that installer is present on the
+latest release; otherwise it redirects to the latest release page. Do not
+publish demo builds from `kody-hq/kody` releases for installs. This keeps the
+update feed separate from the website's daily releases. Users do not need a
+GitHub token. Every architecture has its own update manifest so parallel jobs
+cannot overwrite another architecture's feed.
 
 Production apps check on launch and every five minutes, download automatically,
 and install on Quit. **Updates > Restart to update** quits and relaunches with
@@ -218,11 +271,40 @@ Closing a Mac window continues to keep the app and runner open. Update failures
 retry without interrupting the app. Development builds never check for updates.
 Updates do not downgrade or install prereleases.
 
-Run **Desktop release** manually on main after bumping the desktop package
-version and lockfile. The default `mac` scope builds Apple silicon and Intel Mac
-installers without requiring a Windows signing account. Choose `all` to add
-Windows and Linux later. Once those platforms have been published, future
-releases must keep choosing `all` so their update feeds stay available. Every
+**Desktop release** runs automatically when desktop, bundled CLI, shared code,
+dependency manifests, or the release workflow change on main. CI chooses the
+next patch version above the latest published release, or uses the desktop
+package version when it is higher. It updates the package and lockfile inside
+each build, without committing version bumps back to main. Every build uses the
+same version and source commit. Re-running an already published source skips
+publication. Obsolete queued runs also skip publication so older source cannot
+replace a newer build. Missing source history fails before signing. Matching
+drafts resume after a failed upload, while conflicting drafts reserve their
+version so the next run advances past them automatically.
+
+On macOS, electron-builder signs the app (`--dir`), then
+`packages/desktop/scripts/mac-notarize.cjs` notarizes it with `notarytool`,
+staples and validates the ticket, and electron-builder packages the DMG and zip
+from that stapled app (`--prepackaged`). Each Apple call retries only transient
+network failures (NSURLErrorDomain -1001, -1005, -1009, HTTP 5xx) six times over
+about ten minutes. Rejections and signature errors fail at once. A poll that
+times out after upload resumes the same submission ID instead of resubmitting,
+and a stapling retry never re-notarizes.
+`packages/desktop/scripts/release-retry.cjs` holds the shared classifier and
+backoff.
+
+The publish job runs even when a build fails. It uploads only assets the draft
+does not already have (matching SHA-256 digest), then publishes as latest only
+when every expected installer, blockmap, checksum, build-info file, and
+`latest*.yml` feed is present and each feed's version, sizes, and SHA-512 hashes
+match the uploaded installers. Otherwise it fails and leaves the draft. Re-run
+failed jobs, or dispatch again for the same source, and the credentials job
+skips any target whose assets are already complete on the matching draft.
+
+The default `auto` scope preserves the platforms in the published feed, starting
+with Apple silicon and Intel Mac installers. Run the workflow manually on main
+with `all` to add Windows and Linux after configuring their signing credentials.
+Subsequent automatic releases keep those platforms in the update feed. Every
 selected build must succeed before publishing. macOS builds require Developer ID
 signing, Apple's notarization service, and a valid stapled ticket. Windows
 builds require valid signatures on the application and installer. The final job
@@ -277,10 +359,10 @@ ID identity in Keychain without exporting its private key. Provide
 `APPLE_API_KEY` as the local `.p8` path, plus `APPLE_API_KEY_ID` and
 `APPLE_API_ISSUER`. CI still requires the protected certificate export above.
 
-The existing 0.1.0 demo predates the updater. Install the first production
-release manually once, subsequent releases update automatically. A real
-signed-version-to-signed-version update remains part of first-release
-acceptance.
+Installs that never received a signed auto-update build need one manual install
+from a published production release; after that, the updater handles subsequent
+releases. A real signed-version-to-signed-version update remains part of
+first-release acceptance.
 
 ### macOS app automation
 
@@ -308,11 +390,62 @@ have Kody.app send Apple Events instead, remove a CLI service with
 **This machine** resumed; the app runs the runner itself. See
 [macOS app control](../../docs/use/execution-contexts.md#macos-app-control).
 
+### Universal links
+
+On macOS, clicking a `https://kody.codes` link opens Kody Desktop when it is
+installed and the browser otherwise. The site serves the path allowlist at
+[`/.well-known/apple-app-site-association`](https://kody.codes/.well-known/apple-app-site-association)
+(`packages/worker/src/app/desktop-app-links.ts`). Account, org workspace,
+profile and package, onboarding, admin, and community listing pages open in the
+app. The homepage, docs, blog, pricing, legal pages, every sign-in or token
+flow, and raw files, assets, and images stay in the browser. A link that arrives
+on launch opens the first window at that page; a link that arrives while the app
+is running opens a new window so the current page keeps its input. Signed-out
+users get the normal sign-in flow. **Open in browser** in the address menu
+launches the default browser directly so the link does not return to the app.
+
+macOS only delivers links when the app was opened from another app (Mail,
+Messages, Notes, Slack) or from Safari on another site. Links clicked inside
+Chrome, Arc, Firefox, or a kody.codes page in Safari stay in the browser.
+Windows and Linux are not supported: Windows App Links need an MSIX or sparse
+package identity, and the NSIS installer has none.
+
+Associated Domains is a restricted entitlement, so a Developer ID build needs a
+matching provisioning profile or macOS kills it at launch. Release builds add
+the `applinks:kody.codes` entitlement
+(`assets/entitlements.mac.app-links.plist`) and embed the profile only when
+`KODY_MAC_PROVISIONING_PROFILE` points at one; without it builds are unchanged.
+To turn universal links on, the Apple Developer account holder for team
+`7A84LHNSXV` must:
+
+1. In Certificates, Identifiers & Profiles, register an App ID with the explicit
+   bundle ID `codes.kody.desktop` and enable **Associated Domains**.
+2. Create a **Developer ID** provisioning profile for that App ID using the same
+   Developer ID Application certificate as `DESKTOP_MAC_CERTIFICATE_BASE64`, and
+   download the `.provisionprofile`.
+3. Store it as the `desktop-release` environment secret
+   `DESKTOP_MAC_PROVISIONING_PROFILE_BASE64`:
+   `base64 -i Kody.provisionprofile | gh secret set DESKTOP_MAC_PROVISIONING_PROFILE_BASE64 --env desktop-release --repo kody-hq/kody`.
+
+The next release then embeds the profile, and release verification checks the
+entitlement. To verify on a Mac after installing that release:
+
+```sh
+codesign -d --entitlements - /Applications/Kody.app | grep -A2 associated-domains
+swcutil dl -d kody.codes   # Apple's CDN copy of the association file
+```
+
+Then click a `https://kody.codes/account` link in Notes or Messages; it should
+open Kody Desktop. `https://kody.codes/docs` should still open the browser.
+Apple's CDN caches the association file, so allowlist changes can take a day to
+reach devices.
+
 ### Contacts access
 
-Desktop 0.1.5 includes the Contacts entitlement and purpose string. Packages can
-use the built-in Contacts framework to resolve names, phone numbers, and email
-addresses. macOS still requires the user's Contacts consent, separately from
-Full Disk Access and Messages Automation. These permissions belong to the app's
-own runner, not an adopted CLI service or terminal daemon. Release verification
-checks the Contacts entitlement and purpose string on the signed app.
+Signed production builds include the Contacts entitlement and purpose string
+(desktop 0.1.5 or later). Packages can use the built-in Contacts framework to
+resolve names, phone numbers, and email addresses. macOS still requires the
+user's Contacts consent, separately from Full Disk Access and Messages
+Automation. These permissions belong to the app's own runner, not an adopted CLI
+service or terminal daemon. Release verification checks the Contacts entitlement
+and purpose string on the signed app.

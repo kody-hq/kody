@@ -219,7 +219,7 @@ export const inviteLinkCreateCapability = defineDomainCapability(
 						const role = args.role ?? 'member'
 						if (!isInviteLinkRole(role)) {
 							throw new McpCallerError(
-								'Invite links cannot grant the Owner role.',
+								'Invite links cannot grant the Owner or Admin role.',
 							)
 						}
 						teamIds = args.team_ids ?? []

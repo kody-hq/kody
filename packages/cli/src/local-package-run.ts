@@ -3,6 +3,12 @@
  * in local workerd against `--target prod|mock`.
  */
 
+import {
+	createEgressGateSource,
+	egressGateModuleName,
+	egressNeedsPrivateNetwork,
+	localExecuteEgressPolicy,
+} from './local-egress.js'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import { rmSync } from 'node:fs'
@@ -10,7 +16,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { request as httpRequest, type IncomingMessage } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { type Readable } from 'node:stream'
+import type { Readable } from 'node:stream'
 import { setTimeout as delay } from 'node:timers/promises'
 import {
 	assertTokenSafeApiUrl,
@@ -53,8 +59,8 @@ import {
 	type PackageLocalContext,
 } from './package-local-runtime-source.js'
 import { redact } from './redact.js'
-import { type KodyTarget } from './target.js'
-import { type ToolCallResult } from './tool-result.js'
+import type { KodyTarget } from './target.js'
+import type { ToolCallResult } from './tool-result.js'
 import { ensureWorkerdBinary } from './workerd-binary.js'
 
 export type LocalPackageRunInput = {
@@ -282,6 +288,11 @@ export async function runLocalPackageModule(
 			join(workDir, localWorkerModuleNames.runtimeFlatAlias),
 			createRuntimeFlatAliasSource(),
 		)
+		const egressPolicy = localExecuteEgressPolicy(input.allowPrivateNetwork)
+		await writeFile(
+			join(workDir, egressGateModuleName),
+			createEgressGateSource(),
+		)
 		const configPath = join(workDir, 'config.capnp')
 		await writeFile(
 			configPath,
@@ -289,7 +300,8 @@ export async function runLocalPackageModule(
 				bridgePort: bridge.port,
 				files,
 				packageModules,
-				allowPrivateNetwork: input.allowPrivateNetwork,
+				allowPrivateNetwork: egressNeedsPrivateNetwork(egressPolicy),
+				egress: { policy: egressPolicy, gateFile: egressGateModuleName },
 			}),
 		)
 

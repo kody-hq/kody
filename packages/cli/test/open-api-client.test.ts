@@ -182,6 +182,37 @@ test('whoamiWithApiToken uses tokens/current and optional /me', async () => {
 	assert.equal(identity.user?.email, 'me@example.com')
 })
 
+test('whoamiWithApiToken keeps org kind unset when /me only returns slug', async () => {
+	const fetchFn = (async (input: Parameters<typeof fetch>[0]) => {
+		const url = new URL(String(input))
+		if (url.pathname === '/v1/tokens/current') {
+			return new Response(
+				JSON.stringify({ id: 'tok_1', name: 'cli', scopes: ['account:read'] }),
+				{ status: 200, headers: { 'content-type': 'application/json' } },
+			)
+		}
+		if (url.pathname === '/v1/me') {
+			return new Response(
+				JSON.stringify({
+					user_id: 'u1',
+					email: 'me@example.com',
+					display_name: 'Me',
+					org: { slug: 'jane' },
+				}),
+				{ status: 200, headers: { 'content-type': 'application/json' } },
+			)
+		}
+		return new Response('nope', { status: 404 })
+	}) as typeof fetch
+
+	const identity = await whoamiWithApiToken({
+		token: 'tok',
+		apiUrl: 'https://api.kody.codes',
+		fetchFn,
+	})
+	assert.deepEqual(identity.org, { slug: 'jane' })
+})
+
 test('whoamiWithApiToken tolerates missing account:read on /me', async () => {
 	const fetchFn = (async (input: Parameters<typeof fetch>[0]) => {
 		const url = new URL(String(input))
@@ -536,5 +567,43 @@ test('openApiRequest keeps the status, error code, reason and request id of a se
 	assert.match(
 		line,
 		/^debug: POST https:\/\/api\.kody\.codes\/v1\/packages\/check -> HTTP 503, code internal_error, reason origin_unreachable, request id ray-42, /,
+	)
+})
+
+test('searchWithApiToken reports profile_grant without a mint-token hint', async () => {
+	const fetchFn = (async () =>
+		new Response(
+			JSON.stringify({
+				error: {
+					code: 'profile_grant',
+					message:
+						'Profile "helper" was not granted secret:use on credential "notes-api-key".',
+					details: {
+						required_permission: 'secret:use',
+						denial: 'profile_grant',
+					},
+				},
+			}),
+			{ status: 403, headers: { 'content-type': 'application/json' } },
+		)) as typeof fetch
+	await assert.rejects(
+		() =>
+			searchWithApiToken({
+				token: 'tok',
+				apiUrl: 'https://api.kody.codes',
+				query: 'x',
+				fetchFn,
+			}),
+		(error: unknown) => {
+			assert.ok(error instanceof OpenApiError)
+			assert.equal(error.status, 403)
+			assert.equal(error.code, 'profile_grant')
+			assert.match(
+				error.message,
+				/Kody returned profile_grant: Profile "helper"/,
+			)
+			assert.doesNotMatch(error.message, /cliCredentialBootstrap/)
+			return true
+		},
 	)
 })

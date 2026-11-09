@@ -1,6 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { beforeEach, expect, test, vi } from 'vitest'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { approvedCommitCache } from '#worker/package-capabilities/approved-commit-cache.ts'
 import {
 	resolveInternetVisibleApprovedCommit,
@@ -116,6 +116,7 @@ test('a failed capability check fails closed to the older approval', async () =>
 
 test('no approval and not internet-visible both resolve to null', async () => {
 	mockModule.getLatestPackageCapabilityApproval.mockResolvedValue(null)
+	mockModule.getEntitySourceById.mockResolvedValue(liveSource('commit-a'))
 	await expect(resolve(createSavedPackage('pkg-unapproved'))).resolves.toBe(
 		null,
 	)
@@ -126,7 +127,34 @@ test('no approval and not internet-visible both resolve to null', async () => {
 			isInternetVisible: false,
 		}),
 	).resolves.toBe(null)
-	expect(mockModule.getEntitySourceById).not.toHaveBeenCalled()
+	// Only the internet-visible app reads its source (alongside the approval).
+	expect(mockModule.getEntitySourceById).toHaveBeenCalledTimes(1)
+})
+
+test('a cold lookup reads the approval and the live source together', async () => {
+	let releaseApproval: (value: unknown) => void = () => {}
+	mockModule.getLatestPackageCapabilityApproval.mockReturnValue(
+		new Promise((resolve) => {
+			releaseApproval = resolve
+		}),
+	)
+	mockModule.getEntitySourceById.mockResolvedValue(liveSource('commit-a'))
+
+	const pending = resolve(createSavedPackage('pkg-parallel'))
+	await vi.waitFor(() =>
+		expect(mockModule.getEntitySourceById).toHaveBeenCalledTimes(1),
+	)
+	releaseApproval(approvalFor('commit-a'))
+	await expect(pending).resolves.toBe('commit-a')
+})
+
+test('a failed source read is ignored when there is no approval', async () => {
+	mockModule.getLatestPackageCapabilityApproval.mockResolvedValue(null)
+	mockModule.getEntitySourceById.mockRejectedValue(new Error('d1 down'))
+
+	await expect(resolve(createSavedPackage('pkg-no-approval'))).resolves.toBe(
+		null,
+	)
 })
 
 test('publish-time warm accepts a matching republish so the first request reads the cache', async () => {

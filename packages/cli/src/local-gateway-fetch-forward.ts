@@ -3,9 +3,10 @@
  * mock MSW path (buffered) or prod CapabilityProxy streaming hop.
  */
 
-import { type IncomingMessage, type ServerResponse } from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import {
 	callCapabilityProxyGatewayFetchStream,
+	gatewayFetchErrorHeaderName,
 	gatewayFetchHeadersHeaderName,
 	gatewayFetchMethodHeaderName,
 	gatewayFetchPackageIdHeaderName,
@@ -14,7 +15,7 @@ import {
 	type CapabilityProxyClientInput,
 } from './capability-proxy.js'
 import { readBodyBuffer, writeWebResponse } from './local-runtime-bridge.js'
-import { type MockFetchGateway } from './mock/mock-fetch-gateway.js'
+import type { MockFetchGateway } from './mock/mock-fetch-gateway.js'
 
 function headerValue(
 	headers: IncomingMessage['headers'],
@@ -47,7 +48,13 @@ export async function forwardLocalGatewayFetchStream(input: {
 							'X-Kody-Gateway-Url is required and must be a non-empty absolute URL.',
 					},
 				},
-				{ status: 400, headers: { 'Cache-Control': 'no-store' } },
+				{
+					status: 400,
+					headers: {
+						'Cache-Control': 'no-store',
+						[gatewayFetchErrorHeaderName]: 'invalid_request',
+					},
+				},
 			),
 		)
 		return
@@ -95,7 +102,13 @@ export async function forwardLocalGatewayFetchStream(input: {
 									'X-Kody-Gateway-Headers must be valid JSON: an object of header names to string values.',
 							},
 						},
-						{ status: 400, headers: { 'Cache-Control': 'no-store' } },
+						{
+							status: 400,
+							headers: {
+								'Cache-Control': 'no-store',
+								[gatewayFetchErrorHeaderName]: 'invalid_request',
+							},
+						},
 					),
 				)
 				return
@@ -179,7 +192,13 @@ export async function forwardLocalGatewayFetchStream(input: {
 								'X-Kody-Gateway-Headers must be valid JSON: an object of header names to string values.',
 						},
 					},
-					{ status: 400, headers: { 'Cache-Control': 'no-store' } },
+					{
+						status: 400,
+						headers: {
+							'Cache-Control': 'no-store',
+							[gatewayFetchErrorHeaderName]: 'invalid_request',
+						},
+					},
 				),
 			)
 			return

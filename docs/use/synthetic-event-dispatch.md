@@ -232,10 +232,10 @@ surface) for run records; the run record includes `synthetic: true` (and
   package; supply matching fields inside `params` when testing filter-dependent
   logic.
 - Admin-only delivery rules (for example `platform.feedback.submitted`,
-  `status.incident.opened`, `fleet.package_error_rate.elevated`,
-  `fleet.package_owner_error_spike`, `fleet.users_affected.elevated`,
-  `fleet.users_affected.resolved`, `fleet.entitlement.crossed`,
-  `auth.denial.burst`, `email.delivery.burst`, `user.created`, `user.deleted`,
+  `status.incident.opened`, `fleet.package_owner_error_spike`,
+  `fleet.users_affected.elevated`, `fleet.users_affected.resolved`,
+  `fleet.entitlement.crossed`, `auth.denial.burst`, `email.delivery.burst`,
+  `user.created`, `user.deleted`, `user.guest_claimed`,
   `user.email_verification.failed`, `user.email_verification.stalled`,
   `user.email_outbound.paused`, or `email.system-message.sent`) apply to
   **production** fan-out only; synthetic dispatch runs your handler directly for

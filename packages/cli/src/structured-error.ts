@@ -3,9 +3,9 @@
  * Stable `code`, optional `where` / `fix`, and which `target` produced it.
  */
 
-import { type KodyTarget } from './target.js'
+import type { KodyTarget } from './target.js'
 
-export type StructuredErrorCode =
+type StructuredErrorCode =
 	| 'not_implemented_in_mock'
 	| 'unmocked_request'
 	| 'unresolved_import'
@@ -57,9 +57,7 @@ export class StructuredCliError extends Error {
 	}
 }
 
-export function formatStructuredErrorMessage(
-	body: StructuredErrorBody,
-): string {
+function formatStructuredErrorMessage(body: StructuredErrorBody): string {
 	const lines = [`[${body.code}] ${body.message}`]
 	if (body.target) lines.push(`target: ${body.target}`)
 	if (body.where) lines.push(`where: ${body.where}`)

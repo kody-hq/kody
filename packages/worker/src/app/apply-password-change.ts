@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	type AppDatabase,
 	passwordResetsTable,
@@ -42,7 +42,8 @@ type ApplyPasswordChangeCredential =
 
 /**
  * Stamp a new password hash, revoke MCP grants around the stamp, and drop
- * outstanding reset tokens. Callers map the result onto HTTP + audit events.
+ * outstanding reset tokens and pending email changes. Callers map the result
+ * onto HTTP + audit events.
  *
  * Reset tokens stay until both revoke passes succeed so a retry remains
  * safe. `changedAtMs` is millisecond-precision so a freshly issued session
@@ -169,6 +170,13 @@ export async function applyPasswordChange(
 						clearedAfterStamp.oauthConnections,
 				}
 			: clearedBeforeStamp
+
+	// An email change started before the password change (possibly by whoever
+	// the change locks out) must not complete after it.
+	await input.d1
+		.prepare(`DELETE FROM pending_email_changes WHERE user_id = ?`)
+		.bind(input.userId)
+		.run()
 
 	// Reset tokens go last so every earlier step can be retried with the same
 	// token if it fails.

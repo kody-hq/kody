@@ -3,11 +3,13 @@ import { expect, test, vi } from 'vitest'
 import {
 	createIsolatedPublishWorkRunner,
 	createPublishSnapshotCheckWorkspace,
+	createPublishWorkTree,
 	loadStagedPublishWorkFiles,
+	runStagedPublishWorkStep,
 	stagePublishWorkFiles,
 	type PublishWorkRequest,
 } from './publish-work.ts'
-import { type EntitySourceRow } from './types.ts'
+import type { EntitySourceRow } from './types.ts'
 
 const userId = ownerIdFromStored('user-1')
 
@@ -54,7 +56,7 @@ test('publish work staging round-trips a tree larger than one KV value, binary b
 	const stagingKey = await stagePublishWorkFiles({
 		kv: kv as unknown as KVNamespace,
 		userId,
-		files,
+		tree: { files, kodyIgnoredDeclarationFiles: [] },
 	})
 	expect(stagingKey.startsWith('repo-checks-staging:v1:user-1:')).toBe(true)
 	const chunkPuts = kv.put.mock.calls.filter(([key]) =>
@@ -71,7 +73,7 @@ test('publish work staging round-trips a tree larger than one KV value, binary b
 			kv: kv as unknown as KVNamespace,
 			stagingKey,
 		}),
-	).resolves.toEqual(files)
+	).resolves.toEqual({ files, kodyIgnoredDeclarationFiles: [] })
 	kv.store.delete(`${stagingKey}:chunk:1`)
 	await expect(
 		loadStagedPublishWorkFiles({
@@ -135,7 +137,10 @@ test('every publish work step runs on its own fresh throwaway isolate', async ()
 	expect(runner?.isolated).toBe(true)
 	const stagingKey = await runner!.stage({
 		userId,
-		files: { 'package.json': '{}' },
+		tree: createPublishWorkTree({
+			files: { 'package.json': '{}' },
+			sourceRoot: '/',
+		}),
 	})
 	await runner!.run({
 		op: 'store-credential-needs',
@@ -163,7 +168,7 @@ test('every publish work step runs on its own fresh throwaway isolate', async ()
 	).toBeNull()
 })
 
-test('a compute-limit error lists the largest staged files runtime code does not import', async () => {
+test('a credential-step compute-limit error names large ignorable files, not the runtime graph', async () => {
 	const fake = createFakeNamespace(async () => {
 		throw new Error(
 			"Durable Object's isolate exceeded its memory limit and was reset.",
@@ -175,14 +180,18 @@ test('a compute-limit error lists the largest staged files runtime code does not
 	} as unknown as Env)!
 	const stagingKey = await runner.stage({
 		userId,
-		files: {
-			'package.json': JSON.stringify({
-				name: '@example/demo',
-				exports: { '.': './src/index.ts' },
-			}),
-			'src/index.ts': 'export default async () => null',
-			'scripts/generate.ts': 'x'.repeat(4096),
-		},
+		tree: createPublishWorkTree({
+			files: {
+				'package.json': JSON.stringify({
+					name: '@example/demo',
+					exports: { '.': './src/index.ts' },
+				}),
+				'src/index.ts': 'export default async () => null',
+				'scripts/generate.ts': 'x'.repeat(40 * 1024),
+				'tsconfig.json': '{}',
+			},
+			sourceRoot: '/',
+		}),
 	})
 	const error = await runner
 		.run({
@@ -196,6 +205,10 @@ test('a compute-limit error lists the largest staged files runtime code does not
 	expect((error as Error).message).toContain('the credential stamp scan')
 	expect((error as Error).message).toContain('`scripts/generate.ts`')
 	expect((error as Error).message).toContain('`.kodyignore`')
+	// The credential scan reads source text and never bundles, so the
+	// runtime import graph is not what it ran out on.
+	expect((error as Error).message).not.toContain('Runtime code reachable')
+	expect((error as Error).message).not.toContain('tsconfig.json')
 })
 
 test('a step that still hits the CPU limit on its own fails with a compute-limit message naming the step', async () => {
@@ -265,4 +278,147 @@ test('a step that still hits the CPU limit on its own fails with a compute-limit
 			input: { source, nextCommit: 'commit-2', baseUrl: 'https://kody.test' },
 		}),
 	).rejects.toBe(deployReset)
+})
+
+function stagedBytes(kv: ReturnType<typeof createFakeKv>) {
+	return [...kv.store.entries()]
+		.filter(([key]) => key.includes(':chunk:'))
+		.reduce((total, [, value]) => total + (value as ArrayBuffer).byteLength, 0)
+}
+
+test('.kodyignore drops ignored files before staging, so they never count toward staged bytes', async () => {
+	const kept = {
+		'package.json': '{"name":"@example/demo"}',
+		'.kodyignore': 'fixtures/\n*.d.ts\n',
+		'src/index.ts': 'export default async () => null\n',
+	}
+	const tree = createPublishWorkTree({
+		files: {
+			...kept,
+			'fixtures/huge.json': 'x'.repeat(8 * 1024 * 1024),
+			'types/generated.d.ts': 'export {}\n',
+		},
+		sourceRoot: '/',
+	})
+	expect(tree).toEqual({
+		files: kept,
+		kodyIgnoredDeclarationFiles: ['types/generated.d.ts'],
+	})
+
+	const kv = createFakeKv()
+	const stagingKey = await stagePublishWorkFiles({
+		kv: kv as unknown as KVNamespace,
+		userId,
+		tree,
+	})
+	expect(stagedBytes(kv)).toBe(
+		new TextEncoder().encode(JSON.stringify(kept)).byteLength,
+	)
+	await expect(
+		loadStagedPublishWorkFiles({
+			kv: kv as unknown as KVNamespace,
+			stagingKey,
+		}),
+	).resolves.toEqual(tree)
+})
+
+test('without .kodyignore matches the staged tree is the snapshot unchanged', async () => {
+	const files = {
+		'package.json': '{"name":"@example/demo"}',
+		'src/index.ts': 'export default async () => null\n',
+	}
+	expect(createPublishWorkTree({ files, sourceRoot: '/' }).files).toBe(files)
+	const outsideRoot = {
+		'README.md': 'repo readme\n',
+		'packages/app/package.json': '{"name":"@example/app"}',
+		'packages/app/.kodyignore': 'README.md\n',
+		'packages/app/README.md': 'ignored\n',
+	}
+	expect(
+		createPublishWorkTree({ files: outsideRoot, sourceRoot: 'packages/app' })
+			.files,
+	).toEqual({
+		'README.md': 'repo readme\n',
+		'packages/app/package.json': '{"name":"@example/app"}',
+		'packages/app/.kodyignore': 'README.md\n',
+	})
+})
+
+test('a staged step records the staging step before it loads the tree', async () => {
+	const steps: Array<string> = []
+	await expect(
+		runStagedPublishWorkStep({
+			env: { BUNDLE_ARTIFACTS_KV: createFakeKv() } as unknown as Env,
+			request: {
+				op: 'checks',
+				stagingKey: 'repo-checks-staging:v1:user-1:missing',
+				userId,
+				input: {
+					mode: 'session',
+					manifestPath: 'package.json',
+					sourceRoot: '/',
+					baseUrl: '/',
+				},
+			},
+			onStep: async (step) => {
+				steps.push(step)
+			},
+		}),
+	).rejects.toThrow(/staging data expired or is missing/)
+	expect(steps).toEqual(['staging'])
+})
+
+test('a checks reset reads the recorded step through a new stub, not the broken one', async () => {
+	const kv = createFakeKv()
+	const stubsById = new Map<string, number>()
+	const namespace = {
+		idFromName: (name: string) => ({ name }),
+		get: (id: { name: string }) => {
+			const seen = stubsById.get(id.name) ?? 0
+			stubsById.set(id.name, seen + 1)
+			const broken = seen === 0
+			return {
+				runIsolatedPublishWork: async () => {
+					throw new Error(
+						'Durable Object exceeded its CPU time limit and was reset.',
+					)
+				},
+				// A reset stub stays broken; only a new stub reaches the restarted
+				// instance and the step it recorded before the reset.
+				takeLastCheckStep: async () => {
+					if (broken) throw new Error('This stub is broken.')
+					return 'credentials'
+				},
+			}
+		},
+	}
+	const runner = createIsolatedPublishWorkRunner({
+		REPO_SESSION: namespace,
+		BUNDLE_ARTIFACTS_KV: kv,
+	} as unknown as Env)
+	const stagingKey = await runner!.stage({
+		userId,
+		tree: createPublishWorkTree({
+			files: { 'package.json': '{}' },
+			sourceRoot: '/',
+		}),
+	})
+	const result = (await runner!.run({
+		op: 'checks',
+		stagingKey,
+		userId,
+		input: {
+			mode: 'authoring',
+			manifestPath: 'package.json',
+			sourceRoot: '/',
+			baseUrl: 'https://kody.test',
+		},
+	} as never)) as {
+		ok: boolean
+		results: Array<{ kind: string; message: string }>
+	}
+	expect(result.ok).toBe(false)
+	expect(result.results[0]?.kind).toBe('credentials')
+	expect(result.results[0]?.message).toContain('credential stamp scan')
+	expect(result.results[0]?.message).not.toContain('staging the package files')
 })

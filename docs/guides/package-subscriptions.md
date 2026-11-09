@@ -21,7 +21,7 @@ topics. The saved package remains the top-level entity; subscriptions are nested
 manifest metadata and package runtime handlers.
 
 Watch:
-[Kody subscriptions: email and Discord events wake your agents](https://www.youtube.com/watch?v=8I6kYYiaqis).
+[Kody subscriptions: email and Discord events wake your agents](https://www.youtube.com/watch?v=8Tx8YpLh2y8).
 
 ## Manifest shape
 
@@ -112,26 +112,19 @@ publish to verify handler wiring without waiting for production fan-out.
 Package reuse is a static `import … from 'kody:@scope/pkg/export'` (declare
 `kody.dependencies`). See [Package reuse](../use/packages.md#package-reuse).
 
-Reuse the scoped `name` from `packageSubscriptionsList` as `kody_id`.
+Look up the package with the scoped `@owner/leaf` name from
+`packageSubscriptionsList` (or `package_id` when the name is not known). See
+[Synthetic event dispatch](../use/synthetic-event-dispatch.md) for the fields.
 
 ```json
 {
-	"kody_id": "@owner/email-automation",
+	"package_id": "550e8400-e29b-41d4-a716-446655440000",
 	"topic": "email.message.received",
 	"params": {}
 }
 ```
 
-For stored inbound mail, replay with `email_message_id` instead of `params`:
-
-```json
-{
-	"kody_id": "@owner/email-automation",
-	"topic": "email.message.received",
-	"email_message_id": "00000000000000000000000000000001"
-}
-```
-
+For stored inbound mail, replay with `email_message_id` instead of `params`.
 Pass exactly one of `params` or `email_message_id`. There is no caller
 `idempotency_key` — the platform generates internal idempotency keys.
 
@@ -421,15 +414,15 @@ agent, or otherwise react when something in the user's account fails.
 
 When host-side OAuth token refresh fails with reconnectable caller state —
 missing refresh token on a sign-in that expires, provider HTTP 4xx /
-`invalid_grant`, missing secrets, host-approval gaps, or invalid connection
-config — Kody dispatches `integration.auth.failed` to packages saved by that
-same user that declare the topic. Every classified attempt emits. The platform
-does not coalesce repeats; notifier packages decide how often to ping, typically
-by pairing this topic with `integration.auth.succeeded` and storing last-known
-health in package storage. Provider HTTP 5xx and missing connections do not
-emit. Neither does a non-expiring grant (no refresh token and no access-token
-expiry at connect): refresh returns `refreshed: false` and emits neither auth
-topic.
+`invalid_grant` (except 429), missing secrets, host-approval gaps, or invalid
+connection config — Kody dispatches `integration.auth.failed` to packages saved
+by that same user that declare the topic. Every classified reconnectable attempt
+emits. The platform does not coalesce repeats; notifier packages decide how
+often to ping, typically by pairing this topic with `integration.auth.succeeded`
+and storing last-known health in package storage. Provider HTTP 5xx, provider
+HTTP 429 (rate limit; not a dead grant), and missing connections do not emit.
+Neither does a non-expiring grant (no refresh token and no access-token expiry
+at connect): refresh returns `refreshed: false` and emits neither auth topic.
 
 Delivery is best-effort after the refresh caller error is classified — there is
 no Queue / DLQ for this topic. Failures during subscriber discovery or

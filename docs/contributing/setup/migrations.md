@@ -42,22 +42,26 @@ in [Seed test account](./seeding.md).
   after the repair lands on `main` if you want a tidy tree.
 - `npm run migrations:check` (also run by `npm run validate`, and by the
   pre-commit hook when the staged diff is not docs-only) enforces the naming
-  rules above against the checked-in, append-only `tools/migration-ledger.json`.
-  It also flags `NNNN-kebab.sql` references in `docs/` and
+  rules above against the checked-in, append-only `tools/migration-ledger/`
+  directory: one `<migration>.sql.sha256` file per migration holding its SHA-256
+  digest, so concurrent migration PRs add separate files instead of conflicting
+  in one shared list. It also flags `NNNN-kebab.sql` references in `docs/` and
   `packages/worker/src|universal` (including `.tsx`) that do not name a file in
   `packages/worker/migrations` (or the jobs/audit migration directories), so a
   renumber cannot leave a dangling docs or test name. Instructional placeholders
   such as `0076-my-change.sql` are allowed. Decision records and dated audits
-  are exempt because they are point-in-time. When adding a migration, append its
-  filename and SHA-256 digest to the ledger; never edit or remove an existing
-  ledger entry. The check compares historical entries and SQL contents with a
-  pre-change Git commit: CI supplies the PR base or push-before SHA, local
-  branches use their `main` merge base, and main/detached checkouts fall back to
-  the first parent. `HEAD` itself is never trusted. CI fetches complete history;
-  local and cloud checkouts must retain or fetch `origin/main`. If no pre-change
-  commit is available, validation fails safely once migrations exist beyond the
-  frozen bootstrap baseline. Migration SQL is hashed with canonical LF line
-  endings, and `.gitattributes` enforces LF checkouts.
+  are exempt because they are point-in-time. When adding a migration, add
+  `tools/migration-ledger/<migration>.sql.sha256` (the check prints the path and
+  digest when it is missing); never edit or remove an existing ledger entry.
+  Renumbering a branch-only migration renames both files. The check compares
+  historical entries and SQL contents with a pre-change Git commit: CI supplies
+  the PR base or push-before SHA, local branches use their `main` merge base,
+  and main/detached checkouts fall back to the first parent. `HEAD` itself is
+  never trusted. CI fetches complete history; local and cloud checkouts must
+  retain or fetch `origin/main`. If no pre-change commit is available,
+  validation fails safely once migrations exist beyond the frozen bootstrap
+  baseline. Migration SQL is hashed with canonical LF line endings, and
+  `.gitattributes` enforces LF checkouts.
 - Duplicate prefixes are always rejected. The 2026-08-04 migration-history
   squash collapsed the pre-launch history into `0001-squashed-init.sql` (full
   schema plus migration-seeded platform rows); the pre-squash files remain in

@@ -8,6 +8,7 @@ No login required.
 npm run control-kody -- request GET / --skip-login --contains 'Kody'
 npm run control-kody -- request GET /pricing --skip-login --contains 'Pricing'
 npm run control-kody -- request GET /docs --skip-login
+npm run control-kody -- request GET /download 302 --skip-login --contains 'kody-hq/kody-desktop'
 npm run control-kody -- health --origin https://kody.codes
 ```
 
@@ -16,5 +17,7 @@ npm run control-kody -- health --origin https://kody.codes
 - Core: `/`, `/pricing`, `/docs`, `/docs/$slug`, `/blog`, `/support`, `/about`,
   `/brand-guide`, `/contact`, `/privacy`, `/terms`, `/faq`, `/discord`
 - Feeds: `/llms.txt`, `/sitemap.xml`, `/robots.txt`, `/guides.json`
+- Unlisted desktop install shortcut: `/download` (302 to `kody-hq/kody-desktop`
+  latest installer or releases page; noindex)
 - Compare / use-cases / features pages under `/compare`, `/use-cases`,
   `/features`, `/for`, `/with`

@@ -4,13 +4,13 @@ import { expect, test } from 'vitest'
 import {
 	assertBrowseLandedOnTarget,
 	browseTargetUrl,
-	defaultBrowsePath,
 	formatBrowseReport,
 	normalizeBrowsePath,
 	normalizeScreenshotPath,
 	openBrowseSession,
 	playwrightCookiesFromHeader,
 	type BrowseChromium,
+	parseBrowseColorScheme,
 } from './browse.ts'
 
 test('playwrightCookiesFromHeader maps Cookie header for https preview origin', () => {
@@ -58,7 +58,7 @@ test('playwrightCookiesFromHeader uses insecure cookies for localhost', () => {
 })
 
 test('normalizeBrowsePath rejects full URLs, protocol-relative paths, and backslashes', () => {
-	expect(normalizeBrowsePath('')).toBe(defaultBrowsePath)
+	expect(normalizeBrowsePath('')).toBe('/account')
 	expect(normalizeBrowsePath('  /account/packages  ')).toBe('/account/packages')
 	expect(() => normalizeBrowsePath('account')).toThrow(/same-origin path/)
 	expect(() =>
@@ -229,6 +229,49 @@ test('openBrowseSession writes a screenshot and closes headless without closeAft
 	expect(formatBrowseReport(report)).toContain(`screenshot ${screenshotPath}`)
 })
 
+test('openBrowseSession closes a headed screenshot run without closeAfterMs', async () => {
+	const closed: Array<string> = []
+	const page = {
+		goto: async () => {},
+		url: () => 'https://kody-pr-9.example/@user/pkg/approve-capabilities',
+		waitForLoadState: async () => {},
+		emulateMedia: async () => {},
+		reload: async () => {},
+		screenshot: async () => {},
+		on: () => {},
+	}
+	const browser = {
+		newContext: async () => ({
+			addCookies: async () => {},
+			newPage: async () => page,
+			close: async () => {
+				closed.push('context')
+			},
+		}),
+		close: async () => {
+			closed.push('browser')
+		},
+		on: () => {},
+		isConnected: () => true,
+	}
+	const report = await openBrowseSession({
+		origin: 'https://kody-pr-9.example',
+		path: '/@user/pkg/approve-capabilities',
+		cookieHeader: 'kody_session=seed',
+		headed: true,
+		screenshotPath: path.join(
+			tmpdir(),
+			`control-kody-headed-${Date.now()}.png`,
+		),
+		colorSchemes: ['light', 'dark'],
+		chromium: {
+			launch: async () => browser as never,
+		},
+	})
+	expect(closed).toEqual(['context', 'browser'])
+	expect(report.screenshotPaths).toHaveLength(2)
+})
+
 test('openBrowseSession rejects a login redirect before screenshot', async () => {
 	const screenshotCalls: Array<unknown> = []
 	const page = {
@@ -369,4 +412,78 @@ test('openBrowseSession refuses an empty cookie header', async () => {
 			},
 		}),
 	).rejects.toThrow(/session cookie/)
+})
+
+test('openBrowseSession --color-scheme both writes a light and a dark screenshot', async () => {
+	const events: Array<string> = []
+	const contextOptions: Array<unknown> = []
+	const page = {
+		goto: async () => {},
+		url: () => 'https://kody-pr-9.example/@acme/-/grants',
+		waitForLoadState: async () => {},
+		emulateMedia: async (options: { colorScheme: string }) => {
+			events.push(`emulate ${options.colorScheme}`)
+		},
+		reload: async () => {
+			events.push('reload')
+		},
+		screenshot: async (options: { path: string }) => {
+			events.push(`shot ${path.basename(options.path)}`)
+		},
+		on: () => {},
+	}
+	const context = {
+		addCookies: async () => {},
+		newPage: async () => page,
+		close: async () => {},
+	}
+	const browser = {
+		newContext: async (options: unknown) => {
+			contextOptions.push(options)
+			return context
+		},
+		close: async () => {},
+		on: () => {},
+		isConnected: () => true,
+	}
+	const screenshotPath = path.join(tmpdir(), `grants-${Date.now()}.png`)
+	const report = await openBrowseSession({
+		origin: 'https://kody-pr-9.example',
+		path: '/@acme/-/grants',
+		cookieHeader: 'kody_session=seed',
+		headed: false,
+		screenshotPath,
+		colorSchemes: parseBrowseColorScheme('both'),
+		chromium: { launch: async () => browser as never },
+	})
+	const light = screenshotPath.replace(/\.png$/, '-light.png')
+	const dark = screenshotPath.replace(/\.png$/, '-dark.png')
+	expect(contextOptions).toEqual([{ colorScheme: 'light' }])
+	expect(events).toEqual([
+		`shot ${path.basename(light)}`,
+		'emulate dark',
+		'reload',
+		`shot ${path.basename(dark)}`,
+	])
+	expect(report.screenshotPaths).toEqual([light, dark])
+	expect(formatBrowseReport(report)).toContain(`screenshot ${dark}`)
+})
+
+test('parseBrowseColorScheme accepts light, dark, both and rejects the rest', async () => {
+	expect(parseBrowseColorScheme('dark')).toEqual(['dark'])
+	expect(parseBrowseColorScheme('both')).toEqual(['light', 'dark'])
+	expect(() => parseBrowseColorScheme('sepia')).toThrow(/light, dark, or both/)
+	await expect(
+		openBrowseSession({
+			origin: 'http://localhost:3742',
+			path: '/account',
+			cookieHeader: 'kody_session=seed',
+			colorSchemes: ['light', 'dark'],
+			chromium: {
+				launch: async () => {
+					throw new Error('should not launch')
+				},
+			},
+		}),
+	).rejects.toThrow(/requires --screenshot/)
 })

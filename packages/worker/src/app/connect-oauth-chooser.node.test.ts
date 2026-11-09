@@ -5,6 +5,7 @@ import { applyAllMigrations as applyRepositoryMigrations } from '#worker/test-su
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { upsertPlatformOauthApp } from '#worker/integrations/platform-apps.ts'
 import {
+	getJoinedIntegration,
 	upsertIntegration,
 	upsertPlatformIntegration,
 } from '#worker/integrations/service.ts'
@@ -100,6 +101,23 @@ test('connect chooser includes saved connections and hides unused built-ins', as
 		href: '/connect/oauth?provider=github',
 		kind: 'connection',
 	})
+
+	const spotify = await getJoinedIntegration({
+		env,
+		userId: ownerIdFromStored('user-chooser'),
+		name: 'spotify-home',
+	})
+	const grantedOnly = await loadConnectOauthChooser({
+		env,
+		userId: ownerIdFromStored('user-chooser'),
+		listScope: {
+			kind: 'granted',
+			ids: new Set([spotify?.connection.credentialId ?? '']),
+		},
+	})
+	expect(grantedOnly.options.map((option) => option.id)).toEqual([
+		'connection:spotify-home',
+	])
 
 	const publish = (app: Parameters<typeof upsertPlatformOauthApp>[0]['app']) =>
 		upsertPlatformOauthApp({ db: env.APP_DB, env: platformEnv, app })

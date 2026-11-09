@@ -20,6 +20,8 @@ import { persistPublishedSourceSnapshot } from './published-runtime-artifacts.ts
 import { ensureSecretBucketsTestSchema } from '#worker/secrets-test-schema.ts'
 import { ensureSoftDeleteTestColumns } from '#worker/soft-delete/test-schema.ts'
 import { ensureUsageRollupsTestSchema } from '#worker/usage/test-schema.ts'
+import { communityForksTableSql } from '#worker/community/community-forks-test-schema.ts'
+import { entitySourcesTableSql } from '#worker/repo/entity-sources-test-schema.ts'
 
 async function runSql(sql: string, ...values: Array<unknown>) {
 	await env.APP_DB.prepare(sql)
@@ -30,19 +32,7 @@ async function runSql(sql: string, ...values: Array<unknown>) {
 async function ensureSecretAuthorityTestSchema() {
 	await ensureEntitlementTestSchema(env.APP_DB)
 	await ensureOrgsTestSchema(env.APP_DB)
-	await runSql(`CREATE TABLE IF NOT EXISTS entity_sources (
-		id TEXT PRIMARY KEY,
-		user_id TEXT NOT NULL,
-		entity_kind TEXT NOT NULL,
-		entity_id TEXT NOT NULL,
-		repo_id TEXT NOT NULL,
-		published_commit TEXT,
-		indexed_commit TEXT,
-		manifest_path TEXT NOT NULL DEFAULT 'package.json',
-		source_root TEXT NOT NULL DEFAULT '/',
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL
-	)`)
+	await runSql(entitySourcesTableSql)
 	await runSql(`CREATE TABLE IF NOT EXISTS saved_packages (
 		id TEXT PRIMARY KEY NOT NULL,
 		user_id TEXT NOT NULL,
@@ -84,21 +74,7 @@ async function ensureSecretAuthorityTestSchema() {
 	// Shared helper mirrors migrations (including secret_entries.kind); do not
 	// hand-copy the table DDL here (#3523).
 	await ensureSecretBucketsTestSchema(env.APP_DB)
-	await runSql(`CREATE TABLE IF NOT EXISTS community_forks (
-		id TEXT PRIMARY KEY NOT NULL,
-		listing_id TEXT, upstream_owner_id TEXT, upstream_package_id TEXT,
-		forker_user_id TEXT NOT NULL,
-		origin_commit TEXT NOT NULL,
-		forked_package_id TEXT NOT NULL,
-		forked_source_id TEXT NOT NULL,
-		target_kody_id TEXT NOT NULL,
-		listing_name TEXT,
-		listing_kody_id TEXT,
-		adopted_at TEXT,
-		adoption_note TEXT,
-		actor TEXT,
-		created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
-	)`)
+	await runSql(communityForksTableSql)
 	await ensureSoftDeleteTestColumns(env.APP_DB)
 }
 

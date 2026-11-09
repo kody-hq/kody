@@ -12,6 +12,7 @@ import { homedir, tmpdir, userInfo } from 'node:os'
 import { dirname, join, sep } from 'node:path'
 import { killProcessTree, windowsCommandLine } from '../process-tree.js'
 import { contextDir } from './keystore.js'
+import { managedEnvComment, unitWithoutEnv } from './service-env.js'
 
 /**
  * `kody daemon install`: run one execution context's daemon as a per-user
@@ -51,16 +52,16 @@ export function isServiceManager(value: unknown): value is ServiceManager {
 export const unsupportedPlatformMessage =
 	'Running kody daemon as a background service is supported on Linux (systemd), macOS (launchd), and Windows (Task Scheduler). Keep `kody daemon` running in a terminal on this machine instead.'
 
-export function serviceName(ecid: string) {
+function serviceName(ecid: string) {
 	return `kody-daemon-${ecid}`
 }
 
-export function launchdLabel(ecid: string) {
+function launchdLabel(ecid: string) {
 	return `codes.kody.daemon.${ecid}`
 }
 
 /** The task's full Task Scheduler name, in a `\\Kody\\` folder of its own. */
-export function scheduledTaskName(ecid: string) {
+function scheduledTaskName(ecid: string) {
 	return `\\Kody\\${serviceName(ecid)}`
 }
 
@@ -70,6 +71,8 @@ export type ServicePaths = {
 	logPath: string
 	statePath: string
 	stoppedPath: string
+	/** Written by `kody daemon stop`, removed by start/restart/install. */
+	stopRequestedPath: string
 	workingDir: string
 }
 
@@ -104,6 +107,7 @@ export function servicePaths(input: {
 		logPath: join(dir, 'daemon.log'),
 		statePath: join(dir, 'daemon.json'),
 		stoppedPath: join(dir, 'stopped.json'),
+		stopRequestedPath: join(dir, 'stop-requested.json'),
 		workingDir: dir,
 	}
 }
@@ -151,6 +155,10 @@ export type UnitInput = {
 	maxConcurrent?: number
 	env?: NodeJS.ProcessEnv
 	platform?: NodeJS.Platform
+	/** `kody daemon env` variables plus hand-added ones kept from the old file. */
+	extraEnv?: Record<string, string>
+	/** Keys set with `kody daemon env`, recorded in the file. */
+	managedEnvKeys?: Array<string>
 }
 
 function daemonArgs(input: UnitInput) {
@@ -168,10 +176,7 @@ function daemonArgs(input: UnitInput) {
 }
 
 /** Services do not see the login shell's PATH; give them a fixed one. */
-export function servicePath(input: {
-	node: string
-	platform?: NodeJS.Platform
-}) {
+function servicePath(input: { node: string; platform?: NodeJS.Platform }) {
 	const platform = input.platform ?? process.platform
 	const dirs = [
 		dirname(input.node),
@@ -187,6 +192,14 @@ export function servicePath(input: {
 
 /** Variables the service passes through (paths only, never secrets). */
 function serviceEnvironment(input: UnitInput) {
+	const base = kodyServiceEnvironment(input)
+	const extra = Object.entries(input.extraEnv ?? {}).filter(
+		([key]) => !(key in base),
+	)
+	return { ...base, ...Object.fromEntries(extra) }
+}
+
+function kodyServiceEnvironment(input: UnitInput): Record<string, string> {
 	const env = input.env ?? process.env
 	// A logon task already runs in the user's own environment, PATH included.
 	if (input.paths.manager === 'taskscheduler') {
@@ -214,10 +227,16 @@ function systemdPath(value: string) {
 	return value.replace(/[\n\r]/g, '').replace(/%/g, '%%')
 }
 
+function envCommentLines(input: UnitInput, before: string, after = '') {
+	const comment = managedEnvComment(input.managedEnvKeys ?? [])
+	return comment ? [`${before}${comment}${after}`] : []
+}
+
 export function systemdUnit(input: UnitInput) {
 	const env = serviceEnvironment(input)
 	return [
 		'# Written by `kody daemon install`. Re-run it to repair; remove with `kody daemon uninstall`.',
+		...envCommentLines(input, '# '),
 		'[Unit]',
 		`Description=Kody execution context ${input.contextName.replace(/[\n\r]/g, ' ')} (${input.ecid})`,
 		'Documentation=https://kody.codes/docs/use/execution-contexts',
@@ -259,7 +278,9 @@ export function launchdPlist(input: UnitInput) {
 	return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- Written by \`kody daemon install\`. Re-run it to repair; remove with \`kody daemon uninstall\`. -->
-<plist version="1.0">
+${envCommentLines(input, '<!-- ', ' -->')
+	.map((line) => `${line}\n`)
+	.join('')}<plist version="1.0">
 <dict>
 	<key>Label</key>
 	<string>${xml(launchdLabel(input.ecid))}</string>
@@ -317,6 +338,7 @@ export function taskSchedulerScript(input: UnitInput) {
 	return [
 		'\ufeff# Written by `kody daemon install`. Re-run it to repair; remove with `kody daemon uninstall`.',
 		`# Kody execution context ${input.contextName.replace(/[\n\r]/g, ' ')} (${input.ecid})`,
+		...envCommentLines(input, '# '),
 		...Object.entries(env).map(
 			([key, value]) => `$env:${key} = ${powershellQuote(value)}`,
 		),
@@ -439,7 +461,7 @@ export type CommandRunner = (
 	args: Array<string>,
 ) => { ok: boolean; stdout: string; stderr: string }
 
-export const runCommand: CommandRunner = (command, args) => {
+const runCommand: CommandRunner = (command, args) => {
 	try {
 		const stdout = execFileSync(command, args, {
 			encoding: 'utf8',
@@ -477,7 +499,7 @@ export type ServiceRuntimeState = {
 	startedAt: string
 }
 
-export type StoppedState = { reason: string; at: string }
+type StoppedState = { reason: string; at: string }
 
 function readJson<T>(path: string): T | null {
 	try {
@@ -492,7 +514,7 @@ export function writeJson(path: string, value: unknown) {
 	writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 })
 }
 
-export type ServiceProblem = {
+type ServiceProblem = {
 	code:
 		| 'unsupported-platform'
 		| 'running-as-root'
@@ -526,10 +548,12 @@ export type ServiceStatus = {
 	unitPath: string | null
 	logPath: string | null
 	stopped: StoppedState | null
+	/** Not running because `kody daemon stop` asked (not a crash). */
+	stopRequested: { at: string } | null
 	problems: Array<ServiceProblem>
 }
 
-export function lingerCommand(user = userInfo().username) {
+function lingerCommand(user = userInfo().username) {
 	return `sudo loginctl enable-linger ${user}`
 }
 
@@ -630,6 +654,8 @@ export function serviceStatus(input: {
 	contextName?: string
 	cliVersion: string
 	expectedUnit?: string | null
+	/** Service env keys the outdated check ignores (`kody daemon env`, hand-added). */
+	ignoreEnvKeys?: Array<string>
 	keyWrap?: 'keyring' | 'passphrase' | 'file' | null
 	run?: CommandRunner
 	platform?: NodeJS.Platform
@@ -664,6 +690,7 @@ export function serviceStatus(input: {
 		unitPath: null,
 		logPath: null,
 		stopped: null,
+		stopRequested: null,
 		problems: [],
 	}
 	if (!manager) {
@@ -745,7 +772,13 @@ export function serviceStatus(input: {
 			fix: 'npm install -g @kodycodes/cli && kody daemon install',
 		})
 	}
-	if (input.expectedUnit && input.expectedUnit !== unitText) {
+	const ignoreEnvKeys = input.ignoreEnvKeys ?? []
+	if (
+		input.expectedUnit &&
+		(unitText === null ||
+			unitWithoutEnv(input.expectedUnit, ignoreEnvKeys) !==
+				unitWithoutEnv(unitText, ignoreEnvKeys))
+	) {
 		base.problems.push({
 			code: 'unit-outdated',
 			message: `The service file differs from what this kody ${input.cliVersion} writes.`,
@@ -804,6 +837,9 @@ export function serviceStatus(input: {
 		})
 	}
 	if (!state.running && !base.stopped) {
+		base.stopRequested = readJson<{ at: string }>(paths.stopRequestedPath)
+	}
+	if (!state.running && !base.stopped && !base.stopRequested) {
 		base.problems.push({
 			code: 'not-running',
 			message: 'The service is not running.',
@@ -845,7 +881,9 @@ export function formatServiceStatus(
 						? `running${status.pid ? ` (pid ${status.pid})` : ''}${status.runningVersion ? `, kody ${status.runningVersion}` : ''}`
 						: status.stopped
 							? 'stopped for good'
-							: 'not running'
+							: status.stopRequested
+								? `stopped (kody daemon stop, ${status.stopRequested.at}); start it with: kody daemon start`
+								: 'not running (crashed or failed to start)'
 			}`,
 		)
 		if (status.installed) {
@@ -891,6 +929,7 @@ export function installService(input: {
 	mkdirSync(input.paths.workingDir, { recursive: true, mode: 0o700 })
 	if (changed) writeFileSync(input.paths.unitPath, input.unit, { mode: 0o644 })
 	rmSync(input.paths.stoppedPath, { force: true })
+	rmSync(input.paths.stopRequestedPath, { force: true })
 	const must = (command: string, args: Array<string>, what: string) => {
 		const result = run(command, args)
 		if (!result.ok) {

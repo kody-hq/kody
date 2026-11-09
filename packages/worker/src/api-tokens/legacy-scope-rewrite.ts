@@ -11,13 +11,14 @@
  * The 0090 SQL header also names a companion
  * `tools/teams-migration/rewrite-api-token-scopes.ts`. That tool was deleted
  * (#3365) and the applied migration's bytes are immutable under
- * `tools/migration-ledger.json`, so this module and the SQL in 0090 are the
+ * `tools/migration-ledger/`, so this module and the SQL in 0090 are the
  * only copies of the map. `jobs:write` here no longer expands to `job:delete`
  * (`jobDelete` is gone, #3422). Applied 0090 rows stay as written.
  */
 import {
 	isOrgPermission,
 	type OrgPermission,
+	withoutRetiredOrgPermissions,
 } from '@kody-internal/shared/org-permissions.ts'
 
 /**
@@ -165,17 +166,11 @@ export const legacyApiTokenScopeMap = {
 	'repos:read': [...reposRead],
 	'repos:write': [...reposRead, 'package:write'],
 	'jobs:read': [...jobsRead],
-	'jobs:write': [...jobsRead, 'job:execute', 'job:write', 'job:create'],
+	'jobs:write': [...jobsRead, 'job:execute', 'job:write'],
 	'webhooks:read': [...webhooksRead],
 	'webhooks:write': [...webhooksRead, 'package:write'],
 	'email:read': [...emailRead],
-	'email:write': [
-		...emailRead,
-		'email:send',
-		'email:write',
-		'email:delete',
-		'email:create',
-	],
+	'email:write': [...emailRead, 'email:send', 'email:write', 'email:delete'],
 	'integrations:read': [...integrationsRead],
 	'integrations:write': [
 		...integrationsRead,
@@ -225,7 +220,7 @@ export function rewriteLegacyApiTokenScopes(
 ): Array<OrgPermission> {
 	const rewritten = new Set<OrgPermission>()
 	const unknown: Array<string> = []
-	for (const scope of scopes) {
+	for (const scope of withoutRetiredOrgPermissions(scopes)) {
 		if (isLegacyApiTokenScope(scope)) {
 			for (const permission of legacyApiTokenScopeMap[scope]) {
 				rewritten.add(permission)

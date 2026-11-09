@@ -4,7 +4,7 @@
 
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import { type Workspace } from '@cloudflare/shell'
+import type { Workspace } from '@cloudflare/shell'
 import type git from 'isomorphic-git'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import type * as CloudflareWorkers from 'cloudflare:workers'
@@ -730,6 +730,44 @@ test('repoRunChecks runs the publish checks on a throwaway isolate over the stag
 	expectStagingCleared(kv)
 })
 
+test('repoRunChecks stages only what .kodyignore keeps, while the tree hash still covers every file', async () => {
+	setCommonSessionFixtures()
+	const kept = {
+		...largePackageFiles(),
+		'.kodyignore': 'fixtures/\n*.d.ts\n',
+	}
+	const files = {
+		...kept,
+		'fixtures/huge.json': 'x'.repeat(8 * 1024 * 1024),
+		'types/generated.d.ts': 'export {}\n',
+	}
+	seedSessionWorkspace(files)
+	recordHeavyMocks()
+	const { env, kv } = createIsolateEnv()
+
+	const result = await repoSession(env).runChecks(session)
+
+	expect(result.ok).toBe(true)
+	expect(result.treeHash).toBe(await workspaceTreeHash(files))
+	const stagedBytes = kv.put.mock.calls
+		.filter(([key]) => String(key).includes(':chunk:'))
+		.reduce((total, [, value]) => total + (value as ArrayBuffer).byteLength, 0)
+	expect(stagedBytes).toBe(
+		new TextEncoder().encode(JSON.stringify(kept)).byteLength,
+	)
+	const checksInput = mockModule.runRepoChecks.mock.calls.at(-1)?.[0] as {
+		workspace: { readFile(path: string): Promise<string | null> }
+		kodyIgnoredDeclarationFiles?: Array<string>
+	}
+	await expect(
+		checksInput.workspace.readFile('fixtures/huge.json'),
+	).resolves.toBeNull()
+	expect(checksInput.kodyIgnoredDeclarationFiles).toEqual([
+		'types/generated.d.ts',
+	])
+	expectStagingCleared(kv)
+})
+
 test('packagePublishExternalPush clones, checks, and finalizes a large package on throwaway isolates only', async () => {
 	consoleWarn.mockImplementation(() => {})
 	setCommonSessionFixtures()
@@ -740,7 +778,7 @@ test('packagePublishExternalPush clones, checks, and finalizes a large package o
 		offload.record('clone')
 		return {
 			...createExternalClone('commit-new'),
-			collectFiles: vi.fn(async () => files),
+			collectFiles: vi.fn(async () => ({ files, ignoredPaths: [] })),
 			isAncestorCommit,
 		} as never
 	})

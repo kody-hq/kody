@@ -1,4 +1,4 @@
-import { type JobsHostContract } from '@kody-internal/shared/jobs/rpc.ts'
+import type { JobsHostContract } from '@kody-internal/shared/jobs/rpc.ts'
 
 /**
  * Bindings for the jobs worker (see wrangler.jsonc). Kept hand-written like

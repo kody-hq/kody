@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	buildCapabilityRegistry,
 	type BuiltCapabilityRegistry,
@@ -10,12 +10,12 @@ import {
 } from './access-control.ts'
 import { loadBuiltinDomains } from './builtin-domains.ts'
 import { synthesizeMcpServerToolDomain } from './mcp-server/index.ts'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
-import { type McpServerRef } from '@kody-internal/shared/mcp-servers.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpServerRef } from '@kody-internal/shared/mcp-servers.ts'
 import { PromiseLruCache } from '#worker/package-registry/published-package-cache.ts'
 import { getCachedMcpClientHubSnapshot } from '#worker/mcp-client/hub-client.ts'
 import { listEnabledMcpServerRefsCached } from '#worker/mcp-client/settings-service.ts'
-import { type McpServerSnapshot } from '#worker/mcp-client/types.ts'
+import type { McpServerSnapshot } from '#worker/mcp-client/types.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 
 let staticRegistryMemo: Promise<BuiltCapabilityRegistry> | null = null

@@ -69,7 +69,7 @@ test('loadAdminUserOauthGrants lists bound org ids for a person (#3535)', async 
 		expect.objectContaining({
 			grantId: 'grant-personal',
 			clientId: 'client-a',
-			boundOrgId: stableUserId,
+			boundOrgId: null,
 			createdAt: '2023-11-14T22:13:20.000Z',
 		}),
 		expect.objectContaining({

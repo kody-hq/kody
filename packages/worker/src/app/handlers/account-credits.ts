@@ -7,7 +7,7 @@ import {
 	getRequestIp,
 	logAuditEvent,
 } from '#worker/audit-log.ts'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { loadRequestOrgResolution } from '#app/org-request-binding.ts'
 import {
 	authorize,
@@ -27,7 +27,7 @@ import {
 } from '#worker/billing/credit-wallet.ts'
 import { StripeApiError } from '#worker/billing/stripe-client.ts'
 import { getOrgById, loadOrgBindingForSlug } from '#worker/orgs/repo.ts'
-import { type BillingPageOrg } from '#app/account-billing-data.ts'
+import type { BillingPageOrg } from '#app/account-billing-data.ts'
 
 /**
  * Where an old `/account/credits` link lands once the personal org slug is
@@ -174,7 +174,6 @@ export async function startWebsiteCreditTopUp(input: {
 		env,
 		userId: user.userId,
 		orgId: access.org.id,
-		personal: access.org.personal,
 		now,
 	})
 	if (!creditsUser?.canBuyCredits || !creditsUser.stripeCustomerId) {
@@ -190,14 +189,14 @@ export async function startWebsiteCreditTopUp(input: {
 	}
 	await ensureCreditWallet({
 		db: env.APP_DB,
-		userId: creditsUser.stableUserId,
+		userId: creditsUser.orgId,
 		entitlement: creditsUser.entitlement,
 		now,
 	})
 	try {
 		const checkout = await startCreditTopUpCheckout({
 			env,
-			stableUserId: creditsUser.stableUserId,
+			orgId: creditsUser.orgId,
 			stripeCustomerId: creditsUser.stripeCustomerId,
 			amountCents: amount.cents,
 			creditsUrl: new URL(
@@ -270,7 +269,6 @@ export async function saveWebsiteCreditSettings(input: {
 		env,
 		userId: user.userId,
 		orgId: access.org.id,
-		personal: access.org.personal,
 		now,
 	})
 	if (!creditsUser?.canBuyCredits) {
@@ -286,13 +284,13 @@ export async function saveWebsiteCreditSettings(input: {
 	}
 	await ensureCreditWallet({
 		db: env.APP_DB,
-		userId: creditsUser.stableUserId,
+		userId: creditsUser.orgId,
 		entitlement: creditsUser.entitlement,
 		now,
 	})
 	await updateCreditWalletSettings({
 		db: env.APP_DB,
-		userId: creditsUser.stableUserId,
+		userId: creditsUser.orgId,
 		autoRefill: autoRefill.value,
 		notify,
 		now,

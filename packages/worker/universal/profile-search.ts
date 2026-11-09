@@ -1,14 +1,14 @@
 import { routes } from '#universal/routes.ts'
-import {
-	type ProfilePackageAppFilter,
-	type ProfilePackageFilters,
-	type ProfilePackageHiddenFilter,
-	type ProfilePackageListingFilter,
-	type ProfilePackagePresenceFilter,
-	type ProfilePackageSort,
-	type ProfilePackageSortDirection,
-	type ProfilePackageVisibilityFilter,
-	type PublicProfilePackageItem,
+import type {
+	ProfilePackageAppFilter,
+	ProfilePackageFilters,
+	ProfilePackageHiddenFilter,
+	ProfilePackageListingFilter,
+	ProfilePackagePresenceFilter,
+	ProfilePackageSort,
+	ProfilePackageSortDirection,
+	ProfilePackageVisibilityFilter,
+	PublicProfilePackageItem,
 } from '#universal/community-public-types.ts'
 import { isProfilePathname } from '#universal/profile-path.ts'
 

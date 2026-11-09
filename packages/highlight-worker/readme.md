@@ -2,8 +2,10 @@
 
 TanStack Highlight syntax highlighting extracted from the origin `kody` Worker.
 Origin sends `{ snippets: [{ code, lang }] }` over the `HIGHLIGHT` service
-binding and receives serializable token trees. There is no public hostname;
-health is `GET /health` on the workers.dev URL the deploy workflow records.
+binding (addressed as `https://highlight.internal`) and receives serializable
+token trees. The workers.dev URL only serves `GET /health` for the deploy probe;
+`/highlight` on any other host is a 404, and batches over 1,000 snippets or 2M
+characters get a 413 (origin then renders plain code).
 
 The browser never talks to this worker. Highlighted code is loader/API data.
 Successful `/highlight` responses include `x-kody-highlight-cache: hit|miss` so

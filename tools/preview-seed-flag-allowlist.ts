@@ -1,4 +1,4 @@
-import { type FeatureFlagKey } from '#universal/feature-flags/registry.ts'
+import type { FeatureFlagKey } from '#universal/feature-flags/registry.ts'
 
 /**
  * Flags the public preview seed user (`me@kentcdodds.com`) may have forced on.
@@ -10,7 +10,9 @@ import { type FeatureFlagKey } from '#universal/feature-flags/registry.ts'
 export const previewSeedFlagAllowlist = [
 	'demo-indicator',
 	'execution-contexts',
+	'mcp-events-extension',
 	'package-credential-suppliers',
+	'publish-offload',
 	'repo-push-queue',
 ] as const satisfies ReadonlyArray<FeatureFlagKey>
 

@@ -5,7 +5,7 @@ import {
 	createStableDynamicWorkerId,
 	dynamicWorkerCacheKeyVersion,
 } from '#mcp/dynamic-worker-id.ts'
-import { type StorageContext } from '#mcp/storage.ts'
+import type { StorageContext } from '#mcp/storage.ts'
 import { createDynamicWorkerCompatibilityOptions } from '#worker/dynamic-worker-compatibility.ts'
 
 const modules = {

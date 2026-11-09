@@ -1,8 +1,8 @@
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { operationResult } from '#app/operation-result.ts'
 import { deleteMcpEventSubscriptionsForOauthClient } from '#mcp/events/subscriptions-repo.ts'
-import { type AccountConnectedAgentsLoaderData } from '#universal/loader-data.ts'
+import type { AccountConnectedAgentsLoaderData } from '#universal/loader-data.ts'
 import {
 	auditDatabaseFromEnv,
 	getRequestIp,
@@ -12,9 +12,9 @@ import {
 	loadInboundMcpConnectionState,
 	revokeConnectedMcpAgent,
 } from '#worker/connected-mcp-agents.ts'
-import {
-	type OAuthGrantHelpers,
-	type OAuthGrantListHelpers,
+import type {
+	OAuthGrantHelpers,
+	OAuthGrantListHelpers,
 } from '#worker/oauth-grants.ts'
 import { resolveOAuthHelpers } from '#worker/oauth-helpers.ts'
 import { buildMcpServerUrl } from '#worker/onboarding-prompts.ts'
@@ -24,7 +24,7 @@ import {
 	type OwnerId,
 	type PersonId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 
 type ConnectedAgentsUser = {
 	mcpUser: { userId: PersonId; personalOrgId?: OwnerId | null }

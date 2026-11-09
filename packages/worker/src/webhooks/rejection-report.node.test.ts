@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RunRecord } from '#worker/run-records/types.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { RunRecord } from '#worker/run-records/types.ts'
 import { buildWebhookRejectionReport } from './rejection-report.ts'
 
 const mocks = vi.hoisted(() => ({

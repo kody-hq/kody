@@ -24,6 +24,7 @@ import { Route as ContactRouteImport } from './routes/contact'
 import { Route as DeviceRouteImport } from './routes/device'
 import { Route as DiscordRouteImport } from './routes/discord'
 import { Route as DocsDotmdRouteImport } from './routes/docs[.]md'
+import { Route as DownloadRouteImport } from './routes/download'
 import { Route as FaqRouteImport } from './routes/faq'
 import { Route as FeaturesRouteImport } from './routes/features'
 import { Route as GuidesRouteImport } from './routes/guides'
@@ -51,6 +52,7 @@ import { Route as VerifyEmailChangeRouteImport } from './routes/verify-email-cha
 import { Route as VerifyEmailClaimReleaseRouteImport } from './routes/verify-email-claim-release'
 import { Route as VerifyEmailDestinationRouteImport } from './routes/verify-email-destination'
 import { Route as DotwellKnownApiCatalogRouteImport } from './routes/[.]well-known_.api-catalog'
+import { Route as DotwellKnownAppleAppSiteAssociationRouteImport } from './routes/[.]well-known_.apple-app-site-association'
 import { Route as DotwellKnownOpenaiAppsChallengeRouteImport } from './routes/[.]well-known_.openai-apps-challenge'
 import { Route as DotwellKnownSecurityDottxtRouteImport } from './routes/[.]well-known_.security[.]txt'
 import { Route as AppAtChar123usernameChar125RouteImport } from './routes/_app.@{$username}'
@@ -63,6 +65,7 @@ import { Route as BlogIndexRouteImport } from './routes/blog.index'
 import { Route as BlogSlugRouteImport } from './routes/blog.$slug'
 import { Route as BlogRssDotxmlRouteImport } from './routes/blog_.rss[.]xml'
 import { Route as BlogChar123slugChar125DotmdRouteImport } from './routes/blog_.{$slug}[.]md'
+import { Route as ClaimCodeRouteImport } from './routes/claim.$code'
 import { Route as CommunityListingIdRouteImport } from './routes/community_.$listingId'
 import { Route as CompareComposioAlternativesRouteImport } from './routes/compare_.composio-alternatives'
 import { Route as CompareN8nAlternativesRouteImport } from './routes/compare_.n8n-alternatives'
@@ -94,6 +97,7 @@ import { Route as IntegrationsClaudeRouteImport } from './routes/integrations_.c
 import { Route as IntegrationsGmailRouteImport } from './routes/integrations_.gmail'
 import { Route as IntegrationsSlackRouteImport } from './routes/integrations_.slack'
 import { Route as JoinTokenRouteImport } from './routes/join.$token'
+import { Route as LoginDeviceRouteImport } from './routes/login_.device'
 import { Route as OauthAuthorizeRouteImport } from './routes/oauth.authorize'
 import { Route as OauthCallbackRouteImport } from './routes/oauth.callback'
 import { Route as OgChar123pageChar125DotpngRouteImport } from './routes/og_.{$page}[.]png'
@@ -159,6 +163,8 @@ import { Route as AppAdminSystemEmailRouteImport } from './routes/_app.admin.sys
 import { Route as AppAdminUsersRouteImport } from './routes/_app.admin.users'
 import { Route as KodyAuthSplatRouteImport } from './routes/[_]kody.auth.$'
 import { Route as AuthProviderCallbackRouteImport } from './routes/auth_.$provider_.callback'
+import { Route as BlogCategoryCategoryRouteImport } from './routes/blog.category.$category'
+import { Route as BlogSeriesSeriesRouteImport } from './routes/blog.series.$series'
 import { Route as BlogSlugOgDotpngRouteImport } from './routes/blog_.$slug_.og[.]png'
 import { Route as CommunityListingIdOgDotpngRouteImport } from './routes/community_.$listingId_.og[.]png'
 import { Route as DocsSlugOgDotpngRouteImport } from './routes/docs_.$slug_.og[.]png'
@@ -180,6 +186,7 @@ import { Route as AtChar123usernameChar125KodyIdAssetsSplatRouteImport } from '.
 import { Route as AtChar123usernameChar125KodyIdIconIconCommitRouteImport } from './routes/@{$username}_.$kodyId_.icon_.$iconCommit'
 import { Route as AppAtChar123orgSlugChar125ActivityRouteImport } from './routes/_app.@{$orgSlug}_.-.activity'
 import { Route as AppAtChar123orgSlugChar125AgentsRouteImport } from './routes/_app.@{$orgSlug}_.-.agents'
+import { Route as AppAtChar123orgSlugChar125AppsRouteImport } from './routes/_app.@{$orgSlug}_.-.apps'
 import { Route as AppAtChar123orgSlugChar125BillingRouteImport } from './routes/_app.@{$orgSlug}_.-.billing'
 import { Route as AppAtChar123orgSlugChar125CollaboratorsRouteImport } from './routes/_app.@{$orgSlug}_.-.collaborators'
 import { Route as AppAtChar123orgSlugChar125CredentialsRouteImport } from './routes/_app.@{$orgSlug}_.-.credentials'
@@ -244,6 +251,7 @@ import { Route as AppAdminPlatformIntegrationsNewRouteImport } from './routes/_a
 import { Route as AppAdminUsersStableUserIdRouteImport } from './routes/_app.admin.users_.$stableUserId'
 import { Route as AccountMcpServersLogosServerIdRouteImport } from './routes/account_.mcp-servers_.logos_.$serverId'
 import { Route as AccountMcpServersOauthCallbackRouteImport } from './routes/account_.mcp-servers_.oauth_.callback'
+import { Route as BlogCategoryCategoryRssDotxmlRouteImport } from './routes/blog_.category.$category_.rss[.]xml'
 import { Route as CommunityListingIdFilesSplatRouteImport } from './routes/community_.$listingId.files.$'
 import { Route as CommunityListingIdAssetsSplatRouteImport } from './routes/community_.$listingId_.assets_.$'
 import { Route as CommunityListingIdIconIconCommitRouteImport } from './routes/community_.$listingId_.icon_.$iconCommit'
@@ -257,11 +265,13 @@ import { Route as AppAtChar123orgSlugChar125ActivityRunIdRouteImport } from './r
 import { Route as AppAtChar123orgSlugChar125AgentsNewRouteImport } from './routes/_app.@{$orgSlug}_.-.agents_.new'
 import { Route as AppAtChar123orgSlugChar125AgentsUsageRouteImport } from './routes/_app.@{$orgSlug}_.-.agents_.usage'
 import { Route as AppAtChar123orgSlugChar125ApprovalsBundleIdRouteImport } from './routes/_app.@{$orgSlug}_.-.approvals.$bundleId'
+import { Route as AppAtChar123orgSlugChar125BillingMovePlanRouteImport } from './routes/_app.@{$orgSlug}_.-.billing_.move-plan'
 import { Route as AppAtChar123orgSlugChar125BillingSuccessRouteImport } from './routes/_app.@{$orgSlug}_.-.billing_.success'
 import { Route as AppAtChar123orgSlugChar125CredentialsCredentialIdRouteImport } from './routes/_app.@{$orgSlug}_.-.credentials_.$credentialId'
 import { Route as AppAtChar123orgSlugChar125CredentialsNewRouteImport } from './routes/_app.@{$orgSlug}_.-.credentials_.new'
 import { Route as AppAtChar123orgSlugChar125EmailMessageIdRouteImport } from './routes/_app.@{$orgSlug}_.-.email_.$messageId'
 import { Route as AppAtChar123orgSlugChar125ExecutionContextsContextIdRouteImport } from './routes/_app.@{$orgSlug}_.-.execution-contexts_.$contextId'
+import { Route as AppAtChar123orgSlugChar125GrantsEveryoneRouteImport } from './routes/_app.@{$orgSlug}_.-.grants_.everyone'
 import { Route as AppAtChar123orgSlugChar125IntegrationsIntegrationNameRouteImport } from './routes/_app.@{$orgSlug}_.-.integrations_.$integrationName'
 import { Route as AppAtChar123orgSlugChar125IntegrationsApproveRouteImport } from './routes/_app.@{$orgSlug}_.-.integrations_.approve'
 import { Route as AppAtChar123orgSlugChar125JobsJobIdRouteImport } from './routes/_app.@{$orgSlug}_.-.jobs_.$jobId'
@@ -283,6 +293,9 @@ import { Route as AppAccountSecretsUserSecretNameRouteImport } from './routes/_a
 import { Route as AccountReposRepoIdIconIconCommitRouteImport } from './routes/account_.repos_.$repoId_.icon_.$iconCommit'
 import { Route as SharedFileAssetsOrgSlugRootIdTokenItemIdRouteImport } from './routes/shared-file-assets_.$orgSlug.$rootId.$token.$itemId'
 import { Route as AppAtChar123orgSlugChar125AgentsNewAgentRouteImport } from './routes/_app.@{$orgSlug}_.-.agents_.new_.$agent'
+import { Route as AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRouteImport } from './routes/_app.@{$orgSlug}_.-.credentials_.$credentialId_.local-reads'
+import { Route as AppAtChar123orgSlugChar125GrantsTeamTeamIdRouteImport } from './routes/_app.@{$orgSlug}_.-.grants_.team.$teamId'
+import { Route as AppAtChar123orgSlugChar125GrantsUserUserIdRouteImport } from './routes/_app.@{$orgSlug}_.-.grants_.user.$userId'
 import { Route as AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRouteImport } from './routes/_app.@{$orgSlug}_.-.integrations_.apps.$appSlug'
 import { Route as AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRouteImport } from './routes/_app.@{$orgSlug}_.-.mcp-servers_.$serverId_.authorize'
 import { Route as AppAtChar123orgSlugChar125SecretsUserSecretNameRouteImport } from './routes/_app.@{$orgSlug}_.-.secrets_.user.$secretName'
@@ -365,6 +378,11 @@ const DiscordRoute = DiscordRouteImport.update({
 const DocsDotmdRoute = DocsDotmdRouteImport.update({
   id: '/docs.md',
   path: '/docs.md',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DownloadRoute = DownloadRouteImport.update({
+  id: '/download',
+  path: '/download',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FaqRoute = FaqRouteImport.update({
@@ -502,6 +520,12 @@ const DotwellKnownApiCatalogRoute = DotwellKnownApiCatalogRouteImport.update({
   path: '/.well-known/api-catalog',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DotwellKnownAppleAppSiteAssociationRoute =
+  DotwellKnownAppleAppSiteAssociationRouteImport.update({
+    id: '/.well-known_/apple-app-site-association',
+    path: '/.well-known/apple-app-site-association',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const DotwellKnownOpenaiAppsChallengeRoute =
   DotwellKnownOpenaiAppsChallengeRouteImport.update({
     id: '/.well-known_/openai-apps-challenge',
@@ -567,6 +591,11 @@ const BlogChar123slugChar125DotmdRoute =
     path: '/blog/{$slug}.md',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ClaimCodeRoute = ClaimCodeRouteImport.update({
+  id: '/claim/$code',
+  path: '/claim/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CommunityListingIdRoute = CommunityListingIdRouteImport.update({
   id: '/community_/$listingId',
   path: '/community/$listingId',
@@ -722,6 +751,11 @@ const IntegrationsSlackRoute = IntegrationsSlackRouteImport.update({
 const JoinTokenRoute = JoinTokenRouteImport.update({
   id: '/join/$token',
   path: '/join/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginDeviceRoute = LoginDeviceRouteImport.update({
+  id: '/login_/device',
+  path: '/login/device',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OauthAuthorizeRoute = OauthAuthorizeRouteImport.update({
@@ -1065,6 +1099,16 @@ const AuthProviderCallbackRoute = AuthProviderCallbackRouteImport.update({
   path: '/auth/$provider/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BlogCategoryCategoryRoute = BlogCategoryCategoryRouteImport.update({
+  id: '/blog/category/$category',
+  path: '/blog/category/$category',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BlogSeriesSeriesRoute = BlogSeriesSeriesRouteImport.update({
+  id: '/blog/series/$series',
+  path: '/blog/series/$series',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BlogSlugOgDotpngRoute = BlogSlugOgDotpngRouteImport.update({
   id: '/blog_/$slug_/og.png',
   path: '/blog/$slug/og.png',
@@ -1181,6 +1225,12 @@ const AppAtChar123orgSlugChar125AgentsRoute =
   AppAtChar123orgSlugChar125AgentsRouteImport.update({
     id: '/@{$orgSlug}_/-/agents',
     path: '/@{$orgSlug}/-/agents',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125AppsRoute =
+  AppAtChar123orgSlugChar125AppsRouteImport.update({
+    id: '/@{$orgSlug}_/-/apps',
+    path: '/@{$orgSlug}/-/apps',
     getParentRoute: () => AppRoute,
   } as any)
 const AppAtChar123orgSlugChar125BillingRoute =
@@ -1559,6 +1609,12 @@ const AccountMcpServersOauthCallbackRoute =
     path: '/account/mcp-servers/oauth/callback',
     getParentRoute: () => rootRouteImport,
   } as any)
+const BlogCategoryCategoryRssDotxmlRoute =
+  BlogCategoryCategoryRssDotxmlRouteImport.update({
+    id: '/blog_/category/$category_/rss.xml',
+    path: '/blog/category/$category/rss.xml',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const CommunityListingIdFilesSplatRoute =
   CommunityListingIdFilesSplatRouteImport.update({
     id: '/files/$',
@@ -1638,6 +1694,12 @@ const AppAtChar123orgSlugChar125ApprovalsBundleIdRoute =
     path: '/@{$orgSlug}/-/approvals/$bundleId',
     getParentRoute: () => AppRoute,
   } as any)
+const AppAtChar123orgSlugChar125BillingMovePlanRoute =
+  AppAtChar123orgSlugChar125BillingMovePlanRouteImport.update({
+    id: '/@{$orgSlug}_/-/billing_/move-plan',
+    path: '/@{$orgSlug}/-/billing/move-plan',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAtChar123orgSlugChar125BillingSuccessRoute =
   AppAtChar123orgSlugChar125BillingSuccessRouteImport.update({
     id: '/@{$orgSlug}_/-/billing_/success',
@@ -1666,6 +1728,12 @@ const AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute =
   AppAtChar123orgSlugChar125ExecutionContextsContextIdRouteImport.update({
     id: '/@{$orgSlug}_/-/execution-contexts_/$contextId',
     path: '/@{$orgSlug}/-/execution-contexts/$contextId',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125GrantsEveryoneRoute =
+  AppAtChar123orgSlugChar125GrantsEveryoneRouteImport.update({
+    id: '/@{$orgSlug}_/-/grants_/everyone',
+    path: '/@{$orgSlug}/-/grants/everyone',
     getParentRoute: () => AppRoute,
   } as any)
 const AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute =
@@ -1794,6 +1862,26 @@ const AppAtChar123orgSlugChar125AgentsNewAgentRoute =
     path: '/@{$orgSlug}/-/agents/new/$agent',
     getParentRoute: () => AppRoute,
   } as any)
+const AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute =
+  AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRouteImport.update(
+    {
+      id: '/@{$orgSlug}_/-/credentials_/$credentialId_/local-reads',
+      path: '/@{$orgSlug}/-/credentials/$credentialId/local-reads',
+      getParentRoute: () => AppRoute,
+    } as any,
+  )
+const AppAtChar123orgSlugChar125GrantsTeamTeamIdRoute =
+  AppAtChar123orgSlugChar125GrantsTeamTeamIdRouteImport.update({
+    id: '/@{$orgSlug}_/-/grants_/team/$teamId',
+    path: '/@{$orgSlug}/-/grants/team/$teamId',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125GrantsUserUserIdRoute =
+  AppAtChar123orgSlugChar125GrantsUserUserIdRouteImport.update({
+    id: '/@{$orgSlug}_/-/grants_/user/$userId',
+    path: '/@{$orgSlug}/-/grants/user/$userId',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute =
   AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRouteImport.update({
     id: '/@{$orgSlug}_/-/integrations_/apps/$appSlug',
@@ -1868,6 +1956,7 @@ export interface FileRoutesByFullPath {
   '/device': typeof DeviceRoute
   '/discord': typeof DiscordRoute
   '/docs.md': typeof DocsDotmdRoute
+  '/download': typeof DownloadRoute
   '/faq': typeof FaqRoute
   '/features': typeof FeaturesRoute
   '/guides': typeof GuidesRoute
@@ -1895,6 +1984,7 @@ export interface FileRoutesByFullPath {
   '/verify-email-claim-release': typeof VerifyEmailClaimReleaseRoute
   '/verify-email-destination': typeof VerifyEmailDestinationRoute
   '/.well-known/api-catalog': typeof DotwellKnownApiCatalogRoute
+  '/.well-known/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
   '/.well-known/openai-apps-challenge': typeof DotwellKnownOpenaiAppsChallengeRoute
   '/.well-known/security.txt': typeof DotwellKnownSecurityDottxtRoute
   '/@{$username}': typeof AppAtChar123usernameChar125Route
@@ -1906,6 +1996,7 @@ export interface FileRoutesByFullPath {
   '/blog/$slug': typeof BlogSlugRoute
   '/blog/rss.xml': typeof BlogRssDotxmlRoute
   '/blog/{$slug}.md': typeof BlogChar123slugChar125DotmdRoute
+  '/claim/$code': typeof ClaimCodeRoute
   '/community/$listingId': typeof CommunityListingIdRouteWithChildren
   '/compare/composio-alternatives': typeof CompareComposioAlternativesRoute
   '/compare/n8n-alternatives': typeof CompareN8nAlternativesRoute
@@ -1936,6 +2027,7 @@ export interface FileRoutesByFullPath {
   '/integrations/gmail': typeof IntegrationsGmailRoute
   '/integrations/slack': typeof IntegrationsSlackRoute
   '/join/$token': typeof JoinTokenRoute
+  '/login/device': typeof LoginDeviceRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/og/{$page}.png': typeof OgChar123pageChar125DotpngRoute
@@ -2002,6 +2094,8 @@ export interface FileRoutesByFullPath {
   '/admin/users': typeof AppAdminUsersRoute
   '/_kody/auth/$': typeof KodyAuthSplatRoute
   '/auth/$provider/callback': typeof AuthProviderCallbackRoute
+  '/blog/category/$category': typeof BlogCategoryCategoryRoute
+  '/blog/series/$series': typeof BlogSeriesSeriesRoute
   '/blog/$slug/og.png': typeof BlogSlugOgDotpngRoute
   '/community/$listingId/og.png': typeof CommunityListingIdOgDotpngRoute
   '/docs/$slug/og.png': typeof DocsSlugOgDotpngRoute
@@ -2024,6 +2118,7 @@ export interface FileRoutesByFullPath {
   '/@{$username}/$kodyId/icon/$iconCommit': typeof AtChar123usernameChar125KodyIdIconIconCommitRoute
   '/@{$orgSlug}/-/activity': typeof AppAtChar123orgSlugChar125ActivityRoute
   '/@{$orgSlug}/-/agents': typeof AppAtChar123orgSlugChar125AgentsRoute
+  '/@{$orgSlug}/-/apps': typeof AppAtChar123orgSlugChar125AppsRoute
   '/@{$orgSlug}/-/billing': typeof AppAtChar123orgSlugChar125BillingRoute
   '/@{$orgSlug}/-/collaborators': typeof AppAtChar123orgSlugChar125CollaboratorsRoute
   '/@{$orgSlug}/-/credentials': typeof AppAtChar123orgSlugChar125CredentialsRoute
@@ -2087,6 +2182,7 @@ export interface FileRoutesByFullPath {
   '/admin/users/$stableUserId': typeof AppAdminUsersStableUserIdRoute
   '/account/mcp-servers/logos/$serverId': typeof AccountMcpServersLogosServerIdRoute
   '/account/mcp-servers/oauth/callback': typeof AccountMcpServersOauthCallbackRoute
+  '/blog/category/$category/rss.xml': typeof BlogCategoryCategoryRssDotxmlRoute
   '/community/$listingId/files/$': typeof CommunityListingIdFilesSplatRoute
   '/community/$listingId/assets/$': typeof CommunityListingIdAssetsSplatRoute
   '/community/$listingId/icon/$iconCommit': typeof CommunityListingIdIconIconCommitRoute
@@ -2101,11 +2197,13 @@ export interface FileRoutesByFullPath {
   '/@{$orgSlug}/-/agents/new': typeof AppAtChar123orgSlugChar125AgentsNewRoute
   '/@{$orgSlug}/-/agents/usage': typeof AppAtChar123orgSlugChar125AgentsUsageRoute
   '/@{$orgSlug}/-/approvals/$bundleId': typeof AppAtChar123orgSlugChar125ApprovalsBundleIdRoute
+  '/@{$orgSlug}/-/billing/move-plan': typeof AppAtChar123orgSlugChar125BillingMovePlanRoute
   '/@{$orgSlug}/-/billing/success': typeof AppAtChar123orgSlugChar125BillingSuccessRoute
   '/@{$orgSlug}/-/credentials/$credentialId': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
   '/@{$orgSlug}/-/credentials/new': typeof AppAtChar123orgSlugChar125CredentialsNewRoute
   '/@{$orgSlug}/-/email/$messageId': typeof AppAtChar123orgSlugChar125EmailMessageIdRoute
   '/@{$orgSlug}/-/execution-contexts/$contextId': typeof AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute
+  '/@{$orgSlug}/-/grants/everyone': typeof AppAtChar123orgSlugChar125GrantsEveryoneRoute
   '/@{$orgSlug}/-/integrations/$integrationName': typeof AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute
   '/@{$orgSlug}/-/integrations/approve': typeof AppAtChar123orgSlugChar125IntegrationsApproveRoute
   '/@{$orgSlug}/-/jobs/$jobId': typeof AppAtChar123orgSlugChar125JobsJobIdRoute
@@ -2127,6 +2225,9 @@ export interface FileRoutesByFullPath {
   '/account/repos/$repoId/icon/$iconCommit': typeof AccountReposRepoIdIconIconCommitRoute
   '/shared-file-assets/$orgSlug/$rootId/$token/$itemId': typeof SharedFileAssetsOrgSlugRootIdTokenItemIdRoute
   '/@{$orgSlug}/-/agents/new/$agent': typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
+  '/@{$orgSlug}/-/credentials/$credentialId/local-reads': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute
+  '/@{$orgSlug}/-/grants/team/$teamId': typeof AppAtChar123orgSlugChar125GrantsTeamTeamIdRoute
+  '/@{$orgSlug}/-/grants/user/$userId': typeof AppAtChar123orgSlugChar125GrantsUserUserIdRoute
   '/@{$orgSlug}/-/integrations/apps/$appSlug': typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
   '/@{$orgSlug}/-/mcp-servers/$serverId/authorize': typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
   '/@{$orgSlug}/-/secrets/user/$secretName': typeof AppAtChar123orgSlugChar125SecretsUserSecretNameRoute
@@ -2152,6 +2253,7 @@ export interface FileRoutesByTo {
   '/device': typeof DeviceRoute
   '/discord': typeof DiscordRoute
   '/docs.md': typeof DocsDotmdRoute
+  '/download': typeof DownloadRoute
   '/faq': typeof FaqRoute
   '/features': typeof FeaturesRoute
   '/guides': typeof GuidesRoute
@@ -2178,6 +2280,7 @@ export interface FileRoutesByTo {
   '/verify-email-claim-release': typeof VerifyEmailClaimReleaseRoute
   '/verify-email-destination': typeof VerifyEmailDestinationRoute
   '/.well-known/api-catalog': typeof DotwellKnownApiCatalogRoute
+  '/.well-known/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
   '/.well-known/openai-apps-challenge': typeof DotwellKnownOpenaiAppsChallengeRoute
   '/.well-known/security.txt': typeof DotwellKnownSecurityDottxtRoute
   '/@{$username}': typeof AppAtChar123usernameChar125Route
@@ -2189,6 +2292,7 @@ export interface FileRoutesByTo {
   '/blog/$slug': typeof BlogSlugRoute
   '/blog/rss.xml': typeof BlogRssDotxmlRoute
   '/blog/{$slug}.md': typeof BlogChar123slugChar125DotmdRoute
+  '/claim/$code': typeof ClaimCodeRoute
   '/community/$listingId': typeof CommunityListingIdRouteWithChildren
   '/compare/composio-alternatives': typeof CompareComposioAlternativesRoute
   '/compare/n8n-alternatives': typeof CompareN8nAlternativesRoute
@@ -2219,6 +2323,7 @@ export interface FileRoutesByTo {
   '/integrations/gmail': typeof IntegrationsGmailRoute
   '/integrations/slack': typeof IntegrationsSlackRoute
   '/join/$token': typeof JoinTokenRoute
+  '/login/device': typeof LoginDeviceRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/og/{$page}.png': typeof OgChar123pageChar125DotpngRoute
@@ -2285,6 +2390,8 @@ export interface FileRoutesByTo {
   '/admin/users': typeof AppAdminUsersRoute
   '/_kody/auth/$': typeof KodyAuthSplatRoute
   '/auth/$provider/callback': typeof AuthProviderCallbackRoute
+  '/blog/category/$category': typeof BlogCategoryCategoryRoute
+  '/blog/series/$series': typeof BlogSeriesSeriesRoute
   '/blog/$slug/og.png': typeof BlogSlugOgDotpngRoute
   '/community/$listingId/og.png': typeof CommunityListingIdOgDotpngRoute
   '/docs/$slug/og.png': typeof DocsSlugOgDotpngRoute
@@ -2307,6 +2414,7 @@ export interface FileRoutesByTo {
   '/@{$username}/$kodyId/icon/$iconCommit': typeof AtChar123usernameChar125KodyIdIconIconCommitRoute
   '/@{$orgSlug}/-/activity': typeof AppAtChar123orgSlugChar125ActivityRoute
   '/@{$orgSlug}/-/agents': typeof AppAtChar123orgSlugChar125AgentsRoute
+  '/@{$orgSlug}/-/apps': typeof AppAtChar123orgSlugChar125AppsRoute
   '/@{$orgSlug}/-/billing': typeof AppAtChar123orgSlugChar125BillingRoute
   '/@{$orgSlug}/-/collaborators': typeof AppAtChar123orgSlugChar125CollaboratorsRoute
   '/@{$orgSlug}/-/credentials': typeof AppAtChar123orgSlugChar125CredentialsRoute
@@ -2370,6 +2478,7 @@ export interface FileRoutesByTo {
   '/admin/users/$stableUserId': typeof AppAdminUsersStableUserIdRoute
   '/account/mcp-servers/logos/$serverId': typeof AccountMcpServersLogosServerIdRoute
   '/account/mcp-servers/oauth/callback': typeof AccountMcpServersOauthCallbackRoute
+  '/blog/category/$category/rss.xml': typeof BlogCategoryCategoryRssDotxmlRoute
   '/community/$listingId/files/$': typeof CommunityListingIdFilesSplatRoute
   '/community/$listingId/assets/$': typeof CommunityListingIdAssetsSplatRoute
   '/community/$listingId/icon/$iconCommit': typeof CommunityListingIdIconIconCommitRoute
@@ -2384,11 +2493,13 @@ export interface FileRoutesByTo {
   '/@{$orgSlug}/-/agents/new': typeof AppAtChar123orgSlugChar125AgentsNewRoute
   '/@{$orgSlug}/-/agents/usage': typeof AppAtChar123orgSlugChar125AgentsUsageRoute
   '/@{$orgSlug}/-/approvals/$bundleId': typeof AppAtChar123orgSlugChar125ApprovalsBundleIdRoute
+  '/@{$orgSlug}/-/billing/move-plan': typeof AppAtChar123orgSlugChar125BillingMovePlanRoute
   '/@{$orgSlug}/-/billing/success': typeof AppAtChar123orgSlugChar125BillingSuccessRoute
   '/@{$orgSlug}/-/credentials/$credentialId': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
   '/@{$orgSlug}/-/credentials/new': typeof AppAtChar123orgSlugChar125CredentialsNewRoute
   '/@{$orgSlug}/-/email/$messageId': typeof AppAtChar123orgSlugChar125EmailMessageIdRoute
   '/@{$orgSlug}/-/execution-contexts/$contextId': typeof AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute
+  '/@{$orgSlug}/-/grants/everyone': typeof AppAtChar123orgSlugChar125GrantsEveryoneRoute
   '/@{$orgSlug}/-/integrations/$integrationName': typeof AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute
   '/@{$orgSlug}/-/integrations/approve': typeof AppAtChar123orgSlugChar125IntegrationsApproveRoute
   '/@{$orgSlug}/-/jobs/$jobId': typeof AppAtChar123orgSlugChar125JobsJobIdRoute
@@ -2410,6 +2521,9 @@ export interface FileRoutesByTo {
   '/account/repos/$repoId/icon/$iconCommit': typeof AccountReposRepoIdIconIconCommitRoute
   '/shared-file-assets/$orgSlug/$rootId/$token/$itemId': typeof SharedFileAssetsOrgSlugRootIdTokenItemIdRoute
   '/@{$orgSlug}/-/agents/new/$agent': typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
+  '/@{$orgSlug}/-/credentials/$credentialId/local-reads': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute
+  '/@{$orgSlug}/-/grants/team/$teamId': typeof AppAtChar123orgSlugChar125GrantsTeamTeamIdRoute
+  '/@{$orgSlug}/-/grants/user/$userId': typeof AppAtChar123orgSlugChar125GrantsUserUserIdRoute
   '/@{$orgSlug}/-/integrations/apps/$appSlug': typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
   '/@{$orgSlug}/-/mcp-servers/$serverId/authorize': typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
   '/@{$orgSlug}/-/secrets/user/$secretName': typeof AppAtChar123orgSlugChar125SecretsUserSecretNameRoute
@@ -2437,6 +2551,7 @@ export interface FileRoutesById {
   '/device': typeof DeviceRoute
   '/discord': typeof DiscordRoute
   '/docs.md': typeof DocsDotmdRoute
+  '/download': typeof DownloadRoute
   '/faq': typeof FaqRoute
   '/features': typeof FeaturesRoute
   '/guides': typeof GuidesRoute
@@ -2464,6 +2579,7 @@ export interface FileRoutesById {
   '/verify-email-claim-release': typeof VerifyEmailClaimReleaseRoute
   '/verify-email-destination': typeof VerifyEmailDestinationRoute
   '/.well-known_/api-catalog': typeof DotwellKnownApiCatalogRoute
+  '/.well-known_/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
   '/.well-known_/openai-apps-challenge': typeof DotwellKnownOpenaiAppsChallengeRoute
   '/.well-known_/security.txt': typeof DotwellKnownSecurityDottxtRoute
   '/_app/@{$username}': typeof AppAtChar123usernameChar125Route
@@ -2475,6 +2591,7 @@ export interface FileRoutesById {
   '/blog/$slug': typeof BlogSlugRoute
   '/blog_/rss.xml': typeof BlogRssDotxmlRoute
   '/blog_/{$slug}.md': typeof BlogChar123slugChar125DotmdRoute
+  '/claim/$code': typeof ClaimCodeRoute
   '/community_/$listingId': typeof CommunityListingIdRouteWithChildren
   '/compare_/composio-alternatives': typeof CompareComposioAlternativesRoute
   '/compare_/n8n-alternatives': typeof CompareN8nAlternativesRoute
@@ -2505,6 +2622,7 @@ export interface FileRoutesById {
   '/integrations_/gmail': typeof IntegrationsGmailRoute
   '/integrations_/slack': typeof IntegrationsSlackRoute
   '/join/$token': typeof JoinTokenRoute
+  '/login_/device': typeof LoginDeviceRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/og_/{$page}.png': typeof OgChar123pageChar125DotpngRoute
@@ -2571,6 +2689,8 @@ export interface FileRoutesById {
   '/_app/admin/users': typeof AppAdminUsersRoute
   '/_kody/auth/$': typeof KodyAuthSplatRoute
   '/auth_/$provider_/callback': typeof AuthProviderCallbackRoute
+  '/blog/category/$category': typeof BlogCategoryCategoryRoute
+  '/blog/series/$series': typeof BlogSeriesSeriesRoute
   '/blog_/$slug_/og.png': typeof BlogSlugOgDotpngRoute
   '/community_/$listingId_/og.png': typeof CommunityListingIdOgDotpngRoute
   '/docs_/$slug_/og.png': typeof DocsSlugOgDotpngRoute
@@ -2593,6 +2713,7 @@ export interface FileRoutesById {
   '/@{$username}_/$kodyId_/icon_/$iconCommit': typeof AtChar123usernameChar125KodyIdIconIconCommitRoute
   '/_app/@{$orgSlug}_/-/activity': typeof AppAtChar123orgSlugChar125ActivityRoute
   '/_app/@{$orgSlug}_/-/agents': typeof AppAtChar123orgSlugChar125AgentsRoute
+  '/_app/@{$orgSlug}_/-/apps': typeof AppAtChar123orgSlugChar125AppsRoute
   '/_app/@{$orgSlug}_/-/billing': typeof AppAtChar123orgSlugChar125BillingRoute
   '/_app/@{$orgSlug}_/-/collaborators': typeof AppAtChar123orgSlugChar125CollaboratorsRoute
   '/_app/@{$orgSlug}_/-/credentials': typeof AppAtChar123orgSlugChar125CredentialsRoute
@@ -2656,6 +2777,7 @@ export interface FileRoutesById {
   '/_app/admin/users_/$stableUserId': typeof AppAdminUsersStableUserIdRoute
   '/account_/mcp-servers_/logos_/$serverId': typeof AccountMcpServersLogosServerIdRoute
   '/account_/mcp-servers_/oauth_/callback': typeof AccountMcpServersOauthCallbackRoute
+  '/blog_/category/$category_/rss.xml': typeof BlogCategoryCategoryRssDotxmlRoute
   '/community_/$listingId/files/$': typeof CommunityListingIdFilesSplatRoute
   '/community_/$listingId_/assets_/$': typeof CommunityListingIdAssetsSplatRoute
   '/community_/$listingId_/icon_/$iconCommit': typeof CommunityListingIdIconIconCommitRoute
@@ -2670,11 +2792,13 @@ export interface FileRoutesById {
   '/_app/@{$orgSlug}_/-/agents_/new': typeof AppAtChar123orgSlugChar125AgentsNewRoute
   '/_app/@{$orgSlug}_/-/agents_/usage': typeof AppAtChar123orgSlugChar125AgentsUsageRoute
   '/_app/@{$orgSlug}_/-/approvals/$bundleId': typeof AppAtChar123orgSlugChar125ApprovalsBundleIdRoute
+  '/_app/@{$orgSlug}_/-/billing_/move-plan': typeof AppAtChar123orgSlugChar125BillingMovePlanRoute
   '/_app/@{$orgSlug}_/-/billing_/success': typeof AppAtChar123orgSlugChar125BillingSuccessRoute
   '/_app/@{$orgSlug}_/-/credentials_/$credentialId': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
   '/_app/@{$orgSlug}_/-/credentials_/new': typeof AppAtChar123orgSlugChar125CredentialsNewRoute
   '/_app/@{$orgSlug}_/-/email_/$messageId': typeof AppAtChar123orgSlugChar125EmailMessageIdRoute
   '/_app/@{$orgSlug}_/-/execution-contexts_/$contextId': typeof AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute
+  '/_app/@{$orgSlug}_/-/grants_/everyone': typeof AppAtChar123orgSlugChar125GrantsEveryoneRoute
   '/_app/@{$orgSlug}_/-/integrations_/$integrationName': typeof AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute
   '/_app/@{$orgSlug}_/-/integrations_/approve': typeof AppAtChar123orgSlugChar125IntegrationsApproveRoute
   '/_app/@{$orgSlug}_/-/jobs_/$jobId': typeof AppAtChar123orgSlugChar125JobsJobIdRoute
@@ -2696,6 +2820,9 @@ export interface FileRoutesById {
   '/account_/repos_/$repoId_/icon_/$iconCommit': typeof AccountReposRepoIdIconIconCommitRoute
   '/shared-file-assets_/$orgSlug/$rootId/$token/$itemId': typeof SharedFileAssetsOrgSlugRootIdTokenItemIdRoute
   '/_app/@{$orgSlug}_/-/agents_/new_/$agent': typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
+  '/_app/@{$orgSlug}_/-/credentials_/$credentialId_/local-reads': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute
+  '/_app/@{$orgSlug}_/-/grants_/team/$teamId': typeof AppAtChar123orgSlugChar125GrantsTeamTeamIdRoute
+  '/_app/@{$orgSlug}_/-/grants_/user/$userId': typeof AppAtChar123orgSlugChar125GrantsUserUserIdRoute
   '/_app/@{$orgSlug}_/-/integrations_/apps/$appSlug': typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
   '/_app/@{$orgSlug}_/-/mcp-servers_/$serverId_/authorize': typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
   '/_app/@{$orgSlug}_/-/secrets_/user/$secretName': typeof AppAtChar123orgSlugChar125SecretsUserSecretNameRoute
@@ -2723,6 +2850,7 @@ export interface FileRouteTypes {
     | '/device'
     | '/discord'
     | '/docs.md'
+    | '/download'
     | '/faq'
     | '/features'
     | '/guides'
@@ -2750,6 +2878,7 @@ export interface FileRouteTypes {
     | '/verify-email-claim-release'
     | '/verify-email-destination'
     | '/.well-known/api-catalog'
+    | '/.well-known/apple-app-site-association'
     | '/.well-known/openai-apps-challenge'
     | '/.well-known/security.txt'
     | '/@{$username}'
@@ -2761,6 +2890,7 @@ export interface FileRouteTypes {
     | '/blog/$slug'
     | '/blog/rss.xml'
     | '/blog/{$slug}.md'
+    | '/claim/$code'
     | '/community/$listingId'
     | '/compare/composio-alternatives'
     | '/compare/n8n-alternatives'
@@ -2791,6 +2921,7 @@ export interface FileRouteTypes {
     | '/integrations/gmail'
     | '/integrations/slack'
     | '/join/$token'
+    | '/login/device'
     | '/oauth/authorize'
     | '/oauth/callback'
     | '/og/{$page}.png'
@@ -2857,6 +2988,8 @@ export interface FileRouteTypes {
     | '/admin/users'
     | '/_kody/auth/$'
     | '/auth/$provider/callback'
+    | '/blog/category/$category'
+    | '/blog/series/$series'
     | '/blog/$slug/og.png'
     | '/community/$listingId/og.png'
     | '/docs/$slug/og.png'
@@ -2879,6 +3012,7 @@ export interface FileRouteTypes {
     | '/@{$username}/$kodyId/icon/$iconCommit'
     | '/@{$orgSlug}/-/activity'
     | '/@{$orgSlug}/-/agents'
+    | '/@{$orgSlug}/-/apps'
     | '/@{$orgSlug}/-/billing'
     | '/@{$orgSlug}/-/collaborators'
     | '/@{$orgSlug}/-/credentials'
@@ -2942,6 +3076,7 @@ export interface FileRouteTypes {
     | '/admin/users/$stableUserId'
     | '/account/mcp-servers/logos/$serverId'
     | '/account/mcp-servers/oauth/callback'
+    | '/blog/category/$category/rss.xml'
     | '/community/$listingId/files/$'
     | '/community/$listingId/assets/$'
     | '/community/$listingId/icon/$iconCommit'
@@ -2956,11 +3091,13 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/agents/new'
     | '/@{$orgSlug}/-/agents/usage'
     | '/@{$orgSlug}/-/approvals/$bundleId'
+    | '/@{$orgSlug}/-/billing/move-plan'
     | '/@{$orgSlug}/-/billing/success'
     | '/@{$orgSlug}/-/credentials/$credentialId'
     | '/@{$orgSlug}/-/credentials/new'
     | '/@{$orgSlug}/-/email/$messageId'
     | '/@{$orgSlug}/-/execution-contexts/$contextId'
+    | '/@{$orgSlug}/-/grants/everyone'
     | '/@{$orgSlug}/-/integrations/$integrationName'
     | '/@{$orgSlug}/-/integrations/approve'
     | '/@{$orgSlug}/-/jobs/$jobId'
@@ -2982,6 +3119,9 @@ export interface FileRouteTypes {
     | '/account/repos/$repoId/icon/$iconCommit'
     | '/shared-file-assets/$orgSlug/$rootId/$token/$itemId'
     | '/@{$orgSlug}/-/agents/new/$agent'
+    | '/@{$orgSlug}/-/credentials/$credentialId/local-reads'
+    | '/@{$orgSlug}/-/grants/team/$teamId'
+    | '/@{$orgSlug}/-/grants/user/$userId'
     | '/@{$orgSlug}/-/integrations/apps/$appSlug'
     | '/@{$orgSlug}/-/mcp-servers/$serverId/authorize'
     | '/@{$orgSlug}/-/secrets/user/$secretName'
@@ -3007,6 +3147,7 @@ export interface FileRouteTypes {
     | '/device'
     | '/discord'
     | '/docs.md'
+    | '/download'
     | '/faq'
     | '/features'
     | '/guides'
@@ -3033,6 +3174,7 @@ export interface FileRouteTypes {
     | '/verify-email-claim-release'
     | '/verify-email-destination'
     | '/.well-known/api-catalog'
+    | '/.well-known/apple-app-site-association'
     | '/.well-known/openai-apps-challenge'
     | '/.well-known/security.txt'
     | '/@{$username}'
@@ -3044,6 +3186,7 @@ export interface FileRouteTypes {
     | '/blog/$slug'
     | '/blog/rss.xml'
     | '/blog/{$slug}.md'
+    | '/claim/$code'
     | '/community/$listingId'
     | '/compare/composio-alternatives'
     | '/compare/n8n-alternatives'
@@ -3074,6 +3217,7 @@ export interface FileRouteTypes {
     | '/integrations/gmail'
     | '/integrations/slack'
     | '/join/$token'
+    | '/login/device'
     | '/oauth/authorize'
     | '/oauth/callback'
     | '/og/{$page}.png'
@@ -3140,6 +3284,8 @@ export interface FileRouteTypes {
     | '/admin/users'
     | '/_kody/auth/$'
     | '/auth/$provider/callback'
+    | '/blog/category/$category'
+    | '/blog/series/$series'
     | '/blog/$slug/og.png'
     | '/community/$listingId/og.png'
     | '/docs/$slug/og.png'
@@ -3162,6 +3308,7 @@ export interface FileRouteTypes {
     | '/@{$username}/$kodyId/icon/$iconCommit'
     | '/@{$orgSlug}/-/activity'
     | '/@{$orgSlug}/-/agents'
+    | '/@{$orgSlug}/-/apps'
     | '/@{$orgSlug}/-/billing'
     | '/@{$orgSlug}/-/collaborators'
     | '/@{$orgSlug}/-/credentials'
@@ -3225,6 +3372,7 @@ export interface FileRouteTypes {
     | '/admin/users/$stableUserId'
     | '/account/mcp-servers/logos/$serverId'
     | '/account/mcp-servers/oauth/callback'
+    | '/blog/category/$category/rss.xml'
     | '/community/$listingId/files/$'
     | '/community/$listingId/assets/$'
     | '/community/$listingId/icon/$iconCommit'
@@ -3239,11 +3387,13 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/agents/new'
     | '/@{$orgSlug}/-/agents/usage'
     | '/@{$orgSlug}/-/approvals/$bundleId'
+    | '/@{$orgSlug}/-/billing/move-plan'
     | '/@{$orgSlug}/-/billing/success'
     | '/@{$orgSlug}/-/credentials/$credentialId'
     | '/@{$orgSlug}/-/credentials/new'
     | '/@{$orgSlug}/-/email/$messageId'
     | '/@{$orgSlug}/-/execution-contexts/$contextId'
+    | '/@{$orgSlug}/-/grants/everyone'
     | '/@{$orgSlug}/-/integrations/$integrationName'
     | '/@{$orgSlug}/-/integrations/approve'
     | '/@{$orgSlug}/-/jobs/$jobId'
@@ -3265,6 +3415,9 @@ export interface FileRouteTypes {
     | '/account/repos/$repoId/icon/$iconCommit'
     | '/shared-file-assets/$orgSlug/$rootId/$token/$itemId'
     | '/@{$orgSlug}/-/agents/new/$agent'
+    | '/@{$orgSlug}/-/credentials/$credentialId/local-reads'
+    | '/@{$orgSlug}/-/grants/team/$teamId'
+    | '/@{$orgSlug}/-/grants/user/$userId'
     | '/@{$orgSlug}/-/integrations/apps/$appSlug'
     | '/@{$orgSlug}/-/mcp-servers/$serverId/authorize'
     | '/@{$orgSlug}/-/secrets/user/$secretName'
@@ -3291,6 +3444,7 @@ export interface FileRouteTypes {
     | '/device'
     | '/discord'
     | '/docs.md'
+    | '/download'
     | '/faq'
     | '/features'
     | '/guides'
@@ -3318,6 +3472,7 @@ export interface FileRouteTypes {
     | '/verify-email-claim-release'
     | '/verify-email-destination'
     | '/.well-known_/api-catalog'
+    | '/.well-known_/apple-app-site-association'
     | '/.well-known_/openai-apps-challenge'
     | '/.well-known_/security.txt'
     | '/_app/@{$username}'
@@ -3329,6 +3484,7 @@ export interface FileRouteTypes {
     | '/blog/$slug'
     | '/blog_/rss.xml'
     | '/blog_/{$slug}.md'
+    | '/claim/$code'
     | '/community_/$listingId'
     | '/compare_/composio-alternatives'
     | '/compare_/n8n-alternatives'
@@ -3359,6 +3515,7 @@ export interface FileRouteTypes {
     | '/integrations_/gmail'
     | '/integrations_/slack'
     | '/join/$token'
+    | '/login_/device'
     | '/oauth/authorize'
     | '/oauth/callback'
     | '/og_/{$page}.png'
@@ -3425,6 +3582,8 @@ export interface FileRouteTypes {
     | '/_app/admin/users'
     | '/_kody/auth/$'
     | '/auth_/$provider_/callback'
+    | '/blog/category/$category'
+    | '/blog/series/$series'
     | '/blog_/$slug_/og.png'
     | '/community_/$listingId_/og.png'
     | '/docs_/$slug_/og.png'
@@ -3447,6 +3606,7 @@ export interface FileRouteTypes {
     | '/@{$username}_/$kodyId_/icon_/$iconCommit'
     | '/_app/@{$orgSlug}_/-/activity'
     | '/_app/@{$orgSlug}_/-/agents'
+    | '/_app/@{$orgSlug}_/-/apps'
     | '/_app/@{$orgSlug}_/-/billing'
     | '/_app/@{$orgSlug}_/-/collaborators'
     | '/_app/@{$orgSlug}_/-/credentials'
@@ -3510,6 +3670,7 @@ export interface FileRouteTypes {
     | '/_app/admin/users_/$stableUserId'
     | '/account_/mcp-servers_/logos_/$serverId'
     | '/account_/mcp-servers_/oauth_/callback'
+    | '/blog_/category/$category_/rss.xml'
     | '/community_/$listingId/files/$'
     | '/community_/$listingId_/assets_/$'
     | '/community_/$listingId_/icon_/$iconCommit'
@@ -3524,11 +3685,13 @@ export interface FileRouteTypes {
     | '/_app/@{$orgSlug}_/-/agents_/new'
     | '/_app/@{$orgSlug}_/-/agents_/usage'
     | '/_app/@{$orgSlug}_/-/approvals/$bundleId'
+    | '/_app/@{$orgSlug}_/-/billing_/move-plan'
     | '/_app/@{$orgSlug}_/-/billing_/success'
     | '/_app/@{$orgSlug}_/-/credentials_/$credentialId'
     | '/_app/@{$orgSlug}_/-/credentials_/new'
     | '/_app/@{$orgSlug}_/-/email_/$messageId'
     | '/_app/@{$orgSlug}_/-/execution-contexts_/$contextId'
+    | '/_app/@{$orgSlug}_/-/grants_/everyone'
     | '/_app/@{$orgSlug}_/-/integrations_/$integrationName'
     | '/_app/@{$orgSlug}_/-/integrations_/approve'
     | '/_app/@{$orgSlug}_/-/jobs_/$jobId'
@@ -3550,6 +3713,9 @@ export interface FileRouteTypes {
     | '/account_/repos_/$repoId_/icon_/$iconCommit'
     | '/shared-file-assets_/$orgSlug/$rootId/$token/$itemId'
     | '/_app/@{$orgSlug}_/-/agents_/new_/$agent'
+    | '/_app/@{$orgSlug}_/-/credentials_/$credentialId_/local-reads'
+    | '/_app/@{$orgSlug}_/-/grants_/team/$teamId'
+    | '/_app/@{$orgSlug}_/-/grants_/user/$userId'
     | '/_app/@{$orgSlug}_/-/integrations_/apps/$appSlug'
     | '/_app/@{$orgSlug}_/-/mcp-servers_/$serverId_/authorize'
     | '/_app/@{$orgSlug}_/-/secrets_/user/$secretName'
@@ -3577,6 +3743,7 @@ export interface RootRouteChildren {
   DeviceRoute: typeof DeviceRoute
   DiscordRoute: typeof DiscordRoute
   DocsDotmdRoute: typeof DocsDotmdRoute
+  DownloadRoute: typeof DownloadRoute
   FaqRoute: typeof FaqRoute
   FeaturesRoute: typeof FeaturesRoute
   GuidesRoute: typeof GuidesRoute
@@ -3604,6 +3771,7 @@ export interface RootRouteChildren {
   VerifyEmailClaimReleaseRoute: typeof VerifyEmailClaimReleaseRoute
   VerifyEmailDestinationRoute: typeof VerifyEmailDestinationRoute
   DotwellKnownApiCatalogRoute: typeof DotwellKnownApiCatalogRoute
+  DotwellKnownAppleAppSiteAssociationRoute: typeof DotwellKnownAppleAppSiteAssociationRoute
   DotwellKnownOpenaiAppsChallengeRoute: typeof DotwellKnownOpenaiAppsChallengeRoute
   DotwellKnownSecurityDottxtRoute: typeof DotwellKnownSecurityDottxtRoute
   AccountExportDotjsonRoute: typeof AccountExportDotjsonRoute
@@ -3613,6 +3781,7 @@ export interface RootRouteChildren {
   BlogSlugRoute: typeof BlogSlugRoute
   BlogRssDotxmlRoute: typeof BlogRssDotxmlRoute
   BlogChar123slugChar125DotmdRoute: typeof BlogChar123slugChar125DotmdRoute
+  ClaimCodeRoute: typeof ClaimCodeRoute
   CommunityListingIdRoute: typeof CommunityListingIdRouteWithChildren
   CompareComposioAlternativesRoute: typeof CompareComposioAlternativesRoute
   CompareN8nAlternativesRoute: typeof CompareN8nAlternativesRoute
@@ -3643,6 +3812,7 @@ export interface RootRouteChildren {
   IntegrationsGmailRoute: typeof IntegrationsGmailRoute
   IntegrationsSlackRoute: typeof IntegrationsSlackRoute
   JoinTokenRoute: typeof JoinTokenRoute
+  LoginDeviceRoute: typeof LoginDeviceRoute
   OauthAuthorizeRoute: typeof OauthAuthorizeRoute
   OauthCallbackRoute: typeof OauthCallbackRoute
   OgChar123pageChar125DotpngRoute: typeof OgChar123pageChar125DotpngRoute
@@ -3664,6 +3834,8 @@ export interface RootRouteChildren {
   AtChar123orgSlugChar125ConnectionsRoute: typeof AtChar123orgSlugChar125ConnectionsRoute
   KodyAuthSplatRoute: typeof KodyAuthSplatRoute
   AuthProviderCallbackRoute: typeof AuthProviderCallbackRoute
+  BlogCategoryCategoryRoute: typeof BlogCategoryCategoryRoute
+  BlogSeriesSeriesRoute: typeof BlogSeriesSeriesRoute
   BlogSlugOgDotpngRoute: typeof BlogSlugOgDotpngRoute
   CommunityListingIdOgDotpngRoute: typeof CommunityListingIdOgDotpngRoute
   DocsSlugOgDotpngRoute: typeof DocsSlugOgDotpngRoute
@@ -3682,6 +3854,7 @@ export interface RootRouteChildren {
   AtChar123usernameChar125KodyIdIconIconCommitRoute: typeof AtChar123usernameChar125KodyIdIconIconCommitRoute
   AccountMcpServersLogosServerIdRoute: typeof AccountMcpServersLogosServerIdRoute
   AccountMcpServersOauthCallbackRoute: typeof AccountMcpServersOauthCallbackRoute
+  BlogCategoryCategoryRssDotxmlRoute: typeof BlogCategoryCategoryRssDotxmlRoute
   CommunityListingIdAssetsSplatRoute: typeof CommunityListingIdAssetsSplatRoute
   CommunityListingIdIconIconCommitRoute: typeof CommunityListingIdIconIconCommitRoute
   CommunityListingIdRawSplatRoute: typeof CommunityListingIdRawSplatRoute
@@ -3799,6 +3972,13 @@ declare module '@tanstack/react-router' {
       path: '/docs.md'
       fullPath: '/docs.md'
       preLoaderRoute: typeof DocsDotmdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/download': {
+      id: '/download'
+      path: '/download'
+      fullPath: '/download'
+      preLoaderRoute: typeof DownloadRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/faq': {
@@ -3990,6 +4170,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DotwellKnownApiCatalogRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/.well-known_/apple-app-site-association': {
+      id: '/.well-known_/apple-app-site-association'
+      path: '/.well-known/apple-app-site-association'
+      fullPath: '/.well-known/apple-app-site-association'
+      preLoaderRoute: typeof DotwellKnownAppleAppSiteAssociationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/.well-known_/openai-apps-challenge': {
       id: '/.well-known_/openai-apps-challenge'
       path: '/.well-known/openai-apps-challenge'
@@ -4072,6 +4259,13 @@ declare module '@tanstack/react-router' {
       path: '/blog/{$slug}.md'
       fullPath: '/blog/{$slug}.md'
       preLoaderRoute: typeof BlogChar123slugChar125DotmdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/claim/$code': {
+      id: '/claim/$code'
+      path: '/claim/$code'
+      fullPath: '/claim/$code'
+      preLoaderRoute: typeof ClaimCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/community_/$listingId': {
@@ -4289,6 +4483,13 @@ declare module '@tanstack/react-router' {
       path: '/join/$token'
       fullPath: '/join/$token'
       preLoaderRoute: typeof JoinTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login_/device': {
+      id: '/login_/device'
+      path: '/login/device'
+      fullPath: '/login/device'
+      preLoaderRoute: typeof LoginDeviceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/oauth/authorize': {
@@ -4746,6 +4947,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthProviderCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/blog/category/$category': {
+      id: '/blog/category/$category'
+      path: '/blog/category/$category'
+      fullPath: '/blog/category/$category'
+      preLoaderRoute: typeof BlogCategoryCategoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/blog/series/$series': {
+      id: '/blog/series/$series'
+      path: '/blog/series/$series'
+      fullPath: '/blog/series/$series'
+      preLoaderRoute: typeof BlogSeriesSeriesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/blog_/$slug_/og.png': {
       id: '/blog_/$slug_/og.png'
       path: '/blog/$slug/og.png'
@@ -4891,6 +5106,13 @@ declare module '@tanstack/react-router' {
       path: '/@{$orgSlug}/-/agents'
       fullPath: '/@{$orgSlug}/-/agents'
       preLoaderRoute: typeof AppAtChar123orgSlugChar125AgentsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/apps': {
+      id: '/_app/@{$orgSlug}_/-/apps'
+      path: '/@{$orgSlug}/-/apps'
+      fullPath: '/@{$orgSlug}/-/apps'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125AppsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/@{$orgSlug}_/-/billing': {
@@ -5341,6 +5563,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AccountMcpServersOauthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/blog_/category/$category_/rss.xml': {
+      id: '/blog_/category/$category_/rss.xml'
+      path: '/blog/category/$category/rss.xml'
+      fullPath: '/blog/category/$category/rss.xml'
+      preLoaderRoute: typeof BlogCategoryCategoryRssDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/community_/$listingId/files/$': {
       id: '/community_/$listingId/files/$'
       path: '/files/$'
@@ -5432,6 +5661,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAtChar123orgSlugChar125ApprovalsBundleIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/@{$orgSlug}_/-/billing_/move-plan': {
+      id: '/_app/@{$orgSlug}_/-/billing_/move-plan'
+      path: '/@{$orgSlug}/-/billing/move-plan'
+      fullPath: '/@{$orgSlug}/-/billing/move-plan'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125BillingMovePlanRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/@{$orgSlug}_/-/billing_/success': {
       id: '/_app/@{$orgSlug}_/-/billing_/success'
       path: '/@{$orgSlug}/-/billing/success'
@@ -5465,6 +5701,13 @@ declare module '@tanstack/react-router' {
       path: '/@{$orgSlug}/-/execution-contexts/$contextId'
       fullPath: '/@{$orgSlug}/-/execution-contexts/$contextId'
       preLoaderRoute: typeof AppAtChar123orgSlugChar125ExecutionContextsContextIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/grants_/everyone': {
+      id: '/_app/@{$orgSlug}_/-/grants_/everyone'
+      path: '/@{$orgSlug}/-/grants/everyone'
+      fullPath: '/@{$orgSlug}/-/grants/everyone'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125GrantsEveryoneRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/@{$orgSlug}_/-/integrations_/$integrationName': {
@@ -5614,6 +5857,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAtChar123orgSlugChar125AgentsNewAgentRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/@{$orgSlug}_/-/credentials_/$credentialId_/local-reads': {
+      id: '/_app/@{$orgSlug}_/-/credentials_/$credentialId_/local-reads'
+      path: '/@{$orgSlug}/-/credentials/$credentialId/local-reads'
+      fullPath: '/@{$orgSlug}/-/credentials/$credentialId/local-reads'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/grants_/team/$teamId': {
+      id: '/_app/@{$orgSlug}_/-/grants_/team/$teamId'
+      path: '/@{$orgSlug}/-/grants/team/$teamId'
+      fullPath: '/@{$orgSlug}/-/grants/team/$teamId'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125GrantsTeamTeamIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/grants_/user/$userId': {
+      id: '/_app/@{$orgSlug}_/-/grants_/user/$userId'
+      path: '/@{$orgSlug}/-/grants/user/$userId'
+      fullPath: '/@{$orgSlug}/-/grants/user/$userId'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125GrantsUserUserIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/@{$orgSlug}_/-/integrations_/apps/$appSlug': {
       id: '/_app/@{$orgSlug}_/-/integrations_/apps/$appSlug'
       path: '/@{$orgSlug}/-/integrations/apps/$appSlug'
@@ -5742,6 +6006,7 @@ interface AppRouteChildren {
   AppAdminIndexRoute: typeof AppAdminIndexRoute
   AppAtChar123orgSlugChar125ActivityRoute: typeof AppAtChar123orgSlugChar125ActivityRoute
   AppAtChar123orgSlugChar125AgentsRoute: typeof AppAtChar123orgSlugChar125AgentsRoute
+  AppAtChar123orgSlugChar125AppsRoute: typeof AppAtChar123orgSlugChar125AppsRoute
   AppAtChar123orgSlugChar125BillingRoute: typeof AppAtChar123orgSlugChar125BillingRoute
   AppAtChar123orgSlugChar125CollaboratorsRoute: typeof AppAtChar123orgSlugChar125CollaboratorsRoute
   AppAtChar123orgSlugChar125CredentialsRoute: typeof AppAtChar123orgSlugChar125CredentialsRoute
@@ -5808,11 +6073,13 @@ interface AppRouteChildren {
   AppAtChar123orgSlugChar125AgentsNewRoute: typeof AppAtChar123orgSlugChar125AgentsNewRoute
   AppAtChar123orgSlugChar125AgentsUsageRoute: typeof AppAtChar123orgSlugChar125AgentsUsageRoute
   AppAtChar123orgSlugChar125ApprovalsBundleIdRoute: typeof AppAtChar123orgSlugChar125ApprovalsBundleIdRoute
+  AppAtChar123orgSlugChar125BillingMovePlanRoute: typeof AppAtChar123orgSlugChar125BillingMovePlanRoute
   AppAtChar123orgSlugChar125BillingSuccessRoute: typeof AppAtChar123orgSlugChar125BillingSuccessRoute
   AppAtChar123orgSlugChar125CredentialsCredentialIdRoute: typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
   AppAtChar123orgSlugChar125CredentialsNewRoute: typeof AppAtChar123orgSlugChar125CredentialsNewRoute
   AppAtChar123orgSlugChar125EmailMessageIdRoute: typeof AppAtChar123orgSlugChar125EmailMessageIdRoute
   AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute: typeof AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute
+  AppAtChar123orgSlugChar125GrantsEveryoneRoute: typeof AppAtChar123orgSlugChar125GrantsEveryoneRoute
   AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute: typeof AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute
   AppAtChar123orgSlugChar125IntegrationsApproveRoute: typeof AppAtChar123orgSlugChar125IntegrationsApproveRoute
   AppAtChar123orgSlugChar125JobsJobIdRoute: typeof AppAtChar123orgSlugChar125JobsJobIdRoute
@@ -5832,6 +6099,9 @@ interface AppRouteChildren {
   AppAccountPackagesPackageIdApprovePublishRoute: typeof AppAccountPackagesPackageIdApprovePublishRoute
   AppAccountSecretsUserSecretNameRoute: typeof AppAccountSecretsUserSecretNameRoute
   AppAtChar123orgSlugChar125AgentsNewAgentRoute: typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
+  AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute: typeof AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute
+  AppAtChar123orgSlugChar125GrantsTeamTeamIdRoute: typeof AppAtChar123orgSlugChar125GrantsTeamTeamIdRoute
+  AppAtChar123orgSlugChar125GrantsUserUserIdRoute: typeof AppAtChar123orgSlugChar125GrantsUserUserIdRoute
   AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute: typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
   AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute: typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
   AppAtChar123orgSlugChar125SecretsUserSecretNameRoute: typeof AppAtChar123orgSlugChar125SecretsUserSecretNameRoute
@@ -5891,6 +6161,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAtChar123orgSlugChar125ActivityRoute:
     AppAtChar123orgSlugChar125ActivityRoute,
   AppAtChar123orgSlugChar125AgentsRoute: AppAtChar123orgSlugChar125AgentsRoute,
+  AppAtChar123orgSlugChar125AppsRoute: AppAtChar123orgSlugChar125AppsRoute,
   AppAtChar123orgSlugChar125BillingRoute:
     AppAtChar123orgSlugChar125BillingRoute,
   AppAtChar123orgSlugChar125CollaboratorsRoute:
@@ -5994,6 +6265,8 @@ const AppRouteChildren: AppRouteChildren = {
     AppAtChar123orgSlugChar125AgentsUsageRoute,
   AppAtChar123orgSlugChar125ApprovalsBundleIdRoute:
     AppAtChar123orgSlugChar125ApprovalsBundleIdRoute,
+  AppAtChar123orgSlugChar125BillingMovePlanRoute:
+    AppAtChar123orgSlugChar125BillingMovePlanRoute,
   AppAtChar123orgSlugChar125BillingSuccessRoute:
     AppAtChar123orgSlugChar125BillingSuccessRoute,
   AppAtChar123orgSlugChar125CredentialsCredentialIdRoute:
@@ -6004,6 +6277,8 @@ const AppRouteChildren: AppRouteChildren = {
     AppAtChar123orgSlugChar125EmailMessageIdRoute,
   AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute:
     AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute,
+  AppAtChar123orgSlugChar125GrantsEveryoneRoute:
+    AppAtChar123orgSlugChar125GrantsEveryoneRoute,
   AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute:
     AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute,
   AppAtChar123orgSlugChar125IntegrationsApproveRoute:
@@ -6039,6 +6314,12 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccountSecretsUserSecretNameRoute: AppAccountSecretsUserSecretNameRoute,
   AppAtChar123orgSlugChar125AgentsNewAgentRoute:
     AppAtChar123orgSlugChar125AgentsNewAgentRoute,
+  AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute:
+    AppAtChar123orgSlugChar125CredentialsCredentialIdLocalReadsRoute,
+  AppAtChar123orgSlugChar125GrantsTeamTeamIdRoute:
+    AppAtChar123orgSlugChar125GrantsTeamTeamIdRoute,
+  AppAtChar123orgSlugChar125GrantsUserUserIdRoute:
+    AppAtChar123orgSlugChar125GrantsUserUserIdRoute,
   AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute:
     AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute,
   AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute:
@@ -6110,6 +6391,7 @@ const rootRouteChildren: RootRouteChildren = {
   DeviceRoute: DeviceRoute,
   DiscordRoute: DiscordRoute,
   DocsDotmdRoute: DocsDotmdRoute,
+  DownloadRoute: DownloadRoute,
   FaqRoute: FaqRoute,
   FeaturesRoute: FeaturesRoute,
   GuidesRoute: GuidesRoute,
@@ -6137,6 +6419,8 @@ const rootRouteChildren: RootRouteChildren = {
   VerifyEmailClaimReleaseRoute: VerifyEmailClaimReleaseRoute,
   VerifyEmailDestinationRoute: VerifyEmailDestinationRoute,
   DotwellKnownApiCatalogRoute: DotwellKnownApiCatalogRoute,
+  DotwellKnownAppleAppSiteAssociationRoute:
+    DotwellKnownAppleAppSiteAssociationRoute,
   DotwellKnownOpenaiAppsChallengeRoute: DotwellKnownOpenaiAppsChallengeRoute,
   DotwellKnownSecurityDottxtRoute: DotwellKnownSecurityDottxtRoute,
   AccountExportDotjsonRoute: AccountExportDotjsonRoute,
@@ -6146,6 +6430,7 @@ const rootRouteChildren: RootRouteChildren = {
   BlogSlugRoute: BlogSlugRoute,
   BlogRssDotxmlRoute: BlogRssDotxmlRoute,
   BlogChar123slugChar125DotmdRoute: BlogChar123slugChar125DotmdRoute,
+  ClaimCodeRoute: ClaimCodeRoute,
   CommunityListingIdRoute: CommunityListingIdRouteWithChildren,
   CompareComposioAlternativesRoute: CompareComposioAlternativesRoute,
   CompareN8nAlternativesRoute: CompareN8nAlternativesRoute,
@@ -6176,6 +6461,7 @@ const rootRouteChildren: RootRouteChildren = {
   IntegrationsGmailRoute: IntegrationsGmailRoute,
   IntegrationsSlackRoute: IntegrationsSlackRoute,
   JoinTokenRoute: JoinTokenRoute,
+  LoginDeviceRoute: LoginDeviceRoute,
   OauthAuthorizeRoute: OauthAuthorizeRoute,
   OauthCallbackRoute: OauthCallbackRoute,
   OgChar123pageChar125DotpngRoute: OgChar123pageChar125DotpngRoute,
@@ -6199,6 +6485,8 @@ const rootRouteChildren: RootRouteChildren = {
     AtChar123orgSlugChar125ConnectionsRoute,
   KodyAuthSplatRoute: KodyAuthSplatRoute,
   AuthProviderCallbackRoute: AuthProviderCallbackRoute,
+  BlogCategoryCategoryRoute: BlogCategoryCategoryRoute,
+  BlogSeriesSeriesRoute: BlogSeriesSeriesRoute,
   BlogSlugOgDotpngRoute: BlogSlugOgDotpngRoute,
   CommunityListingIdOgDotpngRoute: CommunityListingIdOgDotpngRoute,
   DocsSlugOgDotpngRoute: DocsSlugOgDotpngRoute,
@@ -6221,6 +6509,7 @@ const rootRouteChildren: RootRouteChildren = {
     AtChar123usernameChar125KodyIdIconIconCommitRoute,
   AccountMcpServersLogosServerIdRoute: AccountMcpServersLogosServerIdRoute,
   AccountMcpServersOauthCallbackRoute: AccountMcpServersOauthCallbackRoute,
+  BlogCategoryCategoryRssDotxmlRoute: BlogCategoryCategoryRssDotxmlRoute,
   CommunityListingIdAssetsSplatRoute: CommunityListingIdAssetsSplatRoute,
   CommunityListingIdIconIconCommitRoute: CommunityListingIdIconIconCommitRoute,
   CommunityListingIdRawSplatRoute: CommunityListingIdRawSplatRoute,

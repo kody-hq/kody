@@ -1,3 +1,4 @@
+import { createGatewayResponseUnwrapSource } from '#mcp/sandbox-rpc-outcome.ts'
 import {
 	sanitizeToolName,
 	ToolDispatcher,
@@ -12,7 +13,7 @@ import {
 	isWorkersHungRequestCanceledError,
 	workersHungExecutionMessage,
 } from '@kody-internal/shared/workers-hung-request.ts'
-import { type ContentBlock } from '@modelcontextprotocol/sdk/types.js'
+import type { ContentBlock } from '@modelcontextprotocol/sdk/types.js'
 import { exports as workerExports } from 'cloudflare:workers'
 import { loadNormalizeCode } from '#worker/codemode-normalize-load.ts'
 import {
@@ -20,7 +21,7 @@ import {
 	type DynamicWorkerUsageTailProps,
 } from '#worker/usage/dynamic-worker-cpu.ts'
 import { defaultExecutorTimeoutMs } from '#mcp/executor-budgets.ts'
-import { type FetchGatewayProps } from '#mcp/fetch-gateway.ts'
+import type { FetchGatewayProps } from '#mcp/fetch-gateway.ts'
 import { pathSegmentEncodingWarningHeaderName } from '#mcp/secrets/path-segment-encoding-warning.ts'
 import {
 	readBaseUrlHostname,
@@ -40,10 +41,10 @@ import {
 	countEvaluateInvocationParamsChars,
 	recordDynamicWorkerInvoke,
 } from '#worker/usage/dynamic-worker-invoke.ts'
-import { type DynamicWorkerDaySurface } from '#worker/usage/dynamic-worker-day-surface.ts'
-import { type ExecuteThinGlueClass } from '#worker/usage/execute-thin-glue.ts'
-import { type UserMeterEnv } from '#worker/entitlements/user-meter-client.ts'
-import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import type { DynamicWorkerDaySurface } from '#worker/usage/dynamic-worker-day-surface.ts'
+import type { ExecuteThinGlueClass } from '#worker/usage/execute-thin-glue.ts'
+import type { UserMeterEnv } from '#worker/entitlements/user-meter-client.ts'
+import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import {
 	isSecretAuthRequiredMessage,
 	parseHostApprovalRequiredBatchMessage,
@@ -53,7 +54,7 @@ import {
 	parsePackageAccessRequiredMessage,
 	parseSecretScopeUnavailableMessage,
 } from '#mcp/secrets/errors.ts'
-import { type SecretScope } from '#mcp/secrets/types.ts'
+import type { SecretScope } from '#mcp/secrets/types.ts'
 import {
 	isComputeOverageLimitError,
 	isEntitlementLimitError,
@@ -67,9 +68,9 @@ import {
 import { buildIntegrationReconnectHref } from '#universal/connection-trouble.ts'
 import { buildCredentialCreateHref } from '#universal/credential-contracts.ts'
 import { isIntegrationTokenRefreshCallerMessage } from '#worker/integrations/token-refresh.ts'
-import {
-	type KodyMcpServerMetadata,
-	type KodyResolvedProvider,
+import type {
+	KodyMcpServerMetadata,
+	KodyResolvedProvider,
 } from '#mcp/kody-remote-types.ts'
 import {
 	createKodyProviderProxySource,
@@ -1157,7 +1158,7 @@ function createSandboxRunFetchSource() {
 		'          console.warn(__kodyPathSegmentWarning);',
 		'        }',
 		'        return __kodyResponse;',
-		'      })();',
+		'      })().then(__kodyUnwrapGatewayResponse);',
 		'    };',
 	]
 }
@@ -1225,7 +1226,7 @@ function createPackageBindingSandboxSource() {
 		'      fetch: async (input, init) => {',
 		'        if (!fetcher) throw new __kodyErrorCaptured("Outbound fetch is unavailable for this package.");',
 		'        await recordFetch();',
-		'        return await fetcher.fetch(input, init);',
+		'        return await __kodyUnwrapGatewayResponse(await fetcher.fetch(input, init));',
 		'      },',
 		'      kodyCall: (dispatchName, args) => kodyCall(dispatchName, args),',
 		// packageStorage() for this package only: the host bound dispatcher
@@ -1321,6 +1322,7 @@ function createExecutorModule(input: {
 		'const __kodyArrayIsArrayCaptured = Array.isArray;',
 		'const __kodyStringCaptured = String;',
 		...createPackageBindingSandboxSource(),
+		createGatewayResponseUnwrapSource(),
 		'const __kodyNativeFetch = globalThis.fetch.bind(globalThis);',
 		'const __kodyEvaluateFetchStorage =',
 		'  globalThis[__kodyEvaluateFetchStorageSymbol] ??',
@@ -1329,7 +1331,7 @@ function createExecutorModule(input: {
 		'  globalThis.fetch = (input, init) => {',
 		'    const ctx = __kodyReflectApplyCaptured(__kodyAlsGetStoreCaptured, __kodyEvaluateFetchStorage, []);',
 		'    if (ctx) return ctx.fetch(input, init);',
-		'    return __kodyNativeFetch(input, init);',
+		'    return __kodyNativeFetch(input, init).then(__kodyUnwrapGatewayResponse);',
 		'  };',
 		'  globalThis[__kodyEvaluateFetchPatchedSymbol] = true;',
 		'}',

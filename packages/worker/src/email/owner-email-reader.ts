@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { mailboxRpc, type MailboxEnv } from './mailbox-client.ts'
 import {
 	mailboxAttachmentToEmailAttachmentRecord,
@@ -6,16 +6,16 @@ import {
 	mailboxMessageToEmailMessageRecord,
 } from './mailbox-record-mappers.ts'
 import { loadEmailAttachmentContent, loadRawMime } from './service.ts'
-import {
-	type EmailAttachmentRecord,
-	type EmailClassification,
-	type EmailDeliveryEventRecord,
-	type EmailDeliveryEventType,
-	type EmailDeliveryStatus,
-	type EmailDirection,
-	type EmailMessageRecord,
-	type EmailMessageView,
-	type EmailProcessingStatus,
+import type {
+	EmailAttachmentRecord,
+	EmailClassification,
+	EmailDeliveryEventRecord,
+	EmailDeliveryEventType,
+	EmailDeliveryStatus,
+	EmailDirection,
+	EmailMessageRecord,
+	EmailMessageView,
+	EmailProcessingStatus,
 } from './types.ts'
 
 export type OwnerEmailReaderEnv = MailboxEnv & {

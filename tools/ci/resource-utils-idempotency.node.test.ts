@@ -5,7 +5,9 @@ import {
 	ensureArtifactsNamespace,
 	ensureD1Database,
 	ensureR2Bucket,
+	isWranglerNotFoundOutput,
 	type runWrangler,
+	wranglerFailureLogLines,
 } from './resource-utils.ts'
 
 const creds = { accountId: 'account-1', apiToken: 'token-1', dryRun: false }
@@ -262,4 +264,33 @@ test('deleteArtifactsNamespace skips namespace DELETE while activation is in pro
 		}),
 	).resolves.toBeUndefined()
 	expect(fetcher).toHaveBeenCalledTimes(2)
+})
+
+test('quiet wrangler failures skip the log when the caller expects the output', () => {
+	const base = {
+		command: 'wrangler delete gone --force',
+		output: 'Worker "gone" not found',
+		timeoutMessage: '',
+		quiet: true,
+	}
+	expect(
+		wranglerFailureLogLines({
+			...base,
+			expectedFailure: isWranglerNotFoundOutput,
+		}),
+	).toEqual([])
+	expect(wranglerFailureLogLines(base)).toEqual([
+		'wrangler (failed): wrangler delete gone --force',
+		'Worker "gone" not found',
+	])
+	expect(
+		wranglerFailureLogLines({
+			...base,
+			output: 'Authentication error [code: 10000]',
+			expectedFailure: isWranglerNotFoundOutput,
+		}),
+	).toEqual([
+		'wrangler (failed): wrangler delete gone --force',
+		'Authentication error [code: 10000]',
+	])
 })

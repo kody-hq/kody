@@ -1,7 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
 export const saveCredentialHosts = createServerFn({ method: 'POST' })
-	.inputValidator(
+	.validator(
 		z.object({
 			orgSlug: z.string().regex(/^[a-zA-Z0-9_-]+$/),
 			credentialId: z.string().min(1),

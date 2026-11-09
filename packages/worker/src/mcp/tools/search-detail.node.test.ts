@@ -5,9 +5,9 @@ import {
 import { expect, test, vi } from 'vitest'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
-import { type McpRegistrationAgent } from '#mcp/mcp-registration-agent.ts'
+import type { McpRegistrationAgent } from '#mcp/mcp-registration-agent.ts'
 import type * as IntegrationsService from '#worker/integrations/service.ts'
-import { type JoinedIntegration } from '#worker/integrations/types.ts'
+import type { JoinedIntegration } from '#worker/integrations/types.ts'
 
 const mockModule = vi.hoisted(() => ({
 	getSavedPackageById: vi.fn(),
@@ -38,6 +38,8 @@ vi.mock('#worker/package-registry/repo.ts', () => ({
 
 vi.mock('#worker/package-registry/source.ts', () => ({
 	loadPackageSourceBySourceId: (...args: Array<unknown>) =>
+		mockModule.loadPackageSourceBySourceId(...args),
+	loadServingPackageSourceBySourceId: (...args: Array<unknown>) =>
 		mockModule.loadPackageSourceBySourceId(...args),
 }))
 

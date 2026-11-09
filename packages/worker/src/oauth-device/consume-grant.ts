@@ -1,4 +1,4 @@
-import { type AuthRequest } from '@cloudflare/workers-oauth-provider'
+import type { AuthRequest } from '@cloudflare/workers-oauth-provider'
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	auditDatabaseFromEnv,
@@ -15,7 +15,7 @@ import { resolveOAuthHelpers } from '#worker/oauth-helpers.ts'
 import { grantBindingFields } from '#worker/orgs/oauth-grant.ts'
 import { cliOAuthCallbackUrl } from '#worker/cli-client-metadata.ts'
 import { createServerPkcePair } from './device-grant.ts'
-import { type DeviceAuthorizationRow } from './store.ts'
+import type { DeviceAuthorizationRow } from './store.ts'
 
 type GrantHelpers = {
 	completeAuthorization: (options: {

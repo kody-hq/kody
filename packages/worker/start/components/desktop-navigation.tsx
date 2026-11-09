@@ -3,10 +3,7 @@ import { Global, type CSSObject } from '@emotion/react'
 import { useEffect, useState } from 'react'
 import { colors, typography } from '#universal/styles/tokens.ts'
 import { toast } from '#client/toast.ts'
-import {
-	type DesktopNavigationState,
-	type DesktopShell,
-} from '../desktop-shell.ts'
+import type { DesktopNavigationState, DesktopShell } from '../desktop-shell.ts'
 import { SiteLink } from './site-link.tsx'
 import { renderIcon } from './icon.tsx'
 
@@ -76,7 +73,7 @@ export function DesktopNavigation({ homeHref }: { homeHref: string }) {
 						position: 'fixed',
 						top: 0,
 						insetInline: 0,
-						height: 16,
+						height: 35,
 						zIndex: 99,
 						WebkitAppRegion: 'drag',
 						pointerEvents: 'none',
@@ -95,6 +92,7 @@ export function DesktopNavigation({ homeHref }: { homeHref: string }) {
 					zIndex: 100,
 					display: 'flex',
 					alignItems: 'center',
+					justifyContent: 'flex-end',
 					gap: 4,
 					paddingInline:
 						mac && state.integratedTitlebar && !state.fullscreen
@@ -142,7 +140,6 @@ export function DesktopNavigation({ homeHref }: { homeHref: string }) {
 						if (event.key === 'Escape') setAddressOpen(false)
 					}}
 					css={{
-						marginLeft: 'auto',
 						WebkitAppRegion: 'no-drag',
 					}}
 				>

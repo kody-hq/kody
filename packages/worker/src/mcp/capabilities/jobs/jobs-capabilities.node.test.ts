@@ -9,7 +9,7 @@ const mockModule = vi.hoisted(() => ({
 	getJobInspection: vi.fn(),
 	inspectJobsForUser: vi.fn(),
 	listRunRecords: vi.fn(),
-	listWorkflowRunsForUser: vi.fn(),
+	listWorkflowRunPageForUser: vi.fn(),
 	runJobNowViaManager: vi.fn(),
 	updateJob: vi.fn(),
 	resolveCronJobEnablementHint: vi.fn(),
@@ -42,8 +42,8 @@ vi.mock('#worker/jobs/manager-client.ts', () => ({
 }))
 
 vi.mock('#worker/package-runtime/package-workflows.ts', () => ({
-	listWorkflowRunsForUser: (...args: Array<unknown>) =>
-		mockModule.listWorkflowRunsForUser(...args),
+	listWorkflowRunPageForUser: (...args: Array<unknown>) =>
+		mockModule.listWorkflowRunPageForUser(...args),
 }))
 
 vi.mock('#worker/run-records/service.ts', () => ({
@@ -558,53 +558,56 @@ test('job inspection capabilities expose due-now state, history, alarm status, o
 			code: source.code,
 		})
 
-		mockModule.listWorkflowRunsForUser.mockResolvedValue([
-			{
-				id: 'dynwf-123',
-				userId: ownerIdFromStored('user-123'),
-				sourceType: 'inline',
-				packageId: null,
-				kodyId: null,
-				sourceId: null,
-				workflowName: 'inline-code',
-				exportName: null,
-				idempotencyKey: 'execute-smoke',
-				runAt: '2026-05-03T12:00:00.000Z',
-				planDate: null,
-				status: 'complete',
-				createdAt: '2026-05-03T11:59:00.000Z',
-				updatedAt: '2026-05-03T12:00:01.000Z',
-				completedAt: '2026-05-03T12:00:01.000Z',
-				lastError: null,
-				enqueuedCommit: null,
-				sourceRevision: null,
-			},
-			{
-				id: 'pkgwf-123',
-				userId: ownerIdFromStored('user-123'),
-				sourceType: 'package',
-				packageId: 'pkg-1',
-				kodyId: 'shade-automation',
-				sourceId: 'source-1',
-				workflowName: './sync',
-				exportName: './sync',
-				idempotencyKey: 'pinned-sync',
-				runAt: '2026-05-03T12:00:00.000Z',
-				planDate: null,
-				status: 'queued',
-				createdAt: '2026-05-03T11:59:00.000Z',
-				updatedAt: '2026-05-03T11:59:00.000Z',
-				completedAt: null,
-				lastError: null,
-				enqueuedCommit: 'commit-a',
-				sourceRevision: 'pinned',
-			},
-		])
+		mockModule.listWorkflowRunPageForUser.mockResolvedValue({
+			nextCursor: 'cursor-next',
+			workflows: [
+				{
+					id: 'dynwf-123',
+					userId: ownerIdFromStored('user-123'),
+					sourceType: 'inline',
+					packageId: null,
+					kodyId: null,
+					sourceId: null,
+					workflowName: 'inline-code',
+					exportName: null,
+					idempotencyKey: 'execute-smoke',
+					runAt: '2026-05-03T12:00:00.000Z',
+					planDate: null,
+					status: 'complete',
+					createdAt: '2026-05-03T11:59:00.000Z',
+					updatedAt: '2026-05-03T12:00:01.000Z',
+					completedAt: '2026-05-03T12:00:01.000Z',
+					lastError: null,
+					enqueuedCommit: null,
+					sourceRevision: null,
+				},
+				{
+					id: 'pkgwf-123',
+					userId: ownerIdFromStored('user-123'),
+					sourceType: 'package',
+					packageId: 'pkg-1',
+					kodyId: 'shade-automation',
+					sourceId: 'source-1',
+					workflowName: './sync',
+					exportName: './sync',
+					idempotencyKey: 'pinned-sync',
+					runAt: '2026-05-03T12:00:00.000Z',
+					planDate: null,
+					status: 'queued',
+					createdAt: '2026-05-03T11:59:00.000Z',
+					updatedAt: '2026-05-03T11:59:00.000Z',
+					completedAt: null,
+					lastError: null,
+					enqueuedCommit: 'commit-a',
+					sourceRevision: 'pinned',
+				},
+			],
+		})
 		const workflowListResult = await workflowListCapability.handler(
 			{ limit: 5 },
 			ctx,
 		)
-		expect(mockModule.listWorkflowRunsForUser).toHaveBeenCalledWith(
+		expect(mockModule.listWorkflowRunPageForUser).toHaveBeenCalledWith(
 			expect.objectContaining({
 				userId: ownerIdFromStored('user-123'),
 				limit: 5,
@@ -616,6 +619,7 @@ test('job inspection capabilities expose due-now state, history, alarm status, o
 				},
 			}),
 		)
+		expect(workflowListResult.next_cursor).toBe('cursor-next')
 		expect(workflowListResult.workflows[0]?.status).toBe('complete')
 		expect(workflowListResult.workflows[0]).toMatchObject({
 			enqueued_commit: null,
@@ -626,29 +630,32 @@ test('job inspection capabilities expose due-now state, history, alarm status, o
 			source_revision: 'pinned',
 		})
 
-		mockModule.listWorkflowRunsForUser.mockClear()
-		mockModule.listWorkflowRunsForUser.mockResolvedValue([
-			{
-				id: 'dynwf-123',
-				userId: ownerIdFromStored('user-123'),
-				sourceType: 'inline',
-				packageId: null,
-				kodyId: null,
-				sourceId: null,
-				workflowName: 'inline-code',
-				exportName: null,
-				idempotencyKey: 'execute-smoke',
-				runAt: '2026-05-03T12:00:00.000Z',
-				planDate: null,
-				status: 'complete',
-				createdAt: '2026-05-03T11:59:00.000Z',
-				updatedAt: '2026-05-03T12:00:01.000Z',
-				completedAt: '2026-05-03T12:00:01.000Z',
-				lastError: null,
-				enqueuedCommit: null,
-				sourceRevision: null,
-			},
-		])
+		mockModule.listWorkflowRunPageForUser.mockClear()
+		mockModule.listWorkflowRunPageForUser.mockResolvedValue({
+			nextCursor: null,
+			workflows: [
+				{
+					id: 'dynwf-123',
+					userId: ownerIdFromStored('user-123'),
+					sourceType: 'inline',
+					packageId: null,
+					kodyId: null,
+					sourceId: null,
+					workflowName: 'inline-code',
+					exportName: null,
+					idempotencyKey: 'execute-smoke',
+					runAt: '2026-05-03T12:00:00.000Z',
+					planDate: null,
+					status: 'complete',
+					createdAt: '2026-05-03T11:59:00.000Z',
+					updatedAt: '2026-05-03T12:00:01.000Z',
+					completedAt: '2026-05-03T12:00:01.000Z',
+					lastError: null,
+					enqueuedCommit: null,
+					sourceRevision: null,
+				},
+			],
+		})
 		const filtered = await workflowListCapability.handler(
 			{
 				workflow_id: 'dynwf-123',
@@ -656,13 +663,15 @@ test('job inspection capabilities expose due-now state, history, alarm status, o
 				package_id: 'pkg-1',
 				since: '2026-05-01T00:00:00.000Z',
 				limit: 3,
+				cursor: 'cursor-next',
 			},
 			ctx,
 		)
-		expect(mockModule.listWorkflowRunsForUser).toHaveBeenCalledWith(
+		expect(mockModule.listWorkflowRunPageForUser).toHaveBeenCalledWith(
 			expect.objectContaining({
 				userId: ownerIdFromStored('user-123'),
 				limit: 3,
+				cursor: 'cursor-next',
 				filter: {
 					workflowId: 'dynwf-123',
 					status: 'complete',
@@ -672,6 +681,7 @@ test('job inspection capabilities expose due-now state, history, alarm status, o
 			}),
 		)
 		expect(filtered.workflows).toHaveLength(1)
+		expect(filtered.next_cursor).toBeNull()
 		expect(filtered.workflows[0]?.id).toBe('dynwf-123')
 	} finally {
 		vi.useRealTimers()

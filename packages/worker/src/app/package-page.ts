@@ -31,13 +31,13 @@ import { getEntitySourceByEntity } from '#worker/repo/entity-sources.ts'
 import { getUserRepoByName } from '#worker/repo/user-repos.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { viewerOrgsFollowTarget } from '#worker/follow/repo.ts'
-import { type FollowTargetKind } from '#worker/follow/types.ts'
-import {
-	type AccountPackageDetail,
-	type CommunityDetailLoaderData,
+import type { FollowTargetKind } from '#worker/follow/types.ts'
+import type {
+	AccountPackageDetail,
+	CommunityDetailLoaderData,
 } from '#universal/loader-data.ts'
-import { type McpUserContext } from '@kody-internal/shared/chat.ts'
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { McpUserContext } from '@kody-internal/shared/chat.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 
 export type PackagePageAccess =
 	| { kind: 'redirect'; to: string; shared: boolean }
@@ -538,7 +538,9 @@ async function resolvePackagePageForViewer(
 		const viewerCanPublish = allows('package:publish')
 		const viewerCanDelete = allows('package:delete')
 		const viewerCanManageAccess = allows('package:manage_access')
-		const viewerCanAdoptCommunityFork = viewerAccess?.binding.role === 'owner'
+		const viewerCanAdoptCommunityFork =
+			viewerAccess?.binding.role === 'owner' ||
+			viewerAccess?.binding.role === 'admin'
 		const viewerMayRun = savedPackageViewerMayRunApp(viewerAccess, {
 			ownerId,
 			appId: packageId,

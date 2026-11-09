@@ -9,7 +9,7 @@ import {
 	shouldUseSplitDeploy,
 	splitDeployArgs,
 } from './split-worker-deploy.ts'
-import { type WranglerDeployRunResult } from './retry-classifiers.ts'
+import type { WranglerDeployRunResult } from './retry-classifiers.ts'
 
 const versionId = '3a6da96b-6da8-4393-b906-8ede58c99374'
 const tag = 'gh-123-1'

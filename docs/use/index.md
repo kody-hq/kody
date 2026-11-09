@@ -39,6 +39,16 @@ example [`/@me/-/settings`](https://kody.codes/@me/-/settings),
 links. Team orgs still use their own slug. Details:
 [Organizations](../guides/organizations.md#link-to-your-own-pages-with-me).
 
+Workspace pages on a team org (`/@<slug>/-/…`):
+[Integrations](../guides/packages-integrations-mcp.md) and
+[OAuth](../guides/oauth.md) (`/-/integrations`),
+[Share a package](../guides/package-sharing.md#access-for-one-person) and
+[Organizations](../guides/organizations.md#access-for-one-person) (Grants and
+per-person Access), [Triggers](../guides/triggers.md) next to
+[Inbound webhooks](./webhooks.md), and
+[Move a Pro plan](../guides/organizations.md#move-a-pro-plan)
+(`/-/billing/move-plan`).
+
 ## Field reference
 
 The pages below are the MCP-level field contracts those guides link into.

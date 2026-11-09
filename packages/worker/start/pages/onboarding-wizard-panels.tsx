@@ -1,9 +1,9 @@
 /** @jsxImportSource @emotion/react */
 import { landingArtAttrs, publicAsset } from '../public-assets.ts'
-import { type CSSObject } from '@emotion/react'
-import { type CSSProperties, type RefCallback } from 'react'
+import type { CSSObject } from '@emotion/react'
+import type { CSSProperties, RefCallback } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
-import { type HighlightedCode } from '#universal/highlighted-code.ts'
+import type { HighlightedCode } from '#universal/highlighted-code.ts'
 import { routes } from '#universal/routes.ts'
 import {
 	onboardingAccessLede,
@@ -43,7 +43,7 @@ import {
 import { CopyCard } from './onboarding-mcp-client-cards.tsx'
 import { OnboardingStep2Prompt } from './onboarding-step-2-prompt.tsx'
 import { renderPlatformIntegrationCatalog } from './platform-integration-catalog.tsx'
-import { type PlatformIntegrationCatalogItem } from '#universal/oauth-connect.ts'
+import type { PlatformIntegrationCatalogItem } from '#universal/oauth-connect.ts'
 import {
 	WizardNavigation,
 	connectStatusContent,

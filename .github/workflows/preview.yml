@@ -76,7 +76,9 @@ jobs:
         github.event.pull_request.head.repo.fork == false &&
         github.event.pull_request.draft == false &&
         ((github.event.action != 'labeled' && github.event.action != 'unlabeled') ||
-          startsWith(github.event.label.name, 'preview-flag:'))) ||
+          startsWith(github.event.label.name, 'preview-flag:') ||
+          startsWith(github.event.label.name, 'preview-plan:') ||
+          startsWith(github.event.label.name, 'preview-seed:'))) ||
       (github.event_name == 'workflow_dispatch' &&
         inputs.action == 'deploy')
     steps:
@@ -775,7 +777,15 @@ jobs:
               fi
             done <<< "$flag_keys_text"
           fi
-          node tools/seed-test-data.ts --remote --config "$WRANGLER_CONFIG" --email me@kentcdodds.com --password ilikecode "${flag_args[@]}"
+          seed_plan="$(node tools/preview-seed-flags.ts --labels "$labels_json" --plan)"
+          team_org="$(node tools/preview-seed-flags.ts --labels "$labels_json" --team-org)"
+          team_args=()
+          if [ -n "$team_org" ]; then
+            team_args+=(--team-org "$team_org")
+          fi
+          # Always a second non-admin account; the team org (seed user Owner,
+          # second account Member, one team) only with preview-seed:team-org.
+          node tools/seed-test-data.ts --remote --config "$WRANGLER_CONFIG" --email me@kentcdodds.com --password ilikecode --member-email preview-member@example.com --plan "$seed_plan" "${team_args[@]}" "${flag_args[@]}"
 
       - name: 🩺 Healthcheck (preview)
         shell: bash

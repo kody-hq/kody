@@ -5,7 +5,7 @@ description:
   Longer notes from people using Kody — how it shows up in their work, in their
   words.
 order: 1
-placeholder: false
+category: stories
 ---
 
 The homepage carousel keeps quotes short. A few people have more to say than

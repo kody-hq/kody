@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { bytesToBase64 } from '@kody-internal/shared/base64.ts'
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import {
@@ -32,6 +32,10 @@ import {
 import { EncodedPlaceholderError } from '#mcp/secrets/encoded-placeholder.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
+	gatewayErrorResponse,
+	withoutForgedGatewayErrorHeader,
+} from '#mcp/sandbox-rpc-outcome.ts'
+import {
 	createHostSecretAccessDeniedBatchMessage,
 	createMissingSecretMessage,
 	fetchSecretAuthRequiredMessage,
@@ -40,8 +44,8 @@ import {
 } from '#mcp/secrets/errors.ts'
 import { createUnresolvedSecretMessage } from '#mcp/secrets/unresolved-secret.ts'
 import { normalizeHost } from '#mcp/secrets/allowed-hosts.ts'
-import { type ResolvedSecret } from '#mcp/secrets/service.ts'
-import { type SecretScope } from '#mcp/secrets/types.ts'
+import type { ResolvedSecret } from '#mcp/secrets/service.ts'
+import type { SecretScope } from '#mcp/secrets/types.ts'
 import { secretPageOrgSlugFromCaller } from '#mcp/secrets/package-approval-url.ts'
 import { SecretProviderHostDeniedError } from '#mcp/secrets/secret-providers/errors.ts'
 import {
@@ -73,7 +77,7 @@ import {
 	credentialFetchPlacementKey,
 	type CredentialFetchPlacement,
 } from '#worker/credentials/credential-resolver.ts'
-import { type CredentialFillSite } from '#worker/credentials/fill-placement.ts'
+import type { CredentialFillSite } from '#worker/credentials/fill-placement.ts'
 import {
 	auditResolvedFetchPlacements,
 	resolveCredential,
@@ -86,6 +90,10 @@ import {
 	openSealedToken,
 	sealTokenResponse,
 } from '#worker/credentials/sealed-token.ts'
+import {
+	type JwtSignAnyHostCaller,
+	recordJwtSignAnyHostDestination,
+} from '#worker/credentials/jwt-sign-any-host.ts'
 import {
 	pathSegmentEncodedCredentialNames,
 	withPathSegmentEncodingWarning,
@@ -101,7 +109,7 @@ import { CredentialClientError } from '#worker/credentials/credential-client.ts'
 import { CredentialLoginRetryLaterError } from '#worker/credentials/credential-request.ts'
 import { recordRetriedLoginSession } from '#worker/credentials/login-session-store.ts'
 import { IntegrationHostNotAllowedError } from './execute-modules/integration-host-allowlist.ts'
-import { type StorageContext } from '#mcp/storage.ts'
+import type { StorageContext } from '#mcp/storage.ts'
 import {
 	billedOrgIdOf,
 	type RequestContext,
@@ -316,14 +324,29 @@ async function applyPackageAppVisitTicketToGateway(input: {
 }
 
 export class KodyFetchGateway extends WorkerEntrypoint<Env, FetchGatewayProps> {
+	/** Refusals come back as a marked response; see `sandbox-rpc-outcome.ts`. */
 	async fetch(request: Request) {
-		return executeGatewayFetch({
-			env: this.env,
-			props: this.ctx.props,
-			request,
-			waitUntil: (promise) => this.ctx.waitUntil(promise),
-		})
+		try {
+			return withoutForgedGatewayErrorHeader(
+				await executeGatewayFetch({
+					env: this.env,
+					props: this.ctx.props,
+					request,
+					waitUntil: (promise) => this.ctx.waitUntil(promise),
+				}),
+			)
+		} catch (error) {
+			return gatewayErrorResponse(error)
+		}
 	}
+}
+
+export const gatewayWithoutRunContextMessage =
+	'Outbound fetch has no run context: fetch() was called outside the run that owns it (for example from a detached callback or inside AsyncLocalStorage.run(null)), so it was refused.'
+
+/** The executor's shared `globalOutbound` gateway is minted with empty props. */
+function hasRunContext(props: FetchGatewayProps | undefined) {
+	return typeof props?.baseUrl === 'string'
 }
 
 export async function executeGatewayFetch(input: {
@@ -337,6 +360,9 @@ export async function executeGatewayFetch(input: {
 	/** Override {@link outboundFetchIdleTimeoutMs}. Tests use short values. */
 	idleTimeoutMs?: number
 }): Promise<Response> {
+	if (!hasRunContext(input.props)) {
+		throw new Error(gatewayWithoutRunContextMessage)
+	}
 	return await runInFeatureFlagExecution(input.props.executionId, () =>
 		fetchThroughGateway(input),
 	)
@@ -535,7 +561,9 @@ async function fetchThroughGateway(
 			pathSegmentEncodedNames,
 		)
 		return credentialClient
-			? withCredentialClientHint(redacted, credentialClient.shape)
+			? withCredentialClientHint(redacted, credentialClient.shape, {
+					providerLabel: credentialClient.providerLabel,
+				})
 			: redacted
 	} catch (error) {
 		deadline?.fail()
@@ -660,6 +688,7 @@ export async function expandSecretPlaceholders(input: {
 	request: Request
 	props: FetchGatewayProps
 	env: Pick<Env, 'APP_DB' | 'SECRET_STORE_KEY'>
+	waitUntil?: (promise: Promise<unknown>) => void
 }): Promise<{
 	request: Request
 	substitutedValues: Array<string>
@@ -931,6 +960,7 @@ export async function expandSecretPlaceholders(input: {
 			) {
 				continue
 			}
+			const anyHostFill: { caller?: JwtSignAnyHostCaller } = {}
 			const value = await openSealedToken({
 				env: input.env,
 				name,
@@ -940,7 +970,19 @@ export async function expandSecretPlaceholders(input: {
 				parts: (fillSitesByPlaceholder.get(placeholder) ?? []).map(
 					(site) => site.part,
 				),
+				onAnyHostFill: (caller) => {
+					anyHostFill.caller = caller
+				},
 			})
+			if (anyHostFill.caller) {
+				const recorded = recordJwtSignAnyHostDestination({
+					env: input.env,
+					caller: anyHostFill.caller,
+					host: requestHost,
+				})
+				if (input.waitUntil) input.waitUntil(recorded)
+				else await recorded
+			}
 			referencedAnyCredential = true
 			credentialNamesByPlaceholder.set(placeholder, 'sealed token')
 			replacements.set(placeholder, value)

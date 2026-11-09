@@ -195,6 +195,15 @@ test('execution context tables exist with their columns and unique rules', () =>
 		'capabilities_json',
 		'grant_json',
 		'grant_version',
+		'login_kind',
+		'login_user_id',
+		'login_profile_id',
+		'login_token_id',
+		'login_checked_at',
+		'team_id',
+		'paused_at',
+		'paused_by_user_id',
+		'pause_reason',
 	])
 	expect(columnNames(sqlite, 'execution_context_opt_ins')).toEqual([
 		'context_id',
@@ -283,6 +292,7 @@ test('execution context tables exist with their columns and unique rules', () =>
 		'execution_context_chain_entries_context_once',
 		'execution_context_chain_entries_user',
 		'execution_context_chains_user',
+		'execution_context_notices_subject',
 		'execution_context_opt_ins_org_user',
 		'execution_context_opt_ins_user',
 		'execution_context_org_attachments_attached_by',

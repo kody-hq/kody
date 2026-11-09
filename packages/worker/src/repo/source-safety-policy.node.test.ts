@@ -1,7 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import { cloudflareOpaqueInternalErrorMessage } from '#worker/cloudflare-opaque-internal-error.ts'
-import { type EntitySourceRow } from './types.ts'
+import type { EntitySourceRow } from './types.ts'
 
 const artifactsMock = vi.hoisted(() => ({
 	resolveExistingArtifactSourceRepo: vi.fn(),
@@ -155,7 +154,7 @@ test('Artifacts repo-lookup timeouts are distinct from git HEAD read timeouts', 
 })
 
 test('opaque Cloudflare Artifacts internals become retry messages, not source-recovery wraps', async () => {
-	const opaque = new Error(cloudflareOpaqueInternalErrorMessage)
+	const opaque = new Error('An internal error occurred.')
 	artifactsMock.resolveExistingArtifactSourceRepo.mockReset()
 	artifactsMock.resolveArtifactDefaultBranchHead.mockReset()
 	artifactsMock.resolveExistingArtifactSourceRepo.mockResolvedValue({
@@ -179,7 +178,7 @@ test('opaque Cloudflare Artifacts internals become retry messages, not source-re
 	const error = rejected as Error
 	expect(isArtifactsOpaqueInternalRetryMessage(error.message)).toBe(true)
 	expect(error.message).toContain('Retry the call.')
-	expect(error.message).toContain(cloudflareOpaqueInternalErrorMessage)
+	expect(error.message).toContain('An internal error occurred.')
 	expect(error.message).not.toContain(
 		'stopped by the production package source safety policy',
 	)
@@ -215,7 +214,7 @@ test('opaque Cloudflare Artifacts internals become retry messages, not source-re
 	const wrap = buildSourceRecoveryProblemMessage({
 		source: packageSource(),
 		operation: 'packageGetGitRemote',
-		reason: cloudflareOpaqueInternalErrorMessage,
+		reason: 'An internal error occurred.',
 	})
 	expect(isSourceRecoveryOpaqueInternalErrorMessage(wrap)).toBe(true)
 	expect(

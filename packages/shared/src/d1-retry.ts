@@ -1,4 +1,8 @@
-import { errorCauseChainIncludes } from './error-message.ts'
+import {
+	errorCauseChainIncludes,
+	getErrorCauseChain,
+	getErrorMessage,
+} from './error-message.ts'
 
 export const d1LockRetryMaxAttempts = 6
 
@@ -27,11 +31,13 @@ export const d1LongRunningExportMessage =
 export const d1NetworkConnectionLostMessage = 'Network connection lost'
 
 /**
- * Cloudflare D1 capacity blips. Two exact platform phrasings exist:
+ * Cloudflare D1 capacity blips. Three exact platform phrasings exist:
  * - `D1_ERROR: D1 DB is overloaded. Requests queued for too long.`
  * - `D1_ERROR: D1 DB is overloaded. Too many requests queued.`
- * Not an application defect — D1's request queue timed out or rejected under
- * platform load. Same retry / Sentry-drop class as SQLITE_BUSY and binding
+ * - `D1_ERROR: D1 DB is overloaded. Too many resources consumed within a 10
+ *   second window.` (KODY-DS)
+ * Not an application defect — D1's request queue timed out, rejected, or
+ * throttled under load. Same retry / Sentry-drop class as SQLITE_BUSY and binding
  * transport blips. Match only these exact D1 forms (optional `Error:` /
  * `D1_ERROR:` prefixes) so unrelated "… overloaded …" messages stay out.
  */
@@ -40,6 +46,9 @@ export const d1DbOverloadedMessage =
 
 export const d1DbOverloadedTooManyQueuedMessage =
 	'D1 DB is overloaded. Too many requests queued'
+
+export const d1DbOverloadedResourceWindowMessage =
+	'D1 DB is overloaded. Too many resources consumed within a 10 second window'
 
 /**
  * Cloudflare D1 opaque platform failures with a support reference, e.g.
@@ -101,7 +110,8 @@ function isD1NetworkConnectionLostMessage(message: string) {
 function isD1DbOverloadedMessage(message: string) {
 	return (
 		isExactD1PlatformMessage(message, d1DbOverloadedMessage) ||
-		isExactD1PlatformMessage(message, d1DbOverloadedTooManyQueuedMessage)
+		isExactD1PlatformMessage(message, d1DbOverloadedTooManyQueuedMessage) ||
+		isExactD1PlatformMessage(message, d1DbOverloadedResourceWindowMessage)
 	)
 }
 
@@ -261,6 +271,51 @@ export function isRetryableD1StorageUnavailabilityError(error: unknown) {
 	)
 }
 
+export type RetryableD1ErrorKind =
+	| 'lock'
+	| 'export'
+	| 'network'
+	| 'overloaded'
+	| 'internal'
+	| 'do_reset'
+
+function classifyRetryableD1Message(
+	message: string,
+): RetryableD1ErrorKind | null {
+	if (message.includes('SQLITE_BUSY') || message.includes('database is locked'))
+		return 'lock'
+	if (message.includes(d1LongRunningExportMessage)) return 'export'
+	if (isD1NetworkConnectionLostMessage(message)) return 'network'
+	if (isD1DbOverloadedMessage(message)) return 'overloaded'
+	if (isD1InternalErrorMessage(message)) return 'internal'
+	if (isD1DurableObjectPlatformResetMessage(message)) return 'do_reset'
+	return null
+}
+
+/** First retryable D1 kind in the cause chain, or null. */
+export function classifyRetryableD1Error(
+	error: unknown,
+): RetryableD1ErrorKind | null {
+	for (const entry of getErrorCauseChain(error)) {
+		const kind = classifyRetryableD1Message(getErrorMessage(entry))
+		if (kind) return kind
+	}
+	return null
+}
+
+const d1RetryAttemptsByError = new WeakMap<object, number>()
+
+/** Attempts `runD1WithRetry` made before throwing this error (or a cause). */
+export function readD1RetryAttempts(error: unknown): number | null {
+	for (const entry of getErrorCauseChain(error)) {
+		if (entry && typeof entry === 'object') {
+			const attempts = d1RetryAttemptsByError.get(entry)
+			if (attempts !== undefined) return attempts
+		}
+	}
+	return null
+}
+
 /**
  * Opt-in per-attempt deadline for `runD1WithRetry`. Idle D1 bindings can hang
  * instead of throwing a retryable platform error; a bounded attempt lets the
@@ -303,7 +358,8 @@ function withAttemptTimeout<T>(
  * Cloudflare's "Currently processing a long-running export" (DR / REST
  * exports block other requests), binding "Network connection lost"
  * transport blips, "D1 DB is overloaded. Requests queued for too long" /
- * "D1 DB is overloaded. Too many requests queued" capacity blips, opaque
+ * "D1 DB is overloaded. Too many requests queued" / "… Too many resources
+ * consumed within a 10 second window" capacity blips, opaque
  * D1 "internal error …; reference = …" platform faults (including D1 DB and
  * Durable Object storage object-reset, with either `in` or `while starting up`
  * phrasing), and D1-prefixed Durable Object platform-reset sentences such as
@@ -340,6 +396,9 @@ export async function runD1WithRetry<T>(
 				isRetryableD1LockError(error) ||
 				(attemptTimeoutMs !== undefined && isD1AttemptTimeoutError(error))
 			if (!retryable || attempt === maxAttempts) {
+				if (retryable && error && typeof error === 'object') {
+					d1RetryAttemptsByError.set(error, attempt)
+				}
 				throw error
 			}
 			await sleep(baseDelayMs * 2 ** (attempt - 1))

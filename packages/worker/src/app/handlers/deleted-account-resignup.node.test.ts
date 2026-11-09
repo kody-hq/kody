@@ -25,7 +25,7 @@ import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.t
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { HttpResponse, http } from 'msw'
-import { type DatabaseSync } from 'node:sqlite'
+import type { DatabaseSync } from 'node:sqlite'
 import { afterAll, afterEach, beforeAll, expect, test, vi } from 'vitest'
 
 vi.mock('#worker/identity/schedule-user-lifecycle-event.ts', () => ({

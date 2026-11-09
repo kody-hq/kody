@@ -2,7 +2,7 @@ import {
 	base64UrlToBytes,
 	bytesToBase64Url,
 } from '@kody-internal/shared/base64.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 
 const ivBytes = 12
 

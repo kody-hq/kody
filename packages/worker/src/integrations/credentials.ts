@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	decryptUserOauthAccessToken,
 	decryptUserOauthClientSecret,
@@ -18,12 +18,12 @@ import {
 	updateIntegrationCredentialCiphertexts,
 	updateOauthAppClientSecretCiphertext,
 } from './repo.ts'
-import { type IntegrationRefreshPolicy } from './refresh-policy.ts'
+import type { IntegrationRefreshPolicy } from './refresh-policy.ts'
 import {
 	credentialAuditActions,
 	recordCredentialAudit,
 } from '#worker/credentials/credential-audit.ts'
-import { type OrgAuditWriter } from '#worker/orgs/org-audit.ts'
+import type { OrgAuditWriter } from '#worker/orgs/org-audit.ts'
 
 type CredentialEnv = Pick<Env, 'APP_DB' | 'SECRET_STORE_KEY'>
 
@@ -111,22 +111,30 @@ export async function persistIntegrationTokens(input: {
 	}
 }
 
+export function encryptUserOauthAppClientSecret(input: {
+	env: Pick<Env, 'SECRET_STORE_KEY'>
+	userId: OwnerId
+	slug: string
+	value: string
+}): Promise<string> {
+	return encryptUserOauthClientSecret(
+		input.env,
+		input.value,
+		userOauthAppCredentialContext(input.userId, input.slug),
+	)
+}
+
 export async function persistUserOauthAppClientSecret(input: {
 	env: CredentialEnv
 	userId: OwnerId
 	slug: string
 	value: string
 }): Promise<void> {
-	const encrypted = await encryptUserOauthClientSecret(
-		input.env,
-		input.value,
-		userOauthAppCredentialContext(input.userId, input.slug),
-	)
 	await updateOauthAppClientSecretCiphertext({
 		db: input.env.APP_DB,
 		userId: input.userId,
 		slug: input.slug,
-		clientSecretEncrypted: encrypted,
+		clientSecretEncrypted: await encryptUserOauthAppClientSecret(input),
 	})
 }
 

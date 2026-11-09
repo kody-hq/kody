@@ -1,0 +1,42 @@
+name: 🐕 Main Validate watchdog
+
+# GitHub occasionally drops the push event for a merge to main (#4929), so
+# main HEAD gets no ✅ Validate run and Deploy never starts. When HEAD is over
+# 10 minutes old and has no Validate run at all, this dispatches Validate on
+# main; deploy.yml accepts that run like a push run
+# (tools/ci/main-validate-watchdog.ts).
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: main-validate-watchdog
+  cancel-in-progress: false
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    name: 🐕 Dispatch Validate for an unvalidated main HEAD
+    timeout-minutes: 5
+    if: github.repository == 'kody-hq/kody'
+    steps:
+      - name: 📦 Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: 🟢 Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 26
+          package-manager-cache: false
+
+      - name: 🐕 Check main HEAD for a Validate run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node tools/ci/main-validate-watchdog.ts

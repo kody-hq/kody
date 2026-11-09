@@ -4,16 +4,17 @@
  * source of truth; access_cache is a derived write-through cache keyed by
  * access_epoch.
  */
+import { permissionsForGrantPreset } from '@kody-internal/shared/grant-presets.ts'
 import {
 	isOrgPermission,
 	orgPermissions,
 	type OrgGrantResourceType,
 	type OrgPermission,
 } from '@kody-internal/shared/org-permissions.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import {
-	type OrgRole,
-	type RequestContext,
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type {
+	OrgRole,
+	RequestContext,
 } from '@kody-internal/shared/request-context.ts'
 import {
 	type GrantSubjectChoices,
@@ -30,8 +31,18 @@ import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 const allOrgPermissions: ReadonlySet<OrgPermission> = new Set(orgPermissions)
 
+/**
+ * Admin holds every Owner permission except deleting the org. The Owner-only
+ * membership rules (no changing, removing, or promoting to Owner) live in the
+ * membership writes, since they depend on the target, not on a permission.
+ */
+const adminOrgPermissions: ReadonlySet<OrgPermission> = new Set(
+	orgPermissions.filter((permission) => permission !== 'org:delete'),
+)
+
 export const rolePresets: Record<OrgRole, ReadonlySet<OrgPermission>> = {
 	owner: allOrgPermissions,
+	admin: adminOrgPermissions,
 	member: new Set([
 		'org:read',
 		'member:read',
@@ -58,6 +69,8 @@ export type CompiledAccess = {
 	epoch: number
 	/** True when the actor is a live Owner of the org. */
 	isOwner: boolean
+	/** True when the actor is a live Admin: Owner authority without `org:delete`. */
+	isAdmin?: boolean
 	/** Org-level permissions from role + grants on the org resource. */
 	orgPermissions: ReadonlySet<OrgPermission>
 	/**
@@ -106,6 +119,13 @@ type AccessCacheRow = {
 	valid_until: string | null
 }
 
+/**
+ * Bumped when a compile starts deriving permissions an older cache row lacks,
+ * so those rows recompile instead of serving stale access. 2: Use on
+ * execution contexts shared with all members.
+ */
+const compiledCacheFormat = 2
+
 function parseCompiledJson(
 	json: string,
 ): Omit<CompiledAccess, 'orgId' | 'epoch' | 'validUntil'> | null {
@@ -117,11 +137,13 @@ function parseCompiledJson(
 	}
 	if (!parsed || typeof parsed !== 'object') return null
 	const record = parsed as {
+		format?: unknown
 		isOwner?: unknown
 		orgPermissions?: unknown
 		resourcePermissions?: unknown
 		unmappableChangesAllowed?: unknown
 	}
+	if (record.format !== compiledCacheFormat) return null
 	if (typeof record.isOwner !== 'boolean') return null
 	if (!Array.isArray(record.orgPermissions)) return null
 	if (
@@ -167,6 +189,7 @@ function serializeCompiled(
 		resourcePermissions[key] = [...set].sort()
 	}
 	return JSON.stringify({
+		format: compiledCacheFormat,
 		isOwner: compiled.isOwner,
 		orgPermissions: [...compiled.orgPermissions].sort(),
 		resourcePermissions,
@@ -202,12 +225,16 @@ function applyGrantRows(
 	}
 }
 
-/** Ad-hoc rule: package:execute somewhere ⇒ org:execute for ad-hoc code. */
+/** Ad-hoc rule: package:execute somewhere (or org-wide) ⇒ org:execute for ad-hoc code. */
 function applyAdHocRule(
 	orgPermissionsOut: Set<OrgPermission>,
 	resourcePermissions: ReadonlyMap<string, ReadonlySet<OrgPermission>>,
 ) {
 	if (orgPermissionsOut.has('org:execute')) return
+	if (orgPermissionsOut.has('package:execute')) {
+		orgPermissionsOut.add('org:execute')
+		return
+	}
 	for (const [key, permissions] of resourcePermissions) {
 		if (!key.startsWith('package:')) continue
 		if (permissions.has('package:execute')) {
@@ -256,6 +283,57 @@ async function loadLiveGrantRows(
 		.bind(orgId, ...subjectMatch.binds)
 		.all<GrantRow>()
 	return result.results ?? []
+}
+
+const allMembersContextPermissions = permissionsForGrantPreset(
+	'execution_context',
+	'use',
+)
+
+/**
+ * Use on every execution context shared with all members of the org (the
+ * `all_members` flag on the owning org's context or on its attachment). The
+ * flag stands in for an `org`-subject grant, which access-writes refuses on
+ * execution_context, so a Member holds `execution_context:read` and
+ * `:execute` on those contexts like any other Use share. Only live members:
+ * callers skip it for outside collaborators.
+ */
+async function loadAllMembersContextGrantRows(
+	db: D1Database,
+	orgId: string,
+): Promise<Array<GrantRow>> {
+	let contextIds: Array<string>
+	try {
+		const result = await db
+			.prepare(
+				`SELECT id AS context_id FROM execution_contexts
+				 WHERE org_id = ? AND all_members = 1
+				 UNION
+				 SELECT context_id FROM execution_context_org_attachments
+				 WHERE org_id = ? AND all_members = 1`,
+			)
+			.bind(orgId, orgId)
+			.all<{ context_id: string }>()
+		contextIds = (result.results ?? []).map((row) => row.context_id)
+	} catch (error) {
+		// Incomplete test DBs may lack the execution context tables (0189);
+		// production always has them.
+		if (
+			error instanceof Error &&
+			/no such table:\s*execution_context/i.test(error.message)
+		) {
+			return []
+		}
+		throw error
+	}
+	return contextIds.flatMap((contextId) =>
+		allMembersContextPermissions.map((permission) => ({
+			resource_type: 'execution_context',
+			resource_id: contextId,
+			permission,
+			expires_at: null,
+		})),
+	)
 }
 
 function dbCanPrepare(db: D1Database) {
@@ -425,6 +503,18 @@ function compileFromRoleAndGrants(input: {
 	}
 }
 
+function adminCompiledAccess(orgId: OwnerId, epoch: number): CompiledAccess {
+	return {
+		orgId,
+		epoch,
+		isOwner: false,
+		isAdmin: true,
+		orgPermissions: adminOrgPermissions,
+		resourcePermissions: new Map(),
+		validUntil: null,
+	}
+}
+
 function noCompiledAccess(orgId: OwnerId): CompiledAccess {
 	return {
 		orgId,
@@ -451,9 +541,9 @@ function ownerCompiledAccess(orgId: OwnerId, epoch: number): CompiledAccess {
  * Compile what `request`'s actor may do in `request.org`. Results are cached
  * in access_cache by epoch.
  *
- * Owners hold every permission without reading grants or access_epoch (the
- * role alone decides). Member, Billing, and outside collaborator paths load
- * grants and require a real APP_DB. A request with no person holds nothing:
+ * Owners and Admins hold their role's permissions without reading grants or
+ * access_epoch (the role alone decides). Member, Billing, and outside
+ * collaborator paths load grants and require a real APP_DB. A request with no person holds nothing:
  * every run acts as a real person (a trigger as its enabler).
  */
 export async function compileAccessForRequest(input: {
@@ -484,6 +574,7 @@ export async function compileAccessForActor(input: {
 }): Promise<CompiledAccess> {
 	const { orgId, userId, role } = input
 	if (role === 'owner') return ownerCompiledAccess(orgId, 0)
+	if (role === 'admin') return adminCompiledAccess(orgId, 0)
 
 	// One HTTP request can derive many request contexts for the same person
 	// (a page checking several package permissions), so share the compile
@@ -512,7 +603,11 @@ async function compileUncached(
 	const cached = await readAccessCache(db, orgId, userId, epoch, now)
 	if (cached) return cached
 
-	const grantRows = await loadLiveGrantRows(db, orgId, userId, now)
+	const [liveGrantRows, allMembersRows] = await Promise.all([
+		loadLiveGrantRows(db, orgId, userId, now),
+		role ? loadAllMembersContextGrantRows(db, orgId) : [],
+	])
+	const grantRows = [...liveGrantRows, ...allMembersRows]
 	const compiled = compileFromRoleAndGrants({
 		orgId,
 		epoch,

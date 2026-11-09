@@ -73,6 +73,13 @@ function __kodyCreateCredentialRuntime(__kodyCredentialCall) {
   };
   const firstExactHost = (hosts) =>
     hosts.find((host) => !String(host).startsWith('*.')) ?? null;
+  const urlHostname = (raw) => {
+    try {
+      return new URL(String(raw)).hostname;
+    } catch {
+      return null;
+    }
+  };
   const resolveUrl = (input, hosts) => {
     const raw = input instanceof Request ? input.url : String(input);
     if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) return raw;
@@ -85,73 +92,138 @@ function __kodyCreateCredentialRuntime(__kodyCredentialCall) {
     }
     return new URL(raw, 'https://' + host).toString();
   };
-  const send = async (request, handle) => {
-    const headers = new Headers(request.headers);
+  const isReplayableBody = (body) =>
+    body == null ||
+    typeof body === 'string' ||
+    body instanceof ArrayBuffer ||
+    ArrayBuffer.isView(body) ||
+    (typeof Blob !== 'undefined' && body instanceof Blob) ||
+    (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) ||
+    (typeof FormData !== 'undefined' && body instanceof FormData);
+  const discard = async (body) => {
+    try {
+      await body?.cancel();
+    } catch {
+      // Already consumed, cancelled, or locked: nothing left to release.
+    }
+  };
+  const send = async (target, init, handle) => {
+    const headers = new Headers(
+      init.headers ?? (target instanceof Request ? target.headers : undefined),
+    );
     if (handle) headers.set(handleHeader, handle);
     else headers.delete(handleHeader);
+    const next = { ...init, headers, redirect: 'manual' };
+    if (next.body != null && typeof next.body.getReader === 'function') next.duplex = 'half';
     try {
-      return await globalThis.fetch(new Request(request, { headers, redirect: 'manual' }));
+      return await globalThis.fetch(target, next);
     } catch (error) {
+      // Transport errors (KodyGatewayError, AbortError) keep their shape.
+      if (typeof error?.mayHaveReachedOrigin === 'boolean') throw error;
       throw fromThrown(error);
     }
   };
+  // An init body goes out as the caller's own value, so in-memory bytes
+  // stream without a copy and a refresh replay resends them. A ReadableStream
+  // body is sent once and never buffered: its 401 goes back to the caller
+  // after the refresh. A Request input keeps a clone for replay, released on
+  // every path that does not resend it.
   const createFetch = (opened) => async (input, init) => {
     const redirectMode =
       init?.redirect ?? (input instanceof Request ? input.redirect : 'follow');
     const url = resolveUrl(input, opened.hosts);
-    let request =
-      input instanceof Request
-        ? new Request(url, new Request(input, init))
-        : new Request(url, init);
+    let target = url;
+    let targetInit = { ...(init ?? {}) };
+    if (input instanceof Request) {
+      target = new Request(url, new Request(input, init));
+      targetInit = {};
+    }
     let carriesCredential = true;
     for (let hop = 0; ; hop += 1) {
-      const replay = request.body ? request.clone() : request;
-      let response = await send(request, carriesCredential ? opened.handle : null);
-      if (opened.kind === 'oauth' && carriesCredential && response.status === 401) {
-        const refreshed = await invoke(${JSON.stringify(credentialClientToolNames.refresh)}, { handle: opened.handle });
-        if (refreshed?.refreshed) {
-          await response.body?.cancel();
-          const retry = replay.body ? replay.clone() : replay;
-          response = await send(retry, opened.handle);
+      const request = target instanceof Request ? target : null;
+      const replay = request?.body ? request.clone() : request;
+      const resendable = request ? true : isReplayableBody(targetInit.body);
+      const release = async () => {
+        if (replay && replay !== request) await discard(replay.body);
+      };
+      let response = null;
+      try {
+        response = await send(target, targetInit, carriesCredential ? opened.handle : null);
+        if (opened.kind === 'oauth' && carriesCredential && response.status === 401) {
+          const refreshed = await invoke(${JSON.stringify(credentialClientToolNames.refresh)}, { handle: opened.handle });
+          if (refreshed?.refreshed && resendable) {
+            await discard(response.body);
+            response = null;
+            const retry = replay?.body ? replay.clone() : (replay ?? target);
+            response = await send(retry, targetInit, opened.handle);
+          }
         }
+      } catch (error) {
+        await discard(response?.body);
+        await release();
+        throw error;
       }
       if (!redirectStatuses.has(response.status) || redirectMode === 'manual') {
+        await release();
         return response;
       }
       if (redirectMode === 'error') {
-        await response.body?.cancel();
+        await discard(response.body);
+        await release();
         throw new TypeError('The response redirected and redirect is "error".');
       }
       // A url credential owns its whole URL, so its redirects come back as
       // they are: following one would need the secret URL as the base.
-      if (opened.kind === 'url') return response;
+      if (opened.kind === 'url') {
+        await release();
+        return response;
+      }
       const location = response.headers.get('location');
-      if (!location) return response;
+      if (!location) {
+        await release();
+        return response;
+      }
       if (hop >= maxRedirects) {
-        await response.body?.cancel();
+        await discard(response.body);
+        await release();
         throw new TypeError('Too many redirects.');
       }
-      await response.body?.cancel();
-      const next = new URL(location, response.url || request.url);
+      const method = request ? request.method : String(targetInit.method ?? 'GET').toUpperCase();
       const rewritesToGet =
         response.status === 303 ||
-        ((response.status === 301 || response.status === 302) && request.method === 'POST');
+        ((response.status === 301 || response.status === 302) && method === 'POST');
+      // A stream body was already sent, so a redirect that keeps the body
+      // comes back to the caller instead.
+      if (!rewritesToGet && !resendable) return response;
+      await discard(response.body);
+      const next = new URL(location, response.url || (request ? request.url : String(target)));
       // The credential follows only to its own hosts over https.
       carriesCredential =
         next.protocol === 'https:' &&
         hostAllowed(opened.hosts, next.hostname);
-      const headers = new Headers(replay.headers);
+      const headers = new Headers(request ? replay.headers : targetInit.headers);
       if (!carriesCredential) headers.delete('authorization');
       if (rewritesToGet) {
         headers.delete('content-type');
         headers.delete('content-length');
       }
-      request = new Request(next, {
-        method: rewritesToGet ? 'GET' : replay.method,
-        headers,
-        body: rewritesToGet ? null : replay.body,
-        ...(rewritesToGet || !replay.body ? {} : { duplex: 'half' }),
-      });
+      if (request) {
+        target = new Request(next, {
+          method: rewritesToGet ? 'GET' : replay.method,
+          headers,
+          body: rewritesToGet ? null : replay.body,
+          ...(rewritesToGet || !replay.body ? {} : { duplex: 'half' }),
+        });
+      } else {
+        target = next.toString();
+        const { body, ...rest } = targetInit;
+        targetInit = {
+          ...rest,
+          method: rewritesToGet ? 'GET' : method,
+          headers,
+          ...(rewritesToGet || body == null ? {} : { body }),
+        };
+      }
     }
   };
   const toClient = (opened) => {
@@ -165,14 +237,17 @@ function __kodyCreateCredentialRuntime(__kodyCredentialCall) {
       // CRC / signature helpers work without re-kinding the Key as signing.
       // JWT sign() still requires kind signing (enforced on the host).
       if (opened.kind === 'signing' || opened.kind === 'secret') {
+        // http-signature signs the request it describes, so its host is the
+        // url's host; it resolves to the headers to add to that request.
         client.sign = async (operation) => {
           const { host, ...rest } = operation ?? {};
+          const httpSignature = rest.type === 'http-signature';
           const result = await invoke(${JSON.stringify(credentialClientToolNames.sign)}, {
             handle: opened.handle,
-            host: host ?? firstExactHost(opened.hosts),
+            host: host ?? (httpSignature ? urlHostname(rest.url) : firstExactHost(opened.hosts)),
             operation: rest,
           });
-          return result?.signature;
+          return httpSignature ? result?.headers : result?.signature;
         };
       }
       if (opened.kind !== 'signing') {

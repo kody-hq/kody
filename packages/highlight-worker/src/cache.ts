@@ -1,5 +1,5 @@
 import { highlightBatchCacheRequest } from '../../worker/universal/highlight-cache-request.ts'
-import { type HighlightSnippet } from '../../worker/universal/highlighted-code.ts'
+import type { HighlightSnippet } from '../../worker/universal/highlighted-code.ts'
 
 export const highlightCacheName = 'kody-highlight-tokens'
 

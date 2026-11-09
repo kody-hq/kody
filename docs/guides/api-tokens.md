@@ -50,7 +50,15 @@ using the token gets `401 API token was revoked.`
 - **MCP `api` tool** (preferred for connected agents): pass the JSON above.
 - **CLI**: `npx @kodycodes/cli api tokenList` and
   `npx @kodycodes/cli api tokenRevoke --params '{"token_id":"<id>"}'` after
-  `npx @kodycodes/cli login` (see [Local CLI execute](./local-execute.md)).
+  `npx @kodycodes/cli login` (see [Local CLI execute](./local-execute.md)). A
+  terminal `kody login` deletes a leftover stored `kody_at_` bootstrap token so
+  later commands use the login. A desktop login (`KODY_CREDENTIAL_SOURCE` set)
+  leaves a stored token in place. `kody api`, `package`, `execute --local`,
+  `context`, `daemon`, `dev`, and `whoami` pick `--token`, then
+  `KODY_API_TOKEN`, then a stored API token, then the login, so a leftover token
+  without the needed scope makes them fail. `kody search` and cloud `execute`
+  prefer the login when one exists. `kody whoami` reports the credential the
+  token-based commands use, not the one search and cloud execute use.
 - **HTTPS**: `GET /v1/tokens` and `DELETE /v1/tokens/{token_id}` on
   [api.kody.codes](https://api.kody.codes) with a token that holds `token:read`
   / `token:delete`.
@@ -66,8 +74,8 @@ account on every plan; nothing gates `api` by tier, scope, or client. If your
 agent only sees `search` and `execute`, its MCP client has not picked up the
 current tool list.
 
-- **ChatGPT:** Kody's tool updates are not currently being picked up in ChatGPT,
-  so reconnecting does not add `api`. Add Kody manually in developer mode (see
+- **ChatGPT:** ChatGPT does not refresh Kody's tool list after reconnect, so
+  `api` stays missing. Add Kody in developer mode (see
   [Connect your agent](../use/connect-your-agent.md)), or use the Kody CLI:
   `npx @kodycodes/cli api tokenList` and
   `npx @kodycodes/cli api tokenRevoke --params '{"token_id":"<id>"}'`.

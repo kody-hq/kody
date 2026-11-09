@@ -8,6 +8,9 @@ import { sha256Hex } from '@kody-internal/shared/sha256.ts'
  *   request headers, so a package can prove a `{{secret:…}}` placeholder (or
  *   an integration token) decrypted to the value seeded earlier without the
  *   value ever leaving Kody.
+ * - `/__mocks/rehearsal/oauth/authorize` redirects an authorization-code
+ *   request back to `redirect_uri` with a mock `code` and the incoming
+ *   `state`, so preview `/connect/oauth` can finish in a browser.
  * - `/__mocks/rehearsal/oauth/token` is an OAuth token endpoint that accepts
  *   authorization_code, refresh_token, or RFC 8628 device_code grants.
  * - `/__mocks/rehearsal/oauth/device/authorize` starts a device authorization.
@@ -16,6 +19,7 @@ import { sha256Hex } from '@kody-internal/shared/sha256.ts'
  * walk through pending → success (or delayed / denied / expired scenarios).
  */
 const rehearsalEchoPath = '/__mocks/rehearsal/echo'
+const rehearsalOauthAuthorizePath = '/__mocks/rehearsal/oauth/authorize'
 const rehearsalOauthTokenPath = '/__mocks/rehearsal/oauth/token'
 const rehearsalOauthDeviceAuthorizePath =
 	'/__mocks/rehearsal/oauth/device/authorize'
@@ -107,6 +111,68 @@ async function readTokenRequest(request: Request) {
 		}
 	}
 	return new URLSearchParams(text)
+}
+
+function isHttpRedirectUri(value: string) {
+	try {
+		const redirect = new URL(value)
+		return redirect.protocol === 'https:' || redirect.protocol === 'http:'
+	} catch {
+		return false
+	}
+}
+
+function handleAuthorizationRedirect(url: URL) {
+	const clientId = url.searchParams.get('client_id')?.trim()
+	const redirectUri = url.searchParams.get('redirect_uri')?.trim()
+	const state = url.searchParams.get('state')
+	const responseType = url.searchParams.get('response_type')?.trim()
+	if (!clientId) {
+		return Response.json(
+			{
+				error: 'invalid_request',
+				error_description: 'client_id is required.',
+			},
+			{ status: 400 },
+		)
+	}
+	if (!responseType) {
+		return Response.json(
+			{
+				error: 'invalid_request',
+				error_description: 'response_type is required.',
+			},
+			{ status: 400 },
+		)
+	}
+	if (responseType !== 'code') {
+		return Response.json(
+			{
+				error: 'unsupported_response_type',
+				error_description: 'Only response_type=code is supported.',
+			},
+			{ status: 400 },
+		)
+	}
+	if (!redirectUri || !isHttpRedirectUri(redirectUri)) {
+		return Response.json(
+			{
+				error: 'invalid_request',
+				error_description: 'redirect_uri must be an http(s) URL.',
+			},
+			{ status: 400 },
+		)
+	}
+	const callback = new URL(redirectUri)
+	callback.searchParams.set('code', randomToken('rehearsal_code_'))
+	if (state) callback.searchParams.set('state', state)
+	return new Response(null, {
+		status: 302,
+		headers: {
+			Location: callback.href,
+			'Cache-Control': 'no-store',
+		},
+	})
 }
 
 async function handleDeviceAuthorize(request: Request) {
@@ -304,6 +370,12 @@ async function handleOauthToken(request: Request) {
 
 export async function routeRehearsal(request: Request, url: URL) {
 	if (url.pathname === rehearsalEchoPath) return handleEcho(request)
+	if (
+		url.pathname === rehearsalOauthAuthorizePath &&
+		(request.method === 'GET' || request.method === 'HEAD')
+	) {
+		return handleAuthorizationRedirect(url)
+	}
 	if (
 		url.pathname === rehearsalOauthDeviceAuthorizePath &&
 		request.method === 'POST'

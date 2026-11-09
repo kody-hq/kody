@@ -2,7 +2,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
 
 export const redirectAccountCredits = createServerFn({ method: 'GET' })
-	.inputValidator(z.string().regex(/^\/account\/credits(?:\?[^#]*)?$/))
+	.validator(z.string().regex(/^\/account\/credits(?:\?[^#]*)?$/))
 	.handler(async ({ data: href }) => {
 		const { withWebsiteRead, WebsiteAuthenticationError } =
 			await import('./mutation-context.ts')

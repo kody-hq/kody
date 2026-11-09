@@ -5,14 +5,14 @@ import { fileStoreRpc } from '#worker/files/client.ts'
  * Account deletion / purge inventory must enumerate tombstoned rows so KV, R2,
  * and DO cleanup still run after soft-delete.
  */
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { accountUserOwnedR2Surfaces } from '#worker/account/user-owned-surfaces.ts'
 import { buildCommunityIconR2Key } from '#worker/community/community-icon.ts'
 import {
 	buildIdentityIconR2Key,
 	identityIconCommitForKind,
 } from '#worker/repo/identity-icon.ts'
-import { type EntityKind } from '#worker/repo/types.ts'
+import type { EntityKind } from '#worker/repo/types.ts'
 import { listAllMailboxEmailObjectRefs } from './mailbox-r2-references.ts'
 
 export type AccountR2Binding = 'EMAIL_BLOBS' | 'COMMUNITY_ASSETS' | 'FILE_BLOBS'

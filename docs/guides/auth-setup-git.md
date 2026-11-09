@@ -60,8 +60,9 @@ request.
 
 ### Minting
 
-- **`cliCredentialBootstrap` / redeem:** mints `org_binding: "user"`. Redeem
-  honors the binding stamped on the code.
+- **`cliCredentialBootstrap` / redeem:** mints `org_binding: "user"`, except
+  that a bootstrap called with an org-bound parent token stays bound to that
+  token's org. Redeem honors the binding stamped on the code.
 - **`tokenCreate`:** defaults to `org` (current request org). Pass
   `"org_binding": "user"` for a person-owned token. An org-bound parent token
   cannot mint a user-owned child.

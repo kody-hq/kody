@@ -42,14 +42,10 @@ export function shouldRunD1PacedFreshnessCron(now: Date) {
 	return now.getUTCMinutes() === 45
 }
 
-/**
- * Weekly restore drill: Sunday 07:00–07:19 UTC (after nightly + watchdog).
- */
-export function shouldRunD1PacedRestoreDrillCron(now: Date) {
-	if (now.getUTCDay() !== 0) return false
-	const minutes = now.getUTCHours() * 60 + now.getUTCMinutes()
-	return minutes >= 7 * 60 && minutes < 7 * 60 + 20
-}
+export {
+	isPastD1PacedRestoreDrillDeadline,
+	shouldRunD1PacedRestoreDrillCron,
+} from '@kody-internal/shared/jobs/scheduled-lanes.ts'
 
 /**
  * Gate: literal `"true"` plus the same DR S3 credentials as `DR_EXPORT`.

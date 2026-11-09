@@ -129,6 +129,8 @@ export function isRetryableSentryUploadFailure(output: string): boolean {
 		/ETIMEDOUT/i.test(output) ||
 		/ECONNRESET/i.test(output) ||
 		/ENOTFOUND/i.test(output) ||
+		/EAI_AGAIN/i.test(output) ||
+		/Could not resolve host/i.test(output) ||
 		/socket hang up/i.test(output) ||
 		/network timeout/i.test(output) ||
 		/request timed out/i.test(output)

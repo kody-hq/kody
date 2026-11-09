@@ -2,12 +2,9 @@
 id: package_authoring
 title: Package authoring
 summary:
-  START HERE when creating or materially changing a Kody package: package
-  shape, required README.md (human) and AGENTS.md (agent), README Intent
-  section, per-export JSDoc (search Purpose), strict runtime input
-  checking for agent-facing exports, personal-details hygiene before going
-  public, secret-using package approval checklist, and scope-update
-  guidance without adding new primitives.
+  START HERE when creating or materially changing a Kody package: shape,
+  required README.md and AGENTS.md, README Intent, per-export JSDoc, runtime
+  input checking, public-visibility hygiene, and secret-using approvals.
 category: platform
 ---
 
@@ -46,9 +43,9 @@ local filesystem and git access:
   commit, push, then publish with `packagePublishExternalPush`. If that tool
   returns `locked`, open the returned `approval_url` so the owner can promote
   the named commit. Do not treat HEAD as live until `published_commit` moves.
-  When the OAuth token is coarser than the export (Gmail drafts without send),
-  lock after the first publish — see
-  [locked-gmail-drafts.md](./locked-gmail-drafts.md).
+  Isolate-limit bundling: `guide:publish_large_packages`. When the OAuth token
+  is coarser than the export (Gmail drafts without send), lock after the first
+  publish — see [locked-gmail-drafts.md](./locked-gmail-drafts.md).
 - **Tool-only lane.** Without local filesystem/git access (MCP-only agents such
   as ChatGPT / Claude / Grok mobile apps), create with `packageSave` (complete
   UTF-8 text file set; no binary files) and edit through repo sessions
@@ -208,9 +205,8 @@ same as a missing README `## Intent` section.
 
 ## Runtime input checking
 
-This rule applies to **exposed exports** — the package surface agents call
-through `execute` with plain objects. Internal helpers and modules can rely on
-TypeScript; do not prescribe Remix Schema or fail-on-unknown for internal code.
+This rule applies to **exposed exports** — the surface agents call through
+`execute` with plain objects. Internal code can rely on TypeScript alone.
 
 On those export boundaries, TypeScript types do not run at call time, so a
 guessed or mistyped key is easy to ship. For exports that publish, send, write
@@ -220,12 +216,13 @@ and prefer one clear contract.
 1. **Fail on unknown keys (strict).** At the export entrypoint, parse the call
    object with a schema that rejects unrecognized fields. Prefer
    [`remix/data-schema`](https://www.npmjs.com/package/@remix-run/data-schema)
-   over Zod when choosing a schema library for those boundaries (smaller and
-   faster in Worker isolates). Remix Schema's `object()` strips unknown keys by
-   default — pass `{ unknownKeys: 'error' }` for agent-facing export inputs:
+   over Zod (smaller and faster in Worker isolates). Remix Schema's `object()`
+   strips unknown keys by default — pass `{ unknownKeys: 'error' }` for
+   agent-facing export inputs:
 
    ```ts
    import { object, optional, parse, string } from 'remix/data-schema'
+   import type { InferInput } from 'remix/data-schema'
 
    const createPostInput = object(
    	{
@@ -237,7 +234,9 @@ and prefer one clear contract.
    	{ unknownKeys: 'error' },
    )
 
-   export default async function createPost(raw: unknown) {
+   export type CreatePostParams = InferInput<typeof createPostInput>
+
+   export default async function createPost(raw: CreatePostParams) {
    	const input = parse(createPostInput, raw)
    	// …
    }
@@ -279,21 +278,10 @@ Non-production runtimes may serve inline on the app origin at
 Every package app receives only `/<path>` after the host strips the mount.
 Root-relative links such as `/audio/123` therefore escape the mount. Import
 `packageContext` from `kody:runtime` and build every in-app link, redirect,
-share/email URL, and OAuth callback against its public base. A Remix recipe that
-prefixes its route contract remounts the Request in the entry; see
-[Package apps](./package-apps.md#remix-recipe).
-
-```ts
-import { packageContext } from 'kody:runtime'
-import { form, route } from 'remix/routes'
-
-export const routes = route(packageContext?.appBasePath ?? '', {
-	home: '/',
-	notes: form('notes'),
-})
-```
-
-A fetch handler builds those URLs itself:
+share/email URL, and OAuth callback against its public base. Remix apps prefix
+their route contract with `packageContext.appBasePath`; see
+[Package apps](./package-apps.md#remix-recipe). A fetch handler builds those
+URLs itself:
 
 ```ts
 import { packageContext } from 'kody:runtime'
@@ -382,7 +370,8 @@ works in ad hoc `execute`.
 
 Do not vendor the library, switch to a dynamic import, or skip checks. Keep the
 Kody package as a thin orchestrator and run the heavy work in a process the
-owner operates. Open `search({ entity: "guide:heavy_work_offload" })`.
+owner operates. Open `search({ entity: "guide:heavy_work_offload" })` or, when
+only publish bundling is too big, `guide:publish_large_packages`.
 
 ## Secret-using packages
 
@@ -478,10 +467,11 @@ irreversible-side-effect guard when a smoke test should stay safe.
    `kody:@scope/package/export` from `execute` against a read-only export or
    package-supported dry-run input that exercises approved secrets (see
    [Secret-using packages](#secret-using-packages) above).
-3. **Package apps** — `packageAppFetch` with `package_id` or leftover `kody_id`
-   (the scoped name), plus the path, method, and body your handler needs.
-   Confirm `{ status, headers, body, truncated }` and any `packageStorage()`
-   side effects. See [Package app fetch](../use/package-app-fetch.md) and the
+3. **Package apps** — `packageAppFetch` with the scoped name or `package_id`
+   when the name is not known, plus the path, method, and body your handler
+   needs. Confirm `{ status, headers, body, truncated }` and any
+   `packageStorage()` side effects. See
+   [Package app fetch](../use/package-app-fetch.md) and the
    [Package apps](./package-apps.md) playbook (`guide:package_apps`).
 4. **Subscriptions** — from interactive MCP, `packageSubscriptionDispatch` with
    the scoped name (or `package_id` when the name is not known), `topic`, and

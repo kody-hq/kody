@@ -5,9 +5,9 @@
  * personal org. See convert-personal-org-policy.ts for product knobs.
  */
 
-import {
-	type OwnerId,
-	type PersonId,
+import type {
+	OwnerId,
+	PersonId,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	decryptSecretValue,
@@ -27,7 +27,7 @@ import {
 	upsertMemoryVector,
 } from '#mcp/memory/memory-vectorize.ts'
 import { buildMemoryEmbedTextFromRow } from '#mcp/memory/memory-embed.ts'
-import { type McpMemoryRow } from '#mcp/memory/types.ts'
+import type { McpMemoryRow } from '#mcp/memory/types.ts'
 import { ensureDefaultEmailInbox } from '#worker/email/default-inbox.ts'
 import { getPlatformEmailDomain } from '#worker/email/platform-address.ts'
 import { isUsernameClaimedInIdentity } from '#worker/identity/generated-username.ts'
@@ -90,7 +90,9 @@ export type ConvertPersonalOrgResult = {
 	convertedSlug: string
 	newPersonalOrgId: OwnerId
 	newUsername: string
-	followUpFailures: Array<'oauth_grants' | 'email_inbox' | 'memory_index'>
+	followUpFailures: Array<
+		'oauth_grants' | 'email_inbox' | 'memory_index' | 'mcp_servers'
+	>
 	moved: {
 		memories: number
 		userSecrets: number
@@ -434,8 +436,9 @@ function mcpServerOwnershipStatements(input: {
 
 /**
  * After D1 ownership rewrite: close the source hub connection, then dial the
- * staged target. Best-effort — identity is already committed; staged hub state
- * plus rewritten `mcp_server_settings` is the recovery path.
+ * staged target. Identity is already committed, so a failure is never rolled
+ * back; it returns false so the caller reports `mcp_servers` as follow-up work.
+ * Staged hub state plus rewritten `mcp_server_settings` is the recovery path.
  */
 async function finalizeMcpServerTransfers(input: {
 	env: Env
@@ -443,7 +446,7 @@ async function finalizeMcpServerTransfers(input: {
 	toId: OwnerId
 	servers: Array<ConvertMcpServerRow>
 }) {
-	if (input.servers.length === 0 || !input.env.MCP_CLIENT_HUB) return
+	if (input.servers.length === 0 || !input.env.MCP_CLIENT_HUB) return true
 	const sourceHub = mcpClientHubTransferStub({
 		env: input.env,
 		userId: input.fromId,
@@ -452,14 +455,20 @@ async function finalizeMcpServerTransfers(input: {
 		env: input.env,
 		userId: input.toId,
 	})
+	let finalized = true
 	for (const row of input.servers) {
 		try {
 			await sourceHub.removeServerForTransfer({ serverId: row.id })
 			await targetHub.connectTransferredServer({ serverId: row.id })
-		} catch {
-			// Leave staged + D1-owned; operator recovery can reconnect later.
+		} catch (error) {
+			finalized = false
+			console.warn('convert-personal-org: MCP server finalize failed', {
+				serverId: row.id,
+				error: error instanceof Error ? error.message : String(error),
+			})
 		}
 	}
+	return finalized
 }
 
 async function retargetOauthGrantMetadata(input: {
@@ -755,13 +764,14 @@ export async function convertPersonalOrg(input: {
 		const results = await db.batch(statements)
 		committed = true
 		forgetPersonalOrgIdForPerson(db, input.personId)
-		await finalizeMcpServerTransfers({
+		const mcpServersFinalized = await finalizeMcpServerTransfers({
 			env: input.env,
 			fromId: convertedOrgId,
 			toId: newPersonalOrgId,
 			servers: stagedMcpServers,
 		})
-		const followUpFailures: ConvertPersonalOrgResult['followUpFailures'] = []
+		const followUpFailures: ConvertPersonalOrgResult['followUpFailures'] =
+			mcpServersFinalized ? [] : ['mcp_servers']
 		let oauthGrants = 0
 		try {
 			oauthGrants = await retargetOauthGrantMetadata({

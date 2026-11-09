@@ -3,7 +3,7 @@ import {
 	loadOrgUsageWarningsEnabled,
 	updateOrgUsageWarnings,
 } from '#worker/orgs/usage-warnings.ts'
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	orgHasPermission,
 	resolveOrgManagementAccess,
@@ -26,7 +26,7 @@ import {
 	type OrgProfileVisibility,
 } from '#worker/orgs/org-public-profile.ts'
 import { softDeleteOrg } from '#worker/orgs/soft-delete.ts'
-import { type OrgSettingsLoaderData } from '#universal/loader-data.ts'
+import type { OrgSettingsLoaderData } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
 import { packageAppCustomDomainsCnameTargetFromBaseUrl } from '#worker/package-app-custom-hostnames/cname-target.ts'
 import {

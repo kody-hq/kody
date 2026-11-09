@@ -1,7 +1,10 @@
-import { highlightCacheHeaderName } from '../../worker/universal/highlight-cache-header.ts'
 import {
-	type HighlightedCode,
-	type HighlightSnippet,
+	highlightCacheHeaderName,
+	highlightServiceOrigin,
+} from '../../worker/universal/highlight-cache-header.ts'
+import type {
+	HighlightedCode,
+	HighlightSnippet,
 } from '../../worker/universal/highlighted-code.ts'
 import { highlightCacheName, highlightCacheRequest } from './cache.ts'
 import { handleHighlightHealthRequest } from './health.ts'
@@ -22,11 +25,24 @@ function isSnippet(value: unknown): value is HighlightSnippet {
 	)
 }
 
-function parseSnippets(value: unknown): Array<HighlightSnippet> | null {
+// Far above what origin sends for one page; larger batches fall back to plain.
+const maxSnippetsPerRequest = 1_000
+const maxTotalSnippetChars = 2_000_000
+const serviceHostname = new URL(highlightServiceOrigin).hostname
+
+function parseSnippets(
+	value: unknown,
+): Array<HighlightSnippet> | 'too_large' | null {
 	if (typeof value !== 'object' || value === null) return null
 	const body = value as { snippets?: unknown }
 	if (!Array.isArray(body.snippets)) return null
+	if (body.snippets.length > maxSnippetsPerRequest) return 'too_large'
 	if (!body.snippets.every(isSnippet)) return null
+	let totalChars = 0
+	for (const snippet of body.snippets) {
+		totalChars += snippet.code.length + (snippet.lang?.length ?? 0)
+		if (totalChars > maxTotalSnippetChars) return 'too_large'
+	}
 	return body.snippets
 }
 
@@ -78,6 +94,11 @@ const handler = {
 		if (request.method !== 'POST' || url.pathname !== '/highlight') {
 			return new Response('Not found', { status: 404 })
 		}
+		// Only the HIGHLIGHT service binding (which addresses the internal
+		// origin) may tokenize; the public workers.dev URL serves /health only.
+		if (url.hostname !== serviceHostname) {
+			return new Response('Not found', { status: 404 })
+		}
 
 		let parsed: unknown
 		try {
@@ -88,6 +109,12 @@ const handler = {
 		const snippets = parseSnippets(parsed)
 		if (!snippets) {
 			return Response.json({ error: 'Expected { snippets }.' }, { status: 400 })
+		}
+		if (snippets === 'too_large') {
+			return Response.json(
+				{ error: 'Too many snippets or characters.' },
+				{ status: 413 },
+			)
 		}
 
 		const cached = await readCachedResults(snippets)

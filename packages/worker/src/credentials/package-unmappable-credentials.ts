@@ -9,7 +9,7 @@
  */
 import * as Sentry from '@sentry/cloudflare'
 import { isPackageCredentialSuppliersEnabled } from '#worker/credentials/credential-suppliers-flag.ts'
-import { type CredentialNeed } from '#worker/credentials/credential-needs.ts'
+import type { CredentialNeed } from '#worker/credentials/credential-needs.ts'
 import { getLatestPackageCapabilityApproval } from '#worker/package-capabilities/capability-approvals-repo.ts'
 import { visitorCredentialIdsByNeedKey } from '#worker/package-capabilities/capability-set.ts'
 // Type-only and erased: repo/types.ts pulls in Workers-only modules at runtime.
@@ -76,6 +76,17 @@ async function loadPackageRows(
 		rows.push(...(result.results ?? []))
 	}
 	return rows
+}
+
+/** Every live package id in the org, for an org-wide write or publish grant. */
+export async function listLiveOrgPackageIds(db: D1Database, orgId: string) {
+	const result = await db
+		.prepare(
+			`SELECT id FROM saved_packages WHERE user_id = ?${andLiveDeletedAtSql()}`,
+		)
+		.bind(orgId)
+		.all<{ id: string }>()
+	return (result.results ?? []).map((row) => row.id)
 }
 
 async function describePackage(input: {

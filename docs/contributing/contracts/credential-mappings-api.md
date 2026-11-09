@@ -786,12 +786,11 @@ export type CredentialClientErrorBody = {
 
 These URLs redirect (302, query preserved) to the Credentials UI:
 
-| From                    | To                                    |
-| ----------------------- | ------------------------------------- |
-| `/@:org/-/secrets`      | `/@:org/-/credentials?kind=secret`    |
-| `/@:org/-/integrations` | `/@:org/-/credentials?kind=oauth`     |
-| `/@:org/-/mcp-servers`  | `/@:org/-/credentials?kind=mcp`       |
-| `/connect/secret-set`   | `/connect/credential?kind=secret&...` |
+| From                   | To                                    |
+| ---------------------- | ------------------------------------- |
+| `/@:org/-/secrets`     | `/@:org/-/credentials?kind=secret`    |
+| `/@:org/-/mcp-servers` | `/@:org/-/credentials?kind=mcp`       |
+| `/connect/secret-set`  | `/connect/credential?kind=secret&...` |
 
 Only index pages redirect. Deeper paths that are approval or OAuth flows
 (`/@:org/-/secrets/approve`, `/@:org/-/mcp-servers/:serverId/authorize`,
@@ -807,11 +806,16 @@ for the package a need belongs to).
 vault provider access is a different trust decision from using a credential,
 with its own audit trail.
 
+`/@:org/-/integrations` stays its own page too (it redirected here from #3708
+until the catalog was restored): it lists the OAuth services you can connect and
+which are connected, which the Credentials list of your connections does not
+show. Each connection links to its row under `/@:org/-/credentials?kind=oauth`.
+
 Where they are wired:
 
-- Org index routes (`/@:org/-/secrets`, `/@:org/-/integrations`,
-  `/@:org/-/mcp-servers`) and `/connect/secret-set` call `credentialRedirectFor`
-  in `beforeLoad` and throw a 302 when the table matches.
+- Org index routes (`/@:org/-/secrets`, `/@:org/-/mcp-servers`) and
+  `/connect/secret-set` call `credentialRedirectFor` in `beforeLoad` and throw a
+  302 when the table matches.
 - `/connect/credential` redirects to the creation one-pager at
   `/@:org/-/credentials/new` in the signed-in user's signup org, with the query
   preserved. A legacy `/connect/secret-set` link therefore lands on the

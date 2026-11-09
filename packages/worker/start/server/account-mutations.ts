@@ -56,7 +56,7 @@ const secretMutationScope = resourceInput
 	.omit({ search: true })
 	.extend({ refresh: secretRefreshSchema })
 export const saveSecret = createServerFn({ method: 'POST' })
-	.inputValidator(
+	.validator(
 		resourceInput.omit({ search: true }).extend({ fields: saveSecretSchema }),
 	)
 	.handler(async ({ data }) => {
@@ -96,7 +96,7 @@ export const saveSecret = createServerFn({ method: 'POST' })
 	})
 
 export const deleteSecret = createServerFn({ method: 'POST' })
-	.inputValidator(
+	.validator(
 		resourceInput.omit({ search: true }).extend({ fields: deleteSecretSchema }),
 	)
 	.handler(async ({ data }) => {
@@ -119,7 +119,7 @@ export const deleteSecret = createServerFn({ method: 'POST' })
 	})
 
 export const disconnectSecret = createServerFn({ method: 'POST' })
-	.inputValidator(
+	.validator(
 		resourceInput
 			.omit({ search: true })
 			.extend({ fields: disconnectSecretSchema }),

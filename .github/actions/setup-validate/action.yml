@@ -93,9 +93,9 @@ runs:
       run: |
         if [ "${{ inputs.no_cache }}" = "true" ]; then
           echo "npm-cache=disabled (fresh npm ci --prefer-online)"
-          node tools/ci/npm-ci-with-retry.ts --prefer-online
+          node tools/ci/npm-ci-with-retry.ts --prefer-online --no-audit --no-fund
         else
-          node tools/ci/npm-ci-with-retry.ts
+          node tools/ci/npm-ci-with-retry.ts --no-audit --no-fund
         fi
 
     - name: 📝 Prepare worker env

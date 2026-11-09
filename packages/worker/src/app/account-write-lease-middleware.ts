@@ -4,6 +4,8 @@ import {
 	AccountWriteLeaseLostError,
 	withAccountWriteLease,
 } from '#worker/account/deletion-state.ts'
+import { guestHoldWriteError } from '#worker/guest/guest-policy.ts'
+import { createGuestErrorResponse } from '#worker/guest/guest-errors.ts'
 import { loadResolvedRequestAuth } from './request-auth-cache.ts'
 
 const unsafeMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
@@ -47,6 +49,15 @@ export async function withAccountRequestWriteLease<T>(
 	const auth = await loadResolvedRequestAuth(request, env)
 	if (!auth.user) return await write()
 	if (auth.user.accountDeleting) return accountDeletingResponse(409)
+	if (url.pathname.startsWith('/account/')) {
+		const held = await guestHoldWriteError({
+			db: env.APP_DB,
+			baseUrl: url.origin,
+			email: auth.user.email,
+			personId: auth.user.mcpUser.userId,
+		})
+		if (held) return createGuestErrorResponse(held.payload)
+	}
 	try {
 		return await withAccountWriteLease({
 			db: env.APP_DB,

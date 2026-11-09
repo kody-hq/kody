@@ -9,6 +9,7 @@ export const unusablePasswordHash = {
 	oauthCreated: 'oauth_created_no_usable_password',
 	adminCreated: 'admin_created_no_usable_password',
 	reclaimedUnverified: 'reclaimed_unverified_no_usable_password',
+	guestCreated: 'guest_created_no_usable_password',
 } as const
 
 export function isUsablePasswordHash(passwordHash: string | null | undefined) {

@@ -16,22 +16,26 @@ import {
 	posix,
 	win32,
 } from 'node:path'
+import { homedir } from 'node:os'
+import { normalizeServiceEnv } from './service-env-keys.js'
 import { cliConfigDir } from '../store.js'
 
 export type FsMode = 'ro' | 'rw'
 export type FsRule = { path: string; mode: FsMode }
-export type FsLayer = 'server_grant' | 'local_policy'
+type FsLayer = 'server_grant' | 'local_policy' | 'credential_denylist'
 /** Host commands opt-in on this machine (ADR 0093). Absent means off. */
-export type LocalCommandsPolicy = { enabled: boolean; changedAt?: string }
+type LocalCommandsPolicy = { enabled: boolean; changedAt?: string }
 export type LocalFsPolicy = {
 	version: 1
 	fs: Array<FsRule>
 	commands?: LocalCommandsPolicy
 	/** Daemon auto-update on this machine. Absent means on. */
 	autoUpdate?: LocalCommandsPolicy
+	/** Extra environment for the daemon service (`kody daemon env`). */
+	serviceEnv?: Record<string, string>
 }
-export type FsMount = { path: string; mode: FsMode }
-export type FsRefusal = { path: string; layer: FsLayer; reason: string }
+type FsMount = { path: string; mode: FsMode }
+type FsRefusal = { path: string; layer: FsLayer; reason: string }
 /**
  * Host folders one run may touch: the server grant intersected with this
  * machine's local policy, plus the grant roots so refusals can name the layer.
@@ -40,13 +44,88 @@ export type EffectiveFs = {
 	mounts: Array<FsMount>
 	refused: Array<FsRefusal>
 	grantRoots: Array<string>
+	/** Credential paths runs never touch, even inside a mount. */
+	denied: Array<string>
 }
 
 export const emptyEffectiveFs: EffectiveFs = {
 	mounts: [],
 	refused: [],
 	grantRoots: [],
+	denied: [],
 }
+
+/**
+ * Credential stores a run never reads or writes through host folders or uses
+ * as a command's cwd, even inside a mounted folder: the Kody CLI config dir
+ * (login tokens, context keys and wrapping keys, this policy), SSH, GPG, git,
+ * cloud CLI and package-manager credentials, and OS keyring files. Defense in
+ * depth only: host commands run as the same OS user and can still read them.
+ */
+export function credentialDenylist(
+	home: string = homedir(),
+	platform: NodeJS.Platform = process.platform,
+	env: NodeJS.ProcessEnv = process.env,
+): Array<string> {
+	const xdgConfig = env.XDG_CONFIG_HOME || join(home, '.config')
+	const paths = [
+		cliConfigDir(home),
+		join(home, '.ssh'),
+		join(home, '.gnupg'),
+		join(home, '.git-credentials'),
+		join(xdgConfig, 'git', 'credentials'),
+		join(home, '.netrc'),
+		join(home, '_netrc'),
+		join(home, '.aws'),
+		join(home, '.azure'),
+		join(xdgConfig, 'gcloud'),
+		join(xdgConfig, 'gh'),
+		join(home, '.kube'),
+		join(home, '.docker', 'config.json'),
+		join(home, '.npmrc'),
+		join(home, '.yarnrc.yml'),
+		join(home, '.pypirc'),
+		join(home, '.cargo', 'credentials'),
+		join(home, '.cargo', 'credentials.toml'),
+		join(home, '.password-store'),
+		join(home, '.local', 'share', 'keyrings'),
+	]
+	if (platform === 'darwin') paths.push(join(home, 'Library', 'Keychains'))
+	if (platform === 'win32') {
+		const appData = env.APPDATA || join(home, 'AppData', 'Roaming')
+		const localAppData = env.LOCALAPPDATA || join(home, 'AppData', 'Local')
+		paths.push(
+			join(appData, 'Microsoft', 'Credentials'),
+			join(appData, 'Microsoft', 'Protect'),
+			join(localAppData, 'Microsoft', 'Credentials'),
+			join(appData, 'gcloud'),
+			join(appData, 'GitHub CLI'),
+		)
+	}
+	return [...new Set(paths.map((path) => normalize(path)))]
+}
+
+/** Both the lexical path and, where it exists, where it really points. */
+async function deniedRoots(paths: ReadonlyArray<string>) {
+	const roots = new Set<string>()
+	for (const path of paths) {
+		roots.add(normalize(path))
+		const real = await realpath(path).catch(() => null)
+		if (real) roots.add(real)
+	}
+	return [...roots].sort()
+}
+
+export function isDeniedPath(
+	path: string,
+	denied: ReadonlyArray<string>,
+	platform: NodeJS.Platform = process.platform,
+) {
+	return denied.some((root) => isWithin(path, root, platform))
+}
+
+const deniedMessage = (path: string) =>
+	`${path} holds credentials (the Kody CLI login and context keys, SSH, GPG, git, cloud CLI or package-manager logins, or the OS keyring), so runs can never use it, even inside a host folder.`
 
 export function localPolicyPath(configDir: string = cliConfigDir()) {
 	return join(configDir, 'execution-context-policy.json')
@@ -195,6 +274,14 @@ export async function readLocalPolicy(
 			`${path} has an invalid "autoUpdate" entry. Use \`kody daemon auto-update on|off\` to fix it.`,
 		)
 	}
+	const serviceEnv = normalizeServiceEnv(
+		(parsed as { serviceEnv?: unknown }).serviceEnv,
+	)
+	if (serviceEnv === null) {
+		throw new Error(
+			`${path} has an invalid "serviceEnv" entry. Use \`kody daemon env set|unset\` to fix it.`,
+		)
+	}
 	const toggle = (value: { enabled?: unknown; changedAt?: unknown }) => ({
 		enabled: value.enabled as boolean,
 		...(typeof value.changedAt === 'string'
@@ -206,6 +293,7 @@ export async function readLocalPolicy(
 		fs: (fs as Array<FsRule>).map(({ path, mode }) => ({ path, mode })),
 		...(commands ? { commands: toggle(commands) } : {}),
 		...(autoUpdate ? { autoUpdate: toggle(autoUpdate) } : {}),
+		...(serviceEnv ? { serviceEnv } : {}),
 	}
 }
 
@@ -244,7 +332,7 @@ export async function setLocalCommandsEnabled(input: {
 	return next
 }
 
-async function writeLocalPolicy(path: string, policy: LocalFsPolicy) {
+export async function writeLocalPolicy(path: string, policy: LocalFsPolicy) {
 	await mkdir(dirname(path), { recursive: true, mode: 0o700 })
 	const temp = `${path}.${process.pid}.tmp`
 	await writeFile(temp, `${JSON.stringify(policy, null, 2)}\n`, {
@@ -254,18 +342,23 @@ async function writeLocalPolicy(path: string, policy: LocalFsPolicy) {
 }
 
 /** Adds or replaces one rule, stored as its canonical (realpath) form. */
+/** The canonical form `kody context policy allow` stores for `path`. */
+export async function canonicalHostPath(path: string) {
+	return await canonicalize(path).catch((error) => {
+		if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+			throw new Error(`${path} does not exist on this machine.`)
+		}
+		throw error
+	})
+}
+
 export async function allowLocalPath(input: {
 	path: string
 	mode: FsMode
 	policyPath?: string
 }) {
 	const policyPath = input.policyPath ?? localPolicyPath()
-	const canonical = await canonicalize(input.path).catch((error) => {
-		if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-			throw new Error(`${input.path} does not exist on this machine.`)
-		}
-		throw error
-	})
+	const canonical = await canonicalHostPath(input.path)
 	const policy = await readLocalPolicy(policyPath)
 	const fs = policy.fs.filter((rule) => !samePath(rule.path, canonical))
 	fs.push({ path: canonical, mode: input.mode })
@@ -310,7 +403,9 @@ export async function removeLocalPath(input: {
 export async function effectiveFs(
 	grant: ReadonlyArray<{ path: string; mode: string }>,
 	policy: ReadonlyArray<FsRule>,
+	denylist: ReadonlyArray<string> = credentialDenylist(),
 ): Promise<EffectiveFs> {
+	const denied = await deniedRoots(denylist)
 	const rules: Array<FsRule> = []
 	for (const rule of policy) {
 		const path = await canonicalize(rule.path).catch(() => null)
@@ -362,12 +457,22 @@ export async function effectiveFs(
 			})
 		}
 	}
+	for (const path of mounts.keys()) {
+		if (!isDeniedPath(path, denied)) continue
+		mounts.delete(path)
+		refused.push({
+			path,
+			layer: 'credential_denylist',
+			reason: 'it holds credentials and is never shared with runs',
+		})
+	}
 	return {
 		mounts: [...mounts]
 			.map(([path, mode]) => ({ path, mode }))
 			.sort((a, b) => a.path.localeCompare(b.path)),
 		refused,
 		grantRoots: [...grantRoots].sort(),
+		denied,
 	}
 }
 
@@ -425,6 +530,12 @@ export async function resolveHostPath(
 	}
 	const lexical = normalize(plainPath(path))
 	const real = await resolveExisting(lexical, options.followFinal ?? true)
+	if (
+		isDeniedPath(lexical, effective.denied) ||
+		isDeniedPath(real, effective.denied)
+	) {
+		throw new FsAccessError('EACCES', deniedMessage(path))
+	}
 	const mount = effective.mounts
 		.filter((candidate) => isWithin(real, candidate.path))
 		.sort((a, b) => b.path.length - a.path.length)[0]
@@ -436,7 +547,7 @@ export async function resolveHostPath(
 			'EACCES',
 			granted
 				? `${path} is in this execution context's server grant, but this machine's local policy does not allow it. The machine owner can allow it with \`kody context policy allow <folder> --mode ro|rw\`.`
-				: `${path} is outside this execution context's server grant (grant.fs). Someone with Contribute on the context can add the folder with executionContextUpdate; the machine's local policy must also allow it.`,
+				: `${path} is outside this execution context's server grant (grant.fs). Someone with Contribute or Manage on the context can add the folder with \`kody context grant allow <folder> --mode ro|rw\` (or executionContextUpdate grant.fs); the machine's local policy must also allow it.`,
 		)
 	}
 	if (access === 'write' && mount.mode === 'ro') {

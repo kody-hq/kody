@@ -9,7 +9,7 @@ import { cliCredentialBootstrapCapability } from '#mcp/capabilities/meta/cli-cre
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { ApiError, invalidRequest } from './errors.ts'
-import { type ApiInvocationContext } from './context.ts'
+import type { ApiInvocationContext } from './context.ts'
 import { runCapabilityProxyCall } from './capability-proxy.ts'
 
 const migrationsDirectory = new URL('../../migrations/', import.meta.url)
@@ -296,4 +296,31 @@ test('dotted kody.mcp[server].tool looks up raw tools-map keys, not sanitizeTool
 	expect(flat.result).toEqual({ ok: true })
 
 	expect(calls).toEqual([{ pin: '1234' }, { pin: '5678' }])
+})
+
+test('context runs use the credential picks on their lease and cannot send their own', async () => {
+	const { capabilityProxyCallMap } = await import('./capability-proxy.ts')
+	const leaseMap = new Map([['github', [{ name: 'work', scope: null }]]])
+	const contextRun = {
+		principal: {
+			kind: 'execution-context-run',
+			ecid: 'ec_1',
+			runId: 'run_1',
+			deadline: 0,
+			scopes: null,
+			runtime: { mode: 'all' },
+			byOperator: true,
+			callMap: leaseMap,
+		},
+	} as unknown as Parameters<typeof capabilityProxyCallMap>[0]
+	expect(capabilityProxyCallMap(contextRun, undefined)).toBe(leaseMap)
+	expect(() =>
+		capabilityProxyCallMap(contextRun, { github: 'personal' }),
+	).toThrow(/cannot send `credentials`/)
+	const local = { principal: { kind: 'mcp' } } as unknown as Parameters<
+		typeof capabilityProxyCallMap
+	>[0]
+	expect(capabilityProxyCallMap(local, { github: 'personal' })).toEqual(
+		new Map([['github', [{ name: 'personal', scope: null }]]]),
+	)
 })

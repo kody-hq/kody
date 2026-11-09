@@ -1,4 +1,4 @@
-import { type ResolvedProvider } from '@cloudflare/codemode'
+import type { ResolvedProvider } from '@cloudflare/codemode'
 
 export type KodyRemoteCapabilityMetadata = {
 	name: string

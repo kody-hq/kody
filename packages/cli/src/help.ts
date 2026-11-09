@@ -68,7 +68,9 @@ Usage:
   kody whoami [--org <slug>] [--target prod|mock] [--mcp-url <url>] [--token <token>] [--api-url <url>] [--json]
   kody search [query] [--org <slug>] [--entity <ref>] [--domain <id>] [--limit <n>] [--target prod|mock] [--token <token>] [--api-url <url>] [--json]
   kody api <operationId> [--org <slug>] [--params <json>] [--token <token>] [--api-url <url>] [--json]
-  kody package publish [<@owner/leaf|package_id>] [--org <slug>] [--params <json>] [--token <token>] [--api-url <url>] [--json]
+  kody secret get <name>… [--format raw|env|json] [--reveal] [--org <slug>] [--token <token>] [--api-url <url>]
+  kody run --secret <name>[=ENV_NAME]… [--org <slug>] [--token <token>] [--api-url <url>] -- <command> [args…]
+  kody package publish [<@owner/leaf|package_id>] [--build local|context] [--context <name|cloud>] [--org <slug>] [--params <json>] [--token <token>] [--api-url <url>] [--json]
   kody package collaborators <package> [--org <slug>] [--json] [--token <token>] [--api-url <url>]
   kody package grant <package> (--team <slug> | --user <username>) [--preset read|use|contribute|manage] [--allow-changes-despite-unmappable-credentials | --disallow-changes-despite-unmappable-credentials] [--org <slug>] [--json]
   kody package revoke <package> (--team <slug> | --user <username> | --grant <grant_id>) [--org <slug>] [--json]
@@ -77,16 +79,17 @@ Usage:
   kody context revoke <name|ec id> | kody context delete <name|ec id> [--org <slug>] [--json]
   kody context cancel-run <name|ec id> <run id> [--org <slug>] [--json]
   kody context policy [show] | allow <path> [--mode ro|rw] | remove <path> [--json]
+  kody context grant [show] | allow <path> [--mode ro|rw] | remove <path> | lan on|off [--context <name|ec id>] [--json]
   kody chain show | add <name> | remove <name> [--org <slug>] [--json]
   kody connect --name <name> [--org <slug>] [--no-install] [--key-storage keyring|file] [--yes]
   kody daemon [--context <ec id>] [--max-concurrent <n>]
   kody daemon install [--context <ec id>] [--max-concurrent <n>] [--key-storage keyring|file] [--yes]
-  kody daemon status [--context <ec id>] [--json] | logs [--lines <n>] [--follow] | restart
+  kody daemon status [--context <ec id>] [--json] | logs [--lines <n>] [--follow] | restart | start | stop
   kody daemon uninstall [--context <ec id>] [--unregister | --no-unregister]
   kody daemon auto-update [on | off | status] [--json]
   kody update
                [--credential <key=name>]… [--context <id|name>] [--fallback chain] [--requires fs,lan] [--chain <a,b,cloud>] [--target prod|mock] [--token <token>] [--api-url <url>] [--local] [--allow-private-network]
-  kody dev [serve] [--org <slug>] [--target prod|mock] [--reset-storage] [--port <n>] [--app-base-path <path>] [--allow-private-network] [--no-live-reload] [--json] [--ready-file <path>]
+  kody dev [serve] [--org <slug>] [--target prod|mock] [--reset-storage] [--host <addr>] [--expose-prod] [--port <n>] [--app-base-path <path>] [--allow-private-network] [--no-live-reload] [--json] [--ready-file <path>]
   kody dev fetch <path> [--method <verb>] [--body <file>] [--target prod|mock] [--json] [--no-attach]
   kody dev job <name> [--target prod|mock] [--dry-run] [--json]
   kody dev webhook <name> --body <file.json> [--target prod|mock] [--dry-run] [--json]
@@ -95,13 +98,20 @@ Usage:
   kody install [--mcp-url <url>] [--clients <ids>] [--yes] [--project] [--json]
   kody skill install [--project]
 
+  Run \`kody <command> --help\` (or \`kody help <command>\`) for one command's
+  usage, flags, and subcommands.
+
   kody connect registers this machine as an execution context and installs
   \`kody daemon\` as a per-user background service (systemd --user on Linux,
   a LaunchAgent on macOS, a Task Scheduler logon task on Windows, no admin
   needed) so it starts at login and restarts after crashes.
   \`kody daemon status\` names each problem with the command that fixes it;
   re-running \`kody daemon install\` repairs the service. Host folders use
-  native paths (C:\\Users\\you\\project on Windows). \`kody update\`
+  native paths (C:\\Users\\you\\project on Windows). A run can use a host
+  folder only when both layers allow it: this machine's local policy
+  (\`kody context policy allow\`, the machine owner's call) and the
+  context's server grant (\`kody context grant allow\`, needs Contribute
+  or Manage on the context, same as executionContextUpdate). \`kody update\`
   installs the latest CLI and restarts services after runs in flight finish.
   Every daemon also auto-updates: it checks npm on start and every ~4h,
   installs the verified new version, and relaunches once runs and background
@@ -372,6 +382,21 @@ ${orgBlock}
              \`--app-base-path /<package-name>\` to match the
              hosted app mount while iterating locally.
 
+  --host <addr>
+             With \`kody dev serve\`, the address the dev server listens on
+             (default \`127.0.0.1\`). \`0.0.0.0\`, \`::\`, or a LAN IP lets
+             phones, tablets, and other devices on your network open the
+             app; kody dev prints the LAN URLs and warns on stderr that
+             anyone who can reach the port can use the app. Only this
+             machine's own addresses are accepted as Host. Non-loopback
+             hosts with \`--target prod\` are refused unless
+             \`--expose-prod\` is also passed.
+
+  --expose-prod
+             With \`kody dev --host <non-loopback>\`, allow \`--target prod\`:
+             every device that can reach the port acts with your real Kody
+             credentials.
+
   --dry-run  With \`kody dev job|webhook|emit\`, print the module path and
              params that would run without invoking (safe against prod side
              effects). Does not apply to serve/fetch/check.
@@ -458,13 +483,4 @@ Environment:
   KODY_CACHE_DIR      Where execute --local caches workerd (default: user cache dir)
   KODY_WORKERD_PATH   Use this workerd binary instead of the pinned download
 `
-}
-
-/**
- * Build usage on demand. Do not call at module load: reading the credential
- * store (and pulling keyring) on every `kody --version` blows the startup
- * budget. Callers that need the offline org list pass `mcpUrl` / `backend`.
- */
-export function usage(input?: Parameters<typeof buildUsage>[0]): string {
-	return buildUsage(input)
 }

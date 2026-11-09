@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { test } from 'vitest'
 
 import { backupPayload } from './backup-policy.ts'
-import { type ScheduledBackupPayload } from './backup-types.ts'
+import type { ScheduledBackupPayload } from './backup-types.ts'
 import {
 	enqueueBackup,
 	enqueueBackupRetry,

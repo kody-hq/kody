@@ -1,4 +1,4 @@
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 
 /**
  * What a team org lets every Member create without a grant. Owners always
@@ -16,7 +16,7 @@ export const defaultOrgMemberCreation: OrgMemberCreation = {
 }
 
 export const memberCreationPermissions = {
-	packages: ['package:create', 'app:create'],
+	packages: ['package:create'],
 	credentials: ['secret:create', 'integration:create'],
 } as const satisfies Record<
 	keyof OrgMemberCreation,

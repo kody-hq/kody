@@ -32,6 +32,14 @@ export const terminalWorkflowStatusValues = [
  * release an idempotency key after failure use this set so cancelled stays
  * aligned with the cancel projection.
  */
+/**
+ * Inline workflow code throws an error whose message starts with this prefix
+ * to fail its step once, without retries, when the outcome is final (for
+ * example failed publish checks). The run ends `errored` with the rest of the
+ * message as `last_error`, so a same-key retry starts a fresh run.
+ */
+export const terminalInlineWorkflowErrorPrefix = 'kody-terminal: '
+
 export const deadTerminalWorkflowStatusValues =
 	terminalWorkflowStatusValues.filter((status) => status !== 'complete')
 

@@ -142,6 +142,8 @@ stops working (an expired value, a disconnected OAuth connection, a disabled MCP
 server, or you left the org). Leaving an org deletes your grants there. Granting
 and revoking need a live person (not a job, webhook, or package code) and Write
 on the credential; grants and revokes are audited in your personal org.
+Credentials stay in the org that created them. See
+[Personal credentials](../guides/credentials.md#personal-credentials).
 
 An OAuth connection you make through a team org's own OAuth app (**Connect your
 own account** on the org app's page) is a personal connection pinned to that
@@ -293,14 +295,18 @@ or the signed JWT. Put **`result.jwt`** in a fetch header or body (for example
 `Authorization: Bearer ${jwt}`) and Kody fills the JWT on egress. The handle
 fills on the registrable domain of an https **`aud`** claim or of
 **`send_to_host`** (pass it when `aud` is not a URL), never in a URL query or
-path, and expires with the JWT's `exp` (at most one hour). Without either, the
-handle may fill on any host and the result carries a deprecation **`warning`**;
-a future release will require **`send_to_host`**. A token endpoint's
-`access_token`, `refresh_token`, and `id_token` come back sealed the same way.
-They fill on the token URL's registrable domain and the client secret's approved
-hosts; an `access_token` JWT also fills on the exact host of its https **`aud`**
-(for example `https://management.azure.com` from `login.microsoftonline.com`),
-so the client secret stays approved for the token host only.
+path, and expires with the JWT's `exp` (at most one hour). Without either, a
+call is refused with an error asking for **`send_to_host`**, unless the same org
+and package made such a call before 2026-11-10 (America/Denver): those keep an
+any-host handle with a deprecation **`warning`** until 2026-12-02. From then,
+Kody fills in `send_to_host` when every earlier any-host handle from that org
+and package went to one registrable domain (the result's **`warning`** names the
+host) and refuses the call otherwise. A token endpoint's `access_token`,
+`refresh_token`, and `id_token` come back sealed the same way. They fill on the
+token URL's registrable domain and the client secret's approved hosts; an
+`access_token` JWT also fills on the exact host of its https **`aud`** (for
+example `https://management.azure.com` from `login.microsoftonline.com`), so the
+client secret stays approved for the token host only.
 
 The caller supplies the JWT header and claims, then performs any provider-
 specific token exchange with ordinary **`fetch`**. Pass the saved secret as
@@ -317,6 +323,11 @@ algorithms:
 - **RSA-PSS:** `PS256`, `PS384`, `PS512`
 - **ECDSA:** `ES256`, `ES384`, `ES512`
 - **EdDSA:** Ed25519 PKCS#8 keys (Cursor Origin app JWTs)
+
+HMAC-signed JWTs (`HS256`, `HS384`, `HS512`) use this primitive. Standalone HMAC
+signatures, RSA HTTP request signatures (`http-signature`), and owner-opt-in raw
+RSA (`rsa-sha256`) use `credential().sign`, not this primitive. See
+[Credentials — Signing](../guides/credentials.md#signing).
 
 ## Mentioning placeholders without resolving them
 
@@ -364,13 +375,12 @@ fetch even when package read/use is automatic.
 
 ## Package approval
 
-> **Rollout window (#4129), until 2026-11-30T00:00:00Z.** While the
-> `credential-allowed-packages-safety-window` flag is on, a package you authored
-> or adopted that a non-empty list leaves out is still allowed when it uses the
-> credential directly, and the use is logged. Kody does not add it to the list,
-> so a package you remove stays removed. Nested use and unadopted forks are
-> refused as described below. After the window, the rules below apply with no
-> exception.
+When the `credential-allowed-packages-safety-window` flag is on (through
+2026-11-30T00:00:00Z), a package you authored or adopted that a non-empty list
+leaves out is still allowed when it uses the credential directly, and the use is
+logged. Kody does not add it to the list, so a package you remove stays removed.
+Nested use and unadopted forks are refused as described below. After that
+cutover the rules below apply with no exception.
 
 User-scoped secrets are available automatically for **reading and using**
 (mounts, fetch placeholders, named capability lookups including `secretList`) to

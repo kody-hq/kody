@@ -5,7 +5,7 @@ import {
 	resolveIntegrationProviderName,
 	type IntegrationProviderMetadata,
 } from '#worker/integrations/provider-name.ts'
-import { type RelatedIntegrationPackageSuggestion } from './search-format.ts'
+import type { RelatedIntegrationPackageSuggestion } from './search-format.ts'
 import { extractSearchTokens } from './understand-search-query.ts'
 
 export { resolveIntegrationProviderName }

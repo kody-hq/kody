@@ -15,7 +15,7 @@ import {
 	computeMonthlyOverage,
 	computeOverageWarningResourceLabels,
 } from '#universal/compute-overage.ts'
-import { type AccountCreditsLedgerItem } from '#universal/loader-data.ts'
+import type { AccountCreditsLedgerItem } from '#universal/loader-data.ts'
 import {
 	creditDebitMeters,
 	defaultCreditAutoRefillSettings,
@@ -28,7 +28,7 @@ import {
 	type CreditLedgerEntryKind,
 	type CreditNotifySettings,
 } from '#universal/credits.ts'
-import { type UserEntitlement } from '#universal/plans.ts'
+import type { UserEntitlement } from '#universal/plans.ts'
 import {
 	getUserEntitlement,
 	resolveUserEntitlementFromRow,

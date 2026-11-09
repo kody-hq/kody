@@ -16,6 +16,21 @@ const connectPhaseNetworkCodes = new Set([
 
 export type RequestSentStatus = false | 'unknown'
 
+/**
+ * undici's own wait limits: the server accepted the request but sent no
+ * response headers (or body) in time. Node's fetch waits 300 s by default.
+ */
+const responseTimeoutNetworkCodes = new Set([
+	'UND_ERR_HEADERS_TIMEOUT',
+	'UND_ERR_BODY_TIMEOUT',
+])
+
+/** True when the request reached Kody but no answer came back in time. */
+function isResponseTimeoutNetworkError(error: unknown): boolean {
+	const code = networkErrorCauseCode(error)
+	return code != null && responseTimeoutNetworkCodes.has(code)
+}
+
 export function networkErrorCauseCode(error: unknown): string | null {
 	for (const value of errorCauseChain(error)) {
 		if (
@@ -66,8 +81,15 @@ export function formatUnreachableApiMessage(input: {
 }): string {
 	const reason = describeNetworkError(input.error)
 	const sent = requestSentStatus(input.error)
-	const base = `Could not reach the Kody API at ${input.origin} (${reason}).`
 	const networkHint = 'Check --api-url / KODY_API_URL and your network.'
+	if (isResponseTimeoutNetworkError(input.error)) {
+		return (
+			`The Kody API at ${input.origin} accepted the request but sent no answer within the CLI's wait (${networkErrorCauseCode(input.error)}, about 5 minutes); the server may still be working. ` +
+			'This is retryable: run read-only commands such as `kody dev check` again. ' +
+			'For a write such as `kody package publish`, list recent runs with `kody api workflowRunList` first so you do not publish twice.'
+		)
+	}
+	const base = `Could not reach the Kody API at ${input.origin} (${reason}).`
 	if (sent === false) {
 		return `${base} The request was not sent. ${networkHint}`
 	}

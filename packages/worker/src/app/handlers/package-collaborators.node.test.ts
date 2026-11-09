@@ -6,15 +6,15 @@ import {
 	createPackageCollaboratorInviteInput,
 	revokePackageCollaboratorInviteInput,
 } from '#universal/package-access-mutations.ts'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { beforeEach, expect, test, vi } from 'vitest'
 import type * as PackageCollaboratorsRepo from '#worker/orgs/package-collaborators.ts'
-import {
-	type PackageCollaboratorsChange,
-	type PackageCollaboratorsView,
-	type PackageCollaboratorsWriteResult,
+import type {
+	PackageCollaboratorsChange,
+	PackageCollaboratorsView,
+	PackageCollaboratorsWriteResult,
 } from '#universal/package-collaborators.ts'
 import {
 	type CollaboratorPerson,

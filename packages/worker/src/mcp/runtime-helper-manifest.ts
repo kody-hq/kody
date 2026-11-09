@@ -3,7 +3,7 @@ import {
 	type ResolvedProvider,
 	type ToolProvider,
 } from '@cloudflare/codemode'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import {
 	entitlementEmailForOwner,
 	ownerIdFromCaller,
@@ -14,25 +14,26 @@ import {
 	INTEGRATION_RUNTIME_CONFIG_TOOL_NAME,
 } from '#mcp/execute-modules/kody-runtime-utils.ts'
 import { readIntegrationRuntimeConfig } from '#mcp/capabilities/integrations/integration-runtime-config.ts'
-import { type Capability } from '#mcp/capabilities/types.ts'
+import { attestedPackageStampFromCaller } from '#worker/credentials/package-stamp.ts'
+import type { Capability } from '#mcp/capabilities/types.ts'
 import {
 	createPackageStorageHelperPrelude,
 	createPackageStorageKodyTools,
 } from '#worker/storage-runner.ts'
-import { type PackageWorkflowCreateInput } from '#worker/package-runtime/package-workflows.ts'
-import { type ComputedPackageImportTools } from '#worker/package-runtime/computed-package-import.ts'
-import {
-	type PackageStaticCallMeterInput,
-	type PackageStaticCallMeterTools,
+import type { PackageWorkflowCreateInput } from '#worker/package-runtime/package-workflows.ts'
+import type { ComputedPackageImportTools } from '#worker/package-runtime/computed-package-import.ts'
+import type {
+	PackageStaticCallMeterInput,
+	PackageStaticCallMeterTools,
 } from '#worker/usage/package-static-call-usage.ts'
 import { staticCallMeterRuntimeBridgeProviderName } from '#mcp/evaluation-side-effects.ts'
 import { takeSecretAuthorityFromCapabilityArgs } from '#mcp/secrets/secret-authority.ts'
 import { kodyCallDispatcherName } from '#worker/kody-evaluate-bindings.ts'
-import { type CredentialCallMap } from '#worker/credentials/credential-call-map.ts'
-import { type SavedCredentialNeed } from '#worker/credentials/credential-needs.ts'
-import {
-	type PackageAppCredentialAuthority,
-	type RunCredentialEntries,
+import type { CredentialCallMap } from '#worker/credentials/credential-call-map.ts'
+import type { SavedCredentialNeed } from '#worker/credentials/credential-needs.ts'
+import type {
+	PackageAppCredentialAuthority,
+	RunCredentialEntries,
 } from '#worker/credentials/credential-client.ts'
 import { createCredentialClientKodyTools } from './credential-client-tools.ts'
 import { createCredentialClientRuntimeSource } from './execute-modules/credential-client-source.ts'
@@ -545,6 +546,9 @@ const runtimeHelperManifest: Array<RuntimeHelperManifestEntry> = [
 						env: context.env,
 						callerContext: context.callerContext,
 						integrationGet,
+						packageStamp: attestedPackageStampFromCaller({
+							storageContext: context.callerContext.storageContext,
+						}).packageStamp,
 						args,
 					}),
 			}

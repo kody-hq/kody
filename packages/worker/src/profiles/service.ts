@@ -6,10 +6,11 @@ import { experimentOffMessage } from '#universal/feature-flags/experiments.ts'
 import {
 	checkPermission,
 	computeEffectivePermissions,
+	hasOwnerAuthority,
 } from '#worker/authorization/authorize.ts'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { ProfileError } from './errors.ts'
 import { isProfilesEnabledFor } from './flag.ts'
 import {
@@ -104,14 +105,23 @@ export async function requireProfilesCaller(input: {
 		actor: {
 			userId: request.actor.userId,
 			profileId: request.credential.profileId ?? null,
-			isOwner: effective.isOwner,
+			isOwner: hasOwnerAuthority(effective),
 		},
 		holds: (resourceType, resourceId, permission) =>
-			checkPermission(effective, permission, {
-				type: resourceType as never,
-				id: resourceId,
-				orgId: effective.orgId,
-			}).allowed,
+			checkPermission(
+				effective,
+				// No role holds "read locally": a person may give it to a profile
+				// on a secret they can use. The secret's own local reads switch
+				// still decides each read (ADR 0097).
+				resourceType === 'credential' && permission === 'secret:read_local'
+					? 'secret:use'
+					: permission,
+				{
+					type: resourceType as never,
+					id: resourceId,
+					orgId: effective.orgId,
+				},
+			).allowed,
 	}
 }
 
@@ -128,6 +138,8 @@ export type ProfileView = {
 	revokedAt: string | null
 	createdAt: string
 	createdByProfileId: string | null
+	/** The team this profile is for (ADR 0096); grants nothing. */
+	assignedTeamId: string | null
 	/** Root first, this profile last. */
 	chain: Array<{ id: string; name: string }>
 	grants: Array<ProfileGrantRow>
@@ -151,6 +163,7 @@ function view(
 		revokedAt: row.revoked_at,
 		createdAt: row.created_at,
 		createdByProfileId: row.created_by_profile_id,
+		assignedTeamId: row.assigned_team_id ?? null,
 		chain: chain.map((entry) => ({ id: entry.id, name: entry.name })),
 		grants: [...grants],
 	}
@@ -420,7 +433,7 @@ export async function listProfiles(
 		throw new ProfileError({
 			status: 403,
 			code: 'not_allowed',
-			message: 'Only an org Owner can list every member’s profiles.',
+			message: 'Only an org Owner or Admin can list every member’s profiles.',
 		})
 	}
 	const rows = await listProfileRows(caller.env.APP_DB, {
@@ -463,7 +476,11 @@ export async function listProfiles(
 /** Shorten-only expiry (decision: profiles never get more time). */
 export async function updateProfile(
 	caller: ProfilesCaller,
-	input: { profileId: string; expiresAt: string | null },
+	input: {
+		profileId: string
+		expiresAt?: string | null
+		assignedTeamId?: string | null
+	},
 ): Promise<ProfileView> {
 	const chain = await loadAuthorizedChain(caller, input.profileId, 'edit')
 	const row = chain.at(-1)!
@@ -475,7 +492,26 @@ export async function updateProfile(
 			message: 'That profile is revoked; revoke is final.',
 		})
 	}
-	const expiresAt = parseExpiry(input.expiresAt, now)
+	if (input.assignedTeamId !== undefined) {
+		if (input.expiresAt !== undefined) {
+			const next = parseExpiry(input.expiresAt, now)
+			if (isExpiryExtension({ current: row.expires_at, next })) {
+				throw new ProfileError({
+					status: 400,
+					code: 'profile_expiry_extension',
+					message:
+						'A profile’s expiry can only move earlier. Create a new profile for more time.',
+				})
+			}
+		}
+		await caller.env.APP_DB.prepare(
+			`UPDATE profiles SET assigned_team_id = ? WHERE id = ? AND org_id = ?`,
+		)
+			.bind(input.assignedTeamId, row.id, caller.orgId)
+			.run()
+		if (input.expiresAt === undefined) return await getProfile(caller, row.id)
+	}
+	const expiresAt = parseExpiry(input.expiresAt ?? null, now)
 	if (isExpiryExtension({ current: row.expires_at, next: expiresAt })) {
 		throw new ProfileError({
 			status: 400,

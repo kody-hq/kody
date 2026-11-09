@@ -25,6 +25,7 @@ protocol contract without sending website mutations through its HTTP adapter.
 | GET    | `/.well-known/agent-skills/:skillId/SKILL.md`                 | Discovery, crawlers, feeds, or machine-readable documentation           |
 | GET    | `/.well-known/security.txt`                                   | Discovery, crawlers, feeds, or machine-readable documentation           |
 | GET    | `/.well-known/openai-apps-challenge`                          | Discovery, crawlers, feeds, or machine-readable documentation           |
+| GET    | `/.well-known/apple-app-site-association`                     | Discovery, crawlers, feeds, or machine-readable documentation           |
 | GET    | `/health`                                                     | Deployment and uptime checks                                            |
 | GET    | `/health/components`                                          | Deployment and uptime checks                                            |
 | POST   | `/sentry-tunnel`                                              | Browser error-reporting protocol                                        |

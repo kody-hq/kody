@@ -9,10 +9,13 @@ import {
 	isSecondAgentStandardGiftActive,
 	resolvePlanOverlay,
 } from '#universal/second-agent-standard-gift.ts'
-import { type PlanName } from '#universal/plans.ts'
+import type { PlanName } from '#universal/plans.ts'
 
 /** 30 days. Observed through grant `expires_at`, not this export alone. */
 export const referralStandardCreditDurationMs = 30 * 24 * 60 * 60 * 1000
+
+/** Existing accounts can add a referrer for this long after signup. */
+export const lateReferralWindowMs = 72 * 60 * 60 * 1000
 
 const referralRejectReasons = [
 	'self_referral',
@@ -30,7 +33,23 @@ export type ReferralProgramSummary = {
 	creditExpiresAt: string | null
 	creditActive: boolean
 	referrals: Array<ReferralProgramListItem>
+	referredBy: ReferredByState
 }
+
+/**
+ * Whether this person can still add who referred them. `open` only within
+ * 72 hours of signup, before their first paid Kody invoice, and with no
+ * attribution recorded; `closed` hides the entry (window over, already paid,
+ * rejected, or unknown).
+ */
+export type ReferredByState =
+	| { state: 'open' }
+	| {
+			state: 'attributed'
+			referrerUsername: string | null
+			status: 'pending' | 'rewarded'
+	  }
+	| { state: 'closed' }
 
 export type ReferralProgramListItem = {
 	refereeUsername: string | null
@@ -72,7 +91,7 @@ export function parseReferralCode(input: {
 
 export function referralSharePath(username: string): string {
 	const code = normalizeReferralCode(username)
-	return code ? `/signup?ref=${encodeURIComponent(code)}` : '/signup'
+	return code ? `/?ref=${encodeURIComponent(code)}` : '/'
 }
 
 export function laterIsoTimestamp(
@@ -189,4 +208,29 @@ export function unixSecondsToIso(value: unknown): string | null {
 		return null
 	}
 	return new Date(value * 1000).toISOString()
+}
+
+/**
+ * A referrer as typed on the billing page: `alice`, `@alice`, or a share link
+ * such as `https://kody.codes/?ref=alice`.
+ */
+export function parseReferrerInput(value: unknown): string | null {
+	if (typeof value !== 'string') return null
+	const trimmed = value.trim()
+	if (!trimmed || trimmed.length > 256) return null
+	if (/[/?=]/.test(trimmed)) {
+		try {
+			const url = new URL(
+				/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)
+					? trimmed
+					: `https://${trimmed}`,
+			)
+			return normalizeReferralCode(
+				url.searchParams.get('ref') ?? url.searchParams.get('referral'),
+			)
+		} catch {
+			return null
+		}
+	}
+	return normalizeReferralCode(trimmed.replace(/^@/, ''))
 }

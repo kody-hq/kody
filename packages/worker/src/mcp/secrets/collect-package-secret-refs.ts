@@ -2,7 +2,7 @@ import {
 	parseBasicAuthSecretPlaceholders,
 	parseSecretPlaceholders,
 } from './placeholders.ts'
-import { type SecretScope } from './types.ts'
+import type { SecretScope } from './types.ts'
 
 type SecretMountDefinition = {
 	name: string

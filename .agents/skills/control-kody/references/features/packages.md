@@ -7,15 +7,32 @@ fixtures after `node tools/seed-test-data.ts --local`.
 
 ```bash
 npm run control-kody -- login
-npm run control-kody -- package-create --origin <preview> --package-name demo-pkg
+npm run control-kody -- package-create --package-name demo-pkg
 npm run control-kody -- request GET /@jane --contains 'Repositories'
 npm run control-kody -- request GET /@jane/-/repositories --contains 'Packages live here too'
 npm run control-kody -- request GET /account/packages.json --contains 'packages'
 ```
 
-`package-create` needs the remote `ARTIFACTS` binding — use a PR preview origin,
-not `npm run dev`, when proving create/publish. See cloud-agents local
-limitations.
+`package-create` works on local `npm run dev` (mock Artifacts). Use a PR preview
+when you need the real remote Artifacts namespace. See
+[control-kody](../../../../../docs/contributing/control-kody.md) and
+[Local limitations](../../../../../docs/contributing/cloud-agents.md#local-limitations).
+
+## Apps
+
+Create a package with `kody.app.entry` using `control-kody execute`, then open
+`/@{$orgSlug}/-/apps` as the workspace member. Check the app opens, search,
+visibility and sort filters work, and icon, card, and list views retain their
+URL state. Reload a bare Apps URL after choosing a view to verify the device
+preference. A package without an app must not appear.
+
+Empty workspace (no `kody.app` packages): `/@{$orgSlug}/-/apps` shows the
+first-use panel (`data-testid="workspace-apps-empty"`), header explainer
+(`data-entity-explainer="apps"`), Copy a prompt for my agent, and Explore apps
+you can fork (`data-testid="workspace-apps-explore-forks"` →
+`/community?category=apps&org={$orgSlug}`). Copying the prompt must not create
+packages. With apps present, a no-match search keeps
+`data-testid="workspace-apps-filtered-empty"`.
 
 ## Assert
 

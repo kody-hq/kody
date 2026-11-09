@@ -15,8 +15,12 @@ import {
 	listJoinedIntegrations,
 } from '#worker/integrations/service.ts'
 import { toConnectablePlatformApp } from '#app/platform-integration-catalog.ts'
+import {
+	listScopeIncludes,
+	type ResourceListScope,
+} from '#worker/authorization/authorize.ts'
 
-import { type UserOauthApp } from '#worker/integrations/types.ts'
+import type { UserOauthApp } from '#worker/integrations/types.ts'
 
 export type { ConnectOauthChooserOption }
 
@@ -27,12 +31,20 @@ export async function loadConnectOauthChooser(input: {
 	orgSlug?: string | null
 	/** Org apps the member may connect their own account through. */
 	orgApps?: ReadonlyArray<UserOauthApp>
+	/** The caller's `integration:read` list scope; omit to list every connection. */
+	listScope?: ResourceListScope
 }): Promise<{ options: Array<ConnectOauthChooserOption> }> {
-	const [joined, platformApps, marks] = await Promise.all([
+	const [saved, platformApps, marks] = await Promise.all([
 		listJoinedIntegrations({ env: input.env, userId: input.userId }),
 		listAvailablePlatformApps({ env: input.env }),
 		listPlatformProviderMarks({ db: input.env.APP_DB }),
 	])
+	const listScope = input.listScope
+	const joined = listScope
+		? saved.filter((entry) =>
+				listScopeIncludes(listScope, entry.connection.credentialId),
+			)
+		: saved
 	return {
 		options: buildConnectOauthChooserOptions({
 			orgSlug: input.orgSlug,

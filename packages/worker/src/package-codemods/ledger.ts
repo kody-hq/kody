@@ -3,8 +3,8 @@ import {
 	truncateToUtf8Bytes,
 	utf8ByteLength,
 } from '@kody-internal/shared/backup-restore-safety.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type PackageCodemodFinding } from './types.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { PackageCodemodFinding } from './types.ts'
 
 export type PackageCodemodRunStatus =
 	| 'running'

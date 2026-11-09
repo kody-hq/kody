@@ -18,6 +18,8 @@ export type BlogPostOgImageInput = {
 	title: string
 	description: string
 	date: string
+	/** Category label shown beside "Blog" in the card's eyebrow. */
+	category?: string | null
 	/** Optional Satori-safe PNG/JPEG data URI composed on the right. */
 	imageDataUri?: string
 }
@@ -66,14 +68,14 @@ function createBlogPostOgMarkup(input: BlogPostOgImageInput): SatoriElement {
 	if (!input.imageDataUri) {
 		return createOgFrame({
 			theme: input.theme,
-			label: 'Blog',
+			label: input.category ? `Blog · ${input.category}` : 'Blog',
 			children: [title, description, byline],
 		})
 	}
 
 	return createOgFrame({
 		theme: input.theme,
-		label: 'Blog',
+		label: input.category ? `Blog · ${input.category}` : 'Blog',
 		children: {
 			type: 'div',
 			props: {

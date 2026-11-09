@@ -96,7 +96,7 @@ test('executeGatewayFetch verifies a visit ticket and refuses a forged one', asy
 			env,
 			props: visitProps,
 			request: new Request('https://example.com', {
-				headers: { 'X-Kody-Visit-Ticket': minted.ticket.slice(0, -2) + 'xx' },
+				headers: { 'X-Kody-Visit-Ticket': forgeSignature(minted.ticket) },
 			}),
 			globalFetch: globalFetch as unknown as typeof fetch,
 		}),
@@ -165,3 +165,9 @@ test('a ticketless gateway fetch does not inherit a warm isolate first visitor',
 	expect(usage.actorUserId).toBeUndefined()
 	recordUsageSpy.mockRestore()
 })
+
+function forgeSignature(ticket: string) {
+	const signatureStart = ticket.lastIndexOf('.') + 1
+	const first = ticket[signatureStart] === 'A' ? 'B' : 'A'
+	return `${ticket.slice(0, signatureStart)}${first}${ticket.slice(signatureStart + 1)}`
+}

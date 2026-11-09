@@ -5,9 +5,25 @@ import {
 	previewSeedFlagAllowlist,
 	type PreviewSeedFlagKey,
 } from './preview-seed-flag-allowlist.ts'
+import { parsePlanName, planNames, type PlanName } from '#universal/plans.ts'
 
 /** PR label that opts one allowlisted flag into the preview seed step. */
 export const previewFlagLabelPrefix = 'preview-flag:'
+
+/** PR label that seeds the preview user's personal org on one plan. */
+export const previewPlanLabelPrefix = 'preview-plan:'
+
+/**
+ * PR label that seeds the `preview-team` team org (seed user Owner, member
+ * account Member). Opt-in because a second org makes MCP OAuth ask for an
+ * org, so default preview smokes keep a single-org seed user.
+ */
+export const previewTeamOrgLabel = 'preview-seed:team-org'
+export const previewTeamOrgSlug = 'preview-team'
+
+export function previewSeedTeamOrgFromLabels(labels: ReadonlyArray<string>) {
+	return labels.includes(previewTeamOrgLabel) ? previewTeamOrgSlug : null
+}
 
 export class PreviewSeedFlagError extends Error {
 	constructor(message: string) {
@@ -39,6 +55,35 @@ export function previewSeedFlagKeysFromLabels(
 	return keys
 }
 
+/**
+ * Plan for the preview seed user's personal org from a `preview-plan:<plan>`
+ * label, or `free` without one, so removing the label resets the plan on the
+ * next seed. Unknown plans and conflicting labels fail closed.
+ */
+export function previewSeedPlanFromLabels(
+	labels: ReadonlyArray<string>,
+): PlanName {
+	const plans = new Set<PlanName>()
+	for (const label of labels) {
+		if (!label.startsWith(previewPlanLabelPrefix)) continue
+		const plan = parsePlanName(
+			label.slice(previewPlanLabelPrefix.length).trim(),
+		)
+		if (!plan) {
+			throw new PreviewSeedFlagError(
+				`PR label ${JSON.stringify(label)} is not a plan. Use one of: ${planNames.join(', ')}.`,
+			)
+		}
+		plans.add(plan)
+	}
+	if (plans.size > 1) {
+		throw new PreviewSeedFlagError(
+			`Only one ${previewPlanLabelPrefix} label is allowed; found ${[...plans].join(', ')}.`,
+		)
+	}
+	return [...plans][0] ?? 'free'
+}
+
 export function readPreviewSeedFlagLabels(labelsJson: string): Array<string> {
 	let parsed: unknown
 	try {
@@ -64,7 +109,7 @@ function readLabelsArg(argv: Array<string>) {
 	const value = index === -1 ? undefined : argv[index + 1]
 	if (!value) {
 		fail(
-			'Usage: node tools/preview-seed-flags.ts --labels <json-array-of-label-names>',
+			'Usage: node tools/preview-seed-flags.ts --labels <json-array-of-label-names> [--plan|--team-org]',
 		)
 	}
 	return value
@@ -72,9 +117,17 @@ function readLabelsArg(argv: Array<string>) {
 
 function main() {
 	try {
-		const labels = readPreviewSeedFlagLabels(
-			readLabelsArg(process.argv.slice(2)),
-		)
+		const argv = process.argv.slice(2)
+		const labels = readPreviewSeedFlagLabels(readLabelsArg(argv))
+		if (argv.includes('--plan')) {
+			process.stdout.write(`${previewSeedPlanFromLabels(labels)}\n`)
+			return
+		}
+		if (argv.includes('--team-org')) {
+			const slug = previewSeedTeamOrgFromLabels(labels)
+			if (slug) process.stdout.write(`${slug}\n`)
+			return
+		}
 		const keys = previewSeedFlagKeysFromLabels(labels)
 		if (keys.length > 0) {
 			process.stdout.write(`${keys.join('\n')}\n`)

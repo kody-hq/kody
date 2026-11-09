@@ -135,6 +135,9 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 		'Bundles name source-org approvals; an agent bundles again in the target org.',
 	),
 	billing_promo_claims: keep(usageHistory),
+	org_plan_transfers: keep(
+		'Billing record between two orgs; it names org ids, not an owner.',
+	),
 	cli_credential_bootstrap_codes: keep(personOwned),
 	community_activity_events: keep('Historical activity log.'),
 	community_bans: keep(personOwned),
@@ -153,6 +156,18 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 		'Approved picks name source-org credentials; an agent proposes again in the target org.',
 	),
 	credential_org_grants: keep(personOwned),
+	credential_local_read_settings: keep(
+		'Local reads stay with the credential in its owning org; a moved credential starts with local reads off.',
+	),
+	credential_local_read_events: keep(
+		'Local reads history stays with the credential in its owning org.',
+	),
+	credential_raw_signing_settings: keep(
+		'Raw signing stays with the credential in its owning org; a moved credential starts with raw signing off.',
+	),
+	credential_raw_signing_events: keep(
+		'Raw signing history stays with the credential in its owning org.',
+	),
 	execution_contexts: keep(
 		'Execution contexts are machines their operator controls; they stay in the owning org and are not moved by a resource transfer.',
 	),
@@ -160,6 +175,12 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 		'Org overrides of where an automation runs; the manifest declaration travels with the package and the target org sets its own override.',
 	),
 	execution_context_opt_ins: keep(personOwned),
+	execution_context_notices: keep(
+		'Notices are about a person and a context that stays in the owning org; nothing to move.',
+	),
+	publish_builds: keep(
+		'Publish builds are short-lived upload jobs for one commit; they expire on their own and are not resources a transfer moves.',
+	),
 	profiles: keep(
 		'Profiles are identities a person acts as in one org; they stay in that org and their grants on moved resources are dropped with the other grants.',
 	),
@@ -229,6 +250,12 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	usage_attribution_daily: keep(usageHistory),
 	package_app_visitor_attribution_daily: keep(usageHistory),
 	usage_connection_daily: keep(usageHistory),
+	jwt_sign_any_host_callers: keep(
+		'Any-host secretJwtSign deprecation state is keyed to the caller org; a moved package starts over as a new caller and must pass send_to_host.',
+	),
+	jwt_sign_any_host_destinations: keep(
+		'Fill-host counts for any-host secretJwtSign JWTs stay with the org that sent them.',
+	),
 	usage_rollups: keep(usageHistory),
 	user_email_claims: keep(personOwned),
 	user_mcp_oauth_clients: keep(personOwned),

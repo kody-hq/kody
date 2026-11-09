@@ -9,7 +9,7 @@ import {
 	buildPlatformFeedbackSubmittedEvent,
 	platformFeedbackSubmittedTopic,
 } from './subscription-event.ts'
-import { type PlatformFeedbackRecord } from './types.ts'
+import type { PlatformFeedbackRecord } from './types.ts'
 
 const mocks = vi.hoisted(() => ({
 	getPlatformFeedbackForAdmin: vi.fn(),
@@ -57,6 +57,7 @@ const openFeedback = {
 	resolutionNote: null,
 	resolutionPrUrls: [],
 	resolutionHistory: [],
+	reopenHistory: [],
 	createdAt: '2026-07-19T00:00:00.000Z',
 	updatedAt: '2026-07-19T00:00:00.000Z',
 } satisfies PlatformFeedbackRecord

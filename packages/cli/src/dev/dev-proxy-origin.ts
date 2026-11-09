@@ -6,7 +6,7 @@
  * port. Forwarding headers are overwritten the same way.
  */
 
-import { type IncomingHttpHeaders } from 'node:http'
+import type { IncomingHttpHeaders } from 'node:http'
 import { runSecretHeader } from '../local-runtime-source.js'
 import { devRequestIdHeader } from './dev-protocol.js'
 
@@ -52,10 +52,24 @@ export function isAllowedDevHost(input: {
 	trustedHost: string
 	aliases?: ReadonlyArray<string>
 }): boolean {
+	return resolveAllowedDevHost(input) !== null
+}
+
+/**
+ * The allowlisted `host:port` this request arrived on, or null for an unknown
+ * Host. Only ever returns a value from the allowlist (listen host, loopback
+ * aliases, `aliases`), never an arbitrary client Host.
+ */
+export function resolveAllowedDevHost(input: {
+	incomingHost: string | undefined
+	trustedHost: string
+	aliases?: ReadonlyArray<string>
+}): string | null {
 	const incoming = normalizeHostHeader(input.incomingHost)
-	if (!incoming) return false
+	if (!incoming) return null
+	const trusted = normalizeHostHeader(input.trustedHost)!
 	const allowed = new Set<string>([
-		normalizeHostHeader(input.trustedHost)!,
+		trusted,
 		...defaultLoopbackHostAliases(input.trustedHost).map((alias) =>
 			normalizeHostHeader(alias)!,
 		),
@@ -63,7 +77,10 @@ export function isAllowedDevHost(input: {
 			.map((alias) => normalizeHostHeader(alias))
 			.filter((alias): alias is string => Boolean(alias)),
 	])
-	return allowed.has(incoming)
+	for (const host of allowed) {
+		if (host === incoming) return host
+	}
+	return null
 }
 
 export function buildTrustedDevPublicUrl(input: {

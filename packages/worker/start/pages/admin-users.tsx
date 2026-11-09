@@ -37,11 +37,11 @@ import {
 	mintAdminUserVerificationUrl,
 	createAdminUser,
 } from '#start/server/admin-mutations'
-import {
-	type AdminCreatedUserSetup,
-	type AdminUsersLoaderData,
+import type {
+	AdminCreatedUserSetup,
+	AdminUsersLoaderData,
 } from '#universal/loader-data.ts'
-import { type RoleName } from '#universal/permissions.ts'
+import type { RoleName } from '#universal/permissions.ts'
 import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
 import {
 	AccountManagementMessage,

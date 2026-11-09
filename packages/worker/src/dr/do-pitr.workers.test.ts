@@ -1,9 +1,9 @@
 import { runInDurableObject } from 'cloudflare:test'
 import { env } from 'cloudflare:workers'
 import { expect, test } from 'vitest'
-import { type DurableObjectPitrRpc, pitrUnavailableCode } from './do-pitr.ts'
-import { type RunLog } from '#worker/run-records/run-log-do.ts'
-import { type StorageRunner } from '#worker/storage-runner.ts'
+import type { DurableObjectPitrRpc } from './do-pitr.ts'
+import type { RunLog } from '#worker/run-records/run-log-do.ts'
+import type { StorageRunner } from '#worker/storage-runner.ts'
 import {
 	mailboxDurableObjectName,
 	runLogDurableObjectName,
@@ -15,10 +15,10 @@ import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 async function expectPitrUnavailable(object: DurableObjectPitrRpc) {
 	await expect(
 		object.getRecoveryBookmark({ timestampMs: Date.now() }),
-	).rejects.toThrow(pitrUnavailableCode)
+	).rejects.toThrow('pitr-unavailable')
 	await expect(
 		object.restoreToBookmark({ bookmark: 'local-test-bookmark' }),
-	).rejects.toThrow(pitrUnavailableCode)
+	).rejects.toThrow('pitr-unavailable')
 }
 
 test('all user-scoped Durable Objects expose PITR RPCs and degrade clearly in local Workers', async () => {

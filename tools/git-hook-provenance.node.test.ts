@@ -12,7 +12,7 @@ import {
 	treeShaForCommit,
 	treeShaForWorktree,
 } from './git-hook-provenance.ts'
-import { type GitRunner } from './git-hook-checks.ts'
+import type { GitRunner } from './git-hook-checks.ts'
 
 const treeA = 'a'.repeat(40)
 const treeB = 'b'.repeat(40)

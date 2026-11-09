@@ -2,8 +2,8 @@ import {
 	checkPermission,
 	computeEffectivePermissions,
 } from '#worker/authorization/authorize.ts'
-import { type ApiInvocationContext } from '#worker/open-api/context.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { ApiInvocationContext } from '#worker/open-api/context.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { maxAuditDetailChars } from './audit-detail.ts'
 import { ExecutionContextError } from './errors.ts'
 import {
@@ -148,6 +148,13 @@ async function assertCommandAccess(
 			status: 403,
 			code: 'context_revoked',
 			message: 'This execution context was revoked.',
+		})
+	}
+	if (row.paused_at) {
+		throw new ExecutionContextError({
+			status: 409,
+			code: 'context_paused',
+			message: `${row.name} is paused, so it runs no host commands. Resume it with \`kody daemon resume --context ${row.name}\` or executionContextResume.`,
 		})
 	}
 	if (parseGrant(row).commands?.enabled !== true)

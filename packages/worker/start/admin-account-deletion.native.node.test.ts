@@ -3,7 +3,7 @@ import { expect, test } from 'vitest'
 import { renderStartPage } from './test-support/render-start-page.ts'
 import { AdminUserAccountModeration } from './pages/admin-account-delete-dialog.tsx'
 import { AdminAccountDeletionApprovalPage } from './pages/admin-account-deletion-approval.tsx'
-import { type AdminAccountDeletionSummary } from '#universal/admin-account-deletion.ts'
+import type { AdminAccountDeletionSummary } from '#universal/admin-account-deletion.ts'
 
 const summary: AdminAccountDeletionSummary = {
 	handle: 'ada-lovelace',

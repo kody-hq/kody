@@ -4,9 +4,14 @@ import {
 	applyDeliverabilitySideEffects,
 	applyDeliverabilitySideEffectsOnce,
 } from './deliverability-side-effects.ts'
-import { type MailboxEnv } from './mailbox-client.ts'
-import { type EmailReportingEnv } from './reporting-events.ts'
+import type { MailboxEnv } from './mailbox-client.ts'
+import type { EmailReportingEnv } from './reporting-events.ts'
 import { recordProviderEmailDeliveryEvent } from './service.ts'
+import {
+	recordSystemEmailSendDeliveryEvent,
+	systemEmailSendCursorGuard,
+	type SystemEmailSendDeliveryResult,
+} from './system-email-sends.ts'
 import { emailDeliveryStatusValues, type EmailDeliveryStatus } from './types.ts'
 import {
 	recordTransactionalEmailDeliveryEvent,
@@ -185,6 +190,28 @@ export async function processCloudflareEmailDeliveryEvent(input: {
 		return { ...result, providerEvent }
 	}
 
+	// System sends (kody@ and the other reserved senders) are recorded per
+	// recipient. Verification and password-reset mail is also in the
+	// transactional index, which keeps owning its side effects; the system
+	// record still counts the hard bounce toward full suppression.
+	const systemSend = await recordSystemEmailSendDeliveryEvent({
+		db: input.env.APP_DB,
+		providerMessageId: providerEvent.payload.messageId,
+		recipient: providerEvent.payload.recipient,
+		deliveryStatus: providerEvent.payload.delivery.status,
+		eventTimestamp: providerEvent.metadata.eventTimestamp,
+		smtpResponse: providerEvent.payload.delivery.smtpResponse,
+		smtpEnhancedStatusCode:
+			providerEvent.payload.delivery.smtpEnhancedStatusCode,
+		smtpStatusCode: providerEvent.payload.delivery.smtpStatusCode,
+	})
+	if (systemSend.outcome === 'recorded' && systemSend.suppressed) {
+		console.warn('system-email-recipient-suppressed', {
+			kind: systemSend.send.kind,
+			status: providerEvent.payload.delivery.status,
+		})
+	}
+
 	const transactional = await recordTransactionalEmailDeliveryEvent({
 		db: input.env.APP_DB,
 		providerMessageId: providerEvent.payload.messageId,
@@ -205,7 +232,13 @@ export async function processCloudflareEmailDeliveryEvent(input: {
 		}
 	}
 	if (transactional.outcome !== 'recorded') {
-		return { ...result, providerEvent }
+		return await applySystemSendDeliveryEvent({
+			env: input.env,
+			providerEvent,
+			systemSend,
+			unmatched: result,
+			fetchImpl: input.fetchImpl,
+		})
 	}
 
 	await applyDeliverabilitySideEffects({
@@ -232,23 +265,74 @@ export async function processCloudflareEmailDeliveryEvent(input: {
 			: undefined,
 	})
 
-	if (
-		providerEvent.payload.delivery.status === 'bounced' ||
-		providerEvent.payload.delivery.status === 'complained'
-	) {
-		await recordDeliveryAlertEvent({
-			db: input.env.APP_DB,
-			providerEventId: providerEvent.payload.eventId,
-			provider: 'cloudflare-email',
-			eventType: providerEvent.payload.delivery.status,
-			occurredAt: providerEvent.metadata.eventTimestamp,
-		})
-	}
+	await recordAlertEventForSystemMail({ db: input.env.APP_DB, providerEvent })
 
 	return {
 		outcome: 'recorded_transactional' as const,
 		providerEvent,
 		event: transactional.event,
+		message: null,
+	}
+}
+
+async function recordAlertEventForSystemMail(input: {
+	db: D1Database
+	providerEvent: CloudflareEmailDeliveryEvent
+}) {
+	const status = input.providerEvent.payload.delivery.status
+	if (status !== 'bounced' && status !== 'complained') return
+	await recordDeliveryAlertEvent({
+		db: input.db,
+		providerEventId: input.providerEvent.payload.eventId,
+		provider: 'cloudflare-email',
+		eventType: status,
+		occurredAt: input.providerEvent.metadata.eventTimestamp,
+	})
+}
+
+async function applySystemSendDeliveryEvent<Unmatched extends object>(input: {
+	env: { APP_DB: D1Database }
+	providerEvent: CloudflareEmailDeliveryEvent
+	systemSend: SystemEmailSendDeliveryResult
+	unmatched: Unmatched
+	fetchImpl?: typeof fetch
+}) {
+	const { providerEvent, systemSend } = input
+	if (systemSend.outcome === 'unmatched') {
+		return { ...input.unmatched, providerEvent }
+	}
+	if (systemSend.outcome === 'stale') {
+		return {
+			outcome: 'stale_system' as const,
+			providerEvent,
+			event: null,
+			message: null,
+		}
+	}
+	await applyDeliverabilitySideEffects({
+		db: input.env.APP_DB,
+		recipient: systemSend.send.recipient,
+		deliveryStatus: providerEvent.payload.delivery.status,
+		smtpResponse: providerEvent.payload.delivery.smtpResponse,
+		smtpEnhancedStatusCode:
+			providerEvent.payload.delivery.smtpEnhancedStatusCode,
+		smtpStatusCode: providerEvent.payload.delivery.smtpStatusCode,
+		fetchImpl: input.fetchImpl,
+		cursorGuard: systemEmailSendCursorGuard({
+			db: input.env.APP_DB,
+			providerMessageId: systemSend.send.providerMessageId,
+			recipient: systemSend.send.recipient,
+			status: providerEvent.payload.delivery.status,
+			at: providerEvent.metadata.eventTimestamp,
+		}),
+	})
+	await recordAlertEventForSystemMail({ db: input.env.APP_DB, providerEvent })
+	return {
+		outcome: 'recorded_system' as const,
+		providerEvent,
+		send: systemSend.send,
+		suppressed: systemSend.suppressed,
+		event: null,
 		message: null,
 	}
 }

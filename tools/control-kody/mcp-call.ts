@@ -9,13 +9,14 @@ import { isProductionKodyOrigin } from './package-create.ts'
 import {
 	defaultMcpCallOptions,
 	readExecuteResult,
+	readApiResult,
 	readSearchResult,
 	type McpCallConnection,
 } from './mcp-tool-result.ts'
 
 export type AppMcpCallReport = {
 	ok: true
-	tool: 'execute' | 'search'
+	tool: 'execute' | 'search' | 'api'
 	result: unknown
 	cookieHeader: string
 	oauth?: AppMcpOAuthSession
@@ -108,6 +109,38 @@ export async function searchAppMcp(input: {
 	})
 }
 
+/** Call one MCP `api` operation (e.g. `cliCredentialBootstrap`) as the seed user. */
+export async function apiAppMcp(input: {
+	origin: string
+	email: string
+	password: string
+	operationId: string
+	params?: Record<string, unknown>
+	cookieHeader?: string
+	oauth?: AppMcpOAuthSession
+	orgSlug?: string | null
+	connect?: AppMcpConnect
+}): Promise<AppMcpCallReport> {
+	if (isProductionKodyOrigin(input.origin)) {
+		throw new Error('api refuses to run against https://kody.codes')
+	}
+	return callAppMcpTool({
+		origin: input.origin,
+		email: input.email,
+		password: input.password,
+		tool: 'api',
+		arguments: {
+			operationId: input.operationId,
+			...(input.params ? { params: input.params } : {}),
+		},
+		readResult: readApiResult,
+		cookieHeader: input.cookieHeader,
+		oauth: input.oauth,
+		orgSlug: input.orgSlug,
+		connect: input.connect,
+	})
+}
+
 type AppMcpConnectOptions = {
 	cookieHeader?: string
 	oauth?: AppMcpOAuthSession
@@ -136,7 +169,7 @@ async function callAppMcpTool(input: {
 	origin: string
 	email: string
 	password: string
-	tool: 'execute' | 'search'
+	tool: 'execute' | 'search' | 'api'
 	arguments: Record<string, unknown>
 	readResult: (toolResult: unknown) => unknown
 	cookieHeader?: string

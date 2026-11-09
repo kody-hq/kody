@@ -9,12 +9,13 @@ import {
 } from '@kody-internal/shared/grant-presets.ts'
 import {
 	isOrgPermission,
+	withoutRetiredOrgPermissions,
 	type OrgGrantResourceType,
 	type OrgPermission,
 	type OrgResourceType,
 } from '@kody-internal/shared/org-permissions.ts'
 import { mintPersonId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { bumpAccessEpochStatement } from '#worker/authorization/access-compile.ts'
 import { normalizeUsername } from '#worker/identity/username.ts'
 import {
@@ -24,7 +25,7 @@ import {
 	liveFreeOwnedOrgCountSql,
 } from '#worker/orgs/billing.ts'
 import { getOrgHandleClaimError } from '#worker/orgs/org-handle-claim.ts'
-import { type OrgProfileVisibility } from '#worker/orgs/org-public-profile.ts'
+import type { OrgProfileVisibility } from '#worker/orgs/org-public-profile.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import {
 	recordOrgAuditEvent,
@@ -164,7 +165,7 @@ export function isGrantResourceType(value: string): value is GrantResourceType {
 	return (grantResourceTypes as ReadonlyArray<string>).includes(value)
 }
 
-const orgRoleValues = ['owner', 'member', 'billing'] as const
+const orgRoleValues = ['owner', 'admin', 'member', 'billing'] as const
 
 function isOrgRole(value: string): value is OrgRole {
 	return (orgRoleValues as ReadonlyArray<string>).includes(value)
@@ -331,6 +332,58 @@ export async function removeTeamMember(input: {
 			targetUserId: input.userId,
 		},
 	})
+}
+
+/**
+ * Soft-deletes a team. Its grant rows and seats stay for history; every access
+ * lookup joins live teams only, so they stop granting at once. Returns the
+ * people who held a live seat so callers can end their leases.
+ */
+export async function deleteTeam(input: {
+	db: D1Database
+	orgId: string
+	teamId: string
+	audit: OrgAuditWriter
+}) {
+	const team = await input.db
+		.prepare(
+			`SELECT id, slug FROM teams
+			 WHERE id = ? AND org_id = ? AND deleted_at IS NULL`,
+		)
+		.bind(input.teamId, input.orgId)
+		.first<{ id: string; slug: string }>()
+	if (!team) throw new Error('Team was not found in this org.')
+	const seats = await input.db
+		.prepare(
+			`SELECT user_id FROM team_members
+			 WHERE team_id = ? AND deleted_at IS NULL`,
+		)
+		.bind(team.id)
+		.all<{ user_id: string }>()
+	const memberUserIds = (seats.results ?? []).map((row) => row.user_id)
+	const now = new Date().toISOString()
+	await runAccessBatchWithAudit({
+		db: input.db,
+		audit: input.audit,
+		statements: [
+			input.db
+				.prepare(
+					`UPDATE teams
+					 SET deleted_at = ?, updated_at = ?
+					 WHERE id = ? AND org_id = ? AND deleted_at IS NULL`,
+				)
+				.bind(now, now, team.id, input.orgId),
+			bumpAccessEpochStatement(input.db, input.orgId),
+		],
+		event: {
+			orgId: input.orgId,
+			action: 'team.deleted',
+			resourceType: 'team',
+			resourceId: team.id,
+			details: { slug: team.slug, member_count: memberUserIds.length },
+		},
+	})
+	return { id: team.id, slug: team.slug, memberUserIds }
 }
 
 function grantFamilyOf(
@@ -1061,7 +1114,7 @@ function parseStoredInvite(row: InviteRow): StoredInvite {
 		? parseJsonStringList(row.permissions_json, `Invite ${row.id} permissions`)
 		: null
 	const permissions = permissionValues
-		? permissionValues.map((permission) => {
+		? withoutRetiredOrgPermissions(permissionValues).map((permission) => {
 				if (!isOrgPermission(permission)) {
 					throw new Error(`Invite ${row.id} has permission ${permission}.`)
 				}

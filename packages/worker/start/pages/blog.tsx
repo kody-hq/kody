@@ -1,23 +1,33 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset } from '../public-assets.ts'
-import { type CSSObject } from '@emotion/react'
-import { type CSSProperties } from 'react'
-import {
-	BLOG_AUTHOR_NAME,
-	formatBlogPostDate,
-} from '#universal/blog-display.ts'
-import {
-	type BlogLoaderData,
-	type BlogPostSummaryLoaderData,
+import type { CSSObject } from '@emotion/react'
+import type { CSSProperties } from 'react'
+import { BLOG_AUTHOR_NAME } from '#universal/blog-display.ts'
+import type {
+	BlogLoaderData,
+	BlogPostSummaryLoaderData,
 } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
 import { colors, transitions } from '#universal/styles/tokens.ts'
-import { hoverMq, pageHeadCss } from '#universal/styles/style-primitives.ts'
+import {
+	getSurfaceCardCss,
+	hoverMq,
+	pageHeadCss,
+} from '#universal/styles/style-primitives.ts'
 import { revealRef } from '../components/reveal.ts'
 import { SiteLink } from '../components/site-link.tsx'
+import {
+	BlogCategoryNav,
+	BlogPostList,
+	blogInlineLinkCss,
+	blogMetaCss,
+	blogPostMetaText,
+	blogSectionTitleCss,
+	postDescriptionCss,
+	postTitleCss,
+} from './blog-parts.tsx'
 export function BlogRoute({ data }: { data: BlogLoaderData }) {
-	const posts = data.posts
-	const [featuredPost, ...listPosts] = posts
+	const featured = data.featured
 	return (
 		<section css={blogPageCss}>
 			<header css={blogHeadCss}>
@@ -39,13 +49,59 @@ export function BlogRoute({ data }: { data: BlogLoaderData }) {
 				</SiteLink>
 			</header>
 
-			{posts !== null && featuredPost ? (
-				<ul css={postListCss}>
-					{renderFeaturedPostItem(featuredPost)}
-					{listPosts.map((post, index) => renderPostItem(post, index + 1))}
-				</ul>
+			<BlogCategoryNav categories={data.categories} active="all" />
+
+			{featured ? (
+				<ul css={featuredListCss}>{renderFeaturedPostItem(featured)}</ul>
 			) : null}
-			{posts !== null && !featuredPost ? (
+
+			{data.series.length > 0 ? (
+				<section aria-labelledby="blog-series-heading">
+					<h2 id="blog-series-heading" css={blogSectionTitleCss}>
+						Series
+					</h2>
+					<ul css={seriesListCss}>
+						{data.series.map((series) => (
+							<li key={series.slug}>
+								<SiteLink
+									href={routes.blogSeries.href({ series: series.slug })}
+									css={seriesCardCss}
+								>
+									<p css={blogMetaCss}>{series.count} parts</p>
+									<h3 css={postTitleCss}>{series.title}</h3>
+									<p css={postDescriptionCss}>{series.description}</p>
+								</SiteLink>
+							</li>
+						))}
+					</ul>
+				</section>
+			) : null}
+
+			{data.latest.length > 0 ? (
+				<section aria-labelledby="blog-latest-heading">
+					<h2 id="blog-latest-heading" css={blogSectionTitleCss}>
+						Latest
+					</h2>
+					<BlogPostList posts={data.latest} />
+				</section>
+			) : null}
+
+			{data.updates.length > 0 ? (
+				<section aria-labelledby="blog-updates-heading">
+					<h2 id="blog-updates-heading" css={blogSectionTitleCss}>
+						Product updates
+					</h2>
+					<BlogPostList posts={data.updates} showCategory={false} />
+					<SiteLink
+						href={routes.blogCategory.href({ category: 'updates' })}
+						css={blogInlineLinkCss}
+					>
+						All updates →
+					</SiteLink>
+				</section>
+			) : null}
+
+			{!featured && data.latest.length === 0 && data.updates.length === 0 ? (
 				<p css={listStatusCss}>No posts yet.</p>
 			) : null}
 		</section>
@@ -53,22 +109,20 @@ export function BlogRoute({ data }: { data: BlogLoaderData }) {
 }
 
 /**
- * The newest post gets Kody at its side; everything below stays a list.
- * Reveal delays mirror the prototype's post-list stagger: 60ms steps,
- * capped at the fourth item.
+ * The pinned post (`featured: true`, else the newest) gets Kody at its side.
  */
 function renderFeaturedPostItem(post: BlogPostSummaryLoaderData) {
 	return (
 		<li key={post.slug} css={featuredItemCss} ref={revealRef(0, 'reveal-card')}>
-			{/* oxlint-disable-next-line jsx-a11y/control-has-associated-label -- link name comes from the date, title, and description children */}
+			{/* oxlint-disable-next-line jsx-a11y/control-has-associated-label -- link name comes from the meta, title, and description children */}
 			<SiteLink
 				href={routes.blogPost.href({ slug: post.slug })}
 				css={featuredLinkCss}
 			>
 				<div>
-					<p css={postMetaCss}>{formatBlogPostDate(post.date)}</p>
+					<p css={blogMetaCss}>{blogPostMetaText(post)}</p>
 					<h2 css={featuredTitleCss}>{post.title}</h2>
-					<p css={featuredDescriptionCss}>{post.description}</p>
+					<p css={postDescriptionCss}>{post.description}</p>
 				</div>
 				<img
 					src={publicAsset('/images/kody-agent-briefing.webp')}
@@ -84,25 +138,6 @@ function renderFeaturedPostItem(post: BlogPostSummaryLoaderData) {
 					alt=""
 					css={featuredArtCss}
 				/>
-			</SiteLink>
-		</li>
-	)
-}
-
-function renderPostItem(post: BlogPostSummaryLoaderData, index: number) {
-	return (
-		<li
-			key={post.slug}
-			css={postItemCss}
-			ref={revealRef(Math.min(index, 3) * 60, 'reveal-card')}
-		>
-			<SiteLink
-				href={routes.blogPost.href({ slug: post.slug })}
-				css={postLinkCss}
-			>
-				<p css={postMetaCss}>{formatBlogPostDate(post.date)}</p>
-				<h2 css={postTitleCss}>{post.title}</h2>
-				<p css={postDescriptionCss}>{post.description}</p>
 			</SiteLink>
 		</li>
 	)
@@ -150,58 +185,29 @@ const listStatusCss = {
 	fontSize: '0.98rem',
 } satisfies CSSObject
 
-const postListCss = {
+const featuredListCss = {
 	listStyle: 'none',
-	margin: 'clamp(2rem, 5vw, 3rem) 0 0',
+	margin: 'clamp(2rem, 5vw, 2.8rem) 0 0',
 	padding: 0,
 } satisfies CSSObject
 
-const postItemCss = {
-	borderBottom: `1px solid ${colors.border}`,
-	'&:first-of-type': {
-		borderTop: `1px solid ${colors.border}`,
-	},
+const seriesListCss = {
+	listStyle: 'none',
+	margin: 0,
+	padding: 0,
+	display: 'grid',
+	gap: '0.9rem',
 } satisfies CSSObject
 
-const postLinkCss = {
+const seriesCardCss = {
+	...getSurfaceCardCss(),
 	display: 'block',
-	padding: '1.6rem 0.2rem',
+	padding: 'clamp(1.1rem, 3vw, 1.5rem)',
 	textDecoration: 'none',
 	color: 'inherit',
-	'&:hover h2': {
+	'&:hover h3': {
 		color: colors.primaryText,
 	},
-} satisfies CSSObject
-
-const postMetaCss = {
-	margin: 0,
-	color: colors.textMuted,
-	fontSize: '0.88rem',
-} satisfies CSSObject
-
-const postTitleCss = {
-	margin: '0.35rem 0 0',
-	fontSize: '1.4rem',
-	fontWeight: 720,
-	letterSpacing: '-0.016em',
-	lineHeight: 1.2,
-	textWrap: 'balance' as const,
-	transition: `color ${transitions.fast}`,
-} satisfies CSSObject
-
-const postDescriptionCss = {
-	margin: '0.5rem 0 0',
-	color: colors.textMuted,
-	fontSize: '0.98rem',
-	maxWidth: '58ch',
-	textWrap: 'balance' as const,
-} satisfies CSSObject
-
-/* Featured description sits outside the prototype's balance list — it wraps
-   long, where `pretty` reads better than strict balancing. */
-const featuredDescriptionCss = {
-	...postDescriptionCss,
-	textWrap: 'pretty' as const,
 } satisfies CSSObject
 
 const featuredItemCss = {

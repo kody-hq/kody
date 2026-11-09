@@ -1,11 +1,11 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset } from '../public-assets.ts'
-import { type ProviderMarkSaveInput } from '#universal/admin-provider-mutations.ts'
+import type { ProviderMarkSaveInput } from '#universal/admin-provider-mutations.ts'
 import {
 	saveAdminProviderMark,
 	deleteAdminProviderMark,
 } from '#start/server/admin-mutations'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import {
 	useEffect,
 	useRef,
@@ -26,9 +26,9 @@ import {
 	markGroupKey,
 	splitAliasInput,
 } from '#client/routes/admin-provider-marks-shared.ts'
-import {
-	type AdminProviderMark,
-	type AdminProviderMarksLoaderData,
+import type {
+	AdminProviderMark,
+	AdminProviderMarksLoaderData,
 } from '#universal/loader-data.ts'
 import {
 	fieldCss,

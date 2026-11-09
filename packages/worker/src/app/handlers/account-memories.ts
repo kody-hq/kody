@@ -1,5 +1,5 @@
 import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { operationResult } from '#app/operation-result.ts'
 import { memoryLegacyWriteFrozenMessage } from '#mcp/memory/memory-owner.ts'
 import { deleteMemory } from '#mcp/memory/service.ts'

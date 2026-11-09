@@ -1187,6 +1187,8 @@ export type LimitOverride = {
 	value: LimitOverrideValue
 	/** ISO timestamp; the override stops applying at this instant. */
 	expiresAt: string | null
+	/** Caps the plan limit instead of raising it (guest accounts). */
+	ceiling?: boolean
 }
 
 export function isLimitOverrideActive(
@@ -1220,7 +1222,9 @@ export function applyLimitOverrides(
 		if (planValue === null) continue
 		const overrideValue =
 			override.value === 'unlimited' ? unlimitedLimit : override.value
-		next[field] = Math.max(planValue, overrideValue)
+		next[field] = override.ceiling
+			? Math.min(planValue, overrideValue)
+			: Math.max(planValue, overrideValue)
 	}
 	return next
 }

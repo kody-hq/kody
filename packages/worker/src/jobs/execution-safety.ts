@@ -6,18 +6,17 @@ import {
 	deriveRequestContext,
 	type RequestSource,
 } from '#worker/request-context/request-context.ts'
-import {
-	type RunRecord,
-	type RunRecordHandle,
-} from '#worker/run-records/types.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
-import {
-	type JobExecutionOutcome,
-	type PersistedJobCallerContext,
-} from './types.ts'
+import type { RunRecord, RunRecordHandle } from '#worker/run-records/types.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { JobExecutionOutcome, PersistedJobCallerContext } from './types.ts'
 
 export const jobRetryBaseDelayMs = 5_000
 export const jobRetryMaximumDelayMs = 5 * 60 * 1_000
+/**
+ * How long after a publish a run keeps retrying while that publish's job
+ * bundle is still being built and no earlier bundle exists to serve.
+ */
+export const pendingJobBundleRetryWindowMs = 30 * 60 * 1_000
 
 export class TransientJobExecutionError extends Error {
 	override readonly name = 'TransientJobExecutionError'

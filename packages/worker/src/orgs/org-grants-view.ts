@@ -26,6 +26,8 @@ export type ListedOrgGrant = {
 function presetLabel(preset: string | null) {
 	if (!preset) return null
 	switch (preset) {
+		case 'read':
+			return 'Read'
 		case 'use':
 			return 'Use'
 		case 'contribute':
@@ -83,7 +85,10 @@ export async function listOrgGrantsForView(
 	const packageIds = [
 		...new Set(
 			grants
-				.filter((grant) => grant.resourceType === 'package')
+				.filter(
+					(grant) =>
+						grant.resourceType === 'package' || grant.resourceType === 'app',
+				)
 				.map((grant) => grant.resourceId),
 		),
 	]
@@ -193,7 +198,7 @@ function toOrgGrantView(
 	}
 
 	let resourceLabel = `${grant.resourceType}:${grant.resourceId}`
-	if (grant.resourceType === 'package') {
+	if (grant.resourceType === 'package' || grant.resourceType === 'app') {
 		const pkg = packageById.get(grant.resourceId)
 		if (pkg?.kody_id) resourceLabel = pkg.name?.trim() || pkg.kody_id
 		else if (pkg?.name?.trim()) resourceLabel = pkg.name.trim()

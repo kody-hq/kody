@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { waitUntil } from 'cloudflare:workers'
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
 import { scheduleKitSubscriberSync } from '#worker/kit/subscriber-sync.ts'

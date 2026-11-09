@@ -11,9 +11,9 @@ import { PackageWebhookSettings } from './pages/package-webhook-settings.tsx'
 import { createPageQuery, ensurePageQuery } from './page-query.ts'
 import { packageWebhooksQuery } from './package-webhooks-query.ts'
 import { packageWebhookMutationOptions } from './package-webhook-mutation.ts'
-import {
-	type PackageWebhookListItem,
-	type PackageWebhooksLoaderData,
+import type {
+	PackageWebhookListItem,
+	PackageWebhooksLoaderData,
 } from '#universal/loader-data.ts'
 const native = vi.hoisted(() => ({
 	revealPackageWebhook: vi.fn(),

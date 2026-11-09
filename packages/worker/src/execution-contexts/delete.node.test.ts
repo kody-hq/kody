@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
 import { formatRunRecord } from '#mcp/capabilities/runs/shared.ts'
-import { type RunRecord } from '#worker/run-records/types.ts'
+import type { RunRecord } from '#worker/run-records/types.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { type ExecutionContextCaller, deleteContext } from './service.ts'

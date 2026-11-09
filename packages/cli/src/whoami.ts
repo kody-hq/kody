@@ -34,7 +34,7 @@ function credentialJson(
  * stored API token outranks a login, say so plainly: `kody login` does not
  * replace it.
  */
-export function formatShadowedCredentials(input: {
+function formatShadowedCredentials(input: {
 	credential: CliCredential
 	/** Who `search` / cloud execute use, when it differs. */
 	session: CliCredentialCandidate | null
@@ -102,6 +102,35 @@ export async function runWhoami(input: {
 		...(org ? { org } : {}),
 	})
 	const shadowedLines = formatShadowedCredentials({ credential, session })
+	const loginStoredOrg =
+		credential.source === 'login' ? (credential.login?.org ?? null) : null
+	const requestedOrgSlug = org ?? loginOrg ?? loginStoredOrg ?? null
+	// Prefer the server-reported workspace: org-bound tokens ignore a mismatched
+	// `--org` / login org hint, so local request flags are not authoritative.
+	const serverOrgSlug = identity.org?.slug ?? null
+	const actingOrgSlug = serverOrgSlug ?? requestedOrgSlug
+	const actingOrgKind = identity.org?.kind ?? null
+	const workspaceVerified = serverOrgSlug !== null
+	const ignoredRequestedOrg =
+		requestedOrgSlug && serverOrgSlug && requestedOrgSlug !== serverOrgSlug
+			? requestedOrgSlug
+			: null
+	// Only warn when search/cloud-execute actually pick a different credential
+	// than this call. Same-source login still carries a stored org hint that
+	// org-bound tokens may ignore — that is already covered by ignoredRequestedOrg.
+	const distinctSessionCredential =
+		session != null && session.source !== credential.source
+	const sessionOrgSlug =
+		distinctSessionCredential && session.source === 'login'
+			? (session.login?.org ?? null)
+			: null
+	const sessionWorkspaceNote =
+		sessionOrgSlug && actingOrgSlug && sessionOrgSlug !== actingOrgSlug
+			? `search/cloud-execute session credential may still act in @${sessionOrgSlug} (distinct from this call credential's workspace).`
+			: null
+	const workspaceNote = actingOrgSlug
+		? `workspace: call credential acts in @${actingOrgSlug}${actingOrgKind ? ` (${actingOrgKind})` : ''}${workspaceVerified ? '' : ' (local fallback; not server-confirmed)'}${ignoredRequestedOrg ? ` (server ignored requested @${ignoredRequestedOrg})` : ''}. Local execute is a compute venue, not a personal-workspace switch. Credentials cannot be moved between orgs — reconnect under the right workspace.`
+		: 'workspace: pass --org or set KODY_ORG (user-owned tokens default to your personal workspace when omitted). Local execute is a compute venue, not a personal-workspace switch. Credentials cannot be moved between orgs — reconnect under the right workspace.'
 	if (json) {
 		write(
 			`${JSON.stringify(
@@ -114,12 +143,31 @@ export async function runWhoami(input: {
 					...(session && session.source !== credential.source
 						? { searchAndCloudExecuteCredential: credentialJson(session) }
 						: {}),
+					...(actingOrgSlug
+						? {
+								org: actingOrgSlug,
+								workspace: {
+									slug: actingOrgSlug,
+									verified: workspaceVerified,
+									...(actingOrgKind
+										? {
+												kind: actingOrgKind,
+												personal: actingOrgKind === 'personal',
+											}
+										: {}),
+								},
+							}
+						: {}),
 					...(credential.source === 'login'
-						? { org: loginOrg, scope: identity.token.scopes }
+						? { scope: identity.token.scopes }
 						: {}),
 					token: identity.token,
 					user: identity.user,
-					...(shadowedLines.length > 0 ? { notes: shadowedLines } : {}),
+					notes: [
+						...shadowedLines,
+						workspaceNote,
+						...(sessionWorkspaceNote ? [sessionWorkspaceNote] : []),
+					],
 				},
 				null,
 				2,
@@ -136,11 +184,17 @@ export async function runWhoami(input: {
 		[
 			`api: ${identity.apiUrl}`,
 			`credential: ${describeCliCredential(credential)}${credential.source === 'login' ? '' : ` [${identity.token.id}]`}`,
-			...(loginOrg ? [`org: ${loginOrg}`] : []),
+			...(actingOrgSlug
+				? [
+						`org: ${actingOrgSlug}${actingOrgKind ? ` (${actingOrgKind} workspace)` : ''}${workspaceVerified ? '' : ' (unverified local fallback)'}`,
+					]
+				: []),
 			`user: ${userLine}`,
 			`scopes: ${identity.token.scopes.join(', ') || '(none)'}`,
 			`expires: ${identity.token.expiresAt ?? 'unknown'}`,
 			...shadowedLines,
+			workspaceNote,
+			...(sessionWorkspaceNote ? [sessionWorkspaceNote] : []),
 			'',
 		].join('\n'),
 	)

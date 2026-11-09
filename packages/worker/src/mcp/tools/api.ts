@@ -1,4 +1,4 @@
-import { type ToolAnnotations } from '@modelcontextprotocol/sdk/types.js'
+import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
 import { redactKodyCredentials } from '@kody-internal/shared/api-token-format.ts'
 import {
@@ -7,12 +7,12 @@ import {
 	limitExecutionResultValue,
 } from '#mcp/executor.ts'
 import { preferLocalCliExecuteGuidance } from '#mcp/instructions/prefer-local-cli-execute-guidance.ts'
-import { type McpRegistrationAgent } from '#mcp/mcp-registration-agent.ts'
+import type { McpRegistrationAgent } from '#mcp/mcp-registration-agent.ts'
 import { callerContextFields, logMcpEvent } from '#mcp/observability.ts'
 import { createApiInvocationContext } from '#worker/open-api/context.ts'
 import { ApiError, toApiError } from '#worker/open-api/errors.ts'
 import type * as OpenApiInvoke from '#worker/open-api/invoke.ts'
-import { type StructuredContentFromFields } from './mcp-tool-output.ts'
+import type { StructuredContentFromFields } from './mcp-tool-output.ts'
 import { buildKodyToolIcons } from './tool-icons.ts'
 import { finishToolTiming, startToolTiming } from './tool-timing.ts'
 
@@ -170,7 +170,7 @@ export async function registerApiTool(agent: McpRegistrationAgent) {
 					},
 				}
 			} catch (error) {
-				const apiError = toApiError(error)
+				const apiError = toApiError(error, { operation: 'mcp_api' })
 				logMcpEvent({
 					...logFields,
 					outcome: 'failure',

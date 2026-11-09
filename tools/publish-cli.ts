@@ -5,6 +5,8 @@ import {
 	cliBaselineTag,
 	cliBaselineVersion,
 	cliPackageName,
+	cliPathAffectsPublishedPackage,
+	pickReleaseBase,
 	planCliRelease,
 	type ReleaseCommit,
 } from './cli-release-plan.ts'
@@ -51,6 +53,22 @@ function commitTouches(sha: string, path: string): boolean {
 	return diff.length > 0
 }
 
+function commitTouchesPublishedCli(sha: string): boolean {
+	const diff = git([
+		'diff-tree',
+		'--no-commit-id',
+		'--name-only',
+		'-z',
+		'-r',
+		sha,
+		'--',
+		'packages/cli',
+	])
+	return diff
+		.split('\0')
+		.some((path) => path.length > 0 && cliPathAffectsPublishedPackage(path))
+}
+
 function generatedClientChanged(from: string): boolean {
 	try {
 		const diff = git([
@@ -79,7 +97,7 @@ function commitsSince(from: string): Array<ReleaseCommit> {
 		commits.push({
 			subject,
 			body,
-			touchesCli: commitTouches(sha, 'packages/cli'),
+			touchesCli: commitTouchesPublishedCli(sha),
 			touchesClientInputs:
 				commitTouches(sha, 'packages/worker/src/open-api') ||
 				commitTouches(sha, 'packages/shared') ||
@@ -145,26 +163,46 @@ function latestCliTag(): string {
 	return latest ?? ensureBaselineTag()
 }
 
+function readNpmLatest(): { version: string; gitHead: string | null } | null {
+	try {
+		const raw = execFileSync(
+			'npm',
+			['view', cliPackageName, 'version', 'gitHead', '--json'],
+			{ cwd: repoRoot, encoding: 'utf8' },
+		)
+		const parsed = JSON.parse(raw) as { version?: string; gitHead?: string }
+		if (!parsed.version) return null
+		return { version: parsed.version, gitHead: parsed.gitHead ?? null }
+	} catch (error) {
+		console.warn(
+			`Could not read ${cliPackageName} from npm; using tags.`,
+			error,
+		)
+		return null
+	}
+}
+
 const previousTag = latestCliTag()
-const previousVersion = readLatestPublishedVersion(previousTag)
+const base = pickReleaseBase({
+	tag: { name: previousTag, version: readLatestPublishedVersion(previousTag) },
+	published: readNpmLatest(),
+})
 const plan = planCliRelease({
-	currentVersion: previousVersion,
-	generatedClientChanged: generatedClientChanged(previousTag),
-	commits: commitsSince(previousTag),
+	currentVersion: base.version,
+	generatedClientChanged: generatedClientChanged(base.ref),
+	commits: commitsSince(base.ref),
 })
 
 if (!plan) {
-	console.log(`No publishable @kodycodes/cli change since ${previousTag}.`)
+	console.log(`No publishable @kodycodes/cli change since ${base.ref}.`)
 	process.exit(0)
 }
 
 console.log(
-	`Publishing ${cliPackageName}@${plan.version} (from ${previousTag}).`,
+	`Publishing ${cliPackageName}@${plan.version} (from ${base.version} at ${base.ref}).`,
 )
-const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
-	version: string
-}
-const original = JSON.stringify(packageJson, null, '\t') + '\n'
+const original = readFileSync(packageJsonPath, 'utf8')
+const packageJson = JSON.parse(original) as { version: string }
 packageJson.version = plan.version
 writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, '\t')}\n`)
 
@@ -182,7 +220,17 @@ try {
 		)
 		const tag = `cli-v${plan.version}`
 		git(['tag', '-a', tag, '-m', `${cliPackageName} ${plan.version}`], true)
-		git(['push', 'origin', `refs/tags/${tag}`])
+		try {
+			git(['push', '--no-verify', 'origin', `refs/tags/${tag}`])
+		} catch (error) {
+			// npm already has the version and the next run counts from npm, so a
+			// rejected tag push (GITHUB_TOKEN cannot push a tag whose workflow
+			// files differ from main) must not fail the release.
+			console.log(
+				`::warning::Published ${cliPackageName}@${plan.version} but could not push ${tag}.`,
+			)
+			console.warn(error)
+		}
 	} else {
 		console.log('Dry run. Pass --publish or run in CI to npm publish.')
 	}

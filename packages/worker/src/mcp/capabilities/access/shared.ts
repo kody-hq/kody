@@ -1,6 +1,7 @@
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import {
 	grantPresets,
+	orgWideManagePermissions,
 	resolveGrantPermissions,
 	type GrantPreset,
 } from '@kody-internal/shared/grant-presets.ts'
@@ -9,12 +10,12 @@ import {
 	type OrgPermission,
 	type OrgResourceType,
 } from '@kody-internal/shared/org-permissions.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { sha256Hex } from '@kody-internal/shared/sha256.ts'
 import { toHex } from '@kody-internal/shared/hex.ts'
 import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import {
 	requireMcpRequest,
 	requireMcpUser,
@@ -22,6 +23,7 @@ import {
 import {
 	authorize,
 	computeEffectivePermissions,
+	hasOwnerAuthority,
 	type OrgResource,
 } from '#worker/authorization/authorize.ts'
 import {
@@ -36,6 +38,7 @@ import {
 	normalizeUsername,
 } from '#worker/identity/username.ts'
 import { normalizeEmailAddress } from '#worker/email/address.ts'
+import { FreeOrgLimitError } from '#worker/orgs/billing.ts'
 import {
 	isGrantResourceType,
 	type GrantResourceType,
@@ -96,7 +99,7 @@ export async function resolveGrantTarget(
 	}
 }
 
-export const orgRoleSchema = z.enum(['owner', 'member', 'billing'])
+export const orgRoleSchema = z.enum(['owner', 'admin', 'member', 'billing'])
 
 export const accessGrantSchema = z.object({
 	id: z.string(),
@@ -170,7 +173,8 @@ export function rethrowAccessError(error: unknown): never {
 	if (error instanceof McpCallerError) throw error
 	if (
 		error instanceof OrgSlugValidationError ||
-		error instanceof GrantSubjectScopeError
+		error instanceof GrantSubjectScopeError ||
+		error instanceof FreeOrgLimitError
 	) {
 		throw new McpCallerError(error.message)
 	}
@@ -404,8 +408,10 @@ async function authorizeGrantChange(
  * Org-level permissions only an Owner may put on an org grant. org:write and
  * org:delete would let a delegate elevate past Owner; member:write would let a
  * delegate re-delegate; member:delete is an Owner-held control a member:write
- * holder must not hand out (to anyone, including themselves). billing:* never
- * appears here because it is not grantable on an org grant at all.
+ * holder must not hand out (to anyone, including themselves). The org-wide
+ * package and app manage permissions reach every package anyone in the org
+ * made, so only an Owner hands them out. billing:* never appears here because
+ * it is not grantable on an org grant at all.
  */
 const ownerOnlyOrgGrantPermissions: ReadonlySet<OrgPermission> =
 	new Set<OrgPermission>([
@@ -413,6 +419,7 @@ const ownerOnlyOrgGrantPermissions: ReadonlySet<OrgPermission> =
 		'org:write',
 		'member:write',
 		'member:delete',
+		...orgWideManagePermissions,
 	])
 
 /**
@@ -441,6 +448,8 @@ export async function resolveAuthorizedGrantPermissions(
 		family: OrgResourceType | 'org'
 		preset?: GrantPreset | null
 		permissions: Array<OrgPermission> | null
+		/** Already on this subject's grant; keeping them needs no Owner. */
+		alreadyHeld?: ReadonlyArray<OrgPermission>
 	},
 ) {
 	let permissions: ReadonlyArray<OrgPermission>
@@ -456,8 +465,10 @@ export async function resolveAuthorizedGrantPermissions(
 		)
 	}
 	if (input.family !== 'org') return permissions
-	const ownerOnly = permissions.filter((permission) =>
-		ownerOnlyOrgGrantPermissions.has(permission),
+	const ownerOnly = permissions.filter(
+		(permission) =>
+			ownerOnlyOrgGrantPermissions.has(permission) &&
+			!input.alreadyHeld?.includes(permission),
 	)
 	if (ownerOnly.length === 0) return permissions
 	const request = requireMcpRequest(ctx.callerContext)
@@ -465,7 +476,12 @@ export async function resolveAuthorizedGrantPermissions(
 		env: ctx.env,
 		request,
 	})
-	if (!access.isOwner) {
+	// An Admin holds every Owner permission but org:delete, so it may hand
+	// out the rest.
+	const allowed = access.isOwner
+		? true
+		: hasOwnerAuthority(access) && !ownerOnly.includes('org:delete')
+	if (!allowed) {
 		throw new McpCallerError(
 			`Only an Owner can grant ${ownerOnly.join(', ')} on an organization.`,
 		)

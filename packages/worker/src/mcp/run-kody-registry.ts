@@ -14,10 +14,11 @@ import {
 	type ToolProvider,
 } from '@cloudflare/codemode'
 import { exports as workerExports } from 'cloudflare:workers'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
-import {
-	type Capability,
-	type CapabilityOpenApiPrincipal,
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type {
+	Capability,
+	CapabilityContext,
+	CapabilityOpenApiPrincipal,
 } from '#mcp/capabilities/types.ts'
 import {
 	createExecuteExecutor,
@@ -40,7 +41,7 @@ import {
 	resolveDynamicWorkerDaySurface,
 	resolveObservedRunSurface,
 } from '#worker/usage/dynamic-worker-day-surface.ts'
-import { type RawFetchHostSink } from '#mcp/raw-fetch-host-nudge.ts'
+import type { RawFetchHostSink } from '#mcp/raw-fetch-host-nudge.ts'
 import { attestedPackageStamp } from '#worker/credentials/package-stamp.ts'
 import { resolveCredential } from '#worker/credentials/resolve-credential.ts'
 import {
@@ -51,12 +52,12 @@ import {
 	createExecutionSecretRedactor,
 	type ExecutionSecretRedactor,
 } from '#mcp/secrets/execution-secret-redactor.ts'
-import { type BuiltCapabilityRegistry } from '#mcp/capabilities/build-capability-registry.ts'
+import type { BuiltCapabilityRegistry } from '#mcp/capabilities/build-capability-registry.ts'
 import { assertCallerCanAccessCapability } from '#mcp/capabilities/access-control.ts'
 import { getCapabilityRegistryForContext } from '#mcp/capabilities/registry.ts'
-import {
-	type KodyMcpServerMetadata,
-	type KodyResolvedProvider,
+import type {
+	KodyMcpServerMetadata,
+	KodyResolvedProvider,
 } from '#mcp/kody-remote-types.ts'
 import {
 	createRuntimeHelperExtraProviders,
@@ -74,9 +75,9 @@ import {
 } from '#mcp/runtime-helper-manifest.ts'
 import { newRunCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
 import { resolveCallerCredentialPackageId } from '#mcp/credential-client-tools.ts'
-import {
-	type CredentialCallMap,
-	type RunCredentialCallMap,
+import type {
+	CredentialCallMap,
+	RunCredentialCallMap,
 } from '#worker/credentials/credential-call-map.ts'
 import {
 	loadRunCredentialNeedEntries,
@@ -120,10 +121,10 @@ import {
 	type ContextRunDeferral,
 	runAutomationOnContext,
 } from '#worker/execution-contexts/automation-execution.ts'
-import {
-	type RunRecordContext,
-	type RunRecordHandle,
-	type RunSurface,
+import type {
+	RunRecordContext,
+	RunRecordHandle,
+	RunSurface,
 } from '#worker/run-records/types.ts'
 import { shouldRecordExecuteUsageForRun } from '#worker/usage/execute-usage-surface.ts'
 import { createDynamicCallableWorkflow } from '#worker/package-runtime/package-workflows.ts'
@@ -145,7 +146,7 @@ import {
 } from '#worker/usage/record-usage.ts'
 import { createPackageStaticCallMeterTools } from '#worker/usage/package-static-call-usage.ts'
 import { recordAgentPackageConversationUses } from '#worker/usage/agent-package-conversation-uses.ts'
-import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import {
 	formatMcpServerUnavailableMessage,
 	getMcpServerStatus,
@@ -456,6 +457,7 @@ export async function buildKodyToolContext(
 		waitUntil?: (promise: Promise<unknown>) => void
 		openApiPrincipal?: CapabilityOpenApiPrincipal
 		localExecuteHop?: true
+		localPackageStamp?: CapabilityContext['localPackageStamp']
 		credentialClientBinding?: string
 	},
 ): Promise<{
@@ -516,6 +518,9 @@ export async function buildKodyToolContext(
 							? { openApiPrincipal: options.openApiPrincipal }
 							: {}),
 						...(options?.localExecuteHop ? { localExecuteHop: true } : {}),
+						...(options?.localPackageStamp
+							? { localPackageStamp: options.localPackageStamp }
+							: {}),
 						...(options?.credentialClientBinding
 							? { credentialClientBinding: options.credentialClientBinding }
 							: {}),

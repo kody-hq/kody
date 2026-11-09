@@ -1,43 +1,28 @@
-import { expect, test, vi } from 'vitest'
+import { expect, test } from 'vitest'
 import {
 	buildOrgBillingMetadata,
-	classifyStripeOrgIdMetadataSource,
 	KODY_ORG_ID_METADATA_KEY,
-	KODY_STABLE_USER_ID_METADATA_KEY,
 	resolveOrgIdFromStripeMetadata,
-	stripeMetadataOrgIdLegacyFallbackLogEvent,
 } from './org-stripe-metadata.ts'
 
-test('buildOrgBillingMetadata dual-writes the same org id on both keys', () => {
+test('buildOrgBillingMetadata writes only kody_org_id', () => {
 	expect(buildOrgBillingMetadata('org-acme')).toEqual({
 		kody_org_id: 'org-acme',
-		kody_stable_user_id: 'org-acme',
 	})
 })
 
-test('classifyStripeOrgIdMetadataSource falls back to kody_stable_user_id', () => {
+test('resolveOrgIdFromStripeMetadata reads kody_org_id', () => {
 	expect(
-		classifyStripeOrgIdMetadataSource({
-			[KODY_STABLE_USER_ID_METADATA_KEY]: 'stable-1',
+		resolveOrgIdFromStripeMetadata({
+			[KODY_ORG_ID_METADATA_KEY]: ' org-acme ',
 		}),
-	).toBe('kody_stable_user_id')
+	).toBe('org-acme')
 })
 
-test('resolveOrgIdFromStripeMetadata falls back to kody_stable_user_id and logs', () => {
-	const info = vi.spyOn(console, 'info').mockImplementation(() => {})
-	try {
-		expect(
-			resolveOrgIdFromStripeMetadata({
-				[KODY_STABLE_USER_ID_METADATA_KEY]: 'stable-1',
-			}),
-		).toBe('stable-1')
-		expect(info).toHaveBeenCalledWith(
-			stripeMetadataOrgIdLegacyFallbackLogEvent,
-			{ source: 'kody_stable_user_id' },
-		)
-	} finally {
-		info.mockRestore()
-	}
+test('resolveOrgIdFromStripeMetadata ignores legacy kody_stable_user_id', () => {
+	expect(
+		resolveOrgIdFromStripeMetadata({ kody_stable_user_id: 'stable-1' }),
+	).toBeNull()
 })
 
 test('resolveOrgIdFromStripeMetadata returns null when missing or blank', () => {

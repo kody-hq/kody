@@ -3,7 +3,6 @@ import { packageReadmeImageMaxBytes } from '#universal/package-readme-images.ts'
 import { readPublishedSourceSnapshot } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { readArtifactFileAtCommit } from '#worker/repo/artifact-file.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
-import { readCommunitySnapshot } from './snapshot.ts'
 
 export const packageReadmeAssetCacheControl = 'public, max-age=3600'
 export const packageReadmeAssetPrivateCacheControl = 'private, no-store'
@@ -87,7 +86,6 @@ async function readPackageReadmeAssetSnapshotBytes(input: {
 	sourceId: string
 	commit: string
 	relativePath: string
-	listingId?: string | null
 }) {
 	if (!input.env.BUNDLE_ARTIFACTS_KV) return null
 	try {
@@ -101,20 +99,6 @@ async function readPackageReadmeAssetSnapshotBytes(input: {
 			return snapshotStringToBytes(publishedFile, input.relativePath)
 		}
 	} catch {
-		// Fall through to the listing pin snapshot.
-	}
-	const listingId = input.listingId?.trim()
-	if (!listingId) return null
-	try {
-		const listing = await readCommunitySnapshot(
-			input.env.BUNDLE_ARTIFACTS_KV,
-			listingId,
-		)
-		const listingFile = listing?.files[input.relativePath]
-		if (listingFile != null) {
-			return snapshotStringToBytes(listingFile, input.relativePath)
-		}
-	} catch {
 		return null
 	}
 	return null
@@ -122,7 +106,7 @@ async function readPackageReadmeAssetSnapshotBytes(input: {
 
 /**
  * Published or pinned image bytes. Prefer the git blob so rasters stay
- * byte-accurate; fall back to the published or listing snapshot the way
+ * byte-accurate; fall back to the published source snapshot the way
  * `/raw/` does when that blob is missing.
  */
 export async function loadPackageReadmeAssetBytes(input: {
@@ -130,7 +114,6 @@ export async function loadPackageReadmeAssetBytes(input: {
 	sourceId: string
 	commit: string
 	relativePath: string
-	listingId?: string | null
 }) {
 	if (!input.commit) return null
 	const source = await getEntitySourceById(input.env.APP_DB, input.sourceId)

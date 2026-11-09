@@ -1,6 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
 import { packageAccessInput } from '#universal/package-access-mutations.ts'
+import { parseRouteInput } from './route-input.ts'
 const options = z.object({
 	maxUses: z.union([z.string(), z.number()]).nullish(),
 	expiresInDays: z.union([z.string(), z.number()]).nullish(),
@@ -48,7 +49,9 @@ export const revokeTeamInviteLink = createServerFn({ method: 'POST' })
 	})
 
 export const loadPackageInviteLinks = createServerFn({ method: 'GET' })
-	.validator(packageAccessInput)
+	.validator((data: z.input<typeof packageAccessInput>) =>
+		parseRouteInput(packageAccessInput, data),
+	)
 	.handler(async ({ data }) => {
 		const { withWebsiteRead } = await import('./mutation-context.ts')
 		const { readPackageInviteLinks } =

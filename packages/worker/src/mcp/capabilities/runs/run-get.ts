@@ -32,6 +32,12 @@ const inputSchema = z.object({
 
 const outputSchema = z.object({
 	run: runRecordSchema,
+	result: z
+		.unknown()
+		.optional()
+		.describe(
+			'Return value of a finished run (same bounded snapshot as run.metadata.result, capped at 4 KiB). Omitted while running or when the run kept none.',
+		),
 	logs: z.array(runRecordLogSchema),
 })
 
@@ -42,7 +48,7 @@ export const runGetCapability = defineDomainCapability(
 		contextRuns: 'allow',
 		orgPermission: 'job:read',
 		description:
-			'Load one retained run with its captured log lines, error details, soft triage fields (error_triage / note / who / when), and (when available) a bounded metadata.result snapshot of the handler return value — useful for webhook deliveries, package exports, execute runs, and workflow runs. Works for ignored/resolved runs too. Records are retained about 30 days, capped per user, and pruned failure-last. Runs that started on an execution context stay findable from execution context history for 30 days (outcome, failure reason, error summary, no logs) after the full record is pruned.',
+			'Load one retained run with its captured log lines, error details, soft triage fields (error_triage / note / who / when), and (when available) the handler return value as `result` (a bounded snapshot, also at metadata.result) — useful for webhook deliveries, package exports, execute runs, and workflow runs. Works for ignored/resolved runs too. Records are retained about 30 days, capped per user, and pruned failure-last. Runs that started on an execution context stay findable from execution context history for 30 days (outcome, failure reason, error summary, no logs) after the full record is pruned.',
 		keywords: [
 			'run',
 			'logs',
@@ -90,8 +96,12 @@ export const runGetCapability = defineDomainCapability(
 			if (!jobId || !listScopeIncludes(scope, jobId)) {
 				await authorizeOrgWide(auth, 'job:read')
 			}
+			const retained = result.run.metadata['result']
 			return {
 				run: formatRunRecord(result.run),
+				...(result.run.status !== 'running' && retained !== undefined
+					? { result: retained }
+					: {}),
 				logs: result.logs.map(formatRunRecordLog),
 			}
 		},

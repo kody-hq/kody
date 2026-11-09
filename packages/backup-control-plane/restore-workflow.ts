@@ -4,9 +4,9 @@ import {
 	type WorkflowStep,
 } from 'cloudflare:workers'
 
-import { type BackupRuntimeStep } from './backup-runtime.ts'
+import type { BackupRuntimeStep } from './backup-runtime.ts'
 import { BackupError } from './backup-policy.ts'
-import { type BackupEnvironment } from './backup-types.ts'
+import type { BackupEnvironment } from './backup-types.ts'
 import {
 	runProductionRestore,
 	restoreProgressFailsWorkflow,

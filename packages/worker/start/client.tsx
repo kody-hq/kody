@@ -10,6 +10,7 @@ import {
 	onVitePreloadError,
 	setStaleRouteChunkReloadArmed,
 } from '#client/reload-on-stale-route-chunk.ts'
+import { clearDeploySkewReloadFlag } from '#client/reload-on-deploy-skew.ts'
 import { clearUnknownStartReleaseReloadFlag } from '#client/reload-on-unknown-start-release.ts'
 import {
 	captureClientException,
@@ -35,6 +36,7 @@ function HydratedApp({ router }: { router: AnyRouter }) {
 			router.state.matches.every((match) => match.status === 'success')
 		) {
 			clearUnknownStartReleaseReloadFlag()
+			clearDeploySkewReloadFlag()
 			clearStaleRouteChunkReloadFlag()
 		}
 	}, [router])

@@ -1,5 +1,5 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	authorize,
@@ -8,7 +8,7 @@ import {
 } from '#worker/authorization/authorize.ts'
 import { getEntitySourceByIdForUser } from '#worker/repo/entity-sources.ts'
 import { getRepoSessionById } from '#worker/repo/repo-sessions.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 
 type RepoSessionAuthorizationInput = {
 	env: Env

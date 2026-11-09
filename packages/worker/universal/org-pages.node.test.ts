@@ -11,6 +11,8 @@ import {
 	orgSlugFromOrgOwnedPath,
 	organizationsWithSignupFallback,
 	parseOrgBillingPath,
+	orgGrantAccessPath,
+	orgTeamGrantAccessPath,
 	parseOrgManagementPath,
 	parseOrgOverviewPath,
 	parseOrgResourcePath,
@@ -129,6 +131,23 @@ test('management paths name settings and members under the /- separator', () => 
 		slug: 'acme',
 		section: 'collaborators',
 	})
+	expect(parseOrgManagementPath('/@acme/-/grants/user/u-1')).toEqual({
+		slug: 'acme',
+		section: 'grants',
+	})
+	expect(parseOrgManagementPath('/@acme/-/grants/team/t-1')).toEqual({
+		slug: 'acme',
+		section: 'grants',
+	})
+	expect(parseOrgManagementPath('/@acme/-/grants/everyone')).toEqual({
+		slug: 'acme',
+		section: 'grants',
+	})
+	expect(orgTeamGrantAccessPath('acme', 't 1')).toBe(
+		'/@acme/-/grants/team/t%201',
+	)
+	expect(parseOrgManagementPath('/@acme/-/members/user/u-1')).toBeNull()
+	expect(orgGrantAccessPath('acme', 'u 1')).toBe('/@acme/-/grants/user/u%201')
 	expect(parseOrgManagementPath('/@acme/settings')).toBeNull()
 	expect(parseOrgManagementPath('/@acme/secrets')).toBeNull()
 	expect(parseOrgResourcePath('/@acme/settings')).toBeNull()
@@ -180,6 +199,7 @@ test('billing paths bind to the organization in the URL', () => {
 		'/@acme/-/billing',
 		'/@acme/-/billing/',
 		'/@acme/-/billing/success',
+		'/@acme/-/billing/move-plan',
 	]) {
 		expect(parseOrgBillingPath(pathname)).toEqual({ slug: 'acme' })
 	}
@@ -217,6 +237,7 @@ test('credits paths bind to the organization in the URL', () => {
 test('every org-bound URL names its section, or none for billing and management', () => {
 	expect(orgOwnedSectionForPath('/@acme/-/memories/m-1')).toBe('memories')
 	expect(orgOwnedSectionForPath('/@acme/-/repositories')).toBe('repositories')
+	expect(orgOwnedSectionForPath('/@acme/-/apps')).toBe('apps')
 	expect(orgOwnedSectionForPath('/account/workflows.json')).toBeNull()
 	expect(orgOwnedSectionForPath('/account/memories-export.json')).toBe(
 		'memories',

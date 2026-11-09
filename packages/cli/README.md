@@ -96,6 +96,9 @@ flow stays the default.
 
 ## Commands
 
+`kody <command> --help` or `kody help <command>` prints one command's usage,
+flags, and subcommands.
+
 | Command                                           | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `kody install`                                    | Detect running local MCP clients and write their remote MCP config. The host client starts OAuth when the user connects. **Recommended long-term path.**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
@@ -113,10 +116,18 @@ flow stays the default.
 | `kody whoami`                                     | Shows the credential commands will use (`--token`, `KODY_API_TOKEN`, stored API token, or `kody login`), its token id and scopes, and any other stored credential it outranks. See [Which credential a command uses](#which-credential-a-command-uses).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `kody search [query]`                             | Calls Kody `search` from the CLI (prefer the host MCP tool). Token-only auth uses Open API `GET /v1/search`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `kody api <operationId>`                          | Thin Open API wrapper matching the MCP `api` tool: `operationId` + flat `--params` JSON. Auth: `--token`, `KODY_API_TOKEN`, the stored API token, then `kody login` (same credential `kody whoami` reports). The parsed `/openapi.json` route map is cached under the Kody cache dir keyed by the document's `ETag` and revalidated with `If-None-Match` on each run.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `kody secret get <name>`                          | Prints the value of a secret whose local reads a person turned on in Kody (raw by default; `--format env` or `--format json` for several). Refuses an interactive terminal unless `--reveal`; piped output is fine. A refused read prints a plain reason and, when local reads are off, a link to turn them on for that secret. Same auth as `kody api`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `kody run --secret <name>[=ENV] -- <cmd>`         | Reads every listed secret (or none), then runs the command with them in its environment. `databaseUrl` becomes `DATABASE_URL` unless named. Exits with the command's exit code.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `kody package publish`                            | Thin wrapper for `packagePublishExternalPush`. Optional positional `@owner/leaf`, bare leaf name, or package UUID (names are resolved to the package UUID via `packageList`); extra fields via `--params`. Same auth as `kody api`. Prints the API JSON. Exit **0** for `published`, `already_published` (including `artifacts_rebuilt: true`), and `dispatched` (poll `workflowRunList({ workflow_id })`). Exit **1** for refusal/rejection statuses (`checks_failed`, `locked`, `approval_required`, `not_fast_forward`) with the API `message` (or a checks summary) on stderr, like npm. Auth / permission / network failures also exit 1; `--json` adds `{ error, message, sent }` on stdout for network errors (`sent: false` = not sent; `sent: "unknown"` = maybe sent — prefer `kody api workflowRunList` with `workflow_id` when known, otherwise a recent list, before retry). Re-publishing the same commit is safe (durable dedupe / `already_published`). |
 | `kody package collaborators` / `grant` / `revoke` | Who can use one package, and add or remove teams and members of the org (`--org`). `<package>` is `@owner/leaf`, the name leaf, or the package id. `grant <package> --team <slug>\|--user <username> [--preset read\|use\|contribute\|manage]` (default `use`) adds or changes a collaborator via `packageCollaboratorSet`; `--preset read` shares source only (read, clone, and fork — no execute). People outside the org are refused. `revoke <package> --team\|--user\|--grant <grant_id>` removes one via `packageCollaboratorRemove`. Needs Manage on the package and a token with `package:manage_access` (`auth bootstrap --scopes …,package:manage_access`). Prints a summary, or JSON with `--json`.                                                                                                                                                                                                                                                          |
 | `kody execute`                                    | Calls Kody `execute` from the CLI (`--invoke`, `--code`, `--file`, or stdin via `--file -`). `--invoke` is client-side sugar: the CLI writes the one-export import passthrough and sends it as `code`, the only module field hosted execute accepts. With a scoped API token and no login (or with `--token`), cloud execute goes through CapabilityProxy → `kody.execute` — no `kody login`. Add `--local` to run the module (and static `kody:@…` package modules) on this machine instead. `--credential key=name` (repeatable; `org:name` / `personal:name` / empty `=` for none) picks ADR 0068 credentials for `--local` or a `kody login` MCP session. `--allow-private-network` opts local execution into private and local network access. `--target prod\|mock` (default `prod`) sends CapabilityProxy / search hops to prod or the built-in CLI mock; `--target mock` implies local workerd.                                                                 |
-| `kody dev`                                        | Local testing for unpublished packages. Serves `kody.app.entry` on localhost via workerd with hot reload. Subcommands: `fetch`, `job`, `webhook`, `emit`, `check`. Default `--target mock` (scratch storage, fake credentials). Covers exports, webhooks, schedules (run-once), and subscriptions. See [Local package testing](#local-package-testing-kody-dev).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `kody dev`                                        | Local testing for unpublished packages. Serves `kody.app.entry` on localhost (`--host 0.0.0.0` for LAN devices) via workerd with hot reload. Subcommands: `fetch`, `job`, `webhook`, `emit`, `check`. Default `--target mock` (scratch storage, fake credentials). Covers exports, webhooks, schedules (run-once), and subscriptions. See [Local package testing](#local-package-testing-kody-dev).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+
+`kody package publish --build local|context` builds off Kody cloud
+(`--build local` pushes HEAD first). `--context <name|cloud>` names the context
+on its own or with `--build context`; it cannot be combined with
+`--build local`. See
+[publish-large-packages](https://kody.codes/docs/publish-large-packages).
 
 `--json` prints structured MCP results. On command failures it also prints a
 JSON error object on stdout (`error`, `message`, and when a network hop failed
@@ -190,10 +201,11 @@ browser login for these commands. There is no API token fallback in this mode,
 and saved API tokens remain unchanged. Unset it for normal CLI precedence.
 
 - The stored API token comes from `kody auth bootstrap` or
-  `kody auth setup-git`. `kody login` stores a login session next to it and does
-  not replace it, so a stored token keeps winning for `api` and the other
-  first-row commands after you log in again. `kody login` prints a note when
-  that happens.
+  `kody auth setup-git`. An explicit `kody login` deletes a stored API token for
+  that API origin and prints which token it removed, so the fresh login is what
+  the first-row commands use. Git pushes mint a new token from the login.
+  `--token` and `KODY_API_TOKEN` still outrank the login. Desktop logins
+  (`KODY_CREDENTIAL_SOURCE=login`) leave the stored token alone.
 - To change the stored token's scopes, run
   `npx @kodycodes/cli auth bootstrap --lifetime short --scopes <every scope you need>`
   (mints with your login and replaces the stored token). `kody logout` clears
@@ -231,8 +243,8 @@ npx @kodycodes/cli auth bootstrap --code 'kody_bc_…' --lifetime short
 
 ## Git HTTPS (`setup-git`)
 
-After the server ships persistent `kody_at_…` git auth (see
-[auth-setup-git](https://kody.codes/docs/auth-setup-git)), install a credential
+Kody provides persistent `kody_at_…` HTTPS git auth (see
+[auth-setup-git](https://kody.codes/docs/auth-setup-git)). Install a credential
 helper once:
 
 ```bash
@@ -301,6 +313,33 @@ kody execute --target prod --invoke ./greet --params '{"name":"kent"}'
 kody execute --local --invoke kody:@scope/pkg/export --params '{}'
 kody search --target mock local
 ```
+
+### Testing from other devices (`--host`)
+
+`kody dev` listens on `127.0.0.1` only. To open the app from a phone, tablet, or
+e-reader on the same network, pass a listen address:
+
+```bash
+kody dev --host 0.0.0.0     # every IPv4 interface; prints a network: URL per LAN address
+kody dev --host ::          # IPv4 and IPv6 interfaces
+kody dev --host 192.168.1.20   # one address of this machine
+```
+
+`--host` takes an IP address (or `localhost`); anything else is refused. On a
+non-loopback address `kody dev` prints a warning on stderr: the server is
+exposed to every device on the network, and anyone who can reach the port can
+use the app. Prefer the default `--target mock` (fake credentials, scratch
+storage) for device testing. `--host` with `--target prod` is refused unless you
+also pass `--expose-prod`, because the app would then act with your real Kody
+credentials for whoever reaches it.
+
+The proxy still rejects unknown `Host` headers (DNS rebinding guard). With
+`0.0.0.0` / `::` it accepts this machine's own non-internal interface addresses
+(re-read from `os.networkInterfaces()` per request, so a new Wi-Fi address
+works) plus the loopback names; with a specific IP it accepts only that IP.
+`request.url` uses the address the device opened, so same-origin CSRF checks
+pass on LAN requests. The workerd sockets, the CLI bridge, and the run secret
+stay on loopback. `--json` / `--ready-file` add `networkUrls` to `ready`.
 
 ### What `kody dev` does while it runs
 
@@ -461,9 +500,11 @@ npx @kodycodes/cli execute --local --invoke kody:@scope/pkg/export --params '{"n
   (no filesystem graph to follow).
 - **Runtime:** a pinned [workerd](https://github.com/cloudflare/workerd)
   release, downloaded once from GitHub, sha256-verified, and cached under
-  `~/.cache/kody` (Linux, or `$XDG_CACHE_HOME/kody`) or `~/Library/Caches/kody`
-  (macOS). Override with `KODY_CACHE_DIR`, or point `KODY_WORKERD_PATH` at your
-  own binary. No Docker required. Linux and macOS (x64/arm64) only for now.
+  `~/.cache/kody` (Linux, or `$XDG_CACHE_HOME/kody`), `~/Library/Caches/kody`
+  (macOS), or `%LOCALAPPDATA%\kody\cache` (Windows). Override with
+  `KODY_CACHE_DIR`, or point `KODY_WORKERD_PATH` at your own binary. No Docker
+  required. Linux, macOS, and Windows (x64/arm64; Windows on Arm uses the x64
+  workerd build).
 - **API:** `https://api.kody.codes` by default (`--api-url` or `KODY_API_URL` to
   override). The CLI calls `POST /v1/local-execute/package-graph` before
   starting workerd (it authenticates the bearer and, when the module imports
@@ -472,13 +513,14 @@ npx @kodycodes/cli execute --local --invoke kody:@scope/pkg/export --params '{"n
   `POST /v1/capability-proxy/call` with `{ path, args, conversationId? }` for
   each runtime call. CapabilityProxy requests go through Node's own
   `node:http(s)` client with one keep-alive connection and a 7-minute idle limit
-  for headers and body chunks. Origin's 5-minute deadline for a `fetch` with
-  `{{secret:…}}` placeholders ends that call first, with its own error. The
-  client idle timeout is 7 minutes, so Node's default 300-second fetch limit
-  does not apply. With `NODE_USE_ENV_PROXY=1` or `--use-env-proxy`, these
-  requests honor `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` like Node's own fetch
-  (Node 22.21 / 24.5 or later; older Node fails with a clear error instead of
-  silently bypassing the proxy). A PR preview's API host is
+  for headers and body chunks (`KODY_CAPABILITY_PROXY_TIMEOUT_MS` overrides it,
+  in milliseconds). Origin's 5-minute deadline for a `fetch` with `{{secret:…}}`
+  placeholders ends that call first, with its own error. The client idle timeout
+  is 7 minutes, so Node's default 300-second fetch limit does not apply. With
+  `NODE_USE_ENV_PROXY=1` or `--use-env-proxy`, these requests honor `HTTP_PROXY`
+  / `HTTPS_PROXY` / `NO_PROXY` like Node's own fetch (Node 22.21 / 24.5 or
+  later; older Node fails with a clear error instead of silently bypassing the
+  proxy). A PR preview's API host is
   `https://kody-pr-<n>-api.<subdomain>.workers.dev`; the app origin
   (`kody-pr-<n>`) answers `/v1/*` with an HTML 404.
 - **Errors:** an expired/revoked token or an account without the `local-execute`
@@ -537,6 +579,14 @@ the `fs` capability only while at least one folder is mounted, so
 `requires: ["fs"]` routing and chains skip it otherwise (`no_fs`: the server
 grant lists no folders; `no_local_fs`: the local policy allows none of them).
 
+Host folders are for the operator's own runs only: runs by people the context is
+shared with get no host folders (and no host commands). Credential stores are
+never mounted and are refused inside a mounted folder, symlinks included: this
+CLI config directory (login tokens, context keys, the local policy), `~/.ssh`,
+`~/.gnupg`, git credential files, cloud CLI logins (`~/.aws`, `~/.azure`,
+gcloud, `gh`, `~/.kube`, Docker), package-manager tokens (`.npmrc`, `.pypirc`,
+Cargo), and OS keyring files.
+
 Inside a run, `node:fs` / `fs/promises` `readFile`, `writeFile`, `appendFile`,
 `readdir`, `stat`, `lstat`, `mkdir`, `rm`, `unlink`, `rmdir`, `rename`,
 `copyFile`, `access`, and `realpath` work on mounted paths (up to 32 MiB per
@@ -549,7 +599,9 @@ paths, including workerd's `/bundle`, `/tmp`, and `/dev`, stay virtual.
 
 CLI credentials are stored in the OS secret store:
 
-- macOS: Keychain
+- macOS: Keychain, read and written through Apple's `/usr/bin/security`, so one
+  "Always Allow" covers the terminal, `npx`, the background service, and
+  Kody.app instead of each node binary asking separately
 - Windows: Credential Manager
 - Linux: Secret Service / libsecret (not the in-memory kernel keyring)
 

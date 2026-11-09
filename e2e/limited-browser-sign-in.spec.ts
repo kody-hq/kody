@@ -1,13 +1,13 @@
-import { type BrowserContext, type Page } from '@playwright/test'
+import type { BrowserContext, Page } from '@playwright/test'
 import { quoteSqlString } from '@kody-internal/shared/sql-literals.ts'
 import { executeE2eD1Command } from './d1-utils.ts'
 import { expect, test } from './playwright-utils.ts'
 
 /**
- * Package-app visitors on limited browsers (ADR 0094): the sign-in and
- * consent pages work as plain HTML with JavaScript off, and "Sign in on
- * another device" finishes from a second, signed-in browser. The limited
- * browser uses an e-reader's Chromium 80 user agent.
+ * Limited browsers (ADR 0094), for package-app visitors and full Kody
+ * accounts: the sign-in and consent pages work as plain HTML with JavaScript
+ * off, and "Sign in on another device" finishes from a second, signed-in
+ * browser. The limited browser uses an e-reader's Chromium 80 user agent.
  */
 const kindleUserAgent =
 	'Mozilla/5.0 (X11; Linux armv7l) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.149 Safari/537.36 Kindle/3.0'
@@ -275,17 +275,75 @@ test("with JavaScript off, a package app's Open link offers Sign in on another d
 	await phone.close()
 })
 
-test('Kody pages that are not a package app never mention another device', async ({
+test('a limited browser signs in to the full Kody account from another device', async ({
 	browser,
 	baseURL,
+	seedE2eUser,
 }) => {
+	test.setTimeout(process.env.CI ? 150_000 : 120_000)
+	const runId = Date.now()
+	const person = await seedE2eUser({
+		email: `limited-account-${runId}@example.com`,
+		username: `limitedaccount${runId}`.slice(0, 32),
+		password: 'limited-account-password',
+	})
+	const limited = await limitedBrowser(browser, baseURL)
+	const ereader = await limited.newPage()
+	await ereader.goto('/login?redirectTo=%2Faccount')
+	await ereader
+		.getByTestId('account-sign-in-on-another-device')
+		.getByRole('button', { name: 'Sign in on another device' })
+		.click()
+	await expect(ereader).toHaveURL(/\/login\/device$/)
+	const code = (
+		await ereader.getByTestId('account-device-user-code').innerText()
+	).trim()
+	expect(code).toMatch(/^[B-Z]{4}-[B-Z]{4}$/)
+	await expect(ereader.getByTestId('account-device-qr')).toBeVisible()
+
+	const phone = await browser.newContext({ baseURL: localhostBase(baseURL) })
+	await signInPhone(phone, person)
+	const phonePage = await phone.newPage()
+	await phonePage.goto(`/device?user_code=${code}`)
+	await expect(phonePage.getByTestId('account-device-grant')).toContainText(
+		'This gives a browser your full account',
+	)
+	await expect(phonePage.getByTestId('device-user-code')).toHaveText(code)
+	await expect(phonePage.getByTestId('account-device-requester')).toHaveText(
+		'Kindle browser (Chrome 80)',
+	)
+	await expect(phonePage.getByTestId('account-device-location')).toBeVisible()
+	await expect(
+		phonePage.getByTestId('account-device-requested-at'),
+	).toContainText('UTC')
+	await phonePage.getByTestId('account-device-confirm').check()
+	await phonePage.getByRole('button', { name: 'Sign that browser in' }).click()
+	await expect(phonePage).toHaveURL(/\/device\?result=approved&kind=account/)
+
+	await ereader.getByTestId('account-device-check-now').click()
+	await expect(ereader).toHaveURL(/\/account(?:[/?]|$)/)
+
+	// Single use: checking again finds nothing in progress.
+	await ereader.goto('/login/device')
+	await expect(
+		ereader.getByRole('heading', { name: 'No sign-in in progress' }),
+	).toBeVisible()
+	await limited.close()
+	await phone.close()
+})
+
+test('a sign-in that resumes a package app offers only the app device flow', async ({
+	browser,
+	baseURL,
+	seedE2eUser,
+}) => {
+	const { owner, kodyId } = await seedPeople(seedE2eUser)
 	const context = await limitedBrowser(browser, baseURL)
 	const page = await context.newPage()
-	await page.goto('/login?redirectTo=%2Faccount&formError=human_check')
-	await expect(page.getByTestId('sign-in-on-another-device')).toHaveCount(0)
-	await expect(page.getByRole('alert')).not.toContainText('another device')
-	await expect(page.getByTestId('auth-no-javascript-note')).not.toContainText(
-		'another device',
-	)
+	await page.goto(appSignInPath(owner.username, kodyId))
+	await expect(page.getByTestId('sign-in-on-another-device')).toBeVisible()
+	await expect(
+		page.getByTestId('account-sign-in-on-another-device'),
+	).toHaveCount(0)
 	await context.close()
 })

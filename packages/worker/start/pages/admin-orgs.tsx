@@ -25,11 +25,11 @@ import {
 	getSelectCss,
 } from '#universal/styles/style-primitives.ts'
 import { isWithinSoftDeleteRestoreWindow } from '#worker/soft-delete/window.ts'
-import {
-	type AdminOrgDetail,
-	type AdminOrgsData,
-	type AdminOrgStatus,
-	type AdminOrgKind,
+import type {
+	AdminOrgDetail,
+	AdminOrgsData,
+	AdminOrgStatus,
+	AdminOrgKind,
 } from '#worker/admin/orgs-data.ts'
 import {
 	AccountManagementPanel,

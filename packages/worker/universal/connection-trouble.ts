@@ -102,6 +102,12 @@ export function integrationAuthFailureCopy(input: {
 	providerError?: string | null
 	providerErrorDescription?: string | null
 	httpStatus?: number | null
+	/**
+	 * OAuth app provider slug when it differs from the connection `name`
+	 * (custom connections). Used only in failure attribution copy; titles and
+	 * reconnect links still use `name`.
+	 */
+	provider?: string | null
 	/** Team org that owns the connection; omit for the personal org. */
 	orgSlug?: string | null
 }): ConnectionTroubleCopy {
@@ -117,12 +123,15 @@ export function integrationAuthFailureCopy(input: {
 		input.providerErrorDescription,
 	)
 
+	const providerSlug = input.provider?.trim() || input.name
+	const providerLabel = humanizeConnectionName(providerSlug)
+
 	if (input.reason === 'provider_unavailable') {
 		const status =
 			input.httpStatus != null ? ` (HTTP ${String(input.httpStatus)})` : ''
 		return {
 			title,
-			why: `The provider's token service failed${status}. This is not a dead sign-in.`,
+			why: `${providerLabel}'s token service failed${status}. This is not a dead sign-in, and it is not a Kody plan limit.`,
 			who: 'the-service',
 			doLabel: 'Open integration',
 			href: accountHref,
@@ -141,7 +150,30 @@ export function integrationAuthFailureCopy(input: {
 		}
 	}
 
-	const why = integrationAuthFailureWhy(input.reason, providerDetail)
+	// Token-endpoint 429 is a provider limit, not a dead grant. Keep it off the
+	// "Needs you / Reconnect" queue so people wait instead of reconnecting.
+	if (input.reason === 'provider_rejected' && input.httpStatus === 429) {
+		return {
+			title,
+			why: integrationAuthFailureWhy(
+				input.reason,
+				providerDetail,
+				providerLabel,
+				429,
+			),
+			who: 'the-service',
+			doLabel: 'Open integration',
+			href: accountHref,
+			reconnectable: false,
+		}
+	}
+
+	const why = integrationAuthFailureWhy(
+		input.reason,
+		providerDetail,
+		providerLabel,
+		input.httpStatus ?? null,
+	)
 	return {
 		title,
 		why,
@@ -161,6 +193,8 @@ export function toIntegrationAuthFailureView(input: {
 	providerError?: string | null
 	providerErrorDescription?: string | null
 	httpStatus?: number | null
+	/** OAuth app provider when it differs from the connection name. */
+	provider?: string | null
 	/** Team org that owns the connection; omit for the personal org. */
 	orgSlug?: string | null
 }): IntegrationAuthFailureView {
@@ -222,20 +256,25 @@ export function isVendorLikelyMcpError(error: string | null | undefined) {
 function integrationAuthFailureWhy(
 	reason: Exclude<IntegrationAuthFailureReason, 'provider_unavailable'>,
 	providerDetail: string | null,
+	providerLabel: string,
+	httpStatus: number | null,
 ) {
 	switch (reason) {
 		case 'missing_refresh_token':
-			return 'This sign-in expires, but Kody has no refresh token to renew it.'
+			return `This ${providerLabel} sign-in expires, but Kody has no refresh token to renew it. Reconnect ${providerLabel} under the workspace that should own the connection.`
 		case 'provider_rejected':
+			if (httpStatus === 429) {
+				return `${providerLabel} rate-limited token refresh (HTTP 429). This is a provider limit, not a Kody plan limit. Wait and retry; reconnecting usually does not help.`
+			}
 			return providerDetail
-				? `The provider rejected the saved sign-in (${providerDetail}).`
-				: 'The provider rejected the saved sign-in.'
+				? `${providerLabel} rejected the saved sign-in (${providerDetail}). This is a ${providerLabel} auth failure, not a Kody plan limit. Reconnect ${providerLabel} under the workspace that should own the connection.`
+				: `${providerLabel} rejected the saved sign-in. This is a ${providerLabel} auth failure, not a Kody plan limit. Reconnect ${providerLabel} under the workspace that should own the connection.`
 		case 'missing_secret':
-			return 'A required credential for this connection is missing.'
+			return `A required ${providerLabel} credential for this connection is missing.`
 		case 'host_not_approved':
-			return 'This connection is not approved for the token host.'
+			return `This ${providerLabel} connection is not approved for the token host.`
 		case 'invalid_config':
-			return "This connection's OAuth setup is incomplete."
+			return `This ${providerLabel} connection's OAuth setup is incomplete.`
 		default: {
 			const exhaustive: never = reason
 			return exhaustive

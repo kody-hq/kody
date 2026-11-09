@@ -10,7 +10,7 @@
  *
  * Does not change fill, access, publish, or save behavior.
  */
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	scanPackageCredentials,
 	type PackageCredentialScan,

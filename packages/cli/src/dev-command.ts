@@ -12,6 +12,7 @@ import {
 	type CredentialedFetchSignal,
 } from './credentialed-fetch-scan.js'
 import { formatFetchBodySecretResolutionWarning } from './fetch-body-secret-resolution.js'
+import { publishOutsideCloudAdvice } from './publish-limit-advice.js'
 import { findPackageFetchBodyWarnings } from './fetch-body-package-scan.js'
 import {
 	buildLocalPackageContext,
@@ -30,17 +31,19 @@ import {
 	type KodyPackageManifest,
 } from './package-manifest.js'
 import { StructuredCliError } from './structured-error.js'
-import { type KodyTarget } from './target.js'
+import type { KodyTarget } from './target.js'
 import { formatToolResult } from './tool-result.js'
 import { bundleLocalUserModuleWithInputs } from './local-bundle.js'
 import {
 	collectPackageCheckFiles,
 	formatUnpublishedBundleInputMessage,
+	type PackageCheckFiles,
 	listPackageCheckPaths,
 	unpublishedBundleInputPaths,
 } from './package-check-files.js'
 import { formatDevEvent, type DevEvent } from './dev/dev-events.js'
 import { defaultDevPort } from './dev/dev-port.js'
+import { assertDevHostAllowed, devHostExposureWarning } from './dev/dev-host.js'
 import {
 	devStatusPath,
 	findRunningDevServer,
@@ -49,6 +52,7 @@ import {
 } from './dev/dev-registry.js'
 
 export { parseDevPort } from './dev/dev-port.js'
+export { parseDevHost } from './dev/dev-host.js'
 
 export type DevIo = {
 	stdout: (text: string) => void
@@ -128,6 +132,10 @@ export async function resolveDevAuth(input: {
 export async function runDevServe(input: {
 	target: KodyTarget
 	auth: DevAuth
+	/** Proxy listen address (`--host`); default 127.0.0.1. */
+	host?: string
+	/** `--expose-prod`: allow a non-loopback `--host` with `--target prod`. */
+	exposeProd?: boolean
 	port?: number
 	appBasePath?: string
 	allowPrivateNetwork?: boolean
@@ -143,6 +151,13 @@ export async function runDevServe(input: {
 	/** Injected for tests — when set, serve returns immediately after start. */
 	serveOnce?: boolean
 }): Promise<number> {
+	if (input.host !== undefined) {
+		assertDevHostAllowed({
+			bindHost: input.host,
+			target: input.target,
+			exposeProd: input.exposeProd === true,
+		})
+	}
 	const manifest = await loadPackageManifest(input.cwd)
 	if (input.port === undefined) {
 		const running = await findRunningDevServer({
@@ -170,6 +185,7 @@ export async function runDevServe(input: {
 			token: input.auth.token,
 			apiUrl: input.auth.apiUrl,
 			target: input.target,
+			...(input.host !== undefined ? { host: input.host } : {}),
 			port: input.port,
 			defaultPort: defaultDevPort(manifest.kodyId),
 			appBasePath: input.appBasePath,
@@ -190,11 +206,11 @@ export async function runDevServe(input: {
 			// stealing the next free port and overwriting the registry.
 			// Explicit `--port` starts a second server on purpose — leave the
 			// primary attach registry alone so fetch keeps talking to it.
-			onListening: async ({ port, hostedUrl, appBasePath }) => {
+			onListening: async ({ port, localUrl, appBasePath }) => {
 				if (input.port !== undefined) return
 				await writeDevRegistration({
 					pid: process.pid,
-					origin: hostedUrl,
+					origin: localUrl,
 					port,
 					basePath: appBasePath,
 					target: input.target,
@@ -225,13 +241,29 @@ export async function runDevServe(input: {
 	}
 	try {
 		const status = server.status()
-		const statusUrl = `${server.hostedUrl}${devStatusPath}`
+		const statusUrl = `${server.localUrl}${devStatusPath}`
+		const networkUrls = server.networkUrls.map(
+			(origin) => `${origin}${server.appBasePath || '/'}`,
+		)
 		const ready = {
 			url: status.url,
 			port: server.port,
 			basePath: server.appBasePath,
 			pid: process.pid,
 			statusUrl,
+			...(input.host !== undefined ? { networkUrls } : {}),
+		}
+		const exposure =
+			input.host !== undefined
+				? devHostExposureWarning({ bindHost: input.host, target: input.target })
+				: null
+		if (exposure) {
+			input.io.stderr(exposure)
+			if (networkUrls.length === 0) {
+				input.io.stderr(
+					'warning: no non-internal network address found on this machine; other devices cannot reach kody dev yet.\n',
+				)
+			}
 		}
 		if (input.readyFile) {
 			await mkdir(dirname(input.readyFile), { recursive: true })
@@ -252,6 +284,13 @@ export async function runDevServe(input: {
 		} else {
 			input.io.stdout(
 				`kody dev listening on ${status.url}\n` +
+					(server.localUrl !== server.hostedUrl
+						? `local: ${server.localUrl}${server.appBasePath || '/'}\n`
+						: '') +
+					networkUrls
+						.filter((url) => url !== status.url)
+						.map((url) => `network: ${url}\n`)
+						.join('') +
 					`target: ${input.target}\n` +
 					`package: ${manifest.name} (${manifest.kodyId})\n` +
 					`status: ${statusUrl}\n` +
@@ -633,8 +672,7 @@ export type PackageCheckResult = {
  * Those are the same checks, with the same options, that publish runs.
  */
 export type RunPublishChecks = (
-	files: Record<string, string>,
-	binaryFiles: Record<string, number>,
+	tree: PackageCheckFiles,
 ) => Promise<PackageCheckResult>
 
 /**
@@ -672,7 +710,7 @@ function readPublishChecksFailureMeta(
 }
 
 /** True when the publish checks could not run because of the login. */
-export function isPublishChecksAuthFailure(error: unknown): boolean {
+function isPublishChecksAuthFailure(error: unknown): boolean {
 	if (error instanceof PublishChecksAuthError) return true
 	const meta = readPublishChecksFailureMeta(error)
 	return (
@@ -687,7 +725,7 @@ export function isPublishChecksAuthFailure(error: unknown): boolean {
  * only for auth failures; every other failure names the server status, error
  * code and request id so it can be reported.
  */
-export function formatPublishChecksRunFailure(error: unknown): string {
+function formatPublishChecksRunFailure(error: unknown): string {
 	const message = (
 		error instanceof Error ? error.message : String(error)
 	).replace(/\.+$/, '')
@@ -706,8 +744,85 @@ export function formatPublishChecksRunFailure(error: unknown): string {
 	return `could not run: ${message}${facts.length > 0 ? ` (${facts.join(', ')})` : ''}. Pass --debug for the HTTP details, or --offline to run only the local checks.`
 }
 
-export const devCheckOfflineDetail =
+/**
+ * The one git-push publish phase a working-tree check cannot run: cloning the
+ * pushed commit from Artifacts. Everything after the clone runs as publish
+ * runs it (see docs/use/packages.md, "What kody dev check runs").
+ */
+const devCheckCloneGapDetail =
+	'checked the working tree as a git-push publish snapshot. Not run: cloning the pushed commit from Artifacts (push and pack limits apply at `git push`), and the rebuilt artifacts are not saved.'
+
+const devCheckOfflineDetail =
 	'skipped (--offline). Only local checks ran; publish runs the full publish checks and can still refuse this package.'
+
+/**
+ * Attempts the server publish checks get, matching publish: a durable
+ * publish retries a step that hit a compute limit or timed out, so a tree
+ * near the limit passes on a later attempt there too.
+ */
+const publishChecksMaxAttempts = 3
+
+const computeLimitCheckPhrases = [
+	'ran out of memory or CPU time in the check runner',
+	"exceeded the isolated check runner's memory or CPU limits",
+	"exceeded the isolated rebuild runner's memory or CPU limits",
+]
+
+/** Why an attempt is worth repeating, or null when its answer is final. */
+function publishChecksRetryReason(
+	attempt:
+		| { ok: true; value: PackageCheckResult }
+		| { ok: false; error: unknown },
+): string | null {
+	if (attempt.ok) {
+		const limited = attempt.value.checks.some(
+			(check) =>
+				!check.ok &&
+				computeLimitCheckPhrases.some((phrase) =>
+					check.message.includes(phrase),
+				),
+		)
+		return limited ? 'hit a Kody server memory or CPU limit' : null
+	}
+	const error = attempt.error
+	if (error instanceof PublishChecksAuthError) return null
+	const meta = readPublishChecksFailureMeta(error)
+	if (meta.status === 502 || meta.status === 503 || meta.status === 504) {
+		return `failed with HTTP ${meta.status}`
+	}
+	const message = error instanceof Error ? error.message : String(error)
+	if (/UND_ERR_(HEADERS|BODY)_TIMEOUT/.test(message)) {
+		return 'got no answer before the request timed out'
+	}
+	return null
+}
+
+async function runPublishChecksWithRetry(input: {
+	run: () => Promise<PackageCheckResult>
+	stderr: (text: string) => void
+	delayMs?: number
+	/** Called when the last attempt still hit a limit or timed out. */
+	onComputeLimit?: () => void
+}): Promise<PackageCheckResult> {
+	for (let attempt = 1; ; attempt += 1) {
+		const settled = await input.run().then(
+			(value) => ({ ok: true as const, value }),
+			(error: unknown) => ({ ok: false as const, error }),
+		)
+		const reason = publishChecksRetryReason(settled)
+		if (reason === null || attempt >= publishChecksMaxAttempts) {
+			if (reason !== null) input.onComputeLimit?.()
+			if (settled.ok) return settled.value
+			throw settled.error
+		}
+		input.stderr(
+			`kody dev check: the server publish checks ${reason} (attempt ${attempt} of ${publishChecksMaxAttempts}); retrying, as publish does.\n`,
+		)
+		await new Promise((resolve) =>
+			setTimeout(resolve, input.delayMs ?? 2_000 * attempt),
+		)
+	}
+}
 
 /** Parse a `packageCheck` response body (Open API structured result). */
 export function parsePackageCheckResult(value: unknown): PackageCheckResult {
@@ -756,6 +871,10 @@ export async function runDevCheck(input: {
 	offline?: boolean
 	/** Required unless `offline`; a missing runner fails the check. */
 	runPublishChecks?: RunPublishChecks
+	/** `--build local`: also run the publish-offload builder on the tree. */
+	localBuild?: { apiUrl: string }
+	/** Test seam: wait between publish-check attempts. */
+	publishChecksRetryDelayMs?: number
 }): Promise<number> {
 	const manifest = await loadPackageManifest(input.cwd)
 	const checks: Array<{
@@ -824,6 +943,29 @@ export async function runDevCheck(input: {
 	push('package.json', true, manifest.name)
 	push('kody.id', Boolean(manifest.kodyId), manifest.kodyId)
 
+	if (input.localBuild) {
+		try {
+			const { buildWorkingTreeLocally } =
+				await import('./local-publish-build.js')
+			const built = await buildWorkingTreeLocally({
+				dir: manifest.root,
+				packageId: manifest.kodyId ?? '',
+				apiUrl: input.localBuild.apiUrl,
+			})
+			push(
+				'local publish build',
+				true,
+				`${built.targets} targets in ${built.buildMs} ms`,
+			)
+		} catch (error) {
+			push(
+				'local publish build',
+				false,
+				error instanceof Error ? error.message : String(error),
+			)
+		}
+	}
+
 	try {
 		await readFile(resolve(manifest.root, 'README.md'))
 		push('README.md', true)
@@ -889,6 +1031,7 @@ export async function runDevCheck(input: {
 	}
 
 	let publishChecksOk: boolean | null = null
+	let hitComputeLimit = false
 	let publishChecksError:
 		| ({ message: string } & PublishChecksFailureMeta)
 		| null = null
@@ -903,7 +1046,16 @@ export async function runDevCheck(input: {
 	} else {
 		try {
 			const tree = await collectPackageCheckFiles(manifest.root)
-			const outcome = await input.runPublishChecks(tree.files, tree.binaryFiles)
+			const outcome = await runPublishChecksWithRetry({
+				run: () => input.runPublishChecks!(tree),
+				stderr: input.io.stderr,
+				onComputeLimit: () => {
+					hitComputeLimit = true
+				},
+				...(input.publishChecksRetryDelayMs !== undefined
+					? { delayMs: input.publishChecksRetryDelayMs }
+					: {}),
+			})
 			publishChecksOk = outcome.ok
 			for (const check of outcome.checks) {
 				push(`publish:${check.kind}`, check.ok, check.message || undefined)
@@ -914,20 +1066,16 @@ export async function runDevCheck(input: {
 			for (const notice of outcome.notices ?? []) {
 				push('unmappable credentials', true, notice, 'warning')
 			}
-			const binaryCount = Object.keys(tree.binaryFiles).length
-			if (binaryCount > 0) {
-				push(
-					'publish checks',
-					true,
-					`sent ${binaryCount} binary file(s) by path and size only; their contents stay local`,
-				)
-			}
+			push('publish checks', true, devCheckCloneGapDetail)
 		} catch (error) {
 			publishChecksError = {
 				message: error instanceof Error ? error.message : String(error),
 				...readPublishChecksFailureMeta(error),
 			}
 			push('publish checks', false, formatPublishChecksRunFailure(error))
+		}
+		if (hitComputeLimit) {
+			push('build outside Kody cloud', false, publishOutsideCloudAdvice)
 		}
 	}
 

@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
-import { type AdminCodemodRunInput } from '#universal/admin-codemod-input.ts'
+import type { AdminCodemodRunInput } from '#universal/admin-codemod-input.ts'
 import {
 	formatSummaryCounts,
 	maxRunSteps,
@@ -16,10 +16,10 @@ import {
 	adminCodemodRun,
 	adminCodemodRunStop,
 } from '#start/server/admin-mutations'
-import {
-	type AdminCodemodRunItemListItem,
-	type AdminCodemodRunListItem,
-	type AdminCodemodsLoaderData,
+import type {
+	AdminCodemodRunItemListItem,
+	AdminCodemodRunListItem,
+	AdminCodemodsLoaderData,
 } from '#universal/loader-data.ts'
 import {
 	fieldCss,

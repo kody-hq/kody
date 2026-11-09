@@ -4,7 +4,7 @@ import {
 	parseStripePlanName,
 	type PlanName,
 } from '#universal/plans.ts'
-import { type StripeSubscription } from './stripe-client.ts'
+import type { StripeSubscription } from './stripe-client.ts'
 
 export type BillingEnv = {
 	STRIPE_SECRET_KEY?: string
@@ -59,7 +59,6 @@ export function subscriptionHasPrice(
 /** Stripe metadata that marks a subscription as Kody-owned. */
 export const kodySubscriptionMetadataKeys = [
 	'kody_org_id',
-	'kody_stable_user_id',
 	'kody_plan',
 ] as const
 

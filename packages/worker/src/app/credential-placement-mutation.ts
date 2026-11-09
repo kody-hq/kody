@@ -1,4 +1,4 @@
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { operationResult } from '#app/operation-result.ts'
 import { readNonEmptyTrimmedString } from '#app/request-body.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
@@ -20,7 +20,7 @@ import {
 import { recordOwnerFillPlacementOptIn } from '#worker/credentials/fill-placement-opt-ins.ts'
 import { orgAuditWriterFromRequest } from '#worker/orgs/org-audit.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
-import { type CredentialFillPlacementView } from '#universal/credential-fill-placement.ts'
+import type { CredentialFillPlacementView } from '#universal/credential-fill-placement.ts'
 
 export type SetCredentialPlacementResponse = {
 	ok: true

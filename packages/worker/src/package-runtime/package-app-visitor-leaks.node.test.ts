@@ -5,12 +5,12 @@
  * `orgMemberUpdate` handler. The app's server code is the bridge call itself.
  */
 import { DatabaseSync } from 'node:sqlite'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
+import type { RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
 import { expect, test } from 'vitest'
 import { upsertPackageAppOauthGrant } from '#app/package-app-oauth-grants.ts'
 import { orgMemberUpdateCapability } from '#mcp/capabilities/access/org-members.ts'

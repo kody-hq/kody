@@ -1,6 +1,6 @@
 import * as Sentry from '@sentry/cloudflare'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
 import { auditDatabaseFromEnv } from '#worker/audit-log.ts'
 import {

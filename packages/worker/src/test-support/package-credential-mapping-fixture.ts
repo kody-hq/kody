@@ -3,11 +3,11 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { vi, type Mock } from 'vitest'
 import { saveSecret } from '#mcp/secrets/service.ts'
 import * as needsClosure from '#worker/credentials/credential-needs-closure.ts'
-import { type CredentialNeed } from '#worker/credentials/credential-needs.ts'
+import type { CredentialNeed } from '#worker/credentials/credential-needs.ts'
 import {
 	credentialMappingUpdateAuditAction,
 	resolveMappingChanges,
@@ -31,7 +31,7 @@ import { createD1FromSqlite } from './create-d1-from-sqlite.ts'
 import { createMemoryKvNamespace } from './memory-kv.ts'
 import { testStableUserIdFromEmail } from './stable-user-id.ts'
 import { createInMemoryUserMeterEnv } from './user-meter.ts'
-import { type CredentialMappingChange } from '#universal/credential-contracts.ts'
+import type { CredentialMappingChange } from '#universal/credential-contracts.ts'
 
 export const mappingFixtureNow = '2026-10-13T00:00:00.000Z'
 export const mappingFixtureBaseUrl = 'https://kody.test'

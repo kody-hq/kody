@@ -2,7 +2,7 @@
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { textSearch } from '../filter-search.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
-import { type PlatformIntegrationSaveInput } from '#universal/admin-provider-mutations.ts'
+import type { PlatformIntegrationSaveInput } from '#universal/admin-provider-mutations.ts'
 import {
 	filterApps,
 	parseExtraAuthorizeParams,
@@ -14,9 +14,9 @@ import {
 	saveAdminPlatformIntegration,
 	deleteAdminPlatformIntegration,
 } from '#start/server/admin-mutations'
-import {
-	type AdminPlatformIntegrationApp,
-	type AdminPlatformIntegrationsLoaderData,
+import type {
+	AdminPlatformIntegrationApp,
+	AdminPlatformIntegrationsLoaderData,
 } from '#universal/loader-data.ts'
 import { getPillButtonCss } from '#universal/styles/style-primitives.ts'
 import { colors, typography } from '#universal/styles/tokens.ts'

@@ -5,11 +5,12 @@ import {
 } from '#mcp/capabilities/integrations/read-bounded-body.ts'
 import { createAuthenticatedFetch } from '#mcp/execute-modules/kody-runtime-utils.ts'
 import { executeGatewayFetch } from '#mcp/fetch-gateway.ts'
-import { buildKodyFns } from '#mcp/run-kody-registry.ts'
+import { createHostIntegrationAuthority } from '#mcp/capabilities/integrations/host-integration-authority.ts'
 import { secretAuthorityHeaderName } from '#mcp/secrets/secret-authority.ts'
+import { claimedPackageStamp } from '#worker/credentials/package-stamp.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { authorizeLocalExecutePackageBinding } from './capability-proxy-package-grants.ts'
-import { type ApiInvocationContext } from './context.ts'
+import type { ApiInvocationContext } from './context.ts'
 import { invalidRequest } from './errors.ts'
 
 /**
@@ -180,7 +181,14 @@ export async function runCapabilityProxyAuthenticatedFetch(input: {
 				packageId: call.packageId,
 			})
 		: null
-	const kody = await buildKodyFns(input.ctx.env, input.ctx.callerContext)
+	// Config read, gateway fetch, and refresh all act as the verified local
+	// binding, claimed. Never the run's attested storage package.
+	const authority = createHostIntegrationAuthority({
+		env: input.ctx.env,
+		callerContext: input.ctx.callerContext,
+		...(input.ctx.waitUntil ? { waitUntil: input.ctx.waitUntil } : {}),
+		packageStamp: claimedPackageStamp(stampedPackageId),
+	})
 	const existingStorage = input.ctx.callerContext.storageContext
 	const storageContext = {
 		sessionId: existingStorage?.sessionId ?? null,
@@ -207,7 +215,7 @@ export async function runCapabilityProxyAuthenticatedFetch(input: {
 		})
 	}
 	const authenticatedFetch = await createAuthenticatedFetch(
-		kody,
+		authority,
 		call.providerName,
 		{ fetch: gatewayFetch },
 	)

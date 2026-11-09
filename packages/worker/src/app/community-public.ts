@@ -2,13 +2,13 @@ import {
 	buildForkListingDiffHref,
 	buildListingAheadPrompt,
 } from '#universal/community-listing-ahead.ts'
-import {
-	type OnboardingFeaturedListing,
-	type PublicCommunityActivityItem,
-	type PublicCommunityListing,
-	type PublicCommunityProfile,
-	type PublicProfilePackageItem,
-	type ViewerListingInstall,
+import type {
+	OnboardingFeaturedListing,
+	PublicCommunityActivityItem,
+	PublicCommunityListing,
+	PublicCommunityProfile,
+	PublicProfilePackageItem,
+	ViewerListingInstall,
 } from '#universal/community-public-types.ts'
 import {
 	buildCommunityIconUrl,
@@ -19,11 +19,11 @@ import {
 	buildUserAvatarUrl,
 	getOwnerUsernameFromListingName,
 } from '#worker/community/public-urls.ts'
-import {
-	type CommunityActivityItem,
-	type CommunityListingWithAggregates,
-	type CommunityProfileRecord,
-	type PublicProfilePackage,
+import type {
+	CommunityActivityItem,
+	CommunityListingWithAggregates,
+	CommunityProfileRecord,
+	PublicProfilePackage,
 } from '#worker/community/types.ts'
 
 export {

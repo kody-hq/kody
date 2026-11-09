@@ -13,8 +13,10 @@ import {
 } from '#app/account-integrations-data.ts'
 import { loadConnectOauthChooser } from '#app/connect-oauth-chooser.ts'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
+import { loadResourceListScope } from '#worker/authorization/authorize.ts'
 import { joinAppUrl } from '#worker/app-base-url.ts'
-import { type ConnectOauthLoaderData } from '#universal/loader-data.ts'
+import type { ConnectOauthLoaderData } from '#universal/loader-data.ts'
 
 /**
  * Every working visit to /connect/oauth carries at least one of these:
@@ -96,7 +98,15 @@ export async function loadConnectOauthLoaderData(
 			chooser: user
 				? await loadConnectOauthChooser({
 						env,
-						userId: user.mcpUser.userId,
+						userId: ownerIdFromCaller({
+							request: user.request,
+							user: user.mcpUser,
+						}),
+						listScope: await loadResourceListScope(
+							{ env, request: user.request },
+							'integration:read',
+							'credential',
+						),
 						orgSlug: input.orgSlug,
 						orgApps: input.orgSlug
 							? (

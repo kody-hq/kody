@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { transform } from 'esbuild'
-import { type Plugin } from 'vite'
+import type { Plugin } from 'vite'
 
 export async function minifyInlineCss(source: string) {
 	// CSS input preprocessing treats CRLF as one newline, including after escapes.

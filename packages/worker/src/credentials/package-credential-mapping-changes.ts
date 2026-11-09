@@ -38,14 +38,14 @@ import {
 	type CredentialRef,
 	type CredentialTriggerRef,
 } from '#universal/credential-contracts.ts'
-import { type UsableCredential } from './credential-candidates.ts'
+import type { UsableCredential } from './credential-candidates.ts'
 import {
 	buildCredentialMappingUnchangedStatement,
 	buildWriteCredentialMappingStatement,
 	noteCredentialMappingWritesCommitted,
 	type CredentialMappingRowTarget,
 } from './credential-mappings.ts'
-import { type SavedCredentialNeed } from './credential-needs.ts'
+import type { SavedCredentialNeed } from './credential-needs.ts'
 import {
 	findStoredRow,
 	needAcceptsKind,

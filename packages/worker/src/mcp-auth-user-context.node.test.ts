@@ -168,6 +168,7 @@ test('buildMcpUserContextFromGrantProps resolves identity from the stable user i
 			emailVerified: false,
 			suspended: false,
 			passwordChangedAt: null,
+			guestExpiresAt: null,
 		})
 		expect(queries.map((query) => query.params)).toEqual([[grantProps.userId]])
 		for (const column of [
@@ -295,7 +296,7 @@ test('buildMcpUserContextWithOrgBindingFromGrantProps reads the user row and org
 	}
 	const grantProps = {
 		userId: ownerIdFromStored('stable-member'),
-		metadata: { orgId: ownerIdFromStored('org-team') },
+		orgId: ownerIdFromStored('org-team'),
 	} as GrantProps
 
 	const bound = await buildMcpUserContextWithOrgBindingFromGrantProps(

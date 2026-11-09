@@ -91,7 +91,10 @@ HTTP, use `control-kody request` with the same `--origin` (and `--dump` /
 `--contains` for HTML). Do not `cat` the session cookie into `curl` or Python.
 
 `--no-wait` fails immediately if the preview is not up. `--url` skips GitHub
-discovery. `--help` lists the rest.
+discovery, including when `--pr` is also set. Without `--sha`, `--url` accepts
+any healthy `/health` and does not check freshness against a PR head. Pass
+`--sha` with the `/health` `commitSha` (often the merge commit) when you need
+that match. `--help` lists the rest.
 
 On medium or high risk, running only the default smoke (health + empty login) is
 not enough. Add `--request` / `--check` for the flows this PR changes, or run
@@ -145,6 +148,23 @@ seeded remotely):
 - Email: `me@kentcdodds.com`
 - Password: `ilikecode`
 - Username: `user-me`
+
+Every preview seed also adds a second verified, non-admin account, and the
+`preview-seed:team-org` PR label adds a team org, so cross-account and
+owner/member checks need no invite round trip:
+
+- Member: `preview-member@example.com` / `ilikecode`, username `preview-member`.
+  It is not in the seed user's personal org, so it is the outside account for
+  consent, sharing, and refusal checks.
+- Team org `preview-team` (`/@preview-team`, label `preview-seed:team-org`): the
+  seed user is Owner and the member account is a Member on the team `members`.
+  It is opt-in because a second org makes MCP OAuth ask for one, so pass
+  `--org preview-team` (or `--org user-me`) to `control-kody execute` while it
+  exists. Removing the label does not delete the org.
+
+Sign in as the member with
+`npm run control-kody -- login --origin <preview> --email preview-member@example.com --password ilikecode`
+(or `/login` in a browser).
 
 The script signs in through `POST /auth` (Turnstile is off on preview). Sign in
 in a browser at `/login` with Email + Password and the **Sign in** button.
@@ -206,8 +226,9 @@ ready for review, add or remove a `preview-flag:` label, or re-run the
 workflow). The seed step fails closed for any other key, and `--enable-flag`
 with `--remote` refuses every wrangler env except `preview`.
 
-`execution-contexts` is on the allowlist. Label
-`preview-flag:execution-contexts` makes the seed step run:
+`execution-contexts` and `mcp-events-extension` are on the allowlist. Label
+`preview-flag:execution-contexts` or `preview-flag:mcp-events-extension` makes
+the seed step run the matching `--enable-flag`. For execution contexts:
 
 ```bash
 node tools/seed-test-data.ts --remote --config "$WRANGLER_CONFIG" \
@@ -226,6 +247,38 @@ Without the label, the next preview seed deletes that allowlisted override, and
 the flagged page does not appear. An unknown `preview-flag:` label fails the
 seed step. Adding or removing the label on a closed pull request does not
 deploy.
+
+## Paid plan on the preview seed
+
+The seed user's personal org is on `free` by default. Label the PR
+`preview-plan:<plan>` (`standard`, `pro`, or `max`) and let 🔎 Preview run to
+seed that plan instead. Removing the label resets the plan to `free` on the next
+seed, and an unknown plan or two plan labels fail the seed step. This sets
+`orgs.plan` only; it creates no Stripe customer, subscription, or credits, so
+checkout and billing webhooks still need local or E2E coverage. `--plan` with
+`--remote` refuses every wrangler env except `preview`.
+
+## Mock OAuth provider
+
+Each preview deploys `<preview>-mock-oauth` next to the mock Cloudflare API (the
+URL is in the preview comment). It is a stateless stand-in provider that
+approves every grant at once: `POST /device/code`, `POST /token` (device code,
+authorization code, refresh token), `GET /authorize`, and `GET /userinfo`
+(Bearer token from `/token`). A `client_id` containing `deny` gets
+`access_denied`. Point `integrationDeviceConnectStart` at it with any client id
+and secret, `deviceAuthorizationUrl: <mock>/device/code`, and
+`tokenUrl: <mock>/token`. Never send real provider credentials to it.
+
+## Authorization checks
+
+Preview, not production, is the required check for owner and member permission
+fixes. Label the PR `preview-seed:team-org`, then on its preview sign in as the
+seed user (Owner of `preview-team`), create the resource in `preview-team`,
+grant the member account Use, and confirm the member is refused the write. Then
+grant Write and confirm the member succeeds. Record the commands and results on
+the PR. No production test accounts or post-deploy authorization check are
+needed. The one exception: fixes that touch migrations or existing grant data
+also get a read-only production data check after deploy.
 
 ## Logged-in data and UI pass
 
@@ -258,10 +311,11 @@ Do not point Playwright at the preview for the repo E2E suite. Local E2E
 - **Workflow failed** — open the run, fix the deploy, push, re-run the script.
 - **Stale URL after a push** — `/health` can still report the previous commit
   until the new 🔎 Preview deploy finishes. The script waits until the workflow
-  run for this PR head is `completed`/`success` (unless you pass `--url` without
-  `--pr`) and `/health` matches the expected SHA (PR head, or a merge commit
-  that has that head as a parent, or `--sha`). Do not treat a healthy worker as
-  the new commit until that happens.
+  run for this PR head is `completed`/`success` (unless you pass `--url`) and
+  `/health` matches the expected SHA (PR head, or a merge commit that has that
+  head as a parent, or `--sha`). With `--url` and no `--sha`, any healthy
+  `/health` is accepted. Do not treat a healthy worker as the new commit until
+  that happens.
 
 Do not `gh workflow run preview.yml` with `target=pr` to "force" a PR preview.
 That dispatch checks out the workflow's ref (usually `main`), not the PR head.

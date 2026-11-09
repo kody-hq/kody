@@ -1,11 +1,11 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	createSnapshotFilesWorkspace,
 	runRepoChecks,
 	type RepoCheckRunResult,
 } from './checks.ts'
-import { type RepoCheckStep } from './isolated-runner-limit-message.ts'
-import { type PublishPhaseTimings } from './publish-phase-timing.ts'
+import type { RepoCheckStep } from './isolated-runner-limit-message.ts'
+import type { PublishPhaseTimings } from './publish-phase-timing.ts'
 
 /**
  * The one `runRepoChecks` call an authoring publish makes. Every path that
@@ -32,12 +32,14 @@ export async function runAuthoringPublishChecks(input: {
 	expectedPackageScope?: string
 	phaseTimings?: PublishPhaseTimings
 	/**
-	 * Only for a publish that rebuilds the same artifact targets right after
-	 * (a rebuild failure is reported as a bundle check). Previews and dry runs
-	 * never set this, so they always run the full bundle validation.
+	 * Only for a run that rebuilds the same artifact targets right after (a
+	 * rebuild failure is reported as a bundle check): git-push publish, and
+	 * `packageCheck`, which then builds them the way the rebuild does.
 	 */
 	deferBundleCheckToRebuild?: boolean
+	typecheckRanOffWorker?: boolean
 	onStep?: (step: RepoCheckStep) => Promise<void>
+	kodyIgnoredDeclarationFiles?: Array<string>
 }): Promise<RepoCheckRunResult> {
 	return await runRepoChecks({
 		workspace: input.workspace,
@@ -52,8 +54,14 @@ export async function runAuthoringPublishChecks(input: {
 			: {}),
 		...(input.phaseTimings ? { phaseTimings: input.phaseTimings } : {}),
 		...(input.onStep ? { onStep: input.onStep } : {}),
+		...(input.kodyIgnoredDeclarationFiles?.length
+			? { kodyIgnoredDeclarationFiles: input.kodyIgnoredDeclarationFiles }
+			: {}),
 		...(input.deferBundleCheckToRebuild === true
 			? { deferBundleCheckToRebuild: true }
+			: {}),
+		...(input.typecheckRanOffWorker === true
+			? { typecheckRanOffWorker: true }
 			: {}),
 	})
 }
@@ -72,6 +80,10 @@ export async function runAuthoringPublishChecksOnFiles(input: {
 	sourceId?: string
 	expectedPackageScope?: string
 	onStep?: (step: RepoCheckStep) => Promise<void>
+	/** See {@link runAuthoringPublishChecks}; `packageCheck` follows it with the rebuild. */
+	deferBundleCheckToRebuild?: boolean
+	typecheckRanOffWorker?: boolean
+	kodyIgnoredDeclarationFiles?: Array<string>
 }): Promise<RepoCheckRunResult> {
 	return await runAuthoringPublishChecks({
 		workspace: createSnapshotFilesWorkspace(
@@ -87,6 +99,15 @@ export async function runAuthoringPublishChecksOnFiles(input: {
 		...(input.sourceId ? { sourceId: input.sourceId } : {}),
 		...(input.expectedPackageScope !== undefined
 			? { expectedPackageScope: input.expectedPackageScope }
+			: {}),
+		...(input.deferBundleCheckToRebuild === true
+			? { deferBundleCheckToRebuild: true }
+			: {}),
+		...(input.typecheckRanOffWorker === true
+			? { typecheckRanOffWorker: true }
+			: {}),
+		...(input.kodyIgnoredDeclarationFiles?.length
+			? { kodyIgnoredDeclarationFiles: input.kodyIgnoredDeclarationFiles }
 			: {}),
 	})
 }

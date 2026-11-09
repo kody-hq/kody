@@ -1,6 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { WorkspaceUploads } from './workspace-uploads.tsx'
 import { useWorkspaceRail } from './use-workspace-rail.ts'
+import { CommandTrigger } from '../commands/provider.tsx'
 import { Outlet, useMatches } from '@tanstack/react-router'
 import { useShellData } from '../routes/__root.tsx'
 import { workspaceLayoutNavigation } from '../workspace-layout-policy.ts'
@@ -12,6 +13,7 @@ import {
 import { accountManagementNarrowMq } from '../pages/account-management-link-nav.tsx'
 import { BrandContextMenu } from './brand-context-menu.tsx'
 import { DemoIndicator } from './demo-indicator.tsx'
+import { GuestBanner } from '../pages/guest-banner.tsx'
 import { KodyMark } from './kody-mark.tsx'
 import { AccountMenu } from './org-switcher.tsx'
 import { SiteLink } from './site-link.tsx'
@@ -346,7 +348,11 @@ export function WorkspaceLayout() {
 										<span data-rail-label>Kody</span>
 									</SiteLink>
 								</BrandContextMenu>
-								<span data-rail-label>
+								<div
+									data-rail-label
+									css={{ display: 'flex', alignItems: 'center', gap: 4 }}
+								>
+									<CommandTrigger />
 									<AccountMenu
 										placement="sidebar"
 										organizations={session.organizations ?? []}
@@ -354,7 +360,7 @@ export function WorkspaceLayout() {
 										displayName={session.username || session.email}
 										avatarUrl={session.avatarUrl}
 									/>
-								</span>
+								</div>
 							</div>
 							<ShellWorkspaceSwitcher navigation={navigation} />
 							<div
@@ -545,6 +551,7 @@ export function WorkspaceLayout() {
 							display: fullPanel ? 'flex' : undefined,
 						}}
 					>
+						{session.guest ? <GuestBanner guest={session.guest} /> : null}
 						<Outlet />
 					</main>
 				</div>

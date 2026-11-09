@@ -12,6 +12,7 @@ import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { openRehearsalSession } from '../preview-rehearsal/kody-session.ts'
 import { mintCliToken } from '../preview-rehearsal/cli-token.ts'
+import { shouldRetryExecutionContextCli } from './retry.ts'
 
 const appOrigin = (process.env.PREVIEW_ORIGIN ?? '').replace(/\/+$/, '')
 const { protocol, hostname: host } = new URL(appOrigin || 'https://invalid')
@@ -54,7 +55,9 @@ function cliEnv(token: string) {
 	return env
 }
 
-function cli(env: NodeJS.ProcessEnv, args: Array<string>) {
+const cliRetryDelayMs = 2_000
+
+function runCli(env: NodeJS.ProcessEnv, args: Array<string>) {
 	return execFileSync(process.execPath, [cliEntry, ...args], {
 		env,
 		encoding: 'utf8',
@@ -62,6 +65,17 @@ function cli(env: NodeJS.ProcessEnv, args: Array<string>) {
 		windowsHide: true,
 		timeout: 180_000,
 	})
+}
+
+async function cli(env: NodeJS.ProcessEnv, args: Array<string>) {
+	try {
+		return runCli(env, args)
+	} catch (error) {
+		if (!shouldRetryExecutionContextCli(error, args)) throw error
+		log(`retrying ${args.join(' ')} after a transient API fetch failure`)
+		await delay(cliRetryDelayMs)
+		return runCli(env, args)
+	}
 }
 
 function workerdProcesses() {
@@ -104,11 +118,13 @@ function findShellResult(
 }
 
 async function main() {
-	const session = await openRehearsalSession(appOrigin, {
-		email: 'me@kentcdodds.com',
-		username: 'user-me',
-		password: 'ilikecode',
-	})
+	// With `preview-seed:team-org` the seed user is in two orgs and OAuth makes
+	// it pick one; the context lives in the personal org.
+	const session = await openRehearsalSession(
+		appOrigin,
+		{ email: 'me@kentcdodds.com', username: 'user-me', password: 'ilikecode' },
+		{ orgSlug: 'user-me' },
+	)
 	let ecid: string | null = null
 	try {
 		const token = await mintCliToken(
@@ -119,7 +135,7 @@ async function main() {
 		)
 		const env = cliEnv(token)
 		const registered = JSON.parse(
-			cli(env, [
+			await cli(env, [
 				'context',
 				'register',
 				'--name',
@@ -130,12 +146,12 @@ async function main() {
 		) as { ecid: string }
 		ecid = registered.ecid
 		log(`registered ${name} (${ecid})`)
-		cli(env, ['context', 'policy', 'allow', folder, '--mode', 'rw'])
+		await cli(env, ['context', 'policy', 'allow', folder, '--mode', 'rw'])
 		await session.api('executionContextUpdate', {
 			id: ecid,
 			grant: { fs: [{ path: folder, mode: 'rw' }] },
 		})
-		cli(env, ['context', 'commands', 'on', '--context', name, '--json'])
+		await cli(env, ['context', 'commands', 'on', '--context', name, '--json'])
 		log('host commands turned on locally')
 
 		const daemon = fork(
@@ -175,7 +191,7 @@ export default async function main() {
 }
 `,
 		)
-		const output = cli(env, [
+		const output = await cli(env, [
 			'execute',
 			'--file',
 			module,

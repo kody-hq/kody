@@ -5,7 +5,11 @@ import {
 	platformFeedbackResolutionPrUrlMaxLength,
 	platformFeedbackResolutionPrUrlsJsonMaxLength,
 } from './limits.ts'
-import { type PlatformFeedbackResolutionHistoryEntry } from './types.ts'
+import {
+	type PlatformFeedbackReopenHistoryEntry,
+	type PlatformFeedbackResolutionHistoryEntry,
+	platformFeedbackOutcomeStatuses,
+} from './types.ts'
 
 /**
  * Normalize an optional submitter-visible resolution note (same text as the
@@ -168,4 +172,61 @@ export async function platformFeedbackFollowUpVersion(input: {
 	return Array.from(digest.slice(0, 12), (byte) =>
 		byte.toString(16).padStart(2, '0'),
 	).join('')
+}
+
+/** Serialize reopen history (callers enforce the cap), or null when empty. */
+export function serializePlatformFeedbackReopenHistory(
+	entries: ReadonlyArray<PlatformFeedbackReopenHistoryEntry>,
+): string | null {
+	if (entries.length === 0) return null
+	return JSON.stringify(
+		entries.map((entry) => ({
+			from_status: entry.fromStatus,
+			to_status: entry.toStatus,
+			note: entry.note,
+			actor_user_id: entry.actorUserId,
+			recorded_at: entry.recordedAt,
+		})),
+	)
+}
+
+/** Parse stored reopen history; corrupt values become []. */
+export function parsePlatformFeedbackReopenHistory(
+	value: unknown,
+): Array<PlatformFeedbackReopenHistoryEntry> {
+	if (typeof value !== 'string' || value.length < 1) return []
+	try {
+		const parsed: unknown = JSON.parse(value)
+		if (!Array.isArray(parsed)) return []
+		return parsed.flatMap((entry) => {
+			if (!entry || typeof entry !== 'object') return []
+			const record = entry as Record<string, unknown>
+			const fromStatus = platformFeedbackOutcomeStatuses.find(
+				(status) => status === record['from_status'],
+			)
+			const note = record['note']
+			const actorUserId = record['actor_user_id']
+			const recordedAt = record['recorded_at']
+			if (
+				!fromStatus ||
+				record['to_status'] !== 'triaged' ||
+				typeof note !== 'string' ||
+				typeof actorUserId !== 'string' ||
+				typeof recordedAt !== 'string'
+			) {
+				return []
+			}
+			return [
+				{
+					fromStatus,
+					toStatus: 'triaged' as const,
+					note,
+					actorUserId,
+					recordedAt,
+				},
+			]
+		})
+	} catch {
+		return []
+	}
 }

@@ -17,7 +17,14 @@ import { parseWebhookUrlHandle } from './handle.ts'
 import { sessionRequestContext } from '#worker/test-support/request-context.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 
-import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	ownerIdFromStored,
+	personIdFromStored,
+} from '@kody-internal/shared/owner-person-ids.ts'
+import { findPublicOwnerIdentityByHandle } from '#worker/identity/user-lookup.ts'
+import { loadOrgBindingForSlug } from '#worker/orgs/repo.ts'
+import { deriveRequestContext } from '#worker/request-context/request-context.ts'
+import { hashWebhookUrlSecret } from './crypto.ts'
 const integrationMocks = vi.hoisted(() => ({
 	getJoinedIntegration: vi.fn(),
 	resolveIntegrationAccessToken: vi.fn(),
@@ -792,4 +799,187 @@ test('webhookUrlApply redacts {{webhookSecret}} from JSON and form-encoded error
 			redactedFailure,
 		)
 	}
+})
+
+const teamOrgId = 'org-kody-team'
+
+/**
+ * `kentcdodds` acts in the `kody` team org, which owns the package. The
+ * injected URL must name the owning namespace, never the acting person.
+ */
+async function setupTeamOrgPackage() {
+	vi.mocked(loadPackageManifestBySourceId).mockResolvedValue({
+		manifest: {
+			name: '@kody/sentry-bridge',
+			exports: { './handle-sentry-webhook': './src/handle-sentry-webhook.ts' },
+			kody: {
+				id: 'sentry-bridge',
+				description: 'Sentry bridge',
+				webhooks: [
+					{
+						name: 'sentry',
+						export: './handle-sentry-webhook',
+						responseMode: 'ack',
+					},
+				],
+			},
+		},
+	} as never)
+	const personId = testStableUserIdFromEmail('kent@example.com')
+	const sqlite = new DatabaseSync(':memory:')
+	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
+	const db = createD1FromSqlite(sqlite)
+	const env = {
+		APP_DB: db,
+		APP_BASE_URL: 'https://heykody.dev',
+		SECRET_STORE_KEY: 'test-secret-store-key-32-chars-minimum',
+		SENTRY_ENVIRONMENT: 'test',
+	} as unknown as Env
+	await db
+		.prepare(
+			`INSERT INTO users (username, email, password_hash, stable_user_id)
+			VALUES ('kentcdodds', 'kent@example.com', 'hash', ?)`,
+		)
+		.bind(personId)
+		.run()
+	await provisionPersonalOrgForSqliteUser(sqlite, {
+		stableUserId: personId,
+		username: 'kentcdodds',
+	})
+	const now = '2026-11-07T00:00:00.000Z'
+	await db.batch([
+		db
+			.prepare(
+				`INSERT INTO orgs (id, slug, display_name, created_at, updated_at)
+				VALUES (?, 'kody', 'Kody', ?, ?)`,
+			)
+			.bind(teamOrgId, now, now),
+		db
+			.prepare(
+				`INSERT INTO handles (handle, user_id, org_id, created_at)
+				VALUES ('kody', NULL, ?, ?)`,
+			)
+			.bind(teamOrgId, now),
+		db
+			.prepare(
+				`INSERT INTO org_memberships (org_id, user_id, role, created_at)
+				VALUES (?, ?, 'owner', ?)`,
+			)
+			.bind(teamOrgId, personId, now),
+	])
+	const binding = await loadOrgBindingForSlug(db, personId, 'kody')
+	if (!binding) throw new Error('expected team org membership')
+	const mcpUser = {
+		userId: personIdFromStored(personId),
+		username: 'kentcdodds',
+	}
+	const request = deriveRequestContext({
+		user: mcpUser,
+		source: { kind: 'session' },
+		orgBinding: binding,
+	})
+	const ownerId = ownerIdFromStored(teamOrgId)
+	const { handle, endpointId } = await mintWebhookUrlForUser({
+		env,
+		request,
+		userId: ownerId,
+		email: 'kent@example.com',
+		username: 'kentcdodds',
+		kodyId: 'sentry-bridge',
+		webhookName: 'sentry',
+	})
+	return {
+		db,
+		env,
+		endpointId,
+		apply: (username: string) =>
+			applyWebhookUrlForUser({
+				env,
+				request,
+				userId: ownerId,
+				email: 'kent@example.com',
+				username,
+				handle,
+				destination: {
+					type: 'http',
+					url: hooksRegister,
+					headers: { 'Content-Type': 'application/json' },
+					body: '{"url":"{{webhookUrl}}"}',
+				},
+			}),
+	}
+}
+
+async function injectedWebhookUrl(apply: () => Promise<unknown>) {
+	using fetchMock = fetchResponding(JSON.stringify({ id: 'hook-1' }), {
+		status: 201,
+	})
+	await expect(apply()).resolves.toMatchObject({ ok: true })
+	return new URL(
+		(JSON.parse(String(requestOf(fetchMock).init.body)) as { url: string }).url,
+	)
+}
+
+test('webhookUrlApply injects the owning team org namespace, not the acting person', async () => {
+	const { db, endpointId, apply } = await setupTeamOrgPackage()
+
+	const url = await injectedWebhookUrl(() => apply('kentcdodds'))
+
+	expect(url.origin).toBe('https://heykody.dev')
+	const [namespace, segment, kodyId, webhookName, secret] = url.pathname
+		.split('/')
+		.filter(Boolean)
+	expect({ namespace, segment, kodyId, webhookName }).toEqual({
+		namespace: '@kody',
+		segment: 'webhooks',
+		kodyId: 'sentry-bridge',
+		webhookName: 'sentry',
+	})
+	// Ingress resolves the namespace to the org that owns the endpoint row.
+	await expect(
+		findPublicOwnerIdentityByHandle({ db, handle: 'kody' }),
+	).resolves.toEqual({ handle: 'kody', ownerId: teamOrgId })
+	const endpoint = await db
+		.prepare(
+			`SELECT user_id, url_secret_hash FROM webhook_endpoints WHERE id = ?`,
+		)
+		.bind(endpointId)
+		.first<{ user_id: string; url_secret_hash: string }>()
+	expect(endpoint?.user_id).toBe(teamOrgId)
+	expect(endpoint?.url_secret_hash).toBe(
+		await hashWebhookUrlSecret(decodeURIComponent(secret!)),
+	)
+})
+
+test('webhookUrlApply never routes a URL through a caller handle that resolves to another owner', async () => {
+	const team = await setupTeamOrgPackage()
+	// A team-org caller naming its personal handle still gets the org namespace.
+	expect(
+		(await injectedWebhookUrl(() => team.apply('kentcdodds'))).pathname,
+	).toMatch(/^\/@kody\/webhooks\/sentry-bridge\/sentry\//)
+
+	// A personal caller naming a team handle keeps its personal namespace.
+	const personal = await setupOwner()
+	await personal.db
+		.prepare(
+			`INSERT INTO orgs (id, slug, display_name, created_at, updated_at)
+			VALUES ('org-other', 'other-team', 'Other', '2026-11-07', '2026-11-07')`,
+		)
+		.run()
+	const url = await injectedWebhookUrl(() =>
+		applyWebhookUrlForUser({
+			env: personal.env,
+			request: sessionRequestContext(personal.userId),
+			userId: ownerIdFromStored(personal.userId),
+			username: 'other-team',
+			handle: personal.handle,
+			destination: {
+				type: 'http',
+				url: hooksRegister,
+				body: '{"url":"{{webhookUrl}}"}',
+			},
+		}),
+	)
+	expect(url.pathname).toMatch(/^\/@owner\/webhooks\/sentry-bridge\/sentry\//)
+	expect(url.toString()).toBe(await personal.reveal())
 })

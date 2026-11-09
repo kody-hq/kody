@@ -425,3 +425,35 @@ test('toApiError reports an unreadable confirm (no observed ref) as an unknown r
 		ref_state: 'unknown',
 	})
 })
+
+test('toApiError reports a profile denial as profile_grant, not insufficient_scope', () => {
+	const message =
+		'Profile "helper" was not granted secret:use on credential "notes-api-key".'
+	const apiError = toApiError(
+		new AuthorizationError({
+			code: 'profile_grant',
+			permission: 'secret:use',
+			orgId: null,
+			resource: null,
+			message,
+		}),
+	)
+	expect(apiError).toMatchObject({
+		status: 403,
+		code: 'profile_grant',
+		message,
+		details: { required_permission: 'secret:use', denial: 'profile_grant' },
+	})
+	expect(apiError.details).not.toHaveProperty('mint_scopes')
+	expect(
+		toApiError(
+			new AuthorizationError({
+				code: 'profile_inactive',
+				permission: 'secret:use',
+				orgId: null,
+				resource: null,
+				message: 'Profile "helper" is revoked.',
+			}),
+		),
+	).toMatchObject({ status: 403, code: 'profile_inactive' })
+})

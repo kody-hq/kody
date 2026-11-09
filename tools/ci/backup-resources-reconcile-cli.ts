@@ -1,6 +1,6 @@
 import { isExecutedDirectly } from '../node-runtime.ts'
 import { runBackupResourcesCli } from './backup-resources-cli.ts'
-import { type AdhocBackupPolicyProof } from './backup-resources.ts'
+import type { AdhocBackupPolicyProof } from './backup-resources.ts'
 
 type ReconciliationResult =
 	| {

@@ -17,13 +17,13 @@ import {
 	AuthorizationError,
 	authorizePackageWrite,
 } from '#worker/authorization/authorize.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { approveWentPublicRequest } from '#app/account-package-approval-requests.ts'
 import { loadPublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
 import { isPackageCredentialSuppliersEnabled } from '#worker/credentials/credential-suppliers-flag.ts'
 import { logOrgAuditEvent } from '#worker/orgs/org-audit.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { loadPublishedEntityManifest } from '#worker/repo/published-source.ts'
 import {
@@ -41,6 +41,7 @@ import { findPublishedPackageStorageMatches } from './package-storage-use.ts'
 import {
 	buildSelfPublishBlockerDetail,
 	credentialAndStorageReasonsFromEntries,
+	declaresAny,
 	selfPublishCapabilityManifestFields,
 	type SelfPublishBlocker,
 	type SelfPublishBlockerDetail,
@@ -64,11 +65,10 @@ export type SelfPublishEligibility =
 			reasons: Array<SelfPublishBlockerReason>
 	  }
 
-function declaresAny(value: unknown) {
-	if (value == null) return false
-	if (Array.isArray(value)) return value.length > 0
-	if (typeof value === 'object') return Object.keys(value).length > 0
-	return true
+function slotDescription(slot: unknown) {
+	if (typeof slot !== 'object' || slot === null) return ''
+	const description = (slot as { description?: unknown }).description
+	return typeof description === 'string' ? description : ''
 }
 
 type TreePackageResult =
@@ -121,9 +121,20 @@ async function evaluateTreePackage(
 		declaresAny(kody.credentials) ||
 		declaresAny(kody.invalidCredentialSlots)
 	) {
-		const slots = Object.values(
+		const declared = Object.entries(
 			(kody.credentials ?? {}) as Record<string, unknown>,
 		)
+		const slots = declared.map(([, slot]) => slot)
+		const needs = [
+			...declared.map(([key, slot]) => ({
+				key,
+				description: slotDescription(slot),
+			})),
+			...Object.keys(kody.invalidCredentialSlots ?? {}).map((key) => ({
+				key,
+				description: '',
+			})),
+		]
 		// With the flag off, `supplier` is ignored and nothing is visitor-supplied.
 		const suppliersEnabled = await isPackageCredentialSuppliersEnabled({
 			db: env.APP_DB,
@@ -146,6 +157,7 @@ async function evaluateTreePackage(
 					sourceId,
 					needCount: Math.max(1, slots.length),
 					...(executorNeedCount > 0 ? { executorNeedCount } : {}),
+					needs,
 				},
 			],
 		}
@@ -182,6 +194,10 @@ async function evaluateTreePackage(
 					sourceId,
 					needCount: needs.length,
 					...(executorNeedCount > 0 ? { executorNeedCount } : {}),
+					needs: needs.map((need) => ({
+						key: need.key,
+						description: need.description ?? '',
+					})),
 				},
 			],
 		}

@@ -1,4 +1,4 @@
-import { type AdminFeatureFlagsLoaderData } from '#universal/loader-data.ts'
+import type { AdminFeatureFlagsLoaderData } from '#universal/loader-data.ts'
 import { listFeatureFlagsForAdmin } from '#worker/feature-flags/service.ts'
 import { attachFeatureFlagMetricReadouts } from '#worker/feature-flags/success-metric-readout.ts'
 

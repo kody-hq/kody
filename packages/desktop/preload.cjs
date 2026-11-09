@@ -24,6 +24,8 @@ if (process.isMainFrame && location.origin === origin) {
 				}
 			: {}),
 		execution: {
+			// Machine sign-in approves in an app window when the session allows.
+			approvesInApp: true,
 			commandsStatus: () =>
 				ipcRenderer.invoke('kody:execution', 'commands-status'),
 			enableCommands: () => ipcRenderer.invoke('kody:execution', 'commands-on'),
@@ -43,6 +45,14 @@ if (process.isMainFrame && location.origin === origin) {
 			dismissOnboarding: () => ipcRenderer.invoke('kody:execution', 'dismiss'),
 			completeOnboarding: () =>
 				ipcRenderer.invoke('kody:execution', 'complete'),
+			// The native Machine menu asks the page to pause, resume, update, or
+			// show the log; the page takes the request so a reload cannot repeat it.
+			takeMenuCommand: () => ipcRenderer.invoke('kody:machine-menu'),
+			onMenuCommand: (callback) => {
+				const listener = () => callback()
+				ipcRenderer.on('kody:machine-menu', listener)
+				return () => ipcRenderer.removeListener('kody:machine-menu', listener)
+			},
 		},
 		navigation: {
 			getState: () => ipcRenderer.invoke('kody:navigation', 'state'),

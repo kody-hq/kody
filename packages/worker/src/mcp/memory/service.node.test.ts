@@ -26,9 +26,9 @@ import {
 	upsertMemory,
 	verifyMemoryCandidate,
 } from './service.ts'
-import {
-	type McpMemoryConversationSuppressionRow,
-	type McpMemoryRow,
+import type {
+	McpMemoryConversationSuppressionRow,
+	McpMemoryRow,
 } from './types.ts'
 
 function createMemoryTestDb() {
@@ -816,7 +816,8 @@ test('rankMemoryVectorIdsWithin orders by similarity and drops other owners', as
 		memoryIds: ['far', 'close', 'foreign'],
 		embedText: async () => [1, 0],
 	})
-	expect(ranked).toEqual(['close', 'far'])
+	expect(ranked.map((hit) => hit.id)).toEqual(['close', 'far'])
+	expect(ranked[0]?.score).toBeCloseTo(1)
 })
 
 test('force deletion removes an already soft-deleted memory only for its authorized owner', async () => {

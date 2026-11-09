@@ -1,7 +1,7 @@
 import { expect, test, vi } from 'vitest'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import type * as CloudflareEmail from '#app/email/cloudflare-email.ts'
-import { type PlatformFeedbackRecord } from './types.ts'
+import type { PlatformFeedbackRecord } from './types.ts'
 
 const sendCloudflareEmail = vi.fn<typeof CloudflareEmail.sendCloudflareEmail>(
 	async () => ({ ok: true }),
@@ -36,6 +36,7 @@ const feedback: PlatformFeedbackRecord = {
 	resolutionNote: null,
 	resolutionPrUrls: [],
 	resolutionHistory: [],
+	reopenHistory: [],
 	createdAt: '2026-07-19T00:00:00.000Z',
 	updatedAt: '2026-07-19T01:00:00.000Z',
 }

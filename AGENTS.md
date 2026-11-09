@@ -11,7 +11,8 @@ behavior. Never add unstyled native selects. Verify the rendered result.
 Open the page that owns the task:
 
 - Docs map: [contributing](./docs/contributing/index.md) ·
-  [principles](./docs/principles/index.md) · [skills](./.agents/skills/)
+  [principles](./docs/principles/index.md) · [skills](./.agents/skills/) ·
+  [blog posts](./docs/contributing/blog.md) (category and series rules)
 - Invite a whole team: [organizations](./docs/guides/organizations.md)
   (`guide:organizations`, `inviteLinkCreate`)
 - Cloud Agent VM gotchas (Node, Playwright, dev server, seeding, limits):

@@ -36,6 +36,9 @@ vi.mock('../../src/files/public-links.ts', () => ({
 		file: unknown,
 	) => file,
 }))
+vi.mock('../../src/files/feature.ts', () => ({
+	fileCollaborationEnabled: async () => true,
+}))
 vi.mock('../../src/files/client.ts', () => ({
 	fileStoreRpc: () => ({ read: state.read }),
 }))

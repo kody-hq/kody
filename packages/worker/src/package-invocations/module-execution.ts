@@ -1,16 +1,17 @@
+import { servingCommitForSource } from '#worker/repo/serving-commit.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { persistableExecutionArtifacts } from '#mcp/downstream-mcp-result.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { runBundledModuleWithRegistry } from '#mcp/run-kody-registry.ts'
-import { type AutomationRouting } from '#worker/execution-contexts/automation-execution.ts'
+import type { AutomationRouting } from '#worker/execution-contexts/automation-execution.ts'
 import { resolvePackageAutomationRouting } from './automation-routing.ts'
-import { type AutomationExecutionTarget } from '#worker/execution-contexts/automation-settings.ts'
-import {
-	type RunRecordContext,
-	type RunRecordHandle,
+import type { AutomationExecutionTarget } from '#worker/execution-contexts/automation-settings.ts'
+import type {
+	RunRecordContext,
+	RunRecordHandle,
 } from '#worker/run-records/types.ts'
 import { withRunStartedBy } from '#worker/run-records/service.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { getEntitySourceByIdForUser } from '#worker/repo/entity-sources.ts'
 import {
 	getEmailAttachmentById,
@@ -250,7 +251,8 @@ export async function runSavedPackageModuleOnce(
 						userId: input.actor.orgId,
 					})
 		const resolvedPublishedCommit =
-			artifact.publishedCommit ?? repoSource?.published_commit ?? null
+			artifact.publishedCommit ??
+			(repoSource ? servingCommitForSource(repoSource) : null)
 		input.sourceRevision?.onResolved?.(resolvedPublishedCommit)
 		const pinnedCommit = input.sourceRevision?.pinnedCommit ?? null
 		if (pinnedCommit && pinnedCommit !== resolvedPublishedCommit) {

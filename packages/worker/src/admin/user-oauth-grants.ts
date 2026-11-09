@@ -11,7 +11,7 @@ import {
 	type OAuthGrantListItem,
 } from '#worker/oauth-grants.ts'
 import { oauthGrantCreatedAtIso } from '#universal/connected-mcp-agents.ts'
-import { readOrgIdFromGrantMetadataOrUserId } from '#worker/orgs/oauth-grant.ts'
+import { readOrgIdFromGrantMetadata } from '#worker/orgs/oauth-grant.ts'
 
 export type AdminUserOauthGrant = {
 	grantId: string
@@ -33,8 +33,7 @@ export type AdminUserOauthGrantsResult = {
 
 /**
  * List one person's MCP OAuth grants with the org each grant is bound to.
- * Bound org prefers stamped `metadata.orgId`; pre-stamp grants fall back to
- * the person's personal org id (`userId`). Last-used is per client id from
+ * Bound org is the stamped `metadata.orgId`. Last-used is per client id from
  * UserMeter when available.
  */
 export async function loadAdminUserOauthGrants(input: {
@@ -70,9 +69,7 @@ export async function loadAdminUserOauthGrants(input: {
 			stableUserId,
 			username: user.username,
 			email: user.email,
-			grants: grants.map((grant) =>
-				toAdminGrant(grant, stableUserId, lastUsedByClientId),
-			),
+			grants: grants.map((grant) => toAdminGrant(grant, lastUsedByClientId)),
 			listingFailed: false,
 		}
 	} catch {
@@ -88,16 +85,12 @@ export async function loadAdminUserOauthGrants(input: {
 
 function toAdminGrant(
 	grant: OAuthGrantListItem,
-	userId: string,
 	lastUsedByClientId: ReadonlyMap<string, string>,
 ): AdminUserOauthGrant {
 	return {
 		grantId: grant.id,
 		clientId: grant.clientId,
-		boundOrgId: readOrgIdFromGrantMetadataOrUserId({
-			metadata: grant.metadata,
-			userId,
-		}),
+		boundOrgId: readOrgIdFromGrantMetadata(grant.metadata),
 		createdAt: oauthGrantCreatedAtIso(grant.createdAt),
 		lastUsedAt: grant.clientId
 			? (lastUsedByClientId.get(grant.clientId) ?? null)

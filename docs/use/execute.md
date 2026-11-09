@@ -203,8 +203,17 @@ notifications do not reset that clock. Before that client deadline, hosted
 **execute** returns `inProgress: true` with **`runId`** and **`idempotencyKey`**
 instead of letting the timeout look like a failed mutation with nothing to
 follow. The sandbox keeps running. Poll **`runGet({ run_id: runId })`** with
-that `runId`. Retry **execute** with the same `idempotencyKey` to read the
-in-progress or retained result. Do not start a second mutation.
+that `runId`; once the run finishes, its **`result`** field holds the return
+value (capped at 4 KiB). Retry **execute** with the same `idempotencyKey` to
+read the in-progress or retained result. Do not start a second mutation.
+
+After that follow response, the run has about **20s** more to finish (about 65s
+in total) on hosted MCP and Open API execute, because the Worker only keeps work
+alive briefly once the response is sent. A run still going then stops with
+`Execution timed out after …s` on its run record, so `runGet` and keyed retries
+report that outcome right away. The CLI's cloud execute (`POST /v1/execute`)
+waits out the whole sandbox budget instead of returning a follow handle. Work
+that needs longer belongs in a workflow, a job, or `execute --local`.
 
 You can omit **`idempotencyKey`**. When Kody can record the run, it assigns one
 (`execute:…`) and returns it on that follow response. Pass your own key (string,
@@ -246,8 +255,10 @@ call itself is always through the imported `kody` object.
 By default execute runs on Kody cloud. With the execution contexts experiment
 on, it can run on your own machine instead: pass `context` (with optional
 `fallback: "chain"`), a per-run `chain`, or `requires: ["fs" | "lan"]`, or let
-your default chain decide. Every routed result carries `ranOn`. Credentials stay
-in Kody cloud. See the
+your default chain decide. Every routed result carries `ranOn`. `workerUnits` is
+0 on a context and, on Kody cloud, 1 only the first time that worker runs that
+UTC day. An in-progress cloud response omits `workerUnits`. `runGet`
+`metadata.ranOn` does not include it. Credentials stay in Kody cloud. See the
 [Execution contexts guide](../guides/execution-contexts.md) and the
 [field reference](./execution-contexts.md); turn the experiment on at
 [`/account/experiments`](https://kody.codes/account/experiments) or with
@@ -343,6 +354,11 @@ wrote storage. `sql(...)` returns at most 1000 rows and sets `truncated: true`
 when more matched — page with `LIMIT`/`OFFSET` (or a keyset) for larger results.
 Mutating statements that yield rows (`INSERT`/`UPDATE`/`DELETE … RETURNING`)
 still finish the write when truncated; only the returned row list is capped.
+
+Each `get` / `set` / `delete` / `sql` call is an independent request, with no
+multi-key transaction or compare-and-swap. For indexes that concurrent writers
+share, see
+[Concurrency and multi-key updates](./packages.md#concurrency-and-multi-key-updates).
 
 A read that examines a lot of rows is allowed and metered on the monthly Rows
 read include. `warning` is a string once the statement examines at least

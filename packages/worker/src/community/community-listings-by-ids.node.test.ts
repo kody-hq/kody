@@ -15,7 +15,7 @@ import {
 	getCommunityListingWithAggregates,
 	getCommunityListingsByIds,
 } from './service.ts'
-import { type CommunityListingStatus } from './types.ts'
+import type { CommunityListingStatus } from './types.ts'
 
 async function createListingsDb() {
 	const sqlite = new DatabaseSync(':memory:')

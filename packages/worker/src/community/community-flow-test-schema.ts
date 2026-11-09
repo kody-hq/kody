@@ -5,6 +5,8 @@ import { ensureSavedPackageInternetVisibleColumn } from '#worker/package-registr
 import { ensureSoftDeleteTestColumns } from '#worker/soft-delete/test-schema.ts'
 import { ensureFollowTables } from '#worker/follow/repo.ts'
 import { communityForksDeleteCascadeStatements } from './community-forks-delete-cascade.ts'
+import { communityForksTableSql } from './community-forks-test-schema.ts'
+import { entitySourcesTableSql } from '#worker/repo/entity-sources-test-schema.ts'
 
 /**
  * Community flow workers-unit schema. Adds the community tables and the
@@ -53,21 +55,7 @@ export async function ensureCommunityFlowSchema(db: D1Database) {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_saved_package_search_index_debt_user_id
 			ON saved_package_search_index_debt(user_id)`,
-		`CREATE TABLE IF NOT EXISTS entity_sources (
-			id TEXT PRIMARY KEY,
-			user_id TEXT NOT NULL,
-			entity_kind TEXT NOT NULL,
-			entity_id TEXT NOT NULL,
-			repo_id TEXT NOT NULL,
-			published_commit TEXT,
-			indexed_commit TEXT,
-			manifest_path TEXT NOT NULL DEFAULT 'package.json',
-			source_root TEXT NOT NULL DEFAULT '/',
-			last_external_check_at TEXT,
-			external_check_until TEXT,
-			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL
-		)`,
+		entitySourcesTableSql,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_entity_sources_user_entity
 			ON entity_sources(user_id, entity_kind, entity_id)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_entity_sources_repo_id
@@ -124,21 +112,7 @@ export async function ensureCommunityFlowSchema(db: D1Database) {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_package_slug_redirects_package_id
 			ON package_slug_redirects(package_id)`,
-		`CREATE TABLE IF NOT EXISTS community_forks (
-			id TEXT PRIMARY KEY NOT NULL,
-			listing_id TEXT, upstream_owner_id TEXT, upstream_package_id TEXT,
-			forker_user_id TEXT NOT NULL,
-			origin_commit TEXT NOT NULL,
-			forked_package_id TEXT NOT NULL,
-			forked_source_id TEXT NOT NULL,
-			target_kody_id TEXT NOT NULL,
-			listing_name TEXT,
-			listing_kody_id TEXT,
-			adopted_at TEXT,
-			adoption_note TEXT,
-			actor TEXT CHECK (actor IS NULL OR actor IN ('human', 'agent')),
-			created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
-		)`,
+		communityForksTableSql,
 		`CREATE TABLE IF NOT EXISTS community_fork_claims (
 			owner_id TEXT NOT NULL,
 			listing_id TEXT NOT NULL,
@@ -222,7 +196,6 @@ export async function ensureCommunityFlowSchema(db: D1Database) {
 			package_id TEXT NOT NULL,
 			webhook_name TEXT NOT NULL,
 			url_secret_hash TEXT NOT NULL DEFAULT '',
-			enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
 			instance_label TEXT,
 			created_at TEXT NOT NULL,
 			rotated_at TEXT NOT NULL

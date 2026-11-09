@@ -1,7 +1,7 @@
-import { type Query, type QueryClient } from '@tanstack/react-query'
+import type { Query, QueryClient } from '@tanstack/react-query'
 import { invalidatePageResources } from '../page-invalidation-cache.ts'
 import { pageQueryInputOrg } from '../page-query-scope.ts'
-import { type PageResource } from '../page-resources.ts'
+import type { PageResource } from '../page-resources.ts'
 import { invalidateShellQueries } from '../shell-query.ts'
 
 export const profileResources = [
@@ -47,6 +47,15 @@ export async function settleAccountMutation(
 		.map((query) => query.promise)
 	await Promise.allSettled(firstReads)
 	await Promise.all([
+		resources.includes('loadJobsPage')
+			? client.invalidateQueries({
+					predicate: (query) =>
+						query.queryKey[0] === 'command-search' &&
+						query.queryKey[3] === 'job' &&
+						(options.orgSlug === undefined ||
+							query.queryKey[2] === options.orgSlug),
+				})
+			: undefined,
 		invalidatePageResources(
 			client,
 			actorKey,

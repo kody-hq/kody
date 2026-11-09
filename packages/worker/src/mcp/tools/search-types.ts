@@ -1,17 +1,17 @@
-import { type searchCapabilities } from '#mcp/capabilities/capability-search.ts'
-import { type getCapabilityRegistryForContext } from '#mcp/capabilities/registry.ts'
-import { type SecretSearchRow } from '#mcp/secrets/types.ts'
-import { type MemoryToolSummary } from '#mcp/tools/memory-tool-context.ts'
-import { type JoinedIntegration } from '#worker/integrations/types.ts'
-import { type PackageSearchProjection } from '#worker/package-registry/manifest.ts'
-import { type PackageReadmeSnippet } from '#worker/package-registry/package-readme.ts'
-import { type listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'
+import type { searchCapabilities } from '#mcp/capabilities/capability-search.ts'
+import type { getCapabilityRegistryForContext } from '#mcp/capabilities/registry.ts'
+import type { SecretSearchRow } from '#mcp/secrets/types.ts'
+import type { MemoryToolSummary } from '#mcp/tools/memory-tool-context.ts'
+import type { JoinedIntegration } from '#worker/integrations/types.ts'
+import type { PackageSearchProjection } from '#worker/package-registry/manifest.ts'
+import type { PackageReadmeSnippet } from '#worker/package-registry/package-readme.ts'
+import type { listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'
 
-import {
-	type JevSearchRerankOutcome,
-	type SearchMatch,
+import type {
+	JevSearchRerankOutcome,
+	SearchMatch,
 } from './search-format-types.ts'
-import { type SearchIntent } from './understand-search-query.ts'
+import type { SearchIntent } from './understand-search-query.ts'
 
 export type { JevSearchRerankOutcome }
 

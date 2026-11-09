@@ -1,11 +1,12 @@
-import { type EcpGrant } from '@kody-internal/shared/execution-context-protocol/index.ts'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { EcpGrant } from '@kody-internal/shared/execution-context-protocol/index.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import {
 	resolveCallerFeatureFlags,
 	type CallerFeatureFlags,
 } from '#mcp/capabilities/access-control.ts'
-import { type ApiTokenRecord } from '#worker/api-tokens/service.ts'
-import { type CapabilityOpenApiPrincipal } from '#mcp/capabilities/types.ts'
+import type { ApiTokenRecord } from '#worker/api-tokens/service.ts'
+import type { CapabilityOpenApiPrincipal } from '#mcp/capabilities/types.ts'
+import type { CredentialCallMap } from '#worker/credentials/credential-call-map.ts'
 
 /**
  * Who is calling the Open API.
@@ -43,6 +44,8 @@ export type ApiPrincipal =
 			runtime: EcpGrant['runtime']
 			/** The requester operates the context: cloud-equivalent Kody access. */
 			byOperator: boolean
+			/** The run's credential call map from its lease (never from the machine). */
+			callMap?: CredentialCallMap | null
 	  }
 
 export function toCapabilityOpenApiPrincipal(
@@ -71,6 +74,8 @@ export type ApiInvocationContext = {
 	}
 	principal: ApiPrincipal
 	waitUntil?: (promise: Promise<unknown>) => void
+	/** The HTTP caller's IP, when the request came over HTTP. */
+	clientIp?: string | null
 	/** Worker entrypoint exports for hosted execute loopback. */
 	loopbackExports?: Cloudflare.Exports
 	/** Memoized per invocation; resolves on first flag-gated check. */

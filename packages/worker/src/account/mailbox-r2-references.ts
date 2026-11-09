@@ -1,5 +1,5 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type MailboxEnv } from '#worker/email/mailbox-client.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { MailboxEnv } from '#worker/email/mailbox-client.ts'
 import { listInternalUserEmailBlobReferences } from '#worker/email/mailbox-internal-read.ts'
 import {
 	mailboxBlobRefAttachmentCursorPrefix,

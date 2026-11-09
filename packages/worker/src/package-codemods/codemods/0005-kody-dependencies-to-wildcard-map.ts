@@ -4,10 +4,10 @@ import {
 	kodyPackageDependencyWildcard,
 	listKodyPackageDependencyNames,
 } from '#worker/package-registry/types.ts'
-import {
-	type PackageCodemod,
-	type PackageCodemodFinding,
-	type PackageCodemodTransformResult,
+import type {
+	PackageCodemod,
+	PackageCodemodFinding,
+	PackageCodemodTransformResult,
 } from '../types.ts'
 
 export const kodyDependenciesToWildcardMapCodemodId =

@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import {
 	resolvePersonId,
 	resolveTeamId,
@@ -10,6 +10,13 @@ import {
 	attachContext,
 	cancelContextRun,
 	chainResponse,
+	daemonConfig,
+	daemonLogs,
+	daemonRestart,
+	daemonStatus,
+	daemonUpdate,
+	pauseContext,
+	resumeContext,
 	detachContext,
 	deleteContext,
 	getContextDetail,
@@ -26,6 +33,10 @@ import {
 	setSharing,
 	updateContext,
 } from '#worker/execution-contexts/service.ts'
+import {
+	dismissContextNotice,
+	previewShare,
+} from '#worker/execution-contexts/notices-service.ts'
 
 const domain = capabilityDomainNames.executionContexts
 const idSchema = z
@@ -148,11 +159,30 @@ export const executionContextUpdateCapability = defineDomainCapability(domain, {
 			.regex(/^[a-z0-9][a-z0-9-]{0,62}$/)
 			.optional(),
 		grant: grantPatchSchema.optional(),
+		team_slug: z
+			.string()
+			.min(1)
+			.nullable()
+			.optional()
+			.describe(
+				'The team this machine is for (null clears). Grants nothing: Kody flags the machine when its login is not an agent profile assigned to that team. Needs Manage.',
+			),
 	}),
 	async handler(args, ctx) {
-		return await updateContext(await caller(ctx), args.id, {
+		const resolved = await caller(ctx)
+		const teamId =
+			args.team_slug === undefined
+				? undefined
+				: args.team_slug === null
+					? null
+					: await resolveTeamId(ctx.env.APP_DB, resolved.orgId, {
+							teamId: null,
+							teamSlug: args.team_slug,
+						})
+		return await updateContext(resolved, args.id, {
 			...(args.name ? { name: args.name } : {}),
 			...(args.grant ? { grant: args.grant as never } : {}),
+			...(teamId !== undefined ? { teamId } : {}),
 		})
 	},
 })
@@ -269,7 +299,7 @@ export const executionContextShareSetCapability = defineDomainCapability(
 				.boolean()
 				.optional()
 				.describe(
-					"Also grant execution_context:command: this person or team may run host commands (kody.command.*) on the machine as the operator's OS user. Off by default; no preset includes it. The machine must also have commands turned on locally.",
+					"Refused with commands_operator_only: host commands (kody.command.*) run only for the context's operator, so shares never include execution_context:command.",
 				),
 			all_members: z.boolean().optional(),
 		}),
@@ -494,3 +524,252 @@ export const executionChainSetCapability = defineDomainCapability(domain, {
 		})
 	},
 })
+
+export const executionContextNoticeDismissCapability = defineDomainCapability(
+	domain,
+	{
+		name: 'executionContextNoticeDismiss',
+		contextRuns: 'deny',
+		orgPermission: 'execution_context:read',
+		description:
+			'Dismiss your own excess-access notice on an execution context (the machine can do more than you can personally). Pass the fingerprint you saw; it comes back when the machine gains access you lack or its login changes. Misconfiguration notices cannot be dismissed. Only the person the notice is about can dismiss it, signed in as themselves.',
+		keywords: ['execution context', 'notice', 'dismiss', 'warning'],
+		readOnly: false,
+		idempotent: true,
+		destructive: false,
+		inputSchema: z.object({
+			id: idSchema,
+			fingerprint: z.string().min(1),
+		}),
+		async handler(args, ctx) {
+			return await dismissContextNotice(
+				await caller(ctx),
+				args.id,
+				args.fingerprint,
+			)
+		},
+	},
+)
+
+export const executionContextSharePreviewCapability = defineDomainCapability(
+	domain,
+	{
+		name: 'executionContextSharePreview',
+		contextRuns: 'deny',
+		orgPermission: 'execution_context:read',
+		description:
+			"Before sharing an execution context, see what its login (the machine's account or agent profile) can do that a person or each member of a team cannot do personally. Sharing is still allowed; this is the warning to review. Needs Manage on the context.",
+		keywords: ['execution context', 'share', 'preview', 'excess access'],
+		readOnly: true,
+		idempotent: true,
+		destructive: false,
+		inputSchema: z.object({
+			id: idSchema,
+			username: z.string().min(1).optional(),
+			user_id: z.string().min(1).optional(),
+			team_slug: z.string().min(1).optional(),
+			team_id: z.string().min(1).optional(),
+			all_members: z
+				.boolean()
+				.optional()
+				.describe('Preview sharing with everyone in the org.'),
+		}),
+		async handler(args, ctx) {
+			const resolved = await caller(ctx)
+			const db = ctx.env.APP_DB
+			let userIds: Array<string> = []
+			if (args.all_members) {
+				const members = await db
+					.prepare(
+						`SELECT user_id FROM org_memberships WHERE org_id = ? AND deleted_at IS NULL LIMIT 201`,
+					)
+					.bind(resolved.orgId)
+					.all<{ user_id: string }>()
+				userIds = members.results.map((row) => row.user_id)
+			} else if (args.team_slug || args.team_id) {
+				const teamId = await resolveTeamId(db, resolved.orgId, {
+					teamId: args.team_id ?? null,
+					teamSlug: args.team_slug ?? null,
+				})
+				const members = await db
+					.prepare(
+						`SELECT user_id FROM team_members WHERE team_id = ? AND deleted_at IS NULL`,
+					)
+					.bind(teamId)
+					.all<{ user_id: string }>()
+				userIds = members.results.map((row) => row.user_id)
+			} else if (args.username || args.user_id) {
+				userIds = [
+					await resolvePersonId(db, {
+						userId: args.user_id ?? null,
+						username: args.username ?? null,
+					}),
+				]
+			}
+			return await previewShare(resolved, args.id, userIds)
+		},
+	},
+)
+
+const daemonContextRuns = 'deny' as const
+
+export const executionContextPauseCapability = defineDomainCapability(domain, {
+	name: 'executionContextPause',
+	contextRuns: daemonContextRuns,
+	orgPermission: 'execution_context:write',
+	description:
+		'Pause an execution context on the server (the remote "stop"): chains skip it ("was paused"), queued runs on it fail instead of waiting, and host commands are refused, until it is resumed. Holds while the machine is offline and across reboots; the daemon stays connected. Runs in flight finish unless cancel_runs is true. Needs the operator, Manage on it, or org owner/admin (a kill switch: admins can pause but not resume).',
+	keywords: ['execution context', 'daemon', 'pause', 'stop', 'kill switch'],
+	readOnly: false,
+	idempotent: true,
+	destructive: false,
+	inputSchema: z.object({
+		id: idSchema,
+		reason: z
+			.string()
+			.max(200)
+			.optional()
+			.describe('Shown to anyone who sees the context, e.g. "deploy freeze".'),
+		cancel_runs: z
+			.boolean()
+			.optional()
+			.describe('Also cancel runs in flight (default: they finish).'),
+	}),
+	async handler(args, ctx) {
+		return await pauseContext(await caller(ctx), args.id, {
+			reason: args.reason ?? null,
+			cancelRuns: args.cancel_runs === true,
+		})
+	},
+})
+
+export const executionContextResumeCapability = defineDomainCapability(domain, {
+	name: 'executionContextResume',
+	contextRuns: daemonContextRuns,
+	orgPermission: 'execution_context:write',
+	description:
+		'Resume a paused execution context so routing sends it runs again. Needs the operator or Manage on it.',
+	keywords: ['execution context', 'daemon', 'resume', 'unpause', 'start'],
+	readOnly: false,
+	idempotent: true,
+	destructive: false,
+	inputSchema: z.object({ id: idSchema }),
+	async handler(args, ctx) {
+		return await resumeContext(await caller(ctx), args.id)
+	},
+})
+
+export const executionContextDaemonStatusCapability = defineDomainCapability(
+	domain,
+	{
+		name: 'executionContextDaemonStatus',
+		contextRuns: daemonContextRuns,
+		orgPermission: 'execution_context:read',
+		description:
+			'Daemon status for an execution context: online / paused / offline / revoked, who paused it and why, and (for its operator, Manage holders and org owners/admins, when online) a live snapshot from the daemon: version, service manager, auto-update, concurrency, runs in flight and problems.',
+		keywords: ['execution context', 'daemon', 'status', 'health', 'version'],
+		readOnly: true,
+		idempotent: true,
+		destructive: false,
+		inputSchema: z.object({ id: idSchema }),
+		async handler(args, ctx) {
+			return await daemonStatus(await caller(ctx), args.id)
+		},
+	},
+)
+
+export const executionContextDaemonRestartCapability = defineDomainCapability(
+	domain,
+	{
+		name: 'executionContextDaemonRestart',
+		contextRuns: daemonContextRuns,
+		orgPermission: 'execution_context:write',
+		description:
+			'Restart the daemon on an online execution context: it stops taking runs, lets runs in flight finish, and its service manager starts it again (it reconnects in a few seconds). Refused for a daemon run in a terminal, since nothing would start it again. Needs the operator or Manage on it.',
+		keywords: ['execution context', 'daemon', 'restart'],
+		readOnly: false,
+		idempotent: false,
+		destructive: false,
+		inputSchema: z.object({ id: idSchema }),
+		async handler(args, ctx) {
+			return await daemonRestart(await caller(ctx), args.id)
+		},
+	},
+)
+
+export const executionContextDaemonUpdateCapability = defineDomainCapability(
+	domain,
+	{
+		name: 'executionContextDaemonUpdate',
+		contextRuns: daemonContextRuns,
+		orgPermission: 'execution_context:write',
+		description:
+			'Check now for a newer kody CLI on an online execution context and move the daemon onto it after runs in flight finish (the same verified path as auto-update). Reports the running and latest versions. Needs the operator or Manage on it.',
+		keywords: ['execution context', 'daemon', 'update', 'version', 'upgrade'],
+		readOnly: false,
+		idempotent: false,
+		destructive: false,
+		inputSchema: z.object({ id: idSchema }),
+		async handler(args, ctx) {
+			return await daemonUpdate(await caller(ctx), args.id)
+		},
+	},
+)
+
+export const executionContextDaemonConfigCapability = defineDomainCapability(
+	domain,
+	{
+		name: 'executionContextDaemonConfig',
+		contextRuns: daemonContextRuns,
+		orgPermission: 'execution_context:write',
+		description:
+			'Change daemon config remotely: max_concurrent caps runs at once (a server limit, works while offline; the daemon uses the lower of it and its local setting) and auto_update turns automatic CLI updates on or off (needs the daemon online). Host folders and turning host commands on stay machine-side. Omit both to read the current values. Needs the operator or Manage on it.',
+		keywords: [
+			'execution context',
+			'daemon',
+			'config',
+			'concurrency',
+			'auto-update',
+		],
+		readOnly: false,
+		idempotent: true,
+		destructive: false,
+		inputSchema: z.object({
+			id: idSchema,
+			max_concurrent: z.number().int().min(1).max(8).optional(),
+			auto_update: z.enum(['on', 'off']).optional(),
+		}),
+		async handler(args, ctx) {
+			return await daemonConfig(await caller(ctx), args.id, {
+				...(args.max_concurrent !== undefined
+					? { maxConcurrent: args.max_concurrent }
+					: {}),
+				...(args.auto_update ? { autoUpdate: args.auto_update } : {}),
+			})
+		},
+	},
+)
+
+export const executionContextDaemonLogsCapability = defineDomainCapability(
+	domain,
+	{
+		name: 'executionContextDaemonLogs',
+		contextRuns: daemonContextRuns,
+		orgPermission: 'execution_context:command',
+		description:
+			"Read the last lines (default 100, at most 500) of an online execution context's daemon log. Operator only: the log can include host paths and command output. Every read is recorded in the context audit log.",
+		keywords: ['execution context', 'daemon', 'logs', 'log', 'debug'],
+		readOnly: true,
+		idempotent: true,
+		destructive: false,
+		inputSchema: z.object({
+			id: idSchema,
+			lines: z.number().int().min(1).max(500).optional(),
+		}),
+		async handler(args, ctx) {
+			return await daemonLogs(await caller(ctx), args.id, {
+				...(args.lines ? { lines: args.lines } : {}),
+			})
+		},
+	},
+)

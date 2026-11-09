@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { WebhookEndpointIdRaceError } from './errors.ts'
 import {
 	type WebhookEndpointRecord,

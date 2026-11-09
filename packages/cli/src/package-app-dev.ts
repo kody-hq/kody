@@ -10,7 +10,7 @@
  */
 
 import { randomBytes } from 'node:crypto'
-import { rmSync } from 'node:fs'
+import { rmSync, statSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import {
 	createServer,
@@ -19,7 +19,7 @@ import {
 	type Server,
 	type ServerResponse,
 } from 'node:http'
-import { type AddressInfo } from 'node:net'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, relative, resolve, sep } from 'node:path'
 import {
@@ -52,7 +52,7 @@ import {
 	buildDevProxyUpstreamHeaders,
 	buildTrustedDevForwardUrl,
 	buildTrustedDevPublicUrl,
-	isAllowedDevHost,
+	resolveAllowedDevHost,
 	trustedDevHostFromHostedUrl,
 } from './dev/dev-proxy-origin.js'
 import { listenDevServer } from './dev/dev-port.js'
@@ -117,14 +117,19 @@ import {
 	resolvePackagePath,
 } from './package-manifest.js'
 import { redact } from './redact.js'
-import { type KodyTarget } from './target.js'
+import type { KodyTarget } from './target.js'
 import { ensureWorkerdBinary } from './workerd-binary.js'
+import { defaultDevHost, planDevListen } from './dev/dev-host.js'
 
 export type PackageAppDevOptions = {
 	manifest: KodyPackageManifest
 	token: string
 	apiUrl: string
 	target: KodyTarget
+	/**
+	 * Proxy listen address (default 127.0.0.1). Non-loopback binds also accept
+	 * this machine's LAN addresses as Host; workerd stays on loopback.
+	 */
 	host?: string
 	/** Listen on exactly this port (0 = any free port); EADDRINUSE is an error. */
 	port?: number
@@ -185,6 +190,8 @@ export type PackageAppDevOptions = {
 	onListening?: (info: {
 		port: number
 		hostedUrl: string
+		/** Loopback origin for this machine when bound to 0.0.0.0 / ::. */
+		localUrl: string
 		appBasePath: string
 	}) => void | Promise<void>
 }
@@ -193,6 +200,10 @@ export type PackageAppDevServer = {
 	url: string
 	port: number
 	hostedUrl: string
+	/** Origin this machine uses to reach the server (attach, fetchPath). */
+	localUrl: string
+	/** URLs for other devices; empty on a loopback bind. */
+	networkUrls: Array<string>
 	appBasePath: string
 	packageContext: PackageLocalContext
 	fetchPath: (
@@ -249,7 +260,7 @@ export async function startPackageAppDev(
 	}
 	assertTokenSafeApiUrl(options.apiUrl)
 
-	const host = options.host ?? '127.0.0.1'
+	const host = options.host ?? defaultDevHost
 	const appBasePath = normalizeBasePath(options.appBasePath ?? '')
 	const root = options.manifest.root
 	const runSecret = randomBytes(32).toString('hex')
@@ -333,11 +344,13 @@ export async function startPackageAppDev(
 		throw error
 	}
 	const address = proxy.address() as AddressInfo
-	const hostedUrl = `http://${host}:${address.port}`
+	const listenPlan = planDevListen({ bindHost: host, port: address.port })
+	const { hostedUrl, localUrl, networkUrls } = listenPlan
 	try {
 		await options.onListening?.({
 			port: address.port,
 			hostedUrl,
+			localUrl,
 			appBasePath,
 		})
 	} catch (error) {
@@ -349,7 +362,8 @@ export async function startPackageAppDev(
 		await new Promise<void>((resolve) => {
 			proxy.close(() => resolve())
 		})
-		await rm(workDir, { recursive: true, force: true })
+		// Windows can hold a just-stopped workerd's handles for a moment (EPERM).
+		await rm(workDir, { recursive: true, force: true, maxRetries: 10 })
 		throw error
 	}
 	const contextFor = (client: DevClientBundle | null) =>
@@ -415,6 +429,17 @@ export async function startPackageAppDev(
 	let prebuildSettledAt = 0
 	/** `performance.now()` until which onChange ignores events (failed-prebuild absorb). */
 	let ignoreWatcherUntil = 0
+	/** Files the current build was triggered by (watcher paths). */
+	let currentBuildFiles: Array<string> = []
+	/**
+	 * Trigger files of the last failed prebuild and its wall-clock start. A
+	 * late watcher event for one of them whose mtime predates that start is an
+	 * echo of the edit the failed build already consumed, not a new save.
+	 */
+	let failedPrebuildTrigger: {
+		startedAtMs: number
+		paths: Set<string>
+	} | null = null
 	let prebuildAbort: AbortController | undefined
 	const workerdEnv: NodeJS.ProcessEnv = {
 		...process.env,
@@ -444,6 +469,7 @@ export async function startPackageAppDev(
 
 	async function buildOnce(files: Array<string>): Promise<void> {
 		const started = performance.now()
+		currentBuildFiles = files
 		emit({
 			type: 'rebuild_start',
 			files: files.map((file) => relative(root, file) || file),
@@ -543,7 +569,19 @@ export async function startPackageAppDev(
 
 	let clearWatcherPending: (() => void) | null = null
 
+	function isFailedPrebuildEcho(path: string): boolean {
+		const trigger = failedPrebuildTrigger
+		if (!trigger?.paths.has(path)) return false
+		try {
+			return statSync(path).mtimeMs < trigger.startedAtMs
+		} catch {
+			return false
+		}
+	}
+
 	async function runPrebuildStep(command: string): Promise<void> {
+		const startedAtMs = Date.now()
+		failedPrebuildTrigger = null
 		prebuildRunning = true
 		prebuildAbort = new AbortController()
 		let failed = false
@@ -580,6 +618,10 @@ export async function startPackageAppDev(
 				rebuildAgain = false
 				clearWatcherPending?.()
 				ignoreWatcherUntil = performance.now() + failedPrebuildAbsorbMs
+				failedPrebuildTrigger = {
+					startedAtMs,
+					paths: new Set(currentBuildFiles),
+				}
 			}
 		}
 	}
@@ -772,14 +814,15 @@ export async function startPackageAppDev(
 		res: ServerResponse,
 	): Promise<void> {
 		try {
-			const trustedHost = trustedDevHostFromHostedUrl(hostedUrl)
-			if (
-				!isAllowedDevHost({
-					incomingHost: req.headers.host,
-					trustedHost,
-					aliases: options.hostAliases,
-				})
-			) {
+			const publicHost = resolveAllowedDevHost({
+				incomingHost: req.headers.host,
+				trustedHost: trustedDevHostFromHostedUrl(hostedUrl),
+				aliases: [
+					...(options.hostAliases ?? []),
+					...listenPlan.extraAllowedHosts(),
+				],
+			})
+			if (!publicHost) {
 				res.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' })
 				res.end(
 					`Unrecognized Host ${JSON.stringify(req.headers.host ?? '')}. ` +
@@ -823,7 +866,7 @@ export async function startPackageAppDev(
 			}
 			generation.inflight += 1
 			try {
-				await forwardRequest(generation, req, res)
+				await forwardRequest(generation, req, res, publicHost)
 			} finally {
 				generation.inflight -= 1
 				if (generation.retired && generation.inflight === 0) {
@@ -846,12 +889,13 @@ export async function startPackageAppDev(
 		generation: Generation,
 		req: IncomingMessage,
 		res: ServerResponse,
+		/** Allowlisted Host this request came in on (LAN or loopback alias). */
+		trustedHost: string,
 	): Promise<void> {
-		const trustedHost = trustedDevHostFromHostedUrl(hostedUrl)
 		const incomingUrl = new URL(req.url ?? '/', hostedUrl)
 		const restPath = stripMount(incomingUrl.pathname, appBasePath)
 		const publicUrl = buildTrustedDevPublicUrl({
-			hostedUrl,
+			hostedUrl: `http://${trustedHost}`,
 			restPath,
 			search: incomingUrl.search,
 		})
@@ -1016,6 +1060,9 @@ export async function startPackageAppDev(
 							if (now < ignoreWatcherUntil) {
 								return false
 							}
+							// Late echo of the failed build's own trigger (slow CI
+							// watchers can deliver it after the absorb window).
+							if (isFailedPrebuildEcho(path)) return
 							// Fold mid-build watcher events into the active loop
 							// (including another save of a file already building).
 							// Debouncing them instead schedules a second rebuild
@@ -1075,7 +1122,8 @@ export async function startPackageAppDev(
 		await new Promise<void>((resolve) => {
 			proxy.close(() => resolve())
 		})
-		await rm(workDir, { recursive: true, force: true })
+		// Windows can hold a just-stopped workerd's handles for a moment (EPERM).
+		await rm(workDir, { recursive: true, force: true, maxRetries: 10 })
 	}
 
 	try {
@@ -1098,7 +1146,7 @@ export async function startPackageAppDev(
 		path,
 		init = {},
 	) => {
-		const url = new URL(joinUrlPath(appBasePath, path), hostedUrl)
+		const url = new URL(joinUrlPath(appBasePath, path), localUrl)
 		const response = await fetch(url, {
 			method: init.method ?? 'GET',
 			headers: init.headers,
@@ -1116,6 +1164,8 @@ export async function startPackageAppDev(
 		url: hostedUrl,
 		port: address.port,
 		hostedUrl,
+		localUrl,
+		networkUrls,
 		appBasePath,
 		get packageContext() {
 			return contextFor(active?.client ?? null)

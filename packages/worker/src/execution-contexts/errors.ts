@@ -11,14 +11,23 @@ export const executionContextErrorCodes = [
 	'context_not_usable',
 	'no_execution_context_available',
 	'execution_context_unavailable',
+	'execution_context_binding_unavailable',
 	'insufficient_scope',
 	'execution_context_lease_invalid',
 	'execution_context_access_lost',
 	'context_not_revoked',
 	'commands_opt_in_local',
+	'commands_operator_only',
 	'execution_context_commands_off',
 	'execution_context_command_not_granted',
 	'execution_context_command_requires_context',
+	'context_paused',
+	'context_offline',
+	'not_service_managed',
+	'daemon_busy',
+	'daemon_outdated',
+	'daemon_timeout',
+	'daemon_control_failed',
 ] as const
 
 export type ExecutionContextErrorCode =

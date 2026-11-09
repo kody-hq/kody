@@ -33,6 +33,7 @@ import {
 	type Ed25519PublicJwk,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { finishRunRecord } from '#worker/run-records/service.ts'
+import type { CredentialCallMapJson } from '#worker/credentials/credential-call-map.ts'
 import {
 	type ExecuteRequirement,
 	grantRefusal,
@@ -50,7 +51,7 @@ import {
 import { isExecutionContextsEnabledFor } from './flag.ts'
 import { runTiming, type ExecutionContextRunTiming } from './run-timing.ts'
 import { buildSentryOptions } from '#worker/sentry-options.ts'
-import { type RunRecordHandle } from '#worker/run-records/types.ts'
+import type { RunRecordHandle } from '#worker/run-records/types.ts'
 
 export const executionContextsUnavailableCode = 'execution_contexts_unavailable'
 
@@ -94,6 +95,11 @@ export type ExecutionContextLease = {
 	runtime: EcpGrant['runtime']
 	deadline: number
 	sharedRun: boolean
+	/**
+	 * The run's credential call map, held here so Kody applies it to the run's
+	 * callbacks; the machine never supplies or changes it.
+	 */
+	credentials?: CredentialCallMapJson | null
 }
 
 export type DispatchOutcome =
@@ -170,7 +176,23 @@ type SocketAttachment = {
 	lastSeenWrittenAt?: number
 	/** Open API origin the daemon connected through; run requests name it. */
 	apiOrigin?: string
+	/** The daemon answers `control.request` (it advertised `daemon-control`). */
+	control?: boolean
 }
+
+/** A server-side pause, as the daemon and status views see it. */
+export type ExecutionContextPause = {
+	at: string
+	by: string | null
+	reason: string | null
+}
+
+export type DaemonControlResult =
+	| { ok: true; data: Record<string, unknown> }
+	| { ok: false; code: string; message?: string }
+
+export const daemonControlFeature = 'daemon-control'
+const controlTimeoutMs = 15_000
 
 type RunRow = {
 	run_id: string
@@ -428,6 +450,13 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		this.#contextKey = null
 	}
 
+	#paused(): ExecutionContextPause | null {
+		const row = this.ctx.storage.sql
+			.exec<{ value: string }>(`SELECT value FROM meta WHERE key = 'paused'`)
+			.toArray()[0]
+		return row ? (JSON.parse(row.value) as ExecutionContextPause) : null
+	}
+
 	#revokedReason(): string | null {
 		const row = this.ctx.storage.sql
 			.exec<{ value: string }>(`SELECT value FROM meta WHERE key = 'revoked'`)
@@ -580,6 +609,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			pongTimeoutMs: 10_000,
 			grant: snapshot.grant,
 			grantVersion: snapshot.grantVersion,
+			paused: this.#paused(),
 			limits: { maxFrameBytes: 6 * 1024 * 1024, maxConcurrentRuns: 4 },
 		})
 		if (!sent) return
@@ -792,6 +822,10 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				}
 				const attachment = ws.deserializeAttachment() as SocketAttachment
 				attachment.helloed = true
+				const features = (body.capabilities as { features?: unknown } | null)
+					?.features
+				attachment.control =
+					Array.isArray(features) && features.includes(daemonControlFeature)
 				ws.serializeAttachment(attachment)
 				this.#updateStatus(ws, body.status)
 				await this.#reconcileHeldRuns(body)
@@ -831,6 +865,9 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				return
 			case 'command.finished':
 				await this.#onCommandFinished(frame.body)
+				return
+			case 'control.result':
+				this.#onControlResult(frame.body)
 				return
 			case 'run.cancel.ack':
 			case 'grant.ack':
@@ -1201,7 +1238,15 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				.toArray()
 			for (const queued of rows) {
 				if (!this.#liveSocket()) return
-				const outcome = await this.#dispatchQueued(queued)
+				// The drain runs under waitUntil: a throw (e.g. a D1 error) would be
+				// an uncaught rejection that leaves the row without a retry (#4905).
+				const outcome = await this.#dispatchQueued(queued).catch((error) => {
+					Sentry.withScope((scope) => {
+						scope.setTag('execution_context.operation', 'queue_drain')
+						Sentry.captureException(error)
+					})
+					return 'keep' as const
+				})
 				if (outcome === 'keep') {
 					await this.#ensureAlarm(Date.now() + queuedRetryMs)
 					return
@@ -1327,6 +1372,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			grant,
 			requires,
 			capabilities: parseCapabilities(row),
+			sharedRun: lease.sharedRun,
 		})
 		if (refusal) {
 			return await fail(
@@ -1893,6 +1939,94 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			ws.close(1008, 'revoked')
 		}
 		return { ok: true }
+	}
+
+	#controlWaiters = new Map<string, Waiter<DaemonControlResult>>()
+
+	#onControlResult(body: Record<string, unknown>) {
+		const id = typeof body.id === 'string' ? body.id : ''
+		const waiter = this.#controlWaiters.get(id)
+		if (!waiter) return
+		this.#controlWaiters.delete(id)
+		const data =
+			body.data && typeof body.data === 'object' && !Array.isArray(body.data)
+				? (body.data as Record<string, unknown>)
+				: {}
+		waiter.resolve(
+			body.ok === true
+				? { ok: true, data }
+				: {
+						ok: false,
+						code:
+							typeof body.code === 'string'
+								? body.code
+								: 'daemon_control_failed',
+						...(typeof body.message === 'string'
+							? { message: body.message.slice(0, 2000) }
+							: {}),
+					},
+		)
+	}
+
+	/**
+	 * Server-side pause: stored here (for welcome and queue drains) and in D1
+	 * (for routing). Pausing fails queued runs instead of holding them,
+	 * since a pause may last indefinitely. The daemon stays connected.
+	 */
+	async setPaused(input: {
+		paused: ExecutionContextPause | null
+		name: string
+	}) {
+		if (input.paused) {
+			this.ctx.storage.sql.exec(
+				`INSERT INTO meta (key, value) VALUES ('paused', ?)
+				 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+				JSON.stringify(input.paused),
+			)
+			await this.#failAllQueued(
+				`${input.name} was paused, so it did not take this queued run. Resume it with \`kody daemon resume --context ${input.name}\` or executionContextResume, then run it again.`,
+				'ExecutionContextUnavailable',
+				'context_paused',
+			)
+		} else {
+			this.ctx.storage.sql.exec(`DELETE FROM meta WHERE key = 'paused'`)
+		}
+		const ws = this.#socket()
+		if (ws) await this.#send(ws, 'state.update', { paused: input.paused })
+		return { ok: true }
+	}
+
+	/** One live daemon operation over the signed socket (restart, update, logs, ...). */
+	async control(input: {
+		op: string
+		args?: Record<string, unknown>
+		timeoutMs?: number
+	}): Promise<DaemonControlResult> {
+		if (this.#revokedReason()) return { ok: false, code: 'context_revoked' }
+		const live = this.#liveSocket()
+		if (!live) return { ok: false, code: 'context_offline' }
+		if (!live.attachment.control) return { ok: false, code: 'daemon_outdated' }
+		const id = randomId('ctl_')
+		const result = new Promise<DaemonControlResult>((resolve) => {
+			this.#controlWaiters.set(id, { resolve })
+			setTimeout(
+				() => {
+					if (this.#controlWaiters.delete(id))
+						resolve({ ok: false, code: 'daemon_timeout' })
+				},
+				Math.max(1_000, Math.min(input.timeoutMs ?? controlTimeoutMs, 60_000)),
+			)
+		})
+		const sent = await this.#send(live.ws, 'control.request', {
+			id,
+			op: input.op,
+			args: input.args ?? {},
+		})
+		if (!sent) {
+			this.#controlWaiters.delete(id)
+			return { ok: false, code: 'context_offline' }
+		}
+		return await result
 	}
 
 	async updateGrant(input: {

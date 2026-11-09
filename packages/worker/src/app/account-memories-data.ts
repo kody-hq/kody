@@ -1,16 +1,16 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { parseJsonStringArray } from '@kody-internal/shared/json-parsing.ts'
 import {
 	listMemoriesByUserId,
 	listMemoriesByUserIdPage,
 } from '#mcp/memory/repo.ts'
 import { getMemory } from '#mcp/memory/service.ts'
-import {
-	type McpMemoryRow,
-	type MemoryRecord,
-	type MemoryStatus,
+import type {
+	McpMemoryRow,
+	MemoryRecord,
+	MemoryStatus,
 } from '#mcp/memory/types.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 

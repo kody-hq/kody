@@ -1,6 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
-import { type CSSObject } from '@emotion/react'
+import { dismissOpenPopoverPanel } from '#client/popover-open.ts'
+import type { CSSObject } from '@emotion/react'
 import { useEffect } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import { renderIcon } from '../components/icon.tsx'
@@ -48,6 +49,17 @@ const entityExplainerDefinitions = [
 		learnMore: [
 			{ href: docHref('package-authoring'), label: 'Package authoring' },
 			{ href: docHref('package-lifecycle'), label: 'Package lifecycle' },
+		],
+	},
+	{
+		id: 'apps',
+		question: 'What is an app?',
+		paragraphs: [
+			'Apps are dashboards and tools your agent builds and hosts in Kody. Each one lives in a package with a hosted entry, and this page lists the ones in this workspace.',
+		],
+		learnMore: [
+			{ href: docHref('package-apps'), label: 'Package apps' },
+			{ href: docHref('package-authoring'), label: 'Package authoring' },
 		],
 	},
 	{
@@ -398,7 +410,7 @@ export function EntityExplainer(props: EntityExplainerProps) {
 	const panelId = `entity-explainer-${props.copy.id}`
 	const href = useMatchedPageScope().pageLocation.href
 	useEffect(() => {
-		document.getElementById(panelId)?.hidePopover()
+		dismissOpenPopoverPanel(document.getElementById(panelId))
 	}, [href, panelId])
 
 	{

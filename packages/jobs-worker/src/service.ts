@@ -1,21 +1,21 @@
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type JobManagerDebugState } from '@kody-internal/shared/jobs/manager-debug.ts'
-import {
-	type JobsServiceContract,
-	type JobsHostContract,
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { JobManagerDebugState } from '@kody-internal/shared/jobs/manager-debug.ts'
+import type {
+	JobsServiceContract,
+	JobsHostContract,
 } from '@kody-internal/shared/jobs/rpc.ts'
-import {
-	type JobCountBySourceId,
-	type JobRow,
+import type {
+	JobCountBySourceId,
+	JobRow,
 } from '@kody-internal/shared/jobs/repo.ts'
-import {
-	type JobRecord,
-	type JobRepoCheckPolicy,
+import type {
+	JobRecord,
+	JobRepoCheckPolicy,
 } from '@kody-internal/shared/jobs/types.ts'
 import { parseScheduledLaneMessage } from '@kody-internal/shared/jobs/scheduled-lanes.ts'
 import { WorkerEntrypoint } from 'cloudflare:workers'
-import { type JobsWorkerEnv } from './env.ts'
+import type { JobsWorkerEnv } from './env.ts'
 import { jobManagerStub } from './manager.ts'
 import { jobsStore } from './store.ts'
 
@@ -137,6 +137,17 @@ export class JobsService
 		timezone: string
 	}): Promise<boolean> {
 		return jobsStore(this.env).recordJobRunNowOutcome(input)
+	}
+
+	async repairPackageJobPublishedCommit(input: {
+		userId: string
+		jobId: string
+		sourceId: string
+		expectedPublishedCommit: string
+		publishedCommit: string
+		updatedAt: string
+	}): Promise<boolean> {
+		return jobsStore(this.env).repairPackageJobPublishedCommit(input)
 	}
 
 	async updateJobCallerContextJson(input: {

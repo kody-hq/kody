@@ -36,6 +36,7 @@ import {
 } from '#universal/credential-contracts.ts'
 import {
 	type AccountCredentialsResponse,
+	type CredentialLocalReadBadge,
 	type CredentialProviderBindingItem,
 	credentialKindLabel,
 	credentialStatusLabel,
@@ -50,6 +51,25 @@ import {
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 const clampedCellCss = css(recordCellClamp(26))
+
+function LocalReadsBadge(props: {
+	badge: CredentialLocalReadBadge | undefined
+}) {
+	if (!props.badge) return null
+	return (
+		<span
+			css={{ marginLeft: spacing.xs, color: colors.textMuted }}
+			title={
+				props.badge.lastReadAt
+					? `Last local read ${new Date(props.badge.lastReadAt).toLocaleString()}`
+					: 'Never read locally'
+			}
+			data-testid="local-reads-badge"
+		>
+			· Local reads on
+		</span>
+	)
+}
 const packageFilterSlotCss = {
 	flex: '0 1 15rem',
 	minWidth: '9rem',
@@ -364,6 +384,8 @@ export function AccountCredentialsRoute({
 								teamOrg,
 								packagesById,
 								orgSlug,
+								localReads: payload?.selectedLocalReads ?? null,
+								rawSigning: payload?.selectedRawSigning ?? null,
 							})
 						: undefined
 				}
@@ -507,7 +529,14 @@ export function AccountCredentialsRoute({
 									currentHref,
 								),
 					cells: {
-						name: <span css={clampedCellCss}>{credential.name}</span>,
+						name: (
+							<span css={clampedCellCss}>
+								{credential.name}
+								<LocalReadsBadge
+									badge={payload?.localReadBadges?.[credential.id]}
+								/>
+							</span>
+						),
 						kind: <span css={clampedCellCss}>{kindCellLabel(credential)}</span>,
 						owner: scopeLabel(credential),
 						hosts: (
@@ -544,6 +573,7 @@ export function AccountCredentialsRoute({
 							selectedProvider
 								? renderVaultCredentialDetail({
 										binding: selectedProvider,
+										localReads: payload?.selectedLocalReads ?? null,
 										packageName:
 											packagesById.get(selectedProvider.packageId)?.kodyId ??
 											'a package',
@@ -570,6 +600,9 @@ export function AccountCredentialsRoute({
 								provider: (
 									<span css={clampedCellCss}>
 										{binding.provider ?? binding.providerId}
+										<LocalReadsBadge
+											badge={payload?.localReadBadges?.[binding.id]}
+										/>
 									</span>
 								),
 								package: (

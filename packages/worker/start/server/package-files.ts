@@ -6,38 +6,41 @@ import {
 	normalizePackageFilesPath,
 	getPackageTreeHref,
 } from '#universal/package-files.ts'
+import { parseRouteInput } from './route-input.ts'
+
+const packageFilesInput = z.object({
+	resource: z.discriminatedUnion('kind', [
+		z.object({
+			kind: z.literal('account-files'),
+			packageId: z.string().min(1),
+			relativePath: z.string(),
+		}),
+		z.object({
+			kind: z.literal('listing-files'),
+			listingId: z.string().min(1),
+			relativePath: z.string(),
+		}),
+		z.object({
+			kind: z.literal('package-files'),
+			username: z.string().min(1),
+			kodyId: z.string().min(1),
+			relativePath: z.string(),
+		}),
+		z.object({
+			kind: z.literal('package-tree'),
+			username: z.string().min(1),
+			kodyId: z.string().min(1),
+			ref: z.string(),
+			relativePath: z.string(),
+		}),
+	]),
+	location: z.string().refine((value) => !!normalizeRedirectTo(value)),
+	queryRef: z.string().optional(),
+})
 
 export const loadPackageFiles = createServerFn({ method: 'GET' })
-	.validator(
-		z.object({
-			resource: z.discriminatedUnion('kind', [
-				z.object({
-					kind: z.literal('account-files'),
-					packageId: z.string().min(1),
-					relativePath: z.string(),
-				}),
-				z.object({
-					kind: z.literal('listing-files'),
-					listingId: z.string().min(1),
-					relativePath: z.string(),
-				}),
-				z.object({
-					kind: z.literal('package-files'),
-					username: z.string().min(1),
-					kodyId: z.string().min(1),
-					relativePath: z.string(),
-				}),
-				z.object({
-					kind: z.literal('package-tree'),
-					username: z.string().min(1),
-					kodyId: z.string().min(1),
-					ref: z.string(),
-					relativePath: z.string(),
-				}),
-			]),
-			location: z.string().refine((value) => !!normalizeRedirectTo(value)),
-			queryRef: z.string().optional(),
-		}),
+	.validator((data: z.input<typeof packageFilesInput>) =>
+		parseRouteInput(packageFilesInput, data),
 	)
 	.handler(async ({ data }) => {
 		const [

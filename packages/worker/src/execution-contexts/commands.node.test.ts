@@ -1,8 +1,8 @@
 import { DatabaseSync } from 'node:sqlite'
 import { ecpDefaultGrant } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { expect, test, vi } from 'vitest'
-import { type EffectivePermissions } from '#worker/authorization/authorize.ts'
-import { type ApiInvocationContext } from '#worker/open-api/context.ts'
+import type { EffectivePermissions } from '#worker/authorization/authorize.ts'
+import type { ApiInvocationContext } from '#worker/open-api/context.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { authorizeContextCommand } from './commands.ts'
@@ -11,7 +11,7 @@ import {
 	setSharing,
 	updateContext,
 } from './service.ts'
-import { getExecutionContext, parseGrant } from './store.ts'
+import { getExecutionContext, loadContextAccess, parseGrant } from './store.ts'
 
 const profileAccess = vi.hoisted(() => ({
 	current: null as EffectivePermissions | null,
@@ -49,8 +49,11 @@ function setup(input: { commands?: boolean } = {}) {
 			}),
 		)
 	sqlite.exec(`
+		INSERT INTO orgs (id, slug, access_epoch, created_at, updated_at)
+			VALUES ('${orgId}', 'acme', 0, '${now}', '${now}');
 		INSERT INTO org_memberships (org_id, user_id, role, created_at)
-			VALUES ('${orgId}', 'user_friend', 'member', '${now}'),
+			VALUES ('${orgId}', '${operator}', 'owner', '${now}'),
+			       ('${orgId}', 'user_friend', 'member', '${now}'),
 			       ('${orgId}', 'user_teammate', 'member', '${now}');
 	`)
 	const db = createD1FromSqlite(sqlite)
@@ -179,7 +182,7 @@ test('the operator may run commands on their own context and each start is audit
 	])
 })
 
-test('shares and all_members withhold the command grant unless the share names commands', async () => {
+test('host commands are operator-only: shares refuse commands and an older command grant confers nothing', async () => {
 	const s = setup({ commands: true })
 	const owner = s.callerFor(operator)
 	await setSharing(owner, 'ec_mac', {
@@ -191,21 +194,62 @@ test('shares and all_members withhold the command grant unless the share names c
 			authorizeContextCommand(s.runCtx(userId), s.args),
 		).rejects.toMatchObject({ code: 'execution_context_command_not_granted' })
 	}
-	await setSharing(owner, 'ec_mac', {
-		add: [
-			{
-				subject: { type: 'user', id: 'user_friend' },
-				preset: 'use',
-				commands: true,
-			},
-		],
-	})
+	await expect(
+		setSharing(owner, 'ec_mac', {
+			add: [
+				{
+					subject: { type: 'user', id: 'user_teammate' },
+					preset: 'use',
+					commands: true,
+				},
+			],
+		}),
+	).rejects.toMatchObject({ code: 'commands_operator_only' })
+	// A command share written before the rule stays in place and confers nothing.
+	s.sqlite
+		.prepare(
+			`INSERT INTO grant_permissions (grant_id, permission)
+			 SELECT id, 'execution_context:command' FROM grants WHERE resource_id = 'ec_mac'`,
+		)
+		.run()
 	await expect(
 		authorizeContextCommand(s.runCtx('user_friend'), s.args),
-	).resolves.toMatchObject({ ok: true })
-	await expect(
-		authorizeContextCommand(s.runCtx('user_teammate'), s.args),
 	).rejects.toMatchObject({ code: 'execution_context_command_not_granted' })
+	await expect(
+		authorizeContextCommand(s.runCtx(operator), s.args),
+	).resolves.toMatchObject({ ok: true })
+})
+
+test('a context fails closed for everyone else once its operator leaves the org', async () => {
+	const s = setup()
+	await setSharing(s.callerFor(operator), 'ec_mac', {
+		add: [{ subject: { type: 'user', id: 'user_friend' }, preset: 'use' }],
+	})
+	s.sqlite
+		.prepare(
+			`INSERT INTO execution_context_opt_ins (context_id, user_id, org_id, created_at)
+			 VALUES ('ec_mac', 'user_friend', ?, ?)`,
+		)
+		.run(orgId, now)
+	const access = async () =>
+		await loadContextAccess(
+			s.db,
+			(await getExecutionContext(s.db, 'ec_mac'))!,
+			{
+				userId: 'user_friend',
+				orgId,
+			},
+		)
+	expect(await access()).toMatchObject({ usable: true, unusableReason: null })
+	s.sqlite
+		.prepare(
+			`UPDATE org_memberships SET deleted_at = ? WHERE user_id = ? AND org_id = ?`,
+		)
+		.run(now, operator, orgId)
+	expect(await access()).toMatchObject({
+		usable: false,
+		unusableReason: 'operator_left',
+	})
 })
 
 test('the website/API can turn commands off but never on', async () => {
@@ -266,30 +310,6 @@ test('a scoped credential without execution_context:command cannot run commands,
 		),
 	).resolves.toMatchObject({ ok: true })
 	expect(s.audits).toHaveLength(1)
-})
-
-test('an expired command share confers nothing', async () => {
-	const s = setup({ commands: true })
-	await setSharing(s.callerFor(operator), 'ec_mac', {
-		add: [
-			{
-				subject: { type: 'user', id: 'user_friend' },
-				preset: 'use',
-				commands: true,
-			},
-		],
-	})
-	await expect(
-		authorizeContextCommand(s.runCtx('user_friend'), s.args),
-	).resolves.toMatchObject({ ok: true })
-	s.sqlite
-		.prepare(
-			`UPDATE grants SET expires_at = '2000-01-01T00:00:00.000Z' WHERE resource_id = 'ec_mac'`,
-		)
-		.run()
-	await expect(
-		authorizeContextCommand(s.runCtx('user_friend'), s.args),
-	).rejects.toMatchObject({ code: 'execution_context_command_not_granted' })
 })
 
 test('a command cut to the audit cap is marked truncated', async () => {

@@ -1,4 +1,4 @@
-import { type ErrorEvent } from '@sentry/core'
+import type { ErrorEvent } from '@sentry/core'
 import { isBareRetryableD1LockSentryEvent } from '@kody-internal/shared/d1-retry.ts'
 
 export * from '@kody-internal/shared/d1-retry.ts'

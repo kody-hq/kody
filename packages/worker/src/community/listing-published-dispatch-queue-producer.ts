@@ -1,4 +1,4 @@
-import { type CommunityListingRelease } from './fork-upstream-updated-subscription-event.ts'
+import type { CommunityListingRelease } from './fork-upstream-updated-subscription-event.ts'
 
 export type CommunityListingPublishedDispatchQueueMessage = {
 	eventId: string

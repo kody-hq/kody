@@ -1,4 +1,10 @@
 name: 🚀 Deploy (production)
+# The run list's head SHA is main at trigger time; name runs after the SHA
+# this run actually validates and deploys (workflow_run.head_sha).
+run-name: >-
+  ${{ github.event_name == 'workflow_run' && format('🚀 Deploy {0}',
+  github.event.workflow_run.head_sha) || format('🚀 Deploy {0} ({1})',
+  github.sha, inputs.mode) }}
 
 on:
   workflow_run:
@@ -46,21 +52,28 @@ permissions:
 # one; that is intended, because Validate on `main` completes in push order and
 # the replacement targets a newer commit, so dropping the older one only skips
 # an intermediate deploy (sha-guard never moves production backwards).
-# Runs that sha-guard would skip (failed, cancelled, or non-push Validate
-# completions, and off-main dispatches) get their own group so they cannot
-# replace a pending deploy.
+# A Validate on main dispatched by the main Validate watchdog (GITHUB_TOKEN,
+# so `github-actions[bot]`; `actor` keeps it across re-runs) counts like a
+# push run; it only fires when GitHub
+# dropped the push event (#4929). Manual dispatches (benchmarks) never deploy,
+# so they cannot replace a newer pending deploy.
+# Runs that sha-guard would skip (failed, cancelled, or PR/merge-group
+# Validate completions, and off-main dispatches) get their own group so they
+# cannot replace a pending deploy.
 concurrency:
   group: >-
     ${{ ((github.event_name == 'workflow_dispatch' && github.ref_name == 'main'
     && inputs.mode == 'production') || (github.event.workflow_run.conclusion ==
     'success' && github.event.workflow_run.head_branch == 'main' &&
-    github.event.workflow_run.event == 'push')) && 'deploy-production' ||
-    ((github.event_name == 'workflow_dispatch' && github.ref_name ==
-    'taren/tanstack-start-migration' && (inputs.mode == 'prepare-start-opt-in'
-    || inputs.mode == 'deploy-start-opt-in' || inputs.mode ==
-    'activate-start-opt-in' || inputs.mode == 'verify-start-opt-in' ||
-    inputs.mode == 'rollback-start-opt-in')) && 'deploy-start-opt-in' ||
-    format('deploy-skipped-{0}', github.run_id)) }}
+    (github.event.workflow_run.event == 'push' ||
+    (github.event.workflow_run.event == 'workflow_dispatch' &&
+    github.event.workflow_run.actor.login == 'github-actions[bot]')))) &&
+    'deploy-production' || ((github.event_name == 'workflow_dispatch' &&
+    github.ref_name == 'taren/tanstack-start-migration' && (inputs.mode ==
+    'prepare-start-opt-in' || inputs.mode == 'deploy-start-opt-in' ||
+    inputs.mode == 'activate-start-opt-in' || inputs.mode ==
+    'verify-start-opt-in' || inputs.mode == 'rollback-start-opt-in')) &&
+    'deploy-start-opt-in' || format('deploy-skipped-{0}', github.run_id)) }}
   cancel-in-progress: false
 
 jobs:
@@ -401,7 +414,10 @@ jobs:
       (github.event_name == 'workflow_run' &&
         github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.head_branch == 'main' &&
-        github.event.workflow_run.event == 'push') ||
+        (github.event.workflow_run.event == 'push' ||
+          (github.event.workflow_run.event == 'workflow_dispatch' &&
+            github.event.workflow_run.actor.login ==
+              'github-actions[bot]'))) ||
       (github.event_name == 'workflow_dispatch' && github.ref_name == 'main' &&
       inputs.mode == 'production')
     outputs:
@@ -457,6 +473,11 @@ jobs:
           git fetch origin main
           HEAD_SHA="$(git rev-parse origin/main)"
           echo "deploy_sha=$DEPLOY_SHA" >> "$GITHUB_OUTPUT"
+          {
+            echo "Deploy SHA: \`$DEPLOY_SHA\`"
+            echo ""
+            echo "main HEAD at guard time: \`$HEAD_SHA\`"
+          } >> "$GITHUB_STEP_SUMMARY"
           # main HEAD, or an older validated main commit when production is
           # strictly behind it (tools/ci/deploy-sha-guard.ts).
           # Commits validated before the guard landed lack the script; they
@@ -1062,6 +1083,10 @@ jobs:
       (needs.sha-guard.outputs.deploy_main == 'true' ||
         needs.sha-guard.outputs.deploy_platform == 'true' ||
         needs.sha-guard.outputs.deploy_runtime == 'true')
+    outputs:
+      capability_vector_reindex_required:
+        ${{ steps.resources.outputs.capability_vector_reindex_required }}
+      deploy_url: ${{ steps.deploy.outputs.url }}
     environment:
       name: production
       url: ${{ steps.deploy.outputs.url }}
@@ -1975,6 +2000,51 @@ jobs:
           path: ${{ runner.temp }}/wrangler-logs/
           if-no-files-found: ignore
           retention-days: 5
+
+  reindex-vectors-for-new-metadata-indexes:
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    name: 🧭 Full vector reindex (new metadata indexes)
+    timeout-minutes: 30
+    # Vectorize only filters vectors upserted after a metadata index exists.
+    # When the deploy just added metadata indexes to the production index,
+    # force-reindex every vector kind once so filtered queries (builtin
+    # `kind`, memory/package/job `userId`/`status`) stop returning nothing.
+    # A separate job so re-running it alone retries with the same outputs.
+    needs:
+      - sha-guard
+      - deploy
+    if: >-
+      always() && !cancelled() && needs.deploy.result == 'success' &&
+      needs.deploy.outputs.capability_vector_reindex_required == 'true'
+    environment:
+      name: production
+    steps:
+      - name: 📦 Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ needs.sha-guard.outputs.deploy_sha }}
+
+      - name: 🟢 Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 26
+          cache: npm
+
+      - name: 📥 Install Dependencies
+        run: npm ci
+
+      - name: 🧭 Force-reindex every vector kind
+        env:
+          DEPLOY_URL:
+            ${{ needs.deploy.outputs.deploy_url || vars.APP_BASE_URL }}
+          CAPABILITY_REINDEX_SECRET: ${{ secrets.CAPABILITY_REINDEX_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CAPABILITY_REINDEX_SECRET:-}" ] || [ -z "${DEPLOY_URL:-}" ]; then
+            echo "::error::New Vectorize metadata indexes need a full reindex, but CAPABILITY_REINDEX_SECRET or the deploy URL is missing."
+            exit 1
+          fi
+          node tools/ci/reindex-capabilities.ts --url "$DEPLOY_URL" --force --max-sweeps 60
 
   deploy-status-worker:
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}

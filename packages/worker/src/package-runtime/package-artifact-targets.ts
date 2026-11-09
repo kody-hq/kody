@@ -5,11 +5,11 @@ import {
 	normalizePackageExportKey,
 	normalizePackageWorkspacePath,
 } from '#worker/package-registry/manifest.ts'
-import {
-	type AuthoredPackageJson,
-	type PackageExportTarget,
+import type {
+	AuthoredPackageJson,
+	PackageExportTarget,
 } from '#worker/package-registry/types.ts'
-import { type BundleArtifactKind } from './published-runtime-artifacts.ts'
+import type { BundleArtifactKind } from './published-runtime-artifacts.ts'
 import { buildPackageSubscriptionArtifactName } from './subscription-artifacts.ts'
 
 export type PublishedPackageArtifactBuildTarget = {

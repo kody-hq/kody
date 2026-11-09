@@ -10,7 +10,7 @@ import {
 	bytesToBase64Url,
 } from '@kody-internal/shared/base64.ts'
 import { z } from 'zod'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { packageCredentialKindValues } from '#worker/package-registry/types.ts'
 
 const handlePrefix = 'kch1.'

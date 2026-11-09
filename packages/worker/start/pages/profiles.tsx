@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import {
 	type FormEvent,
 	type KeyboardEvent,
@@ -1347,7 +1347,11 @@ function CreateProfilePanel(props: {
 													)
 												}
 											/>
-											<code>{permission}</code>
+											{permission === 'secret:read_local' ? (
+												'read locally'
+											) : (
+												<code>{permission}</code>
+											)}
 										</label>
 									))}
 								</span>

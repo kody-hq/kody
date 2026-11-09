@@ -1,9 +1,9 @@
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
-import { type OAuthDecisionData } from '../../src/oauth-handlers.ts'
+import type { OAuthDecisionData } from '../../src/oauth-handlers.ts'
 
 export const submitOAuthDecision = createServerFn({ method: 'POST' })
-	.inputValidator(
+	.validator(
 		z
 			.object({
 				search: z
@@ -12,7 +12,7 @@ export const submitOAuthDecision = createServerFn({ method: 'POST' })
 				fields: z.record(z.string(), z.string()),
 			})
 			.refine((input) =>
-				['approve', 'deny', 'reset-client'].includes(
+				['approve', 'deny', 'reset-client', 'guest'].includes(
 					input.fields.decision ?? '',
 				),
 			),

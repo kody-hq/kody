@@ -17,21 +17,21 @@ import { queryAnalyticsEngineSql } from '#worker/usage/aggregate-rollups.ts'
 import { loadOnboardingFunnelSummary } from '#worker/identity/onboarding-funnel-summary.ts'
 import { toAdminInsightsPackageErrorRate } from '#worker/admin/fleet-error-rate-data.ts'
 import { loadFleetPackageErrorRateSnapshot } from '#worker/usage/fleet-package-error-rate.ts'
-import {
-	type AdminInsightsActivation,
-	type AdminInsightsActivationStep,
-	type AdminInsightsAuthCategory,
-	type AdminInsightsAuthDay,
-	type AdminInsightsEmailDay,
-	type AdminInsightsEmailDeliveryDay,
-	type AdminInsightsHeatmapCell,
-	type AdminInsightsJobHealth,
-	type AdminInsightsLoaderData,
-	type AdminInsightsPlanSlice,
-	type AdminInsightsSignupWeek,
-	type AdminInsightsTotals,
-	type AdminInsightsUsageMonth,
-	type AdminUsageMetric,
+import type {
+	AdminInsightsActivation,
+	AdminInsightsActivationStep,
+	AdminInsightsAuthCategory,
+	AdminInsightsAuthDay,
+	AdminInsightsEmailDay,
+	AdminInsightsEmailDeliveryDay,
+	AdminInsightsHeatmapCell,
+	AdminInsightsJobHealth,
+	AdminInsightsLoaderData,
+	AdminInsightsPlanSlice,
+	AdminInsightsSignupWeek,
+	AdminInsightsTotals,
+	AdminInsightsUsageMonth,
+	AdminUsageMetric,
 } from '#universal/loader-data.ts'
 
 import {

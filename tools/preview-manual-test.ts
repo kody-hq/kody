@@ -22,6 +22,10 @@ export const defaultWaitTimeoutMs = 15 * 60 * 1000
 export const defaultPollIntervalMs = 8_000
 export const defaultRequestTimeoutMs = 10_000
 
+export function previewManualTestUsage(): string {
+	return usageLines.join('\n')
+}
+
 const usageLines = [
 	'Usage: node tools/preview-manual-test.ts [options]',
 	'',
@@ -32,7 +36,7 @@ const usageLines = [
 	'',
 	'Options:',
 	'  --pr <n>            PR number (default: gh pr view)',
-	'  --url <url>         Skip GitHub discovery; smoke this preview URL',
+	'  --url <url>         Skip GitHub discovery (even with --pr); smoke this URL',
 	'  --sha <sha>         Expected /health commitSha (default: PR head',
 	'                      SHA from gh; /health may be the merge commit — see docs)',
 	'  --no-wait           Fail immediately if the preview is not ready',
@@ -1319,6 +1323,7 @@ async function resolveAndWait(
 		if (!snapshot.previewUrl) {
 			throw new PreviewManualTestError(notReadyMessage(snapshot))
 		}
+		warnIfMissingExpectedSha(snapshot, deps)
 		return snapshot
 	}
 
@@ -1333,7 +1338,8 @@ async function resolveAndWait(
 			)
 		}
 		const healthReady =
-			Boolean(snapshot.previewUrl) && (await previewHealthReady(snapshot, deps))
+			Boolean(snapshot.previewUrl) &&
+			(await previewHealthReady(snapshot, deps, Boolean(options.previewUrl)))
 		const workflowReady = previewWorkflowReady(snapshot, options)
 		if (healthReady && workflowReady) {
 			warnIfMissingExpectedSha(snapshot, deps)
@@ -1351,7 +1357,7 @@ async function resolveAndWait(
 }
 
 function skipPreviewWorkflowGate(options: PreviewManualTestOptions) {
-	return Boolean(options.previewUrl) && options.prNumber === null
+	return Boolean(options.previewUrl)
 }
 
 function previewWorkflowReady(
@@ -1379,58 +1385,56 @@ function warnIfMissingExpectedSha(
 	}
 }
 
+function snapshotFromPreviewUrl(
+	options: PreviewManualTestOptions,
+): PreviewSnapshot {
+	const previewUrl = options.previewUrl
+	if (!previewUrl) {
+		throw new PreviewManualTestError('--url is required for this snapshot.')
+	}
+	const workerName = workerNameFromPreviewUrl(previewUrl)
+	const runtimeWorkerName = workerName ? `${workerName}-runtime` : null
+	const platformWorkerName = workerName ? `${workerName}-platform` : null
+	const apiWorkerName = workerName ? `${workerName}-api` : null
+	return {
+		prNumber: options.prNumber,
+		prUrl: null,
+		isDraft: false,
+		headSha: null,
+		previewUrl,
+		workerName,
+		runtimeWorkerName,
+		runtimeUrl:
+			workerName && runtimeWorkerName
+				? deriveSiblingWorkerUrl(previewUrl, workerName, runtimeWorkerName)
+				: null,
+		platformWorkerName,
+		platformUrl:
+			workerName && platformWorkerName
+				? deriveSiblingWorkerUrl(previewUrl, workerName, platformWorkerName)
+				: null,
+		apiWorkerName,
+		apiUrl:
+			workerName && apiWorkerName
+				? deriveSiblingWorkerUrl(previewUrl, workerName, apiWorkerName)
+				: null,
+		d1DatabaseName: null,
+		oauthKvTitle: null,
+		mocks: [],
+		expectedSha: options.expectedSha,
+		workflowUrl: null,
+		workflowStatus: null,
+		workflowConclusion: null,
+		workflowHeadSha: null,
+	}
+}
+
 async function loadSnapshot(
 	options: PreviewManualTestOptions,
 	deps: PreviewManualTestDeps,
 ): Promise<PreviewSnapshot> {
-	if (options.previewUrl && options.prNumber === null) {
-		const workerName = workerNameFromPreviewUrl(options.previewUrl)
-		const runtimeWorkerName = workerName ? `${workerName}-runtime` : null
-		const platformWorkerName = workerName ? `${workerName}-platform` : null
-		const apiWorkerName = workerName ? `${workerName}-api` : null
-		return {
-			prNumber: null,
-			prUrl: null,
-			isDraft: false,
-			headSha: null,
-			previewUrl: options.previewUrl,
-			workerName,
-			runtimeWorkerName,
-			runtimeUrl:
-				workerName && runtimeWorkerName
-					? deriveSiblingWorkerUrl(
-							options.previewUrl,
-							workerName,
-							runtimeWorkerName,
-						)
-					: null,
-			platformWorkerName,
-			platformUrl:
-				workerName && platformWorkerName
-					? deriveSiblingWorkerUrl(
-							options.previewUrl,
-							workerName,
-							platformWorkerName,
-						)
-					: null,
-			apiWorkerName,
-			apiUrl:
-				workerName && apiWorkerName
-					? deriveSiblingWorkerUrl(
-							options.previewUrl,
-							workerName,
-							apiWorkerName,
-						)
-					: null,
-			d1DatabaseName: null,
-			oauthKvTitle: null,
-			mocks: [],
-			expectedSha: options.expectedSha,
-			workflowUrl: null,
-			workflowStatus: null,
-			workflowConclusion: null,
-			workflowHeadSha: null,
-		}
+	if (options.previewUrl) {
+		return snapshotFromPreviewUrl(options)
 	}
 
 	const pr = await loadPullRequest(options, deps)
@@ -1559,6 +1563,7 @@ async function loadPreviewWorkflow(
 async function previewHealthReady(
 	snapshot: PreviewSnapshot,
 	deps: PreviewManualTestDeps,
+	skipGhParents = false,
 ): Promise<boolean> {
 	if (!snapshot.previewUrl) return false
 	try {
@@ -1571,6 +1576,7 @@ async function previewHealthReady(
 			evaluateAppHealth,
 			response.body,
 			snapshot.expectedSha,
+			skipGhParents,
 		)
 		return healthEval.ok
 	} catch {
@@ -1587,9 +1593,11 @@ async function evaluateFetchedHealth(
 	) => { ok: boolean; commitSha: string | null; detail: string },
 	body: unknown,
 	expectedSha: string | null,
+	skipGhParents = false,
 ) {
 	const first = evaluate(body, expectedSha)
-	if (first.ok || !first.commitSha || !expectedSha) return first
+	if (first.ok || !first.commitSha || !expectedSha || skipGhParents)
+		return first
 	const parents = await loadCommitParents(deps, first.commitSha)
 	if (!parents) return first
 	return evaluate(body, expectedSha, parents)
@@ -1662,6 +1670,7 @@ async function runSmokeChecks(
 			evaluateAppHealth,
 			health.body,
 			snapshot.expectedSha,
+			Boolean(options.previewUrl),
 		)
 		commitSha = healthEval.commitSha
 		checks.push({
@@ -1733,6 +1742,7 @@ async function runSmokeChecks(
 				evaluateRuntimeHealth,
 				runtimeHealth.body,
 				snapshot.expectedSha,
+				Boolean(options.previewUrl),
 			)
 			runtimeCommitSha = runtimeEval.commitSha
 			checks.push({
@@ -1763,6 +1773,7 @@ async function runSmokeChecks(
 				evaluatePlatformHealth,
 				platformHealth.body,
 				snapshot.expectedSha,
+				Boolean(options.previewUrl),
 			)
 			platformCommitSha = platformEval.commitSha
 			checks.push({
@@ -2020,9 +2031,12 @@ function waitStatusMessage(
 		return `Waiting for preview workflow (${snapshot.workflowStatus ?? 'unknown'}${snapshot.workflowConclusion ? `/${snapshot.workflowConclusion}` : ''})${snapshot.workflowUrl ? `: ${snapshot.workflowUrl}` : ''}`
 	}
 	if (snapshot.previewUrl) {
-		return snapshot.expectedSha
-			? `Waiting for /health to serve ${snapshot.expectedSha} (exact or merge commit) at ${snapshot.previewUrl}`
-			: `Waiting for a healthy /health at ${snapshot.previewUrl}`
+		if (!snapshot.expectedSha) {
+			return `Waiting for a healthy /health at ${snapshot.previewUrl}`
+		}
+		// Direct `--url` skips gh parent lookup, so only an exact /health match counts.
+		const matchRule = snapshot.headSha ? 'exact or merge commit' : 'exact match'
+		return `Waiting for /health to serve ${snapshot.expectedSha} (${matchRule}) at ${snapshot.previewUrl}`
 	}
 	if (snapshot.workflowUrl) {
 		return `Waiting for preview workflow (${snapshot.workflowStatus ?? 'unknown'}): ${snapshot.workflowUrl}`

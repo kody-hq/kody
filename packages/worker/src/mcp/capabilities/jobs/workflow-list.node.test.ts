@@ -1,6 +1,9 @@
 import { expect, test } from 'vitest'
 import { z } from 'zod'
-import { workflowRunListInputSchema } from './workflow-list.ts'
+import {
+	workflowRunListOutputSchema,
+	workflowRunListInputSchema,
+} from './workflow-list.ts'
 
 test('workflowRunList rejects unknown keys and suggests supported snake_case filters', () => {
 	const result = workflowRunListInputSchema.safeParse({
@@ -38,4 +41,28 @@ test('workflowRunList accepts workflow_id, status, package_id, and since', () =>
 		since: '2026-07-01T00:00:00.000Z',
 		limit: 10,
 	})
+})
+
+test('workflowRunList accepts an opaque cursor', () => {
+	const result = workflowRunListInputSchema.safeParse({
+		cursor: 'opaque-cursor',
+		limit: 100,
+	})
+	expect(result.success).toBe(true)
+})
+
+test('workflowRunList documents idempotency_key as opaque and returns next_cursor', () => {
+	const output = z.toJSONSchema(workflowRunListOutputSchema) as unknown as {
+		properties: {
+			next_cursor: unknown
+			workflows: {
+				items: { properties: Record<string, { description?: string }> }
+			}
+		}
+	}
+	expect(output.properties.next_cursor).toBeDefined()
+	expect(
+		output.properties.workflows.items.properties['idempotency_key']
+			?.description,
+	).toMatch(/opaque/i)
 })

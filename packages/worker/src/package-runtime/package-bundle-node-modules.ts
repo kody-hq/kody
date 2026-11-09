@@ -1,3 +1,9 @@
+import {
+	nodeModulesImportKind,
+	resolveNodeModulesImport,
+} from '@kody-internal/shared/node-modules-resolution.ts'
+import { normalizeWorkspaceModulePath } from './module-graph-path-basics.ts'
+
 /**
  * Product invariant: the platform never mounts third-party modules into a
  * package bundle. Bundler file sets may only include node_modules paths that
@@ -42,4 +48,59 @@ export function listNodeModulesPackageRoots(
 		if (segments[0]) roots.add(segments[0])
 	}
 	return [...roots].sort((left, right) => left.localeCompare(right))
+}
+
+type NodeModulesResolveArgs = {
+	path: string
+	resolveDir?: string
+	kind: string
+}
+
+type NodeModulesResolveResult =
+	| { path: string; namespace: 'virtual' }
+	| { errors: Array<{ text: string }> }
+	| undefined
+
+/**
+ * Resolves bare npm imports from the importing file's directory (nested
+ * `node_modules` first), the same way the local CLI bundle does. The worker
+ * bundler's own lookup only reads the root `node_modules/<name>`, so a
+ * nested second major (e.g. `htmlparser2/node_modules/entities`) lost to
+ * the hoisted one. Unknown packages fall through to the bundler unchanged.
+ */
+export function createNodeModulesResolutionPlugin(
+	files: Record<string, string>,
+) {
+	const fs = {
+		readFile: (path: string) => files[path] ?? null,
+		fileExists: (path: string) => Object.hasOwn(files, path),
+	}
+	return {
+		name: 'kody-node-modules-resolution',
+		setup(build: {
+			onResolve(
+				options: { filter: RegExp },
+				callback: (args: NodeModulesResolveArgs) => NodeModulesResolveResult,
+			): void
+		}) {
+			build.onResolve({ filter: /^[^./]/ }, (args) => {
+				if (args.kind === 'entry-point') return
+				const resolution = resolveNodeModulesImport({
+					specifier: args.path,
+					importerDirectory: normalizeWorkspaceModulePath(
+						args.resolveDir ?? '',
+					),
+					kind: nodeModulesImportKind(args.kind),
+					fs,
+				})
+				if (resolution.kind === 'resolved') {
+					return { path: resolution.path, namespace: 'virtual' }
+				}
+				if (resolution.kind === 'error') {
+					return { errors: [{ text: resolution.message }] }
+				}
+				return undefined
+			})
+		},
+	}
 }

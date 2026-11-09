@@ -49,8 +49,11 @@ const { PackageNameInputError, normalizePackageNameInput } =
 const { SavedPackageNotFoundError } =
 	await import('#worker/package-runtime/package-import-resolution.ts')
 const { UserCodeError } = await import('#worker/user-code-error.ts')
-const { RepoChecksFailedError, repoChecksFailedErrorName } =
-	await import('#worker/repo/repo-checks-failed-error.ts')
+const {
+	createRepoChecksError,
+	RepoChecksFailedError,
+	repoChecksFailedErrorName,
+} = await import('#worker/repo/repo-checks-failed-error.ts')
 
 function captureMcpEvents(run: () => void) {
 	sentryMock.captureException.mockClear()
@@ -289,6 +292,34 @@ test('logMcpEvent keeps sandbox and caller failures off Sentry and still reports
 			new Error(
 				'Push rejected because it was not a simple fast-forward. Use "force: true" to override.',
 			),
+		),
+		// External publish concurrency guards (KODY-DZ). Plain Errors from DO
+		// RPC, including cause-chain wrapping and the legacy HEAD phrase.
+		handlerFailure(
+			'packagePublishExternalPush',
+			'packages',
+			'Error',
+			new Error(
+				'The package\'s Artifacts HEAD moved from "commit-stale" to "commit-new" while publishing. Retry the publish (or re-run so the newest pushed commit publishes).',
+			),
+		),
+		handlerFailure(
+			'packagePublishExternalPush',
+			'packages',
+			'Error',
+			new Error(
+				'Artifacts HEAD changed from "commit-stale" to "commit-new" before publish.',
+			),
+		),
+		handlerFailure(
+			'packagePublishExternalPush',
+			'packages',
+			'Error',
+			new Error('Durable Object RPC failed', {
+				cause: new Error(
+					'The published commit moved while this publish was running. Retry the publish.',
+				),
+			}),
 		),
 		// packageSave destructive overwrite confirmation (issue 7661329778).
 		// Plain Error from shared source-safety-policy helpers.
@@ -782,6 +813,38 @@ test('mcpServerAdd duplicate-name caller error stays off Sentry (KODY-A5)', () =
 			message: 'Unable to connect to MCP server: hub unreachable',
 		}),
 	)
+})
+
+test('platform repo check failures reach Sentry while author check failures stay off (#3661)', () => {
+	captureMcpEvents(() => {
+		logMcpEvent(
+			handlerFailure(
+				'packageSave',
+				'packages',
+				repoChecksFailedErrorName,
+				createRepoChecksError([
+					{ kind: 'typecheck', ok: false, message: 'src/a.ts: type error' },
+				]),
+			),
+		)
+	})
+	expectNoSentry()
+
+	const platform = createRepoChecksError([
+		{
+			kind: 'dependencies',
+			ok: false,
+			failureOrigin: 'platform',
+			message: 'Could not load the saved package manifest for @scope/b.',
+		},
+	])
+	captureMcpEvents(() => {
+		logMcpEvent(
+			handlerFailure('packageSave', 'packages', platform.name, platform),
+		)
+	})
+	expect(sentryMock.captureException).toHaveBeenCalledTimes(1)
+	expect(sentryMock.captureException).toHaveBeenCalledWith(platform)
 })
 
 test('unauthenticated capability calls stay off Sentry (KODY-9C)', () => {

@@ -17,15 +17,15 @@ import { computeNextRunAt, toJobView } from '#worker/jobs/schedule.ts'
 import { createJobStorageId } from '#worker/storage-runner.ts'
 import { parseAuthoredPackageJson } from '#worker/package-registry/manifest.ts'
 import { buildPackageJobId } from '#worker/jobs/package-job-id.ts'
-import { type EntityKind } from '#worker/repo/types.ts'
-import {
-	type JobRecord,
-	type JobSchedule,
-	type PersistedJobCallerContext,
+import type { EntityKind } from '#worker/repo/types.ts'
+import type {
+	JobRecord,
+	JobSchedule,
+	PersistedJobCallerContext,
 } from '#worker/jobs/types.ts'
-import {
-	type McpCallerContext,
-	type McpUserContext,
+import type {
+	McpCallerContext,
+	McpUserContext,
 } from '@kody-internal/shared/chat.ts'
 export function mockRepoPersistence() {
 	repoMockModule.ensureEntitySource.mockImplementation(
@@ -501,6 +501,50 @@ export function createDatabase(
 								}
 							}
 							if (
+								query.includes(
+									'SELECT id, published_commit FROM entity_sources',
+								) &&
+								query.includes('WHERE user_id = ? AND id IN (')
+							) {
+								const sourceIds = params.slice(1)
+								return {
+									results: selectAll(
+										'entity_sources',
+										(row) =>
+											row['user_id'] === params[0] &&
+											sourceIds.includes(row['id']) &&
+											row['deleted_at'] == null,
+									).map((row) => ({
+										id: row['id'],
+										published_commit: row['published_commit'],
+									})) as T[],
+								}
+							}
+							if (
+								query.includes('FROM published_bundle_artifacts') &&
+								query.includes('WHERE user_id = ? AND ((source_id = ?')
+							) {
+								const identities: Array<Array<unknown>> = []
+								for (let index = 1; index < params.length; index += 4) {
+									identities.push(params.slice(index, index + 4))
+								}
+								return {
+									results: selectAll(
+										'published_bundle_artifacts',
+										(row) =>
+											row['user_id'] === params[0] &&
+											identities.some(
+												([sourceId, kind, name, entryPoint]) =>
+													row['source_id'] === sourceId &&
+													row['artifact_kind'] === kind &&
+													String(row['artifact_name'] ?? '') ===
+														String(name ?? '') &&
+													row['entry_point'] === entryPoint,
+											),
+									) as T[],
+								}
+							}
+							if (
 								query.includes('FROM published_bundle_artifacts') &&
 								query.includes('WHERE user_id = ? AND source_id = ?')
 							) {
@@ -767,6 +811,42 @@ export function createDatabase(
 									'entity_sources',
 									(existing) => existing['id'] === row.id,
 									row,
+								)
+								return { meta: { changes: 1, last_row_id: 0 } }
+							}
+							const entitySourceUpdate =
+								/^UPDATE entity_sources\s+SET ([\s\S]+?)\s+WHERE id = \? AND user_id = \?( AND published_commit = \?)?/.exec(
+									query,
+								)
+							if (entitySourceUpdate?.[1]) {
+								const columns = entitySourceUpdate[1]
+									.split(',')
+									.map((assignment) => assignment.replace(/=\s*\?/, '').trim())
+								const id = params[columns.length]
+								const userId = params[columns.length + 1]
+								const expectedPublishedCommit = entitySourceUpdate[2]
+									? params[columns.length + 2]
+									: undefined
+								const existing = selectOne(
+									'entity_sources',
+									(row) =>
+										row['id'] === id &&
+										row['user_id'] === userId &&
+										(expectedPublishedCommit === undefined ||
+											row['published_commit'] === expectedPublishedCommit),
+								)
+								if (!existing) {
+									return { meta: { changes: 0, last_row_id: 0 } }
+								}
+								upsert(
+									'entity_sources',
+									(entry) => entry['id'] === id && entry['user_id'] === userId,
+									{
+										...existing,
+										...Object.fromEntries(
+											columns.map((column, index) => [column, params[index]]),
+										),
+									},
 								)
 								return { meta: { changes: 1, last_row_id: 0 } }
 							}

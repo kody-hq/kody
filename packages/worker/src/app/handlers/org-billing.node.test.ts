@@ -6,7 +6,7 @@ import {
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { beforeEach, expect, test, vi } from 'vitest'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { loadRequestOrgResolution } from '#app/org-request-binding.ts'
 import { createBillingLinkReference } from '#worker/billing/billing-config.ts'
 import {
@@ -75,6 +75,9 @@ vi.mock('#worker/billing/subscription-sync.ts', () => ({
 	},
 	linkStripeCustomerFromCheckoutSessionAttribution: (...args: Array<unknown>) =>
 		mocks.linkStripeCustomerFromCheckoutSessionAttribution(...args),
+}))
+vi.mock('#worker/billing/plan-transfer.ts', () => ({
+	advancePlanTransferForCheckoutSession: async () => null,
 }))
 vi.mock('#worker/platform-feedback/service.ts', () => ({
 	submitPlatformFeedback: (...args: Array<unknown>) =>
@@ -389,7 +392,7 @@ test('an owner subscribes the team org in the URL with one seat per owner and me
 	// Team org id everywhere — never the authorizing member's personal org /
 	// stable user id (regression for misattributed team checkout).
 	expect(checkoutArgs.metadata.kody_org_id).toBe('org-acme')
-	expect(checkoutArgs.metadata.kody_stable_user_id).toBe('org-acme')
+	expect(checkoutArgs.metadata).not.toHaveProperty('kody_stable_user_id')
 	expect(checkoutArgs.metadata.kody_org_id).not.toBe(people.ada.personId)
 	expect(checkoutArgs.clientReferenceId).not.toBe(
 		await createBillingLinkReference(env, people.ada.personId),

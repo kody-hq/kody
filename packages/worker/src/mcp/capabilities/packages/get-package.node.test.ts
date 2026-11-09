@@ -31,6 +31,8 @@ vi.mock('#worker/package-registry/repo.ts', () => ({
 vi.mock('#worker/package-registry/source.ts', () => ({
 	loadPackageSourceBySourceId: (...args: Array<unknown>) =>
 		mockModule.loadPackageSourceBySourceId(...args),
+	loadServingPackageSourceBySourceId: (...args: Array<unknown>) =>
+		mockModule.loadPackageSourceBySourceId(...args),
 }))
 
 vi.mock('#worker/package-registry/package-owner.ts', () => ({
@@ -253,6 +255,32 @@ test('getPackageCapability returns export metadata for personal and org-bound ow
 		subpath: './post-message',
 		import_specifier: 'kody:@acme/discord-gateway/post-message',
 	})
+})
+
+test('getPackageCapability shows published credential slots that fail validation', async () => {
+	stubSavedPackage()
+	mockModule.loadPackageSourceBySourceId.mockResolvedValue({
+		source: { id: 'source-1', published_commit: null },
+		manifest: {
+			name: '@kentcdodds/discord-gateway',
+			exports: { '.': './src/index.ts' },
+			kody: {
+				id: 'discord-gateway',
+				description: 'Helpers',
+				credentials: {},
+				invalidCredentialSlots: {
+					TOKEN: 'kody.credentials.TOKEN.raw: Invalid input',
+				},
+			},
+		},
+		files: {},
+	})
+
+	const result = await getPackage()
+
+	expect(result.credentials.invalidSlots).toEqual([
+		{ key: 'TOKEN', message: 'kody.credentials.TOKEN.raw: Invalid input' },
+	])
 })
 
 test('getPackageCapability omits fork-ahead from the agent payload', async () => {

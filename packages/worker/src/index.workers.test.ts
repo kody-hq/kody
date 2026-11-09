@@ -1,16 +1,26 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { expect, test, vi } from 'vitest'
+import { beforeAll, expect, test, vi } from 'vitest'
 import * as Sentry from '@sentry/cloudflare'
-import { env, runInDurableObject } from 'cloudflare:test'
+import {
+	applyD1Migrations,
+	env,
+	runInDurableObject,
+	type D1Migration,
+} from 'cloudflare:test'
 import type * as SystemEmail from '#worker/email/system-email.ts'
 import type * as SecondAgentGiftReconciliation from '#worker/entitlements/second-agent-gift-reconciliation.ts'
 import type * as D1StorageReconciliation from '#worker/entitlements/d1-storage-reconciliation.ts'
-import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import {
 	oauthPurgeContinuationStorageKey,
 	type OAuthPurgeCoordinator,
 	type PurgeContinuation,
 } from './oauth-purge.ts'
+
+const testEnv = env as typeof env & { TEST_MIGRATIONS: Array<D1Migration> }
+
+beforeAll(async () => {
+	await applyD1Migrations(testEnv.APP_DB, testEnv.TEST_MIGRATIONS)
+})
 
 const mocks = vi.hoisted(() => ({
 	reconcileArtifactsPushes: vi.fn(async () => ({})),
@@ -188,10 +198,9 @@ test('platform lanes execute with their expected inputs and jobs-owned lanes are
 	] as const) {
 		await runScheduledLane({ env, lane, scheduledAt })
 	}
-	// community_listing_behind_backfill: mocking it here breaks OAuth Durable
-	// Object RPC in this file; the live path soft-fails when community_listings
-	// is absent (workers harness). Behavior is covered in node tests.
-	consoleWarn.mockImplementation(() => {})
+	// community_listing_behind_backfill runs live (mocking it breaks OAuth
+	// Durable Object RPC in this file) against the migrated, empty
+	// community_listings table. Behavior is covered in node tests.
 	await expect(
 		runScheduledLane({
 			env,
@@ -199,11 +208,6 @@ test('platform lanes execute with their expected inputs and jobs-owned lanes are
 			scheduledAt,
 		}),
 	).resolves.toEqual({ scanned: 0, synced: 0, failed: 0 })
-	expect(consoleWarn).toHaveBeenCalledWith(
-		'community-listing-behind-backfill-scan-failed',
-		expect.anything(),
-	)
-	consoleWarn.mockReset()
 
 	for (const laneMock of [
 		mocks.reconcileArtifactsPushes,

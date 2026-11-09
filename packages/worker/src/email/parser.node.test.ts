@@ -179,3 +179,32 @@ test('parseForwardableEmailMessage keeps only Cloudflare Authentication-Results'
 		authResults: 'mx.cloudflare.net; spf=fail; dkim=fail; dmarc=fail',
 	})
 })
+
+test('a From address is never read out of a malformed or multi-mailbox From', async () => {
+	const fromOf = async (from: string) =>
+		(
+			await parseForwardableEmailMessage(
+				createMessage(
+					`From: ${from}\r\nTo: support@example.com\r\nSubject: Hi\r\nMessage-ID: <m@example.com>\r\n\r\nBody`,
+				),
+			)
+		).headerFrom
+	await expect(
+		fromOf('Alice <"alice@corp.example"@evil.example>'),
+	).resolves.toBe('sender@example.com')
+	await expect(fromOf('alice@corp.example@evil.example')).resolves.toBe(
+		'sender@example.com',
+	)
+	await expect(fromOf('Alice <alice@corp.example@evil.example>')).resolves.toBe(
+		'sender@example.com',
+	)
+	await expect(
+		fromOf('alice@corp.example, mallory@evil.example'),
+	).resolves.toBe('sender@example.com')
+	await expect(
+		fromOf('Team: alice@corp.example, mallory@evil.example;'),
+	).resolves.toBe('sender@example.com')
+	await expect(fromOf('"Bob" <Bob+tag@Corp.Example>')).resolves.toBe(
+		'bob+tag@corp.example',
+	)
+})

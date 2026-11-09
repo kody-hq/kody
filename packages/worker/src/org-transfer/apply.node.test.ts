@@ -1,6 +1,6 @@
 import { buildPackageJobId } from '@kody-internal/shared/jobs/package-job-id.ts'
-import { type JobRow } from '@kody-internal/shared/jobs/repo.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { JobRow } from '@kody-internal/shared/jobs/repo.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { beforeEach, expect, test, vi } from 'vitest'
 import {
@@ -235,10 +235,10 @@ async function seed() {
 			userWebhookHmacSecretContext(src, 'hook-1'),
 		),
 	)
-	// Disabled webhook of a deleted package.
+	// Webhook of a deleted package.
 	run(
-		`INSERT INTO webhook_endpoints (id, user_id, package_id, webhook_name, url_secret_hash, enabled, created_at, rotated_at)
-		 VALUES ('hook-orphan', ?, ?, 'ping', 'hash-2', 0, ?, ?)`,
+		`INSERT INTO webhook_endpoints (id, user_id, package_id, webhook_name, url_secret_hash, created_at, rotated_at)
+		 VALUES ('hook-orphan', ?, ?, 'ping', 'hash-2', ?, ?)`,
 		src,
 		goneOrphanPkg,
 		now,

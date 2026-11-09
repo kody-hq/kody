@@ -32,7 +32,7 @@ import { packageAppDeviceSignInTarget } from '#universal/package-app-oauth-paths
 import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
 import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
 import { colors } from '#universal/styles/tokens.ts'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { handlePermanenceConfirmMessage } from '@kody-internal/shared/handle-permanence.ts'
 import {
 	startAuthentication,
@@ -49,6 +49,7 @@ import {
 import { AuthFormFallback } from '../components/auth-form-fallback.tsx'
 import { AuthLayout } from '../components/auth-layout.tsx'
 import {
+	AccountDeviceSignInOption,
 	DeviceSignInOption,
 	HumanCheckHelp,
 } from '../components/device-sign-in-option.tsx'
@@ -57,7 +58,7 @@ import { ProviderIcon } from '../components/provider-icons.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import { useHydrated } from '../components/use-hydrated.ts'
 import { useSocialSignIn, type PublicAuthConfig } from '../social-sign-in.ts'
-import { type UsernameAvailabilityView } from '../components/username-choice-field.tsx'
+import type { UsernameAvailabilityView } from '../components/username-choice-field.tsx'
 import { AuthForm, formMessageCss } from './login-sections.tsx'
 
 export type AuthStatus = 'idle' | 'submitting' | 'success' | 'error'
@@ -358,10 +359,14 @@ export function LoginPage({
 	const deviceSignInTarget = !isSignupMode(mode)
 		? packageAppDeviceSignInTarget(redirectTo)
 		: null
+	// Any other sign-in can approve this browser for the full Kody account
+	// from a device that is already signed in.
+	const accountDeviceSignIn = !isSignupMode(mode) && !deviceSignInTarget
+	const deviceSignIn = Boolean(deviceSignInTarget) || accountDeviceSignIn
 	const formErrorMessage =
 		!formErrorDismissed && !message && status === 'idle'
 			? authFormErrorMessage(searchParams.get('formError'), {
-					deviceSignIn: Boolean(deviceSignInTarget),
+					deviceSignIn,
 				})
 			: null
 	const isSignup = mode === 'signup'
@@ -437,12 +442,12 @@ export function LoginPage({
 				}}
 			/>
 
-			{turnstileSiteKey ? (
-				<HumanCheckHelp deviceSignIn={Boolean(deviceSignInTarget)} />
-			) : null}
+			{turnstileSiteKey ? <HumanCheckHelp deviceSignIn={deviceSignIn} /> : null}
 
 			{deviceSignInTarget ? (
 				<DeviceSignInOption target={deviceSignInTarget} rise={2} />
+			) : accountDeviceSignIn ? (
+				<AccountDeviceSignInOption redirectTo={redirectTo} rise={2} />
 			) : null}
 
 			{showSocial ? (
@@ -484,10 +489,10 @@ export function LoginPage({
 					isSignup
 						? 'JavaScript is off. Creating an account needs JavaScript. If you already have an account, sign in instead.'
 						: turnstileSiteKey
-							? deviceSignInTarget
+							? deviceSignIn
 								? 'JavaScript is off. Email and password sign-in needs a quick human check that uses JavaScript, so use Sign in on another device, or turn JavaScript on.'
 								: 'JavaScript is off. Email and password sign-in needs a quick human check that uses JavaScript, so turn JavaScript on to sign in.'
-							: deviceSignInTarget
+							: deviceSignIn
 								? 'JavaScript is off. Sign in with your email and password, or use Sign in on another device. Passkeys and social sign-in need JavaScript.'
 								: 'JavaScript is off. Sign in with your email and password. Passkeys and social sign-in need JavaScript.'
 				}

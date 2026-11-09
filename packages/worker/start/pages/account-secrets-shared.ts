@@ -1,13 +1,13 @@
 import { secretsSearch } from '../filter-search.ts'
 import { readCommaListParams, readTrimmedParam } from '#client/url-params.ts'
-import {
-	type AccountSecretDetail,
-	type AccountSecretListItem,
-	type AccountSecretsLoaderData,
+import type {
+	AccountSecretDetail,
+	AccountSecretListItem,
+	AccountSecretsLoaderData,
 } from '#universal/loader-data.ts'
 import { buildAccountSecretPath } from '@kody-internal/shared/account-secret-route.ts'
 import { normalizeSecretExpiresAt } from '@kody-internal/shared/secret-expires-at.ts'
-import { type ApprovalView } from '#client/routes/account-approval-shared.ts'
+import type { ApprovalView } from '#client/routes/account-approval-shared.ts'
 import { matchesSearchQuery } from '#client/search-filter.ts'
 import { getNewSecretQueryKey } from '#client/routes/new-secret-query.ts'
 import {

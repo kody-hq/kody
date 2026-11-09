@@ -1,10 +1,10 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { z } from 'zod'
-import { type CredentialNeedsApprovalRequired } from '#worker/credentials/credential-needs-approval.ts'
-import { type AuthoredPackageJson } from '#worker/package-registry/types.ts'
-import { type ServerTimingEntry } from '#worker/server-timing.ts'
-import { type PublishPhaseTimings } from './publish-phase-timing.ts'
-import { type RepoCheckKind } from './checks.ts'
+import type { CredentialNeedsApprovalRequired } from '#worker/credentials/credential-needs-approval.ts'
+import type { AuthoredPackageJson } from '#worker/package-registry/types.ts'
+import type { ServerTimingEntry } from '#worker/server-timing.ts'
+import type { PublishPhaseTimings } from './publish-phase-timing.ts'
+import type { RepoCheckKind } from './checks.ts'
 
 export const entityKindValues = ['package', 'repo'] as const
 export type EntityKind = (typeof entityKindValues)[number]
@@ -16,6 +16,11 @@ export const entitySourceRowSchema = z.object({
 	entity_id: z.string(),
 	repo_id: z.string(),
 	published_commit: z.string().nullable(),
+	/**
+	 * Last published commit whose every bundle artifact target is saved.
+	 * Runtime readers serve this commit; see `toServingSourceView`.
+	 */
+	serving_commit: z.string().nullable().optional(),
 	indexed_commit: z.string().nullable(),
 	manifest_path: z.string(),
 	source_root: z.string(),

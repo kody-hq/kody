@@ -1,13 +1,17 @@
 import {
+	recordConnectGrantedScopes,
+	resolveTokenEndpointClientSecret,
+} from '#worker/integrations/connect-oauth-persist.ts'
+import {
 	resolvePinnedConnectClientSecret,
 	resolvePinnedConnectTarget,
 	savePinnedConnection,
 } from '#worker/integrations/pinned-connect.ts'
-import {
-	type SaveSecretInput,
-	type SaveOAuthAppInput,
-	type ConnectOAuthInput,
-	type ExchangeOAuthTokenInput,
+import type {
+	SaveSecretInput,
+	SaveOAuthAppInput,
+	ConnectOAuthInput,
+	ExchangeOAuthTokenInput,
 } from '#universal/secret-mutations.ts'
 import {
 	fillPlacementOptInFromPlacement,
@@ -21,7 +25,7 @@ import {
 	resolveApprovalRequest,
 	toPackageOptions,
 } from '#app/account-secrets-data.ts'
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { buildConnectOauthNextSteps } from '#worker/integrations/connect-oauth-next-steps.ts'
 import { operationResult } from '#app/operation-result.ts'
 import {
@@ -42,7 +46,7 @@ import {
 import { normalizeAllowedHosts } from '#mcp/secrets/allowed-hosts.ts'
 import { normalizeAllowedPackages } from '#mcp/secrets/allowed-packages.ts'
 import { classifyBulkApprovalHosts } from '#mcp/secrets/host-approval.ts'
-import { type StorageContext } from '#mcp/storage.ts'
+import type { StorageContext } from '#mcp/storage.ts'
 import { filterValidApprovalHosts } from '#mcp/secrets/approval-host-shape.ts'
 import { normalizeBulkPackageSecretApprovalNames } from '#mcp/secrets/package-approval-url.ts'
 import {
@@ -59,7 +63,7 @@ import {
 	setSecretsAllowedHosts,
 	setSecretsAllowedPackages,
 } from '#mcp/secrets/service.ts'
-import { type SecretScope } from '#mcp/secrets/types.ts'
+import type { SecretScope } from '#mcp/secrets/types.ts'
 import {
 	credentialHostsSchema,
 	credentialProviderSchema,
@@ -73,12 +77,11 @@ import {
 	serializeCredentialFillPlacement,
 	type CredentialFillPlacement,
 } from '#worker/credentials/fill-placement.ts'
-import { type CredentialPlacementOrigin } from '#worker/credentials/placement-origin.ts'
-import { type LoginExchange } from '#worker/credentials/login-resolver.ts'
+import type { CredentialPlacementOrigin } from '#worker/credentials/placement-origin.ts'
+import type { LoginExchange } from '#worker/credentials/login-resolver.ts'
 import {
 	persistIntegrationTokens,
 	persistUserOauthAppClientSecret,
-	resolveUserOauthAppClientSecret,
 } from '#worker/integrations/credentials.ts'
 import {
 	pollIntegrationDeviceConnect,
@@ -102,7 +105,6 @@ import {
 } from '#worker/integrations/device-flow.ts'
 import {
 	assertScopesAllowedForPlatformApp,
-	findOauthAppForProviderSetup,
 	getAvailablePlatformApp,
 	assertOauthAppReplaceConfirmed,
 	getJoinedIntegration,
@@ -131,7 +133,7 @@ import {
 	buildAccountSecretId,
 	parseAccountSecretId,
 } from '@kody-internal/shared/account-secret-route.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { normalizeSecretExpiresAt } from '@kody-internal/shared/secret-expires-at.ts'
 import { safeParseHost } from '@kody-internal/shared/url-hosts.ts'
 import { waitUntil } from 'cloudflare:workers'
@@ -258,13 +260,15 @@ export async function saveAccountOAuthApp(input: {
 					: null,
 			},
 		})
-		const clientSecret = await resolveConnectClientSecret({
+		const clientSecret = await resolveTokenEndpointClientSecret({
 			env: input.env,
 			userId: ownerIdFromCaller({
 				request: input.user.request,
 				user: input.user.mcpUser,
 			}),
 			provider,
+			clientId: app.clientId,
+			tokenUrl: app.tokenUrl,
 			clientSecret: input.fields.clientSecret?.trim() ?? null,
 		})
 		if (clientSecret) {
@@ -548,14 +552,28 @@ export async function connectAccountOAuth(input: {
 		userId: ownerId,
 		name: integrationName,
 	})
-	if (!platformApp) {
-		const clientSecret = await resolveConnectClientSecret({
+	const scopeGrant = await recordConnectGrantedScopes({
+		env: input.env,
+		userId: ownerId,
+		name: integrationName,
+		app: {
+			provider: platformApp?.provider ?? connected?.app.provider ?? null,
+			tokenUrl,
+		},
+		accessToken,
+		tokenRecord,
+		requestedScopes: connected?.connection.scopes ?? scopes,
+	})
+	if (!platformApp && connected?.lane === 'user') {
+		const clientSecret = await resolveTokenEndpointClientSecret({
 			env: input.env,
 			userId: ownerId,
 			provider: integrationName,
+			clientId: connected.app.clientId,
+			tokenUrl: connected.app.tokenUrl,
 			clientSecret: input.fields.clientSecret?.trim() ?? null,
 		})
-		if (clientSecret && connected?.lane === 'user') {
+		if (clientSecret) {
 			await persistUserOauthAppClientSecret({
 				env: input.env,
 				userId: ownerId,
@@ -604,6 +622,7 @@ export async function connectAccountOAuth(input: {
 		allowedHosts,
 		integrationName,
 		nextSteps,
+		scopeGrant,
 	})
 }
 
@@ -919,18 +938,24 @@ export async function exchangeAccountOAuthToken(input: {
 	})
 
 	if (flow === 'confidential') {
-		clientSecret = await resolveConnectClientSecret({
+		clientSecret = await resolveTokenEndpointClientSecret({
 			env: input.env,
 			userId: ownerIdFromCaller({
 				request: input.user.request,
 				user: input.user.mcpUser,
 			}),
 			provider: input.fields.provider?.trim() ?? '',
+			clientId: new URLSearchParams(paramsRaw).get('client_id'),
+			tokenUrl,
 			clientSecret: input.fields.clientSecret?.trim() ?? null,
 		})
 		if (!clientSecret) {
 			return operationResult(
-				{ ok: false, error: 'Client secret is required.' },
+				{
+					ok: false,
+					error:
+						'No saved client secret matches this client ID and token URL. Go back to setup and enter the client secret.',
+				},
 				400,
 			)
 		}
@@ -1195,52 +1220,6 @@ async function saveIntegrationConfig(input: {
 		audit: input.audit,
 	})
 	return integration.name
-}
-
-async function resolveConnectClientSecret(input: {
-	env: Env
-	userId: OwnerId
-	provider: string
-	clientSecret?: string | null
-}): Promise<string | null> {
-	const inline = input.clientSecret?.trim()
-	if (inline) return inline
-	const slugs = await listConnectClientSecretSlugs(input)
-	for (const slug of slugs) {
-		const fromApp = await resolveUserOauthAppClientSecret({
-			env: input.env,
-			userId: input.userId,
-			slug,
-		})
-		if (fromApp) return fromApp
-	}
-	return null
-}
-
-async function listConnectClientSecretSlugs(input: {
-	env: Env
-	userId: OwnerId
-	provider: string
-}): Promise<Array<string>> {
-	const slugs: Array<string> = []
-	const add = (slug: string | null | undefined) => {
-		const normalized = slug?.trim()
-		if (normalized && !slugs.includes(normalized)) slugs.push(normalized)
-	}
-	add(canonicalIntegrationName(input.provider))
-	const joined = await getJoinedIntegration({
-		env: input.env,
-		userId: input.userId,
-		name: input.provider,
-	})
-	if (joined?.lane === 'user') add(joined.app.slug)
-	const setup = await findOauthAppForProviderSetup({
-		env: input.env,
-		userId: input.userId,
-		name: input.provider,
-	})
-	add(setup?.slug)
-	return slugs
 }
 
 function readTokenField(

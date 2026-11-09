@@ -1,4 +1,4 @@
-import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
+import type { RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
 
 export function anonymousRefusalResponse(message: string) {
 	return new Response(message, {
@@ -11,9 +11,9 @@ export function anonymousRefusalResponse(message: string) {
 }
 
 /**
- * Anonymous visitors only ever run the commit the owner approved for the
- * public internet (ADR 0069). Until approved-snapshot serving lands, a newer
- * unapproved publish is refused rather than served.
+ * Anonymous visitors only run a publish whose commit matches the
+ * owner-approved internet-visible commit (ADR 0069). A newer unapproved
+ * publish returns 403.
  */
 export function refuseUnapprovedAnonymousServe(input: {
 	visitor: RuntimePackageAppVisitor | null

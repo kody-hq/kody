@@ -8,7 +8,7 @@ import {
 } from '#universal/feature-flags/registry.ts'
 import type * as FeatureFlagExposure from '#worker/feature-flags/exposure.ts'
 import type * as FeatureFlagService from '#worker/feature-flags/service.ts'
-import { type FeatureFlagEvaluation } from '#worker/feature-flags/service.ts'
+import type { FeatureFlagEvaluation } from '#worker/feature-flags/service.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import {
 	assertCallerCanAccessCapability,
@@ -20,8 +20,8 @@ import {
 	resolveCallerFeatureFlags,
 	type CallerFeatureFlags,
 } from './access-control.ts'
-import { type BuiltCapabilityRegistry } from './build-capability-registry.ts'
-import { type Capability } from './types.ts'
+import type { BuiltCapabilityRegistry } from './build-capability-registry.ts'
+import type { Capability } from './types.ts'
 
 const flagMocks = vi.hoisted(() => ({
 	getFeatureFlagEvaluationsForUser:
@@ -61,6 +61,7 @@ function createFlagMap(enabled: boolean): CallerFeatureFlags {
 		'package-credential-suppliers': false,
 		'repo-push-queue': false,
 		'execution-contexts': false,
+		'publish-offload': false,
 		'credential-need-enforcement': false,
 		'credential-allowed-packages-safety-window': false,
 	}

@@ -5,14 +5,14 @@ import {
 	resolveSourceDatabase,
 	safeLog,
 } from './backup-policy.ts'
-import { type BackupEnvironment } from './backup-types.ts'
+import type { BackupEnvironment } from './backup-types.ts'
 import {
 	createD1Database,
 	deleteD1Database,
 	importSqlIntoD1,
 	queryD1Database,
 } from './d1-import-api.ts'
-import { type ApiOptions } from './d1-export-api.ts'
+import type { ApiOptions } from './d1-export-api.ts'
 import { readManifest } from './immutable-storage.ts'
 import { verifyBackupManifestSignature } from './manifest-signing.ts'
 import { assertSqlRestorable } from './sql-statement-stats.ts'

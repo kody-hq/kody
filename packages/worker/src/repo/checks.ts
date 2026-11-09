@@ -1,3 +1,4 @@
+import type { ModuleImportNodesCache } from '#worker/package-runtime/import-specifiers.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import {
 	getPackageAppAssetsDirectory,
@@ -38,6 +39,10 @@ import {
 } from '#worker/package-runtime/deprecated-invocation-usage.ts'
 import { validateBarePackageImportDeclarations } from '#worker/package-runtime/bare-package-import-declarations.ts'
 import {
+	collectUnresolvedRelativeImports,
+	formatUnresolvedRelativeImportsMessage,
+} from './unresolved-relative-imports.ts'
+import {
 	collectStaticKodyPackageImportsFromFiles,
 	isTypeDeclarationFilePath,
 } from '#worker/package-runtime/static-kody-imports.ts'
@@ -59,6 +64,7 @@ import {
 	createIsolatedCheckPhaseRunner,
 	isolatedBundleChunkConcurrency,
 	isolatedBundleChunkSize,
+	isolatedTypecheckChunkSize,
 	type IsolatedCheckPhaseRunner,
 } from './isolated-check-phases.ts'
 import {
@@ -78,6 +84,13 @@ import {
 	findFetchBodiesMissingSecretResolution,
 	formatFetchBodySecretResolutionWarning,
 } from '#worker/credentials/fetch-body-secret-resolution.ts'
+import {
+	findSecretPlaceholderRequestPlacements,
+	formatSecretPlaceholderRequestPlacementNotice,
+	type SecretPlaceholderRequestPlacementHit,
+	type SecretPlaceholderRequestPlacementMode,
+	secretPlaceholderRequestPlacementPublishMode,
+} from '#worker/credentials/secret-placeholder-request-placement.ts'
 import {
 	buildCredentialPatternCheck,
 	type CredentialPatternCheckResult,
@@ -118,10 +131,18 @@ export const repoCheckKinds = [
 
 export type RepoCheckKind = (typeof repoCheckKinds)[number]
 
+/**
+ * Who has to act on a failed check. `platform` means Kody infrastructure
+ * failed (expired check staging, a saved dependency manifest that would not
+ * load), not the authored package; absent means `author`.
+ */
+export type RepoCheckFailureOrigin = 'platform' | 'author'
+
 export type RepoCheckResult = {
 	kind: RepoCheckKind
 	ok: boolean
 	message: string
+	failureOrigin?: RepoCheckFailureOrigin
 }
 
 export type RepoCheckRunResult =
@@ -1020,12 +1041,14 @@ function collectReachableTypecheckSourceFiles(input: {
 }) {
 	const rootPackage = readRootPackage(input.sourceFiles)
 	const paths = new Set<string>()
+	const importNodesCache: ModuleImportNodesCache = new Map()
 	for (const target of input.targets) {
 		for (const path of collectReachableSourceFilePaths({
 			files: input.sourceFiles,
 			entryPoint: target.path,
 			rootPackage,
 			includeTypeOnly: true,
+			importNodesCache,
 		})) {
 			if (typecheckableSourceFilePattern.test(path)) paths.add(path)
 		}
@@ -1191,7 +1214,7 @@ function formatBundleCheckMessage(input: {
  * importable / app targets as published artifacts. Check-time esbuild is
  * skipped so a multi-export publish does not pay for bundling twice.
  */
-const deferredBundleCheckMessage =
+export const deferredBundleCheckMessage =
 	'Bundle validation deferred to published artifact rebuild.'
 
 const lintPassedMessage =
@@ -1339,6 +1362,28 @@ function buildLintCheck(sourceFiles: Record<string, string>): {
 }
 
 /**
+ * Publish offload: the same typecheck a cloud publish runs, for a builder
+ * outside the worker (CLI or execution context) that has the whole tree.
+ */
+export async function runPackageTypecheckForSourceTree(input: {
+	sourceFiles: Record<string, string>
+	manifest: AuthoredPackageJson
+}) {
+	const packageTypecheckTargets = collectPackageTypecheckTargets(input.manifest)
+	const targets =
+		input.sourceFiles[repoChecksSyntheticTsconfigPath] == null
+			? packageTypecheckTargets.filter((target) => target.kind === 'callable')
+			: packageTypecheckTargets
+	if (targets.length === 0) {
+		return { ok: true, message: 'No typecheck targets.' }
+	}
+	return await runPackageTypecheckLanguageService({
+		sourceFiles: input.sourceFiles,
+		targets,
+	})
+}
+
+/**
  * The expensive half of the typecheck check: a TypeScript language service
  * over the full source snapshot. Exported so throwaway check-phase isolates
  * can run it against KV-staged source files (see isolated-check-phases.ts).
@@ -1437,6 +1482,19 @@ async function mapPool<T, R>(
 	return results
 }
 
+function platformFailureOrigin(
+	outcomes: ReadonlyArray<{
+		ok: boolean
+		failureOrigin?: RepoCheckFailureOrigin
+	}>,
+): { failureOrigin?: 'platform' } {
+	return outcomes.some(
+		(outcome) => !outcome.ok && outcome.failureOrigin === 'platform',
+	)
+		? { failureOrigin: 'platform' }
+		: {}
+}
+
 async function runChunkedBundleValidation(input: {
 	runner: IsolatedCheckPhaseRunner
 	stagingKey: string
@@ -1476,6 +1534,59 @@ async function runChunkedBundleValidation(input: {
 			failures.length === 0
 				? `Bundled ${input.entryPoints.length} package target(s) successfully.`
 				: failures.join('\n'),
+		...platformFailureOrigin(outcomes),
+	}
+}
+
+/**
+ * One language service over every target of a large package can use most of
+ * an isolate's CPU budget, so a tree near the limit passes or fails from run
+ * to run. Each chunk typechecks only the files its own targets reach, in its
+ * own throwaway isolate.
+ */
+async function runChunkedTypecheck(input: {
+	runner: IsolatedCheckPhaseRunner
+	stagingKey: string
+	userId: string
+	targets: Array<PackageTypecheckTarget>
+}) {
+	const chunks: Array<Array<PackageTypecheckTarget>> = []
+	for (
+		let start = 0;
+		start < input.targets.length;
+		start += isolatedTypecheckChunkSize
+	) {
+		chunks.push(input.targets.slice(start, start + isolatedTypecheckChunkSize))
+	}
+	if (chunks.length <= 1) {
+		return await input.runner.run({
+			phase: 'typecheck',
+			stagingKey: input.stagingKey,
+			userId: input.userId,
+			typecheckTargets: input.targets,
+		})
+	}
+	const outcomes = await mapPool(
+		chunks,
+		isolatedBundleChunkConcurrency,
+		(typecheckTargets) =>
+			input.runner.run({
+				phase: 'typecheck',
+				stagingKey: input.stagingKey,
+				userId: input.userId,
+				typecheckTargets,
+			}),
+	)
+	const failures = outcomes
+		.filter((outcome) => !outcome.ok)
+		.map((outcome) => outcome.message)
+	return {
+		ok: failures.length === 0,
+		message:
+			failures.length === 0
+				? `No semantic diagnostics for ${input.targets.length} package runtime entrypoint(s), typechecked in ${chunks.length} chunk(s).`
+				: Array.from(new Set(failures)).join('\n'),
+		...platformFailureOrigin(outcomes),
 	}
 }
 
@@ -1598,11 +1709,18 @@ async function runCredentialPatternCheck(input: {
 			kind: 'credentials',
 			ok: outcome.ok,
 			message: outcome.message,
+			...platformFailureOrigin([outcome]),
 			sourceFiles:
 				outcome.changedFiles && Object.keys(outcome.changedFiles).length > 0
 					? { ...input.sourceFiles, ...outcome.changedFiles }
 					: input.sourceFiles,
 			stampKeys: outcome.stampKeys ?? [],
+			...(outcome.requestPlacementHits
+				? { requestPlacementHits: outcome.requestPlacementHits }
+				: {}),
+			...(outcome.fetchBodyHits
+				? { fetchBodyHits: outcome.fetchBodyHits }
+				: {}),
 		}
 	} finally {
 		await runner.discard(stagingKey)
@@ -1665,11 +1783,18 @@ export async function runRepoChecks(input: {
 	phaseTimings?: PublishPhaseTimings
 	/**
 	 * Skip full esbuild validation when the caller is about to rebuild the
-	 * same published artifact targets. Missing entrypoints still fail. The
+	 * same published artifact targets. Missing entrypoints and unresolved
+	 * static relative imports still fail before the tip moves. The
 	 * `checks/bundle` timer is omitted. Rebuild failure must surface as a
 	 * bundle `checks_failed` result.
 	 */
 	deferBundleCheckToRebuild?: boolean
+	/**
+	 * Publish offload: the builder already typechecked this exact tree (the
+	 * server verifies the tree by file hash). Typecheck is a quality gate,
+	 * not a security one, so the worker skips its heavy language service.
+	 */
+	typecheckRanOffWorker?: boolean
 	/**
 	 * Publish and `repoRunChecks` require non-empty root README.md +
 	 * AGENTS.md. Community install and platform codemods skip this so
@@ -1688,6 +1813,11 @@ export async function runRepoChecks(input: {
 	 * name the step if the isolate hits its memory or CPU limit.
 	 */
 	onStep?: (step: RepoCheckStep) => Promise<void>
+	/**
+	 * Source-root-relative `.d.ts` paths `.kodyignore` already removed from
+	 * `workspace` before it was staged, warned about like walk-time skips.
+	 */
+	kodyIgnoredDeclarationFiles?: Array<string>
 	/**
 	 * When false, the warn-only capability check reads only this package's
 	 * modules. Platform codemods pass false: they compute the closure once
@@ -1751,7 +1881,9 @@ export async function runRepoChecks(input: {
 		'',
 	)
 	await input.onStep?.('source-walk')
-	const kodyIgnoredDeclarationFiles: Array<string> = []
+	const kodyIgnoredDeclarationFiles = [
+		...(input.kodyIgnoredDeclarationFiles ?? []),
+	]
 	const sourceWalk = await (async () => {
 		const collected: Record<string, string> = {}
 		let fileCount = 0
@@ -1835,6 +1967,7 @@ export async function runRepoChecks(input: {
 	const credentialCheckOk =
 		credentialPatternCheck.ok ||
 		(!enforceCredentialStamp &&
+			credentialPatternCheck.failureOrigin !== 'platform' &&
 			!isRepoCheckResourceLimitMessage(credentialPatternCheck.message))
 	const credentialCheckMessage =
 		!enforceCredentialStamp && !credentialPatternCheck.ok
@@ -1848,17 +1981,42 @@ export async function runRepoChecks(input: {
 						'Stamp findings below do not fail this check (community install / platform codemod lane). Authoring publish still enforces the gate.\n',
 					)
 			: credentialPatternCheck.message
-	const fetchBodyWarning = credentialCheckOk
-		? fetchBodySecretResolutionNotice(sourceFiles)
+	// The isolated credentials phase already parsed every module, so it
+	// returns these hits too; this isolate never re-parses the whole tree.
+	const placementNotice = credentialCheckOk
+		? secretPlaceholderRequestPlacementNotice({
+				sourceFiles,
+				mode: enforceCredentialStamp
+					? secretPlaceholderRequestPlacementPublishMode
+					: 'warn',
+				...(credentialPatternCheck.requestPlacementHits
+					? { hits: credentialPatternCheck.requestPlacementHits }
+					: {}),
+			})
 		: null
+	const fetchBodyWarning = credentialCheckOk
+		? fetchBodySecretResolutionNotice(
+				sourceFiles,
+				credentialPatternCheck.fetchBodyHits,
+			)
+		: null
+	const placementBlocks = placementNotice?.mode === 'fail'
 	results.push({
 		kind: credentialPatternCheck.kind,
-		ok: credentialCheckOk,
-		message: fetchBodyWarning
-			? `${credentialCheckMessage}\n\n${fetchBodyWarning}`
-			: credentialCheckMessage,
+		ok: credentialCheckOk && !placementBlocks,
+		message: [
+			credentialCheckMessage,
+			placementNotice?.message,
+			fetchBodyWarning,
+		]
+			.filter((part): part is string => Boolean(part))
+			.join('\n\n'),
+		...platformFailureOrigin([credentialPatternCheck]),
 	})
-	if (enforceCredentialStamp && !credentialPatternCheck.ok) {
+	if (
+		(enforceCredentialStamp && !credentialPatternCheck.ok) ||
+		placementBlocks
+	) {
 		return toRepoCheckRunResult({ results, manifest, sourceFiles })
 	}
 	await input.onStep?.('package-checks')
@@ -1976,6 +2134,7 @@ export async function runRepoChecks(input: {
 		})
 	let staticKodyDependencyMessage = staticKodyDependencyCheck.message
 	let staticKodyDependencyOk = staticKodyDependencyCheck.ok
+	let staticKodyDependencyFailureOrigin: RepoCheckFailureOrigin | undefined
 	if (
 		staticKodyDependencyOk &&
 		input.env &&
@@ -1992,6 +2151,7 @@ export async function runRepoChecks(input: {
 		if (!graph.ok) {
 			staticKodyDependencyOk = false
 			staticKodyDependencyMessage = graph.message
+			staticKodyDependencyFailureOrigin = graph.failureOrigin
 		} else {
 			const cycle = findStaticKodyDependencyCycle({
 				rootPackageName: manifest.name,
@@ -2022,6 +2182,9 @@ export async function runRepoChecks(input: {
 			staticKodyDependencyMessage,
 			barePackageImportCheck.message,
 		].join(' '),
+		...(staticKodyDependencyFailureOrigin
+			? { failureOrigin: staticKodyDependencyFailureOrigin }
+			: {}),
 	})
 
 	const packageTypecheckTargets = collectPackageTypecheckTargets(manifest)
@@ -2064,7 +2227,9 @@ export async function runRepoChecks(input: {
 		? createIsolatedCheckPhaseRunner(bundleContext.env)
 		: null
 	const wantsLanguageServiceTypecheck =
-		missingTypecheckTargets.length === 0 && typecheckTargets.length > 0
+		input.typecheckRanOffWorker !== true &&
+		missingTypecheckTargets.length === 0 &&
+		typecheckTargets.length > 0
 	const wantsFullBundleValidation =
 		input.deferBundleCheckToRebuild !== true &&
 		bundleContext !== null &&
@@ -2081,12 +2246,24 @@ export async function runRepoChecks(input: {
 			: null
 
 	let typecheckResult: RepoCheckResult
-	let bundleCheckResult: { ok: boolean; message: string }
+	let bundleCheckResult: {
+		ok: boolean
+		message: string
+		failureOrigin?: RepoCheckFailureOrigin
+	}
 	try {
 		const runTypecheckPhase = async (): Promise<RepoCheckResult> => {
 			const { value } = await timePublishExternalPushPhase(
 				{ phase: 'checks/typecheck', timings: input.phaseTimings },
 				async () => {
+					if (input.typecheckRanOffWorker === true) {
+						return {
+							kind: 'typecheck' as const,
+							ok: true,
+							message:
+								'Typecheck ran on the publish builder for this exact tree.',
+						}
+					}
 					if (missingTypecheckTargets.length > 0) {
 						return {
 							kind: 'typecheck' as const,
@@ -2124,11 +2301,11 @@ export async function runRepoChecks(input: {
 					}
 					const outcome =
 						isolatedRunner && stagingKey && bundleContext
-							? await isolatedRunner.run({
-									phase: 'typecheck',
+							? await runChunkedTypecheck({
+									runner: isolatedRunner,
 									stagingKey,
 									userId: bundleContext.userId,
-									typecheckTargets,
+									targets: typecheckTargets,
 								})
 							: await runPackageTypecheckLanguageService({
 									sourceFiles,
@@ -2157,6 +2334,18 @@ export async function runRepoChecks(input: {
 				input.deferBundleCheckToRebuild === true &&
 				bundleTargets.length > 0
 			) {
+				// Rebuild runs after the tip moves, so refuse imports esbuild
+				// could never resolve before promotion.
+				const unresolvedImports = collectUnresolvedRelativeImports({
+					files: sourceFiles,
+					entryPoints: bundleTargets.map((target) => target.path),
+				})
+				if (unresolvedImports.length > 0) {
+					return {
+						ok: false,
+						message: formatUnresolvedRelativeImportsMessage(unresolvedImports),
+					}
+				}
 				return {
 					ok: true,
 					message: deferredBundleCheckMessage,
@@ -2174,6 +2363,7 @@ export async function runRepoChecks(input: {
 		const runBundlePhase = async (): Promise<{
 			ok: boolean
 			message: string
+			failureOrigin?: RepoCheckFailureOrigin
 		}> => {
 			if (input.deferBundleCheckToRebuild === true) {
 				return cheapBundleCheckResult()
@@ -2240,6 +2430,7 @@ export async function runRepoChecks(input: {
 		kind: 'bundle',
 		ok: bundleCheckResult.ok,
 		message: bundleCheckResult.message,
+		...platformFailureOrigin([bundleCheckResult]),
 	})
 	const ignoredDeclarationNote = formatKodyIgnoredDeclarationNote({
 		ignored: kodyIgnoredDeclarationFiles,
@@ -2333,12 +2524,40 @@ export async function runRepoSourceWalkChecks(input: {
 }
 
 /**
+ * Credential placeholders a fetch puts in a request body, URL, or query.
+ * `mode` comes from {@link secretPlaceholderRequestPlacementPublishMode}.
+ */
+function secretPlaceholderRequestPlacementNotice(input: {
+	sourceFiles: Record<string, string>
+	mode: SecretPlaceholderRequestPlacementMode
+	/** Already found by the isolated credentials phase. */
+	hits?: ReadonlyArray<SecretPlaceholderRequestPlacementHit>
+}): { mode: SecretPlaceholderRequestPlacementMode; message: string } | null {
+	const message = formatSecretPlaceholderRequestPlacementNotice({
+		hits:
+			input.hits ?? findSecretPlaceholderRequestPlacements(input.sourceFiles),
+		mode: input.mode,
+	})
+	return message ? { mode: input.mode, message } : null
+}
+
+/**
  * Advisory publish note. Omitted when the credential stamp gate already
  * failed, so that failure stays the message authors fix first.
  */
 function fetchBodySecretResolutionNotice(
 	sourceFiles: Record<string, string>,
+	hits?: ReadonlyArray<{ path: string; line: number }>,
 ): string | null {
+	return formatFetchBodySecretResolutionWarning(
+		hits ?? findFetchBodySecretResolutionHits(sourceFiles),
+	)
+}
+
+/** Every fetch whose body the gateway would still scan, by module and line. */
+export function findFetchBodySecretResolutionHits(
+	sourceFiles: Record<string, string>,
+): Array<{ path: string; line: number }> {
 	const hits: Array<{ path: string; line: number }> = []
 	for (const path of listScannableModulePaths(sourceFiles)) {
 		const source = sourceFiles[path]
@@ -2347,5 +2566,5 @@ function fetchBodySecretResolutionNotice(
 			hits.push({ path, line: hit.line })
 		}
 	}
-	return formatFetchBodySecretResolutionWarning(hits)
+	return hits
 }

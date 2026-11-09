@@ -4,7 +4,7 @@ import {
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { beforeEach, expect, test, vi } from 'vitest'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { loadRequestOrgResolution } from '#app/org-request-binding.ts'
 import type * as CreditTopUps from '#worker/billing/credit-top-ups.ts'
 import { CreditTopUpError } from '#worker/billing/credit-top-ups.ts'
@@ -316,7 +316,7 @@ test('a confirmed Stripe return lands on the Credits section with the added noti
 	expect(mocks.applyCreditTopUpFromCheckoutSession).toHaveBeenCalledWith(
 		expect.objectContaining({
 			sessionId: 'cs_123',
-			expectedStableUserId: ownerIdFromStored('person-ada'),
+			expectedOrgId: ownerIdFromStored('person-ada'),
 		}),
 	)
 	expect(response.status).toBe(302)

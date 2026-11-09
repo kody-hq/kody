@@ -6,13 +6,17 @@ import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { formatTimestampDate as formatCancelDate } from '../components/local-timestamp.tsx'
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { orgIdentity, orgOverviewPath } from '#universal/org-pages.ts'
+import {
+	orgBillingPath,
+	orgIdentity,
+	orgOverviewPath,
+} from '#universal/org-pages.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import { adminGrantDiffersFromSubscription } from '#universal/account-plan-display.ts'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
-import {
-	type AccountBillingLoaderData,
-	type AdminPlanName,
+import type {
+	AccountBillingLoaderData,
+	AdminPlanName,
 } from '#universal/loader-data.ts'
 import {
 	accountFieldCss,
@@ -36,6 +40,7 @@ import {
 	billingCheckoutMutationOptions,
 	billingPortalMutationOptions,
 } from '../billing-checkout.ts'
+import { ReferredByPanel } from './account-billing-referred-by.tsx'
 
 import {
 	colors,
@@ -454,7 +459,7 @@ export function AccountBillingPage({
 					{billing.referralProgram ? (
 						<AccountManagementPanel
 							title="Refer a friend"
-							description="Share your link. When someone new creates an account, verifies their email, and pays their first invoice, you both get one month of Pro. There is no cap."
+							description="Share your link. When someone signs up with it, or an existing Free user adds you under Referred by within 72 hours of signing up and before their first payment, you both get one month of Pro once they verify their email and pay their first invoice. There is no cap."
 						>
 							<div
 								css={{
@@ -545,7 +550,7 @@ export function AccountBillingPage({
 														'earned you a month'
 													)
 												) : (
-													'signed up and has not paid yet'
+													'is referred and has not paid yet'
 												)}
 											</li>
 										))}
@@ -555,6 +560,13 @@ export function AccountBillingPage({
 								)}
 							</div>
 						</AccountManagementPanel>
+					) : null}
+
+					{billing.referralProgram ? (
+						<ReferredByPanel
+							orgSlug={payload.org.slug}
+							referredBy={billing.referralProgram.referredBy}
+						/>
 					) : null}
 
 					{billing.cancelAt ? (
@@ -659,6 +671,17 @@ export function AccountBillingPage({
 								>
 									Manage subscription
 								</button>
+								{billing.creditsEligible &&
+								billing.manualPlan === 'free' &&
+								billing.stripePlan === 'pro' &&
+								!billing.cancelAt ? (
+									<SiteLink
+										href={`${orgBillingPath(payload.org.slug)}/move-plan`}
+										css={mutedLinkCss}
+									>
+										Move this plan to another organization
+									</SiteLink>
+								) : null}
 							</div>
 						</AccountManagementPanel>
 					) : null}

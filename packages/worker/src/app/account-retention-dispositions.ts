@@ -14,6 +14,8 @@ export const accountRetentionDispositions: ReadonlyArray<AccountRetentionDisposi
 		{ table: 'usage_rollups', kind: 'scheduled_policy' },
 		{ table: 'feature_flag_exposure_rollups', kind: 'scheduled_policy' },
 		{ table: 'stripe_webhook_events', kind: 'scheduled_policy' },
+		{ table: 'credential_local_read_events', kind: 'scheduled_policy' },
+		{ table: 'credential_raw_signing_events', kind: 'scheduled_policy' },
 		{
 			table: 'agent_package_conversation_uses',
 			kind: 'scheduled_policy',
@@ -71,6 +73,12 @@ export const accountRetentionDispositions: ReadonlyArray<AccountRetentionDisposi
 			kind: 'durable_forever',
 			reason:
 				'Prepaid credit balances and wallet settings are current billing state removed only by account deletion.',
+		},
+		{
+			table: 'org_plan_transfers',
+			kind: 'durable_forever',
+			reason:
+				'Plan moves between orgs are the billing record for the Stripe credit note, cancellation, and customer balance credit; the requesting owner is anonymized on account deletion.',
 		},
 		{
 			table: 'credit_ledger_entries',

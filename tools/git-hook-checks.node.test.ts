@@ -14,9 +14,13 @@ import {
 	listHookPaths,
 	parsePrePushUpdates,
 	isSkillsLockHookPath,
+	isVitestWorkerCrashWithoutFailures,
+	createVitestCrashScanner,
+	isSoftDeleteReadFilterHookPath,
 	listInstalledNodeModulesDirs,
 	planGitHookChecks,
 	runGitHookChecks,
+	runVitestWithWorkerCrashRetry,
 	shouldSkipProvenanceCheck,
 	shouldSkipTestPushForProvenance,
 	withStagedTreeForTypecheck,
@@ -100,12 +104,14 @@ test('related tests use non-deleted paths per project and never record full prov
 			}),
 		).toBe(0)
 		expect(calls.map((call) => call.script)).toEqual([
+			'lint',
+			'format:check',
 			'typecheck',
 			'knip',
 			'vitest related --project node-unit',
 			'vitest related --project workers-unit',
 		])
-		expect(calls.slice(2).map((call) => call.paths)).toEqual([
+		expect(calls.slice(4).map((call) => call.paths)).toEqual([
 			['src/new name.ts'],
 			['src/new name.ts'],
 		])
@@ -142,7 +148,7 @@ test.each(['global deletion', 'unreadable non-deleted paths', 'unknown asset'])(
 		})
 		expect(result).toEqual({
 			code: 0,
-			scripts: ['typecheck', 'knip', 'test:push'],
+			scripts: ['lint', 'format:check', 'typecheck', 'knip', 'test:push'],
 		})
 	},
 )
@@ -162,7 +168,10 @@ test('deleted-only source push has no related tests and related failures block a
 					)
 				: gitResult(1),
 	})
-	expect(deleted).toEqual({ code: 0, scripts: ['typecheck', 'knip'] })
+	expect(deleted).toEqual({
+		code: 0,
+		scripts: ['lint', 'format:check', 'typecheck', 'knip'],
+	})
 	const failure = await runHook(
 		{
 			...input,
@@ -173,7 +182,13 @@ test('deleted-only source push has no related tests and related failures block a
 	)
 	expect(failure).toEqual({
 		code: 2,
-		scripts: ['typecheck', 'knip', 'vitest related --project node-unit'],
+		scripts: [
+			'lint',
+			'format:check',
+			'typecheck',
+			'knip',
+			'vitest related --project node-unit',
+		],
 	})
 })
 
@@ -244,7 +259,7 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 	expect(
 		planGitHookChecks({ hook: 'pre-push', paths: codePaths }).summary,
 	).toBe(
-		'pre-push: running typecheck, knip and tests (packages/worker/src/app.ts)',
+		'pre-push: running lint, format, typecheck, knip and tests (packages/worker/src/app.ts)',
 	)
 	const planCases: Array<
 		['pre-commit' | 'pre-push', Array<string> | null, Array<string>]
@@ -254,15 +269,30 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 		[
 			'pre-push',
 			['packages/worker/migrations/0067-example.sql'],
-			['typecheck', 'knip', 'test:push'],
+			['lint', 'format:check', 'typecheck', 'knip', 'test:push'],
 		],
 		['pre-commit', [], []],
 		['pre-commit', null, ['install:check', 'migrations:check']],
 		[
 			'pre-push',
 			null,
-			['typecheck', 'node tools/check-skills-lock.ts', 'knip', 'test:push'],
+			[
+				'lint',
+				'format:check',
+				'typecheck',
+				'node tools/check-skills-lock.ts',
+				'node tools/check-decision-record-numbers.ts',
+				'node tools/soft-delete-read-filter.ts',
+				'knip',
+				'test:push',
+			],
 		],
+		[
+			'pre-push',
+			['docs/contributing/decisions/0099-example.md'],
+			['node tools/check-decision-record-numbers.ts'],
+		],
+		['pre-push', ['docs/contributing/decisions/index.md'], []],
 	]
 	expect(
 		planCases.map(([hook, paths]) => [
@@ -273,7 +303,7 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 	).toEqual(planCases)
 
 	expect(parsePrePushUpdates(null)).toBeNull()
-	expect(parsePrePushUpdates('\n')).toBeNull()
+	expect(parsePrePushUpdates('\n')).toEqual([])
 	expect(
 		parsePrePushUpdates(
 			`refs/heads/docs ${localSha} refs/heads/docs not-a-sha\n`,
@@ -309,14 +339,27 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 			hook: 'pre-push',
 			stdin: ' \n',
 			git: () => {
-				throw new Error('blank pre-push stdin must fail closed before git')
+				throw new Error('an up-to-date push has nothing to diff')
+			},
+		}),
+	).toEqual({ code: 0, scripts: [] })
+	expect(
+		await runHook({
+			hook: 'pre-push',
+			stdin: null,
+			git: () => {
+				throw new Error('unreadable pre-push stdin must fail closed before git')
 			},
 		}),
 	).toEqual({
 		code: 0,
 		scripts: [
+			'lint',
+			'format:check',
 			'typecheck',
 			'node tools/check-skills-lock.ts',
+			'node tools/check-decision-record-numbers.ts',
+			'node tools/soft-delete-read-filter.ts',
 			'knip',
 			'test:push',
 		],
@@ -348,6 +391,8 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 			'.agents/skills/visual-recap/scripts/primitives-map.mjs',
 		]),
 	).toEqual([
+		'lint',
+		'format:check',
 		'typecheck',
 		'node tools/check-skills-lock.ts',
 		'knip',
@@ -359,6 +404,8 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 			'skills-lock.json',
 		]),
 	).toEqual([
+		'lint',
+		'format:check',
 		'typecheck',
 		'node tools/check-skills-lock.ts',
 		'knip',
@@ -370,8 +417,11 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 			'packages/worker/src/app.ts',
 		]),
 	).toEqual([
+		'lint',
+		'format:check',
 		'typecheck',
 		'node tools/check-skills-lock.ts',
+		'node tools/soft-delete-read-filter.ts',
 		'knip',
 		'test:push',
 	])
@@ -381,7 +431,7 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 			paths: ['skills-lock.json', 'packages/worker/src/app.ts'],
 		}).summary,
 	).toBe(
-		'pre-push: running skills-lock, typecheck, knip, and tests (packages/worker/src/app.ts)',
+		'pre-push: running skills-lock, lint, format, typecheck, knip, and tests (packages/worker/src/app.ts)',
 	)
 })
 
@@ -566,6 +616,8 @@ test('a real docs follow-up skips unit tests and a source rename still typecheck
 			}),
 		).toEqual(['src/app.ts'])
 		expect(plannedScripts('pre-push', ['src/app.ts'])).toEqual([
+			'lint',
+			'format:check',
 			'typecheck',
 			'knip',
 			'test:push',
@@ -656,7 +708,13 @@ test('pre-push skips knip and test:push only when each check is already green', 
 				progressIntervalMs: 60_000,
 			}),
 		).toBe(0)
-		expect(scriptsPartial).toEqual(['typecheck', 'knip'])
+		expect(scriptsPartial).toEqual([
+			'lint',
+			'format:check',
+			'typecheck',
+			'node tools/soft-delete-read-filter.ts',
+			'knip',
+		])
 		expect(
 			logsPartial.some((line) => line.includes('skipping test:push')),
 		).toBe(true)
@@ -693,7 +751,12 @@ test('pre-push skips knip and test:push only when each check is already green', 
 			progressIntervalMs: 60_000,
 		})
 		expect(code).toBe(0)
-		expect(scripts).toEqual(['typecheck'])
+		expect(scripts).toEqual([
+			'lint',
+			'format:check',
+			'typecheck',
+			'node tools/soft-delete-read-filter.ts',
+		])
 		expect(logs.some((line) => line.includes('skipping knip'))).toBe(true)
 		expect(logs.some((line) => line.includes('skipping test:push'))).toBe(true)
 		expect(logs.some((line) => line.includes('already green'))).toBe(true)
@@ -722,7 +785,13 @@ test('pre-push fails knip with a clear fix message before test:push', async () =
 		progressIntervalMs: 60_000,
 	})
 	expect(code).toBe(1)
-	expect(scripts).toEqual(['typecheck', 'knip'])
+	expect(scripts).toEqual([
+		'lint',
+		'format:check',
+		'typecheck',
+		'node tools/soft-delete-read-filter.ts',
+		'knip',
+	])
 	expect(
 		logs.some((line) =>
 			line.includes(
@@ -1136,4 +1205,263 @@ test('hook scripts can create foreign repositories without inherited worktree st
 	} finally {
 		await rm(root, { recursive: true, force: true })
 	}
+})
+
+test('pre-push leaves merged-in main paths to main CI and skips tests for a merge-only push', async () => {
+	const root = await mkdtemp(join(tmpdir(), 'hook-mainline-'))
+	const git = (args: ReadonlyArray<string>) => {
+		const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' })
+		if ((result.status ?? 1) !== 0) {
+			throw new Error(`git ${args.join(' ')} failed: ${result.stderr}`)
+		}
+		return result.stdout.trim()
+	}
+	const runner: GitRunner = (args) => {
+		const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' })
+		return {
+			status: result.status ?? 1,
+			stdout: result.stdout ?? '',
+			stderr: result.stderr ?? '',
+		}
+	}
+	const run = async (stdin: string) => {
+		const calls: Array<{ script: string; paths?: ReadonlyArray<string> }> = []
+		const code = await runGitHookChecks({
+			hook: 'pre-push',
+			stdin,
+			git: runner,
+			provenance: createFileProvenanceStore(join(root, '.provenance.json')),
+			runScript: (script, _cwd, paths) => {
+				calls.push({ script, paths })
+				return 0
+			},
+			log: () => {},
+		})
+		return { code, calls }
+	}
+	try {
+		git(['init', '-b', 'main'])
+		git(['config', 'user.email', 'hooks@example.com'])
+		git(['config', 'user.name', 'Hook Test'])
+		await mkdir(join(root, 'src'))
+		await writeFile(join(root, 'src', 'branch.ts'), 'export const b = 1\n')
+		await writeFile(join(root, 'src', 'main.ts'), 'export const m = 1\n')
+		git(['add', '.'])
+		git(['commit', '-m', 'base'])
+		git(['checkout', '-b', 'topic'])
+		await writeFile(join(root, 'src', 'branch.ts'), 'export const b = 2\n')
+		git(['commit', '-am', 'topic'])
+		const pushedTopic = git(['rev-parse', 'HEAD'])
+		git(['checkout', 'main'])
+		await writeFile(join(root, 'src', 'main.ts'), 'export const m = 2\n')
+		await writeFile(join(root, 'package.json'), '{}\n')
+		git(['add', '.'])
+		git(['commit', '-m', 'main moves'])
+		git(['checkout', 'topic'])
+		git(['merge', '--no-edit', 'main'])
+		const merge = git(['rev-parse', 'HEAD'])
+
+		const mergeOnly = await run(
+			`refs/heads/topic ${merge} refs/heads/topic ${pushedTopic}\n`,
+		)
+		expect(mergeOnly.code).toBe(0)
+		expect(mergeOnly.calls.map((call) => call.script)).toEqual([
+			'lint',
+			'format:check',
+			'typecheck',
+			'knip',
+		])
+
+		await writeFile(join(root, 'src', 'branch.ts'), 'export const b = 3\n')
+		git(['commit', '-am', 'topic again'])
+		const next = git(['rev-parse', 'HEAD'])
+		const withOwnChange = await run(
+			`refs/heads/topic ${next} refs/heads/topic ${pushedTopic}\n`,
+		)
+		expect(withOwnChange.calls.slice(4)).toEqual([
+			{
+				script: 'vitest related --project node-unit',
+				paths: ['src/branch.ts'],
+			},
+			{
+				script: 'vitest related --project workers-unit',
+				paths: ['src/branch.ts'],
+			},
+		])
+	} finally {
+		await rm(root, { recursive: true, force: true })
+	}
+})
+
+test('vitest related retries once only on a worker crash with no failed test', async () => {
+	const crash =
+		'Error: [vitest-pool-runner]: Timeout waiting for worker to respond\n\u001b[31mError: Worker exited unexpectedly\u001b[39m\n Test Files  3 passed (3)\n'
+	const failed = `${crash}      Tests  1 failed | 4 passed (5)\n`
+	expect(isVitestWorkerCrashWithoutFailures(crash)).toBe(true)
+	expect(isVitestWorkerCrashWithoutFailures(failed)).toBe(false)
+	expect(
+		isVitestWorkerCrashWithoutFailures(' Test Files  1 failed (1)\n'),
+	).toBe(false)
+
+	const rule = '\u23af'.repeat(8)
+	const section = (body: string) =>
+		`${rule} Unhandled Error ${rule}\n${body}\n${rule}${rule}\n`
+	expect(
+		isVitestWorkerCrashWithoutFailures(
+			section('Error: [vitest-pool]: Worker exited unexpectedly'),
+		),
+	).toBe(true)
+	expect(
+		isVitestWorkerCrashWithoutFailures(
+			section('Error: Worker exited unexpectedly') +
+				section('TypeError: boom from a test teardown'),
+		),
+	).toBe(false)
+	const banner = `${rule} Unhandled Errors ${rule}\n\nVitest caught 1 unhandled error during the test run.\n\n`
+	expect(
+		isVitestWorkerCrashWithoutFailures(
+			banner + section('Error: Worker exited unexpectedly'),
+		),
+	).toBe(true)
+	expect(
+		isVitestWorkerCrashWithoutFailures(
+			banner + section('TypeError: boom from a test teardown'),
+		),
+	).toBe(false)
+	const scanner = createVitestCrashScanner()
+	scanner.write(' Test Files  1 fai')
+	scanner.write('led (1)\n')
+	scanner.write('x'.repeat(512 * 1024))
+	scanner.write('\nError: Worker exited unexpectedly\n')
+	expect(scanner.finish()).toEqual({ sawCrash: true, sawFailure: true })
+
+	const run = async (outputs: Array<{ code: number; output: string }>) => {
+		const logs: Array<string> = []
+		let calls = 0
+		const code = await runVitestWithWorkerCrashRetry({
+			label: 'vitest related --project node-unit',
+			runOnce: async () => {
+				const { code, output } = outputs[calls++]!
+				return {
+					code,
+					workerCrashWithoutFailures:
+						isVitestWorkerCrashWithoutFailures(output),
+				}
+			},
+			log: (message) => logs.push(message),
+		})
+		return { code, calls, logs }
+	}
+	expect(await run([{ code: 0, output: crash }])).toEqual({
+		code: 0,
+		calls: 1,
+		logs: [],
+	})
+	expect(await run([{ code: 1, output: failed }])).toMatchObject({
+		code: 1,
+		calls: 1,
+	})
+	const retried = await run([
+		{ code: 1, output: crash },
+		{ code: 1, output: crash },
+	])
+	expect(retried).toMatchObject({ code: 1, calls: 2 })
+	expect(retried.logs).toEqual([
+		'hook: vitest related --project node-unit crashed on a Vitest worker exit with no failed test; retrying once',
+	])
+	expect(
+		await run([
+			{ code: 1, output: crash },
+			{ code: 0, output: '' },
+		]),
+	).toMatchObject({ code: 0, calls: 2 })
+})
+
+test('pre-push runs the soft-delete read-filter scan only when its inputs change', async () => {
+	const cases: Array<[string, boolean]> = [
+		['packages/worker/src/billing/stripe-webhooks.ts', true],
+		['packages/jobs-worker/src/jobs/cleanup.ts', true],
+		['tools/soft-delete-read-filter.ts', true],
+		['packages/worker/start/pages/home.tsx', false],
+		['packages/worker/src/guide.md', false],
+		['tools/git-hook-checks.ts', false],
+	]
+	expect(
+		cases.filter(
+			([path, want]) => isSoftDeleteReadFilterHookPath(path) !== want,
+		),
+	).toEqual([])
+	expect(
+		plannedScripts('pre-push', ['packages/worker/src/billing/a.ts']),
+	).toContain('node tools/soft-delete-read-filter.ts')
+	expect(plannedScripts('pre-push', null)).toContain(
+		'node tools/soft-delete-read-filter.ts',
+	)
+	expect(
+		plannedScripts('pre-push', ['tools/git-hook-checks.ts']),
+	).not.toContain('node tools/soft-delete-read-filter.ts')
+	expect(
+		plannedScripts('pre-commit', ['packages/worker/src/billing/a.ts']),
+	).not.toContain('node tools/soft-delete-read-filter.ts')
+})
+
+test('pre-push names the global inputs that force the full test:push', async () => {
+	const logs: Array<string> = []
+	const git: GitRunner = (args) => {
+		if (args[0] === 'diff')
+			return gitResult(0, 'packages/worker/src/test-support/a.ts\0src/b.ts\0')
+		if (args[0] === 'status' || args[0] === 'stash') return gitResult(0)
+		if (args[0] === 'rev-parse') return gitResult(1)
+		return gitResult(1)
+	}
+	const scripts: Array<string> = []
+	await runGitHookChecks({
+		hook: 'pre-push',
+		stdin: `refs/heads/topic ${localSha} refs/heads/topic ${remoteSha}\n`,
+		git,
+		provenance: createFileProvenanceStore(
+			join(await mkdtemp(join(tmpdir(), 'global-hook-')), 'p.json'),
+		),
+		runScript: (script) => {
+			scripts.push(script)
+			return 0
+		},
+		log: (message) => logs.push(message),
+	})
+	expect(scripts).toContain('test:push')
+	expect(
+		logs.some(
+			(line) =>
+				line.includes('full test:push') &&
+				line.includes('global test inputs changed') &&
+				line.includes('packages/worker/src/test-support/a.ts'),
+		),
+	).toBe(true)
+})
+
+test('pre-push names why an asset-only push falls back to the full test:push', async () => {
+	const logs: Array<string> = []
+	const scripts: Array<string> = []
+	await runGitHookChecks({
+		hook: 'pre-push',
+		stdin: `refs/heads/topic ${localSha} refs/heads/topic ${remoteSha}\n`,
+		git: (args) =>
+			args[0] === 'diff'
+				? gitResult(0, 'packages/worker/public/logo.png\0')
+				: gitResult(1),
+		runScript: (script) => {
+			scripts.push(script)
+			return 0
+		},
+		log: (message) => logs.push(message),
+		progressIntervalMs: 60_000,
+	})
+	expect(scripts).toContain('test:push')
+	expect(
+		logs.some(
+			(line) =>
+				line.includes('full test:push') &&
+				line.includes('no pushed path is JS/TS source'),
+		),
+	).toBe(true)
 })

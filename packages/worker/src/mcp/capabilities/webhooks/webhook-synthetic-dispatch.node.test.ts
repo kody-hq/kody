@@ -5,7 +5,7 @@ import {
 import { expect, test, vi } from 'vitest'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
-import { type McpStorageContext } from '@kody-internal/shared/chat.ts'
+import type { McpStorageContext } from '@kody-internal/shared/chat.ts'
 
 const mocks = vi.hoisted(() => ({
 	dispatchSyntheticWebhookForUser: vi.fn(),

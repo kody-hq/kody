@@ -8,7 +8,7 @@ import {
 	getCommunityIconObject,
 	processCommunityIcon,
 } from './community-icon.ts'
-import { type CommunityListingRecord } from './types.ts'
+import type { CommunityListingRecord } from './types.ts'
 import { derivedCacheKeyPrefix } from '#worker/kv-cachified.ts'
 import { iconFitMaxDimension, uint8ArrayToStream } from './icon-fit.ts'
 import { ensureResvgWasmReady } from '#worker/og/resvg-wasm-init.ts'

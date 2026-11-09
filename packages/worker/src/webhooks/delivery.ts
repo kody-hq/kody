@@ -12,12 +12,9 @@ import {
 import { sanitizeInvocationErrorMessage } from '#worker/package-invocations/invocation-error-summary.ts'
 import { resolveBackgroundMcpUser } from '#worker/identity/background-mcp-user.ts'
 import { recordRunRecord } from '#worker/run-records/service.ts'
-import { type RunRecordLogInput } from '#worker/run-records/types.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
-import {
-	type WebhookDeliveryOutcome,
-	type WebhookEndpointRecord,
-} from './types.ts'
+import type { RunRecordLogInput } from '#worker/run-records/types.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { WebhookDeliveryOutcome, WebhookEndpointRecord } from './types.ts'
 import { describeWebhookNotOn } from './approval.ts'
 
 export async function recordWebhookDelivery(input: {

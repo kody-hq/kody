@@ -1,5 +1,5 @@
 import { listKodyPackageDependencyNames } from '#worker/package-registry/types.ts'
-import { type CrossScopeReference } from './types.ts'
+import type { CrossScopeReference } from './types.ts'
 
 const kodyImportPattern = /kody:@([a-z0-9][a-z0-9._-]*)\//g
 const scopedPackageNamePattern = /^@([a-z0-9][a-z0-9._-]*)\//
@@ -28,8 +28,12 @@ export function rewritePackageManifestForFork(input: {
 	manifestContent: string
 	expectedPackageScope: string
 	targetKodyId: string
-}): { content: string; targetName: string } {
+}): { content: string; targetName: string; originName: string | null } {
 	const parsed = JSON.parse(input.manifestContent) as Record<string, unknown>
+	const originName =
+		typeof parsed['name'] === 'string' && parsed['name'].trim()
+			? parsed['name'].trim()
+			: null
 	const scope = normalizePackageScope(input.expectedPackageScope)
 	const targetName = `@${scope}/${input.targetKodyId}`
 	const previousKody =
@@ -48,6 +52,7 @@ export function rewritePackageManifestForFork(input: {
 	return {
 		content: `${JSON.stringify(next, null, '\t')}\n`,
 		targetName,
+		originName,
 	}
 }
 

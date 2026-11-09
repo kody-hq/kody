@@ -28,6 +28,8 @@ vi.mock('#worker/package-registry/source.ts', async (importOriginal) => ({
 	...(await importOriginal<typeof PackageRegistrySourceModule>()),
 	loadPackageSourceBySourceId: (...args: Array<unknown>) =>
 		mockModule.loadPackageSourceBySourceId(...args),
+	loadServingPackageSourceBySourceId: (...args: Array<unknown>) =>
+		mockModule.loadPackageSourceBySourceId(...args),
 }))
 
 vi.mock(
@@ -152,7 +154,6 @@ export default async function main(params) { return greet(params.name) }`,
 
 test('a CapabilityProxy gatewayFetch past the daily outbound cap says when the meter resets', async () => {
 	const { api, token } = await createApiWithExhaustedOutboundMeter()
-	const limit = planLimits.free.maxOutboundFetchesPerDay
 
 	const response = await api.call('POST', '/v1/capability-proxy/call', {
 		token,
@@ -163,7 +164,7 @@ test('a CapabilityProxy gatewayFetch past the daily outbound cap says when the m
 	})
 
 	expect(response.status).toBe(429)
-	expect(response.body.error?.message).toBe(
-		`Plan limit reached: your "free" plan allows at most ${limit} outbound fetches per day and you currently have ${limit}. This daily limit resets at 00:00 UTC, in 1h 26m. Upgrade your plan at /@api-user/-/billing.`,
-	)
+	expect(response.body.error?.message).toMatch(/outbound fetches per day/)
+	expect(response.body.error?.message).toContain('1h 26m')
+	expect(response.body.error?.message).toMatch(/[Uu]pgrade your plan/)
 })

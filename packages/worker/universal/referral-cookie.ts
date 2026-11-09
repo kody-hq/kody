@@ -46,7 +46,7 @@ export function serializeReferralCookie(input: {
 
 /**
  * Current-request share link wins over a stored cookie so a signup that
- * lands on `/signup?ref=` (or posts `referralCode`) attributes that referrer.
+ * carries `?ref=` (or posts `referralCode`) attributes that referrer.
  */
 export function resolveReferralCodeForSignup(input: {
 	searchParams?: URLSearchParams | null

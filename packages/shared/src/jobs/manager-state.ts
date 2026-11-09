@@ -1,6 +1,6 @@
-import {
-	type JobManagerDebugState,
-	type JobManagerDebugStatus,
+import type {
+	JobManagerDebugState,
+	JobManagerDebugStatus,
 } from './manager-debug.ts'
 
 export function resolveJobManagerAlarmState(input: {

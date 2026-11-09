@@ -7,7 +7,7 @@ import {
 } from '../test-support/execution-contexts-fixtures.ts'
 import { renderStartPage } from '../test-support/render-start-page.ts'
 import { createElement } from 'react'
-import { type ExecutionContextsPageData } from '#universal/execution-contexts.ts'
+import type { ExecutionContextsPageData } from '#universal/execution-contexts.ts'
 import { ExecutionContextsRoute } from './execution-contexts.tsx'
 import { RunCancelControl } from './execution-context-detail.tsx'
 
@@ -173,6 +173,207 @@ test('operator detail shows sharing with levels and no invite links note', async
 	expect(body).toContain('Everyone in @jane')
 	expect(body).toContain('Not in any chain')
 	expect(body).not.toContain('Opt into')
+})
+
+test('attached-org detail labels everyone with the current org, keeps Owned by', async () => {
+	const vault = contextFixture({
+		id: 'ec_vault',
+		name: 'family-vault',
+		ownerOrg: { id: 'org_kent', slug: 'kentcdodds' },
+		operator: { handle: 'kentcdodds' },
+		isOperator: true,
+		canAddShares: true,
+		grantSummary: {
+			fs: 1,
+			fsMode: 'read',
+			egress: { mode: 'public' },
+			runtime: 'all',
+			timeoutMs: 90_000,
+		},
+		sharing: {
+			level: 'org',
+			grants: [],
+			// Viewer @kody: loadSharing remaps allMembers to this attachment.
+			attachedOrgs: [{ id: 'org_kody', slug: 'kody', allMembers: true }],
+			allMembers: true,
+			accessRoster: {
+				orgSlug: 'kody',
+				operator: {
+					handle: 'kentcdodds',
+					execute: true,
+					manage: true,
+					commands: true,
+				},
+				people: [
+					{
+						handle: 'tannerlinsley',
+						source: 'all_members',
+						preset: 'use',
+						execute: true,
+						manage: false,
+						commands: false,
+					},
+				],
+				teams: [],
+				noAccess: [],
+			},
+		},
+	})
+	const pageHref = `/@kody/-/execution-contexts/${vault.id}`
+	const html = await renderStartPage(
+		route(
+			pageFixture({
+				orgSlug: 'kody',
+				personalOrg: false,
+				contexts: [vault],
+				selected: vault,
+				unutilized: { count: 0, contexts: [], note: '' },
+			}),
+			vault.id,
+			pageHref,
+		),
+		pageHref,
+	)
+	const body = text(html)
+	expect(html).toContain('data-testid="context-sharing"')
+	expect(html).toContain('data-testid="context-access-roster"')
+	expect(body).toContain('Owned by @kentcdodds')
+	// Viewer org labels for allMembers; owner org stays on Owned by only.
+	expect(body).toMatch(/Shared with\s+Everyone in @kody(?:\s|$)/)
+	expect(body).toMatch(/Everyone in @kody,\s+Use: run code here/)
+	expect(html).toContain('Everyone in @<!-- -->kody')
+	expect(body).toContain('Who has access in @kody')
+	expect(body).toContain(
+		'Machine operator @kentcdodds — execute, manage, commands',
+	)
+	expect(body).toContain('@tannerlinsley — everyone in @kody — execute')
+	expect(body).toContain(
+		'files: none (machine has 1 path, read for operator runs only)',
+	)
+	expect(body).toContain(
+		"Host folders are for the operator's own runs only. Shared runs do not mount them.",
+	)
+})
+
+test('attached only_me roster matches kents-jaguar: operator access, member no access', async () => {
+	const jaguar = contextFixture({
+		id: 'ec_202t084t571i573k150y',
+		name: 'kents-jaguar',
+		ownerOrg: { id: 'org_kent', slug: 'kentcdodds' },
+		operator: { handle: 'kentcdodds' },
+		isOperator: true,
+		canAddShares: true,
+		myPermissions: [
+			'read',
+			'execute',
+			'command',
+			'write',
+			'delete',
+			'manage_access',
+		],
+		grantSummary: {
+			fs: 1,
+			egress: { mode: 'public' },
+			runtime: 'all',
+			timeoutMs: 90_000,
+			commands: true,
+		},
+		sharing: {
+			level: 'only_me',
+			grants: [],
+			attachedOrgs: [{ id: 'org_kody', slug: 'kody', allMembers: false }],
+			allMembers: false,
+			accessRoster: {
+				orgSlug: 'kody',
+				operator: {
+					handle: 'kentcdodds',
+					execute: true,
+					manage: true,
+					commands: true,
+				},
+				people: [],
+				teams: [],
+				noAccess: [{ handle: 'tannerlinsley' }],
+			},
+		},
+	})
+	const pageHref = `/@kody/-/execution-contexts/${jaguar.id}`
+	const html = await renderStartPage(
+		route(
+			pageFixture({
+				orgSlug: 'kody',
+				personalOrg: false,
+				contexts: [jaguar],
+				selected: jaguar,
+				unutilized: { count: 0, contexts: [], note: '' },
+			}),
+			jaguar.id,
+			pageHref,
+		),
+		pageHref,
+	)
+	const body = text(html)
+	expect(html).toContain('data-testid="context-access-roster"')
+	expect(body).toContain('Owned by @kentcdodds')
+	expect(body).toContain('Only me')
+	expect(body).toContain('Who has access in @kody')
+	expect(body).toContain(
+		'Machine operator @kentcdodds — execute, manage, commands',
+	)
+	expect(body).toContain('Members without access in @kody')
+	expect(body).toContain('@tannerlinsley')
+	expect(body).not.toMatch(/Everyone in @kentcdodds,\s+Use/)
+})
+
+test('personal allMembers roster keeps operator separate without inventing other orgs', async () => {
+	const personal = contextFixture({
+		id: 'ec_jaguar_personal',
+		name: 'kents-jaguar',
+		ownerOrg: { id: 'org_kent', slug: 'kentcdodds' },
+		operator: { handle: 'kentcdodds' },
+		isOperator: true,
+		canAddShares: true,
+		sharing: {
+			level: 'org',
+			grants: [],
+			attachedOrgs: [{ id: 'org_kody', slug: 'kody', allMembers: false }],
+			allMembers: true,
+			accessRoster: {
+				orgSlug: 'kentcdodds',
+				operator: {
+					handle: 'kentcdodds',
+					execute: true,
+					manage: true,
+					commands: true,
+				},
+				people: [],
+				teams: [],
+				noAccess: [],
+			},
+		},
+	})
+	const pageHref = `/@kentcdodds/-/execution-contexts/${personal.id}`
+	const html = await renderStartPage(
+		route(
+			pageFixture({
+				orgSlug: 'kentcdodds',
+				personalOrg: true,
+				contexts: [personal],
+				selected: personal,
+				unutilized: { count: 0, contexts: [], note: '' },
+			}),
+			personal.id,
+			pageHref,
+		),
+		pageHref,
+	)
+	const body = text(html)
+	expect(body).toContain('Who has access in @kentcdodds')
+	expect(body).toContain(
+		'Machine operator @kentcdodds — execute, manage, commands',
+	)
+	expect(body).toContain('Everyone in @kentcdodds')
+	expect(body).toContain('no other members')
 })
 
 test('a missing context id shows a not-found message, not a crash', async () => {

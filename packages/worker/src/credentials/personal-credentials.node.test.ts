@@ -422,14 +422,13 @@ test('expired secrets, package secrets, and suspended personal orgs are not pers
 		audit: null,
 	})
 	const packageToken = await t.db
-		.prepare(
-			`SELECT e.id FROM secret_entries e
+		.prepare(`SELECT e.id FROM secret_entries e
 			JOIN secret_buckets b ON b.id = e.bucket_id
-			WHERE b.user_id = ? AND b.scope = 'package' AND e.name = ?`,
-		)
+			WHERE b.user_id = ? AND b.scope = 'package' AND e.name = ?`)
 		.bind(t.annOrgId, 'annPackageToken')
 		.first<{ id: string }>()
-	expect(packageToken?.id).toBeTypeOf('string')
+	expect(packageToken).not.toBeNull()
+	const packageTokenId = packageToken!.id
 	await expect(
 		grantPersonalCredentialToOrg({
 			db: t.db,

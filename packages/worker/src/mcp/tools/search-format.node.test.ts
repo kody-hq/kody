@@ -10,10 +10,10 @@ import {
 	parseEntityRef,
 	toSlimStructuredMatches,
 } from './search-format.ts'
-import {
-	type SearchEntityDetail,
-	type SearchMatch,
-	type SlimSearchMatch,
+import type {
+	SearchEntityDetail,
+	SearchMatch,
+	SlimSearchMatch,
 } from './search-format-types.ts'
 
 type PackageDetail = Extract<SearchEntityDetail, { type: 'package' }>
@@ -691,6 +691,93 @@ test('integration search hits surface reconnect nextStep when last auth failure 
 			],
 		}),
 	).toContain('Reconnect at `/connect/oauth?provider=google`')
+})
+
+test('integration search surfaces wait-and-retry for non-reconnectable 429 failures', () => {
+	const rateLimited = {
+		reason: 'provider_rejected',
+		occurredAt: '2026-09-01T00:00:00.000Z',
+		reconnectable: false,
+		providerError: 'temporarily_unavailable',
+		providerErrorDescription: null,
+		httpStatus: 429,
+		title: 'Google stopped working',
+		why: 'Google rate-limited token refresh (HTTP 429). This is a provider limit, not a Kody plan limit. Wait and retry; reconnecting usually does not help.',
+		who: 'the-service',
+		doLabel: 'Open integration',
+		reconnectHref: '/connect/oauth?provider=google',
+		accountHref: '/account/integrations/google',
+	} as const
+	const [match] = slim([
+		integrationMatch('google', { lastAuthFailure: rateLimited }),
+	])
+	expect(nextStepOf(match)).toContain('HTTP 429')
+	expect(nextStepOf(match)).toContain('/account/integrations/google')
+	expect(nextStepOf(match)).not.toContain('/connect/oauth?provider=google')
+	expect(
+		listMarkdown([
+			integrationMatch('google', { lastAuthFailure: rateLimited }),
+		]),
+	).toContain('Open integration at `/account/integrations/google`')
+
+	const detail = formatEntityDetailMarkdown({
+		type: 'integration',
+		id: 'google',
+		title: 'google',
+		description: 'Google OAuth integration config',
+		config: {
+			name: 'google',
+			tokenUrl: 'https://oauth2.googleapis.com/token',
+			apiBaseUrl: 'https://www.googleapis.com',
+			flow: 'confidential',
+			clientId: 'google_client_id',
+			requiredHosts: ['www.googleapis.com'],
+			authorization: {
+				authorizeUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+				scopes: ['openid'],
+				scopeSeparator: ' ',
+				extraAuthorizeParams: {},
+			},
+			lastAuthFailure: rateLimited,
+		},
+	})
+	expect(detail.markdown).toContain('## Connection trouble')
+	expect(detail.markdown).toContain('HTTP 429')
+	expect(detail.markdown).toContain(
+		'Open `/account/integrations/google` while the provider rate limit clears',
+	)
+
+	const outage = {
+		...rateLimited,
+		httpStatus: 503,
+		reason: 'provider_unavailable',
+		why: "Google's token service failed (HTTP 503). This is not a dead sign-in, and it is not a Kody plan limit.",
+	} as const
+	const outageDetail = formatEntityDetailMarkdown({
+		type: 'integration',
+		id: 'google',
+		title: 'google',
+		description: 'Google OAuth integration config',
+		config: {
+			name: 'google',
+			tokenUrl: 'https://oauth2.googleapis.com/token',
+			apiBaseUrl: 'https://www.googleapis.com',
+			flow: 'confidential',
+			clientId: 'google_client_id',
+			requiredHosts: ['www.googleapis.com'],
+			authorization: {
+				authorizeUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+				scopes: ['openid'],
+				scopeSeparator: ' ',
+				extraAuthorizeParams: {},
+			},
+			lastAuthFailure: outage,
+		},
+	})
+	expect(outageDetail.markdown).toContain(
+		'Open `/account/integrations/google` for status',
+	)
+	expect(outageDetail.markdown).toContain('follow Connection trouble above')
 })
 
 test('search markdown summarizes broad results safely and only suggests entity detail for entity-backed hits', () => {

@@ -4,7 +4,7 @@ import {
 	personIdFromStored,
 	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { expect, test, vi } from 'vitest'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { listPackagesCapability } from '#mcp/capabilities/packages/list-packages.ts'
@@ -18,12 +18,11 @@ import {
 	createOrg,
 	upsertGrant,
 } from '#worker/orgs/access-writes.ts'
-import { mismatchedPackageScopeMessage } from '#worker/package-registry/package-name.ts'
 import { insertSavedPackage } from '#worker/package-registry/repo.ts'
 import { insertEntitySource } from '#worker/repo/entity-sources.ts'
 import { insertRepoSession } from '#worker/repo/repo-sessions.ts'
 import { insertUserRepo } from '#worker/repo/user-repos.ts'
-import { type RepoSessionInfoResult } from '#worker/repo/types.ts'
+import type { RepoSessionInfoResult } from '#worker/repo/types.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createTestOrgAuditWriter } from '#worker/test-support/create-audit-db.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
@@ -323,11 +322,7 @@ test('repoOpenSession never resolves a package from another org than the bound o
 			),
 		),
 	).toBe(
-		mismatchedPackageScopeMessage({
-			value: '@kentcdodds/github',
-			requestedScope: 'kentcdodds',
-			ownerScope: 'rocket-co',
-		}),
+		'Cannot use package name "@kentcdodds/github": scope "@kentcdodds" does not match the acting owner "@rocket-co". Use the leaf after "/" or "@rocket-co/…".',
 	)
 	expect(
 		await callerError(

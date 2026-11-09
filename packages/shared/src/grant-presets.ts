@@ -6,7 +6,7 @@
  * Presets are keyed by permission family. A credential grant uses the family
  * of its credential's kind (`secret` or `integration`).
  */
-import { type OrgPermission, type OrgResourceType } from './org-permissions.ts'
+import type { OrgPermission, OrgResourceType } from './org-permissions.ts'
 
 export const grantPresets = ['read', 'use', 'contribute', 'manage'] as const
 
@@ -50,7 +50,7 @@ const contributeExtraByType: Record<
 > = {
 	file: ['file:write', 'file:comment'],
 	package: ['package:write'],
-	app: ['app:write'],
+	app: [],
 	job: ['job:write'],
 	secret: ['secret:write'],
 	integration: ['integration:write'],
@@ -65,8 +65,8 @@ const manageExtraByType: Record<
 > = {
 	file: ['file:delete', 'file:manage_access'],
 	package: ['package:delete', 'package:manage_access', 'package:publish'],
-	app: ['app:delete', 'app:manage_access'],
-	job: ['job:delete', 'job:manage_access'],
+	app: ['app:manage_access'],
+	job: ['job:manage_access'],
 	secret: ['secret:delete', 'secret:manage_access'],
 	integration: ['integration:delete', 'integration:manage_access'],
 	memory: ['memory:delete', 'memory:manage_access'],
@@ -81,9 +81,8 @@ const manageExtraByType: Record<
  * Read-only resource permissions an `org` grant may carry, so a Member can read
  * every resource of that type without Owner. None of them writes, runs, or
  * reveals a secret value. Left out: `secret:read` (reveals values),
- * `memory:read` (memories are personal, ADR 0072), `execution_context:read`
- * (machines are listed per share, not org-wide), and every `use`,
- * `execute`, `write`, `delete`, `publish`, and `manage_access` action.
+ * `memory:read` (memories are personal, ADR 0072), and `execution_context:read`
+ * (machines are listed per share, not org-wide).
  */
 export const orgWideReadPermissions = [
 	'file:read',
@@ -102,21 +101,45 @@ export function isOrgWideReadPermission(
 	return (orgWideReadPermissions as ReadonlyArray<unknown>).includes(value)
 }
 
+/**
+ * Manage permissions an `org` grant may carry for every package and package
+ * app in the org, current and future. Only an Owner may add them. They stay
+ * subject to unmappable-credential locks: `package:write` and
+ * `package:publish` on a package with unmappable credentials need a grant on
+ * that package that allows changes. No other family is grantable org-wide
+ * beyond its reads.
+ */
+export const orgWideManagePermissions = [
+	'package:execute',
+	'package:write',
+	'package:publish',
+	'package:delete',
+	'package:manage_access',
+	'app:execute',
+	'app:manage_access',
+] as const satisfies ReadonlyArray<OrgPermission>
+
+export type OrgWideManagePermission = (typeof orgWideManagePermissions)[number]
+
+export function isOrgWideManagePermission(
+	value: unknown,
+): value is OrgWideManagePermission {
+	return (orgWideManagePermissions as ReadonlyArray<unknown>).includes(value)
+}
+
 /** Org-level permissions that may appear on an `org` resource grant. */
 const orgResourceGrantable: ReadonlyArray<OrgPermission> = [
 	...orgWideReadPermissions,
+	...orgWideManagePermissions,
 	'org:read',
 	'org:write',
 	'org:delete',
 	'org:execute',
 	'package:create',
 	'file:create',
-	'app:create',
-	'job:create',
 	'secret:create',
 	'integration:create',
 	'memory:create',
-	'email:create',
 	'execution_context:create',
 	'search:read',
 	'member:read',

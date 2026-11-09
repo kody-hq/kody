@@ -1,6 +1,6 @@
 import { jsx } from 'react/jsx-runtime'
 import { renderStartPage } from './test-support/render-start-page.ts'
-import { type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 const renderToString = (page: ReactNode) => renderStartPage(page, '/docs')
 import { expect, test } from 'vitest'
 import { renderMarkdownNodes } from './components/markdown-view.tsx'
@@ -113,6 +113,45 @@ test('package README imageBaseHref emits img only for in-repo relative images', 
 	const defaultPolicy = await renderMarkdown('![poster](./docs/poster.png)')
 	expect(defaultPolicy).not.toContain('<img')
 	expect(defaultPolicy).toContain('<span>poster</span>')
+})
+
+test('blogImages emits lazy img only for /images/ paths; other hrefs stay links', async () => {
+	const markdown = [
+		'![Package files page](/images/blog/kody-weekly-2026-10-30/package-files.webp)',
+		'',
+		'![remote](https://img.example/shot.webp)',
+		'',
+		'![protocol-relative](//img.example/shot.webp)',
+		'',
+		'![query](/images/blog/post/shot.webp?v=2)',
+		'',
+		'![other-path](/logo.png)',
+		'',
+		'![upper](/images/blog/Post/Shot.webp)',
+	].join('\n')
+
+	const withBlogImages = await renderToString(
+		jsx('div', {
+			children: renderMarkdownNodes(markdown, { blogImages: true }),
+		}),
+	)
+	expect(withBlogImages.match(/<img /g)?.length).toBe(1)
+	expect(withBlogImages).toMatch(
+		/<img src="[^"]*images\/blog\/kody-weekly-2026-10-30\/package-files\.webp" alt="Package files page" loading="lazy" decoding="async"\/>/,
+	)
+	expect(withBlogImages).toContain(
+		'<a href="https://img.example/shot.webp" target="_blank" rel="noopener noreferrer nofollow ugc">remote</a>',
+	)
+	expect(withBlogImages).toContain('<span>protocol-relative</span>')
+	expect(withBlogImages).toContain('<span>query</span>')
+	expect(withBlogImages).toContain('<span>other-path</span>')
+	expect(withBlogImages).toContain('<span>upper</span>')
+
+	const defaultPolicy = await renderMarkdown(
+		'![Package files page](/images/blog/post/package-files.webp)',
+	)
+	expect(defaultPolicy).not.toContain('<img')
+	expect(defaultPolicy).toContain('<span>Package files page</span>')
 })
 
 test('first-party heading ids are unique and use parsed heading text', async () => {

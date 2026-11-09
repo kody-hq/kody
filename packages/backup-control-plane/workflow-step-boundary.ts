@@ -1,4 +1,4 @@
-import { type BackupRuntimeStep } from './backup-runtime.ts'
+import type { BackupRuntimeStep } from './backup-runtime.ts'
 import { BackupError } from './backup-policy.ts'
 import { nonRetryableBackupError } from './workflow-terminal-error.ts'
 

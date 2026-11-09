@@ -1,8 +1,8 @@
-import {
-	type PackageStorageMatch,
-	type PackageStorageDetectionPattern,
+import type {
+	PackageStorageMatch,
+	PackageStorageDetectionPattern,
 } from './package-storage-use.ts'
-import { type CapabilitySetEntry } from './capability-set.ts'
+import type { CapabilitySetEntry } from './capability-set.ts'
 
 export type SelfPublishBlocker =
 	| 'unpublished'
@@ -25,6 +25,14 @@ export const selfPublishCapabilityManifestFields = [
 
 export type SelfPublishCapabilityManifestField =
 	(typeof selfPublishCapabilityManifestFields)[number]
+
+/** Whether a manifest field declares anything (non-empty object or array). */
+export function declaresAny(value: unknown) {
+	if (value == null) return false
+	if (Array.isArray(value)) return value.length > 0
+	if (typeof value === 'object') return Object.keys(value).length > 0
+	return true
+}
 
 export type SelfPublishBlockerReason =
 	| {
@@ -62,6 +70,8 @@ export type SelfPublishBlockerReason =
 			needCount: number
 			/** Needs each visitor supplies (`supplier: "executor"`). */
 			executorNeedCount?: number
+			/** The declared need keys and descriptions, for display. */
+			needs?: Array<{ key: string; description: string }>
 	  }
 	| { kind: 'not_audited' }
 	| { kind: 'audit_concerns' }
@@ -131,12 +141,16 @@ function formatReason(reason: SelfPublishBlockerReason): string {
 			return `Published manifest for source ${reason.sourceId} declares kody.${reason.field}.`
 		case 'credential_needs': {
 			const executor = reason.executorNeedCount ?? 0
+			const keys =
+				reason.needs && reason.needs.length > 0
+					? ` (${reason.needs.map((need) => need.key).join(', ')})`
+					: ''
 			if (executor > 0 && executor >= reason.needCount) {
-				return `Source ${reason.sourceId} has ${String(executor)} executor-supplied credential need(s). Visitors bring these, but a self-published package resolves no credentials at all, so the owner approves going internet-visible.`
+				return `Source ${reason.sourceId} has ${String(executor)} executor-supplied credential need(s)${keys}. Visitors bring these, but a self-published package resolves no credentials at all, so the owner approves going internet-visible.`
 			}
 			const executorNote =
 				executor > 0 ? ` (${String(executor)} of them executor-supplied)` : ''
-			return `Source ${reason.sourceId} has ${String(reason.needCount)} credential need(s) in its published closure${executorNote}. Publisher-supplied needs always need the owner's approval.`
+			return `Source ${reason.sourceId} has ${String(reason.needCount)} credential need(s)${keys} in its published closure${executorNote}. Publisher-supplied needs always need the owner's approval.`
 		}
 		case 'not_audited':
 			return 'No security audit with verdict pass is recorded for the current published commit and capability fingerprint.'

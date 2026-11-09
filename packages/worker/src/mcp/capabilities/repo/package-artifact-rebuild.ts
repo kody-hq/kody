@@ -1,5 +1,5 @@
 import { chunkArray } from '@kody-internal/shared/chunk.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	formatErrorCauseChain,
 	getErrorMessage,
@@ -20,12 +20,13 @@ import {
 	readPublishedSourceSnapshot,
 	type PublishedSourceSnapshot,
 } from '#worker/package-runtime/published-runtime-artifacts.ts'
-import { type PublishedPackageArtifactBuildTarget } from '#worker/package-runtime/package-artifact-targets.ts'
+import type { PublishedPackageArtifactBuildTarget } from '#worker/package-runtime/package-artifact-targets.ts'
 import {
 	createIsolatedArtifactRebuildRunner,
 	isolatedArtifactRebuildChunkConcurrency,
-	isolatedArtifactRebuildChunkSize,
+	runIsolatedArtifactRebuildWaves,
 } from '#worker/repo/isolated-artifact-rebuild.ts'
+import { advanceEntitySourceServingCommit } from '#worker/repo/entity-sources.ts'
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
 import {
 	isDurableObjectIsolateResourceLimitResetError,
@@ -363,6 +364,21 @@ export type RebuildPublishedPackageArtifactsResult = {
 	 * rebuild or reuse work. Zero means every target was already current.
 	 */
 	rebuiltTargetCount: number
+	/**
+	 * Targets still unbuilt because `maxTargets` capped this call. Call again
+	 * (it skips built targets) until this is zero.
+	 */
+	remainingTargetCount?: number
+}
+
+function capRebuildTargets<T>(remaining: Array<T>, maxTargets?: number) {
+	if (maxTargets === undefined || remaining.length <= maxTargets) {
+		return { batch: remaining, remainingTargetCount: 0 }
+	}
+	return {
+		batch: remaining.slice(0, Math.max(1, maxTargets)),
+		remainingTargetCount: remaining.length - Math.max(1, maxTargets),
+	}
 }
 
 async function rebuildPublishedPackageArtifactsOnSession(input: {
@@ -375,18 +391,22 @@ async function rebuildPublishedPackageArtifactsOnSession(input: {
 	baseUrl: string
 	targets: ReadonlyArray<PublishedPackageArtifactBuildTarget>
 	force?: boolean
+	maxTargets?: number
 }): Promise<RebuildPublishedPackageArtifactsResult> {
 	const session = repoSessionRpc(input.env, input.rpcSessionId)
 	const succeeded: Array<PublishedPackageArtifactBuildTarget> = []
-	const { remaining, alreadyBuilt, reused } = await filterTargetsNeedingRebuild(
-		{
-			env: input.env,
-			userId: input.userId,
-			sourceId: input.sourceId,
-			publishedCommit: input.publishedCommit,
-			targets: input.targets,
-			force: input.force,
-		},
+	const filtered = await filterTargetsNeedingRebuild({
+		env: input.env,
+		userId: input.userId,
+		sourceId: input.sourceId,
+		publishedCommit: input.publishedCommit,
+		targets: input.targets,
+		force: input.force,
+	})
+	const { alreadyBuilt, reused } = filtered
+	const { batch: remaining, remainingTargetCount } = capRebuildTargets(
+		filtered.remaining,
+		input.maxTargets,
 	)
 	succeeded.push(...alreadyBuilt, ...reused)
 
@@ -427,7 +447,10 @@ async function rebuildPublishedPackageArtifactsOnSession(input: {
 	}
 
 	if (failed.length === 0) {
-		return { rebuiltTargetCount: remaining.length + reused.length }
+		return {
+			rebuiltTargetCount: remaining.length + reused.length,
+			remainingTargetCount,
+		}
 	}
 
 	throwRebuildFailure({
@@ -466,6 +489,7 @@ async function rebuildPublishedPackageArtifactsViaRepoSessionOnce(input: {
 	baseUrl: string
 	targets?: ReadonlyArray<PublishedPackageArtifactBuildTarget>
 	force?: boolean
+	maxTargets?: number
 }): Promise<RebuildPublishedPackageArtifactsResult> {
 	const session = repoSessionRpc(input.env, input.rpcSessionId)
 	const isolatedRunner = createIsolatedArtifactRebuildRunner(input.env)
@@ -498,15 +522,18 @@ async function rebuildPublishedPackageArtifactsViaRepoSessionOnce(input: {
 		targets: input.targets,
 	})
 
-	const { remaining, alreadyBuilt, reused } = await filterTargetsNeedingRebuild(
-		{
-			env: input.env,
-			userId: input.userId,
-			sourceId: input.sourceId,
-			publishedCommit: input.publishedCommit,
-			targets,
-			force: input.force,
-		},
+	const filtered = await filterTargetsNeedingRebuild({
+		env: input.env,
+		userId: input.userId,
+		sourceId: input.sourceId,
+		publishedCommit: input.publishedCommit,
+		targets,
+		force: input.force,
+	})
+	const { alreadyBuilt, reused } = filtered
+	const { batch: remaining, remainingTargetCount } = capRebuildTargets(
+		filtered.remaining,
+		input.maxTargets,
 	)
 	const succeeded: Array<PublishedPackageArtifactBuildTarget> = [
 		...alreadyBuilt,
@@ -540,45 +567,28 @@ async function rebuildPublishedPackageArtifactsViaRepoSessionOnce(input: {
 	}> = []
 
 	try {
-		const isolateChunks = chunkArray(
-			remaining,
-			isolatedArtifactRebuildChunkSize,
-		)
-		const waves = chunkArray(
-			isolateChunks,
-			publishedPackageArtifactRebuildConcurrency,
-		)
-		for (const [waveIndex, wave] of waves.entries()) {
-			if (failed.length > 0) break
-			if (waveIndex > 0) {
-				await isolatedRunner.touch(stagingKey)
-			}
-
-			const settled = await Promise.allSettled(
-				wave.map(async (targets) => {
-					const outcome = await isolatedRunner.run({
-						stagingKey,
-						sourceId: input.sourceId,
-						userId: input.userId,
-						publishedCommit: input.publishedCommit,
-						targets,
-						baseUrl: input.baseUrl,
-						force: input.force,
-					})
-					return { targets, outcome }
+		await runIsolatedArtifactRebuildWaves({
+			targets: remaining,
+			runChunk: (targets) =>
+				isolatedRunner.run({
+					stagingKey,
+					sourceId: input.sourceId,
+					userId: input.userId,
+					publishedCommit: input.publishedCommit,
+					targets,
+					baseUrl: input.baseUrl,
+					force: input.force,
 				}),
-			)
-
-			for (const [index, result] of settled.entries()) {
-				const targets = wave[index]
-				if (!targets) continue
+			beforeNextWave: () => isolatedRunner.touch(stagingKey),
+			recordChunk: (targets, result) => {
+				const failedBefore = failed.length
 				if (result.status === 'rejected') {
 					for (const target of targets) {
 						failed.push({ target, error: result.reason })
 					}
-					continue
+					return true
 				}
-				const { outcome } = result.value
+				const outcome = result.value
 				const targetResults = outcome.results ?? []
 				if (targetResults.length > 0) {
 					for (const targetResult of targetResults) {
@@ -594,23 +604,27 @@ async function rebuildPublishedPackageArtifactsViaRepoSessionOnce(input: {
 							}),
 						)
 					}
-					continue
+					return failed.length > failedBefore
 				}
 				if (outcome.ok) {
 					succeeded.push(...targets)
-					continue
+					return false
 				}
 				for (const target of targets) {
 					failed.push({ target, error: new Error(outcome.message) })
 				}
-			}
-		}
+				return true
+			},
+		})
 	} finally {
 		await isolatedRunner.discard(stagingKey)
 	}
 
 	if (failed.length === 0) {
-		return { rebuiltTargetCount: remaining.length + reused.length }
+		return {
+			rebuiltTargetCount: remaining.length + reused.length,
+			remainingTargetCount,
+		}
 	}
 
 	throwRebuildFailure({
@@ -632,13 +646,56 @@ export async function rebuildPublishedPackageArtifactsViaRepoSession(input: {
 	/** When set, rebuild only these targets instead of every package target. */
 	targets?: ReadonlyArray<PublishedPackageArtifactBuildTarget>
 	force?: boolean
+	/** Rebuild at most this many unbuilt targets per call (resumable). */
+	maxTargets?: number
+	/**
+	 * Publish offload: persist this verified upload (every target, checked
+	 * against the tree and a server rebuild sample) instead of building.
+	 */
+	uploadedBuild?: {
+		buildId: string
+		communityListed: boolean
+	}
 }): Promise<RebuildPublishedPackageArtifactsResult> {
+	if (input.uploadedBuild) {
+		const persisted = await repoSessionRpc(
+			input.env,
+			input.rpcSessionId,
+		).persistUploadedPublishBuild({
+			...(input.repoSessionId ? { sessionId: input.repoSessionId } : {}),
+			sourceId: input.sourceId,
+			userId: input.userId,
+			publishedCommit: input.publishedCommit,
+			buildId: input.uploadedBuild.buildId,
+			communityListed: input.uploadedBuild.communityListed,
+			baseUrl: input.baseUrl,
+		})
+		if (!persisted.ok) throw new UserCodeError(persisted.message)
+		// Every target is written: the commit is complete enough to serve.
+		await advanceEntitySourceServingCommit(input.env.APP_DB, {
+			id: input.sourceId,
+			userId: input.userId,
+			commit: input.publishedCommit,
+		})
+		return { rebuiltTargetCount: persisted.targetCount }
+	}
 	let lastTransientError: unknown = null
 	let attempt = 0
 	for (;;) {
 		attempt += 1
 		try {
-			return await rebuildPublishedPackageArtifactsViaRepoSessionOnce(input)
+			const result =
+				await rebuildPublishedPackageArtifactsViaRepoSessionOnce(input)
+			// Only a full pass (every package target, none left for a later
+			// batch) proves the commit is complete enough to serve.
+			if (input.targets == null && (result.remainingTargetCount ?? 0) === 0) {
+				await advanceEntitySourceServingCommit(input.env.APP_DB, {
+					id: input.sourceId,
+					userId: input.userId,
+					commit: input.publishedCommit,
+				})
+			}
+			return result
 		} catch (error) {
 			if (!isTransientArtifactRebuildError(error)) {
 				throw error

@@ -1,7 +1,7 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import type * as AuthorizeModule from '#worker/authorization/authorize.ts'
 import { EntitlementLimitError } from '#worker/entitlements/errors.ts'
 
@@ -9,7 +9,7 @@ const state = vi.hoisted(() => ({
 	organizations: [] as Array<{
 		slug: string
 		displayName: string | null
-		role: 'owner' | 'member' | 'billing' | null
+		role: 'owner' | 'admin' | 'member' | 'billing' | null
 		personal: boolean
 		avatarKey: string | null
 	}>,
@@ -264,7 +264,7 @@ test('plan limits surface as a form error', async () => {
 	})
 	expect(result).toMatchObject({ ok: false, field: null })
 	if (result.ok) throw new Error('expected refusal')
-	expect(result.error).toContain('Plan limit reached')
+	expect(result.error).toContain('Kody plan limit reached')
 })
 
 test('unexpected failures are not swallowed', async () => {

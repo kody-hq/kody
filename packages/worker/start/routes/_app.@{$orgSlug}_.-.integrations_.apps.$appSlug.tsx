@@ -20,7 +20,7 @@ export const Route = createFileRoute(
 			section: 'integrations',
 			suffix: ['apps', { param: 'appSlug' }],
 		},
-		navigation: { rail: 'workspace', item: 'credentials' },
+		navigation: { rail: 'workspace', item: 'integrations' },
 		orgScope: { section: 'integrations' },
 	},
 	validateSearch: textSearch,

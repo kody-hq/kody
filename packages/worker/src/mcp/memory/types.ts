@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 
 export const memoryStatusValues = ['active', 'deleted', 'archived'] as const
 
@@ -59,6 +59,8 @@ export type MemorySearchHit = MemoryMetadata & {
 	score: number
 	lexicalRank?: number
 	vectorRank?: number
+	/** Cosine similarity to the query embedding; absent offline or on a vector miss. */
+	vectorScore?: number
 }
 
 export type MemorySearchMatch = MemorySearchHit

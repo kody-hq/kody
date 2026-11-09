@@ -1,25 +1,25 @@
 /** @jsxImportSource @emotion/react */
 import { FunnelChart } from '../charts/funnel-chart.tsx'
 import { surfaceCardCss } from '#universal/styles/surface.ts'
-import { type CSSObject } from '@emotion/react'
-import { type ReactNode } from 'react'
+import type { CSSObject } from '@emotion/react'
+import type { ReactNode } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
 import { cardCss } from '#universal/styles/style-primitives.ts'
 import { chartColor, formatIntegerNumber } from '#client/charts/chart-theme.ts'
 import { formatDynamicWorkerUsd } from '#universal/dynamic-worker-cost.ts'
 import { formatFleetPackageErrorRateConcentration } from '#universal/fleet-package-error-rate-concentration.ts'
-import {
-	type AdminInsightsActivation,
-	type AdminInsightsActivationStep,
-	type AdminInsightsDurationConsumer,
-	type AdminInsightsEntitlementPressureUser,
-	type AdminInsightsDynamicWorkerCost,
-	type AdminInsightsEventCountConsumer,
-	type AdminInsightsMetricDurationConsumers,
-	type AdminInsightsPackageErrorRate,
-	type AdminInsightsPackageErrorRateCounts,
-	type AdminInsightsPackageErrorRateMetricRow,
+import type {
+	AdminInsightsActivation,
+	AdminInsightsActivationStep,
+	AdminInsightsDurationConsumer,
+	AdminInsightsEntitlementPressureUser,
+	AdminInsightsDynamicWorkerCost,
+	AdminInsightsEventCountConsumer,
+	AdminInsightsMetricDurationConsumers,
+	AdminInsightsPackageErrorRate,
+	AdminInsightsPackageErrorRateCounts,
+	AdminInsightsPackageErrorRateMetricRow,
 } from '#universal/loader-data.ts'
 import {
 	adminUserDetailHref,

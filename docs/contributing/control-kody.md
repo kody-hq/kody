@@ -25,8 +25,9 @@ npm run control-kody -- browse --path /account/organizations/new
 npm run control-kody -- map waiting
 npm run control-kody -- map --check
 npm run control-kody -- health --sha <commit>
+npm run control-kody -- health --origin https://kody.codes --sha <merge-sha> --wait
 npm run control-kody -- preview --pr 42 --check /@user-me/-/waiting
-npm run control-kody -- browse --origin <preview> --path /@user-me/pkg [--record] [--screenshot .tmp/page.png]
+npm run control-kody -- browse --origin <preview> --path /@user-me/pkg [--record] [--screenshot .tmp/page.png] [--color-scheme light|dark|both]
 npm run control-kody -- package-create --origin <preview> --package-name <leaf-or-@scope/leaf> [--head-ahead] [--org <slug>]
 npm run control-kody -- execute --origin <preview> --code-file fixture.ts [--params-file params.json] [--org <slug>]
 npm run control-kody -- search --origin <preview> --query "packageSave" [--domain packages] [--org <slug>]
@@ -45,7 +46,8 @@ drift), origin `/health`, and local APP_DB. Playwright passes only when
 `health --sha` succeeds when `/health` `commitSha` equals the argument, uniquely
 starts with it (git short SHA, 7+ characters), or is a descendant that contains
 it (`git merge-base --is-ancestor`). A later main HEAD deploy still counts as
-the merge being live.
+the merge being live. `--wait` polls every 20 seconds until that is true
+(default 30 minutes, `--wait-minutes <n>`), so do not write sleep loops.
 
 ## Feature Map
 
@@ -62,11 +64,14 @@ committed tree drifts. Feature prefixes in
 only group that inventory — do not hand-maintain path lists.
 
 `map` prints the generated inventory (optionally filtered by feature id).
-`map --check` (and `npm run feature-map:check` in CI) fails when notes cite
-unknown routes, a required user-facing prefix has no notes (and no exemption),
-or a notes file is missing / orphaned. When you add a new user-facing area, add
-a short notes file and a prefix in the catalog; leaf routes under an existing
-prefix need no catalog edit.
+`verify <id>` runs every `npm run control-kody -- request GET|HEAD ...` line in
+that feature's notes against the resolved origin (add `--origin <preview>` for a
+PR preview) and prints one ok/FAIL line per check. Keep those lines runnable: a
+test parses every one. `map --check` (and `npm run feature-map:check` in CI)
+fails when notes cite unknown routes, a required user-facing prefix has no notes
+(and no exemption), or a notes file is missing / orphaned. When you add a new
+user-facing area, add a short notes file and a prefix in the catalog; leaf
+routes under an existing prefix need no catalog edit.
 
 After `login`, keep using `request` for HTML and JSON assertions. Do not `cat`
 the session cookie into `curl` or Python. `request --dump` writes the raw body
@@ -114,14 +119,16 @@ Chromium is missing — do not run `playwright install chromium` on Cloud Agents
 Pass `--record` to write video under `.tmp/control-kody-browse` (needs
 Playwright ffmpeg: `npx playwright install ffmpeg` — small download),
 `--screenshot <path>` to write a PNG of the loaded page (PR walkthrough
-evidence), `--headless` for environments without a display, and
-`--close-after <ms>` for scripted smoke. Headless `--screenshot` closes after
-the capture when `--close-after` is omitted. Prefer MCP/API/`execute` for proof;
-use `browse` only when UI is under test. Walkthrough screenshots of account,
-approval, and other focused pages must come from this live origin (local `dev`
-or the PR preview), not a `file://` dump of `renderToString` HTML — those shots
-lack SiteHeader, tokens, and real layout. Cursor `computerUse` drives its own
-browser and cannot attach to the CLI-opened Chromium — for computerUse, open
+evidence), `--color-scheme light|dark|both` to set `prefers-color-scheme`
+(`both` writes `<shot>-light.png` and `<shot>-dark.png`), `--headless` for
+environments without a display, and `--close-after <ms>` for scripted smoke.
+`--screenshot` (headed or headless) closes after the capture when
+`--close-after` is omitted. Prefer MCP/API/`execute` for proof; use `browse`
+only when UI is under test. Walkthrough screenshots of account, approval, and
+other focused pages must come from this live origin (local `dev` or the PR
+preview), not a `file://` dump of `renderToString` HTML — those shots lack
+SiteHeader, tokens, and real layout. Cursor `computerUse` drives its own browser
+and cannot attach to the CLI-opened Chromium — for computerUse, open
 `/login?redirectTo=<path>` with the public seed credentials instead of retyping
 a long package URL after landing on `/account`.
 
@@ -140,40 +147,47 @@ node tools/seed-test-data.ts --local
 - `localhost` / `127.0.0.1` → `jane@example.com` / `ilikecode`
 - anything else (PR preview, production) → `me@kentcdodds.com` / `ilikecode`
 
-Override with `--email` / `--password`. `--cookie-file` defaults to
-`.tmp/control-kody-cookie` and stores the origin and email that created the
-session, so a leftover local cookie is not sent to a preview and `--email` does
-not reuse another user's cookie for the same origin. MCP commands also store the
-`--org` slug beside the OAuth token; a different org remints the token and keeps
-the login cookie. `preview` uses
+Override with `--email` / `--password`. Site-admin capabilities (for example
+`adminPackageCredentialSupplierReport`) are hidden from non-admin sessions, so
+`execute` as `jane@example.com` reports `Tool "…" not found`. Locally, run them
+as the admin seed (`node tools/seed-test-data.ts --local` makes
+`kody@example.com` an admin by default):
+`npm run control-kody -- execute --email kody@example.com --code-file f.ts`.
+`--cookie-file` defaults to `.tmp/control-kody-cookie` and stores the origin and
+email that created the session, so a leftover local cookie is not sent to a
+preview and `--email` does not reuse another user's cookie for the same origin.
+MCP commands also store the `--org` slug beside the OAuth token; a different org
+remints the token and keeps the login cookie. `preview` uses
 [`preview-manual-test`](./preview-manual-testing.md) and its own seed.
 
-`package-create` registers a stub saved package on a PR preview through MCP
-`packageGetGitRemote({ create: true, name })`. Pass the package name leaf or
-`@owner/leaf` with `--package-name`. It reuses `--origin`, `--email`,
-`--password`, `--cookie-file`, `--json`, and `--org <slug>`. Pass
-`--package-name <leaf-or-@scope/leaf>` (required; `--kody-id` is an alias),
-`--description` (optional), and `--head-ahead` to push one unpublished commit so
-the package page can show **HEAD ahead of published**. Do not POST a create
-action to `/account/packages.json` — that endpoint has no package-create action.
-Logged-in preview testing does not require agents to hand-roll an MCP OAuth
-dance — the CLI does it for them. The command refuses `https://kody.codes`.
-Package source persistence (`packageGetGitRemote`, `packageSave`, publish) works
-on local `npm run dev`: the generated origin config drops the always-remote
-`ARTIFACTS` binding so the mock Artifacts API is used. Prefer `package-create` /
-`execute` against localhost; use a PR preview when you need the real remote
-Artifacts namespace. See
+`package-create` registers a stub saved package through MCP
+`packageGetGitRemote({ create: true, name })` on local `npm run dev` or a PR
+preview. Pass the package name leaf or `@owner/leaf` with `--package-name`. It
+reuses `--origin`, `--email`, `--password`, `--cookie-file`, `--json`, and
+`--org <slug>`. Pass `--package-name <leaf-or-@scope/leaf>` (required;
+`--kody-id` is an alias), `--description` (optional), and `--head-ahead` to push
+one unpublished commit so the package page can show **HEAD ahead of published**.
+Do not POST a create action to `/account/packages.json` — that endpoint has no
+package-create action. Logged-in testing does not require agents to hand-roll an
+MCP OAuth dance — the CLI does it for them. The command refuses
+`https://kody.codes`. Package source persistence (`packageGetGitRemote`,
+`packageSave`, publish) works on local `npm run dev`: the generated origin
+config drops the always-remote `ARTIFACTS` binding so the mock Artifacts API is
+used. Prefer `package-create` / `execute` against localhost; use a PR preview
+when you need the real remote Artifacts namespace. See
 [Local limitations](./cloud-agents.md#local-limitations).
 
-`execute` and `search` use the same OAuth client against a preview or local
-origin. `execute` reads an ESM module from `--code-file` (default export) and
-optional JSON `--params-file`. `--execute-args-file` merges a JSON object into
-the execute call, such as a `credentials` call map. `search` takes `--query`,
-and optionally `--domain`, `--entity`, and `--limit`. Both refuse
-`https://kody.codes`. Do not hand-write a throwaway MCP client script for
-preview fixtures. Modules that call `packageSave`, publish, or
-`packageGetGitRemote` can run against the local origin (mock Artifacts) or a PR
-preview (real Artifacts namespace).
+`execute`, `search`, and `api` use the same OAuth client against a preview or
+local origin. `api` calls one MCP `api` operation: `--operation <operationId>`
+plus an optional JSON `--params-file`. Use it for api-only operations that
+refuse `execute`, such as `cliCredentialBootstrap`. `execute` reads an ESM
+module from `--code-file` (default export) and optional JSON `--params-file`.
+`--execute-args-file` merges a JSON object into the execute call, such as a
+`credentials` call map. `search` takes `--query`, and optionally `--domain`,
+`--entity`, and `--limit`. Both refuse `https://kody.codes`. Do not hand-write a
+throwaway MCP client script for preview fixtures. Modules that call
+`packageSave`, publish, or `packageGetGitRemote` can run against the local
+origin (mock Artifacts) or a PR preview (real Artifacts namespace).
 
 After the seed user belongs to more than one organization, OAuth authorize
 refuses to approve until an org is chosen. Pass `--org <slug>` on `execute`,

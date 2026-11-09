@@ -56,6 +56,9 @@ function toRecord(
 	}
 }
 
+/** Override rows with this reason cap the plan limit (guest accounts). */
+export const ceilingLimitOverrideReason = 'guest_account'
+
 /**
  * Unexpired overrides for one org. Keys this build does not know (rolled
  * back after a newer build added one) are ignored.
@@ -67,12 +70,15 @@ export async function readActiveOrgLimitOverrides(
 ): Promise<Array<LimitOverride>> {
 	const rows = await db
 		.prepare(
-			`SELECT limit_key, limit_value, expires_at FROM org_limit_overrides
+			`SELECT limit_key, limit_value, reason, expires_at FROM org_limit_overrides
 			 WHERE org_id = ? AND (expires_at IS NULL OR expires_at > ?)`,
 		)
 		.bind(orgId, now.toISOString())
 		.all<
-			Pick<OrgLimitOverrideRow, 'limit_key' | 'limit_value' | 'expires_at'>
+			Pick<
+				OrgLimitOverrideRow,
+				'limit_key' | 'limit_value' | 'reason' | 'expires_at'
+			>
 		>()
 	return (rows.results ?? []).flatMap((row) => {
 		const key = parseLimitOverrideKey(row.limit_key)
@@ -82,6 +88,9 @@ export async function readActiveOrgLimitOverrides(
 						key,
 						value: toLimitOverrideValue(row.limit_value),
 						expiresAt: row.expires_at,
+						...(row.reason === ceilingLimitOverrideReason
+							? { ceiling: true }
+							: {}),
 					},
 				]
 			: []

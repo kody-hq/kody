@@ -1,6 +1,6 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { orgUsageCreditsPath, orgUsagePath } from '#universal/org-pages.ts'
-import { type AccountBillingLoaderData } from '#universal/loader-data.ts'
+import type { AccountBillingLoaderData } from '#universal/loader-data.ts'
 import { getCanonicalAppBaseUrl } from '#worker/app-base-url.ts'
 import {
 	getPurchasablePlans,
@@ -19,8 +19,24 @@ import {
 } from '#universal/plans.ts'
 import { laterIsoTimestamp } from '#universal/referral-program.ts'
 import { resolveEffectivePlanWithSecondAgentGift } from '#universal/second-agent-standard-gift.ts'
-import { loadReferralProgramSummary } from '#worker/entitlements/referral-program.ts'
+import {
+	loadReferralProgramSummary,
+	personHasPaidKodyInvoice,
+	type ListCustomerPaidInvoices,
+} from '#worker/entitlements/referral-program.ts'
+import { listPaidInvoicesForCustomer } from '#worker/billing/stripe-client.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+
+/**
+ * Paid-invoice lookup for the referral entry. Without Stripe configured a
+ * linked customer is treated as already paid so the entry stays closed.
+ */
+export function referralPaidInvoiceLister(env: Env): ListCustomerPaidInvoices {
+	return async (customerId) =>
+		isBillingConfigured(env)
+			? listPaidInvoicesForCustomer(env, customerId)
+			: { invoices: [], hasMore: true }
+}
 
 const billingErrorMessages: Record<string, string> = {
 	billing_not_configured: 'Billing is not configured on this deployment.',
@@ -259,6 +275,12 @@ export async function loadAccountBillingData(input: {
 				stableUserId: state.referral.stableUserId,
 				username: state.referral.username,
 				origin,
+				personHasPaid: () =>
+					personHasPaidKodyInvoice({
+						db: input.env.APP_DB,
+						stableUserId: state.referral!.stableUserId,
+						listPaidInvoices: referralPaidInvoiceLister(input.env),
+					}),
 				now,
 			}).catch((referralError) => {
 				console.error('account_billing_referral_failed', {

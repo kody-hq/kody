@@ -2,7 +2,7 @@ import { jsx } from 'react/jsx-runtime'
 import { expect, test } from 'vitest'
 import { renderStartPage } from './test-support/render-start-page.ts'
 import { AccountPackageApproveCapabilitiesRoute } from './pages/account-package-approve-capabilities.tsx'
-import { type AccountPackageApproveCapabilitiesLoaderData } from '#universal/loader-data.ts'
+import type { AccountPackageApproveCapabilitiesLoaderData } from '#universal/loader-data.ts'
 const payload: AccountPackageApproveCapabilitiesLoaderData = {
 	ok: true,
 	pendingApprovals: [],
@@ -32,6 +32,8 @@ const payload: AccountPackageApproveCapabilitiesLoaderData = {
 		},
 		{ kind: 'storage', storageId: 'storage-id', hosts: [], via: ['root'] },
 	],
+	unboundNeeds: [],
+	declaredFields: [],
 	fingerprintMatchesApproval: false,
 	goPublicRequestId: null,
 	latestApprovedAt: null,

@@ -8,7 +8,7 @@ import {
 	isFetchCapableCredentialKind,
 	type PackageCredentialKind,
 } from '#worker/package-registry/types.ts'
-import { type UsableCredential } from './credential-candidates.ts'
+import type { UsableCredential } from './credential-candidates.ts'
 import { loadPublishedCredentialNeeds } from './credential-needs-closure.ts'
 import {
 	savedCredentialNeeds,

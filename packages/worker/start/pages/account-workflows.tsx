@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { usePageCommands } from '../commands/context.tsx'
 import { createListDetailLinks } from '#client/list-detail-route.ts'
 import {
 	filterAccountWorkflows,
@@ -10,10 +11,10 @@ import {
 	packageHrefFromScope,
 	packageScopeFromNameOrOwner,
 } from '#universal/community-links.ts'
-import {
-	type AccountWorkflowListItem,
-	type AccountWorkflowRunStatus,
-	type AccountWorkflowsLoaderData,
+import type {
+	AccountWorkflowListItem,
+	AccountWorkflowRunStatus,
+	AccountWorkflowsLoaderData,
 } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
 import {
@@ -270,6 +271,26 @@ export function AccountWorkflowsPage({
 			},
 		),
 	})
+	usePageCommands(
+		isMutating
+			? []
+			: workflows.filter(isActiveAccountWorkflow).map((workflow) => ({
+					id: `cancel-workflow:${orgSlug}:${workflow.id}`,
+					title: `Cancel ${workflow.workflowName}`,
+					subtitle: workflow.id,
+					kind: 'action',
+					icon: 'close',
+					confirm: `Cancel this run of ${workflow.workflowName}? Completed steps cannot be undone.`,
+					run: async () => {
+						await mutation.mutateAsync({
+							id: workflow.id,
+							actorKey,
+							orgSlug,
+							failureMessage: 'Unable to cancel workflow run.',
+						})
+					},
+				})),
+	)
 	function postAction(input: {
 		id: string
 		successMessage: (payload: ActionResult) => string | null

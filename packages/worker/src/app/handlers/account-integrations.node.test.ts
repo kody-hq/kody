@@ -178,9 +178,9 @@ const mockModule = vi.hoisted(() => {
 		getOauthAppClientSecretCiphertext: vi.fn<
 			typeof IntegrationsRepo.getOauthAppClientSecretCiphertext
 		>(async () => null),
-		persistUserOauthAppClientSecret: vi.fn<
-			typeof IntegrationsCredentials.persistUserOauthAppClientSecret
-		>(async () => undefined),
+		encryptUserOauthAppClientSecret: vi.fn<
+			typeof IntegrationsCredentials.encryptUserOauthAppClientSecret
+		>(async () => 'encrypted-client-secret'),
 		setIntegrationUsage: vi.fn<typeof IntegrationsService.setIntegrationUsage>(
 			async () => ({
 				...joined(googleApp, 'google', 'Personal', []).connection,
@@ -297,11 +297,11 @@ vi.mock('#worker/integrations/credentials.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof IntegrationsCredentials>()
 	return {
 		...actual,
-		persistUserOauthAppClientSecret: (
+		encryptUserOauthAppClientSecret: (
 			...args: Parameters<
-				typeof IntegrationsCredentials.persistUserOauthAppClientSecret
+				typeof IntegrationsCredentials.encryptUserOauthAppClientSecret
 			>
-		) => mockModule.persistUserOauthAppClientSecret(...args),
+		) => mockModule.encryptUserOauthAppClientSecret(...args),
 	}
 })
 
@@ -559,7 +559,7 @@ test('integrations API rotates OAuth app credentials with auth scoping and valid
 	expect(mockModule.getOauthApp).toHaveBeenCalledWith(
 		withEnv({ userId: 'stable-user-1' as OwnerId, slug: 'google' }),
 	)
-	expect(mockModule.persistUserOauthAppClientSecret).toHaveBeenCalledWith(
+	expect(mockModule.encryptUserOauthAppClientSecret).toHaveBeenCalledWith(
 		expect.objectContaining({
 			userId: 'stable-user-1' as OwnerId,
 			slug: 'google',
@@ -571,6 +571,7 @@ test('integrations API rotates OAuth app credentials with auth scoping and valid
 			userId: 'stable-user-1' as OwnerId,
 			slug: 'google',
 			clientId: 'shared-google-client-rotated',
+			clientSecretEncrypted: 'encrypted-client-secret',
 		}),
 	)
 	const rotatePayload = rotateResponse.data
@@ -608,7 +609,7 @@ test('integrations API rotates OAuth app credentials with auth scoping and valid
 	] as never)
 	const mergeResponse = await rotate({ clientSecret: 'rotated-secret-value' })
 	expect(mergeResponse.status).toBe(200)
-	expect(mockModule.persistUserOauthAppClientSecret).toHaveBeenCalledWith(
+	expect(mockModule.encryptUserOauthAppClientSecret).toHaveBeenCalledWith(
 		expect.objectContaining({
 			userId: 'stable-user-1' as OwnerId,
 			slug: 'google',
@@ -685,7 +686,7 @@ test('integrations API rotates OAuth app credentials with auth scoping and valid
 			slug: 'google',
 		}),
 	)
-	expect(mockModule.persistUserOauthAppClientSecret).toHaveBeenCalledWith(
+	expect(mockModule.encryptUserOauthAppClientSecret).toHaveBeenCalledWith(
 		expect.objectContaining({ userId: ownerIdFromStored('stable-user-other') }),
 	)
 })

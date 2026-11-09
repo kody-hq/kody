@@ -13,6 +13,7 @@ import {
 	currentStoredTokenLifetimeAlias,
 	featureDisabledMessage,
 	insufficientScopeMessage,
+	profileDenialMessage,
 	isScopedApiToken,
 	readInsufficientScopeDetails,
 	rejectedApiTokenMessage,
@@ -43,11 +44,9 @@ export const localPackageGraphPlatformIssueUrl =
 	'https://github.com/kody-hq/kody/issues/2808'
 
 /**
- * Historical threshold: package-graph used to POST the full entry `code` below
- * this size and a synthetic imports-only entry above it. The request is now
- * always built from the imports that still need published modules (kody#4067),
- * so the size no longer changes the request shape. Kept for callers/tests that
- * reference it.
+ * Package-graph requests include the imports that still need published
+ * modules (kody#4067). Size does not change the request shape. Callers and
+ * tests still reference this constant.
  */
 export const packageGraphInlineCodePreferImportsChars = 400_000
 
@@ -96,7 +95,7 @@ export const packageRuntimeModulePrefix = '.__kody_virtual__/package-runtime'
  * Hex-decode a path key from a package-runtime module file name (worker
  * `decodePathKey` port). Returns null when the value is not valid hex.
  */
-export function decodePathKey(value: string): string | null {
+function decodePathKey(value: string): string | null {
 	const bytes = value.match(/[0-9a-f]{2}/gi)
 	if (!bytes || bytes.join('') !== value) return null
 	try {
@@ -122,7 +121,7 @@ export function encodePathKey(value: string): string {
  * Read the package id out of a package-runtime module path
  * (`.__kody_virtual__/package-runtime/<hex>.js`, optionally nested).
  */
-export function parsePackageRuntimeModulePathPackageId(
+function parsePackageRuntimeModulePathPackageId(
 	modulePath: string,
 ): string | null {
 	const normalized = modulePath.replace(/\\/g, '/').replace(/^\/+/, '')
@@ -322,7 +321,7 @@ export async function hasLiteralDynamicSavedPackageImports(
  * onto the importer (`kody:@scope/pkg/.__kody_runtime__.js`). Registered
  * module names must stay without a leading `/` — workerd rejects those.
  */
-export function flatAliasForBareKodyBuiltin(specifier: string): string | null {
+function flatAliasForBareKodyBuiltin(specifier: string): string | null {
 	if (!specifier.startsWith('kody:') || specifier.startsWith('kody:@'))
 		return null
 	if (specifier === localWorkerModuleNames.runtime) {
@@ -441,7 +440,7 @@ export class LocalPackageGraphError extends Error {
 }
 
 /** Docs for running entries from a package checkout (kody#4067). */
-export const localExecutePackageCheckoutDocsUrl =
+const localExecutePackageCheckoutDocsUrl =
 	'https://kody.codes/docs/local-execute#running-from-a-package-checkout'
 
 /**
@@ -488,7 +487,7 @@ export const localExecuteGatewayFetchShimModuleName =
  * those bindings while facades still re-export them. Backfill so local workerd
  * can link until production serves the fixed shim.
  */
-export function backfillLocalExecuteRuntimeShimSharedExports(
+function backfillLocalExecuteRuntimeShimSharedExports(
 	esModule: string,
 ): string {
 	if (
@@ -799,9 +798,7 @@ function isLocalExecuteGatewayFetchShimModuleName(moduleName: string): boolean {
 }
 
 /** True for `.__kody_virtual__/package-runtime/<hex>.js` (not nested under a bundle). */
-export function isRootPackageRuntimeFacadeModuleName(
-	moduleName: string,
-): boolean {
+function isRootPackageRuntimeFacadeModuleName(moduleName: string): boolean {
 	const normalized = moduleName.replace(/\\/g, '/').replace(/^\/+/, '')
 	const prefix = `${packageRuntimeModulePrefix}/`
 	if (!normalized.startsWith(prefix) || !normalized.endsWith('.js')) {
@@ -1066,11 +1063,20 @@ function describePackageGraphFailure(
 			code,
 		})
 	}
+	const profileDenial = profileDenialMessage({
+		code,
+		body,
+		serverMessage: failure?.message,
+	})
+	if (profileDenial) {
+		return new LocalPackageGraphError(profileDenial, { status, code })
+	}
 	if (code === 'insufficient_scope') {
 		return new LocalPackageGraphError(
 			`${insufficientScopeMessage({
 				...readInsufficientScopeDetails(body),
 				currentLifetime: currentStoredTokenLifetimeAlias(url.origin),
+				localExecute: true,
 			})}${detail}`,
 			{ status, code },
 		)

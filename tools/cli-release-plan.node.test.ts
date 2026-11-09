@@ -1,6 +1,8 @@
 import { expect, test } from 'vitest'
 import {
 	cliBaselineVersion,
+	cliPathAffectsPublishedPackage,
+	pickReleaseBase,
 	planCliRelease,
 	type ReleaseCommit,
 } from './cli-release-plan.ts'
@@ -58,12 +60,29 @@ test('shared spec commits publish only when the generated client changes', () =>
 	).toEqual({ version: '1.27.0' })
 })
 
+test('the unpublished CLI README is not a publish-affecting path', () => {
+	expect(cliPathAffectsPublishedPackage('packages/cli/README.md')).toBe(false)
+	expect(cliPathAffectsPublishedPackage('packages/cli/src/cli.ts')).toBe(true)
+	expect(cliPathAffectsPublishedPackage('packages/cli/skills/login.md')).toBe(
+		true,
+	)
+	expect(
+		planCliRelease({
+			currentVersion: cliBaselineVersion,
+			generatedClientChanged: false,
+			commits: [commit({ subject: 'docs(cli): readme', touchesCli: false })],
+		}),
+	).toBeNull()
+})
+
 test('docs and other non-fix/feat types patch-bump when they touch the CLI', () => {
 	expect(
 		planCliRelease({
 			currentVersion: cliBaselineVersion,
 			generatedClientChanged: false,
-			commits: [commit({ subject: 'docs(cli): readme', touchesCli: true })],
+			commits: [
+				commit({ subject: 'docs(cli): document a flag', touchesCli: true }),
+			],
 		}),
 	).toEqual({ version: '1.26.4' })
 	expect(
@@ -153,4 +172,33 @@ test('breaking feat on the CLI is major', () => {
 			],
 		}),
 	).toEqual({ version: '2.0.0' })
+})
+
+test('release base counts from npm when a publish left npm ahead of the tags', () => {
+	const tag = { name: 'cli-v3.27.1', version: '3.27.1' }
+	expect(pickReleaseBase({ tag, published: null })).toEqual({
+		ref: 'cli-v3.27.1',
+		version: '3.27.1',
+	})
+	expect(
+		pickReleaseBase({
+			tag,
+			published: { version: '3.27.1', gitHead: 'abc' },
+		}),
+	).toEqual({ ref: 'cli-v3.27.1', version: '3.27.1' })
+	expect(
+		pickReleaseBase({
+			tag,
+			published: { version: '3.27.2', gitHead: 'abc' },
+		}),
+	).toEqual({ ref: 'abc', version: '3.27.2' })
+	expect(
+		pickReleaseBase({
+			tag: { name: 'cli-v3.9.0', version: '3.9.0' },
+			published: { version: '3.10.0', gitHead: 'def' },
+		}),
+	).toEqual({ ref: 'def', version: '3.10.0' })
+	expect(() =>
+		pickReleaseBase({ tag, published: { version: '3.27.2', gitHead: null } }),
+	).toThrow('without a gitHead')
 })

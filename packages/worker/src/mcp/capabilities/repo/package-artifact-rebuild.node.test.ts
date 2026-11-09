@@ -1,5 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { beforeEach, expect, test, vi } from 'vitest'
+import type * as EntitySourcesModule from '#worker/repo/entity-sources.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import type * as IsolatedArtifactRebuildModule from '#worker/repo/isolated-artifact-rebuild.ts'
 
@@ -10,8 +11,18 @@ const mockModule = vi.hoisted(() => ({
 	createIsolatedArtifactRebuildRunner: vi.fn(),
 	isPublishedPackageArtifactBuiltForCommit: vi.fn(),
 	reusePublishedPackageArtifactIfUnchanged: vi.fn(),
+	persistUploadedPublishBuild: vi.fn(),
 	loadPublishedBundleArtifactsForPackageTargets: vi.fn(),
 	publishedBundleArtifactForPackageTarget: vi.fn(),
+}))
+
+const advanceEntitySourceServingCommit = vi.hoisted(() =>
+	vi.fn(async () => true),
+)
+
+vi.mock('#worker/repo/entity-sources.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof EntitySourcesModule>()),
+	advanceEntitySourceServingCommit,
 }))
 
 vi.mock('#worker/repo/repo-session-rpc.ts', () => ({
@@ -22,6 +33,8 @@ vi.mock('#worker/repo/repo-session-rpc.ts', () => ({
 			mockModule.stagePublishedPackageArtifactRebuild(...args),
 		rebuildPublishedPackageArtifact: (...args: Array<unknown>) =>
 			mockModule.rebuildPublishedPackageArtifact(...args),
+		persistUploadedPublishBuild: (...args: Array<unknown>) =>
+			mockModule.persistUploadedPublishBuild(...args),
 	}),
 }))
 
@@ -138,6 +151,10 @@ function setup({
 function rebuild(
 	overrides: {
 		env?: Env
+		uploadedBuild?: {
+			buildId: string
+			communityListed: boolean
+		}
 		publishedCommit?: string
 		force?: boolean
 		targets?: Array<Target>
@@ -621,4 +638,34 @@ test('optional targets skip listing and only rebuild the supplied set', async ()
 	await rebuild({ targets: selected })
 	expect(mockModule.listPublishedPackageArtifactTargets).not.toHaveBeenCalled()
 	expect(runTargets(run).flat()).toEqual(selected)
+})
+
+const uploadedBuild = {
+	buildId: 'pb_0123456789abcdef01234567',
+	communityListed: false,
+}
+
+test('an uploaded build that fails verification throws and never advances serving_commit', async () => {
+	mockModule.persistUploadedPublishBuild.mockResolvedValueOnce({
+		ok: false,
+		message: 'The build manifest does not match the pushed commit.',
+	})
+	await expect(rebuild({ uploadedBuild })).rejects.toThrow(
+		/does not match the pushed commit/,
+	)
+	expect(advanceEntitySourceServingCommit).not.toHaveBeenCalled()
+	expect(mockModule.listPublishedPackageArtifactTargets).not.toHaveBeenCalled()
+})
+
+test('an uploaded build advances serving_commit only after every target is written', async () => {
+	mockModule.persistUploadedPublishBuild.mockResolvedValueOnce({
+		ok: true,
+		targetCount: 3,
+		sampledTargetCount: 1,
+	})
+	await expect(rebuild({ uploadedBuild })).resolves.toEqual({
+		rebuiltTargetCount: 3,
+	})
+	expect(advanceEntitySourceServingCommit).toHaveBeenCalledTimes(1)
+	expect(mockModule.rebuildPublishedPackageArtifact).not.toHaveBeenCalled()
 })

@@ -38,6 +38,14 @@ To serve an app on a domain you own (for example `apps.example.com`), see
 [Custom domains](./package-app-custom-domains.md)
 (`guide:package_app_custom_domains`).
 
+## Browse apps in the workspace
+
+Open **Apps** in the workspace sidebar (`/@<slug>/-/apps`) to browse hosted apps
+in that org. Search, visibility, and sort apply to packages you can read; icon,
+card, and list views keep their URL. Packages without `kody.app.entry` appear
+only on **Repositories**. Opening an app uses the same
+[session handoff](#session-handoff) as **Open app**.
+
 > [!WATCH] https://www.youtube.com/watch?v=WjogtbCssZc Watch: Build a Software
 > Pipeline: Help your agent help you
 
@@ -97,20 +105,20 @@ A one-file fetch handler is a complete app (see
 ## Session handoff
 
 Production-hosted apps live at `https://{username}.kody.run/<package-name>/…`
-(and on verified custom domains). That URL is the app.
-`/packages/<package-name>/…` on the same host resolves to the same app.
-`https://kody.codes/@{username}/packages/…` is not the hosted origin: visitors
-who may run the app hand off to it; everyone else stays on the package page (or
-a same-origin landing).
+(`username` is the org handle: personal username or team slug) and on verified
+custom domains. That URL is the app. `/packages/<package-name>/…` on the same
+host resolves to the same app. `https://kody.codes/@{username}/packages/…` is
+not the hosted origin: visitors who may run the app hand off to it; everyone
+else stays on the package page (or a same-origin landing).
 
 **Open app** is one control. For someone who may run the app it goes to
 `/@{username}/packages/<name>/open` on kody.codes, which mints a short-lived
 handoff token and redirects to the hosted origin (`*.kody.run` or a verified
-custom domain). Bare `/@{username}/packages/<name>` still hands off for old
-links when the visitor may run the app. Approved internet-visible apps can also
-be opened at the hosted origin without a session. Prefer the OAuth helper below
-for in-app Sign in / Sign out. A direct visit to `*.kody.run` or a custom domain
-does not see the kody.codes session cookie.
+custom domain). Bare `/@{username}/packages/<name>` also hands off when the
+visitor may run the app. Approved internet-visible apps can also be opened at
+the hosted origin without a session. Prefer the OAuth helper below for in-app
+Sign in / Sign out. A direct visit to `*.kody.run` or a custom domain does not
+see the kody.codes session cookie.
 
 ### Auth with Kody (OAuth)
 
@@ -304,10 +312,25 @@ anyone.
 From app server code, `kody.appPublisherGet({})` returns that person:
 `{ user_id, username, email, display_name, org: { slug }, source }`, where
 `source` is `"explicit"` (an Owner chose them), `"publisher"`, or
-`"personal-org"`. It needs no `kody.app.capabilities` entry, and it throws the
-same runs-as error as other calls when the app has no one to run as. Use it when
-the app wants the publisher (for example a "contact the owner" link); use
-`kody.metaGetCurrentUser({})` for the visitor.
+`"personal-org"`. Fields are snake_case, like `metaGetCurrentUser`. It needs no
+`kody.app.capabilities` entry, and it throws the same runs-as error as other
+calls when the app has no one to run as. Use it when the app wants the publisher
+(for example a "contact the owner" link); use `kody.metaGetCurrentUser({})` for
+the visitor.
+
+To check whether the visitor is the person the app runs as, compare user ids:
+
+```ts
+const me = await kody.metaGetCurrentUser({})
+const publisher = await kody.appPublisherGet({})
+const isPublisher = me.user_id === publisher.user_id
+```
+
+The `X-Kody-Visitor` header's `userId` and the OAuth helper's user id are the
+same value as `me.user_id`. Don't use `role === 'owner'` as the owner check: it
+means an Owner of the owning org, which is the publisher only in a personal org.
+`packageAppRunsAsGet` (an MCP capability, not an app function) returns only
+`runs_as: { username, source }`, with no user id.
 
 - The person is checked live on every call. Someone who left the org, or whose
   account is suspended or deleted, stops the app from acting as them, with an
@@ -523,6 +546,16 @@ the same local runtime bridge for these cells.
 
 Share previews for unpublished apps are out of scope — publish to share.
 
+On mock, the working-tree `packageStorage` key/value rows live in one file per
+mock session (`state.json` under the CLI cache's `mock-sessions/`), and that
+file is the source of truth. A running `kody dev` reads it on every call, and
+each write updates the latest file under a lock. So writes from a separate
+`kody execute --target mock`, a one-shot `kody dev job|webhook|emit`, or a hand
+edit show up in the preview right away, and a later preview write keeps them
+(last write wins per key). If the file is not valid JSON, mock storage calls
+fail with `mock_store_unreadable` and leave it untouched: fix the JSON, or
+delete it (or pass `--reset-storage`) to start empty.
+
 Optional outbound HTTP mocking: add `.kody/mocks.ts` (MSW `handlers`) so the CLI
 Node gateway answers package `fetch` calls under mock. Unmatched requests return
 `unmocked_request` with a paste-ready stub; `--passthrough <host,…>` opts hosts
@@ -553,6 +586,12 @@ While it runs, `kody dev`:
   the local client bundle.
 - uses a stable port per package and moves to the next free port when that one
   is taken. `--port <n>` is used exactly.
+- listens on `127.0.0.1` only. Pass `--host 0.0.0.0` (or `::`, or one LAN IP) to
+  open the app from a phone or e-reader on the same network; it prints the
+  `network:` URLs to open and a stderr warning that anyone on the network can
+  use the app. Unknown `Host` headers are still rejected. Use it with the
+  default `--target mock`; `--target prod` also needs `--expose-prod`. See
+  [Testing from other devices](../../packages/cli/README.md#testing-from-other-devices---host).
 
 Local-only settings live in `package.json#kody.dev`. Publish ignores them.
 `prebuild` is a shell command run from the package root before every `kody dev`
@@ -1533,6 +1572,12 @@ Billing follows who is visiting
   use `kody.appRateLimit` below for that.
 
 ### App-owned limits and spend
+
+`kody.appRateLimit`, `kody.appSpendGet`, and `kody.appPublisherGet` are host
+functions of `kody:runtime`, not Kody capabilities. They need no
+`kody.app.capabilities` entry (listing them is harmless), they are scoped to the
+app's own package even when a package the app imports calls them, and they do
+not show up in `search` capability results.
 
 `kody.appRateLimit({ key, limit, windowSeconds })` is an atomic fixed-window
 limit scoped to this saved package. Bounds are 1–1,000,000 requests, 1–86,400

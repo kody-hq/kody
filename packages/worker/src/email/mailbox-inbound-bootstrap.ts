@@ -3,9 +3,9 @@ import {
 	mailboxInboundProvider,
 } from './mailbox-inbound-ledger.ts'
 import { mapMailboxDeliveryEventRow } from './mailbox-mappers.ts'
-import {
-	type MailboxDeliveryEventInput,
-	type MailboxDeliveryEventRecord,
+import type {
+	MailboxDeliveryEventInput,
+	MailboxDeliveryEventRecord,
 } from './mailbox-types.ts'
 
 const preClaimAuditPhases = new Set([

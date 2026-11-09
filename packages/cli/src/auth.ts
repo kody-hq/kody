@@ -4,6 +4,7 @@ import {
 	type Server,
 	type ServerResponse,
 } from 'node:http'
+import { hostname } from 'node:os'
 import { dirname } from 'node:path'
 import { isScopedApiToken, notAuthenticatedMessage } from './api-token.js'
 import {
@@ -191,7 +192,7 @@ async function mintDeviceToken(input: {
 		fetchFn: input.fetchFn,
 		method: 'POST',
 		path: 'v1/tokens/device',
-		body: { lifetime: input.lifetime, name: 'kody-cli' },
+		body: { lifetime: input.lifetime, name: deviceTokenName() },
 	})
 	if (!minted || typeof minted !== 'object' || Array.isArray(minted)) {
 		throw new Error('Device token mint returned no token.')
@@ -879,4 +880,13 @@ export async function loginWithDevice(
 	} catch (error) {
 		throw redactError(error)
 	}
+}
+
+/** Names a `kody login` token after this machine so Local reads can say which device read. */
+export function deviceTokenName(host: string = hostname()): string {
+	const clean = host
+		.trim()
+		.replace(/[^A-Za-z0-9._-]+/g, '-')
+		.slice(0, 60)
+	return clean ? `kody-cli on ${clean}` : 'kody-cli'
 }

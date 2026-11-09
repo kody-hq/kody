@@ -1,8 +1,8 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
-import { type StorageContext } from '#mcp/storage.ts'
-import { type ResourceListScope } from '#worker/authorization/authorize.ts'
+import type { StorageContext } from '#mcp/storage.ts'
+import type { ResourceListScope } from '#worker/authorization/authorize.ts'
 import {
 	isCapabilitySearchOffline,
 	type EmbedTextFn,
@@ -22,6 +22,7 @@ import { parseJsonStringArray } from '@kody-internal/shared/json-parsing.ts'
 import { buildMemoryEmbedText } from './memory-embed.ts'
 import { deleteMemoryVector, upsertMemoryVector } from './memory-vectorize.ts'
 import {
+	type MemoryVectorHit,
 	queryMemoryVectorIds,
 	rankMemoryVectorIdsWithin,
 	searchMemories,
@@ -30,19 +31,15 @@ import {
 	assertWithinStorageBytesEntitlement,
 	estimateEntitlementStorageEntryByteDelta,
 } from '#worker/entitlements/service.ts'
-import { type UserMeterEnv } from '#worker/entitlements/user-meter-client.ts'
-import {
-	type McpMemoryRow,
-	type MemoryRecord,
-	type MemorySearchMatch,
-} from './types.ts'
+import type { UserMeterEnv } from '#worker/entitlements/user-meter-client.ts'
+import type { McpMemoryRow, MemoryRecord, MemorySearchMatch } from './types.ts'
 import { assertPersonalMemoryWritable } from './memory-owner.ts'
 import {
 	changedMemoryFields,
 	memoryAuditActions,
 	recordMemoryAudit,
 } from './memory-audit.ts'
-import { type OrgAuditWriter } from '#worker/orgs/org-audit.ts'
+import type { OrgAuditWriter } from '#worker/orgs/org-audit.ts'
 
 const maxSubjectLength = 200
 const maxSummaryLength = 500
@@ -494,27 +491,29 @@ export async function searchMemoryRecords(input: MemorySearchInput): Promise<{
 	query: string
 	matches: Array<MemorySearchMatch>
 	suppressedCount: number
+	/** True when ranking used the local stand-in instead of real embeddings. */
+	offline: boolean
 }> {
 	const query = input.query.trim()
+	const offline = isCapabilitySearchOffline(input.env as Env)
 	if (!query) {
-		return { query: '', matches: [], suppressedCount: 0 }
+		return { query: '', matches: [], suppressedCount: 0, offline }
 	}
 	const statuses: Array<McpMemoryRow['status']> = input.includeDeleted
 		? ['active', 'archived', 'deleted']
 		: ['active', 'archived']
 	const targetLimit = normalizeLimit(input.limit)
 	const category = normalizeOptionalString(input.category, maxCategoryLength)
-	const offline = isCapabilitySearchOffline(input.env as Env)
 
 	let rows: Array<McpMemoryRow>
-	let vectorRankedIds: Array<string> | undefined
+	let vectorRanked: Array<MemoryVectorHit> | undefined
 	if (input.scope.kind === 'granted') {
 		rows = await listMemoriesByIds(input.env.APP_DB, input.userId, {
 			ids: [...input.scope.ids],
 			statuses,
 		})
 		if (!offline) {
-			vectorRankedIds = await rankMemoryVectorIdsWithin({
+			vectorRanked = await rankMemoryVectorIdsWithin({
 				env: input.env as Env,
 				query,
 				userId: input.userId,
@@ -531,7 +530,7 @@ export async function searchMemoryRecords(input: MemorySearchInput): Promise<{
 		// Vectorize-first: query the index with metadata filters, hydrate only
 		// the top-hit rows from D1 by id, and merge with a bounded set of
 		// recent rows as the lexical candidate list.
-		const [recentRows, rankedIds] = await Promise.all([
+		const [recentRows, rankedHits] = await Promise.all([
 			listMemoriesByUserId(input.env.APP_DB, input.userId, {
 				statuses,
 				limit: memoryLexicalCandidateLimit,
@@ -549,9 +548,11 @@ export async function searchMemoryRecords(input: MemorySearchInput): Promise<{
 				...(input.embedText ? { embedText: input.embedText } : {}),
 			}),
 		])
-		vectorRankedIds = rankedIds
+		vectorRanked = rankedHits
 		const recentIds = new Set(recentRows.map((row) => row.id))
-		const missingIds = rankedIds.filter((id) => !recentIds.has(id))
+		const missingIds = rankedHits
+			.map((hit) => hit.id)
+			.filter((id) => !recentIds.has(id))
 		const hydratedRows = await listMemoriesByIds(
 			input.env.APP_DB,
 			input.userId,
@@ -575,7 +576,7 @@ export async function searchMemoryRecords(input: MemorySearchInput): Promise<{
 		statuses,
 		category,
 		rows: filteredRows,
-		...(vectorRankedIds ? { vectorRankedIds } : {}),
+		...(vectorRanked ? { vectorRanked } : {}),
 		...(input.embedText ? { embedText: input.embedText } : {}),
 	})
 	const filtered = await filterSuppressedMatches({
@@ -590,6 +591,7 @@ export async function searchMemoryRecords(input: MemorySearchInput): Promise<{
 		query,
 		matches: filtered.matches.slice(0, targetLimit),
 		suppressedCount: filtered.suppressedCount,
+		offline,
 	}
 }
 

@@ -7,9 +7,9 @@ import {
 import { boundAnchoredText } from '#worker/guides/line-anchor.ts'
 
 import { maxChars } from './search-constants.ts'
-import { type SearchEntityDetailFormatResult } from './search-entity-plugin.ts'
+import type { SearchEntityDetailFormatResult } from './search-entity-plugin.ts'
 import { buildEntityRef } from './search-format-helpers.ts'
-import { type SearchEntityDetail } from './search-format-types.ts'
+import type { SearchEntityDetail } from './search-format-types.ts'
 
 type PackageEntityDetail = Extract<SearchEntityDetail, { type: 'package' }>
 

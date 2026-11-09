@@ -1,19 +1,21 @@
+import { toServingSourceView } from '#worker/repo/serving-commit.ts'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
 import {
 	getEntitySourceById,
 	listEntitySourcesByIds,
 } from '#worker/repo/entity-sources.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 import {
 	loadPublishedEntityManifest,
 	loadPublishedEntitySource,
 } from '#worker/repo/published-source.ts'
 import {
 	createPublishedPackageCacheKey,
+	packageArtifactCacheBudget,
 	PromiseLruCache,
 } from './published-package-cache.ts'
 import { parseAuthoredPackageJson } from './manifest.ts'
-import { type AuthoredPackageJson } from './types.ts'
+import type { AuthoredPackageJson } from './types.ts'
 
 export type LoadedPackageSource = {
 	source: EntitySourceRow
@@ -28,7 +30,9 @@ export type LoadedPackageManifest = {
 	manifest: AuthoredPackageJson
 }
 
-const packageSourceCache = new PromiseLruCache<LoadedPackageSource>()
+const packageSourceCache = new PromiseLruCache<LoadedPackageSource>({
+	byteBudget: packageArtifactCacheBudget,
+})
 const packageManifestCache = new PromiseLruCache<LoadedPackageManifest>()
 
 function deepFreeze<T>(value: T, seen = new WeakSet<object>()): T {
@@ -293,14 +297,41 @@ export async function loadPackageSourceBySourceId(input: {
 	userId: string
 	sourceId: string
 }): Promise<LoadedPackageSource> {
+	return await loadPackageSourceForView(input, (row) => row)
+}
+
+/**
+ * {@link loadPackageSourceBySourceId} at the serving commit: what runtime
+ * readers (apps, modules, `kody:@` imports) run while a publish still builds.
+ */
+export async function loadServingPackageSourceBySourceId(input: {
+	env: Env
+	baseUrl: string
+	userId: string
+	sourceId: string
+}): Promise<LoadedPackageSource> {
+	return await loadPackageSourceForView(input, toServingSourceView)
+}
+
+async function loadPackageSourceForView(
+	input: {
+		env: Env
+		baseUrl: string
+		userId: string
+		sourceId: string
+	},
+	view: (row: EntitySourceRow) => EntitySourceRow,
+): Promise<LoadedPackageSource> {
 	if (!canResolveRepoBackedPackageSource(input.env)) {
 		throw new Error('Saved package source bindings are not available.')
 	}
-	const source = await loadPackageSourceRowForUser({
-		env: input.env,
-		userId: input.userId,
-		sourceId: input.sourceId,
-	})
+	const source = view(
+		await loadPackageSourceRowForUser({
+			env: input.env,
+			userId: input.userId,
+			sourceId: input.sourceId,
+		}),
+	)
 	const cacheKey = createPackageSourceCacheKey({
 		userId: input.userId,
 		source,
@@ -343,6 +374,28 @@ export async function loadPackageManifestBySourceId(input: {
 		env: input.env,
 		userId: input.userId,
 		source,
+	})
+}
+
+/** {@link loadPackageManifestBySourceId} at the serving commit. */
+export async function loadServingPackageManifestBySourceId(input: {
+	env: Env
+	baseUrl: string
+	userId: string
+	sourceId: string
+}): Promise<LoadedPackageManifest> {
+	if (!canResolveRepoBackedPackageSource(input.env)) {
+		throw new Error('Saved package source bindings are not available.')
+	}
+	const source = await loadPackageSourceRowForUser({
+		env: input.env,
+		userId: input.userId,
+		sourceId: input.sourceId,
+	})
+	return await loadPackageManifestForSource({
+		env: input.env,
+		userId: input.userId,
+		source: toServingSourceView(source),
 	})
 }
 

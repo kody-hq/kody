@@ -1,3 +1,5 @@
+import { showBuildOrigin } from '#worker/publish-offload/policy.ts'
+import { getCommittedPublishBuildOrigin } from '#worker/publish-offload/store.ts'
 import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
@@ -126,7 +128,23 @@ export const getPackageCapability = defineDomainCapability(
 				packageId: saved.id,
 				supplierSemanticsEnabled: suppliersEnabled,
 			})
+			const publishedCommit = loaded.source.published_commit ?? null
+			const outsideBuild = showBuildOrigin
+				? await getCommittedPublishBuildOrigin({
+						db: ctx.env.APP_DB,
+						sourceId: saved.sourceId,
+						commit: publishedCommit,
+					})
+				: null
 			return {
+				...(outsideBuild
+					? {
+							build_origin: {
+								origin: outsideBuild.origin,
+								context_name: outsideBuild.context_name ?? null,
+							},
+						}
+					: {}),
 				package_id: saved.id,
 				kody_id: saved.kodyId,
 				slug: saved.kodyId,
@@ -153,7 +171,13 @@ export const getPackageCapability = defineDomainCapability(
 				created_at: saved.createdAt,
 				updated_at: saved.updatedAt,
 				package_secrets: packageSecrets,
-				credentials: { needs: credentialNeeds, suppliersEnabled },
+				credentials: {
+					needs: credentialNeeds,
+					invalidSlots: Object.entries(
+						loaded.manifest.kody.invalidCredentialSlots ?? {},
+					).map(([key, message]) => ({ key, message })),
+					suppliersEnabled,
+				},
 				exports: (projection.exports ?? []).map((exportDetail) => ({
 					subpath: exportDetail.subpath,
 					import_specifier: buildPackageImportSpecifier(

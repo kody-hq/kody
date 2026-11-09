@@ -161,7 +161,7 @@ async function configureVectorizeIndexWhenReady(
 async function ensureVectorizeMetadataIndexes(
 	client: VectorizeClient,
 	name: string,
-) {
+): Promise<Array<string>> {
 	const response = await cloudflareApiRequest<VectorizeMetadataIndexList>({
 		...client,
 		pathname: `/vectorize/v2/indexes/${encodeURIComponent(name)}/metadata_index/list`,
@@ -170,6 +170,7 @@ async function ensureVectorizeMetadataIndexes(
 	const existing = new Set(
 		(response.result?.metadataIndexes ?? []).map((entry) => entry.propertyName),
 	)
+	const created: Array<string> = []
 	for (const propertyName of vectorizeMetadataIndexProperties) {
 		if (existing.has(propertyName)) continue
 		try {
@@ -179,6 +180,7 @@ async function ensureVectorizeMetadataIndexes(
 				method: 'POST',
 				body: { propertyName, indexType: 'string' },
 			})
+			created.push(propertyName)
 			console.error(`Created Vectorize metadata index: ${name}.${propertyName}`)
 		} catch (error) {
 			if (!isMetadataIndexAlreadyExistsError(error)) throw error
@@ -186,6 +188,35 @@ async function ensureVectorizeMetadataIndexes(
 				`Vectorize metadata index already exists: ${name}.${propertyName}`,
 			)
 		}
+	}
+	return created
+}
+
+/**
+ * Add any missing metadata index to a long-lived index (production) without
+ * ever creating, deleting, or recreating the index itself. Returns the
+ * properties it created. Vectorize only filters vectors upserted after an
+ * index exists, so a non-empty result means every vector needs a forced
+ * re-upsert before filtered queries see it.
+ */
+export async function ensureExistingVectorizeMetadataIndexes(
+	input: VectorizeClient & { name: string },
+): Promise<{ created: Array<string> }> {
+	if (input.dryRun) {
+		console.error(`[dry-run] ensure Vectorize metadata indexes: ${input.name}`)
+		return { created: [] }
+	}
+	try {
+		return { created: await ensureVectorizeMetadataIndexes(input, input.name) }
+	} catch (error) {
+		throw new CloudflareResourceError(
+			'vectorize',
+			input.name,
+			`Failed to ensure Vectorize metadata indexes on ${input.name}: ${
+				error instanceof Error ? error.message : String(error)
+			}`,
+			{ cause: error },
+		)
 	}
 }
 

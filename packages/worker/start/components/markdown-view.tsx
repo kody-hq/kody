@@ -40,15 +40,15 @@ import { publicAsset } from '../public-assets.ts'
 import { SiteLink } from './site-link.tsx'
 
 import { parseKodyMarkdown } from '#universal/markdown.ts'
-import {
-	type BlockNode,
-	type InlineNode,
-	type TableNode,
-	type TableCellNode,
+import type {
+	BlockNode,
+	InlineNode,
+	TableNode,
+	TableCellNode,
 } from '@tanstack/markdown'
 type MarkdownNode = BlockNode | InlineNode
-import { type CSSObject } from '@emotion/react'
-import { type ReactNode } from 'react'
+import type { CSSObject } from '@emotion/react'
+import type { ReactNode } from 'react'
 import { CopyCodeBlock } from './copy-code-block.tsx'
 import { DocYoutubeEmbed } from './doc-youtube-embed.tsx'
 import { renderMarkdownHeadingAnchor } from './markdown-heading-anchor.tsx'
@@ -69,6 +69,7 @@ import {
 	plainHighlightedCode,
 	type HighlightedCode,
 } from '#universal/highlighted-code.ts'
+import { isBlogImagePath } from '#universal/blog-images.ts'
 import {
 	joinPackageReadmeImageHref,
 	resolvePackageReadmeImagePath,
@@ -130,6 +131,12 @@ export type RenderMarkdownOptions = {
 	 * Root READMEs leave this empty.
 	 */
 	imageFromDirectory?: string
+	/**
+	 * First-party blog posts only: origin-relative `/images/...` screenshots
+	 * (the frontmatter `image` rule) render as lazy `<img>` tags. Every other
+	 * href keeps the default "images are links" policy.
+	 */
+	blogImages?: boolean
 }
 
 type ResolvedRenderOptions = Required<Omit<RenderMarkdownOptions, 'fences'>> & {
@@ -147,6 +154,7 @@ const defaultRenderOptions = {
 	fences: [] as Array<HighlightedCode>,
 	imageBaseHref: '',
 	imageFromDirectory: '',
+	blogImages: false,
 }
 
 /**
@@ -562,6 +570,17 @@ function renderToken(
 				options,
 			)
 		case 'image': {
+			if (options.blogImages && isBlogImagePath(token.src)) {
+				return (
+					<img
+						key={key}
+						src={publicAsset(token.src)}
+						alt={token.alt}
+						loading="lazy"
+						decoding="async"
+					/>
+				)
+			}
 			const imageSrc = resolveMarkdownImageSrc(token.src, options)
 			if (imageSrc) {
 				return <img key={key} src={publicAsset(imageSrc)} alt={token.alt} />

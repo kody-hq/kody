@@ -7,7 +7,7 @@
  * checked before any value is read.
  */
 import { bytesToBase64 } from '@kody-internal/shared/base64.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import {
 	createMissingIntegrationAccessTokenMessage,
@@ -30,7 +30,9 @@ import {
 	CredentialRequestRefusedError,
 } from './credential-request.ts'
 import {
+	authorizeActorPersonalUse,
 	authorizeActorUse,
+	permissionForUse,
 	type ClientPlacement,
 	type CredentialResolver,
 	type CredentialTargetFor,
@@ -43,7 +45,6 @@ import {
 	resolveEffectiveFillPlacement,
 } from './fill-placement-enforcement.ts'
 import { fillSiteFromCredentialInject } from './fill-placement.ts'
-import { authorizePersonalCredentialUse } from './personal-credentials.ts'
 import {
 	authorizeStoredCredential,
 	findStoredCredential,
@@ -246,11 +247,13 @@ async function authorizeOauthConnection(
 		await authorizeActorUse(call, connection.id, connection.name)
 	} else {
 		call.subject.credentialId = connection.id
-		await authorizePersonalCredentialUse({
-			db: call.input.env.APP_DB,
-			actorPersonId: call.input.actor?.actor?.userId ?? null,
+		await authorizeActorPersonalUse({
+			env: call.input.env,
+			actor: call.input.actor,
 			orgId: call.input.orgId,
 			credentialId: connection.id,
+			name: connection.name,
+			permission: permissionForUse(call.credential.use),
 		})
 	}
 	if (connection.kind !== 'oauth') throw new CredentialNotFoundError()

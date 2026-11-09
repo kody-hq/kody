@@ -5,7 +5,7 @@ import {
 	requireMcpRequest,
 	requireMcpUser,
 } from '#mcp/capabilities/meta/require-user.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { authorizeIntegrationConnect } from './authorize-integration.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { startIntegrationDeviceConnect } from '#worker/integrations/device-connect.ts'

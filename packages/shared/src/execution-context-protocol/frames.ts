@@ -41,6 +41,8 @@ export const ecpServerFrameTypes = [
 	'run.cancel',
 	'run.result.ack',
 	'grant.update',
+	'state.update',
+	'control.request',
 	'revoke',
 	'error',
 ] as const
@@ -56,6 +58,7 @@ export const ecpContextFrameTypes = [
 	'run.cancel.ack',
 	'grant.ack',
 	'command.finished',
+	'control.result',
 	'error',
 ] as const
 
@@ -164,6 +167,39 @@ export type EcpCapabilities = {
 	autoUpdate?: 'on' | 'off'
 }
 
+/**
+ * What a context runs. `code` is a user module run through
+ * `kody execute --local`. `publish-build` is not user code: the daemon's own
+ * builder clones one commit with the read-only token and builds it with the
+ * worker's bundler, then uploads with the per-build ticket (publish offload).
+ */
+export type EcpRunSource =
+	| { kind: 'code'; code: string; sha256: string }
+	| EcpPublishBuildSource
+
+export type EcpPublishBuildSource = {
+	kind: 'publish-build'
+	buildId: string
+	packageId: string
+	packageName: string
+	commit: string
+	builderVersion: number
+	/** Entity source root and manifest path; default `/` and `package.json`. */
+	sourceRoot?: string
+	manifestPath?: string
+	/** Read-only, single-repo Artifacts remote; the token expires in ~5 minutes. */
+	clone: { remote: string; token: string; expiresAt: string }
+	/** Per-build upload ticket and base URL (`/v1/publish-builds/{id}`). */
+	upload: { path: string; ticket: string }
+}
+
+/**
+ * Advertised by daemons that give host folders and host commands only to the
+ * operator's own runs. Kody skips shared runs on a context with host folders
+ * when its daemon does not advertise it (older daemons mount them for all).
+ */
+export const ecpHostOperatorOnlyFeature = 'host-operator-only'
+
 export type EcpRunRequestBody = {
 	runId: string
 	deadline: number
@@ -174,14 +210,17 @@ export type EcpRunRequestBody = {
 		orgId: string
 		orgSlug: string | null
 	}
-	source: { kind: 'code'; code: string; sha256: string }
+	source: EcpRunSource
 	params: unknown
 	conversationId?: string
 	credentialPicks: Record<string, Array<string>>
 	limits: { timeoutMs: number; maxResultBytes: number; memoryMb: number }
 	grantVersion: number
 	apiUrl: string
-	/** True for runs whose requester is not the operator. */
+	/**
+	 * True for runs whose requester is not the operator. The daemon gives
+	 * these runs no host folders and no host commands.
+	 */
 	sharedRun?: boolean
 }
 

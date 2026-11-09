@@ -17,6 +17,9 @@ module in a local workerd and forwards each `kody:runtime` call through the
 CapabilityProxy. Do **not** use hosted MCP `execute` for agent work when a local
 or Open API path exists.
 
+`--local` runs a pinned workerd on Linux, macOS, and Windows (x64 or arm64;
+Windows on Arm uses the x64 workerd build). No Docker required.
+
 Auth: `--token` / `KODY_API_TOKEN` (`kody_at_…` with `org:execute`; add
 `package:execute` when the module imports `kody:@…`), or when no API token is
 set, the access token from `kody login` (MCP OAuth) as Bearer on CapabilityProxy
@@ -156,8 +159,11 @@ over that limit returns JSON `413 payload_too_large`. See the
 [CLI streaming gateway-fetch contract](../contributing/contracts/cli-streaming-gateway-fetch.md).
 
 The CLI CapabilityProxy client waits up to 7 minutes for origin's reply, so the
-gateway's 5-minute deadline ends a slow fetch, with its own error.
-`@kodycodes/cli` below 1.13.1 hits Node's default 300-second wait
+gateway's 5-minute deadline ends a slow fetch, with its own error. Set
+`KODY_CAPABILITY_PROXY_TIMEOUT_MS` (milliseconds) to change that wait for slow
+capabilities. When it runs out, the module fails with a
+`Kody API sent nothing for …ms` error that says the call may still be running on
+Kody. `@kodycodes/cli` below 1.13.1 hits Node's default 300-second wait
 (`UND_ERR_HEADERS_TIMEOUT`) instead. With `NODE_USE_ENV_PROXY=1` or
 `--use-env-proxy`, these requests still go through `HTTP_PROXY` / `HTTPS_PROXY`.
 A `fetch` without placeholders, and a multipart upload that does not need fill,
@@ -199,6 +205,12 @@ still auth or permission — use the Failure section below. Two workarounds for
   carry the same list as `details.mint_scopes`. When your org role lacks the
   permission (`denial: missing_permission`), a new token cannot help; an org
   Owner has to grant it.
+- `profile_grant` means the profile the token acts as (or a parent) was not
+  granted that package or credential. A new token alone cannot fix it; the
+  person the profile acts for grants it (`accessGrant` with
+  `subject_type: "profile"`). If the message says the token also lacks the
+  scope, mint one with it after the grant. `profile_inactive` means the profile
+  or a parent was revoked or expired; use a token for an active profile.
 - **Package-scoped `secretSet` / `secretSetMany` / `secretDelete` are not
   available under `--local`.** Local CapabilityProxy does not attach package
   secret authority (a client-supplied package id is not trusted as a hosted
@@ -207,7 +219,7 @@ still auth or permission — use the Failure section below. Two workarounds for
   local execute. See [Secrets](./secrets.md#scopes).
 - The module imports `kody:@…`. Keep `--local`.
 - Auth priority for `--local`: `--token` / `KODY_API_TOKEN`, then the stored API
-  token, then `kody login`. `kody whoami` reports the same credential.
-  `kody login` does not replace a stored API token; replace it with
-  `npx @kodycodes/cli auth bootstrap --lifetime short --scopes <list>` or clear
-  it with `kody logout`.
+  token, then `kody login`. `kody whoami` reports the same credential. An
+  explicit terminal `kody login` deletes a leftover stored API token and says so
+  (a desktop login leaves it in place); mint a scoped one again with
+  `npx @kodycodes/cli auth bootstrap --lifetime short --scopes <list>`.

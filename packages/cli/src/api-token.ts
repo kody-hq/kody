@@ -1,11 +1,17 @@
 import { loadStoredApiToken, type StoredApiToken } from './api-token-store.js'
 import {
 	activeCliCredential,
+	credentialRejectedNote,
 	credentialUsedNote,
 	type CliCredential,
 } from './cli-credential.js'
-import { apiTokenEnvVar, defaultApiUrl, defaultMcpUrl } from './defaults.js'
-import { type SecretBackend, type StoreResolution } from './store.js'
+import {
+	apiTokenEnvVar,
+	defaultApiUrl,
+	defaultMcpUrl,
+	localExecuteScopes,
+} from './defaults.js'
+import type { SecretBackend, StoreResolution } from './store.js'
 
 /** Mirrors `cliTokenLifetimeAliases` in auth-bootstrap (keep in sync; avoid import cycle). */
 export type CliTokenLifetimeAlias = 'short' | 'long'
@@ -14,7 +20,7 @@ export type CliTokenLifetimeAlias = 'short' | 'long'
 const shortAbsoluteLifetimeMs = 24 * 60 * 60 * 1000
 
 /** Platform tracking for login OAuth as CapabilityProxy / package-graph Bearer. */
-export const localExecuteOauthPlatformIssueUrl =
+const localExecuteOauthPlatformIssueUrl =
 	'https://github.com/kody-hq/kody/issues/2812'
 
 export type ResolveScopedApiTokenInput = {
@@ -127,7 +133,7 @@ export function isScopedApiToken(token: string): boolean {
  * How to mint a scoped token for CI/headless. Interactive agents on MCP should
  * prefer `cliCredentialBootstrap` → run returned `cli_command` instead.
  */
-export function apiTokenMintInstructions(): string {
+function apiTokenMintInstructions(): string {
 	return `For CI/headless only: mint with the Kody MCP \`api\` tool \`tokenCreate\` (include \`org:execute\` plus the capability scopes this command needs, e.g. \`package:execute\` / \`integration:read\`) and set ${apiTokenEnvVar} (prefer env over --token).`
 }
 
@@ -135,7 +141,7 @@ export function apiTokenMintInstructions(): string {
  * Shared guidance for every missing or invalid CLI auth failure. Agents hit
  * this wall; put the MCP bootstrap path first and never ask a human for a token.
  */
-export function notAuthenticatedGuidance(
+function notAuthenticatedGuidance(
 	lifetime: CliTokenLifetimeAlias = 'short',
 ): string {
 	return (
@@ -160,16 +166,32 @@ export function notAuthenticatedMessage(
 }
 
 /**
- * 401 when a scoped `kody_at_…` was rejected. Same agent-first guidance as
- * missing auth (do not tell agents to ask a human for a fresh token).
- * Explicit `--token` / `KODY_API_TOKEN` still win over a freshly stored
- * bootstrap token, so say to clear or replace them before retrying.
+ * 401 when a scoped `kody_at_…` was rejected. Names the credential this process
+ * resolved when known; otherwise falls back to agent-first mint guidance.
+ * Does not clear, switch, or broaden credentials — only explains the source.
  */
-export function rejectedApiTokenMessage(detail = ''): string {
+export function rejectedApiTokenMessage(
+	detail = '',
+	credential: CliCredential | null | undefined = undefined,
+): string {
+	const resolved = credential === undefined ? activeCliCredential() : credential
+	const note = credentialRejectedNote({
+		credential: resolved,
+		lifetime:
+			resolved?.source === 'stored-api-token'
+				? inferCliTokenLifetimeAlias(resolved.stored)
+				: 'short',
+	})
+	if (note) {
+		return (
+			`Kody rejected the API token (expired, revoked, or malformed). ${note}` +
+			detail
+		)
+	}
 	return (
 		`Kody rejected the API token (expired, revoked, or malformed). ` +
 		`${notAuthenticatedGuidance()} ` +
-		`If you set --token or ${apiTokenEnvVar}, unset or replace that rejected value before retrying so the stored bootstrap token is used.` +
+		`If you set --token or ${apiTokenEnvVar}, unset or replace that rejected value before retrying so the stored bootstrap token or \`kody login\` session is used.` +
 		detail
 	)
 }
@@ -206,14 +228,14 @@ export function inferCliTokenLifetimeAlias(
 }
 
 /** `--lifetime short|long` fragment for auth bootstrap hint commands. */
-export function cliBootstrapLifetimeFlags(
+function cliBootstrapLifetimeFlags(
 	lifetime: CliTokenLifetimeAlias = 'short',
 ): string {
 	return `--lifetime ${lifetime}`
 }
 
 /** `{ lifetime: "short"|"long" }` for cliCredentialBootstrap hint calls. */
-export function cliBootstrapLifetimeMintFields(
+function cliBootstrapLifetimeMintFields(
 	lifetime: CliTokenLifetimeAlias = 'short',
 ): Record<string, string | number> {
 	return { lifetime }
@@ -295,6 +317,41 @@ export function cliBootstrapMintCall(
 	return `cliCredentialBootstrap({ ${fields.join(', ')} })`
 }
 
+const profileDenialCodes = new Set(['profile_grant', 'profile_inactive'])
+
+/**
+ * A profile denial: the token's scopes passed but the profile chain it acts
+ * as was not granted the permission. Older servers sent these as
+ * `insufficient_scope` with `details.denial`, so both shapes are read. A new
+ * token cannot fix it, so there is no mint hint.
+ */
+export function profileDenialMessage(input: {
+	code: string | null
+	body: unknown
+	serverMessage?: string | null
+}): string | null {
+	const denial = readInsufficientScopeDetails(input.body).denial
+	const code =
+		input.code && profileDenialCodes.has(input.code)
+			? input.code
+			: input.code === 'insufficient_scope' &&
+				  denial &&
+				  profileDenialCodes.has(denial)
+				? denial
+				: null
+	if (!code) return null
+	const reason =
+		input.serverMessage?.trim() ||
+		(code === 'profile_inactive'
+			? 'the profile this token acts as, or a parent profile, is revoked or expired.'
+			: 'the profile this token acts as, or a parent profile, does not hold the required permission.')
+	const fix =
+		code === 'profile_inactive'
+			? 'A grant cannot revive a revoked or expired profile; use a token for an active profile.'
+			: 'A new token alone cannot fix this; the person the profile acts for has to grant it to the profile.'
+	return `Kody returned ${code}: ${reason} ${fix}`
+}
+
 export function insufficientScopeMessage(
 	input: Partial<InsufficientScopeDetails> & {
 		/** Scopes the CLI already knows the current token holds. */
@@ -306,8 +363,21 @@ export function insufficientScopeMessage(
 		currentLifetime?: CliTokenLifetimeAlias | null
 		/** Credential that was sent; defaults to the one this process resolved. */
 		credential?: CliCredential | null
+		/**
+		 * The denial came from `execute --local`: widen the replacement scopes
+		 * to every local-execute scope so one remint covers the module graph.
+		 */
+		localExecute?: boolean
 	},
 ): string {
+	if (input.denial && profileDenialCodes.has(input.denial)) {
+		return (
+			profileDenialMessage({
+				code: input.denial,
+				body: null,
+			}) ?? ''
+		)
+	}
 	const message = baseInsufficientScopeMessage(input)
 	if (input.denial === 'missing_permission') return message
 	const note = credentialUsedNote({
@@ -322,19 +392,31 @@ export function insufficientScopeMessage(
 function insufficientScopeMintScopes(
 	input: Partial<InsufficientScopeDetails> & {
 		currentScopes?: ReadonlyArray<string> | null
+		localExecute?: boolean
 	},
 ): Array<string> | null {
 	const required = input.requiredScope ?? null
 	if (!required) return null
-	if (input.mintScopes && input.mintScopes.length > 0) {
-		return [...input.mintScopes]
-	}
-	if (input.currentScopes && input.currentScopes.length > 0) {
-		return [
-			...new Set([...input.currentScopes, ...required.split(/,\s*/)]),
-		].sort()
-	}
-	return null
+	const scopes =
+		input.mintScopes && input.mintScopes.length > 0
+			? [...input.mintScopes]
+			: input.currentScopes && input.currentScopes.length > 0
+				? [...input.currentScopes, ...required.split(/,\s*/)]
+				: null
+	if (!scopes) return null
+	if (widensToLocalExecuteScopes(input)) scopes.push(...localExecuteScopes)
+	return [...new Set(scopes)].sort()
+}
+
+function widensToLocalExecuteScopes(input: {
+	requiredScope?: string | null
+	localExecute?: boolean
+}): boolean {
+	if (!input.localExecute || !input.requiredScope) return false
+	const local: ReadonlyArray<string> = localExecuteScopes
+	return input.requiredScope
+		.split(/,\s*/)
+		.every((scope) => local.includes(scope))
 }
 
 function baseInsufficientScopeMessage(
@@ -359,7 +441,10 @@ function baseInsufficientScopeMessage(
 	if (!mintScopes) {
 		return `Kody returned insufficient_scope: this token is missing "${required}". Mint a token whose scopes include "${required}" plus the ones you already use (scopes replace the defaults): run \`${cliBootstrapScopesCommand(['<current scopes>', required], lifetimeFlags)}\` after \`kody login\`, or from Kody MCP call \`${cliBootstrapMintCall(['<current scopes>', required], lifetimeMint)}\` and run its cli_command. For CI/headless, mint with tokenCreate including "${required}" and pass --token or set ${apiTokenEnvVar}.`
 	}
-	return `Kody returned insufficient_scope: this token is missing "${required}". Mint one that includes it: run \`${cliBootstrapScopesCommand(mintScopes, lifetimeFlags)}\` after \`kody login\`, or from Kody MCP call \`${cliBootstrapMintCall(mintScopes, lifetimeMint)}\` and run its cli_command. For CI/headless, mint with tokenCreate using those scopes and pass --token or set ${apiTokenEnvVar}.`
+	const localNote = widensToLocalExecuteScopes(input)
+		? ' Local execute of saved packages needs the other local-execute scopes too, so this list adds them all at once.'
+		: ''
+	return `Kody returned insufficient_scope: this token is missing "${required}".${localNote} Mint one that includes it: run \`${cliBootstrapScopesCommand(mintScopes, lifetimeFlags)}\` after \`kody login\`, or from Kody MCP call \`${cliBootstrapMintCall(mintScopes, lifetimeMint)}\` and run its cli_command. For CI/headless, mint with tokenCreate using those scopes and pass --token or set ${apiTokenEnvVar}.`
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -396,9 +481,4 @@ export function requireApiToken(
 	})
 	if (!token) throw new Error(notAuthenticatedMessage(purpose))
 	return token
-}
-
-/** True when the user passed `--token` (not only the env var). */
-export function hasExplicitTokenFlag(values: { token?: string }): boolean {
-	return typeof values.token === 'string' && values.token.trim().length > 0
 }

@@ -12,6 +12,7 @@ import {
 	forEachScannableModule,
 	getNodeName,
 	parseModule,
+	readModuleParseError,
 	resolveStringExpression,
 	scannableModuleFilePattern,
 	unwrapExpression,
@@ -26,7 +27,7 @@ import {
 	normalizeSecretProviderNeedId,
 	secretProviderSlotExample,
 } from '#worker/credentials/credential-needs.ts'
-import { type ResolvedSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
+import type { ResolvedSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
 import {
 	getPackageAppClientEntryPath,
 	getPackageAppEntryPath,
@@ -43,7 +44,10 @@ import {
 	type PackageCredentialSlotKind,
 	type PackageCredentialSlot,
 } from '#worker/package-registry/types.ts'
-import { collectDynamicImportExpressionNodes } from '#worker/package-runtime/import-specifiers.ts'
+import {
+	collectDynamicImportExpressionNodes,
+	type ModuleImportNodesCache,
+} from '#worker/package-runtime/import-specifiers.ts'
 import { collectReachableSourceFilePaths } from '#worker/package-runtime/module-graph-workspace.ts'
 import { collectPublishedPackageArtifactTargets } from '#worker/package-runtime/package-artifact-targets.ts'
 import {
@@ -662,6 +666,25 @@ function scanUnparsedCredentialKeys(source: string, scan: KeyScan) {
 	}
 }
 
+const unparsedCredentialMentionPattern = /\b(?:credentials?|kody)\b/
+
+/**
+ * A server-runtime module the parser rejects could alias or pass credential
+ * around unseen, so it fails closed when it mentions credential or kody.
+ */
+function unparsedServerModuleFailure(
+	path: string,
+	source: string,
+): CredentialStampGateFailure | null {
+	if (!unparsedCredentialMentionPattern.test(source)) return null
+	const parseError = readModuleParseError(source) ?? 'unknown parse error'
+	return {
+		code: 'non_literal',
+		path,
+		message: `${path}: server-runtime module could not be parsed (${parseError}), so publish cannot check how it uses credential, credentials, or kody. Fix the syntax error, or rewrite the module in syntax TypeScript accepts.`,
+	}
+}
+
 /**
  * Shared agent-facing fix for unstampable / non-literal credential use
  * (issue #3836 publish gate). Kent's pattern: fixed declared slots plus a
@@ -731,11 +754,14 @@ export function collectServerRuntimeModulePaths(
 	// directory prefix: a server import of an asset module must still follow
 	// the server_eval rule and stay stamp-scanned via listScannableModulePaths.
 	const serverReachable = new Set<string>()
+	// About 100 entries share most modules; parse each module once.
+	const importNodesCache: ModuleImportNodesCache = new Map()
 	for (const entry of serverEntries) {
 		for (const path of collectReachableSourceFilePaths({
 			files,
 			entryPoint: entry,
 			rootPackage,
+			importNodesCache,
 		})) {
 			if (scannableModuleFilePattern.test(path)) {
 				serverReachable.add(path)
@@ -1726,7 +1752,12 @@ export function scanCredentialStamp(
 	}
 	failures.push(...(options.secretProviders?.failures ?? []))
 
+	const serverPaths = collectServerRuntimeModulePaths(files)
 	forEachScannableModule(files, (path, parsed, constants) => {
+		if (!parsed && serverPaths.has(path)) {
+			const failure = unparsedServerModuleFailure(path, files[path]!)
+			if (failure) failures.push(failure)
+		}
 		const keyScan: KeyScan = {
 			key: (key) => {
 				if (packageCredentialSlotNamePattern.test(key)) keys.add(key)
@@ -1782,9 +1813,7 @@ export function scanCredentialStamp(
 		})
 	}
 
-	failures.push(
-		...scanServerEvalFailures(files, collectServerRuntimeModulePaths(files)),
-	)
+	failures.push(...scanServerEvalFailures(files, serverPaths))
 
 	const sortedKeys = [...keys].sort()
 	const staleManifestKeys = Object.keys(slots)

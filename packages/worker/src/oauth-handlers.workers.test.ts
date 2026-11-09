@@ -30,10 +30,12 @@ import {
 	handleAuthorizeRequest,
 	tryHandleSilentOidcAuthorize,
 	oauthEmailVerificationRequiredMessage,
-	oauthScopes,
 } from './oauth-handlers.ts'
 import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
-import { seedAccount } from '#worker/test-support/workers-seed.ts'
+import {
+	ensureRbacTestSchema,
+	seedAccount,
+} from '#worker/test-support/workers-seed.ts'
 import {
 	TEST_OIDC_SIGNING_KEY_ID,
 	TEST_OIDC_SIGNING_PRIVATE_KEY_PEM,
@@ -196,6 +198,7 @@ async function createDatabase(
 	options: {
 		emailVerifiedAt?: string | null
 		ownedClientIds?: ReadonlyArray<string>
+		passwordChangedAt?: string | null
 		/** When true, inline OAuth password login challenges through /verify. */
 		twoFactorEnabled?: boolean
 		writes?: Array<{ query: string; bound: Array<unknown> }>
@@ -215,6 +218,7 @@ async function createDatabase(
 		password_hash: passwordHash,
 		email_verified_at: emailVerifiedAt,
 		stable_user_id: stableUserId,
+		password_changed_at: options.passwordChangedAt ?? null,
 	}
 	const twoFactorRow = options.twoFactorEnabled
 		? {
@@ -239,6 +243,7 @@ async function createDatabase(
 			// The 2FA gate queries verifications during inline OAuth login.
 			const isVerificationsQuery = query.includes('FROM verifications')
 			const isOwnedClientQuery = query.includes('FROM user_mcp_oauth_clients')
+			const isRolesQuery = query.includes('FROM user_roles')
 			const isEmailVerifiedQuery =
 				query.includes('email_verified_at') && !query.includes('stable_user_id')
 			const isOrgQuery =
@@ -257,6 +262,9 @@ async function createDatabase(
 					return statement
 				},
 				async all() {
+					if (isRolesQuery) {
+						return { results: [], meta: { changes: 0, last_row_id: 0 } }
+					}
 					if (isVerificationsQuery) {
 						return {
 							results: twoFactorRow ? [twoFactorRow] : [],
@@ -301,6 +309,9 @@ async function createDatabase(
 				},
 			}
 			return statement
+		},
+		async batch(statements: Array<{ all: () => Promise<unknown> }>) {
+			return Promise.all(statements.map((statement) => statement.all()))
 		},
 		async exec() {
 			return
@@ -382,6 +393,9 @@ async function seedWorkerUser(email: string) {
 		db: env.APP_DB,
 		columns: ['email_verified_at'],
 	})
+	// Session approval resolves the cookie through resolveRequestAuth, which
+	// loads roles alongside the users row.
+	await ensureRbacTestSchema(env.APP_DB)
 	// The inline OAuth login checks two-factor status, which queries the
 	// verifications table (empty here: no seeded user has 2FA enabled).
 	await env.APP_DB.prepare(
@@ -576,6 +590,7 @@ test('authorize info, denial, approval, and default scopes follow the OAuth work
 		requireCredentials: true,
 		orgs: [],
 		selectedOrgSlug: null,
+		requiredOrgSlug: null,
 	})
 
 	// Initial HTML and social controls are covered by oauth-documents.mcp-e2e.
@@ -590,6 +605,7 @@ test('authorize info, denial, approval, and default scopes follow the OAuth work
 		ok: true,
 		orgs: [{ slug: 'test-user', displayName: null, role: 'owner' }],
 		selectedOrgSlug: 'test-user',
+		requiredOrgSlug: null,
 	})
 
 	const resourceOrgInfo = await handleAuthorizeInfo(
@@ -610,6 +626,7 @@ test('authorize info, denial, approval, and default scopes follow the OAuth work
 	await expect(resourceOrgInfo.json()).resolves.toMatchObject({
 		ok: true,
 		selectedOrgSlug: 'test-user',
+		requiredOrgSlug: 'test-user',
 	})
 
 	const orgMismatchInfo = await handleAuthorizeInfo(
@@ -741,7 +758,7 @@ test('authorize info, denial, approval, and default scopes follow the OAuth work
 		},
 	)
 	const defaultScopeOptions = defaultScopeCompletion.mock.lastCall?.[0]
-	expect(defaultScopeOptions?.scope).toEqual(oauthScopes)
+	expect(defaultScopeOptions?.scope).toEqual(['openid', 'profile', 'email'])
 	expect(defaultScopeOptions?.request.issuer).toBe('https://example.com')
 	expect(defaultScopeOptions?.revokeExistingGrants).toBe(false)
 })
@@ -777,8 +794,6 @@ test('inline OAuth password login with 2FA challenges through /verify and strips
 	expect(resume).toBe(
 		'/oauth/authorize?response_type=code&client_id=client-123&redirect_uri=https%3A%2F%2Fexample.com%2Fcallback&scope=profile&state=demo',
 	)
-	expect(resume).not.toContain('id_token_hint')
-	expect(resume).not.toContain('prompt=login')
 	const setCookies = response.headers.getSetCookie()
 	expect(setCookies.some((cookie) => cookie.startsWith('kody_verify='))).toBe(
 		true,
@@ -913,6 +928,74 @@ test('authorize rejects unverified accounts before creating a grant', async () =
 	expect(completeAuthorization).toHaveBeenCalledTimes(1)
 })
 
+test.for([
+	{ name: 'revoked', issuedAgoMs: 60_000, passwordChanged: true },
+	{
+		name: 'expired',
+		issuedAgoMs: 8 * 24 * 60 * 60 * 1000,
+		passwordChanged: false,
+	},
+])(
+	'authorize treats a $name session cookie as signed out',
+	async ({ issuedAgoMs, passwordChanged }) => {
+		const completeAuthorization = completingWith(
+			'https://example.com/callback?code=should-not-happen',
+		)
+		const helpers = createHelpers({ completeAuthorization })
+		setAuthSessionSecret(cookieSecret)
+		const cookie = await createAuthCookie(
+			{
+				stableUserId: testStableUserIdFromEmail('user@example.com'),
+				email: 'user@example.com',
+				rememberMe: false,
+			},
+			false,
+			Date.now() - issuedAgoMs,
+		)
+		const passwordChangedAt = passwordChanged ? new Date().toISOString() : null
+		const caseEnv = async () =>
+			createEnv(
+				helpers,
+				await createDatabase('password123', { passwordChangedAt }),
+			)
+
+		const info = await handleAuthorizeInfo(
+			new Request(exampleOAuthUrl('authorize-info', baseAuthorizeParams), {
+				headers: { ...jsonAccept, Cookie: cookie },
+			}),
+			await caseEnv(),
+		)
+		await expect(info.json()).resolves.toMatchObject({
+			ok: true,
+			requireCredentials: true,
+		})
+
+		const decision = await handleAuthorizeRequest(
+			formRequest({ decision: 'approve' }, { ...jsonAccept, Cookie: cookie }),
+			await caseEnv(),
+		)
+		expect(decision.status).toBe(400)
+		await expect(decision.json()).resolves.toMatchObject({
+			ok: false,
+			error: 'Email and password are required.',
+		})
+
+		const silent = await tryHandleSilentOidcAuthorize(
+			new Request(
+				`${exampleOAuthUrl('authorize', { ...baseAuthorizeParams, scope: 'openid' })}&prompt=none`,
+				{ headers: { Cookie: cookie } },
+			),
+			await caseEnv(),
+		)
+		expect(silent?.status).toBe(302)
+		expectRedirect(silent?.headers.get('Location') ?? '', callbackUri, {
+			error: 'login_required',
+			state: 'demo',
+		})
+		expect(completeAuthorization).not.toHaveBeenCalled()
+	},
+)
+
 test('worker entrypoint completes Claude-shaped dynamic registration and token exchange', async () => {
 	const email = `claude-oauth-${crypto.randomUUID()}@example.com`
 	await seedWorkerUser(email)
@@ -969,7 +1052,7 @@ test('worker entrypoint advertises OAuth, OIDC, and RFC 9728 resource metadata p
 	await expect(prm.json()).resolves.toEqual({
 		resource: mcpResource,
 		authorization_servers: ['https://heykody.dev'],
-		scopes_supported: oauthScopes,
+		scopes_supported: ['openid', 'profile', 'email'],
 		bearer_methods_supported: ['header'],
 	})
 

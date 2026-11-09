@@ -9,6 +9,7 @@ import {
 } from 'node:fs'
 import { dirname, join, resolve as resolvePath } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { stripVTControlCharacters } from 'node:util'
 import {
 	envWithNodeHeapFloor,
 	isExecutedDirectly,
@@ -26,8 +27,10 @@ import {
 
 /**
  * Docs-only commits/pushes skip expensive checks. Unreadable diffs fail closed.
- * Pre-commit keeps install and migration checks; pre-push typechecks, runs Knip,
- * and selects related unit tests unless global inputs require the full suites.
+ * Pre-commit keeps install and migration checks; pre-push runs CI's lint and
+ * format checks, typechecks, runs Knip, and selects related unit tests unless
+ * global inputs require the full suites. Paths whose pushed content matches
+ * origin/main (merged-in main) are left to main's CI when picking unit tests.
  * Only full successful suites can record test:push provenance.
  */
 
@@ -43,11 +46,16 @@ export type GitRunner = (args: ReadonlyArray<string>) => GitCommandResult
 
 export type GitHookCheckPlan = {
 	runInstallCheck: boolean
+	runLint: boolean
 	runTypecheck: boolean
 	runMigrationsCheck: boolean
 	runKnip: boolean
 	runUnitTests: boolean
 	runSkillsLockCheck: boolean
+	/** Pre-push only: ADR numbers against other open pull requests (#4487). */
+	runDecisionNumbersCheck: boolean
+	/** Pre-push only: CI Static's soft-delete SQL scan, under a second (#4958). */
+	runSoftDeleteReadFilterCheck: boolean
 	summary: string
 }
 
@@ -66,6 +74,8 @@ const licenseBasenamePattern =
 	/^(?:license|licence|copying|notice)(?:\.(?:md|txt))?$/i
 
 const newRefBaseCandidates = ['origin/HEAD', 'origin/main', 'main'] as const
+
+const mainlineRefCandidates = ['origin/main', 'main'] as const
 
 /** Heartbeat while a long hook script (test:push) inherits silence from vitest. */
 export const gitHookProgressIntervalMs = 30_000
@@ -106,9 +116,16 @@ export function planGitHookChecks(input: {
 export function hookScripts(plan: GitHookCheckPlan) {
 	const scripts: Array<string> = []
 	if (plan.runInstallCheck) scripts.push('install:check')
+	if (plan.runLint) scripts.push('lint', 'format:check')
 	if (plan.runTypecheck) scripts.push('typecheck')
 	if (plan.runMigrationsCheck) scripts.push('migrations:check')
 	if (plan.runSkillsLockCheck) scripts.push('node tools/check-skills-lock.ts')
+	if (plan.runDecisionNumbersCheck) {
+		scripts.push('node tools/check-decision-record-numbers.ts')
+	}
+	if (plan.runSoftDeleteReadFilterCheck) {
+		scripts.push('node tools/soft-delete-read-filter.ts')
+	}
 	if (plan.runKnip) scripts.push('knip')
 	if (plan.runUnitTests) scripts.push('test:push')
 	return scripts
@@ -432,6 +449,50 @@ export function isGlobalHookTestPath(filePath: string) {
 	)
 }
 
+/**
+ * Drops pushed paths whose content at every pushed tip equals the mainline
+ * ref (`origin/main`, else `main`). Those changes came from merging main, and
+ * main's own CI already ran their tests. Without a mainline ref the paths are
+ * returned unchanged.
+ */
+export function withoutMainlinePaths(input: {
+	git: GitRunner
+	stdin: string | null
+	paths: ReadonlyArray<string>
+	log?: (message: string) => void
+}): ReadonlyArray<string> {
+	const updates = parsePrePushUpdates(input.stdin)
+	if (updates === null) return input.paths
+	const mainline = mainlineRefCandidates.find(
+		(candidate) =>
+			input.git(['rev-parse', '--verify', '--quiet', `${candidate}^{commit}`])
+				.status === 0,
+	)
+	if (!mainline) return input.paths
+	const differing = new Set<string>()
+	for (const update of updates) {
+		if (isZeroSha(update.localSha)) continue
+		const diff = listDiffPaths(input.git, [
+			'diff',
+			'--name-only',
+			'--no-renames',
+			'-z',
+			mainline,
+			update.localSha,
+		])
+		if (diff === null) return input.paths
+		for (const path of diff) differing.add(path)
+	}
+	const kept = input.paths.filter((path) => differing.has(path))
+	const dropped = input.paths.length - kept.length
+	if (dropped > 0) {
+		input.log?.(
+			`pre-push: leaving ${dropped} path${dropped === 1 ? '' : 's'} identical to ${mainline} to main's CI for unit tests`,
+		)
+	}
+	return kept
+}
+
 export function relatedHookTestPaths(paths: ReadonlyArray<string>) {
 	return paths.filter((path) => /\.[cm]?[jt]sx?$/.test(path))
 }
@@ -492,12 +553,29 @@ export async function runGitHookChecks(input: {
 				scripts = scripts.filter((script) => script !== 'test:push')
 			}
 		}
+		const testPaths =
+			scripts.includes('test:push') && paths !== null
+				? withoutMainlinePaths({ git, stdin: input.stdin ?? null, paths, log })
+				: paths
+		const globalTestPaths =
+			scripts.includes('test:push') && testPaths !== null
+				? testPaths.filter(isGlobalHookTestPath)
+				: []
+		if (globalTestPaths.length > 0) {
+			log(
+				`pre-push: full test:push because global test inputs changed (${formatPathList(globalTestPaths)})`,
+			)
+		}
 		if (
 			scripts.includes('test:push') &&
-			paths !== null &&
-			!paths.some(isGlobalHookTestPath)
+			testPaths !== null &&
+			globalTestPaths.length === 0
 		) {
-			const nonDeleted = listPushedPaths(git, input.stdin ?? null, true)
+			const listed = listPushedPaths(git, input.stdin ?? null, true)
+			const nonDeleted =
+				listed === null
+					? null
+					: listed.filter((path) => testPaths.includes(path))
 			if (nonDeleted !== null) {
 				relatedPaths = relatedHookTestPaths(nonDeleted)
 				if (
@@ -515,9 +593,18 @@ export async function runGitHookChecks(input: {
 							: [script],
 					)
 					log(
-						`pre-push: related tests for ${relatedPaths.length} non-deleted source paths (no test:push provenance recorded)`,
+						relatedPaths.length > 0
+							? `pre-push: related tests for ${relatedPaths.length} non-deleted source paths (no test:push provenance recorded)`
+							: 'pre-push: skipping unit tests (no pushed source paths differ from main)',
 					)
 				}
+			}
+			if (scripts.includes('test:push')) {
+				log(
+					nonDeleted === null
+						? 'pre-push: full test:push because pushed paths could not be listed'
+						: 'pre-push: full test:push because no pushed path is JS/TS source with related tests',
+				)
 			}
 		}
 	}
@@ -607,11 +694,14 @@ function planPreCommit(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 	if (paths === null) {
 		return {
 			runInstallCheck: true,
+			runLint: false,
 			runTypecheck: false,
 			runMigrationsCheck: true,
 			runKnip: false,
 			runUnitTests: false,
 			runSkillsLockCheck: false,
+			runDecisionNumbersCheck: false,
+			runSoftDeleteReadFilterCheck: false,
 			summary:
 				'pre-commit: running install:check and migrations:check (could not list staged paths)',
 		}
@@ -619,36 +709,79 @@ function planPreCommit(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 	if (paths.every(isDocsOnlyHookPath)) {
 		return {
 			runInstallCheck: false,
+			runLint: false,
 			runTypecheck: false,
 			runMigrationsCheck: false,
 			runKnip: false,
 			runUnitTests: false,
 			runSkillsLockCheck: false,
+			runDecisionNumbersCheck: false,
+			runSoftDeleteReadFilterCheck: false,
 			summary: `pre-commit: skipping install:check and migrations:check (${docsOnlySummary(paths)})`,
 		}
 	}
 	return {
 		runInstallCheck: true,
+		runLint: false,
 		runTypecheck: false,
 		runMigrationsCheck: true,
 		runKnip: false,
 		runUnitTests: false,
 		runSkillsLockCheck: false,
+		runDecisionNumbersCheck: false,
+		runSoftDeleteReadFilterCheck: false,
 		summary: `pre-commit: running install:check and migrations:check (${codePathSummary(paths)})`,
 	}
 }
 
 function planPrePush(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
+	const plan = planPrePushWithoutDecisions(paths)
+	const runDecisionNumbersCheck =
+		paths === null || paths.some(isDecisionRecordHookPath)
+	return {
+		...plan,
+		runDecisionNumbersCheck,
+		runSoftDeleteReadFilterCheck:
+			paths === null || paths.some(isSoftDeleteReadFilterHookPath),
+		summary: runDecisionNumbersCheck
+			? `${plan.summary}; checking decision numbers against open pull requests`
+			: plan.summary,
+	}
+}
+
+/** Inputs of `tools/soft-delete-read-filter.ts` (its scan roots and itself). */
+export function isSoftDeleteReadFilterHookPath(filePath: string) {
+	const path = normalizeHookPath(filePath)
+	return (
+		path === 'tools/soft-delete-read-filter.ts' ||
+		(/^packages\/(?:worker|jobs-worker)\/src\//.test(path) &&
+			/\.[cm]?[jt]sx?$/.test(path))
+	)
+}
+
+export function isDecisionRecordHookPath(filePath: string) {
+	return /^docs\/contributing\/decisions\/\d{4}-[^/]+\.md$/.test(
+		normalizeHookPath(filePath),
+	)
+}
+
+function planPrePushWithoutDecisions(
+	paths: ReadonlyArray<string> | null,
+): Omit<
+	GitHookCheckPlan,
+	'runDecisionNumbersCheck' | 'runSoftDeleteReadFilterCheck'
+> {
 	if (paths === null) {
 		return {
 			runInstallCheck: false,
+			runLint: true,
 			runTypecheck: true,
 			runMigrationsCheck: false,
 			runKnip: true,
 			runUnitTests: true,
 			runSkillsLockCheck: true,
 			summary:
-				'pre-push: running typecheck, knip, test:push, and skills-lock (could not list pushed paths)',
+				'pre-push: running lint, format, typecheck, knip, test:push, and skills-lock (could not list pushed paths)',
 		}
 	}
 	const skillsLock = paths.some(isSkillsLockHookPath)
@@ -659,6 +792,7 @@ function planPrePush(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 		if (skillsLock) {
 			return {
 				runInstallCheck: false,
+				runLint: false,
 				runTypecheck: false,
 				runMigrationsCheck: false,
 				runKnip: false,
@@ -669,6 +803,7 @@ function planPrePush(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 		}
 		return {
 			runInstallCheck: false,
+			runLint: false,
 			runTypecheck: false,
 			runMigrationsCheck: false,
 			runKnip: false,
@@ -679,14 +814,15 @@ function planPrePush(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 	}
 	return {
 		runInstallCheck: false,
+		runLint: true,
 		runTypecheck: true,
 		runMigrationsCheck: false,
 		runKnip: true,
 		runUnitTests: true,
 		runSkillsLockCheck: skillsLock,
 		summary: skillsLock
-			? `pre-push: running skills-lock, typecheck, knip, and tests (${codePathSummary(paths)})`
-			: `pre-push: running typecheck, knip and tests (${codePathSummary(paths)})`,
+			? `pre-push: running skills-lock, lint, format, typecheck, knip, and tests (${codePathSummary(paths)})`
+			: `pre-push: running lint, format, typecheck, knip and tests (${codePathSummary(paths)})`,
 	}
 }
 
@@ -714,6 +850,11 @@ function docsOnlySummary(paths: ReadonlyArray<string>) {
 	if (paths.length === 0) return 'no file changes'
 	const count = String(paths.length)
 	return `${count} docs-only path${paths.length === 1 ? '' : 's'}`
+}
+
+function formatPathList(paths: ReadonlyArray<string>) {
+	const shown = paths.slice(0, 3).join(', ')
+	return paths.length > 3 ? `${shown}, +${paths.length - 3} more` : shown
 }
 
 function codePathSummary(paths: ReadonlyArray<string>) {
@@ -766,7 +907,7 @@ export function parsePrePushUpdates(
 		if (!localRef || !localSha || !remoteSha) return null
 		updates.push({ localRef, localSha, remoteSha })
 	}
-	if (updates.length === 0) return null
+	// Git sends no lines when every ref is already up to date: nothing to push.
 	return updates
 }
 
@@ -853,48 +994,167 @@ export function hookCommandLabel(script: string) {
 		: `npm run ${script}`
 }
 
+const vitestWorkerCrashPattern =
+	/Worker exited unexpectedly|Timeout waiting for worker to respond/
+const vitestFailedSummaryPattern = /^\s*(?:Test Files|Tests)\s+.*\b\d+ failed\b/
+const vitestUnhandledHeadingPattern = /Unhandled (?:Error|Rejection)(?!s)/
+const vitestSectionRulePattern = /^\s*\u23af{3,}/
+
+/**
+ * Streams Vitest output line by line so a long report cannot evict the failed
+ * summary. Each `Unhandled Error` section must be the worker crash itself;
+ * any other unhandled error blocks the retry.
+ */
+export function createVitestCrashScanner() {
+	let carry = ''
+	let sawCrash = false
+	let sawFailure = false
+	let section: { hasCrash: boolean } | null = null
+	const closeSection = () => {
+		if (section && !section.hasCrash) sawFailure = true
+		section = null
+	}
+	const scanLine = (line: string) => {
+		const plain = stripVTControlCharacters(line)
+		if (vitestFailedSummaryPattern.test(plain)) sawFailure = true
+		const isCrash = vitestWorkerCrashPattern.test(plain)
+		if (isCrash) sawCrash = true
+		if (vitestUnhandledHeadingPattern.test(plain)) {
+			closeSection()
+			section = { hasCrash: false }
+		} else if (section && vitestSectionRulePattern.test(plain)) {
+			closeSection()
+		}
+		if (section && isCrash) section.hasCrash = true
+	}
+	return {
+		write(chunk: string) {
+			const lines = (carry + chunk).split('\n')
+			carry = lines.pop() ?? ''
+			for (const line of lines) scanLine(line)
+		},
+		finish() {
+			if (carry) {
+				scanLine(carry)
+				carry = ''
+			}
+			closeSection()
+			return { sawCrash, sawFailure }
+		},
+	}
+}
+
+/**
+ * A Vitest pool worker that times out while terminating crashes the run with
+ * no failed test (#4809). Real test failures still print a failed summary.
+ */
+export function isVitestWorkerCrashWithoutFailures(output: string) {
+	const scanner = createVitestCrashScanner()
+	scanner.write(output)
+	const { sawCrash, sawFailure } = scanner.finish()
+	return sawCrash && !sawFailure
+}
+
+export async function runVitestWithWorkerCrashRetry(input: {
+	label: string
+	runOnce: () => Promise<{ code: number; workerCrashWithoutFailures: boolean }>
+	log?: (message: string) => void
+}) {
+	const log = input.log ?? console.log
+	const first = await input.runOnce()
+	if (first.code === 0 || !first.workerCrashWithoutFailures) {
+		return first.code
+	}
+	log(
+		`hook: ${input.label} crashed on a Vitest worker exit with no failed test; retrying once`,
+	)
+	return (await input.runOnce()).code
+}
+
+function runVitestRelatedOnce(
+	project: string,
+	paths: ReadonlyArray<string>,
+	cwd?: string,
+): Promise<{ code: number; workerCrashWithoutFailures: boolean }> {
+	return new Promise((resolve) => {
+		const child = spawn(
+			process.execPath,
+			[
+				fileURLToPath(
+					new URL('../node_modules/vitest/vitest.mjs', import.meta.url),
+				),
+				'related',
+				'--run',
+				'--project',
+				project,
+				'--passWithNoTests',
+				...paths.map((path) => resolvePath(path)),
+			],
+			{
+				stdio: ['inherit', 'pipe', 'pipe'],
+				env: {
+					...gitHookScriptEnv(),
+					CI: '1',
+					...(process.stdout.isTTY ? { FORCE_COLOR: '1' } : {}),
+				},
+				cwd,
+			},
+		)
+		const scanners = [createVitestCrashScanner(), createVitestCrashScanner()]
+		const tee =
+			(target: NodeJS.WriteStream, scanner: (typeof scanners)[number]) =>
+			(chunk: Buffer) => {
+				target.write(chunk)
+				scanner.write(chunk.toString('utf8'))
+			}
+		const result = (code: number) => {
+			const states = scanners.map((scanner) => scanner.finish())
+			return {
+				code,
+				workerCrashWithoutFailures:
+					states.some((state) => state.sawCrash) &&
+					!states.some((state) => state.sawFailure),
+			}
+		}
+		child.stdout?.on('data', tee(process.stdout, scanners[0]!))
+		child.stderr?.on('data', tee(process.stderr, scanners[1]!))
+		child.once('error', (error) => {
+			console.error(error.message)
+			resolve(result(1))
+		})
+		child.once('close', (code) => {
+			resolve(result(code ?? 1))
+		})
+	})
+}
+
 function defaultRunNpmScript(
 	script: string,
 	cwd?: string,
 	paths: ReadonlyArray<string> = [],
 ): Promise<number> {
+	if (script.startsWith('vitest related --project ')) {
+		const project = script.slice('vitest related --project '.length)
+		return runVitestWithWorkerCrashRetry({
+			label: script,
+			runOnce: () => runVitestRelatedOnce(project, paths, cwd),
+		})
+	}
 	return new Promise((resolve) => {
-		// Repo paths go straight to node, never through a shell, so spaces and
-		// metacharacters in paths stay intact on Windows.
-		const child = script.startsWith('vitest related --project ')
-			? spawn(
-					process.execPath,
-					[
-						fileURLToPath(
-							new URL('../node_modules/vitest/vitest.mjs', import.meta.url),
-						),
-						'related',
-						'--run',
-						'--project',
-						script.slice('vitest related --project '.length),
-						'--passWithNoTests',
-						...paths.map((path) => resolvePath(path)),
-					],
-					{
-						stdio: 'inherit',
-						env: { ...gitHookScriptEnv(), CI: '1' },
-						cwd,
-					},
-				)
-			: script.startsWith('node ')
-				? spawn(process.execPath, script.slice('node '.length).split(' '), {
-						stdio: 'inherit',
-						env: gitHookScriptEnv(),
-						cwd,
-					})
-				: spawn(resolveNpmCommand(), ['run', script], {
-						stdio: 'inherit',
-						env: gitHookScriptEnv(),
-						cwd,
-						// Node refuses to spawn `npm.cmd` without a shell on Windows; the
-						// only arg is a fixed script name.
-						shell: process.platform === 'win32',
-					})
+		const child = script.startsWith('node ')
+			? spawn(process.execPath, script.slice('node '.length).split(' '), {
+					stdio: 'inherit',
+					env: gitHookScriptEnv(),
+					cwd,
+				})
+			: spawn(resolveNpmCommand(), ['run', script], {
+					stdio: 'inherit',
+					env: gitHookScriptEnv(),
+					cwd,
+					// Node refuses to spawn `npm.cmd` without a shell on Windows; the
+					// only arg is a fixed script name.
+					shell: process.platform === 'win32',
+				})
 		child.once('error', (error) => {
 			console.error(error.message)
 			resolve(1)

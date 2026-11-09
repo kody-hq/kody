@@ -178,3 +178,27 @@ test('forwards mock Artifacts settings to the RepoSession worker without copying
 		await rm(dir, { recursive: true, force: true })
 	}
 })
+
+test('forwards the ECP frame signing keys so local daemons can connect', async () => {
+	const dir = await mkdtemp(path.join(tmpdir(), 'sibling-dev-ecp-'))
+	const previous = process.env.ECP_FRAME_SIGNING_KEYS
+	try {
+		process.env.ECP_FRAME_SIGNING_KEYS = '[{"kid":"ecp-frame-test-1"}]'
+		const configPath = await writeSiblingFixture(dir, {
+			name: 'kody-platform',
+			env: { production: { vars: {} } },
+		})
+		const output = await writeLocalSiblingDevConfig({
+			configPath,
+			envName: 'production',
+			mainWorkerDevName: 'kody-production',
+			port: '3743',
+		})
+		const vars = JSON.parse(await readFile(output, 'utf8')).env.production.vars
+		expect(vars.ECP_FRAME_SIGNING_KEYS).toBe('[{"kid":"ecp-frame-test-1"}]')
+	} finally {
+		if (previous === undefined) delete process.env.ECP_FRAME_SIGNING_KEYS
+		else process.env.ECP_FRAME_SIGNING_KEYS = previous
+		await rm(dir, { recursive: true, force: true })
+	}
+})

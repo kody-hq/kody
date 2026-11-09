@@ -1,5 +1,5 @@
 import { Cron } from 'croner'
-import { type JobRecord, type JobSchedule, type JobView } from './types.ts'
+import type { JobRecord, JobSchedule, JobView } from './types.ts'
 
 const defaultJobTimezone = 'UTC'
 

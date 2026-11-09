@@ -21,7 +21,7 @@
  * ```
  */
 
-import { type SearchPhaseTimings } from './search-types.ts'
+import type { SearchPhaseTimings } from './search-types.ts'
 
 export type SearchObservabilityMode = 'list' | 'entity' | 'entity-batch'
 

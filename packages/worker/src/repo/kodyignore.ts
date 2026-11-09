@@ -27,6 +27,63 @@ export function createKodyIgnoreMatcher(
 	}
 }
 
+function normalizeSourceRootPrefix(sourceRoot: string) {
+	const trimmed = sourceRoot.replace(/^(?:\.\/|\/)+|\/+$/g, '')
+	const root = trimmed === '.' ? '' : trimmed
+	return root === '' ? '' : `${root}/`
+}
+
+/** Repo-rooted path of the `.kodyignore` file for `sourceRoot`. */
+export function kodyIgnoreFilePath(sourceRoot = '') {
+	return `${normalizeSourceRootPrefix(sourceRoot)}${kodyIgnoreFileName}`
+}
+
+/**
+ * Matcher over repo-rooted (or, with an empty root, package-relative) paths
+ * for the `.kodyignore` at `sourceRoot`. Returns the ignored path relative
+ * to the source root, or null when the path is kept. Paths outside the
+ * source root are kept. Null when there is nothing to ignore.
+ */
+export function createSourceRootKodyIgnoreMatcher(input: {
+	ignoreFileContent: string | null | undefined
+	sourceRoot?: string
+}): ((path: string) => string | null) | null {
+	const isIgnored = createKodyIgnoreMatcher(input.ignoreFileContent)
+	if (!isIgnored) return null
+	const prefix = normalizeSourceRootPrefix(input.sourceRoot ?? '')
+	return (path) => {
+		const relative = path.replace(/^\/+/, '')
+		if (prefix !== '' && !relative.startsWith(prefix)) return null
+		const sourceRelative = relative.slice(prefix.length)
+		return isIgnored(sourceRelative) ? sourceRelative : null
+	}
+}
+
+/**
+ * Splits a repo-rooted (or package-relative) file map into what
+ * `.kodyignore` under `sourceRoot` keeps and the source-root-relative paths
+ * it drops. Paths outside the source root are kept.
+ */
+export function partitionKodyIgnoredFiles<Value>(
+	files: Record<string, Value>,
+	sourceRoot = '',
+): { kept: Record<string, Value>; ignoredPaths: Array<string> } {
+	const ignoreFile = files[kodyIgnoreFilePath(sourceRoot)]
+	const ignoredPath = createSourceRootKodyIgnoreMatcher({
+		ignoreFileContent: typeof ignoreFile === 'string' ? ignoreFile : null,
+		sourceRoot,
+	})
+	if (!ignoredPath) return { kept: files, ignoredPaths: [] }
+	const kept: Record<string, Value> = {}
+	const ignoredPaths: Array<string> = []
+	for (const [path, value] of Object.entries(files)) {
+		const ignored = ignoredPath(path)
+		if (ignored === null) kept[path] = value
+		else ignoredPaths.push(ignored)
+	}
+	return { kept, ignoredPaths }
+}
+
 /**
  * Drops `.kodyignore` matches under `sourceRoot` from a repo-rooted (or,
  * with an empty root, package-relative) file map. Paths outside the source
@@ -36,22 +93,5 @@ export function omitKodyIgnoredFiles<Value>(
 	files: Record<string, Value>,
 	sourceRoot = '',
 ): Record<string, Value> {
-	const trimmed = sourceRoot.replace(/^(?:\.\/|\/)+|\/+$/g, '')
-	const root = trimmed === '.' ? '' : trimmed
-	const prefix = root === '' ? '' : `${root}/`
-	const ignoreFile = files[`${prefix}${kodyIgnoreFileName}`]
-	const isIgnored = createKodyIgnoreMatcher(
-		typeof ignoreFile === 'string' ? ignoreFile : null,
-	)
-	if (!isIgnored) return files
-	const kept: Record<string, Value> = {}
-	for (const [path, value] of Object.entries(files)) {
-		const relative = path.replace(/^\/+/, '')
-		if (prefix !== '' && !relative.startsWith(prefix)) {
-			kept[path] = value
-			continue
-		}
-		if (!isIgnored(relative.slice(prefix.length))) kept[path] = value
-	}
-	return kept
+	return partitionKodyIgnoredFiles(files, sourceRoot).kept
 }

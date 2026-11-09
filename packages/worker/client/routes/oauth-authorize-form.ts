@@ -55,6 +55,12 @@ export function oauthAuthorizeGrantHeading(selectedOrgSlug: string | null) {
 export type OAuthAuthorizeOrgField =
 	| { kind: 'hidden'; slug: string }
 	| {
+			kind: 'locked'
+			slug: string
+			reason: string
+			options: ReadonlyArray<OAuthAuthorizeConsentOrg>
+	  }
+	| {
 			kind: 'picker'
 			selectedSlug: string | null
 			options: ReadonlyArray<OAuthAuthorizeConsentOrg>
@@ -62,11 +68,39 @@ export type OAuthAuthorizeOrgField =
 	| { kind: 'missing' }
 	| { kind: 'pending' }
 
+/** Default copy when a flow requires one org and the chooser must stay fixed. */
+function oauthAuthorizeRequiredOrgReason(slug: string) {
+	return `This connection was started for @${slug}. The organization cannot be changed here because the client already bound this sign-in to that workspace.`
+}
+
 export function oauthAuthorizeOrgField(input: {
 	orgs: ReadonlyArray<OAuthAuthorizeConsentOrg>
 	selectedOrgSlug: string | null
 	signedIn: boolean
+	/**
+	 * When set, the flow must use this org. The chooser is disabled (or hidden
+	 * for a sole org) so a person cannot pick a scope the approve path rejects.
+	 */
+	requiredOrgSlug?: string | null
+	requiredReason?: string | null
 }): OAuthAuthorizeOrgField {
+	const required = input.requiredOrgSlug?.trim().toLowerCase() || null
+	if (required) {
+		const match = input.orgs.find((org) => org.slug === required)
+		if (!match) {
+			if (input.signedIn) return { kind: 'missing' }
+			return { kind: 'pending' }
+		}
+		if (input.orgs.length === 1) return { kind: 'hidden', slug: match.slug }
+		return {
+			kind: 'locked',
+			slug: match.slug,
+			reason:
+				input.requiredReason?.trim() ||
+				oauthAuthorizeRequiredOrgReason(match.slug),
+			options: input.orgs,
+		}
+	}
 	if (input.orgs.length === 1) {
 		const sole = input.orgs[0]
 		if (!sole) return { kind: 'missing' }

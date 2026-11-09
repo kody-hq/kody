@@ -29,10 +29,10 @@ Like a code host's "members can create repositories" setting, an Owner chooses
 what every Member of a team org can create without a grant: **Organization
 settings**, **Member permissions**, or `orgUpdate`.
 
-| Setting                              | Default | Gives every Member                                                                  |
-| ------------------------------------ | ------- | ----------------------------------------------------------------------------------- |
-| Members can create packages and apps | Off     | `package:create`, `app:create`: save, fork, and first-publish packages, repos, apps |
-| Members can create credentials       | On      | `secret:create`, `integration:create`: new secrets, OAuth connections, MCP servers  |
+| Setting                              | Default | Gives every Member                                                                 |
+| ------------------------------------ | ------- | ---------------------------------------------------------------------------------- |
+| Members can create packages and apps | Off     | `package:create`: save, fork, and first-publish packages, repos, and their apps    |
+| Members can create credentials       | On      | `secret:create`, `integration:create`: new secrets, OAuth connections, MCP servers |
 
 ```json
 { "members_can_create_packages": true, "members_can_create_credentials": true }
@@ -90,14 +90,88 @@ These are read only. Running, editing, triaging runs, sharing, and using a
 credential still need their own grant. Secret values and memories are never
 grantable org-wide.
 
+## Org-wide manage for packages and apps
+
+To let a member or team run, change, publish, delete, and share every package
+and app in the organization, including ones created later, an Owner grants
+manage on the organization: **Grants** page, **Manage every package and app**,
+or `accessGrant` with `resource_type: "org"`:
+
+```json
+{
+	"resource_type": "org",
+	"resource_id": "<org id>",
+	"subject_type": "team",
+	"team_slug": "platform",
+	"permissions": [
+		"package:read",
+		"package:execute",
+		"package:write",
+		"package:publish",
+		"package:delete",
+		"package:manage_access",
+		"app:read",
+		"app:execute",
+		"app:manage_access"
+	]
+}
+```
+
+Any subset works, for example only `package:execute` and `app:execute` to run
+everything. The grant resolves live, so a package created tomorrow is covered at
+once and revoking the grant removes access everywhere.
+
+- **Owner only.** A member with `member:write` can manage read and create access
+  but cannot add these, the same as `org:write`.
+- **Members and teams only.** Everyone in the organization
+  (`subject_type: "org"`) and agent profiles cannot hold them org-wide; share
+  one package with everyone instead.
+- **Unmappable credentials still lock changes.** On a package whose credentials
+  cannot be mapped in this organization, `package:write` and `package:publish`
+  stay owner-only even with this grant. Running it still works. An Owner unlocks
+  changes per package with a grant on that package that sets
+  `allow_changes_despite_unmappable_credentials: true`. See
+  [Package sharing](./package-sharing.md).
+- Secrets, connections, jobs, and email are not covered. Grant those per
+  resource.
+
+## Access for one person
+
+In a team org, an Owner opens **Members**, **Collaborators**, or a person-linked
+row on **Grants**, then **Access** (`/@<slug>/-/grants/user/<userId>`). That
+page lists what one person can use in the org and **Give access** grants or
+revokes a preset on specific packages, apps, and credentials. Team and everyone
+grants show as read-only. Owners already hold everything. Use the package
+**Collaborators** tab to share one package; use **Access** for one person across
+resource types. Details:
+[Share a package](/docs/package-sharing#access-for-one-person).
+
+Teams and everyone in the org get the same treatment. **Grants** lists one row
+per person, team, and the whole org with a short summary (for example
+`Org: 9 permissions, 14 packages, 2 apps`). A team row opens
+`/@<slug>/-/grants/team/<teamId>` and the everyone row opens
+`/@<slug>/-/grants/everyone`. Those pages group grants by resource type, change
+presets in place, and remove one grant or a selected set at once. A team page
+shows everyone grants as read-only.
+
+## Delete a team
+
+`teamDelete` (`DELETE /v1/orgs/teams/{team_id}`, or pass `team_slug`) needs
+`team:write`, the same as creating a team. It is a soft delete and lands in the
+org audit log as `team.deleted`. Members stay in the organization but lose every
+grant they held through the team right away; Kody ends their open
+execution-context leases. The grant rows stay for history and never apply to
+another team. The slug is free again: a new team with the same slug starts with
+no grants.
+
 ## Personal vs team
 
-|                    | Personal                                             | Team                                                                                                                                                                                            |
-| ------------------ | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Created            | At signup (slug = username)                          | `orgCreate` or Create organization                                                                                                                                                              |
-| Members / teams    | No. Create a team org to invite people or group them | Yes                                                                                                                                                                                             |
-| Package grants     | `accessGrant` / grant invites / package invite links | Same, plus the Grants web page                                                                                                                                                                  |
-| Resource web pages | Secrets, jobs, repositories, agents, and the rest    | Every resource page reads the org. Agents lists connections approved for that org; **Repositories** lists packages you can see plus every plain repo the org owns (API/CLI still say `package`) |
+|                    | Personal                                                | Team                                                                                                                                                                                                                                                               |
+| ------------------ | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Created            | At signup (slug = username)                             | `orgCreate` or Create organization                                                                                                                                                                                                                                 |
+| Members / teams    | No. Create a team org to invite people or group them    | Yes                                                                                                                                                                                                                                                                |
+| Package grants     | `accessGrant` / grant invites / package invite links    | Same, plus the Grants page and per-person **Access** (`/@<slug>/-/grants/user/<userId>`)                                                                                                                                                                           |
+| Resource web pages | Secrets, jobs, repositories, apps, agents, and the rest | Every resource page reads the org. Agents lists connections approved for that org; **Repositories** lists packages you can see plus every plain repo the org owns (API/CLI still say `package`); **Apps** (`/@<slug>/-/apps`) lists packages with `kody.app.entry` |
 
 Switch orgs from the workspace name at the top of the workspace rail (it keeps
 the section you are on), from the avatar menu's Manage group, or pick the org at
@@ -115,6 +189,7 @@ is reserved, so no person or org can claim that handle.
 Handy settings links: [`/@me/-/settings`](https://kody.codes/@me/-/settings),
 [`/@me/-/secrets`](https://kody.codes/@me/-/secrets),
 [`/@me/-/agents`](https://kody.codes/@me/-/agents),
+[`/@me/-/apps`](https://kody.codes/@me/-/apps),
 [`/@me/-/email`](https://kody.codes/@me/-/email),
 [`/@me/-/jobs`](https://kody.codes/@me/-/jobs),
 [`/@me/-/activity`](https://kody.codes/@me/-/activity), and
@@ -357,3 +432,17 @@ until one is paid or deleted.
 When an org is Pro, each live Owner and Member is a seat, and each seat grows
 the org's execute pool. Billing-only members and outside collaborators are not
 seats. See [Share a package](/docs/package-sharing) for grants vs membership.
+
+## Move a Pro plan
+
+An Owner of two orgs can move unused prepaid Pro value from one org to another
+they own: **Usage and billing** → **Move this plan to another organization**
+(`/@<slug>/-/billing/move-plan`). Packages, credentials, members, and wallets
+stay put. The source org drops to Free limits. Starting a move needs a live
+Owner of both orgs. Until the target is credited, a live Owner of either org can
+cancel it. Retry needs a live Owner of the org whose billing page you use;
+before the credit, the move re-checks that the person who started it still owns
+both orgs, and after the credit it finishes without that check. Billing admins
+cannot start, retry, or cancel a move. A Free target buys Pro at Stripe Checkout
+first; a target that already has Pro only receives the credit. Retired prices,
+canceling subscriptions, and mismatched currencies are refused.

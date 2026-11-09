@@ -1,7 +1,7 @@
 import { canonicalJsonStringify } from '@kody-internal/shared/canonical-json.ts'
 import { toHex } from '@kody-internal/shared/hex.ts'
 import { buildJsonErrorResponse } from './responses.ts'
-import { type PackageInvocationStoredResponse } from './repo.ts'
+import type { PackageInvocationStoredResponse } from './repo.ts'
 
 /**
  * The fields `resolveExistingInvocation` needs from a RunLog DO ledger

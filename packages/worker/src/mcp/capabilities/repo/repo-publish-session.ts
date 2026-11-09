@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
@@ -20,6 +20,7 @@ import {
 	repoPublishSessionOutputSchema,
 } from './repo-shared.ts'
 import { rebuildPublishedPackageArtifactsViaRepoSession } from './package-artifact-rebuild.ts'
+import { settleFailedPublishRebuild } from './settle-failed-publish-rebuild.ts'
 import { reportCapabilityProgress } from '#mcp/progress.ts'
 import {
 	buildPackagePublishApprovalUrl,
@@ -35,6 +36,7 @@ import {
 import { optionalApprovalViewerForCaller } from '#mcp/capabilities/packages/approval-bundle-shared.ts'
 import { CommunityActionError } from '#worker/community/errors.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
+import { UserCodeError } from '#worker/user-code-error.ts'
 import { isDurableObjectIsolateResourceLimitResetError } from '#worker/durable-object-reset-retry.ts'
 import {
 	isPublishComputeLimitMessage,
@@ -126,6 +128,18 @@ export const repoPublishSessionCapability = defineDomainCapability(
 						userId: owner.ownerUserId,
 						publishedCommit: result.publishedCommit,
 						baseUrl: ctx.callerContext.baseUrl,
+					}).catch(async (error: unknown) => {
+						throw toPublishComputeLimitCallerError(
+							await settleFailedSessionRebuild({
+								env: ctx.env,
+								baseUrl: ctx.callerContext.baseUrl,
+								ownerUserId: owner.ownerUserId,
+								sourceId: sessionInfo.source_id,
+								failedCommit: result.publishedCommit,
+								sessionBaseCommit: sessionInfo.base_commit,
+								error,
+							}),
+						)
 					})
 					const absorbNotice = args.absorbed_upstream_commit
 						? await absorbForkUpstreamAfterPublish({
@@ -280,6 +294,59 @@ export const repoPublishSessionCapability = defineDomainCapability(
 		},
 	},
 )
+
+/**
+ * The session base is the commit that served before this publish (also when
+ * resuming one an interrupted attempt already promoted), so a failed rebuild
+ * restores it. Returns the error to throw, naming where the pointer landed.
+ */
+async function settleFailedSessionRebuild(input: {
+	env: Env
+	baseUrl: string
+	ownerUserId: OwnerId
+	sourceId: string
+	failedCommit: string
+	sessionBaseCommit: string
+	error: unknown
+}) {
+	const source = await getEntitySourceByIdForUser(input.env.APP_DB, {
+		id: input.sourceId,
+		userId: input.ownerUserId,
+	})
+	if (!source) return input.error
+	let settled: Awaited<ReturnType<typeof settleFailedPublishRebuild>>
+	try {
+		settled = await settleFailedPublishRebuild({
+			env: input.env,
+			baseUrl: input.baseUrl,
+			ownerUserId: input.ownerUserId,
+			packageId: source.entity_id,
+			sourceId: input.sourceId,
+			failedCommit: input.failedCommit,
+			restoreCommit: input.sessionBaseCommit || null,
+			sentryScope: 'repoPublishSession.restore-after-rebuild-failure',
+		})
+	} catch {
+		// The settle reported its own failure; the caller needs the rebuild's.
+		return input.error
+	}
+	const notice =
+		settled === 'restored'
+			? `This publish did not land: published_commit was rolled back to "${input.sessionBaseCommit}", which keeps serving. Commit "${input.failedCommit}" stays on the source branch; publish it again with packagePublishExternalPush.`
+			: settled === 'superseded'
+				? 'This publish did not land; a newer publish already owns published_commit.'
+				: null
+	if (!notice) return input.error
+	const message = `${getErrorMessage(input.error)} ${notice}`
+	const options = { cause: input.error }
+	if (input.error instanceof McpCallerError) {
+		return new McpCallerError(message, options)
+	}
+	if (input.error instanceof UserCodeError) {
+		return new UserCodeError(message, options)
+	}
+	return new Error(message, options)
+}
 
 async function absorbForkUpstreamAfterPublish(input: {
 	env: Env

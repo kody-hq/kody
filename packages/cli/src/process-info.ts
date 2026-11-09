@@ -3,11 +3,11 @@ export type ProcessInfo = {
 	cmd?: string
 }
 
-export function processHaystack(process: ProcessInfo): string {
+function processHaystack(process: ProcessInfo): string {
 	return `${process.name} ${process.cmd ?? ''}`
 }
 
-export function processBaseName(process: ProcessInfo): string {
+function processBaseName(process: ProcessInfo): string {
 	return process.name
 		.replace(/\.exe$/iu, '')
 		.trim()

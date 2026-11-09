@@ -1,4 +1,4 @@
-import { type CapabilitySpec } from '#mcp/capabilities/types.ts'
+import type { CapabilitySpec } from '#mcp/capabilities/types.ts'
 
 export type KodyCapabilityNamespace = 'mcp'
 

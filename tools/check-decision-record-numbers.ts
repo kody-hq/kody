@@ -1,6 +1,20 @@
+import { execFileSync } from 'node:child_process'
 import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
+import {
+	isBaseBranchCheckout,
+	mustYieldMigrationPrefix,
+	resolveTrustedMigrationBase,
+	shouldEnforceOpenPullRequestOverlaps,
+	suggestFreeMigrationPrefix,
+} from './check-migrations.ts'
 import { isExecutedDirectly } from './node-runtime.ts'
+import {
+	resolveCurrentPullNumber,
+	formatOversizedPullRequestsWarning,
+	scanOpenPullRequestFiles,
+	type OpenPullRequestFileScan,
+} from './open-pull-request-migration-prefixes.ts'
 
 export const defaultDecisionsDir = path.join(
 	'docs',
@@ -29,6 +43,7 @@ export type DecisionRecordFile = {
 export type DecisionRecordNumberCheckResult = {
 	ok: boolean
 	errors: Array<string>
+	records: Array<DecisionRecordFile>
 }
 
 export function classifyDecisionRecordFilename(
@@ -211,15 +226,250 @@ export async function checkDecisionRecordNumbers(
 	return {
 		ok: errors.length === 0,
 		errors,
+		records,
 	}
 }
 
-export async function main(cwd: string = process.cwd()): Promise<void> {
+export type OpenPullRequestDecisionOverlap = {
+	prefix: string
+	pullNumbers: Array<number>
+}
+
+export type OpenPullRequestDecisionAdvisory = {
+	lines: Array<string>
+	warning: string | null
+	overlaps: Array<OpenPullRequestDecisionOverlap>
+	/** Overlaps this checkout must give up: the lowest open PR number keeps a number. */
+	blockingOverlaps: Array<OpenPullRequestDecisionOverlap>
+	suggestedPrefix: string | null
+}
+
+/**
+ * Compares the primary decision numbers this checkout adds (not in the trusted
+ * base) with those other open pull requests add. Lab companions never claim.
+ */
+export function formatOpenPullRequestDecisionAdvisory(input: {
+	records: ReadonlyArray<DecisionRecordFile>
+	/** Decision filenames already on the trusted base; null when unknown. */
+	baseFilenames: ReadonlySet<string> | null
+	scan: OpenPullRequestFileScan
+	currentPullNumber: number | null
+	isBaseBranchCheckout: boolean
+}): OpenPullRequestDecisionAdvisory {
+	const empty = {
+		lines: [],
+		overlaps: [],
+		blockingOverlaps: [],
+		suggestedPrefix: null,
+	}
+	if (input.scan.status === 'skipped') {
+		const silent =
+			input.scan.reason === 'no-token' || input.scan.reason === 'no-repository'
+		return {
+			...empty,
+			warning: silent
+				? null
+				: `Open pull request decision-number scan skipped: ${(input.scan.detail ?? input.scan.reason).replace(/\.+$/u, '')}.`,
+		}
+	}
+	if (input.baseFilenames === null) {
+		return {
+			...empty,
+			warning:
+				'Open pull request decision-number check skipped: no trusted Git base to tell new records from existing ones.',
+		}
+	}
+	const baseFilenames = input.baseFilenames
+	const primaries = input.records.filter((record) => record.kind === 'primary')
+	const newPrefixes = new Set(
+		primaries
+			.filter((record) => !baseFilenames.has(record.filename))
+			.map((record) => record.prefix),
+	)
+	const claimsByPrefix = new Map<string, Set<number>>()
+	for (const claim of input.scan.claims) {
+		for (const filename of claim.filenames) {
+			const record = classifyDecisionRecordFilename(
+				path.posix.basename(filename),
+			)
+			if (record?.kind !== 'primary') continue
+			const numbers = claimsByPrefix.get(record.prefix) ?? new Set<number>()
+			numbers.add(claim.number)
+			claimsByPrefix.set(record.prefix, numbers)
+		}
+	}
+	const overlaps = [...newPrefixes].sort().flatMap((prefix) => {
+		const numbers = claimsByPrefix.get(prefix)
+		return numbers
+			? [{ prefix, pullNumbers: [...numbers].sort((a, b) => a - b) }]
+			: []
+	})
+	const blockingOverlaps = overlaps.filter((group) =>
+		mustYieldMigrationPrefix({
+			group,
+			currentPullNumber: input.currentPullNumber,
+			isBaseBranchCheckout: input.isBaseBranchCheckout,
+		}),
+	)
+	const keptPrefixes = new Set(
+		primaries
+			.filter(
+				(record) =>
+					!blockingOverlaps.some((group) => group.prefix === record.prefix),
+			)
+			.map((record) => Number(record.prefix)),
+	)
+	const nextLocal = String(Math.max(0, ...keptPrefixes) + 1).padStart(4, '0')
+	const currentPullNumber = input.currentPullNumber
+	const rank =
+		currentPullNumber === null
+			? 1
+			: Math.max(
+					1,
+					...blockingOverlaps.map(
+						(group) =>
+							group.pullNumbers.filter((number) => number < currentPullNumber)
+								.length,
+					),
+				)
+	const suggestedPrefix = suggestFreeMigrationPrefix({
+		nextPrefix: nextLocal,
+		claimedPrefixes: [...claimsByPrefix.keys()],
+		rank,
+	})
+	const lines: Array<string> = []
+	if (blockingOverlaps.length > 0) {
+		lines.push(
+			'Open pull requests already claim decision number(s) this checkout adds (the lowest PR number keeps a number):',
+			...blockingOverlaps.map(
+				(group) =>
+					`  ${group.prefix}: ${group.pullNumbers.map((number) => `#${String(number)}`).join(', ')}`,
+			),
+			`Renumber to ${suggestedPrefix ?? 'a free number'}: rename the file, its heading, and its index.md entry.`,
+		)
+	}
+	const kept = overlaps.filter((group) => !blockingOverlaps.includes(group))
+	if (kept.length > 0) {
+		lines.push(
+			'Higher-numbered open pull requests reuse decision number(s) this checkout keeps; they must renumber:',
+			...kept.map(
+				(group) =>
+					`  ${group.prefix}: ${group.pullNumbers.map((number) => `#${String(number)}`).join(', ')}`,
+			),
+		)
+	}
+	return {
+		lines,
+		warning: formatOversizedPullRequestsWarning(
+			'Open pull request decision-number',
+			input.scan.oversizedPullNumbers,
+		),
+		overlaps,
+		blockingOverlaps,
+		suggestedPrefix,
+	}
+}
+
+function gitOutputIn(cwd: string, args: ReadonlyArray<string>) {
+	try {
+		return execFileSync('git', [...args], {
+			cwd,
+			encoding: 'utf8',
+			stdio: ['ignore', 'pipe', 'ignore'],
+		}).trim()
+	} catch {
+		return null
+	}
+}
+
+function listBaseDecisionFilenames(
+	cwd: string,
+	base: string,
+	decisionsDir: string,
+): Set<string> | null {
+	const output = gitOutputIn(cwd, [
+		'ls-tree',
+		'--name-only',
+		base,
+		'--',
+		`${decisionsDir.replaceAll(path.sep, '/')}/`,
+	])
+	if (output === null) return null
+	return new Set(
+		output
+			.split('\n')
+			.filter((line) => line.length > 0)
+			.map((line) => path.posix.basename(line)),
+	)
+}
+
+async function readOpenPullRequestDecisionAdvisory(input: {
+	cwd: string
+	env: NodeJS.ProcessEnv
+	records: ReadonlyArray<DecisionRecordFile>
+}): Promise<OpenPullRequestDecisionAdvisory> {
+	const baseBranchCheckout = isBaseBranchCheckout(input.env)
+	const currentPullNumber = baseBranchCheckout
+		? null
+		: resolveCurrentPullNumber(input.env, input.cwd)
+	const scan = await scanOpenPullRequestFiles({
+		env: input.env,
+		cwd: input.cwd,
+		directory: defaultDecisionsDir,
+		currentPullNumber,
+		claimsFile: (file) =>
+			file.status !== 'removed' &&
+			classifyDecisionRecordFilename(file.basename)?.kind === 'primary',
+	})
+	const base =
+		scan.status === 'ok'
+			? await resolveTrustedMigrationBase({
+					env: input.env,
+					git: async (args) => gitOutputIn(input.cwd, args),
+				})
+			: null
+	return formatOpenPullRequestDecisionAdvisory({
+		records: input.records,
+		baseFilenames: base
+			? listBaseDecisionFilenames(input.cwd, base, defaultDecisionsDir)
+			: null,
+		scan,
+		currentPullNumber,
+		isBaseBranchCheckout: baseBranchCheckout,
+	})
+}
+
+export async function main(
+	cwd: string = process.cwd(),
+	env: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
 	const result = await checkDecisionRecordNumbers(cwd)
+	// Advisory only: missing GitHub auth or an API error must not fail the check.
+	const advisory = await readOpenPullRequestDecisionAdvisory({
+		cwd,
+		env,
+		records: result.records,
+	})
+	if (advisory.warning) console.warn(advisory.warning)
 	if (result.ok) {
+		if (
+			advisory.blockingOverlaps.length > 0 &&
+			shouldEnforceOpenPullRequestOverlaps(env)
+		) {
+			console.error(
+				[
+					'Decision-record number check failed: open pull requests claim the same number(s).',
+					...advisory.lines,
+				].join('\n'),
+			)
+			process.exitCode = 1
+			return
+		}
 		console.log('Decision-record number check passed.')
+		for (const line of advisory.lines) console.log(line)
 		return
 	}
+	for (const line of advisory.lines) console.error(line)
 	console.error(
 		[
 			`Decision-record number check failed (${String(result.errors.length)} issue(s)).`,

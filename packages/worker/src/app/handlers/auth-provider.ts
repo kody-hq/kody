@@ -5,8 +5,8 @@ import {
 	createAuthCookie,
 	destroyAuthCookie,
 	isSecureRequest,
-	readAuthSessionResult,
 } from '#app/auth-session.ts'
+import { readLiveAuthSession } from '#app/request-auth-cache.ts'
 import { clearedFactorsAuditReason } from '#app/clear-account-factors.ts'
 import {
 	destroyOauthLoginStateCookie,
@@ -30,7 +30,7 @@ import {
 	createVerifySessionCookie,
 	setVerifySessionSecret,
 } from '#app/verify-session.ts'
-import { type OauthLoginErrorCode } from '#universal/oauth-login-errors.ts'
+import type { OauthLoginErrorCode } from '#universal/oauth-login-errors.ts'
 import { isNonProductionRuntime } from '#app/deployment-env.ts'
 import {
 	assessAccountEmail,
@@ -68,12 +68,22 @@ import { getCallbackRedirectUri } from '#worker/identity/oauth-provider-redirect
 import { recordOnboardingFunnelEvent } from '#worker/identity/onboarding-funnel.ts'
 import { unusablePasswordHash } from '#worker/identity/usable-password.ts'
 import { usernameFromEmail } from '#worker/identity/username.ts'
-import { type OAuthGrantHelpers } from '#worker/oauth-grants.ts'
+import type { OAuthGrantHelpers } from '#worker/oauth-grants.ts'
 import {
 	personIdFromStored,
 	personalOrgId,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import { readGuestAccountByClaimCode } from '#worker/guest/guest-accounts.ts'
+import {
+	convertGuestInPlace,
+	findClaimTargetByDbId,
+	findClaimTargetByEmail,
+	GuestClaimError,
+	guestClaimDonePath,
+	guestComesWithCounts,
+	mergeGuestIntoAccount,
+} from '#worker/guest/guest-claim.ts'
 
 function oauthCodeForAccountEmail(
 	code: AccountEmailRejectionCode,
@@ -215,7 +225,9 @@ export function createAuthProviderCallbackHandler(env: Env) {
 		const requestIp = getRequestIp(request) ?? undefined
 		const loginState = await readOauthLoginState(request)
 		const redirectTo = normalizeRedirectTo(loginState?.redirectTo ?? null)
-		const { session } = await readAuthSessionResult(request)
+		// Signed in means a live session: an expired or password-revoked cookie
+		// must not link a provider to the account it names.
+		const session = (await readLiveAuthSession(request, env)).parsed?.session
 
 		function fail(code: OauthLoginErrorCode, reason: string) {
 			void logAuditEvent({
@@ -381,6 +393,97 @@ export function createAuthProviderCallbackHandler(env: Env) {
 			return redirect(postLoginPath, cookies)
 		}
 
+		async function completeGuestClaim(
+			claim: { code: string; username: string | null },
+			existingConnection: { user_id: number } | null,
+		) {
+			const claimPath = `/claim/${encodeURIComponent(claim.code)}`
+			const back = (error: string) =>
+				redirect(`${claimPath}?error=${encodeURIComponent(error)}`, [
+					clearStateCookie,
+				])
+			const guest = await readGuestAccountByClaimCode(env.APP_DB, claim.code)
+			if (!guest || guest.claimedAt) {
+				return redirect(claimPath, [clearStateCookie])
+			}
+			const email =
+				profile.email && profile.emailVerified
+					? normalizeEmail(profile.email)
+					: null
+			try {
+				const comesWith = await guestComesWithCounts(env, guest)
+				let target = existingConnection
+					? await findClaimTargetByDbId(env.APP_DB, existingConnection.user_id)
+					: null
+				if (!target && !existingConnection && email) {
+					target = await findClaimTargetByEmail(env.APP_DB, email)
+				}
+				if (existingConnection && !target) return back('account_unavailable')
+				if (target) {
+					await mergeGuestIntoAccount({
+						env,
+						guest,
+						target,
+						baseUrl: url.origin,
+						method: 'social',
+						provider,
+					})
+					if (!existingConnection) {
+						await createConnection({
+							provider,
+							profile,
+							userId: target.dbUserId,
+							requireVerifiedEmail: true,
+						}).catch((error: unknown) => {
+							console.warn('guest-claim-link-provider-failed', error)
+						})
+					}
+					return issueLogin(
+						{
+							id: target.dbUserId,
+							stable_user_id: target.personId,
+							email: target.email,
+						},
+						claimPath,
+						{ destination: guestClaimDonePath(claim.code, 'merge', comesWith) },
+					)
+				}
+				if (!email) return back('no_verified_email')
+				const username =
+					claim.username ??
+					(await getAvailableUsernameFromBase(
+						env.APP_DB,
+						profile.username ?? usernameFromEmail(email),
+						env,
+					))
+				await convertGuestInPlace({
+					env,
+					guest,
+					email,
+					username,
+					displayName: profile.displayName,
+					method: 'social',
+					provider,
+				})
+				const user = await db.findOne(usersTable, {
+					where: { stable_user_id: guest.personId },
+				})
+				if (!user) return back('account_unavailable')
+				await createConnection({
+					provider,
+					profile,
+					userId: user.id,
+					requireVerifiedEmail: true,
+				})
+				return issueLogin(user, claimPath, {
+					destination: guestClaimDonePath(claim.code, 'new', comesWith),
+				})
+			} catch (error) {
+				if (error instanceof GuestClaimError) return back(error.code)
+				throw error
+			}
+		}
+
 		let connection = await db.findOne(oauthConnectionsTable, {
 			where: {
 				provider_name: provider,
@@ -396,6 +499,11 @@ export function createAuthProviderCallbackHandler(env: Env) {
 				: null
 		const releasedUsernames: Array<string> = []
 		if (supersededAccount) connection = null
+
+		// 0. Claiming a guest account from /claim/<code>.
+		if (loginState.guestClaim) {
+			return completeGuestClaim(loginState.guestClaim, connection)
+		}
 
 		// 1. A signed-in user links the provider identity to their account
 		// (an existing connection for another user is a conflict, never an

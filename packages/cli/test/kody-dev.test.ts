@@ -57,7 +57,7 @@ test('kody dev check passes on the fixture', async () => {
 	const code = await runDevCheck({
 		target: 'mock',
 		cwd: fixtureRoot,
-		runPublishChecks: async (files) => {
+		runPublishChecks: async ({ files }) => {
 			sentFiles = Object.keys(files)
 			return { ok: true, checks: [{ kind: 'manifest', ok: true, message: '' }] }
 		},

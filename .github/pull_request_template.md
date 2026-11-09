@@ -34,6 +34,16 @@ short: what breaks, who is affected, and the fix. Prefer counts over handles
 in public text. See docs/contributing/release-notes.md.
 -->
 
+## Featured screenshot(s)
+
+<!--
+Only if there are relevant and interesting UI changes.
+These images may be featured in public release posts, so hold a high bar:
+only polished, user-facing UI worth showing off. No real user names, private
+packages, or secrets visible. Add a one-line caption under each image; it
+becomes the alt text.
+-->
+
 ## Referenced issues and PRs
 
 <!--

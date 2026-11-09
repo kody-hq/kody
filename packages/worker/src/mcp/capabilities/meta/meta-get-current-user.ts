@@ -5,9 +5,10 @@ import {
 	emptyCapabilityInputSchema,
 	type CapabilityContext,
 } from '#mcp/capabilities/types.ts'
-import { type McpUserContext } from '@kody-internal/shared/chat.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { McpUserContext } from '@kody-internal/shared/chat.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { resolveDisplayName } from '#worker/identity/username.ts'
+import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import { loadRunningProfile } from '#worker/profiles/running-profile.ts'
 import { getMcpUserPackageScope } from '#worker/package-registry/user-scope.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
@@ -24,7 +25,19 @@ const outputSchema = z.object({
 	]),
 	display_name: z.string(),
 	org: z.object({
-		slug: z.string().describe('Package scope and package-app subdomain.'),
+		slug: z
+			.string()
+			.describe(
+				'Workspace this request acts in (package scope and package-app subdomain). Not the compute venue.',
+			),
+		personal: z
+			.boolean()
+			.describe(
+				'True when this workspace is the caller’s personal workspace. Local execute is a compute venue and does not imply personal.',
+			),
+		kind: z
+			.enum(['personal', 'team'])
+			.describe('personal or team workspace kind for this request.'),
 	}),
 	profile: z
 		.object({
@@ -81,7 +94,7 @@ export const metaGetCurrentUserCapability = defineDomainCapability(
 		contextRuns: 'allow',
 		orgPermission: 'none',
 		description:
-			'Get harmless identity fields for the signed-in MCP user: id, username, email, display name, and the slug of the org this request acts in. Email is empty when the caller is a team org rather than a person. Use email and display_name as git user.email / user.name on Kody remotes when a git-remote result is not already in hand.',
+			'Get harmless identity fields for the signed-in MCP user: id, username, email, display name, and the workspace (org slug + personal/team kind) this request acts in. Email is empty when the caller is a team org rather than a person. The workspace owns resources and is what runs act as; it is not the compute venue (local vs cloud). Use email and display_name as git user.email / user.name on Kody remotes when a git-remote result is not already in hand.',
 		keywords: [
 			'user',
 			'current user',
@@ -90,6 +103,9 @@ export const metaGetCurrentUserCapability = defineDomainCapability(
 			'account',
 			'email',
 			'name',
+			'workspace',
+			'org',
+			'personal',
 		],
 		readOnly: true,
 		idempotent: true,
@@ -105,12 +121,17 @@ export const metaGetCurrentUserCapability = defineDomainCapability(
 			const username =
 				request.actor?.username ??
 				(await getMcpUserPackageScope(ctx.env.APP_DB, user))
+			const personal = await isPersonalOrg(ctx.env.APP_DB, request.org.id)
 			return {
 				user_id: user.userId,
 				username,
 				email: user.email,
 				display_name: user.displayName,
-				org: { slug: request.org.slug ?? username },
+				org: {
+					slug: request.org.slug ?? username,
+					personal,
+					kind: personal ? ('personal' as const) : ('team' as const),
+				},
 				profile: await loadRunningProfile(ctx.env.APP_DB, request),
 			}
 		},

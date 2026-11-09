@@ -33,12 +33,16 @@ import {
 } from '#worker/credentials/fill-placement.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import {
-	type JoinedIntegration,
-	type UserIntegrationConnection,
-	type UserIntegrationRow,
-	type UserOauthApp,
-	type UserOauthAppRow,
-	type UserOauthAppWithConnectionCount,
+	grantedScopesSourceValues,
+	type GrantedScopes,
+} from '#worker/integrations/granted-scopes.ts'
+import type {
+	JoinedIntegration,
+	UserIntegrationConnection,
+	UserIntegrationRow,
+	UserOauthApp,
+	UserOauthAppRow,
+	UserOauthAppWithConnectionCount,
 } from './types.ts'
 
 type NullablePrefixed<TRow, TPrefix extends string> = {
@@ -68,6 +72,9 @@ type JoinedIntegrationRow = NullablePrefixed<UserOauthAppRow, 'a_'> &
 		auth_failed_http_status: number | null
 		auth_failed_reconnectable: number | null
 		refresh_policy: string | null
+		granted_scopes_json: string | null
+		granted_scopes_source: string | null
+		granted_scopes_checked_at: string | null
 		connection_created_at: string
 		connection_updated_at: string
 	}
@@ -162,6 +169,9 @@ const joinedSelectColumns = `
 	i.auth_failed_http_status AS auth_failed_http_status,
 	i.auth_failed_reconnectable AS auth_failed_reconnectable,
 	i.refresh_policy AS refresh_policy,
+	i.granted_scopes_json AS granted_scopes_json,
+	i.granted_scopes_source AS granted_scopes_source,
+	i.granted_scopes_checked_at AS granted_scopes_checked_at,
 	i.created_at AS connection_created_at,
 	i.updated_at AS connection_updated_at
 `
@@ -267,6 +277,27 @@ export async function findOauthAppByClientCredentials(input: {
 	return row ? mapOauthAppRow(row) : null
 }
 
+/** Apps whose token endpoint and client id both match: who a stored secret may go to. */
+export async function listOauthAppsByTokenEndpoint(input: {
+	db: D1Database
+	userId: string
+	clientId: string
+	tokenUrl: string
+}): Promise<Array<UserOauthApp>> {
+	const result = await input.db
+		.prepare(
+			`SELECT ${appSelectColumns}
+			FROM user_oauth_apps
+			WHERE user_id = ?
+				AND client_id = ?
+				AND token_url = ?${andLiveDeletedAtSql()}
+			ORDER BY slug ASC`,
+		)
+		.bind(input.userId, input.clientId, input.tokenUrl)
+		.all<UserOauthAppRow>()
+	return (result.results ?? []).map(mapOauthAppRow)
+}
+
 /** Match an app only when the full app-level tuple agrees (not just credentials). */
 export async function findOauthAppByAppTuple(input: {
 	db: D1Database
@@ -368,6 +399,17 @@ export async function countConnectionsForApp(input: {
 	return Number(row?.count ?? 0)
 }
 
+/**
+ * A stored client secret belongs to the client id and token URL it was saved
+ * with; changing either drops it so it can never reach another endpoint.
+ */
+const keepSecretWhenSameEndpointSql = `CASE
+	WHEN user_oauth_apps.client_id = excluded.client_id
+		AND user_oauth_apps.token_url = excluded.token_url
+	THEN user_oauth_apps.client_secret_encrypted
+	ELSE NULL
+END`
+
 export async function upsertOauthApp(input: {
 	db: D1Database
 	row: Omit<
@@ -394,6 +436,7 @@ export async function upsertOauthApp(input: {
 			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(user_id, slug)
 			DO UPDATE SET
+				client_secret_encrypted = ${keepSecretWhenSameEndpointSql},
 				provider = excluded.provider,
 				label = excluded.label,
 				client_id = excluded.client_id,
@@ -434,16 +477,24 @@ export async function updateOauthAppClientCredentials(input: {
 	userId: string
 	slug: string
 	clientId: string
+	/** Written with the new client id; otherwise a changed client id drops the old secret. */
+	clientSecretEncrypted?: string
 	updatedAt?: string
 }): Promise<boolean> {
 	const result = await input.db
 		.prepare(
 			`UPDATE user_oauth_apps
-			SET client_id = ?,
+			SET client_secret_encrypted = COALESCE(?, CASE
+					WHEN client_id = ? THEN client_secret_encrypted
+					ELSE NULL
+				END),
+				client_id = ?,
 				updated_at = ?
 			WHERE user_id = ? AND slug = ?${andLiveDeletedAtSql()}`,
 		)
 		.bind(
+			input.clientSecretEncrypted ?? null,
+			input.clientId,
 			input.clientId,
 			input.updatedAt ?? new Date().toISOString(),
 			input.userId,
@@ -950,6 +1001,74 @@ export function mapOauthAppRow(row: UserOauthAppRow): UserOauthApp {
 	}
 }
 
+function mapGrantedScopes(row: UserIntegrationRow): GrantedScopes | null {
+	const source = row.granted_scopes_source
+	if (
+		row.granted_scopes_json == null ||
+		!row.granted_scopes_checked_at ||
+		!grantedScopesSourceValues.some((value) => value === source)
+	) {
+		return null
+	}
+	return {
+		scopes: parseJsonStringArray(row.granted_scopes_json),
+		source: source as GrantedScopes['source'],
+		checkedAt: row.granted_scopes_checked_at,
+	}
+}
+
+/** Records what the provider granted on the token just stored for one connection. */
+export async function recordIntegrationGrantedScopes(input: {
+	db: D1Database
+	userId: string
+	name: string
+	granted: GrantedScopes | null
+}): Promise<void> {
+	await input.db
+		.prepare(
+			`UPDATE user_integrations
+			SET granted_scopes_json = ?,
+				granted_scopes_source = ?,
+				granted_scopes_checked_at = ?
+			WHERE user_id = ? AND name = ?${andLiveDeletedAtSql()}`,
+		)
+		.bind(
+			input.granted ? JSON.stringify(input.granted.scopes) : null,
+			input.granted?.source ?? null,
+			input.granted?.checkedAt ?? null,
+			input.userId,
+			input.name,
+		)
+		.run()
+}
+
+/**
+ * Changes the scopes one platform connection requests on its next connect.
+ * Touches only that connection row: the platform app's default and allowed
+ * scopes and every sibling connection keep their own lists.
+ */
+export async function updatePlatformIntegrationRequestedScopes(input: {
+	db: D1Database
+	userId: string
+	name: string
+	scopes: Array<string>
+}): Promise<boolean> {
+	const result = await input.db
+		.prepare(
+			`UPDATE user_integrations
+			SET scopes_json = ?, updated_at = ?
+			WHERE user_id = ? AND name = ? AND platform_app_slug IS NOT NULL${andLiveDeletedAtSql()}`,
+		)
+		.bind(
+			JSON.stringify(input.scopes),
+			new Date().toISOString(),
+			input.userId,
+			input.name,
+		)
+		.run()
+	return (result.meta.changes ?? 0) > 0
+}
+
 export function mapIntegrationRow(
 	row: UserIntegrationRow,
 ): UserIntegrationConnection {
@@ -972,6 +1091,7 @@ export function mapIntegrationRow(
 		tokenRefreshedAt: row.token_refreshed_at,
 		lastAuthFailure: mapLastAuthFailure(row, refreshPolicy),
 		refreshPolicy,
+		grantedScopes: mapGrantedScopes(row),
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	}
@@ -1194,6 +1314,9 @@ function mapJoinedRow(row: JoinedIntegrationRow): JoinedIntegration {
 		auth_failed_http_status: row.auth_failed_http_status,
 		auth_failed_reconnectable: row.auth_failed_reconnectable,
 		refresh_policy: row.refresh_policy,
+		granted_scopes_json: row.granted_scopes_json,
+		granted_scopes_source: row.granted_scopes_source,
+		granted_scopes_checked_at: row.granted_scopes_checked_at,
 		created_at: row.connection_created_at,
 		updated_at: row.connection_updated_at,
 	})

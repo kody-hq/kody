@@ -5,7 +5,7 @@ import {
 import { isRecord } from '@kody-internal/shared/is-record.ts'
 
 import { BackupError } from './backup-policy.ts'
-import { type BackupEnvironment } from './backup-types.ts'
+import type { BackupEnvironment } from './backup-types.ts'
 
 const ACCESS_JWT_HEADER = 'cf-access-jwt-assertion'
 const JWKS_CACHE_TTL_MS = 60 * 60 * 1000

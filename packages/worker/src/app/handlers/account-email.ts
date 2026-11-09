@@ -1,5 +1,5 @@
 import { clearOutboundDeliveryPause } from '#worker/email/outbound-consecutive-failures.ts'
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { operationResult } from '#app/operation-result.ts'
 import { authorize } from '#worker/authorization/authorize.ts'
 import {

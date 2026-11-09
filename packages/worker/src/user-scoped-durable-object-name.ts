@@ -13,7 +13,7 @@
  * McpClientHub, do not trim: RunLog, UserMeter, Mailbox, RepoSessionIndex,
  * and JobManager names are the stored id bytes.
  */
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 
 /**
  * Encode Durable Object name parts as a JSON tuple. Prefer the typed helpers

@@ -1,5 +1,5 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type CommunityListingCategory } from '#universal/community-categories.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { CommunityListingCategory } from '#universal/community-categories.ts'
 
 export type CommunityListingStatus = 'active' | 'delisted'
 
@@ -318,15 +318,6 @@ export type CommunityBanRecord = {
 	userId: string
 	bannedByUserId: string
 	reason: string
-	createdAt: string
-}
-
-export type CommunitySnapshot = {
-	version: 1
-	listingId: string
-	pinnedCommit: string
-	files: Record<string, string>
-	communityIconPath?: string | null
 	createdAt: string
 }
 

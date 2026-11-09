@@ -1,23 +1,28 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
-import {
-	type JobsHostContract,
-	type RunDueJobsResult,
-	type RunJobNowResult,
-	type SettleHungDueJobsResult,
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type {
+	JobsHostContract,
+	RunDueJobsResult,
+	RunJobNowResult,
+	SettleHungDueJobsResult,
 } from '@kody-internal/shared/jobs/rpc.ts'
-import { type ScheduledLaneMessage } from '@kody-internal/shared/jobs/scheduled-lanes.ts'
+import type { ScheduledLaneMessage } from '@kody-internal/shared/jobs/scheduled-lanes.ts'
+import type { PacedRestoreDrillCheckpoint } from '@kody-internal/shared/backup-d1-paced-drill-alert.ts'
 import * as Sentry from '@sentry/cloudflare'
 import { WorkerEntrypoint } from 'cloudflare:workers'
-import { getWorkerSentryOptions } from '#worker/sentry-options.ts'
+import { getWorkerEntrypointSentryOptions } from '#worker/sentry-options.ts'
 import { runScheduledLaneWithFailureIsolation } from '#worker/scheduled/scheduled-lanes.ts'
 import { runWithDynamicWorkerEvaluationBudget } from '#worker/dynamic-worker-evaluation-budget.ts'
+import {
+	pacedRestoreDrillCheckpointFromProgress,
+	readLatestD1PacedRestoreDrill,
+} from '#worker/dr/d1-paced-restore-drill-progress.ts'
 import {
 	runDueJobsForUser,
 	runJobNow,
 	settleHungDueJobsForUser,
 } from './service.ts'
-import { type JobRepoCheckPolicy } from './types.ts'
+import type { JobRepoCheckPolicy } from './types.ts'
 
 /**
  * `JobsHost` — the main worker's callback entrypoint for the jobs worker
@@ -90,18 +95,16 @@ class JobsHostEntrypoint
 				}),
 		)
 	}
+
+	async readD1PacedRestoreDrillCheckpoint(): Promise<PacedRestoreDrillCheckpoint | null> {
+		return pacedRestoreDrillCheckpointFromProgress(
+			await readLatestD1PacedRestoreDrill(this.env.APP_DB),
+		)
+	}
 }
 
-/**
- * RPC methods on a bare `WorkerEntrypoint` run with no Sentry client, so
- * `Sentry.captureException` inside them (every `scheduled_lane_failed`,
- * including the DR staging watchdog) was dropped silently. Wrapping the class
- * gives each RPC call its own client and flush.
- */
 export const JobsHost = Sentry.withSentry(
-	// No DSN (including test envs) must stay disabled; `undefined` lets the
-	// SDK fall back to `env.SENTRY_DSN` without our filters.
-	(env: Env) => getWorkerSentryOptions(env) ?? { enabled: false },
+	getWorkerEntrypointSentryOptions,
 	JobsHostEntrypoint,
 )
 export type JobsHost = JobsHostEntrypoint

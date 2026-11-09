@@ -6,7 +6,7 @@ import {
 	toProfileShellLoaderData,
 	toProfileListLoaderData,
 } from '#universal/loader-data.ts'
-import { type CommunityProfileRecord } from '#worker/community/types.ts'
+import type { CommunityProfileRecord } from '#worker/community/types.ts'
 
 const alicePersonId = 'stable-alice'
 const aliceOrgId = 'org-alice-personal'

@@ -2,7 +2,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
 
 export const authenticateWebsite = createServerFn({ method: 'POST' })
-	.inputValidator(z.record(z.string(), z.unknown()))
+	.validator(z.record(z.string(), z.unknown()))
 	.handler(async ({ data }) => {
 		const [
 			{ authenticateWebsite: operation },
@@ -23,7 +23,7 @@ export const authenticateWebsite = createServerFn({ method: 'POST' })
 	})
 
 export const requestWebsitePasswordReset = createServerFn({ method: 'POST' })
-	.inputValidator(z.record(z.string(), z.unknown()))
+	.validator(z.record(z.string(), z.unknown()))
 	.handler(async ({ data }) => {
 		const [
 			{ requestWebsitePasswordReset: operation },
@@ -44,7 +44,7 @@ export const requestWebsitePasswordReset = createServerFn({ method: 'POST' })
 	})
 
 export const confirmWebsitePasswordReset = createServerFn({ method: 'POST' })
-	.inputValidator(z.record(z.string(), z.unknown()))
+	.validator(z.record(z.string(), z.unknown()))
 	.handler(async ({ data }) => {
 		const [
 			{ confirmWebsitePasswordReset: operation },
@@ -65,7 +65,7 @@ export const confirmWebsitePasswordReset = createServerFn({ method: 'POST' })
 	})
 
 export const verifyWebsiteTwoFactor = createServerFn({ method: 'POST' })
-	.inputValidator(z.record(z.string(), z.unknown()))
+	.validator(z.record(z.string(), z.unknown()))
 	.handler(async ({ data }) => {
 		const [
 			{ verifyWebsiteTwoFactor: operation },
@@ -86,7 +86,7 @@ export const verifyWebsiteTwoFactor = createServerFn({ method: 'POST' })
 	})
 
 export const requestWebsiteEmailChange = createServerFn({ method: 'POST' })
-	.inputValidator(z.record(z.string(), z.unknown()))
+	.validator(z.record(z.string(), z.unknown()))
 	.handler(async ({ data }) => {
 		const [{ requestWebsiteEmailChange: operation }, { publishAuthResult }] =
 			await Promise.all([
@@ -107,7 +107,7 @@ export const requestWebsiteEmailChange = createServerFn({ method: 'POST' })
 	})
 
 export const requestWebsiteEmailRelease = createServerFn({ method: 'POST' })
-	.inputValidator(z.record(z.string(), z.unknown()))
+	.validator(z.record(z.string(), z.unknown()))
 	.handler(async ({ data }) => {
 		const [{ requestWebsiteEmailRelease: operation }, { publishAuthResult }] =
 			await Promise.all([
@@ -128,7 +128,7 @@ export const requestWebsiteEmailRelease = createServerFn({ method: 'POST' })
 	})
 
 export const resendWebsiteVerification = createServerFn({ method: 'POST' })
-	.inputValidator(z.record(z.string(), z.unknown()))
+	.validator(z.record(z.string(), z.unknown()))
 	.handler(async ({ data }) => {
 		const [{ resendWebsiteVerification: operation }, { publishAuthResult }] =
 			await Promise.all([
@@ -149,7 +149,7 @@ export const resendWebsiteVerification = createServerFn({ method: 'POST' })
 	})
 
 export const webauthnRegistrationOptions = createServerFn({ method: 'POST' })
-	.inputValidator(z.record(z.string(), z.unknown()))
+	.validator(z.record(z.string(), z.unknown()))
 	.handler(async ({ data }) => {
 		const [{ webauthnRegistrationOptions: operation }, { publishAuthResult }] =
 			await Promise.all([
@@ -170,7 +170,7 @@ export const webauthnRegistrationOptions = createServerFn({ method: 'POST' })
 	})
 
 export const webauthnRegistrationVerify = createServerFn({ method: 'POST' })
-	.inputValidator(z.record(z.string(), z.unknown()))
+	.validator(z.record(z.string(), z.unknown()))
 	.handler(async ({ data }) => {
 		const [{ webauthnRegistrationVerify: operation }, { publishAuthResult }] =
 			await Promise.all([
@@ -196,7 +196,7 @@ export const webauthnRegistrationVerify = createServerFn({ method: 'POST' })
 	})
 
 export const webauthnAuthenticationOptions = createServerFn({ method: 'POST' })
-	.inputValidator(z.record(z.string(), z.unknown()))
+	.validator(z.record(z.string(), z.unknown()))
 	.handler(async ({ data }) => {
 		const [
 			{ webauthnAuthenticationOptions: operation },
@@ -217,7 +217,7 @@ export const webauthnAuthenticationOptions = createServerFn({ method: 'POST' })
 	})
 
 export const webauthnAuthenticationVerify = createServerFn({ method: 'POST' })
-	.inputValidator(z.record(z.string(), z.unknown()))
+	.validator(z.record(z.string(), z.unknown()))
 	.handler(async ({ data }) => {
 		const [
 			{ webauthnAuthenticationVerify: operation },
@@ -254,7 +254,7 @@ export const readWebsiteAuthProviders = createServerFn({
 	return publicAuthProvidersLoaderData(getEnv(env))
 })
 export const startWebsiteOAuth = createServerFn({ method: 'POST' })
-	.inputValidator(
+	.validator(
 		z.object({
 			provider: z.string(),
 			search: z.string(),
@@ -289,7 +289,7 @@ export const startWebsiteOAuth = createServerFn({ method: 'POST' })
 export const checkWebsiteUsernameAvailability = createServerFn({
 	method: 'POST',
 })
-	.inputValidator(z.record(z.string(), z.unknown()))
+	.validator(z.record(z.string(), z.unknown()))
 	.handler(async ({ data }) => {
 		const [
 			{ checkWebsiteUsernameAvailability: operation },
@@ -309,7 +309,7 @@ export const checkWebsiteUsernameAvailability = createServerFn({
 	})
 
 export const completeOauthPendingSignup = createServerFn({ method: 'POST' })
-	.inputValidator(z.record(z.string(), z.unknown()))
+	.validator(z.record(z.string(), z.unknown()))
 	.handler(async ({ data }) => {
 		const [
 			{ completeOauthPendingSignup: operation },

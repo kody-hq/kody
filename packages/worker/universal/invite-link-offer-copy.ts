@@ -1,4 +1,4 @@
-import { type OrgInviteJoinLoaderData } from '#universal/loader-data.ts'
+import type { OrgInviteJoinLoaderData } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
 import { orgOverviewPath } from '#universal/org-pages.ts'
 

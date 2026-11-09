@@ -4,7 +4,7 @@ import {
 	incidentMinutesForDay,
 	type IncidentSpan,
 } from './day-bars.ts'
-import { type ComponentDayStat } from './status-types.ts'
+import type { ComponentDayStat } from './status-types.ts'
 
 function day(overrides: Partial<ComponentDayStat> = {}): ComponentDayStat {
 	return {

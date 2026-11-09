@@ -19,8 +19,7 @@ owners plus the billing role, and budgets that apply to outside collaborators.
 [ADR 0051](./0051-include-credits-stop.md) chose **include → credits → stop**
 for purchasable Pro on personal accounts. Org billing uses the same customer
 story for usage past the include. Stripe must resolve org identity on new
-objects via `kody_org_id`; migrated personal orgs keep `kody_stable_user_id` in
-metadata (same id as `orgs.id`).
+objects via `kody_org_id`.
 
 As first accepted, this record dropped a paid org with
 $0 credits to Free rate,
@@ -43,9 +42,9 @@ keeps its full include and is never downgraded.
   member. The monthly Worker compute and Rows read includes stay one per org.
 - **Kody-only Stripe mutations:** Billing code may only read-modify
   subscriptions that carry a known Kody price (purchasable Pro or retired
-  Standard/Pro ids) or Kody metadata (`kody_org_id`, `kody_stable_user_id`,
-  `kody_plan`). Shared-account products such as GratiText Premium must never be
-  listed as "the" Kody subscription for seat sync, portal plan changes, or
+  Standard/Pro ids) or Kody metadata (`kody_org_id`, `kody_plan`).
+  Shared-account products such as GratiText Premium must never be listed as
+  "the" Kody subscription for seat sync, portal plan changes, or
   account-deletion cancels.
 - **No P6 price migration:** Existing subscribers inherit their current
   subscription exactly, including retired prices. P6 does not move anyone off a
@@ -62,9 +61,9 @@ keeps its full include and is never downgraded.
   soft-delete cancels Kody subscriptions and its stored Stripe plan is stale.
   The restore cap still counts other live orgs using their effective plans.
 - **Stripe metadata:** New checkout, subscription, and customer objects set
-  `kody_org_id`. During personal-org dual-resolve, also set
-  `kody_stable_user_id` to the same org id; migrated orgs continue to rely on
-  `kody_stable_user_id` until cleanup drops the legacy key.
+  `kody_org_id`. The personal-org dual-write of `kody_stable_user_id` was
+  removed once no live Stripe object relied on it (#3675); objects without
+  `kody_org_id` resolve through `orgs.stripe_customer_id`.
 - **Billing notifications:** Email owners and users with the billing membership
   role for invoice and payment events.
 
@@ -78,6 +77,6 @@ keeps its full include and is never downgraded.
   {@link selectKodyPlanRetainingSubscriptions} (or equivalent); status-only
   filtering is unsafe on the shared Stripe account.
 - Webhooks and checkout success handlers resolve org id from metadata
-  (`kody_org_id` first, then `kody_stable_user_id`).
+  (`kody_org_id`, else `orgs.stripe_customer_id`).
 - Customer copy must not use em dashes. Describe the $0 state as usage past the
   include stopping until credits are added, not as unlocking or lifting tiers.

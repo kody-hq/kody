@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright'
-import { type Page } from '@playwright/test'
+import type { Page } from '@playwright/test'
 import { expect, test } from './playwright-utils.ts'
 
 type Theme = 'light' | 'dark'
@@ -12,6 +12,20 @@ type RouteScenario = {
 
 const themes: Theme[] = ['light', 'dark']
 const blockingImpacts = new Set(['critical', 'serious'])
+
+/**
+ * Hydration enables the auth submit button and fades it from the disabled
+ * 0.7 opacity. Axe blends that opacity into the measured colours, so a scan
+ * mid-fade reports a false contrast failure (#4507). The shared colour
+ * settle check only samples the first few controls, so wait on this one.
+ */
+async function expectSubmitSettled(page: Page) {
+	const submit = page.getByRole('button', {
+		name: /^(Sign in|Create account)$/,
+	})
+	await expect(submit).toBeEnabled()
+	await expect(submit).toHaveCSS('opacity', '1')
+}
 
 const publicRoutes: RouteScenario[] = [
 	{
@@ -28,11 +42,7 @@ const publicRoutes: RouteScenario[] = [
 		ready: async (page) => {
 			await expect(page.getByLabel('Email')).toBeVisible()
 			await expect(page.getByLabel('Password', { exact: true })).toBeVisible()
-			// Hydration enables the submit button and starts its opacity transition.
-			// Wait for that state before the shared animation-settling check.
-			await expect(
-				page.getByRole('button', { name: /^(Sign in|Create account)$/ }),
-			).toBeEnabled()
+			await expectSubmitSettled(page)
 		},
 	},
 	{
@@ -47,11 +57,7 @@ const publicRoutes: RouteScenario[] = [
 			).toBeVisible()
 			await expect(page.getByLabel('Email')).toBeVisible()
 			await expect(page.getByLabel('Password', { exact: true })).toBeVisible()
-			// Hydration enables the submit button and starts its opacity transition.
-			// Wait for that state before the shared animation-settling check.
-			await expect(
-				page.getByRole('button', { name: /^(Sign in|Create account)$/ }),
-			).toBeEnabled()
+			await expectSubmitSettled(page)
 		},
 	},
 	{

@@ -3,13 +3,14 @@
  * team and package links are single use per person and never remove access
  * the person already has.
  */
+import { hasOwnerAuthority } from '#worker/authorization/authorize.ts'
 import {
 	resolveGrantPermissions,
 	type GrantPreset,
 } from '@kody-internal/shared/grant-presets.ts'
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import {
 	compileAccessForActor,
 	resourceGrantKey,
@@ -94,8 +95,7 @@ async function claimInviteLinkUse(input: {
 
 /**
  * A link keeps working only while its creator could still make it. A
- * membership link needs the creator to still be a member (its original rule).
- * A team link needs team:write and member:write. A package link needs Manage
+ * membership link needs member:write. A team link needs team:write and member:write. A package link needs Manage
  * on that package, which an outside collaborator can hold through a grant.
  */
 export async function inviteLinkCreatorStillValid(
@@ -105,20 +105,25 @@ export async function inviteLinkCreatorStillValid(
 	const role = await liveMembershipRole(db, link.orgId, link.createdByUserId)
 	const target = link.target
 	switch (target.kind) {
-		case 'membership':
-			return role != null
+		case 'membership': {
+			if (role == null) return false
+			const access = await creatorAccess(db, link, role)
+			return (
+				hasOwnerAuthority(access) || access.orgPermissions.has('member:write')
+			)
+		}
 		case 'team': {
 			if (role == null) return false
 			const access = await creatorAccess(db, link, role)
 			return (
-				access.isOwner ||
+				hasOwnerAuthority(access) ||
 				(access.orgPermissions.has('team:write') &&
 					access.orgPermissions.has('member:write'))
 			)
 		}
 		case 'resource': {
 			const access = await creatorAccess(db, link, role)
-			if (access.isOwner) return true
+			if (hasOwnerAuthority(access)) return true
 			if (access.orgPermissions.has('package:manage_access')) return true
 			return (
 				access.resourcePermissions
@@ -152,7 +157,7 @@ async function creatorAccess(
 }
 
 function seatRole(role: OrgRole) {
-	return role === 'owner' || role === 'member'
+	return role === 'owner' || role === 'admin' || role === 'member'
 }
 
 async function liveMembershipRole(
@@ -284,7 +289,7 @@ export async function inviteLinkAlreadySatisfied(
 		case 'team':
 			return role != null && (await isLiveTeamMember(db, target.teamId, userId))
 		case 'resource':
-			if (role === 'owner') return true
+			if (role === 'owner' || role === 'admin') return true
 			return (
 				(await plannedResourceGrant(db, link.orgId, target, userId)) == null
 			)
@@ -661,7 +666,7 @@ async function redeemResourceLink(
 		orgId: link.orgId,
 	})
 	const role = await liveMembershipRole(db, link.orgId, user.userId)
-	if (role === 'owner') return success(true)
+	if (role === 'owner' || role === 'admin') return success(true)
 	if (!(await plannedResourceGrant(db, link.orgId, target, user.userId))) {
 		return success(true)
 	}

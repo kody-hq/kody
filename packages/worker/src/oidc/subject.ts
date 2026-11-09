@@ -1,8 +1,8 @@
-import { readOrgIdFromGrantPropsOrUserId } from '#worker/orgs/oauth-grant.ts'
+import { readOrgIdFromGrantProps } from '#worker/orgs/oauth-grant.ts'
 
 /** Identify the person's connection to an org, keeping personal subjects stable. */
 export function oidcSubject(props: { userId: string; orgId?: string }) {
-	const orgId = readOrgIdFromGrantPropsOrUserId(props)
+	const orgId = readOrgIdFromGrantProps(props)
 	if (!orgId || orgId === props.userId) return props.userId
 	return `org:${encodeURIComponent(orgId)}:user:${encodeURIComponent(props.userId)}`
 }

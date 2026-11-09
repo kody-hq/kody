@@ -16,7 +16,7 @@ import {
 	selectPlanRetainingSubscriptions,
 	subscriptionHasPrice,
 } from './billing-config.ts'
-import { type StripeSubscription } from './stripe-client.ts'
+import type { StripeSubscription } from './stripe-client.ts'
 
 function subscription(input: {
 	id?: string
@@ -30,6 +30,7 @@ function subscription(input: {
 		status: input.status,
 		cancel_at: input.cancel_at ?? null,
 		current_period_end: undefined,
+		currency: undefined,
 		metadata: input.metadata,
 		items: {
 			data: (input.priceIds ?? []).map((id) => ({

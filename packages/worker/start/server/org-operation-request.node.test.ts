@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 const state = vi.hoisted(() => ({
 	request: new Request('https://kody.test/_serverFn/org', { method: 'POST' }),
 	write: vi.fn(async (_input: unknown) => ({
-		value: { ok: true },
+		data: { ok: true },
 		status: 200,
 	})),
 	scope: vi.fn(),
@@ -19,9 +19,6 @@ vi.mock('@tanstack/react-start', () => ({
 				validate =
 					typeof schema === 'function' ? schema : (data) => schema.parse(data)
 				return builder
-			},
-			inputValidator(schema: { parse: (data: unknown) => unknown }) {
-				return builder.validator(schema)
 			},
 			handler(run: (input: { data: unknown }) => unknown) {
 				return (input: { data: unknown }) => run({ data: validate(input.data) })
@@ -77,7 +74,7 @@ test('named member write validates role and retains explicit org plus original a
 			data: {
 				orgSlug: 'team-a',
 				userId: 'person-a',
-				role: 'admin' as 'billing',
+				role: 'superuser' as 'billing',
 			},
 		}),
 	).toThrow(/Invalid/)

@@ -111,23 +111,25 @@ test('unit job budgets warn at watch and fail only past the hard ceiling', () =>
 		'node tools/ci/enforce-unit-job-budget.ts --leg workers --start-epoch',
 	)
 	expect(workflow).toContain('UNIT_JOB_START_EPOCH')
-	// Workers retries once on soft-budget timeout (exit 124) or kill-after
-	// 137 only after the soft deadline; early SIGKILL is not retryable
-	// (#3763). Retry status is captured under bash -e via if/else.
-	expect(workflow).toContain('attempt_budget_seconds=780')
-	expect(workflow).toContain('kill_after_seconds=60')
-	expect(workflow).toContain('attempt_started=$(date +%s)')
-	expect(workflow).toContain(
+	// A Workers soft-budget timeout (exit 124, or kill-after 137 only after
+	// the soft deadline) reruns the shard on a fresh runner (#3763); early
+	// SIGKILL and assertion failures are not budget timeouts.
+	const attemptScript = readFileSync(
+		new URL('./workers-unit-attempt.sh', import.meta.url),
+		'utf8',
+	)
+	expect(attemptScript).toContain('attempt_budget_seconds=780')
+	expect(attemptScript).toContain('kill_after_seconds=60')
+	expect(attemptScript).toContain('attempt_started=$(date +%s)')
+	expect(attemptScript).toContain(
 		'[ "$status" -eq 137 ] && [ "$attempt_elapsed" -ge "$remaining" ]',
 	)
-	expect(workflow).toContain(
-		'[ "$status" -eq 137 ] && [ "$attempt_elapsed" -ge "$attempt_budget_seconds" ]',
-	)
-	expect(workflow).toContain('retrying once (#3763)')
-	expect(workflow).toContain('npm run test:workers')
-	expect(workflow).toContain(
-		'if timeout --signal=TERM --kill-after="${kill_after_seconds}s" "${attempt_budget_seconds}s"',
-	)
+	expect(attemptScript).toContain('npm run test:workers')
+	expect(attemptScript).toContain('outcome_${shard}=${outcome}')
+	expect(attemptScript).not.toContain('--no-isolate')
+	expect(attemptScript).not.toContain('--no-verify')
+	expect(attemptScript).not.toContain('setupFiles')
+	expect(workflow).toContain('run: bash tools/ci/workers-unit-attempt.sh')
 	// ADR 0011: retry must not disable per-file isolation or skip verify.
 	const workersUnitStep = workflow.match(
 		/- name: ☁️ Workers unit tests\n([\s\S]*?)\n\n\s+- name: ⏱️ Unit shard budget/,
@@ -137,7 +139,7 @@ test('unit job budgets warn at watch and fail only past the hard ceiling', () =>
 	expect(workersUnitStep).not.toContain('--no-verify')
 	expect(workersUnitStep).not.toContain('setupFiles')
 	expect(workflow).toMatch(
-		/name: ☁️ Workers \(\$\{\{ matrix.shard \}\}\/2\)[\s\S]*?# Room for one ≤780s attempt[\s\S]*?timeout-minutes: 30/,
+		/name: ☁️ Workers \(\$\{\{ matrix.shard \}\}\/2\)[\s\S]*?# Room for one ≤780s attempt[\s\S]*?timeout-minutes: 20/,
 	)
 	expect(workflow).toMatch(
 		/name: 🧪 Node \(\$\{\{ matrix.shard \}\}\/2\)[\s\S]*?timeout-minutes: 15/,
@@ -202,7 +204,7 @@ test('the unit job hard ceiling is advisory outside pull requests and merge grou
 	// Both post-suite budget checks: enforced on PRs and merge groups.
 	const advisoryFlag =
 		/"\$UNIT_JOB_START_EPOCH" \$\{\{ github\.event_name != 'pull_request' &&\s+github\.event_name != 'merge_group' &&\s+'--advisory' \|\| '' \}\}/g
-	expect(workflow.match(advisoryFlag)).toHaveLength(2)
+	expect(workflow.match(advisoryFlag)).toHaveLength(3)
 
 	const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {})
 	consoleError.mockImplementation(() => {})

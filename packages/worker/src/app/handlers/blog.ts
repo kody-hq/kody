@@ -2,39 +2,15 @@ import { bytesToBase64 } from '@kody-internal/shared/base64.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import {
 	getBlogPost,
-	getReadNextBlogPost,
+	getBlogSeriesNav,
+	listBlogCategoryPosts,
 	listBlogPosts,
 } from '#worker/blog/catalog.ts'
-import { type BlogPost } from '#worker/blog/parse-frontmatter.ts'
+import { getBlogCategory } from '#universal/blog-taxonomy.ts'
+import type { BlogPost } from '#worker/blog/parse-frontmatter.ts'
 import { buildBlogRssXml } from '#worker/blog/rss.ts'
 import { markdownResponse } from '#app/markdown-negotiation.ts'
 import { parseOgTheme } from '#worker/og/palette.ts'
-import { highlightMarkdownFences } from '#app/highlight-code.ts'
-import { type ServerTimingEntry } from '#worker/server-timing.ts'
-
-export async function toBlogPostLoaderData(
-	env: Env,
-	post: BlogPost,
-	serverTiming?: Array<ServerTimingEntry>,
-) {
-	return {
-		ok: true as const,
-		slug: post.slug,
-		title: post.title,
-		date: post.date,
-		description: post.description,
-		placeholder: post.placeholder,
-		image: post.image,
-		imageAlt: post.imageAlt,
-		ogImage: post.ogImage,
-		body: post.body,
-		bodyFences: await highlightMarkdownFences(env, post.body, {
-			serverTiming,
-			firstParty: true,
-		}),
-		readNext: getReadNextBlogPost(post.slug),
-	}
-}
 
 export function createBlogPostMarkdownHandler(_env: Env) {
 	return async ({ params }: { params: { slug: string } }) => {
@@ -42,7 +18,18 @@ export function createBlogPostMarkdownHandler(_env: Env) {
 		if (!post) {
 			return markdownResponse('# Blog post not found\n', 404)
 		}
-		return markdownResponse(post.body)
+		const series = getBlogSeriesNav(post.slug)
+		if (!series) return markdownResponse(post.body)
+		const parts = series.parts
+			.map((part, index) =>
+				part.slug === post.slug
+					? `${index + 1}. ${part.title} (this post)`
+					: `${index + 1}. [${part.title}](/blog/${part.slug})`,
+			)
+			.join('\n')
+		return markdownResponse(
+			`${post.body.trimEnd()}\n\n## ${series.title} (part ${series.part} of ${series.parts.length})\n\n${parts}\n`,
+		)
 	}
 }
 
@@ -106,6 +93,7 @@ export function createBlogPostOgImageHandler(env: Env) {
 			title: post.title,
 			description: post.description,
 			date: post.date,
+			category: getBlogCategory(post.category)?.label ?? null,
 			theme,
 			assets: env.ASSETS,
 			...(imageDataUri ? { imageDataUri } : {}),
@@ -122,11 +110,23 @@ export function createBlogPostOgImageHandler(env: Env) {
 }
 
 export function createBlogRssHandler(env: Env) {
-	return async ({ request }: { request: Request }) => {
+	return async ({
+		request,
+		category: categorySlug,
+	}: {
+		request: Request
+		category?: string
+	}) => {
+		const category =
+			categorySlug === undefined ? null : getBlogCategory(categorySlug)
+		if (categorySlug !== undefined && !category) {
+			return new Response('Not found', { status: 404 })
+		}
 		const origin = getAppBaseUrl({ env, requestUrl: request.url })
 		const xml = buildBlogRssXml({
 			origin,
-			posts: listBlogPosts(),
+			posts: category ? listBlogCategoryPosts(category.slug) : listBlogPosts(),
+			...(category ? { category } : {}),
 		})
 
 		return new Response(xml, {

@@ -63,8 +63,9 @@ Activity actor columns store the MCP **stable user id**
 (`users.stable_user_id`), matching other community ownership columns such as
 `community_listings.owner_user_id`.
 
-`saved_packages.is_private` defaults to `1`. Visibility is a repo setting
-(`packageUpdate` / `repoUpdate`), not a `package.json#private` projection.
+`saved_packages.is_private` defaults to `1`. **Source sharing** is a repo
+setting (`packageUpdate` / `repoUpdate`), shown on Settings separately from app
+**Visibility** (internet-visible), not a `package.json#private` projection.
 Active community listings backfill to public; leftover `"private": false`
 teasers stay private.
 
@@ -139,11 +140,11 @@ wizard itself is connect an agent, make something useful (one prompt), then
 connect a second agent — see [Onboarding process](./architecture/onboarding.md).
 `@kody/*` listings are ordinary community packages from the `@kody` org: an org
 forks them and runs its own copy. One-click install on listing detail puts a
-fork icon beside the name. Listings from another account use `createDoubleCheck`
-(the tooltip is “This was built by another user. Verify it before using. Click
-again to confirm fork.”; the first click arms that control; the second click
-sends `acknowledged: true`; clicking elsewhere, navigating, or leaving the
-control clears the armed state; the endpoint responds `409` without the flag).
+fork icon beside the name. `pressFork` (`start/fork-target.ts`) forks straight
+into the only forkable org, or opens `ForkTargetDialog` (a native modal
+`<dialog>`) when `loadCommunityInstallOrgs` returns more than one. The fork
+request sends `acknowledged: true` after the target is determined (the endpoint
+responds `409` without the flag; cancelling the dialog sends nothing).
 User-facing install UX:
 [Public packages](../use/community-packages.md#one-click-install). `/community`
 cards overlay a per-request `viewerInstall` when the viewer already has a
@@ -159,19 +160,17 @@ report row.
 
 ### KV snapshots
 
-Pinned file trees live in `BUNDLE_ARTIFACTS_KV` under:
+A listing's pinned file tree is the owner package's SHA-keyed source snapshot,
+`source-snapshot:v1:{sourceId}:{pinnedCommit}` in `BUNDLE_ARTIFACTS_KV`. Bundle
+retention keeps that snapshot while an active listing pins the commit. Fork
+preparation, the public `/@owner/kody-id/tree/:ref` explorer, README assets, and
+the listing version read it when the published-commit snapshot and Artifacts
+miss. Community icons read Artifacts at the icon commit.
 
-`community-snapshot:v1:{listingId}`
-
-`packages/worker/src/community/snapshot.ts` reads and writes `CommunitySnapshot`
-(`version`, `listingId`, `pinnedCommit`, `files`, optional `communityIconPath`,
-`createdAt`). Publish and re-publish overwrite the snapshot; unpublish and hard
-delete remove it. Raster list-mark bytes (`.kody/icon.*`, root `icon.*`, and
-`community-icon.*`) are omitted from the text-backed `files` map; the path
-metadata lets the icon route retrieve bytes from Artifacts. Package-app
-`icons/icon-192.png` stays in the snapshot so forks keep their PWA icon. The
-public `/@owner/kody-id/tree/:ref` explorer reads this snapshot (not a live git
-checkout). Leftover `/files` URLs 301 to `/tree/{defaultBranch}`.
+Older listings may still have a legacy `community-snapshot:v1:{listingId}` key.
+Nothing writes or reads it anymore; unpublish, hard delete, account export, and
+account deletion still address it (`packages/worker/src/community/snapshot.ts`).
+Leftover `/files` URLs 301 to `/tree/{defaultBranch}`.
 
 ### Community icon cache
 
@@ -376,8 +375,10 @@ Client pages: `packages/worker/start/pages/community*`
   never run on the app origin.
 - `/community/:listingId` — the same page by listing id; redirects to the
   canonical URL. Metadata, ratings, README, one-click install (login required;
-  other-account listings arm via `createDoubleCheck` and fork on the second
-  click), fork prompt, and report link (report requires login)
+  `pressFork` forks into the only org or opens `ForkTargetDialog` when there are
+  several; `acknowledged: true` is sent after the target is determined, and
+  cancelling the dialog sends nothing), fork prompt, and report link (report
+  requires login)
 - `/community/:listingId/icon/:iconCommit` — cached package icon or generated
   fallback; serves the current icon commit or the pinned snapshot commit, and
   rejects stale commit URLs

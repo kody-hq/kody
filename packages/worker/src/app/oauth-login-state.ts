@@ -25,6 +25,8 @@ export type OauthLoginState = {
 	codeVerifier: string
 	redirectTo: string | null
 	attribution: FirstTouchAttribution | null
+	/** Set when the round trip claims a guest account from `/claim/<code>`. */
+	guestClaim?: { code: string; username: string | null } | null
 }
 
 let stateCookie: ReturnType<typeof createCookie> | null = null
@@ -81,7 +83,19 @@ function isOauthLoginState(value: unknown): value is OauthLoginState {
 		typeof record.codeVerifier === 'string' &&
 		record.codeVerifier.length > 0 &&
 		(record.redirectTo === null || typeof record.redirectTo === 'string') &&
-		attributionOk
+		attributionOk &&
+		isGuestClaimField(record.guestClaim)
+	)
+}
+
+function isGuestClaimField(value: unknown) {
+	if (value === undefined || value === null) return true
+	if (typeof value !== 'object') return false
+	const record = value as Record<string, unknown>
+	return (
+		typeof record.code === 'string' &&
+		record.code.length > 0 &&
+		(record.username === null || typeof record.username === 'string')
 	)
 }
 

@@ -8,7 +8,7 @@
  * are set only together with a new value: whoever supplies the value decides
  * where it may go, and an existing value's hosts keep the approval flow.
  */
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getDomain, getPublicSuffix } from 'tldts'
 import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'

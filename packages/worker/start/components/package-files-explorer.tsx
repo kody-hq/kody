@@ -13,7 +13,7 @@ import { detectFileMediaType } from '#universal/file-viewers.ts'
 import { FileGlyph } from './file-glyph.tsx'
 import { workspaceDirectoryMediaType } from '#universal/workspace-page.ts'
 import { SkillReadAcknowledgement } from './skill-read-acknowledgement.tsx'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import {
 	type ReactNode,
 	useId,
@@ -56,7 +56,7 @@ import {
 	renderPackageRepoChrome,
 } from './package-repo-nav.tsx'
 import { renderIcon } from './icon.tsx'
-import { type PackageFilesLoaderData } from '#universal/loader-data.ts'
+import type { PackageFilesLoaderData } from '#universal/loader-data.ts'
 import {
 	colors,
 	mq,

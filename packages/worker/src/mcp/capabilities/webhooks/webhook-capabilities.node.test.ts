@@ -530,3 +530,48 @@ test('webhookUrlApply http destination requires owner website approval before ou
 		mockModule.applyWebhookUrlForUser.mock.calls.at(-1)?.[0].destination,
 	).not.toHaveProperty('user_confirmed')
 })
+
+test('webhookUrlApply binds the approval link to the caller org', async () => {
+	approvalMock.requireWebhookApplyDestinationGrantOrPending.mockResolvedValue({
+		status: 'granted',
+		fingerprint: 'fp-team',
+		credentialId: null,
+	})
+	mockModule.applyWebhookUrlForUser.mockResolvedValue({
+		ok: true,
+		urlHost: 'hooks.example',
+		httpStatus: 200,
+		remoteId: 'reg-team',
+		error: null,
+	})
+	const ctx = createCapabilityContext()
+	const teamCtx = {
+		...ctx,
+		callerContext: createMcpCallerContext({
+			source: { kind: 'mcp-oauth' },
+			baseUrl: 'https://heykody.dev',
+			executionOrigin: 'interactive',
+			user: ctx.callerContext.user!,
+			orgBinding: {
+				org: { id: ownerIdFromStored('org-team'), slug: 'acme-team' },
+				role: 'owner',
+			},
+		}),
+	}
+	await webhookUrlApplyCapability.handler(
+		{
+			handle: 'whh_ep-1',
+			destination: {
+				type: 'http',
+				url: 'https://hooks.example/register',
+				body: '{"url":"{{webhookUrl}}"}',
+			},
+		},
+		teamCtx,
+	)
+	expect(
+		approvalMock.requireWebhookApplyDestinationGrantOrPending,
+	).toHaveBeenLastCalledWith(
+		expect.objectContaining({ userId: 'org-team', orgSlug: 'acme-team' }),
+	)
+})

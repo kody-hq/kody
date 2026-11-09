@@ -14,7 +14,7 @@ import {
 	buildOnboardingContinuationPrompt,
 	webClientsOnboardingNote,
 } from './onboarding-prompt.js'
-import { type ProcessInfo } from './process-info.js'
+import type { ProcessInfo } from './process-info.js'
 
 export type InstallOptions = {
 	mcpUrl: string
@@ -111,7 +111,7 @@ export async function runInstall(
 	return { code: 0, results }
 }
 
-export function noRunningAgentsMessage(mcpUrl: string): string {
+function noRunningAgentsMessage(mcpUrl: string): string {
 	return [
 		'No local MCP agents are running.',
 		'Start Cursor, Claude Desktop, VS Code, Goose, or another local client, then run kody install again.',
@@ -121,7 +121,7 @@ export function noRunningAgentsMessage(mcpUrl: string): string {
 	].join('\n')
 }
 
-export function formatInstallReport(input: {
+function formatInstallReport(input: {
 	mcpUrl: string
 	results: Array<ApplyResult>
 }): string {

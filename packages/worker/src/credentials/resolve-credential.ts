@@ -35,7 +35,7 @@
  * no request at all is webhook ingress verifying a signature, which passes an
  * attested package stamp.
  */
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
 import { pauseEnablementOnDenial } from '#worker/enablements/pause-on-denial.ts'
 import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
@@ -68,7 +68,7 @@ import {
 	readFetchFillPlacementRefusalLinks,
 } from './fetch-fill-placement-cache.ts'
 import { enforceFillPlacement } from './fill-placement-enforcement.ts'
-import { type CredentialFillSite } from './fill-placement.ts'
+import type { CredentialFillSite } from './fill-placement.ts'
 import { loginCredentialResolver } from './login-resolver.ts'
 import { mcpConnectionResolver } from './mcp-resolver.ts'
 import {
@@ -81,7 +81,7 @@ import {
 	vaultSecretResolver,
 	webhookSecretResolver,
 } from './secret-resolvers.ts'
-import { type PackageStamp } from './package-stamp.ts'
+import type { PackageStamp } from './package-stamp.ts'
 import { assertSelfPublishedPackageResolvesNothing } from './self-published-package-guard.ts'
 import {
 	assertCredentialUsesDeclared,

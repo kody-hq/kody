@@ -4,7 +4,7 @@ import {
 	postJson,
 	type RehearsalSession,
 } from './kody-session.ts'
-import { type RehearsalOrigins } from './rehearsal-env.ts'
+import type { RehearsalOrigins } from './rehearsal-env.ts'
 
 // Kept free of worker runtime imports so plain `node` scripts (the
 // execution-context e2e) can mint preview CLI tokens.

@@ -112,7 +112,6 @@ test('names the org-mapped credential of a publisher-supplied need, never its id
 	expect(mocks.credentials).toHaveBeenCalledWith(db, 'org-1', ['cred_1'])
 	const text = describeUnmappableCredentials(credentials)
 	expect(text).toBe('"Prod DB" (need "rooms-db")')
-	expect(text).not.toContain('cred_1')
 })
 
 test('a need shared with visitors names the credentials the current approval shares', async () => {

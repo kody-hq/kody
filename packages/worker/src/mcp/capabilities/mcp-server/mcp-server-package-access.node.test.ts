@@ -12,9 +12,9 @@ import {
 import * as needsClosure from '#worker/credentials/credential-needs-closure.ts'
 import * as stampPresence from '#worker/credentials/credential-stamp-presence.ts'
 import * as packageRepo from '#worker/package-registry/repo.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { McpServerPackageAccessDeniedError } from '#worker/mcp-client/package-access.ts'
-import { type McpServerSnapshot } from '#worker/mcp-client/types.ts'
+import type { McpServerSnapshot } from '#worker/mcp-client/types.ts'
 import type * as McpClientStatus from '#worker/mcp-client/status.ts'
 
 const mocks = vi.hoisted(() => ({
@@ -341,6 +341,91 @@ test('a stamped package cannot call an undeclared MCP server capability', async 
 			),
 		)
 		expect(mocks.callTool).toHaveBeenCalledTimes(1)
+	} finally {
+		stamp.mockRestore()
+		needs.mockRestore()
+	}
+})
+
+test('a local kody.mcp hop acts as its claimed package binding; no binding stays no package', async () => {
+	mocks.callTool.mockResolvedValue({ content: [{ type: 'text', text: 'ok' }] })
+	mocks.assertCanUseMcpServer.mockResolvedValue(undefined)
+	const stamp = vi
+		.spyOn(stampPresence, 'packageCarriesCredentialStamp')
+		.mockResolvedValue(true)
+	vi.spyOn(packageRepo, 'getSavedPackageByIdInAnyOrg').mockResolvedValue({
+		id: approvedPackageId,
+		userId: personIdFromStored('user-alice'),
+		name: '@alice/notion',
+		kodyId: 'notion',
+		lockedAt: null,
+	} as unknown as SavedPackageRecord)
+	const needs = vi
+		.spyOn(needsClosure, 'loadPublishedCredentialNeeds')
+		.mockResolvedValue([
+			{
+				key: 'notion',
+				kind: 'mcp',
+				provider: 'notion',
+				description: 'Notion',
+				multiple: false,
+			},
+		])
+	try {
+		const capability = synthesizeMcpServerToolDomain({
+			ref,
+			snapshot: createSnapshot(),
+		})?.domain.capabilities[0]
+		expect(capability).toBeDefined()
+
+		await capability!.handler(
+			{},
+			{
+				...createExecuteContext(),
+				localExecuteHop: true,
+				localPackageStamp: { kind: 'claimed', packageId: approvedPackageId },
+			},
+		)
+		expect(mocks.assertCanUseMcpServer).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				serverId: 'server-notion',
+				packageId: approvedPackageId,
+			}),
+		)
+		expect(needs).toHaveBeenCalled()
+
+		needs.mockClear()
+		await capability!.handler(
+			{},
+			{ ...createExecuteContext(), localExecuteHop: true },
+		)
+		expect(mocks.assertCanUseMcpServer).toHaveBeenLastCalledWith(
+			expect.objectContaining({ serverId: 'server-notion', packageId: null }),
+		)
+		expect(needs).not.toHaveBeenCalled()
+
+		// The package lock still decides: a claimed package it does not
+		// approve is refused before the downstream tool runs.
+		mocks.callTool.mockClear()
+		mocks.assertCanUseMcpServer.mockRejectedValueOnce(
+			new McpServerPackageAccessDeniedError(
+				'MCP server "notion" is limited to specific packages.',
+			),
+		)
+		await expect(
+			capability!.handler(
+				{},
+				{
+					...createExecuteContext(),
+					localExecuteHop: true,
+					localPackageStamp: { kind: 'claimed', packageId: 'pkg-other' },
+				},
+			),
+		).rejects.toBeInstanceOf(McpServerPackageAccessDeniedError)
+		expect(mocks.assertCanUseMcpServer).toHaveBeenLastCalledWith(
+			expect.objectContaining({ packageId: 'pkg-other' }),
+		)
+		expect(mocks.callTool).not.toHaveBeenCalled()
 	} finally {
 		stamp.mockRestore()
 		needs.mockRestore()

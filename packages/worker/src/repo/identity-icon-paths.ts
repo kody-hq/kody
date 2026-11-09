@@ -46,24 +46,6 @@ export function isIdentityIconSourcePath(
 	return identityIconSourcePaths.some((candidate) => candidate === path)
 }
 
-export function isSnapshotRetainedIdentityIconPath(path: string) {
-	return isIdentityIconSourcePath(path) && path.endsWith('.svg')
-}
-
-/**
- * Text-backed community snapshots keep SVG list marks and the package-app
- * PWA file. Raster aliases are stripped so forks do not ingest corrupted
- * UTF-8 bytes. `icons/icon-192.png` stays so a listing fork still has its
- * app icon even when a `.kody/icon` / root mark is the catalog identity.
- */
-export function shouldStripIdentityIconFromCommunitySnapshot(path: string) {
-	return (
-		isIdentityIconSourcePath(path) &&
-		!path.endsWith('.svg') &&
-		path !== packageAppIdentityIconPath
-	)
-}
-
 export function findIdentityIconPath(
 	files: Readonly<Record<string, string>>,
 	options?: { includePackageAppIcon?: boolean },

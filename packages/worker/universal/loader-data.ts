@@ -1,92 +1,98 @@
-import { type SelfServeExperimentState } from '#universal/feature-flags/experiments.ts'
-import { type OAuthAuthorizeClientFailure } from '#universal/oauth-authorize-client-failure.ts'
-import {
-	type OnboardingFeaturedListing,
-	type ProfileVisibility,
-	type PublicCommunityActivityItem,
-	type PublicCommunityListing,
-	type PublicCommunityProfile,
-	type PublicProfilePackageItem,
-	type ViewerListingInstall,
+import type { PackageAppCpuSummary } from './package-app-cpu-samples.ts'
+import type {
+	BlogCategorySlug,
+	BlogSeriesSlug,
+} from '#universal/blog-taxonomy.ts'
+import type { SelfServeExperimentState } from '#universal/feature-flags/experiments.ts'
+import type { OAuthAuthorizeClientFailure } from '#universal/oauth-authorize-client-failure.ts'
+import type {
+	OnboardingFeaturedListing,
+	ProfileVisibility,
+	PublicCommunityActivityItem,
+	PublicCommunityListing,
+	PublicCommunityProfile,
+	PublicProfilePackageItem,
+	ViewerListingInstall,
 } from '#universal/community-public-types.ts'
-import { type McpOAuthClientMode } from '@kody-internal/shared/mcp-servers.ts'
-import { type GrantPreset } from '@kody-internal/shared/grant-presets.ts'
-import { type PermissionString, type RoleName } from '#universal/permissions.ts'
-import { type AdminFeatureFlag } from '#universal/feature-flags/types.ts'
-import { type OnboardingChecklistItemId } from '#universal/onboarding-checklist-types.ts'
-import {
-	type OnboardingCustomMcpServer,
-	type OnboardingFeaturedMcpServer,
+import type { McpOAuthClientMode } from '@kody-internal/shared/mcp-servers.ts'
+import type { GrantPreset } from '@kody-internal/shared/grant-presets.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { PermissionString, RoleName } from '#universal/permissions.ts'
+import type { AdminFeatureFlag } from '#universal/feature-flags/types.ts'
+import type { OnboardingChecklistItemId } from '#universal/onboarding-checklist-types.ts'
+import type {
+	OnboardingCustomMcpServer,
+	OnboardingFeaturedMcpServer,
 } from '#universal/onboarding-mcp-chooser.ts'
-import {
-	type CommunityCategoryCounts,
-	type CommunityListingCategory,
+import type {
+	CommunityCategoryCounts,
+	CommunityListingCategory,
 } from '#universal/community-categories.ts'
-import { type CommunityListingSort } from '#universal/community-search.ts'
-import { type AccountCredentialsResponse } from '#universal/credentials-list.ts'
-import { type CredentialFillPlacementView } from '#universal/credential-fill-placement.ts'
-import { type ApprovalBundleLoaderData } from '#universal/approval-bundles.ts'
-import { type CredentialPlacementApprovalView } from '#universal/credential-placement-approval.ts'
-import { type PackageCredentialApprovalLoaderData } from '#universal/package-credential-approval-page.ts'
-import { type PackageCollaboratorsLoaderData } from '#universal/package-collaborators.ts'
-import { type PackageAppConnectedPeopleLoaderData } from '#universal/package-app-connected-people.ts'
-import { type PackageForksLoaderData } from '#universal/package-forks.ts'
-import { type PackageCredentialsLoaderData } from '#universal/package-credentials-page.ts'
-import { type HighlightedCode } from '#universal/highlighted-code.ts'
-import {
-	type EmailClassification,
-	type EmailMessageView,
+import type { CommunityListingSort } from '#universal/community-search.ts'
+import type { AccountCredentialsResponse } from '#universal/credentials-list.ts'
+import type { CredentialFillPlacementView } from '#universal/credential-fill-placement.ts'
+import type { ApprovalBundleLoaderData } from '#universal/approval-bundles.ts'
+import type { CredentialPlacementApprovalView } from '#universal/credential-placement-approval.ts'
+import type { PackageCredentialApprovalLoaderData } from '#universal/package-credential-approval-page.ts'
+import type { PackageCollaboratorsLoaderData } from '#universal/package-collaborators.ts'
+import type { PackageAppConnectedPeopleLoaderData } from '#universal/package-app-connected-people.ts'
+import type { PackageForksLoaderData } from '#universal/package-forks.ts'
+import type { PackageCredentialsLoaderData } from '#universal/package-credentials-page.ts'
+import type { HighlightedCode } from '#universal/highlighted-code.ts'
+import type {
+	EmailClassification,
+	EmailMessageView,
 } from '#universal/email-message-view.ts'
-import { type PackageFilesContentKind } from '#universal/package-file-media.ts'
-import {
-	type PackageAppCustomDomainRecordView,
-	type PackageAppCustomDomainStatus,
-	type PackageAppCustomDomainView,
+import type { PackageFilesContentKind } from '#universal/package-file-media.ts'
+import type {
+	PackageAppCustomDomainRecordView,
+	PackageAppCustomDomainStatus,
+	PackageAppCustomDomainView,
 } from '#universal/package-app-custom-domain-status.ts'
-import { type PackageRepoActions } from '#universal/package-repo-actions.ts'
-import { type WalkthroughHostPick } from '#universal/walkthrough-hosts.ts'
-import { type LandingHeroVideo } from '#universal/landing-hero-copy.ts'
-import { type ConnectedMcpAgent } from '#universal/connected-mcp-agents.ts'
-import { type AccountConnectionUsageLoaderData } from '#universal/connection-usage.ts'
-import { type ReferralProgramSummary } from '#universal/referral-program.ts'
-import { type SecondAgentStandardGiftState } from '#universal/second-agent-standard-gift.ts'
-import { type OnboardingAgentChooserPick } from '#universal/onboarding-mcp-clients.ts'
-import { type EmailNotificationDestination } from '#universal/email-destinations.ts'
-import { type EmailVerificationDelivery } from '#universal/email-verification-delivery.ts'
-import { type IntegrationAuthFailureView } from '#universal/connection-trouble.ts'
-import {
-	type ConnectOauthChooserOption,
-	type PlatformIntegrationCatalogItem,
+import type { PackageRepoActions } from '#universal/package-repo-actions.ts'
+import type { WalkthroughHostPick } from '#universal/walkthrough-hosts.ts'
+import type { LandingHeroVideo } from '#universal/landing-hero-copy.ts'
+import type { ConnectedMcpAgent } from '#universal/connected-mcp-agents.ts'
+import type { AccountConnectionUsageLoaderData } from '#universal/connection-usage.ts'
+import type { ReferralProgramSummary } from '#universal/referral-program.ts'
+import type { SecondAgentStandardGiftState } from '#universal/second-agent-standard-gift.ts'
+import type { OnboardingAgentChooserPick } from '#universal/onboarding-mcp-clients.ts'
+import type { EmailNotificationDestination } from '#universal/email-destinations.ts'
+import type { EmailVerificationDelivery } from '#universal/email-verification-delivery.ts'
+import type { IntegrationAuthFailureView } from '#universal/connection-trouble.ts'
+import type {
+	ConnectOauthChooserOption,
+	PlatformIntegrationCatalogItem,
 } from '#universal/oauth-connect.ts'
-import { type WaitingItem } from '#universal/waiting.ts'
-import { type OnboardingFunnelStage } from '#universal/onboarding-funnel-point.ts'
-import {
-	type CreditWalletState,
-	type EntitlementLadder,
-	type LimitOverrideKey,
-	type LimitOverrideValue,
+import type { WaitingItem } from '#universal/waiting.ts'
+import type { OnboardingFunnelStage } from '#universal/onboarding-funnel-point.ts'
+import type {
+	CreditWalletState,
+	EntitlementLadder,
+	LimitOverrideKey,
+	LimitOverrideValue,
 } from '#universal/plans.ts'
-import {
-	type ComputeIncludeCreditsStatus,
-	type ComputeOverageWarningResource,
+import type {
+	ComputeIncludeCreditsStatus,
+	ComputeOverageWarningResource,
 } from '#universal/compute-overage.ts'
-import {
-	type AccountActivity,
-	type CreditsAlarm,
-	type IncludedComputeMeter,
+import type {
+	AccountActivity,
+	CreditsAlarm,
+	IncludedComputeMeter,
 } from '#universal/usage-presentation.ts'
-import {
-	type CreditAttributionBreakdown,
-	type CreditAttributionRow,
+import type {
+	CreditAttributionBreakdown,
+	CreditAttributionRow,
 } from '#universal/credit-attribution.ts'
-import {
-	type AccountActivityStatusFilter,
-	type AccountActivitySurfaceFilter,
-	type AccountActivityTriageFilter,
-	type AccountActivityViewFilter,
+import type {
+	AccountActivityStatusFilter,
+	AccountActivitySurfaceFilter,
+	AccountActivityTriageFilter,
+	AccountActivityViewFilter,
 } from '#universal/account-activity-filters.ts'
-import { type FleetPackageErrorRateConcentration } from '#universal/fleet-package-error-rate-concentration.ts'
-import { type OrgFollowsLoaderData } from '#universal/follows.ts'
+import type { FleetPackageErrorRateConcentration } from '#universal/fleet-package-error-rate-concentration.ts'
+import type { OrgFollowsLoaderData } from '#universal/follows.ts'
 
 export type { ProfileVisibility }
 export type { AdminFeatureFlag }
@@ -96,12 +102,53 @@ export type BlogPostSummaryLoaderData = {
 	slug: string
 	title: string
 	date: string
+	updated: string | null
 	description: string
-	order: number
+	category: BlogCategorySlug
+	series: BlogSeriesSlug | null
+	readingMinutes: number
+	/** Headline art; list rows show it as a thumbnail. */
+	image: string | null
+	imageAlt: string | null
+}
+
+export type BlogCategoryCountLoaderData = {
+	slug: BlogCategorySlug
+	label: string
+	count: number
 }
 
 export type BlogLoaderData = {
 	ok: true
+	categories: Array<BlogCategoryCountLoaderData>
+	featured: BlogPostSummaryLoaderData | null
+	series: Array<{
+		slug: BlogSeriesSlug
+		title: string
+		description: string
+		count: number
+		firstSlug: string | null
+	}>
+	/** Newest posts outside `updates`, without the featured post. */
+	latest: Array<BlogPostSummaryLoaderData>
+	updates: Array<BlogPostSummaryLoaderData>
+}
+
+export type BlogCategoryLoaderData = {
+	ok: true
+	slug: BlogCategorySlug
+	label: string
+	description: string
+	categories: Array<BlogCategoryCountLoaderData>
+	posts: Array<BlogPostSummaryLoaderData>
+}
+
+export type BlogSeriesLoaderData = {
+	ok: true
+	slug: BlogSeriesSlug
+	title: string
+	description: string
+	/** Reading order: oldest first. */
 	posts: Array<BlogPostSummaryLoaderData>
 }
 
@@ -110,17 +157,25 @@ export type BlogPostLoaderData = {
 	slug: string
 	title: string
 	date: string
+	updated: string | null
 	description: string
-	/** When true, the post page shows the AI-placeholder callout. */
-	placeholder: boolean
+	category: BlogCategorySlug
+	readingMinutes: number
 	image: string | null
 	imageAlt: string | null
 	ogImage: string | null
 	body: string
 	/** Highlight tokens for fenced code in `body`, in lexer order. */
 	bodyFences?: Array<HighlightedCode>
-	/** Next post in catalog order for the post foot; null when alone. */
-	readNext: { slug: string; title: string } | null
+	/** Series position and every part in reading order; null outside a series. */
+	series: {
+		slug: BlogSeriesSlug
+		title: string
+		part: number
+		parts: Array<{ slug: string; title: string }>
+	} | null
+	/** Up to three posts for the post foot (series siblings excluded). */
+	related: Array<BlogPostSummaryLoaderData>
 }
 
 export type DocSummaryLoaderData = {
@@ -473,7 +528,7 @@ export type AdminUserOrgMembership = {
 	slug: string
 	displayName: string | null
 	kind: 'personal' | 'team'
-	role: 'owner' | 'member' | 'billing'
+	role: 'owner' | 'admin' | 'member' | 'billing'
 	effectivePlan: AdminPlanName
 	seats: number
 	membershipDeletedAt: string | null
@@ -1252,7 +1307,7 @@ export type AccountFormerEmail = {
 export type AccountOrganizationSummary = {
 	slug: string
 	displayName: string | null
-	role: 'owner' | 'member' | 'billing' | null
+	role: 'owner' | 'admin' | 'member' | 'billing' | null
 	personal: boolean
 	avatarUrl?: string | null
 }
@@ -1323,7 +1378,7 @@ type OrgManagementOrg = {
 	displayName: string | null
 	avatarUrl: string | null
 	personal: boolean
-	role: 'owner' | 'member' | 'billing'
+	role: 'owner' | 'admin' | 'member' | 'billing'
 }
 
 type OrgSettingsCustomHostnameDnsRecord = {
@@ -1378,14 +1433,14 @@ export type OrgMemberView = {
 	username: string | null
 	displayName: string | null
 	avatarUrl: string | null
-	role: 'owner' | 'member' | 'billing'
+	role: 'owner' | 'admin' | 'member' | 'billing'
 	roleLabel: string
 }
 
 export type OrgInviteView = {
 	id: string
 	kind: string
-	role: 'owner' | 'member' | 'billing' | null
+	role: 'owner' | 'admin' | 'member' | 'billing' | null
 	roleLabel: string | null
 	inviteeEmail: string | null
 	inviteeUsername: string | null
@@ -1571,6 +1626,100 @@ export type OrgGrantsLoaderData = {
 	orgWideRead: {
 		subjects: Array<OrgWideReadSubjectView>
 	} | null
+	/** Non-owner members and outside collaborators, when the viewer can manage. */
+	people: Array<OrgGrantPersonView>
+	/**
+	 * One entry per person on the grouped Grants list: every member and
+	 * outside collaborator when the viewer can manage, otherwise only people
+	 * who hold a direct grant. `role` is null for outside collaborators.
+	 */
+	subjects: Array<OrgGrantSubjectView>
+	/**
+	 * Teams on the grouped Grants list: every team when the viewer can manage,
+	 * otherwise only teams that hold a grant here.
+	 */
+	teams: Array<OrgGrantTeamView>
+	/** Members of this organization, for the whole-organization row. */
+	memberCount: number
+}
+
+export type OrgGrantTeamView = {
+	teamId: string
+	slug: string
+	name: string
+	memberCount: number
+}
+
+/** A grant that reaches one person: made to them, a team they are on, or everyone. */
+export type OrgSubjectAccessGrant = OrgGrantView & {
+	via: 'direct' | 'team' | 'everyone'
+	/** Direct grants only: the viewer may change or remove it here. */
+	canRevoke: boolean
+}
+
+/** A package or credential the viewer may share with this person. */
+export type OrgSubjectAccessOption = {
+	resourceType: 'package' | 'credential'
+	resourceId: string
+	label: string
+	detail: string | null
+	/** Package has an app the viewer may also share (an app grant). */
+	appGrantable: boolean
+}
+
+/** Who an access page describes: a person, a team, or everyone in the organization. */
+type OrgSubjectAccessSubject =
+	| {
+			kind: 'user'
+			userId: string
+			username: string | null
+			displayName: string | null
+			avatarUrl: string | null
+			/** Null for an outside collaborator. */
+			role: 'owner' | 'admin' | 'member' | 'billing' | null
+	  }
+	| {
+			kind: 'team'
+			teamId: string
+			slug: string
+			name: string
+			memberCount: number
+	  }
+	| { kind: 'org'; memberCount: number }
+
+export type OrgSubjectAccessLoaderData = {
+	ok: true
+	org: OrgManagementOrg
+	canManage: boolean
+	subject: OrgSubjectAccessSubject
+	grants: Array<OrgSubjectAccessGrant>
+	/** Null when the viewer cannot add access or the person is an Owner. */
+	options: {
+		packages: Array<OrgSubjectAccessOption>
+		credentials: Array<OrgSubjectAccessOption>
+	} | null
+}
+
+export type OrgGrantRevokeResult = { grantId: string } & (
+	| { ok: true }
+	| { ok: false; error: string }
+)
+
+export type OrgSubjectAccessWriteResult = {
+	resourceType: 'package' | 'app' | 'credential'
+	resourceId: string
+	preset: 'read' | 'use' | 'contribute' | 'manage'
+} & ({ ok: true; warnings: Array<string> } | { ok: false; error: string })
+
+/** Someone the Grants page can open an access page for. */
+export type OrgGrantPersonView = {
+	userId: string
+	label: string
+	kind: 'member' | 'collaborator'
+}
+
+export type OrgGrantSubjectView = OrgGrantPersonView & {
+	role: OrgRole | null
 }
 
 export type OrgWideReadSubjectView = {
@@ -1582,6 +1731,8 @@ export type OrgWideReadSubjectView = {
 	reads: Array<string>
 	/** Create permissions this subject's own organization grant holds. */
 	creates: Array<string>
+	/** Org-wide package and app manage permissions this subject's own organization grant holds. */
+	manages: Array<string>
 }
 
 export type OrgCollaboratorView = {
@@ -1969,6 +2120,17 @@ export type AccountIntegrationListItem = {
 	allowedPackageIds?: Array<string>
 	/** Last classified OAuth refresh outcome. Absent when the sign-in is healthy. */
 	lastAuthFailure?: IntegrationAuthFailureView
+	/**
+	 * What the provider granted on the stored token, read back after the last
+	 * connect. Absent until a connect records it.
+	 */
+	grantedScopes?: {
+		scopes: Array<string>
+		source: 'github-x-oauth-scopes' | 'token-response'
+		checkedAt: string
+		missing: Array<string>
+		extra: Array<string>
+	}
 }
 
 type AccountOauthAppConnectionRef = {
@@ -2232,6 +2394,30 @@ export type AccountPackageCommunityFork = {
 	adoptionNote: string | null
 }
 
+type AccountPackageUnpublishedCommit = {
+	commit: string
+	subject: string
+	authoredAt: string | null
+}
+
+export type AccountPackageUnpublishedCommits = {
+	commits: Array<AccountPackageUnpublishedCommit>
+	/** True when more commits are waiting than `commits` lists. */
+	truncated: boolean
+}
+
+export type AccountPackageAnonymousVisitorExposureItem = {
+	kind: 'credential' | 'connector'
+	/** Credential name or `mcp:<server>:<tool>`; never a secret value. */
+	name: string
+	/** Need key or hosts, for context. */
+	detail: string | null
+}
+
+export type AccountPackageAnonymousVisitorExposure =
+	| { known: true; items: Array<AccountPackageAnonymousVisitorExposureItem> }
+	| { known: false }
+
 export type AccountPackageDetail = AccountPackageListItem & {
 	searchText: string | null
 	exports: Array<string> | null
@@ -2277,6 +2463,18 @@ export type AccountPackageDetail = AccountPackageListItem & {
 	 * publishes are owner-only unless a grant allows them (manager view only).
 	 */
 	unmappableCredentialsNotice?: string
+	/**
+	 * Commits on HEAD newer than `publishedCommit`, newest first, for the
+	 * Public release commit picker (owner view). Absent when nothing is
+	 * pending or the commit history could not be read.
+	 */
+	unpublishedCommits?: AccountPackageUnpublishedCommits
+	/**
+	 * What anonymous visitors would use as the owner if the app went
+	 * internet-visible (owner view, only while it is not). Absent when not
+	 * checked; `known: false` when the check failed.
+	 */
+	anonymousVisitorExposure?: AccountPackageAnonymousVisitorExposure
 	/**
 	 * Capabilities the published version may call without declaring them,
 	 * which the next publish must add to `kody.app.capabilities` (owner view
@@ -2420,6 +2618,21 @@ export type AccountPackageApproveCapabilitiesLoaderData = {
 		via: Array<string>
 		storageId?: string
 	}>
+	/**
+	 * Declared `kody.credentials` needs no credential fills yet. Not part of the
+	 * fingerprint, but declaring them still needs the owner's approval.
+	 */
+	unboundNeeds: Array<{
+		needKey: string
+		description: string
+		provider?: string
+		secretProviderPackage?: string
+		from?: string
+		invalid?: string
+		via: Array<string>
+	}>
+	/** Declared manifest capability fields (`kody.jobs`, `kody.webhooks`, ...). */
+	declaredFields: Array<{ field: string; via: Array<string> }>
 	fingerprintMatchesApproval: boolean
 	latestApprovedAt: string | null
 	securityAudit: AccountPackageSecurityAudit
@@ -2438,6 +2651,8 @@ export type AccountPackageApproveCapabilitiesLoaderData = {
 			storageId?: string
 			field?: string
 			needCount?: number
+			executorNeedCount?: number
+			needs?: Array<{ key: string; description: string }>
 			credentialId?: string
 			name?: string
 			via?: Array<string>
@@ -2683,6 +2898,8 @@ type AccountJobsAlarm = {
 export type AccountJobsLoaderData = {
 	ok: true
 	username: string
+	/** True when the bound org is a team workspace (not the viewer's personal org). */
+	teamOrg: boolean
 	jobs: Array<AccountJobListItem>
 	selectedJob: AccountJobDetail | null
 	selectedJobId: string | null
@@ -2818,6 +3035,8 @@ type AccountActivityLoaderData = {
 	selectedRunId: string | null
 	retentionDays: number
 	toggleChanges: Array<AccountToggleChange> | null
+	/** Sampled package-app CPU and wall time; observability only. */
+	packageAppPerformance: PackageAppCpuSummary | null
 }
 
 /** One job or enablement on/off change from the org audit log. */
@@ -3027,6 +3246,11 @@ export type OAuthAuthorizeLoaderData =
 			orgs: Array<OAuthAuthorizeConsentOrg>
 			/** From `?org=`, the sole accessible org, or null when multi and unspecified. */
 			selectedOrgSlug: string | null
+			/**
+			 * When the authorize URL or resource already named an org, consent must
+			 * use that org. Null when the person may choose among several.
+			 */
+			requiredOrgSlug: string | null
 	  }
 	| {
 			ok: false
@@ -3101,6 +3325,8 @@ export type DiscordPageLoaderData = {
 
 export type AppLoaderData = {
 	blog?: BlogLoaderData
+	blogCategory?: BlogCategoryLoaderData
+	blogSeries?: BlogSeriesLoaderData
 	blogPost?: BlogPostLoaderData
 	docsConnect?: DocsConnectLoaderData
 	docDetail?: DocDetailLoaderData
@@ -3133,6 +3359,7 @@ export type AppLoaderData = {
 	orgInviteJoin?: OrgInviteJoinLoaderData
 	orgTeams?: OrgTeamsLoaderData
 	orgGrants?: OrgGrantsLoaderData
+	orgGrantAccess?: OrgSubjectAccessLoaderData
 	orgCollaborators?: OrgCollaboratorsLoaderData
 	accountConnections?: AccountConnectionsLoaderData
 	accountEmailDestinations?: AccountEmailDestinationsLoaderData
@@ -3171,6 +3398,7 @@ export type AppLoaderData = {
 	packageAppOauthConsent?: PackageAppOauthConsentLoaderData
 	accountBilling?: AccountBillingLoaderData
 	accountBillingSuccess?: AccountBillingSuccessLoaderData
+	accountBillingMovePlan?: AccountBillingMovePlanLoaderData
 	accountUsage?: AccountUsageLoaderData
 	orgCredits?: OrgCreditsLoaderData
 	accountWaiting?: AccountWaitingLoaderData
@@ -3407,6 +3635,74 @@ export type AccountUsageCreditsWallet = {
 export type AccountBillingSuccessLoaderData = {
 	ok: true
 	needsOnboarding: boolean
+	/** Set when this checkout paid for the target of a plan move. */
+	planTransfer?: { id: string; status: string }
+}
+
+export type PlanTransferOrgSummary = {
+	id: string
+	slug: string
+	displayName: string | null
+	personal: boolean
+	seats: number
+}
+
+export type PlanTransferFreeLimit = { label: string; value: string }
+
+export type PlanTransferPreview = {
+	source: PlanTransferOrgSummary & {
+		interval: 'month' | 'year'
+		periodEndAt: string | null
+		walletBalanceMicroUsd: number
+	}
+	target: PlanTransferOrgSummary & {
+		mode: 'existing_subscription' | 'checkout'
+		interval: 'month' | 'year'
+		pricePerSeatMinor: number
+		/** Charged today at Stripe Checkout, before tax. 0 for existing plans. */
+		dueTodayMinor: number
+		recurringMinor: number
+	}
+	credit: { amountMinor: number; currency: string }
+	freeLimits: Array<PlanTransferFreeLimit>
+	freeOrgsAfter: { owned: number; max: number }
+}
+
+export type PlanTransferSummary = {
+	id: string
+	status:
+		| 'pending_checkout'
+		| 'applying'
+		| 'needs_retry'
+		| 'completed'
+		| 'canceled'
+	/** Which side of the move the page's org is on. */
+	role: 'source' | 'target'
+	sourceSlug: string | null
+	targetSlug: string | null
+	creditAmountMinor: number | null
+	currency: string | null
+	/** Before the credit note is issued, the move can still be canceled. */
+	cancelable: boolean
+	errorMessage: string | null
+	completedAt: string | null
+}
+
+export type AccountBillingMovePlanLoaderData = {
+	ok: true
+	source: { slug: string; displayName: string | null; personal: boolean }
+	targets: Array<{
+		slug: string
+		displayName: string | null
+		personal: boolean
+		paid: boolean
+	}>
+	selectedTargetSlug: string | null
+	interval: 'month' | 'year' | null
+	preview: PlanTransferPreview | null
+	blocked: { reason: string; message: string } | null
+	transfer: PlanTransferSummary | null
+	notice?: string
 }
 
 export type AccountUsageWeekWindow = {

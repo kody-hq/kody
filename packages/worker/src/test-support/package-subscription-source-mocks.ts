@@ -1,6 +1,6 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type Mock } from 'vitest'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { Mock } from 'vitest'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 
 /**
  * Expands a `loadPackageManifestBySourceId` mock into the source exports
@@ -13,6 +13,8 @@ export function createSubscriptionDiscoverySourceMocks(
 ) {
 	return {
 		loadPackageManifestBySourceId,
+		loadServingPackageManifestBySourceId: async (...args: Array<unknown>) =>
+			await loadPackageManifestBySourceId(...args),
 		loadPackageSourceRowsForUser: async (input: {
 			userId: string
 			sourceIds: ReadonlyArray<string>

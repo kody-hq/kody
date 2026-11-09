@@ -49,26 +49,23 @@ npx @kodycodes/cli execute --local --code 'import { kody } from "kody:runtime"; 
 
 Saved packages keep `--local` and a static `kody:@…` import.
 
+Omit `scopes`: the default set already covers saved package modules that call
+integrations, such as `@kentcdodds/ship-pr` (`integration:use`). Passed `scopes`
+replace the defaults, so a hand-picked list often misses `integration:use`,
+`org:execute`, or `secret:use` and fails with `insufficient_scope`. Add a scope
+to the full default list rather than picking a short one.
+
 ## Failure
+
+The CLI errors name the fix for a missing lifetime, a rejected bootstrap code,
+and `insufficient_scope` (including `search:read`; scopes replace the defaults,
+see
+[ADR 0056](../../../docs/contributing/decisions/0056-cli-credential-bootstrap.md)).
+Follow the message. Judgment calls the CLI cannot make:
 
 - Node is below 22, the CLI is missing, or the host cannot run workerd. Use Open
   API / MCP `api`, or fix the environment. Hosted MCP `execute` stays banned.
-- Lifetime is missing. Pass `lifetime: "short"|"long"` (or both idle/max
-  seconds) to `cliCredentialBootstrap`, and `--lifetime short|long` (or both
-  `--idle-ttl-seconds` / `--max-lifetime-seconds`) to `auth bootstrap`.
-- The bootstrap code is rejected. Call `cliCredentialBootstrap` again with
-  `lifetime: "short"`. Do not switch to `kody login` or `tokenCreate` while an
-  MCP session exists.
-- `search` is forbidden. Default bootstrap scopes are local-execute use scopes
-  (`org:execute`, `org:read`, package/integration/secret/email/job/app/memory
-  use scopes), plus `package:write`, `package:create`, and `token:delete` — not
-  `search:read`
-  ([ADR 0056](../../../docs/contributing/decisions/0056-cli-credential-bootstrap.md)).
-  `whoami` works. Use MCP `search`, or a token with `search:read`. Bootstrap
-  tokens that omit `package:create` cannot call `packageGetGitRemote` with
-  `create: true`; run `cliCredentialBootstrap` again.
-- The module imports `kody:@…`. Keep `--local`. Default bootstrap includes
-  `package:execute` and `integration:read` so package-graph and
-  `createAuthenticatedFetch` work for saved packages.
-- The CLI asks for a login, a bootstrap, or a token. Priority is `--token` /
-  `KODY_API_TOKEN`, then the stored bootstrap token, then `kody login`.
+- While an MCP session exists, remint with `cliCredentialBootstrap` instead of
+  switching to `kody login` or `tokenCreate`.
+- Credential priority is `--token` / `KODY_API_TOKEN`, then the stored bootstrap
+  token, then `kody login`.

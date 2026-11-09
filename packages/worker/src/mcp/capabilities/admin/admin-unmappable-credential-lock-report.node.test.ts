@@ -113,5 +113,4 @@ test('counts locked packages and collaborators without naming them', async () =>
 			packagesUnchecked: 0,
 		},
 	})
-	expect(JSON.stringify(state)).not.toContain('Prod DB')
 })

@@ -1,3 +1,4 @@
+import { toServingSourceView } from '#worker/repo/serving-commit.ts'
 import { snapshotStringToBytes } from '#universal/package-file-media.ts'
 import {
 	getPackageAppAssetsDirectory,
@@ -6,11 +7,11 @@ import {
 } from '#worker/package-registry/manifest.ts'
 import {
 	createPublishedPackageCacheKey,
-	PromiseLruCache,
+	createPublishedPackagePromiseCache,
 } from '#worker/package-registry/published-package-cache.ts'
-import { type AuthoredPackageJson } from '#worker/package-registry/types.ts'
+import type { AuthoredPackageJson } from '#worker/package-registry/types.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
-import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import { buildKodyAppClientBundle } from './module-graph-client-bundle.ts'
 import {
 	packageAppClientModuleNamePattern,
@@ -67,7 +68,7 @@ type PackageAppAssetSavedPackage = {
 }
 
 const packageAppClientArtifactCache =
-	new PromiseLruCache<PackageAppClientArtifact | null>()
+	createPublishedPackagePromiseCache<PackageAppClientArtifact | null>()
 
 /**
  * `/_assets/<relative>` → `<relative>` (percent-decoded), or `null` when the
@@ -109,7 +110,7 @@ async function loadFreshPersistablePackageSource(input: {
 	if (!source || source.user_id !== input.userId) {
 		throw new Error(`Saved package source "${input.sourceId}" was not found.`)
 	}
-	return source
+	return toServingSourceView(source)
 }
 
 /**
@@ -164,6 +165,7 @@ async function resolvePackageAppClientArtifactUncached(input: {
 			kind: 'app-client',
 			artifactName: null,
 			entryPoint: input.clientEntry,
+			commit: input.savedPackage.publishedCommit,
 		})
 		if (
 			loaded?.artifact &&

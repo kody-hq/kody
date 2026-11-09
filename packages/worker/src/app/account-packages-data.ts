@@ -1,4 +1,4 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	knownUnmappableCredentials,
 	loadOnePackageUnmappableCredentials,
@@ -16,21 +16,22 @@ import {
 	buildListingAheadPrompt,
 } from '#universal/community-listing-ahead.ts'
 import { getCommunityListingHref } from '#universal/community-links.ts'
-import {
-	type AccountPackageDetail,
-	type AccountPackageListItem,
-	type AccountPackageForkAhead,
-	type AccountPackageListingAhead,
-	type AccountPackagesAppFilter,
-	type AccountPackagesLoaderData,
-	type AccountPackagesSort,
+import type {
+	AccountPackageDetail,
+	AccountPackageListItem,
+	AccountPackageForkAhead,
+	AccountPackageListingAhead,
+	AccountPackagesAppFilter,
+	AccountPackagesLoaderData,
+	AccountPackagesSort,
+	AccountPackageUnpublishedCommits,
 } from '#universal/loader-data.ts'
 import {
 	creditAttributionForPackage,
 	type CreditAttributionRow,
 } from '#universal/credit-attribution.ts'
 import { listPackageManifestExportNames } from '#universal/package-export-selection.ts'
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { readAccountComputeOverage } from '#worker/billing/compute-overage-account.ts'
 import {
@@ -52,6 +53,8 @@ import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import { buildPublishCommitDiff } from '#app/package-publish-diff.ts'
 import { loadPublicTreeFiles } from '#app/package-files-data.ts'
 import { readArtifactTreeAtCommit } from '#worker/repo/artifact-file.ts'
+import { listArtifactCommitsAfter } from '#worker/repo/artifact-commit-log.ts'
+import { loadAnonymousVisitorExposure } from '#app/account-package-visitor-exposure.ts'
 import {
 	getSavedPackageWithCommunityProvenanceById,
 	resolveSavedPackageRefWithCommunityProvenance,
@@ -64,9 +67,9 @@ import { loadPackageSourceRowForUser } from '#worker/package-registry/source.ts'
 import { loadPublishedEntityManifest } from '#worker/repo/published-source.ts'
 import { resolveCachedArtifactSourceHead } from '#worker/repo/artifact-head-cache.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
-import {
-	type SavedPackageRecord,
-	type SavedPackageWithCommunityProvenanceRecord,
+import type {
+	SavedPackageRecord,
+	SavedPackageWithCommunityProvenanceRecord,
 } from '#worker/package-registry/types.ts'
 
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
@@ -322,15 +325,27 @@ async function toDetail(input: {
 		])
 	const publishedCommit = sourceAndPending.ownedSource?.published_commit ?? null
 	const pendingCommit = sourceAndPending.pendingCommit
-	const unpublishedChangeCount = await countUnpublishedPackageChanges({
-		env: input.env,
-		requestUrl: input.requestUrl,
-		sourceId: input.record.sourceId,
-		sourceRepoId: sourceAndPending.ownedSource?.repo_id ?? null,
-		publishedCommit,
-		pendingCommit,
-		pendingCommitKnown: sourceAndPending.pendingCommitKnown,
-	})
+	const [unpublishedChangeCount, unpublishedCommits] = await Promise.all([
+		countUnpublishedPackageChanges({
+			env: input.env,
+			requestUrl: input.requestUrl,
+			sourceId: input.record.sourceId,
+			sourceRepoId: sourceAndPending.ownedSource?.repo_id ?? null,
+			publishedCommit,
+			pendingCommit,
+			pendingCommitKnown: sourceAndPending.pendingCommitKnown,
+		}),
+		// Owner-only, like credit attribution.
+		input.username
+			? loadUnpublishedPackageCommits({
+					env: input.env,
+					sourceRepoId: sourceAndPending.ownedSource?.repo_id ?? null,
+					publishedCommit,
+					pendingCommit,
+					pendingCommitKnown: sourceAndPending.pendingCommitKnown,
+				})
+			: Promise.resolve(null),
+	])
 	return {
 		...toListItem(
 			input.record,
@@ -355,6 +370,38 @@ async function toDetail(input: {
 				}
 			: null,
 		creditAttribution,
+		...(unpublishedCommits ? { unpublishedCommits } : {}),
+	}
+}
+
+const unpublishedCommitPickerLimit = 20
+
+async function loadUnpublishedPackageCommits(input: {
+	env: Env
+	sourceRepoId: string | null
+	publishedCommit: string | null
+	pendingCommit: string | null
+	pendingCommitKnown: boolean
+}): Promise<AccountPackageUnpublishedCommits | null> {
+	if (
+		!input.pendingCommitKnown ||
+		!input.pendingCommit ||
+		!input.sourceRepoId ||
+		input.pendingCommit === input.publishedCommit
+	) {
+		return null
+	}
+	try {
+		return await listArtifactCommitsAfter({
+			env: input.env,
+			repoId: input.sourceRepoId,
+			head: input.pendingCommit,
+			after: input.publishedCommit,
+			limit: unpublishedCommitPickerLimit,
+		})
+	} catch (error) {
+		console.warn('package-unpublished-commits-load-failed', error)
+		return null
 	}
 }
 
@@ -612,23 +659,35 @@ async function toDetailWithListingState(input: {
 				}).then(knownUnmappableCredentials)
 			: Promise.resolve([]),
 	])
-	const [listingState, capabilityAllowance] = await Promise.all([
-		loadActiveCommunityListingState({
-			db: input.env.APP_DB,
-			userId: input.userId,
-			packageId: input.record.id,
-			publishedCommit: detailBase.publishedCommit,
-		}),
-		input.username
-			? loadPackageCapabilityAllowanceForOwner({
-					env: input.env,
-					packageId: input.record.id,
-					publishedCommit: detailBase.publishedCommit,
-				})
-			: Promise.resolve(undefined),
-	])
+	const [listingState, capabilityAllowance, anonymousVisitorExposure] =
+		await Promise.all([
+			loadActiveCommunityListingState({
+				db: input.env.APP_DB,
+				userId: input.userId,
+				packageId: input.record.id,
+				publishedCommit: detailBase.publishedCommit,
+			}),
+			input.username
+				? loadPackageCapabilityAllowanceForOwner({
+						env: input.env,
+						packageId: input.record.id,
+						publishedCommit: detailBase.publishedCommit,
+					})
+				: Promise.resolve(undefined),
+			input.username &&
+			input.record.hasApp &&
+			!input.record.isInternetVisible &&
+			detailBase.publishedCommit
+				? loadAnonymousVisitorExposure({
+						env: input.env,
+						requestUrl: input.requestUrl,
+						record: input.record,
+					})
+				: Promise.resolve(undefined),
+		])
 	return {
 		...detailBase,
+		...(anonymousVisitorExposure ? { anonymousVisitorExposure } : {}),
 		...listingState,
 		ownerIsPersonal,
 		...(capabilityAllowance?.length ? { capabilityAllowance } : {}),

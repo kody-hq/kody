@@ -1,4 +1,9 @@
 import * as Sentry from '@sentry/cloudflare'
+import {
+	applyPacedRestoreDrillSentryScope,
+	classifyPacedRestoreDrillFailure,
+	pacedRestoreDrillLane,
+} from '@kody-internal/shared/backup-d1-paced-drill-alert.ts'
 import { isRetryableD1LockError } from '@kody-internal/shared/d1-retry.ts'
 import {
 	getScheduledLaneCadence,
@@ -9,7 +14,7 @@ import {
 	type ScheduledLaneMessage,
 	type ScheduledLaneOutcome,
 } from '@kody-internal/shared/jobs/scheduled-lanes.ts'
-import { type JobsWorkerEnv } from './env.ts'
+import type { JobsWorkerEnv } from './env.ts'
 import { runJobScheduleWatchdogTick } from './watchdog.ts'
 
 /**
@@ -41,6 +46,13 @@ export async function runScheduledLaneWithFailureIsolation(input: {
 			return 'd1_lock_contention'
 		}
 		console.error(`scheduled_lane_failed lane=${input.message.lane}`, error)
+		// The main worker reports drill errors itself; anything reaching here is
+		// a platform reset (OOM / CPU / wall) of the RPC, so look up where the
+		// drill was and give it the drill fingerprint instead of the generic one.
+		const drillCheckpoint =
+			input.message.lane === pacedRestoreDrillLane
+				? await readDrillCheckpoint(input.env)
+				: undefined
 		Sentry.withScope((scope) => {
 			scope.setTag('scheduled.lane', input.message.lane)
 			scope.setContext('scheduled', {
@@ -48,9 +60,24 @@ export async function runScheduledLaneWithFailureIsolation(input: {
 				scheduledTime: scheduledAt.toISOString(),
 				cron: input.message.cron,
 			})
+			if (drillCheckpoint !== undefined) {
+				applyPacedRestoreDrillSentryScope(scope, {
+					kind: classifyPacedRestoreDrillFailure(error),
+					checkpoint: drillCheckpoint,
+				})
+			}
 			Sentry.captureException(error)
 		})
 		return 'failed'
+	}
+}
+
+async function readDrillCheckpoint(env: JobsWorkerEnv) {
+	try {
+		return await env.HOST.readD1PacedRestoreDrillCheckpoint()
+	} catch (error) {
+		console.warn('dr_d1_paced_restore_drill_checkpoint_read_failed', error)
+		return null
 	}
 }
 

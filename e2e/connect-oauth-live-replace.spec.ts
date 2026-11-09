@@ -1,4 +1,4 @@
-import { type Page } from '@playwright/test'
+import type { Page } from '@playwright/test'
 import { readE2eCloudflareMockState } from '../tools/e2e-cloudflare-mock-state.ts'
 import { expect, test, waitForClientHydration } from './playwright-utils.ts'
 
@@ -33,21 +33,35 @@ async function connectRehearsal(input: {
 	})
 	await page.goto(`/connect/oauth?${configuration}`)
 	await waitForClientHydration(page)
+	// Existing connections land on the connect step. Open setup first.
 	const edit = page.getByRole('button', { name: 'Edit app credentials' })
-	if (await edit.isVisible()) await edit.click()
 	const clientIdField = page.locator('input[name="oauthClientId"]')
+	await expect(edit.or(clientIdField)).toBeVisible()
+	if (await edit.isVisible()) await edit.click()
+	await expect(clientIdField).toBeVisible()
 	await clientIdField.fill(input.clientId)
+	// A stored secret is bound to the saved client ID. Changing the ID
+	// reveals the secret field; a one-shot isVisible() loses that React
+	// render and token exchange then fails with "No saved client secret
+	// matches this client ID and token URL."
 	const secretField = page.locator('input[name="oauthClientSecret"]')
-	if (await secretField.isVisible()) await secretField.fill('rehearsal-secret')
+	await expect(secretField).toBeVisible()
+	await secretField.fill('rehearsal-secret')
 	await input.beforeSave?.()
 	await page.getByRole('button', { name: 'Save and continue' }).click()
 }
 
 async function finishConnect(page: Page, name: string) {
 	await page.getByRole('button', { name: `Continue to ${name}` }).click()
-	await expect(
-		page.getByText("You're connected.", { exact: true }),
-	).toBeVisible()
+	const connected = page.getByText("You're connected.", { exact: true })
+	const missingSecret = page.getByText(
+		'No saved client secret matches this client ID and token URL',
+	)
+	await expect(connected.or(missingSecret)).toBeVisible({
+		timeout: 20_000,
+	})
+	await expect(missingSecret).toHaveCount(0)
+	await expect(connected).toBeVisible()
 	await page.unrouteAll({ behavior: 'ignoreErrors' })
 }
 
@@ -56,6 +70,7 @@ test('a changed client ID on a live connection warns, then saves as a new connec
 	seedE2eUser,
 	login,
 }) => {
+	test.setTimeout(process.env.CI ? 90_000 : 60_000)
 	const id = crypto.randomUUID().slice(0, 8)
 	const user = await seedE2eUser({
 		email: `oauth-live-${id}@example.com`,
@@ -115,6 +130,7 @@ test('a changed client ID on a live connection warns, then saves as a new connec
 	})
 	await expect(warning).toBeVisible()
 	await warning.getByRole('button', { name: 'Replace this app' }).click()
+	await expect(warning).toBeHidden()
 	await finishConnect(page, provider)
 	expect(authorizedClientIds).toEqual([
 		'rehearsal-client',

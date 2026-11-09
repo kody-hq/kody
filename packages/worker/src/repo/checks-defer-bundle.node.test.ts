@@ -30,7 +30,7 @@ vi.mock('#worker/package-runtime/module-graph.ts', () => ({
 }))
 
 import { runRepoChecks } from './checks.ts'
-import { type PublishPhaseTimings } from './publish-phase-timing.ts'
+import type { PublishPhaseTimings } from './publish-phase-timing.ts'
 
 function setupDefaultBundleMocks() {
 	mockModule.buildKodyAppBundle.mockResolvedValue({
@@ -175,6 +175,41 @@ test('runRepoChecks defers full esbuild when rebuild will validate the same targ
 	expectNoBundleBuilds()
 })
 
+test('deferred bundle check refuses relative imports the rebuild could not resolve', async () => {
+	const files = new Map<string, string>([
+		[
+			'package.json',
+			packageJson('deferred-imports', {}, { '.': './src/index.ts' }),
+		],
+		...docs,
+		[
+			'src/index.ts',
+			"import { helper } from './lib/helper.js'\nexport default async () => helper()\n",
+		],
+		[
+			'src/lib/helper.ts',
+			"import { value } from '../missing.ts'\nimport type { Shape } from './types.ts'\nexport const helper = (): Shape => value\n",
+		],
+		['src/job.ts', 'export default async () => ({ ok: true })\n'],
+	])
+	const missing = await runDeferred(files)
+	expect(missing.result.ok).toBe(false)
+	const bundle = missing.result.results.find(
+		(result) => result.kind === 'bundle',
+	)
+	expect(bundle).toMatchObject({ ok: false })
+	expect(bundle?.message).toContain('"../missing.ts" in "src/lib/helper.ts"')
+	expect(bundle?.message).not.toContain('types.ts')
+	expectNoBundleBuilds()
+
+	const fixed = new Map(files)
+	fixed.set('src/missing.ts', 'export const value = { ok: true }\n')
+	const resolved = await runDeferred(fixed)
+	expect(resolved.result.results).toEqual(
+		expect.arrayContaining([deferredBundle]),
+	)
+})
+
 test('deferred bundle check still typechecks in an isolate and does not start bundle-chunk isolates', async () => {
 	const files = new Map<string, string>([
 		[
@@ -224,6 +259,75 @@ test('deferred bundle check still typechecks in an isolate and does not start bu
 				kind: 'typecheck',
 				ok: true,
 				message: 'No semantic diagnostics (isolated).',
+			}),
+		]),
+	)
+})
+
+test('large packages typecheck in chunks of isolates so one isolate never checks every target', async () => {
+	const exportsMap: Record<string, string> = {}
+	const sources: Array<[string, string]> = []
+	for (let index = 0; index < 45; index += 1) {
+		exportsMap[index === 0 ? '.' : `./e${index}`] = `./src/e${index}.ts`
+		sources.push([
+			`src/e${index}.ts`,
+			`export default async () => ({ e: ${index} })\n`,
+		])
+	}
+	const files = new Map<string, string>([
+		['package.json', packageJson('chunked-typecheck', {}, exportsMap)],
+		['tsconfig.json', JSON.stringify({ compilerOptions: { strict: true } })],
+		...docs,
+		...sources,
+		['src/job.ts', 'export default async () => ({ ok: true })\n'],
+	])
+	const stub = {
+		runIsolatedCheckPhase: vi.fn(async (request: Record<string, unknown>) =>
+			request.phase === 'typecheck' &&
+			(request.typecheckTargets as Array<{ path: string }>).some(
+				(target) => target.path === 'src/e44.ts',
+			)
+				? { ok: false, message: 'src/e44.ts bad type' }
+				: { ok: true, message: 'ok' },
+		),
+	}
+	const env = {
+		REPO_SESSION: {
+			idFromName: vi.fn((name: string) => ({ name })),
+			get: vi.fn(() => stub),
+		},
+		BUNDLE_ARTIFACTS_KV: {
+			put: vi.fn(async () => undefined),
+			delete: vi.fn(async () => undefined),
+		},
+	} as unknown as Env
+
+	const { result } = await runDeferred(files, env)
+
+	const typecheckCalls = stub.runIsolatedCheckPhase.mock.calls
+		.map(([request]) => request)
+		.filter((request) => request.phase === 'typecheck')
+	expect(typecheckCalls.length).toBeGreaterThan(1)
+	const checkedPaths = typecheckCalls.flatMap((request) =>
+		(request.typecheckTargets as Array<{ path: string }>).map(
+			(target) => target.path,
+		),
+	)
+	for (const request of typecheckCalls) {
+		expect(
+			(request.typecheckTargets as Array<unknown>).length,
+		).toBeLessThanOrEqual(20)
+	}
+	expect(new Set(checkedPaths).size).toBe(checkedPaths.length)
+	expect(checkedPaths).toEqual(
+		expect.arrayContaining(sources.map(([path]) => path)),
+	)
+	expect(result.results).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				kind: 'typecheck',
+				ok: false,
+				message: 'src/e44.ts bad type',
 			}),
 		]),
 	)

@@ -349,6 +349,36 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: ['id'],
 	},
 	{
+		operationId: 'executionContextDaemonConfig',
+		method: 'PATCH',
+		pathTemplate: '/v1/execution-contexts/{id}/daemon/config',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextDaemonLogs',
+		method: 'GET',
+		pathTemplate: '/v1/execution-contexts/{id}/daemon/logs',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextDaemonRestart',
+		method: 'POST',
+		pathTemplate: '/v1/execution-contexts/{id}/daemon/restart',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextDaemonStatus',
+		method: 'GET',
+		pathTemplate: '/v1/execution-contexts/{id}/daemon',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextDaemonUpdate',
+		method: 'POST',
+		pathTemplate: '/v1/execution-contexts/{id}/daemon/update',
+		pathParamNames: ['id'],
+	},
+	{
 		operationId: 'executionContextDelete',
 		method: 'POST',
 		pathTemplate: '/v1/execution-contexts/{id}/delete',
@@ -373,6 +403,12 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: [],
 	},
 	{
+		operationId: 'executionContextNoticeDismiss',
+		method: 'POST',
+		pathTemplate: '/v1/execution-contexts/{id}/notices/dismiss',
+		pathParamNames: ['id'],
+	},
+	{
 		operationId: 'executionContextOptIn',
 		method: 'POST',
 		pathTemplate: '/v1/execution-contexts/{id}/opt-in',
@@ -382,6 +418,18 @@ export const bakedOpenApiRoutes = [
 		operationId: 'executionContextOptOut',
 		method: 'DELETE',
 		pathTemplate: '/v1/execution-contexts/{id}/opt-in',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextPause',
+		method: 'POST',
+		pathTemplate: '/v1/execution-contexts/{id}/pause',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextResume',
+		method: 'POST',
+		pathTemplate: '/v1/execution-contexts/{id}/resume',
 		pathParamNames: ['id'],
 	},
 	{
@@ -406,6 +454,12 @@ export const bakedOpenApiRoutes = [
 		operationId: 'executionContextShareList',
 		method: 'GET',
 		pathTemplate: '/v1/execution-contexts/{id}/sharing',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextSharePreview',
+		method: 'POST',
+		pathTemplate: '/v1/execution-contexts/{id}/sharing/preview',
 		pathParamNames: ['id'],
 	},
 	{
@@ -598,6 +652,18 @@ export const bakedOpenApiRoutes = [
 		operationId: 'followRemove',
 		method: 'DELETE',
 		pathTemplate: '/v1/follows',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'guestClaimFinish',
+		method: 'POST',
+		pathTemplate: '/v1/account/guest-claim/finish',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'guestClaimStart',
+		method: 'POST',
+		pathTemplate: '/v1/account/guest-claim',
 		pathParamNames: [],
 	},
 	{
@@ -1009,6 +1075,18 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: [],
 	},
 	{
+		operationId: 'packagePublishBuildCreate',
+		method: 'POST',
+		pathTemplate: '/v1/packages/publish-builds',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'packagePublishBuildCreateByPath',
+		method: 'POST',
+		pathTemplate: '/v1/packages/{package_id}/publish-builds',
+		pathParamNames: ['package_id'],
+	},
+	{
 		operationId: 'packagePublishExternalPush',
 		method: 'POST',
 		pathTemplate: '/v1/packages/external-push',
@@ -1321,6 +1399,12 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: [],
 	},
 	{
+		operationId: 'secretLocalRead',
+		method: 'POST',
+		pathTemplate: '/v1/secrets/local-read',
+		pathParamNames: [],
+	},
+	{
 		operationId: 'secretLock',
 		method: 'POST',
 		pathTemplate: '/v1/secrets/lock',
@@ -1379,6 +1463,12 @@ export const bakedOpenApiRoutes = [
 		method: 'POST',
 		pathTemplate: '/v1/orgs/teams',
 		pathParamNames: [],
+	},
+	{
+		operationId: 'teamDelete',
+		method: 'DELETE',
+		pathTemplate: '/v1/orgs/teams/{team_id}',
+		pathParamNames: ['team_id'],
 	},
 	{
 		operationId: 'teamList',

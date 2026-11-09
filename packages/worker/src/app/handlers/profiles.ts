@@ -3,13 +3,16 @@
  * write goes through the existing profile capabilities and token
  * operations, so the page has exactly the authority MCP and the API have.
  */
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	callCapabilityAsWebsite,
 	websiteCapabilityContext,
 } from '#app/website-capability.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { getStaticRegistry } from '#mcp/capabilities/registry.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import { listCredentialsForViewer } from '#worker/credentials/credential-list.ts'
+import { listCredentialProviderBindings } from '#worker/credentials/credential-provider-bindings.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { createApiInvocationContext } from '#worker/open-api/context.ts'
 import { invokeApiOperation } from '#worker/open-api/invoke.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
@@ -18,12 +21,12 @@ import { isProfilesEnabledFor } from '#worker/profiles/flag.ts'
 import { profileOrgLevelAllowlist } from '#worker/profiles/rules.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { packageCollaboratorPermissions } from '#universal/package-collaborators.ts'
-import {
-	type ProfileGrantOption,
-	type ProfileItem,
-	type ProfilesPageData,
-	type ProfileStatus,
-	type ProfileTokenItem,
+import type {
+	ProfileGrantOption,
+	ProfileItem,
+	ProfilesPageData,
+	ProfileStatus,
+	ProfileTokenItem,
 } from '#universal/profiles.ts'
 import { routes } from '#universal/routes.ts'
 import { readExecutionContextFailure } from './execution-contexts.ts'
@@ -58,6 +61,7 @@ const profileStatuses = new Set<ProfileStatus>([
 
 /** Packages offered as grants on a new top-level profile. */
 const maxPackageGrantOptions = 200
+const maxSecretGrantOptions = 200
 
 async function loadScope(input: ScopedInput): Promise<ProfilesScope | null> {
 	const binding = await loadOrgBindingForSlug(
@@ -315,10 +319,12 @@ function toTokenItems(value: unknown, orgId: string): Array<ProfileTokenItem> {
 }
 
 async function loadGrantOptions(
-	db: D1Database,
+	env: Env,
+	request: RequestContext | null | undefined,
 	orgId: string,
 	orgSlug: string,
 ): Promise<Array<ProfileGrantOption>> {
+	const db = env.APP_DB
 	const packages = await db
 		.prepare(
 			`SELECT id, name FROM saved_packages
@@ -340,6 +346,43 @@ async function loadGrantOptions(
 			label: row.name,
 			permissions: [...packageCollaboratorPermissions],
 		})),
+		...(await loadSecretGrantOptions(env, request, orgId)),
+	]
+}
+
+/** Org secrets and vaults the person can use, with "read locally" (ADR 0097). */
+async function loadSecretGrantOptions(
+	env: Env,
+	request: RequestContext | null | undefined,
+	orgId: string,
+): Promise<Array<ProfileGrantOption>> {
+	if (!request) return []
+	const [credentials, providers] = await Promise.all([
+		listCredentialsForViewer({ env, request }),
+		listCredentialProviderBindings(env.APP_DB, orgId),
+	])
+	const permissions = ['secret:use', 'secret:read_local']
+	return [
+		...credentials
+			.filter(
+				(item) =>
+					item.kind === 'secret' &&
+					item.scope === 'org' &&
+					item.packageId === null,
+			)
+			.slice(0, maxSecretGrantOptions)
+			.map((item) => ({
+				resourceType: 'credential',
+				resourceId: item.id,
+				label: item.name,
+				permissions,
+			})),
+		...providers.map((binding) => ({
+			resourceType: 'credential',
+			resourceId: binding.id,
+			label: binding.provider ?? binding.providerId,
+			permissions,
+		})),
 	]
 }
 
@@ -354,7 +397,10 @@ export async function loadProfilesPageData(
 	if (!(await isProfilesEnabledFor(db, userId, org.id))) {
 		return { enabled: false, orgSlug: input.orgSlug }
 	}
-	const isOwner = scope.personal || scope.binding.role === 'owner'
+	const isOwner =
+		scope.personal ||
+		scope.binding.role === 'owner' ||
+		scope.binding.role === 'admin'
 	const allMembers = input.allMembers && isOwner && !scope.personal
 	const viewer = { userId, username: input.user.username, isOwner }
 	try {
@@ -367,7 +413,12 @@ export async function loadProfilesPageData(
 			callTokenOperation(scope, input.env, 'tokenList', {
 				include_inactive: true,
 			}),
-			loadGrantOptions(db, org.id, input.orgSlug),
+			loadGrantOptions(
+				input.env,
+				scope.ctx.callerContext.request,
+				org.id,
+				input.orgSlug,
+			),
 		])
 		return {
 			enabled: true,

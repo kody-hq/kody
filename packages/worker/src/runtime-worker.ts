@@ -14,7 +14,10 @@ import { PackageAppRuntimeBridge } from '#worker/package-runtime/package-app.ts'
 import { servePackageAppRequest } from '#worker/package-runtime/package-app-serve.ts'
 import { KodyFetchGateway } from '#mcp/fetch-gateway.ts'
 import { DynamicWorkerUsageTail } from '#worker/usage/dynamic-worker-cpu.ts'
-import { getWorkerSentryOptions } from './sentry-options.ts'
+import {
+	getWorkerEntrypointSentryOptions,
+	getWorkerSentryOptions,
+} from './sentry-options.ts'
 import {
 	handlePackageAppRequest,
 	isPackageAppRequestPath,
@@ -63,20 +66,21 @@ export {
 /**
  * Named entrypoint for the origin `RUNTIME_WORKER` service binding.
  */
-export class RuntimeWorkerService
+class RuntimeWorkerServiceEntrypoint
 	extends WorkerEntrypoint<Env>
 	implements RuntimeWorkerServiceContract
 {
 	async fetch(request: Request): Promise<Response> {
-		// Reuse the same Sentry wrap as the default export so wholesale
-		// runtime-owned traffic keeps exception capture via this named entrypoint.
-		return Sentry.withSentry((env: Env) => getWorkerSentryOptions(env), {
-			async fetch(request: Request, env: Env, ctx: ExecutionContext) {
-				return runWithDynamicWorkerEvaluationBudget(
-					async () => await fetchRuntimeWorkerRequest(request, env, ctx),
-				)
-			},
-		}).fetch(request, this.env, this.ctx)
+		const receivedAt = Date.now()
+		return runWithDynamicWorkerEvaluationBudget(
+			async () =>
+				await fetchRuntimeWorkerRequest(
+					request,
+					this.env,
+					this.ctx,
+					receivedAt,
+				),
+		)
 	}
 
 	async servePackageApp(input: RuntimePackageAppServeInput): Promise<Response> {
@@ -97,10 +101,18 @@ export class RuntimeWorkerService
 	}
 }
 
+export const RuntimeWorkerService = Sentry.withSentry(
+	getWorkerEntrypointSentryOptions,
+	RuntimeWorkerServiceEntrypoint,
+)
+export type RuntimeWorkerService = RuntimeWorkerServiceEntrypoint
+
 const runtimeWorkerHandler = {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+		const receivedAt = Date.now()
 		return runWithDynamicWorkerEvaluationBudget(
-			async () => await fetchRuntimeWorkerRequest(request, env, ctx),
+			async () =>
+				await fetchRuntimeWorkerRequest(request, env, ctx, receivedAt),
 		)
 	},
 } satisfies ExportedHandler<Env>
@@ -109,6 +121,7 @@ async function fetchRuntimeWorkerRequest(
 	request: Request,
 	env: Env,
 	ctx: Pick<ExecutionContext, 'waitUntil'>,
+	receivedAt?: number,
 ) {
 	const url = new URL(request.url)
 
@@ -147,6 +160,7 @@ async function fetchRuntimeWorkerRequest(
 		request,
 		env,
 		ctx,
+		receivedAt === undefined ? undefined : { receivedAt },
 	)
 	if (packageAppOriginResponse) return packageAppOriginResponse
 

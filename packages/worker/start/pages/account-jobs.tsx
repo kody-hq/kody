@@ -1,12 +1,13 @@
 /** @jsxImportSource @emotion/react */
+import type { Command } from '../commands/model.ts'
 import {
 	filterAccountJobs,
 	type AccountJobsViewFilter,
 } from '#client/routes/account-jobs-filter.ts'
 import { setJobKillSwitch, runJobNow } from '#start/server/account-mutations'
-import {
-	type AccountJobListItem,
-	type AccountJobsLoaderData,
+import type {
+	AccountJobListItem,
+	AccountJobsLoaderData,
 } from '#universal/loader-data.ts'
 import {
 	useIsMutating,
@@ -16,6 +17,7 @@ import {
 } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
+import { usePageCommands } from '../commands/context.tsx'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { collectionSearch } from '../filter-search.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
@@ -37,6 +39,7 @@ import {
 	type AccountJobsActionPayload,
 	type AccountJobsMessageTone,
 } from './account-jobs-shared.ts'
+import { WorkspaceScopeNotice } from '../components/workspace-scope-notice.tsx'
 import {
 	AccountManagementMessage,
 	AccountManagementShell,
@@ -80,7 +83,7 @@ export function AccountJobsPage({
 				: data,
 		savedPayload,
 	)
-	const { username, jobs, selectedJob } = payload
+	const { username, teamOrg, jobs, selectedJob } = payload
 
 	const [message, setMessage] = useState<string | null>(null)
 	const [messageTone, setMessageTone] = useState<AccountJobsMessageTone>('info')
@@ -170,6 +173,42 @@ export function AccountJobsPage({
 		onSettled: (_data, _error, input, submitted) =>
 			submitted ? reconcile(input, submitted) : undefined,
 	})
+	usePageCommands(
+		isMutating
+			? []
+			: jobs.flatMap((job) => [
+					...(job.expired
+						? []
+						: ([
+								{
+									id: `run-job:${orgSlug}:${job.id}`,
+									title: `Run ${job.name} now`,
+									subtitle: job.packageName ?? job.packageId,
+									kind: 'action',
+									icon: 'play',
+									confirm: `Run ${job.name} now? This executes the job with its saved parameters.`,
+									run: async () => {
+										await runMutation.mutateAsync({ id: job.id, orgSlug })
+									},
+								},
+							] as Command[])),
+					{
+						id: `toggle-job:${orgSlug}:${job.id}`,
+						title: `${job.killSwitchEnabled ? 'Resume' : 'Pause'} ${job.name}`,
+						subtitle: job.packageName ?? job.packageId,
+						kind: 'action',
+						icon: 'briefcase',
+						confirm: `${job.killSwitchEnabled ? 'Resume' : 'Pause'} scheduled runs for ${job.name}?`,
+						run: async () => {
+							await killMutation.mutateAsync({
+								id: job.id,
+								orgSlug,
+								killSwitchEnabled: !job.killSwitchEnabled,
+							})
+						},
+					},
+				]),
+	)
 	async function postAction(input: {
 		write: () => Promise<AccountJobsActionPayload>
 		successMessage: (payload: AccountJobsActionPayload) => string | null
@@ -226,6 +265,15 @@ export function AccountJobsPage({
 				description="Inspect scheduled package jobs, toggle the kill switch, and run jobs now. To change or remove a job, edit its package and publish."
 				currentHref={currentHref}
 			/>
+
+			{orgSlug ? (
+				<WorkspaceScopeNotice
+					action="Running as"
+					slug={orgSlug}
+					personal={!teamOrg}
+					detail="Jobs belong to this workspace and run as it. Where they compute (cloud or a local machine) is separate from which workspace they act for."
+				/>
+			) : null}
 
 			{message ? (
 				<AccountManagementMessage

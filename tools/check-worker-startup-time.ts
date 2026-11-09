@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { mkdtemp, mkdir, readFile, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { availableParallelism, loadavg, tmpdir } from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
@@ -216,6 +216,57 @@ export function findStartupBudgetViolations(
 	return results.filter((result) => result.bestActiveMs > result.maxActiveMs)
 }
 
+const loadSettlePollMs = 2_000
+const loadSettleMaxWaitMs = 60_000
+
+/**
+ * Waits (bounded) until the 1-minute load average drops to half the cores.
+ * `loadavg()` is all zeros on Windows, so this returns at once there.
+ */
+async function waitForLoadToSettle() {
+	const deadline = Date.now() + loadSettleMaxWaitMs
+	while (loadavg()[0]! > availableParallelism() / 2 && Date.now() < deadline) {
+		await new Promise((resolve) => setTimeout(resolve, loadSettlePollMs))
+	}
+}
+
+/**
+ * Re-profiles each over-budget worker once before failing. A sample taken
+ * while the machine is still busy (for example right after validate's
+ * parallel legs) reads high; a real regression stays over budget.
+ */
+export async function resampleStartupBudgetViolations(input: {
+	results: ReadonlyArray<StartupTimeResult>
+	settle: () => Promise<void>
+	resample: (
+		name: StartupTimeTarget['name'],
+	) => Promise<Array<StartupProfileSummary>>
+	log?: (message: string) => void
+}): Promise<Array<StartupTimeResult>> {
+	const violations = findStartupBudgetViolations(input.results)
+	if (violations.length === 0) return [...input.results]
+	for (const violation of violations) {
+		input.log?.(
+			`${formatStartupTimeResult(violation)}; re-sampling once the machine settles`,
+		)
+	}
+	await input.settle()
+	const results: Array<StartupTimeResult> = []
+	for (const result of input.results) {
+		if (!violations.includes(result)) {
+			results.push(result)
+			continue
+		}
+		const samples = [...result.samples, ...(await input.resample(result.name))]
+		results.push({
+			...result,
+			samples,
+			bestActiveMs: Math.min(...samples.map((sample) => sample.activeMs)),
+		})
+	}
+	return results
+}
+
 /**
  * Profiles each production entry with `wrangler check startup` (workerd,
  * sampled CPU during module evaluation) and compares the best of N runs to a
@@ -230,26 +281,45 @@ export async function checkWorkerStartupTime() {
 	const budget = await readStartupBudget()
 	const outputRoot = await mkdtemp(path.join(tmpdir(), 'kody-startup-time-'))
 	const wranglerBinary = resolveLocalBinary('wrangler')
-	const results: Array<StartupTimeResult> = []
+	let results: Array<StartupTimeResult> = []
 	try {
 		const originBuild = await buildOriginProductionViteBundle(
 			path.join(outputRoot, 'origin-vite'),
 		)
+		const resolvedTargets = new Map<
+			StartupTimeTarget['name'],
+			Awaited<ReturnType<typeof resolveRuntimeDryRunTarget>>
+		>()
+		let nextRun = 0
 		// Sequential on purpose: concurrent workerd instances would contend for
 		// CPU and inflate each other's samples.
-		for (const target of startupTimeTargets) {
-			const resolvedTarget = await resolveRuntimeDryRunTarget(
-				resolveStartupTimeTarget(target, originBuild.wranglerConfigPath),
-				outputRoot,
-			)
+		const sample = async (name: StartupTimeTarget['name']) => {
+			const resolvedTarget = resolvedTargets.get(name)!
 			const samples: Array<StartupProfileSummary> = []
 			for (let run = 0; run < budget.runs; run++) {
+				const runIndex = nextRun++
 				samples.push(
 					await profileStartupWithRetry(() =>
-						profileStartupOnce(resolvedTarget, outputRoot, wranglerBinary, run),
+						profileStartupOnce(
+							resolvedTarget,
+							outputRoot,
+							wranglerBinary,
+							runIndex,
+						),
 					),
 				)
 			}
+			return samples
+		}
+		for (const target of startupTimeTargets) {
+			resolvedTargets.set(
+				target.name,
+				await resolveRuntimeDryRunTarget(
+					resolveStartupTimeTarget(target, originBuild.wranglerConfigPath),
+					outputRoot,
+				),
+			)
+			const samples = await sample(target.name)
 			results.push({
 				name: target.name,
 				bestActiveMs: Math.min(...samples.map((sample) => sample.activeMs)),
@@ -257,6 +327,12 @@ export async function checkWorkerStartupTime() {
 				maxActiveMs: budget.maxActiveMs[target.name],
 			})
 		}
+		results = await resampleStartupBudgetViolations({
+			results,
+			settle: waitForLoadToSettle,
+			resample: sample,
+			log: (message) => console.log(message),
+		})
 	} finally {
 		await rm(outputRoot, { recursive: true, force: true })
 	}

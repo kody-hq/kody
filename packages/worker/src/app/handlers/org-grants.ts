@@ -1,6 +1,6 @@
-import {
-	type AuthenticatedAppUser,
-	type readAuthenticatedAppUser,
+import type {
+	AuthenticatedAppUser,
+	readAuthenticatedAppUser,
 } from '#app/authenticated-user.ts'
 import { operationResult } from '#app/operation-result.ts'
 import {
@@ -14,9 +14,13 @@ import {
 	authorizeGrantTarget,
 	resolveAuthorizedGrantPermissions,
 } from '#mcp/capabilities/access/shared.ts'
-import {
-	type OrgGrantsLoaderData,
-	type OrgWideReadSubjectView,
+import type {
+	OrgGrantPersonView,
+	OrgGrantRevokeResult,
+	OrgGrantSubjectView,
+	OrgGrantsLoaderData,
+	OrgGrantTeamView,
+	OrgWideReadSubjectView,
 } from '#universal/loader-data.ts'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
 import {
@@ -33,9 +37,12 @@ import {
 	type ListedOrgGrant,
 } from '#worker/orgs/org-grants-view.ts'
 import { listOrgMembers } from '#worker/orgs/org-members-list.ts'
+import { listOutsideCollaborators } from '#worker/orgs/org-collaborators-list.ts'
 import { listTeams } from '#worker/orgs/org-teams-list.ts'
 import {
+	isOrgWideManagePermission,
 	isOrgWideReadPermission,
+	orgWideManagePermissions,
 	orgWideReadPermissions,
 } from '@kody-internal/shared/grant-presets.ts'
 import {
@@ -51,7 +58,7 @@ import {
  * Same resource check as grant revoke. Authorization and caller denials mean
  * this viewer cannot revoke the grant; anything else still fails the request.
  */
-async function grantRevokeAllowed(
+export async function grantRevokeAllowed(
 	env: Env,
 	user: AuthenticatedAppUser,
 	grant: { resourceType: string; resourceId: string },
@@ -108,7 +115,141 @@ export async function loadOrgGrantsData(input: {
 				canRevoke: await grantRevokeAllowed(input.env, input.user, grant),
 			})),
 		),
+		people:
+			canManage && !input.org.personal
+				? await listGrantPeople(input.env.APP_DB, input.org.id)
+				: [],
+		subjects: await listGrantSubjects(input.env.APP_DB, {
+			orgId: input.org.id,
+			grants,
+			includeEveryone: canManage && !input.org.personal,
+		}),
+		teams: await listGrantTeams(input.env.APP_DB, {
+			orgId: input.org.id,
+			grants,
+			includeEveryone: canManage && !input.org.personal,
+		}),
+		memberCount: await countOrgMembers(input.env.APP_DB, input.org.id),
 	}
+}
+
+/** Members of an organization, every role. */
+export async function countOrgMembers(db: D1Database, orgId: string) {
+	const row = await db
+		.prepare(
+			`SELECT COUNT(*) AS count FROM org_memberships
+			 WHERE org_id = ? AND deleted_at IS NULL`,
+		)
+		.bind(orgId)
+		.first<{ count: number }>()
+	return row?.count ?? 0
+}
+
+/**
+ * Teams for the grouped Grants list. A manager sees every team so they can
+ * open its access page; anyone else sees only teams that hold a grant here.
+ */
+async function listGrantTeams(
+	db: D1Database,
+	input: {
+		orgId: string
+		grants: ReadonlyArray<ListedOrgGrant>
+		includeEveryone: boolean
+	},
+): Promise<Array<OrgGrantTeamView>> {
+	const granted = new Set(
+		input.grants
+			.filter((grant) => grant.subjectType === 'team')
+			.map((grant) => grant.subjectId),
+	)
+	if (!input.includeEveryone && granted.size === 0) return []
+	const teams = await listTeams(db, input.orgId)
+	return teams
+		.filter((team) => input.includeEveryone || granted.has(team.id))
+		.map((team) => ({
+			teamId: team.id,
+			slug: team.slug,
+			name: team.name,
+			memberCount: team.memberCount,
+		}))
+}
+
+/**
+ * People for the grouped Grants list. A manager sees every member and outside
+ * collaborator; anyone else sees only people who hold a direct grant here.
+ */
+async function listGrantSubjects(
+	db: D1Database,
+	input: {
+		orgId: string
+		grants: ReadonlyArray<ListedOrgGrant>
+		includeEveryone: boolean
+	},
+): Promise<Array<OrgGrantSubjectView>> {
+	const [members, outside] = await Promise.all([
+		listOrgMembers(db, input.orgId),
+		listOutsideCollaborators(db, input.orgId),
+	])
+	const granted = new Set(
+		input.grants
+			.filter((grant) => grant.subjectType === 'user')
+			.map((grant) => grant.subjectId),
+	)
+	const subjects = new Map<string, OrgGrantSubjectView>()
+	for (const member of members) {
+		subjects.set(member.userId, {
+			userId: member.userId,
+			label: memberLabel(member),
+			kind: 'member',
+			role: member.role,
+		})
+	}
+	for (const person of outside) {
+		if (subjects.has(person.userId)) continue
+		subjects.set(person.userId, {
+			userId: person.userId,
+			label: memberLabel(person),
+			kind: 'collaborator',
+			role: null,
+		})
+	}
+	for (const grant of input.grants) {
+		if (grant.subjectType !== 'user' || subjects.has(grant.subjectId)) continue
+		subjects.set(grant.subjectId, {
+			userId: grant.subjectId,
+			label: grant.subjectLabel,
+			kind: 'collaborator',
+			role: null,
+		})
+	}
+	return [...subjects.values()].filter(
+		(subject) => input.includeEveryone || granted.has(subject.userId),
+	)
+}
+
+/** Non-owner members, then outside collaborators, for "Give someone access". */
+async function listGrantPeople(
+	db: D1Database,
+	orgId: string,
+): Promise<Array<OrgGrantPersonView>> {
+	const [members, outside] = await Promise.all([
+		listOrgMembers(db, orgId),
+		listOutsideCollaborators(db, orgId),
+	])
+	return [
+		...members
+			.filter((member) => member.role !== 'owner' && member.role !== 'admin')
+			.map((member) => ({
+				userId: member.userId,
+				label: memberLabel(member),
+				kind: 'member' as const,
+			})),
+		...outside.map((person) => ({
+			userId: person.userId,
+			label: memberLabel(person),
+			kind: 'collaborator' as const,
+		})),
+	]
 }
 
 export async function revokeOrganizationGrant({
@@ -140,16 +281,40 @@ export async function revokeOrganizationGrant({
 	if (!grantId) {
 		return operationResult({ ok: false, error: 'A grant id is required.' }, 400)
 	}
-	const grant = await getGrantById({
-		db: env.APP_DB,
+	const revoked = await revokeOneGrant({
+		env,
+		user,
 		orgId: access.org.id,
 		grantId,
 	})
+	if (!revoked.ok) {
+		return operationResult({ ok: false, error: revoked.error }, revoked.status)
+	}
+	return operationResult({ ok: true as const })
+}
+
+/**
+ * Revoke one grant in an organization after the same resource check as
+ * `accessRevoke`. The caller has already resolved `member:write`.
+ */
+async function revokeOneGrant({
+	env,
+	user,
+	orgId,
+	grantId,
+}: {
+	env: Env
+	user: AuthenticatedAppUser
+	orgId: string
+	grantId: string
+}): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
+	const grant = await getGrantById({ db: env.APP_DB, orgId, grantId })
 	if (!grant || !isGrantResourceType(grant.resourceType)) {
-		return operationResult(
-			{ ok: false, error: 'Grant was not found in this organization.' },
-			400,
-		)
+		return {
+			ok: false,
+			error: 'Grant was not found in this organization.',
+			status: 400,
+		}
 	}
 	try {
 		await authorizeGrantRevoke(
@@ -165,26 +330,71 @@ export async function revokeOrganizationGrant({
 		)
 	} catch (error) {
 		if (error instanceof AuthorizationError) {
-			return operationResult({ ok: false, error: error.message }, 403)
+			return { ok: false, error: error.message, status: 403 }
 		}
 		if (error instanceof McpCallerError) {
-			return operationResult({ ok: false, error: error.message }, 400)
+			return { ok: false, error: error.message, status: 400 }
 		}
 		throw error
 	}
 	try {
 		await softDeleteGrant({
 			db: env.APP_DB,
-			orgId: access.org.id,
+			orgId,
 			grantId: grant.id,
 			audit: orgAuditWriterFromRequest(env, user.request),
 		})
 	} catch (error) {
 		const message =
 			error instanceof Error ? error.message : 'Unable to revoke that grant.'
-		return operationResult({ ok: false, error: message }, 400)
+		return { ok: false, error: message, status: 400 }
 	}
-	return operationResult({ ok: true as const })
+	return { ok: true }
+}
+
+/**
+ * Revoke several grants at once. Each grant gets the same check as a single
+ * revoke; one failure does not undo the others, and each reports its result.
+ */
+export async function revokeOrganizationGrants({
+	request,
+	env,
+	user,
+	orgSlug,
+	grantIds,
+}: {
+	request: Request
+	env: Env
+	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
+	grantIds: ReadonlyArray<string>
+	orgSlug?: string
+}) {
+	const access = await resolveOrgManagementAccess({
+		request,
+		orgSlug,
+		env,
+		user,
+		permission: 'member:write',
+	})
+	if (!access.ok) {
+		return operationResult({ ok: false, error: access.error }, access.status)
+	}
+	const results: Array<OrgGrantRevokeResult> = []
+	for (const grantId of new Set(grantIds.map((id) => id.trim()))) {
+		if (!grantId) continue
+		const revoked = await revokeOneGrant({
+			env,
+			user,
+			orgId: access.org.id,
+			grantId,
+		})
+		results.push(
+			revoked.ok
+				? { grantId, ok: true }
+				: { grantId, ok: false, error: revoked.error },
+		)
+	}
+	return operationResult({ ok: true as const, results })
 }
 
 function subjectKey(subject: GrantSubject) {
@@ -210,6 +420,7 @@ async function listOrgWideReadSubjects(
 ): Promise<Array<OrgWideReadSubjectView>> {
 	const readsBySubject = new Map<string, Array<string>>()
 	const createsBySubject = new Map<string, Array<string>>()
+	const managesBySubject = new Map<string, Array<string>>()
 	for (const grant of grants) {
 		if (grant.resourceType !== 'org' || grant.resourceId !== orgId) continue
 		const key = subjectKey({ type: grant.subjectType, id: grant.subjectId })
@@ -221,6 +432,10 @@ async function listOrgWideReadSubjects(
 			...(createsBySubject.get(key) ?? []),
 			...grant.permissions.filter(isOrgCreatePermission),
 		])
+		managesBySubject.set(key, [
+			...(managesBySubject.get(key) ?? []),
+			...grant.permissions.filter(isOrgWideManagePermission),
+		])
 	}
 	const [members, teams] = await Promise.all([
 		listOrgMembers(db, orgId),
@@ -228,7 +443,7 @@ async function listOrgWideReadSubjects(
 	])
 	const subjects: Array<OrgWideReadSubjectView> = []
 	for (const member of members) {
-		if (member.role === 'owner') continue
+		if (member.role === 'owner' || member.role === 'admin') continue
 		const key = subjectKey({ type: 'user', id: member.userId })
 		subjects.push({
 			key,
@@ -236,6 +451,7 @@ async function listOrgWideReadSubjects(
 			label: memberLabel(member),
 			reads: readsBySubject.get(key) ?? [],
 			creates: createsBySubject.get(key) ?? [],
+			manages: managesBySubject.get(key) ?? [],
 		})
 	}
 	for (const team of teams) {
@@ -246,6 +462,7 @@ async function listOrgWideReadSubjects(
 			label: `${team.name} (@${team.slug})`,
 			reads: readsBySubject.get(key) ?? [],
 			creates: createsBySubject.get(key) ?? [],
+			manages: managesBySubject.get(key) ?? [],
 		})
 	}
 	return subjects
@@ -266,7 +483,7 @@ async function resolveOrgWideReadSubject(
 			)
 			.bind(orgId, id)
 			.first<{ role: string }>()
-		if (!row || row.role === 'owner') return null
+		if (!row || row.role === 'owner' || row.role === 'admin') return null
 		return { type: 'user', id }
 	}
 	if (type === 'team') {
@@ -281,7 +498,7 @@ async function resolveOrgWideReadSubject(
 	return null
 }
 
-type OrganizationAccessKind = 'read' | 'create'
+type OrganizationAccessKind = 'read' | 'create' | 'manage'
 
 const organizationAccessKinds = {
 	read: {
@@ -297,6 +514,13 @@ const organizationAccessKinds = {
 		personalError:
 			'A personal organization has no members to grant create access to.',
 		emptyError: 'Pick at least one kind of create access.',
+	},
+	manage: {
+		allows: isOrgWideManagePermission,
+		onlyError: `Only manage access can be granted here: ${orgWideManagePermissions.join(', ')}.`,
+		personalError:
+			'A personal organization has no members to grant org-wide manage access to.',
+		emptyError: 'Pick at least one kind of manage access.',
 	},
 } satisfies Record<
 	OrganizationAccessKind,
@@ -329,6 +553,18 @@ export async function grantOrganizationCreateAccess(
 	input: OrganizationAccessInput,
 ) {
 	return setOrganizationAccess(input, 'create')
+}
+
+/**
+ * Set which org-wide package and app manage permissions a member or team
+ * holds. Only an Owner may add them. Each saved kind also gets its read
+ * permission, which stays when manage is removed. Other permissions on that
+ * subject's organization grant are kept as they are.
+ */
+export async function grantOrganizationManageAccess(
+	input: OrganizationAccessInput,
+) {
+	return setOrganizationAccess(input, 'manage')
 }
 
 type OrganizationAccessInput = {
@@ -395,13 +631,26 @@ async function setOrganizationAccess(
 		subjectType: subject.type,
 		subjectId: subject.id,
 	})
-	const kept = existing
-		.flatMap((grant) => grant.permissions)
-		.filter(
-			(permission): permission is OrgPermission =>
-				isOrgPermission(permission) && !config.allows(permission),
-		)
-	const permissions = [...new Set([...kept, ...chosen])]
+	const keptFrom = (grants: typeof existing) =>
+		grants
+			.flatMap((grant) => grant.permissions)
+			.filter(
+				(permission): permission is OrgPermission =>
+					isOrgPermission(permission) && !config.allows(permission),
+			)
+	const kept = keptFrom(existing)
+	// Saving clears a past expiry, so only a live grant's permissions skip the Owner check.
+	const now = new Date().toISOString()
+	const liveKept = keptFrom(
+		existing.filter((grant) => !grant.expiresAt || grant.expiresAt > now),
+	)
+	const permissions = [
+		...new Set([
+			...kept,
+			...chosen,
+			...(kind === 'manage' ? orgWideReadsFor(chosen) : []),
+		]),
+	]
 	if (permissions.length === 0 && existing.length === 0) {
 		return operationResult({ ok: false, error: config.emptyError }, 400)
 	}
@@ -422,6 +671,7 @@ async function setOrganizationAccess(
 		const resolved = await resolveAuthorizedGrantPermissions(ctx, {
 			family: 'org',
 			permissions,
+			alreadyHeld: liveKept,
 		})
 		await upsertGrant({
 			db: env.APP_DB,
@@ -445,4 +695,15 @@ async function setOrganizationAccess(
 		throw error
 	}
 	return operationResult({ ok: true as const, permissions: chosen })
+}
+
+/** The read permission each org-wide manage permission's kind needs. */
+function orgWideReadsFor(permissions: ReadonlyArray<OrgPermission>) {
+	return [
+		...new Set(
+			permissions.map((permission): OrgPermission =>
+				permission.startsWith('app:') ? 'app:read' : 'package:read',
+			),
+		),
+	]
 }

@@ -30,7 +30,7 @@ import {
 	isSecretExpired,
 } from '@kody-internal/shared/secret-expires-at.ts'
 import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
 	checkPermission,
 	computeEffectivePermissions,
@@ -50,7 +50,7 @@ import {
 	bumpUsableCredentialsGeneration,
 	usableCredentialsGenerationOf,
 } from './credential-read-generation.ts'
-import { type CredentialNeed } from './credential-needs.ts'
+import type { CredentialNeed } from './credential-needs.ts'
 import { listPersonalCredentialCandidates } from './personal-credentials.ts'
 
 export { bumpUsableCredentialsGeneration }

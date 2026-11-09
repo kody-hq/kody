@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	durableObjectNameFromParts,
 	jobManagerDurableObjectName,

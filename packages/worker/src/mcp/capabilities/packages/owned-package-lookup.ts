@@ -9,7 +9,7 @@ import {
 	getSavedPackageById,
 	resolveSavedPackageRef,
 } from '#worker/package-registry/repo.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { z } from 'zod'
 
 export const packageIdentityInputShape = {

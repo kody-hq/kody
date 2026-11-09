@@ -2,6 +2,7 @@ export type BillingInterval = 'month' | 'year'
 import { isRedirect } from '@tanstack/react-router'
 import { mutationOptions } from '@tanstack/react-query'
 import {
+	addReferrer,
 	startCheckout,
 	openBillingPortal,
 } from '#start/server/billing-mutations'
@@ -50,3 +51,27 @@ export const billingCheckoutMutationOptions = mutationOptions({
 		promoCode: string
 	}) => requestProCheckout(input),
 })
+
+export async function requestAddReferrer(input: {
+	orgSlug: string
+	referrer: string
+}) {
+	try {
+		const result = await addReferrer({
+			data: { orgSlug: input.orgSlug, referrer: input.referrer.trim() },
+		})
+		return {
+			ok: true as const,
+			referrerUsername: result.referrerUsername,
+		}
+	} catch (error) {
+		if (isRedirect(error)) throw error
+		return {
+			ok: false as const,
+			error:
+				error instanceof Error
+					? error.message
+					: 'Unable to save the referrer. Try again shortly.',
+		}
+	}
+}

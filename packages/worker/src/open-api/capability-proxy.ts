@@ -4,7 +4,7 @@ import {
 	buildKodyToolContext,
 	createWorkflowTools,
 } from '#mcp/run-kody-registry.ts'
-import { type CredentialClientToolOptions } from '#mcp/runtime-helper-manifest.ts'
+import type { CredentialClientToolOptions } from '#mcp/runtime-helper-manifest.ts'
 import {
 	createExecutionSecretRedactor,
 	type ExecutionSecretRedactor,
@@ -229,6 +229,34 @@ export function createCapabilityProxyCredentialClientTools(
 	}
 }
 
+/**
+ * Package-local workerd sends its signed package binding as the second
+ * argument of `kody.mcp.<server>.<tool>(args, { packageBinding })`. Verify it
+ * (and `package:execute` on the package it names) and act as that package,
+ * claimed. No binding means no package, as before.
+ */
+async function authorizeLocalMcpPackageBinding(
+	ctx: ApiInvocationContext,
+	options: unknown,
+): Promise<{ kind: 'claimed'; packageId: string } | null> {
+	if (options === undefined || options === null) return null
+	if (typeof options !== 'object' || Array.isArray(options)) {
+		throw invalidRequest(
+			'kody.mcp calls take (args, { packageBinding }) at most; the second argument must be an object.',
+		)
+	}
+	const { packageBinding } = options as { packageBinding?: unknown }
+	if (packageBinding === undefined) return null
+	const packageId = await authorizeLocalExecutePackageBinding({
+		db: ctx.env.APP_DB,
+		env: ctx.env,
+		request: ctx.callerContext.request,
+		orgUserId: ownerIdFromCaller(ctx.callerContext),
+		packageBinding,
+	})
+	return { kind: 'claimed', packageId }
+}
+
 async function callKodyPath(input: {
 	ctx: ApiInvocationContext
 	path: ReadonlyArray<string>
@@ -264,10 +292,17 @@ async function callKodyPath(input: {
 		typeof name === 'string' && name.startsWith('credentialClient')
 			? createCapabilityProxyCredentialClientTools(ctx, callMap)
 			: undefined
+	const localPackageStamp =
+		path[1] === 'mcp'
+			? await invokeCapability(() =>
+					authorizeLocalMcpPackageBinding(ctx, args[1]),
+				)
+			: null
 	const { tools, mcpServers } = await buildKodyToolContext(
 		ctx.env,
 		ctx.callerContext,
 		{
+			...(localPackageStamp ? { localPackageStamp } : {}),
 			trackSecretInputValue: (value) => redactor.track(value),
 			additionalTools: packageHostTools,
 			workflowTools: createWorkflowTools({
@@ -331,6 +366,26 @@ async function callKodyPath(input: {
 	return invokeCapability(() => tool(args[0]))
 }
 
+/**
+ * Local runs send their own call map. A context run's map comes from its
+ * lease: Kody stored it when it routed the run, so the machine cannot pick
+ * different credentials for the requester.
+ */
+export function capabilityProxyCallMap(
+	ctx: Pick<ApiInvocationContext, 'principal'>,
+	credentials: CapabilityProxyCallInput['credentials'],
+): CredentialCallMap | null {
+	if (ctx.principal.kind !== 'execution-context-run') {
+		return normalizeCredentialCallMap(credentials)
+	}
+	if (credentials !== undefined && credentials !== null) {
+		throw invalidRequest(
+			'Execution context runs cannot send `credentials`: Kody applies the credential picks the run was started with.',
+		)
+	}
+	return ctx.principal.callMap ?? null
+}
+
 async function dispatchCapabilityProxyCall(input: {
 	ctx: ApiInvocationContext
 	call: CapabilityProxyCallInput
@@ -350,7 +405,7 @@ async function dispatchCapabilityProxyCall(input: {
 			path: call.path,
 			args: call.args,
 			redactor,
-			callMap: normalizeCredentialCallMap(call.credentials),
+			callMap: capabilityProxyCallMap(ctx, call.credentials),
 		})
 	}
 	if (root === 'workflows' && name === 'create' && call.path.length === 2) {
@@ -372,6 +427,21 @@ async function dispatchCapabilityProxyCall(input: {
  * values the call wrote and API tokens. Platform failures outside the
  * capability return the generic internal error and are logged here.
  */
+const capabilityPathSegmentPattern = /^[A-Za-z][A-Za-z0-9_]{0,63}$/
+
+/** First two static runtime segments only (never connector/package names). */
+function capabilityProxyOperationName(path: ReadonlyArray<string>) {
+	const [root, name] = path
+	if (
+		(root === 'kody' || root === 'workflows') &&
+		name !== undefined &&
+		capabilityPathSegmentPattern.test(name)
+	) {
+		return `capability:${root}.${name}`
+	}
+	return 'capability_proxy'
+}
+
 export async function runCapabilityProxyCall(input: {
 	ctx: ApiInvocationContext
 	call: CapabilityProxyCallInput
@@ -385,7 +455,9 @@ export async function runCapabilityProxyCall(input: {
 	} catch (error) {
 		const fromCapability = error instanceof CapabilityInvocationError
 		const cause = fromCapability ? error.cause : error
-		const apiError = toApiError(cause)
+		const apiError = toApiError(cause, {
+			operation: capabilityProxyOperationName(input.call.path),
+		})
 		if (
 			cause instanceof ApiError ||
 			apiError.status < 500 ||

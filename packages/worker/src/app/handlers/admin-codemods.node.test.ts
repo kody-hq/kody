@@ -1,7 +1,7 @@
-import { type PermissionString, type RoleName } from '#universal/permissions.ts'
+import type { PermissionString, RoleName } from '#universal/permissions.ts'
 import type * as AuditLog from '#worker/audit-log.ts'
-import { type PackageCodemodRunStepResult } from '#worker/package-codemods/engine.ts'
-import { type PackageCodemodRunRecord } from '#worker/package-codemods/ledger.ts'
+import type { PackageCodemodRunStepResult } from '#worker/package-codemods/engine.ts'
+import type { PackageCodemodRunRecord } from '#worker/package-codemods/ledger.ts'
 import { logAuditEventSpy } from '#worker/test-support/audit-log-spy.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
@@ -263,6 +263,7 @@ test('admin codemods run POST requires admin, rejects invalid requests, audits, 
 		],
 		nextCursor: null,
 		summary: { detected: 1 },
+		limit: 20,
 	}
 	mockModule.getPackageCodemodById.mockReturnValue({
 		id: codemodId,

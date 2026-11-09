@@ -2,6 +2,12 @@ import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { executeGatewayFetch } from '#mcp/fetch-gateway.ts'
 import { buildSecretPlaceholder } from '#mcp/secrets/placeholders.ts'
+import * as anyHostCallers from '#worker/credentials/jwt-sign-any-host.ts'
+import {
+	anySealedTokenDomain,
+	jwtSignSendToHostRequiredAt,
+	sealToken,
+} from '#worker/credentials/sealed-token.ts'
 import * as secretService from '#mcp/secrets/service.ts'
 import {
 	isActiveOrgQuery,
@@ -231,4 +237,73 @@ test('an Entra client-credentials token reaches its audience APIs with the secre
 		/may only be sent to microsoftonline\.com, management\.azure\.com, not collector\.test/,
 	)
 	expect(seen).toHaveLength(4)
+})
+
+test('an any-host JWT fill counts the host it was sent to for the caller that minted it', async () => {
+	vi.useFakeTimers({ toFake: ['Date'] })
+	vi.setSystemTime(jwtSignSendToHostRequiredAt - 60_000)
+	try {
+		const record = vi
+			.spyOn(anyHostCallers, 'recordJwtSignAnyHostDestination')
+			.mockResolvedValue(undefined)
+		const seen: Array<string | null> = []
+		const globalFetch = vi.fn(async (outbound: Request) => {
+			seen.push(outbound.headers.get('authorization'))
+			return Response.json({ ok: true })
+		}) as unknown as typeof fetch
+		const runProps = { ...props, credentialClientBinding: 'run-a' }
+		const anyHost = await sealToken({
+			env,
+			value: 'signed-jwt',
+			to: {
+				org: props.userId,
+				binding: 'run-a',
+				domains: [anySealedTokenDomain],
+				source: 'jwt-sign',
+				anyHostPackageId: 'pkg-1',
+			},
+		})
+		const pending: Array<Promise<unknown>> = []
+		await executeGatewayFetch({
+			env,
+			props: runProps,
+			request: new Request('https://API.Partner.example/v1', {
+				headers: { Authorization: `Bearer ${anyHost}` },
+			}),
+			globalFetch,
+			waitUntil: (promise) => pending.push(promise),
+		})
+		expect(seen).toEqual(['Bearer signed-jwt'])
+		await Promise.all(pending)
+		expect(record).toHaveBeenCalledWith({
+			env,
+			caller: { ownerId: props.userId, packageId: 'pkg-1' },
+			host: 'api.partner.example',
+		})
+		expect(JSON.stringify(record.mock.calls)).not.toContain('signed-jwt')
+
+		record.mockClear()
+		const bound = await sealToken({
+			env,
+			value: 'bound-jwt',
+			to: {
+				org: props.userId,
+				binding: 'run-a',
+				domains: ['partner.example'],
+				source: 'jwt-sign',
+			},
+		})
+		await executeGatewayFetch({
+			env,
+			props: runProps,
+			request: new Request('https://api.partner.example/v1', {
+				headers: { Authorization: `Bearer ${bound}` },
+			}),
+			globalFetch,
+		})
+		expect(record).not.toHaveBeenCalled()
+	} finally {
+		vi.useRealTimers()
+		vi.restoreAllMocks()
+	}
 })

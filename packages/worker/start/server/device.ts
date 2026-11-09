@@ -4,6 +4,8 @@ import { getStartRequestEnv } from './request-env.ts'
 // side-effect import that drags worker code into the client build.
 // oxlint-disable-next-line import/consistent-type-specifier-style
 import type { DeviceVerificationRequest } from '../../src/oauth-device/verification.ts'
+// oxlint-disable-next-line import/consistent-type-specifier-style
+import type { AccountDeviceVerificationRequest } from '../../src/app/account-device-sign-in.ts'
 
 export type DevicePageError =
 	| 'invalid_code'
@@ -11,6 +13,7 @@ export type DevicePageError =
 	| 'rate_limited'
 	| 'email_unverified'
 	| 'org_error'
+	| 'confirm_required'
 
 export type DevicePageData =
 	| { kind: 'signed_out'; userCode: string | null; redirectTo: string }
@@ -26,10 +29,17 @@ export type DevicePageData =
 			error: DevicePageError | null
 	  }
 	| {
+			/** A browser asking to sign in to the full Kody account (ADR 0094). */
+			kind: 'account_consent'
+			request: AccountDeviceVerificationRequest
+			account: { email: string; displayName: string }
+			error: DevicePageError | null
+	  }
+	| {
 			kind: 'done'
 			result: 'approved' | 'denied'
-			/** A package-app visitor sign-in rather than the Kody CLI. */
-			packageApp: boolean
+			/** Who was signed in: the Kody CLI, a package app, or a browser. */
+			target: 'cli' | 'package_app' | 'account'
 	  }
 
 const devicePageErrors = new Set<DevicePageError>([
@@ -38,6 +48,7 @@ const devicePageErrors = new Set<DevicePageError>([
 	'rate_limited',
 	'email_unverified',
 	'org_error',
+	'confirm_required',
 ])
 
 function readDevicePageError(value: string | null): DevicePageError | null {
@@ -76,10 +87,11 @@ export const loadDevicePage = createServerFn({ method: 'GET' })
 		const params = new URLSearchParams(search)
 		const result = params.get('result')
 		if (result === 'approved' || result === 'denied') {
+			const kind = params.get('kind')
 			return {
 				kind: 'done',
 				result,
-				packageApp: params.get('kind') === 'package_app',
+				target: kind === 'package_app' || kind === 'account' ? kind : 'cli',
 			}
 		}
 		const userCode = params.get('user_code')?.trim() || null
@@ -111,6 +123,14 @@ export const loadDevicePage = createServerFn({ method: 'GET' })
 				href: `${consent.pathname}${consent.search}`,
 				reloadDocument: true,
 			})
+		}
+		if (lookup.kind === 'account') {
+			return {
+				kind: 'account_consent',
+				request: lookup.request,
+				account: { email: user.email, displayName: user.displayName },
+				error,
+			}
 		}
 		if (lookup.kind !== 'found') {
 			return {

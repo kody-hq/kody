@@ -10,9 +10,9 @@ import {
 	chunkArray,
 	maxD1BoundParameters,
 } from '@kody-internal/shared/chunk.ts'
-import { type CredentialPermissionFamily } from '@kody-internal/shared/org-permissions.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgResource } from '#worker/authorization/authorize.ts'
+import type { CredentialPermissionFamily } from '@kody-internal/shared/org-permissions.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OrgResource } from '#worker/authorization/authorize.ts'
 
 export const credentialKinds = [
 	'secret',

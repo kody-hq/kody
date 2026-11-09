@@ -387,11 +387,26 @@ ON email_rejecting_providers(last_rejection_at);`,
 );`,
 		`CREATE INDEX IF NOT EXISTS idx_email_mx_lookup_cache_expires
 ON email_mx_lookup_cache(expires_at);`,
-		`CREATE TABLE IF NOT EXISTS email_verification_hard_bounces (
+		`CREATE TABLE IF NOT EXISTS system_email_sends (
+	provider_message_id TEXT NOT NULL,
+	recipient TEXT NOT NULL,
+	sender TEXT NOT NULL,
+	kind TEXT NOT NULL,
+	sent_at TEXT NOT NULL,
+	last_status TEXT,
+	last_status_at TEXT,
+	hard_bounced_at TEXT,
+	PRIMARY KEY (provider_message_id, recipient)
+);`,
+		`CREATE TABLE IF NOT EXISTS email_recipient_suppressions (
 	recipient TEXT PRIMARY KEY NOT NULL,
-	status TEXT NOT NULL,
-	detail TEXT,
-	suppressed_at TEXT NOT NULL,
+	hard_bounce_count INTEGER NOT NULL DEFAULT 0,
+	suppressed_at TEXT,
+	verification_suppressed_at TEXT,
+	last_status TEXT NOT NULL,
+	last_detail TEXT,
+	last_hard_bounce_at TEXT NOT NULL,
+	created_at TEXT NOT NULL,
 	updated_at TEXT NOT NULL
 );`,
 	]

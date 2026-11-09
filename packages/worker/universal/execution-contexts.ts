@@ -23,6 +23,7 @@ type ExecutionContextStatus = 'online' | 'offline' | 'revoked'
 export type ExecutionContextDisplayStatus =
 	| 'online'
 	| 'busy'
+	| 'paused'
 	| 'offline'
 	| 'revoked'
 
@@ -55,11 +56,47 @@ export type ExecutionContextShareGrant = {
 	commands?: boolean
 }
 
+export type ExecutionContextAccessBits = {
+	execute: boolean
+	manage: boolean
+	/** Host commands stay on the machine operator only. */
+	commands: boolean
+}
+
+/**
+ * Effective who-has-access for the org of the page being viewed. Built from
+ * that org's shares (user/team grants + allMembers) plus live membership;
+ * never invents owner-org invitation language as the current-org roster.
+ */
+export type ExecutionContextAccessRoster = {
+	orgSlug: string
+	operator: { handle: string } & ExecutionContextAccessBits
+	people: Array<
+		{
+			handle: string
+			outside?: boolean
+			source: 'grant' | 'all_members'
+			grantId?: string
+			preset?: ExecutionContextPreset
+		} & ExecutionContextAccessBits
+	>
+	teams: Array<
+		{
+			slug: string
+			name?: string
+			grantId: string
+			preset: ExecutionContextPreset
+		} & ExecutionContextAccessBits
+	>
+	noAccess: Array<{ handle: string }>
+}
+
 export type ExecutionContextSharing = {
 	level: ExecutionContextSharingLevel
 	grants: Array<ExecutionContextShareGrant>
 	attachedOrgs: Array<{ id?: string; slug: string; allMembers?: boolean }>
 	allMembers: boolean
+	accessRoster?: ExecutionContextAccessRoster
 }
 
 export type ExecutionContextGrantSummary = {
@@ -77,7 +114,30 @@ type ExecutionContextChainUsage = {
 	chainCount: number
 }
 
+type ExecutionContextBoxEntry = {
+	permission: string
+	resource: string | null
+}
+
 export type ExecutionContextListItem = {
+	/** The viewer's own excess-access notice (ADR 0096). */
+	elevation?: {
+		fingerprint: string
+		dismissed: boolean
+		entries: Array<ExecutionContextBoxEntry>
+	}
+	misconfigurations?: Array<string>
+	accessReview?: Array<{
+		handle: string | null
+		entries: Array<ExecutionContextBoxEntry>
+	}>
+	login?: {
+		kind: 'person' | 'profile'
+		recorded: boolean
+		profileId: string | null
+		checkedAt: string | null
+	}
+	teamId?: string | null
 	id: string
 	name: string
 	ownerOrg: { id: string; slug: string }
@@ -90,6 +150,12 @@ export type ExecutionContextListItem = {
 	acceptingRuns: boolean
 	lastSeenAt: string | null
 	revokedAt: string | null
+	/** Server-side pause: routing skips the context until it is resumed. */
+	paused?: ExecutionContextPause | null
+	canPause?: boolean
+	canResume?: boolean
+	canControlDaemon?: boolean
+	canReadDaemonLogs?: boolean
 	client: {
 		name: string
 		version: string
@@ -113,6 +179,13 @@ export type ExecutionContextListItem = {
 	canOptIn?: boolean
 	canAddShares?: boolean
 	chainUsage: ExecutionContextChainUsage
+}
+
+export type ExecutionContextPause = {
+	at: string
+	/** Handle of who paused it. */
+	by: string | null
+	reason: string | null
 }
 
 export type ExecutionContextUnutilized = {
@@ -395,9 +468,12 @@ export function ordinal(position: number): string {
 }
 
 export function contextDisplayStatus(
-	context: Pick<ExecutionContextListItem, 'status' | 'acceptingRuns'>,
+	context: Pick<ExecutionContextListItem, 'status' | 'acceptingRuns'> & {
+		paused?: ExecutionContextPause | null
+	},
 ): ExecutionContextDisplayStatus {
 	if (context.status === 'revoked') return 'revoked'
+	if (context.paused) return 'paused'
 	if (context.status === 'offline') return 'offline'
 	return context.acceptingRuns ? 'online' : 'busy'
 }
@@ -408,6 +484,8 @@ export function displayStatusLabel(status: ExecutionContextDisplayStatus) {
 			return 'Online'
 		case 'busy':
 			return 'Busy'
+		case 'paused':
+			return 'Paused'
 		case 'offline':
 			return 'Offline'
 		case 'revoked':
@@ -550,10 +628,17 @@ export function grantSummaryDetail(grant: ExecutionContextGrantSummary) {
 	].join(' · ')
 }
 
-/** "Only me" / "{n} people" / "Team {t}" / "Everyone in @{org}", joined. */
+/**
+ * "Only me" / "{n} people" / "Team {t}" / "Everyone in @{org}", joined.
+ *
+ * `viewerOrgSlug` is the org of the page being viewed. `sharing.allMembers` is
+ * already remapped to that org by loadSharing, so label it with the viewer slug
+ * (not the registration owner). Skip the viewer org when listing attachedOrgs
+ * so an attached-org view does not double-count "Everyone in @current".
+ */
 export function sharingSummary(
 	sharing: ExecutionContextSharing | undefined,
-	ownerOrgSlug: string,
+	viewerOrgSlug: string,
 ): string | null {
 	if (!sharing) return null
 	const people = sharing.grants.filter((grant) => grant.subject.kind === 'user')
@@ -566,11 +651,116 @@ export function sharingSummary(
 	if (people.length > 0)
 		parts.push(pluralize(people.length, 'person', 'people'))
 	for (const team of teams) parts.push(`Team ${team}`)
-	if (sharing.allMembers) parts.push(`Everyone in @${ownerOrgSlug}`)
+	if (sharing.allMembers) parts.push(`Everyone in @${viewerOrgSlug}`)
 	for (const org of sharing.attachedOrgs) {
-		if (org.allMembers) parts.push(`Everyone in @${org.slug}`)
+		if (org.allMembers && org.slug !== viewerOrgSlug) {
+			parts.push(`Everyone in @${org.slug}`)
+		}
 	}
 	return parts.length > 0 ? parts.join(' + ') : 'Only me'
+}
+
+function accessBitsForPreset(
+	preset: ExecutionContextPreset,
+): ExecutionContextAccessBits {
+	return {
+		execute: true,
+		manage: preset === 'manage',
+		// Shares never mount host commands (commands_operator_only).
+		commands: false,
+	}
+}
+
+export function accessBitsLabel(bits: ExecutionContextAccessBits): string {
+	const parts: Array<string> = []
+	if (bits.execute) parts.push('execute')
+	if (bits.manage) parts.push('manage')
+	if (bits.commands) parts.push('commands')
+	return parts.length > 0 ? parts.join(', ') : 'none'
+}
+
+/**
+ * Build the current-org access roster from raw shares + live membership.
+ * Operator is always listed separately. Members without a grant (and without
+ * allMembers / a covering team) appear under noAccess. Does not invent
+ * owner-org shares for an attached-org page.
+ */
+export function buildAccessRoster(input: {
+	orgSlug: string
+	operatorHandle: string
+	sharing: Pick<ExecutionContextSharing, 'grants' | 'allMembers'>
+	/** Live members of the viewer org (username required to list). */
+	members: Array<{ handle: string }>
+	/** Handles covered by team grants in this org (expanded membership). */
+	teamCoveredHandles?: ReadonlyArray<string>
+}): ExecutionContextAccessRoster {
+	const operatorHandle = input.operatorHandle
+	const grantedHandles = new Set<string>()
+	const people: ExecutionContextAccessRoster['people'] = []
+	const teams: ExecutionContextAccessRoster['teams'] = []
+
+	for (const grant of input.sharing.grants) {
+		const bits = accessBitsForPreset(grant.preset)
+		if (grant.subject.kind === 'user') {
+			const handle = grant.subject.handle
+			if (!handle || handle === operatorHandle) continue
+			grantedHandles.add(handle)
+			people.push({
+				handle,
+				...(grant.subject.outside ? { outside: true } : {}),
+				source: 'grant',
+				grantId: grant.grantId,
+				preset: grant.preset,
+				...bits,
+			})
+			continue
+		}
+		teams.push({
+			slug: grant.subject.slug,
+			...(grant.subject.name ? { name: grant.subject.name } : {}),
+			grantId: grant.grantId,
+			preset: grant.preset,
+			...bits,
+		})
+	}
+
+	for (const handle of input.teamCoveredHandles ?? []) {
+		if (handle) grantedHandles.add(handle)
+	}
+
+	if (input.sharing.allMembers) {
+		const bits = accessBitsForPreset('use')
+		for (const member of input.members) {
+			if (!member.handle || member.handle === operatorHandle) continue
+			if (people.some((person) => person.handle === member.handle)) continue
+			grantedHandles.add(member.handle)
+			people.push({
+				handle: member.handle,
+				source: 'all_members',
+				preset: 'use',
+				...bits,
+			})
+		}
+	}
+
+	const noAccess = input.members.flatMap((member) => {
+		if (!member.handle || member.handle === operatorHandle) return []
+		if (grantedHandles.has(member.handle)) return []
+		return [{ handle: member.handle }]
+	})
+
+	return {
+		orgSlug: input.orgSlug,
+		operator: {
+			handle: operatorHandle,
+			execute: true,
+			manage: true,
+			commands: true,
+		},
+		people,
+		teams,
+		noAccess,
+	}
 }
 
 export function canOptIntoContext(
@@ -720,6 +910,12 @@ const executionContextAuditLabels: Record<string, string> = {
 	command_started: 'Command started',
 	command_finished: 'Command finished',
 	run_cancelled: 'Run cancelled',
+	paused: 'Paused',
+	resumed: 'Resumed',
+	daemon_restarted: 'Daemon restarted',
+	daemon_update_checked: 'Daemon update checked',
+	daemon_config_changed: 'Daemon config changed',
+	daemon_logs_read: 'Daemon log read',
 }
 
 /** `$ npm test in /repo, exit 0` for host command audit rows (ADR 0093). */

@@ -1,4 +1,4 @@
-import { type deleteUserAccount } from '#worker/app/account-deletion.ts'
+import type { deleteUserAccount } from '#worker/app/account-deletion.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 import { createInMemoryRepoSessionIndexEnv } from '#worker/test-support/repo-session-index.ts'
 

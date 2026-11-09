@@ -1,9 +1,9 @@
 import { expect, test } from 'vitest'
-import { envWithNodeHeapFloor, nodeHeapFloorMb } from './node-runtime.ts'
+import { envWithNodeHeapFloor } from './node-runtime.ts'
 
 test('envWithNodeHeapFloor adds an 8GB heap when NODE_OPTIONS is unset', () => {
 	expect(envWithNodeHeapFloor({}).NODE_OPTIONS).toBe(
-		`--max-old-space-size=${nodeHeapFloorMb}`,
+		'--max-old-space-size=8192',
 	)
 })
 
@@ -22,5 +22,5 @@ test('envWithNodeHeapFloor leaves the underscore heap spelling alone', () => {
 test('envWithNodeHeapFloor appends beside other NODE_OPTIONS flags', () => {
 	expect(
 		envWithNodeHeapFloor({ NODE_OPTIONS: '--no-warnings' }).NODE_OPTIONS,
-	).toBe(`--no-warnings --max-old-space-size=${nodeHeapFloorMb}`)
+	).toBe('--no-warnings --max-old-space-size=8192')
 })

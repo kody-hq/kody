@@ -1,9 +1,9 @@
 import { rewriteScopedReferences } from '#worker/community/fork-scan.ts'
-import {
-	type PackageCodemod,
-	type PackageCodemodContext,
-	type PackageCodemodFinding,
-	type PackageCodemodTransformResult,
+import type {
+	PackageCodemod,
+	PackageCodemodContext,
+	PackageCodemodFinding,
+	PackageCodemodTransformResult,
 } from '../types.ts'
 
 export const ownerScopeFollowsRegistryCodemodId =

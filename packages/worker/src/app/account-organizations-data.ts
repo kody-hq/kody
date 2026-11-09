@@ -1,9 +1,9 @@
 import { grantPresets } from '@kody-internal/shared/grant-presets.ts'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
-import {
-	type AccountOrganizationSummary,
-	type AccountPendingInvite,
-	type AccountRestorableOrganization,
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type {
+	AccountOrganizationSummary,
+	AccountPendingInvite,
+	AccountRestorableOrganization,
 } from '#universal/loader-data.ts'
 import { orgRoleLabel } from '#universal/org-pages.ts'
 import { packageCollaboratorPresetLabel } from '#universal/package-collaborators.ts'

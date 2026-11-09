@@ -3,6 +3,8 @@ import {
 	defaultE2eWebServerPort,
 	findUnhealthyOriginDevServerMessage,
 	resolveE2eWebServerHealthUrl,
+	runE2eMigrateWithLockRetry,
+	shouldRetryE2eMigrate,
 	shouldRetryE2eWebServerFirstStart,
 	startCloudflareMockWithRetry,
 } from './e2e-web-server.ts'
@@ -58,6 +60,97 @@ test('e2e webServer retries the first Vite process only before /health', () => {
 			exitCode: 0,
 		}),
 	).toBe(false)
+})
+
+test('e2e migrate retries SQLITE_BUSY once after resetting persist', () => {
+	const busy =
+		"Error: wrangler d1 execute failed (exit 1) for: SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'd1_migrations';\ndatabase is locked: SQLITE_BUSY (extended: SQLITE_BUSY_RECOVERY)"
+	expect(
+		shouldRetryE2eMigrate({
+			allowRetry: true,
+			status: 1,
+			output: busy,
+		}),
+	).toBe(true)
+	expect(
+		shouldRetryE2eMigrate({
+			allowRetry: true,
+			status: 1,
+			output: 'duplicate column name: color',
+		}),
+	).toBe(false)
+	expect(
+		shouldRetryE2eMigrate({
+			allowRetry: false,
+			status: 1,
+			output: busy,
+		}),
+	).toBe(false)
+
+	const runs: Array<string> = []
+	const logs: Array<string> = []
+	let persistResets = 0
+	const result = runE2eMigrateWithLockRetry({
+		run: () => {
+			runs.push('migrate')
+			if (runs.length === 1) return { status: 1, output: busy }
+			expect(persistResets).toBe(1)
+			return { status: 0, output: 'applied' }
+		},
+		resetPersist: () => {
+			persistResets += 1
+		},
+		log: (message) => logs.push(message),
+	})
+	expect(result).toEqual({ status: 0, output: 'applied' })
+	expect(runs).toEqual(['migrate', 'migrate'])
+	expect(persistResets).toBe(1)
+	expect(logs).toEqual([
+		'e2e migrate hit a transient local D1 lock; resetting persist and retrying once.',
+	])
+
+	let busyRuns = 0
+	let busyResets = 0
+	const secondBusy = { status: 1, output: `${busy}\nsecond attempt` }
+	const repeatedBusy = runE2eMigrateWithLockRetry({
+		run: () => {
+			busyRuns += 1
+			if (busyRuns > 2) throw new Error('unexpected third migration')
+			return busyRuns === 1 ? { status: 1, output: busy } : secondBusy
+		},
+		resetPersist: () => {
+			busyResets += 1
+		},
+		log: () => {},
+	})
+	expect(repeatedBusy).toEqual(secondBusy)
+	expect(busyRuns).toBe(2)
+	expect(busyResets).toBe(1)
+
+	const firstPass = runE2eMigrateWithLockRetry({
+		run: () => ({ status: 0, output: 'already applied' }),
+		resetPersist: () => {
+			throw new Error('must not reset persist on a successful migrate')
+		},
+		log: () => {
+			throw new Error('must not log a retry on a successful migrate')
+		},
+	})
+	expect(firstPass).toEqual({ status: 0, output: 'already applied' })
+
+	const sqlError = runE2eMigrateWithLockRetry({
+		run: () => ({ status: 1, output: 'duplicate column name: color' }),
+		resetPersist: () => {
+			throw new Error('must not reset persist for a real migrate failure')
+		},
+		log: () => {
+			throw new Error('must not log a retry for a real migrate failure')
+		},
+	})
+	expect(sqlError).toEqual({
+		status: 1,
+		output: 'duplicate column name: color',
+	})
 })
 
 test('e2e webServer retries a mock Cloudflare start once with a fresh token', async () => {

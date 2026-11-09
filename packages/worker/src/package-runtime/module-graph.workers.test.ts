@@ -14,12 +14,12 @@ import {
 	buildKodyImportableModuleBundle,
 	buildKodyModuleBundle,
 } from './module-graph.ts'
-import { packageAppClientModuleNamePattern } from './package-app-client-module-name.ts'
 import { persistPublishedSourceSnapshot } from './published-runtime-artifacts.ts'
 import { persistPublishedBundleArtifact } from './published-bundle-artifacts.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
 import { ensureSoftDeleteTestColumns } from '#worker/soft-delete/test-schema.ts'
 import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
+import { entitySourcesTableSql } from '#worker/repo/entity-sources-test-schema.ts'
 
 const baseUrl = 'https://kody.dev'
 
@@ -30,19 +30,7 @@ async function runSql(sql: string, ...values: Array<unknown>) {
 }
 
 async function ensureSavedPackageArtifactSchema() {
-	await runSql(`CREATE TABLE IF NOT EXISTS entity_sources (
-		id TEXT PRIMARY KEY,
-		user_id TEXT NOT NULL,
-		entity_kind TEXT NOT NULL,
-		entity_id TEXT NOT NULL,
-		repo_id TEXT NOT NULL,
-		published_commit TEXT,
-		indexed_commit TEXT,
-		manifest_path TEXT NOT NULL DEFAULT 'package.json',
-		source_root TEXT NOT NULL DEFAULT '/',
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL
-	)`)
+	await runSql(entitySourcesTableSql)
 	await runSql(`CREATE TABLE IF NOT EXISTS saved_packages (
 		id TEXT PRIMARY KEY NOT NULL,
 		user_id TEXT NOT NULL,
@@ -521,7 +509,7 @@ export const mounted = render(greeting.name)`,
 			})
 
 		const bundle = await buildClient()
-		expect(bundle.mainModule).toMatch(packageAppClientModuleNamePattern)
+		expect(bundle.mainModule).toMatch(/^client\.[A-Za-z0-9_-]{16}\.js$/)
 		expect(Object.keys(bundle.modules)).toEqual([bundle.mainModule])
 		const source = bundle.modules[bundle.mainModule]
 		expect(typeof source).toBe('string')

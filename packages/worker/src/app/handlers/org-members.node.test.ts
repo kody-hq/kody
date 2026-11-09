@@ -1,5 +1,5 @@
 import type * as OrgBilling from '#worker/orgs/billing.ts'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { createOrganization } from '#worker/orgs/create-organization.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
@@ -242,7 +242,7 @@ test('member cannot change roles, invite, or remove; owner can; last owner is pr
 		{
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ invitee: 'eve@example.com', role: 'admin' }),
+			body: JSON.stringify({ invitee: 'eve@example.com', role: 'superuser' }),
 		},
 	)
 	await signIn('ada', invalidRoleInvite)
@@ -341,7 +341,7 @@ test('owner can create invite links; member and billing cannot; owner role is re
 	expect(rejectedOwner.status).toBe(400)
 	expect(rejectedOwner.data).toMatchObject({
 		ok: false,
-		error: 'Invite links cannot grant the Owner role.',
+		error: 'Invite links cannot grant the Owner or Admin role.',
 	})
 
 	const create = new Request('https://kody.test/@zeta-co/-/members', {

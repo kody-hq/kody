@@ -3,7 +3,7 @@
  * so a tombstoned person cannot fall through to a leftover personal org row.
  */
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type McpUserContext } from '@kody-internal/shared/chat.ts'
+import type { McpUserContext } from '@kody-internal/shared/chat.ts'
 import { AccountSuspendedError } from '#worker/account/account-suspension.ts'
 import { personalOrgIdFromUserRow } from '#worker/orgs/personal-org-id.ts'
 import { getUserRolesAndPermissions } from './permissions-db.ts'
@@ -103,7 +103,7 @@ async function loadBackgroundMcpUser(
 	const user = await db
 		.prepare(
 			`SELECT id, email, username, display_name, stable_user_id,
-				personal_org_id, suspended_at, deleting_at, deleted_at
+				personal_org_id, suspended_at, deleting_at, deleted_at, guest_expires_at
 			 FROM users
 			 WHERE stable_user_id = ? OR personal_org_id = ?`,
 		)
@@ -118,6 +118,7 @@ async function loadBackgroundMcpUser(
 			suspended_at: string | null
 			deleting_at: string | null
 			deleted_at: string | null
+			guest_expires_at?: string | null
 		}>()
 	if (!user) {
 		return await loadBackgroundTeamOrg(db, userId)
@@ -186,6 +187,7 @@ async function loadBackgroundMcpUser(
 			personal_org_id: user.personal_org_id,
 			stable_user_id: user.stable_user_id,
 		}),
+		...(user.guest_expires_at ? { guestExpiresAt: user.guest_expires_at } : {}),
 		roles,
 		permissions,
 	}

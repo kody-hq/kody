@@ -1,4 +1,4 @@
-import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { getRequestIp } from '#worker/audit-log.ts'

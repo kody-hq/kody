@@ -1,4 +1,4 @@
-import { type WorkspaceSwitchTarget } from '#universal/org-pages.ts'
+import type { WorkspaceSwitchTarget } from '#universal/org-pages.ts'
 /** Presentation identity belongs to the native route, never a second URL matcher. */
 export type PageNavigation = {
 	rail: 'account' | 'workspace' | 'admin'
@@ -23,6 +23,7 @@ export type PageNavigation = {
 		| 'follows'
 		| 'grants'
 		| 'insights'
+		| 'integrations'
 		| 'jobs'
 		| 'members'
 		| 'memories'
@@ -35,6 +36,7 @@ export type PageNavigation = {
 		| 'profiles'
 		| 'provider-marks'
 		| 'public-profile'
+		| 'apps'
 		| 'repositories'
 		| 'reserved-usernames'
 		| 'roles'

@@ -1,12 +1,9 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import * as Sentry from '@sentry/cloudflare'
 import { DurableObject } from 'cloudflare:workers'
 import { getRecoveryBookmark, restoreToBookmark } from '#worker/dr/do-pitr.ts'
 import { buildSentryOptions } from '#worker/sentry-options.ts'
-import {
-	type EmailDeliveryEventType,
-	type EmailDeliveryStatus,
-} from './types.ts'
+import type { EmailDeliveryEventType, EmailDeliveryStatus } from './types.ts'
 import {
 	canonicalMailboxMessageBlobReferences,
 	deleteMailboxBlobKeys,
@@ -29,9 +26,9 @@ import {
 } from './mailbox-message-deletion-tombstones.ts'
 import { upsertMailboxDeliveryEvents } from './mailbox-delivery-event-upsert.ts'
 import { shouldSkipMailboxDeliveryEventWrite } from './mailbox-inbound-bootstrap.ts'
-import {
-	type MailboxInboundDeliveryInsertInput,
-	type MailboxInboundDeliverySnapshot,
+import type {
+	MailboxInboundDeliveryInsertInput,
+	MailboxInboundDeliverySnapshot,
 } from './mailbox-inbound-ledger.ts'
 import {
 	assertMailboxNonEmptyString,

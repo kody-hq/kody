@@ -38,6 +38,21 @@ export function isDisposableLocalPersistPath(persistTo: string) {
 	)
 }
 
+/**
+ * Delete disposable e2e Miniflare state. Dev persist (`.wrangler/state`)
+ * is never touched — that directory can hold unreleased local data.
+ */
+export function resetDisposableE2ePersist(
+	persistTo: string = disposableE2ePersistPath,
+) {
+	if (!isDisposableLocalPersistPath(persistTo)) {
+		throw new Error(
+			`Refusing to reset non-disposable persist path: ${persistTo}`,
+		)
+	}
+	rmSync(persistTo, { recursive: true, force: true })
+}
+
 export function resolveStaleLocalMigrationsAction(input: {
 	persistTo: string
 	stale: ReadonlyArray<string>
@@ -180,7 +195,7 @@ export function main(argv: ReadonlyArray<string>) {
 					stale,
 				}),
 			)
-			rmSync(options.persistTo, { recursive: true, force: true })
+			resetDisposableE2ePersist(options.persistTo)
 			return 0
 		case 'fail':
 			console.error(

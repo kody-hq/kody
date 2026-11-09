@@ -1,5 +1,5 @@
-import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js'
-import { type AppMcpOAuthSession } from '../mcp-oauth-client.ts'
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
+import type { AppMcpOAuthSession } from '../mcp-oauth-client.ts'
 
 const mcpCallTimeoutMs = 180_000
 
@@ -83,6 +83,14 @@ export function readExecuteResult(toolResult: unknown) {
 }
 
 export function readSearchResult(toolResult: unknown) {
+	return readStructuredResult('search', toolResult)
+}
+
+export function readApiResult(toolResult: unknown) {
+	return readStructuredResult('api', toolResult)
+}
+
+function readStructuredResult(tool: string, toolResult: unknown) {
 	const payload = readMcpToolPayload(toolResult)
 	if (!payload || typeof payload !== 'object') return payload
 	const structured = payload as { result?: unknown; error?: unknown }
@@ -91,7 +99,7 @@ export function readSearchResult(toolResult: unknown) {
 			toolResult as CallToolResult,
 			structured.error,
 		)
-		throw new Error(`search failed: ${text}`)
+		throw new Error(`${tool} failed: ${text}`)
 	}
 	if (Object.hasOwn(structured, 'result')) {
 		return structured.result ?? null

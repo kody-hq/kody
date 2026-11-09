@@ -7,7 +7,7 @@
  * opt-ins by migration 0195), so nobody migrates anything by hand.
  */
 import { SecretPlacementError } from '#mcp/secrets/secret-placement.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
 	buildCredentialPlacementApprovalUrl,
 	buildCredentialPlacementSettingUrl,
@@ -203,5 +203,6 @@ export function enforceFillPlacement(input: {
 			links: input.links,
 		})}`,
 		input.slot,
+		refused.part,
 	)
 }

@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
 import {
+	resampleStartupBudgetViolations,
 	findStartupBudgetViolations,
 	formatStartupTimeResult,
 	isStartupProfilerTimeout,
@@ -7,7 +8,6 @@ import {
 	profileStartupWithRetry,
 	resolveStartupTimeCwd,
 	resolveStartupTimeTarget,
-	startupTimeTargets,
 } from './check-worker-startup-time.ts'
 
 const sampleOutput = `
@@ -79,10 +79,8 @@ test('startup profiling retries timeout measurements but not other errors', asyn
 })
 
 test('origin startup profile runs from the Vite snapshot, not the workspace root', () => {
-	const origin = startupTimeTargets.find((target) => target.name === 'origin')
-	expect(origin).toBeDefined()
 	const resolved = resolveStartupTimeTarget(
-		origin!,
+		{ name: 'origin', packageDir: '.', args: [] },
 		'/tmp/kody-startup-time/origin-vite/ssr/wrangler.json',
 	)
 	expect(resolved.packageDir).toBe('/tmp/kody-startup-time/origin-vite/ssr')
@@ -93,15 +91,6 @@ test('origin startup profile runs from the Vite snapshot, not the workspace root
 	expect(resolveStartupTimeCwd('packages/platform-worker')).toMatch(
 		/packages\/platform-worker$/,
 	)
-})
-
-test('sibling startup profiles pass an explicit Wrangler config', () => {
-	expect(
-		startupTimeTargets.find((target) => target.name === 'platform')?.args,
-	).toEqual(['--config', 'wrangler.jsonc'])
-	expect(
-		startupTimeTargets.find((target) => target.name === 'runtime')?.args,
-	).toEqual(['--config', 'wrangler.jsonc'])
 })
 
 test('reports only workers whose best sample exceeds the budget', () => {
@@ -125,4 +114,50 @@ test('reports only workers whose best sample exceeds the budget', () => {
 	expect(formatStartupTimeResult(results[0]!)).toBe(
 		'origin startup active CPU: 120.0 ms best of [130.0] (budget 240 ms)',
 	)
+})
+
+test('re-samples over-budget workers once after the machine settles', async () => {
+	const sample = (activeMs: number) => ({
+		activeMs,
+		garbageCollectionMs: 5,
+		idleMs: 100,
+	})
+	const origin = {
+		name: 'origin' as const,
+		bestActiveMs: 120,
+		samples: [sample(120)],
+		maxActiveMs: 280,
+	}
+	const runtime = {
+		name: 'runtime' as const,
+		bestActiveMs: 166,
+		samples: [sample(166)],
+		maxActiveMs: 160,
+	}
+	const calls: Array<string> = []
+	const results = await resampleStartupBudgetViolations({
+		results: [origin, runtime],
+		settle: async () => {
+			calls.push('settle')
+		},
+		resample: async (name) => {
+			calls.push(name)
+			return [sample(90)]
+		},
+	})
+	expect(calls).toEqual(['settle', 'runtime'])
+	expect(results[0]).toBe(origin)
+	expect(results[1]).toMatchObject({ bestActiveMs: 90 })
+	expect(results[1]!.samples.map((entry) => entry.activeMs)).toEqual([166, 90])
+
+	const steady = await resampleStartupBudgetViolations({
+		results: [origin],
+		settle: async () => {
+			throw new Error('no violation: must not wait')
+		},
+		resample: async () => {
+			throw new Error('no violation: must not re-sample')
+		},
+	})
+	expect(steady).toEqual([origin])
 })

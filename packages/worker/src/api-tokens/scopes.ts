@@ -6,6 +6,7 @@
 import {
 	isOrgPermission,
 	orgPermissions,
+	withoutRetiredOrgPermissions,
 	type OrgPermission,
 } from '@kody-internal/shared/org-permissions.ts'
 
@@ -43,6 +44,8 @@ const keyScopeDescriptions: Partial<Record<OrgPermission, string>> = {
 	'package:publish': 'Publish packages to the community catalog.',
 	'package:manage_access': 'Manage package access grants.',
 	'secret:use': 'Use secrets without reading plaintext.',
+	'secret:read_local':
+		'Read secret values on this machine with the Kody CLI, only for secrets a person turned on local reads for.',
 	'secret:write': 'Change existing secrets (plaintext is never returned).',
 	'secret:create': 'Create new secrets.',
 	'memory:read': 'Read memories and MCP server instructions.',
@@ -75,8 +78,12 @@ export function apiTokenScopeIncludes(
 	return granted.includes(required)
 }
 
-/** Sorted, de-duplicated org-permission scopes; throws on unknown values. */
-export function normalizeApiTokenScopes(values: ReadonlyArray<unknown>) {
+/**
+ * Sorted, de-duplicated org-permission scopes; drops retired permissions and
+ * throws on other unknown values.
+ */
+export function normalizeApiTokenScopes(input: ReadonlyArray<unknown>) {
+	const values = withoutRetiredOrgPermissions(input)
 	const unknown = values.filter((value) => !isOrgPermission(value))
 	if (unknown.length > 0) {
 		throw new Error(

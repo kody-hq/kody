@@ -213,12 +213,10 @@
 	   Lossless WebP: Fathom visitors are Chrome/Firefox/Safari/Edge/Opera. */
 	--kody-pattern: url('/images/kody-pattern.webp');
 
-	/* Select chevron (see `getSelectCss`). A data-URI background image cannot
-	   read `currentColor`, so the stroke is baked in and the token is themed
-	   instead. Each value is its theme's muted-text color, which clears the
-	   3:1 non-text contrast minimum on both that theme's surfaces. */
-	--select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234e535a' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
-	--select-chevron-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a0a5ab' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+	/* Select caret (see `getSelectCss`). Data-URI background images cannot
+	   read `currentColor`, so each theme supplies its own solid fill. */
+	--select-caret: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 5' fill='%23000'%3E%3Cpath d='M0 0h8L4 5z'/%3E%3C/svg%3E");
+	--select-caret-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 5' fill='%23fff'%3E%3Cpath d='M0 0h8L4 5z'/%3E%3C/svg%3E");
 
 	/* Responsive spacing - used for page-level padding */
 	--spacing-page: var(--spacing-2xl);
@@ -314,7 +312,7 @@
 		--primitive-integrations: var(--primitive-integrations-dark);
 		--primitive-apps: var(--primitive-apps-dark);
 		--primitive-text-l: var(--primitive-text-l-dark);
-		--select-chevron: var(--select-chevron-dark);
+		--select-caret: var(--select-caret-dark);
 		--line-height-body: var(--line-height-body-dark);
 
 		/* Dark mode shadows - lighter for visibility */
@@ -726,9 +724,13 @@ html.is-settled {
 /* Hero agent marks: 64px monochrome icons (a mask filled with the text
    colour), each a link to its `/with/:agent` page. Hover, focus, or press
    zooms a mark like the video chooser thumbs, slides its neighbours aside,
-   and fades its name in. With JS (`.is-looping`, set by
-   `landing-agent-marquee.tsx`) the loop copies show and the scroll wraps
-   endlessly; without it the row is a plain scroller. */
+   and fades its name in. The track holds the list three times and drifts
+   by one list width per loop as a pure CSS animation, so it moves from
+   first paint and hydration never touches it. `.is-manual` (set by
+   `landing-agent-marquee.tsx` while someone scrolls, drags, or uses the
+   keyboard) stops the drift and JS wraps the scroll instead. The drift never
+   scrolls, so `fade-always-x` pins both edge fades on (tw-fade's default
+   only fades the start edge once scrolled). */
 .landing-agents-row {
 	width: 100%;
 }
@@ -738,6 +740,8 @@ html.is-settled {
 	--agent-zoom: 1.25;
 	--agent-shift: calc(var(--agent-size) * (var(--agent-zoom) - 1) / 2);
 	--agent-fade: clamp(2rem, 8vw, 4.5rem);
+	/* One mark (64px icon + 1.6rem padding) every 3.2s: about 28px/s. */
+	--agent-drift-per-mark: 3.2s;
 	width: min(44rem, 100%);
 	margin: clamp(1.75rem, 4vw, 2.5rem) auto 0;
 	overflow-x: auto;
@@ -752,7 +756,7 @@ html.is-settled {
 .landing-agents-track {
 	list-style: none;
 	margin: 0;
-	padding: 0.75rem var(--agent-fade) 0;
+	padding: 0.75rem 0 0;
 	display: flex;
 	width: max-content;
 }
@@ -762,8 +766,30 @@ html.is-settled {
 	padding-inline: 0.8rem;
 }
 
-.landing-agents-item[aria-hidden] {
-	display: none;
+@keyframes landing-agents-drift {
+	from {
+		translate: var(--agent-drift-from, 0px) 0;
+	}
+	to {
+		translate: calc(var(--agent-drift-from, 0px) - 100% / 3) 0;
+	}
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.landing-agents:not(.is-manual) .landing-agents-track {
+		animation: landing-agents-drift
+			calc(var(--agent-count, 24) * var(--agent-drift-per-mark)) linear infinite;
+	}
+
+	.landing-agents:has(.landing-agent:focus-visible) .landing-agents-track {
+		animation-play-state: paused;
+	}
+}
+
+@media (prefers-reduced-motion: no-preference) and (hover: hover) {
+	.landing-agents:hover .landing-agents-track {
+		animation-play-state: paused;
+	}
 }
 
 .landing-agent {
@@ -864,14 +890,6 @@ html.is-settled {
 	.landing-agents.is-magnifying .landing-agent-icon {
 		transition-duration: 70ms;
 	}
-}
-
-.landing-agents.is-looping .landing-agents-track {
-	padding-inline: 0;
-}
-
-.landing-agents.is-looping .landing-agents-item[aria-hidden] {
-	display: block;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -3146,13 +3164,21 @@ html:not(.js) .landing-connect-copy {
 	font-size: max(calc(100cqw / 30), 14px);
 }
 
+/* Narrow stages settle on 15px text. The layout stacks below each scene's
+   `stackWidth` (PrimitiveWidgetFrame); keep the two stack blocks in sync. */
+
 @container (max-width: 520px) {
 	.pw-stage[data-stack] {
-		aspect-ratio: auto;
 		font-size: 15px;
 	}
+}
 
-	.pw-stage[data-stack] .pw-run {
+@container (max-width: 520px) {
+	.pw-stage[data-stack='520'] {
+		aspect-ratio: auto;
+	}
+
+	.pw-stage[data-stack='520'] .pw-run {
 		position: relative;
 		inset: auto;
 		display: flex;
@@ -3161,7 +3187,7 @@ html:not(.js) .landing-connect-copy {
 		gap: 0.75em;
 	}
 
-	.pw-stage[data-stack] .pw-node {
+	.pw-stage[data-stack='520'] .pw-node {
 		position: relative;
 		left: auto !important;
 		top: auto !important;
@@ -3169,7 +3195,34 @@ html:not(.js) .landing-connect-copy {
 		width: auto;
 	}
 
-	.pw-stage[data-stack] .pw-wires {
+	.pw-stage[data-stack='520'] .pw-wires {
+		display: none;
+	}
+}
+
+@container (max-width: 419.98px) {
+	.pw-stage[data-stack='420'] {
+		aspect-ratio: auto;
+	}
+
+	.pw-stage[data-stack='420'] .pw-run {
+		position: relative;
+		inset: auto;
+		display: flex;
+		flex-direction: column;
+		align-items: stretch;
+		gap: 0.75em;
+	}
+
+	.pw-stage[data-stack='420'] .pw-node {
+		position: relative;
+		left: auto !important;
+		top: auto !important;
+		translate: none;
+		width: auto;
+	}
+
+	.pw-stage[data-stack='420'] .pw-wires {
 		display: none;
 	}
 }

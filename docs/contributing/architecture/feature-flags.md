@@ -255,13 +255,13 @@ use the two evaluation chokepoints (the app session flag cache and the MCP
 caller flag resolver). The app session cache records **once per HTTP request**.
 The MCP resolver records when it loads a user's evaluations, at most **once per
 15 second TTL per isolate**, and call sites in that window reuse the evaluation.
-Stateless `/mcp` builds a new caller context per request, so this replaces the
-old 2–4 exposure writes per tools/call. **Lower exposure counts are expected and
-more accurate**: they count the assignment the user saw, not each call site or
-each stateless request inside the window. A kill switch or override can be stale
-until the TTL expires. Evaluation failures are not cached and fail closed (every
-flag off) without an exposure write, and execute refuses before loading a
-worker, so the failure never spends daily quota. Flags with
+Stateless `/mcp` builds a new caller context per request, so a window of
+stateless tools/calls still shares that one write. **Lower exposure counts are
+expected and more accurate**: they count the assignment the user saw, not each
+call site or each stateless request inside the window. A kill switch or override
+can be stale until the TTL expires. Evaluation failures are not cached and fail
+closed (every flag off) without an exposure write, and execute refuses before
+loading a worker, so the failure never spends daily quota. Flags with
 `exposureRecording: 'mcp-events-clients'` write only when an MCP client calls an
 `events/*` method, so other MCP callers stay outside that experiment frame.
 Flags with `exposureRecording: 'repo-push-owners'` (`repo-push-queue`) write

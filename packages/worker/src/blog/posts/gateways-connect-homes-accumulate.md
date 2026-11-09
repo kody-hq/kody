@@ -7,6 +7,7 @@ description:
   runtime where your assistant's stuff lives and keeps running. The difference
   shows up the moment you try to toggle code mode off.
 order: 2
+category: essays
 ---
 
 Since I started talking about Kody, one question keeps coming up: "How is this

@@ -4,8 +4,8 @@ import {
 	mcpServerOAuthClientSecretContext,
 } from '#mcp/secrets/crypto.ts'
 import type * as HubClient from '#worker/mcp-client/hub-client.ts'
-import { type SealedMcpPreRegisteredOAuthClient } from '#worker/mcp-client/preregistered-oauth-client.ts'
-import { type McpServerOAuthClientChange } from '#worker/mcp-client/types.ts'
+import type { SealedMcpPreRegisteredOAuthClient } from '#worker/mcp-client/preregistered-oauth-client.ts'
+import type { McpServerOAuthClientChange } from '#worker/mcp-client/types.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createAuditTestDb } from '#worker/test-support/create-audit-db.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'

@@ -1,11 +1,11 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { repoSessionStorageBucketId } from '#worker/storage-buckets/service.ts'
 import {
 	repoSessionIndexRpc,
 	type RepoSessionIndexEnv,
 } from './repo-session-index-client.ts'
-import { type RepoSessionRow } from './types.ts'
+import type { RepoSessionRow } from './types.ts'
 
 export type RepoSessionCatalogEnv = RepoSessionIndexEnv
 

@@ -1225,6 +1225,50 @@ test('an isolate reset during the credential scan names that step', async () => 
 	expect(credentials?.message).toContain('credential stamp scan')
 })
 
+test('the request-placement scan comes from the isolated credentials phase, not this isolate', async () => {
+	const filler = `export const filler = ${JSON.stringify('x'.repeat(1024))}\n`
+	const fillerFiles = Object.fromEntries(
+		Array.from(
+			{
+				length: Math.ceil(isolatedCredentialScanMinSourceBytes / filler.length),
+			},
+			(_, index) => [`src/generated/filler-${index}.ts`, filler],
+		),
+	)
+	const { env } = isolatedEnv(async (request) => {
+		if (request.phase === 'credentials') {
+			return {
+				ok: true,
+				message: 'Credential stamp ok (isolated).',
+				changedFiles: {},
+				stampKeys: [],
+				requestPlacementHits: [
+					{
+						path: 'src/index.ts',
+						line: 2,
+						nameKind: 'secret',
+						name: 'apiKey',
+						part: 'query',
+					},
+				],
+				fetchBodyHits: [],
+			}
+		}
+		return { ok: true, message: 'ok (isolated)' }
+	})
+	// The source itself has no placement: only the phase's hits can fail it.
+	const { result } = await runChecks(
+		packageFiles(manifest('large-tree-package'), {
+			'src/index.ts': `export default async function main() {\n\treturn 'ok'\n}\n`,
+			...fillerFiles,
+		}),
+		{ env, baseUrl: '/', userId: ownerIdFromStored('user-123') },
+	)
+	const credentials = findCheck(result, 'credentials')
+	expect(credentials?.ok).toBe(false)
+	expect(credentials?.message).toContain('src/index.ts:2')
+})
+
 test('runRepoChecks validates package skills and fails publish on malformed SKILL.md frontmatter', async () => {
 	const okFiles = packageFiles(
 		manifest('skilled', {}, { name: '@kentcdodds/skilled' }),
@@ -1434,6 +1478,71 @@ test('runRepoChecks warns when a fetch body is not opted out of secret resolutio
 	)
 })
 
+test('runRepoChecks fails publish on credential placeholders in a fetch body', async () => {
+	const { result } = await runChecks(
+		packageFiles(
+			manifest('body-placeholder', {
+				credentials: {
+					apiKey: { kind: 'secret', description: 'API key.' },
+					clerkReviewUserId: { kind: 'secret', description: 'Account id.' },
+				},
+			}),
+			{
+				'src/index.ts': [
+					'export const ready = true',
+					'export async function post() {',
+					"  await fetch('https://api.example.com/reviews', {",
+					"    method: 'POST',",
+					'    headers: {',
+					"      Authorization: 'Bearer {{secret:apiKey}}',",
+					"      'x-kody-secret-resolution': 'on',",
+					'    },',
+					"    body: JSON.stringify({ userId: '{{secret:clerkReviewUserId}}' }),",
+					'  })',
+					'}',
+				].join('\n'),
+			},
+		),
+	)
+	expect(result.ok).toBe(false)
+	const check = findCheck(result, 'credentials')
+	expect(check?.ok).toBe(false)
+	expect(check?.message).toContain('Publish failed:')
+	expect(check?.message).toContain(
+		'- src/index.ts:9: secret "clerkReviewUserId" in the request body',
+	)
+	expect(check?.message).not.toContain('"apiKey"')
+	expect(check?.message).toContain('This blocks publish.')
+})
+
+test('community installs and platform codemods only warn on credential placeholders in a fetch body', async () => {
+	const { result } = await runChecks(
+		packageFiles(
+			manifest('body-placeholder-codemod', {
+				credentials: {
+					clerkReviewUserId: { kind: 'secret', description: 'Account id.' },
+				},
+			}),
+			{
+				'src/index.ts': [
+					'export const ready = true',
+					'export async function post() {',
+					"  await fetch('https://api.example.com/reviews', {",
+					"    method: 'POST',",
+					"    body: JSON.stringify({ userId: '{{secret:clerkReviewUserId}}' }),",
+					'  })',
+					'}',
+				].join('\n'),
+			},
+		),
+		{ enforceCredentialStamp: false },
+	)
+	const check = findCheck(result, 'credentials')
+	expect(check?.ok).toBe(true)
+	expect(check?.message).toContain('WARNING:')
+	expect(check?.message).toContain('This does not block publish.')
+})
+
 test('runRepoChecks fails plain http credential fetches', async () => {
 	const { result } = await runChecks(
 		packageFiles(
@@ -1490,8 +1599,11 @@ test('runRepoChecks offers optional credential types only for placements one fit
 			},
 		),
 	)
-	expect(result.ok).toBe(true)
+	// The URL path and login body placeholders fail publish on their own.
+	expect(result.ok).toBe(false)
 	const message = findCheck(result, 'credentials')!.message
+	expect(message).toContain('secret "HOOK_PATH" in the URL path')
+	expect(message).toContain('secret "LOGIN_SECRET" in the request body')
 	expect(message).toMatch(
 		/Credential stamp keys \(sorted\): HOOK_PATH, LOGIN_SECRET, github/,
 	)

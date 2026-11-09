@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
-import { type EntitySourceRow } from './types.ts'
+import type { EntitySourceRow } from './types.ts'
 import { buildSourceRecoveryProblemMessage } from './source-safety-policy.ts'
+import { buildArtifactsHeadChangedBeforePublishMessage } from './publish-concurrency-caller-error.ts'
 import {
 	classifyExternalPublishCloneError,
 	unknownRequestedCommitError,
@@ -30,6 +31,27 @@ test('an unknown full SHA is not classified as a backup or clone failure', () =>
 	expect(classified.error.message).toContain(commit)
 	expect(classified.error.message).not.toContain('restorable backup')
 	expect(classified.error.message).not.toContain('source clone failed')
+})
+
+test('Artifacts HEAD race is rethrown without source-recovery wrap', () => {
+	const commit = '0123456789abcdef0123456789abcdef01234567'
+	const current = classifyExternalPublishCloneError(
+		new Error(
+			buildArtifactsHeadChangedBeforePublishMessage(
+				'commit-stale',
+				'commit-new',
+			),
+		),
+		commit,
+	)
+	expect(current).toEqual({ kind: 'rethrow' })
+	const legacy = classifyExternalPublishCloneError(
+		new Error(
+			'Artifacts HEAD changed from "commit-stale" to "commit-new" before publish.',
+		),
+		commit,
+	)
+	expect(legacy).toEqual({ kind: 'rethrow' })
 })
 
 test('clone failures and storage failures stay different kinds', () => {

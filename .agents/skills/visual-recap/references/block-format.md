@@ -15,7 +15,7 @@ Optional sections (add only when they have real content): **Before / after**
 (schema, API shape, or route changes as compact before/after fenced blocks or
 tables); **Invariants** (only when the change touches an invariant from
 `primitives.yaml`); **Plan vs actual** (recap mode only, when a plan-mode block
-existed — what shipped as planned and what drifted).
+existed: what shipped as planned and what drifted).
 
 <!-- system-recap:start -->
 

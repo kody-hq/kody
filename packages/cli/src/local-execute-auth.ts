@@ -1,4 +1,4 @@
-import { type ensureFreshCredentials } from './auth.js'
+import type { ensureFreshCredentials } from './auth.js'
 import {
 	notAuthenticatedMessage,
 	expectedPairedApiOrigin,
@@ -10,7 +10,7 @@ import {
 	resolveCliCredential,
 } from './cli-credential.js'
 import { defaultApiUrl, defaultMcpUrl } from './defaults.js'
-import { type SecretBackend } from './store.js'
+import type { SecretBackend } from './store.js'
 
 function urlOriginOrValue(value: string): string {
 	try {

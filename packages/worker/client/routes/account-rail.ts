@@ -1,4 +1,4 @@
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import {
 	orgBillingPath,
 	orgCollaboratorsPath,
@@ -17,7 +17,7 @@ import {
 	type OrgOwnedAccountSection,
 } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
-import { type IconName } from '#universal/icon-names.ts'
+import type { IconName } from '#universal/icon-names.ts'
 
 /**
  * The repository list for an organization. Without a slug yet, the link
@@ -309,7 +309,11 @@ export function teamOrgManagementItems(input: {
 		},
 	]
 	// Billing has member:read but not team:read.
-	if (input.role === 'owner' || input.role === 'member') {
+	if (
+		input.role === 'owner' ||
+		input.role === 'admin' ||
+		input.role === 'member'
+	) {
 		items.push({
 			href: orgTeamsPath(orgSlug),
 			id: 'teams',
@@ -416,8 +420,8 @@ function agentsRailItem(orgSlug: string | null | undefined): AccountRailItem {
 }
 
 /**
- * One home for every credential kind. The Key, OAuth, and MCP server editors
- * still live on their own pages, so those count as Credentials too.
+ * One home for every credential kind. The Key and MCP server editors still
+ * live on their own pages, so those count as Credentials too.
  */
 function credentialsRailItem(
 	orgSlug: string | null | undefined,
@@ -429,6 +433,20 @@ function credentialsRailItem(
 		icon: 'key',
 		description:
 			'Keys, OAuth connections, MCP servers, and vaults Kody uses for you.',
+	}
+}
+
+/** The services you can connect, with which of them you already have. */
+function integrationsRailItem(
+	orgSlug: string | null | undefined,
+): AccountRailItem {
+	return {
+		href: orgSectionHref(orgSlug, 'integrations'),
+		id: 'integrations',
+		label: 'Integrations',
+		icon: 'plug',
+		description:
+			'Services you can connect over OAuth, and which are connected.',
 	}
 }
 
@@ -488,7 +506,7 @@ function grantsRailItem(orgSlug: string | null | undefined): AccountRailItem {
 function membersRailItem(orgSlug: string, role: OrgRole): AccountRailItem {
 	const tabs: Array<AccountRailTab> = [
 		{ href: orgMembersPath(orgSlug), id: 'members', label: 'Members' },
-		...(role === 'owner' || role === 'member'
+		...(role === 'owner' || role === 'admin' || role === 'member'
 			? [{ href: orgTeamsPath(orgSlug), id: 'teams', label: 'Teams' }]
 			: []),
 		{
@@ -526,6 +544,13 @@ function workspaceResourceGroups(
 		{
 			label: 'Build',
 			items: [
+				{
+					href: orgSectionHref(orgSlug, 'apps'),
+					id: 'apps',
+					label: 'Apps',
+					icon: 'apps',
+					description: 'Apps hosted in this workspace.',
+				},
 				repositoriesRailItem(orgSlug),
 				jobsRailItem(orgSlug),
 				executionContextsRailItem(orgSlug, executionContexts),
@@ -550,6 +575,7 @@ function workspaceResourceGroups(
 			label: 'Credentials',
 			items: [
 				credentialsRailItem(orgSlug),
+				integrationsRailItem(orgSlug),
 				{
 					href: orgSectionHref(orgSlug, 'secret-providers'),
 					id: 'secret-providers',

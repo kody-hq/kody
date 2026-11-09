@@ -1,14 +1,14 @@
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
-import { type InboundEmailSender } from '#worker/request-context/request-context.ts'
+import type { InboundEmailSender } from '#worker/request-context/request-context.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
-import { normalizeEmailAddress } from './address.ts'
+import { normalizeHeaderMailbox } from './address.ts'
 import {
 	failedSenderAuthenticationReason,
 	resolveInboundEmailAuthVerdict,
 	type EmailAuthVerdict,
 } from './auth-verdict.ts'
-import { type EmailMessageRecord } from './types.ts'
+import type { EmailMessageRecord } from './types.ts'
 
 export type InboundEmailSenderClassification =
 	| InboundEmailSender
@@ -30,10 +30,12 @@ function addressDomain(address: string | null) {
 
 /**
  * A member identity needs the From address itself authenticated. DMARC pass
- * already requires alignment with the From domain. Without it, only SPF pass
- * on an envelope sender in the From domain counts. A DKIM pass alone does not:
- * the signing domain is not parsed, so it may belong to anyone, and the
- * envelope sender is attacker-chosen unless SPF vouches for it.
+ * counts only when the stamp's `header.from=` domain is this From address's
+ * domain, since the authserv may have read a different From domain than Kody
+ * did. Without it, only SPF pass on an envelope sender in the From domain
+ * counts. A DKIM pass alone does not: the signing domain is not parsed, so it
+ * may belong to anyone, and the envelope sender is attacker-chosen unless SPF
+ * vouches for it.
  */
 export function authenticatesFromAddress(input: {
 	verdict: EmailAuthVerdict
@@ -41,15 +43,19 @@ export function authenticatesFromAddress(input: {
 	envelopeFrom: string | null
 }) {
 	if (!input.verdict.authenticated) return false
-	if (input.verdict.dmarc === 'pass') return true
+	const fromDomain = addressDomain(input.fromAddress)?.toLowerCase() ?? null
+	if (
+		input.verdict.dmarc === 'pass' &&
+		fromDomain !== null &&
+		input.verdict.dmarcHeaderFrom === fromDomain
+	) {
+		return true
+	}
 	if (input.verdict.spf !== 'pass') return false
 	const envelopeDomain = addressDomain(
-		input.envelopeFrom ? normalizeEmailAddress(input.envelopeFrom) : null,
+		input.envelopeFrom ? normalizeHeaderMailbox(input.envelopeFrom) : null,
 	)
-	return (
-		envelopeDomain !== null &&
-		envelopeDomain === addressDomain(input.fromAddress)
-	)
+	return envelopeDomain !== null && envelopeDomain === fromDomain
 }
 
 async function loadSenderAccount(db: D1Database, address: string) {
@@ -97,7 +103,7 @@ export async function classifyInboundEmailSender(input: {
 		}
 	}
 	const fromAddress = input.message.fromAddress
-		? normalizeEmailAddress(input.message.fromAddress)
+		? normalizeHeaderMailbox(input.message.fromAddress)
 		: null
 	if (!fromAddress) {
 		return { kind: 'unverified', reason: 'Message has no From address.' }

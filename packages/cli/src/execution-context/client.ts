@@ -12,14 +12,30 @@ import {
 	type EcpPublishedKey,
 	type EcpCryptoKey,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
+import {
+	formatUnreachableApiMessage,
+	requestSentStatus,
+} from '../network-error.js'
 
 export const executionContextsPath = '/v1/execution-contexts'
 
+function throwUnreachableApi(apiUrl: string, error: unknown): never {
+	throw Object.assign(
+		new Error(
+			formatUnreachableApiMessage({
+				origin: new URL(apiUrl).origin,
+				error,
+			}),
+		),
+		{ sent: requestSentStatus(error) },
+	)
+}
+
 /** Old logins lack execution context scopes; never widen them silently. */
-export const reloginHint =
+const reloginHint =
 	'Run `kody login` again, then retry `kody context register`.'
 
-export class ExecutionContextApiError extends Error {
+class ExecutionContextApiError extends Error {
 	constructor(
 		message: string,
 		readonly status: number,
@@ -110,18 +126,25 @@ export async function signedFetch(input: {
 		body,
 		privateKey: input.privateKey,
 	})
-	return (input.fetchFn ?? fetch)(new URL(input.pathAndQuery, input.apiUrl), {
-		method: input.method,
-		signal: input.signal,
-		headers: {
-			...input.headers,
-			[ecpSignatureHeader]: formatEcpSignatureHeader(signature),
-			...(input.runId ? { [ecpRunHeader]: input.runId } : {}),
-		},
-		...(input.method === 'GET' || input.method === 'HEAD'
-			? {}
-			: { body: typeof body === 'string' ? body : Buffer.from(body) }),
-	})
+	try {
+		return await (input.fetchFn ?? fetch)(
+			new URL(input.pathAndQuery, input.apiUrl),
+			{
+				method: input.method,
+				signal: input.signal,
+				headers: {
+					...input.headers,
+					[ecpSignatureHeader]: formatEcpSignatureHeader(signature),
+					...(input.runId ? { [ecpRunHeader]: input.runId } : {}),
+				},
+				...(input.method === 'GET' || input.method === 'HEAD'
+					? {}
+					: { body: typeof body === 'string' ? body : Buffer.from(body) }),
+			},
+		)
+	} catch (error) {
+		throwUnreachableApi(input.apiUrl, error)
+	}
 }
 
 export async function generateContextKey() {
@@ -175,13 +198,18 @@ export async function registerContext(input: {
 	const fetchFn = input.fetchFn ?? fetch
 	const query = input.org ? `?org=${encodeURIComponent(input.org)}` : ''
 	const auth = { authorization: `Bearer ${input.token}` }
-	const challengeResponse = await fetchFn(
-		new URL(
-			`${executionContextsPath}/registration-challenge${query}`,
-			input.apiUrl,
-		),
-		{ method: 'POST', headers: auth },
-	)
+	let challengeResponse: Response
+	try {
+		challengeResponse = await fetchFn(
+			new URL(
+				`${executionContextsPath}/registration-challenge${query}`,
+				input.apiUrl,
+			),
+			{ method: 'POST', headers: auth },
+		)
+	} catch (error) {
+		throwUnreachableApi(input.apiUrl, error)
+	}
 	if (!challengeResponse.ok) throw await registrationError(challengeResponse)
 	const { challenge } = (await challengeResponse.json()) as {
 		challenge: string
@@ -277,6 +305,42 @@ export async function setContextCommands(input: {
 }
 
 /**
+ * Login check (ADR 0096): tells Kody which login (person or agent profile)
+ * this machine runs as, signed with the context key plus that login's token.
+ */
+export async function checkContextLogin(input: {
+	apiUrl: string
+	ecid: string
+	privateKey: EcpCryptoKey
+	token: string
+	org?: string | null
+	fetchFn?: typeof fetch
+	signal?: AbortSignal
+}) {
+	const query = input.org ? `?org=${encodeURIComponent(input.org)}` : ''
+	const response = await signedFetch({
+		apiUrl: input.apiUrl,
+		ecid: input.ecid,
+		privateKey: input.privateKey,
+		...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
+		...(input.signal ? { signal: input.signal } : {}),
+		method: 'POST',
+		pathAndQuery: `${executionContextsPath}/login${query}`,
+		body: '{}',
+		headers: {
+			authorization: `Bearer ${input.token}`,
+			'content-type': 'application/json',
+		},
+	})
+	if (!response.ok) throw await readError(response)
+	return (await response.json()) as {
+		id: string
+		login: { kind: 'person' | 'profile'; profileId: string | null }
+		changed: boolean
+	}
+}
+
+/**
  * Root keys a daemon trusts for this API. TEST ONLY: `KODY_ECP_TRUST_TEST_ROOT=1`
  * adds the public test root, and only for https `*.workers.dev` previews and
  * `localhost`; kody.codes and every other host get the pinned roots only.
@@ -303,9 +367,14 @@ export async function fetchServerKeys(input: {
 	now?: number
 	env?: NodeJS.ProcessEnv
 }): Promise<Array<EcpPublishedKey>> {
-	const response = await (input.fetchFn ?? fetch)(
-		new URL(`${executionContextsPath}/server-keys`, input.apiUrl),
-	)
+	let response: Response
+	try {
+		response = await (input.fetchFn ?? fetch)(
+			new URL(`${executionContextsPath}/server-keys`, input.apiUrl),
+		)
+	} catch (error) {
+		throwUnreachableApi(input.apiUrl, error)
+	}
 	if (!response.ok) throw await readError(response)
 	const set = await verifyServerKeySet({
 		document: await response.json(),
@@ -331,16 +400,21 @@ export async function apiJson(input: {
 }) {
 	const url = new URL(input.path, input.apiUrl)
 	if (input.org) url.searchParams.set('org', input.org)
-	const response = await (input.fetchFn ?? fetch)(url, {
-		method: input.method,
-		headers: {
-			authorization: `Bearer ${input.token}`,
-			...(input.body === undefined
-				? {}
-				: { 'content-type': 'application/json' }),
-		},
-		...(input.body === undefined ? {} : { body: JSON.stringify(input.body) }),
-	})
+	let response: Response
+	try {
+		response = await (input.fetchFn ?? fetch)(url, {
+			method: input.method,
+			headers: {
+				authorization: `Bearer ${input.token}`,
+				...(input.body === undefined
+					? {}
+					: { 'content-type': 'application/json' }),
+			},
+			...(input.body === undefined ? {} : { body: JSON.stringify(input.body) }),
+		})
+	} catch (error) {
+		throwUnreachableApi(input.apiUrl, error)
+	}
 	if (!response.ok) throw await readError(response)
 	return (await response.json()) as Record<string, unknown>
 }

@@ -2,9 +2,15 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
+import { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { CommunityActionError } from '#worker/community/errors.ts'
+import { buildPublishedPublishChecksKvKey } from '#worker/package-runtime/published-runtime-artifacts.ts'
+import type * as EntitySourcesModule from '#worker/repo/entity-sources.ts'
+import { entitySourcesTableSql } from '#worker/repo/entity-sources-test-schema.ts'
+import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
+import { createMemoryKvNamespace } from '#worker/test-support/memory-kv.ts'
 
 const mockModule = vi.hoisted(() => ({
 	repoSessionRpc: vi.fn(),
@@ -14,6 +20,12 @@ const mockModule = vi.hoisted(() => ({
 	getRepoSessionById: vi.fn(),
 	absorbCommunityForkUpstream: vi.fn(),
 	getSavedPackageById: vi.fn(),
+	refreshSavedPackageProjection: vi.fn(),
+}))
+
+vi.mock('#worker/package-registry/service.ts', () => ({
+	refreshSavedPackageProjection: (...args: Array<unknown>) =>
+		mockModule.refreshSavedPackageProjection(...args),
 }))
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
@@ -36,7 +48,8 @@ vi.mock('./package-artifact-rebuild.ts', () => ({
 		mockModule.rebuildPublishedPackageArtifactsViaRepoSession(...args),
 }))
 
-vi.mock('#worker/repo/entity-sources.ts', () => ({
+vi.mock('#worker/repo/entity-sources.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof EntitySourcesModule>()),
 	getEntitySourceByIdForUser: (...args: Array<unknown>) =>
 		mockModule.getEntitySourceByIdForUser(...args),
 }))
@@ -223,4 +236,140 @@ test('repoPublishSession reports a compute-limit reset as a caller error naming 
 	expect(
 		mockModule.rebuildPublishedPackageArtifactsViaRepoSession,
 	).not.toHaveBeenCalled()
+})
+
+/**
+ * RepoSession finalize moves published_commit, re-projects job pins, and
+ * seals the tip before repoPublishSession rebuilds artifacts in a second
+ * step. A failed rebuild must settle like packagePublishExternalPush does:
+ * drop the seal and compare-and-set the pointer back to the session base,
+ * never over a newer publish, while serving_commit stays on the last build.
+ */
+test('repoPublishSession rolls a failed artifact rebuild back to the session base', async () => {
+	const ownerId = ownerIdFromStored('user-1')
+	const runPublish = async (input: {
+		sessionInfo: { base_commit: string; published_commit: string }
+		concurrentPublishedCommit?: string
+	}) => {
+		resetMocks()
+		const sqlite = new DatabaseSync(':memory:')
+		sqlite.exec(entitySourcesTableSql)
+		sqlite
+			.prepare(
+				`INSERT INTO entity_sources (id, user_id, entity_kind, entity_id, repo_id, published_commit, serving_commit, created_at, updated_at)
+				VALUES ('source-1', ?, 'package', 'package-1', 'repo-1', ?, 'commit-old', '2026-11-01', '2026-11-01')`,
+			)
+			.run(ownerId, input.sessionInfo.published_commit)
+		const setPublishedCommit = (commit: string) =>
+			sqlite
+				.prepare(
+					`UPDATE entity_sources SET published_commit = ? WHERE id = 'source-1'`,
+				)
+				.run(commit)
+		const { kv } = createMemoryKvNamespace()
+		const sealKey = buildPublishedPublishChecksKvKey({
+			sourceId: 'source-1',
+			publishedCommit: 'commit-new',
+		})
+		mockModule.repoSessionRpc.mockReturnValue({
+			getSessionInfo: vi.fn(async () => ({
+				entity_type: 'package',
+				source_id: 'source-1',
+				...input.sessionInfo,
+			})),
+			// What RepoSession finalize leaves behind with
+			// rebuildPackageArtifacts: false: pointer moved and tip sealed.
+			publishSession: vi.fn(async () => {
+				setPublishedCommit('commit-new')
+				await kv.put(sealKey, JSON.stringify({ version: 1 }))
+				return {
+					status: 'ok',
+					sessionId: 'session-1',
+					publishedCommit: 'commit-new',
+					message: 'Published session to repo-1.',
+				}
+			}),
+		})
+		mockModule.rebuildPublishedPackageArtifactsViaRepoSession.mockImplementation(
+			async () => {
+				if (input.concurrentPublishedCommit) {
+					setPublishedCommit(input.concurrentPublishedCommit)
+				}
+				throw new Error(
+					'Package source publish succeeded, but bundle artifact rebuild failed for source "source-1" at commit "commit-new".',
+				)
+			},
+		)
+		const ctx = createCtx()
+		ctx.env = {
+			APP_DB: createD1FromSqlite(sqlite),
+			BUNDLE_ARTIFACTS_KV: kv,
+		} as unknown as Env
+		const error = await repoPublishSessionCapability
+			.handler(
+				{ session_id: 'session-1', absorbed_upstream_commit: 'origin-head' },
+				ctx,
+			)
+			.then(
+				() => null,
+				(caught: unknown) => caught,
+			)
+		const row = sqlite
+			.prepare(
+				`SELECT published_commit, serving_commit FROM entity_sources WHERE id = 'source-1'`,
+			)
+			.get()
+		return { error, row, sealed: (await kv.get(sealKey)) != null }
+	}
+
+	const failed = await runPublish({
+		sessionInfo: { base_commit: 'commit-old', published_commit: 'commit-old' },
+	})
+	expect(failed.error).toBeInstanceOf(Error)
+	expect((failed.error as Error).message).toMatch(
+		/bundle artifact rebuild failed/,
+	)
+	expect((failed.error as Error).message).toMatch(/rolled back to "commit-old"/)
+	expect(failed.row).toEqual({
+		published_commit: 'commit-old',
+		serving_commit: 'commit-old',
+	})
+	expect(failed.sealed).toBe(false)
+	// Job pins and the package projection follow the restored pointer.
+	expect(mockModule.refreshSavedPackageProjection).toHaveBeenCalledWith(
+		expect.objectContaining({
+			userId: ownerId,
+			packageId: 'package-1',
+			sourceId: 'source-1',
+			rebuildArtifacts: false,
+			audit: null,
+		}),
+	)
+	expect(mockModule.absorbCommunityForkUpstream).not.toHaveBeenCalled()
+
+	// A newer publish won the pointer while this rebuild ran: keep it, and
+	// leave its projection to its own finalize.
+	const raced = await runPublish({
+		sessionInfo: { base_commit: 'commit-old', published_commit: 'commit-old' },
+		concurrentPublishedCommit: 'commit-newer',
+	})
+	expect(raced.error).toBeInstanceOf(Error)
+	expect(raced.row).toEqual({
+		published_commit: 'commit-newer',
+		serving_commit: 'commit-old',
+	})
+	expect(raced.sealed).toBe(false)
+	expect(mockModule.refreshSavedPackageProjection).not.toHaveBeenCalled()
+
+	// A resumed publish (an interrupted attempt already moved the pointer to
+	// the session HEAD) still restores the session base, the last good commit.
+	const resumed = await runPublish({
+		sessionInfo: { base_commit: 'commit-old', published_commit: 'commit-new' },
+	})
+	expect(resumed.row).toEqual({
+		published_commit: 'commit-old',
+		serving_commit: 'commit-old',
+	})
+	expect(resumed.sealed).toBe(false)
+	expect(mockModule.refreshSavedPackageProjection).toHaveBeenCalledTimes(1)
 })

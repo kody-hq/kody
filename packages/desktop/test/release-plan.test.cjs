@@ -81,3 +81,37 @@ test('draft retries require matching source, platforms, and asset names', () => 
 		/already published/,
 	)
 })
+
+test('a resumed draft rebuilds only targets that are missing assets', () => {
+	const {
+		pendingTargets,
+		targetAssetNames,
+	} = require('../scripts/release-plan.cjs')
+	const include = releasePlan('mac', apple).matrix.include
+	const asset = (name) => ({ name, size: 10, state: 'uploaded' })
+	const draft = {
+		tag_name: 'v0.1.41',
+		draft: true,
+		body: releaseNotes('a'.repeat(40), 'mac'),
+		assets: targetAssetNames('0.1.41', include[0]).map(asset),
+	}
+	const plan = (releases, sha = 'a'.repeat(40)) =>
+		pendingTargets({
+			include,
+			version: '0.1.41',
+			sha,
+			scope: 'mac',
+			releases,
+		}).map((target) => target.arch)
+	assert.deepEqual(plan([draft]), ['x64'])
+	assert.deepEqual(plan([]), ['arm64', 'x64'])
+	assert.deepEqual(plan([draft], 'b'.repeat(40)), ['arm64', 'x64'])
+	const partial = {
+		...draft,
+		assets: draft.assets.map((item, index) =>
+			index === 0 ? { ...item, state: 'starter' } : item,
+		),
+	}
+	assert.deepEqual(plan([partial]), ['arm64', 'x64'])
+	assert.deepEqual(plan([{ ...draft, draft: false }]), ['arm64', 'x64'])
+})

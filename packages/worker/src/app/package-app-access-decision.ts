@@ -1,4 +1,4 @@
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { auditDatabaseFromEnv, logAuditEvent } from '#worker/audit-log.ts'
 import { deferWork } from '#worker/deferred-work.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
@@ -27,7 +27,7 @@ export type PackageAppAccessDecision = {
 	role: OrgRole | null
 }
 
-const orgRoles: ReadonlyArray<OrgRole> = ['owner', 'member', 'billing']
+const orgRoles: ReadonlyArray<OrgRole> = ['owner', 'admin', 'member', 'billing']
 
 function isDecision(value: unknown): value is PackageAppAccessDecision {
 	if (!value || typeof value !== 'object') return false

@@ -3,7 +3,7 @@ import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { requireMcpRequest } from '#mcp/capabilities/meta/require-user.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { resolveSavedPackage } from '#worker/package-invocations/module-artifacts.ts'
 import { getGrantById } from '#worker/orgs/access-writes.ts'
 import { getLiveOrgMembership } from '#worker/orgs/org-members-list.ts'
@@ -13,8 +13,11 @@ import {
 	grantPackageToProfile,
 	removePackageProfileGrant,
 } from '#worker/profiles/package-grants.ts'
-import { type PackageCollaboratorView } from '#universal/package-collaborators.ts'
-import { computeEffectivePermissions } from '#worker/authorization/authorize.ts'
+import type { PackageCollaboratorView } from '#universal/package-collaborators.ts'
+import {
+	computeEffectivePermissions,
+	hasOwnerAuthority,
+} from '#worker/authorization/authorize.ts'
 import {
 	allowUnmappableCredentialChangesDescription,
 	describeCollaboratorUnmappableCredentials,
@@ -137,7 +140,7 @@ async function decorateCollaborators(
 		packageId: managed.package.id,
 		packageName: managed.package.name,
 		collaborators,
-		viewerIsOwner: access.isOwner,
+		viewerIsOwner: hasOwnerAuthority(access),
 		request,
 	})
 	return {
@@ -220,9 +223,9 @@ async function resolveCollaboratorSubject(
 	}
 	const userId = await resolvePersonId(db, { userId: userIdInput, username })
 	const membership = await getLiveOrgMembership(db, orgId, userId)
-	if (membership?.role === 'owner') {
+	if (membership?.role === 'owner' || membership?.role === 'admin') {
 		throw new McpCallerError(
-			'Owners already have full access to every package in this organization.',
+			'Owners and Admins already have full access to every package in this organization.',
 		)
 	}
 	if (!membership && userIdInput) {

@@ -1,15 +1,31 @@
+import { existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { expect, test } from 'vitest'
+import { isBlogImagePath } from '#universal/blog-images.ts'
+import { parseKodyMarkdown } from '#universal/markdown.ts'
+import { blogPostSlugs } from '#universal/blog-post-slugs.ts'
 import {
-	getReadNextBlogPost,
+	blogCategories,
+	blogSeries,
+	estimateReadingMinutes,
+} from '#universal/blog-taxonomy.ts'
+import {
+	getBlogSeriesNav,
+	getFeaturedBlogPost,
+	getRelatedBlogPosts,
+	listBlogCategoriesWithPosts,
 	listBlogPosts,
+	listBlogSeriesPosts,
 	normalizeMarkdownPhraseSource,
+	toBlogPostSummary,
 } from './catalog.ts'
 import { parseBlogPostMarkdown } from './parse-frontmatter.ts'
 import { buildBlogRssXml } from './rss.ts'
 
 const markdown = (frontmatter: string, body = 'Body\n') =>
 	`---\n${frontmatter}\n---\n\n${body}`
-const baseFrontmatter = 'date: 2026-08-20\ndescription: Nope\norder: 1'
+const baseFrontmatter =
+	'date: 2026-08-20\ndescription: Nope\norder: 1\ncategory: essays'
 
 test('normalizeMarkdownPhraseSource strips blockquote markers and wrapping', () => {
 	expect(
@@ -24,7 +40,7 @@ test('parseBlogPostMarkdown reads frontmatter and rejects invalid input', () => 
 		parseBlogPostMarkdown(
 			'sample',
 			markdown(
-				'title: Sample title\ndate: 2026-07-18\ndescription: A short description for meta tags.\norder: 3',
+				'title: Sample title\ndate: 2026-07-18\ndescription: A short description for meta tags.\norder: 3\ncategory: how-to',
 				'# Hello\n\nBody paragraph.\n',
 			),
 		),
@@ -32,20 +48,24 @@ test('parseBlogPostMarkdown reads frontmatter and rejects invalid input', () => 
 		slug: 'sample',
 		title: 'Sample title',
 		date: '2026-07-18',
+		updated: null,
 		description: 'A short description for meta tags.',
 		order: 3,
-		placeholder: true,
+		category: 'how-to',
+		series: null,
+		featured: false,
 		image: null,
 		imageAlt: null,
 		ogImage: null,
 		body: '# Hello\n\nBody paragraph.\n',
+		readingMinutes: 1,
 	})
 
 	expect(
 		parseBlogPostMarkdown(
 			'multiline',
 			markdown(
-				'title: Multiline\ndate: 2026-07-19\ndescription:\n  First sentence about the post.\n  Second sentence for meta tags.\norder: 2',
+				'title: Multiline\ndate: 2026-07-19\ndescription:\n  First sentence about the post.\n  Second sentence for meta tags.\norder: 2\ncategory: essays',
 			),
 		).description,
 	).toBe('First sentence about the post. Second sentence for meta tags.')
@@ -54,11 +74,10 @@ test('parseBlogPostMarkdown reads frontmatter and rejects invalid input', () => 
 		parseBlogPostMarkdown(
 			'reviewed',
 			markdown(
-				`title: Reviewed\n${baseFrontmatter}\nplaceholder: false\nimage: /images/openclaw-2-needs-a-home.webp\nimageAlt: Kody stands with his arm around OpenClaw.`,
+				`title: Reviewed\n${baseFrontmatter}\nimage: /images/openclaw-2-needs-a-home.webp\nimageAlt: Kody stands with his arm around OpenClaw.`,
 			),
 		),
 	).toMatchObject({
-		placeholder: false,
 		image: '/images/openclaw-2-needs-a-home.webp',
 		imageAlt: 'Kody stands with his arm around OpenClaw.',
 		ogImage: null,
@@ -75,17 +94,45 @@ test('parseBlogPostMarkdown reads frontmatter and rejects invalid input', () => 
 
 	for (const [frontmatter, error] of [
 		[
-			'title: Bad date\ndate: 07/20/2026\ndescription: Nope\norder: 1',
+			'title: Bad date\ndate: 07/20/2026\ndescription: Nope\norder: 1\ncategory: essays',
 			/invalid frontmatter "date"/,
+		],
+		[
+			'title: No category\ndate: 2026-08-20\ndescription: Nope\norder: 1',
+			/missing frontmatter "category"/,
+		],
+		[
+			`title: Unknown category\ndate: 2026-08-20\ndescription: Nope\norder: 1\ncategory: news`,
+			/unknown frontmatter "category" "news"/,
+		],
+		[
+			`title: Unknown series\n${baseFrontmatter}\nseries: nope`,
+			/unknown frontmatter "series" "nope"/,
+		],
+		[
+			`title: Unknown key\n${baseFrontmatter}\ntags: agents`,
+			/unknown frontmatter "tags"/,
+		],
+		[
+			`title: Early update\n${baseFrontmatter}\nupdated: 2026-08-19`,
+			/invalid frontmatter "updated"/,
+		],
+		[
+			`title: Bad featured\n${baseFrontmatter}\nfeatured: yes`,
+			/invalid frontmatter "featured"/,
 		],
 		[baseFrontmatter, /missing frontmatter "title"/],
 		[
-			`title: Bad placeholder\n${baseFrontmatter}\nplaceholder: maybe`,
-			/invalid frontmatter "placeholder"/,
+			`title: Retired placeholder\n${baseFrontmatter}\nplaceholder: false`,
+			/unknown frontmatter "placeholder"/,
 		],
 		[
 			`title: Bad image\n${baseFrontmatter}\nimage: https://example.com/image.webp\nimageAlt: Nope`,
 			/invalid frontmatter "image"/,
+		],
+		[
+			'title: Complex key\ndate: 2026-08-20\ndescription:\n  ? Part one\n  : part two\norder: 1\ncategory: essays',
+			/YAML complex-key marker in frontmatter "description"/,
 		],
 	] as const) {
 		expect(() => parseBlogPostMarkdown('bad', markdown(frontmatter))).toThrow(
@@ -94,16 +141,138 @@ test('parseBlogPostMarkdown reads frontmatter and rejects invalid input', () => 
 	}
 })
 
-test('getReadNextBlogPost follows catalog order and wraps to the first post', () => {
+test('parseBlogPostMarkdown rejects reserved and non-kebab slugs', () => {
+	for (const slug of ['category', 'series', 'rss', 'Bad_Slug']) {
+		expect(() =>
+			parseBlogPostMarkdown(slug, markdown(`title: Slug\n${baseFrontmatter}`)),
+		).toThrow(/slug/)
+	}
+})
+
+test('every catalog post uses the fixed taxonomy and the client slug list', () => {
 	const posts = listBlogPosts()
-	expect(posts.length).toBeGreaterThan(1)
-	expect(posts.map((post) => getReadNextBlogPost(post.slug))).toEqual(
-		posts.map((_, index) => {
-			const next = posts[(index + 1) % posts.length]!
-			return { slug: next.slug, title: next.title }
-		}),
+	const categorySlugs: ReadonlyArray<string> = blogCategories.map(
+		(category) => category.slug,
 	)
-	expect(getReadNextBlogPost('does-not-exist')).toBeNull()
+	for (const post of posts) {
+		expect(categorySlugs).toContain(post.category)
+		expect(post.readingMinutes).toBeGreaterThan(0)
+	}
+	expect([...blogPostSlugs].sort()).toEqual(
+		posts.map((post) => post.slug).sort(),
+	)
+	expect(posts.filter((post) => post.featured).length).toBeLessThanOrEqual(1)
+	expect(
+		listBlogCategoriesWithPosts().reduce((sum, c) => sum + c.count, 0),
+	).toBe(posts.length)
+	expect(getFeaturedBlogPost()?.category).not.toBe('updates')
+})
+
+test('list summaries keep headline image fields and drop body', () => {
+	const withArt = parseBlogPostMarkdown(
+		'with-art',
+		markdown(
+			`title: With art\n${baseFrontmatter}\nimage: /images/openclaw-2-needs-a-home.webp\nimageAlt: Kody hugs OpenClaw.`,
+		),
+	)
+	expect(toBlogPostSummary(withArt)).toEqual({
+		slug: 'with-art',
+		title: 'With art',
+		date: '2026-08-20',
+		updated: null,
+		description: 'Nope',
+		category: 'essays',
+		series: null,
+		readingMinutes: 1,
+		image: '/images/openclaw-2-needs-a-home.webp',
+		imageAlt: 'Kody hugs OpenClaw.',
+	})
+	const plain = parseBlogPostMarkdown(
+		'plain',
+		markdown(`title: Plain\n${baseFrontmatter}`),
+	)
+	expect(toBlogPostSummary(plain)).toMatchObject({
+		image: null,
+		imageAlt: null,
+	})
+})
+
+function collectMarkdownImages(
+	node: unknown,
+	images: Array<{ src: string; alt: string }> = [],
+) {
+	if (Array.isArray(node)) {
+		for (const child of node) collectMarkdownImages(child, images)
+	} else if (node && typeof node === 'object') {
+		const record = node as Record<string, unknown>
+		if (record.type === 'image') {
+			images.push({ src: String(record.src), alt: String(record.alt ?? '') })
+		}
+		for (const value of Object.values(record)) {
+			collectMarkdownImages(value, images)
+		}
+	}
+	return images
+}
+
+test('every inline post image is an alt-texted /images/ file under public', () => {
+	const publicDir = new URL('../../public/', import.meta.url)
+	const problems: Array<string> = []
+	for (const post of listBlogPosts()) {
+		for (const image of collectMarkdownImages(parseKodyMarkdown(post.body))) {
+			const where = `${post.slug}: ${image.src}`
+			if (!isBlogImagePath(image.src)) problems.push(`${where} (path)`)
+			else if (!existsSync(fileURLToPath(new URL(`.${image.src}`, publicDir))))
+				problems.push(`${where} (missing file)`)
+			if (!image.alt.trim()) problems.push(`${where} (empty alt)`)
+		}
+	}
+	expect(problems).toEqual([])
+	expect(
+		collectMarkdownImages(
+			parseKodyMarkdown('![Shot](/images/blog/post/shot.webp)'),
+		),
+	).toEqual([{ src: '/images/blog/post/shot.webp', alt: 'Shot' }])
+})
+
+test('series nav lists every part oldest first with prev/next positions', () => {
+	for (const series of blogSeries) {
+		const parts = listBlogSeriesPosts(series.slug)
+		expect(parts.length).toBeGreaterThanOrEqual(2)
+		const dates = parts.map((post) => post.date)
+		expect(dates).toEqual([...dates].sort())
+		parts.forEach((post, index) => {
+			const nav = getBlogSeriesNav(post.slug)
+			expect(nav?.part).toBe(index + 1)
+			expect(nav?.parts.map((part) => part.slug)).toEqual(
+				parts.map((part) => part.slug),
+			)
+		})
+	}
+	const standalone = listBlogPosts().find((post) => post.series === null)!
+	expect(getBlogSeriesNav(standalone.slug)).toBeNull()
+})
+
+test('related posts skip the post itself, its series, and stay at three', () => {
+	for (const post of listBlogPosts()) {
+		const related = getRelatedBlogPosts(post.slug)
+		expect(related.length).toBeLessThanOrEqual(3)
+		for (const other of related) {
+			expect(other.slug).not.toBe(post.slug)
+			if (post.series) expect(other.series).not.toBe(post.series)
+		}
+	}
+	expect(getRelatedBlogPosts('does-not-exist')).toEqual([])
+})
+
+test('estimateReadingMinutes ignores code fences and floors at one', () => {
+	expect(estimateReadingMinutes('')).toBe(1)
+	expect(estimateReadingMinutes('word '.repeat(460))).toBe(2)
+	expect(
+		estimateReadingMinutes(
+			`intro\n\n\`\`\`\n${'code '.repeat(1000)}\n\`\`\`\n`,
+		),
+	).toBe(1)
 })
 
 test('buildBlogRssXml escapes markup and includes every catalog post', () => {
@@ -132,16 +301,30 @@ test('buildBlogRssXml escapes markup and includes every catalog post', () => {
 				slug: 'amp',
 				title: 'A & B <C>',
 				date: '2026-07-20',
+				updated: null,
 				description: `Say "hi" & 'bye'`,
 				order: 1,
-				placeholder: true,
+				category: 'essays',
+				series: null,
+				featured: false,
 				image: null,
 				imageAlt: null,
 				ogImage: null,
 				body: 'unused',
+				readingMinutes: 1,
 			},
 		],
 	})
 	expect(escaped).toContain('A &amp; B &lt;C&gt;')
 	expect(escaped).toContain('Say &quot;hi&quot; &amp; &apos;bye&apos;')
+})
+
+test('buildBlogRssXml scopes a category feed', () => {
+	const category = blogCategories.find((entry) => entry.slug === 'how-to')!
+	const posts = listBlogPosts().filter((post) => post.category === 'how-to')
+	const xml = buildBlogRssXml({ origin: 'https://kody.codes', posts, category })
+	expect(xml).toContain('<title>Kody Blog: How-to</title>')
+	expect(xml).toContain('<link>https://kody.codes/blog/category/how-to</link>')
+	expect(xml.match(/<item>/g)?.length).toBe(posts.length)
+	expect(xml).not.toContain('<category>Essays</category>')
 })

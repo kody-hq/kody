@@ -6,7 +6,7 @@
  * unattended capability succeeded twice for the same package.
  */
 
-import { type RunSurface } from './types.ts'
+import type { RunSurface } from './types.ts'
 
 export type ActivationMilestone = 'package_run_succeeded' | 'package_activated'
 

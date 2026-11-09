@@ -56,7 +56,7 @@ type ContextInput = {
 	executionOrigin?: 'interactive' | 'background'
 	orgBinding?: {
 		org: { id: string; slug: string }
-		role: 'owner' | 'member' | 'billing' | null
+		role: 'owner' | 'admin' | 'member' | 'billing' | null
 	}
 }
 

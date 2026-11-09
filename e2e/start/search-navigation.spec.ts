@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { expect, test, waitForClientHydration } from '../playwright-utils.ts'
-import { type Locator, type Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 
 async function watchControl(
 	page: Page,
@@ -151,7 +151,7 @@ for (const width of [1280, 390]) {
 			['mcp-servers', 'Search credentials'],
 			['mcp-servers/new', 'Search servers'],
 			['secrets/new', 'Search secrets'],
-			['integrations', 'Search credentials'],
+			['integrations', 'Search integrations'],
 			['email', 'Search messages'],
 		]) {
 			await page.goto(`/@${user.username}/-/${section}`)

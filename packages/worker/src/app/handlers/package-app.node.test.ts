@@ -112,7 +112,7 @@ const mockModule = vi.hoisted(() => ({
 	loadOrgBindingForOrg: vi.fn(
 		async (): Promise<{
 			org: { id: ReturnType<typeof ownerIdFromStored>; slug: string }
-			role: 'owner' | 'member' | 'billing' | null
+			role: 'owner' | 'admin' | 'member' | 'billing' | null
 		}> => ({
 			org: { id: ownerIdFromStored('user-1'), slug: 'test-user' },
 			role: 'owner',
@@ -121,6 +121,7 @@ const mockModule = vi.hoisted(() => ({
 }))
 
 vi.mock('@sentry/cloudflare', () => ({
+	withSentry: (_options: unknown, handler: unknown) => handler,
 	isInitialized: () => mockModule.isSentryInitialized(),
 	getClient: () => mockModule.getSentryClient(),
 	withScope: (callback: (scope: typeof mockModule.sentryScope) => void) =>

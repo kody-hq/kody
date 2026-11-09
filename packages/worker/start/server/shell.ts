@@ -1,3 +1,4 @@
+import { normalizeDeploySkewBuildId } from '#universal/deploy-skew.ts'
 import { buildSsrSentryClientConfig } from '#universal/sentry-config.ts'
 import { createServerFn } from '@tanstack/react-start'
 import { notFound } from '@tanstack/react-router'
@@ -87,6 +88,7 @@ export const loadShell = createServerFn({ method: 'GET' })
 			{ getCanonicalAppBaseUrl },
 			{ loadYoutubeWatchLoaderData },
 			{ parseYoutubeWatchSearch },
+			{ recordServerTiming },
 		] = await Promise.all([
 			import('cloudflare:workers'),
 			import('@tanstack/react-start/server'),
@@ -97,12 +99,17 @@ export const loadShell = createServerFn({ method: 'GET' })
 			import('../../src/app-base-url.ts'),
 			import('../../src/app/youtube-watch-ssr.ts'),
 			import('../../universal/youtube-watch.ts'),
+			import('../../src/request-context.ts'),
 		])
 		const appEnv = getEnv(env)
 		setAuthSessionSecret(appEnv.COOKIE_SECRET)
 		const request = getRequest()
 		const [{ session, setCookie }, resolvedAuth] = await Promise.all([
-			loadSessionInfo(request, env, data.pathname),
+			recordServerTiming(
+				'session',
+				() => loadSessionInfo(request, env, data.pathname),
+				request,
+			),
 			loadResolvedRequestAuth(request, env),
 		])
 		if (setCookie) setResponseHeader('Set-Cookie', setCookie)
@@ -114,6 +121,7 @@ export const loadShell = createServerFn({ method: 'GET' })
 			actorKey:
 				session && resolvedAuth.user ? resolvedAuth.user.mcpUser.userId : null,
 			session,
+			buildId: normalizeDeploySkewBuildId(appEnv.APP_COMMIT_SHA),
 			sentryConfig: buildSsrSentryClientConfig({
 				dsn: appEnv.SENTRY_DSN,
 				environment: appEnv.SENTRY_ENVIRONMENT,

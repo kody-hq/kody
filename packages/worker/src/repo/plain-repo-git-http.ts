@@ -628,6 +628,29 @@ async function proxyReceivePack(input: {
 	}
 }
 
+/**
+ * Receive-pack for a plain repo reached through its canonical
+ * `/@owner/name.git` remote (public-package-git-http.ts). Same push queue
+ * routing, wait-and-retry, and `git_push` recording as `/git/sources/{id}.git`.
+ */
+export function proxyPlainRepoReceivePack(input: {
+	env: Env
+	sourceId: string
+	ownerId: string
+	remote: string
+	request: Request
+	/** Artifacts write token for the repo. */
+	token: string
+}): Promise<Response> {
+	return proxyReceivePack({
+		env: input.env,
+		target: { remote: input.remote, ownerId: input.ownerId },
+		sourceId: input.sourceId,
+		request: input.request,
+		token: input.token,
+	})
+}
+
 async function proxyArtifactsGitRequest(input: {
 	env: Env
 	target: ResolvedPlainGitTarget

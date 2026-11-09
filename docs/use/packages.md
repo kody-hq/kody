@@ -16,9 +16,11 @@ It shows plain repositories and packages together. A **repository** is the git
 home; a **package** is a repository with a Kody package manifest. The API, CLI,
 and ids keep names like `packageList`, `packageSave`, and
 `guide:package_authoring`. Looking for Packages in the UI? Open
-**Repositories**. The public catalog at `/community` is titled **Public
-packages**; back links name that page when you leave someone else's listing.
-Your own package pages link back to **Repositories**.
+**Repositories**. Hosted apps (`kody.app.entry`) also appear on **Apps**
+(`/@slug/-/apps`); packages without an app stay on Repositories only. The public
+catalog at `/community` is titled **Public packages**; back links name that page
+when you leave someone else's listing. Your own package pages link back to
+**Repositories**.
 
 Packages are not integrations or MCP servers. See
 [Packages, integrations, and MCP servers](../guides/packages-integrations-mcp.md)
@@ -36,11 +38,16 @@ Think in terms of:
 - package-owned webhooks
 
 Packages are the saved-entity unit across search, execute, repo editing, and UI
-hosting. The package page tabs are **Repo**, **Files**
-(`/@username/:name/tree/:ref` — the same URL whether the package is public or
-private), and **Settings**. Visibility keeps private source off the public web.
-Owner controls (lock, visibility, webhooks, delete) live at
-`/@username/:name/settings`. Public listings also expose a read-only
+hosting. The package page tabs depend on what you can do. Everyone with access
+sees **Repo** and **Files** (`/@username/:name/tree/:ref` — the same URL whether
+the package is public or private). Owners also see **Credentials**, **Default
+mappings**, and **Triggers**. **Collaborators** needs Manage on access;
+**Connected people** needs Manage on a package with an app. Owner **Settings**
+live at `/@username/:name/settings` and split three independent controls:
+**Visibility** (who can use the hosted app — internet-visible vs signed-in),
+**Source sharing** (who can read and fork the source — public vs private), and
+**Public release** (which published commit is live). Changing one never changes
+the others. Public listings also expose a read-only
 [`.git` clone URL](./community-packages.md#clone-a-public-package-read-only-git).
 Inbound HTTP uses [webhooks](./webhooks.md). To let someone use a package
 without getting a copy, [grant them access](../guides/package-sharing.md). To
@@ -86,8 +93,10 @@ Important fields:
   saved-package UUID `package_id` only when the name is not known, or for a
   stable ref. Never pass both. The leaf after `/` is the URL slug. Create flows
   pass the `@owner/leaf` name or the name leaf.
-- `private` — leftover npm-style field; ignored for catalog listing. Visibility
-  is a repo setting (`packageUpdate` `changes.visibility`), default private.
+- `private` — leftover npm-style field; ignored for catalog listing. **Source
+  sharing** on Settings is the repo setting (`packageUpdate`
+  `changes.visibility`), default private. **Visibility** on the same page is who
+  can use the hosted app, not this field.
 - `exports` — authoritative import/export map. Optional: omitting it means no
   exports, the same as `"exports": {}` (e.g. a data-only package with an app)
 - `kody.description` — short public tagline for search, detail, community
@@ -108,8 +117,8 @@ Important fields:
   [Credential slots](#credential-slots-kodycredentials))
 - `kody.secretMounts` — optional secret mount declarations kept so stale static
   dependents that bundled `packageSecrets.get` still resolve. See
-  [Leftover secret mounts](../guides/credentials.md#leftover-secret-mounts). New
-  code uses `kody.credentials`, not `packageSecrets.get`.
+  [Secret mounts for bundled dependents](../guides/credentials.md#secret-mounts-for-bundled-dependents).
+  New code uses `kody.credentials`, not `packageSecrets.get`.
 - `kody.secretProvider` — optional `{ id }` declaring this package can serve
   that external secret provider. Metadata alone does not bind the provider; see
   [Custom secret providers](../guides/secret-providers.md)
@@ -329,7 +338,7 @@ await resend.fetch('/emails', { method: 'POST', body: JSON.stringify(email) })
   See the
   [local credential runtime contract](../contributing/contracts/cli-local-credential-runtime.md).
 
-#### Let app visitors use the owner's credential
+#### Publisher-supplied credentials in apps
 
 Package apps run as their runs-as person (the publisher, unless an Owner picks
 someone else); see
@@ -389,6 +398,9 @@ Cloudflare Workers runtime.
   the usual cause is the npm graph, not the package source. Keep the package as
   a thin orchestrator and offload that work; see
   [Offload work that does not fit a Worker isolate](../guides/heavy-work-offload.md).
+  If the package runs once built and only publish bundling exceeds the isolate,
+  build outside Kody cloud:
+  [Publish packages too big for Kody cloud](../guides/publish-large-packages.md).
 - After changing `dependencies`, republish the package so Kody can rebuild the
   published runtime bundle artifacts that execution paths use.
 
@@ -584,6 +596,171 @@ warn when a package fills a user credential whose `allowed_packages` list is
 non-empty and does not include that package, because Kody denies that use at
 runtime for every package, including ones you authored or adopted.
 
+### Concurrency and multi-key updates
+
+Each `get`, `set`, and `delete` call is an independent request. The key-value
+API has no multi-key atomicity, no compare-and-swap, and no transaction, and
+nothing is held between a `get` and the `set` that follows it. Package code can
+run concurrently (two installs, two app visitors, a job next to an export), so a
+read-modify-write of one shared value can lose updates: both writers read the
+same old value, and whichever `set` lands last wins.
+
+The fix needs no extra API. Store one key (or one SQL row) per record and derive
+the index from storage instead of keeping it in a shared value.
+
+#### Anti-pattern: rewriting a shared registry array
+
+```ts
+import { packageStorage } from 'kody:runtime'
+
+type Install = { id: string; name: string; installedAt: string }
+
+// Don't: two concurrent calls can both read the same array, and the later
+// set() drops the entry the earlier call added.
+export default async function registerInstall(install: Install) {
+	const bucket = packageStorage()
+	const installs = ((await bucket.get('installs')) ?? []) as Array<Install>
+	installs.push(install)
+	await bucket.set('installs', installs)
+}
+```
+
+Splitting it into per-record keys plus a separate `index` key that every writer
+rewrites has the same race: the index can miss records another writer added, or
+keep ids another writer deleted.
+
+#### Pattern 1: one key per record, list by prefix
+
+Give every record its own key under a shared prefix and build the index with
+`list({ prefix, pageSize, startAfter })`. A write touches only its own key, so
+concurrent writers for different records cannot overwrite each other. Two
+writers for the same record still resolve to the last `set` for that one key.
+
+`list(...)` resolves to
+`{ entries, estimatedBytes, truncated, nextStartAfter, pageSize }`, where each
+entry is `{ key, value }` in key order. `pageSize` defaults to 250 and is capped
+at 1000. When `truncated` is `true`, pass `nextStartAfter` as the next
+`startAfter`. Keys are trimmed and must be non-empty, and every listed entry
+counts as one row read.
+
+```ts
+import { packageStorage } from 'kody:runtime'
+
+type Install = { id: string; name: string; installedAt: string }
+
+type StorageListPage = {
+	entries: Array<{ key: string; value: unknown }>
+	estimatedBytes: number
+	truncated: boolean
+	nextStartAfter: string | null
+	pageSize: number
+}
+
+const installKeyPrefix = 'install:'
+
+export async function registerInstall(install: Install) {
+	await packageStorage().set(`${installKeyPrefix}${install.id}`, install)
+}
+
+export async function removeInstall(id: string) {
+	await packageStorage().delete(`${installKeyPrefix}${id}`)
+}
+
+export async function listInstalls() {
+	const bucket = packageStorage()
+	const installs: Array<Install> = []
+	let startAfter: string | undefined
+	do {
+		const page = (await bucket.list({
+			prefix: installKeyPrefix,
+			pageSize: 1000,
+			startAfter,
+		})) as StorageListPage
+		for (const entry of page.entries) installs.push(entry.value as Install)
+		startAfter = page.truncated ? (page.nextStartAfter ?? undefined) : undefined
+	} while (startAfter)
+	return installs
+}
+```
+
+#### Pattern 2: a SQL table with an idempotent upsert
+
+Keep records in a table with a primary key and write each one with a single
+`INSERT ... ON CONFLICT DO UPDATE` statement. Re-running the same upsert leaves
+one row, and a writer for one id never rewrites another id's row. Read the index
+with `SELECT`. Separate `sql(...)` calls are independent requests, just like the
+key-value calls, so keep each logical write to one statement instead of reading
+rows and writing them back in a later call.
+
+`sql(...)` resolves to
+`{ columns, rows, rowCount, rowsRead, rowsWritten, truncated, warning }`, where
+`rows` is an array of objects keyed by column name. It returns at most 1000 rows
+(`truncated: true` when more matched), so page with a keyset as below. Params
+accept strings, numbers, booleans (stored as `1`/`0`), and `null`. Writes are
+checked against your storage entitlements, and reads are metered as rows read
+(see [Execute → Storage](./execute.md#storage)).
+
+```ts
+import { packageStorage } from 'kody:runtime'
+
+type Install = { id: string; name: string; installedAt: string }
+
+type StorageSqlResult = {
+	columns: Array<string>
+	rows: Array<Record<string, string | number | null>>
+	rowCount: number
+	rowsRead: number
+	rowsWritten: number
+	truncated: boolean
+	warning: string | null
+}
+
+async function ensureInstallsTable() {
+	await packageStorage().sql(
+		`CREATE TABLE IF NOT EXISTS installs (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			installed_at TEXT NOT NULL
+		)`,
+	)
+}
+
+export async function registerInstall(install: Install) {
+	await ensureInstallsTable()
+	await packageStorage().sql(
+		`INSERT INTO installs (id, name, installed_at) VALUES (?, ?, ?)
+		ON CONFLICT (id) DO UPDATE SET
+			name = excluded.name,
+			installed_at = excluded.installed_at`,
+		[install.id, install.name, install.installedAt],
+	)
+}
+
+export async function listInstalls() {
+	await ensureInstallsTable()
+	const installs: Array<Install> = []
+	let afterId: string | null = null
+	for (;;) {
+		// Separate first-page query so later pages seek the primary key index.
+		const result = (await packageStorage().sql(
+			afterId === null
+				? 'SELECT id, name, installed_at FROM installs ORDER BY id LIMIT 1000'
+				: 'SELECT id, name, installed_at FROM installs WHERE id > ? ORDER BY id LIMIT 1000',
+			afterId === null ? [] : [afterId],
+		)) as StorageSqlResult
+		for (const row of result.rows) {
+			installs.push({
+				id: String(row.id),
+				name: String(row.name),
+				installedAt: String(row.installed_at),
+			})
+		}
+		if (result.rows.length < 1000) return installs
+		afterId = String(result.rows[result.rows.length - 1]!.id)
+	}
+}
+```
+
 ### Ambient `storage` is not a `kody:runtime` export
 
 Repo checks fail when package source imports ambient `storage` from
@@ -709,10 +886,10 @@ or did not dispatch, or checking which packages subscribe to
 `email.message.received`, `run.error.recorded`, `integration.auth.failed`,
 `integration.auth.succeeded`, `mcp.server.disconnected`,
 `mcp.server.reconnected`, or admin-only topics such as `status.incident.opened`,
-`fleet.package_error_rate.elevated`, `fleet.package_owner_error_spike`,
-`fleet.users_affected.elevated`, `fleet.users_affected.resolved`,
-`fleet.entitlement.crossed`, `auth.denial.burst`, `email.delivery.burst`,
-`user.created`, `user.deleted`, `user.email_verification.failed`,
+`fleet.package_owner_error_spike`, `fleet.users_affected.elevated`,
+`fleet.users_affected.resolved`, `fleet.entitlement.crossed`,
+`auth.denial.burst`, `email.delivery.burst`, `user.created`, `user.deleted`,
+`user.guest_claimed`, `user.email_verification.failed`,
 `user.email_verification.stalled`, `user.email_outbound.paused`, and
 `email.system-message.sent`. After publish, smoke-test one declared handler from
 interactive MCP with `packageSubscriptionDispatch`
@@ -1155,9 +1332,31 @@ absorb next step. Full workflow:
 
 ## Package size limits and `.kodyignore`
 
-Publish and `kody dev check` run the same checks (including lint, bundle
-validation, and typecheck) in the same kind of throwaway isolate with the same
-limits, so a dev check result is the best predictor of a publish:
+`kody dev check` checks your working tree the way a `git push` publish checks
+the commit it clones, so a dev check result is the best predictor of a publish:
+
+- **Same snapshot.** The CLI sends every file `git` would commit, binary files
+  included byte for byte. `.kodyignore` is applied first, then the checked-out
+  tree cap below.
+- **Same checks and limits.** Lint, credential stamp scan, docs, dependencies,
+  and typecheck run in the same kind of throwaway isolate with the same limits.
+- **Same bundling.** Like a `git push` publish, the checks only do the cheap
+  bundle pre-check; every runtime artifact (app, client, exports, importable
+  modules, jobs, subscriptions) is then built the way the publish rebuild builds
+  it: the same targets and builders, 4 targets per throwaway isolate, 2 isolates
+  at a time, stopping after a failed wave. Nothing is saved. Targets whose
+  inputs are unchanged since the published commit are skipped, because publish
+  copies those artifacts instead of building them.
+- **Same retries.** A durable publish retries an attempt that hit a compute
+  limit or timed out, so `kody dev check` runs the server checks up to 3 times
+  when the server reports a memory or CPU limit, answers 502/503/504, or sends
+  no answer before the request times out.
+
+What a dev check cannot run, and says so in its output: cloning the pushed
+commit from Artifacts. `git push` (and the Artifacts push limit) happens before
+publish, and the clone only reads what was pushed, so commit and push to catch
+pack-size or history problems. The CLI sends the package root; a `git push`
+publish also counts the rest of the checked-out repo toward the 32 MiB cap.
 
 | Limit                                     | Value                       |
 | ----------------------------------------- | --------------------------- |
@@ -1168,15 +1367,15 @@ limits, so a dev check result is the best predictor of a publish:
 | JS/TS source scanned in the main isolate  | 256 KiB (more gets its own) |
 
 Each check isolate also has a fixed memory and CPU budget. When a step runs out,
-the error names the step (cloning, reading the source tree, the credential stamp
-scan, package checks, lint, bundle validation, typecheck, finalizing, or the
-artifact rebuild), what to shrink, and the largest files under the source root
-that runtime code does not import. Memory and CPU use vary a little between runs
-(garbage collection timing and other work sharing the isolate), so a tree close
-to the limit can pass one attempt and fail the next. Shrink what the checks read
-rather than retrying. A `git push` publish clones only the commit it publishes
-(plus the history it needs to confirm a fast-forward), so a long history does
-not count against the check budget.
+the error names the step (cloning, staging the package files, reading the source
+tree, the credential stamp scan, package checks, lint, bundle validation,
+typecheck, finalizing, or the artifact rebuild), what to shrink, and the largest
+files under the source root that runtime code does not import. Memory and CPU
+use vary a little between runs (garbage collection timing and other work sharing
+the isolate), so a tree close to the limit can pass one attempt and fail the
+next. Shrink what the checks read rather than retrying. A `git push` publish
+clones only the commit it publishes (plus the history it needs to confirm a
+fast-forward), so a long history does not count against the check budget.
 
 To keep fixtures, generated data, notes, or other non-runtime files in the repo
 without paying for them at publish, list them in a `.kodyignore` file at the
@@ -1191,15 +1390,16 @@ docs/drafts/
 !types/__tests__/
 ```
 
-Matching files are never read by the publish checks (credential scan, lint,
-typecheck, bundle validation), do not count toward the source limits above, and
-are left out of the published snapshot. They are still part of the git tree, so
-they still count toward the 32 MiB checked-out tree cap for `git push`
-publishes; move very large files out of the repo instead. `package.json` and
-`.kodyignore` itself are always kept. Ignoring a file that runtime code imports
-fails bundle validation, so `.kodyignore` cannot hide code that runs. Kody does
-not read `package.json` `files`, because that field usually describes an npm
-build output that Kody does not publish.
+Matching files are dropped before the tree is staged for the publish checks:
+they are never read by the checks (credential scan, lint, typecheck, bundle
+validation), do not count toward the source limits above or the checked-out tree
+cap, and are left out of the published snapshot. They are still part of the git
+pack, so the Artifacts push limit below still applies; move very large files out
+of the repo instead. `package.json` and `.kodyignore` itself are always kept.
+Ignoring a file that runtime code imports fails bundle validation, so
+`.kodyignore` cannot hide code that runs. Kody does not read `package.json`
+`files`, because that field usually describes an npm build output that Kody does
+not publish.
 
 Broad patterns also match declaration files: `**/__tests__/` hides
 `types/__tests__/*.d.ts` too, and the typecheck then runs without those types.
@@ -1292,18 +1492,26 @@ publish checks run.
    Call `packagePublishExternalPush` (CLI: `kody package publish`). Kody checks
    the pushed tree server-side before recording the new published version,
    writing the published source snapshot, rebuilding package bundle artifacts,
-   and refreshing search projections. If the package tip already matched HEAD
-   before this request began, the tool returns `already_published` (true no-op
-   tip). That result still runs the artifact rebuild and sets
-   `artifacts_rebuilt` true when any target needed rebuild or a forced snapshot
-   repair ran. If `published_commit` moved relative to that pre-request tip —
-   including a durable re-entry after an overlapping inline attempt advanced the
-   tip — the status is `published` with `previous_commit` set to the baseline
-   tip, even when the repo session already saw tip==HEAD. If the package is
-   locked, it returns `locked` with a `pending_commit` and `approval_url` after
-   checks pass and leaves `published_commit` unchanged. If it is
-   internet-visible and its credential needs changed, it returns
-   `approval_required` the same way (see
+   and refreshing search projections. When the package is too large to bundle in
+   a Worker isolate, `kody package publish --build local` or `--build context`
+   builds on the publisher's machine or an execution context they operate, then
+   calls `packagePublishExternalPush` with `publish_build_id`. Kody re-runs the
+   cheap checks, verifies the uploaded tree and bundles, and only then serves
+   the commit. Successful results include `build_origin` (`cloud`, `cli`, or
+   `context`). Builds outside Kody cloud need the `publish-offload` feature
+   flag. See
+   [Publish packages too big for Kody cloud](../guides/publish-large-packages.md).
+   If the package tip already matched HEAD before this request began, the tool
+   returns `already_published` (true no-op tip). That result still runs the
+   artifact rebuild and sets `artifacts_rebuilt` true when any target needed
+   rebuild or a forced snapshot repair ran. If `published_commit` moved relative
+   to that pre-request tip — including a durable re-entry after an overlapping
+   inline attempt advanced the tip — the status is `published` with
+   `previous_commit` set to the baseline tip, even when the repo session already
+   saw tip==HEAD. If the package is locked, it returns `locked` with a
+   `pending_commit` and `approval_url` after checks pass and leaves
+   `published_commit` unchanged. If it is internet-visible and its credential
+   needs changed, it returns `approval_required` the same way (see
    [Approval when credential needs change](#approval-when-credential-needs-change)).
    If checks fail before promotion, it returns `checks_failed` with the failed
    check entries and leaves the underlying storage state unchanged. The CLI
@@ -1324,24 +1532,28 @@ publish checks run.
    repairs still rebuild. A published commit always has a complete target set —
    reuse writes the prior modules under the new commit key rather than leaving
    holes. A rebuild failure after promotion also returns `checks_failed` with a
-   bundle check — re-run the publish capability to repair artifacts. Successful
-   `published` responses, and `already_published` responses when the metadata is
-   available, include a bounded `static_dependents` summary of direct saved
-   packages whose published bundle artifacts statically reference this package.
-   Stale entries mean the dependent bundle captured a dependency commit that
-   differs from the current published commit. Kody does not automatically
-   republish those dependents; inspect and republish only the ones whose static
-   snapshot should reference the current published commit. Those same success
-   results include `phase_timings` with optional millisecond fields `clone_ms`,
-   `checks_typecheck_ms`, `checks_bundle_ms`, `rebuild_ms`, `dependents_ms`, and
-   `total_ms`. Omitted keys did not run on that attempt. `checks_bundle_ms` is
-   the publish bundle-check and is omitted when that esbuild pass is deferred to
-   rebuild; `rebuild_ms` is the later artifact rebuild — they stay separate.
-   Read `phase_timings` on the capability result; it is not available from
-   `runList` or Cloudflare Log Explorer. When an interactive publish exceeds the
-   inline budget (~35s), the tool returns `status: "dispatched"` with a
-   `workflow_id` instead of hanging until the host times out. `dispatched`
-   includes `phase_timings.total_ms` as time-to-dispatch. Poll with
+   bundle check. The publish did not succeed: Kody drops that commit's
+   publish-checks seal and moves `published_commit`, the package projection, and
+   job pins back to the last good commit (a first publish has no earlier commit,
+   so only the seal is dropped). Re-run the publish capability to repair
+   artifacts. Successful `published` responses, and `already_published`
+   responses when the metadata is available, include a bounded
+   `static_dependents` summary of direct saved packages whose published bundle
+   artifacts statically reference this package. Stale entries mean the dependent
+   bundle captured a dependency commit that differs from the current published
+   commit. Kody does not automatically republish those dependents; inspect and
+   republish only the ones whose static snapshot should reference the current
+   published commit. Those same success results include `phase_timings` with
+   optional millisecond fields `clone_ms`, `checks_typecheck_ms`,
+   `checks_bundle_ms`, `rebuild_ms`, `dependents_ms`, and `total_ms`. Omitted
+   keys did not run on that attempt. `checks_bundle_ms` is the publish
+   bundle-check and is omitted when that esbuild pass is deferred to rebuild;
+   `rebuild_ms` is the later artifact rebuild — they stay separate. Read
+   `phase_timings` on the capability result; it is not available from `runList`
+   or Cloudflare Log Explorer. When an interactive publish exceeds the inline
+   budget (~35s), the tool returns `status: "dispatched"` with a `workflow_id`
+   instead of hanging until the host times out. `dispatched` includes
+   `phase_timings.total_ms` as time-to-dispatch. Poll with
    `workflowRunList({ workflow_id })` (CLI:
    `kody api workflowRunList --params '{"workflow_id":"<id>"}'`) until the run
    is terminal; do not retry the same publish while the run is active.
@@ -1354,16 +1566,19 @@ publish checks run.
    optionally filtering with `package_id`, `status`, or `since`. Re-calling
    publish for the **same** commit is safe: an active durable run for that
    commit is deduped and returns the existing `dispatched` handle; a completed
-   publish returns `already_published`. When the stored check/stamp was sealed
-   under an older checker (or a prior attempt never sealed success), that
-   same-commit publish re-runs checks, refreshes the stamp, and sets
-   `checks_rerun: true` with a status message — a true no-op (same commit,
-   current checker, prior success) skips checks. Connect-phase failures
-   (`UND_ERR_CONNECT_TIMEOUT`, `ECONNREFUSED`, `ENOTFOUND`, `EAI_AGAIN`,
-   `ENETUNREACH`, `EHOSTUNREACH`, and the CLI's `did not connect within …ms`
-   timeout) never reached the server — republish is the right next step. The CLI
-   surfaces that distinction as `sent: false` vs `sent: "unknown"` on `--json`
-   errors.
+   publish returns `already_published`. A durable run whose publish did not
+   publish (`checks_failed`, `not_fast_forward`, `locked`, or
+   `approval_required`) ends `errored` with the reason in `last_error`, so
+   retrying the same commit starts a fresh attempt instead of returning that run
+   again. When the stored check/stamp was sealed under an older checker (or a
+   prior attempt never sealed success), that same-commit publish re-runs checks,
+   refreshes the stamp, and sets `checks_rerun: true` with a status message — a
+   true no-op (same commit, current checker, prior success) skips checks.
+   Connect-phase failures (`UND_ERR_CONNECT_TIMEOUT`, `ECONNREFUSED`,
+   `ENOTFOUND`, `EAI_AGAIN`, `ENETUNREACH`, `EHOSTUNREACH`, and the CLI's
+   `did not connect within …ms` timeout) never reached the server — republish is
+   the right next step. The CLI surfaces that distinction as `sent: false` vs
+   `sent: "unknown"` on `--json` errors.
 
 Computed `import(specifier)` (and other runtime package loads) resolve the
 current published package at call time instead of embedding a source snapshot in

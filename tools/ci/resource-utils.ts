@@ -573,10 +573,36 @@ function renderArg(value: string) {
 	return JSON.stringify(value)
 }
 
-export function runWrangler(
-	args: Array<string>,
-	options?: { input?: string; quiet?: boolean; timeoutMs?: number },
-) {
+type WranglerRunOptions = {
+	input?: string
+	quiet?: boolean
+	timeoutMs?: number
+	/**
+	 * Quiet runs skip the failure log when this matches the output, so
+	 * callers that treat it as success (already-deleted resources) stay quiet.
+	 */
+	expectedFailure?: (output: string) => boolean
+}
+
+/** Failure lines `runWrangler` prints for a non-zero exit. */
+export function wranglerFailureLogLines(input: {
+	command: string
+	output: string
+	timeoutMessage: string
+	quiet?: boolean
+	expectedFailure?: (output: string) => boolean
+}) {
+	if (input.quiet && input.expectedFailure?.(input.output)) return []
+	const lines: Array<string> = []
+	if (input.quiet) lines.push(`wrangler (failed): ${input.command}`)
+	if (input.output) lines.push(input.output)
+	if (input.timeoutMessage && !input.output.includes(input.timeoutMessage)) {
+		lines.push(input.timeoutMessage)
+	}
+	return lines
+}
+
+export function runWrangler(args: Array<string>, options?: WranglerRunOptions) {
 	const wranglerBin = resolveLocalBinary('wrangler')
 	const result = spawnSync(wranglerBin, args, {
 		encoding: 'utf8',
@@ -602,17 +628,14 @@ export function runWrangler(
 	}
 
 	if (status !== 0) {
-		if (options?.quiet) {
-			const rendered = args.map(renderArg).join(' ')
-			console.error(`wrangler (failed): ${wranglerBin} ${rendered}`)
-		}
-		const output = `${stdout}${stderr}`.trim()
-		if (output) {
-			console.error(output)
-		}
-		if (timeoutMessage && !output.includes(timeoutMessage)) {
-			console.error(timeoutMessage)
-		}
+		const lines = wranglerFailureLogLines({
+			command: `${wranglerBin} ${args.map(renderArg).join(' ')}`,
+			output: `${stdout}${stderr}`.trim(),
+			timeoutMessage,
+			quiet: options?.quiet,
+			expectedFailure: options?.expectedFailure,
+		})
+		for (const line of lines) console.error(line)
 	}
 
 	return { status, stdout, stderr, errorMessage: timeoutMessage }
@@ -622,6 +645,7 @@ type WranglerRetryInput = {
 	input?: string
 	quiet?: boolean
 	timeoutMs?: number
+	expectedFailure?: (output: string) => boolean
 	sleep?: (ms: number) => Promise<void>
 	maxAttempts?: number
 	deadlineMs?: number
@@ -642,6 +666,7 @@ export async function runWranglerWithRetry(
 		input: options?.input,
 		quiet: options?.quiet,
 		timeoutMs,
+		expectedFailure: options?.expectedFailure,
 	})
 	for (let attempt = 1; attempt < maxAttempts; attempt += 1) {
 		if (lastResult.status === 0) return lastResult
@@ -667,6 +692,7 @@ export async function runWranglerWithRetry(
 			input: options?.input,
 			quiet: options?.quiet,
 			timeoutMs,
+			expectedFailure: options?.expectedFailure,
 		})
 	}
 	return lastResult
@@ -878,6 +904,7 @@ export async function deleteWorkerScript({
 	// can fail even when the token can delete the Worker and preview resources.
 	const result = await runWranglerWithRetry(['delete', name, '--force'], {
 		quiet: true,
+		expectedFailure: isWranglerNotFoundOutput,
 		sleep: wait,
 		maxAttempts,
 		deadlineMs,
@@ -1172,6 +1199,7 @@ export async function deleteR2Bucket({
 
 	const retryOptions = {
 		quiet: true,
+		expectedFailure: isWranglerNotFoundOutput,
 		sleep: wait,
 		maxAttempts,
 		deadlineMs,

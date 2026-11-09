@@ -1,5 +1,5 @@
 // soft-delete-read-filter: opt-out
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	buildUserScopedDeleteOrUpdateSql,
 	buildUserScopedTargetMatch,
@@ -9,10 +9,12 @@ import {
 	purgeOwnerOutOfBandSurfaces,
 } from '#app/account-deletion.ts'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
+import { wipePinnedConnectionsForOrg } from '#worker/integrations/pinned-connections.ts'
 import { personalOrgIdFromUserRow } from '#worker/orgs/personal-org-id.ts'
 import { hardPurgeOrgDataTargets } from './data-targets.ts'
 import {
 	logOrgAuditEvent,
+	optionalOrgAuditWriter,
 	redactOrgAuditActorIdsForDeletedUser,
 } from './org-audit.ts'
 
@@ -70,6 +72,14 @@ export async function hardPurgeOrg(input: {
 	if (relation === 'live_person') {
 		throw new PersonalOrgHardPurgeBlockedForLiveUserError(input.orgId)
 	}
+	// Orgs soft-deleted before soft delete wiped pinned connections still have
+	// them. Wipe and revoke them while the app and its client secret exist;
+	// the inventory below deletes any the wipe cannot see (tombstoned rows).
+	await wipePinnedConnectionsForOrg({
+		env: input.env,
+		orgId: input.orgId,
+		audit: optionalOrgAuditWriter(input.env, null),
+	})
 	const deferOwnerInventory = relation === 'soft_deleted_person'
 	if (!deferOwnerInventory) {
 		// Team org (no matching person): collect the same out-of-band keys

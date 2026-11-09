@@ -6,33 +6,33 @@
  * `apply`, which is the one step that reads credential material. The door
  * writes the audit row for every outcome from the resolver's audit subject.
  */
-import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
-import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import {
 	AuthorizationError,
 	authorize,
+	checkProfileChain,
+	computeEffectivePermissions,
 } from '#worker/authorization/authorize.ts'
-import { type IntegrationTokenRefreshResult } from '#worker/integrations/token-refresh.ts'
-import { type ResolvedProviderSecret } from '#mcp/secrets/secret-providers/types.ts'
-import { type ResolvedSecret } from '#mcp/secrets/service.ts'
-import { type SecretScope } from '#mcp/secrets/types.ts'
-import { type StorageContext } from '#mcp/storage.ts'
-import { type CredentialAuditSubject } from './credential-resolution-audit.ts'
+import type { IntegrationTokenRefreshResult } from '#worker/integrations/token-refresh.ts'
+import type { ResolvedProviderSecret } from '#mcp/secrets/secret-providers/types.ts'
+import type { ResolvedSecret } from '#mcp/secrets/service.ts'
+import type { SecretScope } from '#mcp/secrets/types.ts'
+import type { StorageContext } from '#mcp/storage.ts'
+import type { CredentialAuditSubject } from './credential-resolution-audit.ts'
 import {
 	credentialResource,
 	missingCredentialResource,
 } from './credential-ids.ts'
-import { type CredentialFillSite } from './fill-placement.ts'
-import { type PackageStamp } from './package-stamp.ts'
-import { type ResolvedLoginSession } from './login-resolver.ts'
-import {
-	type SigningOperation,
-	type SigningResult,
-} from './signing-resolver.ts'
-import { type ResolvedCredentialUrl } from './url-resolver.ts'
+import { authorizePersonalCredentialUse } from './personal-credentials.ts'
+import type { CredentialFillSite } from './fill-placement.ts'
+import type { PackageStamp } from './package-stamp.ts'
+import type { ResolvedLoginSession } from './login-resolver.ts'
+import type { SigningOperation, SigningResult } from './signing-resolver.ts'
+import type { ResolvedCredentialUrl } from './url-resolver.ts'
 
 /** Where a scoped client places a value on one request. */
 export type ClientPlacement =
@@ -404,6 +404,39 @@ export function assertCredentialScopeAllows(
 		},
 		permission,
 	)
+}
+
+/**
+ * Use check for a granted personal credential, the same rules as
+ * `listUsableCredentials`: the token's scope, the owner's live grant to the
+ * run org, then every layer of the profile chain when the token acts as a
+ * profile (ADR 0092).
+ */
+export async function authorizeActorPersonalUse(input: {
+	env: Env
+	actor: RequestContext | null | undefined
+	orgId: OwnerId
+	credentialId: string | null
+	name: string
+	permission: OrgPermission
+}) {
+	assertActorScopeAllowsCredential(input, input.permission)
+	await authorizePersonalCredentialUse({
+		db: input.env.APP_DB,
+		actorPersonId: input.actor?.actor?.userId ?? null,
+		orgId: input.orgId,
+		credentialId: input.credentialId ?? '',
+	})
+	if (!input.actor?.credential.profileId || !input.credentialId) return
+	const decision = checkProfileChain(
+		await computeEffectivePermissions({ env: input.env, request: input.actor }),
+		input.permission,
+		credentialResource(input.orgId, {
+			id: input.credentialId,
+			name: input.name,
+		}),
+	)
+	if (!decision.allowed) throw decision.error
 }
 
 /** `assertCredentialScopeAllows` for callers outside a resolver call. */

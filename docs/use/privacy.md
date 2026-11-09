@@ -51,13 +51,13 @@ metadata, and public activity are visible on `/@username`. When visibility is
 [Public packages](./community-packages.md#public-profiles).
 
 The only cookies are the session cookie (`kody_session`), the one-week last-wins
-referral cookie (`kody_ref`) set by `/signup?ref=<username>` share links, and
-the package-app session cookie on `kody.run` (`__Host-kody_pkg_session_<hash>`
-on HTTPS, `kody_pkg_session_<hash>` on HTTP; one cookie per package app on
-shared hosts). Short-lived cookies support two-factor verification, passkey
-challenges, and OAuth login. Analytics (Fathom and Scarf) are cookieless. The
-browser uses sessionStorage for first-touch signup attribution and scroll
-restoration, not tracking cookies.
+referral cookie (`kody_ref`) set by share links that add `?ref=` to any page
+(for example `/?ref=<username>`), and the package-app session cookie on
+`kody.run` (`__Host-kody_pkg_session_<hash>` on HTTPS, `kody_pkg_session_<hash>`
+on HTTP; one cookie per package app on shared hosts). Short-lived cookies
+support two-factor verification, passkey challenges, and OAuth login. Analytics
+(Fathom and Scarf) are cookieless. The browser uses sessionStorage for
+first-touch signup attribution and scroll restoration, not tracking cookies.
 
 Account export includes your profile columns and activity you authored. The
 browser download is a bounded metadata manifest; use its `accountExportSection`
@@ -148,39 +148,36 @@ deleted (stable user id, username, email, the create source, the signup
 `created_at` on both events, the delete timestamp, and first-touch marketing
 attribution fields when present). Referral rows are account data (export and
 deletion) and are not included on those lifecycle events. Those lifecycle events
-omit passwords, roles, plan, secrets, and unrelated account content.
-Admin-configured notification packages may also receive a metadata-only
-`user.email_verification.failed` event when signup/verify mail first hits a
-terminal delivery failure (stable user id, username, email, status, `class`
-(`sender_block` / `other` / `null`), an admin user URL, and `occurred_at`). That
-event omits SMTP transcripts, tokens, and unrelated account content.
-Admin-configured notification packages may also receive a metadata-only
-`user.email_verification.stalled` event when signup/verify mail stays `accepted`
-for an hour with no Cloudflare lifecycle event (stable user id, username, email,
-`accepted_at`, stall threshold, an admin user URL, and `occurred_at`). That
-event omits SMTP transcripts, tokens, and unrelated account content.
-Admin-configured notification packages may also receive a metadata-only
-`user.email_outbound.paused` event when outbound sending is paused after a spam
-complaint or repeated bounces (stable user id, username, email, reason, bounce
-threshold when the reason is `bounced`, an admin user URL, and `occurred_at`).
-That event omits SMTP transcripts, message bodies, and unrelated account
-content. Admin-configured notification packages may also receive
-`email.system-message.sent` when operator correspondence leaves a reserved
-system sender (`kody@`, `support@`, and the other system locals). That event
-includes the recipients, subject, and sent text/HTML because outbound system
-mail is not stored on the inbound system-email graph; it is admin-only and omits
+omit passwords, roles, plan, secrets, and unrelated account content. When a
+guest account is claimed they may also receive a `user.guest_claimed` event with
+the resulting account and guest identity, the claim method, the guest
+timestamps, and how many items of each kind the guest had (counts only, never
+their content, claim codes, or secret values). Admin-configured notification
+packages may also receive a metadata-only `user.email_verification.failed` event
+when signup/verify mail first hits a terminal delivery failure (stable user id,
+username, email, status, `class` (`sender_block` / `other` / `null`), an admin
+user URL, and `occurred_at`). That event omits SMTP transcripts, tokens, and
 unrelated account content. Admin-configured notification packages may also
-receive metadata-only `auth.denial.burst` or `email.delivery.burst` events when
-hourly MCP auth denials or shared-domain bounce/complaint counts cross their
-thresholds (count, threshold, window, insights URL, and `observed_at`). Those
-events omit user identities, tokens, recipients, and message content.
+receive a metadata-only `user.email_verification.stalled` event when
+signup/verify mail stays `accepted` for an hour with no Cloudflare lifecycle
+event (stable user id, username, email, `accepted_at`, stall threshold, an admin
+user URL, and `occurred_at`). That event omits SMTP transcripts, tokens, and
+unrelated account content. Admin-configured notification packages may also
+receive a metadata-only `user.email_outbound.paused` event when outbound sending
+is paused after a spam complaint or repeated bounces (stable user id, username,
+email, reason, bounce threshold when the reason is `bounced`, an admin user URL,
+and `occurred_at`). That event omits SMTP transcripts, message bodies, and
+unrelated account content. Admin-configured notification packages may also
+receive `email.system-message.sent` when operator correspondence leaves a
+reserved system sender (`kody@`, `support@`, and the other system locals). That
+event includes the recipients, subject, and sent text/HTML because outbound
+system mail is not stored on the inbound system-email graph; it is admin-only
+and omits unrelated account content. Admin-configured notification packages may
+also receive metadata-only `auth.denial.burst` or `email.delivery.burst` events
+when hourly MCP auth denials or shared-domain bounce/complaint counts cross
+their thresholds (count, threshold, window, insights URL, and `observed_at`).
+Those events omit user identities, tokens, recipients, and message content.
 Admin-configured notification packages may also receive a metadata-only
-`fleet.package_error_rate.elevated` event when package-runtime error rates rise
-(window bounds, per-metric counts and rates, public status URL, insights URL,
-and — when one account or a few accounts own the recent-window errors — those
-usernames and package name leaves). That event omits user ids, package UUIDs,
-emails, error strings, logs, and unrelated account content. Admin-configured
-notification packages may also receive a metadata-only
 `fleet.entitlement.crossed` event when a swept account first crosses 80% or 100%
 of a plan-limit resource, when a non-admin account first exceeds the monthly
 runtime-duration threshold, when a non-admin account first reaches a plan-aware
@@ -213,19 +210,20 @@ account content. Agents must omit secrets and unrelated private content from the
 feedback they prepare.
 
 Each account can create at most 20 feedback submissions in a rolling 24-hour
-period and have at most 100 active submissions (open or triaged). Agents can
-read remaining quota from `metaPlatformFeedbackList` (`submissions_remaining`
-and `next_slot_at`). Open and triaged feedback remains until it is resolved,
-dismissed, or your account is deleted. Resolved and dismissed feedback is
-removed 365 days after its last update. Account deletion removes any remaining
-submissions. When an admin resolves or dismisses your feedback, Kody may email
-you from the platform sender with the decision, thanks, and a way to send more
-feedback through your agent. That mail can include a short outcome note and
-related PR links when the admin provides them; the same values are stored on
-your feedback as `resolution_note` and `resolution_pr_urls` so your agent can
-read them later. That mail is skipped if your account has no email, outbound
-email is paused, or the account is suspended. Internal admin notes are not
-included.
+period. New submissions are refused while it has 100 or more active submissions
+(open or triaged). Agents can read remaining quota from
+`metaPlatformFeedbackList` (`submissions_remaining` and `next_slot_at`). Open
+and triaged feedback remains until it is resolved, dismissed, or your account is
+deleted. Resolved and dismissed feedback becomes eligible for pruning 365 days
+after its last update and is removed by a later scheduled prune. Account
+deletion removes any remaining submissions. When an admin resolves or dismisses
+your feedback, Kody may email you from the platform sender with the decision,
+thanks, and a way to send more feedback through your agent. That mail can
+include a short outcome note and related PR links when the admin provides them;
+the same values are stored on your feedback as `resolution_note` and
+`resolution_pr_urls` so your agent can read them later. That mail is skipped if
+your account has no email, outbound email is paused, or the account is
+suspended. Internal admin notes are not included.
 
 When a notification is still queued, Kody rechecks that the feedback exists
 immediately before delivery and cancels it after account deletion when possible.
@@ -308,7 +306,7 @@ cleanup periods:
 - Durable Object duration attribution: until account deletion
 - Stripe webhook event records: 30 days
 - Non-current published bundle artifacts: at least 30 days, then eligible for
-  removal when no active source or repo session needs them
+  removal when no active source, catalog listing, or repo session needs them
 - Unverified person accounts: seven days after signup when the email is still
   unverified and no sign-in provider is linked
 

@@ -545,14 +545,19 @@ The schema is defined by migrations in `packages/worker/migrations/`:
   `required_hosts_json`, `usage_mode` / `allowed_packages_json`, and access /
   refresh token ciphertext. The non-secret `client_id` is stored inline on the
   owning app row. `0202-integration-app-owner.sql` rebuilds the table to add
-  nullable `app_owner_id`, the org whose app the connection uses; the app FK is
-  now `(app_owner_id, app_slug) → user_oauth_apps(user_id, slug)`, and user-lane
-  rows were backfilled with `app_owner_id = user_id`. A row whose `app_owner_id`
-  differs from `user_id` is a member's personal connection pinned to that org
-  (ADR 0068 amendment 2026-10-29): tokens live with the member's personal org,
-  the client secret with the org's app. Deleting the org's app, the member
-  leaving, or org purge (`account/data-targets.ts`) wipes those rows; org
-  transfer rewrites `app_owner_id` with the apps.
+  nullable `app_owner_id`, the org whose app the connection uses. The app FK is
+  `(app_owner_id, app_slug) → user_oauth_apps(user_id, slug)`. User-lane rows
+  set `app_owner_id = user_id`. A row whose `app_owner_id` differs from
+  `user_id` is a member's personal connection pinned to that org (ADR 0068
+  amendment 2026-10-29): tokens live with the member's personal org, the client
+  secret with the org's app. Deleting the org's app or the member leaving wipes
+  those rows; org transfer rewrites `app_owner_id` with the apps. Team-org soft
+  delete wipes and revokes them (`wipePinnedConnectionsForOrg`, reason
+  `org_deleted`) before tombstoning the apps; restore does not bring them back.
+  Hard purge runs the same wipe, then the `user_integrations_pinned_to_org_apps`
+  target in `account/data-targets.ts` (inside `appliesToOrgHardPurge`) deletes
+  any row the wipe cannot see, before `user_oauth_apps`, so the
+  `ON DELETE RESTRICT` app FK never blocks the purge.
 
 App access pattern:
 
@@ -634,8 +639,8 @@ Two D1 reporting projections deliberately remain:
 
 OAuth provider state is stored in `OAUTH_KV` through the
 `@cloudflare/workers-oauth-provider` integration. Published package source
-snapshots, bundle artifacts, and community listing snapshots are stored in
-`BUNDLE_ARTIFACTS_KV`. That binding also holds the platform-owned
+snapshots, bundle artifacts, and legacy community listing snapshots are stored
+in `BUNDLE_ARTIFACTS_KV`. That binding also holds the platform-owned
 `platform-settings:v1:reserved-usernames` runtime reserved-username override and
 short-lived encrypted MCP OAuth refresh-family snapshots
 (`derived-cache:v1:mcp-oauth-refresh-family:` /
@@ -795,6 +800,12 @@ workspace mutations, and remove the inventory row on discard, purge, scheduled
 cleanup, source deletion, or account deletion. This estimate component is
 composed with the authoritative UserMeter D1 payload bytes; it is not reserved
 into UserMeter.
+
+Package delete clears every package-owned bucket before removing the package
+row. For leftover `package:<uuid>` rows whose package row is gone (soft-deleted
+packages still count as present, and so do ids a community fork reserves),
+`adminOrphanPackageStorageCleanup` previews them by default and, with
+`apply: true`, runs the same per-bucket clear. It is admin-only and audited.
 
 ## Durable Objects (`UserMeter`)
 
@@ -1423,21 +1434,20 @@ capabilities ([dead-letter queues](../dead-letter-queues.md)).
 
 Production note:
 
-- Production deploys warn that the documented Artifacts Worker binding config is
-  unexpected, and deploy logs show no `env.ARTIFACTS` binding in the deployed
-  Worker binding summary.
-- Because that binding is absent in production, repo source code uses the
-  documented Artifacts REST API as the single integration path for
-  create/get/token/fork operations.
-- `packages/worker/src/repo/artifacts.ts` builds that REST client from
-  `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, and optional
-  `CLOUDFLARE_API_BASE_URL` / `ARTIFACTS_NAMESPACE`, which also makes local dev
-  mocking straightforward.
+- Production and preview Workers bind `ARTIFACTS` (wrangler `artifacts`,
+  namespaces `production` / per-PR). `getArtifactsBinding()` uses that JSRPC
+  binding when it matches `ARTIFACTS_NAMESPACE`, and falls back to the Artifacts
+  REST client from `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, and optional
+  `CLOUDFLARE_API_BASE_URL` / `ARTIFACTS_NAMESPACE` when the binding is absent
+  or the requested namespace differs (local/tests).
 - During `npm run dev`, those REST calls go to the local Cloudflare mock Worker,
   which implements the Artifacts repo metadata endpoints used by the app
-  (`create`, `get`, `list`, `createToken`, and `fork`). The mock only covers the
-  REST control plane; repo session Durable Objects need a Git-capable remote for
-  clone/pull/push flows.
+  (`create`, `get`, `list`, `createToken`, and `fork`). `cli.ts` also serves
+  mock git remotes from `.wrangler/state/mock-artifacts-git`
+  (`tools/mock-artifacts-git-server.ts`), so plain-repo `repoOpenSession`
+  clone/push works locally. Saved-package repo sessions still use mock source
+  snapshots — use a preview for that namespace. See
+  [Local limitations](../cloud-agents.md#local-limitations).
 - Durable repo-source creation paths
   (`ensureEntitySource(..., requirePersistence: true)`) fail closed when
   persistence bindings are unavailable so callers do not write orphaned
@@ -1484,8 +1494,8 @@ on write unless a migration backfills existing rows.
   `0072-webhook-hmac-secret-encrypted.sql`,
   `0127-webhook-hmac-rotation-grace.sql`) stores per-user minted URL state for
   `package.json#kody.webhooks`, keyed by `(user_id, package_id, webhook_name)`.
-  Its unused `enabled` column is leftover. Webhook on/off state lives only in
-  `enablements`. URL secrets are SHA-256 hashed for ingress and AES-GCM
+  Webhook on/off state lives only in `enablements` (the legacy `enabled` column
+  was dropped in `0242`). URL secrets are SHA-256 hashed for ingress and AES-GCM
   encrypted (`url_secret_encrypted`) for server-side apply. Package-owned HMAC
   signing material lives on the same row (`hmac_secret_encrypted`) when
   verification omits `secretName`; provider-issued secrets use the secrets
@@ -1688,7 +1698,8 @@ app-owned keys in it. App-owned `BUNDLE_ARTIFACTS_KV` keys are:
   Publish rebuild copies unchanged targets from the previous commit onto this
   new key (D1 identity row retargets) so a partial export bump does not leave
   the new `published_commit` missing artifacts.
-- `community-snapshot:v1:{listingId}`.
+- `community-snapshot:v1:{listingId}` (legacy listing-id file tree; no longer
+  written or read, still deleted and exported).
 - `package-skills-index:v1:{userId}:{packageId}:{publishedCommit}` — per-version
   Agent Skills index (frontmatter + digests, no file contents) written at
   publish; served by Skills-over-MCP when `mcp-skills-extension` is on.
@@ -1908,8 +1919,9 @@ Current retention policies:
   `RunLog` DO (`workflow_projections`; see [Run records](./run-records.md)).
 - `published_bundle_artifacts`: delete D1 rows and their `BUNDLE_ARTIFACTS_KV`
   blobs only when the row is older than 30 days, its `published_commit` is no
-  longer current for any matching `entity_sources` row, and there is no active
-  repo session for the source. When a row is pruned, the matching
+  longer current for any matching `entity_sources` row, no active
+  `community_listings` row pins that commit (`pinned_commit`), and there is no
+  active repo session for the source. When a row is pruned, the matching
   `source-snapshot:v1:{sourceId}:{commit}` and
   `source-manifest-snapshot:v1:{sourceId}:{commit}` KV keys are deleted under
   the same safety conditions, so per-commit snapshots do not accumulate

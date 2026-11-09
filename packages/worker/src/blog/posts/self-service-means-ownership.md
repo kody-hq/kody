@@ -6,6 +6,7 @@ description:
   honestly. A few minutes of setup buy you your own app, your scopes, your rate
   limits, and no middleman between you and your data.
 order: 7
+category: essays
 ---
 
 When you connect Google or GitHub to Kody, there's no one-click "Sign in with

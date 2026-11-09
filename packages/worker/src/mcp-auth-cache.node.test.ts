@@ -213,7 +213,7 @@ test('a just-removed owner loses the org binding on the very next request with t
 
 test('global role changes invalidate the cached roles immediately', async () => {
 	const { env, owner } = await setup()
-	const grantProps = { userId: owner.stableUserId }
+	const grantProps = { userId: owner.stableUserId, orgId: owner.stableUserId }
 	const token = 'token-roles'
 
 	const before = await buildMcpAuthContextCached(env, {

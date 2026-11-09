@@ -18,21 +18,22 @@ import {
 	writeMcpAuthCache,
 	type OrgEpochRow,
 } from '#worker/mcp-auth-cache.ts'
+import { readOrgIdFromGrantProps } from '#worker/orgs/oauth-grant.ts'
 import {
-	readOrgIdFromGrantProps,
-	readOrgIdFromGrantPropsOrUserId,
-} from '#worker/orgs/oauth-grant.ts'
+	aliasedGuestGrantProps,
+	readGuestAlias,
+} from '#worker/guest/guest-accounts.ts'
 import {
 	displayNameFromEmail,
 	getUsernameFormatValidationError,
 } from '#worker/identity/username.ts'
-import { type McpUserContext } from '@kody-internal/shared/chat.ts'
+import type { McpUserContext } from '@kody-internal/shared/chat.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import {
 	planOrgBindingFromGrantProps,
 	type OrgBindingPlan,
 } from '#worker/orgs/grant-binding.ts'
-import { type OrgBinding } from '#worker/orgs/repo.ts'
+import type { OrgBinding } from '#worker/orgs/repo.ts'
 
 type McpOAuthGrantProps = {
 	userId?: unknown
@@ -52,6 +53,7 @@ type GrantUserRow = {
 	email_verified_at: string | null
 	suspended_at: string | null
 	password_changed_at: string | null
+	guest_expires_at: string | null
 }
 
 export type McpAuthUserContext = {
@@ -59,6 +61,8 @@ export type McpAuthUserContext = {
 	emailVerified: boolean
 	suspended: boolean
 	passwordChangedAt: string | null
+	/** End of full access when this person is a guest; null otherwise. */
+	guestExpiresAt: string | null
 }
 
 function buildBaseUserFromGrant(
@@ -106,7 +110,7 @@ function grantUserStatement(env: Env, userId: PersonId) {
 	return env.APP_DB.prepare(
 		`SELECT id, email, username, display_name, stable_user_id,
 			personal_org_id, deleting_at, email_verified_at, suspended_at,
-			password_changed_at
+			password_changed_at, guest_expires_at
 		 FROM users
 		 WHERE stable_user_id = ?${andLiveDeletedAtSql()}`,
 	).bind(userId)
@@ -158,12 +162,14 @@ function contextFromGrantUserRowAndRoles(input: {
 				stable_user_id: row.stable_user_id,
 			}),
 			...(username ? { username } : {}),
+			...(row.guest_expires_at ? { guestExpiresAt: row.guest_expires_at } : {}),
 			roles,
 			permissions,
 		},
 		emailVerified: Boolean(row.email_verified_at),
 		suspended: Boolean(row.suspended_at),
 		passwordChangedAt: row.password_changed_at ?? null,
+		guestExpiresAt: row.guest_expires_at ?? null,
 	}
 }
 
@@ -263,15 +269,31 @@ export async function buildMcpAuthContextCached(
 	env: Env,
 	input: { grantProps: McpOAuthGrantProps; accessToken: string | null },
 ): Promise<McpAuthContextWithBinding | null> {
+	const direct = await buildMcpAuthContextCachedForGrant(env, input)
+	if (direct || !input.grantProps) return direct
+	// A guest merged into an existing account keeps its grants: they resolve
+	// to the claiming person and that person's personal org.
+	const guestPersonId = personIdFromGrantProps(input.grantProps)
+	if (!guestPersonId) return null
+	const alias = await readGuestAlias(env.APP_DB, guestPersonId)
+	if (!alias) return null
+	return await buildMcpAuthContextCachedForGrant(env, {
+		accessToken: input.accessToken,
+		grantProps: aliasedGuestGrantProps(input.grantProps, alias),
+	})
+}
+
+async function buildMcpAuthContextCachedForGrant(
+	env: Env,
+	input: { grantProps: McpOAuthGrantProps; accessToken: string | null },
+): Promise<McpAuthContextWithBinding | null> {
 	const { grantProps, accessToken } = input
 	if (!grantProps) return null
 	const userId = personIdFromGrantProps(grantProps)
 	if (!userId) return null
 	const db = env.APP_DB
-	const boundOrgId =
-		readOrgIdFromGrantProps(grantProps) ??
-		readOrgIdFromGrantPropsOrUserId(grantProps) ??
-		userId
+	const boundOrgId = readOrgIdFromGrantProps(grantProps)
+	if (!boundOrgId) return null
 	const readEpochs = (results: Array<D1Result<unknown>>) => {
 		const personalOrg = firstRow<OrgEpochRow>(results[0])
 		const boundOrg =
@@ -378,4 +400,23 @@ export async function buildMcpAuthContextCached(
 		console.error('Failed to load MCP auth user context:', error)
 		throw error
 	}
+}
+
+/**
+ * Grant props for authentication: a merged guest's grant (its users row is
+ * gone) is rebound to the person it was claimed into.
+ */
+export async function resolveGuestAliasedGrantProps<
+	T extends Record<string, unknown>,
+>(env: Env, grantProps: T): Promise<T> {
+	const personId = personIdFromGrantProps(grantProps)
+	if (!personId) return grantProps
+	const row = await env.APP_DB.prepare(
+		`SELECT 1 AS present FROM users WHERE stable_user_id = ? AND deleted_at IS NULL`,
+	)
+		.bind(personId)
+		.first<{ present: number }>()
+	if (row) return grantProps
+	const alias = await readGuestAlias(env.APP_DB, personId)
+	return alias ? aliasedGuestGrantProps(grantProps, alias) : grantProps
 }

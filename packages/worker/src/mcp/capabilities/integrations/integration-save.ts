@@ -10,13 +10,16 @@ import {
 } from '#mcp/capabilities/meta/require-user.ts'
 import { authorizeIntegration } from '#mcp/capabilities/integrations/authorize-integration.ts'
 import { authorize } from '#worker/authorization/authorize.ts'
-import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
+	assertScopesAllowedForPlatformApp,
 	getIntegration,
+	getJoinedIntegration,
 	upsertIntegration,
 	type IntegrationConfig,
 } from '#worker/integrations/service.ts'
+import { updatePlatformIntegrationRequestedScopes } from '#worker/integrations/repo.ts'
 import {
 	integrationConfigSchema,
 	integrationSaveSchema,
@@ -37,7 +40,7 @@ export const integrationSaveCapability = defineDomainCapability(
 		contextRuns: 'deny',
 		orgPermission: ['integration:write', 'integration:create'],
 		description:
-			'Create or update an OAuth integration connection for the signed-in user. Names are normalized to a canonical lowercase-kebab provider key. Partial updates merge into the existing connection; matching client credentials reuse a shared OAuth app across connections. Do not persist access or refresh tokens here or with secretSet — `/connect/oauth` and `integrationTokenRefresh` write those on the connection. authorization.scopes is reconnect metadata: the list the next /connect/oauth visit requests, not the current access token. After widening scopes, tell the user the token is unchanged until they reconnect, then ask whether to reconnect each affected account at /connect/oauth?provider=<connection-name>. Scopes are per connection; sibling accounts that share an OAuth app keep their own lists. This capability cannot change usageMode or add requiredHosts / retarget tokenUrl to an unapproved host. Platform (built-in) connections cannot be updated here — reconnect at /connect/oauth?provider=<name> to change scopes, or integrationDelete first to replace with a bring-your-own app.',
+			"Create or update an OAuth integration connection for the signed-in user. Names are normalized to a canonical lowercase-kebab provider key. Partial updates merge into the existing connection; matching client credentials reuse a shared OAuth app across connections. Do not persist access or refresh tokens here or with secretSet — `/connect/oauth` and `integrationTokenRefresh` write those on the connection. authorization.scopes is reconnect metadata: the list the next /connect/oauth visit requests, not the current access token. After widening scopes, tell the user the token is unchanged until they reconnect, then ask whether to reconnect each affected account at /connect/oauth?provider=<connection-name>. Scopes are per connection; sibling accounts that share an OAuth app keep their own lists. This capability cannot change usageMode or add requiredHosts / retarget tokenUrl to an unapproved host. Platform (built-in) connections accept only authorization.scopes here (pass authorization with the authorizeUrl from integrationGet and the full new scope list, adding or removing scopes). Every scope must be on the built-in app's supported list, and the list cannot be empty. This changes only that one connection: the built-in defaults and sibling connections keep their own scopes, and the connection stays built-in. The current token keeps its old grant until the user reconnects at /connect/oauth?provider=<name>, where the provider asks for consent. After reconnecting, integrationGet returns grantedScopes (what the provider actually granted, with missing and extra versus the request); report any mismatch instead of claiming the scopes changed.",
 		keywords: [
 			'integration',
 			'oauth',
@@ -70,11 +73,15 @@ export const integrationSaveCapability = defineDomainCapability(
 			}
 			// A partial merge onto a platform (built-in) connection would
 			// silently convert it to a user-lane app and break host-side
-			// refresh; keep platform connections managed by the connect flow.
+			// refresh; only its requested scopes change here.
 			if (existing?.platform === true) {
-				throw new McpCallerError(
-					`Integration "${args.name}" is a platform (built-in) connection managed at /connect/oauth?provider=${encodeURIComponent(existing.name)}. Reconnect there to change scopes, or integrationDelete it first to replace it with your own OAuth app.`,
-				)
+				return {
+					integration: await savePlatformConnectionScopes({
+						ctx,
+						existing,
+						args,
+					}),
+				}
 			}
 			const config = existing
 				? mergeIntegrationConfig(existing, args)
@@ -103,6 +110,84 @@ export const integrationSaveCapability = defineDomainCapability(
 		},
 	},
 )
+
+async function savePlatformConnectionScopes(input: {
+	ctx: CapabilityContext
+	existing: IntegrationConfig
+	args: z.infer<typeof inputSchema>
+}): Promise<IntegrationConfig> {
+	const { existing, args, ctx } = input
+	const reconnectHref = `/connect/oauth?provider=${encodeURIComponent(existing.name)}`
+	const { name: _name, authorization, ...rest } = args
+	const otherFields = Object.entries(rest)
+		.filter(([, value]) => value !== undefined)
+		.map(([key]) => key)
+	const changedAuthorizationFields = authorization
+		? (
+				['authorizeUrl', 'scopeSeparator', 'extraAuthorizeParams'] as const
+			).filter(
+				(key) =>
+					authorization[key] !== undefined &&
+					JSON.stringify(authorization[key]) !==
+						JSON.stringify(existing.authorization?.[key]),
+			)
+		: []
+	if (
+		!authorization ||
+		otherFields.length > 0 ||
+		changedAuthorizationFields.length > 0
+	) {
+		const blocked = [
+			...otherFields,
+			...changedAuthorizationFields.map((key) => `authorization.${key}`),
+			...(authorization ? [] : ['authorization (required)']),
+		]
+		throw new McpCallerError(
+			`Integration "${existing.name}" is a platform (built-in) connection. integrationSave only changes its authorization.scopes; it cannot change ${blocked.join(', ')}. Pass authorization with the current authorizeUrl and the full scope list.`,
+		)
+	}
+	const ownerId = ownerIdFromCaller(ctx.callerContext)
+	const joined = await getJoinedIntegration({
+		env: ctx.env,
+		userId: ownerId,
+		name: existing.name,
+	})
+	if (joined?.lane !== 'platform') {
+		throw new McpCallerError(
+			`Integration "${existing.name}" is no longer a platform connection. Call integrationGet and try again.`,
+		)
+	}
+	let scopes: Array<string>
+	try {
+		scopes = assertScopesAllowedForPlatformApp(joined.app, authorization.scopes)
+	} catch (error) {
+		throw new McpCallerError(
+			`${error instanceof Error ? error.message : 'Scopes not allowed.'} Supported scopes: ${joined.app.allowedScopes.join(', ') || 'none'}.`,
+		)
+	}
+	if (scopes.length === 0) {
+		throw new McpCallerError(
+			`Integration "${existing.name}" needs at least one scope. Some providers reuse the previous grant when no scope is requested, so an empty list would not narrow the token.`,
+		)
+	}
+	await updatePlatformIntegrationRequestedScopes({
+		db: ctx.env.APP_DB,
+		userId: ownerId,
+		name: joined.connection.name,
+		scopes,
+	})
+	const saved = await getIntegration({
+		env: ctx.env,
+		userId: ownerId,
+		name: joined.connection.name,
+	})
+	if (!saved) {
+		throw new Error(
+			`Failed to update scopes on platform integration "${existing.name}". Reconnect at ${reconnectHref}.`,
+		)
+	}
+	return saved
+}
 
 function createNewIntegrationConfig(
 	args: z.infer<typeof inputSchema>,

@@ -2,6 +2,7 @@ import {
 	reloadOnStaleRouteChunk,
 	shouldSuppressStaleRouteChunkFollowOnError,
 } from '#client/reload-on-stale-route-chunk.ts'
+import { isDeploySkewRecoveryError } from '#client/reload-on-deploy-skew.ts'
 import { reloadOnUnknownStartRelease } from '#client/reload-on-unknown-start-release.ts'
 import {
 	isBrowserAbortError,
@@ -14,6 +15,7 @@ import {
 	isSyntaxHighlightCoreDynamicImportFailureError,
 	isTanStackRouterNotFoundError,
 	isTanStackServerFnFetchNetworkError,
+	isThirdPartyProxyBlockPageError,
 	isUnknownStartReleaseError,
 } from '#client/sentry-browser-filters.ts'
 import { isPermissionDeniedError } from '#universal/permission-denied.ts'
@@ -83,7 +85,9 @@ function shouldIgnoreBufferedError(error: unknown) {
 		isMetaMaskWalletNoAccountError(error) ||
 		isChromeExtensionMessageChannelDisconnectedError(error) ||
 		isUnknownStartReleaseError(error) ||
+		isDeploySkewRecoveryError(error) ||
 		isTanStackServerFnFetchNetworkError(error) ||
+		isThirdPartyProxyBlockPageError(error) ||
 		isSyntaxHighlightCoreDynamicImportFailureError(error) ||
 		isLocalViteDevError(error) ||
 		isCloudflareTurnstileClientError(error) ||

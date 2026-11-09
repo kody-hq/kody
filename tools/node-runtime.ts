@@ -18,7 +18,7 @@ export function resolveNpmCommand() {
 }
 
 /** Default Cloud Agent / CI typecheck heap. Node's ~2GB default OOMs here. */
-export const nodeHeapFloorMb = 8192
+const nodeHeapFloorMb = 8192
 
 const maxOldSpaceSizePattern = /(?:^|\s)--max[-_]old[-_]space[-_]size(?:=|\s)/
 

@@ -1,6 +1,6 @@
 import { renderStartPage as renderToString } from '../../test-support/render-start-page.ts'
 import { expect, test } from 'vitest'
-import { type AccountBillingLoaderData } from '#universal/loader-data.ts'
+import type { AccountBillingLoaderData } from '#universal/loader-data.ts'
 import {
 	isRetiredPaidSubscription,
 	renderAccountBillingPlans,

@@ -1,3 +1,4 @@
+import { compareRequestedAndGrantedScopes } from '#worker/integrations/granted-scopes.ts'
 import { base64ToBytes } from '@kody-internal/shared/base64.ts'
 import { safeParseHost } from '@kody-internal/shared/url-hosts.ts'
 import { toIntegrationAuthFailureView } from '#universal/connection-trouble.ts'
@@ -23,7 +24,7 @@ import {
 	sameStringSet,
 	type CredentialDetailField,
 } from '#worker/credentials/credential-audit.ts'
-import { type OrgAuditWriter } from '#worker/orgs/org-audit.ts'
+import type { OrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import {
 	getDiscoverablePlatformOauthApp,
 	getPlatformOauthAppBySlug,
@@ -62,11 +63,11 @@ import {
 	setUserOauthAppLogo,
 } from './user-oauth-app-logo.ts'
 import { scheduleUserOauthAppFaviconFill } from './user-oauth-app-favicon.ts'
-import {
-	type JoinedIntegration,
-	type UserIntegrationConnection,
-	type UserOauthApp,
-	type UserOauthAppWithConnectionCount,
+import type {
+	JoinedIntegration,
+	UserIntegrationConnection,
+	UserOauthApp,
+	UserOauthAppWithConnectionCount,
 } from './types.ts'
 
 export type { IntegrationConfig, PlatformOauthApp }
@@ -201,7 +202,22 @@ export function toJoinedIntegrationConfig(
 			}
 		}
 	})()
-	const withId = { ...config, credentialId: joined.connection.credentialId }
+	const granted = joined.connection.grantedScopes
+	const withId = {
+		...config,
+		credentialId: joined.connection.credentialId,
+		...(granted
+			? {
+					grantedScopes: {
+						...granted,
+						...compareRequestedAndGrantedScopes(
+							joined.connection.scopes,
+							granted.scopes,
+						),
+					},
+				}
+			: {}),
+	}
 	const snapshot = joined.connection.lastAuthFailure
 	if (!snapshot) return withId
 	return {
@@ -215,6 +231,7 @@ export function toJoinedIntegrationConfig(
 			providerError: snapshot.providerError,
 			providerErrorDescription: snapshot.providerErrorDescription,
 			httpStatus: snapshot.httpStatus,
+			provider: joined.app.provider,
 		}),
 	}
 }
@@ -953,6 +970,7 @@ export async function rotateOauthAppClientCredentials(input: {
 	userId: string
 	slug: string
 	clientId: string
+	clientSecretEncrypted?: string
 }): Promise<UserOauthApp> {
 	const slug = canonicalizeOauthAppSlug(input.slug)
 	const clientId = input.clientId.trim()
@@ -984,6 +1002,9 @@ export async function rotateOauthAppClientCredentials(input: {
 		userId: input.userId,
 		slug,
 		clientId,
+		...(input.clientSecretEncrypted
+			? { clientSecretEncrypted: input.clientSecretEncrypted }
+			: {}),
 	})
 	if (!updated) {
 		throw new Error(`Failed to rotate credentials for OAuth app "${slug}".`)

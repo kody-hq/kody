@@ -319,6 +319,7 @@ const registryKeys = [
 	'package-credential-suppliers',
 	'repo-push-queue',
 	'execution-contexts',
+	'publish-offload',
 	'credential-need-enforcement',
 	'credential-allowed-packages-safety-window',
 	'profiles',

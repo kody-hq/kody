@@ -13,9 +13,9 @@
  * not followed either. Placeholder counts are source occurrences: following a
  * binding adds references, not occurrences.
  */
-import {
-	type PackageCredentialSlot,
-	type PackageCredentialSlotKind,
+import type {
+	PackageCredentialSlot,
+	PackageCredentialSlotKind,
 } from '#worker/package-registry/types.ts'
 import {
 	type AstNode,
@@ -184,7 +184,12 @@ export type CredentialReference = {
 	/** Literal `|scope=` suffix, or null. */
 	scope: string | null
 	placement: CredentialPlacement
+	/** Where the placeholder is read; only set when the scan asks for sites. */
+	site?: CredentialReferenceSite
 }
+
+/** Module path and 1-based line, or null when the module did not parse. */
+export type CredentialReferenceSite = { path: string; line: number | null }
 
 export type CredentialSlotDeclaration = {
 	name: string
@@ -322,6 +327,8 @@ export function emptyPlaceholderCounts(): Record<PlaceholderMatchKind, number> {
 export function scanPackageCredentials(input: {
 	files: Record<string, string>
 	slots: Record<string, PackageCredentialSlot> | undefined
+	/** Record each reference's module path and line (publish warnings). */
+	sites?: boolean
 }): PackageCredentialScan {
 	const scan: PackageCredentialScan = {
 		placeholders: emptyPlaceholderCounts(),
@@ -341,19 +348,32 @@ export function scanPackageCredentials(input: {
 		input.files,
 		(path, parsed, constants) => {
 			if (parsed) {
-				scanParsedModule(parsed, constants, scan)
+				scanParsedModule(
+					parsed,
+					constants,
+					scan,
+					input.sites ? (node) => ({ path, line: nodeLine(node) }) : null,
+				)
 			} else {
 				scan.unparsedModules += 1
 				recordPlaceholders(
 					input.files[path]!,
 					() => otherPlacement('unparsed'),
 					scan,
+					undefined,
+					input.sites ? { path, line: null } : undefined,
 				)
 			}
 		},
 		{ sorted: true },
 	)
 	return scan
+}
+
+function nodeLine(node: AstNode): number | null {
+	const loc = node['loc'] as { start?: { line?: unknown } } | undefined
+	const line = loc?.start?.line
+	return typeof line === 'number' ? line : null
 }
 
 function otherPlacement(
@@ -382,6 +402,7 @@ function recordPlaceholders(
 	placementOf: (match: PlaceholderMatch) => CredentialPlacement,
 	scan: PackageCredentialScan,
 	counted: Record<PlaceholderMatchKind, number> = emptyPlaceholderCounts(),
+	site?: CredentialReferenceSite,
 ) {
 	const skip = { ...counted }
 	for (const match of findPlaceholderMatches(text)) {
@@ -404,7 +425,13 @@ function recordPlaceholders(
 		if (!nameKind) continue
 		const placement = withoutCredentialNames(placementOf(match), match.names)
 		for (const name of match.names) {
-			scan.references.push({ nameKind, name, scope: match.scope, placement })
+			scan.references.push({
+				nameKind,
+				name,
+				scope: match.scope,
+				placement,
+				...(site ? { site } : {}),
+			})
 		}
 	}
 }
@@ -692,6 +719,7 @@ function scanParsedModule(
 	parsed: AstNode,
 	constants: ReadonlyMap<string, string>,
 	scan: PackageCredentialScan,
+	siteOf: ((node: AstNode) => CredentialReferenceSite) | null,
 ) {
 	const scopes = collectScopes(parsed, constants)
 	const readCount = new Map<Binding, number>()
@@ -792,6 +820,7 @@ function scanParsedModule(
 					placementFor(resolved),
 					scan,
 					countPlaceholders(substituted),
+					siteOf?.(node),
 				)
 				return
 			}
@@ -800,7 +829,13 @@ function scanParsedModule(
 			case 'StringLiteral': {
 				const value = getNodeName(node)
 				if (value == null) return
-				recordPlaceholders(value, placementFor(value), scan)
+				recordPlaceholders(
+					value,
+					placementFor(value),
+					scan,
+					undefined,
+					siteOf?.(node),
+				)
 				return
 			}
 			case 'TemplateElement': {
@@ -818,6 +853,8 @@ function scanParsedModule(
 							? { type: 'basic' }
 							: (display ?? otherPlacement('template-computed')),
 					scan,
+					undefined,
+					siteOf?.(node),
 				)
 				return
 			}
@@ -830,6 +867,7 @@ function scanParsedModule(
 					placementFor(binding.text),
 					scan,
 					countPlaceholders([binding.text]),
+					siteOf?.(node),
 				)
 				return
 			}

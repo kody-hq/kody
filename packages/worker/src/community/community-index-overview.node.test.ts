@@ -1,7 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
-import { type CommunityListingCategory } from '#universal/community-categories.ts'
+import type { CommunityListingCategory } from '#universal/community-categories.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { ensureCommunityFlowSchema } from './community-flow-test-schema.ts'
 import {
@@ -10,7 +10,7 @@ import {
 	upsertCommunityRating,
 } from './repo.ts'
 import { listCommunityIndexOverview } from './service.ts'
-import { type CommunityListingStatus } from './types.ts'
+import type { CommunityListingStatus } from './types.ts'
 
 async function createOverviewDb() {
 	const sqlite = new DatabaseSync(':memory:')

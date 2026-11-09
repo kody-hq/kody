@@ -11,7 +11,7 @@ import {
 	RecordSelectionCheckbox,
 } from './record-table-data-controls.tsx'
 import { nestedSurfaceDarkCss } from '#universal/styles/surface.ts'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import {
 	useId,
 	useRef,
@@ -214,6 +214,11 @@ type RecordTableProps = {
 	 * Scroll cap for `pane` and `none`. `expand` ignores it — see below.
 	 */
 	scrollHeight?: string
+	/**
+	 * Stack rows as cards below 620px instead of scrolling sideways, for
+	 * tables whose rows carry controls a phone reader must reach.
+	 */
+	stackWhenNarrow?: boolean
 }
 
 const defaultScrollHeight = '22rem'
@@ -920,6 +925,26 @@ export function RecordTable(props: RecordTableProps) {
 								boxShadow: 'none',
 							},
 						},
+						props.stackWhenNarrow &&
+							!stacked && {
+								'@container (max-width: 620px)': {
+									...cardFallbackCss,
+									'& table': { minWidth: 0 },
+									// The selection checkbox sits beside the card, not on a line of its own.
+									'& tbody tr:has(> td[data-primary])': {
+										display: 'grid',
+										gridTemplateColumns: 'auto minmax(0, 1fr)',
+										columnGap: spacing.sm,
+										alignItems: 'center',
+									},
+									'& tbody tr > td': { gridColumn: 2 },
+									'& tbody tr > td:not([data-label])': {
+										gridColumn: 1,
+										gridRow: '1 / span 8',
+										alignSelf: 'start',
+									},
+								},
+							},
 					]}
 				>
 					{props.toolbarContainer

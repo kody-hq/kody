@@ -40,3 +40,29 @@ test('a call map refuses keys that could collide once trimmed', () => {
 			.success,
 	).toBe(false)
 })
+
+test('a call map survives the JSON round trip an execution-context lease stores', async () => {
+	const { credentialCallMapFromJson, credentialCallMapToJson } =
+		await import('./credential-call-map.ts')
+	const map = new Map([
+		['github', [{ name: 'work', scope: 'org' as const }]],
+		[
+			'google',
+			[
+				{ name: 'a', scope: null },
+				{ name: 'b', scope: null },
+			],
+		],
+	])
+	const json = credentialCallMapToJson(map)
+	expect(JSON.parse(JSON.stringify(json))).toEqual({
+		github: [{ name: 'work', scope: 'org' }],
+		google: [
+			{ name: 'a', scope: null },
+			{ name: 'b', scope: null },
+		],
+	})
+	expect(credentialCallMapFromJson(json)).toEqual(map)
+	expect(credentialCallMapToJson(null)).toBeNull()
+	expect(credentialCallMapFromJson(null)).toBeNull()
+})

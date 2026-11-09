@@ -8,9 +8,14 @@ import {
 import * as needsClosure from '#worker/credentials/credential-needs-closure.ts'
 import * as stampPresence from '#worker/credentials/credential-stamp-presence.ts'
 import * as packageRepo from '#worker/package-registry/repo.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { personalOrgAccessD1 } from '#worker/test-support/org-binding-query.ts'
-import { integrationTokenRefreshCapability } from './integration-token-refresh.ts'
+import { claimedPackageStamp } from '#worker/credentials/package-stamp.ts'
+import { deriveRequestContext } from '#worker/request-context/request-context.ts'
+import {
+	integrationTokenRefreshCapability,
+	refreshIntegrationTokenForPackage,
+} from './integration-token-refresh.ts'
 
 const resolveCredential = vi.hoisted(() => vi.fn())
 
@@ -110,4 +115,34 @@ test('integrationTokenRefresh on a stamped package requires a declared integrati
 		stamp.mockRestore()
 		needs.mockRestore()
 	}
+})
+
+test('refreshIntegrationTokenForPackage keeps the contextRuns deny gate for direct callers', async () => {
+	resolveCredential.mockClear()
+	const base = context()
+	const denied = await refreshIntegrationTokenForPackage({
+		env: base.env,
+		callerContext: {
+			...base.callerContext,
+			request: deriveRequestContext({
+				user: {
+					userId: personIdFromStored('user-alice'),
+					username: 'alice',
+				},
+				source: {
+					kind: 'execution-context-run',
+					ecid: 'ec_1',
+					runId: 'run_1',
+				},
+				contextRunByOperator: false,
+			}),
+		},
+		packageStamp: claimedPackageStamp(packageId),
+		name: 'github',
+	}).then(
+		() => null,
+		(thrown: unknown) => thrown,
+	)
+	expect(String(denied)).toContain('context_run_denied')
+	expect(resolveCredential).not.toHaveBeenCalled()
 })

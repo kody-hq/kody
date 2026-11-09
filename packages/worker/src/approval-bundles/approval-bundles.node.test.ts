@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest'
 import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { decideApprovalBundleItem } from '#app/approval-bundle-decisions.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { approvalBundleCreateCapability } from '#mcp/capabilities/packages/approval-bundle-create.ts'

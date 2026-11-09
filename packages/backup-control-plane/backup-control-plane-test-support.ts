@@ -11,10 +11,10 @@ import {
 	type BackupSqlStats,
 } from '@kody-internal/shared/backup-sql-stats.ts'
 import { encodeJwtPartForTests } from './access-auth.ts'
-import { type BackupRuntimeStep } from './backup-runtime.ts'
-import { type DurableExportStep } from './durable-export.ts'
+import type { BackupRuntimeStep } from './backup-runtime.ts'
+import type { DurableExportStep } from './durable-export.ts'
 import { BackupError, objectKeyForBookmark } from './backup-policy.ts'
-import { type BackupEnvironment, type BackupManifest } from './backup-types.ts'
+import type { BackupEnvironment, BackupManifest } from './backup-types.ts'
 
 /** `assert.rejects` predicate; `retryable` is only checked when provided. */
 export function backupError(code: string, retryable?: boolean) {

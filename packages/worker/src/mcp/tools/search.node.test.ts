@@ -6,7 +6,7 @@ import { expect, test, vi } from 'vitest'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { buildCapabilityRegistry } from '#mcp/capabilities/build-capability-registry.ts'
-import { type Capability } from '#mcp/capabilities/types.ts'
+import type { Capability } from '#mcp/capabilities/types.ts'
 import {
 	CAPABILITY_EMBEDDING_DIMENSIONS,
 	deterministicEmbedding,
@@ -14,7 +14,7 @@ import {
 import { filterCapabilityRegistryForCaller } from '#mcp/capabilities/access-control.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
-import { type JoinedIntegration } from '#worker/integrations/types.ts'
+import type { JoinedIntegration } from '#worker/integrations/types.ts'
 import type * as PackageRegistrySource from '#worker/package-registry/source.ts'
 import { parseAuthoredPackageJson } from '#worker/package-registry/manifest.ts'
 import {
@@ -235,6 +235,8 @@ vi.mock('#worker/package-registry/source.ts', async () => {
 	return {
 		...actual,
 		loadPackageSourceBySourceId: (...args: Array<unknown>) =>
+			sourceMocks.loadPackageSourceBySourceId(...args),
+		loadServingPackageSourceBySourceId: (...args: Array<unknown>) =>
 			sourceMocks.loadPackageSourceBySourceId(...args),
 	}
 })

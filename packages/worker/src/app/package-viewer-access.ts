@@ -1,6 +1,6 @@
-import { type McpUserContext } from '@kody-internal/shared/chat.ts'
+import type { McpUserContext } from '@kody-internal/shared/chat.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import {
 	checkPermission,
 	computeEffectivePermissions,
@@ -162,14 +162,16 @@ export async function viewerCanManageSavedPackageAccess(input: {
 	)
 }
 
-/** Org owner role on the package's owning org (personal or team). */
+/** Org Owner or Admin role on the package's owning org (personal or team). */
 export async function viewerIsSavedPackageOrgOwner(input: {
 	env: Env
 	viewer: Pick<McpUserContext, 'userId' | 'username'> | null
 	ownerId: string
 }): Promise<boolean> {
 	const resolved = await loadSavedPackageViewerAccess(input)
-	return resolved?.binding.role === 'owner'
+	return (
+		resolved?.binding.role === 'owner' || resolved?.binding.role === 'admin'
+	)
 }
 
 /**

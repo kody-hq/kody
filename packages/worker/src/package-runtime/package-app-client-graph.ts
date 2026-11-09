@@ -2,7 +2,7 @@ import {
 	getPackageAppClientEntryPath,
 	getPackageAppEntryPath,
 } from '#worker/package-registry/manifest.ts'
-import { type AuthoredPackageJson } from '#worker/package-registry/types.ts'
+import type { AuthoredPackageJson } from '#worker/package-registry/types.ts'
 import { resolveWorkspaceSourceFilePath } from './module-graph-paths.ts'
 import {
 	collectReachableSourceFilePaths,

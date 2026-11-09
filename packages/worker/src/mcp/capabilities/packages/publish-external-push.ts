@@ -1,9 +1,16 @@
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
+import { showBuildOrigin } from '#worker/publish-offload/policy.ts'
+import {
+	resolveUploadedPublishBuildForPublish,
+	type UploadedPublishBuildRef,
+} from '#worker/publish-offload/store.ts'
 import {
 	type OwnerId,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { z } from 'zod'
+import { terminalInlineWorkflowErrorPrefix } from '#worker/package-runtime/workflow-statuses.ts'
 import { repoCheckKinds } from '#worker/repo/checks.ts'
 import { canonicalJsonStringify } from '@kody-internal/shared/canonical-json.ts'
 import { resolveHostedPackageAppUrl } from '@kody-internal/shared/public-urls.ts'
@@ -59,7 +66,7 @@ import {
 	packageOwnerEntitlementEmail,
 	resolvePackageOwnerContext,
 } from '#worker/package-registry/package-owner.ts'
-import { type EnablementHintTrigger } from '#worker/enablements/enablement-agent-hints.ts'
+import type { EnablementHintTrigger } from '#worker/enablements/enablement-agent-hints.ts'
 import { listPublisherEnablementGaps } from '#worker/enablements/publisher-enablement-gaps.ts'
 import {
 	buildPackageTestHints,
@@ -68,6 +75,7 @@ import {
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
 import { resolveArtifactSourceHead } from '#worker/repo/artifacts.ts'
 import { rebuildPublishedPackageArtifactsViaRepoSession } from '#mcp/capabilities/repo/package-artifact-rebuild.ts'
+import { settleFailedPublishRebuild } from '#mcp/capabilities/repo/settle-failed-publish-rebuild.ts'
 import {
 	mergePublishPhaseTimings,
 	timePublishExternalPushPhase,
@@ -88,7 +96,7 @@ import {
 } from '#worker/package-registry/package-publish-lock.ts'
 import { buildPackageCapabilityApprovalUrl } from '#worker/package-capabilities/capability-approval-url.ts'
 import { createCredentialNeedsApprovalMessage } from '#worker/credentials/credential-needs-approval.ts'
-import { type ApprovalViewer } from '#worker/approval-bundles/item-views.ts'
+import type { ApprovalViewer } from '#worker/approval-bundles/item-views.ts'
 import {
 	bundlePausedPublishes,
 	pausedPublishBundleMessage,
@@ -108,6 +116,10 @@ import {
 	resolveListingBehindPublishHint,
 } from '#worker/community/resolve-listing-behind-publish-hint.ts'
 import { buildUpdatePublicListingHref } from '#universal/update-public-listing.ts'
+import {
+	decidePublishRoute,
+	publishRouteDeps,
+} from '#worker/publish-offload/publish-routing.ts'
 
 const inputSchema = z.object({
 	package_id: z.string().min(1).optional().describe(packageIdLookupDescription),
@@ -127,14 +139,81 @@ const inputSchema = z.object({
 	 * capability stamps this into durableParams; agents must not set it.
 	 */
 	baseline_published_commit: z.string().nullable().optional(),
+	publish_build_id: z
+		.string()
+		.min(1)
+		.optional()
+		.describe(
+			'Publish offload (publish-offload flag): the id of a publish build whose bundles were built by the Kody CLI or an execution context and uploaded for this exact commit. The server re-runs the cheap checks, verifies the uploaded tree and bundles, and only then serves the commit. Set by `kody package publish --build local|context`; agents should not set it by hand.',
+		),
+	context: z
+		.string()
+		.trim()
+		.min(1)
+		.optional()
+		.describe(
+			'Execution context name or id to build this publish on, or "cloud" (execution-contexts and publish-offload flags). Overrides the package\'s kody.publish.execution.context binding and your chain, and never falls back. Without it, a bound package builds only on its bound context, and any other package follows your execution context chain like execute (contexts in order, Kody cloud last unless the chain is strict).',
+		),
 })
 
 const externalPublishRetryDelaysMs = [100, 500] as const
 
-const durablePublishWorkflowCode = `import { kody } from 'kody:runtime'
+const publishedExternalPushStatuses = ['published', 'already_published']
+
+// A durable publish that did not publish fails its run once (no step retries)
+// with the reason as last_error, so the run is not recorded as a success and
+// its idempotency key is released for the next attempt.
+const publishBuildOriginSchema = z
+	.object({
+		origin: z.enum(['cloud', 'cli', 'context']),
+		context_name: z.string().nullable(),
+	})
+	.describe(
+		"Where this version was built: Kody cloud, the publisher's CLI (--build local), or one of their execution contexts (--build context).",
+	)
+
+/**
+ * The person publishing. Durable re-entry runs as the package-owning org
+ * (`resolveBackgroundMcpUser(payload.userId)`), so a team package's caller
+ * user is the org there; the person who made the build is the lineage actor.
+ */
+export function publishRequesterPersonId(
+	callerContext: Pick<Partial<McpCallerContext>, 'user' | 'request'>,
+) {
+	return (
+		callerContext.request?.actor?.userId ?? requireMcpUser(callerContext).userId
+	)
+}
+
+export const durablePublishWorkflowCode = `import { kody } from 'kody:runtime'
+const publishedStatuses = ${JSON.stringify(publishedExternalPushStatuses)}
 export default async function main(params = {}) {
-	return await kody.packagePublishExternalPush(params)
+	const result = await kody.packagePublishExternalPush(params)
+	const status = result && typeof result === 'object' ? result.status : null
+	if (publishedStatuses.includes(status)) return result
+	const failedChecks = Array.isArray(result?.failed_checks)
+		? result.failed_checks
+				.filter((check) => check && check.ok === false)
+				.map((check) => String(check.kind) + ': ' + String(check.message ?? '').slice(0, 600))
+				.join('; ')
+		: ''
+	const detail = failedChecks || String(result?.message ?? '').slice(0, 1200)
+	throw new Error(
+		${JSON.stringify(terminalInlineWorkflowErrorPrefix)} +
+			'packagePublishExternalPush returned ' + String(status) + (detail ? ': ' + detail : ''),
+	)
 }`
+
+/** Memory/CPU limit errors {@link throwIfExternalPublishResourceLimit} turns terminal. */
+function isExternalPublishResourceLimitError(error: unknown) {
+	if (error instanceof McpCallerError) return false
+	if (isDurableObjectIsolateResourceLimitResetError(error)) return true
+	const message = getErrorMessage(error)
+	return (
+		isExternalPublishSnapshotTooLargeMessage(message) ||
+		isPublishComputeLimitMessage(message)
+	)
+}
 
 function throwIfExternalPublishResourceLimit(
 	error: unknown,
@@ -450,6 +529,9 @@ const alreadyPublishedMessageSchema = z
 		'When checks_rerun is true, explains that same-commit checks were re-validated and the stamp refreshed. Omitted on a true no-op.',
 	)
 
+const externalPushRestoreSentryScope =
+	'packagePublishExternalPush.restore-after-rebuild-failure'
+
 /**
  * Tip moved relative to the publish request start (or the interactive call
  * that dispatched this durable run). The overlapping inline attempt may have
@@ -484,6 +566,7 @@ const outputSchema = z.discriminatedUnion('status', [
 		allowed_packages_publish_notice: allowedPackagesPublishNoticeSchema,
 		listing: communityListingBehindHintSchema.optional(),
 		phase_timings: publishPhaseTimingsSchema,
+		build_origin: publishBuildOriginSchema.optional(),
 	}),
 	z.object({
 		status: z.literal('not_fast_forward'),
@@ -533,7 +616,12 @@ const outputSchema = z.discriminatedUnion('status', [
 			.describe(
 				'Parsed package.json when available; null when the manifest itself failed validation or was missing.',
 			),
-		run_id: z.string(),
+		run_id: z
+			.string()
+			.optional()
+			.describe(
+				'Deprecated and no longer returned: it was an internal check-attempt id that runGet cannot load. Use workflowRunList for a dispatched publish.',
+			),
 	}),
 	z.object({
 		status: z.literal('published'),
@@ -555,6 +643,7 @@ const outputSchema = z.discriminatedUnion('status', [
 		allowed_packages_publish_notice: allowedPackagesPublishNoticeSchema,
 		listing: communityListingBehindHintSchema.optional(),
 		phase_timings: publishPhaseTimingsSchema,
+		build_origin: publishBuildOriginSchema.optional(),
 	}),
 	z.object({
 		status: z.literal('dispatched'),
@@ -564,10 +653,58 @@ const outputSchema = z.discriminatedUnion('status', [
 		run_status: z.string().nullable(),
 		message: z.string(),
 		phase_timings: publishPhaseTimingsSchema,
+		build_origin: publishBuildOriginSchema.optional(),
 	}),
 ])
 
 type PublishExternalPushResult = z.infer<typeof outputSchema>
+
+/** Only builds made outside the cloud (publish-offload) say where they ran. */
+function buildOriginField(
+	uploadedBuild: UploadedPublishBuildRef | null | undefined,
+) {
+	if (!showBuildOrigin || !uploadedBuild) return {}
+	return {
+		build_origin: {
+			origin: uploadedBuild.origin,
+			context_name: uploadedBuild.contextName ?? null,
+		},
+	}
+}
+
+type PublishedResult = Extract<
+	PublishExternalPushResult,
+	{ status: 'published' }
+>
+
+/**
+ * Fields every success status (published, already_published) returns, so a
+ * new optional field cannot land on only one path.
+ */
+function publishSuccessFields(input: {
+	extras: {
+		hosted_app_url: PublishedResult['hosted_app_url']
+		testHints?: PublishedResult['test_hints'] | null
+		static_dependents: PublishedResult['static_dependents']
+		pending_secret_package_approvals: PublishedResult['pending_secret_package_approvals']
+		allowed_packages_publish_notice: PublishedResult['allowed_packages_publish_notice']
+		listing?: PublishedResult['listing'] | null
+	}
+	phaseTimings: PublishPhaseTimings
+	uploadedBuild: UploadedPublishBuildRef | null | undefined
+}) {
+	const { extras } = input
+	return {
+		hosted_app_url: extras.hosted_app_url,
+		...(extras.testHints ? { test_hints: extras.testHints } : {}),
+		static_dependents: extras.static_dependents,
+		pending_secret_package_approvals: extras.pending_secret_package_approvals,
+		allowed_packages_publish_notice: extras.allowed_packages_publish_notice,
+		...(extras.listing ? { listing: extras.listing } : {}),
+		phase_timings: input.phaseTimings,
+		...buildOriginField(input.uploadedBuild),
+	}
+}
 
 function buildPublishPhaseTimings(input: {
 	startedAt: number
@@ -870,6 +1007,7 @@ export type ExternalPublishSemanticInput = {
 	newCommit: string
 	allowForce: boolean
 	destructiveOverwriteConfirmed: boolean
+	publishBuildId?: string
 }
 
 export function buildExternalPublishIdempotencyParts(
@@ -881,11 +1019,18 @@ export function buildExternalPublishIdempotencyParts(
 	// published_commit already matches HEAD is idempotent (no D1 tip write).
 	// The capability remaps that RepoSession already_published to published
 	// when the tip moved relative to the pre-request baseline so agents do
-	// not treat a real tip advance as a no-op. Active and succeeded durable
-	// runs still dedupe on this key; a terminal failure releases it so the
-	// same commit can publish again (for example after a Durable Object
-	// reset mid-run).
-	return ['packagePublishExternalPush', canonicalJsonStringify(input)] as const
+	// not treat a real tip advance as a no-op. Active and published durable
+	// runs still dedupe on this key; a terminal failure (including a durable
+	// run whose publish did not publish) releases it so the same commit can
+	// publish again.
+	// `v2`: runs from before non-published outcomes failed the workflow were
+	// recorded complete even when checks failed, so they must not keep
+	// deduping a retry of the same commit.
+	return [
+		'packagePublishExternalPush',
+		'v2',
+		canonicalJsonStringify(input),
+	] as const
 }
 
 function shouldEscalateExternalPublish(executionOrigin: string | undefined) {
@@ -928,6 +1073,8 @@ async function runExternalPublishAttempt(input: {
 	approvalViewer: ApprovalViewer | null
 	signal?: AbortSignal
 	reportProgress?: McpReportProgress
+	/** Publish offload: persist this verified upload instead of rebuilding. */
+	uploadedBuild?: UploadedPublishBuildRef | null
 }): Promise<Exclude<PublishExternalPushResult, { status: 'dispatched' }>> {
 	const maxAttempts = externalPublishRetryDelaysMs.length + 1
 	let lastTransientError: unknown = null
@@ -965,6 +1112,8 @@ async function runExternalPublishAttempt(input: {
 				requestedByUserId: input.requestedByUserId,
 				publisherRequest: input.publisherRequest ?? null,
 				deferBundleCheckToRebuild: true,
+				// The publish builder typechecked this exact tree (verified by hash).
+				...(input.uploadedBuild ? { typecheckRanOffWorker: true } : {}),
 			})
 			const publishMs = Date.now() - publishStartedAt
 			assertNotAborted(input.signal)
@@ -1013,12 +1162,31 @@ async function runExternalPublishAttempt(input: {
 										publishedCommit,
 										baseUrl: input.baseUrl,
 										...(forceRebuild ? { force: true } : {}),
+										...(input.uploadedBuild
+											? { uploadedBuild: input.uploadedBuild }
+											: {}),
 									})
 								return {
 									ok: true as const,
 									rebuiltTargetCount: rebuild.rebuiltTargetCount,
 								}
 							} catch (error) {
+								if (isExternalPublishResourceLimitError(error)) {
+									// Terminal: settle like any failed rebuild so the pointer
+									// and job pins stay on the last good commit.
+									await settleFailedPublishRebuild({
+										env: input.env,
+										baseUrl: input.baseUrl,
+										ownerUserId: input.ownerUserId,
+										packageId: input.packageId,
+										sourceId: input.source.id,
+										failedCommit: publishedCommit,
+										restoreCommit: tipMoved
+											? input.baselinePublishedCommit
+											: null,
+										sentryScope: externalPushRestoreSentryScope,
+									})
+								}
 								throwIfExternalPublishResourceLimit(error, 'rebuild')
 								if (isTransientDurableObjectResetError(error)) {
 									throw error
@@ -1031,11 +1199,21 @@ async function runExternalPublishAttempt(input: {
 						},
 					)
 				if (!rebuildOutcome.ok) {
+					await settleFailedPublishRebuild({
+						env: input.env,
+						baseUrl: input.baseUrl,
+						ownerUserId: input.ownerUserId,
+						packageId: input.packageId,
+						sourceId: input.source.id,
+						failedCommit: publishedCommit,
+						// Only a tip this request advanced is rolled back.
+						restoreCommit: tipMoved ? input.baselinePublishedCommit : null,
+						sentryScope: externalPushRestoreSentryScope,
+					})
 					return {
 						status: 'checks_failed' as const,
 						failed_checks: [rebuildOutcome.failedCheck],
 						manifest: null,
-						run_id: crypto.randomUUID(),
 					}
 				}
 				const artifactsRebuilt =
@@ -1117,19 +1295,11 @@ async function runExternalPublishAttempt(input: {
 				})
 				const sharedSuccessFields = {
 					published_commit: publishedCommit,
-					hosted_app_url: alreadyPublishedExtras.hosted_app_url,
-					...(alreadyPublishedExtras.testHints
-						? { test_hints: alreadyPublishedExtras.testHints }
-						: {}),
-					static_dependents: alreadyPublishedExtras.static_dependents,
-					pending_secret_package_approvals:
-						alreadyPublishedExtras.pending_secret_package_approvals,
-					allowed_packages_publish_notice:
-						alreadyPublishedExtras.allowed_packages_publish_notice,
-					...(alreadyPublishedExtras.listing
-						? { listing: alreadyPublishedExtras.listing }
-						: {}),
-					phase_timings: phaseTimings,
+					...publishSuccessFields({
+						extras: alreadyPublishedExtras,
+						phaseTimings,
+						uploadedBuild: input.uploadedBuild,
+					}),
 				}
 				if (tipMoved) {
 					await reportCapabilityProgress(input.reportProgress, {
@@ -1225,6 +1395,10 @@ async function runExternalPublishAttempt(input: {
 					),
 				}
 			}
+			if (result.status === 'checks_failed') {
+				const { run_id: _checkAttemptId, ...checksFailed } = result
+				return checksFailed
+			}
 			if (result.status !== 'published') {
 				return result
 			}
@@ -1249,9 +1423,26 @@ async function runExternalPublishAttempt(input: {
 								userId: input.ownerUserId,
 								publishedCommit: result.published_commit,
 								baseUrl: input.baseUrl,
+								...(input.uploadedBuild
+									? { uploadedBuild: input.uploadedBuild }
+									: {}),
 							})
 							return { ok: true as const }
 						} catch (error) {
+							if (isExternalPublishResourceLimitError(error)) {
+								// Terminal: settle like any failed rebuild so the pointer and
+								// job pins go back to the last good commit.
+								await settleFailedPublishRebuild({
+									env: input.env,
+									baseUrl: input.baseUrl,
+									ownerUserId: input.ownerUserId,
+									packageId: input.packageId,
+									sourceId: input.source.id,
+									failedCommit: result.published_commit,
+									restoreCommit: input.baselinePublishedCommit,
+									sentryScope: externalPushRestoreSentryScope,
+								})
+							}
 							throwIfExternalPublishResourceLimit(error, 'rebuild')
 							if (isTransientDurableObjectResetError(error)) {
 								throw error
@@ -1264,11 +1455,20 @@ async function runExternalPublishAttempt(input: {
 					},
 				)
 			if (!rebuildOutcome.ok) {
+				await settleFailedPublishRebuild({
+					env: input.env,
+					baseUrl: input.baseUrl,
+					ownerUserId: input.ownerUserId,
+					packageId: input.packageId,
+					sourceId: input.source.id,
+					failedCommit: result.published_commit,
+					restoreCommit: input.baselinePublishedCommit,
+					sentryScope: externalPushRestoreSentryScope,
+				})
 				return {
 					status: 'checks_failed' as const,
 					failed_checks: [rebuildOutcome.failedCheck],
 					manifest: result.manifest ?? null,
-					run_id: crypto.randomUUID(),
 				}
 			}
 			const { durationMs: dependentsMs, value: publishedExtras } =
@@ -1352,23 +1552,15 @@ async function runExternalPublishAttempt(input: {
 			})
 			return {
 				...result,
-				hosted_app_url: publishedExtras.hosted_app_url,
-				...(publishedExtras.testHints
-					? { test_hints: publishedExtras.testHints }
-					: {}),
-				static_dependents: publishedExtras.static_dependents,
-				pending_secret_package_approvals:
-					publishedExtras.pending_secret_package_approvals,
-				allowed_packages_publish_notice:
-					publishedExtras.allowed_packages_publish_notice,
-				...(publishedExtras.listing
-					? { listing: publishedExtras.listing }
-					: {}),
-				phase_timings: buildPublishPhaseTimings({
-					startedAt: publishStartedAt,
-					fromPublish: result.phase_timings,
-					rebuildMs,
-					dependentsMs,
+				...publishSuccessFields({
+					extras: publishedExtras,
+					phaseTimings: buildPublishPhaseTimings({
+						startedAt: publishStartedAt,
+						fromPublish: result.phase_timings,
+						rebuildMs,
+						dependentsMs,
+					}),
+					uploadedBuild: input.uploadedBuild,
 				}),
 			} as const
 		} catch (error) {
@@ -1423,7 +1615,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 		contextRuns: 'deny',
 		orgPermission: 'package:write',
 		description:
-			'Publish the current Artifacts git HEAD for a saved package after a packageGetGitRemote clone/edit/push workflow and server-side checks pass. Non-fast-forward publishes require explicit destructive overwrite confirmation and a verified restorable backup snapshot. Full check-time esbuild is deferred to the published artifact rebuild so callable and importable targets are bundled once; unchanged targets are copied from the previous published commit when their reachable inputs match, and a rebuild failure returns checks_failed with a bundle check. Published and already_published responses include hosted_app_url when the package declares an app, plus bounded static dependent metadata so agents can decide whether stale kody:@ bundled snapshots need inspection or dependent republish; Kody does not republish dependents automatically. already_published means the package tip already matched HEAD before this request began; a true no-op (same checker version, prior success) skips checks, while a missing or older stored checker version re-runs checks, refreshes the stamp, and sets checks_rerun true with a message. It still runs the artifact rebuild and sets artifacts_rebuilt true when any target needed rebuild or a forced snapshot repair ran. If published_commit moved relative to that pre-request tip — including durable re-entry after an overlapping inline attempt advanced the tip — the status is published with previous_commit set to the baseline tip, even when RepoSession reported tip==HEAD. Those success results also include phase_timings with optional millisecond fields clone_ms, checks_typecheck_ms, checks_bundle_ms, rebuild_ms, dependents_ms, and total_ms — omitted keys did not run; checks_bundle_ms is omitted when bundle validation is deferred to rebuild; checks_bundle_ms and rebuild_ms stay separate. Common cases return the full synchronous result. If the publish exceeds the inline budget (~35s), the work is dispatched once to a durable workflow (idempotent per acting caller plus the full semantic publish input, including force/overwrite flags) and this capability returns status dispatched with a workflow_id to poll via workflowRunList instead of hanging until an opaque execute timeout. Active and succeeded durable runs still dedupe; a terminal failure (for example Durable Object reset because its code was updated) releases the idempotency key so the same commit can be published again. dispatched includes phase_timings.total_ms as time-to-dispatch.',
+			'Publish the current Artifacts git HEAD for a saved package after a packageGetGitRemote clone/edit/push workflow and server-side checks pass. Non-fast-forward publishes require explicit destructive overwrite confirmation and a verified restorable backup snapshot. Full check-time esbuild is deferred to the published artifact rebuild so callable and importable targets are bundled once; unchanged targets are copied from the previous published commit when their reachable inputs match, and a rebuild failure returns checks_failed with a bundle check. Published and already_published responses include hosted_app_url when the package declares an app, plus bounded static dependent metadata so agents can decide whether stale kody:@ bundled snapshots need inspection or dependent republish; Kody does not republish dependents automatically. already_published means the package tip already matched HEAD before this request began; a true no-op (same checker version, prior success) skips checks, while a missing or older stored checker version re-runs checks, refreshes the stamp, and sets checks_rerun true with a message. It still runs the artifact rebuild and sets artifacts_rebuilt true when any target needed rebuild or a forced snapshot repair ran. If published_commit moved relative to that pre-request tip — including durable re-entry after an overlapping inline attempt advanced the tip — the status is published with previous_commit set to the baseline tip, even when RepoSession reported tip==HEAD. Those success results also include phase_timings with optional millisecond fields clone_ms, checks_typecheck_ms, checks_bundle_ms, rebuild_ms, dependents_ms, and total_ms — omitted keys did not run; checks_bundle_ms is omitted when bundle validation is deferred to rebuild; checks_bundle_ms and rebuild_ms stay separate. Common cases return the full synchronous result. If the publish exceeds the inline budget (~35s), the work is dispatched once to a durable workflow (idempotent per acting caller plus the full semantic publish input, including force/overwrite flags) and this capability returns status dispatched with a workflow_id to poll via workflowRunList instead of hanging until an opaque execute timeout. Active and published durable runs still dedupe. A durable run whose publish did not publish (checks_failed, not_fast_forward, locked, approval_required) ends errored with the reason in workflowRunList last_error, and like any terminal failure (for example a Durable Object reset because its code was updated) it releases the idempotency key so retrying the same commit starts a fresh attempt. dispatched includes phase_timings.total_ms as time-to-dispatch.',
 		keywords: ['package', 'publish', 'git', 'artifacts', 'external', 'push'],
 		readOnly: false,
 		idempotent: true,
@@ -1500,6 +1692,32 @@ export const publishExternalPushCapability = defineDomainCapability(
 					? args.baseline_published_commit
 					: (source.published_commit ?? null)
 
+			// Durable re-entry already routed (its build id rides in durableParams).
+			const durableReentry =
+				ctx.callerContext.executionOrigin === 'background' &&
+				args.baseline_published_commit !== undefined
+			const route =
+				args.publish_build_id || durableReentry
+					? null
+					: await decidePublishRoute({
+							requestedContext: args.context,
+							packageRef: name,
+							deps: publishRouteDeps({
+								env: ctx.env,
+								callerContext: ctx.callerContext,
+								request: requireMcpRequest(ctx.callerContext),
+								personId: user.userId,
+								packageId,
+								packageName: name,
+								ownerUserId: userId,
+								source,
+								commit: newCommit,
+							}),
+						})
+			const publishBuildId =
+				args.publish_build_id ??
+				(route?.kind === 'context' ? route.buildId : undefined)
+
 			const publishInput = {
 				env: ctx.env,
 				baseUrl: ctx.callerContext.baseUrl,
@@ -1522,6 +1740,18 @@ export const publishExternalPushCapability = defineDomainCapability(
 				publisherRequest: ctx.callerContext.request ?? null,
 				approvalViewer: optionalApprovalViewerForCaller(ctx),
 				reportProgress: ctx.reportProgress,
+				uploadedBuild: publishBuildId
+					? await resolveUploadedPublishBuildForPublish({
+							env: ctx.env,
+							request: ctx.callerContext.request,
+							buildId: publishBuildId,
+							packageId,
+							sourceId: source.id,
+							commit: newCommit,
+							requesterUserId: publishRequesterPersonId(ctx.callerContext),
+							orgId: requireMcpRequest(ctx.callerContext).org.id,
+						})
+					: null,
 			}
 
 			if (!shouldEscalateExternalPublish(ctx.callerContext.executionOrigin)) {
@@ -1536,6 +1766,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 				newCommit,
 				allowForce: args.allow_force,
 				destructiveOverwriteConfirmed: args.confirm_destructive_overwrite,
+				...(publishBuildId ? { publishBuildId } : {}),
 			} satisfies ExternalPublishSemanticInput
 			const durableParams = {
 				...(args.package_id ? { package_id: args.package_id } : {}),
@@ -1547,6 +1778,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 				allow_force: args.allow_force,
 				confirm_destructive_overwrite: args.confirm_destructive_overwrite,
 				baseline_published_commit: baselinePublishedCommit,
+				...(publishBuildId ? { publish_build_id: publishBuildId } : {}),
 			}
 			const escalateStartedAt = Date.now()
 			// Key the durable re-entry to the package-owning org, not the actor's
@@ -1565,6 +1797,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 					kodyId,
 					sourceId: source.id,
 				},
+				enqueuedCommit: newCommit,
 				durableCode: durablePublishWorkflowCode,
 				durableParams,
 				run: async (signal) =>

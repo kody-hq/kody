@@ -1,9 +1,10 @@
-import { type PackageCredentialsLoaderData } from '#universal/package-credentials-page.ts'
+import type { PackageCredentialsLoaderData } from '#universal/package-credentials-page.ts'
 import { createServerFn } from '@tanstack/react-start'
 import { notFound, redirect } from '@tanstack/react-router'
 import { z } from 'zod'
 import { routes } from '#universal/routes.ts'
-import { type AccountCredentialsResponse } from '#universal/credentials-list.ts'
+import type { AccountCredentialsResponse } from '#universal/credentials-list.ts'
+import { parseRouteInput } from './route-input.ts'
 
 const orgSlug = z.string().regex(/^[a-zA-Z0-9_-]+$/)
 const segment = z
@@ -62,8 +63,16 @@ export const loadCredentialsPage = createServerFn({ method: 'GET' })
 		}
 	})
 
+const credentialApprovalPageInput = z.object({
+	orgSlug,
+	kodyId: segment,
+	proposal: searchEntries,
+})
+
 export const loadCredentialApprovalPage = createServerFn({ method: 'GET' })
-	.validator(z.object({ orgSlug, kodyId: segment, proposal: searchEntries }))
+	.validator((data: z.input<typeof credentialApprovalPageInput>) =>
+		parseRouteInput(credentialApprovalPageInput, data),
+	)
 	.handler(async ({ data }) => {
 		const [
 			{ loadPersonalCollection },
@@ -123,14 +132,16 @@ export const loadCredentialApprovalPage = createServerFn({ method: 'GET' })
 		}
 	})
 
+const packageCredentialsPageInput = z.object({
+	orgSlug,
+	kodyId: segment,
+	view: z.enum(['credentials', 'mappings', 'triggers']),
+	search: searchEntries,
+})
+
 export const loadPackageCredentialsPage = createServerFn({ method: 'GET' })
-	.validator(
-		z.object({
-			orgSlug,
-			kodyId: segment,
-			view: z.enum(['credentials', 'mappings', 'triggers']),
-			search: searchEntries,
-		}),
+	.validator((data: z.input<typeof packageCredentialsPageInput>) =>
+		parseRouteInput(packageCredentialsPageInput, data),
 	)
 	.handler(async ({ data }) => {
 		const [

@@ -30,6 +30,7 @@ import {
 import { toHex } from '@kody-internal/shared/hex.ts'
 import {
 	isOrgPermission,
+	withoutRetiredOrgPermissions,
 	type OrgPermission,
 } from '@kody-internal/shared/org-permissions.ts'
 import {
@@ -37,13 +38,13 @@ import {
 	personIdFromStored,
 	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import {
-	type OrgRole,
-	type RequestBilling,
-	type RequestContext,
-	type RequestCredential,
+import type {
+	OrgRole,
+	RequestBilling,
+	RequestContext,
+	RequestCredential,
 } from '@kody-internal/shared/request-context.ts'
-import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
+import type { RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
 import { newRunCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
 
 export const packageAppVisitTicketHeaderName = 'X-Kody-Visit-Ticket'
@@ -60,7 +61,7 @@ export const packageAppAnonymousVisitTicketPrefix = 'kva1.'
 const ticketPurpose = 'kody-package-app-visit@v1'
 const anonymousTicketPurpose = 'kody-package-app-anonymous-visit@v1'
 const signingInfo = new TextEncoder().encode('kody-package-app-visit-ticket-v1')
-const orgRoles: ReadonlyArray<OrgRole> = ['owner', 'member', 'billing']
+const orgRoles: ReadonlyArray<OrgRole> = ['owner', 'admin', 'member', 'billing']
 
 export type PackageAppVisitAudience = {
 	host: string
@@ -294,7 +295,8 @@ function isStoredVisitTicket(value: unknown): value is StoredVisitTicket {
 		record.scopes.every((scope) => typeof scope === 'string') &&
 		(record.cs === undefined ||
 			record.cs === null ||
-			(Array.isArray(record.cs) && record.cs.every(isOrgPermission))) &&
+			(Array.isArray(record.cs) &&
+				withoutRetiredOrgPermissions(record.cs).every(isOrgPermission))) &&
 		(record.cp === undefined || record.cp === null || isText(record.cp)) &&
 		(record.cpi === undefined || record.cpi === null || isText(record.cpi)) &&
 		(record.cpc === undefined ||

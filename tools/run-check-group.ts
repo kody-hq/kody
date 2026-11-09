@@ -33,6 +33,7 @@ export const checkGroups = {
 			name: 'docs:check-no-hosted-execute',
 			tool: 'tools/check-docs-no-hosted-execute.ts',
 		},
+		{ name: 'docs:check-agent-text', tool: 'tools/check-agent-text.ts' },
 		{ name: 'mermaid:check', tool: 'tools/check-mermaid-syntax.ts' },
 	],
 	deps: [

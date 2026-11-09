@@ -4,6 +4,7 @@ import {
 	mcpEventsExtensionFlagKey,
 	mcpSkillsExtensionFlagKey,
 	profilesFlagKey,
+	publishOffloadFlagKey,
 	type FeatureFlagKey,
 } from './registry.ts'
 
@@ -32,6 +33,11 @@ export type SelfServeExperiment = {
 	 * when it has a page of its own.
 	 */
 	orgSection?: string
+	/**
+	 * Flags the same toggle turns on and off with it, so one opt-in covers a
+	 * feature split across flags.
+	 */
+	linkedFlagKeys?: ReadonlyArray<FeatureFlagKey>
 }
 
 export const selfServeExperiments = [
@@ -45,6 +51,7 @@ export const selfServeExperiments = [
 		stage:
 			'Early access: register a machine, set a chain, and fall back to Kody cloud.',
 		orgSection: 'execution-contexts',
+		linkedFlagKeys: [publishOffloadFlagKey],
 	},
 	{
 		id: 'profiles',
@@ -116,6 +123,8 @@ export const notSelfServeExperimentFlags: Partial<
 		'Architecture review and controlled experimenter rollout are required before self-serve access.',
 	'repo-push-queue':
 		'Infrastructure kill switch evaluated per repo, not a user-facing feature.',
+	'publish-offload':
+		'Turned on and off with the execution-contexts experiment (its linkedFlagKeys), so publishing from a context needs no second opt-in.',
 }
 
 export function getSelfServeExperimentForDoc(

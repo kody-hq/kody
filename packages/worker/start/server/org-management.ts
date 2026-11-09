@@ -128,6 +128,43 @@ export const loadOrgGrants = createServerFn({ method: 'GET' })
 		return loadOrgGrantsData({ ...input, org: access.org })
 	})
 
+export const loadOrgSubjectAccess = createServerFn({ method: 'GET' })
+	.validator(
+		slugInput.extend({
+			/** `user:<id>`, `team:<id>`, or `org`. */
+			subject: z.string().trim().min(1).max(220),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const input = await orgContext(data.slug, 'grants')
+		const [
+			{ resolveOrgManagementAccess },
+			{ loadOrgSubjectAccessData, parseOrgAccessSubjectKey },
+		] = await Promise.all([
+			import('../../src/app/org-management-access.ts'),
+			import('../../src/app/handlers/org-subject-access.ts'),
+		])
+		const access = await resolveOrgManagementAccess({
+			...input,
+			permission: 'member:read',
+		})
+		if (!access.ok) {
+			if (access.status === 404) throw notFound()
+			const { setResponseStatus } = await import('@tanstack/react-start/server')
+			setResponseStatus(403)
+			throw new PermissionDeniedError(access.error)
+		}
+		const subject = parseOrgAccessSubjectKey(data.subject)
+		if (!subject) throw notFound()
+		const loaded = await loadOrgSubjectAccessData({
+			...input,
+			org: access.org,
+			subject,
+		})
+		if (!loaded) throw notFound()
+		return loaded
+	})
+
 export const loadOrgCollaborators = createServerFn({ method: 'GET' })
 	.validator(slugInput)
 	.handler(async ({ data }) => {
@@ -341,4 +378,60 @@ export const loadOrgRepositories = createServerFn({ method: 'GET' })
 					})
 		if (!payload) throw notFound()
 		return payload
+	})
+
+export const loadOrgApps = createServerFn({ method: 'GET' })
+	.validator(slugInput)
+	.handler(async ({ data }) => {
+		const input = await orgContext(data.slug, 'apps')
+		const [
+			{ orgSectionDenial },
+			{ personalOrgIdForPerson },
+			{ loadOrgRepositoriesData },
+			{ loadProfileData },
+			{ resolvePackageAppLinks },
+			{ mapWithConcurrency },
+		] = await Promise.all([
+			import('../../src/app/org-request-binding.ts'),
+			import('../../src/orgs/personal-org-id.ts'),
+			import('../../src/app/org-repositories-data.ts'),
+			import('../../src/app/profile-data.ts'),
+			import('../../src/app/package-repo-actions.ts'),
+			import('../../src/webhooks/delivery-outcomes.ts'),
+		])
+		if (orgSectionDenial(input.binding, 'apps')) throw notFound()
+		const payload =
+			input.binding.org.id === personalOrgIdForPerson(input.user.mcpUser)
+				? await loadProfileData(
+						input.env,
+						input.request,
+						input.user.username,
+						undefined,
+						{ query: '' },
+					)
+				: await loadOrgRepositoriesData({
+						...input,
+						query: '',
+						includeAppGrants: true,
+					})
+		if (!payload) throw notFound()
+		const username = payload.profile.username
+		const apps = await mapWithConcurrency(
+			payload.packages.filter((pkg) => pkg.hasApp),
+			6,
+			async (pkg) => {
+				const links = await resolvePackageAppLinks({
+					env: input.env,
+					username,
+					kodyId: pkg.kodyId,
+					viewer: input.user.mcpUser,
+					ownerUserId: input.binding.org.id,
+					hasPackage: true,
+					hasApp: true,
+					requestUrl: input.request.url,
+				})
+				return { ...pkg, appHref: links?.packageAppHref ?? null }
+			},
+		)
+		return { username, apps }
 	})

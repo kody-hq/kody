@@ -69,7 +69,10 @@ import {
 	packageOwnerEntitlementEmail,
 	resolvePackageOwnerContext,
 } from '#worker/package-registry/package-owner.ts'
-import { refreshSavedPackageProjection } from '#worker/package-registry/service.ts'
+import {
+	deleteSavedPackageProjection,
+	refreshSavedPackageProjection,
+} from '#worker/package-registry/service.ts'
 import { scheduleKitSubscriberSync } from '#worker/kit/subscriber-sync.ts'
 import { reportCapabilityProgress } from '#mcp/progress.ts'
 import { assertWithinEntitlement } from '#worker/entitlements/service.ts'
@@ -151,6 +154,25 @@ function normalizeFiles(files: Array<z.infer<typeof packageFileSchema>>) {
 		next[normalizedPath] = file.content.trimEnd() + '\n'
 	}
 	return next
+}
+
+async function rollBackNewPackageSave(input: {
+	env: Env
+	userId: Parameters<typeof deleteSavedPackageProjection>[0]['userId']
+	actorUserId: string
+	packageId: string
+}) {
+	try {
+		await deleteSavedPackageProjection({ ...input, audit: null })
+	} catch (error) {
+		console.warn(
+			JSON.stringify({
+				message: 'package save rollback failed',
+				packageId: input.packageId,
+				error: getErrorMessage(error),
+			}),
+		)
+	}
 }
 
 export function buildPackageSaveNextSteps(input: {
@@ -558,6 +580,19 @@ export const savePackageCapability = defineDomainCapability(
 					ctx.callerContext.request ?? null,
 					orgAuditCauseFromCaller(ctx.callerContext),
 				),
+			}).catch(async (error: unknown) => {
+				// A first save that fails projection (for example the plan's job
+				// interval floor) must not leave a half-created package behind:
+				// a retry with the fix would then hit the overwrite refusal.
+				if (!existing) {
+					await rollBackNewPackageSave({
+						env: ctx.env,
+						userId: owner.ownerUserId,
+						actorUserId: owner.actorUserId,
+						packageId,
+					})
+				}
+				throw error
 			})
 			const saved = refreshed.record
 			await reportCapabilityProgress(ctx.reportProgress, {

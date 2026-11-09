@@ -138,6 +138,12 @@ export const accountOperatorOwnedD1Surfaces = [
 			'Operator-owned provider brand marks (global catalog like platform OAuth app logos; no user data). Saved integrations and MCP servers use these after an explicit upload and before auto-favicon.',
 	},
 	{
+		table: 'scheduled_lane_leases',
+		surface: 'scheduled_lane_leases',
+		reason:
+			'Platform single-flight leases for scheduled lanes (one short-lived row per lane; no user data).',
+	},
+	{
 		table: 'repo_session_storage_bucket_cursor',
 		surface: 'repo_session_storage_bucket_cursor',
 		reason:
@@ -276,6 +282,15 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 	{ kind: 'user_id', table: 'credit_ledger_entries' },
 	{ kind: 'user_id', table: 'credit_wallets' },
 	{ kind: 'user_id', table: 'billing_promo_claims' },
+	// Plan transfers are the billing record for both orgs; only the
+	// requesting owner is anonymized.
+	{
+		kind: 'replace_user_column',
+		table: 'org_plan_transfers',
+		matchColumn: 'requested_by_user_id',
+		setColumn: 'requested_by_user_id',
+		value: 'deleted-user',
+	},
 	{
 		kind: 'user_columns',
 		table: 'referrals',
@@ -315,6 +330,32 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 	},
 	// A person's org grants of their personal credentials.
 	{ kind: 'user_id', table: 'credential_org_grants' },
+	// Local reads a person made with the Kody CLI (with their IP).
+	{
+		kind: 'user_columns',
+		table: 'credential_local_read_events',
+		columns: ['actor_user_id'],
+	},
+	// Who last turned local reads on or off for a credential.
+	{
+		kind: 'null_user_column',
+		table: 'credential_local_read_settings',
+		matchColumn: 'updated_by_user_id',
+		nullColumns: ['updated_by_user_id'],
+	},
+	// Raw RSA signatures a person's runs made with a signing credential.
+	{
+		kind: 'user_columns',
+		table: 'credential_raw_signing_events',
+		columns: ['actor_user_id'],
+	},
+	// Who last turned raw signing on or off for a credential.
+	{
+		kind: 'null_user_column',
+		table: 'credential_raw_signing_settings',
+		matchColumn: 'updated_by_user_id',
+		nullColumns: ['updated_by_user_id'],
+	},
 	// Execution contexts a person registered (they operate the machine), the
 	// contexts they opted into, their attachments of contexts to other orgs,
 	// and their chains. Registration challenges are short-lived and never
@@ -322,9 +363,29 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 	{
 		kind: 'user_columns',
 		table: 'execution_contexts',
-		columns: ['operator_user_id'],
+		columns: ['operator_user_id', 'login_user_id'],
+	},
+	// Who paused a context: deleting that person keeps the pause, not their id.
+	{
+		kind: 'null_user_column',
+		table: 'execution_contexts',
+		matchColumn: 'paused_by_user_id',
+		nullColumns: ['paused_by_user_id'],
 	},
 	{ kind: 'user_id', table: 'execution_context_opt_ins' },
+	// Excess-access notices about a person (ADR 0096).
+	{
+		kind: 'user_columns',
+		table: 'execution_context_notices',
+		columns: ['subject_user_id'],
+	},
+	// Publish builds (publish-offload): short-lived upload jobs for a package
+	// the person owns or published. Their R2 chunks expire with the build.
+	{
+		kind: 'user_columns',
+		table: 'publish_builds',
+		columns: ['owner_user_id', 'requester_user_id'],
+	},
 	// Profiles a person acts as (ADR 0092). Their `grants` rows are swept by
 	// the profile purge once the profile row is gone.
 	{
@@ -537,6 +598,22 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		surface: 'vector_embed_fingerprints',
 		reason:
 			'Derived Vectorize embed-text skip cache omitted from portable export; account deletion removes user-owned fingerprint rows. Builtin rows use the reserved __kody_builtin__ owner id.',
+	},
+	{
+		kind: 'user_id',
+		table: 'jwt_sign_any_host_callers',
+		includeInExport: false,
+		surface: 'jwt_sign_any_host_callers',
+		reason:
+			'Operational any-host secretJwtSign deprecation state omitted from portable export; account deletion removes the rows.',
+	},
+	{
+		kind: 'user_id',
+		table: 'jwt_sign_any_host_destinations',
+		includeInExport: false,
+		surface: 'jwt_sign_any_host_destinations',
+		reason:
+			'Operational per-host fill counts for any-host secretJwtSign JWTs omitted from portable export; account deletion removes the rows.',
 	},
 	{ kind: 'user_id', table: 'entity_source_artifacts_push_subscriptions' },
 	{ kind: 'user_id', table: 'entity_sources' },
@@ -1299,7 +1376,12 @@ export const accountExportRedactedColumnsByTable: Readonly<
 	pending_email_changes: ['token_hash'],
 	pending_email_claim_releases: ['token_hash'],
 	pending_email_destination_verifications: ['token_hash'],
-	platform_feedback: ['reviewed_by_user_id', 'reviewed_at', 'admin_note'],
+	platform_feedback: [
+		'reviewed_by_user_id',
+		'reviewed_at',
+		'admin_note',
+		'reopen_history',
+	],
 	secret_entries: ['encrypted_value', 'lookup_hash'],
 	user_integrations: ['access_token_encrypted', 'refresh_token_encrypted'],
 	user_oauth_apps: ['client_secret_encrypted'],

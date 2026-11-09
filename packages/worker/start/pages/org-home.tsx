@@ -7,7 +7,7 @@ import {
 } from '../components/profile-layout.ts'
 import { renderOrgIdentity } from '../components/profile-identity.tsx'
 import { SiteLink } from '../components/site-link.tsx'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import {
 	teamOrgManagementItems,
 	workspaceLandingItem,
@@ -93,7 +93,7 @@ function renderOrgHomeMain(input: {
 								</SiteLink>
 							),
 						})
-					: input.role === 'owner'
+					: input.role === 'owner' || input.role === 'admin'
 						? renderStep({
 								icon: 'users',
 								title: 'Invite members and share access',

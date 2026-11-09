@@ -1,5 +1,5 @@
 import { searchCapabilities } from '#mcp/capabilities/capability-search.ts'
-import { type CapabilitySpec } from '#mcp/capabilities/types.ts'
+import type { CapabilitySpec } from '#mcp/capabilities/types.ts'
 import { capabilityApiAvailabilitySummary } from '#worker/open-api/api-capability-surface.ts'
 
 import { formatMarkdownInlineCode } from '../markdown-safety.ts'
@@ -9,13 +9,10 @@ import {
 	buildEntityRef,
 	formatList,
 } from '../search-format-helpers.ts'
-import { type SearchEntityPlugin } from '../search-entity-plugin.ts'
-import { type SearchMatch } from '../search-format-types.ts'
+import type { SearchEntityPlugin } from '../search-entity-plugin.ts'
+import type { SearchMatch } from '../search-format-types.ts'
 import { buildCandidateBaseScore } from '../search-scoring.ts'
-import {
-	type SearchCandidate,
-	type SearchCapabilityMatch,
-} from '../search-types.ts'
+import type { SearchCandidate, SearchCapabilityMatch } from '../search-types.ts'
 
 function getSynthesizedProviderIdentity(spec: CapabilitySpec):
 	| {

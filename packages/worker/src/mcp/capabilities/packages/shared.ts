@@ -271,14 +271,16 @@ export const packageExportSurfaceSchema = z.object({
 		.array(
 			z.object({
 				name: z.string(),
-				kind: z.enum(['type', 'interface', 'enum']),
+				kind: z.enum(['type', 'interface', 'enum', 'const']),
 				definition: z
 					.string()
-					.describe('Source text of the referenced type, interface, or enum.'),
+					.describe(
+						'Source text of the referenced type, interface, or enum. For a `const` reached through `typeof`, the resolved schema input fields when the initializer is a schema builder, otherwise its declaration.',
+					),
 			}),
 		)
 		.describe(
-			"Type, interface, and enum definitions referenced by this export's callable functions.",
+			"Type, interface, enum, and `typeof` const definitions referenced by this export's callable functions.",
 		),
 })
 
@@ -354,6 +356,15 @@ export const packageCredentialNeedSchema = z.object({
 
 export const packageDetailSchema =
 	packageSummaryWithCommunityProvenanceSchema.extend({
+		build_origin: z
+			.object({
+				origin: z.enum(['cloud', 'cli', 'context']),
+				context_name: z.string().nullable(),
+			})
+			.optional()
+			.describe(
+				"Where the published version was built: Kody cloud, the publisher's CLI (--build local), or one of their execution contexts (--build context).",
+			),
 		published_commit: z
 			.string()
 			.nullable()
@@ -369,6 +380,11 @@ export const packageDetailSchema =
 		credentials: z
 			.object({
 				needs: z.array(packageCredentialNeedSchema),
+				invalidSlots: z
+					.array(z.object({ key: z.string(), message: z.string() }))
+					.describe(
+						'Published `kody.credentials` slots that fail the current slot schema, with the validation message. They are left out of `needs`, so nothing fills them. Fix each slot in package.json and republish.',
+					),
 				suppliersEnabled: z
 					.boolean()
 					.describe(

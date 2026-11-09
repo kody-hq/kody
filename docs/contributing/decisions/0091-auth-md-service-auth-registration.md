@@ -64,11 +64,42 @@ Kent decided on 2026-10-29:
 7. **Rate limits.** `/agent/identity` is limited per IP and per `login_hint`.
    Code entry is limited per person and per IP, and only misses count.
 
-Anonymous registration is a later experiment behind a feature flag that stays
-off. When built: no username or handle before the claim, only new accounts can
-claim, a 24 hour claim window with data deleted at expiry, a verified email to
-claim, no credentials or secrets before the claim, pre-claim tokens revoked at
-the claim, and no `/mcp` access before the claim.
+Anonymous registration through `POST /agent/identity` stays off and keeps
+answering `anonymous_not_enabled`.
+
+### Amendment: guest accounts from the OAuth screen
+
+People without an account get a guest account a different way, and this section
+replaces the earlier anonymous sketch:
+
+1. **One entry point.** The signed-out OAuth authorize screen offers Try it out
+   next to Log in and Sign up. It creates the guest person and personal org in
+   one D1 batch, then finishes the normal OAuth authorization for the requesting
+   client (an MCP host or `kody login`). Agents cannot mint guests on their own,
+   and there is no CLI guest flag.
+2. **Guests are allowed on `/mcp`** with the guest limit overrides: about $1 of
+   house compute with a hard stop, no email sends, and tight execute, fetch,
+   job, and automation caps. Creation is rate limited per IP and platform-wide
+   per day.
+3. **24 hours of full access, then a 7-day read-only hold** instead of deleting
+   at 24 hours. During the hold reads work and writes and execute answer
+   `guest_claim_required`. After the hold the purge lane deletes the account
+   with `deleteUserAccount()`, and its tokens answer `invalid_token`.
+4. **Blocked for guests** (`guest_not_allowed`): storing credentials, connecting
+   integrations, public or internet-visible packages, creating or joining orgs,
+   invites, and community listings. Every guest error carries the claim link and
+   names the `guestClaimStart` capability.
+5. **The same grant is kept at claim.** Claiming never redoes OAuth or login. A
+   claim into a new account converts the guest in place. A claim into an
+   existing account moves packages (renaming clashes), memories, jobs, run
+   history, and referral credit into that person's personal org, repoints the
+   guest's OAuth grants and API tokens through a guest alias, then deletes the
+   empty guest without revoking those grants. The $5 welcome credits arrive at
+   claim.
+6. **Claim paths.** `/claim/<code>` takes a verified email code, GitHub, or
+   Google. Agents can run the claim with `guestClaimStart` (email plus a
+   username or a merge request; Kody emails a one-time code) and
+   `guestClaimFinish` (the code the person reads back).
 
 ## Consequences
 

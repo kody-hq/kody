@@ -27,6 +27,7 @@ const outcomeSchema = z.object({
 		'complete',
 		'incomplete',
 		'resumed',
+		'partially_resumed',
 		'skipped_not_found',
 		'skipped_unpublished',
 		'skipped_head_differs',
@@ -37,6 +38,7 @@ const outcomeSchema = z.object({
 	publishNoteFound: z.boolean().optional(),
 	unbuiltArtifactTargetCount: z.number().int().nonnegative().optional(),
 	rebuiltTargetCount: z.number().int().nonnegative().optional(),
+	remainingTargetCount: z.number().int().nonnegative().optional(),
 	error: z.string().optional(),
 })
 
@@ -54,6 +56,15 @@ const inputSchema = z.object({
 		.describe(
 			'When true (default), report whether each live published commit finished its publish. Set false to finish incomplete ones.',
 		),
+	maxTargets: z
+		.number()
+		.int()
+		.min(1)
+		.max(500)
+		.optional()
+		.describe(
+			'Apply only: rebuild at most this many unbuilt artifact targets per package in this call, so a large package fits the execute time limit. An outcome of partially_resumed with remainingTargetCount means call again; already built targets are skipped.',
+		),
 })
 
 const outputSchema = z.object({
@@ -63,11 +74,39 @@ const outputSchema = z.object({
 
 type Outcome = z.infer<typeof outcomeSchema>
 
+function describeResumeFailure(result: object) {
+	if ('failed_checks' in result && Array.isArray(result.failed_checks)) {
+		const failed = result.failed_checks
+			.filter((check: { ok?: boolean }) => check.ok === false)
+			.map(
+				(check: { kind?: string; message?: string }) =>
+					`${check.kind}: ${String(check.message ?? '').slice(0, 600)}`,
+			)
+		if (failed.length > 0) return `: ${failed.join('; ')}`
+	}
+	return 'message' in result && result.message ? `: ${result.message}` : ''
+}
+
+function rebuiltOutcome<State extends object>(
+	state: State,
+	rebuild: { rebuiltTargetCount: number; remainingTargetCount?: number },
+) {
+	const remaining = rebuild.remainingTargetCount ?? 0
+	return {
+		...state,
+		outcome:
+			remaining > 0 ? ('partially_resumed' as const) : ('resumed' as const),
+		rebuiltTargetCount: rebuild.rebuiltTargetCount,
+		...(remaining > 0 ? { remainingTargetCount: remaining } : {}),
+	}
+}
+
 async function resumePackage(input: {
 	env: Env
 	baseUrl: string
 	packageId: string
 	dryRun: boolean
+	maxTargets?: number
 }): Promise<Outcome> {
 	const savedPackage = await getSavedPackageByIdInAnyOrg(
 		input.env.APP_DB,
@@ -138,6 +177,21 @@ async function resumePackage(input: {
 						: 'incomplete',
 			}
 		}
+		// Sealed, attributed, and noted: checks already passed for this commit,
+		// so only the artifact rebuild is missing. Re-running checks would add
+		// nothing and can hit the isolate CPU limit on large trees.
+		if (sealed && staleJobCount === 0 && publishNoteFound) {
+			const rebuild = await rebuildPublishedPackageArtifactsViaRepoSession({
+				env: input.env,
+				rpcSessionId: sessionId,
+				sourceId: source.id,
+				userId: ownerUserId,
+				publishedCommit,
+				baseUrl: input.baseUrl,
+				maxTargets: input.maxTargets,
+			})
+			return rebuiltOutcome(state, rebuild)
+		}
 		const result = await repoSessionRpc(
 			input.env,
 			sessionId,
@@ -158,7 +212,7 @@ async function resumePackage(input: {
 			return {
 				...state,
 				outcome: 'failed',
-				error: `Resume returned ${result.status}${'message' in result && result.message ? `: ${result.message}` : ''}`,
+				error: `Resume returned ${result.status}${describeResumeFailure(result)}`,
 			}
 		}
 		const rebuild = await rebuildPublishedPackageArtifactsViaRepoSession({
@@ -169,12 +223,9 @@ async function resumePackage(input: {
 			publishedCommit,
 			baseUrl: input.baseUrl,
 			...(result.force_artifact_rebuild ? { force: true } : {}),
+			maxTargets: input.maxTargets,
 		})
-		return {
-			...state,
-			outcome: 'resumed',
-			rebuiltTargetCount: rebuild.rebuiltTargetCount,
-		}
+		return rebuiltOutcome(state, rebuild)
 	} catch (error) {
 		return { ...withCommit, outcome: 'failed', error: getErrorMessage(error) }
 	}
@@ -188,7 +239,7 @@ export const adminPublishFinalizeResumeCapability = defineDomainCapability(
 		name: 'adminPublishFinalizeResume',
 		contextRuns: 'deny',
 		description:
-			'Finish an interrupted publish of the live published commit for specific saved packages: a publish that moved published_commit but died (Durable Object reset or CPU limit) before the credential stamp, package projection and job attribution, publish note, and bundle artifacts landed. Re-runs checks and those steps at the current published commit only; never moves the source or published_commit, and skips packages whose Artifacts HEAD differs. dryRun default is true (reports sealed, stale job count, whether the publish note exists, and unbuilt bundle artifact targets).',
+			'Finish an interrupted publish of the live published commit for specific saved packages: a publish that moved published_commit but died (Durable Object reset or CPU limit) before the credential stamp, package projection and job attribution, publish note, and bundle artifacts landed. Re-runs checks and those steps at the current published commit only (a sealed commit with attributed jobs and a publish note skips straight to the artifact rebuild); never moves the source or published_commit, and skips packages whose Artifacts HEAD differs. dryRun default is true (reports sealed, stale job count, whether the publish note exists, and unbuilt bundle artifact targets).',
 		keywords: [
 			'admin',
 			'package',
@@ -217,6 +268,7 @@ export const adminPublishFinalizeResumeCapability = defineDomainCapability(
 								baseUrl: ctx.callerContext.baseUrl,
 								packageId,
 								dryRun,
+								maxTargets: args.maxTargets,
 							}),
 						)
 					}

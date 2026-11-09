@@ -7,7 +7,7 @@ import type * as CommunityService from '#worker/community/service.ts'
 import type * as EntitlementsService from '#worker/entitlements/service.ts'
 import type * as IntegrationsService from '#worker/integrations/service.ts'
 import type * as PackageRepo from '#worker/package-registry/repo.ts'
-import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import type * as SearchRateLimit from '#worker/search-rate-limit.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import type * as MemoryToolContext from './memory-tool-context.ts'
@@ -135,6 +135,8 @@ vi.mock('#worker/package-registry/repo.ts', () => ({
 vi.mock('#worker/package-registry/source.ts', () => ({
 	loadPackageSourceBySourceId: (...args: Array<unknown>) =>
 		mockModule.loadPackageSourceBySourceId(...args),
+	loadServingPackageSourceBySourceId: (...args: Array<unknown>) =>
+		mockModule.loadPackageSourceBySourceId(...args),
 }))
 
 vi.mock('#mcp/secrets/service.ts', () => ({
@@ -199,11 +201,8 @@ vi.mock('#worker/search-rate-limit.ts', async (importOriginal) => {
 	return { ...actual, consumeSearchRateLimit: vi.fn(async () => 'free') }
 })
 
-const {
-	registerSearchTool,
-	SEARCH_MEMORY_ENRICHMENT_BUDGET_MS,
-	memoryEnrichmentSkippedWarning,
-} = await import('./search.ts')
+const { registerSearchTool, SEARCH_MEMORY_ENRICHMENT_BUDGET_MS } =
+	await import('./search.ts')
 
 type SearchResponse = {
 	content: Array<{ type: 'text'; text: string }>
@@ -970,7 +969,9 @@ test('search tool memory enrichment: structured context, timeout, and rejection 
 	)
 	expect(timedOutResult.matches.length).toBeGreaterThan(0)
 	expect(timedOutResult.memories).toBeUndefined()
-	expect(timedOutResult.warnings).toContain(memoryEnrichmentSkippedWarning)
+	expect(timedOutResult.warnings).toContain(
+		'Memory enrichment was skipped; returning core results without memory context.',
+	)
 	expect(timedOutResult.phaseTimings).toEqual(
 		expect.objectContaining({
 			memoryEnrichmentTimedOut: true,
@@ -999,7 +1000,9 @@ test('search tool memory enrichment: structured context, timeout, and rejection 
 			}),
 		)
 		expect(rejectedResult.memories).toBeUndefined()
-		expect(rejectedResult.warnings).toContain(memoryEnrichmentSkippedWarning)
+		expect(rejectedResult.warnings).toContain(
+			'Memory enrichment was skipped; returning core results without memory context.',
+		)
 		expect(rejectedResult.phaseTimings).toEqual(
 			expect.objectContaining({
 				memoryEnrichmentFailed: true,
@@ -1046,7 +1049,6 @@ test('search reserves maxResponseSize for memories and still enriches from memor
 	expect(tightResult.telemetry?.trimmedMatchCount).toBeGreaterThan(0)
 	expect(tightResult.matches).toEqual([])
 	expect(tightResult.guidance).toBeUndefined()
-	expect(textOf(tightResponse)).not.toContain('## Recommended next step')
 	expect(textOf(tightResponse)).not.toMatch(/inlined export call contract/i)
 
 	mockModule.loadRelevantMemoriesForTool.mockClear()

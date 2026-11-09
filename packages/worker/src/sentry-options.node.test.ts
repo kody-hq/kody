@@ -1,5 +1,5 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type ErrorEvent } from '@sentry/core'
+import type { ErrorEvent } from '@sentry/core'
 import { expect, test } from 'vitest'
 import { isCloudflareKvTransientHttpErrorMessage } from './cloudflare-kv-platform-error.ts'
 import {
@@ -7,13 +7,14 @@ import {
 	EntitlementLimitError,
 } from './entitlements/errors.ts'
 import { transientDatabaseUnavailableMessage } from './d1-retry.ts'
+import { McpCallerError } from './mcp/caller-error.ts'
 import { artifactsGitTemporarilyUnavailableMessage } from './open-api/errors.ts'
 import {
 	buildArtifactsOpaqueInternalErrorMessage,
 	buildArtifactsRepoLookupTimeoutMessage,
 	buildSourceRecoveryProblemMessage,
 } from './repo/source-safety-policy.ts'
-import { type EntitySourceRow } from './repo/types.ts'
+import type { EntitySourceRow } from './repo/types.ts'
 import { isUserCodeError, UserCodeError } from './user-code-error.ts'
 import {
 	agentsSdkSqlErrorMessagePrefix,
@@ -154,6 +155,7 @@ test('filterSentryEvent drops expected platform and caller noise and keeps real 
 		'Network connection lost.',
 		'D1_ERROR: D1 DB is overloaded. Requests queued for too long.',
 		'D1_ERROR: D1 DB is overloaded. Too many requests queued.',
+		'D1_ERROR: D1 DB is overloaded. Too many resources consumed within a 10 second window.',
 		'D1_ERROR: internal error; reference = 0u3odos5iotccpol68ppc0eg',
 		'Error: D1_ERROR: internal error; reference = e_Gz3hrU_5c47162d21d24e238a5c25e98b89ee39',
 		'D1_ERROR: internal error; reference = e-Gz3hrU-5c47162d21d24e238a5c25e98b89ee39',
@@ -453,6 +455,39 @@ test('filterSentryEvent drops expected platform and caller noise and keeps real 
 		}),
 	).toBe(platformEvent)
 	expect(filterSentryEvent(platformEvent)).toBe(platformEvent)
+
+	// Caller-clearable McpCallerError (e.g. JobsHost.runJobNow on a missing
+	// job) is routine agent state. Match the typed originalException, wrappers,
+	// and the serialized type name when the instance is gone.
+	const mcpCallerError = new McpCallerError('Job "missing-job" was not found.')
+	const mcpCallerEvent = exceptionEvent({
+		type: 'McpCallerError',
+		value: mcpCallerError.message,
+	})
+	expect(
+		filterSentryEvent(mcpCallerEvent, { originalException: mcpCallerError }),
+	).toBeNull()
+	expect(filterSentryEvent(mcpCallerEvent)).toBeNull()
+	const wrappedMcpCallerEvent = exceptionEvent({
+		type: 'Error',
+		value: 'handler failed',
+	})
+	expect(
+		filterSentryEvent(wrappedMcpCallerEvent, {
+			originalException: new Error('handler failed', {
+				cause: mcpCallerError,
+			}),
+		}),
+	).toBeNull()
+	const unrelatedNotFoundEvent = exceptionEvent({
+		type: 'Error',
+		value: 'Job "missing-job" was not found.',
+	})
+	expect(
+		filterSentryEvent(unrelatedNotFoundEvent, {
+			originalException: new Error('Job "missing-job" was not found.'),
+		}),
+	).toBe(unrelatedNotFoundEvent)
 
 	// Plan-limit denials are account policy, not platform defects. Match the
 	// typed originalException (including wrappers) and the serialized type
