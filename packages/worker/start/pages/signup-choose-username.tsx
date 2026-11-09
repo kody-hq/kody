@@ -1,5 +1,15 @@
 /** @jsxImportSource @emotion/react */
-import { useStateMachine } from '#client/use-state-machine.ts'
+import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
+import {
+	useCallback,
+	useEffect,
+	useId,
+	useRef,
+	useState,
+	type CSSProperties,
+	type FormEvent,
+} from 'react'
+import { useMachine } from '@xstate/react'
 import {
 	usernameSignupState,
 	type UsernameSignupState,
@@ -14,14 +24,6 @@ import {
 	getSwapLabelCss,
 	hoverMq,
 } from '#universal/styles/style-primitives.ts'
-import {
-	useEffect,
-	useId,
-	useRef,
-	useState,
-	type CSSProperties,
-	type FormEvent,
-} from 'react'
 import { buildAuthLink } from '#client/auth-links.ts'
 import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
 import { SiteLink } from '../components/site-link.tsx'
@@ -35,7 +37,6 @@ import {
 	renderLoginVisualPanel,
 	renderMobileBrand,
 } from './login-sections.tsx'
-
 export function SignupChooseUsernamePage(props: {
 	csrf: string
 	suggestedUsername: string
@@ -65,9 +66,24 @@ export function SignupChooseUsernamePage(props: {
 	const [confirmedUsername, setConfirmedUsername] = useState<string | null>(
 		null,
 	)
-	const [flow, transition, getFlow] = useStateMachine<UsernameSignupState>(
-		usernameSignupState,
-		{ status: 'idle' },
+	const [flowSnapshot, , flowActor] = useMachine(usernameSignupState, {
+		snapshot: (() => {
+			const initialView = { status: 'idle' }
+			return usernameSignupState.resolveState({
+				value: initialView.status,
+				context: uiContext(initialView),
+			})
+		})(),
+	})
+	const flow = uiState<UsernameSignupState>(flowSnapshot)
+	const transition = useCallback(
+		(event: Parameters<typeof flowActor.send>[0]) =>
+			sendUiEvent(flowActor, event),
+		[flowActor],
+	)
+	const getFlow = useCallback(
+		() => uiState<UsernameSignupState>(flowActor.getSnapshot()),
+		[flowActor],
 	)
 	const status = flow.status === 'confirming' ? 'idle' : flow.status
 	const message = 'message' in flow ? flow.message : null
@@ -89,7 +105,13 @@ export function SignupChooseUsernamePage(props: {
 		if (getFlow().status === 'submitting') return
 		const nextUsername = username.trim().toLowerCase()
 		if (!nextUsername) {
-			transition({ status: 'error', message: 'Username is required.' })
+			transition({
+				type: flowActor.getSnapshot().matches('submitting')
+					? 'RESPONSE_ERROR'
+					: 'VALIDATION_ERROR',
+				data: uiContext({ status: 'error', message: 'Username is required.' })
+					.data,
+			} as Parameters<typeof flowActor.send>[0])
 			return
 		}
 		if (
@@ -98,28 +120,47 @@ export function SignupChooseUsernamePage(props: {
 			availability.status === 'invalid'
 		) {
 			transition({
-				status: 'error',
-				message: availability.reason ?? 'That username cannot be used.',
-			})
+				type: flowActor.getSnapshot().matches('submitting')
+					? 'RESPONSE_ERROR'
+					: 'VALIDATION_ERROR',
+				data: uiContext({
+					status: 'error',
+					message: availability.reason ?? 'That username cannot be used.',
+				}).data,
+			} as Parameters<typeof flowActor.send>[0])
 			return
 		}
 		if (confirmedUsername !== nextUsername) {
 			setConfirmedUsername(nextUsername)
 			transition({
-				status: 'confirming',
-				message: handlePermanenceConfirmMessage(nextUsername),
-			})
+				type: 'CONFIRM_USERNAME',
+				data: uiContext({
+					status: 'confirming',
+					message: handlePermanenceConfirmMessage(nextUsername),
+				}).data,
+			} as Parameters<typeof flowActor.send>[0])
 			return
 		}
 		if (availability.status === 'checking') {
 			transition({
-				status: 'error',
-				message: 'Wait for the availability check to finish.',
-			})
+				type: flowActor.getSnapshot().matches('submitting')
+					? 'RESPONSE_ERROR'
+					: 'VALIDATION_ERROR',
+				data: uiContext({
+					status: 'error',
+					message: 'Wait for the availability check to finish.',
+				}).data,
+			} as Parameters<typeof flowActor.send>[0])
 			return
 		}
 
-		if (!transition({ status: 'submitting' })) return
+		if (
+			!transition({
+				type: 'SUBMIT',
+				data: uiContext({ status: 'submitting' }).data,
+			} as Parameters<typeof flowActor.send>[0])
+		)
+			return
 		try {
 			const payload = await completeSignup({
 				signal: lifecycle.current?.signal,
@@ -131,12 +172,17 @@ export function SignupChooseUsernamePage(props: {
 			if (!payload) return
 			if (!payload.successful || payload.ok !== true) {
 				transition({
-					status: 'error',
-					message:
-						typeof payload.error === 'string'
-							? payload.error
-							: 'Unable to create your account.',
-				})
+					type: flowActor.getSnapshot().matches('submitting')
+						? 'RESPONSE_ERROR'
+						: 'VALIDATION_ERROR',
+					data: uiContext({
+						status: 'error',
+						message:
+							typeof payload.error === 'string'
+								? payload.error
+								: 'Unable to create your account.',
+					}).data,
+				} as Parameters<typeof flowActor.send>[0])
 				if (
 					payload.code === 'pending_expired' ||
 					payload.code === 'pending_csrf'
@@ -152,9 +198,14 @@ export function SignupChooseUsernamePage(props: {
 			)
 		} catch {
 			transition({
-				status: 'error',
-				message: 'Network error. Please try again.',
-			})
+				type: flowActor.getSnapshot().matches('submitting')
+					? 'RESPONSE_ERROR'
+					: 'VALIDATION_ERROR',
+				data: uiContext({
+					status: 'error',
+					message: 'Network error. Please try again.',
+				}).data,
+			} as Parameters<typeof flowActor.send>[0])
 		}
 	}
 
@@ -196,7 +247,10 @@ export function SignupChooseUsernamePage(props: {
 								setConfirmedUsername(null)
 								// Clear confirm and error copy so the form never still
 								// claims the previous handle is about to be locked.
-								transition({ status: 'idle' })
+								transition({
+									type: 'RESET',
+									data: uiContext({ status: 'idle' }).data,
+								} as Parameters<typeof flowActor.send>[0])
 							}}
 							onAvailabilityChange={setAvailability}
 							seeds={{

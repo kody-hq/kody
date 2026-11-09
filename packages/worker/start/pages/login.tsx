@@ -1,7 +1,17 @@
 /** @jsxImportSource @emotion/react */
-import { useStateMachine } from '#client/use-state-machine.ts'
+import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
+import {
+	useCallback,
+	useEffect,
+	useId,
+	useRef,
+	useState,
+	type CSSProperties,
+	type FormEvent,
+} from 'react'
+import { useMachine } from '@xstate/react'
 import { loginState, type AuthFormState } from '#client/routes/login-state.ts'
-import type { StateOf } from '@kody-internal/shared/state-machine.ts'
+import type { LifecycleStateOf } from '@kody-internal/shared/state-machine.ts'
 import { useServerFn } from '@tanstack/react-start'
 import {
 	getHandleFormatError,
@@ -41,14 +51,6 @@ import {
 	startAuthentication,
 	WebAuthnAbortService,
 } from '@simplewebauthn/browser'
-import {
-	useEffect,
-	useId,
-	useRef,
-	useState,
-	type CSSProperties,
-	type FormEvent,
-} from 'react'
 import { AuthFormFallback } from '../components/auth-form-fallback.tsx'
 import { AuthLayout } from '../components/auth-layout.tsx'
 import {
@@ -63,13 +65,15 @@ import { useHydrated } from '../components/use-hydrated.ts'
 import { useSocialSignIn, type PublicAuthConfig } from '../social-sign-in.ts'
 import type { UsernameAvailabilityView } from '../components/username-choice-field.tsx'
 import { AuthForm, formMessageCss } from './login-sections.tsx'
-
 /**
  * Display status for `/login` and `/signup`. `confirming` (username
  * permanence) is a `login.form` machine state; the page shows it as idle plus
- * a message via `setState('idle', message)`.
+ * a message from `CONFIRM_USERNAME`.
  */
-export type AuthStatus = Exclude<StateOf<typeof loginState>, 'confirming'>
+export type AuthStatus = Exclude<
+	LifecycleStateOf<typeof loginState>,
+	'confirming'
+>
 function buildAuthPath(mode: 'login' | 'signup', redirectTo: string | null) {
 	return buildAuthLink(mode === 'signup' ? '/signup' : '/login', redirectTo)
 }
@@ -92,9 +96,24 @@ export function LoginPage({
 		webauthnAuthenticationVerifyFn,
 	)
 	const hydrated = useHydrated()
-	const [flow, transition, getFlow] = useStateMachine<AuthFormState>(
-		loginState,
-		{ status: 'idle' },
+	const [flowSnapshot, , flowActor] = useMachine(loginState, {
+		snapshot: (() => {
+			const initialView = { status: 'idle' }
+			return loginState.resolveState({
+				value: initialView.status,
+				context: uiContext(initialView),
+			})
+		})(),
+	})
+	const flow = uiState<AuthFormState>(flowSnapshot)
+	const transition = useCallback(
+		(event: Parameters<typeof flowActor.send>[0]) =>
+			sendUiEvent(flowActor, event),
+		[flowActor],
+	)
+	const getFlow = useCallback(
+		() => uiState<AuthFormState>(flowActor.getSnapshot()),
+		[flowActor],
 	)
 	const status = flow.status === 'confirming' ? 'idle' : flow.status
 	const message = 'message' in flow ? flow.message : null
@@ -129,30 +148,27 @@ export function LoginPage({
 			WebAuthnAbortService.cancelCeremony()
 		}
 	}, [mode, currentHref, turnstileSiteKey])
-	function setState(nextStatus: AuthStatus, nextMessage: string | null = null) {
+	function sendFormEvent(event: Parameters<typeof flowActor.send>[0]) {
 		if (lifecycle.current?.signal.aborted) return false
-		if (nextStatus === 'error' || nextStatus === 'success')
-			return transition({ status: nextStatus, message: nextMessage ?? '' })
-		if (nextStatus === 'idle' && nextMessage !== null)
-			return transition({ status: 'confirming', message: nextMessage })
-		return transition({ status: nextStatus })
+		const accepted = transition(event)
+		return accepted
 	}
 
 	/**
 	 * Report a failure that came back from the server. The challenge token the
 	 * request carried is spent (Turnstile tokens are single-use), and the form
-	 * stays mounted for another try, so it needs a fresh one. Plain `setState`
+	 * stays mounted for another try, so it needs a fresh one. Validation feedback
 	 * still covers client-side validation, where nothing was sent and the
 	 * token the user already solved is still good.
 	 */
 	function setSubmitError(nextMessage: string) {
 		if (lifecycle.current?.signal.aborted) return
 		resetTurnstileWidgets()
-		setState('error', nextMessage)
+		sendFormEvent({ type: 'RESPONSE_ERROR', data: { message: nextMessage } })
 	}
 
 	function clearFieldError() {
-		if (status === 'error') setState('idle')
+		if (status === 'error') sendFormEvent({ type: 'RESET', data: {} })
 	}
 
 	async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -178,7 +194,10 @@ export function LoginPage({
 		})
 		if (clientValidation) {
 			if (clientValidation.field === 'username') usernameTouched.current = true
-			setState('error', clientValidation.message)
+			sendFormEvent({
+				type: 'VALIDATION_ERROR',
+				data: { message: clientValidation.message },
+			})
 			return
 		}
 
@@ -188,25 +207,36 @@ export function LoginPage({
 				usernameAvailability.status === 'reserved' ||
 				usernameAvailability.status === 'invalid'
 			) {
-				setState(
-					'error',
-					usernameAvailability.reason ?? 'That username cannot be used.',
-				)
+				sendFormEvent({
+					type: 'VALIDATION_ERROR',
+					data: {
+						message:
+							usernameAvailability.reason ?? 'That username cannot be used.',
+					},
+				})
 				return
 			}
 			if (confirmedUsername !== username.toLowerCase()) {
 				setConfirmedUsername(username.toLowerCase())
 				setSignupUsername(username)
-				setState('idle', handlePermanenceConfirmMessage(username.toLowerCase()))
+				sendFormEvent({
+					type: 'CONFIRM_USERNAME',
+					data: {
+						message: handlePermanenceConfirmMessage(username.toLowerCase()),
+					},
+				})
 				return
 			}
 			if (usernameAvailability.status === 'checking') {
-				setState('error', 'Wait for the availability check to finish.')
+				sendFormEvent({
+					type: 'VALIDATION_ERROR',
+					data: { message: 'Wait for the availability check to finish.' },
+				})
 				return
 			}
 		}
 
-		if (!setState('submitting')) return
+		if (!sendFormEvent({ type: 'SUBMIT', data: {} })) return
 
 		try {
 			const attribution =
@@ -275,7 +305,7 @@ export function LoginPage({
 	}
 
 	async function handleProviderSignIn(providerId: string) {
-		if (!setState('submitting')) return
+		if (!sendFormEvent({ type: 'SUBMIT', data: {} })) return
 		try {
 			const authForm = document.querySelector<HTMLFormElement>(
 				'form[data-public-auth-form]',
@@ -301,7 +331,7 @@ export function LoginPage({
 	}
 
 	async function handlePasskeySignIn() {
-		if (!setState('submitting')) return
+		if (!sendFormEvent({ type: 'SUBMIT', data: {} })) return
 
 		try {
 			const optionsPayload = await webauthnAuthenticationOptions({ data: {} })
@@ -311,7 +341,10 @@ export function LoginPage({
 				optionsPayload?.ok !== true ||
 				!optionsPayload.options
 			) {
-				setState('error', 'Unable to start passkey sign-in.')
+				sendFormEvent({
+					type: 'RESPONSE_ERROR',
+					data: { message: 'Unable to start passkey sign-in.' },
+				})
 				return
 			}
 
@@ -321,7 +354,7 @@ export function LoginPage({
 					optionsJSON: optionsPayload.options,
 				})
 			} catch {
-				setState('idle')
+				sendFormEvent({ type: 'CANCEL', data: {} })
 				return
 			}
 
@@ -445,7 +478,7 @@ export function LoginPage({
 					setConfirmedUsername(null)
 					// Format errors stay in UsernameChoiceField; keep the form
 					// message for submit / confirm copy only.
-					setState('idle')
+					sendFormEvent({ type: 'CANCEL', data: {} })
 				}}
 				onUsernameAvailabilityChange={setUsernameAvailability}
 				submitLabel={submitLabel}

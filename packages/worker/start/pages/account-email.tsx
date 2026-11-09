@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { useSingleFlight } from '#client/use-single-flight.ts'
+import { useActorRef } from '@xstate/react'
+import { submissionGateState } from '#client/routes/submission-gate-state.ts'
 import { createUiFeedback } from '#client/ui-feedback.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { toast } from '#client/toast.ts'
@@ -77,7 +78,6 @@ import {
 	RecordTableSelect,
 	recordStampCss,
 } from './record-table.tsx'
-
 function triageNotice(input: {
 	classification?: EmailClassification
 	archived?: boolean
@@ -164,7 +164,7 @@ export function AccountEmailPage({
 	const [deleteArmedId, setDeleteArmedId] = useState<string | null>(null)
 	const deleteArmed =
 		deleteArmedId !== null && deleteArmedId === data.selectedMessage?.id
-	const runResend = useSingleFlight()
+	const runResendActor = useActorRef(submissionGateState)
 	const [resendReceipt, setResendReceipt] = useState<{
 		actorKey: string | null
 		email: string | null
@@ -268,14 +268,20 @@ export function AccountEmailPage({
 		resendReceipt.actorKey === actorKey &&
 		resendReceipt.email === (session?.email ?? null)
 	async function handleResendVerification() {
-		return runResend(async () => {
-			const isCurrent = captureSubmitter()
-			try {
-				const result = await resendMutation.mutateAsync({ isCurrent })
-				if (isCurrent() && result.ok)
-					setResendReceipt({ actorKey, email: session?.email ?? null })
-			} catch {}
-		})
+		if (!runResendActor.getSnapshot().can({ type: 'SUBMIT' })) return
+		runResendActor.send({ type: 'SUBMIT' })
+		try {
+			return await (async () => {
+				const isCurrent = captureSubmitter()
+				try {
+					const result = await resendMutation.mutateAsync({ isCurrent })
+					if (isCurrent() && result.ok)
+						setResendReceipt({ actorKey, email: session?.email ?? null })
+				} catch {}
+			})()
+		} finally {
+			runResendActor.send({ type: 'SETTLED' })
+		}
 	}
 
 	const captureSubmitter = useSubmitterScope()

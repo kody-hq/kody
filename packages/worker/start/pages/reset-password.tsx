@@ -1,10 +1,11 @@
 /** @jsxImportSource @emotion/react */
-import { useStateMachine } from '#client/use-state-machine.ts'
+import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
+import { useCallback, type FormEvent } from 'react'
+import { useMachine } from '@xstate/react'
 import {
 	passwordResetState,
 	type PasswordResetState,
 } from '#client/routes/password-reset-state.ts'
-import type { StateOf } from '@kody-internal/shared/state-machine.ts'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 import {
 	readPublicFormProtection,
@@ -29,35 +30,44 @@ import {
 	stackedPageCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-import type { FormEvent } from 'react'
 import { Honeypot } from '../components/honeypot-field.tsx'
 import { usePublicAuthProtection } from '../components/public-auth-protection.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import { useHydrated } from '../components/use-hydrated.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
-
-type ResetStatus = StateOf<typeof passwordResetState>
-
 export function ResetPasswordRoute() {
 	const hydrated = useHydrated()
-	const [flow, transition, getFlow] = useStateMachine<PasswordResetState>(
-		passwordResetState,
-		{ status: 'idle' },
+	const [flowSnapshot, , flowActor] = useMachine(passwordResetState, {
+		snapshot: (() => {
+			const initialView = { status: 'idle' }
+			return passwordResetState.resolveState({
+				value: initialView.status,
+				context: uiContext(initialView),
+			})
+		})(),
+	})
+	const flow = uiState<PasswordResetState>(flowSnapshot)
+	const transition = useCallback(
+		(event: Parameters<typeof flowActor.send>[0]) =>
+			sendUiEvent(flowActor, event),
+		[flowActor],
+	)
+	const getFlow = useCallback(
+		() => uiState<PasswordResetState>(flowActor.getSnapshot()),
+		[flowActor],
 	)
 	const status = flow.status
 	const message = 'message' in flow ? flow.message : null
 	const turnstileSiteKey = usePublicAuthProtection()
 	const search = useMatchedPageScope().pageLocation.searchStr
 
-	function setState(
-		nextStatus: ResetStatus,
-		nextMessage: string | null = null,
-	) {
-		const accepted =
-			nextStatus === 'error' || nextStatus === 'success'
-				? transition({ status: nextStatus, message: nextMessage ?? '' })
-				: transition({ status: nextStatus })
-		if (accepted && nextStatus === 'error') resetTurnstileWidgets()
+	function sendFormEvent(event: Parameters<typeof flowActor.send>[0]) {
+		const accepted = transition(event)
+		if (
+			accepted &&
+			(event.type === 'RESPONSE_ERROR' || event.type === 'VALIDATION_ERROR')
+		)
+			resetTurnstileWidgets()
 		return accepted
 	}
 
@@ -71,11 +81,14 @@ export function ResetPasswordRoute() {
 		const email = String(formData.get('email') ?? '').trim()
 		const protection = readPublicFormProtection(formData, form)
 		if (!email) {
-			setState('error', 'Email is required.')
+			sendFormEvent({
+				type: 'VALIDATION_ERROR',
+				data: { message: 'Email is required.' },
+			})
 			return
 		}
 
-		if (!setState('submitting')) return
+		if (!sendFormEvent({ type: 'SUBMIT', data: {} })) return
 		try {
 			const payload = await requestWebsitePasswordReset({
 				data: { email, ...protection },
@@ -85,15 +98,23 @@ export function ResetPasswordRoute() {
 					typeof payload?.error === 'string'
 						? payload.error
 						: 'Unable to request a reset.'
-				setState('error', errorMessage)
+				sendFormEvent({
+					type: 'RESPONSE_ERROR',
+					data: { message: errorMessage },
+				})
 				return
 			}
-			setState(
-				'success',
-				payload?.message ?? 'Check your inbox for a reset link.',
-			)
+			sendFormEvent({
+				type: 'RESPONSE_OK',
+				data: {
+					message: payload?.message ?? 'Check your inbox for a reset link.',
+				},
+			})
 		} catch {
-			setState('error', 'Network error. Please try again.')
+			sendFormEvent({
+				type: 'RESPONSE_ERROR',
+				data: { message: 'Network error. Please try again.' },
+			})
 		}
 	}
 
@@ -110,11 +131,14 @@ export function ResetPasswordRoute() {
 		const password = String(formData.get('password') ?? '')
 		const protection = readPublicFormProtection(formData, form)
 		if (!password) {
-			setState('error', 'Password is required.')
+			sendFormEvent({
+				type: 'VALIDATION_ERROR',
+				data: { message: 'Password is required.' },
+			})
 			return
 		}
 
-		if (!setState('submitting')) return
+		if (!sendFormEvent({ type: 'SUBMIT', data: {} })) return
 		try {
 			const payload = await confirmWebsitePasswordReset({
 				data: { token, password, ...protection },
@@ -124,12 +148,21 @@ export function ResetPasswordRoute() {
 					typeof payload?.error === 'string'
 						? payload.error
 						: 'Unable to reset password.'
-				setState('error', errorMessage)
+				sendFormEvent({
+					type: 'RESPONSE_ERROR',
+					data: { message: errorMessage },
+				})
 				return
 			}
-			setState('success', 'Password updated. You can sign in.')
+			sendFormEvent({
+				type: 'RESPONSE_OK',
+				data: { message: 'Password updated. You can sign in.' },
+			})
 		} catch {
-			setState('error', 'Network error. Please try again.')
+			sendFormEvent({
+				type: 'RESPONSE_ERROR',
+				data: { message: 'Network error. Please try again.' },
+			})
 		}
 	}
 

@@ -984,6 +984,30 @@ stateDiagram-v2
 
 ## UI flows
 
+## ui.submission_gate
+
+A synchronous submission fence covers validation, mutation and reconciliation
+without duplicating Query feedback.
+
+Source:
+[`packages/worker/client/routes/submission-gate-state.ts`](../../packages/worker/client/routes/submission-gate-state.ts)
+
+States: idle, running
+
+Final states: None
+
+```mermaid
+stateDiagram-v2
+    [*] --> idle
+    idle --> running: SUBMIT
+    running --> idle: SETTLED
+```
+
+| Event   | From    | To      | Guard |
+| ------- | ------- | ------- | ----- |
+| SUBMIT  | idle    | running | —     |
+| SETTLED | running | idle    | —     |
+
 ## admin_codemods.ui_run
 
 Paged execution owns its progress and terminal feedback; a requested stop is
@@ -999,27 +1023,30 @@ Final states: None
 ```mermaid
 stateDiagram-v2
     [*] --> idle
-    idle --> running
-    running --> running
-    running --> stopping
-    running --> complete
-    running --> error
-    stopping --> stopping
-    stopping --> complete
-    stopping --> error
-    complete --> running
-    error --> running
+    idle --> running: SUBMIT
+    running --> running: PROGRESS
+    running --> stopping: STOP
+    running --> complete: RESPONSE_OK
+    running --> error: RESPONSE_ERROR
+    stopping --> stopping: PROGRESS
+    stopping --> complete: RESPONSE_OK
+    stopping --> error: RESPONSE_ERROR
+    complete --> running: SUBMIT
+    error --> running: SUBMIT
 ```
 
-Legacy transition table (no named events yet).
-
-| State    | May transition to                  |
-| -------- | ---------------------------------- |
-| idle     | running                            |
-| running  | running, stopping, complete, error |
-| stopping | stopping, complete, error          |
-| complete | running                            |
-| error    | running                            |
+| Event          | From     | To       | Guard          |
+| -------------- | -------- | -------- | -------------- |
+| SUBMIT         | idle     | running  | —              |
+| PROGRESS       | running  | running  | —              |
+| STOP           | running  | stopping | —              |
+| RESPONSE_OK    | running  | complete | currentRequest |
+| RESPONSE_ERROR | running  | error    | currentRequest |
+| PROGRESS       | stopping | stopping | —              |
+| RESPONSE_OK    | stopping | complete | currentRequest |
+| RESPONSE_ERROR | stopping | error    | currentRequest |
+| SUBMIT         | complete | running  | —              |
+| SUBMIT         | error    | running  | —              |
 
 ## avatar.ui_crop
 
@@ -1036,27 +1063,30 @@ Final states: None
 ```mermaid
 stateDiagram-v2
     [*] --> decoding
-    decoding --> decoding
-    decoding --> ready
-    decoding --> decode_error
-    ready --> decoding
-    ready --> applying
-    applying --> decoding
-    applying --> prepare_error
-    decode_error --> decoding
-    prepare_error --> decoding
-    prepare_error --> applying
+    decoding --> decoding: DECODE
+    decoding --> ready: DECODE_OK
+    decoding --> decode_error: DECODE_ERROR
+    ready --> decoding: DECODE
+    ready --> applying: APPLY
+    applying --> decoding: DECODE
+    applying --> prepare_error: PREPARE_ERROR
+    decode_error --> decoding: DECODE
+    prepare_error --> decoding: DECODE
+    prepare_error --> applying: APPLY
 ```
 
-Legacy transition table (no named events yet).
-
-| State         | May transition to             |
-| ------------- | ----------------------------- |
-| decoding      | decoding, ready, decode_error |
-| ready         | decoding, applying            |
-| applying      | decoding, prepare_error       |
-| decode_error  | decoding                      |
-| prepare_error | decoding, applying            |
+| Event         | From          | To            | Guard          |
+| ------------- | ------------- | ------------- | -------------- |
+| DECODE        | decoding      | decoding      | —              |
+| DECODE_OK     | decoding      | ready         | currentRequest |
+| DECODE_ERROR  | decoding      | decode_error  | currentRequest |
+| DECODE        | ready         | decoding      | —              |
+| APPLY         | ready         | applying      | —              |
+| DECODE        | applying      | decoding      | —              |
+| PREPARE_ERROR | applying      | prepare_error | currentRequest |
+| DECODE        | decode_error  | decoding      | —              |
+| DECODE        | prepare_error | decoding      | —              |
+| APPLY         | prepare_error | applying      | —              |
 
 ## clipboard.ui_feedback
 
@@ -1073,23 +1103,24 @@ Final states: None
 ```mermaid
 stateDiagram-v2
     [*] --> idle
-    idle --> copying
-    copying --> copied
-    copying --> error
-    copied --> copying
-    copied --> idle
-    error --> copying
-    error --> idle
+    idle --> copying: COPY
+    copying --> copied: RESPONSE_OK
+    copying --> error: RESPONSE_ERROR
+    copied --> copying: COPY
+    copied --> idle: RESET
+    error --> copying: COPY
+    error --> idle: RESET
 ```
 
-Legacy transition table (no named events yet).
-
-| State   | May transition to |
-| ------- | ----------------- |
-| idle    | copying           |
-| copying | copied, error     |
-| copied  | copying, idle     |
-| error   | copying, idle     |
+| Event          | From    | To      | Guard          |
+| -------------- | ------- | ------- | -------------- |
+| COPY           | idle    | copying | —              |
+| RESPONSE_OK    | copying | copied  | currentRequest |
+| RESPONSE_ERROR | copying | error   | currentRequest |
+| COPY           | copied  | copying | —              |
+| RESET          | copied  | idle    | —              |
+| COPY           | error   | copying | —              |
+| RESET          | error   | idle    | —              |
 
 ## connect_oauth.device_poll
 
@@ -1107,29 +1138,36 @@ Final states: None
 ```mermaid
 stateDiagram-v2
     [*] --> idle
-    idle --> idle
-    idle --> starting
-    starting --> polling
-    starting --> error
-    starting --> idle
-    polling --> polling
-    polling --> error
-    polling --> success
-    polling --> idle
-    error --> idle
-    error --> success
-    success --> idle
+    idle --> starting: START
+    idle --> idle: RESET
+    starting --> polling: SESSION_OK
+    starting --> error: RESPONSE_ERROR
+    starting --> idle: RESET
+    polling --> polling: POLL_PENDING
+    polling --> polling: TICK
+    polling --> error: RESPONSE_ERROR
+    polling --> success: RESPONSE_OK
+    polling --> idle: RESET
+    error --> success: RESPONSE_OK
+    error --> idle: RESET
+    success --> idle: RESET
 ```
 
-Legacy transition table (no named events yet).
-
-| State    | May transition to             |
-| -------- | ----------------------------- |
-| idle     | idle, starting                |
-| starting | polling, error, idle          |
-| polling  | polling, error, success, idle |
-| error    | idle, success                 |
-| success  | idle                          |
+| Event          | From     | To       | Guard          |
+| -------------- | -------- | -------- | -------------- |
+| START          | idle     | starting | —              |
+| RESET          | idle     | idle     | —              |
+| SESSION_OK     | starting | polling  | currentRequest |
+| RESPONSE_ERROR | starting | error    | currentRequest |
+| RESET          | starting | idle     | —              |
+| POLL_PENDING   | polling  | polling  | currentRequest |
+| TICK           | polling  | polling  | —              |
+| RESPONSE_ERROR | polling  | error    | currentRequest |
+| RESPONSE_OK    | polling  | success  | currentRequest |
+| RESET          | polling  | idle     | —              |
+| RESPONSE_OK    | error    | success  | currentRequest |
+| RESET          | error    | idle     | —              |
+| RESET          | success  | idle     | —              |
 
 ## connect_oauth.step
 
@@ -1146,34 +1184,52 @@ Final states: None
 ```mermaid
 stateDiagram-v2
     [*] --> setup
-    [*] --> connect
-    setup --> setup
-    setup --> connect
-    setup --> callback
-    connect --> connect
-    connect --> setup
-    connect --> device
-    connect --> callback
-    device --> device
-    device --> connect
-    device --> success
-    callback --> callback
-    callback --> setup
-    callback --> connect
-    callback --> success
-    success --> success
-    success --> setup
+    setup --> setup: EDIT
+    setup --> setup: SETUP
+    setup --> connect: CONNECT
+    setup --> callback: CALLBACK
+    connect --> connect: EDIT
+    connect --> setup: SETUP
+    connect --> connect: CONNECT
+    connect --> device: DEVICE
+    connect --> callback: CALLBACK
+    device --> device: EDIT
+    device --> connect: CONNECT
+    device --> device: DEVICE
+    device --> success: CREDENTIALS_SAVED
+    callback --> callback: EDIT
+    callback --> setup: SETUP
+    callback --> connect: CONNECT
+    callback --> callback: CALLBACK
+    callback --> success: CREDENTIALS_SAVED
+    success --> success: EDIT
+    success --> setup: SETUP
+    success --> success: CREDENTIALS_SAVED
 ```
 
-Legacy transition table (no named events yet).
-
-| State    | May transition to                 |
-| -------- | --------------------------------- |
-| setup    | setup, connect, callback          |
-| connect  | connect, setup, device, callback  |
-| device   | device, connect, success          |
-| callback | callback, setup, connect, success |
-| success  | success, setup                    |
+| Event             | From     | To       | Guard |
+| ----------------- | -------- | -------- | ----- |
+| EDIT              | setup    | setup    | —     |
+| SETUP             | setup    | setup    | —     |
+| CONNECT           | setup    | connect  | —     |
+| CALLBACK          | setup    | callback | —     |
+| EDIT              | connect  | connect  | —     |
+| SETUP             | connect  | setup    | —     |
+| CONNECT           | connect  | connect  | —     |
+| DEVICE            | connect  | device   | —     |
+| CALLBACK          | connect  | callback | —     |
+| EDIT              | device   | device   | —     |
+| CONNECT           | device   | connect  | —     |
+| DEVICE            | device   | device   | —     |
+| CREDENTIALS_SAVED | device   | success  | —     |
+| EDIT              | callback | callback | —     |
+| SETUP             | callback | setup    | —     |
+| CONNECT           | callback | connect  | —     |
+| CALLBACK          | callback | callback | —     |
+| CREDENTIALS_SAVED | callback | success  | —     |
+| EDIT              | success  | success  | —     |
+| SETUP             | success  | setup    | —     |
+| CREDENTIALS_SAVED | success  | success  | —     |
 
 ## connect_oauth.operation
 
@@ -1190,16 +1246,14 @@ Final states: None
 ```mermaid
 stateDiagram-v2
     [*] --> idle
-    idle --> submitting
-    submitting --> idle
+    idle --> submitting: SUBMIT
+    submitting --> idle: SETTLED
 ```
 
-Legacy transition table (no named events yet).
-
-| State      | May transition to |
-| ---------- | ----------------- |
-| idle       | submitting        |
-| submitting | idle              |
+| Event   | From       | To         | Guard          |
+| ------- | ---------- | ---------- | -------------- |
+| SUBMIT  | idle       | submitting | —              |
+| SETTLED | submitting | idle       | currentRequest |
 
 ## desktop.setup_operation
 
@@ -1216,20 +1270,20 @@ Final states: None
 ```mermaid
 stateDiagram-v2
     [*] --> idle
-    idle --> running
-    running --> idle
-    running --> error
-    error --> idle
-    error --> running
+    idle --> running: SUBMIT
+    running --> idle: RESPONSE_OK
+    running --> error: RESPONSE_ERROR
+    error --> running: SUBMIT
+    error --> idle: DISMISS
 ```
 
-Legacy transition table (no named events yet).
-
-| State   | May transition to |
-| ------- | ----------------- |
-| idle    | running           |
-| running | idle, error       |
-| error   | idle, running     |
+| Event          | From    | To      | Guard          |
+| -------------- | ------- | ------- | -------------- |
+| SUBMIT         | idle    | running | —              |
+| RESPONSE_OK    | running | idle    | currentRequest |
+| RESPONSE_ERROR | running | error   | currentRequest |
+| SUBMIT         | error   | running | —              |
+| DISMISS        | error   | idle    | —              |
 
 ## desktop.setup_step
 
@@ -1246,36 +1300,38 @@ Final states: None
 ```mermaid
 stateDiagram-v2
     [*] --> overview
-    overview --> overview
-    overview --> register
-    overview --> attach
-    overview --> done
-    overview --> forget
-    register --> register
-    register --> overview
-    register --> attach
-    register --> done
-    register --> forget
-    attach --> attach
-    attach --> overview
-    attach --> done
-    attach --> forget
-    done --> done
-    done --> overview
-    done --> forget
-    forget --> forget
-    forget --> overview
+    overview --> register: REGISTER
+    overview --> attach: ATTACH
+    overview --> done: COMPLETE
+    overview --> forget: FORGET
+    register --> attach: ATTACH
+    register --> done: COMPLETE
+    register --> forget: FORGET
+    register --> overview: RESET
+    attach --> done: COMPLETE
+    attach --> forget: FORGET
+    attach --> overview: RESET
+    done --> forget: FORGET
+    done --> overview: RESET
+    forget --> overview: RESET
 ```
 
-Legacy transition table (no named events yet).
-
-| State    | May transition to                        |
-| -------- | ---------------------------------------- |
-| overview | overview, register, attach, done, forget |
-| register | register, overview, attach, done, forget |
-| attach   | attach, overview, done, forget           |
-| done     | done, overview, forget                   |
-| forget   | forget, overview                         |
+| Event    | From     | To       | Guard |
+| -------- | -------- | -------- | ----- |
+| REGISTER | overview | register | —     |
+| ATTACH   | overview | attach   | —     |
+| COMPLETE | overview | done     | —     |
+| FORGET   | overview | forget   | —     |
+| ATTACH   | register | attach   | —     |
+| COMPLETE | register | done     | —     |
+| FORGET   | register | forget   | —     |
+| RESET    | register | overview | —     |
+| COMPLETE | attach   | done     | —     |
+| FORGET   | attach   | forget   | —     |
+| RESET    | attach   | overview | —     |
+| FORGET   | done     | forget   | —     |
+| RESET    | done     | overview | —     |
+| RESET    | forget   | overview | —     |
 
 ## email_verification.feedback
 
@@ -1292,29 +1348,34 @@ Final states: None
 ```mermaid
 stateDiagram-v2
     [*] --> idle
-    idle --> sending
-    idle --> checking
-    sending --> idle
-    sending --> success
-    sending --> error
-    checking --> idle
-    checking --> success
-    checking --> error
-    success --> sending
-    success --> checking
-    error --> sending
-    error --> checking
+    idle --> sending: RESEND
+    idle --> checking: CHECK
+    sending --> success: RESPONSE_OK
+    sending --> error: RESPONSE_ERROR
+    sending --> idle: CANCEL
+    checking --> success: RESPONSE_OK
+    checking --> error: RESPONSE_ERROR
+    checking --> idle: CANCEL
+    success --> sending: RESEND
+    success --> checking: CHECK
+    error --> sending: RESEND
+    error --> checking: CHECK
 ```
 
-Legacy transition table (no named events yet).
-
-| State    | May transition to    |
-| -------- | -------------------- |
-| idle     | sending, checking    |
-| sending  | idle, success, error |
-| checking | idle, success, error |
-| success  | sending, checking    |
-| error    | sending, checking    |
+| Event          | From     | To       | Guard          |
+| -------------- | -------- | -------- | -------------- |
+| RESEND         | idle     | sending  | —              |
+| CHECK          | idle     | checking | —              |
+| RESPONSE_OK    | sending  | success  | currentRequest |
+| RESPONSE_ERROR | sending  | error    | currentRequest |
+| CANCEL         | sending  | idle     | —              |
+| RESPONSE_OK    | checking | success  | currentRequest |
+| RESPONSE_ERROR | checking | error    | currentRequest |
+| CANCEL         | checking | idle     | —              |
+| RESEND         | success  | sending  | —              |
+| CHECK          | success  | checking | —              |
+| RESEND         | error    | sending  | —              |
+| CHECK          | error    | checking | —              |
 
 ## landing_testimonials.pointer
 
@@ -1331,24 +1392,28 @@ Final states: None
 ```mermaid
 stateDiagram-v2
     [*] --> idle
-    idle --> pending
-    pending --> pending
-    pending --> drag
-    pending --> scroll
-    pending --> idle
-    drag --> drag
-    drag --> idle
-    scroll --> idle
+    idle --> pending: POINTER_DOWN
+    pending --> pending: SAMPLE
+    pending --> drag: DRAG
+    pending --> scroll: SCROLL
+    pending --> idle: RELEASE
+    drag --> drag: SAMPLE
+    drag --> drag: MOVE
+    drag --> idle: RELEASE
+    scroll --> idle: RELEASE
 ```
 
-Legacy transition table (no named events yet).
-
-| State   | May transition to           |
-| ------- | --------------------------- |
-| idle    | pending                     |
-| pending | pending, drag, scroll, idle |
-| drag    | drag, idle                  |
-| scroll  | idle                        |
+| Event        | From    | To      | Guard          |
+| ------------ | ------- | ------- | -------------- |
+| POINTER_DOWN | idle    | pending | —              |
+| SAMPLE       | pending | pending | currentRequest |
+| DRAG         | pending | drag    | currentRequest |
+| SCROLL       | pending | scroll  | currentRequest |
+| RELEASE      | pending | idle    | currentRequest |
+| SAMPLE       | drag    | drag    | currentRequest |
+| MOVE         | drag    | drag    | currentRequest |
+| RELEASE      | drag    | idle    | currentRequest |
+| RELEASE      | scroll  | idle    | currentRequest |
 
 ## login.form
 
@@ -1365,35 +1430,44 @@ Final states: None
 ```mermaid
 stateDiagram-v2
     [*] --> idle
-    idle --> idle
-    idle --> confirming
-    idle --> submitting
-    idle --> error
-    confirming --> idle
-    confirming --> confirming
-    confirming --> submitting
-    confirming --> error
-    submitting --> idle
-    submitting --> success
-    submitting --> error
-    success --> idle
-    success --> submitting
-    success --> error
-    error --> idle
-    error --> confirming
-    error --> submitting
-    error --> error
+    idle --> submitting: SUBMIT
+    idle --> confirming: CONFIRM_USERNAME
+    idle --> error: VALIDATION_ERROR
+    confirming --> submitting: SUBMIT
+    confirming --> confirming: CONFIRM_USERNAME
+    confirming --> error: VALIDATION_ERROR
+    confirming --> idle: RESET
+    submitting --> error: RESPONSE_ERROR
+    submitting --> success: RESPONSE_OK
+    submitting --> idle: CANCEL
+    success --> submitting: SUBMIT
+    success --> error: VALIDATION_ERROR
+    success --> idle: RESET
+    error --> submitting: SUBMIT
+    error --> confirming: CONFIRM_USERNAME
+    error --> error: VALIDATION_ERROR
+    error --> idle: RESET
 ```
 
-Legacy transition table (no named events yet).
-
-| State      | May transition to                   |
-| ---------- | ----------------------------------- |
-| idle       | idle, confirming, submitting, error |
-| confirming | idle, confirming, submitting, error |
-| submitting | idle, success, error                |
-| success    | idle, submitting, error             |
-| error      | idle, confirming, submitting, error |
+| Event            | From       | To         | Guard          |
+| ---------------- | ---------- | ---------- | -------------- |
+| SUBMIT           | idle       | submitting | —              |
+| CONFIRM_USERNAME | idle       | confirming | —              |
+| VALIDATION_ERROR | idle       | error      | —              |
+| SUBMIT           | confirming | submitting | —              |
+| CONFIRM_USERNAME | confirming | confirming | —              |
+| VALIDATION_ERROR | confirming | error      | —              |
+| RESET            | confirming | idle       | —              |
+| RESPONSE_ERROR   | submitting | error      | currentRequest |
+| RESPONSE_OK      | submitting | success    | currentRequest |
+| CANCEL           | submitting | idle       | —              |
+| SUBMIT           | success    | submitting | —              |
+| VALIDATION_ERROR | success    | error      | —              |
+| RESET            | success    | idle       | —              |
+| SUBMIT           | error      | submitting | —              |
+| CONFIRM_USERNAME | error      | confirming | —              |
+| VALIDATION_ERROR | error      | error      | —              |
+| RESET            | error      | idle       | —              |
 
 ## oauth_consent.interaction
 
@@ -1410,33 +1484,36 @@ Final states: guest, reset_complete
 ```mermaid
 stateDiagram-v2
     [*] --> idle
-    idle --> signing_in
-    idle --> deciding
-    signing_in --> idle
-    signing_in --> error
-    deciding --> idle
-    deciding --> error
-    deciding --> guest
-    deciding --> reset_complete
-    deciding --> redirecting
-    error --> signing_in
-    error --> deciding
-    redirecting --> idle
+    idle --> signing_in: SIGN_IN
+    idle --> deciding: DECIDE
+    signing_in --> error: RESPONSE_ERROR
+    signing_in --> idle: RESET
+    deciding --> error: RESPONSE_ERROR
+    deciding --> redirecting: REDIRECT
+    deciding --> guest: GUEST_CREATED
+    deciding --> reset_complete: CLIENT_RESET
+    deciding --> idle: RESET
+    error --> signing_in: SIGN_IN
+    error --> deciding: DECIDE
+    redirecting --> idle: RESET
     guest --> [*]
     reset_complete --> [*]
 ```
 
-Legacy transition table (no named events yet).
-
-| State          | May transition to                               |
-| -------------- | ----------------------------------------------- |
-| idle           | signing_in, deciding                            |
-| signing_in     | idle, error                                     |
-| deciding       | idle, error, guest, reset_complete, redirecting |
-| error          | signing_in, deciding                            |
-| redirecting    | idle                                            |
-| guest          | — (terminal)                                    |
-| reset_complete | — (terminal)                                    |
+| Event          | From        | To             | Guard          |
+| -------------- | ----------- | -------------- | -------------- |
+| SIGN_IN        | idle        | signing_in     | —              |
+| DECIDE         | idle        | deciding       | —              |
+| RESPONSE_ERROR | signing_in  | error          | currentRequest |
+| RESET          | signing_in  | idle           | —              |
+| RESPONSE_ERROR | deciding    | error          | currentRequest |
+| REDIRECT       | deciding    | redirecting    | currentRequest |
+| GUEST_CREATED  | deciding    | guest          | currentRequest |
+| CLIENT_RESET   | deciding    | reset_complete | currentRequest |
+| RESET          | deciding    | idle           | —              |
+| SIGN_IN        | error       | signing_in     | —              |
+| DECIDE         | error       | deciding       | —              |
+| RESET          | redirecting | idle           | —              |
 
 ## passkey.registration_ui
 
@@ -1453,19 +1530,18 @@ Final states: None
 ```mermaid
 stateDiagram-v2
     [*] --> idle
-    idle --> requesting
-    requesting --> ceremony
-    requesting --> idle
-    ceremony --> idle
+    idle --> requesting: SUBMIT
+    requesting --> ceremony: OPTIONS_OK
+    requesting --> idle: SETTLED
+    ceremony --> idle: SETTLED
 ```
 
-Legacy transition table (no named events yet).
-
-| State      | May transition to |
-| ---------- | ----------------- |
-| idle       | requesting        |
-| requesting | ceremony, idle    |
-| ceremony   | idle              |
+| Event      | From       | To         | Guard          |
+| ---------- | ---------- | ---------- | -------------- |
+| SUBMIT     | idle       | requesting | —              |
+| OPTIONS_OK | requesting | ceremony   | currentRequest |
+| SETTLED    | requesting | idle       | currentRequest |
+| SETTLED    | ceremony   | idle       | currentRequest |
 
 ## password_reset.form
 
@@ -1482,24 +1558,26 @@ Final states: None
 ```mermaid
 stateDiagram-v2
     [*] --> idle
-    idle --> submitting
-    idle --> error
-    submitting --> success
-    submitting --> error
-    success --> submitting
-    success --> error
-    error --> submitting
-    error --> error
+    idle --> submitting: SUBMIT
+    idle --> error: VALIDATION_ERROR
+    submitting --> success: RESPONSE_OK
+    submitting --> error: RESPONSE_ERROR
+    success --> submitting: SUBMIT
+    success --> error: VALIDATION_ERROR
+    error --> submitting: SUBMIT
+    error --> error: VALIDATION_ERROR
 ```
 
-Legacy transition table (no named events yet).
-
-| State      | May transition to |
-| ---------- | ----------------- |
-| idle       | submitting, error |
-| submitting | success, error    |
-| success    | submitting, error |
-| error      | submitting, error |
+| Event            | From       | To         | Guard          |
+| ---------------- | ---------- | ---------- | -------------- |
+| SUBMIT           | idle       | submitting | —              |
+| VALIDATION_ERROR | idle       | error      | —              |
+| RESPONSE_OK      | submitting | success    | currentRequest |
+| RESPONSE_ERROR   | submitting | error      | currentRequest |
+| SUBMIT           | success    | submitting | —              |
+| VALIDATION_ERROR | success    | error      | —              |
+| SUBMIT           | error      | submitting | —              |
+| VALIDATION_ERROR | error      | error      | —              |
 
 ## package_publish.ui_checks
 
@@ -1516,31 +1594,36 @@ Final states: None
 ```mermaid
 stateDiagram-v2
     [*] --> idle
-    [*] --> running
-    idle --> idle
-    idle --> running
-    running --> idle
-    running --> running
-    running --> passed
-    running --> failed
-    running --> unavailable
-    passed --> idle
-    passed --> running
-    failed --> idle
-    failed --> running
-    unavailable --> idle
-    unavailable --> running
+    idle --> idle: CLEAR_COMMIT
+    idle --> running: CHECK_COMMIT
+    running --> idle: CLEAR_COMMIT
+    running --> running: CHECK_COMMIT
+    running --> passed: CHECK_PASSED
+    running --> failed: CHECK_FAILED
+    running --> unavailable: CHECK_UNAVAILABLE
+    passed --> idle: CLEAR_COMMIT
+    passed --> running: CHECK_COMMIT
+    failed --> idle: CLEAR_COMMIT
+    failed --> running: CHECK_COMMIT
+    unavailable --> idle: CLEAR_COMMIT
+    unavailable --> running: CHECK_COMMIT
 ```
 
-Legacy transition table (no named events yet).
-
-| State       | May transition to                          |
-| ----------- | ------------------------------------------ |
-| idle        | idle, running                              |
-| running     | idle, running, passed, failed, unavailable |
-| passed      | idle, running                              |
-| failed      | idle, running                              |
-| unavailable | idle, running                              |
+| Event             | From        | To          | Guard          |
+| ----------------- | ----------- | ----------- | -------------- |
+| CLEAR_COMMIT      | idle        | idle        | —              |
+| CHECK_COMMIT      | idle        | running     | —              |
+| CLEAR_COMMIT      | running     | idle        | —              |
+| CHECK_COMMIT      | running     | running     | —              |
+| CHECK_PASSED      | running     | passed      | currentRequest |
+| CHECK_FAILED      | running     | failed      | currentRequest |
+| CHECK_UNAVAILABLE | running     | unavailable | currentRequest |
+| CLEAR_COMMIT      | passed      | idle        | —              |
+| CHECK_COMMIT      | passed      | running     | —              |
+| CLEAR_COMMIT      | failed      | idle        | —              |
+| CHECK_COMMIT      | failed      | running     | —              |
+| CLEAR_COMMIT      | unavailable | idle        | —              |
+| CHECK_COMMIT      | unavailable | running     | —              |
 
 ## two_factor_verify.form
 
@@ -1557,20 +1640,20 @@ Final states: None
 ```mermaid
 stateDiagram-v2
     [*] --> idle
-    idle --> submitting
-    idle --> error
-    submitting --> error
-    error --> submitting
-    error --> error
+    idle --> submitting: SUBMIT
+    idle --> error: VALIDATION_ERROR
+    submitting --> error: RESPONSE_ERROR
+    error --> submitting: SUBMIT
+    error --> error: VALIDATION_ERROR
 ```
 
-Legacy transition table (no named events yet).
-
-| State      | May transition to |
-| ---------- | ----------------- |
-| idle       | submitting, error |
-| submitting | error             |
-| error      | submitting, error |
+| Event            | From       | To         | Guard          |
+| ---------------- | ---------- | ---------- | -------------- |
+| SUBMIT           | idle       | submitting | —              |
+| VALIDATION_ERROR | idle       | error      | —              |
+| RESPONSE_ERROR   | submitting | error      | currentRequest |
+| SUBMIT           | error      | submitting | —              |
+| VALIDATION_ERROR | error      | error      | —              |
 
 ## ui.undoable_action
 
@@ -1587,21 +1670,20 @@ Final states: None
 ```mermaid
 stateDiagram-v2
     [*] --> idle
-    idle --> waiting
-    waiting --> committing
-    waiting --> undoing
-    committing --> idle
-    undoing --> idle
+    idle --> waiting: SCHEDULE
+    waiting --> committing: COMMIT
+    waiting --> undoing: UNDO
+    committing --> idle: SETTLED
+    undoing --> idle: SETTLED
 ```
 
-Legacy transition table (no named events yet).
-
-| State      | May transition to   |
-| ---------- | ------------------- |
-| idle       | waiting             |
-| waiting    | committing, undoing |
-| committing | idle                |
-| undoing    | idle                |
+| Event    | From       | To         | Guard |
+| -------- | ---------- | ---------- | ----- |
+| SCHEDULE | idle       | waiting    | —     |
+| COMMIT   | waiting    | committing | —     |
+| UNDO     | waiting    | undoing    | —     |
+| SETTLED  | committing | idle       | —     |
+| SETTLED  | undoing    | idle       | —     |
 
 ## username.availability_ui
 
@@ -1618,44 +1700,62 @@ Final states: None
 ```mermaid
 stateDiagram-v2
     [*] --> idle
-    idle --> idle
-    idle --> checking
-    idle --> invalid
-    checking --> idle
-    checking --> checking
-    checking --> available
-    checking --> taken
-    checking --> reserved
-    checking --> invalid
-    checking --> unknown
-    available --> idle
-    available --> checking
-    available --> invalid
-    taken --> idle
-    taken --> checking
-    taken --> invalid
-    reserved --> idle
-    reserved --> checking
-    reserved --> invalid
-    invalid --> idle
-    invalid --> checking
-    invalid --> invalid
-    unknown --> idle
-    unknown --> checking
-    unknown --> invalid
+    idle --> idle: EDIT
+    idle --> checking: CHECK
+    idle --> invalid: INVALID_DRAFT
+    checking --> idle: EDIT
+    checking --> checking: CHECK
+    checking --> invalid: INVALID_DRAFT
+    checking --> available: RESPONSE_AVAILABLE
+    checking --> taken: RESPONSE_TAKEN
+    checking --> reserved: RESPONSE_RESERVED
+    checking --> invalid: RESPONSE_INVALID
+    checking --> unknown: RESPONSE_UNKNOWN
+    available --> idle: EDIT
+    available --> checking: CHECK
+    available --> invalid: INVALID_DRAFT
+    taken --> idle: EDIT
+    taken --> checking: CHECK
+    taken --> invalid: INVALID_DRAFT
+    reserved --> idle: EDIT
+    reserved --> checking: CHECK
+    reserved --> invalid: INVALID_DRAFT
+    invalid --> idle: EDIT
+    invalid --> checking: CHECK
+    invalid --> invalid: INVALID_DRAFT
+    unknown --> idle: EDIT
+    unknown --> checking: CHECK
+    unknown --> invalid: INVALID_DRAFT
 ```
 
-Legacy transition table (no named events yet).
-
-| State     | May transition to                                            |
-| --------- | ------------------------------------------------------------ |
-| idle      | idle, checking, invalid                                      |
-| checking  | idle, checking, available, taken, reserved, invalid, unknown |
-| available | idle, checking, invalid                                      |
-| taken     | idle, checking, invalid                                      |
-| reserved  | idle, checking, invalid                                      |
-| invalid   | idle, checking, invalid                                      |
-| unknown   | idle, checking, invalid                                      |
+| Event              | From      | To        | Guard          |
+| ------------------ | --------- | --------- | -------------- |
+| EDIT               | idle      | idle      | —              |
+| CHECK              | idle      | checking  | —              |
+| INVALID_DRAFT      | idle      | invalid   | —              |
+| EDIT               | checking  | idle      | —              |
+| CHECK              | checking  | checking  | —              |
+| INVALID_DRAFT      | checking  | invalid   | —              |
+| RESPONSE_AVAILABLE | checking  | available | currentRequest |
+| RESPONSE_TAKEN     | checking  | taken     | currentRequest |
+| RESPONSE_RESERVED  | checking  | reserved  | currentRequest |
+| RESPONSE_INVALID   | checking  | invalid   | currentRequest |
+| RESPONSE_UNKNOWN   | checking  | unknown   | currentRequest |
+| EDIT               | available | idle      | —              |
+| CHECK              | available | checking  | —              |
+| INVALID_DRAFT      | available | invalid   | —              |
+| EDIT               | taken     | idle      | —              |
+| CHECK              | taken     | checking  | —              |
+| INVALID_DRAFT      | taken     | invalid   | —              |
+| EDIT               | reserved  | idle      | —              |
+| CHECK              | reserved  | checking  | —              |
+| INVALID_DRAFT      | reserved  | invalid   | —              |
+| EDIT               | invalid   | idle      | —              |
+| CHECK              | invalid   | checking  | —              |
+| INVALID_DRAFT      | invalid   | invalid   | —              |
+| EDIT               | unknown   | idle      | —              |
+| CHECK              | unknown   | checking  | —              |
+| INVALID_DRAFT      | unknown   | invalid   | —              |
 
 ## username_signup.form
 
@@ -1672,28 +1772,32 @@ Final states: None
 ```mermaid
 stateDiagram-v2
     [*] --> idle
-    idle --> idle
-    idle --> confirming
-    idle --> error
-    confirming --> idle
-    confirming --> confirming
-    confirming --> submitting
-    confirming --> error
-    submitting --> error
-    error --> idle
-    error --> confirming
-    error --> submitting
-    error --> error
+    idle --> confirming: CONFIRM_USERNAME
+    idle --> error: VALIDATION_ERROR
+    confirming --> confirming: CONFIRM_USERNAME
+    confirming --> submitting: SUBMIT
+    confirming --> error: VALIDATION_ERROR
+    confirming --> idle: RESET
+    submitting --> error: RESPONSE_ERROR
+    error --> confirming: CONFIRM_USERNAME
+    error --> submitting: SUBMIT
+    error --> error: VALIDATION_ERROR
+    error --> idle: RESET
 ```
 
-Legacy transition table (no named events yet).
-
-| State      | May transition to                   |
-| ---------- | ----------------------------------- |
-| idle       | idle, confirming, error             |
-| confirming | idle, confirming, submitting, error |
-| submitting | error                               |
-| error      | idle, confirming, submitting, error |
+| Event            | From       | To         | Guard          |
+| ---------------- | ---------- | ---------- | -------------- |
+| CONFIRM_USERNAME | idle       | confirming | —              |
+| VALIDATION_ERROR | idle       | error      | —              |
+| CONFIRM_USERNAME | confirming | confirming | —              |
+| SUBMIT           | confirming | submitting | —              |
+| VALIDATION_ERROR | confirming | error      | —              |
+| RESET            | confirming | idle       | —              |
+| RESPONSE_ERROR   | submitting | error      | currentRequest |
+| CONFIRM_USERNAME | error      | confirming | —              |
+| SUBMIT           | error      | submitting | —              |
+| VALIDATION_ERROR | error      | error      | —              |
+| RESET            | error      | idle       | —              |
 
 ## desktop.update_readiness
 

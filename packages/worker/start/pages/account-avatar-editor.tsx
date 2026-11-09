@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { useStateMachine } from '#client/use-state-machine.ts'
+import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
+import { useMachine } from '@xstate/react'
 import {
 	avatarCropState,
 	type AvatarCropState,
@@ -70,9 +71,24 @@ export function AccountAvatarEditor({
 		offsetY: 0,
 	})
 	const [viewportSize, setViewportSize] = useState(280)
-	const [crop, transitionCrop, getCrop] = useStateMachine<AvatarCropState>(
-		avatarCropState,
-		{ status: 'decoding' },
+	const [cropSnapshot, , cropActor] = useMachine(avatarCropState, {
+		snapshot: (() => {
+			const initialView = { status: 'decoding' }
+			return avatarCropState.resolveState({
+				value: initialView.status,
+				context: uiContext(initialView),
+			})
+		})(),
+	})
+	const crop = uiState<AvatarCropState>(cropSnapshot)
+	const transitionCrop = useCallback(
+		(event: Parameters<typeof cropActor.send>[0]) =>
+			sendUiEvent(cropActor, event),
+		[cropActor],
+	)
+	const getCrop = useCallback(
+		() => uiState<AvatarCropState>(cropActor.getSnapshot()),
+		[cropActor],
 	)
 	const status =
 		crop.status === 'decode_error'
@@ -123,7 +139,13 @@ export function AccountAvatarEditor({
 	useEffect(() => {
 		const generationRef = generation
 		const ownGeneration = ++generationRef.current
-		transitionCrop({ status: 'decoding' })
+		transitionCrop({
+			...({
+				type: 'DECODE',
+				data: uiContext({ status: 'decoding' }).data,
+			} as Parameters<typeof cropActor.send>[0]),
+			requestId: ownGeneration,
+		})
 		let ownedBitmap: AvatarImageBitmap | null = null
 		let ownedUrl: string | null = null
 		const oldOverflow = document.body.style.overflow
@@ -162,18 +184,30 @@ export function AccountAvatarEditor({
 					}),
 				)
 				transitionCrop({
-					status: 'ready',
-					previewUrl: url,
-					imageSize: { width: decoded.width, height: decoded.height },
+					...({
+						type: 'DECODE_OK',
+						data: uiContext({
+							status: 'ready',
+							previewUrl: url,
+							imageSize: { width: decoded.width, height: decoded.height },
+						}).data,
+					} as Parameters<typeof cropActor.send>[0]),
+					requestId: ownGeneration,
 				})
 			} catch (caught) {
 				if (ownGeneration !== generationRef.current) return
 				transitionCrop({
-					status: 'decode_error',
-					error:
-						caught instanceof Error
-							? caught.message
-							: 'Could not read that image in the browser.',
+					...({
+						type: 'DECODE_ERROR',
+						data: uiContext({
+							status: 'decode_error',
+							error:
+								caught instanceof Error
+									? caught.message
+									: 'Could not read that image in the browser.',
+						}).data,
+					} as Parameters<typeof cropActor.send>[0]),
+					requestId: ownGeneration,
 				})
 			}
 		})()
@@ -184,7 +218,7 @@ export function AccountAvatarEditor({
 			if (ownedUrl) URL.revokeObjectURL(ownedUrl)
 			document.body.style.overflow = oldOverflow
 		}
-	}, [file, updateTransform])
+	}, [file, updateTransform, transitionCrop])
 	useEffect(() => {
 		const node = stage.current
 		if (!node || status !== 'ready') return
@@ -303,9 +337,15 @@ export function AccountAvatarEditor({
 		const ownGeneration = generation.current
 		if (
 			!transitionCrop({
-				status: 'applying',
-				previewUrl: current.previewUrl,
-				imageSize: current.imageSize,
+				...({
+					type: 'APPLY',
+					data: uiContext({
+						status: 'applying',
+						previewUrl: current.previewUrl,
+						imageSize: current.imageSize,
+					}).data,
+				} as Parameters<typeof cropActor.send>[0]),
+				requestId: ownGeneration,
 			})
 		)
 			return
@@ -323,13 +363,19 @@ export function AccountAvatarEditor({
 		} catch (caught) {
 			if (ownGeneration !== generation.current) return
 			transitionCrop({
-				status: 'prepare_error',
-				previewUrl: current.previewUrl,
-				imageSize: current.imageSize,
-				error:
-					caught instanceof Error
-						? caught.message
-						: 'Unable to prepare that avatar.',
+				...({
+					type: 'PREPARE_ERROR',
+					data: uiContext({
+						status: 'prepare_error',
+						previewUrl: current.previewUrl,
+						imageSize: current.imageSize,
+						error:
+							caught instanceof Error
+								? caught.message
+								: 'Unable to prepare that avatar.',
+					}).data,
+				} as Parameters<typeof cropActor.send>[0]),
+				requestId: ownGeneration,
 			})
 			onBusyChange(false)
 		}

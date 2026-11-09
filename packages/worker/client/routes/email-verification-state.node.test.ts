@@ -1,26 +1,59 @@
+import { canHandle } from '@kody-internal/shared/state-machine.ts'
+import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
+import { createActor } from 'xstate'
 import { expect, test } from 'vitest'
-import { createStateMachineStore } from '#client/state-machine-store.ts'
 import {
 	emailVerificationState,
 	type EmailVerificationState,
 } from './email-verification-state.ts'
-
 test('email verification excludes concurrent resends and checks', () => {
-	expect(emailVerificationState.can('sending', 'checking')).toBe(false)
-	expect(emailVerificationState.can('checking', 'sending')).toBe(false)
+	expect(canHandle(emailVerificationState, 'sending', 'CHECK')).toBe(false)
+	expect(canHandle(emailVerificationState, 'checking', 'RESEND')).toBe(false)
 
-	const store = createStateMachineStore<EmailVerificationState>(
-		emailVerificationState,
-		{ status: 'idle' },
-	)
-	expect(store.transition({ status: 'sending' })).toBe(true)
-	expect(store.transition({ status: 'checking' })).toBe(false)
-	expect(store.transition({ status: 'success', message: 'Sent.' })).toBe(true)
-	expect(store.getSnapshot()).toEqual({
+	const store = createActor(emailVerificationState, {
+		snapshot: (() => {
+			const initialView = { status: 'idle' }
+			return emailVerificationState.resolveState({
+				value: initialView.status,
+				context: uiContext(initialView),
+			})
+		})(),
+	}).start()
+	expect(
+		sendUiEvent(store, {
+			type: 'RESEND',
+			data: uiContext({ status: 'sending' }).data,
+		} as Parameters<typeof store.send>[0]),
+	).toBe(true)
+	expect(
+		sendUiEvent(store, {
+			type: 'CHECK',
+			data: uiContext({ status: 'checking' }).data,
+		} as Parameters<typeof store.send>[0]),
+	).toBe(false)
+	expect(
+		sendUiEvent(store, {
+			type: 'RESPONSE_OK',
+			data: uiContext({ status: 'success', message: 'Sent.' }).data,
+		} as Parameters<typeof store.send>[0]),
+	).toBe(true)
+	expect(uiState<EmailVerificationState>(store.getSnapshot())).toEqual({
 		status: 'success',
 		message: 'Sent.',
 	})
-	expect(store.transition({ status: 'checking' })).toBe(true)
-	expect(store.getSnapshot()).toEqual({ status: 'checking' })
-	expect(store.transition({ status: 'sending' })).toBe(false)
+	expect(
+		sendUiEvent(store, {
+			type: 'CHECK',
+			data: uiContext({ status: 'checking' }).data,
+		} as Parameters<typeof store.send>[0]),
+	).toBe(true)
+	expect(uiState<EmailVerificationState>(store.getSnapshot())).toEqual({
+		status: 'checking',
+	})
+	expect(
+		sendUiEvent(store, {
+			type: 'RESEND',
+			data: uiContext({ status: 'sending' }).data,
+		} as Parameters<typeof store.send>[0]),
+	).toBe(false)
 })

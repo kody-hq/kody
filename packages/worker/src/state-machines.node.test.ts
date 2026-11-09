@@ -6,14 +6,13 @@ import {
 } from '@kody-internal/shared/state-machine.ts'
 import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import ts from 'typescript'
 import { expect, test } from 'vitest'
 import { stateMachines, statusEnums } from '../../../tools/state-machines.ts'
 import { renderStateMachines } from '../../../tools/generate-state-machines.ts'
-
 import { agentRegistrationState } from './agent-registration/agent-registration-state.ts'
 import { deviceAuthorizationState } from './oauth-device/device-authorization-state.ts'
 import { inviteState } from './orgs/invite-state.ts'
+import ts from 'typescript'
 
 test('token-mint failure can roll a consumed registration back to claimed', () => {
 	expect(canHandle(agentRegistrationState, 'consumed', 'RESTORE')).toBe(true)
@@ -150,6 +149,7 @@ test('every declared lifecycle event is handled by the machine', () => {
 			ts.ScriptTarget.Latest,
 			true,
 		)
+		const machineId = machine.id
 		const declared: string[] = []
 		function visit(node: ts.Node) {
 			if (
@@ -177,7 +177,27 @@ test('every declared lifecycle event is handled by the machine', () => {
 			}
 			ts.forEachChild(node, visit)
 		}
-		visit(source)
+		function findMachine(node: ts.Node) {
+			if (
+				ts.isCallExpression(node) &&
+				ts.isPropertyAccessExpression(node.expression) &&
+				node.expression.name.text === 'createMachine' &&
+				node.arguments[0] &&
+				ts.isObjectLiteralExpression(node.arguments[0]) &&
+				node.arguments[0].properties.some(
+					(property) =>
+						ts.isPropertyAssignment(property) &&
+						property.name.getText(source) === 'id' &&
+						ts.isStringLiteral(property.initializer) &&
+						property.initializer.text === machineId,
+				)
+			) {
+				visit(node.expression.expression)
+				return
+			}
+			ts.forEachChild(node, findMachine)
+		}
+		findMachine(source)
 		expect(declared.length).toBeGreaterThan(0)
 		expect({ file, events: [...new Set(declared)].sort() }).toEqual({
 			file,

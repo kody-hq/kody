@@ -1,5 +1,7 @@
 /** @jsxImportSource @emotion/react */
-import { useStateMachine } from '#client/use-state-machine.ts'
+import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
+import { useCallback, useState, type FormEvent } from 'react'
+import { useMachine } from '@xstate/react'
 import {
 	twoFactorVerifyState,
 	type TwoFactorVerifyState,
@@ -28,7 +30,6 @@ import {
 	stackedPageCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-import { useState, type FormEvent } from 'react'
 import { authFormErrorMessage } from '#universal/auth-form-errors.ts'
 import { packageAppDeviceSignInTarget } from '#universal/package-app-oauth-paths.ts'
 import { AuthFormFallback } from '../components/auth-form-fallback.tsx'
@@ -40,7 +41,6 @@ import { Honeypot } from '../components/honeypot-field.tsx'
 import { usePublicAuthProtection } from '../components/public-auth-protection.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
-
 function buildLoginHref(redirectTo: string | null) {
 	return redirectTo
 		? `/login?redirectTo=${encodeURIComponent(redirectTo)}`
@@ -49,9 +49,24 @@ function buildLoginHref(redirectTo: string | null) {
 
 export function VerifyRoute() {
 	const verifyTwoFactor = useServerFn(verifyWebsiteTwoFactor)
-	const [flow, transition, getFlow] = useStateMachine<TwoFactorVerifyState>(
-		twoFactorVerifyState,
-		{ status: 'idle' },
+	const [flowSnapshot, , flowActor] = useMachine(twoFactorVerifyState, {
+		snapshot: (() => {
+			const initialView = { status: 'idle' }
+			return twoFactorVerifyState.resolveState({
+				value: initialView.status,
+				context: uiContext(initialView),
+			})
+		})(),
+	})
+	const flow = uiState<TwoFactorVerifyState>(flowSnapshot)
+	const transition = useCallback(
+		(event: Parameters<typeof flowActor.send>[0]) =>
+			sendUiEvent(flowActor, event),
+		[flowActor],
+	)
+	const getFlow = useCallback(
+		() => uiState<TwoFactorVerifyState>(flowActor.getSnapshot()),
+		[flowActor],
 	)
 	const status = flow.status
 	const message = 'message' in flow ? flow.message : null
@@ -84,14 +99,25 @@ export function VerifyRoute() {
 		const protection = readPublicFormProtection(formData, form)
 		if (!code) {
 			transition({
-				status: 'error',
-				message: 'Enter the 6-digit code from your authenticator app.',
-			})
+				type: flowActor.getSnapshot().matches('submitting')
+					? 'RESPONSE_ERROR'
+					: 'VALIDATION_ERROR',
+				data: uiContext({
+					status: 'error',
+					message: 'Enter the 6-digit code from your authenticator app.',
+				}).data,
+			} as Parameters<typeof flowActor.send>[0])
 			return
 		}
 
 		setFormErrorDismissed(true)
-		if (!transition({ status: 'submitting' })) return
+		if (
+			!transition({
+				type: 'SUBMIT',
+				data: uiContext({ status: 'submitting' }).data,
+			} as Parameters<typeof flowActor.send>[0])
+		)
+			return
 
 		try {
 			const payload = await verifyTwoFactor({
@@ -104,12 +130,17 @@ export function VerifyRoute() {
 					return
 				}
 				transition({
-					status: 'error',
-					message:
-						typeof payload?.error === 'string'
-							? payload.error
-							: 'Unable to verify the code.',
-				})
+					type: flowActor.getSnapshot().matches('submitting')
+						? 'RESPONSE_ERROR'
+						: 'VALIDATION_ERROR',
+					data: uiContext({
+						status: 'error',
+						message:
+							typeof payload?.error === 'string'
+								? payload.error
+								: 'Unable to verify the code.',
+					}).data,
+				} as Parameters<typeof flowActor.send>[0])
 				resetTurnstileWidgets()
 				return
 			}
@@ -119,9 +150,14 @@ export function VerifyRoute() {
 			)
 		} catch {
 			transition({
-				status: 'error',
-				message: 'Network error. Please try again.',
-			})
+				type: flowActor.getSnapshot().matches('submitting')
+					? 'RESPONSE_ERROR'
+					: 'VALIDATION_ERROR',
+				data: uiContext({
+					status: 'error',
+					message: 'Network error. Please try again.',
+				}).data,
+			} as Parameters<typeof flowActor.send>[0])
 			resetTurnstileWidgets()
 		}
 	}

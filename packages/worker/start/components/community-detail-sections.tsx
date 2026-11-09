@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import type { FormFlowState } from '#client/state-machine-store.ts'
+import type { FormFlowState } from '#client/ui-actor.ts'
 import { mergeCss } from './merge-css.ts'
 import { SiteLink } from './site-link.tsx'
 import type { CSSObject } from '@emotion/react'
