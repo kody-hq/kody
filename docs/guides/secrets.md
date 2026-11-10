@@ -206,6 +206,7 @@ on connected tool servers.
 - [Secrets and host approval](../use/secrets-and-values.md) — the MCP-level
   reference with the exact placeholder, header, and approval semantics.
 - [Custom secret providers](./secret-providers.md) — vault placeholders, account
-  binding, and package grants.
+  binding, and package grants. Watch:
+  [Kody secret providers: use password manager items without exposing them](https://www.youtube.com/watch?v=ZB9ex2SFVK4).
 - [Integration bootstrap](./integration-bootstrap.md) — the sequence before a
   secret-backed package is saved.

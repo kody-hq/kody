@@ -18,6 +18,9 @@ the agent back in when one of them needs it, pick the path the agent's host
 actually supports. A laptop agent with no wake path cannot be woken. Say so, and
 offer to build the Kody half now.
 
+Watch:
+[Bots and Kody: share what your bot builds with your team and agents](https://www.youtube.com/watch?v=ioddamBaK8M).
+
 ## Pick a path
 
 | Your MCP client or host                                         | Use                                                  |

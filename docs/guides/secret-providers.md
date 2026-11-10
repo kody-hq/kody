@@ -17,6 +17,9 @@ providers use `{{secret/<provider>:<ref>}}`.
 Provider packages declare an id such as `1password`. Provider logic lives in a
 saved package you bind; Kody core does not talk to the vault itself.
 
+> [!WATCH] https://www.youtube.com/watch?v=ZB9ex2SFVK4 Watch: Kody secret
+> providers: use password manager items without exposing them
+
 ## Bind a provider
 
 1. Save the vault door key as a Kody user secret. Paste it on
