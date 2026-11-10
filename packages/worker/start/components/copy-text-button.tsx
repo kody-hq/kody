@@ -1,6 +1,13 @@
 /** @jsxImportSource @emotion/react */
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
-import { useCallback, useEffect, useId, useRef, type ReactNode } from 'react'
+import {
+	useCallback,
+	useEffect,
+	useId,
+	useRef,
+	type ReactElement,
+	type ReactNode,
+} from 'react'
 import { useMachine } from '@xstate/react'
 import {
 	clipboardFeedbackState,
@@ -22,6 +29,8 @@ export const onboardingCopiedConnectActionEvent =
 	'kody-onboarding-connect-copied'
 
 type CopyTextButtonProps = {
+	title?: string
+	wrapButton?: (button: ReactElement) => ReactElement
 	value: string
 	iconOnly?: boolean
 	idleLabel?: ReactNode
@@ -195,7 +204,7 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 		)
 	}
 
-	return (
+	const button = (
 		<button
 			aria-busy={copyFlow.status === 'copying'}
 			disabled={copyFlow.status === 'copying'}
@@ -206,7 +215,10 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 			// button's own name: `aria-label` overrides the label text, so a named
 			// button would keep reading "Copy package id" after it had copied.
 			aria-describedby={`${id}-copy-status`}
-			title={props.iconOnly ? (props.ariaLabel ?? 'Copy') : undefined}
+			title={
+				props.title ??
+				(props.iconOnly ? (props.ariaLabel ?? 'Copy') : undefined)
+			}
 			css={
 				props.iconOnly
 					? {
@@ -243,4 +255,5 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 			</span>
 		</button>
 	)
+	return props.wrapButton ? props.wrapButton(button) : button
 }
