@@ -81,11 +81,13 @@ function loadCandidate(
 			: loadCredentials(mcpUrl, input.loginBackend, undefined, {
 					org: input.org,
 				})
-		// Desktop (`KODY_CREDENTIAL_SOURCE=login`) never touches the old slot.
+		// Desktop (`KODY_CREDENTIAL_SOURCE=login`) never touches the old slot,
+		// and an old-slot token has no org, so `--org` never adopts it.
 		const desktop =
 			(input.env ?? process.env).KODY_CREDENTIAL_SOURCE === 'login'
 		const saved =
-			login ?? (desktop ? null : adoptLegacyStoredApiToken(input, mcpUrl))
+			login ??
+			(desktop || input.org ? null : adoptLegacyStoredApiToken(input, mcpUrl))
 		return { candidate: saved ? { source, token: null, login: saved } : null }
 	} catch (error) {
 		return { candidate: null, error }

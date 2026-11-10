@@ -128,6 +128,24 @@ test('resolveCliCredential adopts an old-slot token only when nothing is saved',
 	assert.deepEqual(deleted, [apiUrl])
 })
 
+test('resolveCliCredential never adopts an old-slot token for --org', () => {
+	const saved: Array<StoredCredentials> = []
+	const credential = resolveCliCredential({
+		env: {},
+		apiUrl,
+		mcpUrl,
+		org: 'acme',
+		loadApiToken: () => stored,
+		loadLogin: () => null,
+		saveLogin: (credentials) => {
+			saved.push(credentials)
+			return { backend: createFileBackend('/dev/null') }
+		},
+	})
+	assert.equal(credential, null)
+	assert.equal(saved.length, 0)
+})
+
 test('resolveCliCredential ignores an unreadable store that would not be used', () => {
 	const credential = resolveCliCredential({
 		tokenValues: { token: 'kody_at_flag' },
