@@ -650,34 +650,43 @@ test('api command refuses bootstrap redeem and documents auth bootstrap', async 
 })
 
 test('--org selects an org for org-scoped commands and rejects a blank slug', async () => {
-	await withTempKodyHome(async () => {
-		let stderr = ''
-		const missing = await runCli(['search', '--org', 'acme'], {
-			stderr: (text) => {
-				stderr += text
-			},
-		})
-		assert.equal(missing, 1)
-		assert.match(stderr, /No login stored for org "acme"|Not logged in/)
+	// The OS keyring is per user, not per HOME: use an origin no other test
+	// (or a real `kody login`) saves to.
+	const previousMcpUrl = process.env.KODY_MCP_URL
+	process.env.KODY_MCP_URL = 'http://127.0.0.1:9/org-flag-unreachable-mcp'
+	try {
+		await withTempKodyHome(async () => {
+			let stderr = ''
+			const missing = await runCli(['search', '--org', 'acme'], {
+				stderr: (text) => {
+					stderr += text
+				},
+			})
+			assert.equal(missing, 1)
+			assert.match(stderr, /No login stored for org "acme"|Not logged in/)
 
-		stderr = ''
-		const blank = await runCli(['login', '--org', '   '], {
-			stderr: (text) => {
-				stderr += text
-			},
-		})
-		assert.equal(blank, 1)
-		assert.match(stderr, /kody login --org acme/)
+			stderr = ''
+			const blank = await runCli(['login', '--org', '   '], {
+				stderr: (text) => {
+					stderr += text
+				},
+			})
+			assert.equal(blank, 1)
+			assert.match(stderr, /kody login --org acme/)
 
-		stderr = ''
-		const wrongCommand = await runCli(['install', '--org', 'acme'], {
-			stderr: (text) => {
-				stderr += text
-			},
+			stderr = ''
+			const wrongCommand = await runCli(['install', '--org', 'acme'], {
+				stderr: (text) => {
+					stderr += text
+				},
+			})
+			assert.equal(wrongCommand, 1)
+			assert.match(stderr, /`--org` is not used with `kody install`/)
 		})
-		assert.equal(wrongCommand, 1)
-		assert.match(stderr, /`--org` is not used with `kody install`/)
-	})
+	} finally {
+		if (previousMcpUrl === undefined) delete process.env.KODY_MCP_URL
+		else process.env.KODY_MCP_URL = previousMcpUrl
+	}
 })
 
 type ApiStub = {
