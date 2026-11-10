@@ -178,9 +178,9 @@ export async function sendUserUsageCampaignEmails(input: {
 }
 
 /**
- * Open the VerifiedNoMcp event series without claiming a send. Used when
- * verify-time connect-agent mail fails closed so the hourly sweep can retry
- * instead of first-observing the user as seed.
+ * Open the VerifiedNoMcp event series without claiming a send. Verify-email
+ * uses this so the founder welcome can go out immediately while connect-agent
+ * mail waits for the hourly sweep's first-send dwell.
  */
 export async function openVerifiedNoMcpCampaignEvent(input: {
 	env: Env
@@ -218,8 +218,8 @@ export async function openVerifiedNoMcpCampaignEvent(input: {
 }
 
 /**
- * Verify-time VerifiedNoMcp send 1. Records the campaign row as event-origin
- * so later hourly nudges can send at most one more mail, then stop.
+ * Record VerifiedNoMcp send 1 as event-origin so later hourly nudges can send
+ * at most one more mail, then stop.
  */
 export async function recordVerifiedNoMcpCampaignSend(input: {
 	env: Env

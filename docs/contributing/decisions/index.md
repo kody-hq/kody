@@ -137,9 +137,11 @@ Open these before proposing a new primitive, surface, or storage home.
 - [0056 — Explicit MCP/API session → CLI credential bootstrap](./0056-cli-credential-bootstrap.md)
   (amended 2026-10-06: required lifetimes, 500-token cap, reclaim by soonest
   expiry; 2026-10-09 Teams P4 + 0092: default scopes restore `local-execute`
-  parity including `integration:read` / `secret:use`) — one-shot `kody_bc_…`
-  code from `cliCredentialBootstrap` (capability + Open API); CLI redeems for
-  `kody_at_…` without chat-facing secrets or host-token scavenging
+  parity including `integration:read` / `secret:use`; 2026-11-09: redeemed codes
+  mint the same token as `kody login`, so `scopes` and `lifetime` are optional)
+  — one-shot `kody_bc_…` code from `cliCredentialBootstrap` (capability + Open
+  API); CLI redeems for `kody_at_…` without chat-facing secrets or host-token
+  scavenging
 - [0057 — No framework platform affordance for package bundles](./0057-no-framework-platform-affordance.md)
   — do not vendor, mount, inject, sniff, or rewrite package bundles for Remix,
   TanStack, Preact, or any other framework; packages bring frameworks themselves

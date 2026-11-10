@@ -19,6 +19,10 @@ import { kodyDiscordInviteUrl } from '#universal/community-links.ts'
 export const userAccountEmailKvKeyPrefix = 'account-email-user:v1'
 export const userAccountEmailClaimTtlSeconds = 30 * 24 * 60 * 60
 
+/**
+ * Billing and credit transactional mail. Connect-agent and other tips live in
+ * the usage campaign.
+ */
 export type UserAccountEmailKind =
 	| 'billing_success'
 	| 'payment_failed'

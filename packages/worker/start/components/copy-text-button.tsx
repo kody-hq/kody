@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
-import { useCallback, useEffect, useId, useRef, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, type ReactNode } from 'react'
 import { useActor } from '@xstate/react'
 import {
 	clipboardFeedbackState,
@@ -120,7 +120,6 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 	)
 
 	const copyState = copyFlow.status === 'copying' ? 'idle' : copyFlow.status
-	const id = useId()
 	const mounted = useRef(false)
 	const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 	useEffect(() => {
@@ -191,10 +190,6 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 			type="button"
 			className={props.class}
 			aria-label={props.ariaLabel}
-			// The result is announced by the live region below rather than by the
-			// button's own name: `aria-label` overrides the label text, so a named
-			// button would keep reading "Copy package id" after it had copied.
-			aria-describedby={`${id}-copy-status`}
 			title={props.iconOnly ? (props.ariaLabel ?? 'Copy') : undefined}
 			css={
 				props.iconOnly
@@ -223,7 +218,9 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 					{renderLabel('error', 'Copy failed')}
 				</>
 			)}
-			<span id={`${id}-copy-status`} role="status" css={visuallyHiddenCss}>
+			{/* Live region, not a useId described-by target. Tree-position IDs
+			    shift when client-only useId calls land earlier and fail SSR. */}
+			<span role="status" css={visuallyHiddenCss}>
 				{copyState === 'copied'
 					? (props.copiedLabel ?? 'Copied')
 					: copyState === 'error'

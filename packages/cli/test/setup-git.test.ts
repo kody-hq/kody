@@ -127,6 +127,10 @@ test('decideSetupGitToken reuses a suitable user-owned token', () => {
 		},
 	})
 	assert.equal(decision.action, 'reuse')
+	if (decision.action === 'reuse') {
+		assert.equal(decision.stored.tokenId, stored.tokenId)
+		assert.equal(decision.stored.token, stored.token)
+	}
 })
 
 test('decideSetupGitToken mints when package scopes are missing', () => {
@@ -182,8 +186,11 @@ test('gitCredentialHelperCommand prefers version-capable global or exact npx pin
 		true,
 	)
 	assert.equal(isEphemeralNpxEntryPath('/usr/local/bin/kody'), false)
-	assert.equal(cliExactVersionForNpx('1.16.5'), '1.16.5')
-	assert.equal(cliExactVersionForNpx('0.0.0-semantically-released'), '1.18.0')
+	assert.equal(cliExactVersionForNpx('1.16.5-beta.1'), '1.16.5')
+	const fallback = cliExactVersionForNpx('0.0.0-semantically-released')
+	assert.match(fallback, /^\d+\.\d+\.\d+$/)
+	assert.notEqual(fallback, '0.0.0-semantically-released')
+	assert.equal(cliVersionSupportsGitCredential(fallback), true)
 	assert.equal(cliVersionSupportsGitCredential('1.16.0'), true)
 	assert.equal(cliVersionSupportsGitCredential('1.1.0'), false)
 
@@ -497,6 +504,7 @@ test('authSetupGit installs the helper for the saved credential without minting'
 	assert.equal(result.minted, false)
 	assert.equal(result.tokenId, 'tok_saved')
 	assert.equal(gitCalls.length, 2)
+	assert.ok(fetched.some((url) => url.includes('/v1/tokens/current')))
 	assert.ok(fetched.every((url) => !url.includes('/v1/tokens/bootstrap')))
 })
 
