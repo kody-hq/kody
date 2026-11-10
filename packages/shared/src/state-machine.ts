@@ -116,7 +116,11 @@ export function canHandle<M extends AnyStateMachine>(
 	)
 }
 
-/** Structural sources, including guarded alternatives; SQL must retain its guards. */
+/**
+ * Candidate sources: states that declare a transition for `eventType`. Guards
+ * are not evaluated, so a listed source may still reject the event; callers
+ * (and their SQL) must enforce guards themselves.
+ */
 export function sourcesOf<M extends AnyStateMachine>(
 	machine: M,
 	eventType: EventFrom<M>['type'],
@@ -132,9 +136,9 @@ export function sourcesOf<M extends AnyStateMachine>(
 }
 
 /**
- * SQL `IN (...)` list of states that handle `eventType`. Pass `selectedSources`
- * to keep a predicate-order subset; every selected source must actually handle
- * the event.
+ * SQL `IN (...)` list of candidate sources for `eventType` (see `sourcesOf`;
+ * guards are not evaluated). Pass `selectedSources` to keep a predicate-order
+ * subset; every selected source must be a candidate source.
  */
 export function sqlSourcesOf<M extends AnyStateMachine>(
 	machine: M,
@@ -166,7 +170,12 @@ export function sqlStatesOf<M extends AnyStateMachine>(
 	)
 }
 
-/** SQL `IN (...)` list of one source after proving `event` is legal from it. */
+/**
+ * SQL `IN (...)` list of one source after checking `event` is legal from it.
+ * The check runs `nextState` with no record context, so context-dependent
+ * guards see the machine's default context, and a machine with a context
+ * initializer throws. Use it only for machines whose guards ignore context.
+ */
 export function sqlSourceOf<M extends AnyStateMachine>(
 	machine: M,
 	from: LifecycleStateOf<M>,

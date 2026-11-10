@@ -59,6 +59,7 @@ test('retries a lost connection and succeeds on a later attempt', () => {
 	)
 	assert.deepEqual(result, { attempts: 2 })
 	assert.deepEqual(delays, appleDelaysMs.slice(0, 1))
+	assert.ok(delays[0] > 0)
 	assert.equal(fake.calls.length, 2)
 })
 

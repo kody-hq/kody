@@ -54,9 +54,11 @@ using the token gets `401 API token was revoked.`
   Every command picks `--token`, then `KODY_API_TOKEN`, then the one saved CLI
   credential (`kody login` or `kody auth bootstrap`). `kody whoami` reports that
   same pick. A leftover token from an older CLI's separate API-token slot is
-  moved into the saved credential when nothing else is saved; a terminal
-  `kody login` deletes it. A desktop login (`KODY_CREDENTIAL_SOURCE=login`)
-  never reads or adopts that old slot.
+  moved into the saved credential when nothing else is saved and the command
+  names no org; a command run with `--org` or `KODY_ORG` never adopts it,
+  because that old token has no org. A terminal `kody login` tries to delete it
+  and says so when it could not. A desktop login
+  (`KODY_CREDENTIAL_SOURCE=login`) never reads or adopts that old slot.
 - **HTTPS**: `GET /v1/tokens` and `DELETE /v1/tokens/{token_id}` on
   [api.kody.codes](https://api.kody.codes) with a token that holds `token:read`
   / `token:delete`.

@@ -166,9 +166,11 @@ npx @kodycodes/cli api usageGet --params '{}'
   `kody login`; CI/headless uses `tokenCreate` + `KODY_API_TOKEN`.
 - For `execute --local` specifically: `--token` / `KODY_API_TOKEN` wins when
   set; else the one saved CLI credential from `kody login` or
-  `kody auth bootstrap` (same slot, whichever ran last). A token an older CLI
-  left in the old API-token slot is moved into that credential only when nothing
-  else is saved; `kody login` deletes it. For a different API origin, use
+  `kody auth bootstrap` for the selected org (see
+  [Which credential a command uses](#which-credential-a-command-uses)). A token
+  an older CLI left in the old API-token slot is moved into that credential only
+  when nothing else is saved and no `--org` / `KODY_ORG` is given; `kody login`
+  tries to delete it. For a different API origin, use
   `auth bootstrap --api-url <origin>` or set `KODY_API_TOKEN`.
 - Wrong/expired token → 401 with the same agent-first not-authenticated guidance
   (or the OAuth platform-gap message when the bearer is login OAuth).
@@ -194,12 +196,18 @@ saved credential. Unset it for normal CLI precedence.
 
 - The saved credential comes from `kody login` or `kody auth bootstrap`. Both
   save the same kind of `kody_at_…` (every scope your org role grants, 14d idle
-  / 3mo max) in the same slot, so whichever ran last is what every command,
-  including git, uses. There is no second token and no fallback between them.
+  / 3mo max) in the same per-org slot, so for each org, whichever ran last for
+  that org is what every command, including git, uses. A command acts as
+  `--org`, then `KODY_ORG`, then the active org (the last `kody login` or
+  `kody auth bootstrap`): after logging in to `acme` and then `beta`,
+  `--org acme` still uses the `acme` credential. There is no second token and no
+  fallback between them.
 - A token saved by an older CLI in the old API-token slot is moved into the
   saved credential the first time nothing else is saved, and is ignored once a
-  login exists. `kody login` deletes it. Old tokens keep working until they
-  expire.
+  login exists. That old token has no org, so a command run with `--org` or
+  `KODY_ORG` never adopts it. `kody login` tries to delete it and prints a note
+  when it could not; the leftover is ignored either way. Old tokens keep working
+  until they expire.
 - `kody whoami` prints `credential:` (which one is in use, with its token id)
   and its `scopes:`. With `--json` the same data is under `credential`.
 - `insufficient_scope` errors end with `Credential used: …` and how to widen it.
