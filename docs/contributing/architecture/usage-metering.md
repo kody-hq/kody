@@ -1035,26 +1035,19 @@ action is `mailto:me@kentcdodds.com` (the existing testimonial channel — the
 homepage carousel has no intake form).
 
 First sweep of an existing user seeds the current state without mailing
-(backfill is out of scope). Verify-time connect-agent mail is send 1 of
-`VerifiedNoMcp` (`origin=event`) and goes out during `GET /verify-email`, not on
-a later cron. The handler resolves the sender with the same request URL the
-verification mail uses, then passes the send to `waitUntil`. A floating promise
-is cancelled when the verified page is returned, which drops the mail and never
-opens the event-origin retry row; the next sweep then seeds the user and does
-not backfill. Deleting the account afterward does not send or cancel that mail.
-If the immediate send fails closed (no email config even with the request URL,
-or a failed unsubscribe mint or Cloudflare send), the verify path still opens an
-event-origin row with `send_count` 0 so the hourly sweep can retry after the
-normal 24-hour first-send dwell instead of seeding the user permanently. Tips
-opt-out skips the mail and does not open that row. The campaign upsert keeps
-`MAX(send_count)` and the later `last_sent_at` when the state is unchanged, and
-never downgrades `event` to `seed`, so a later sweep persist cannot clobber that
-verify-time row. A real state change still resets `send_count`. Later sends wait
-24 hours after a transition and 5 days between sends in the same state. The send
-ledger claim is `INSERT OR IGNORE` on `(user_id, state, send_index)` and is
-released if the Cloudflare send fails or unsubscribe-token minting fails (no
-footerless campaign mail). A lost claim race does not persist a stale
-`send_count`. Kit is not part of this machine.
+(backfill is out of scope). `GET /verify-email` sends the founder welcome
+immediately and opens a VerifiedNoMcp event-origin campaign row with
+`send_count` 0. Connect-agent mail waits for the hourly sweep's 24-hour
+first-send dwell so it does not land seconds after the welcome. Tips opt-out
+skips the mail but does not prevent or remove campaign rows. The campaign upsert
+keeps `MAX(send_count)` and the later `last_sent_at` when the state is
+unchanged, and never downgrades `event` to `seed`, so a later sweep persist
+cannot clobber that verify-time row. A real state change still resets
+`send_count`. Later sends wait 24 hours after a transition and 5 days between
+sends in the same state. The send ledger claim is `INSERT OR IGNORE` on
+`(user_id, state, send_index)` and is released if the Cloudflare send fails or
+unsubscribe-token minting fails (no footerless campaign mail). A lost claim race
+does not persist a stale `send_count`. Kit is not part of this machine.
 
 Campaign mail is the only surface gated by the **Kody tips** preference
 (`user_tips_email_opt_outs`). Each campaign send includes an “Unsubscribe from

@@ -147,7 +147,7 @@ order the CLI picks them in:
 ```bash
 # Preferred for agents on MCP (no tokenCreate, no second OAuth):
 # 1. MCP api tool, operationId cliCredentialBootstrap → { bootstrap_code, cli_command }
-npx @kodycodes/cli auth bootstrap --code 'kody_bc_…' --lifetime short
+npx @kodycodes/cli auth bootstrap --code 'kody_bc_…'
 npx @kodycodes/cli execute --local --file ./task.js
 
 export KODY_API_TOKEN=…   # scopes: local-execute (+ search:read for search)

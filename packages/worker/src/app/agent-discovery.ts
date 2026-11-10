@@ -159,9 +159,9 @@ credentials into chat).
 
 No Kody account yet: the person can pick Try it out on the \`kody login\` sign-in screen and claim the account later by telling their agent (\`guestClaimStart\`).
 
-Default bootstrap scopes include local-execute use scopes plus
-\`package:write\`, \`package:create\`, and \`token:delete\`. They do not include
-\`search:read\`. Prefer MCP \`search\` for discovery.
+Omit \`scopes\` to get the same scopes as \`kody login\` (every org permission,
+capped by your session and org role). Pass \`scopes\` only to narrow. Prefer MCP
+\`search\` for discovery.
 
 ## Stay current
 

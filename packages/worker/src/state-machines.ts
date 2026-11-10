@@ -32,6 +32,7 @@ import { repoSessionState } from './repo/repo-session-state.ts'
 import { packageInvocationState } from './run-records/package-invocation-state.ts'
 import { usageCampaignState } from './usage/usage-campaign-state.ts'
 
+/** Event-driven XState machines registered for graph docs and tests. */
 export const stateMachines = [
 	{
 		machine: deviceAuthorizationState,
@@ -133,6 +134,7 @@ export const stateMachines = [
 	},
 ] as const
 
+/** Unconstrained status columns (`defineStatusEnum`); no transition graph. */
 export const statusEnums = [
 	{
 		statusEnum: runState,
