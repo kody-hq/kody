@@ -82,9 +82,7 @@ test('every production lifecycle or status enum is registered for documentation'
 					if (
 						ts.isCallExpression(node) &&
 						((ts.isIdentifier(node.expression) &&
-							['defineStateMachine', 'defineStatusEnum'].includes(
-								node.expression.text,
-							)) ||
+							node.expression.text === 'defineStatusEnum') ||
 							(ts.isPropertyAccessExpression(node.expression) &&
 								node.expression.name.text === 'createMachine'))
 					)
@@ -98,7 +96,7 @@ test('every production lifecycle or status enum is registered for documentation'
 	scan('packages')
 	expect(
 		found.sort(),
-		'Register each defineStateMachine call with its machine and file in its package state-machines.ts registry, include that registry in tools/state-machines.ts, then run npm run state-machines:generate.',
+		'Register each XState machine or defineStatusEnum call with its definition and file in its package state-machines.ts registry, include that registry in tools/state-machines.ts, then run npm run state-machines:generate.',
 	).toEqual(
 		[...stateMachines, ...statusEnums]
 			.map((entry) =>
@@ -110,9 +108,7 @@ test('every production lifecycle or status enum is registered for documentation'
 
 test('registry ids are unique and event-driven graphs have valid reachable states', () => {
 	const ids = [
-		...stateMachines.map(({ machine }) =>
-			'getTransitionData' in machine ? machine.id : machine.name,
-		),
+		...stateMachines.map(({ machine }) => machine.id),
 		...statusEnums.map(({ statusEnum }) => statusEnum.name),
 	]
 	expect(new Set(ids).size).toBe(ids.length)
@@ -120,7 +116,6 @@ test('registry ids are unique and event-driven graphs have valid reachable state
 		for (const state of statusEnum.values)
 			expect(state).toMatch(/^[a-z][a-z0-9_-]*$/)
 	for (const { machine } of stateMachines) {
-		if (!('getTransitionData' in machine)) continue
 		const states = statesOf(machine)
 		const finals = finalStatesOf(machine)
 		const initial = machine.root.initial.target![0]!.key
@@ -142,7 +137,6 @@ test('registry ids are unique and event-driven graphs have valid reachable state
 test('every declared lifecycle event is handled by the machine', () => {
 	const root = resolve(import.meta.dirname, '../../..')
 	for (const { machine, file } of stateMachines) {
-		if (!('getTransitionData' in machine)) continue
 		const source = ts.createSourceFile(
 			file,
 			readFileSync(resolve(root, file), 'utf8'),
@@ -210,12 +204,11 @@ test('every declared lifecycle event is handled by the machine', () => {
 	}
 })
 
-test('documentation separates replacement enums from legacy and event-driven graphs', () => {
+test('documentation separates replacement enums from event-driven graphs', () => {
 	const rendered = renderStateMachines(stateMachines, statusEnums)
 	const [machines, enums] = rendered.split(
 		'## Status enums (not state machines)',
 	)
-	expect(machines).not.toContain('Legacy transition table')
 	expect(machines).toContain('| CONSUME | pending | consumed | — |')
 	expect(machines).toContain('pending --> consumed: CONSUME')
 	expect(machines).not.toContain('consumed --> expired')

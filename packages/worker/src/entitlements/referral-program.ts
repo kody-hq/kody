@@ -637,7 +637,7 @@ export async function rewardReferralForPaidInvoice(input: {
 				     reward_invoice_id = COALESCE(reward_invoice_id, ?),
 				     held_invoice_id = NULL,
 				     held_period_end_at = NULL
-				 WHERE id = ? AND (status IN ${rewardReferralGuard} OR credits_granted_at IS NULL)`,
+				 WHERE id = ? AND (status IN ${rewardReferralGuard} OR (status = 'rewarded' AND credits_granted_at IS NULL))`,
 			)
 			.bind(rewardedAt, invoiceId, pending.id),
 		stackReferralCreditStatement({
@@ -660,7 +660,7 @@ export async function rewardReferralForPaidInvoice(input: {
 			.prepare(
 				`UPDATE referrals
 				 SET credits_granted_at = ?
-				 WHERE id = ? AND credits_granted_at IS NULL`,
+				 WHERE id = ? AND status = 'rewarded' AND credits_granted_at IS NULL`,
 			)
 			.bind(rewardedAt, pending.id),
 	])

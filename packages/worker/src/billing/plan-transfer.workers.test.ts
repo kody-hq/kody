@@ -18,6 +18,112 @@ const day = 24 * 60 * 60
 const now = new Date('2026-11-07T17:00:00.000Z')
 const nowSeconds = Math.floor(now.valueOf() / 1000)
 
+test.each(['release', 'step', 'complete'] as const)(
+	'stale billing lease %s cannot overwrite a newer claimant',
+	async (phase) => {
+		using stripe = createFakeStripe()
+		const seeded = await seedMove({ interval: 'month', stripe })
+		const transferId = crypto.randomUUID()
+		await startPlanTransfer({
+			env: testEnv(),
+			actorUserId: seeded.ownerId,
+			actorEmail: null,
+			transferId,
+			sourceOrgId: seeded.sourceOrgId,
+			targetOrgId: seeded.targetOrgId,
+			targetInterval: 'month',
+			origin: 'https://kody.test',
+			now,
+		})
+		if (phase !== 'release')
+			await env.APP_DB.prepare(
+				'UPDATE org_plan_transfers SET credit_amount_minor = 0, currency = ?, source_canceled_at = ? WHERE id = ?',
+			)
+				.bind(
+					'usd',
+					phase === 'complete' ? now.toISOString() : null,
+					transferId,
+				)
+				.run()
+		const replacementNow = new Date(now.valueOf() + 3 * 60 * 1000).toISOString()
+		const replacementExpiry = new Date(
+			now.valueOf() + 5 * 60 * 1000,
+		).toISOString()
+		let replaced = false
+		const db = new Proxy(env.APP_DB, {
+			get(target, property) {
+				if (property !== 'prepare') {
+					const value = Reflect.get(target, property)
+					return typeof value === 'function' ? value.bind(target) : value
+				}
+				return (sql: string) => {
+					const statement = target.prepare(sql)
+					const matches =
+						phase === 'release'
+							? sql.includes('SET status = ?,')
+							: phase === 'step'
+								? sql.includes('SET source_canceled_at = ?')
+								: sql.includes("SET status = 'completed'")
+					if (!matches) return statement
+					return new Proxy(statement, {
+						get(prepared, key) {
+							if (key !== 'bind') {
+								const value = Reflect.get(prepared, key)
+								return typeof value === 'function'
+									? value.bind(prepared)
+									: value
+							}
+							return (...values: Array<unknown>) => {
+								const bound = prepared.bind(...values)
+								return new Proxy(bound, {
+									get(query, member) {
+										if (member === 'run')
+											return async () => {
+												if (!replaced) {
+													replaced = true
+													const claim = await target
+														.prepare(
+															"UPDATE org_plan_transfers SET lease_expires_at = ?, updated_at = ? WHERE id = ? AND status = 'applying' AND lease_expires_at < ?",
+														)
+														.bind(
+															replacementExpiry,
+															replacementNow,
+															transferId,
+															replacementNow,
+														)
+														.run()
+													expect(claim.meta.changes).toBe(1)
+												}
+												return query.run()
+											}
+										const value = Reflect.get(query, member)
+										return typeof value === 'function'
+											? value.bind(query)
+											: value
+									},
+								})
+							}
+						},
+					})
+				}
+			},
+		})
+		await advancePlanTransfer({
+			env: { ...testEnv(), APP_DB: db },
+			transferId,
+			now,
+		})
+		expect(replaced).toBe(true)
+		expect(await readPlanTransfer(env.APP_DB, transferId)).toMatchObject({
+			status: 'applying',
+			lease_expires_at: replacementExpiry,
+			updated_at: replacementNow,
+			completed_at: null,
+			source_canceled_at: phase === 'complete' ? now.toISOString() : null,
+		})
+	},
+)
+
 type FakeSubscription = {
 	id: string
 	customer: string
