@@ -33,7 +33,7 @@ export type StorageSqlReadCollection = StorageSqlReadResult & {
 	readCeilingExceeded: boolean
 }
 
-type StorageSqlReadCursor = {
+export type StorageSqlReadCursor = {
 	columnNames: Iterable<string>
 	rowsRead: number
 	rowsWritten: number

@@ -8,7 +8,7 @@ import {
 	storageSqlRowsReadCeiling,
 	storageSqlRowsReadWarnAt,
 	type StorageSqlReadValue,
-} from '#worker/storage-sql-read-policy.ts'
+} from '@kody-internal/shared/storage-sql-read-policy.ts'
 
 function cursor(input: {
 	rows: Array<Record<string, StorageSqlReadValue>>
