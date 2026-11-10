@@ -682,6 +682,7 @@ test('denied handoff for a real private package still redirects to the package p
 test('internet-visible apps serve signed-out visitors anonymously; private apps stay gated', async () => {
 	silenceExpectedConsoleErrors([
 		'Package app handler failed:',
+		'Package realtime handler failed:',
 		'Package app asset handler failed:',
 		'package-app-http-error',
 	])
@@ -753,15 +754,16 @@ test('internet-visible apps serve signed-out visitors anonymously; private apps 
 	expect(unapprovedAnonymous.status).toBe(403)
 	expect(unapprovedAnonymous.headers.get('X-Kody-Handoff')).toBe('required')
 
-	// Realtime hooks run as the owner, so anonymous visitors never reach them.
+	// Anonymous realtime on an internet-visible app clears the gate and reaches
+	// the `kody.app.realtime.anonymous` check, which reads the published
+	// manifest (500: the fixture has no published source). The opt-in and pin
+	// decision itself is covered by package-app-public-realtime.node.test.ts.
 	const anonymousRealtime = await workerFetch(
 		`${accessFixtureOrigin}/packages/${publicApp.slug}/ws`,
-		{ headers: { Upgrade: 'websocket' } },
+		{ headers: { Upgrade: 'websocket', Accept: 'application/json' } },
 	)
-	expect(anonymousRealtime.status).toBe(403)
-	await expect(anonymousRealtime.text()).resolves.toBe(
-		'Sign in to use realtime features of this app.',
-	)
+	expect(anonymousRealtime.status).toBe(500)
+	expect(await anonymousRealtime.text()).not.toContain('Sign in')
 
 	// A session that cannot run the public app is served anonymously instead
 	// of being bounced to the package page.

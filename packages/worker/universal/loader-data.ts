@@ -2603,7 +2603,7 @@ export type AccountPackageApproveCapabilitiesLoaderData = {
 	publishedCommit: string | null
 	fingerprint: string
 	entries: Array<{
-		kind: 'credential' | 'storage'
+		kind: 'credential' | 'storage' | 'realtime'
 		credentialId?: string
 		name?: string
 		/** How the package reaches the credential: need, mount, grant, or package. */
@@ -2617,6 +2617,8 @@ export type AccountPackageApproveCapabilitiesLoaderData = {
 		placement?: string | null
 		via: Array<string>
 		storageId?: string
+		/** `kody.app.realtime.anonymous` when kind is realtime. */
+		anonymousRealtime?: 'receive' | 'two-way'
 	}>
 	/**
 	 * Declared `kody.credentials` needs no credential fills yet. Not part of the
@@ -2659,6 +2661,7 @@ export type AccountPackageApproveCapabilitiesLoaderData = {
 			assumed?: true
 			pinnedCommit?: string
 			livePublishedCommit?: string | null
+			anonymousRealtime?: 'receive' | 'two-way'
 			matches?: Array<{
 				path: string
 				line: number

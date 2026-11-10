@@ -2,6 +2,7 @@ import type {
 	PackageStorageMatch,
 	PackageStorageDetectionPattern,
 } from './package-storage-use.ts'
+import type { PackageAppAnonymousRealtimeMode } from '#worker/package-registry/types.ts'
 import type { CapabilitySetEntry } from './capability-set.ts'
 
 export type SelfPublishBlocker =
@@ -58,6 +59,10 @@ export type SelfPublishBlockerReason =
 			/** Fail-closed: published source could not be read. */
 			assumed?: true
 			matches?: Array<PackageStorageMatch>
+	  }
+	| {
+			kind: 'realtime_entry'
+			anonymousRealtime: PackageAppAnonymousRealtimeMode
 	  }
 	| {
 			kind: 'manifest_field'
@@ -137,6 +142,8 @@ function formatReason(reason: SelfPublishBlockerReason): string {
 				matches.length > 3 ? ` (+${String(matches.length - 3)} more)` : ''
 			return `Package storage detected${via} at ${shown}${more}.`
 		}
+		case 'realtime_entry':
+			return `Published manifest opts in to anonymous realtime (kody.app.realtime.anonymous: "${reason.anonymousRealtime}").`
 		case 'manifest_field':
 			return `Published manifest for source ${reason.sourceId} declares kody.${reason.field}.`
 		case 'credential_needs': {
@@ -231,6 +238,13 @@ export function credentialAndStorageReasonsFromEntries(
 				credentialId: entry.credentialId,
 				name: entry.name,
 				via: [...entry.via],
+			})
+			continue
+		}
+		if (entry.kind === 'realtime') {
+			reasons.push({
+				kind: 'realtime_entry',
+				anonymousRealtime: entry.anonymousRealtime ?? 'receive',
 			})
 			continue
 		}

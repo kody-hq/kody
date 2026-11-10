@@ -385,6 +385,36 @@ HTTP already demands. Cross-origin `POST`, `PUT`, `PATCH`, and `DELETE` stay
 cross-origin page would get a full read/write realtime socket: upgrades get the
 same `Origin` check and a cross-origin upgrade is `403` too.
 
+**Public realtime (`kody.app.realtime.anonymous`).** A realtime upgrade from
+anyone outside the owning org (anonymous or a signed-in outsider) is `403`
+unless the app is internet-visible, its approved manifest opts in, and the
+published commit is the one the owner approved (ADR 0069). The opt-in is part of
+the capability fingerprint, so a publish that turns it on or changes the mode
+waits for owner approval. It is the same bar as an anonymous HTTP `POST`: app
+code runs with publisher authority and bills the owning org (ADR 0095). The
+`PackageRealtimeSession` Durable Object
+(`packages/worker/src/package-runtime/realtime-session.ts`) enforces the rest:
+
+- **Receive-only** sockets never run app hooks. Inbound frames close with `1008`
+  and `kody:ping` is answered by `setWebSocketAutoResponse`, so a stranger
+  cannot run owner code, and keepalive pings never wake the Durable Object.
+- **Pin:** hooks for a public socket build only from its approved commit (a
+  mismatch closes it with `1012`), and an alarm rechecks the approved commit
+  every 5 minutes so republishing or turning off internet visibility drops open
+  public sockets.
+- **Visitor context:** hooks get `visitor` (`null` when anonymous) and sessions
+  carry `anonymous`, so app code cannot mistake a stranger for a member.
+- **Caps** (public sockets only, `anonymousRealtimeLimits`): 2,000 per app, 20
+  per client IP, 30 connects a minute per IP, 24 hours per session, 64 KiB per
+  inbound frame and per outbound payload, a soft 20 broadcasts a second per app,
+  and 10 inbound messages a second (burst 20) per two-way socket. Client IPs are
+  kept only as a package-salted SHA-256 prefix in a socket tag. Per-socket state
+  is stored under its own key, so a busy socket does not rewrite every session's
+  state.
+
+Team-org realtime (team-scoped sockets) is still not supported
+([#5067](https://github.com/kody-hq/kody/issues/5067)).
+
 - **No redirect cycle:** the app origin only ever redirects _to_ a package-app
   subdomain, the apex only redirects to a subdomain or the app origin, and a
   subdomain only redirects within itself to drop a consumed token from the URL
