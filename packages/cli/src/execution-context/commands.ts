@@ -331,7 +331,7 @@ async function runCommand(
 			}
 			try {
 				const source = resolveWrappingKey({ ecid, create: true })
-				if (source.kind === 'keyring') source.key(Buffer.alloc(16))
+				if (source.kind === 'keyring') await source.key(Buffer.alloc(16))
 				return source
 			} catch (error) {
 				if (input.values.keyStorage === 'keyring') throw error
@@ -363,7 +363,7 @@ async function runCommand(
 			client: { name: 'kody-cli', version: input.clientVersion },
 		})
 		try {
-			saveContext({
+			await saveContext({
 				context: {
 					version: 1,
 					ecid: registered.ecid,
@@ -675,12 +675,12 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 			}
 		}
 		let started: {
-			context: ReturnType<typeof loadContext>['context']
+			context: Awaited<ReturnType<typeof loadContext>>['context']
 			privateKey: Awaited<ReturnType<typeof importContextKey>>
 			serverKeys: Awaited<ReturnType<typeof fetchServerKeys>>
 		}
 		try {
-			const { context, privateJwk } = loadContext({
+			const { context, privateJwk } = await loadContext({
 				apiUrl: input.apiUrl,
 				ecid,
 				wrapping: wrappingKeyForStoredContext({ apiUrl: input.apiUrl, ecid }),
@@ -1207,7 +1207,7 @@ async function runCommandsOptInCommand(
 		: storedContextIds(input.apiUrl)
 	if (action === 'on' && input.values.context) {
 		// Fails for an unknown context before the shared local switch changes.
-		loadContext({
+		await loadContext({
 			apiUrl: input.apiUrl,
 			ecid: ecids[0]!,
 			wrapping: wrappingKeyForStoredContext({
@@ -1228,7 +1228,7 @@ async function runCommandsOptInCommand(
 	}> = []
 	for (const ecid of ecids) {
 		try {
-			const { context, privateJwk } = loadContext({
+			const { context, privateJwk } = await loadContext({
 				apiUrl: input.apiUrl,
 				ecid,
 				wrapping: wrappingKeyForStoredContext({ apiUrl: input.apiUrl, ecid }),

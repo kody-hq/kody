@@ -58,15 +58,15 @@ test('context key round trips through passphrase and keyring wrapping', async ()
 		create: true,
 		env: { KODY_CONTEXT_KEY_PASSPHRASE: 'correct horse battery staple' },
 	})
-	const file = encryptPrivateKey(privateKeyJwk, passphrase)
+	const file = await encryptPrivateKey(privateKeyJwk, passphrase)
 	assert.ok(!JSON.stringify(file).includes(privateKeyJwk.d))
-	assert.deepEqual(decryptPrivateKey(file, passphrase), privateKeyJwk)
+	assert.deepEqual(await decryptPrivateKey(file, passphrase), privateKeyJwk)
 	const wrong = resolveWrappingKey({
 		ecid: 'ec_test',
 		create: true,
 		env: { KODY_CONTEXT_KEY_PASSPHRASE: 'wrong' },
 	})
-	assert.throws(() => decryptPrivateKey(file, wrong), /Could not decrypt/)
+	await assert.rejects(decryptPrivateKey(file, wrong), /Could not decrypt/)
 
 	let stored: string | null = null
 	const keyring = resolveWrappingKey({
@@ -74,14 +74,14 @@ test('context key round trips through passphrase and keyring wrapping', async ()
 		create: true,
 		env: {},
 		keyringFactory: () => ({
-			getPassword: () => stored,
-			setPassword: (value) => {
+			getPassword: async () => stored,
+			setPassword: async (value) => {
 				stored = value
 			},
 		}),
 	})
-	const keyringFile = encryptPrivateKey(privateKeyJwk, keyring)
-	assert.deepEqual(decryptPrivateKey(keyringFile, keyring), privateKeyJwk)
+	const keyringFile = await encryptPrivateKey(privateKeyJwk, keyring)
+	assert.deepEqual(await decryptPrivateKey(keyringFile, keyring), privateKeyJwk)
 })
 
 test('registering with a pre-PR 2 login prints the exact kody login command', async () => {

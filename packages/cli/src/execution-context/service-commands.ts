@@ -212,7 +212,7 @@ async function ensureServiceKey(
 	let current: WrappingKeySource
 	try {
 		current = wrappingKeyForStoredContext({ apiUrl: env.apiUrl, ecid })
-		loadContext({ apiUrl: env.apiUrl, ecid, wrapping: current })
+		await loadContext({ apiUrl: env.apiUrl, ecid, wrapping: current })
 	} catch (error) {
 		throw new Error(
 			`Could not unlock this machine's execution context key: ${error instanceof Error ? error.message : String(error)}`,
@@ -245,7 +245,7 @@ async function ensureServiceKey(
 		}
 	}
 	if (!toFile) return
-	rewrapContextKey({
+	await rewrapContextKey({
 		apiUrl: env.apiUrl,
 		ecid,
 		from: current,

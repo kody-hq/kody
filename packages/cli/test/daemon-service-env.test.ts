@@ -56,7 +56,7 @@ function unitInput(
 
 async function storeContext(ecid: string) {
 	const { publicKeyJwk, privateKeyJwk } = await generateContextKey()
-	keystore.saveContext({
+	await keystore.saveContext({
 		context: {
 			version: 1,
 			ecid,

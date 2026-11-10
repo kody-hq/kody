@@ -8,7 +8,7 @@ import {
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { defaultMcpUrl } from './defaults.js'
-import { createKeyringEntry } from './keyring-entry.js'
+import { KeychainTimeoutError, createKeyringEntry } from './keyring-entry.js'
 
 export { secretServiceKeyringOptions } from './keyring-entry.js'
 
@@ -133,7 +133,8 @@ export function createKeyringBackend(mcpUrl: string): SecretBackend {
 		get() {
 			try {
 				return entry.getPassword()
-			} catch {
+			} catch (error) {
+				if (error instanceof KeychainTimeoutError) throw error
 				return null
 			}
 		},
