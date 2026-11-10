@@ -30,4 +30,8 @@ export const hostCommandState = setup({
 		failed: { type: 'final' },
 	},
 })
+/**
+ * Background host-command lifecycle. `killed` and `timed_out` are not final: a
+ * late spawn error can still move them to `failed`.
+ */
 export type HostCommandState = LifecycleStateOf<typeof hostCommandState>

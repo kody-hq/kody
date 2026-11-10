@@ -50,15 +50,13 @@ using the token gets `401 API token was revoked.`
 - **MCP `api` tool** (preferred for connected agents): pass the JSON above.
 - **CLI**: `npx @kodycodes/cli api tokenList` and
   `npx @kodycodes/cli api tokenRevoke --params '{"token_id":"<id>"}'` after
-  `npx @kodycodes/cli login` (see [Local CLI execute](./local-execute.md)). A
-  terminal `kody login` deletes a leftover stored `kody_at_` bootstrap token so
-  later commands use the login. A desktop login (`KODY_CREDENTIAL_SOURCE` set)
-  leaves a stored token in place. `kody api`, `package`, `execute --local`,
-  `context`, `daemon`, `dev`, and `whoami` pick `--token`, then
-  `KODY_API_TOKEN`, then a stored API token, then the login, so a leftover token
-  without the needed scope makes them fail. `kody search` and cloud `execute`
-  prefer the login when one exists. `kody whoami` reports the credential the
-  token-based commands use, not the one search and cloud execute use.
+  `npx @kodycodes/cli login` (see [Local CLI execute](./local-execute.md)).
+  Every command picks `--token`, then `KODY_API_TOKEN`, then the one saved CLI
+  credential (`kody login` or `kody auth bootstrap`). `kody whoami` reports that
+  same pick. A leftover token from an older CLI's separate API-token slot is
+  moved into the saved credential when nothing else is saved; a terminal
+  `kody login` deletes it. A desktop login (`KODY_CREDENTIAL_SOURCE=login`)
+  never reads or adopts that old slot.
 - **HTTPS**: `GET /v1/tokens` and `DELETE /v1/tokens/{token_id}` on
   [api.kody.codes](https://api.kody.codes) with a token that holds `token:read`
   / `token:delete`.

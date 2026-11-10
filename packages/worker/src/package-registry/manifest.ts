@@ -19,6 +19,7 @@ import {
 	packageAppVisitorNeedKeyPattern,
 	webhookDefaultRateLimitPerMinute,
 	type AuthoredPackageJson,
+	type PackageAppAnonymousRealtimeMode,
 	type PackageExportTarget,
 	type PackageWebhookChallenge,
 } from './types.ts'
@@ -453,6 +454,13 @@ export function getPackageAppAssetsDirectory(manifest: AuthoredPackageJson) {
 		'',
 	)
 	return normalized.length > 0 ? normalized : null
+}
+
+/** `kody.app.realtime.anonymous`, or null when the app has not opted in. */
+export function getPackageAppAnonymousRealtimeMode(
+	manifest: AuthoredPackageJson,
+): PackageAppAnonymousRealtimeMode | null {
+	return manifest.kody.app?.realtime?.anonymous ?? null
 }
 
 export function getPackageAppClientReadableCookieNames(

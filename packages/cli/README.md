@@ -108,14 +108,14 @@ flags, and subcommands.
 | `kody org use [<slug>]`                           | Switches the active org. With a slug (agents) switches directly; with no slug on a TTY opens a chooser; without a TTY pass a slug.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `kody logout`                                     | Removes the active org login (or `--org <slug>` for one org) and clears a stored bootstrap/API token when appropriate.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `kody status`                                     | Shows CLI login / stored API token state without printing secrets.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `kody auth bootstrap --code`                      | Redeems a one-shot `kody_bc_…` from MCP `cliCredentialBootstrap` and stores the resulting `kody_at_…` for `execute --local` (never prints the token).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `kody auth bootstrap --scopes`                    | Replaces the default bootstrap scope list (include every scope you need): mints the code itself by passing `scopes` to `cliCredentialBootstrap` (with `--token`, else the `kody login` session, else a stored token), then redeems and stores it. See [Opt-in scopes](#opt-in-scopes).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `kody auth bootstrap --code`                      | Redeems a one-shot `kody_bc_…` from MCP `cliCredentialBootstrap` and saves the same credential `kody login` saves (never prints the token). Every command, including git, uses that slot.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `kody auth bootstrap --scopes`                    | Saves a deliberately narrower credential (the list replaces the default): mints the code itself by passing `scopes` to `cliCredentialBootstrap` (with `--token`, else `KODY_API_TOKEN`, else the saved credential), then redeems and stores it. See [Narrower scopes](#narrower-scopes).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `kody auth setup-git`                             | Installs a Git credential helper for `https://kody.codes/@owner/name.git` (persistent `kody_at_…`, user-owned token with `package:read`/`package:write`). See [Git HTTPS](#git-https-setup-git).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `kody auth remove-git`                            | Inverse of `setup-git`: clears Kody HTTPS git helpers, revokes the stored API token, deletes it from the keychain. Leaves `kody login` alone.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `kody auth remove-git`                            | Inverse of `setup-git`: clears Kody HTTPS git helpers and revokes any token left in the old API-token slot. Leaves the saved CLI credential alone.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `kody git-credential`                             | Credential helper invoked by Git after `setup-git` (`get` / `store` / `erase`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `kody whoami`                                     | Shows the credential commands will use (`--token`, `KODY_API_TOKEN`, stored API token, or `kody login`), its token id and scopes, and any other stored credential it outranks. See [Which credential a command uses](#which-credential-a-command-uses).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `kody whoami`                                     | Shows the credential commands will use (`--token`, `KODY_API_TOKEN`, or the saved CLI credential from `kody login` / `kody auth bootstrap`), its token id and scopes, and any other stored credential it outranks. See [Which credential a command uses](#which-credential-a-command-uses).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `kody search [query]`                             | Calls Kody `search` from the CLI (prefer the host MCP tool). Token-only auth uses Open API `GET /v1/search`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `kody api <operationId>`                          | Thin Open API wrapper matching the MCP `api` tool: `operationId` + flat `--params` JSON. Auth: `--token`, `KODY_API_TOKEN`, the stored API token, then `kody login` (same credential `kody whoami` reports). The parsed `/openapi.json` route map is cached under the Kody cache dir keyed by the document's `ETag` and revalidated with `If-None-Match` on each run.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `kody api <operationId>`                          | Thin Open API wrapper matching the MCP `api` tool: `operationId` + flat `--params` JSON. Auth: `--token`, `KODY_API_TOKEN`, then the saved CLI credential (same pick `kody whoami` reports). The parsed `/openapi.json` route map is cached under the Kody cache dir keyed by the document's `ETag` and revalidated with `If-None-Match` on each run.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `kody secret get <name>`                          | Prints the value of a secret whose local reads a person turned on in Kody (raw by default; `--format env` or `--format json` for several). Refuses an interactive terminal unless `--reveal`; piped output is fine. A refused read prints a plain reason and, when local reads are off, a link to turn them on for that secret. Same auth as `kody api`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `kody run --secret <name>[=ENV] -- <cmd>`         | Reads every listed secret (or none), then runs the command with them in its environment. `databaseUrl` becomes `DATABASE_URL` unless named. Exits with the command's exit code.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `kody package publish`                            | Thin wrapper for `packagePublishExternalPush`. Optional positional `@owner/leaf`, bare leaf name, or package UUID (names are resolved to the package UUID via `packageList`); extra fields via `--params`. Same auth as `kody api`. Prints the API JSON. Exit **0** for `published`, `already_published` (including `artifacts_rebuilt: true`), and `dispatched` (poll `workflowRunList({ workflow_id })`). Exit **1** for refusal/rejection statuses (`checks_failed`, `locked`, `approval_required`, `not_fast_forward`) with the API `message` (or a checks summary) on stderr, like npm. Auth / permission / network failures also exit 1; `--json` adds `{ error, message, sent }` on stdout for network errors (`sent: false` = not sent; `sent: "unknown"` = maybe sent — prefer `kody api workflowRunList` with `workflow_id` when known, otherwise a recent list, before retry). Re-publishing the same commit is safe (durable dedupe / `already_published`). |
@@ -165,21 +165,17 @@ npx @kodycodes/cli api usageGet --params '{}'
   the returned `cli_command` (never ask a human to paste a token); humans run
   `kody login`; CI/headless uses `tokenCreate` + `KODY_API_TOKEN`.
 - For `execute --local` specifically: `--token` / `KODY_API_TOKEN` wins when
-  set; else a stored bootstrap/API token from `auth bootstrap`; else the stored
-  `kody login` OAuth access token as Bearer only when the API and MCP URLs are
-  paired (no under-the-hood `tokenCreate`). The default pair is
-  `https://api.kody.codes` and `https://kody.codes/mcp`; preview workers pair
-  when the API worker name adds `-api`, and loopback hosts pair at any port. For
-  a different API origin, use `auth bootstrap --api-url <origin>` or set
-  `KODY_API_TOKEN`. Paired `kody login` OAuth is accepted as Bearer on
-  CapabilityProxy and package-graph. Unpaired API origins need bootstrap or a
-  scoped `kody_at_…` token.
+  set; else the one saved CLI credential from `kody login` or
+  `kody auth bootstrap` (same slot, whichever ran last). A token an older CLI
+  left in the old API-token slot is moved into that credential only when nothing
+  else is saved; `kody login` deletes it. For a different API origin, use
+  `auth bootstrap --api-url <origin>` or set `KODY_API_TOKEN`.
 - Wrong/expired token → 401 with the same agent-first not-authenticated guidance
   (or the OAuth platform-gap message when the bearer is login OAuth).
 - Wrong scopes → the error names the missing scope and the exact command to mint
-  a token that adds it (see [Opt-in scopes](#opt-in-scopes)). When your org role
-  lacks the permission, it says so instead: a new token cannot add it, and an
-  org Owner has to grant it.
+  a token that adds it (see [Narrower scopes](#narrower-scopes)). When your org
+  role lacks the permission, it says so instead: a new token cannot add it, and
+  an org Owner has to grant it.
 - Account flag off → the error includes `feature_disabled` and the
   `local-execute` feature flag. Another token does not bypass that flag.
 - Prefer the env var so the token stays out of shell history and `ps`.
@@ -190,56 +186,42 @@ npx @kodycodes/cli api usageGet --params '{}'
 One resolver picks the credential for every command, and `kody whoami` reports
 the same pick:
 
-| Commands                                                                  | Order                                                                  |
-| ------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `whoami`, `api`, `package`, `execute --local`, `context`, `daemon`, `dev` | `--token`, `KODY_API_TOKEN`, stored API token, `kody login`            |
-| `search`, cloud `execute` (no `--local`)                                  | `--token`, `kody login` (over MCP), `KODY_API_TOKEN`, stored API token |
-| `auth bootstrap --scopes` (minting)                                       | `--token`, `kody login`, `KODY_API_TOKEN`, stored API token            |
+Every command uses the same order: `--token`, `KODY_API_TOKEN`, then the one
+saved CLI credential.
 
 Desktop integrations can set `KODY_CREDENTIAL_SOURCE=login` to select only the
-browser login for these commands. There is no API token fallback in this mode,
-and saved API tokens remain unchanged. Unset it for normal CLI precedence.
+saved credential. Unset it for normal CLI precedence.
 
-- The stored API token comes from `kody auth bootstrap` or
-  `kody auth setup-git`. An explicit `kody login` deletes a stored API token for
-  that API origin and prints which token it removed, so the fresh login is what
-  the first-row commands use. Git pushes mint a new token from the login.
-  `--token` and `KODY_API_TOKEN` still outrank the login. Desktop logins
-  (`KODY_CREDENTIAL_SOURCE=login`) leave the stored token alone.
-- To change the stored token's scopes, run
-  `npx @kodycodes/cli auth bootstrap --lifetime short --scopes <every scope you need>`
-  (mints with your login and replaces the stored token). `kody logout` clears
-  both.
-- `kody whoami` prints `credential:` (which one is in use, with its token id),
-  its `scopes:`, and `also stored:` lines for credentials it outranks. With
-  `--json` the same data is under `credential` and `otherCredentials`.
-- `insufficient_scope` errors end with `Credential used: …` and, for a stored
-  token, the exact `auth bootstrap` command that replaces it.
+- The saved credential comes from `kody login` or `kody auth bootstrap`. Both
+  save the same kind of `kody_at_…` (every scope your org role grants, 14d idle
+  / 3mo max) in the same slot, so whichever ran last is what every command,
+  including git, uses. There is no second token and no fallback between them.
+- A token saved by an older CLI in the old API-token slot is moved into the
+  saved credential the first time nothing else is saved, and is ignored once a
+  login exists. `kody login` deletes it. Old tokens keep working until they
+  expire.
+- `kody whoami` prints `credential:` (which one is in use, with its token id)
+  and its `scopes:`. With `--json` the same data is under `credential`.
+- `insufficient_scope` errors end with `Credential used: …` and how to widen it.
 
-## Opt-in scopes
+## Narrower scopes
 
-Bootstrap tokens default to local-execute use scopes plus `package:write`,
-`package:create`, and `token:delete`. They do not include `search:read`. Pass
-`--scopes` when a task needs a different set (the list replaces the defaults):
+Bootstrap saves the same scopes as `kody login` by default. Pass `--scopes` only
+when you want a deliberately narrower credential (the list replaces the
+default):
 
 ```bash
-# After `kody login` (mints any scope your org role grants):
 npx @kodycodes/cli auth bootstrap --lifetime short \
   --scopes org:execute,org:read,package:execute,package:read,package:write
-
-# Agents on MCP without `kody login`: pass scopes when minting the code
-# cliCredentialBootstrap({ lifetime: "short", scopes: ["org:execute", "org:read", "package:execute", "package:read", "package:write"] })
-npx @kodycodes/cli auth bootstrap --code 'kody_bc_…' --lifetime short
 ```
 
-- `--scopes` replaces the default list, so include every scope you need.
-- The CLI passes the list straight to `cliCredentialBootstrap`. It mints with
-  `--token` when given, else the `kody login` session, else `KODY_API_TOKEN` /
-  the stored token. A token can only mint scopes it already holds.
+- The CLI passes the list to `cliCredentialBootstrap`. It mints with `--token`
+  when given, else `KODY_API_TOKEN`, else the saved credential. A child token
+  never exceeds its parent: only scopes the parent holds, never past its expiry.
 - A bootstrap code's scopes are fixed when it is minted, so `--code` with
   `--scopes` is an error that prints the matching `cliCredentialBootstrap` call.
-- `insufficient_scope` errors print both commands with the full scope list (your
-  current scopes plus the missing one), so you can copy one and retry.
+- `git` needs `package:read` and `package:write`, so a narrowed credential
+  without them makes `kody auth setup-git` fail with how to fix it.
 
 ## Git HTTPS (`setup-git`)
 
@@ -248,36 +230,30 @@ Kody provides persistent `kody_at_…` HTTPS git auth (see
 helper once:
 
 ```bash
-kody login   # or: auth bootstrap --code … --lifetime long
+kody login   # agents on Kody MCP: cliCredentialBootstrap, then its cli_command
 kody auth setup-git
 git clone https://kody.codes/@owner/name.git
 ```
 
-`setup-git` uses your `kody login` session (or a scoped API token) to mint a
-user-owned `kody_at_…` with `package:read` and `package:write` (default
-`--lifetime long`; reuses a suitable stored token). That one credential
-authorizes every `@owner/name.git` you can access across all orgs — login
-`--org` only scopes the MCP mint session, not git. When an API token is already
-stored it probes `org_binding` on `GET /v1/tokens/current`; after a fresh login
-with no API token yet, it mints via the login session and checks `org_binding`
-on the minted token. Configures a **stable** credential helper (global `kody`
-only when that install's version supports `git-credential`, otherwise
-`npx -y @kodycodes/cli@<exact-version> …` — never a major-only `@1` range that
-can reuse a stale npx cache, and never an ephemeral `~/.npm/_npx/…` path).
-Re-running `setup-git` rewrites stale helper entries; every CLI command also
-refreshes an outdated pin silently.
+`setup-git` never mints a token. It checks that the saved CLI credential is
+user-owned and holds `package:read` and `package:write`
+(`GET /v1/tokens/current`), then configures a **stable** credential helper
+(global `kody` only when that install's version supports `git-credential`,
+otherwise `npx -y @kodycodes/cli@<exact-version> …` — never a major-only `@1`
+range or an ephemeral `~/.npm/_npx/…` path). Re-running `setup-git` rewrites
+stale helper entries; every CLI command also refreshes an outdated pin silently.
 
 ```bash
 git config --global credential.https://kody.codes.helper '!… git-credential'
 git config --global credential.https://kody.codes.useHttpPath true
 ```
 
-The helper silently remints via your stored `kody login` when the API token is
-expired or within an hour of expiry, so you should not need to re-run
-`setup-git` for token lifetime. Undo with `kody auth remove-git` (clears git
-config helpers, revokes and deletes the stored API token; leaves login alone).
-Push moves live HEAD only (packages do not auto-publish). Existing `kody login`
-/ `auth bootstrap` flows are unchanged.
+The helper sends `KODY_API_TOKEN` when set, else the saved credential, and
+refreshes it the same way every other command does. Undo with
+`kody auth remove-git` (clears git config helpers and revokes any token left in
+the old API-token slot; leaves the saved credential alone). Push moves live HEAD
+only (packages do not auto-publish). Existing `kody login` / `auth bootstrap`
+flows are unchanged.
 
 ## Local package testing (`kody dev`)
 
@@ -602,7 +578,9 @@ CLI credentials are stored in the OS secret store:
 
 - macOS: Keychain, read and written through Apple's `/usr/bin/security`, so one
   "Always Allow" covers the terminal, `npx`, the background service, and
-  Kody.app instead of each node binary asking separately
+  Kody.app instead of each node binary asking separately. Calls give up after
+  `KODY_KEYCHAIN_TIMEOUT_MS` (2 minutes). Login and other blocking reads cannot
+  print while they wait; machine-key reads print a wait notice after 1.5 s.
 - Windows: Credential Manager
 - Linux: Secret Service / libsecret (not the in-memory kernel keyring)
 
@@ -617,8 +595,8 @@ is always printed too, so you can paste it into a browser if no window appears.
 
 Access tokens refresh automatically on expiry or HTTP 401.
 
-`execute --local` prefers `--token` / `KODY_API_TOKEN` when set, then a stored
-API token, then the `kody login` session. See
+`execute --local` prefers `--token` / `KODY_API_TOKEN` when set, then the one
+saved CLI credential. See
 [Which credential a command uses](#which-credential-a-command-uses).
 
 ## Execution context daemon performance

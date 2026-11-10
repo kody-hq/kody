@@ -29,9 +29,9 @@ Watch:
 [Where Kody code runs: the cloud, your laptop, or your own machine](https://www.youtube.com/watch?v=i5qCOaIiYc8).
 
 Auth: `--token` / `KODY_API_TOKEN` (`kody_at_…` with `org:execute`; add
-`package:execute` when the module imports `kody:@…`), or when no API token is
-set, the access token from `kody login` (MCP OAuth) as Bearer on CapabilityProxy
-and package-graph routes.
+`package:execute` when the module imports `kody:@…`), then the one saved CLI
+credential from `kody login` or `kody auth bootstrap` (a `kody_at_…` device
+token, not host MCP OAuth). `kody whoami` reports the same pick.
 
 ## Setup
 
@@ -72,15 +72,17 @@ The list replaces the defaults, so include every scope you need:
 # Agents on MCP, with the api tool (execute is refused): cliCredentialBootstrap({ lifetime: "short", scopes: ["org:execute", "org:read", "package:execute", "package:read", "package:write"] })
 npx @kodycodes/cli auth bootstrap --code 'kody_bc_…' --lifetime short
 
-# After `kody login`, the CLI mints the code itself and stores the token:
+# Optional: save a deliberately narrower credential (replaces the default):
 npx @kodycodes/cli auth bootstrap --lifetime short \
   --scopes org:execute,org:read,package:execute,package:read,package:write
 ```
 
-`--scopes` mints with `--token` when given, else the `kody login` session (any
-scope your org role grants), else `KODY_API_TOKEN` or the stored token (only
-scopes that token already holds). `--code` with `--scopes` is an error because a
-code's scopes are fixed when it is minted.
+Redeeming a code saves the same credential `kody login` saves: every scope your
+org role grants (never more than the authorizing MCP session holds), 14d idle /
+3mo max, in the same slot. `--scopes` is only for a narrower credential; it
+mints with `--token` when given, else `KODY_API_TOKEN`, else the saved
+credential, and a child never exceeds its parent. `--code` with `--scopes` is an
+error because a code's scopes are fixed when it is minted.
 
 **Interactive humans:** `kody login` once per machine (beside the agent
 `cliCredentialBootstrap` path above), then run `--local` without
@@ -202,16 +204,15 @@ still auth or permission — use the Failure section below. Two workarounds for
   `cliCredentialBootstrap` and run the returned `cli_command`; never ask a human
   to paste a token. Humans: `kody login`. CI/headless: `tokenCreate` +
   `KODY_API_TOKEN`.
-- Bootstrap or redeem rejects a missing lifetime. Pass `--lifetime short|long`
-  (or both idle/max flags). Call `cliCredentialBootstrap` again with
-  `lifetime: "short"` if the code expired.
+- The bootstrap code expired or was already used. Call `cliCredentialBootstrap`
+  again and run the new `cli_command`.
 - `insufficient_scope` on a token means it lacks a scope. The error names the
   scope and prints both mint commands with the full list (the token's scopes
   plus the missing one); run one and retry. `--token` and `KODY_API_TOKEN` still
-  win over the stored token, so replace or unset them before retrying. The error
-  also says which credential was sent (`Credential used: …`). Open API errors
-  carry the same list as `details.mint_scopes`. When your org role lacks the
-  permission (`denial: missing_permission`), a new token cannot help; an org
+  win over the saved credential, so replace or unset them before retrying. The
+  error also says which credential was sent (`Credential used: …`). Open API
+  errors carry the same list as `details.mint_scopes`. When your org role lacks
+  the permission (`denial: missing_permission`), a new token cannot help; an org
   Owner has to grant it.
 - `profile_grant` means the profile the token acts as (or a parent) was not
   granted that package or credential. A new token alone cannot fix it; the
@@ -226,8 +227,8 @@ still auth or permission — use the Failure section below. Two workarounds for
   (`/connect/secret-set`) or Open API `secretSet` with a user scope / outside
   local execute. See [Secrets](./secrets.md#scopes).
 - The module imports `kody:@…`. Keep `--local`.
-- Auth priority for `--local`: `--token` / `KODY_API_TOKEN`, then the stored API
-  token, then `kody login`. `kody whoami` reports the same credential. An
-  explicit terminal `kody login` deletes a leftover stored API token and says so
-  (a desktop login leaves it in place); mint a scoped one again with
-  `npx @kodycodes/cli auth bootstrap --lifetime short --scopes <list>`.
+- Auth priority for `--local` (and every other command): `--token` /
+  `KODY_API_TOKEN`, then the one saved CLI credential from `kody login` or
+  `kody auth bootstrap`. `kody whoami` reports the same credential. A token an
+  older CLI left in the old API-token slot is moved into the saved credential
+  only when nothing else is saved; `kody login` deletes it.

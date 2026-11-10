@@ -7,22 +7,27 @@ fields are status enums, not state machines. Stored values and wire contracts
 remain unchanged.
 
 Framework-owned request state (such as TanStack Query mutations) is used
-directly, not wrapped in another machine. UI forms derive busy state from the
-mutation and keep validation and receipt feedback as atomic discriminated
-values. App-owned interaction controllers reject illegal transitions
-synchronously, including submissions arriving before React has rendered a
-pending state.
+directly, not wrapped in another machine. App-owned UI flows own interaction
+with an XState actor (`useActor`, `useActorRef`, or `createActor`). View types
+carry validation and receipt payload for `uiState`. `sendUiEvent` rejects
+illegal transitions synchronously, including submissions arriving before React
+has rendered a pending state.
 
 ## Adding a machine
 
 Declare a flat XState machine next to the domain, with named operation events
-and genuinely terminal states marked `type: 'final'`. Export the machine and a
-`LifecycleStateOf<typeof machine>` alias, and register its machine and source
-path in the package's `state-machines.ts` registry. The tooling-only aggregate
-at `tools/state-machines.ts` includes each package registry without adding
-runtime dependencies between packages. Run `npm run state-machines:generate` and
-add focused graph tests. Existing stored values and wire contracts stay
-unchanged.
+and genuinely terminal states marked `type: 'final'`. Register its machine and
+source path in the package's `state-machines.ts` registry. The tooling-only
+aggregate at `tools/state-machines.ts` includes each package registry without
+adding runtime dependencies between packages. Run
+`npm run state-machines:generate` and add focused graph tests. Existing stored
+values and wire contracts stay unchanged.
+
+Server and desktop machines export a `LifecycleStateOf<typeof machine>` alias
+for stored or parsed status. UI machines export a view type for actor context
+instead of that alias (`AuthFormState`, `AdminCodemodRunState`, and similar,
+including `FormFlowState` views from `#client/ui-actor.ts`). Drive them with
+`uiContext`, `uiState`, and `sendUiEvent`.
 
 Use `nextState(machine, from, event)` for guard-aware transition validation and
 `sqlSourcesOf(machine, eventType)` for SQL compare-and-set source lists. Sources
@@ -1926,9 +1931,9 @@ Values: active, published, discarded
 
 ### user_usage_campaigns.lifecycle
 
-Ledger phase replacements preserve legacy PascalCase stored tags via the
-exported mapping; evaluator activation and cooling history gates remain
-unchanged.
+Status enum for campaign phase. Ledger replacements preserve PascalCase stored
+tags via the exported mapping; evaluator activation and cooling history gates
+remain unchanged.
 
 Source:
 [`packages/worker/src/usage/usage-campaign-state.ts`](../../packages/worker/src/usage/usage-campaign-state.ts)

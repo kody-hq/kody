@@ -28,7 +28,6 @@ import {
 	loadStoredApiToken,
 	type StoredApiToken,
 } from '../src/api-token-store.js'
-import { resolveCliTokenLifetime } from '../src/auth-bootstrap.js'
 import {
 	ensureGitApiToken,
 	formatGitCredentialOutput,
@@ -377,16 +376,22 @@ test('parseGitCredentialInput and get output', async () => {
 	})
 	assert.equal(empty, '')
 
-	const tokenPath = join(emptyDir, 'token.json')
 	const stored = sampleStored(['package:read', 'package:write'])
-	writeFileSync(tokenPath, JSON.stringify(stored))
 	const filled = await handleGitCredential({
 		action: 'get',
 		request: { protocol: 'https', host: 'kody.codes', path: '@a/b.git' },
 		apiUrl: stored.apiUrl,
 		mcpUrl: 'https://kody.codes/mcp',
-		backend: createFileBackend(tokenPath),
-		loadLogin: () => null,
+		env: {},
+		loadLogin: () => ({
+			version: 1,
+			mcpUrl: 'https://kody.codes/mcp',
+			resource: 'https://kody.codes/mcp',
+			authorizationServerUrl: 'https://kody.codes',
+			clientId: 'c',
+			accessToken: stored.token,
+			tokenType: 'bearer',
+		}),
 	})
 	assert.equal(
 		filled,
@@ -394,18 +399,46 @@ test('parseGitCredentialInput and get output', async () => {
 	)
 })
 
-test('git-credential silently remints an expired token via login', async () => {
-	const home = mkdtempSync(join(tmpdir(), 'kody-git-refresh-'))
-	const tokenPath = join(home, 'token.json')
-	const expired = {
-		...sampleStored(['package:read', 'package:write', 'org:execute']),
-		expiresAt: '2020-01-01T00:00:00.000Z',
-		tokenId: 'tok_expired',
+test('git-credential sends the saved CLI credential and never mints', async () => {
+	const savedToken = `kody_at_${'s'.repeat(20)}_${'T'.repeat(43)}`
+	const login = {
+		version: 1 as const,
+		mcpUrl: 'https://kody.codes/mcp',
+		resource: 'https://kody.codes/mcp',
+		authorizationServerUrl: 'https://kody.codes',
+		clientId: 'c',
+		accessToken: savedToken,
+		tokenType: 'bearer',
+		expiresAt: Date.parse('2026-11-01T00:00:00.000Z'),
 	}
-	writeFileSync(tokenPath, JSON.stringify(expired))
-	const backend = createFileBackend(tokenPath)
+	let refreshCalls = 0
+	const out = await handleGitCredential({
+		action: 'get',
+		request: { protocol: 'https', host: 'kody.codes', path: '@a/b.git' },
+		mcpUrl: 'https://kody.codes/mcp',
+		env: {},
+		nowMs: Date.parse('2026-10-13T19:00:00.000Z'),
+		loadLogin: () => login,
+		refresh: async () => {
+			refreshCalls += 1
+			throw new Error('should not refresh a valid token')
+		},
+	})
+	assert.equal(
+		out,
+		formatGitCredentialOutput({ username: 'x', password: savedToken }),
+	)
+	assert.equal(refreshCalls, 0)
+
+	const env = await ensureGitApiToken({
+		env: { KODY_API_TOKEN: 'kody_at_env' },
+		loadLogin: () => login,
+	})
+	assert.equal(env?.token, 'kody_at_env')
+})
+
+test('git-credential refreshes an expiring saved credential like other commands', async () => {
 	const freshToken = `kody_at_${'f'.repeat(20)}_${'G'.repeat(43)}`
-	let mintCalls = 0
 	const login = {
 		version: 1 as const,
 		mcpUrl: 'https://kody.codes/mcp',
@@ -413,135 +446,43 @@ test('git-credential silently remints an expired token via login', async () => {
 		authorizationServerUrl: 'https://kody.codes',
 		clientId: 'c',
 		accessToken: 'oauth',
+		refreshToken: 'refresh',
 		tokenType: 'bearer',
 	}
-
-	const previousFetch = globalThis.fetch
-	globalThis.fetch = (async (input: Parameters<typeof fetch>[0]) => {
-		const url = String(input instanceof Request ? input.url : input)
-		if (url.endsWith('/v1/tokens/bootstrap/redeem')) {
-			return new Response(
-				JSON.stringify({
-					token: freshToken,
-					id: 'tok_fresh',
-					name: 'kody-cli-bootstrap',
-					scopes: expired.scopes,
-					expires_at: '2026-11-01T00:00:00.000Z',
-					max_expires_at: '2027-01-01T00:00:00.000Z',
-					created_via: 'cli-bootstrap',
-				}),
-				{ status: 200, headers: { 'content-type': 'application/json' } },
-			)
-		}
-		return new Response(JSON.stringify({ error: { message: url } }), {
-			status: 404,
-			headers: { 'content-type': 'application/json' },
-		})
-	}) as typeof fetch
-
-	try {
-		const out = await handleGitCredential({
-			action: 'get',
-			request: { protocol: 'https', host: 'kody.codes', path: '@a/b.git' },
-			apiUrl: expired.apiUrl,
-			mcpUrl: 'https://kody.codes/mcp',
-			backend,
-			nowMs: Date.parse('2026-10-13T19:00:00.000Z'),
-			loadLogin: () => login,
-			mint: async () => {
-				mintCalls += 1
-				return {
-					bootstrap_code: `kody_bc_${'c'.repeat(16)}_${'D'.repeat(32)}`,
-					scopes: expired.scopes,
-					idle_ttl_seconds: 1_209_600,
-					max_lifetime_seconds: 7_776_000,
-				}
-			},
-		})
-		assert.equal(
-			out,
-			formatGitCredentialOutput({ username: 'x', password: freshToken }),
-		)
-		assert.equal(mintCalls, 1)
-		assert.equal(
-			loadStoredApiToken(expired.apiUrl, backend)?.tokenId,
-			'tok_fresh',
-		)
-		assert.equal(loadStoredApiToken(expired.apiUrl, backend)?.token, freshToken)
-
-		// Fresh token should not remint again.
-		const again = await ensureGitApiToken({
-			apiUrl: expired.apiUrl,
-			mcpUrl: 'https://kody.codes/mcp',
-			backend,
-			nowMs: Date.parse('2026-10-13T19:00:00.000Z'),
-			loadLogin: () => login,
-			mint: async () => {
-				mintCalls += 1
-				throw new Error('should not mint')
-			},
-		})
-		assert.equal(again?.refreshed, false)
-		assert.equal(mintCalls, 1)
-	} finally {
-		globalThis.fetch = previousFetch
-	}
+	const ensured = await ensureGitApiToken({
+		env: {},
+		loadLogin: () => login,
+		refresh: async () => ({ ...login, accessToken: freshToken }),
+	})
+	assert.deepEqual(ensured, { token: freshToken, refreshed: true })
+	assert.equal(
+		await ensureGitApiToken({ env: {}, loadLogin: () => null }),
+		null,
+	)
 })
 
-test('authSetupGit with login session and no API token mints then installs helper', async () => {
-	const home = mkdtempSync(join(tmpdir(), 'kody-setup-git-login-'))
-	const tokenBackend = createFileBackend(join(home, 'api-token.json'))
-	const mintedToken = `kody_at_${'m'.repeat(20)}_${'N'.repeat(43)}`
-	const mintCalls: Array<Record<string, unknown>> = []
+test('authSetupGit installs the helper for the saved credential without minting', async () => {
+	const savedToken = `kody_at_${'m'.repeat(20)}_${'N'.repeat(43)}`
 	const gitCalls: Array<Array<string>> = []
-	const currentCalls: Array<string> = []
-
+	const fetched: Array<string> = []
 	const result = await authSetupGit({
 		apiUrl: 'https://api.setup-git-login.test',
 		mcpUrl: 'https://kody.codes/mcp',
-		hasLoginSession: true,
-		lifetime: resolveCliTokenLifetime({ lifetime: 'long' }),
-		backend: tokenBackend,
 		helperCommand: '!kody git-credential',
+		resolveToken: async () => savedToken,
 		runGit: (args) => {
 			gitCalls.push([...args])
 			return { status: 0, stderr: '' }
 		},
-		mint: async (params) => {
-			mintCalls.push(params)
-			return {
-				bootstrap_code: `kody_bc_${'c'.repeat(16)}_${'D'.repeat(32)}`,
-				scopes: setupGitDefaultScopes,
-				idle_ttl_seconds: 1_209_600,
-				max_lifetime_seconds: 7_776_000,
-			}
-		},
-		fetchFn: (async (
-			input: Parameters<typeof fetch>[0],
-			init?: RequestInit,
-		) => {
+		fetchFn: (async (input: Parameters<typeof fetch>[0]) => {
 			const url = String(input instanceof Request ? input.url : input)
-			if (url.endsWith('/v1/tokens/bootstrap/redeem')) {
-				return new Response(
-					JSON.stringify({
-						token: mintedToken,
-						id: 'tok_login_mint',
-						name: 'kody-cli-bootstrap',
-						scopes: [...setupGitDefaultScopes],
-						expires_at: '2026-11-01T00:00:00.000Z',
-						max_expires_at: '2027-01-01T00:00:00.000Z',
-						created_via: 'cli-bootstrap',
-					}),
-					{ status: 200, headers: { 'content-type': 'application/json' } },
-				)
-			}
+			fetched.push(url)
 			if (url.includes('/v1/tokens/current')) {
-				currentCalls.push(url)
 				return new Response(
 					JSON.stringify({
-						id: 'tok_login_mint',
+						id: 'tok_saved',
 						org_binding: 'user',
-						scopes: [...setupGitDefaultScopes],
+						scopes: ['org:execute', 'package:read', 'package:write'],
 						expires_at: '2026-11-01T00:00:00.000Z',
 					}),
 					{ status: 200, headers: { 'content-type': 'application/json' } },
@@ -553,41 +494,54 @@ test('authSetupGit with login session and no API token mints then installs helpe
 			})
 		}) as typeof fetch,
 	})
-
-	assert.equal(result.minted, true)
-	assert.equal(result.tokenId, 'tok_login_mint')
-	assert.equal(result.orgBinding, 'user')
-	assert.equal(mintCalls.length, 1)
-	assert.deepEqual(mintCalls[0]?.lifetime, 'long')
-	assert.ok(
-		(mintCalls[0]?.scopes as Array<string>).includes('package:read') &&
-			(mintCalls[0]?.scopes as Array<string>).includes('package:write'),
-	)
-	// Login OAuth cannot probe /tokens/current; only the minted token is checked.
-	assert.equal(currentCalls.length, 1)
-	assert.ok(currentCalls[0]?.includes('/v1/tokens/current'))
+	assert.equal(result.minted, false)
+	assert.equal(result.tokenId, 'tok_saved')
 	assert.equal(gitCalls.length, 2)
-	assert.equal(
-		loadStoredApiToken('https://api.setup-git-login.test', tokenBackend)?.token,
-		mintedToken,
+	assert.ok(fetched.every((url) => !url.includes('/v1/tokens/bootstrap')))
+})
+
+test('authSetupGit rejects a saved credential without package scopes', async () => {
+	await assert.rejects(
+		() =>
+			authSetupGit({
+				apiUrl: 'https://api.setup-git-narrow.test',
+				mcpUrl: 'https://kody.codes/mcp',
+				resolveToken: async () => 'kody_at_narrow',
+				runGit: () => ({ status: 0, stderr: '' }),
+				fetchFn: (async () =>
+					new Response(
+						JSON.stringify({
+							id: 'tok_narrow',
+							org_binding: 'user',
+							scopes: ['org:execute'],
+							expires_at: null,
+						}),
+						{ status: 200, headers: { 'content-type': 'application/json' } },
+					)) as typeof fetch,
+			}),
+		/missing package:read and\/or package:write/,
 	)
 })
 
-test('authSetupGit without login or API token fails with login guidance', async () => {
-	const home = mkdtempSync(join(tmpdir(), 'kody-setup-git-empty-'))
+test('authSetupGit without a saved credential fails with login guidance', async () => {
 	await assert.rejects(
 		() =>
 			authSetupGit({
 				apiUrl: 'https://api.setup-git-empty.test',
 				mcpUrl: 'https://kody.codes/mcp',
-				hasLoginSession: false,
-				backend: createFileBackend(join(home, 'missing.json')),
-				mint: async () => {
-					throw new Error('mint should not run')
-				},
+				resolveToken: async () => null,
 				runGit: () => ({ status: 0, stderr: '' }),
 			}),
 		/Run `kody login`/,
+	)
+	await assert.rejects(
+		() =>
+			authSetupGit({
+				mcpUrl: 'https://kody.codes/mcp',
+				token: 'kody_bc_x',
+				runGit: () => ({ status: 0, stderr: '' }),
+			}),
+		/uses the saved CLI credential, not --token/,
 	)
 })
 
@@ -720,154 +674,20 @@ test('describeKodyCredentialKind names the kind without echoing the value', () =
 	}
 })
 
-const unauthorizedFetch = (async (input: Parameters<typeof fetch>[0]) => {
-	const url = String(input instanceof Request ? input.url : input)
-	if (url.includes('/v1/tokens/current')) {
-		return new Response(
-			JSON.stringify({ error: { code: 'unauthorized', message: 'no' } }),
-			{ status: 401, headers: { 'content-type': 'application/json' } },
-		)
-	}
-	return new Response('{}', { status: 404 })
-}) as typeof fetch
-
-test('authSetupGit 401 on a --token bootstrap code says what was rejected and how to fix it', async () => {
-	const home = mkdtempSync(join(tmpdir(), 'kody-setup-git-401-flag-'))
-	const code = `kody_bc_${'c'.repeat(16)}_${'D'.repeat(32)}`
+test('authSetupGit 401 on the saved credential tells the user to run kody login', async () => {
 	await assert.rejects(
 		() =>
 			authSetupGit({
 				apiUrl: 'https://api.setup-git-401.test',
 				mcpUrl: 'https://kody.codes/mcp',
-				token: code,
-				hasLoginSession: true,
-				backend: createFileBackend(join(home, 'missing.json')),
-				mint: async () => {
-					throw new Error('mint should not run')
-				},
+				resolveToken: async () => 'kody_at_rejected',
 				runGit: () => ({ status: 0, stderr: '' }),
-				fetchFn: unauthorizedFetch,
-			}),
-		(error: unknown) => {
-			assert.ok(error instanceof Error)
-			assert.match(error.message, /bootstrap code \(kody_bc_\)/)
-			assert.match(error.message, /passed with --token/)
-			assert.match(error.message, /kody auth bootstrap/)
-			assert.ok(!error.message.includes(code))
-			return true
-		},
-	)
-})
-
-test('authSetupGit 401 on a stored token without login tells the user to run kody login', async () => {
-	const home = mkdtempSync(join(tmpdir(), 'kody-setup-git-401-stored-'))
-	const tokenPath = join(home, 'api-token.json')
-	const stored = {
-		...sampleStored([...setupGitRequiredScopes]),
-		apiUrl: 'https://api.setup-git-401.test',
-	}
-	writeFileSync(tokenPath, JSON.stringify(stored))
-	await assert.rejects(
-		() =>
-			authSetupGit({
-				apiUrl: 'https://api.setup-git-401.test',
-				mcpUrl: 'https://kody.codes/mcp',
-				hasLoginSession: false,
-				backend: createFileBackend(tokenPath),
-				mint: async () => {
-					throw new Error('mint should not run')
-				},
-				runGit: () => ({ status: 0, stderr: '' }),
-				fetchFn: unauthorizedFetch,
-			}),
-		(error: unknown) => {
-			assert.ok(error instanceof Error)
-			assert.match(error.message, /Kody API token \(kody_at_\)/)
-			assert.match(error.message, /stored on this computer/)
-			assert.match(error.message, /Run `kody login`/)
-			assert.ok(!error.message.includes(stored.token))
-			return true
-		},
-	)
-})
-
-test('authSetupGit 401 on a stored token with a login session mints a fresh token', async () => {
-	const home = mkdtempSync(join(tmpdir(), 'kody-setup-git-401-remint-'))
-	const tokenPath = join(home, 'api-token.json')
-	const apiUrl = 'https://api.setup-git-401-remint.test'
-	const deadToken = `kody_at_${'d'.repeat(20)}_${'E'.repeat(43)}`
-	const freshToken = `kody_at_${'f'.repeat(20)}_${'G'.repeat(43)}`
-	writeFileSync(
-		tokenPath,
-		JSON.stringify({
-			...sampleStored([...setupGitRequiredScopes]),
-			apiUrl,
-			token: deadToken,
-		}),
-	)
-	let mints = 0
-	const result = await authSetupGit({
-		apiUrl,
-		mcpUrl: 'https://kody.codes/mcp',
-		hasLoginSession: true,
-		lifetime: resolveCliTokenLifetime({ lifetime: 'long' }),
-		backend: createFileBackend(tokenPath),
-		helperCommand: '!kody git-credential',
-		runGit: () => ({ status: 0, stderr: '' }),
-		mint: async () => {
-			mints += 1
-			return {
-				bootstrap_code: `kody_bc_${'c'.repeat(16)}_${'D'.repeat(32)}`,
-				scopes: setupGitDefaultScopes,
-				idle_ttl_seconds: 1_209_600,
-				max_lifetime_seconds: 7_776_000,
-			}
-		},
-		fetchFn: (async (
-			input: Parameters<typeof fetch>[0],
-			init?: RequestInit,
-		) => {
-			const url = String(input instanceof Request ? input.url : input)
-			if (url.endsWith('/v1/tokens/bootstrap/redeem')) {
-				return new Response(
-					JSON.stringify({
-						token: freshToken,
-						id: 'tok_fresh',
-						name: 'kody-cli-bootstrap',
-						scopes: [...setupGitDefaultScopes],
-						expires_at: '2026-11-01T00:00:00.000Z',
-						max_expires_at: '2027-01-01T00:00:00.000Z',
-						created_via: 'cli-bootstrap',
-					}),
-					{ status: 200, headers: { 'content-type': 'application/json' } },
-				)
-			}
-			if (url.includes('/v1/tokens/current')) {
-				const auth = new Headers(init?.headers).get('authorization') ?? ''
-				if (auth.includes(deadToken)) {
-					return new Response(
-						JSON.stringify({ error: { code: 'unauthorized', message: 'no' } }),
+				fetchFn: (async () =>
+					new Response(
+						JSON.stringify({ error: { message: 'API token expired' } }),
 						{ status: 401, headers: { 'content-type': 'application/json' } },
-					)
-				}
-				return new Response(
-					JSON.stringify({
-						id: 'tok_fresh',
-						org_binding: 'user',
-						scopes: [...setupGitDefaultScopes],
-						expires_at: '2026-11-01T00:00:00.000Z',
-					}),
-					{ status: 200, headers: { 'content-type': 'application/json' } },
-				)
-			}
-			return new Response('{}', { status: 404 })
-		}) as typeof fetch,
-	})
-	assert.equal(mints, 1)
-	assert.equal(result.minted, true)
-	assert.equal(result.tokenId, 'tok_fresh')
-	assert.equal(
-		loadStoredApiToken(apiUrl, createFileBackend(tokenPath))?.token,
-		freshToken,
+					)) as typeof fetch,
+			}),
+		/kody login/,
 	)
 })

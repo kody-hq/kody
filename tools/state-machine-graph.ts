@@ -271,6 +271,7 @@ export function extractMachineGraphSource(
 	return graph
 }
 
+/** Mermaid `stateDiagram-v2` of declared states, events, and finals. */
 export function renderStateMachineMermaid(graph: LifecycleGraph): string {
 	const id = (state: string) =>
 		state.includes('-') ? `__state_${graph.states.indexOf(state)}` : state

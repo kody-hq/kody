@@ -72,9 +72,9 @@ export function buildPackageAppUrl(input: {
  * How a package-app URL addresses its package:
  *
  * - `user-subdomain`: `https://{username}.<package-app host>/{kodyId}`
- *   — the production shape, where the username lives in the hostname. The
- *   legacy `/packages/{kodyId}` mount is still served there but is no longer
- *   generated.
+ *   — the production shape, where the username lives in the hostname. Reserved
+ *   or non-leaf names still generate the legacy `/packages/{kodyId}` mount
+ *   (`buildPackageAppSubdomainPath`); that mount still serves every package.
  * - `username-path`: `/@{username}/packages/{kodyId}` — the app-origin entry
  *   point (which redirects into the handoff) and the non-production inline
  *   serving shape.

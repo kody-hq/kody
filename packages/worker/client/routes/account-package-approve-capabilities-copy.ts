@@ -185,6 +185,10 @@ export function selfPublishReasonText(
 				matches.length > 3 ? ` and ${String(matches.length - 3)} more` : ''
 			return `It uses package storage at ${shown}${more}.`
 		}
+		case 'realtime_entry':
+			return reason.anonymousRealtime === 'two-way'
+				? 'Visitors who are not signed in can open live connections and send messages to its realtime code.'
+				: 'Visitors who are not signed in can open live connections that receive its broadcasts.'
 		case 'manifest_field':
 			return reason.field
 				? `${who} declares ${manifestFieldLabel(reason.field).toLowerCase()} (kody.${reason.field}).`

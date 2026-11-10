@@ -1,4 +1,5 @@
 import { sha256Hex } from '@kody-internal/shared/sha256.ts'
+import type { PackageAppAnonymousRealtimeMode } from '#worker/package-registry/types.ts'
 
 /**
  * Why a package reaches a credential. `need` fills a declared
@@ -14,7 +15,11 @@ export type CapabilityCredentialSource = 'need' | 'mount' | 'grant' | 'package'
  * `needKey` unless the need shares the credential with visitors).
  */
 export type CapabilitySetEntry = {
-	kind: 'credential' | 'storage'
+	/**
+	 * `realtime` is the app's `kody.app.realtime.anonymous` opt-in: sockets
+	 * from visitors who are not signed in to the owning org.
+	 */
+	kind: 'credential' | 'storage' | 'realtime'
 	/** Stable credential id (#3442). Required when kind is credential. */
 	credentialId?: string
 	/** Display name only; never part of the fingerprint. */
@@ -38,6 +43,8 @@ export type CapabilitySetEntry = {
 	via: Array<string>
 	/** Storage grant package id when kind is storage. */
 	storageId?: string
+	/** Anonymous realtime mode when kind is realtime. */
+	anonymousRealtime?: PackageAppAnonymousRealtimeMode
 }
 
 export type CapabilitySet = {
@@ -54,6 +61,7 @@ type CanonicalFingerprintEntry = {
 	needKey?: string
 	ownerCredentialForVisitors?: true
 	storageId?: string
+	anonymousRealtime?: PackageAppAnonymousRealtimeMode
 }
 
 function sortHosts(hosts: ReadonlyArray<string>) {
@@ -78,6 +86,13 @@ function toCanonicalEntry(
 						ownerCredentialForVisitors: true as const,
 					}
 				: {}),
+		}
+	}
+	if (entry.kind === 'realtime') {
+		return {
+			kind: 'realtime',
+			anonymousRealtime: entry.anonymousRealtime,
+			hosts: [],
 		}
 	}
 	return {

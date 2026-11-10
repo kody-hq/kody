@@ -13,6 +13,7 @@ import {
 	ownCredentialNeeds,
 	type CredentialNeed,
 } from '#worker/credentials/credential-needs.ts'
+import { getPackageAppAnonymousRealtimeMode } from '#worker/package-registry/manifest.ts'
 import { loadPackageManifestBySourceId } from '#worker/package-registry/source.ts'
 import { listKodyPackageDependencyNames } from '#worker/package-registry/types.ts'
 import { resolveSavedPackageImport } from '#worker/package-runtime/package-import-resolution.ts'
@@ -171,6 +172,15 @@ export async function computePackageCapabilitySet(input: {
 			userId: input.ownerUserId,
 			sourceId: input.sourceId,
 		}),
+	})
+
+	await appendAnonymousRealtimeEntry({
+		env: input.env,
+		ownerUserId: input.ownerUserId,
+		sourceId: input.sourceId,
+		baseUrl,
+		via: viaRoot,
+		entries,
 	})
 
 	const dependencySnapshot = await resolveDependencySnapshot({
@@ -399,6 +409,36 @@ async function walkDeclaredKodyDependencies(input: {
 	}
 
 	return [...dependencies.values()]
+}
+
+/**
+ * The root app's `kody.app.realtime.anonymous` opt-in. Only the root serves
+ * sockets, so dependencies never add one. Apps without the opt-in add no
+ * entry, so their fingerprints stay what they were.
+ */
+async function appendAnonymousRealtimeEntry(input: {
+	env: Env
+	ownerUserId: OwnerId
+	sourceId: string
+	baseUrl: string
+	via: Array<string>
+	entries: Array<CapabilitySetEntry>
+}) {
+	const loaded = await loadPackageManifestBySourceId({
+		env: input.env,
+		baseUrl: input.baseUrl,
+		userId: input.ownerUserId,
+		sourceId: input.sourceId,
+	})
+	if (!loaded.manifest.kody.app?.entry?.trim()) return
+	const mode = getPackageAppAnonymousRealtimeMode(loaded.manifest)
+	if (!mode) return
+	input.entries.push({
+		kind: 'realtime',
+		anonymousRealtime: mode,
+		hosts: [],
+		via: input.via,
+	})
 }
 
 async function appendPackageCapabilityEntries(input: {

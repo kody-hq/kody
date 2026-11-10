@@ -1,6 +1,7 @@
 /**
- * Scratch storage for `--target mock`, keyed by the active content-addressed
- * session directory under the user cache. Reset with `--reset-storage`.
+ * Scratch storage for `--target mock`, keyed by the mock session id
+ * (`KODY_MOCK_SESSION_ID`, or `default`) under the user cache
+ * (`mock-sessions/<id>/`). Reset with `--reset-storage`.
  */
 
 import { mkdirSync } from 'node:fs'

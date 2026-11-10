@@ -1,13 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
+import { cliName, defaultApiUrl, defaultMcpUrl } from './defaults.js'
 import {
-	apiTokenEnvVar,
-	cliName,
-	defaultApiUrl,
-	defaultMcpUrl,
-} from './defaults.js'
-import {
-	authBootstrapWithScopes,
 	resolveCliTokenLifetime,
 	type ResolvedCliTokenLifetime,
 } from './auth-bootstrap.js'
@@ -618,144 +612,77 @@ export type AuthSetupGitResult = {
 	expiresAt: string | null
 }
 
+/**
+ * Install the git HTTPS credential helper for the one saved CLI credential.
+ * Never mints a token: git uses the same credential every command uses, so
+ * it must be user-owned and hold package:read and package:write.
+ */
 export async function authSetupGit(input: {
 	apiUrl?: string
 	mcpUrl?: string
+	/** Rejected: the helper only ever sends the saved credential. */
 	token?: string
-	scopesOverride?: ReadonlyArray<string>
-	lifetime?: ResolvedCliTokenLifetime
 	global?: boolean
-	/**
-	 * True when a `kody login` OAuth session is stored for `mcpUrl`. Login is
-	 * enough to mint: the OAuth bearer cannot call `GET /v1/tokens/current`, so
-	 * we skip that probe and assert `org_binding` on the minted `kody_at_…`.
-	 * The minted token is user-owned (git auth is person-wide across orgs);
-	 * login `--org` only scopes the MCP session used to mint.
-	 */
-	hasLoginSession?: boolean
-	mint: (params: Record<string, unknown>) => Promise<unknown>
 	fetchFn?: typeof fetch
 	backend?: SecretBackend
 	resolution?: StoreResolution
 	runGit?: GitConfigRunner
 	helperCommand?: string
+	/** Test seam: resolve the saved credential's bearer. */
+	resolveToken?: () => Promise<string | null>
 }): Promise<AuthSetupGitResult> {
 	const apiUrl = input.apiUrl || defaultApiUrl
 	const mcpUrl = input.mcpUrl || defaultMcpUrl
 	const host = gitCredentialHostFromMcpUrl(mcpUrl)
-
-	const storedExisting = loadStoredApiToken(
-		apiUrl,
-		input.backend,
-		input.resolution,
-	)
-	const probeToken = input.token || storedExisting?.token
-	const hasLoginSession = input.hasLoginSession === true
-	if (!probeToken && !hasLoginSession) {
+	if (input.token) {
 		throw new Error(
-			`setup-git needs a Kody credential to detect server support and mint a token. Run \`kody login\`, or set ${apiTokenEnvVar}, or pass --token.`,
+			'auth setup-git uses the saved CLI credential, not --token. Run `kody login` (agents on Kody MCP: cliCredentialBootstrap, then its cli_command), then rerun `kody auth setup-git`.',
 		)
 	}
-
-	let probeMetadata: TokenCurrentMetadata | null = null
-	if (probeToken) {
-		const probeSource: SetupGitCredentialSource = input.token
-			? 'flag'
-			: 'stored'
-		try {
-			probeMetadata = await fetchTokenCurrentMetadata({
-				token: probeToken,
+	const resolveToken =
+		input.resolveToken ??
+		(async () => {
+			const { ensureGitApiToken } = await import('./git-credential.js')
+			const ensured = await ensureGitApiToken({
 				apiUrl,
-				fetchFn: input.fetchFn,
+				mcpUrl,
+				env: {},
+				backend: input.backend,
+				resolution: input.resolution,
 			})
-		} catch (error) {
-			if (!(error instanceof OpenApiError && error.status === 401)) {
-				throw error
-			}
-			// A dead stored token (revoked, expired, or replaced) should not block
-			// setup when a login session can mint a fresh one.
-			if (!(probeSource === 'stored' && hasLoginSession)) {
-				throw new Error(
-					describeSetupGitUnauthorized({
-						apiUrl,
-						token: probeToken,
-						source: probeSource,
-					}),
-				)
-			}
-		}
-		// Any live token's /tokens/current shape proves the origin supports org_binding.
-		if (probeMetadata) assertUserOwnedTokensLive(probeMetadata)
-	}
-
-	let storedMetadata: TokenCurrentMetadata | null = null
-	if (storedExisting) {
-		if (probeMetadata && storedExisting.token === probeToken) {
-			storedMetadata = probeMetadata
-		} else {
-			try {
-				storedMetadata = await fetchTokenCurrentMetadata({
-					token: storedExisting.token,
-					apiUrl,
-					fetchFn: input.fetchFn,
-				})
-			} catch {
-				storedMetadata = null
-			}
-		}
-	}
-
-	const decision = decideSetupGitToken({
-		stored: storedExisting,
-		metadata: storedMetadata,
-		scopesOverride: input.scopesOverride,
-		lifetime: input.lifetime,
-	})
-
-	let stored: StoredApiToken
-	let minted = false
-	let backendKind: string
-	let backendPath: string | undefined
-
-	let finalMetadata: TokenCurrentMetadata
-
-	if (decision.action === 'reuse') {
-		stored = decision.stored
-		backendKind = 'existing'
-		finalMetadata = decision.metadata
-	} else {
-		const result = await authBootstrapWithScopes({
-			scopes: decision.scopes,
-			lifetime: decision.lifetime,
-			mint: input.mint,
-			apiUrl,
-			fetchFn: input.fetchFn,
-			backend: input.backend,
-			resolution: input.resolution,
+			return ensured?.token ?? null
 		})
-		stored = result.stored
-		minted = true
-		backendKind = result.backendKind
-		backendPath = result.backendPath
-
-		// Confirm the redeemed token is user-owned (new bootstrap default).
-		const after = await fetchTokenCurrentMetadata({
-			token: stored.token,
+	const token = await resolveToken()
+	if (!token) {
+		throw new Error(
+			`setup-git needs a saved CLI credential. Run \`kody login\` (agents on Kody MCP: cliCredentialBootstrap, then its cli_command), then rerun \`kody auth setup-git\`.`,
+		)
+	}
+	let metadata: TokenCurrentMetadata
+	try {
+		metadata = await fetchTokenCurrentMetadata({
+			token,
 			apiUrl,
 			fetchFn: input.fetchFn,
 		})
-		assertUserOwnedTokensLive(after)
-		if (after.orgBinding !== 'user') {
+	} catch (error) {
+		if (error instanceof OpenApiError && error.status === 401) {
 			throw new Error(
-				`Minted token ${stored.tokenId} has org_binding=${JSON.stringify(after.orgBinding)}; expected "user". Refusing to install the git helper.`,
+				describeSetupGitUnauthorized({ apiUrl, token, source: 'stored' }),
 			)
 		}
-		if (!scopesIncludeRequired(after.scopes)) {
-			throw new Error(
-				`Minted token ${stored.tokenId} is missing package:read and/or package:write. Pass --scopes that include both.`,
-			)
-		}
-		finalMetadata = after
+		throw error
+	}
+	assertUserOwnedTokensLive(metadata)
+	if (metadata.orgBinding !== 'user') {
+		throw new Error(
+			`The saved CLI credential ${metadata.id} is org-bound; git HTTPS needs a user-owned credential. Run \`kody login\` and rerun \`kody auth setup-git\`.`,
+		)
+	}
+	if (!scopesIncludeRequired(metadata.scopes)) {
+		throw new Error(
+			`The saved CLI credential ${metadata.id} is missing package:read and/or package:write (it was minted with a narrower --scopes list). Run \`kody login\` (agents: cliCredentialBootstrap with no scopes), then rerun \`kody auth setup-git\`.`,
+		)
 	}
 
 	const helperCommand = input.helperCommand ?? gitCredentialHelperCommand()
@@ -769,13 +696,12 @@ export async function authSetupGit(input: {
 	return {
 		host,
 		helperCommand,
-		tokenId: stored.tokenId,
-		scopes: finalMetadata.scopes,
+		tokenId: metadata.id,
+		scopes: metadata.scopes,
 		orgBinding: 'user',
-		minted,
-		backendKind,
-		...(backendPath ? { backendPath } : {}),
-		expiresAt: finalMetadata.expiresAt,
+		minted: false,
+		backendKind: 'saved',
+		expiresAt: metadata.expiresAt,
 	}
 }
 

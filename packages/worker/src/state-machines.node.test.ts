@@ -159,6 +159,7 @@ test('documentation separates replacement enums from event-driven graphs', () =>
 	)
 	expect(machines).toContain('| CONSUME | pending | consumed | — |')
 	expect(machines).toContain('pending --> consumed: CONSUME')
+	expect(machines).toContain('UI machines export a view type')
 	expect(machines).not.toContain('consumed --> expired')
 	expect(machines).not.toContain('mcp_memories.status')
 	expect(enums).toContain('mcp_memories.status')

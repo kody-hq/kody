@@ -2,7 +2,7 @@ import {
 	assertTokenSafeApiUrl,
 	capabilityProxyUrl,
 } from './capability-proxy.js'
-import { cliName, defaultApiUrl } from './defaults.js'
+import { cliName, defaultApiUrl, defaultMcpUrl } from './defaults.js'
 import { summarizeNonJsonErrorBody } from './http-error-body.js'
 import {
 	formatUnreachableApiMessage,
@@ -10,8 +10,13 @@ import {
 	type RequestSentStatus,
 } from './network-error.js'
 import { readPackageVersion } from './package-info.js'
-import { saveStoredApiToken, type StoredApiToken } from './api-token-store.js'
-import type { SecretBackend, StoreResolution } from './store.js'
+import type { StoredApiToken } from './api-token-store.js'
+import { storedCredentialsFromApiToken } from './cli-credential.js'
+import {
+	saveCredentials,
+	type SecretBackend,
+	type StoreResolution,
+} from './store.js'
 
 /** ADR 0056 one-shot bootstrap code prefix (`kody_bc_…`). */
 const cliBootstrapCodePrefix = 'kody_bc_'
@@ -76,9 +81,11 @@ export type BootstrapRedeemResponse = {
 	expires_at?: string | null
 	max_expires_at?: string | null
 	created_via?: string
+	login_org?: { slug: string } | null
 }
 
 type BootstrapRedeemRequestBody =
+	| { code: string }
 	| { code: string; lifetime: CliTokenLifetimeAlias }
 	| {
 			code: string
@@ -247,13 +254,19 @@ export async function redeemBootstrapCode(input: {
 	fetchFn?: typeof fetch
 }): Promise<BootstrapRedeemResponse> {
 	const code = assertCliBootstrapCode(input.code)
+	// No lifetime means the lifetime the code was minted for (the server
+	// defaults it to the `kody login` lifetime).
 	const lifetime = input.trustedMintLifetime
 		? resolveMintedRedeemLifetime(input.trustedMintLifetime)
-		: resolveCliTokenLifetime({
-				lifetime: input.lifetime,
-				idleTtlSeconds: input.idleTtlSeconds,
-				maxLifetimeSeconds: input.maxLifetimeSeconds,
-			})
+		: input.lifetime == null &&
+			  input.idleTtlSeconds === undefined &&
+			  input.maxLifetimeSeconds === undefined
+			? null
+			: resolveCliTokenLifetime({
+					lifetime: input.lifetime,
+					idleTtlSeconds: input.idleTtlSeconds,
+					maxLifetimeSeconds: input.maxLifetimeSeconds,
+				})
 	const apiUrl = input.apiUrl || defaultApiUrl
 	assertTokenSafeApiUrl(apiUrl)
 	const url = capabilityProxyUrl(apiUrl, bootstrapRedeemPath)
@@ -267,7 +280,9 @@ export async function redeemBootstrapCode(input: {
 				'content-type': 'application/json',
 				'user-agent': `${cliName}/${readPackageVersion()}`,
 			},
-			body: JSON.stringify(bootstrapRedeemRequestBody(code, lifetime)),
+			body: JSON.stringify(
+				lifetime ? bootstrapRedeemRequestBody(code, lifetime) : { code },
+			),
 		})
 	} catch (error) {
 		const unreachable = new Error(
@@ -309,6 +324,34 @@ function storedApiTokenFromRedeem(input: {
 }
 
 /**
+ * Save a redeemed token as the one CLI credential, in the slot and shape
+ * `kody login` uses for its device token. Replaces that org's saved login.
+ */
+function saveRedeemedCredential(input: {
+	stored: StoredApiToken
+	mcpUrl?: string
+	org?: string
+	backend?: SecretBackend
+	resolution?: StoreResolution
+}): { backend: SecretBackend } {
+	const expiresAt = input.stored.expiresAt
+		? Date.parse(input.stored.expiresAt)
+		: undefined
+	return saveCredentials(
+		storedCredentialsFromApiToken({
+			mcpUrl: input.mcpUrl || defaultMcpUrl,
+			token: input.stored.token,
+			expiresAt,
+			scopes: input.stored.scopes ?? [],
+			...(input.org ? { org: input.org } : {}),
+			apiUrl: input.stored.apiUrl,
+		}),
+		input.backend,
+		input.resolution,
+	)
+}
+
+/**
  * Redeem a one-shot `kody_bc_…` and persist the resulting API token for
  * `execute --local`. Never returns the token string to callers that print
  * success output — use `stored.tokenId` / backend kind only.
@@ -319,6 +362,7 @@ export async function authBootstrap(input: {
 	idleTtlSeconds?: number
 	maxLifetimeSeconds?: number
 	apiUrl?: string
+	mcpUrl?: string
 	fetchFn?: typeof fetch
 	backend?: SecretBackend
 	resolution?: StoreResolution
@@ -337,7 +381,13 @@ export async function authBootstrap(input: {
 		fetchFn: input.fetchFn,
 	})
 	const stored = storedApiTokenFromRedeem({ apiUrl, redeemed })
-	const saved = saveStoredApiToken(stored, input.backend, input.resolution)
+	const saved = saveRedeemedCredential({
+		stored,
+		mcpUrl: input.mcpUrl,
+		org: redeemed.login_org?.slug,
+		backend: input.backend,
+		resolution: input.resolution,
+	})
 	return {
 		stored,
 		backendKind: saved.backend.kind,
@@ -433,6 +483,7 @@ export async function authBootstrapWithScopes(input: {
 	lifetime: ResolvedCliTokenLifetime
 	mint: (params: Record<string, unknown>) => Promise<unknown>
 	apiUrl?: string
+	mcpUrl?: string
 	fetchFn?: typeof fetch
 	backend?: SecretBackend
 	resolution?: StoreResolution
@@ -451,7 +502,13 @@ export async function authBootstrapWithScopes(input: {
 		fetchFn: input.fetchFn,
 	})
 	const stored = storedApiTokenFromRedeem({ apiUrl, redeemed })
-	const saved = saveStoredApiToken(stored, input.backend, input.resolution)
+	const saved = saveRedeemedCredential({
+		stored,
+		mcpUrl: input.mcpUrl,
+		org: redeemed.login_org?.slug,
+		backend: input.backend,
+		resolution: input.resolution,
+	})
 	return {
 		stored,
 		backendKind: saved.backend.kind,
@@ -506,6 +563,10 @@ function parseRedeemResponse(body: unknown): BootstrapRedeemResponse {
 			typeof body.max_expires_at === 'string' ? body.max_expires_at : null,
 		created_via:
 			typeof body.created_via === 'string' ? body.created_via : undefined,
+		login_org:
+			isRecord(body.login_org) && typeof body.login_org.slug === 'string'
+				? { slug: body.login_org.slug }
+				: null,
 	}
 }
 
