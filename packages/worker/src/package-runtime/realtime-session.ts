@@ -12,6 +12,8 @@ import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
 import { packageRealtimeSessionDurableObjectName } from '#worker/user-scoped-durable-object-name.ts'
+import { resolveInternetVisibleApprovedCommit } from '#worker/app/package-app-internet-visible.ts'
+import { recordUsage } from '#worker/usage/record-usage.ts'
 import {
 	computeOverageLimitErrorCode,
 	isComputeOverageLimitError,
@@ -22,19 +24,72 @@ import { isWebSocketUpgradeRequest } from '#worker/package-runtime/websocket-upg
 
 const includeUsedUpCloseReason = 'include-used-up'
 
-const sessionStateStorageKey = 'package-realtime-state'
+// Pre-per-socket layout: one record holding the binding and every session.
+const legacySessionStateStorageKey = 'package-realtime-state'
+const bindingStorageKey = 'package-realtime-binding'
+const sessionStoragePrefix = 'session-state:'
 const sessionTagPrefix = 'session:'
 const facetTagPrefix = 'facet:'
+const publicSocketTag = 'public'
+const ipTagPrefix = 'ip:'
 // Refresh source-version lookups periodically so long-lived sessions can pick up
 // publishes without paying a D1 round trip on every websocket event.
 const packageAppWorkerCacheKeyRefreshMs = 5_000
 
-type PersistedPackageRealtimeSession = {
+/**
+ * Platform caps on public sockets: ones opened through the app's
+ * `kody.app.realtime.anonymous` opt-in by visitors who are not signed in to
+ * the owning org. Org members keep the uncapped behavior.
+ */
+export const anonymousRealtimeLimits = {
+	socketsPerApp: 2_000,
+	socketsPerIp: 20,
+	connectsPerIpPerMinute: 30,
+	maxSessionMs: 24 * 60 * 60 * 1000,
+	/** Inbound frames and each emit / broadcast delivered to a public socket. */
+	maxPayloadBytes: 64 * 1024,
+	/** Soft cap: broadcasts over it skip public sockets, members still get them. */
+	broadcastsPerSecond: 20,
+	/** Two-way only; a socket over it is closed with 1008. */
+	inboundMessagesPerSecond: 10,
+	inboundMessageBurst: 20,
+	/** How often live public sockets recheck the app's approved commit. */
+	accessRecheckMs: 5 * 60 * 1000,
+} as const
+
+/** Text frame the platform answers without waking the app or its hooks. */
+export const packageRealtimePingMessage = 'kody:ping'
+export const packageRealtimePongMessage = 'kody:pong'
+
+/** Who may open sockets and whether app hooks run for their messages. */
+export type PackageRealtimeAccess = 'member' | 'receive' | 'two-way'
+
+/** Signed-in Kody user behind a socket; `role` is null outside the org. */
+export type PackageRealtimeVisitor = {
+	userId: string
+	username: string
+	role: string | null
+}
+
+type PackageRealtimeSocketAttachment = {
+	v: 2
 	id: string
 	facet: string
 	connectedAt: string
+	access: PackageRealtimeAccess
+	visitor: PackageRealtimeVisitor | null
+	/** Commit the owner approved for public visitors when the socket opened. */
+	approvedCommit: string | null
+}
+
+type PersistedPackageRealtimeSession = PackageRealtimeSocketAttachment & {
 	lastSeenAt: string
 	topics: Array<string>
+}
+
+type StoredPackageRealtimeSessionState = {
+	topics: Array<string>
+	lastSeenAt: string
 }
 
 type PackageRealtimeBindingState = {
@@ -56,6 +111,9 @@ type PackageRealtimeSessionRecord = {
 	topics: Array<string>
 	connectedAt: string
 	lastSeenAt: string
+	/** True when the visitor is not signed in to Kody at all. */
+	anonymous: boolean
+	visitor: PackageRealtimeVisitor | null
 }
 
 type PackageRealtimeSessionOutput = {
@@ -64,6 +122,8 @@ type PackageRealtimeSessionOutput = {
 	topics: Array<string>
 	connected_at: string
 	last_seen_at: string
+	anonymous: boolean
+	visitor: PackageRealtimeVisitor | null
 }
 
 export type PackageRealtimeEmitResult = {
@@ -74,6 +134,8 @@ export type PackageRealtimeEmitResult = {
 export type PackageRealtimeBroadcastResult = {
 	deliveredCount: number
 	sessionIds: Array<string>
+	/** Public sockets skipped by the payload or broadcast-rate cap. */
+	limitedCount?: number
 }
 
 export type PackageRealtimeListResult = {
@@ -139,6 +201,11 @@ type PackageRealtimeHookResult =
 type PackageRealtimeHookInput = {
 	event: 'connect' | 'message' | 'disconnect'
 	facet: string
+	/**
+	 * The signed-in Kody user behind the socket, or null for an anonymous
+	 * visitor, matching `X-Kody-Visitor` on HTTP requests.
+	 */
+	visitor: PackageRealtimeVisitor | null
 	session: PackageRealtimeSessionRecord
 	request?: PackageRealtimeEventRequestInfo | null
 	message?: PackageRealtimeIncomingMessage | null
@@ -161,7 +228,19 @@ type PackageRealtimeConnectPayload = {
 	binding: PackageRealtimeBindingState
 	facet?: string | null
 	request: PackageRealtimeEventRequestInfo
+	/** Defaults to `member`. */
+	access?: PackageRealtimeAccess
+	visitor?: PackageRealtimeVisitor | null
+	/** Public access only; required for `receive` and `two-way`. */
+	approvedCommit?: string | null
+	/** Public access only: hashed client IP for the per-IP caps. */
+	ipHash?: string | null
 }
+
+export type PackageRealtimeConnectOptions = Pick<
+	PackageRealtimeConnectPayload,
+	'access' | 'visitor' | 'approvedCommit' | 'ipHash'
+>
 
 type PackageRealtimeEmitPayload = {
 	binding: PackageRealtimeBindingState
@@ -193,6 +272,62 @@ function sessionTag(sessionId: string) {
 	return `${sessionTagPrefix}${sessionId}`
 }
 
+function sessionStorageKey(sessionId: string) {
+	return `${sessionStoragePrefix}${sessionId}`
+}
+
+function ipTag(ipHash: string) {
+	return `${ipTagPrefix}${ipHash}`
+}
+
+function isPublicAccess(access: PackageRealtimeAccess | undefined) {
+	return access === 'receive' || access === 'two-way'
+}
+
+function readSocketAttachment(
+	value: unknown,
+): PackageRealtimeSocketAttachment | null {
+	if (!value || typeof value !== 'object') return null
+	const attachment = value as Partial<PackageRealtimeSocketAttachment>
+	if (attachment.v !== 2 || typeof attachment.id !== 'string') return null
+	return attachment as PackageRealtimeSocketAttachment
+}
+
+const utf8Encoder = new TextEncoder()
+
+function payloadByteLength(message: string | ArrayBuffer) {
+	if (typeof message !== 'string') return message.byteLength
+	// UTF-8 needs at most 3 bytes per UTF-16 code unit.
+	if (message.length * 3 <= anonymousRealtimeLimits.maxPayloadBytes) {
+		return message.length
+	}
+	return utf8Encoder.encode(message).byteLength
+}
+
+/** Token bucket in memory; it resets when the object is evicted. */
+class RateBucket {
+	private readonly ratePerSecond: number
+	private readonly burst: number
+	private tokens: number
+	private updatedAt = Date.now()
+	constructor(ratePerSecond: number, burst: number) {
+		this.ratePerSecond = ratePerSecond
+		this.burst = burst
+		this.tokens = burst
+	}
+	take() {
+		const now = Date.now()
+		this.tokens = Math.min(
+			this.burst,
+			this.tokens + ((now - this.updatedAt) / 1000) * this.ratePerSecond,
+		)
+		this.updatedAt = now
+		if (this.tokens < 1) return false
+		this.tokens -= 1
+		return true
+	}
+}
+
 function facetTag(facet: string) {
 	return `${facetTagPrefix}${facet}`
 }
@@ -214,6 +349,18 @@ function toPlainHeaders(headers: Headers) {
 // handshake and drops the request body, so the connect payload travels in a
 // header instead.
 const packageRealtimeConnectHeaderName = 'X-Kody-Realtime-Connect'
+
+function closeSocket(socket: WebSocket, code: number, reason: string) {
+	try {
+		socket.close(code, reason)
+	} catch {
+		// Ignore sockets that are already closing.
+	}
+}
+
+function outboundByteLength(message: string | undefined) {
+	return typeof message === 'string' ? payloadByteLength(message) : 0
+}
 
 function serializeOutboundMessage(value: unknown) {
 	if (typeof value === 'string') {
@@ -288,6 +435,8 @@ function createSessionRecord(
 		topics: [...session.topics],
 		connectedAt: session.connectedAt,
 		lastSeenAt: session.lastSeenAt,
+		anonymous: isPublicAccess(session.access) && session.visitor === null,
+		visitor: session.visitor,
 	}
 }
 
@@ -300,6 +449,17 @@ function createSessionOutput(
 		topics: [...session.topics],
 		connected_at: session.connectedAt,
 		last_seen_at: session.lastSeenAt,
+		anonymous: isPublicAccess(session.access) && session.visitor === null,
+		visitor: session.visitor,
+	}
+}
+
+class PackageRealtimePinMismatchError extends Error {
+	constructor() {
+		super(
+			'The running app version is not the one approved for public visitors.',
+		)
+		this.name = 'PackageRealtimePinMismatchError'
 	}
 }
 
@@ -380,6 +540,33 @@ export async function resolvePackageAppWorkerBuildInput(input: {
 	}
 }
 
+/**
+ * The approved internet-visible commit when it is also the live published
+ * commit, else null. Same rule as `refuseUnapprovedAnonymousServe`.
+ */
+export async function resolvePublicRealtimeCommit(input: {
+	env: Env
+	binding: PackageRealtimeBindingState
+}) {
+	const savedPackage = await getSavedPackageById(input.env.APP_DB, {
+		userId: input.binding.userId,
+		packageId: input.binding.packageId,
+	})
+	if (!savedPackage) return null
+	const [approvedCommit, source] = await Promise.all([
+		resolveInternetVisibleApprovedCommit({
+			env: input.env,
+			lookup: { savedPackage, retired: false },
+			requestUrl: input.binding.baseUrl,
+		}),
+		getEntitySourceById(input.env.APP_DB, savedPackage.sourceId),
+	])
+	if (!approvedCommit || source?.published_commit !== approvedCommit) {
+		return null
+	}
+	return approvedCommit
+}
+
 export async function resolvePackageAppWorkerCacheKey(input: {
 	env: Pick<Env, 'APP_DB'>
 	binding: PackageRealtimeBindingState
@@ -400,9 +587,53 @@ export async function resolvePackageAppWorkerCacheKey(input: {
 	])
 }
 
+type LegacyPersistedPackageRealtimeSession = {
+	id: string
+	facet: string
+	connectedAt: string
+	lastSeenAt: string
+	topics: Array<string>
+}
+
+type LegacyPackageRealtimeState = {
+	binding?: PackageRealtimeBindingState | null
+	sessions?: Record<string, LegacyPersistedPackageRealtimeSession>
+}
+
+const maxPublicFacetLength = 128
+// DurableObjectStorage.delete accepts at most 128 keys per call.
+const storageDeleteBatchSize = 128
+const connectWindowMs = 60_000
+const maxTrackedConnectIps = 10_000
+
+function publicConnectRefusal(message: string, retryAfterSeconds?: number) {
+	return new Response(message, {
+		status: 429,
+		headers: {
+			'Content-Type': 'text/plain; charset=utf-8',
+			'Cache-Control': 'no-store',
+			...(retryAfterSeconds
+				? { 'Retry-After': String(retryAfterSeconds) }
+				: {}),
+		},
+	})
+}
+
 export class PackageRealtimeSession extends DurableObject<Env> {
 	private stateSnapshot: PackageRealtimeState = createInitialState()
 	private sessionIds = new WeakMap<WebSocket, string | null>()
+	// Session ids with a `session-state:` record in storage.
+	private persistedSessionIds = new Set<string>()
+	private inboundBuckets = new WeakMap<WebSocket, RateBucket>()
+	private broadcastBucket = new RateBucket(
+		anonymousRealtimeLimits.broadcastsPerSecond,
+		anonymousRealtimeLimits.broadcastsPerSecond,
+	)
+	private connectsByIp = new Map<string, Array<number>>()
+	private publicAccessLookup: {
+		commit: Promise<string | null>
+		expiresAt: number
+	} | null = null
 	private cachedAppWorkerKey: string | null = null
 	private cachedAppWorkerKeyLookup: {
 		bindingIdentity: string
@@ -419,39 +650,130 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env)
+		// Answered by the runtime without waking the object, so idle public
+		// sockets can keep their connection alive for free.
+		this.ctx.setWebSocketAutoResponse(
+			new WebSocketRequestResponsePair(
+				packageRealtimePingMessage,
+				packageRealtimePongMessage,
+			),
+		)
 		this.ctx.blockConcurrencyWhile(async () => {
 			await this.restoreState()
 		})
 	}
 
 	private async restoreState() {
-		const stored = await this.ctx.storage.get<PackageRealtimeState>(
-			sessionStateStorageKey,
-		)
-		if (!stored) return
+		const [binding, legacy, stored] = await Promise.all([
+			this.ctx.storage.get<PackageRealtimeBindingState>(bindingStorageKey),
+			this.ctx.storage.get<LegacyPackageRealtimeState>(
+				legacySessionStateStorageKey,
+			),
+			this.ctx.storage.list<StoredPackageRealtimeSessionState>({
+				prefix: sessionStoragePrefix,
+			}),
+		])
 		this.stateSnapshot = {
-			binding: stored.binding ?? null,
-			sessions: stored.sessions ?? {},
+			binding: binding ?? legacy?.binding ?? null,
+			sessions: {},
+		}
+		const legacySessions = legacy?.sessions ?? {}
+		for (const ws of this.ctx.getWebSockets()) {
+			let raw: unknown = null
+			try {
+				raw = ws.deserializeAttachment()
+			} catch {
+				// Ignore missing attachment support.
+			}
+			let attachment = readSocketAttachment(raw)
+			if (!attachment && typeof raw === 'string') {
+				const legacySession = legacySessions[raw.trim()]
+				if (legacySession) {
+					attachment = {
+						v: 2,
+						id: legacySession.id,
+						facet: legacySession.facet,
+						connectedAt: legacySession.connectedAt,
+						access: 'member',
+						visitor: null,
+						approvedCommit: null,
+					}
+				}
+			}
+			if (!attachment) continue
+			const persisted =
+				stored.get(sessionStorageKey(attachment.id)) ??
+				legacySessions[attachment.id]
+			this.stateSnapshot.sessions[attachment.id] = {
+				...attachment,
+				topics: [...(persisted?.topics ?? [])],
+				lastSeenAt: persisted?.lastSeenAt ?? attachment.connectedAt,
+			}
+			this.sessionIds.set(ws, attachment.id)
+		}
+		const staleKeys: Array<string> = []
+		for (const key of stored.keys()) {
+			const sessionId = key.slice(sessionStoragePrefix.length)
+			if (this.stateSnapshot.sessions[sessionId]) {
+				this.persistedSessionIds.add(sessionId)
+			} else {
+				staleKeys.push(key)
+			}
+		}
+		if (legacy) {
+			if (!binding && this.stateSnapshot.binding) {
+				await this.ctx.storage.put(
+					bindingStorageKey,
+					this.stateSnapshot.binding,
+				)
+			}
+			for (const session of Object.values(this.stateSnapshot.sessions)) {
+				if (
+					!this.persistedSessionIds.has(session.id) &&
+					session.topics.length
+				) {
+					await this.persistSession(session)
+				}
+			}
+			staleKeys.push(legacySessionStateStorageKey)
+		}
+		for (let i = 0; i < staleKeys.length; i += storageDeleteBatchSize) {
+			await this.ctx.storage.delete(
+				staleKeys.slice(i, i + storageDeleteBatchSize),
+			)
 		}
 	}
 
-	private async persistState() {
-		await this.ctx.storage.put(sessionStateStorageKey, this.stateSnapshot)
+	/** One small record per socket, written only when its topics change. */
+	private async persistSession(session: PersistedPackageRealtimeSession) {
+		await this.ctx.storage.put<StoredPackageRealtimeSessionState>(
+			sessionStorageKey(session.id),
+			{ topics: [...session.topics], lastSeenAt: session.lastSeenAt },
+		)
+		this.persistedSessionIds.add(session.id)
+	}
+
+	private async forgetSession(sessionId: string) {
+		delete this.stateSnapshot.sessions[sessionId]
+		if (!this.persistedSessionIds.delete(sessionId)) return
+		await this.ctx.storage.delete(sessionStorageKey(sessionId))
 	}
 
 	private async purgeSessionState() {
 		this.closeAllSockets(1000, 'account-deleted')
 		this.stateSnapshot = createInitialState()
+		this.persistedSessionIds.clear()
 		this.cachedAppWorkerKey = null
 		this.cachedAppWorkerKeyLookup = null
 		this.cachedAppWorkerBuildInputPromise = null
+		this.publicAccessLookup = null
 		await this.ctx.storage.deleteAll()
 	}
 
 	private async initializeBinding(binding: PackageRealtimeBindingState) {
 		if (!this.stateSnapshot.binding) {
 			this.stateSnapshot.binding = binding
-			await this.persistState()
+			await this.ctx.storage.put(bindingStorageKey, binding)
 			return
 		}
 		const existing = this.stateSnapshot.binding
@@ -471,11 +793,14 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 				baseUrl: binding.baseUrl,
 				kodyId: binding.kodyId,
 			}
-			await this.persistState()
+			await this.ctx.storage.put(bindingStorageKey, this.stateSnapshot.binding)
 		}
 	}
 
-	private async getPackageAppWorker(binding: PackageRealtimeBindingState) {
+	private async getPackageAppWorker(
+		binding: PackageRealtimeBindingState,
+		requiredCommit: string | null,
+	) {
 		const cacheKey = await this.getResolvedPackageAppWorkerCacheKey(binding)
 		if (
 			this.cachedAppWorkerKey !== cacheKey ||
@@ -496,6 +821,13 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 			})
 		}
 		const buildInput = await this.cachedAppWorkerBuildInputPromise
+		// Public sockets run only the commit the owner approved (ADR 0069).
+		if (
+			requiredCommit !== null &&
+			buildInput.savedPackage.publishedCommit !== requiredCommit
+		) {
+			throw new PackageRealtimePinMismatchError()
+		}
 		return await buildPackageAppWorker({
 			env: this.env,
 			...buildInput,
@@ -531,10 +863,43 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 		return cacheKey
 	}
 
-	private stashSessionId(ws: WebSocket, sessionId: string) {
-		this.sessionIds.set(ws, sessionId)
+	/**
+	 * The commit public sockets may run right now: the app's approved
+	 * internet-visible commit when it is also the live published commit, the
+	 * same rule anonymous HTTP applies. Null when public access is off.
+	 */
+	private resolvePublicAccessCommit(binding: PackageRealtimeBindingState) {
+		const now = Date.now()
+		const cached = this.publicAccessLookup
+		if (cached && cached.expiresAt > now) return cached.commit
+		const commit = resolvePublicRealtimeCommit({ env: this.env, binding })
+		this.publicAccessLookup = {
+			commit,
+			expiresAt: now + packageAppWorkerCacheKeyRefreshMs,
+		}
+		commit.catch(() => {
+			if (this.publicAccessLookup?.commit === commit) {
+				this.publicAccessLookup = null
+			}
+		})
+		return commit
+	}
+
+	private async publicAccessAllowed(
+		binding: PackageRealtimeBindingState,
+		session: PersistedPackageRealtimeSession,
+	) {
+		const commit = await this.resolvePublicAccessCommit(binding)
+		return commit !== null && commit === session.approvedCommit
+	}
+
+	private stashSession(
+		ws: WebSocket,
+		attachment: PackageRealtimeSocketAttachment,
+	) {
+		this.sessionIds.set(ws, attachment.id)
 		try {
-			ws.serializeAttachment(sessionId)
+			ws.serializeAttachment(attachment)
 		} catch {
 			// Best effort; keep in-memory map for local runtimes without attachments.
 		}
@@ -546,8 +911,14 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 		}
 		let sessionId: string | null = null
 		try {
-			const attachment = ws.deserializeAttachment()
-			if (typeof attachment === 'string' && attachment.trim().length > 0) {
+			const attachment: unknown = ws.deserializeAttachment()
+			const parsed = readSocketAttachment(attachment)
+			if (parsed) {
+				sessionId = parsed.id
+			} else if (
+				typeof attachment === 'string' &&
+				attachment.trim().length > 0
+			) {
 				sessionId = attachment.trim()
 			}
 		} catch {
@@ -576,54 +947,82 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 			.map(createSessionOutput)
 	}
 
-	private async emitToSession(sessionId: string, data: unknown) {
+	private async sendToSession(sessionId: string, message: string) {
 		const socket = this.getSocketBySessionId(sessionId)
 		if (!socket) {
-			if (this.stateSnapshot.sessions[sessionId]) {
-				delete this.stateSnapshot.sessions[sessionId]
-				await this.persistState()
-			}
+			await this.forgetSession(sessionId)
 			return { delivered: false, reason: 'session_not_connected' as const }
 		}
 		try {
-			socket.send(serializeOutboundMessage(data))
+			socket.send(message)
 		} catch {
-			if (this.stateSnapshot.sessions[sessionId]) {
-				delete this.stateSnapshot.sessions[sessionId]
-				await this.persistState()
-			}
+			await this.forgetSession(sessionId)
 			return { delivered: false, reason: 'session_not_connected' as const }
 		}
 		return { delivered: true as const }
+	}
+
+	private async emitToSession(
+		sessionId: string,
+		data: unknown,
+	): Promise<PackageRealtimeEmitResult> {
+		const message = serializeOutboundMessage(data)
+		const session = this.stateSnapshot.sessions[sessionId]
+		if (
+			session &&
+			isPublicAccess(session.access) &&
+			outboundByteLength(message) > anonymousRealtimeLimits.maxPayloadBytes
+		) {
+			return { delivered: false, reason: 'payload_too_large' }
+		}
+		return await this.sendToSession(sessionId, message)
 	}
 
 	private async broadcast(input: {
 		facet?: string | null
 		topic?: string | null
 		data: unknown
-	}) {
+	}): Promise<PackageRealtimeBroadcastResult> {
 		const sessions = this.listSessions({
 			facet: input.facet,
 			topic: input.topic,
 		})
+		const message = serializeOutboundMessage(input.data)
+		// Decided once per broadcast: every public socket gets it or none do.
+		let publicAllowed: boolean | null = null
 		let deliveredCount = 0
+		let limitedCount = 0
 		const sessionIds: Array<string> = []
-		for (const session of sessions) {
-			const delivered = await this.emitToSession(session.session_id, input.data)
+		for (const output of sessions) {
+			const session = this.stateSnapshot.sessions[output.session_id]
+			if (session && isPublicAccess(session.access)) {
+				publicAllowed ??=
+					outboundByteLength(message) <=
+						anonymousRealtimeLimits.maxPayloadBytes &&
+					this.broadcastBucket.take()
+				if (!publicAllowed) {
+					limitedCount += 1
+					continue
+				}
+			}
+			const delivered = await this.sendToSession(output.session_id, message)
 			if (delivered.delivered) {
 				deliveredCount += 1
-				sessionIds.push(session.session_id)
+				sessionIds.push(output.session_id)
 			}
 		}
 		return {
 			deliveredCount,
 			sessionIds,
+			...(limitedCount > 0 ? { limitedCount } : {}),
 		}
 	}
 
 	private async resolveRealtimeHookResult(input: {
 		binding: PackageRealtimeBindingState
 		payload: PackageRealtimeHookInput
+		/** Approved commit a public socket's hooks must run at. */
+		requiredCommit: string | null
 	}) {
 		// The build input (including its caller identity) outlives a single
 		// event, so re-check suspension per hook; the resolver's short cache
@@ -631,7 +1030,10 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 		await resolveBackgroundMcpUser(this.env.APP_DB, input.binding.userId)
 		let visitNonce: string | null = null
 		try {
-			const appWorker = await this.getPackageAppWorker(input.binding)
+			const appWorker = await this.getPackageAppWorker(
+				input.binding,
+				input.requiredCommit,
+			)
 			visitNonce = appWorker.visit.nonce
 			const entrypoint = appWorker.stub.getEntrypoint(
 				appWorker.entrypointName,
@@ -712,13 +1114,132 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 		}
 		if (shouldPersist && this.stateSnapshot.sessions[sessionId]) {
 			this.stateSnapshot.sessions[sessionId] = session
-			await this.persistState()
+			await this.persistSession(session)
+		}
+	}
+
+	private socketCount(tag: string) {
+		return this.ctx.getWebSockets(tag).length
+	}
+
+	/** Per-app and per-IP caps, checked before a public socket is accepted. */
+	private admitPublicSocket(ipHash: string) {
+		if (
+			this.socketCount(publicSocketTag) >= anonymousRealtimeLimits.socketsPerApp
+		) {
+			return publicConnectRefusal(
+				'This app has reached its limit of anonymous realtime connections. Try again later.',
+				60,
+			)
+		}
+		if (
+			this.socketCount(ipTag(ipHash)) >= anonymousRealtimeLimits.socketsPerIp
+		) {
+			return publicConnectRefusal(
+				'Too many realtime connections to this app from your network.',
+			)
+		}
+		const now = Date.now()
+		const recent = (this.connectsByIp.get(ipHash) ?? []).filter(
+			(at) => now - at < connectWindowMs,
+		)
+		if (recent.length >= anonymousRealtimeLimits.connectsPerIpPerMinute) {
+			this.connectsByIp.set(ipHash, recent)
+			return publicConnectRefusal(
+				'Too many realtime connection attempts from your network. Try again in a minute.',
+				60,
+			)
+		}
+		recent.push(now)
+		this.connectsByIp.delete(ipHash)
+		this.connectsByIp.set(ipHash, recent)
+		if (this.connectsByIp.size > maxTrackedConnectIps) {
+			const oldest = this.connectsByIp.keys().next().value
+			if (oldest !== undefined) this.connectsByIp.delete(oldest)
+		}
+		return null
+	}
+
+	private sessionForSocket(ws: WebSocket) {
+		const sessionId = this.loadSessionId(ws)
+		return sessionId ? (this.stateSnapshot.sessions[sessionId] ?? null) : null
+	}
+
+	/**
+	 * Close public sockets past the session cap, or whose approved commit is
+	 * no longer what the app serves to public visitors (republished without
+	 * approval, opted out, or no longer internet-visible).
+	 */
+	async alarm() {
+		const binding = this.stateSnapshot.binding
+		if (!binding) return
+		const sockets = this.ctx.getWebSockets(publicSocketTag)
+		if (sockets.length === 0) return
+		this.publicAccessLookup = null
+		const commit = await this.resolvePublicAccessCommit(binding).then(
+			(value) => ({ ok: true as const, value }),
+			(error: unknown) => {
+				console.warn('package-realtime-access-recheck-failed', error)
+				return { ok: false as const }
+			},
+		)
+		const now = Date.now()
+		for (const ws of sockets) {
+			const session = this.sessionForSocket(ws)
+			if (!session) continue
+			if (
+				now - Date.parse(session.connectedAt) >=
+				anonymousRealtimeLimits.maxSessionMs
+			) {
+				closeSocket(ws, 1001, 'max-session-duration')
+			} else if (commit.ok && commit.value !== session.approvedCommit) {
+				closeSocket(ws, 1012, 'app-updated')
+			}
+		}
+		await this.scheduleAccessAlarm()
+	}
+
+	private async scheduleAccessAlarm() {
+		const sockets = this.ctx.getWebSockets(publicSocketTag)
+		if (sockets.length === 0) return
+		const now = Date.now()
+		let next = now + anonymousRealtimeLimits.accessRecheckMs
+		for (const ws of sockets) {
+			const session = this.sessionForSocket(ws)
+			if (!session) continue
+			next = Math.min(
+				next,
+				Date.parse(session.connectedAt) + anonymousRealtimeLimits.maxSessionMs,
+			)
+		}
+		next = Math.max(next, now + 1_000)
+		const current = await this.ctx.storage.getAlarm()
+		if (current === null || current > next) {
+			await this.ctx.storage.setAlarm(next)
 		}
 	}
 
 	private async handleConnectRequest(payload: PackageRealtimeConnectPayload) {
 		await this.initializeBinding(payload.binding)
+		const access = payload.access ?? 'member'
+		const isPublic = isPublicAccess(access)
+		const approvedCommit = isPublic ? (payload.approvedCommit ?? null) : null
 		const facet = buildFacetName(payload.facet)
+		const ipHash = pickString(payload.ipHash) ?? 'unknown'
+		if (isPublic) {
+			if (!approvedCommit) {
+				return new Response('Public realtime needs an approved commit.', {
+					status: 403,
+				})
+			}
+			if (facet.length > maxPublicFacetLength) {
+				return new Response('Realtime facet name is too long.', {
+					status: 400,
+				})
+			}
+			const refusal = this.admitPublicSocket(ipHash)
+			if (refusal) return refusal
+		}
 		const pair = new WebSocketPair()
 		const sockets = Object.values(pair)
 		const client = sockets[0]
@@ -728,30 +1249,45 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 		}
 		const sessionId = crypto.randomUUID()
 		const now = new Date().toISOString()
-		this.ctx.acceptWebSocket(server, [sessionTag(sessionId), facetTag(facet)])
-		this.stashSessionId(server, sessionId)
-		this.stateSnapshot.sessions[sessionId] = {
+		const attachment: PackageRealtimeSocketAttachment = {
+			v: 2,
 			id: sessionId,
 			facet,
 			connectedAt: now,
-			lastSeenAt: now,
-			topics: [],
+			access,
+			visitor: payload.visitor ?? null,
+			approvedCommit,
 		}
-		await this.persistState()
+		const tags = [sessionTag(sessionId), facetTag(facet)]
+		if (isPublic) tags.push(publicSocketTag, ipTag(ipHash))
+		this.ctx.acceptWebSocket(server, tags)
+		this.stashSession(server, attachment)
+		const session: PersistedPackageRealtimeSession = {
+			...attachment,
+			topics: [],
+			lastSeenAt: now,
+		}
+		this.stateSnapshot.sessions[sessionId] = session
+		if (isPublic) await this.scheduleAccessAlarm()
+		// Receive-only sockets never run app code: no connect hook either.
+		if (access === 'receive') {
+			return new Response(null, { status: 101, webSocket: client })
+		}
 		try {
 			const actions = await this.resolveRealtimeHookResult({
 				binding: payload.binding,
+				requiredCommit: approvedCommit,
 				payload: {
 					event: 'connect',
 					facet,
-					session: createSessionRecord(this.stateSnapshot.sessions[sessionId]),
+					visitor: session.visitor,
+					session: createSessionRecord(session),
 					request: payload.request,
 				},
 			})
 			await this.applyHookActions(sessionId, actions)
 		} catch (error) {
-			delete this.stateSnapshot.sessions[sessionId]
-			await this.persistState()
+			await this.forgetSession(sessionId)
 			if (isAccountSuspendedError(error)) {
 				this.closeAllSockets(1008, 'account-suspended')
 				return Response.json(
@@ -772,6 +1308,10 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 					},
 					{ status: 429 },
 				)
+			}
+			if (error instanceof PackageRealtimePinMismatchError) {
+				closeSocket(server, 1012, 'app-updated')
+				return new Response(error.message, { status: 403 })
 			}
 			try {
 				server.close(1011, 'connect hook failed')
@@ -911,20 +1451,37 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 		const session = this.stateSnapshot.sessions[sessionId]
 		const binding = this.stateSnapshot.binding
 		if (!session || !binding) return
+		if (isPublicAccess(session.access)) {
+			const refusal = await this.checkPublicInbound(
+				ws,
+				binding,
+				session,
+				message,
+			)
+			if (refusal) {
+				closeSocket(ws, refusal.code, refusal.reason)
+				return
+			}
+		}
 		session.lastSeenAt = new Date().toISOString()
-		await this.persistState()
 		let actions: Array<PackageRealtimeAction>
 		try {
 			actions = await this.resolveRealtimeHookResult({
 				binding,
+				requiredCommit: session.approvedCommit,
 				payload: {
 					event: 'message',
 					facet: session.facet,
+					visitor: session.visitor,
 					session: createSessionRecord(session),
 					message: decodeInboundMessage(message),
 				},
 			})
 		} catch (error) {
+			if (error instanceof PackageRealtimePinMismatchError) {
+				closeSocket(ws, 1012, 'app-updated')
+				return
+			}
 			if (isComputeOverageLimitError(error)) {
 				this.closeAllSockets(1008, includeUsedUpCloseReason)
 				return
@@ -934,6 +1491,40 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 			return
 		}
 		await this.applyHookActions(sessionId, actions)
+	}
+
+	/** Why a public socket's inbound frame closes it, or null to deliver it. */
+	private async checkPublicInbound(
+		ws: WebSocket,
+		binding: PackageRealtimeBindingState,
+		session: PersistedPackageRealtimeSession,
+		message: string | ArrayBuffer,
+	) {
+		if (session.access === 'receive') {
+			return { code: 1008, reason: 'receive-only' }
+		}
+		if (
+			Date.now() - Date.parse(session.connectedAt) >=
+			anonymousRealtimeLimits.maxSessionMs
+		) {
+			return { code: 1001, reason: 'max-session-duration' }
+		}
+		if (payloadByteLength(message) > anonymousRealtimeLimits.maxPayloadBytes) {
+			return { code: 1009, reason: 'message-too-big' }
+		}
+		let bucket = this.inboundBuckets.get(ws)
+		if (!bucket) {
+			bucket = new RateBucket(
+				anonymousRealtimeLimits.inboundMessagesPerSecond,
+				anonymousRealtimeLimits.inboundMessageBurst,
+			)
+			this.inboundBuckets.set(ws, bucket)
+		}
+		if (!bucket.take()) return { code: 1008, reason: 'rate-limited' }
+		if (!(await this.publicAccessAllowed(binding, session))) {
+			return { code: 1012, reason: 'app-updated' }
+		}
+		return null
 	}
 
 	private async closeSocketsIfOwnerSuspended(
@@ -952,12 +1543,28 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 
 	private closeAllSockets(code: number, reason: string) {
 		for (const socket of this.ctx.getWebSockets()) {
-			try {
-				socket.close(code, reason)
-			} catch {
-				// Ignore sockets that are already closing.
-			}
+			closeSocket(socket, code, reason)
 		}
+	}
+
+	private recordSessionUsage(
+		binding: PackageRealtimeBindingState,
+		session: PersistedPackageRealtimeSession,
+	) {
+		// Owner-billed like every public-app unit (ADR 0095); no credit debit.
+		const visitorUserId = session.visitor?.userId ?? ''
+		this.ctx.waitUntil(
+			recordUsage(this.env, {
+				userId: binding.userId,
+				eventType: 'realtime_session',
+				entityId: session.id,
+				durationMs: Math.max(0, Date.now() - Date.parse(session.connectedAt)),
+				outcome: 'success',
+				packageId: binding.packageId,
+				packageAppVisitorUserId: visitorUserId,
+				actorUserId: visitorUserId,
+			}),
+		)
 	}
 
 	private async handleDisconnect(
@@ -972,22 +1579,35 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 		if (!sessionId) return
 		const session = this.stateSnapshot.sessions[sessionId]
 		const binding = this.stateSnapshot.binding
-		delete this.stateSnapshot.sessions[sessionId]
-		await this.persistState()
+		await this.forgetSession(sessionId)
 		if (!session || !binding) return
+		this.recordSessionUsage(binding, session)
+		if (session.access === 'receive') return
+		if (
+			isPublicAccess(session.access) &&
+			!(await this.publicAccessAllowed(binding, session).catch(() => false))
+		) {
+			return
+		}
 		let actions: Array<PackageRealtimeAction>
 		try {
 			actions = await this.resolveRealtimeHookResult({
 				binding,
+				requiredCommit: session.approvedCommit,
 				payload: {
 					event: 'disconnect',
 					facet: session.facet,
+					visitor: session.visitor,
 					session: createSessionRecord(session),
 					close,
 				},
 			})
 		} catch (error) {
-			if (isAccountSuspendedError(error) || isComputeOverageLimitError(error)) {
+			if (
+				isAccountSuspendedError(error) ||
+				isComputeOverageLimitError(error) ||
+				error instanceof PackageRealtimePinMismatchError
+			) {
 				return
 			}
 			throw error
@@ -1039,8 +1659,13 @@ export function packageRealtimeSessionRpc(input: {
 	}
 	const stub = getPackageRealtimeStub(input)
 	return {
-		async connect(request: Request, facet?: string | null) {
+		async connect(
+			request: Request,
+			facet?: string | null,
+			options?: PackageRealtimeConnectOptions,
+		) {
 			const payload: PackageRealtimeConnectPayload = {
+				...options,
 				binding,
 				facet,
 				request: {

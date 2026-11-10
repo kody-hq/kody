@@ -158,6 +158,12 @@ export const packageAppVisitorNeedSchema = z
 		},
 	)
 
+/** `kody.app.realtime.anonymous` values. */
+export const packageAppAnonymousRealtimeModes = ['receive', 'two-way'] as const
+
+export type PackageAppAnonymousRealtimeMode =
+	(typeof packageAppAnonymousRealtimeModes)[number]
+
 export const packageAppDefinitionSchema = z.object({
 	/**
 	 * Server entry bundled for the package-app isolate. The default export
@@ -210,6 +216,19 @@ export const packageAppDefinitionSchema = z.object({
 			z.string().regex(packageAppVisitorNeedKeyPattern),
 			packageAppVisitorNeedSchema,
 		)
+		.optional(),
+	/**
+	 * Realtime settings. `anonymous` lets visitors who are not signed in to
+	 * the owning org open the app's `/ws` sockets on an internet-visible app:
+	 * `"receive"` gets broadcasts only and never runs app hooks, `"two-way"`
+	 * also delivers their messages to the realtime hooks. Off by default, part
+	 * of the approved capability set, and ignored unless the app is
+	 * internet-visible.
+	 */
+	realtime: z
+		.strictObject({
+			anonymous: z.enum(packageAppAnonymousRealtimeModes).optional(),
+		})
 		.optional(),
 })
 

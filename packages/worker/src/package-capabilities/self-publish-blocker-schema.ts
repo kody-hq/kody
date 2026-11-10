@@ -48,6 +48,10 @@ export const selfPublishBlockerReasonSchema = z.discriminatedUnion('kind', [
 		matches: z.array(storageMatchSchema).optional(),
 	}),
 	z.object({
+		kind: z.literal('realtime_entry'),
+		anonymousRealtime: z.enum(['receive', 'two-way']),
+	}),
+	z.object({
 		kind: z.literal('manifest_field'),
 		field: manifestFieldSchema,
 		sourceId: z.string(),

@@ -164,6 +164,9 @@ export function AccountPackageApproveCapabilitiesRoute({
 	const storageEntries = payload.entries.filter(
 		(entry) => entry.kind === 'storage',
 	)
+	const realtimeEntries = payload.entries.filter(
+		(entry) => entry.kind === 'realtime',
+	)
 	const { unboundNeeds, declaredFields } = payload
 	async function approvePending(approval: AccountPackagePendingApproval) {
 		if (!approval.approveAction || busy) return
@@ -413,6 +416,7 @@ export function AccountPackageApproveCapabilitiesRoute({
 					{!payload.publishedCommit ? null : credentialEntries.length === 0 &&
 					  unboundNeeds.length === 0 &&
 					  storageEntries.length === 0 &&
+					  realtimeEntries.length === 0 &&
 					  declaredFields.length === 0 ? (
 						<section
 							data-testid="package-approve-capabilities-empty"
@@ -539,7 +543,9 @@ export function AccountPackageApproveCapabilitiesRoute({
 								>
 									Other capabilities
 								</h2>
-								{storageEntries.length === 0 && declaredFields.length === 0 ? (
+								{storageEntries.length === 0 &&
+								realtimeEntries.length === 0 &&
+								declaredFields.length === 0 ? (
 									<p css={{ margin: 0, color: colors.textMuted }}>
 										No other capabilities.
 									</p>
@@ -554,6 +560,20 @@ export function AccountPackageApproveCapabilitiesRoute({
 												<strong css={cardTitleCss}>Package storage</strong>
 												<span css={{ color: colors.textMuted }}>
 													{storageSummary(entry)}
+												</span>
+											</li>
+										))}
+										{realtimeEntries.map((entry) => (
+											<li
+												key={`realtime:${entry.anonymousRealtime ?? ''}`}
+												data-testid="package-approve-capabilities-realtime"
+												css={capabilityRowCss}
+											>
+												<strong css={cardTitleCss}>Anonymous realtime</strong>
+												<span css={{ color: colors.textMuted }}>
+													{entry.anonymousRealtime === 'two-way'
+														? 'Visitors who are not signed in can open live connections and send messages to the app realtime code (kody.app.realtime.anonymous: "two-way").'
+														: 'Visitors who are not signed in can open live connections that receive broadcasts. App code never runs for their messages (kody.app.realtime.anonymous: "receive").'}
 												</span>
 											</li>
 										))}

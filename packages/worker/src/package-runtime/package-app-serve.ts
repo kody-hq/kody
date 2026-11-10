@@ -68,7 +68,10 @@ import {
 	resolveSavedPackageForPackageAppSlug,
 } from '#worker/package-invocations/module-artifacts.ts'
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
-import { getPackageAppClientReadableCookieNames } from '#worker/package-registry/manifest.ts'
+import {
+	getPackageAppAnonymousRealtimeMode,
+	getPackageAppClientReadableCookieNames,
+} from '#worker/package-registry/manifest.ts'
 import { loadServingPackageSourceBySourceId } from '#worker/package-registry/source.ts'
 import { newRunCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
 import { loadPublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
@@ -104,7 +107,14 @@ import {
 	endPackageAppVisit,
 	withPackageAppVisitTicket,
 } from '#worker/package-runtime/package-app-visit-ticket.ts'
-import { packageRealtimeSessionRpc } from '#worker/package-runtime/realtime-session.ts'
+import {
+	packageRealtimeSessionRpc,
+	type PackageRealtimeConnectOptions,
+} from '#worker/package-runtime/realtime-session.ts'
+import {
+	decidePublicRealtimeAccess,
+	hashRealtimeClientIp,
+} from '#worker/package-runtime/package-app-public-realtime.ts'
 import { isWebSocketUpgradeRequest } from '#worker/package-runtime/websocket-upgrade.ts'
 import {
 	anonymousRefusalResponse,
@@ -945,16 +955,61 @@ async function servePackageAppRequestWithId(input: {
 			: getAppBaseUrl({ env, requestUrl: request.url })
 	const packageRealtimePath = parsePackageRealtimePath(packageRealtimeRestPath)
 	const cookiePrefix = await packageAppCookiePrefix(savedPackage.id)
-	// Realtime hooks run with the owner's caller context, so an anonymous
-	// visitor never reaches them.
-	if (packageRealtimePath && !visitor) {
-		return attachPackageAppServerTiming(
-			anonymousRefusalResponse('Sign in to use realtime features of this app.'),
-			serverTiming,
-		)
-	}
 	if (packageRealtimePath && isWebSocketUpgradeRequest(request)) {
 		try {
+			// Org members connect as before. Anyone else (anonymous, or signed in
+			// outside the org) needs the app's `kody.app.realtime.anonymous`
+			// opt-in at the commit its owner approved (ADR 0069).
+			let connectOptions: PackageRealtimeConnectOptions
+			if (visitor) {
+				connectOptions = {
+					access: 'member',
+					visitor: {
+						userId: visitor.userId,
+						username: visitor.username,
+						role: visitor.role,
+					},
+				}
+			} else {
+				const packageManifest = savedPackage.isInternetVisible
+					? await pushServerTiming(serverTiming, 'manifest', () =>
+							loadInvokeManifestBySourceId({
+								env,
+								userId: owner.userId,
+								sourceId: savedPackage.sourceId,
+							}),
+						)
+					: null
+				const access = decidePublicRealtimeAccess({
+					isInternetVisible: savedPackage.isInternetVisible,
+					mode: packageManifest
+						? getPackageAppAnonymousRealtimeMode(packageManifest.manifest)
+						: null,
+					approvedPublishedCommit: input.approvedPublishedCommit,
+					publishedCommit: packageManifest?.source.published_commit,
+				})
+				if (!access.ok) {
+					return attachPackageAppServerTiming(
+						anonymousRefusalResponse(access.message),
+						serverTiming,
+					)
+				}
+				connectOptions = {
+					access: access.mode,
+					visitor: identity
+						? {
+								userId: identity.userId,
+								username: identity.username,
+								role: null,
+							}
+						: null,
+					approvedCommit: access.approvedCommit,
+					ipHash: await hashRealtimeClientIp({
+						packageId: savedPackage.id,
+						request,
+					}),
+				}
+			}
 			const connected = await packageRealtimeSessionRpc({
 				env,
 				userId: owner.userId,
@@ -965,6 +1020,7 @@ async function servePackageAppRequestWithId(input: {
 			}).connect(
 				createPackageCodeRequest(request, request.url, { cookiePrefix }),
 				packageRealtimePath.facet,
+				connectOptions,
 			)
 			const filtered = filterPackageAppSetCookies(connected, cookiePrefix)
 			logPackageAppSetCookieNamesDropped({
