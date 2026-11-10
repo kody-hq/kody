@@ -31,6 +31,8 @@ export type StoredCredentials = {
 	tokenType: string
 	expiresAt?: number
 	scope?: string
+	/** API origin a saved `kody_at_…` was minted for (`auth bootstrap --api-url`). */
+	apiUrl?: string
 }
 
 /** On-disk / keychain envelope for one or more org logins (same MCP origin). */

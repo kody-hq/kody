@@ -28,38 +28,35 @@ environment over `--token` so the secret is not visible in process arguments.
 
 ## Command
 
-Agents already on MCP: call `cliCredentialBootstrap` with a required lifetime
-(single-task agents use `short`), then run the returned `cli_command` (it
-already includes lifetime flags). Humans who can finish browser OAuth:
-`npx @kodycodes/cli login` once. CI with no MCP session and no interactive
-login: set `KODY_API_TOKEN` in the environment. Never paste a `kody_at_…` into
-chat.
+Agents already on MCP: call `cliCredentialBootstrap`, then run the returned
+`cli_command`. It saves the same credential `kody login` saves (login scopes
+capped by your MCP session and org role, 14d idle / 3mo max) in the same slot.
+Humans who can finish browser OAuth: `npx @kodycodes/cli login` once. CI with no
+MCP session and no interactive login: set `KODY_API_TOKEN` in the environment.
+Never paste a `kody_at_…` into chat.
 
 ```json
 {
 	"operationId": "cliCredentialBootstrap",
-	"params": { "lifetime": "short" }
+	"params": {}
 }
 ```
 
 ```bash
-npx @kodycodes/cli auth bootstrap --code 'kody_bc_…' --lifetime short
+npx @kodycodes/cli auth bootstrap --code 'kody_bc_…'
 npx @kodycodes/cli execute --local --code 'import { kody } from "kody:runtime"; export default async function main() { return await kody.metaGetCurrentUser({}) }'
 ```
 
 Saved packages keep `--local` and a static `kody:@…` import.
 
-Omit `scopes`: the default set already covers saved package modules that call
-integrations, such as `@kentcdodds/ship-pr` (`integration:use`). Passed `scopes`
-replace the defaults, so a hand-picked list often misses `integration:use`,
-`org:execute`, or `secret:use` and fails with `insufficient_scope`. Add a scope
-to the full default list rather than picking a short one.
+Omit `scopes`: the default is the login-equivalent set. Passed `scopes` replace
+it with a deliberately narrower list, which often misses `integration:use`,
+`org:execute`, or `secret:use` and fails with `insufficient_scope`.
 
 ## Failure
 
-The CLI errors name the fix for a missing lifetime, a rejected bootstrap code,
-and `insufficient_scope` (including `search:read`; scopes replace the defaults,
-see
+The CLI errors name the fix for a rejected bootstrap code and
+`insufficient_scope` (see
 [ADR 0056](../../../docs/contributing/decisions/0056-cli-credential-bootstrap.md)).
 Follow the message. Judgment calls the CLI cannot make:
 
@@ -67,5 +64,6 @@ Follow the message. Judgment calls the CLI cannot make:
   API / MCP `api`, or fix the environment. Hosted MCP `execute` stays banned.
 - While an MCP session exists, remint with `cliCredentialBootstrap` instead of
   switching to `kody login` or `tokenCreate`.
-- Credential priority is `--token` / `KODY_API_TOKEN`, then the stored bootstrap
-  token, then `kody login`.
+- Credential priority is `--token` / `KODY_API_TOKEN`, then the one saved CLI
+  credential (`kody login` or `auth bootstrap`, whichever ran last). Git and
+  `kody auth setup-git` use the same credential and never mint their own.
