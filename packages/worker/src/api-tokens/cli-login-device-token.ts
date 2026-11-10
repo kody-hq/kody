@@ -1,21 +1,13 @@
-import { orgPermissions } from '@kody-internal/shared/org-permissions.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import type { ApiInvocationContext } from '#worker/open-api/context.ts'
 import { invalidRequest } from '#worker/open-api/errors.ts'
-import {
-	mintApiToken,
-	resolveApiTokenLifetime,
-	type ApiTokenSecretView,
-} from './service.ts'
+import { cliTokenScopes, mintCliToken } from './cli-token.ts'
+import { resolveApiTokenLifetime, type ApiTokenSecretView } from './service.ts'
 
 export const cliLoginDeviceTokenName = 'kody-cli'
 
-/**
- * Scopes on a `kody login` device token. The full org-permission vocabulary
- * so `kody api` can call every Open API operation the caller's role allows.
- * `authorize` still intersects this list with the org role.
- */
-export const cliLoginDeviceTokenScopes = orgPermissions
+/** Scopes on a `kody login` device token: the shared CLI token scopes. */
+export const cliLoginDeviceTokenScopes = cliTokenScopes
 
 export async function mintCliLoginDeviceToken(input: {
 	ctx: ApiInvocationContext
@@ -41,12 +33,11 @@ export async function mintCliLoginDeviceToken(input: {
 		throw error
 	}
 	try {
-		const minted = await mintApiToken({
+		const minted = await mintCliToken({
 			db: input.ctx.env.APP_DB,
 			userId: input.ctx.callerContext.user.userId,
 			orgBinding: 'user',
 			name: input.name?.trim() || cliLoginDeviceTokenName,
-			scopes: cliLoginDeviceTokenScopes,
 			idleTtlSeconds: lifetime.idleTtlSeconds,
 			maxLifetimeSeconds: lifetime.maxLifetimeSeconds,
 			createdVia: 'cli-login',

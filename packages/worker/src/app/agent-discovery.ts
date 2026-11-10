@@ -136,20 +136,20 @@ npx -y @kodycodes/cli@latest skill install
 \`\`\`
 
 Agents already on MCP (do this yourself; never ask a human for a token): call
-\`api\` with \`cliCredentialBootstrap\` and a required lifetime (single-task
-agents use \`short\`). It returns a one-shot bootstrap code and a
-\`cli_command\` that already includes lifetime flags. Run that command, then
-\`execute --local\`:
+\`api\` with \`cliCredentialBootstrap\`. It returns a one-shot bootstrap code
+and a \`cli_command\`. Running that command signs the CLI in with the same
+credential \`kody login\` gives (same scopes and lifetime, same saved slot).
+Then \`execute --local\`:
 
 \`\`\`json
 {
   "operationId": "cliCredentialBootstrap",
-  "params": { "lifetime": "short" }
+  "params": {}
 }
 \`\`\`
 
 \`\`\`bash
-npx -y @kodycodes/cli@latest auth bootstrap --code 'kody_bc_…' --lifetime short
+npx -y @kodycodes/cli@latest auth bootstrap --code 'kody_bc_…' --lifetime long
 npx -y @kodycodes/cli@latest execute --local --code 'import { kody } from "kody:runtime"; export default async function main() { return await kody.metaGetCurrentUser({}) }'
 \`\`\`
 

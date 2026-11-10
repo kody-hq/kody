@@ -5,8 +5,10 @@ import { parseApiToken } from '@kody-internal/shared/api-token-format.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
+import { cliLoginDeviceTokenScopes } from './cli-login-device-token.ts'
 import {
 	cliBootstrapCodePrefix,
+	cliCredentialBootstrapNarrowScopes,
 	cliCredentialBootstrapPolicy,
 	mintCliCredentialBootstrap,
 	parseCliBootstrapCode,
@@ -40,81 +42,90 @@ function at(seconds: number) {
 	return new Date(start.getTime() + seconds * 1000)
 }
 
-test('bootstrap mint requires a lifetime and embeds it in cli_command', async () => {
+test('bootstrap mint defaults to the kody login scopes and lifetime', async () => {
 	const { db } = createDb()
-	await expect(
-		mintCliCredentialBootstrap({
-			db,
-			userId,
-			now: start,
-		}),
-	).rejects.toThrow(/Token lifetime is required/)
-	await expect(
-		mintCliCredentialBootstrap({
-			db,
-			userId,
-			now: start,
-		}),
-	).rejects.toThrow(/lifetime: "short"\|"long"/)
-
 	const minted = await mintCliCredentialBootstrap({
 		db,
 		userId,
-		lifetime: 'short',
 		now: start,
 	})
 
 	expect(minted.bootstrap_code.startsWith(cliBootstrapCodePrefix)).toBe(true)
+	// Older CLIs refuse to redeem without lifetime flags, so the command keeps them.
 	expect(minted.cli_command).toBe(
-		`npx @kodycodes/cli auth bootstrap --code ${minted.bootstrap_code} --lifetime short`,
+		`npx @kodycodes/cli auth bootstrap --code ${minted.bootstrap_code} --lifetime long`,
 	)
-	expect(minted.scopes).toEqual([...cliCredentialBootstrapPolicy.defaultScopes])
-	expect(minted.scopes).toContain('integration:read')
-	expect(minted.scopes).toContain('secret:use')
-	expect(minted.scopes).toContain('package:execute')
-	expect(minted.scopes).toContain('package:write')
-	expect(minted.scopes).toContain('package:create')
-	expect(minted.scopes).toContain('token:delete')
-	expect(minted.idle_ttl_seconds).toBe(shortLife.idleTtlSeconds)
-	expect(minted.max_lifetime_seconds).toBe(shortLife.maxLifetimeSeconds)
+	expect([...minted.scopes].sort()).toEqual(
+		[...cliLoginDeviceTokenScopes].sort(),
+	)
+	expect(minted.scopes).toContain('execution_context:read')
+	expect(minted.idle_ttl_seconds).toBe(longLife.idleTtlSeconds)
+	expect(minted.max_lifetime_seconds).toBe(longLife.maxLifetimeSeconds)
 	expect(parseApiToken(minted.bootstrap_code)).toBeNull()
 	expect(parseCliBootstrapCode(minted.bootstrap_code)?.codeId).toBeTruthy()
 })
 
-test('bootstrap redeem requires a lifetime and yields a working token', async () => {
+test('bootstrap redeem reports the minting session org as login_org', async () => {
+	const { db, sqlite } = createDb()
+	const orgId = ownerIdFromStored('org-bootstrap-login')
+	sqlite
+		.prepare(
+			`INSERT INTO orgs (id, slug, display_name, created_at, updated_at)
+			 VALUES (?, 'bootstrap-team', 'Bootstrap Team', ?, ?)`,
+		)
+		.run(orgId, start.toISOString(), start.toISOString())
+	const minted = await mintCliCredentialBootstrap({
+		db,
+		userId,
+		orgId,
+		now: start,
+	})
+	const redeemed = await redeemCliCredentialBootstrap({
+		db,
+		code: minted.bootstrap_code,
+		now: at(10),
+	})
+	expect(redeemed.token.org_binding).toBe('user')
+	expect(redeemed.loginOrg).toEqual({ slug: 'bootstrap-team' })
+})
+
+test('bootstrap mint narrows only when scopes or lifetime are explicit', async () => {
 	const { db } = createDb()
 	const minted = await mintCliCredentialBootstrap({
 		db,
 		userId,
-		lifetime: 'long',
+		lifetime: 'short',
+		scopes: [...cliCredentialBootstrapNarrowScopes],
 		now: start,
 	})
-	await expect(
-		redeemCliCredentialBootstrap({
-			db,
-			code: minted.bootstrap_code,
-			now: at(30),
-		}),
-	).rejects.toThrow(/Token lifetime is required/)
-	await expect(
-		redeemCliCredentialBootstrap({
-			db,
-			code: minted.bootstrap_code,
-			now: at(30),
-		}),
-	).rejects.toThrow(/--lifetime short\|long/)
+	expect(minted.cli_command).toBe(
+		`npx @kodycodes/cli auth bootstrap --code ${minted.bootstrap_code} --lifetime short`,
+	)
+	expect(minted.scopes).toEqual([...cliCredentialBootstrapNarrowScopes])
+	expect(minted.scopes).not.toContain('execution_context:read')
+	expect(minted.idle_ttl_seconds).toBe(shortLife.idleTtlSeconds)
+	expect(minted.max_lifetime_seconds).toBe(shortLife.maxLifetimeSeconds)
+})
+
+test('bootstrap redeem without a lifetime yields a kody login equivalent token', async () => {
+	const { db } = createDb()
+	const minted = await mintCliCredentialBootstrap({
+		db,
+		userId,
+		now: start,
+	})
 
 	const redeemed = await redeemCliCredentialBootstrap({
 		db,
 		code: minted.bootstrap_code,
-		lifetime: 'long',
 		now: at(30),
 	})
 	expect(redeemed.userId).toBe(userId)
 	expect(redeemed.token.created_via).toBe('cli-bootstrap')
-	expect(redeemed.token.scopes).toEqual([
-		...cliCredentialBootstrapPolicy.defaultScopes,
-	])
+	expect(redeemed.token.org_binding).toBe('user')
+	expect([...redeemed.token.scopes].sort()).toEqual(
+		[...cliLoginDeviceTokenScopes].sort(),
+	)
 	expect(redeemed.token.idle_ttl_seconds).toBe(longLife.idleTtlSeconds)
 	expect(redeemed.token.expires_at).toBe(
 		at(30 + longLife.idleTtlSeconds).toISOString(),
@@ -380,7 +391,7 @@ test('bootstrap respects parent token scopes', async () => {
 	).rejects.toThrow(/scopes it does not hold/)
 })
 
-test('bootstrap without explicit scopes intersects defaults with the parent', async () => {
+test('bootstrap without explicit scopes takes the parent token scopes', async () => {
 	const { db } = createDb()
 	const minted = await mintCliCredentialBootstrap({
 		db,
@@ -393,6 +404,18 @@ test('bootstrap without explicit scopes intersects defaults with the parent', as
 		now: start,
 	})
 	expect(minted.scopes).toEqual(['org:execute', 'org:read', 'token:delete'])
+
+	const withoutExecute = await mintCliCredentialBootstrap({
+		db,
+		userId,
+		parent: {
+			scopes: ['execution_context:read', 'org:read'],
+			maxExpiresAt: at(24 * 60 * 60).toISOString(),
+		},
+		now: start,
+	})
+	expect(withoutExecute.scopes).toEqual(['execution_context:read', 'org:read'])
+	expect(withoutExecute.max_lifetime_seconds).toBe(24 * 60 * 60)
 })
 
 test('bootstrap long lifetime clamps absolute max to a shorter API-token parent', async () => {
