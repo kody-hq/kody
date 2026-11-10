@@ -3,7 +3,6 @@ import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
 import {
 	useCallback,
 	useEffect,
-	useId,
 	useRef,
 	type ReactElement,
 	type ReactNode,
@@ -140,7 +139,6 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 	)
 
 	const copyState = copyFlow.status === 'copying' ? 'idle' : copyFlow.status
-	const id = useId()
 	const mounted = useRef(false)
 	const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 	useEffect(() => {
@@ -211,10 +209,6 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 			type="button"
 			className={props.class}
 			aria-label={props.ariaLabel}
-			// The result is announced by the live region below rather than by the
-			// button's own name: `aria-label` overrides the label text, so a named
-			// button would keep reading "Copy package id" after it had copied.
-			aria-describedby={`${id}-copy-status`}
 			title={
 				props.title ??
 				(props.iconOnly ? (props.ariaLabel ?? 'Copy') : undefined)
@@ -246,7 +240,7 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 					{renderLabel('error', 'Copy failed')}
 				</>
 			)}
-			<span id={`${id}-copy-status`} role="status" css={visuallyHiddenCss}>
+			<span role="status" css={visuallyHiddenCss}>
 				{copyState === 'copied'
 					? (props.copiedLabel ?? 'Copied')
 					: copyState === 'error'
