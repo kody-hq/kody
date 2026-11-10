@@ -160,3 +160,38 @@ test('cliCredentialBootstrap accepts retired scopes from older clients', async (
 		scopes: ['package:read', 'job:create'],
 	})
 })
+
+test('cliCredentialBootstrap caps scopes to a session that narrows them', async () => {
+	mintCliCredentialBootstrap.mockClear()
+	const callerContext = createMcpCallerContext({
+		source: { kind: 'mcp-oauth' },
+		baseUrl: 'https://kody.codes',
+		user: {
+			userId: personIdFromStored('user-1'),
+			email: 'user@example.com',
+			displayName: 'User',
+		},
+		scopes: ['package:read'],
+	})
+	await cliCredentialBootstrapCapability.handler({}, {
+		env: { APP_DB: {} } as unknown as Env,
+		callerContext,
+		openApiPrincipal: { kind: 'mcp-oauth' },
+	} as never)
+	expect(mintCliCredentialBootstrap.mock.calls[0]?.[0]).toMatchObject({
+		parent: { scopes: ['package:read'] },
+	})
+})
+
+test('cliCredentialBootstrap from an unrestricted MCP session has no parent cap', async () => {
+	mintCliCredentialBootstrap.mockClear()
+	await cliCredentialBootstrapCapability.handler({}, {
+		env: { APP_DB: {} } as unknown as Env,
+		callerContext: mcpCaller(),
+		openApiPrincipal: { kind: 'mcp-oauth' },
+	} as never)
+	const input = mintCliCredentialBootstrap.mock.calls[0]?.[0]
+	expect(input).not.toHaveProperty('parent')
+	expect(input).not.toHaveProperty('scopes')
+	expect(input).not.toHaveProperty('lifetime')
+})

@@ -1,5 +1,5 @@
 import { McpCallerError } from '#mcp/caller-error.ts'
-import { cliCredentialBootstrapDefaultScopes } from '#worker/api-tokens/cli-credential-bootstrap.ts'
+import { cliCredentialBootstrapNarrowScopes } from '#worker/api-tokens/cli-credential-bootstrap.ts'
 import { resolveApiTokenLifetime } from '#worker/api-tokens/service.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import {
@@ -217,7 +217,7 @@ export async function handleAgentIdentityRequest(
 			claim_token_expires: new Date(
 				(row?.expires_at ?? now) * 1000,
 			).toISOString(),
-			post_claim_scopes: [...cliCredentialBootstrapDefaultScopes],
+			post_claim_scopes: [...cliCredentialBootstrapNarrowScopes],
 			claim: claimBlock(appOrigin, attempt),
 		},
 		{ headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } },
