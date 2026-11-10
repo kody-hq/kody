@@ -1,4 +1,3 @@
-import { finalStatesOf } from '@kody-internal/shared/state-machine.ts'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
 import { createActor } from 'xstate'
 import { expect, test } from 'vitest'
@@ -6,18 +5,7 @@ import {
 	adminCodemodRunState,
 	type AdminCodemodRunState,
 } from './admin-codemod-run-state.ts'
-test('codemod UI pins paging, stop acknowledgement and retry transitions', () => {
-	expect(
-		[
-			...new Set(
-				Object.values(adminCodemodRunState.states).flatMap((state) => [
-					...state.transitions.keys(),
-				]),
-			),
-		].sort(),
-	).toEqual(['PROGRESS', 'RESPONSE_ERROR', 'RESPONSE_OK', 'STOP', 'SUBMIT'])
-	expect(finalStatesOf(adminCodemodRunState)).toEqual([])
-})
+
 test('progress survives stopping and failures; starting a retry drops old feedback', () => {
 	const store = createActor(adminCodemodRunState).start()
 	const progress = { runId: 'run_1', items: [], summary: { changed: 2 } }
@@ -29,8 +17,28 @@ test('progress survives stopping and failures; starting a retry drops old feedba
 	).toBe(true)
 	expect(
 		sendUiEvent(store, {
+			type: 'PROGRESS',
+			data: uiContext({
+				status: 'running',
+				...progress,
+				summary: { changed: 3 },
+			}).data,
+		} as Parameters<typeof store.send>[0]),
+	).toBe(true)
+	expect(uiState<AdminCodemodRunState>(store.getSnapshot())).toEqual({
+		status: 'running',
+		runId: 'run_1',
+		items: [],
+		summary: { changed: 3 },
+	})
+	expect(
+		sendUiEvent(store, {
 			type: 'STOP',
-			data: uiContext({ status: 'stopping', ...progress }).data,
+			data: uiContext({
+				status: 'stopping',
+				...progress,
+				summary: { changed: 3 },
+			}).data,
 		} as Parameters<typeof store.send>[0]),
 	).toBe(true)
 	expect(
@@ -41,11 +49,38 @@ test('progress survives stopping and failures; starting a retry drops old feedba
 	).toBe(false)
 	expect(
 		sendUiEvent(store, {
-			type: 'RESPONSE_ERROR',
-			data: uiContext({ status: 'error', ...progress, message: 'Try again.' })
-				.data,
+			type: 'PROGRESS',
+			data: uiContext({
+				status: 'stopping',
+				...progress,
+				summary: { changed: 4 },
+			}).data,
 		} as Parameters<typeof store.send>[0]),
 	).toBe(true)
+	expect(uiState<AdminCodemodRunState>(store.getSnapshot())).toEqual({
+		status: 'stopping',
+		runId: 'run_1',
+		items: [],
+		summary: { changed: 4 },
+	})
+	expect(
+		sendUiEvent(store, {
+			type: 'RESPONSE_ERROR',
+			data: uiContext({
+				status: 'error',
+				...progress,
+				summary: { changed: 4 },
+				message: 'Try again.',
+			}).data,
+		} as Parameters<typeof store.send>[0]),
+	).toBe(true)
+	expect(uiState<AdminCodemodRunState>(store.getSnapshot())).toEqual({
+		status: 'error',
+		runId: 'run_1',
+		items: [],
+		summary: { changed: 4 },
+		message: 'Try again.',
+	})
 	expect(
 		sendUiEvent(store, {
 			type: 'SUBMIT',

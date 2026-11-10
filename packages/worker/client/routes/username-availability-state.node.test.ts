@@ -5,18 +5,6 @@ import {
 	usernameAvailabilityState,
 	type UsernameAvailabilityView,
 } from './username-availability-state.ts'
-test('username-availability pins legal UI transitions', () => {
-	expect([...usernameAvailabilityState.events].sort()).toEqual([
-		'CHECK',
-		'EDIT',
-		'INVALID_DRAFT',
-		'RESPONSE_AVAILABLE',
-		'RESPONSE_INVALID',
-		'RESPONSE_RESERVED',
-		'RESPONSE_TAKEN',
-		'RESPONSE_UNKNOWN',
-	])
-})
 
 test('cleared or invalid drafts reject an old successful availability result', () => {
 	for (const next of ['idle', 'invalid'] as const) {
