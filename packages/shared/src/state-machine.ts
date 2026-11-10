@@ -6,6 +6,7 @@ import {
 	type StateValueFrom,
 } from 'xstate'
 
+/** Illegal `event` from `from` on `machine` (no matching XState transition). */
 export class IllegalStateTransitionError extends Error {
 	readonly machine: string
 	readonly from: string
@@ -19,19 +20,23 @@ export class IllegalStateTransitionError extends Error {
 	}
 }
 
+/** Flat string state of a lifecycle machine (nested values are excluded). */
 export type LifecycleStateOf<M extends AnyStateMachine> = Extract<
 	StateValueFrom<M>,
 	string
 >
 
+/** An XState v5 machine used as a Kody lifecycle. */
 export type LifecycleMachine = AnyStateMachine
 
+/** All state ids declared on the machine. */
 export function statesOf<M extends AnyStateMachine>(
 	machine: M,
 ): ReadonlyArray<LifecycleStateOf<M>> {
 	return Object.keys(machine.states) as Array<LifecycleStateOf<M>>
 }
 
+/** States marked `type: 'final'` (no further operation leaves them). */
 export function finalStatesOf<M extends AnyStateMachine>(
 	machine: M,
 ): ReadonlyArray<LifecycleStateOf<M>> {
@@ -40,6 +45,7 @@ export function finalStatesOf<M extends AnyStateMachine>(
 	)
 }
 
+/** Whether `value` is a declared state id. */
 export function isState<M extends AnyStateMachine>(
 	machine: M,
 	value: unknown,
@@ -47,6 +53,7 @@ export function isState<M extends AnyStateMachine>(
 	return typeof value === 'string' && Object.hasOwn(machine.states, value)
 }
 
+/** Parse `value` as a declared state id or throw. */
 export function parseState<M extends AnyStateMachine>(
 	machine: M,
 	value: unknown,
@@ -72,6 +79,11 @@ function resolveLifecycleState<M extends AnyStateMachine>(
 	})
 }
 
+/**
+ * Next state after `event` from `from`, or throw. Pass `context` when the
+ * machine has a context initializer or the guard needs it. Payload-dependent
+ * guards need the full event, not a type-only `canHandle` probe.
+ */
 export function nextState<M extends AnyStateMachine>(
 	machine: M,
 	from: LifecycleStateOf<M>,
@@ -88,6 +100,10 @@ export function nextState<M extends AnyStateMachine>(
 	return parseState(machine, next.value)
 }
 
+/**
+ * Whether `from` has a transition for this event type. Probes with `{ type }`
+ * only; payload-dependent guards need `nextState`.
+ */
 export function canHandle<M extends AnyStateMachine>(
 	machine: M,
 	from: LifecycleStateOf<M>,
@@ -112,6 +128,11 @@ export function sourcesOf<M extends AnyStateMachine>(
 	)
 }
 
+/**
+ * SQL `IN (...)` list of states that handle `eventType`. Pass `selectedSources`
+ * to keep a predicate-order subset; every selected source must actually handle
+ * the event.
+ */
 export function sqlSourcesOf<M extends AnyStateMachine>(
 	machine: M,
 	eventType: EventFrom<M>['type'],
@@ -131,6 +152,7 @@ export function sqlSourcesOf<M extends AnyStateMachine>(
 	return sqlStatesOf(machine, selected)
 }
 
+/** SQL `IN (...)` list of declared states. */
 export function sqlStatesOf<M extends AnyStateMachine>(
 	machine: M,
 	states: ReadonlyArray<LifecycleStateOf<M>>,
@@ -141,6 +163,7 @@ export function sqlStatesOf<M extends AnyStateMachine>(
 	)
 }
 
+/** SQL `IN (...)` list of one source after proving `event` is legal from it. */
 export function sqlSourceOf<M extends AnyStateMachine>(
 	machine: M,
 	from: LifecycleStateOf<M>,
@@ -157,6 +180,7 @@ function sqlStateValues(name: string, values: ReadonlyArray<string>) {
 	return `(${values.map((value) => `'${value}'`).join(', ')})`
 }
 
+/** Unconstrained status values: membership, parse, and SQL, with no edges. */
 export type StatusEnum<S extends string> = {
 	readonly name: string
 	readonly description: string
@@ -166,6 +190,7 @@ export type StatusEnum<S extends string> = {
 	sql(values: ReadonlyArray<S>): string
 }
 
+/** Declare an unconstrained status column. No transition graph. */
 export function defineStatusEnum<const S extends string>(definition: {
 	name: string
 	description: string
@@ -198,6 +223,7 @@ export function defineStatusEnum<const S extends string>(definition: {
 	})
 }
 
+/** Mermaid `stateDiagram-v2` of declared states, events, and finals. */
 export function renderStateMachineMermaid(machine: AnyStateMachine): string {
 	const states = statesOf(machine)
 	const id = (state: string) =>
