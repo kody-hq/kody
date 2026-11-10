@@ -21,12 +21,29 @@ import {
 	saveStoredApiToken,
 } from '../src/api-token-store.js'
 import { resolveLocalExecuteBearer, runCli } from '../src/cli.js'
-import { createFileBackend, loadCredentials } from '../src/store.js'
+import {
+	createFileBackend,
+	deleteCredentials,
+	loadCredentials,
+} from '../src/store.js'
+import { defaultMcpUrl } from '../src/defaults.js'
 import { redact } from '../src/redact.js'
 
 /** Matches platform `kody_bc_<16>_<32 base64url>`. */
 const goodCode = `kody_bc_${'a'.repeat(16)}_${'B'.repeat(32)}`
 const goodToken = 'kody_at_test_secret_value_do_not_print'
+
+const unreachableMcpUrl = 'http://127.0.0.1:9/unreachable-mcp'
+
+/**
+ * Windows keeps the saved CLI credential in the per-user OS keyring, not under
+ * HOME, so drop anything a runCli test saved before the next test runs.
+ */
+function clearSavedCredentials(mcpUrl: string) {
+	for (let i = 0; i < 5; i++) {
+		if (!deleteCredentials(mcpUrl).deleted) return
+	}
+}
 
 type RedeemRequest = {
 	method: string
@@ -232,6 +249,7 @@ test('runCli auth bootstrap redeems and never prints the kody_at_ token', async 
 	const previousAppData = process.env.APPDATA
 	process.env.APPDATA = home
 	deleteStoredApiToken(apiUrl)
+	clearSavedCredentials(defaultMcpUrl)
 	let stdout = ''
 	try {
 		const code = await runCli(
@@ -270,6 +288,7 @@ test('runCli auth bootstrap redeems and never prints the kody_at_ token', async 
 		if (previousAppData === undefined) delete process.env.APPDATA
 		else process.env.APPDATA = previousAppData
 		deleteStoredApiToken(apiUrl)
+		clearSavedCredentials(defaultMcpUrl)
 	}
 })
 
@@ -339,7 +358,8 @@ test('whoami uses stored bootstrap token without env, --token, or login', async 
 	process.env.APPDATA = home
 	deleteStoredApiToken(apiUrl)
 	delete process.env.KODY_API_TOKEN
-	process.env.KODY_MCP_URL = 'http://127.0.0.1:9/unreachable-mcp'
+	process.env.KODY_MCP_URL = unreachableMcpUrl
+	clearSavedCredentials(unreachableMcpUrl)
 	const storedToken = 'kody_at_whoami_stored'
 	saveStoredApiToken({
 		version: 1,
@@ -404,6 +424,7 @@ test('whoami uses stored bootstrap token without env, --token, or login', async 
 		if (previousAppData === undefined) delete process.env.APPDATA
 		else process.env.APPDATA = previousAppData
 		deleteStoredApiToken(apiUrl)
+		clearSavedCredentials(unreachableMcpUrl)
 		if (previousToken === undefined) delete process.env.KODY_API_TOKEN
 		else process.env.KODY_API_TOKEN = previousToken
 		if (previousMcpUrl === undefined) delete process.env.KODY_MCP_URL
@@ -430,7 +451,8 @@ test('search uses stored bootstrap token without env, --token, or login', async 
 	process.env.APPDATA = home
 	deleteStoredApiToken(apiUrl)
 	delete process.env.KODY_API_TOKEN
-	process.env.KODY_MCP_URL = 'http://127.0.0.1:9/unreachable-mcp'
+	process.env.KODY_MCP_URL = unreachableMcpUrl
+	clearSavedCredentials(unreachableMcpUrl)
 	const storedToken = 'kody_at_search_stored'
 	saveStoredApiToken({
 		version: 1,
@@ -480,6 +502,7 @@ test('search uses stored bootstrap token without env, --token, or login', async 
 		if (previousAppData === undefined) delete process.env.APPDATA
 		else process.env.APPDATA = previousAppData
 		deleteStoredApiToken(apiUrl)
+		clearSavedCredentials(unreachableMcpUrl)
 		if (previousToken === undefined) delete process.env.KODY_API_TOKEN
 		else process.env.KODY_API_TOKEN = previousToken
 		if (previousMcpUrl === undefined) delete process.env.KODY_MCP_URL
