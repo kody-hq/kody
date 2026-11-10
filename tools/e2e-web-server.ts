@@ -1,6 +1,9 @@
 import { startStripeMock } from '../e2e/stripe-mock-server.ts'
 import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { isRetryableD1LockMessage } from '@kody-internal/shared/d1-retry.ts'
 import { startCloudflareMock } from '#worker/test-support/cloudflare-mock-server.ts'
@@ -12,6 +15,7 @@ import {
 	e2eCloudflareMockAccountId,
 	writeE2eCloudflareMockState,
 } from './e2e-cloudflare-mock-state.ts'
+import { startMockArtifactsGitServer } from './mock-artifacts-git-server.ts'
 import { isExecutedDirectly, resolveNpmCommand } from './node-runtime.ts'
 import { spawnChildProcess, stopChildProcessTree } from './dev-process-utils.ts'
 import { workerOriginForPort } from './dev-server.ts'
@@ -192,10 +196,21 @@ async function startE2eWebServer() {
 	})
 	if ((migrate.status ?? 1) !== 0) process.exit(migrate.status ?? 1)
 
+	// Git smart HTTP for mock Artifacts remotes (package publish/check pages).
+	const gitRoot = await mkdtemp(join(tmpdir(), 'kody-e2e-artifacts-git-'))
+	const gitBackend = await startMockArtifactsGitServer({ root: gitRoot })
+	async function disposeGitBackend() {
+		await gitBackend.close()
+		await rm(gitRoot, { recursive: true, force: true })
+	}
 	const mock = await startCloudflareMockWithRetry({
-		start: startCloudflareMock,
+		start: (token) =>
+			startCloudflareMock(token, { gitBackendUrl: gitBackend.origin }),
 		createToken: () => `e2e-cloudflare-${randomUUID()}`,
 		log: (message) => console.error(message),
+	}).catch(async (error) => {
+		await disposeGitBackend()
+		throw error
 	})
 	try {
 		await writeE2eCloudflareMockState({
@@ -205,11 +220,13 @@ async function startE2eWebServer() {
 		})
 	} catch (error) {
 		await mock[Symbol.asyncDispose]()
+		await disposeGitBackend()
 		throw error
 	}
 
 	const stripe = await startStripeMock().catch(async (error) => {
 		await mock[Symbol.asyncDispose]()
+		await disposeGitBackend()
 		throw error
 	})
 	const extraArgs = process.argv.slice(2)
@@ -272,6 +289,7 @@ async function startE2eWebServer() {
 		await stopChildProcessTree(vite)
 		await stripe.close()
 		await mock[Symbol.asyncDispose]()
+		await disposeGitBackend()
 		process.exit(exitCode)
 	}
 

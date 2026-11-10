@@ -4,6 +4,7 @@ import { defaultApiUrl } from './defaults.js'
 import { KeychainTimeoutError, createKeyringEntry } from './keyring-entry.js'
 import {
 	createFileBackend,
+	fileCredentialStoreForced,
 	type SecretBackend,
 	type StoreResolution,
 } from './store.js'
@@ -83,6 +84,9 @@ function resolveApiTokenBackend(
 	resolution?: StoreResolution,
 ): SecretBackend {
 	if (preferred) return preferred
+	if (!resolution?.createKeyring && fileCredentialStoreForced()) {
+		return fileBackendFor(apiUrl, resolution)
+	}
 	try {
 		return (resolution?.createKeyring ?? createApiTokenKeyringBackend)(apiUrl)
 	} catch {
