@@ -91,9 +91,7 @@ export const d1PacedBackupPartMaxBytes = 4 * 1024 * 1024
  * Soft per-tick emitted-byte budget. Once flushed bytes for the tick hit this
  * cap, the walker stops between pages so the next tick resumes even if wall
  * time remains. Heap is bounded by `d1PacedBackupPartMaxBytes` (each part is
- * flushed, persisted, and cleared), not by this budget, so it only caps
- * throughput. At 8 MiB a Sunday full base of APP/AUDIT needed ~12h of
- * 5-minute ticks and sealed hours after the watchdog window.
+ * flushed, persisted, and cleared), not by this budget.
  */
 export const d1PacedBackupTickByteBudget = 32 * 1024 * 1024
 
