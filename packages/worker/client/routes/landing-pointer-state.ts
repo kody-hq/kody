@@ -1,4 +1,4 @@
-import { setup, assign } from 'xstate'
+import { setup, types } from 'xstate'
 import type { UiContext, UiData, UiPayload } from '#client/ui-actor.ts'
 export type FlickSample = { t: number; x: number }
 export type PointerIntent = Exclude<
@@ -17,51 +17,34 @@ export type LandingPointerState =
 	  }
 
 export const landingPointerState = setup({
-	types: {
-		context: {} as UiContext<LandingPointerState>,
-		events: {} as
-			| {
-					type: 'POINTER_DOWN'
-					data: UiPayload<LandingPointerState, 'pending'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'SAMPLE'
-					data: UiPayload<LandingPointerState, 'pending' | 'drag'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'DRAG'
-					data: UiPayload<LandingPointerState, 'drag'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'SCROLL'
-					data: UiPayload<LandingPointerState, 'scroll'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'MOVE'
-					data: UiPayload<LandingPointerState, 'drag'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RELEASE'
-					data: UiPayload<LandingPointerState, 'idle'>
-					requestId?: unknown
-			  },
-	},
-	guards: {
-		currentRequest: ({ context, event }) =>
-			context.requestId === event.requestId,
-	},
-	actions: {
-		update: assign({ data: ({ event }) => event.data }),
-		start: assign({
-			data: ({ event }) => event.data,
-			requestId: ({ event }) => event.requestId,
-		}),
-		reset: assign({ data: ({ event }) => event.data, requestId: undefined }),
+	schemas: {
+		context: types<UiContext<LandingPointerState>>(),
+		events: {
+			POINTER_DOWN: types<{
+				data: UiPayload<LandingPointerState, 'pending'>
+				requestId?: unknown
+			}>(),
+			SAMPLE: types<{
+				data: UiPayload<LandingPointerState, 'pending' | 'drag'>
+				requestId?: unknown
+			}>(),
+			DRAG: types<{
+				data: UiPayload<LandingPointerState, 'drag'>
+				requestId?: unknown
+			}>(),
+			SCROLL: types<{
+				data: UiPayload<LandingPointerState, 'scroll'>
+				requestId?: unknown
+			}>(),
+			MOVE: types<{
+				data: UiPayload<LandingPointerState, 'drag'>
+				requestId?: unknown
+			}>(),
+			RELEASE: types<{
+				data: UiPayload<LandingPointerState, 'idle'>
+				requestId?: unknown
+			}>(),
+		},
 	},
 }).createMachine({
 	id: 'landing_testimonials.pointer',
@@ -70,29 +53,164 @@ export const landingPointerState = setup({
 	initial: 'idle',
 	context: { data: {} as UiData<LandingPointerState>, requestId: undefined },
 	states: {
-		idle: { on: { POINTER_DOWN: { target: 'pending', actions: 'start' } } },
+		idle: {
+			on: {
+				POINTER_DOWN: {
+					target: 'pending',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
+			},
+		},
 		pending: {
 			on: {
-				SAMPLE: { guard: 'currentRequest', actions: 'update' },
-				DRAG: { guard: 'currentRequest', target: 'drag', actions: 'update' },
-				SCROLL: {
-					guard: 'currentRequest',
-					target: 'scroll',
-					actions: 'update',
+				SAMPLE: {
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<LandingPointerState>
+						event: { type: 'SAMPLE' } & {
+							data: UiPayload<LandingPointerState, 'pending' | 'drag'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { context: { data: event.data } }
+					},
 				},
-				RELEASE: { guard: 'currentRequest', target: 'idle', actions: 'reset' },
+				DRAG: {
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<LandingPointerState>
+						event: { type: 'DRAG' } & {
+							data: UiPayload<LandingPointerState, 'drag'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'drag', context: { data: event.data } }
+					},
+				},
+				SCROLL: {
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<LandingPointerState>
+						event: { type: 'SCROLL' } & {
+							data: UiPayload<LandingPointerState, 'scroll'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'scroll', context: { data: event.data } }
+					},
+				},
+				RELEASE: {
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<LandingPointerState>
+						event: { type: 'RELEASE' } & {
+							data: UiPayload<LandingPointerState, 'idle'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return {
+							target: 'idle',
+							context: { data: event.data, requestId: undefined },
+						}
+					},
+				},
 			},
 		},
 		drag: {
 			on: {
-				SAMPLE: { guard: 'currentRequest', actions: 'update' },
-				MOVE: { guard: 'currentRequest', actions: 'update' },
-				RELEASE: { guard: 'currentRequest', target: 'idle', actions: 'reset' },
+				SAMPLE: {
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<LandingPointerState>
+						event: { type: 'SAMPLE' } & {
+							data: UiPayload<LandingPointerState, 'pending' | 'drag'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { context: { data: event.data } }
+					},
+				},
+				MOVE: {
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<LandingPointerState>
+						event: { type: 'MOVE' } & {
+							data: UiPayload<LandingPointerState, 'drag'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { context: { data: event.data } }
+					},
+				},
+				RELEASE: {
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<LandingPointerState>
+						event: { type: 'RELEASE' } & {
+							data: UiPayload<LandingPointerState, 'idle'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return {
+							target: 'idle',
+							context: { data: event.data, requestId: undefined },
+						}
+					},
+				},
 			},
 		},
 		scroll: {
 			on: {
-				RELEASE: { guard: 'currentRequest', target: 'idle', actions: 'reset' },
+				RELEASE: {
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<LandingPointerState>
+						event: { type: 'RELEASE' } & {
+							data: UiPayload<LandingPointerState, 'idle'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return {
+							target: 'idle',
+							context: { data: event.data, requestId: undefined },
+						}
+					},
+				},
 			},
 		},
 	},

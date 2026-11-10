@@ -14,6 +14,6 @@
   },
   "dependencies": {
     "@kody-internal/shared": "file:../shared",
-    "xstate": "5.33.3"
+    "xstate": "6.0.0-beta.1"
   }
 }

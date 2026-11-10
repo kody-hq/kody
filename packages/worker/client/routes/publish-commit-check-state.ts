@@ -1,4 +1,4 @@
-import { setup, assign } from 'xstate'
+import { setup, types } from 'xstate'
 import type { UiContext, UiData, UiPayload } from '#client/ui-actor.ts'
 type Payloads = {
 	idle: {}
@@ -16,46 +16,30 @@ export type PublishCheckAttempt =
 	| (Exclude<PublishCommitChecksState, { status: 'idle' }> & { key: string })
 
 export const publishCommitCheckState = setup({
-	types: {
-		context: {} as UiContext<PublishCheckAttempt>,
-		events: {} as
-			| {
-					type: 'CLEAR_COMMIT'
-					data: UiPayload<PublishCheckAttempt, 'idle'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'CHECK_COMMIT'
-					data: UiPayload<PublishCheckAttempt, 'running'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'CHECK_PASSED'
-					data: UiPayload<PublishCheckAttempt, 'passed'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'CHECK_FAILED'
-					data: UiPayload<PublishCheckAttempt, 'failed'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'CHECK_UNAVAILABLE'
-					data: UiPayload<PublishCheckAttempt, 'unavailable'>
-					requestId?: unknown
-			  },
-	},
-	guards: {
-		currentRequest: ({ context, event }) =>
-			context.requestId === event.requestId,
-	},
-	actions: {
-		update: assign({ data: ({ event }) => event.data }),
-		start: assign({
-			data: ({ event }) => event.data,
-			requestId: ({ event }) => event.requestId,
-		}),
-		reset: assign({ data: ({ event }) => event.data, requestId: undefined }),
+	schemas: {
+		context: types<UiContext<PublishCheckAttempt>>(),
+		events: {
+			CLEAR_COMMIT: types<{
+				data: UiPayload<PublishCheckAttempt, 'idle'>
+				requestId?: unknown
+			}>(),
+			CHECK_COMMIT: types<{
+				data: UiPayload<PublishCheckAttempt, 'running'>
+				requestId?: unknown
+			}>(),
+			CHECK_PASSED: types<{
+				data: UiPayload<PublishCheckAttempt, 'passed'>
+				requestId?: unknown
+			}>(),
+			CHECK_FAILED: types<{
+				data: UiPayload<PublishCheckAttempt, 'failed'>
+				requestId?: unknown
+			}>(),
+			CHECK_UNAVAILABLE: types<{
+				data: UiPayload<PublishCheckAttempt, 'unavailable'>
+				requestId?: unknown
+			}>(),
+		},
 	},
 }).createMachine({
 	id: 'package_publish.ui_checks',
@@ -66,47 +50,125 @@ export const publishCommitCheckState = setup({
 	states: {
 		idle: {
 			on: {
-				CLEAR_COMMIT: { target: 'idle', actions: 'reset' },
-				CHECK_COMMIT: { target: 'running', actions: 'start' },
+				CLEAR_COMMIT: {
+					target: 'idle',
+					context: ({ event }) => ({ data: event.data, requestId: undefined }),
+				},
+				CHECK_COMMIT: {
+					target: 'running',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
 			},
 		},
 		running: {
 			on: {
-				CLEAR_COMMIT: { target: 'idle', actions: 'reset' },
-				CHECK_COMMIT: { target: 'running', actions: 'start' },
+				CLEAR_COMMIT: {
+					target: 'idle',
+					context: ({ event }) => ({ data: event.data, requestId: undefined }),
+				},
+				CHECK_COMMIT: {
+					target: 'running',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
 				CHECK_PASSED: {
-					target: 'passed',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<PublishCheckAttempt>
+						event: { type: 'CHECK_PASSED' } & {
+							data: UiPayload<PublishCheckAttempt, 'passed'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'passed', context: { data: event.data } }
+					},
 				},
 				CHECK_FAILED: {
-					target: 'failed',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<PublishCheckAttempt>
+						event: { type: 'CHECK_FAILED' } & {
+							data: UiPayload<PublishCheckAttempt, 'failed'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'failed', context: { data: event.data } }
+					},
 				},
 				CHECK_UNAVAILABLE: {
-					target: 'unavailable',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<PublishCheckAttempt>
+						event: { type: 'CHECK_UNAVAILABLE' } & {
+							data: UiPayload<PublishCheckAttempt, 'unavailable'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'unavailable', context: { data: event.data } }
+					},
 				},
 			},
 		},
 		passed: {
 			on: {
-				CLEAR_COMMIT: { target: 'idle', actions: 'reset' },
-				CHECK_COMMIT: { target: 'running', actions: 'start' },
+				CLEAR_COMMIT: {
+					target: 'idle',
+					context: ({ event }) => ({ data: event.data, requestId: undefined }),
+				},
+				CHECK_COMMIT: {
+					target: 'running',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
 			},
 		},
 		failed: {
 			on: {
-				CLEAR_COMMIT: { target: 'idle', actions: 'reset' },
-				CHECK_COMMIT: { target: 'running', actions: 'start' },
+				CLEAR_COMMIT: {
+					target: 'idle',
+					context: ({ event }) => ({ data: event.data, requestId: undefined }),
+				},
+				CHECK_COMMIT: {
+					target: 'running',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
 			},
 		},
 		unavailable: {
 			on: {
-				CLEAR_COMMIT: { target: 'idle', actions: 'reset' },
-				CHECK_COMMIT: { target: 'running', actions: 'start' },
+				CLEAR_COMMIT: {
+					target: 'idle',
+					context: ({ event }) => ({ data: event.data, requestId: undefined }),
+				},
+				CHECK_COMMIT: {
+					target: 'running',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
 			},
 		},
 	},

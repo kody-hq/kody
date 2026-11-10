@@ -17,17 +17,7 @@ test('OAuth setup cannot skip to a receipt, and one request fences submission', 
 		false,
 	)
 
-	const operation = createActor(connectOauthOperationState, {
-		snapshot: (() => {
-			const initialView = {
-				status: 'idle',
-			}
-			return connectOauthOperationState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	}).start()
+	const operation = createActor(connectOauthOperationState).start()
 	expect(
 		sendUiEvent(operation, {
 			type: 'SUBMIT',

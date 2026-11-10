@@ -1,4 +1,4 @@
-import { setup, assign } from 'xstate'
+import { setup, types } from 'xstate'
 import type {
 	UiContext,
 	UiData,
@@ -10,46 +10,30 @@ export type UsernameSignupState = FormFlowState<
 >
 
 export const usernameSignupState = setup({
-	types: {
-		context: {} as UiContext<UsernameSignupState>,
-		events: {} as
-			| {
-					type: 'CONFIRM_USERNAME'
-					data: UiPayload<UsernameSignupState, 'confirming'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'SUBMIT'
-					data: UiPayload<UsernameSignupState, 'submitting'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'VALIDATION_ERROR'
-					data: UiPayload<UsernameSignupState, 'error'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESPONSE_ERROR'
-					data: UiPayload<UsernameSignupState, 'error'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESET'
-					data: UiPayload<UsernameSignupState, 'idle'>
-					requestId?: unknown
-			  },
-	},
-	guards: {
-		currentRequest: ({ context, event }) =>
-			context.requestId === event.requestId,
-	},
-	actions: {
-		update: assign({ data: ({ event }) => event.data }),
-		start: assign({
-			data: ({ event }) => event.data,
-			requestId: ({ event }) => event.requestId,
-		}),
-		reset: assign({ data: ({ event }) => event.data, requestId: undefined }),
+	schemas: {
+		context: types<UiContext<UsernameSignupState>>(),
+		events: {
+			CONFIRM_USERNAME: types<{
+				data: UiPayload<UsernameSignupState, 'confirming'>
+				requestId?: unknown
+			}>(),
+			SUBMIT: types<{
+				data: UiPayload<UsernameSignupState, 'submitting'>
+				requestId?: unknown
+			}>(),
+			VALIDATION_ERROR: types<{
+				data: UiPayload<UsernameSignupState, 'error'>
+				requestId?: unknown
+			}>(),
+			RESPONSE_ERROR: types<{
+				data: UiPayload<UsernameSignupState, 'error'>
+				requestId?: unknown
+			}>(),
+			RESET: types<{
+				data: UiPayload<UsernameSignupState, 'idle'>
+				requestId?: unknown
+			}>(),
+		},
 	},
 }).createMachine({
 	id: 'username_signup.form',
@@ -60,33 +44,80 @@ export const usernameSignupState = setup({
 	states: {
 		idle: {
 			on: {
-				CONFIRM_USERNAME: { target: 'confirming', actions: 'update' },
-				VALIDATION_ERROR: { target: 'error', actions: 'update' },
+				CONFIRM_USERNAME: {
+					target: 'confirming',
+					context: ({ event }) => ({ data: event.data }),
+				},
+				VALIDATION_ERROR: {
+					target: 'error',
+					context: ({ event }) => ({ data: event.data }),
+				},
 			},
 		},
 		confirming: {
 			on: {
-				CONFIRM_USERNAME: { target: 'confirming', actions: 'update' },
-				SUBMIT: { target: 'submitting', actions: 'start' },
-				VALIDATION_ERROR: { target: 'error', actions: 'update' },
-				RESET: { target: 'idle', actions: 'reset' },
+				CONFIRM_USERNAME: {
+					target: 'confirming',
+					context: ({ event }) => ({ data: event.data }),
+				},
+				SUBMIT: {
+					target: 'submitting',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
+				VALIDATION_ERROR: {
+					target: 'error',
+					context: ({ event }) => ({ data: event.data }),
+				},
+				RESET: {
+					target: 'idle',
+					context: ({ event }) => ({ data: event.data, requestId: undefined }),
+				},
 			},
 		},
 		submitting: {
 			on: {
 				RESPONSE_ERROR: {
-					target: 'error',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<UsernameSignupState>
+						event: { type: 'RESPONSE_ERROR' } & {
+							data: UiPayload<UsernameSignupState, 'error'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'error', context: { data: event.data } }
+					},
 				},
 			},
 		},
 		error: {
 			on: {
-				CONFIRM_USERNAME: { target: 'confirming', actions: 'update' },
-				SUBMIT: { target: 'submitting', actions: 'start' },
-				VALIDATION_ERROR: { target: 'error', actions: 'update' },
-				RESET: { target: 'idle', actions: 'reset' },
+				CONFIRM_USERNAME: {
+					target: 'confirming',
+					context: ({ event }) => ({ data: event.data }),
+				},
+				SUBMIT: {
+					target: 'submitting',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
+				VALIDATION_ERROR: {
+					target: 'error',
+					context: ({ event }) => ({ data: event.data }),
+				},
+				RESET: {
+					target: 'idle',
+					context: ({ event }) => ({ data: event.data, requestId: undefined }),
+				},
 			},
 		},
 	},

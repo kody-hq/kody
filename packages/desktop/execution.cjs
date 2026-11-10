@@ -1,7 +1,7 @@
 const { machineName } = require('./machine-name.cjs')
 const { registrationIdentity } = require('./registration-identity.cjs')
 const { loginAuthorizationUrl } = require('./in-app-approval.cjs')
-const { setup, assign, createActor } = require('xstate')
+const { setup, types, createActor } = require('xstate')
 const {
 	existingRegistration,
 	runnerView,
@@ -9,23 +9,20 @@ const {
 } = require('./machine-runner.cjs')
 
 const executionOperationState = setup({
-	types: {
+	schemas: {
 		context:
-			/** @type {{ command: string | null, message: string | null, notice: { tone: string, message: string } | null }} */ ({}),
-		events:
-			/** @type {{ type: 'START_OPERATION', command: string } | { type: 'SET_ERROR', message: string } | { type: 'CLEAR_ERROR' } | { type: 'SETTLED' }} */ ({}),
-	},
-	actions: {
-		start: assign(({ event }) => ({
-			command: event.type === 'START_OPERATION' ? event.command : null,
-			message: null,
-			notice: null,
-		})),
-		setError: assign({
-			message: ({ event }) =>
-				event.type === 'SET_ERROR' ? event.message : null,
-		}),
-		clear: assign({ command: null, message: null, notice: null }),
+			/** @type {import('xstate').TypeSchema<{ command: string | null, message: string | null, notice: { tone: string, message: string } | null }>} */ (
+				types()
+			),
+		events: {
+			START_OPERATION:
+				/** @type {import('xstate').TypeSchema<{command: string}>} */ (types()),
+			SET_ERROR: /** @type {import('xstate').TypeSchema<{message: string}>} */ (
+				types()
+			),
+			CLEAR_ERROR: /** @type {import('xstate').TypeSchema<{}>} */ (types()),
+			SETTLED: /** @type {import('xstate').TypeSchema<{}>} */ (types()),
+		},
 	},
 }).createMachine({
 	id: 'desktop.machine_operation',
@@ -36,37 +33,70 @@ const executionOperationState = setup({
 	states: {
 		idle: {
 			on: {
-				START_OPERATION: { target: 'running', actions: 'start' },
-				SET_ERROR: { target: 'error', actions: 'setError' },
+				START_OPERATION: {
+					target: 'running',
+					context: ({ event }) => ({
+						command: event.type === 'START_OPERATION' ? event.command : null,
+						message: null,
+						notice: null,
+					}),
+				},
+				SET_ERROR: {
+					target: 'error',
+					context: ({ event }) => ({
+						message: event.type === 'SET_ERROR' ? event.message : null,
+					}),
+				},
 			},
 		},
 		running: {
 			on: {
 				SET_ERROR: {
-					actions: assign({
-						notice: ({ event }) => ({ tone: 'error', message: event.message }),
+					context: ({ event }) => ({
+						notice: { tone: 'error', message: event.message },
 					}),
 				},
-				CLEAR_ERROR: { actions: assign({ notice: null }) },
-				SETTLED: [
-					{
-						target: 'error',
-						guard: ({ context }) => context.notice?.message !== undefined,
-						actions: assign(({ context }) => ({
-							command: null,
-							message: context.notice?.message ?? null,
-							notice: null,
-						})),
+				CLEAR_ERROR: { context: () => ({ notice: null }) },
+				SETTLED: {
+					description: 'Notice has a message',
+					to: ({ context }) => {
+						if (context.notice?.message !== undefined) {
+							return {
+								target: 'error',
+								context: {
+									command: null,
+									message: context.notice?.message ?? null,
+									notice: null,
+								},
+							}
+						}
+						return {
+							target: 'idle',
+							context: { command: null, message: null, notice: null },
+						}
 					},
-					{ target: 'idle', actions: 'clear' },
-				],
+				},
 			},
 		},
 		error: {
 			on: {
-				START_OPERATION: { target: 'running', actions: 'start' },
-				SET_ERROR: { actions: 'setError' },
-				CLEAR_ERROR: { target: 'idle', actions: 'clear' },
+				START_OPERATION: {
+					target: 'running',
+					context: ({ event }) => ({
+						command: event.type === 'START_OPERATION' ? event.command : null,
+						message: null,
+						notice: null,
+					}),
+				},
+				SET_ERROR: {
+					context: ({ event }) => ({
+						message: event.type === 'SET_ERROR' ? event.message : null,
+					}),
+				},
+				CLEAR_ERROR: {
+					target: 'idle',
+					context: () => ({ command: null, message: null, notice: null }),
+				},
 			},
 		},
 	},

@@ -1,18 +1,21 @@
-import { setup } from 'xstate'
+import { setup, types } from 'xstate'
 import type { LifecycleStateOf } from '@kody-internal/shared/state-machine.ts'
 
 export const referralState = setup({
-	types: {
-		events: {} as { type: 'REJECT_FRAUD' } | { type: 'REWARD' },
-	},
+	schemas: { events: { REJECT_FRAUD: types<{}>(), REWARD: types<{}>() } },
 }).createMachine({
 	id: 'referrals.status',
 	description:
 		'Pending referrals reject fraud or reward qualifying invoices; incomplete reward delivery may retry, but rejected referrals cannot be rewarded.',
 	initial: 'pending',
 	states: {
-		pending: { on: { REJECT_FRAUD: 'rejected', REWARD: 'rewarded' } },
-		rewarded: { on: { REWARD: 'rewarded' } },
+		pending: {
+			on: {
+				REJECT_FRAUD: { target: 'rejected' },
+				REWARD: { target: 'rewarded' },
+			},
+		},
+		rewarded: { on: { REWARD: { target: 'rewarded' } } },
 		rejected: { type: 'final' },
 	},
 })

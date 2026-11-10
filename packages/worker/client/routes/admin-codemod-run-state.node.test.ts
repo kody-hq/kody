@@ -7,25 +7,19 @@ import {
 	type AdminCodemodRunState,
 } from './admin-codemod-run-state.ts'
 test('codemod UI pins paging, stop acknowledgement and retry transitions', () => {
-	expect([...adminCodemodRunState.events].sort()).toEqual([
-		'PROGRESS',
-		'RESPONSE_ERROR',
-		'RESPONSE_OK',
-		'STOP',
-		'SUBMIT',
-	])
+	expect(
+		[
+			...new Set(
+				Object.values(adminCodemodRunState.states).flatMap((state) => [
+					...state.transitions.keys(),
+				]),
+			),
+		].sort(),
+	).toEqual(['PROGRESS', 'RESPONSE_ERROR', 'RESPONSE_OK', 'STOP', 'SUBMIT'])
 	expect(finalStatesOf(adminCodemodRunState)).toEqual([])
 })
 test('progress survives stopping and failures; starting a retry drops old feedback', () => {
-	const store = createActor(adminCodemodRunState, {
-		snapshot: (() => {
-			const initialView = { status: 'idle' }
-			return adminCodemodRunState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	}).start()
+	const store = createActor(adminCodemodRunState).start()
 	const progress = { runId: 'run_1', items: [], summary: { changed: 2 } }
 	expect(
 		sendUiEvent(store, {

@@ -1,4 +1,4 @@
-import { setup, assign } from 'xstate'
+import { setup, types } from 'xstate'
 import type { UiContext, UiData, UiPayload } from '#client/ui-actor.ts'
 export type PasskeyCeremonyState =
 	| { status: 'idle' }
@@ -8,36 +8,22 @@ export type PasskeyCeremonyState =
 	  }
 
 export const passkeyCeremonyState = setup({
-	types: {
-		context: {} as UiContext<PasskeyCeremonyState>,
-		events: {} as
-			| {
-					type: 'SUBMIT'
-					data: UiPayload<PasskeyCeremonyState, 'requesting'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'OPTIONS_OK'
-					data: UiPayload<PasskeyCeremonyState, 'ceremony'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'SETTLED'
-					data: UiPayload<PasskeyCeremonyState, 'idle'>
-					requestId?: unknown
-			  },
-	},
-	guards: {
-		currentRequest: ({ context, event }) =>
-			context.requestId === event.requestId,
-	},
-	actions: {
-		update: assign({ data: ({ event }) => event.data }),
-		start: assign({
-			data: ({ event }) => event.data,
-			requestId: ({ event }) => event.requestId,
-		}),
-		reset: assign({ data: ({ event }) => event.data, requestId: undefined }),
+	schemas: {
+		context: types<UiContext<PasskeyCeremonyState>>(),
+		events: {
+			SUBMIT: types<{
+				data: UiPayload<PasskeyCeremonyState, 'requesting'>
+				requestId?: unknown
+			}>(),
+			OPTIONS_OK: types<{
+				data: UiPayload<PasskeyCeremonyState, 'ceremony'>
+				requestId?: unknown
+			}>(),
+			SETTLED: types<{
+				data: UiPayload<PasskeyCeremonyState, 'idle'>
+				requestId?: unknown
+			}>(),
+		},
 	},
 }).createMachine({
 	id: 'passkey.registration_ui',
@@ -46,20 +32,77 @@ export const passkeyCeremonyState = setup({
 	initial: 'idle',
 	context: { data: {} as UiData<PasskeyCeremonyState>, requestId: undefined },
 	states: {
-		idle: { on: { SUBMIT: { target: 'requesting', actions: 'start' } } },
+		idle: {
+			on: {
+				SUBMIT: {
+					target: 'requesting',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
+			},
+		},
 		requesting: {
 			on: {
 				OPTIONS_OK: {
-					target: 'ceremony',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<PasskeyCeremonyState>
+						event: { type: 'OPTIONS_OK' } & {
+							data: UiPayload<PasskeyCeremonyState, 'ceremony'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'ceremony', context: { data: event.data } }
+					},
 				},
-				SETTLED: { target: 'idle', guard: 'currentRequest', actions: 'reset' },
+				SETTLED: {
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<PasskeyCeremonyState>
+						event: { type: 'SETTLED' } & {
+							data: UiPayload<PasskeyCeremonyState, 'idle'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return {
+							target: 'idle',
+							context: { data: event.data, requestId: undefined },
+						}
+					},
+				},
 			},
 		},
 		ceremony: {
 			on: {
-				SETTLED: { target: 'idle', guard: 'currentRequest', actions: 'reset' },
+				SETTLED: {
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<PasskeyCeremonyState>
+						event: { type: 'SETTLED' } & {
+							data: UiPayload<PasskeyCeremonyState, 'idle'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return {
+							target: 'idle',
+							context: { data: event.data, requestId: undefined },
+						}
+					},
+				},
 			},
 		},
 	},

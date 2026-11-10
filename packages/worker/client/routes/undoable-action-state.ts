@@ -1,4 +1,4 @@
-import { setup, assign } from 'xstate'
+import { setup, types } from 'xstate'
 import type { UiContext, UiData, UiPayload } from '#client/ui-actor.ts'
 export type UndoableActionStatus = 'idle' | 'waiting' | 'committing' | 'undoing'
 
@@ -13,41 +13,26 @@ export type UndoableActionView =
 	| { status: 'waiting'; action: UndoableActionInput }
 	| { status: 'committing' | 'undoing'; promise: Promise<void> }
 export const undoableActionState = setup({
-	types: {
-		context: {} as UiContext<UndoableActionView>,
-		events: {} as
-			| {
-					type: 'SCHEDULE'
-					data: UiPayload<UndoableActionView, 'waiting'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'COMMIT'
-					data: UiPayload<UndoableActionView, 'committing'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'UNDO'
-					data: UiPayload<UndoableActionView, 'undoing'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'SETTLED'
-					data: UiPayload<UndoableActionView, 'idle'>
-					requestId?: unknown
-			  },
-	},
-	guards: {
-		currentRequest: ({ context, event }) =>
-			context.requestId === event.requestId,
-	},
-	actions: {
-		update: assign({ data: ({ event }) => event.data }),
-		start: assign({
-			data: ({ event }) => event.data,
-			requestId: ({ event }) => event.requestId,
-		}),
-		reset: assign({ data: ({ event }) => event.data, requestId: undefined }),
+	schemas: {
+		context: types<UiContext<UndoableActionView>>(),
+		events: {
+			SCHEDULE: types<{
+				data: UiPayload<UndoableActionView, 'waiting'>
+				requestId?: unknown
+			}>(),
+			COMMIT: types<{
+				data: UiPayload<UndoableActionView, 'committing'>
+				requestId?: unknown
+			}>(),
+			UNDO: types<{
+				data: UiPayload<UndoableActionView, 'undoing'>
+				requestId?: unknown
+			}>(),
+			SETTLED: types<{
+				data: UiPayload<UndoableActionView, 'idle'>
+				requestId?: unknown
+			}>(),
+		},
 	},
 }).createMachine({
 	id: 'ui.undoable_action',
@@ -56,14 +41,41 @@ export const undoableActionState = setup({
 	initial: 'idle',
 	context: { data: {} as UiData<UndoableActionView>, requestId: undefined },
 	states: {
-		idle: { on: { SCHEDULE: { target: 'waiting', actions: 'update' } } },
-		waiting: {
+		idle: {
 			on: {
-				COMMIT: { target: 'committing', actions: 'update' },
-				UNDO: { target: 'undoing', actions: 'update' },
+				SCHEDULE: {
+					target: 'waiting',
+					context: ({ event }) => ({ data: event.data }),
+				},
 			},
 		},
-		committing: { on: { SETTLED: { target: 'idle', actions: 'reset' } } },
-		undoing: { on: { SETTLED: { target: 'idle', actions: 'reset' } } },
+		waiting: {
+			on: {
+				COMMIT: {
+					target: 'committing',
+					context: ({ event }) => ({ data: event.data }),
+				},
+				UNDO: {
+					target: 'undoing',
+					context: ({ event }) => ({ data: event.data }),
+				},
+			},
+		},
+		committing: {
+			on: {
+				SETTLED: {
+					target: 'idle',
+					context: ({ event }) => ({ data: event.data, requestId: undefined }),
+				},
+			},
+		},
+		undoing: {
+			on: {
+				SETTLED: {
+					target: 'idle',
+					context: ({ event }) => ({ data: event.data, requestId: undefined }),
+				},
+			},
+		},
 	},
 })

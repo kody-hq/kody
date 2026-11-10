@@ -9,7 +9,7 @@ import {
 	type CSSProperties,
 	type FormEvent,
 } from 'react'
-import { useMachine } from '@xstate/react'
+import { useActor } from '@xstate/react'
 import {
 	usernameSignupState,
 	type UsernameSignupState,
@@ -66,15 +66,7 @@ export function SignupChooseUsernamePage(props: {
 	const [confirmedUsername, setConfirmedUsername] = useState<string | null>(
 		null,
 	)
-	const [flowSnapshot, , flowActor] = useMachine(usernameSignupState, {
-		snapshot: (() => {
-			const initialView = { status: 'idle' }
-			return usernameSignupState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	})
+	const [flowSnapshot, , flowActor] = useActor(usernameSignupState)
 	const flow = uiState<UsernameSignupState>(flowSnapshot)
 	const transition = useCallback(
 		(event: Parameters<typeof flowActor.send>[0]) =>

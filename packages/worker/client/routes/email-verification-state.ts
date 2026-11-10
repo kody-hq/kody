@@ -1,4 +1,4 @@
-import { setup, assign } from 'xstate'
+import { setup, types } from 'xstate'
 import type {
 	UiContext,
 	UiData,
@@ -10,46 +10,30 @@ export type EmailVerificationState = FormFlowState<
 >
 
 export const emailVerificationState = setup({
-	types: {
-		context: {} as UiContext<EmailVerificationState>,
-		events: {} as
-			| {
-					type: 'RESEND'
-					data: UiPayload<EmailVerificationState, 'sending'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'CHECK'
-					data: UiPayload<EmailVerificationState, 'checking'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESPONSE_OK'
-					data: UiPayload<EmailVerificationState, 'success'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESPONSE_ERROR'
-					data: UiPayload<EmailVerificationState, 'error'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'CANCEL'
-					data: UiPayload<EmailVerificationState, 'idle'>
-					requestId?: unknown
-			  },
-	},
-	guards: {
-		currentRequest: ({ context, event }) =>
-			context.requestId === event.requestId,
-	},
-	actions: {
-		update: assign({ data: ({ event }) => event.data }),
-		start: assign({
-			data: ({ event }) => event.data,
-			requestId: ({ event }) => event.requestId,
-		}),
-		reset: assign({ data: ({ event }) => event.data, requestId: undefined }),
+	schemas: {
+		context: types<UiContext<EmailVerificationState>>(),
+		events: {
+			RESEND: types<{
+				data: UiPayload<EmailVerificationState, 'sending'>
+				requestId?: unknown
+			}>(),
+			CHECK: types<{
+				data: UiPayload<EmailVerificationState, 'checking'>
+				requestId?: unknown
+			}>(),
+			RESPONSE_OK: types<{
+				data: UiPayload<EmailVerificationState, 'success'>
+				requestId?: unknown
+			}>(),
+			RESPONSE_ERROR: types<{
+				data: UiPayload<EmailVerificationState, 'error'>
+				requestId?: unknown
+			}>(),
+			CANCEL: types<{
+				data: UiPayload<EmailVerificationState, 'idle'>
+				requestId?: unknown
+			}>(),
+		},
 	},
 }).createMachine({
 	id: 'email_verification.feedback',
@@ -60,50 +44,136 @@ export const emailVerificationState = setup({
 	states: {
 		idle: {
 			on: {
-				RESEND: { target: 'sending', actions: 'start' },
-				CHECK: { target: 'checking', actions: 'start' },
+				RESEND: {
+					target: 'sending',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
+				CHECK: {
+					target: 'checking',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
 			},
 		},
 		sending: {
 			on: {
 				RESPONSE_OK: {
-					target: 'success',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<EmailVerificationState>
+						event: { type: 'RESPONSE_OK' } & {
+							data: UiPayload<EmailVerificationState, 'success'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'success', context: { data: event.data } }
+					},
 				},
 				RESPONSE_ERROR: {
-					target: 'error',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<EmailVerificationState>
+						event: { type: 'RESPONSE_ERROR' } & {
+							data: UiPayload<EmailVerificationState, 'error'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'error', context: { data: event.data } }
+					},
 				},
-				CANCEL: { target: 'idle', actions: 'reset' },
+				CANCEL: {
+					target: 'idle',
+					context: ({ event }) => ({ data: event.data, requestId: undefined }),
+				},
 			},
 		},
 		checking: {
 			on: {
 				RESPONSE_OK: {
-					target: 'success',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<EmailVerificationState>
+						event: { type: 'RESPONSE_OK' } & {
+							data: UiPayload<EmailVerificationState, 'success'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'success', context: { data: event.data } }
+					},
 				},
 				RESPONSE_ERROR: {
-					target: 'error',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<EmailVerificationState>
+						event: { type: 'RESPONSE_ERROR' } & {
+							data: UiPayload<EmailVerificationState, 'error'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'error', context: { data: event.data } }
+					},
 				},
-				CANCEL: { target: 'idle', actions: 'reset' },
+				CANCEL: {
+					target: 'idle',
+					context: ({ event }) => ({ data: event.data, requestId: undefined }),
+				},
 			},
 		},
 		success: {
 			on: {
-				RESEND: { target: 'sending', actions: 'start' },
-				CHECK: { target: 'checking', actions: 'start' },
+				RESEND: {
+					target: 'sending',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
+				CHECK: {
+					target: 'checking',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
 			},
 		},
 		error: {
 			on: {
-				RESEND: { target: 'sending', actions: 'start' },
-				CHECK: { target: 'checking', actions: 'start' },
+				RESEND: {
+					target: 'sending',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
+				CHECK: {
+					target: 'checking',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
 			},
 		},
 	},

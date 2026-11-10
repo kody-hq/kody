@@ -68,15 +68,7 @@ function devicePollBackoffSeconds(intervalSeconds: number) {
 }
 
 export function createConnectOauthDeviceStep(host: ConnectOauthDeviceHost) {
-	const flow = createActor(connectOauthDeviceState, {
-		snapshot: (() => {
-			const initialView = { status: 'idle' }
-			return connectOauthDeviceState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	}).start()
+	const flow = createActor(connectOauthDeviceState).start()
 	let devicePollTimer: ReturnType<typeof setTimeout> | null = null
 	let deviceCountdownTimer: ReturnType<typeof setInterval> | null = null
 	let generation = 0

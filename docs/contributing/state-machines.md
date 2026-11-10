@@ -1023,27 +1023,27 @@ stateDiagram-v2
     idle --> running: SUBMIT
     running --> running: PROGRESS
     running --> stopping: STOP
-    running --> complete: RESPONSE_OK
-    running --> error: RESPONSE_ERROR
+    running --> complete: RESPONSE_OK [Current request]
+    running --> error: RESPONSE_ERROR [Current request]
     stopping --> stopping: PROGRESS
-    stopping --> complete: RESPONSE_OK
-    stopping --> error: RESPONSE_ERROR
+    stopping --> complete: RESPONSE_OK [Current request]
+    stopping --> error: RESPONSE_ERROR [Current request]
     complete --> running: SUBMIT
     error --> running: SUBMIT
 ```
 
-| Event          | From     | To       | Guard          |
-| -------------- | -------- | -------- | -------------- |
-| SUBMIT         | idle     | running  | —              |
-| PROGRESS       | running  | running  | —              |
-| STOP           | running  | stopping | —              |
-| RESPONSE_OK    | running  | complete | currentRequest |
-| RESPONSE_ERROR | running  | error    | currentRequest |
-| PROGRESS       | stopping | stopping | —              |
-| RESPONSE_OK    | stopping | complete | currentRequest |
-| RESPONSE_ERROR | stopping | error    | currentRequest |
-| SUBMIT         | complete | running  | —              |
-| SUBMIT         | error    | running  | —              |
+| Event          | From     | To       | Guard           |
+| -------------- | -------- | -------- | --------------- |
+| SUBMIT         | idle     | running  | —               |
+| PROGRESS       | running  | running  | —               |
+| STOP           | running  | stopping | —               |
+| RESPONSE_OK    | running  | complete | Current request |
+| RESPONSE_ERROR | running  | error    | Current request |
+| PROGRESS       | stopping | stopping | —               |
+| RESPONSE_OK    | stopping | complete | Current request |
+| RESPONSE_ERROR | stopping | error    | Current request |
+| SUBMIT         | complete | running  | —               |
+| SUBMIT         | error    | running  | —               |
 
 ## avatar.ui_crop
 
@@ -1061,29 +1061,29 @@ Final states: None
 stateDiagram-v2
     [*] --> decoding
     decoding --> decoding: DECODE
-    decoding --> ready: DECODE_OK
-    decoding --> decode_error: DECODE_ERROR
+    decoding --> ready: DECODE_OK [Current request]
+    decoding --> decode_error: DECODE_ERROR [Current request]
     ready --> decoding: DECODE
     ready --> applying: APPLY
     applying --> decoding: DECODE
-    applying --> prepare_error: PREPARE_ERROR
+    applying --> prepare_error: PREPARE_ERROR [Current request]
     decode_error --> decoding: DECODE
     prepare_error --> decoding: DECODE
     prepare_error --> applying: APPLY
 ```
 
-| Event         | From          | To            | Guard          |
-| ------------- | ------------- | ------------- | -------------- |
-| DECODE        | decoding      | decoding      | —              |
-| DECODE_OK     | decoding      | ready         | currentRequest |
-| DECODE_ERROR  | decoding      | decode_error  | currentRequest |
-| DECODE        | ready         | decoding      | —              |
-| APPLY         | ready         | applying      | —              |
-| DECODE        | applying      | decoding      | —              |
-| PREPARE_ERROR | applying      | prepare_error | currentRequest |
-| DECODE        | decode_error  | decoding      | —              |
-| DECODE        | prepare_error | decoding      | —              |
-| APPLY         | prepare_error | applying      | —              |
+| Event         | From          | To            | Guard           |
+| ------------- | ------------- | ------------- | --------------- |
+| DECODE        | decoding      | decoding      | —               |
+| DECODE_OK     | decoding      | ready         | Current request |
+| DECODE_ERROR  | decoding      | decode_error  | Current request |
+| DECODE        | ready         | decoding      | —               |
+| APPLY         | ready         | applying      | —               |
+| DECODE        | applying      | decoding      | —               |
+| PREPARE_ERROR | applying      | prepare_error | Current request |
+| DECODE        | decode_error  | decoding      | —               |
+| DECODE        | prepare_error | decoding      | —               |
+| APPLY         | prepare_error | applying      | —               |
 
 ## clipboard.ui_feedback
 
@@ -1101,23 +1101,23 @@ Final states: None
 stateDiagram-v2
     [*] --> idle
     idle --> copying: COPY
-    copying --> copied: RESPONSE_OK
-    copying --> error: RESPONSE_ERROR
+    copying --> copied: RESPONSE_OK [Current request]
+    copying --> error: RESPONSE_ERROR [Current request]
     copied --> copying: COPY
     copied --> idle: RESET
     error --> copying: COPY
     error --> idle: RESET
 ```
 
-| Event          | From    | To      | Guard          |
-| -------------- | ------- | ------- | -------------- |
-| COPY           | idle    | copying | —              |
-| RESPONSE_OK    | copying | copied  | currentRequest |
-| RESPONSE_ERROR | copying | error   | currentRequest |
-| COPY           | copied  | copying | —              |
-| RESET          | copied  | idle    | —              |
-| COPY           | error   | copying | —              |
-| RESET          | error   | idle    | —              |
+| Event          | From    | To      | Guard           |
+| -------------- | ------- | ------- | --------------- |
+| COPY           | idle    | copying | —               |
+| RESPONSE_OK    | copying | copied  | Current request |
+| RESPONSE_ERROR | copying | error   | Current request |
+| COPY           | copied  | copying | —               |
+| RESET          | copied  | idle    | —               |
+| COPY           | error   | copying | —               |
+| RESET          | error   | idle    | —               |
 
 ## connect_oauth.device_poll
 
@@ -1137,34 +1137,34 @@ stateDiagram-v2
     [*] --> idle
     idle --> starting: START
     idle --> idle: RESET
-    starting --> polling: SESSION_OK
-    starting --> error: RESPONSE_ERROR
+    starting --> polling: SESSION_OK [Current request]
+    starting --> error: RESPONSE_ERROR [Current request]
     starting --> idle: RESET
-    polling --> polling: POLL_PENDING
+    polling --> polling: POLL_PENDING [Current request]
     polling --> polling: TICK
-    polling --> error: RESPONSE_ERROR
-    polling --> success: RESPONSE_OK
+    polling --> error: RESPONSE_ERROR [Current request]
+    polling --> success: RESPONSE_OK [Current request]
     polling --> idle: RESET
-    error --> success: RESPONSE_OK
+    error --> success: RESPONSE_OK [Current request]
     error --> idle: RESET
     success --> idle: RESET
 ```
 
-| Event          | From     | To       | Guard          |
-| -------------- | -------- | -------- | -------------- |
-| START          | idle     | starting | —              |
-| RESET          | idle     | idle     | —              |
-| SESSION_OK     | starting | polling  | currentRequest |
-| RESPONSE_ERROR | starting | error    | currentRequest |
-| RESET          | starting | idle     | —              |
-| POLL_PENDING   | polling  | polling  | currentRequest |
-| TICK           | polling  | polling  | —              |
-| RESPONSE_ERROR | polling  | error    | currentRequest |
-| RESPONSE_OK    | polling  | success  | currentRequest |
-| RESET          | polling  | idle     | —              |
-| RESPONSE_OK    | error    | success  | currentRequest |
-| RESET          | error    | idle     | —              |
-| RESET          | success  | idle     | —              |
+| Event          | From     | To       | Guard           |
+| -------------- | -------- | -------- | --------------- |
+| START          | idle     | starting | —               |
+| RESET          | idle     | idle     | —               |
+| SESSION_OK     | starting | polling  | Current request |
+| RESPONSE_ERROR | starting | error    | Current request |
+| RESET          | starting | idle     | —               |
+| POLL_PENDING   | polling  | polling  | Current request |
+| TICK           | polling  | polling  | —               |
+| RESPONSE_ERROR | polling  | error    | Current request |
+| RESPONSE_OK    | polling  | success  | Current request |
+| RESET          | polling  | idle     | —               |
+| RESPONSE_OK    | error    | success  | Current request |
+| RESET          | error    | idle     | —               |
+| RESET          | success  | idle     | —               |
 
 ## connect_oauth.step
 
@@ -1244,13 +1244,13 @@ Final states: None
 stateDiagram-v2
     [*] --> idle
     idle --> submitting: SUBMIT
-    submitting --> idle: SETTLED
+    submitting --> idle: SETTLED [Current request]
 ```
 
-| Event   | From       | To         | Guard          |
-| ------- | ---------- | ---------- | -------------- |
-| SUBMIT  | idle       | submitting | —              |
-| SETTLED | submitting | idle       | currentRequest |
+| Event   | From       | To         | Guard           |
+| ------- | ---------- | ---------- | --------------- |
+| SUBMIT  | idle       | submitting | —               |
+| SETTLED | submitting | idle       | Current request |
 
 ## desktop.setup_operation
 
@@ -1268,19 +1268,19 @@ Final states: None
 stateDiagram-v2
     [*] --> idle
     idle --> running: SUBMIT
-    running --> idle: RESPONSE_OK
-    running --> error: RESPONSE_ERROR
+    running --> idle: RESPONSE_OK [Current request]
+    running --> error: RESPONSE_ERROR [Current request]
     error --> running: SUBMIT
     error --> idle: DISMISS
 ```
 
-| Event          | From    | To      | Guard          |
-| -------------- | ------- | ------- | -------------- |
-| SUBMIT         | idle    | running | —              |
-| RESPONSE_OK    | running | idle    | currentRequest |
-| RESPONSE_ERROR | running | error   | currentRequest |
-| SUBMIT         | error   | running | —              |
-| DISMISS        | error   | idle    | —              |
+| Event          | From    | To      | Guard           |
+| -------------- | ------- | ------- | --------------- |
+| SUBMIT         | idle    | running | —               |
+| RESPONSE_OK    | running | idle    | Current request |
+| RESPONSE_ERROR | running | error   | Current request |
+| SUBMIT         | error   | running | —               |
+| DISMISS        | error   | idle    | —               |
 
 ## desktop.setup_step
 
@@ -1347,11 +1347,11 @@ stateDiagram-v2
     [*] --> idle
     idle --> sending: RESEND
     idle --> checking: CHECK
-    sending --> success: RESPONSE_OK
-    sending --> error: RESPONSE_ERROR
+    sending --> success: RESPONSE_OK [Current request]
+    sending --> error: RESPONSE_ERROR [Current request]
     sending --> idle: CANCEL
-    checking --> success: RESPONSE_OK
-    checking --> error: RESPONSE_ERROR
+    checking --> success: RESPONSE_OK [Current request]
+    checking --> error: RESPONSE_ERROR [Current request]
     checking --> idle: CANCEL
     success --> sending: RESEND
     success --> checking: CHECK
@@ -1359,20 +1359,20 @@ stateDiagram-v2
     error --> checking: CHECK
 ```
 
-| Event          | From     | To       | Guard          |
-| -------------- | -------- | -------- | -------------- |
-| RESEND         | idle     | sending  | —              |
-| CHECK          | idle     | checking | —              |
-| RESPONSE_OK    | sending  | success  | currentRequest |
-| RESPONSE_ERROR | sending  | error    | currentRequest |
-| CANCEL         | sending  | idle     | —              |
-| RESPONSE_OK    | checking | success  | currentRequest |
-| RESPONSE_ERROR | checking | error    | currentRequest |
-| CANCEL         | checking | idle     | —              |
-| RESEND         | success  | sending  | —              |
-| CHECK          | success  | checking | —              |
-| RESEND         | error    | sending  | —              |
-| CHECK          | error    | checking | —              |
+| Event          | From     | To       | Guard           |
+| -------------- | -------- | -------- | --------------- |
+| RESEND         | idle     | sending  | —               |
+| CHECK          | idle     | checking | —               |
+| RESPONSE_OK    | sending  | success  | Current request |
+| RESPONSE_ERROR | sending  | error    | Current request |
+| CANCEL         | sending  | idle     | —               |
+| RESPONSE_OK    | checking | success  | Current request |
+| RESPONSE_ERROR | checking | error    | Current request |
+| CANCEL         | checking | idle     | —               |
+| RESEND         | success  | sending  | —               |
+| CHECK          | success  | checking | —               |
+| RESEND         | error    | sending  | —               |
+| CHECK          | error    | checking | —               |
 
 ## landing_testimonials.pointer
 
@@ -1390,27 +1390,27 @@ Final states: None
 stateDiagram-v2
     [*] --> idle
     idle --> pending: POINTER_DOWN
-    pending --> pending: SAMPLE
-    pending --> drag: DRAG
-    pending --> scroll: SCROLL
-    pending --> idle: RELEASE
-    drag --> drag: SAMPLE
-    drag --> drag: MOVE
-    drag --> idle: RELEASE
-    scroll --> idle: RELEASE
+    pending --> pending: SAMPLE [Current request]
+    pending --> drag: DRAG [Current request]
+    pending --> scroll: SCROLL [Current request]
+    pending --> idle: RELEASE [Current request]
+    drag --> drag: SAMPLE [Current request]
+    drag --> drag: MOVE [Current request]
+    drag --> idle: RELEASE [Current request]
+    scroll --> idle: RELEASE [Current request]
 ```
 
-| Event        | From    | To      | Guard          |
-| ------------ | ------- | ------- | -------------- |
-| POINTER_DOWN | idle    | pending | —              |
-| SAMPLE       | pending | pending | currentRequest |
-| DRAG         | pending | drag    | currentRequest |
-| SCROLL       | pending | scroll  | currentRequest |
-| RELEASE      | pending | idle    | currentRequest |
-| SAMPLE       | drag    | drag    | currentRequest |
-| MOVE         | drag    | drag    | currentRequest |
-| RELEASE      | drag    | idle    | currentRequest |
-| RELEASE      | scroll  | idle    | currentRequest |
+| Event        | From    | To      | Guard           |
+| ------------ | ------- | ------- | --------------- |
+| POINTER_DOWN | idle    | pending | —               |
+| SAMPLE       | pending | pending | Current request |
+| DRAG         | pending | drag    | Current request |
+| SCROLL       | pending | scroll  | Current request |
+| RELEASE      | pending | idle    | Current request |
+| SAMPLE       | drag    | drag    | Current request |
+| MOVE         | drag    | drag    | Current request |
+| RELEASE      | drag    | idle    | Current request |
+| RELEASE      | scroll  | idle    | Current request |
 
 ## login.form
 
@@ -1434,8 +1434,8 @@ stateDiagram-v2
     confirming --> confirming: CONFIRM_USERNAME
     confirming --> error: VALIDATION_ERROR
     confirming --> idle: RESET
-    submitting --> error: RESPONSE_ERROR
-    submitting --> success: RESPONSE_OK
+    submitting --> error: RESPONSE_ERROR [Current request]
+    submitting --> success: RESPONSE_OK [Current request]
     submitting --> idle: CANCEL
     success --> submitting: SUBMIT
     success --> error: VALIDATION_ERROR
@@ -1446,25 +1446,25 @@ stateDiagram-v2
     error --> idle: RESET
 ```
 
-| Event            | From       | To         | Guard          |
-| ---------------- | ---------- | ---------- | -------------- |
-| SUBMIT           | idle       | submitting | —              |
-| CONFIRM_USERNAME | idle       | confirming | —              |
-| VALIDATION_ERROR | idle       | error      | —              |
-| SUBMIT           | confirming | submitting | —              |
-| CONFIRM_USERNAME | confirming | confirming | —              |
-| VALIDATION_ERROR | confirming | error      | —              |
-| RESET            | confirming | idle       | —              |
-| RESPONSE_ERROR   | submitting | error      | currentRequest |
-| RESPONSE_OK      | submitting | success    | currentRequest |
-| CANCEL           | submitting | idle       | —              |
-| SUBMIT           | success    | submitting | —              |
-| VALIDATION_ERROR | success    | error      | —              |
-| RESET            | success    | idle       | —              |
-| SUBMIT           | error      | submitting | —              |
-| CONFIRM_USERNAME | error      | confirming | —              |
-| VALIDATION_ERROR | error      | error      | —              |
-| RESET            | error      | idle       | —              |
+| Event            | From       | To         | Guard           |
+| ---------------- | ---------- | ---------- | --------------- |
+| SUBMIT           | idle       | submitting | —               |
+| CONFIRM_USERNAME | idle       | confirming | —               |
+| VALIDATION_ERROR | idle       | error      | —               |
+| SUBMIT           | confirming | submitting | —               |
+| CONFIRM_USERNAME | confirming | confirming | —               |
+| VALIDATION_ERROR | confirming | error      | —               |
+| RESET            | confirming | idle       | —               |
+| RESPONSE_ERROR   | submitting | error      | Current request |
+| RESPONSE_OK      | submitting | success    | Current request |
+| CANCEL           | submitting | idle       | —               |
+| SUBMIT           | success    | submitting | —               |
+| VALIDATION_ERROR | success    | error      | —               |
+| RESET            | success    | idle       | —               |
+| SUBMIT           | error      | submitting | —               |
+| CONFIRM_USERNAME | error      | confirming | —               |
+| VALIDATION_ERROR | error      | error      | —               |
+| RESET            | error      | idle       | —               |
 
 ## oauth_consent.interaction
 
@@ -1483,12 +1483,12 @@ stateDiagram-v2
     [*] --> idle
     idle --> signing_in: SIGN_IN
     idle --> deciding: DECIDE
-    signing_in --> error: RESPONSE_ERROR
+    signing_in --> error: RESPONSE_ERROR [Current request]
     signing_in --> idle: RESET
-    deciding --> error: RESPONSE_ERROR
-    deciding --> redirecting: REDIRECT
-    deciding --> guest: GUEST_CREATED
-    deciding --> reset_complete: CLIENT_RESET
+    deciding --> error: RESPONSE_ERROR [Current request]
+    deciding --> redirecting: REDIRECT [Current request]
+    deciding --> guest: GUEST_CREATED [Current request]
+    deciding --> reset_complete: CLIENT_RESET [Current request]
     deciding --> idle: RESET
     error --> signing_in: SIGN_IN
     error --> deciding: DECIDE
@@ -1497,20 +1497,20 @@ stateDiagram-v2
     reset_complete --> [*]
 ```
 
-| Event          | From        | To             | Guard          |
-| -------------- | ----------- | -------------- | -------------- |
-| SIGN_IN        | idle        | signing_in     | —              |
-| DECIDE         | idle        | deciding       | —              |
-| RESPONSE_ERROR | signing_in  | error          | currentRequest |
-| RESET          | signing_in  | idle           | —              |
-| RESPONSE_ERROR | deciding    | error          | currentRequest |
-| REDIRECT       | deciding    | redirecting    | currentRequest |
-| GUEST_CREATED  | deciding    | guest          | currentRequest |
-| CLIENT_RESET   | deciding    | reset_complete | currentRequest |
-| RESET          | deciding    | idle           | —              |
-| SIGN_IN        | error       | signing_in     | —              |
-| DECIDE         | error       | deciding       | —              |
-| RESET          | redirecting | idle           | —              |
+| Event          | From        | To             | Guard           |
+| -------------- | ----------- | -------------- | --------------- |
+| SIGN_IN        | idle        | signing_in     | —               |
+| DECIDE         | idle        | deciding       | —               |
+| RESPONSE_ERROR | signing_in  | error          | Current request |
+| RESET          | signing_in  | idle           | —               |
+| RESPONSE_ERROR | deciding    | error          | Current request |
+| REDIRECT       | deciding    | redirecting    | Current request |
+| GUEST_CREATED  | deciding    | guest          | Current request |
+| CLIENT_RESET   | deciding    | reset_complete | Current request |
+| RESET          | deciding    | idle           | —               |
+| SIGN_IN        | error       | signing_in     | —               |
+| DECIDE         | error       | deciding       | —               |
+| RESET          | redirecting | idle           | —               |
 
 ## passkey.registration_ui
 
@@ -1528,17 +1528,17 @@ Final states: None
 stateDiagram-v2
     [*] --> idle
     idle --> requesting: SUBMIT
-    requesting --> ceremony: OPTIONS_OK
-    requesting --> idle: SETTLED
-    ceremony --> idle: SETTLED
+    requesting --> ceremony: OPTIONS_OK [Current request]
+    requesting --> idle: SETTLED [Current request]
+    ceremony --> idle: SETTLED [Current request]
 ```
 
-| Event      | From       | To         | Guard          |
-| ---------- | ---------- | ---------- | -------------- |
-| SUBMIT     | idle       | requesting | —              |
-| OPTIONS_OK | requesting | ceremony   | currentRequest |
-| SETTLED    | requesting | idle       | currentRequest |
-| SETTLED    | ceremony   | idle       | currentRequest |
+| Event      | From       | To         | Guard           |
+| ---------- | ---------- | ---------- | --------------- |
+| SUBMIT     | idle       | requesting | —               |
+| OPTIONS_OK | requesting | ceremony   | Current request |
+| SETTLED    | requesting | idle       | Current request |
+| SETTLED    | ceremony   | idle       | Current request |
 
 ## password_reset.form
 
@@ -1557,24 +1557,24 @@ stateDiagram-v2
     [*] --> idle
     idle --> submitting: SUBMIT
     idle --> error: VALIDATION_ERROR
-    submitting --> success: RESPONSE_OK
-    submitting --> error: RESPONSE_ERROR
+    submitting --> success: RESPONSE_OK [Current request]
+    submitting --> error: RESPONSE_ERROR [Current request]
     success --> submitting: SUBMIT
     success --> error: VALIDATION_ERROR
     error --> submitting: SUBMIT
     error --> error: VALIDATION_ERROR
 ```
 
-| Event            | From       | To         | Guard          |
-| ---------------- | ---------- | ---------- | -------------- |
-| SUBMIT           | idle       | submitting | —              |
-| VALIDATION_ERROR | idle       | error      | —              |
-| RESPONSE_OK      | submitting | success    | currentRequest |
-| RESPONSE_ERROR   | submitting | error      | currentRequest |
-| SUBMIT           | success    | submitting | —              |
-| VALIDATION_ERROR | success    | error      | —              |
-| SUBMIT           | error      | submitting | —              |
-| VALIDATION_ERROR | error      | error      | —              |
+| Event            | From       | To         | Guard           |
+| ---------------- | ---------- | ---------- | --------------- |
+| SUBMIT           | idle       | submitting | —               |
+| VALIDATION_ERROR | idle       | error      | —               |
+| RESPONSE_OK      | submitting | success    | Current request |
+| RESPONSE_ERROR   | submitting | error      | Current request |
+| SUBMIT           | success    | submitting | —               |
+| VALIDATION_ERROR | success    | error      | —               |
+| SUBMIT           | error      | submitting | —               |
+| VALIDATION_ERROR | error      | error      | —               |
 
 ## package_publish.ui_checks
 
@@ -1595,9 +1595,9 @@ stateDiagram-v2
     idle --> running: CHECK_COMMIT
     running --> idle: CLEAR_COMMIT
     running --> running: CHECK_COMMIT
-    running --> passed: CHECK_PASSED
-    running --> failed: CHECK_FAILED
-    running --> unavailable: CHECK_UNAVAILABLE
+    running --> passed: CHECK_PASSED [Current request]
+    running --> failed: CHECK_FAILED [Current request]
+    running --> unavailable: CHECK_UNAVAILABLE [Current request]
     passed --> idle: CLEAR_COMMIT
     passed --> running: CHECK_COMMIT
     failed --> idle: CLEAR_COMMIT
@@ -1606,21 +1606,21 @@ stateDiagram-v2
     unavailable --> running: CHECK_COMMIT
 ```
 
-| Event             | From        | To          | Guard          |
-| ----------------- | ----------- | ----------- | -------------- |
-| CLEAR_COMMIT      | idle        | idle        | —              |
-| CHECK_COMMIT      | idle        | running     | —              |
-| CLEAR_COMMIT      | running     | idle        | —              |
-| CHECK_COMMIT      | running     | running     | —              |
-| CHECK_PASSED      | running     | passed      | currentRequest |
-| CHECK_FAILED      | running     | failed      | currentRequest |
-| CHECK_UNAVAILABLE | running     | unavailable | currentRequest |
-| CLEAR_COMMIT      | passed      | idle        | —              |
-| CHECK_COMMIT      | passed      | running     | —              |
-| CLEAR_COMMIT      | failed      | idle        | —              |
-| CHECK_COMMIT      | failed      | running     | —              |
-| CLEAR_COMMIT      | unavailable | idle        | —              |
-| CHECK_COMMIT      | unavailable | running     | —              |
+| Event             | From        | To          | Guard           |
+| ----------------- | ----------- | ----------- | --------------- |
+| CLEAR_COMMIT      | idle        | idle        | —               |
+| CHECK_COMMIT      | idle        | running     | —               |
+| CLEAR_COMMIT      | running     | idle        | —               |
+| CHECK_COMMIT      | running     | running     | —               |
+| CHECK_PASSED      | running     | passed      | Current request |
+| CHECK_FAILED      | running     | failed      | Current request |
+| CHECK_UNAVAILABLE | running     | unavailable | Current request |
+| CLEAR_COMMIT      | passed      | idle        | —               |
+| CHECK_COMMIT      | passed      | running     | —               |
+| CLEAR_COMMIT      | failed      | idle        | —               |
+| CHECK_COMMIT      | failed      | running     | —               |
+| CLEAR_COMMIT      | unavailable | idle        | —               |
+| CHECK_COMMIT      | unavailable | running     | —               |
 
 ## two_factor_verify.form
 
@@ -1639,18 +1639,18 @@ stateDiagram-v2
     [*] --> idle
     idle --> submitting: SUBMIT
     idle --> error: VALIDATION_ERROR
-    submitting --> error: RESPONSE_ERROR
+    submitting --> error: RESPONSE_ERROR [Current request]
     error --> submitting: SUBMIT
     error --> error: VALIDATION_ERROR
 ```
 
-| Event            | From       | To         | Guard          |
-| ---------------- | ---------- | ---------- | -------------- |
-| SUBMIT           | idle       | submitting | —              |
-| VALIDATION_ERROR | idle       | error      | —              |
-| RESPONSE_ERROR   | submitting | error      | currentRequest |
-| SUBMIT           | error      | submitting | —              |
-| VALIDATION_ERROR | error      | error      | —              |
+| Event            | From       | To         | Guard           |
+| ---------------- | ---------- | ---------- | --------------- |
+| SUBMIT           | idle       | submitting | —               |
+| VALIDATION_ERROR | idle       | error      | —               |
+| RESPONSE_ERROR   | submitting | error      | Current request |
+| SUBMIT           | error      | submitting | —               |
+| VALIDATION_ERROR | error      | error      | —               |
 
 ## ui.undoable_action
 
@@ -1703,11 +1703,11 @@ stateDiagram-v2
     checking --> idle: EDIT
     checking --> checking: CHECK
     checking --> invalid: INVALID_DRAFT
-    checking --> available: RESPONSE_AVAILABLE
-    checking --> taken: RESPONSE_TAKEN
-    checking --> reserved: RESPONSE_RESERVED
-    checking --> invalid: RESPONSE_INVALID
-    checking --> unknown: RESPONSE_UNKNOWN
+    checking --> available: RESPONSE_AVAILABLE [Current request]
+    checking --> taken: RESPONSE_TAKEN [Current request]
+    checking --> reserved: RESPONSE_RESERVED [Current request]
+    checking --> invalid: RESPONSE_INVALID [Current request]
+    checking --> unknown: RESPONSE_UNKNOWN [Current request]
     available --> idle: EDIT
     available --> checking: CHECK
     available --> invalid: INVALID_DRAFT
@@ -1725,34 +1725,34 @@ stateDiagram-v2
     unknown --> invalid: INVALID_DRAFT
 ```
 
-| Event              | From      | To        | Guard          |
-| ------------------ | --------- | --------- | -------------- |
-| EDIT               | idle      | idle      | —              |
-| CHECK              | idle      | checking  | —              |
-| INVALID_DRAFT      | idle      | invalid   | —              |
-| EDIT               | checking  | idle      | —              |
-| CHECK              | checking  | checking  | —              |
-| INVALID_DRAFT      | checking  | invalid   | —              |
-| RESPONSE_AVAILABLE | checking  | available | currentRequest |
-| RESPONSE_TAKEN     | checking  | taken     | currentRequest |
-| RESPONSE_RESERVED  | checking  | reserved  | currentRequest |
-| RESPONSE_INVALID   | checking  | invalid   | currentRequest |
-| RESPONSE_UNKNOWN   | checking  | unknown   | currentRequest |
-| EDIT               | available | idle      | —              |
-| CHECK              | available | checking  | —              |
-| INVALID_DRAFT      | available | invalid   | —              |
-| EDIT               | taken     | idle      | —              |
-| CHECK              | taken     | checking  | —              |
-| INVALID_DRAFT      | taken     | invalid   | —              |
-| EDIT               | reserved  | idle      | —              |
-| CHECK              | reserved  | checking  | —              |
-| INVALID_DRAFT      | reserved  | invalid   | —              |
-| EDIT               | invalid   | idle      | —              |
-| CHECK              | invalid   | checking  | —              |
-| INVALID_DRAFT      | invalid   | invalid   | —              |
-| EDIT               | unknown   | idle      | —              |
-| CHECK              | unknown   | checking  | —              |
-| INVALID_DRAFT      | unknown   | invalid   | —              |
+| Event              | From      | To        | Guard           |
+| ------------------ | --------- | --------- | --------------- |
+| EDIT               | idle      | idle      | —               |
+| CHECK              | idle      | checking  | —               |
+| INVALID_DRAFT      | idle      | invalid   | —               |
+| EDIT               | checking  | idle      | —               |
+| CHECK              | checking  | checking  | —               |
+| INVALID_DRAFT      | checking  | invalid   | —               |
+| RESPONSE_AVAILABLE | checking  | available | Current request |
+| RESPONSE_TAKEN     | checking  | taken     | Current request |
+| RESPONSE_RESERVED  | checking  | reserved  | Current request |
+| RESPONSE_INVALID   | checking  | invalid   | Current request |
+| RESPONSE_UNKNOWN   | checking  | unknown   | Current request |
+| EDIT               | available | idle      | —               |
+| CHECK              | available | checking  | —               |
+| INVALID_DRAFT      | available | invalid   | —               |
+| EDIT               | taken     | idle      | —               |
+| CHECK              | taken     | checking  | —               |
+| INVALID_DRAFT      | taken     | invalid   | —               |
+| EDIT               | reserved  | idle      | —               |
+| CHECK              | reserved  | checking  | —               |
+| INVALID_DRAFT      | reserved  | invalid   | —               |
+| EDIT               | invalid   | idle      | —               |
+| CHECK              | invalid   | checking  | —               |
+| INVALID_DRAFT      | invalid   | invalid   | —               |
+| EDIT               | unknown   | idle      | —               |
+| CHECK              | unknown   | checking  | —               |
+| INVALID_DRAFT      | unknown   | invalid   | —               |
 
 ## username_signup.form
 
@@ -1775,26 +1775,26 @@ stateDiagram-v2
     confirming --> submitting: SUBMIT
     confirming --> error: VALIDATION_ERROR
     confirming --> idle: RESET
-    submitting --> error: RESPONSE_ERROR
+    submitting --> error: RESPONSE_ERROR [Current request]
     error --> confirming: CONFIRM_USERNAME
     error --> submitting: SUBMIT
     error --> error: VALIDATION_ERROR
     error --> idle: RESET
 ```
 
-| Event            | From       | To         | Guard          |
-| ---------------- | ---------- | ---------- | -------------- |
-| CONFIRM_USERNAME | idle       | confirming | —              |
-| VALIDATION_ERROR | idle       | error      | —              |
-| CONFIRM_USERNAME | confirming | confirming | —              |
-| SUBMIT           | confirming | submitting | —              |
-| VALIDATION_ERROR | confirming | error      | —              |
-| RESET            | confirming | idle       | —              |
-| RESPONSE_ERROR   | submitting | error      | currentRequest |
-| CONFIRM_USERNAME | error      | confirming | —              |
-| SUBMIT           | error      | submitting | —              |
-| VALIDATION_ERROR | error      | error      | —              |
-| RESET            | error      | idle       | —              |
+| Event            | From       | To         | Guard           |
+| ---------------- | ---------- | ---------- | --------------- |
+| CONFIRM_USERNAME | idle       | confirming | —               |
+| VALIDATION_ERROR | idle       | error      | —               |
+| CONFIRM_USERNAME | confirming | confirming | —               |
+| SUBMIT           | confirming | submitting | —               |
+| VALIDATION_ERROR | confirming | error      | —               |
+| RESET            | confirming | idle       | —               |
+| RESPONSE_ERROR   | submitting | error      | Current request |
+| CONFIRM_USERNAME | error      | confirming | —               |
+| SUBMIT           | error      | submitting | —               |
+| VALIDATION_ERROR | error      | error      | —               |
+| RESET            | error      | idle       | —               |
 
 ## desktop.update_readiness
 
@@ -1862,24 +1862,24 @@ stateDiagram-v2
     idle --> error: SET_ERROR
     running --> running: SET_ERROR
     running --> running: CLEAR_ERROR
-    running --> error: SETTLED
-    running --> idle: SETTLED
+    running --> error: SETTLED [Notice has a message]
+    running --> idle: SETTLED [Otherwise (Notice has a message)]
     error --> running: START_OPERATION
     error --> error: SET_ERROR
     error --> idle: CLEAR_ERROR
 ```
 
-| Event           | From    | To      | Guard |
-| --------------- | ------- | ------- | ----- |
-| START_OPERATION | idle    | running | —     |
-| SET_ERROR       | idle    | error   | —     |
-| SET_ERROR       | running | running | —     |
-| CLEAR_ERROR     | running | running | —     |
-| SETTLED         | running | error   | guard |
-| SETTLED         | running | idle    | —     |
-| START_OPERATION | error   | running | —     |
-| SET_ERROR       | error   | error   | —     |
-| CLEAR_ERROR     | error   | idle    | —     |
+| Event           | From    | To      | Guard                            |
+| --------------- | ------- | ------- | -------------------------------- |
+| START_OPERATION | idle    | running | —                                |
+| SET_ERROR       | idle    | error   | —                                |
+| SET_ERROR       | running | running | —                                |
+| CLEAR_ERROR     | running | running | —                                |
+| SETTLED         | running | error   | Notice has a message             |
+| SETTLED         | running | idle    | Otherwise (Notice has a message) |
+| START_OPERATION | error   | running | —                                |
+| SET_ERROR       | error   | error   | —                                |
+| CLEAR_ERROR     | error   | idle    | —                                |
 
 ## Status enums (not state machines)
 

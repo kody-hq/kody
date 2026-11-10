@@ -1,4 +1,4 @@
-import { setup, assign } from 'xstate'
+import { setup, types } from 'xstate'
 import type { UiContext, UiData, UiPayload } from '#client/ui-actor.ts'
 type Preview = {
 	previewUrl: string
@@ -14,46 +14,30 @@ export type AvatarCropState =
 			))
 
 export const avatarCropState = setup({
-	types: {
-		context: {} as UiContext<AvatarCropState>,
-		events: {} as
-			| {
-					type: 'DECODE'
-					data: UiPayload<AvatarCropState, 'decoding'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'DECODE_OK'
-					data: UiPayload<AvatarCropState, 'ready'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'DECODE_ERROR'
-					data: UiPayload<AvatarCropState, 'decode_error'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'APPLY'
-					data: UiPayload<AvatarCropState, 'applying'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'PREPARE_ERROR'
-					data: UiPayload<AvatarCropState, 'prepare_error'>
-					requestId?: unknown
-			  },
-	},
-	guards: {
-		currentRequest: ({ context, event }) =>
-			context.requestId === event.requestId,
-	},
-	actions: {
-		update: assign({ data: ({ event }) => event.data }),
-		start: assign({
-			data: ({ event }) => event.data,
-			requestId: ({ event }) => event.requestId,
-		}),
-		reset: assign({ data: ({ event }) => event.data, requestId: undefined }),
+	schemas: {
+		context: types<UiContext<AvatarCropState>>(),
+		events: {
+			DECODE: types<{
+				data: UiPayload<AvatarCropState, 'decoding'>
+				requestId?: unknown
+			}>(),
+			DECODE_OK: types<{
+				data: UiPayload<AvatarCropState, 'ready'>
+				requestId?: unknown
+			}>(),
+			DECODE_ERROR: types<{
+				data: UiPayload<AvatarCropState, 'decode_error'>
+				requestId?: unknown
+			}>(),
+			APPLY: types<{
+				data: UiPayload<AvatarCropState, 'applying'>
+				requestId?: unknown
+			}>(),
+			PREPARE_ERROR: types<{
+				data: UiPayload<AvatarCropState, 'prepare_error'>
+				requestId?: unknown
+			}>(),
+		},
 	},
 }).createMachine({
 	id: 'avatar.ui_crop',
@@ -64,40 +48,113 @@ export const avatarCropState = setup({
 	states: {
 		decoding: {
 			on: {
-				DECODE: { target: 'decoding', actions: 'start' },
+				DECODE: {
+					target: 'decoding',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
 				DECODE_OK: {
-					target: 'ready',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<AvatarCropState>
+						event: { type: 'DECODE_OK' } & {
+							data: UiPayload<AvatarCropState, 'ready'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'ready', context: { data: event.data } }
+					},
 				},
 				DECODE_ERROR: {
-					target: 'decode_error',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<AvatarCropState>
+						event: { type: 'DECODE_ERROR' } & {
+							data: UiPayload<AvatarCropState, 'decode_error'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'decode_error', context: { data: event.data } }
+					},
 				},
 			},
 		},
 		ready: {
 			on: {
-				DECODE: { target: 'decoding', actions: 'start' },
-				APPLY: { target: 'applying', actions: 'update' },
+				DECODE: {
+					target: 'decoding',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
+				APPLY: {
+					target: 'applying',
+					context: ({ event }) => ({ data: event.data }),
+				},
 			},
 		},
 		applying: {
 			on: {
-				DECODE: { target: 'decoding', actions: 'start' },
+				DECODE: {
+					target: 'decoding',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
 				PREPARE_ERROR: {
-					target: 'prepare_error',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<AvatarCropState>
+						event: { type: 'PREPARE_ERROR' } & {
+							data: UiPayload<AvatarCropState, 'prepare_error'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'prepare_error', context: { data: event.data } }
+					},
 				},
 			},
 		},
-		decode_error: { on: { DECODE: { target: 'decoding', actions: 'start' } } },
+		decode_error: {
+			on: {
+				DECODE: {
+					target: 'decoding',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
+			},
+		},
 		prepare_error: {
 			on: {
-				DECODE: { target: 'decoding', actions: 'start' },
-				APPLY: { target: 'applying', actions: 'update' },
+				DECODE: {
+					target: 'decoding',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
+				APPLY: {
+					target: 'applying',
+					context: ({ event }) => ({ data: event.data }),
+				},
 			},
 		},
 	},

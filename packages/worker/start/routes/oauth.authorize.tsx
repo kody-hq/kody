@@ -1,9 +1,9 @@
+/** @jsxImportSource @emotion/react */
 import {
 	oauthAuthorizeDocument,
 	oauthAuthorizePost,
 	rejectOAuthAuthorizeMethod,
 } from '#start/server/oauth-protocol'
-/** @jsxImportSource @emotion/react */
 import { staticDocumentHead } from '../components/document-head.ts'
 import { createFileRoute } from '@tanstack/react-router'
 import { loadOAuthPage } from '#start/server/oauth'

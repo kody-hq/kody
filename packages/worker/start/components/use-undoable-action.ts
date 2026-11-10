@@ -7,7 +7,9 @@ import {
 	type UndoableActionInput,
 } from '#client/undoable-action-controller.ts'
 export function useUndoableAction(timeoutMs = 8_000) {
-	const [controller] = useState(createUndoableActionController)
+	const [controller, setController] = useState(createUndoableActionController)
+	if (controller.actor.getSnapshot().status === 'stopped')
+		setController(createUndoableActionController())
 	const snapshot = useSelector(controller.actor, (value) => value)
 	const state = uiState<UndoableActionView>(snapshot)
 	useEffect(() => {

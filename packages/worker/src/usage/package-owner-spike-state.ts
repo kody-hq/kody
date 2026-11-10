@@ -1,13 +1,14 @@
-import { setup } from 'xstate'
+import { setup, types } from 'xstate'
 import type { LifecycleStateOf } from '@kody-internal/shared/state-machine.ts'
 
 export const packageOwnerSpikeState = setup({
-	types: {
-		events: {} as
-			| { type: 'REFRESH' }
-			| { type: 'TRIGGER' }
-			| { type: 'DELIVER' }
-			| { type: 'REARM' },
+	schemas: {
+		events: {
+			REFRESH: types<{}>(),
+			TRIGGER: types<{}>(),
+			DELIVER: types<{}>(),
+			REARM: types<{}>(),
+		},
 	},
 }).createMachine({
 	id: 'package_owner_error_spike.status',
@@ -15,9 +16,23 @@ export const packageOwnerSpikeState = setup({
 		'Owners trigger pending delivery, become alerted after success, and rearm after health, inactivity or abandoned delivery; immediate delivery may persist alerted directly from ok.',
 	initial: 'ok',
 	states: {
-		ok: { on: { REFRESH: 'ok', TRIGGER: 'pending', DELIVER: 'alerted' } },
-		pending: { on: { REFRESH: 'pending', REARM: 'ok', DELIVER: 'alerted' } },
-		alerted: { on: { REFRESH: 'alerted', REARM: 'ok' } },
+		ok: {
+			on: {
+				REFRESH: { target: 'ok' },
+				TRIGGER: { target: 'pending' },
+				DELIVER: { target: 'alerted' },
+			},
+		},
+		pending: {
+			on: {
+				REFRESH: { target: 'pending' },
+				REARM: { target: 'ok' },
+				DELIVER: { target: 'alerted' },
+			},
+		},
+		alerted: {
+			on: { REFRESH: { target: 'alerted' }, REARM: { target: 'ok' } },
+		},
 	},
 })
 

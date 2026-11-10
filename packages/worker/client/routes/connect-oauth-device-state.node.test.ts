@@ -6,7 +6,15 @@ import {
 	type ConnectOauthDeviceState,
 } from './connect-oauth-device-state.ts'
 test('device poll graph preserves transient retries and authoritative late approval', () => {
-	expect([...connectOauthDeviceState.events].sort()).toEqual([
+	expect(
+		[
+			...new Set(
+				Object.values(connectOauthDeviceState.states).flatMap((state) => [
+					...state.transitions.keys(),
+				]),
+			),
+		].sort(),
+	).toEqual([
 		'POLL_PENDING',
 		'RESET',
 		'RESPONSE_ERROR',
@@ -15,15 +23,7 @@ test('device poll graph preserves transient retries and authoritative late appro
 		'START',
 		'TICK',
 	])
-	const store = createActor(connectOauthDeviceState, {
-		snapshot: (() => {
-			const initialView = { status: 'idle' }
-			return connectOauthDeviceState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	}).start()
+	const store = createActor(connectOauthDeviceState).start()
 	expect(
 		sendUiEvent(store, {
 			type: 'START',

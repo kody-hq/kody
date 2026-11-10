@@ -1,4 +1,4 @@
-import { setup, assign } from 'xstate'
+import { setup, types } from 'xstate'
 export type DesktopSetupWizardStep =
 	| 'overview'
 	| 'register'
@@ -7,46 +7,15 @@ export type DesktopSetupWizardStep =
 	| 'forget'
 
 export const desktopSetupStepState = setup({
-	types: {
-		context: {} as { data: Record<string, never>; requestId: unknown },
-		events: {} as
-			| {
-					type: 'REGISTER'
-					data: Record<string, never>
-					requestId?: unknown
-			  }
-			| {
-					type: 'ATTACH'
-					data: Record<string, never>
-					requestId?: unknown
-			  }
-			| {
-					type: 'COMPLETE'
-					data: Record<string, never>
-					requestId?: unknown
-			  }
-			| {
-					type: 'FORGET'
-					data: Record<string, never>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESET'
-					data: Record<string, never>
-					requestId?: unknown
-			  },
-	},
-	guards: {
-		currentRequest: ({ context, event }) =>
-			context.requestId === event.requestId,
-	},
-	actions: {
-		update: assign({ data: ({ event }) => event.data }),
-		start: assign({
-			data: ({ event }) => event.data,
-			requestId: ({ event }) => event.requestId,
-		}),
-		reset: assign({ data: ({ event }) => event.data, requestId: undefined }),
+	schemas: {
+		context: types<{ data: Record<string, never>; requestId: unknown }>(),
+		events: {
+			REGISTER: types<{ data: Record<string, never>; requestId?: unknown }>(),
+			ATTACH: types<{ data: Record<string, never>; requestId?: unknown }>(),
+			COMPLETE: types<{ data: Record<string, never>; requestId?: unknown }>(),
+			FORGET: types<{ data: Record<string, never>; requestId?: unknown }>(),
+			RESET: types<{ data: Record<string, never>; requestId?: unknown }>(),
+		},
 	},
 }).createMachine({
 	id: 'desktop.setup_step',
@@ -57,33 +26,79 @@ export const desktopSetupStepState = setup({
 	states: {
 		overview: {
 			on: {
-				REGISTER: { target: 'register', actions: 'update' },
-				ATTACH: { target: 'attach', actions: 'update' },
-				COMPLETE: { target: 'done', actions: 'update' },
-				FORGET: { target: 'forget', actions: 'update' },
+				REGISTER: {
+					target: 'register',
+					context: ({ event }) => ({ data: event.data }),
+				},
+				ATTACH: {
+					target: 'attach',
+					context: ({ event }) => ({ data: event.data }),
+				},
+				COMPLETE: {
+					target: 'done',
+					context: ({ event }) => ({ data: event.data }),
+				},
+				FORGET: {
+					target: 'forget',
+					context: ({ event }) => ({ data: event.data }),
+				},
 			},
 		},
 		register: {
 			on: {
-				ATTACH: { target: 'attach', actions: 'update' },
-				COMPLETE: { target: 'done', actions: 'update' },
-				FORGET: { target: 'forget', actions: 'update' },
-				RESET: { target: 'overview', actions: 'reset' },
+				ATTACH: {
+					target: 'attach',
+					context: ({ event }) => ({ data: event.data }),
+				},
+				COMPLETE: {
+					target: 'done',
+					context: ({ event }) => ({ data: event.data }),
+				},
+				FORGET: {
+					target: 'forget',
+					context: ({ event }) => ({ data: event.data }),
+				},
+				RESET: {
+					target: 'overview',
+					context: ({ event }) => ({ data: event.data, requestId: undefined }),
+				},
 			},
 		},
 		attach: {
 			on: {
-				COMPLETE: { target: 'done', actions: 'update' },
-				FORGET: { target: 'forget', actions: 'update' },
-				RESET: { target: 'overview', actions: 'reset' },
+				COMPLETE: {
+					target: 'done',
+					context: ({ event }) => ({ data: event.data }),
+				},
+				FORGET: {
+					target: 'forget',
+					context: ({ event }) => ({ data: event.data }),
+				},
+				RESET: {
+					target: 'overview',
+					context: ({ event }) => ({ data: event.data, requestId: undefined }),
+				},
 			},
 		},
 		done: {
 			on: {
-				FORGET: { target: 'forget', actions: 'update' },
-				RESET: { target: 'overview', actions: 'reset' },
+				FORGET: {
+					target: 'forget',
+					context: ({ event }) => ({ data: event.data }),
+				},
+				RESET: {
+					target: 'overview',
+					context: ({ event }) => ({ data: event.data, requestId: undefined }),
+				},
 			},
 		},
-		forget: { on: { RESET: { target: 'overview', actions: 'reset' } } },
+		forget: {
+			on: {
+				RESET: {
+					target: 'overview',
+					context: ({ event }) => ({ data: event.data, requestId: undefined }),
+				},
+			},
+		},
 	},
 })

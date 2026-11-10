@@ -1,4 +1,4 @@
-import { setup, assign } from 'xstate'
+import { setup, types } from 'xstate'
 import type {
 	UiContext,
 	UiData,
@@ -10,56 +10,38 @@ export type AuthFormState = FormFlowState<
 >
 
 export const loginState = setup({
-	types: {
-		context: {} as UiContext<AuthFormState>,
-		events: {} as
-			| {
-					type: 'SUBMIT'
-					data: UiPayload<AuthFormState, 'submitting'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'CONFIRM_USERNAME'
-					data: UiPayload<AuthFormState, 'confirming'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'VALIDATION_ERROR'
-					data: UiPayload<AuthFormState, 'error'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESPONSE_ERROR'
-					data: UiPayload<AuthFormState, 'error'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESPONSE_OK'
-					data: UiPayload<AuthFormState, 'success'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESET'
-					data: UiPayload<AuthFormState, 'idle'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'CANCEL'
-					data: UiPayload<AuthFormState, 'idle'>
-					requestId?: unknown
-			  },
-	},
-	guards: {
-		currentRequest: ({ context, event }) =>
-			context.requestId === event.requestId,
-	},
-	actions: {
-		update: assign({ data: ({ event }) => event.data }),
-		start: assign({
-			data: ({ event }) => event.data,
-			requestId: ({ event }) => event.requestId,
-		}),
-		reset: assign({ data: ({ event }) => event.data, requestId: undefined }),
+	schemas: {
+		context: types<UiContext<AuthFormState>>(),
+		events: {
+			SUBMIT: types<{
+				data: UiPayload<AuthFormState, 'submitting'>
+				requestId?: unknown
+			}>(),
+			CONFIRM_USERNAME: types<{
+				data: UiPayload<AuthFormState, 'confirming'>
+				requestId?: unknown
+			}>(),
+			VALIDATION_ERROR: types<{
+				data: UiPayload<AuthFormState, 'error'>
+				requestId?: unknown
+			}>(),
+			RESPONSE_ERROR: types<{
+				data: UiPayload<AuthFormState, 'error'>
+				requestId?: unknown
+			}>(),
+			RESPONSE_OK: types<{
+				data: UiPayload<AuthFormState, 'success'>
+				requestId?: unknown
+			}>(),
+			RESET: types<{
+				data: UiPayload<AuthFormState, 'idle'>
+				requestId?: unknown
+			}>(),
+			CANCEL: types<{
+				data: UiPayload<AuthFormState, 'idle'>
+				requestId?: unknown
+			}>(),
+		},
 	},
 }).createMachine({
 	id: 'login.form',
@@ -70,47 +52,126 @@ export const loginState = setup({
 	states: {
 		idle: {
 			on: {
-				SUBMIT: { target: 'submitting', actions: 'start' },
-				CONFIRM_USERNAME: { target: 'confirming', actions: 'update' },
-				VALIDATION_ERROR: { target: 'error', actions: 'update' },
+				SUBMIT: {
+					target: 'submitting',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
+				CONFIRM_USERNAME: {
+					target: 'confirming',
+					context: ({ event }) => ({ data: event.data }),
+				},
+				VALIDATION_ERROR: {
+					target: 'error',
+					context: ({ event }) => ({ data: event.data }),
+				},
 			},
 		},
 		confirming: {
 			on: {
-				SUBMIT: { target: 'submitting', actions: 'start' },
-				CONFIRM_USERNAME: { target: 'confirming', actions: 'update' },
-				VALIDATION_ERROR: { target: 'error', actions: 'update' },
-				RESET: { target: 'idle', actions: 'reset' },
+				SUBMIT: {
+					target: 'submitting',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
+				CONFIRM_USERNAME: {
+					target: 'confirming',
+					context: ({ event }) => ({ data: event.data }),
+				},
+				VALIDATION_ERROR: {
+					target: 'error',
+					context: ({ event }) => ({ data: event.data }),
+				},
+				RESET: {
+					target: 'idle',
+					context: ({ event }) => ({ data: event.data, requestId: undefined }),
+				},
 			},
 		},
 		submitting: {
 			on: {
 				RESPONSE_ERROR: {
-					target: 'error',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<AuthFormState>
+						event: { type: 'RESPONSE_ERROR' } & {
+							data: UiPayload<AuthFormState, 'error'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'error', context: { data: event.data } }
+					},
 				},
 				RESPONSE_OK: {
-					target: 'success',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<AuthFormState>
+						event: { type: 'RESPONSE_OK' } & {
+							data: UiPayload<AuthFormState, 'success'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'success', context: { data: event.data } }
+					},
 				},
-				CANCEL: { target: 'idle', actions: 'reset' },
+				CANCEL: {
+					target: 'idle',
+					context: ({ event }) => ({ data: event.data, requestId: undefined }),
+				},
 			},
 		},
 		success: {
 			on: {
-				SUBMIT: { target: 'submitting', actions: 'start' },
-				VALIDATION_ERROR: { target: 'error', actions: 'update' },
-				RESET: { target: 'idle', actions: 'reset' },
+				SUBMIT: {
+					target: 'submitting',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
+				VALIDATION_ERROR: {
+					target: 'error',
+					context: ({ event }) => ({ data: event.data }),
+				},
+				RESET: {
+					target: 'idle',
+					context: ({ event }) => ({ data: event.data, requestId: undefined }),
+				},
 			},
 		},
 		error: {
 			on: {
-				SUBMIT: { target: 'submitting', actions: 'start' },
-				CONFIRM_USERNAME: { target: 'confirming', actions: 'update' },
-				VALIDATION_ERROR: { target: 'error', actions: 'update' },
-				RESET: { target: 'idle', actions: 'reset' },
+				SUBMIT: {
+					target: 'submitting',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
+				CONFIRM_USERNAME: {
+					target: 'confirming',
+					context: ({ event }) => ({ data: event.data }),
+				},
+				VALIDATION_ERROR: {
+					target: 'error',
+					context: ({ event }) => ({ data: event.data }),
+				},
+				RESET: {
+					target: 'idle',
+					context: ({ event }) => ({ data: event.data, requestId: undefined }),
+				},
 			},
 		},
 	},

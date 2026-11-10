@@ -1,45 +1,30 @@
-import { setup, assign } from 'xstate'
+import { setup, types } from 'xstate'
 import type { UiContext, UiData, UiPayload } from '#client/ui-actor.ts'
 export type DesktopSetupOperation =
 	| { status: 'idle' | 'running' }
 	| { status: 'error'; message: string }
 
 export const desktopSetupOperationState = setup({
-	types: {
-		context: {} as UiContext<DesktopSetupOperation>,
-		events: {} as
-			| {
-					type: 'SUBMIT'
-					data: UiPayload<DesktopSetupOperation, 'running'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESPONSE_OK'
-					data: UiPayload<DesktopSetupOperation, 'idle'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESPONSE_ERROR'
-					data: UiPayload<DesktopSetupOperation, 'error'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'DISMISS'
-					data: UiPayload<DesktopSetupOperation, 'idle'>
-					requestId?: unknown
-			  },
-	},
-	guards: {
-		currentRequest: ({ context, event }) =>
-			context.requestId === event.requestId,
-	},
-	actions: {
-		update: assign({ data: ({ event }) => event.data }),
-		start: assign({
-			data: ({ event }) => event.data,
-			requestId: ({ event }) => event.requestId,
-		}),
-		reset: assign({ data: ({ event }) => event.data, requestId: undefined }),
+	schemas: {
+		context: types<UiContext<DesktopSetupOperation>>(),
+		events: {
+			SUBMIT: types<{
+				data: UiPayload<DesktopSetupOperation, 'running'>
+				requestId?: unknown
+			}>(),
+			RESPONSE_OK: types<{
+				data: UiPayload<DesktopSetupOperation, 'idle'>
+				requestId?: unknown
+			}>(),
+			RESPONSE_ERROR: types<{
+				data: UiPayload<DesktopSetupOperation, 'error'>
+				requestId?: unknown
+			}>(),
+			DISMISS: types<{
+				data: UiPayload<DesktopSetupOperation, 'idle'>
+				requestId?: unknown
+			}>(),
+		},
 	},
 }).createMachine({
 	id: 'desktop.setup_operation',
@@ -48,25 +33,69 @@ export const desktopSetupOperationState = setup({
 	initial: 'idle',
 	context: { data: {} as UiData<DesktopSetupOperation>, requestId: undefined },
 	states: {
-		idle: { on: { SUBMIT: { target: 'running', actions: 'start' } } },
+		idle: {
+			on: {
+				SUBMIT: {
+					target: 'running',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
+			},
+		},
 		running: {
 			on: {
 				RESPONSE_OK: {
-					target: 'idle',
-					guard: 'currentRequest',
-					actions: 'reset',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<DesktopSetupOperation>
+						event: { type: 'RESPONSE_OK' } & {
+							data: UiPayload<DesktopSetupOperation, 'idle'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return {
+							target: 'idle',
+							context: { data: event.data, requestId: undefined },
+						}
+					},
 				},
 				RESPONSE_ERROR: {
-					target: 'error',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<DesktopSetupOperation>
+						event: { type: 'RESPONSE_ERROR' } & {
+							data: UiPayload<DesktopSetupOperation, 'error'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'error', context: { data: event.data } }
+					},
 				},
 			},
 		},
 		error: {
 			on: {
-				SUBMIT: { target: 'running', actions: 'start' },
-				DISMISS: { target: 'idle', actions: 'reset' },
+				SUBMIT: {
+					target: 'running',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
+				DISMISS: {
+					target: 'idle',
+					context: ({ event }) => ({ data: event.data, requestId: undefined }),
+				},
 			},
 		},
 	},

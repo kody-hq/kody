@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { useActorRef, useMachine } from '@xstate/react'
+import { useActorRef, useActor } from '@xstate/react'
 import { submissionGateState } from '#client/routes/submission-gate-state.ts'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
 import { useCallback, useEffect, useState } from 'react'
@@ -79,17 +79,7 @@ export function AccountPasskeysPage({
 	currentHref: string
 }) {
 	const webauthnRegistrationOptions = useServerFn(webauthnRegistrationOptionsFn)
-	const [ceremonySnapshot, , ceremonyActor] = useMachine(passkeyCeremonyState, {
-		snapshot: (() => {
-			const initialView = {
-				status: 'idle',
-			}
-			return passkeyCeremonyState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	})
+	const [ceremonySnapshot, , ceremonyActor] = useActor(passkeyCeremonyState)
 	const ceremony = uiState<PasskeyCeremonyState>(ceremonySnapshot)
 	const transitionCeremony = useCallback(
 		(event: Parameters<typeof ceremonyActor.send>[0]) =>

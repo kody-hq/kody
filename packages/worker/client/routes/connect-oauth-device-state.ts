@@ -1,4 +1,4 @@
-import { setup, assign } from 'xstate'
+import { setup, types } from 'xstate'
 import type { UiContext, UiData, UiPayload } from '#client/ui-actor.ts'
 export type DeviceDisplay = {
 	userCode: string
@@ -17,56 +17,38 @@ export type ConnectOauthDeviceState =
 	| { status: 'success'; view: DeviceDisplay }
 
 export const connectOauthDeviceState = setup({
-	types: {
-		context: {} as UiContext<ConnectOauthDeviceState>,
-		events: {} as
-			| {
-					type: 'START'
-					data: UiPayload<ConnectOauthDeviceState, 'starting'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'SESSION_OK'
-					data: UiPayload<ConnectOauthDeviceState, 'polling'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'POLL_PENDING'
-					data: UiPayload<ConnectOauthDeviceState, 'polling'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'TICK'
-					data: UiPayload<ConnectOauthDeviceState, 'polling'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESPONSE_ERROR'
-					data: UiPayload<ConnectOauthDeviceState, 'error'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESPONSE_OK'
-					data: UiPayload<ConnectOauthDeviceState, 'success'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESET'
-					data: UiPayload<ConnectOauthDeviceState, 'idle'>
-					requestId?: unknown
-			  },
-	},
-	guards: {
-		currentRequest: ({ context, event }) =>
-			context.requestId === event.requestId,
-	},
-	actions: {
-		update: assign({ data: ({ event }) => event.data }),
-		start: assign({
-			data: ({ event }) => event.data,
-			requestId: ({ event }) => event.requestId,
-		}),
-		reset: assign({ data: ({ event }) => event.data, requestId: undefined }),
+	schemas: {
+		context: types<UiContext<ConnectOauthDeviceState>>(),
+		events: {
+			START: types<{
+				data: UiPayload<ConnectOauthDeviceState, 'starting'>
+				requestId?: unknown
+			}>(),
+			SESSION_OK: types<{
+				data: UiPayload<ConnectOauthDeviceState, 'polling'>
+				requestId?: unknown
+			}>(),
+			POLL_PENDING: types<{
+				data: UiPayload<ConnectOauthDeviceState, 'polling'>
+				requestId?: unknown
+			}>(),
+			TICK: types<{
+				data: UiPayload<ConnectOauthDeviceState, 'polling'>
+				requestId?: unknown
+			}>(),
+			RESPONSE_ERROR: types<{
+				data: UiPayload<ConnectOauthDeviceState, 'error'>
+				requestId?: unknown
+			}>(),
+			RESPONSE_OK: types<{
+				data: UiPayload<ConnectOauthDeviceState, 'success'>
+				requestId?: unknown
+			}>(),
+			RESET: types<{
+				data: UiPayload<ConnectOauthDeviceState, 'idle'>
+				requestId?: unknown
+			}>(),
+		},
 	},
 }).createMachine({
 	id: 'connect_oauth.device_poll',
@@ -80,56 +62,147 @@ export const connectOauthDeviceState = setup({
 	states: {
 		idle: {
 			on: {
-				START: { target: 'starting', actions: 'start' },
-				RESET: { target: 'idle', actions: 'reset' },
+				START: {
+					target: 'starting',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
+				RESET: {
+					target: 'idle',
+					context: ({ event }) => ({ data: event.data, requestId: undefined }),
+				},
 			},
 		},
 		starting: {
 			on: {
 				SESSION_OK: {
-					target: 'polling',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<ConnectOauthDeviceState>
+						event: { type: 'SESSION_OK' } & {
+							data: UiPayload<ConnectOauthDeviceState, 'polling'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'polling', context: { data: event.data } }
+					},
 				},
 				RESPONSE_ERROR: {
-					target: 'error',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<ConnectOauthDeviceState>
+						event: { type: 'RESPONSE_ERROR' } & {
+							data: UiPayload<ConnectOauthDeviceState, 'error'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'error', context: { data: event.data } }
+					},
 				},
-				RESET: { target: 'idle', actions: 'reset' },
+				RESET: {
+					target: 'idle',
+					context: ({ event }) => ({ data: event.data, requestId: undefined }),
+				},
 			},
 		},
 		polling: {
 			on: {
 				POLL_PENDING: {
-					target: 'polling',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<ConnectOauthDeviceState>
+						event: { type: 'POLL_PENDING' } & {
+							data: UiPayload<ConnectOauthDeviceState, 'polling'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'polling', context: { data: event.data } }
+					},
 				},
-				TICK: { actions: 'update' },
+				TICK: { context: ({ event }) => ({ data: event.data }) },
 				RESPONSE_ERROR: {
-					target: 'error',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<ConnectOauthDeviceState>
+						event: { type: 'RESPONSE_ERROR' } & {
+							data: UiPayload<ConnectOauthDeviceState, 'error'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'error', context: { data: event.data } }
+					},
 				},
 				RESPONSE_OK: {
-					target: 'success',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<ConnectOauthDeviceState>
+						event: { type: 'RESPONSE_OK' } & {
+							data: UiPayload<ConnectOauthDeviceState, 'success'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'success', context: { data: event.data } }
+					},
 				},
-				RESET: { target: 'idle', actions: 'reset' },
+				RESET: {
+					target: 'idle',
+					context: ({ event }) => ({ data: event.data, requestId: undefined }),
+				},
 			},
 		},
 		error: {
 			on: {
 				RESPONSE_OK: {
-					target: 'success',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<ConnectOauthDeviceState>
+						event: { type: 'RESPONSE_OK' } & {
+							data: UiPayload<ConnectOauthDeviceState, 'success'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'success', context: { data: event.data } }
+					},
 				},
-				RESET: { target: 'idle', actions: 'reset' },
+				RESET: {
+					target: 'idle',
+					context: ({ event }) => ({ data: event.data, requestId: undefined }),
+				},
 			},
 		},
-		success: { on: { RESET: { target: 'idle', actions: 'reset' } } },
+		success: {
+			on: {
+				RESET: {
+					target: 'idle',
+					context: ({ event }) => ({ data: event.data, requestId: undefined }),
+				},
+			},
+		},
 	},
 })

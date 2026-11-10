@@ -1,4 +1,4 @@
-import { setup, assign } from 'xstate'
+import { setup, types } from 'xstate'
 import type {
 	UiContext,
 	UiData,
@@ -10,36 +10,22 @@ export type TwoFactorVerifyState = FormFlowState<
 >
 
 export const twoFactorVerifyState = setup({
-	types: {
-		context: {} as UiContext<TwoFactorVerifyState>,
-		events: {} as
-			| {
-					type: 'SUBMIT'
-					data: UiPayload<TwoFactorVerifyState, 'submitting'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'VALIDATION_ERROR'
-					data: UiPayload<TwoFactorVerifyState, 'error'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESPONSE_ERROR'
-					data: UiPayload<TwoFactorVerifyState, 'error'>
-					requestId?: unknown
-			  },
-	},
-	guards: {
-		currentRequest: ({ context, event }) =>
-			context.requestId === event.requestId,
-	},
-	actions: {
-		update: assign({ data: ({ event }) => event.data }),
-		start: assign({
-			data: ({ event }) => event.data,
-			requestId: ({ event }) => event.requestId,
-		}),
-		reset: assign({ data: ({ event }) => event.data, requestId: undefined }),
+	schemas: {
+		context: types<UiContext<TwoFactorVerifyState>>(),
+		events: {
+			SUBMIT: types<{
+				data: UiPayload<TwoFactorVerifyState, 'submitting'>
+				requestId?: unknown
+			}>(),
+			VALIDATION_ERROR: types<{
+				data: UiPayload<TwoFactorVerifyState, 'error'>
+				requestId?: unknown
+			}>(),
+			RESPONSE_ERROR: types<{
+				data: UiPayload<TwoFactorVerifyState, 'error'>
+				requestId?: unknown
+			}>(),
+		},
 	},
 }).createMachine({
 	id: 'two_factor_verify.form',
@@ -50,23 +36,52 @@ export const twoFactorVerifyState = setup({
 	states: {
 		idle: {
 			on: {
-				SUBMIT: { target: 'submitting', actions: 'start' },
-				VALIDATION_ERROR: { target: 'error', actions: 'update' },
+				SUBMIT: {
+					target: 'submitting',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
+				VALIDATION_ERROR: {
+					target: 'error',
+					context: ({ event }) => ({ data: event.data }),
+				},
 			},
 		},
 		submitting: {
 			on: {
 				RESPONSE_ERROR: {
-					target: 'error',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<TwoFactorVerifyState>
+						event: { type: 'RESPONSE_ERROR' } & {
+							data: UiPayload<TwoFactorVerifyState, 'error'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'error', context: { data: event.data } }
+					},
 				},
 			},
 		},
 		error: {
 			on: {
-				SUBMIT: { target: 'submitting', actions: 'start' },
-				VALIDATION_ERROR: { target: 'error', actions: 'update' },
+				SUBMIT: {
+					target: 'submitting',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
+				VALIDATION_ERROR: {
+					target: 'error',
+					context: ({ event }) => ({ data: event.data }),
+				},
 			},
 		},
 	},

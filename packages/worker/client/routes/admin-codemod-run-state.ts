@@ -1,4 +1,4 @@
-import { setup, assign } from 'xstate'
+import { setup, types } from 'xstate'
 import type { UiContext, UiData, UiPayload } from '#client/ui-actor.ts'
 import type { LiveRunItem } from './admin-codemods-shared.ts'
 export type RunPhase = Exclude<
@@ -19,46 +19,30 @@ export type AdminCodemodRunState =
 			))
 
 export const adminCodemodRunState = setup({
-	types: {
-		context: {} as UiContext<AdminCodemodRunState>,
-		events: {} as
-			| {
-					type: 'SUBMIT'
-					data: UiPayload<AdminCodemodRunState, 'running'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'PROGRESS'
-					data: UiPayload<AdminCodemodRunState, 'running' | 'stopping'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'STOP'
-					data: UiPayload<AdminCodemodRunState, 'stopping'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESPONSE_OK'
-					data: UiPayload<AdminCodemodRunState, 'complete'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESPONSE_ERROR'
-					data: UiPayload<AdminCodemodRunState, 'error'>
-					requestId?: unknown
-			  },
-	},
-	guards: {
-		currentRequest: ({ context, event }) =>
-			context.requestId === event.requestId,
-	},
-	actions: {
-		update: assign({ data: ({ event }) => event.data }),
-		start: assign({
-			data: ({ event }) => event.data,
-			requestId: ({ event }) => event.requestId,
-		}),
-		reset: assign({ data: ({ event }) => event.data, requestId: undefined }),
+	schemas: {
+		context: types<UiContext<AdminCodemodRunState>>(),
+		events: {
+			SUBMIT: types<{
+				data: UiPayload<AdminCodemodRunState, 'running'>
+				requestId?: unknown
+			}>(),
+			PROGRESS: types<{
+				data: UiPayload<AdminCodemodRunState, 'running' | 'stopping'>
+				requestId?: unknown
+			}>(),
+			STOP: types<{
+				data: UiPayload<AdminCodemodRunState, 'stopping'>
+				requestId?: unknown
+			}>(),
+			RESPONSE_OK: types<{
+				data: UiPayload<AdminCodemodRunState, 'complete'>
+				requestId?: unknown
+			}>(),
+			RESPONSE_ERROR: types<{
+				data: UiPayload<AdminCodemodRunState, 'error'>
+				requestId?: unknown
+			}>(),
+		},
 	},
 }).createMachine({
 	id: 'admin_codemods.ui_run',
@@ -67,39 +51,116 @@ export const adminCodemodRunState = setup({
 	initial: 'idle',
 	context: { data: {} as UiData<AdminCodemodRunState>, requestId: undefined },
 	states: {
-		idle: { on: { SUBMIT: { target: 'running', actions: 'start' } } },
+		idle: {
+			on: {
+				SUBMIT: {
+					target: 'running',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
+			},
+		},
 		running: {
 			on: {
-				PROGRESS: { actions: 'update' },
-				STOP: { target: 'stopping', actions: 'update' },
+				PROGRESS: { context: ({ event }) => ({ data: event.data }) },
+				STOP: {
+					target: 'stopping',
+					context: ({ event }) => ({ data: event.data }),
+				},
 				RESPONSE_OK: {
-					target: 'complete',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<AdminCodemodRunState>
+						event: { type: 'RESPONSE_OK' } & {
+							data: UiPayload<AdminCodemodRunState, 'complete'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'complete', context: { data: event.data } }
+					},
 				},
 				RESPONSE_ERROR: {
-					target: 'error',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<AdminCodemodRunState>
+						event: { type: 'RESPONSE_ERROR' } & {
+							data: UiPayload<AdminCodemodRunState, 'error'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'error', context: { data: event.data } }
+					},
 				},
 			},
 		},
 		stopping: {
 			on: {
-				PROGRESS: { actions: 'update' },
+				PROGRESS: { context: ({ event }) => ({ data: event.data }) },
 				RESPONSE_OK: {
-					target: 'complete',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<AdminCodemodRunState>
+						event: { type: 'RESPONSE_OK' } & {
+							data: UiPayload<AdminCodemodRunState, 'complete'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'complete', context: { data: event.data } }
+					},
 				},
 				RESPONSE_ERROR: {
-					target: 'error',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<AdminCodemodRunState>
+						event: { type: 'RESPONSE_ERROR' } & {
+							data: UiPayload<AdminCodemodRunState, 'error'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'error', context: { data: event.data } }
+					},
 				},
 			},
 		},
-		complete: { on: { SUBMIT: { target: 'running', actions: 'start' } } },
-		error: { on: { SUBMIT: { target: 'running', actions: 'start' } } },
+		complete: {
+			on: {
+				SUBMIT: {
+					target: 'running',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
+			},
+		},
+		error: {
+			on: {
+				SUBMIT: {
+					target: 'running',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
+			},
+		},
 	},
 })

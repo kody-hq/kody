@@ -1,4 +1,4 @@
-import { setup, assign } from 'xstate'
+import { setup, types } from 'xstate'
 import type {
 	UiContext,
 	UiData,
@@ -10,41 +10,26 @@ export type PasswordResetState = FormFlowState<
 >
 
 export const passwordResetState = setup({
-	types: {
-		context: {} as UiContext<PasswordResetState>,
-		events: {} as
-			| {
-					type: 'SUBMIT'
-					data: UiPayload<PasswordResetState, 'submitting'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'VALIDATION_ERROR'
-					data: UiPayload<PasswordResetState, 'error'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESPONSE_OK'
-					data: UiPayload<PasswordResetState, 'success'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESPONSE_ERROR'
-					data: UiPayload<PasswordResetState, 'error'>
-					requestId?: unknown
-			  },
-	},
-	guards: {
-		currentRequest: ({ context, event }) =>
-			context.requestId === event.requestId,
-	},
-	actions: {
-		update: assign({ data: ({ event }) => event.data }),
-		start: assign({
-			data: ({ event }) => event.data,
-			requestId: ({ event }) => event.requestId,
-		}),
-		reset: assign({ data: ({ event }) => event.data, requestId: undefined }),
+	schemas: {
+		context: types<UiContext<PasswordResetState>>(),
+		events: {
+			SUBMIT: types<{
+				data: UiPayload<PasswordResetState, 'submitting'>
+				requestId?: unknown
+			}>(),
+			VALIDATION_ERROR: types<{
+				data: UiPayload<PasswordResetState, 'error'>
+				requestId?: unknown
+			}>(),
+			RESPONSE_OK: types<{
+				data: UiPayload<PasswordResetState, 'success'>
+				requestId?: unknown
+			}>(),
+			RESPONSE_ERROR: types<{
+				data: UiPayload<PasswordResetState, 'error'>
+				requestId?: unknown
+			}>(),
+		},
 	},
 }).createMachine({
 	id: 'password_reset.form',
@@ -55,34 +40,83 @@ export const passwordResetState = setup({
 	states: {
 		idle: {
 			on: {
-				SUBMIT: { target: 'submitting', actions: 'start' },
-				VALIDATION_ERROR: { target: 'error', actions: 'update' },
+				SUBMIT: {
+					target: 'submitting',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
+				VALIDATION_ERROR: {
+					target: 'error',
+					context: ({ event }) => ({ data: event.data }),
+				},
 			},
 		},
 		submitting: {
 			on: {
 				RESPONSE_OK: {
-					target: 'success',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<PasswordResetState>
+						event: { type: 'RESPONSE_OK' } & {
+							data: UiPayload<PasswordResetState, 'success'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'success', context: { data: event.data } }
+					},
 				},
 				RESPONSE_ERROR: {
-					target: 'error',
-					guard: 'currentRequest',
-					actions: 'update',
+					description: 'Current request',
+					to: ({
+						context,
+						event,
+					}: {
+						context: UiContext<PasswordResetState>
+						event: { type: 'RESPONSE_ERROR' } & {
+							data: UiPayload<PasswordResetState, 'error'>
+							requestId?: unknown
+						}
+					}) => {
+						if (!(context.requestId === event.requestId)) return undefined
+						return { target: 'error', context: { data: event.data } }
+					},
 				},
 			},
 		},
 		success: {
 			on: {
-				SUBMIT: { target: 'submitting', actions: 'start' },
-				VALIDATION_ERROR: { target: 'error', actions: 'update' },
+				SUBMIT: {
+					target: 'submitting',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
+				VALIDATION_ERROR: {
+					target: 'error',
+					context: ({ event }) => ({ data: event.data }),
+				},
 			},
 		},
 		error: {
 			on: {
-				SUBMIT: { target: 'submitting', actions: 'start' },
-				VALIDATION_ERROR: { target: 'error', actions: 'update' },
+				SUBMIT: {
+					target: 'submitting',
+					context: ({ event }) => ({
+						data: event.data,
+						requestId: event.requestId,
+					}),
+				},
+				VALIDATION_ERROR: {
+					target: 'error',
+					context: ({ event }) => ({ data: event.data }),
+				},
 			},
 		},
 	},
