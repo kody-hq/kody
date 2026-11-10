@@ -153,8 +153,8 @@ function sqlStartsWithVerb(normalized: string, verbs: ReadonlyArray<string>) {
  * INSERT / UPDATE / DELETE / REPLACE, including after a WITH clause).
  *
  * Used by {@link collectStorageSqlCursor} drainOverflow: only these statements must
- * keep stepping past the row cap so the write finishes. Pure reads — including
- * `WITH … SELECT` sent with `writable: true` from packageStorage — stop early.
+ * keep stepping past the row cap so the write finishes. Pure reads, including
+ * `WITH … SELECT` sent with `writable: true` from packageStorage, stop early.
  * Words inside strings, identifiers, and comments are ignored.
  */
 export function isStorageSqlReturningMutation(query: string) {
