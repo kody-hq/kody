@@ -290,8 +290,110 @@ test('validateBarePackageImportDeclarations fails closed when reachable source d
 	})
 	expect(result.ok).toBe(false)
 	expect(result.message).toMatch(
-		/could not be parsed for bare-import dependency checks.*"src\/index\.ts"/,
+		/could not be parsed for bare-import dependency checks \("src\/index\.ts:2:1": Unexpected token/,
 	)
+})
+
+function validateSingleEntrySource(entryPath: string, source: string) {
+	const manifestJson = {
+		name: '@kody/parser-by-extension',
+		exports: { '.': `./${entryPath}` },
+		kody: {
+			id: 'parser-by-extension',
+			description: 'Parser by extension package',
+			app: { entry: `./${entryPath}` },
+		},
+	} as AuthoredPackageJson
+	return validateBarePackageImportDeclarations({
+		manifest: manifestJson,
+		sourceFiles: {
+			'package.json': JSON.stringify(manifestJson),
+			[entryPath]: source,
+		},
+		entryPoints: [{ path: entryPath, bundleKind: 'app' }],
+	})
+}
+
+const appFetchExport =
+	'export default { async fetch() { return new Response(String(first([1]))) } }\n'
+
+test.each([
+	['generic arrow', 'const first = <T>(xs: T[]): T | undefined => xs[0]\n'],
+	[
+		'generic arrow with trailing comma',
+		'const first = <T,>(xs: T[]): T | undefined => xs[0]\n',
+	],
+	[
+		'function declaration',
+		'function first<T>(xs: T[]): T | undefined { return xs[0] }\n',
+	],
+	['type assertion', 'const first = (xs: unknown) => (<Array<number>>xs)[0]\n'],
+])('.ts app entry with a %s parses as TypeScript without JSX', (_, code) => {
+	for (const extension of ['ts', 'mts', 'cts']) {
+		const result = validateSingleEntrySource(
+			`src/app.${extension}`,
+			code + appFetchExport,
+		)
+		expect(result).toEqual({ ok: true, message: expect.any(String) })
+	}
+})
+
+test('.tsx app entry still parses as TSX', () => {
+	const tsx = validateSingleEntrySource(
+		'src/app.tsx',
+		'const first = <T,>(xs: T[]): T | undefined => xs[0]\nconst view = <main>{String(first([1]))}</main>\n' +
+			appFetchExport,
+	)
+	expect(tsx.ok).toBe(true)
+
+	const ambiguousGeneric = validateSingleEntrySource(
+		'src/app.tsx',
+		'const first = <T>(xs: T[]): T | undefined => xs[0]\n' + appFetchExport,
+	)
+	expect(ambiguousGeneric.ok).toBe(false)
+	expect(ambiguousGeneric.message).toMatch(
+		/\("src\/app\.tsx:1:\d+": Unexpected token/,
+	)
+})
+
+test('.ts app entry does not accept JSX, matching the bundler loader', () => {
+	const result = validateSingleEntrySource(
+		'src/app.ts',
+		'const first = (xs: number[]) => xs[0]\nconst view = <main>hi</main>\n' +
+			appFetchExport,
+	)
+	expect(result.ok).toBe(false)
+	expect(result.message).toMatch(/\("src\/app\.ts:2:\d+": /)
+})
+
+test('.jsx parses JSX and .js parses plain JavaScript', () => {
+	const jsx = validateSingleEntrySource(
+		'src/app.jsx',
+		'const first = (xs) => xs[0]\nconst view = <main>{first([1])}</main>\n' +
+			appFetchExport,
+	)
+	expect(jsx.ok).toBe(true)
+	const js = validateSingleEntrySource(
+		'src/app.js',
+		'const first = (xs) => xs[0]\n' + appFetchExport,
+	)
+	expect(js.ok).toBe(true)
+	const jsWithTypes = validateSingleEntrySource(
+		'src/app.js',
+		'const first = (xs: number[]) => xs[0]\n' + appFetchExport,
+	)
+	expect(jsWithTypes.ok).toBe(false)
+	expect(jsWithTypes.message).toMatch(/\("src\/app\.js:1:\d+": /)
+})
+
+test('bare imports in a .ts module with a generic arrow are still checked', () => {
+	const result = validateSingleEntrySource(
+		'src/app.ts',
+		'import { z } from "zod"\nconst first = <T>(xs: T[]): T | undefined => xs[0]\nvoid z\n' +
+			appFetchExport,
+	)
+	expect(result.ok).toBe(false)
+	expect(result.message).toContain('undeclared bare package(s): "zod"')
 })
 
 test('validateBarePackageImportDeclarations does not throw on malformed dynamic kody imports', () => {

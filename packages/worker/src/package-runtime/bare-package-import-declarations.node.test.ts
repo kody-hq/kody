@@ -6,9 +6,11 @@ vi.mock('./import-specifiers.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('./import-specifiers.ts')>()
 	return {
 		...actual,
-		collectBundlerResolvedSpecifiers: (source: string) => {
+		parseBundlerResolvedSpecifiers: (
+			...args: Parameters<typeof actual.parseBundlerResolvedSpecifiers>
+		) => {
 			parseCalls.count += 1
-			return actual.collectBundlerResolvedSpecifiers(source)
+			return actual.parseBundlerResolvedSpecifiers(...args)
 		},
 	}
 })

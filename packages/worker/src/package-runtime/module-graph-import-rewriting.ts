@@ -551,7 +551,7 @@ function jsonValueTargetsKodyVirtualModule(value: unknown): boolean {
 function fileReachesKodyVirtualModule(filePath: string, content: string) {
 	if (!textMentionsKodyVirtualModule(content)) return false
 	if (bundlerScriptSourcePathPattern.test(filePath)) {
-		const specifiers = collectBundlerResolvedSpecifiers(content)
+		const specifiers = collectBundlerResolvedSpecifiers(content, { filePath })
 		return (
 			specifiers == null || specifiers.some(specifierTargetsKodyVirtualModule)
 		)
@@ -612,7 +612,13 @@ async function rewriteKodyImports(input: {
 	const {
 		literalImports: importNodes,
 		dynamicImportExpressions: dynamicImportNodes,
-	} = collectModuleImportNodesCached(input.state.importNodesCache, input.source)
+	} = collectModuleImportNodesCached(
+		input.state.importNodesCache,
+		input.source,
+		{
+			filePath: input.modulePath,
+		},
+	)
 	if (importNodes.length === 0 && dynamicImportNodes.length === 0) {
 		return boundFetchPrefix + input.source
 	}

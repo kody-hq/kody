@@ -1,4 +1,10 @@
-import { parseModuleSource, type ModuleAstNode } from '#worker/module-source.ts'
+import {
+	describeModuleSourceParseError,
+	moduleSourceParserPlugins,
+	parseModuleSource,
+	type ModuleAstNode,
+	type ModuleSourceParseError,
+} from '#worker/module-source.ts'
 
 export type LiteralImportNode = {
 	start: number
@@ -84,11 +90,19 @@ function isTypeOnlyImportOrExport(node: ModuleAstNode) {
 	return hasOnlyTypeSpecifiers(node)
 }
 
+export type ModuleImportScanOptions = {
+	includeTypeOnly?: boolean
+	/** Module path; picks the parser by extension (`.ts` is not TSX). */
+	filePath?: string | null
+}
+
 function moduleImportNodesCacheKey(
 	source: string,
-	options?: { includeTypeOnly?: boolean },
+	options?: ModuleImportScanOptions,
 ) {
-	return options?.includeTypeOnly === true ? `\0type\0${source}` : source
+	const parser = moduleSourceParserPlugins(options?.filePath).join('+')
+	const typeOnly = options?.includeTypeOnly === true ? 'type' : ''
+	return `\0${typeOnly}\0${parser}\0${source}`
 }
 
 /**
@@ -98,7 +112,7 @@ function moduleImportNodesCacheKey(
  */
 export function collectModuleImportNodes(
 	source: string,
-	options?: { includeTypeOnly?: boolean },
+	options?: ModuleImportScanOptions,
 ): CollectedModuleImportNodes {
 	const literalImports: Array<LiteralImportNode> = []
 	const dynamicImportExpressions: Array<DynamicImportExpressionNode> = []
@@ -196,7 +210,7 @@ export function collectModuleImportNodes(
 	}
 
 	try {
-		const program = parseModuleSource(source)
+		const program = parseModuleSource(source, { filePath: options?.filePath })
 		visit(program)
 	} catch {
 		return { literalImports: [], dynamicImportExpressions: [] }
@@ -215,7 +229,7 @@ export function collectModuleImportNodes(
 export function collectModuleImportNodesCached(
 	cache: ModuleImportNodesCache | undefined,
 	source: string,
-	options?: { includeTypeOnly?: boolean },
+	options?: ModuleImportScanOptions,
 ): CollectedModuleImportNodes {
 	if (!cache) {
 		return collectModuleImportNodes(source, options)
@@ -230,7 +244,7 @@ export function collectModuleImportNodesCached(
 
 export function collectLiteralImportNodes(
 	source: string,
-	options?: { includeTypeOnly?: boolean },
+	options?: ModuleImportScanOptions,
 ): Array<LiteralImportNode> {
 	return collectModuleImportNodes(source, options).literalImports
 }
@@ -288,12 +302,27 @@ function readStaticSpecifierNode(wrapped: unknown): string | null {
  */
 export function collectBundlerResolvedSpecifiers(
 	source: string,
+	options?: { filePath?: string | null },
 ): Array<string> | null {
+	const result = parseBundlerResolvedSpecifiers(source, options)
+	return result.ok ? result.specifiers : null
+}
+
+/**
+ * {@link collectBundlerResolvedSpecifiers} with the parse error (line,
+ * column, message) kept so callers can report why a module did not parse.
+ */
+export function parseBundlerResolvedSpecifiers(
+	source: string,
+	options?: { filePath?: string | null },
+):
+	| { ok: true; specifiers: Array<string> }
+	| { ok: false; error: ModuleSourceParseError } {
 	let program: unknown
 	try {
-		program = parseModuleSource(source)
-	} catch {
-		return null
+		program = parseModuleSource(source, { filePath: options?.filePath })
+	} catch (error) {
+		return { ok: false, error: describeModuleSourceParseError(error) }
 	}
 	const specifiers: Array<string> = []
 	const remember = (node: unknown) => {
@@ -349,12 +378,12 @@ export function collectBundlerResolvedSpecifiers(
 		}
 	}
 	visit(program)
-	return specifiers
+	return { ok: true, specifiers }
 }
 
 export function collectLiteralImportSpecifiers(
 	source: string,
-	options?: { includeTypeOnly?: boolean },
+	options?: ModuleImportScanOptions,
 ): Array<string> {
 	return collectLiteralImportNodes(source, options).map(
 		(node) => node.specifier,
