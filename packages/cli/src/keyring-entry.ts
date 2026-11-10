@@ -24,7 +24,7 @@ export const macSecurityPath = '/usr/bin/security'
 /** `security` exit status for "The specified item could not be found". */
 const itemNotFoundStatus = 44
 
-export const keychainTimeoutEnvVar = 'KODY_KEYCHAIN_TIMEOUT_MS'
+const keychainTimeoutEnvVar = 'KODY_KEYCHAIN_TIMEOUT_MS'
 const defaultKeychainTimeoutMs = 120_000
 /** A Keychain call slower than this is waiting on an approval dialog. */
 export const keychainNoticeAfterMs = 1_500
@@ -35,7 +35,7 @@ export function keychainTimeoutMs(env: NodeJS.ProcessEnv = process.env) {
 	return Number.isFinite(value) && value > 0 ? value : defaultKeychainTimeoutMs
 }
 
-export function keychainWaitNotice(service: string, account: string) {
+function keychainWaitNotice(service: string, account: string) {
 	return `Waiting for macOS Keychain approval for ${service} (${account}). Check for a Keychain dialog, possibly behind other windows.\n`
 }
 
@@ -89,7 +89,7 @@ function runMacSecuritySync(
 }
 
 /** The part of a spawned `security` process the async runner reads. */
-export type SecurityChild = TrackedChild & {
+type SecurityChild = TrackedChild & {
 	stdout: {
 		on(event: 'data', listener: (chunk: Buffer) => void): unknown
 	} | null
