@@ -1,3 +1,4 @@
+import { nextState } from '@kody-internal/shared/state-machine.ts'
 /**
  * Per-component incident state machine. Consecutive-failure thresholds keep a
  * single flaky probe from opening an incident, and consecutive-success
@@ -33,7 +34,9 @@ export function applyProbeResult(
 	if (ok) {
 		const consecutiveSuccesses = state.consecutiveSuccesses + 1
 		if (state.status === 'down' && consecutiveSuccesses >= recoveryThreshold) {
-			componentIncidentState.assert(state.status, 'operational')
+			nextState(componentIncidentState, state.status, {
+				type: 'RESOLVE_INCIDENT',
+			})
 			return {
 				state: {
 					status: 'operational',
@@ -57,7 +60,7 @@ export function applyProbeResult(
 		state.status === 'operational' &&
 		consecutiveFailures >= failureThreshold
 	) {
-		componentIncidentState.assert(state.status, 'down')
+		nextState(componentIncidentState, state.status, { type: 'OPEN_INCIDENT' })
 		return {
 			state: {
 				status: 'down',

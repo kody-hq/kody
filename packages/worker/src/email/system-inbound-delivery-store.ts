@@ -1,3 +1,4 @@
+import { sqlSourcesOf, nextState } from '@kody-internal/shared/state-machine.ts'
 import { inboundSubscriptionEffectState } from './inbound-subscription-effect-state.ts'
 import { inboundDedupePointerState } from './inbound-dedupe-pointer-state.ts'
 import { inboundDeliveryState } from './inbound-delivery-state.ts'
@@ -67,46 +68,56 @@ function parseDelivery(row: DeliveryRow | null): InboundDelivery | null {
 	return parseInboundDeliveryDetailJson(row?.detail_json)
 }
 
-const deliveryStoringToPendingGuard = inboundDeliveryState.guard({
-	from: 'storing',
-	to: 'pending',
-})
-const deliveryCleaningToOrphanCleanedGuard = inboundDeliveryState.guard({
-	from: 'cleaning',
-	to: 'orphan-cleaned',
-})
-const deliveryPendingToStoringGuard = inboundDeliveryState.guard({
-	from: 'pending',
-	to: 'storing',
-})
-const deliveryStoringToStoringGuard = inboundDeliveryState.guard({
-	from: 'storing',
-	to: 'storing',
-})
-const deliveryReceivedToStoringGuard = inboundDeliveryState.guard({
-	from: 'received',
-	to: 'storing',
-})
-const deliveryStoringToReceivedGuard = inboundDeliveryState.guard({
-	from: 'storing',
-	to: 'received',
-})
-const deliveryPendingToCleaningGuard = inboundDeliveryState.guard({
-	from: 'pending',
-	to: 'cleaning',
-})
-const deliveryStoringToCleaningGuard = inboundDeliveryState.guard({
-	from: 'storing',
-	to: 'cleaning',
-})
-const deliveryCleaningToCleaningGuard = inboundDeliveryState.guard({
-	from: 'cleaning',
-	to: 'cleaning',
-})
-const deliveryOrphanCleanedToCleaningGuard = inboundDeliveryState.guard({
-	from: 'orphan-cleaned',
-	to: 'cleaning',
-})
+const deliveryStoringToPendingGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'RELEASE_LEASE',
+	['storing'],
+)
+const deliveryCleaningToOrphanCleanedGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'COMPLETE_CLEANUP',
+	['cleaning'],
+)
+const deliveryPendingToStoringGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_STORAGE',
+	['pending'],
+)
+const deliveryStoringToStoringGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_STORAGE',
+	['storing'],
+)
+const deliveryReceivedToStoringGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_STORAGE',
+	['received'],
+)
+const deliveryStoringToReceivedGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'RECEIVE',
+	['storing'],
+)
+const deliveryPendingToCleaningGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_CLEANUP',
+	['pending'],
+)
+const deliveryStoringToCleaningGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_CLEANUP',
+	['storing'],
+)
+const deliveryCleaningToCleaningGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_CLEANUP',
+	['cleaning'],
+)
+const deliveryOrphanCleanedToCleaningGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_CLEANUP',
+	['orphan-cleaned'],
+)
 
 export function systemInboundDedupeExpiry(now: Date) {
 	return new Date(now.getTime() + inboundDeliveryDedupeWindowMs).toISOString()
@@ -158,8 +169,8 @@ export async function claimSystemInboundDeliveryWindow(input: {
 }) {
 	await assertSystemDelivery(input.db, input.delivery)
 	const pointerId = systemInboundDedupePointerId(input.delivery.fingerprint)
-	inboundDedupePointerState.assert('pending', 'pending')
-	inboundDedupePointerState.assert('rejected', 'pending')
+	nextState(inboundDedupePointerState, 'pending', { type: 'RESET_WINDOW' })
+	nextState(inboundDedupePointerState, 'rejected', { type: 'RESET_WINDOW' })
 	try {
 		await commitSystemInboundEventMutation({
 			db: input.db,
@@ -485,7 +496,7 @@ export async function markSystemInboundDeliveryRejected(input: {
 		input.delivery.state !== 'received' &&
 		input.delivery.state !== 'rejected'
 	)
-		inboundDeliveryState.assert(input.delivery.state, 'rejected')
+		nextState(inboundDeliveryState, input.delivery.state, { type: 'REJECT' })
 	const detail = {
 		...input.delivery,
 		state: 'rejected' as const,
@@ -549,11 +560,12 @@ export async function markSystemInboundDeliveryReceived(input: {
 			'System inbound finalization requires a storage lease.',
 		)
 	}
-	inboundDeliveryState.assert('storing', 'received')
+	nextState(inboundDeliveryState, 'storing', { type: 'RECEIVE' })
 	if (input.delivery.subscriptionEffectState)
-		inboundSubscriptionEffectState.assert(
+		nextState(
+			inboundSubscriptionEffectState,
 			input.delivery.subscriptionEffectState,
-			'pending',
+			{ type: 'RESET' },
 		)
 	const detail: InboundDelivery = {
 		...input.delivery,

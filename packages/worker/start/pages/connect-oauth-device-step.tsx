@@ -1,14 +1,11 @@
-import { createStateMachineStore } from '#client/state-machine-store.ts'
+import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
+import { createActor } from 'xstate'
 import {
 	connectOauthDeviceState,
 	type ConnectOauthDeviceState,
 	type DeviceDisplay,
 	type DeviceSession,
 } from '#client/routes/connect-oauth-device-state.ts'
-/**
- * Device-flow (RFC 8628) state and poll orchestration for /connect/oauth.
- * Kept out of connect-oauth.tsx so that route stays under the file-size budget.
- */
 import { renderDeviceStep } from './connect-oauth-forms.tsx'
 import {
 	type ConnectOauthConfig,
@@ -27,6 +24,10 @@ import {
 	readConnectOauthOrgSlug,
 	startConnectOauthDevice,
 } from './connect-oauth-shared.ts'
+/**
+ * Device-flow (RFC 8628) state and poll orchestration for /connect/oauth.
+ * Kept out of connect-oauth.tsx so that route stays under the file-size budget.
+ */
 
 type ConnectOauthDeviceSuccess = {
 	accessTokenSaved: boolean
@@ -67,10 +68,15 @@ function devicePollBackoffSeconds(intervalSeconds: number) {
 }
 
 export function createConnectOauthDeviceStep(host: ConnectOauthDeviceHost) {
-	const flow = createStateMachineStore<ConnectOauthDeviceState>(
-		connectOauthDeviceState,
-		{ status: 'idle' },
-	)
+	const flow = createActor(connectOauthDeviceState, {
+		snapshot: (() => {
+			const initialView = { status: 'idle' }
+			return connectOauthDeviceState.resolveState({
+				value: initialView.status,
+				context: uiContext(initialView),
+			})
+		})(),
+	}).start()
 	let devicePollTimer: ReturnType<typeof setTimeout> | null = null
 	let deviceCountdownTimer: ReturnType<typeof setInterval> | null = null
 	let generation = 0
@@ -81,7 +87,7 @@ export function createConnectOauthDeviceStep(host: ConnectOauthDeviceHost) {
 		expiresIn: session.expiresIn,
 	})
 	function view() {
-		const state = flow.getSnapshot()
+		const state = uiState<ConnectOauthDeviceState>(flow.getSnapshot())
 		return state.status === 'polling'
 			? display(state.session)
 			: state.status === 'error' || state.status === 'success'
@@ -97,22 +103,54 @@ export function createConnectOauthDeviceStep(host: ConnectOauthDeviceHost) {
 	function resetDeviceState() {
 		clearDeviceTimers()
 		generation++
-		if (flow.getSnapshot().status === 'starting') host.setSubmitting(false)
-		flow.transition({ status: 'idle' })
+		if (
+			uiState<ConnectOauthDeviceState>(flow.getSnapshot()).status === 'starting'
+		)
+			host.setSubmitting(false)
+		sendUiEvent(flow, {
+			...({
+				type: 'RESET',
+				data: uiContext({ status: 'idle' }).data,
+			} as Parameters<typeof flow.send>[0]),
+			requestId: generation,
+		})
 	}
-	function fail(message: string, device: DeviceDisplay | null) {
+	function fail(
+		message: string,
+		device: DeviceDisplay | null,
+		requestId = generation,
+	) {
 		clearDeviceTimers()
-		flow.transition({ status: 'error', message, view: device })
+		sendUiEvent(flow, {
+			...({
+				type: 'RESPONSE_ERROR',
+				data: uiContext({ status: 'error', message, view: device }).data,
+			} as Parameters<typeof flow.send>[0]),
+			requestId: requestId,
+		})
 		host.setStatus(message, 'error')
 	}
-	function finishDeviceSuccess(result: {
-		accessTokenSaved: boolean
-		refreshTokenSaved: boolean
-		hostApprovalLinks: unknown
-		nextSteps: unknown
-	}) {
+	function finishDeviceSuccess(
+		result: {
+			accessTokenSaved: boolean
+			refreshTokenSaved: boolean
+			hostApprovalLinks: unknown
+			nextSteps: unknown
+		},
+		requestId: number,
+	) {
 		const device = view()
-		if (!device || !flow.transition({ status: 'success', view: device })) return
+		if (
+			!device ||
+			!sendUiEvent(flow, {
+				...({
+					type: 'RESPONSE_OK',
+					data: uiContext({ status: 'success', view: device }).data,
+				} as Parameters<typeof flow.send>[0]),
+				requestId: requestId,
+			})
+		)
+			return
 		clearDeviceTimers()
 		persistConnectOauthOrgSlug(null)
 		host.onSuccess({
@@ -125,7 +163,10 @@ export function createConnectOauthDeviceStep(host: ConnectOauthDeviceHost) {
 		host.setStep('success')
 	}
 	function scheduleDevicePoll(delaySeconds: number) {
-		if (flow.getSnapshot().status !== 'polling') return
+		if (
+			uiState<ConnectOauthDeviceState>(flow.getSnapshot()).status !== 'polling'
+		)
+			return
 		const ownGeneration = generation
 		clearTimeout(devicePollTimer ?? undefined)
 		devicePollTimer = setTimeout(
@@ -136,14 +177,14 @@ export function createConnectOauthDeviceStep(host: ConnectOauthDeviceHost) {
 		)
 	}
 	function scheduleTransientRetry(message: string) {
-		const state = flow.getSnapshot()
+		const state = uiState<ConnectOauthDeviceState>(flow.getSnapshot())
 		if (state.status !== 'polling') return
 		host.setStatus(message, 'info')
 		scheduleDevicePoll(devicePollBackoffSeconds(state.session.interval))
 		host.update()
 	}
 	async function runDevicePoll() {
-		const current = flow.getSnapshot()
+		const current = uiState<ConnectOauthDeviceState>(flow.getSnapshot())
 		if (!host.getConfig() || current.status !== 'polling') return
 		const ownGeneration = generation
 		host.update()
@@ -155,10 +196,10 @@ export function createConnectOauthDeviceStep(host: ConnectOauthDeviceHost) {
 			})
 			if (ownGeneration !== generation) return
 			if (polled.ok && polled.status === 'approved') {
-				finishDeviceSuccess(polled)
+				finishDeviceSuccess(polled, ownGeneration)
 				return
 			}
-			const active = flow.getSnapshot()
+			const active = uiState<ConnectOauthDeviceState>(flow.getSnapshot())
 			if (active.status !== 'polling') return
 			if (!polled.ok) {
 				if (DEVICE_TERMINAL_POLL_STATUSES.has(polled.status)) {
@@ -179,13 +220,21 @@ export function createConnectOauthDeviceStep(host: ConnectOauthDeviceHost) {
 				)
 				return
 			}
-			flow.transition({
-				status: 'polling',
-				session: {
-					...active.session,
-					expiresIn: polled.expiresIn,
-					interval: polled.interval,
-				},
+			sendUiEvent(flow, {
+				...({
+					type: flow.getSnapshot().matches('polling')
+						? 'POLL_PENDING'
+						: 'SESSION_OK',
+					data: uiContext({
+						status: 'polling',
+						session: {
+							...active.session,
+							expiresIn: polled.expiresIn,
+							interval: polled.interval,
+						},
+					}).data,
+				} as Parameters<typeof flow.send>[0]),
+				requestId: ownGeneration,
 			})
 			host.setStatus(
 				polled.status === 'slow_down'
@@ -208,7 +257,7 @@ export function createConnectOauthDeviceStep(host: ConnectOauthDeviceHost) {
 	function startDeviceCountdown() {
 		if (deviceCountdownTimer) clearInterval(deviceCountdownTimer)
 		deviceCountdownTimer = setInterval(() => {
-			const current = flow.getSnapshot()
+			const current = uiState<ConnectOauthDeviceState>(flow.getSnapshot())
 			if (current.status !== 'polling') {
 				clearDeviceTimers()
 				return
@@ -221,12 +270,18 @@ export function createConnectOauthDeviceStep(host: ConnectOauthDeviceHost) {
 				host.update()
 				return
 			}
-			flow.transition({
-				status: 'polling',
-				session: {
-					...current.session,
-					expiresIn: current.session.expiresIn - 1,
-				},
+			sendUiEvent(flow, {
+				...({
+					type: 'TICK',
+					data: uiContext({
+						status: 'polling',
+						session: {
+							...current.session,
+							expiresIn: current.session.expiresIn - 1,
+						},
+					}).data,
+				} as Parameters<typeof flow.send>[0]),
+				requestId: generation,
 			})
 			host.update()
 		}, 1000)
@@ -235,7 +290,16 @@ export function createConnectOauthDeviceStep(host: ConnectOauthDeviceHost) {
 		const config = host.getConfig()
 		if (!config || host.getSubmitting()) return
 		resetDeviceState()
-		if (!flow.transition({ status: 'starting' })) return
+		if (
+			!sendUiEvent(flow, {
+				...({
+					type: 'START',
+					data: uiContext({ status: 'starting' }).data,
+				} as Parameters<typeof flow.send>[0]),
+				requestId: generation,
+			})
+		)
+			return
 		host.setSubmitting(true)
 		const ownGeneration = generation
 		host.update()
@@ -249,7 +313,15 @@ export function createConnectOauthDeviceStep(host: ConnectOauthDeviceHost) {
 				fail(started.error, null)
 				return
 			}
-			flow.transition({ status: 'polling', session: started })
+			sendUiEvent(flow, {
+				...({
+					type: flow.getSnapshot().matches('polling')
+						? 'POLL_PENDING'
+						: 'SESSION_OK',
+					data: uiContext({ status: 'polling', session: started }).data,
+				} as Parameters<typeof flow.send>[0]),
+				requestId: generation,
+			})
 			host.setStatus(
 				'Enter the code at the provider, then return here while we wait.',
 				'info',
@@ -279,7 +351,7 @@ export function createConnectOauthDeviceStep(host: ConnectOauthDeviceHost) {
 		host.setStep('connect')
 	}
 	function getView(): ConnectOauthDeviceStepView {
-		const state = flow.getSnapshot(),
+		const state = uiState<ConnectOauthDeviceState>(flow.getSnapshot()),
 			device = view()
 		return {
 			userCode: device?.userCode ?? '',
@@ -294,6 +366,7 @@ export function createConnectOauthDeviceStep(host: ConnectOauthDeviceHost) {
 	const render = (config: ConnectOauthConfig) =>
 		renderDeviceStep({ config, ...getView(), onRestart: restartToConnect })
 	return {
+		actor: flow,
 		resetDeviceState,
 		dispose: resetDeviceState,
 		handleDeviceConnect,

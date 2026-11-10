@@ -1,5 +1,7 @@
 /** @jsxImportSource @emotion/react */
-import { useStateMachine } from '#client/use-state-machine.ts'
+import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
+import { useCallback, useEffect, useId, useRef, type ReactNode } from 'react'
+import { useMachine } from '@xstate/react'
 import {
 	clipboardFeedbackState,
 	type ClipboardFeedbackState,
@@ -7,7 +9,6 @@ import {
 } from '#client/routes/clipboard-feedback-state.ts'
 import { renderIcon } from './icon.tsx'
 import type { CSSObject } from '@emotion/react'
-import { useEffect, useId, useRef, type ReactNode } from 'react'
 import { writeClipboardText } from '#client/clipboard.ts'
 import {
 	getChipButtonCss,
@@ -17,7 +18,6 @@ import {
 	getSecondaryButtonCss,
 	getSwapLabelCss,
 } from '#universal/styles/style-primitives.ts'
-
 export const onboardingCopiedConnectActionEvent =
 	'kody-onboarding-connect-copied'
 
@@ -111,10 +111,25 @@ function getCopyButtonCss(
  * changes size when the label swaps — the swap is a blur crossfade instead.
  */
 export function CopyTextButton(props: CopyTextButtonProps) {
-	const [copyFlow, transitionCopy] = useStateMachine<ClipboardFeedbackState>(
+	const [copyFlowSnapshot, , copyFlowActor] = useMachine(
 		clipboardFeedbackState,
-		{ status: 'idle' },
+		{
+			snapshot: (() => {
+				const initialView = { status: 'idle' }
+				return clipboardFeedbackState.resolveState({
+					value: initialView.status,
+					context: uiContext(initialView),
+				})
+			})(),
+		},
 	)
+	const copyFlow = uiState<ClipboardFeedbackState>(copyFlowSnapshot)
+	const transitionCopy = useCallback(
+		(event: Parameters<typeof copyFlowActor.send>[0]) =>
+			sendUiEvent(copyFlowActor, event),
+		[copyFlowActor],
+	)
+
 	const copyState = copyFlow.status === 'copying' ? 'idle' : copyFlow.status
 	const id = useId()
 	const mounted = useRef(false)
@@ -128,12 +143,21 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 	}, [])
 
 	async function copyValue(source: EventTarget | null) {
-		if (!transitionCopy({ status: 'copying' })) return
+		if (
+			!transitionCopy({
+				type: 'COPY',
+				data: uiContext({ status: 'copying' }).data,
+			} as Parameters<typeof copyFlowActor.send>[0])
+		)
+			return
 		if (resetTimer.current !== null) clearTimeout(resetTimer.current)
 		try {
 			await writeClipboardText(props.value)
 			if (!mounted.current) return
-			transitionCopy({ status: 'copied' })
+			transitionCopy({
+				type: 'RESPONSE_OK',
+				data: uiContext({ status: 'copied' }).data,
+			} as Parameters<typeof copyFlowActor.send>[0])
 			if (props.signalsConnectAction && source instanceof HTMLElement) {
 				source.dispatchEvent(
 					new CustomEvent(onboardingCopiedConnectActionEvent, {
@@ -143,12 +167,18 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 			}
 		} catch {
 			if (!mounted.current) return
-			transitionCopy({ status: 'error' })
+			transitionCopy({
+				type: 'RESPONSE_ERROR',
+				data: uiContext({ status: 'error' }).data,
+			} as Parameters<typeof copyFlowActor.send>[0])
 		}
 		if (resetTimer.current != null) clearTimeout(resetTimer.current)
 		resetTimer.current = setTimeout(() => {
 			resetTimer.current = null
-			transitionCopy({ status: 'idle' })
+			transitionCopy({
+				type: 'RESET',
+				data: uiContext({ status: 'idle' }).data,
+			} as Parameters<typeof copyFlowActor.send>[0])
 		}, 2000)
 	}
 

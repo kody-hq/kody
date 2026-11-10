@@ -19,7 +19,12 @@ import { twoFactorVerifyState } from './routes/two-factor-verify-state.ts'
 import { undoableActionState } from './routes/undoable-action-state.ts'
 import { usernameAvailabilityState } from './routes/username-availability-state.ts'
 import { usernameSignupState } from './routes/username-signup-state.ts'
+import { submissionGateState } from './routes/submission-gate-state.ts'
 export const stateMachines = [
+	{
+		machine: submissionGateState,
+		file: 'packages/worker/client/routes/submission-gate-state.ts',
+	},
 	{
 		machine: adminCodemodRunState,
 		file: 'packages/worker/client/routes/admin-codemod-run-state.ts',

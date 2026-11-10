@@ -1,3 +1,4 @@
+import { statesOf, isState } from '@kody-internal/shared/state-machine.ts'
 import {
 	inboundDeliveryState,
 	type InboundDeliveryState,
@@ -39,11 +40,12 @@ export const mailboxStorageKindValues = [
 ] as const
 export type MailboxStorageKind = (typeof mailboxStorageKindValues)[number]
 
-export const mailboxInboundDeliveryStateValues = inboundDeliveryState.states
+export const mailboxInboundDeliveryStateValues = statesOf(inboundDeliveryState)
 export type MailboxInboundDeliveryState = InboundDeliveryState
 
-export const mailboxSubscriptionEffectStateValues =
-	inboundSubscriptionEffectState.states
+export const mailboxSubscriptionEffectStateValues = statesOf(
+	inboundSubscriptionEffectState,
+)
 export type MailboxSubscriptionEffectState = InboundSubscriptionEffectState
 
 /** Canonical UTC ISO-8601 with milliseconds — lexical order matches time order. */
@@ -196,7 +198,7 @@ export function assertMailboxStorageKind(value: string): MailboxStorageKind {
 export function assertMailboxInboundDeliveryState(
 	value: string,
 ): MailboxInboundDeliveryState {
-	if (!inboundDeliveryState.is(value)) {
+	if (!isState(inboundDeliveryState, value)) {
 		throw new Error(
 			`Mailbox delivery event state is invalid; got ${JSON.stringify(value)}.`,
 		)
@@ -207,7 +209,7 @@ export function assertMailboxInboundDeliveryState(
 export function assertMailboxSubscriptionEffectState(
 	value: string,
 ): MailboxSubscriptionEffectState {
-	if (!inboundSubscriptionEffectState.is(value)) {
+	if (!isState(inboundSubscriptionEffectState, value)) {
 		throw new Error(
 			`Mailbox subscriptionEffectState is invalid; got ${JSON.stringify(value)}.`,
 		)

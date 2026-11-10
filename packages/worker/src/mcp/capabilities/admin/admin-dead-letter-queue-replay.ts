@@ -73,12 +73,13 @@ export const adminDeadLetterQueueReplayCapability = defineDomainCapability(
 							`Dead-letter message body was not JSON and cannot be replayed: ${ids}. Ack it instead.`,
 						)
 					}
+					const claimedAtMs = Date.now()
 					const claimed = await claimDeadLetterMessageForReplay(
 						ctx.env.APP_DB,
 						{
 							deadLetterQueue: queue.name,
 							messageId: message.messageId,
-							nowMs: Date.now(),
+							nowMs: claimedAtMs,
 							staleClaimMs: deadLetterReplayStaleClaimMs,
 						},
 					)
@@ -104,6 +105,7 @@ export const adminDeadLetterQueueReplayCapability = defineDomainCapability(
 						await releaseDeadLetterReplayClaim(ctx.env.APP_DB, {
 							deadLetterQueue: queue.name,
 							messageId: message.messageId,
+							claimedAtMs,
 						}).catch(() => {})
 						throw new Error(
 							`Replay send failed for ${ids}: ${error instanceof Error ? error.message : String(error)}`,
@@ -114,6 +116,7 @@ export const adminDeadLetterQueueReplayCapability = defineDomainCapability(
 						await deleteParkedDeadLetterMessage(ctx.env.APP_DB, {
 							deadLetterQueue: queue.name,
 							messageId: message.messageId,
+							claimedAtMs,
 						})
 					} catch (error) {
 						reportDeadLetterFailure({

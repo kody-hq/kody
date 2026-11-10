@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { useSingleFlight } from '#client/use-single-flight.ts'
+import { useActorRef } from '@xstate/react'
+import { submissionGateState } from '#client/routes/submission-gate-state.ts'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 import {
@@ -38,7 +39,6 @@ import {
 	AccountManagementMessage,
 	accountInputCss,
 } from './account-management-components.tsx'
-
 const addAccountLinkCss: CSSObject = {
 	...primaryLinkCss,
 	justifySelf: 'start',
@@ -312,7 +312,7 @@ export function RotateCredentialsForm(props: {
 	const [clientId, setClientId] = useState(props.app.clientId)
 	const [clientSecret, setClientSecret] = useState('')
 	const [confirmed, setConfirmed] = useState(false)
-	const runExclusive = useSingleFlight()
+	const runExclusiveActor = useActorRef(submissionGateState)
 	const status = mutation.isPending ? 'saving' : 'idle'
 	const [feedback, setFeedback] = useState<UiFeedback | null>(() =>
 		createUiFeedback(null, 'info'),
@@ -332,72 +332,78 @@ export function RotateCredentialsForm(props: {
 	}
 
 	async function submit(app: AccountOauthAppListItem) {
-		return runExclusive(async () => {
-			if (status === 'saving') return
-			const nextClientId = clientId.trim()
-			const nextClientSecret = clientSecret.trim()
-			if (!confirmed) {
-				setFeedback(
-					createUiFeedback(
-						'Confirm that every connection on this app should use the new credentials.',
-						'error',
-					),
-				)
-				return
-			}
-			if (!nextClientId && !nextClientSecret) {
-				setFeedback(
-					createUiFeedback(
-						'Provide a new client id and/or client secret.',
-						'error',
-					),
-				)
-				return
-			}
-			if (nextClientId === app.clientId && !nextClientSecret) {
-				setFeedback(
-					createUiFeedback(
-						'Enter a new client id or client secret to rotate.',
-						'error',
-					),
-				)
-				return
-			}
+		if (!runExclusiveActor.getSnapshot().can({ type: 'SUBMIT' })) return
+		runExclusiveActor.send({ type: 'SUBMIT' })
+		try {
+			return await (async () => {
+				if (status === 'saving') return
+				const nextClientId = clientId.trim()
+				const nextClientSecret = clientSecret.trim()
+				if (!confirmed) {
+					setFeedback(
+						createUiFeedback(
+							'Confirm that every connection on this app should use the new credentials.',
+							'error',
+						),
+					)
+					return
+				}
+				if (!nextClientId && !nextClientSecret) {
+					setFeedback(
+						createUiFeedback(
+							'Provide a new client id and/or client secret.',
+							'error',
+						),
+					)
+					return
+				}
+				if (nextClientId === app.clientId && !nextClientSecret) {
+					setFeedback(
+						createUiFeedback(
+							'Enter a new client id or client secret to rotate.',
+							'error',
+						),
+					)
+					return
+				}
 
-			setFeedback(createUiFeedback(null))
-			const isCurrentSubmitter = captureSubmitter()
-			try {
-				const rotatedApp = await mutation.mutateAsync({
-					orgSlug,
-					body: {
-						appSlug: app.slug,
-						...(nextClientId ? { clientId: nextClientId } : {}),
-						...(nextClientSecret ? { clientSecret: nextClientSecret } : {}),
-						confirm: true,
-					},
-				})
-				if (!isCurrentSubmitter()) return
-				reset(rotatedApp)
-				setFeedback(
-					createUiFeedback(
-						'Rotated shared credentials for this integration.',
-						'info',
-					),
-				)
-				props.onRotated(rotatedApp)
-			} catch (error) {
-				if (!isCurrentSubmitter()) return
+				setFeedback(createUiFeedback(null))
+				const isCurrentSubmitter = captureSubmitter()
+				try {
+					const rotatedApp = await mutation.mutateAsync({
+						orgSlug,
+						body: {
+							appSlug: app.slug,
+							...(nextClientId ? { clientId: nextClientId } : {}),
+							...(nextClientSecret ? { clientSecret: nextClientSecret } : {}),
+							confirm: true,
+						},
+					})
+					if (!isCurrentSubmitter()) return
+					reset(rotatedApp)
+					setFeedback(
+						createUiFeedback(
+							'Rotated shared credentials for this integration.',
+							'info',
+						),
+					)
+					props.onRotated(rotatedApp)
+				} catch (error) {
+					if (!isCurrentSubmitter()) return
 
-				setFeedback(
-					createUiFeedback(
-						error instanceof Error
-							? error.message
-							: 'Unable to rotate credentials.',
-						'error',
-					),
-				)
-			}
-		})
+					setFeedback(
+						createUiFeedback(
+							error instanceof Error
+								? error.message
+								: 'Unable to rotate credentials.',
+							'error',
+						),
+					)
+				}
+			})()
+		} finally {
+			runExclusiveActor.send({ type: 'SETTLED' })
+		}
 	}
 
 	if (integrationListId(props.app) !== boundAppId) {

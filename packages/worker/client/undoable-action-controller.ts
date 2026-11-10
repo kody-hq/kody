@@ -1,4 +1,5 @@
-import { createStateMachineStore } from './state-machine-store.ts'
+import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
+import { createActor } from 'xstate'
 import {
 	undoableActionState,
 	type UndoableActionStatus,
@@ -17,9 +18,17 @@ type State =
 			promise: Promise<void>
 	  }
 export function createUndoableActionController() {
-	const store = createStateMachineStore<State>(undoableActionState, {
-		status: 'idle',
-	})
+	const store = createActor(undoableActionState, {
+		snapshot: (() => {
+			const initialView = {
+				status: 'idle',
+			}
+			return undoableActionState.resolveState({
+				value: initialView.status,
+				context: uiContext(initialView),
+			})
+		})(),
+	}).start()
 	let timer: ReturnType<typeof setTimeout> | null = null
 	let tail = Promise.resolve()
 	let disposed = false
@@ -30,7 +39,7 @@ export function createUndoableActionController() {
 	function settle(
 		status: Exclude<UndoableActionStatus, 'idle' | 'waiting'>,
 	): Promise<void> {
-		const current = store.getSnapshot()
+		const current = uiState<State>(store.getSnapshot())
 		if (current.status === 'idle') return Promise.resolve()
 		if (current.status !== 'waiting') return current.promise
 		clear()
@@ -41,11 +50,17 @@ export function createUndoableActionController() {
 					: current.action.onUndo?.(),
 			)
 			.finally(() => {
-				const active = store.getSnapshot()
+				const active = uiState<State>(store.getSnapshot())
 				if ('promise' in active && active.promise === promise)
-					store.transition({ status: 'idle' })
+					sendUiEvent(store, {
+						type: 'SETTLED',
+						data: uiContext({ status: 'idle' }).data,
+					} as Parameters<typeof store.send>[0])
 			})
-		store.transition({ status, promise })
+		store.send({
+			type: status === 'committing' ? 'COMMIT' : 'UNDO',
+			data: { promise },
+		})
 		return promise
 	}
 	const commit = (_options?: { silent?: boolean }) => settle('committing')
@@ -53,7 +68,10 @@ export function createUndoableActionController() {
 	function start(action: UndoableActionInput, timeoutMs = 8_000) {
 		const next = tail.then(async () => {
 			await commit()
-			store.transition({ status: 'waiting', action })
+			sendUiEvent(store, {
+				type: 'SCHEDULE',
+				data: uiContext({ status: 'waiting', action }).data,
+			} as Parameters<typeof store.send>[0])
 			if (disposed) await commit()
 			else
 				timer = setTimeout(() => {
@@ -70,7 +88,8 @@ export function createUndoableActionController() {
 		await tail
 	}
 	return {
-		...store,
+		actor: store,
+		getSnapshot: () => uiState<State>(store.getSnapshot()),
 		start,
 		undo,
 		commit,

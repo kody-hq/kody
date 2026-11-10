@@ -1,3 +1,4 @@
+import { sqlSourcesOf, isState } from '@kody-internal/shared/state-machine.ts'
 import { followState } from './follow-state.ts'
 import {
 	followRecentUpdatesPerFollow,
@@ -15,8 +16,8 @@ import {
 	isFollowTargetKind,
 } from './types.ts'
 
-const pauseGuard = followState.guard({ from: 'active', to: 'paused' })
-const resumeGuard = followState.guard({ from: 'paused', to: 'active' })
+const pauseGuard = sqlSourcesOf(followState, 'PAUSE', ['active'])
+const resumeGuard = sqlSourcesOf(followState, 'REAUTHORIZE', ['paused'])
 
 export function hasAppDb(db: D1Database | undefined | null): db is D1Database {
 	return Boolean(db && typeof db.prepare === 'function')
@@ -61,7 +62,7 @@ function mapFollow(row: Record<string, unknown>): FollowRecord {
 }
 
 function isFollowStatus(value: string): value is FollowStatus {
-	return followState.is(value)
+	return isState(followState, value)
 }
 
 function pauseReason(value: unknown): FollowPauseReason | null {

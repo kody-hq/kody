@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { createStateMachineStore } from '#client/state-machine-store.ts'
+import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
+import { createActor } from 'xstate'
 import {
 	landingPointerState,
 	type LandingPointerState,
@@ -30,7 +31,6 @@ import {
 	wrapPagerIndex,
 	wrapUnitInterval,
 } from '#client/routes/landing-testimonials-motion.ts'
-
 const USER_NUDGE_RESUME_MS = 500
 
 /**
@@ -174,10 +174,15 @@ function armTestimonialsMotion(scroller: HTMLElement, signal: AbortSignal) {
 	let lastTs = 0
 	let raf = 0
 	let offset = 0
-	const gesture = createStateMachineStore<LandingPointerState>(
-		landingPointerState,
-		{ status: 'idle' },
-	)
+	const gesture = createActor(landingPointerState, {
+		snapshot: (() => {
+			const initialView = { status: 'idle' }
+			return landingPointerState.resolveState({
+				value: initialView.status,
+				context: uiContext(initialView),
+			})
+		})(),
+	}).start()
 	let coastVelocity = 0
 	let suppressClick = false
 
@@ -311,7 +316,7 @@ function armTestimonialsMotion(scroller: HTMLElement, signal: AbortSignal) {
 		if (signal.aborted) return
 		raf = requestAnimationFrame(frame)
 		if (stride <= 0) measure()
-		if (gesture.getSnapshot().status !== 'idle') {
+		if (uiState<LandingPointerState>(gesture.getSnapshot()).status !== 'idle') {
 			lastTs = 0
 			return
 		}
@@ -362,7 +367,7 @@ function armTestimonialsMotion(scroller: HTMLElement, signal: AbortSignal) {
 	}
 
 	function recordPointerSamples(event: PointerEvent) {
-		const current = gesture.getSnapshot()
+		const current = uiState<LandingPointerState>(gesture.getSnapshot())
 		if (current.status === 'idle') return
 		const coalesced =
 			typeof event.getCoalescedEvents === 'function'
@@ -375,7 +380,13 @@ function armTestimonialsMotion(scroller: HTMLElement, signal: AbortSignal) {
 				x: entry.clientX,
 			})
 		}
-		gesture.transition({ ...current, samples })
+		sendUiEvent(gesture, {
+			...({
+				type: 'SAMPLE',
+				data: uiContext({ ...current, samples }).data,
+			} as Parameters<typeof gesture.send>[0]),
+			requestId: event.pointerId,
+		})
 	}
 
 	function captureScrollerPointer(id: number) {
@@ -389,10 +400,16 @@ function armTestimonialsMotion(scroller: HTMLElement, signal: AbortSignal) {
 	}
 
 	function beginHorizontalDrag(event: PointerEvent) {
-		const current = gesture.getSnapshot()
+		const current = uiState<LandingPointerState>(gesture.getSnapshot())
 		if (
 			current.status !== 'pending' ||
-			!gesture.transition({ ...current, status: 'drag' })
+			!sendUiEvent(gesture, {
+				...({
+					type: 'DRAG',
+					data: uiContext({ ...current, status: 'drag' }).data,
+				} as Parameters<typeof gesture.send>[0]),
+				requestId: event.pointerId,
+			})
 		)
 			return
 		suppressClick = true
@@ -402,10 +419,16 @@ function armTestimonialsMotion(scroller: HTMLElement, signal: AbortSignal) {
 	}
 
 	function endPointerGesture(event: PointerEvent) {
-		const current = gesture.getSnapshot()
+		const current = uiState<LandingPointerState>(gesture.getSnapshot())
 		if (current.status === 'idle' || current.pointerId !== event.pointerId)
 			return
-		gesture.transition({ status: 'idle' })
+		sendUiEvent(gesture, {
+			...({
+				type: 'RELEASE',
+				data: uiContext({ status: 'idle' }).data,
+			} as Parameters<typeof gesture.send>[0]),
+			requestId: event.pointerId,
+		})
 		releaseCapturedPointer(event.pointerId)
 		scroller.style.touchAction = ''
 		const finished = finishPointerGesture({
@@ -435,15 +458,22 @@ function armTestimonialsMotion(scroller: HTMLElement, signal: AbortSignal) {
 
 	function onPointerDown(event: PointerEvent) {
 		if (event.pointerType === 'mouse' && event.button !== 0) return
-		if (gesture.getSnapshot().status !== 'idle') return
+		if (uiState<LandingPointerState>(gesture.getSnapshot()).status !== 'idle')
+			return
 		if (
-			!gesture.transition({
-				status: 'pending',
-				pointerId: event.pointerId,
-				startX: event.clientX,
-				startY: event.clientY,
-				lastX: event.clientX,
-				samples: [],
+			!sendUiEvent(gesture, {
+				...({
+					type: 'POINTER_DOWN',
+					data: uiContext({
+						status: 'pending',
+						pointerId: event.pointerId,
+						startX: event.clientX,
+						startY: event.clientY,
+						lastX: event.clientX,
+						samples: [],
+					}).data,
+				} as Parameters<typeof gesture.send>[0]),
+				requestId: event.pointerId,
 			})
 		)
 			return
@@ -452,7 +482,7 @@ function armTestimonialsMotion(scroller: HTMLElement, signal: AbortSignal) {
 		recordPointerSamples(event)
 	}
 	function onPointerMove(event: PointerEvent) {
-		let current = gesture.getSnapshot()
+		let current = uiState<LandingPointerState>(gesture.getSnapshot())
 		if (current.status === 'idle' || current.pointerId !== event.pointerId)
 			return
 		recordPointerSamples(event)
@@ -463,17 +493,35 @@ function armTestimonialsMotion(scroller: HTMLElement, signal: AbortSignal) {
 			})
 			if (intent === 'pending') return
 			if (intent === 'scroll') {
-				gesture.transition({ ...current, status: 'scroll' })
-				gesture.transition({ status: 'idle' })
+				sendUiEvent(gesture, {
+					...({
+						type: 'SCROLL',
+						data: uiContext({ ...current, status: 'scroll' }).data,
+					} as Parameters<typeof gesture.send>[0]),
+					requestId: event.pointerId,
+				})
+				sendUiEvent(gesture, {
+					...({
+						type: 'RELEASE',
+						data: uiContext({ status: 'idle' }).data,
+					} as Parameters<typeof gesture.send>[0]),
+					requestId: event.pointerId,
+				})
 				releaseCapturedPointer(event.pointerId)
 				return
 			}
 			beginHorizontalDrag(event)
 		}
-		current = gesture.getSnapshot()
+		current = uiState<LandingPointerState>(gesture.getSnapshot())
 		if (current.status !== 'drag') return
 		offset += current.lastX - event.clientX
-		gesture.transition({ ...current, lastX: event.clientX })
+		sendUiEvent(gesture, {
+			...({
+				type: 'MOVE',
+				data: uiContext({ ...current, lastX: event.clientX }).data,
+			} as Parameters<typeof gesture.send>[0]),
+			requestId: event.pointerId,
+		})
 		markUserNudge()
 		apply()
 	}
@@ -577,6 +625,7 @@ function armTestimonialsMotion(scroller: HTMLElement, signal: AbortSignal) {
 	signal.addEventListener(
 		'abort',
 		() => {
+			gesture.stop()
 			cancelAnimationFrame(raf)
 			if (userNudgeTimer != null) clearTimeout(userNudgeTimer)
 			visibilityObserver?.disconnect()

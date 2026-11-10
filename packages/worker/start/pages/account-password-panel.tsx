@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { useSingleFlight } from '#client/use-single-flight.ts'
+import { useActorRef } from '@xstate/react'
+import { submissionGateState } from '#client/routes/submission-gate-state.ts'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
@@ -24,7 +25,6 @@ import {
 	getGhostButtonCss,
 	getPillButtonCss,
 } from '#universal/styles/style-primitives.ts'
-
 export function AccountPasswordPanel(props: {
 	hasUsablePassword: boolean
 	onPasswordSet: () => void
@@ -60,7 +60,7 @@ export function AccountPasswordPanel(props: {
 	const [currentPassword, setCurrentPassword] = useState('')
 	const [newPassword, setNewPassword] = useState('')
 	const [confirmPassword, setConfirmPassword] = useState('')
-	const runExclusive = useSingleFlight()
+	const runExclusiveActor = useActorRef(submissionGateState)
 	const [feedback, setFeedback] = useState<UiFeedback | null>(() =>
 		createUiFeedback(null, 'info'),
 	)
@@ -84,61 +84,69 @@ export function AccountPasswordPanel(props: {
 
 	async function handleSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault()
-		return runExclusive(async () => {
-			if (props.hasUsablePassword && !currentPassword) {
-				setFeedback(createUiFeedback('Current password is required.', 'error'))
-				return
-			}
-			if (!newPassword || !confirmPassword) {
-				setFeedback(
-					createUiFeedback(
-						'New password and confirmation are required.',
-						'error',
-					),
-				)
-				return
-			}
-			if (newPassword !== confirmPassword) {
-				setFeedback(
-					createUiFeedback(
-						'New password and confirmation do not match.',
-						'error',
-					),
-				)
-				return
-			}
-
-			setFeedback(createUiFeedback(null, 'info'))
-
-			const submittedScope = scope.current
-			try {
-				const payload = await mutation.mutateAsync({
-					...(props.hasUsablePassword ? { currentPassword } : {}),
-					newPassword,
-				})
-				if (!submittedScope || scope.current !== submittedScope) return
-				setCurrentPassword('')
-				setNewPassword('')
-				setConfirmPassword('')
-				setFeedback(
-					createUiFeedback(payload.message ?? 'Password updated.', 'info'),
-				)
-				if (!props.hasUsablePassword) {
-					props.onPasswordSet()
+		if (!runExclusiveActor.getSnapshot().can({ type: 'SUBMIT' })) return
+		runExclusiveActor.send({ type: 'SUBMIT' })
+		try {
+			return await (async () => {
+				if (props.hasUsablePassword && !currentPassword) {
+					setFeedback(
+						createUiFeedback('Current password is required.', 'error'),
+					)
+					return
 				}
-				toast.success('Password updated.')
-			} catch (error) {
-				if (!submittedScope || scope.current !== submittedScope) return
-				setFeedback(
-					createUiFeedback(
-						error instanceof Error
-							? error.message
-							: 'Unable to update your password.',
-						'error',
-					),
-				)
-			}
-		})
+				if (!newPassword || !confirmPassword) {
+					setFeedback(
+						createUiFeedback(
+							'New password and confirmation are required.',
+							'error',
+						),
+					)
+					return
+				}
+				if (newPassword !== confirmPassword) {
+					setFeedback(
+						createUiFeedback(
+							'New password and confirmation do not match.',
+							'error',
+						),
+					)
+					return
+				}
+
+				setFeedback(createUiFeedback(null, 'info'))
+
+				const submittedScope = scope.current
+				try {
+					const payload = await mutation.mutateAsync({
+						...(props.hasUsablePassword ? { currentPassword } : {}),
+						newPassword,
+					})
+					if (!submittedScope || scope.current !== submittedScope) return
+					setCurrentPassword('')
+					setNewPassword('')
+					setConfirmPassword('')
+					setFeedback(
+						createUiFeedback(payload.message ?? 'Password updated.', 'info'),
+					)
+					if (!props.hasUsablePassword) {
+						props.onPasswordSet()
+					}
+					toast.success('Password updated.')
+				} catch (error) {
+					if (!submittedScope || scope.current !== submittedScope) return
+					setFeedback(
+						createUiFeedback(
+							error instanceof Error
+								? error.message
+								: 'Unable to update your password.',
+							'error',
+						),
+					)
+				}
+			})()
+		} finally {
+			runExclusiveActor.send({ type: 'SETTLED' })
+		}
 	}
 
 	{

@@ -1,3 +1,7 @@
+import {
+	IllegalStateTransitionError,
+	nextState,
+} from '@kody-internal/shared/state-machine.ts'
 import { backupExportState } from './backup-export-state.ts'
 import {
 	BackupError,
@@ -360,7 +364,24 @@ export async function awaitExportReady(
 				}
 				restarts += 1
 				const next = await startD1Export(env, options)
-				backupExportState.assert(state.kind, next.kind)
+				nextState(backupExportState, state.kind, {
+					type: (() => {
+						switch (next.kind as string) {
+							case 'complete':
+								return 'EXPORT_READY' as const
+							case 'pending':
+								return 'EXPORT_PENDING' as const
+							case 'lost':
+								return 'EXPORT_LOST' as const
+							default:
+								throw new IllegalStateTransitionError(
+									backupExportState.id,
+									state.kind,
+									{ type: String(next.kind) },
+								)
+						}
+					})(),
+				})
 				state = next
 				continue
 			}
@@ -373,7 +394,24 @@ export async function awaitExportReady(
 				}
 				polls += 1
 				const next = await pollD1Export(env, state.bookmark, options)
-				backupExportState.assert(state.kind, next.kind)
+				nextState(backupExportState, state.kind, {
+					type: (() => {
+						switch (next.kind as string) {
+							case 'complete':
+								return 'EXPORT_READY' as const
+							case 'pending':
+								return 'EXPORT_PENDING' as const
+							case 'lost':
+								return 'EXPORT_LOST' as const
+							default:
+								throw new IllegalStateTransitionError(
+									backupExportState.id,
+									state.kind,
+									{ type: String(next.kind) },
+								)
+						}
+					})(),
+				})
 				state = next
 				if (state.kind === 'complete') return state
 				if (state.kind === 'lost') continue

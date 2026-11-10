@@ -1,7 +1,8 @@
 /** @jsxImportSource @emotion/react */
+import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
+import { useCallback, useEffect } from 'react'
+import { useMachine } from '@xstate/react'
 import type { CSSObject } from '@emotion/react'
-import { useEffect } from 'react'
-import { useStateMachine } from '#client/use-state-machine.ts'
 import {
 	publishCommitCheckState,
 	type PublishCheckAttempt,
@@ -9,7 +10,6 @@ import {
 } from '#client/routes/publish-commit-check-state.ts'
 import type { AccountPackagePublishCheckPayload } from '#universal/loader-data.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-
 export type PublishCommitChecksState = CommitChecksState
 
 type CheckPublishCommit = (input: {
@@ -27,21 +27,64 @@ export function usePublishCommitChecks(input: {
 }): PublishCommitChecksState {
 	const { packageId, commit, check } = input
 	const key = commit ? `${packageId}:${commit}` : null
-	const [attempt, transition] = useStateMachine<PublishCheckAttempt>(
+	const [attemptSnapshot, , attemptActor] = useMachine(
 		publishCommitCheckState,
-		key ? { status: 'running', key } : { status: 'idle' },
+		{
+			snapshot: (() => {
+				const initialView = key
+					? { status: 'running', key }
+					: { status: 'idle' }
+				return publishCommitCheckState.resolveState({
+					value: initialView.status,
+					context: uiContext(initialView),
+				})
+			})(),
+		},
 	)
+	const attempt = uiState<PublishCheckAttempt>(attemptSnapshot)
+	const transition = useCallback(
+		(event: Parameters<typeof attemptActor.send>[0]) =>
+			sendUiEvent(attemptActor, event),
+		[attemptActor],
+	)
+
 	useEffect(() => {
+		const requestId = {}
+
 		if (!commit || !key) {
-			transition({ status: 'idle' })
+			transition({
+				...({
+					type: 'CLEAR_COMMIT',
+					data: uiContext({ status: 'idle' }).data,
+				} as Parameters<typeof attemptActor.send>[0]),
+				requestId: requestId,
+			})
 			return
 		}
-		transition({ status: 'running', key })
+		transition({
+			...({
+				type: 'CHECK_COMMIT',
+				data: uiContext({ status: 'running', key }).data,
+			} as Parameters<typeof attemptActor.send>[0]),
+			requestId: requestId,
+		})
 		let current = true
 		const settle = (
 			state: Exclude<PublishCommitChecksState, { status: 'idle' }>,
 		) => {
-			if (current) transition({ ...state, key })
+			if (current)
+				transition({
+					...({
+						type:
+							state.status === 'passed'
+								? 'CHECK_PASSED'
+								: state.status === 'failed'
+									? 'CHECK_FAILED'
+									: 'CHECK_UNAVAILABLE',
+						data: uiContext({ ...state, key }).data,
+					} as Parameters<typeof attemptActor.send>[0]),
+					requestId: requestId,
+				})
 		}
 		check({ data: { packageId, commit } })
 			.then((result) => {

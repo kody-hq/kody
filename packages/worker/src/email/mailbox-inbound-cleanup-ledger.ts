@@ -1,3 +1,4 @@
+import { sqlSourcesOf, nextState } from '@kody-internal/shared/state-machine.ts'
 import { inboundDeliveryState } from './inbound-delivery-state.ts'
 import {
 	assertMailboxCanonicalIsoTimestamp,
@@ -19,30 +20,36 @@ import {
 } from './mailbox-inbound-ledger.ts'
 import { mailboxInboundOrphanVerificationMs } from './mailbox-inbound-ledger-shared.ts'
 
-const deliveryCleaningToPendingGuard = inboundDeliveryState.guard({
-	from: 'cleaning',
-	to: 'pending',
-})
-const deliveryPendingToCleaningGuard = inboundDeliveryState.guard({
-	from: 'pending',
-	to: 'cleaning',
-})
-const deliveryStoringToCleaningGuard = inboundDeliveryState.guard({
-	from: 'storing',
-	to: 'cleaning',
-})
-const deliveryCleaningToCleaningGuard = inboundDeliveryState.guard({
-	from: 'cleaning',
-	to: 'cleaning',
-})
-const deliveryOrphanCleanedToCleaningGuard = inboundDeliveryState.guard({
-	from: 'orphan-cleaned',
-	to: 'cleaning',
-})
-const deliveryCleaningToOrphanCleanedGuard = inboundDeliveryState.guard({
-	from: 'cleaning',
-	to: 'orphan-cleaned',
-})
+const deliveryCleaningToPendingGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'RELEASE_LEASE',
+	['cleaning'],
+)
+const deliveryPendingToCleaningGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_CLEANUP',
+	['pending'],
+)
+const deliveryStoringToCleaningGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_CLEANUP',
+	['storing'],
+)
+const deliveryCleaningToCleaningGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_CLEANUP',
+	['cleaning'],
+)
+const deliveryOrphanCleanedToCleaningGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_CLEANUP',
+	['orphan-cleaned'],
+)
+const deliveryCleaningToOrphanCleanedGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'COMPLETE_CLEANUP',
+	['cleaning'],
+)
 
 export function claimMailboxInboundDeliveryCleanup(
 	sql: SqlStorage,
@@ -88,7 +95,7 @@ export function claimMailboxInboundDeliveryCleanup(
 	if (!claimable) return { status: 'not-claimed', delivery: current }
 
 	const cleanupLease = crypto.randomUUID()
-	inboundDeliveryState.assert(current.state, 'cleaning')
+	nextState(inboundDeliveryState, current.state, { type: 'CLAIM_CLEANUP' })
 	const next: MailboxInboundDeliverySnapshot = {
 		...current,
 		state: 'cleaning',
@@ -162,7 +169,7 @@ export function releaseMailboxInboundDeliveryCleanup(
 	) {
 		return { status: 'not-held' }
 	}
-	inboundDeliveryState.assert(current.state, 'pending')
+	nextState(inboundDeliveryState, current.state, { type: 'RELEASE_LEASE' })
 	const next: MailboxInboundDeliverySnapshot = {
 		...current,
 		state: 'pending',
@@ -221,7 +228,7 @@ export function markMailboxInboundDeliveryOrphanCleaned(
 		input.outcome === 'deleted'
 			? mailboxInboundOrphanVerificationMs
 			: mailboxInboundReconciliationRetryMs
-	inboundDeliveryState.assert(current.state, 'orphan-cleaned')
+	nextState(inboundDeliveryState, current.state, { type: 'COMPLETE_CLEANUP' })
 	const next: MailboxInboundDeliverySnapshot = {
 		...current,
 		state: 'orphan-cleaned',

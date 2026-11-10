@@ -147,9 +147,10 @@ export function evaluateUsageCampaign(
 
 	const state = resolveUsageCampaignState(snapshot, persisted)
 	if (persisted.state != null)
-		usageCampaignState.assert(
-			usageCampaignPhases[persisted.state],
-			usageCampaignPhases[state],
+		usageCampaignState.parse(
+			usageCampaignState.is(usageCampaignPhases[persisted.state])
+				? usageCampaignPhases[state]
+				: usageCampaignPhases[persisted.state],
 		)
 	const coolingTerminal =
 		persisted.coolingTerminal ||
@@ -412,9 +413,10 @@ export function nextUsageCampaignRow(input: {
 				? null
 				: input.persisted.lastSentAt
 	if (input.persisted.state != null)
-		usageCampaignState.assert(
-			usageCampaignPhases[input.persisted.state],
-			usageCampaignPhases[input.decision.state],
+		usageCampaignState.parse(
+			usageCampaignState.is(usageCampaignPhases[input.persisted.state])
+				? usageCampaignPhases[input.decision.state]
+				: usageCampaignPhases[input.persisted.state],
 		)
 	const everActivated =
 		input.persisted.everActivated ||

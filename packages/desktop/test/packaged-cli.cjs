@@ -75,6 +75,13 @@ const runtime = JSON.parse(
  const load = require('node:module').createRequire(require('node:path').join(process.argv[1],'app/package.json'))
  const cliLoad = require('node:module').createRequire(load.resolve('@kodycodes/cli'))
  cliLoad('@napi-rs/keyring')
+ const { createActor } = load('xstate')
+ const { updateReadinessState } = load('./updates.cjs')
+ const actor = createActor(updateReadinessState).start()
+ actor.send({ type: 'DOWNLOAD' })
+ if (actor.getSnapshot().value !== 'downloaded') throw new Error('Packaged XState actor failed')
+ actor.stop()
+ if (!load.resolve('xstate').startsWith(require('node:path').join(process.argv[1], 'app', 'node_modules'))) throw new Error('XState resolved outside the packaged app')
  console.log(JSON.stringify({platform:process.platform,arch:process.arch,electron:process.versions.electron}))
 `,
 			resources,

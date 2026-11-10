@@ -1,6 +1,8 @@
 /** @jsxImportSource @emotion/react */
-import { useStateMachine } from '#client/use-state-machine.ts'
-import { useSingleFlight } from '#client/use-single-flight.ts'
+import { useActorRef, useMachine } from '@xstate/react'
+import { submissionGateState } from '#client/routes/submission-gate-state.ts'
+import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
+import { useCallback, useEffect, useState } from 'react'
 import {
 	passkeyCeremonyState,
 	type PasskeyCeremonyState,
@@ -32,7 +34,6 @@ import {
 	useQueryClient,
 	type QueryKey,
 } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
 import {
 	formatNullableTimestamp,
 	formatTimestamp,
@@ -48,7 +49,6 @@ import {
 	AccountManagementShell,
 	AccountPageHeader,
 } from './account-management-components.tsx'
-
 type PasskeyListItem = {
 	id: string
 	name: string
@@ -79,11 +79,28 @@ export function AccountPasskeysPage({
 	currentHref: string
 }) {
 	const webauthnRegistrationOptions = useServerFn(webauthnRegistrationOptionsFn)
-	const [ceremony, transitionCeremony, getCeremony] =
-		useStateMachine<PasskeyCeremonyState>(passkeyCeremonyState, {
-			status: 'idle',
-		})
-	const runExclusive = useSingleFlight()
+	const [ceremonySnapshot, , ceremonyActor] = useMachine(passkeyCeremonyState, {
+		snapshot: (() => {
+			const initialView = {
+				status: 'idle',
+			}
+			return passkeyCeremonyState.resolveState({
+				value: initialView.status,
+				context: uiContext(initialView),
+			})
+		})(),
+	})
+	const ceremony = uiState<PasskeyCeremonyState>(ceremonySnapshot)
+	const transitionCeremony = useCallback(
+		(event: Parameters<typeof ceremonyActor.send>[0]) =>
+			sendUiEvent(ceremonyActor, event),
+		[ceremonyActor],
+	)
+	const getCeremony = useCallback(
+		() => uiState<PasskeyCeremonyState>(ceremonyActor.getSnapshot()),
+		[ceremonyActor],
+	)
+	const runExclusiveActor = useActorRef(submissionGateState)
 	const passkeys = payload.passkeys
 	const client = useQueryClient()
 	const capture = useSubmitterScope()
@@ -128,63 +145,90 @@ export function AccountPasskeysPage({
 			if (current.status !== 'idle') current.controller.abort()
 			WebAuthnAbortService.cancelCeremony()
 		}
-	}, [])
+	}, [getCeremony])
 
 	async function handleRegisterPasskey() {
-		return runExclusive(async () => {
-			const controller = new AbortController()
-			if (!transitionCeremony({ status: 'requesting', controller })) return
-			const isCurrent = capture()
-			setFeedback(createUiFeedback(null))
-
-			try {
-				const optionsPayload = await webauthnRegistrationOptions({
-					data: {},
-					signal: controller.signal,
-				})
-				if (!optionsPayload) return
+		if (!runExclusiveActor.getSnapshot().can({ type: 'SUBMIT' })) return
+		runExclusiveActor.send({ type: 'SUBMIT' })
+		try {
+			return await (async () => {
+				const controller = new AbortController()
 				if (
-					!optionsPayload.successful ||
-					!optionsPayload?.ok ||
-					!optionsPayload.options
-				) {
-					throw new Error(
-						optionsPayload?.error || 'Unable to start passkey registration.',
-					)
-				}
-
-				if (controller.signal.aborted || !isCurrent()) return
-				transitionCeremony({ status: 'ceremony', controller })
-				const registrationResponse = await startRegistration({
-					optionsJSON: optionsPayload.options,
-				})
-
-				controller.signal.throwIfAborted()
-				await registration.mutateAsync({
-					response: registrationResponse,
-					invalidate: invalidatePages,
-				})
-
-				if (isCurrent())
-					setFeedback(createUiFeedback('Passkey registered.', 'info'))
-			} catch (error) {
-				if (!isCurrent() || controller.signal.aborted) return
-				setFeedback(
-					createUiFeedback(
-						error instanceof Error && error.name === 'NotAllowedError'
-							? 'Passkey registration was cancelled.'
-							: error instanceof Error
-								? error.message
-								: 'Unable to register the passkey.',
-						'error',
-					),
+					!transitionCeremony({
+						...({
+							type: 'SUBMIT',
+							data: uiContext({ status: 'requesting', controller }).data,
+						} as Parameters<typeof ceremonyActor.send>[0]),
+						requestId: controller,
+					})
 				)
-			} finally {
-				const current = getCeremony()
-				if (current.status !== 'idle' && current.controller === controller)
-					transitionCeremony({ status: 'idle' })
-			}
-		})
+					return
+				const isCurrent = capture()
+				setFeedback(createUiFeedback(null))
+
+				try {
+					const optionsPayload = await webauthnRegistrationOptions({
+						data: {},
+						signal: controller.signal,
+					})
+					if (!optionsPayload) return
+					if (
+						!optionsPayload.successful ||
+						!optionsPayload?.ok ||
+						!optionsPayload.options
+					) {
+						throw new Error(
+							optionsPayload?.error || 'Unable to start passkey registration.',
+						)
+					}
+
+					if (controller.signal.aborted || !isCurrent()) return
+					transitionCeremony({
+						...({
+							type: 'OPTIONS_OK',
+							data: uiContext({ status: 'ceremony', controller }).data,
+						} as Parameters<typeof ceremonyActor.send>[0]),
+						requestId: controller,
+					})
+					const registrationResponse = await startRegistration({
+						optionsJSON: optionsPayload.options,
+					})
+
+					controller.signal.throwIfAborted()
+					await registration.mutateAsync({
+						response: registrationResponse,
+						invalidate: invalidatePages,
+					})
+
+					if (isCurrent())
+						setFeedback(createUiFeedback('Passkey registered.', 'info'))
+				} catch (error) {
+					if (!isCurrent() || controller.signal.aborted) return
+					setFeedback(
+						createUiFeedback(
+							error instanceof Error && error.name === 'NotAllowedError'
+								? 'Passkey registration was cancelled.'
+								: error instanceof Error
+									? error.message
+									: 'Unable to register the passkey.',
+							'error',
+						),
+					)
+				} finally {
+					const current = getCeremony()
+					if (current.status !== 'idle' && current.controller === controller)
+						transitionCeremony({
+							...({
+								type: 'SETTLED',
+								data: uiContext({ status: 'idle' }).data,
+							} as Parameters<typeof ceremonyActor.send>[0]),
+							requestId: controller,
+						})
+				}
+			})()
+		} finally {
+			runExclusiveActor.send({ type: 'SETTLED' })
+		}
 	}
 
 	function beginRename(passkey: PasskeyListItem) {
@@ -199,58 +243,70 @@ export function AccountPasskeysPage({
 	}
 
 	async function handleRenamePasskey(passkeyId: string) {
-		return runExclusive(async () => {
-			const isCurrent = capture()
-			setFeedback(createUiFeedback(null))
+		if (!runExclusiveActor.getSnapshot().can({ type: 'SUBMIT' })) return
+		runExclusiveActor.send({ type: 'SUBMIT' })
+		try {
+			return await (async () => {
+				const isCurrent = capture()
+				setFeedback(createUiFeedback(null))
 
-			try {
-				await rename.mutateAsync({
-					passkeyId,
-					name: renameDraft,
-				})
-				if (!isCurrent()) return
-				setRenamingPasskeyId(null)
-				setRenameDraft('')
-				setFeedback(createUiFeedback('Passkey renamed.', 'info'))
-			} catch (error) {
-				if (!isCurrent()) return
-				setFeedback(
-					createUiFeedback(
-						error instanceof Error
-							? error.message
-							: 'Unable to rename the passkey.',
-						'error',
-					),
-				)
-			}
-		})
+				try {
+					await rename.mutateAsync({
+						passkeyId,
+						name: renameDraft,
+					})
+					if (!isCurrent()) return
+					setRenamingPasskeyId(null)
+					setRenameDraft('')
+					setFeedback(createUiFeedback('Passkey renamed.', 'info'))
+				} catch (error) {
+					if (!isCurrent()) return
+					setFeedback(
+						createUiFeedback(
+							error instanceof Error
+								? error.message
+								: 'Unable to rename the passkey.',
+							'error',
+						),
+					)
+				}
+			})()
+		} finally {
+			runExclusiveActor.send({ type: 'SETTLED' })
+		}
 	}
 
 	async function handleDeletePasskey(passkeyId: string) {
-		return runExclusive(async () => {
-			const isCurrent = capture()
-			setFeedback(createUiFeedback(null))
+		if (!runExclusiveActor.getSnapshot().can({ type: 'SUBMIT' })) return
+		runExclusiveActor.send({ type: 'SUBMIT' })
+		try {
+			return await (async () => {
+				const isCurrent = capture()
+				setFeedback(createUiFeedback(null))
 
-			try {
-				await remove.mutateAsync({ passkeyId })
-				if (!isCurrent()) return
-				if (renamingPasskeyId === passkeyId) {
-					setRenamingPasskeyId(null)
-					setRenameDraft('')
+				try {
+					await remove.mutateAsync({ passkeyId })
+					if (!isCurrent()) return
+					if (renamingPasskeyId === passkeyId) {
+						setRenamingPasskeyId(null)
+						setRenameDraft('')
+					}
+					setFeedback(createUiFeedback('Passkey deleted.', 'info'))
+				} catch (error) {
+					if (!isCurrent()) return
+					setFeedback(
+						createUiFeedback(
+							error instanceof Error
+								? error.message
+								: 'Unable to delete the passkey.',
+							'error',
+						),
+					)
 				}
-				setFeedback(createUiFeedback('Passkey deleted.', 'info'))
-			} catch (error) {
-				if (!isCurrent()) return
-				setFeedback(
-					createUiFeedback(
-						error instanceof Error
-							? error.message
-							: 'Unable to delete the passkey.',
-						'error',
-					),
-				)
-			}
-		})
+			})()
+		} finally {
+			runExclusiveActor.send({ type: 'SETTLED' })
+		}
 	}
 
 	const hydrated = useHydrated()

@@ -1,14 +1,15 @@
 import {
+	sqlSourcesOf,
+	parseState,
+} from '@kody-internal/shared/state-machine.ts'
+import {
 	packageApprovalState,
 	type PackageApprovalStatus,
 } from './package-approval-state.ts'
 
 export type { PackageApprovalStatus } from './package-approval-state.ts'
 
-const resolveGuard = packageApprovalState.guard({
-	from: 'pending',
-	to: ['approved', 'superseded'],
-})
+const resolveGuard = sqlSourcesOf(packageApprovalState, 'APPROVE', ['pending'])
 
 /**
  * The owner approval queue for published packages (`package_approval_requests`).
@@ -70,7 +71,7 @@ function mapRow(row: Record<string, unknown>): PackageApprovalRequest {
 		pendingCommit: String(row['pending_commit']),
 		baseCommit: text('base_commit'),
 		details: readDetails(row['details_json']),
-		status: packageApprovalState.parse(row['status']),
+		status: parseState(packageApprovalState, row['status']),
 		requestedByUserId: text('requested_by_user_id'),
 		resolvedByUserId: text('resolved_by_user_id'),
 		createdAt: String(row['created_at']),

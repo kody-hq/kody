@@ -1,4 +1,8 @@
 import {
+	sqlSourcesOf,
+	parseState,
+} from '@kody-internal/shared/state-machine.ts'
+import {
 	agentRegistrationState,
 	type AgentRegistrationStatus,
 } from './agent-registration-state.ts'
@@ -56,18 +60,13 @@ export type AgentClaimAttempt = {
 }
 
 const table = 'agent_registrations'
-const decisionGuard = agentRegistrationState.guard({
-	from: 'pending',
-	to: ['claimed', 'denied'],
-})
-const consumeGuard = agentRegistrationState.guard({
-	from: 'claimed',
-	to: 'consumed',
-})
-const restoreGuard = agentRegistrationState.guard({
-	from: 'consumed',
-	to: 'claimed',
-})
+const decisionGuard = sqlSourcesOf(agentRegistrationState, 'CLAIM', ['pending'])
+const consumeGuard = sqlSourcesOf(agentRegistrationState, 'CONSUME', [
+	'claimed',
+])
+const restoreGuard = sqlSourcesOf(agentRegistrationState, 'RESTORE', [
+	'consumed',
+])
 
 export function nowSeconds() {
 	return Math.floor(Date.now() / 1000)
@@ -157,7 +156,7 @@ export async function findAgentRegistrationByClaimTokenHash(
 		.bind(claimTokenHash)
 		.first<AgentRegistrationRow>()
 	return row
-		? { ...row, status: agentRegistrationState.parse(row.status) }
+		? { ...row, status: parseState(agentRegistrationState, row.status) }
 		: null
 }
 
@@ -176,7 +175,7 @@ export async function findOpenAgentRegistrationByAttemptTokenHash(
 		.bind(attemptTokenHash, now, now)
 		.first<AgentRegistrationRow>()
 	return row
-		? { ...row, status: agentRegistrationState.parse(row.status) }
+		? { ...row, status: parseState(agentRegistrationState, row.status) }
 		: null
 }
 

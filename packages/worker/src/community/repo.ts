@@ -1,3 +1,4 @@
+import { sqlSourcesOf } from '@kody-internal/shared/state-machine.ts'
 import { communityListingState } from './community-listing-state.ts'
 import { communityReportState } from './community-report-state.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
@@ -84,10 +85,9 @@ export function mapCommunityListingRow(
 }
 
 const activeListingSql = communityListingState.sql(['active'])
-const resolveReportGuard = communityReportState.guard({
-	from: 'open',
-	to: ['resolved', 'dismissed'],
-})
+const resolveReportGuard = sqlSourcesOf(communityReportState, 'RESOLVE', [
+	'open',
+])
 
 export const communityForkSelectColumns = `id, listing_id, forker_user_id, origin_commit, forked_package_id,
 	forked_source_id, target_kody_id, created_at, adopted_at, adoption_note,

@@ -1,13 +1,16 @@
+import { canHandle } from '@kody-internal/shared/state-machine.ts'
 import { expect, test } from 'vitest'
 import { usernameSignupState } from './username-signup-state.ts'
-
 test('username_signup.form pins submission and retry transitions', () => {
-	expect(usernameSignupState.initial).toEqual(['idle'])
-	expect(usernameSignupState.transitions).toEqual({
-		idle: ['idle', 'confirming', 'error'],
-		confirming: ['idle', 'confirming', 'submitting', 'error'],
-		submitting: ['error'],
-		error: ['idle', 'confirming', 'submitting', 'error'],
-	})
-	expect(usernameSignupState.can('submitting', 'submitting')).toBe(false)
+	expect(
+		usernameSignupState.root.initial.target?.map((state) => state.key),
+	).toEqual(['idle'])
+	expect([...usernameSignupState.events].sort()).toEqual([
+		'CONFIRM_USERNAME',
+		'RESET',
+		'RESPONSE_ERROR',
+		'SUBMIT',
+		'VALIDATION_ERROR',
+	])
+	expect(canHandle(usernameSignupState, 'submitting', 'SUBMIT')).toBe(false)
 })

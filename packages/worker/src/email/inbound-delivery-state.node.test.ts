@@ -1,18 +1,31 @@
+import {
+	canHandle,
+	finalStatesOf,
+	nextState,
+} from '@kody-internal/shared/state-machine.ts'
 import { expect, test } from 'vitest'
 import { inboundDeliveryState } from './inbound-delivery-state.ts'
 
 test('inbound delivery leases reclaim, finalize, reject, and refinalize missing stored messages', () => {
-	expect(inboundDeliveryState.can('pending', 'storing')).toBe(true)
-	expect(inboundDeliveryState.can('pending', 'cleaning')).toBe(true)
-	expect(inboundDeliveryState.can('pending', 'received')).toBe(false)
-	expect(inboundDeliveryState.can('storing', 'received')).toBe(true)
-	expect(inboundDeliveryState.can('storing', 'pending')).toBe(true)
-	expect(inboundDeliveryState.can('received', 'storing')).toBe(true)
-	expect(inboundDeliveryState.can('received', 'pending')).toBe(false)
-	expect(inboundDeliveryState.can('cleaning', 'orphan-cleaned')).toBe(true)
-	expect(inboundDeliveryState.can('orphan-cleaned', 'cleaning')).toBe(true)
-	expect(inboundDeliveryState.isTerminal('rejected')).toBe(true)
-	expect(() => inboundDeliveryState.assert('rejected', 'pending')).toThrow(
-		'Illegal',
+	expect(canHandle(inboundDeliveryState, 'pending', 'CLAIM_STORAGE')).toBe(true)
+	expect(canHandle(inboundDeliveryState, 'pending', 'CLAIM_CLEANUP')).toBe(true)
+	expect(canHandle(inboundDeliveryState, 'pending', 'RECEIVE')).toBe(false)
+	expect(canHandle(inboundDeliveryState, 'storing', 'RECEIVE')).toBe(true)
+	expect(canHandle(inboundDeliveryState, 'storing', 'RELEASE_LEASE')).toBe(true)
+	expect(canHandle(inboundDeliveryState, 'received', 'CLAIM_STORAGE')).toBe(
+		true,
 	)
+	expect(canHandle(inboundDeliveryState, 'received', 'RELEASE_LEASE')).toBe(
+		false,
+	)
+	expect(canHandle(inboundDeliveryState, 'cleaning', 'COMPLETE_CLEANUP')).toBe(
+		true,
+	)
+	expect(
+		canHandle(inboundDeliveryState, 'orphan-cleaned', 'CLAIM_CLEANUP'),
+	).toBe(true)
+	expect(finalStatesOf(inboundDeliveryState).includes('rejected')).toBe(true)
+	expect(() =>
+		nextState(inboundDeliveryState, 'rejected', { type: 'RELEASE_LEASE' }),
+	).toThrow('Illegal')
 })

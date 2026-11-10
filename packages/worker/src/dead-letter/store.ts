@@ -1,3 +1,4 @@
+import { sqlSourcesOf } from '@kody-internal/shared/state-machine.ts'
 import type { DeadLetterPayloadMetadata } from './metadata.ts'
 import {
 	deadLetterMessageState,
@@ -6,10 +7,9 @@ import {
 
 export type { DeadLetterMessageStatus } from './dead-letter-message-state.ts'
 
-const replayGuard = deadLetterMessageState.guard({
-	from: 'parked',
-	to: 'replaying',
-})
+const replayGuard = sqlSourcesOf(deadLetterMessageState, 'CLAIM_REPLAY', [
+	'parked',
+])
 
 export type ParkedDeadLetterMessage = {
 	deadLetterQueue: string
@@ -241,28 +241,37 @@ export async function claimDeadLetterMessageForReplay(
 
 export async function releaseDeadLetterReplayClaim(
 	db: D1Database,
-	input: { deadLetterQueue: string; messageId: string },
+	input: { deadLetterQueue: string; messageId: string; claimedAtMs: number },
 ) {
 	await db
 		.prepare(
 			`UPDATE dead_letter_messages
 			 SET status = 'parked', claimed_at_ms = NULL
-			 WHERE dead_letter_queue = ? AND message_id = ?`,
+			 WHERE dead_letter_queue = ? AND message_id = ?
+			   AND status = 'replaying' AND claimed_at_ms = ?`,
 		)
-		.bind(input.deadLetterQueue, input.messageId)
+		.bind(input.deadLetterQueue, input.messageId, input.claimedAtMs)
 		.run()
 }
 
 export async function deleteParkedDeadLetterMessage(
 	db: D1Database,
-	input: { deadLetterQueue: string; messageId: string },
+	input: { deadLetterQueue: string; messageId: string; claimedAtMs?: number },
 ): Promise<boolean> {
+	const claimGuard =
+		input.claimedAtMs === undefined
+			? ''
+			: " AND status = 'replaying' AND claimed_at_ms = ?"
 	const result = await db
 		.prepare(
 			`DELETE FROM dead_letter_messages
-			 WHERE dead_letter_queue = ? AND message_id = ?`,
+			 WHERE dead_letter_queue = ? AND message_id = ?${claimGuard}`,
 		)
-		.bind(input.deadLetterQueue, input.messageId)
+		.bind(
+			input.deadLetterQueue,
+			input.messageId,
+			...(input.claimedAtMs === undefined ? [] : [input.claimedAtMs]),
+		)
 		.run()
 	return Number(result.meta?.changes ?? 0) > 0
 }

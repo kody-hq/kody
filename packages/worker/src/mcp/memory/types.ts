@@ -1,7 +1,7 @@
 import { memoryState, type MemoryStatus } from './memory-state.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 
-export const memoryStatusValues = memoryState.states
+export const memoryStatusValues = memoryState.values
 
 export type { MemoryStatus } from './memory-state.ts'
 

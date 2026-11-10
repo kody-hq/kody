@@ -2272,7 +2272,9 @@ class RepoSessionBase extends DurableObject<Env> {
 		if (sessionRow.user_id !== input.userId) {
 			throw new Error(buildRepoSessionNotFoundForUserMessage(input.sessionId))
 		}
-		repoSessionState.assert(sessionRow.status, 'discarded')
+		repoSessionState.parse(
+			repoSessionState.is(sessionRow.status) ? 'discarded' : sessionRow.status,
+		)
 		await updateRepoSession(this.env, {
 			id: sessionRow.id,
 			userId: sessionRow.user_id,
@@ -4192,7 +4194,11 @@ class RepoSessionBase extends DurableObject<Env> {
 			checks: null,
 			scope: 'repo.publishPlainRepoSession.publish-git-note',
 		})
-		repoSessionState.assert(input.sessionRow.status, 'published')
+		repoSessionState.parse(
+			repoSessionState.is(input.sessionRow.status)
+				? 'published'
+				: input.sessionRow.status,
+		)
 		await updateRepoSession(this.env, {
 			id: input.sessionRow.id,
 			userId: input.sessionRow.user_id,
@@ -4631,7 +4637,11 @@ class RepoSessionBase extends DurableObject<Env> {
 					scope: 'repo.publishSession.publish-git-note',
 				})
 			}
-			repoSessionState.assert(sessionRow.status, 'published')
+			repoSessionState.parse(
+				repoSessionState.is(sessionRow.status)
+					? 'published'
+					: sessionRow.status,
+			)
 			await updateRepoSession(this.env, {
 				id: sessionRow.id,
 				userId: sessionRow.user_id,

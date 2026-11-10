@@ -1,9 +1,11 @@
 /** @jsxImportSource @emotion/react */
-import { useStateMachine } from '#client/use-state-machine.ts'
+import { useSelector, useMachine } from '@xstate/react'
 import {
+	connectOauthStepContext,
 	connectOauthStepState,
 	connectOauthOperationState,
 } from '#client/routes/connect-oauth-state.ts'
+import { uiState, sendUiEvent } from '#client/ui-actor.ts'
 import {
 	toConnectOauthUi,
 	projectConnectOauthUi,
@@ -26,7 +28,6 @@ import type {
 	ConnectOauthExistingConnection,
 	ConnectOauthLoaderData,
 } from '#universal/loader-data.ts'
-
 import {
 	formatScopeGrantNotice,
 	resolveOauthScopeMenu,
@@ -34,12 +35,10 @@ import {
 } from '#universal/oauth-scopes.ts'
 import { isConnectOauthCallbackUrl } from '#universal/oauth-connect.ts'
 import { useHydrated } from '../components/use-hydrated.ts'
-
 import { readOrgSlugFromUrl } from '#universal/org-binding/url.ts'
 import { useShellData } from '../routes/__root.tsx'
 import { orgSectionRestPath } from '#universal/org-section-hrefs.ts'
 import { organizationsWithSignupFallback } from '#universal/org-pages.ts'
-
 import { ProviderMark } from '../components/provider-icons.tsx'
 import {
 	ConnectOauthOrgPicker,
@@ -112,7 +111,6 @@ import {
 	summarizeStoredSetupState,
 	toStoredIntegrationConfig,
 } from '#client/routes/connect-oauth-config.ts'
-
 function initialOauthState(
 	routeData: ConnectOauthLoaderData,
 	href: string,
@@ -329,28 +327,87 @@ export function ConnectOauthRoute({
 			),
 		),
 	)
-	const [flow, transitionFlow, getFlow] = useStateMachine<ConnectOauthUiState>(
-		connectOauthStepState,
-		initialFlow,
+	const [operationSnapshot, , operationActor] = useMachine(
+		connectOauthOperationState,
 	)
+	const [flowSnapshot, , flowActor] = useMachine(connectOauthStepState, {
+		snapshot: (() => {
+			const initialView = initialFlow
+			return connectOauthStepState.resolveState({
+				value: initialView.status,
+				context: connectOauthStepContext(initialView),
+			})
+		})(),
+	})
+	const screen = uiState<ConnectOauthUiState>(flowSnapshot)
+	const flow =
+		screen.status === 'success'
+			? screen
+			: { ...screen, request: operationSnapshot.value }
+	const transitionFlow = useCallback(
+		(event: Parameters<typeof flowActor.send>[0]) =>
+			sendUiEvent(flowActor, event),
+		[flowActor],
+	)
+	const getFlow = useCallback(() => {
+		const screen = uiState<ConnectOauthUiState>(flowActor.getSnapshot())
+		return screen.status === 'success'
+			? screen
+			: { ...screen, request: operationActor.getSnapshot().value }
+	}, [flowActor, operationActor])
 	const state = projectConnectOauthUi(flow)
-	function isSubmitting() {
+	const isSubmitting = useCallback(() => {
 		const current = getFlow()
 		return current.status !== 'success' && current.request === 'submitting'
-	}
-	function setState(update: (previous: OauthState) => OauthState) {
-		const previous = projectConnectOauthUi(getFlow())
-		const next = update(previous)
-		if (
-			previous.submitting !== next.submitting &&
-			!connectOauthOperationState.can(
-				previous.submitting ? 'submitting' : 'idle',
-				next.submitting ? 'submitting' : 'idle',
+	}, [getFlow])
+	const setState = useCallback(
+		(update: (previous: OauthState) => OauthState) => {
+			const previous = projectConnectOauthUi(getFlow())
+			const next = update(previous)
+			const submitting = next.currentStep !== 'success' && next.submitting
+			const event =
+				operationActor.getSnapshot().matches('submitting') === submitting
+					? null
+					: {
+							type: submitting ? ('SUBMIT' as const) : ('SETTLED' as const),
+							data: {},
+						}
+			if (event && !operationActor.getSnapshot().can(event)) return
+			const moved = transitionFlow(
+				(() => {
+					const view = toConnectOauthUi(next)
+					if (flowActor.getSnapshot().value === view.status)
+						return { type: 'EDIT', data: connectOauthStepContext(view).data }
+					switch (view.status) {
+						case 'setup':
+							return { type: 'SETUP', data: connectOauthStepContext(view).data }
+						case 'connect':
+							return {
+								type: 'CONNECT',
+								data: connectOauthStepContext(view).data,
+							}
+						case 'device':
+							return {
+								type: 'DEVICE',
+								data: connectOauthStepContext(view).data,
+							}
+						case 'callback':
+							return {
+								type: 'CALLBACK',
+								data: connectOauthStepContext(view).data,
+							}
+						case 'success':
+							return {
+								type: 'CREDENTIALS_SAVED',
+								data: connectOauthStepContext(view).data,
+							}
+					}
+				})() as Parameters<typeof flowActor.send>[0],
 			)
-		)
-			return
-		transitionFlow(toConnectOauthUi(next))
-	}
+			if (moved && event) operationActor.send(event)
+		},
+		[getFlow, flowActor, operationActor, transitionFlow],
+	)
 	const {
 		statusMessage,
 		statusTone,
@@ -398,9 +455,12 @@ export function ConnectOauthRoute({
 		() => mounted.current && navigationScope.isActive(),
 		[navigationScope],
 	)
-	function update(next: Partial<typeof state>) {
-		setState((previous) => ({ ...previous, ...next }))
-	}
+	const update = useCallback(
+		(next: Partial<OauthState>) => {
+			setState((previous) => ({ ...previous, ...next }))
+		},
+		[setState],
+	)
 	function setStatus(
 		statusMessage: string,
 		statusTone: ConnectOauthStatusTone = 'info',
@@ -444,8 +504,9 @@ export function ConnectOauthRoute({
 					setDeviceTick((tick) => tick + 1)
 				},
 			}),
-		[invalidatePages],
+		[invalidatePages, isSubmitting, setState],
 	)
+	useSelector(deviceStep.actor, (snapshot) => snapshot)
 	useEffect(() => () => deviceStep.dispose(), [deviceStep])
 	useEffect(() => {
 		mounted.current = true
@@ -776,6 +837,7 @@ export function ConnectOauthRoute({
 		void complete()
 	}, [
 		readIntegration,
+		update,
 		readChooser,
 		exchangeCode,
 		saveConnection,

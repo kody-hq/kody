@@ -1,3 +1,8 @@
+import {
+	IllegalStateTransitionError,
+	nextState,
+	isState,
+} from '@kody-internal/shared/state-machine.ts'
 import { chunkArray } from '@kody-internal/shared/chunk.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import {
@@ -189,9 +194,29 @@ export function evaluatePackageOwnerSpikeTransition(
 	input: Parameters<typeof evaluateSpikeTransition>[0],
 ): PackageOwnerSpikeTransition {
 	const transition = evaluateSpikeTransition(input)
-	packageOwnerSpikeState.assert(
+	nextState(
+		packageOwnerSpikeState,
 		input.previous?.status ?? 'ok',
-		transition.next.status,
+		(() => {
+			if (
+				((input.previous?.status ?? 'ok') as string) === transition.next.status
+			)
+				return { type: 'REFRESH' } as const
+			switch (transition.next.status as string) {
+				case 'ok':
+					return { type: 'REARM' } as const
+				case 'pending':
+					return { type: 'TRIGGER' } as const
+				case 'alerted':
+					return { type: 'DELIVER' } as const
+				default:
+					throw new IllegalStateTransitionError(
+						packageOwnerSpikeState.id,
+						input.previous?.status ?? 'ok',
+						{ type: String(transition.next.status) },
+					)
+			}
+		})(),
 	)
 	return transition
 }
@@ -221,7 +246,12 @@ function evaluateSpikeTransition(input: {
 				pendingMaxAgeMs,
 			})
 		) {
-			packageOwnerSpikeState.assert(previous.status, 'ok')
+			nextState(packageOwnerSpikeState, previous.status, {
+				type:
+					(previous.status as string) === 'ok'
+						? ('REFRESH' as const)
+						: ('REARM' as const),
+			})
 			if (input.window) {
 				// Drop the expired episode, then evaluate the current window as
 				// a fresh ok owner so a same-hour new spike is not written as
@@ -445,7 +475,7 @@ export function parsePackageOwnerSpikeState(
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return null
 	const record = value as Record<string, unknown>
 	if (record.version !== 1) return null
-	if (!packageOwnerSpikeState.is(record.status)) return null
+	if (!isState(packageOwnerSpikeState, record.status)) return null
 	const spike = parseSpikeSnapshot(record.spike)
 	if (record.status === 'pending' && spike == null) return null
 	return {
@@ -787,7 +817,28 @@ export async function writePackageOwnerSpikeState(input: {
 	indexDraft?: AlertedOwnerIndexDraft
 }) {
 	if (input.previousStatus != null) {
-		packageOwnerSpikeState.assert(input.previousStatus, input.state.status)
+		nextState(
+			packageOwnerSpikeState,
+			input.previousStatus,
+			(() => {
+				if ((input.previousStatus as string) === input.state.status)
+					return { type: 'REFRESH' } as const
+				switch (input.state.status as string) {
+					case 'ok':
+						return { type: 'REARM' } as const
+					case 'pending':
+						return { type: 'TRIGGER' } as const
+					case 'alerted':
+						return { type: 'DELIVER' } as const
+					default:
+						throw new IllegalStateTransitionError(
+							packageOwnerSpikeState.id,
+							input.previousStatus,
+							{ type: String(input.state.status) },
+						)
+				}
+			})(),
+		)
 	}
 	await input.kv.put(
 		packageOwnerErrorSpikeKvKey(input.ownerId),
@@ -1085,7 +1136,12 @@ async function applyPackageOwnerSpikeTransition(input: {
 			return { alerted: 0, rearmed: 1 }
 		}
 
-		packageOwnerSpikeState.assert(transition.next.status, 'pending')
+		nextState(packageOwnerSpikeState, transition.next.status, {
+			type:
+				transition.next.status === 'pending'
+					? ('REFRESH' as const)
+					: ('TRIGGER' as const),
+		})
 		const pendingBase: PackageOwnerSpikeState = {
 			...transition.next,
 			status: 'pending',
@@ -1147,7 +1203,12 @@ async function applyPackageOwnerSpikeTransition(input: {
 
 		// Persist alerted only after a successful (or no-op) notify so a
 		// failed send cannot suppress the one email for this spike.
-		packageOwnerSpikeState.assert(pendingBase.status, 'alerted')
+		nextState(packageOwnerSpikeState, pendingBase.status, {
+			type:
+				pendingBase.status === 'alerted'
+					? ('REFRESH' as const)
+					: ('DELIVER' as const),
+		})
 		await writePackageOwnerSpikeState({
 			kv: input.kv,
 			ownerId: input.ownerId,

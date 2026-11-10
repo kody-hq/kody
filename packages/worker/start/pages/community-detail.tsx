@@ -1,6 +1,7 @@
 /** @jsxImportSource @emotion/react */
-import { useSingleFlight } from '#client/use-single-flight.ts'
-import type { FormFlowState } from '#client/state-machine-store.ts'
+import { useActorRef } from '@xstate/react'
+import { submissionGateState } from '#client/routes/submission-gate-state.ts'
+import type { FormFlowState } from '#client/ui-actor.ts'
 import {
 	featureCommunityPackage,
 	reportCommunityPackage,
@@ -31,7 +32,6 @@ import {
 	renderAdminFeatureSection as AdminFeatureSection,
 	renderReportDisclosure as ReportDisclosure,
 } from '../components/community-detail-sections.tsx'
-
 export function CommunityDetailRoute({
 	data,
 	header,
@@ -44,8 +44,8 @@ export function CommunityDetailRoute({
 	const capture = useSubmitterScope()
 	const packageInstall = usePackageInstall(header.repoActions?.fork ?? null)
 	const { installMessage, installOutcome } = packageInstall
-	const runFeature = useSingleFlight()
-	const runReport = useSingleFlight()
+	const runFeatureActor = useActorRef(submissionGateState)
+	const runReportActor = useActorRef(submissionGateState)
 	const [reportReason, setReportReason] = useState('')
 	const listing = data.listing
 	const listingId = listing?.id
@@ -134,33 +134,45 @@ export function CommunityDetailRoute({
 				? { status: 'success', message: 'Report submitted. Thank you.' }
 				: { status: 'idle' }
 	async function feature() {
-		return runFeature(async () => {
-			if (!listing || featureMutation.isPending) return
-			const isCurrent = capture()
-			try {
-				await featureMutation.mutateAsync({
-					id: listing.id,
-					featured: !listing.featured,
-					isCurrent,
-				})
-			} catch {}
-		})
+		if (!runFeatureActor.getSnapshot().can({ type: 'SUBMIT' })) return
+		runFeatureActor.send({ type: 'SUBMIT' })
+		try {
+			return await (async () => {
+				if (!listing || featureMutation.isPending) return
+				const isCurrent = capture()
+				try {
+					await featureMutation.mutateAsync({
+						id: listing.id,
+						featured: !listing.featured,
+						isCurrent,
+					})
+				} catch {}
+			})()
+		} finally {
+			runFeatureActor.send({ type: 'SETTLED' })
+		}
 	}
 	async function report() {
-		return runReport(async () => {
-			if (!listingId || reportMutation.isPending) return
-			const isCurrent = capture()
-			try {
-				await reportMutation.mutateAsync({
-					id: listingId,
-					reason: reportReason,
-					isCurrent,
-				})
-				if (isCurrent()) setReportReason('')
-			} catch {
-				/* The mutation owns failure feedback. */
-			}
-		})
+		if (!runReportActor.getSnapshot().can({ type: 'SUBMIT' })) return
+		runReportActor.send({ type: 'SUBMIT' })
+		try {
+			return await (async () => {
+				if (!listingId || reportMutation.isPending) return
+				const isCurrent = capture()
+				try {
+					await reportMutation.mutateAsync({
+						id: listingId,
+						reason: reportReason,
+						isCurrent,
+					})
+					if (isCurrent()) setReportReason('')
+				} catch {
+					/* The mutation owns failure feedback. */
+				}
+			})()
+		} finally {
+			runReportActor.send({ type: 'SETTLED' })
+		}
 	}
 
 	return (

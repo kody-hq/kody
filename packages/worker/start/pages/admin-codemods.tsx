@@ -1,5 +1,14 @@
 /** @jsxImportSource @emotion/react */
-import { useStateMachine } from '#client/use-state-machine.ts'
+import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
+import {
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+	type FormEvent,
+	type MouseEvent,
+} from 'react'
+import { useMachine } from '@xstate/react'
 import {
 	adminCodemodRunState,
 	type AdminCodemodRunState,
@@ -33,13 +42,6 @@ import {
 	getSelectCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, mq, spacing } from '#universal/styles/tokens.ts'
-import {
-	useEffect,
-	useRef,
-	useState,
-	type FormEvent,
-	type MouseEvent,
-} from 'react'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import {
 	accountInputCss,
@@ -68,9 +70,24 @@ export function AdminCodemodsPage(props: {
 			controller.abort()
 		}
 	}, [])
-	const [run, transitionRun, getRun] = useStateMachine<AdminCodemodRunState>(
-		adminCodemodRunState,
-		{ status: 'idle' },
+	const [runSnapshot, , runActor] = useMachine(adminCodemodRunState, {
+		snapshot: (() => {
+			const initialView = { status: 'idle' }
+			return adminCodemodRunState.resolveState({
+				value: initialView.status,
+				context: uiContext(initialView),
+			})
+		})(),
+	})
+	const run = uiState<AdminCodemodRunState>(runSnapshot)
+	const transitionRun = useCallback(
+		(event: Parameters<typeof runActor.send>[0]) =>
+			sendUiEvent(runActor, event),
+		[runActor],
+	)
+	const getRun = useCallback(
+		() => uiState<AdminCodemodRunState>(runActor.getSnapshot()),
+		[runActor],
 	)
 	const [feedback, setFeedback] = useState<{
 		tone: 'info' | 'error'
@@ -112,7 +129,10 @@ export function AdminCodemodsPage(props: {
 	function requestStop() {
 		const current = getRun()
 		if (current.status === 'running')
-			transitionRun({ ...current, status: 'stopping' })
+			transitionRun({
+				type: 'STOP',
+				data: uiContext({ ...current, status: 'stopping' }).data,
+			} as Parameters<typeof runActor.send>[0])
 	}
 	async function refreshRuns() {
 		// The subscribed loader owns this payload. A separate JSON GET followed
@@ -203,7 +223,15 @@ export function AdminCodemodsPage(props: {
 		const current = getRun()
 		if (current.status === 'running' || current.status === 'stopping') return
 		if (
-			!transitionRun({ status: 'running', runId: null, items: [], summary: {} })
+			!transitionRun({
+				type: 'SUBMIT',
+				data: uiContext({
+					status: 'running',
+					runId: null,
+					items: [],
+					summary: {},
+				}).data,
+			} as Parameters<typeof runActor.send>[0])
 		)
 			return
 		setFeedback(null)
@@ -217,7 +245,10 @@ export function AdminCodemodsPage(props: {
 			const current = getRun()
 			if (current.status !== 'running' && current.status !== 'stopping') return
 			setFeedback(null)
-			transitionRun({ ...current, status, message })
+			transitionRun({
+				type: status === 'complete' ? 'RESPONSE_OK' : 'RESPONSE_ERROR',
+				data: { ...uiContext(current).data, message },
+			} as Parameters<typeof runActor.send>[0])
 		}
 		try {
 			for (;;) {
@@ -261,25 +292,28 @@ export function AdminCodemodsPage(props: {
 				if (current.status !== 'running' && current.status !== 'stopping')
 					return
 				transitionRun({
-					...current,
-					runId: step.runId ?? null,
-					items: [
-						...current.items,
-						...(step.items ?? []).map((item) => ({
-							itemId: item.itemId,
-							userId: item.userId,
-							packageId: item.packageId,
-							kodyId: item.kodyId,
-							status: item.status,
-							changedPaths: item.changedPaths ?? [],
-							findings: item.findings ?? [],
-							error: item.error ?? null,
-						})),
-					],
-					summary: step.summary
-						? mergeSummaryCounts(current.summary, step.summary)
-						: current.summary,
-				})
+					type: 'PROGRESS',
+					data: uiContext({
+						...current,
+						runId: step.runId ?? null,
+						items: [
+							...current.items,
+							...(step.items ?? []).map((item) => ({
+								itemId: item.itemId,
+								userId: item.userId,
+								packageId: item.packageId,
+								kodyId: item.kodyId,
+								status: item.status,
+								changedPaths: item.changedPaths ?? [],
+								findings: item.findings ?? [],
+								error: item.error ?? null,
+							})),
+						],
+						summary: step.summary
+							? mergeSummaryCounts(current.summary, step.summary)
+							: current.summary,
+					}).data,
+				} as Parameters<typeof runActor.send>[0])
 				if (step.nextCursor == null) break
 				if (
 					previousCursor !== undefined &&
@@ -306,13 +340,16 @@ export function AdminCodemodsPage(props: {
 			) {
 				setFeedback(null)
 				transitionRun({
-					...current,
-					status: 'error',
-					message:
-						error instanceof Error
-							? error.message
-							: 'Unable to complete package codemod run.',
-				})
+					type: 'RESPONSE_ERROR',
+					data: uiContext({
+						...current,
+						status: 'error',
+						message:
+							error instanceof Error
+								? error.message
+								: 'Unable to complete package codemod run.',
+					}).data,
+				} as Parameters<typeof runActor.send>[0])
 			}
 		}
 	}

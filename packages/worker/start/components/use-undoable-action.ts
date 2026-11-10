@@ -1,15 +1,15 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useState } from 'react'
+import { useSelector } from '@xstate/react'
+import { uiState } from '#client/ui-actor.ts'
+import type { UndoableActionView } from '#client/routes/undoable-action-state.ts'
 import {
 	createUndoableActionController,
 	type UndoableActionInput,
 } from '#client/undoable-action-controller.ts'
 export function useUndoableAction(timeoutMs = 8_000) {
 	const [controller] = useState(createUndoableActionController)
-	const state = useSyncExternalStore(
-		controller.subscribe,
-		controller.getSnapshot,
-		controller.getSnapshot,
-	)
+	const snapshot = useSelector(controller.actor, (value) => value)
+	const state = uiState<UndoableActionView>(snapshot)
 	useEffect(() => {
 		controller.activate()
 		const leave = () => {

@@ -52,8 +52,8 @@ Add new steering records to the steering list, not a catch-all numbered dump.
 
 ## Steering list
 
-- [0100: Declare lifecycle graphs once, not as scattered status checks](./0100-explicit-state-machines.md)
-  Domain-owned graphs drive types, parsing, SQL guards and generated reference
+- [0101: Model operations, not arbitrary status-pair graphs](./0101-xstate-lifecycles.md)
+  XState lifecycles and actors; status enums for unconstrained replacement
 
 Open these before proposing a new primitive, surface, or storage home.
 
@@ -304,6 +304,9 @@ Open these before proposing a new primitive, surface, or storage home.
 Accepted or superseded records that do **not** change the next product proposal.
 Do not treat this list as homework. History stays; it is not silently deleted.
 
+- [0100: Declare lifecycle graphs once, not as scattered status checks](./0100-explicit-state-machines.md)
+  — superseded by 0101; status-pair tables replaced by operation events and
+  enums
 - [0098: Kody hosts short-lived build boxes for packages that declare a build step, paid from credits](./0098-kody-hosted-build-boxes.md)
   Build-only boxes in the publish routing (amends 0025); Pro with enough
   credits; credits-only meter; framework-neutral (0057 stands); fork-only

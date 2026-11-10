@@ -1,3 +1,4 @@
+import { sqlSourcesOf, nextState } from '@kody-internal/shared/state-machine.ts'
 import { inboundDedupePointerState } from './inbound-dedupe-pointer-state.ts'
 import { inboundDeliveryState } from './inbound-delivery-state.ts'
 import { inboundSubscriptionEffectState } from './inbound-subscription-effect-state.ts'
@@ -218,26 +219,31 @@ export type MailboxInboundDeliveryLedgerRpc = {
 	}) => Promise<MailboxListDueStaleInboundDeliveriesResult>
 }
 
-const deliveryStoringToPendingGuard = inboundDeliveryState.guard({
-	from: 'storing',
-	to: 'pending',
-})
-const deliveryPendingToStoringGuard = inboundDeliveryState.guard({
-	from: 'pending',
-	to: 'storing',
-})
-const deliveryStoringToStoringGuard = inboundDeliveryState.guard({
-	from: 'storing',
-	to: 'storing',
-})
-const deliveryReceivedToStoringGuard = inboundDeliveryState.guard({
-	from: 'received',
-	to: 'storing',
-})
-const deliveryStoringToReceivedGuard = inboundDeliveryState.guard({
-	from: 'storing',
-	to: 'received',
-})
+const deliveryStoringToPendingGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'RELEASE_LEASE',
+	['storing'],
+)
+const deliveryPendingToStoringGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_STORAGE',
+	['pending'],
+)
+const deliveryStoringToStoringGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_STORAGE',
+	['storing'],
+)
+const deliveryReceivedToStoringGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_STORAGE',
+	['received'],
+)
+const deliveryStoringToReceivedGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'RECEIVE',
+	['storing'],
+)
 
 export function mailboxInboundDedupePointerId(fingerprint: string) {
 	return `email-inbound-dedupe:${assertMailboxNonEmptyString(fingerprint, 'fingerprint')}`
@@ -360,8 +366,8 @@ export function claimMailboxInboundDeliveryWindow(
 	const ownerId = assertMailboxNonEmptyString(input.ownerId, 'ownerId')
 	const validated = assertInsertInput(ownerId, input.delivery)
 	const pointerId = mailboxInboundDedupePointerId(validated.fingerprint)
-	inboundDedupePointerState.assert('pending', 'pending')
-	inboundDedupePointerState.assert('rejected', 'pending')
+	nextState(inboundDedupePointerState, 'pending', { type: 'RESET_WINDOW' })
+	nextState(inboundDedupePointerState, 'rejected', { type: 'RESET_WINDOW' })
 	const base = pendingSnapshotFromInsert(
 		input.delivery,
 		validated,
@@ -512,9 +518,9 @@ export function claimMailboxInboundDeliveryStorage(
 	 * `detail_json`); promoted Mailbox columns must clear explicitly so a stale
 	 * effect worker cannot complete against a later re-finalization.
 	 */
-	inboundDeliveryState.assert(current.state, 'storing')
+	nextState(inboundDeliveryState, current.state, { type: 'CLAIM_STORAGE' })
 	if (current.subscriptionEffectState === 'processing')
-		inboundSubscriptionEffectState.assert('processing', 'pending')
+		nextState(inboundSubscriptionEffectState, 'processing', { type: 'RESET' })
 	const next: MailboxInboundDeliverySnapshot = {
 		...current,
 		state: 'storing',
@@ -606,7 +612,7 @@ export function releaseMailboxInboundDeliveryStorage(
 	) {
 		return { status: 'not-held' }
 	}
-	inboundDeliveryState.assert(current.state, 'pending')
+	nextState(inboundDeliveryState, current.state, { type: 'RELEASE_LEASE' })
 	const next: MailboxInboundDeliverySnapshot = {
 		...current,
 		state: 'pending',
@@ -668,7 +674,7 @@ export function markMailboxInboundDeliveryRejected(
 	) {
 		return { status: 'lease-lost' }
 	}
-	inboundDeliveryState.assert(current.state, 'rejected')
+	nextState(inboundDeliveryState, current.state, { type: 'REJECT' })
 	const next: MailboxInboundDeliverySnapshot = {
 		...current,
 		state: 'rejected',
@@ -748,12 +754,11 @@ export function markMailboxInboundDeliveryReceived(
 	const usageBytes = Math.round(
 		assertMailboxInboundNonNegativeFiniteNumber(input.usageBytes, 'usageBytes'),
 	)
-	inboundDeliveryState.assert(current.state, 'received')
+	nextState(inboundDeliveryState, current.state, { type: 'RECEIVE' })
 	if (current.subscriptionEffectState)
-		inboundSubscriptionEffectState.assert(
-			current.subscriptionEffectState,
-			'pending',
-		)
+		nextState(inboundSubscriptionEffectState, current.subscriptionEffectState, {
+			type: 'RESET',
+		})
 	const next: MailboxInboundDeliverySnapshot = {
 		...current,
 		state: 'received',

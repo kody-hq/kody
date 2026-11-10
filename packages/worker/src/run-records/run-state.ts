@@ -1,23 +1,17 @@
-import {
-	defineStateMachine,
-	type StateOf,
-} from '@kody-internal/shared/state-machine.ts'
+import { defineStatusEnum } from '@kody-internal/shared/state-machine.ts'
 
 export const runTerminalStatuses = ['success', 'error'] as const
-const statuses = ['running', ...runTerminalStatuses] as const
-const transitions = { running: statuses, success: statuses, error: statuses }
 
-export const runState = defineStateMachine({
+export const runState = defineStatusEnum({
 	name: 'runs.status',
 	description:
 		'Runs normally finish with success or error, including finish without begin; non-scheduled replace upserts accept any status, while scheduled ticks fence terminal rewrites.',
-	initial: statuses,
-	transitions,
+	values: ['running', 'success', 'error'],
 })
 
-export type RunStatus = StateOf<typeof runState>
+export type RunStatus = (typeof runState.values)[number]
 
 export type RunTerminalStatus = Extract<
-	StateOf<typeof runState>,
+	(typeof runState.values)[number],
 	(typeof runTerminalStatuses)[number]
 >

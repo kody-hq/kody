@@ -1,47 +1,66 @@
 const assert = require('node:assert/strict')
 const { test } = require('node:test')
-const {
-	updateReadinessTransitions,
-	updateCheckTransitions,
-} = require('../updates.cjs')
-const { executionOperationTransitions } = require('../execution.cjs')
+const { createActor } = require('xstate')
+const { updateReadinessState, updateCheckState } = require('../updates.cjs')
+const { executionOperationState } = require('../execution.cjs')
 
-test('packaged frozen tables reject illegal transitions', async () => {
-	const { defineStateMachine } =
-		await import('../../shared/src/state-machine.ts')
-	for (const transitions of [
-		updateReadinessTransitions,
-		updateCheckTransitions,
-		executionOperationTransitions,
-	]) {
-		assert.equal(Object.isFrozen(transitions), true)
-		assert.equal(Object.values(transitions).every(Object.isFrozen), true)
-	}
-	const readiness = defineStateMachine({
-		name: 'readiness',
-		description: 'readiness',
-		initial: 'waiting',
-		transitions: updateReadinessTransitions,
-	})
-	assert.equal(readiness.can('waiting', 'downloaded'), true)
-	assert.equal(readiness.can('waiting', 'installing'), false)
-	assert.equal(readiness.can('installing', 'waiting'), false)
-	const checking = defineStateMachine({
-		name: 'checking',
-		description: 'checking',
-		initial: 'idle',
-		transitions: updateCheckTransitions,
-	})
-	assert.equal(checking.can('idle', 'checking'), true)
-	assert.equal(checking.can('checking', 'idle'), true)
-	assert.equal(checking.can('idle', 'idle'), false)
-	const execution = defineStateMachine({
-		name: 'execution',
-		description: 'execution',
-		initial: 'idle',
-		transitions: executionOperationTransitions,
-	})
-	assert.equal(execution.can('error', 'idle'), true)
-	assert.equal(execution.can('error', 'running'), true)
-	assert.equal(execution.can('idle', 'idle'), false)
+test('installation requires a download; later downloads reopen readiness', () => {
+	const actor = createActor(updateReadinessState).start()
+	actor.send({ type: 'INSTALL' })
+	assert.equal(actor.getSnapshot().value, 'waiting')
+	actor.send({ type: 'DOWNLOAD' })
+	actor.send({ type: 'DOWNLOAD' })
+	assert.equal(actor.getSnapshot().value, 'downloaded')
+	actor.send({ type: 'INSTALL' })
+	const installing = actor.getSnapshot()
+	actor.send({ type: 'INSTALL' })
+	assert.equal(actor.getSnapshot(), installing)
+	actor.send({ type: 'DOWNLOAD' })
+	assert.equal(actor.getSnapshot().value, 'downloaded')
+	actor.stop()
+})
+
+test('a check synchronously retains its promise until settlement and then retries', () => {
+	const actor = createActor(updateCheckState).start()
+	const promise = Promise.resolve()
+	actor.send({ type: 'CHECK', promise })
+	actor.send({ type: 'CHECK', promise: Promise.resolve() })
+	assert.equal(actor.getSnapshot().value, 'checking')
+	assert.equal(actor.getSnapshot().context.promise, promise)
+	actor.send({ type: 'SETTLED' })
+	assert.equal(actor.getSnapshot().value, 'idle')
+	assert.equal(actor.getSnapshot().context.promise, null)
+	actor.send({ type: 'CHECK', promise })
+	assert.equal(actor.getSnapshot().value, 'checking')
+	actor.stop()
+})
+
+test('exclusive operations retain notices, clear them, settle and retry', () => {
+	const actor = createActor(executionOperationState).start()
+	actor.send({ type: 'CLEAR_ERROR' })
+	actor.send({ type: 'SETTLED' })
+	assert.equal(actor.getSnapshot().value, 'idle')
+	actor.send({ type: 'SET_ERROR', message: 'Offline' })
+	actor.send({ type: 'SET_ERROR', message: 'Still offline' })
+	assert.equal(actor.getSnapshot().context.message, 'Still offline')
+	actor.send({ type: 'CLEAR_ERROR' })
+	assert.equal(actor.getSnapshot().value, 'idle')
+	actor.send({ type: 'START_OPERATION', command: 'connect' })
+	actor.send({ type: 'START_OPERATION', command: 'stop' })
+	assert.equal(actor.getSnapshot().context.command, 'connect')
+	actor.send({ type: 'SET_ERROR', message: 'Runner failed' })
+	assert.equal(actor.getSnapshot().value, 'running')
+	assert.equal(actor.getSnapshot().context.notice.message, 'Runner failed')
+	actor.send({ type: 'SETTLED' })
+	assert.equal(actor.getSnapshot().value, 'error')
+	assert.equal(actor.getSnapshot().context.message, 'Runner failed')
+	actor.send({ type: 'START_OPERATION', command: 'start' })
+	assert.equal(actor.getSnapshot().context.message, null)
+	actor.send({ type: 'SET_ERROR', message: 'Temporary' })
+	actor.send({ type: 'CLEAR_ERROR' })
+	assert.equal(actor.getSnapshot().value, 'running')
+	assert.equal(actor.getSnapshot().context.notice, null)
+	actor.send({ type: 'SETTLED' })
+	assert.equal(actor.getSnapshot().value, 'idle')
+	actor.stop()
 })
