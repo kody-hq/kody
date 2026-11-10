@@ -1,7 +1,11 @@
-import { loadStoredApiToken, type StoredApiToken } from './api-token-store.js'
+import {
+	deleteStoredApiToken,
+	loadStoredApiToken,
+} from './api-token-store.js'
 import { apiTokenEnvVar, defaultApiUrl, defaultMcpUrl } from './defaults.js'
 import {
 	loadCredentials,
+	saveCredentials,
 	type SecretBackend,
 	type StoreResolution,
 	type StoredCredentials,
@@ -11,45 +15,27 @@ import {
  * Where a command's bearer comes from:
  * - `token-flag`: `--token`
  * - `env`: `KODY_API_TOKEN`
- * - `stored-api-token`: the token `kody auth bootstrap` / `kody auth setup-git` stored
- * - `login`: the `kody login` session
+ * - `login`: the one saved CLI credential (`kody login` or `kody auth bootstrap`)
  */
-export type CliCredentialSource =
-	| 'token-flag'
-	| 'env'
-	| 'stored-api-token'
-	| 'login'
+export type CliCredentialSource = 'token-flag' | 'env' | 'login'
 
 /**
- * Precedence by purpose (one resolver for every command):
- * - `call` (api, package, execute --local, context, daemon, dev, whoami):
- *   `--token`, `KODY_API_TOKEN`, stored API token, `kody login`.
- * - `session` (search, cloud execute): `--token`, `kody login`,
- *   `KODY_API_TOKEN`, stored API token. Kept for compatibility: these
- *   commands run over MCP with a login, so a leftover token does not switch
- *   them to the Open API path.
- * - `mint` (`auth bootstrap --scopes`): `--token`, `kody login`,
- *   `KODY_API_TOKEN`, stored API token. A login can mint any scope the org
- *   role grants; a token only the scopes it holds.
+ * What the command does with the credential (for messages). Every purpose
+ * uses the same precedence: `--token`, `KODY_API_TOKEN`, the saved credential.
  */
 export type CliCredentialPurpose = 'call' | 'session' | 'mint'
 
-const precedence: Record<
-	CliCredentialPurpose,
-	ReadonlyArray<CliCredentialSource>
-> = {
-	call: ['token-flag', 'env', 'stored-api-token', 'login'],
-	session: ['token-flag', 'login', 'env', 'stored-api-token'],
-	mint: ['token-flag', 'login', 'env', 'stored-api-token'],
-}
+const precedence: ReadonlyArray<CliCredentialSource> = [
+	'token-flag',
+	'env',
+	'login',
+]
 
 export type CliCredentialCandidate = {
 	source: CliCredentialSource
 	/** Bearer for token sources; `login` resolves its bearer when used. */
 	token: string | null
-	/** Stored API token metadata (`stored-api-token` only). */
-	stored?: StoredApiToken
-	/** Login session (`login` only). */
+	/** Saved credential (`login` only). */
 	login?: StoredCredentials
 }
 
@@ -70,8 +56,10 @@ export type ResolveCliCredentialInput = {
 	apiTokenBackend?: SecretBackend
 	apiTokenResolution?: StoreResolution
 	loginBackend?: SecretBackend
-	/** Test seams. */
+	/** Test seams. `loadApiToken` reads the pre-unification token slot. */
 	loadApiToken?: typeof loadStoredApiToken
+	saveLogin?: typeof saveCredentials
+	deleteApiToken?: typeof deleteStoredApiToken
 	loadLogin?: (mcpUrl: string, org?: string) => StoredCredentials | null
 }
 
@@ -90,26 +78,76 @@ function loadCandidate(
 			const value = (input.env ?? process.env)[apiTokenEnvVar]?.trim()
 			return { candidate: value ? { source, token: value } : null }
 		}
-		if (source === 'stored-api-token') {
-			const load = input.loadApiToken ?? loadStoredApiToken
-			const stored = load(
-				input.apiUrl || defaultApiUrl,
-				input.apiTokenBackend,
-				input.apiTokenResolution,
-			)
-			return {
-				candidate: stored ? { source, token: stored.token, stored } : null,
-			}
-		}
 		const mcpUrl = input.mcpUrl || defaultMcpUrl
 		const login = input.loadLogin
 			? input.loadLogin(mcpUrl, input.org)
 			: loadCredentials(mcpUrl, input.loginBackend, undefined, {
 					org: input.org,
 				})
-		return { candidate: login ? { source, token: null, login } : null }
+		const saved = login ?? adoptLegacyStoredApiToken(input, mcpUrl)
+		return { candidate: saved ? { source, token: null, login: saved } : null }
 	} catch (error) {
 		return { candidate: null, error }
+	}
+}
+
+/**
+ * Move a token from the slot `auth bootstrap` / `setup-git` used before the
+ * CLI had one saved credential into that credential, then clear the old
+ * slot. Only runs when nothing is saved: the saved credential always wins.
+ */
+function adoptLegacyStoredApiToken(
+	input: ResolveCliCredentialInput,
+	mcpUrl: string,
+): StoredCredentials | null {
+	const apiUrl = input.apiUrl || defaultApiUrl
+	const legacy = (input.loadApiToken ?? loadStoredApiToken)(
+		apiUrl,
+		input.apiTokenBackend,
+		input.apiTokenResolution,
+	)
+	if (!legacy) return null
+	const adopted = storedCredentialsFromApiToken({
+		mcpUrl,
+		token: legacy.token,
+		expiresAt: legacy.expiresAt ? Date.parse(legacy.expiresAt) : undefined,
+		scopes: legacy.scopes ?? [],
+	})
+	try {
+		;(input.saveLogin ?? saveCredentials)(adopted, input.loginBackend)
+		;(input.deleteApiToken ?? deleteStoredApiToken)(
+			apiUrl,
+			input.apiTokenBackend,
+			input.apiTokenResolution,
+		)
+	} catch {
+		// Still usable for this command even if the move did not stick.
+	}
+	return adopted
+}
+
+/** A `kody_at_…` saved the way `kody login` saves its device token. */
+export function storedCredentialsFromApiToken(input: {
+	mcpUrl: string
+	token: string
+	expiresAt: number | undefined
+	scopes: ReadonlyArray<string>
+	org?: string
+}): StoredCredentials {
+	const issuer = new URL(input.mcpUrl).origin
+	return {
+		version: 1,
+		mcpUrl: input.mcpUrl,
+		...(input.org ? { org: input.org } : {}),
+		resource: input.mcpUrl,
+		authorizationServerUrl: issuer,
+		clientId: new URL('/oauth/cli-client-metadata.json', issuer).href,
+		accessToken: input.token,
+		tokenType: 'bearer',
+		...(input.expiresAt !== undefined && Number.isFinite(input.expiresAt)
+			? { expiresAt: input.expiresAt }
+			: {}),
+		scope: input.scopes.join(' '),
 	}
 }
 
@@ -134,7 +172,7 @@ export function resolveCliCredential(
 	const shadowed: Array<CliCredentialCandidate> = []
 	for (const candidateSource of source === 'login'
 		? ['login' as const]
-		: precedence[purpose]) {
+		: precedence) {
 		const loaded = loadCandidate(candidateSource, input)
 		// An unreadable store only fails the command when it would be used.
 		if (loaded.error !== undefined && !picked) throw loaded.error
@@ -176,7 +214,7 @@ export function noteActiveLoginCredential(input: {
 	}
 }
 
-/** Short human label, e.g. "stored API token tok_123 (from kody auth bootstrap)". */
+/** Short human label, e.g. "saved CLI credential (org acme)". */
 export function describeCliCredential(
 	candidate: CliCredentialCandidate,
 ): string {
@@ -185,30 +223,19 @@ export function describeCliCredential(
 			return '--token'
 		case 'env':
 			return apiTokenEnvVar
-		case 'stored-api-token': {
-			const via = storedTokenOrigin(candidate.stored)
-			return `stored API token ${candidate.stored?.tokenId ?? ''}`.trim() + via
-		}
 		case 'login':
 			return candidate.login?.org
-				? `kody login session (org ${candidate.login.org})`
-				: 'kody login session'
+				? `saved CLI credential (org ${candidate.login.org})`
+				: 'saved CLI credential'
 	}
 }
 
-function storedTokenOrigin(stored: StoredApiToken | undefined): string {
-	if (!stored?.createdVia) return ' (from kody auth bootstrap or setup-git)'
-	return stored.createdVia === 'cli-bootstrap'
-		? ' (from kody auth bootstrap)'
-		: ` (created via ${stored.createdVia})`
-}
-
-/** Commands that use the credential each purpose picks (for whoami/login notices). */
+/** Commands that use the resolved credential (for whoami/login notices). */
 export const callPurposeCommands =
-	'api, package, execute --local, context, daemon, and dev'
-export const sessionPurposeCommands = 'search and cloud execute'
+	'api, package, execute --local, context, daemon, dev, search, cloud execute, and git'
+export const sessionPurposeCommands = callPurposeCommands
 
-/** `npx @kodycodes/cli auth bootstrap …` hint that replaces a stored token. */
+/** `npx @kodycodes/cli auth bootstrap …` hint that mints a narrower credential. */
 export function replaceStoredTokenCommand(
 	scopes: ReadonlyArray<string> | null | undefined,
 	lifetime: 'short' | 'long' = 'short',
@@ -216,6 +243,9 @@ export function replaceStoredTokenCommand(
 	const list = scopes && scopes.length > 0 ? scopes.join(',') : '<scopes>'
 	return `npx @kodycodes/cli auth bootstrap --lifetime ${lifetime} --scopes ${list}`
 }
+
+const resignInHint =
+	'Run `kody login` (agents on Kody MCP: call cliCredentialBootstrap with no scopes and run the returned cli_command) to save a credential with every scope your org role allows.'
 
 /**
  * Sentence for insufficient_scope errors naming the credential that was sent
@@ -229,28 +259,10 @@ export function credentialUsedNote(input: {
 	const { credential } = input
 	if (!credential) return null
 	const used = `Credential used: ${describeCliCredential(credential)}.`
-	const fix = replaceStoredTokenCommand(
-		input.mintScopes ?? ['<current scopes>', '<missing scope>'],
-		input.lifetime,
-	)
-	if (
-		credential.source === 'stored-api-token' &&
-		credential.purpose === 'session'
-	) {
-		return `${used} Run \`kody login\` (search and cloud execute then use the login session before the stored token), or replace the stored token with \`${fix}\`.`
-	}
-	if (credential.source === 'stored-api-token') {
-		return `${used} \`kody login\` does not replace a stored API token, so logging in again will not fix this. Replace the stored token with \`${fix}\`.`
-	}
 	if (credential.source === 'env' || credential.source === 'token-flag') {
-		return `${used} It wins over any stored API token and \`kody login\` session; mint a token with the missing scope (tokenCreate) and update ${credential.source === 'env' ? 'KODY_API_TOKEN' : '--token'}, or unset it to fall back to the stored token or login.`
+		return `${used} It wins over the saved CLI credential; mint a token with the missing scope (tokenCreate) and update ${credential.source === 'env' ? apiTokenEnvVar : '--token'}, or unset it to use the saved credential.`
 	}
-	const stored = credential.shadowed.find(
-		(other) => other.source === 'stored-api-token',
-	)
-	return stored
-		? `${used} Your org role must grant the scope. (Also stored: ${describeCliCredential(stored)}.)`
-		: `${used} Your org role must grant the scope; run \`kody login\` again if it was granted recently.`
+	return `${used} Your org role must grant the scope. If this credential was minted with a narrower --scopes list, ${resignInHint}`
 }
 
 /**
@@ -265,32 +277,9 @@ export function credentialRejectedNote(input: {
 	const { credential } = input
 	if (!credential) return null
 	const used = `Credential used: ${describeCliCredential(credential)}.`
-	const lifetime = input.lifetime ?? 'short'
-	const scopes =
-		credential.source === 'stored-api-token'
-			? (credential.stored?.scopes ?? null)
-			: null
-	const fix = replaceStoredTokenCommand(
-		scopes && scopes.length > 0 ? scopes : ['<scopes>'],
-		lifetime,
-	)
-	if (
-		credential.source === 'stored-api-token' &&
-		credential.purpose === 'session'
-	) {
-		return `${used} Run \`kody login\` (search and cloud execute then use the login session before the stored token), or replace the stored token with \`${fix}\`.`
+	if (credential.source === 'token-flag' || credential.source === 'env') {
+		const name = credential.source === 'env' ? apiTokenEnvVar : '--token'
+		return `${used} ${name} wins over the saved CLI credential; unset or replace ${name} before retrying, or mint a fresh token (agents: cliCredentialBootstrap then run the returned cli_command; CI: tokenCreate) and update that value.`
 	}
-	if (credential.source === 'stored-api-token') {
-		return `${used} \`kody login\` does not replace a stored API token, so logging in again will not fix this. Replace the stored token with \`${fix}\`.`
-	}
-	if (credential.source === 'token-flag') {
-		return `${used} \`--token\` wins over any stored API token and \`kody login\` session; unset or replace --token before retrying, or mint a fresh token (agents: cliCredentialBootstrap then run the returned cli_command; CI: tokenCreate) and update that value.`
-	}
-	if (credential.source === 'env') {
-		if (credential.purpose === 'session') {
-			return `${used} For search and cloud execute, run \`kody login\` (the login session then outranks ${apiTokenEnvVar} without unsetting it), or replace ${apiTokenEnvVar} with a fresh token (agents: cliCredentialBootstrap then run the returned cli_command; CI: tokenCreate).`
-		}
-		return `${used} It wins over any stored API token and \`kody login\` session; unset or replace ${apiTokenEnvVar} before retrying, or mint a fresh token (agents: cliCredentialBootstrap then run the returned cli_command; CI: tokenCreate) and update that value.`
-	}
-	return `${used} Run \`kody login\` again to refresh the session.`
+	return `${used} ${resignInHint}`
 }

@@ -2,7 +2,6 @@ import {
 	callPurposeCommands,
 	describeCliCredential,
 	noteActiveLoginCredential,
-	replaceStoredTokenCommand,
 	resolveCliCredential,
 	sessionPurposeCommands,
 	type CliCredential,
@@ -20,7 +19,7 @@ function credentialJson(
 	candidate: CliCredentialCandidate,
 	tokenId?: string,
 ): WhoamiCredentialJson {
-	const id = tokenId ?? candidate.stored?.tokenId
+	const id = tokenId
 	return {
 		source: candidate.source,
 		label: describeCliCredential(candidate),
@@ -49,14 +48,6 @@ function formatShadowedCredentials(input: {
 	if (session && session.source !== credential.source) {
 		lines.push(
 			`note: ${sessionPurposeCommands} use the ${describeCliCredential(session)} first; ${callPurposeCommands} use the ${describeCliCredential(credential)}.`,
-		)
-	}
-	if (
-		credential.source === 'stored-api-token' &&
-		credential.shadowed.some((other) => other.source === 'login')
-	) {
-		lines.push(
-			`\`kody login\` does not replace a stored API token. To change its scopes, run \`${replaceStoredTokenCommand(credential.stored?.scopes)}\` (mints with your login session and replaces the stored token).`,
 		)
 	}
 	return lines

@@ -177,10 +177,7 @@ export function rejectedApiTokenMessage(
 	const resolved = credential === undefined ? activeCliCredential() : credential
 	const note = credentialRejectedNote({
 		credential: resolved,
-		lifetime:
-			resolved?.source === 'stored-api-token'
-				? inferCliTokenLifetimeAlias(resolved.stored)
-				: 'short',
+		lifetime: 'short',
 	})
 	if (note) {
 		return (

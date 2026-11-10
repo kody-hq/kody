@@ -6,7 +6,6 @@ import { deleteStoredApiToken, loadStoredApiToken } from './api-token-store.js'
 import {
 	describeCliCredential,
 	noteActiveLoginCredential,
-	replaceStoredTokenCommand,
 	resetActiveCliCredential,
 	resolveCliCredential,
 } from './cli-credential.js'
@@ -887,11 +886,15 @@ async function dispatch(
 					'Provide --code <kody_bc_…> from cliCredentialBootstrap (MCP api tool), or --scopes <list> to mint one with the current kody login session or API token.',
 				)
 			}
+			const lifetimeGiven =
+				typeof parsed.values.lifetime === 'string' ||
+				typeof parsed.values['idle-ttl-seconds'] === 'string' ||
+				typeof parsed.values['max-lifetime-seconds'] === 'string'
 			const lifetime = resolveCliTokenLifetime({
 				lifetime:
 					typeof parsed.values.lifetime === 'string'
 						? parsed.values.lifetime
-						: undefined,
+						: 'long',
 				idleTtlSeconds: parseCliLifetimeSecondsFlag(
 					typeof parsed.values['idle-ttl-seconds'] === 'string'
 						? parsed.values['idle-ttl-seconds']
@@ -921,6 +924,7 @@ async function dispatch(
 						scopes,
 						lifetime,
 						apiUrl,
+						mcpUrl,
 						mint: bootstrapMinter({
 							scopes,
 							lifetime,
@@ -933,7 +937,10 @@ async function dispatch(
 				: await authBootstrap({
 						code,
 						apiUrl,
-						...(lifetime.kind === 'alias'
+						mcpUrl,
+						...(!lifetimeGiven
+							? {}
+							: lifetime.kind === 'alias'
 							? { lifetime: lifetime.lifetime }
 							: {
 									idleTtlSeconds: lifetime.idleTtlSeconds,
@@ -943,7 +950,7 @@ async function dispatch(
 			const storedScopes = result.stored.scopes?.join(', ') || '(none)'
 			write(
 				[
-					`Bootstrap API token stored for execute --local, search, whoami, api, and token-auth cloud execute.`,
+					`Saved as the CLI credential (the same slot \`kody login\` uses). Every command, including git, uses it.`,
 					`api: ${result.stored.apiUrl}`,
 					`token id: ${result.stored.tokenId}`,
 					`scopes: ${storedScopes}`,
@@ -2242,70 +2249,36 @@ async function runAuthSetupGit(input: {
 	write: (text: string) => void
 	org?: string
 }): Promise<number> {
-	const { authSetupGit, setupGitDefaultScopes } = await import('./setup-git.js')
+	const { authSetupGit } = await import('./setup-git.js')
 	const apiUrl = apiUrlFrom({
 		apiUrl:
 			typeof input.values['api-url'] === 'string'
 				? input.values['api-url']
 				: undefined,
 	})
-	const scopes = parseCliScopesFlag(
-		typeof input.values.scopes === 'string' ? input.values.scopes : undefined,
-	)
-	const lifetime = resolveCliTokenLifetime({
-		lifetime:
-			typeof input.values.lifetime === 'string'
-				? input.values.lifetime
-				: 'long',
-		idleTtlSeconds: parseCliLifetimeSecondsFlag(
-			typeof input.values['idle-ttl-seconds'] === 'string'
-				? input.values['idle-ttl-seconds']
-				: undefined,
-			'--idle-ttl-seconds',
-		),
-		maxLifetimeSeconds: parseCliLifetimeSecondsFlag(
-			typeof input.values['max-lifetime-seconds'] === 'string'
-				? input.values['max-lifetime-seconds']
-				: undefined,
-			'--max-lifetime-seconds',
-		),
-	})
+	if (
+		typeof input.values.scopes === 'string' ||
+		typeof input.values.lifetime === 'string'
+	) {
+		throw new Error(
+			'auth setup-git no longer mints a token, so --scopes and --lifetime do not apply. It uses the saved CLI credential from `kody login` or `kody auth bootstrap`.',
+		)
+	}
 	const tokenValues = tokenFlagValues(input.values)
-	const mintScopes = scopes ?? setupGitDefaultScopes
-	const hasLoginSession =
-		loadCredentials(input.mcpUrl, undefined, undefined, {
-			org: input.org,
-		}) != null
 	const result = await authSetupGit({
 		apiUrl,
 		mcpUrl: input.mcpUrl,
 		token: tokenValues.token,
-		hasLoginSession,
-		...(scopes ? { scopesOverride: scopes } : {}),
-		lifetime,
-		mint: bootstrapMinter({
-			scopes: mintScopes,
-			lifetime,
-			mcpUrl: input.mcpUrl,
-			apiUrl,
-			tokenValues,
-			...(input.org ? { org: input.org } : {}),
-		}),
 	})
 	input.write(
 		[
 			`Git HTTPS credential helper installed for https://${result.host}/`,
 			`helper: ${result.helperCommand}`,
-			`token: ${result.minted ? 'minted' : 'reused'} ${result.tokenId} (org_binding=user)`,
+			`credential: saved CLI credential ${result.tokenId} (org_binding=user)`,
 			`scopes: ${result.scopes.join(', ') || '(none)'}`,
 			`expires: ${result.expiresAt ?? 'unknown'}`,
-			result.backendKind === 'file' && result.backendPath
-				? `OS keychain was unavailable; token saved at ${result.backendPath} (mode 0600).`
-				: result.minted
-					? 'Token stored in the OS keychain (or existing store).'
-					: 'Using the existing stored API token.',
 			'',
-			'This user-owned token authorizes every @owner/name.git you can access (all orgs).',
+			'This user-owned credential authorizes every @owner/name.git you can access (all orgs).',
 			'Try: git clone https://kody.codes/@owner/name.git',
 			'Undo later: kody auth remove-git',
 			'',
@@ -2524,8 +2497,8 @@ export async function resolvePackagePublishTarget(
 }
 
 /**
- * After an explicit `kody login`: delete the leftover stored API token so the
- * fresh login is what `api`, `package`, `context`, … use. Desktop logins
+ * After an explicit `kody login`: delete the token left in the pre-unification
+ * slot. The saved login already wins; this only clears the leftover. Desktop logins
  * (`KODY_CREDENTIAL_SOURCE=login`) leave it alone. `--token` /
  * `KODY_API_TOKEN` still outrank the login, so say so when one is set.
  */
@@ -2549,11 +2522,7 @@ export function supersedeStoredApiTokenAfterLogin(
 		return envTokenNote
 	}
 	if (!stored) return envTokenNote
-	const label = describeCliCredential({
-		source: 'stored-api-token',
-		token: stored.token,
-		stored,
-	})
+	const label = `old stored API token ${stored.tokenId}`
 	const scopes = stored.scopes?.join(', ') || 'unknown'
 	let deleted = false
 	try {
@@ -2562,7 +2531,7 @@ export function supersedeStoredApiTokenAfterLogin(
 		deleted = false
 	}
 	if (!deleted) {
-		return `${envTokenNote}Warning: could not remove the ${label} (scopes: ${scopes}), so api, package, execute --local, context, daemon, and dev keep using it instead of this login. Run \`kody logout\` and log in again.\n`
+		return `${envTokenNote}Note: could not remove the ${label} (scopes: ${scopes}). It is ignored: every command, including git, uses this login.\n`
 	}
-	return `${envTokenNote}Removed the ${label} (scopes: ${scopes}); api, package, execute --local, context, daemon, and dev now use this login. Git pushes mint a new token from this login. To use a scoped token again, run \`${replaceStoredTokenCommand(stored.scopes)}\`.\n`
+	return `${envTokenNote}Removed the ${label} (scopes: ${scopes}); every command, including git, uses this login.\n`
 }
