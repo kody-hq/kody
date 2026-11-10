@@ -350,7 +350,7 @@ export const executionContextShareRemoveCapability = defineDomainCapability(
 	{
 		name: 'executionContextShareRemove',
 		contextRuns: 'deny',
-		orgPermission: 'execution_context:read',
+		orgPermission: 'execution_context:manage_access',
 		description:
 			'Stop sharing an execution context with one grant holder. Their runs on the machine stop now. Org owners may remove shares too.',
 		keywords: ['execution context', 'unshare', 'revoke share'],
@@ -367,7 +367,7 @@ export const executionContextShareRemoveCapability = defineDomainCapability(
 export const executionContextAttachCapability = defineDomainCapability(domain, {
 	name: 'executionContextAttach',
 	contextRuns: 'deny',
-	orgPermission: 'execution_context:read',
+	orgPermission: 'execution_context:manage_access',
 	description:
 		'Attach your execution context to another org you belong to, so it can be shared there. Operator only.',
 	keywords: ['execution context', 'attach', 'org'],
@@ -383,7 +383,7 @@ export const executionContextAttachCapability = defineDomainCapability(domain, {
 export const executionContextDetachCapability = defineDomainCapability(domain, {
 	name: 'executionContextDetach',
 	contextRuns: 'deny',
-	orgPermission: 'execution_context:read',
+	orgPermission: 'execution_context:manage_access',
 	description:
 		'Detach an execution context from an org: its shares and opt-ins there are removed and runs bound to that org stop.',
 	keywords: ['execution context', 'detach', 'org'],
@@ -530,7 +530,7 @@ export const executionContextNoticeDismissCapability = defineDomainCapability(
 	{
 		name: 'executionContextNoticeDismiss',
 		contextRuns: 'deny',
-		orgPermission: 'execution_context:read',
+		orgPermission: 'execution_context:execute',
 		description:
 			'Dismiss your own excess-access notice on an execution context (the machine can do more than you can personally). Pass the fingerprint you saw; it comes back when the machine gains access you lack or its login changes. Misconfiguration notices cannot be dismissed. Only the person the notice is about can dismiss it, signed in as themselves.',
 		keywords: ['execution context', 'notice', 'dismiss', 'warning'],
@@ -767,9 +767,11 @@ export const executionContextDaemonLogsCapability = defineDomainCapability(
 			lines: z.number().int().min(1).max(500).optional(),
 		}),
 		async handler(args, ctx) {
-			return await daemonLogs(await caller(ctx), args.id, {
-				...(args.lines ? { lines: args.lines } : {}),
-			})
+			return await daemonLogs(
+				await caller(ctx),
+				args.id,
+				args.lines ? { lines: args.lines } : {},
+			)
 		},
 	},
 )
