@@ -149,10 +149,24 @@ The service never runs as root and holds no API token or passphrase: it signs in
 with the machine key. A background service cannot answer a passphrase prompt, so
 when the key needs one, or Linux has no unlocked keyring, install offers a file
 key instead: a random key stored next to the encrypted machine key, readable
-only by you (`--key-storage file`). On Windows the OS keyring is Windows
-Credential Manager, which a logon task can use, so the keyring stays the
-default; the file key fallback is protected by your user profile's folder
-permissions (Windows ignores POSIX modes).
+only by you. On Windows the OS keyring is Windows Credential Manager, which a
+logon task can use, so the keyring stays the default; the file key fallback is
+protected by your user profile's folder permissions (Windows ignores POSIX
+modes).
+
+`--key-storage file` works on every OS, macOS included, for `kody connect` and
+`kody daemon install`. The default stays the OS keyring.
+
+On macOS the keyring is the login Keychain, and the first read can open a
+Keychain approval dialog (choose **Always Allow** so it does not ask again). If
+it takes more than a moment, the CLI prints
+`Waiting for macOS Keychain approval for kody.codes (...)`: look for the dialog,
+which can open behind other windows. After 2 minutes with no answer
+(`KODY_KEYCHAIN_TIMEOUT_MS` changes this) it stops waiting and exits with the
+fixes: approve the dialog and retry, move the key to a file with
+`kody daemon install --key-storage file`, or register again with
+`kody connect --name <name> --key-storage file`. Stopping the daemon (Ctrl-C or
+SIGTERM) while the dialog is open also stops the Keychain request.
 
 Daemons auto-update by default: on start and about every 4 hours each daemon
 (service, terminal, or desktop app) checks npm, installs the verified newer

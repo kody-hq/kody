@@ -366,7 +366,7 @@ async function storeContext(
 	wrapping: import('../src/execution-context/keystore.js').WrappingKeySource,
 ) {
 	const { publicKeyJwk, privateKeyJwk } = await generateContextKey()
-	keystore.saveContext({
+	await keystore.saveContext({
 		context: {
 			version: 1,
 			ecid,
@@ -613,7 +613,7 @@ test('the file wrapping key is 600 and replaces a passphrase without a passphras
 		env: { KODY_CONTEXT_KEY_PASSPHRASE: 'correct horse battery staple' },
 	})
 	const privateJwk = await storeContext(ecid, passphrase)
-	keystore.rewrapContextKey({
+	await keystore.rewrapContextKey({
 		apiUrl,
 		ecid,
 		from: passphrase,
@@ -625,17 +625,16 @@ test('the file wrapping key is 600 and replaces a passphrase without a passphras
 		assert.equal(statSync(keyPath).mode & 0o777, 0o600)
 	}
 	assert.equal(keystore.storedKeyWrap(apiUrl, ecid), 'file')
-	const loaded = keystore.loadContext({
+	const loaded = await keystore.loadContext({
 		apiUrl,
 		ecid,
 		wrapping: keystore.wrappingKeyForStoredContext({ apiUrl, ecid, env: {} }),
 	})
 	assert.deepEqual(loaded.privateJwk, privateJwk)
-	assert.throws(
-		() =>
-			keystore
-				.fileWrappingKey({ apiUrl, ecid: 'ec_nofile', create: false })
-				.key(Buffer.alloc(16)),
+	await assert.rejects(
+		keystore
+			.fileWrappingKey({ apiUrl, ecid: 'ec_nofile', create: false })
+			.key(Buffer.alloc(16)),
 		/file key for this execution context is missing/,
 	)
 })

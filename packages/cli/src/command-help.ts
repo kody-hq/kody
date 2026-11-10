@@ -704,7 +704,10 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 			['--name <name>', 'Name for this machine'],
 			orgFlag,
 			['--no-install', 'Register only; do not install the background service'],
-			['--key-storage keyring|file', 'Where the service reads the machine key'],
+			[
+				'--key-storage keyring|file',
+				'Keep the machine key in the OS keyring (default) or a 600 file (any OS)',
+			],
 			['--yes', 'Skip confirmation prompts'],
 		],
 	},
@@ -740,7 +743,7 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 					],
 					[
 						'--key-storage keyring|file',
-						'Where the service reads the machine key',
+						'Keep the machine key in the OS keyring or a 600 file (any OS)',
 					],
 					['--yes', 'Skip confirmation prompts'],
 				],

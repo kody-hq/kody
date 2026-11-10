@@ -1,7 +1,7 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { defaultApiUrl } from './defaults.js'
-import { createKeyringEntry } from './keyring-entry.js'
+import { KeychainTimeoutError, createKeyringEntry } from './keyring-entry.js'
 import {
 	createFileBackend,
 	type SecretBackend,
@@ -50,7 +50,8 @@ function createApiTokenKeyringBackend(apiUrl: string): SecretBackend {
 		get() {
 			try {
 				return entry.getPassword()
-			} catch {
+			} catch (error) {
+				if (error instanceof KeychainTimeoutError) throw error
 				return null
 			}
 		},
