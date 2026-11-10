@@ -17,6 +17,7 @@ import {
 } from './e2e-cloudflare-mock-state.ts'
 import { startMockArtifactsGitServer } from './mock-artifacts-git-server.ts'
 import { isExecutedDirectly, resolveNpmCommand } from './node-runtime.ts'
+import { describeChildExit } from './apply-local-app-migrations.ts'
 import { spawnChildProcess, stopChildProcessTree } from './dev-process-utils.ts'
 import { workerOriginForPort } from './dev-server.ts'
 import {
@@ -166,6 +167,9 @@ function runMigrateE2e(): E2eMigrateRunResult {
 	})
 	if (result.stdout) process.stdout.write(result.stdout)
 	if (result.stderr) process.stderr.write(result.stderr)
+	if (result.status !== 0) {
+		console.error(describeChildExit('`migrate:e2e`', result))
+	}
 	return {
 		status: result.status,
 		output: `${result.stdout ?? ''}\n${result.stderr ?? ''}`,
@@ -194,7 +198,10 @@ async function startE2eWebServer() {
 		resetPersist: () => resetDisposableE2ePersist(disposableE2ePersistPath),
 		log: (message) => console.error(message),
 	})
-	if ((migrate.status ?? 1) !== 0) process.exit(migrate.status ?? 1)
+	if ((migrate.status ?? 1) !== 0) {
+		process.exitCode = migrate.status ?? 1
+		return
+	}
 
 	// Git smart HTTP for mock Artifacts remotes (package publish/check pages).
 	const gitRoot = await mkdtemp(join(tmpdir(), 'kody-e2e-artifacts-git-'))

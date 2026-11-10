@@ -76,6 +76,13 @@ function normalizeApiBaseUrl(apiBaseUrl: string) {
 	return apiBaseUrl.endsWith('/') ? apiBaseUrl : `${apiBaseUrl}/`
 }
 
+function isRetryableFetchError(error: unknown) {
+	return (
+		error instanceof Error &&
+		(error as Error & { retryable?: unknown }).retryable === true
+	)
+}
+
 async function sendViaCloudflareApi(
 	config: Required<
 		Pick<CloudflareEmailClientConfig, 'accountId' | 'apiBaseUrl' | 'apiToken'>
@@ -86,15 +93,24 @@ async function sendViaCloudflareApi(
 		`client/v4/accounts/${config.accountId}/email/sending/send`,
 		normalizeApiBaseUrl(config.apiBaseUrl),
 	)
-	let response: Response
-	try {
-		response = await fetch(endpoint.toString(), {
+	const send = () =>
+		fetch(endpoint.toString(), {
 			method: 'POST',
 			headers: {
 				Authorization: `Bearer ${config.apiToken}`,
 				'Content-Type': 'application/json',
 			},
 			body: JSON.stringify(toCloudflareSendBody(message)),
+		})
+	let response: Response
+	try {
+		response = await send().catch(async (error: unknown) => {
+			// workerd flags transient transport drops ("Network connection
+			// lost.") as retryable; retry those once (#5077).
+			if (!isRetryableFetchError(error)) throw error
+			console.warn('cloudflare-email-api-request-retrying', error)
+			await new Promise((resolve) => setTimeout(resolve, 250))
+			return send()
 		})
 	} catch (error) {
 		console.warn('cloudflare-email-api-request-failed', error)
