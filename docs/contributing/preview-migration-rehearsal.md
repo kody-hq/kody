@@ -203,9 +203,10 @@ XDG_CONFIG_HOME="$PWD/.rehearsal/alice" npx @kodycodes/cli auth bootstrap --code
 XDG_CONFIG_HOME="$PWD/.rehearsal/alice" npx @kodycodes/cli execute --api-url "$API" --code '…'
 ```
 
-A bootstrap code comes from `cliCredentialBootstrap` as that user. The lifetime
-is always explicit: `short` (1h idle, 24h max), `long` (14d idle, 3mo max), or
-both `--idle-ttl-seconds` and `--max-lifetime-seconds`.
+A bootstrap code comes from `cliCredentialBootstrap` as that user. Omit lifetime
+for the login default (`long` = 14d idle / 3mo max). Pass `short` (1h idle, 24h
+max), `long`, or both `--idle-ttl-seconds` and `--max-lifetime-seconds` to
+override. `tokenCreate` still requires a lifetime.
 
 An operator can also take the JSON snapshot without Cloudflare credentials:
 `node tools/preview-rehearsal/run.ts json-snapshot --credentials creds/credentials.json --out snap.json`.

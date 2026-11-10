@@ -449,9 +449,9 @@ the missing one. Its message prints the exact
 `cliCredentialBootstrap({ lifetime, scopes })` call and the matching
 `kody auth bootstrap --scopes` command. Open API adds `required_scope` and
 `mint_scopes` to the 403 `insufficient_scope` details so clients can print the
-same commands. Default bootstrap scopes include local-execute use scopes plus
-`package:write` and `token:delete`; callers can still narrow or expand via
-explicit `scopes`.
+same commands. Default bootstrap scopes match `kody login` (every org
+permission, capped by the org role and by a parent token or a session that
+narrows scopes). Callers pass `scopes` only to narrow.
 
 Profiles are a separate narrowing layer (not folded into scopes): a
 profile-bound token is narrowed by both its scopes and its profile chain. The

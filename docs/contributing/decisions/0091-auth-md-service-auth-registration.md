@@ -16,9 +16,10 @@ like RFC 8628, and polling the token endpoint with
 `identity_assertion` (an ID-JAG from the agent's provider), `service_auth` (the
 agent names the person's email), and `anonymous` (a pre-claim principal).
 
-[0056](./0056-cli-credential-bootstrap.md) requires every token mint to choose a
-lifetime. [0082](./0082-cli-oauth-device-authorization-grant.md) runs RFC 8628
-on Kody's authorization server for the official CLI only.
+[0056](./0056-cli-credential-bootstrap.md) requires `tokenCreate` to choose a
+lifetime; bootstrap defaults to the login lifetime.
+[0082](./0082-cli-oauth-device-authorization-grant.md) runs RFC 8628 on Kody's
+authorization server for the official CLI only.
 [0053](./0053-scoped-api-tokens-are-not-mcp-oauth-scopes.md) keeps `kody_at_`
 tokens off `/mcp`, so MCP hosts keep running MCP OAuth.
 

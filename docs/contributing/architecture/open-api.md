@@ -146,9 +146,10 @@ holding it). Refusals are 403 with a plain-language reason per secret.
   is the CapabilityProxy / package-graph / execute route grant; each resolved
   `kody:@…` import also needs `package:execute`. `none` means the surface
   touches no org data (own tokens, who-am-I, discovery, site-admin tools).
-- TTL: tokens require an explicit lifetime: `lifetime` `short` (1h idle / 24h
-  max) or `long` (14d idle / 3mo max), or both `idle_ttl_seconds` (60–1209600)
-  and `max_lifetime_seconds` (up to 7776000). Each authenticated request slides
+- TTL: `tokenCreate` requires an explicit lifetime: `lifetime` `short` (1h idle
+  / 24h max) or `long` (14d idle / 3mo max), or both `idle_ttl_seconds`
+  (60–1209600) and `max_lifetime_seconds` (up to 7776000). CLI bootstrap omits
+  lifetime to use the login `long` default. Each authenticated request slides
   `expires_at` forward (debounced), never past `max_expires_at`. Aliases are
   input sugar only; only the resulting idle/max values are stored.
 - Minting: the first token comes from the MCP `api` tool (`tokenCreate`, full
@@ -159,15 +160,14 @@ holding it). Refusals are 403 with a plain-language reason per secret.
   `expires_at`), never the caller's own token. Reclaim applies to every mint.
 - **CLI bootstrap (ADR 0056):** `cliCredentialBootstrap` (capability +
   `POST /v1/tokens/bootstrap`) returns a one-shot `kody_bc_…` code (never
-  `kody_at_`) and a `cli_command` that includes required lifetime flags.
+  `kody_at_`) and a `cli_command` that includes lifetime flags for older CLIs.
   `POST /v1/tokens/bootstrap/redeem` is code-authenticated only (no Bearer;
-  rejected for MCP `api`) and mints a normal `kody_at_` with default scopes:
-  `org:execute` + `org:read` + package/integration/secret/email/job/app/memory
-  use scopes (migration 0092), plus `package:write` (plain-repo / package
-  pushes), `package:create` (`packageGetGitRemote` create stubs), and
-  `token:delete` (self-revoke), and `created_via: cli-bootstrap` for the CLI to
-  store. Lifetime is required on both bootstrap mint and redeem. CLI `whoami` /
-  `GET /v1/tokens/current` surface sliding `expires_at` (the idle window).
+  rejected for MCP `api`) and mints the same `kody_at_` as `kody login`: full
+  org-permission scopes (`cliTokenScopes`, capped by the org role and by a
+  parent token), login lifetime (14d idle / 3mo max) when `lifetime` is omitted,
+  `created_via: cli-bootstrap`, saved in the same CLI slot. Pass `scopes` or
+  `lifetime` only to narrow. CLI `whoami` / `GET /v1/tokens/current` surface
+  sliding `expires_at` (the idle window).
 - Mint and rotate return `token`, `token_type: "Bearer"`, `id`, `name`,
   `scopes`, `status`, `idle_ttl_seconds`, `expires_at`, `max_expires_at`, and
   timestamps. List and get never return the value.

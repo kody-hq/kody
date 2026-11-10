@@ -155,22 +155,17 @@ replaces the "no silent default lifetime" rule above for bootstrap.
 - `api_tokens.created_via` gains `cli-bootstrap`.
 - HTTP handler allows one unauthenticated route (redeem), rate-limited at the
   API edge by IP.
-- CLI companion:
-  `npx @kodycodes/cli auth bootstrap --code … --lifetime short|long` (or
-  explicit idle/max flags) redeems and stores the API token for `--local`.
+- CLI companion: `npx @kodycodes/cli auth bootstrap --code …` redeems and stores
+  the API token for `--local`. Omit lifetime for the login default; pass
+  `--lifetime short|long` or explicit idle/max flags to override. `cli_command`
+  includes flags for older CLIs.
 - Agent tips prefer bootstrap (or login) over `tokenCreate` for interactive
-  local execute; single-task agents use `short`.
+  local execute; single-task agents may pass `short`.
 - Ordinary and bootstrap tokens share the same idle/max ceilings (14 days / 3
   months). Cap reclaim is generic in `mintApiToken`.
-- **As of Teams P4 + 0092 + later amendments:** default eventual scopes are the
-  pre-P4 `local-execute` + `account:read` parity set under org permissions:
-  `org:execute`, `org:read`, and the use-level scopes saved packages need
-  (`package:execute` / `package:read`, `integration:read` / `integration:use`,
-  `secret:use`, `email:read` / `email:send`, `job:read` / `job:execute`,
-  `app:read` / `app:execute`, `memory:read`), plus `package:write` (plain-repo /
-  package pushes), `package:create` (`packageGetGitRemote` create stubs), and
-  `token:delete` (self-revoke). `createAuthenticatedFetch` calls
-  `integrationGet` (`integration:read`); without it, every integration package
-  fails closed on CapabilityProxy. Do not mint `search:read`, the original
-  `local-execute` / `account:read` names, or `tokens:write`. Parent tokens still
-  cannot escalate scopes or outlive their own `max_expires_at`.
+- **As of 2026-11-09:** default eventual scopes are the same as `kody login`
+  (`cliTokenScopes`, the full org-permission vocabulary, capped by the org role
+  on every request and by a parent token). Pass `scopes` only to mint the
+  narrower local-execute set (`cliCredentialBootstrapNarrowScopes`) or another
+  explicit list. Parent tokens still cannot escalate scopes or outlive their own
+  `max_expires_at`.
