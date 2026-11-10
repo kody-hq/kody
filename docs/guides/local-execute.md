@@ -20,6 +20,11 @@ or Open API path exists.
 `--local` runs a pinned workerd on Linux, macOS, and Windows (x64 or arm64;
 Windows on Arm uses the x64 workerd build). No Docker required.
 
+Local workerd uses a real clock: `Date.now()` and `performance.now()` advance
+during CPU-only code, while hosted runs only advance them across I/O (see
+[Server-Timing phases](../use/execute.md#server-timing-phases)), so local
+timings of synchronous work do not match hosted ones.
+
 Watch:
 [Where Kody code runs: the cloud, your laptop, or your own machine](https://www.youtube.com/watch?v=i5qCOaIiYc8).
 

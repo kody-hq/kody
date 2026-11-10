@@ -547,6 +547,20 @@ the same local runtime bridge for these cells.
 | `execute --local` **mock** | Same as `kody dev` mock (working-tree scratch)                     | Same as `kody dev` mock (throws)             | Same as `kody dev` mock                                                                                 | Same as `kody dev` mock                                                                                                                            | Same as `kody dev` mock                                                                                                                                                       |
 | `execute --local` **prod** | Same as `kody dev` prod (working-tree throws)                      | Same as `kody dev` prod (throws)             | Same as `kody dev` prod                                                                                 | Package-graph from prod (no working-tree localDeps mapping)                                                                                        | Same as `kody dev` prod                                                                                                                                                       |
 
+What the `kody dev` mock does not reproduce:
+
+- **The hosted clock.** Hosted runs only advance `Date.now()` and
+  `performance.now()` across I/O, so a CPU-only span reads 0 ms there.
+  `kody dev` and `execute --local` use a real clock (see
+  [Server-Timing phases](../use/execute.md#server-timing-phases)).
+- **Storage latency.** Mock `packageStorage()` calls, each `sql` call included,
+  hit SQLite on your machine. Hosted, each call is a Durable Object round trip,
+  and from an execution context each call is a network round trip to Kody cloud
+  (see [Storage on a machine](./execution-contexts.md#storage-on-a-machine)).
+- **Cold isolate start.** `kody dev` serves every request from one long-running
+  workerd process, so you never see the first request on a new hosted isolate
+  load the package.
+
 Share previews for unpublished apps are out of scope — publish to share.
 
 On mock, the working-tree `packageStorage` key/value rows live in one file per
