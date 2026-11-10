@@ -345,6 +345,7 @@ return {
 	rowsRead: result.rowsRead,
 	rowsWritten: result.rowsWritten,
 	truncated: result.truncated,
+	warning: result.warning,
 }
 ```
 
@@ -365,6 +366,20 @@ read include. `warning` is a string once the statement examines at least
 1,000,000 rows (usage past the include is billed from credits). One read stops
 after 1,000,000,000 rows examined, with `storage.sql read stopped…`. Narrow with
 `LIMIT` or `WHERE`. The 1,000-row cap limits the response, not the scan.
+
+Several `;`-separated statements run in order in one call. Only the last one may
+take bindings, and the result describes the last statement. Bindings are
+positional (named `:name` slots bind in order) and accept strings, numbers,
+booleans (stored as `1` / `0`), and `null`.
+
+Under `kody execute --target mock` and `kody dev`, `sql(...)` runs on a local
+SQLite file and returns the same fields, row cap, `truncated`, warning, and
+statement rules. Only `rowsRead` and `rowsWritten` are estimates there, because
+Node's SQLite does not expose the counters hosted storage reports: `rowsWritten`
+counts rows inserted, updated, or deleted (no index or schema writes, so DDL
+reports `0`), and `rowsRead` is the larger of rows returned and rows visited by
+full-table scans (no index probes or schema reads). Check usage against hosted
+storage before relying on those two numbers.
 
 For dedicated inspection, use:
 

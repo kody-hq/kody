@@ -5,7 +5,7 @@ import {
 import { expect, test, vi } from 'vitest'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
-import { storageSqlReadCeilingMessage } from '#worker/storage-sql-read-policy.ts'
+import { storageSqlReadCeilingMessage } from '@kody-internal/shared/storage-sql-read-policy.ts'
 import { buildPackageStorageId } from '#worker/storage-ids.ts'
 
 const mockModule = vi.hoisted(() => ({

@@ -32,6 +32,7 @@ import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.t
 import { ensureUsageRollupsTestSchema } from '#worker/usage/test-schema.ts'
 
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import { storageSqlParitySteps } from '@kody-internal/shared/storage-sql-parity.fixture.ts'
 
 async function ensureStorageRunnerTestSchema() {
 	await ensureUserStorageBucketsTestSchema(env.APP_DB)
@@ -375,6 +376,32 @@ test('storage runner supports raw SQL with explicit writable access', async () =
 			expect(state.storage.sql.databaseSize).toBeGreaterThan(0)
 		},
 	)
+})
+
+test('sqlQuery matches the shared mock parity steps', async () => {
+	await ensureStorageRunnerTestSchema()
+	const runner = runnerFor('user-123', createExecuteStorageId())
+	for (const step of storageSqlParitySteps) {
+		const run = runner.sqlQuery({
+			query: step.query,
+			params: step.params,
+			writable: true,
+		})
+		if ('error' in step) {
+			await expect(run, step.query).rejects.toThrow(step.error)
+			continue
+		}
+		const { rows, firstRow, ...expected } = step.result
+		const actual = await run
+		const { rows: actualRows, ...actualRest } = actual
+		expect(Object.keys(actual).sort(), step.query).toEqual(
+			[...Object.keys(expected), 'rows'].sort(),
+		)
+		expect(actualRest, step.query).toEqual(expected)
+		if (rows) expect(actualRows, step.query).toEqual(rows)
+		if (firstRow) expect(actualRows[0], step.query).toEqual(firstRow)
+		expect(actualRows, step.query).toHaveLength(expected.rowCount)
+	}
 })
 
 test('sqlQuery caps large result sets and still finishes RETURNING writes', async () => {

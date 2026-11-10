@@ -91,7 +91,7 @@ export function packageStorage() {
 				['kody', '__mockPackageStorageSql'],
 				[{ query: String(query), bindings: Array.isArray(bindings) ? bindings : [] }],
 			);
-			return result ?? { rows: [] };
+			return result;
 		},
 	};
 }

@@ -19,7 +19,7 @@ import { isUserStorageSqlCallerMessage } from '#worker/storage-sql-caller-error.
 import {
 	storageSqlRowsReadCeiling,
 	storageSqlRowsReadWarnAt,
-} from '#worker/storage-sql-read-policy.ts'
+} from '@kody-internal/shared/storage-sql-read-policy.ts'
 import {
 	authorizeCapabilityStorageId,
 	authorizePackageBucketAccess,

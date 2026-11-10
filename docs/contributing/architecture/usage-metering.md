@@ -204,7 +204,7 @@ identifiers, and comments. After `WITH`, only `INSERT` / `UPDATE` / `DELETE` /
 `REPLACE` count as writes, so a `WITH … SELECT` that quotes `insert` or names a
 CTE `create` stays a read and still stops at the ceiling.
 
-Both constants live in `packages/worker/src/storage-sql-read-policy.ts`. They
+Both constants live in `packages/shared/src/storage-sql-read-policy.ts`. They
 are a gut feel, not a price: 1,000,000 rows is one unit at the published
 $0.002 per million rate, and 1,000,000,000 rows is $2 at that rate (about $1 at
 Cloudflare list). Move them when fleet data says the line is wrong. Some plans
