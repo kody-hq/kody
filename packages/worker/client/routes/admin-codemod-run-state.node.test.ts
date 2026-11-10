@@ -82,6 +82,13 @@ test('progress survives stopping and failures; starting a retry drops old feedba
 			}).data,
 		} as Parameters<typeof store.send>[0]),
 	).toBe(true)
+	expect(uiState<AdminCodemodRunState>(store.getSnapshot())).toEqual({
+		status: 'error',
+		runId: 'run_1',
+		items: [],
+		summary: { changed: 4 },
+		message: 'Try again.',
+	})
 	expect(
 		sendUiEvent(store, {
 			type: 'SUBMIT',

@@ -56,6 +56,8 @@ test('bootstrap mint defaults to the kody login scopes and lifetime', async () =
 	expect(minted.scopes).toContain('execution_context:read')
 	expect(minted.scopes).toContain('org:execute')
 	expect(minted.scopes).toContain('billing:write')
+	expect(minted.scopes).toContain('package:write')
+	expect(minted.scopes).toContain('package:execute')
 	expect(minted.scopes.length).toBeGreaterThan(
 		cliCredentialBootstrapNarrowScopes.length,
 	)
@@ -91,16 +93,18 @@ test('bootstrap redeem reports the minting session org as login_org', async () =
 
 test('bootstrap mint narrows only when scopes or lifetime are explicit', async () => {
 	const { db } = createDb()
+	const requested = [...cliCredentialBootstrapNarrowScopes]
 	const minted = await mintCliCredentialBootstrap({
 		db,
 		userId,
 		lifetime: 'short',
-		scopes: [...cliCredentialBootstrapNarrowScopes],
+		scopes: [...requested],
 		now: start,
 	})
 	expect(minted.cli_command).toBe(
 		`npx @kodycodes/cli auth bootstrap --code ${minted.bootstrap_code} --lifetime short`,
 	)
+	expect(minted.scopes).toEqual(requested)
 	expect(minted.scopes).toContain('package:write')
 	expect(minted.scopes).toContain('token:delete')
 	expect(minted.scopes).not.toContain('execution_context:read')
@@ -125,6 +129,7 @@ test('bootstrap redeem without a lifetime yields a kody login equivalent token',
 	expect(redeemed.userId).toBe(userId)
 	expect(redeemed.token.created_via).toBe('cli-bootstrap')
 	expect(redeemed.token.org_binding).toBe('user')
+	expect(redeemed.token.scopes).toEqual(minted.scopes)
 	expect(redeemed.token.scopes).toContain('execution_context:read')
 	expect(redeemed.token.scopes).toContain('org:execute')
 	expect(redeemed.token.idle_ttl_seconds).toBe(loginIdleTtlSeconds)
