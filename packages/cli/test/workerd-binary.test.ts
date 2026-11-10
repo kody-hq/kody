@@ -268,9 +268,9 @@ test('ensureWorkerdBinary names the download step when every attempt stalls', as
 			idleTimeoutMs: 50,
 			retryDelayMs: 0,
 		}),
-		/Downloading workerd for local execute failed 3 times: no bytes arrived/,
+		/Downloading workerd for local execute failed 5 times: no bytes arrived/,
 	)
-	assert.equal(server.calls(), 3)
+	assert.equal(server.calls(), 5)
 })
 
 test('ensureWorkerdBinary retries resets, HTTP/2 stream errors, and 5xx', async () => {
@@ -295,7 +295,7 @@ test('ensureWorkerdBinary retries resets, HTTP/2 stream errors, and 5xx', async 
 	let calls = 0
 	const fetchFn = (async () => {
 		calls += 1
-		return failures[calls - 1]!()
+		return failures[Math.min(calls, failures.length) - 1]!()
 	}) as typeof fetch
 	await assert.rejects(
 		ensureWorkerdBinary({
@@ -307,11 +307,11 @@ test('ensureWorkerdBinary retries resets, HTTP/2 stream errors, and 5xx', async 
 		}),
 		(error: unknown) =>
 			error instanceof WorkerdDownloadNetworkError &&
-			/failed 3 times: Could not download workerd .*HTTP 503/.test(
+			/failed 5 times: Could not download workerd .*HTTP 503/.test(
 				error.message,
 			),
 	)
-	assert.equal(calls, 3)
+	assert.equal(calls, 5)
 
 	let recovered = 0
 	const recovering = (async () => {

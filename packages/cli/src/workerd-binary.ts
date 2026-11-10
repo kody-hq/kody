@@ -33,7 +33,8 @@ export class WorkerdDownloadStalledError extends Error {}
 /** A reset, refused connection, HTTP/2 stream error, or 5xx: worth a retry. */
 export class WorkerdDownloadNetworkError extends Error {}
 
-const workerdDownloadAttempts = 3
+/** GitHub's release CDN can 504 for a minute; back off 1s, 2s, 4s, 8s (#5036). */
+const workerdDownloadAttempts = 5
 const workerdDownloadRetryDelayMs = 1_000
 
 export type WorkerdTarget = keyof typeof workerdAssetDigests
@@ -152,7 +153,8 @@ export async function ensureWorkerdBinary(
 			await new Promise((resolve) =>
 				setTimeout(
 					resolve,
-					(input.retryDelayMs ?? workerdDownloadRetryDelayMs) * attempt,
+					(input.retryDelayMs ?? workerdDownloadRetryDelayMs) *
+						2 ** (attempt - 1),
 				),
 			)
 		}

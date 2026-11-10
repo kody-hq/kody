@@ -1,5 +1,8 @@
 import { expect, test } from 'vitest'
-import { buildLocalMigrationCommands } from './apply-local-app-migrations.ts'
+import {
+	buildLocalMigrationCommands,
+	describeChildExit,
+} from './apply-local-app-migrations.ts'
 import { envWithWorkerPersistFile } from './local-d1-persist.ts'
 import { buildSeedWranglerArgs, parseArgs } from './seed-test-data.ts'
 
@@ -166,4 +169,20 @@ test('worker .env WRANGLER_PERSIST_TO reaches migrate and seed unless the shell 
 
 	expect(envWithWorkerPersistFile({}, 'WRANGLER_PERSIST_TO=')).toEqual({})
 	expect(envWithWorkerPersistFile({}, undefined)).toEqual({})
+})
+
+test('describeChildExit names why a silent migration step ended', () => {
+	expect(
+		describeChildExit('`migrate:e2e`', { status: null, signal: 'SIGKILL' }),
+	).toBe('`migrate:e2e` was killed by SIGKILL.')
+	expect(describeChildExit('step', { status: 1, signal: null })).toBe(
+		'step exited with code 1.',
+	)
+	expect(
+		describeChildExit('step', {
+			status: null,
+			signal: null,
+			error: new Error('spawnSync ENOBUFS'),
+		}),
+	).toBe('step failed to run: spawnSync ENOBUFS.')
 })

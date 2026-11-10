@@ -13,6 +13,7 @@ import {
 	writeE2eCloudflareMockState,
 } from './e2e-cloudflare-mock-state.ts'
 import { isExecutedDirectly, resolveNpmCommand } from './node-runtime.ts'
+import { describeChildExit } from './apply-local-app-migrations.ts'
 import { spawnChildProcess, stopChildProcessTree } from './dev-process-utils.ts'
 import { workerOriginForPort } from './dev-server.ts'
 import {
@@ -162,6 +163,9 @@ function runMigrateE2e(): E2eMigrateRunResult {
 	})
 	if (result.stdout) process.stdout.write(result.stdout)
 	if (result.stderr) process.stderr.write(result.stderr)
+	if (result.status !== 0) {
+		console.error(describeChildExit('`migrate:e2e`', result))
+	}
 	return {
 		status: result.status,
 		output: `${result.stdout ?? ''}\n${result.stderr ?? ''}`,

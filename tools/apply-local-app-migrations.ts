@@ -129,6 +129,26 @@ export function buildLocalMigrationCommands(input: {
 	]
 }
 
+/**
+ * Wrangler killed by a signal or a spawn error leaves no output of its own,
+ * so name the step and why it ended (#5069).
+ */
+export function describeChildExit(
+	label: string,
+	result: {
+		status: number | null
+		signal: NodeJS.Signals | null
+		error?: Error
+	},
+) {
+	const reason = result.error
+		? `failed to run: ${result.error.message}`
+		: result.signal
+			? `was killed by ${result.signal}`
+			: `exited with code ${result.status}`
+	return `${label} ${reason}.`
+}
+
 function runNode(arguments_: ReadonlyArray<string>) {
 	return spawnSync(process.execPath, arguments_, {
 		cwd: process.cwd(),
@@ -155,6 +175,12 @@ function main() {
 		process.stdout.write(result.stdout ?? '')
 		process.stderr.write(result.stderr ?? '')
 		if (result.status !== 0) {
+			console.error(
+				describeChildExit(
+					`Local migration step \`${command.slice(1).join(' ')}\``,
+					result,
+				),
+			)
 			process.exit(result.status ?? 1)
 		}
 	}
