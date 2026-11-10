@@ -64,6 +64,8 @@ server may have committed the write. Entity patches target the matching cache
 shape. Mutation identity does not come from document-head metadata. Pending
 controls follow Query mutation state; submitter guards apply to notices, draft
 resets, and navigation rather than preventing pending state from settling.
+App-owned UI machines (`packages/worker/client/routes/*-state.ts`) own their
+submission fences through `#client/ui-actor.ts` instead of Query pending state.
 
 Page-shaped optimistic resources use scoped Query mutation overlays while writes
 are pending, then reconcile the captured resource scope when writes settle.
