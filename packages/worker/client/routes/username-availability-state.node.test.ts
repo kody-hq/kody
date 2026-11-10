@@ -8,15 +8,7 @@ import {
 
 test('cleared or invalid drafts reject an old successful availability result', () => {
 	for (const next of ['idle', 'invalid'] as const) {
-		const store = createActor(usernameAvailabilityState, {
-			snapshot: (() => {
-				const initialView = { status: 'idle' }
-				return usernameAvailabilityState.resolveState({
-					value: initialView.status,
-					context: uiContext(initialView),
-				})
-			})(),
-		}).start()
+		const store = createActor(usernameAvailabilityState).start()
 		sendUiEvent(store, {
 			type: 'CHECK',
 			data: uiContext({ status: 'checking' }).data,

@@ -1,13 +1,14 @@
-import { setup } from 'xstate'
+import { setup, types } from 'xstate'
 import type { LifecycleStateOf } from '@kody-internal/shared/state-machine.ts'
 
 export const inboundSubscriptionEffectState = setup({
-	types: {
-		events: {} as
-			| { type: 'RESET' }
-			| { type: 'CLAIM' }
-			| { type: 'COMPLETE' }
-			| { type: 'DEAD_LETTER' },
+	schemas: {
+		events: {
+			RESET: types<{}>(),
+			CLAIM: types<{}>(),
+			COMPLETE: types<{}>(),
+			DEAD_LETTER: types<{}>(),
+		},
 	},
 }).createMachine({
 	id: 'email_inbound_subscription_effect.state',
@@ -17,32 +18,32 @@ export const inboundSubscriptionEffectState = setup({
 	states: {
 		pending: {
 			on: {
-				RESET: 'pending',
-				CLAIM: 'processing',
-				COMPLETE: 'complete',
-				DEAD_LETTER: 'dead-letter',
+				RESET: { target: 'pending' },
+				CLAIM: { target: 'processing' },
+				COMPLETE: { target: 'complete' },
+				DEAD_LETTER: { target: 'dead-letter' },
 			},
 		},
 		processing: {
 			on: {
-				CLAIM: 'processing',
-				RESET: 'pending',
-				COMPLETE: 'complete',
-				DEAD_LETTER: 'dead-letter',
+				CLAIM: { target: 'processing' },
+				RESET: { target: 'pending' },
+				COMPLETE: { target: 'complete' },
+				DEAD_LETTER: { target: 'dead-letter' },
 			},
 		},
 		complete: {
 			on: {
-				RESET: 'pending',
-				COMPLETE: 'complete',
-				DEAD_LETTER: 'dead-letter',
+				RESET: { target: 'pending' },
+				COMPLETE: { target: 'complete' },
+				DEAD_LETTER: { target: 'dead-letter' },
 			},
 		},
 		'dead-letter': {
 			on: {
-				RESET: 'pending',
-				COMPLETE: 'complete',
-				DEAD_LETTER: 'dead-letter',
+				RESET: { target: 'pending' },
+				COMPLETE: { target: 'complete' },
+				DEAD_LETTER: { target: 'dead-letter' },
 			},
 		},
 	},

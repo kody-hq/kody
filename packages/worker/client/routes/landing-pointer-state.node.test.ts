@@ -7,15 +7,7 @@ import {
 } from './landing-pointer-state.ts'
 
 test('released gestures carry no stale coordinates and a locked drag cannot become a scroll', () => {
-	const store = createActor(landingPointerState, {
-		snapshot: (() => {
-			const initialView = { status: 'idle' }
-			return landingPointerState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	}).start()
+	const store = createActor(landingPointerState).start()
 	const data = { pointerId: 1, startX: 0, startY: 0, lastX: 1, samples: [] }
 	expect(
 		sendUiEvent(store, {

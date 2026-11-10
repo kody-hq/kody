@@ -1,72 +1,53 @@
-import { setup, assign } from 'xstate'
-import type { UiContext, UiData, UiPayload } from '#client/ui-actor.ts'
+import { setup, types } from 'xstate'
+import {
+	resetUi,
+	startUi,
+	type UiContext,
+	type UiEvent,
+} from '#client/ui-actor.ts'
 export type DesktopSetupOperation =
 	| { status: 'idle' | 'running' }
 	| { status: 'error'; message: string }
 
 export const desktopSetupOperationState = setup({
-	types: {
-		context: {} as UiContext<DesktopSetupOperation>,
-		events: {} as
-			| {
-					type: 'SUBMIT'
-					data: UiPayload<DesktopSetupOperation, 'running'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESPONSE_OK'
-					data: UiPayload<DesktopSetupOperation, 'idle'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESPONSE_ERROR'
-					data: UiPayload<DesktopSetupOperation, 'error'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'DISMISS'
-					data: UiPayload<DesktopSetupOperation, 'idle'>
-					requestId?: unknown
-			  },
+	schemas: {
+		context: types<UiContext<DesktopSetupOperation>>(),
+		events: {
+			SUBMIT: types<UiEvent<DesktopSetupOperation, 'running'>>(),
+			RESPONSE_OK: types<UiEvent<DesktopSetupOperation, 'idle'>>(),
+			RESPONSE_ERROR: types<UiEvent<DesktopSetupOperation, 'error'>>(),
+			DISMISS: types<UiEvent<DesktopSetupOperation, 'idle'>>(),
+		},
 	},
-	guards: {
-		currentRequest: ({ context, event }) =>
-			context.requestId === event.requestId,
-	},
-	actions: {
-		update: assign({ data: ({ event }) => event.data }),
-		start: assign({
-			data: ({ event }) => event.data,
-			requestId: ({ event }) => event.requestId,
-		}),
-		reset: assign({ data: ({ event }) => event.data, requestId: undefined }),
-	},
+	guards: { currentRequest: (a: unknown, b: unknown) => a === b },
 }).createMachine({
 	id: 'desktop.setup_operation',
 	description:
 		'Bridge actions fence user input through reconciliation; only a failed operation carries an error and retry clears it.',
 	initial: 'idle',
-	context: { data: {} as UiData<DesktopSetupOperation>, requestId: undefined },
+	context: { data: {}, requestId: undefined },
 	states: {
-		idle: { on: { SUBMIT: { target: 'running', actions: 'start' } } },
+		idle: {
+			on: {
+				SUBMIT: { target: 'running', context: startUi },
+			},
+		},
 		running: {
 			on: {
-				RESPONSE_OK: {
-					target: 'idle',
-					guard: 'currentRequest',
-					actions: 'reset',
+				RESPONSE_OK: ({ context, event, guards }) => {
+					if (!guards.currentRequest(context.requestId, event.requestId)) return
+					return { target: 'idle', context: resetUi({ event }) }
 				},
-				RESPONSE_ERROR: {
-					target: 'error',
-					guard: 'currentRequest',
-					actions: 'update',
+				RESPONSE_ERROR: ({ context, event, guards }) => {
+					if (!guards.currentRequest(context.requestId, event.requestId)) return
+					return { target: 'error', context: { data: event.data } }
 				},
 			},
 		},
 		error: {
 			on: {
-				SUBMIT: { target: 'running', actions: 'start' },
-				DISMISS: { target: 'idle', actions: 'reset' },
+				SUBMIT: { target: 'running', context: startUi },
+				DISMISS: { target: 'idle', context: resetUi },
 			},
 		},
 	},

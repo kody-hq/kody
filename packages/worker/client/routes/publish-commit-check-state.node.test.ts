@@ -18,15 +18,7 @@ test('commit checks pin result replacement and empty-commit transitions', () => 
 	).toEqual(['idle'])
 })
 test('empty selections carry no results and retrying drops prior failures', () => {
-	const store = createActor(publishCommitCheckState, {
-		snapshot: (() => {
-			const initialView = { status: 'idle' }
-			return publishCommitCheckState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	}).start()
+	const store = createActor(publishCommitCheckState).start()
 	expect(
 		sendUiEvent(store, {
 			type: 'CHECK_COMMIT',

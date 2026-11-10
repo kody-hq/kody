@@ -12,15 +12,7 @@ test('username signup cannot submit until confirmed, then a failed submit is ret
 	expect(canHandle(usernameSignupState, 'submitting', 'SUBMIT')).toBe(false)
 	expect(canHandle(usernameSignupState, 'error', 'SUBMIT')).toBe(true)
 
-	const store = createActor(usernameSignupState, {
-		snapshot: (() => {
-			const initialView = { status: 'idle' }
-			return usernameSignupState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	}).start()
+	const store = createActor(usernameSignupState).start()
 	expect(
 		sendUiEvent(store, {
 			type: 'SUBMIT',

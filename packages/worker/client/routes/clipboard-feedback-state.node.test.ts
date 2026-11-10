@@ -15,15 +15,7 @@ test('clipboard-feedback pins legal UI transitions', () => {
 })
 
 test('one clipboard operation owns feedback through failure and retry', () => {
-	const store = createActor(clipboardFeedbackState, {
-		snapshot: (() => {
-			const initialView = { status: 'idle' }
-			return clipboardFeedbackState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	}).start()
+	const store = createActor(clipboardFeedbackState).start()
 	expect(
 		sendUiEvent(store, {
 			type: 'COPY',

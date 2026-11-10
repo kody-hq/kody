@@ -10,15 +10,7 @@ import {
 test('password reset submits once and a retry drops the previous receipt', () => {
 	expect(canHandle(passwordResetState, 'submitting', 'SUBMIT')).toBe(false)
 
-	const store = createActor(passwordResetState, {
-		snapshot: (() => {
-			const initialView = { status: 'idle' }
-			return passwordResetState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	}).start()
+	const store = createActor(passwordResetState).start()
 	expect(
 		sendUiEvent(store, {
 			type: 'SUBMIT',

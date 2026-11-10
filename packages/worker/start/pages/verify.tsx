@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
 import { useCallback, useState, type FormEvent } from 'react'
-import { useMachine } from '@xstate/react'
+import { useActor } from '@xstate/react'
 import {
 	twoFactorVerifyState,
 	type TwoFactorVerifyState,
@@ -49,15 +49,7 @@ function buildLoginHref(redirectTo: string | null) {
 
 export function VerifyRoute() {
 	const verifyTwoFactor = useServerFn(verifyWebsiteTwoFactor)
-	const [flowSnapshot, , flowActor] = useMachine(twoFactorVerifyState, {
-		snapshot: (() => {
-			const initialView = { status: 'idle' }
-			return twoFactorVerifyState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	})
+	const [flowSnapshot, , flowActor] = useActor(twoFactorVerifyState)
 	const flow = uiState<TwoFactorVerifyState>(flowSnapshot)
 	const transition = useCallback(
 		(event: Parameters<typeof flowActor.send>[0]) =>

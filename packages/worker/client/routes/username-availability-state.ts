@@ -1,5 +1,10 @@
-import { setup, assign } from 'xstate'
-import type { UiContext, UiData, UiPayload } from '#client/ui-actor.ts'
+import { setup, types } from 'xstate'
+import {
+	resetUi,
+	startUi,
+	type UiContext,
+	type UiEvent,
+} from '#client/ui-actor.ts'
 type Status =
 	| 'idle'
 	| 'checking'
@@ -18,144 +23,95 @@ export type UsernameAvailabilityView =
 	  }
 
 export const usernameAvailabilityState = setup({
-	types: {
-		context: {} as UiContext<UsernameAvailabilityView>,
-		events: {} as
-			| {
-					type: 'EDIT'
-					data: UiPayload<UsernameAvailabilityView, 'idle'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'CHECK'
-					data: UiPayload<UsernameAvailabilityView, 'checking'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'INVALID_DRAFT'
-					data: UiPayload<UsernameAvailabilityView, 'invalid'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESPONSE_AVAILABLE'
-					data: UiPayload<UsernameAvailabilityView, 'available'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESPONSE_TAKEN'
-					data: UiPayload<UsernameAvailabilityView, 'taken'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESPONSE_RESERVED'
-					data: UiPayload<UsernameAvailabilityView, 'reserved'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESPONSE_INVALID'
-					data: UiPayload<UsernameAvailabilityView, 'invalid'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESPONSE_UNKNOWN'
-					data: UiPayload<UsernameAvailabilityView, 'unknown'>
-					requestId?: unknown
-			  },
+	schemas: {
+		context: types<UiContext<UsernameAvailabilityView>>(),
+		events: {
+			EDIT: types<UiEvent<UsernameAvailabilityView, 'idle'>>(),
+			CHECK: types<UiEvent<UsernameAvailabilityView, 'checking'>>(),
+			INVALID_DRAFT: types<UiEvent<UsernameAvailabilityView, 'invalid'>>(),
+			RESPONSE_AVAILABLE:
+				types<UiEvent<UsernameAvailabilityView, 'available'>>(),
+			RESPONSE_TAKEN: types<UiEvent<UsernameAvailabilityView, 'taken'>>(),
+			RESPONSE_RESERVED: types<UiEvent<UsernameAvailabilityView, 'reserved'>>(),
+			RESPONSE_INVALID: types<UiEvent<UsernameAvailabilityView, 'invalid'>>(),
+			RESPONSE_UNKNOWN: types<UiEvent<UsernameAvailabilityView, 'unknown'>>(),
+		},
 	},
-	guards: {
-		currentRequest: ({ context, event }) =>
-			context.requestId === event.requestId,
-	},
-	actions: {
-		update: assign({ data: ({ event }) => event.data }),
-		start: assign({
-			data: ({ event }) => event.data,
-			requestId: ({ event }) => event.requestId,
-		}),
-		reset: assign({ data: ({ event }) => event.data, requestId: undefined }),
-	},
+	guards: { currentRequest: (a: unknown, b: unknown) => a === b },
 }).createMachine({
 	id: 'username.availability_ui',
 	description:
 		'Editing resets or checks a candidate; only the current check may publish a result, and empty or invalid drafts cannot receive old results.',
 	initial: 'idle',
-	context: {
-		data: {} as UiData<UsernameAvailabilityView>,
-		requestId: undefined,
-	},
+	context: { data: {}, requestId: undefined },
 	states: {
 		idle: {
 			on: {
-				EDIT: { target: 'idle', actions: 'reset' },
-				CHECK: { target: 'checking', actions: 'start' },
-				INVALID_DRAFT: { target: 'invalid', actions: 'reset' },
+				EDIT: { target: 'idle', context: resetUi },
+				CHECK: { target: 'checking', context: startUi },
+				INVALID_DRAFT: { target: 'invalid', context: resetUi },
 			},
 		},
 		checking: {
 			on: {
-				EDIT: { target: 'idle', actions: 'reset' },
-				CHECK: { target: 'checking', actions: 'start' },
-				INVALID_DRAFT: { target: 'invalid', actions: 'reset' },
-				RESPONSE_AVAILABLE: {
-					target: 'available',
-					guard: 'currentRequest',
-					actions: 'update',
+				EDIT: { target: 'idle', context: resetUi },
+				CHECK: { target: 'checking', context: startUi },
+				INVALID_DRAFT: { target: 'invalid', context: resetUi },
+				RESPONSE_AVAILABLE: ({ context, event, guards }) => {
+					if (!guards.currentRequest(context.requestId, event.requestId)) return
+					return { target: 'available', context: { data: event.data } }
 				},
-				RESPONSE_TAKEN: {
-					target: 'taken',
-					guard: 'currentRequest',
-					actions: 'update',
+				RESPONSE_TAKEN: ({ context, event, guards }) => {
+					if (!guards.currentRequest(context.requestId, event.requestId)) return
+					return { target: 'taken', context: { data: event.data } }
 				},
-				RESPONSE_RESERVED: {
-					target: 'reserved',
-					guard: 'currentRequest',
-					actions: 'update',
+				RESPONSE_RESERVED: ({ context, event, guards }) => {
+					if (!guards.currentRequest(context.requestId, event.requestId)) return
+					return { target: 'reserved', context: { data: event.data } }
 				},
-				RESPONSE_INVALID: {
-					target: 'invalid',
-					guard: 'currentRequest',
-					actions: 'update',
+				RESPONSE_INVALID: ({ context, event, guards }) => {
+					if (!guards.currentRequest(context.requestId, event.requestId)) return
+					return { target: 'invalid', context: { data: event.data } }
 				},
-				RESPONSE_UNKNOWN: {
-					target: 'unknown',
-					guard: 'currentRequest',
-					actions: 'update',
+				RESPONSE_UNKNOWN: ({ context, event, guards }) => {
+					if (!guards.currentRequest(context.requestId, event.requestId)) return
+					return { target: 'unknown', context: { data: event.data } }
 				},
 			},
 		},
 		available: {
 			on: {
-				EDIT: { target: 'idle', actions: 'reset' },
-				CHECK: { target: 'checking', actions: 'start' },
-				INVALID_DRAFT: { target: 'invalid', actions: 'reset' },
+				EDIT: { target: 'idle', context: resetUi },
+				CHECK: { target: 'checking', context: startUi },
+				INVALID_DRAFT: { target: 'invalid', context: resetUi },
 			},
 		},
 		taken: {
 			on: {
-				EDIT: { target: 'idle', actions: 'reset' },
-				CHECK: { target: 'checking', actions: 'start' },
-				INVALID_DRAFT: { target: 'invalid', actions: 'reset' },
+				EDIT: { target: 'idle', context: resetUi },
+				CHECK: { target: 'checking', context: startUi },
+				INVALID_DRAFT: { target: 'invalid', context: resetUi },
 			},
 		},
 		reserved: {
 			on: {
-				EDIT: { target: 'idle', actions: 'reset' },
-				CHECK: { target: 'checking', actions: 'start' },
-				INVALID_DRAFT: { target: 'invalid', actions: 'reset' },
+				EDIT: { target: 'idle', context: resetUi },
+				CHECK: { target: 'checking', context: startUi },
+				INVALID_DRAFT: { target: 'invalid', context: resetUi },
 			},
 		},
 		invalid: {
 			on: {
-				EDIT: { target: 'idle', actions: 'reset' },
-				CHECK: { target: 'checking', actions: 'start' },
-				INVALID_DRAFT: { target: 'invalid', actions: 'reset' },
+				EDIT: { target: 'idle', context: resetUi },
+				CHECK: { target: 'checking', context: startUi },
+				INVALID_DRAFT: { target: 'invalid', context: resetUi },
 			},
 		},
 		unknown: {
 			on: {
-				EDIT: { target: 'idle', actions: 'reset' },
-				CHECK: { target: 'checking', actions: 'start' },
-				INVALID_DRAFT: { target: 'invalid', actions: 'reset' },
+				EDIT: { target: 'idle', context: resetUi },
+				CHECK: { target: 'checking', context: startUi },
+				INVALID_DRAFT: { target: 'invalid', context: resetUi },
 			},
 		},
 	},

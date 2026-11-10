@@ -1,9 +1,9 @@
-import { setup } from 'xstate'
+import { setup, types } from 'xstate'
 import type { LifecycleStateOf } from '@kody-internal/shared/state-machine.ts'
 
 export const publishBuildState = setup({
-	types: {
-		events: {} as { type: 'SEAL' } | { type: 'COMMIT' } | { type: 'REJECT' },
+	schemas: {
+		events: { SEAL: types<{}>(), COMMIT: types<{}>(), REJECT: types<{}>() },
 	},
 }).createMachine({
 	id: 'publish_builds.status',
@@ -11,9 +11,13 @@ export const publishBuildState = setup({
 		'Builds upload, seal and commit or reject; a committed build may be finalized again or rejected by a later verification.',
 	initial: 'uploading',
 	states: {
-		uploading: { on: { SEAL: 'sealed' } },
-		sealed: { on: { COMMIT: 'committed', REJECT: 'rejected' } },
-		committed: { on: { COMMIT: 'committed', REJECT: 'rejected' } },
+		uploading: { on: { SEAL: { target: 'sealed' } } },
+		sealed: {
+			on: { COMMIT: { target: 'committed' }, REJECT: { target: 'rejected' } },
+		},
+		committed: {
+			on: { COMMIT: { target: 'committed' }, REJECT: { target: 'rejected' } },
+		},
 		rejected: { type: 'final' },
 	},
 })

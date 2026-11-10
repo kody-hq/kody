@@ -6,12 +6,15 @@ export type FormFlowState<S extends string> = {
 }[S]
 
 export type UiData<V> = V extends { status: string } ? Omit<V, 'status'> : never
-export type UiPayload<V, S> = V extends { status: infer Status }
+type UiPayload<V, S> = V extends { status: infer Status }
 	? S extends Status
 		? Omit<V, 'status'>
 		: never
 	: never
 export type UiContext<V> = { data: UiData<V>; requestId: unknown }
+export type UiEvent<V, S> = { data: UiPayload<V, S>; requestId?: unknown }
+
+export { resetUi, startUi, updateUi } from '#universal/ui-context.ts'
 const views = new WeakMap<object, { status: string }>()
 
 export function uiContext<V extends { status: string }>(view: V): UiContext<V> {

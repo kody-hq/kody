@@ -54,7 +54,7 @@
     "esbuild": "^0.25.12",
     "ignore": "^7.0.5",
     "ps-list": "^9.0.0",
-    "xstate": "5.33.3"
+    "xstate": "6.0.0-beta.1"
   },
   "devDependencies": {
     "@inquirer/checkbox": "^5.2.2",

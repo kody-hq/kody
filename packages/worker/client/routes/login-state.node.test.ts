@@ -7,15 +7,7 @@ import { loginState, type AuthFormState } from './login-state.ts'
 test('login submission fences a retry until the current request settles or is cancelled', () => {
 	expect(canHandle(loginState, 'submitting', 'SUBMIT')).toBe(false)
 
-	const store = createActor(loginState, {
-		snapshot: (() => {
-			const initialView = { status: 'idle' }
-			return loginState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	}).start()
+	const store = createActor(loginState).start()
 	expect(
 		sendUiEvent(store, {
 			type: 'SUBMIT',

@@ -13,17 +13,7 @@ test('avatar-crop pins legal UI transitions', () => {
 })
 
 test('preparation errors can retry without stale error payloads', () => {
-	const store = createActor(avatarCropState, {
-		snapshot: (() => {
-			const initialView = {
-				status: 'decoding',
-			}
-			return avatarCropState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	}).start()
+	const store = createActor(avatarCropState).start()
 	const preview = {
 		previewUrl: 'blob:preview',
 		imageSize: { width: 500, height: 500 },

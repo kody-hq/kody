@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
 import { useCallback, useEffect, useRef, type ReactNode } from 'react'
-import { useMachine } from '@xstate/react'
+import { useActor } from '@xstate/react'
 import {
 	clipboardFeedbackState,
 	type ClipboardFeedbackState,
@@ -111,18 +111,7 @@ function getCopyButtonCss(
  * changes size when the label swaps — the swap is a blur crossfade instead.
  */
 export function CopyTextButton(props: CopyTextButtonProps) {
-	const [copyFlowSnapshot, , copyFlowActor] = useMachine(
-		clipboardFeedbackState,
-		{
-			snapshot: (() => {
-				const initialView = { status: 'idle' }
-				return clipboardFeedbackState.resolveState({
-					value: initialView.status,
-					context: uiContext(initialView),
-				})
-			})(),
-		},
-	)
+	const [copyFlowSnapshot, , copyFlowActor] = useActor(clipboardFeedbackState)
 	const copyFlow = uiState<ClipboardFeedbackState>(copyFlowSnapshot)
 	const transitionCopy = useCallback(
 		(event: Parameters<typeof copyFlowActor.send>[0]) =>

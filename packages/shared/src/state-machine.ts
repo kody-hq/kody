@@ -3,7 +3,7 @@ import {
 	type AnyStateMachine,
 	type ContextFrom,
 	type EventFrom,
-	type StateValueFrom,
+	type SnapshotFrom,
 } from 'xstate'
 
 /** Illegal `event` from `from` on `machine` (no matching XState transition). */
@@ -22,11 +22,11 @@ export class IllegalStateTransitionError extends Error {
 
 /** Flat string state of a lifecycle machine (nested values are excluded). */
 export type LifecycleStateOf<M extends AnyStateMachine> = Extract<
-	StateValueFrom<M>,
+	SnapshotFrom<M>['value'],
 	string
 >
 
-/** An XState v5 machine used as a Kody lifecycle. */
+/** An XState v6 machine used as a Kody lifecycle. */
 export type LifecycleMachine = AnyStateMachine
 
 /** All state ids declared on the machine. */
@@ -123,7 +123,10 @@ export function sourcesOf<M extends AnyStateMachine>(
 ): ReadonlyArray<LifecycleStateOf<M>> {
 	return statesOf(machine).filter((state) =>
 		(machine.states[state]!.transitions.get(eventType) ?? []).some(
-			(edge) => edge.target !== undefined || edge.actions.length > 0,
+			(edge) =>
+				edge.target !== undefined ||
+				edge.context !== undefined ||
+				typeof edge.to === 'function',
 		),
 	)
 }
@@ -221,33 +224,4 @@ export function defineStatusEnum<const S extends string>(definition: {
 		sql: (selected: ReadonlyArray<S>) =>
 			sqlStateValues(name, selected.map(parse)),
 	})
-}
-
-/** Mermaid `stateDiagram-v2` of declared states, events, and finals. */
-export function renderStateMachineMermaid(machine: AnyStateMachine): string {
-	const states = statesOf(machine)
-	const id = (state: string) =>
-		state.includes('-') ? `__state_${states.indexOf(state)}` : state
-	const initial = machine.root.initial.target?.[0]?.key
-	return [
-		'stateDiagram-v2',
-		...states
-			.filter((state) => state.includes('-'))
-			.map((state) => `    state "${state}" as ${id(state)}`),
-		...(initial ? [`    [*] --> ${id(initial)}`] : []),
-		...states.flatMap((state) =>
-			[...machine.states[state]!.transitions].flatMap(([event, edges]) =>
-				edges
-					.filter(
-						(edge) => edge.target !== undefined || edge.actions.length > 0,
-					)
-					.flatMap((edge) =>
-						(edge.target ?? [machine.states[state]!]).map(
-							(target) => `    ${id(state)} --> ${id(target.key)}: ${event}`,
-						),
-					),
-			),
-		),
-		...finalStatesOf(machine).map((state) => `    ${id(state)} --> [*]`),
-	].join('\n')
 }

@@ -19,17 +19,7 @@ test('OAuth sign-in, consent, guest completion and bfcache navigation pin their 
 	expect(finalStatesOf(oauthConsentState)).toEqual(['guest', 'reset_complete'])
 })
 test('sign-in excludes consent and duplicate clicks, while bfcache releases its fence', () => {
-	const store = createActor(oauthConsentState, {
-		snapshot: (() => {
-			const initialView = {
-				status: 'idle',
-			}
-			return oauthConsentState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	}).start()
+	const store = createActor(oauthConsentState).start()
 	const controller = new AbortController()
 	expect(
 		sendUiEvent(store, {

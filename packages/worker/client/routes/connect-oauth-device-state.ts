@@ -1,5 +1,11 @@
-import { setup, assign } from 'xstate'
-import type { UiContext, UiData, UiPayload } from '#client/ui-actor.ts'
+import { setup, types } from 'xstate'
+import {
+	resetUi,
+	startUi,
+	updateUi,
+	type UiContext,
+	type UiEvent,
+} from '#client/ui-actor.ts'
 export type DeviceDisplay = {
 	userCode: string
 	verificationUri: string
@@ -17,119 +23,76 @@ export type ConnectOauthDeviceState =
 	| { status: 'success'; view: DeviceDisplay }
 
 export const connectOauthDeviceState = setup({
-	types: {
-		context: {} as UiContext<ConnectOauthDeviceState>,
-		events: {} as
-			| {
-					type: 'START'
-					data: UiPayload<ConnectOauthDeviceState, 'starting'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'SESSION_OK'
-					data: UiPayload<ConnectOauthDeviceState, 'polling'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'POLL_PENDING'
-					data: UiPayload<ConnectOauthDeviceState, 'polling'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'TICK'
-					data: UiPayload<ConnectOauthDeviceState, 'polling'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESPONSE_ERROR'
-					data: UiPayload<ConnectOauthDeviceState, 'error'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESPONSE_OK'
-					data: UiPayload<ConnectOauthDeviceState, 'success'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESET'
-					data: UiPayload<ConnectOauthDeviceState, 'idle'>
-					requestId?: unknown
-			  },
+	schemas: {
+		context: types<UiContext<ConnectOauthDeviceState>>(),
+		events: {
+			START: types<UiEvent<ConnectOauthDeviceState, 'starting'>>(),
+			SESSION_OK: types<UiEvent<ConnectOauthDeviceState, 'polling'>>(),
+			POLL_PENDING: types<UiEvent<ConnectOauthDeviceState, 'polling'>>(),
+			TICK: types<UiEvent<ConnectOauthDeviceState, 'polling'>>(),
+			RESPONSE_ERROR: types<UiEvent<ConnectOauthDeviceState, 'error'>>(),
+			RESPONSE_OK: types<UiEvent<ConnectOauthDeviceState, 'success'>>(),
+			RESET: types<UiEvent<ConnectOauthDeviceState, 'idle'>>(),
+		},
 	},
-	guards: {
-		currentRequest: ({ context, event }) =>
-			context.requestId === event.requestId,
-	},
-	actions: {
-		update: assign({ data: ({ event }) => event.data }),
-		start: assign({
-			data: ({ event }) => event.data,
-			requestId: ({ event }) => event.requestId,
-		}),
-		reset: assign({ data: ({ event }) => event.data, requestId: undefined }),
-	},
+	guards: { currentRequest: (a: unknown, b: unknown) => a === b },
 }).createMachine({
 	id: 'connect_oauth.device_poll',
 	description:
 		'A device session polls with transient retries until provider completion or expiry; an already committed late approval remains authoritative after the local deadline.',
 	initial: 'idle',
-	context: {
-		data: {} as UiData<ConnectOauthDeviceState>,
-		requestId: undefined,
-	},
+	context: { data: {}, requestId: undefined },
 	states: {
 		idle: {
 			on: {
-				START: { target: 'starting', actions: 'start' },
-				RESET: { target: 'idle', actions: 'reset' },
+				START: { target: 'starting', context: startUi },
+				RESET: { target: 'idle', context: resetUi },
 			},
 		},
 		starting: {
 			on: {
-				SESSION_OK: {
-					target: 'polling',
-					guard: 'currentRequest',
-					actions: 'update',
+				SESSION_OK: ({ context, event, guards }) => {
+					if (!guards.currentRequest(context.requestId, event.requestId)) return
+					return { target: 'polling', context: { data: event.data } }
 				},
-				RESPONSE_ERROR: {
-					target: 'error',
-					guard: 'currentRequest',
-					actions: 'update',
+				RESPONSE_ERROR: ({ context, event, guards }) => {
+					if (!guards.currentRequest(context.requestId, event.requestId)) return
+					return { target: 'error', context: { data: event.data } }
 				},
-				RESET: { target: 'idle', actions: 'reset' },
+				RESET: { target: 'idle', context: resetUi },
 			},
 		},
 		polling: {
 			on: {
-				POLL_PENDING: {
-					target: 'polling',
-					guard: 'currentRequest',
-					actions: 'update',
+				POLL_PENDING: ({ context, event, guards }) => {
+					if (!guards.currentRequest(context.requestId, event.requestId)) return
+					return { target: 'polling', context: { data: event.data } }
 				},
-				TICK: { actions: 'update' },
-				RESPONSE_ERROR: {
-					target: 'error',
-					guard: 'currentRequest',
-					actions: 'update',
+				TICK: { context: updateUi },
+				RESPONSE_ERROR: ({ context, event, guards }) => {
+					if (!guards.currentRequest(context.requestId, event.requestId)) return
+					return { target: 'error', context: { data: event.data } }
 				},
-				RESPONSE_OK: {
-					target: 'success',
-					guard: 'currentRequest',
-					actions: 'update',
+				RESPONSE_OK: ({ context, event, guards }) => {
+					if (!guards.currentRequest(context.requestId, event.requestId)) return
+					return { target: 'success', context: { data: event.data } }
 				},
-				RESET: { target: 'idle', actions: 'reset' },
+				RESET: { target: 'idle', context: resetUi },
 			},
 		},
 		error: {
 			on: {
-				RESPONSE_OK: {
-					target: 'success',
-					guard: 'currentRequest',
-					actions: 'update',
+				RESPONSE_OK: ({ context, event, guards }) => {
+					if (!guards.currentRequest(context.requestId, event.requestId)) return
+					return { target: 'success', context: { data: event.data } }
 				},
-				RESET: { target: 'idle', actions: 'reset' },
+				RESET: { target: 'idle', context: resetUi },
 			},
 		},
-		success: { on: { RESET: { target: 'idle', actions: 'reset' } } },
+		success: {
+			on: {
+				RESET: { target: 'idle', context: resetUi },
+			},
+		},
 	},
 })

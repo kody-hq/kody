@@ -174,15 +174,7 @@ function armTestimonialsMotion(scroller: HTMLElement, signal: AbortSignal) {
 	let lastTs = 0
 	let raf = 0
 	let offset = 0
-	const gesture = createActor(landingPointerState, {
-		snapshot: (() => {
-			const initialView = { status: 'idle' }
-			return landingPointerState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	}).start()
+	const gesture = createActor(landingPointerState).start()
 	let coastVelocity = 0
 	let suppressClick = false
 

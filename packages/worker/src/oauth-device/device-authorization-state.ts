@@ -1,9 +1,9 @@
-import { setup } from 'xstate'
+import { setup, types } from 'xstate'
 import type { LifecycleStateOf } from '@kody-internal/shared/state-machine.ts'
 
 export const deviceAuthorizationState = setup({
-	types: {
-		events: {} as { type: 'APPROVE' } | { type: 'DENY' } | { type: 'CONSUME' },
+	schemas: {
+		events: { APPROVE: types<{}>(), DENY: types<{}>(), CONSUME: types<{}>() },
 	},
 }).createMachine({
 	id: 'oauth_device_authorizations.status',
@@ -11,8 +11,10 @@ export const deviceAuthorizationState = setup({
 		'Device requests await a decision before an approved request can be consumed.',
 	initial: 'pending',
 	states: {
-		pending: { on: { APPROVE: 'approved', DENY: 'denied' } },
-		approved: { on: { CONSUME: 'consumed' } },
+		pending: {
+			on: { APPROVE: { target: 'approved' }, DENY: { target: 'denied' } },
+		},
+		approved: { on: { CONSUME: { target: 'consumed' } } },
 		denied: { type: 'final' },
 		consumed: { type: 'final' },
 	},

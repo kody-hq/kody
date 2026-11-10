@@ -13,15 +13,7 @@ test('two-factor verification fences submission and a retry drops failure feedba
 		canHandle(twoFactorVerifyState, 'submitting', 'VALIDATION_ERROR'),
 	).toBe(false)
 
-	const store = createActor(twoFactorVerifyState, {
-		snapshot: (() => {
-			const initialView = { status: 'idle' }
-			return twoFactorVerifyState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	}).start()
+	const store = createActor(twoFactorVerifyState).start()
 	expect(
 		sendUiEvent(store, {
 			type: 'SUBMIT',

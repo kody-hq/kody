@@ -7,15 +7,7 @@ import {
 } from './admin-codemod-run-state.ts'
 
 test('progress survives stopping and failures; starting a retry drops old feedback', () => {
-	const store = createActor(adminCodemodRunState, {
-		snapshot: (() => {
-			const initialView = { status: 'idle' }
-			return adminCodemodRunState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	}).start()
+	const store = createActor(adminCodemodRunState).start()
 	const progress = { runId: 'run_1', items: [], summary: { changed: 2 } }
 	expect(
 		sendUiEvent(store, {

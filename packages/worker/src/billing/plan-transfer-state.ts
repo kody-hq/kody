@@ -1,14 +1,15 @@
-import { setup } from 'xstate'
+import { setup, types } from 'xstate'
 import type { LifecycleStateOf } from '@kody-internal/shared/state-machine.ts'
 
 export const planTransferState = setup({
-	types: {
-		events: {} as
-			| { type: 'CLAIM_LEASE' }
-			| { type: 'CANCEL' }
-			| { type: 'RELEASE_CHECKOUT' }
-			| { type: 'RELEASE_RETRY' }
-			| { type: 'COMPLETE' },
+	schemas: {
+		events: {
+			CLAIM_LEASE: types<{}>(),
+			CANCEL: types<{}>(),
+			RELEASE_CHECKOUT: types<{}>(),
+			RELEASE_RETRY: types<{}>(),
+			COMPLETE: types<{}>(),
+		},
 	},
 }).createMachine({
 	id: 'org_plan_transfers.status',
@@ -16,17 +17,27 @@ export const planTransferState = setup({
 		'Transfers begin at checkout or retry, acquire or reclaim an applying lease, and complete or cancel; applying can release back to checkout or retry. Rows or initial responses may enter directly in another listed state.',
 	initial: 'pending_checkout',
 	states: {
-		pending_checkout: { on: { CLAIM_LEASE: 'applying', CANCEL: 'canceled' } },
-		applying: {
+		pending_checkout: {
 			on: {
-				CLAIM_LEASE: 'applying',
-				RELEASE_CHECKOUT: 'pending_checkout',
-				RELEASE_RETRY: 'needs_retry',
-				COMPLETE: 'completed',
-				CANCEL: 'canceled',
+				CLAIM_LEASE: { target: 'applying' },
+				CANCEL: { target: 'canceled' },
 			},
 		},
-		needs_retry: { on: { CLAIM_LEASE: 'applying', CANCEL: 'canceled' } },
+		applying: {
+			on: {
+				CLAIM_LEASE: { target: 'applying' },
+				RELEASE_CHECKOUT: { target: 'pending_checkout' },
+				RELEASE_RETRY: { target: 'needs_retry' },
+				COMPLETE: { target: 'completed' },
+				CANCEL: { target: 'canceled' },
+			},
+		},
+		needs_retry: {
+			on: {
+				CLAIM_LEASE: { target: 'applying' },
+				CANCEL: { target: 'canceled' },
+			},
+		},
 		completed: { type: 'final' },
 		canceled: { type: 'final' },
 	},

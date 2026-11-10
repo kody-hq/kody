@@ -12,15 +12,7 @@ test('one registration owns options and the browser ceremony until it settles', 
 	expect(canHandle(passkeyCeremonyState, 'ceremony', 'SUBMIT')).toBe(false)
 	expect(canHandle(passkeyCeremonyState, 'ceremony', 'OPTIONS_OK')).toBe(false)
 
-	const store = createActor(passkeyCeremonyState, {
-		snapshot: (() => {
-			const initialView = { status: 'idle' }
-			return passkeyCeremonyState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	}).start()
+	const store = createActor(passkeyCeremonyState).start()
 	const controller = new AbortController()
 	expect(
 		sendUiEvent(store, {

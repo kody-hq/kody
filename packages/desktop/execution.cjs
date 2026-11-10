@@ -1,31 +1,41 @@
 const { machineName } = require('./machine-name.cjs')
 const { registrationIdentity } = require('./registration-identity.cjs')
 const { loginAuthorizationUrl } = require('./in-app-approval.cjs')
-const { setup, assign, createActor } = require('xstate')
+const { setup, types, createActor } = require('xstate')
 const {
 	existingRegistration,
 	runnerView,
 	shouldAdopt,
 } = require('./machine-runner.cjs')
 
+const clearOperation = () => ({ command: null, message: null, notice: null })
+/** @param {{event: {command: string}}} args */
+const startOperation = ({ event }) => ({
+	...clearOperation(),
+	command: event.command,
+})
+/** @param {{event: {message: string}}} args */
+const operationError = ({ event }) => ({ message: event.message })
+
 const executionOperationState = setup({
-	types: {
+	schemas: {
 		context:
-			/** @type {{ command: string | null, message: string | null, notice: { tone: string, message: string } | null }} */ ({}),
-		events:
-			/** @type {{ type: 'START_OPERATION', command: string } | { type: 'SET_ERROR', message: string } | { type: 'CLEAR_ERROR' } | { type: 'SETTLED' }} */ ({}),
+			/** @type {import('xstate').TypeSchema<{ command: string | null, message: string | null, notice: { tone: string, message: string } | null }>} */ (
+				types()
+			),
+		events: {
+			START_OPERATION:
+				/** @type {import('xstate').TypeSchema<{command: string}>} */ (types()),
+			SET_ERROR: /** @type {import('xstate').TypeSchema<{message: string}>} */ (
+				types()
+			),
+			CLEAR_ERROR: /** @type {import('xstate').TypeSchema<{}>} */ (types()),
+			SETTLED: /** @type {import('xstate').TypeSchema<{}>} */ (types()),
+		},
 	},
-	actions: {
-		start: assign(({ event }) => ({
-			command: event.type === 'START_OPERATION' ? event.command : null,
-			message: null,
-			notice: null,
-		})),
-		setError: assign({
-			message: ({ event }) =>
-				event.type === 'SET_ERROR' ? event.message : null,
-		}),
-		clear: assign({ command: null, message: null, notice: null }),
+	guards: {
+		hasNotice: (/** @type {{message: string} | null} */ notice) =>
+			notice?.message !== undefined,
 	},
 }).createMachine({
 	id: 'desktop.machine_operation',
@@ -36,37 +46,43 @@ const executionOperationState = setup({
 	states: {
 		idle: {
 			on: {
-				START_OPERATION: { target: 'running', actions: 'start' },
-				SET_ERROR: { target: 'error', actions: 'setError' },
+				START_OPERATION: { target: 'running', context: startOperation },
+				SET_ERROR: { target: 'error', context: operationError },
 			},
 		},
 		running: {
 			on: {
 				SET_ERROR: {
-					actions: assign({
-						notice: ({ event }) => ({ tone: 'error', message: event.message }),
+					context: ({ event }) => ({
+						notice: { tone: 'error', message: event.message },
 					}),
 				},
-				CLEAR_ERROR: { actions: assign({ notice: null }) },
-				SETTLED: [
-					{
-						target: 'error',
-						guard: ({ context }) => context.notice?.message !== undefined,
-						actions: assign(({ context }) => ({
-							command: null,
-							message: context.notice?.message ?? null,
-							notice: null,
-						})),
-					},
-					{ target: 'idle', actions: 'clear' },
-				],
+				CLEAR_ERROR: { context: () => ({ notice: null }) },
+				SETTLED: ({ context, guards }) => {
+					if (guards.hasNotice(context.notice)) {
+						return {
+							target: 'error',
+							context: {
+								command: null,
+								message: context.notice?.message ?? null,
+								notice: null,
+							},
+						}
+					}
+					return {
+						target: 'idle',
+						context: clearOperation(),
+					}
+				},
 			},
 		},
 		error: {
 			on: {
-				START_OPERATION: { target: 'running', actions: 'start' },
-				SET_ERROR: { actions: 'setError' },
-				CLEAR_ERROR: { target: 'idle', actions: 'clear' },
+				START_OPERATION: { target: 'running', context: startOperation },
+				SET_ERROR: {
+					context: operationError,
+				},
+				CLEAR_ERROR: { target: 'idle', context: clearOperation },
 			},
 		},
 	},
