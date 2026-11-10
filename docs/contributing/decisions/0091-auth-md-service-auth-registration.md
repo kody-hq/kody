@@ -51,9 +51,9 @@ Kent decided on 2026-10-29:
    choice on a consent screen like `/device`.
 5. **Credential.** The claim grant's success response is a standard token
    response whose `access_token` is a user-owned `kody_at_` (`created_via`
-   `agent-registration`) with the 0056 default scopes, bound to the chosen org.
-   auth.md agents send no lifetime, so this mint defaults to `long`; the body
-   may ask for `short` or explicit seconds with the
+   `agent-registration`) with `cliCredentialBootstrapNarrowScopes`, bound to the
+   chosen org. auth.md agents send no lifetime, so this mint defaults to `long`;
+   the body may ask for `short` or explicit seconds with the
    [0056](./0056-cli-credential-bootstrap.md) lifetime fields.
 6. **A Kody profile of auth.md: no `identity_assertion` and no JWT-bearer
    grant.** The spec's claim grant success response adds `identity_assertion`
@@ -104,8 +104,8 @@ replaces the earlier anonymous sketch:
 
 ## Consequences
 
-- 0056: auth.md registration is the one mint with a default lifetime. Every
-  other mint still has to choose.
+- 0056: `tokenCreate` still requires a lifetime. CLI bootstrap and auth.md
+  registration default to `long`.
 - 0082: the device grant's code and verification pieces have a second caller.
   The device authorization endpoint itself is still CLI only.
 - MCP hosts are unchanged. After a claim, an agent installs Kody MCP and the

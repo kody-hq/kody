@@ -164,8 +164,9 @@ holding it). Refusals are 403 with a plain-language reason per secret.
   `POST /v1/tokens/bootstrap/redeem` is code-authenticated only (no Bearer;
   rejected for MCP `api`) and mints the same `kody_at_` as `kody login`: full
   org-permission scopes (`cliTokenScopes`, capped by the org role and by a
-  parent token), login lifetime (14d idle / 3mo max) when `lifetime` is omitted,
-  `created_via: cli-bootstrap`, saved in the same CLI slot. Pass `scopes` or
+  parent token), login lifetime (14d idle / 3mo max) when `lifetime` is omitted
+  at mint, `created_via: cli-bootstrap`, saved in the same CLI slot. Redeem
+  without lifetime fields keeps the code's authorized lifetime. Pass `scopes` or
   `lifetime` only to narrow. CLI `whoami` / `GET /v1/tokens/current` surface
   sliding `expires_at` (the idle window).
 - Mint and rotate return `token`, `token_type: "Bearer"`, `id`, `name`,

@@ -156,7 +156,8 @@ replaces the "no silent default lifetime" rule above for bootstrap.
 - HTTP handler allows one unauthenticated route (redeem), rate-limited at the
   API edge by IP.
 - CLI companion: `npx @kodycodes/cli auth bootstrap --code …` redeems and stores
-  the API token for `--local`. Omit lifetime for the login default; pass
+  the API token for `--local`. Omit lifetime at mint for the login default;
+  redeem without lifetime flags keeps the code's authorized lifetime. Pass
   `--lifetime short|long` or explicit idle/max flags to override. `cli_command`
   includes flags for older CLIs.
 - Agent tips prefer bootstrap (or login) over `tokenCreate` for interactive

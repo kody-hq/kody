@@ -191,8 +191,8 @@ Contract: `packages/shared/src/backup-staging.ts`.
    `staging/{day}/d1-paced/{databaseName}/`. Completed nights seal to
    `daily/d1-paced/{databaseId}/{day}/` (weekdays) or
    `weekly/d1-paced/{databaseId}/{day}/` (Sunday UTC full bases). Tick writers
-   flush TSV parts at 4 MiB and stop a tick at 32 MiB emitted. Heap is bounded
-   by the part flush, not the tick budget; see
+   flush TSV parts at 4 MiB on page boundaries. Each table walk stops after 32
+   MiB emitted so the next tick can resume; see
    [`d1-paced-backup.ts`](../../packages/worker/src/dr/d1-paced-backup.ts). The
    weekly Sunday drill (07:00–08:59 UTC) verifies each table's tip checksum from
    the sealed chain, streaming one part body at a time and keeping only the
