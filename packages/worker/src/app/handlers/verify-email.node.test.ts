@@ -7,6 +7,7 @@ import { sendFounderWelcomeEmail } from '#app/founder-welcome-email.ts'
 import { openVerifiedNoMcpCampaignEvent } from '#app/user-usage-campaign-emails.ts'
 import { scheduleKitSubscriberSync } from '#worker/kit/subscriber-sync.ts'
 import { maybeRewardHeldReferralAfterEmailVerified } from '#worker/entitlements/referral-program.ts'
+import { auditEventSummaries } from '#worker/test-support/audit-log-spy.ts'
 
 const waitUntilImpl = vi.hoisted(() => vi.fn())
 
@@ -68,7 +69,8 @@ test('verify-email handler wires success CTA from redirectTo and rejects open re
 	expect(oauthResponse).toMatchObject({
 		ok: true,
 		kind: 'email_verify',
-		message: expect.any(String),
+		title: 'Email verified',
+		message: expect.stringMatching(/Continue authorization/),
 		ctaHref: oauthResume,
 		ctaLabel: 'Continue authorization',
 	})
@@ -82,10 +84,15 @@ test('verify-email handler wires success CTA from redirectTo and rejects open re
 	expect(maliciousResponse).toMatchObject({
 		ok: true,
 		kind: 'email_verify',
-		message: expect.any(String),
+		title: 'Email verified',
+		message: expect.stringMatching(/Continue onboarding/),
 		ctaHref: '/onboarding',
 		ctaLabel: 'Continue to onboarding',
 	})
+	expect(auditEventSummaries()).toEqual([
+		'email_verify:success',
+		'email_verify:success',
+	])
 
 	expect(sendFounderWelcomeEmail).not.toHaveBeenCalled()
 	expect(openVerifiedNoMcpCampaignEvent).not.toHaveBeenCalled()
@@ -117,6 +124,8 @@ test('signup verification resumes the original package-app authorization request
 	})
 	expect(response).toMatchObject({
 		ok: true,
+		title: 'Email verified',
+		message: expect.stringMatching(/Continue authorization/),
 		ctaHref: authorizeResume,
 		ctaLabel: 'Continue authorization',
 	})

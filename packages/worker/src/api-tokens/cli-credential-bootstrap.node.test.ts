@@ -5,7 +5,6 @@ import { parseApiToken } from '@kody-internal/shared/api-token-format.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
-import { cliLoginDeviceTokenScopes } from './cli-login-device-token.ts'
 import {
 	cliBootstrapCodePrefix,
 	cliCredentialBootstrapNarrowScopes,
@@ -14,17 +13,16 @@ import {
 	parseCliBootstrapCode,
 	redeemCliCredentialBootstrap,
 } from './cli-credential-bootstrap.ts'
-import {
-	apiTokenLifetimeAliases,
-	apiTokenPolicy,
-	authenticateApiToken,
-} from './service.ts'
+import { apiTokenPolicy, authenticateApiToken } from './service.ts'
 
 const migrationsDirectory = new URL('../../migrations/', import.meta.url)
 const userId = ownerIdFromStored('stable-user-bootstrap-1')
 const start = new Date('2026-10-01T12:00:00.000Z')
-const shortLife = apiTokenLifetimeAliases.short
-const longLife = apiTokenLifetimeAliases.long
+/** ADR 0056 / kody login: 14-day idle, 90-day absolute max. */
+const loginIdleTtlSeconds = 14 * 24 * 60 * 60
+const loginMaxLifetimeSeconds = 90 * 24 * 60 * 60
+const shortIdleTtlSeconds = 60 * 60
+const shortMaxLifetimeSeconds = 24 * 60 * 60
 
 function createDb() {
 	const sqlite = new DatabaseSync(':memory:')
@@ -55,12 +53,14 @@ test('bootstrap mint defaults to the kody login scopes and lifetime', async () =
 	expect(minted.cli_command).toBe(
 		`npx @kodycodes/cli auth bootstrap --code ${minted.bootstrap_code} --lifetime long`,
 	)
-	expect([...minted.scopes].sort()).toEqual(
-		[...cliLoginDeviceTokenScopes].sort(),
-	)
 	expect(minted.scopes).toContain('execution_context:read')
-	expect(minted.idle_ttl_seconds).toBe(longLife.idleTtlSeconds)
-	expect(minted.max_lifetime_seconds).toBe(longLife.maxLifetimeSeconds)
+	expect(minted.scopes).toContain('org:execute')
+	expect(minted.scopes).toContain('billing:write')
+	expect(minted.scopes.length).toBeGreaterThan(
+		cliCredentialBootstrapNarrowScopes.length,
+	)
+	expect(minted.idle_ttl_seconds).toBe(loginIdleTtlSeconds)
+	expect(minted.max_lifetime_seconds).toBe(loginMaxLifetimeSeconds)
 	expect(parseApiToken(minted.bootstrap_code)).toBeNull()
 	expect(parseCliBootstrapCode(minted.bootstrap_code)?.codeId).toBeTruthy()
 })
@@ -101,10 +101,12 @@ test('bootstrap mint narrows only when scopes or lifetime are explicit', async (
 	expect(minted.cli_command).toBe(
 		`npx @kodycodes/cli auth bootstrap --code ${minted.bootstrap_code} --lifetime short`,
 	)
-	expect(minted.scopes).toEqual([...cliCredentialBootstrapNarrowScopes])
+	expect(minted.scopes).toContain('package:write')
+	expect(minted.scopes).toContain('token:delete')
 	expect(minted.scopes).not.toContain('execution_context:read')
-	expect(minted.idle_ttl_seconds).toBe(shortLife.idleTtlSeconds)
-	expect(minted.max_lifetime_seconds).toBe(shortLife.maxLifetimeSeconds)
+	expect(minted.scopes).not.toContain('billing:write')
+	expect(minted.idle_ttl_seconds).toBe(shortIdleTtlSeconds)
+	expect(minted.max_lifetime_seconds).toBe(shortMaxLifetimeSeconds)
 })
 
 test('bootstrap redeem without a lifetime yields a kody login equivalent token', async () => {
@@ -123,17 +125,16 @@ test('bootstrap redeem without a lifetime yields a kody login equivalent token',
 	expect(redeemed.userId).toBe(userId)
 	expect(redeemed.token.created_via).toBe('cli-bootstrap')
 	expect(redeemed.token.org_binding).toBe('user')
-	expect([...redeemed.token.scopes].sort()).toEqual(
-		[...cliLoginDeviceTokenScopes].sort(),
-	)
-	expect(redeemed.token.idle_ttl_seconds).toBe(longLife.idleTtlSeconds)
+	expect(redeemed.token.scopes).toContain('execution_context:read')
+	expect(redeemed.token.scopes).toContain('org:execute')
+	expect(redeemed.token.idle_ttl_seconds).toBe(loginIdleTtlSeconds)
 	expect(redeemed.token.expires_at).toBe(
-		at(30 + longLife.idleTtlSeconds).toISOString(),
+		at(30 + loginIdleTtlSeconds).toISOString(),
 	)
 	// Absolute expiry is anchored to code created_at + authorized max, not
 	// restarted from redeem time.
 	expect(redeemed.token.max_expires_at).toBe(
-		at(longLife.maxLifetimeSeconds).toISOString(),
+		at(loginMaxLifetimeSeconds).toISOString(),
 	)
 	const auth = await authenticateApiToken({
 		db,
@@ -431,12 +432,12 @@ test('bootstrap long lifetime clamps absolute max to a shorter API-token parent'
 		},
 		now: start,
 	})
-	expect(minted.idle_ttl_seconds).toBe(longLife.idleTtlSeconds)
+	expect(minted.idle_ttl_seconds).toBe(loginIdleTtlSeconds)
 	expect(minted.max_lifetime_seconds).toBe(parentRemainingSeconds)
-	expect(minted.max_lifetime_seconds).toBeLessThan(longLife.maxLifetimeSeconds)
+	expect(minted.max_lifetime_seconds).toBeLessThan(loginMaxLifetimeSeconds)
 	const idleFlag = minted.cli_command.match(/--idle-ttl-seconds (\d+)/)?.[1]
 	const maxFlag = minted.cli_command.match(/--max-lifetime-seconds (\d+)/)?.[1]
-	expect(idleFlag).toBe(String(longLife.idleTtlSeconds))
+	expect(idleFlag).toBe(String(loginIdleTtlSeconds))
 	expect(maxFlag).toBe(String(parentRemainingSeconds))
 	expect(minted.cli_command).not.toMatch(/--lifetime\s+long/)
 
@@ -447,7 +448,7 @@ test('bootstrap long lifetime clamps absolute max to a shorter API-token parent'
 		maxLifetimeSeconds: Number(maxFlag),
 		now: start,
 	})
-	expect(redeemed.token.idle_ttl_seconds).toBe(longLife.idleTtlSeconds)
+	expect(redeemed.token.idle_ttl_seconds).toBe(loginIdleTtlSeconds)
 	expect(redeemed.token.max_expires_at).toBe(
 		at(parentRemainingSeconds).toISOString(),
 	)
