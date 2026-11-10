@@ -1280,3 +1280,81 @@ test('drops third-party proxy block pages from serverFn responses (7830430060)',
 	}
 	expect(filterBrowserSentryEvent(linkedEvent)).toBe(linkedEvent)
 })
+
+test('drops injected-script Symbol.hasInstance redefine TypeErrors (7838313110)', () => {
+	const firefoxMessage =
+		"can't redefine non-configurable property Symbol.hasInstance"
+	const chromiumMessage = 'Cannot redefine property: Symbol(Symbol.hasInstance)'
+	const anonymousCodeFrame = {
+		filename: '<anonymous code>',
+		absPath: '<anonymous code>',
+	}
+
+	for (const c of [
+		['TypeError', firefoxMessage, [anonymousCodeFrame]],
+		['TypeError', `TypeError: ${firefoxMessage}`, [anonymousCodeFrame]],
+		['TypeError', chromiumMessage, [fr('apply', '<anonymous>')]],
+		[
+			'TypeError',
+			firefoxMessage,
+			[anonymousCodeFrame, fr('defineProperty', '[native code]')],
+		],
+	] satisfies Array<Case>) {
+		expect(droppedBy(filterBrowserSentryEvent, c)).toBe(true)
+	}
+	const untypedEvent = {
+		exception: {
+			values: [
+				{ value: firefoxMessage, stacktrace: { frames: [anonymousCodeFrame] } },
+			],
+		},
+	}
+	expect(filterBrowserSentryEvent(untypedEvent)).toBeNull()
+
+	for (const c of [
+		// First-party bundle frame: could be our code.
+		['TypeError', firefoxMessage, [anonymousCodeFrame, minifiedEntryFrame]],
+		['TypeError', firefoxMessage, [kodyEntry]],
+		// Missing or URL-less frames are unknown provenance.
+		['TypeError', firefoxMessage],
+		['TypeError', firefoxMessage, []],
+		['TypeError', firefoxMessage, [{ function: 'patch' }]],
+		['TypeError', firefoxMessage, [{ filename: '  ' }]],
+		// Other third-party URLs, types, or properties stay visible.
+		['TypeError', firefoxMessage, [appChunk]],
+		['Error', firefoxMessage, [anonymousCodeFrame]],
+		[
+			'TypeError',
+			"can't redefine non-configurable property Symbol.iterator",
+			[anonymousCodeFrame],
+		],
+		['TypeError', `${firefoxMessage} (extra)`, [anonymousCodeFrame]],
+	] satisfies Array<Case>) {
+		expect(keptBy(filterBrowserSentryEvent, c)).toBe(true)
+	}
+
+	// Message alone (no structured exception values) stays visible.
+	const bare = { message: firefoxMessage }
+	expect(filterBrowserSentryEvent(bare, new TypeError(firefoxMessage))).toBe(
+		bare,
+	)
+
+	// Every sibling value must match.
+	const siblingEvent = {
+		exception: {
+			values: [
+				{
+					type: 'TypeError',
+					value: firefoxMessage,
+					stacktrace: { frames: [anonymousCodeFrame] },
+				},
+				{
+					type: 'Error',
+					value: 'Community page failed to render',
+					stacktrace: { frames: [minifiedEntryFrame] },
+				},
+			],
+		},
+	}
+	expect(filterBrowserSentryEvent(siblingEvent)).toBe(siblingEvent)
+})

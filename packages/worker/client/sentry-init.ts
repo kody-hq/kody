@@ -67,7 +67,9 @@ export function initBrowserSentry(config: SentryClientConfig) {
 		// (KODY-9Q / issue 7798170337), local Vite / wrangler HMR loopback
 		// sessions, and residual Replay onIframeLoad / observeAttachShadow
 		// SecurityError|TypeError after cross-origin iframe Element reads
-		// (KODY-8W; primary mitigation is block:['iframe'] above))
+		// (KODY-8W; primary mitigation is block:['iframe'] above), and
+		// injected-script `Symbol.hasInstance` redefine TypeErrors whose
+		// frames are all Firefox `<anonymous code>` (issue 7838313110))
 		// — see filterBrowserSentryEvent /
 		// KODY-CLOUDFLARE-23 / KODY-CLOUDFLARE-3Q / KODY-CLOUDFLARE-3S /
 		// KODY-CLOUDFLARE-3X / KODY-CLOUDFLARE-43 / KODY-CLOUDFLARE-46 /
@@ -78,7 +80,8 @@ export function initBrowserSentry(config: SentryClientConfig) {
 		// issues 7639685398, 7648833360, 7648833403, 7653117289, 7655189301,
 		// 7658961865, 7659616372, 7660258027, 7662064169, 7677729361,
 		// 7682968915, 7687920474, 7689579030, 7690163947, 7696001937,
-		// 7715934699, 7717003182, 7777463624, 7795797021, 7798170337.
+		// 7715934699, 7717003182, 7777463624, 7795797021, 7798170337,
+		// 7838313110.
 		beforeSend(event, hint) {
 			const error =
 				hint.originalException ??
