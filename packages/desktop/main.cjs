@@ -311,19 +311,14 @@ const execution = new DesktopExecution({
 		return response === 0 && !quitting
 	},
 	viewer: async () => {
-		const fetchSession = () =>
-			session.fromPartition('persist:kody').fetch(`${appOrigin}/session`, {
+		const response = await session
+			.fromPartition('persist:kody')
+			.fetch(`${appOrigin}/session`, {
 				credentials: 'include',
 				redirect: 'error',
 				cache: 'no-store',
 				signal: AbortSignal.timeout(10000),
 			})
-		// Electron's net fetch can throw an internal TypeError
-		// (`markResourceTiming`) on a first request; one retry recovers (#5044).
-		const response = await fetchSession().catch((error) => {
-			if (!(error instanceof TypeError)) throw error
-			return fetchSession()
-		})
 		if (!response.ok)
 			throw new Error('Could not verify your Kody account. Try again.')
 		const result = await response.json()
