@@ -29,9 +29,9 @@ Watch:
 [Where Kody code runs: the cloud, your laptop, or your own machine](https://www.youtube.com/watch?v=i5qCOaIiYc8).
 
 Auth: `--token` / `KODY_API_TOKEN` (`kody_at_…` with `org:execute`; add
-`package:execute` when the module imports `kody:@…`), or when no API token is
-set, the access token from `kody login` (MCP OAuth) as Bearer on CapabilityProxy
-and package-graph routes.
+`package:execute` when the module imports `kody:@…`), then the one saved CLI
+credential from `kody login` or `kody auth bootstrap` (a `kody_at_…` device
+token, not host MCP OAuth). `kody whoami` reports the same pick.
 
 ## Setup
 

@@ -1931,9 +1931,9 @@ Values: active, published, discarded
 
 ### user_usage_campaigns.lifecycle
 
-Ledger phase replacements preserve legacy PascalCase stored tags via the
-exported mapping; evaluator activation and cooling history gates remain
-unchanged.
+Status enum for campaign phase. Ledger replacements preserve PascalCase stored
+tags via the exported mapping; evaluator activation and cooling history gates
+remain unchanged.
 
 Source:
 [`packages/worker/src/usage/usage-campaign-state.ts`](../../packages/worker/src/usage/usage-campaign-state.ts)

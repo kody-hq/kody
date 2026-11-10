@@ -986,11 +986,13 @@ GROUP BY stage
 
 ## Usage campaign
 
-The hourly `usage_entitlement_alert` lane also runs the usage-state lifecycle
-campaign (`sendUserUsageCampaignEmails`). One campaign state per user. The
-evaluator branches on activation stamps and live reads (paged distinct inbound
-`clientId`s, enabled jobs / last job run, execute-rollup depth, Stripe paid,
-stock entitlement pressure). It is not a fixed week-1/3 calendar drip.
+The hourly `usage_entitlement_alert` lane also runs the usage-state campaign
+(`sendUserUsageCampaignEmails`). One campaign phase per user. Phase is a status
+enum (`usageCampaignState`): any listed value may replace any other. The
+evaluator picks the next tag from activation stamps and live reads (paged
+distinct inbound `clientId`s, enabled jobs / last job run, execute-rollup depth,
+Stripe paid, stock entitlement pressure), not a transition graph. It is not a
+fixed week-1/3 calendar drip.
 
 | State                  | Mail                                                                                                                                                     |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
