@@ -8,11 +8,11 @@ import type {
 	ConnectOauthNextSteps,
 } from '#client/routes/connect-oauth-config-types.ts'
 import type { ConnectOauthStep } from './connect-oauth-state.ts'
-export type ConnectOauthStatusTone = 'info' | 'warn' | 'error'
-export type ConnectOauthChooserOption = NonNullable<
+type ConnectOauthStatusTone = 'info' | 'warn' | 'error'
+type ConnectOauthChooserOption = NonNullable<
 	ConnectOauthLoaderData['chooser']
 >['options'][number]
-export type LiveReplaceState = {
+type LiveReplaceState = {
 	mode: 'choose' | 'new-name'
 	newName: string
 	nameError: string | null

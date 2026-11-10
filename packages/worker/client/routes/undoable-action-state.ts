@@ -2,7 +2,7 @@ import { setup, assign } from 'xstate'
 import type { UiContext, UiData, UiPayload } from '#client/ui-actor.ts'
 export type UndoableActionStatus = 'idle' | 'waiting' | 'committing' | 'undoing'
 
-export type UndoableActionInput = {
+type UndoableActionInput = {
 	message: string
 	undoLabel?: string
 	onCommit: () => void | Promise<void>

@@ -1,6 +1,6 @@
 # 0100: Declare lifecycle graphs once, not as scattered status checks
 
-- **Status:** accepted
+- **Status:** superseded by [0101](./0101-xstate-lifecycles.md)
 - **Date:** 2026-11-09
 
 ## Context
