@@ -23,11 +23,22 @@ import { runCli } from '../src/cli.js'
 import { localExecuteScopes } from '../src/defaults.js'
 import {
 	createFileBackend,
+	deleteCredentials,
 	fileStorePath,
 	saveCredentials,
 } from '../src/store.js'
 
 const apiUrl = 'https://api.scopes.test'
+const scopesMcpUrl = 'https://scopes.test/mcp'
+const loginScopesMcpUrl = 'https://login-scopes.test/mcp'
+
+function clearSavedCredentials() {
+	for (const mcpUrl of [scopesMcpUrl, loginScopesMcpUrl]) {
+		for (let i = 0; i < 5; i++) {
+			if (!deleteCredentials(mcpUrl).deleted) break
+		}
+	}
+}
 const mintedCode = `kody_bc_${'c'.repeat(16)}_${'D'.repeat(32)}`
 const redeemedToken = 'kody_at_scoped_secret_do_not_print'
 const requestedScopes = ['org:execute', 'package:read', 'package:write']
@@ -87,7 +98,8 @@ async function withCliEnv<T>(
 	// Windows keeps CLI config under %APPDATA%.
 	process.env.APPDATA = home
 	delete process.env.KODY_API_TOKEN
-	delete process.env.KODY_MCP_URL
+	// Never touch the real kody.codes login: the OS keyring is per user.
+	process.env.KODY_MCP_URL = scopesMcpUrl
 	delete process.env.KODY_API_URL
 	const requests: Array<Recorded> = []
 	const previousFetch = globalThis.fetch
@@ -110,10 +122,12 @@ async function withCliEnv<T>(
 	// Windows Credential Manager (and macOS Keychain) are per-user, not per
 	// HOME, so a token an earlier test saved would leak into this one.
 	deleteStoredApiToken(apiUrl)
+	clearSavedCredentials()
 	try {
 		return await run({ home, requests })
 	} finally {
 		deleteStoredApiToken(apiUrl)
+		clearSavedCredentials()
 		globalThis.fetch = previousFetch
 		for (const [key, value] of Object.entries(saved)) {
 			if (value === undefined) delete process.env[key]
@@ -336,7 +350,7 @@ test('auth bootstrap --scopes explains how to widen when the token cannot grant 
 })
 
 test('auth bootstrap --scopes with a kody login session mints through the Open API', async () => {
-	const mcpUrl = 'https://login-scopes.test/mcp'
+	const mcpUrl = loginScopesMcpUrl
 	await withCliEnv(
 		(url) => {
 			if (requestPath(url).endsWith('/openapi.json'))

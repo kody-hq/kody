@@ -26,7 +26,6 @@ import {
 	deleteCredentials,
 	loadCredentials,
 } from '../src/store.js'
-import { defaultMcpUrl } from '../src/defaults.js'
 import { redact } from '../src/redact.js'
 
 /** Matches platform `kody_bc_<16>_<32 base64url>`. */
@@ -249,7 +248,9 @@ test('runCli auth bootstrap redeems and never prints the kody_at_ token', async 
 	const previousAppData = process.env.APPDATA
 	process.env.APPDATA = home
 	deleteStoredApiToken(apiUrl)
-	clearSavedCredentials(defaultMcpUrl)
+	const previousMcpUrl = process.env.KODY_MCP_URL
+	process.env.KODY_MCP_URL = unreachableMcpUrl
+	clearSavedCredentials(unreachableMcpUrl)
 	let stdout = ''
 	try {
 		const code = await runCli(
@@ -288,7 +289,9 @@ test('runCli auth bootstrap redeems and never prints the kody_at_ token', async 
 		if (previousAppData === undefined) delete process.env.APPDATA
 		else process.env.APPDATA = previousAppData
 		deleteStoredApiToken(apiUrl)
-		clearSavedCredentials(defaultMcpUrl)
+		clearSavedCredentials(unreachableMcpUrl)
+		if (previousMcpUrl === undefined) delete process.env.KODY_MCP_URL
+		else process.env.KODY_MCP_URL = previousMcpUrl
 	}
 })
 
