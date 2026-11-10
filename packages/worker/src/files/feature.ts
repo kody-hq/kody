@@ -1,5 +1,8 @@
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
-import { getFeatureFlagEvaluationsForUser } from '#worker/feature-flags/service.ts'
+import {
+	getFeatureFlagEvaluationsForUser,
+	isFeatureEnabledForAnonymousOrg,
+} from '#worker/feature-flags/service.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 export function filesWorkspaceOverride(env: Env): boolean | undefined {
 	if (env.FILES_COLLABORATION_ENABLED === 'false') return false
@@ -8,6 +11,17 @@ export function filesWorkspaceOverride(env: Env): boolean | undefined {
 		env.FILES_COLLABORATION_ENABLED === 'true'
 	)
 		return true
+}
+
+export async function fileLinkEnabled(env: Env, orgId: string) {
+	return (
+		filesWorkspaceOverride(env) ??
+		(await isFeatureEnabledForAnonymousOrg(
+			env.APP_DB,
+			'files-workspace',
+			orgId,
+		))
+	)
 }
 
 /** The environment switch is a local-dev override or a production kill switch. */

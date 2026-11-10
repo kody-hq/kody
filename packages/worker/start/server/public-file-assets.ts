@@ -144,8 +144,13 @@ async function resolveSignedAsset(
 		await import('@kody-internal/shared/owner-person-ids.ts')
 	const { openSignedAsset } = await import('../../src/files/public-links.ts')
 	const { fileStoreRpc } = await import('../../src/files/client.ts')
+	const { fileLinkEnabled } = await import('../../src/files/feature.ts')
 	const org = await getOrgBySlug(env.APP_DB, params.orgSlug)
-	if (!org || !(await isOrgActive(env.APP_DB, org.id)))
+	if (
+		!org ||
+		!(await isOrgActive(env.APP_DB, org.id)) ||
+		!(await fileLinkEnabled(env, org.id))
+	)
 		throw new Error('File unavailable.')
 	const ownerId = ownerIdFromStored(org.id)
 	const payload = signedAssetPayload.parse(

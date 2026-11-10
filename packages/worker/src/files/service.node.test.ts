@@ -522,6 +522,23 @@ test('an org opt-out suspends public links without replacing their tokens', asyn
 			enabled,
 			updatedByStableUserId: null,
 		})
+	const setGlobal = (enabled: boolean, percent: number | null) =>
+		f.db
+			.prepare(
+				`INSERT INTO feature_flags (key, enabled, rollout_percent, audience)
+			 VALUES ('files-workspace', ?, ?, 'everyone')
+			 ON CONFLICT(key) DO UPDATE SET enabled = excluded.enabled,
+			   rollout_percent = excluded.rollout_percent`,
+			)
+			.bind(Number(enabled), percent)
+			.run()
+	await expect(openLink()).rejects.toThrow('Shared file unavailable.')
+	await setGlobal(true, 100)
+	await expect(openLink()).resolves.toMatchObject({ file: { id: f.file.id } })
+	await setGlobal(true, 0)
+	await expect(openLink()).rejects.toThrow('Shared file unavailable.')
+	await setGlobal(false, null)
+	await expect(openLink()).rejects.toThrow('Shared file unavailable.')
 	await setRollout(true)
 	await expect(openLink()).resolves.toMatchObject({ file: { id: f.file.id } })
 	await setRollout(false)
