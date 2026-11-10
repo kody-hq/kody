@@ -46,12 +46,10 @@ const outboundEmailAttachmentSchema = object({
 	contentId: optional(nonEmptyStringSchema),
 })
 
-export type OutboundEmailAttachment = InferOutput<
-	typeof outboundEmailAttachmentSchema
->
-
 const outboundEmailSchema = object({
 	from: nonEmptyStringSchema,
+	/** Display name shown with `from` (for example `Kent C. Dodds (Kody)`). */
+	fromName: optional(nonEmptyStringSchema),
 	to: union([nonEmptyStringSchema, array(nonEmptyStringSchema)]),
 	subject: nonEmptyStringSchema,
 	html: nonEmptyStringSchema,

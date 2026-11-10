@@ -1,3 +1,16 @@
+import {
+	sqlSourcesOf,
+	parseState,
+} from '@kody-internal/shared/state-machine.ts'
+import {
+	packageApprovalState,
+	type PackageApprovalStatus,
+} from './package-approval-state.ts'
+
+export type { PackageApprovalStatus } from './package-approval-state.ts'
+
+const resolveGuard = sqlSourcesOf(packageApprovalState, 'APPROVE', ['pending'])
+
 /**
  * The owner approval queue for published packages (`package_approval_requests`).
  * One table and one page serve every reason a publish waits for the owner;
@@ -9,8 +22,6 @@ export const packageApprovalReasons = [
 ] as const
 
 export type PackageApprovalReason = (typeof packageApprovalReasons)[number]
-
-export type PackageApprovalStatus = 'pending' | 'approved' | 'superseded'
 
 export type PackageApprovalRequest = {
 	id: string
@@ -50,17 +61,6 @@ function readReason(value: unknown): PackageApprovalReason {
 	return reason
 }
 
-function readStatus(value: unknown): PackageApprovalStatus {
-	switch (value) {
-		case 'pending':
-		case 'approved':
-		case 'superseded':
-			return value
-		default:
-			throw new Error(`Unknown package approval status: ${String(value)}`)
-	}
-}
-
 function mapRow(row: Record<string, unknown>): PackageApprovalRequest {
 	const text = (key: string) => (row[key] == null ? null : String(row[key]))
 	return {
@@ -71,7 +71,7 @@ function mapRow(row: Record<string, unknown>): PackageApprovalRequest {
 		pendingCommit: String(row['pending_commit']),
 		baseCommit: text('base_commit'),
 		details: readDetails(row['details_json']),
-		status: readStatus(row['status']),
+		status: parseState(packageApprovalState, row['status']),
 		requestedByUserId: text('requested_by_user_id'),
 		resolvedByUserId: text('resolved_by_user_id'),
 		createdAt: String(row['created_at']),
@@ -113,7 +113,7 @@ export async function enqueuePackageApprovalRequest(
 				`UPDATE package_approval_requests
 				SET status = 'superseded', resolved_at = ?
 				WHERE package_id = ? AND owner_user_id = ? AND reason = ?
-					AND status = 'pending'`,
+					AND status IN ${resolveGuard}`,
 			)
 			.bind(now, input.packageId, input.ownerUserId, input.reason),
 		db
@@ -303,7 +303,7 @@ export async function resolvePackageApprovalRequest(
 		.prepare(
 			`UPDATE package_approval_requests
 			SET status = ?, resolved_by_user_id = ?, resolved_at = ?
-			WHERE id = ? AND status = 'pending'`,
+			WHERE id = ? AND status IN ${resolveGuard}`,
 		)
 		.bind(
 			input.status,

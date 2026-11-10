@@ -426,6 +426,7 @@ test('org soft-delete unbinds on the next request and restore does not revive th
 		env: { APP_DB: rawDb, AUDIT_DB: createAuditTestDb() } as Env,
 		orgId: ownerIdFromStored(String(org.id)),
 		actorUserId: founder.stableUserId,
+		now: new Date('2026-10-12T00:00:00.000Z'),
 	})
 	const epochAfter = await db
 		.prepare(`SELECT access_epoch FROM orgs WHERE id = ?`)

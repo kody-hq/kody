@@ -402,7 +402,8 @@ no package-app origin resolves. That path is still credential-stripped, but it
 is same-origin, so **do not treat a non-production inline run as representative
 of the production isolation boundary**. To exercise the two-origin flow locally,
 set `PACKAGE_APP_BASE_URL=http://packages.localhost:<port>` in
-`packages/worker/.env`.
+`packages/worker/.env`; `npm run dev` forwards it to the runtime Worker, which
+owns package-app host routing (`tools/local-sibling-dev-config.ts`).
 
 The cross-site handoff (how the owner is recognized on the package-app subdomain
 without giving package code a first-party session) is documented in

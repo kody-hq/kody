@@ -1,3 +1,12 @@
+import { isState } from '@kody-internal/shared/state-machine.ts'
+import {
+	inboundSubscriptionEffectState,
+	type InboundSubscriptionEffectState,
+} from './inbound-subscription-effect-state.ts'
+import {
+	inboundDeliveryState,
+	type InboundDeliveryState,
+} from './inbound-delivery-state.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
 import {
@@ -25,13 +34,7 @@ export type InboundDelivery = {
 	provider: string
 	quotaDay: string
 	dedupeExpiresAt: string
-	state:
-		| 'pending'
-		| 'storing'
-		| 'cleaning'
-		| 'received'
-		| 'rejected'
-		| 'orphan-cleaned'
+	state: InboundDeliveryState
 	rejectionReason?: string
 	storageLease?: string
 	storageLeaseAt?: string
@@ -50,11 +53,7 @@ export type InboundDelivery = {
 	usageEffectRetryAt?: string
 	usageEffectLease?: string
 	usageEffectLeaseAt?: string
-	subscriptionEffectState?:
-		| 'pending'
-		| 'processing'
-		| 'complete'
-		| 'dead-letter'
+	subscriptionEffectState?: InboundSubscriptionEffectState
 	subscriptionEffectLease?: string
 	subscriptionEffectLeaseAt?: string
 	subscriptionEffectRetryAt?: string
@@ -149,14 +148,9 @@ export function parseInboundDeliveryDetailJson(
 		) {
 			return null
 		}
-		const state =
-			detail.state === 'storing' ||
-			detail.state === 'cleaning' ||
-			detail.state === 'received' ||
-			detail.state === 'rejected' ||
-			detail.state === 'orphan-cleaned'
-				? detail.state
-				: 'pending'
+		const state = isState(inboundDeliveryState, detail.state)
+			? detail.state
+			: 'pending'
 		return {
 			fingerprint: detail.fingerprint,
 			deliveryId: detail.deliveryId,
@@ -225,10 +219,10 @@ export function parseInboundDeliveryDetailJson(
 			...(typeof detail.usageEffectLeaseAt === 'string'
 				? { usageEffectLeaseAt: detail.usageEffectLeaseAt }
 				: {}),
-			...(detail.subscriptionEffectState === 'pending' ||
-			detail.subscriptionEffectState === 'processing' ||
-			detail.subscriptionEffectState === 'complete' ||
-			detail.subscriptionEffectState === 'dead-letter'
+			...(isState(
+				inboundSubscriptionEffectState,
+				detail.subscriptionEffectState,
+			)
 				? { subscriptionEffectState: detail.subscriptionEffectState }
 				: {}),
 			...(typeof detail.subscriptionEffectLease === 'string'

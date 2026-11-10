@@ -230,7 +230,7 @@ test('offboarding revokes team-bound API tokens and bootstrap codes', async () =
 	expect(boot?.n).toBe(0)
 })
 
-test('revokeOAuthGrantsForOrg matches metadata.orgId with userId fallback', async () => {
+test('revokeOAuthGrantsForOrg matches metadata.orgId only', async () => {
 	const revokeGrant = vi.fn(async () => undefined)
 	const helpers = {
 		listUserGrants: async () => ({
@@ -261,13 +261,13 @@ test('revokeOAuthGrantsForOrg matches metadata.orgId with userId fallback', asyn
 	expect(revokeGrant).toHaveBeenCalledWith('g1', 'member-1')
 
 	revokeGrant.mockClear()
-	const revokedPersonal = await revokeOAuthGrantsForOrg({
+	const revokedUnstamped = await revokeOAuthGrantsForOrg({
 		helpers,
 		memberUserId: 'member-1',
 		orgId: ownerIdFromStored('member-1'),
 	})
-	expect(revokedPersonal).toBe(1)
-	expect(revokeGrant).toHaveBeenCalledWith('g3', 'member-1')
+	expect(revokedUnstamped).toBe(0)
+	expect(revokeGrant).not.toHaveBeenCalled()
 })
 
 test('offboarding hard-deletes the member’s personal credential grants to the org, and only theirs', async () => {

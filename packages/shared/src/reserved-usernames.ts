@@ -303,6 +303,7 @@ export const permanentlyReservedSystemLocals = [
 	'security',
 	'admin',
 	'psl',
+	'kent',
 ] as const
 
 /**
@@ -445,19 +446,6 @@ export function getReservedUsernameError(username: string) {
 		return 'This username is reserved.'
 	}
 	return null
-}
-
-export function isReservedUsernameToken(
-	username: string,
-	overrides: {
-		added?: Iterable<string>
-		removed?: Iterable<string>
-	} = {},
-) {
-	const normalized = normalizeReservedUsername(username)
-	if (!normalized) return false
-	if (reservedUsernamePrefixPattern.test(normalized)) return true
-	return computeEffectiveReservedUsernames(overrides).has(normalized)
 }
 
 export function isUsernameEffectivelyReserved(

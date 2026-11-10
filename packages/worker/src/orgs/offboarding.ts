@@ -16,11 +16,11 @@ import { deleteApprovalBundlesForMember } from '#worker/approval-bundles/repo.ts
 import { deleteCredentialProposalsForMember } from '#worker/credentials/agent-credential-proposals.ts'
 import { deleteCredentialMappingsForMember } from '#worker/credentials/credential-mappings.ts'
 import { deletePersonalCredentialOrgGrantsForMember } from '#worker/credentials/personal-credentials.ts'
+import { readOrgIdFromGrantMetadata } from '#worker/orgs/oauth-grant.ts'
 import {
 	listUserOAuthGrants,
 	revokeOAuthGrant,
 	type OAuthGrantHelpers,
-	type OAuthGrantListItem,
 } from '#worker/oauth-grants.ts'
 import { jobAuditActions, recordJobAudit } from '#worker/jobs/job-audit.ts'
 import { jobsData } from '#worker/jobs/jobs-data.ts'
@@ -84,27 +84,10 @@ async function listMemberCreatedJobs(input: {
 		.map((row) => ({ id: row.id, name: row.name }))
 }
 
-function oauthGrantOrgId(
-	grant: OAuthGrantListItem,
-	memberUserId: string,
-): string {
-	const metadata = grant.metadata
-	if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
-		const orgId = (metadata as Record<string, unknown>)['orgId']
-		if (typeof orgId === 'string' && orgId.trim().length > 0) {
-			return orgId.trim()
-		}
-	}
-	// Interim dual path (Teams §6.1): grants without metadata.orgId are treated
-	// as bound to the member's personal/migrated org id (= userId). Cleanup
-	// issue: revoke leftover grants lacking orgId after soak, then delete this
-	// fallback.
-	return memberUserId
-}
-
 /**
  * Revoke MCP OAuth grants for `memberUserId` that are bound to `orgId`.
- * Fail-closed: throws if listing or any revoke fails.
+ * Fail-closed: throws if listing or any revoke fails. Grants without
+ * metadata.orgId are skipped (runtime already fails closed without a stamp).
  */
 export async function revokeOAuthGrantsForOrg(input: {
 	helpers: OAuthGrantHelpers
@@ -113,7 +96,7 @@ export async function revokeOAuthGrantsForOrg(input: {
 }): Promise<number> {
 	const grants = await listUserOAuthGrants(input.helpers, input.memberUserId)
 	const matches = grants.filter(
-		(grant) => oauthGrantOrgId(grant, input.memberUserId) === input.orgId,
+		(grant) => readOrgIdFromGrantMetadata(grant.metadata) === input.orgId,
 	)
 	let revoked = 0
 	for (const grant of matches) {

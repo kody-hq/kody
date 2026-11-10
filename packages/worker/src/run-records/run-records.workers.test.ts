@@ -11,7 +11,7 @@ import { runBundledModuleWithRegistry } from '#mcp/run-kody-registry.ts'
 import { buildKodyModuleBundle } from '#worker/package-runtime/module-graph.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
-import { RunLog } from './run-log-do.ts'
+import { RunLog, type RunLogRowInput } from './run-log-do.ts'
 import { seedRunLogMeta } from './run-log-meta-test-seed.ts'
 import {
 	abandonRunRecord,
@@ -117,6 +117,49 @@ function finishOk(
 
 const getRun = (userId: string, runId: string) =>
 	getRunRecord({ env, userId: ownerIdFromStored(userId), runId })
+
+test('non-scheduled replace upserts preserve every accepted status and finish-without-begin', async () => {
+	const userId = uniqueUserId('replace-statuses')
+	const stub = runLogStub(userId)
+	const now = new Date().toISOString()
+	for (const from of ['running', 'success', 'error'] as const) {
+		for (const to of ['running', 'success', 'error'] as const) {
+			const run: RunLogRowInput = {
+				id: `${from}-${to}`,
+				surface: 'execute',
+				status: from,
+				name: null,
+				packageId: null,
+				kodyId: null,
+				sourceId: null,
+				publishedCommit: null,
+				storageId: null,
+				jobId: null,
+				workflowId: null,
+				invocationId: null,
+				sessionId: null,
+				idempotencyKey: null,
+				parentRunId: null,
+				startedAt: now,
+				finishedAt: null,
+				durationMs: null,
+				errorName: null,
+				errorMessage: null,
+				startedBy: null,
+				metadataJson: '{}',
+				createdAt: now,
+				updatedAt: now,
+			}
+			expect(await stub.finishRun({ run, logs: [] })).toMatchObject({
+				wrote: true,
+			})
+			expect(
+				await stub.finishRun({ run: { ...run, status: to }, logs: [] }),
+			).toMatchObject({ wrote: true })
+			expect((await getRun(userId, run.id))?.run.status).toBe(to)
+		}
+	}
+})
 
 const listRuns = (userId: string, filter?: RunRecordFilter, limit?: number) =>
 	listRunRecords({ env, userId: ownerIdFromStored(userId), filter, limit })

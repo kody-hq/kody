@@ -1,13 +1,18 @@
 /** @jsxImportSource @emotion/react */
+import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
+import { useCallback, useEffect, useState } from 'react'
+import { useMachine } from '@xstate/react'
+import {
+	emailVerificationState,
+	type EmailVerificationState,
+} from '#client/routes/email-verification-state.ts'
 import { publicAsset } from '../public-assets.ts'
 import { useSessionInfo } from '../session-info.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import { createVerificationDeliveryPoll } from '../verification-delivery-poll.ts'
-import { useEffect, useState } from 'react'
 import { useRouter } from '@tanstack/react-router'
 import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
-
 import { resolveContinueVerificationFeedback } from '#client/routes/pending-verification-continue.ts'
 import { resolvePostVerificationRedirect } from '#client/routes/pending-verification-path.ts'
 import { buildAuthLink } from '#client/auth-links.ts'
@@ -24,7 +29,6 @@ import {
 	renderEmailVerificationPrompt,
 	useResendVerification,
 } from './email-verification-prompt.tsx'
-
 export function PendingVerificationPage({
 	data,
 }: {
@@ -44,9 +48,30 @@ export function PendingVerificationPage({
 	const [delivery, setDelivery] = useState(
 		data.emailVerificationDelivery ?? null,
 	)
-	const [resendStatus, setResendStatus] = useState<'idle' | 'sending'>('idle')
-	const [resendMessage, setResendMessage] = useState<string | null>(null)
-	const [resendTone, setResendTone] = useState<'error' | 'info'>('info')
+	const [verificationSnapshot, , verificationActor] = useMachine(
+		emailVerificationState,
+		{
+			snapshot: (() => {
+				const initialView = { status: 'idle' }
+				return emailVerificationState.resolveState({
+					value: initialView.status,
+					context: uiContext(initialView),
+				})
+			})(),
+		},
+	)
+	const verification = uiState<EmailVerificationState>(verificationSnapshot)
+	const transition = useCallback(
+		(event: Parameters<typeof verificationActor.send>[0]) =>
+			sendUiEvent(verificationActor, event),
+		[verificationActor],
+	)
+
+	const resendStatus =
+		verification.status === 'sending' ? ('sending' as const) : ('idle' as const)
+	const resendMessage = 'message' in verification ? verification.message : null
+	const resendTone =
+		verification.status === 'error' ? ('error' as const) : ('info' as const)
 	useEffect(() => {
 		let disposed = false
 		let timer: ReturnType<typeof setTimeout>
@@ -95,30 +120,61 @@ export function PendingVerificationPage({
 		}
 	}, [redirectTo, router, fetchSessionInfo, deliveryPoll])
 	async function resend() {
-		setResendStatus('sending')
-		setResendMessage(null)
-		setResendTone('info')
+		if (
+			!transition({
+				type: 'RESEND',
+				data: uiContext({ status: 'sending' }).data,
+			} as Parameters<typeof verificationActor.send>[0])
+		)
+			return
 		try {
 			const result = await requestResendVerification(redirectTo)
-			if (!result) return
+			if (!result) {
+				transition({
+					type: 'CANCEL',
+					data: uiContext({ status: 'idle' }).data,
+				} as Parameters<typeof verificationActor.send>[0])
+				return
+			}
 			if (result.ok) void invalidatePages()
-			setResendTone(result.ok ? 'info' : 'error')
-			setResendMessage(result.message)
+			transition({
+				type:
+					(result.ok ? 'success' : 'error') === 'success'
+						? 'RESPONSE_OK'
+						: 'RESPONSE_ERROR',
+				data: { message: result.message },
+			} as Parameters<typeof verificationActor.send>[0])
 			if (result.ok) {
 				deliveryPoll.invalidate()
 				setDelivery(acceptedEmailVerificationDelivery())
 			}
 		} catch {
-			setResendTone('error')
-			setResendMessage('Unable to resend the verification email.')
-		} finally {
-			setResendStatus('idle')
+			transition({
+				type: 'RESPONSE_ERROR',
+				data: uiContext({
+					status: 'error',
+					message: 'Unable to resend the verification email.',
+				}).data,
+			} as Parameters<typeof verificationActor.send>[0])
 		}
 	}
 	async function continueAfterVerification() {
+		if (
+			!transition({
+				type: 'CHECK',
+				data: uiContext({ status: 'checking' }).data,
+			} as Parameters<typeof verificationActor.send>[0])
+		)
+			return
 		try {
 			const session = await fetchSessionInfo()
-			if (session === undefined) return
+			if (session === undefined) {
+				transition({
+					type: 'CANCEL',
+					data: uiContext({ status: 'idle' }).data,
+				} as Parameters<typeof verificationActor.send>[0])
+				return
+			}
 			const feedback = resolveContinueVerificationFeedback(session)
 			if (feedback.status === 'verified') {
 				await router.navigate({
@@ -126,11 +182,21 @@ export function PendingVerificationPage({
 				})
 				return
 			}
-			setResendTone(feedback.tone)
-			setResendMessage(feedback.message)
+			transition({
+				type:
+					(feedback.tone === 'error' ? 'error' : 'success') === 'success'
+						? 'RESPONSE_OK'
+						: 'RESPONSE_ERROR',
+				data: { message: feedback.message },
+			} as Parameters<typeof verificationActor.send>[0])
 		} catch {
-			setResendTone('error')
-			setResendMessage('Unable to check verification status. Try again.')
+			transition({
+				type: 'RESPONSE_ERROR',
+				data: uiContext({
+					status: 'error',
+					message: 'Unable to check verification status. Try again.',
+				}).data,
+			} as Parameters<typeof verificationActor.send>[0])
 		}
 	}
 	return (
@@ -157,6 +223,7 @@ export function PendingVerificationPage({
 							'We sent a verification link to your inbox. MCP access stays locked until you verify. Keep this browser signed in so you can resend the email or continue once the link works.',
 						delivery,
 						resendStatus,
+						checking: verification.status === 'checking',
 						resendMessage,
 						resendTone,
 						onResend: () => {

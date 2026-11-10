@@ -158,6 +158,7 @@ export function AuthForm(
 	])
 	return (
 		<form
+			aria-busy={props.isSubmitting}
 			key="authentication"
 			data-public-auth-form
 			data-rise

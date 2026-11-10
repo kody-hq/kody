@@ -22,6 +22,9 @@ always there as the fallback.
 Use one when code needs something only a machine has: a folder on disk, a device
 on your local network, or a tool installed there.
 
+> [!WATCH] https://www.youtube.com/watch?v=i5qCOaIiYc8 Watch: Where Kody code
+> runs: the cloud, your laptop, or your own machine
+
 > [!NOTE] Execution contexts are an experiment, off until you turn them on at
 > [Experiments](https://kody.codes/account/experiments). An agent can turn them
 > on for you with `experimentSet` (see How to turn it on below).
@@ -46,6 +49,20 @@ Credentials stay in Kody cloud and never reach the machine. When code on your
 machine calls a service with a credential, that request leaves from Kody cloud,
 which adds the credential on the way out. The machine sees the response, not the
 credential.
+
+### Storage on a machine
+
+A context has no scratch storage. Ad hoc `execute` there has no
+`packageStorage()`, the same as on Kody cloud: the call throws. A published
+package you import (`import x from 'kody:@scope/package/export'`) uses its real
+hosted bucket, the one its cloud runs read and write. Each storage call (`get`,
+`set`, `list`, `sql`, and the rest) is a separate network round trip from the
+machine to Kody cloud, so a loop of small calls is much slower than the same
+loop on Kody cloud; batch work into fewer `sql` calls. A test that runs an
+imported package on a context touches that package's real data. For scratch
+storage, run the package's own code from its checkout under `kody dev` or
+`execute --target mock` (see
+[Local testing with `kody dev`](./package-apps.md#local-testing-with-kody-dev)).
 
 ## Set up a machine
 
@@ -146,10 +163,24 @@ The service never runs as root and holds no API token or passphrase: it signs in
 with the machine key. A background service cannot answer a passphrase prompt, so
 when the key needs one, or Linux has no unlocked keyring, install offers a file
 key instead: a random key stored next to the encrypted machine key, readable
-only by you (`--key-storage file`). On Windows the OS keyring is Windows
-Credential Manager, which a logon task can use, so the keyring stays the
-default; the file key fallback is protected by your user profile's folder
-permissions (Windows ignores POSIX modes).
+only by you. On Windows the OS keyring is Windows Credential Manager, which a
+logon task can use, so the keyring stays the default; the file key fallback is
+protected by your user profile's folder permissions (Windows ignores POSIX
+modes).
+
+`--key-storage file` works on every OS, macOS included, for `kody connect` and
+`kody daemon install`. The default stays the OS keyring.
+
+On macOS the keyring is the login Keychain, and the first read can open a
+Keychain approval dialog (choose **Always Allow** so it does not ask again). If
+it takes more than a moment, the CLI prints
+`Waiting for macOS Keychain approval for kody.codes (...)`: look for the dialog,
+which can open behind other windows. After 2 minutes with no answer
+(`KODY_KEYCHAIN_TIMEOUT_MS` changes this) it stops waiting and exits with the
+fixes: approve the dialog and retry, move the key to a file with
+`kody daemon install --key-storage file`, or register again with
+`kody connect --name <name> --key-storage file`. Stopping the daemon (Ctrl-C or
+SIGTERM) while the dialog is open also stops the Keychain request.
 
 Daemons auto-update by default: on start and about every 4 hours each daemon
 (service, terminal, or desktop app) checks npm, installs the verified newer

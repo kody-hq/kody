@@ -1,4 +1,11 @@
 /** @jsxImportSource @emotion/react */
+import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
+import { useCallback, useEffect, useId, useRef, type ChangeEvent } from 'react'
+import { useMachine } from '@xstate/react'
+import {
+	usernameAvailabilityState,
+	type UsernameAvailabilityView as AvailabilityView,
+} from '#client/routes/username-availability-state.ts'
 import { useServerFn } from '@tanstack/react-start'
 import {
 	handleFormatHint,
@@ -25,18 +32,8 @@ import {
 	hoverMq,
 } from '#universal/styles/style-primitives.ts'
 import type { CSSObject } from '@emotion/react'
-import { useEffect, useId, useRef, useState, type ChangeEvent } from 'react'
 import { renderIcon } from './icon.tsx'
-
-export type UsernameAvailabilityView =
-	| { status: 'idle' }
-	| { status: 'checking' }
-	| {
-			status: 'available' | 'taken' | 'reserved' | 'invalid' | 'unknown'
-			username: string
-			reason: string | null
-			suggestions: Array<string>
-	  }
+export type UsernameAvailabilityView = AvailabilityView
 
 export type UsernameChoiceSeeds = {
 	email?: string | null
@@ -67,9 +64,27 @@ export function UsernameChoiceField(props: {
 	const tipId = `${generatedId}-username-tip`
 	const tipAnchor = `--${generatedId.replace(/:/g, '')}-username-tip`
 	const availabilityId = `${generatedId}-username-availability`
-	const [availability, setAvailability] = useState<UsernameAvailabilityView>({
-		status: 'idle',
-	})
+	const [availabilitySnapshot, , availabilityActor] = useMachine(
+		usernameAvailabilityState,
+		{
+			snapshot: (() => {
+				const initialView = {
+					status: 'idle',
+				}
+				return usernameAvailabilityState.resolveState({
+					value: initialView.status,
+					context: uiContext(initialView),
+				})
+			})(),
+		},
+	)
+	const availability = uiState<UsernameAvailabilityView>(availabilitySnapshot)
+	const setAvailability = useCallback(
+		(event: Parameters<typeof availabilityActor.send>[0]) =>
+			sendUiEvent(availabilityActor, event),
+		[availabilityActor],
+	)
+
 	const requestSeq = useRef(0)
 	const lifecycle = useRef<AbortController | null>(null)
 
@@ -85,25 +100,43 @@ export function UsernameChoiceField(props: {
 	}, [availability, onAvailabilityChange])
 
 	useEffect(() => {
+		const seq = ++requestSeq.current
 		const trimmed = props.value.trim()
 		if (!trimmed) {
-			setAvailability({ status: 'idle' })
+			setAvailability({
+				...({
+					type: 'EDIT',
+					data: uiContext({ status: 'idle' }).data,
+				} as Parameters<typeof availabilityActor.send>[0]),
+				requestId: seq,
+			})
 			return
 		}
 
 		const formatError = getHandleFormatError(trimmed)
 		if (formatError) {
 			setAvailability({
-				status: 'invalid',
-				username: trimmed.toLowerCase(),
-				reason: formatError,
-				suggestions: [],
+				...({
+					type: 'INVALID_DRAFT',
+					data: uiContext({
+						status: 'invalid',
+						username: trimmed.toLowerCase(),
+						reason: formatError,
+						suggestions: [],
+					}).data,
+				} as Parameters<typeof availabilityActor.send>[0]),
+				requestId: seq,
 			})
 			return
 		}
 
-		const seq = ++requestSeq.current
-		setAvailability({ status: 'checking' })
+		setAvailability({
+			...({
+				type: 'CHECK',
+				data: uiContext({ status: 'checking' }).data,
+			} as Parameters<typeof availabilityActor.send>[0]),
+			requestId: seq,
+		})
 		const timer = setTimeout(() => {
 			void (async () => {
 				try {
@@ -120,13 +153,19 @@ export function UsernameChoiceField(props: {
 					if (seq !== requestSeq.current) return
 					if (!result || result.ok !== true) {
 						setAvailability({
-							status: 'unknown',
-							username: trimmed.toLowerCase(),
-							reason:
-								typeof result?.error === 'string'
-									? result.error
-									: "Couldn't check availability. We'll verify on submit.",
-							suggestions: [],
+							...({
+								type: 'RESPONSE_UNKNOWN',
+								data: uiContext({
+									status: 'unknown',
+									username: trimmed.toLowerCase(),
+									reason:
+										typeof result?.error === 'string'
+											? result.error
+											: "Couldn't check availability. We'll verify on submit.",
+									suggestions: [],
+								}).data,
+							} as Parameters<typeof availabilityActor.send>[0]),
+							requestId: seq,
 						})
 						return
 					}
@@ -142,34 +181,60 @@ export function UsernameChoiceField(props: {
 						status !== 'invalid'
 					) {
 						setAvailability({
-							status: 'unknown',
-							username,
-							reason: "Couldn't check availability. We'll verify on submit.",
-							suggestions: [],
+							...({
+								type: 'RESPONSE_UNKNOWN',
+								data: uiContext({
+									status: 'unknown',
+									username,
+									reason:
+										"Couldn't check availability. We'll verify on submit.",
+									suggestions: [],
+								}).data,
+							} as Parameters<typeof availabilityActor.send>[0]),
+							requestId: seq,
 						})
 						return
 					}
 					setAvailability({
-						status,
-						username,
-						reason:
-							typeof result.reason === 'string' || result.reason === null
-								? result.reason
-								: null,
-						suggestions: Array.isArray(result.suggestions)
-							? result.suggestions.filter(
-									(value): value is string => typeof value === 'string',
-								)
-							: [],
+						...({
+							type:
+								status === 'available'
+									? 'RESPONSE_AVAILABLE'
+									: status === 'taken'
+										? 'RESPONSE_TAKEN'
+										: status === 'reserved'
+											? 'RESPONSE_RESERVED'
+											: 'RESPONSE_INVALID',
+							data: uiContext({
+								status,
+								username,
+								reason:
+									typeof result.reason === 'string' || result.reason === null
+										? result.reason
+										: null,
+								suggestions: Array.isArray(result.suggestions)
+									? result.suggestions.filter(
+											(value): value is string => typeof value === 'string',
+										)
+									: [],
+							}).data,
+						} as Parameters<typeof availabilityActor.send>[0]),
+						requestId: seq,
 					})
 				} catch {
 					if (lifecycle.current?.signal.aborted) return
 					if (seq !== requestSeq.current) return
 					setAvailability({
-						status: 'unknown',
-						username: trimmed.toLowerCase(),
-						reason: "Couldn't check availability. We'll verify on submit.",
-						suggestions: [],
+						...({
+							type: 'RESPONSE_UNKNOWN',
+							data: uiContext({
+								status: 'unknown',
+								username: trimmed.toLowerCase(),
+								reason: "Couldn't check availability. We'll verify on submit.",
+								suggestions: [],
+							}).data,
+						} as Parameters<typeof availabilityActor.send>[0]),
+						requestId: seq,
 					})
 				}
 			})()
@@ -182,6 +247,7 @@ export function UsernameChoiceField(props: {
 		props.seeds?.providerUsername,
 		props.seeds?.displayName,
 		checkAvailability,
+		setAvailability,
 	])
 
 	const preview = props.value.trim().toLowerCase() || 'your-username'

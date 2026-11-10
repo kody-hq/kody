@@ -1,18 +1,10 @@
 import { createInterface } from 'node:readline'
-import {
-	authBootstrapWithScopes,
-	cliCredentialBootstrapOperationId,
-	resolveCliTokenLifetime,
-} from './auth-bootstrap.js'
-import { loadStoredApiToken, type StoredApiToken } from './api-token-store.js'
-import { defaultApiUrl, defaultMcpUrl } from './defaults.js'
-import { callOpenApiOperation } from './open-api-client.js'
+import { isScopedApiToken } from './api-token.js'
+import { apiTokenEnvVar, defaultApiUrl, defaultMcpUrl } from './defaults.js'
 import { ensureOpenApiCredentials } from './auth.js'
 import {
 	apiTokenNeedsRefresh,
-	ensureSetupGitScopes,
 	gitCredentialHostFromMcpUrl,
-	setupGitDefaultScopes,
 } from './setup-git.js'
 import {
 	loadCredentials,
@@ -75,80 +67,73 @@ export function isKodyGitHttpsHost(input: {
 }
 
 export type EnsureGitApiTokenResult = {
-	stored: StoredApiToken
+	token: string
 	refreshed: boolean
 }
 
 /**
- * Return a usable stored API token for git HTTPS with **no network** while the
- * stored token is still valid (outside the refresh skew). Remint only when
- * missing, expired, or near expiry — via the `kody login` session (same
- * scopes/lifetime as `auth setup-git`). Without a login session, returns the
- * existing token if any (may still work) or null.
+ * The bearer git HTTPS sends: `KODY_API_TOKEN`, else the one saved CLI
+ * credential (`kody login` / `kody auth bootstrap`). No network while the
+ * saved token is still valid; otherwise refresh it the way every other
+ * command does. Never mints a separate token.
  */
 export async function ensureGitApiToken(input: {
 	apiUrl?: string
 	mcpUrl?: string
 	nowMs?: number
+	env?: NodeJS.ProcessEnv
 	backend?: SecretBackend
 	resolution?: StoreResolution
-	/** Test seam: mint cliCredentialBootstrap (defaults to MCP login session). */
-	mint?: (params: Record<string, unknown>) => Promise<unknown>
 	loadLogin?: typeof loadCredentials
-	loadApiToken?: typeof loadStoredApiToken
+	refresh?: typeof ensureOpenApiCredentials
 }): Promise<EnsureGitApiTokenResult | null> {
-	const apiUrl = input.apiUrl || defaultApiUrl
+	const envToken = (input.env ?? process.env)[apiTokenEnvVar]?.trim()
+	if (envToken) return { token: envToken, refreshed: false }
 	const mcpUrl = input.mcpUrl || defaultMcpUrl
-	const loadApi = input.loadApiToken ?? loadStoredApiToken
-	const loadLogin = input.loadLogin ?? loadCredentials
-	const stored = loadApi(apiUrl, input.backend, input.resolution)
+	const saved = (input.loadLogin ?? loadCredentials)(
+		mcpUrl,
+		input.backend,
+		input.resolution,
+	)
+	if (!saved) return null
 	const nowMs = input.nowMs ?? Date.now()
-	if (stored && !apiTokenNeedsRefresh(stored, nowMs)) {
-		return { stored, refreshed: false }
-	}
-
-	if (!loadLogin(mcpUrl)) {
-		return stored ? { stored, refreshed: false } : null
-	}
-
-	const mint =
-		input.mint ??
-		(async (params: Record<string, unknown>) => {
-			const session = await ensureOpenApiCredentials({ mcpUrl, apiUrl })
-			return callOpenApiOperation({
-				operationId: cliCredentialBootstrapOperationId,
-				params,
-				token: session.accessToken,
-				apiUrl,
-			})
-		})
-
-	try {
-		const scopes = ensureSetupGitScopes(
-			stored?.scopes?.length ? stored.scopes : setupGitDefaultScopes,
+	if (
+		isScopedApiToken(saved.accessToken) &&
+		!apiTokenNeedsRefresh(
+			{
+				expiresAt:
+					saved.expiresAt === undefined
+						? null
+						: new Date(saved.expiresAt).toISOString(),
+			},
+			nowMs,
 		)
-		const result = await authBootstrapWithScopes({
-			scopes,
-			lifetime: resolveCliTokenLifetime({ lifetime: 'long' }),
-			mint,
-			apiUrl,
+	) {
+		return { token: saved.accessToken, refreshed: false }
+	}
+	try {
+		const fresh = await (input.refresh ?? ensureOpenApiCredentials)({
+			mcpUrl,
+			apiUrl: input.apiUrl || defaultApiUrl,
 			backend: input.backend,
 			resolution: input.resolution,
+			now: nowMs,
 		})
-		return { stored: result.stored, refreshed: true }
+		return { token: fresh.accessToken, refreshed: true }
 	} catch {
-		// Stay silent on the git credential protocol (stdout). Fall back to
-		// whatever token we still have so a transient mint failure does not
-		// immediately break an otherwise-valid session.
-		return stored ? { stored, refreshed: false } : null
+		// Stay silent on the git credential protocol (stdout). A transient
+		// refresh failure keeps the saved token, which may still work.
+		return isScopedApiToken(saved.accessToken)
+			? { token: saved.accessToken, refreshed: false }
+			: null
 	}
 }
 
 /**
  * Handle one git credential helper action.
- * - `get`: return a `kody_at_…` for the configured Kody HTTPS host (reminting
- *   via `kody login` when the stored token is expired / near expiry)
- * - `store` / `erase`: no-op (token life is managed by remint / logout)
+ * - `get`: return the saved CLI credential's `kody_at_…` for the configured
+ *   Kody HTTPS host (refreshed like any command when near expiry)
+ * - `store` / `erase`: no-op (credential life is managed by login / logout)
  */
 export async function handleGitCredential(input: {
 	action: GitCredentialAction
@@ -158,9 +143,9 @@ export async function handleGitCredential(input: {
 	backend?: SecretBackend
 	resolution?: StoreResolution
 	nowMs?: number
-	mint?: (params: Record<string, unknown>) => Promise<unknown>
+	env?: NodeJS.ProcessEnv
 	loadLogin?: typeof loadCredentials
-	loadApiToken?: typeof loadStoredApiToken
+	refresh?: typeof ensureOpenApiCredentials
 }): Promise<string> {
 	if (input.action === 'store' || input.action === 'erase') {
 		return ''
@@ -188,17 +173,17 @@ export async function handleGitCredential(input: {
 		backend: input.backend,
 		resolution: input.resolution,
 		nowMs: input.nowMs,
-		mint: input.mint,
-		loadLogin: input.loadLogin,
-		loadApiToken: input.loadApiToken,
+		...(input.env ? { env: input.env } : {}),
+		...(input.loadLogin ? { loadLogin: input.loadLogin } : {}),
+		...(input.refresh ? { refresh: input.refresh } : {}),
 	})
-	if (!ensured?.stored.token) {
+	if (!ensured?.token) {
 		return ''
 	}
 
 	return formatGitCredentialOutput({
 		username: 'x',
-		password: ensured.stored.token,
+		password: ensured.token,
 	})
 }
 

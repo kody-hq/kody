@@ -17,7 +17,9 @@
   2026-10-28 (the official CLI may use the OAuth device grant,
   [0082](./0082-cli-oauth-device-authorization-grant.md)); 2026-10-30
   ([0091](./0091-auth-md-service-auth-registration.md): auth.md agent
-  registration mints default to `long`)
+  registration mints default to `long`); 2026-11-09 (a redeemed code mints the
+  same token as `kody login`: same scopes, same lifetime, saved in the same CLI
+  slot; see "One CLI credential" below)
 - **Amends:** [0053](./0053-scoped-api-tokens-are-not-mcp-oauth-scopes.md),
   [0055](./0055-cli-mcp-oauth-local-execute-http.md)
 
@@ -128,6 +130,24 @@ Do **not** add OAuth device flow (superseded for the official CLI by
 [0082](./0082-cli-oauth-device-authorization-grant.md)). Do **not** accept
 bootstrap codes as general Open API Bearers. Do **not** scavenge host MCP tokens
 from disk. Do **not** keep a flagless / default-lifetime mint path.
+
+**Amended 2026-11-09: one CLI credential.** A redeemed code mints the same token
+`kody login` mints, through the same `mintCliToken`. Defaults are the full
+org-permission vocabulary (`cliTokenScopes`, capped by the org role on every
+request) and the login lifetime (14 days idle / 3 months), so `scopes` and
+`lifetime` are optional on mint and redeem. No human approval step: the person
+approved the agent when they authorized the MCP session. The child never exceeds
+its parent: an API-token parent caps scopes and absolute expiry (the default
+lifetime shrinks to fit), and a session whose credential narrows scopes caps
+scopes. The narrow local-execute set (`cliCredentialBootstrapNarrowScopes`, the
+old default) is minted only when a caller passes it explicitly (for example
+`kody auth bootstrap --scopes …`). Redeem returns `login_org` like
+`POST /v1/tokens/device`, and the CLI saves the token where `kody login` saves
+its device token. `created_via` stays `cli-bootstrap` for provenance; local
+secret reads key off the `secret:read_local` scope, which the default holds.
+`cli_command` keeps lifetime flags because older CLIs refuse to redeem without
+them. Existing bootstrap tokens keep their scopes until they expire. This
+replaces the "no silent default lifetime" rule above for bootstrap.
 
 ## Consequences
 

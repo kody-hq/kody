@@ -16,6 +16,10 @@ import { sha256Hex } from '@kody-internal/shared/sha256.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
 import { getOrgBySlug, isOrgActive } from '#worker/orgs/repo.ts'
+import {
+	optionalOrgAuditWriter,
+	recordCommittedOrgAuditEvent,
+} from '#worker/orgs/org-audit.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { filePublicParentAllows, loadFileAncestors } from './tree-access.ts'
 
@@ -60,13 +64,25 @@ export async function changeFilePublicLink(
 		env: ctx.env,
 		stableUserId: request.org.id,
 		holder: 'file-public-link',
-		write: () =>
-			fileStoreRpc(ctx.env, request.org.id).setPublicLink(
+		write: async () => {
+			await fileStoreRpc(ctx.env, request.org.id).setPublicLink(
 				request.org.id,
 				fileId,
 				tokenHash,
 				sealed,
-			),
+			)
+			await recordCommittedOrgAuditEvent(
+				optionalOrgAuditWriter(ctx.env, request),
+				{
+					orgId: request.org.id,
+					action: enabled
+						? 'file.public-link.enable'
+						: 'file.public-link.disable',
+					resourceType: 'file',
+					resourceId: fileId,
+				},
+			)
+		},
 	})
 	return {
 		href: token

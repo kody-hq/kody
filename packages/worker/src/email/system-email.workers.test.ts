@@ -765,3 +765,17 @@ test('system email retention drains delivery-event backlogs larger than one batc
 		),
 	).toBe(0)
 })
+
+test('kent@ mail reaching the Worker lands in the system inbox', async () => {
+	await ensureEmailTestSchema(env.APP_DB)
+	await ensureUsageRollupsTestSchema(env.APP_DB)
+	const kentTo = `kent@${systemDomain}`
+	expect(
+		await deliver({ to: kentTo, subject: 'Hi Kent' }, createInboundEnv()),
+	).toBeNull()
+	expect((await listSystemMessages())[0]).toMatchObject({
+		subject: 'Hi Kent',
+		toAddresses: [kentTo],
+	})
+	expect(await systemInboxNames()).toContain('kent')
+}, 30_000)

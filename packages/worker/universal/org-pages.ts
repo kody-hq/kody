@@ -322,9 +322,10 @@ const orgManagementSectionSet: ReadonlySet<string> = new Set(
 )
 
 /**
- * `/@acme/-/settings`, members, teams, grants, and collaborators. Uses the same `/-/` separator as other
- * org pages so they cannot collide with `/@owner/<kody-id>`. Not an
- * `orgOwnedAccountSection`.
+ * `/@acme/-/settings`, members, teams, grants, and collaborators, including
+ * Access pages (`/grants/user/<id>`, `/grants/team/<id>`, `/grants/everyone`).
+ * Uses the same `/-/` separator as other org pages so they cannot collide
+ * with `/@owner/<kody-id>`. Not an `orgOwnedAccountSection`.
  */
 export function parseOrgManagementPath(
 	pathname: string,
@@ -380,14 +381,17 @@ export function orgGrantsPath(slug: string) {
 	return `/@${slug}/${orgPageSeparator}/grants`
 }
 
+/** Per-person Access: `/@slug/-/grants/user/<userId>`. */
 export function orgGrantAccessPath(slug: string, userId: string) {
 	return `/@${slug}/${orgPageSeparator}/grants/user/${encodeURIComponent(userId)}`
 }
 
+/** Per-team Access: `/@slug/-/grants/team/<teamId>`. */
 export function orgTeamGrantAccessPath(slug: string, teamId: string) {
 	return `/@${slug}/${orgPageSeparator}/grants/team/${encodeURIComponent(teamId)}`
 }
 
+/** Everyone-in-org Access: `/@slug/-/grants/everyone`. */
 export function orgEveryoneGrantAccessPath(slug: string) {
 	return `/@${slug}/${orgPageSeparator}/grants/everyone`
 }

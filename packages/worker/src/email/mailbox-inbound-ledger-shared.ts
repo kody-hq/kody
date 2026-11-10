@@ -1,7 +1,10 @@
+import { isState } from '@kody-internal/shared/state-machine.ts'
 /**
  * Shared snapshot / detail helpers and constants for Mailbox inbound authority.
  */
 
+import { inboundDeliveryState } from './inbound-delivery-state.ts'
+import { inboundSubscriptionEffectState } from './inbound-subscription-effect-state.ts'
 import { mapMailboxDeliveryEventRow } from './mailbox-mappers.ts'
 import {
 	assertMailboxCanonicalIsoTimestamp,
@@ -135,22 +138,11 @@ export function snapshotFromMailboxDeliveryEventRow(
 	const detailState = detail['state']
 	const state: MailboxInboundDeliveryState =
 		row.state ??
-		(detailState === 'storing' ||
-		detailState === 'cleaning' ||
-		detailState === 'received' ||
-		detailState === 'rejected' ||
-		detailState === 'orphan-cleaned'
-			? detailState
-			: 'pending')
+		(isState(inboundDeliveryState, detailState) ? detailState : 'pending')
 	const detailSub = detail['subscriptionEffectState']
 	const subscriptionEffectState =
 		row.subscriptionEffectState ??
-		(detailSub === 'pending' ||
-		detailSub === 'processing' ||
-		detailSub === 'complete' ||
-		detailSub === 'dead-letter'
-			? detailSub
-			: undefined)
+		(isState(inboundSubscriptionEffectState, detailSub) ? detailSub : undefined)
 	const snapshot: MailboxInboundDeliverySnapshot = {
 		fingerprint,
 		deliveryId: optionalDetailString(detail['deliveryId']) ?? row.id,

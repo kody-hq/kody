@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import type { FormFlowState } from '#client/ui-actor.ts'
 import { mergeCss } from './merge-css.ts'
 import { SiteLink } from './site-link.tsx'
 import type { CSSObject } from '@emotion/react'
@@ -124,8 +125,7 @@ export function renderEmptyReadme(agentsDocsHref?: string | null) {
 
 export type AdminFeatureSectionProps = {
 	featured: boolean
-	featureState: 'idle' | 'submitting' | 'error'
-	featureMessage: string | null
+	featureState: FormFlowState<'idle' | 'submitting' | 'error'>
 	onToggleFeature: () => void
 }
 
@@ -144,20 +144,21 @@ export function renderAdminFeatureSection(props: AdminFeatureSectionProps) {
 			</p>
 			<div css={sectionActionCss}>
 				<button
-					disabled={props.featureState === 'submitting'}
+					disabled={props.featureState.status === 'submitting'}
+					aria-busy={props.featureState.status === 'submitting'}
 					css={smallGhostButtonCss}
 					onClick={props.onToggleFeature}
 				>
-					{props.featureState === 'submitting'
+					{props.featureState.status === 'submitting'
 						? 'Saving…'
 						: props.featured
 							? 'Remove from onboarding'
 							: 'Feature in onboarding'}
 				</button>
 			</div>
-			{props.featureMessage ? (
+			{('message' in props.featureState ? props.featureState.message : null) ? (
 				<p css={errorTextCss} role="alert">
-					{props.featureMessage}
+					{'message' in props.featureState ? props.featureState.message : null}
 				</p>
 			) : null}
 		</section>
@@ -167,8 +168,7 @@ export function renderAdminFeatureSection(props: AdminFeatureSectionProps) {
 export type ReportDisclosureProps = {
 	loggedIn: boolean
 	reportReason: string
-	reportState: 'idle' | 'submitting' | 'success' | 'error'
-	reportMessage: string | null
+	reportState: FormFlowState<'idle' | 'submitting' | 'success' | 'error'>
 	onReasonInput: (value: string) => void
 	onSubmitReport: () => void
 }
@@ -194,21 +194,31 @@ export function renderReportDisclosure(props: ReportDisclosureProps) {
 					</label>
 					<button
 						disabled={
-							props.reportState === 'submitting' || !props.reportReason.trim()
+							props.reportState.status === 'submitting' ||
+							!props.reportReason.trim()
 						}
 						css={smallGhostButtonCss}
 						onClick={props.onSubmitReport}
+						aria-busy={props.reportState.status === 'submitting'}
 					>
-						{props.reportState === 'submitting'
+						{props.reportState.status === 'submitting'
 							? 'Submitting…'
 							: 'Submit report'}
 					</button>
-					{props.reportMessage ? (
+					{(
+						'message' in props.reportState ? props.reportState.message : null
+					) ? (
 						<p
-							css={props.reportState === 'error' ? errorTextCss : mutedTextCss}
-							role={props.reportState === 'error' ? 'alert' : 'status'}
+							css={
+								props.reportState.status === 'error'
+									? errorTextCss
+									: mutedTextCss
+							}
+							role={props.reportState.status === 'error' ? 'alert' : 'status'}
 						>
-							{props.reportMessage}
+							{'message' in props.reportState
+								? props.reportState.message
+								: null}
 						</p>
 					) : null}
 				</div>

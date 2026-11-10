@@ -1,3 +1,17 @@
+import {
+	IllegalStateTransitionError,
+	sqlSourcesOf,
+	sqlStatesOf,
+	isState,
+	nextState,
+	finalStatesOf,
+	parseState,
+} from '@kody-internal/shared/state-machine.ts'
+import {
+	runDispatchState,
+	type RunDispatchState,
+} from './run-dispatch-state.ts'
+import { queuedRunState, type QueuedRunState } from './queued-run-state.ts'
 import { fitAuditStrings } from './audit-detail.ts'
 import * as Sentry from '@sentry/cloudflare'
 import { DurableObject } from 'cloudflare:workers'
@@ -118,12 +132,7 @@ export type ExecutionContextRunResult = {
 }
 
 export type RunHistoryOutcome =
-	| 'succeeded'
-	| 'failed'
-	| 'cancelled'
-	| 'lost'
-	| 'rejected'
-	| 'aborted'
+	| Exclude<RunDispatchState, 'dispatched' | 'committed'>
 	| 'offline'
 	| 'busy'
 	| 'timeout'
@@ -193,6 +202,24 @@ export type DaemonControlResult =
 
 export const daemonControlFeature = 'daemon-control'
 const controlTimeoutMs = 15_000
+
+const redispatchGuard = sqlSourcesOf(runDispatchState, 'OFFER', [
+	'aborted',
+	'rejected',
+])
+const commitDispatchGuard = sqlSourcesOf(runDispatchState, 'COMMIT', [
+	'dispatched',
+])
+const abortDispatchGuard = sqlSourcesOf(runDispatchState, 'ABORT', [
+	'dispatched',
+])
+const finishDispatchGuard = sqlSourcesOf(runDispatchState, 'SUCCEED', [
+	'committed',
+])
+const finalRunSql = sqlStatesOf(
+	runDispatchState,
+	finalStatesOf(runDispatchState),
+)
 
 type RunRow = {
 	run_id: string
@@ -315,17 +342,13 @@ function cancelledSummary(reason: string) {
 }
 
 function terminalOutcome(state: string): RunHistoryOutcome | null {
-	switch (state) {
-		case 'succeeded':
-		case 'failed':
-		case 'cancelled':
-		case 'lost':
-		case 'rejected':
-		case 'aborted':
-			return state
-		default:
-			return null
-	}
+	if (
+		!isState(runDispatchState, state) ||
+		state === 'dispatched' ||
+		state === 'committed'
+	)
+		return null
+	return state
 }
 
 /**
@@ -1087,6 +1110,8 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			record('busy')
 			return { outcome: 'busy' }
 		}
+		if (existing && isState(runDispatchState, existing.state))
+			nextState(runDispatchState, existing.state, { type: 'OFFER' })
 		this.ctx.storage.sql.exec(
 			`INSERT INTO runs (run_id, state, lease_json, deadline, accept_by,
 			   run_record_json, created_at)
@@ -1095,7 +1120,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			   lease_json = excluded.lease_json, deadline = excluded.deadline,
 			   accept_by = excluded.accept_by,
 			   run_record_json = excluded.run_record_json
-			 WHERE runs.state IN ('aborted', 'rejected')`,
+			 WHERE runs.state IN ${redispatchGuard}`,
 			lease.runId,
 			JSON.stringify(lease),
 			input.request.deadline,
@@ -1153,8 +1178,9 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			await this.#send(live.ws, 'run.abort', { runId: lease.runId })
 			return { outcome: 'aborted' }
 		}
+		nextState(runDispatchState, 'dispatched', { type: 'COMMIT' })
 		const committed = this.ctx.storage.sql.exec(
-			`UPDATE runs SET state = 'committed', started_at = ? WHERE run_id = ? AND state = 'dispatched'`,
+			`UPDATE runs SET state = 'committed', started_at = ? WHERE run_id = ? AND state IN ${commitDispatchGuard}`,
 			Date.now(),
 			lease.runId,
 		).rowsWritten
@@ -1251,6 +1277,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 					await this.#ensureAlarm(Date.now() + queuedRetryMs)
 					return
 				}
+				this.#assertQueuedTransition(queued.run_id, 'finished')
 				this.ctx.storage.sql.exec(
 					`DELETE FROM queued WHERE run_id = ?`,
 					queued.run_id,
@@ -1281,6 +1308,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 					error: Object.assign(new Error(message), { name }),
 				})
 			}
+			this.#assertQueuedTransition(row.run_id, 'finished')
 			this.ctx.storage.sql.exec(
 				`DELETE FROM queued WHERE run_id = ?`,
 				row.run_id,
@@ -1290,6 +1318,35 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 
 	/** Queued runs being handed to the daemon now; a cancel waits them out. */
 	#dispatchingQueued = new Set<string>()
+
+	#assertQueuedTransition(runId: string, to: QueuedRunState) {
+		nextState(
+			queuedRunState,
+			this.#dispatchingQueued.has(runId) ? 'starting' : 'queued',
+			{
+				type: (() => {
+					switch (to as string) {
+						case 'queued':
+							return 'RELEASE_HANDOFF' as const
+						case 'starting':
+							return 'START_HANDOFF' as const
+						case 'finished':
+							return 'FINISH' as const
+						case 'cancelled':
+							return 'CANCEL' as const
+						case 'expired':
+							return 'EXPIRE' as const
+						default:
+							throw new IllegalStateTransitionError(
+								queuedRunState.id,
+								this.#dispatchingQueued.has(runId) ? 'starting' : 'queued',
+								{ type: String(to) },
+							)
+					}
+				})(),
+			},
+		)
+	}
 
 	#stillQueued(runId: string) {
 		return (
@@ -1381,6 +1438,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			)
 		}
 		if (!this.#stillQueued(queued.run_id)) return 'done'
+		this.#assertQueuedTransition(queued.run_id, 'starting')
 		this.#dispatchingQueued.add(queued.run_id)
 		const now = Date.now()
 		const deadline = now + grant.limits.timeoutMs
@@ -1417,6 +1475,8 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				position: queued.position,
 			})
 		} finally {
+			if (this.#stillQueued(queued.run_id))
+				this.#assertQueuedTransition(queued.run_id, 'queued')
 			this.#dispatchingQueued.delete(queued.run_id)
 		}
 		switch (dispatched.outcome) {
@@ -1446,6 +1506,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			.toArray()
 		const name = this.#snapshot()?.name ?? 'The execution context'
 		for (const row of expired) {
+			this.#assertQueuedTransition(row.run_id, 'expired')
 			if (!row.run_record_json) continue
 			const minutes = Math.round((now - row.created_at) / 60_000)
 			const handle = JSON.parse(row.run_record_json) as RunRecordHandle
@@ -1466,10 +1527,49 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		}
 	}
 
-	#setRunState(runId: string, state: string) {
+	#setRunState(
+		runId: string,
+		state: Extract<RunDispatchState, 'aborted' | 'rejected'>,
+	) {
+		const current = this.#run(runId)
+		if (
+			current &&
+			isState(runDispatchState, current.state) &&
+			!finalStatesOf(runDispatchState).includes(
+				parseState(runDispatchState, current.state),
+			)
+		)
+			nextState(runDispatchState, current.state, {
+				type: (() => {
+					switch (state as string) {
+						case 'dispatched':
+							return 'OFFER' as const
+						case 'committed':
+							return 'COMMIT' as const
+						case 'succeeded':
+							return 'SUCCEED' as const
+						case 'failed':
+							return 'FAIL' as const
+						case 'cancelled':
+							return 'CANCEL' as const
+						case 'lost':
+							return 'LOSE' as const
+						case 'rejected':
+							return 'REJECT' as const
+						case 'aborted':
+							return 'ABORT' as const
+						default:
+							throw new IllegalStateTransitionError(
+								runDispatchState.id,
+								current.state,
+								{ type: String(state) },
+							)
+					}
+				})(),
+			})
 		this.ctx.storage.sql.exec(
 			`UPDATE runs SET state = ?, ended_at = ? WHERE run_id = ?
-			   AND state NOT IN ('succeeded', 'failed', 'cancelled', 'lost')`,
+			   AND state NOT IN ${finalRunSql}`,
 			state,
 			Date.now(),
 			runId,
@@ -1500,13 +1600,41 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			errorSummary?: string
 		} = {},
 	) {
+		nextState(runDispatchState, 'committed', {
+			type: (() => {
+				switch (state as string) {
+					case 'dispatched':
+						return 'OFFER' as const
+					case 'committed':
+						return 'COMMIT' as const
+					case 'succeeded':
+						return 'SUCCEED' as const
+					case 'failed':
+						return 'FAIL' as const
+					case 'cancelled':
+						return 'CANCEL' as const
+					case 'lost':
+						return 'LOSE' as const
+					case 'rejected':
+						return 'REJECT' as const
+					case 'aborted':
+						return 'ABORT' as const
+					default:
+						throw new IllegalStateTransitionError(
+							runDispatchState.id,
+							'committed',
+							{ type: String(state) },
+						)
+				}
+			})(),
+		})
 		const now = Date.now()
 		const changed = this.ctx.storage.sql
 			.exec(
 				`UPDATE runs SET state = ?, ended_at = ?,
 				   result_json = COALESCE(?, result_json),
 				   cancel_reason = COALESCE(?, cancel_reason)
-				 WHERE run_id = ? AND state = 'committed' RETURNING run_id`,
+				 WHERE run_id = ? AND state IN ${finishDispatchGuard} RETURNING run_id`,
 				state,
 				now,
 				extra.resultJson ?? null,
@@ -1865,6 +1993,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				: { status: 'not_found' }
 		}
 		if (this.#dispatchingQueued.has(input.runId)) return { status: 'starting' }
+		this.#assertQueuedTransition(input.runId, 'cancelled')
 		this.ctx.storage.sql.exec(
 			`DELETE FROM queued WHERE run_id = ?`,
 			input.runId,
@@ -2362,9 +2491,10 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				await this.#finishRunRecord(run, { lost: true })
 			}
 		}
+		nextState(runDispatchState, 'dispatched', { type: 'ABORT' })
 		this.ctx.storage.sql.exec(
 			`UPDATE runs SET state = 'aborted', ended_at = ?
-			 WHERE state = 'dispatched' AND accept_by + ? <= ?`,
+			 WHERE state IN ${abortDispatchGuard} AND accept_by + ? <= ?`,
 			now,
 			ecpCommitGraceMs,
 			now,

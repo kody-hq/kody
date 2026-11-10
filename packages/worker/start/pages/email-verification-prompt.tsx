@@ -62,6 +62,7 @@ type EmailVerificationPromptOptions = {
 	description: string
 	delivery?: EmailVerificationDelivery | null
 	resendStatus: 'idle' | 'sending'
+	checking?: boolean
 	resendMessage: string | null
 	resendTone?: 'error' | 'info'
 	onResend: () => void
@@ -189,7 +190,10 @@ export function renderEmailVerificationPrompt(
 			>
 				<button
 					type="button"
-					disabled={!canResend || options.resendStatus === 'sending'}
+					disabled={
+						!canResend || options.resendStatus === 'sending' || options.checking
+					}
+					aria-busy={options.resendStatus === 'sending'}
 					css={primaryButtonCss}
 					onClick={options.onResend}
 				>
@@ -203,6 +207,8 @@ export function renderEmailVerificationPrompt(
 					<button
 						type="button"
 						css={secondaryButtonCss}
+						disabled={options.resendStatus === 'sending' || options.checking}
+						aria-busy={options.checking ?? false}
 						onClick={options.onContinue}
 					>
 						{options.continueLabel}

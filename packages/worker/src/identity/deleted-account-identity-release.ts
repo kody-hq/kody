@@ -1,10 +1,14 @@
+import { sqlSourcesOf } from '@kody-internal/shared/state-machine.ts'
 /**
  * soft-delete-read-filter: opt-out
  *
  * Finds soft-deleted accounts by design: a fresh signup that proves the same
  * email supersedes them so a deleted account never blocks its own owner.
  */
+import { emailClaimState } from './email-claim-state.ts'
 import { normalizeEmail } from '#worker/identity/normalize-email.ts'
+
+const releaseClaimGuard = sqlSourcesOf(emailClaimState, 'RELEASE', ['claimed'])
 
 /**
  * Released tombstones move email and username to values no signup can ever
@@ -92,7 +96,7 @@ export async function releaseSoftDeletedAccountsForEmail(
 		.prepare(
 			`UPDATE user_email_claims
 			 SET status = 'released', released_at = ?, updated_at = ?
-			 WHERE email = ? AND status = 'claimed'
+			 WHERE email = ? AND status IN ${releaseClaimGuard}
 			   AND user_id IN (SELECT id FROM users WHERE deleted_at IS NOT NULL)`,
 		)
 		.bind(releasedAt, releasedAt, normalized)
@@ -160,7 +164,7 @@ export async function releaseSoftDeletedAccounts(
 				.prepare(
 					`UPDATE user_email_claims
 					 SET status = 'released', released_at = ?, updated_at = ?
-					 WHERE user_id = ? AND status = 'claimed'
+					 WHERE user_id = ? AND status IN ${releaseClaimGuard}
 					   AND ${stillDeletedSql}`,
 				)
 				.bind(releasedAt, releasedAt, account.id, account.id),

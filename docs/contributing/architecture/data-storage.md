@@ -436,8 +436,9 @@ The schema is defined by migrations in `packages/worker/migrations/`:
   `usage_warnings`).
 - `handles` (0086): the username namespace. Handles are permanent (no username
   or org slug renames); rows left by pre-rule renames stay reserved.
-- `org_memberships` (0086): `(org_id, user_id)` with role `owner`, `member`, or
-  `billing`. Signup writes the person as Owner of their personal org.
+- `org_memberships` (0086): `(org_id, user_id)` with role `owner`, `admin`,
+  `member`, or `billing` (`admin` since 0261). Signup writes the person as Owner
+  of their personal org.
 - `platform_feedback`: attributed, user-approved Kody feedback and admin triage
   state. Submitter identity remains on the row; optional reviewer attribution is
   cleared if that admin account is deleted. Open and triaged rows remain until

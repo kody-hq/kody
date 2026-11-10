@@ -8,7 +8,7 @@ import {
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { defaultMcpUrl } from './defaults.js'
-import { createKeyringEntry } from './keyring-entry.js'
+import { KeychainTimeoutError, createKeyringEntry } from './keyring-entry.js'
 
 export { secretServiceKeyringOptions } from './keyring-entry.js'
 
@@ -31,6 +31,8 @@ export type StoredCredentials = {
 	tokenType: string
 	expiresAt?: number
 	scope?: string
+	/** API origin a saved `kody_at_…` was minted for (`auth bootstrap --api-url`). */
+	apiUrl?: string
 }
 
 /** On-disk / keychain envelope for one or more org logins (same MCP origin). */
@@ -133,7 +135,8 @@ export function createKeyringBackend(mcpUrl: string): SecretBackend {
 		get() {
 			try {
 				return entry.getPassword()
-			} catch {
+			} catch (error) {
+				if (error instanceof KeychainTimeoutError) throw error
 				return null
 			}
 		},

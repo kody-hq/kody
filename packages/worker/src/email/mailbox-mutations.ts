@@ -1,3 +1,4 @@
+import { emailProcessingState } from './email-processing-state.ts'
 import {
 	assertMailboxCanonicalIsoTimestamp,
 	assertMailboxClassification,
@@ -74,13 +75,19 @@ export function updateMailboxMessageDelivery(
 		'sentAt',
 	)
 	const existing = sql
-		.exec<{ updated_at: string }>(
-			`SELECT updated_at FROM email_messages WHERE id = ? LIMIT 1`,
+		.exec<{ updated_at: string; processing_status: string }>(
+			`SELECT updated_at, processing_status FROM email_messages WHERE id = ? LIMIT 1`,
 			messageId,
 		)
 		.toArray()[0]
 	if (existing == null) return { status: 'missing' }
 	if (existing.updated_at > updatedAt) return { status: 'stale' }
+	if (emailProcessingState.is(existing.processing_status))
+		emailProcessingState.parse(
+			emailProcessingState.is(existing.processing_status)
+				? processingStatus
+				: existing.processing_status,
+		)
 
 	sql.exec(
 		`UPDATE email_messages

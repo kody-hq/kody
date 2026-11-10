@@ -53,7 +53,6 @@ import { adminUserUsageCapability } from './admin-user-usage.ts'
 import { adminFleetErrorRateCapability } from './admin-fleet-error-rate.ts'
 import { adminOrgUsageCapability } from './admin-org-usage.ts'
 import { adminUserOauthGrantsCapability } from './admin-user-oauth-grants.ts'
-import { adminOauthGrantsLackingOrgIdRevokeCapability } from './admin-oauth-grants-lacking-org-id-revoke.ts'
 import { adminSystemEmailClassifyCapability } from './admin-system-email-classify.ts'
 import { adminSystemEmailDeleteCapability } from './admin-system-email-delete.ts'
 import { adminEmailSuppressionClearCapability } from './admin-email-suppression-clear.ts'
@@ -182,8 +181,6 @@ export const adminDomain = defineDomain({
 		'delete account',
 		'oauth grants',
 		'grant bindings',
-		'oauth grants lacking orgId',
-		'revoke oauth orgId fallback',
 	],
 	capabilities: [
 		adminUserListCapability,
@@ -249,7 +246,6 @@ export const adminDomain = defineDomain({
 		adminFleetErrorRateCapability,
 		adminOrgUsageCapability,
 		adminUserOauthGrantsCapability,
-		adminOauthGrantsLackingOrgIdRevokeCapability,
 		adminCreditWalletGetCapability,
 		adminCreditGrantCapability,
 		adminCreditEligibilitySetCapability,

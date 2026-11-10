@@ -132,9 +132,6 @@ export type OwnerIndexEntry = {
 	sha256: string
 }
 
-export type MailboxIndexEntry = OwnerIndexEntry
-export type RunLogIndexEntry = OwnerIndexEntry
-
 export type MailboxIndex = {
 	schemaVersion: typeof backupStagingSchemaVersion
 	day: string

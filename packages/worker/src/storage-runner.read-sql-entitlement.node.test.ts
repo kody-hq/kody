@@ -73,11 +73,11 @@ const {
 	createStorageBytesEntitlementRunCache,
 	createStorageKodyTools,
 	isReadOnlyStorageSqlQuery,
-	isStorageSqlReturningMutation,
-	isStorageSqlWrite,
 	readOnlyStorageSqlDeniedMessage,
 	storageEstimateReadRetryDelaysMs,
 } = await import('#worker/storage-runner.ts')
+const { isStorageSqlReturningMutation, isStorageSqlWrite } =
+	await import('@kody-internal/shared/storage-sql-statement.ts')
 
 function createEstimateEnv() {
 	return {

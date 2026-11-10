@@ -1,3 +1,11 @@
+import {
+	sqlSourcesOf,
+	parseState,
+} from '@kody-internal/shared/state-machine.ts'
+import {
+	agentRegistrationState,
+	type AgentRegistrationStatus,
+} from './agent-registration-state.ts'
 import { bytesToBase64Url } from '@kody-internal/shared/base64.ts'
 import {
 	generateUserCode,
@@ -19,11 +27,7 @@ export const agentClaimSlowDownIncrementSeconds = 5
 /** Expired rows stay this long so a late poll still sees `expired_token`. */
 export const agentRegistrationRetentionSeconds = 24 * 60 * 60
 
-export type AgentRegistrationStatus =
-	| 'pending'
-	| 'claimed'
-	| 'denied'
-	| 'consumed'
+export type { AgentRegistrationStatus } from './agent-registration-state.ts'
 
 export type AgentRegistrationRow = {
 	id: string
@@ -56,6 +60,13 @@ export type AgentClaimAttempt = {
 }
 
 const table = 'agent_registrations'
+const decisionGuard = sqlSourcesOf(agentRegistrationState, 'CLAIM', ['pending'])
+const consumeGuard = sqlSourcesOf(agentRegistrationState, 'CONSUME', [
+	'claimed',
+])
+const restoreGuard = sqlSourcesOf(agentRegistrationState, 'RESTORE', [
+	'consumed',
+])
 
 export function nowSeconds() {
 	return Math.floor(Date.now() / 1000)
@@ -140,10 +151,13 @@ export async function findAgentRegistrationByClaimTokenHash(
 	db: D1Database,
 	claimTokenHash: string,
 ) {
-	return await db
+	const row = await db
 		.prepare(`SELECT * FROM ${table} WHERE claim_token_hash = ?`)
 		.bind(claimTokenHash)
 		.first<AgentRegistrationRow>()
+	return row
+		? { ...row, status: parseState(agentRegistrationState, row.status) }
+		: null
 }
 
 /** A pending registration whose current attempt and outer window are open. */
@@ -152,7 +166,7 @@ export async function findOpenAgentRegistrationByAttemptTokenHash(
 	attemptTokenHash: string,
 	now = nowSeconds(),
 ) {
-	return await db
+	const row = await db
 		.prepare(
 			`SELECT * FROM ${table}
 			WHERE attempt_token_hash = ? AND status = 'pending'
@@ -160,6 +174,9 @@ export async function findOpenAgentRegistrationByAttemptTokenHash(
 		)
 		.bind(attemptTokenHash, now, now)
 		.first<AgentRegistrationRow>()
+	return row
+		? { ...row, status: parseState(agentRegistrationState, row.status) }
+		: null
 }
 
 /** Replaces the claim attempt; the previous verification URI stops working. */
@@ -248,7 +265,7 @@ export async function decideAgentRegistration(
 		.prepare(
 			`UPDATE ${table}
 			SET status = ?, user_id = ?, org_id = ?, claimed_at = ?
-			WHERE id = ? AND attempt_id = ? AND status = 'pending'
+			WHERE id = ? AND attempt_id = ? AND status IN ${decisionGuard}
 				AND attempt_expires_at > ? AND expires_at > ?`,
 		)
 		.bind(
@@ -274,7 +291,7 @@ export async function consumeClaimedAgentRegistration(
 	const result = await db
 		.prepare(
 			`UPDATE ${table} SET status = 'consumed', consumed_at = ?
-			WHERE id = ? AND status = 'claimed' AND expires_at > ?`,
+			WHERE id = ? AND status IN ${consumeGuard} AND expires_at > ?`,
 		)
 		.bind(now, id, now)
 		.run()
@@ -289,7 +306,7 @@ export async function restoreClaimedAgentRegistration(
 	await db
 		.prepare(
 			`UPDATE ${table} SET status = 'claimed', consumed_at = NULL
-			WHERE id = ? AND status = 'consumed'`,
+			WHERE id = ? AND status IN ${restoreGuard}`,
 		)
 		.bind(id)
 		.run()

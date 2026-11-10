@@ -1,7 +1,11 @@
-/**
- * Device-flow (RFC 8628) state and poll orchestration for /connect/oauth.
- * Kept out of connect-oauth.tsx so that route stays under the file-size budget.
- */
+import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
+import { createActor } from 'xstate'
+import {
+	connectOauthDeviceState,
+	type ConnectOauthDeviceState,
+	type DeviceDisplay,
+	type DeviceSession,
+} from '#client/routes/connect-oauth-device-state.ts'
 import { renderDeviceStep } from './connect-oauth-forms.tsx'
 import {
 	type ConnectOauthConfig,
@@ -20,6 +24,10 @@ import {
 	readConnectOauthOrgSlug,
 	startConnectOauthDevice,
 } from './connect-oauth-shared.ts'
+/**
+ * Device-flow (RFC 8628) state and poll orchestration for /connect/oauth.
+ * Kept out of connect-oauth.tsx so that route stays under the file-size budget.
+ */
 
 type ConnectOauthDeviceSuccess = {
 	accessTokenSaved: boolean
@@ -60,58 +68,90 @@ function devicePollBackoffSeconds(intervalSeconds: number) {
 }
 
 export function createConnectOauthDeviceStep(host: ConnectOauthDeviceHost) {
-	/** Opaque device session id — kept in memory only; never shown in the UI. */
-	let deviceSessionId: string | null = null
-	let deviceUserCode = ''
-	let deviceVerificationUri = ''
-	let deviceVerificationUriComplete: string | null = null
-	let deviceExpiresIn = 0
-	let devicePolling = false
-	let deviceErrorMessage: string | null = null
+	const flow = createActor(connectOauthDeviceState, {
+		snapshot: (() => {
+			const initialView = { status: 'idle' }
+			return connectOauthDeviceState.resolveState({
+				value: initialView.status,
+				context: uiContext(initialView),
+			})
+		})(),
+	}).start()
 	let devicePollTimer: ReturnType<typeof setTimeout> | null = null
 	let deviceCountdownTimer: ReturnType<typeof setInterval> | null = null
-	let devicePollGeneration = 0
-	let devicePollIntervalSeconds = 5
-
-	const clearDeviceTimers = () => {
-		if (devicePollTimer) {
-			clearTimeout(devicePollTimer)
-			devicePollTimer = null
-		}
-		if (deviceCountdownTimer) {
-			clearInterval(deviceCountdownTimer)
-			deviceCountdownTimer = null
-		}
+	let generation = 0
+	const display = (session: DeviceSession): DeviceDisplay => ({
+		userCode: session.userCode,
+		verificationUri: session.verificationUri,
+		verificationUriComplete: session.verificationUriComplete,
+		expiresIn: session.expiresIn,
+	})
+	function view() {
+		const state = uiState<ConnectOauthDeviceState>(flow.getSnapshot())
+		return state.status === 'polling'
+			? display(state.session)
+			: state.status === 'error' || state.status === 'success'
+				? state.view
+				: null
 	}
-
-	const resetDeviceState = () => {
+	function clearDeviceTimers() {
+		if (devicePollTimer) clearTimeout(devicePollTimer)
+		if (deviceCountdownTimer) clearInterval(deviceCountdownTimer)
+		devicePollTimer = null
+		deviceCountdownTimer = null
+	}
+	function resetDeviceState() {
 		clearDeviceTimers()
-		devicePollGeneration += 1
-		deviceSessionId = null
-		deviceUserCode = ''
-		deviceVerificationUri = ''
-		deviceVerificationUriComplete = null
-		deviceExpiresIn = 0
-		devicePolling = false
-		deviceErrorMessage = null
-		devicePollIntervalSeconds = 5
+		generation++
+		if (
+			uiState<ConnectOauthDeviceState>(flow.getSnapshot()).status === 'starting'
+		)
+			host.setSubmitting(false)
+		sendUiEvent(flow, {
+			...({
+				type: 'RESET',
+				data: uiContext({ status: 'idle' }).data,
+			} as Parameters<typeof flow.send>[0]),
+			requestId: generation,
+		})
 	}
-
-	/** Clear timers and abandon in-flight polls when the route unmounts. */
-	const dispose = () => {
-		resetDeviceState()
-	}
-
-	const finishDeviceSuccess = (result: {
-		accessTokenSaved: boolean
-		refreshTokenSaved: boolean
-		hostApprovalLinks: unknown
-		nextSteps: unknown
-	}) => {
+	function fail(
+		message: string,
+		device: DeviceDisplay | null,
+		requestId = generation,
+	) {
 		clearDeviceTimers()
-		deviceSessionId = null
-		devicePolling = false
-		deviceErrorMessage = null
+		sendUiEvent(flow, {
+			...({
+				type: 'RESPONSE_ERROR',
+				data: uiContext({ status: 'error', message, view: device }).data,
+			} as Parameters<typeof flow.send>[0]),
+			requestId: requestId,
+		})
+		host.setStatus(message, 'error')
+	}
+	function finishDeviceSuccess(
+		result: {
+			accessTokenSaved: boolean
+			refreshTokenSaved: boolean
+			hostApprovalLinks: unknown
+			nextSteps: unknown
+		},
+		requestId: number,
+	) {
+		const device = view()
+		if (
+			!device ||
+			!sendUiEvent(flow, {
+				...({
+					type: 'RESPONSE_OK',
+					data: uiContext({ status: 'success', view: device }).data,
+				} as Parameters<typeof flow.send>[0]),
+				requestId: requestId,
+			})
+		)
+			return
+		clearDeviceTimers()
 		persistConnectOauthOrgSlug(null)
 		host.onSuccess({
 			accessTokenSaved: result.accessTokenSaved,
@@ -122,55 +162,57 @@ export function createConnectOauthDeviceStep(host: ConnectOauthDeviceHost) {
 		host.setStatus('OAuth credentials saved.', 'info')
 		host.setStep('success')
 	}
-
-	const scheduleDevicePoll = (delaySeconds: number) => {
-		if (!deviceSessionId) return
-		const generation = devicePollGeneration
+	function scheduleDevicePoll(delaySeconds: number) {
+		if (
+			uiState<ConnectOauthDeviceState>(flow.getSnapshot()).status !== 'polling'
+		)
+			return
+		const ownGeneration = generation
 		clearTimeout(devicePollTimer ?? undefined)
 		devicePollTimer = setTimeout(
 			() => {
-				if (generation !== devicePollGeneration) return
-				void runDevicePoll()
+				if (ownGeneration === generation) void runDevicePoll()
 			},
 			Math.max(1, delaySeconds) * 1000,
 		)
 	}
-
-	const scheduleTransientRetry = (message: string) => {
-		devicePolling = true
-		deviceErrorMessage = null
+	function scheduleTransientRetry(message: string) {
+		const state = uiState<ConnectOauthDeviceState>(flow.getSnapshot())
+		if (state.status !== 'polling') return
 		host.setStatus(message, 'info')
-		scheduleDevicePoll(devicePollBackoffSeconds(devicePollIntervalSeconds))
+		scheduleDevicePoll(devicePollBackoffSeconds(state.session.interval))
 		host.update()
 	}
-
-	const runDevicePoll = async () => {
-		if (!host.getConfig() || !deviceSessionId) return
-		const generation = devicePollGeneration
-		const sessionId = deviceSessionId
-		devicePolling = true
+	async function runDevicePoll() {
+		const current = uiState<ConnectOauthDeviceState>(flow.getSnapshot())
+		if (!host.getConfig() || current.status !== 'polling') return
+		const ownGeneration = generation
 		host.update()
 		try {
 			const orgSlug = readConnectOauthOrgSlug(new URL(window.location.href))
-			const polled = await pollConnectOauthDevice({ sessionId, orgSlug })
-			if (generation !== devicePollGeneration) return
+			const polled = await pollConnectOauthDevice({
+				sessionId: current.session.sessionId,
+				orgSlug,
+			})
+			if (ownGeneration !== generation) return
+			if (polled.ok && polled.status === 'approved') {
+				finishDeviceSuccess(polled, ownGeneration)
+				return
+			}
+			const active = uiState<ConnectOauthDeviceState>(flow.getSnapshot())
+			if (active.status !== 'polling') return
 			if (!polled.ok) {
 				if (DEVICE_TERMINAL_POLL_STATUSES.has(polled.status)) {
-					clearDeviceTimers()
-					devicePolling = false
-					deviceSessionId = null
 					const message =
 						polled.status === 'access_denied'
 							? 'Authorization was denied. You can start again when ready.'
 							: polled.status === 'expired_token'
 								? 'This code expired. Start device authorization again.'
 								: polled.error
-					deviceErrorMessage = message
-					host.setStatus(message, 'error')
+					fail(message, display(active.session))
 					host.setStep('device')
 					return
 				}
-				// provider_error, persist_failed, rate_limited, unknown, etc.
 				scheduleTransientRetry(
 					polled.status === 'persist_failed'
 						? `Saving credentials failed: ${polled.error || 'unknown error'}. Retrying…`
@@ -178,13 +220,22 @@ export function createConnectOauthDeviceStep(host: ConnectOauthDeviceHost) {
 				)
 				return
 			}
-			if (polled.status === 'approved') {
-				finishDeviceSuccess(polled)
-				return
-			}
-			deviceExpiresIn = polled.expiresIn
-			devicePollIntervalSeconds = polled.interval
-			devicePolling = true
+			sendUiEvent(flow, {
+				...({
+					type: flow.getSnapshot().matches('polling')
+						? 'POLL_PENDING'
+						: 'SESSION_OK',
+					data: uiContext({
+						status: 'polling',
+						session: {
+							...active.session,
+							expiresIn: polled.expiresIn,
+							interval: polled.interval,
+						},
+					}).data,
+				} as Parameters<typeof flow.send>[0]),
+				requestId: ownGeneration,
+			})
 			host.setStatus(
 				polled.status === 'slow_down'
 					? 'Provider asked us to slow down. Still waiting for approval…'
@@ -194,8 +245,7 @@ export function createConnectOauthDeviceStep(host: ConnectOauthDeviceHost) {
 			scheduleDevicePoll(polled.interval)
 			host.update()
 		} catch (error) {
-			if (generation !== devicePollGeneration) return
-			// Keep sessionId and reschedule — network blips are not terminal.
+			if (ownGeneration !== generation) return
 			scheduleTransientRetry(
 				formatConnectOauthCaughtError(
 					error,
@@ -204,51 +254,74 @@ export function createConnectOauthDeviceStep(host: ConnectOauthDeviceHost) {
 			)
 		}
 	}
-
-	const startDeviceCountdown = () => {
+	function startDeviceCountdown() {
 		if (deviceCountdownTimer) clearInterval(deviceCountdownTimer)
 		deviceCountdownTimer = setInterval(() => {
-			if (deviceExpiresIn <= 0) {
+			const current = uiState<ConnectOauthDeviceState>(flow.getSnapshot())
+			if (current.status !== 'polling') {
 				clearDeviceTimers()
-				devicePolling = false
-				deviceSessionId = null
-				deviceErrorMessage =
-					'This code expired. Start device authorization again.'
-				host.setStatus(deviceErrorMessage, 'error')
+				return
+			}
+			if (current.session.expiresIn <= 0) {
+				fail(
+					'This code expired. Start device authorization again.',
+					display(current.session),
+				)
 				host.update()
 				return
 			}
-			deviceExpiresIn -= 1
+			sendUiEvent(flow, {
+				...({
+					type: 'TICK',
+					data: uiContext({
+						status: 'polling',
+						session: {
+							...current.session,
+							expiresIn: current.session.expiresIn - 1,
+						},
+					}).data,
+				} as Parameters<typeof flow.send>[0]),
+				requestId: generation,
+			})
 			host.update()
 		}, 1000)
 	}
-
-	const handleDeviceConnect = async () => {
+	async function handleDeviceConnect() {
 		const config = host.getConfig()
 		if (!config || host.getSubmitting()) return
-		host.setSubmitting(true)
 		resetDeviceState()
-		const generation = devicePollGeneration
+		if (
+			!sendUiEvent(flow, {
+				...({
+					type: 'START',
+					data: uiContext({ status: 'starting' }).data,
+				} as Parameters<typeof flow.send>[0]),
+				requestId: generation,
+			})
+		)
+			return
+		host.setSubmitting(true)
+		const ownGeneration = generation
 		host.update()
 		try {
 			const orgSlug = readConnectOauthOrgSlug(new URL(window.location.href))
 			persistConnectOauthOrgSlug(orgSlug)
 			persistConnectOauthConfig(config)
 			const started = await startConnectOauthDevice({ config, orgSlug })
-			// Aborted/reset while start was in flight — do not revive timers.
-			if (generation !== devicePollGeneration) return
+			if (ownGeneration !== generation) return
 			if (!started.ok) {
-				host.setStatus(started.error, 'error')
+				fail(started.error, null)
 				return
 			}
-			deviceSessionId = started.sessionId
-			deviceUserCode = started.userCode
-			deviceVerificationUri = started.verificationUri
-			deviceVerificationUriComplete = started.verificationUriComplete
-			deviceExpiresIn = started.expiresIn
-			devicePollIntervalSeconds = started.interval
-			devicePolling = true
-			deviceErrorMessage = null
+			sendUiEvent(flow, {
+				...({
+					type: flow.getSnapshot().matches('polling')
+						? 'POLL_PENDING'
+						: 'SESSION_OK',
+					data: uiContext({ status: 'polling', session: started }).data,
+				} as Parameters<typeof flow.send>[0]),
+				requestId: generation,
+			})
 			host.setStatus(
 				'Enter the code at the provider, then return here while we wait.',
 				'info',
@@ -257,51 +330,45 @@ export function createConnectOauthDeviceStep(host: ConnectOauthDeviceHost) {
 			startDeviceCountdown()
 			scheduleDevicePoll(started.interval)
 		} catch (error) {
-			if (generation !== devicePollGeneration) return
-			host.setStatus(
+			if (ownGeneration !== generation) return
+			fail(
 				formatConnectOauthCaughtError(
 					error,
 					'Unable to start device authorization.',
 				),
-				'error',
+				null,
 			)
 		} finally {
-			// Always clear submitting — an aborted start must not leave the
-			// connect button stuck disabled across an href reset.
-			host.setSubmitting(false)
-			if (generation === devicePollGeneration) {
+			if (ownGeneration === generation) {
+				host.setSubmitting(false)
 				host.update()
 			}
 		}
 	}
-
-	const restartToConnect = () => {
+	function restartToConnect() {
 		resetDeviceState()
 		host.setStatus('Ready to connect.', 'info')
 		host.setStep('connect')
 	}
-
-	const getView = (): ConnectOauthDeviceStepView => ({
-		userCode: deviceUserCode,
-		verificationUri: deviceVerificationUri,
-		verificationUriComplete: deviceVerificationUriComplete,
-		expiresIn: deviceExpiresIn,
-		polling: devicePolling,
-		errorMessage: deviceErrorMessage,
-	})
-
+	function getView(): ConnectOauthDeviceStepView {
+		const state = uiState<ConnectOauthDeviceState>(flow.getSnapshot()),
+			device = view()
+		return {
+			userCode: device?.userCode ?? '',
+			verificationUri: device?.verificationUri ?? '',
+			verificationUriComplete: device?.verificationUriComplete ?? null,
+			expiresIn: device?.expiresIn ?? 0,
+			polling: state.status === 'polling',
+			errorMessage:
+				state.status === 'error' && state.view ? state.message : null,
+		}
+	}
 	const render = (config: ConnectOauthConfig) =>
-		renderDeviceStep({
-			config,
-			...getView(),
-			onRestart: () => {
-				restartToConnect()
-			},
-		})
-
+		renderDeviceStep({ config, ...getView(), onRestart: restartToConnect })
 	return {
+		actor: flow,
 		resetDeviceState,
-		dispose,
+		dispose: resetDeviceState,
 		handleDeviceConnect,
 		restartToConnect,
 		render,

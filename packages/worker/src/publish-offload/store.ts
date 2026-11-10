@@ -1,7 +1,9 @@
+import { sqlSourcesOf } from '@kody-internal/shared/state-machine.ts'
 import { McpCallerError } from '#worker/mcp/caller-error.ts'
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { isPublishOffloadEnabledFor } from './flag.ts'
 import { sha256Hex } from './module-hashes.ts'
+import { publishBuildState } from './publish-build-state.ts'
 import {
 	publishBuildRejectionHint,
 	publishBuildRetentionMs,
@@ -38,6 +40,11 @@ export type PublishBuildRow = {
 }
 
 const ticketPrefix = 'kpb_'
+const sealGuard = sqlSourcesOf(publishBuildState, 'SEAL', ['uploading'])
+const finishGuard = sqlSourcesOf(publishBuildState, 'COMMIT', [
+	'sealed',
+	'committed',
+])
 
 export function publishBuildBlobKey(buildId: string, sha256: string) {
 	return `publish-builds/${buildId}/${sha256}`
@@ -158,7 +165,7 @@ export async function sealPublishBuild(input: {
 		.prepare(
 			`UPDATE publish_builds
 			SET status = 'sealed', document_json = ?, updated_at = ?
-			WHERE id = ? AND status = 'uploading'`,
+			WHERE id = ? AND status IN ${sealGuard}`,
 		)
 		.bind(
 			JSON.stringify(input.document),
@@ -181,7 +188,7 @@ export async function finishPublishBuild(input: {
 			`UPDATE publish_builds
 			SET status = ?, message = ?, updated_at = ?,
 				committed_at = CASE WHEN ? = 'committed' THEN ? ELSE committed_at END
-			WHERE id = ? AND status IN ('sealed', 'committed')`,
+			WHERE id = ? AND status IN ${finishGuard}`,
 		)
 		.bind(
 			input.status,

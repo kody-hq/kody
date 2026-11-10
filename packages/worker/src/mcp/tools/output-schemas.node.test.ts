@@ -81,6 +81,17 @@ test('search structured content passes strict client validation for all return p
 			result: [{ entityRef: 'capability:a', error: 'not found' }],
 			error: 'All entity lookups failed.',
 		},
+		{
+			conversationId: 'c1',
+			timing,
+			result: [
+				{ entityRef: 'guide:a#one', guideMetadataRef: 'guide:a' },
+				{ entityRef: 'guide:a#two', guideMetadataRef: 'guide:a' },
+			],
+			guides: {
+				'guide:a': { id: 'a', title: 'A', description: 'd', sections: [] },
+			},
+		},
 		{ conversationId: 'c1', timing, error: 'Provide "query".' },
 		{
 			conversationId: 'c1',

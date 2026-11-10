@@ -1,3 +1,12 @@
+import {
+	IllegalStateTransitionError,
+	isState,
+	nextState,
+} from '@kody-internal/shared/state-machine.ts'
+import {
+	packageInvocationState,
+	type PackageInvocationLedgerStatus,
+} from './package-invocation-state.ts'
 import type {
 	SkillReadEvent,
 	SkillReadSummary,
@@ -101,9 +110,11 @@ import {
 	workflowProjectionRetentionDays,
 } from './types.ts'
 import { normalizeRunStartedBy, type RunStartedBy } from './run-started-by.ts'
+import { runState } from './run-state.ts'
 import { recordDurableObjectPlatformRowsRead } from '#worker/usage/durable-object-rows.ts'
 
 const textEncoder = new TextEncoder()
+const interruptGuard = runState.sql(['running'])
 const maxAgeDeletesPerFinish = 100
 const maxExcessDeletesPerFinish = 100
 const maxStaleRunningReconcilesPerPass = 100
@@ -291,10 +302,7 @@ export type RunLogEntryInput = {
 	fieldsJson: string | null
 }
 
-export type PackageInvocationLedgerStatus =
-	| 'in_progress'
-	| 'completed'
-	| 'failed'
+export type { PackageInvocationLedgerStatus } from './package-invocation-state.ts'
 
 /**
  * One keyed package-invocation idempotency row. Same shape as the legacy D1
@@ -711,9 +719,7 @@ function mapInvocationLedgerRow(
 		source: row['source'] == null ? null : String(row['source']),
 		topic: row['topic'] == null ? null : String(row['topic']),
 		claimOwner: row['claim_owner'] == null ? null : String(row['claim_owner']),
-		status: (status === 'completed' || status === 'failed'
-			? status
-			: 'in_progress') as PackageInvocationLedgerStatus,
+		status: isState(packageInvocationState, status) ? status : 'in_progress',
 		responseJson:
 			row['response_json'] == null ? null : String(row['response_json']),
 		createdAt: String(row['created_at']),
@@ -1642,6 +1648,12 @@ class RunLogBase extends DurableObject<Env> {
 			'surface' | 'parentRunId' | 'startedAt' | 'status'
 		>
 	}) {
+		if (input.previousStatus != null)
+			runState.parse(
+				runState.is(input.previousStatus)
+					? input.run.status
+					: input.previousStatus,
+			)
 		if (!this.countsTowardDashboard(input.run)) return
 		// Clamp pre-migration startedAt days up to the warm coverage floor so
 		// MIN(day) cannot drift before the no-backfill boundary.
@@ -1963,7 +1975,7 @@ class RunLogBase extends DurableObject<Env> {
 				triaged_by = ?,
 				updated_at = ?,
 				idempotency_key = CASE WHEN ? THEN NULL ELSE idempotency_key END
-			WHERE id = ? AND status = 'running'`,
+			WHERE id = ? AND status IN ${interruptGuard}`,
 			finishedAt,
 			durationMs,
 			input.reason?.errorName ?? runRecordPlatformInterruptedErrorName,
@@ -2706,10 +2718,7 @@ class RunLogBase extends DurableObject<Env> {
 			.toArray()[0]
 		if (!row) return null
 		const status = String(row.status)
-		if (status === 'running' || status === 'success' || status === 'error') {
-			return status
-		}
-		return null
+		return runState.is(status) ? status : null
 	}
 
 	private hasActivationMilestone(milestone: ActivationMilestone): boolean {
@@ -3080,6 +3089,7 @@ class RunLogBase extends DurableObject<Env> {
 			if (!reclaimable) {
 				return { outcome: 'existing', record: existing }
 			}
+			nextState(packageInvocationState, existing.status, { type: 'CLAIM' })
 			this.ctx.storage.sql.exec(
 				`UPDATE package_invocation_ledger
 				SET updated_at = ?, claim_owner = ?
@@ -3170,9 +3180,27 @@ class RunLogBase extends DurableObject<Env> {
 			current = this.getInvocationLedgerRowById(input.invocationId)
 			ledgerUpdated =
 				current != null &&
-				current.status === 'in_progress' &&
-				current.updatedAt === input.claimUpdatedAt
+				(current.status as string) === 'in_progress' &&
+				(current.updatedAt as string) === input.claimUpdatedAt
 			if (ledgerUpdated) {
+				nextState(packageInvocationState, 'in_progress', {
+					type: (() => {
+						switch (input.status as string) {
+							case 'in_progress':
+								return 'CLAIM' as const
+							case 'completed':
+								return 'COMPLETE' as const
+							case 'failed':
+								return 'FAIL' as const
+							default:
+								throw new IllegalStateTransitionError(
+									packageInvocationState.id,
+									'in_progress',
+									{ type: String(input.status) },
+								)
+						}
+					})(),
+				})
 				this.ctx.storage.sql.exec(
 					`UPDATE package_invocation_ledger
 					SET status = ?, response_json = ?, updated_at = ?
@@ -4349,9 +4377,7 @@ class RunLogBase extends DurableObject<Env> {
 				surface: (isRunSurface(String(row.surface))
 					? String(row.surface)
 					: 'execute') as WorkspaceRunBucket['surface'],
-				status: (row.status === 'success' ||
-				row.status === 'error' ||
-				row.status === 'running'
+				status: (runState.is(row.status)
 					? row.status
 					: 'error') as WorkspaceRunBucket['status'],
 				count: Number(row.count ?? 0) || 0,

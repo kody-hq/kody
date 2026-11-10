@@ -1,3 +1,5 @@
+import { sqlSourcesOf, isState } from '@kody-internal/shared/state-machine.ts'
+import { followState } from './follow-state.ts'
 import {
 	followRecentUpdatesPerFollow,
 	isFollowPauseReason,
@@ -13,6 +15,9 @@ import {
 	type FollowTargetKind,
 	isFollowTargetKind,
 } from './types.ts'
+
+const pauseGuard = sqlSourcesOf(followState, 'PAUSE', ['active'])
+const resumeGuard = sqlSourcesOf(followState, 'REAUTHORIZE', ['paused'])
 
 export function hasAppDb(db: D1Database | undefined | null): db is D1Database {
 	return Boolean(db && typeof db.prepare === 'function')
@@ -57,13 +62,7 @@ function mapFollow(row: Record<string, unknown>): FollowRecord {
 }
 
 function isFollowStatus(value: string): value is FollowStatus {
-	switch (value) {
-		case 'active':
-		case 'paused':
-			return true
-		default:
-			return false
-	}
+	return isState(followState, value)
 }
 
 function pauseReason(value: unknown): FollowPauseReason | null {
@@ -205,7 +204,7 @@ export async function pauseFollow(
 		.prepare(
 			`UPDATE follows
 			SET status = 'paused', paused_at = ?, paused_reason = ?, updated_at = ?
-			WHERE id = ? AND status = 'active'`,
+			WHERE id = ? AND status IN ${pauseGuard}`,
 		)
 		.bind(input.pausedAt, input.reason, input.pausedAt, input.id)
 		.run()
@@ -229,7 +228,7 @@ export async function resumeFollow(
 			`UPDATE follows
 			SET status = 'active', paused_at = NULL, paused_reason = NULL,
 				creator_user_id = ?, creator_profile_id = ?, updated_at = ?
-			WHERE id = ? AND status = 'paused'`,
+			WHERE id = ? AND status IN ${resumeGuard}`,
 		)
 		.bind(
 			input.creatorUserId,

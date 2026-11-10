@@ -406,6 +406,7 @@ async function dispatchCapabilityCall(
 			const input = (args[0] ?? {}) as {
 				query?: string
 				bindings?: Array<unknown>
+				params?: Array<unknown>
 			}
 			const query = String(input.query ?? '')
 			if (!query.trim()) {
@@ -417,7 +418,11 @@ async function dispatchCapabilityCall(
 				state,
 				ctx.packageId,
 				query,
-				Array.isArray(input.bindings) ? input.bindings : [],
+				Array.isArray(input.params)
+					? input.params
+					: Array.isArray(input.bindings)
+						? input.bindings
+						: [],
 				ctx.env,
 			)
 		}

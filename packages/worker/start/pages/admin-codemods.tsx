@@ -1,5 +1,19 @@
 /** @jsxImportSource @emotion/react */
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
+import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
+import {
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+	type FormEvent,
+	type MouseEvent,
+} from 'react'
+import { useMachine } from '@xstate/react'
+import {
+	adminCodemodRunState,
+	type AdminCodemodRunState,
+} from '#client/routes/admin-codemod-run-state.ts'
 import type { AdminCodemodRunInput } from '#universal/admin-codemod-input.ts'
 import {
 	formatSummaryCounts,
@@ -7,9 +21,8 @@ import {
 	mergeSummaryCounts,
 	parseCommaSeparatedIds,
 	runModes,
-	type LiveRunItem,
-	type RunMode,
 	type RunPhase,
+	type RunMode,
 } from '#client/routes/admin-codemods-shared.ts'
 import { readAdminCodemodItems } from '#start/server/admin-controls'
 import {
@@ -30,13 +43,6 @@ import {
 	getSelectCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, mq, spacing } from '#universal/styles/tokens.ts'
-import {
-	useEffect,
-	useRef,
-	useState,
-	type FormEvent,
-	type MouseEvent,
-} from 'react'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import {
 	accountInputCss,
@@ -58,18 +64,44 @@ export function AdminCodemodsPage(props: {
 	const { codemods, runs } = props.payload
 	const invalidatePages = usePageInvalidation(mutationResources)
 	const lifetime = useRef<AbortController | null>(null)
-	const stopRequestedRef = useRef(false)
-	const runActiveRef = useRef(false)
 	useEffect(() => {
 		const controller = new AbortController()
 		lifetime.current = controller
 		return () => {
 			controller.abort()
-			stopRequestedRef.current = true
 		}
 	}, [])
-	const [message, setMessage] = useState<string | null>(null)
-	const [messageTone, setMessageTone] = useState<'info' | 'error'>('info')
+	const [runSnapshot, , runActor] = useMachine(adminCodemodRunState, {
+		snapshot: (() => {
+			const initialView = { status: 'idle' }
+			return adminCodemodRunState.resolveState({
+				value: initialView.status,
+				context: uiContext(initialView),
+			})
+		})(),
+	})
+	const run = uiState<AdminCodemodRunState>(runSnapshot)
+	const transitionRun = useCallback(
+		(event: Parameters<typeof runActor.send>[0]) =>
+			sendUiEvent(runActor, event),
+		[runActor],
+	)
+	const getRun = useCallback(
+		() => uiState<AdminCodemodRunState>(runActor.getSnapshot()),
+		[runActor],
+	)
+	const [feedback, setFeedback] = useState<{
+		tone: 'info' | 'error'
+		message: string
+	} | null>(null)
+	const message = feedback?.message ?? ('message' in run ? run.message : null)
+	const messageTone =
+		feedback?.tone ?? (run.status === 'error' ? 'error' : 'info')
+	const runPhase: RunPhase = run.status === 'stopping' ? 'running' : run.status
+	const stopRequested = run.status === 'stopping'
+	const liveRunId = 'runId' in run ? run.runId : null
+	const liveItems = 'items' in run ? run.items : []
+	const liveSummary = 'summary' in run ? run.summary : {}
 	const [selectedCodemodId, setSelectedCodemodId] = useState(
 		props.payload.codemods[0]?.id ?? '',
 	)
@@ -78,11 +110,6 @@ export function AdminCodemodsPage(props: {
 	const [packageIdsFilter, setPackageIdsFilter] = useState('')
 	const [enforcementOnly, setEnforcementOnly] = useState(false)
 	const [revertOfRunId, setRevertOfRunId] = useState('')
-	const [runPhase, setRunPhase] = useState<RunPhase>('idle')
-	const [stopRequested, setStopRequested] = useState(false)
-	const [liveRunId, setLiveRunId] = useState<string | null>(null)
-	const [liveItems, setLiveItems] = useState<Array<LiveRunItem>>([])
-	const [liveSummary, setLiveSummary] = useState<Record<string, number>>({})
 	const [pendingConfirmKey, setPendingConfirmKey] = useState<string | null>(
 		null,
 	)
@@ -100,9 +127,13 @@ export function AdminCodemodsPage(props: {
 		null,
 	)
 	const historyRequestIdRef = useRef(0)
-	function requestStop(value: boolean) {
-		stopRequestedRef.current = value
-		setStopRequested(value)
+	function requestStop() {
+		const current = getRun()
+		if (current.status === 'running')
+			transitionRun({
+				type: 'STOP',
+				data: uiContext({ ...current, status: 'stopping' }).data,
+			} as Parameters<typeof runActor.send>[0])
 	}
 	async function refreshRuns() {
 		// The subscribed loader owns this payload. A separate JSON GET followed
@@ -130,10 +161,11 @@ export function AdminCodemodsPage(props: {
 			setHistoryNextAfterId(payload.nextAfterId)
 		} catch (error) {
 			if (requestId !== historyRequestIdRef.current) return
-			setMessage(
-				error instanceof Error ? error.message : 'Unable to load run items.',
-			)
-			setMessageTone('error')
+			setFeedback({
+				tone: 'error',
+				message:
+					error instanceof Error ? error.message : 'Unable to load run items.',
+			})
 		} finally {
 			if (requestId === historyRequestIdRef.current) {
 				setHistoryLoading(false)
@@ -189,39 +221,55 @@ export function AdminCodemodsPage(props: {
 		codemodId: string
 		revertOfRunId?: string
 	}) {
-		if (runActiveRef.current) return
-		runActiveRef.current = true
-		setRunPhase('running')
-		requestStop(false)
-		setLiveRunId(null)
-		setLiveItems([])
-		setLiveSummary({})
-		setMessage(null)
-		setMessageTone('info')
+		const current = getRun()
+		if (current.status === 'running' || current.status === 'stopping') return
+		if (
+			!transitionRun({
+				type: 'SUBMIT',
+				data: uiContext({
+					status: 'running',
+					runId: null,
+					items: [],
+					summary: {},
+				}).data,
+			} as Parameters<typeof runActor.send>[0])
+		)
+			return
+		setFeedback(null)
 		setPendingConfirmKey(null)
 		let runId: string | undefined
 		let cursor: string | null | undefined
 		let stepCount = 0
+		async function finish(status: 'complete' | 'error', message: string) {
+			await refreshRuns()
+			if (lifetime.current?.signal.aborted) return
+			const current = getRun()
+			if (current.status !== 'running' && current.status !== 'stopping') return
+			setFeedback(null)
+			transitionRun({
+				type: status === 'complete' ? 'RESPONSE_OK' : 'RESPONSE_ERROR',
+				data: { ...uiContext(current).data, message },
+			} as Parameters<typeof runActor.send>[0])
+		}
 		try {
 			for (;;) {
-				if (stopRequestedRef.current) {
+				if (
+					getRun().status === 'stopping' ||
+					lifetime.current?.signal.aborted
+				) {
 					if (runId) await markRunStopped(runId)
-					setRunPhase('complete')
-					setMessage(
+					await finish(
+						'complete',
 						`Stopped ${input.mode} for ${input.codemodId}${runId ? ` (run ${runId})` : ''} after ${stepCount} step(s).`,
 					)
-					setMessageTone('info')
-					await refreshRuns()
 					return
 				}
 				if (stepCount >= maxRunSteps) {
 					if (runId) await markRunStopped(runId)
-					setRunPhase('error')
-					setMessage(
+					await finish(
+						'error',
 						`Stopped after ${maxRunSteps} steps without completing. Resume later with the same run id if needed.`,
 					)
-					setMessageTone('error')
-					await refreshRuns()
 					return
 				}
 				const previousCursor = cursor
@@ -241,61 +289,69 @@ export function AdminCodemodsPage(props: {
 				}
 				stepCount += 1
 				runId = step.runId
-				setLiveRunId(step.runId ?? null)
-				if (Array.isArray(step.items)) {
-					const items = step.items
-					setLiveItems((current) => [
+				const current = getRun()
+				if (current.status !== 'running' && current.status !== 'stopping')
+					return
+				transitionRun({
+					type: 'PROGRESS',
+					data: uiContext({
 						...current,
-						...items.map((item) => ({
-							itemId: item.itemId,
-							userId: item.userId,
-							packageId: item.packageId,
-							kodyId: item.kodyId,
-							status: item.status,
-							changedPaths: item.changedPaths ?? [],
-							findings: item.findings ?? [],
-							error: item.error ?? null,
-						})),
-					])
-				}
-				if (step.summary) {
-					setLiveSummary((current) =>
-						mergeSummaryCounts(current, step.summary!),
-					)
-				}
+						runId: step.runId ?? null,
+						items: [
+							...current.items,
+							...(step.items ?? []).map((item) => ({
+								itemId: item.itemId,
+								userId: item.userId,
+								packageId: item.packageId,
+								kodyId: item.kodyId,
+								status: item.status,
+								changedPaths: item.changedPaths ?? [],
+								findings: item.findings ?? [],
+								error: item.error ?? null,
+							})),
+						],
+						summary: step.summary
+							? mergeSummaryCounts(current.summary, step.summary)
+							: current.summary,
+					}).data,
+				} as Parameters<typeof runActor.send>[0])
 				if (step.nextCursor == null) break
 				if (
 					previousCursor !== undefined &&
 					previousCursor === step.nextCursor
 				) {
 					if (runId) await markRunStopped(runId)
-					setRunPhase('error')
-					setMessage(
+					await finish(
+						'error',
 						`Codemod run stopped: cursor did not advance (${step.nextCursor}).`,
 					)
-					setMessageTone('error')
-					await refreshRuns()
 					return
 				}
 				cursor = step.nextCursor
 			}
-			setRunPhase('complete')
-			setMessage(
+			await finish(
+				'complete',
 				`Finished ${input.mode} for ${input.codemodId}${runId ? ` (run ${runId})` : ''}.`,
 			)
-			setMessageTone('info')
-			await refreshRuns()
 		} catch (error) {
-			setRunPhase('error')
-			setMessage(
-				error instanceof Error
-					? error.message
-					: 'Unable to complete package codemod run.',
-			)
-			setMessageTone('error')
-		} finally {
-			requestStop(false)
-			runActiveRef.current = false
+			const current = getRun()
+			if (
+				!lifetime.current?.signal.aborted &&
+				(current.status === 'running' || current.status === 'stopping')
+			) {
+				setFeedback(null)
+				transitionRun({
+					type: 'RESPONSE_ERROR',
+					data: uiContext({
+						...current,
+						status: 'error',
+						message:
+							error instanceof Error
+								? error.message
+								: 'Unable to complete package codemod run.',
+					}).data,
+				} as Parameters<typeof runActor.send>[0])
+			}
 		}
 	}
 	function getConfirmKey(action: string, id: string) {
@@ -326,15 +382,14 @@ export function AdminCodemodsPage(props: {
 		event.preventDefault()
 		if (!(event.currentTarget instanceof HTMLFormElement)) return
 		if (!selectedCodemodId) {
-			setMessage('Select a codemod first.')
-			setMessageTone('error')
+			setFeedback({ tone: 'error', message: 'Select a codemod first.' })
 			return
 		}
 		if (selectedMode === 'apply' || selectedMode === 'revert') {
-			setMessage(
-				`Use the ${selectedMode} button and confirm to start a destructive run.`,
-			)
-			setMessageTone('info')
+			setFeedback({
+				tone: 'info',
+				message: `Use the ${selectedMode} button and confirm to start a destructive run.`,
+			})
 			return
 		}
 		void runPagedCodemod({
@@ -381,6 +436,7 @@ export function AdminCodemodsPage(props: {
 					description="Each click walks the fleet as one HTTP request per page until nextCursor is null (stop anytime; hard ceiling 200 steps). Apply and revert require an explicit scope and confirmation."
 				>
 					<form
+						aria-busy={isRunning}
 						method="post"
 						onSubmit={handleRunSubmit}
 						css={{
@@ -625,7 +681,7 @@ export function AdminCodemodsPage(props: {
 									type="button"
 									disabled={stopRequested}
 									onClick={() => {
-										requestStop(true)
+										requestStop()
 									}}
 									css={secondaryButtonCss}
 								>

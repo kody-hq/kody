@@ -1,3 +1,7 @@
+import { sqlSourcesOf, nextState } from '@kody-internal/shared/state-machine.ts'
+import { inboundSubscriptionEffectState } from './inbound-subscription-effect-state.ts'
+import { inboundDedupePointerState } from './inbound-dedupe-pointer-state.ts'
+import { inboundDeliveryState } from './inbound-delivery-state.ts'
 import { loadPostalMime } from '#worker/postal-mime-load.ts'
 import { emailRawMimeKey } from './blob-keys.ts'
 import { systemEmailOwnerId } from './email-owner.ts'
@@ -64,6 +68,57 @@ function parseDelivery(row: DeliveryRow | null): InboundDelivery | null {
 	return parseInboundDeliveryDetailJson(row?.detail_json)
 }
 
+const deliveryStoringToPendingGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'RELEASE_LEASE',
+	['storing'],
+)
+const deliveryCleaningToOrphanCleanedGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'COMPLETE_CLEANUP',
+	['cleaning'],
+)
+const deliveryPendingToStoringGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_STORAGE',
+	['pending'],
+)
+const deliveryStoringToStoringGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_STORAGE',
+	['storing'],
+)
+const deliveryReceivedToStoringGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_STORAGE',
+	['received'],
+)
+const deliveryStoringToReceivedGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'RECEIVE',
+	['storing'],
+)
+const deliveryPendingToCleaningGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_CLEANUP',
+	['pending'],
+)
+const deliveryStoringToCleaningGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_CLEANUP',
+	['storing'],
+)
+const deliveryCleaningToCleaningGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_CLEANUP',
+	['cleaning'],
+)
+const deliveryOrphanCleanedToCleaningGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_CLEANUP',
+	['orphan-cleaned'],
+)
+
 export function systemInboundDedupeExpiry(now: Date) {
 	return new Date(now.getTime() + inboundDeliveryDedupeWindowMs).toISOString()
 }
@@ -114,6 +169,8 @@ export async function claimSystemInboundDeliveryWindow(input: {
 }) {
 	await assertSystemDelivery(input.db, input.delivery)
 	const pointerId = systemInboundDedupePointerId(input.delivery.fingerprint)
+	nextState(inboundDedupePointerState, 'pending', { type: 'RESET_WINDOW' })
+	nextState(inboundDedupePointerState, 'rejected', { type: 'RESET_WINDOW' })
 	try {
 		await commitSystemInboundEventMutation({
 			db: input.db,
@@ -356,12 +413,12 @@ export async function claimSystemInboundDeliveryStorage(input: {
 					usage_started_at = COALESCE(usage_started_at, ?),
 					updated_at = ?
 				WHERE id = ? AND (
-					state = 'pending'
+					state IN ${deliveryPendingToStoringGuard}
 					OR (
-						state = 'storing'
+						state IN ${deliveryStoringToStoringGuard}
 						AND (storage_lease_at IS NULL OR storage_lease_at < ?)
 					)
-					OR (state = 'received' AND NOT EXISTS (
+					OR (state IN ${deliveryReceivedToStoringGuard} AND NOT EXISTS (
 						SELECT 1 FROM system_email_messages
 						WHERE id = json_extract(
 							system_email_delivery_events.detail_json, '$.messageId'
@@ -419,7 +476,7 @@ export async function releaseSystemInboundDeliveryStorage(input: {
 					),
 					state = 'pending', storage_lease = NULL, storage_lease_at = NULL,
 					updated_at = ?
-				WHERE id = ? AND state = 'storing' AND storage_lease = ?`,
+				WHERE id = ? AND state IN ${deliveryStoringToPendingGuard} AND storage_lease = ?`,
 			)
 			.bind(
 				new Date().toISOString(),
@@ -435,6 +492,11 @@ export async function markSystemInboundDeliveryRejected(input: {
 	reason: string
 }) {
 	await assertSystemDelivery(input.db, input.delivery)
+	if (
+		input.delivery.state !== 'received' &&
+		input.delivery.state !== 'rejected'
+	)
+		nextState(inboundDeliveryState, input.delivery.state, { type: 'REJECT' })
 	const detail = {
 		...input.delivery,
 		state: 'rejected' as const,
@@ -498,6 +560,13 @@ export async function markSystemInboundDeliveryReceived(input: {
 			'System inbound finalization requires a storage lease.',
 		)
 	}
+	nextState(inboundDeliveryState, 'storing', { type: 'RECEIVE' })
+	if (input.delivery.subscriptionEffectState)
+		nextState(
+			inboundSubscriptionEffectState,
+			input.delivery.subscriptionEffectState,
+			{ type: 'RESET' },
+		)
 	const detail: InboundDelivery = {
 		...input.delivery,
 		state: 'received',
@@ -522,7 +591,7 @@ export async function markSystemInboundDeliveryReceived(input: {
 					finalization_token = ?, usage_month = ?, usage_bytes = ?,
 					usage_duration_ms = ?, subscription_effect_state = 'pending',
 					updated_at = ?
-				WHERE id = ? AND state = 'storing' AND storage_lease = ?`,
+				WHERE id = ? AND state IN ${deliveryStoringToReceivedGuard} AND storage_lease = ?`,
 			)
 			.bind(
 				input.delivery.messageId,
@@ -799,16 +868,16 @@ export async function reconcileSystemStaleInboundDeliveries(input: {
 							'$.cleanupLeaseAt', ?
 						), updated_at = ?
 					WHERE id = ? AND (
-						state = 'pending'
+						state IN ${deliveryPendingToCleaningGuard}
 						OR (
-							state = 'storing'
+							state IN ${deliveryStoringToCleaningGuard}
 							AND (storage_lease_at IS NULL OR storage_lease_at < ?)
 						)
 						OR (
-							state = 'cleaning'
+							state IN ${deliveryCleaningToCleaningGuard}
 							AND (cleanup_lease_at IS NULL OR cleanup_lease_at < ?)
 						)
-						OR (state = 'orphan-cleaned' AND cleanup_retry_at <= ?)
+						OR (state IN ${deliveryOrphanCleanedToCleaningGuard} AND cleanup_retry_at <= ?)
 					) AND NOT EXISTS (
 						SELECT 1 FROM system_email_messages WHERE id = ?
 					)`,
@@ -860,7 +929,7 @@ export async function reconcileSystemStaleInboundDeliveries(input: {
 								), '$.cleanupLease'
 							), '$.cleanupLeaseAt'
 						), updated_at = ?
-					WHERE id = ? AND state = 'cleaning' AND cleanup_lease = ?`,
+					WHERE id = ? AND state IN ${deliveryCleaningToOrphanCleanedGuard} AND cleanup_lease = ?`,
 				)
 				.bind(
 					retryAt,

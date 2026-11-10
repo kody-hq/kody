@@ -7,10 +7,11 @@ import { collectLocalOriginDevVars } from './local-origin-dev-config.ts'
 
 type JsonRecord = Record<string, unknown>
 
-const localSiblingSecretKeys = [
+const localSiblingForwardedKeys = [
 	'COOKIE_SECRET',
 	'SECRET_STORE_KEY',
 	'ECP_FRAME_SIGNING_KEYS',
+	'PACKAGE_APP_BASE_URL',
 ] as const
 
 /**
@@ -98,8 +99,10 @@ export async function writeLocalSiblingDevConfig({
 		vars.APP_BASE_URL = process.env.APP_BASE_URL
 	}
 	// ECP_FRAME_SIGNING_KEYS: the execution context session DO lives on the
-	// platform sibling and signs daemon frames with it.
-	for (const key of localSiblingSecretKeys) {
+	// platform sibling and signs daemon frames with it. PACKAGE_APP_BASE_URL:
+	// the runtime sibling owns package-app host routing, so a local
+	// `packages.localhost` origin must replace its committed production value.
+	for (const key of localSiblingForwardedKeys) {
 		const value = process.env[key]
 		if (value) vars[key] = value
 	}

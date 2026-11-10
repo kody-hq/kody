@@ -1,5 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
+import { useActorRef } from '@xstate/react'
+import { submissionGateState } from '#client/routes/submission-gate-state.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { isAdminUserVerificationFilter } from '#universal/email-verification-delivery.ts'
 import {
@@ -18,7 +20,6 @@ import {
 } from 'react'
 import { adminUsersFilters, adminUsersSearch } from '../admin-users-input.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
-
 import {
 	type AdminUserFilterState,
 	buildUserDetailHrefFrom,
@@ -129,6 +130,7 @@ export function AdminUsersPage(props: {
 			actorKey: string | null
 			target: string | null
 			permissions: boolean
+			action: Exclude<AdminUsersActionState, 'idle'>
 		}) => input.perform(),
 		onMutate: (input) => ({
 			reconcile: input.permissions ? invalidateOwnPermissions : invalidatePages,
@@ -156,23 +158,31 @@ export function AdminUsersPage(props: {
 			| ReturnType<typeof createAdminUser>
 			| ReturnType<typeof mintAdminUserVerificationUrl>
 			| ReturnType<typeof assignAdminUserRole>,
+		action: Exclude<AdminUsersActionState, 'idle'>,
 	) {
 		return write.mutateAsync({
 			perform,
 			actorKey,
 			target,
 			permissions: target === actorKey,
+			action,
 		})
 	}
 
 	const [message, setMessage] = useState<string | null>(null)
-	const [actionState, setActionState] = useState<AdminUsersActionState>('idle')
+	const runExclusiveActor = useActorRef(submissionGateState)
+	const actionState: AdminUsersActionState = write.isPending
+		? (write.variables?.action ?? 'idle')
+		: 'idle'
 	const [createdUser, setCreatedUser] = useState<AdminCreatedUserSetup | null>(
 		null,
 	)
-	const [mintedVerifyUrl, setMintedVerifyUrl] = useState<string | null>(null)
-	const [mintedVerifyUrlForStableUserId, setMintedVerifyUrlForStableUserId] =
-		useState<string | null>(null)
+	const [verificationLink, setVerificationLink] = useState<{
+		url: string
+		stableUserId: string
+	} | null>(null)
+	const mintedVerifyUrl = verificationLink?.url ?? null
+	const mintedVerifyUrlForStableUserId = verificationLink?.stableUserId ?? null
 	const [selectedRoleToAssign, setSelectedRoleToAssign] = useState(
 		'user' as RoleName,
 	)
@@ -231,147 +241,193 @@ export function AdminUsersPage(props: {
 		return true
 	}
 	async function submitRoleAction(action: 'assign_role' | 'remove_role') {
-		const submittedScope = activeScope.current
-		const selectedUser = resolveSelectedUser()
-		if (!selectedUser || actionState !== 'idle') return
-		setActionState(action === 'assign_role' ? 'assigning' : 'removing')
-		setMessage(null)
+		if (!runExclusiveActor.getSnapshot().can({ type: 'SUBMIT' })) return
+		runExclusiveActor.send({ type: 'SUBMIT' })
 		try {
-			await submitUserChange(selectedUser.stableUserId, () =>
-				(action === 'assign_role' ? assignAdminUserRole : removeAdminUserRole)({
-					data: {
-						stableUserId: selectedUser.stableUserId,
-						role: selectedRoleToAssign,
-					},
-				}),
-			)
-			if (activeScope.current !== submittedScope) return
-			setMessage(
-				action === 'assign_role'
-					? `Assigned ${selectedRoleToAssign} role.`
-					: `Removed ${selectedRoleToAssign} role.`,
-			)
-			setActionState('idle')
-		} catch (error) {
-			if (activeScope.current !== submittedScope) return
-			setActionState('idle')
-			setMessage(
-				error instanceof Error ? error.message : 'Unable to update user roles.',
-			)
+			return await (async () => {
+				const submittedScope = activeScope.current
+				const selectedUser = resolveSelectedUser()
+				if (!selectedUser || actionState !== 'idle') return
+
+				setMessage(null)
+				try {
+					await submitUserChange(
+						selectedUser.stableUserId,
+						() =>
+							(action === 'assign_role'
+								? assignAdminUserRole
+								: removeAdminUserRole)({
+								data: {
+									stableUserId: selectedUser.stableUserId,
+									role: selectedRoleToAssign,
+								},
+							}),
+						action === 'assign_role' ? 'assigning' : 'removing',
+					)
+					if (activeScope.current !== submittedScope) return
+					setMessage(
+						action === 'assign_role'
+							? `Assigned ${selectedRoleToAssign} role.`
+							: `Removed ${selectedRoleToAssign} role.`,
+					)
+				} catch (error) {
+					if (activeScope.current !== submittedScope) return
+
+					setMessage(
+						error instanceof Error
+							? error.message
+							: 'Unable to update user roles.',
+					)
+				}
+			})()
+		} finally {
+			runExclusiveActor.send({ type: 'SETTLED' })
 		}
 	}
 	async function submitVerificationAction(
 		action: 'mark_email_verified' | 'mint_verify_url',
 	) {
-		const submittedScope = activeScope.current
-		const selectedUser = resolveSelectedUser()
-		if (!selectedUser || actionState !== 'idle') return
-		setActionState('verifying')
-		setMessage(null)
+		if (!runExclusiveActor.getSnapshot().can({ type: 'SUBMIT' })) return
+		runExclusiveActor.send({ type: 'SUBMIT' })
 		try {
-			const payload = await submitUserChange(selectedUser.stableUserId, () =>
-				(action === 'mint_verify_url'
-					? mintAdminUserVerificationUrl
-					: verifyAdminUserEmail)({
-					data: { stableUserId: selectedUser.stableUserId },
-				}),
-			)
-			if (activeScope.current !== submittedScope) return
-			if (
-				action === 'mint_verify_url' &&
-				'verifyUrl' in payload &&
-				payload.verifyUrl
-			) {
-				setMintedVerifyUrl(payload.verifyUrl)
-				setMintedVerifyUrlForStableUserId(selectedUser.stableUserId)
-				setMessage(
-					'Minted a one-time verify link. Send it over a path that is not kody.codes.',
-				)
-			} else {
-				setMintedVerifyUrl(null)
-				setMintedVerifyUrlForStableUserId(null)
-				setMessage('Marked email verified.')
-			}
-			setActionState('idle')
-		} catch (error) {
-			if (activeScope.current !== submittedScope) return
-			setActionState('idle')
-			setMessage(
-				error instanceof Error
-					? error.message
-					: 'Unable to update verification.',
-			)
+			return await (async () => {
+				const submittedScope = activeScope.current
+				const selectedUser = resolveSelectedUser()
+				if (!selectedUser || actionState !== 'idle') return
+
+				setMessage(null)
+				try {
+					const payload = await submitUserChange(
+						selectedUser.stableUserId,
+						() =>
+							(action === 'mint_verify_url'
+								? mintAdminUserVerificationUrl
+								: verifyAdminUserEmail)({
+								data: { stableUserId: selectedUser.stableUserId },
+							}),
+						'verifying',
+					)
+					if (activeScope.current !== submittedScope) return
+					if (
+						action === 'mint_verify_url' &&
+						'verifyUrl' in payload &&
+						payload.verifyUrl
+					) {
+						setVerificationLink({
+							url: payload.verifyUrl,
+							stableUserId: selectedUser.stableUserId,
+						})
+						setMessage(
+							'Minted a one-time verify link. Send it over a path that is not kody.codes.',
+						)
+					} else {
+						setVerificationLink(null)
+						setMessage('Marked email verified.')
+					}
+				} catch (error) {
+					if (activeScope.current !== submittedScope) return
+
+					setMessage(
+						error instanceof Error
+							? error.message
+							: 'Unable to update verification.',
+					)
+				}
+			})()
+		} finally {
+			runExclusiveActor.send({ type: 'SETTLED' })
 		}
 	}
 	async function submitModerationAction(
 		action: 'suspend_user' | 'unsuspend_user' | 'resume_email_outbound',
 	) {
-		const submittedScope = activeScope.current
-		const selectedUser = resolveSelectedUser()
-		if (!selectedUser || actionState !== 'idle') return
-		setActionState('moderating')
-		setMessage(null)
+		if (!runExclusiveActor.getSnapshot().can({ type: 'SUBMIT' })) return
+		runExclusiveActor.send({ type: 'SUBMIT' })
 		try {
-			await submitUserChange(selectedUser.stableUserId, () =>
-				(action === 'suspend_user'
-					? suspendAdminUser
-					: action === 'unsuspend_user'
-						? unsuspendAdminUser
-						: resumeAdminUserEmail)({
-					data: { stableUserId: selectedUser.stableUserId },
-				}),
-			)
-			if (activeScope.current !== submittedScope) return
-			setMessage(
-				action === 'suspend_user'
-					? 'Account suspended.'
-					: action === 'unsuspend_user'
-						? 'Account suspension cleared.'
-						: 'Outbound email resumed.',
-			)
-			setActionState('idle')
-		} catch (error) {
-			if (activeScope.current !== submittedScope) return
-			setActionState('idle')
-			setMessage(
-				error instanceof Error
-					? error.message
-					: 'Unable to update the account.',
-			)
+			return await (async () => {
+				const submittedScope = activeScope.current
+				const selectedUser = resolveSelectedUser()
+				if (!selectedUser || actionState !== 'idle') return
+
+				setMessage(null)
+				try {
+					await submitUserChange(
+						selectedUser.stableUserId,
+						() =>
+							(action === 'suspend_user'
+								? suspendAdminUser
+								: action === 'unsuspend_user'
+									? unsuspendAdminUser
+									: resumeAdminUserEmail)({
+								data: { stableUserId: selectedUser.stableUserId },
+							}),
+						'moderating',
+					)
+					if (activeScope.current !== submittedScope) return
+					setMessage(
+						action === 'suspend_user'
+							? 'Account suspended.'
+							: action === 'unsuspend_user'
+								? 'Account suspension cleared.'
+								: 'Outbound email resumed.',
+					)
+				} catch (error) {
+					if (activeScope.current !== submittedScope) return
+
+					setMessage(
+						error instanceof Error
+							? error.message
+							: 'Unable to update the account.',
+					)
+				}
+			})()
+		} finally {
+			runExclusiveActor.send({ type: 'SETTLED' })
 		}
 	}
 	async function submitCreateUser(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault()
-		if (!(event.currentTarget instanceof HTMLFormElement)) return
-		if (actionState !== 'idle') return
-		const form = event.currentTarget
-		const formData = new FormData(form)
-		const submittedScope = activeScope.current
-		setActionState('creatingUser')
-		setCreatedUser(null)
-		setMessage(null)
+		if (!runExclusiveActor.getSnapshot().can({ type: 'SUBMIT' })) return
+		runExclusiveActor.send({ type: 'SUBMIT' })
 		try {
-			const payload = await submitUserChange(null, () =>
-				createAdminUser({
-					data: {
-						email: String(formData.get('email') ?? '').trim(),
-						username: String(formData.get('username') ?? '').trim(),
-					},
-				}),
-			)
-			if (activeScope.current !== submittedScope) return
-			setCreatedUser(
-				'createdUser' in payload ? payload.createdUser : createdUser,
-			)
-			setMessage('User created. Copy the setup link below.')
-			setActionState('idle')
-			if ('createdUser' in payload && payload.createdUser) form.reset()
-		} catch (error) {
-			if (activeScope.current !== submittedScope) return
-			setActionState('idle')
-			setMessage(
-				error instanceof Error ? error.message : 'Unable to create user.',
-			)
+			return await (async () => {
+				if (!(event.currentTarget instanceof HTMLFormElement)) return
+				if (actionState !== 'idle') return
+				const form = event.currentTarget
+				const formData = new FormData(form)
+				const submittedScope = activeScope.current
+
+				setCreatedUser(null)
+				setMessage(null)
+				try {
+					const payload = await submitUserChange(
+						null,
+						() =>
+							createAdminUser({
+								data: {
+									email: String(formData.get('email') ?? '').trim(),
+									username: String(formData.get('username') ?? '').trim(),
+								},
+							}),
+						'creatingUser',
+					)
+					if (activeScope.current !== submittedScope) return
+					setCreatedUser(
+						'createdUser' in payload ? payload.createdUser : createdUser,
+					)
+					setMessage('User created. Copy the setup link below.')
+
+					if ('createdUser' in payload && payload.createdUser) form.reset()
+				} catch (error) {
+					if (activeScope.current !== submittedScope) return
+
+					setMessage(
+						error instanceof Error ? error.message : 'Unable to create user.',
+					)
+				}
+			})()
+		} finally {
+			runExclusiveActor.send({ type: 'SETTLED' })
 		}
 	}
 	const loadMoreFromIntersection = useEffectEvent(loadMoreUsers)

@@ -259,15 +259,6 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run api-docs:build
 
-      - name: 🧪 Start release build
-        if: ${{ !cancelled() }}
-        env:
-          KODY_START_RELEASE: ${{ github.sha }}
-          KODY_VITE_OUTDIR: dist-start-release
-        run: |
-          npm exec --no -- vite build
-          node tools/ci/verify-start-release-build.ts dist-start-release
-
       - name: 📦 Worker startup bundles
         if: ${{ !cancelled() }}
         env:
@@ -954,6 +945,9 @@ jobs:
 
       - name: 🔌 OpenAPI client check
         run: npm run cli:openapi:check
+
+      - name: State machine reference check
+        run: npm run state-machines:check
 
       - name: 🧪 CLI validate
         run: npm run cli:validate

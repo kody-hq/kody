@@ -11,6 +11,10 @@ export function guideLinesModeLine(label: string) {
 	return `- Lines: \`${label}\``
 }
 
+function guideDetailTitleLine(id: string) {
+	return `# Guide — \`${id}\``
+}
+
 export function buildGuideDetailHeaderLines(input: {
 	id: string
 	description: string
@@ -20,7 +24,7 @@ export function buildGuideDetailHeaderLines(input: {
 	lastVerified?: string | null
 }) {
 	return [
-		`# Guide — \`${input.id}\``,
+		guideDetailTitleLine(input.id),
 		'',
 		input.description,
 		'',
@@ -33,6 +37,18 @@ export function buildGuideDetailHeaderLines(input: {
 		...(input.lastVerified
 			? [`- Last verified: \`${input.lastVerified}\``]
 			: []),
+	]
+}
+
+/**
+ * Header for a batch entry whose guide description and summary an earlier
+ * entry for the same guide already showed.
+ */
+export function buildGuideBatchRepeatHeaderLines(input: { id: string }) {
+	return [
+		guideDetailTitleLine(input.id),
+		'',
+		`- Entity: \`guide:${input.id}\` (description and summary in the first entry for this guide above)`,
 	]
 }
 

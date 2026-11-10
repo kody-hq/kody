@@ -7,6 +7,8 @@ import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
 import { isCredentialInvalidatedByStoredPasswordChange } from '#worker/password-change-lockout.ts'
 import type { UserMeterEnv } from '#worker/entitlements/user-meter-client.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import { loadOrgSlug } from '#worker/orgs/owner-emails.ts'
+import { cliTokenScopes, mintCliToken } from './cli-token.ts'
 import { localExecuteOrgPermissions } from './legacy-scope-rewrite.ts'
 import {
 	apiTokenScopeIncludes,
@@ -15,8 +17,8 @@ import {
 } from './scopes.ts'
 import {
 	apiTokenLifetimeMissingError,
+	apiTokenLifetimeAliases,
 	apiTokenPolicy,
-	mintApiToken,
 	resolveApiTokenLifetime,
 	type ApiTokenMintParent,
 	type ApiTokenOrgBinding,
@@ -25,11 +27,13 @@ import {
 } from './service.ts'
 
 /**
- * Bootstrap defaults = local-execute parity + `org:read` (account reads) +
- * plain-repo push (`package:write`) + stub package create via
+ * The narrow local-execute set: local-execute parity + `org:read` (account
+ * reads) + plain-repo push (`package:write`) + stub package create via
  * `packageGetGitRemote` (`package:create`) + self-revoke (`token:delete`).
+ * Bootstrap codes used to default to it; they now default to the same scopes
+ * as `kody login` ({@link cliTokenScopes}). Agent registration still mints it.
  */
-export const cliCredentialBootstrapDefaultScopes = normalizeApiTokenScopes([
+export const cliCredentialBootstrapNarrowScopes = normalizeApiTokenScopes([
 	...localExecuteOrgPermissions,
 	'org:read',
 	'package:write',
@@ -52,15 +56,15 @@ export const cliCredentialBootstrapPolicy = {
 	maxOutstandingCodesPerUser: 5,
 	defaultName: 'kody-cli-bootstrap',
 	/**
-	 * Pre-P4 `local-execute` + `account:read` parity under org permissions:
-	 * CapabilityProxy hops (`org:execute`), account reads (`org:read`), and
-	 * the use-level scopes saved packages need (package-graph
-	 * `package:execute`, `createAuthenticatedFetch` → `integration:read`,
-	 * secrets, email, jobs, …), plus `package:write` (plain-repo / package
-	 * pushes), `package:create` (`packageGetGitRemote` create stubs), and
-	 * `token:delete` (self-revoke). Do not mint `search:read`.
+	 * Same scopes as a `kody login` device token: the full org-permission
+	 * vocabulary, capped by the org role at request time and by a parent
+	 * token's scopes at mint. Callers narrow it only with explicit `scopes`.
 	 */
-	defaultScopes: cliCredentialBootstrapDefaultScopes,
+	defaultScopes: normalizeApiTokenScopes([
+		...cliTokenScopes,
+	]) as Array<ApiTokenScope>,
+	/** Same lifetime as a `kody login` device token (14 days idle / 3 months). */
+	defaultLifetime: apiTokenLifetimeAliases.long,
 	minIdleTtlSeconds: apiTokenPolicy.minIdleTtlSeconds,
 	maxIdleTtlSeconds: apiTokenPolicy.maxIdleTtlSeconds,
 	maxMaxLifetimeSeconds: apiTokenPolicy.maxMaxLifetimeSeconds,
@@ -195,19 +199,58 @@ async function pruneExpiredBootstrapCodes(input: {
 		.catch(() => undefined)
 }
 
+function hasExplicitLifetime(input: {
+	lifetime?: string | null
+	idleTtlSeconds?: number
+	maxLifetimeSeconds?: number
+}) {
+	return (
+		(typeof input.lifetime === 'string' && input.lifetime.trim() !== '') ||
+		input.idleTtlSeconds !== undefined ||
+		input.maxLifetimeSeconds !== undefined
+	)
+}
+
 function resolveBootstrapLifetime(input: {
 	lifetime?: string | null
 	idleTtlSeconds?: number
 	maxLifetimeSeconds?: number
 	parentRemainingSeconds: number | null
 }): ResolvedApiTokenLifetime {
-	const resolved = resolveApiTokenLifetime({
-		lifetime: input.lifetime,
-		idleTtlSeconds: input.idleTtlSeconds,
-		maxLifetimeSeconds: input.maxLifetimeSeconds,
-		missingError: apiTokenLifetimeMissingError('api'),
-	})
+	const resolved = hasExplicitLifetime(input)
+		? resolveApiTokenLifetime({
+				lifetime: input.lifetime,
+				idleTtlSeconds: input.idleTtlSeconds,
+				maxLifetimeSeconds: input.maxLifetimeSeconds,
+				missingError: apiTokenLifetimeMissingError('api'),
+			})
+		: {
+				...cliCredentialBootstrapPolicy.defaultLifetime,
+				cliFlags: '--lifetime long',
+			}
 	if (input.parentRemainingSeconds === null) return resolved
+	if (!hasExplicitLifetime(input)) {
+		// The default shrinks to fit a shorter-lived parent instead of failing.
+		const idleTtlSeconds = Math.min(
+			resolved.idleTtlSeconds,
+			input.parentRemainingSeconds,
+		)
+		const maxLifetimeSeconds = Math.min(
+			resolved.maxLifetimeSeconds,
+			input.parentRemainingSeconds,
+		)
+		if (
+			idleTtlSeconds === resolved.idleTtlSeconds &&
+			maxLifetimeSeconds === resolved.maxLifetimeSeconds
+		) {
+			return resolved
+		}
+		return {
+			idleTtlSeconds,
+			maxLifetimeSeconds,
+			cliFlags: `--idle-ttl-seconds ${idleTtlSeconds} --max-lifetime-seconds ${maxLifetimeSeconds}`,
+		}
+	}
 	if (input.parentRemainingSeconds < resolved.idleTtlSeconds) {
 		throw new McpCallerError(
 			'The calling API token expires too soon to mint a CLI bootstrap code.',
@@ -264,11 +307,10 @@ export async function mintCliCredentialBootstrap(input: {
 		const requested = normalizeApiTokenScopes(
 			input.scopes ?? [...cliCredentialBootstrapPolicy.defaultScopes],
 		)
-		// API-token parents that omit `scopes` get the intersection of defaults
-		// and what they hold. Otherwise adding `package:execute` to defaults
-		// would break package-free bootstrap from older org:execute+org:read
-		// parents. Explicit `scopes` still escalate-check against the parent.
-		// MCP / session callers (no parent) keep the full default set.
+		// Parents that omit `scopes` get the intersection of the login scopes
+		// and what they hold, so a child never outranks its parent. Explicit
+		// `scopes` still escalate-check against the parent. MCP sessions with
+		// no parent keep the full set (the org role caps it per request).
 		scopes =
 			parent && !requestedScopesExplicitly
 				? requested.filter((scope) =>
@@ -282,15 +324,6 @@ export async function mintCliCredentialBootstrap(input: {
 	}
 	if (scopes.length === 0) {
 		throw new McpCallerError('At least one scope is required.')
-	}
-	if (
-		parent &&
-		!requestedScopesExplicitly &&
-		!apiTokenScopeIncludes(scopes, 'org:execute')
-	) {
-		throw new McpCallerError(
-			'A token cannot mint a CLI bootstrap code without holding org:execute.',
-		)
 	}
 	if (parent && requestedScopesExplicitly) {
 		const missing = scopes.filter(
@@ -367,8 +400,9 @@ export async function mintCliCredentialBootstrap(input: {
 
 	const orgBinding: ApiTokenOrgBinding =
 		input.orgBinding === 'org' ? 'org' : 'user'
-	const orgId =
-		orgBinding === 'user' ? input.userId : input.orgId?.trim() || input.userId
+	// User-owned codes keep the minting session's org so redeem can report it
+	// as `login_org`, like `kody login`. The token itself is still user-owned.
+	const orgId = input.orgId?.trim() || input.userId
 	await input.db
 		.prepare(
 			`INSERT INTO cli_credential_bootstrap_codes (
@@ -429,18 +463,26 @@ export async function redeemCliCredentialBootstrap(input: {
 	maxLifetimeSeconds?: number
 	env?: UserMeterEnv
 	now?: Date
-}): Promise<{ token: ApiTokenSecretView; userId: OwnerId }> {
+}): Promise<{
+	token: ApiTokenSecretView
+	userId: OwnerId
+	loginOrg: { slug: string } | null
+}> {
 	const now = input.now ?? new Date()
 	const parsed = parseCliBootstrapCode(input.code)
 	if (!parsed) {
 		throw new McpCallerError('Invalid CLI bootstrap code.')
 	}
-	const requested = resolveApiTokenLifetime({
-		lifetime: input.lifetime,
-		idleTtlSeconds: input.idleTtlSeconds,
-		maxLifetimeSeconds: input.maxLifetimeSeconds,
-		missingError: apiTokenLifetimeMissingError('cli'),
-	})
+	// No lifetime on redeem means the lifetime the code was minted for, which
+	// defaults to the `kody login` lifetime. Older CLIs still send one.
+	const explicitLifetime = hasExplicitLifetime(input)
+		? resolveApiTokenLifetime({
+				lifetime: input.lifetime,
+				idleTtlSeconds: input.idleTtlSeconds,
+				maxLifetimeSeconds: input.maxLifetimeSeconds,
+				missingError: apiTokenLifetimeMissingError('cli'),
+			})
+		: null
 	const codeHash = await hashBootstrapCode(input.code.trim())
 	const row = await input.db
 		.prepare(
@@ -473,6 +515,10 @@ export async function redeemCliCredentialBootstrap(input: {
 	}
 	if (Date.parse(row.expires_at) <= now.getTime()) {
 		throw new McpCallerError('CLI bootstrap code expired.')
+	}
+	const requested = explicitLifetime ?? {
+		idleTtlSeconds: row.idle_ttl_seconds,
+		maxLifetimeSeconds: row.max_lifetime_seconds,
 	}
 	if (
 		requested.idleTtlSeconds > row.idle_ttl_seconds ||
@@ -544,7 +590,7 @@ export async function redeemCliCredentialBootstrap(input: {
 			throw new McpCallerError('Stored bootstrap scopes are invalid.')
 		}
 
-		const token = await mintApiToken({
+		const token = await mintCliToken({
 			db: input.db,
 			userId: row.user_id,
 			orgId,
@@ -562,7 +608,12 @@ export async function redeemCliCredentialBootstrap(input: {
 			},
 			now,
 		})
-		return { token, userId: row.user_id }
+		const loginOrgSlug = await loadOrgSlug(input.db, orgId).catch(() => null)
+		return {
+			token,
+			userId: row.user_id,
+			loginOrg: loginOrgSlug ? { slug: loginOrgSlug } : null,
+		}
 	}
 
 	if (input.env) {

@@ -1,3 +1,6 @@
+import { useActorRef } from '@xstate/react'
+import { submissionGateState } from '#client/routes/submission-gate-state.ts'
+import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import { useState, useEffect, useRef, type FormEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
@@ -7,7 +10,6 @@ import {
 	requestWebsiteEmailChange,
 	requestWebsiteEmailRelease,
 } from '#start/server/auth-mutations'
-
 export function useAccountEmailClaims(
 	initialEmail: string,
 	initialFormerEmails: Array<AccountFormerEmail>,
@@ -24,42 +26,51 @@ export function useAccountEmailClaims(
 			scope.current = null
 		}
 	}, [actorKey, href])
-	const mutation = useMutation({
+	const lifecycle = {
 		gcTime: 0,
-		mutationFn: ({
-			kind,
-			email,
-			password,
-		}: {
-			kind: 'change' | 'release'
-			email: string
-			password: string
-		}) =>
-			(kind === 'change'
-				? requestWebsiteEmailChange
-				: requestWebsiteEmailRelease)({ data: { email, password } }),
 		onMutate: () => invalidatePages,
-		onSettled: (_data, _error, _input, reconcile) => reconcile?.(),
+		onSettled: (
+			_data: unknown,
+			_error: Error | null,
+			_input: unknown,
+			reconcile: (() => Promise<void>) | undefined,
+		) => reconcile?.(),
+	}
+	const releaseMutation = useMutation({
+		...lifecycle,
+		mutationFn: (data: { email: string; password: string }) =>
+			requestWebsiteEmailRelease({ data }),
 	})
+	const changeMutation = useMutation({
+		...lifecycle,
+		mutationFn: (data: { email: string; password: string }) =>
+			requestWebsiteEmailChange({ data }),
+	})
+	const runReleaseActor = useActorRef(submissionGateState)
+	const runChangeActor = useActorRef(submissionGateState)
+	const releaseStatus: 'idle' | 'sending' = releaseMutation.isPending
+		? 'sending'
+		: 'idle'
+	const emailChangeStatus: 'idle' | 'sending' = changeMutation.isPending
+		? 'sending'
+		: 'idle'
 
-	const [emailChangeStatus, setEmailChangeStatus] = useState<
-		'idle' | 'sending'
-	>('idle')
 	const [emailChangeOpen, setEmailChangeOpen] = useState(false)
 	const formerEmails = initialFormerEmails
 	const [releaseEmail, setReleaseEmail] = useState('')
 	const [releasePassword, setReleasePassword] = useState('')
-	const [releaseStatus, setReleaseStatus] = useState<'idle' | 'sending'>('idle')
-	const [releaseMessage, setReleaseMessage] = useState<string | null>(null)
-	const [releaseTone, setReleaseTone] = useState<'error' | 'info'>('info')
-	const [draftEmail, setDraftEmail] = useState(initialEmail)
-	const [emailChangePassword, setEmailChangePassword] = useState('')
-	const [emailChangeMessage, setEmailChangeMessage] = useState<string | null>(
+	const [releaseFeedback, setReleaseFeedback] = useState<UiFeedback | null>(
 		null,
 	)
-	const [emailChangeTone, setEmailChangeTone] = useState<'error' | 'info'>(
-		'info',
-	)
+	const releaseMessage = releaseFeedback?.message ?? null
+	const releaseTone = releaseFeedback?.tone ?? 'info'
+
+	const [draftEmail, setDraftEmail] = useState(initialEmail)
+	const [emailChangePassword, setEmailChangePassword] = useState('')
+	const [emailChangeFeedback, setEmailChangeFeedback] =
+		useState<UiFeedback | null>(null)
+	const emailChangeMessage = emailChangeFeedback?.message ?? null
+	const emailChangeTone = emailChangeFeedback?.tone ?? 'info'
 
 	function applyCurrentEmail(email: string) {
 		setDraftEmail(email)
@@ -94,14 +105,18 @@ export function useAccountEmailClaims(
 	function useFormerEmailAsLogin(nextEmail: string) {
 		setDraftEmail(nextEmail)
 		setEmailChangeOpen(true)
-		setEmailChangeMessage(null)
+		setEmailChangeFeedback(createUiFeedback(null))
 	}
 
 	async function requestFormerEmailRelease(nextEmail: string) {
 		if (!releasePassword) {
 			setReleaseEmail(nextEmail)
-			setReleaseMessage('Current password is required to send a release link.')
-			setReleaseTone('error')
+			setReleaseFeedback(
+				createUiFeedback(
+					'Current password is required to send a release link.',
+					'error',
+				),
+			)
 			return
 		}
 		setReleaseEmail(nextEmail)
@@ -116,46 +131,57 @@ export function useAccountEmailClaims(
 	}
 
 	async function submitFormerEmailRelease(email = releaseEmail) {
-		const nextEmail = email.trim().toLowerCase()
-		if (!nextEmail || !releasePassword) {
-			setReleaseMessage('Former email and current password are required.')
-			setReleaseTone('error')
-			return
-		}
-
-		setReleaseStatus('sending')
-		setReleaseMessage(null)
-		setReleaseTone('info')
-
-		const submittedScope = scope.current
+		if (!runReleaseActor.getSnapshot().can({ type: 'SUBMIT' })) return
+		runReleaseActor.send({ type: 'SUBMIT' })
 		try {
-			const payload = await mutation.mutateAsync({
-				kind: 'release',
-				email: nextEmail,
-				password: releasePassword,
-			})
-			if (!submittedScope || scope.current !== submittedScope) return
-			if (!payload.successful || !payload.ok) {
-				throw new Error(
-					payload?.error || 'Unable to send the release verification.',
-				)
-			}
-			setReleasePassword('')
-			setReleaseMessage(
-				payload.message ?? 'Verification email sent to that former address.',
-			)
-			setReleaseTone('info')
-		} catch (error) {
-			if (!submittedScope || scope.current !== submittedScope) return
-			setReleaseMessage(
-				error instanceof Error
-					? error.message
-					: 'Unable to send the release verification.',
-			)
-			setReleaseTone('error')
+			return await (async () => {
+				const nextEmail = email.trim().toLowerCase()
+				if (!nextEmail || !releasePassword) {
+					setReleaseFeedback(
+						createUiFeedback(
+							'Former email and current password are required.',
+							'error',
+						),
+					)
+					return
+				}
+
+				setReleaseFeedback(createUiFeedback(null, 'info'))
+
+				const submittedScope = scope.current
+				try {
+					const payload = await releaseMutation.mutateAsync({
+						email: nextEmail,
+						password: releasePassword,
+					})
+					if (!submittedScope || scope.current !== submittedScope) return
+					if (!payload.successful || !payload.ok) {
+						throw new Error(
+							payload?.error || 'Unable to send the release verification.',
+						)
+					}
+					setReleasePassword('')
+					setReleaseFeedback(
+						createUiFeedback(
+							payload.message ??
+								'Verification email sent to that former address.',
+							'info',
+						),
+					)
+				} catch (error) {
+					if (!submittedScope || scope.current !== submittedScope) return
+					setReleaseFeedback(
+						createUiFeedback(
+							error instanceof Error
+								? error.message
+								: 'Unable to send the release verification.',
+							'error',
+						),
+					)
+				}
+			})()
 		} finally {
-			if (submittedScope && scope.current === submittedScope)
-				setReleaseStatus('idle')
+			runReleaseActor.send({ type: 'SETTLED' })
 		}
 	}
 
@@ -164,51 +190,62 @@ export function useAccountEmailClaims(
 		currentEmail: string,
 	) {
 		event.preventDefault()
-		const nextEmail = draftEmail.trim().toLowerCase()
-		if (!nextEmail || !emailChangePassword) {
-			setEmailChangeMessage('New email and current password are required.')
-			setEmailChangeTone('error')
-			return
-		}
-		if (nextEmail === currentEmail.trim().toLowerCase()) {
-			setEmailChangeMessage('Enter a different email address.')
-			setEmailChangeTone('error')
-			return
-		}
-
-		setEmailChangeStatus('sending')
-		setEmailChangeMessage(null)
-		setEmailChangeTone('info')
-
-		const submittedScope = scope.current
+		if (!runChangeActor.getSnapshot().can({ type: 'SUBMIT' })) return
+		runChangeActor.send({ type: 'SUBMIT' })
 		try {
-			const payload = await mutation.mutateAsync({
-				kind: 'change',
-				email: nextEmail,
-				password: emailChangePassword,
-			})
-			if (!submittedScope || scope.current !== submittedScope) return
-			if (!payload.successful || !payload.ok) {
-				throw new Error(
-					payload?.error || 'Unable to send the email change verification.',
-				)
-			}
-			setEmailChangePassword('')
-			setEmailChangeMessage(
-				payload.message ?? 'Verification email sent to your new address.',
-			)
-			setEmailChangeTone('info')
-		} catch (error) {
-			if (!submittedScope || scope.current !== submittedScope) return
-			setEmailChangeMessage(
-				error instanceof Error
-					? error.message
-					: 'Unable to send the email change verification.',
-			)
-			setEmailChangeTone('error')
+			return await (async () => {
+				const nextEmail = draftEmail.trim().toLowerCase()
+				if (!nextEmail || !emailChangePassword) {
+					setEmailChangeFeedback(
+						createUiFeedback(
+							'New email and current password are required.',
+							'error',
+						),
+					)
+					return
+				}
+				if (nextEmail === currentEmail.trim().toLowerCase()) {
+					setEmailChangeFeedback(
+						createUiFeedback('Enter a different email address.', 'error'),
+					)
+					return
+				}
+
+				setEmailChangeFeedback(createUiFeedback(null, 'info'))
+
+				const submittedScope = scope.current
+				try {
+					const payload = await changeMutation.mutateAsync({
+						email: nextEmail,
+						password: emailChangePassword,
+					})
+					if (!submittedScope || scope.current !== submittedScope) return
+					if (!payload.successful || !payload.ok) {
+						throw new Error(
+							payload?.error || 'Unable to send the email change verification.',
+						)
+					}
+					setEmailChangePassword('')
+					setEmailChangeFeedback(
+						createUiFeedback(
+							payload.message ?? 'Verification email sent to your new address.',
+							'info',
+						),
+					)
+				} catch (error) {
+					if (!submittedScope || scope.current !== submittedScope) return
+					setEmailChangeFeedback(
+						createUiFeedback(
+							error instanceof Error
+								? error.message
+								: 'Unable to send the email change verification.',
+							'error',
+						),
+					)
+				}
+			})()
 		} finally {
-			if (submittedScope && scope.current === submittedScope)
-				setEmailChangeStatus('idle')
+			runChangeActor.send({ type: 'SETTLED' })
 		}
 	}
 

@@ -1,3 +1,7 @@
+import {
+	IllegalStateTransitionError,
+	nextState,
+} from '@kody-internal/shared/state-machine.ts'
 /**
  * Admin fleet inventory of credential placeholders in published package
  * source, and the `provider` / `inject_json` backfill it drives (ADR 0068).
@@ -9,6 +13,10 @@
  * provider slug, and `inject_json` when every placement of the credential is
  * the same header or the same query param.
  */
+import {
+	credentialInventoryRunState,
+	type CredentialInventoryRunStatus,
+} from './credential-inventory-run-state.ts'
 import { listSavedPackagesPage } from '#worker/package-registry/repo.ts'
 import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
 import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
@@ -133,7 +141,7 @@ export const credentialInventoryFailureListMax = 50
 
 type InventoryRunRow = {
 	id: string
-	status: 'scanning' | 'complete'
+	status: CredentialInventoryRunStatus
 	cursor: string | null
 }
 
@@ -445,6 +453,22 @@ export async function runCredentialInventoryScanStep(input: {
 		)
 	}
 	const complete = packages.length < limit
+	nextState(credentialInventoryRunState, run.status, {
+		type: (() => {
+			switch ((complete ? 'complete' : 'scanning') as string) {
+				case 'scanning':
+					return 'SCAN_PAGE' as const
+				case 'complete':
+					return 'COMPLETE' as const
+				default:
+					throw new IllegalStateTransitionError(
+						credentialInventoryRunState.id,
+						run.status,
+						{ type: String(complete ? 'complete' : 'scanning') },
+					)
+			}
+		})(),
+	})
 	statements.push(
 		db
 			.prepare(

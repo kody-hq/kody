@@ -17,5 +17,8 @@ export default defineConfig({
 	test: {
 		environment: 'node',
 		include: ['*.node.test.ts'],
+		// Match the root node project so a file's console spies start empty in
+		// every test whether it runs alone or in the package suite (#5037).
+		clearMocks: true,
 	},
 })

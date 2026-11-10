@@ -1,3 +1,5 @@
+import { sqlSourcesOf, nextState } from '@kody-internal/shared/state-machine.ts'
+import { inboundDeliveryState } from './inbound-delivery-state.ts'
 import {
 	assertMailboxCanonicalIsoTimestamp,
 	assertMailboxInboundDeliveryState,
@@ -17,6 +19,37 @@ import {
 	type MailboxReleaseInboundDeliveryCleanupResult,
 } from './mailbox-inbound-ledger.ts'
 import { mailboxInboundOrphanVerificationMs } from './mailbox-inbound-ledger-shared.ts'
+
+const deliveryCleaningToPendingGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'RELEASE_LEASE',
+	['cleaning'],
+)
+const deliveryPendingToCleaningGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_CLEANUP',
+	['pending'],
+)
+const deliveryStoringToCleaningGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_CLEANUP',
+	['storing'],
+)
+const deliveryCleaningToCleaningGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_CLEANUP',
+	['cleaning'],
+)
+const deliveryOrphanCleanedToCleaningGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_CLEANUP',
+	['orphan-cleaned'],
+)
+const deliveryCleaningToOrphanCleanedGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'COMPLETE_CLEANUP',
+	['cleaning'],
+)
 
 export function claimMailboxInboundDeliveryCleanup(
 	sql: SqlStorage,
@@ -62,6 +95,7 @@ export function claimMailboxInboundDeliveryCleanup(
 	if (!claimable) return { status: 'not-claimed', delivery: current }
 
 	const cleanupLease = crypto.randomUUID()
+	nextState(inboundDeliveryState, current.state, { type: 'CLAIM_CLEANUP' })
 	const next: MailboxInboundDeliverySnapshot = {
 		...current,
 		state: 'cleaning',
@@ -83,10 +117,10 @@ export function claimMailboxInboundDeliveryCleanup(
 			AND created_at < ?
 			AND (reconcile_after IS NULL OR reconcile_after <= ?)
 			AND (
-				state = 'pending'
-				OR (state = 'storing' AND storage_lease_at < ?)
-				OR (state = 'cleaning' AND cleanup_lease_at < ?)
-				OR (state = 'orphan-cleaned' AND cleanup_retry_at <= ?)
+				state IN ${deliveryPendingToCleaningGuard}
+				OR (state IN ${deliveryStoringToCleaningGuard} AND storage_lease_at < ?)
+				OR (state IN ${deliveryCleaningToCleaningGuard} AND cleanup_lease_at < ?)
+				OR (state IN ${deliveryOrphanCleanedToCleaningGuard} AND cleanup_retry_at <= ?)
 			)`,
 		detailJsonFromMailboxInboundSnapshot(next),
 		cleanupLease,
@@ -135,6 +169,7 @@ export function releaseMailboxInboundDeliveryCleanup(
 	) {
 		return { status: 'not-held' }
 	}
+	nextState(inboundDeliveryState, current.state, { type: 'RELEASE_LEASE' })
 	const next: MailboxInboundDeliverySnapshot = {
 		...current,
 		state: 'pending',
@@ -151,7 +186,7 @@ export function releaseMailboxInboundDeliveryCleanup(
 			updated_at = ?
 		WHERE id = ?
 			AND provider = ?
-			AND state = 'cleaning'
+			AND state IN ${deliveryCleaningToPendingGuard}
 			AND cleanup_lease = ?`,
 		detailJsonFromMailboxInboundSnapshot(next),
 		now,
@@ -193,6 +228,7 @@ export function markMailboxInboundDeliveryOrphanCleaned(
 		input.outcome === 'deleted'
 			? mailboxInboundOrphanVerificationMs
 			: mailboxInboundReconciliationRetryMs
+	nextState(inboundDeliveryState, current.state, { type: 'COMPLETE_CLEANUP' })
 	const next: MailboxInboundDeliverySnapshot = {
 		...current,
 		state: 'orphan-cleaned',
@@ -211,7 +247,7 @@ export function markMailboxInboundDeliveryOrphanCleaned(
 			updated_at = ?
 		WHERE id = ?
 			AND provider = ?
-			AND state = 'cleaning'
+			AND state IN ${deliveryCleaningToOrphanCleanedGuard}
 			AND cleanup_lease = ?`,
 		detailJsonFromMailboxInboundSnapshot(next),
 		next.cleanupRetryAt,

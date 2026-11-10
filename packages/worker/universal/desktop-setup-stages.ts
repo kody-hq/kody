@@ -1,13 +1,9 @@
+import type { DesktopSetupWizardStep as SetupStep } from './desktop-setup-step-state.ts'
 export type DesktopSetupStageId = 'sign-in' | 'register' | 'attach' | 'runner'
 
 type DesktopSetupStageStatus = 'complete' | 'current' | 'upcoming'
 
-export type DesktopSetupWizardStep =
-	| 'overview'
-	| 'register'
-	| 'attach'
-	| 'done'
-	| 'forget'
+export type DesktopSetupWizardStep = SetupStep
 
 export type DesktopSetupStage = {
 	id: DesktopSetupStageId

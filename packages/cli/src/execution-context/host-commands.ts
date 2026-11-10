@@ -1,3 +1,8 @@
+import { nextState } from '@kody-internal/shared/state-machine.ts'
+import {
+	hostCommandState,
+	type HostCommandState,
+} from './host-command-state.ts'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { realpath, stat } from 'node:fs/promises'
@@ -188,7 +193,7 @@ type Job = {
 	endedAt: number | null
 	exitCode: number | null
 	signal: string | null
-	state: 'running' | 'exited' | 'killed' | 'timed_out' | 'failed'
+	state: HostCommandState
 	stdout: OutputBuffer
 	stderr: OutputBuffer
 	done: Promise<void>
@@ -696,6 +701,7 @@ export class HostCommands {
 		child.stderr?.on('data', (chunk: Buffer) => job.stderr.write(chunk))
 		job.timer = setTimeout(() => {
 			if (job.state !== 'running') return
+			nextState(hostCommandState, job.state, { type: 'TIMEOUT' })
 			job.state = 'timed_out'
 			killTree(child, 'SIGKILL')
 		}, prepared.timeoutMs)
@@ -716,9 +722,11 @@ export class HostCommands {
 				job.exitCode = code
 				job.signal = signal
 				if (error) {
+					nextState(hostCommandState, job.state, { type: 'SPAWN_ERROR' })
 					job.state = 'failed'
 					job.error = error
 				} else if (job.state === 'running') {
+					nextState(hostCommandState, job.state, { type: 'EXIT' })
 					job.state = 'exited'
 				}
 				this.#report({
@@ -841,6 +849,7 @@ export class HostCommands {
 				? requested
 				: 'SIGTERM'
 		if (job.state === 'running') {
+			nextState(hostCommandState, job.state, { type: 'KILL' })
 			job.state = 'killed'
 			killTree(job.child, signal)
 			if (signal !== 'SIGKILL') {
@@ -868,6 +877,7 @@ export class HostCommands {
 		}
 		for (const job of this.#jobs.values()) {
 			if (job.state !== 'running') continue
+			nextState(hostCommandState, job.state, { type: 'KILL' })
 			job.state = 'killed'
 			job.error = reason === 'commands_off' ? 'commands_off' : null
 			killTree(job.child, 'SIGKILL')

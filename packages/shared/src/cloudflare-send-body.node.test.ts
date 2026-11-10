@@ -32,3 +32,22 @@ test('toCloudflareSendBody maps replyTo to reply_to and omits camelCase', () => 
 		html: '<p>Blank</p>',
 	})
 })
+
+test('toCloudflareSendBody maps fromName to the named-address form', () => {
+	expect(
+		toCloudflareSendBody({
+			from: 'kody@kody.codes',
+			fromName: 'Kent C. Dodds (Kody)',
+			to: 'user@example.com',
+			subject: 'Named',
+			html: '<p>Named</p>',
+			replyTo: 'kent@kody.codes',
+		}),
+	).toEqual({
+		from: { address: 'kody@kody.codes', name: 'Kent C. Dodds (Kody)' },
+		to: 'user@example.com',
+		subject: 'Named',
+		html: '<p>Named</p>',
+		reply_to: 'kent@kody.codes',
+	})
+})

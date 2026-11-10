@@ -1,3 +1,5 @@
+import { nextState } from '@kody-internal/shared/state-machine.ts'
+import { emailClaimState, type EmailClaimStatus } from './email-claim-state.ts'
 import { normalizeEmail } from '#worker/identity/normalize-email.ts'
 import { getUniqueConstraintField } from '#worker/database-errors.ts'
 import {
@@ -6,7 +8,7 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
-export type EmailClaimStatus = 'claimed' | 'released'
+export type { EmailClaimStatus } from './email-claim-state.ts'
 
 export type ActiveEmailClaim = {
 	userId: number
@@ -156,6 +158,7 @@ export async function claimAccountEmail(
 
 	if (existing) {
 		if (existing.status === 'claimed') return
+		nextState(emailClaimState, existing.status, { type: 'CLAIM' })
 		await db
 			.prepare(
 				`UPDATE user_email_claims
@@ -206,6 +209,7 @@ export async function releaseAccountEmailClaim(
 
 	if (existing) {
 		if (existing.status === 'released') return
+		nextState(emailClaimState, existing.status, { type: 'RELEASE' })
 		await db
 			.prepare(
 				`UPDATE user_email_claims

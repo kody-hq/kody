@@ -1,4 +1,9 @@
 import {
+	IllegalStateTransitionError,
+	sqlSourceOf,
+} from '@kody-internal/shared/state-machine.ts'
+import { platformFeedbackState } from './platform-feedback-state.ts'
+import {
 	parsePlatformFeedbackReopenHistory,
 	parsePlatformFeedbackResolutionHistory,
 	parsePlatformFeedbackResolutionPrUrls,
@@ -432,6 +437,26 @@ export async function updatePlatformFeedbackStatusForAdmin(
 		reopenHistoryJson?: string | null
 	},
 ): Promise<boolean> {
+	const statusGuard = sqlSourceOf(platformFeedbackState, input.expectedStatus, {
+		type: (() => {
+			switch (input.status as string) {
+				case 'open':
+					return 'REVIEW_OPEN' as const
+				case 'triaged':
+					return 'TRIAGE' as const
+				case 'resolved':
+					return 'RESOLVE' as const
+				case 'dismissed':
+					return 'DISMISS' as const
+				default:
+					throw new IllegalStateTransitionError(
+						platformFeedbackState.id,
+						input.expectedStatus,
+						{ type: String(input.status) },
+					)
+			}
+		})(),
+	})
 	const result = await db
 		.prepare(
 			`UPDATE platform_feedback
@@ -442,7 +467,7 @@ export async function updatePlatformFeedbackStatusForAdmin(
 				resolution_history = CASE WHEN ? = 1 THEN ? ELSE resolution_history END,
 				reopen_history = CASE WHEN ? = 1 THEN ? ELSE reopen_history END,
 				updated_at = ?, revision = revision + 1
-			WHERE id = ? AND status = ? AND revision = ?`,
+			WHERE id = ? AND status IN ${statusGuard} AND revision = ?`,
 		)
 		.bind(
 			input.status,
@@ -460,7 +485,6 @@ export async function updatePlatformFeedbackStatusForAdmin(
 			input.reopenHistoryJson ?? null,
 			input.reviewedAt,
 			input.feedbackId,
-			input.expectedStatus,
 			input.expectedRevision,
 		)
 		.run()

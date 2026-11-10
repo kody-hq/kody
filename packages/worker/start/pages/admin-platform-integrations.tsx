@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
+import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { textSearch } from '../filter-search.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import type { PlatformIntegrationSaveInput } from '#universal/admin-provider-mutations.ts'
@@ -97,8 +98,12 @@ export function AdminPlatformIntegrationsPage(props: {
 			readerRef.current?.abort()
 		}
 	}, [])
-	const [message, setMessage] = useState<string | null>(null)
-	const [messageTone, setMessageTone] = useState<'info' | 'error'>('info')
+	const [feedback, setFeedback] = useState<UiFeedback | null>(() =>
+		createUiFeedback(null, 'info'),
+	)
+	const message = feedback?.message ?? null
+	const messageTone = feedback?.tone ?? 'info'
+
 	const [requestedAction, setRequestedAction] = useState<ActionState>(
 		'idle',
 		/** Slug of the row an action is running against, for per-row labels. */
@@ -118,8 +123,7 @@ export function AdminPlatformIntegrationsPage(props: {
 	const [formRevision, setFormRevision] = useState(0)
 	const primaryButtonCss = getPillButtonCss({ size: 'sm' })
 	function applyData() {
-		setMessage(null)
-		setMessageTone('info')
+		setFeedback(createUiFeedback(null, 'info'))
 	}
 	function resetFormState() {
 		setPendingLogoBase64(undefined)
@@ -127,8 +131,7 @@ export function AdminPlatformIntegrationsPage(props: {
 	}
 	function resetSelectionState() {
 		resetFormState()
-		setMessage(null)
-		setMessageTone('info')
+		setFeedback(createUiFeedback(null, 'info'))
 	}
 	async function submitAdminAction(
 		submit: () => Promise<unknown>,
@@ -139,24 +142,24 @@ export function AdminPlatformIntegrationsPage(props: {
 		const isCurrent = captureSubmitter()
 		setRequestedAction(nextActionState)
 		setPendingSlug(slug)
-		setMessage(null)
-		setMessageTone('info')
+		setFeedback(createUiFeedback(null, 'info'))
 		try {
 			await submit()
 			if (!isCurrent()) return false
 			if (lifetime.current?.signal.aborted) return false
 			applyData()
-			setMessage(successMessage)
-			setMessageTone('info')
+			setFeedback(createUiFeedback(successMessage, 'info'))
 			return true
 		} catch (error) {
 			if (!isCurrent()) return false
-			setMessage(
-				error instanceof Error
-					? error.message
-					: 'Unable to update platform integrations.',
+			setFeedback(
+				createUiFeedback(
+					error instanceof Error
+						? error.message
+						: 'Unable to update platform integrations.',
+					'error',
+				),
 			)
-			setMessageTone('error')
 			return false
 		} finally {
 			if (isCurrent()) setPendingSlug(null)
@@ -212,23 +215,29 @@ export function AdminPlatformIntegrationsPage(props: {
 		).trim()
 		const flow = String(formData.get('flow') ?? '').trim()
 		if (!slug || !clientId || !tokenUrl) {
-			setMessage('Slug, client id, and token URL are required.')
-			setMessageTone('error')
+			setFeedback(
+				createUiFeedback(
+					'Slug, client id, and token URL are required.',
+					'error',
+				),
+			)
 			return
 		}
 		if (flow !== 'pkce' && flow !== 'confidential' && flow !== 'device') {
-			setMessage('Choose a valid OAuth flow.')
-			setMessageTone('error')
+			setFeedback(createUiFeedback('Choose a valid OAuth flow.', 'error'))
 			return
 		}
 		if (flow !== 'device' && !authorizeUrl) {
-			setMessage('Authorize URL is required.')
-			setMessageTone('error')
+			setFeedback(createUiFeedback('Authorize URL is required.', 'error'))
 			return
 		}
 		if (flow === 'device' && !deviceAuthorizationUrl) {
-			setMessage('Device authorization URL is required for device flow.')
-			setMessageTone('error')
+			setFeedback(
+				createUiFeedback(
+					'Device authorization URL is required for device flow.',
+					'error',
+				),
+			)
 			return
 		}
 		const body: PlatformIntegrationSaveInput = {

@@ -1,13 +1,14 @@
 /** @jsxImportSource @emotion/react */
+import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
+import { useCallback, useEffect, useId, useRef, type ReactNode } from 'react'
+import { useMachine } from '@xstate/react'
+import {
+	clipboardFeedbackState,
+	type ClipboardFeedbackState,
+	type CopyState,
+} from '#client/routes/clipboard-feedback-state.ts'
 import { renderIcon } from './icon.tsx'
 import type { CSSObject } from '@emotion/react'
-import {
-	useEffect,
-	useState,
-	useRef,
-	type ReactNode,
-	type ReactElement,
-} from 'react'
 import { writeClipboardText } from '#client/clipboard.ts'
 import {
 	getChipButtonCss,
@@ -17,7 +18,6 @@ import {
 	getSecondaryButtonCss,
 	getSwapLabelCss,
 } from '#universal/styles/style-primitives.ts'
-
 export const onboardingCopiedConnectActionEvent =
 	'kody-onboarding-connect-copied'
 
@@ -44,16 +44,12 @@ type CopyTextButtonProps = {
 	 * "Copy" entries says nothing about which id each one takes.
 	 */
 	ariaLabel?: string
-	title?: string
-	wrapButton?: (button: ReactElement) => ReactElement
 	/**
 	 * Onboarding connect only: copying this command is a deliberate connect
 	 * action, so the wizard may start waiting on the grant.
 	 */
 	signalsConnectAction?: boolean
 }
-
-type CopyState = 'idle' | 'copied' | 'error'
 
 const visuallyHiddenCss = {
 	position: 'absolute' as const,
@@ -115,19 +111,53 @@ function getCopyButtonCss(
  * changes size when the label swaps — the swap is a blur crossfade instead.
  */
 export function CopyTextButton(props: CopyTextButtonProps) {
-	const [copyState, setCopyState] = useState<CopyState>('idle')
-	const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-	useEffect(
-		() => () => {
-			if (resetTimer.current !== null) clearTimeout(resetTimer.current)
+	const [copyFlowSnapshot, , copyFlowActor] = useMachine(
+		clipboardFeedbackState,
+		{
+			snapshot: (() => {
+				const initialView = { status: 'idle' }
+				return clipboardFeedbackState.resolveState({
+					value: initialView.status,
+					context: uiContext(initialView),
+				})
+			})(),
 		},
-		[],
+	)
+	const copyFlow = uiState<ClipboardFeedbackState>(copyFlowSnapshot)
+	const transitionCopy = useCallback(
+		(event: Parameters<typeof copyFlowActor.send>[0]) =>
+			sendUiEvent(copyFlowActor, event),
+		[copyFlowActor],
 	)
 
+	const copyState = copyFlow.status === 'copying' ? 'idle' : copyFlow.status
+	const id = useId()
+	const mounted = useRef(false)
+	const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+	useEffect(() => {
+		mounted.current = true
+		return () => {
+			mounted.current = false
+			if (resetTimer.current !== null) clearTimeout(resetTimer.current)
+		}
+	}, [])
+
 	async function copyValue(source: EventTarget | null) {
+		if (
+			!transitionCopy({
+				type: 'COPY',
+				data: uiContext({ status: 'copying' }).data,
+			} as Parameters<typeof copyFlowActor.send>[0])
+		)
+			return
+		if (resetTimer.current !== null) clearTimeout(resetTimer.current)
 		try {
 			await writeClipboardText(props.value)
-			setCopyState('copied')
+			if (!mounted.current) return
+			transitionCopy({
+				type: 'RESPONSE_OK',
+				data: uiContext({ status: 'copied' }).data,
+			} as Parameters<typeof copyFlowActor.send>[0])
 			if (props.signalsConnectAction && source instanceof HTMLElement) {
 				source.dispatchEvent(
 					new CustomEvent(onboardingCopiedConnectActionEvent, {
@@ -136,12 +166,19 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 				)
 			}
 		} catch {
-			setCopyState('error')
+			if (!mounted.current) return
+			transitionCopy({
+				type: 'RESPONSE_ERROR',
+				data: uiContext({ status: 'error' }).data,
+			} as Parameters<typeof copyFlowActor.send>[0])
 		}
 		if (resetTimer.current != null) clearTimeout(resetTimer.current)
 		resetTimer.current = setTimeout(() => {
 			resetTimer.current = null
-			setCopyState('idle')
+			transitionCopy({
+				type: 'RESET',
+				data: uiContext({ status: 'idle' }).data,
+			} as Parameters<typeof copyFlowActor.send>[0])
 		}, 2000)
 	}
 
@@ -158,18 +195,18 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 		)
 	}
 
-	const button = (
+	return (
 		<button
+			aria-busy={copyFlow.status === 'copying'}
+			disabled={copyFlow.status === 'copying'}
 			type="button"
 			className={props.class}
 			aria-label={props.ariaLabel}
 			// The result is announced by the live region below rather than by the
 			// button's own name: `aria-label` overrides the label text, so a named
 			// button would keep reading "Copy package id" after it had copied.
-			title={
-				props.title ??
-				(props.iconOnly ? (props.ariaLabel ?? 'Copy') : undefined)
-			}
+			aria-describedby={`${id}-copy-status`}
+			title={props.iconOnly ? (props.ariaLabel ?? 'Copy') : undefined}
 			css={
 				props.iconOnly
 					? {
@@ -197,7 +234,7 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 					{renderLabel('error', 'Copy failed')}
 				</>
 			)}
-			<span role="status" css={visuallyHiddenCss}>
+			<span id={`${id}-copy-status`} role="status" css={visuallyHiddenCss}>
 				{copyState === 'copied'
 					? (props.copiedLabel ?? 'Copied')
 					: copyState === 'error'
@@ -206,5 +243,4 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 			</span>
 		</button>
 	)
-	return props.wrapButton ? props.wrapButton(button) : button
 }

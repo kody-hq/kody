@@ -5,19 +5,18 @@
  * template from kody@kody.codes.
  */
 
+import {
+	usageCampaignState,
+	usageCampaignTags,
+	type UsageCampaignState,
+} from './usage-campaign-state.ts'
 import { describeSecondAgentStandardGift } from '#universal/second-agent-standard-gift.ts'
 
-export const usageCampaignStates = [
-	'VerifiedNoMcp',
-	'ConnectedNoPackage',
-	'PackagedSingleClient',
-	'Activated',
-	'Cooling',
-	'LimitAware',
-	'Paid',
-] as const
+export const usageCampaignStates = Object.freeze(
+	usageCampaignState.values.map((phase) => usageCampaignTags[phase]),
+)
 
-export type UsageCampaignState = (typeof usageCampaignStates)[number]
+export type { UsageCampaignState } from './usage-campaign-state.ts'
 
 export const usageCampaignMailTemplates = [
 	'verified_no_mcp',

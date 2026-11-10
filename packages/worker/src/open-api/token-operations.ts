@@ -623,7 +623,7 @@ export const bootstrapRedeemInputSchema = z
 		lifetime: lifetimeAliasSchema
 			.optional()
 			.describe(
-				'Required unless idle_ttl_seconds and max_lifetime_seconds are both set. `short` = 1h idle / 24h max. `long` = 14d idle / 3mo max. Single-task agents should use `short`.',
+				'Optional. Omit for the lifetime the code was minted for (default 14d idle / 3mo max, like `kody login`). `short` = 1h idle / 24h max. Cannot exceed what the code authorized.',
 			),
 		idle_ttl_seconds: z
 			.number()
@@ -632,7 +632,7 @@ export const bootstrapRedeemInputSchema = z
 			.max(apiTokenPolicy.maxIdleTtlSeconds)
 			.optional()
 			.describe(
-				'Seconds without use before the redeemed token expires. Required with max_lifetime_seconds when lifetime is omitted.',
+				'Seconds without use before the redeemed token expires. Set together with max_lifetime_seconds instead of lifetime.',
 			),
 		max_lifetime_seconds: z
 			.number()
@@ -641,7 +641,7 @@ export const bootstrapRedeemInputSchema = z
 			.max(apiTokenPolicy.maxMaxLifetimeSeconds)
 			.optional()
 			.describe(
-				'Absolute lifetime cap for the redeemed token in seconds. Required with idle_ttl_seconds when lifetime is omitted.',
+				'Absolute lifetime cap for the redeemed token in seconds. Set together with idle_ttl_seconds instead of lifetime.',
 			),
 	})
 	.strict()
@@ -653,9 +653,16 @@ export const bootstrapRedeemInputSchema = z
 export const cliCredentialBootstrapRedeemDefinition: NativeApiOperationDefinition =
 	{
 		summary: 'Redeem a CLI credential bootstrap code',
-		description: `Exchange a one-shot \`kody_bc_…\` bootstrap code for a scoped \`kody_at_…\` API token. For \`@kodycodes/cli auth bootstrap\` only — not the MCP \`api\` tool. No Authorization header; the code is the credential. The code burns on first successful redeem. Lifetime is required on redeem (CLI flags). ${ttlDescription}`,
+		description: `Exchange a one-shot \`kody_bc_…\` bootstrap code for the same \`kody_at_…\` token \`kody login\` mints (scopes and lifetime chosen when the code was minted; default the full \`kody login\` set and 14d idle / 3mo max). For \`@kodycodes/cli auth bootstrap\` only — not the MCP \`api\` tool. No Authorization header; the code is the credential. The code burns on first successful redeem. Lifetime is optional on redeem and cannot exceed what the code authorized. ${ttlDescription}`,
 		inputSchema: bootstrapRedeemInputSchema,
-		outputSchema: tokenSecretViewSchema,
+		outputSchema: tokenSecretViewSchema.extend({
+			login_org: z
+				.object({ slug: z.string() })
+				.nullable()
+				.describe(
+					'Org the minting session was in, like `kody login`. User-owned tokens pass it as ?org= on later calls.',
+				),
+		}),
 		readOnly: false,
 		async handler(params, ctx) {
 			if (ctx.principal.kind === 'mcp') {
@@ -672,6 +679,6 @@ export const cliCredentialBootstrapRedeemDefinition: NativeApiOperationDefinitio
 				idleTtlSeconds: input.idle_ttl_seconds,
 				maxLifetimeSeconds: input.max_lifetime_seconds,
 			})
-			return redeemed.token
+			return { ...redeemed.token, login_org: redeemed.loginOrg }
 		},
 	}

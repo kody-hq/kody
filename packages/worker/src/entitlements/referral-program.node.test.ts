@@ -138,6 +138,57 @@ function reward(
 	})
 }
 
+test('concurrent referral rejection wins over a stale reward read', async () => {
+	const db = await createDb()
+	const referrer = await insertUser(db, 'race-referrer')
+	const referee = await insertUser(db, 'race-referee')
+	await attribute(db, referee, referrer.username)
+	const batch = db.batch.bind(db)
+	vi.spyOn(db, 'batch').mockImplementationOnce(async (statements) => {
+		await db
+			.prepare(
+				"UPDATE referrals SET status = 'rejected', reject_reason = 'self_referral' WHERE referee_stable_user_id = ?",
+			)
+			.bind(referee.stableUserId)
+			.run()
+		return batch(statements)
+	})
+	await reward(db, referee, 'in_race')
+	expect(await referralRow(db, referee)).toMatchObject({
+		status: 'rejected',
+		credits_granted_at: null,
+		reward_invoice_id: null,
+	})
+	expect(await creditExpiry(db, referrer)).toBeNull()
+	expect(await creditExpiry(db, referee)).toBeNull()
+})
+
+test('a rewarded referral with undelivered credits retries once without replacing its invoice', async () => {
+	const db = await createDb()
+	const referrer = await insertUser(db, 'retry-referrer')
+	const referee = await insertUser(db, 'retry-referee')
+	await attribute(db, referee, referrer.username)
+	await db
+		.prepare(
+			"UPDATE referrals SET status = 'rewarded', reward_invoice_id = 'in_original', rewarded_at = ? WHERE referee_stable_user_id = ?",
+		)
+		.bind(now.toISOString(), referee.stableUserId)
+		.run()
+	await reward(db, referee, 'in_retry')
+	expect(await referralRow(db, referee)).toMatchObject({
+		status: 'rewarded',
+		reward_invoice_id: 'in_original',
+		credits_granted_at: now.toISOString(),
+	})
+	expect(await creditExpiry(db, referrer)).not.toBeNull()
+	const expiry = await creditExpiry(db, referee)
+	expect(expiry).not.toBeNull()
+	expect(await reward(db, referee, 'in_retry_again')).toEqual({
+		outcome: 'already_rewarded',
+	})
+	expect(await creditExpiry(db, referee)).toBe(expiry)
+})
+
 async function verifyEmail(db: D1Database, user: TestUser) {
 	await db
 		.prepare(`UPDATE users SET email_verified_at = ? WHERE stable_user_id = ?`)

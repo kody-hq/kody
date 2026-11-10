@@ -190,56 +190,42 @@ npx @kodycodes/cli api usageGet --params '{}'
 One resolver picks the credential for every command, and `kody whoami` reports
 the same pick:
 
-| Commands                                                                  | Order                                                                  |
-| ------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `whoami`, `api`, `package`, `execute --local`, `context`, `daemon`, `dev` | `--token`, `KODY_API_TOKEN`, stored API token, `kody login`            |
-| `search`, cloud `execute` (no `--local`)                                  | `--token`, `kody login` (over MCP), `KODY_API_TOKEN`, stored API token |
-| `auth bootstrap --scopes` (minting)                                       | `--token`, `kody login`, `KODY_API_TOKEN`, stored API token            |
+Every command uses the same order: `--token`, `KODY_API_TOKEN`, then the one
+saved CLI credential.
 
 Desktop integrations can set `KODY_CREDENTIAL_SOURCE=login` to select only the
-browser login for these commands. There is no API token fallback in this mode,
-and saved API tokens remain unchanged. Unset it for normal CLI precedence.
+saved credential. Unset it for normal CLI precedence.
 
-- The stored API token comes from `kody auth bootstrap` or
-  `kody auth setup-git`. An explicit `kody login` deletes a stored API token for
-  that API origin and prints which token it removed, so the fresh login is what
-  the first-row commands use. Git pushes mint a new token from the login.
-  `--token` and `KODY_API_TOKEN` still outrank the login. Desktop logins
-  (`KODY_CREDENTIAL_SOURCE=login`) leave the stored token alone.
-- To change the stored token's scopes, run
-  `npx @kodycodes/cli auth bootstrap --lifetime short --scopes <every scope you need>`
-  (mints with your login and replaces the stored token). `kody logout` clears
-  both.
-- `kody whoami` prints `credential:` (which one is in use, with its token id),
-  its `scopes:`, and `also stored:` lines for credentials it outranks. With
-  `--json` the same data is under `credential` and `otherCredentials`.
-- `insufficient_scope` errors end with `Credential used: …` and, for a stored
-  token, the exact `auth bootstrap` command that replaces it.
+- The saved credential comes from `kody login` or `kody auth bootstrap`. Both
+  save the same kind of `kody_at_…` (every scope your org role grants, 14d idle
+  / 3mo max) in the same slot, so whichever ran last is what every command,
+  including git, uses. There is no second token and no fallback between them.
+- A token saved by an older CLI in the old API-token slot is moved into the
+  saved credential the first time nothing else is saved, and is ignored once a
+  login exists. `kody login` deletes it. Old tokens keep working until they
+  expire.
+- `kody whoami` prints `credential:` (which one is in use, with its token id)
+  and its `scopes:`. With `--json` the same data is under `credential`.
+- `insufficient_scope` errors end with `Credential used: …` and how to widen it.
 
-## Opt-in scopes
+## Narrower scopes
 
-Bootstrap tokens default to local-execute use scopes plus `package:write`,
-`package:create`, and `token:delete`. They do not include `search:read`. Pass
-`--scopes` when a task needs a different set (the list replaces the defaults):
+Bootstrap saves the same scopes as `kody login` by default. Pass `--scopes` only
+when you want a deliberately narrower credential (the list replaces the
+default):
 
 ```bash
-# After `kody login` (mints any scope your org role grants):
 npx @kodycodes/cli auth bootstrap --lifetime short \
   --scopes org:execute,org:read,package:execute,package:read,package:write
-
-# Agents on MCP without `kody login`: pass scopes when minting the code
-# cliCredentialBootstrap({ lifetime: "short", scopes: ["org:execute", "org:read", "package:execute", "package:read", "package:write"] })
-npx @kodycodes/cli auth bootstrap --code 'kody_bc_…' --lifetime short
 ```
 
-- `--scopes` replaces the default list, so include every scope you need.
-- The CLI passes the list straight to `cliCredentialBootstrap`. It mints with
-  `--token` when given, else the `kody login` session, else `KODY_API_TOKEN` /
-  the stored token. A token can only mint scopes it already holds.
+- The CLI passes the list to `cliCredentialBootstrap`. It mints with `--token`
+  when given, else `KODY_API_TOKEN`, else the saved credential. A child token
+  never exceeds its parent: only scopes the parent holds, never past its expiry.
 - A bootstrap code's scopes are fixed when it is minted, so `--code` with
   `--scopes` is an error that prints the matching `cliCredentialBootstrap` call.
-- `insufficient_scope` errors print both commands with the full scope list (your
-  current scopes plus the missing one), so you can copy one and retry.
+- `git` needs `package:read` and `package:write`, so a narrowed credential
+  without them makes `kody auth setup-git` fail with how to fix it.
 
 ## Git HTTPS (`setup-git`)
 
@@ -248,36 +234,30 @@ Kody provides persistent `kody_at_…` HTTPS git auth (see
 helper once:
 
 ```bash
-kody login   # or: auth bootstrap --code … --lifetime long
+kody login   # agents on Kody MCP: cliCredentialBootstrap, then its cli_command
 kody auth setup-git
 git clone https://kody.codes/@owner/name.git
 ```
 
-`setup-git` uses your `kody login` session (or a scoped API token) to mint a
-user-owned `kody_at_…` with `package:read` and `package:write` (default
-`--lifetime long`; reuses a suitable stored token). That one credential
-authorizes every `@owner/name.git` you can access across all orgs — login
-`--org` only scopes the MCP mint session, not git. When an API token is already
-stored it probes `org_binding` on `GET /v1/tokens/current`; after a fresh login
-with no API token yet, it mints via the login session and checks `org_binding`
-on the minted token. Configures a **stable** credential helper (global `kody`
-only when that install's version supports `git-credential`, otherwise
-`npx -y @kodycodes/cli@<exact-version> …` — never a major-only `@1` range that
-can reuse a stale npx cache, and never an ephemeral `~/.npm/_npx/…` path).
-Re-running `setup-git` rewrites stale helper entries; every CLI command also
-refreshes an outdated pin silently.
+`setup-git` never mints a token. It checks that the saved CLI credential is
+user-owned and holds `package:read` and `package:write`
+(`GET /v1/tokens/current`), then configures a **stable** credential helper
+(global `kody` only when that install's version supports `git-credential`,
+otherwise `npx -y @kodycodes/cli@<exact-version> …` — never a major-only `@1`
+range or an ephemeral `~/.npm/_npx/…` path). Re-running `setup-git` rewrites
+stale helper entries; every CLI command also refreshes an outdated pin silently.
 
 ```bash
 git config --global credential.https://kody.codes.helper '!… git-credential'
 git config --global credential.https://kody.codes.useHttpPath true
 ```
 
-The helper silently remints via your stored `kody login` when the API token is
-expired or within an hour of expiry, so you should not need to re-run
-`setup-git` for token lifetime. Undo with `kody auth remove-git` (clears git
-config helpers, revokes and deletes the stored API token; leaves login alone).
-Push moves live HEAD only (packages do not auto-publish). Existing `kody login`
-/ `auth bootstrap` flows are unchanged.
+The helper sends `KODY_API_TOKEN` when set, else the saved credential, and
+refreshes it the same way every other command does. Undo with
+`kody auth remove-git` (clears git config helpers and revokes any token left in
+the old API-token slot; leaves the saved credential alone). Push moves live HEAD
+only (packages do not auto-publish). Existing `kody login` / `auth bootstrap`
+flows are unchanged.
 
 ## Local package testing (`kody dev`)
 
@@ -316,8 +296,10 @@ kody search --target mock local
 
 ### Testing from other devices (`--host`)
 
-`kody dev` listens on `127.0.0.1` only. To open the app from a phone, tablet, or
-e-reader on the same network, pass a listen address:
+`kody dev serve` listens on `127.0.0.1` by default. `--host` applies to serve
+only (`kody dev fetch`, `job`, `webhook`, `emit`, and `check` refuse it). To
+open the app from a phone, tablet, or e-reader on the same network, pass a
+listen address:
 
 ```bash
 kody dev --host 0.0.0.0     # every IPv4 interface; prints a network: URL per LAN address
@@ -333,13 +315,12 @@ storage) for device testing. `--host` with `--target prod` is refused unless you
 also pass `--expose-prod`, because the app would then act with your real Kody
 credentials for whoever reaches it.
 
-The proxy still rejects unknown `Host` headers (DNS rebinding guard). With
-`0.0.0.0` / `::` it accepts this machine's own non-internal interface addresses
-(re-read from `os.networkInterfaces()` per request, so a new Wi-Fi address
-works) plus the loopback names; with a specific IP it accepts only that IP.
-`request.url` uses the address the device opened, so same-origin CSRF checks
-pass on LAN requests. The workerd sockets, the CLI bridge, and the run secret
-stay on loopback. `--json` / `--ready-file` add `networkUrls` to `ready`.
+The proxy still rejects unknown `Host` headers. With `0.0.0.0` / `::` it accepts
+this machine's own non-internal addresses plus loopback names; with a specific
+IP it accepts only that IP. `request.url` uses the address the device opened, so
+same-origin CSRF checks pass on LAN requests. The workerd sockets, the CLI
+bridge, and the run secret stay on loopback. `--json` / `--ready-file` include
+`networkUrls` on `ready` when `--host` is passed.
 
 ### What `kody dev` does while it runs
 

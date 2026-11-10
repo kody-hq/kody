@@ -1,8 +1,14 @@
 /** @jsxImportSource @emotion/react */
+import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
+import { useCallback, useRef, useEffect } from 'react'
+import { useMachine } from '@xstate/react'
+import {
+	clipboardFeedbackState,
+	type ClipboardFeedbackState,
+	type CopyState,
+} from '#client/routes/clipboard-feedback-state.ts'
 import type { CSSObject } from '@emotion/react'
-
 import { writeClipboardText } from '#client/clipboard.ts'
-import { useState, useRef, useEffect } from 'react'
 import { renderHighlightedCode } from './syntax-highlight.tsx'
 import {
 	plainHighlightedCode,
@@ -14,15 +20,12 @@ import {
 	visuallyHiddenCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, radius, spacing } from '#universal/styles/tokens.ts'
-
 export type CopyCodeBlockProps = {
 	code: string
 	lang?: string | null
 	copy?: boolean
 	highlighted?: HighlightedCode
 }
-
-type CopyState = 'idle' | 'copied' | 'error'
 
 /**
  * A highlighted `<pre>` code block with an optional copy button, for
@@ -31,7 +34,26 @@ type CopyState = 'idle' | 'copied' | 'error'
  * `copy={false}` on transcript-style pages that should not invite a paste.
  */
 export function CopyCodeBlock(props: CopyCodeBlockProps) {
-	const [copyState, setCopyState] = useState<CopyState>('idle')
+	const [copyFlowSnapshot, , copyFlowActor] = useMachine(
+		clipboardFeedbackState,
+		{
+			snapshot: (() => {
+				const initialView = { status: 'idle' }
+				return clipboardFeedbackState.resolveState({
+					value: initialView.status,
+					context: uiContext(initialView),
+				})
+			})(),
+		},
+	)
+	const copyFlow = uiState<ClipboardFeedbackState>(copyFlowSnapshot)
+	const transitionCopy = useCallback(
+		(event: Parameters<typeof copyFlowActor.send>[0]) =>
+			sendUiEvent(copyFlowActor, event),
+		[copyFlowActor],
+	)
+
+	const copyState = copyFlow.status === 'copying' ? 'idle' : copyFlow.status
 	const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const mounted = useRef(true)
 	useEffect(() => {
@@ -42,6 +64,14 @@ export function CopyCodeBlock(props: CopyCodeBlockProps) {
 		}
 	}, [])
 	async function copy() {
+		if (
+			!transitionCopy({
+				type: 'COPY',
+				data: uiContext({ status: 'copying' }).data,
+			} as Parameters<typeof copyFlowActor.send>[0])
+		)
+			return
+		if (resetTimer.current) clearTimeout(resetTimer.current)
 		let next: CopyState
 		try {
 			await writeClipboardText(props.code)
@@ -50,9 +80,19 @@ export function CopyCodeBlock(props: CopyCodeBlockProps) {
 			next = 'error'
 		}
 		if (!mounted.current) return
-		setCopyState(next)
+		transitionCopy({
+			type: next === 'copied' ? 'RESPONSE_OK' : 'RESPONSE_ERROR',
+			data: {},
+		} as Parameters<typeof copyFlowActor.send>[0])
 		if (resetTimer.current) clearTimeout(resetTimer.current)
-		resetTimer.current = setTimeout(() => setCopyState('idle'), 2000)
+		resetTimer.current = setTimeout(
+			() =>
+				transitionCopy({
+					type: 'RESET',
+					data: uiContext({ status: 'idle' }).data,
+				} as Parameters<typeof copyFlowActor.send>[0]),
+			2000,
+		)
 	}
 	const showCopy = props.copy !== false
 	return (
@@ -62,6 +102,8 @@ export function CopyCodeBlock(props: CopyCodeBlockProps) {
 			)}
 			{showCopy ? (
 				<button
+					aria-busy={copyFlow.status === 'copying'}
+					disabled={copyFlow.status === 'copying'}
 					type="button"
 					data-copy-state={copyState}
 					aria-label="Copy code to clipboard"

@@ -1,3 +1,4 @@
+import { repoSessionState } from './repo-session-state.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { z } from 'zod'
 import type { CredentialNeedsApprovalRequired } from '#worker/credentials/credential-needs-approval.ts'
@@ -38,13 +39,9 @@ export type EntitySourceRow = Omit<
 	user_id: OwnerId
 }
 
-export const repoSessionStatusValues = [
-	'active',
-	'published',
-	'discarded',
-] as const
+export const repoSessionStatusValues = repoSessionState.values
 
-export type RepoSessionStatus = (typeof repoSessionStatusValues)[number]
+export type { RepoSessionStatus } from './repo-session-state.ts'
 
 export const repoSessionRowSchema = z.object({
 	id: z.string(),

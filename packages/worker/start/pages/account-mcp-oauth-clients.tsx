@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { writeClipboardText } from '#client/clipboard.ts'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 import {
@@ -44,8 +45,12 @@ export function AccountMcpOauthClientsPage({
 	currentHref: string
 }) {
 	const clients = payload.clients
-	const [message, setMessage] = useState<string | null>(null)
-	const [messageTone, setMessageTone] = useState<'error' | 'info'>('info')
+	const [feedback, setFeedback] = useState<UiFeedback | null>(() =>
+		createUiFeedback(null, 'info'),
+	)
+	const message = feedback?.message ?? null
+	const messageTone = feedback?.tone ?? 'info'
+
 	const [labelDraft, setLabelDraft] = useState('Open WebUI')
 	const [redirectUrisDraft, setRedirectUrisDraft] = useState('')
 	const [createdClient, setCreatedClient] = useState<CreatedClient | null>(null)
@@ -83,7 +88,7 @@ export function AccountMcpOauthClientsPage({
 	async function handleCreate(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault()
 		const isCurrent = capture()
-		setMessage(null)
+		setFeedback(createUiFeedback(null))
 		try {
 			await createMutation.mutateAsync({
 				isCurrent,
@@ -91,50 +96,53 @@ export function AccountMcpOauthClientsPage({
 				redirectUris: redirectUrisDraft,
 			})
 			if (!isCurrent()) return
-			setMessage(
-				'Copy the client secret now. Kody does not store it after this page.',
+			setFeedback(
+				createUiFeedback(
+					'Copy the client secret now. Kody does not store it after this page.',
+					'info',
+				),
 			)
-			setMessageTone('info')
 		} catch (error) {
 			if (!isCurrent()) return
-			setMessage(
-				error instanceof Error
-					? error.message
-					: 'Unable to create the OAuth client.',
+			setFeedback(
+				createUiFeedback(
+					error instanceof Error
+						? error.message
+						: 'Unable to create the OAuth client.',
+					'error',
+				),
 			)
-			setMessageTone('error')
 		}
 	}
 
 	async function handleRevoke(id: string) {
 		const isCurrent = capture()
-		setMessage(null)
+		setFeedback(createUiFeedback(null))
 		try {
 			await revokeMutation.mutateAsync({ id })
 			if (!isCurrent()) return
 			if (createdClient?.id === id) setCreatedClient(null)
 			setRevokeArmed(null)
-			setMessage('OAuth client revoked.')
-			setMessageTone('info')
+			setFeedback(createUiFeedback('OAuth client revoked.', 'info'))
 		} catch (error) {
 			if (!isCurrent()) return
-			setMessage(
-				error instanceof Error
-					? error.message
-					: 'Unable to revoke the OAuth client.',
+			setFeedback(
+				createUiFeedback(
+					error instanceof Error
+						? error.message
+						: 'Unable to revoke the OAuth client.',
+					'error',
+				),
 			)
-			setMessageTone('error')
 		}
 	}
 
 	async function copyValue(value: string, label: string) {
 		try {
 			await writeClipboardText(value)
-			setMessage(`Copied ${label}.`)
-			setMessageTone('info')
+			setFeedback(createUiFeedback(`Copied ${label}.`, 'info'))
 		} catch {
-			setMessage(`Unable to copy ${label}.`)
-			setMessageTone('error')
+			setFeedback(createUiFeedback(`Unable to copy ${label}.`, 'error'))
 		}
 	}
 

@@ -75,6 +75,12 @@ request so cookie signing and verification are available to handlers.
 
 ## Login and signup
 
+The `/login` and `/signup` pages (`packages/worker/start/pages/login.tsx`) share
+the `login.form` machine (`packages/worker/client/routes/login-state.ts`): one
+submission fence, retryable errors, and username-confirmation (`confirming`,
+shown as idle plus a message). See
+[Explicit state machines](../state-machines.md#loginform).
+
 `POST /auth` is implemented by `packages/worker/src/app/handlers/auth.ts`.
 
 - Accepts JSON body with `email`, `password`, `mode` (`login` or `signup`), and
@@ -335,19 +341,17 @@ assistant features:
   authorize URL or `/mcp` resource, a hidden field when the user has exactly one
   org, or a required picker when they have several. Approval stamps `orgId` and
   `personId` on grant props and metadata (`grantBindingFields`). Org binding
-  reads `orgId` (with a `userId` fallback for older grants). `personId` names
-  the person the grant acts as; credential resolution still uses the grant
-  subject `userId`. Grants minted before the stamp have only `userId`. There is
-  no feature flag.
+  reads `orgId` and fails closed without it. `personId` names the person the
+  grant acts as; credential resolution still uses the grant subject `userId`.
+  There is no feature flag.
 - **MCP requests**: `handleMcpRequest` in `packages/worker/src/mcp-auth.ts` is
   the single chokepoint for `/mcp`. After token validation it checks
   `users.email_verified_at` (via `isAccountEmailVerified`) and rejects
   unverified — or unidentifiable — accounts with a
   `403 email_verification_required` JSON response pointing at `/account`. The
   gate fails closed: when verification cannot be established, the request is
-  rejected. The request org comes from the grant's `props.orgId` (falling back
-  to `props.userId` as the personal org id when the grant has no `orgId`), not
-  always the person's implicit personal org.
+  rejected. The request org comes from the grant's `props.orgId`. A grant
+  without `orgId` is rejected, not treated as the person's personal org.
 - **Inbound email**: `handleInboundEmail` in
   `packages/worker/src/email/inbound.ts` rejects routed mail for unverified
   accounts right after username routing (`setReject` plus a bounded `rejected`
@@ -858,17 +862,16 @@ routed from `packages/worker/src/index.ts`.
   is the app origin (`getAppBaseUrl`). `sub` identifies the connection: personal
   (and personal-org) grants use the account `stable_user_id`; organization
   grants use `org:<orgId>:user:<userId>` so one person can connect both a
-  personal and an org account to the same OIDC client. Existing grants without
-  `metadata.orgId` or `props.orgId` keep the `userId` subject on refresh and
-  code exchange; reauthorization is required for an organization-specific
-  subject. ID tokens are RS256 JWTs signed with `OIDC_SIGNING_PRIVATE_KEY_PEM`
-  (`kid` = `OIDC_SIGNING_KEY_ID`). Discovery:
-  `/.well-known/openid-configuration`; JWKS: `/.well-known/jwks.json`; UserInfo:
-  `/oauth/userinfo` (Bearer access token; fail-closed when email is unverified).
-  RP-Initiated Logout: `/oauth/logout` (`post_logout_redirect_uri` needs a valid
-  `id_token_hint` and an exact registered redirect URI). RFC 7009 revocation is
-  the token endpoint (`/oauth/token`); both `/.well-known/openid-configuration`
-  and `/.well-known/oauth-authorization-server` advertise that URL as
+  personal and an org account to the same OIDC client. Grants without `orgId`
+  fail closed on `/mcp`; refresh keeps the stamped subject. ID tokens are RS256
+  JWTs signed with `OIDC_SIGNING_PRIVATE_KEY_PEM` (`kid` =
+  `OIDC_SIGNING_KEY_ID`). Discovery: `/.well-known/openid-configuration`; JWKS:
+  `/.well-known/jwks.json`; UserInfo: `/oauth/userinfo` (Bearer access token;
+  fail-closed when email is unverified). RP-Initiated Logout: `/oauth/logout`
+  (`post_logout_redirect_uri` needs a valid `id_token_hint` and an exact
+  registered redirect URI). RFC 7009 revocation is the token endpoint
+  (`/oauth/token`); both `/.well-known/openid-configuration` and
+  `/.well-known/oauth-authorization-server` advertise that URL as
   `revocation_endpoint`. OpenID Connect discovery also lists
   `revocation_endpoint_auth_methods_supported` matching
   `token_endpoint_auth_methods_supported` (`none`, `client_secret_basic`,

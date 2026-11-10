@@ -1650,22 +1650,24 @@ test('forkCommunityListing maps isolate memory resets to CommunityForkResourceLi
 
 test('forkCommunityListing recovers when listing and published snapshots miss but origin git has the commit', async () => {
 	mockForkable()
+	const originCommit = '3f45921ca1964c49a3be12b5a836117829adccb0'
+	const recoveredIndex =
+		'export default async function main() { return "from-git" }'
+	const recoveredFiles = forkSnapshotFiles(
+		{ '@owner/other': '*' },
+		recoveredIndex,
+	)
 	mockModule.getEntitySourceById.mockResolvedValue({
 		id: 'source-1',
 		repo_id: 'package-origin-1',
-		published_commit: '3f45921ca1964c49a3be12b5a836117829adccb0',
+		published_commit: originCommit,
 	})
 	mockModule.resolveArtifactSourceHead.mockResolvedValue({
-		commit: '3f45921ca1964c49a3be12b5a836117829adccb0',
+		commit: originCommit,
 		branch: 'main',
 	})
 	mockModule.readArtifactSourceSnapshot.mockResolvedValue(null)
-	mockModule.readArtifactTreeAtCommit.mockResolvedValue(
-		forkSnapshotFiles(
-			{ '@owner/other': '*' },
-			'export default async function main() { return "from-git" }',
-		),
-	)
+	mockModule.readArtifactTreeAtCommit.mockResolvedValue(recoveredFiles)
 	mockModule.forkArtifactRepo.mockResolvedValue({
 		id: 'repo-fork',
 		name: 'package-dest',
@@ -1676,19 +1678,25 @@ test('forkCommunityListing recovers when listing and published snapshots miss bu
 		user_id: ownerIdFromStored('user-2'),
 	})
 	mockModule.persistForkedArtifactRepoContents.mockResolvedValue({
-		copiedOriginCommit: '3f45921ca1964c49a3be12b5a836117829adccb0',
+		copiedOriginCommit: originCommit,
 		destCommit: 'commit-rewritten',
 	})
 
 	const result = await fork({ kodyId: 'my-discord-gateway' })
 
-	expect(result.filesCount).toBeGreaterThan(0)
-	expect(result.originCommit).toBe('3f45921ca1964c49a3be12b5a836117829adccb0')
+	expect(result.filesCount).toBe(Object.keys(recoveredFiles).length)
+	expect(result.originCommit).toBe(originCommit)
 	expect(mockModule.readArtifactTreeAtCommit).toHaveBeenCalledWith({
 		env: expect.anything(),
 		repoId: 'package-origin-1',
-		commit: '3f45921ca1964c49a3be12b5a836117829adccb0',
+		commit: originCommit,
 	})
+	expect(mockModule.persistForkedArtifactRepoContents).toHaveBeenCalledWith(
+		expect.objectContaining({
+			originCommit,
+			files: expect.objectContaining({ 'src/index.ts': recoveredIndex }),
+		}),
+	)
 	expect(mockModule.insertCommunityFork).toHaveBeenCalled()
 })
 
@@ -1708,11 +1716,7 @@ test('forkCommunityListing surfaces a clear caller error when the origin revisio
 	mockModule.readArtifactTreeAtCommit.mockResolvedValue(null)
 
 	await expect(fork({ kodyId: 'my-discord-gateway' })).rejects.toSatisfy(
-		(error: unknown) =>
-			error instanceof CommunityActionError &&
-			/Catalog entry snapshot for "listing-1" was not found and could not be recovered/.test(
-				error.message,
-			),
+		isActionError(`"${sampleListing().id}"`),
 	)
 	expect(mockModule.insertCommunityFork).not.toHaveBeenCalled()
 })

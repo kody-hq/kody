@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { usePageCommands } from '../commands/context.tsx'
 import { createListDetailLinks } from '#client/list-detail-route.ts'
 import {
@@ -190,8 +191,12 @@ export function AccountWorkflowsPage({
 	selectedId: string | null
 }) {
 	const { username, workflows, selectedWorkflow } = payload
-	const [message, setMessage] = useState<string | null>(null)
-	const [messageTone, setMessageTone] = useState<MessageTone>('info')
+	const [feedback, setFeedback] = useState<UiFeedback | null>(() =>
+		createUiFeedback(null, 'info'),
+	)
+	const message = feedback?.message ?? null
+	const messageTone = feedback?.tone ?? 'info'
+
 	const [cancelArmed, setCancelArmed] = useState(false)
 	const queryClient = useQueryClient()
 	const { actorKey } = useRouteContext({ from: '__root__' })
@@ -242,8 +247,7 @@ export function AccountWorkflowsPage({
 	}
 
 	function showMessage(nextMessage: string | null, tone: MessageTone = 'info') {
-		setMessage(nextMessage)
-		setMessageTone(tone)
+		setFeedback(createUiFeedback(nextMessage, tone))
 	}
 
 	type ActionResult = {

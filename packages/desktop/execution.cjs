@@ -1,11 +1,76 @@
 const { machineName } = require('./machine-name.cjs')
 const { registrationIdentity } = require('./registration-identity.cjs')
 const { loginAuthorizationUrl } = require('./in-app-approval.cjs')
+const { setup, assign, createActor } = require('xstate')
 const {
 	existingRegistration,
 	runnerView,
 	shouldAdopt,
 } = require('./machine-runner.cjs')
+
+const executionOperationState = setup({
+	types: {
+		context:
+			/** @type {{ command: string | null, message: string | null, notice: { tone: string, message: string } | null }} */ ({}),
+		events:
+			/** @type {{ type: 'START_OPERATION', command: string } | { type: 'SET_ERROR', message: string } | { type: 'CLEAR_ERROR' } | { type: 'SETTLED' }} */ ({}),
+	},
+	actions: {
+		start: assign(({ event }) => ({
+			command: event.type === 'START_OPERATION' ? event.command : null,
+			message: null,
+			notice: null,
+		})),
+		setError: assign({
+			message: ({ event }) =>
+				event.type === 'SET_ERROR' ? event.message : null,
+		}),
+		clear: assign({ command: null, message: null, notice: null }),
+	},
+}).createMachine({
+	id: 'desktop.machine_operation',
+	description:
+		'Connection and daemon actions run exclusively; errors observed during an operation remain notices until settlement.',
+	initial: 'idle',
+	context: { command: null, message: null, notice: null },
+	states: {
+		idle: {
+			on: {
+				START_OPERATION: { target: 'running', actions: 'start' },
+				SET_ERROR: { target: 'error', actions: 'setError' },
+			},
+		},
+		running: {
+			on: {
+				SET_ERROR: {
+					actions: assign({
+						notice: ({ event }) => ({ tone: 'error', message: event.message }),
+					}),
+				},
+				CLEAR_ERROR: { actions: assign({ notice: null }) },
+				SETTLED: [
+					{
+						target: 'error',
+						guard: ({ context }) => context.notice?.message !== undefined,
+						actions: assign(({ context }) => ({
+							command: null,
+							message: context.notice?.message ?? null,
+							notice: null,
+						})),
+					},
+					{ target: 'idle', actions: 'clear' },
+				],
+			},
+		},
+		error: {
+			on: {
+				START_OPERATION: { target: 'running', actions: 'start' },
+				SET_ERROR: { actions: 'setError' },
+				CLEAR_ERROR: { target: 'idle', actions: 'clear' },
+			},
+		},
+	},
+})
 
 const commandsStatusMaxAgeMs = 60_000
 
@@ -32,13 +97,43 @@ class DesktopExecution {
 		})
 		this.commandsEnabled = null
 		this.name = machineName(hostname)
-		this.busy = false
+		this.operationActor = createActor(executionOperationState).start()
 		this.authorized = null
-		this.error = null
 		this.machine = null
 		this.machineReadAt = 0
 		this.commandsReadAt = 0
 		this.commandsReadFor = null
+	}
+	get operation() {
+		const { value, context } = this.operationActor.getSnapshot()
+		if (value === 'running')
+			return {
+				status: value,
+				command: context.command,
+				...(context.notice ? { notice: context.notice } : {}),
+			}
+		if (value === 'error') return { status: value, message: context.message }
+		return { status: value }
+	}
+	get busy() {
+		return this.operation.status === 'running'
+	}
+	get error() {
+		return this.operation.status === 'error'
+			? this.operation.message
+			: this.operation.status === 'running'
+				? (this.operation.notice?.message ?? null)
+				: null
+	}
+	set error(message) {
+		this.operationActor.send(
+			message === null
+				? { type: 'CLEAR_ERROR' }
+				: { type: 'SET_ERROR', message },
+		)
+	}
+	finishOperation() {
+		this.operationActor.send({ type: 'SETTLED' })
 	}
 	// What the kody CLI knows about this machine: an installed service, the
 	// runner lock holder, stored registrations, and auto-update. The app and
@@ -214,7 +309,7 @@ class DesktopExecution {
 			throw new Error('Sign in to Kody before setting up this machine.')
 		const state = this.read()
 		if (command === 'forget') {
-			this.busy = true
+			this.operationActor.send({ type: 'START_OPERATION', command })
 			try {
 				await this.runner.stop()
 				this.write({
@@ -229,7 +324,7 @@ class DesktopExecution {
 				this.authorized = null
 				this.error = null
 			} finally {
-				this.busy = false
+				this.finishOperation()
 			}
 			return this.snapshot(viewer)
 		}
@@ -265,7 +360,7 @@ class DesktopExecution {
 			throw new Error('Unknown machine action.')
 		if (!this.supported)
 			throw new Error('Local execution is not available on this platform.')
-		this.busy = true
+		this.operationActor.send({ type: 'START_OPERATION', command })
 		try {
 			if (command.startsWith('auto-update-')) {
 				await this.runner.command([
@@ -445,9 +540,9 @@ class DesktopExecution {
 				}
 			}
 		} finally {
-			this.busy = false
+			this.finishOperation()
 		}
 		return this.snapshot(await this.viewer())
 	}
 }
-module.exports = { DesktopExecution }
+module.exports = { DesktopExecution, executionOperationState }

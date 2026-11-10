@@ -1,3 +1,4 @@
+import type { AccountDeletionApprovalStatus } from './account-deletion-approval-state.ts'
 import { normalizeHandle } from '@kody-internal/shared/handle-rules.ts'
 
 /** How long an admin account-deletion approval link stays usable. */
@@ -49,10 +50,10 @@ export type AdminAccountDeletionSummary = {
 
 export type AdminAccountDeletionApprovalState =
 	| { status: 'missing' }
-	| { status: 'expired' }
-	| { status: 'consumed' }
+	| { status: Extract<AccountDeletionApprovalStatus, 'expired'> }
+	| { status: Extract<AccountDeletionApprovalStatus, 'consumed'> }
 	| {
-			status: 'pending'
+			status: Extract<AccountDeletionApprovalStatus, 'pending'>
 			summary: AdminAccountDeletionSummary
 	  }
 

@@ -40,8 +40,6 @@ import {
 } from './account-management-components.tsx'
 import type { AccountPackageDetail } from '#universal/loader-data.ts'
 
-type DeleteStatus = 'idle' | 'deleting'
-
 const packageDeleteCopyTooltip = 'Copy'
 const packageDeleteCopyTooltipId = 'package-delete-copy-name-tooltip'
 
@@ -50,15 +48,28 @@ export function AccountPackageDeleteDialog(props: {
 	packageDetail: AccountPackageDetail
 }) {
 	const [confirmation, setConfirmation] = useState('')
-	const [status, setStatus] = useState<DeleteStatus>('idle')
-	const [error, setError] = useState<string | null>(null)
 	const [open, setOpen] = useState(false)
 	const mutation = usePackageMutation(
 		props.packageDetail.id,
-		deletePackage,
+		async ({
+			data,
+		}: {
+			data: { packageId: string; confirmName: string; isCurrent: () => boolean }
+		}) => {
+			const result = await deletePackage({
+				data: { packageId: data.packageId, confirmName: data.confirmName },
+			})
+			if (result.ok && !result.deleted)
+				throw new Error('Unable to delete this package.')
+			return result
+		},
 		'delete',
 		'deleted',
 	)
+	const error =
+		mutation.isError && mutation.variables?.isCurrent()
+			? mutation.error.message
+			: null
 	const capture = useSubmitterScope()
 	const router = useRouter()
 	const { session } = useShellData()
@@ -88,15 +99,13 @@ export function AccountPackageDeleteDialog(props: {
 	function closeDialog() {
 		if (busyRef.current) return
 		setConfirmation('')
-		setError(null)
-		setStatus('idle')
+		mutation.reset()
 		setOpen(false)
 	}
 
 	function openDialog() {
 		setConfirmation('')
-		setError(null)
-		setStatus('idle')
+		mutation.reset()
 
 		setOpen(true)
 	}
@@ -111,16 +120,16 @@ export function AccountPackageDeleteDialog(props: {
 		const packageDetail = props.packageDetail
 		if (busyRef.current || confirmation.trim() !== packageDetail.name) return
 		busyRef.current = true
-		setStatus('deleting')
-		setError(null)
+
+		mutation.reset()
 
 		const isCurrent = capture()
 		try {
-			const payload = await mutation.submit({
+			await mutation.submit({
 				packageId: props.packageDetail.id,
 				confirmName: confirmation.trim(),
+				isCurrent,
 			})
-			if (!payload.deleted) throw new Error('Unable to delete this package.')
 			if (!isCurrent()) return
 			busyRef.current = false
 			closeDialog()
@@ -131,21 +140,15 @@ export function AccountPackageDeleteDialog(props: {
 					organizations: session?.organizations ?? [],
 				}),
 			})
-		} catch (caught) {
+		} catch {
 			if (!isCurrent()) return
-			setError(
-				caught instanceof Error
-					? caught.message
-					: 'Unable to delete this package.',
-			)
-			setStatus('idle')
 		} finally {
 			busyRef.current = false
 		}
 	}
 
 	const packageName = props.packageDetail.name
-	const isDeleting = status === 'deleting'
+	const isDeleting = mutation.isPending
 	const canSubmit = confirmation.trim() === packageName && !isDeleting
 	return (
 		<>

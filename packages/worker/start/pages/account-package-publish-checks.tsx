@@ -1,18 +1,16 @@
 /** @jsxImportSource @emotion/react */
+import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
+import { useCallback, useEffect } from 'react'
+import { useMachine } from '@xstate/react'
 import type { CSSObject } from '@emotion/react'
-import { useEffect, useState } from 'react'
+import {
+	publishCommitCheckState,
+	type PublishCheckAttempt,
+	type PublishCommitChecksState as CommitChecksState,
+} from '#client/routes/publish-commit-check-state.ts'
 import type { AccountPackagePublishCheckPayload } from '#universal/loader-data.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-
-export type PublishCommitChecksState =
-	| { status: 'idle' }
-	| { status: 'running' }
-	| { status: 'passed' }
-	| {
-			status: 'failed'
-			failedChecks: Array<{ kind: string; message: string }>
-	  }
-	| { status: 'unavailable'; error: string }
+export type PublishCommitChecksState = CommitChecksState
 
 type CheckPublishCommit = (input: {
 	data: { packageId: string; commit: string }
@@ -28,42 +26,90 @@ export function usePublishCommitChecks(input: {
 	check: CheckPublishCommit
 }): PublishCommitChecksState {
 	const { packageId, commit, check } = input
-	// Results are keyed by commit so a new commit reads as running without a
-	// synchronous reset inside the effect.
-	const [settled, setSettled] = useState<{
-		key: string
-		state: PublishCommitChecksState
-	} | null>(null)
 	const key = commit ? `${packageId}:${commit}` : null
+	const [attemptSnapshot, , attemptActor] = useMachine(
+		publishCommitCheckState,
+		{
+			snapshot: (() => {
+				const initialView = key
+					? { status: 'running', key }
+					: { status: 'idle' }
+				return publishCommitCheckState.resolveState({
+					value: initialView.status,
+					context: uiContext(initialView),
+				})
+			})(),
+		},
+	)
+	const attempt = uiState<PublishCheckAttempt>(attemptSnapshot)
+	const transition = useCallback(
+		(event: Parameters<typeof attemptActor.send>[0]) =>
+			sendUiEvent(attemptActor, event),
+		[attemptActor],
+	)
+
 	useEffect(() => {
-		if (!commit || !key) return
+		const requestId = {}
+
+		if (!commit || !key) {
+			transition({
+				...({
+					type: 'CLEAR_COMMIT',
+					data: uiContext({ status: 'idle' }).data,
+				} as Parameters<typeof attemptActor.send>[0]),
+				requestId: requestId,
+			})
+			return
+		}
+		transition({
+			...({
+				type: 'CHECK_COMMIT',
+				data: uiContext({ status: 'running', key }).data,
+			} as Parameters<typeof attemptActor.send>[0]),
+			requestId: requestId,
+		})
 		let current = true
-		const settle = (state: PublishCommitChecksState) => {
-			if (current) setSettled({ key, state })
+		const settle = (
+			state: Exclude<PublishCommitChecksState, { status: 'idle' }>,
+		) => {
+			if (current)
+				transition({
+					...({
+						type:
+							state.status === 'passed'
+								? 'CHECK_PASSED'
+								: state.status === 'failed'
+									? 'CHECK_FAILED'
+									: 'CHECK_UNAVAILABLE',
+						data: uiContext({ ...state, key }).data,
+					} as Parameters<typeof attemptActor.send>[0]),
+					requestId: requestId,
+				})
 		}
 		check({ data: { packageId, commit } })
 			.then((result) => {
-				if (!result.ok) {
-					settle({ status: 'unavailable', error: result.error })
-				} else if (result.checksOk) {
-					settle({ status: 'passed' })
-				} else {
-					settle({ status: 'failed', failedChecks: result.failedChecks })
-				}
+				if (!result.ok) settle({ status: 'unavailable', error: result.error })
+				else if (result.checksOk) settle({ status: 'passed' })
+				else settle({ status: 'failed', failedChecks: result.failedChecks })
 			})
-			.catch((error: unknown) => {
+			.catch((error: unknown) =>
 				settle({
 					status: 'unavailable',
 					error: error instanceof Error ? error.message : String(error),
-				})
-			})
+				}),
+			)
 		return () => {
 			current = false
 		}
-	}, [packageId, commit, key, check])
+	}, [packageId, commit, key, check, transition])
 	if (!key) return { status: 'idle' }
-	if (settled?.key !== key) return { status: 'running' }
-	return settled.state
+	if (attempt.status === 'idle' || attempt.key !== key)
+		return { status: 'running' }
+	if (attempt.status === 'failed')
+		return { status: 'failed', failedChecks: attempt.failedChecks }
+	if (attempt.status === 'unavailable')
+		return { status: 'unavailable', error: attempt.error }
+	return { status: attempt.status }
 }
 
 export function PublishChecksPanel(props: {

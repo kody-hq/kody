@@ -247,10 +247,14 @@ preview (see the TEST ONLY rule below).
 
 - The private key is generated on the machine and never leaves it. The CLI
   stores it AES-256-GCM encrypted, wrapped by the OS keyring or
-  `KODY_CONTEXT_KEY_PASSPHRASE`. The keyring is `@napi-rs/keyring`: macOS
-  Keychain, Linux Secret Service, Windows Credential Manager (usable by the
-  logon task, so Windows keeps the keyring by default). The service file-key
-  fallback is mode 600 on POSIX; on Windows it relies on the user profile ACL.
+  `KODY_CONTEXT_KEY_PASSPHRASE`. The keyring is `@napi-rs/keyring` for Linux
+  Secret Service and Windows Credential Manager (usable by the logon task, so
+  Windows keeps the keyring by default). macOS goes through `/usr/bin/security`
+  (`keyring-entry.ts`); the machine-key reads use the async runner, which prints
+  a wait notice after 1.5 s, kills `security` after `KODY_KEYCHAIN_TIMEOUT_MS`
+  (2 min), and tracks it in `helperChildren` so SIGINT, SIGTERM, SIGHUP and exit
+  kill it too. The file key (`--key-storage file`, any OS) is mode 600 on POSIX;
+  on Windows it relies on the user profile ACL.
 - Server frames are signed with `ECP_FRAME_SIGNING_KEYS`; daemons trust only
   keys published at `/v1/execution-contexts/server-keys` and signed by a root
   key pinned in `server-keys.ts`. That route serves the committed test key set

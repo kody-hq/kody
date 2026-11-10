@@ -73,6 +73,8 @@
     "knip": "knip",
     "cli:validate": "npm run validate -w @kodycodes/cli",
     "cli:openapi:check": "node --experimental-strip-types tools/generate-cli-openapi-client.ts --check",
+    "state-machines:generate": "node --experimental-strip-types tools/generate-state-machines.ts",
+    "state-machines:check": "node --experimental-strip-types tools/generate-state-machines.ts --check",
     "deploy-guardrails:check": "node tools/check-deploy-guardrails.ts",
     "workflows:check": "node tools/check-workflow-refs.ts",
     "origin-production-exports:check": "node tools/check-origin-production-exports.ts",

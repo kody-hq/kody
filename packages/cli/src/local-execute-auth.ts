@@ -62,7 +62,19 @@ export async function resolveLocalExecuteBearer(
 
 	const apiUrl = input.apiUrl ?? defaultApiUrl
 	const mcpUrl = input.mcpUrl ?? defaultMcpUrl
-	if (!isPairedApiUrl(apiUrl, mcpUrl)) {
+	const saved = credential?.login
+	const savedForThisApi =
+		saved?.apiUrl !== undefined && saved.apiUrl === urlOriginOrValue(apiUrl)
+	if (
+		saved &&
+		savedForThisApi &&
+		saved.accessToken.startsWith('kody_at_') &&
+		(saved.expiresAt === undefined ||
+			saved.expiresAt > (input.now ?? Date.now()) + 60_000)
+	) {
+		return saved.accessToken
+	}
+	if (!savedForThisApi && !isPairedApiUrl(apiUrl, mcpUrl)) {
 		const apiOrigin = urlOriginOrValue(apiUrl)
 		const mcpOrigin = urlOriginOrValue(mcpUrl)
 		throw new Error(

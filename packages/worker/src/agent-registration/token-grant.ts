@@ -1,5 +1,5 @@
 import * as Sentry from '@sentry/cloudflare'
-import { cliCredentialBootstrapDefaultScopes } from '#worker/api-tokens/cli-credential-bootstrap.ts'
+import { cliCredentialBootstrapNarrowScopes } from '#worker/api-tokens/cli-credential-bootstrap.ts'
 import { mintApiToken } from '#worker/api-tokens/service.ts'
 import { loadLiveOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import {
@@ -111,7 +111,7 @@ export async function handleAgentClaimTokenRequest(input: {
 			orgId: row.org_id,
 			orgBinding: 'org',
 			name: agentRegistrationTokenName,
-			scopes: cliCredentialBootstrapDefaultScopes,
+			scopes: cliCredentialBootstrapNarrowScopes,
 			idleTtlSeconds: row.idle_ttl_seconds,
 			maxLifetimeSeconds: row.max_lifetime_seconds,
 			createdVia: 'agent-registration',

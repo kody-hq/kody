@@ -21,6 +21,8 @@ import {
 	type DrBackupS3PutOptions,
 } from '#worker/dr/backup-s3.ts'
 import {
+	d1PacedBackupPartMaxBytes,
+	d1PacedBackupTickByteBudget,
 	parseD1PacedSources,
 	resolvePacedD1Binding,
 	runD1PacedBackupTick,
@@ -379,6 +381,48 @@ test('byte-capped part flush keeps buffer bounded and resumes after crash', asyn
 	// Resume must have continued past the crashed cursor (more parts or done).
 	expect(savedRowid).not.toBeNull()
 	expect(savedParts).toBeGreaterThan(1)
+})
+
+test('full base past the old 8 MiB tick cap finishes in one tick with bounded parts', async () => {
+	const { client, objects } = createMemoryS3()
+	const sqlite = new DatabaseSync(':memory:')
+	sqlite.exec(`
+		CREATE TABLE items (
+			id TEXT PRIMARY KEY NOT NULL,
+			body TEXT NOT NULL
+		);
+	`)
+	const rowCount = 1_200
+	const body = 'x'.repeat(10_000)
+	const insert = sqlite.prepare(`INSERT INTO items (id, body) VALUES (?, ?)`)
+	for (let i = 1; i <= rowCount; i += 1) insert.run(`i${i}`, body)
+	expect(rowCount * body.length).toBeGreaterThan(8 * 1024 * 1024)
+	expect(rowCount * body.length).toBeLessThan(d1PacedBackupTickByteBudget)
+
+	const result = await runD1PacedBackupTick({
+		env: createEnv({ APP_DB: createD1FromSqlite(sqlite) }),
+		now: at('01:00'),
+		s3: client,
+		walkerOpts: { minGapMs: 0, sleep: async () => {} },
+	})
+	expect(result.manifestsWritten).toBe(1)
+	const raw = await client.getText(pacedD1StagingManifestKey(day, 'kody'))
+	const manifest = parsePacedD1NightManifest(JSON.parse(raw!.text))
+	expect(manifest.tables.items?.count).toBe(rowCount)
+
+	let parts = 0
+	for (; objects.has(pacedD1StagingDataPartKey(day, 'kody', 'items', parts));)
+		parts += 1
+	expect(parts).toBeGreaterThan(2)
+	// Heap per tick is one part buffer plus at most one D1 page of overshoot.
+	for (let i = 0; i < parts; i += 1) {
+		const data = objects.get(pacedD1StagingDataPartKey(day, 'kody', 'items', i))
+		const index = objects.get(
+			pacedD1StagingIndexPartKey(day, 'kody', 'items', i),
+		)
+		const total = (data?.bytes.byteLength ?? 0) + (index?.bytes.byteLength ?? 0)
+		expect(total).toBeLessThan(d1PacedBackupPartMaxBytes + 2 * 1024 * 1024)
+	}
 })
 
 test('resume mid-table continues from lastRowid across ticks', async () => {

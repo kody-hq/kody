@@ -1,3 +1,4 @@
+import { memoryState } from './memory-state.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
@@ -287,6 +288,7 @@ export async function upsertMemory(input: MemoryUpsertInput): Promise<{
 
 			const fields = existing ? changedMemoryFields(existing, row) : []
 			if (existing) {
+				if (memoryState.is(existing.status)) memoryState.parse(row.status)
 				const updated = await updateMemory(
 					input.env.APP_DB,
 					input.userId,

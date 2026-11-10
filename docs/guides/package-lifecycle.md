@@ -65,6 +65,9 @@ package `dryRun` and fresh user confirmation before a live mutation.
 
 ### Fork a close public package before creating
 
+> [!WATCH] https://www.youtube.com/watch?v=YTxilTb_wuw Watch: Kody community
+> packages: fork, connect your credentials, and keep up
+
 <details>
 <summary>What's the difference between forking and sharing?</summary>
 

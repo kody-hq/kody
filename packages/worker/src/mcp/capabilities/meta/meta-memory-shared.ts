@@ -1,6 +1,5 @@
 import { z } from 'zod'
 import { memoryStatusValues } from '#mcp/memory/types.ts'
-import { requireMcpUser as requireMetaUser } from './require-user.ts'
 
 /** Keep these in sync with `.max(...)` on the shared memory field schemas. */
 export const memorySubjectMaxLength = 200
@@ -150,5 +149,3 @@ export const verifyFirstGuidance =
 
 export const verifyFirstWarning =
 	'If you are considering writing or deleting memory, run metaMemoryVerify first and review related memories before taking action.'
-
-export const requireMcpUser = requireMetaUser

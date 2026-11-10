@@ -17,6 +17,7 @@ test('reserved username validation rejects brand, support, and infrastructure na
 		'admin',
 		'mcp',
 		'psl',
+		'kent',
 		'autodiscover',
 		'mta-sts',
 		'wpad',

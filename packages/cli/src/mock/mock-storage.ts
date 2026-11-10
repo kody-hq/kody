@@ -16,7 +16,25 @@ import {
 } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
-import { DatabaseSync } from 'node:sqlite'
+import {
+	DatabaseSync,
+	type SQLInputValue,
+	type StatementSync,
+} from 'node:sqlite'
+import {
+	collectStorageSqlCursor,
+	settleStorageSqlRead,
+	type StorageSqlReadCursor,
+	type StorageSqlReadResult,
+	type StorageSqlReadValue,
+} from '@kody-internal/shared/storage-sql-read-policy.ts'
+import {
+	isStorageSqlReturningMutation,
+	isStorageSqlWrite,
+	maskSqlLiteralsAndComments,
+	maxStorageSqlQueryRows,
+	normalizeSqlParams,
+} from '@kody-internal/shared/storage-sql-statement.ts'
 import { userCacheDir } from '../workerd-binary.js'
 
 type MockStorageBucket = {
@@ -365,26 +383,13 @@ export function closePackageSqlDbsForSession(sessionId: string): void {
 }
 
 /**
- * True when the prepared statement yields result columns (SELECT / WITH /
- * PRAGMA / EXPLAIN, or DML with RETURNING). Prefer `StatementSync.columns()`
- * (Node ≥22.16) over verb-prefix matching so `INSERT … RETURNING` is not
- * treated as a silent mutation. A `returning` regex would also match string
- * literals — columns() does not.
- */
-export function statementYieldsRows(stmt: {
-	columns?: () => Array<unknown>
-}): boolean | null {
-	if (typeof stmt.columns !== 'function') return null
-	return stmt.columns().length > 0
-}
-
-/**
- * Run SQL against the package's scratch SQLite file.
- * Returns `{ rows }` so callers that accept either an array or `{ rows }` work
- * (same shape dropbox-delete-me / data-table expect from hosted packageStorage).
- * Mutations without result columns also return `changes` (node:sqlite `run`).
- * Hosted `packageStorage().sql` returns RETURNING rows the same way via the
- * Durable Object SQL cursor (see storage-runner `sqlQuery`).
+ * Run SQL against the package's scratch SQLite file and return the hosted
+ * `packageStorage().sql` result. Shaping, the row cap, `truncated`, and the
+ * rows-read warning come from the same helpers StorageRunner uses, so only
+ * the cursor counters differ (see {@link mockSqlCursor}).
+ *
+ * Like `ctx.storage.sql.exec`, several `;`-separated statements run in order,
+ * only the last may take bindings, and the result describes the last one.
  */
 export function packageStorageSql(
 	state: MockSessionState,
@@ -392,68 +397,224 @@ export function packageStorageSql(
 	query: string,
 	bindings: Array<unknown> = [],
 	env: NodeJS.ProcessEnv = process.env,
-): { rows: Array<Record<string, unknown>>; changes?: number } {
+): StorageSqlReadResult {
 	const db = openPackageSqlDb(state, packageId, env)
-	const stmt = db.prepare(query)
-	const params: Array<null | number | bigint | string | Uint8Array> =
-		bindings.map((value) => {
-			if (value === null) return null
-			if (
-				typeof value === 'string' ||
-				typeof value === 'number' ||
-				typeof value === 'bigint'
-			) {
-				return value
+	const params: Array<SQLInputValue> = normalizeSqlParams(bindings)
+	let remaining = query
+	for (;;) {
+		const stmt = prepareMockSqlStatement(db, remaining)
+		const tail = remaining.slice(stmt.sourceSQL.length)
+		const slots = sqlParameterSlots(stmt.sourceSQL)
+		if (tail.trim()) {
+			if (slots.length > 0) {
+				throw new Error(
+					'When executing multiple SQL statements in a single call, only the last statement can have parameters.',
+				)
 			}
-			if (typeof value === 'boolean') return value ? 1 : 0
-			if (value instanceof Uint8Array) return value
-			return String(value)
-		})
-	const yields = statementYieldsRows(stmt)
-	if (yields === true) {
-		return { rows: plainSqlRows(stmt.all(...params)) }
-	}
-	if (yields === false) {
-		const info = stmt.run(...params) as { changes?: number }
-		return {
-			rows: [],
-			changes: typeof info.changes === 'number' ? info.changes : 0,
+			drainMockSqlStatement(stmt)
+			remaining = tail
+			continue
 		}
-	}
-	// Node < 22.16: columns() missing. Prefer all() so RETURNING still works.
-	// all() already ran the statement — do not call run() afterward.
-	const rows = plainSqlRows(stmt.all(...params))
-	if (rows.length > 0) return { rows }
-	const trimmed = query.trimStart().toLowerCase()
-	const isReadLike =
-		trimmed.startsWith('select') ||
-		trimmed.startsWith('with') ||
-		trimmed.startsWith('pragma') ||
-		trimmed.startsWith('explain')
-	if (isReadLike) return { rows }
-	// Empty DML+RETURNING must match hosted `{ rows: [] }` (no `changes`).
-	// Strip string/blob literals first so a body value of "returning id" does
-	// not fake a RETURNING clause.
-	if (sqlHasReturningClause(query)) return { rows }
-	const changesRow = db.prepare('select changes() as c').get() as
-		| { c?: number }
-		| undefined
-	return {
-		rows: [],
-		changes: typeof changesRow?.c === 'number' ? changesRow.c : 0,
+		if (slots.length !== params.length) {
+			throw new Error('Wrong number of parameter bindings for SQL query.')
+		}
+		const settled = settleStorageSqlRead(
+			collectStorageSqlCursor(
+				mockSqlCursor(db, stmt, bindMockSqlParams(slots, params)),
+				{
+					drainOverflow: isStorageSqlReturningMutation(stmt.sourceSQL),
+					writeFinished: isStorageSqlWrite(stmt.sourceSQL),
+					maxRows: maxStorageSqlQueryRows,
+				},
+			),
+		)
+		if (settled.outcome === 'error') throw settled.error
+		return settled.result
 	}
 }
 
-/** True when SQL has a RETURNING keyword outside string/blob literals. */
-export function sqlHasReturningClause(query: string): boolean {
-	const withoutLiterals = query.replace(
-		/'(?:[^']|'')*'|"(?:[^"]|"")*"|X'[0-9A-Fa-f]*'/g,
-		"''",
-	)
-	return /\breturning\b/i.test(withoutLiterals)
+function prepareMockSqlStatement(db: DatabaseSync, sql: string) {
+	try {
+		return db.prepare(sql)
+	} catch (error) {
+		// Match the workerd message for empty SQL or a trailing comment.
+		if (
+			error instanceof Error &&
+			error.message.includes('contains no statements')
+		) {
+			throw new Error('SQL code did not contain a statement.')
+		}
+		throw error
+	}
+}
+
+function drainMockSqlStatement(stmt: StatementSync) {
+	for (const _row of runMockSqlStatement(stmt, [])) {
+		// Earlier statements run for their side effects only.
+	}
+}
+
+type SqlParameterSlot = { index: number; name: string | null }
+
+/**
+ * Parameter slots SQLite assigns to one statement (`?`, `?NNN`, `:name`,
+ * `@name`, `$name`), in index order. node:sqlite does not expose
+ * `sqlite3_bind_parameter_count`, and it silently binds NULL for missing
+ * positional values where workerd throws, so the mock counts them itself.
+ */
+export function sqlParameterSlots(sql: string): Array<SqlParameterSlot> {
+	const masked = maskSqlLiteralsAndComments(sql)
+	const slots = new Map<number, SqlParameterSlot>()
+	const named = new Map<string, number>()
+	let maxIndex = 0
+	const pattern = /\?(\d*)|[:@$]([A-Za-z_][A-Za-z0-9_]*)/g
+	for (const match of masked.matchAll(pattern)) {
+		const [, numbered, name] = match
+		if (name !== undefined) {
+			if (named.has(name)) continue
+			maxIndex += 1
+			named.set(name, maxIndex)
+			slots.set(maxIndex, { index: maxIndex, name })
+			continue
+		}
+		const index = numbered ? Number(numbered) : maxIndex + 1
+		maxIndex = Math.max(maxIndex, index)
+		if (!slots.has(index)) slots.set(index, { index, name: null })
+	}
+	return Array.from({ length: maxIndex }, (_, offset) => {
+		const index = offset + 1
+		return slots.get(index) ?? { index, name: null }
+	})
+}
+
+type MockSqlArgs = [
+	named: Record<string, SQLInputValue> | undefined,
+	positional: Array<SQLInputValue>,
+]
+
+/**
+ * Hosted binds params by position even for named parameters. node:sqlite
+ * binds names from an object, so map each named slot to its positional value.
+ */
+function bindMockSqlParams(
+	slots: Array<SqlParameterSlot>,
+	params: Array<SQLInputValue>,
+): MockSqlArgs {
+	if (!slots.some((slot) => slot.name !== null)) return [undefined, params]
+	const named: Record<string, SQLInputValue> = {}
+	const positional: Array<SQLInputValue> = []
+	for (const slot of slots) {
+		const value = params[slot.index - 1] ?? null
+		if (slot.name === null) positional.push(value)
+		else named[slot.name] = value
+	}
+	return [named, positional]
+}
+
+/**
+ * Adapt a node:sqlite statement to the cursor shape `collectStorageSqlCursor`
+ * reads from a Durable Object `SqlStorageCursor`.
+ *
+ * Cloudflare's `rowsRead` / `rowsWritten` come from its own SQLite
+ * instrumentation, which node:sqlite cannot read, so the mock estimates them:
+ * - `rowsWritten` is `total_changes()` for the statement: rows inserted,
+ *   updated, or deleted. Hosted also counts index entries and schema rows, so
+ *   DDL reports 0 here and indexed tables report fewer writes.
+ * - `rowsRead` is the larger of the rows returned and the rows stepped by
+ *   full-table scans. Hosted also counts index probes, aggregate scans, and
+ *   schema reads, but not rows a table-free SELECT or PRAGMA returns, so the
+ *   mock usually reads low for tables and high for those. The
+ *   1,000,000-row warning and the 1,000,000,000-row ceiling use this estimate.
+ */
+function mockSqlCursor(
+	db: DatabaseSync,
+	stmt: StatementSync,
+	[named, positional]: MockSqlArgs,
+): StorageSqlReadCursor {
+	const changesBefore = totalSqlChanges(db)
+	const args = named ? [named, ...positional] : positional
+	const rows = runMockSqlStatement(stmt, args)
+	let firstRow: Record<string, StorageSqlReadValue> | null = null
+	let rowsReturned = 0
+	let rowsWritten: number | null = null
+	return {
+		get columnNames() {
+			return sqlColumnNames(stmt, firstRow)
+		},
+		get rowsRead() {
+			return Math.max(rowsReturned, fullScanRows(stmt))
+		},
+		get rowsWritten() {
+			return rowsWritten ?? totalSqlChanges(db) - changesBefore
+		},
+		*[Symbol.iterator]() {
+			try {
+				for (const raw of rows) {
+					const row = plainSqlRow(raw)
+					firstRow ??= row
+					rowsReturned += 1
+					yield row
+				}
+			} finally {
+				rowsWritten = totalSqlChanges(db) - changesBefore
+			}
+		},
+	}
+}
+
+type MockSqlStatementApi = {
+	iterate?: (...args: Array<unknown>) => Iterable<unknown>
+	all: (...args: Array<unknown>) => Array<unknown>
+	columns?: () => Array<{ name: string }>
+	stat?: (counter: string) => number | bigint
+}
+
+/** `iterate()` is Node 22.13+; older Node 22 materializes with `all()`. */
+function runMockSqlStatement(
+	stmt: StatementSync,
+	args: Array<unknown>,
+): Iterable<unknown> {
+	const api = stmt as unknown as MockSqlStatementApi
+	return typeof api.iterate === 'function'
+		? api.iterate.apply(stmt, args)
+		: api.all.apply(stmt, args)
+}
+
+/** `columns()` is Node 22.16+; before that only a returned row names them. */
+function sqlColumnNames(
+	stmt: StatementSync,
+	firstRow: Record<string, StorageSqlReadValue> | null,
+): Array<string> {
+	const api = stmt as unknown as MockSqlStatementApi
+	if (typeof api.columns === 'function') {
+		return api.columns.call(stmt).map((column) => column.name)
+	}
+	return firstRow ? Object.keys(firstRow) : []
+}
+
+function totalSqlChanges(db: DatabaseSync): number {
+	const row = db.prepare('select total_changes() as c').get() as
+		| { c?: number | bigint }
+		| undefined
+	return Number(row?.c ?? 0)
+}
+
+/**
+ * SQLite counts full-scan `Next` steps, one fewer than the rows visited.
+ * `stat()` is missing on older Node, which leaves only returned rows.
+ */
+function fullScanRows(stmt: StatementSync): number {
+	const api = stmt as unknown as MockSqlStatementApi
+	if (typeof api.stat !== 'function') return 0
+	const steps = Number(api.stat.call(stmt, 'fullscanStep'))
+	return steps > 0 ? steps + 1 : 0
 }
 
 /** node:sqlite returns null-prototype row objects; plain clones JSON-cleanly. */
-function plainSqlRows(rows: Array<unknown>): Array<Record<string, unknown>> {
-	return rows.map((row) => ({ ...(row as Record<string, unknown>) }))
+function plainSqlRow(row: unknown): Record<string, StorageSqlReadValue> {
+	const out: Record<string, StorageSqlReadValue> = {}
+	for (const [key, value] of Object.entries(row as Record<string, unknown>)) {
+		out[key] = value as StorageSqlReadValue
+	}
+	return out
 }

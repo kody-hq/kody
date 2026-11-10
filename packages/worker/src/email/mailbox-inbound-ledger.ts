@@ -1,3 +1,7 @@
+import { sqlSourcesOf, nextState } from '@kody-internal/shared/state-machine.ts'
+import { inboundDedupePointerState } from './inbound-dedupe-pointer-state.ts'
+import { inboundDeliveryState } from './inbound-delivery-state.ts'
+import { inboundSubscriptionEffectState } from './inbound-subscription-effect-state.ts'
 /**
  * Mailbox USER inbound ledger authority CAS primitives.
  *
@@ -215,6 +219,32 @@ export type MailboxInboundDeliveryLedgerRpc = {
 	}) => Promise<MailboxListDueStaleInboundDeliveriesResult>
 }
 
+const deliveryStoringToPendingGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'RELEASE_LEASE',
+	['storing'],
+)
+const deliveryPendingToStoringGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_STORAGE',
+	['pending'],
+)
+const deliveryStoringToStoringGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_STORAGE',
+	['storing'],
+)
+const deliveryReceivedToStoringGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'CLAIM_STORAGE',
+	['received'],
+)
+const deliveryStoringToReceivedGuard = sqlSourcesOf(
+	inboundDeliveryState,
+	'RECEIVE',
+	['storing'],
+)
+
 export function mailboxInboundDedupePointerId(fingerprint: string) {
 	return `email-inbound-dedupe:${assertMailboxNonEmptyString(fingerprint, 'fingerprint')}`
 }
@@ -336,6 +366,8 @@ export function claimMailboxInboundDeliveryWindow(
 	const ownerId = assertMailboxNonEmptyString(input.ownerId, 'ownerId')
 	const validated = assertInsertInput(ownerId, input.delivery)
 	const pointerId = mailboxInboundDedupePointerId(validated.fingerprint)
+	nextState(inboundDedupePointerState, 'pending', { type: 'RESET_WINDOW' })
+	nextState(inboundDedupePointerState, 'rejected', { type: 'RESET_WINDOW' })
 	const base = pendingSnapshotFromInsert(
 		input.delivery,
 		validated,
@@ -486,6 +518,9 @@ export function claimMailboxInboundDeliveryStorage(
 	 * `detail_json`); promoted Mailbox columns must clear explicitly so a stale
 	 * effect worker cannot complete against a later re-finalization.
 	 */
+	nextState(inboundDeliveryState, current.state, { type: 'CLAIM_STORAGE' })
+	if (current.subscriptionEffectState === 'processing')
+		nextState(inboundSubscriptionEffectState, 'processing', { type: 'RESET' })
 	const next: MailboxInboundDeliverySnapshot = {
 		...current,
 		state: 'storing',
@@ -530,10 +565,10 @@ export function claimMailboxInboundDeliveryStorage(
 		WHERE id = ?
 			AND provider = ?
 			AND (
-				state = 'pending'
-				OR (state = 'storing' AND storage_lease_at < ?)
+				state IN ${deliveryPendingToStoringGuard}
+				OR (state IN ${deliveryStoringToStoringGuard} AND storage_lease_at < ?)
 				OR (
-					state = 'received'
+					state IN ${deliveryReceivedToStoringGuard}
 					AND NOT EXISTS (SELECT 1 FROM email_messages WHERE id = ?)
 				)
 			)`,
@@ -577,6 +612,7 @@ export function releaseMailboxInboundDeliveryStorage(
 	) {
 		return { status: 'not-held' }
 	}
+	nextState(inboundDeliveryState, current.state, { type: 'RELEASE_LEASE' })
 	const next: MailboxInboundDeliverySnapshot = {
 		...current,
 		state: 'pending',
@@ -593,7 +629,7 @@ export function releaseMailboxInboundDeliveryStorage(
 			updated_at = ?
 		WHERE id = ?
 			AND provider = ?
-			AND state = 'storing'
+			AND state IN ${deliveryStoringToPendingGuard}
 			AND storage_lease = ?`,
 		detailJsonFromMailboxInboundSnapshot(next),
 		now,
@@ -638,6 +674,7 @@ export function markMailboxInboundDeliveryRejected(
 	) {
 		return { status: 'lease-lost' }
 	}
+	nextState(inboundDeliveryState, current.state, { type: 'REJECT' })
 	const next: MailboxInboundDeliverySnapshot = {
 		...current,
 		state: 'rejected',
@@ -717,6 +754,11 @@ export function markMailboxInboundDeliveryReceived(
 	const usageBytes = Math.round(
 		assertMailboxInboundNonNegativeFiniteNumber(input.usageBytes, 'usageBytes'),
 	)
+	nextState(inboundDeliveryState, current.state, { type: 'RECEIVE' })
+	if (current.subscriptionEffectState)
+		nextState(inboundSubscriptionEffectState, current.subscriptionEffectState, {
+			type: 'RESET',
+		})
 	const next: MailboxInboundDeliverySnapshot = {
 		...current,
 		state: 'received',
@@ -750,7 +792,7 @@ export function markMailboxInboundDeliveryReceived(
 			updated_at = ?
 		WHERE id = ?
 			AND provider = ?
-			AND state = 'storing'
+			AND state IN ${deliveryStoringToReceivedGuard}
 			AND storage_lease = ?`,
 		attachedMessageId,
 		detailJsonFromMailboxInboundSnapshot(next),

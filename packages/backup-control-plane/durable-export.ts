@@ -1,4 +1,9 @@
 import {
+	IllegalStateTransitionError,
+	nextState,
+} from '@kody-internal/shared/state-machine.ts'
+import { backupExportState } from './backup-export-state.ts'
+import {
 	pollD1Export,
 	startD1Export,
 	type ApiOptions,
@@ -130,11 +135,30 @@ export async function runDurableExport(
 					)
 				}
 				restarts += 1
-				state = await step.do(
+				const next = await step.do(
 					`${stepNamePrefix}restart-d1-export-${restarts}`,
 					API_STEP_CONFIG,
 					async () => startD1Export(env, options.api),
 				)
+				nextState(backupExportState, state.kind, {
+					type: (() => {
+						switch (next.kind as string) {
+							case 'complete':
+								return 'EXPORT_READY' as const
+							case 'pending':
+								return 'EXPORT_PENDING' as const
+							case 'lost':
+								return 'EXPORT_LOST' as const
+							default:
+								throw new IllegalStateTransitionError(
+									backupExportState.id,
+									state.kind,
+									{ type: String(next.kind) },
+								)
+						}
+					})(),
+				})
+				state = next
 				continue
 			}
 			case 'pending': {
@@ -148,11 +172,30 @@ export async function runDurableExport(
 				polls += 1
 				const bookmark = state.bookmark
 				// Poll immediately after start/restart and after each wait.
-				state = await step.do(
+				const next = await step.do(
 					`${stepNamePrefix}poll-d1-export-${polls}`,
 					API_STEP_CONFIG,
 					async () => pollD1Export(env, bookmark, options.api),
 				)
+				nextState(backupExportState, state.kind, {
+					type: (() => {
+						switch (next.kind as string) {
+							case 'complete':
+								return 'EXPORT_READY' as const
+							case 'pending':
+								return 'EXPORT_PENDING' as const
+							case 'lost':
+								return 'EXPORT_LOST' as const
+							default:
+								throw new IllegalStateTransitionError(
+									backupExportState.id,
+									state.kind,
+									{ type: String(next.kind) },
+								)
+						}
+					})(),
+				})
+				state = next
 				if (state.kind === 'complete') return state
 				if (state.kind === 'lost') continue
 				if (polls < maxPolls) {

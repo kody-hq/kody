@@ -1,4 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { useActorRef } from '@xstate/react'
+import { submissionGateState } from '#client/routes/submission-gate-state.ts'
+import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import { useHydrated } from '../components/use-hydrated.ts'
@@ -22,9 +25,6 @@ import {
 	getGhostButtonCss,
 	getPillButtonCss,
 } from '#universal/styles/style-primitives.ts'
-
-type PasswordStatus = 'idle' | 'saving'
-
 export function AccountPasswordPanel(props: {
 	hasUsablePassword: boolean
 	onPasswordSet: () => void
@@ -43,8 +43,15 @@ export function AccountPasswordPanel(props: {
 	}, [actorKey, href])
 	const mutation = useMutation({
 		gcTime: 0,
-		mutationFn: (data: { currentPassword?: string; newPassword: string }) =>
-			changePassword({ data }),
+		mutationFn: async (data: {
+			currentPassword?: string
+			newPassword: string
+		}) => {
+			const payload = await changePassword({ data })
+			if (!payload.ok)
+				throw new Error(payload.error || 'Unable to update your password.')
+			return payload
+		},
 		onMutate: () => invalidatePages,
 		onSettled: (_data, _error, _input, reconcile) => reconcile?.(),
 	})
@@ -53,9 +60,12 @@ export function AccountPasswordPanel(props: {
 	const [currentPassword, setCurrentPassword] = useState('')
 	const [newPassword, setNewPassword] = useState('')
 	const [confirmPassword, setConfirmPassword] = useState('')
-	const [status, setStatus] = useState<PasswordStatus>('idle')
-	const [message, setMessage] = useState<string | null>(null)
-	const [messageTone, setMessageTone] = useState<'error' | 'info'>('info')
+	const runExclusiveActor = useActorRef(submissionGateState)
+	const [feedback, setFeedback] = useState<UiFeedback | null>(() =>
+		createUiFeedback(null, 'info'),
+	)
+	const message = feedback?.message ?? null
+	const messageTone = feedback?.tone ?? 'info'
 
 	function updateCurrentPassword(event: FormEvent<HTMLInputElement>) {
 		if (!(event.currentTarget instanceof HTMLInputElement)) return
@@ -74,60 +84,74 @@ export function AccountPasswordPanel(props: {
 
 	async function handleSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault()
-		if (props.hasUsablePassword && !currentPassword) {
-			setMessage('Current password is required.')
-			setMessageTone('error')
-			return
-		}
-		if (!newPassword || !confirmPassword) {
-			setMessage('New password and confirmation are required.')
-			setMessageTone('error')
-			return
-		}
-		if (newPassword !== confirmPassword) {
-			setMessage('New password and confirmation do not match.')
-			setMessageTone('error')
-			return
-		}
-
-		setStatus('saving')
-		setMessage(null)
-		setMessageTone('info')
-
-		const submittedScope = scope.current
+		if (!runExclusiveActor.getSnapshot().can({ type: 'SUBMIT' })) return
+		runExclusiveActor.send({ type: 'SUBMIT' })
 		try {
-			const payload = await mutation.mutateAsync({
-				...(props.hasUsablePassword ? { currentPassword } : {}),
-				newPassword,
-			})
-			if (!submittedScope || scope.current !== submittedScope) return
-			if (!payload.ok)
-				throw new Error(payload.error || 'Unable to update your password.')
-			setCurrentPassword('')
-			setNewPassword('')
-			setConfirmPassword('')
-			setMessage(payload.message ?? 'Password updated.')
-			setMessageTone('info')
-			if (!props.hasUsablePassword) {
-				props.onPasswordSet()
-			}
-			toast.success('Password updated.')
-		} catch (error) {
-			if (!submittedScope || scope.current !== submittedScope) return
-			setMessage(
-				error instanceof Error
-					? error.message
-					: 'Unable to update your password.',
-			)
-			setMessageTone('error')
+			return await (async () => {
+				if (props.hasUsablePassword && !currentPassword) {
+					setFeedback(
+						createUiFeedback('Current password is required.', 'error'),
+					)
+					return
+				}
+				if (!newPassword || !confirmPassword) {
+					setFeedback(
+						createUiFeedback(
+							'New password and confirmation are required.',
+							'error',
+						),
+					)
+					return
+				}
+				if (newPassword !== confirmPassword) {
+					setFeedback(
+						createUiFeedback(
+							'New password and confirmation do not match.',
+							'error',
+						),
+					)
+					return
+				}
+
+				setFeedback(createUiFeedback(null, 'info'))
+
+				const submittedScope = scope.current
+				try {
+					const payload = await mutation.mutateAsync({
+						...(props.hasUsablePassword ? { currentPassword } : {}),
+						newPassword,
+					})
+					if (!submittedScope || scope.current !== submittedScope) return
+					setCurrentPassword('')
+					setNewPassword('')
+					setConfirmPassword('')
+					setFeedback(
+						createUiFeedback(payload.message ?? 'Password updated.', 'info'),
+					)
+					if (!props.hasUsablePassword) {
+						props.onPasswordSet()
+					}
+					toast.success('Password updated.')
+				} catch (error) {
+					if (!submittedScope || scope.current !== submittedScope) return
+					setFeedback(
+						createUiFeedback(
+							error instanceof Error
+								? error.message
+								: 'Unable to update your password.',
+							'error',
+						),
+					)
+				}
+			})()
 		} finally {
-			if (submittedScope && scope.current === submittedScope) setStatus('idle')
+			runExclusiveActor.send({ type: 'SETTLED' })
 		}
 	}
 
 	{
 		const hasUsablePassword = props.hasUsablePassword
-		const isSaving = status === 'saving'
+		const isSaving = mutation.isPending
 		const title = hasUsablePassword ? 'Change password' : 'Set a password'
 		const canSubmit =
 			newPassword.length > 0 &&
@@ -142,6 +166,7 @@ export function AccountPasswordPanel(props: {
 				<details css={accountDisclosureCss}>
 					<summary>{title}</summary>
 					<form
+						aria-busy={isSaving}
 						method="post"
 						data-testid="account-password-form"
 						css={{

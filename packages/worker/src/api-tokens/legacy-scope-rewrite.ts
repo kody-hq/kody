@@ -6,7 +6,7 @@
  * `local-execute` expands to the use-level org permissions CapabilityProxy
  * needed for saved packages (integrations, secrets, email, jobs, …). 0090
  * only mapped it to `org:execute`; 0092 repairs stored tokens. Keep this list
- * in sync with `cliCredentialBootstrapPolicy.defaultScopes` (plus `org:read`).
+ * in sync with `cliCredentialBootstrapNarrowScopes` (plus `org:read`).
  *
  * The 0090 SQL header also names a companion
  * `tools/teams-migration/rewrite-api-token-scopes.ts`. That tool was deleted

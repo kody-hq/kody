@@ -11,7 +11,8 @@ Kody has two permission systems, and neither implies the other:
 
 Being a site admin grants no org permission. Holding every org permission (an
 org Owner) grants nothing site-wide. Say **site admin** for the second system,
-never "operator" or a bare "admin".
+never "operator". The org membership role **Admin** is unrelated: it is Owner
+authority without `org:delete` and without changing Owners.
 
 ## Org access
 
@@ -39,22 +40,23 @@ synchronous, for callers that already hold the compiled permissions.
 2. **Org binding.** The resource must belong to `request.org.id` (`wrong_org`).
 3. **Effective permissions.** `computeEffectivePermissions` compiles
    memberships, team memberships, and grants (`access-compile.ts`): Owner holds
-   every permission; Member and Billing hold their org-level basics plus any
-   direct, team, or everyone-in-org grants (`subject_type = 'org'`, whose
-   `subject_id` must equal the grant's `org_id`, a CHECK since migration 0201;
-   it matches any live `org_memberships` row at compile time, so joins and
-   leaves need no grant rows, only the existing epoch bumps); outside
-   collaborators hold `search:read` plus grants (and `org:execute` when they
-   hold `package:execute` somewhere, the ad-hoc rule). Compiled results are
-   stored in `access_cache` and keyed by `orgs.access_epoch`. A grant with
-   `expires_at` (migration 0212; NULL never expires) stops counting at that
-   instant: every subject lookup filters it in SQL, the cached row's
-   `valid_until` holds the earliest expiry it used and is a miss from then, and
-   the per-request memo recompiles past it, so a long run loses the grant
-   mid-run. `subject_type = 'profile'` rows exist for profiles and never reach a
-   person: every lookup site excludes them. Automation (no actor) acts for the
-   org that owns the job, webhook, or subscription. The result is also cached
-   per request context.
+   every permission; Admin holds every permission except `org:delete`
+   (`hasOwnerAuthority` is Owner or Admin); Member and Billing hold their
+   org-level basics plus any direct, team, or everyone-in-org grants
+   (`subject_type = 'org'`, whose `subject_id` must equal the grant's `org_id`,
+   a CHECK since migration 0201; it matches any live `org_memberships` row at
+   compile time, so joins and leaves need no grant rows, only the existing epoch
+   bumps); outside collaborators hold `search:read` plus grants (and
+   `org:execute` when they hold `package:execute` somewhere, the ad-hoc rule).
+   Compiled results are stored in `access_cache` and keyed by
+   `orgs.access_epoch`. A grant with `expires_at` (migration 0212; NULL never
+   expires) stops counting at that instant: every subject lookup filters it in
+   SQL, the cached row's `valid_until` holds the earliest expiry it used and is
+   a miss from then, and the per-request memo recompiles past it, so a long run
+   loses the grant mid-run. `subject_type = 'profile'` rows exist for profiles
+   and never reach a person: every lookup site excludes them. Automation (no
+   actor) acts for the org that owns the job, webhook, or subscription. The
+   result is also cached per request context.
 4. **Credential scopes.** Non-null `credential.scopes` narrow the result.
 5. **Profile chain.** A profile-bound credential (`credential.profileId`)
    intersects the result with the acting profile's grants and every ancestor's
@@ -96,12 +98,12 @@ through `requireWebsiteCreatePermission`.
 publish) or a team-org credential (on its `credential.created` audit) gets a
 `manage` user grant on it, and on the package's app, with
 `grants.origin = 'created'` (`grantCreatorAccess` in
-`packages/worker/src/orgs/creator-access.ts`). Owners get none; they already
-hold everything. Owners can revoke the grant like any other. Org transfer
-re-points a creator grant when its person is a target member and drops it
-otherwise; a `manual` grant still blocks the move. `adminCreatorAccessBackfill`
-writes the same grants for older creations from the audit log, skipping anyone
-whose grant was ever revoked.
+`packages/worker/src/orgs/creator-access.ts`). Owners and Admins get none; they
+already hold everything that grant would add. Owners and Admins can revoke the
+grant like any other. Org transfer re-points a creator grant when its person is
+a target member and drops it otherwise; a `manual` grant still blocks the move.
+`adminCreatorAccessBackfill` writes the same grants for older creations from the
+audit log, skipping anyone whose grant was ever revoked.
 
 **Org-wide read grants.** An `org` grant may carry the read-only resource
 permissions in `orgWideReadPermissions`
@@ -121,26 +123,27 @@ rides along: outside packages and apps, `use`, `execute`, `write`, `delete`,
 `execution_context:read` (machines are listed per share; an execution context
 shared with all members compiles into Use on that one context for every live
 Member instead, `loadAllMembersContextGrantRows` in `access-compile.ts`) are
-left out. Owners set org-wide presets from the Grants page or with `accessGrant`
-(`resource_type: "org"`). Per-person package, app, and credential grants live on
-**Access** (`/@<slug>/-/grants/user/<userId>`), linked from Members,
-Collaborators, and person-linked Grants rows. Team and everyone grants live on
-`/@<slug>/-/grants/team/<teamId>` and `/@<slug>/-/grants/everyone`; bulk removal
-(`revokeOrganizationGrants`) checks each grant like `accessRevoke` and reports
-per-grant results. A denial for one of the org-wide reads says so.
+left out. Owners and Admins set org-wide presets from the Grants page or with
+`accessGrant` (`resource_type: "org"`). Per-person package, app, and credential
+grants live on **Access** (`/@<slug>/-/grants/user/<userId>`), linked from
+Members, Collaborators, and person-linked Grants rows. Team and everyone grants
+live on `/@<slug>/-/grants/team/<teamId>` and `/@<slug>/-/grants/everyone`; bulk
+removal (`revokeOrganizationGrants`) checks each grant like `accessRevoke` and
+reports per-grant results. A denial for one of the org-wide reads says so.
 
 **Org-wide package and app manage.** An `org` grant may also carry
 `orgWideManagePermissions` (`packages/shared/src/grant-presets.ts`): the
 non-read permissions of the package and app Manage presets. They compile into
 org-level permissions like the reads, so they cover every current and future
-package and app. Only an Owner may add them (`ownerOnlyOrgGrantPermissions`),
-the org rejects `subject_type: "org"` grants, and profiles cannot hold them
+package and app. Only an Owner or Admin may add them
+(`ownerOnlyOrgGrantPermissions`); `org:delete` stays Owner-only. The org rejects
+`subject_type: "org"` grants, and profiles cannot hold them
 (`profileOrgLevelAllowlist`). Org-wide `package:execute` also yields
 `org:execute` for ad-hoc code, like a package-scoped one. Unmappable-credential
-locks still apply: when a non-Owner holds org-wide `package:write` or
-`package:publish`, `loadUnmappableCredentialLocks` checks every live package in
-the org, and a locked package needs a grant on that package with
-`allow_unmappable_credential_changes` before those two pass.
+locks still apply: when someone without Owner authority holds org-wide
+`package:write` or `package:publish`, `loadUnmappableCredentialLocks` checks
+every live package in the org, and a locked package needs a grant on that
+package with `allow_unmappable_credential_changes` before those two pass.
 
 **Grantable but unenforced.** `app:write` and `app:delete` can be granted
 (advanced checklist only) but no surface checks them: an app shares its

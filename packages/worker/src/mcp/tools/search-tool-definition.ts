@@ -16,7 +16,7 @@ Find built-in capabilities, official guides, saved packages, integrations, conne
 
 **query** — compact ranked markdown + structured matches (same actionable substance on both channels; major MCP clients usually load one). Empty or broad queries return a domain index; search again with a more specific query. Domain ids appear on capability hits. Connected MCP servers appear as server hits (name, instructions); do not expect every remote tool in unscoped results. Prefer a matching package export hit over only the parent package when it fits the task. High-confidence export hits may include an inlined call contract (import + types + execute example) on both markdown and structured — use it; otherwise open \`entity\` for the full contract.
 
-**entity: "{type}:{id}"** — detail for one hit (\`capability\` | \`guide\` | \`integration\` | \`mcp-server\` | \`package\` | \`secret\`), or 1–10 refs. The first \`:\` is the type; ids may contain colons (\`capability:mcp:home:set_pin\`). Guide detail is the full markdown when it fits the response budget; oversized guides return a table of contents. Open a heading with \`guide:{id}#{slug}\` or lines with \`guide:{id}#L165\` / \`#L165-L180\`. Open one export with \`package:{id}#{subpath}\` (for example \`package:home-controls#bond-area-shades\`). Open one file with \`package:{id}#README.md#slug\` or \`package:{id}#src/file.ts#L165\`. An export subpath still wins. Capability detail includes an execute snippet. MCP server detail lists discovered tools; after that, call \`kody.mcp["name"].tool_name(args)\`.
+**entity: "{type}:{id}"** — detail for one hit (\`capability\` | \`guide\` | \`integration\` | \`mcp-server\` | \`package\` | \`secret\`), or 1–10 refs. The first \`:\` is the type; ids may contain colons (\`capability:mcp:home:set_pin\`). Guide detail is the full markdown when it fits the response budget; oversized guides return a table of contents. Open a heading with \`guide:{id}#{slug}\` or lines with \`guide:{id}#L165\` / \`#L165-L180\`. Open one export with \`package:{id}#{subpath}\` (for example \`package:home-controls#bond-area-shades\`). Open one file with \`package:{id}#README.md#slug\` or \`package:{id}#src/file.ts#L165\`. An export subpath still wins. A batch with several refs to one guide sends that guide's description and section list once, in structured \`guides\`. Capability detail includes an execute snippet. MCP server detail lists discovered tools; after that, call \`kody.mcp["name"].tool_name(args)\`.
 
 Example arguments:
 - \`{ "query": "send a message" }\`
@@ -111,6 +111,12 @@ export const searchToolOutputSchema = {
 		.optional()
 		.describe(
 			'Mode-specific structured payload: ranked matches with telemetry, domain browse listing, entity detail, or entity-batch results.',
+		),
+	guides: z
+		.unknown()
+		.optional()
+		.describe(
+			"Entity batches with several refs to one guide: that guide's description and sections, sent once and keyed by `guide:{id}`. Those entries carry `guideMetadataRef` instead of their own copy.",
 		),
 	error: z
 		.string()

@@ -1,4 +1,11 @@
 /** @jsxImportSource @emotion/react */
+import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
+import { useCallback, useState, type FormEvent } from 'react'
+import { useMachine } from '@xstate/react'
+import {
+	twoFactorVerifyState,
+	type TwoFactorVerifyState,
+} from '#client/routes/two-factor-verify-state.ts'
 import {
 	readPublicFormProtection,
 	resetTurnstileWidgets,
@@ -23,7 +30,6 @@ import {
 	stackedPageCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-import { useState, type FormEvent } from 'react'
 import { authFormErrorMessage } from '#universal/auth-form-errors.ts'
 import { packageAppDeviceSignInTarget } from '#universal/package-app-oauth-paths.ts'
 import { AuthFormFallback } from '../components/auth-form-fallback.tsx'
@@ -35,7 +41,6 @@ import { Honeypot } from '../components/honeypot-field.tsx'
 import { usePublicAuthProtection } from '../components/public-auth-protection.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
-
 function buildLoginHref(redirectTo: string | null) {
 	return redirectTo
 		? `/login?redirectTo=${encodeURIComponent(redirectTo)}`
@@ -44,8 +49,27 @@ function buildLoginHref(redirectTo: string | null) {
 
 export function VerifyRoute() {
 	const verifyTwoFactor = useServerFn(verifyWebsiteTwoFactor)
-	const [status, setStatus] = useState<'idle' | 'submitting'>('idle')
-	const [message, setMessage] = useState<string | null>(null)
+	const [flowSnapshot, , flowActor] = useMachine(twoFactorVerifyState, {
+		snapshot: (() => {
+			const initialView = { status: 'idle' }
+			return twoFactorVerifyState.resolveState({
+				value: initialView.status,
+				context: uiContext(initialView),
+			})
+		})(),
+	})
+	const flow = uiState<TwoFactorVerifyState>(flowSnapshot)
+	const transition = useCallback(
+		(event: Parameters<typeof flowActor.send>[0]) =>
+			sendUiEvent(flowActor, event),
+		[flowActor],
+	)
+	const getFlow = useCallback(
+		() => uiState<TwoFactorVerifyState>(flowActor.getSnapshot()),
+		[flowActor],
+	)
+	const status = flow.status
+	const message = 'message' in flow ? flow.message : null
 	const [formErrorDismissed, setFormErrorDismissed] = useState(false)
 	const turnstileSiteKey = usePublicAuthProtection()
 	const search = useMatchedPageScope().pageLocation.searchStr
@@ -66,6 +90,7 @@ export function VerifyRoute() {
 
 	async function handleSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault()
+		if (getFlow().status === 'submitting') return
 		if (!(event.currentTarget instanceof HTMLFormElement)) return
 		const form = event.currentTarget
 
@@ -73,13 +98,26 @@ export function VerifyRoute() {
 		const code = String(formData.get('code') ?? '').trim()
 		const protection = readPublicFormProtection(formData, form)
 		if (!code) {
-			setMessage('Enter the 6-digit code from your authenticator app.')
+			transition({
+				type: flowActor.getSnapshot().matches('submitting')
+					? 'RESPONSE_ERROR'
+					: 'VALIDATION_ERROR',
+				data: uiContext({
+					status: 'error',
+					message: 'Enter the 6-digit code from your authenticator app.',
+				}).data,
+			} as Parameters<typeof flowActor.send>[0])
 			return
 		}
 
 		setFormErrorDismissed(true)
-		setStatus('submitting')
-		setMessage(null)
+		if (
+			!transition({
+				type: 'SUBMIT',
+				data: uiContext({ status: 'submitting' }).data,
+			} as Parameters<typeof flowActor.send>[0])
+		)
+			return
 
 		try {
 			const payload = await verifyTwoFactor({
@@ -91,12 +129,18 @@ export function VerifyRoute() {
 					window.location.assign(buildLoginHref(getRedirectTo()))
 					return
 				}
-				setStatus('idle')
-				setMessage(
-					typeof payload?.error === 'string'
-						? payload.error
-						: 'Unable to verify the code.',
-				)
+				transition({
+					type: flowActor.getSnapshot().matches('submitting')
+						? 'RESPONSE_ERROR'
+						: 'VALIDATION_ERROR',
+					data: uiContext({
+						status: 'error',
+						message:
+							typeof payload?.error === 'string'
+								? payload.error
+								: 'Unable to verify the code.',
+					}).data,
+				} as Parameters<typeof flowActor.send>[0])
 				resetTurnstileWidgets()
 				return
 			}
@@ -105,8 +149,15 @@ export function VerifyRoute() {
 				resolvePostAuthLandingPath(getRedirectTo()) ?? '/account',
 			)
 		} catch {
-			setStatus('idle')
-			setMessage('Network error. Please try again.')
+			transition({
+				type: flowActor.getSnapshot().matches('submitting')
+					? 'RESPONSE_ERROR'
+					: 'VALIDATION_ERROR',
+				data: uiContext({
+					status: 'error',
+					message: 'Network error. Please try again.',
+				}).data,
+			} as Parameters<typeof flowActor.send>[0])
 			resetTurnstileWidgets()
 		}
 	}
@@ -122,7 +173,12 @@ export function VerifyRoute() {
 					in.
 				</p>
 			</header>
-			<form method="post" css={cardCss} onSubmit={handleSubmit}>
+			<form
+				method="post"
+				aria-busy={isSubmitting}
+				css={cardCss}
+				onSubmit={handleSubmit}
+			>
 				<Honeypot />
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>Verification code</span>

@@ -28,6 +28,9 @@ only over HTTPS. Agents, packages, logs, and tool output never see it. The one
 thing code can get back is a signature from a signing credential: a token
 derived from the key, never the key. Treat it like any other bearer token.
 
+> [!WATCH] https://www.youtube.com/watch?v=YlbJd-amFoQ Watch: Kody packages and
+> credentials: declare, map, and lock
+
 ## The kinds
 
 | Kind       | What it holds                                                | How code uses it                                           |

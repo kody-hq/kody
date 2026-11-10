@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { updateExperiments } from '#start/server/account-mutations'
 import { setExperiment } from '#start/server/experiment-opt-in'
 import type { SelfServeExperimentState } from '#universal/feature-flags/experiments.ts'
@@ -27,8 +28,12 @@ export function AccountExperimentsPage({
 	payload: AccountExperimentsLoaderData
 	currentHref: string
 }) {
-	const [message, setMessage] = useState<string | null>(null)
-	const [messageTone, setMessageTone] = useState<'info' | 'error'>('info')
+	const [feedback, setFeedback] = useState<UiFeedback | null>(() =>
+		createUiFeedback(null, 'info'),
+	)
+	const message = feedback?.message ?? null
+	const messageTone = feedback?.tone ?? 'info'
+
 	const capture = useSubmitterScope()
 	const invalidate = usePageInvalidation('permissions', { refreshShell: true })
 	const mutation = useMutation({
@@ -45,24 +50,28 @@ export function AccountExperimentsPage({
 	async function saveOptIn(enabled: boolean) {
 		if (saving) return
 		const isCurrent = capture()
-		setMessage(null)
+		setFeedback(createUiFeedback(null))
 		try {
 			await mutation.mutateAsync({ experimentsOptIn: enabled })
 			if (!isCurrent()) return
-			setMessage(
-				enabled
-					? 'You are opted into experiments. You can turn this off anytime.'
-					: 'You are opted out of experiments.',
+			setFeedback(
+				createUiFeedback(
+					enabled
+						? 'You are opted into experiments. You can turn this off anytime.'
+						: 'You are opted out of experiments.',
+					'info',
+				),
 			)
-			setMessageTone('info')
 		} catch (error) {
 			if (!isCurrent()) return
-			setMessage(
-				error instanceof Error
-					? error.message
-					: 'Unable to update experiments preference.',
+			setFeedback(
+				createUiFeedback(
+					error instanceof Error
+						? error.message
+						: 'Unable to update experiments preference.',
+					'error',
+				),
 			)
-			setMessageTone('error')
 		}
 	}
 
@@ -92,8 +101,7 @@ export function AccountExperimentsPage({
 					<ExperimentCatalog
 						experiments={payload.experiments}
 						onMessage={(text, tone) => {
-							setMessage(text)
-							setMessageTone(tone)
+							setFeedback(createUiFeedback(text, tone))
 						}}
 					/>
 				</AccountManagementPanel>

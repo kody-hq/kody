@@ -5,13 +5,13 @@ Every request Kody serves carries one `RequestContext`
 session, MCP, the CLI, an API token, a package app, a schedule, a webhook, an
 inbound email, or a platform event. It answers four questions in one shape:
 
-| Field         | Question                                   | Answer                                                                          |
-| ------------- | ------------------------------------------ | ------------------------------------------------------------------------------- |
-| `org`         | Whose data does this touch?                | The request's resolved org (`id`, `slug`); personal orgs reuse `stable_user_id` |
-| `actor`       | Who is acting?                             | The signed-in person; `null` for Automation                                     |
-| `attribution` | Who is the run billed and audited to?      | `user` or `automation` (source + source id)                                     |
-| `credential`  | What authenticated it, and does it narrow? | Kind, id, bound org, scopes, profile name                                       |
-| `membership`  | Which org role does the actor hold?        | `owner`; `null` for Automation                                                  |
+| Field         | Question                                   | Answer                                                                                    |
+| ------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| `org`         | Whose data does this touch?                | The request's resolved org (`id`, `slug`); personal orgs reuse `stable_user_id`           |
+| `actor`       | Who is acting?                             | The signed-in person; `null` for Automation                                               |
+| `attribution` | Who is the run billed and audited to?      | `user` or `automation` (source + source id)                                               |
+| `credential`  | What authenticated it, and does it narrow? | Kind, id, bound org, scopes, profile name                                                 |
+| `membership`  | Which org role does the actor hold?        | `owner`, `admin`, `member`, or `billing`; `null` for Automation and outside collaborators |
 
 Org ids are `OwnerId` and actors are `PersonId`
 ([ADR 0060](../decisions/0060-owner-and-person-ids.md)). Org ids are internal:

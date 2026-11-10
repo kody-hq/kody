@@ -1,3 +1,10 @@
+import {
+	statesOf,
+	finalStatesOf,
+	parseState,
+	sqlStatesOf,
+	sqlSourcesOf,
+} from '@kody-internal/shared/state-machine.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import type {
 	PlanTransferFreeLimit,
@@ -22,6 +29,10 @@ import {
 } from './billing-config.ts'
 import { readCreditWallet } from './credit-wallet.ts'
 import { buildOrgBillingMetadata } from './org-stripe-metadata.ts'
+import {
+	planTransferState,
+	type PlanTransferStatus,
+} from './plan-transfer-state.ts'
 import { selectPurchasableSeatSubscription } from './seat-sync.ts'
 import {
 	cancelSubscription,
@@ -65,12 +76,7 @@ import {
  * transfer can only be finished.
  */
 
-export type PlanTransferStatus =
-	| 'pending_checkout'
-	| 'applying'
-	| 'needs_retry'
-	| 'completed'
-	| 'canceled'
+export type { PlanTransferStatus } from './plan-transfer-state.ts'
 
 export type PlanTransferRow = {
 	id: string
@@ -178,11 +184,32 @@ const proSeatPriceMinor: Record<BillingInterval, number> = {
 const leaseMs = 2 * 60 * 1000
 const checkoutLifetimeSeconds = 60 * 60
 const checkoutExpiryGraceMs = 10 * 60 * 1000
-const openStatuses: ReadonlyArray<PlanTransferStatus> = [
+const openStatuses = statesOf(planTransferState).filter(
+	(status) =>
+		!finalStatesOf(planTransferState).includes(
+			parseState(planTransferState, status),
+		),
+)
+const openStatusSql = sqlStatesOf(planTransferState, openStatuses)
+const cancelOpenGuard = sqlSourcesOf(planTransferState, 'CANCEL', openStatuses)
+const cancelUnleasedGuard = sqlSourcesOf(planTransferState, 'CANCEL', [
 	'pending_checkout',
-	'applying',
 	'needs_retry',
-]
+])
+const cancelExpiredLeaseGuard = sqlSourcesOf(planTransferState, 'CANCEL', [
+	'applying',
+])
+const claimLeaseGuard = sqlSourcesOf(planTransferState, 'CLAIM_LEASE', [
+	'pending_checkout',
+	'needs_retry',
+])
+const reclaimLeaseGuard = sqlSourcesOf(planTransferState, 'CLAIM_LEASE', [
+	'applying',
+])
+const releaseLeaseGuard = sqlSourcesOf(planTransferState, 'RELEASE_CHECKOUT', [
+	'applying',
+])
+const completeGuard = sqlSourcesOf(planTransferState, 'COMPLETE', ['applying'])
 
 function blocked(reason: PlanTransferBlockReason): PlanTransferPreviewResult {
 	return { ok: false, reason, message: blockMessages[reason] }
@@ -459,7 +486,7 @@ async function hasOpenTransfer(db: D1Database, orgIds: Array<string>) {
 	const row = await db
 		.prepare(
 			`SELECT id FROM org_plan_transfers
-			 WHERE status IN ('pending_checkout', 'applying', 'needs_retry')
+			 WHERE status IN ${openStatusSql}
 			   AND (source_org_id IN (?, ?) OR target_org_id IN (?, ?))
 			 LIMIT 1`,
 		)
@@ -660,7 +687,7 @@ export async function readLatestPlanTransferForOrg(
 		.prepare(
 			`SELECT * FROM org_plan_transfers
 			 WHERE source_org_id = ? OR target_org_id = ?
-			 ORDER BY (status IN ('pending_checkout', 'applying', 'needs_retry')) DESC,
+			 ORDER BY (status IN ${openStatusSql}) DESC,
 			          created_at DESC
 			 LIMIT 1`,
 		)
@@ -836,7 +863,7 @@ async function markCanceled(
 			`UPDATE org_plan_transfers
 			 SET status = 'canceled', last_error_code = ?, lease_expires_at = NULL, updated_at = ?
 			 WHERE id = ? AND credit_amount_minor IS NULL
-			   AND status IN ('pending_checkout', 'applying', 'needs_retry')`,
+			   AND status IN ${cancelOpenGuard}`,
 		)
 		.bind(code, now.toISOString(), transferId)
 		.run()
@@ -868,8 +895,8 @@ export async function cancelPlanTransfer(input: {
 			 SET status = 'canceled', last_error_code = 'canceled_by_owner',
 			     lease_expires_at = NULL, updated_at = ?
 			 WHERE id = ? AND credit_amount_minor IS NULL
-			   AND (status IN ('pending_checkout', 'needs_retry')
-			        OR (status = 'applying' AND lease_expires_at < ?))`,
+			   AND (status IN ${cancelUnleasedGuard}
+			        OR (status IN ${cancelExpiredLeaseGuard} AND lease_expires_at < ?))`,
 		)
 		.bind(now.toISOString(), input.transferId, now.toISOString())
 		.run()
@@ -889,56 +916,61 @@ export async function cancelPlanTransfer(input: {
 
 async function claimLease(db: D1Database, transferId: string, now: Date) {
 	const nowIso = now.toISOString()
+	const leaseExpiresAt = new Date(now.valueOf() + leaseMs).toISOString()
 	const result = await db
 		.prepare(
 			`UPDATE org_plan_transfers
 			 SET status = 'applying', lease_expires_at = ?, updated_at = ?
 			 WHERE id = ?
-			   AND (status IN ('pending_checkout', 'needs_retry')
-			        OR (status = 'applying' AND lease_expires_at < ?))`,
+			   AND (status IN ${claimLeaseGuard}
+			        OR (status IN ${reclaimLeaseGuard} AND lease_expires_at < ?))`,
 		)
-		.bind(
-			new Date(now.valueOf() + leaseMs).toISOString(),
-			nowIso,
-			transferId,
-			nowIso,
-		)
+		.bind(leaseExpiresAt, nowIso, transferId, nowIso)
 		.run()
-	return (result.meta.changes ?? 0) > 0
+	return (result.meta.changes ?? 0) > 0 ? leaseExpiresAt : null
 }
 
 async function releaseLease(
 	db: D1Database,
 	transferId: string,
-	status: 'pending_checkout' | 'needs_retry',
+	leaseExpiresAt: string,
+	status: 'pending_checkout' | 'needs_retry' | 'canceled',
 	code: string | null,
 	now: Date,
 ) {
-	await db
+	const result = await db
 		.prepare(
 			`UPDATE org_plan_transfers
 			 SET status = ?, last_error_code = ?, lease_expires_at = NULL, updated_at = ?
-			 WHERE id = ? AND status = 'applying'`,
+			 WHERE id = ? AND status IN ${releaseLeaseGuard} AND lease_expires_at = ?`,
 		)
-		.bind(status, code, now.toISOString(), transferId)
+		.bind(status, code, now.toISOString(), transferId, leaseExpiresAt)
 		.run()
+	return (result.meta.changes ?? 0) > 0
 }
 
 async function updateStep(
 	db: D1Database,
 	transferId: string,
+	leaseExpiresAt: string,
 	columns: Record<string, string | number | null>,
 	now: Date,
 ) {
 	const entries = Object.entries(columns)
 	const assignments = entries.map(([column]) => `${column} = ?`).join(', ')
-	await db
+	const result = await db
 		.prepare(
 			`UPDATE org_plan_transfers SET ${assignments}, updated_at = ?
-			 WHERE id = ? AND status = 'applying'`,
+			 WHERE id = ? AND status = 'applying' AND lease_expires_at = ?`,
 		)
-		.bind(...entries.map(([, value]) => value), now.toISOString(), transferId)
+		.bind(
+			...entries.map(([, value]) => value),
+			now.toISOString(),
+			transferId,
+			leaseExpiresAt,
+		)
 		.run()
+	return (result.meta.changes ?? 0) > 0
 }
 
 function errorCode(error: unknown) {
@@ -967,8 +999,8 @@ export async function advancePlanTransfer(input: {
 	const row = await readPlanTransfer(db, input.transferId)
 	if (!row) return null
 	if (!openStatuses.includes(row.status)) return row
-	if (!(await claimLease(db, row.id, now)))
-		return await readPlanTransfer(db, row.id)
+	const leaseExpiresAt = await claimLease(db, row.id, now)
+	if (!leaseExpiresAt) return await readPlanTransfer(db, row.id)
 	const wasPendingCheckout = row.status === 'pending_checkout'
 
 	try {
@@ -981,7 +1013,14 @@ export async function advancePlanTransfer(input: {
 				ignoreOpenTransferId: row.id,
 			})
 			if (!validated.ok) {
-				await releaseLease(db, row.id, 'needs_retry', validated.reason, now)
+				await releaseLease(
+					db,
+					row.id,
+					leaseExpiresAt,
+					'needs_retry',
+					validated.reason,
+					now,
+				)
 				return await readPlanTransfer(db, row.id)
 			}
 			if (validated.value.targetSubscription.mode === 'checkout') {
@@ -993,12 +1032,19 @@ export async function advancePlanTransfer(input: {
 					expiresAt != null &&
 					now.valueOf() > expiresAt + checkoutExpiryGraceMs
 				) {
-					await releaseLease(db, row.id, 'pending_checkout', null, now)
-					await markCanceled(db, row.id, 'checkout_expired', now)
+					await releaseLease(
+						db,
+						row.id,
+						leaseExpiresAt,
+						'canceled',
+						'checkout_expired',
+						now,
+					)
 				} else {
 					await releaseLease(
 						db,
 						row.id,
+						leaseExpiresAt,
 						wasPendingCheckout ? 'pending_checkout' : 'needs_retry',
 						wasPendingCheckout ? null : 'target_not_paid',
 						now,
@@ -1013,6 +1059,7 @@ export async function advancePlanTransfer(input: {
 				await releaseLease(
 					db,
 					row.id,
+					leaseExpiresAt,
 					'needs_retry',
 					'source_not_stripe_pro',
 					now,
@@ -1026,7 +1073,14 @@ export async function advancePlanTransfer(input: {
 				nowSeconds: Math.floor(now.valueOf() / 1000),
 			})
 			if (!unused.ok) {
-				await releaseLease(db, row.id, 'needs_retry', 'credit_unavailable', now)
+				await releaseLease(
+					db,
+					row.id,
+					leaseExpiresAt,
+					'needs_retry',
+					'credit_unavailable',
+					now,
+				)
 				return await readPlanTransfer(db, row.id)
 			}
 			let credit = unused.existingCreditNote
@@ -1047,6 +1101,7 @@ export async function advancePlanTransfer(input: {
 					await releaseLease(
 						db,
 						row.id,
+						leaseExpiresAt,
 						'needs_retry',
 						'credit_unavailable',
 						now,
@@ -1061,21 +1116,30 @@ export async function advancePlanTransfer(input: {
 					}
 				}
 			}
-			await updateStep(
-				db,
-				row.id,
-				{
-					credit_amount_minor: credit?.total ?? 0,
-					currency: credit?.currency ?? unused.currency,
-					source_invoice_id: unused.invoiceId,
-					source_credit_note_id: credit?.id ?? null,
-					last_error_code: null,
-				},
-				now,
+			if (
+				!(await updateStep(
+					db,
+					row.id,
+					leaseExpiresAt,
+					{
+						credit_amount_minor: credit?.total ?? 0,
+						currency: credit?.currency ?? unused.currency,
+						source_invoice_id: unused.invoiceId,
+						source_credit_note_id: credit?.id ?? null,
+						last_error_code: null,
+					},
+					now,
+				))
 			)
+				return await readPlanTransfer(db, row.id)
 		}
 
 		let current = await mustRead(db, row.id)
+		if (
+			current.status !== 'applying' ||
+			current.lease_expires_at !== leaseExpiresAt
+		)
+			return current
 		const source = await readOrgBillingRow(db, current.source_org_id)
 		const target = await readOrgBillingRow(db, current.target_org_id)
 		if (!current.source_canceled_at) {
@@ -1084,15 +1148,24 @@ export async function advancePlanTransfer(input: {
 				source,
 				current.source_subscription_id,
 			)
-			await updateStep(
-				db,
-				row.id,
-				{ source_canceled_at: now.toISOString() },
-				now,
+			if (
+				!(await updateStep(
+					db,
+					row.id,
+					leaseExpiresAt,
+					{ source_canceled_at: now.toISOString() },
+					now,
+				))
 			)
+				return await readPlanTransfer(db, row.id)
 		}
 
 		current = await mustRead(db, row.id)
+		if (
+			current.status !== 'applying' ||
+			current.lease_expires_at !== leaseExpiresAt
+		)
+			return current
 		const creditMinor = current.credit_amount_minor ?? 0
 		if (creditMinor > 0 && !current.target_balance_transaction_id) {
 			const customerId = target?.stripe_customer_id?.trim()
@@ -1103,24 +1176,29 @@ export async function advancePlanTransfer(input: {
 				amountMinor: creditMinor,
 				sourceSlug: source?.slug ?? null,
 			})
-			await updateStep(
-				db,
-				row.id,
-				{ target_balance_transaction_id: transactionId },
-				now,
+			if (
+				!(await updateStep(
+					db,
+					row.id,
+					leaseExpiresAt,
+					{ target_balance_transaction_id: transactionId },
+					now,
+				))
 			)
+				return await readPlanTransfer(db, row.id)
 		}
 
-		await db
+		const completed = await db
 			.prepare(
 				`UPDATE org_plan_transfers
 				 SET status = 'completed', completed_at = ?, lease_expires_at = NULL,
 				     last_error_code = NULL, updated_at = ?
-				 WHERE id = ? AND status = 'applying'`,
+				 WHERE id = ? AND status IN ${completeGuard} AND lease_expires_at = ?`,
 			)
-			.bind(now.toISOString(), now.toISOString(), row.id)
+			.bind(now.toISOString(), now.toISOString(), row.id, leaseExpiresAt)
 			.run()
 		current = await mustRead(db, row.id)
+		if (!(completed.meta.changes ?? 0)) return current
 		await refreshBothOrgs(input.env, source, target, now)
 		await auditTransfer(input.env, {
 			transferId: row.id,
@@ -1142,7 +1220,7 @@ export async function advancePlanTransfer(input: {
 			transferId: row.id,
 			code,
 		})
-		await releaseLease(db, row.id, 'needs_retry', code, now)
+		await releaseLease(db, row.id, leaseExpiresAt, 'needs_retry', code, now)
 		return await readPlanTransfer(db, row.id)
 	}
 }

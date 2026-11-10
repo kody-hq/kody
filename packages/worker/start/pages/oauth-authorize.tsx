@@ -1,4 +1,17 @@
 /** @jsxImportSource @emotion/react */
+import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useMachine } from '@xstate/react'
+import { resolveSignInStatusAfterPageshow } from '#client/routes/oauth-authorize-bfcache.ts'
+import {
+	oauthConsentState,
+	type OAuthConsentState,
+	type OAuthAuthorizeDecision,
+} from '#client/routes/oauth-consent-state.ts'
+import {
+	emailVerificationState,
+	type EmailVerificationState,
+} from '#client/routes/email-verification-state.ts'
 import { useServerFn } from '@tanstack/react-start'
 import { submitOAuthDecision } from '#start/server/oauth-decision'
 import { useSessionInfo } from '../session-info.ts'
@@ -12,7 +25,6 @@ import {
 	turnstileResponseFieldName,
 	turnstileWidgetClassName,
 } from '#client/public-form-protection.ts'
-import { resolveSignInStatusAfterPageshow } from '#client/routes/oauth-authorize-bfcache.ts'
 import { resolveAuthorizeEmailVerified } from '#client/routes/oauth-authorize-email-verified.ts'
 import {
 	oauthAuthorizeActionsDisabled,
@@ -69,7 +81,6 @@ import {
 	typography,
 } from '#universal/styles/tokens.ts'
 import { startAuthentication } from '@simplewebauthn/browser'
-import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.tsx'
 import { Honeypot } from '../components/honeypot-field.tsx'
@@ -90,12 +101,8 @@ import {
 	OAuthAuthorizeDisconnectFooter,
 	OAuthAuthorizeGuestConnected,
 	OAuthAuthorizeSignedOutChoices,
-	type GuestConnection,
 } from './oauth-authorize-guest.tsx'
-
 type OAuthAuthorizeStatus = 'idle' | 'loading' | 'ready' | 'error'
-type OAuthAuthorizeMessage = { type: 'error' | 'info'; text: string }
-type OAuthAuthorizeDecision = 'approve' | 'deny' | 'reset-client' | 'guest'
 
 function oauthAuthorizeAccessLead(
 	status: OAuthAuthorizeStatus,
@@ -304,37 +311,79 @@ export function OAuthAuthorizeRoute({
 		refreshRoute: true,
 	})
 	const currentHref = useMatchedPageScope().pageLocation.href
-	const [messageOverride, setMessage] = useState<OAuthAuthorizeMessage | null>(
-		null,
+	const [interactionSnapshot, , interactionActor] = useMachine(
+		oauthConsentState,
+		{
+			snapshot: (() => {
+				const initialView = { status: 'idle' }
+				return oauthConsentState.resolveState({
+					value: initialView.status,
+					context: uiContext(initialView),
+				})
+			})(),
+		},
+	)
+	const interaction = uiState<OAuthConsentState>(interactionSnapshot)
+	const transition = useCallback(
+		(event: Parameters<typeof interactionActor.send>[0]) =>
+			sendUiEvent(interactionActor, event),
+		[interactionActor],
+	)
+	const getInteraction = useCallback(
+		() => uiState<OAuthConsentState>(interactionActor.getSnapshot()),
+		[interactionActor],
 	)
 	const message =
-		messageOverride ??
-		(!data.ok ? { type: 'error' as const, text: data.error } : null)
+		interaction.status === 'error'
+			? { type: 'error' as const, text: interaction.message }
+			: interaction.status === 'reset_complete'
+				? { type: 'info' as const, text: interaction.message }
+				: interaction.status === 'idle' && !data.ok
+					? { type: 'error' as const, text: data.error }
+					: null
 	const info = data.ok ? data : null
 	const status: OAuthAuthorizeStatus = data.ok ? 'ready' : 'error'
 	const allowClientReset = !data.ok && data.allowClientReset
-	const [guestConnection, setGuestConnection] =
-		useState<GuestConnection | null>(null)
-	const [decisionClientFailure, setDecisionClientFailure] =
-		useState<OAuthAuthorizeClientFailure | null>(null)
+	const guestConnection =
+		interaction.status === 'guest' ? interaction.connection : null
 	const clientFailure =
-		decisionClientFailure ?? (!data.ok ? (data.clientFailure ?? null) : null)
-	const [submittingDecision, setSubmittingDecision] =
-		useState<OAuthAuthorizeDecision | null>(null)
-	const submitting = useRef(false)
-	const [resetCompleted, setResetCompleted] = useState(false)
-	const [resendStatus, setResendStatus] = useState<'idle' | 'sending'>('idle')
-	const [resendMessage, setResendMessage] = useState<string | null>(null)
-	const [resendTone, setResendTone] = useState<'error' | 'info'>('info')
+		(interaction.status === 'error' ? interaction.clientFailure : null) ??
+		(!data.ok ? (data.clientFailure ?? null) : null)
+	const submittingDecision =
+		interaction.status === 'deciding' || interaction.status === 'redirecting'
+			? interaction.decision
+			: null
+	const resetCompleted = interaction.status === 'reset_complete'
+	const [verificationSnapshot, , verificationActor] = useMachine(
+		emailVerificationState,
+		{
+			snapshot: (() => {
+				const initialView = {
+					status: 'idle',
+				}
+				return emailVerificationState.resolveState({
+					value: initialView.status,
+					context: uiContext(initialView),
+				})
+			})(),
+		},
+	)
+	const verification = uiState<EmailVerificationState>(verificationSnapshot)
+	const transitionVerification = useCallback(
+		(event: Parameters<typeof verificationActor.send>[0]) =>
+			sendUiEvent(verificationActor, event),
+		[verificationActor],
+	)
+
+	const resendStatus =
+		verification.status === 'sending' ? ('sending' as const) : ('idle' as const)
+	const resendMessage = 'message' in verification ? verification.message : null
+	const resendTone =
+		verification.status === 'error' ? ('error' as const) : ('info' as const)
 	const consentInteractive = useHydrated()
 	const { turnstileSiteKey } = authProviders
 	const formRef = useRef<HTMLFormElement>(null)
 	const mounted = useRef(false)
-	const signInController = useRef<AbortController | null>(null)
-	const [signInStatus, setSignInStatus] = useState<'idle' | 'submitting'>(
-		'idle',
-	)
-	const signInBusy = useRef(false)
 	const [pickedOrgSlug, setPickedOrgSlug] = useState<
 		string | null | undefined
 	>()
@@ -348,25 +397,30 @@ export function OAuthAuthorizeRoute({
 	useEffect(() => {
 		mounted.current = true
 		function pageshow(event: PageTransitionEvent) {
+			const current = getInteraction()
+			const busy =
+				current.status === 'signing_in' || current.status === 'redirecting'
 			if (
-				resolveSignInStatusAfterPageshow(
-					event.persisted,
-					signInBusy.current ? 'submitting' : 'idle',
-				) === 'idle' &&
-				event.persisted
+				busy &&
+				resolveSignInStatusAfterPageshow(event.persisted, 'submitting') ===
+					'idle'
 			) {
-				signInBusy.current = false
-				setSignInStatus('idle')
+				if (current.status === 'signing_in') current.controller.abort()
+				transition({
+					type: 'RESET',
+					data: uiContext({ status: 'idle' }).data,
+				} as Parameters<typeof interactionActor.send>[0])
 				resetTurnstileWidgets()
 			}
 		}
 		window.addEventListener('pageshow', pageshow)
 		return () => {
 			mounted.current = false
-			signInController.current?.abort()
+			const current = getInteraction()
+			if (current.status === 'signing_in') current.controller.abort()
 			window.removeEventListener('pageshow', pageshow)
 		}
-	}, [])
+	}, [getInteraction, transition])
 	useEffect(() => {
 		if (turnstileSiteKey) void renderTurnstileWidgets(turnstileSiteKey)
 	}, [turnstileSiteKey, session?.email, info?.requireCredentials])
@@ -376,21 +430,49 @@ export function OAuthAuthorizeRoute({
 			? readPublicFormProtection(new FormData(form), form)
 			: emptyPublicFormProtection()
 	}
-	function signInError(text: string | null) {
-		if (!mounted.current) return
-		signInBusy.current = false
-		setSignInStatus('idle')
+	function signInError(controller: AbortController, text: string | null) {
+		const current = getInteraction()
+		if (
+			!mounted.current ||
+			controller.signal.aborted ||
+			current.status !== 'signing_in' ||
+			current.controller !== controller
+		)
+			return
 		if (text) {
 			resetTurnstileWidgets()
-			setMessage({ type: 'error', text })
-		}
+			transition({
+				...({
+					type: 'RESPONSE_ERROR',
+					data: uiContext({
+						status: 'error',
+						message: text,
+						clientFailure: null,
+					}).data,
+				} as Parameters<typeof interactionActor.send>[0]),
+				requestId: controller,
+			})
+		} else
+			transition({
+				...({
+					type: 'RESET',
+					data: uiContext({ status: 'idle' }).data,
+				} as Parameters<typeof interactionActor.send>[0]),
+				requestId: controller,
+			})
 	}
 	async function signIn(provider?: string) {
-		if (signInBusy.current || submitting.current) return
-		signInBusy.current = true
-		setSignInStatus('submitting')
 		const controller = new AbortController()
-		signInController.current = controller
+		if (
+			!transition({
+				...({
+					type: 'SIGN_IN',
+					data: uiContext({ status: 'signing_in', controller }).data,
+				} as Parameters<typeof interactionActor.send>[0]),
+				requestId: controller,
+			})
+		)
+			return
 		const redirectTo = readOAuthResumeTarget()
 		try {
 			if (provider) {
@@ -401,20 +483,20 @@ export function OAuthAuthorizeRoute({
 					null,
 					controller.signal,
 				)
-				if (error) signInError(error)
+				if (error) signInError(controller, error)
 				return
 			}
 			const options = await webauthnAuthenticationOptions({ data: {} })
 			if (!options) return
 			if (!options.successful || options?.ok !== true || !options.options) {
-				signInError('Unable to start passkey sign-in.')
+				signInError(controller, 'Unable to start passkey sign-in.')
 				return
 			}
 			let response
 			try {
 				response = await startAuthentication({ optionsJSON: options.options })
 			} catch {
-				signInError(null)
+				signInError(controller, null)
 				return
 			}
 			controller.signal.throwIfAborted()
@@ -425,6 +507,7 @@ export function OAuthAuthorizeRoute({
 			if (!result) return
 			if (!result.successful || result?.ok !== true) {
 				signInError(
+					controller,
 					typeof result?.error === 'string'
 						? result.error
 						: 'Passkey sign-in failed.',
@@ -440,7 +523,7 @@ export function OAuthAuthorizeRoute({
 			)
 		} catch {
 			if (!controller.signal.aborted)
-				signInError('Network error. Please try again.')
+				signInError(controller, 'Network error. Please try again.')
 		}
 	}
 	function readOAuthResumeTarget() {
@@ -453,37 +536,79 @@ export function OAuthAuthorizeRoute({
 		return nextSession
 	}
 	async function handleResendVerification() {
-		setResendStatus('sending')
-		setResendMessage(null)
-		setResendTone('info')
+		if (
+			!transitionVerification({
+				type: 'RESEND',
+				data: uiContext({ status: 'sending' }).data,
+			} as Parameters<typeof verificationActor.send>[0])
+		)
+			return
 		try {
 			const result = await requestResendVerification(readOAuthResumeTarget())
-			if (!result) return
 			if (!mounted.current) return
-			setResendTone(result.ok ? 'info' : 'error')
-			setResendMessage(result.message)
+			if (!result) {
+				transitionVerification({
+					type: 'CANCEL',
+					data: uiContext({ status: 'idle' }).data,
+				} as Parameters<typeof verificationActor.send>[0])
+				return
+			}
 			if (result.ok) await refreshSession()
+			if (mounted.current)
+				transitionVerification({
+					type:
+						(result.ok ? 'success' : 'error') === 'success'
+							? 'RESPONSE_OK'
+							: 'RESPONSE_ERROR',
+					data: { message: result.message },
+				} as Parameters<typeof verificationActor.send>[0])
 		} catch {
-			setResendTone('error')
-			setResendMessage('Unable to resend the verification email.')
-		} finally {
-			setResendStatus('idle')
+			if (mounted.current)
+				transitionVerification({
+					type: 'RESPONSE_ERROR',
+					data: uiContext({
+						status: 'error',
+						message: 'Unable to resend the verification email.',
+					}).data,
+				} as Parameters<typeof verificationActor.send>[0])
 		}
 	}
 	async function handleContinueAfterVerify() {
+		if (
+			!transitionVerification({
+				type: 'CHECK',
+				data: uiContext({ status: 'checking' }).data,
+			} as Parameters<typeof verificationActor.send>[0])
+		)
+			return
 		try {
 			const nextSession = await refreshSession()
-			if (nextSession === undefined) return
 			if (!mounted.current) return
-			setResendTone('info')
-			setResendMessage(
-				nextSession?.emailVerified
-					? 'Email verified. You can approve the connection now.'
-					: 'Still waiting on verification. Keep this page open, finish verification in another tab, then continue.',
-			)
+			if (nextSession === undefined) {
+				transitionVerification({
+					type: 'CANCEL',
+					data: uiContext({ status: 'idle' }).data,
+				} as Parameters<typeof verificationActor.send>[0])
+				return
+			}
+			transitionVerification({
+				type: 'RESPONSE_OK',
+				data: uiContext({
+					status: 'success',
+					message: nextSession?.emailVerified
+						? 'Email verified. You can approve the connection now.'
+						: 'Still waiting on verification. Keep this page open, finish verification in another tab, then continue.',
+				}).data,
+			} as Parameters<typeof verificationActor.send>[0])
 		} catch {
-			setResendTone('error')
-			setResendMessage('Unable to check verification status. Try again.')
+			if (mounted.current)
+				transitionVerification({
+					type: 'RESPONSE_ERROR',
+					data: uiContext({
+						status: 'error',
+						message: 'Unable to check verification status. Try again.',
+					}).data,
+				} as Parameters<typeof verificationActor.send>[0])
 		}
 	}
 
@@ -491,9 +616,17 @@ export function OAuthAuthorizeRoute({
 		decision: OAuthAuthorizeDecision,
 		form?: HTMLFormElement,
 	) {
-		if (submitting.current || signInBusy.current) return
-		submitting.current = true
-		setSubmittingDecision(decision)
+		const request = {}
+		if (
+			!transition({
+				...({
+					type: 'DECIDE',
+					data: uiContext({ status: 'deciding', decision, request }).data,
+				} as Parameters<typeof interactionActor.send>[0]),
+				requestId: request,
+			})
+		)
+			return
 
 		try {
 			const body = new URLSearchParams()
@@ -506,9 +639,16 @@ export function OAuthAuthorizeRoute({
 				const password = String(formData.get('password') ?? '')
 				if (email || password) {
 					if (!email || !password) {
-						setMessage({
-							type: 'error',
-							text: 'Email and password are required.',
+						transition({
+							...({
+								type: 'RESPONSE_ERROR',
+								data: uiContext({
+									status: 'error',
+									message: 'Email and password are required.',
+									clientFailure: null,
+								}).data,
+							} as Parameters<typeof interactionActor.send>[0]),
+							requestId: request,
 						})
 						return
 					}
@@ -529,50 +669,121 @@ export function OAuthAuthorizeRoute({
 				},
 			})
 			if (!payload) return
-			if (!mounted.current) return
+			const current = getInteraction()
+			if (
+				!mounted.current ||
+				current.status !== 'deciding' ||
+				current.request !== request
+			)
+				return
 			if (!payload.successful) {
 				resetTurnstileWidgets()
 				const errorText =
 					typeof payload?.error === 'string'
 						? payload.error
 						: 'Unable to complete authorization.'
-				setMessage({ type: 'error', text: errorText })
-				setDecisionClientFailure(payload?.clientFailure ?? null)
+				transition({
+					...({
+						type: 'RESPONSE_ERROR',
+						data: uiContext({
+							status: 'error',
+							message: errorText,
+							clientFailure: payload?.clientFailure ?? null,
+						}).data,
+					} as Parameters<typeof interactionActor.send>[0]),
+					requestId: request,
+				})
 				if (payload?.code === 'email_verification_required') {
 					await refreshSession()
 				}
-				setSubmittingDecision(null)
 				return
 			}
 			if (payload.guest && payload.redirectTo) {
-				setGuestConnection({
-					redirectTo: payload.redirectTo,
-					claimUrl: payload.guest.claimUrl,
-					expiresAt: payload.guest.expiresAt,
+				transition({
+					...({
+						type: 'GUEST_CREATED',
+						data: uiContext({
+							status: 'guest',
+							connection: {
+								redirectTo: payload.redirectTo,
+								claimUrl: payload.guest.claimUrl,
+								expiresAt: payload.guest.expiresAt,
+							},
+						}).data,
+					} as Parameters<typeof interactionActor.send>[0]),
+					requestId: request,
 				})
 				return
 			}
 			if (payload?.redirectTo) {
+				transition({
+					...({
+						type: 'REDIRECT',
+						data: uiContext({ status: 'redirecting', decision }).data,
+					} as Parameters<typeof interactionActor.send>[0]),
+					requestId: request,
+				})
 				window.location.assign(payload.redirectTo)
 				return
 			}
 			if (typeof payload?.message === 'string') {
-				setResetCompleted(true)
-				setSubmittingDecision(null)
-				setMessage({ type: 'info', text: payload.message })
+				transition({
+					...({
+						type: 'CLIENT_RESET',
+						data: uiContext({
+							status: 'reset_complete',
+							message: payload.message,
+						}).data,
+					} as Parameters<typeof interactionActor.send>[0]),
+					requestId: request,
+				})
 				return
 			}
-			setMessage({ type: 'error', text: 'Missing redirect response.' })
+			transition({
+				...({
+					type: 'RESPONSE_ERROR',
+					data: uiContext({
+						status: 'error',
+						message: 'Missing redirect response.',
+						clientFailure: null,
+					}).data,
+				} as Parameters<typeof interactionActor.send>[0]),
+				requestId: request,
+			})
 		} catch {
-			if (!mounted.current) return
+			const current = getInteraction()
+			if (
+				!mounted.current ||
+				current.status !== 'deciding' ||
+				current.request !== request
+			)
+				return
 			resetTurnstileWidgets()
-			setMessage({
-				type: 'error',
-				text: 'Network error. Please try again.',
+			transition({
+				...({
+					type: 'RESPONSE_ERROR',
+					data: uiContext({
+						status: 'error',
+						message: 'Network error. Please try again.',
+						clientFailure: null,
+					}).data,
+				} as Parameters<typeof interactionActor.send>[0]),
+				requestId: request,
 			})
 		} finally {
-			submitting.current = false
-			if (mounted.current) setSubmittingDecision(null)
+			const current = getInteraction()
+			if (
+				mounted.current &&
+				current.status === 'deciding' &&
+				current.request === request
+			)
+				transition({
+					...({
+						type: 'RESET',
+						data: uiContext({ status: 'idle' }).data,
+					} as Parameters<typeof interactionActor.send>[0]),
+					requestId: request,
+				})
 		}
 	}
 
@@ -619,7 +830,7 @@ export function OAuthAuthorizeRoute({
 	})
 	const actionsDisabled =
 		orgField.kind === 'missing' ||
-		signInStatus === 'submitting' ||
+		interaction.status === 'signing_in' ||
 		oauthAuthorizeActionsDisabled({
 			hydrated,
 			statusReady: status === 'ready',
@@ -696,6 +907,7 @@ export function OAuthAuthorizeRoute({
 					description="MCP authorization cannot finish until this account email is verified. Resend the link here if needed. Keep this page open, verify in another tab, then continue without restarting the host connection."
 					delivery={session?.emailVerificationDelivery ?? null}
 					resendStatus={resendStatus}
+					checking={verification.status === 'checking'}
 					resendMessage={resendMessage}
 					resendTone={resendTone}
 					onResend={() => void handleResendVerification()}
@@ -785,7 +997,12 @@ export function OAuthAuthorizeRoute({
 					method={consentForm.method}
 					action={consentForm.action}
 					data-testid="oauth-authorize-form"
-					aria-busy={hydrated ? undefined : 'true'}
+					aria-busy={
+						!hydrated ||
+						interaction.status === 'deciding' ||
+						interaction.status === 'redirecting' ||
+						interaction.status === 'signing_in'
+					}
 					css={{
 						...cardCss,
 						opacity: formReady ? 1 : 0.7,

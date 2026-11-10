@@ -5,7 +5,7 @@
  * runner. This module is the local gate. Suite legs are sized like those
  * jobs (node unit uses 3 workers when `CI=1`). Starting every suite and
  * every worker dry-run together fills a 4-core machine and exhausts a 16GB
- * VM (#3147). Cap those legs there. Larger machines still start every leg
+ * VM (#3147); an 8-core 31GB VM fails the same way (#4987). Cap those legs there. Larger machines still start every leg
  * together. No check is skipped on either size.
  */
 
@@ -17,14 +17,18 @@ export type ValidateLeg = {
 	weight: ValidateLegWeight
 }
 
-/** One suite leg saturates a machine this small. CI node unit uses 3 workers. */
-export const saturatedSuiteParallelism = 4
+/**
+ * One suite leg saturates a machine this small. CI node unit uses 3 workers.
+ * An 8-core 31GB VM still starved the e2e webServer with two suite legs at
+ * once (#4987).
+ */
+export const saturatedSuiteParallelism = 8
 
 /**
  * RAM below this cannot hold several suite legs plus worker dry-runs.
- * The failing Cloud Agent VM has 16GB. The floor sits above that.
+ * Cloud Agent VMs with 16GB (#3147) and 31GB (#4987) both failed.
  */
-export const saturatedSuiteMemoryBytes = 24 * 1024 * 1024 * 1024
+export const saturatedSuiteMemoryBytes = 48 * 1024 * 1024 * 1024
 
 export const serialValidateCommand = 'npm run worker-startup-time:check'
 
@@ -148,7 +152,7 @@ const parallelValidateLegs = [
 	},
 	{
 		name: 'cli-openapi',
-		command: 'npm run cli:openapi:check',
+		command: 'npm run cli:openapi:check && npm run state-machines:check',
 		weight: 'check',
 	},
 	{ name: 'audit', command: 'npm run audit:prod', weight: 'check' },
