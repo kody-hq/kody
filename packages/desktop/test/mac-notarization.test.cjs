@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict')
 const { test } = require('node:test')
+const { appleDelaysMs } = require('../scripts/release-retry.cjs')
 const {
 	isTransientNetworkFailure,
 	runWithNetworkRetry,
@@ -57,8 +58,7 @@ test('retries a lost connection and succeeds on a later attempt', () => {
 		},
 	)
 	assert.deepEqual(result, { attempts: 2 })
-	assert.equal(delays.length, 1)
-	assert.ok(delays[0] > 0)
+	assert.deepEqual(delays, appleDelaysMs.slice(0, 1))
 	assert.equal(fake.calls.length, 2)
 })
 
@@ -82,9 +82,9 @@ test('a real rejection fails at once without retrying', () => {
 })
 
 test('gives up after the bounded number of network retries', () => {
-	const offered = 20
+	const bound = appleDelaysMs.length + 1
 	const fake = fakeRun(
-		Array.from({ length: offered }, () => ({
+		Array.from({ length: bound + 3 }, () => ({
 			status: 68,
 			stdout: '',
 			stderr: lostConnection,
@@ -96,8 +96,7 @@ test('gives up after the bounded number of network retries', () => {
 				...quiet,
 				run: fake.run,
 			}),
-		/after \d+ attempts/,
+		new RegExp(`after ${bound} attempts`),
 	)
-	assert.ok(fake.calls.length > 1)
-	assert.ok(fake.calls.length < offered)
+	assert.equal(fake.calls.length, bound)
 })

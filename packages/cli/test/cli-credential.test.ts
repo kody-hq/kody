@@ -97,6 +97,11 @@ test('resolveCliCredential precedence: flag, env, then the saved credential', ()
 test('resolveCliCredential uses the same order for every purpose', () => {
 	for (const purpose of ['call', 'session', 'mint'] as const) {
 		assert.equal(
+			pick({ flag: 'kody_at_flag', env: 'kody_at_env', login: true, purpose })
+				.source,
+			'token-flag',
+		)
+		assert.equal(
 			pick({ env: 'kody_at_env', login: true, purpose }).source,
 			'env',
 		)
@@ -425,7 +430,12 @@ test('with an old-slot token and a login, every command sends the login', async 
 		assert.match(whoami.stdout, /credential: saved CLI credential/)
 		assert.doesNotMatch(whoami.stdout, /stored API token/)
 		assert.doesNotMatch(whoami.stdout, /kody_at_/)
-		assert.ok(!authHeaders.includes('Bearer kody_at_stored_old'))
+		assert.ok(authHeaders.includes('Bearer kody_at_login'))
+		assert.ok(
+			authHeaders.every(
+				(header) => header === '' || header === 'Bearer kody_at_login',
+			),
+		)
 
 		const api = await capture([
 			'api',
@@ -435,7 +445,12 @@ test('with an old-slot token and a login, every command sends the login', async 
 			'--api-url',
 			apiUrl,
 		])
-		assert.ok(!authHeaders.includes('Bearer kody_at_stored_old'))
+		assert.ok(authHeaders.includes('Bearer kody_at_login'))
+		assert.ok(
+			authHeaders.every(
+				(header) => header === '' || header === 'Bearer kody_at_login',
+			),
+		)
 		assert.doesNotMatch(api.stderr, /kody_at_/)
 	})
 })
