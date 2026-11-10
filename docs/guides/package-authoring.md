@@ -21,10 +21,12 @@ surface). Publish checks fail when either file is missing or empty.
 Already-published packages keep running as published; the next author-driven
 publish requires both files.
 
-Unique Dynamic Worker days and how the acting user plus a stable module graph
-reuse one isolate per UTC day are documented once in
-[Platform efficiency](./platform-efficiency.md) (`guide:platform_efficiency`).
-Package README and AGENTS.md files do not repeat that cost model.
+> [!WATCH] https://www.youtube.com/watch?v=6t1a5cdgzY4 Watch: Kody package
+> publishing: push to save, publish to ship
+
+The Dynamic Worker cost model is in
+[Platform efficiency](./platform-efficiency.md) (`guide:platform_efficiency`);
+package README and AGENTS.md files do not repeat it.
 
 ## Choose an authoring lane
 

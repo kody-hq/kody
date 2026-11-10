@@ -20,6 +20,9 @@ or Open API path exists.
 `--local` runs a pinned workerd on Linux, macOS, and Windows (x64 or arm64;
 Windows on Arm uses the x64 workerd build). No Docker required.
 
+Watch:
+[Where Kody code runs: the cloud, your laptop, or your own machine](https://www.youtube.com/watch?v=i5qCOaIiYc8).
+
 Auth: `--token` / `KODY_API_TOKEN` (`kody_at_…` with `org:execute`; add
 `package:execute` when the module imports `kody:@…`), or when no API token is
 set, the access token from `kody login` (MCP OAuth) as Bearer on CapabilityProxy

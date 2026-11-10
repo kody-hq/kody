@@ -17,6 +17,9 @@ meters unique Dynamic Worker days so that isolate cost is visible by surface.
 This page states that cost model once. Package README and AGENTS.md files do not
 repeat it.
 
+> [!WATCH] https://www.youtube.com/watch?v=KE8SpFKzoNg Watch: Kody credits and
+> cost: what you pay for and how to spend less
+
 ## Unique worker days
 
 Cloudflare bills **unique Dynamic Worker isolates** (a worker id) **per UTC

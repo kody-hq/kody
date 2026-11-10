@@ -18,6 +18,9 @@ belong to one org. Handles are permanent: `@slug` does not rename.
 The org is the billing and data boundary: its resources, usage, limits, and bill
 stay inside it. Inside an org, grants control access.
 
+> [!WATCH] https://www.youtube.com/watch?v=8VE6rSL-8nI Watch: Kody orgs and
+> sharing: members, grants, and outside collaborators
+
 | Role                 | Holds                                                                                                                                                                                          |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Owner**            | Every org permission, including deleting the org and changing Owners                                                                                                                           |

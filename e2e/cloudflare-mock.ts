@@ -3,6 +3,7 @@ import { readE2eCloudflareMockState } from '../tools/e2e-cloudflare-mock-state.t
 const verificationEmailSubject = 'Verify your email to finish setting up Kody'
 
 const connectAgentEmailSubject = 'Connect the agent you already use'
+const founderWelcomeEmailSubject = 'Thanks for trying Kody'
 
 export type MockEmailMessage = {
 	id: string
@@ -52,6 +53,18 @@ export function findVerificationEmail(
 	return (
 		messages.find((message) => {
 			if (message.subject !== verificationEmailSubject) return false
+			return messageReaches(message, recipient)
+		}) ?? null
+	)
+}
+
+export function findFounderWelcomeEmail(
+	messages: Array<MockEmailMessage>,
+	recipient: string,
+) {
+	return (
+		messages.find((message) => {
+			if (message.subject !== founderWelcomeEmailSubject) return false
 			return messageReaches(message, recipient)
 		}) ?? null
 	)

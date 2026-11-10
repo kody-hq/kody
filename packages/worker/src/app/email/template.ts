@@ -22,6 +22,13 @@ export type EmailAfterActionBlock = string | { kind: 'quote'; text: string }
 /** A body paragraph, or one that ends in a link (rendered as an anchor in HTML). */
 export type EmailBodyBlock = string | { text: string; link: EmailAction }
 
+export type EmailSignature = {
+	name: string
+	title: string
+	/** Site-relative path of a 2x square image; displayed at 48px and clipped round. */
+	imagePath: string
+}
+
 export type TransactionalEmailContent = {
 	/** Absolute origin used to load the Kody logo and mark; keeps the images reachable from mail clients. */
 	appBaseUrl: string
@@ -41,6 +48,8 @@ export type TransactionalEmailContent = {
 	afterAction?: Array<EmailAfterActionBlock>
 	/** Small muted line at the very bottom of the card. */
 	footnote?: string
+	/** Personal sign-off: a small round headshot next to the sender's name. */
+	signature?: EmailSignature
 	/** Trusted HTML comment stamped into the card (inventory markers). */
 	htmlComment?: string
 	/** Optional one-click opt-out for Kody tips campaign mail only. */
@@ -149,6 +158,21 @@ export function renderTransactionalEmail(
 								: ''
 						}`
 		: ''
+	const signature = content.signature
+	const signatureBlock = signature
+		? `
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 8px 0 0;">
+              <tr>
+                <td valign="middle" style="padding-right: 12px;">
+                  <img src="${escapeHtml(new URL(signature.imagePath, content.appBaseUrl).toString())}" width="48" height="48" alt="${escapeHtml(signature.name)}" style="display: block; width: 48px; height: 48px; border: 0; border-radius: 50%;" />
+                </td>
+                <td valign="middle" style="font-family: ${fontStack}; font-size: 15px; line-height: 1.4;">
+                  <span class="kody-text" style="display: block; font-weight: 600; color: ${colors.text};">${escapeHtml(signature.name)}</span>
+                  <span class="kody-muted" style="display: block; font-size: 14px; color: ${colors.muted};">${escapeHtml(signature.title)}</span>
+                </td>
+              </tr>
+            </table>`
+		: ''
 	const footerMarkBlock = `
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 16px 0 0;">
               <tr>
@@ -192,7 +216,7 @@ export function renderTransactionalEmail(
               <td class="kody-card" style="background-color: ${colors.card}; border: 1px solid ${colors.border}; border-radius: 14px; padding: 32px;">
                 <h1 class="kody-text" style="margin: 0 0 16px; font-family: ${displayFontStack}; font-size: 24px; line-height: 1.25; font-weight: 700; letter-spacing: -0.02em; color: ${colors.text};">${escapeHtml(content.heading)}</h1>
                 ${paragraphs(content.body, 'kody-text', bodyStyle)}${actionBlock}
-                ${content.afterAction?.length ? afterActionBlocks(content.afterAction, mutedStyle, quoteStyle) : ''}${footerMarkBlock}${
+                ${content.afterAction?.length ? afterActionBlocks(content.afterAction, mutedStyle, quoteStyle) : ''}${signatureBlock}${footerMarkBlock}${
 									content.htmlComment
 										? `<!-- ${escapeHtml(content.htmlComment)} -->`
 										: ''
@@ -229,6 +253,7 @@ export function renderTransactionalEmail(
 			? [`${secondaryAction.label}: ${secondaryAction.url}`]
 			: []),
 		...(content.afterAction ? afterActionText(content.afterAction) : []),
+		...(signature ? [`${signature.name}\n${signature.title}`] : []),
 		...(content.footnote ? [content.footnote] : []),
 		...(content.unsubscribe
 			? [`${content.unsubscribe.label}: ${content.unsubscribe.url}`]

@@ -1,6 +1,5 @@
 import {
 	buildBillingSuccessEmail,
-	buildConnectAgentEmail,
 	buildCreditsAutoRefilledEmail,
 	buildCreditsLowBalanceEmail,
 	buildCreditsMonthlyCapEmail,
@@ -15,23 +14,12 @@ import { accountCreditsPath } from '#universal/compute-overage.ts'
 import { orgBillingPath } from '#universal/org-pages.ts'
 import { formatCents, formatMicroUsd } from '#universal/credits.ts'
 import { resolveTransactionalEmailConfig } from '#app/email/sender-config.ts'
-import {
-	openVerifiedNoMcpCampaignEvent,
-	recordVerifiedNoMcpCampaignSend,
-} from '#app/user-usage-campaign-emails.ts'
 import { kodyDiscordInviteUrl } from '#universal/community-links.ts'
-import {
-	isTipsEmailsOptedOut,
-	mintTipsUnsubscribeUrl,
-	tipsUnsubscribeHeaders,
-	tipsUnsubscribeLabel,
-} from '#worker/usage/tips-unsubscribe.ts'
 
 export const userAccountEmailKvKeyPrefix = 'account-email-user:v1'
 export const userAccountEmailClaimTtlSeconds = 30 * 24 * 60 * 60
 
 export type UserAccountEmailKind =
-	| 'connect_agent'
 	| 'billing_success'
 	| 'payment_failed'
 	| 'past_due'
@@ -142,75 +130,6 @@ async function releaseEmailClaim(kv: KVNamespace, key: string) {
 	} catch (error) {
 		console.warn('user-account-email-claim-release-failed', { key, error })
 	}
-}
-
-export async function sendConnectAgentEmail(input: {
-	env: Env
-	email: string
-	userId: string
-	/** Verify request URL. Used when no sending domain is configured, same as the verification mail. */
-	requestUrl?: string | URL | null
-}): Promise<boolean> {
-	if (
-		input.env.APP_DB &&
-		(await isTipsEmailsOptedOut({
-			db: input.env.APP_DB,
-			userId: input.userId,
-		}))
-	) {
-		return false
-	}
-	const emailConfig = resolveTransactionalEmailConfig({
-		env: input.env,
-		requestUrl: input.requestUrl,
-	})
-	if (!emailConfig) {
-		await openVerifiedNoMcpCampaignEvent({
-			env: input.env,
-			userId: input.userId,
-		})
-		return false
-	}
-	const unsubscribe = await mintConnectAgentUnsubscribe({
-		env: input.env,
-		appBaseUrl: emailConfig.appBaseUrl,
-		userId: input.userId,
-	})
-	if (!unsubscribe) {
-		await openVerifiedNoMcpCampaignEvent({
-			env: input.env,
-			userId: input.userId,
-		})
-		return false
-	}
-
-	const sent = await claimAndSend({
-		env: input.env,
-		to: input.email,
-		userId: input.userId,
-		kind: 'connect_agent',
-		emailConfig,
-		build: (config) => ({
-			...buildConnectAgentEmail({
-				appBaseUrl: config.appBaseUrl,
-				onboardingUrl: new URL('/onboarding', config.appBaseUrl).toString(),
-				unsubscribe: unsubscribe.unsubscribe,
-			}),
-			headers: unsubscribe.headers,
-		}),
-	})
-	if (sent) {
-		await recordVerifiedNoMcpCampaignSend({
-			env: input.env,
-			userId: input.userId,
-		})
-		return true
-	}
-	await openVerifiedNoMcpCampaignEvent({
-		env: input.env,
-		userId: input.userId,
-	})
-	return false
 }
 
 function orgBillingUrl(appBaseUrl: string, orgSlug: string) {
@@ -346,25 +265,4 @@ export async function sendCreditLowBalanceEmail(input: {
 				balanceLabel: formatMicroUsd(input.balanceMicroUsd),
 			}),
 	})
-}
-
-async function mintConnectAgentUnsubscribe(input: {
-	env: Env
-	appBaseUrl: string
-	userId: string
-}) {
-	try {
-		const url = await mintTipsUnsubscribeUrl({
-			env: input.env,
-			appBaseUrl: input.appBaseUrl,
-			userId: input.userId,
-		})
-		return {
-			unsubscribe: { label: tipsUnsubscribeLabel, url },
-			headers: tipsUnsubscribeHeaders(url),
-		}
-	} catch (error) {
-		console.warn('connect-agent-unsubscribe-mint-failed', error)
-		return null
-	}
 }

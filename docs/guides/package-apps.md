@@ -122,6 +122,9 @@ see the kody.codes session cookie.
 
 ### Auth with Kody (OAuth)
 
+Watch:
+[Kody package access: from just you to the whole internet](https://www.youtube.com/watch?v=1P5AcX_BJSw).
+
 Hosted packages need no client registration: the package identity (`owner/leaf`)
 is the client. Consent and sign-in stay on kody.codes; authorization codes +
 PKCE land a per-app host-only `__Host-kody_pkg_session_<hash>` cookie on the app

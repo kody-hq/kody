@@ -29,10 +29,11 @@ Prefer the event that actually describes the moment — a webhook or a
 subscription — and reach for a schedule when no event exists. Cron is fine; it
 is just not the hero.
 
-> [!WATCH] https://www.youtube.com/watch?v=o5L5OprLhBg Watch: Kody fixes a
-> Stripe webhook after a domain rename
+> [!WATCH] https://www.youtube.com/watch?v=Atn8dO_ZGs0 Watch: Kody triggers by
+> example: schedules, webhooks, email, and events
 
 Also watch:
+[Kody fixes a Stripe webhook after a domain rename](https://www.youtube.com/watch?v=o5L5OprLhBg),
 [Shade automation from an INTENT.md — deterministic code, no model in the loop](https://www.youtube.com/watch?v=OZKDO9Pzmo0)
 and
 [Kody packages and credentials: declare, map, and lock](https://www.youtube.com/watch?v=YlbJd-amFoQ).

@@ -188,8 +188,13 @@ function permanentBounceError(
 
 export async function sendCloudflareEmail(
 	config: CloudflareEmailClientConfig,
-	message: Omit<OutboundEmail, 'replyTo' | 'headers' | 'attachments'> &
-		Partial<Pick<OutboundEmail, 'replyTo' | 'headers' | 'attachments'>>,
+	message: Omit<
+		OutboundEmail,
+		'replyTo' | 'headers' | 'attachments' | 'fromName'
+	> &
+		Partial<
+			Pick<OutboundEmail, 'replyTo' | 'headers' | 'attachments' | 'fromName'>
+		>,
 ): Promise<CloudflareSendResult> {
 	const normalized = normalizeEmailPayload({
 		...message,
@@ -197,6 +202,7 @@ export async function sendCloudflareEmail(
 			from: message.from,
 			replyTo: message.replyTo,
 		}),
+		fromName: message.fromName,
 		headers: message.headers,
 		attachments: message.attachments,
 	})

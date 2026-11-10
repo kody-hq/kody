@@ -17,6 +17,9 @@ only when someone explicitly grants it something, such as sharing a package with
 it, or when it creates something and gets the creator grant on it. It never
 holds more than you and its parents hold.
 
+> [!WATCH] https://www.youtube.com/watch?v=fNMqSD2NB9w Watch: Kody agent
+> profiles: scoped access for every agent
+
 Profiles are an experiment. Turn them on at `/account/experiments` or with
 `experimentSet({ experiment: "profiles", enabled: true })`. You can create,
 list, shorten, and revoke profiles, share packages with them, and mint tokens

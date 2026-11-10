@@ -17,10 +17,14 @@ import {
 } from './guest-accounts.ts'
 
 const mocks = vi.hoisted(() => ({
+	scheduleFounderWelcomeEmail: vi.fn(),
 	// Never settles: a slow or stuck dispatch must not hold up a claim.
 	dispatch: vi.fn((_input: { event: unknown }) => new Promise<never>(() => {})),
 	readAuthenticatedAppUser: vi.fn(),
 	deleteUserAccount: vi.fn(async () => {}),
+}))
+vi.mock('#app/founder-welcome-email.ts', () => ({
+	scheduleFounderWelcomeEmail: mocks.scheduleFounderWelcomeEmail,
 }))
 vi.mock('#worker/identity/user-lifecycle-package-subscriptions.ts', () => ({
 	dispatchUserLifecycleSubscriptionEvent: mocks.dispatch,
@@ -194,6 +198,7 @@ function capabilityContext(personId: string) {
 }
 
 test('guestClaimFinish (agent) emits one user.guest_claimed for a new account', async () => {
+	mocks.scheduleFounderWelcomeEmail.mockClear()
 	const { sqlite, guest, created } = await setup()
 	const started = (await guestClaimStartCapability.handler(
 		{ email: 'claimer@example.test', username: 'claimer' } as never,
@@ -239,9 +244,14 @@ test('guestClaimFinish (agent) emits one user.guest_claimed for a new account', 
 	})
 	expect(JSON.stringify(event)).not.toContain(guest.claimCode)
 	expect(JSON.stringify(event)).not.toContain(String(devCode))
+	expect(mocks.scheduleFounderWelcomeEmail).toHaveBeenCalledTimes(1)
+	expect(mocks.scheduleFounderWelcomeEmail).toHaveBeenCalledWith(
+		expect.objectContaining({ stableUserId: guest.personId }),
+	)
 })
 
 test('the claim page email code (merge) emits one user.guest_claimed with counts from before the move', async () => {
+	mocks.scheduleFounderWelcomeEmail.mockClear()
 	const { sqlite, guest, created } = await setup()
 	const target = await seedTarget(sqlite)
 	const startResponse = await claimPost(guest.claimCode, {
@@ -283,9 +293,12 @@ test('the claim page email code (merge) emits one user.guest_claimed with counts
 	expect(event.claimed_at).toBe(event.guest.claimed_at)
 	expect(mocks.deleteUserAccount).toHaveBeenCalledOnce()
 	expect(JSON.stringify(event)).not.toContain(devCode!)
+	// Merging into an existing account never re-sends the founder welcome.
+	expect(mocks.scheduleFounderWelcomeEmail).not.toHaveBeenCalled()
 })
 
 test('signed-in merge on the claim page emits one user.guest_claimed and no user.deleted', async () => {
+	mocks.scheduleFounderWelcomeEmail.mockClear()
 	const { sqlite, guest, created } = await setup()
 	const target = await seedTarget(sqlite)
 	mocks.readAuthenticatedAppUser.mockResolvedValueOnce({
@@ -307,6 +320,8 @@ test('signed-in merge on the claim page emits one user.guest_claimed and no user
 		counts: seededCounts,
 		renamed_packages: 1,
 	})
+	// Merging into an existing account never re-sends the founder welcome.
+	expect(mocks.scheduleFounderWelcomeEmail).not.toHaveBeenCalled()
 })
 
 test('a failing dispatch never fails the claim', async () => {

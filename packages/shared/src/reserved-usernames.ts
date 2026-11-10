@@ -303,6 +303,7 @@ export const permanentlyReservedSystemLocals = [
 	'security',
 	'admin',
 	'psl',
+	'kent',
 ] as const
 
 /**
