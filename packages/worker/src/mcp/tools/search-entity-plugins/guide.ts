@@ -9,6 +9,7 @@ import { lexicalScore } from '#worker/vectorize/scoring.ts'
 import type { SearchEntityPlugin } from '../search-entity-plugin.ts'
 import { maxChars } from '../search-constants.ts'
 import {
+	buildGuideBatchRepeatHeaderLines,
 	buildGuideDetailHeaderLines,
 	guideContentsModeLine,
 	guideLinesModeLine,
@@ -183,9 +184,11 @@ export const guideSearchEntityPlugin = {
 			provider: match.provider,
 		}
 	},
-	formatEntityDetail(detail) {
+	formatEntityDetail(detail, options) {
 		const entityRef = buildEntityRef(detail.id, 'guide')
-		const headerLines = buildGuideDetailHeaderLines(detail)
+		const headerLines = options?.omitSharedMetadata
+			? buildGuideBatchRepeatHeaderLines(detail)
+			: buildGuideDetailHeaderLines(detail)
 		let resolved
 		try {
 			resolved = resolveMarkdownDocument({

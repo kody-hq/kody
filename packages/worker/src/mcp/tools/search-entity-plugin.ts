@@ -61,6 +61,12 @@ export type SearchEntitySlimFormatInput<
 	username?: string | null
 }
 
+export type SearchEntityDetailFormatOptions = {
+	includeBoilerplate?: boolean
+	/** Batch entry whose shared metadata an earlier entry already showed. */
+	omitSharedMetadata?: boolean
+}
+
 export type SearchEntityDetailFormatResult = {
 	markdown: string
 	structured: SearchEntityDetailStructured
@@ -83,6 +89,6 @@ export type SearchEntityPlugin<Type extends SearchMatch['type']> = {
 	) => SlimSearchMatch
 	formatEntityDetail?: (
 		detail: Extract<SearchEntityDetail, { type: Type }>,
-		options?: { includeBoilerplate?: boolean },
+		options?: SearchEntityDetailFormatOptions,
 	) => SearchEntityDetailFormatResult
 }
