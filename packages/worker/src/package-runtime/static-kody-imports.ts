@@ -23,6 +23,7 @@ function collectStaticKodyPackageImportsFromSource(input: {
 	const imports: Array<StaticKodyPackageImport> = []
 	for (const node of collectLiteralImportNodes(input.source, {
 		includeTypeOnly: input.includeTypeOnly,
+		filePath: input.filePath,
 	})) {
 		if (node.kind !== 'static') continue
 		if (!node.specifier.startsWith(packageSpecifierPrefix)) continue

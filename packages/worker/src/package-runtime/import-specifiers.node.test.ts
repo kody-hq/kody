@@ -5,7 +5,9 @@ import {
 	collectLiteralImportNodes,
 	collectLiteralImportSpecifiers,
 	collectModuleImportNodes,
+	parseBundlerResolvedSpecifiers,
 } from './import-specifiers.ts'
+import { collectStaticKodyPackageImportsFromFiles } from './static-kody-imports.ts'
 
 test('collectLiteralImportSpecifiers ignores type-only import and export sources', () => {
 	const specifiers = collectLiteralImportSpecifiers(
@@ -105,4 +107,40 @@ test('dynamic import() with TS assertion or static template stays literal', () =
 	)
 	expect(computed).toHaveLength(1)
 	expect(computed[0]?.literalSpecifier).toBeNull()
+})
+
+const genericArrowWithImports = [
+	'import helper from "kody:@kentcdodds/helper/run"',
+	'const first = <T>(xs: T[]): T | undefined => xs[0]',
+	'export default () => first([helper])',
+].join('\n')
+
+test('import scans pick the parser by file extension', () => {
+	expect(
+		collectLiteralImportSpecifiers(genericArrowWithImports, {
+			filePath: 'src/app.ts',
+		}),
+	).toEqual(['kody:@kentcdodds/helper/run'])
+	expect(
+		parseBundlerResolvedSpecifiers(genericArrowWithImports, {
+			filePath: 'src/app.ts',
+		}),
+	).toEqual({ ok: true, specifiers: ['kody:@kentcdodds/helper/run'] })
+	expect(
+		parseBundlerResolvedSpecifiers(genericArrowWithImports, {
+			filePath: 'src/app.tsx',
+		}),
+	).toEqual({
+		ok: false,
+		error: {
+			line: 2,
+			column: expect.any(Number),
+			message: expect.stringContaining('Unexpected token'),
+		},
+	})
+	expect(
+		collectStaticKodyPackageImportsFromFiles({
+			'src/app.ts': genericArrowWithImports,
+		}).map((entry) => entry.specifier),
+	).toEqual(['kody:@kentcdodds/helper/run'])
 })
