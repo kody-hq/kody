@@ -20,10 +20,6 @@ import {
 	logMcpEvent,
 } from '#mcp/observability.ts'
 
-import {
-	escapeMarkdownText,
-	formatMarkdownInlineCode,
-} from './markdown-safety.ts'
 import { formatSurfacedMemoriesMarkdown } from './memory-tool-context.ts'
 import {
 	defaultMaxResponseSize,
@@ -34,6 +30,7 @@ import {
 	SEARCH_WAITING_ITEMS_BUDGET_MS,
 } from './search-constants.ts'
 import { resolveEntityDetail } from './search-detail.ts'
+import { buildEntityBatchResponse } from './search-entity-batch.ts'
 import { buildRecommendedNextStep } from './search-descriptors.ts'
 import {
 	executeSearchList,
@@ -523,60 +520,34 @@ async function runSearchToolWithoutGuestBlock(input: {
 		}
 
 		if (outcome.mode === 'entity-batch') {
-			const structuredResults: Array<
-				SearchEntityDetailStructured | { entityRef: string; error: string }
-			> = []
-			const markdownParts: Array<string> = []
-			let successCount = 0
-			for (const entry of outcome.results) {
-				if (!entry.ok) {
-					structuredResults.push({
-						entityRef: entry.entityRef,
-						error: entry.error,
-					})
-					markdownParts.push(
-						`Error resolving ${formatMarkdownInlineCode(entry.entityRef)}: ${escapeMarkdownText(entry.error)}`,
-					)
-					continue
-				}
-				const entityResult = formatEntityDetailMarkdown(entry.detail, {
-					includeBoilerplate: includePreamble,
-				})
-				const candidateStructured = [
-					...structuredResults,
-					entityResult.structured,
-				]
-				const hasFullDetail = structuredResults.some(
-					(result) => 'kind' in result && result.kind === 'entity',
-				)
-				if (
-					hasFullDetail &&
-					JSON.stringify(candidateStructured).length > maxChars
-				) {
-					const overflowError =
-						'Omitted from batch response (exceeds size budget). Look up individually with search({ entity }).'
-					structuredResults.push({
-						entityRef: entry.entityRef,
-						error: overflowError,
-					})
-					markdownParts.push(
-						`Error resolving ${formatMarkdownInlineCode(entry.entityRef)}: ${escapeMarkdownText(overflowError)}`,
-					)
-					continue
-				}
+			const batch = buildEntityBatchResponse({
+				entries: outcome.results,
+				format: (detail, options) =>
+					formatEntityDetailMarkdown(detail, {
+						includeBoilerplate: includePreamble,
+						...options,
+					}),
+				maxChars,
+			})
+			for (const entry of batch.accepted) {
 				await recordSearchSkillRead(
 					env,
 					callerContext,
 					entry.detail,
-					entityResult.structured,
+					entry.structured,
 				)
-				successCount += 1
-				structuredResults.push(entityResult.structured)
-				markdownParts.push(entityResult.markdown)
 			}
+			const successCount = batch.accepted.length
 			const allFailed = successCount === 0
 			if (!allFailed) rememberConversationPreamble()
-			const failedEntries = outcome.results.filter((entry) => !entry.ok)
+			const failedEntries = [
+				...outcome.results.filter((entry) => !entry.ok),
+				...batch.formatFailures.map((failure) => ({
+					entityRef: failure.entityRef,
+					error: failure.error,
+					callerError: isMcpCallerError(failure.cause),
+				})),
+			]
 			const allFailuresAreCallerErrors =
 				allFailed && failedEntries.every((entry) => entry.callerError)
 			const entityFailures = failedEntries.map((entry) => ({
@@ -635,13 +606,14 @@ async function runSearchToolWithoutGuestBlock(input: {
 				content: prependToolMetadataContent(conversationId, [
 					{
 						type: 'text',
-						text: truncateSearchText(markdownParts.join('\n\n---\n\n')),
+						text: truncateSearchText(batch.markdownParts.join('\n\n---\n\n')),
 					},
 				]),
 				structuredContent: {
 					conversationId,
 					timing,
-					result: structuredResults,
+					result: batch.result,
+					...(batch.guides ? { guides: batch.guides } : {}),
 					...(allFailed ? { error: 'All entity lookups failed.' } : {}),
 				},
 				...(allFailed ? { isError: true } : {}),

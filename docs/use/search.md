@@ -212,7 +212,16 @@ additionally include a ready-to-run **execute** snippet plus
 Pass an **array of 1–10 entity refs** when you need several related details at
 once (for example a create/poll MCP pair). Each ref resolves independently:
 failures become per-entity error lines without aborting the whole batch. If
-every ref fails, the tool returns an error result.
+every ref fails, the tool returns an error result. When several refs open the
+same guide (for example six `guide:execution_contexts#{slug}` headings), the
+guide's description and section list are sent once: structured content adds
+`guides["guide:{id}"]` (`id`, `title`, `description`, `sections`), each of those
+entries carries `guideMetadataRef: "guide:{id}"` instead of its own
+`description` and `sections`, and markdown repeats only the title and section
+line after the first entry. Entries for a guide that appears once keep the full
+shape. The batch fits a structured size budget; when it is tight, guide section
+lists are dropped (`sectionsOmitted: true`) before any requested body is
+omitted.
 
 Examples:
 

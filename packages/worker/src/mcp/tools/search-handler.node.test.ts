@@ -1145,3 +1145,74 @@ test('search tool domain param: browse, reject unknown, scope ranked results, an
 	}
 	expect(mockModule.loadRelevantMemoriesForTool).toHaveBeenCalled()
 })
+
+test('search tool batch sends repeated guide metadata once so requested sections fit', async () => {
+	const slugs = [
+		'what-changes-on-a-machine',
+		'worker-compute-on-a-machine',
+		'where-a-run-ran-ranon',
+		'busy-machines',
+		'keep-it-running-the-background-service',
+		'set-up-a-machine',
+	]
+	const handler = await getSearchHandler()
+	const response = await handler({
+		entity: slugs.map((slug) => `guide:execution_contexts#${slug}`),
+		conversationId: 'conv-batch-guide-sections',
+	})
+	expect(response.isError).toBeUndefined()
+	const result = response.structuredContent.result as Array<
+		Record<string, unknown>
+	>
+	expect(result.map((entry) => entry['error'])).toEqual(
+		slugs.map(() => undefined),
+	)
+	expect(result).toEqual(
+		slugs.map((slug) =>
+			expect.objectContaining({
+				kind: 'entity',
+				type: 'guide',
+				id: 'execution_contexts',
+				entityRef: `guide:execution_contexts#${slug}`,
+				bodyMode: 'section',
+				guideMetadataRef: 'guide:execution_contexts',
+			}),
+		),
+	)
+	for (const entry of result) {
+		expect(entry).not.toHaveProperty('description')
+		expect(entry).not.toHaveProperty('sections')
+	}
+	const guides = (
+		response.structuredContent as { guides?: Record<string, unknown> }
+	).guides
+	expect(Object.keys(guides ?? {})).toEqual(['guide:execution_contexts'])
+	const metadata = guides?.['guide:execution_contexts'] as {
+		description: string
+		sections: Array<{ slug: string }>
+	}
+	expect(metadata.sections.map((section) => section.slug)).toEqual(
+		expect.arrayContaining(slugs),
+	)
+	const text = textOf(response)
+	expect(text.split(metadata.description.slice(0, 80)).length - 1).toBe(1)
+	for (const slug of slugs) expect(text).toContain(`- Section: \`${slug}\``)
+
+	const mixed = await handler({
+		entity: ['guide:execution_contexts#busy-machines', 'guide:open_api'],
+		conversationId: 'conv-batch-guide-distinct',
+	})
+	expect(mixed.structuredContent).not.toHaveProperty('guides')
+	expect(mixed.structuredContent.result).toEqual([
+		expect.objectContaining({
+			id: 'execution_contexts',
+			description: expect.any(String),
+			sections: expect.any(Array),
+		}),
+		expect.objectContaining({
+			id: 'open_api',
+			description: expect.any(String),
+			sections: expect.any(Array),
+		}),
+	])
+})
