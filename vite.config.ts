@@ -184,6 +184,10 @@ export default defineConfig(async ({ command }) => {
 				optimizeDeps: { include: ['buffer'] },
 			},
 			ssr: {
+				// Keep server mappings under Cloudflare's aggregate upload limit.
+				build: {
+					rolldownOptions: { output: { sourcemapExcludeSources: true } },
+				},
 				optimizeDeps: { noDiscovery: true, include: [] },
 				resolve: { noExternal: ['@tanstack/redact'] },
 			},
