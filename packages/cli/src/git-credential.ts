@@ -2,7 +2,10 @@ import { createInterface } from 'node:readline'
 import { isScopedApiToken } from './api-token.js'
 import { apiTokenEnvVar, defaultApiUrl, defaultMcpUrl } from './defaults.js'
 import { ensureOpenApiCredentials } from './auth.js'
-import { apiTokenNeedsRefresh, gitCredentialHostFromMcpUrl } from './setup-git.js'
+import {
+	apiTokenNeedsRefresh,
+	gitCredentialHostFromMcpUrl,
+} from './setup-git.js'
 import {
 	loadCredentials,
 	type SecretBackend,

@@ -894,7 +894,9 @@ async function dispatch(
 				lifetime:
 					typeof parsed.values.lifetime === 'string'
 						? parsed.values.lifetime
-						: 'long',
+						: lifetimeGiven
+							? undefined
+							: 'long',
 				idleTtlSeconds: parseCliLifetimeSecondsFlag(
 					typeof parsed.values['idle-ttl-seconds'] === 'string'
 						? parsed.values['idle-ttl-seconds']
@@ -941,11 +943,11 @@ async function dispatch(
 						...(!lifetimeGiven
 							? {}
 							: lifetime.kind === 'alias'
-							? { lifetime: lifetime.lifetime }
-							: {
-									idleTtlSeconds: lifetime.idleTtlSeconds,
-									maxLifetimeSeconds: lifetime.maxLifetimeSeconds,
-								}),
+								? { lifetime: lifetime.lifetime }
+								: {
+										idleTtlSeconds: lifetime.idleTtlSeconds,
+										maxLifetimeSeconds: lifetime.maxLifetimeSeconds,
+									}),
 					})
 			const storedScopes = result.stored.scopes?.join(', ') || '(none)'
 			write(

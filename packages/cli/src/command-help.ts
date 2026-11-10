@@ -108,15 +108,15 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 	},
 	{
 		name: 'auth',
-		summary: 'Store scoped API tokens and set up Git credentials',
+		summary: 'Save the CLI credential and set up Git credentials',
 		usage: ['kody auth <command> [flags]'],
 		subcommands: [
 			{
 				name: 'bootstrap',
 				summary:
-					'Redeem a kody_bc_… code (or mint one with --scopes) and store the token',
+					'Redeem a kody_bc_… code (or mint a narrower one with --scopes) into the saved CLI credential',
 				usage: [
-					'kody auth bootstrap (--code <kody_bc_…> | --scopes <list>) (--lifetime short|long | --idle-ttl-seconds <n> --max-lifetime-seconds <n>)',
+					'kody auth bootstrap (--code <kody_bc_…> | --scopes <list>) [--lifetime short|long | --idle-ttl-seconds <n> --max-lifetime-seconds <n>]',
 					'                    [--token <token>] [--mcp-url <url>] [--api-url <url>]',
 				],
 				flags: [
@@ -126,7 +126,7 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 					],
 					[
 						'--scopes <list>',
-						'Mint a code with exactly these scopes (replaces the defaults)',
+						'Mint a narrower code with exactly these scopes (replaces the login-equivalent default)',
 					],
 					[
 						'--lifetime short|long',
@@ -149,26 +149,13 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 				name: 'setup-git',
 				summary:
 					'Install a Git credential helper for https://kody.codes/@owner/name.git',
-				usage: [
-					'kody auth setup-git [--lifetime long|short] [--scopes <list>] [--token <token>] [--mcp-url <url>] [--api-url <url>]',
-				],
-				flags: [
-					[
-						'--lifetime long|short',
-						'Lifetime of the minted token (default long)',
-					],
-					[
-						'--scopes <list>',
-						'Extra scopes beyond package:read and package:write',
-					],
-					tokenFlag,
-					mcpUrlFlag,
-					apiUrlFlag,
-				],
+				usage: ['kody auth setup-git [--mcp-url <url>] [--api-url <url>]'],
+				flags: [mcpUrlFlag, apiUrlFlag],
 			},
 			{
 				name: 'remove-git',
-				summary: 'Remove the Git credential helper and revoke its stored token',
+				summary:
+					'Remove the Git credential helper and revoke any old-slot token',
 				usage: ['kody auth remove-git [--mcp-url <url>] [--api-url <url>]'],
 				flags: [mcpUrlFlag, apiUrlFlag],
 			},

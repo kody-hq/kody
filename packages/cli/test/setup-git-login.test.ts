@@ -144,18 +144,14 @@ async function capture(args: Array<string>) {
 	return { code, stdout, stderr }
 }
 
-test('auth setup-git after kody login (no env token) mints via Open API and installs helper', async () => {
+test('auth setup-git after kody login uses the login credential and never mints', async () => {
 	await withCliEnv(
 		(url) => {
 			if (requestPath(url).endsWith('/openapi.json'))
 				return json(openApiDocument)
-			if (requestPath(url).endsWith('/v1/tokens/bootstrap'))
-				return json(mintResponse(setupGitDefaultScopes))
-			if (requestPath(url).endsWith('/v1/tokens/bootstrap/redeem'))
-				return json(redeemResponse)
 			if (url.includes('/v1/tokens/current')) {
 				return json({
-					id: 'tok_setup_git_login',
+					id: 'tok_login_device',
 					org_binding: 'user',
 					scopes: [...setupGitDefaultScopes],
 					expires_at: redeemResponse.expires_at,
@@ -166,7 +162,6 @@ test('auth setup-git after kody login (no env token) mints via Open API and inst
 		async ({ home, requests }) => {
 			saveLogin(mcpUrl)
 			assert.equal(process.env.KODY_API_TOKEN, undefined)
-			assert.equal(loadStoredApiToken(apiUrl), null)
 
 			const result = await capture([
 				'auth',
@@ -180,20 +175,20 @@ test('auth setup-git after kody login (no env token) mints via Open API and inst
 			assert.match(result.stdout, /Git HTTPS credential helper installed/)
 			assert.match(
 				result.stdout,
-				/token: minted tok_setup_git_login \(org_binding=user\)/,
+				/credential: saved CLI credential tok_login_device \(org_binding=user\)/,
 			)
-			assert.match(result.stdout, /all orgs/)
 			assert.doesNotMatch(result.stdout, /kody_at_|kody_bc_/)
-
-			const mint = requests.find((request) =>
-				requestPath(request.url).endsWith('/v1/tokens/bootstrap'),
+			assert.ok(
+				requests.every(
+					(request) =>
+						!requestPath(request.url).includes('/v1/tokens/bootstrap'),
+				),
 			)
-			assert.equal(mint?.authorization, 'Bearer kody_at_login_session')
-			assert.deepEqual(mint?.body, {
-				scopes: [...setupGitDefaultScopes],
-				lifetime: 'long',
-			})
-			assert.equal(loadStoredApiToken(apiUrl)?.tokenId, 'tok_setup_git_login')
+			const current = requests.find((request) =>
+				request.url.includes('/v1/tokens/current'),
+			)
+			assert.equal(current?.authorization, 'Bearer kody_at_login_session')
+			assert.equal(loadStoredApiToken(apiUrl), null)
 
 			const gitconfig = readFileSync(join(home, 'gitconfig'), 'utf8')
 			assert.match(gitconfig, /https:\/\/login-setup-git\.test/)

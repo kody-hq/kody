@@ -1,7 +1,4 @@
-import {
-	deleteStoredApiToken,
-	loadStoredApiToken,
-} from './api-token-store.js'
+import { deleteStoredApiToken, loadStoredApiToken } from './api-token-store.js'
 import { apiTokenEnvVar, defaultApiUrl, defaultMcpUrl } from './defaults.js'
 import {
 	loadCredentials,
@@ -84,7 +81,11 @@ function loadCandidate(
 			: loadCredentials(mcpUrl, input.loginBackend, undefined, {
 					org: input.org,
 				})
-		const saved = login ?? adoptLegacyStoredApiToken(input, mcpUrl)
+		// Desktop (`KODY_CREDENTIAL_SOURCE=login`) never touches the old slot.
+		const desktop =
+			(input.env ?? process.env).KODY_CREDENTIAL_SOURCE === 'login'
+		const saved =
+			login ?? (desktop ? null : adoptLegacyStoredApiToken(input, mcpUrl))
 		return { candidate: saved ? { source, token: null, login: saved } : null }
 	} catch (error) {
 		return { candidate: null, error }
@@ -112,6 +113,7 @@ function adoptLegacyStoredApiToken(
 		token: legacy.token,
 		expiresAt: legacy.expiresAt ? Date.parse(legacy.expiresAt) : undefined,
 		scopes: legacy.scopes ?? [],
+		apiUrl,
 	})
 	try {
 		;(input.saveLogin ?? saveCredentials)(adopted, input.loginBackend)
@@ -133,6 +135,7 @@ export function storedCredentialsFromApiToken(input: {
 	expiresAt: number | undefined
 	scopes: ReadonlyArray<string>
 	org?: string
+	apiUrl?: string
 }): StoredCredentials {
 	const issuer = new URL(input.mcpUrl).origin
 	return {
@@ -148,6 +151,7 @@ export function storedCredentialsFromApiToken(input: {
 			? { expiresAt: input.expiresAt }
 			: {}),
 		scope: input.scopes.join(' '),
+		...(input.apiUrl ? { apiUrl: new URL(input.apiUrl).origin } : {}),
 	}
 }
 
@@ -279,7 +283,7 @@ export function credentialRejectedNote(input: {
 	const used = `Credential used: ${describeCliCredential(credential)}.`
 	if (credential.source === 'token-flag' || credential.source === 'env') {
 		const name = credential.source === 'env' ? apiTokenEnvVar : '--token'
-		return `${used} ${name} wins over the saved CLI credential; unset or replace ${name} before retrying, or mint a fresh token (agents: cliCredentialBootstrap then run the returned cli_command; CI: tokenCreate) and update that value.`
+		return `${used} ${name} wins over the saved CLI credential; unset or replace ${name} before retrying, or mint a fresh token (agents: cliCredentialBootstrap then run the returned cli_command; CI: tokenCreate) and update that value. Humans: \`kody login\` saves a fresh credential.`
 	}
 	return `${used} ${resignInHint}`
 }

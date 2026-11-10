@@ -344,6 +344,7 @@ function saveRedeemedCredential(input: {
 			expiresAt,
 			scopes: input.stored.scopes ?? [],
 			...(input.org ? { org: input.org } : {}),
+			apiUrl: input.stored.apiUrl,
 		}),
 		input.backend,
 		input.resolution,

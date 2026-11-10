@@ -485,14 +485,17 @@ test('explicit and stored API tokens remain usable on mismatched origins', async
 		loadApiToken: (requestedApiUrl) => ({
 			version: 1,
 			apiUrl: requestedApiUrl ?? apiUrl,
-			token: 'stored-token',
+			token: 'kody_at_stored-token',
 			tokenId: 'stored-id',
 		}),
+		backend: createFileBackend(
+			join(mkdtempSync(join(tmpdir(), 'kody-cli-mismatch-')), 'login.json'),
+		),
 		ensureCredentials: async () => {
 			throw new Error('login OAuth must not be consulted')
 		},
 	})
-	assert.equal(storedToken, 'stored-token')
+	assert.equal(storedToken, 'kody_at_stored-token')
 })
 
 test('paired preview and loopback API origins allow login OAuth', async () => {

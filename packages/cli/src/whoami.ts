@@ -174,7 +174,7 @@ export async function runWhoami(input: {
 	write(
 		[
 			`api: ${identity.apiUrl}`,
-			`credential: ${describeCliCredential(credential)}${credential.source === 'login' ? '' : ` [${identity.token.id}]`}`,
+			`credential: ${describeCliCredential(credential)} [${identity.token.id}]`,
 			...(actingOrgSlug
 				? [
 						`org: ${actingOrgSlug}${actingOrgKind ? ` (${actingOrgKind} workspace)` : ''}${workspaceVerified ? '' : ' (unverified local fallback)'}`,

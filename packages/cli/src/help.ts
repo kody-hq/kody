@@ -60,9 +60,9 @@ Usage:
   kody org list [--json] [--mcp-url <url>]
   kody org use [<slug>] [--mcp-url <url>]
   kody status [--mcp-url <url>] [--api-url <url>]
-  kody auth bootstrap (--code <kody_bc_…> | --scopes <list>) (--lifetime short|long | --idle-ttl-seconds <n> --max-lifetime-seconds <n>)
+  kody auth bootstrap (--code <kody_bc_…> | --scopes <list>) [--lifetime short|long | --idle-ttl-seconds <n> --max-lifetime-seconds <n>]
                       [--token <token>] [--mcp-url <url>] [--api-url <url>]
-  kody auth setup-git [--lifetime long|short] [--scopes <list>] [--token <token>] [--mcp-url <url>] [--api-url <url>]
+  kody auth setup-git [--mcp-url <url>] [--api-url <url>]
   kody auth remove-git [--mcp-url <url>] [--api-url <url>]
   kody git-credential <get|store|erase>
   kody whoami [--org <slug>] [--target prod|mock] [--mcp-url <url>] [--token <token>] [--api-url <url>] [--json]
@@ -168,41 +168,30 @@ ${orgBlock}
              (never ask a human to paste a token). Humans: \`kody login\`.
              This command redeems a one-shot \`kody_bc_…\` (POST
              /v1/tokens/bootstrap/redeem, no Authorization header).
-             Lifetime is required: \`--lifetime short|long\` (\`short\` = 1h
-             idle / 24h max; \`long\` = 14d idle / 3mo max), or both
-             \`--idle-ttl-seconds\` and \`--max-lifetime-seconds\`.
-             Single-task agents should use \`--lifetime short\`.
-             Stores the resulting \`kody_at_…\` for \`execute --local\`,
-             search, whoami, api, and token-auth cloud execute without
-             printing the token. Do not call
-             \`kody api cliCredentialBootstrapRedeem\` (that would print the
-             token).
+             Saves the same credential \`kody login\` saves (every scope
+             your org role grants, 14d idle / 3mo max) in the same slot;
+             every command, including git, uses it. \`--lifetime short|long\`
+             or \`--idle-ttl-seconds\` + \`--max-lifetime-seconds\` are
+             optional and default to the code's lifetime. Never prints the
+             token. Do not call \`kody api cliCredentialBootstrapRedeem\`
+             (that would print the token).
 
   --scopes <list>
-             Opt in to scopes beyond the cliCredentialBootstrap defaults
-             (comma- or space-separated, e.g.
-             \`--scopes org:execute,org:read,package:read,package:write\`).
-             The list replaces the defaults, so include every scope you
-             need. Instead of \`--code\`, the CLI mints the code itself by
-             passing \`scopes\` to cliCredentialBootstrap, then redeems and
-             stores it. It mints with \`--token\` if given, else the
-             \`kody login\` session (any scope your org role grants), else
-             ${apiTokenEnvVar} / a stored token (only scopes that token
-             already holds). A bootstrap code's scopes are fixed when it is
-             minted, so \`--code\` with \`--scopes\` is an error. Defaults
-             stay least-privilege; \`insufficient_scope\` errors print the
-             exact \`--scopes\` command to run.
+             Save a deliberately narrower credential (comma- or
+             space-separated). The list replaces the login-equivalent
+             default. Instead of \`--code\`, the CLI mints the code itself
+             with \`--token\`, else ${apiTokenEnvVar}, else the saved
+             credential, then redeems and saves it. A child never exceeds
+             its parent's scopes or expiry. \`--code\` with \`--scopes\` is
+             an error.
 
   auth setup-git
              Install a Git credential helper for HTTPS clones/fetches/pushes
              at \`https://kody.codes/@owner/name.git\` (see guide:auth_setup_git).
-             Uses a \`kody login\` session (or \`--token\` / ${apiTokenEnvVar} /
-             stored bootstrap token) to mint a user-owned \`kody_at_…\` with
-             at least \`package:read\` and \`package:write\` (default
-             \`--lifetime long\`; reuses a suitable stored token). That token
-             authorizes every repo you can access across all orgs — login
-             \`--org\` only scopes the MCP mint session, not git. User-wide:
-             one setup covers every org. Requires a server that advertises
+             Never mints: uses the saved CLI credential (\`kody login\` or
+             \`kody auth bootstrap\`), which must be user-owned and hold
+             \`package:read\` and \`package:write\`. It authorizes every repo
+             you can access across all orgs. Requires a server that advertises
              \`org_binding\`. Configures a stable
              \`credential.https://<host>.helper\` (global \`kody\` only when
              its version supports \`git-credential\`, else
@@ -216,18 +205,16 @@ ${orgBlock}
              Inverse of \`auth setup-git\`: removes every
              \`credential.https://<host>.*\` helper entry setup-git may have
              written (global and local; including stale \`~/.npm/_npx\` and
-             major-only \`@1\` pins), revokes the stored API token on the
-             server (\`token:delete\` / DELETE /v1/tokens/current), and
-             deletes it from the OS keychain. Idempotent when nothing is
-             set up; prints what it removed. Leaves \`kody login\` sessions
-             alone.
+             major-only \`@1\` pins) and revokes any token an older CLI left
+             in the old API-token slot. Idempotent when nothing is set up;
+             prints what it removed. Leaves the saved credential alone.
 
   git-credential
              Git credential helper invoked by git after \`auth setup-git\`
              (\`get\` returns username=x / password=kody_at_… for the Kody
-             host with no network while the stored token is still valid;
-             silently remints via \`kody login\` only when expired or near
-             expiry; \`store\`/\`erase\` are no-ops). Not meant for interactive
+             host: ${apiTokenEnvVar} when set, else the saved CLI credential,
+             refreshed like any command; never mints; \`store\`/\`erase\` are
+             no-ops). Not meant for interactive
              use.
 
   api        Call one Open API operation by operationId + flat --params
@@ -281,16 +268,10 @@ ${orgBlock}
   --token / ${apiTokenEnvVar}
              Scoped API token (preferred via env). One resolver picks the
              credential, and \`kody whoami\` reports that pick:
-             whoami, api, package, execute --local, context, daemon, dev:
-               --token, ${apiTokenEnvVar}, stored API token, kody login.
-             search and cloud execute: --token, kody login (MCP),
-               ${apiTokenEnvVar}, stored API token.
-             \`kody login\` does not replace a stored API token; replace it
-             with \`kody auth bootstrap --lifetime short --scopes <list>\`
-             or clear it with \`kody logout\`.
-             Prefer \`cliCredentialBootstrap\` then \`auth bootstrap\`
-             (\`--lifetime short|long\`). CI/headless: \`tokenCreate\` with
-             \`org:execute\` plus the capability scopes you need.
+             every command: --token, ${apiTokenEnvVar}, then the saved CLI
+             credential (\`kody login\` / \`kody auth bootstrap\`).
+             CI/headless: \`tokenCreate\` with \`org:execute\` plus the
+             capability scopes you need.
              Profiles: \`tokenCreate\` with \`profile_id\`, or
              \`profileHandoff\` for a new sub-profile, mints a token
              that acts as that profile (not accepted by /mcp).

@@ -22,7 +22,7 @@ import {
 	type StoredApiToken,
 } from '../src/api-token-store.js'
 import { resolveLocalExecuteBearer, runCli } from '../src/cli.js'
-import { createFileBackend } from '../src/store.js'
+import { createFileBackend, loadCredentials } from '../src/store.js'
 import { redact } from '../src/redact.js'
 
 /** Matches platform `kody_bc_<16>_<32 base64url>`. */
@@ -197,16 +197,28 @@ test('authBootstrap redeems and stores without exposing the token in returned me
 	assert.equal(result.stored.createdVia, 'cli-bootstrap')
 	assert.deepEqual(result.stored.scopes, ['account:read', 'local-execute'])
 	assert.deepEqual(requests[0]?.body, { code: goodCode, lifetime: 'short' })
-	const loaded = loadStoredApiToken(apiUrl, backend)
-	assert.equal(loaded?.token, goodToken)
-	assert.equal(loaded?.tokenId, 'tok_bootstrap_1')
+	// Saved in the slot and shape `kody login` uses, not a separate API-token slot.
+	const loaded = loadCredentials(undefined, backend)
+	assert.equal(loaded?.accessToken, goodToken)
+	assert.equal(loaded?.refreshToken, undefined)
+	assert.equal(loaded?.scope, 'account:read local-execute')
 	assert.ok(backend.path)
-	const onDisk = JSON.parse(
-		readFileSync(backend.path, 'utf8'),
-	) as StoredApiToken
-	assert.equal(onDisk.token, goodToken)
-	assert.equal(onDisk.version, 1)
-	assert.equal('lifetime' in onDisk, false)
+	assert.match(readFileSync(backend.path, 'utf8'), /"accessToken"/)
+})
+
+test('authBootstrap saves the login org the redeem response names', async () => {
+	reset()
+	redeemBody = {
+		...(redeemBody as Record<string, unknown>),
+		login_org: { slug: 'acme' },
+	}
+	const backend = tempBackend()
+	await authBootstrap({ code: goodCode, apiUrl, backend, fetchFn: fetch })
+	assert.deepEqual(requests[0]?.body, { code: goodCode })
+	assert.equal(
+		loadCredentials(undefined, backend, undefined, { org: 'acme' })?.org,
+		'acme',
+	)
 })
 
 test('runCli auth bootstrap redeems and never prints the kody_at_ token', async () => {
@@ -241,7 +253,7 @@ test('runCli auth bootstrap redeems and never prints the kody_at_ token', async 
 			},
 		)
 		assert.equal(code, 0)
-		assert.match(stdout, /Bootstrap API token stored/)
+		assert.match(stdout, /Saved as the CLI credential/)
 		assert.match(stdout, /tok_bootstrap_1/)
 		assert.match(stdout, /local-execute/)
 		assert.doesNotMatch(stdout, /kody_at_/)
@@ -262,28 +274,9 @@ test('runCli auth bootstrap redeems and never prints the kody_at_ token', async 
 	}
 })
 
-test('runCli auth bootstrap fails clearly when lifetime is missing', async () => {
-	reset()
-	let stderr = ''
-	const code = await runCli(
-		['auth', 'bootstrap', '--code', goodCode, '--api-url', apiUrl],
-		{
-			stderr: (text) => {
-				stderr += text
-			},
-		},
-	)
-	assert.equal(code, 1)
-	assert.match(stderr, /Token lifetime is required/)
-	assert.match(stderr, /--lifetime short\|long/)
-	assert.match(stderr, /--idle-ttl-seconds/)
-	assert.match(stderr, /--max-lifetime-seconds/)
-	assert.match(stderr, /Single-task agents should use --lifetime short/)
-	assert.equal(requests.length, 0)
-})
-
-test('resolveLocalExecuteBearer prefers stored bootstrap token over login OAuth', async () => {
+test('resolveLocalExecuteBearer adopts an old-slot bootstrap token into the saved credential', async () => {
 	const backend = tempBackend()
+	const loginBackend = tempBackend()
 	saveStoredApiToken(
 		{
 			version: 1,
@@ -300,13 +293,14 @@ test('resolveLocalExecuteBearer prefers stored bootstrap token over login OAuth'
 		env: {},
 		apiUrl: 'https://api.kody.codes',
 		apiTokenBackend: backend,
-		ensureCredentials: async () => {
-			throw new Error(
-				'login should not be consulted when bootstrap token is stored',
-			)
-		},
+		backend: loginBackend,
 	})
 	assert.equal(token, 'kody_at_stored_bootstrap')
+	assert.equal(loadStoredApiToken('https://api.kody.codes', backend), null)
+	assert.equal(
+		loadCredentials(undefined, loginBackend)?.accessToken,
+		'kody_at_stored_bootstrap',
+	)
 })
 
 test('resolveLocalExecuteBearer still prefers --token over stored bootstrap', async () => {
@@ -355,7 +349,7 @@ test('whoami uses stored bootstrap token without env, --token, or login', async 
 		tokenId: 'tok_whoami_stored',
 		scopes: ['account:read', 'local-execute'],
 		createdVia: 'cli-bootstrap',
-		expiresAt: '2026-10-02T12:00:00.000Z',
+		expiresAt: '2099-10-02T12:00:00.000Z',
 	})
 	const authHeaders: Array<string | null> = []
 	const previousFetch = globalThis.fetch
@@ -372,7 +366,7 @@ test('whoami uses stored bootstrap token without env, --token, or login', async 
 					id: 'tok_whoami_stored',
 					name: 'kody-cli-bootstrap',
 					scopes: ['account:read', 'local-execute'],
-					expires_at: '2026-10-02T12:00:00.000Z',
+					expires_at: '2099-10-02T12:00:00.000Z',
 					max_expires_at: null,
 				}),
 				{ status: 200 },
@@ -541,11 +535,8 @@ test('redeemBootstrapCode surfaces already-used codes clearly', async () => {
 	)
 })
 
-test('redeemBootstrapCode rejects missing lifetime before calling the API', async () => {
+test('redeemBootstrapCode without a lifetime sends only the code', async () => {
 	reset()
-	await assert.rejects(
-		() => redeemBootstrapCode({ code: goodCode, apiUrl, fetchFn: fetch }),
-		/--lifetime short\|long/,
-	)
-	assert.equal(requests.length, 0)
+	await redeemBootstrapCode({ code: goodCode, apiUrl, fetchFn: fetch })
+	assert.deepEqual(requests[0]?.body, { code: goodCode })
 })

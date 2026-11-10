@@ -217,7 +217,7 @@ test('auth bootstrap --scopes with --token mints through the Open API, then rede
 				/scopes: org:execute, package:read, package:write/,
 			)
 			assert.doesNotMatch(result.stdout, /kody_at_|kody_bc_/)
-			assert.equal(loadStoredApiToken(apiUrl)?.tokenId, 'tok_scoped_1')
+			assert.equal(loadStoredApiToken(apiUrl), null)
 		},
 	)
 })
@@ -279,7 +279,7 @@ test('auth bootstrap --scopes redeems server-clamped lifetimes without CLI flag 
 				idle_ttl_seconds: 45,
 				max_lifetime_seconds: 45,
 			})
-			assert.equal(loadStoredApiToken(apiUrl)?.tokenId, 'tok_scoped_1')
+			assert.equal(loadStoredApiToken(apiUrl), null)
 		},
 	)
 })
@@ -370,7 +370,7 @@ test('auth bootstrap --scopes with a kody login session mints through the Open A
 				scopes: requestedScopes,
 				lifetime: 'short',
 			})
-			assert.equal(loadStoredApiToken(apiUrl)?.tokenId, 'tok_scoped_1')
+			assert.equal(loadStoredApiToken(apiUrl), null)
 			assert.doesNotMatch(result.stdout, /kody_at_|kody_bc_/)
 		},
 	)
