@@ -43,12 +43,17 @@ async function withTempKodyHome<T>(run: () => Promise<T>): Promise<T> {
 	const previousHome = process.env.HOME
 	const previousXdg = process.env.XDG_CONFIG_HOME
 	const previousToken = process.env.KODY_API_TOKEN
+	const previousAppData = process.env.APPDATA
 	process.env.HOME = home
 	process.env.XDG_CONFIG_HOME = home
+	// Windows keeps CLI config under %APPDATA%.
+	process.env.APPDATA = home
 	delete process.env.KODY_API_TOKEN
 	try {
 		return await run()
 	} finally {
+		if (previousAppData === undefined) delete process.env.APPDATA
+		else process.env.APPDATA = previousAppData
 		if (previousHome === undefined) delete process.env.HOME
 		else process.env.HOME = previousHome
 		if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME

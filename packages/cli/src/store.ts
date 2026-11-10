@@ -161,12 +161,26 @@ function fileBackendFor(
 	return createFileBackend(path)
 }
 
+/**
+ * `KODY_CLI_CREDENTIAL_STORE=file` skips the OS keyring. The keyring is per
+ * OS user, not per HOME/APPDATA, so CLI tests set this to keep saved
+ * credentials inside their temp config dir.
+ */
+export function fileCredentialStoreForced(
+	env: NodeJS.ProcessEnv = process.env,
+): boolean {
+	return env.KODY_CLI_CREDENTIAL_STORE?.trim().toLowerCase() === 'file'
+}
+
 export function resolveBackend(
 	mcpUrl: string,
 	preferred?: SecretBackend,
 	resolution?: StoreResolution,
 ): SecretBackend {
 	if (preferred) return preferred
+	if (!resolution?.createKeyring && fileCredentialStoreForced()) {
+		return fileBackendFor(mcpUrl, resolution)
+	}
 	try {
 		return (resolution?.createKeyring ?? createKeyringBackend)(mcpUrl)
 	} catch {

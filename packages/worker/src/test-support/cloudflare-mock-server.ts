@@ -133,7 +133,10 @@ async function disposeCloudflareMock(proc: SpawnedProcess, persistDir: string) {
 	}
 }
 
-export async function startCloudflareMock(token: string) {
+export async function startCloudflareMock(
+	token: string,
+	options: { gitBackendUrl?: string } = {},
+) {
 	// Isolated persist dir: this mock uses SQLite-backed Durable Objects.
 	// Sharing Wrangler's default `.wrangler/state` across parallel `wrangler
 	// dev` processes (email + artifacts node-unit, or a leftover local dev
@@ -150,6 +153,11 @@ export async function startCloudflareMock(token: string) {
 			workerConfig,
 			'--var',
 			`MOCK_API_TOKEN:${token}`,
+			// Without a git backend, Artifacts remotes point at this mock's
+			// token-gated API and git clients get 401.
+			...(options.gitBackendUrl
+				? ['--var', `MOCK_GIT_BACKEND_URL:${options.gitBackendUrl}`]
+				: []),
 			'--port',
 			'0',
 			'--inspector-port',
