@@ -187,7 +187,8 @@ test('a new user signs up, verifies email from the message, and reaches MCP conn
 				{ timeout: 45_000 },
 			)
 			.not.toBeNull()
-		expect(founderWelcomeEmail?.text).toContain('goes straight to me')
+		const welcomeBody = `${founderWelcomeEmail?.text ?? ''}\n${founderWelcomeEmail?.html ?? ''}`
+		expect(welcomeBody).toContain('/onboarding')
 		// connect_agent waits for the campaign dwell instead of landing seconds
 		// after the founder welcome.
 		const afterWelcome = await listE2eCloudflareMockMessages()
