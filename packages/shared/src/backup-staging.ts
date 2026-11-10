@@ -8,7 +8,7 @@ import { isRecord } from './is-record.ts'
  * Layout of the destination backup bucket:
  *
  * - `daily/d1/...` / `weekly/d1/...` — existing signed D1 REST exports (locked).
- * - `daily/d1-paced/...` — sealed weekday paced delta nights from the
+ * - `daily/d1-paced/...` — sealed Monday–Saturday UTC paced delta nights from the
  *   non-disruptive worker lane (see backup-d1-paced.ts).
  * - `weekly/d1-paced/...` — sealed Sunday UTC paced full bases from that lane.
  * - `staging/{day}/...` — mutable per-day staging area the production

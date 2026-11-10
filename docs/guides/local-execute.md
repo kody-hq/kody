@@ -231,4 +231,5 @@ still auth or permission — use the Failure section below. Two workarounds for
   `KODY_API_TOKEN`, then the one saved CLI credential from `kody login` or
   `kody auth bootstrap`. `kody whoami` reports the same credential. A token an
   older CLI left in the old API-token slot is moved into the saved credential
-  only when nothing else is saved; `kody login` deletes it.
+  only when nothing else is saved and no `--org` / `KODY_ORG` is given;
+  `kody login` tries to delete it.
