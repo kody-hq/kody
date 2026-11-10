@@ -77,11 +77,13 @@ test('package realtime connect upgrades through the real durable object stub and
 				resolveRealtimeHookResult: (input: {
 					payload: (typeof hookPayloads)[number]
 				}) => Promise<Array<unknown>>
+				recordSessionUsage: () => void
 			}
 			anyInstance.resolveRealtimeHookResult = async ({ payload }) => {
 				hookPayloads.push(payload)
 				return []
 			}
+			anyInstance.recordSessionUsage = () => undefined
 		},
 	)
 
@@ -132,9 +134,9 @@ test('package realtime session broadcast and disconnect paths tolerate partial d
 				facet?: string | null
 				topic?: string | null
 			}) => Array<{ session_id: string }>
-			emitToSession: (
+			sendToSession: (
 				sessionId: string,
-				data: unknown,
+				message: string,
 			) => Promise<{ delivered: boolean }>
 			getSocketBySessionId: (sessionId: string) => {
 				send: (data: string) => void
@@ -143,7 +145,6 @@ test('package realtime session broadcast and disconnect paths tolerate partial d
 			stateSnapshot: {
 				sessions: Record<string, { id: string; topics?: Array<string> }>
 			}
-			persistState: () => Promise<void>
 			broadcast: (input: {
 				facet?: string | null
 				topic?: string | null
@@ -165,11 +166,13 @@ test('package realtime session broadcast and disconnect paths tolerate partial d
 			{ session_id: 'session-1' },
 			{ session_id: 'session-2' },
 		]
-		anyInstance.emitToSession = async (sessionId) => ({
+		const realSendToSession = anyInstance.sendToSession.bind(anyInstance)
+		anyInstance.sendToSession = async (sessionId) => ({
 			delivered: sessionId === 'session-1',
 		})
 
 		await expectPartialBroadcast()
+		anyInstance.sendToSession = realSendToSession
 
 		anyInstance.stateSnapshot = {
 			sessions: {
@@ -177,7 +180,6 @@ test('package realtime session broadcast and disconnect paths tolerate partial d
 				'session-2': { id: 'session-2' },
 			},
 		}
-		anyInstance.persistState = async () => undefined
 		anyInstance.getSocketBySessionId = (sessionId) => ({
 			send: () => {
 				if (sessionId === 'session-2') {
@@ -239,7 +241,6 @@ test('package realtime session closes open sockets without running hooks once th
 			binding: unknown
 			sessions: Record<string, unknown>
 		}
-		persistState: () => Promise<void>
 		loadSessionId: (ws: WebSocket) => string | null
 		getPackageAppWorker: () => Promise<never>
 		closeAllSockets: (code: number, reason: string) => void
@@ -263,7 +264,6 @@ test('package realtime session closes open sockets without running hooks once th
 					},
 				},
 			}
-			anyInstance.persistState = async () => undefined
 			anyInstance.loadSessionId = () => 'session-1'
 			anyInstance.getPackageAppWorker = async () => {
 				hookWorkerRequested = true

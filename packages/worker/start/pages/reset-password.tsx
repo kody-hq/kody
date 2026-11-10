@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
-import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
+import { uiState, sendUiEvent } from '#client/ui-actor.ts'
 import { useCallback, type FormEvent } from 'react'
-import { useMachine } from '@xstate/react'
+import { useActor } from '@xstate/react'
 import {
 	passwordResetState,
 	type PasswordResetState,
@@ -37,15 +37,7 @@ import { useHydrated } from '../components/use-hydrated.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 export function ResetPasswordRoute() {
 	const hydrated = useHydrated()
-	const [flowSnapshot, , flowActor] = useMachine(passwordResetState, {
-		snapshot: (() => {
-			const initialView = { status: 'idle' }
-			return passwordResetState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	})
+	const [flowSnapshot, , flowActor] = useActor(passwordResetState)
 	const flow = uiState<PasswordResetState>(flowSnapshot)
 	const transition = useCallback(
 		(event: Parameters<typeof flowActor.send>[0]) =>

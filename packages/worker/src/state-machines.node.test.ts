@@ -2,17 +2,24 @@ import {
 	IllegalStateTransitionError,
 	canHandle,
 	finalStatesOf,
-	statesOf,
+	type LifecycleStateOf,
 } from '@kody-internal/shared/state-machine.ts'
 import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { expect, test } from 'vitest'
+import { expect, expectTypeOf, test } from 'vitest'
 import { stateMachines, statusEnums } from '../../../tools/state-machines.ts'
 import { renderStateMachines } from '../../../tools/generate-state-machines.ts'
 import { agentRegistrationState } from './agent-registration/agent-registration-state.ts'
 import { deviceAuthorizationState } from './oauth-device/device-authorization-state.ts'
 import { inviteState } from './orgs/invite-state.ts'
 import ts from 'typescript'
+import { extractMachineGraph } from '../../../tools/state-machine-graph.ts'
+
+test('v6 lifecycle values retain the exact state union rather than string', () => {
+	expectTypeOf<LifecycleStateOf<typeof inviteState>>().toEqualTypeOf<
+		'pending' | 'accepted' | 'revoked' | 'expired'
+	>()
+})
 
 test('token-mint failure can roll a consumed registration back to claimed', () => {
 	expect(canHandle(agentRegistrationState, 'consumed', 'RESTORE')).toBe(true)
@@ -115,92 +122,33 @@ test('registry ids are unique and event-driven graphs have valid reachable state
 	for (const { statusEnum } of statusEnums)
 		for (const state of statusEnum.values)
 			expect(state).toMatch(/^[a-z][a-z0-9_-]*$/)
-	for (const { machine } of stateMachines) {
-		const states = statesOf(machine)
-		const finals = finalStatesOf(machine)
-		const initial = machine.root.initial.target![0]!.key
-		const reachable = new Set([initial])
-		for (const state of reachable) {
-			for (const edges of machine.states[state]!.transitions.values())
-				for (const edge of edges)
-					for (const target of edge.target ?? []) reachable.add(target.key)
-		}
-		expect([...reachable].sort()).toEqual([...states].sort())
-		for (const state of states) {
+	for (const { machine, file } of stateMachines) {
+		const graph = extractMachineGraph(machine, file)
+		expect(graph.states).toEqual(Object.keys(machine.states))
+		expect(graph.finals).toEqual(finalStatesOf(machine))
+		const reachable = new Set([graph.initial])
+		for (const state of reachable)
+			for (const edge of graph.edges.filter((edge) => edge.source === state))
+				reachable.add(edge.target)
+		expect([...reachable].sort()).toEqual([...graph.states].sort())
+		for (const state of graph.states) {
 			expect(state).toMatch(/^[a-z][a-z0-9_-]*$/)
-			const outgoing = [...machine.states[state]!.transitions.values()].flat()
-			expect(outgoing.length > 0).toBe(!finals.includes(state))
+			expect(graph.handlers.some((handler) => handler.source === state)).toBe(
+				!graph.finals.includes(state),
+			)
 		}
 	}
 })
 
 test('every declared lifecycle event is handled by the machine', () => {
-	const root = resolve(import.meta.dirname, '../../..')
 	for (const { machine, file } of stateMachines) {
-		const source = ts.createSourceFile(
-			file,
-			readFileSync(resolve(root, file), 'utf8'),
-			ts.ScriptTarget.Latest,
-			true,
+		const graph = extractMachineGraph(machine, file)
+		expect(graph.declaredEvents.length).toBeGreaterThan(0)
+		expect([...graph.declaredEvents].sort()).toEqual(
+			[...new Set(graph.handlers.map((handler) => handler.event))].sort(),
 		)
-		const machineId = machine.id
-		const declared: string[] = []
-		function visit(node: ts.Node) {
-			if (
-				ts.isPropertyAssignment(node) &&
-				node.name.getText(source) === 'events' &&
-				(ts.isAsExpression(node.initializer) ||
-					ts.getJSDocType(node.initializer))
-			) {
-				const eventType = ts.isAsExpression(node.initializer)
-					? node.initializer.type
-					: ts.getJSDocType(node.initializer)!
-				const types = ts.isUnionTypeNode(eventType)
-					? eventType.types
-					: [eventType]
-				for (const type of types) {
-					if (!ts.isTypeLiteralNode(type))
-						throw new Error(`Expected inline event union in ${file}`)
-					for (const member of type.members) {
-						if (
-							ts.isPropertySignature(member) &&
-							member.name.getText(source) === 'type' &&
-							member.type &&
-							ts.isLiteralTypeNode(member.type) &&
-							ts.isStringLiteral(member.type.literal)
-						)
-							declared.push(member.type.literal.text)
-					}
-				}
-			}
-			ts.forEachChild(node, visit)
-		}
-		function findMachine(node: ts.Node) {
-			if (
-				ts.isCallExpression(node) &&
-				ts.isPropertyAccessExpression(node.expression) &&
-				node.expression.name.text === 'createMachine' &&
-				node.arguments[0] &&
-				ts.isObjectLiteralExpression(node.arguments[0]) &&
-				node.arguments[0].properties.some(
-					(property) =>
-						ts.isPropertyAssignment(property) &&
-						property.name.getText(source) === 'id' &&
-						ts.isStringLiteral(property.initializer) &&
-						property.initializer.text === machineId,
-				)
-			) {
-				visit(node.expression.expression)
-				return
-			}
-			ts.forEachChild(node, findMachine)
-		}
-		findMachine(source)
-		expect(declared.length).toBeGreaterThan(0)
-		expect({ file, events: [...new Set(declared)].sort() }).toEqual({
-			file,
-			events: [...machine.events].sort(),
-		})
+		for (const event of machine.events)
+			expect(graph.declaredEvents).toContain(event)
 	}
 })
 
@@ -211,6 +159,7 @@ test('documentation separates replacement enums from event-driven graphs', () =>
 	)
 	expect(machines).toContain('| CONSUME | pending | consumed | — |')
 	expect(machines).toContain('pending --> consumed: CONSUME')
+	expect(machines).toContain('UI machines export a view type')
 	expect(machines).not.toContain('consumed --> expired')
 	expect(machines).not.toContain('mcp_memories.status')
 	expect(enums).toContain('mcp_memories.status')

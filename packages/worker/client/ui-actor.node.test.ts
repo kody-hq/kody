@@ -1,5 +1,9 @@
+import { restoreActor } from 'xstate/persist'
 import { createActor, type AnyStateMachine, type AnyEventObject } from 'xstate'
-import { expect, test } from 'vitest'
+import { afterEach, beforeEach, expect, test } from 'vitest'
+import assert from 'node:assert/strict'
+import { consoleWarn } from '#worker/test-support/console-spies.ts'
+
 import { uiContext, uiState, sendUiEvent } from './ui-actor.ts'
 import { loginState } from './routes/login-state.ts'
 import { passwordResetState } from './routes/password-reset-state.ts'
@@ -15,6 +19,17 @@ import { connectOauthDeviceState } from './routes/connect-oauth-device-state.ts'
 import { adminCodemodRunState } from './routes/admin-codemod-run-state.ts'
 import { clipboardFeedbackState } from './routes/clipboard-feedback-state.ts'
 import { submissionGateState } from './routes/submission-gate-state.ts'
+
+beforeEach(() => consoleWarn.mockImplementation(() => {}))
+afterEach(() => {
+	for (const call of consoleWarn.mock.calls) {
+		assert.equal(call.length, 1)
+		assert.match(
+			String(call[0]),
+			/^Actor [\w.]+ received event "[A-Z_]+" in state "[a-z_]+" with no matching transition$/,
+		)
+	}
+})
 type Probe = {
 	name: string
 	machine: AnyStateMachine
@@ -173,12 +188,15 @@ test.each(probes)(
 
 test('restoring a rendered form snapshot preserves initial feedback and retry clears it atomically', () => {
 	const initial = { status: 'error', message: 'Existing feedback' } as const
-	const actor = createActor(loginState, {
-		snapshot: loginState.resolveState({
-			value: initial.status,
-			context: uiContext(initial),
-		}),
-	}).start()
+	const actor = restoreActor(
+		loginState,
+		loginState.getPersistedSnapshot(
+			loginState.resolveState({
+				value: initial.status,
+				context: uiContext(initial),
+			}),
+		),
+	).start()
 	expect(uiState(actor.getSnapshot())).toEqual(initial)
 	expect(uiState(actor.getSnapshot())).toBe(uiState(actor.getSnapshot()))
 	expect(sendUiEvent(actor, { type: 'SUBMIT', data: {} })).toBe(true)

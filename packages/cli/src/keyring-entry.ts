@@ -313,7 +313,11 @@ export function createMacSecurityAsyncEntry(input: {
 	}
 }
 
-/** The OS keyring entry for one CLI secret (`kody.codes` service). */
+/**
+ * The OS keyring entry for one CLI secret (`kody.codes` service). On macOS this
+ * blocking form gives up after `KODY_KEYCHAIN_TIMEOUT_MS` but cannot print
+ * while it waits; machine-key reads use `createAsyncKeyringEntry`.
+ */
 export function createKeyringEntry(
 	account: string,
 	platform: NodeJS.Platform = process.platform,

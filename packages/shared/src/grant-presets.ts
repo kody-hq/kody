@@ -94,7 +94,7 @@ export function isOrgWideReadPermission(
 
 /**
  * Manage permissions an `org` grant may carry for every package and package
- * app in the org, current and future. Only an Owner may add them. They stay
+ * app in the org, current and future. An Owner or Admin may add them. They stay
  * subject to unmappable-credential locks: `package:write` and
  * `package:publish` on a package with unmappable credentials need a grant on
  * that package that allows changes. No other family is grantable org-wide

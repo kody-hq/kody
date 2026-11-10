@@ -1,9 +1,9 @@
-import { setup } from 'xstate'
+import { setup, types } from 'xstate'
 import type { LifecycleStateOf } from '@kody-internal/shared/state-machine.ts'
 
 export const enablementState = setup({
-	types: {
-		events: {} as { type: 'PAUSE' } | { type: 'DISABLE' } | { type: 'RESUME' },
+	schemas: {
+		events: { PAUSE: types<{}>(), DISABLE: types<{}>(), RESUME: types<{}>() },
 	},
 }).createMachine({
 	id: 'enablements.state',
@@ -11,8 +11,14 @@ export const enablementState = setup({
 		'Enablements start on, pause or rewrite a pause cause, resume after access recovers, and turn off permanently.',
 	initial: 'on',
 	states: {
-		on: { on: { PAUSE: 'paused', DISABLE: 'off' } },
-		paused: { on: { PAUSE: 'paused', RESUME: 'on', DISABLE: 'off' } },
+		on: { on: { PAUSE: { target: 'paused' }, DISABLE: { target: 'off' } } },
+		paused: {
+			on: {
+				PAUSE: { target: 'paused' },
+				RESUME: { target: 'on' },
+				DISABLE: { target: 'off' },
+			},
+		},
 		off: { type: 'final' },
 	},
 })

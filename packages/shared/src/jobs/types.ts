@@ -55,6 +55,10 @@ export type JobRecord = {
 	errorCount: number
 }
 
+/**
+ * Job as list/get/search surfaces see it: `JobRecord` without `userId`, plus a
+ * schedule summary.
+ */
 export type JobView = Omit<JobRecord, 'userId'> & {
 	scheduleSummary: string
 }

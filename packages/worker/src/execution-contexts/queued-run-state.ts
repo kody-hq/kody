@@ -1,14 +1,15 @@
-import { setup } from 'xstate'
+import { setup, types } from 'xstate'
 import type { LifecycleStateOf } from '@kody-internal/shared/state-machine.ts'
 
 export const queuedRunState = setup({
-	types: {
-		events: {} as
-			| { type: 'START_HANDOFF' }
-			| { type: 'FINISH' }
-			| { type: 'CANCEL' }
-			| { type: 'EXPIRE' }
-			| { type: 'RELEASE_HANDOFF' },
+	schemas: {
+		events: {
+			START_HANDOFF: types<{}>(),
+			FINISH: types<{}>(),
+			CANCEL: types<{}>(),
+			EXPIRE: types<{}>(),
+			RELEASE_HANDOFF: types<{}>(),
+		},
 	},
 }).createMachine({
 	id: 'execution_context_queued.lifecycle',
@@ -18,14 +19,18 @@ export const queuedRunState = setup({
 	states: {
 		queued: {
 			on: {
-				START_HANDOFF: 'starting',
-				FINISH: 'finished',
-				CANCEL: 'cancelled',
-				EXPIRE: 'expired',
+				START_HANDOFF: { target: 'starting' },
+				FINISH: { target: 'finished' },
+				CANCEL: { target: 'cancelled' },
+				EXPIRE: { target: 'expired' },
 			},
 		},
 		starting: {
-			on: { RELEASE_HANDOFF: 'queued', FINISH: 'finished', EXPIRE: 'expired' },
+			on: {
+				RELEASE_HANDOFF: { target: 'queued' },
+				FINISH: { target: 'finished' },
+				EXPIRE: { target: 'expired' },
+			},
 		},
 		finished: { type: 'final' },
 		cancelled: { type: 'final' },

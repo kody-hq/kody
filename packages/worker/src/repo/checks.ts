@@ -1222,10 +1222,10 @@ const lintPassedMessage =
 const scannableModuleFilePattern = /\.(?:[cm]?[jt]s|[jt]sx)$/
 const maxAmbientStorageReportedFiles = 5
 
-function moduleImportsAmbientStorage(source: string) {
+function moduleImportsAmbientStorage(source: string, filePath: string) {
 	let parsed: ModuleAstNode
 	try {
-		parsed = parseModuleSource(source) as unknown as ModuleAstNode
+		parsed = parseModuleSource(source, { filePath }) as unknown as ModuleAstNode
 	} catch {
 		return false
 	}
@@ -1268,7 +1268,7 @@ export function collectAmbientStorageImportFiles(
 		if (!scannableModuleFilePattern.test(filePath)) continue
 		if (isTypeDeclarationFilePath(filePath)) continue
 		if (!source.includes('kody:runtime')) continue
-		if (moduleImportsAmbientStorage(source)) {
+		if (moduleImportsAmbientStorage(source, filePath)) {
 			filePaths.push(filePath)
 		}
 	}

@@ -18,6 +18,7 @@ test('empty settlement, undo, racing replacements and disposal settle each actio
 	expect(controller.getSnapshot().status).toBe('waiting')
 	await controller.dispose()
 	expect(last).toHaveBeenCalledTimes(1)
+	expect(controller.actor.getSnapshot().status).toBe('stopped')
 })
 test('settlement errors propagate and release the fence for another action', async () => {
 	const controller = createUndoableActionController()
@@ -31,4 +32,19 @@ test('settlement errors propagate and release the fence for another action', asy
 	expect(controller.getSnapshot()).toEqual({ status: 'idle' })
 	await controller.start({ message: 'Next', onCommit() {} })
 	await controller.dispose()
+})
+
+test('effect cleanup followed by immediate activation keeps the actor alive without restarting it', async () => {
+	const controller = createUndoableActionController()
+	const actor = controller.actor
+	const cleanup = controller.dispose()
+	expect(controller.activate()).toBe(true)
+	await cleanup
+	expect(controller.actor).toBe(actor)
+	const commit = vi.fn()
+	await controller.start({ message: 'Again', onCommit: commit })
+	await controller.dispose()
+	expect(commit).toHaveBeenCalledOnce()
+	expect(controller.actor.getSnapshot().status).toBe('stopped')
+	expect(controller.activate()).toBe(false)
 })

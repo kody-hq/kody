@@ -1,4 +1,6 @@
-import { setup, assign } from 'xstate'
+import { setup, types } from 'xstate'
+import { resetUi, updateUi } from './ui-context.ts'
+type StepEvent = { data: Record<string, never>; requestId?: unknown }
 export type DesktopSetupWizardStep =
 	| 'overview'
 	| 'register'
@@ -7,83 +9,56 @@ export type DesktopSetupWizardStep =
 	| 'forget'
 
 export const desktopSetupStepState = setup({
-	types: {
-		context: {} as { data: Record<string, never>; requestId: unknown },
-		events: {} as
-			| {
-					type: 'REGISTER'
-					data: Record<string, never>
-					requestId?: unknown
-			  }
-			| {
-					type: 'ATTACH'
-					data: Record<string, never>
-					requestId?: unknown
-			  }
-			| {
-					type: 'COMPLETE'
-					data: Record<string, never>
-					requestId?: unknown
-			  }
-			| {
-					type: 'FORGET'
-					data: Record<string, never>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESET'
-					data: Record<string, never>
-					requestId?: unknown
-			  },
-	},
-	guards: {
-		currentRequest: ({ context, event }) =>
-			context.requestId === event.requestId,
-	},
-	actions: {
-		update: assign({ data: ({ event }) => event.data }),
-		start: assign({
-			data: ({ event }) => event.data,
-			requestId: ({ event }) => event.requestId,
-		}),
-		reset: assign({ data: ({ event }) => event.data, requestId: undefined }),
+	schemas: {
+		context: types<{ data: Record<string, never>; requestId: unknown }>(),
+		events: {
+			REGISTER: types<StepEvent>(),
+			ATTACH: types<StepEvent>(),
+			COMPLETE: types<StepEvent>(),
+			FORGET: types<StepEvent>(),
+			RESET: types<StepEvent>(),
+		},
 	},
 }).createMachine({
 	id: 'desktop.setup_step',
 	description:
 		'The resumable setup wizard registers a personal machine before optional team attachment and permits explicit reset or forget.',
 	initial: 'overview',
-	context: { data: {} as Record<string, never>, requestId: undefined },
+	context: { data: {}, requestId: undefined },
 	states: {
 		overview: {
 			on: {
-				REGISTER: { target: 'register', actions: 'update' },
-				ATTACH: { target: 'attach', actions: 'update' },
-				COMPLETE: { target: 'done', actions: 'update' },
-				FORGET: { target: 'forget', actions: 'update' },
+				REGISTER: { target: 'register', context: updateUi },
+				ATTACH: { target: 'attach', context: updateUi },
+				COMPLETE: { target: 'done', context: updateUi },
+				FORGET: { target: 'forget', context: updateUi },
 			},
 		},
 		register: {
 			on: {
-				ATTACH: { target: 'attach', actions: 'update' },
-				COMPLETE: { target: 'done', actions: 'update' },
-				FORGET: { target: 'forget', actions: 'update' },
-				RESET: { target: 'overview', actions: 'reset' },
+				ATTACH: { target: 'attach', context: updateUi },
+				COMPLETE: { target: 'done', context: updateUi },
+				FORGET: { target: 'forget', context: updateUi },
+				RESET: { target: 'overview', context: resetUi },
 			},
 		},
 		attach: {
 			on: {
-				COMPLETE: { target: 'done', actions: 'update' },
-				FORGET: { target: 'forget', actions: 'update' },
-				RESET: { target: 'overview', actions: 'reset' },
+				COMPLETE: { target: 'done', context: updateUi },
+				FORGET: { target: 'forget', context: updateUi },
+				RESET: { target: 'overview', context: resetUi },
 			},
 		},
 		done: {
 			on: {
-				FORGET: { target: 'forget', actions: 'update' },
-				RESET: { target: 'overview', actions: 'reset' },
+				FORGET: { target: 'forget', context: updateUi },
+				RESET: { target: 'overview', context: resetUi },
 			},
 		},
-		forget: { on: { RESET: { target: 'overview', actions: 'reset' } } },
+		forget: {
+			on: {
+				RESET: { target: 'overview', context: resetUi },
+			},
+		},
 	},
 })

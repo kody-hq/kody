@@ -16,9 +16,10 @@ like RFC 8628, and polling the token endpoint with
 `identity_assertion` (an ID-JAG from the agent's provider), `service_auth` (the
 agent names the person's email), and `anonymous` (a pre-claim principal).
 
-[0056](./0056-cli-credential-bootstrap.md) requires every token mint to choose a
-lifetime. [0082](./0082-cli-oauth-device-authorization-grant.md) runs RFC 8628
-on Kody's authorization server for the official CLI only.
+[0056](./0056-cli-credential-bootstrap.md) requires `tokenCreate` to choose a
+lifetime; bootstrap defaults to the login lifetime.
+[0082](./0082-cli-oauth-device-authorization-grant.md) runs RFC 8628 on Kody's
+authorization server for the official CLI only.
 [0053](./0053-scoped-api-tokens-are-not-mcp-oauth-scopes.md) keeps `kody_at_`
 tokens off `/mcp`, so MCP hosts keep running MCP OAuth.
 
@@ -50,9 +51,9 @@ Kent decided on 2026-10-29:
    choice on a consent screen like `/device`.
 5. **Credential.** The claim grant's success response is a standard token
    response whose `access_token` is a user-owned `kody_at_` (`created_via`
-   `agent-registration`) with the 0056 default scopes, bound to the chosen org.
-   auth.md agents send no lifetime, so this mint defaults to `long`; the body
-   may ask for `short` or explicit seconds with the
+   `agent-registration`) with `cliCredentialBootstrapNarrowScopes`, bound to the
+   chosen org. auth.md agents send no lifetime, so this mint defaults to `long`;
+   the body may ask for `short` or explicit seconds with the
    [0056](./0056-cli-credential-bootstrap.md) lifetime fields.
 6. **A Kody profile of auth.md: no `identity_assertion` and no JWT-bearer
    grant.** The spec's claim grant success response adds `identity_assertion`
@@ -103,8 +104,8 @@ replaces the earlier anonymous sketch:
 
 ## Consequences
 
-- 0056: auth.md registration is the one mint with a default lifetime. Every
-  other mint still has to choose.
+- 0056: `tokenCreate` still requires a lifetime. CLI bootstrap and auth.md
+  registration default to `long`.
 - 0082: the device grant's code and verification pieces have a second caller.
   The device authorization endpoint itself is still CLI only.
 - MCP hosts are unchanged. After a claim, an agent installs Kody MCP and the

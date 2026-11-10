@@ -1,92 +1,63 @@
-import { setup, assign } from 'xstate'
-import type {
-	UiContext,
-	UiData,
-	UiPayload,
-	FormFlowState,
+import { setup, types } from 'xstate'
+import {
+	resetUi,
+	startUi,
+	updateUi,
+	type UiContext,
+	type UiEvent,
+	type FormFlowState,
 } from '#client/ui-actor.ts'
 export type UsernameSignupState = FormFlowState<
 	'idle' | 'confirming' | 'submitting' | 'error'
 >
 
 export const usernameSignupState = setup({
-	types: {
-		context: {} as UiContext<UsernameSignupState>,
-		events: {} as
-			| {
-					type: 'CONFIRM_USERNAME'
-					data: UiPayload<UsernameSignupState, 'confirming'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'SUBMIT'
-					data: UiPayload<UsernameSignupState, 'submitting'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'VALIDATION_ERROR'
-					data: UiPayload<UsernameSignupState, 'error'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESPONSE_ERROR'
-					data: UiPayload<UsernameSignupState, 'error'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESET'
-					data: UiPayload<UsernameSignupState, 'idle'>
-					requestId?: unknown
-			  },
+	schemas: {
+		context: types<UiContext<UsernameSignupState>>(),
+		events: {
+			CONFIRM_USERNAME: types<UiEvent<UsernameSignupState, 'confirming'>>(),
+			SUBMIT: types<UiEvent<UsernameSignupState, 'submitting'>>(),
+			VALIDATION_ERROR: types<UiEvent<UsernameSignupState, 'error'>>(),
+			RESPONSE_ERROR: types<UiEvent<UsernameSignupState, 'error'>>(),
+			RESET: types<UiEvent<UsernameSignupState, 'idle'>>(),
+		},
 	},
-	guards: {
-		currentRequest: ({ context, event }) =>
-			context.requestId === event.requestId,
-	},
-	actions: {
-		update: assign({ data: ({ event }) => event.data }),
-		start: assign({
-			data: ({ event }) => event.data,
-			requestId: ({ event }) => event.requestId,
-		}),
-		reset: assign({ data: ({ event }) => event.data, requestId: undefined }),
-	},
+	guards: { currentRequest: (a: unknown, b: unknown) => a === b },
 }).createMachine({
 	id: 'username_signup.form',
 	description:
 		'A chosen username is confirmed before account creation, with failed submissions retryable without losing the confirmed draft.',
 	initial: 'idle',
-	context: { data: {} as UiData<UsernameSignupState>, requestId: undefined },
+	context: { data: {}, requestId: undefined },
 	states: {
 		idle: {
 			on: {
-				CONFIRM_USERNAME: { target: 'confirming', actions: 'update' },
-				VALIDATION_ERROR: { target: 'error', actions: 'update' },
+				CONFIRM_USERNAME: { target: 'confirming', context: updateUi },
+				VALIDATION_ERROR: { target: 'error', context: updateUi },
 			},
 		},
 		confirming: {
 			on: {
-				CONFIRM_USERNAME: { target: 'confirming', actions: 'update' },
-				SUBMIT: { target: 'submitting', actions: 'start' },
-				VALIDATION_ERROR: { target: 'error', actions: 'update' },
-				RESET: { target: 'idle', actions: 'reset' },
+				CONFIRM_USERNAME: { target: 'confirming', context: updateUi },
+				SUBMIT: { target: 'submitting', context: startUi },
+				VALIDATION_ERROR: { target: 'error', context: updateUi },
+				RESET: { target: 'idle', context: resetUi },
 			},
 		},
 		submitting: {
 			on: {
-				RESPONSE_ERROR: {
-					target: 'error',
-					guard: 'currentRequest',
-					actions: 'update',
+				RESPONSE_ERROR: ({ context, event, guards }) => {
+					if (!guards.currentRequest(context.requestId, event.requestId)) return
+					return { target: 'error', context: { data: event.data } }
 				},
 			},
 		},
 		error: {
 			on: {
-				CONFIRM_USERNAME: { target: 'confirming', actions: 'update' },
-				SUBMIT: { target: 'submitting', actions: 'start' },
-				VALIDATION_ERROR: { target: 'error', actions: 'update' },
-				RESET: { target: 'idle', actions: 'reset' },
+				CONFIRM_USERNAME: { target: 'confirming', context: updateUi },
+				SUBMIT: { target: 'submitting', context: startUi },
+				VALIDATION_ERROR: { target: 'error', context: updateUi },
+				RESET: { target: 'idle', context: resetUi },
 			},
 		},
 	},

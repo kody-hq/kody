@@ -18,17 +18,7 @@ type State =
 			promise: Promise<void>
 	  }
 export function createUndoableActionController() {
-	const store = createActor(undoableActionState, {
-		snapshot: (() => {
-			const initialView = {
-				status: 'idle',
-			}
-			return undoableActionState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	}).start()
+	const store = createActor(undoableActionState).start()
 	let timer: ReturnType<typeof setTimeout> | null = null
 	let tail = Promise.resolve()
 	let disposed = false
@@ -84,8 +74,12 @@ export function createUndoableActionController() {
 	async function dispose() {
 		disposed = true
 		clear()
-		await commit()
-		await tail
+		try {
+			await commit()
+			await tail
+		} finally {
+			if (disposed) store.stop()
+		}
 	}
 	return {
 		actor: store,
@@ -95,7 +89,9 @@ export function createUndoableActionController() {
 		commit,
 		dispose,
 		activate: () => {
+			if (store.getSnapshot().status === 'stopped') return false
 			disposed = false
+			return true
 		},
 	}
 }

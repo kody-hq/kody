@@ -285,14 +285,15 @@ test('runCli auth bootstrap redeems and never prints the kody_at_ token', async 
 		assert.equal(requests[0]?.authorization, null)
 		assert.deepEqual(requests[0]?.body, { code: goodCode, lifetime: 'short' })
 	} finally {
+		// Clean up while the temp home is still active.
+		deleteStoredApiToken(apiUrl)
+		clearSavedCredentials(unreachableMcpUrl)
 		if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME
 		else process.env.XDG_CONFIG_HOME = previousXdg
 		if (previousHome === undefined) delete process.env.HOME
 		else process.env.HOME = previousHome
 		if (previousAppData === undefined) delete process.env.APPDATA
 		else process.env.APPDATA = previousAppData
-		deleteStoredApiToken(apiUrl)
-		clearSavedCredentials(unreachableMcpUrl)
 		if (previousMcpUrl === undefined) delete process.env.KODY_MCP_URL
 		else process.env.KODY_MCP_URL = previousMcpUrl
 	}
@@ -343,6 +344,7 @@ test('resolveLocalExecuteBearer still prefers --token over stored bootstrap', as
 		env: {},
 		apiUrl: 'https://api.kody.codes',
 		apiTokenBackend: backend,
+		backend: tempBackend(),
 		ensureCredentials: async () => {
 			throw new Error('login should not run')
 		},
@@ -423,14 +425,15 @@ test('whoami uses stored bootstrap token without env, --token, or login', async 
 		assert.equal(code, 0, stderr)
 	} finally {
 		globalThis.fetch = previousFetch
+		// Clean up while the temp home is still active.
+		deleteStoredApiToken(apiUrl)
+		clearSavedCredentials(unreachableMcpUrl)
 		if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME
 		else process.env.XDG_CONFIG_HOME = previousXdg
 		if (previousHome === undefined) delete process.env.HOME
 		else process.env.HOME = previousHome
 		if (previousAppData === undefined) delete process.env.APPDATA
 		else process.env.APPDATA = previousAppData
-		deleteStoredApiToken(apiUrl)
-		clearSavedCredentials(unreachableMcpUrl)
 		if (previousToken === undefined) delete process.env.KODY_API_TOKEN
 		else process.env.KODY_API_TOKEN = previousToken
 		if (previousMcpUrl === undefined) delete process.env.KODY_MCP_URL
@@ -501,14 +504,15 @@ test('search uses stored bootstrap token without env, --token, or login', async 
 		assert.equal(code, 0, stderr)
 	} finally {
 		globalThis.fetch = previousFetch
+		// Clean up while the temp home is still active.
+		deleteStoredApiToken(apiUrl)
+		clearSavedCredentials(unreachableMcpUrl)
 		if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME
 		else process.env.XDG_CONFIG_HOME = previousXdg
 		if (previousHome === undefined) delete process.env.HOME
 		else process.env.HOME = previousHome
 		if (previousAppData === undefined) delete process.env.APPDATA
 		else process.env.APPDATA = previousAppData
-		deleteStoredApiToken(apiUrl)
-		clearSavedCredentials(unreachableMcpUrl)
 		if (previousToken === undefined) delete process.env.KODY_API_TOKEN
 		else process.env.KODY_API_TOKEN = previousToken
 		if (previousMcpUrl === undefined) delete process.env.KODY_MCP_URL

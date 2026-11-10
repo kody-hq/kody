@@ -12,6 +12,7 @@ import { test } from 'node:test'
 import {
 	accountForMcpUrl,
 	createFileBackend,
+	fileCredentialStoreForced,
 	fileStorePath,
 	parseCredentials,
 	saveCredentials,
@@ -98,6 +99,32 @@ test('file backend stores, loads, and deletes credentials', () => {
 test('parseCredentials rejects invalid payloads', () => {
 	assert.throws(() => parseCredentials('{}'), /invalid/i)
 	assert.throws(() => parseCredentials('{"version":2}'), /invalid/i)
+})
+
+test('KODY_CLI_CREDENTIAL_STORE=file skips the OS keyring', () => {
+	assert.equal(
+		fileCredentialStoreForced({ KODY_CLI_CREDENTIAL_STORE: 'file' }),
+		true,
+	)
+	assert.equal(
+		fileCredentialStoreForced({ KODY_CLI_CREDENTIAL_STORE: 'keyring' }),
+		false,
+	)
+	assert.equal(fileCredentialStoreForced({}), false)
+	const previous = process.env.KODY_CLI_CREDENTIAL_STORE
+	process.env.KODY_CLI_CREDENTIAL_STORE = 'file'
+	try {
+		const path = tempFilePath()
+		const backend = resolveBackend(sample.mcpUrl, undefined, {
+			fileStorePath: () => path,
+		})
+		saveCredentials(sample, backend)
+		assert.equal(existsSync(path), true)
+		assert.equal(loadCredentials(sample.mcpUrl, backend)?.mcpUrl, sample.mcpUrl)
+	} finally {
+		if (previous === undefined) delete process.env.KODY_CLI_CREDENTIAL_STORE
+		else process.env.KODY_CLI_CREDENTIAL_STORE = previous
+	}
 })
 
 test('resolveBackend uses the file store when the keyring constructor throws', () => {

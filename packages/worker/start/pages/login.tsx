@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
+import { uiState, sendUiEvent } from '#client/ui-actor.ts'
 import {
 	useCallback,
 	useEffect,
@@ -9,7 +9,7 @@ import {
 	type CSSProperties,
 	type FormEvent,
 } from 'react'
-import { useMachine } from '@xstate/react'
+import { useActor } from '@xstate/react'
 import { loginState, type AuthFormState } from '#client/routes/login-state.ts'
 import type { LifecycleStateOf } from '@kody-internal/shared/state-machine.ts'
 import { useServerFn } from '@tanstack/react-start'
@@ -96,15 +96,7 @@ export function LoginPage({
 		webauthnAuthenticationVerifyFn,
 	)
 	const hydrated = useHydrated()
-	const [flowSnapshot, , flowActor] = useMachine(loginState, {
-		snapshot: (() => {
-			const initialView = { status: 'idle' }
-			return loginState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	})
+	const [flowSnapshot, , flowActor] = useActor(loginState)
 	const flow = uiState<AuthFormState>(flowSnapshot)
 	const transition = useCallback(
 		(event: Parameters<typeof flowActor.send>[0]) =>

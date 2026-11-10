@@ -9,6 +9,7 @@ import {
 	init as initEsModuleLexer,
 	parse as parseEsModule,
 } from 'es-module-lexer'
+import { transform, type Loader } from 'esbuild'
 import { findFetchBodiesMissingSecretResolution } from './fetch-body-secret-resolution.js'
 
 const esModuleLexerReady = initEsModuleLexer()
@@ -57,7 +58,7 @@ export async function findPackageFetchBodyWarnings(input: {
 		}
 		let imports: ReturnType<typeof parseEsModule>[0]
 		try {
-			imports = parseEsModule(source)[0]
+			imports = parseEsModule(await lexableModuleSource(resolved, source))[0]
 		} catch {
 			continue
 		}
@@ -69,6 +70,36 @@ export async function findPackageFetchBodyWarnings(input: {
 		}
 	}
 	return hits
+}
+
+/**
+ * es-module-lexer reads JavaScript only, so TypeScript and JSX are stripped
+ * first with the loader the bundler picks for the extension (`.ts` is not
+ * TSX, so `<T>(x: T) => x` stays a generic arrow).
+ */
+export function moduleLoaderForPath(path: string): Loader {
+	switch (extname(path).toLowerCase()) {
+		case '.ts':
+		case '.mts':
+		case '.cts':
+			return 'ts'
+		case '.tsx':
+			return 'tsx'
+		case '.jsx':
+			return 'jsx'
+		default:
+			return 'js'
+	}
+}
+
+async function lexableModuleSource(
+	path: string,
+	source: string,
+): Promise<string> {
+	const loader = moduleLoaderForPath(path)
+	if (loader === 'js') return source
+	const result = await transform(source, { loader, format: 'esm' })
+	return result.code
 }
 
 function isTestModule(path: string): boolean {

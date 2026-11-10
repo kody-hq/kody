@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
 import { useCallback, useEffect, useId, useRef, type ChangeEvent } from 'react'
-import { useMachine } from '@xstate/react'
+import { useActor } from '@xstate/react'
 import {
 	usernameAvailabilityState,
 	type UsernameAvailabilityView as AvailabilityView,
@@ -64,19 +64,8 @@ export function UsernameChoiceField(props: {
 	const tipId = `${generatedId}-username-tip`
 	const tipAnchor = `--${generatedId.replace(/:/g, '')}-username-tip`
 	const availabilityId = `${generatedId}-username-availability`
-	const [availabilitySnapshot, , availabilityActor] = useMachine(
+	const [availabilitySnapshot, , availabilityActor] = useActor(
 		usernameAvailabilityState,
-		{
-			snapshot: (() => {
-				const initialView = {
-					status: 'idle',
-				}
-				return usernameAvailabilityState.resolveState({
-					value: initialView.status,
-					context: uiContext(initialView),
-				})
-			})(),
-		},
 	)
 	const availability = uiState<UsernameAvailabilityView>(availabilitySnapshot)
 	const setAvailability = useCallback(

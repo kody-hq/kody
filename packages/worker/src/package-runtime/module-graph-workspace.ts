@@ -133,6 +133,7 @@ export function collectReachableSourceFilePaths(input: {
 			source,
 			{
 				includeTypeOnly: input.includeTypeOnly,
+				filePath,
 			},
 		).literalImports) {
 			if (

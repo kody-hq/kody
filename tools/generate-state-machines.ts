@@ -3,13 +3,17 @@ import { resolve } from 'node:path'
 import { format } from 'oxfmt'
 import {
 	finalStatesOf,
-	renderStateMachineMermaid,
 	statesOf,
 	type StatusEnum,
 	type LifecycleMachine,
 } from '../packages/shared/src/state-machine.ts'
 import { stateMachines, statusEnums } from './state-machines.ts'
 import { isExecutedDirectly } from './node-runtime.ts'
+import {
+	extractMachineGraph,
+	renderStateMachineMermaid,
+	type LifecycleGraph,
+} from './state-machine-graph.ts'
 
 export function renderStateMachines(
 	entries: ReadonlyArray<{
@@ -26,20 +30,24 @@ Owned lifecycles use event-driven XState machines. Unconstrained replacement fie
 not state machines. Stored values and wire contracts remain unchanged.
 
 Framework-owned request state (such as TanStack Query mutations) is used directly,
-not wrapped in another machine. UI forms derive busy state from the mutation and
-keep validation and receipt feedback as atomic discriminated values. App-owned
-interaction controllers reject illegal transitions synchronously, including
-submissions arriving before React has rendered a pending state.
+not wrapped in another machine. App-owned UI flows own interaction with an XState actor
+(\`useActor\`, \`useActorRef\`, or \`createActor\`). View types carry validation and receipt payload for \`uiState\`.
+\`sendUiEvent\` rejects illegal transitions synchronously, including submissions arriving
+before React has rendered a pending state.
 
 ## Adding a machine
 
 Declare a flat XState machine next to the domain, with named operation events and
-genuinely terminal states marked \`type: 'final'\`. Export the machine and a
-\`LifecycleStateOf<typeof machine>\` alias, and register its machine and source path
+genuinely terminal states marked \`type: 'final'\`. Register its machine and source path
 in the package's \`state-machines.ts\` registry. The tooling-only aggregate at
 \`tools/state-machines.ts\` includes each package registry without adding runtime
 dependencies between packages. Run \`npm run state-machines:generate\`
 and add focused graph tests. Existing stored values and wire contracts stay unchanged.
+
+Server and desktop machines export a \`LifecycleStateOf<typeof machine>\` alias for stored
+or parsed status. UI machines export a view type for actor context instead of that alias
+(\`AuthFormState\`, \`AdminCodemodRunState\`, and similar, including \`FormFlowState\` views
+from \`#client/ui-actor.ts\`). Drive them with \`uiContext\`, \`uiState\`, and \`sendUiEvent\`.
 
 Use \`nextState(machine, from, event)\` for guard-aware transition validation and
 \`sqlSourcesOf(machine, eventType)\` for SQL compare-and-set source lists. Sources
@@ -53,11 +61,9 @@ Use \`defineStatusEnum\` for fields accepting arbitrary status replacement and
 register them separately in \`statusEnums\`; they have no transition graph.
 
 ${entries
-	.map(
-		(
-			{ machine, file },
-			index,
-		) => `${file.startsWith('packages/worker/client/') && !entries.slice(0, index).some((entry) => entry.file.startsWith('packages/worker/client/')) ? '## UI flows\n\n' : ''}## ${machine.id}
+	.map(({ machine, file }, index) => {
+		const graph = extractMachineGraph(machine, file)
+		return `${file.startsWith('packages/worker/client/') && !entries.slice(0, index).some((entry) => entry.file.startsWith('packages/worker/client/')) ? '## UI flows\n\n' : ''}## ${machine.id}
 
 ${machine.config.description ?? ''}
 
@@ -68,12 +74,12 @@ States: ${statesOf(machine).join(', ')}
 Final states: ${finalStatesOf(machine).join(', ') || 'None'}
 
 \`\`\`mermaid
-${renderStateMachineMermaid(machine)}
+${renderStateMachineMermaid(graph)}
 \`\`\`
 
-${renderTransitions(machine)}
-`,
-	)
+${renderTransitions(graph)}
+`
+	})
 	.join('\n')}
 ## Status enums (not state machines)
 
@@ -91,29 +97,15 @@ Values: ${statusEnum.values.join(', ')}
 	.join('\n')}`
 }
 
-function renderTransitions(machine: LifecycleMachine) {
+function renderTransitions(graph: LifecycleGraph) {
 	return `| Event | From | To | Guard |
 | --- | --- | --- | --- |
-${statesOf(machine)
-	.flatMap((state) =>
-		[...machine.states[state]!.transitions].flatMap(([event, edges]) =>
-			edges
-				.filter((edge) => edge.target !== undefined || edge.actions.length > 0)
-				.map(
-					(edge) =>
-						`| ${event} | ${state} | ${edge.target?.map((target) => target.key).join(', ') ?? state} | ${describeGuard(edge.guard)} |`,
-				),
-		),
+${graph.edges
+	.map(
+		(edge) =>
+			`| ${edge.event} | ${edge.source} | ${edge.target} | ${edge.guard || '—'} |`,
 	)
 	.join('\n')}`
-}
-
-function describeGuard(guard: unknown): string {
-	if (typeof guard === 'string') return guard
-	if (typeof guard === 'function') return guard.name || 'inline'
-	if (guard && typeof guard === 'object' && 'type' in guard)
-		return String(guard.type)
-	return '—'
 }
 
 if (isExecutedDirectly(import.meta.url)) {

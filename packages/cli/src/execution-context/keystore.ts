@@ -59,14 +59,17 @@ export function contextWorkersDir(apiUrl: string, ecid: string) {
 
 export type WrappingKeySource = {
 	kind: 'keyring' | 'passphrase' | 'file'
+	/** Unwraps the AES key; keyring and file sources ignore `salt`. */
 	key(salt: Buffer | null): Promise<Buffer>
 	salt?: Buffer
 }
 
 /**
- * The private key is encrypted at rest with AES-256-GCM. The wrapping key
- * comes from the OS keyring, or from a passphrase in
- * KODY_CONTEXT_KEY_PASSPHRASE (scrypt). With neither, refuse.
+ * Resolve a keyring or passphrase wrapping key. The private key is encrypted
+ * at rest with AES-256-GCM. On macOS the keyring path is async: it can print a
+ * Keychain wait notice, time out (`KeychainTimeoutError`), and be killed on
+ * signals. A passphrase in KODY_CONTEXT_KEY_PASSPHRASE uses scrypt. With
+ * neither, refuse. File wrapping is `fileWrappingKey` (stored `wrap: 'file'`).
  */
 export function resolveWrappingKey(input: {
 	ecid: string

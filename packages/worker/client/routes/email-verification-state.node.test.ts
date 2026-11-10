@@ -10,15 +10,7 @@ test('email verification excludes concurrent resends and checks', () => {
 	expect(canHandle(emailVerificationState, 'sending', 'CHECK')).toBe(false)
 	expect(canHandle(emailVerificationState, 'checking', 'RESEND')).toBe(false)
 
-	const store = createActor(emailVerificationState, {
-		snapshot: (() => {
-			const initialView = { status: 'idle' }
-			return emailVerificationState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	}).start()
+	const store = createActor(emailVerificationState).start()
 	expect(
 		sendUiEvent(store, {
 			type: 'RESEND',

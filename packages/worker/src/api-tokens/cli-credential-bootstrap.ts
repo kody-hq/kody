@@ -30,8 +30,8 @@ import {
  * The narrow local-execute set: local-execute parity + `org:read` (account
  * reads) + plain-repo push (`package:write`) + stub package create via
  * `packageGetGitRemote` (`package:create`) + self-revoke (`token:delete`).
- * Bootstrap codes used to default to it; they now default to the same scopes
- * as `kody login` ({@link cliTokenScopes}). Agent registration still mints it.
+ * Bootstrap defaults to {@link cliTokenScopes} (`kody login`). Agent
+ * registration still mints this set.
  */
 export const cliCredentialBootstrapNarrowScopes = normalizeApiTokenScopes([
 	...localExecuteOrgPermissions,
@@ -450,10 +450,10 @@ function requireBootstrapOrgId(orgId: unknown): string {
 
 /**
  * Exchange a one-shot bootstrap code for a normal `kody_at_` API token.
- * Burns the code atomically before minting. Lifetime is chosen at redeem time
- * but cannot exceed the idle/max authorized when the code was minted (parent
- * clamps and the caller's choice at mint). Pass `env` on the HTTP path so
- * reclaim+mint run under the account write lease.
+ * Burns the code atomically before minting. Omit lifetime to use the lifetime
+ * the code was minted for (login `long` by default). An explicit redeem
+ * lifetime cannot exceed the idle/max authorized when the code was minted.
+ * Pass `env` on the HTTP path so reclaim+mint run under the account write lease.
  */
 export async function redeemCliCredentialBootstrap(input: {
 	db: D1Database

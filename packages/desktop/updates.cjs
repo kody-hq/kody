@@ -1,10 +1,13 @@
 const { existsSync } = require('node:fs')
 const { join } = require('node:path')
-const { setup, assign, createActor } = require('xstate')
+const { setup, types, createActor } = require('xstate')
 
 const updateReadinessState = setup({
-	types: {
-		events: /** @type {{ type: 'DOWNLOAD' } | { type: 'INSTALL' }} */ ({}),
+	schemas: {
+		events: {
+			DOWNLOAD: /** @type {import('xstate').TypeSchema<{}>} */ (types()),
+			INSTALL: /** @type {import('xstate').TypeSchema<{}>} */ (types()),
+		},
 	},
 }).createMachine({
 	id: 'desktop.update_readiness',
@@ -12,17 +15,25 @@ const updateReadinessState = setup({
 		'Downloaded readiness survives failed checks; a new download resets installation readiness until the app quits.',
 	initial: 'waiting',
 	states: {
-		waiting: { on: { DOWNLOAD: 'downloaded' } },
-		downloaded: { on: { DOWNLOAD: {}, INSTALL: 'installing' } },
-		installing: { on: { DOWNLOAD: 'downloaded' } },
+		waiting: { on: { DOWNLOAD: { target: 'downloaded' } } },
+		downloaded: { on: { DOWNLOAD: {}, INSTALL: { target: 'installing' } } },
+		installing: { on: { DOWNLOAD: { target: 'downloaded' } } },
 	},
 })
 
 const updateCheckState = setup({
-	types: {
-		context: /** @type {{ promise: Promise<void> | null }} */ ({}),
-		events:
-			/** @type {{ type: 'CHECK', promise: Promise<void> } | { type: 'SETTLED' }} */ ({}),
+	schemas: {
+		context:
+			/** @type {import('xstate').TypeSchema<{ promise: Promise<void> | null }>} */ (
+				types()
+			),
+		events: {
+			CHECK:
+				/** @type {import('xstate').TypeSchema<{promise: Promise<void>}>} */ (
+					types()
+				),
+			SETTLED: /** @type {import('xstate').TypeSchema<{}>} */ (types()),
+		},
 	},
 }).createMachine({
 	id: 'desktop.update_check',
@@ -35,12 +46,12 @@ const updateCheckState = setup({
 			on: {
 				CHECK: {
 					target: 'checking',
-					actions: assign({ promise: ({ event }) => event.promise }),
+					context: ({ event }) => ({ promise: event.promise }),
 				},
 			},
 		},
 		checking: {
-			on: { SETTLED: { target: 'idle', actions: assign({ promise: null }) } },
+			on: { SETTLED: { target: 'idle', context: () => ({ promise: null }) } },
 		},
 	},
 })

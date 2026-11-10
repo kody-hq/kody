@@ -23,7 +23,7 @@
     "build": "node scripts/build.mjs && tsc -p tsconfig.build.json",
     "bench": "node scripts/bench.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "KODY_SKIP_SKILL_REFRESH=1 KODY_SKIP_GIT_HELPER_REFRESH=1 tsx --test --test-timeout=300000 --test-force-exit test/*.test.ts",
+    "test": "KODY_CLI_CREDENTIAL_STORE=file KODY_SKIP_SKILL_REFRESH=1 KODY_SKIP_GIT_HELPER_REFRESH=1 tsx --test --test-timeout=300000 --test-force-exit test/*.test.ts",
     "validate": "npm run typecheck && npm run test && npm run build"
   },
   "engines": {
@@ -54,7 +54,7 @@
     "esbuild": "^0.25.12",
     "ignore": "^7.0.5",
     "ps-list": "^9.0.0",
-    "xstate": "5.33.3"
+    "xstate": "6.0.0-beta.1"
   },
   "devDependencies": {
     "@inquirer/checkbox": "^5.2.2",

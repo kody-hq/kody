@@ -1,109 +1,76 @@
-import { setup, assign } from 'xstate'
-import type {
-	UiContext,
-	UiData,
-	UiPayload,
-	FormFlowState,
+import { setup, types } from 'xstate'
+import {
+	resetUi,
+	startUi,
+	type UiContext,
+	type UiEvent,
+	type FormFlowState,
 } from '#client/ui-actor.ts'
 export type EmailVerificationState = FormFlowState<
 	'idle' | 'sending' | 'checking' | 'success' | 'error'
 >
 
 export const emailVerificationState = setup({
-	types: {
-		context: {} as UiContext<EmailVerificationState>,
-		events: {} as
-			| {
-					type: 'RESEND'
-					data: UiPayload<EmailVerificationState, 'sending'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'CHECK'
-					data: UiPayload<EmailVerificationState, 'checking'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESPONSE_OK'
-					data: UiPayload<EmailVerificationState, 'success'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'RESPONSE_ERROR'
-					data: UiPayload<EmailVerificationState, 'error'>
-					requestId?: unknown
-			  }
-			| {
-					type: 'CANCEL'
-					data: UiPayload<EmailVerificationState, 'idle'>
-					requestId?: unknown
-			  },
+	schemas: {
+		context: types<UiContext<EmailVerificationState>>(),
+		events: {
+			RESEND: types<UiEvent<EmailVerificationState, 'sending'>>(),
+			CHECK: types<UiEvent<EmailVerificationState, 'checking'>>(),
+			RESPONSE_OK: types<UiEvent<EmailVerificationState, 'success'>>(),
+			RESPONSE_ERROR: types<UiEvent<EmailVerificationState, 'error'>>(),
+			CANCEL: types<UiEvent<EmailVerificationState, 'idle'>>(),
+		},
 	},
-	guards: {
-		currentRequest: ({ context, event }) =>
-			context.requestId === event.requestId,
-	},
-	actions: {
-		update: assign({ data: ({ event }) => event.data }),
-		start: assign({
-			data: ({ event }) => event.data,
-			requestId: ({ event }) => event.requestId,
-		}),
-		reset: assign({ data: ({ event }) => event.data, requestId: undefined }),
-	},
+	guards: { currentRequest: (a: unknown, b: unknown) => a === b },
 }).createMachine({
 	id: 'email_verification.feedback',
 	description:
 		'Resending and checking email verification are exclusive requests; each retry clears the previous feedback.',
 	initial: 'idle',
-	context: { data: {} as UiData<EmailVerificationState>, requestId: undefined },
+	context: { data: {}, requestId: undefined },
 	states: {
 		idle: {
 			on: {
-				RESEND: { target: 'sending', actions: 'start' },
-				CHECK: { target: 'checking', actions: 'start' },
+				RESEND: { target: 'sending', context: startUi },
+				CHECK: { target: 'checking', context: startUi },
 			},
 		},
 		sending: {
 			on: {
-				RESPONSE_OK: {
-					target: 'success',
-					guard: 'currentRequest',
-					actions: 'update',
+				RESPONSE_OK: ({ context, event, guards }) => {
+					if (!guards.currentRequest(context.requestId, event.requestId)) return
+					return { target: 'success', context: { data: event.data } }
 				},
-				RESPONSE_ERROR: {
-					target: 'error',
-					guard: 'currentRequest',
-					actions: 'update',
+				RESPONSE_ERROR: ({ context, event, guards }) => {
+					if (!guards.currentRequest(context.requestId, event.requestId)) return
+					return { target: 'error', context: { data: event.data } }
 				},
-				CANCEL: { target: 'idle', actions: 'reset' },
+				CANCEL: { target: 'idle', context: resetUi },
 			},
 		},
 		checking: {
 			on: {
-				RESPONSE_OK: {
-					target: 'success',
-					guard: 'currentRequest',
-					actions: 'update',
+				RESPONSE_OK: ({ context, event, guards }) => {
+					if (!guards.currentRequest(context.requestId, event.requestId)) return
+					return { target: 'success', context: { data: event.data } }
 				},
-				RESPONSE_ERROR: {
-					target: 'error',
-					guard: 'currentRequest',
-					actions: 'update',
+				RESPONSE_ERROR: ({ context, event, guards }) => {
+					if (!guards.currentRequest(context.requestId, event.requestId)) return
+					return { target: 'error', context: { data: event.data } }
 				},
-				CANCEL: { target: 'idle', actions: 'reset' },
+				CANCEL: { target: 'idle', context: resetUi },
 			},
 		},
 		success: {
 			on: {
-				RESEND: { target: 'sending', actions: 'start' },
-				CHECK: { target: 'checking', actions: 'start' },
+				RESEND: { target: 'sending', context: startUi },
+				CHECK: { target: 'checking', context: startUi },
 			},
 		},
 		error: {
 			on: {
-				RESEND: { target: 'sending', actions: 'start' },
-				CHECK: { target: 'checking', actions: 'start' },
+				RESEND: { target: 'sending', context: startUi },
+				CHECK: { target: 'checking', context: startUi },
 			},
 		},
 	},

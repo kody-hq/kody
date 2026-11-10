@@ -79,6 +79,22 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-0t64 libnss3 libxss1 libasound2t64 libgbm1 libsecret-1-0
+      # Electron and electron-builder fetch Electron zips and AppImage/NSIS
+      # tools from GitHub releases; a cache hit skips the 504-prone download.
+      - name: Cache Electron downloads
+        uses: actions/cache@v5.0.3
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+            ~/AppData/Local/electron/Cache
+            ~/AppData/Local/electron-builder/Cache
+          key:
+            electron-${{ runner.os }}-${{ matrix.arch }}-${{
+            hashFiles('package-lock.json') }}
+          restore-keys: electron-${{ runner.os }}-${{ matrix.arch }}-
       - run: npm ci
       - name: Build bundled CLI
         run: npm run build --workspace @kodycodes/cli

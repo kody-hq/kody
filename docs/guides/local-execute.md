@@ -29,48 +29,48 @@ Watch:
 [Where Kody code runs: the cloud, your laptop, or your own machine](https://www.youtube.com/watch?v=i5qCOaIiYc8).
 
 Auth: `--token` / `KODY_API_TOKEN` (`kody_at_…` with `org:execute`; add
-`package:execute` when the module imports `kody:@…`), or when no API token is
-set, the access token from `kody login` (MCP OAuth) as Bearer on CapabilityProxy
-and package-graph routes.
+`package:execute` when the module imports `kody:@…`), then the one saved CLI
+credential from `kody login` or `kody auth bootstrap` (a `kody_at_…` device
+token, not host MCP OAuth). `kody whoami` reports the same pick.
 
 ## Setup
 
 **Agents already on MCP (do this yourself; never ask a human for a token):**
-call `cliCredentialBootstrap` with a required lifetime (single-task agents use
-`short`). Prefer MCP `api` with `operationId: "cliCredentialBootstrap"` (or the
-capability via search when you need the schema). It returns a one-shot
-`kody_bc_…` code and a `cli_command` that already includes lifetime flags
-(**not** a `kody_at_…`). Bootstrap tokens are person-owned
-(`org_binding: user`); pass `?org=<slug>` on API calls to act in a team org
-(default: personal). Run the returned `cli_command` (no second OAuth, no
-`tokenCreate`):
+call `cliCredentialBootstrap` with no params (single-task agents may pass
+`lifetime: "short"`). Prefer MCP `api` with
+`operationId: "cliCredentialBootstrap"` (or the capability via search when you
+need the schema). It returns a one-shot `kody_bc_…` code and a `cli_command`
+that includes lifetime flags for older CLIs (**not** a `kody_at_…`). Bootstrap
+tokens are person-owned (`org_binding: user`); pass `?org=<slug>` on API calls
+to act in a team org (default: personal). Run the returned `cli_command` (no
+second OAuth, no `tokenCreate`):
 
 ```json
 {
 	"operationId": "cliCredentialBootstrap",
-	"params": { "lifetime": "short" }
+	"params": {}
 }
 ```
 
 ```bash
 # Or run the cli_command returned by cliCredentialBootstrap:
-npx @kodycodes/cli auth bootstrap --code 'kody_bc_…' --lifetime short
+npx @kodycodes/cli auth bootstrap --code 'kody_bc_…'
 ```
 
-`short` is 1 hour idle / 24 hours max. `long` is 14 days idle / 3 months max. Or
-pass both `--idle-ttl-seconds` and `--max-lifetime-seconds`. Lifetime is
-required; missing it fails with the exact flag syntax.
+Omit `lifetime` for the same lifetime as `kody login` (`long` = 14 days idle / 3
+months max, clamped to a parent API token). `short` is 1 hour idle / 24 hours
+max. Or pass both `--idle-ttl-seconds` and `--max-lifetime-seconds`.
+`tokenCreate` still requires a lifetime.
 
-**Default scopes:** bootstrap tokens include local-execute use scopes
-(`org:execute`, `org:read`, and package/integration/secret/email/job/app/memory
-use scopes), plus `package:write` (plain-repo / package pushes),
-`package:create`, and `token:delete` (self-revoke). They do not include
-`search:read`. When a task needs a different set, pass `scopes` when minting.
-The list replaces the defaults, so include every scope you need:
+Omit `scopes` for the same scopes as `kody login`: every org permission, capped
+by your org role on each request and by a parent token or a session that narrows
+scopes. Pass `scopes` only for a deliberately narrower token; the list replaces
+the default, so include every scope you need. Prefer MCP `search` for discovery
+(`search:read` is not required).
 
 ```bash
-# Agents on MCP, with the api tool (execute is refused): cliCredentialBootstrap({ lifetime: "short", scopes: ["org:execute", "org:read", "package:execute", "package:read", "package:write"] })
-npx @kodycodes/cli auth bootstrap --code 'kody_bc_…' --lifetime short
+# Agents on MCP, with the api tool (execute is refused): cliCredentialBootstrap({})
+npx @kodycodes/cli auth bootstrap --code 'kody_bc_…'
 
 # Optional: save a deliberately narrower credential (replaces the default):
 npx @kodycodes/cli auth bootstrap --lifetime short \
@@ -231,4 +231,5 @@ still auth or permission — use the Failure section below. Two workarounds for
   `KODY_API_TOKEN`, then the one saved CLI credential from `kody login` or
   `kody auth bootstrap`. `kody whoami` reports the same credential. A token an
   older CLI left in the old API-token slot is moved into the saved credential
-  only when nothing else is saved; `kody login` deletes it.
+  only when nothing else is saved and no `--org` / `KODY_ORG` is given;
+  `kody login` tries to delete it.

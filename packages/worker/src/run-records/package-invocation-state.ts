@@ -1,9 +1,9 @@
-import { setup } from 'xstate'
+import { setup, types } from 'xstate'
 import type { LifecycleStateOf } from '@kody-internal/shared/state-machine.ts'
 
 export const packageInvocationState = setup({
-	types: {
-		events: {} as { type: 'CLAIM' } | { type: 'COMPLETE' } | { type: 'FAIL' },
+	schemas: {
+		events: { CLAIM: types<{}>(), COMPLETE: types<{}>(), FAIL: types<{}>() },
 	},
 }).createMachine({
 	id: 'package_invocation_ledger.status',
@@ -12,7 +12,11 @@ export const packageInvocationState = setup({
 	initial: 'in_progress',
 	states: {
 		in_progress: {
-			on: { CLAIM: 'in_progress', COMPLETE: 'completed', FAIL: 'failed' },
+			on: {
+				CLAIM: { target: 'in_progress' },
+				COMPLETE: { target: 'completed' },
+				FAIL: { target: 'failed' },
+			},
 		},
 		completed: { type: 'final' },
 		failed: { type: 'final' },

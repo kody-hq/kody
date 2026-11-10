@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { useMachine } from '@xstate/react'
+import { useActor } from '@xstate/react'
 import { resolveSignInStatusAfterPageshow } from '#client/routes/oauth-authorize-bfcache.ts'
 import {
 	oauthConsentState,
@@ -311,18 +311,7 @@ export function OAuthAuthorizeRoute({
 		refreshRoute: true,
 	})
 	const currentHref = useMatchedPageScope().pageLocation.href
-	const [interactionSnapshot, , interactionActor] = useMachine(
-		oauthConsentState,
-		{
-			snapshot: (() => {
-				const initialView = { status: 'idle' }
-				return oauthConsentState.resolveState({
-					value: initialView.status,
-					context: uiContext(initialView),
-				})
-			})(),
-		},
-	)
+	const [interactionSnapshot, , interactionActor] = useActor(oauthConsentState)
 	const interaction = uiState<OAuthConsentState>(interactionSnapshot)
 	const transition = useCallback(
 		(event: Parameters<typeof interactionActor.send>[0]) =>
@@ -354,19 +343,8 @@ export function OAuthAuthorizeRoute({
 			? interaction.decision
 			: null
 	const resetCompleted = interaction.status === 'reset_complete'
-	const [verificationSnapshot, , verificationActor] = useMachine(
+	const [verificationSnapshot, , verificationActor] = useActor(
 		emailVerificationState,
-		{
-			snapshot: (() => {
-				const initialView = {
-					status: 'idle',
-				}
-				return emailVerificationState.resolveState({
-					value: initialView.status,
-					context: uiContext(initialView),
-				})
-			})(),
-		},
 	)
 	const verification = uiState<EmailVerificationState>(verificationSnapshot)
 	const transitionVerification = useCallback(

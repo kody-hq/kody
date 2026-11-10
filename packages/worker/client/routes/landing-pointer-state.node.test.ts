@@ -5,29 +5,9 @@ import {
 	landingPointerState,
 	type LandingPointerState,
 } from './landing-pointer-state.ts'
-test('testimonial pointer gesture pins axis locking and browser handoff', () => {
-	expect([...landingPointerState.events].sort()).toEqual([
-		'DRAG',
-		'MOVE',
-		'POINTER_DOWN',
-		'RELEASE',
-		'SAMPLE',
-		'SCROLL',
-	])
-	expect(
-		landingPointerState.root.initial.target?.map((state) => state.key),
-	).toEqual(['idle'])
-})
+
 test('released gestures carry no stale coordinates and a locked drag cannot become a scroll', () => {
-	const store = createActor(landingPointerState, {
-		snapshot: (() => {
-			const initialView = { status: 'idle' }
-			return landingPointerState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	}).start()
+	const store = createActor(landingPointerState).start()
 	const data = { pointerId: 1, startX: 0, startY: 0, lastX: 1, samples: [] }
 	expect(
 		sendUiEvent(store, {
@@ -41,8 +21,44 @@ test('released gestures carry no stale coordinates and a locked drag cannot beco
 	expect(
 		sendUiEvent(store, {
 			...({
+				type: 'SAMPLE',
+				data: uiContext({
+					status: 'pending',
+					...data,
+					lastX: 4,
+					samples: [{ t: 1, x: 4 }],
+				}).data,
+			} as Parameters<typeof store.send>[0]),
+			requestId: 2,
+		}),
+	).toBe(false)
+	expect(
+		sendUiEvent(store, {
+			...({
+				type: 'SAMPLE',
+				data: uiContext({
+					status: 'pending',
+					...data,
+					lastX: 4,
+					samples: [{ t: 1, x: 4 }],
+				}).data,
+			} as Parameters<typeof store.send>[0]),
+			requestId: 1,
+		}),
+	).toBe(true)
+	expect(uiState<LandingPointerState>(store.getSnapshot())).toEqual({
+		status: 'pending',
+		pointerId: 1,
+		startX: 0,
+		startY: 0,
+		lastX: 4,
+		samples: [{ t: 1, x: 4 }],
+	})
+	expect(
+		sendUiEvent(store, {
+			...({
 				type: 'DRAG',
-				data: uiContext({ status: 'drag', ...data }).data,
+				data: uiContext({ status: 'drag', ...data, lastX: 4 }).data,
 			} as Parameters<typeof store.send>[0]),
 			requestId: 1,
 		}),

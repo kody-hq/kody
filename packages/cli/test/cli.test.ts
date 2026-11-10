@@ -42,21 +42,22 @@ async function withTempKodyHome<T>(run: () => Promise<T>): Promise<T> {
 	const home = mkdtempSync(join(tmpdir(), 'kody-cli-hermetic-'))
 	const previousHome = process.env.HOME
 	const previousXdg = process.env.XDG_CONFIG_HOME
-	const previousAppData = process.env.APPDATA
 	const previousToken = process.env.KODY_API_TOKEN
+	const previousAppData = process.env.APPDATA
 	process.env.HOME = home
 	process.env.XDG_CONFIG_HOME = home
+	// Windows keeps CLI config under %APPDATA%.
 	process.env.APPDATA = home
 	delete process.env.KODY_API_TOKEN
 	try {
 		return await run()
 	} finally {
+		if (previousAppData === undefined) delete process.env.APPDATA
+		else process.env.APPDATA = previousAppData
 		if (previousHome === undefined) delete process.env.HOME
 		else process.env.HOME = previousHome
 		if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME
 		else process.env.XDG_CONFIG_HOME = previousXdg
-		if (previousAppData === undefined) delete process.env.APPDATA
-		else process.env.APPDATA = previousAppData
 		if (previousToken === undefined) delete process.env.KODY_API_TOKEN
 		else process.env.KODY_API_TOKEN = previousToken
 	}
@@ -891,10 +892,8 @@ test('execute without token or login prompts clearly', async () => {
 test('execute --local without token or login fails clearly', async () => {
 	const previousToken = process.env.KODY_API_TOKEN
 	const previousXdg = process.env.XDG_CONFIG_HOME
-	const previousAppData = process.env.APPDATA
 	const xdg = mkdtempSync(join(tmpdir(), 'kody-cli-no-login-'))
 	process.env.XDG_CONFIG_HOME = xdg
-	process.env.APPDATA = xdg
 	delete process.env.KODY_API_TOKEN
 	let stderr = ''
 	try {
@@ -917,8 +916,6 @@ test('execute --local without token or login fails clearly', async () => {
 		else process.env.KODY_API_TOKEN = previousToken
 		if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME
 		else process.env.XDG_CONFIG_HOME = previousXdg
-		if (previousAppData === undefined) delete process.env.APPDATA
-		else process.env.APPDATA = previousAppData
 	}
 	assert.match(stderr, /execute --local: not authenticated/)
 	assert.match(stderr, /cliCredentialBootstrap/)
@@ -932,11 +929,9 @@ test('execute --local without token or login fails clearly', async () => {
 test('execute --local with login (no API token) sends OAuth access token as Bearer', async () => {
 	const previousToken = process.env.KODY_API_TOKEN
 	const previousXdg = process.env.XDG_CONFIG_HOME
-	const previousAppData = process.env.APPDATA
 	const previousMcpUrl = process.env.KODY_MCP_URL
 	const xdg = mkdtempSync(join(tmpdir(), 'kody-cli-login-local-'))
 	process.env.XDG_CONFIG_HOME = xdg
-	process.env.APPDATA = xdg
 	delete process.env.KODY_API_TOKEN
 	// Loopback API origins pair only with a loopback MCP origin; the stored login is fresh, so it is never contacted.
 	const mcpUrl = 'http://127.0.0.1:9/mcp'
@@ -972,8 +967,6 @@ test('execute --local with login (no API token) sends OAuth access token as Bear
 		else process.env.KODY_API_TOKEN = previousToken
 		if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME
 		else process.env.XDG_CONFIG_HOME = previousXdg
-		if (previousAppData === undefined) delete process.env.APPDATA
-		else process.env.APPDATA = previousAppData
 		if (previousMcpUrl === undefined) delete process.env.KODY_MCP_URL
 		else process.env.KODY_MCP_URL = previousMcpUrl
 	}
@@ -988,11 +981,9 @@ test('execute --local with login (no API token) sends OAuth access token as Bear
 test('execute --local prefers --token over a stored login session', async () => {
 	const previousToken = process.env.KODY_API_TOKEN
 	const previousXdg = process.env.XDG_CONFIG_HOME
-	const previousAppData = process.env.APPDATA
 	const previousMcpUrl = process.env.KODY_MCP_URL
 	const xdg = mkdtempSync(join(tmpdir(), 'kody-cli-token-wins-'))
 	process.env.XDG_CONFIG_HOME = xdg
-	process.env.APPDATA = xdg
 	delete process.env.KODY_API_TOKEN
 	const mcpUrl = 'https://token-wins.test/mcp'
 	process.env.KODY_MCP_URL = mcpUrl
@@ -1035,8 +1026,6 @@ test('execute --local prefers --token over a stored login session', async () => 
 		else process.env.KODY_API_TOKEN = previousToken
 		if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME
 		else process.env.XDG_CONFIG_HOME = previousXdg
-		if (previousAppData === undefined) delete process.env.APPDATA
-		else process.env.APPDATA = previousAppData
 		if (previousMcpUrl === undefined) delete process.env.KODY_MCP_URL
 		else process.env.KODY_MCP_URL = previousMcpUrl
 	}

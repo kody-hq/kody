@@ -174,7 +174,8 @@ package-app host directly see a session-required page that links back to Kody,
 where they can sign in and open the app. This handoff avoids redirect loops
 because the app's host-only session cookie is not shared with Kody. Signed-in
 visitors without access see the no-access page. The same gate applies to app
-pages, `/_assets`, and realtime.
+pages, `/_assets`, and realtime (internet-visible apps can open realtime to
+everyone; see [Anonymous realtime](#anonymous-realtime)).
 
 Platform routes on every package-app host (host root, not under `/{leaf}`):
 
@@ -1062,6 +1063,78 @@ void app.ready().then(() => {
 
 Save with `packageSave`, open the hosted URL, add a note, and confirm the
 counter increments after hydration (`<html data-hydrated="true">`).
+
+### Anonymous realtime
+
+By default only members of the owning org get a realtime socket (`/ws` and
+`/ws/{facet}`). Everyone else, anonymous or signed in from outside the org, gets
+`403` with "Realtime features of this app are only available to members of the
+organization that owns it." An internet-visible app can open its sockets to
+those visitors with one manifest field:
+
+```json
+{
+	"kody": {
+		"app": {
+			"entry": "src/app.ts",
+			"realtime": { "anonymous": "receive" }
+		}
+	}
+}
+```
+
+- `"receive"`: the visitor's socket gets broadcasts and `emit`s, and nothing
+  else. App code never runs for it: no `connect`, `message`, or `disconnect`
+  hook. The facet comes from the URL. Any inbound data frame closes the socket
+  with `1008`, except the text frame `kody:ping`, which the platform answers
+  with `kody:pong` without waking the app. Use it for live tallies, scoreboards,
+  and presence that the app pushes from its HTTP handlers (for example a vote
+  POST that then calls `realtime.broadcast`).
+- `"two-way"`: the visitor's messages also reach `handleRealtimeEvent` /
+  `onRealtimeEvent`, like a member's.
+
+Rules:
+
+- Off by default. The field does nothing unless the app is internet-visible.
+- It is part of the approved capability set, so turning it on, switching modes,
+  or turning it off changes the fingerprint and needs the owner's approval
+  before it serves.
+- Like anonymous HTTP, sockets run only the commit the owner approved for public
+  visitors (ADR 0069). Until a new version is approved the upgrade gets `403`.
+  An open public socket is closed with `1012` once the app no longer serves its
+  approved commit (republished, no longer internet-visible), so the client
+  reconnects to the current version.
+- Hooks get `visitor`: `{ userId, username, role }` for a signed-in visitor
+  (`role` is `null` outside the org) or `null` for an anonymous one, the same
+  identity `X-Kody-Visitor` carries on HTTP. `session.anonymous` and
+  `listSessions()` entries carry `anonymous` and `visitor` too, so presence
+  counts can tell visitors apart.
+- Public sockets run with the same publisher authority as an anonymous HTTP
+  request and bill the owning org (ADR 0095). Each closed socket records one
+  `realtime_session` usage event; there is no extra credit charge.
+
+Platform caps on public sockets (members are not capped):
+
+| Cap                                                | Limit                         |
+| -------------------------------------------------- | ----------------------------- |
+| Open public sockets per app                        | 2,000 (`429`)                 |
+| Open sockets per client IP per app                 | 20 (`429`)                    |
+| Connects per client IP per app                     | 30 a minute (`429`)           |
+| Session length                                     | 24 hours (closed with `1001`) |
+| Inbound frame (two-way)                            | 64 KiB (closed with `1009`)   |
+| Inbound messages per socket (two-way)              | 10/s, bursts of 20 (`1008`)   |
+| `emit` / broadcast payload to a public socket      | 64 KiB (skipped)              |
+| Broadcasts reaching public sockets (soft, per app) | about 20/s (skipped)          |
+
+A skipped `emit` returns `{ delivered: false, reason: 'payload_too_large' }`; a
+broadcast reports skipped public sockets in `limitedCount` and still reaches
+members. Client IPs are hashed with the package id before they are kept in a
+socket tag.
+
+For example, `@kentcdodds/podium` would add
+`"realtime": { "anonymous": "receive" }` under `kody.app`, republish, and
+approve the new capability set; its audience page could then swap polling for a
+socket.
 
 ### Kody in the request context
 

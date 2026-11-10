@@ -1080,14 +1080,9 @@ function runVitestRelatedOnce(
 		const child = spawn(
 			process.execPath,
 			[
-				fileURLToPath(
-					new URL('../node_modules/vitest/vitest.mjs', import.meta.url),
-				),
-				'related',
-				'--run',
+				fileURLToPath(new URL('./vitest-related-capped.ts', import.meta.url)),
 				'--project',
 				project,
-				'--passWithNoTests',
 				...paths.map((path) => resolvePath(path)),
 			],
 			{

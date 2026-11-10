@@ -45,7 +45,7 @@ export function collectUnresolvedRelativeImports(input: {
 		if (source == null) continue
 		let imports
 		try {
-			imports = collectModuleImportNodes(source).literalImports
+			imports = collectModuleImportNodes(source, { filePath }).literalImports
 		} catch {
 			continue
 		}

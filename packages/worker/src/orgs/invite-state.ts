@@ -1,9 +1,9 @@
-import { setup } from 'xstate'
+import { setup, types } from 'xstate'
 import type { LifecycleStateOf } from '@kody-internal/shared/state-machine.ts'
 
 export const inviteState = setup({
-	types: {
-		events: {} as { type: 'ACCEPT' } | { type: 'REVOKE' } | { type: 'EXPIRE' },
+	schemas: {
+		events: { ACCEPT: types<{}>(), REVOKE: types<{}>(), EXPIRE: types<{}>() },
 	},
 }).createMachine({
 	id: 'invites.status',
@@ -12,7 +12,11 @@ export const inviteState = setup({
 	initial: 'pending',
 	states: {
 		pending: {
-			on: { ACCEPT: 'accepted', REVOKE: 'revoked', EXPIRE: 'expired' },
+			on: {
+				ACCEPT: { target: 'accepted' },
+				REVOKE: { target: 'revoked' },
+				EXPIRE: { target: 'expired' },
+			},
 		},
 		accepted: { type: 'final' },
 		revoked: { type: 'final' },

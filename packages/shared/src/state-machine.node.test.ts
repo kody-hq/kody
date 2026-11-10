@@ -1,5 +1,5 @@
 import { expect, expectTypeOf, test } from 'vitest'
-import { setup } from 'xstate'
+import { setup, types } from 'xstate'
 import {
 	canHandle,
 	defineStatusEnum,
@@ -8,24 +8,36 @@ import {
 	isState,
 	nextState,
 	parseState,
-	renderStateMachineMermaid,
 	sourcesOf,
 	sqlSourcesOf,
 	sqlSourceOf,
 	sqlStatesOf,
 	statesOf,
 	type LifecycleStateOf,
+	type LifecycleMachine,
 } from './state-machine.ts'
+import {
+	extractMachineGraph,
+	renderStateMachineMermaid as renderGraph,
+} from '../../../tools/state-machine-graph.ts'
+
+const renderStateMachineMermaid = (machine: LifecycleMachine) =>
+	renderGraph(
+		extractMachineGraph(
+			machine,
+			'packages/shared/src/state-machine.node.test.ts',
+		),
+	)
 
 test('SQL source subsets preserve explicit CAS order and reject unsupported sources', () => {
 	const machine = setup({
-		types: { events: {} as { type: 'COMPLETE' } },
+		schemas: { events: { COMPLETE: types<{}>() } },
 	}).createMachine({
 		id: 'subset.lifecycle',
 		initial: 'pending',
 		states: {
-			pending: { on: { COMPLETE: 'done' } },
-			retry: { on: { COMPLETE: 'done' } },
+			pending: { on: { COMPLETE: { target: 'done' } } },
+			retry: { on: { COMPLETE: { target: 'done' } } },
 			done: { type: 'final' },
 		},
 	})
@@ -52,13 +64,19 @@ test('SQL source subsets preserve explicit CAS order and reject unsupported sour
 
 test('single SQL source validation honors the complete event payload', () => {
 	const machine = setup({
-		types: { events: {} as { type: 'SUBMIT'; allowed: boolean } },
+		schemas: { events: { SUBMIT: types<{ allowed: boolean }>() } },
+		guards: { allowed: (value: boolean) => value },
 	}).createMachine({
 		id: 'payload.lifecycle',
 		initial: 'pending',
 		states: {
 			pending: {
-				on: { SUBMIT: { target: 'done', guard: ({ event }) => event.allowed } },
+				on: {
+					SUBMIT: ({ event, guards }) => {
+						if (!guards.allowed(event.allowed)) return
+						return { target: 'done' }
+					},
+				},
 			},
 			done: { type: 'final' },
 		},
@@ -73,14 +91,14 @@ test('single SQL source validation honors the complete event payload', () => {
 
 function lifecycle() {
 	return setup({
-		types: {
-			events: {} as { type: 'COMPLETE' } | { type: 'HEARTBEAT' },
-		},
+		schemas: { events: { COMPLETE: types<{}>(), HEARTBEAT: types<{}>() } },
 	}).createMachine({
 		id: 'example.lifecycle',
 		initial: 'pending',
 		states: {
-			pending: { on: { COMPLETE: 'done', HEARTBEAT: 'pending' } },
+			pending: {
+				on: { COMPLETE: { target: 'done' }, HEARTBEAT: { target: 'pending' } },
+			},
 			done: { type: 'final' },
 		},
 	})
@@ -142,9 +160,13 @@ test('XState helpers preserve typed states, real events and finality', () => {
 test('transitions honor payload and context guards without executing actions', () => {
 	let effects = 0
 	const machine = setup({
-		types: {
-			context: {} as { allowed: boolean },
-			events: {} as { type: 'SUBMIT'; amount: number } | { type: 'CHECK' },
+		schemas: {
+			context: types<{ allowed: boolean }>(),
+			events: { SUBMIT: types<{ amount: number }>(), CHECK: types<{}>() },
+		},
+		guards: {
+			canSubmit: (allowed: boolean, amount: number) => allowed && amount > 0,
+			allowed: (value: boolean) => value,
 		},
 	}).createMachine({
 		id: 'guarded.lifecycle',
@@ -153,14 +175,17 @@ test('transitions honor payload and context guards without executing actions', (
 		states: {
 			pending: {
 				on: {
-					SUBMIT: {
-						target: 'done',
-						guard: ({ context, event }) => context.allowed && event.amount > 0,
-						actions: () => {
+					SUBMIT: ({ context, event, guards }, enq) => {
+						if (!guards.canSubmit(context.allowed, event.amount)) return
+						enq(() => {
 							effects++
-						},
+						})
+						return { target: 'done' }
 					},
-					CHECK: { target: 'pending', guard: ({ context }) => context.allowed },
+					CHECK: ({ context, guards }) => {
+						if (!guards.allowed(context.allowed)) return
+						return { target: 'pending' }
+					},
 				},
 			},
 			done: { type: 'final' },
@@ -189,17 +214,23 @@ test('transitions honor payload and context guards without executing actions', (
 
 test('context initializers require explicit context rather than silently ignoring it', () => {
 	const machine = setup({
-		types: {
-			context: {} as { allowed: boolean },
-			events: {} as { type: 'GO' },
+		schemas: {
+			context: types<{ allowed: boolean }>(),
+			events: { GO: types<{}>() },
 		},
+		guards: { allowed: (value: boolean) => value },
 	}).createMachine({
 		id: 'context.lifecycle',
 		context: () => ({ allowed: true }),
 		initial: 'pending',
 		states: {
 			pending: {
-				on: { GO: { target: 'done', guard: ({ context }) => context.allowed } },
+				on: {
+					GO: ({ context, guards }) => {
+						if (!guards.allowed(context.allowed)) return
+						return { target: 'done' }
+					},
+				},
 			},
 			done: { type: 'final' },
 		},
@@ -214,13 +245,15 @@ test('context initializers require explicit context rather than silently ignorin
 
 test('SQL sources retain declaration order and validate SQL-safe identifiers', () => {
 	const machine = setup({
-		types: { events: {} as { type: 'CLAIM' } | { type: 'RETRY' } },
+		schemas: { events: { CLAIM: types<{}>(), RETRY: types<{}>() } },
 	}).createMachine({
 		id: 'leases',
 		initial: 'pending',
 		states: {
-			pending: { on: { CLAIM: 'running', RETRY: 'needs-retry' } },
-			'needs-retry': { on: { CLAIM: 'running' } },
+			pending: {
+				on: { CLAIM: { target: 'running' }, RETRY: { target: 'needs-retry' } },
+			},
+			'needs-retry': { on: { CLAIM: { target: 'running' } } },
 			running: { type: 'final' },
 		},
 	})
@@ -234,9 +267,39 @@ test('SQL sources retain declaration order and validate SQL-safe identifiers', (
 	const unsafe = setup({}).createMachine({
 		id: 'unsafe',
 		initial: "bad'value",
-		states: { "bad'value": { on: { GO: "bad'value" } } },
+		states: { "bad'value": { on: { GO: { target: "bad'value" } } } },
 	})
 	expect(() => sqlSourcesOf(unsafe, 'GO')).toThrow('invalid state identifier')
+})
+
+test('structural SQL sources never run function guards and exclude empty or forbidden handlers', () => {
+	let evaluations = 0
+	const machine = setup({
+		schemas: { events: { GO: types<{}>() } },
+	}).createMachine({
+		id: 'structural',
+		initial: 'pending',
+		states: {
+			pending: {
+				on: {
+					GO: () => {
+						evaluations++
+						return undefined
+					},
+				},
+			},
+			empty: { on: { GO: {} } },
+			forbidden: { on: { GO: undefined } },
+			context: { on: { GO: { context: {} } } },
+			done: { type: 'final' },
+		},
+	})
+	expect(sourcesOf(machine, 'GO')).toEqual(['pending', 'context'])
+	expect(sqlSourcesOf(machine, 'GO')).toBe("('pending', 'context')")
+	expect(evaluations).toBe(0)
+	expect(() => sqlSourcesOf(machine, 'GO', ['empty'])).toThrow(
+		IllegalStateTransitionError,
+	)
 })
 
 test('status enums validate values and SQL without pretending to have edges', () => {

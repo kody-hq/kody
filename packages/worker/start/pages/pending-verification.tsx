@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
 import { useCallback, useEffect, useState } from 'react'
-import { useMachine } from '@xstate/react'
+import { useActor } from '@xstate/react'
 import {
 	emailVerificationState,
 	type EmailVerificationState,
@@ -48,17 +48,8 @@ export function PendingVerificationPage({
 	const [delivery, setDelivery] = useState(
 		data.emailVerificationDelivery ?? null,
 	)
-	const [verificationSnapshot, , verificationActor] = useMachine(
+	const [verificationSnapshot, , verificationActor] = useActor(
 		emailVerificationState,
-		{
-			snapshot: (() => {
-				const initialView = { status: 'idle' }
-				return emailVerificationState.resolveState({
-					value: initialView.status,
-					context: uiContext(initialView),
-				})
-			})(),
-		},
 	)
 	const verification = uiState<EmailVerificationState>(verificationSnapshot)
 	const transition = useCallback(

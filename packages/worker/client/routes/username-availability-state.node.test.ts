@@ -5,30 +5,10 @@ import {
 	usernameAvailabilityState,
 	type UsernameAvailabilityView,
 } from './username-availability-state.ts'
-test('username-availability pins legal UI transitions', () => {
-	expect([...usernameAvailabilityState.events].sort()).toEqual([
-		'CHECK',
-		'EDIT',
-		'INVALID_DRAFT',
-		'RESPONSE_AVAILABLE',
-		'RESPONSE_INVALID',
-		'RESPONSE_RESERVED',
-		'RESPONSE_TAKEN',
-		'RESPONSE_UNKNOWN',
-	])
-})
 
 test('cleared or invalid drafts reject an old successful availability result', () => {
 	for (const next of ['idle', 'invalid'] as const) {
-		const store = createActor(usernameAvailabilityState, {
-			snapshot: (() => {
-				const initialView = { status: 'idle' }
-				return usernameAvailabilityState.resolveState({
-					value: initialView.status,
-					context: uiContext(initialView),
-				})
-			})(),
-		}).start()
+		const store = createActor(usernameAvailabilityState).start()
 		sendUiEvent(store, {
 			type: 'CHECK',
 			data: uiContext({ status: 'checking' }).data,

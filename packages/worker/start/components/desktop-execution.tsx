@@ -9,7 +9,7 @@ import {
 	useState,
 	type ReactNode,
 } from 'react'
-import { useMachine } from '@xstate/react'
+import { useActor } from '@xstate/react'
 import { desktopSetupStepState } from '#universal/desktop-setup-step-state.ts'
 import {
 	desktopSetupOperationState,
@@ -133,15 +133,7 @@ export function DesktopExecutionProvider({
 }) {
 	const [bridge, setBridge] = useState<DesktopExecutionBridge | null>(null)
 	const [opened, setOpened] = useState(false)
-	const [wizardSnapshot, , wizardActor] = useMachine(desktopSetupStepState, {
-		snapshot: (() => {
-			const initialView = { status: 'overview' }
-			return desktopSetupStepState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	})
+	const [wizardSnapshot, , wizardActor] = useActor(desktopSetupStepState)
 	const wizard = uiState<{
 		status: DesktopSetupWizardStep
 	}>(wizardSnapshot)
@@ -159,19 +151,8 @@ export function DesktopExecutionProvider({
 	// Team org this machine should become available to after personal registration.
 	const [target, setTarget] = useState<string | null>(null)
 	const [attached, setAttached] = useState(false)
-	const [operationSnapshot, , operationActor] = useMachine(
+	const [operationSnapshot, , operationActor] = useActor(
 		desktopSetupOperationState,
-		{
-			snapshot: (() => {
-				const initialView = {
-					status: 'idle',
-				}
-				return desktopSetupOperationState.resolveState({
-					value: initialView.status,
-					context: uiContext(initialView),
-				})
-			})(),
-		},
 	)
 	const operation = uiState<DesktopSetupOperation>(operationSnapshot)
 	const transitionOperation = useCallback(

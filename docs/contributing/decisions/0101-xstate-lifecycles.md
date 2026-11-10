@@ -13,19 +13,19 @@ lifecycles invented constraints the application did not enforce.
 
 ## Decision
 
-Use domain-owned **XState v5** machines for constrained server lifecycles, UI
-flows and desktop operations. Derive named events from actual callers, put
-payload in context, and declare `type: 'final'` only when no operation leaves
-that state. Do not encode a generic status setter as a complete graph. Use
-`defineStatusEnum` for unconstrained columns; derived display values need no
-actor. Keep framework-owned request state in its framework.
+Use domain-owned **XState 6.0.0-beta.1** machines with **@xstate/react
+7.0.0-beta.0** for constrained server lifecycles, UI flows and desktop
+operations. Derive named events from actual callers, put payload in context, and
+declare `type: 'final'` only when no operation leaves that state. Do not encode
+a generic status setter as a complete graph. Use `defineStatusEnum` for
+unconstrained columns; derived display values need no actor. Keep
+framework-owned request state in its framework.
 
 The shared API in `packages/shared/src/state-machine.ts` provides
 `LifecycleStateOf`, `statesOf`, `finalStatesOf`, `isState`, `parseState`,
 `nextState`, `canHandle`, `sourcesOf`, `sqlSourcesOf`, `sqlStatesOf`,
-`sqlSourceOf` and `renderStateMachineMermaid`. `defineStatusEnum` supplies
-membership, parsing and SQL values without edges. Legacy `defineStateMachine` is
-removed.
+`sqlSourceOf`. `defineStatusEnum` supplies membership, parsing and SQL values
+without edges. Legacy `defineStateMachine` is removed.
 
 Use `nextState(machine, from, event)` to validate an operation. Context
 initializers require explicit context; payload-dependent guards require a full
@@ -46,11 +46,39 @@ handled declared events and genuinely terminal finals. Generate the
 [reference](../state-machines.md) with `npm run state-machines:generate`; do not
 maintain a second graph in documentation.
 
+The tooling-only TypeScript AST extractor in `tools/state-machine-graph.ts`
+drives Mermaid, declared-event and reachability checks. It fails closed on
+computed destinations or unsupported return forms: v6 runtime graphs cannot
+recover function destinations. Conditional handlers call named predicates from
+`setup({ guards })`; diagrams and tables derive branch labels from those calls,
+including refused-event checks and fallback branches. A human-readable
+`description` is required only for conditions without named guards. Runtime SQL
+helpers inspect handlers without evaluating guards and never import TypeScript.
+Infer flat persisted state unions from `SnapshotFrom<M>['value']` rather than
+the beta's overloaded `StateValueFrom` helper.
+
 ## Measurements
 
-The client build comparison retained 735 JavaScript files: 3,755,342 → 3,819,416
-raw bytes (**+64,074**), 1,330,642 → 1,349,426 gzip bytes (**+18,784**). These
-are whole-build migration deltas, not an isolated library-size measurement.
+For the v6 upgrade, shipped core minified/gzip bytes are 47,486/14,589 for
+5.33.3 versus 145,053/43,407 for 6.0.0-beta.1 (**+28,818 gzip bytes**). With
+identical esbuild settings, the `setup`/`createActor`/`transition` ESM subset is
+39,005/12,834 versus 88,981/28,494 (**+15,660 gzip bytes**). These gzip-level-9
+library measurements are not whole-application deltas.
+
+Against main at `aeaa6a6e7`, the v6 client build contains 736 JavaScript files
+versus 735: 3,820,053 → 3,875,574 raw bytes (**+55,521**) and 1,349,378 →
+1,366,767 gzip bytes (**+17,389**). These are sums of individual client
+JavaScript files using the same default gzip settings as the v5 migration
+comparison, not the core-library gzip-level-9 measurements above. Before
+cleanup, startup bytes were: origin 805,701 → 805,943; platform 7,160,252 →
+7,445,423; runtime 5,477,241 → 5,761,716. Platform/runtime already exceed the
+reviewed warning-only byte budgets on main; budgets and SQL CAS semantics are
+unchanged.
+
+The original v5 client build comparison retained 735 JavaScript files: 3,755,342
+→ 3,819,416 raw bytes (**+64,074**), 1,330,642 → 1,349,426 gzip bytes
+(**+18,784**). These are whole-build migration deltas, not an isolated
+library-size measurement.
 
 The foundation/server migration measured startup entry deltas of **+860 origin,
 +59,009 platform and +58,191 runtime bytes** against clean main `3299d97e1`.

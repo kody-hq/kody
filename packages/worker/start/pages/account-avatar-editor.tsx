@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
-import { useMachine } from '@xstate/react'
+import { useActor } from '@xstate/react'
 import {
 	avatarCropState,
 	type AvatarCropState,
@@ -71,15 +71,7 @@ export function AccountAvatarEditor({
 		offsetY: 0,
 	})
 	const [viewportSize, setViewportSize] = useState(280)
-	const [cropSnapshot, , cropActor] = useMachine(avatarCropState, {
-		snapshot: (() => {
-			const initialView = { status: 'decoding' }
-			return avatarCropState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	})
+	const [cropSnapshot, , cropActor] = useActor(avatarCropState)
 	const crop = uiState<AvatarCropState>(cropSnapshot)
 	const transitionCrop = useCallback(
 		(event: Parameters<typeof cropActor.send>[0]) =>

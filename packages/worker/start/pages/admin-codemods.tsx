@@ -9,7 +9,7 @@ import {
 	type FormEvent,
 	type MouseEvent,
 } from 'react'
-import { useMachine } from '@xstate/react'
+import { useActor } from '@xstate/react'
 import {
 	adminCodemodRunState,
 	type AdminCodemodRunState,
@@ -71,15 +71,7 @@ export function AdminCodemodsPage(props: {
 			controller.abort()
 		}
 	}, [])
-	const [runSnapshot, , runActor] = useMachine(adminCodemodRunState, {
-		snapshot: (() => {
-			const initialView = { status: 'idle' }
-			return adminCodemodRunState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	})
+	const [runSnapshot, , runActor] = useActor(adminCodemodRunState)
 	const run = uiState<AdminCodemodRunState>(runSnapshot)
 	const transitionRun = useCallback(
 		(event: Parameters<typeof runActor.send>[0]) =>

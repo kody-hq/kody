@@ -1,13 +1,14 @@
-import { setup } from 'xstate'
+import { setup, types } from 'xstate'
 import type { LifecycleStateOf } from '@kody-internal/shared/state-machine.ts'
 
 export const packageCodemodRunState = setup({
-	types: {
-		events: {} as
-			| { type: 'CONTINUE' }
-			| { type: 'COMPLETE' }
-			| { type: 'FAIL' }
-			| { type: 'ABANDON' },
+	schemas: {
+		events: {
+			CONTINUE: types<{}>(),
+			COMPLETE: types<{}>(),
+			FAIL: types<{}>(),
+			ABANDON: types<{}>(),
+		},
 	},
 }).createMachine({
 	id: 'package_codemod_runs.status',
@@ -17,15 +18,17 @@ export const packageCodemodRunState = setup({
 	states: {
 		running: {
 			on: {
-				CONTINUE: 'running',
-				COMPLETE: 'completed',
-				FAIL: 'failed',
-				ABANDON: 'abandoned',
+				CONTINUE: { target: 'running' },
+				COMPLETE: { target: 'completed' },
+				FAIL: { target: 'failed' },
+				ABANDON: { target: 'abandoned' },
 			},
 		},
-		completed: { on: { COMPLETE: 'completed', FAIL: 'failed' } },
-		failed: { on: { CONTINUE: 'running' } },
-		abandoned: { on: { CONTINUE: 'running' } },
+		completed: {
+			on: { COMPLETE: { target: 'completed' }, FAIL: { target: 'failed' } },
+		},
+		failed: { on: { CONTINUE: { target: 'running' } } },
+		abandoned: { on: { CONTINUE: { target: 'running' } } },
 	},
 })
 

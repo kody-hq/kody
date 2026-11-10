@@ -1,17 +1,18 @@
-import { setup } from 'xstate'
+import { setup, types } from 'xstate'
 import type { LifecycleStateOf } from '@kody-internal/shared/state-machine.ts'
 
 export const runDispatchState = setup({
-	types: {
-		events: {} as
-			| { type: 'COMMIT' }
-			| { type: 'ABORT' }
-			| { type: 'REJECT' }
-			| { type: 'SUCCEED' }
-			| { type: 'FAIL' }
-			| { type: 'CANCEL' }
-			| { type: 'LOSE' }
-			| { type: 'OFFER' },
+	schemas: {
+		events: {
+			COMMIT: types<{}>(),
+			ABORT: types<{}>(),
+			REJECT: types<{}>(),
+			SUCCEED: types<{}>(),
+			FAIL: types<{}>(),
+			CANCEL: types<{}>(),
+			LOSE: types<{}>(),
+			OFFER: types<{}>(),
+		},
 	},
 }).createMachine({
 	id: 'execution_context_runs.state',
@@ -20,16 +21,20 @@ export const runDispatchState = setup({
 	initial: 'dispatched',
 	states: {
 		dispatched: {
-			on: { COMMIT: 'committed', ABORT: 'aborted', REJECT: 'rejected' },
+			on: {
+				COMMIT: { target: 'committed' },
+				ABORT: { target: 'aborted' },
+				REJECT: { target: 'rejected' },
+			},
 		},
 		committed: {
 			on: {
-				SUCCEED: 'succeeded',
-				FAIL: 'failed',
-				CANCEL: 'cancelled',
-				LOSE: 'lost',
-				ABORT: 'aborted',
-				REJECT: 'rejected',
+				SUCCEED: { target: 'succeeded' },
+				FAIL: { target: 'failed' },
+				CANCEL: { target: 'cancelled' },
+				LOSE: { target: 'lost' },
+				ABORT: { target: 'aborted' },
+				REJECT: { target: 'rejected' },
 			},
 		},
 		succeeded: { type: 'final' },
@@ -37,10 +42,18 @@ export const runDispatchState = setup({
 		cancelled: { type: 'final' },
 		lost: { type: 'final' },
 		rejected: {
-			on: { OFFER: 'dispatched', REJECT: 'rejected', ABORT: 'aborted' },
+			on: {
+				OFFER: { target: 'dispatched' },
+				REJECT: { target: 'rejected' },
+				ABORT: { target: 'aborted' },
+			},
 		},
 		aborted: {
-			on: { OFFER: 'dispatched', REJECT: 'rejected', ABORT: 'aborted' },
+			on: {
+				OFFER: { target: 'dispatched' },
+				REJECT: { target: 'rejected' },
+				ABORT: { target: 'aborted' },
+			},
 		},
 	},
 })

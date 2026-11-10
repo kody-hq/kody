@@ -5,12 +5,73 @@ export type ModuleAstNode = {
 	[key: string]: unknown
 }
 
-export function parseModuleSource(source: string) {
+const typeScriptPlugins: Array<ParserPlugin> = ['typescript']
+const typeScriptJsxPlugins: Array<ParserPlugin> = ['typescript', 'jsx']
+const jsxPlugins: Array<ParserPlugin> = ['jsx']
+const plainJavaScriptPlugins: Array<ParserPlugin> = []
+
+/**
+ * Babel plugins for a module path, matching the bundler's loader per
+ * extension: `.ts` / `.mts` / `.cts` are TypeScript without JSX (so
+ * `<T>(x: T) => x` is a generic arrow), `.tsx` is TSX, `.jsx` is JSX, and
+ * `.js` / `.mjs` / `.cjs` are plain JavaScript. Unknown or missing paths keep
+ * the lenient TSX default.
+ */
+export function moduleSourceParserPlugins(filePath?: string | null) {
+	const extension = /\.([cm]?[jt]sx?)$/i
+		.exec(filePath ?? '')?.[1]
+		?.toLowerCase()
+	switch (extension) {
+		case 'ts':
+		case 'mts':
+		case 'cts':
+			return typeScriptPlugins
+		case 'tsx':
+			return typeScriptJsxPlugins
+		case 'jsx':
+			return jsxPlugins
+		case 'js':
+		case 'mjs':
+		case 'cjs':
+			return plainJavaScriptPlugins
+		default:
+			return typeScriptJsxPlugins
+	}
+}
+
+export function parseModuleSource(
+	source: string,
+	options?: { filePath?: string | null },
+) {
 	return parse(source, {
 		sourceType: 'module',
-		plugins: ['typescript', 'jsx'],
+		plugins: moduleSourceParserPlugins(options?.filePath),
 		createImportExpressions: true,
 	})
+}
+
+export type ModuleSourceParseError = {
+	/** 1-based line. */
+	line: number | null
+	/** 1-based column. */
+	column: number | null
+	message: string
+}
+
+/** Line, column, and message (without Babel's `(line:col)` suffix). */
+export function describeModuleSourceParseError(
+	error: unknown,
+): ModuleSourceParseError {
+	const raw = error instanceof Error ? error.message : String(error)
+	const loc = (error as { loc?: { line?: unknown; column?: unknown } } | null)
+		?.loc
+	const line = typeof loc?.line === 'number' ? loc.line : null
+	const column = typeof loc?.column === 'number' ? loc.column + 1 : null
+	return {
+		line,
+		column,
+		message: raw.replace(/\s*\(\d+:\d+\)\s*$/, ''),
+	}
 }
 
 const fallbackParserPlugins: Array<ParserPlugin[]> = [

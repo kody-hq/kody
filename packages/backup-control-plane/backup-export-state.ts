@@ -1,12 +1,13 @@
-import { setup } from 'xstate'
+import { setup, types } from 'xstate'
 import type { LifecycleStateOf } from '@kody-internal/shared/state-machine.ts'
 
 export const backupExportState = setup({
-	types: {
-		events: {} as
-			| { type: 'EXPORT_PENDING' }
-			| { type: 'EXPORT_READY' }
-			| { type: 'EXPORT_LOST' },
+	schemas: {
+		events: {
+			EXPORT_PENDING: types<{}>(),
+			EXPORT_READY: types<{}>(),
+			EXPORT_LOST: types<{}>(),
+		},
 	},
 }).createMachine({
 	id: 'backup_export_controller.kind',
@@ -17,16 +18,16 @@ export const backupExportState = setup({
 		complete: { type: 'final' },
 		pending: {
 			on: {
-				EXPORT_PENDING: 'pending',
-				EXPORT_READY: 'complete',
-				EXPORT_LOST: 'lost',
+				EXPORT_PENDING: { target: 'pending' },
+				EXPORT_READY: { target: 'complete' },
+				EXPORT_LOST: { target: 'lost' },
 			},
 		},
 		lost: {
 			on: {
-				EXPORT_PENDING: 'pending',
-				EXPORT_READY: 'complete',
-				EXPORT_LOST: 'lost',
+				EXPORT_PENDING: { target: 'pending' },
+				EXPORT_READY: { target: 'complete' },
+				EXPORT_LOST: { target: 'lost' },
 			},
 		},
 	},

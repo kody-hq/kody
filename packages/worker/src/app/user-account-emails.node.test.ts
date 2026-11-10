@@ -75,17 +75,23 @@ test('account emails claim once per kind and skip when KV or sender is missing',
 	const env = createEnv(kv)
 	expect(await billingSuccess(env, 'user-1')).toBe(true)
 	expect(sendCloudflareEmail).toHaveBeenCalledTimes(1)
-	const payload = sendCloudflareEmail.mock.calls[0]?.[1] as { to: string }
+	const userId = ownerIdFromStored('user-1')
+	const payload = sendCloudflareEmail.mock.calls[0]?.[1] as {
+		to: string
+		subject: string
+		html: string
+		text: string
+	}
 	expect(payload.to).toBe('ada@example.com')
+	expect(payload.subject).toBe("You're on Kody Pro")
+	expect(payload.html).toContain('Welcome to Pro')
+	expect(payload.text).toContain('/@ada/-/billing')
 	expect(
-		store.get(
-			userAccountEmailKvKey({
-				userId: ownerIdFromStored('user-1'),
-				kind: 'billing_success',
-				suffix: 'pro',
-			}),
-		),
-	).toBeTruthy()
+		store.get(`account-email-user:v1:${userId}:billing_success:pro`),
+	).toEqual(expect.stringMatching(/^\d+$/))
+	expect(puts[0]?.key).toBe(
+		`account-email-user:v1:${userId}:billing_success:pro`,
+	)
 	expect(puts[0]?.options?.expirationTtl).toBe(accountEmailClaimTtlSeconds)
 
 	sendCloudflareEmail.mockClear()

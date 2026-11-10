@@ -1,7 +1,8 @@
 /** @jsxImportSource @emotion/react */
+import { restoreActor } from 'xstate/persist'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
-import { useCallback, useEffect } from 'react'
-import { useMachine } from '@xstate/react'
+import { useCallback, useEffect, useState } from 'react'
+import { useActor } from '@xstate/react'
 import type { CSSObject } from '@emotion/react'
 import {
 	publishCommitCheckState,
@@ -27,19 +28,23 @@ export function usePublishCommitChecks(input: {
 }): PublishCommitChecksState {
 	const { packageId, commit, check } = input
 	const key = commit ? `${packageId}:${commit}` : null
-	const [attemptSnapshot, , attemptActor] = useMachine(
-		publishCommitCheckState,
-		{
-			snapshot: (() => {
-				const initialView = key
-					? { status: 'running', key }
-					: { status: 'idle' }
-				return publishCommitCheckState.resolveState({
-					value: initialView.status,
-					context: uiContext(initialView),
-				})
-			})(),
-		},
+	const [attemptSnapshot, , attemptActor] = useActor(
+		useState(() =>
+			restoreActor(
+				publishCommitCheckState,
+				publishCommitCheckState.getPersistedSnapshot(
+					(() => {
+						const initialView = key
+							? { status: 'running', key }
+							: { status: 'idle' }
+						return publishCommitCheckState.resolveState({
+							value: initialView.status,
+							context: uiContext(initialView),
+						})
+					})(),
+				),
+			),
+		)[0],
 	)
 	const attempt = uiState<PublishCheckAttempt>(attemptSnapshot)
 	const transition = useCallback(

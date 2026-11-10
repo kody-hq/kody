@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { useSelector, useMachine } from '@xstate/react'
+import { restoreActor } from 'xstate/persist'
+import { useSelector, useActor } from '@xstate/react'
 import {
 	connectOauthStepContext,
 	connectOauthStepState,
@@ -327,18 +328,25 @@ export function ConnectOauthRoute({
 			),
 		),
 	)
-	const [operationSnapshot, , operationActor] = useMachine(
+	const [operationSnapshot, , operationActor] = useActor(
 		connectOauthOperationState,
 	)
-	const [flowSnapshot, , flowActor] = useMachine(connectOauthStepState, {
-		snapshot: (() => {
-			const initialView = initialFlow
-			return connectOauthStepState.resolveState({
-				value: initialView.status,
-				context: connectOauthStepContext(initialView),
-			})
-		})(),
-	})
+	const [flowSnapshot, , flowActor] = useActor(
+		useState(() =>
+			restoreActor(
+				connectOauthStepState,
+				connectOauthStepState.getPersistedSnapshot(
+					(() => {
+						const initialView = initialFlow
+						return connectOauthStepState.resolveState({
+							value: initialView.status,
+							context: connectOauthStepContext(initialView),
+						})
+					})(),
+				),
+			),
+		)[0],
+	)
 	const screen = uiState<ConnectOauthUiState>(flowSnapshot)
 	const flow =
 		screen.status === 'success'

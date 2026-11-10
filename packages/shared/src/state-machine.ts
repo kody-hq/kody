@@ -3,9 +3,10 @@ import {
 	type AnyStateMachine,
 	type ContextFrom,
 	type EventFrom,
-	type StateValueFrom,
+	type SnapshotFrom,
 } from 'xstate'
 
+/** Illegal `event` from `from` on `machine` (no matching XState transition). */
 export class IllegalStateTransitionError extends Error {
 	readonly machine: string
 	readonly from: string
@@ -19,19 +20,23 @@ export class IllegalStateTransitionError extends Error {
 	}
 }
 
+/** Flat string state of a lifecycle machine (nested values are excluded). */
 export type LifecycleStateOf<M extends AnyStateMachine> = Extract<
-	StateValueFrom<M>,
+	SnapshotFrom<M>['value'],
 	string
 >
 
+/** An XState v6 machine used as a Kody lifecycle. */
 export type LifecycleMachine = AnyStateMachine
 
+/** All state ids declared on the machine. */
 export function statesOf<M extends AnyStateMachine>(
 	machine: M,
 ): ReadonlyArray<LifecycleStateOf<M>> {
 	return Object.keys(machine.states) as Array<LifecycleStateOf<M>>
 }
 
+/** States marked `type: 'final'` (no further operation leaves them). */
 export function finalStatesOf<M extends AnyStateMachine>(
 	machine: M,
 ): ReadonlyArray<LifecycleStateOf<M>> {
@@ -40,6 +45,7 @@ export function finalStatesOf<M extends AnyStateMachine>(
 	)
 }
 
+/** Whether `value` is a declared state id. */
 export function isState<M extends AnyStateMachine>(
 	machine: M,
 	value: unknown,
@@ -47,6 +53,7 @@ export function isState<M extends AnyStateMachine>(
 	return typeof value === 'string' && Object.hasOwn(machine.states, value)
 }
 
+/** Parse `value` as a declared state id or throw. */
 export function parseState<M extends AnyStateMachine>(
 	machine: M,
 	value: unknown,
@@ -72,6 +79,11 @@ function resolveLifecycleState<M extends AnyStateMachine>(
 	})
 }
 
+/**
+ * Next state after `event` from `from`, or throw. Pass `context` when the
+ * machine has a context initializer or the guard needs it. Payload-dependent
+ * guards need the full event, not a type-only `canHandle` probe.
+ */
 export function nextState<M extends AnyStateMachine>(
 	machine: M,
 	from: LifecycleStateOf<M>,
@@ -88,6 +100,10 @@ export function nextState<M extends AnyStateMachine>(
 	return parseState(machine, next.value)
 }
 
+/**
+ * Whether `from` has a transition for this event type. Probes with `{ type }`
+ * only; payload-dependent guards need `nextState`.
+ */
 export function canHandle<M extends AnyStateMachine>(
 	machine: M,
 	from: LifecycleStateOf<M>,
@@ -100,18 +116,30 @@ export function canHandle<M extends AnyStateMachine>(
 	)
 }
 
-/** Structural sources, including guarded alternatives; SQL must retain its guards. */
+/**
+ * Candidate sources: states that declare a transition for `eventType`. Guards
+ * are not evaluated, so a listed source may still reject the event; callers
+ * (and their SQL) must enforce guards themselves.
+ */
 export function sourcesOf<M extends AnyStateMachine>(
 	machine: M,
 	eventType: EventFrom<M>['type'],
 ): ReadonlyArray<LifecycleStateOf<M>> {
 	return statesOf(machine).filter((state) =>
 		(machine.states[state]!.transitions.get(eventType) ?? []).some(
-			(edge) => edge.target !== undefined || edge.actions.length > 0,
+			(edge) =>
+				edge.target !== undefined ||
+				edge.context !== undefined ||
+				typeof edge.to === 'function',
 		),
 	)
 }
 
+/**
+ * SQL `IN (...)` list of candidate sources for `eventType` (see `sourcesOf`;
+ * guards are not evaluated). Pass `selectedSources` to keep a predicate-order
+ * subset; every selected source must be a candidate source.
+ */
 export function sqlSourcesOf<M extends AnyStateMachine>(
 	machine: M,
 	eventType: EventFrom<M>['type'],
@@ -131,6 +159,7 @@ export function sqlSourcesOf<M extends AnyStateMachine>(
 	return sqlStatesOf(machine, selected)
 }
 
+/** SQL `IN (...)` list of declared states. */
 export function sqlStatesOf<M extends AnyStateMachine>(
 	machine: M,
 	states: ReadonlyArray<LifecycleStateOf<M>>,
@@ -141,6 +170,12 @@ export function sqlStatesOf<M extends AnyStateMachine>(
 	)
 }
 
+/**
+ * SQL `IN (...)` list of one source after checking `event` is legal from it.
+ * The check runs `nextState` with no record context, so context-dependent
+ * guards see the machine's default context, and a machine with a context
+ * initializer throws. Use it only for machines whose guards ignore context.
+ */
 export function sqlSourceOf<M extends AnyStateMachine>(
 	machine: M,
 	from: LifecycleStateOf<M>,
@@ -157,6 +192,7 @@ function sqlStateValues(name: string, values: ReadonlyArray<string>) {
 	return `(${values.map((value) => `'${value}'`).join(', ')})`
 }
 
+/** Unconstrained status values: membership, parse, and SQL, with no edges. */
 export type StatusEnum<S extends string> = {
 	readonly name: string
 	readonly description: string
@@ -166,6 +202,7 @@ export type StatusEnum<S extends string> = {
 	sql(values: ReadonlyArray<S>): string
 }
 
+/** Declare an unconstrained status column. No transition graph. */
 export function defineStatusEnum<const S extends string>(definition: {
 	name: string
 	description: string
@@ -196,32 +233,4 @@ export function defineStatusEnum<const S extends string>(definition: {
 		sql: (selected: ReadonlyArray<S>) =>
 			sqlStateValues(name, selected.map(parse)),
 	})
-}
-
-export function renderStateMachineMermaid(machine: AnyStateMachine): string {
-	const states = statesOf(machine)
-	const id = (state: string) =>
-		state.includes('-') ? `__state_${states.indexOf(state)}` : state
-	const initial = machine.root.initial.target?.[0]?.key
-	return [
-		'stateDiagram-v2',
-		...states
-			.filter((state) => state.includes('-'))
-			.map((state) => `    state "${state}" as ${id(state)}`),
-		...(initial ? [`    [*] --> ${id(initial)}`] : []),
-		...states.flatMap((state) =>
-			[...machine.states[state]!.transitions].flatMap(([event, edges]) =>
-				edges
-					.filter(
-						(edge) => edge.target !== undefined || edge.actions.length > 0,
-					)
-					.flatMap((edge) =>
-						(edge.target ?? [machine.states[state]!]).map(
-							(target) => `    ${id(state)} --> ${id(target.key)}: ${event}`,
-						),
-					),
-			),
-		),
-		...finalStatesOf(machine).map((state) => `    ${id(state)} --> [*]`),
-	].join('\n')
 }

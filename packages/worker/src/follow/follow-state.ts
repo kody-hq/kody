@@ -1,18 +1,16 @@
-import { setup } from 'xstate'
+import { setup, types } from 'xstate'
 import type { LifecycleStateOf } from '@kody-internal/shared/state-machine.ts'
 
 export const followState = setup({
-	types: {
-		events: {} as { type: 'PAUSE' } | { type: 'REAUTHORIZE' },
-	},
+	schemas: { events: { PAUSE: types<{}>(), REAUTHORIZE: types<{}>() } },
 }).createMachine({
 	id: 'follows.status',
 	description:
 		'Active follows pause when delivery access fails and resume after a creator reauthorizes them.',
 	initial: 'active',
 	states: {
-		active: { on: { PAUSE: 'paused' } },
-		paused: { on: { REAUTHORIZE: 'active' } },
+		active: { on: { PAUSE: { target: 'paused' } } },
+		paused: { on: { REAUTHORIZE: { target: 'active' } } },
 	},
 })
 

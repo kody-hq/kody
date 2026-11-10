@@ -7,15 +7,7 @@ test('one deferred action commits or undoes exactly once', () => {
 	expect(canHandle(undoableActionState, 'idle', 'COMMIT')).toBe(false)
 	expect(canHandle(undoableActionState, 'committing', 'UNDO')).toBe(false)
 
-	const store = createActor(undoableActionState, {
-		snapshot: (() => {
-			const initialView = { status: 'idle' }
-			return undoableActionState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	}).start()
+	const store = createActor(undoableActionState).start()
 	expect(
 		sendUiEvent(store, {
 			type: 'COMMIT',

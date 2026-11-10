@@ -12,15 +12,7 @@ test('desktop setup fences input and only a failed operation carries an error', 
 	)
 	expect(canHandle(desktopSetupOperationState, 'running', 'SUBMIT')).toBe(false)
 
-	const store = createActor(desktopSetupOperationState, {
-		snapshot: (() => {
-			const initialView = { status: 'idle' }
-			return desktopSetupOperationState.resolveState({
-				value: initialView.status,
-				context: uiContext(initialView),
-			})
-		})(),
-	}).start()
+	const store = createActor(desktopSetupOperationState).start()
 	expect(
 		sendUiEvent(store, {
 			type: 'RESPONSE_ERROR',

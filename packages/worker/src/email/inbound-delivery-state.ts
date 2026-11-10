@@ -1,15 +1,16 @@
-import { setup } from 'xstate'
+import { setup, types } from 'xstate'
 import type { LifecycleStateOf } from '@kody-internal/shared/state-machine.ts'
 
 export const inboundDeliveryState = setup({
-	types: {
-		events: {} as
-			| { type: 'CLAIM_STORAGE' }
-			| { type: 'CLAIM_CLEANUP' }
-			| { type: 'REJECT' }
-			| { type: 'RELEASE_LEASE' }
-			| { type: 'RECEIVE' }
-			| { type: 'COMPLETE_CLEANUP' },
+	schemas: {
+		events: {
+			CLAIM_STORAGE: types<{}>(),
+			CLAIM_CLEANUP: types<{}>(),
+			REJECT: types<{}>(),
+			RELEASE_LEASE: types<{}>(),
+			RECEIVE: types<{}>(),
+			COMPLETE_CLEANUP: types<{}>(),
+		},
 	},
 }).createMachine({
 	id: 'email_inbound_delivery.state',
@@ -19,31 +20,36 @@ export const inboundDeliveryState = setup({
 	states: {
 		pending: {
 			on: {
-				CLAIM_STORAGE: 'storing',
-				CLAIM_CLEANUP: 'cleaning',
-				REJECT: 'rejected',
+				CLAIM_STORAGE: { target: 'storing' },
+				CLAIM_CLEANUP: { target: 'cleaning' },
+				REJECT: { target: 'rejected' },
 			},
 		},
 		storing: {
 			on: {
-				CLAIM_STORAGE: 'storing',
-				RELEASE_LEASE: 'pending',
-				RECEIVE: 'received',
-				CLAIM_CLEANUP: 'cleaning',
-				REJECT: 'rejected',
+				CLAIM_STORAGE: { target: 'storing' },
+				RELEASE_LEASE: { target: 'pending' },
+				RECEIVE: { target: 'received' },
+				CLAIM_CLEANUP: { target: 'cleaning' },
+				REJECT: { target: 'rejected' },
 			},
 		},
 		cleaning: {
 			on: {
-				CLAIM_CLEANUP: 'cleaning',
-				RELEASE_LEASE: 'pending',
-				COMPLETE_CLEANUP: 'orphan-cleaned',
-				REJECT: 'rejected',
+				CLAIM_CLEANUP: { target: 'cleaning' },
+				RELEASE_LEASE: { target: 'pending' },
+				COMPLETE_CLEANUP: { target: 'orphan-cleaned' },
+				REJECT: { target: 'rejected' },
 			},
 		},
-		received: { on: { CLAIM_STORAGE: 'storing' } },
+		received: { on: { CLAIM_STORAGE: { target: 'storing' } } },
 		rejected: { type: 'final' },
-		'orphan-cleaned': { on: { CLAIM_CLEANUP: 'cleaning', REJECT: 'rejected' } },
+		'orphan-cleaned': {
+			on: {
+				CLAIM_CLEANUP: { target: 'cleaning' },
+				REJECT: { target: 'rejected' },
+			},
+		},
 	},
 })
 export type InboundDeliveryState = LifecycleStateOf<typeof inboundDeliveryState>

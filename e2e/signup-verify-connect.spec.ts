@@ -187,7 +187,15 @@ test('a new user signs up, verifies email from the message, and reaches MCP conn
 				{ timeout: 45_000 },
 			)
 			.not.toBeNull()
-		expect(founderWelcomeEmail?.text).toContain('goes straight to me')
+		const welcomePage = await page.context().newPage()
+		await welcomePage.setContent(founderWelcomeEmail?.html ?? '')
+		const connectHref = await welcomePage
+			.getByRole('link', { name: 'Connect your agent', exact: true })
+			.getAttribute('href')
+		await welcomePage.close()
+		const connectUrl = new URL(connectHref ?? '', 'invalid:/')
+		expect(connectUrl.origin).toBe(origin)
+		expect(connectUrl.pathname).toBe('/onboarding')
 		// connect_agent waits for the campaign dwell instead of landing seconds
 		// after the founder welcome.
 		const afterWelcome = await listE2eCloudflareMockMessages()

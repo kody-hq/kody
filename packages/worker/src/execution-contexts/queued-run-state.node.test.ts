@@ -10,14 +10,18 @@ test('execution_context_queued.lifecycle pins transitions and terminal fencing',
 	expect(queuedRunState.config.states).toEqual({
 		queued: {
 			on: {
-				START_HANDOFF: 'starting',
-				FINISH: 'finished',
-				CANCEL: 'cancelled',
-				EXPIRE: 'expired',
+				START_HANDOFF: { target: 'starting' },
+				FINISH: { target: 'finished' },
+				CANCEL: { target: 'cancelled' },
+				EXPIRE: { target: 'expired' },
 			},
 		},
 		starting: {
-			on: { RELEASE_HANDOFF: 'queued', FINISH: 'finished', EXPIRE: 'expired' },
+			on: {
+				RELEASE_HANDOFF: { target: 'queued' },
+				FINISH: { target: 'finished' },
+				EXPIRE: { target: 'expired' },
+			},
 		},
 		finished: { type: 'final' },
 		cancelled: { type: 'final' },
