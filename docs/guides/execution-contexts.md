@@ -50,6 +50,20 @@ machine calls a service with a credential, that request leaves from Kody cloud,
 which adds the credential on the way out. The machine sees the response, not the
 credential.
 
+### Storage on a machine
+
+A context has no scratch storage. Ad hoc `execute` there has no
+`packageStorage()`, the same as on Kody cloud: the call throws. A published
+package you import (`import x from 'kody:@scope/package/export'`) uses its real
+hosted bucket, the one its cloud runs read and write. Each storage call (`get`,
+`set`, `list`, `sql`, and the rest) is a separate network round trip from the
+machine to Kody cloud, so a loop of small calls is much slower than the same
+loop on Kody cloud; batch work into fewer `sql` calls. A test that runs an
+imported package on a context touches that package's real data. For scratch
+storage, run the package's own code from its checkout under `kody dev` or
+`execute --target mock` (see
+[Local testing with `kody dev`](./package-apps.md#local-testing-with-kody-dev)).
+
 ## Set up a machine
 
 1. Turn the experiment on ([How to turn it on](#how-to-turn-it-on)).
