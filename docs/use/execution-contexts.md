@@ -50,6 +50,14 @@ Execution contexts are an experiment. Turn them on at
   once in execute and search `notices` (`context-elevation` for a grantee;
   `context-misconfigured` for the operator). See
   [Shared-box best practices](../guides/execution-contexts.md#shared-box-best-practices).
+- Token scopes: reads (`executionContextList`, `executionContextGet`, sharing
+  and run lists, `executionChainGet`) need `execution_context:read`. Sharing
+  changes (`executionContextShareSet`, `executionContextShareRemove`,
+  `executionContextAttach`, `executionContextDetach`) need
+  `execution_context:manage_access`. `executionContextNoticeDismiss`,
+  `executionChainSet`, opt-in and opt-out need `execution_context:execute`. A
+  `kody login` token carries all of them; the handlers still check that you are
+  the operator or hold Manage.
 - CLI: `kody connect --name <name>` (register plus background service),
   `kody context register --name <name>`,
   `kody daemon install | status [--json] | logs | start | stop | restart | uninstall`,
