@@ -1,11 +1,14 @@
 import { setup, types } from 'xstate'
+import type { ConnectOauthUiState } from './connect-oauth-view.ts'
 import {
+	resetUi,
+	startUi,
+	updateUi,
 	uiContext,
 	type UiContext,
 	type UiData,
-	type UiPayload,
+	type UiEvent,
 } from '#client/ui-actor.ts'
-import type { ConnectOauthUiState } from './connect-oauth-view.ts'
 export type ConnectOauthStep =
 	| 'setup'
 	| 'connect'
@@ -25,39 +28,23 @@ export function connectOauthStepContext(
 		...uiContext(view).data,
 		request: undefined,
 	}
-	return { data, requestId: undefined } as UiContext<ConnectOauthStepView>
+	return { data, requestId: undefined }
 }
 export const connectOauthStepState = setup({
 	schemas: {
 		context: types<UiContext<ConnectOauthStepView>>(),
 		events: {
-			EDIT: types<{
-				data: UiPayload<
+			EDIT: types<
+				UiEvent<
 					ConnectOauthStepView,
 					'setup' | 'connect' | 'device' | 'callback' | 'success'
 				>
-				requestId?: unknown
-			}>(),
-			SETUP: types<{
-				data: UiPayload<ConnectOauthStepView, 'setup'>
-				requestId?: unknown
-			}>(),
-			CONNECT: types<{
-				data: UiPayload<ConnectOauthStepView, 'connect'>
-				requestId?: unknown
-			}>(),
-			DEVICE: types<{
-				data: UiPayload<ConnectOauthStepView, 'device'>
-				requestId?: unknown
-			}>(),
-			CALLBACK: types<{
-				data: UiPayload<ConnectOauthStepView, 'callback'>
-				requestId?: unknown
-			}>(),
-			CREDENTIALS_SAVED: types<{
-				data: UiPayload<ConnectOauthStepView, 'success'>
-				requestId?: unknown
-			}>(),
+			>(),
+			SETUP: types<UiEvent<ConnectOauthStepView, 'setup'>>(),
+			CONNECT: types<UiEvent<ConnectOauthStepView, 'connect'>>(),
+			DEVICE: types<UiEvent<ConnectOauthStepView, 'device'>>(),
+			CALLBACK: types<UiEvent<ConnectOauthStepView, 'callback'>>(),
+			CREDENTIALS_SAVED: types<UiEvent<ConnectOauthStepView, 'success'>>(),
 		},
 	},
 }).createMachine({
@@ -69,91 +56,43 @@ export const connectOauthStepState = setup({
 	states: {
 		setup: {
 			on: {
-				EDIT: { context: ({ event }) => ({ data: event.data }) },
-				SETUP: {
-					target: 'setup',
-					context: ({ event }) => ({ data: event.data }),
-				},
-				CONNECT: {
-					target: 'connect',
-					context: ({ event }) => ({ data: event.data }),
-				},
-				CALLBACK: {
-					target: 'callback',
-					context: ({ event }) => ({ data: event.data }),
-				},
+				EDIT: { context: updateUi },
+				SETUP: { target: 'setup', context: updateUi },
+				CONNECT: { target: 'connect', context: updateUi },
+				CALLBACK: { target: 'callback', context: updateUi },
 			},
 		},
 		connect: {
 			on: {
-				EDIT: { context: ({ event }) => ({ data: event.data }) },
-				SETUP: {
-					target: 'setup',
-					context: ({ event }) => ({ data: event.data }),
-				},
-				CONNECT: {
-					target: 'connect',
-					context: ({ event }) => ({ data: event.data }),
-				},
-				DEVICE: {
-					target: 'device',
-					context: ({ event }) => ({ data: event.data }),
-				},
-				CALLBACK: {
-					target: 'callback',
-					context: ({ event }) => ({ data: event.data }),
-				},
+				EDIT: { context: updateUi },
+				SETUP: { target: 'setup', context: updateUi },
+				CONNECT: { target: 'connect', context: updateUi },
+				DEVICE: { target: 'device', context: updateUi },
+				CALLBACK: { target: 'callback', context: updateUi },
 			},
 		},
 		device: {
 			on: {
-				EDIT: { context: ({ event }) => ({ data: event.data }) },
-				CONNECT: {
-					target: 'connect',
-					context: ({ event }) => ({ data: event.data }),
-				},
-				DEVICE: {
-					target: 'device',
-					context: ({ event }) => ({ data: event.data }),
-				},
-				CREDENTIALS_SAVED: {
-					target: 'success',
-					context: ({ event }) => ({ data: event.data }),
-				},
+				EDIT: { context: updateUi },
+				CONNECT: { target: 'connect', context: updateUi },
+				DEVICE: { target: 'device', context: updateUi },
+				CREDENTIALS_SAVED: { target: 'success', context: updateUi },
 			},
 		},
 		callback: {
 			on: {
-				EDIT: { context: ({ event }) => ({ data: event.data }) },
-				SETUP: {
-					target: 'setup',
-					context: ({ event }) => ({ data: event.data }),
-				},
-				CONNECT: {
-					target: 'connect',
-					context: ({ event }) => ({ data: event.data }),
-				},
-				CALLBACK: {
-					target: 'callback',
-					context: ({ event }) => ({ data: event.data }),
-				},
-				CREDENTIALS_SAVED: {
-					target: 'success',
-					context: ({ event }) => ({ data: event.data }),
-				},
+				EDIT: { context: updateUi },
+				SETUP: { target: 'setup', context: updateUi },
+				CONNECT: { target: 'connect', context: updateUi },
+				CALLBACK: { target: 'callback', context: updateUi },
+				CREDENTIALS_SAVED: { target: 'success', context: updateUi },
 			},
 		},
 		success: {
 			on: {
-				EDIT: { context: ({ event }) => ({ data: event.data }) },
-				SETUP: {
-					target: 'setup',
-					context: ({ event }) => ({ data: event.data }),
-				},
-				CREDENTIALS_SAVED: {
-					target: 'success',
-					context: ({ event }) => ({ data: event.data }),
-				},
+				EDIT: { context: updateUi },
+				SETUP: { target: 'setup', context: updateUi },
+				CREDENTIALS_SAVED: { target: 'success', context: updateUi },
 			},
 		},
 	},
@@ -164,57 +103,28 @@ export const connectOauthOperationState = setup({
 	schemas: {
 		context: types<UiContext<ConnectOauthOperationView>>(),
 		events: {
-			SUBMIT: types<{
-				data: UiPayload<ConnectOauthOperationView, 'submitting'>
-				requestId?: unknown
-			}>(),
-			SETTLED: types<{
-				data: UiPayload<ConnectOauthOperationView, 'idle'>
-				requestId?: unknown
-			}>(),
+			SUBMIT: types<UiEvent<ConnectOauthOperationView, 'submitting'>>(),
+			SETTLED: types<UiEvent<ConnectOauthOperationView, 'idle'>>(),
 		},
 	},
+	guards: { currentRequest: (a: unknown, b: unknown) => a === b },
 }).createMachine({
 	id: 'connect_oauth.operation',
 	description:
 		'One setup or authorize request fences submission independently of the displayed OAuth step and its feedback.',
 	initial: 'idle',
-	context: {
-		data: {} as UiData<ConnectOauthOperationView>,
-		requestId: undefined,
-	},
+	context: { data: {}, requestId: undefined },
 	states: {
 		idle: {
 			on: {
-				SUBMIT: {
-					target: 'submitting',
-					context: ({ event }) => ({
-						data: event.data,
-						requestId: event.requestId,
-					}),
-				},
+				SUBMIT: { target: 'submitting', context: startUi },
 			},
 		},
 		submitting: {
 			on: {
-				SETTLED: {
-					description: 'Current request',
-					to: ({
-						context,
-						event,
-					}: {
-						context: UiContext<ConnectOauthOperationView>
-						event: { type: 'SETTLED' } & {
-							data: UiPayload<ConnectOauthOperationView, 'idle'>
-							requestId?: unknown
-						}
-					}) => {
-						if (!(context.requestId === event.requestId)) return undefined
-						return {
-							target: 'idle',
-							context: { data: event.data, requestId: undefined },
-						}
-					},
+				SETTLED: ({ context, event, guards }) => {
+					if (!guards.currentRequest(context.requestId, event.requestId)) return
+					return { target: 'idle', context: resetUi({ event }) }
 				},
 			},
 		},

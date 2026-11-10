@@ -1,5 +1,10 @@
 import { setup, types } from 'xstate'
-import type { UiContext, UiData, UiPayload } from '#client/ui-actor.ts'
+import {
+	resetUi,
+	updateUi,
+	type UiContext,
+	type UiEvent,
+} from '#client/ui-actor.ts'
 export type UndoableActionStatus = 'idle' | 'waiting' | 'committing' | 'undoing'
 
 type UndoableActionInput = {
@@ -16,22 +21,10 @@ export const undoableActionState = setup({
 	schemas: {
 		context: types<UiContext<UndoableActionView>>(),
 		events: {
-			SCHEDULE: types<{
-				data: UiPayload<UndoableActionView, 'waiting'>
-				requestId?: unknown
-			}>(),
-			COMMIT: types<{
-				data: UiPayload<UndoableActionView, 'committing'>
-				requestId?: unknown
-			}>(),
-			UNDO: types<{
-				data: UiPayload<UndoableActionView, 'undoing'>
-				requestId?: unknown
-			}>(),
-			SETTLED: types<{
-				data: UiPayload<UndoableActionView, 'idle'>
-				requestId?: unknown
-			}>(),
+			SCHEDULE: types<UiEvent<UndoableActionView, 'waiting'>>(),
+			COMMIT: types<UiEvent<UndoableActionView, 'committing'>>(),
+			UNDO: types<UiEvent<UndoableActionView, 'undoing'>>(),
+			SETTLED: types<UiEvent<UndoableActionView, 'idle'>>(),
 		},
 	},
 }).createMachine({
@@ -39,42 +32,27 @@ export const undoableActionState = setup({
 	description:
 		'One deferred action can be undone or committed exactly once; replacements serialize behind any previous settlement.',
 	initial: 'idle',
-	context: { data: {} as UiData<UndoableActionView>, requestId: undefined },
+	context: { data: {}, requestId: undefined },
 	states: {
 		idle: {
 			on: {
-				SCHEDULE: {
-					target: 'waiting',
-					context: ({ event }) => ({ data: event.data }),
-				},
+				SCHEDULE: { target: 'waiting', context: updateUi },
 			},
 		},
 		waiting: {
 			on: {
-				COMMIT: {
-					target: 'committing',
-					context: ({ event }) => ({ data: event.data }),
-				},
-				UNDO: {
-					target: 'undoing',
-					context: ({ event }) => ({ data: event.data }),
-				},
+				COMMIT: { target: 'committing', context: updateUi },
+				UNDO: { target: 'undoing', context: updateUi },
 			},
 		},
 		committing: {
 			on: {
-				SETTLED: {
-					target: 'idle',
-					context: ({ event }) => ({ data: event.data, requestId: undefined }),
-				},
+				SETTLED: { target: 'idle', context: resetUi },
 			},
 		},
 		undoing: {
 			on: {
-				SETTLED: {
-					target: 'idle',
-					context: ({ event }) => ({ data: event.data, requestId: undefined }),
-				},
+				SETTLED: { target: 'idle', context: resetUi },
 			},
 		},
 	},

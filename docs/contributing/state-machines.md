@@ -1862,24 +1862,24 @@ stateDiagram-v2
     idle --> error: SET_ERROR
     running --> running: SET_ERROR
     running --> running: CLEAR_ERROR
-    running --> error: SETTLED [Notice has a message]
-    running --> idle: SETTLED [Otherwise (Notice has a message)]
+    running --> error: SETTLED [Has notice]
+    running --> idle: SETTLED [Otherwise (Has notice)]
     error --> running: START_OPERATION
     error --> error: SET_ERROR
     error --> idle: CLEAR_ERROR
 ```
 
-| Event           | From    | To      | Guard                            |
-| --------------- | ------- | ------- | -------------------------------- |
-| START_OPERATION | idle    | running | —                                |
-| SET_ERROR       | idle    | error   | —                                |
-| SET_ERROR       | running | running | —                                |
-| CLEAR_ERROR     | running | running | —                                |
-| SETTLED         | running | error   | Notice has a message             |
-| SETTLED         | running | idle    | Otherwise (Notice has a message) |
-| START_OPERATION | error   | running | —                                |
-| SET_ERROR       | error   | error   | —                                |
-| CLEAR_ERROR     | error   | idle    | —                                |
+| Event           | From    | To      | Guard                  |
+| --------------- | ------- | ------- | ---------------------- |
+| START_OPERATION | idle    | running | —                      |
+| SET_ERROR       | idle    | error   | —                      |
+| SET_ERROR       | running | running | —                      |
+| CLEAR_ERROR     | running | running | —                      |
+| SETTLED         | running | error   | Has notice             |
+| SETTLED         | running | idle    | Otherwise (Has notice) |
+| START_OPERATION | error   | running | —                      |
+| SET_ERROR       | error   | error   | —                      |
+| CLEAR_ERROR     | error   | idle    | —                      |
 
 ## Status enums (not state machines)
 

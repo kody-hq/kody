@@ -112,6 +112,10 @@ export function extractMachineGraphSource(
 	const events = object(
 		schemas.get('events') ?? fail(matches[0]!.setup, 'Missing event schemas'),
 	)
+	const guardDefinitions = object(matches[0]!.setup).get('guards')
+	const guards = guardDefinitions
+		? object(guardDefinitions)
+		: new Map<string, ts.Expression>()
 	const graph: LifecycleGraph = {
 		initial: literal(
 			config.get('initial') ??
@@ -181,53 +185,85 @@ export function extractMachineGraphSource(
 				(ts.isFunctionExpression(fn) && fn.asteriskToken)
 			)
 				fail(fn, 'Transition functions must be synchronous')
-			let conditional = false
-			const returns: Array<{ value: ts.Expression; branch: boolean }> = []
-			function walk(node: ts.Node, branch = false) {
-				if (node !== fn && ts.isFunctionLike(node)) return
+			const description = wrapper?.get('description')
+			const otherwise = (label: string) =>
+				label.startsWith('Otherwise (')
+					? label.slice(11, -1)
+					: `Otherwise (${label})`
+			function condition(node: ts.Expression): string {
+				node = unwrap(node)
 				if (
-					ts.isSwitchStatement(node) ||
-					ts.isIterationStatement(node, false) ||
-					ts.isTryStatement(node)
+					ts.isPrefixUnaryExpression(node) &&
+					node.operator === ts.SyntaxKind.ExclamationToken
 				)
-					fail(node, 'Unsupported control flow in transition')
-				if (ts.isIfStatement(node)) conditional = true
-				if (ts.isReturnStatement(node)) {
-					if (
-						node.expression &&
-						!(
-							ts.isIdentifier(node.expression) &&
-							node.expression.text === 'undefined'
-						)
-					)
-						returns.push({ value: node.expression, branch })
-					return
+					return otherwise(condition(node.operand))
+				if (
+					ts.isBinaryExpression(node) &&
+					[
+						ts.SyntaxKind.AmpersandAmpersandToken,
+						ts.SyntaxKind.BarBarToken,
+					].includes(node.operatorToken.kind)
+				)
+					return `(${condition(node.left)} ${node.operatorToken.getText(ast)} ${condition(node.right)})`
+				if (
+					ts.isCallExpression(node) &&
+					ts.isPropertyAccessExpression(node.expression) &&
+					node.expression.expression.getText(ast) === 'guards'
+				) {
+					const name = node.expression.name.text
+					if (!guards.has(name)) fail(node, `Undeclared named guard ${name}`)
+					const words = name
+						.replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+						.replaceAll('_', ' ')
+					return words[0]!.toUpperCase() + words.slice(1).toLowerCase()
 				}
-				ts.forEachChild(node, (child) =>
-					walk(child, branch || ts.isIfStatement(node)),
+				if (description) return literal(description)
+				return fail(
+					node,
+					'Conditional transition requires a named guard or human-readable description',
 				)
 			}
-			if (ts.isBlock(fn.body)) walk(fn.body)
-			else if (!(ts.isIdentifier(fn.body) && fn.body.text === 'undefined'))
-				returns.push({ value: fn.body, branch: false })
-			const description = wrapper?.get('description')
-			if (conditional && !description)
-				fail(
-					handler,
-					'Conditional transition requires a human-readable description',
-				)
-			const label = description ? literal(description) : ''
-			for (const result of returns)
-				edge(
-					result.value,
-					state,
-					event,
-					conditional
-						? returns.some((r) => r.branch) && !result.branch
-							? `Otherwise (${label})`
-							: label
-						: '',
-				)
+			function returned(value: ts.Expression | undefined, paths: string[][]) {
+				if (value) value = unwrap(value)
+				if (!value || (ts.isIdentifier(value) && value.text === 'undefined'))
+					return
+				for (const path of paths) edge(value, state, event, path.join(' && '))
+			}
+			function statements(
+				nodes: readonly ts.Statement[],
+				paths: string[][],
+			): string[][] {
+				for (const node of nodes) {
+					if (!paths.length) fail(node, 'Unreachable transition statement')
+					if (ts.isReturnStatement(node)) {
+						returned(node.expression, paths)
+						paths = []
+					} else if (ts.isIfStatement(node)) {
+						const label = condition(node.expression)
+						const branch = (body: ts.Statement, next: string[][]) =>
+							statements(ts.isBlock(body) ? body.statements : [body], next)
+						const yes = branch(
+							node.thenStatement,
+							paths.map((p) => [...p, label]),
+						)
+						const no = paths.map((p) => [...p, otherwise(label)])
+						paths = [
+							...yes,
+							...(node.elseStatement ? branch(node.elseStatement, no) : no),
+						]
+					} else if (ts.isBlock(node))
+						paths = statements(node.statements, paths)
+					else if (
+						!ts.isExpressionStatement(node) &&
+						!ts.isVariableStatement(node) &&
+						!ts.isEmptyStatement(node)
+					)
+						fail(node, 'Unsupported control flow in transition')
+				}
+				return paths
+			}
+			if (ts.isBlock(fn.body)) statements(fn.body.statements, [[]])
+			else returned(fn.body, [[]])
 		}
 	}
 	if (!states.has(graph.initial))

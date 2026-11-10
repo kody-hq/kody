@@ -1,9 +1,10 @@
 import { setup, types } from 'xstate'
-import type {
-	UiContext,
-	UiData,
-	UiPayload,
-	FormFlowState,
+import {
+	startUi,
+	updateUi,
+	type UiContext,
+	type UiEvent,
+	type FormFlowState,
 } from '#client/ui-actor.ts'
 export type PasswordResetState = FormFlowState<
 	'idle' | 'submitting' | 'success' | 'error'
@@ -13,110 +14,48 @@ export const passwordResetState = setup({
 	schemas: {
 		context: types<UiContext<PasswordResetState>>(),
 		events: {
-			SUBMIT: types<{
-				data: UiPayload<PasswordResetState, 'submitting'>
-				requestId?: unknown
-			}>(),
-			VALIDATION_ERROR: types<{
-				data: UiPayload<PasswordResetState, 'error'>
-				requestId?: unknown
-			}>(),
-			RESPONSE_OK: types<{
-				data: UiPayload<PasswordResetState, 'success'>
-				requestId?: unknown
-			}>(),
-			RESPONSE_ERROR: types<{
-				data: UiPayload<PasswordResetState, 'error'>
-				requestId?: unknown
-			}>(),
+			SUBMIT: types<UiEvent<PasswordResetState, 'submitting'>>(),
+			VALIDATION_ERROR: types<UiEvent<PasswordResetState, 'error'>>(),
+			RESPONSE_OK: types<UiEvent<PasswordResetState, 'success'>>(),
+			RESPONSE_ERROR: types<UiEvent<PasswordResetState, 'error'>>(),
 		},
 	},
+	guards: { currentRequest: (a: unknown, b: unknown) => a === b },
 }).createMachine({
 	id: 'password_reset.form',
 	description:
 		'Password reset requests and confirmations submit once, display their result and clear old feedback on retry.',
 	initial: 'idle',
-	context: { data: {} as UiData<PasswordResetState>, requestId: undefined },
+	context: { data: {}, requestId: undefined },
 	states: {
 		idle: {
 			on: {
-				SUBMIT: {
-					target: 'submitting',
-					context: ({ event }) => ({
-						data: event.data,
-						requestId: event.requestId,
-					}),
-				},
-				VALIDATION_ERROR: {
-					target: 'error',
-					context: ({ event }) => ({ data: event.data }),
-				},
+				SUBMIT: { target: 'submitting', context: startUi },
+				VALIDATION_ERROR: { target: 'error', context: updateUi },
 			},
 		},
 		submitting: {
 			on: {
-				RESPONSE_OK: {
-					description: 'Current request',
-					to: ({
-						context,
-						event,
-					}: {
-						context: UiContext<PasswordResetState>
-						event: { type: 'RESPONSE_OK' } & {
-							data: UiPayload<PasswordResetState, 'success'>
-							requestId?: unknown
-						}
-					}) => {
-						if (!(context.requestId === event.requestId)) return undefined
-						return { target: 'success', context: { data: event.data } }
-					},
+				RESPONSE_OK: ({ context, event, guards }) => {
+					if (!guards.currentRequest(context.requestId, event.requestId)) return
+					return { target: 'success', context: { data: event.data } }
 				},
-				RESPONSE_ERROR: {
-					description: 'Current request',
-					to: ({
-						context,
-						event,
-					}: {
-						context: UiContext<PasswordResetState>
-						event: { type: 'RESPONSE_ERROR' } & {
-							data: UiPayload<PasswordResetState, 'error'>
-							requestId?: unknown
-						}
-					}) => {
-						if (!(context.requestId === event.requestId)) return undefined
-						return { target: 'error', context: { data: event.data } }
-					},
+				RESPONSE_ERROR: ({ context, event, guards }) => {
+					if (!guards.currentRequest(context.requestId, event.requestId)) return
+					return { target: 'error', context: { data: event.data } }
 				},
 			},
 		},
 		success: {
 			on: {
-				SUBMIT: {
-					target: 'submitting',
-					context: ({ event }) => ({
-						data: event.data,
-						requestId: event.requestId,
-					}),
-				},
-				VALIDATION_ERROR: {
-					target: 'error',
-					context: ({ event }) => ({ data: event.data }),
-				},
+				SUBMIT: { target: 'submitting', context: startUi },
+				VALIDATION_ERROR: { target: 'error', context: updateUi },
 			},
 		},
 		error: {
 			on: {
-				SUBMIT: {
-					target: 'submitting',
-					context: ({ event }) => ({
-						data: event.data,
-						requestId: event.requestId,
-					}),
-				},
-				VALIDATION_ERROR: {
-					target: 'error',
-					context: ({ event }) => ({ data: event.data }),
-				},
+				SUBMIT: { target: 'submitting', context: startUi },
+				VALIDATION_ERROR: { target: 'error', context: updateUi },
 			},
 		},
 	},

@@ -65,22 +65,16 @@ test('SQL source subsets preserve explicit CAS order and reject unsupported sour
 test('single SQL source validation honors the complete event payload', () => {
 	const machine = setup({
 		schemas: { events: { SUBMIT: types<{ allowed: boolean }>() } },
+		guards: { allowed: (value: boolean) => value },
 	}).createMachine({
 		id: 'payload.lifecycle',
 		initial: 'pending',
 		states: {
 			pending: {
 				on: {
-					SUBMIT: {
-						description: 'event.allowed',
-						to: ({
-							event,
-						}: {
-							event: { type: 'SUBMIT' } & { allowed: boolean }
-						}) => {
-							if (!event.allowed) return undefined
-							return { target: 'done' }
-						},
+					SUBMIT: ({ event, guards }) => {
+						if (!guards.allowed(event.allowed)) return
+						return { target: 'done' }
 					},
 				},
 			},
@@ -170,6 +164,10 @@ test('transitions honor payload and context guards without executing actions', (
 			context: types<{ allowed: boolean }>(),
 			events: { SUBMIT: types<{ amount: number }>(), CHECK: types<{}>() },
 		},
+		guards: {
+			canSubmit: (allowed: boolean, amount: number) => allowed && amount > 0,
+			allowed: (value: boolean) => value,
+		},
 	}).createMachine({
 		id: 'guarded.lifecycle',
 		context: { allowed: true },
@@ -177,31 +175,16 @@ test('transitions honor payload and context guards without executing actions', (
 		states: {
 			pending: {
 				on: {
-					SUBMIT: {
-						description: 'context.allowed && event.amount > 0',
-						to: (
-							{
-								context,
-								event,
-							}: {
-								context: { allowed: boolean }
-								event: { type: 'SUBMIT' } & { amount: number }
-							},
-							enq: (effect: () => void) => void,
-						) => {
-							if (!(context.allowed && event.amount > 0)) return undefined
-							enq(() => {
-								effects++
-							})
-							return { target: 'done' }
-						},
+					SUBMIT: ({ context, event, guards }, enq) => {
+						if (!guards.canSubmit(context.allowed, event.amount)) return
+						enq(() => {
+							effects++
+						})
+						return { target: 'done' }
 					},
-					CHECK: {
-						description: 'context.allowed',
-						to: ({ context }: { context: { allowed: boolean } }) => {
-							if (!context.allowed) return undefined
-							return { target: 'pending' }
-						},
+					CHECK: ({ context, guards }) => {
+						if (!guards.allowed(context.allowed)) return
+						return { target: 'pending' }
 					},
 				},
 			},
@@ -235,6 +218,7 @@ test('context initializers require explicit context rather than silently ignorin
 			context: types<{ allowed: boolean }>(),
 			events: { GO: types<{}>() },
 		},
+		guards: { allowed: (value: boolean) => value },
 	}).createMachine({
 		id: 'context.lifecycle',
 		context: () => ({ allowed: true }),
@@ -242,12 +226,9 @@ test('context initializers require explicit context rather than silently ignorin
 		states: {
 			pending: {
 				on: {
-					GO: {
-						description: 'context.allowed',
-						to: ({ context }: { context: { allowed: boolean } }) => {
-							if (!context.allowed) return undefined
-							return { target: 'done' }
-						},
+					GO: ({ context, guards }) => {
+						if (!guards.allowed(context.allowed)) return
+						return { target: 'done' }
 					},
 				},
 			},

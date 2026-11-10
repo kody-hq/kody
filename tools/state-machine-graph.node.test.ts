@@ -4,8 +4,50 @@ import {
 	renderStateMachineMermaid,
 } from './state-machine-graph.ts'
 
-const definition = (handler: string) =>
-	`setup({schemas:{events:{GO:types()}}}).createMachine({id:'probe',initial:'idle',states:{idle:{on:{GO:${handler}}},done:{type:'final'}}})`
+const definition = (handler: string, guards = '') =>
+	`setup({schemas:{events:{GO:types()}},guards:{${guards}}}).createMachine({id:'probe',initial:'idle',states:{idle:{on:{GO:${handler}}},done:{type:'final'}}})`
+
+test('named guards label accepted branches after refusals without descriptions', () => {
+	const graph = extractMachineGraphSource(
+		'probe',
+		definition(
+			`({context,event,guards})=>{if(!guards.currentRequest(context.id,event.id))return;return {target:'done'}}`,
+			`currentRequest:(a,b)=>a===b`,
+		),
+	)
+	expect(graph.edges).toEqual([
+		{ source: 'idle', event: 'GO', target: 'done', guard: 'Current request' },
+	])
+})
+
+test('each named-guard branch retains its own conditions and fallback', () => {
+	const graph = extractMachineGraphSource(
+		'probe',
+		definition(
+			`({guards})=>{if(guards.isAdmin())return {target:'done'};if(guards.hasCredits())return {context:{n:1}};return {target:'done'}}`,
+			`isAdmin:()=>true,hasCredits:()=>false`,
+		),
+	)
+	expect(graph.edges.map((e) => e.guard)).toEqual([
+		'Is admin',
+		'Otherwise (Is admin) && Has credits',
+		'Otherwise (Is admin) && Otherwise (Has credits)',
+	])
+})
+
+test('nested branches and boolean predicates retain their named guards', () => {
+	const graph = extractMachineGraphSource(
+		'probe',
+		definition(
+			`({guards})=>{if(guards.allowed()||guards.isAdmin()){if(!guards.currentRequest())return;return {target:'done'}}else{return {context:{n:1}}}}`,
+			`allowed:()=>true,isAdmin:()=>false,currentRequest:()=>true`,
+		),
+	)
+	expect(graph.edges.map((e) => e.guard)).toEqual([
+		'(Allowed || Is admin) && Current request',
+		'Otherwise ((Allowed || Is admin))',
+	])
+})
 
 test('static and function destinations preserve literal targets and guard labels', () => {
 	const graph = extractMachineGraphSource(
@@ -62,10 +104,13 @@ test.each([
 	`[{target:'done'}]`,
 	`{matches:{allowed:true},target:'done'}`,
 	`{description:'Allowed',to:()=>({target:'done'}),target:'idle'}`,
+	`({guards})=>{if(guards.missing())return {target:'done'}}`,
+	`({guards})=>{if(guards[name]())return {target:'done'}}`,
+	`()=>{return {target:'done'};return choose()}`,
 ])('fails closed for unsupported or incomplete handler %s', (handler) => {
-	expect(() =>
-		extractMachineGraphSource('probe', definition(handler)),
-	).toThrow()
+	expect(() => extractMachineGraphSource('probe', definition(handler))).toThrow(
+		/probe/,
+	)
 })
 
 test('missing, duplicated and dynamically supplied machine definitions cannot silently render', () => {

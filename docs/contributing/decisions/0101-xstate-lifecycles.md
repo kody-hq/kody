@@ -49,12 +49,13 @@ maintain a second graph in documentation.
 The tooling-only TypeScript AST extractor in `tools/state-machine-graph.ts`
 drives Mermaid, declared-event and reachability checks. It fails closed on
 computed destinations or unsupported return forms: v6 runtime graphs cannot
-recover function destinations. Conditional handlers use a human-readable
-`description` beside their inline `to` function; diagrams and tables retain that
-guard label, including the fallback branch. Runtime SQL helpers inspect handlers
-without evaluating guards and never import TypeScript. Infer flat persisted
-state unions from `SnapshotFrom<M>['value']` rather than the beta's overloaded
-`StateValueFrom` helper.
+recover function destinations. Conditional handlers call named predicates from
+`setup({ guards })`; diagrams and tables derive branch labels from those calls,
+including refused-event checks and fallback branches. A human-readable
+`description` is required only for conditions without named guards. Runtime SQL
+helpers inspect handlers without evaluating guards and never import TypeScript.
+Infer flat persisted state unions from `SnapshotFrom<M>['value']` rather than
+the beta's overloaded `StateValueFrom` helper.
 
 ## Measurements
 
@@ -65,13 +66,14 @@ identical esbuild settings, the `setup`/`createActor`/`transition` ESM subset is
 library measurements are not whole-application deltas.
 
 Against main at `aeaa6a6e7`, the v6 client build contains 736 JavaScript files
-versus 735: 3,820,053 → 3,881,130 raw bytes (**+61,077**) and 1,349,378 →
-1,366,866 gzip bytes (**+17,488**). These are sums of individual client
+versus 735: 3,820,053 → 3,875,574 raw bytes (**+55,521**) and 1,349,378 →
+1,366,767 gzip bytes (**+17,389**). These are sums of individual client
 JavaScript files using the same default gzip settings as the v5 migration
-comparison, not the core-library gzip-level-9 measurements above. Origin startup
-bytes are 805,701 → 805,943; platform 7,160,252 → 7,445,423; runtime 5,477,241 →
-5,761,716. Platform/runtime already exceed the reviewed warning-only byte
-budgets on main; budgets and SQL CAS semantics are unchanged.
+comparison, not the core-library gzip-level-9 measurements above. Before
+cleanup, startup bytes were: origin 805,701 → 805,943; platform 7,160,252 →
+7,445,423; runtime 5,477,241 → 5,761,716. Platform/runtime already exceed the
+reviewed warning-only byte budgets on main; budgets and SQL CAS semantics are
+unchanged.
 
 The original v5 client build comparison retained 735 JavaScript files: 3,755,342
 → 3,819,416 raw bytes (**+64,074**), 1,330,642 → 1,349,426 gzip bytes

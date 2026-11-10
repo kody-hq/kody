@@ -1,6 +1,11 @@
 import { setup, types } from 'xstate'
-import type { UiContext, UiData, UiPayload } from '#client/ui-actor.ts'
 import type { OAuthAuthorizeClientFailure } from '#universal/oauth-authorize-client-failure.ts'
+import {
+	resetUi,
+	startUi,
+	type UiContext,
+	type UiEvent,
+} from '#client/ui-actor.ts'
 export type OAuthAuthorizeDecision =
 	| 'approve'
 	| 'deny'
@@ -26,181 +31,68 @@ export const oauthConsentState = setup({
 	schemas: {
 		context: types<UiContext<OAuthConsentState>>(),
 		events: {
-			SIGN_IN: types<{
-				data: UiPayload<OAuthConsentState, 'signing_in'>
-				requestId?: unknown
-			}>(),
-			DECIDE: types<{
-				data: UiPayload<OAuthConsentState, 'deciding'>
-				requestId?: unknown
-			}>(),
-			RESPONSE_ERROR: types<{
-				data: UiPayload<OAuthConsentState, 'error'>
-				requestId?: unknown
-			}>(),
-			REDIRECT: types<{
-				data: UiPayload<OAuthConsentState, 'redirecting'>
-				requestId?: unknown
-			}>(),
-			GUEST_CREATED: types<{
-				data: UiPayload<OAuthConsentState, 'guest'>
-				requestId?: unknown
-			}>(),
-			CLIENT_RESET: types<{
-				data: UiPayload<OAuthConsentState, 'reset_complete'>
-				requestId?: unknown
-			}>(),
-			RESET: types<{
-				data: UiPayload<OAuthConsentState, 'idle'>
-				requestId?: unknown
-			}>(),
+			SIGN_IN: types<UiEvent<OAuthConsentState, 'signing_in'>>(),
+			DECIDE: types<UiEvent<OAuthConsentState, 'deciding'>>(),
+			RESPONSE_ERROR: types<UiEvent<OAuthConsentState, 'error'>>(),
+			REDIRECT: types<UiEvent<OAuthConsentState, 'redirecting'>>(),
+			GUEST_CREATED: types<UiEvent<OAuthConsentState, 'guest'>>(),
+			CLIENT_RESET: types<UiEvent<OAuthConsentState, 'reset_complete'>>(),
+			RESET: types<UiEvent<OAuthConsentState, 'idle'>>(),
 		},
 	},
+	guards: { currentRequest: (a: unknown, b: unknown) => a === b },
 }).createMachine({
 	id: 'oauth_consent.interaction',
 	description:
 		'Sign-in and consent decisions are mutually exclusive; cached navigation can release sign-in or redirect fences without replaying a decision.',
 	initial: 'idle',
-	context: { data: {} as UiData<OAuthConsentState>, requestId: undefined },
+	context: { data: {}, requestId: undefined },
 	states: {
 		idle: {
 			on: {
-				SIGN_IN: {
-					target: 'signing_in',
-					context: ({ event }) => ({
-						data: event.data,
-						requestId: event.requestId,
-					}),
-				},
-				DECIDE: {
-					target: 'deciding',
-					context: ({ event }) => ({
-						data: event.data,
-						requestId: event.requestId,
-					}),
-				},
+				SIGN_IN: { target: 'signing_in', context: startUi },
+				DECIDE: { target: 'deciding', context: startUi },
 			},
 		},
 		signing_in: {
 			on: {
-				RESPONSE_ERROR: {
-					description: 'Current request',
-					to: ({
-						context,
-						event,
-					}: {
-						context: UiContext<OAuthConsentState>
-						event: { type: 'RESPONSE_ERROR' } & {
-							data: UiPayload<OAuthConsentState, 'error'>
-							requestId?: unknown
-						}
-					}) => {
-						if (!(context.requestId === event.requestId)) return undefined
-						return { target: 'error', context: { data: event.data } }
-					},
+				RESPONSE_ERROR: ({ context, event, guards }) => {
+					if (!guards.currentRequest(context.requestId, event.requestId)) return
+					return { target: 'error', context: { data: event.data } }
 				},
-				RESET: {
-					target: 'idle',
-					context: ({ event }) => ({ data: event.data, requestId: undefined }),
-				},
+				RESET: { target: 'idle', context: resetUi },
 			},
 		},
 		deciding: {
 			on: {
-				RESPONSE_ERROR: {
-					description: 'Current request',
-					to: ({
-						context,
-						event,
-					}: {
-						context: UiContext<OAuthConsentState>
-						event: { type: 'RESPONSE_ERROR' } & {
-							data: UiPayload<OAuthConsentState, 'error'>
-							requestId?: unknown
-						}
-					}) => {
-						if (!(context.requestId === event.requestId)) return undefined
-						return { target: 'error', context: { data: event.data } }
-					},
+				RESPONSE_ERROR: ({ context, event, guards }) => {
+					if (!guards.currentRequest(context.requestId, event.requestId)) return
+					return { target: 'error', context: { data: event.data } }
 				},
-				REDIRECT: {
-					description: 'Current request',
-					to: ({
-						context,
-						event,
-					}: {
-						context: UiContext<OAuthConsentState>
-						event: { type: 'REDIRECT' } & {
-							data: UiPayload<OAuthConsentState, 'redirecting'>
-							requestId?: unknown
-						}
-					}) => {
-						if (!(context.requestId === event.requestId)) return undefined
-						return { target: 'redirecting', context: { data: event.data } }
-					},
+				REDIRECT: ({ context, event, guards }) => {
+					if (!guards.currentRequest(context.requestId, event.requestId)) return
+					return { target: 'redirecting', context: { data: event.data } }
 				},
-				GUEST_CREATED: {
-					description: 'Current request',
-					to: ({
-						context,
-						event,
-					}: {
-						context: UiContext<OAuthConsentState>
-						event: { type: 'GUEST_CREATED' } & {
-							data: UiPayload<OAuthConsentState, 'guest'>
-							requestId?: unknown
-						}
-					}) => {
-						if (!(context.requestId === event.requestId)) return undefined
-						return { target: 'guest', context: { data: event.data } }
-					},
+				GUEST_CREATED: ({ context, event, guards }) => {
+					if (!guards.currentRequest(context.requestId, event.requestId)) return
+					return { target: 'guest', context: { data: event.data } }
 				},
-				CLIENT_RESET: {
-					description: 'Current request',
-					to: ({
-						context,
-						event,
-					}: {
-						context: UiContext<OAuthConsentState>
-						event: { type: 'CLIENT_RESET' } & {
-							data: UiPayload<OAuthConsentState, 'reset_complete'>
-							requestId?: unknown
-						}
-					}) => {
-						if (!(context.requestId === event.requestId)) return undefined
-						return { target: 'reset_complete', context: { data: event.data } }
-					},
+				CLIENT_RESET: ({ context, event, guards }) => {
+					if (!guards.currentRequest(context.requestId, event.requestId)) return
+					return { target: 'reset_complete', context: { data: event.data } }
 				},
-				RESET: {
-					target: 'idle',
-					context: ({ event }) => ({ data: event.data, requestId: undefined }),
-				},
+				RESET: { target: 'idle', context: resetUi },
 			},
 		},
 		error: {
 			on: {
-				SIGN_IN: {
-					target: 'signing_in',
-					context: ({ event }) => ({
-						data: event.data,
-						requestId: event.requestId,
-					}),
-				},
-				DECIDE: {
-					target: 'deciding',
-					context: ({ event }) => ({
-						data: event.data,
-						requestId: event.requestId,
-					}),
-				},
+				SIGN_IN: { target: 'signing_in', context: startUi },
+				DECIDE: { target: 'deciding', context: startUi },
 			},
 		},
 		redirecting: {
 			on: {
-				RESET: {
-					target: 'idle',
-					context: ({ event }) => ({ data: event.data, requestId: undefined }),
-				},
+				RESET: { target: 'idle', context: resetUi },
 			},
 		},
 		guest: { type: 'final' },

@@ -8,6 +8,15 @@ const {
 	shouldAdopt,
 } = require('./machine-runner.cjs')
 
+const clearOperation = () => ({ command: null, message: null, notice: null })
+/** @param {{event: {command: string}}} args */
+const startOperation = ({ event }) => ({
+	...clearOperation(),
+	command: event.command,
+})
+/** @param {{event: {message: string}}} args */
+const operationError = ({ event }) => ({ message: event.message })
+
 const executionOperationState = setup({
 	schemas: {
 		context:
@@ -24,6 +33,10 @@ const executionOperationState = setup({
 			SETTLED: /** @type {import('xstate').TypeSchema<{}>} */ (types()),
 		},
 	},
+	guards: {
+		hasNotice: (/** @type {{message: string} | null} */ notice) =>
+			notice?.message !== undefined,
+	},
 }).createMachine({
 	id: 'desktop.machine_operation',
 	description:
@@ -33,20 +46,8 @@ const executionOperationState = setup({
 	states: {
 		idle: {
 			on: {
-				START_OPERATION: {
-					target: 'running',
-					context: ({ event }) => ({
-						command: event.type === 'START_OPERATION' ? event.command : null,
-						message: null,
-						notice: null,
-					}),
-				},
-				SET_ERROR: {
-					target: 'error',
-					context: ({ event }) => ({
-						message: event.type === 'SET_ERROR' ? event.message : null,
-					}),
-				},
+				START_OPERATION: { target: 'running', context: startOperation },
+				SET_ERROR: { target: 'error', context: operationError },
 			},
 		},
 		running: {
@@ -57,46 +58,31 @@ const executionOperationState = setup({
 					}),
 				},
 				CLEAR_ERROR: { context: () => ({ notice: null }) },
-				SETTLED: {
-					description: 'Notice has a message',
-					to: ({ context }) => {
-						if (context.notice?.message !== undefined) {
-							return {
-								target: 'error',
-								context: {
-									command: null,
-									message: context.notice?.message ?? null,
-									notice: null,
-								},
-							}
-						}
+				SETTLED: ({ context, guards }) => {
+					if (guards.hasNotice(context.notice)) {
 						return {
-							target: 'idle',
-							context: { command: null, message: null, notice: null },
+							target: 'error',
+							context: {
+								command: null,
+								message: context.notice?.message ?? null,
+								notice: null,
+							},
 						}
-					},
+					}
+					return {
+						target: 'idle',
+						context: clearOperation(),
+					}
 				},
 			},
 		},
 		error: {
 			on: {
-				START_OPERATION: {
-					target: 'running',
-					context: ({ event }) => ({
-						command: event.type === 'START_OPERATION' ? event.command : null,
-						message: null,
-						notice: null,
-					}),
-				},
+				START_OPERATION: { target: 'running', context: startOperation },
 				SET_ERROR: {
-					context: ({ event }) => ({
-						message: event.type === 'SET_ERROR' ? event.message : null,
-					}),
+					context: operationError,
 				},
-				CLEAR_ERROR: {
-					target: 'idle',
-					context: () => ({ command: null, message: null, notice: null }),
-				},
+				CLEAR_ERROR: { target: 'idle', context: clearOperation },
 			},
 		},
 	},
