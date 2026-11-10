@@ -14,7 +14,6 @@ import {
 
 const apiUrl = 'https://api.setup-git-login-cli.test'
 const mcpUrl = 'https://login-setup-git.test/mcp'
-const mintedCode = `kody_bc_${'c'.repeat(16)}_${'D'.repeat(32)}`
 const redeemedToken = `kody_at_${'r'.repeat(20)}_${'S'.repeat(43)}`
 
 type Recorded = { url: string; authorization: string | null; body: unknown }
@@ -24,18 +23,6 @@ const openApiDocument = {
 		'/v1/tokens/bootstrap': { post: { operationId: 'cliCredentialBootstrap' } },
 		'/v1/tokens/current': { get: { operationId: 'tokenGetCurrent' } },
 	},
-}
-
-function mintResponse(scopes: ReadonlyArray<string>) {
-	return {
-		bootstrap_code: mintedCode,
-		expires_at: '2026-10-13T20:00:00.000Z',
-		cli_command: `npx @kodycodes/cli auth bootstrap --code ${mintedCode} --lifetime long`,
-		name: 'kody-cli-bootstrap',
-		scopes: [...scopes],
-		idle_ttl_seconds: 1_209_600,
-		max_lifetime_seconds: 7_776_000,
-	}
 }
 
 const redeemResponse = {

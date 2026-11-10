@@ -14,7 +14,7 @@ import {
  * - `env`: `KODY_API_TOKEN`
  * - `login`: the one saved CLI credential (`kody login` or `kody auth bootstrap`)
  */
-export type CliCredentialSource = 'token-flag' | 'env' | 'login'
+type CliCredentialSource = 'token-flag' | 'env' | 'login'
 
 /**
  * What the command does with the credential (for messages). Every purpose
@@ -238,15 +238,6 @@ export function describeCliCredential(
 export const callPurposeCommands =
 	'api, package, execute --local, context, daemon, dev, search, cloud execute, and git'
 export const sessionPurposeCommands = callPurposeCommands
-
-/** `npx @kodycodes/cli auth bootstrap …` hint that mints a narrower credential. */
-export function replaceStoredTokenCommand(
-	scopes: ReadonlyArray<string> | null | undefined,
-	lifetime: 'short' | 'long' = 'short',
-): string {
-	const list = scopes && scopes.length > 0 ? scopes.join(',') : '<scopes>'
-	return `npx @kodycodes/cli auth bootstrap --lifetime ${lifetime} --scopes ${list}`
-}
 
 const resignInHint =
 	'Run `kody login` (agents on Kody MCP: call cliCredentialBootstrap with no scopes and run the returned cli_command) to save a credential with every scope your org role allows.'

@@ -1,13 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
+import { cliName, defaultApiUrl, defaultMcpUrl } from './defaults.js'
 import {
-	apiTokenEnvVar,
-	cliName,
-	defaultApiUrl,
-	defaultMcpUrl,
-} from './defaults.js'
-import {
-	authBootstrapWithScopes,
 	resolveCliTokenLifetime,
 	type ResolvedCliTokenLifetime,
 } from './auth-bootstrap.js'

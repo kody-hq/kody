@@ -16,7 +16,6 @@ import { runCli, supersedeStoredApiTokenAfterLogin } from '../src/cli.js'
 import {
 	credentialRejectedNote,
 	resolveCliCredential,
-	type CliCredentialSource,
 } from '../src/cli-credential.js'
 import { clearOpenApiRouteCache } from '../src/open-api-client.js'
 import {

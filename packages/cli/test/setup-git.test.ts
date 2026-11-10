@@ -28,7 +28,6 @@ import {
 	loadStoredApiToken,
 	type StoredApiToken,
 } from '../src/api-token-store.js'
-import { resolveCliTokenLifetime } from '../src/auth-bootstrap.js'
 import {
 	ensureGitApiToken,
 	formatGitCredentialOutput,
@@ -674,17 +673,6 @@ test('describeKodyCredentialKind names the kind without echoing the value', () =
 		assert.ok(!describeKodyCredentialKind(value).includes(value))
 	}
 })
-
-const unauthorizedFetch = (async (input: Parameters<typeof fetch>[0]) => {
-	const url = String(input instanceof Request ? input.url : input)
-	if (url.includes('/v1/tokens/current')) {
-		return new Response(
-			JSON.stringify({ error: { code: 'unauthorized', message: 'no' } }),
-			{ status: 401, headers: { 'content-type': 'application/json' } },
-		)
-	}
-	return new Response('{}', { status: 404 })
-}) as typeof fetch
 
 test('authSetupGit 401 on the saved credential tells the user to run kody login', async () => {
 	await assert.rejects(

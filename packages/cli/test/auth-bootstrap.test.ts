@@ -19,7 +19,6 @@ import {
 	loadStoredApiToken,
 	parseStoredApiToken,
 	saveStoredApiToken,
-	type StoredApiToken,
 } from '../src/api-token-store.js'
 import { resolveLocalExecuteBearer, runCli } from '../src/cli.js'
 import { createFileBackend, loadCredentials } from '../src/store.js'
