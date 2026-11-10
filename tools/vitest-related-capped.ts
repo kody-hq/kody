@@ -1,3 +1,4 @@
+import { realpathSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 import { isExecutedDirectly } from './node-runtime.ts'
 
@@ -58,6 +59,15 @@ export function selectPrePushRelatedTests(input: {
 	return { files: directRelatedTestFiles(input), capped: true }
 }
 
+/** Vitest module IDs are realpath'd with `/` separators; match pushed paths to them. */
+function normalizeModulePath(path: string) {
+	let real = path
+	try {
+		real = realpathSync(path)
+	} catch {}
+	return real.replaceAll('\\', '/')
+}
+
 async function main() {
 	const args = process.argv.slice(2)
 	const projectIndex = args.indexOf('--project')
@@ -68,7 +78,7 @@ async function main() {
 	}
 	const pushed = args
 		.filter((_, index) => index !== projectIndex && index !== projectIndex + 1)
-		.map((path) => resolve(path))
+		.map((path) => normalizeModulePath(resolve(path)))
 	const { createVitest } = await import('vitest/node')
 	const vitest = await createVitest('test', {
 		related: pushed,
@@ -81,7 +91,7 @@ async function main() {
 		const specs = await vitest.getRelevantTestSpecifications()
 		const cap = prePushRelatedTestCap()
 		const selection = selectPrePushRelatedTests({
-			related: specs.map((spec) => spec.moduleId),
+			related: specs.map((spec) => normalizeModulePath(spec.moduleId)),
 			pushed,
 			cap,
 		})

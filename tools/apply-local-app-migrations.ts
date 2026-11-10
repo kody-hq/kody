@@ -177,7 +177,7 @@ function main() {
 		if (result.status !== 0) {
 			console.error(
 				describeChildExit(
-					`Local migration step \`${command.slice(1).join(' ')}\``,
+					`Local migration step \`${command.join(' ')}\``,
 					result,
 				),
 			)
