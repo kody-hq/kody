@@ -1916,6 +1916,72 @@ function filterCspUnsafeEvalRefusalSentryEvent<T extends SentryErrorEventLike>(
 }
 
 /**
+ * Page-injected scripts (typically browser extensions) that try to patch
+ * `Symbol.hasInstance` on a built-in whose property is non-configurable.
+ * Signature from production issue 7838313110: Firefox 159 on
+ * https://kody.codes/community, mechanism
+ * `auto.browser.global_handlers.onerror`, and a single frame whose URL is
+ * Firefox's `<anonymous code>` marker for injected scripts (no function
+ * name). First-party bundles report `https://kody.codes/assets/…` URLs, and
+ * Kody source never defines `Symbol.hasInstance`.
+ *
+ * Match is intentionally narrow: TypeError (or missing type) with the
+ * Firefox wording or the Chromium `Cannot redefine property:
+ * Symbol(Symbol.hasInstance)` equivalent on the **same** exception value,
+ * AND every reported frame URL is `<anonymous code>` or anonymous/native.
+ * Keep when any frame is first-party `kody.codes/assets/…`, when frames
+ * are missing or URL-less, or when any sibling exception value does not
+ * fully match.
+ */
+const symbolHasInstanceRedefineMessage =
+	/^(?:TypeError:\s*)?(?:can't redefine non-configurable property Symbol\.hasInstance|Cannot redefine property: Symbol\(Symbol\.hasInstance\))$/
+
+function isSymbolHasInstanceRedefineMessage(message: string) {
+	return symbolHasInstanceRedefineMessage.test(message.trim())
+}
+
+function isInjectedAnonymousCodeStackFrameUrl(url: string) {
+	return (
+		url.trim() === '<anonymous code>' || isAnonymousOrNativeStackFrameUrl(url)
+	)
+}
+
+function isInjectedAnonymousCodeOnlyReportedFrames(
+	frames: Array<SentryStackFrame> | undefined,
+) {
+	if (!frames || frames.length === 0) return false
+	for (const frame of frames) {
+		const urls = stackFrameUrls(frame).filter((url) => url.trim().length > 0)
+		if (urls.length === 0) return false
+		if (urls.some(isFirstPartyKodyAssetStackFrameUrl)) return false
+		if (!urls.every(isInjectedAnonymousCodeStackFrameUrl)) return false
+	}
+	return true
+}
+
+function exceptionValueIsInjectedSymbolHasInstanceRedefine(
+	value: SentryExceptionValue,
+) {
+	if (value.type !== undefined && value.type !== 'TypeError') return false
+	if (typeof value.value !== 'string') return false
+	if (!isSymbolHasInstanceRedefineMessage(value.value)) return false
+	return isInjectedAnonymousCodeOnlyReportedFrames(value.stacktrace?.frames)
+}
+
+function filterInjectedSymbolHasInstanceRedefineSentryEvent<
+	T extends SentryErrorEventLike,
+>(event: T, _originalException?: unknown): T | null {
+	const values = event.exception?.values ?? []
+	if (
+		values.length > 0 &&
+		values.every(exceptionValueIsInjectedSymbolHasInstanceRedefine)
+	) {
+		return null
+	}
+	return event
+}
+
+/**
  * Drop CrabApple's failed hard-spoof of `navigator.userAgent`. An injected
  * script labeled CrabApple redefines that property; modern Safari throws
  * `TypeError: Cannot redefine property: userAgent`, and the script wraps it
@@ -2153,6 +2219,14 @@ export function filterBrowserSentryEvent<T extends SentryErrorEventLike>(
 	}
 	if (
 		filterCspUnsafeEvalRefusalSentryEvent(event, originalException) === null
+	) {
+		return null
+	}
+	if (
+		filterInjectedSymbolHasInstanceRedefineSentryEvent(
+			event,
+			originalException,
+		) === null
 	) {
 		return null
 	}
