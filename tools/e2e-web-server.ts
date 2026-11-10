@@ -194,7 +194,10 @@ async function startE2eWebServer() {
 		resetPersist: () => resetDisposableE2ePersist(disposableE2ePersistPath),
 		log: (message) => console.error(message),
 	})
-	if ((migrate.status ?? 1) !== 0) process.exit(migrate.status ?? 1)
+	if ((migrate.status ?? 1) !== 0) {
+		process.exitCode = migrate.status ?? 1
+		return
+	}
 
 	const mock = await startCloudflareMockWithRetry({
 		start: startCloudflareMock,

@@ -181,7 +181,8 @@ function main() {
 					result,
 				),
 			)
-			process.exit(result.status ?? 1)
+			process.exitCode = result.status ?? 1
+			return
 		}
 	}
 }
