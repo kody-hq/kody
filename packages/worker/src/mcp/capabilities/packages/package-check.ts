@@ -41,6 +41,8 @@ import { runPackageCheckArtifactBuild } from '#worker/repo/package-check-artifac
 import { publishedPackageArtifactTargetsReusableForFiles } from '#worker/package-runtime/published-bundle-artifacts.ts'
 import type { EntitySourceRow } from '#worker/repo/types.ts'
 import { createPublishWorkTree } from '#worker/repo/publish-work.ts'
+import { recordApiRequestProgress } from '#worker/open-api/request-progress.ts'
+import type { PackageCheckProgressStep } from '@kody-internal/shared/api-request-progress.ts'
 import { resolveOwnedPackageSource } from './resolve-package-source.ts'
 
 export const packageCheckMaxFiles = 2_000
@@ -98,7 +100,7 @@ function preparePublishSnapshot(input: {
 					fileCount,
 				})
 			: null
-	return { tree, binaryFileSizes, tooLargeMessage }
+	return { tree, binaryFileSizes, tooLargeMessage, totalBytes, fileCount }
 }
 
 function normalizePackageCheckPath(path: string) {
@@ -284,6 +286,16 @@ export const packageCheckCapability = defineDomainCapability(
 					],
 				}
 			}
+			const recordStep = (step: PackageCheckProgressStep) =>
+				recordApiRequestProgress({
+					step,
+					packageName,
+					fileCount: snapshot.fileCount,
+					totalBytes: snapshot.totalBytes,
+					maxFiles: packageCheckMaxFiles,
+					maxTotalBytes: externalPublishSnapshotMaxTotalBytes,
+				})
+			await recordStep('checks')
 			// Git-push publish defers bundling to the artifact rebuild; do the
 			// same, then build the rebuild's targets below. Envs without the
 			// rebuild bindings keep the full up-front bundle validation.
@@ -319,6 +331,9 @@ export const packageCheckCapability = defineDomainCapability(
 						result.message === deferredBundleCheckMessage,
 				)
 				if (deferredIndex !== -1) {
+					await recordStep(
+						existingSource ? 'artifact_reuse_scan' : 'artifact_build',
+					)
 					const built = await runPackageCheckArtifactBuild({
 						runner: artifactRunner,
 						files: snapshot.tree.files,
@@ -328,14 +343,18 @@ export const packageCheckCapability = defineDomainCapability(
 						...(existingPackage ? { rootPackageId: existingPackage.id } : {}),
 						...(existingSource
 							? {
-									listReusableTargets: (targets) =>
-										publishedPackageArtifactTargetsReusableForFiles({
-											env: ctx.env,
-											userId: owner.ownerUserId,
-											source: existingSource!,
-											targets,
-											files: snapshot.tree.files,
-										}),
+									listReusableTargets: async (targets) => {
+										const reusable =
+											await publishedPackageArtifactTargetsReusableForFiles({
+												env: ctx.env,
+												userId: owner.ownerUserId,
+												source: existingSource!,
+												targets,
+												files: snapshot.tree.files,
+											})
+										await recordStep('artifact_build')
+										return reusable
+									},
 								}
 							: {}),
 					})

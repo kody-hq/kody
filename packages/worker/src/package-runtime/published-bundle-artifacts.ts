@@ -39,6 +39,7 @@ import {
 	collectPublishedPackageArtifactTargets,
 	type PublishedPackageArtifactBuildTarget,
 } from './package-artifact-targets.ts'
+import type { ModuleImportNodesCache } from './import-specifiers.ts'
 import { publishedPackageArtifactTargetInputsChanged } from './published-bundle-artifact-inputs.ts'
 import {
 	matchesPublishedBundleArtifactIdentity,
@@ -511,6 +512,8 @@ export async function reusePublishedPackageArtifactIfUnchanged(input: {
 	target: PublishedPackageArtifactBuildTarget
 	snapshotCache?: PublishedPackageArtifactReuseSnapshotCache
 	dependencySourceCache?: PublishedPackageArtifactDependencySourceCache
+	/** Share across a rebuild's targets so each source is parsed once. */
+	importNodesCache?: ModuleImportNodesCache
 	/**
 	 * Snapshot already loaded for this rebuild's `publishedCommit`.
 	 * `null` means that load found none. Omit to read it here.
@@ -566,6 +569,9 @@ export async function reusePublishedPackageArtifactIfUnchanged(input: {
 			entryPoint: input.target.entryPoint,
 			previousFiles: previousSnapshot.files,
 			nextFiles: nextSnapshot.files,
+			...(input.importNodesCache
+				? { importNodesCache: input.importNodesCache }
+				: {}),
 		})
 	) {
 		return false
@@ -657,6 +663,9 @@ export async function publishedPackageArtifactTargetsReusableForFiles(input: {
 	const snapshotCache: PublishedPackageArtifactReuseSnapshotCache = new Map()
 	const dependencySourceCache: PublishedPackageArtifactDependencySourceCache =
 		new Map()
+	// Most files are identical in both snapshots and shared across targets, so
+	// parse each source once for the whole scan, not twice per target.
+	const importNodesCache: ModuleImportNodesCache = new Map()
 	for (const target of input.targets) {
 		const loaded = publishedBundleArtifactForPackageTarget({
 			sourceId: input.source.id,
@@ -680,6 +689,7 @@ export async function publishedPackageArtifactTargetsReusableForFiles(input: {
 				entryPoint: target.entryPoint,
 				previousFiles,
 				nextFiles: input.files,
+				importNodesCache,
 			})
 		) {
 			continue
@@ -807,6 +817,7 @@ export async function rebuildPublishedPackageArtifacts(
 	const snapshotCache: PublishedPackageArtifactReuseSnapshotCache = new Map()
 	const dependencySourceCache: PublishedPackageArtifactDependencySourceCache =
 		new Map()
+	const importNodesCache: ModuleImportNodesCache = new Map()
 	const targets = collectPublishedPackageArtifactTargets(input.manifest)
 	const loadedByIdentity =
 		publishedCommit && hasPublishedRuntimeArtifacts(input.env)
@@ -846,6 +857,7 @@ export async function rebuildPublishedPackageArtifacts(
 					target,
 					snapshotCache,
 					dependencySourceCache,
+					importNodesCache,
 					preloaded,
 				})
 				if (reused) return

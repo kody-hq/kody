@@ -256,7 +256,71 @@ test('names an origin memory or CPU limit and echoes the ray id as the request i
 		request_id: '8f00aa11bb22cc33-SJC',
 	})
 	expect(body.error.message).toMatch(/ran out of server memory or CPU time/)
+	expect(body.error.message).toContain('a retry can pass')
 	expect(body.error.message).not.toMatch(/temporarily unavailable/)
+})
+
+test('names the step and package size origin recorded before it hit a CPU limit', async () => {
+	consoleError.mockImplementation(() => {})
+	const forwarded: Array<Request> = []
+	const progressReads: Array<string> = []
+	const env: ApiWorkerEnv = {
+		KODY_API: {
+			async fetch(request: Request) {
+				forwarded.push(request)
+				throw new Error('Worker exceeded CPU time limit.')
+			},
+			async readRequestProgress(requestId: string) {
+				progressReads.push(requestId)
+				return {
+					step: 'artifact_reuse_scan',
+					packageName: '@danj/audible',
+					fileCount: 178,
+					totalBytes: 1_960_000,
+					maxFiles: 2_000,
+					maxTotalBytes: 32 * 1024 * 1024,
+				}
+			},
+		} as unknown as ApiWorkerEnv['KODY_API'],
+	}
+	const response = await handleApiEdgeRequest(
+		new Request('https://api.kody.test/v1/packages/check', {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${token}`,
+				'Content-Type': 'application/json',
+				'CF-Ray': 'a58d7375e847dfaf',
+				'X-Kody-Request-Id': 'spoofed',
+			},
+			body: JSON.stringify({ files: { 'package.json': '{}' } }),
+		}),
+		env,
+	)
+	expect(response.status).toBe(503)
+	expect(forwarded[0]?.headers.get('X-Kody-Request-Id')).toBe(
+		'a58d7375e847dfaf',
+	)
+	expect(progressReads).toEqual(['a58d7375e847dfaf'])
+	const body = (await response.json()) as {
+		error: { message: string; details: Record<string, unknown> }
+	}
+	expect(body.error.details).toEqual({
+		reason: 'origin_resource_limit',
+		request_id: 'a58d7375e847dfaf',
+		step: 'artifact_reuse_scan',
+		package_bytes: 1_960_000,
+		package_files: 178,
+	})
+	expect(body.error.message).toContain(
+		'during package checks: the artifact reuse scan',
+	)
+	expect(body.error.message).toContain('for @danj/audible')
+	expect(body.error.message).toContain(
+		'1.96 MB in 178 files: 6% of the 32 MiB check size limit and 9% of the 2,000 file limit',
+	)
+	expect(body.error.message).toContain('a retry can pass')
+	expect(body.error.message).not.toMatch(/usually fails/)
+	expect(body.error.message).not.toContain('\u2014')
 })
 
 test('gateway-fetch streams the body past the JSON cap and forwards hop headers', async () => {

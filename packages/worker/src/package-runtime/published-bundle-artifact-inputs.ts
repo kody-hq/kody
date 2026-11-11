@@ -1,4 +1,5 @@
 import { normalizePackageWorkspacePath } from '#worker/package-registry/manifest.ts'
+import type { ModuleImportNodesCache } from './import-specifiers.ts'
 import {
 	collectReachableSourceFilePaths,
 	isBundlerRootConfigPath,
@@ -15,12 +16,21 @@ import {
 export function collectPublishedPackageArtifactInputPaths(input: {
 	files: Record<string, string>
 	entryPoint: string
+	/**
+	 * Parses keyed by source text. Share one across every target of a reuse
+	 * scan: without it each target re-parses the whole reachable tree twice,
+	 * which ran a ~2 MB `packageCheck` out of request CPU.
+	 */
+	importNodesCache?: ModuleImportNodesCache
 }) {
 	const rootPackage = readRootPackage(input.files)
 	const paths = collectReachableSourceFilePaths({
 		files: input.files,
 		entryPoint: input.entryPoint,
 		rootPackage,
+		...(input.importNodesCache
+			? { importNodesCache: input.importNodesCache }
+			: {}),
 	})
 	for (const path of Object.keys(input.files)) {
 		const normalized = normalizePackageWorkspacePath(path)
@@ -55,14 +65,18 @@ export function publishedPackageArtifactTargetInputsChanged(input: {
 	entryPoint: string
 	previousFiles: Record<string, string>
 	nextFiles: Record<string, string>
+	importNodesCache?: ModuleImportNodesCache
 }) {
+	const cache = input.importNodesCache
 	const previousPaths = collectPublishedPackageArtifactInputPaths({
 		files: input.previousFiles,
 		entryPoint: input.entryPoint,
+		...(cache ? { importNodesCache: cache } : {}),
 	})
 	const nextPaths = collectPublishedPackageArtifactInputPaths({
 		files: input.nextFiles,
 		entryPoint: input.entryPoint,
+		...(cache ? { importNodesCache: cache } : {}),
 	})
 	const paths = new Set([...previousPaths, ...nextPaths])
 	if (paths.size === 0) return true
