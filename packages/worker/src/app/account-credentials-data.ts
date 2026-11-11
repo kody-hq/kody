@@ -59,7 +59,7 @@ export async function loadAccountCredentialsData(input: {
 				packages,
 			}).catch((error: unknown) => {
 				// A null selected with a listed row looks like "Loading…" forever
-				// in the expand pane. Degrade to empty detail sections instead.
+				// in the expand pane. Degrade to unavailable detail sections instead.
 				Sentry.captureException(error, {
 					tags: { scope: 'credentials.detail' },
 					extra: { credentialId: selectedItem.id, orgId, teamOrg },
@@ -68,6 +68,7 @@ export async function loadAccountCredentialsData(input: {
 					id: selectedItem.id,
 					placeholder: credentialPlaceholder(selectedItem),
 					grants: [],
+					grantsUnavailable: true,
 					usage: [],
 					usageTruncated: false,
 					// Match listUsage soft-fail: show Used by gap copy instead of
@@ -81,56 +82,52 @@ export async function loadAccountCredentialsData(input: {
 	const selectedProvider = selectedItem
 		? undefined
 		: providers.find((binding) => binding.id === input.selectedId)
-	const selectedLocalReads =
+	const viewerPersonalOrgSlug =
+		teamOrg && selectedItem?.scope === 'personal' ? { personalOrgSlug } : {}
+	const localReadsId =
 		selectedItem &&
 		selectedItem.kind === 'secret' &&
 		selectedItem.packageId === null
-			? await loadCredentialLocalReadsView({
-					env: input.env,
-					request: input.user.request,
-					credentialId: selectedItem.id,
-					...(teamOrg && selectedItem.scope === 'personal'
-						? { personalOrgSlug }
-						: {}),
-				}).catch((error: unknown) => {
-					Sentry.captureException(error, {
-						tags: { scope: 'credentials.detail.local_reads' },
-						extra: { credentialId: selectedItem.id },
-					})
-					return null
+			? selectedItem.id
+			: (selectedProvider?.id ?? null)
+	let selectedLocalReadsUnavailableFor: string | null = null
+	const selectedLocalReads = localReadsId
+		? await loadCredentialLocalReadsView({
+				env: input.env,
+				request: input.user.request,
+				credentialId: localReadsId,
+				...viewerPersonalOrgSlug,
+			}).catch((error: unknown) => {
+				Sentry.captureException(error, {
+					tags: { scope: 'credentials.detail.local_reads' },
+					extra: { credentialId: localReadsId },
 				})
-			: selectedProvider
-				? await loadCredentialLocalReadsView({
-						env: input.env,
-						request: input.user.request,
-						credentialId: selectedProvider.id,
-					}).catch((error: unknown) => {
-						Sentry.captureException(error, {
-							tags: { scope: 'credentials.detail.local_reads' },
-							extra: { credentialId: selectedProvider.id },
-						})
-						return null
-					})
-				: null
-	const selectedRawSigning =
+				selectedLocalReadsUnavailableFor = localReadsId
+				return null
+			})
+		: null
+	const rawSigningId =
 		selectedItem &&
 		selectedItem.kind === 'signing' &&
 		selectedItem.packageId === null
-			? await loadCredentialRawSigningView({
-					env: input.env,
-					request: input.user.request,
-					credentialId: selectedItem.id,
-					...(teamOrg && selectedItem.scope === 'personal'
-						? { personalOrgSlug }
-						: {}),
-				}).catch((error: unknown) => {
-					Sentry.captureException(error, {
-						tags: { scope: 'credentials.detail.raw_signing' },
-						extra: { credentialId: selectedItem.id },
-					})
-					return null
-				})
+			? selectedItem.id
 			: null
+	let selectedRawSigningUnavailableFor: string | null = null
+	const selectedRawSigning = rawSigningId
+		? await loadCredentialRawSigningView({
+				env: input.env,
+				request: input.user.request,
+				credentialId: rawSigningId,
+				...viewerPersonalOrgSlug,
+			}).catch((error: unknown) => {
+				Sentry.captureException(error, {
+					tags: { scope: 'credentials.detail.raw_signing' },
+					extra: { credentialId: rawSigningId },
+				})
+				selectedRawSigningUnavailableFor = rawSigningId
+				return null
+			})
+		: null
 	let localReadBadges: AccountCredentialsResponse['localReadBadges'] = {}
 	try {
 		// Soft-fail only here: listLocalReadSettings must still throw for CLI
@@ -157,7 +154,9 @@ export async function loadAccountCredentialsData(input: {
 		ok: true,
 		selected,
 		selectedLocalReads,
+		selectedLocalReadsUnavailableFor,
 		selectedRawSigning,
+		selectedRawSigningUnavailableFor,
 		localReadBadges,
 		credentials: input.filters
 			? filterCredentialList(listed, input.filters)
