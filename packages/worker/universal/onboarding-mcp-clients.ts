@@ -64,7 +64,7 @@ export const mcpClientTabs = [
 	{ id: 'cue', label: 'Cue', isNonCodingAgent: false },
 	{ id: 'openmuse', label: 'OpenMuse', isNonCodingAgent: false },
 	{ id: 'dots', label: 'Dots', isNonCodingAgent: false },
-	{ id: 'instinct', label: 'Instinct', isNonCodingAgent: true },
+	{ id: 'instinct', label: 'Instinct', isNonCodingAgent: false },
 	{ id: 'other', label: 'Other', isNonCodingAgent: false },
 ] as const satisfies ReadonlyArray<McpClientTab>
 
@@ -599,6 +599,19 @@ export function buildKodyCliInstallCommand(mcpServerUrl: string) {
 		return 'npx @kodycodes/cli install'
 	}
 	return `npx @kodycodes/cli install --mcp-url ${mcpServerUrl}`
+}
+
+export const kodyCliGlobalInstallCommand = 'npm install -g @kodycodes/cli'
+
+/**
+ * Device-flow CLI login for agents that run the Kody CLI on their own
+ * computer. Preview and local origins pass `--mcp-url`.
+ */
+export function buildKodyCliLoginCommand(mcpServerUrl: string) {
+	if (isDefaultKodyMcpUrl(mcpServerUrl)) {
+		return 'kody login --device'
+	}
+	return `kody login --device --mcp-url ${mcpServerUrl}`
 }
 
 function normalizeMcpUrl(mcpServerUrl: string) {

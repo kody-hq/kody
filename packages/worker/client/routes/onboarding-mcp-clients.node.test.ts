@@ -13,6 +13,7 @@ import {
 	buildHermesMcpYaml,
 	buildKodyAppIconUrl,
 	buildKodyCliInstallCommand,
+	buildKodyCliLoginCommand,
 	buildMuseSettingsJson,
 	buildOpenClawMcpAddCommand,
 	buildOpenClawMcpJson,
@@ -69,6 +70,10 @@ test('onboarding MCP client builders emit the structured configs each host expec
 	}
 	expect(buildKodyCliInstallCommand('http://localhost:3742/mcp')).toBe(
 		'npx @kodycodes/cli install --mcp-url http://localhost:3742/mcp',
+	)
+	expect(buildKodyCliLoginCommand(mcpServerUrl)).toBe('kody login --device')
+	expect(buildKodyCliLoginCommand('http://localhost:3742/mcp')).toBe(
+		'kody login --device --mcp-url http://localhost:3742/mcp',
 	)
 
 	const httpKody = { kody: { type: 'http', url: mcpServerUrl } }

@@ -200,10 +200,12 @@ you only have the MCP URL.
 - **Dots** — [OpenAI Dots](https://openai.com/index/introducing-dots/). When
   Dots exposes a custom MCP connector, paste the MCP URL and complete OAuth.
 - **Instinct**: [Instinct](https://instinct.com/) is a personal assistant you
-  text or call. Instinct has not published connector documentation, so setup
-  depends on whether your account can add a remote MCP server. When Instinct
-  exposes a custom MCP connector, paste the MCP URL and complete OAuth. If it
-  cannot add one, Instinct cannot connect to Kody yet.
+  text or call. It has no official MCP support, but it can use a computer the
+  way you do, so it connects through the Kody CLI. Ask Instinct to run
+  `npm install -g @kodycodes/cli` (Node 22 or later), then `kody login --device`
+  and send you the link and code it prints; check that the code matches and
+  approve. Instinct then uses `kody search` and `kody execute --local`. If
+  Instinct adds remote MCP support, it can connect with the MCP URL instead.
 - **Open WebUI** — Add an MCP Streamable HTTP connection to this deployment’s
   MCP URL and use **OAuth 2.1** (dynamic registration) first. Enabling the tool
   in a chat must open the Kody authorize window. If that window never opens on
