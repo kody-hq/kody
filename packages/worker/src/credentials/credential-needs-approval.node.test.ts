@@ -543,6 +543,8 @@ test('approving publishes the paused commit past the pause; a moved base superse
 			destructiveOverwriteConfirmed: false,
 			allowLockedPublish: true,
 			credentialNeedsApproved: true,
+			rebuildPackageArtifacts: true,
+			deferBundleCheckToRebuild: true,
 		}),
 	)
 	expect(mocks.approvePackageCapabilitySet).toHaveBeenCalledWith(
@@ -562,10 +564,13 @@ test('approving publishes the paused commit past the pause; a moved base superse
 			})
 		)?.status,
 	).toBe('approved')
-	await expect(approve(request.id)).resolves.toMatchObject({
-		ok: false,
-		status: 409,
-	})
+	// A repeat click after the page timed out succeeds without republishing
+	// or pinning again.
+	const publishCalls = mocks.publishFromExternalRef.mock.calls.length
+	const pinCalls = mocks.approvePackageCapabilitySet.mock.calls.length
+	await expect(approve(request.id)).resolves.toEqual({ ok: true })
+	expect(mocks.publishFromExternalRef).toHaveBeenCalledTimes(publishCalls)
+	expect(mocks.approvePackageCapabilitySet).toHaveBeenCalledTimes(pinCalls)
 
 	const stale = await enqueue('commit-two')
 	mocks.source = { ...t.source, published_commit: 'commit-codemod' }

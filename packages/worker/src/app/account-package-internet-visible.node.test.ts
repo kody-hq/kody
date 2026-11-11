@@ -17,6 +17,7 @@ const mockModule = vi.hoisted(() => ({
 	approveWentPublicRequest: vi.fn(),
 	enqueueWentPublicApproval: vi.fn(),
 	getPendingWentPublicApproval: vi.fn(),
+	getPackageApprovalRequest: vi.fn(),
 	logOrgAuditEvent: vi.fn(),
 	loadCurrentPackageSecurityAudit: vi.fn(),
 	attemptSelfPublish: vi.fn(),
@@ -42,6 +43,11 @@ vi.mock('#worker/package-capabilities/self-publish.ts', () => ({
 	explainSelfPublishBlocker: vi.fn(async () => null),
 	applyMatchingPinInternetVisible: (...args: Array<unknown>) =>
 		mockModule.applyMatchingPinInternetVisible(...args),
+}))
+
+vi.mock('#worker/package-capabilities/approval-requests-repo.ts', () => ({
+	getPackageApprovalRequest: (...args: Array<unknown>) =>
+		mockModule.getPackageApprovalRequest(...args),
 }))
 
 vi.mock('#worker/orgs/org-audit.ts', () => ({
@@ -129,6 +135,8 @@ beforeEach(() => {
 	mockModule.approveWentPublicRequest.mockReset()
 	mockModule.enqueueWentPublicApproval.mockReset()
 	mockModule.getPendingWentPublicApproval.mockReset()
+	mockModule.getPackageApprovalRequest.mockReset()
+	mockModule.getPackageApprovalRequest.mockResolvedValue(null)
 	mockModule.getPendingWentPublicApproval.mockResolvedValue({
 		id: 'request-went-public',
 	})
@@ -415,6 +423,36 @@ test('approve-capabilities-and-go-public pins without enqueuing, so a request tu
 		['package.capabilities.approve', 'success'],
 		['package.went_public.approve', 'failure'],
 	])
+})
+
+test('approve-capabilities-and-go-public repeated after it landed succeeds without pinning again', async () => {
+	const env = { APP_DB: {} } as Env
+	const user = createUser()
+	const request = new Request('https://example.com/account/packages.json', {
+		method: 'POST',
+	})
+	mockModule.writablePackage = createSavedPackage(true)
+	mockModule.loadOrgBindingForOrg.mockResolvedValue(null)
+	mockModule.getPendingWentPublicApproval.mockResolvedValue(null)
+	mockModule.getPackageApprovalRequest.mockResolvedValue({
+		id: 'request-went-public',
+		reason: 'went_public',
+		status: 'approved',
+	})
+
+	const response = await approveAccountPackageCapabilitiesAndGoPublic({
+		env,
+		request,
+		user,
+		packageId: 'pkg-1',
+		fingerprint: 'reviewed-fp',
+		requestId: 'request-went-public',
+	})
+
+	expect(response?.status).toBe(200)
+	expect(response?.data).toMatchObject({ ok: true })
+	expect(mockModule.approvePackageCapabilitySet).not.toHaveBeenCalled()
+	expect(mockModule.approveWentPublicRequest).not.toHaveBeenCalled()
 })
 
 test('approve-capabilities-and-go-public does not go public when the capability approval fails', async () => {
