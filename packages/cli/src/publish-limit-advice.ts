@@ -3,8 +3,7 @@ export const executionContextPublishDocsUrl =
 	'https://kody.codes/docs/execution-contexts#try-publishing-from-a-context'
 
 /** `--build local` and `--context` publishes need this experiment on. */
-export const executionContextsExperimentUrl =
-	'https://kody.codes/account/experiments'
+const executionContextsExperimentUrl = 'https://kody.codes/account/experiments'
 
 export const publishOutsideCloudAdvice =
 	"This package is near Kody cloud's build CPU or memory limit. Build it on " +
