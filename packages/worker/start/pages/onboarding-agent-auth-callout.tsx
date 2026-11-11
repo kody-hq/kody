@@ -194,8 +194,9 @@ function renderAgentAuthHint(
 		case 'cue':
 		case 'openmuse':
 		case 'dots':
-		case 'instinct':
 			return <>Complete OAuth when the host opens it.</>
+		case 'instinct':
+			return <>Approve the kody login code when Instinct sends it to you.</>
 		case 'copilot':
 			return surface === 'mobile' ? (
 				<>Complete OAuth when the GitHub or Copilot app opens it.</>

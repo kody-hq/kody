@@ -35,3 +35,22 @@ test('Grok Bot leads with the Kody Bot template and keeps the plugin steps as th
 			.map((agent) => agent.slug),
 	).toEqual(['grok-bot'])
 })
+
+test('Instinct leads with the Kody CLI and keeps MCP to a short note', () => {
+	const instinct = findWithAgentByPathname('/with/instinct')
+	expect(instinct?.steps.map((step) => step.code)).toEqual([
+		'npm install -g @kodycodes/cli',
+		'kody login --device',
+		'kody search "what can you do"',
+	])
+	expect(instinct?.steps.some((step) => step.prompt)).toBe(false)
+	expect(instinct?.note).toContain('Kody CLI')
+	expect(instinct?.note).toContain('https://kody.codes/mcp')
+	for (const text of [
+		instinct?.note,
+		instinct?.pitch,
+		...(instinct?.steps.map((step) => step.text) ?? []),
+	]) {
+		expect(text).not.toContain('\u2014')
+	}
+})

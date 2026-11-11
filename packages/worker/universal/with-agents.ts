@@ -2,6 +2,7 @@ import {
 	buildClaudeCodeAddCommand,
 	buildCopilotCliAddCommand,
 	buildHermesMcpAddCommand,
+	buildKodyCliLoginCommand,
 	buildMuseSettingsJson,
 	buildOpenClawMcpAddCommand,
 	buildOpenCodeMcpAddCommand,
@@ -14,6 +15,7 @@ import {
 	kodyChatGptPluginUrl,
 	kodyCursorAddPluginCommand,
 	kodyCursorMarketplaceUrl,
+	kodyCliGlobalInstallCommand,
 	museMcpLoginCommand,
 	openClawMcpLoginCommand,
 	openCodeMcpAuthCommand,
@@ -395,13 +397,29 @@ export const withAgents = [
 		pitch:
 			'Bring your team\u2019s tools and connected accounts into Dots through one MCP connection.',
 	}),
-	genericAgent({
+	{
 		slug: 'instinct',
 		name: 'Instinct',
 		icon: 'instinct',
+		official: false,
+		note: `Instinct has no official MCP support, but it can use a computer the way you do, so it connects through the Kody CLI. If Instinct adds remote MCP support, it can connect to ${mcpUrl} instead.`,
 		pitch:
 			'Bring your team\u2019s tools and connected accounts to Instinct, the personal assistant you text or call.',
-	}),
+		steps: [
+			{
+				text: 'Ask Instinct to install the Kody CLI on its computer (Node 22 or later):',
+				code: kodyCliGlobalInstallCommand,
+			},
+			{
+				text: 'Have it sign in. The command prints a link and a short code. Ask Instinct to send them to you, open the link, check that the code matches, and approve.',
+				code: buildKodyCliLoginCommand(mcpUrl),
+			},
+			{
+				text: 'Instinct can then use Kody from the CLI: kody search finds what your account can do, and kody execute --local runs it with your connected accounts, without Instinct seeing a key.',
+				code: 'kody search "what can you do"',
+			},
+		],
+	},
 ] as const satisfies ReadonlyArray<WithAgent>
 
 export type WithAgentSlug = (typeof withAgents)[number]['slug']

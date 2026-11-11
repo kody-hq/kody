@@ -30,7 +30,9 @@ import {
 	hermesMcpGuideUrl,
 	hermesMcpLoginCommand,
 	hermesMcpTokensPath,
+	buildKodyCliLoginCommand,
 	instinctSiteUrl,
+	kodyCliGlobalInstallCommand,
 	isDefaultKodyMcpUrl,
 	kodyAppIconFilename,
 	kodyBotTemplateLabel,
@@ -560,17 +562,25 @@ export function renderPanelContent(
 						<SiteLink href={instinctSiteUrl} target="_blank" rel="noreferrer">
 							instinct.com
 						</SiteLink>
-						). Instinct has not published connector documentation, so setup
-						depends on whether your account can add a remote MCP server. When
-						Instinct exposes a custom MCP connector, paste this URL and complete
-						OAuth.
+						). It has no official MCP support, but it can use a computer the way
+						you do, so it connects through the Kody CLI. Ask Instinct to run
+						these commands on its computer (Node 22 or later). The login prints
+						a link and a short code: ask Instinct to send them to you, check
+						that the code matches, and approve.
 					</p>
 					<ConnectCopyCard
 						highlights={highlights}
-						label="MCP URL"
-						value={mcpServerUrl}
-						copyLabel="Copy MCP URL"
+						label="Kody CLI"
+						value={`${kodyCliGlobalInstallCommand}\n${buildKodyCliLoginCommand(mcpServerUrl)}`}
+						copyLabel="Copy commands"
+						lang="sh"
 					/>
+					<p>
+						Then Instinct uses Kody from the CLI: <code>kody search</code> finds
+						what your account can do, and <code>kody execute --local</code> runs
+						it with your connected accounts. If Instinct adds remote MCP
+						support, it can connect to <code>{mcpServerUrl}</code> instead.
+					</p>
 				</>
 			)
 		case 'copilot': {
