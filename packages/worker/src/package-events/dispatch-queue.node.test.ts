@@ -11,6 +11,12 @@ const mocks = vi.hoisted(() => ({
 		vi.fn<
 			(input: Record<string, unknown>) => Promise<Record<string, unknown>>
 		>(),
+	processInboundDeliveryEffects:
+		vi.fn<(input: Record<string, unknown>) => Promise<unknown>>(),
+}))
+
+vi.mock('#worker/email/inbound-effects.ts', () => ({
+	processInboundDeliveryEffects: mocks.processInboundDeliveryEffects,
 }))
 
 vi.mock('#worker/package-invocations/service.ts', () => ({
@@ -159,4 +165,70 @@ test('package events queue message parsing keeps MCP fan-out fields only when we
 		createMessageBody({ mcp: 'true', emittedAt: 'yesterday' }),
 	)
 	expect(parsed).toEqual(createMessageBody())
+})
+
+test('inbound delivery effects run concurrently in the consumer and retry infrastructure failures', async () => {
+	consoleError.mockImplementation(() => {})
+	const started: Array<string> = []
+	let releaseFirst: () => void = () => {}
+	const firstBlocked = new Promise<void>((resolve) => {
+		releaseFirst = resolve
+	})
+	mocks.processInboundDeliveryEffects.mockImplementation(async (input) => {
+		started.push(String(input['deliveryId']))
+		if (input['deliveryId'] === 'delivery-1') await firstBlocked
+		if (input['deliveryId'] === 'delivery-3') {
+			throw new Error('Mailbox unavailable')
+		}
+		return { outcome: 'complete' }
+	})
+	const inbound = (deliveryId: string) =>
+		createQueueMessage(`queue-${deliveryId}`, {
+			kind: 'inbound-delivery-effects',
+			userId: ownerIdFromStored('user-123'),
+			deliveryId,
+			expectedFinalizationToken: `token-${deliveryId}`,
+			durationMs: 12,
+		})
+	const first = inbound('delivery-1')
+	const second = inbound('delivery-2')
+	const third = inbound('delivery-3')
+	const invalid = createQueueMessage('queue-inbound-invalid', {
+		kind: 'inbound-delivery-effects',
+		userId: 'user-123',
+	})
+
+	const handled = handlePackageEventsDispatchQueue(
+		createBatch([first, second, third, invalid]),
+		{ APP_DB: {} } as Env,
+		{
+			waitUntil: vi.fn<(promise: Promise<unknown>) => void>(),
+		} as unknown as ExecutionContext,
+	)
+	// A slow first delivery must not hold back the independent ones.
+	await vi.waitFor(() => {
+		expect(second.ack).toHaveBeenCalledTimes(1)
+		expect(third.retry).toHaveBeenCalledWith({ delaySeconds: 30 })
+	})
+	expect(first.ack).not.toHaveBeenCalled()
+	releaseFirst()
+	await handled
+
+	expect(started).toEqual(['delivery-1', 'delivery-2', 'delivery-3'])
+	expect(mocks.processInboundDeliveryEffects).toHaveBeenCalledWith({
+		env: expect.anything(),
+		userId: ownerIdFromStored('user-123'),
+		deliveryId: 'delivery-1',
+		expectedFinalizationToken: 'token-delivery-1',
+		durationMs: 12,
+		waitUntil: expect.any(Function),
+	})
+	expect(first.ack).toHaveBeenCalledTimes(1)
+	expect(third.ack).not.toHaveBeenCalled()
+	expect(invalid.ack).toHaveBeenCalledTimes(1)
+	expect(mocks.deliverPackageEvent).not.toHaveBeenCalled()
+	expect(consoleError).toHaveBeenCalledWith(
+		'inbound-delivery-effects-message-invalid',
+		expect.objectContaining({ queueMessageId: 'queue-inbound-invalid' }),
+	)
 })

@@ -298,6 +298,14 @@ Accepted stored inbound email dispatches `email.message.received` after Kody
 stores the message and attachment metadata. Quarantined mail uses
 `email.message.quarantined` instead.
 
+Dispatch is asynchronous: once the message is stored, Kody enqueues its delivery
+effects on the `kody-package-events-dispatch` Queue, and the consumer invokes
+subscribers within seconds, outside the Email Routing invocation. The sender's
+SMTP acknowledgement never waits on handlers. Each delivery is independent, so
+handlers for separate messages run concurrently and may start in any order; use
+`message.received_at` when order matters. A delivery whose dispatch hits an
+infrastructure failure is retried by the inbound reconciliation sweep.
+
 Handlers receive a metadata-first payload:
 
 ```ts
