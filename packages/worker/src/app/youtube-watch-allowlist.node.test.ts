@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
 import { http, HttpResponse } from 'msw'
+import { withAgentYoutubeVideoIds } from '#universal/with-agents.ts'
 import { youtubeWatchSampleVideoId } from '#universal/youtube-watch.ts'
 import { createMswNodeServer } from '#worker/test-support/msw-node-server.ts'
 import {
@@ -71,4 +72,5 @@ test('resolveYoutubeWatchAllowedVideoIds skips playlist fetch when loadPlaylists
 	})
 	expect(ids).toContain(videoId)
 	expect(ids).toEqual(expect.arrayContaining(bundledDocWatchVideoIds()))
+	expect(ids).toEqual(expect.arrayContaining(withAgentYoutubeVideoIds()))
 })

@@ -51,6 +51,8 @@ export type WithAgent = {
 	/** Replaces the default note shown above unofficial agents' steps. */
 	note?: string
 	pitch: string
+	/** Promo video on the @kodykoala YouTube channel, shown above the setup. */
+	youtubeVideoId?: string
 	/**
 	 * Recommended setup shown as the primary button above `steps`. When set,
 	 * `steps` become the manual alternative under `alternativeTitle`.
@@ -101,6 +103,7 @@ export const withAgents = [
 		official: true,
 		pitch:
 			'Keep building in Cursor. Kody gives it your team\u2019s credentials, packages, and workflows, and anything it saves runs from every other agent your team uses.',
+		youtubeVideoId: 'w4JwZdLBTME',
 		steps: [
 			{
 				text: 'Install the Kody plugin from the Cursor Marketplace.',
@@ -119,6 +122,7 @@ export const withAgents = [
 		official: true,
 		pitch:
 			'Claude Code writes the package. Kody keeps it, runs it on a trigger, and shares it with the rest of your team.',
+		youtubeVideoId: '85vHMyLBwQc',
 		steps: [
 			{
 				text: 'Add Kody from your terminal:',
@@ -134,6 +138,7 @@ export const withAgents = [
 		official: true,
 		pitch:
 			'Let Codex build tools your whole team can run, with credentials it uses but never sees.',
+		youtubeVideoId: 'fuDXGko25u4',
 		steps: [
 			chatGptPluginStep,
 			{ text: 'Approve access when Codex asks you to sign in to Kody.' },
@@ -146,6 +151,7 @@ export const withAgents = [
 		official: true,
 		pitch:
 			'Use your team\u2019s packages and connected accounts from a ChatGPT conversation, on the web or on your phone.',
+		youtubeVideoId: 'XhEOHp-xAvI',
 		steps: [
 			chatGptPluginStep,
 			{
@@ -160,6 +166,7 @@ export const withAgents = [
 		official: true,
 		pitch:
 			'Bring your team\u2019s tools and connected accounts into Claude conversations on desktop, web, and mobile.',
+		youtubeVideoId: 'hIoyopd7K0s',
 		steps: [
 			{
 				text: 'In Claude, open Settings, then Connectors, and add a custom connector with this URL:',
@@ -177,6 +184,7 @@ export const withAgents = [
 		official: true,
 		pitch:
 			'Give Copilot in VS Code or the terminal the same credentials and packages the rest of your team uses.',
+		youtubeVideoId: 'b10pWdw82fM',
 		steps: [
 			{
 				text: 'Add Kody to Copilot CLI:',
@@ -209,6 +217,7 @@ export const withAgents = [
 		official: true,
 		pitch:
 			'Run your team\u2019s packages from the Gemini app, with credentials Gemini never sees.',
+		youtubeVideoId: 'Q3wxGreaCR0',
 		steps: [
 			{
 				text: 'In the Gemini app, add a custom MCP connector with this URL:',
@@ -239,6 +248,7 @@ export const withAgents = [
 		official: true,
 		pitch:
 			'Start from the Kody Bot template and Grok Bot works on your Kody repos and packages through the Kody CLI and git.',
+		youtubeVideoId: 'Cbfi6ACAvZY',
 		primaryAction: {
 			label: kodyBotTemplateLabel,
 			href: kodyBotTemplateUrl,
@@ -435,6 +445,12 @@ export function withAgentHref(slug: string) {
 export function findWithAgentByPathname(pathname: string): WithAgent | null {
 	const slug = /^\/with\/([^/]+)\/?$/.exec(pathname)?.[1]
 	return slug ? findWithAgent(slug) : null
+}
+
+export function withAgentYoutubeVideoIds(): Array<string> {
+	return withAgents.flatMap((agent: WithAgent) =>
+		agent.youtubeVideoId ? [agent.youtubeVideoId] : [],
+	)
 }
 
 export function withAgentIconSrc(agent: Pick<WithAgent, 'icon'>) {
