@@ -30,6 +30,7 @@ import {
 	hermesMcpGuideUrl,
 	hermesMcpLoginCommand,
 	hermesMcpTokensPath,
+	instinctSiteUrl,
 	isDefaultKodyMcpUrl,
 	kodyAppIconFilename,
 	kodyBotTemplateLabel,
@@ -551,6 +552,27 @@ export function renderPanelContent(
 					/>
 				</>
 			)
+		case 'instinct':
+			return (
+				<>
+					<p>
+						Instinct is a personal assistant you text or call (
+						<SiteLink href={instinctSiteUrl} target="_blank" rel="noreferrer">
+							instinct.com
+						</SiteLink>
+						). Instinct has not published connector documentation, so setup
+						depends on whether your account can add a remote MCP server. When
+						Instinct exposes a custom MCP connector, paste this URL and complete
+						OAuth.
+					</p>
+					<ConnectCopyCard
+						highlights={highlights}
+						label="MCP URL"
+						value={mcpServerUrl}
+						copyLabel="Copy MCP URL"
+					/>
+				</>
+			)
 		case 'copilot': {
 			const vsCodeJson = buildVsCodeMcpJson(mcpServerUrl)
 			const installUrl = buildVsCodeInstallUrl(mcpServerUrl)
@@ -770,6 +792,7 @@ export function renderPanelWarning(
 		case 'devin':
 		case 'gemini':
 		case 'grok-bot':
+		case 'instinct':
 		case 'other':
 			return null
 		default: {
