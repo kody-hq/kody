@@ -218,6 +218,7 @@ test('inbound labels prefer a known kind, then clientName, then hostname, then a
 		['Wajo', 'wajo', 'Wajo'],
 		['Cue', 'cue', 'Cue'],
 		['Dots', 'dots', 'Dots'],
+		['Instinct', 'instinct', 'Instinct'],
 		['Hermes Agent', 'hermes', 'Hermes Agent'],
 		['hermes-agent', 'hermes', 'Hermes Agent'],
 		// Bare `hermes` must not classify unrelated clients (CodeRabbit).

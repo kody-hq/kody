@@ -2,9 +2,9 @@
 
 Kody is an MCP server. You use it from Cursor, ChatGPT, Codex, Claude Desktop,
 Grok.com, Grok CLI, Grok Bot, Claude Code, OpenCode, OpenClaw, Hermes Agent,
-Muse, Wajo, Cue, OpenMuse, Dots, Devin, Gemini, GitHub Copilot (VS Code or CLI),
-the GitHub Copilot app, or any other AI agent that supports MCP — not from a
-separate Kody chat app.
+Muse, Wajo, Cue, OpenMuse, Dots, Instinct, Devin, Gemini, GitHub Copilot (VS
+Code or CLI), the GitHub Copilot app, or any other AI agent that supports MCP —
+not from a separate Kody chat app.
 
 The three-step Get started flow lives in
 [Connect your agent](../guides/connect-your-agent.md) and on `/onboarding`. This
@@ -199,6 +199,11 @@ you only have the MCP URL.
   behind your fork. See [OpenMuse and Kody](/docs/openmuse).
 - **Dots** — [OpenAI Dots](https://openai.com/index/introducing-dots/). When
   Dots exposes a custom MCP connector, paste the MCP URL and complete OAuth.
+- **Instinct**: [Instinct](https://instinct.com/) is a personal assistant you
+  text or call. Instinct has not published connector documentation, so setup
+  depends on whether your account can add a remote MCP server. When Instinct
+  exposes a custom MCP connector, paste the MCP URL and complete OAuth. If it
+  cannot add one, Instinct cannot connect to Kody yet.
 - **Open WebUI** — Add an MCP Streamable HTTP connection to this deployment’s
   MCP URL and use **OAuth 2.1** (dynamic registration) first. Enabling the tool
   in a chat must open the Kody authorize window. If that window never opens on

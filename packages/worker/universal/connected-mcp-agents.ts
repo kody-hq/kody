@@ -80,6 +80,7 @@ const clientNameKindRules = [
 	{ kind: 'wajo', needles: ['wajo'] },
 	{ kind: 'cue', needles: ['cue'] },
 	{ kind: 'dots', needles: ['dots'] },
+	{ kind: 'instinct', needles: ['instinct'] },
 	// Token-boundary match for bare `muse` so OpenMuse / openmuse stay distinct.
 	{ kind: 'muse', needles: ['muse code', 'muse-code', 'musecode', 'muse'] },
 ] as const satisfies ReadonlyArray<{
@@ -101,6 +102,7 @@ const hostKindRules = [
 	{ kind: 'hermes', hosts: ['hermes-agent.nousresearch.com'] },
 	{ kind: 'wajo', hosts: ['wajo.ai'] },
 	{ kind: 'cue', hosts: ['cue.im'] },
+	{ kind: 'instinct', hosts: ['instinct.com'] },
 	// Muse Code docs/OAuth live under dev.meta.ai — not muse.ai (video) or
 	// blanket meta.ai (unrelated Meta products).
 	{ kind: 'muse', hosts: ['dev.meta.ai'] },

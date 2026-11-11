@@ -194,6 +194,7 @@ function renderAgentAuthHint(
 		case 'cue':
 		case 'openmuse':
 		case 'dots':
+		case 'instinct':
 			return <>Complete OAuth when the host opens it.</>
 		case 'copilot':
 			return surface === 'mobile' ? (

@@ -26,6 +26,7 @@ type WalkthroughHostCompany =
 	| 'wajo'
 	| 'cue'
 	| 'copilotkit'
+	| 'instinct'
 
 export type WalkthroughHostSlot = 'coding' | 'invoke' | 'notify'
 
@@ -213,6 +214,13 @@ const walkthroughHostCatalog = [
 		icon: 'dots',
 		company: 'openai',
 		kind: 'coding',
+	},
+	{
+		id: 'instinct',
+		label: 'Instinct',
+		icon: 'instinct',
+		company: 'instinct',
+		kind: 'chat',
 	},
 ] as const satisfies ReadonlyArray<WalkthroughHost>
 

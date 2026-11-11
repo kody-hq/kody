@@ -395,6 +395,13 @@ export const withAgents = [
 		pitch:
 			'Bring your team\u2019s tools and connected accounts into Dots through one MCP connection.',
 	}),
+	genericAgent({
+		slug: 'instinct',
+		name: 'Instinct',
+		icon: 'instinct',
+		pitch:
+			'Bring your team\u2019s tools and connected accounts to Instinct, the personal assistant you text or call.',
+	}),
 ] as const satisfies ReadonlyArray<WithAgent>
 
 export type WithAgentSlug = (typeof withAgents)[number]['slug']
