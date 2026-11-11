@@ -177,7 +177,7 @@ submitting feedback.
 ## Write feedback admins can act on
 
 Submit one issue per call. Unrelated problems get separate submissions. Each
-account already has the 10-per-24h and 100-active limits above, so prioritize
+account already has the 20-per-24h and 100-active limits above, so prioritize
 the most useful reports.
 
 Write a summary that names the affected area and the specific symptom or need so
