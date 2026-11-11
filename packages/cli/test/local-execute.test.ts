@@ -237,6 +237,9 @@ export default greet
 		}
 		send(404, { error: 'not found' })
 	})
+	// Slow setup (openssl keygen on Windows) can idle a pooled socket past the
+	// default 5s keep-alive; the server closing it as fetch reuses it is ECONNRESET.
+	server.keepAliveTimeout = 0
 	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
 	apiUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
 })
