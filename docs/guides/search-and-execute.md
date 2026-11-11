@@ -289,7 +289,9 @@ From the CLI, `kody execute --invoke kody:@you/favorite-bot-ships/whatShipped`
 writes that passthrough for you and sends it as `code`.
 
 When the target name is data (caller-owned or forked modules), use
-`import(specifier)` instead of a static `kody:@...` import.
+`import(specifier)` instead of a static `kody:@...` import. That works in
+`execute`; saved package server code cannot use it (see
+[Saved package composition](./package-lifecycle.md#saved-package-composition)).
 
 ## Where to go next
 

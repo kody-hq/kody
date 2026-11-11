@@ -414,11 +414,10 @@ require it.
 
 ## Cross-package composition
 
-Call another package export the same way search entity detail shows: import it,
-then call it.
+Import another package export, then call it, as search entity detail shows.
 
-- **Name known when you write the code** → static import, and list the package
-  in `package.json#kody.dependencies` when the call site is package source:
+- **Name known when you write the code** → static import, declared in
+  `package.json#kody.dependencies` in package source:
 
   ```ts
   import sendMail from 'kody:@scope/mailer/send'
@@ -426,7 +425,8 @@ then call it.
   ```
 
 - **Name is data** (route table, config string, runtime choice) → computed
-  dynamic import:
+  dynamic import,
+  [`execute` only](./package-lifecycle.md#saved-package-composition):
 
   ```ts
   const mod = await import(specifier) // "kody:@scope/package/export"
@@ -443,10 +443,9 @@ warn on gaps
 [details](./package-apps.md#who-the-app-runs-as)).
 
 README, `AGENTS.md`, and export `@example` blocks follow the same rules: import
-and call. Do not demo a `packages` helper. Package codemod
+and call; never demo a `packages` helper. Codemod
 `0008-packages-invoke-to-static-import` rewrites literal call sites and
-parseable Markdown examples; ambiguous or keyed sites need a manual edit as
-above.
+parseable Markdown examples; fix ambiguous or keyed sites by hand.
 
 ## Ship Agent Skills
 
