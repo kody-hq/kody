@@ -10,6 +10,7 @@ import {
 	youtubePlaylistFeedUrl,
 	youtubeWatchSampleVideoId,
 } from '#universal/youtube-watch.ts'
+import { withAgentYoutubeVideoIds } from '#universal/with-agents.ts'
 import { listBlogPosts } from '#worker/blog/catalog.ts'
 import { guides } from '#worker/guides/catalog.ts'
 
@@ -50,6 +51,7 @@ export async function resolveYoutubeWatchAllowedVideoIds(input: {
 			...extraVideoIds,
 			youtubeWatchSampleVideoId,
 			...bundledDocWatchVideoIds(),
+			...withAgentYoutubeVideoIds(),
 			...heroVideos.map((video) => video.videoId),
 		],
 		hrefs: [],

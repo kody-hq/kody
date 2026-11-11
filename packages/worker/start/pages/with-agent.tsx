@@ -4,6 +4,7 @@ import type { CSSProperties } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import { BuildWithAgentButton } from '../components/build-with-agent-button.tsx'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
+import { YouTubeLightPlayer } from '../components/youtube-light-player.tsx'
 import { docHref } from '#universal/docs-nav.ts'
 import { landingHomePrimitives } from '#universal/landing-home-copy.ts'
 import { primitiveFeatureHref } from '#universal/primitive-cards.ts'
@@ -45,6 +46,16 @@ export function WithAgentRoute({ agent }: { agent: WithAgent }) {
 				</h1>
 				<p>{agent.pitch}</p>
 			</header>
+
+			{agent.youtubeVideoId ? (
+				<div css={videoCss} data-testid="with-agent-video">
+					<YouTubeLightPlayer
+						videoId={agent.youtubeVideoId}
+						title={`Kody with ${agent.name}`}
+						playTestId="with-agent-video-play"
+					/>
+				</div>
+			) : null}
 
 			<section aria-labelledby="with-connect-title" css={connectCss}>
 				<h2 id="with-connect-title">Connect {agent.name}</h2>
@@ -218,6 +229,17 @@ const heroIconCss = {
 	width: '96px',
 	height: '96px',
 	color: colors.text,
+}
+
+const videoCss = {
+	position: 'relative' as const,
+	width: '100%',
+	aspectRatio: '16 / 9',
+	marginTop: 'clamp(2rem, 5vw, 3rem)',
+	backgroundColor: '#000',
+	border: `1px solid ${colors.border}`,
+	borderRadius: '1.25rem',
+	overflow: 'hidden' as const,
 }
 
 const sectionHeadingCss = {

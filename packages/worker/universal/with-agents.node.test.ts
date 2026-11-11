@@ -3,7 +3,13 @@ import {
 	grokBotInstallUrl,
 	kodyBotTemplateSummary,
 } from './onboarding-mcp-clients.ts'
-import { findWithAgentByPathname, withAgents } from './with-agents.ts'
+import {
+	findWithAgentByPathname,
+	withAgentYoutubeVideoIds,
+	withAgents,
+	type WithAgent,
+} from './with-agents.ts'
+import { isYoutubeVideoId } from './youtube-watch.ts'
 
 test('pathname lookup only accepts /with/:agent for catalog agents', () => {
 	expect(findWithAgentByPathname('/with/cursor')?.name).toBe('Cursor')
@@ -52,5 +58,27 @@ test('Instinct leads with the Kody CLI and keeps MCP to a short note', () => {
 		...(instinct?.steps.map((step) => step.text) ?? []),
 	]) {
 		expect(text).not.toContain('\u2014')
+	}
+})
+
+test('promo videos map to their /with pages and other agents have none', () => {
+	expect(
+		Object.fromEntries(
+			withAgents.flatMap((agent: WithAgent) =>
+				agent.youtubeVideoId ? [[agent.slug, agent.youtubeVideoId]] : [],
+			),
+		),
+	).toEqual({
+		cursor: 'w4JwZdLBTME',
+		'claude-code': '85vHMyLBwQc',
+		codex: 'fuDXGko25u4',
+		chatgpt: 'XhEOHp-xAvI',
+		claude: 'hIoyopd7K0s',
+		copilot: 'b10pWdw82fM',
+		gemini: 'Q3wxGreaCR0',
+		'grok-bot': 'Cbfi6ACAvZY',
+	})
+	for (const id of withAgentYoutubeVideoIds()) {
+		expect(isYoutubeVideoId(id)).toBe(true)
 	}
 })
