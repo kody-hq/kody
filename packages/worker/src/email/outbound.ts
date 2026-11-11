@@ -319,9 +319,6 @@ function deriveReplyRecipient(original: EmailMessageRecord) {
 	throw new Error('Original message has no reply address.')
 }
 
-/** Max inbound thread messages scanned for the owner-added check. */
-const replyAllThreadScanLimit = 2000
-
 async function resolveReplyAllRecipients(input: {
 	env: SendEmailEnv
 	mailbox: ReturnType<typeof mailboxRpc>
@@ -334,18 +331,22 @@ async function resolveReplyAllRecipients(input: {
 }) {
 	const threadId = input.original.threadId
 	if (!threadId) throw new ReplyAllNotAllowedError()
-	const inboxAddresses = await listEmailInboxAddressesForUser({
+	const mailboxHandles = await loadMailboxHandles({
 		db: input.env.APP_DB,
-		userId: input.ownerId,
+		ownerId: input.ownerId,
 	})
+	const acceptedDomains = [input.sender.domain, ...input.acceptedDomains]
+	// Only this mailbox's own handles prove the owner put the inbox on the
+	// thread. The actor's personal address (a team inbox's member) does not.
+	const isMailboxAddress = createKodyInboxAddressMatcher({
+		handles: mailboxHandles,
+		acceptedDomains,
+	})
+	// Recipients also drop the actor's own platform address, so a reply-all
+	// never mails Kody back.
 	const isKodyInboxAddress = createKodyInboxAddressMatcher({
-		handles: [
-			input.sender.username,
-			...inboxAddresses.map(
-				(row) => splitEmailLocalPart(row.localPart.toLowerCase()).base,
-			),
-		],
-		acceptedDomains: [input.sender.domain, ...input.acceptedDomains],
+		handles: [...mailboxHandles, input.sender.username],
+		acceptedDomains,
 	})
 	const { acceptable: ownerAddresses } =
 		await resolveAcceptableNotificationEmails({
@@ -354,7 +355,6 @@ async function resolveReplyAllRecipients(input: {
 			accountEmail: input.sender.accountEmail,
 		})
 	let cursor: string | null = null
-	let scanned = 0
 	let allowed = false
 	do {
 		const page: Awaited<ReturnType<typeof input.mailbox.listMessages>> =
@@ -367,25 +367,49 @@ async function resolveReplyAllRecipients(input: {
 		const threadMessages = page.messages.map((record) =>
 			mailboxMessageToEmailMessageRecord(record, input.ownerId),
 		)
-		scanned += threadMessages.length
 		if (
 			ownerAddedInboxToThread({
 				threadMessages,
 				ownerAddresses,
-				isKodyInboxAddress,
+				isKodyInboxAddress: isMailboxAddress,
 			})
 		) {
 			allowed = true
 			break
 		}
 		cursor = page.nextCursor
-	} while (cursor && scanned < replyAllThreadScanLimit)
+	} while (cursor)
 	if (!allowed) throw new ReplyAllNotAllowedError()
 	return deriveReplyAllRecipients({
 		original: input.original,
 		isKodyInboxAddress,
 		dropRecipients: input.dropRecipients,
 	})
+}
+
+/**
+ * Handles that route inbound mail to this mailbox: claimed handles, the org
+ * slug, and the local parts of its inbox address rows.
+ */
+async function loadMailboxHandles(input: { db: D1Database; ownerId: OwnerId }) {
+	const [org, claimed, inboxAddresses] = await Promise.all([
+		input.db
+			.prepare(`SELECT slug FROM orgs WHERE id = ?${andLiveDeletedAtSql()}`)
+			.bind(input.ownerId)
+			.first<{ slug: string | null }>(),
+		input.db
+			.prepare(`SELECT handle FROM handles WHERE org_id = ?`)
+			.bind(input.ownerId)
+			.all<{ handle: string }>(),
+		listEmailInboxAddressesForUser({ db: input.db, userId: input.ownerId }),
+	])
+	return [
+		org?.slug ?? '',
+		...(claimed.results ?? []).map((row) => row.handle),
+		...inboxAddresses.map(
+			(row) => splitEmailLocalPart(row.localPart.toLowerCase()).base,
+		),
+	].filter(Boolean)
 }
 
 function buildStoredHeaders(input: {

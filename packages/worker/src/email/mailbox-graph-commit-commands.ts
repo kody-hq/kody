@@ -69,6 +69,13 @@ export class MailboxGraphCommitCommands {
 			if (input.thread) this.store.upsertThreadRow(input.thread)
 			const messageResult = this.store.upsertMessageRow(message)
 			accepted = messageResult.accepted
+			if (accepted && limit) {
+				this.store.recordThreadReplyAllSend({
+					messageId: message.id,
+					threadId: limit.threadId,
+					createdAt: message.createdAt,
+				})
+			}
 			if (accepted && input.attachments !== undefined) {
 				this.store.replaceAttachmentsForMessage(message.id, input.attachments)
 			}

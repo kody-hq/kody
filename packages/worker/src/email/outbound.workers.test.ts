@@ -40,7 +40,10 @@ import { userMeterDurableObjectName } from '#worker/user-scoped-durable-object-n
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 
-import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	ownerIdFromStored,
+	personIdFromStored,
+} from '@kody-internal/shared/owner-person-ids.ts'
 const cloudflareEmailApi =
 	'https://api.cloudflare.test/client/v4/accounts/account-123/email/sending/send'
 
@@ -1494,9 +1497,18 @@ test(`sendOutboundEmail caps reply-all at ${replyAllThreadSendLimit} sends per t
 		toAddresses: ['dan@outside.example', alias('marley')],
 		messageIdHeader: '<owner-cap@owner.example>',
 	})
+	const sentIds: Array<string> = []
 	for (let index = 0; index < replyAllThreadSendLimit; index += 1) {
-		await replyAllAs(account, sendEnv, ownerMessage)
+		sentIds.push((await replyAllAs(account, sendEnv, ownerMessage)).message.id)
 	}
+	// Deleting a sent reply-all does not give its slot back.
+	await mailboxRpc({
+		env,
+		userId: ownerIdFromStored(account.userId),
+	}).deleteMessageWithBlobs({
+		ownerId: ownerIdFromStored(account.userId),
+		messageId: sentIds[0]!,
+	})
 	expect(await readDailyEmailSendCounter(account.userId)).toBe(
 		replyAllThreadSendLimit,
 	)
@@ -1514,4 +1526,77 @@ test(`sendOutboundEmail caps reply-all at ${replyAllThreadSendLimit} sends per t
 		subject: 'Re: Project kickoff',
 	})
 	expect(sent).toHaveLength(replyAllThreadSendLimit + 1)
+}, 30_000)
+
+test('sendOutboundEmail reply-all on a team inbox needs the team address on the thread, not the member personal address', async () => {
+	silenceIncidentalRuntimeWarnings()
+	const account = await seedAccount()
+	await addDestinations(account, [
+		{ email: ownerAddress, verified: true, isDefault: false },
+	])
+	const slug = `team-${crypto.randomUUID().slice(0, 8)}`
+	const teamId = testStableUserIdFromEmail(`${slug}@teams.example`)
+	const now = new Date().toISOString()
+	await env.APP_DB.prepare(
+		`INSERT INTO orgs (id, slug, plan, stripe_plan, created_at, updated_at)
+		 VALUES (?, ?, 'pro', NULL, ?, ?)`,
+	)
+		.bind(teamId, slug, now, now)
+		.run()
+	await env.APP_DB.prepare(
+		`INSERT INTO handles (handle, user_id, org_id, created_at)
+		 VALUES (?, NULL, ?, ?)`,
+	)
+		.bind(slug, teamId, now)
+		.run()
+	const sent: Array<SentMessage> = []
+	const sendEnv = bindingEnv(async (message) => {
+		sent.push(message)
+		return { messageId: `provider-team-${sent.length}` }
+	})
+	const teamReplyAll = (original: { id: string }) =>
+		sendOutboundEmail({
+			env: sendEnv,
+			userId: ownerIdFromStored(teamId),
+			actorPersonId: personIdFromStored(account.userId),
+			accountEmail: account.accountEmail,
+			recipientPolicy: 'reply',
+			replyToMessageId: original.id,
+			replyAll: { dropRecipients: [] },
+			subject: 'Re: Project kickoff',
+			text: 'Body',
+		})
+	// Delivered to the team inbox by Bcc; only the member's personal Kody
+	// address is visible.
+	const personalOnly = await writeThreadMessage(
+		teamId,
+		`thread-${crypto.randomUUID()}`,
+		{
+			fromAddress: ownerAddress,
+			envelopeFrom: ownerAddress,
+			authResults: ownerAuthResults,
+			toAddresses: ['dan@outside.example', account.from],
+			messageIdHeader: '<team-bcc@owner.example>',
+		},
+	)
+	await expect(teamReplyAll(personalOnly)).rejects.toBeInstanceOf(
+		ReplyAllNotAllowedError,
+	)
+	const teamThread = await writeThreadMessage(
+		teamId,
+		`thread-${crypto.randomUUID()}`,
+		{
+			fromAddress: ownerAddress,
+			envelopeFrom: ownerAddress,
+			authResults: ownerAuthResults,
+			toAddresses: ['dan@outside.example'],
+			ccAddresses: [`${slug}+ops@${platformDomain}`, account.from],
+			messageIdHeader: '<team-cc@owner.example>',
+		},
+	)
+	await teamReplyAll(teamThread)
+	expect(sent).toHaveLength(1)
+	// Neither the team address nor the member's own Kody address is mailed.
+	expect(sent[0]).toMatchObject({ to: [ownerAddress, 'dan@outside.example'] })
+	expect(sent[0]).not.toHaveProperty('cc')
 }, 30_000)

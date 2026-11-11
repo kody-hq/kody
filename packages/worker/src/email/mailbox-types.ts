@@ -501,13 +501,14 @@ export type MailboxUpsertDeliveryEventsResult = {
 
 /**
  * Stored-only header (never sent to the provider) that marks an outbound
- * reply-all message, so per-thread reply-all caps can count it.
+ * reply-all message in the sent log.
  */
 export const replyAllStoredHeader = 'X-Kody-Reply-All'
 
 /**
  * Refuse the write, in the same transaction, when the thread already has
- * `max` reply-all sends created at or after `since`.
+ * `max` reply-all sends created at or after `since`; otherwise record this
+ * send in the reply-all ledger.
  */
 export type MailboxThreadReplyAllLimit = {
 	threadId: string

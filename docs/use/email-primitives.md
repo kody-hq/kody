@@ -83,16 +83,18 @@ platform-assigned sender address.
 - Reply-all is allowed only on a thread the inbox owner put the inbox on. Some
   inbound message on the same thread (threaded by `Message-ID`, `In-Reply-To`,
   and `References`) must come from one of the owner's verified email
-  destinations, with an inbox address in To or Cc. Its From must authenticate
-  (DMARC pass, or aligned SPF), so a forged From does not count, and Bcc-ing the
-  inbox does not count. Once that is true, later messages on the thread from
-  other participants also allow reply-all.
+  destinations, with an address of this inbox (not a member's personal address,
+  for a team inbox) in To or Cc. Its From must authenticate (DMARC pass, or
+  aligned SPF), so a forged From does not count, and Bcc-ing the inbox does not
+  count. Once that is true, later messages on the thread from other participants
+  also allow reply-all.
 - On a thread the owner has never been on (for example a stranger Ccs the inbox
   on mail to other people), reply-all is refused with `reply_all_not_allowed`,
   before any daily send quota or provider send. A reply to the sender only still
   works.
 - Reply-all is capped at 5 sends per thread in a rolling 24 hours, failed
-  attempts included (`reply_all_thread_limit`). It also counts toward the plan's
+  attempts included, and deleting a sent reply does not free its slot
+  (`reply_all_thread_limit`). It also counts toward the plan's
   `email_sends_per_day`.
 - The reply keeps `In-Reply-To` and `References`, so it stays on that thread.
   The stored sent message records its To and Cc (`emailMessageGet`), and the
