@@ -87,6 +87,9 @@ Personal agents like OpenClaw, OpenMuse, Claude Desktop, Cursor, and Codex are
 where you talk, think, and act in the moment. Kody is where the results live
 afterward. Each is better with the other.
 
+> [!WATCH] https://www.youtube.com/watch?v=ioddamBaK8M Watch: Bots and Kody:
+> share what your bot builds with your team and agents
+
 Your agent is good at:
 
 - **The conversation.** Reasoning, judgment, and asking you before it does
