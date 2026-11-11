@@ -50,6 +50,10 @@ event contract is [Subscriptions and events](./package-subscriptions.md).
 - `emailReply` answers from the exact alias the original was sent to, with
   `Reply-To` on that alias and the thread headers kept, so a bot reached at
   `{username}+support@` stays on `+support` for the whole conversation.
+- `emailReply` with `reply_all: true` answers everyone on the message (To and Cc
+  kept, the inbox itself removed), but only on threads you put the inbox on from
+  one of your verified addresses. See
+  [Reply-all](../use/email-primitives.md#reply-all).
 
 Forward a thread, mail a plus-tag from a form, or BCC the inbox from a system
 that already speaks SMTP. Kody stores the message, then subscribers run.

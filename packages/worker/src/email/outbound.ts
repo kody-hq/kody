@@ -29,17 +29,18 @@ import {
 	recordUsage,
 	usageAttributionFieldsFromRequest,
 } from '#worker/usage/record-usage.ts'
-import { normalizeEmailAddress } from './address.ts'
+import { normalizeEmailAddress, splitEmailLocalPart } from './address.ts'
 import { resolveAcceptableNotificationEmails } from './destinations.ts'
 import { systemEmailOwnerId } from './email-owner.ts'
 import { mailboxRpc, type MailboxEnv } from './mailbox-client.ts'
 import { mailboxMessageToEmailMessageRecord } from './mailbox-record-mappers.ts'
 import { QuarantinedInboundReplyError } from './quarantined-inbound-reply.ts'
-import type {
-	MailboxAttachmentInput,
-	MailboxDeliveryEventInput,
-	MailboxMessageInput,
-	MailboxThreadInput,
+import {
+	replyAllStoredHeader,
+	type MailboxAttachmentInput,
+	type MailboxDeliveryEventInput,
+	type MailboxMessageInput,
+	type MailboxThreadInput,
 } from './mailbox-types.ts'
 import { emailOutboundPausedMessage } from './outbound-abuse.ts'
 import { emailOutboundDeliveryPausedMessage } from './outbound-consecutive-failures.ts'
@@ -60,7 +61,19 @@ import {
 	type EmailReportingEnv,
 } from './reporting-events.ts'
 import { emailAttachmentBlobKey } from './blob-keys.ts'
-import { ensurePlatformSenderIdentity } from './repo.ts'
+import {
+	createKodyInboxAddressMatcher,
+	deriveReplyAllRecipients,
+	ownerAddedInboxToThread,
+	ReplyAllNotAllowedError,
+	ReplyAllThreadLimitError,
+	replyAllThreadSendLimit,
+	replyAllThreadWindowMs,
+} from './reply-all.ts'
+import {
+	ensurePlatformSenderIdentity,
+	listEmailInboxAddressesForUser,
+} from './repo.ts'
 import type { EmailMessageRecord, EmailProcessingStatus } from './types.ts'
 
 type SendEmailEnv = Pick<
@@ -166,6 +179,13 @@ export type EmailSendInput = {
 			 */
 			recipientPolicy: 'reply'
 			replyToMessageId: string
+			/**
+			 * Reply to everyone on the stored message (its Reply-To or From,
+			 * To, and Cc, minus this inbox). Allowed only on threads the owner
+			 * put the inbox on; capped per thread. Callers may only drop
+			 * recipients, never add them, and Bcc is never sent.
+			 */
+			replyAll?: { dropRecipients?: Array<string> } | null
 	  }
 )
 
@@ -299,15 +319,86 @@ function deriveReplyRecipient(original: EmailMessageRecord) {
 	throw new Error('Original message has no reply address.')
 }
 
+/** Max inbound thread messages scanned for the owner-added check. */
+const replyAllThreadScanLimit = 2000
+
+async function resolveReplyAllRecipients(input: {
+	env: SendEmailEnv
+	mailbox: ReturnType<typeof mailboxRpc>
+	ownerId: OwnerId
+	actorPersonId: PersonId
+	sender: ResolvedPlatformSender
+	acceptedDomains: ReadonlyArray<string>
+	original: EmailMessageRecord
+	dropRecipients: Array<string>
+}) {
+	const threadId = input.original.threadId
+	if (!threadId) throw new ReplyAllNotAllowedError()
+	const inboxAddresses = await listEmailInboxAddressesForUser({
+		db: input.env.APP_DB,
+		userId: input.ownerId,
+	})
+	const isKodyInboxAddress = createKodyInboxAddressMatcher({
+		handles: [
+			input.sender.username,
+			...inboxAddresses.map(
+				(row) => splitEmailLocalPart(row.localPart.toLowerCase()).base,
+			),
+		],
+		acceptedDomains: [input.sender.domain, ...input.acceptedDomains],
+	})
+	const { acceptable: ownerAddresses } =
+		await resolveAcceptableNotificationEmails({
+			db: input.env.APP_DB,
+			stableUserId: input.actorPersonId,
+			accountEmail: input.sender.accountEmail,
+		})
+	let cursor: string | null = null
+	let scanned = 0
+	let allowed = false
+	do {
+		const page: Awaited<ReturnType<typeof input.mailbox.listMessages>> =
+			await input.mailbox.listMessages({
+				threadId,
+				direction: 'inbound',
+				limit: 500,
+				cursor,
+			})
+		const threadMessages = page.messages.map((record) =>
+			mailboxMessageToEmailMessageRecord(record, input.ownerId),
+		)
+		scanned += threadMessages.length
+		if (
+			ownerAddedInboxToThread({
+				threadMessages,
+				ownerAddresses,
+				isKodyInboxAddress,
+			})
+		) {
+			allowed = true
+			break
+		}
+		cursor = page.nextCursor
+	} while (cursor && scanned < replyAllThreadScanLimit)
+	if (!allowed) throw new ReplyAllNotAllowedError()
+	return deriveReplyAllRecipients({
+		original: input.original,
+		isKodyInboxAddress,
+		dropRecipients: input.dropRecipients,
+	})
+}
+
 function buildStoredHeaders(input: {
 	messageId: string
 	inReplyTo?: string | null
 	references?: Array<string>
+	replyAll?: boolean
 }) {
 	const headers: Record<string, string> = {
 		'Message-ID': input.messageId,
 		'X-Kody-Email-Message-Id': input.messageId,
 	}
+	if (input.replyAll) headers[replyAllStoredHeader] = '1'
 	if (input.inReplyTo) headers['In-Reply-To'] = input.inReplyTo
 	if (input.references && input.references.length > 0) {
 		headers['References'] = input.references.join(' ')
@@ -637,6 +728,8 @@ export async function sendOutboundEmail(
 
 		let original: EmailMessageRecord | null = null
 		let to: Array<string>
+		let cc: Array<string> = []
+		let replyAll = false
 		let from = requestedFrom ?? sender.from
 		if (input.recipientPolicy === 'reply') {
 			// The recipient is derived from the stored inbound message — callers
@@ -666,7 +759,23 @@ export async function sendOutboundEmail(
 				}
 			}
 			original = replyOriginal
-			to = [deriveReplyRecipient(replyOriginal)]
+			if (input.replyAll) {
+				const recipients = await resolveReplyAllRecipients({
+					env: input.env,
+					mailbox,
+					ownerId: input.userId,
+					actorPersonId,
+					sender,
+					acceptedDomains: acceptedSenderDomains,
+					original: replyOriginal,
+					dropRecipients: input.replyAll.dropRecipients ?? [],
+				})
+				to = recipients.to
+				cc = recipients.cc
+				replyAll = true
+			} else {
+				to = [deriveReplyRecipient(replyOriginal)]
+			}
 			from =
 				requestedFrom ??
 				deriveReplySender({
@@ -729,6 +838,7 @@ export async function sendOutboundEmail(
 			messageId: messageIdHeader,
 			inReplyTo: input.inReplyToHeader ?? null,
 			references: input.references ?? [],
+			replyAll,
 		})
 		await assertWithinStorageBytesEntitlement({
 			db: input.env.APP_DB,
@@ -741,6 +851,7 @@ export async function sendOutboundEmail(
 					value: {
 						from,
 						to,
+						cc,
 						subject,
 						replyTo,
 						text,
@@ -806,7 +917,7 @@ export async function sendOutboundEmail(
 				fromAddress: from,
 				envelopeFrom: from,
 				toAddresses: to,
-				ccAddresses: [],
+				ccAddresses: cc,
 				bccAddresses: [],
 				replyToAddresses: replyTo
 					? [normalizeEmailAddress(replyTo)].filter(
@@ -848,7 +959,21 @@ export async function sendOutboundEmail(
 				thread,
 				message,
 				attachments: storedAttachments,
+				...(replyAll
+					? {
+							threadReplyAllLimit: {
+								threadId: thread.id,
+								since: new Date(
+									entitlementNow.getTime() - replyAllThreadWindowMs,
+								).toISOString(),
+								max: replyAllThreadSendLimit,
+							},
+						}
+					: {}),
 			})
+			if (graph.threadReplyAllLimited) {
+				throw new ReplyAllThreadLimitError()
+			}
 			if (!graph.accepted) {
 				throw new Error('Outbound Mailbox graph rejected the message.')
 			}
@@ -892,7 +1017,13 @@ export async function sendOutboundEmail(
 				inboxId,
 				eventType: 'send_requested',
 				providerMessageId: null,
-				detail: { to, from, subject, attachmentCount: attachments.length },
+				detail: {
+					to,
+					...(replyAll ? { cc, replyAll: true } : {}),
+					from,
+					subject,
+					attachmentCount: attachments.length,
+				},
 				now,
 			}),
 		})
@@ -911,6 +1042,7 @@ export async function sendOutboundEmail(
 					env: input.env,
 					from,
 					to,
+					cc,
 					subject,
 					text,
 					html,

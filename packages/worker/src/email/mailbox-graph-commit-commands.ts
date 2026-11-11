@@ -17,6 +17,7 @@ import {
 	type MailboxMessageRecord,
 	type MailboxThreadInput,
 	type MailboxUpsertMessageGraphInput,
+	type MailboxUpsertMessageGraphResult,
 } from './mailbox-types.ts'
 
 export class MailboxGraphCommitCommands {
@@ -36,10 +37,11 @@ export class MailboxGraphCommitCommands {
 
 	async upsertMessageGraph(
 		input: MailboxUpsertMessageGraphInput,
-	): Promise<{ ok: true; accepted: boolean }> {
+	): Promise<MailboxUpsertMessageGraphResult> {
 		if (!input.restore) this.store.assertReadable()
 		const message = input.message
 		let accepted = false
+		let threadReplyAllLimited = false
 		this.ctx.storage.transactionSync(() => {
 			const ownerId = this.store.assertOwner(input.ownerId)
 			if (message === null) {
@@ -48,6 +50,17 @@ export class MailboxGraphCommitCommands {
 			}
 			assertMailboxNonEmptyString(message.id, 'message.id')
 			if (this.store.isMessageTombstoned(message.id)) return
+			const limit = input.threadReplyAllLimit
+			if (
+				limit &&
+				this.store.countThreadReplyAllSendsSince({
+					threadId: limit.threadId,
+					since: limit.since,
+				}) >= limit.max
+			) {
+				threadReplyAllLimited = true
+				return
+			}
 			this.store.validateMessageBlobKeys({
 				ownerId,
 				message,
@@ -60,6 +73,9 @@ export class MailboxGraphCommitCommands {
 				this.store.replaceAttachmentsForMessage(message.id, input.attachments)
 			}
 		})
+		if (threadReplyAllLimited) {
+			return { ok: true, accepted: false, threadReplyAllLimited: true }
+		}
 		if (!input.restore) await this.maintenance.markDirtyAndEnsure()
 		return { ok: true, accepted }
 	}

@@ -30,6 +30,7 @@ import {
 	type MailboxSearchMessagesInput,
 	type MailboxThreadInput,
 	type MailboxThreadRecord,
+	replyAllStoredHeader,
 } from './mailbox-types.ts'
 import {
 	emailMessageViewSqlClauses,
@@ -122,6 +123,7 @@ const mailboxDrillResultMetaKeys = {
 
 function buildMailboxMessageFilterClauses(input: {
 	inboxId?: string | null
+	threadId?: string | null
 	direction?: EmailDirection | null
 	processingStatus?: EmailProcessingStatus | null
 	deliveryStatus?: EmailDeliveryStatus | null
@@ -145,6 +147,10 @@ function buildMailboxMessageFilterClauses(input: {
 	if (input.inboxId) {
 		clauses.push('inbox_id = ?')
 		params.push(input.inboxId)
+	}
+	if (input.threadId) {
+		clauses.push('thread_id = ?')
+		params.push(input.threadId)
 	}
 	if (input.direction) {
 		clauses.push('direction = ?')
@@ -833,6 +839,29 @@ export class MailboxStore {
 			offset,
 		})
 		return { messages: rows.map(mapMailboxMessageRow) }
+	}
+
+	/**
+	 * Outbound reply-all attempts on a thread since `since`, marked by the
+	 * stored {@link replyAllStoredHeader}. Failed attempts count too.
+	 */
+	countThreadReplyAllSendsSince(input: {
+		threadId: string
+		since: string
+	}): number {
+		const row = this.sql
+			.exec<{ n: number }>(
+				`SELECT COUNT(*) AS n FROM email_messages
+				WHERE thread_id = ?
+					AND direction = 'outbound'
+					AND created_at >= ?
+					AND json_extract(headers_json, ?) IS NOT NULL`,
+				assertMailboxNonEmptyString(input.threadId, 'threadId'),
+				assertMailboxNonEmptyString(input.since, 'since'),
+				`$."${replyAllStoredHeader}"`,
+			)
+			.one()
+		return Number(row.n ?? 0) || 0
 	}
 
 	countMessages(input: MailboxCountMessagesInput): { total: number } {

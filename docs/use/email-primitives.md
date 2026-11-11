@@ -70,6 +70,34 @@ platform-assigned sender address.
   - Replies keep `In-Reply-To` (the original `Message-ID`) and `References` (the
     original's references plus its `Message-ID`, deduplicated).
 
+## Reply-all
+
+`emailReply` with `reply_all: true` answers everyone on the stored message.
+
+- Recipients come only from that message. Its Reply-To (or From) and its To go
+  on To, and its Cc stays on Cc. This inbox's own addresses (`{handle}@` and any
+  `{handle}+tag@`) are removed. Bcc is never used.
+- `drop_recipients` leaves listed addresses off. Each one must already be a
+  recipient of the stored message. `to`, `cc`, and `bcc` are refused, so a
+  caller can never add a recipient. At least one To recipient must remain.
+- Reply-all is allowed only on a thread the inbox owner put the inbox on. Some
+  inbound message on the same thread (threaded by `Message-ID`, `In-Reply-To`,
+  and `References`) must come from one of the owner's verified email
+  destinations, with an inbox address in To or Cc. Its From must authenticate
+  (DMARC pass, or aligned SPF), so a forged From does not count, and Bcc-ing the
+  inbox does not count. Once that is true, later messages on the thread from
+  other participants also allow reply-all.
+- On a thread the owner has never been on (for example a stranger Ccs the inbox
+  on mail to other people), reply-all is refused with `reply_all_not_allowed`,
+  before any daily send quota or provider send. A reply to the sender only still
+  works.
+- Reply-all is capped at 5 sends per thread in a rolling 24 hours, failed
+  attempts included (`reply_all_thread_limit`). It also counts toward the plan's
+  `email_sends_per_day`.
+- The reply keeps `In-Reply-To` and `References`, so it stays on that thread.
+  The stored sent message records its To and Cc (`emailMessageGet`), and the
+  `send_requested` delivery event records both lists.
+
 ## Capabilities
 
 Use the MCP `email` domain:
@@ -111,14 +139,15 @@ Use the MCP `email` domain:
   attachment bytes) must fit the plan's `email_message_bytes` per-message cap.
   Manage destinations from `/@<slug>/-/email` as well. Unverified extras never
   receive mail.
-- `emailReply` replies to a stored inbound message. The recipient always comes
-  from the stored message. Optional `attachments` (up to 10 of
-  `{ filename, content_type, content_base64 }`) are sent with the reply and
-  stored as `external` attachments readable later via `emailAttachmentGet`. With
-  attachments, the whole message (bodies plus decoded attachment bytes) must fit
-  the plan's `email_message_bytes` per-message cap. A quarantined or spam
-  original is refused before any send or daily send quota is used
-  (`quarantined_inbound_reply`): replies to that mail usually reach spoofed
+- `emailReply` replies to a stored inbound message. Recipients always come from
+  the stored message: by default only its sender (Reply-To, else From). See
+  [Reply-all](#reply-all) to answer everyone on the thread. Optional
+  `attachments` (up to 10 of `{ filename, content_type, content_base64 }`) are
+  sent with the reply and stored as `external` attachments readable later via
+  `emailAttachmentGet`. With attachments, the whole message (bodies plus decoded
+  attachment bytes) must fit the plan's `email_message_bytes` per-message cap. A
+  quarantined or spam original is refused before any send or daily send quota is
+  used (`quarantined_inbound_reply`): replies to that mail usually reach spoofed
   senders. Release it first with `emailMessageClassify`
   (`classification: "accepted"`) or Not spam on `/@<slug>/-/email`, then reply.
   The same refusal applies to package runtime `email.reply`, which calls
@@ -218,10 +247,12 @@ Inbound storage is quota-gated per user:
   account to address external recipients, and only recipients taken from stored
   inbound mail that is not quarantined. A quarantined original is refused
   (`quarantined_inbound_reply`) before the daily send quota or the provider is
-  touched. Admins have a separate operator channel (`adminSystemEmailSend`) that
-  speaks for the platform rather than for any user account: it sends from a
-  reserved system sender, uses no user mailbox or plan entitlement, is
-  audit-logged, and is capped per sender per UTC day.
+  touched. Reply-all adds the stored message's To and Cc only on threads the
+  owner put the inbox on ([Reply-all](#reply-all)). Admins have a separate
+  operator channel (`adminSystemEmailSend`) that speaks for the platform rather
+  than for any user account: it sends from a reserved system sender, uses no
+  user mailbox or plan entitlement, is audit-logged, and is capped per sender
+  per UTC day.
 - Outbound sends consume a per-day entitlement. The `max` plan allows 10,000
   send attempts per UTC day.
 - A successful send request has `processing_status: "sent"`. Cloudflare delivery

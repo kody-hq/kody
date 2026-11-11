@@ -361,6 +361,8 @@ export type MailboxRunRetentionNowResult = {
 
 export type MailboxListMessagesInput = {
 	inboxId?: string | null
+	/** Messages on one thread only. */
+	threadId?: string | null
 	direction?: EmailDirection | null
 	processingStatus?: EmailProcessingStatus | null
 	deliveryStatus?: EmailDeliveryStatus | null
@@ -497,12 +499,36 @@ export type MailboxUpsertDeliveryEventsResult = {
 	results: Array<MailboxUpsertDeliveryEventBatchItemResult>
 }
 
+/**
+ * Stored-only header (never sent to the provider) that marks an outbound
+ * reply-all message, so per-thread reply-all caps can count it.
+ */
+export const replyAllStoredHeader = 'X-Kody-Reply-All'
+
+/**
+ * Refuse the write, in the same transaction, when the thread already has
+ * `max` reply-all sends created at or after `since`.
+ */
+export type MailboxThreadReplyAllLimit = {
+	threadId: string
+	since: string
+	max: number
+}
+
+export type MailboxUpsertMessageGraphResult = {
+	ok: true
+	accepted: boolean
+	/** Set when {@link MailboxThreadReplyAllLimit} refused the write. */
+	threadReplyAllLimited?: true
+}
+
 export type MailboxUpsertMessageGraphInput =
 	| {
 			ownerId: OwnerId
 			thread?: MailboxThreadInput | null
 			message: MailboxMessageInput
 			attachments?: Array<MailboxAttachmentInput>
+			threadReplyAllLimit?: MailboxThreadReplyAllLimit
 			/** DR restore writes stay inert until finalizeRestore. */
 			restore?: true
 	  }
@@ -526,7 +552,7 @@ type MailboxCoreRpc = {
 	 */
 	upsertMessageGraph: (
 		input: MailboxUpsertMessageGraphInput,
-	) => Promise<{ ok: true; accepted: boolean }>
+	) => Promise<MailboxUpsertMessageGraphResult>
 	/**
 	 * Authoritative USER inbound graph commit. The active `storing` lease and
 	 * graph identity are checked in the same SQLite transaction as all graph

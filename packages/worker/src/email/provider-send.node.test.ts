@@ -134,3 +134,42 @@ test('sendViaCloudflareEmailProvider surfaces a skipped credential error', async
 		}),
 	).rejects.toBeInstanceOf(CloudflareEmailProviderSkippedError)
 })
+
+test('sendViaCloudflareEmailProvider sends Cc on the REST fallback and only fails when every recipient bounced', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const bodies: Array<Record<string, unknown>> = []
+	using _server = createMswNodeServer(
+		[
+			http.post(apiUrl, async ({ request }) => {
+				bodies.push((await request.json()) as Record<string, unknown>)
+				return HttpResponse.json({
+					success: true,
+					result: {
+						message_id: 'rest-cc',
+						delivered: ['carol@example.com'],
+						permanent_bounces: ['dan@example.com'],
+					},
+				})
+			}),
+		],
+		{ onUnhandledFrame: 'bypass' },
+	)
+	const result = await sendViaCloudflareEmailProvider({
+		env: {
+			CLOUDFLARE_ACCOUNT_ID: mockAccountId,
+			CLOUDFLARE_API_BASE_URL: 'https://api.cloudflare.test',
+			CLOUDFLARE_API_TOKEN: 'token',
+		},
+		from: 'owner@inbox.example.com',
+		to: ['dan@example.com'],
+		cc: ['carol@example.com'],
+		subject: 'Re: Kickoff',
+		text: 'Thanks',
+	})
+	expect(result).toEqual({ messageId: 'rest-cc', via: 'rest' })
+	expect(bodies[0]).toMatchObject({
+		to: 'dan@example.com',
+		cc: ['carol@example.com'],
+	})
+	expect(bodies[0]).not.toHaveProperty('bcc')
+})
