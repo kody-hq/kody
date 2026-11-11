@@ -38,7 +38,9 @@ invoke it instead of creating another implementation.
   per call, so static imports from execute always see the current published
   version.
 - When the target's name is data, use `import(specifier)` for a caller-owned or
-  forked module. Exactly-once work uses workflows.
+  forked module from `execute`. Saved package server code cannot (see
+  [Saved package composition](#saved-package-composition)). Exactly-once work
+  uses workflows.
 
 This is the default for an established operation whose behavior should stay
 owned by its existing capability or package.
@@ -127,6 +129,68 @@ package docs).
 When the OAuth token is coarser than the intended export — Gmail can send
 whenever it can create a draft — publish a thin package that only performs the
 allowed call, then lock it. Load `locked_gmail_drafts` for that pattern.
+
+## Saved package composition
+
+Saved package code reuses another package through a static
+`kody:@scope/package/export` import declared in
+`package.json#kody.dependencies`. Two publish checks shape what else works.
+
+### Server code cannot use computed `import()`
+
+Publishing a saved package runs the credential stamp publish gate. It refuses
+`import()` with a non-literal specifier in server-runtime code: exports, jobs,
+subscription handlers, the app server entry, and every module they import. Only
+`kody.app.client` browser entries are outside that rule. The failure reads:
+
+```text
+<path>: server-runtime code must not use eval, new Function (...), or import() with a non-literal specifier.
+```
+
+So `import(specifier)` for a package name that is data works in ad hoc
+`execute`, not in saved package server code. A literal
+`import('kody:@scope/package/export')` is also refused at publish and throws a
+teaching error at runtime. In package server code, call another package with a
+static import, or use one of the patterns below.
+
+### Static dependency cycles are refused
+
+Static imports form a graph through `kody.dependencies`. Publish checks fail the
+dependencies check when that graph has a cycle, including a cycle reachable
+through a package you depend on:
+
+```text
+package.json#kody.dependencies forms a cycle: @scope/a -> @scope/b -> @scope/a.
+```
+
+Remove one edge of the cycle. Removing the import but keeping the
+`kody.dependencies` entry also fails, because imports and declarations must
+match.
+
+### Two packages that need each other
+
+When `@scope/a` and `@scope/b` each need server-side behavior from the other,
+use one of these supported patterns:
+
+- **Split the shared code into a third package.** Move what both need into
+  `@scope/shared`, which imports neither. Both packages statically import
+  `@scope/shared`. Static imports snapshot at the dependent's publish, so
+  republish dependents after changing `@scope/shared`.
+- **Keep one direction static and queue the other.** `@scope/a` imports
+  `@scope/b` statically. Code in `@scope/b` calls
+  `workflows.create({ packageId: '@scope/a', exportName: 'export-name', params })`.
+  Both packages must belong to the same owner. The workflow runs later, so the
+  caller does not get the return value in the same call; read it from
+  `metadata.result` (capped at 4 KiB) with `kody.runList({ workflow_id })`. See
+  [Workflows](../use/workflows.md).
+- **Push an event instead of reading.** A job, subscription handler, or package
+  app in one package calls `events.dispatch` on a topic it declares in
+  `kody.emits`, and the other package subscribes. The emitter never sees the
+  handler's result. See
+  [Package subscriptions](./package-subscriptions.md#emitting).
+
+There is no supported synchronous call in both directions between two saved
+packages.
 
 ## Signals to escalate from `execute` to a package
 

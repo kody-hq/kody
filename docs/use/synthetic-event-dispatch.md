@@ -11,9 +11,9 @@ and does not enqueue production Queue delivery.
 
 Package reuse is a static `import … from 'kody:@scope/pkg/export'` (declare
 `kody.dependencies`). When the name is data, use computed `import(specifier)`
-for a caller-owned or forked module. Exactly-once work uses
-[workflows](./workflows.md). External clients use
-[inbound webhooks](./webhooks.md). Another package's secret mounts and
+for a caller-owned or forked module from `execute` (saved package server code
+cannot). Exactly-once work uses [workflows](./workflows.md). External clients
+use [inbound webhooks](./webhooks.md). Another package's secret mounts and
 `packageContext` apply when that package is the run — its job, subscription,
 webhook, or app.
 

@@ -436,8 +436,8 @@ exhaustive.
   Ad hoc execute code bundles per call, so static imports from execute always
   see the current published version.
 - Prefer a static import when the name is known at write time. Use
-  `import(specifier)` only when the package name is data. See
-  [Package reuse](#package-reuse).
+  `import(specifier)` only when the package name is data, and not in saved
+  package server code. See [Package reuse](#package-reuse).
 - Every direct static `kody:@...` import must be declared in
   `package.json#kody.dependencies` using the imported package name, for example
   `"dependencies": { "@scope/my-package": "*" }` inside the `kody` object. `*`
@@ -446,7 +446,10 @@ exhaustive.
   Type-only imports do not count, and declaration files such as `.d.ts` are
   treated as type-only.
 - When the target package is not known until runtime, use
-  `import(packageSpecifier)` for a caller-owned or forked module.
+  `import(packageSpecifier)` for a caller-owned or forked module from `execute`.
+  The credential stamp publish gate refuses a non-literal `import()` in saved
+  package server code (exports, jobs, subscription handlers, the app server
+  entry, and modules they import).
 - `kody:runtime` is always host-owned and request-scoped. Static imports such as
   `import { kody } from "kody:runtime"` stay valid, but saved package artifacts
   do not persist Kody's runtime implementation; execution always uses the
@@ -495,7 +498,11 @@ Package reuse follows two rules:
    other packages. This is the default.
 2. **Name is data → `import(specifier)`** of a caller-owned (or forked) module.
    Exactly-once work uses [workflows](./workflows.md), not a second invoke
-   primitive.
+   primitive. This rule is for `execute`: publish refuses a non-literal
+   `import()` in saved package server code, and static imports between two
+   packages cannot form a `kody.dependencies` cycle. See
+   [Saved package composition](../guides/package-lifecycle.md#saved-package-composition)
+   for the error text and the supported patterns.
 
 ```ts
 import handleEvent from 'kody:@kentcdodds/event-subscriber/handle-event'
@@ -1420,11 +1427,12 @@ publish checks run.
    the right next step. The CLI surfaces that distinction as `sent: false` vs
    `sent: "unknown"` on `--json` errors.
 
-Computed `import(specifier)` (and other runtime package loads) resolve the
-current published package at call time instead of embedding a source snapshot in
-the dependent bundle. Those loads do not require republishing a dependent just
-because the called package was republished. Static `kody:@` imports inside a
-saved package still snapshot at that dependent's publish.
+Computed `import(specifier)` (from `execute`; saved package server code cannot
+use it) and other runtime package loads resolve the current published package at
+call time instead of embedding a source snapshot in the dependent bundle. Those
+loads do not require republishing a dependent just because the called package
+was republished. Static `kody:@` imports inside a saved package still snapshot
+at that dependent's publish.
 
 Choose the narrowest token scope that fits the task. Use `read` for inspection
 or local diffing, and `write` only when the git client needs to push. Keep TTLs

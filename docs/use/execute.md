@@ -40,9 +40,11 @@ helpers are runtime exports:
 - use **`import { packageContext } from 'kody:runtime'`** inside saved package
   code when you need package metadata; it is **`null`** for ad hoc execute calls
 - when a package name is data, use `import(specifier)` for a caller-owned or
-  forked module. Exactly-once work uses [workflows](./workflows.md). When the
-  target package's name is known when the code is written, use a static
-  `kody:@...` import (see below)
+  forked module. Saved package server code cannot (see
+  [Saved package composition](../guides/package-lifecycle.md#saved-package-composition)).
+  Exactly-once work uses [workflows](./workflows.md). When the target package's
+  name is known when the code is written, use a static `kody:@...` import (see
+  below)
 - use **`import thing from 'kody:@scope/my-package/export-name'`** or
   **`import { helper } from 'kody:@scope/my-package/export-name'`** to reuse a
   saved package export by npm-scoped package name. This is **the default for
@@ -59,7 +61,8 @@ package artifacts do not bundle the host runtime; execution always hydrates the
 deployed `kody:runtime` module.
 
 Prefer a static `kody:@...` import when the target package's name is known when
-the code is written. Use `import(specifier)` when the name is data.
+the code is written. Use `import(specifier)` when the name is data (in
+`execute`, not in saved package server code).
 
 **execute** also accepts optional **`params`**. Kody passes that JSON object to
 the module's **default export** as the first function argument. Shared helpers
