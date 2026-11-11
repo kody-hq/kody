@@ -16,6 +16,10 @@ export const publishLargePackagesDocsUrl =
 export const executionContextPublishDocsUrl =
 	'https://kody.codes/docs/execution-contexts#try-publishing-from-a-context'
 
+/** `--build local` and `--context` publishes need this experiment on. */
+export const executionContextsExperimentUrl =
+	'https://kody.codes/account/experiments'
+
 /**
  * The long-term path for packages that hit Kody cloud's compute limits:
  * build on this machine or on an execution context the publisher operates.
@@ -25,7 +29,8 @@ export function publishOutsideCloudAdvice() {
 	return (
 		"This package is near Kody cloud's build CPU or memory limit. Build it " +
 		'on your machine with `kody package publish --build local`, or on an ' +
-		'execution context with `--context <name>` ' +
+		'execution context with `--context <name>`. Both need the Execution ' +
+		`contexts experiment: turn it on at ${executionContextsExperimentUrl} ` +
 		`(docs: ${executionContextPublishDocsUrl}). ` +
 		'`kody dev check --build local` checks the same local build before you ' +
 		`publish. More: ${publishLargePackagesDocsUrl}`
@@ -125,8 +130,8 @@ const sourceTreeAdvice =
 export const resourceLimitVarianceNote =
 	'Memory and CPU use vary between runs (garbage collection timing and ' +
 	'other work sharing the isolate), so a tree near the limit can pass on ' +
-	'one attempt and fail on the next. Shrink what the checks read instead ' +
-	'of retrying.'
+	'one attempt and fail on the next. A retry can pass, but shrinking what ' +
+	'the checks read is what makes every run pass.'
 
 /** What the author can do when `step` hits the isolate memory/CPU limit. */
 export function repoCheckStepResourceLimitAdvice(step: RepoCheckStep | null) {

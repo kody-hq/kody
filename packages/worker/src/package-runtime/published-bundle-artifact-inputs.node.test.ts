@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest'
+import type { ModuleImportNodesCache } from './import-specifiers.ts'
 import {
 	collectPublishedPackageArtifactInputPaths,
 	publishedPackageArtifactTargetInputsChanged,
@@ -161,4 +162,28 @@ test('publishedPackageArtifactTargetInputsChanged rebuilds when the graph cannot
 			},
 		}),
 	).toBe(true)
+})
+
+test('publishedPackageArtifactTargetInputsChanged parses each source once across targets with a shared cache', () => {
+	const cache: ModuleImportNodesCache = new Map()
+	for (const entryPoint of ['src/a.ts', 'src/b.ts', 'src/c.ts']) {
+		const changed = publishedPackageArtifactTargetInputsChanged({
+			entryPoint,
+			previousFiles,
+			nextFiles: previousFiles,
+			importNodesCache: cache,
+		})
+		expect(changed).toBe(
+			publishedPackageArtifactTargetInputsChanged({
+				entryPoint,
+				previousFiles,
+				nextFiles: previousFiles,
+			}),
+		)
+	}
+	const sourcePaths = Object.keys(previousFiles).filter((path) =>
+		path.endsWith('.ts'),
+	)
+	expect(cache.size).toBeGreaterThan(0)
+	expect(cache.size).toBeLessThanOrEqual(sourcePaths.length)
 })

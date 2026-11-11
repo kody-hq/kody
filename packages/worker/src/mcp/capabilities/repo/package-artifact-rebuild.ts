@@ -1,4 +1,5 @@
 import { chunkArray } from '@kody-internal/shared/chunk.ts'
+import type { ModuleImportNodesCache } from '#worker/package-runtime/import-specifiers.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	formatErrorCauseChain,
@@ -241,6 +242,7 @@ async function filterTargetsNeedingRebuild(input: {
 	const sharedSnapshot =
 		publishedSnapshot !== undefined ? { publishedSnapshot } : {}
 	const snapshotCache: PublishedPackageArtifactReuseSnapshotCache = new Map()
+	const importNodesCache: ModuleImportNodesCache = new Map()
 	const loadedByIdentity = hasPublishedRuntimeArtifacts(input.env)
 		? await loadPublishedBundleArtifactsForPackageTargets({
 				env: input.env,
@@ -277,6 +279,7 @@ async function filterTargetsNeedingRebuild(input: {
 			publishedCommit: input.publishedCommit,
 			target,
 			snapshotCache,
+			importNodesCache,
 			...sharedSnapshot,
 			...(preloaded !== undefined ? { preloaded } : {}),
 		})

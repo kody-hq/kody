@@ -816,7 +816,7 @@ async function runPublishChecksWithRetry(input: {
 			throw settled.error
 		}
 		input.stderr(
-			`kody dev check: the server publish checks ${reason} (attempt ${attempt} of ${publishChecksMaxAttempts}); retrying, as publish does.\n`,
+			`kody dev check: the server publish checks ${reason} (attempt ${attempt} of ${publishChecksMaxAttempts}). CPU and memory use vary between runs, so a retry can pass; retrying, as publish does.\n`,
 		)
 		await new Promise((resolve) =>
 			setTimeout(resolve, input.delayMs ?? 2_000 * attempt),

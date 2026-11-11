@@ -269,7 +269,7 @@ export function authoringChecksResourceLimitMessage(
 	return [
 		`${authoringCheckRunnerLimitLead(where)} This is a server limit, not a ` +
 			'login or network problem, and publish runs the same checks under ' +
-			'the same limits, so it is likely to fail the same way. ' +
+			'the same limits, so a run near the limit can fail there too. ' +
 			resourceLimitVarianceNote,
 		repoCheckStepResourceLimitAdvice(step),
 		formatPublishSizeHints(sizeHints, step),

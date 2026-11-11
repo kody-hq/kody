@@ -3,6 +3,12 @@ import {
 	readBearerApiToken,
 } from '@kody-internal/shared/api-token-format.ts'
 import {
+	apiRequestIdHeader,
+	describeApiRequestProgress,
+	parseApiRequestProgress,
+	type ApiRequestProgress,
+} from '@kody-internal/shared/api-request-progress.ts'
+import {
 	ecpRunHeader,
 	ecpSignatureHeader,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
@@ -15,7 +21,10 @@ import {
  */
 
 export type ApiWorkerEnv = {
-	KODY_API: Fetcher
+	/** Origin `KodyApi`: `fetch` plus the `readRequestProgress` RPC. */
+	KODY_API: Fetcher & {
+		readRequestProgress?: (requestId: string) => Promise<unknown>
+	}
 	API_IP_RATE_LIMITER?: RateLimit
 	API_TOKEN_RATE_LIMITER?: RateLimit
 	APP_COMMIT_SHA?: string
@@ -215,7 +224,7 @@ async function rateLimitKeys(request: Request) {
 }
 
 /** Response header that names one API request, for support and logs. */
-export const apiRequestIdHeader = 'X-Kody-Request-Id'
+export { apiRequestIdHeader }
 
 /**
  * Cloudflare's ray id when present (it also keys the Workers logs for this
@@ -336,8 +345,8 @@ async function routeApiEdgeRequest(
 
 /**
  * Cloudflare rejects the origin call with one of these when the origin
- * invocation ran past its memory or CPU limit. Retrying the same request
- * usually fails the same way, so say so instead of "temporarily unavailable".
+ * invocation ran past its memory or CPU limit. Say so instead of
+ * "temporarily unavailable".
  */
 const originResourceLimitPattern =
 	/exceeded (?:its )?(?:memory|cpu)|memory limit|cpu time limit|resource limits?/i
@@ -345,12 +354,23 @@ const originResourceLimitPattern =
 export function describeOriginForwardFailure(
 	error: unknown,
 	requestId: string,
+	progress: ApiRequestProgress | null = null,
 ) {
 	const detail = error instanceof Error ? error.message : String(error)
 	if (originResourceLimitPattern.test(detail)) {
+		const described = progress ? describeApiRequestProgress(progress) : null
 		return {
 			reason: 'origin_resource_limit' as const,
-			message: `The Kody API ran out of server memory or CPU time before it answered this request (request id ${requestId}). This is a server limit, not a login or network problem; retrying the same request usually fails the same way. Quote the request id when you report it.`,
+			message: [
+				`The Kody API ran out of server memory or CPU time${described?.where ?? ''} before it answered this request (request id ${requestId}).`,
+				described?.size,
+				'This is a server limit, not a login or network problem. CPU and ' +
+					'memory use vary between runs, so a retry can pass, but a ' +
+					'request this close to the limit can keep failing on some runs. ' +
+					'Quote the request id when you report it.',
+			]
+				.filter(Boolean)
+				.join(' '),
 		}
 	}
 	return {
@@ -425,19 +445,56 @@ async function forwardExecutionContextConnect(input: {
 	}
 }
 
+const originProgressReadTimeoutMs = 3_000
+
+/**
+ * The step origin recorded before it died (best effort): an origin on an
+ * older deploy has no `readRequestProgress`, and the step only sharpens the
+ * message.
+ */
+async function readOriginRequestProgress(
+	env: ApiWorkerEnv,
+	requestId: string,
+): Promise<ApiRequestProgress | null> {
+	const read = env.KODY_API.readRequestProgress
+	if (typeof read !== 'function') return null
+	let timer: ReturnType<typeof setTimeout> | undefined
+	try {
+		return parseApiRequestProgress(
+			await Promise.race([
+				read.call(env.KODY_API, requestId),
+				new Promise<null>((resolve) => {
+					timer = setTimeout(() => resolve(null), originProgressReadTimeoutMs)
+				}),
+			]),
+		)
+	} catch {
+		return null
+	} finally {
+		clearTimeout(timer)
+	}
+}
+
 async function fetchOrigin(
 	env: ApiWorkerEnv,
 	forwarded: Request,
 	requestId: string,
 ) {
+	forwarded.headers.set(apiRequestIdHeader, requestId)
 	try {
 		return withEdgeHeaders(await env.KODY_API.fetch(forwarded))
 	} catch (error) {
-		const failure = describeOriginForwardFailure(error, requestId)
+		const progress = originResourceLimitPattern.test(
+			error instanceof Error ? error.message : String(error),
+		)
+			? await readOriginRequestProgress(env, requestId)
+			: null
+		const failure = describeOriginForwardFailure(error, requestId, progress)
 		console.error('api-worker-forward-failed', error, {
 			requestId,
 			reason: failure.reason,
 			path: new URL(forwarded.url).pathname,
+			...(progress ? { step: progress.step } : {}),
 		})
 		return withEdgeHeaders(
 			Response.json(
@@ -445,13 +502,23 @@ async function fetchOrigin(
 					error: {
 						code: 'internal_error',
 						message: failure.message,
-						details: { reason: failure.reason, request_id: requestId },
+						details: {
+							reason: failure.reason,
+							request_id: requestId,
+							...(progress
+								? {
+										step: progress.step,
+										package_bytes: progress.totalBytes,
+										package_files: progress.fileCount,
+									}
+								: {}),
+						},
 					},
 				},
 				{
 					status: 503,
-					// A resource-limit failure usually repeats, so do not invite an
-					// automatic retry of the same request.
+					// A resource-limit failure can repeat, so do not invite a blind
+					// automatic retry; callers that know the operation decide.
 					headers: {
 						'Cache-Control': 'no-store',
 						...(failure.reason === 'origin_unreachable'

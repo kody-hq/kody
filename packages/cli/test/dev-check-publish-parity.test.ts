@@ -454,8 +454,14 @@ test('kody dev check retries the publish checks after a compute limit or respons
 		})
 		assert.equal(calls, 3)
 		assert.equal(code, 0)
-		assert.match(stderr, /attempt 1 of 3\); retrying/)
-		assert.match(stderr, /attempt 2 of 3\); retrying/)
+		assert.match(
+			stderr,
+			/attempt 1 of 3\)\. CPU and memory use vary between runs, so a retry can pass; retrying/,
+		)
+		assert.match(
+			stderr,
+			/attempt 2 of 3\)\. CPU and memory use vary between runs, so a retry can pass; retrying/,
+		)
 
 		const exhausted = capture()
 		await runDevCheck({
