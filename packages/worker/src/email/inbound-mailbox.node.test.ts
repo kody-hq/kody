@@ -82,3 +82,53 @@ test('received and rejected coordinators skip system:email', async () => {
 
 	expect(mocks.processInboundDeliveryEffects).not.toHaveBeenCalled()
 })
+
+test('received terminal work enqueues effects off the Email Routing invocation and falls back inline when enqueue fails', async () => {
+	consoleError.mockImplementation(() => {})
+	const send = vi.fn<(body: unknown) => Promise<void>>()
+	const env = {
+		PACKAGE_EVENTS_DISPATCH_QUEUE: { send },
+	} as unknown as Parameters<
+		typeof scheduleInboundReceivedTerminalWork
+	>[0]['env']
+	const { ctx, waitUntilPromises } = createCapturedWaitUntilContext()
+
+	await scheduleInboundReceivedTerminalWork({
+		env,
+		userId: ownerIdFromStored('user-4'),
+		messageId: 'message-4',
+		deliveryId: 'delivery-4',
+		expectedFinalizationToken: 'token-4',
+		durationMs: 25,
+		ctx,
+		logLabel: 'Inbound email effect dispatch failed',
+	})
+	await Promise.all(waitUntilPromises)
+
+	expect(send).toHaveBeenCalledWith({
+		kind: 'inbound-delivery-effects',
+		userId: ownerIdFromStored('user-4'),
+		deliveryId: 'delivery-4',
+		expectedFinalizationToken: 'token-4',
+		durationMs: 25,
+	})
+	expect(mocks.processInboundDeliveryEffects).not.toHaveBeenCalled()
+
+	send.mockRejectedValueOnce(new Error('queue unavailable'))
+	await scheduleInboundReceivedTerminalWork({
+		env,
+		userId: ownerIdFromStored('user-4'),
+		messageId: 'message-5',
+		deliveryId: 'delivery-5',
+		logLabel: 'Inbound email effect dispatch failed',
+	})
+
+	expect(consoleError).toHaveBeenCalledWith(
+		'inbound-delivery-effects-enqueue-failed',
+		expect.objectContaining({ deliveryId: 'delivery-5' }),
+	)
+	expect(mocks.processInboundDeliveryEffects).toHaveBeenCalledTimes(1)
+	expect(mocks.processInboundDeliveryEffects).toHaveBeenCalledWith(
+		expect.objectContaining({ deliveryId: 'delivery-5' }),
+	)
+})

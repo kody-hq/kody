@@ -1,6 +1,7 @@
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { isSystemEmailOwner } from './email-owner.ts'
 import { processInboundDeliveryEffects } from './inbound-effects.ts'
+import { buildInboundDeliveryEffectsQueueMessage } from './inbound-effects-queue.ts'
 import type { EmailReportingEnv } from './reporting-events.ts'
 
 /**
@@ -17,6 +18,7 @@ export type InboundMailboxEnv = Pick<
 	| 'MAILBOX'
 	| 'EMAIL_EVENTS'
 > &
+	Partial<Pick<Env, 'PACKAGE_EVENTS_DISPATCH_QUEUE'>> &
 	EmailReportingEnv
 
 export type InboundReceivedTerminalWorkInput = {
@@ -40,7 +42,10 @@ export type InboundRejectedTerminalWorkInput = {
 /**
  * One ordered received-terminal task:
  * 1) the graph and delivery terminal are already durable in Mailbox
- * 2) run Mailbox-authoritative inbound delivery effects
+ * 2) enqueue Mailbox-authoritative inbound delivery effects on the package
+ *    events Queue so subscription handlers run in a consumer invocation
+ *    instead of the Email Routing invocation; run them inline when the Queue
+ *    binding is absent (local dev, preview) or the enqueue fails
  *
  * Attach to `ctx.waitUntil` when present; otherwise await. Catch/log once so
  * Mailbox/effects failures never throw into Email Routing.
@@ -58,6 +63,26 @@ export async function scheduleInboundReceivedTerminalWork(
 		: undefined
 
 	const task = (async () => {
+		const queue = input.env.PACKAGE_EVENTS_DISPATCH_QUEUE
+		if (queue) {
+			try {
+				await queue.send(
+					buildInboundDeliveryEffectsQueueMessage({
+						userId: input.userId,
+						deliveryId: input.deliveryId,
+						expectedFinalizationToken: input.expectedFinalizationToken,
+						durationMs: input.durationMs,
+					}),
+				)
+				return
+			} catch (error) {
+				console.error('inbound-delivery-effects-enqueue-failed', {
+					userId: input.userId,
+					deliveryId: input.deliveryId,
+					error,
+				})
+			}
+		}
 		await processInboundDeliveryEffects({
 			env: input.env,
 			userId: input.userId,

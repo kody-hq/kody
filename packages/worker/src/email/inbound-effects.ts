@@ -1,5 +1,6 @@
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
+import { maxConcurrentDynamicWorkerEvaluationsPerRequest } from '#worker/dynamic-worker-evaluation-budget.ts'
 import { recordUsage } from '#worker/usage/record-usage.ts'
 import { createUserInboundDeliveryAuthority } from './inbound-delivery-authority.ts'
 import {
@@ -18,6 +19,24 @@ import {
 } from './system-inbound-delivery-store.ts'
 
 const maxSubscriptionEffectAttempts = 3
+
+const reconciliationEffectConcurrency =
+	maxConcurrentDynamicWorkerEvaluationsPerRequest
+
+async function forEachWithConcurrency<T>(
+	items: ReadonlyArray<T>,
+	concurrency: number,
+	run: (item: T) => Promise<void>,
+) {
+	let next = 0
+	await Promise.all(
+		Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+			while (next < items.length) {
+				await run(items[next++]!)
+			}
+		}),
+	)
+}
 
 export function resolveSubscriptionEffectFailure(attemptCount: number) {
 	const nextAttempt = Math.max(0, Math.floor(attemptCount)) + 1
@@ -329,25 +348,31 @@ export async function reconcileInboundDeliveryEffectsForUser(input: {
 		let processed = 0
 		let errors = 0
 		const due = await authority.listDueEffects(now, input.limit)
-		for (const delivery of due.deliveries) {
-			try {
-				await processInboundDeliveryEffects({
-					env: input.env,
-					userId: input.userId,
-					deliveryId: delivery.deliveryId,
-					now: input.now,
-				})
-				processed += 1
-			} catch (error) {
-				errors += 1
-				console.warn(
-					'inbound-email-effect-reconciliation-failed',
-					input.userId,
-					delivery.deliveryId,
-					error,
-				)
-			}
-		}
+		// Due deliveries are independent; process a few at once so one slow
+		// subscription handler does not serialize the whole backlog.
+		await forEachWithConcurrency(
+			due.deliveries,
+			reconciliationEffectConcurrency,
+			async (delivery) => {
+				try {
+					await processInboundDeliveryEffects({
+						env: input.env,
+						userId: input.userId,
+						deliveryId: delivery.deliveryId,
+						now: input.now,
+					})
+					processed += 1
+				} catch (error) {
+					errors += 1
+					console.warn(
+						'inbound-email-effect-reconciliation-failed',
+						input.userId,
+						delivery.deliveryId,
+						error,
+					)
+				}
+			},
+		)
 		return { processed, errors }
 	}
 	const rows = await listDueSystemInboundEffects({
