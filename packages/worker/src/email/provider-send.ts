@@ -25,6 +25,8 @@ export type ProviderSendInput = {
 	env: ProviderSendEnv
 	from: string
 	to: Array<string>
+	/** Visible Cc recipients (reply-all). Bcc is never sent. */
+	cc?: Array<string>
 	subject: string
 	text?: string | null
 	html?: string | null
@@ -45,9 +47,11 @@ async function sendViaBinding(
 	if (!binding) return { sent: false }
 	const attachments = input.attachments ?? []
 	const headers = input.headers ?? {}
+	const cc = input.cc ?? []
 	const result = await binding.send({
 		from: input.from,
 		to: input.to.length === 1 ? input.to[0]! : input.to,
+		...(cc.length > 0 ? { cc } : {}),
 		subject: input.subject,
 		...(input.replyTo ? { replyTo: input.replyTo } : {}),
 		headers,
@@ -85,6 +89,7 @@ async function sendViaRest(input: ProviderSendInput): Promise<string | null> {
 		{
 			from: input.from,
 			to: input.to.length === 1 ? input.to[0]! : input.to,
+			...(input.cc && input.cc.length > 0 ? { cc: input.cc } : {}),
 			subject: input.subject,
 			html,
 			text: input.text ?? undefined,

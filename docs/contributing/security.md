@@ -704,19 +704,25 @@ quarantined user mail dispatches `email.message.quarantined` instead.
 `emailReply` refuses a quarantined inbound message (`quarantined_inbound_reply`)
 before any send or daily send quota is used, so a reply cannot backscatter to a
 spoofed sender. Release it with `emailMessageClassify` (classification
-`accepted`) or Not spam on `/@<slug>/-/email`, then reply. Quarantined operator
-system-inbox mail is stored but suppresses `email.system-message.received`.
-Before user-inbox dispatch, `classifyInboundEmailSender` decides the sender. A
-verified, authenticated account email of a current org member is `member` (only
-packages they hold `package:execute` on are considered). Any other From that
-authenticates by DMARC pass or aligned SPF is `inbox-owner`. Packages run only
-when a per-sender enablement matches; the run acts as that enablement's enabler,
-with credentials checked and audited under them. DKIM-only, a missing
-Authentication-Results header, failed auth, a missing From, or a spoofed member
-address runs nothing and logs `inbound-email-sender-unverified`. Successful
-reserved-sender sends fan `email.system-message.sent` (admin-only) with the sent
-correspondence. Reclassification never retroactively fires subscription events.
-Users manage rules via `email_sender_rule_*` (200-rule cap), reclassify via
+`accepted`) or Not spam on `/@<slug>/-/email`, then reply. Reply-all
+(`reply_all: true`) takes recipients only from the stored message, never Bcc,
+and only on a thread where an authenticated message from one of the owner's
+verified destinations had the inbox in To or Cc; otherwise it refuses with
+`reply_all_not_allowed`, so a stranger cannot Cc a Kody address to make it mail
+third parties. It is capped per thread (`replyAllThreadSendLimit` in
+`email/reply-all.ts`). Quarantined operator system-inbox mail is stored but
+suppresses `email.system-message.received`. Before user-inbox dispatch,
+`classifyInboundEmailSender` decides the sender. A verified, authenticated
+account email of a current org member is `member` (only packages they hold
+`package:execute` on are considered). Any other From that authenticates by DMARC
+pass or aligned SPF is `inbox-owner`. Packages run only when a per-sender
+enablement matches; the run acts as that enablement's enabler, with credentials
+checked and audited under them. DKIM-only, a missing Authentication-Results
+header, failed auth, a missing From, or a spoofed member address runs nothing
+and logs `inbound-email-sender-unverified`. Successful reserved-sender sends fan
+`email.system-message.sent` (admin-only) with the sent correspondence.
+Reclassification never retroactively fires subscription events. Users manage
+rules via `email_sender_rule_*` (200-rule cap), reclassify via
 `emailMessageClassify` or `/@<slug>/-/email`, and delete stored messages via
 `emailMessageDelete` or the delete action on `/@<slug>/-/email`; operators use
 `admin_system_email_sender_rule_*` for system inboxes. Upstream, Cloudflare

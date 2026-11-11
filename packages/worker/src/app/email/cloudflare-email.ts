@@ -29,6 +29,9 @@ type CloudflareApiEnvelope = {
 	}
 }
 
+/** Visible Cc recipients (user reply-all). Bcc is never sent. */
+type OutboundEmailCc = { cc?: Array<string> }
+
 type CloudflareSendResult = {
 	ok: boolean
 	skipped?: boolean
@@ -87,7 +90,7 @@ async function sendViaCloudflareApi(
 	config: Required<
 		Pick<CloudflareEmailClientConfig, 'accountId' | 'apiBaseUrl' | 'apiToken'>
 	>,
-	message: OutboundEmail,
+	message: OutboundEmail & OutboundEmailCc,
 ): Promise<CloudflareSendResult> {
 	const endpoint = new URL(
 		`client/v4/accounts/${config.accountId}/email/sending/send`,
@@ -142,7 +145,13 @@ async function sendViaCloudflareApi(
 		}
 	}
 
-	const bounceError = permanentBounceError(message.to, payload.result)
+	const bounceError = permanentBounceError(
+		[
+			...(Array.isArray(message.to) ? message.to : [message.to]),
+			...(message.cc ?? []),
+		],
+		payload.result,
+	)
 	if (bounceError) {
 		console.warn(
 			'cloudflare-email-api-permanent-bounce',
@@ -210,18 +219,22 @@ export async function sendCloudflareEmail(
 	> &
 		Partial<
 			Pick<OutboundEmail, 'replyTo' | 'headers' | 'attachments' | 'fromName'>
-		>,
+		> &
+		OutboundEmailCc,
 ): Promise<CloudflareSendResult> {
-	const normalized = normalizeEmailPayload({
-		...message,
-		replyTo: resolveTransactionalSenderReplyTo({
-			from: message.from,
-			replyTo: message.replyTo,
+	const normalized: OutboundEmail & OutboundEmailCc = {
+		...normalizeEmailPayload({
+			...message,
+			replyTo: resolveTransactionalSenderReplyTo({
+				from: message.from,
+				replyTo: message.replyTo,
+			}),
+			fromName: message.fromName,
+			headers: message.headers,
+			attachments: message.attachments,
 		}),
-		fromName: message.fromName,
-		headers: message.headers,
-		attachments: message.attachments,
-	})
+		...(message.cc && message.cc.length > 0 ? { cc: message.cc } : {}),
+	}
 	const apiBaseUrl =
 		typeof config.apiBaseUrl === 'string' && config.apiBaseUrl.trim().length > 0
 			? config.apiBaseUrl.trim()

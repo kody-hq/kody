@@ -122,6 +122,7 @@ const mailboxDrillResultMetaKeys = {
 
 function buildMailboxMessageFilterClauses(input: {
 	inboxId?: string | null
+	threadId?: string | null
 	direction?: EmailDirection | null
 	processingStatus?: EmailProcessingStatus | null
 	deliveryStatus?: EmailDeliveryStatus | null
@@ -145,6 +146,10 @@ function buildMailboxMessageFilterClauses(input: {
 	if (input.inboxId) {
 		clauses.push('inbox_id = ?')
 		params.push(input.inboxId)
+	}
+	if (input.threadId) {
+		clauses.push('thread_id = ?')
+		params.push(input.threadId)
 	}
 	if (input.direction) {
 		clauses.push('direction = ?')
@@ -833,6 +838,62 @@ export class MailboxStore {
 			offset,
 		})
 		return { messages: rows.map(mapMailboxMessageRow) }
+	}
+
+	/**
+	 * Reply-all send ledger. Rows outlive message deletion, so deleting a sent
+	 * reply-all cannot reopen the per-thread cap. Created on first use and
+	 * pruned past the cap window.
+	 */
+	private ensureReplyAllSendLedger() {
+		this.sql.exec(`
+			CREATE TABLE IF NOT EXISTS email_reply_all_sends (
+				message_id TEXT PRIMARY KEY NOT NULL,
+				thread_id TEXT NOT NULL,
+				created_at TEXT NOT NULL
+			)
+		`)
+		this.sql.exec(
+			`CREATE INDEX IF NOT EXISTS idx_email_reply_all_sends_thread
+			ON email_reply_all_sends(thread_id, created_at)`,
+		)
+	}
+
+	/** Reply-all attempts on a thread since `since`; failed ones count. */
+	countThreadReplyAllSendsSince(input: {
+		threadId: string
+		since: string
+	}): number {
+		const since = assertMailboxNonEmptyString(input.since, 'since')
+		this.ensureReplyAllSendLedger()
+		this.sql.exec(
+			`DELETE FROM email_reply_all_sends WHERE created_at < ?`,
+			since,
+		)
+		const row = this.sql
+			.exec<{ n: number }>(
+				`SELECT COUNT(*) AS n FROM email_reply_all_sends
+				WHERE thread_id = ? AND created_at >= ?`,
+				assertMailboxNonEmptyString(input.threadId, 'threadId'),
+				since,
+			)
+			.one()
+		return Number(row.n ?? 0) || 0
+	}
+
+	recordThreadReplyAllSend(input: {
+		messageId: string
+		threadId: string
+		createdAt: string
+	}) {
+		this.ensureReplyAllSendLedger()
+		this.sql.exec(
+			`INSERT OR IGNORE INTO email_reply_all_sends (message_id, thread_id, created_at)
+			VALUES (?, ?, ?)`,
+			assertMailboxNonEmptyString(input.messageId, 'messageId'),
+			assertMailboxNonEmptyString(input.threadId, 'threadId'),
+			assertMailboxNonEmptyString(input.createdAt, 'createdAt'),
+		)
 	}
 
 	countMessages(input: MailboxCountMessagesInput): { total: number } {

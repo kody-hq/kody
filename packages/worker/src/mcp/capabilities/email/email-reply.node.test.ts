@@ -72,6 +72,7 @@ function outboundMessage(overrides: Record<string, unknown>) {
 		fromAddress: 'user@heykody.dev',
 		envelopeFrom: 'user@heykody.dev',
 		toAddresses: ['sender@example.com'],
+		ccAddresses: [],
 		subject: 'Re: Hello',
 		messageIdHeader: '<outbound@heykody.dev>',
 		classification: 'accepted',
@@ -219,4 +220,79 @@ test('emailReply forwards an explicit from alias and dedupes References', async 
 	expect(mocks.sendOutboundEmail).toHaveBeenLastCalledWith(
 		expect.objectContaining({ from: null }),
 	)
+})
+
+test('emailReply reply_all forwards drop_recipients and returns the recorded Cc', async () => {
+	mocks.getMessage.mockResolvedValue(inboundMessage)
+	mocks.sendOutboundEmail.mockResolvedValue({
+		status: 'sent',
+		error: null,
+		providerMessageId: 'provider-4',
+		message: outboundMessage({
+			id: 'outbound-4',
+			toAddresses: ['sender@example.com', 'dan@example.com'],
+			ccAddresses: ['carol@example.com'],
+			processingStatus: 'sent',
+			providerMessageId: 'provider-4',
+			sentAt: '2026-05-13T07:30:16.000Z',
+		}),
+	})
+	const result = await emailReplyCapability.handler(
+		{
+			message_id: 'inbound-1',
+			text: 'Reply body',
+			reply_all: true,
+			drop_recipients: ['erin@example.com'],
+		},
+		createContext(),
+	)
+	expect(mocks.sendOutboundEmail).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			recipientPolicy: 'reply',
+			replyAll: { dropRecipients: ['erin@example.com'] },
+		}),
+	)
+	expect(result).toMatchObject({
+		to_addresses: ['sender@example.com', 'dan@example.com'],
+		cc_addresses: ['carol@example.com'],
+	})
+
+	await emailReplyCapability.handler(
+		{ message_id: 'inbound-1', text: 'Reply body' },
+		createContext(),
+	)
+	expect(mocks.sendOutboundEmail).toHaveBeenLastCalledWith(
+		expect.objectContaining({ replyAll: null }),
+	)
+})
+
+test('emailReply input refuses caller recipients and Bcc, and drop_recipients without reply_all', async () => {
+	mocks.getMessage.mockResolvedValue(inboundMessage)
+	mocks.sendOutboundEmail.mockClear()
+	for (const key of ['to', 'cc', 'bcc']) {
+		await expect(
+			emailReplyCapability.handler(
+				{
+					message_id: 'inbound-1',
+					text: 'Reply body',
+					reply_all: true,
+					[key]: ['eve@example.com'],
+				} as never,
+				createContext(),
+			),
+		).rejects.toThrow(
+			/recipients come only from the stored message, and Bcc is never used/,
+		)
+	}
+	await expect(
+		emailReplyCapability.handler(
+			{
+				message_id: 'inbound-1',
+				text: 'Reply body',
+				drop_recipients: ['dan@example.com'],
+			},
+			createContext(),
+		),
+	).rejects.toThrow(/drop_recipients only applies with reply_all: true/)
+	expect(mocks.sendOutboundEmail).not.toHaveBeenCalled()
 })

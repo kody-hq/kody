@@ -63,6 +63,7 @@ import {
 	type MailboxUpdateMessageDeliveryInput,
 	type MailboxUpsertDeliveryEventsResult,
 	type MailboxUpsertMessageGraphInput,
+	type MailboxUpsertMessageGraphResult,
 } from './mailbox-types.ts'
 
 /**
@@ -140,7 +141,7 @@ class MailboxBase extends DurableObject<Env> implements MailboxRpc {
 
 	async upsertMessageGraph(
 		input: MailboxUpsertMessageGraphInput,
-	): Promise<{ ok: true; accepted: boolean }> {
+	): Promise<MailboxUpsertMessageGraphResult> {
 		return await this.graphCommits.upsertMessageGraph(input)
 	}
 

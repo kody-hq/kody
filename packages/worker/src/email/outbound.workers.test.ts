@@ -23,6 +23,12 @@ import {
 	QuarantinedInboundReplyError,
 	spamInboundReplyMessage,
 } from './quarantined-inbound-reply.ts'
+import {
+	ReplyAllNotAllowedError,
+	replyAllNotAllowedMessage,
+	ReplyAllThreadLimitError,
+	replyAllThreadSendLimit,
+} from './reply-all.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
 import { createMswWorkerServer } from '#worker/test-support/msw-worker-server.ts'
@@ -34,7 +40,10 @@ import { userMeterDurableObjectName } from '#worker/user-scoped-durable-object-n
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 
-import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	ownerIdFromStored,
+	personIdFromStored,
+} from '@kody-internal/shared/owner-person-ids.ts'
 const cloudflareEmailApi =
 	'https://api.cloudflare.test/client/v4/accounts/account-123/email/sending/send'
 
@@ -1256,4 +1265,338 @@ test('sendOutboundEmail sends from an owned plus alias and refuses any From the 
 	// Refusals happen before quota, storage, or the provider.
 	expect(sent).toHaveLength(2)
 	expect(await readDailyEmailSendCounter(account.userId)).toBe(sendsBefore)
+}, 30_000)
+
+const ownerAddress = 'owner@owner.example'
+const ownerAuthResults =
+	'mx.example; dkim=pass header.d=owner.example; dmarc=pass header.from=owner.example; spf=pass smtp.mailfrom=owner@owner.example'
+
+async function writeThreadMessage(
+	userId: string,
+	threadId: string,
+	input: Partial<Parameters<typeof baseMessage>[1]> & {
+		messageIdHeader: string
+	},
+) {
+	const owner = ownerIdFromStored(userId)
+	const now = new Date().toISOString()
+	const message = baseMessage(owner, {
+		inboxId: null,
+		threadId,
+		rawSize: 0,
+		receivedAt: now,
+		createdAt: now,
+		updatedAt: now,
+		subject: 'Project kickoff',
+		...input,
+	})
+	await mailboxRpc({ env, userId: owner }).upsertMessageGraph({
+		ownerId: owner,
+		thread: {
+			id: threadId,
+			inboxId: null,
+			subjectNormalized: 'project kickoff',
+			rootMessageIdHeader: null,
+			lastMessageAt: now,
+			createdAt: now,
+			updatedAt: now,
+		},
+		message,
+		attachments: [],
+	})
+	return message
+}
+
+function replyAllAs(
+	account: Account,
+	sendEnv: ReturnType<typeof bindingEnv>,
+	original: { id: string; messageIdHeader: string | null },
+	dropRecipients: Array<string> = [],
+) {
+	return sendAs(account, {
+		env: sendEnv,
+		recipientPolicy: 'reply',
+		replyToMessageId: original.id,
+		replyAll: { dropRecipients },
+		subject: 'Re: Project kickoff',
+		inReplyToHeader: original.messageIdHeader,
+		references: original.messageIdHeader ? [original.messageIdHeader] : [],
+	})
+}
+
+test('sendOutboundEmail reply-all: allowed once the owner added the inbox, including later outside replies, with Cc kept and recorded', async () => {
+	silenceIncidentalRuntimeWarnings()
+	const account = await seedAccount()
+	await addDestinations(account, [
+		{ email: ownerAddress, verified: true, isDefault: false },
+	])
+	const { alias } = senderAliasFixture(account)
+	const sent: Array<SentMessage> = []
+	const sendEnv = bindingEnv(async (message) => {
+		sent.push(message)
+		return { messageId: `provider-reply-all-${sent.length}` }
+	})
+	const threadId = `thread-${crypto.randomUUID()}`
+	// The owner writes to an outside participant and Ccs the Kody alias.
+	const ownerMessage = await writeThreadMessage(account.userId, threadId, {
+		fromAddress: ownerAddress,
+		envelopeFrom: ownerAddress,
+		authResults: ownerAuthResults,
+		toAddresses: ['dan@outside.example'],
+		ccAddresses: ['carol@outside.example', alias('marley')],
+		messageIdHeader: '<owner-kickoff@owner.example>',
+	})
+
+	const first = await replyAllAs(account, sendEnv, ownerMessage)
+	expect(first.status).toBe('sent')
+	expect(sent[0]).toMatchObject({
+		from: alias('marley'),
+		to: [ownerAddress, 'dan@outside.example'],
+		cc: ['carol@outside.example'],
+		headers: {
+			'In-Reply-To': '<owner-kickoff@owner.example>',
+			References: '<owner-kickoff@owner.example>',
+		},
+	})
+	expect(sent[0]).not.toHaveProperty('bcc')
+	expect(first.message).toMatchObject({
+		threadId,
+		toAddresses: [ownerAddress, 'dan@outside.example'],
+		ccAddresses: ['carol@outside.example'],
+		bccAddresses: [],
+	})
+	const events = await mailboxRpc({
+		env,
+		userId: ownerIdFromStored(account.userId),
+	}).listDeliveryEvents({ messageId: first.message.id })
+	const requested = events.find((event) => event.eventType === 'send_requested')
+	expect(JSON.parse(requested?.detailJson ?? '{}')).toMatchObject({
+		to: [ownerAddress, 'dan@outside.example'],
+		cc: ['carol@outside.example'],
+		replyAll: true,
+	})
+
+	// A later reply from an outside participant on the same thread also
+	// allows reply-all; recipients come only from that message.
+	const danReply = await writeThreadMessage(account.userId, threadId, {
+		fromAddress: 'dan@outside.example',
+		envelopeFrom: 'dan@outside.example',
+		toAddresses: [ownerAddress],
+		ccAddresses: ['carol@outside.example', alias('marley')],
+		messageIdHeader: '<dan-reply@outside.example>',
+		inReplyToHeader: '<owner-kickoff@owner.example>',
+	})
+	await replyAllAs(account, sendEnv, danReply)
+	expect(sent[1]).toMatchObject({
+		to: ['dan@outside.example', ownerAddress],
+		cc: ['carol@outside.example'],
+		headers: { 'In-Reply-To': '<dan-reply@outside.example>' },
+	})
+
+	// Dropping recipients is allowed; adding one is not.
+	await replyAllAs(account, sendEnv, danReply, ['carol@outside.example'])
+	expect(sent[2]).toMatchObject({ to: ['dan@outside.example', ownerAddress] })
+	expect(sent[2]).not.toHaveProperty('cc')
+	const added = await rejection(
+		replyAllAs(account, sendEnv, danReply, ['eve@elsewhere.example']),
+	)
+	expect(added).toBeInstanceOf(McpCallerError)
+	expect((added as Error).message).toMatch(
+		/drop_recipients can only remove recipients/,
+	)
+	expect(sent).toHaveLength(3)
+}, 30_000)
+
+test('sendOutboundEmail reply-all is refused on a thread the owner has never been on, before quota or provider', async () => {
+	silenceIncidentalRuntimeWarnings()
+	const account = await seedAccount({ plan: 'pro' })
+	await addDestinations(account, [
+		{ email: ownerAddress, verified: true, isDefault: false },
+	])
+	const { alias } = senderAliasFixture(account)
+	const sent: Array<SentMessage> = []
+	const sendEnv = bindingEnv(async (message) => {
+		sent.push(message)
+		return { messageId: 'provider-should-not-send' }
+	})
+	// A stranger Ccs the Kody address on mail to other people.
+	const strangerThread = `thread-${crypto.randomUUID()}`
+	const stranger = await writeThreadMessage(account.userId, strangerThread, {
+		fromAddress: 'stranger@outside.example',
+		envelopeFrom: 'stranger@outside.example',
+		authResults: ownerAuthResults.replaceAll('owner', 'outside'),
+		toAddresses: ['victim@third.example'],
+		ccAddresses: [alias('marley')],
+		messageIdHeader: '<stranger@outside.example>',
+	})
+	const refused = await rejection(replyAllAs(account, sendEnv, stranger))
+	expect(refused).toBeInstanceOf(ReplyAllNotAllowedError)
+	expect((refused as Error).message).toBe(replyAllNotAllowedMessage)
+	expect((refused as Error).message).toMatch(
+		/inbox owner has not added this inbox/,
+	)
+
+	// A From that claims the owner's address without authenticating does not
+	// count, and neither does the owner Bcc-ing the inbox.
+	const spoofThread = `thread-${crypto.randomUUID()}`
+	const spoofed = await writeThreadMessage(account.userId, spoofThread, {
+		fromAddress: ownerAddress,
+		envelopeFrom: 'bounce@spoof.example',
+		authResults: 'mx.example; spf=fail; dkim=none; dmarc=fail',
+		toAddresses: ['victim@third.example'],
+		ccAddresses: [alias('marley')],
+		messageIdHeader: '<spoofed@owner.example>',
+	})
+	await expect(replyAllAs(account, sendEnv, spoofed)).rejects.toBeInstanceOf(
+		ReplyAllNotAllowedError,
+	)
+	const bccThread = `thread-${crypto.randomUUID()}`
+	const bcc = await writeThreadMessage(account.userId, bccThread, {
+		fromAddress: ownerAddress,
+		envelopeFrom: ownerAddress,
+		authResults: ownerAuthResults,
+		toAddresses: ['victim@third.example'],
+		ccAddresses: [],
+		bccAddresses: [alias('marley')],
+		messageIdHeader: '<owner-bcc@owner.example>',
+	})
+	await expect(replyAllAs(account, sendEnv, bcc)).rejects.toBeInstanceOf(
+		ReplyAllNotAllowedError,
+	)
+	expect(sent).toHaveLength(0)
+	expect(await readDailyEmailSendCounter(account.userId)).toBe(0)
+
+	// Replying to the sender only is unchanged.
+	await sendAs(account, {
+		env: sendEnv,
+		recipientPolicy: 'reply',
+		replyToMessageId: stranger.id,
+		subject: 'Re: Project kickoff',
+	})
+	expect(sent[0]).toMatchObject({ to: 'stranger@outside.example' })
+	expect(sent[0]).not.toHaveProperty('cc')
+}, 30_000)
+
+test(`sendOutboundEmail caps reply-all at ${replyAllThreadSendLimit} sends per thread per 24 hours and refunds the refused send`, async () => {
+	silenceIncidentalRuntimeWarnings()
+	const account = await seedAccount({ plan: 'pro' })
+	await addDestinations(account, [
+		{ email: ownerAddress, verified: true, isDefault: false },
+	])
+	const { alias } = senderAliasFixture(account)
+	const sent: Array<SentMessage> = []
+	const sendEnv = bindingEnv(async (message) => {
+		sent.push(message)
+		return { messageId: `provider-cap-${sent.length}` }
+	})
+	const threadId = `thread-${crypto.randomUUID()}`
+	const ownerMessage = await writeThreadMessage(account.userId, threadId, {
+		fromAddress: ownerAddress,
+		envelopeFrom: ownerAddress,
+		authResults: ownerAuthResults,
+		toAddresses: ['dan@outside.example', alias('marley')],
+		messageIdHeader: '<owner-cap@owner.example>',
+	})
+	const sentIds: Array<string> = []
+	for (let index = 0; index < replyAllThreadSendLimit; index += 1) {
+		sentIds.push((await replyAllAs(account, sendEnv, ownerMessage)).message.id)
+	}
+	// Deleting a sent reply-all does not give its slot back.
+	await mailboxRpc({
+		env,
+		userId: ownerIdFromStored(account.userId),
+	}).deleteMessageWithBlobs({
+		ownerId: ownerIdFromStored(account.userId),
+		messageId: sentIds[0]!,
+	})
+	expect(await readDailyEmailSendCounter(account.userId)).toBe(
+		replyAllThreadSendLimit,
+	)
+	const limited = await rejection(replyAllAs(account, sendEnv, ownerMessage))
+	expect(limited).toBeInstanceOf(ReplyAllThreadLimitError)
+	expect(sent).toHaveLength(replyAllThreadSendLimit)
+	expect(await readDailyEmailSendCounter(account.userId)).toBe(
+		replyAllThreadSendLimit,
+	)
+	// Plain replies on the same thread are not capped by the reply-all limit.
+	await sendAs(account, {
+		env: sendEnv,
+		recipientPolicy: 'reply',
+		replyToMessageId: ownerMessage.id,
+		subject: 'Re: Project kickoff',
+	})
+	expect(sent).toHaveLength(replyAllThreadSendLimit + 1)
+}, 30_000)
+
+test('sendOutboundEmail reply-all on a team inbox needs the team address on the thread, not the member personal address', async () => {
+	silenceIncidentalRuntimeWarnings()
+	const account = await seedAccount()
+	await addDestinations(account, [
+		{ email: ownerAddress, verified: true, isDefault: false },
+	])
+	const slug = `team-${crypto.randomUUID().slice(0, 8)}`
+	const teamId = testStableUserIdFromEmail(`${slug}@teams.example`)
+	const now = new Date().toISOString()
+	await env.APP_DB.prepare(
+		`INSERT INTO orgs (id, slug, plan, stripe_plan, created_at, updated_at)
+		 VALUES (?, ?, 'pro', NULL, ?, ?)`,
+	)
+		.bind(teamId, slug, now, now)
+		.run()
+	await env.APP_DB.prepare(
+		`INSERT INTO handles (handle, user_id, org_id, created_at)
+		 VALUES (?, NULL, ?, ?)`,
+	)
+		.bind(slug, teamId, now)
+		.run()
+	const sent: Array<SentMessage> = []
+	const sendEnv = bindingEnv(async (message) => {
+		sent.push(message)
+		return { messageId: `provider-team-${sent.length}` }
+	})
+	const teamReplyAll = (original: { id: string }) =>
+		sendOutboundEmail({
+			env: sendEnv,
+			userId: ownerIdFromStored(teamId),
+			actorPersonId: personIdFromStored(account.userId),
+			accountEmail: account.accountEmail,
+			recipientPolicy: 'reply',
+			replyToMessageId: original.id,
+			replyAll: { dropRecipients: [] },
+			subject: 'Re: Project kickoff',
+			text: 'Body',
+		})
+	// Delivered to the team inbox by Bcc; only the member's personal Kody
+	// address is visible.
+	const personalOnly = await writeThreadMessage(
+		teamId,
+		`thread-${crypto.randomUUID()}`,
+		{
+			fromAddress: ownerAddress,
+			envelopeFrom: ownerAddress,
+			authResults: ownerAuthResults,
+			toAddresses: ['dan@outside.example', account.from],
+			messageIdHeader: '<team-bcc@owner.example>',
+		},
+	)
+	await expect(teamReplyAll(personalOnly)).rejects.toBeInstanceOf(
+		ReplyAllNotAllowedError,
+	)
+	const teamThread = await writeThreadMessage(
+		teamId,
+		`thread-${crypto.randomUUID()}`,
+		{
+			fromAddress: ownerAddress,
+			envelopeFrom: ownerAddress,
+			authResults: ownerAuthResults,
+			toAddresses: ['dan@outside.example'],
+			ccAddresses: [`${slug}+ops@${platformDomain}`, account.from],
+			messageIdHeader: '<team-cc@owner.example>',
+		},
+	)
+	await teamReplyAll(teamThread)
+	expect(sent).toHaveLength(1)
+	// Neither the team address nor the member's own Kody address is mailed.
+	expect(sent[0]).toMatchObject({ to: [ownerAddress, 'dan@outside.example'] })
+	expect(sent[0]).not.toHaveProperty('cc')
 }, 30_000)
