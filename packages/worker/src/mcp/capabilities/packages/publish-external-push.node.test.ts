@@ -964,7 +964,7 @@ test('publishExternalPush returns locked with pending_commit and an approval URL
 
 test('durable publish code fails the run for any outcome that did not publish', async () => {
 	const { durablePublishWorkflowCode } =
-		await import('./publish-external-push.ts')
+		await import('#worker/package-runtime/durable-publish-result.ts')
 	const runDurable = async (result: unknown) => {
 		const source = durablePublishWorkflowCode.replace(
 			"import { kody } from 'kody:runtime'",

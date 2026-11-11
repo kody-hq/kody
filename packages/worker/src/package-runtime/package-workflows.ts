@@ -94,7 +94,10 @@ import {
 	terminalInlineWorkflowErrorPrefix,
 } from './workflow-statuses.ts'
 import { applyDynamicWorkflowSentryScope } from './package-workflows-sentry.ts'
-import { compactDurablePublishResult } from './durable-publish-result.ts'
+import {
+	compactDurablePublishResult,
+	isDurablePublishWorkflowCode,
+} from './durable-publish-result.ts'
 
 /** Persisted on every RunLog workflow projection for this binding. */
 export const dynamicCallableWorkflowsBindingName =
@@ -2352,7 +2355,10 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				throw new UserCodeError(message)
 			}
 			let value = toJsonSafeValue(result.result) as JsonValue
-			if (isPublishWorkflow(payload)) {
+			if (
+				isPublishWorkflow(payload) &&
+				isDurablePublishWorkflowCode(payload.code)
+			) {
 				const publish = compactDurablePublishResult(
 					value,
 					payload.enqueuedCommit ?? null,

@@ -10,6 +10,7 @@ import { planLimits } from '#universal/plans.ts'
 import { activeWorkflowStatusValues } from '#worker/package-runtime/workflow-statuses.ts'
 import { creatingWorkflowProjectionStatus } from '#worker/run-records/workflow-projection.ts'
 import { runRecordMaxResultSnapshotBytes } from '#worker/run-records/types.ts'
+import { durablePublishWorkflowCode } from '#worker/package-runtime/durable-publish-result.ts'
 import type { WorkflowProjectionUpsertInput } from '#worker/run-records/service.ts'
 import {
 	DynamicCallableWorkflowBase,
@@ -991,7 +992,7 @@ const syntheticPublishContext = {
 }
 const syntheticPublishCommit = 'a'.repeat(40)
 
-function createPublishRun(env: Env, idempotencyKey: string) {
+function createPublishRun(env: Env, idempotencyKey: string, code = inlineCode) {
 	return createDynamicCallableWorkflow({
 		env,
 		userId: ownerIdFromStored('user-1'),
@@ -1001,7 +1002,7 @@ function createPublishRun(env: Env, idempotencyKey: string) {
 		body: {
 			workflowName: 'packagePublishExternalPush',
 			idempotencyKey,
-			code: inlineCode,
+			code,
 		},
 	})
 }
@@ -1122,7 +1123,11 @@ test('a durable publish run keeps a compact result and records its published com
 	runRecordMocks.finishRunRecord.mockClear()
 	const binding = createStatefulWorkflowBinding()
 	const env = createWorkflowEnv(binding)
-	const created = await createPublishRun(env, 'user-1:publish-compact')
+	const created = await createPublishRun(
+		env,
+		'user-1:publish-compact',
+		durablePublishWorkflowCode,
+	)
 	const exports = Object.fromEntries(
 		Array.from({ length: 30 }, (_, index) => [
 			`./export-${index}`,
@@ -1161,4 +1166,26 @@ test('a durable publish run keeps a compact result and records its published com
 	expect(
 		new TextEncoder().encode(JSON.stringify(finish?.result)).length,
 	).toBeLessThan(runRecordMaxResultSnapshotBytes)
+})
+
+test('a custom inline workflow that reuses the publish name keeps its own result', async () => {
+	runRecordMocks.resetProjections()
+	const binding = createStatefulWorkflowBinding()
+	const env = createWorkflowEnv(binding)
+	const created = await createPublishRun(env, 'user-1:publish-name-reused')
+	const custom = { ok: true, items: [1, 2, 3] }
+	invocationMocks.runModuleWithRegistry.mockResolvedValueOnce({
+		result: custom,
+		logs: [],
+	})
+	await expect(
+		new DynamicCallableWorkflowBase({} as ExecutionContext, env).run(
+			queuedPayload(binding, created.id),
+			createInlineStep(),
+		),
+	).resolves.toEqual(custom)
+	expect(runRecordMocks.finishRunRecord.mock.calls.at(-1)?.[0]).toMatchObject({
+		status: 'success',
+		result: custom,
+	})
 })

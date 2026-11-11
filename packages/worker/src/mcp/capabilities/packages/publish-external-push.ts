@@ -10,7 +10,7 @@ import {
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { z } from 'zod'
-import { terminalInlineWorkflowErrorPrefix } from '#worker/package-runtime/workflow-statuses.ts'
+import { durablePublishWorkflowCode } from '#worker/package-runtime/durable-publish-result.ts'
 import { repoCheckKinds } from '#worker/repo/checks.ts'
 import { canonicalJsonStringify } from '@kody-internal/shared/canonical-json.ts'
 import { resolveHostedPackageAppUrl } from '@kody-internal/shared/public-urls.ts'
@@ -158,11 +158,6 @@ const inputSchema = z.object({
 
 const externalPublishRetryDelaysMs = [100, 500] as const
 
-const publishedExternalPushStatuses = ['published', 'already_published']
-
-// A durable publish that did not publish fails its run once (no step retries)
-// with the reason as last_error, so the run is not recorded as a success and
-// its idempotency key is released for the next attempt.
 const publishBuildOriginSchema = z
 	.object({
 		origin: z.enum(['cloud', 'cli', 'context']),
@@ -184,25 +179,6 @@ export function publishRequesterPersonId(
 		callerContext.request?.actor?.userId ?? requireMcpUser(callerContext).userId
 	)
 }
-
-export const durablePublishWorkflowCode = `import { kody } from 'kody:runtime'
-const publishedStatuses = ${JSON.stringify(publishedExternalPushStatuses)}
-export default async function main(params = {}) {
-	const result = await kody.packagePublishExternalPush(params)
-	const status = result && typeof result === 'object' ? result.status : null
-	if (publishedStatuses.includes(status)) return result
-	const failedChecks = Array.isArray(result?.failed_checks)
-		? result.failed_checks
-				.filter((check) => check && check.ok === false)
-				.map((check) => String(check.kind) + ': ' + String(check.message ?? '').slice(0, 600))
-				.join('; ')
-		: ''
-	const detail = failedChecks || String(result?.message ?? '').slice(0, 1200)
-	throw new Error(
-		${JSON.stringify(terminalInlineWorkflowErrorPrefix)} +
-			'packagePublishExternalPush returned ' + String(status) + (detail ? ': ' + detail : ''),
-	)
-}`
 
 /** Memory/CPU limit errors {@link throwIfExternalPublishResourceLimit} turns terminal. */
 function isExternalPublishResourceLimitError(error: unknown) {
