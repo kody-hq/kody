@@ -7,7 +7,9 @@ import { expect, test } from 'vitest'
 import { queuedRunState } from './queued-run-state.ts'
 
 test('queued handoff fences cancel until it releases, then retry or leave', () => {
-	expect(canHandle(queuedRunState, 'queued', 'START_HANDOFF')).toBe(true)
+	expect(nextState(queuedRunState, 'queued', { type: 'START_HANDOFF' })).toBe(
+		'starting',
+	)
 	expect(canHandle(queuedRunState, 'queued', 'CANCEL')).toBe(true)
 	expect(canHandle(queuedRunState, 'starting', 'CANCEL')).toBe(false)
 	expect(
