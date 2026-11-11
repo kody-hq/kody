@@ -1389,14 +1389,26 @@ publish checks run.
    keys did not run on that attempt. `checks_bundle_ms` is the publish
    bundle-check and is omitted when that esbuild pass is deferred to rebuild;
    `rebuild_ms` is the later artifact rebuild — they stay separate. Read
-   `phase_timings` on the capability result; it is not available from `runList`
-   or Cloudflare Log Explorer. When an interactive publish exceeds the inline
-   budget (~35s), the tool returns `status: "dispatched"` with a `workflow_id`
-   instead of hanging until the host times out. `dispatched` includes
-   `phase_timings.total_ms` as time-to-dispatch. Poll with
-   `workflowRunList({ workflow_id })` (CLI:
+   `phase_timings` on the capability result; for an inline publish it is not
+   available from `runList` or Cloudflare Log Explorer. When an interactive
+   publish exceeds the inline budget (~35s), the tool returns
+   `status: "dispatched"` with a `workflow_id` instead of hanging until the host
+   times out. `dispatched` includes `phase_timings.total_ms` as
+   time-to-dispatch. Poll with `workflowRunList({ workflow_id })` (CLI:
    `kody api workflowRunList --params '{"workflow_id":"<id>"}'`) until the run
    is terminal; do not retry the same publish while the run is active.
+
+   A durable publish run that ends `complete` (its run in `runList` / `runGet`
+   has status `success`) means the publish finished as `published` or
+   `already_published`, and checks passed. The run's `published_commit` is the
+   package tip it left, and `metadata.result` (also `result` on `runGet`) holds
+   a compact summary: `status`, `previous_commit`, `published_commit`,
+   `enqueued_commit` (the commit the publish was asked to ship), `checks_rerun`,
+   and `phase_timings`. It never includes the manifest, so it stays small for
+   packages with many exports. If `published_commit` differs from
+   `enqueued_commit`, another publish moved the tip; read `packageGet` for the
+   current state. Any outcome that did not publish ends the run `errored`
+   instead (see below).
 
    If the CLI or client loses the HTTP response (for example
    `fetch failed: UND_ERR_SOCKET`) before you see `dispatched` or a terminal

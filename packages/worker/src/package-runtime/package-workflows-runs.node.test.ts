@@ -9,6 +9,7 @@ import { isEntitlementLimitError } from '#worker/entitlements/errors.ts'
 import { planLimits } from '#universal/plans.ts'
 import { activeWorkflowStatusValues } from '#worker/package-runtime/workflow-statuses.ts'
 import { creatingWorkflowProjectionStatus } from '#worker/run-records/workflow-projection.ts'
+import { runRecordMaxResultSnapshotBytes } from '#worker/run-records/types.ts'
 import type { WorkflowProjectionUpsertInput } from '#worker/run-records/service.ts'
 import {
 	DynamicCallableWorkflowBase,
@@ -1114,4 +1115,50 @@ test('listWorkflowRunPageForUser pages past one page with next_cursor', async ()
 		expect(seen).toEqual(newestFirst)
 		expect(pages).toBe(3)
 	}
+})
+
+test('a durable publish run keeps a compact result and records its published commit', async () => {
+	runRecordMocks.resetProjections()
+	runRecordMocks.finishRunRecord.mockClear()
+	const binding = createStatefulWorkflowBinding()
+	const env = createWorkflowEnv(binding)
+	const created = await createPublishRun(env, 'user-1:publish-compact')
+	const exports = Object.fromEntries(
+		Array.from({ length: 30 }, (_, index) => [
+			`./export-${index}`,
+			{ description: 'x'.repeat(200), source: `./src/export-${index}.ts` },
+		]),
+	)
+	invocationMocks.runModuleWithRegistry.mockResolvedValueOnce({
+		result: {
+			status: 'already_published',
+			published_commit: syntheticPublishCommit,
+			checks_rerun: true,
+			manifest: { name: '@user/many-exports', exports },
+			static_dependents: { total: 0, dependents: [] },
+			phase_timings: { checks_typecheck_ms: 1200, total_ms: 41_000 },
+		},
+		logs: [],
+	})
+	const expected = {
+		status: 'already_published',
+		previous_commit: null,
+		published_commit: syntheticPublishCommit,
+		enqueued_commit: syntheticPublishCommit,
+		checks_rerun: true,
+		phase_timings: { checks_typecheck_ms: 1200, total_ms: 41_000 },
+	}
+
+	await expect(
+		new DynamicCallableWorkflowBase({} as ExecutionContext, env).run(
+			queuedPayload(binding, created.id),
+			createInlineStep(),
+		),
+	).resolves.toEqual(expected)
+	const finish = runRecordMocks.finishRunRecord.mock.calls.at(-1)?.[0]
+	expect(finish).toMatchObject({ status: 'success', result: expected })
+	expect(finish?.handle?.context.publishedCommit).toBe(syntheticPublishCommit)
+	expect(
+		new TextEncoder().encode(JSON.stringify(finish?.result)).length,
+	).toBeLessThan(runRecordMaxResultSnapshotBytes)
 })
