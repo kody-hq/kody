@@ -141,6 +141,60 @@ test('approveWentPublicRequest fails closed when clear bumps updated_at after cl
 	)
 })
 
+test('approveWentPublicRequest is a no-op success when the same request already landed', async () => {
+	mockModule.getPackageApprovalRequest.mockResolvedValue({
+		id: 'req-went',
+		reason: 'went_public',
+		status: 'approved',
+		pendingCommit: 'deadbeef',
+		baseCommit: 'deadbeef',
+		details: {},
+	})
+	const result = await approveWentPublicRequest({
+		env: { APP_DB: {} } as Env,
+		request: new Request('https://example.com/approve'),
+		savedPackage: savedPackage(true),
+		ownerUserId: 'owner-1',
+		actorUserId: personIdFromStored('actor-1'),
+		requestId: 'req-went',
+	})
+	expect(result).toEqual({ ok: true })
+	expect(mockModule.resolvePackageApprovalRequest).not.toHaveBeenCalled()
+	expect(mockModule.updateSavedPackage).not.toHaveBeenCalled()
+})
+
+test('approveWentPublicRequest succeeds when a concurrent duplicate claimed the request first', async () => {
+	stubApproveWentPublicHappyPath()
+	mockModule.getPackageApprovalRequest
+		.mockResolvedValueOnce({
+			id: 'req-went',
+			reason: 'went_public',
+			status: 'pending',
+			pendingCommit: 'deadbeef',
+			baseCommit: 'deadbeef',
+			details: {},
+		})
+		.mockResolvedValueOnce({
+			id: 'req-went',
+			reason: 'went_public',
+			status: 'approved',
+			pendingCommit: 'deadbeef',
+			baseCommit: 'deadbeef',
+			details: {},
+		})
+	mockModule.resolvePackageApprovalRequest.mockResolvedValue(false)
+	const result = await approveWentPublicRequest({
+		env: { APP_DB: {} } as Env,
+		request: new Request('https://example.com/approve'),
+		savedPackage: savedPackage(false),
+		ownerUserId: 'owner-1',
+		actorUserId: personIdFromStored('actor-1'),
+		requestId: 'req-went',
+	})
+	expect(result).toEqual({ ok: true })
+	expect(mockModule.updateSavedPackage).not.toHaveBeenCalled()
+})
+
 test('approveWentPublicRequest requires a pin for the current published commit', async () => {
 	mockModule.getPackageApprovalRequest.mockResolvedValue({
 		id: 'req-went',

@@ -21,6 +21,7 @@ import {
 	loadCapabilityApprovalSummary,
 } from '#worker/package-capabilities/capability-approval-service.ts'
 import { buildPackageCapabilityApprovalUrl } from '#worker/package-capabilities/capability-approval-url.ts'
+import { getPackageApprovalRequest } from '#worker/package-capabilities/approval-requests-repo.ts'
 import {
 	applyMatchingPinInternetVisible,
 	attemptSelfPublish,
@@ -421,6 +422,19 @@ async function changePackageCapabilityApproval(
 				packageId: savedPackage.id,
 			})
 			if (pending?.id !== requestId) {
+				// A repeat of a combined approval that already landed succeeds.
+				const earlier = await getPackageApprovalRequest(input.env.APP_DB, {
+					id: requestId,
+					packageId: savedPackage.id,
+					ownerUserId,
+				})
+				if (
+					earlier?.reason === 'went_public' &&
+					earlier.status === 'approved' &&
+					savedPackage.isInternetVisible
+				) {
+					return accepted()
+				}
 				return packageMutationResult(
 					{
 						ok: false,

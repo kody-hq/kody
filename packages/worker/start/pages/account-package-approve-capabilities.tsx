@@ -21,7 +21,13 @@ import {
 	unboundNeedSummary,
 	unboundNeedsIntro,
 } from '#client/routes/account-package-approve-capabilities-copy.ts'
-import { withApprovalTimeout } from '../approval-request.ts'
+import {
+	approvalStillRunningMessage,
+	capabilityApprovalLanded,
+	isApprovalTimeout,
+	pendingApprovalLanded,
+	withApprovalTimeout,
+} from '../approval-request.ts'
 import { PackageSecurityAuditField } from './package-security-audit-field.tsx'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { useState, type ReactNode } from 'react'
@@ -105,6 +111,9 @@ function approveCapabilitiesDetailItems(
 	return items
 }
 
+const approveCapabilitiesRouteId =
+	'/_app/@{$username}_/$kodyId_/approve-capabilities'
+
 export function AccountPackageApproveCapabilitiesRoute({
 	payload,
 }: {
@@ -168,6 +177,21 @@ export function AccountPackageApproveCapabilitiesRoute({
 		(entry) => entry.kind === 'realtime',
 	)
 	const { unboundNeeds, declaredFields } = payload
+	/** Fresh page data after a timed-out approve; null when it cannot load. */
+	async function rereadAfterTimeout() {
+		try {
+			await router.invalidate({ sync: true })
+		} catch {
+			return null
+		}
+		const match = router.state.matches.find(
+			(entry) => entry.routeId === approveCapabilitiesRouteId,
+		)
+		const data = match?.loaderData as
+			| { payload?: AccountPackageApproveCapabilitiesLoaderData }
+			| undefined
+		return data?.payload ?? null
+	}
 	async function approvePending(approval: AccountPackagePendingApproval) {
 		if (!approval.approveAction || busy) return
 		const isCurrent = capture()
@@ -180,14 +204,21 @@ export function AccountPackageApproveCapabilitiesRoute({
 			else await wentPublic.submit(input)
 			if (isCurrent()) await router.invalidate({ sync: true })
 		} catch (error) {
-			if (isCurrent())
-				setMessage(
-					error instanceof DOMException && error.name === 'TimeoutError'
-						? 'Approval timed out. Reload and try again.'
-						: error instanceof Error
-							? error.message
-							: 'Could not approve this publish.',
+			if (!isCurrent()) return
+			if (isApprovalTimeout(error)) {
+				const fresh = await rereadAfterTimeout()
+				if (
+					isCurrent() &&
+					!(fresh && pendingApprovalLanded(fresh, approval.id))
 				)
+					setMessage(approvalStillRunningMessage)
+				return
+			}
+			setMessage(
+				error instanceof Error
+					? error.message
+					: 'Could not approve this publish.',
+			)
 		} finally {
 			if (isCurrent()) setApprovingRequestId(null)
 		}
@@ -211,14 +242,27 @@ export function AccountPackageApproveCapabilitiesRoute({
 				else await router.invalidate({ sync: true })
 			}
 		} catch (error) {
-			if (isCurrent())
-				setMessage(
-					error instanceof DOMException && error.name === 'TimeoutError'
-						? 'Approval timed out. Reload and try again.'
-						: error instanceof Error
-							? error.message
-							: 'Could not approve capabilities.',
-				)
+			if (!isCurrent()) return
+			if (isApprovalTimeout(error)) {
+				const fresh = await rereadAfterTimeout()
+				if (!isCurrent()) return
+				if (
+					fresh &&
+					capabilityApprovalLanded(fresh, {
+						fingerprint: payload.fingerprint,
+						goPublicRequestId,
+					})
+				) {
+					if (fresh.package.isInternetVisible)
+						await router.navigate({ to: payload.settingsHref })
+				} else setMessage(approvalStillRunningMessage)
+				return
+			}
+			setMessage(
+				error instanceof Error
+					? error.message
+					: 'Could not approve capabilities.',
+			)
 		} finally {
 			if (isCurrent()) setApprovingCapabilities(false)
 		}
