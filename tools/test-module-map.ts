@@ -17,11 +17,14 @@ type Shard = { index: number; count: number }
 /**
  * One CI shard's observations. `modules` dedupes paths and `hashes` holds each
  * one's git blob hash, so a later tree finds its changed modules by content
- * without needing the CI commit. `projects` index into `modules`.
+ * without needing the CI commit. `projects` index into `modules`. `tree` is
+ * the tested git tree: a PR run tests a merge commit nobody has locally, but
+ * its tree is the tree of the squash commit that lands on `main`.
  */
 export type TestModuleMapShard = {
 	version: 1
 	commit: string
+	tree: string | null
 	shard: Shard | null
 	modules: Array<string>
 	hashes: Array<string | null>
@@ -30,6 +33,7 @@ export type TestModuleMapShard = {
 
 export type TestModuleMap = {
 	commit: string
+	tree: string | null
 	hashes: Map<string, string | null>
 	projects: Map<string, Map<string, ReadonlySet<string>>>
 }
@@ -53,6 +57,7 @@ export function gitBlobHash(content: Buffer | null) {
 
 export function encodeTestModuleMapShard(input: {
 	commit: string
+	tree: string | null
 	shard: Shard | null
 	projects: ReadonlyMap<string, ReadonlyMap<string, Iterable<string>>>
 	hashOf: (path: string) => string | null
@@ -78,6 +83,7 @@ export function encodeTestModuleMapShard(input: {
 	return {
 		version: 1,
 		commit: input.commit,
+		tree: input.tree,
 		shard: input.shard,
 		modules,
 		hashes: modules.map(input.hashOf),
@@ -118,7 +124,27 @@ export function mergeTestModuleMapShards(
 	for (const [project, { count, indexes }] of seen) {
 		if (indexes.size !== count) projects.delete(project)
 	}
-	return { commit, hashes, projects }
+	return { commit, tree: shards[0]?.tree ?? null, hashes, projects }
+}
+
+/**
+ * The first map (newest first) with `project` whose tree is in the local
+ * history, so the hash diff holds only local changes. Otherwise the newest
+ * map with `project`: still correct, but `main` changes since the branch
+ * point count as changed too. Stops reading `maps` at the first match.
+ */
+export function pickTestModuleMap(
+	maps: Iterable<TestModuleMap | null>,
+	project: string,
+	localTrees: ReadonlySet<string>,
+): { map: TestModuleMap; inHistory: boolean } | null {
+	let newest: TestModuleMap | null = null
+	for (const map of maps) {
+		if (!map?.projects.has(project)) continue
+		if (map.tree && localTrees.has(map.tree)) return { map, inHistory: true }
+		newest ??= map
+	}
+	return newest && { map: newest, inHistory: false }
 }
 
 /** Mapped modules whose content differs from the mapped run (or were deleted). */

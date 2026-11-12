@@ -50,15 +50,16 @@ export default class TestModuleMapReporter implements Reporter {
 		if (!out) return
 		const root = this.#vitest?.config.root ?? process.cwd()
 		const shard = this.#vitest?.config.shard
-		const commit =
-			process.env.GITHUB_SHA ??
-			execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
+		const git = (rev: string) =>
+			execFileSync('git', ['rev-parse', rev], { encoding: 'utf8' }).trim()
+		const commit = process.env.GITHUB_SHA ?? git('HEAD')
 		mkdirSync(dirname(out), { recursive: true })
 		writeFileSync(
 			out,
 			JSON.stringify(
 				encodeTestModuleMapShard({
 					commit,
+					tree: git(`${commit}^{tree}`),
 					shard: shard ? { index: shard.index, count: shard.count } : null,
 					projects: this.#projects,
 					hashOf: (path) => gitBlobHash(readFileOrNull(join(root, path))),

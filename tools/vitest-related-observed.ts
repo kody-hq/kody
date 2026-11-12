@@ -15,10 +15,10 @@ import {
 	changedModulePaths,
 	gitBlobHash,
 	mergeTestModuleMapShards,
+	pickTestModuleMap,
 	readFileOrNull,
 	selectObservedTests,
 	testModuleMapArtifactPrefix,
-	type TestModuleMap,
 	type TestModuleMapShard,
 } from './test-module-map.ts'
 
@@ -33,7 +33,9 @@ import {
 const mapRepo = 'kody-hq/kody'
 const selectionEnvName = 'KODY_PRE_PUSH_TEST_SELECTION'
 const cacheDir = resolve('node_modules/.cache/kody/test-module-map')
-const keptCachedRuns = 3
+// Newest Validate runs to look through for a tree in local history.
+const scannedRuns = 10
+const localHistoryDepth = 2000
 // Setup files load in every test but are not import edges of any test file,
 // so `vitest related` misses them.
 const setupPathPrefix = 'packages/worker/src/test-support/'
@@ -97,15 +99,24 @@ function downloadRunShards(runId: string) {
 		if (ok === null) return null
 		const shards = readShards(dir)
 		writeFileSync(cached, JSON.stringify(shards))
-		for (const stale of cachedRunFiles().slice(keptCachedRuns)) rmSync(stale)
+		for (const stale of cachedRunFiles().slice(scannedRuns)) rmSync(stale)
 		return shards
 	} finally {
 		rmSync(dir, { recursive: true, force: true })
 	}
 }
 
-/** Newest complete map from Validate runs; the last cached one when GitHub is unreachable. */
-function loadTestModuleMap(project: string): TestModuleMap | null {
+function localTrees() {
+	const result = spawnSync(
+		'git',
+		['log', `-${localHistoryDepth}`, '--format=%T', 'HEAD'],
+		{ encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+	)
+	return new Set(result.status === 0 ? result.stdout.split('\n') : [])
+}
+
+/** Map from recent Validate runs (cached ones when GitHub is unreachable). */
+function loadTestModuleMap(project: string) {
 	mkdirSync(cacheDir, { recursive: true })
 	const runIds = gh(
 		[
@@ -116,7 +127,7 @@ function loadTestModuleMap(project: string): TestModuleMap | null {
 			'-f',
 			`name=${testModuleMapArtifactPrefix}${project}-1`,
 			'-f',
-			'per_page=5',
+			`per_page=${scannedRuns}`,
 			'--jq',
 			// Same-repo runs only: a fork could upload a map that skips tests.
 			'.artifacts[] | select((.expired | not) and .workflow_run.head_repository_id == .workflow_run.repository_id) | .workflow_run.id',
@@ -125,16 +136,19 @@ function loadTestModuleMap(project: string): TestModuleMap | null {
 	)
 		?.split('\n')
 		.filter(Boolean)
-	for (const runId of runIds ?? []) {
-		const shards = downloadRunShards(runId)
-		const map = shards && mergeTestModuleMapShards(shards)
-		if (map?.projects.has(project)) return map
+	function* maps() {
+		if (runIds) {
+			for (const runId of runIds) {
+				const shards = downloadRunShards(runId)
+				yield shards && mergeTestModuleMapShards(shards)
+			}
+			return
+		}
+		for (const file of cachedRunFiles()) {
+			yield mergeTestModuleMapShards(JSON.parse(readFileSync(file, 'utf8')))
+		}
 	}
-	for (const file of cachedRunFiles()) {
-		const map = mergeTestModuleMapShards(JSON.parse(readFileSync(file, 'utf8')))
-		if (map?.projects.has(project)) return map
-	}
-	return null
+	return pickTestModuleMap(maps(), project, localTrees())
 }
 
 async function runSpecs(
@@ -168,7 +182,8 @@ async function main() {
 		.filter((_, index) => index !== projectIndex && index !== projectIndex + 1)
 		.map((path) => relative(root, resolve(path)).replaceAll('\\', '/'))
 	const forceRelated = process.env[selectionEnvName] === 'related'
-	const map = forceRelated ? null : loadTestModuleMap(project)
+	const picked = forceRelated ? null : loadTestModuleMap(project)
+	const map = picked?.map
 	const observed = map?.projects.get(project)
 	const { createVitest } = await import('vitest/node')
 	const options = {
@@ -200,8 +215,11 @@ async function main() {
 				changed,
 			})
 			console.log(
-				`pre-push: ${selected.length} of ${byPath.size} ${project} test files loaded one of ${changed.size} changed modules in CI run ${map.commit.slice(0, 12)}` +
+				`pre-push: ${selected.length} of ${byPath.size} ${project} test files loaded one of ${changed.size} changed modules since CI run ${map.commit.slice(0, 12)}` +
 					(unmapped.length > 0 ? ` (${unmapped.length} new or unmapped)` : '') +
+					(picked.inHistory
+						? ''
+						: '. That run is not in your history, so main changes since your branch point count as changed; rebase to narrow it') +
 					`. ${selectionEnvName}=related uses vitest related instead.`,
 			)
 			return await runSpecs(

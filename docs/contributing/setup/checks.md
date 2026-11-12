@@ -15,11 +15,14 @@ pushes. See the [setup index](./index.md) for the other setup pages.
   CI's `npm run lint` and `npm run format:check` (a few seconds each, and they
   parse every file without the Nx cache), `npm run typecheck`, `npm run knip`,
   then related unit tests separately for `node-unit` and `workers-unit`, with
-  `CI=1`. Related tests come from the newest Validate run's test module map:
-  each Node and Workers shard records which repo modules every test file loaded,
-  with each module's content hash. The hook runs the tests that loaded a module
-  whose content differs from that run, plus test files the map has not seen.
-  Without a map (no authenticated `gh`, nothing cached), or with
+  `CI=1`. Related tests come from a recent Validate run's test module map: each
+  Node and Workers shard records which repo modules every test file loaded, with
+  each module's content hash and the tested git tree. The hook prefers the
+  newest map whose tree is in your branch's history (a merged PR's tree is the
+  tree of its squash commit on `main`), so only your changes count; otherwise it
+  uses the newest map and says so. It runs the tests that loaded a module whose
+  content differs from that run, plus test files the map has not seen. Without a
+  map (no authenticated `gh`, nothing cached), or with
   `KODY_PRE_PUSH_TEST_SELECTION=related`, it uses `vitest related --run`, which
   also follows lazy `import()` edges and so selects far more tests. Pushes
   touching `packages/worker/src` or `packages/jobs-worker/src` scripts also run

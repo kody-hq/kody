@@ -4,6 +4,7 @@ import {
 	encodeTestModuleMapShard,
 	gitBlobHash,
 	mergeTestModuleMapShards,
+	pickTestModuleMap,
 	selectObservedTests,
 	testModuleMapVitestArgs,
 } from './test-module-map.ts'
@@ -17,6 +18,7 @@ function shard(
 ) {
 	return encodeTestModuleMapShard({
 		commit: 'c'.repeat(40),
+		tree: 't'.repeat(40),
 		shard: { index, count },
 		projects: new Map([['node-unit', new Map(Object.entries(tests))]]),
 		hashOf,
@@ -56,6 +58,39 @@ test('shards from different commits do not merge', () => {
 	const other = { ...shard(2, 2, {}), commit: 'd'.repeat(40) }
 	expect(mergeTestModuleMapShards([shard(1, 2, {}), other])).toBeNull()
 	expect(mergeTestModuleMapShards([])).toBeNull()
+})
+
+test('pickTestModuleMap prefers the newest map whose tree is in local history', () => {
+	const map = (tree: string, projects: Array<string> = ['node-unit']) => ({
+		commit: tree,
+		tree,
+		hashes: new Map(),
+		projects: new Map(projects.map((name) => [name, new Map()])),
+	})
+	const read: Array<string | null> = []
+	function* maps() {
+		for (const next of [
+			null,
+			map('workers-only', ['workers-unit']),
+			map('newer-pr-merge'),
+			map('main-tree'),
+			map('older-main-tree'),
+		]) {
+			read.push(next?.tree ?? null)
+			yield next
+		}
+	}
+	const trees = new Set(['main-tree', 'older-main-tree'])
+	expect(pickTestModuleMap(maps(), 'node-unit', trees)).toEqual({
+		map: map('main-tree'),
+		inHistory: true,
+	})
+	expect(read).toEqual([null, 'workers-only', 'newer-pr-merge', 'main-tree'])
+	expect(pickTestModuleMap(maps(), 'node-unit', new Set())).toEqual({
+		map: map('newer-pr-merge'),
+		inHistory: false,
+	})
+	expect(pickTestModuleMap(maps(), 'other', trees)).toBeNull()
 })
 
 test('changed modules are those whose content hash differs or that were deleted', () => {
