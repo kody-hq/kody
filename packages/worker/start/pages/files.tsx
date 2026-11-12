@@ -339,17 +339,21 @@ export function FilesPage({
 	const uploadInput = useRef<HTMLInputElement>(null)
 	const replacementInput = useRef<HTMLInputElement>(null)
 	const [message, setMessage] = useState('')
+	const quotaError = message.includes(fileStorageQuotaError)
 	const storageBlocked =
 		!external &&
 		(storageFull ||
 			!data.writes_enabled ||
-			message.includes(fileStorageQuotaError) ||
+			quotaError ||
 			uploads.jobs.some(
 				(job) =>
 					job.org === data.orgSlug &&
 					job.status === 'failed' &&
 					job.error?.includes(fileStorageQuotaError),
 			))
+	const showStorageRecovery =
+		data.canManageStorage &&
+		(embedded ? !external && quotaError : storageBlocked)
 	const [preview, setPreview] = useState(
 		fileViewerKind(
 			selected?.file.name ?? '',
@@ -1235,7 +1239,7 @@ export function FilesPage({
 					}}
 				/>
 				{message && !selected && !creating && <p role="status">{message}</p>}
-				{!embedded && !showPackages && (
+				{!showPackages && (!embedded || showStorageRecovery) && (
 					<div
 						css={{
 							display: 'flex',
@@ -1247,18 +1251,22 @@ export function FilesPage({
 							color: colors.textMuted,
 						}}
 					>
-						<span>
-							{formatStorage(usedBytes)} of {formatStorage(includedBytes)} MiB
-							included storage used
-						</span>
-						{external && <span>· New revisions use your bucket</span>}
-						{storageFull && (
-							<span role="status">Included storage is full.</span>
+						{!embedded && (
+							<>
+								<span>
+									{formatStorage(usedBytes)} of {formatStorage(includedBytes)}{' '}
+									MiB included storage used
+								</span>
+								{external && <span>· New revisions use your bucket</span>}
+								{storageFull && (
+									<span role="status">Included storage is full.</span>
+								)}
+								{!data.writes_enabled && (
+									<span role="status">File storage is unavailable.</span>
+								)}
+							</>
 						)}
-						{!data.writes_enabled && (
-							<span role="status">File storage is unavailable.</span>
-						)}
-						{data.canManageStorage && storageBlocked && (
+						{showStorageRecovery && (
 							<button
 								type="button"
 								css={button}

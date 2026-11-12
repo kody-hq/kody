@@ -7,7 +7,10 @@ import {
 	runAppDbBatchWithOrgAudit,
 } from '#worker/orgs/org-audit.ts'
 import { readFileStorageQuota } from '#worker/files/quota.ts'
-import { normalizeOrgLimitOverrideReason } from './org-limit-overrides.ts'
+import {
+	normalizeOrgLimitOverrideReason,
+	orgLimitOverrideAuditActions,
+} from './org-limit-overrides.ts'
 
 async function liveOrgId(db: D1Database, value: string) {
 	const orgId = parseOwnerId(value)
@@ -43,6 +46,11 @@ export async function updateAdminFileQuota({
 	const fallback = Number(env.FILES_INCLUDED_BYTES ?? 0)
 	const orgId = target ? await liveOrgId(db, target) : undefined
 	if (orgId) {
+		const { overrideBytes: previous } = await readFileStorageQuota(
+			db,
+			fallback,
+			orgId,
+		)
 		const statement =
 			bytes === null
 				? db
@@ -63,10 +71,14 @@ export async function updateAdminFileQuota({
 			event: {
 				orgId,
 				action:
-					bytes === null ? 'limit_override.removed' : 'limit_override.changed',
+					bytes === null
+						? orgLimitOverrideAuditActions.removed
+						: previous === null
+							? orgLimitOverrideAuditActions.set
+							: orgLimitOverrideAuditActions.changed,
 				resourceType: 'limit_override',
 				resourceId: 'file_storage_bytes',
-				details: { next: bytes, reason },
+				details: { previous, next: bytes, reason },
 			},
 		})
 	} else {
