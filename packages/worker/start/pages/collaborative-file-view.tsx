@@ -13,6 +13,12 @@ import {
 import { FileAnchorContext } from './file-anchor-context.ts'
 import * as Y from 'yjs'
 import { ContextMenuSurface } from '../components/context-menu-surface.tsx'
+import { Popover } from '@base-ui/react/popover'
+import { renderIcon } from '../components/icon.tsx'
+import {
+	overlayPopupCss,
+	overlayPositionerCss,
+} from '../components/overlay-styles.ts'
 import { createPortal } from 'react-dom'
 import { useHotkey } from '@tanstack/react-hotkeys'
 import { FileComments, CommentIcon } from './file-comments.tsx'
@@ -511,6 +517,14 @@ function CollaborationView({
 			?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
 	}, [active, open])
 
+	const syncStatusLabel = {
+		saved: 'Saved',
+		offline: state.locallySaved ? 'Saved on this device' : 'Changes pending',
+		pending: 'Saving…',
+		forbidden: 'Access changed',
+		error: 'Sync failed',
+		connecting: 'Connecting…',
+	}[state.status]
 	const toolbar = (
 		<div
 			data-file-presence=""
@@ -583,19 +597,59 @@ function CollaborationView({
 				role="status"
 				css={{ fontSize: typography.fontSize.xs, color: colors.textMuted }}
 			>
-				{state.status === 'saved'
-					? 'Saved'
-					: state.status === 'offline'
-						? state.locallySaved
-							? 'Saved on this device'
-							: 'Changes pending'
-						: state.status === 'pending'
-							? 'Saving…'
-							: state.status === 'forbidden'
-								? 'Access changed'
-								: state.status === 'error'
-									? 'Sync failed'
-									: 'Connecting…'}
+				{state.message ? (
+					<Popover.Root>
+						<Popover.Trigger css={{ ...control, color: colors.danger }}>
+							{renderIcon('warning-triangle', { size: '1rem' })}
+							{state.status === 'forbidden' ? 'Access changed' : 'Sync failed'}
+						</Popover.Trigger>
+						<Popover.Portal>
+							<Popover.Positioner
+								align="end"
+								sideOffset={6}
+								css={overlayPositionerCss}
+							>
+								<Popover.Popup
+									aria-label="File sync details"
+									css={{ ...overlayPopupCss, width: 320, padding: 12 }}
+								>
+									<p css={{ margin: '0 0 8px' }}>{state.message}</p>
+									<div css={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+										<button css={control} onClick={() => client.retry()}>
+											Retry sync
+										</button>
+										{props.canManageStorage &&
+											/storage|allowance|checkpoint/i.test(state.message) && (
+												<Popover.Close
+													css={control}
+													onClick={() => setStorageOpen(true)}
+												>
+													Storage settings
+												</Popover.Close>
+											)}
+										<button
+											css={control}
+											onClick={() => {
+												const url = URL.createObjectURL(
+													new Blob([content], { type: 'text/plain' }),
+												)
+												const link = document.createElement('a')
+												link.href = url
+												link.download = `${props.name}.draft`
+												link.click()
+												setTimeout(() => URL.revokeObjectURL(url), 1000)
+											}}
+										>
+											Download draft
+										</button>
+									</div>
+								</Popover.Popup>
+							</Popover.Positioner>
+						</Popover.Portal>
+					</Popover.Root>
+				) : (
+					syncStatusLabel
+				)}
 			</span>
 			<button
 				css={control}
@@ -723,35 +777,6 @@ function CollaborationView({
 						}}
 					/>
 				</Suspense>
-			)}
-			{state.message && (
-				<div role="alert" css={{ color: colors.danger, paddingBlock: 8 }}>
-					{state.message}
-					<button css={control} onClick={() => client.retry()}>
-						Retry sync
-					</button>
-					{props.canManageStorage &&
-						/storage|allowance|checkpoint/i.test(state.message) && (
-							<button css={control} onClick={() => setStorageOpen(true)}>
-								Storage settings
-							</button>
-						)}
-					<button
-						css={control}
-						onClick={() => {
-							const url = URL.createObjectURL(
-								new Blob([content], { type: 'text/plain' }),
-							)
-							const link = document.createElement('a')
-							link.href = url
-							link.download = `${props.name}.draft`
-							link.click()
-							setTimeout(() => URL.revokeObjectURL(url), 1000)
-						}}
-					>
-						Download draft
-					</button>
-				</div>
 			)}
 			<div
 				css={{
