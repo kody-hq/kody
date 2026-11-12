@@ -78,44 +78,62 @@ you only have the MCP URL.
   Authenticate. Manual includes
   `claude mcp add --transport http -s user kody <url>`, or a `.mcp.json` entry
   with `"type": "http"`.
-- **ChatGPT.com**: Sideload Kody as your own plugin. Kody's listing in the
-  public ChatGPT plugin directory is outdated and no longer updates, so do not
-  install it; if you already did, uninstall it and add Kody this way. Per
-  OpenAI's
-  [Connect and test your plugin](https://developers.openai.com/plugins/deploy/connect-chatgpt)
-  guide, in ChatGPT on the web:
+- **ChatGPT**: Sideload Kody from the Kody plugin marketplace, which lives in
+  this repository
+  ([`plugins/kody`](https://github.com/kody-hq/kody/tree/main/plugins/kody#readme)
+  and `.agents/plugins/marketplace.json`) so we can update it. Kody's listing in
+  the public ChatGPT plugin directory is outdated and no longer updates, so do
+  not install it; if you already did, uninstall it and install Kody from the
+  Kody marketplace instead.
 
-  1. Open [Plugins](https://chatgpt.com/plugins), select the plus button, then
-     **Add custom MCP server**.
-  2. Name it Kody and enter this deployment's MCP URL under **Connection**
-     (`https://kody.codes/mcp` on [kody.codes](https://kody.codes); preview and
-     local Get started show their own `/mcp`).
-  3. Choose OAuth for authentication, check **I understand and want to
-     continue**, then select **Create as a plugin**.
-  4. Install the Kody plugin (under **Personal**, **Created by me**), select
-     **Connect** if prompted, and approve access when ChatGPT asks you to sign
-     in to Kody.
+  1. In the ChatGPT desktop app or the Codex app, open **Plugins**, choose **Add
+     plugin marketplace**, and enter:
 
-  You do not need to turn on Developer mode first. Custom MCP servers depend on
-  your ChatGPT plan and workspace:
-  [OpenAI's help](https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt)
-  lists Business, Enterprise, and Edu, and a workspace admin may need to allow
-  **Create plugins with MCPs**. Add the server on the web; the mobile app cannot
-  add one, but the installed plugin works there. If ChatGPT asks for an icon,
-  use the connector icon (`/images/kody-app-icon.png`, 256×256 and under
-  ChatGPT's 10 KB limit); right-click Save as on the connect page, then upload
-  it. If ChatGPT shows only `search` and `execute` (no `api`), open Kody in
-  [Plugins](https://chatgpt.com/plugins) and select **Refresh**, or use the Kody
+     ```text
+     Source: kody-hq/kody
+     Git ref: main
+     Sparse paths:
+     .agents/plugins
+     plugins/kody
+     ```
+
+  2. Open the **Kody** marketplace tab in the Plugins directory, install Kody,
+     and sign in to Kody when asked.
+
+  On ChatGPT.com in a Business, Enterprise, or Edu workspace, an admin opens
+  **Admin** > **Plugins** and selects **Add** > **Import marketplace**, enters
+  `https://github.com/kody-hq/kody` in **Source**, and leaves **Path** empty
+  (OpenAI's
+  [plugin management guide](https://learn.chatgpt.com/docs/enterprise/plugin-management)).
+  Members then install Kody from the workspace plugins on web, desktop, and
+  mobile, and sign in to Kody. No desktop app or workspace import? On
+  ChatGPT.com with Business, Enterprise, or Edu you can add a custom MCP server
+  named Kody with this deployment's MCP URL and OAuth instead
+  ([OpenAI's custom MCP help](https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt)).
+  If ChatGPT asks for an icon, use `/images/kody-app-icon.png` (256×256, under
+  ChatGPT's 10 KB limit) from the connect page.
+
+  The plugin package connects to `https://kody.codes/mcp`. Preview and local Get
+  started skip the package and show the custom MCP server steps with their own
+  `/mcp`. If ChatGPT shows only `search` and `execute` (no `api`), use the Kody
   CLI (`npx @kodycodes/cli api tokenList` / `tokenRevoke`).
 
-- **Codex**: Codex runs in the ChatGPT desktop app and uses the plugins
-  installed in ChatGPT, so sideload the same Kody plugin: follow the four
-  **ChatGPT.com** steps above on the web, then Kody works in Codex in the
-  ChatGPT desktop app (in a Codex task, **Sources → Use plugins** selects it).
-  Do not use the outdated ChatGPT plugin directory listing.
+- **Codex**: Sideload the same Kody plugin. In the Codex CLI or IDE extension,
+  run these, then start a new Codex session and sign in to Kody when asked:
+
+  ```sh
+  codex plugin marketplace add kody-hq/kody --sparse .agents/plugins --sparse plugins/kody
+  codex plugin add kody@kody-hq
+  ```
+
+  You can also run `/plugins` in Codex and install Kody from the Kody
+  marketplace tab. In the Codex app or ChatGPT desktop app, use the two
+  **ChatGPT** app steps above. Run `codex plugin marketplace upgrade kody-hq` to
+  pick up plugin updates. Do not use the outdated ChatGPT plugin directory
+  listing.
 
   <details>
-  <summary>Or add Kody as a Codex MCP server</summary>
+  <summary>Or add Kody as a Codex MCP server only</summary>
 
   Get started offers **Open Codex** (`codex://mcp/add?name=kody&url=<url>`) so
   the desktop app launches when that protocol is registered. In the ChatGPT

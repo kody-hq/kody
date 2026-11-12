@@ -1,0 +1,20 @@
+{
+	"name": "kody-hq",
+	"interface": {
+		"displayName": "Kody"
+	},
+	"plugins": [
+		{
+			"name": "kody",
+			"source": {
+				"source": "local",
+				"path": "./plugins/kody"
+			},
+			"policy": {
+				"installation": "AVAILABLE",
+				"authentication": "ON_INSTALL"
+			},
+			"category": "Productivity"
+		}
+	]
+}

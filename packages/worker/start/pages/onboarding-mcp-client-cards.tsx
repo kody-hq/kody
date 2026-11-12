@@ -201,9 +201,17 @@ export function ChatGptSideloadNote(props: ChatGptSideloadNoteProps) {
 }
 
 /** Numbered host-side steps shown under a primary action. */
-export function SideloadSteps(props: { steps: ReadonlyArray<string> }) {
+export function SideloadSteps(props: {
+	steps: ReadonlyArray<string>
+	/** Continues numbering when copy cards split one list. */
+	start?: number
+}) {
 	return (
-		<ol data-testid="onboarding-mcp-sideload-steps" css={sideloadStepsCss}>
+		<ol
+			data-testid="onboarding-mcp-sideload-steps"
+			start={props.start}
+			css={sideloadStepsCss}
+		>
 			{props.steps.map((step) => (
 				<li key={step}>{step}</li>
 			))}
