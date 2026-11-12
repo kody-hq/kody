@@ -222,6 +222,7 @@ export function createLocalKodyUpstream(input: {
 		origin: input.kody.origin,
 		appPath: `/@${input.kody.username}/packages/${input.manifest.kodyId}`,
 		cookie: input.kody.sessionCookie,
+		listOutbox: () => input.kody.listOutbox(),
 		sync: async () => {
 			const tree = await collectPackageCheckFiles(input.manifest.root)
 			const files = Object.entries(tree.files).map(([path, content]) => ({

@@ -13,6 +13,8 @@ import { userCacheDir } from '../workerd-binary.js'
 import { isProcessAlive } from './process-reaper.js'
 
 export const devStatusPath = '/__kody/dev/status'
+/** Email the local Kody would have delivered, newest last. */
+export const devOutboxPath = '/__kody/dev/outbox'
 
 export type DevRegistration = {
 	pid: number

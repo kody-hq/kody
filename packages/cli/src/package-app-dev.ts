@@ -20,6 +20,7 @@ import {
 	type ServerResponse,
 } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import type { Duplex } from 'node:stream'
 import { tmpdir } from 'node:os'
 import { join, relative, resolve, sep } from 'node:path'
 import {
@@ -56,7 +57,11 @@ import {
 	trustedDevHostFromHostedUrl,
 } from './dev/dev-proxy-origin.js'
 import { listenDevServer } from './dev/dev-port.js'
-import { devStatusPath, type DevServerStatus } from './dev/dev-registry.js'
+import {
+	devOutboxPath,
+	devStatusPath,
+	type DevServerStatus,
+} from './dev/dev-registry.js'
 import { createDevWatcher, type DevWatcher } from './dev/dev-watcher.js'
 import { sendDevError, type DevErrorView } from './dev/error-page.js'
 import {
@@ -233,6 +238,8 @@ export type LocalKodyUpstream = {
 	cookie: string
 	/** Save the working tree into the local Kody. */
 	sync: () => Promise<void>
+	/** Email captured by the local email boundary instead of being sent. */
+	listOutbox: () => Promise<unknown>
 }
 
 type Generation = {
@@ -364,6 +371,63 @@ export async function startPackageAppDev(
 	const address = proxy.address() as AddressInfo
 	const listenPlan = planDevListen({ bindHost: host, port: address.port })
 	const { hostedUrl, localUrl, networkUrls } = listenPlan
+	// Realtime `/ws` upgrades go straight to the local Kody origin.
+	proxy.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+		const upstream = active?.upstream
+		const publicHost = resolveAllowedDevHost({
+			incomingHost: req.headers.host,
+			trustedHost: trustedDevHostFromHostedUrl(hostedUrl),
+			aliases: [
+				...(options.hostAliases ?? []),
+				...listenPlan.extraAllowedHosts(),
+			],
+		})
+		if (!upstream || !publicHost) {
+			socket.destroy()
+			return
+		}
+		const incomingUrl = new URL(req.url ?? '/', hostedUrl)
+		const restPath = stripMount(incomingUrl.pathname, appBasePath)
+		const forwardUrl = new URL(
+			buildTrustedDevForwardUrl({
+				baseUrl: upstream.origin,
+				restPath: `${upstream.appPath}${restPath === '/' ? '/' : restPath}`,
+				search: incomingUrl.search,
+			}),
+		)
+		const upstreamReq = httpRequest(forwardUrl, {
+			method: req.method,
+			headers: {
+				...req.headers,
+				host: forwardUrl.host,
+				cookie: upstream.cookie,
+			},
+		})
+		upstreamReq.on('upgrade', (upstreamRes, upstreamSocket, upstreamHead) => {
+			const lines = [
+				`HTTP/1.1 101 ${upstreamRes.statusMessage ?? 'Switching Protocols'}`,
+			]
+			for (let i = 0; i < upstreamRes.rawHeaders.length; i += 2) {
+				lines.push(
+					`${upstreamRes.rawHeaders[i]}: ${upstreamRes.rawHeaders[i + 1]}`,
+				)
+			}
+			socket.write(`${lines.join('\r\n')}\r\n\r\n`)
+			if (upstreamHead.length > 0) socket.write(upstreamHead)
+			if (head.length > 0) upstreamSocket.write(head)
+			upstreamSocket.pipe(socket).pipe(upstreamSocket)
+			upstreamSocket.on('error', () => socket.destroy())
+			socket.on('error', () => upstreamSocket.destroy())
+		})
+		upstreamReq.on('response', (upstreamRes) => {
+			socket.end(
+				`HTTP/1.1 ${upstreamRes.statusCode ?? 502} ${upstreamRes.statusMessage ?? ''}\r\nconnection: close\r\n\r\n`,
+			)
+			upstreamRes.resume()
+		})
+		upstreamReq.on('error', () => socket.destroy())
+		upstreamReq.end()
+	})
 	try {
 		await options.onListening?.({
 			port: address.port,
@@ -836,6 +900,27 @@ export async function startPackageAppDev(
 				'cache-control': 'no-store',
 			})
 			res.end(`${JSON.stringify(status(), null, 2)}\n`)
+			return true
+		}
+		if (pathname === devOutboxPath) {
+			const send = (code: number, body: unknown) => {
+				res.writeHead(code, {
+					'content-type': 'application/json; charset=utf-8',
+					'cache-control': 'no-store',
+				})
+				res.end(`${JSON.stringify(body, null, 2)}\n`)
+			}
+			if (!options.localKody) {
+				send(200, { count: 0, messages: [] })
+				return true
+			}
+			options.localKody.listOutbox().then(
+				(outbox) => send(200, outbox),
+				(error: unknown) =>
+					send(502, {
+						error: error instanceof Error ? error.message : String(error),
+					}),
+			)
 			return true
 		}
 		if (!liveReload) return false

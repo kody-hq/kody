@@ -1624,6 +1624,19 @@ function redactRunRecordError(
 
 type AppStorageInput = { storageId: string; visitTicket?: string | null }
 
+/**
+ * `kody dev` is a true mock: every package secret is a placeholder and the
+ * secret store is never read, so no real value can reach a local app or its
+ * outbound requests. Third-party calls go to the mock server instead.
+ */
+function isKodyDevMockSecrets(env: Env) {
+	return env.KODY_DEV_MOCK_SECRETS?.trim() === 'true'
+}
+
+export function buildKodyDevMockSecret(alias: string) {
+	return `kody-dev-mock-secret:${alias.trim()}`
+}
+
 export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 	Env,
 	PackageAppRuntimeBridgeProps
@@ -2967,6 +2980,9 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		visitTicket: string | null | undefined,
 	) {
 		const input = { alias }
+		if (isKodyDevMockSecrets(this.env)) {
+			return { value: buildKodyDevMockSecret(alias) }
+		}
 		const resolved = await this.resolvePackageSecretMount({
 			alias,
 			boundPackageId,
@@ -3010,6 +3026,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		alias: string,
 		visitTicket: string | null | undefined,
 	) {
+		if (isKodyDevMockSecrets(this.env)) return { has: true }
 		try {
 			await this.resolvePackageSecretMount({
 				alias,

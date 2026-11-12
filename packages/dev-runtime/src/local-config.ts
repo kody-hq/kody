@@ -56,6 +56,8 @@ const productionOnlyVarPattern =
 
 export const localVars: Readonly<Record<string, string>> = {
 	WRANGLER_IS_LOCAL_DEV: 'true',
+	// Package secrets resolve to placeholders; the secret store is never read.
+	KODY_DEV_MOCK_SECRETS: 'true',
 	ARTIFACTS_NAMESPACE: 'local',
 	USER_EMAIL_DOMAIN: 'inbox.kody.localhost',
 	SYSTEM_EMAIL_DOMAIN: 'kody.localhost',
