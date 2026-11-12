@@ -11,28 +11,56 @@ import type {
 	CollaborationActor,
 } from '#universal/file-collaboration.ts'
 
+/**
+ * Person/org lookups shared across access checks within one handler run, so
+ * sockets that belong to the same person in the same org reuse one D1 lookup.
+ * Callers must start a fresh cache per run so revocations are still observed.
+ */
+export type FileAccessLookups = Map<string, Promise<unknown>>
+
+function memo<T>(
+	lookups: FileAccessLookups | undefined,
+	key: string,
+	load: () => Promise<T>,
+): Promise<T> {
+	if (!lookups) return load()
+	let value = lookups.get(key) as Promise<T> | undefined
+	if (!value) {
+		value = load()
+		lookups.set(key, value)
+	}
+	return value
+}
+
 /** Room callers supply server-derived contexts. Never accept one from client JSON. */
 export async function fileCollaborationAccess(
 	env: Env,
 	request: RequestContext,
 	fileId: string,
+	lookups?: FileAccessLookups,
 ): Promise<{
 	request: RequestContext
 	access: CollaborationAccess
 	actor: CollaborationActor
 }> {
 	if (!request.actor) throw new Error('Sign in to open this file.')
-	const binding = await loadLiveOrgBindingForOrg(
-		env.APP_DB,
-		request.actor.userId,
-		request.org.id,
+	const personOrg = JSON.stringify([request.actor.userId, request.org.id])
+	const binding = await memo(lookups, `binding:${personOrg}`, () =>
+		loadLiveOrgBindingForOrg(env.APP_DB, request.actor!.userId, request.org.id),
 	)
 	if (!binding) throw new Error('File access was revoked.')
 	const fresh = {
 		...request,
 		membership: binding.role ? { role: binding.role } : null,
 	}
-	const effective = await fileEffectivePermissions(env, fresh)
+	// Evaluated once per person/org and reused for both effective permissions
+	// and the collaboration gates below.
+	let enabledOnce: Promise<boolean> | undefined
+	const enabledLookup = () =>
+		(enabledOnce ??= memo(lookups, `enabled:${personOrg}`, () =>
+			fileCollaborationEnabled(env, fresh),
+		))
+	const effective = await fileEffectivePermissions(env, fresh, enabledLookup)
 	const store = fileStoreRpc(env, request.org.id)
 	const files = await loadFileAncestors(
 		(id) => store.metadata(request.org.id, id),
@@ -47,7 +75,7 @@ export async function fileCollaborationAccess(
 	) => fileTreePermission(effective, files, permission, fileId)
 	const read =
 			holds('file:read') && ![...files.values()].some((file) => file.trashedAt),
-		enabled = await fileCollaborationEnabled(env, fresh),
+		enabled = await enabledLookup(),
 		write = read && enabled && holds('file:write')
 	const profileId = request.credential.profileId ?? null
 	const agent = request.credential.kind !== 'session'
