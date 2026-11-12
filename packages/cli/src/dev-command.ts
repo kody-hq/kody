@@ -477,53 +477,91 @@ async function tryAttachedDevCall(input: {
 	closeMock?: () => Promise<void>
 }): Promise<number | null> {
 	if (input.target !== 'mock') return null
-	let root: string
+	let manifest: Awaited<ReturnType<typeof loadPackageManifest>>
 	try {
-		root = (await loadPackageManifest(input.cwd)).root
+		manifest = await loadPackageManifest(input.cwd)
 	} catch {
 		return null
 	}
-	const running = await findRunningDevServer({ root, target: input.target })
-	if (!running) return null
-	const { registration } = running
-	const url = new URL(
-		`${registration.basePath}${devCallPath}`,
-		registration.origin,
-	)
-	const call = async (operation: string, args: Record<string, unknown>) => {
-		const response = await fetch(url, {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ operation, input: args }),
-		})
-		const body = (await response.json().catch(() => null)) as {
-			result?: unknown
-			error?: string
-		} | null
-		if (response.status === 404) return devCallUnavailable
-		if (!response.ok) {
-			throw new StructuredCliError({
-				code: 'dev_local_call_failed',
-				message:
-					body?.error ??
-					`Local Kody ${operation} failed (HTTP ${response.status}).`,
-				target: input.target,
+	const running = await findRunningDevServer({
+		root: manifest.root,
+		target: input.target,
+	})
+	let call: (
+		operation: string,
+		args: Record<string, unknown>,
+	) => Promise<unknown>
+	let ranOn: string
+	let closeLocal: (() => Promise<void>) | undefined
+	if (running) {
+		const { registration } = running
+		const url = new URL(
+			`${registration.basePath}${devCallPath}`,
+			registration.origin,
+		)
+		ranOn = `running kody dev (pid ${registration.pid})`
+		call = async (operation, args) => {
+			const response = await fetch(url, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ operation, input: args }),
 			})
+			const body = (await response.json().catch(() => null)) as {
+				result?: unknown
+				error?: string
+			} | null
+			if (response.status === 404) return devCallUnavailable
+			if (!response.ok) {
+				throw new StructuredCliError({
+					code: 'dev_local_call_failed',
+					message:
+						body?.error ??
+						`Local Kody ${operation} failed (HTTP ${response.status}).`,
+					target: input.target,
+				})
+			}
+			return body?.result
 		}
-		return body?.result
+	} else {
+		// The stub runtime only exists for the CLI's own offline test suite.
+		if (process.env.KODY_DEV_STUB_RUNTIME === '1') return null
+		const local = await import('./dev/local-kody.js')
+		const kody = await local.startLocalKody({
+			manifest,
+			onStatus: (message) => input.io.stderr(`${message}\n`),
+		})
+		closeLocal = kody.close
+		ranOn = 'a one-shot local Kody'
+		try {
+			const upstream = local.createLocalKodyUpstream({ kody, manifest })
+			await upstream.sync()
+			call = async (operation, args) => {
+				const packageId = upstream.packageId()
+				return await upstream.call(
+					operation,
+					packageId && operation !== 'jobList' && operation !== 'jobRunNow'
+						? { ...args, package_id: packageId }
+						: args,
+				)
+			}
+		} catch (error) {
+			await closeLocal()
+			await input.closeMock?.()
+			throw error
+		}
 	}
 	let first: unknown
 	try {
 		first = await input.steps(call)
 	} catch (error) {
+		await closeLocal?.()
 		await input.closeMock?.()
 		throw error
 	}
+	await closeLocal?.()
 	if (first === devCallUnavailable) return null
 	await input.closeMock?.()
-	input.io.stderr(
-		`Ran on local Kody via running kody dev (pid ${registration.pid})\n`,
-	)
+	input.io.stderr(`Ran on local Kody via ${ranOn}\n`)
 	input.io.stdout(`${JSON.stringify(first, null, 2)}\n`)
 	const failed =
 		first &&
