@@ -21,7 +21,11 @@ import {
 	buildMuseSettingsJson,
 	buildVsCodeInstallUrl,
 	buildVsCodeMcpJson,
-	chatGptDeveloperModeGuideUrl,
+	chatGptCustomMcpGuideUrl,
+	chatGptDirectoryListingNote,
+	chatGptPluginsUrl,
+	chatGptSideloadAvailabilityNote,
+	chatGptSideloadSteps,
 	claudeDesktopToolHint,
 	cueSiteUrl,
 	dotsIntroUrl,
@@ -33,12 +37,10 @@ import {
 	buildKodyCliLoginCommand,
 	instinctSiteUrl,
 	kodyCliGlobalInstallCommand,
-	isDefaultKodyMcpUrl,
 	kodyAppIconFilename,
 	kodyBotTemplateLabel,
 	kodyBotTemplateSummary,
 	kodyBotTemplateUrl,
-	kodyChatGptPluginUrl,
 	kodyCursorAddPluginCommand,
 	kodyCursorMarketplaceUrl,
 	type McpClientKind,
@@ -52,7 +54,7 @@ import {
 import type { HighlightedCode } from '#universal/highlighted-code.ts'
 import {
 	AppIconCard,
-	ChatGptDeveloperModeWarning,
+	ChatGptSideloadNote,
 	ClientWarning,
 	CopyCard,
 	CopyCardDetails,
@@ -60,6 +62,7 @@ import {
 	OnboardingManualDetails,
 	PluginPrimaryInstall,
 	PrimaryActionLink,
+	SideloadSteps,
 } from './onboarding-mcp-client-cards.tsx'
 
 function ConnectCopyCard(props: {
@@ -108,13 +111,49 @@ function ConnectCopyCardDetails(props: {
 	)
 }
 
-function ChatGptPluginAction(_props: object) {
+/**
+ * Sideload Kody as your own ChatGPT plugin with this deployment's MCP URL.
+ * Codex in the ChatGPT desktop app uses the same installed plugin.
+ */
+function ChatGptPluginSideload(props: {
+	mcpServerUrl: string
+	highlights?: Record<string, HighlightedCode>
+	afterInstall?: string
+}) {
 	return (
-		<PrimaryActionLink
-			href={kodyChatGptPluginUrl}
-			label="Add ChatGPT plugin"
-			external
-		/>
+		<>
+			<PrimaryActionLink
+				href={chatGptPluginsUrl}
+				label="Open ChatGPT Plugins"
+				external
+			/>
+			<SideloadSteps
+				steps={[
+					chatGptSideloadSteps.open,
+					chatGptSideloadSteps.connect,
+					chatGptSideloadSteps.create,
+					props.afterInstall
+						? `${chatGptSideloadSteps.install} ${props.afterInstall}`
+						: chatGptSideloadSteps.install,
+				]}
+			/>
+			<ConnectCopyCard
+				highlights={props.highlights}
+				label="MCP URL"
+				value={props.mcpServerUrl}
+				copyLabel="Copy MCP URL"
+			/>
+			<AppIconCard
+				src={buildKodyAppIconUrl(props.mcpServerUrl)}
+				downloadName={kodyAppIconFilename}
+			/>
+			<ChatGptSideloadNote
+				availability={chatGptSideloadAvailabilityNote}
+				href={chatGptCustomMcpGuideUrl}
+				linkLabel="OpenAI's custom MCP help"
+				directoryListing={chatGptDirectoryListingNote}
+			/>
+		</>
 	)
 }
 
@@ -142,86 +181,45 @@ export function renderPanelContent(
 					alternativeCopyLabel="Copy /add-plugin kody"
 				/>
 			)
-		case 'chatgpt': {
-			const appIconUrl = buildKodyAppIconUrl(mcpServerUrl)
-			const developerApp = (
-				<>
-					<ConnectCopyCard
-						highlights={highlights}
-						label="MCP URL"
-						value={mcpServerUrl}
-						copyLabel="Copy MCP URL"
-					/>
-					<AppIconCard src={appIconUrl} downloadName={kodyAppIconFilename} />
-					<ChatGptDeveloperModeWarning
-						href={chatGptDeveloperModeGuideUrl}
-						linkLabel="developer mode help"
-					/>
-				</>
+		case 'chatgpt':
+			return (
+				<ChatGptPluginSideload
+					mcpServerUrl={mcpServerUrl}
+					highlights={highlights}
+				/>
 			)
-			if (!isDefaultKodyMcpUrl(mcpServerUrl)) return developerApp
+		case 'codex': {
+			const sideload = (
+				<ChatGptPluginSideload
+					mcpServerUrl={mcpServerUrl}
+					highlights={highlights}
+					afterInstall="Kody then works in Codex in the ChatGPT desktop app."
+				/>
+			)
+			if (surface === 'mobile') return sideload
 			return (
 				<>
-					<ChatGptPluginAction />
-					<OnboardingManualDetails summaryLead="Or create a developer-mode app">
-						{developerApp}
-					</OnboardingManualDetails>
-				</>
-			)
-		}
-		case 'codex': {
-			const appIconUrl = buildKodyAppIconUrl(mcpServerUrl)
-			const codexDeepLink = buildCodexMcpDeepLink(mcpServerUrl)
-			const codexCommand = buildCodexMcpAddCommand(mcpServerUrl)
-			const codexToml = buildCodexMcpToml(mcpServerUrl)
-			if (surface === 'mobile') {
-				const mobileMcp = (
-					<>
+					{sideload}
+					<OnboardingManualDetails summaryLead="Or add Kody as a Codex MCP server">
+						<PrimaryActionLink
+							href={buildCodexMcpDeepLink(mcpServerUrl)}
+							label="Open Codex"
+						/>
 						<ConnectCopyCard
 							highlights={highlights}
-							label="MCP URL"
-							value={mcpServerUrl}
-							copyLabel="Copy MCP URL"
+							label="codex CLI"
+							value={buildCodexMcpAddCommand(mcpServerUrl)}
+							copyLabel="Copy command"
+							variant="pill"
+							lang="sh"
 						/>
-						<AppIconCard src={appIconUrl} downloadName={kodyAppIconFilename} />
-					</>
-				)
-				if (!isDefaultKodyMcpUrl(mcpServerUrl)) return mobileMcp
-				return (
-					<>
-						<ChatGptPluginAction />
-						<OnboardingManualDetails summaryLead="Or paste the MCP URL in the ChatGPT app">
-							{mobileMcp}
-						</OnboardingManualDetails>
-					</>
-				)
-			}
-			const desktopMcp = (
-				<>
-					<PrimaryActionLink href={codexDeepLink} label="Open Codex" />
-					<ConnectCopyCard
-						highlights={highlights}
-						label="codex CLI"
-						value={codexCommand}
-						copyLabel="Copy command"
-						variant="pill"
-						lang="sh"
-					/>
-					<ConnectCopyCard
-						highlights={highlights}
-						label="~/.codex/config.toml"
-						value={codexToml}
-						copyLabel="Copy TOML"
-						lang="toml"
-					/>
-				</>
-			)
-			if (!isDefaultKodyMcpUrl(mcpServerUrl)) return desktopMcp
-			return (
-				<>
-					<ChatGptPluginAction />
-					<OnboardingManualDetails summaryLead="Or add Kody as a Codex MCP server">
-						{desktopMcp}
+						<ConnectCopyCard
+							highlights={highlights}
+							label="~/.codex/config.toml"
+							value={buildCodexMcpToml(mcpServerUrl)}
+							copyLabel="Copy TOML"
+							lang="toml"
+						/>
 					</OnboardingManualDetails>
 				</>
 			)

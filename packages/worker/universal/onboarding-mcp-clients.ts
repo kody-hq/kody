@@ -411,8 +411,36 @@ const copilotCliMcpGuideUrl =
 const copilotAppCustomizeGuideUrl =
 	'https://docs.github.com/en/copilot/how-tos/github-copilot-app/customize-github-copilot-app'
 
-export const chatGptDeveloperModeGuideUrl =
-	'https://developers.openai.com/api/docs/guides/developer-mode'
+/** OpenAI help for adding a custom MCP server from ChatGPT Plugins. */
+export const chatGptCustomMcpGuideUrl =
+	'https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt'
+
+/** ChatGPT Plugins on the web, where you add a custom MCP server. */
+export const chatGptPluginsUrl = 'https://chatgpt.com/plugins'
+
+/**
+ * Sideload Kody as your own ChatGPT plugin (Add custom MCP server), per
+ * OpenAI's "Connect and test your plugin" guide. ChatGPT and Codex in the
+ * ChatGPT desktop app share installed plugins, so both hosts use these steps
+ * on Get started and on /with pages. The public plugin directory listing is
+ * frozen, so nothing here links to it.
+ */
+export const chatGptSideloadSteps = {
+	open: 'In ChatGPT on the web, open Plugins, select the plus button, then Add custom MCP server.',
+	connect: 'Name it Kody and paste this MCP URL under Connection:',
+	create:
+		'Choose OAuth for authentication, check I understand and want to continue, then select Create as a plugin.',
+	install:
+		'Install the Kody plugin, select Connect if prompted, and approve access when ChatGPT asks you to sign in to Kody.',
+} as const
+
+/** Custom MCP plugins are plan and workspace gated per OpenAI's help. */
+export const chatGptSideloadAvailabilityNote =
+	'Custom MCP servers depend on your ChatGPT plan and workspace. OpenAI lists Business, Enterprise, and Edu, and a workspace admin may need to allow Create plugins with MCPs.'
+
+/** For people who installed the frozen directory listing. */
+export const chatGptDirectoryListingNote =
+	'Installed Kody from the ChatGPT plugin directory before? That listing is outdated and no longer updates, so uninstall it and add Kody this way instead.'
 
 const cursorMcpGuideUrl = 'https://cursor.com/docs/mcp'
 
@@ -465,10 +493,6 @@ export const instinctSiteUrl = 'https://instinct.com/'
 
 /** Cursor Marketplace listing for the official Kody plugin (production). */
 export const kodyCursorMarketplaceUrl = 'https://cursor.com/marketplace/kody'
-
-/** ChatGPT plugin directory listing for Kody (production MCP). */
-export const kodyChatGptPluginUrl =
-	'https://chatgpt.com/plugins/plugin_asdk_app_6a95fefc5c1081919756fdd35dd918ee'
 
 /** Cursor chat command shown on the marketplace listing. */
 export const kodyCursorAddPluginCommand = '/add-plugin kody'

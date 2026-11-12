@@ -1,18 +1,22 @@
 import {
 	buildClaudeCodeAddCommand,
+	buildCodexMcpAddCommand,
 	buildCopilotCliAddCommand,
 	buildHermesMcpAddCommand,
 	buildKodyCliLoginCommand,
 	buildMuseSettingsJson,
 	buildOpenClawMcpAddCommand,
 	buildOpenCodeMcpAddCommand,
+	chatGptPluginsUrl,
+	chatGptSideloadAvailabilityNote,
+	chatGptSideloadSteps,
+	codexMcpLoginCommand,
 	defaultKodyMcpUrl,
 	grokBotInstallUrl,
 	grokConnectorsUrl,
 	kodyBotTemplateLabel,
 	kodyBotTemplateSummary,
 	kodyBotTemplateUrl,
-	kodyChatGptPluginUrl,
 	kodyCursorAddPluginCommand,
 	kodyCursorMarketplaceUrl,
 	kodyCliGlobalInstallCommand,
@@ -90,10 +94,15 @@ function genericAgent<const Slug extends string>(
 	} satisfies WithAgent
 }
 
-const chatGptPluginStep = {
-	text: 'Add the Kody plugin from the ChatGPT plugin directory.',
-	link: { label: 'Open the Kody plugin', href: kodyChatGptPluginUrl },
-} satisfies WithAgentStep
+/** Sideloaded Kody plugin: ChatGPT and Codex share it, so both pages use it. */
+const chatGptSideloadWithSteps = [
+	{
+		text: chatGptSideloadSteps.open,
+		link: { label: 'Open ChatGPT Plugins', href: chatGptPluginsUrl },
+	},
+	{ text: chatGptSideloadSteps.connect, code: mcpUrl },
+	{ text: chatGptSideloadSteps.create },
+] as const satisfies ReadonlyArray<WithAgentStep>
 
 export const withAgents = [
 	{
@@ -140,8 +149,14 @@ export const withAgents = [
 			'Let Codex build tools your whole team can run, with credentials it uses but never sees.',
 		youtubeVideoId: 'fuDXGko25u4',
 		steps: [
-			chatGptPluginStep,
-			{ text: 'Approve access when Codex asks you to sign in to Kody.' },
+			...chatGptSideloadWithSteps,
+			{
+				text: `${chatGptSideloadSteps.install} Kody then works in Codex in the ChatGPT desktop app.`,
+			},
+			{
+				text: `Using the Codex CLI instead? Run this, then ${codexMcpLoginCommand} if sign-in does not start:`,
+				code: buildCodexMcpAddCommand(mcpUrl),
+			},
 		],
 	},
 	{
@@ -153,9 +168,9 @@ export const withAgents = [
 			'Use your team\u2019s packages and connected accounts from a ChatGPT conversation, on the web or on your phone.',
 		youtubeVideoId: 'XhEOHp-xAvI',
 		steps: [
-			chatGptPluginStep,
+			...chatGptSideloadWithSteps,
 			{
-				text: 'Approve access when ChatGPT asks you to sign in to Kody. Plugins need a paid ChatGPT plan.',
+				text: `${chatGptSideloadSteps.install} ${chatGptSideloadAvailabilityNote}`,
 			},
 		],
 	},
