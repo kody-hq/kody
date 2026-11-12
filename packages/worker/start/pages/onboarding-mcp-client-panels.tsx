@@ -780,12 +780,6 @@ export function renderPanelWarning(
 					check cloud agents.
 				</ClientWarning>
 			) : null
-		case 'chatgpt':
-			return surface === 'mobile' ? null : (
-				<ClientWarning>
-					ChatGPT desktop is Codex. Change selection if you meant that instead.
-				</ClientWarning>
-			)
 		case 'codex':
 			return surface === 'mobile' ? (
 				<ClientWarning>

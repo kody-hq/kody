@@ -303,6 +303,7 @@ export function onboardingAgentLabel(
 	surface: OnboardingAgentSurface = 'desktop',
 ): string {
 	if (id === 'other') return 'Not listed'
+	if (id === 'chatgpt') return 'ChatGPT'
 	if (surface === 'mobile') {
 		switch (id) {
 			case 'chatgpt':
