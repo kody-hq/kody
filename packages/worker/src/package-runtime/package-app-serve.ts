@@ -31,6 +31,9 @@ import {
 	findLivePackageAppOauthGrant,
 	notePackageAppOauthGrantUse,
 } from '#app/package-app-oauth-grants.ts'
+import { buildPackagePublishApprovalUrl } from '#worker/package-registry/package-publish-lock.ts'
+import { resolveCachedArtifactSourceHead } from '#worker/repo/artifact-head-cache.ts'
+import { isPackageSourceNotPublishedError } from '#worker/repo/source-not-published-error.ts'
 import {
 	getAppBaseUrl,
 	getCanonicalAppBaseUrl,
@@ -434,6 +437,16 @@ function resolveExpectedPackageAppHostSetupFailure(input: {
 	packageName: string
 	synthetic?: boolean
 }): Response | null {
+	if (isPackageSourceNotPublishedError(input.error)) {
+		return createPackageAppErrorResponse({
+			request: input.request,
+			kind: 'not-published',
+			kodyId: input.kodyId,
+			packageName: input.packageName,
+			synthetic: input.synthetic,
+			cause: input.error.message,
+		})
+	}
 	if (isComputeOverageLimitError(input.error)) {
 		return createPackageAppErrorResponse({
 			request: input.request,
@@ -464,13 +477,24 @@ type PackageAppFailureKind =
 	| 'realtime-connect'
 	| 'include-used-up'
 	| 'runtime-bundle-pending'
+	| 'not-published'
+	| 'publish-pending'
+
+/** Pushed package repo HEAD that is newer than the commit being served. */
+type UnpublishedChanges = {
+	publishedCommit: string
+	headCommit: string
+	publishUrl: string
+}
 
 function packageAppFailureStatus(kind: PackageAppFailureKind) {
 	switch (kind) {
 		case 'include-used-up':
 			return 429
 		case 'runtime-bundle-pending':
+		case 'not-published':
 			return 503
+		case 'publish-pending':
 		case 'host-setup':
 		case 'package-entrypoint':
 		case 'realtime-connect':
@@ -480,6 +504,52 @@ function packageAppFailureStatus(kind: PackageAppFailureKind) {
 			void exhaustive
 			return 500
 		}
+	}
+}
+
+/**
+ * When the served commit fails a page load, tell someone who can publish that
+ * newer pushed commits are waiting. Only owners and admins loading an HTML page
+ * see it; API callers and other visitors keep the app's own response.
+ */
+async function resolveUnpublishedChanges(input: {
+	env: Env
+	request: Request
+	visitor: RuntimePackageAppVisitor | null
+	synthetic: boolean
+	repoId: string | null
+	publishedCommit: string | null
+	username: string
+	kodyId: string
+}): Promise<UnpublishedChanges | null> {
+	const role = input.visitor?.role
+	if (role !== 'owner' && role !== 'admin') return null
+	if (input.synthetic || !input.repoId || !input.publishedCommit) return null
+	if (input.request.method !== 'GET' && input.request.method !== 'HEAD') {
+		return null
+	}
+	const accept = input.request.headers.get('accept') ?? ''
+	if (!accept.includes('text/html') || wantsJson(input.request)) return null
+	try {
+		const head = await resolveCachedArtifactSourceHead(
+			input.env,
+			input.repoId,
+			{ request: input.request },
+		)
+		if (!head.commit || head.commit === input.publishedCommit) return null
+		return {
+			publishedCommit: input.publishedCommit,
+			headCommit: head.commit,
+			publishUrl: buildPackagePublishApprovalUrl({
+				baseUrl: getCanonicalAppBaseUrl({ env: input.env }),
+				username: input.username,
+				kodyId: input.kodyId,
+				commit: head.commit,
+			}),
+		}
+	} catch (error) {
+		console.warn('Package app unpublished-changes lookup failed:', error)
+		return null
 	}
 }
 
@@ -500,6 +570,9 @@ function createPackageAppErrorResponse(input: {
 	synthetic?: boolean
 	cause?: string
 	runtimeRunId?: string | null
+	/** Overrides the kind's status, e.g. to keep the app's own 5xx. */
+	status?: number
+	unpublishedChanges?: UnpublishedChanges | null
 }) {
 	const messages = {
 		'host-setup': {
@@ -536,12 +609,26 @@ function createPackageAppErrorResponse(input: {
 			nextStep:
 				'Try again shortly. If this keeps happening long after publishing, ask the package owner to republish the package.',
 		},
+		'not-published': {
+			title: 'Package app not published yet',
+			summary:
+				'Code has been pushed to this package, but no version has been published, so there is nothing to serve yet.',
+			nextStep: `If you own this package, publish it with \`kody package publish ${input.packageName}\` or from the package page on Kody, then reload.`,
+		},
+		'publish-pending': {
+			title: 'Package app has unpublished changes',
+			summary:
+				'The published version of this package app failed this request. Newer commits have been pushed but are not published yet, so this is still the older version.',
+			nextStep:
+				'Publish the latest push if it has the fix, then reload. Otherwise check recent runs for this app under Account → Activity.',
+		},
 	} satisfies Record<
 		PackageAppFailureKind,
 		{ title: string; summary: string; nextStep: string }
 	>
 	const message = messages[input.kind]
-	const status = packageAppFailureStatus(input.kind)
+	const status = input.status ?? packageAppFailureStatus(input.kind)
+	const unpublished = input.unpublishedChanges ?? null
 	logPackageAppHttpError({
 		request: input.request,
 		status,
@@ -561,6 +648,15 @@ function createPackageAppErrorResponse(input: {
 		request_path: requestPath,
 		...(input.runtimeRunId ? { run_id: input.runtimeRunId } : {}),
 		...(input.synthetic === true && input.cause ? { cause: input.cause } : {}),
+		...(unpublished
+			? {
+					unpublished_changes: {
+						published_commit: unpublished.publishedCommit,
+						head_commit: unpublished.headCommit,
+						publish_url: unpublished.publishUrl,
+					},
+				}
+			: {}),
 	}
 	if (input.synthetic === true || wantsJson(input.request)) {
 		return Response.json(body, { status })
@@ -634,6 +730,16 @@ function createPackageAppErrorResponse(input: {
 							<h1 id="package-app-error-title">${message.title}</h1>
 							<p>${message.summary}</p>
 							<p>${message.nextStep}</p>
+							${
+								unpublished
+									? html`<p>
+											<a href="${unpublished.publishUrl}"
+												>Review and publish
+												<code>${unpublished.headCommit.slice(0, 7)}</code></a
+											>
+										</p>`
+									: ''
+							}
 							<dl>
 								<dt>Package</dt>
 								<dd>${input.packageName}</dd>
@@ -641,6 +747,20 @@ function createPackageAppErrorResponse(input: {
 								<dd><code>${input.kodyId}</code></dd>
 								<dt>Path</dt>
 								<dd><code>${requestPath}</code></dd>
+								${
+									unpublished
+										? html`<dt>Published commit</dt>
+												<dd>
+													<code
+														>${unpublished.publishedCommit.slice(0, 7)}</code
+													>
+												</dd>
+												<dt>Latest push</dt>
+												<dd>
+													<code>${unpublished.headCommit.slice(0, 7)}</code>
+												</dd>`
+										: ''
+								}
 								${
 									input.runtimeRunId
 										? html`<dt>Run ID</dt>
@@ -1173,6 +1293,7 @@ async function servePackageAppRequestWithId(input: {
 	let forwardedRequest: Request
 	let entrypoint: { fetch(request: Request): Promise<Response> }
 	let servedPublishedCommit: string | null = null
+	let servedRepoId: string | null = null
 	let clientReadableCookieNames: ReadonlyArray<string> = []
 	let visitNonce: string | null = null
 	try {
@@ -1368,6 +1489,7 @@ async function servePackageAppRequestWithId(input: {
 			return consentRedirect()
 		}
 		servedPublishedCommit = packageManifest.source.published_commit
+		servedRepoId = packageManifest.source.repo_id
 		const appWorker = await buildPackageAppWorker({
 			env,
 			baseUrl,
@@ -1454,6 +1576,17 @@ async function servePackageAppRequestWithId(input: {
 		)
 	}
 
+	const findUnpublishedChanges = () =>
+		resolveUnpublishedChanges({
+			env,
+			request,
+			visitor,
+			synthetic: dispatch?.synthetic === true,
+			repoId: servedRepoId,
+			publishedCommit: servedPublishedCommit,
+			username: packagePath.username,
+			kodyId: savedPackage.kodyId,
+		})
 	try {
 		let fetched: Response
 		try {
@@ -1483,13 +1616,15 @@ async function servePackageAppRequestWithId(input: {
 					method: request.method,
 					error,
 				}))
+			const unpublishedChanges = await findUnpublishedChanges()
 			return attachPackageAppServerTiming(
 				createPackageAppErrorResponse({
 					request,
-					kind: 'package-entrypoint',
+					kind: unpublishedChanges ? 'publish-pending' : 'package-entrypoint',
 					kodyId: savedPackage.kodyId,
 					packageName: savedPackage.name,
 					runtimeRunId,
+					unpublishedChanges,
 				}),
 				serverTiming,
 				visitNonce,
@@ -1503,17 +1638,38 @@ async function servePackageAppRequestWithId(input: {
 					visitNonce,
 				)
 			}
+			const unpublishedChanges = await findUnpublishedChanges()
 			return attachPackageAppServerTiming(
 				createPackageAppErrorResponse({
 					request,
-					kind: 'package-entrypoint',
+					kind: unpublishedChanges ? 'publish-pending' : 'package-entrypoint',
 					kodyId: savedPackage.kodyId,
 					packageName: savedPackage.name,
 					runtimeRunId: fetched.headers.get(packageAppRuntimeRunIdHeader),
+					unpublishedChanges,
 				}),
 				serverTiming,
 				visitNonce,
 			)
+		}
+		if (fetched.status >= 500) {
+			const unpublishedChanges = await findUnpublishedChanges()
+			if (unpublishedChanges) {
+				await fetched.body?.cancel()
+				return attachPackageAppServerTiming(
+					createPackageAppErrorResponse({
+						request,
+						kind: 'publish-pending',
+						kodyId: savedPackage.kodyId,
+						packageName: savedPackage.name,
+						runtimeRunId: fetched.headers.get(packageAppRuntimeRunIdHeader),
+						status: fetched.status,
+						unpublishedChanges,
+					}),
+					serverTiming,
+					visitNonce,
+				)
+			}
 		}
 		// Leave x-kody-runtime-run-id on the response. The origin forward reads
 		// it for the runtime-worker hop log, then strips it before the browser.

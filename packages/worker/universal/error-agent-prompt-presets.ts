@@ -153,6 +153,8 @@ export type PackageAppFailureKindForPrompt =
 	| 'realtime-connect'
 	| 'include-used-up'
 	| 'runtime-bundle-pending'
+	| 'not-published'
+	| 'publish-pending'
 
 /** Package-app visitor HTML failures (kody.run / package subdomain). */
 export function buildPackageAppErrorAgentPrompt(input: {
@@ -171,6 +173,8 @@ export function buildPackageAppErrorAgentPrompt(input: {
 		'realtime-connect': 'Package realtime connection failed',
 		'include-used-up': 'Monthly include used up',
 		'runtime-bundle-pending': 'Package app is still preparing',
+		'not-published': 'Package app not published yet',
+		'publish-pending': 'Package app has unpublished changes',
 	}
 	const causes: Record<PackageAppFailureKindForPrompt, string> = {
 		'host-setup':
@@ -183,6 +187,10 @@ export function buildPackageAppErrorAgentPrompt(input: {
 			'This month’s included Pro usage is used up and there are no credits left.',
 		'runtime-bundle-pending':
 			'The published runtime bundle is not ready yet (common right after a publish while npm dependencies are installed).',
+		'not-published':
+			'Code was pushed to the package repo, but no commit has been published yet.',
+		'publish-pending':
+			'The published commit failed this request, and the package repo HEAD is newer than the published commit (not published yet, or its publish checks failed).',
 	}
 	const nextByKind: Record<PackageAppFailureKindForPrompt, Array<string>> = {
 		'host-setup': [
@@ -205,6 +213,14 @@ export function buildPackageAppErrorAgentPrompt(input: {
 		'runtime-bundle-pending': [
 			'Retry shortly while the post-publish runtime bundle rebuild finishes.',
 			'If this persists long after publish, ask the owner to republish so artifacts rebuild.',
+		],
+		'not-published': [
+			'Publish the package (`kody package publish <name>` or the package page Publish action).',
+			'Retry the app after packageGet shows a published_commit.',
+		],
+		'publish-pending': [
+			'Publish the pushed HEAD if it contains the fix.',
+			'Otherwise open the owning account Activity and runGet the failing run.',
 		],
 	}
 	return buildErrorAgentPrompt({
