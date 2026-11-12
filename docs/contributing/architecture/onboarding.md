@@ -5,29 +5,32 @@ optional first-win email guide share one contract:
 
 [`packages/worker/universal/onboarding-process.ts`](../../../packages/worker/universal/onboarding-process.ts)
 
-| Surface                                  | Role                                                                                      |
-| ---------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Wizard index `/onboarding`               | Redirects to the first unfinished step (Step 3 once Step 2 is done)                       |
-| Wizard Step 1 `/onboarding/step-1`       | Connect an MCP host                                                                       |
-| Wizard Step 2 `/onboarding/step-2`       | Make something useful (one prompt + first `search` + `guide:onboarding` first-win picker) |
-| Wizard Step 3 `/onboarding/step-3`       | Connect a second ecosystem (connected hosts stay selectable; `guide:portability`)         |
-| Checklist                                | Verify email, complete the three wizard steps, then persist a package                     |
-| [`first-win`](../../guides/first-win.md) | Optional email → reply → memories loop after a host is connected                          |
+| Surface                                  | Role                                                                                                        |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Wizard index `/onboarding`               | Redirects to the first unfinished step (Step 3 once Step 2 is done)                                         |
+| Wizard Step 1 `/onboarding/step-1`       | Connect an MCP host                                                                                         |
+| Wizard Step 2 `/onboarding/step-2`       | Make something useful (one prompt + first `search` + `guide:onboarding` move-into-Kody, first-win fallback) |
+| Wizard Step 3 `/onboarding/step-3`       | Connect a second ecosystem (connected hosts stay selectable; `guide:portability`)                           |
+| Checklist                                | Verify email, complete the three wizard steps, then persist a package                                       |
+| [`first-win`](../../guides/first-win.md) | Optional email → reply → memories loop after a host is connected                                            |
 
 Step 2 is one copy-paste prompt that tells the connected agent to retrieve
 [`onboarding`](../../guides/onboarding.md)
-(`search({ entity: "guide:onboarding" })`). The guide presents six concrete
-first-win choices (PR readiness, an always-on ping, skill→owned package, email
-wake when the host can be woken, Slack/Raycast webhook, or something else) and
-the agent does one small win from their pick. The page shows a spinner until
-Kody observes that first successful `search` (or an existing access win: memory,
-execute, or saved package). Leftover `/onboarding/step-2/:service` URLs redirect
-to Step 2. Leftover `/onboarding/step-3/not-listed` URLs return to the Step 3
-ecosystem picker. Below the prompt, Step 2 lists one-click built-in connects
-from a short ordered allowlist in code
-(`onboardingFeaturedPlatformIntegrationSlugs`). Only built-ins that are
-published and enabled, and that the user has not connected yet, appear, so the
-list is empty while every built-in is draft. See
+(`search({ entity: "guide:onboarding" })`). The agent first looks at what is
+already in that host (connections, skills, memories, instructions, repeating
+processes), proposes two or three things to move into Kody, and helps move the
+one the person picks. If there is little to move, or the host cannot be
+inspected, the guide falls back to six concrete first-win ideas (PR readiness,
+an always-on ping, skill→owned package, email wake when the host can be woken,
+Slack/Raycast webhook, or something else) and the agent does one small win from
+their pick. The page shows a spinner until Kody observes that first successful
+`search` (or an existing access win: memory, execute, or saved package).
+Leftover `/onboarding/step-2/:service` URLs redirect to Step 2. Leftover
+`/onboarding/step-3/not-listed` URLs return to the Step 3 ecosystem picker.
+Below the prompt, Step 2 lists one-click built-in connects from a short ordered
+allowlist in code (`onboardingFeaturedPlatformIntegrationSlugs`). Only built-ins
+that are published and enabled, and that the user has not connected yet, appear,
+so the list is empty while every built-in is draft. See
 [OAuth integrations](./integrations.md#enabled-and-visibility).
 
 Step 3 groups the agent picker by ecosystem (Grok, Claude, ChatGPT, and the
@@ -89,6 +92,6 @@ queue. Wizard-resume and first-use cards live there. See
 When changing the wizard in `onboarding-process.ts`, update the Get started
 guides to match. `docs/guides/first-win.md` names the current wizard steps;
 `docs/guides/quick-example.md` names Step 2 and the Step 1 path.
-`docs/guides/onboarding.md` is the first-run briefing and names the six
-first-win choices. `docs/guides/portability.md` names Step 3. The checklist has
-no first-win items.
+`docs/guides/onboarding.md` is the first-run briefing: inspect this agent,
+propose what to move into Kody, and fall back to the six first-win ideas.
+`docs/guides/portability.md` names Step 3. The checklist has no first-win items.

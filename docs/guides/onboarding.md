@@ -3,8 +3,10 @@ id: onboarding
 title: First run: the onboarding briefing
 summary:
   First-run guide for a connected agent. Teach lightly what Kody is and is not,
-  offer six concrete first-win choices, help them take one small win from their
-  pick, and set up integrations with clear difficulty. Then Step 3.
+  look at what is already in this agent (connections, skills, memories,
+  instructions, repeating processes), propose a few to move into Kody, and help
+  move one. If there is little to move, offer six first-win ideas instead. Set
+  up integrations with clear difficulty. Then Step 3.
 category: platform
 audience: agents
 ---
@@ -17,10 +19,20 @@ Agent notes — for AI agents driving first-run from a copied onboarding prompt:
 - The person pasted a short prompt from /onboarding/step-2. Follow that prompt.
   This guide is depth, not a script to dump.
 - First message: one short line on what Kody is (home for agents, not a
-  gateway), then present the six first-win choices. Wait for their pick.
-  Keep each message under roughly 120 words.
-- After they pick, do one small concrete win from that playbook. Stay on that
-  win.
+  gateway). Then look at what is already in this host: connections, skills,
+  memories, instructions, and repeating processes (routines, scheduled tasks,
+  workflows). Use whatever tools the host gives you. Do not pretend you can see
+  everything, and do not invent an inventory.
+- Propose two or three things worth moving into Kody. A short list, not a full
+  audit. Wait for their pick, then help move that one thing. Keep each message
+  under roughly 120 words.
+- Propose, then wait. Do not migrate anything on your own, and never paste or
+  transmit secret values.
+- Fallback: if you find little, or this host cannot be inspected, say so in one
+  sentence, ask a couple of questions if that would help, then offer the six
+  first-win ideas below. Wait for their pick and do one small win from that
+  playbook.
+- Stay on that one thing. One small win, then Step 3.
 - Kody is Your agents' cloud for individuals and teams: memory, credentials,
   packages, jobs, workflows, and apps. They keep or switch agents without
   rebuilding that stack.
@@ -70,23 +82,63 @@ are available when a job needs them. They are supporting cast.
 Success is the person seeing one useful thing they made and own, not a list of
 wired APIs.
 
-## Start with a first win
+## Start with what this agent already has
+
+The first move is not a menu. Look at what already lives in this host:
+
+- **Connections**: MCP servers, API keys, and accounts it already uses.
+- **Skills**: skill files, saved prompts, or INTENT docs.
+- **Memories and standing instructions**: facts, preferences, and rules it
+  follows.
+- **Repeating processes**: routines, scheduled tasks, and workflows.
+
+Use whatever tools the host gives you to list these. Do not pretend you can see
+everything. Then propose two or three that would be more useful if they lived in
+Kody. Keep it a short list, not a full audit. Wait for their pick, then help
+move that one thing. One small win, then send them to `/onboarding/step-3`.
+
+This is moving their existing setup into a home that outlives this chat. It is
+not "connect all your APIs." Integrations come along because a process needs
+them.
+
+### What moving into Kody means
+
+- **Connections** become credentials or integrations in Kody. Do not copy secret
+  values yourself. Send the person to Kody's credential setup page (see Secrets
+  and Integrations below) and wait until they confirm save.
+- **Skills** go into Kody so they travel to other agents. If the skill is a
+  repeated process that should become deterministic code, that is the "turn a
+  skill or repeated prompt into owned package code" path instead. Both are
+  valid. Say which you are proposing and why.
+- **Repeating processes** (routines, scheduled tasks, workflows) become Kody
+  jobs, workflows, or triggers, so they run when nobody is in this chat. See
+  Apps, workflows, and jobs below.
+- **Memories and standing instructions** become Kody memories, so every
+  connected agent has them. See Memory below.
+
+### If there is not much to move
+
+If you find little, or this host cannot list its skills, connections, or
+routines, say so in one sentence. Ask a couple of questions if that would help.
+Then offer the first-win ideas below.
+
+## First-win ideas
 
 Ask: **Which of these would help you this week?** Wait for their pick before
 doing anything else.
 
-1. **Check if a PR is ready to ship** — a GitHub readiness checklist they can
+1. **Check if a PR is ready to ship**: a GitHub readiness checklist they can
    invoke from any agent.
-2. **Ping me when something needs me** — CI failed, review requested, and/or a
+2. **Ping me when something needs me**: CI failed, review requested, and/or a
    new Sentry issue, as an event that runs when they are not in chat.
-3. **Turn a skill or repeated prompt into deterministic package code** — take
+3. **Turn a skill or repeated prompt into deterministic package code**: take
    _their_ skill.md, INTENT, or repeated agent prompt and save it as owned
    package code. This is not installing `@kentcdodds/skills`.
-4. **Wake my agent from email** — forward something and the agent handles it.
+4. **Wake my agent from email**: forward something and the agent handles it.
    Only pursue this when the connected host can be woken asynchronously (cloud
    agent with an API, webhook, or wake URL).
-5. **Trigger Kody from Slack or Raycast** — a webhook that runs outside chat.
-6. **Something else** — they name it; you do one small win from that answer.
+5. **Trigger Kody from Slack or Raycast**: a webhook that runs outside chat.
+6. **Something else**: they name it, and you do one small win from that answer.
 
 Then follow the matching playbook. One small win, then send them to
 `/onboarding/step-3`.

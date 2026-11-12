@@ -20,7 +20,10 @@ Agent notes — for AI agents driving the optional email loop from this page:
 
 - Onboarding Step 1 is Connect your agent (`/onboarding/step-1`). Step 2 is Make
   something useful (`/onboarding/step-2`): one prompt that retrieves
-  `search({ entity: "guide:onboarding" })` and offers six first-win choices.
+  `search({ entity: "guide:onboarding" })`, looks at what is already in that
+  agent (connections, skills, memories, instructions, repeating processes), and
+  proposes a few to move into Kody. If there is little to move, it offers six
+  first-win ideas instead.
   Step 3 is Connect a second agent
   (`/onboarding/step-3`) and reuses what Step 2 made via
   `search({ entity: "guide:portability" })`. Hosted OAuth is not the

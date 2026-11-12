@@ -49,10 +49,11 @@ their agent as soon as they reach that step.
 
 The account needs a verified email and an authorized MCP host
 (`/onboarding/step-1`). Step 2 is one prompt that retrieves the onboarding
-guide. If they pasted that prompt, follow the guide: offer the first-win
-choices, wait for their pick, do one small win, then send them to Step 3 to
-reuse it. If they skipped, ask what they want to try and use whatever tools are
-already available.
+guide. If they pasted that prompt, follow the guide: look at what is already in
+their agent, propose a few things to move into Kody (or offer the first-win
+ideas if there is little to move), wait for their pick, do one small win, then
+send them to Step 3 to reuse it. If they skipped, ask what they want to try and
+use whatever tools are already available.
 
 ## Step 1 — Confirm the connection
 
