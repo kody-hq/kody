@@ -602,7 +602,7 @@ test('mcp request enforces token audience and forwards caller props', async () =
 		'Failed to load MCP auth user context:',
 		expect.any(Error),
 	)
-}, 15_000)
+})
 
 test('mcp request returns library insufficient_scope step-up when required scopes are missing', async () => {
 	const narrow = mcpToken()
