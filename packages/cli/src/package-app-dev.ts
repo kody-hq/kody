@@ -58,6 +58,7 @@ import {
 } from './dev/dev-proxy-origin.js'
 import { listenDevServer } from './dev/dev-port.js'
 import {
+	devCallPath,
 	devOutboxPath,
 	devStatusPath,
 	type DevServerStatus,
@@ -159,6 +160,11 @@ export type PackageAppDevOptions = {
 	}
 	allowPrivateNetwork?: boolean
 	/**
+	 * Warn when one request runs longer than this (ms). A simulation: local
+	 * workerd reports no CPU time, so this uses wall time, an upper bound.
+	 */
+	cpuLimitMs?: number
+	/**
 	 * Hosts that may hit the real network under --target mock when
 	 * `.kody/mocks.ts` is active (never carries real secrets).
 	 */
@@ -240,6 +246,10 @@ export type LocalKodyUpstream = {
 	sync: () => Promise<void>
 	/** Email captured by the local email boundary instead of being sent. */
 	listOutbox: () => Promise<unknown>
+	/** Package id of the local saved copy, once the first sync lands. */
+	packageId: () => string | null
+	/** Run one real capability on the local stack via the capability proxy. */
+	call: (operation: string, input: unknown) => Promise<unknown>
 }
 
 type Generation = {
@@ -902,6 +912,46 @@ export async function startPackageAppDev(
 			res.end(`${JSON.stringify(status(), null, 2)}\n`)
 			return true
 		}
+		if (pathname === devCallPath) {
+			const send = (code: number, body: unknown) => {
+				res.writeHead(code, {
+					'content-type': 'application/json; charset=utf-8',
+					'cache-control': 'no-store',
+				})
+				res.end(`${JSON.stringify(body, null, 2)}\n`)
+			}
+			const localKody = options.localKody
+			if (!localKody || req.method !== 'POST') {
+				send(localKody ? 405 : 404, {
+					error: localKody
+						? 'POST {operation, input}.'
+						: 'This kody dev server is not running local Kody.',
+				})
+				return true
+			}
+			void readDevCallBody(req)
+				.then(async ({ operation, input }) => {
+					if (!devCallOperations.has(operation)) {
+						send(400, {
+							error: `Unsupported operation ${JSON.stringify(operation)}.`,
+						})
+						return
+					}
+					await waitForBuild()
+					const packageId = localKody.packageId()
+					const scoped =
+						packageId && operation !== 'jobList' && operation !== 'jobRunNow'
+							? { ...input, package_id: packageId }
+							: input
+					send(200, { result: await localKody.call(operation, scoped) })
+				})
+				.catch((error: unknown) =>
+					send(502, {
+						error: error instanceof Error ? error.message : String(error),
+					}),
+				)
+			return true
+		}
 		if (pathname === devOutboxPath) {
 			const send = (code: number, body: unknown) => {
 				res.writeHead(code, {
@@ -1056,6 +1106,19 @@ export async function startPackageAppDev(
 			headers.host = forwardUrl.host
 			headers.cookie = upstream.cookie
 		}
+		const startedAt = performance.now()
+		const cpuLimitMs = options.cpuLimitMs ?? defaultDevCpuLimitMs
+		const warnIfOverCpuLimit = () => {
+			const ms = Math.round(performance.now() - startedAt)
+			if (cpuLimitMs <= 0 || ms <= cpuLimitMs) return
+			emit({
+				type: 'log',
+				source: 'app',
+				level: 'warn',
+				message: `took ${ms}ms, over the ${cpuLimitMs}ms CPU limit (simulated from wall time; Cloudflare may stop this request)`,
+				request: tag,
+			})
+		}
 		return new Promise<void>((resolve, reject) => {
 			const upstream = httpRequest(
 				forwardUrl,
@@ -1104,7 +1167,10 @@ export async function startPackageAppDev(
 					}
 					res.writeHead(status, upstreamRes.headers)
 					upstreamRes.pipe(res)
-					upstreamRes.on('end', () => resolve())
+					upstreamRes.on('end', () => {
+						warnIfOverCpuLimit()
+						resolve()
+					})
 					upstreamRes.on('error', reject)
 				},
 			)
@@ -1473,4 +1539,35 @@ function joinUrlPath(base: string, path: string): string {
 	const rest = path.startsWith('/') ? path : `/${path}`
 	if (!base) return rest
 	return `${base}${rest === '/' ? '' : rest}` || base
+}
+
+/** Cloudflare's default per-request CPU limit for Workers on paid plans. */
+export const defaultDevCpuLimitMs = 30_000
+
+const devCallOperations = new Set([
+	'jobList',
+	'jobRunNow',
+	'packageSubscriptionDispatch',
+	'webhookSyntheticDispatch',
+])
+
+async function readDevCallBody(
+	req: IncomingMessage,
+): Promise<{ operation: string; input: Record<string, unknown> }> {
+	const chunks: Array<Buffer> = []
+	for await (const chunk of req) chunks.push(Buffer.from(chunk as Buffer))
+	const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8')) as {
+		operation?: unknown
+		input?: unknown
+	}
+	if (typeof parsed.operation !== 'string') {
+		throw new Error('POST {operation, input}.')
+	}
+	const input =
+		parsed.input &&
+		typeof parsed.input === 'object' &&
+		!Array.isArray(parsed.input)
+			? (parsed.input as Record<string, unknown>)
+			: {}
+	return { operation: parsed.operation, input }
 }

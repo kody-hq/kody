@@ -45,6 +45,29 @@ export type StartDevRuntimeInput = {
 	onLog?: (line: DevRuntimeLogLine) => void
 	/** Max wait for the origin `/health`. */
 	readyTimeoutMs?: number
+	/** Opt-in simulations; approximations, not exact Cloudflare timing. */
+	simulation?: DevRuntimeSimulation
+}
+
+export type DevRuntimeSimulation = {
+	/** Added before every package storage call. */
+	storageLatencyMs?: number
+	/** A fresh package app isolate for every request. */
+	coldIsolates?: boolean
+	/** Shift `Date` inside package app isolates by this many ms. */
+	clockOffsetMs?: number
+}
+
+export function simulationVars(simulation: DevRuntimeSimulation | undefined) {
+	const vars: Record<string, string> = {}
+	if (simulation?.storageLatencyMs) {
+		vars.KODY_DEV_STORAGE_LATENCY_MS = String(simulation.storageLatencyMs)
+	}
+	if (simulation?.coldIsolates) vars.KODY_DEV_COLD_ISOLATES = 'true'
+	if (simulation?.clockOffsetMs) {
+		vars.KODY_DEV_CLOCK_OFFSET_MS = String(simulation.clockOffsetMs)
+	}
+	return vars
 }
 
 export type DevRuntime = {
@@ -365,6 +388,7 @@ export async function startDevRuntime(
 			distDir,
 			configDir: join(stateDir, 'config'),
 			vars: {
+				...simulationVars(input.simulation),
 				APP_BASE_URL: origin,
 				COOKIE_SECRET: state.cookieSecret,
 				SECRET_STORE_KEY: state.secretStoreKey,

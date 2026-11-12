@@ -364,6 +364,12 @@ export const EnvSchema = object({
 	// `true` only in the `kody dev` local stack: package secrets resolve to
 	// placeholders and the secret store is never read. Production leaves it unset.
 	KODY_DEV_MOCK_SECRETS: optionalNonEmptyStringSchema,
+	// `kody dev` opt-in simulations (only read when KODY_DEV_MOCK_SECRETS is
+	// `true`): added storage latency, a fresh isolate per request, and a clock
+	// offset. Production leaves them unset.
+	KODY_DEV_STORAGE_LATENCY_MS: optionalNonEmptyStringSchema,
+	KODY_DEV_COLD_ISOLATES: optionalNonEmptyStringSchema,
+	KODY_DEV_CLOCK_OFFSET_MS: optionalNonEmptyStringSchema,
 	// Optional Artifacts REST token when CLOUDFLARE_API_TOKEN is a mock
 	// credential for CLOUDFLARE_API_BASE_URL (PR previews). Mint/fork against
 	// the real Artifacts API with this token while email still uses the mock.

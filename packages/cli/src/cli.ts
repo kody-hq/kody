@@ -252,6 +252,12 @@ const cliFlagOptions = {
 	'expose-prod': { type: 'boolean' },
 	'app-base-path': { type: 'string' },
 	'no-live-reload': { type: 'boolean' },
+	'run-jobs': { type: 'boolean' },
+	'simulate-latency': { type: 'boolean' },
+	'latency-ms': { type: 'string' },
+	cold: { type: 'boolean' },
+	clock: { type: 'string' },
+	'cpu-limit-ms': { type: 'string' },
 	'ready-file': { type: 'string' },
 	'no-attach': { type: 'boolean' },
 	method: { type: 'string' },
@@ -1768,6 +1774,13 @@ async function dispatch(
 							appBasePath,
 							allowPrivateNetwork,
 							liveReload: parsed.values['no-live-reload'] !== true,
+							...(typeof parsed.values['cpu-limit-ms'] === 'string'
+								? {
+										cpuLimitMs: parseDevCpuLimitMs(
+											parsed.values['cpu-limit-ms'],
+										),
+									}
+								: {}),
 							json,
 							...(typeof parsed.values['ready-file'] === 'string'
 								? { readyFile: parsed.values['ready-file'] }
@@ -1778,12 +1791,19 @@ async function dispatch(
 											const local = await import('./dev/local-kody.js')
 											const kody = await local.startLocalKody({
 												manifest,
+												simulation: local.parseDevSimulation({
+													simulateLatency: parsed.values['simulate-latency'],
+													latencyMs: parsed.values['latency-ms'],
+													cold: parsed.values.cold,
+													clock: parsed.values.clock,
+												}),
 												onStatus: (message) => io.stderr(`${message}\n`),
 											})
 											return {
 												upstream: local.createLocalKodyUpstream({
 													kody,
 													manifest,
+													runJobs: parsed.values['run-jobs'] === true,
 												}),
 												close: kody.close,
 											}
@@ -2554,4 +2574,14 @@ export function supersedeStoredApiTokenAfterLogin(
 		return `${envTokenNote}Note: could not remove the ${label} (scopes: ${scopes}). It is ignored: every command, including git, uses this login.\n`
 	}
 	return `${envTokenNote}Removed the ${label} (scopes: ${scopes}); every command, including git, uses this login.\n`
+}
+
+function parseDevCpuLimitMs(raw: string) {
+	const ms = Number(raw.trim())
+	if (!Number.isSafeInteger(ms) || ms < 0) {
+		throw new Error(
+			`--cpu-limit-ms expects whole milliseconds, got ${JSON.stringify(raw)}.`,
+		)
+	}
+	return ms
 }

@@ -398,7 +398,7 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 				summary:
 					'Serve kody.app.entry on localhost with hot reload (the default)',
 				usage: [
-					'kody dev serve [--org <slug>] [--target prod|mock] [--reset-storage] [--passthrough <host,…>] [--host <addr>] [--expose-prod] [--port <n>] [--app-base-path <path>] [--allow-private-network] [--no-live-reload] [--json] [--ready-file <path>]',
+					'kody dev serve [--org <slug>] [--target prod|mock] [--reset-storage] [--passthrough <host,…>] [--host <addr>] [--expose-prod] [--port <n>] [--app-base-path <path>] [--allow-private-network] [--no-live-reload] [--run-jobs] [--simulate-latency] [--cold] [--clock <iso|ms>] [--cpu-limit-ms <n>] [--json] [--ready-file <path>]',
 				],
 				flags: [
 					orgFlag,
@@ -427,6 +427,27 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 					[
 						'--no-live-reload',
 						'Turn off HTML live reload and the error overlay',
+					],
+					[
+						'--run-jobs',
+						'With --target mock, let package jobs fire on their real schedule in local Kody',
+					],
+					[
+						'--simulate-latency',
+						'With --target mock, add storage latency (25ms, or --latency-ms <n>)',
+					],
+					['--latency-ms <n>', 'Storage latency for --simulate-latency'],
+					[
+						'--cold',
+						'With --target mock, start a fresh app isolate for every request',
+					],
+					[
+						'--clock <iso|ms>',
+						'With --target mock, shift Date in the app to this time or by this offset',
+					],
+					[
+						'--cpu-limit-ms <n>',
+						'Warn when a request runs longer than this (default 30000, 0 turns it off)',
 					],
 					[
 						'--passthrough <host,…>',

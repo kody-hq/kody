@@ -47,6 +47,7 @@ import { defaultDevPort } from './dev/dev-port.js'
 import { assertDevHostAllowed, devHostExposureWarning } from './dev/dev-host.js'
 import {
 	devStatusPath,
+	devCallPath,
 	findRunningDevServer,
 	removeDevRegistration,
 	writeDevRegistration,
@@ -143,6 +144,8 @@ export async function runDevServe(input: {
 	passthroughHosts?: ReadonlyArray<string>
 	/** Inject the live-reload client into HTML responses (default true). */
 	liveReload?: boolean
+	/** Warn when one request runs longer than this (ms); 0 turns it off. */
+	cpuLimitMs?: number
 	/** NDJSON events on stdout instead of human output. */
 	json?: boolean
 	/** Write `{ url, port, basePath, pid, statusUrl }` here once the first build settles. */
@@ -207,6 +210,9 @@ export async function runDevServe(input: {
 					: {}),
 			allowPrivateNetwork: input.allowPrivateNetwork,
 			liveReload: input.liveReload ?? true,
+			...(input.cpuLimitMs !== undefined
+				? { cpuLimitMs: input.cpuLimitMs }
+				: {}),
 			onStatus: (message) => input.io.stderr(`${message}\n`),
 			onError: (message) => input.io.stderr(`${message}\n`),
 			onEvent,
@@ -451,6 +457,76 @@ export async function runDevFetch(input: {
 	}
 }
 
+/**
+ * On `--target mock`, a running `kody dev` hosts real local Kody. Jobs,
+ * webhooks and events then go through the real local capability (scheduler,
+ * webhook dispatch, subscription dispatch) instead of a one-off module run.
+ * Returns null when no such server is attached.
+ */
+async function tryAttachedDevCall(input: {
+	target: KodyTarget
+	cwd?: string
+	steps: (
+		call: (
+			operation: string,
+			args: Record<string, unknown>,
+		) => Promise<unknown>,
+	) => Promise<unknown>
+	io: DevIo
+}): Promise<number | null> {
+	if (input.target !== 'mock') return null
+	let root: string
+	try {
+		root = (await loadPackageManifest(input.cwd)).root
+	} catch {
+		return null
+	}
+	const running = await findRunningDevServer({ root, target: input.target })
+	if (!running) return null
+	const { registration } = running
+	const url = new URL(
+		`${registration.basePath}${devCallPath}`,
+		registration.origin,
+	)
+	const call = async (operation: string, args: Record<string, unknown>) => {
+		const response = await fetch(url, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ operation, input: args }),
+		})
+		const body = (await response.json().catch(() => null)) as {
+			result?: unknown
+			error?: string
+		} | null
+		if (response.status === 404) return devCallUnavailable
+		if (!response.ok) {
+			throw new StructuredCliError({
+				code: 'dev_local_call_failed',
+				message:
+					body?.error ??
+					`Local Kody ${operation} failed (HTTP ${response.status}).`,
+				target: input.target,
+			})
+		}
+		return body?.result
+	}
+	const first = await input.steps(call)
+	if (first === devCallUnavailable) return null
+	input.io.stderr(
+		`Ran on local Kody via running kody dev (pid ${registration.pid})\n`,
+	)
+	input.io.stdout(`${JSON.stringify(first, null, 2)}\n`)
+	const failed =
+		first &&
+		typeof first === 'object' &&
+		'status' in first &&
+		typeof first.status === 'number' &&
+		first.status >= 400
+	return failed ? 1 : 0
+}
+
+const devCallUnavailable = Symbol('devCallUnavailable')
+
 export async function runDevJob(input: {
 	target: KodyTarget
 	auth: DevAuth
@@ -490,7 +566,29 @@ export async function runDevJob(input: {
 			closeMock: input.auth.closeMock,
 		})
 	}
-	// Scheduler contract: no params. Never schedules locally — runs once.
+	const attached = await tryAttachedDevCall({
+		target: input.target,
+		cwd: input.cwd,
+		io: input.io,
+		steps: async (call) => {
+			const listed = await call('jobList', {})
+			if (listed === devCallUnavailable) return listed
+			const jobs =
+				(listed as { jobs?: Array<{ id: string; name: string }> }).jobs ?? []
+			const match = jobs.find((entry) => entry.name === input.jobName)
+			if (!match) {
+				throw new StructuredCliError({
+					code: 'dev_surface_missing',
+					message: `Local Kody has no job named ${JSON.stringify(input.jobName)} yet.`,
+					fix: 'Wait for the next kody dev rebuild to sync package jobs, then retry.',
+					target: input.target,
+				})
+			}
+			return await call('jobRunNow', { id: match.id })
+		},
+	})
+	if (attached !== null) return attached
+	// Scheduler contract: no params. Without a running kody dev this runs once.
 	return await runPackageModuleOnce({
 		manifest,
 		modulePath,
@@ -567,6 +665,25 @@ export async function runDevWebhook(input: {
 			closeMock: input.auth.closeMock,
 		})
 	}
+	const attachedWebhook = await tryAttachedDevCall({
+		target: input.target,
+		cwd: input.cwd,
+		io: input.io,
+		steps: async (call) =>
+			await call('webhookSyntheticDispatch', {
+				webhookName: input.webhookName,
+				...(webhook.inputMode === 'params'
+					? { params: (jsonBody ?? {}) as Record<string, unknown> }
+					: {
+							request: {
+								method: 'POST',
+								headers: { 'content-type': 'application/json' },
+								body: rawBody,
+							},
+						}),
+			}),
+	})
+	if (attachedWebhook !== null) return attachedWebhook
 	return await runPackageModuleOnce({
 		manifest,
 		modulePath,
@@ -582,7 +699,8 @@ export async function runDevWebhook(input: {
 
 /**
  * Deliver an event to the local subscription handler in the platform's delivery
- * shape. On mock, any event type is allowed (handler may still validate).
+ * shape. With a running `kody dev`, the real local subscription dispatch checks
+ * the topic against the local catalog before the handler runs.
  */
 export async function runDevEmit(input: {
 	target: KodyTarget
@@ -611,7 +729,7 @@ export async function runDevEmit(input: {
 			code: 'dev_surface_missing',
 			message: `No subscription for event ${JSON.stringify(input.event)} in package.json#kody.subscriptions.`,
 			where: manifest.packageJsonPath,
-			fix: `Add a handler under kody.subscriptions[${JSON.stringify(input.event)}], then retry. Mock allows any event type once declared.`,
+			fix: `Add a handler under kody.subscriptions[${JSON.stringify(input.event)}], then retry. A running kody dev checks the topic against the local event catalog.`,
 			target: input.target,
 		})
 	}
@@ -658,6 +776,17 @@ export async function runDevEmit(input: {
 			closeMock: input.auth.closeMock,
 		})
 	}
+	const attachedEmit = await tryAttachedDevCall({
+		target: input.target,
+		cwd: input.cwd,
+		io: input.io,
+		steps: async (call) =>
+			await call('packageSubscriptionDispatch', {
+				topic: input.event,
+				params: envelope,
+			}),
+	})
+	if (attachedEmit !== null) return attachedEmit
 	return await runPackageModuleOnce({
 		manifest,
 		modulePath,

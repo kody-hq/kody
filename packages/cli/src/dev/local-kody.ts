@@ -27,6 +27,11 @@ export type DevRuntimeModule = {
 		stateDir: string
 		port?: number
 		username: string
+		simulation?: {
+			storageLatencyMs?: number
+			coldIsolates?: boolean
+			clockOffsetMs?: number
+		}
 		onLog?: (line: {
 			source: string
 			stream: 'stdout' | 'stderr'
@@ -182,6 +187,7 @@ export function localUsernameFor(manifest: Pick<KodyPackageManifest, 'name'>) {
 export async function startLocalKody(input: {
 	manifest: KodyPackageManifest
 	env?: NodeJS.ProcessEnv
+	simulation?: Parameters<DevRuntimeModule['startDevRuntime']>[0]['simulation']
 	onStatus?: (message: string) => void
 }): Promise<LocalKody> {
 	const entry = await ensureDevRuntime({
@@ -206,6 +212,7 @@ export async function startLocalKody(input: {
 	return await runtime.startDevRuntime({
 		stateDir,
 		username: localUsernameFor(input.manifest),
+		...(input.simulation ? { simulation: input.simulation } : {}),
 		onLog: (line) => log.write(`[${line.source}] ${line.line}\n`),
 	})
 }
@@ -214,15 +221,54 @@ export async function startLocalKody(input: {
 export function createLocalKodyUpstream(input: {
 	kody: LocalKody
 	manifest: KodyPackageManifest
+	/** Leave package jobs on their real schedule (`kody dev --run-jobs`). */
+	runJobs?: boolean
 	fetchFn?: typeof fetch
 }): LocalKodyUpstream {
 	const fetchFn = input.fetchFn ?? fetch
 	let packageId: string | null = null
+	// The same capability proxy `kody execute --local` uses, so each call runs
+	// the real capability handler on the local stack.
+	const call = async (operation: string, args: unknown) => {
+		const response = await fetchFn(
+			`${input.kody.origin}/v1/capability-proxy/call`,
+			{
+				method: 'POST',
+				headers: {
+					authorization: `Bearer ${input.kody.apiToken}`,
+					'content-type': 'application/json',
+				},
+				body: JSON.stringify({ path: ['kody', operation], args: [args] }),
+			},
+		)
+		const body = (await response.json().catch(() => null)) as {
+			result?: unknown
+			error?: { code?: string; message?: string }
+		} | null
+		if (!response.ok || !body || 'error' in body) {
+			throw new StructuredCliError({
+				code: 'dev_local_call_failed',
+				message: `Local Kody ${operation} failed (HTTP ${response.status}): ${body?.error?.message ?? 'no response body'}`,
+				target: 'mock',
+			})
+		}
+		return body.result
+	}
+	const pauseJobs = async () => {
+		const listed = (await call('jobList', {})) as {
+			jobs?: Array<{ id: string; enabled: boolean }>
+		}
+		for (const job of listed.jobs ?? []) {
+			if (job.enabled) await call('jobUpdate', { id: job.id, enabled: false })
+		}
+	}
 	return {
 		origin: input.kody.origin,
 		appPath: `/@${input.kody.username}/packages/${input.manifest.kodyId}`,
 		cookie: input.kody.sessionCookie,
 		listOutbox: () => input.kody.listOutbox(),
+		packageId: () => packageId,
+		call,
 		sync: async () => {
 			const tree = await collectPackageCheckFiles(input.manifest.root)
 			const files = Object.entries(tree.files).map(([path, content]) => ({
@@ -255,6 +301,56 @@ export function createLocalKodyUpstream(input: {
 			const saved = (body?.package ?? body) as Record<string, unknown> | null
 			const id = saved?.package_id ?? saved?.id
 			if (typeof id === 'string') packageId = id
+			// Saving re-syncs package jobs onto the real local scheduler. They only
+			// fire on schedule with --run-jobs; otherwise `kody dev job` runs them.
+			if (!input.runJobs) await pauseJobs()
 		},
 	}
+}
+
+/** Default added latency for a bare `--simulate-latency`, in ms. */
+export const defaultSimulatedStorageLatencyMs = 25
+
+/** Parses `--simulate-latency [--latency-ms <n>]`, `--cold` and `--clock`. */
+export function parseDevSimulation(input: {
+	simulateLatency?: string | boolean
+	latencyMs?: string | boolean
+	cold?: string | boolean
+	clock?: string | boolean
+	now?: number
+}) {
+	const simulation: {
+		storageLatencyMs?: number
+		coldIsolates?: boolean
+		clockOffsetMs?: number
+	} = {}
+	if (input.simulateLatency === true || typeof input.latencyMs === 'string') {
+		const raw =
+			typeof input.latencyMs === 'string' ? input.latencyMs.trim() : ''
+		const ms = raw === '' ? defaultSimulatedStorageLatencyMs : Number(raw)
+		if (!Number.isSafeInteger(ms) || ms < 0) {
+			throw new StructuredCliError({
+				code: 'invalid_flag',
+				message: `--latency-ms expects whole milliseconds, got ${JSON.stringify(raw)}.`,
+				target: 'mock',
+			})
+		}
+		if (ms > 0) simulation.storageLatencyMs = ms
+	}
+	if (input.cold === true) simulation.coldIsolates = true
+	if (typeof input.clock === 'string' && input.clock.trim() !== '') {
+		const raw = input.clock.trim()
+		const offset = /^[+-]?\d+$/.test(raw)
+			? Number(raw)
+			: Date.parse(raw) - (input.now ?? Date.now())
+		if (!Number.isSafeInteger(offset)) {
+			throw new StructuredCliError({
+				code: 'invalid_flag',
+				message: `--clock expects an ISO date or an offset in ms, got ${JSON.stringify(raw)}.`,
+				target: 'mock',
+			})
+		}
+		if (offset !== 0) simulation.clockOffsetMs = offset
+	}
+	return Object.keys(simulation).length > 0 ? simulation : undefined
 }

@@ -16,6 +16,9 @@ export const devStatusPath = '/__kody/dev/status'
 /** Email the local Kody would have delivered, newest last. */
 export const devOutboxPath = '/__kody/dev/outbox'
 
+/** POST `{operation, input}`: runs a job, webhook or event on local Kody. */
+export const devCallPath = '/__kody/dev/call'
+
 export type DevRegistration = {
 	pid: number
 	/** Origin, e.g. `http://127.0.0.1:4321`. */
