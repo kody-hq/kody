@@ -7,9 +7,14 @@ import {
 	buildMuseSettingsJson,
 	buildOpenClawMcpAddCommand,
 	buildOpenCodeMcpAddCommand,
-	chatGptPluginsUrl,
-	chatGptSideloadAvailabilityNote,
-	chatGptSideloadSteps,
+	chatGptCustomMcpFallbackNote,
+	chatGptCustomMcpGuideUrl,
+	chatGptDirectoryListingNote,
+	chatGptPluginManagementGuideUrl,
+	codexPluginInstallCommands,
+	kodyPluginMarketplaceSource,
+	kodyPluginReadmeUrl,
+	kodyPluginSideloadSteps,
 	codexMcpLoginCommand,
 	defaultKodyMcpUrl,
 	grokBotInstallUrl,
@@ -96,14 +101,14 @@ function genericAgent<const Slug extends string>(
 	} satisfies WithAgent
 }
 
-/** Sideloaded Kody plugin: ChatGPT and Codex share it, so both pages use it. */
-const chatGptSideloadWithSteps = [
+/** Sideload Kody from our plugin marketplace in the ChatGPT or Codex app. */
+const kodyPluginAppSteps = [
 	{
-		text: chatGptSideloadSteps.open,
-		link: { label: 'Open ChatGPT Plugins', href: chatGptPluginsUrl },
+		text: kodyPluginSideloadSteps.addMarketplace,
+		code: kodyPluginMarketplaceSource,
+		link: { label: 'Kody plugin README', href: kodyPluginReadmeUrl },
 	},
-	{ text: chatGptSideloadSteps.connect, code: mcpUrl },
-	{ text: chatGptSideloadSteps.create },
+	{ text: kodyPluginSideloadSteps.install },
 ] as const satisfies ReadonlyArray<WithAgentStep>
 
 export const withAgents = [
@@ -151,14 +156,16 @@ export const withAgents = [
 			'Let Codex build tools your whole team can run, with credentials it uses but never sees.',
 		youtubeVideoId: 'fuDXGko25u4',
 		steps: [
-			...chatGptSideloadWithSteps,
 			{
-				text: `${chatGptSideloadSteps.install} Kody then works in Codex in the ChatGPT desktop app.`,
+				text: kodyPluginSideloadSteps.codexCli,
+				code: codexPluginInstallCommands,
 			},
+			...kodyPluginAppSteps,
 			{
-				text: `Using the Codex CLI instead? Run this, then ${codexMcpLoginCommand} if sign-in does not start:`,
+				text: `MCP only? Run this instead, then ${codexMcpLoginCommand} if sign-in does not start:`,
 				code: buildCodexMcpAddCommand(mcpUrl),
 			},
+			{ text: chatGptDirectoryListingNote },
 		],
 	},
 	{
@@ -170,10 +177,23 @@ export const withAgents = [
 			'Use your team\u2019s packages and connected accounts from a ChatGPT conversation, on the web or on your phone.',
 		youtubeVideoId: 'XhEOHp-xAvI',
 		steps: [
-			...chatGptSideloadWithSteps,
+			...kodyPluginAppSteps,
 			{
-				text: `${chatGptSideloadSteps.install} ${chatGptSideloadAvailabilityNote}`,
+				text: kodyPluginSideloadSteps.workspace,
+				link: {
+					label: 'OpenAI plugin management guide',
+					href: chatGptPluginManagementGuideUrl,
+				},
 			},
+			{
+				text: chatGptCustomMcpFallbackNote,
+				code: mcpUrl,
+				link: {
+					label: 'OpenAI custom MCP help',
+					href: chatGptCustomMcpGuideUrl,
+				},
+			},
+			{ text: chatGptDirectoryListingNote },
 		],
 	},
 	{
