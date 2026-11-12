@@ -401,6 +401,12 @@ export function packageStorageSql(
 ): StorageSqlReadResult {
 	const db = openPackageSqlDb(state, packageId, env)
 	const params: Array<SQLInputValue> = normalizeSqlParams(bindings)
+	if (params.length > mockSqlMaxBoundParameters) {
+		// Hosted Durable Object SQLite rejects these; fail locally the same way.
+		throw new Error(
+			`too many SQL variables: packageStorage().sql allows at most ${mockSqlMaxBoundParameters} bound parameters per statement (got ${params.length}). Split the batch.`,
+		)
+	}
 	let remaining = query
 	for (;;) {
 		const stmt = prepareMockSqlStatement(db, remaining)
@@ -433,6 +439,9 @@ export function packageStorageSql(
 		return settled.result
 	}
 }
+
+/** Hosted package storage SQL's per-statement bound-parameter cap. */
+export const mockSqlMaxBoundParameters = 100
 
 function prepareMockSqlStatement(db: DatabaseSync, sql: string) {
 	try {

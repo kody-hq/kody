@@ -7,7 +7,10 @@ import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
 import { isCredentialInvalidatedByStoredPasswordChange } from '#worker/password-change-lockout.ts'
 import type { UserMeterEnv } from '#worker/entitlements/user-meter-client.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
-import { loadOrgSlug } from '#worker/orgs/owner-emails.ts'
+import {
+	loadOrgSlug,
+	loadOrgUsernameFallback,
+} from '#worker/orgs/owner-emails.ts'
 import { cliTokenScopes, mintCliToken } from './cli-token.ts'
 import { localExecuteOrgPermissions } from './legacy-scope-rewrite.ts'
 import {
@@ -608,7 +611,11 @@ export async function redeemCliCredentialBootstrap(input: {
 			},
 			now,
 		})
-		const loginOrgSlug = await loadOrgSlug(input.db, orgId).catch(() => null)
+		// Personal orgs may have no `orgs` row; their slug is the username.
+		// Without a slug the CLI parks the token as pending behind the older login.
+		const loginOrgSlug =
+			(await loadOrgSlug(input.db, orgId).catch(() => null)) ??
+			(await loadOrgUsernameFallback(input.db, orgId).catch(() => null))
 		return {
 			token,
 			userId: row.user_id,

@@ -541,13 +541,16 @@ test('a failing check is logged and retried instead of stopping the updater', as
 		firstDelayMs: 0,
 		intervalMs: 20,
 	})
-	await new Promise((resolve) => setTimeout(resolve, 200))
+	// Poll instead of one fixed sleep: slow CI timers (Windows) may fire late.
+	const failures = () =>
+		lines.filter((line) => line.includes('check failed')).length
+	const deadline = Date.now() + 5_000
+	while (failures() < 2 && Date.now() < deadline) {
+		await new Promise((resolve) => setTimeout(resolve, 20))
+	}
 	updater.stop()
 	assert.match(lines.join('\n'), /Auto-update: check failed/)
-	assert.ok(
-		lines.filter((line) => line.includes('check failed')).length >= 2,
-		'it keeps checking on schedule',
-	)
+	assert.ok(failures() >= 2, 'it keeps checking on schedule')
 })
 
 test('the idle deadline forces the update and says so', async () => {

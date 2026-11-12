@@ -163,7 +163,8 @@ function runMigrateE2e(): E2eMigrateRunResult {
 	const result = spawnSync(resolveNpmCommand(), ['run', 'migrate:e2e'], {
 		encoding: 'utf8',
 		env: process.env,
-		maxBuffer: 16 * 1024 * 1024,
+		// Captured for SQLITE_BUSY retry detection; migration tables run past 16 MiB.
+		maxBuffer: 256 * 1024 * 1024,
 	})
 	if (result.stdout) process.stdout.write(result.stdout)
 	if (result.stderr) process.stderr.write(result.stderr)

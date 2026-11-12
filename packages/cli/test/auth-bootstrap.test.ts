@@ -239,6 +239,29 @@ test('authBootstrap saves the login org the redeem response names', async () => 
 	)
 })
 
+test('authBootstrap refuses to park an org-less token behind the active org login', async () => {
+	reset()
+	redeemBody = {
+		...(redeemBody as Record<string, unknown>),
+		login_org: { slug: 'acme' },
+	}
+	const backend = tempBackend()
+	await authBootstrap({ code: goodCode, apiUrl, backend, fetchFn: fetch })
+	reset()
+	redeemBody = {
+		...(redeemBody as Record<string, unknown>),
+		token: 'kody_at_test_wider_secret_do_not_print',
+	}
+	await assert.rejects(
+		() => authBootstrap({ code: goodCode, apiUrl, backend, fetchFn: fetch }),
+		(error: Error) =>
+			/named no org/.test(error.message) &&
+			/logout --org acme/.test(error.message) &&
+			!error.message.includes('kody_at_'),
+	)
+	assert.equal(loadCredentials(undefined, backend)?.accessToken, goodToken)
+})
+
 test('runCli auth bootstrap redeems and never prints the kody_at_ token', async () => {
 	reset()
 	const home = mkdtempSync(join(tmpdir(), 'kody-cli-home-'))
