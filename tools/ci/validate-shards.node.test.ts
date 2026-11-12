@@ -44,7 +44,7 @@ test('CI matrices hash shards, retain crash retry and aggregate every shard at t
 	expect(workersRetry.replace(/\s+/g, ' ')).toContain(
 		"needs.workers.outputs.outcome_1 == 'timeout' || needs.workers.outputs.outcome_2 == 'timeout'",
 	)
-	expect(workersRetry.match(/if: .*env\.RETRY == 'true'/g)).toHaveLength(6)
+	expect(workersRetry.match(/if: .*env\.RETRY == 'true'/g)).toHaveLength(7)
 	expect(e2e).toContain('shard: [1, 2]')
 	expect(e2e).toContain('E2E_SHARD: ${{ matrix.shard }}/2')
 	expect(e2e).toContain('fail-fast: false')

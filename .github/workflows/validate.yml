@@ -409,9 +409,22 @@ jobs:
       - name: 🧪 Node unit tests
         run: npm run test:node
         env:
+          KODY_TEST_MODULE_MAP_OUT:
+            ${{ runner.temp }}/test-module-map/node-unit.json
           MIGRATION_VALIDATION_BASE: >-
             ${{ github.event.pull_request.base.sha ||
             github.event.merge_group.base_sha || github.event.before || '' }}
+
+      # Pre-push picks related tests from which modules each test loaded here
+      # (tools/test-module-map.ts).
+      - name: 🗺️ Upload test module map
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-module-map-node-unit-${{ matrix.shard }}
+          path: ${{ runner.temp }}/test-module-map/node-unit.json
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: ⏱️ Unit shard budget (watch 700s / hard 840s)
         if: success()
@@ -488,6 +501,18 @@ jobs:
       - name: ☁️ Workers unit tests
         id: attempt
         run: bash tools/ci/workers-unit-attempt.sh
+        env:
+          KODY_TEST_MODULE_MAP_OUT:
+            ${{ runner.temp }}/test-module-map/workers-unit.json
+
+      - name: 🗺️ Upload test module map
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-module-map-workers-unit-${{ matrix.shard }}
+          path: ${{ runner.temp }}/test-module-map/workers-unit.json
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: ⏱️ Unit shard budget (watch 620s / hard 780s)
         if: success()
@@ -572,6 +597,19 @@ jobs:
         if: env.RETRY == 'true'
         id: attempt
         run: bash tools/ci/workers-unit-attempt.sh
+        env:
+          KODY_TEST_MODULE_MAP_OUT:
+            ${{ runner.temp }}/test-module-map/workers-unit.json
+
+      - name: 🗺️ Upload test module map
+        if: success() && env.RETRY == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-module-map-workers-unit-${{ matrix.shard }}
+          path: ${{ runner.temp }}/test-module-map/workers-unit.json
+          retention-days: 7
+          if-no-files-found: ignore
+          overwrite: true
 
       - name: ⏱️ Unit shard budget (watch 620s / hard 780s)
         if: success() && env.RETRY == 'true'

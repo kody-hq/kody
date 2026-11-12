@@ -443,7 +443,6 @@ export function isGlobalHookTestPath(filePath: string) {
 			basename,
 		) ||
 		path.startsWith('tools/vitest-global-setup') ||
-		path.startsWith('packages/worker/src/test-support/') ||
 		path.startsWith('patches/') ||
 		/(?:^|\/)migrations(?:\/|$)/.test(path)
 	)
@@ -1080,7 +1079,7 @@ function runVitestRelatedOnce(
 		const child = spawn(
 			process.execPath,
 			[
-				fileURLToPath(new URL('./vitest-related-capped.ts', import.meta.url)),
+				fileURLToPath(new URL('./vitest-related-observed.ts', import.meta.url)),
 				'--project',
 				project,
 				...paths.map((path) => resolvePath(path)),
