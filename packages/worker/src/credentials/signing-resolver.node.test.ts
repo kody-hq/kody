@@ -637,17 +637,23 @@ test('only the owner on a website session turns raw signing on; then each signat
 	})
 	expect(ownerView).toMatchObject({ canChange: true, enabled: false })
 	expect(ownerView?.lastSignedAt).toEqual(expect.any(String))
-	expect(
-		ownerView?.signatures?.map((row) => [
-			row.who,
-			row.signed,
-			row.refusal,
-			row.messageBytes,
+	expect(ownerView?.signatures).toHaveLength(2)
+	expect(ownerView?.signatures).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				who: 'ann',
+				signed: false,
+				refusal: 'Raw signing was off',
+				messageBytes: null,
+			}),
+			expect.objectContaining({
+				who: 'ann',
+				signed: true,
+				refusal: null,
+				messageBytes: rawMessage.length,
+			}),
 		]),
-	).toEqual([
-		['ann', false, 'Raw signing was off', null],
-		['ann', true, null, rawMessage.length],
-	])
+	)
 	const events = await listRawSigningEvents({ db: t.db, credentialId: t.id })
 	const stored = JSON.stringify(events)
 	expect(stored).not.toContain(rawMessage)

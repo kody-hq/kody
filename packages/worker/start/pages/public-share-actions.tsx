@@ -11,6 +11,7 @@ import { colors } from '#universal/styles/tokens.ts'
 import { getPillButtonCss } from '#universal/styles/style-primitives.ts'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { SiteLink } from '../components/site-link.tsx'
+import { useHydrated } from '../components/use-hydrated.ts'
 
 export const shareActionCss = {
 	display: 'inline-flex',
@@ -87,6 +88,7 @@ export function PublicShareActions({
 	downloadUrl?: string
 	openOnLoad?: boolean
 }) {
+	const hydrated = useHydrated()
 	const [open, setOpen] = useState(openOnLoad),
 		[message, setMessage] = useState(''),
 		[error, setError] = useState(''),
@@ -171,6 +173,7 @@ export function PublicShareActions({
 			)}
 			<button
 				ref={trigger}
+				disabled={!hydrated}
 				css={{
 					...getPillButtonCss(),
 					fontSize: 13,

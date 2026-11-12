@@ -1,4 +1,5 @@
 import { McpCallerError } from '#mcp/caller-error.ts'
+import { PackageSourceNotPublishedError } from '#worker/repo/source-not-published-error.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { parseAuthoredPackageJson } from '#worker/package-registry/manifest.ts'
 import type { AuthoredPackageJson } from '#worker/package-registry/types.ts'
@@ -34,7 +35,7 @@ function assertPublishedCommit(
 	source: NonNullable<PublishedEntitySource['source']>,
 ) {
 	if (!source.published_commit) {
-		throw new Error(`Source "${source.id}" has no published commit.`)
+		throw new PackageSourceNotPublishedError(source.id)
 	}
 	return source.published_commit
 }

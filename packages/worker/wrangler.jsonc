@@ -676,6 +676,7 @@
 			],
 			"vars": {
 				"SENTRY_ENVIRONMENT": "production",
+				"FILES_INCLUDED_BYTES": "67108864",
 				// JSON number on purpose: buildSentryOptions reads the raw
 				// runtime env and only honors a number here (string secrets
 				// are ignored). 0 disables Sentry SDK trace sampling because
@@ -1192,6 +1193,7 @@
 			],
 			"vars": {
 				"SENTRY_ENVIRONMENT": "preview",
+				"FILES_INCLUDED_BYTES": "67108864",
 				"ARTIFACTS_NAMESPACE": "preview",
 				"YOUTUBE_ALLOWED_PLAYLIST_IDS": "PLV5CVI1eNcJhP4nrJt85L7PxHjebFpDfY",
 				"DR_EXPORT_ENABLED": "",

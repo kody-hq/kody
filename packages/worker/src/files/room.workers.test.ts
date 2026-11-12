@@ -22,6 +22,7 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
+import type { AppEnv } from '#worker/env-schema.ts'
 import {
 	collaborationLimits,
 	decodeCollaborationBytes,
@@ -70,7 +71,7 @@ async function fixture() {
 		env.FILE_ROOM.idFromName(`${ownerId}:file:${fileId}:v1`),
 	)
 	await runInDurableObject(stub, async (instance: FileRoom) => {
-		const bindings = (instance as unknown as { env: Env }).env
+		const bindings = (instance as unknown as { env: AppEnv }).env
 		bindings.FILES_INCLUDED_BYTES = '1000000'
 		bindings.WRANGLER_IS_LOCAL_DEV = 'true'
 		bindings.FILES_COLLABORATION_ENABLED = 'true'
@@ -491,7 +492,7 @@ test('external revisions retain their provider through default changes, range re
 		env.FILE_STORE.idFromName(fileStoreName(f.ownerId)),
 	)
 	await runInDurableObject(storeStub, async (instance: FileStore) => {
-		;(instance as unknown as { env: Env }).env.SECRET_STORE_KEY = keySecret
+		;(instance as unknown as { env: AppEnv }).env.SECRET_STORE_KEY = keySecret
 	})
 	const objects = new Map<string, Uint8Array>()
 	const original = globalThis.fetch
@@ -692,7 +693,7 @@ test('binary replacements advance discussion revisions and reject CRDT byte repl
 		env.FILE_ROOM.idFromName(`${f.ownerId}:file:${imageId}:v1`),
 	)
 	await runInDurableObject(stub, async (instance: FileRoom) => {
-		Object.assign((instance as unknown as { env: Env }).env, {
+		Object.assign((instance as unknown as { env: AppEnv }).env, {
 			WRANGLER_IS_LOCAL_DEV: 'true',
 			FILES_COLLABORATION_ENABLED: 'true',
 			FILES_INCLUDED_BYTES: '1000000',

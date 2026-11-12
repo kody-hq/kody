@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { useQueryClient } from '@tanstack/react-query'
+import { useRouter } from '@tanstack/react-router'
 import { ModalDialog } from '../components/modal-dialog.tsx'
 import { useEffect, useRef, useState } from 'react'
 import type { z } from 'zod'
@@ -14,6 +16,8 @@ export default function FileStorageSettings({
 	orgSlug: string
 	onClose: () => void
 }) {
+	const queryClient = useQueryClient()
+	const router = useRouter()
 	const [status, setStatus] = useState<z.infer<
 		typeof fileStorageStatusSchema
 	> | null>(null)
@@ -40,6 +44,16 @@ export default function FileStorageSettings({
 			active = false
 		}
 	}, [orgSlug])
+	async function refreshFiles() {
+		await queryClient.invalidateQueries({
+			predicate: ({ queryKey: [resource, scope, loader] }) =>
+				(resource === 'page' && loader === 'loadFilesPage') ||
+				((resource === 'workspace-document' ||
+					resource === 'workspace-embed') &&
+					scope === orgSlug),
+		})
+		await router.invalidate()
+	}
 	const button = {
 		border: 0,
 		borderRadius: 5,
@@ -74,6 +88,7 @@ export default function FileStorageSettings({
 						)
 						operation.current = crypto.randomUUID()
 						setReconnecting(false)
+						await refreshFiles()
 					} catch (e) {
 						setError(
 							e instanceof Error ? e.message : 'Could not connect storage.',
@@ -128,6 +143,7 @@ export default function FileStorageSettings({
 												data: { orgSlug, configuration: null },
 											}),
 										)
+										await refreshFiles()
 									} catch (e) {
 										setError(
 											e instanceof Error
