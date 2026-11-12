@@ -6,7 +6,10 @@ import * as Y from 'yjs'
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { fileStoreRpc } from './client.ts'
-import { fileCollaborationAccess } from './collaboration-access.ts'
+import {
+	fileCollaborationAccess,
+	type FileAccessLookups,
+} from './collaboration-access.ts'
 import { commentAnchorExists } from '#universal/comment-anchor.ts'
 import { CommentLedger } from './comment-ledger.ts'
 import {
@@ -57,6 +60,26 @@ type SessionAccess = Awaited<ReturnType<typeof fileCollaborationAccess>>
  * revoked grant still closes its sockets on the next broadcast.
  */
 type AccessPass = Map<string, Promise<SessionAccess>>
+type LiveUserRow = {
+	stable_user_id: string
+	password_changed_at: string | null
+	suspended_at: string | null
+	deleting_at: string | null
+}
+/**
+ * Person/org lookups (liveness, org binding, collaboration flag) shared by every
+ * session checked in one handler run. Scoped to the pass so it never outlives it.
+ */
+const passLookups = new WeakMap<AccessPass, FileAccessLookups>()
+function lookupsFor(pass: AccessPass) {
+	let lookups = passLookups.get(pass)
+	if (!lookups) {
+		lookups = new Map()
+		passLookups.set(pass, lookups)
+	}
+	return lookups
+}
+const liveKey = (userId: string) => `live:${userId}`
 const sessionKey = (attachment: Attachment) =>
 	JSON.stringify([attachment.request, attachment.session.issuedAt])
 function assertUnexpired(session: FileSessionProof | undefined) {
@@ -423,16 +446,55 @@ export class FileRoom extends DurableObject<Env> {
 		assertUnexpired(session)
 		await this.assertSessionLive(request, session.issuedAt)
 	}
-	private async assertSessionLive(request: RequestContext, issuedAt: number) {
-		const person = await this.env.APP_DB.prepare(
-			'SELECT password_changed_at, suspended_at, deleting_at FROM users WHERE stable_user_id = ? AND deleted_at IS NULL',
+	private loadLiveUser(userId: string) {
+		return this.env.APP_DB.prepare(
+			'SELECT stable_user_id, password_changed_at, suspended_at, deleting_at FROM users WHERE stable_user_id = ? AND deleted_at IS NULL',
 		)
-			.bind(request.actor!.userId)
-			.first<{
-				password_changed_at: string | null
-				suspended_at: string | null
-				deleting_at: string | null
-			}>()
+			.bind(userId)
+			.first<LiveUserRow>()
+	}
+	/** Loads liveness rows for every not-yet-cached person in one query. */
+	private prefetchLiveUsers(
+		userIds: Array<string>,
+		lookups: FileAccessLookups,
+	) {
+		const missing = [...new Set(userIds)].filter(
+			(id) => !lookups.has(liveKey(id)),
+		)
+		if (!missing.length) return
+		const rows = this.env.APP_DB.prepare(
+			`SELECT stable_user_id, password_changed_at, suspended_at, deleting_at FROM users WHERE stable_user_id IN (${missing.map(() => '?').join(', ')}) AND deleted_at IS NULL`,
+		)
+			.bind(...missing)
+			.all<LiveUserRow>()
+			.then(
+				(result) =>
+					new Map(
+						(result.results ?? []).map((row) => [row.stable_user_id, row]),
+					),
+			)
+		for (const id of missing) {
+			const row = rows.then((byId) => byId.get(id) ?? null)
+			// Sockets that fail fast (e.g. expired) never await their row; a failed
+			// batch still rejects for every socket that does, closing it as before.
+			row.catch(() => {})
+			lookups.set(liveKey(id), row)
+		}
+	}
+	private async assertSessionLive(
+		request: RequestContext,
+		issuedAt: number,
+		lookups?: FileAccessLookups,
+	) {
+		const userId = request.actor!.userId
+		let lookup = lookups?.get(liveKey(userId)) as
+			| Promise<LiveUserRow | null>
+			| undefined
+		if (!lookup) {
+			lookup = this.loadLiveUser(userId)
+			lookups?.set(liveKey(userId), lookup)
+		}
+		const person = await lookup
 		if (
 			!person ||
 			person.suspended_at ||
@@ -453,28 +515,43 @@ export class FileRoom extends DurableObject<Env> {
 		const key = sessionKey(attachment)
 		let access = pass.get(key)
 		if (!access) {
-			access = this.resolveAccess(attachment, fileId)
+			access = this.resolveAccess(attachment, fileId, lookupsFor(pass))
 			pass.set(key, access)
 		}
 		return access
 	}
-	private async resolveAccess(attachment: Attachment, fileId: string) {
+	private async resolveAccess(
+		attachment: Attachment,
+		fileId: string,
+		lookups?: FileAccessLookups,
+	) {
 		await this.assertSessionLive(
 			attachment.request,
 			attachment.session.issuedAt,
+			lookups,
 		)
-		return fileCollaborationAccess(this.env, attachment.request, fileId)
+		return fileCollaborationAccess(
+			this.env,
+			attachment.request,
+			fileId,
+			lookups,
+		)
 	}
 	/** Closes sockets that lost access and returns the rest with their actors. */
 	private async readableSockets(fileId: string, pass: AccessPass) {
 		const sockets = this.ctx.getWebSockets()
+		const attachments = sockets.map(
+			(ws) => ws.deserializeAttachment() as Attachment,
+		)
+		this.prefetchLiveUsers(
+			attachments.flatMap((a) =>
+				a?.request?.actor?.userId ? [a.request.actor.userId] : [],
+			),
+			lookupsFor(pass),
+		)
 		const outcomes = await Promise.allSettled(
-			sockets.map(async (ws) =>
-				this.sessionAccess(
-					ws.deserializeAttachment() as Attachment,
-					fileId,
-					pass,
-				),
+			attachments.map(async (attachment) =>
+				this.sessionAccess(attachment, fileId, pass),
 			),
 		)
 		const readable: Array<{ ws: WebSocket; actor: CollaborationActor }> = []
