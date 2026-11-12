@@ -150,11 +150,12 @@ export function describeChildExit(
 }
 
 function runNode(arguments_: ReadonlyArray<string>) {
+	// Stream output: Wrangler's migration tables outgrow any fixed spawnSync
+	// buffer (ENOBUFS). No stdin keeps Wrangler from prompting to confirm.
 	return spawnSync(process.execPath, arguments_, {
 		cwd: process.cwd(),
-		encoding: 'utf8',
 		env: process.env,
-		maxBuffer: 16 * 1024 * 1024,
+		stdio: ['ignore', 'inherit', 'inherit'],
 	})
 }
 
@@ -172,8 +173,6 @@ function main() {
 		env: localPersistEnv(process.env, envFile.path),
 	})) {
 		const result = runNode(command)
-		process.stdout.write(result.stdout ?? '')
-		process.stderr.write(result.stderr ?? '')
 		if (result.status !== 0) {
 			console.error(
 				describeChildExit(

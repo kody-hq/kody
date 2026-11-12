@@ -91,6 +91,17 @@ test('bootstrap redeem reports the minting session org as login_org', async () =
 	expect(redeemed.loginOrg).toEqual({ slug: 'bootstrap-team' })
 })
 
+test('bootstrap redeem reports a personal org with no orgs row by username', async () => {
+	const { db } = createDb()
+	const minted = await mintCliCredentialBootstrap({ db, userId, now: start })
+	const redeemed = await redeemCliCredentialBootstrap({
+		db,
+		code: minted.bootstrap_code,
+		now: at(10),
+	})
+	expect(redeemed.loginOrg).toEqual({ slug: 'bootstrap-user' })
+})
+
 test('bootstrap mint narrows only when scopes or lifetime are explicit', async () => {
 	const { db } = createDb()
 	const requested = [...cliCredentialBootstrapNarrowScopes]

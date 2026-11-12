@@ -22,6 +22,7 @@ import { openCapabilityProxySession } from '../src/capability-proxy.js'
 import { runCli } from '../src/cli.js'
 import { localExecuteScopes } from '../src/defaults.js'
 import {
+	loadCredentials,
 	createFileBackend,
 	deleteCredentials,
 	fileStorePath,
@@ -385,6 +386,8 @@ test('auth bootstrap --scopes with a kody login session mints through the Open A
 				lifetime: 'short',
 			})
 			assert.equal(loadStoredApiToken(apiUrl), null)
+			// The wider token replaces the login it was minted from.
+			assert.equal(loadCredentials(mcpUrl)?.accessToken, redeemedToken)
 			assert.doesNotMatch(result.stdout, /kody_at_|kody_bc_/)
 		},
 	)

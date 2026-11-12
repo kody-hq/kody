@@ -157,6 +157,18 @@ test('packageStorageSql rejects bindings hosted rejects', async () => {
 	})
 })
 
+test('packageStorageSql enforces the hosted 100 bound-parameter cap', async () => {
+	await withMockSqlSession('param-cap', (sql) => {
+		sql('create table t (a)')
+		const values = (count: number) => Array.from({ length: count }, (_, i) => i)
+		const insert = (count: number) =>
+			`insert into t (a) values ${Array.from({ length: count }, () => '(?)').join(', ')}`
+		assert.equal(sql(insert(100), values(100)).rowsWritten, 100)
+		assert.throws(() => sql(insert(101), values(101)), /too many SQL variables/)
+		assert.deepEqual(sql('select count(*) as n from t').rows, [{ n: 100 }])
+	})
+})
+
 test('sqlParameterSlots follows SQLite parameter numbering', () => {
 	assert.deepEqual(sqlParameterSlots(`select ?, '?', "?" -- ?`), [
 		{ index: 1, name: null },

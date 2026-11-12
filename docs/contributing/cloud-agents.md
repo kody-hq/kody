@@ -218,6 +218,13 @@ Write those with `kody:@kentcdodds/github/request` (kody-bot) or Cursor
 `ManagePullRequest` `post_comment` / `in_reply_to`. See
 [ship-pr](../../.agents/skills/ship-pr/SKILL.md).
 
+`ManagePullRequest` `create_pr` always opens the PR from the run's designated
+`cursor/…` branch, even when another ref points at the same commit, and GitHub
+cannot change a PR's head later. When a task names a different head branch (for
+example a `cleanup/docs-freshness-YYYY-MM-DD` footer), push that branch and
+create the PR once with `kody:@kentcdodds/github/request`
+`POST /repos/kody-hq/kody/pulls` and that `head`. Do not use `create_pr` for it.
+
 ## GitHub token expiry mid-run
 
 The `x-access-token` baked into `~/.gitconfig` and `~/.config/gh/hosts.yml` at
