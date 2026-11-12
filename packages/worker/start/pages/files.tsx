@@ -59,6 +59,7 @@ import {
 	readFileRevision,
 	readFileHistory,
 	readFilePreview,
+	readPageLinkTitle,
 } from '#start/server/files'
 import { buildPackageAppOpenPath } from '@kody-internal/shared/public-urls.ts'
 import { routes } from '#universal/routes.ts'
@@ -105,6 +106,8 @@ const MarkdownPreview = lazy(
 )
 import { SiteLink } from '../components/site-link.tsx'
 import { accountInputCss } from './account-management-components.tsx'
+
+const loadLinkTitle = (url: string) => readPageLinkTitle({ data: { url } })
 
 type PageData = Awaited<ReturnType<typeof loadFilesPage>>
 const fileDate = new Intl.DateTimeFormat('en-US', {
@@ -2205,6 +2208,7 @@ export function FilesPage({
 												content={draft}
 												files={assetFiles}
 												renderFile={renderEmbed}
+												loadLinkTitle={loadLinkTitle}
 												toolbarRef={collaborationToolbar}
 												canManageStorage={data.canManageStorage}
 												revisionId={selected.file.revisionId!}
@@ -2288,6 +2292,7 @@ export function FilesPage({
 													}
 													files={assetFiles}
 													renderFile={renderEmbed}
+													loadLinkTitle={loadLinkTitle}
 												/>
 											</Suspense>
 											{selected &&

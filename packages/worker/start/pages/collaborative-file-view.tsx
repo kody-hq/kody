@@ -84,6 +84,7 @@ export default function CollaborativeFileView(props: {
 	content: string
 	files: FileMetadata[]
 	renderFile: (id: string) => ReactNode
+	loadLinkTitle?: (url: string) => Promise<string | null>
 	toolbarRef: RefObject<HTMLElement | null>
 	title?: ReactNode
 	children?: ReactNode
@@ -860,6 +861,7 @@ function CollaborationView({
 									}
 									files={props.files}
 									renderFile={props.renderFile}
+									loadLinkTitle={props.loadLinkTitle}
 									onComment={access?.comment ? startComment : undefined}
 								/>
 							) : (

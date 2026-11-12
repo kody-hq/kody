@@ -9,8 +9,15 @@ import {
 	readWorkspacePage,
 	writeWorkspacePage,
 	workspacePageMediaType,
-	type PageBlock,
 } from './workspace-page.ts'
+
+import {
+	blocksToDocument,
+	documentToBlocks,
+	workspaceContentsNode,
+	workspaceTableNodes,
+	workspaceTextAttributes,
+} from './workspace-page-document.ts'
 
 const schema = new Schema({
 	nodes: {
@@ -20,12 +27,10 @@ const schema = new Schema({
 		workspaceText: {
 			group: 'block',
 			content: 'inline*',
-			attrs: {
-				id: { default: null },
-				kind: { default: 'paragraph' },
-				checked: { default: null },
-			},
+			attrs: workspaceTextAttributes,
 		},
+		...workspaceTableNodes,
+		workspaceContents: workspaceContentsNode,
 		workspaceFile: {
 			group: 'block',
 			atom: true,
@@ -44,56 +49,14 @@ export function createCollaborativeDocument(
 	}
 	const page = readWorkspacePage(content)
 	if (!page) throw new Error('Invalid workspace page.')
-	return prosemirrorJSONToYDoc(
-		schema,
-		{
-			type: 'doc',
-			content: page.blocks.map((block) =>
-				block.kind === 'file'
-					? {
-							type: 'workspaceFile',
-							attrs: { id: block.id, fileId: block.fileId },
-						}
-					: {
-							type: 'workspaceText',
-							attrs: {
-								id: block.id,
-								kind: block.kind,
-								checked: block.checked ?? null,
-							},
-							content: block.text
-								.split('\n')
-								.flatMap((text, i) => [
-									...(i ? [{ type: 'hardBreak' }] : []),
-									...(text ? [{ type: 'text', text }] : []),
-								]),
-						},
-			),
-		},
-		'default',
-	)
+	return prosemirrorJSONToYDoc(schema, blocksToDocument(page.blocks), 'default')
 }
 export function collaborativeContent(doc: Y.Doc, mediaType: string) {
 	if (mediaType !== workspacePageMediaType)
 		return doc.getText('content').toString()
 	const json = yDocToProsemirrorJSON(doc, 'default')
 	const parsed = schema.nodeFromJSON(json)
-	const blocks: PageBlock[] = []
-	parsed.forEach((node) => {
-		blocks.push(
-			node.type.name === 'workspaceFile'
-				? { id: node.attrs.id, kind: 'file', fileId: node.attrs.fileId }
-				: {
-						id: node.attrs.id,
-						kind: node.attrs.kind,
-						text: node.textBetween(0, node.content.size, '\n', '\n'),
-						...(node.attrs.checked !== null
-							? { checked: node.attrs.checked }
-							: {}),
-					},
-		)
-	})
-	const content = writeWorkspacePage(blocks)
+	const content = writeWorkspacePage(documentToBlocks(parsed))
 	if (!readWorkspacePage(content))
 		throw new Error('Invalid shared page structure.')
 	return content

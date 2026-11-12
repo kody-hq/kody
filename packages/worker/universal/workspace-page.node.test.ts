@@ -69,3 +69,28 @@ test('Markdown exports preserve tasks, multiline quotes, literal markup, code fe
 		'[Report.csv](<https://example.test/files?id=' + a + '>)',
 	)
 })
+
+test('Markdown exports stable heading links, numbered runs, link cards and Mermaid source', () => {
+	const content = writeWorkspacePage([
+		{ id: a, kind: 'contents' },
+		{ id: b, kind: 'heading', text: 'Launch plan' },
+		{ id: c, kind: 'numbered', text: 'Draft' },
+		{ id: crypto.randomUUID(), kind: 'numbered', text: 'Publish' },
+		{
+			id: crypto.randomUUID(),
+			kind: 'link',
+			title: 'Project plan',
+			text: 'https://example.com/plan',
+		},
+		{ id: crypto.randomUUID(), kind: 'numbered', text: 'Review' },
+		{ id: crypto.randomUUID(), kind: 'mermaid', text: 'flowchart LR\nA --> B' },
+	])
+	const markdown = workspacePageMarkdown('Launch', content, [])
+	expect(markdown).toContain(`[Launch plan](#block-${b})`)
+	expect(markdown).toContain(`<a id="block-${b}"></a>`)
+	expect(markdown).toContain('1. Draft\n2. Publish')
+	expect(markdown).toContain(
+		'[Project plan](<https://example.com/plan>)\n\n1. Review',
+	)
+	expect(markdown).toContain('```mermaid\nflowchart LR\nA --> B\n```')
+})
