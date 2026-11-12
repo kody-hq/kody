@@ -98,17 +98,19 @@ const portabilityGuideEntity = 'guide:portability'
 export const portabilityGuideHref = '/docs/portability'
 
 export const onboardingAccessLede =
-	'Kody is Your agents\u2019 cloud: memory, secrets, packages, jobs, workflows, and apps. Paste this prompt so your agent looks up the onboarding guide, offers a few concrete first wins, and helps you make one of them. It is not a service gateway.'
+	"Kody is Your agents\u2019 cloud: memory, secrets, packages, jobs, workflows, and apps. Paste this prompt so your agent looks at what's already in it, proposes a few things to move into Kody, and helps you move one. If there is not much to move, it offers first-win ideas instead. It is not a service gateway."
 
 export function onboardingAccessSelectedLede(agentLabel: string | null) {
 	const name = agentLabel?.trim() ? agentLabel.trim() : 'your agent'
-	return `Copy this prompt into ${name}. It will look up the onboarding guide, offer a few concrete first wins, and help you make one of them in Kody.`
+	return `Copy this prompt into ${name}. It will look at what's already set up there, propose a few things to move into Kody, and help you move one. If there is not much to move, it offers first-win ideas instead.`
 }
 
 export const onboardingStep2Prompt = [
 	"I'm on Kody onboarding Step 2.",
-	`Look up the onboarding guide with search({ entity: "${onboardingGuideEntity}" }) and help me make something useful in my account.`,
-	'Follow the guide: offer the first-win choices, wait for my pick, then do one small win.',
+	`Look up the onboarding guide with search({ entity: "${onboardingGuideEntity}" }).`,
+	"First, look at what's already in this agent: connections, skills, memories, instructions, and repeating processes.",
+	'Propose a few that would be more useful if they lived in Kody, wait for my pick, and help me move one.',
+	"If this agent doesn't have much to move, offer the guide's first-win ideas instead, wait for my pick, then do one small win.",
 ].join(' ')
 
 export const onboardingCopyStep2PromptLabel = 'Copy Step 2 prompt'

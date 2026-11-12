@@ -128,8 +128,9 @@ search({ entity: "guide:onboarding" })
 
 Success looks like: `list-tools` returns `search`, `execute`, and `api` with
 their input schemas, and the search returns the onboarding guide, which
-describes Kody as your agents' cloud (not a gateway) and offers six first-win
-choices. Only `search` needs to be allowlisted to reach this point.
+describes Kody as your agents' cloud (not a gateway) and starts by moving what
+is already in the agent into Kody, with six first-win ideas as the fallback.
+Only `search` needs to be allowlisted to reach this point.
 
 ## What failed on the first attempt
 
