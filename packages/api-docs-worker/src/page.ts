@@ -4,9 +4,9 @@
  *
  * Pin the CDN package so a floating `latest` cannot break production docs.
  */
-export const scalarCdnUrl =
+const scalarCdnUrl =
 	'https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.72.3/dist/browser/standalone.js'
-export const scalarCdnIntegrity =
+const scalarCdnIntegrity =
 	'sha384-HWi/QCSPi64AQ0xBXFGDk+7gmvZ4hJ/7sZMIXqWVz6Ikb6+Cxej/hWKaomOStyFb'
 
 export function renderApiDocsPage(input: { title: string; specPath: string }) {

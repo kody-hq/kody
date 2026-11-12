@@ -69,6 +69,9 @@ export default defineConfig({
 		'packages/highlight-worker': {
 			project: ['src/**/*.ts'],
 		},
+		'packages/push-queue-worker': {
+			project: ['src/**/*.ts'],
+		},
 		'packages/api-worker': {
 			project: ['src/**/*.ts'],
 		},
