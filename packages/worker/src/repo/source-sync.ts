@@ -3,8 +3,12 @@ import {
 	hasArtifactsAccess,
 	type ArtifactBootstrapAccess,
 	isLoopbackArtifactsRemote,
+	resolveExistingArtifactSourceRepo,
 } from './artifacts.ts'
-import { writeArtifactSourceSnapshot } from './artifact-source-snapshot.ts'
+import {
+	hasArtifactSourceSnapshotApi,
+	writeArtifactSourceSnapshot,
+} from './artifact-source-snapshot.ts'
 import { createSnapshotFilesWorkspace, runRepoChecks } from './checks.ts'
 import { createRepoChecksError } from './repo-checks-failed-error.ts'
 import { getEntitySourceById, updateEntitySource } from './entity-sources.ts'
@@ -175,6 +179,13 @@ async function writePublishedSnapshotWithRevert(input: {
 	}
 }
 
+async function hasLoopbackSourceRemote(env: Env, repoId: string) {
+	if (!hasArtifactSourceSnapshotApi(env)) return false
+	const repo = await resolveExistingArtifactSourceRepo(env, repoId)
+	const remote = (await repo?.info())?.remote
+	return typeof remote === 'string' && isLoopbackArtifactsRemote(remote)
+}
+
 export async function syncArtifactSourceSnapshot(
 	input: SyncArtifactSourceInput,
 ): Promise<string | null> {
@@ -203,6 +214,106 @@ export async function syncArtifactSourceSnapshot(
 		path,
 		content,
 	}))
+	// Local dev: a loopback Artifacts remote has no git history to open a
+	// session on, so every publish (first or update) writes a mock snapshot.
+	const publishThroughLoopbackSnapshot = () =>
+		pushServerTiming(input.serverTiming, 'mock-artifact-snapshot', async () => {
+			// The local-dev mock lane skips the RepoSession applyEdits gate, so
+			// enforce the per-file limit here for dev/prod parity.
+			const oversizedFile = findOversizedRepoSourceFile(
+				Object.entries(input.files),
+			)
+			if (oversizedFile) {
+				throw new Error(buildRepoLargeFileMessage(oversizedFile))
+			}
+			// Plain repos have no manifest requirement (live-at-HEAD).
+			if (source.entity_kind !== 'repo') {
+				const manifestContent = input.files[source.manifest_path]
+				if (typeof manifestContent !== 'string') {
+					throw new Error(
+						`Manifest "${source.manifest_path}" was not found in the repo source.`,
+					)
+				}
+				validateEntitySourceManifest({
+					entityKind: source.entity_kind,
+					content: manifestContent,
+					manifestPath: source.manifest_path,
+				})
+			}
+			// Same publish gate as bootstrapSource / publishFromExternalRef:
+			// do not stamp published_commit or the published snapshot until
+			// runRepoChecks passes on this tree. Community install opts out
+			// via runPublishChecks: false (its own checks drive adaptation).
+			if (
+				source.entity_kind === 'package' &&
+				input.runPublishChecks !== false
+			) {
+				const checks = await runRepoChecks({
+					workspace: createSnapshotFilesWorkspace(input.files),
+					manifestPath: source.manifest_path,
+					sourceRoot: source.source_root || '/',
+					env: input.env,
+					baseUrl: input.baseUrl,
+					userId: input.userId,
+					sourceId: source.id,
+					...(input.expectedPackageScope !== undefined
+						? { expectedPackageScope: input.expectedPackageScope }
+						: {}),
+					...(input.requirePackageDocs === false
+						? { requirePackageDocs: false }
+						: {}),
+					...(input.enforceCredentialStamp === false
+						? { enforceCredentialStamp: false }
+						: {}),
+				})
+				if (!checks.ok) {
+					throw createRepoChecksError(checks.results)
+				}
+			}
+			const snapshot = await writeArtifactSourceSnapshot({
+				env: input.env,
+				repoId: source.repo_id,
+				files: input.files,
+			})
+			await writePublishedSourceSnapshot({
+				env: input.env,
+				source: {
+					...source,
+					published_commit: snapshot.published_commit,
+				},
+				files: input.files,
+			})
+			try {
+				await updateEntitySource(input.env.APP_DB, {
+					id: source.id,
+					userId: source.user_id,
+					publishedCommit: snapshot.published_commit,
+					manifestPath: source.manifest_path,
+					sourceRoot: source.source_root,
+				})
+			} catch (error) {
+				await input.env.BUNDLE_ARTIFACTS_KV.delete(
+					buildPublishedSourceSnapshotKvKey({
+						sourceId: source.id,
+						publishedCommit: snapshot.published_commit,
+					}),
+				)
+				throw error
+			}
+			await storePublishedCredentialNeeds({
+				env: input.env,
+				source,
+				publishedCommit: snapshot.published_commit,
+				files: input.files,
+			})
+			await storePublishedCredentialStamp({
+				env: input.env,
+				source,
+				publishedCommit: snapshot.published_commit,
+				files: input.files,
+			})
+			return snapshot.published_commit
+		})
 	// A publish paused for credential needs approval keeps its session: the
 	// approval re-runs the publish from it.
 	let keepSession = false
@@ -229,107 +340,7 @@ export async function syncArtifactSourceSnapshot(
 				isLoopbackArtifactsRemote(input.bootstrapAccess.remote) &&
 				input.existingHeadCommit == null
 			) {
-				return await pushServerTiming(
-					input.serverTiming,
-					'mock-artifact-snapshot',
-					async () => {
-						// The local-dev mock lane skips the RepoSession applyEdits gate, so
-						// enforce the per-file limit here for dev/prod parity.
-						const oversizedFile = findOversizedRepoSourceFile(
-							Object.entries(input.files),
-						)
-						if (oversizedFile) {
-							throw new Error(buildRepoLargeFileMessage(oversizedFile))
-						}
-						// Plain repos have no manifest requirement (live-at-HEAD).
-						if (source.entity_kind !== 'repo') {
-							const manifestContent = input.files[source.manifest_path]
-							if (typeof manifestContent !== 'string') {
-								throw new Error(
-									`Manifest "${source.manifest_path}" was not found in the repo source.`,
-								)
-							}
-							validateEntitySourceManifest({
-								entityKind: source.entity_kind,
-								content: manifestContent,
-								manifestPath: source.manifest_path,
-							})
-						}
-						// Same publish gate as bootstrapSource / publishFromExternalRef:
-						// do not stamp published_commit or the published snapshot until
-						// runRepoChecks passes on this tree. Community install opts out
-						// via runPublishChecks: false (its own checks drive adaptation).
-						if (
-							source.entity_kind === 'package' &&
-							input.runPublishChecks !== false
-						) {
-							const checks = await runRepoChecks({
-								workspace: createSnapshotFilesWorkspace(input.files),
-								manifestPath: source.manifest_path,
-								sourceRoot: source.source_root || '/',
-								env: input.env,
-								baseUrl: input.baseUrl,
-								userId: input.userId,
-								sourceId: source.id,
-								...(input.expectedPackageScope !== undefined
-									? { expectedPackageScope: input.expectedPackageScope }
-									: {}),
-								...(input.requirePackageDocs === false
-									? { requirePackageDocs: false }
-									: {}),
-								...(input.enforceCredentialStamp === false
-									? { enforceCredentialStamp: false }
-									: {}),
-							})
-							if (!checks.ok) {
-								throw createRepoChecksError(checks.results)
-							}
-						}
-						const snapshot = await writeArtifactSourceSnapshot({
-							env: input.env,
-							repoId: source.repo_id,
-							files: input.files,
-						})
-						await writePublishedSourceSnapshot({
-							env: input.env,
-							source: {
-								...source,
-								published_commit: snapshot.published_commit,
-							},
-							files: input.files,
-						})
-						try {
-							await updateEntitySource(input.env.APP_DB, {
-								id: source.id,
-								userId: source.user_id,
-								publishedCommit: snapshot.published_commit,
-								manifestPath: source.manifest_path,
-								sourceRoot: source.source_root,
-							})
-						} catch (error) {
-							await input.env.BUNDLE_ARTIFACTS_KV.delete(
-								buildPublishedSourceSnapshotKvKey({
-									sourceId: source.id,
-									publishedCommit: snapshot.published_commit,
-								}),
-							)
-							throw error
-						}
-						await storePublishedCredentialNeeds({
-							env: input.env,
-							source,
-							publishedCommit: snapshot.published_commit,
-							files: input.files,
-						})
-						await storePublishedCredentialStamp({
-							env: input.env,
-							source,
-							publishedCommit: snapshot.published_commit,
-							files: input.files,
-						})
-						return snapshot.published_commit
-					},
-				)
+				return await publishThroughLoopbackSnapshot()
 			}
 			const bootstrapResult = await pushServerTiming(
 				input.serverTiming,
@@ -394,6 +405,12 @@ export async function syncArtifactSourceSnapshot(
 				files: snapshotFiles,
 			})
 			return bootstrapResult.publishedCommit
+		}
+		if (
+			input.existingHeadCommit == null &&
+			(await hasLoopbackSourceRemote(input.env, source.repo_id))
+		) {
+			return await publishThroughLoopbackSnapshot()
 		}
 		await session.openSession({
 			sessionId,

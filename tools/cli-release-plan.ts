@@ -98,6 +98,8 @@ function nextVersion(current: string, bump: ReleaseBump): string | null {
  * must not patch-bump or publish (#4607).
  */
 export function cliPathAffectsPublishedPackage(path: string): boolean {
+	// `kody dev` installs @kodycodes/dev-runtime at the CLI's own version.
+	if (path.startsWith('packages/dev-runtime/')) return true
 	return path.startsWith('packages/cli/') && path !== 'packages/cli/README.md'
 }
 

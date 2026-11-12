@@ -1,5 +1,12 @@
 import { toServingSourceView } from '#worker/repo/serving-commit.ts'
 import {
+	kodyDevClockOffsetMs,
+	kodyDevClockShimSource,
+	kodyDevColdIsolates,
+	kodyDevStorageLatencyMs,
+	withKodyDevStorageLatency,
+} from '#worker/package-runtime/kody-dev-simulation.ts'
+import {
 	isUnrepairablePreBindingArtifact,
 	publishedArtifactNeedsPackageBindingRebuild,
 } from './pre-binding-artifact-repair.ts'
@@ -219,7 +226,7 @@ import {
 const packageAppEntrypointName = 'PackageAppWorker'
 
 /** Bridge methods the package-app sandbox calls through `settle`. */
-const packageAppSandboxBridgeMethods = [
+export const packageAppSandboxBridgeMethods = [
 	'appPublisherGet',
 	'appRateLimit',
 	'appSpendGet',
@@ -285,6 +292,8 @@ function createPackageAppWorkerSource(input: {
 	 */
 	packageAppApexHostnames: Array<string>
 	packageAppCookiePrefix: string
+	/** `kody dev --clock` offset; zero leaves the module text unchanged. */
+	clockOffsetMs?: number
 }) {
 	const mcpServerNamesExpr = input.preloadMcpServerNames
 		? 'await runtimeBridge.listMcpServerNames().catch(() => [])'
@@ -293,7 +302,7 @@ function createPackageAppWorkerSource(input: {
 import { DurableObject, WorkerEntrypoint } from 'cloudflare:workers';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { channel as __kodyDiagnosticsChannel } from 'node:diagnostics_channel';
-
+${kodyDevClockShimSource(input.clockOffsetMs ?? 0)}
 // CPU sampling for Activity: the first fetch on this isolate (cold) and about
 // ${packageAppWarmCpuSampleRate * 100}% of later ones publish a marker; the host tail stores only
 // invocations that carry it. Never billed.
@@ -1624,6 +1633,19 @@ function redactRunRecordError(
 
 type AppStorageInput = { storageId: string; visitTicket?: string | null }
 
+/**
+ * `kody dev` is a true mock: every package secret is a placeholder and the
+ * secret store is never read, so no real value can reach a local app or its
+ * outbound requests. Third-party calls go to the mock server instead.
+ */
+function isKodyDevMockSecrets(env: Env) {
+	return env.KODY_DEV_MOCK_SECRETS?.trim() === 'true'
+}
+
+export function buildKodyDevMockSecret(alias: string) {
+	return `kody-dev-mock-secret:${alias.trim()}`
+}
+
 export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 	Env,
 	PackageAppRuntimeBridgeProps
@@ -1865,7 +1887,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		packageAppVisitorUserId?: string,
 		billedOrgId?: OwnerId,
 	) {
-		return storageRunnerRpc({
+		const runner = storageRunnerRpc({
 			env: this.env,
 			userId: this.ctx.props.userId,
 			storageId,
@@ -1874,6 +1896,8 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 				: {}),
 			...(billedOrgId ? { meterUserId: billedOrgId } : {}),
 		})
+		const latencyMs = kodyDevStorageLatencyMs(this.env)
+		return latencyMs > 0 ? withKodyDevStorageLatency(runner, latencyMs) : runner
 	}
 
 	private readonly storageBytesEntitlementCache =
@@ -2967,6 +2991,9 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		visitTicket: string | null | undefined,
 	) {
 		const input = { alias }
+		if (isKodyDevMockSecrets(this.env)) {
+			return { value: buildKodyDevMockSecret(alias) }
+		}
 		const resolved = await this.resolvePackageSecretMount({
 			alias,
 			boundPackageId,
@@ -3010,6 +3037,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		alias: string,
 		visitTicket: string | null | undefined,
 	) {
+		if (isKodyDevMockSecrets(this.env)) return { has: true }
 		try {
 			await this.resolvePackageSecretMount({
 				alias,
@@ -4094,6 +4122,7 @@ async function buildPackageAppWorkerOptionsUncached(
 				env: input.env,
 			}).map((origin) => origin.hostname),
 			packageAppCookiePrefix: publicContext.cookiePrefix,
+			clockOffsetMs: kodyDevClockOffsetMs(input.env),
 		}),
 	}
 	// The cached template is identity-free: no visitor, request context, or
@@ -4458,10 +4487,15 @@ export async function buildPackageAppWorker(input: {
 			workerId: build.workerId,
 			savedPackage: input.savedPackage,
 		})
-		const loaderId =
+		const warmLoaderId =
 			build.workerId && usageTailProps
 				? `${build.workerId}${packageAppUsageTailLoaderIdSuffix}`
 				: build.workerId
+		// `kody dev --cold`: a new loader id per request forces a fresh isolate.
+		const loaderId =
+			warmLoaderId && kodyDevColdIsolates(input.env)
+				? `${warmLoaderId}-cold-${crypto.randomUUID()}`
+				: warmLoaderId
 		const stub = loaderId
 			? input.env.APP_LOADER.get(loaderId, () => {
 					input.serverTiming?.push({

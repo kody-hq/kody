@@ -13,6 +13,12 @@
 			}
 		},
 		{
+			"files": ["packages/dev-runtime/test/**"],
+			"rules": {
+				"vitest/no-import-node-test": "off"
+			}
+		},
+		{
 			"files": ["packages/cli/**"],
 			"rules": {
 				"vitest/no-import-node-test": "off",

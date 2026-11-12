@@ -221,7 +221,7 @@ async function npmInstallMsw(
  * `npm_config_*` so verbose/json logging cannot flood or change behavior.
  * Registry/cache overrides are re-applied when set (tests / offline mirrors).
  */
-function npmInstallEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+export function npmInstallEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 	const keep = new Set([
 		'PATH',
 		'HOME',

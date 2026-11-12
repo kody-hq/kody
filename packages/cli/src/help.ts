@@ -89,7 +89,7 @@ Usage:
   kody daemon auto-update [on | off | status] [--json]
   kody update
                [--credential <key=name>]… [--context <id|name>] [--fallback chain] [--requires fs,lan] [--chain <a,b,cloud>] [--target prod|mock] [--token <token>] [--api-url <url>] [--local] [--allow-private-network]
-  kody dev [serve] [--org <slug>] [--target prod|mock] [--reset-storage] [--host <addr>] [--expose-prod] [--port <n>] [--app-base-path <path>] [--allow-private-network] [--no-live-reload] [--json] [--ready-file <path>]
+  kody dev [serve] [--org <slug>] [--target prod|mock] [--reset-storage] [--host <addr>] [--expose-prod] [--port <n>] [--app-base-path <path>] [--allow-private-network] [--no-live-reload] [--run-jobs] [--simulate-latency] [--cold] [--clock <iso|ms>] [--cpu-limit-ms <n>] [--json] [--ready-file <path>]
   kody dev fetch <path> [--method <verb>] [--body <file>] [--target prod|mock] [--json] [--no-attach]
   kody dev job <name> [--target prod|mock] [--dry-run] [--json]
   kody dev webhook <name> --body <file.json> [--target prod|mock] [--dry-run] [--json]

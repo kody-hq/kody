@@ -534,48 +534,162 @@ npx @kodycodes/cli@latest dev fetch /health    # agent-friendly probe
 npx @kodycodes/cli@latest dev --target prod    # local app, real Kody
 ```
 
-`--target` chooses mock vs prod CapabilityProxy hops. It does **not** mean
-“offline,” and `--target prod` does **not** give the working-tree package hosted
-`packageStorage` / `packageSecrets` (those need a published package id). For
-`execute`, `--target mock` also forces the local workerd path (same as
-`--local`); you do not need both flags. `kody dev` and `execute --local` share
-the same local runtime bridge for these cells.
+`--target mock` (the default) runs a real Kody on your machine. On the first
+`kody dev`, the CLI installs `@kodycodes/dev-runtime` (the same version as the
+CLI) into the Kody cache. It holds the hosted origin, platform, runtime, jobs
+and highlight workers, and `kody dev` starts them under local wrangler with
+local D1, Durable Objects, KV, R2, queues, workflows and worker loaders. Each
+rebuild saves the working tree into that local Kody through the real
+`packageSave` route, and every request runs through the hosted package app
+runtime. Nothing is proxied to hosted Kody, and nothing you do locally touches
+your hosted account.
 
-| Command + target           | `packageStorage`                                                   | `packageSecrets`                             | Credentials                                                                                             | Imported published deps                                                                                                                            | Network                                                                                                                                                                       |
-| -------------------------- | ------------------------------------------------------------------ | -------------------------------------------- | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `kody dev` **mock**        | Working-tree: scratch SQLite on the CLI mock                       | Working-tree: throws on the local CLI bridge | Fake / local mock via opaque credential clients on the CLI bridge; secret material stays out of workerd | Local `.kody/deps.json` / `kody.localDeps` when mapped; else package-graph when logged in. Published modules keep their own hosted storage/secrets | With `.kody/mocks.ts`: MSW fail-closed (+ `--passthrough`). Without the file: public hosts can reach the real network (private needs `--allow-private-network`) — not offline |
-| `kody dev` **prod**        | Working-tree: throws (`local:<kody.id>` even if already published) | Working-tree: throws on the local CLI bridge | Real credentials via CapabilityProxy (server-side only)                                                 | Local `.kody/deps.json` / `kody.localDeps` when mapped; else package-graph from prod. Published modules use their own hosted storage/secrets       | Real network (no MSW file)                                                                                                                                                    |
-| `execute --local` **mock** | Same as `kody dev` mock (working-tree scratch)                     | Same as `kody dev` mock (throws)             | Same as `kody dev` mock                                                                                 | Same as `kody dev` mock                                                                                                                            | Same as `kody dev` mock                                                                                                                                                       |
-| `execute --local` **prod** | Same as `kody dev` prod (working-tree throws)                      | Same as `kody dev` prod (throws)             | Same as `kody dev` prod                                                                                 | Package-graph from prod (no working-tree localDeps mapping)                                                                                        | Same as `kody dev` prod                                                                                                                                                       |
+So under `kody dev` the hosted code runs for:
 
-What the `kody dev` mock does not reproduce:
+- `kody:runtime` and every package app bridge method: `packageStorage` (the real
+  StorageRunner SQLite Durable Object, so `list({ prefix })`, `clear()`, `sql`
+  and the row counts behave as hosted), `events`, `email`, `workflows`,
+  `packages`, the `realtime` extra, `kody.appRateLimit`, `kody.appSpendGet` and
+  `kody.appPublisherGet`.
+- The capability registry. `kody.*` calls run the real handlers against local
+  data, so plan limits, validation and manifest checks match hosted.
+- Jobs, webhooks and subscriptions (see
+  [Jobs, webhooks and events](#jobs-webhooks-and-events-under-kody-dev)).
 
-- **The hosted clock.** Hosted runs only advance `Date.now()` and
-  `performance.now()` across I/O, so a CPU-only span reads 0 ms there.
-  `kody dev` and `execute --local` use a real clock (see
-  [Server-Timing phases](../use/execute.md#server-timing-phases)).
-- **Storage latency.** Mock `packageStorage()` calls, each `sql` call included,
-  hit SQLite on your machine. Hosted, each call is a Durable Object round trip,
-  and from an execution context each call is a network round trip to Kody cloud
-  (see [Storage on a machine](./execution-contexts.md#storage-on-a-machine)).
-- **Cold isolate start.** `kody dev` serves every request from one long-running
-  workerd process, so you never see the first request on a new hosted isolate
-  load the package.
+Only the edges of the system are mocked, as listed in
+[Boundary mocks in `kody dev`](#boundary-mocks-in-kody-dev). Local state (D1,
+Durable Objects, the local account and its API token) lives under
+`<kody cache>/dev-state/<hash of the package root>`, outside the package, and
+survives restarts. Delete that directory to start over.
 
-Share previews for unpublished apps are out of scope — publish to share.
+`--target prod` and `execute --local` use a lighter working-tree bridge instead.
+It runs the bundle in a local workerd and sends `kody.*` calls to Kody (mock or
+prod) through the CapabilityProxy. `--target prod` does **not** give the working
+tree hosted `packageStorage` or `packageSecrets`; see
+[Gap 8](#gap-8-working-tree-storage-on---target-prod).
 
-On mock, the working-tree `packageStorage` key/value rows live in one file per
-mock session (`state.json` under the CLI cache's `mock-sessions/`), and that
-file is the source of truth. A running `kody dev` reads it on every call, and
-each write updates the latest file under a lock. So writes from a separate
-`kody execute --target mock`, a one-shot `kody dev job|webhook|emit`, or a hand
-edit show up in the preview right away, and a later preview write keeps them
-(last write wins per key). If the file is not valid JSON, mock storage calls
-fail with `mock_store_unreadable` and leave it untouched: fix the JSON, or
-delete it (or pass `--reset-storage`) to start empty.
+| Command + target           | `packageStorage`                               | `packageSecrets`                       | Outbound network                                  |
+| -------------------------- | ---------------------------------------------- | -------------------------------------- | ------------------------------------------------- |
+| `kody dev` **mock**        | Real StorageRunner Durable Object, local state | Placeholders only, never a real secret | `.kody/mocks.ts` (fail closed), else public hosts |
+| `kody dev` **prod**        | Throws (gap 8)                                 | Throws (gap 8)                         | Real network                                      |
+| `execute --local` **mock** | Scratch SQLite on the CLI mock                 | Throws (light bridge)                  | `.kody/mocks.ts` (fail closed), else public hosts |
+| `execute --local` **prod** | Throws (gap 8)                                 | Throws (gap 8)                         | Real network                                      |
 
-Optional outbound HTTP mocking: add `.kody/mocks.ts` (MSW `handlers`) so the CLI
-Node gateway answers package `fetch` calls under mock. Unmatched requests return
+### Boundary mocks in `kody dev`
+
+These are the only places `kody dev` swaps real code for a mock. CI fails if a
+hosted binding is dropped from the local stack without an entry here.
+
+- **Outbound fetch.** Package `fetch`, `createAuthenticatedFetch` and bound
+  fetches go through the hosted fetch gateway, which hands the request to the
+  CLI's `.kody/mocks.ts` gateway instead of the internet. With a mocks file,
+  unmatched requests fail closed with `unmocked_request` and a paste-ready stub,
+  and `--passthrough <host,...>` opts hosts into the real network. Without a
+  mocks file, public hosts reach the real network (private hosts need
+  `--allow-private-network`), so `kody dev` is not offline.
+- **Third-party services that need a secret.** Mock them in `.kody/mocks.ts`.
+  Your code still sends `{{secret:...}}` placeholders, and the mock sees the
+  placeholder value from [Mock package secrets](#mock-package-secrets), never a
+  real credential.
+- **Email delivery.** See [Email outbox](#email-outbox).
+- **Artifacts.** The local mock Cloudflare worker and a local git server hold
+  package sources.
+- **AI, Vectorize and Images.** Cloudflare only offers these remotely, so they
+  are dropped from the local stack. Search uses the offline ranker that local
+  Kody development uses.
+- **Analytics, billing and error reporting.** Production-only vars (Stripe,
+  Sentry, Fathom, backups) are never set locally.
+
+### Mock package secrets
+
+Under `kody dev`, `packageSecrets.get(alias)` returns a placeholder string that
+names the alias, and `packageSecrets.has(alias)` returns `true`. The local
+runtime never reads the secret store on this path, so it cannot return a real
+secret, not even one with the local-read toggle on. When your code needs a
+third-party response, mock that service in `.kody/mocks.ts` and assert on the
+placeholder there. The trust rule for real secrets is unchanged for hosted runs.
+
+### Email outbox
+
+`kody.emailSend` and the `email` runtime export run the hosted email code,
+including destination checks and limits, but delivery lands in a local outbox
+instead of a mail provider. Read it at `GET /__kody/dev/outbox` on the
+`kody dev` server. Messages to the local account's address
+(`<username>@kody.localhost`) are verified by default.
+
+### Jobs, webhooks and events under `kody dev`
+
+`kody dev job <name>`, `kody dev webhook <name> --body file.json` and
+`kody dev emit <topic> --body file.json` call the real local capabilities
+(`jobRunNow`, `webhookSyntheticDispatch` and `packageSubscriptionDispatch`).
+They attach to a running `kody dev` for the package, and start a one-shot local
+Kody otherwise. Subscriptions are enabled locally on every save, and `emit`
+validates the topic against the package manifest the same way hosted does.
+
+Jobs do not run on their schedule by default, so a save never sets off a burst
+of work. Pass `kody dev --run-jobs` to leave them on their real schedule in the
+local jobs worker. `workflows.create` runs on the local workflows binding with
+the hosted plan and concurrency limits.
+
+### Realtime under `kody dev`
+
+`/ws` and `/ws/{facet}` connect to the real realtime Durable Object, so the
+`realtime` extra (`broadcast`, `emit`, `listSessions` and `disconnect`) behaves
+as hosted. The local proxy signs requests in as the local account, which is a
+member of the owning org. Send a request with `x-kody-dev-visitor: anonymous` to
+make it as a visitor with no session instead; a private app answers it the way
+hosted does. The [anonymous modes](#anonymous-realtime) need an internet-visible
+app, and local Kody runs the same `packageUpdate`, security audit and owner
+approval steps as hosted, against your local account.
+
+### Simulations
+
+Some hosted behavior depends on Cloudflare scheduling, so `kody dev` can only
+approximate it. These are simulations, not exact timing.
+
+- **Clock.** Hosted runs only advance `Date.now()` and `performance.now()`
+  across I/O, so a CPU-only span reads 0 ms there; `kody dev` uses a real clock
+  (see [Server-Timing phases](../use/execute.md#server-timing-phases)).
+  `--clock <iso|ms>` shifts `Date` inside the app isolate to a moment or by an
+  offset, for code that depends on the date.
+- **Storage latency.** Locally, each `packageStorage()` call is a Durable Object
+  call on your machine. `--simulate-latency` adds 25 ms to each call, and
+  `--latency-ms <n>` sets the delay. Hosted, from an execution context each call
+  is also a network round trip to Kody cloud (see
+  [Storage on a machine](./execution-contexts.md#storage-on-a-machine)).
+- **Cold isolates.** By default the local runtime reuses warm app isolates.
+  `--cold` loads the package into a fresh isolate for every request. Cloudflare
+  decides when to evict an isolate, so hosted cold starts are rarer and less
+  predictable.
+- **CPU limit.** On by default: a request whose wall time passes 30 seconds logs
+  a warning that Cloudflare may stop it. `--cpu-limit-ms <n>` changes the limit
+  and `0` turns it off. Wall time includes I/O, so the warning is a conservative
+  stand-in for CPU time.
+- **Memory.** Not enforced. Workerd cannot meter a single app isolate, so a
+  package that goes over the 128 MB isolate limit only fails hosted.
+
+### Gap 8: working-tree storage on `--target prod`
+
+`kody dev --target prod` and `execute --local --target prod` run the working
+tree against real Kody, but the working tree has no published package id, so
+hosted storage and secrets cannot trust it. `packageStorage()` and
+`packageSecrets` throw, and `email`, `events` and `packages` are `null` on the
+light bridge. This is the only gap on the `kody dev` allowlist, and the trust
+rule stays as it is. Use `--target mock` for all of these, or publish and use
+`packageAppFetch`.
+
+### Capabilities outside the guarded surface
+
+The CI guard covers `kody:runtime` exports and package app bridge methods. The
+light bridge's mock server (`execute --local --target mock`) still answers only
+the `kody.*` calls in `mock-supported.ts`, and every other capability returns
+`not_implemented_in_mock` there. Those are not mocked and not on the allowlist.
+Use `kody dev`, which runs the whole registry locally.
+
+Share previews for unpublished apps are out of scope; publish to share.
+
+Outbound HTTP mocking: add `.kody/mocks.ts` (MSW `handlers`) so the CLI gateway
+answers package `fetch` calls under mock. Unmatched requests return
 `unmocked_request` with a paste-ready stub; `--passthrough <host,…>` opts hosts
 into real network without real credentials. The file is a local-dev hook (not a
 publish entrypoint) and is ignored on `--target prod`; git-tracked files under

@@ -246,6 +246,7 @@ test('main reuses a stamped PR tree only by skipping verification jobs', () => {
 		'workers_retry',
 		'cli',
 		'cli_windows',
+		'dev_runtime',
 	]
 	for (const job of verificationJobs) {
 		const start = jobs.indexOf(`\n  ${job}:`)
