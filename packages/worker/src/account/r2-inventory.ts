@@ -144,8 +144,9 @@ async function listUserIdentityIcons(env: Env, userId: OwnerId) {
 
 /**
  * User-owned R2 objects for account deletion and export: FileStore revision
- * keys in `FILE_BLOBS` when `FILE_STORE` is bound, mailbox MIME and attachments
- * in `EMAIL_BLOBS`, and community/identity icons plus the profile avatar in
+ * keys (labeled `FILE_BLOBS`; bytes may live in `FILE_BLOBS` or a configured
+ * provider) when `FILE_STORE` is bound, mailbox MIME and attachments in
+ * `EMAIL_BLOBS`, and community/identity icons plus the profile avatar in
  * `COMMUNITY_ASSETS`. File keys come from `FileStore.inventory`, not D1.
  */
 export async function collectAccountR2Inventory(input: {

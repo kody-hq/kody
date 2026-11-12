@@ -191,7 +191,8 @@ production foundation below adds the actual Kody bindings and entry points.
 
 `packages/worker/src/files/` adds the org-owned `FileStore` Durable Object. It
 owns the catalog, revision manifests, upload intents, deleted-id tombstones, and
-quota decisions. Immutable content lives in the dedicated `FILE_BLOBS` R2
+quota decisions. Immutable content lives in the dedicated `FILE_BLOBS` R2 bucket
+by default; a configured provider can store it in an external R2 or Amazon S3
 bucket. The signed-in `/@org/-/files` page, `fileList`, `fileGet`, `fileCreate`,
 `fileWrite`, and `fileDelete` capabilities, and `/v1/files` API operations all
 use the same authorization service. File grants also work in profile snapshots.
@@ -210,9 +211,11 @@ resource grants use Kody's existing read, write, delete, and manage-access
 permissions. The file access panel reuses `listResourceCollaborators` (the same
 subject projection as package collaborators; profile grants stay package-only).
 File metadata and revision bytes join account export:
-`collectAccountR2Inventory` lists `FILE_BLOBS` keys from `FileStore.inventory`.
-Account or org deletion calls `FileStore.purge`, which prefix-deletes
-`files:v1/{ownerId}/` before clearing the catalog.
+`collectAccountR2Inventory` lists FileStore keys (labeled `FILE_BLOBS`;
+`fileObjectReader` resolves each object's provider). Account or org deletion
+calls `FileStore.purge`, which deletes external-provider objects, then
+prefix-deletes `files:v1/{ownerId}/` in `FILE_BLOBS` before clearing the
+catalog.
 
 The page supports creating and uploading text, source editing, Markdown and
 isolated HTML previews, downloads, immutable history, restore as a new revision,

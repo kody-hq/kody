@@ -282,15 +282,20 @@ migration-safe chunked interface:
   `inboundConnectionLastUsed` on the first page only when present). Mailbox
   metadata uses `section: "mailbox"` and the `Mailbox.exportMailbox` RPC. R2 raw
   MIME, attachment, avatar, icon, and file-revision objects use
-  `section: "r2_object"`; each response contains at most one 256 KiB base64
-  chunk and an opaque cursor. Email, avatar, and icon requests use bounded
-  `LIMIT 1` ownership queries rather than reconstructing inventory; file
-  revisions page from `FileStore.inventory`. Continuation cursors bind the
-  source row, object key, size, and ETag; ownership/key mutations and object
-  overwrites are reported instead of mixing generations. Missing objects are
-  represented explicitly. R2 cursor version 1 is unsupported by the current
-  Mailbox-authoritative traversal because translation could duplicate bytes;
-  callers must restart the `r2_object` section without `startAfter`.
+  `section: "r2_object"`; each response contains at most one chunk of up to 256
+  KiB of raw object bytes, returned as base64 `contentBase64`, and an opaque
+  cursor. Email, avatar, and icon requests use bounded `LIMIT 1` ownership
+  queries rather than reconstructing inventory; file revisions page from
+  `FileStore.inventory`. Continuation cursors bind the source row, object key,
+  size, and ETag; ownership/key mutations and object overwrites are reported
+  instead of mixing generations. Missing objects are represented explicitly. R2
+  cursor version 1 is unsupported by the current Mailbox-authoritative traversal
+  because translation could duplicate bytes; callers must restart the
+  `r2_object` section without `startAfter`. File metadata is not in `r2_object`.
+  Page `section: "file_store"` for file records, collaboration state, and
+  public-link state from `FileStore.exportMetadata`. File bytes stay in
+  `r2_object`; that reader resolves each file object through `fileObjectReader`
+  (`FILE_BLOBS` or a configured external R2/S3 provider).
 
 D1 manifest counts use bounded SQL `COUNT(*)` queries. D1 section rows are read
 with SQL-level keyset pagination: every query orders by the table's `rowid`,
@@ -336,6 +341,11 @@ Durable Object export behavior:
   attempts without blocking other expired messages; they are likewise excluded
   from export/counts and removed with message or mailbox purge. See
   [Mailbox](#durable-objects-mailbox).
+- `FileStore` exports org-file catalog rows, revision manifests, collaboration
+  state, and public-link state through the account-export `file_store` section
+  (`exportMetadata` RPC). File bytes are not in that section; they page through
+  `r2_object` as above. See
+  [R2](#r2-community_assets-email_blobs-file_blobs-repo_session_blobs).
 - `MCP`, `RepoSession`, `PackageRealtimeSession`, and `McpClientHub` remain
   account-export exclusions: MCP objects are SDK session-keyed and not globally
   enumerable; RepoSession is an ephemeral editing workspace (although its SQLite
@@ -737,15 +747,17 @@ protocol. Sender identities accept only `verified` rows, and
   `tools/ci/preview-resources.ts`, and the test env reuses the preview-style
   name locally (Wrangler/vitest-plugin simulate the bucket).
 
-Immutable org-file revision bytes live in the `FILE_BLOBS` R2 bucket.
-`FileStore` (the `FILE_STORE` Durable Object) owns the catalog, revision
-manifests, upload intents, and quota. Keys use
+Immutable org-file revision bytes live in the `FILE_BLOBS` R2 bucket by default.
+A configured provider can store them in an external R2 or Amazon S3 bucket
+(`providerObjectStore`). Account export resolves the provider for each file
+object through `fileObjectReader`. `FileStore` (the `FILE_STORE` Durable Object)
+owns the catalog, revision manifests, upload intents, and quota. Keys use
 `files:v1/{ownerId}/{fileId}/{revisionId}` (`fileBlobKey` in
 `packages/worker/src/files/object-keys.ts`); a live collaboration checkpoint is
 `{key}/yjs`. Account export pages these keys through `section: "r2_object"` from
 `FileStore.inventory` (`collectAccountR2Inventory`). Account deletion calls
-`FileStore.purge`, which prefix-deletes `files:v1/{ownerId}/` before clearing
-catalog state.
+`FileStore.purge`, which deletes external-provider objects, then prefix-deletes
+`files:v1/{ownerId}/` in `FILE_BLOBS` before clearing catalog state.
 
 - Bucket names: `kody-file-blobs` (production), per-preview
   `{worker}-file-blobs` buckets created and cleaned up by
@@ -1817,11 +1829,12 @@ App-owned R2 keys are:
   per-user prefix isolation and account-deletion coverage as raw MIME.
 
 - `files:v1/{ownerId}/{fileId}/{revisionId}` — immutable org-file revision bytes
-  in `FILE_BLOBS`, plus optional `{key}/yjs` collaboration checkpoints. Built by
-  `fileBlobKey` in `packages/worker/src/files/object-keys.ts`.
-  `collectAccountR2Inventory` lists keys from `FileStore.inventory` when
-  `FILE_STORE` is bound. Account deletion prefix-purges `files:v1/{ownerId}/`
-  inside `FileStore.purge` before clearing the catalog.
+  in `FILE_BLOBS` by default (or a configured external R2/S3 provider), plus
+  optional `{key}/yjs` collaboration checkpoints. Built by `fileBlobKey` in
+  `packages/worker/src/files/object-keys.ts`. `collectAccountR2Inventory` lists
+  keys from `FileStore.inventory` when `FILE_STORE` is bound. Account deletion
+  deletes external-provider objects, then prefix-purges `files:v1/{ownerId}/` in
+  `FILE_BLOBS` inside `FileStore.purge` before clearing the catalog.
 
 - `repo-session:{durableObjectId}/…` — ephemeral RepoSession Workspace spill in
   `REPO_SESSION_BLOBS`. Account deletion prefix-purges via each session Durable
