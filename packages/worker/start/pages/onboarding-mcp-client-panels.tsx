@@ -125,6 +125,7 @@ function KodyPluginMarketplaceSideload(props: {
 	mcpServerUrl: string
 	highlights?: Record<string, HighlightedCode>
 }) {
+	const firstAppStep = props.host === 'codex' ? 2 : 1
 	return (
 		<>
 			{props.host === 'codex' ? (
@@ -139,14 +140,20 @@ function KodyPluginMarketplaceSideload(props: {
 					/>
 				</>
 			) : null}
-			<SideloadSteps steps={[kodyPluginSideloadSteps.addMarketplace]} />
+			<SideloadSteps
+				steps={[kodyPluginSideloadSteps.addMarketplace]}
+				start={firstAppStep}
+			/>
 			<ConnectCopyCard
 				highlights={props.highlights}
 				label="Add plugin marketplace"
 				value={kodyPluginMarketplaceSource}
 				copyLabel="Copy source"
 			/>
-			<SideloadSteps steps={[kodyPluginSideloadSteps.install]} />
+			<SideloadSteps
+				steps={[kodyPluginSideloadSteps.install]}
+				start={firstAppStep + 1}
+			/>
 			{props.host === 'chatgpt' ? (
 				<ChatGptSideloadNote
 					availability={kodyPluginSideloadSteps.workspace}
@@ -156,7 +163,7 @@ function KodyPluginMarketplaceSideload(props: {
 				/>
 			) : (
 				<ChatGptSideloadNote
-					availability="Every sideload path is in the"
+					availability="Workspace imports and every other sideload path are in the README."
 					href={kodyPluginReadmeUrl}
 					linkLabel="Kody plugin README"
 					directoryListing={chatGptDirectoryListingNote}

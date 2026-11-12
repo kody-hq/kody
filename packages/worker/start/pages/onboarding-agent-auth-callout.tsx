@@ -6,6 +6,7 @@ import {
 	type OnboardingAgentSurface,
 	codexMcpLoginCommand,
 	hermesMcpLoginCommand,
+	isDefaultKodyMcpUrl,
 	museMcpLoginCommand,
 	openClawMcpLoginCommand,
 	openCodeMcpAuthCommand,
@@ -39,7 +40,7 @@ export function AgentAuthCallout(props: {
 function renderAgentAuthHint(
 	kind: McpClientKind,
 	surface: OnboardingAgentSurface,
-	_mcpServerUrl: string,
+	mcpServerUrl: string,
 ) {
 	switch (kind) {
 		case 'cursor-local':
@@ -78,13 +79,26 @@ function renderAgentAuthHint(
 				</>
 			)
 		case 'chatgpt':
-			return (
+			return isDefaultKodyMcpUrl(mcpServerUrl) ? (
 				<>
 					After you install Kody from the Kody marketplace (or add the MCP
 					server), sign in to Kody and approve access when ChatGPT asks.
 				</>
+			) : (
+				<>
+					After you add the MCP server, sign in to Kody and approve access when
+					ChatGPT asks.
+				</>
 			)
 		case 'codex':
+			if (!isDefaultKodyMcpUrl(mcpServerUrl)) {
+				return (
+					<>
+						After you add the MCP server, run{' '}
+						<code>{codexMcpLoginCommand}</code> if sign-in does not start.
+					</>
+				)
+			}
 			if (surface === 'mobile') {
 				return (
 					<>
