@@ -9,7 +9,7 @@
 - [D1 (`JOBS_DB`)](#d1-jobs_db)
 - [Analytics Engine reporting](#analytics-engine-reporting)
 - [KV (`OAUTH_KV`, `BUNDLE_ARTIFACTS_KV`)](#kv-oauth_kv-bundle_artifacts_kv)
-- [R2 (`COMMUNITY_ASSETS`, `EMAIL_BLOBS`, `REPO_SESSION_BLOBS`)](#r2-community_assets-email_blobs-repo_session_blobs)
+- [R2 (`COMMUNITY_ASSETS`, `EMAIL_BLOBS`, `FILE_BLOBS`, `REPO_SESSION_BLOBS`)](#r2-community_assets-email_blobs-file_blobs-repo_session_blobs)
 - [Durable Objects (`MCP_OBJECT`)](#durable-objects-mcp_object)
 - [Durable Objects (`JobManager` and `StorageRunner`)](#durable-objects-jobmanager-and-storagerunner)
 - [Durable Objects (`UserMeter`)](#durable-objects-usermeter)
@@ -149,18 +149,18 @@ Deletion must cover these user-owned surfaces:
   coverage in the runtime target list or if that list references a stale column.
 - **Durable Objects:** `JobManager`, `StorageRunner`, `RepoSession`,
   `RepoSessionIndex`, `PackageRealtimeSession`, `McpClientHub`, `RunLog`,
-  `UserMeter`, `StripePlanRefresh`, and `Mailbox` are purged through
-  account-deletion RPCs after their identifiers are collected (`RunLog`,
-  `UserMeter`, `StripePlanRefresh`, `Mailbox`, and `RepoSessionIndex` are one
-  object per user and need no D1 id scan). Account deletion first captures the
-  authoritative USER raw-MIME and attachment references through
-  `Mailbox.listBlobReferences`, deletes those owner-safe R2 keys plus defensive
-  owner-prefix sweeps, and only then calls `Mailbox.purge()`. The purge clears
-  DO SQLite only (see [Mailbox](#durable-objects-mailbox)). `MCP` objects remain
-  SDK session-keyed, while `mcp_agent_sessions` indexes each Durable Object id
-  by authenticated stable user id so account deletion can purge stored props,
-  conversation state, raw-fetch state, and transport storage before revoking
-  OAuth grants.
+  `UserMeter`, `StripePlanRefresh`, `Mailbox`, and `FileStore` are purged
+  through account-deletion RPCs after their identifiers are collected (`RunLog`,
+  `UserMeter`, `StripePlanRefresh`, `Mailbox`, `RepoSessionIndex`, and
+  `FileStore` are one object per user and need no D1 id scan). Account deletion
+  first captures the authoritative USER raw-MIME and attachment references
+  through `Mailbox.listBlobReferences`, deletes those owner-safe R2 keys plus
+  defensive owner-prefix sweeps, and only then calls `Mailbox.purge()`. The
+  purge clears DO SQLite only (see [Mailbox](#durable-objects-mailbox)). `MCP`
+  objects remain SDK session-keyed, while `mcp_agent_sessions` indexes each
+  Durable Object id by authenticated stable user id so account deletion can
+  purge stored props, conversation state, raw-fetch state, and transport storage
+  before revoking OAuth grants.
 - **Vectorize:** memory, job, and saved-package vector ids are derived from D1
   rows and removed with `deleteByIds`. Each surface in
   `accountUserOwnedVectorizeSurfaces` declares its row source: memory and
@@ -179,10 +179,15 @@ Deletion must cover these user-owned surfaces:
   deletion marker and Mailbox rows for retry. Rows owned by `system:email` keep
   their blobs here (they are not user data); those blobs are removed when
   system-email retention deletes messages through the D1 helper.
-  `Mailbox.purge()` never deletes R2 objects. RepoSession workspace spill in
-  `REPO_SESSION_BLOBS` is ephemeral scratch keyed by Durable Object id
-  (`repo-session:{durableObjectId}/`). Account deletion enumerates session ids
-  and each `purgeSession` prefix-purges that object's keys after `deleteAll`.
+  `Mailbox.purge()` never deletes R2 objects. File revision and collaboration
+  checkpoint bytes in `FILE_BLOBS` are inventoried by `FileStore.inventory`
+  (`collectAccountR2Inventory`) when `FILE_STORE` is bound. Account deletion
+  does not delete those keys from the inventory list: `FileStore.purge`
+  prefix-deletes `files:v1/{ownerId}/` then clears the catalog. RepoSession
+  workspace spill in `REPO_SESSION_BLOBS` is ephemeral scratch keyed by Durable
+  Object id (`repo-session:{durableObjectId}/`). Account deletion enumerates
+  session ids and each `purgeSession` prefix-purges that object's keys after
+  `deleteAll`.
 - **KV:** published bundle artifact keys, source/manifest snapshot keys,
   community listing snapshots, package-skills index keys, package codemod revert
   keys, and MCP OAuth refresh-family snapshot/replay keys
@@ -276,15 +281,16 @@ migration-safe chunked interface:
   `storageBytesState`, sanitized `deletionState`, and
   `inboundConnectionLastUsed` on the first page only when present). Mailbox
   metadata uses `section: "mailbox"` and the `Mailbox.exportMailbox` RPC. R2 raw
-  MIME, attachment, avatar, and icon objects use `section: "r2_object"`; each
-  response contains at most one 256 KiB base64 chunk and an opaque cursor. Each
-  request uses bounded `LIMIT 1` ownership queries rather than reconstructing
-  inventory. Continuation cursors bind the source row, object key, size, and
-  ETag; ownership/key mutations and object overwrites are reported instead of
-  mixing generations. Missing objects are represented explicitly. R2 cursor
-  version 1 is unsupported by the current Mailbox-authoritative traversal
-  because translation could duplicate bytes; callers must restart the
-  `r2_object` section without `startAfter`.
+  MIME, attachment, avatar, icon, and file-revision objects use
+  `section: "r2_object"`; each response contains at most one 256 KiB base64
+  chunk and an opaque cursor. Email, avatar, and icon requests use bounded
+  `LIMIT 1` ownership queries rather than reconstructing inventory; file
+  revisions page from `FileStore.inventory`. Continuation cursors bind the
+  source row, object key, size, and ETag; ownership/key mutations and object
+  overwrites are reported instead of mixing generations. Missing objects are
+  represented explicitly. R2 cursor version 1 is unsupported by the current
+  Mailbox-authoritative traversal because translation could duplicate bytes;
+  callers must restart the `r2_object` section without `startAfter`.
 
 D1 manifest counts use bounded SQL `COUNT(*)` queries. D1 section rows are read
 with SQL-level keyset pagination: every query orders by the table's `rowid`,
@@ -666,7 +672,7 @@ short-lived encrypted MCP OAuth refresh-family snapshots
   source ids, published commits, bundle artifact rows, community listing ids,
   and package ids.
 
-## R2 (`COMMUNITY_ASSETS`, `EMAIL_BLOBS`, `REPO_SESSION_BLOBS`)
+## R2 (`COMMUNITY_ASSETS`, `EMAIL_BLOBS`, `FILE_BLOBS`, `REPO_SESSION_BLOBS`)
 
 Processed public community icons live in the private `COMMUNITY_ASSETS` bucket.
 The public icon route reads the active listing first, then resolves a cachified
@@ -730,6 +736,21 @@ protocol. Sender identities accept only `verified` rows, and
   `{worker}-email-blobs` buckets created and cleaned up by
   `tools/ci/preview-resources.ts`, and the test env reuses the preview-style
   name locally (Wrangler/vitest-plugin simulate the bucket).
+
+Immutable org-file revision bytes live in the `FILE_BLOBS` R2 bucket.
+`FileStore` (the `FILE_STORE` Durable Object) owns the catalog, revision
+manifests, upload intents, and quota. Keys use
+`files:v1/{ownerId}/{fileId}/{revisionId}` (`fileBlobKey` in
+`packages/worker/src/files/object-keys.ts`); a live collaboration checkpoint is
+`{key}/yjs`. Account export pages these keys through `section: "r2_object"` from
+`FileStore.inventory` (`collectAccountR2Inventory`). Account deletion calls
+`FileStore.purge`, which prefix-deletes `files:v1/{ownerId}/` before clearing
+catalog state.
+
+- Bucket names: `kody-file-blobs` (production), per-preview
+  `{worker}-file-blobs` buckets created and cleaned up by
+  `tools/ci/preview-resources.ts`, and the test env reuses the preview-style
+  name locally.
 
 RepoSession `@cloudflare/shell` Workspace objects above the inline threshold
 (~1.5 MiB) live in `REPO_SESSION_BLOBS`. This is session scratch, not a
@@ -1208,9 +1229,10 @@ the `JOBS` service binding. Runtime Durable Objects (`StorageRunner`, `RunLog`,
 `PackageRealtimeSession`) live on the runtime worker and are bound cross-script
 from origin — see [ADR 0016](../decisions/0016-mono-worker-extraction.md).
 Platform Durable Objects (`MCP`, `McpClientHub`, `OAuthPurgeCoordinator`,
-`UserMeter`, `Mailbox`, `RepoSession`, `RepoSessionIndex`, `StripePlanRefresh`)
-live on the platform worker and are bound cross-script from origin and runtime —
-see [ADR 0034](../decisions/0034-origin-owns-no-durable-objects.md). The origin
+`UserMeter`, `Mailbox`, `RepoSession`, `RepoSessionIndex`, `StripePlanRefresh`,
+`FileStore`) live on the platform worker and are bound cross-script from origin
+and runtime — see
+[ADR 0034](../decisions/0034-origin-owns-no-durable-objects.md). The origin
 script owns no Durable Object classes.
 
 - `APP_DB` (D1)
@@ -1219,6 +1241,7 @@ script owns no Durable Object classes.
 - `OAUTH_KV` (KV)
 - `BUNDLE_ARTIFACTS_KV` (KV)
 - `EMAIL_BLOBS` (R2, raw email MIME blobs)
+- `FILE_BLOBS` (R2, immutable org-file revision bytes)
 - `OPERATOR_BACKUPS` (R2, operator rollback snapshots such as org resource
   transfer backups)
 - `REPO_SESSION_BLOBS` (R2, ephemeral RepoSession Workspace spill; not a DR
@@ -1234,6 +1257,9 @@ script owns no Durable Object classes.
 - `MAILBOX` (Durable Objects; sole per-user email graph, inbound-ledger,
   retention, read, export, and mutation authority — see
   [Mailbox](#durable-objects-mailbox); class hosted on the platform worker)
+- `FILE_STORE` (Durable Objects; per-owner org file catalog and quota
+  coordinator; class hosted on the platform worker. File bytes live in
+  `FILE_BLOBS`.)
 - `STORAGE_RUNNER` (Durable Objects; class hosted on the runtime worker)
 - `REPO_SESSION` (Durable Objects; class hosted on the platform worker)
 - `REPO_SESSION_INDEX` (Durable Objects; per-user repo session catalog hosted on
@@ -1790,6 +1816,13 @@ App-owned R2 keys are:
   `emailAttachmentBlobKey` in `packages/worker/src/email/blob-keys.ts`. Same
   per-user prefix isolation and account-deletion coverage as raw MIME.
 
+- `files:v1/{ownerId}/{fileId}/{revisionId}` — immutable org-file revision bytes
+  in `FILE_BLOBS`, plus optional `{key}/yjs` collaboration checkpoints. Built by
+  `fileBlobKey` in `packages/worker/src/files/object-keys.ts`.
+  `collectAccountR2Inventory` lists keys from `FileStore.inventory` when
+  `FILE_STORE` is bound. Account deletion prefix-purges `files:v1/{ownerId}/`
+  inside `FileStore.purge` before clearing the catalog.
+
 - `repo-session:{durableObjectId}/…` — ephemeral RepoSession Workspace spill in
   `REPO_SESSION_BLOBS`. Account deletion prefix-purges via each session Durable
   Object. This scratch is excluded from the `r2_object` account-export section;
@@ -1804,10 +1837,12 @@ App-owned R2 keys are:
 
 New R2 key prefixes must add corresponding account-deletion coverage or a
 deliberate retention note, same as KV. Exportable registered R2 surfaces
-(`EMAIL_BLOBS`, `COMMUNITY_ASSETS`) use the bounded `r2_object` account-export
-section; the inventory is derived from the same user-owned D1 rows used by
-account deletion. `REPO_SESSION_BLOBS` is registered R2 but is ephemeral session
-scratch, so it is purged with the session instead of exported.
+(`EMAIL_BLOBS`, `COMMUNITY_ASSETS`, `FILE_BLOBS`) use the bounded `r2_object`
+account-export section. Email, avatar, and icon inventory is derived from the
+same user-owned D1 or Mailbox rows used by account deletion; file-revision
+inventory comes from `FileStore.inventory`. `REPO_SESSION_BLOBS` is registered
+R2 but is ephemeral session scratch, so it is purged with the session instead of
+exported.
 
 ### Vectorize metadata contracts
 

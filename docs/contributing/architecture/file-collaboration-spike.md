@@ -207,8 +207,12 @@ content returns the original revision, conflicting bases return both versions,
 and deleted ids cannot be reused. Upload intents reserve capacity before R2
 writes, allowing the same upload to recover after an interrupted commit. File
 resource grants use Kody's existing read, write, delete, and manage-access
-permissions. File metadata and revision bytes join account export, and account
-or org deletion purges the bucket prefix before clearing the catalog.
+permissions. The file access panel reuses `listResourceCollaborators` (the same
+subject projection as package collaborators; profile grants stay package-only).
+File metadata and revision bytes join account export:
+`collectAccountR2Inventory` lists `FILE_BLOBS` keys from `FileStore.inventory`.
+Account or org deletion calls `FileStore.purge`, which prefix-deletes
+`files:v1/{ownerId}/` before clearing the catalog.
 
 The page supports creating and uploading text, source editing, Markdown and
 isolated HTML previews, downloads, immutable history, restore as a new revision,
