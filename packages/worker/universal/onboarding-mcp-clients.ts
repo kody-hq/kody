@@ -306,8 +306,6 @@ export function onboardingAgentLabel(
 	if (id === 'chatgpt') return 'ChatGPT'
 	if (surface === 'mobile') {
 		switch (id) {
-			case 'chatgpt':
-				return 'ChatGPT'
 			case 'claude-desktop':
 				return 'Claude'
 			case 'copilot-app':

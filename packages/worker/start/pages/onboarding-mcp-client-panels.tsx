@@ -867,6 +867,7 @@ export function renderPanelWarning(
 					a mobile app, or run these steps later on a computer.
 				</ClientWarning>
 			) : null
+		case 'chatgpt':
 		case 'cursor-cloud':
 		case 'copilot':
 		case 'copilot-app':
