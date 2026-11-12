@@ -494,6 +494,8 @@ export async function authBootstrapWithScopes(input: {
 	scopes: ReadonlyArray<string>
 	lifetime: ResolvedCliTokenLifetime
 	mint: (params: Record<string, unknown>) => Promise<unknown>
+	/** `--org` the mint targeted, if any. */
+	org?: string
 	apiUrl?: string
 	mcpUrl?: string
 	fetchFn?: typeof fetch
@@ -514,10 +516,19 @@ export async function authBootstrapWithScopes(input: {
 		fetchFn: input.fetchFn,
 	})
 	const stored = storedApiTokenFromRedeem({ apiUrl, redeemed })
+	// This user's own credential minted the code, so an org-less redeem
+	// replaces the login for the org it targeted.
 	const saved = saveRedeemedCredential({
 		stored,
 		mcpUrl: input.mcpUrl,
-		org: redeemed.login_org?.slug,
+		org:
+			redeemed.login_org?.slug ??
+			input.org ??
+			loadCredentials(
+				input.mcpUrl || defaultMcpUrl,
+				input.backend,
+				input.resolution,
+			)?.org,
 		backend: input.backend,
 		resolution: input.resolution,
 	})

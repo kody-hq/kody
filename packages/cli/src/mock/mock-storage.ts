@@ -441,7 +441,7 @@ export function packageStorageSql(
 }
 
 /** Hosted package storage SQL's per-statement bound-parameter cap. */
-export const mockSqlMaxBoundParameters = 100
+const mockSqlMaxBoundParameters = 100
 
 function prepareMockSqlStatement(db: DatabaseSync, sql: string) {
 	try {

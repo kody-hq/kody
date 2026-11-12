@@ -941,6 +941,7 @@ async function dispatch(
 							tokenValues: tokenFlagValues(parsed.values),
 							...(org ? { org } : {}),
 						}),
+						...(org ? { org } : {}),
 					})
 				: await authBootstrap({
 						code,
