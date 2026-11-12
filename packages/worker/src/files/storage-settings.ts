@@ -37,6 +37,38 @@ async function scope(ctx: CapabilityContext) {
 		store: fileStoreRpc(ctx.env, request.org.id),
 	}
 }
+async function storageCredentials(
+	env: Env,
+	s: Awaited<ReturnType<typeof scope>>,
+) {
+	return (
+		await listSecrets({
+			env,
+			userId: s.request.org.id,
+			scope: 'user',
+		})
+	).filter(
+		(secret) =>
+			secret.credentialId &&
+			!secret.disconnected &&
+			(!secret.expiresAt || Date.parse(secret.expiresAt) > Date.now()) &&
+			!secret.allowedPackages.length &&
+			checkPermission(s.access, 'secret:use', {
+				type: 'credential',
+				id: secret.credentialId,
+				orgId: s.request.org.id,
+				label: secret.name,
+			}).allowed,
+	)
+}
+
+export async function listFileStorageCredentialNames(ctx: CapabilityContext) {
+	const names = (await storageCredentials(ctx.env, await scope(ctx))).map(
+		(secret) => secret.name,
+	)
+	return names.sort((a, b) => a.localeCompare(b))
+}
+
 export async function getFileStorage(ctx: CapabilityContext) {
 	const s = await scope(ctx)
 	return s.store.storageStatus(s.request.org.id)
@@ -49,24 +81,10 @@ export async function configureFileStorage(
 	let config: FileStorageConfig | null = null
 	if (configuration) {
 		storageEndpoint(configuration.endpoint)
-		const found = (
-			await listSecrets({
-				env: ctx.env,
-				userId: s.request.org.id,
-				scope: 'user',
-			})
-		).find((secret) => secret.name === configuration.credentialName)
-
-		if (
-			!found?.credentialId ||
-			!checkPermission(s.access, 'secret:use', {
-				type: 'credential',
-				id: found.credentialId,
-				orgId: s.request.org.id,
-				label: configuration.credentialName,
-			}).allowed ||
-			found.allowedPackages.length
+		const found = (await storageCredentials(ctx.env, s)).find(
+			(secret) => secret.name === configuration.credentialName,
 		)
+		if (!found?.credentialId)
 			throw new McpCallerError(
 				'Use a dedicated workspace credential that you can use, without a package restriction.',
 			)

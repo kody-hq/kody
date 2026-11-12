@@ -33,6 +33,7 @@ import {
 } from './workspace-packages.tsx'
 import { Combobox } from '../components/combobox.tsx'
 import { WorkspaceCreateMenu } from '../components/workspace-create-menu.tsx'
+import { useHydrated } from '../components/use-hydrated.ts'
 import { useWorkspaceUploads } from '../components/workspace-uploads.tsx'
 import { WorkspaceExplorerLayout } from '../components/workspace-explorer-layout.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
@@ -87,11 +88,13 @@ import {
 	type ContextAction,
 } from '../components/context-menu-surface.tsx'
 import { FileActionDialog } from './file-action-dialog.tsx'
+const FileStorageSettings = lazy(() => import('./file-storage-settings.tsx'))
 const FilePermissionsPanel = lazy(() => import('./file-permissions-panel.tsx'))
 import { HtmlPreview } from './file-viewers/html-file-viewer.tsx'
 import { CsvPreview } from './file-viewers/csv-file-viewer.tsx'
 import { FileViewer } from './file-viewers/file-viewer.tsx'
 import { fileAssetUrl } from '#universal/file-assets.ts'
+import { fileStorageQuotaError } from '#universal/file-storage.ts'
 const CollaborativeFileView = lazy(
 	() => import('./collaborative-file-view.tsx'),
 )
@@ -250,6 +253,7 @@ export function FilesPage({
 	onToggleBranch: (id: string) => void
 }) {
 	const uploads = useWorkspaceUploads()
+	const hydrated = useHydrated()
 	const columnFocusHandoff = useRef<string | null>(null)
 	const finderHover = useState(true)
 	const fileSurface = useRef<HTMLElement>(null)
@@ -259,6 +263,18 @@ export function FilesPage({
 	const [dropTarget, setDropTarget] = useState<string | null>(null)
 	const dragDepth = useRef(0)
 	const [explorerVisible, setExplorerVisible] = useState(true)
+	const [storageOpen, setStorageOpen] = useState(false)
+	const { includedBytes, usedBytes, external } = data.storage
+	const storageFull =
+		!external && includedBytes > 0 && usedBytes >= includedBytes
+	const formatStorage = (bytes: number) => {
+		const mebibytes = bytes / (1024 * 1024)
+		return mebibytes > 0 && mebibytes < 0.01
+			? '<0.01'
+			: new Intl.NumberFormat('en', { maximumFractionDigits: 2 }).format(
+					mebibytes,
+				)
+	}
 	const selected = data.selected
 	const canCreateIn = (id?: string) =>
 		id
@@ -323,6 +339,17 @@ export function FilesPage({
 	const uploadInput = useRef<HTMLInputElement>(null)
 	const replacementInput = useRef<HTMLInputElement>(null)
 	const [message, setMessage] = useState('')
+	const storageBlocked =
+		!external &&
+		(storageFull ||
+			!data.writes_enabled ||
+			message.includes(fileStorageQuotaError) ||
+			uploads.jobs.some(
+				(job) =>
+					job.org === data.orgSlug &&
+					job.status === 'failed' &&
+					job.error?.includes(fileStorageQuotaError),
+			))
 	const [preview, setPreview] = useState(
 		fileViewerKind(
 			selected?.file.name ?? '',
@@ -1208,10 +1235,50 @@ export function FilesPage({
 					}}
 				/>
 				{message && !selected && !creating && <p role="status">{message}</p>}
-				{!data.writes_enabled && (
-					<p role="status">
-						File storage is not enabled for this workspace yet.
-					</p>
+				{!embedded && !showPackages && (
+					<div
+						css={{
+							display: 'flex',
+							flexWrap: 'wrap',
+							gap: 8,
+							alignItems: 'center',
+							padding: '8px 16px',
+							fontSize: 13,
+							color: colors.textMuted,
+						}}
+					>
+						<span>
+							{formatStorage(usedBytes)} of {formatStorage(includedBytes)} MiB
+							included storage used
+						</span>
+						{external && <span>· New revisions use your bucket</span>}
+						{storageFull && (
+							<span role="status">Included storage is full.</span>
+						)}
+						{!data.writes_enabled && (
+							<span role="status">File storage is unavailable.</span>
+						)}
+						{data.canManageStorage && storageBlocked && (
+							<button
+								type="button"
+								css={button}
+								disabled={!hydrated}
+								onClick={() => setStorageOpen(true)}
+							>
+								Connect a bucket
+							</button>
+						)}
+					</div>
+				)}
+				{storageOpen && (
+					<Suspense
+						fallback={<LoadingIndicator label="Opening storage settings" />}
+					>
+						<FileStorageSettings
+							orgSlug={data.orgSlug}
+							onClose={() => setStorageOpen(false)}
+						/>
+					</Suspense>
 				)}
 				<WorkspaceExplorerLayout
 					browsing={
