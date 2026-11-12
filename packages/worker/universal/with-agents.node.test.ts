@@ -71,6 +71,15 @@ test('promo videos map to their /with pages and other agents have none', () => {
 	const cursorVideoId = findWithAgentByPathname('/with/cursor')?.youtubeVideoId
 	expect(cursorVideoId).toBeTruthy()
 	expect(ids).toContain(cursorVideoId)
+	expect(findWithAgentByPathname('/with/muse')?.youtubeVideoId).toBe(
+		'znnJ4jfGGcg',
+	)
+	expect(findWithAgentByPathname('/with/pi')?.youtubeVideoId).toBe(
+		'czWITu_qvJo',
+	)
+	expect(findWithAgentByPathname('/with/hermes')?.youtubeVideoId).toBe(
+		'ZfAfxwIMOgI',
+	)
 	expect(
 		findWithAgentByPathname('/with/instinct')?.youtubeVideoId,
 	).toBeUndefined()
