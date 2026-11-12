@@ -759,19 +759,29 @@ test('clearStorage during account-deletion purge must not recreate ownership row
 test('StorageRunner key-value methods match the shared kody dev contract', async () => {
 	await ensureStorageRunnerTestSchema()
 	const userId = ownerIdFromStored(`storage-kv-contract-${crypto.randomUUID()}`)
-	const runner = storageRunnerNamespace.get(
-		storageRunnerNamespace.idFromName(
-			storageRunnerDurableObjectName(userId, createExecuteStorageId()),
+	const runner = createMeteredDurableObjectStub({
+		env: { USAGE_EVENTS: { writeDataPoint() {} } },
+		userId,
+		doClass: 'StorageRunner',
+		stub: storageRunnerNamespace.get(
+			storageRunnerNamespace.idFromName(
+				storageRunnerDurableObjectName(userId, createExecuteStorageId()),
+			),
 		),
-	)
+	})
 	const results = await runStorageKvContract({
 		get: async (key) => (await runner.getValue({ key })).value,
 		set: async (key, value) => {
 			await runner.setValue({ key, value })
 		},
 		delete: async (key) => (await runner.deleteValue({ key })).deleted,
+		// Stored values are `unknown`, which the RPC stub types as never.
 		list: async (input) =>
-			(await runner.listValues({ prefix: input?.prefix ?? null })).entries,
+			(
+				(await runner.listValues({
+					prefix: input?.prefix ?? null,
+				})) as unknown as { entries: Array<{ key: string; value: unknown }> }
+			).entries,
 		clear: async () => {
 			await runner.clearStorage()
 		},

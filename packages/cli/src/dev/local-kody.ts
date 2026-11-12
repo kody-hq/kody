@@ -25,7 +25,7 @@ import { StructuredCliError } from '../structured-error.js'
 import { userCacheDir } from '../workerd-binary.js'
 import type { LocalKodyUpstream } from '../package-app-dev.js'
 
-export const devRuntimePackageName = '@kodycodes/dev-runtime'
+const devRuntimePackageName = '@kodycodes/dev-runtime'
 
 /** Structural type of `@kodycodes/dev-runtime` so the CLI never imports it statically. */
 export type DevRuntimeModule = {
@@ -55,7 +55,7 @@ export type DevRuntimeModule = {
 
 export type LocalKody = Awaited<ReturnType<DevRuntimeModule['startDevRuntime']>>
 
-export function cachedDevRuntimeRoot(cacheDir: string, version: string) {
+function cachedDevRuntimeRoot(cacheDir: string, version: string) {
 	return join(cacheDir, 'deps', 'dev-runtime', version)
 }
 
@@ -82,7 +82,7 @@ function monorepoEntry(): string | null {
 	return null
 }
 
-export async function ensureDevRuntime(
+async function ensureDevRuntime(
 	input: {
 		env?: NodeJS.ProcessEnv
 		version?: string

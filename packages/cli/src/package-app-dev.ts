@@ -1544,10 +1544,10 @@ function joinUrlPath(base: string, path: string): string {
 }
 
 /** Cloudflare's default per-request CPU limit for Workers on paid plans. */
-export const defaultDevCpuLimitMs = 30_000
+const defaultDevCpuLimitMs = 30_000
 
 /** `x-kody-dev-visitor: anonymous` sends a request without the local session. */
-export const devVisitorHeader = 'x-kody-dev-visitor'
+const devVisitorHeader = 'x-kody-dev-visitor'
 
 function isAnonymousDevVisitor(headers: IncomingHttpHeaders) {
 	return String(headers[devVisitorHeader] ?? '').trim() === 'anonymous'

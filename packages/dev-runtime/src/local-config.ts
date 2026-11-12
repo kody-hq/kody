@@ -54,7 +54,7 @@ const droppedKeys = [
 const productionOnlyVarPattern =
 	/^(DR_|BACKUP_|STRIPE_|SENTRY_|FATHOM_|YOUTUBE_|SOFT_DELETE_)/
 
-export const localVars: Readonly<Record<string, string>> = {
+const localVars: Readonly<Record<string, string>> = {
 	WRANGLER_IS_LOCAL_DEV: 'true',
 	// Package secrets resolve to placeholders; the secret store is never read.
 	KODY_DEV_MOCK_SECRETS: 'true',
@@ -63,7 +63,7 @@ export const localVars: Readonly<Record<string, string>> = {
 	SYSTEM_EMAIL_DOMAIN: 'kody.localhost',
 }
 
-export const moduleRules = [
+const moduleRules = [
 	{ type: 'CompiledWasm', globs: ['**/*.wasm'] },
 	{ type: 'ESModule', globs: ['**/*.js', '**/*.mjs'] },
 	{ type: 'Text', globs: ['**/*.txt', '**/*.md', '**/*.html', '**/*.css'] },
