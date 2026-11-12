@@ -22,6 +22,7 @@ import { ensureMockTarget, type MockServer } from './mock/mock-server.js'
 import { packageMocksRelativePath } from './mock/load-package-mocks.js'
 import {
 	startPackageAppDev,
+	type LocalKodyUpstream,
 	type PackageAppDevServer,
 } from './package-app-dev.js'
 import {
@@ -150,6 +151,10 @@ export async function runDevServe(input: {
 	io: DevIo
 	/** Injected for tests — when set, serve returns immediately after start. */
 	serveOnce?: boolean
+	/** Start the real local Kody workers (`@kodycodes/dev-runtime`) for this package. */
+	startLocalKody?: (
+		manifest: Awaited<ReturnType<typeof loadPackageManifest>>,
+	) => Promise<{ upstream: LocalKodyUpstream; close: () => Promise<void> }>
 }): Promise<number> {
 	if (input.host !== undefined) {
 		assertDevHostAllowed({
@@ -179,9 +184,13 @@ export async function runDevServe(input: {
 		: (event: DevEvent) => writeDevEvent(input.io, event)
 	let registered = false
 	let server: Awaited<ReturnType<typeof startPackageAppDev>>
+	const localKody = input.startLocalKody
+		? await input.startLocalKody(manifest)
+		: null
 	try {
 		server = await startPackageAppDev({
 			manifest,
+			...(localKody ? { localKody: localKody.upstream } : {}),
 			token: input.auth.token,
 			apiUrl: input.auth.apiUrl,
 			target: input.target,
@@ -228,10 +237,12 @@ export async function runDevServe(input: {
 			).catch(() => {})
 		}
 		await input.auth.closeMock?.()
+		await localKody?.close()
 		throw error
 	}
 	const shutdown = async () => {
 		await server.close()
+		await localKody?.close()
 		await removeDevRegistration(manifest.root, process.pid, input.target).catch(
 			() => {},
 		)

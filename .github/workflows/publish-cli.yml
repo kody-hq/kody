@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'packages/cli/**'
+      - 'packages/dev-runtime/**'
       - 'packages/worker/src/open-api/**'
       - 'packages/shared/**'
       - 'tools/generate-cli-openapi-client.ts'
@@ -34,7 +35,7 @@ jobs:
       - name: 🧰 Setup
         uses: ./.github/actions/setup-validate
 
-      - name: 🚀 Publish @kodycodes/cli
+      - name: 🚀 Publish @kodycodes/cli and @kodycodes/dev-runtime
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node tools/publish-cli.ts

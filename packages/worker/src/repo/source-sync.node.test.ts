@@ -49,6 +49,12 @@ const mockModule = vi.hoisted(() => ({
 		files: {} as Record<string, string>,
 	})),
 	isLoopbackArtifactsRemote: vi.fn((..._args: Array<unknown>) => false),
+	hasArtifactSourceSnapshotApi: vi.fn((..._args: Array<unknown>) => false),
+	resolveExistingArtifactSourceRepo: vi.fn(
+		async (
+			..._args: Array<unknown>
+		): Promise<{ info: () => Promise<{ remote: string }> } | null> => null,
+	),
 	recordPackageAppPublish: vi.fn(async (_input: unknown) => {}),
 }))
 
@@ -108,6 +114,7 @@ vi.mock('./checks.ts', async (importOriginal) => {
 
 vi.mock('./artifact-source-snapshot.ts', () => ({
 	writeArtifactSourceSnapshot: mockModule.writeArtifactSourceSnapshot,
+	hasArtifactSourceSnapshotApi: mockModule.hasArtifactSourceSnapshotApi,
 }))
 
 vi.mock('./artifacts.ts', async (importOriginal) => {
@@ -115,6 +122,8 @@ vi.mock('./artifacts.ts', async (importOriginal) => {
 	return {
 		...actual,
 		isLoopbackArtifactsRemote: mockModule.isLoopbackArtifactsRemote,
+		resolveExistingArtifactSourceRepo:
+			mockModule.resolveExistingArtifactSourceRepo,
 		hasArtifactsAccess: () => true,
 	}
 })
@@ -243,6 +252,8 @@ function setupSync(
 		sourceFiles: {},
 	})
 	mockModule.isLoopbackArtifactsRemote.mockReturnValue(false)
+	mockModule.hasArtifactSourceSnapshotApi.mockReturnValue(false)
+	mockModule.resolveExistingArtifactSourceRepo.mockResolvedValue(null)
 	mockModule.writeArtifactSourceSnapshot.mockResolvedValue({
 		published_commit: 'commit-mock-1',
 		files: {},
@@ -703,6 +714,45 @@ test('syncArtifactSourceSnapshot loopback first-publish runs package checks befo
 		expect.anything(),
 		expect.objectContaining({ publishedCommit: 'commit-mock-1' }),
 	)
+})
+
+test('syncArtifactSourceSnapshot updates a published loopback source through the snapshot lane', async () => {
+	const client = setupSync(
+		sourceRow({ ...packageSource, published_commit: 'commit-existing-1' }),
+	)
+	mockModule.hasArtifactSourceSnapshotApi.mockReturnValue(true)
+	mockModule.isLoopbackArtifactsRemote.mockReturnValue(true)
+	mockModule.resolveExistingArtifactSourceRepo.mockResolvedValue({
+		info: async () => ({
+			remote: 'http://127.0.0.1:8787/git/default/package-1.git',
+		}),
+	})
+	await expect(
+		syncArtifactSourceSnapshot({
+			...syncInput,
+			files: { 'package.json': packageJson },
+		}),
+	).resolves.toBe('commit-mock-1')
+	expect(client.openSession).not.toHaveBeenCalled()
+	expect(mockModule.runRepoChecks).toHaveBeenCalled()
+	expect(mockModule.writeArtifactSourceSnapshot).toHaveBeenCalled()
+	expect(mockModule.updateEntitySource).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({ publishedCommit: 'commit-mock-1' }),
+	)
+})
+
+test('syncArtifactSourceSnapshot never probes the remote without the local snapshot API', async () => {
+	setupSync(
+		sourceRow({ ...packageSource, published_commit: 'commit-existing-1' }),
+	)
+	mockModule.isLoopbackArtifactsRemote.mockReturnValue(true)
+	await syncArtifactSourceSnapshot({
+		...syncInput,
+		files: { 'package.json': packageJson },
+	}).catch(() => {})
+	expect(mockModule.resolveExistingArtifactSourceRepo).not.toHaveBeenCalled()
+	expect(mockModule.writeArtifactSourceSnapshot).not.toHaveBeenCalled()
 })
 
 test('syncArtifactSourceSnapshot refuses to bootstrap a locked package without allowLockedPublish', async () => {

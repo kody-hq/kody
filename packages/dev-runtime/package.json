@@ -1,0 +1,35 @@
+{
+  "name": "@kodycodes/dev-runtime",
+  "version": "0.0.0-semantically-released",
+  "description": "The real Kody workers built for local `kody dev`. Installed on demand by @kodycodes/cli.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "author": "Kent C. Dodds <me@kentcdodds.com> (https://kentcdodds.com)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kody-hq/kody.git",
+    "directory": "packages/dev-runtime"
+  },
+  "homepage": "https://kody.codes",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "wrangler": "4.147.0"
+  }
+}

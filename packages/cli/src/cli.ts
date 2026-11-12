@@ -1772,6 +1772,24 @@ async function dispatch(
 							...(typeof parsed.values['ready-file'] === 'string'
 								? { readyFile: parsed.values['ready-file'] }
 								: {}),
+							...(target === 'mock' && process.env.KODY_DEV_STUB_RUNTIME !== '1'
+								? {
+										startLocalKody: async (manifest) => {
+											const local = await import('./dev/local-kody.js')
+											const kody = await local.startLocalKody({
+												manifest,
+												onStatus: (message) => io.stderr(`${message}\n`),
+											})
+											return {
+												upstream: local.createLocalKodyUpstream({
+													kody,
+													manifest,
+												}),
+												close: kody.close,
+											}
+										},
+									}
+								: {}),
 							io,
 						})
 					case 'fetch': {

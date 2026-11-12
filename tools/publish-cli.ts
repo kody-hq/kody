@@ -13,6 +13,12 @@ import {
 
 const repoRoot = resolve(import.meta.dirname, '..')
 const packageJsonPath = resolve(repoRoot, 'packages/cli/package.json')
+/** Installed by `kody dev` at the CLI's own version, so both publish together. */
+const devRuntimePackageName = '@kodycodes/dev-runtime'
+const devRuntimePackageJsonPath = resolve(
+	repoRoot,
+	'packages/dev-runtime/package.json',
+)
 const generatedClientPath = 'packages/cli/src/generated/openapi-routes.ts'
 const pureImportMarker = 'packages/cli/src/oauth-browser.ts'
 
@@ -63,6 +69,7 @@ function commitTouchesPublishedCli(sha: string): boolean {
 		sha,
 		'--',
 		'packages/cli',
+		'packages/dev-runtime',
 	])
 	return diff
 		.split('\0')
@@ -202,13 +209,36 @@ console.log(
 	`Publishing ${cliPackageName}@${plan.version} (from ${base.version} at ${base.ref}).`,
 )
 const original = readFileSync(packageJsonPath, 'utf8')
-const packageJson = JSON.parse(original) as { version: string }
-packageJson.version = plan.version
-writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, '\t')}\n`)
+const devRuntimeOriginal = readFileSync(devRuntimePackageJsonPath, 'utf8')
+for (const [path, source] of [
+	[packageJsonPath, original],
+	[devRuntimePackageJsonPath, devRuntimeOriginal],
+] as const) {
+	const packageJson = JSON.parse(source) as { version: string }
+	packageJson.version = plan.version
+	writeFileSync(path, `${JSON.stringify(packageJson, null, '\t')}\n`)
+}
 
 const publish = process.argv.includes('--publish') || process.env.CI === 'true'
 try {
 	if (publish) {
+		// dev-runtime first: a published CLI installs the same version on demand.
+		execFileSync('npm', ['run', 'build', '-w', devRuntimePackageName], {
+			cwd: repoRoot,
+			stdio: 'inherit',
+		})
+		execFileSync(
+			'npm',
+			[
+				'publish',
+				'-w',
+				devRuntimePackageName,
+				'--provenance',
+				'--access',
+				'public',
+			],
+			{ cwd: repoRoot, stdio: 'inherit' },
+		)
 		execFileSync('npm', ['run', 'build', '-w', cliPackageName], {
 			cwd: repoRoot,
 			stdio: 'inherit',
@@ -236,4 +266,5 @@ try {
 	}
 } finally {
 	writeFileSync(packageJsonPath, original)
+	writeFileSync(devRuntimePackageJsonPath, devRuntimeOriginal)
 }

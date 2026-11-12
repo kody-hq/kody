@@ -165,6 +165,7 @@ export type PackageAppDevOptions = {
 	 */
 	hostAliases?: ReadonlyArray<string>
 	workerdPath?: string
+	localKody?: LocalKodyUpstream
 	fetchFn?: typeof fetch
 	/**
 	 * Rebuild on file changes (default true). One-shot `dev fetch` turns this
@@ -219,10 +220,26 @@ export type PackageAppDevServer = {
 	close: () => Promise<void>
 }
 
+/**
+ * The real Kody stack running locally (`@kodycodes/dev-runtime`). When set,
+ * each build is saved into that local Kody and requests go to the package
+ * app on its origin, instead of a per-build workerd with a stub runtime.
+ */
+export type LocalKodyUpstream = {
+	origin: string
+	/** `/@{username}/packages/{name}` on the local origin. */
+	appPath: string
+	/** Session `Cookie` header for the local account. */
+	cookie: string
+	/** Save the working tree into the local Kody. */
+	sync: () => Promise<void>
+}
+
 type Generation = {
 	id: number
 	dir: string
 	workerd: WorkerdHandle
+	upstream?: LocalKodyUpstream
 	code: string
 	client: DevClientBundle | null
 	mapStack: StackMapper
@@ -318,6 +335,7 @@ export async function startPackageAppDev(
 
 	const killAllSync = () => {
 		for (const generation of generations) {
+			if (generation.upstream) continue
 			try {
 				process.kill(generation.workerd.pid, 'SIGKILL')
 			} catch {}
@@ -632,6 +650,31 @@ export async function startPackageAppDev(
 	): Promise<Generation> {
 		const id = ++generationCounter
 		const dir = join(workDir, `g${id}`)
+		if (options.localKody) {
+			await options.localKody.sync()
+			const generation: Generation = {
+				id,
+				dir,
+				workerd: {
+					pid: 0,
+					port: Number(new URL(options.localKody.origin).port),
+					exited: new Promise<string>(() => {}),
+					kill: async () => {},
+				},
+				upstream: options.localKody,
+				code: bundle.code,
+				client,
+				mapStack: createStackMapper({
+					sourceMap: bundle.sourceMap,
+					userModule: localWorkerModuleNames.user,
+				}),
+				inflight: 0,
+				retired: false,
+				stopped: false,
+			}
+			generations.add(generation)
+			return generation
+		}
 		await writeWorkerFiles({
 			workDir: dir,
 			code: bundle.code,
@@ -721,8 +764,10 @@ export async function startPackageAppDev(
 		if (generation.stopped) return
 		generation.stopped = true
 		generation.retired = true
-		await generation.workerd.kill()
-		reaper.untrack(generation.workerd.pid)
+		if (!generation.upstream) {
+			await generation.workerd.kill()
+			reaper.untrack(generation.workerd.pid)
+		}
 		generations.delete(generation)
 		await rm(generation.dir, { recursive: true, force: true })
 	}
@@ -899,10 +944,14 @@ export async function startPackageAppDev(
 			restPath,
 			search: incomingUrl.search,
 		})
+		const upstream = generation.upstream
 		const forwardUrl = new URL(
 			buildTrustedDevForwardUrl({
-				baseUrl: `http://127.0.0.1:${generation.workerd.port}`,
-				restPath,
+				baseUrl:
+					upstream?.origin ?? `http://127.0.0.1:${generation.workerd.port}`,
+				restPath: upstream
+					? `${upstream.appPath}${restPath === '/' ? '/' : restPath}`
+					: restPath,
 				search: incomingUrl.search,
 			}),
 		)
@@ -918,6 +967,10 @@ export async function startPackageAppDev(
 			runSecret,
 			requestId: tag.id,
 		})
+		if (upstream) {
+			headers.host = forwardUrl.host
+			headers.cookie = upstream.cookie
+		}
 		return new Promise<void>((resolve, reject) => {
 			const upstream = httpRequest(
 				forwardUrl,
