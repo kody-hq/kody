@@ -425,7 +425,7 @@ export const chatGptPluginManagementGuideUrl =
  * frozen public ChatGPT plugin directory listing, so ChatGPT and Codex sideload
  * Kody from here. The package targets production `/mcp`.
  */
-export const kodyPluginMarketplaceRepo = 'kody-hq/kody'
+const kodyPluginMarketplaceRepo = 'kody-hq/kody'
 
 /** README with every sideload path for the Kody plugin package. */
 export const kodyPluginReadmeUrl =
