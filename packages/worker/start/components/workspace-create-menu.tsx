@@ -15,17 +15,18 @@ import { colors } from '#universal/styles/tokens.ts'
 export function WorkspaceCreateMenu({
 	orgSlug,
 	parentId,
-	disabled,
+	canCreate,
 	onUpload,
 	canManageStorage = false,
 }: {
 	orgSlug: string
 	parentId?: string
-	disabled?: boolean
+	canCreate: boolean
 	onUpload: () => void
 	canManageStorage?: boolean
 }) {
 	const [storageOpen, setStorageOpen] = useState(false)
+	if (!canCreate && !canManageStorage) return null
 	return (
 		<>
 			<Menu.Root modal={false}>
@@ -45,7 +46,6 @@ export function WorkspaceCreateMenu({
 					}}
 					aria-label="Create"
 					title="Create"
-					disabled={disabled}
 				>
 					<svg
 						width="16"
@@ -68,29 +68,33 @@ export function WorkspaceCreateMenu({
 							aria-label="Create item"
 							css={{ ...overlayPopupCss, minWidth: 170 }}
 						>
-							<Menu.LinkItem
-								css={overlayItemCss}
-								render={
-									<SiteLink
-										href={`/@${orgSlug}/-/files?new=page${parentId ? `&parent=${parentId}` : ''}`}
-									/>
-								}
-							>
-								New page
-							</Menu.LinkItem>
-							<Menu.LinkItem
-								css={overlayItemCss}
-								render={
-									<SiteLink
-										href={`/@${orgSlug}/-/files?new=folder${parentId ? `&parent=${parentId}` : ''}`}
-									/>
-								}
-							>
-								New directory
-							</Menu.LinkItem>
-							<Menu.Item css={overlayItemCss} onClick={onUpload}>
-								Upload files
-							</Menu.Item>
+							{canCreate && (
+								<>
+									<Menu.LinkItem
+										css={overlayItemCss}
+										render={
+											<SiteLink
+												href={`/@${orgSlug}/-/files?new=page${parentId ? `&parent=${parentId}` : ''}`}
+											/>
+										}
+									>
+										New page
+									</Menu.LinkItem>
+									<Menu.LinkItem
+										css={overlayItemCss}
+										render={
+											<SiteLink
+												href={`/@${orgSlug}/-/files?new=folder${parentId ? `&parent=${parentId}` : ''}`}
+											/>
+										}
+									>
+										New directory
+									</Menu.LinkItem>
+									<Menu.Item css={overlayItemCss} onClick={onUpload}>
+										Upload files
+									</Menu.Item>
+								</>
+							)}
 							{canManageStorage && (
 								<Menu.Item
 									css={overlayItemCss}

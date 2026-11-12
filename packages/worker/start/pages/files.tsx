@@ -1248,17 +1248,19 @@ export function FilesPage({
 									<FileGlyph mediaType={workspaceDirectoryMediaType} />
 									Files
 								</SiteLink>
-								{canCreateIn(explorerCreationParent) && (
-									<WorkspaceCreateMenu
-										canManageStorage={
-											data.canManageStorage && data.collaborationEnabled
-										}
-										orgSlug={data.orgSlug}
-										parentId={explorerCreationParent}
-										disabled={!data.writes_enabled || busy}
-										onUpload={() => uploadInput.current?.click()}
-									/>
-								)}
+								<WorkspaceCreateMenu
+									canManageStorage={
+										data.canManageStorage && data.collaborationEnabled
+									}
+									orgSlug={data.orgSlug}
+									parentId={explorerCreationParent}
+									canCreate={
+										data.writes_enabled &&
+										!busy &&
+										canCreateIn(explorerCreationParent)
+									}
+									onUpload={() => uploadInput.current?.click()}
+								/>
 							</div>
 							<div
 								css={{
@@ -1730,18 +1732,18 @@ export function FilesPage({
 														}
 														orgSlug={data.orgSlug}
 													/>
-													{canCreateIn(selected?.file.parentId ?? parentId) &&
-														data.writes_enabled && (
-															<WorkspaceCreateMenu
-																canManageStorage={
-																	data.canManageStorage &&
-																	data.collaborationEnabled
-																}
-																orgSlug={data.orgSlug}
-																parentId={selected?.file.parentId ?? parentId}
-																onUpload={() => uploadInput.current?.click()}
-															/>
-														)}
+													<WorkspaceCreateMenu
+														canManageStorage={
+															data.canManageStorage && data.collaborationEnabled
+														}
+														canCreate={
+															data.writes_enabled &&
+															canCreateIn(selected?.file.parentId ?? parentId)
+														}
+														orgSlug={data.orgSlug}
+														parentId={selected?.file.parentId ?? parentId}
+														onUpload={() => uploadInput.current?.click()}
+													/>
 												</>
 											)}
 											<span css={{ flex: 1 }} />
@@ -2182,6 +2184,9 @@ export function FilesPage({
 													data.writes_enabled && canCreateIn(id)
 												}
 												directory={selected.file}
+												canManageStorage={
+													data.canManageStorage && data.collaborationEnabled
+												}
 												onDestinationChange={setBrowseDestination}
 												onUpload={() => uploadInput.current?.click()}
 											/>
@@ -2888,6 +2893,8 @@ function WorkspaceHome({
 	onDestinationChange,
 	onUpload,
 	pageData,
+	canManageStorage = pageData?.canManageStorage &&
+		pageData.collaborationEnabled,
 	finderActive,
 	onSelectionChange,
 	onRename,
@@ -2905,6 +2912,7 @@ function WorkspaceHome({
 	focusHandoff?: RefObject<string | null>
 	finderHover?: [boolean, (value: boolean) => void]
 	pageData?: PageData
+	canManageStorage?: boolean
 	finderActive?: string
 	onSelectionChange?: (id: string | undefined) => void
 	onCommitRename?: (
@@ -3110,16 +3118,13 @@ function WorkspaceHome({
 						/>
 					)}
 					{repoBrowser?.actions}
-					{canCreate(creationParent) && (
-						<WorkspaceCreateMenu
-							canManageStorage={
-								pageData?.canManageStorage && pageData.collaborationEnabled
-							}
-							orgSlug={orgSlug}
-							parentId={creationParent}
-							onUpload={() => onUpload?.()}
-						/>
-					)}
+					<WorkspaceCreateMenu
+						canManageStorage={canManageStorage}
+						canCreate={canCreate(creationParent)}
+						orgSlug={orgSlug}
+						parentId={creationParent}
+						onUpload={() => onUpload?.()}
+					/>
 
 					{view === 'list' ? (
 						<div

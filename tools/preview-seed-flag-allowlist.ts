@@ -10,6 +10,7 @@ import type { FeatureFlagKey } from '#universal/feature-flags/registry.ts'
 export const previewSeedFlagAllowlist = [
 	'demo-indicator',
 	'execution-contexts',
+	'files-workspace',
 	'mcp-events-extension',
 	'package-credential-suppliers',
 	'publish-offload',
