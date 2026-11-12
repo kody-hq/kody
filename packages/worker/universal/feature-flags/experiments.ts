@@ -119,6 +119,8 @@ export const selfServeExperimentIds = selfServeExperiments.map(
 export const notSelfServeExperimentFlags: Partial<
 	Record<FeatureFlagKey, string>
 > = {
+	'files-workspace':
+		'Architecture review and controlled experimenter rollout are required before self-serve access.',
 	'repo-push-queue':
 		'Infrastructure kill switch evaluated per repo, not a user-facing feature.',
 	'publish-offload':

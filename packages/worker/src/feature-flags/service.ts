@@ -180,6 +180,48 @@ export function evaluateFlagState(input: {
 	})
 }
 
+/** Evaluate a link with no user identity or personal experiment opt-in. */
+export async function isFeatureEnabledForAnonymousOrg(
+	db: D1Database,
+	key: FeatureFlagKey,
+	orgId: string,
+) {
+	const row = await db
+		.prepare(
+			`SELECT f.enabled, f.rollout_percent, f.audience, o.enabled AS org_enabled
+		 FROM (SELECT ? AS key) k
+		 LEFT JOIN feature_flags f ON f.key = k.key
+		 LEFT JOIN feature_flag_org_overrides o ON o.flag_key = k.key AND o.org_id = ?`,
+		)
+		.bind(key, orgId)
+		.first<{
+			enabled: number | null
+			rollout_percent: number | null
+			audience: string | null
+			org_enabled: number | null
+		}>()
+	const definition = getFeatureFlagDefinition(key)
+	return evaluateFlagState({
+		key,
+		rolloutSubject: orgId,
+		overrideEnabled: null,
+		orgEnabled: row?.org_enabled == null ? null : row.org_enabled === 1,
+		global:
+			row?.enabled == null
+				? null
+				: {
+						enabled: row.enabled === 1,
+						rolloutPercent: row.rollout_percent,
+						audience: isFeatureFlagAudience(row.audience)
+							? row.audience
+							: getFeatureFlagDefaultAudience(key),
+					},
+		defaultEnabled: definition.defaultEnabled,
+		defaultAudience: getFeatureFlagDefaultAudience(key),
+		experimentsOptIn: false,
+	}).enabled
+}
+
 function assertValidRolloutPercent(rolloutPercent: number | null) {
 	if (rolloutPercent === null) return
 	if (

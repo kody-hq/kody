@@ -79,7 +79,10 @@ before(async () => {
 			authorization: request.headers.authorization ?? null,
 			body,
 		})
-		response.writeHead(redeemStatus, { 'content-type': 'application/json' })
+		response.writeHead(redeemStatus, {
+			'content-type': 'application/json',
+			connection: 'close',
+		})
 		response.end(JSON.stringify(redeemBody))
 	})
 	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))

@@ -1,0 +1,12 @@
+{
+	"extends": "@epic-web/config/typescript",
+	"compilerOptions": {
+		"composite": false,
+		"noEmit": true,
+		"lib": ["ES2023"],
+		"types": ["@cloudflare/workers-types"],
+		"moduleResolution": "bundler",
+		"allowImportingTsExtensions": true
+	},
+	"files": ["worker.ts"]
+}

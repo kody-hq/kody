@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { useActorRef } from '@xstate/react'
 import { submissionGateState } from '#client/routes/submission-gate-state.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
@@ -614,7 +615,11 @@ export function AdminUsersPage(props: {
 								onClick={() => void loadMoreUsers()}
 								css={{ ...secondaryButtonCss, width: '100%' }}
 							>
-								{isLoadingMore ? 'Loading more…' : 'Load more'}
+								{isLoadingMore ? (
+									<LoadingIndicator inline label="Loading more…" />
+								) : (
+									'Load more'
+								)}
 							</button>
 						</div>
 					) : null

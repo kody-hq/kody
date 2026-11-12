@@ -28,7 +28,7 @@ test('record table keeps row accessories outside the row link', async () => {
 	expect(html).toMatch(/<\/a>[\s\S]*Fork outdated/)
 })
 
-test('email view filters expose every triage option through the custom combobox', async () => {
+test('email view filters render the selected triage option in a closed combobox', async () => {
 	const { RecordTableSelect } =
 		await import('./pages/record-table-controls.tsx')
 	const { emailViewOptions } = await import('./pages/email-triage-controls.tsx')
@@ -42,12 +42,13 @@ test('email view filters expose every triage option through the custom combobox'
 			children: emailViewOptions,
 		}),
 	)
-	expect(html.match(/role="option"/g)).toHaveLength(
-		emailMessageViewValues.length,
+	expect(html).toContain('role="combobox"')
+	expect(html).toContain('aria-expanded="false"')
+	expect(html).toContain(`value="${emailMessageViewLabel('inbox')}"`)
+	expect(html).not.toContain('role="option"')
+	expect(emailViewOptions.map((option) => option.props.value)).toEqual(
+		emailMessageViewValues,
 	)
-	for (const view of emailMessageViewValues) {
-		expect(html).toContain(emailMessageViewLabel(view))
-	}
 })
 
 const columns = [

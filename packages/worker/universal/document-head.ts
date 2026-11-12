@@ -601,6 +601,7 @@ const orgDocumentHeads = {
 	orgCredentialNew: titleOnly('Add a credential'),
 	orgCredentialLocalReads: titleOnly('Turn on local reads'),
 	orgExecutionContexts: titleOnly('Execution contexts'),
+	orgFiles: titleOnly('Files'),
 	orgProfiles: titleOnly('Agent profiles'),
 	orgEmail: titleOnly('Email inbox'),
 	orgIntegrations: titleOnly('Integrations'),

@@ -1,12 +1,12 @@
 # kody agent index
 
-Kody is Your agents' cloud for individuals and teams (orgs, teams, grants): each
-account holds isolated packages, jobs, credentials, memories, remote connectors,
-email inboxes, and durable storage.
+Kody is your agents' cloud. Accounts isolate packages, jobs, credentials,
+memories, connectors, email, and durable storage for individuals and teams.
 
-`npm run validate` is the single authoritative local gate. UI/API: verify
-locally with [control-kody](./docs/contributing/control-kody.md) first (preview
-when [local cannot](./docs/contributing/cloud-agents.md#local-limitations)).
+Reuse existing UI components and styles. Extend shared controls for shared
+behavior. Never add unstyled native selects. Verify the rendered result.
+`npm run validate` is the local gate. Verify UI/API with
+[control-kody](./docs/contributing/control-kody.md) first.
 
 Open the page that owns the task:
 

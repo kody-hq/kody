@@ -1,3 +1,4 @@
+import { filesWorkspaceOverride } from '#worker/files/feature.ts'
 import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { auditDatabaseFromEnv } from '#worker/audit-log.ts'
 import {
@@ -246,7 +247,13 @@ export async function resolveCallerFeatureFlags(
 	let promise = callerFeatureFlagMaps.get(callerContext)
 	if (!promise) {
 		promise = loadCallerFeatureFlagResolution(env, callerContext).then(
-			(resolution) => flagsFromResolution(resolution),
+			(resolution) => {
+				const flags = flagsFromResolution(resolution)
+				const override = filesWorkspaceOverride(env)
+				return override !== undefined && callerContext.user
+					? { ...flags, 'files-workspace': override }
+					: flags
+			},
 		)
 		callerFeatureFlagMaps.set(callerContext, promise)
 	}

@@ -735,3 +735,56 @@ test('storage_runner section reads do not load manifests for D1-known rows', asy
 		loadManifest.mockRestore()
 	}
 })
+
+test('file catalog and revision bytes join account export without exposing storage in file metadata', async () => {
+	const { sqlite, db } = createMigratedDbWithUser()
+	const key = 'files:v1/user-aaa/file-a/revision-a'
+	const bytes = new TextEncoder().encode('# Notes')
+	const file = {
+		id: 'file-a',
+		name: 'Notes.md',
+		mediaType: 'text/markdown',
+		revisionId: 'revision-a',
+		revisions: [],
+		createdAt: 'now',
+		updatedAt: 'now',
+	}
+	const inventory = vi.fn(async (owner: string) => {
+		expect(owner).toBe('user-aaa')
+		return [key]
+	})
+	const get = vi.fn(async (requestedKey: string) => {
+		expect(requestedKey).toBe(key)
+		return {
+			size: bytes.byteLength,
+			httpEtag: '"file-etag"',
+			httpMetadata: { contentType: 'text/markdown' },
+			arrayBuffer: async () => bytes.buffer,
+		}
+	})
+	const read = sectionReader({
+		APP_DB: db,
+		COOKIE_SECRET: 'file-export-test',
+		MAILBOX: createMailboxBinding(),
+		FILE_STORE: createStubNamespace({
+			objectProvider: async () => null,
+			inventory,
+			exportMetadata: async () => ({ files: [file] }),
+		}),
+		FILE_BLOBS: { get },
+	} as unknown as Env)
+	const catalog = await read('file_store', { pageSize: 1 })
+	expect(catalog.items).toEqual([file])
+	expect(catalog.truncated).toBe(false)
+	const blobs = await read('r2_object')
+	expect(blobs.items).toEqual([
+		expect.objectContaining({
+			surfaceId: 'file_revision',
+			key,
+			contentBase64: btoa('# Notes'),
+			objectComplete: true,
+		}),
+	])
+	expect(get).toHaveBeenCalledOnce()
+	sqlite.close()
+})

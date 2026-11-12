@@ -7,6 +7,9 @@ export default defineConfig({
 		'.': {
 			entry: [
 				...toolCliEntryFiles(process.cwd()),
+				'tools/files-spike/browser.ts',
+				'tools/files-spike/worker.ts',
+				'tools/files-spike/vitest.config.ts',
 				// Preview workflow github-script steps require this CommonJS helper.
 				'tools/ci/github-api-retry.cjs',
 				'tools/execution-context-e2e/daemon-host.cjs',
@@ -48,6 +51,8 @@ export default defineConfig({
 				'start/router.tsx',
 				'start/routeTree.gen.ts',
 				'start/routes/**/*.{ts,tsx}',
+				// Vite builds these independent sandbox scripts by filename.
+				'start/pages/file-viewers/hosts/{docx,xlsx,pptx}.ts',
 				'src/mcp/capabilities/**/*.ts',
 				'src/mcp/instructions/**/*.ts',
 			],

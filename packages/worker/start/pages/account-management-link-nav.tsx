@@ -10,15 +10,13 @@ import {
 	hoverMq,
 	siteHeaderHeight,
 } from '#universal/styles/style-primitives.ts'
-import { dismissOpenPopoverPanel } from '../components/switcher-menu.tsx'
 import {
 	WorkspaceSwitcher,
-	workspaceSwitcherPanelId,
 	type WorkspaceSwitcherData,
 } from '../components/workspace-switcher.tsx'
 
-/** Account nav collapses to a wrapping row below this width (prototype 860px). */
-export const accountManagementNarrowMq = '@media (max-width: 860px)'
+/** Account nav collapses to a wrapping row below this width. */
+export const accountManagementNarrowMq = '@media (max-width: 600px)'
 
 type AccountManagementLinkNavItem = {
 	href: string
@@ -118,8 +116,8 @@ function renderRailGroups(
 			css={railGroupCss}
 		>
 			{group.label ? (
-				<p aria-hidden="true" css={railGroupLabelCss}>
-					{group.label}
+				<p data-rail-section aria-hidden="true" css={railGroupLabelCss}>
+					<span data-rail-label>{group.label}</span>
 				</p>
 			) : null}
 			{group.note ? (
@@ -131,6 +129,7 @@ function renderRailGroups(
 						lineHeight: 1.4,
 						color: colors.textMuted,
 					}}
+					data-rail-label
 					data-testid="account-rail-group-note"
 				>
 					{group.note}
@@ -143,6 +142,9 @@ function renderRailGroups(
 
 /** `.account-nav a` — quiet link pills; only the current one goes green. */
 const accountNavLinkCss: CSSObject = {
+	position: 'relative',
+	'&:has([data-nav-badge])': { paddingTop: '0.7rem' },
+	'& > [data-rail-badge]': { position: 'absolute', top: -3, right: 9 },
 	display: 'flex',
 	alignItems: 'center',
 	gap: '0.5rem',
@@ -157,7 +159,11 @@ const accountNavLinkCss: CSSObject = {
 		flex: 'none',
 	},
 	[hoverMq]: {
-		'&:hover': { color: colors.text, backgroundColor: colors.surface },
+		'&:hover': {
+			color: colors.text,
+			backgroundColor: colors.surface,
+			transition: 'none',
+		},
 	},
 	'&[aria-current]': {
 		fontWeight: 500,
@@ -226,8 +232,12 @@ function renderAccountNavLinks(
 			css={linkCss}
 		>
 			{item.icon ? renderIcon(item.icon, { size: '1.05em' }) : null}
-			{item.label}
-			{item.badge ? <NavItemBadge label={item.badge} /> : null}
+			<span data-rail-label>{item.label}</span>
+			{item.badge ? (
+				<span data-rail-label data-rail-badge>
+					<NavItemBadge label={item.badge} />
+				</span>
+			) : null}
 		</SiteLink>
 	))
 }
@@ -289,16 +299,7 @@ export function AccountManagementLinkNav(props: AccountManagementLinkNavProps) {
 						{renderRailGroups(props.groups, accountNavLinkCss)}
 					</div>
 				</nav>
-				<details
-					css={accountMobileMenuCss}
-					ref={mobileMenu}
-					onToggle={(event) => {
-						if (!event.currentTarget.open)
-							dismissOpenPopoverPanel(
-								document.getElementById(workspaceSwitcherPanelId('drawer')),
-							)
-					}}
-				>
+				<details css={accountMobileMenuCss} ref={mobileMenu}>
 					<summary>
 						{renderIcon('menu', { size: '1.05em' })}
 						<span>
@@ -366,14 +367,12 @@ function NavItemBadge({ label }: { label: string }) {
 }
 
 const navItemBadgeCss: CSSObject = {
-	marginLeft: 'auto',
-	padding: '0.05rem 0.45rem',
-	borderRadius: '999px',
-	border: `1px solid ${colors.border}`,
-	color: colors.textMuted,
-	fontSize: '0.7rem',
-	fontWeight: 500,
+	color: colors.primaryText,
+	opacity: 0.7,
+	textTransform: 'uppercase',
+	fontSize: '0.5rem',
+	fontWeight: 750,
 	lineHeight: 1.5,
-	letterSpacing: '0.01em',
+	letterSpacing: '0.06em',
 	whiteSpace: 'nowrap',
 }

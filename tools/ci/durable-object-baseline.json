@@ -232,6 +232,16 @@
 					"tag": "v27",
 					"location": "env.test.migrations",
 					"new_sqlite_classes": ["ExecutionContextSessionV1"]
+				},
+				{
+					"tag": "files-v1",
+					"location": "env.test.migrations",
+					"new_sqlite_classes": ["FileStore"]
+				},
+				{
+					"tag": "file-rooms-v1",
+					"new_sqlite_classes": ["FileRoom"],
+					"location": "env.test.migrations"
 				}
 			],
 			"protected_binding_sets": [
@@ -296,6 +306,16 @@
 						{
 							"name": "EXECUTION_CONTEXT_SESSION",
 							"class_name": "ExecutionContextSessionV1",
+							"script_name": "kody-platform"
+						},
+						{
+							"name": "FILE_STORE",
+							"class_name": "FileStore",
+							"script_name": "kody-platform"
+						},
+						{
+							"class_name": "FileRoom",
+							"name": "FILE_ROOM",
 							"script_name": "kody-platform"
 						}
 					]
@@ -362,6 +382,16 @@
 							"name": "EXECUTION_CONTEXT_SESSION",
 							"class_name": "ExecutionContextSessionV1",
 							"script_name": "kody-platform"
+						},
+						{
+							"name": "FILE_STORE",
+							"class_name": "FileStore",
+							"script_name": "kody-platform"
+						},
+						{
+							"class_name": "FileRoom",
+							"name": "FILE_ROOM",
+							"script_name": "kody-platform"
 						}
 					]
 				},
@@ -415,6 +445,14 @@
 						{
 							"name": "EXECUTION_CONTEXT_SESSION",
 							"class_name": "ExecutionContextSessionV1"
+						},
+						{
+							"name": "FILE_STORE",
+							"class_name": "FileStore"
+						},
+						{
+							"class_name": "FileRoom",
+							"name": "FILE_ROOM"
 						}
 					]
 				}
@@ -515,6 +553,11 @@
 							"name": "REPO_SESSION_INDEX",
 							"class_name": "RepoSessionIndex",
 							"script_name": "kody-platform"
+						},
+						{
+							"name": "FILE_STORE",
+							"class_name": "FileStore",
+							"script_name": "kody-platform"
 						}
 					]
 				},
@@ -562,6 +605,11 @@
 							"name": "REPO_SESSION_INDEX",
 							"class_name": "RepoSessionIndex",
 							"script_name": "kody-platform"
+						},
+						{
+							"name": "FILE_STORE",
+							"class_name": "FileStore",
+							"script_name": "kody-platform"
 						}
 					]
 				}
@@ -592,6 +640,24 @@
 					"tag": "v2",
 					"location": "env.preview.migrations",
 					"new_sqlite_classes": ["ExecutionContextSessionV1"]
+				},
+				{
+					"tag": "files-v1",
+					"new_sqlite_classes": ["FileStore"]
+				},
+				{
+					"tag": "files-v1",
+					"location": "env.preview.migrations",
+					"new_sqlite_classes": ["FileStore"]
+				},
+				{
+					"tag": "file-rooms-v1",
+					"new_sqlite_classes": ["FileRoom"]
+				},
+				{
+					"tag": "file-rooms-v1",
+					"new_sqlite_classes": ["FileRoom"],
+					"location": "env.preview.migrations"
 				}
 			],
 			"protected_transfer_migrations": [
@@ -695,6 +761,14 @@
 						{
 							"name": "EXECUTION_CONTEXT_SESSION",
 							"class_name": "ExecutionContextSessionV1"
+						},
+						{
+							"name": "FILE_STORE",
+							"class_name": "FileStore"
+						},
+						{
+							"class_name": "FileRoom",
+							"name": "FILE_ROOM"
 						}
 					]
 				},
@@ -751,6 +825,14 @@
 						{
 							"name": "EXECUTION_CONTEXT_SESSION",
 							"class_name": "ExecutionContextSessionV1"
+						},
+						{
+							"name": "FILE_STORE",
+							"class_name": "FileStore"
+						},
+						{
+							"class_name": "FileRoom",
+							"name": "FILE_ROOM"
 						}
 					]
 				}

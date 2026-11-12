@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
 
+import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import type { FormEvent } from 'react'
 import { normalizeProviderKey } from '@kody-internal/shared/url-hosts.ts'
 import { SiteLink } from '../components/site-link.tsx'
@@ -435,6 +436,11 @@ export function renderStatusCallout(input: {
 	connectionName?: string | null
 	includePrompt?: boolean
 }) {
+	if (
+		input.statusTone !== 'error' &&
+		input.statusMessage.startsWith('Loading ')
+	)
+		return <LoadingIndicator label={input.statusMessage} />
 	if (input.statusTone === 'error') {
 		return (
 			<div

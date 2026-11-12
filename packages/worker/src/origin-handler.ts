@@ -134,6 +134,12 @@ function loadLegacyMcpFetch(): Promise<LegacyMcpFetch> {
 }
 
 function shouldApplyLongLivedAssetCaching(pathname: string, env: Env) {
+	if (
+		/^(?:\/__start\/[a-f0-9]{40})?\/office-viewers\/(docx|xlsx|pptx)-[a-f0-9]{12}\.js$/.test(
+			pathname,
+		)
+	)
+		return true
 	const commitSha = (env as { APP_COMMIT_SHA?: string }).APP_COMMIT_SHA?.trim()
 	if (!commitSha) return false
 	return (

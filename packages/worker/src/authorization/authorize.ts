@@ -393,7 +393,8 @@ function loadEffectivePermissions(input: {
 			loadProfileChainAccess(input.env, input.request),
 			loadUnmappableCredentialLocks(input.env, compiled, input.request),
 		])
-		return toEffective(compiled, input.request, profile, locks)
+		const effective = toEffective(compiled, input.request, profile, locks)
+		return effective
 	})()
 	effectivePermissionsByRequest.set(input.request, promise)
 	promise.catch(() => {
@@ -1092,6 +1093,7 @@ export function isLivePersonRequest(request: RequestContext | null): boolean {
 		case 'cli':
 		case 'api-token':
 			return true
+		case 'file-storage':
 		case 'package-app':
 		case 'schedule':
 		case 'webhook':
@@ -1153,6 +1155,7 @@ export function nonInteractiveTriggerOf(
 		case 'cli':
 		case 'api-token':
 		case 'execution-context-run':
+		case 'file-storage':
 			return { type: 'unattended', credentialId: id }
 		default: {
 			const exhaustive: never = kind

@@ -55,7 +55,7 @@ test('org grants carry org-wide reads plus package and app manage, and nothing e
 	const grantableResourceActions = orgPermissions.filter(
 		(permission) =>
 			isGrantablePermission('org', permission) &&
-			/^(package|app|job|secret|integration|memory|email|execution_context):/.test(
+			/^(file|package|app|job|secret|integration|memory|email|execution_context):/.test(
 				permission,
 			) &&
 			!permission.endsWith(':create'),

@@ -151,6 +151,7 @@ export type GrantOrigin = (typeof grantOrigins)[number]
 
 export const grantResourceTypes = [
 	'package',
+	'file',
 	'app',
 	'job',
 	'credential',

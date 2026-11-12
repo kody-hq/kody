@@ -538,6 +538,7 @@ function workspaceResourceGroups(
 	personal: boolean,
 	executionContexts = false,
 	profiles = false,
+	files = false,
 ): Array<AccountRailGroup> {
 	return [
 		{
@@ -587,6 +588,16 @@ function workspaceResourceGroups(
 		{
 			label: 'Agents & data',
 			items: [
+				...(files
+					? [
+							{
+								id: 'files',
+								label: 'Files',
+								icon: 'file' as const,
+								href: orgSectionHref(orgSlug, 'files'),
+							},
+						]
+					: []),
 				agentsRailItem(orgSlug),
 				profilesRailItem(orgSlug, profiles),
 				{
@@ -636,6 +647,7 @@ export function workspaceRailGroups(input: {
 	executionContexts?: boolean
 	/** The `profiles` flag is on for the viewer. */
 	profiles?: boolean
+	files?: boolean
 }): Array<AccountRailGroup> {
 	const { orgSlug, personal, role } = input
 	const profileUsername = personal ? input.profileUsername : null
@@ -717,6 +729,7 @@ export function workspaceRailGroups(input: {
 			personal,
 			input.executionContexts,
 			input.profiles,
+			input.files,
 		),
 		{ label: 'Organization', items: organizationItems },
 	]

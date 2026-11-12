@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
 import {
 	useCallback,
@@ -412,9 +413,7 @@ export function AdminCodemodsPage(props: {
 				currentHref={currentHref}
 			/>
 			{status === 'loading' ? (
-				<p css={{ color: colors.textMuted, margin: 0 }}>
-					Loading package codemods…
-				</p>
+				<LoadingIndicator label="Loading package codemods…" />
 			) : null}
 			{message ? (
 				<AccountManagementMessage tone={messageTone}>

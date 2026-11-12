@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { useRouter } from '@tanstack/react-router'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
@@ -120,7 +121,7 @@ function AdminOrgSeatSyncPanel(props: { currentHref: string }) {
 					{report.error.message}
 				</AccountManagementMessage>
 			) : (
-				<p>Loading seat changes…</p>
+				<LoadingIndicator label="Loading seat changes…" />
 			)}
 			<button
 				type="button"

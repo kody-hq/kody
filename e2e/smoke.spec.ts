@@ -84,10 +84,7 @@ test('smoke test covers shell, auth redirect, and login', async ({ page }) => {
 	).toBeVisible()
 	await expect(page.getByText('Failed to fetch')).not.toBeVisible()
 
-	// Log out from the account menu. The router intercepts the form POST and
-	// SPA-navigates to /login, so the shell must refresh its session state
-	// without a full document reload (regression: the throttled refresh kept
-	// the username and Log out button visible after logging out).
+	// Logging out from the account menu clears the signed-in shell.
 	await page.goto('/account')
 	await expect(page).toHaveURL(/\/account$/)
 	await expect(page.getByRole('region', { name: 'Session' })).toHaveCount(0)
@@ -95,7 +92,7 @@ test('smoke test covers shell, auth redirect, and login', async ({ page }) => {
 	await page.getByTestId('account-menu').click()
 	await page
 		.getByTestId('account-menu-panel')
-		.getByRole('button', { name: 'Log out' })
+		.getByRole('menuitem', { name: 'Log out' })
 		.click()
 	await expect(page).toHaveURL(/\/login$/)
 	// The redesigned login screen renders without the site header, so the
@@ -103,7 +100,9 @@ test('smoke test covers shell, auth redirect, and login', async ({ page }) => {
 	await expect(
 		page.getByRole('heading', { name: 'Welcome back' }),
 	).toBeVisible()
-	await expect(page.getByRole('button', { name: 'Log out' })).not.toBeVisible()
+	await expect(
+		page.getByRole('menuitem', { name: 'Log out' }),
+	).not.toBeVisible()
 	await expect(
 		page.getByRole('link', {
 			name: `@${primaryTestUser.username}`,

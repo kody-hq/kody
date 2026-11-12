@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset } from '../public-assets.ts'
-import { useEffect, useId, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { YouTubeLightPlayer } from './youtube-light-player.tsx'
 import {
 	landingHeroChooserLabel,
@@ -77,7 +77,7 @@ export function LandingHeroVideo({
 	const [active, setActiveIndex] = useState(0)
 	const [horizontalOverflow, setHorizontalOverflow] = useState(false)
 	const scroller = useRef<HTMLDivElement>(null)
-	const id = useId()
+	const id = 'landing-hero-videos'
 	const playerId = id + '-player'
 	const optionId = (index: number) => id + '-video-' + index
 	const selectedIndex = selection.index < videos.length ? selection.index : 0

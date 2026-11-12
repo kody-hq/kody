@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 
 import { css } from '@emotion/react'
@@ -447,7 +448,7 @@ export function renderCredentialDetail(input: {
 				? renderField(
 						'Shared with',
 						detail === null ? (
-							<p css={mutedCss}>Loading…</p>
+							<LoadingIndicator label="Loading…" />
 						) : detail.grants.length === 0 ? (
 							<p css={mutedCss}>Not granted to any team org.</p>
 						) : (
@@ -466,7 +467,7 @@ export function renderCredentialDetail(input: {
 			{renderField(
 				'Used by',
 				detail === null ? (
-					<p css={mutedCss}>Loading…</p>
+					<LoadingIndicator label="Loading…" />
 				) : credential.packageId ? (
 					detail.usage.length === 0 ? (
 						<p css={mutedCss}>

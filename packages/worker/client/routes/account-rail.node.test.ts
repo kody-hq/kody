@@ -222,6 +222,19 @@ test('Execution contexts sits right after Jobs in Build, marked as an experiment
 	)
 })
 
+test('Files appears in the workspace rail only when enabled', () => {
+	expect(items(rails.team).find((item) => item.id === 'files')).toBeUndefined()
+	const enabled = workspaceRailGroups({
+		orgSlug: 'acme',
+		personal: false,
+		role: 'member',
+		files: true,
+	})
+	expect(items(enabled).find((item) => item.id === 'files')).toMatchObject({
+		href: '/@acme/-/files',
+	})
+})
+
 test('Apps is available in personal and team workspace navigation', () => {
 	for (const [groups, slug] of [
 		[rails.personal, 'jane'],

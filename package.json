@@ -23,6 +23,10 @@
     ]
   },
   "scripts": {
+    "files:spike:check": "tsc -p tools/files-spike/tsconfig.browser.json && tsc -p tools/files-spike/tsconfig.worker.json && npm run files:spike:build && vitest run --config tools/files-spike/vitest.config.ts",
+    "files:spike:agent": "node tools/files-spike/agent.ts",
+    "files:spike:build": "node tools/files-spike/build.ts",
+    "files:spike": "npm run files:spike:build && wrangler dev --config tools/files-spike/wrangler.jsonc --persist-to .wrangler/files-spike",
     "dev": "node --env-file=packages/worker/.env cli.ts",
     "dev:ensure": "node --env-file-if-exists=packages/worker/.env tools/ensure-dev.ts",
     "dev:client": "vite",
@@ -92,7 +96,7 @@
     "generate-types:check": "node tools/check-worker-configuration-types.ts",
     "routes:generate": "node tools/generate-start-route-tree.ts",
     "routes:generate:check": "node tools/check-start-route-tree.ts",
-    "typecheck": "node tools/run-nx.ts run-many -t typecheck",
+    "typecheck": "node tools/run-nx.ts run-many -t typecheck && npm run typecheck:start",
     "test": "node tools/run-nx.ts run worker:test",
     "test:node": "node tools/run-nx.ts run worker:test-node",
     "test:workers": "node tools/run-nx.ts run worker:test-workers",
@@ -116,7 +120,8 @@
     "typecheck:start": "node tools/run-nx.ts run-many -p worker -t typecheck-start typecheck-start-tests typecheck-start-server-tests",
     "desktop:dev": "npm run build --workspace @kodycodes/cli && npm start --workspace @kodycodes/desktop",
     "desktop:pack": "npm run build --workspace @kodycodes/cli && npm run pack --workspace @kodycodes/desktop",
-    "desktop:validate": "npm run validate --workspace @kodycodes/desktop"
+    "desktop:validate": "npm run validate --workspace @kodycodes/desktop",
+    "viewers:measure": "node tools/measure-file-viewers.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
@@ -145,6 +150,7 @@
     "knip": "^6.39.0",
     "lint-staged": "^17.6.0",
     "mermaid": "^11.17.2",
+    "miniflare": "^5.20261001.0-alpha",
     "msw": "^3.0.2",
     "nx": "^23.2.1",
     "oxfmt": "^0.66.0",
@@ -160,6 +166,7 @@
     "vite": "^8.3.4",
     "vitest": "^4.1.12",
     "wrangler": "^4.147.0",
+    "yjs": "^13.6.33",
     "zod": "4.6.6"
   },
   "overrides": {

@@ -76,6 +76,8 @@ style, tests, MCP capabilities, and runtime architecture.
   ready)
 - [Cloudflare Agents SDK usage](./cloudflare-agents-sdk.md)
 
+- [Files collaboration spike](./architecture/file-collaboration-spike.md)
+
 ## Testing
 
 - [Testing principles](./testing-principles.md)

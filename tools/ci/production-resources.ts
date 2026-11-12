@@ -59,6 +59,7 @@ type ResolvedProductionBindings = {
 	communityAssetsBucketName: string
 	emailBlobsBucketName: string
 	repoSessionBlobsBucketName: string
+	fileBlobsBucketName: string
 	operatorBackupsBucketName: string
 	capabilityVectorIndexName: string
 	emailDeliveryQueueName: string
@@ -492,6 +493,11 @@ async function resolveProductionBindings({
 		binding: 'REPO_SESSION_BLOBS',
 		wranglerConfigPath,
 	})
+	const fileBlobsBucketName = readProductionR2BucketName({
+		r2Buckets,
+		binding: 'FILE_BLOBS',
+		wranglerConfigPath,
+	})
 	const operatorBackupsBucketName = readProductionR2BucketName({
 		r2Buckets,
 		binding: 'OPERATOR_BACKUPS',
@@ -618,6 +624,7 @@ async function resolveProductionBindings({
 		communityAssetsBucketName,
 		emailBlobsBucketName,
 		repoSessionBlobsBucketName,
+		fileBlobsBucketName,
 		operatorBackupsBucketName,
 		committedUserEmailDomain,
 		committedSystemEmailDomain,
@@ -674,6 +681,10 @@ async function ensureProductionResources(options: CliOptions) {
 	})
 	const repoSessionBlobs = await ensureR2Bucket({
 		name: bindings.repoSessionBlobsBucketName,
+		dryRun: options.dryRun,
+	})
+	const fileBlobs = await ensureR2Bucket({
+		name: bindings.fileBlobsBucketName,
 		dryRun: options.dryRun,
 	})
 	const operatorBackups = await ensureR2Bucket({
@@ -919,6 +930,7 @@ async function ensureProductionResources(options: CliOptions) {
 		communityAssetsBucketName: communityAssets.name,
 		emailBlobsBucketName: emailBlobs.name,
 		repoSessionBlobsBucketName: repoSessionBlobs.name,
+		fileBlobsBucketName: fileBlobs.name,
 		operatorBackupsBucketName: operatorBackups.name,
 		workerVars: {
 			APP_BASE_URL: process.env.APP_BASE_URL,

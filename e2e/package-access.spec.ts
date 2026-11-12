@@ -105,10 +105,45 @@ test('private package source and settings stay isolated across owner, granted gu
 		await page.evaluate(() => {
 			document.documentElement.dataset.packageNavigation = 'same-document'
 		})
-		await page.getByRole('link', { name: 'Files', exact: true }).click()
-		await expect(page.getByTestId('package-files')).toBeVisible()
 		await page
-			.getByRole('navigation', { name: 'Files', exact: true })
+			.getByRole('navigation', { name: 'Repository', exact: true })
+			.getByRole('link', { name: 'Files', exact: true })
+			.click()
+		await expect(page.getByTestId('package-files')).toBeVisible()
+		const sourceFolder = page
+			.getByRole('navigation', { name: 'Package root', exact: true })
+			.getByRole('link', { name: 'src', exact: true })
+		await sourceFolder.press('ArrowRight')
+		const sourceFile = page
+			.getByRole('navigation', { name: 'src', exact: true })
+			.getByRole('link', { name: 'index.ts', exact: true })
+		await expect(
+			page.getByRole('heading', { name: 'index.ts', exact: true }),
+		).toBeVisible()
+		await expect(sourceFile).toBeFocused()
+		await sourceFile.press('ControlOrMeta+o')
+		const fullFile = page.getByRole('region', { name: 'Selected file' })
+		await expect(fullFile).toBeFocused()
+		await expect(sourceFolder).toBeHidden()
+		await fullFile.press('Escape')
+		await expect(sourceFile).toBeFocused()
+		await page.getByRole('button', { name: 'Open', exact: true }).click()
+		await expect(fullFile).toBeFocused()
+		await fullFile.press('Escape')
+		await expect(sourceFile).toBeFocused()
+		await sourceFile.press('ArrowLeft')
+		await expect(page).toHaveURL(/\/src$/)
+		await expect(sourceFile).toBeVisible()
+		await expect(
+			page.getByRole('region', { name: 'Selected file' }),
+		).toHaveCount(0)
+		await expect(sourceFolder).toBeFocused()
+		await sourceFile.dblclick()
+		await expect(fullFile).toBeFocused()
+		await fullFile.press('Escape')
+		await expect(sourceFile).toBeFocused()
+		await page
+			.getByRole('navigation', { name: 'Package root', exact: true })
 			.getByRole('link', { name: 'README.md', exact: true })
 			.click()
 		await expect(page.getByTestId('package-files-markdown')).toContainText(
@@ -179,9 +214,12 @@ test('private package source and settings stay isolated across owner, granted gu
 		await expect(
 			guestPage.getByRole('link', { name: 'Settings', exact: true }),
 		).toHaveCount(0)
-		await guestPage.getByRole('link', { name: 'Files', exact: true }).click()
 		await guestPage
-			.getByRole('navigation', { name: 'Files', exact: true })
+			.getByRole('navigation', { name: 'Repository', exact: true })
+			.getByRole('link', { name: 'Files', exact: true })
+			.click()
+		await guestPage
+			.getByRole('navigation', { name: 'Package root', exact: true })
 			.getByRole('link', { name: 'README.md', exact: true })
 			.click()
 		await expect(guestPage.getByTestId('package-files-markdown')).toContainText(

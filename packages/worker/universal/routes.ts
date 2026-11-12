@@ -271,6 +271,10 @@ export const routes = {
 		}) =>
 			`/@${segment(params.orgSlug)}/-/execution-contexts${filePath(params.rest)}`,
 	},
+	orgFiles: {
+		href: (params: { orgSlug: string | number }) =>
+			`/@${segment(params.orgSlug)}/-/files`,
+	},
 	orgProfiles: {
 		href: (params: { orgSlug: string | number }) =>
 			`/@${segment(params.orgSlug)}/-/profiles`,

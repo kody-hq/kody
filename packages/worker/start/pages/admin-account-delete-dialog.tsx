@@ -1,13 +1,15 @@
 /** @jsxImportSource @emotion/react */
+import { ModalDialog } from '../components/modal-dialog.tsx'
+import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { CSSObject } from '@emotion/react'
-import { useRef, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import {
 	deleteAdminUserAccount,
 	readAdminAccountDeletionSummary,
 } from '#start/server/admin-account-deletion'
 import { canConfirmAdminAccountDeletion } from '#universal/admin-account-deletion.ts'
-import { colors, radius, shadows, spacing } from '#universal/styles/tokens.ts'
+import { colors, spacing } from '#universal/styles/tokens.ts'
 import {
 	getAccentCalloutCss,
 	getDangerPillCss,
@@ -37,7 +39,6 @@ export function AdminUserAccountModeration(props: {
 	) => void
 	onDeleted: (handle: string) => void
 }) {
-	const dialog = useRef<HTMLDialogElement>(null)
 	const [open, setOpen] = useState(false)
 	const [typedHandle, setTypedHandle] = useState('')
 	const [acknowledged, setAcknowledged] = useState(false)
@@ -80,7 +81,6 @@ export function AdminUserAccountModeration(props: {
 		setTypedHandle('')
 		setAcknowledged(false)
 		deletion.reset()
-		dialog.current?.close()
 	}
 
 	function openDialog() {
@@ -88,7 +88,6 @@ export function AdminUserAccountModeration(props: {
 		setAcknowledged(false)
 		deletion.reset()
 		setOpen(true)
-		dialog.current?.showModal()
 	}
 
 	const summary = summaryQuery.data
@@ -154,117 +153,111 @@ export function AdminUserAccountModeration(props: {
 					</button>
 				) : null}
 			</div>
-			<dialog
-				aria-labelledby="admin-delete-account-title"
-				data-testid="admin-delete-account-dialog"
-				ref={dialog}
-				css={deleteDialogCss}
-				onCancel={(event) => {
-					event.preventDefault()
-					closeDialog()
-				}}
-				onClick={(event) => {
-					if (event.target === event.currentTarget) closeDialog()
-				}}
-			>
-				<form
-					method="dialog"
-					css={deleteDialogFormCss}
-					onSubmit={(event) => {
-						event.preventDefault()
-						if (!summary || !canDelete) return
-						deletion.mutate({ typedHandle, acknowledged })
-					}}
+			{open && (
+				<ModalDialog
+					alert
+					flush
+					label="Delete account"
+					width={640}
+					testId="admin-delete-account-dialog"
+					onClose={closeDialog}
 				>
-					<h3 id="admin-delete-account-title" css={deleteDialogTitleCss}>
-						Delete @{props.username}?
-					</h3>
-					<p css={{ margin: 0, color: colors.textMuted }}>
-						This permanently deletes the account and frees the handle.
-						Organizations this person does not solely own stay, including their
-						other members.
-					</p>
-					{summaryQuery.isPending ? (
+					<form
+						css={deleteDialogFormCss}
+						onSubmit={(event) => {
+							event.preventDefault()
+							if (!summary || !canDelete) return
+							deletion.mutate({ typedHandle, acknowledged })
+						}}
+					>
+						<h3 id="admin-delete-account-title" css={deleteDialogTitleCss}>
+							Delete @{props.username}?
+						</h3>
 						<p css={{ margin: 0, color: colors.textMuted }}>
-							Loading account summary…
+							This permanently deletes the account and frees the handle.
+							Organizations this person does not solely own stay, including
+							their other members.
 						</p>
-					) : null}
-					{summaryQuery.isError ? (
-						<p role="alert" css={{ margin: 0, color: colors.danger }}>
-							{summaryQuery.error instanceof Error
-								? summaryQuery.error.message
-								: 'Unable to load the account summary.'}
-						</p>
-					) : null}
-					{summary ? (
-						<AdminAccountDeletionSummaryList summary={summary} />
-					) : null}
-					{summary?.acknowledgementRequired ? (
-						<label css={acknowledgeCss}>
+						{summaryQuery.isPending ? (
+							<LoadingIndicator label="Loading account summary…" />
+						) : null}
+						{summaryQuery.isError ? (
+							<p role="alert" css={{ margin: 0, color: colors.danger }}>
+								{summaryQuery.error instanceof Error
+									? summaryQuery.error.message
+									: 'Unable to load the account summary.'}
+							</p>
+						) : null}
+						{summary ? (
+							<AdminAccountDeletionSummaryList summary={summary} />
+						) : null}
+						{summary?.acknowledgementRequired ? (
+							<label css={acknowledgeCss}>
+								<input
+									type="checkbox"
+									data-testid="admin-delete-account-acknowledge"
+									checked={acknowledged}
+									onChange={(event) => {
+										setAcknowledged(event.currentTarget.checked)
+									}}
+								/>
+								<span>I acknowledge the consequences listed above.</span>
+							</label>
+						) : null}
+						<label css={accountFieldCss}>
+							<span css={accountFieldLabelCss}>
+								Type {summary?.handle ?? props.username} to confirm
+							</span>
 							<input
-								type="checkbox"
-								data-testid="admin-delete-account-acknowledge"
-								checked={acknowledged}
-								onChange={(event) => {
-									setAcknowledged(event.currentTarget.checked)
+								type="text"
+								name="handleConfirmation"
+								data-testid="admin-delete-account-handle"
+								data-field-ring
+								autoComplete="off"
+								spellCheck={false}
+								required
+								value={typedHandle}
+								css={accountInputCss}
+								onInput={(event: FormEvent<HTMLInputElement>) => {
+									if (!(event.currentTarget instanceof HTMLInputElement)) return
+									setTypedHandle(event.currentTarget.value)
 								}}
 							/>
-							<span>I acknowledge the consequences listed above.</span>
 						</label>
-					) : null}
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>
-							Type {summary?.handle ?? props.username} to confirm
-						</span>
-						<input
-							type="text"
-							name="handleConfirmation"
-							data-testid="admin-delete-account-handle"
-							data-field-ring
-							autoComplete="off"
-							spellCheck={false}
-							required
-							value={typedHandle}
-							css={accountInputCss}
-							onInput={(event: FormEvent<HTMLInputElement>) => {
-								if (!(event.currentTarget instanceof HTMLInputElement)) return
-								setTypedHandle(event.currentTarget.value)
-							}}
-						/>
-					</label>
-					<div css={getAccentCalloutCss({ accentColor: colors.danger })}>
-						<p css={{ margin: 0 }}>
-							This cannot be undone. The handle can be registered again after
-							the account is deleted.
-						</p>
-					</div>
-					{deletion.error ? (
-						<p role="alert" css={{ margin: 0, color: colors.danger }}>
-							{deletion.error instanceof Error
-								? deletion.error.message
-								: 'Unable to delete the account.'}
-						</p>
-					) : null}
-					<div css={accountActionsCss}>
-						<button
-							type="button"
-							disabled={deletion.isPending}
-							css={getGhostButtonCss({ size: 'sm' })}
-							onClick={closeDialog}
-						>
-							Cancel
-						</button>
-						<button
-							type="submit"
-							disabled={!canDelete}
-							data-testid="admin-delete-account-confirm"
-							css={getDangerPillCss({ size: 'sm' })}
-						>
-							{deletion.isPending ? 'Deleting…' : 'Delete account'}
-						</button>
-					</div>
-				</form>
-			</dialog>
+						<div css={getAccentCalloutCss({ accentColor: colors.danger })}>
+							<p css={{ margin: 0 }}>
+								This cannot be undone. The handle can be registered again after
+								the account is deleted.
+							</p>
+						</div>
+						{deletion.error ? (
+							<p role="alert" css={{ margin: 0, color: colors.danger }}>
+								{deletion.error instanceof Error
+									? deletion.error.message
+									: 'Unable to delete the account.'}
+							</p>
+						) : null}
+						<div css={accountActionsCss}>
+							<button
+								type="button"
+								disabled={deletion.isPending}
+								css={getGhostButtonCss({ size: 'sm' })}
+								onClick={closeDialog}
+							>
+								Cancel
+							</button>
+							<button
+								type="submit"
+								disabled={!canDelete}
+								data-testid="admin-delete-account-confirm"
+								css={getDangerPillCss({ size: 'sm' })}
+							>
+								{deletion.isPending ? 'Deleting…' : 'Delete account'}
+							</button>
+						</div>
+					</form>
+				</ModalDialog>
+			)}
 		</>
 	)
 }
@@ -274,20 +267,6 @@ const acknowledgeCss: CSSObject = {
 	gap: spacing.sm,
 	alignItems: 'flex-start',
 	color: colors.text,
-}
-
-const deleteDialogCss: CSSObject = {
-	width: 'min(40rem, calc(100vw - 2rem))',
-	maxWidth: '40rem',
-	padding: 0,
-	border: `1px solid ${colors.border}`,
-	borderRadius: radius.lg,
-	boxShadow: shadows.md,
-	backgroundColor: colors.surface,
-	color: colors.text,
-	'&::backdrop': {
-		backgroundColor: 'oklch(0 0 0 / 0.45)',
-	},
 }
 
 const deleteDialogFormCss: CSSObject = {

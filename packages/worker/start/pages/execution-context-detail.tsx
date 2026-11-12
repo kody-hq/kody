@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { css } from '@emotion/react'
 import { useQuery } from '@tanstack/react-query'
 import { useRefreshExecutionContextsPage } from '../execution-contexts-query.ts'
@@ -1653,7 +1654,7 @@ function RunHistory(props: {
 				</AccountManagementMessage>
 			) : null}
 			{pages.isPending ? (
-				<p css={mutedCss}>Loading runs…</p>
+				<LoadingIndicator label="Loading runs…" />
 			) : runs.length === 0 && !failed ? (
 				<p css={mutedCss}>No runs yet.</p>
 			) : runs.length > 0 ? (
@@ -1820,7 +1821,7 @@ function AuditLog(props: {
 				</AccountManagementMessage>
 			) : null}
 			{pages.isPending ? (
-				<p css={mutedCss}>Loading audit log…</p>
+				<LoadingIndicator label="Loading audit log…" />
 			) : events.length === 0 && !failed ? (
 				<p css={mutedCss}>No audit events yet.</p>
 			) : (

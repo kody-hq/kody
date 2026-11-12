@@ -1,10 +1,34 @@
 /** @jsxImportSource @emotion/react */
+import { Menu } from '@base-ui/react/menu'
+import {
+	overlayItemCss,
+	overlayPopupCss,
+	overlayPositionerCss,
+} from './overlay-styles.ts'
+import { useHotkeys } from '@tanstack/react-hotkeys'
+import { useRouter } from '@tanstack/react-router'
+import { WorkspaceBreadcrumbs } from '../pages/workspace-breadcrumbs.tsx'
+import { WorkspaceFileBrowser } from '../pages/workspace-file-browser.tsx'
+import { detectFileMediaType } from '#universal/file-viewers.ts'
+import { FileGlyph } from './file-glyph.tsx'
+import { workspaceDirectoryMediaType } from '#universal/workspace-page.ts'
 import { SkillReadAcknowledgement } from './skill-read-acknowledgement.tsx'
 import type { CSSObject } from '@emotion/react'
-import { type ReactNode, useState, Fragment } from 'react'
+import {
+	type ReactNode,
+	useId,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+	Fragment,
+} from 'react'
+import { LoadingIndicator } from './loading-indicator.tsx'
 import { SiteLink } from './site-link.tsx'
 import { withInstallOrg } from '#universal/community-search.ts'
 
+import { ControlTooltip } from './control-tooltip.tsx'
+import { Combobox } from './combobox.tsx'
 import { CopyTextButton } from './copy-text-button.tsx'
 
 import { matchesSearchQuery } from '#client/search-filter.ts'
@@ -17,9 +41,7 @@ import {
 	packageFileKindLabel,
 } from '#universal/package-file-media.ts'
 import {
-	buildPackageFilesAncestors,
 	joinPackageFilesPath,
-	listPackageFilesChildren,
 	packageFileLanguageLabel,
 } from '#universal/package-files.ts'
 import { directoryOfPackageFilePath } from '#universal/package-readme-images.ts'
@@ -40,7 +62,6 @@ import {
 	mq,
 	radius,
 	spacing,
-	transitions,
 	typography,
 } from '#universal/styles/tokens.ts'
 import {
@@ -48,13 +69,6 @@ import {
 	packageDetailPageCss,
 	proseCss,
 } from '#universal/styles/style-primitives.ts'
-
-/** Directories on the way to `path`, which open so the file is in view. */
-function ancestorDirectories(path: string) {
-	return buildPackageFilesAncestors(path)
-		.map((ancestor) => ancestor.path)
-		.filter((candidate) => candidate !== path)
-}
 
 function formatBytes(bytes: number) {
 	if (bytes < 1024) return `${bytes} B`
@@ -66,6 +80,12 @@ function fileByteLength(data: PackageFilesLoaderData) {
 	if (typeof data.contentByteLength === 'number') return data.contentByteLength
 	if (data.content) return new TextEncoder().encode(data.content).byteLength
 	return 0
+}
+
+declare module '@tanstack/history' {
+	interface HistoryState {
+		fileColumnNavigation?: boolean
+	}
 }
 
 function countLines(value: string) {
@@ -117,42 +137,116 @@ function PackageFilesExplorerContent({
 	installStrip?: ReactNode
 	installOrg: string | null
 }) {
-	const [expanded, setExpanded] = useState(
-		() =>
-			new Set([
-				...ancestorDirectories(data.selectedPath),
-				...(data.kind === 'directory' && data.selectedPath
-					? [data.selectedPath]
-					: []),
-			]),
-	)
-	const [openedFor, setOpenedFor] = useState(data.selectedPath)
+	const router = useRouter()
+	const [pointerHover, setPointerHover] = useState(true)
 	const [query, setQuery] = useState('')
+	const [openedFor, setOpenedFor] = useState(data.selectedPath)
+	const explorer = useRef<HTMLDivElement>(null)
+	const columns = useRef<HTMLDivElement>(null)
+	const fileView = useRef<HTMLElement>(null)
+	const viewToggle = useRef<HTMLButtonElement>(null)
+	const [wrapLines, setWrapLines] = useState(false)
+	const [fullPath, setFullPath] = useState<string | null>(null)
 	if (openedFor !== data.selectedPath) {
 		setOpenedFor(data.selectedPath)
+		if (fullPath !== data.selectedPath) setFullPath(null)
 		setQuery('')
-		setExpanded(
-			(previous) =>
-				new Set([
-					...previous,
-					...ancestorDirectories(data.selectedPath),
-					...(data.kind === 'directory' && data.selectedPath
-						? [data.selectedPath]
-						: []),
-				]),
-		)
 	}
-	function toggleDirectory(path: string) {
-		setExpanded((previous) => {
-			const next = new Set(previous)
-			if (next.has(path)) next.delete(path)
-			else next.add(path)
-			return next
+	const canOpen =
+		!hideExplorer && data.kind === 'file' && Boolean(data.selectedPath)
+	const fullView = canOpen && fullPath === data.selectedPath
+	const wasFullView = useRef(false)
+
+	useLayoutEffect(() => {
+		if (wasFullView.current === fullView) return
+		wasFullView.current = fullView
+		if (fullView) {
+			fileView.current?.focus({ preventScroll: true })
+			return
+		}
+		const frame = requestAnimationFrame(() => {
+			const selected = columns.current?.querySelector<HTMLElement>(
+				`[data-browser-item="${CSS.escape(data.selectedPath)}"]`,
+			)
+			const target = selected ?? viewToggle.current
+			target?.focus({ preventScroll: true })
 		})
-	}
-	function collapseAll() {
-		setExpanded(new Set())
-	}
+		return () => cancelAnimationFrame(frame)
+	}, [data.selectedPath, fullView])
+
+	useHotkeys(
+		[
+			{
+				hotkey: 'Mod+O',
+				callback: (event) => {
+					const item = (event.target as Element).closest<HTMLElement>(
+						'[data-browser-item]',
+					)
+					if (
+						!canOpen ||
+						fullView ||
+						(item && item.dataset.browserItem !== data.selectedPath)
+					)
+						return
+					event.preventDefault()
+					setFullPath(data.selectedPath)
+				},
+			},
+			{
+				hotkey: 'Escape',
+				callback: (event) => {
+					if (
+						!fullView ||
+						explorer.current?.querySelector('[popover]:popover-open')
+					)
+						return
+					event.preventDefault()
+					setFullPath(null)
+				},
+			},
+		],
+		{ target: explorer, preventDefault: false },
+	)
+
+	const entries = useMemo(() => {
+		const byPath = new Map<
+			string,
+			{ id: string; parentId?: string; name: string; mediaType: string }
+		>()
+		const directories = new Set(
+			data.children
+				.filter((child) => child.kind === 'directory')
+				.map((child) => child.path),
+		)
+		const paths = new Set([
+			...data.paths,
+			...data.children.map((child) => child.path),
+		])
+		for (const path of paths) {
+			let parent = directoryOfPackageFilePath(path)
+			while (parent) {
+				directories.add(parent)
+				parent = directoryOfPackageFilePath(parent)
+			}
+		}
+		for (const path of new Set([...paths, ...directories])) {
+			const slash = path.lastIndexOf('/')
+			byPath.set(path, {
+				id: path,
+				parentId: slash < 0 ? undefined : path.slice(0, slash),
+				name: path.slice(slash + 1),
+				mediaType: directories.has(path)
+					? workspaceDirectoryMediaType
+					: detectFileMediaType(path, ''),
+			})
+		}
+		return [...byPath.values()].sort(
+			(a, b) =>
+				Number(b.mediaType === workspaceDirectoryMediaType) -
+					Number(a.mediaType === workspaceDirectoryMediaType) ||
+				a.name.localeCompare(b.name),
+		)
+	}, [data.children, data.paths])
 	const hrefForFile =
 		fileHref ??
 		((path: string) =>
@@ -163,6 +257,49 @@ function PackageFilesExplorerContent({
 
 	const Panel = embedded ? Fragment : PackageRepoTabPanel
 	const showRepoChrome = Boolean(data.username && data.kodyId)
+
+	const preview = (
+		<section
+			css={fullView || hideExplorer ? contentCss : { minWidth: 0 }}
+			aria-label="Selected file"
+			ref={fileView}
+			tabIndex={fullView ? -1 : undefined}
+			data-file-column-browser={fullView ? true : undefined}
+		>
+			<FileContent
+				key={data.contentPath ?? data.selectedPath}
+				data={data}
+				fileHref={hrefForFile}
+				wrapLines={wrapLines}
+				onWrapLinesChange={setWrapLines}
+				fullBreadcrumbs={
+					fullView ? (
+						<WorkspaceBreadcrumbs
+							files={entries}
+							directory={entries.find(
+								(entry) => entry.id === data.selectedPath,
+							)}
+							orgSlug={data.username ?? ''}
+							rootHref={hrefForFile('')}
+							itemHref={hrefForFile}
+						/>
+					) : undefined
+				}
+				viewAction={
+					canOpen && !fullView ? (
+						<button
+							ref={viewToggle}
+							type="button"
+							css={openButtonCss}
+							onClick={() => setFullPath(data.selectedPath)}
+						>
+							Open
+						</button>
+					) : undefined
+				}
+			/>
+		</section>
+	)
 
 	return (
 		<article
@@ -218,61 +355,30 @@ function PackageFilesExplorerContent({
 			<Panel>
 				{installStrip}
 				<div
+					ref={explorer}
 					css={[
 						layoutCss,
-						embedded && {
-							marginTop: 0,
-							gap: '0.75rem',
-							gridTemplateColumns: '14rem minmax(0, 1fr)',
-						},
-						fillHeight && {
-							flex: 1,
-							minHeight: 0,
-							alignItems: 'stretch',
-							'@media (min-width: 901px)': {
-								'& > nav': {
-									position: 'static',
-									minHeight: 0,
-									display: 'flex',
-									flexDirection: 'column',
-								},
-								'& > section': {
-									minHeight: 0,
-									display: 'flex',
-									flexDirection: 'column',
-								},
-							},
-						},
-						hideExplorer && { gridTemplateColumns: 'minmax(0, 1fr)' },
-						{
-							'@media (max-width: 900px)': {
-								gridTemplateColumns: 'minmax(0, 1fr)',
-							},
-						},
+						embedded && { marginTop: 0 },
+						fillHeight && { flex: 1, minHeight: 0 },
 					]}
 				>
-					{!hideExplorer ? (
-						<nav aria-label="Files" css={treeCss}>
+					{!hideExplorer && (
+						<div
+							ref={columns}
+							role="region"
+							aria-label="Files"
+							inert={fullView}
+							css={[
+								treeCss,
+								fullView && {
+									position: 'absolute',
+									insetInline: 0,
+									visibility: 'hidden',
+								},
+							]}
+						>
 							<div css={treeHeadCss}>
 								<h2 css={treeHeadingCss}>Files</h2>
-								{/* Always rendered so the row keeps its height — appearing and
-							    disappearing shifted the filter and tree below it. */}
-								<button
-									type="button"
-									disabled={expanded.size === 0}
-									css={
-										expanded.size > 0
-											? collapseButtonCss
-											: collapseButtonHiddenCss
-									}
-									onClick={collapseAll}
-									aria-label="Collapse all folders"
-									title="Collapse all folders"
-								>
-									{renderIcon('chevron-up', { size: '14' })}
-								</button>
-							</div>
-							<div css={filterWrapCss}>
 								<div css={filterFieldCss}>
 									<span css={filterIconCss}>{searchIcon()}</span>
 									<input
@@ -288,28 +394,76 @@ function PackageFilesExplorerContent({
 									/>
 								</div>
 							</div>
-							<div css={treeScrollCss}>
-								{query.trim()
-									? renderMatches(data, query, hrefForFile)
-									: renderTree(
-											data.paths,
-											'',
-											data.selectedPath,
-											hrefForFile,
-											expanded,
-											toggleDirectory,
-											0,
+							{query.trim() ? (
+								<div css={treeScrollCss}>
+									{renderMatches(data, query, hrefForFile)}
+								</div>
+							) : entries.length ? (
+								<div
+									css={{ display: 'flex', height: 'max(24rem, 58dvh)' }}
+									onKeyDownCapture={(event) => {
+										if (
+											[
+												'ArrowDown',
+												'ArrowUp',
+												'ArrowLeft',
+												'ArrowRight',
+												'Home',
+												'End',
+											].includes(event.key)
+										)
+											setPointerHover(false)
+									}}
+									onPointerMoveCapture={(event) => {
+										if (event.pointerType === 'mouse') setPointerHover(true)
+									}}
+								>
+									<WorkspaceFileBrowser
+										files={entries}
+										rootId={data.selectedPath || undefined}
+										selectionKey={data.selectedPath}
+										orgSlug={data.username ?? ''}
+										itemHref={hrefForFile}
+										rootLabel="Package root"
+										onOpen={(file) => {
+											if (file.mediaType !== workspaceDirectoryMediaType)
+												setFullPath(file.id)
+										}}
+										fullPreview
+										renderPreview={
+											fullView
+												? undefined
+												: (file) =>
+														file.id === data.selectedPath ? (
+															preview
+														) : (
+															<LoadingIndicator label="Loading file" />
+														)
+										}
+										pointerHover={pointerHover}
+										onSelectionChange={(path) => {
+											const href = hrefForFile(path ?? '')
+											if (href !== '#')
+												void router.navigate({
+													href,
+													resetScroll: false,
+													state: { fileColumnNavigation: true },
+												})
+										}}
+										renderIcon={(file) => (
+											<FileGlyph mediaType={file.mediaType} name={file.name} />
 										)}
-							</div>
-						</nav>
-					) : null}
-					<section css={contentCss} aria-label="Selected file">
-						<FileContent
-							key={data.contentPath ?? data.selectedPath}
-							data={data}
-							fileHref={hrefForFile}
-						/>
-					</section>
+									/>
+								</div>
+							) : (
+								<p css={emptyCss}>No published files.</p>
+							)}
+						</div>
+					)}
+					{(fullView ||
+						hideExplorer ||
+						(query.trim() && data.kind === 'file')) &&
+						preview}
 				</div>
 			</Panel>
 		</article>
@@ -341,7 +495,12 @@ function renderMatches(
 							aria-current={data.selectedPath === path ? 'page' : undefined}
 							css={data.selectedPath === path ? rowCurrentCss : rowCss}
 						>
-							<span css={rowIconCss}>{fileIcon()}</span>
+							<span css={rowIconCss}>
+								<FileGlyph
+									mediaType={detectFileMediaType(path, '')}
+									name={name}
+								/>
+							</span>
 							<span css={rowNameCss}>{name}</span>
 							{directory ? <span css={rowMetaCss}>{directory}</span> : null}
 						</SiteLink>
@@ -357,89 +516,23 @@ function renderMatches(
 	)
 }
 
-function renderTree(
-	paths: Array<string>,
-	directoryPath: string,
-	selectedPath: string,
-	fileHref: (path: string) => string,
-	expanded: Set<string>,
-	toggleDirectory: (path: string) => void,
-	depth: number,
-): ReactNode {
-	const children = listPackageFilesChildren(paths, directoryPath)
-	if (children.length === 0 && directoryPath === '') {
-		return <p css={emptyCss}>No published files.</p>
-	}
-	return (
-		<ul css={treeListCss}>
-			{children.map((child) => {
-				const href = fileHref(child.path)
-				const current = selectedPath === child.path
-				const isDirectory = child.kind === 'directory'
-				const isOpen = isDirectory && expanded.has(child.path)
-				return (
-					<li key={child.path}>
-						<div css={rowShellCss} style={{ paddingLeft: depth * 14 }}>
-							{isDirectory ? (
-								<button
-									type="button"
-									aria-expanded={isOpen ? 'true' : 'false'}
-									aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${child.name}`}
-									css={chevronButtonCss}
-									onClick={() => toggleDirectory(child.path)}
-								>
-									<span css={isOpen ? chevronOpenCss : chevronCss}>
-										{chevronIcon()}
-									</span>
-								</button>
-							) : (
-								<span css={chevronSpacerCss} aria-hidden="true" />
-							)}
-							<SiteLink
-								onClick={
-									isDirectory && href === '#'
-										? (event) => {
-												event.preventDefault()
-												toggleDirectory(child.path)
-											}
-										: undefined
-								}
-								href={href}
-								aria-current={current ? 'page' : undefined}
-								css={current ? rowCurrentCss : rowCss}
-							>
-								<span css={isDirectory ? rowDirIconCss : rowIconCss}>
-									{isDirectory ? directoryIcon() : fileIcon()}
-								</span>
-								<span css={rowNameCss}>{child.name}</span>
-							</SiteLink>
-						</div>
-						{isOpen
-							? renderTree(
-									paths,
-									child.path,
-									selectedPath,
-									fileHref,
-									expanded,
-									toggleDirectory,
-									depth + 1,
-								)
-							: null}
-					</li>
-				)
-			})}
-		</ul>
-	)
-}
-
 function FileContent({
 	data,
 	fileHref,
+	viewAction,
+	fullBreadcrumbs,
+	wrapLines,
+	onWrapLinesChange,
 }: {
 	data: PackageFilesLoaderData
 	fileHref: (path: string) => string
+	viewAction?: ReactNode
+	fullBreadcrumbs?: ReactNode
+	wrapLines: boolean
+	onWrapLinesChange: (value: boolean) => void
 }): ReactNode {
 	const [raw, setRaw] = useState(false)
+	const displayId = useId()
 
 	if (data.kind === 'directory' && !data.content) {
 		return (
@@ -451,7 +544,9 @@ function FileContent({
 					]}
 				>
 					<div css={contentHeadingWrapCss}>
-						<span css={headingIconCss}>{directoryIcon()}</span>
+						<span css={headingIconCss}>
+							<FileGlyph mediaType={workspaceDirectoryMediaType} />
+						</span>
 						<h2 css={contentHeadingCss}>
 							{data.selectedPath ? data.selectedPath : 'Package root'}
 						</h2>
@@ -464,12 +559,15 @@ function FileContent({
 						{data.children.map((child) => (
 							<li key={child.path}>
 								<SiteLink href={fileHref(child.path)} css={dirLinkCss}>
-									<span
-										css={
-											child.kind === 'directory' ? rowDirIconCss : rowIconCss
-										}
-									>
-										{child.kind === 'directory' ? directoryIcon() : fileIcon()}
+									<span css={rowIconCss}>
+										<FileGlyph
+											mediaType={
+												child.kind === 'directory'
+													? workspaceDirectoryMediaType
+													: detectFileMediaType(child.path, '')
+											}
+											name={child.name}
+										/>
 									</span>
 									<span css={rowNameCss}>{child.name}</span>
 								</SiteLink>
@@ -489,6 +587,15 @@ function FileContent({
 	const byteLength = fileByteLength(data)
 	const showTextMeta =
 		Boolean(body) && !isPackageFilesMediaKind(data.contentKind)
+	const canCopy =
+		Boolean(body) &&
+		data.contentKind !== 'binary' &&
+		!isPackageFilesMediaKind(data.contentKind)
+	const canWrap =
+		raw ||
+		data.contentKind === 'code' ||
+		data.contentKind === 'text' ||
+		data.contentKind === null
 	return (
 		<div
 			css={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}
@@ -496,11 +603,31 @@ function FileContent({
 			<div
 				css={[contentToolbarCss, { padding: '0.4rem 0.65rem', flexShrink: 0 }]}
 			>
-				<div css={contentHeadingWrapCss}>
-					<span css={headingIconCss}>{fileIcon()}</span>
-					<h2 css={contentHeadingCss} title={heading}>
-						{heading}
-					</h2>
+				{viewAction}
+				<div
+					css={[
+						contentHeadingWrapCss,
+						Boolean(fullBreadcrumbs) && {
+							flex: '1 1 22rem',
+							alignItems: 'baseline',
+						},
+					]}
+				>
+					{fullBreadcrumbs ? (
+						fullBreadcrumbs
+					) : (
+						<>
+							<span css={headingIconCss}>
+								<FileGlyph
+									mediaType={detectFileMediaType(heading, '')}
+									name={heading}
+								/>
+							</span>
+							<h2 css={contentHeadingCss} title={heading}>
+								{packageFileBaseName(heading)}
+							</h2>
+						</>
+					)}
 					{byteLength > 0 || kindLabel ? (
 						<span css={contentMetaCss}>
 							{showTextMeta ? `${countLines(body)} lines · ` : ''}
@@ -509,82 +636,143 @@ function FileContent({
 						</span>
 					) : null}
 				</div>
-				<div css={contentActionsCss}>
+				<div css={{ display: 'flex', gap: spacing.xs }}>
 					{data.contentKind === 'markdown' ? (
 						<div
-							role="group"
-							aria-label="File display"
-							css={{ display: 'flex', gap: '2px' }}
-						>
-							{(['Formatted', 'Raw'] as const).map((mode) => (
-								<button
-									key={mode}
-									type="button"
-									aria-pressed={raw === (mode === 'Raw')}
-									onClick={() => setRaw(mode === 'Raw')}
-									css={{
-										background: 'transparent',
-										color: colors.textMuted,
-										border: 0,
-										borderRadius: '3px',
-										padding: '0.25rem 0.4rem',
-										fontSize: '0.75rem',
-										cursor: 'pointer',
-										'&[aria-pressed=true]': {
-											background: colors.background,
-											color: colors.text,
-										},
-									}}
-								>
-									{mode}
-								</button>
-							))}
-						</div>
-					) : null}
-					{data.rawHref ? (
-						<a
-							href={data.rawHref}
-							download={
-								data.rawHref.startsWith('data:')
-									? packageFileBaseName(heading)
-									: undefined
-							}
-							data-testid="package-files-raw-link"
-							aria-label={`View raw ${heading}`}
-							title={`Open raw ${heading}`}
 							css={{
-								...rawLinkCss,
-								padding: '0.35rem',
-								minHeight: 0,
-								width: '1.75rem',
-								height: '1.75rem',
-								boxSizing: 'border-box',
+								width: raw ? '4.75rem' : '6.75rem',
+								flexShrink: 0,
+								'& button[data-field-ring]': {
+									borderColor: 'transparent',
+									backgroundColor: 'transparent',
+									boxShadow: 'none',
+								},
 							}}
 						>
-							{renderIcon('arrow-up-right', { size: '14' })}
-						</a>
+							<Combobox
+								id={displayId}
+								label="File display"
+								selectOnly
+								minListWidth={144}
+								hideLabel
+								value={raw ? 'raw' : 'formatted'}
+								options={[
+									{ id: 'formatted', label: 'Formatted' },
+									{ id: 'raw', label: 'Raw' },
+								]}
+								onChange={(value) => setRaw(value === 'raw')}
+							/>
+						</div>
 					) : null}
-					{body &&
-					data.contentKind !== 'binary' &&
-					!isPackageFilesMediaKind(data.contentKind) ? (
-						<CopyTextButton
-							iconOnly
-							value={body}
-							idleLabel="Copy"
-							variant="ghost"
-							size="sm"
-							ariaLabel={`Copy ${heading}`}
-						/>
-					) : null}
+					{(data.rawHref || canCopy) && (
+						<div
+							css={[contentActionsCss, { border: 0 }]}
+							role="group"
+							aria-label="File actions"
+						>
+							{data.rawHref ? (
+								<ControlTooltip
+									trigger={
+										<a
+											href={data.rawHref}
+											download={
+												data.rawHref.startsWith('data:')
+													? packageFileBaseName(heading)
+													: undefined
+											}
+											data-testid="package-files-raw-link"
+											aria-label={`View raw ${heading}`}
+											css={rawLinkCss}
+										>
+											{renderIcon('arrow-up-right', { size: '14' })}
+										</a>
+									}
+								>
+									Open raw file
+								</ControlTooltip>
+							) : null}
+							{canCopy ? (
+								<CopyTextButton
+									iconOnly
+									title=""
+									value={body}
+									idleLabel="Copy"
+									variant="ghost"
+									size="sm"
+									ariaLabel={`Copy ${heading}`}
+									wrapButton={(button) => (
+										<ControlTooltip trigger={button}>
+											Copy source
+										</ControlTooltip>
+									)}
+								/>
+							) : null}
+						</div>
+					)}
+					{canWrap && (
+						<Menu.Root modal={false}>
+							<Menu.Trigger
+								type="button"
+								aria-label="Preview options"
+								title="Preview options"
+								css={[
+									openButtonCss,
+									{
+										width: '2rem',
+										padding: 0,
+										border: 0,
+									},
+								]}
+							>
+								<svg
+									aria-hidden="true"
+									width="16"
+									height="16"
+									viewBox="0 0 16 16"
+									fill="currentColor"
+								>
+									<circle cx="3" cy="8" r="1.2" />
+									<circle cx="8" cy="8" r="1.2" />
+									<circle cx="13" cy="8" r="1.2" />
+								</svg>
+							</Menu.Trigger>
+							<Menu.Portal>
+								<Menu.Positioner
+									align="end"
+									sideOffset={4}
+									css={overlayPositionerCss}
+								>
+									<Menu.Popup
+										aria-label="Preview options"
+										css={{ ...overlayPopupCss, minWidth: 170 }}
+									>
+										<Menu.CheckboxItem
+											checked={wrapLines}
+											onCheckedChange={onWrapLinesChange}
+											css={overlayItemCss}
+										>
+											<span css={{ width: '1rem' }}>
+												<Menu.CheckboxItemIndicator>
+													✓
+												</Menu.CheckboxItemIndicator>
+											</span>
+											Wrap lines
+										</Menu.CheckboxItem>
+									</Menu.Popup>
+								</Menu.Positioner>
+							</Menu.Portal>
+						</Menu.Root>
+					)}
 				</div>
 			</div>
-			<div css={{ overflow: 'auto', minHeight: 0, flex: 1 }}>
+			<div css={{ overflow: 'auto', minWidth: 0, minHeight: 0, flex: 1 }}>
 				{renderFilePreview(
 					raw ? { ...data, contentKind: 'code' } : data,
 					heading,
 					data.contentKind === 'markdown' && !raw
 						? body.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, '')
 						: body,
+					wrapLines,
 				)}
 			</div>
 		</div>
@@ -595,6 +783,7 @@ function renderFilePreview(
 	data: PackageFilesLoaderData,
 	heading: string,
 	body: string,
+	wrapLines: boolean,
 ): ReactNode {
 	const contentKind = data.contentKind
 	switch (contentKind) {
@@ -669,7 +858,10 @@ function renderFilePreview(
 		case 'text':
 		case null:
 			return (
-				<div css={codeCss} data-testid="package-files-code">
+				<div
+					css={[codeCss, wrapLines && wrappedCodeCss]}
+					data-testid="package-files-code"
+				>
 					{renderHighlightedCode(
 						data.contentHighlighted ??
 							plainHighlightedCode(body, data.language ?? 'plaintext'),
@@ -685,18 +877,6 @@ function renderFilePreview(
 
 function arrowLeftIcon() {
 	return renderIcon('arrow-left', { size: '14' })
-}
-
-function chevronIcon() {
-	return renderIcon('chevron-right', { size: '12' })
-}
-
-function directoryIcon() {
-	return renderIcon('folder', { size: '15' })
-}
-
-function fileIcon() {
-	return renderIcon('file', { size: '15' })
 }
 
 function searchIcon() {
@@ -738,17 +918,11 @@ const titleCss = {
 	overflowWrap: 'anywhere' as const,
 } satisfies CSSObject
 
-// Two columns need room for both: below the tablet breakpoint the blob is too
-// narrow to read code in, so the tree moves above it and runs full width.
 const layoutCss = {
-	display: 'grid',
-	gridTemplateColumns: '18.75rem minmax(0, 1fr)',
-	gap: spacing.lg,
-	alignItems: 'start',
-	[mq.tablet]: {
-		gridTemplateColumns: 'minmax(0, 1fr)',
-		gap: spacing.md,
-	},
+	position: 'relative',
+	display: 'flex',
+	flexDirection: 'column',
+	gap: spacing.md,
 } satisfies CSSObject
 
 const treeCss = {
@@ -756,12 +930,7 @@ const treeCss = {
 	borderRadius: radius.md,
 	backgroundColor: colors.surface,
 	minWidth: 0,
-	// 5rem clears the sticky site header, as on the timeline and account nav.
-	position: 'sticky' as const,
-	top: '5rem',
-	[mq.tablet]: {
-		position: 'static' as const,
-	},
+	overflow: 'hidden',
 } satisfies CSSObject
 
 const treeHeadCss = {
@@ -769,44 +938,22 @@ const treeHeadCss = {
 	alignItems: 'center',
 	justifyContent: 'space-between',
 	gap: spacing.sm,
-	padding: `${spacing.md} ${spacing.md} ${spacing.sm}`,
+	padding: spacing.sm,
+	paddingInlineStart: spacing.md,
 } satisfies CSSObject
 
 const treeHeadingCss = {
 	margin: 0,
-	fontSize: typography.fontSize.xs,
+	fontSize: typography.fontSize.lg,
 	fontWeight: typography.fontWeight.semibold,
-	letterSpacing: '0.02em',
-	textTransform: 'uppercase' as const,
-	color: colors.textMuted,
-} satisfies CSSObject
-
-const collapseButtonCss = {
-	padding: spacing.xs,
-	border: 'none',
-	background: 'transparent',
-	color: colors.textMuted,
-	fontFamily: typography.fontFamily,
-	fontSize: typography.fontSize.xs,
-	fontWeight: typography.fontWeight.medium,
-	cursor: 'pointer',
-	'&:hover': { color: colors.text },
-} satisfies CSSObject
-
-// Holds its space in the layout; `visibility` also drops it from the
-// accessibility tree and out of tab order.
-const collapseButtonHiddenCss = {
-	...collapseButtonCss,
-	visibility: 'hidden' as const,
-} satisfies CSSObject
-
-const filterWrapCss = {
-	padding: `0 ${spacing.md} ${spacing.sm}`,
+	color: colors.text,
 } satisfies CSSObject
 
 // The icon is positioned against the input, not the padded wrapper around it —
 // anchoring it to the wrapper puts it outside the field by the padding.
 const filterFieldCss = {
+	width: 'min(100%, 22rem)',
+	minWidth: 0,
 	position: 'relative' as const,
 	display: 'flex',
 	alignItems: 'center',
@@ -825,7 +972,7 @@ const filterIconCss = {
 const filterInputCss = {
 	width: '100%',
 	minWidth: 0,
-	height: '2rem',
+	height: '2.25rem',
 	padding: `0 ${spacing.sm} 0 1.875rem`,
 	border: `1px solid ${colors.border}`,
 	borderRadius: radius.sm,
@@ -862,43 +1009,6 @@ const treeListCss = {
 	},
 } satisfies CSSObject
 
-const rowShellCss = {
-	display: 'flex',
-	alignItems: 'center',
-	minWidth: 0,
-} satisfies CSSObject
-
-const chevronButtonCss = {
-	display: 'inline-flex',
-	alignItems: 'center',
-	justifyContent: 'center',
-	flex: 'none',
-	width: '1.25rem',
-	height: '2rem',
-	padding: 0,
-	border: 'none',
-	background: 'transparent',
-	color: colors.textMuted,
-	cursor: 'pointer',
-	'&:hover': { color: colors.text },
-} satisfies CSSObject
-
-const chevronSpacerCss = {
-	flex: 'none',
-	width: '1.25rem',
-} satisfies CSSObject
-
-const chevronCss = {
-	display: 'inline-flex',
-	transition: `rotate ${transitions.fast}`,
-	rotate: '0deg',
-} satisfies CSSObject
-
-const chevronOpenCss = {
-	...chevronCss,
-	rotate: '90deg',
-} satisfies CSSObject
-
 const rowCss = {
 	display: 'flex',
 	alignItems: 'center',
@@ -929,12 +1039,6 @@ const rowIconCss = {
 	display: 'inline-flex',
 	flex: 'none',
 	color: colors.textMuted,
-} satisfies CSSObject
-
-const rowDirIconCss = {
-	display: 'inline-flex',
-	flex: 'none',
-	color: colors.primaryText,
 } satisfies CSSObject
 
 const rowNameCss = {
@@ -974,15 +1078,54 @@ const contentToolbarCss = {
 } satisfies CSSObject
 
 const contentActionsCss = {
-	display: 'flex',
+	display: 'inline-flex',
 	alignItems: 'center',
-	gap: spacing.xs,
-}
+	flexShrink: 0,
+	height: '2rem',
+	boxSizing: 'border-box',
+	border: `1px solid ${colors.border}`,
+	borderRadius: radius.sm,
+	'& button, & a': {
+		minHeight: 0,
+		height: '1.875rem',
+		boxSizing: 'border-box',
+		border: 0,
+		borderRadius: radius.sm,
+		boxShadow: 'none',
+		'&:not(:disabled):hover, &:not(:disabled):active': {
+			boxShadow: 'none',
+			transform: 'none',
+		},
+		'&:focus-visible': {
+			outline: `2px solid ${colors.primary}`,
+			outlineOffset: '-2px',
+		},
+	},
+	'& > span > button, & > span > a': {
+		width: '1.875rem',
+		padding: 0,
+	},
+} satisfies CSSObject
 
 const rawLinkCss = {
 	...getGhostButtonCss({ size: 'sm' }),
 	textDecoration: 'none',
 }
+
+const openButtonCss = {
+	...rawLinkCss,
+	height: '2rem',
+	minHeight: 0,
+	boxSizing: 'border-box',
+	padding: `0 ${spacing.sm}`,
+	borderRadius: radius.sm,
+	border: 0,
+	boxShadow: 'none',
+	'&:not(:disabled):hover, &:not(:disabled):active': {
+		boxShadow: 'none',
+		transform: 'none',
+	},
+} satisfies CSSObject
 
 const contentHeadingWrapCss = {
 	display: 'flex',
@@ -1015,6 +1158,7 @@ const contentHeadingCss = {
 const contentMetaCss = {
 	flex: 'none',
 	fontSize: typography.fontSize.xs,
+	lineHeight: 1.25,
 	color: colors.textMuted,
 	[mq.mobile]: {
 		display: 'none',
@@ -1074,7 +1218,12 @@ const markdownCss = {
 const packageFileLineNumberWidth = '2.5rem'
 
 const codeCss = {
+	width: '100%',
+	minWidth: 0,
+	overflow: 'hidden',
 	'& pre': {
+		maxWidth: '100%',
+		boxSizing: 'border-box',
 		margin: 0,
 		padding: `${spacing.md} 0`,
 		overflowX: 'auto' as const,
@@ -1093,6 +1242,7 @@ const codeCss = {
 		display: 'block',
 		width: 'fit-content',
 		minWidth: '100%',
+		boxSizing: 'border-box',
 		paddingInline: spacing.md,
 		counterReset: 'package-file-line',
 	},
@@ -1119,6 +1269,14 @@ const codeCss = {
 		color: colors.textMuted,
 		opacity: 0.65,
 		userSelect: 'none' as const,
+	},
+} satisfies CSSObject
+
+const wrappedCodeCss = {
+	'& code': {
+		width: '100%',
+		whiteSpace: 'pre-wrap',
+		overflowWrap: 'anywhere',
 	},
 } satisfies CSSObject
 

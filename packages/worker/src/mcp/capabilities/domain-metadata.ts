@@ -8,6 +8,7 @@ export const capabilityDomainNames = {
 	coding: 'coding',
 	email: 'email',
 	executionContexts: 'executionContexts',
+	files: 'files',
 	follow: 'follow',
 	integrations: 'integrations',
 	jobs: 'jobs',

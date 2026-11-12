@@ -1,16 +1,15 @@
 /** @jsxImportSource @emotion/react */
-import { useState, useEffect } from 'react'
+import { useEffect, useRef } from 'react'
+import { Menu } from '@base-ui/react/menu'
 import { useLocation } from '@tanstack/react-router'
 import { workspaceSwitchHref } from '#client/routes/account-rail.ts'
 import {
-	dismissOpenPopoverPanel,
-	moveSwitcherFocus,
+	SwitcherPopup,
 	renderIconWell,
 	renderSwitcherRow,
 	switcherActionsCss,
 	switcherEyebrowCss,
 	switcherListCss,
-	switcherPanelCss,
 	type SwitcherRow,
 } from './switcher-menu.tsx'
 import { renderIcon } from './icon.tsx'
@@ -24,11 +23,7 @@ import {
 } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
 import { colors, transitions, typography } from '#universal/styles/tokens.ts'
-import {
-	hoverMq,
-	layoutMaxWidths,
-	pageGutter,
-} from '#universal/styles/style-primitives.ts'
+import { hoverMq } from '#universal/styles/style-primitives.ts'
 import { UserAvatar } from './user-avatar.tsx'
 
 export type WorkspaceSwitcherData = {
@@ -48,16 +43,6 @@ export type WorkspaceSwitcherData = {
  */
 export type WorkspaceSwitcherPlacement = 'rail' | 'drawer'
 
-export function workspaceSwitcherPanelId(
-	placement: WorkspaceSwitcherPlacement,
-) {
-	return `workspace-switcher-${placement}`
-}
-
-function anchorName(placement: WorkspaceSwitcherPlacement) {
-	return `--workspace-switcher-${placement}`
-}
-
 function triggerTestId(placement: WorkspaceSwitcherPlacement) {
 	switch (placement) {
 		case 'rail':
@@ -76,7 +61,7 @@ function triggerTestId(placement: WorkspaceSwitcherPlacement) {
  * keeps the current page when the target org can open it, otherwise opens
  * that org's workspace home.
  */
-function workspaceSwitcherRows(data: WorkspaceSwitcherData) {
+export function workspaceSwitcherRows(data: WorkspaceSwitcherData) {
 	const viewer = { displayName: data.displayName, avatarUrl: data.avatarUrl }
 	const listed = data.organizations.some((org) => org.slug === data.currentSlug)
 	// Stale session lists can omit the URL org on `/@slug/-/…`. Show a
@@ -161,15 +146,20 @@ function workspaceSwitcherRows(data: WorkspaceSwitcherData) {
 export function WorkspaceSwitcher(
 	props: WorkspaceSwitcherData & { placement: WorkspaceSwitcherPlacement },
 ) {
-	const [open, setOpen] = useState(false)
+	const menuActions = useRef<Menu.Root.Actions>(null)
 	const href = useLocation({ select: (location) => location.href })
+	const trigger = useRef<HTMLButtonElement>(null)
+	useEffect(() => menuActions.current?.close(), [href, props.placement])
 	useEffect(() => {
-		dismissOpenPopoverPanel(
-			document.getElementById(workspaceSwitcherPanelId(props.placement)),
-		)
-	}, [href, props.placement])
+		const drawer = trigger.current?.closest('details')
+		if (!drawer) return
+		const close = () => {
+			if (!drawer.open) menuActions.current?.close()
+		}
+		drawer.addEventListener('toggle', close)
+		return () => drawer.removeEventListener('toggle', close)
+	}, [])
 	const { placement } = props
-	const id = workspaceSwitcherPanelId(placement)
 	const { current, orgRows, actionRows } = workspaceSwitcherRows(props)
 	const identity = current
 		? orgIdentity(current, {
@@ -179,53 +169,46 @@ export function WorkspaceSwitcher(
 		: null
 	const label = identity?.handle ?? `@${props.currentSlug}`
 	return (
-		<div
-			data-account-nav-heading
-			css={headingCss}
-			onKeyDown={(event) =>
-				moveSwitcherFocus(event, document.getElementById(id))
-			}
-		>
-			<button
-				type="button"
-				popoverTarget={id}
-				aria-controls={id}
-				aria-label={`${label}: switch organization`}
-				aria-expanded={open ? 'true' : 'false'}
-				data-open={open ? '' : undefined}
-				data-testid={triggerTestId(placement)}
-				css={{ ...triggerCss, anchorName: anchorName(placement) }}
-			>
-				<UserAvatar
-					displayName={identity?.avatarName ?? label}
-					avatarUrl={identity?.avatarUrl ?? null}
-					size={24}
-					variant="well"
-				/>
-				<span css={triggerLabelCss}>{label}</span>
-				<span aria-hidden="true" css={chevronCss}>
-					{renderIcon('chevron-down', { size: '1rem' })}
-				</span>
-			</button>
-			<div
-				id={id}
-				popover="auto"
-				data-testid={`${triggerTestId(placement)}-panel`}
-				css={placement === 'rail' ? railPanelCss : drawerPanelCss}
-				onToggle={(event) => setOpen(event.newState === 'open')}
-			>
-				<p css={switcherEyebrowCss}>Organizations</p>
-				<ul aria-label="Organizations" css={switcherListCss}>
-					{orgRows.map((row) => (
-						<li key={row.key}>{renderSwitcherRow(row)}</li>
-					))}
-				</ul>
-				{actionRows.length > 0 ? (
-					<div css={switcherActionsCss}>
-						{actionRows.map(renderSwitcherRow)}
+		<div data-account-nav-heading css={headingCss}>
+			<Menu.Root modal={false} actionsRef={menuActions}>
+				<Menu.Trigger
+					id={triggerTestId(placement)}
+					ref={trigger}
+					aria-label={`${label}: switch organization`}
+					title={current?.displayName ?? undefined}
+					data-testid={triggerTestId(placement)}
+					css={triggerCss}
+				>
+					<UserAvatar
+						displayName={identity?.avatarName ?? label}
+						avatarUrl={identity?.avatarUrl ?? null}
+						size={24}
+						variant="well"
+					/>
+					<span data-rail-label css={triggerLabelCss}>
+						{label}
+					</span>
+					<span data-rail-label aria-hidden="true" css={chevronCss}>
+						{renderIcon('chevron-down', { size: '1rem' })}
+					</span>
+				</Menu.Trigger>
+				<SwitcherPopup
+					testId={`${triggerTestId(placement)}-panel`}
+					label="Switch organization"
+					align="start"
+					width={placement === 'drawer' ? 'var(--anchor-width)' : '20rem'}
+				>
+					<p css={switcherEyebrowCss}>Organizations</p>
+					<div role="group" aria-label="Organizations" css={switcherListCss}>
+						{orgRows.map((row) => renderSwitcherRow(row, true))}
 					</div>
-				) : null}
-			</div>
+					{actionRows.length > 0 ? (
+						<div css={switcherActionsCss}>
+							{actionRows.map((row) => renderSwitcherRow(row, true))}
+						</div>
+					) : null}
+				</SwitcherPopup>
+			</Menu.Root>
 		</div>
 	)
 }
@@ -256,7 +239,7 @@ const triggerCss = {
 	textAlign: 'start' as const,
 	cursor: 'pointer',
 	transition: `border-color ${transitions.fast}, background-color ${transitions.fast}`,
-	'&[data-open]': {
+	'&[data-popup-open]': {
 		borderColor: `color-mix(in srgb, ${colors.border} 65%, ${colors.surface})`,
 		backgroundColor: colors.surface,
 	},
@@ -287,45 +270,6 @@ const chevronCss = {
 	flexShrink: 0,
 	color: colors.textMuted,
 	transition: `rotate 180ms ${transitions.easeOut}`,
-	'[data-open] > &': { rotate: '180deg' },
+	'[data-popup-open] > &': { rotate: '180deg' },
 	'@media (prefers-reduced-motion: reduce)': { transition: 'none' },
-}
-
-/**
- * Hangs under the trigger, start edges aligned, so it grows over the page
- * content. Without anchor positioning it sits at the rail's inline start:
- * the shell is a centered 72rem column with the rail at its gutter.
- */
-const railPanelCss = {
-	...switcherPanelCss,
-	top: '9rem',
-	left: `max(${pageGutter}, calc((100% - ${layoutMaxWidths.extended}) / 2 + ${pageGutter}))`,
-	width: 'min(20rem, calc(100vw - 2rem))',
-	transformOrigin: 'top left',
-	'@supports (anchor-name: --a)': {
-		positionAnchor: anchorName('rail'),
-		top: 'anchor(bottom)',
-		left: 'anchor(left)',
-		right: 'auto',
-		marginTop: '0.4rem',
-		positionTryFallbacks: 'flip-block',
-	},
-}
-
-/** Spans the drawer under its trigger; the gutter is the fallback inset. */
-const drawerPanelCss = {
-	...switcherPanelCss,
-	top: '9rem',
-	left: pageGutter,
-	right: pageGutter,
-	width: 'auto',
-	transformOrigin: 'top center',
-	'@supports (anchor-name: --a)': {
-		positionAnchor: anchorName('drawer'),
-		top: 'anchor(bottom)',
-		left: 'anchor(left)',
-		right: 'anchor(right)',
-		marginTop: '0.4rem',
-		positionTryFallbacks: 'flip-block',
-	},
 }

@@ -1,3 +1,4 @@
+import { fileStoreRpc } from '#worker/files/client.ts'
 /**
  * soft-delete-read-filter: opt-out
  *
@@ -14,7 +15,7 @@ import {
 import type { EntityKind } from '#worker/repo/types.ts'
 import { listAllMailboxEmailObjectRefs } from './mailbox-r2-references.ts'
 
-export type AccountR2Binding = 'EMAIL_BLOBS' | 'COMMUNITY_ASSETS'
+export type AccountR2Binding = 'EMAIL_BLOBS' | 'COMMUNITY_ASSETS' | 'FILE_BLOBS'
 
 export type AccountR2ObjectRef = {
 	surfaceId: (typeof accountUserOwnedR2Surfaces)[number]['id']
@@ -161,7 +162,15 @@ export async function collectAccountR2Inventory(input: {
 				.first<{ avatar_key: string | null }>(),
 		])
 
+	const fileObjects = input.env.FILE_STORE
+		? await fileStoreRpc(input.env, input.userId).inventory(input.userId)
+		: []
 	const objects: Array<AccountR2ObjectRef> = [
+		...fileObjects.map((key) => ({
+			surfaceId: 'file_revision' as const,
+			binding: 'FILE_BLOBS' as const,
+			key,
+		})),
 		...emailBlobReferences,
 		...communityListings.flatMap((listing) =>
 			[listing.pinnedCommit, listing.iconCommit].map((commit) => ({

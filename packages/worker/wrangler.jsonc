@@ -395,6 +395,16 @@
 						"script_name": "kody-platform",
 					},
 					{
+						"class_name": "FileStore",
+						"name": "FILE_STORE",
+						"script_name": "kody-platform",
+					},
+					{
+						"class_name": "FileRoom",
+						"name": "FILE_ROOM",
+						"script_name": "kody-platform",
+					},
+					{
 						"class_name": "StripePlanRefresh",
 						"name": "STRIPE_PLAN_REFRESH",
 						"script_name": "kody-platform",
@@ -598,6 +608,10 @@
 				{
 					"binding": "REPO_SESSION_BLOBS",
 					"bucket_name": "kody-repo-session-blobs",
+				},
+				{
+					"binding": "FILE_BLOBS",
+					"bucket_name": "kody-file-blobs",
 				},
 				{
 					"binding": "OPERATOR_BACKUPS",
@@ -987,6 +1001,16 @@
 						"script_name": "kody-platform",
 					},
 					{
+						"class_name": "FileStore",
+						"name": "FILE_STORE",
+						"script_name": "kody-platform",
+					},
+					{
+						"class_name": "FileRoom",
+						"name": "FILE_ROOM",
+						"script_name": "kody-platform",
+					},
+					{
 						"class_name": "StripePlanRefresh",
 						"name": "STRIPE_PLAN_REFRESH",
 						"script_name": "kody-platform",
@@ -1100,6 +1124,10 @@
 				{
 					"binding": "REPO_SESSION_BLOBS",
 					"bucket_name": "kody-preview-repo-session-blobs",
+				},
+				{
+					"binding": "FILE_BLOBS",
+					"bucket_name": "kody-preview-file-blobs",
 				},
 				{
 					"binding": "OPERATOR_BACKUPS",
@@ -1283,6 +1311,8 @@
 					"new_sqlite_classes": ["ExecutionContextSessionV1"],
 					"tag": "v27",
 				},
+				{ "tag": "files-v1", "new_sqlite_classes": ["FileStore"] },
+				{ "tag": "file-rooms-v1", "new_sqlite_classes": ["FileRoom"] },
 			],
 			"worker_loaders": [
 				{
@@ -1356,6 +1386,11 @@
 						"class_name": "RepoSessionIndex",
 						"name": "REPO_SESSION_INDEX",
 					},
+					{
+						"class_name": "FileStore",
+						"name": "FILE_STORE",
+					},
+					{ "class_name": "FileRoom", "name": "FILE_ROOM" },
 					{
 						"class_name": "StripePlanRefresh",
 						"name": "STRIPE_PLAN_REFRESH",
@@ -1444,6 +1479,10 @@
 				{
 					"binding": "REPO_SESSION_BLOBS",
 					"bucket_name": "kody-preview-repo-session-blobs",
+				},
+				{
+					"binding": "FILE_BLOBS",
+					"bucket_name": "kody-preview-file-blobs",
 				},
 				{
 					"binding": "OPERATOR_BACKUPS",

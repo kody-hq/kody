@@ -1,0 +1,28 @@
+{
+	"name": "kody-files-spike",
+	"main": "worker.ts",
+	"compatibility_date": "2026-10-01",
+	"compatibility_flags": ["nodejs_compat"],
+	"dev": { "ip": "127.0.0.1", "port": 13752, "inspector_port": 13753 },
+	"assets": {
+		"directory": "../../.tmp/files-spike",
+		"binding": "ASSETS",
+		"run_worker_first": true,
+	},
+	"durable_objects": {
+		"bindings": [
+			{ "name": "DOCUMENTS", "class_name": "SpikeDocument" },
+			{ "name": "DIRECTORY", "class_name": "SpikeDirectory" },
+		],
+	},
+	"migrations": [
+		{ "tag": "v1", "new_sqlite_classes": ["SpikeDocument", "SpikeDirectory"] },
+	],
+	"r2_buckets": [
+		{ "binding": "INCLUDED_FILES", "bucket_name": "files-spike-included" },
+		{
+			"binding": "EXTERNAL_FILES",
+			"bucket_name": "files-spike-external-simulation",
+		},
+	],
+}

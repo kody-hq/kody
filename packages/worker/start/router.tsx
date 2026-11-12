@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { LoadingIndicator } from './components/loading-indicator.tsx'
 import type {} from './request-context.ts'
 import type { CommittedPage } from './presentation-navigation.ts'
 import { readRouterNonce } from '#start/server/router-nonce'
@@ -44,6 +45,7 @@ export function getRouter() {
 		},
 		caseSensitive: true,
 		defaultErrorComponent: RouteErrorPage,
+		defaultPendingComponent: LoadingIndicator,
 		defaultOnCatch: captureClientException,
 		defaultViewTransition: false,
 		scrollRestoration: true,

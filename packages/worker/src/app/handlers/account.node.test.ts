@@ -269,6 +269,7 @@ test('native account and session reads batch user/role and flag reads into two r
 	expect(body.session?.roles).toEqual(['user'])
 	expect(body.session?.permissions).toEqual(['read:user:own'])
 	expect(body.session?.featureFlags).toEqual({
+		'files-workspace': false,
 		'demo-indicator': true,
 		profiles: true,
 		'mcp-skills-extension': false,

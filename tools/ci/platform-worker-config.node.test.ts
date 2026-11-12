@@ -53,6 +53,8 @@ test('platform worker owns remaining classes and binds runtime DOs cross-script'
 	)
 	for (const envName of ['production', 'preview']) {
 		const env = config.env?.[envName]
+		expect(byName(env, 'FILE_STORE')).toMatchObject({ class_name: 'FileStore' })
+		expect(byName(env, 'FILE_STORE')?.script_name).toBeUndefined()
 		expect(byName(env, 'MCP_OBJECT')).toMatchObject({ class_name: 'MCP' })
 		expect(byName(env, 'MCP_OBJECT')?.script_name).toBeUndefined()
 		expect(byName(env, 'STORAGE_RUNNER')).toMatchObject({
@@ -126,6 +128,7 @@ function buildMainGeneratedConfig(envName: string) {
 			'COMMUNITY_ASSETS',
 			'EMAIL_BLOBS',
 			'REPO_SESSION_BLOBS',
+			'FILE_BLOBS',
 			'OPERATOR_BACKUPS',
 		].map((binding) => ({
 			binding,

@@ -49,6 +49,7 @@ export type SharedMcpE2eServer = {
 	origin: string
 	ensureUser(user: TestUser): Promise<void>
 	markEmailVerified(email: string): Promise<void>
+	seedFileWorkspace(email: string): Promise<void>
 	assignRole(email: string, role: string): Promise<void>
 	clearAuthRateLimits(): Promise<void>
 	seedHeroVideos(videos: Array<LandingHeroVideo>): Promise<void>
@@ -93,6 +94,7 @@ export async function getSharedMcpE2eServer(): Promise<SharedMcpE2eServer> {
 		origin: server.origin,
 		ensureUser: (user) => server.ensureUser(user),
 		markEmailVerified: (email) => server.markEmailVerified(email),
+		seedFileWorkspace: (email) => server.seedFileWorkspace(email),
 		assignRole: (email, role) => server.assignRole(email, role),
 		clearAuthRateLimits: () => server.clearAuthRateLimits(),
 		seedHeroVideos: (videos) => server.seedHeroVideos(videos),
@@ -135,6 +137,7 @@ async function startSharedMcpE2eServer(): Promise<SharedMcpE2eServerHandle> {
 		origin: started.origin,
 		ensureUser: started.ensureUser,
 		markEmailVerified: started.markEmailVerified,
+		seedFileWorkspace: started.seedFileWorkspace,
 		assignRole: started.assignRole,
 		clearAuthRateLimits: started.clearAuthRateLimits,
 		seedHeroVideos: started.seedHeroVideos,
@@ -166,7 +169,7 @@ async function startHarnessWithCloudflareMock() {
 		workers: [
 			{
 				configPath: compiled.configPath,
-				vars: cloudflareVars,
+				vars: { ...cloudflareVars, FILES_INCLUDED_BYTES: '1048576' },
 				secrets: sentryTestSecrets,
 				bindingOverrides: {
 					CLOUDFLARE_API_MOCK: 'kody-mock-cloudflare-test',
@@ -209,6 +212,13 @@ async function startHarnessWithCloudflareMock() {
 			// looks ready, and signup rolls the user back.
 			async ensureUser(user: TestUser) {
 				await seedMcpTestUser(env.APP_DB, user)
+			},
+			async seedFileWorkspace(email: string) {
+				await env.APP_DB.prepare(
+					`INSERT INTO feature_flag_user_overrides (flag_key,user_id,enabled,updated_by,updated_at) SELECT 'files-workspace',id,1,id,CURRENT_TIMESTAMP FROM users WHERE email = ? AND deleted_at IS NULL ON CONFLICT(flag_key,user_id) DO UPDATE SET enabled = 1`,
+				)
+					.bind(email)
+					.run()
 			},
 			async markEmailVerified(email: string) {
 				await env.APP_DB.prepare(

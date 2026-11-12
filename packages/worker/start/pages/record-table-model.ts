@@ -11,6 +11,7 @@ import {
 	createPaginatedRowModel,
 	filterFn_includesString,
 	sortFn_text,
+	sortFn_basic,
 	tableFeatures,
 	useTable,
 	functionalUpdate,
@@ -30,6 +31,8 @@ type RecordTableState = {
 	pagination: PaginationState
 }
 export type RecordTableOptions = {
+	scrollMode?: 'virtual'
+
 	state: RecordTableState
 	onStateChange: (patch: Partial<RecordTableState>) => void
 	/** Server mode trusts the supplied page and total, without processing it again. */
@@ -60,7 +63,7 @@ const recordTableFeatures = tableFeatures({
 	sortedRowModel: createSortedRowModel(),
 	paginatedRowModel: createPaginatedRowModel(),
 	filterFns: { includesString: filterFn_includesString },
-	sortFns: { text: sortFn_text },
+	sortFns: { text: sortFn_text, basic: sortFn_basic },
 })
 const emptySelection: RowSelectionState = {}
 
@@ -112,6 +115,7 @@ export function useRecordTableModel(
 						? row.cells[column.key]
 						: ''),
 				enableSorting: enabled && column.sortable !== false,
+				sortFn: column.sortType === 'number' ? 'basic' : 'auto',
 				enableHiding: !column.primary && column.hideable !== false,
 				enableGlobalFilter: column.searchable !== false,
 				filterFn: column.filter
@@ -126,7 +130,8 @@ export function useRecordTableModel(
 		columns: defs,
 		data: rows,
 		getRowId: (row) => row.id,
-		manualPagination: !options || options.manual,
+		manualPagination:
+			!options || options.manual || options.scrollMode === 'virtual',
 		manualSorting: !options || options.manual,
 		manualFiltering: !options || options.manual,
 		rowCount: options?.manual ? options.rowCount : undefined,

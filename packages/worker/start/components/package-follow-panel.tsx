@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { LoadingIndicator } from './loading-indicator.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -243,9 +244,7 @@ function FollowProvider({
 					</button>
 				</div>
 				{read.isPending && !state ? (
-					<p role="status" css={mutedCss}>
-						Loading follow options…
-					</p>
+					<LoadingIndicator label="Loading follow options…" />
 				) : null}
 				{read.isError ? (
 					<p role="alert" css={errorCss}>

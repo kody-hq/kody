@@ -25,6 +25,10 @@
 		"noUncheckedSideEffectImports": true,
 		"tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tools.tsbuildinfo"
 	},
+	"exclude": [
+		"./tools/files-spike/browser.ts",
+		"./tools/files-spike/worker.ts"
+	],
 	"include": [
 		"./playwright.config.ts",
 		"./wrangler-env.ts",

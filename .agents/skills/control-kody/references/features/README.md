@@ -26,6 +26,7 @@ or a notes file is missing / orphaned. CI runs the same check via
 - [two-factor](./two-factor.md)
 - [passkeys](./passkeys.md)
 - [account](./account.md)
+- [files](./files.md)
 - [connections](./connections.md)
 - [packages](./packages.md)
 - [secrets](./secrets.md)

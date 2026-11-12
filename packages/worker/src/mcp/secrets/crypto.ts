@@ -483,3 +483,34 @@ export async function decryptLoginCredentialSession(
 		throw new Error('Unable to decrypt login session.')
 	}
 }
+
+// File sharing state is platform-owned, not an organization credential. A
+// distinct purpose keeps these ciphertexts out of the secret resolver lane.
+type FileSharePayload = 'public-link' | 'copy-plan' | 'asset-url'
+export function sealFileShareValue(
+	env: Pick<Env, 'SECRET_STORE_KEY'>,
+	purpose: FileSharePayload,
+	context: string,
+	value: string,
+) {
+	return encryptWithKey(
+		env.SECRET_STORE_KEY,
+		`file-share-${purpose}`,
+		context,
+		value,
+	)
+}
+
+export function openFileShareValue(
+	env: Pick<Env, 'SECRET_STORE_KEY'>,
+	purpose: FileSharePayload,
+	context: string,
+	ciphertext: string,
+) {
+	return decryptWithKey(
+		env.SECRET_STORE_KEY,
+		`file-share-${purpose}`,
+		context,
+		ciphertext,
+	)
+}

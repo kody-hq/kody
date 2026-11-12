@@ -113,7 +113,7 @@ function oauthAuthorizeAccessLead(
 			return `${clientLabel} wants to access your kody account.`
 		case 'idle':
 		case 'loading':
-			return 'Loading authorization details…'
+			return null
 		case 'error':
 			return null
 		default: {

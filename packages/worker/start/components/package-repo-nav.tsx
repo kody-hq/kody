@@ -343,6 +343,7 @@ export function PackageRepoTabPanel(props: { children: ReactNode }) {
 
 const packageRepoTabPanelCss = {
 	display: 'grid',
+	gridTemplateColumns: 'minmax(0, 1fr)',
 	alignContent: 'start',
 	gap: spacing.xl,
 	marginTop: spacing.xl,

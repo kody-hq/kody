@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import type { CSSObject } from '@emotion/react'
 import { useState, useRef, type FormEvent } from 'react'
@@ -306,7 +307,7 @@ export function AdminOrgLimitsPanel({
 					</form>
 				</>
 			) : message || query.error ? null : (
-				<p css={{ margin: 0, color: colors.textMuted }}>Loading limits…</p>
+				<LoadingIndicator label="Loading limits…" />
 			)}
 		</AccountManagementPanel>
 	)

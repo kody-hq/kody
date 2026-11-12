@@ -212,6 +212,11 @@
 						"name": "REPO_SESSION_INDEX",
 						"script_name": "kody-platform",
 					},
+					{
+						"class_name": "FileStore",
+						"name": "FILE_STORE",
+						"script_name": "kody-platform",
+					},
 				],
 			},
 			// Jobs worker service binding (ADR 0016): package save/delete paths
@@ -404,6 +409,11 @@
 					{
 						"class_name": "RepoSessionIndex",
 						"name": "REPO_SESSION_INDEX",
+						"script_name": "kody-platform",
+					},
+					{
+						"class_name": "FileStore",
+						"name": "FILE_STORE",
 						"script_name": "kody-platform",
 					},
 				],

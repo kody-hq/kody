@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { createPortal } from 'react-dom'
+import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual'
 import {
 	useRecordTableModel,
 	type RecordTableOptions,
@@ -12,6 +14,8 @@ import { nestedSurfaceDarkCss } from '#universal/styles/surface.ts'
 import type { CSSObject } from '@emotion/react'
 import {
 	useId,
+	useRef,
+	useLayoutEffect,
 	useMemo,
 	useState,
 	type ReactNode,
@@ -59,6 +63,7 @@ type Slot = ReactNode
 
 export type RecordTableColumn = {
 	sortable?: boolean
+	sortType?: 'number'
 	searchable?: boolean
 	hideable?: boolean
 	filter?: (value: unknown, filter: unknown, row: RecordTableRow) => boolean
@@ -78,6 +83,7 @@ export type RecordTableColumn = {
 
 export type RecordTableRow = {
 	/** Raw values for sorting/filtering, separate from rendered cells. */
+	attributes?: Record<`data-${string}`, string>
 	values?: Record<string, string | number | boolean | null>
 	selectionLabel?: string
 	id: string
@@ -139,6 +145,10 @@ function resolveRecordTableSelection({
 }
 
 type RecordTableProps = {
+	surface?: 'card' | 'plain'
+	toolbarContainer?: HTMLElement | null
+	compactToolbar?: boolean
+	pointerHover?: boolean
 	dataControls?: RecordTableOptions
 	rowGroup?: (row: RecordTableRow) => string
 	dense?: boolean
@@ -188,6 +198,7 @@ type RecordTableProps = {
 	 */
 	recordLoading?: boolean
 	emptyLabel?: string
+	emptyContent?: ReactNode
 	/** Actions under the empty copy, e.g. the screen's create link. */
 	emptyAction?: Slot
 	/** Below the table, inside its pane: the infinite-list "Load more" control. */
@@ -465,6 +476,45 @@ export function RecordTable(props: RecordTableProps) {
 		)
 		const modelRows = model.getRowModel().rows
 		const rows = modelRows.map((row) => row.original)
+		const virtualMode = props.dataControls?.scrollMode === 'virtual'
+		const scrollElement = useRef<HTMLDivElement>(null)
+		const [focusedId, setFocusedId] = useState<string | null>(null)
+		const pendingFocus = useRef<string | null>(null)
+		const focusedIndex = rows.findIndex((row) => row.id === focusedId)
+		const virtual = useVirtualizer({
+			count: rows.length,
+			enabled: virtualMode,
+			getScrollElement: () => scrollElement.current,
+			estimateSize: () => (props.dense ? 38 : 48),
+			getItemKey: (index) => rows[index]!.id,
+			overscan: 8,
+			initialRect: { width: 1000, height: 600 },
+			rangeExtractor: (range) =>
+				[
+					...new Set([
+						...defaultRangeExtractor(range),
+						...(focusedIndex >= 0 ? [focusedIndex] : []),
+					]),
+				].sort((a, b) => a - b),
+		})
+		const virtualRows = virtual.getVirtualItems()
+		const renderedRows = virtualMode
+			? virtualRows.map((item) => ({
+					row: rows[item.index]!,
+					rowIndex: item.index,
+				}))
+			: rows.map((row, rowIndex) => ({ row, rowIndex }))
+		useLayoutEffect(() => {
+			if (!pendingFocus.current) return
+			const link = scrollElement.current?.querySelector<HTMLElement>(
+				`[data-browser-item="${CSS.escape(pendingFocus.current)}"]`,
+			)
+			if (link) {
+				pendingFocus.current = null
+				link.focus({ preventScroll: true })
+			}
+		})
+
 		const selectedId = resolved.selectedId
 		const hasSelection = Boolean(props.dataControls?.selection)
 		const colSpan = columns.length + Number(hasSelection)
@@ -500,6 +550,7 @@ export function RecordTable(props: RecordTableProps) {
 		const table = (
 			<table
 				aria-label={props.ariaLabel}
+				aria-rowcount={virtualMode ? rows.length + 1 : undefined}
 				css={[
 					tableCss,
 					!stacked && { minWidth: `${Math.max(24, columns.length * 10)}rem` },
@@ -563,8 +614,10 @@ export function RecordTable(props: RecordTableProps) {
 					</tr>
 				</thead>
 				<tbody>
-					{rows.flatMap((row, rowIndex) => {
-						const selected = selectable && row.id === selectedId
+					{renderedRows.flatMap(({ row, rowIndex }) => {
+						const selected = virtualMode
+							? row.id === focusedId
+							: selectable && row.id === selectedId
 						const recordRowId = `${id}-record-${row.id}`
 						// A selected row with no record yet (still loading, or the detail
 						// 404'd) renders no record row, so the link must not claim an
@@ -573,7 +626,22 @@ export function RecordTable(props: RecordTableProps) {
 							selected && mode === 'expand' && props.record,
 						)
 
+						const virtualPosition = virtualRows.findIndex(
+							(item) => item.index === rowIndex,
+						)
+						const gap = virtualMode
+							? (virtualRows[virtualPosition]?.start ?? 0) -
+								(virtualRows[virtualPosition - 1]?.end ?? 0)
+							: 0
 						return [
+							gap > 0 ? (
+								<tr key={`spacer-${row.id}`} aria-hidden="true">
+									<td
+										colSpan={colSpan}
+										style={{ height: gap, padding: 0, border: 0 }}
+									/>
+								</tr>
+							) : null,
 							props.rowGroup &&
 							(rowIndex === 0 ||
 								props.rowGroup(rows[rowIndex - 1]!) !== props.rowGroup(row)) ? (
@@ -589,9 +657,19 @@ export function RecordTable(props: RecordTableProps) {
 							) : null,
 							<tr
 								key={row.id}
+								{...row.attributes}
+								data-index={virtualMode ? rowIndex : undefined}
+								ref={virtualMode ? virtual.measureElement : undefined}
+								aria-rowindex={virtualMode ? rowIndex + 2 : undefined}
 								data-selected={selected ? 'true' : undefined}
 								data-record-focus={selected ? 'true' : undefined}
-								css={rowCss}
+								css={[
+									rowCss,
+									virtualMode &&
+										props.pointerHover === false && {
+											'&:hover': { background: 'transparent' },
+										},
+								]}
 							>
 								{hasSelection ? (
 									<td css={cellCss}>
@@ -612,6 +690,17 @@ export function RecordTable(props: RecordTableProps) {
 										column.primary && rowHref ? (
 											<SiteLink
 												href={rowHref}
+												data-browser-item={virtualMode ? row.id : undefined}
+												tabIndex={
+													virtualMode
+														? row.id === (focusedId ?? rows[0]?.id)
+															? 0
+															: -1
+														: undefined
+												}
+												onFocus={
+													virtualMode ? () => setFocusedId(row.id) : undefined
+												}
 												resetScroll={false}
 												aria-current={selected ? 'true' : undefined}
 												aria-expanded={
@@ -622,7 +711,17 @@ export function RecordTable(props: RecordTableProps) {
 														: undefined
 												}
 												aria-controls={expanded ? recordRowId : undefined}
-												css={rowLinkCss}
+												css={[
+													rowLinkCss,
+													virtualMode && {
+														outline: 'none',
+														boxShadow: 'none',
+														'&:focus-visible': {
+															outline: 'none',
+															boxShadow: 'none',
+														},
+													},
+												]}
 												onClick={(event: MouseEvent<HTMLAnchorElement>) => {
 													if (!onNavigate) return
 													if (
@@ -679,20 +778,129 @@ export function RecordTable(props: RecordTableProps) {
 							) : null,
 						]
 					})}
+					{virtualMode && (
+						<tr aria-hidden="true">
+							<td
+								colSpan={colSpan}
+								style={{
+									height: Math.max(
+										0,
+										virtual.getTotalSize() - (virtualRows.at(-1)?.end ?? 0),
+									),
+									padding: 0,
+									border: 0,
+								}}
+							/>
+						</tr>
+					)}
 				</tbody>
 			</table>
 		)
+
+		const controls =
+			props.toolbar ||
+			props.countLabel ||
+			props.dataControls ||
+			rows.length > 0 ? (
+				<div
+					key="record-table-toolbar"
+					css={[
+						toolbarCss,
+						props.compactToolbar && {
+							padding: 0,
+							borderBottom: 0,
+							flex: 1,
+							flexWrap: 'nowrap',
+							minWidth: 0,
+						},
+					]}
+				>
+					{props.toolbar}
+
+					{props.dataControls ? (
+						<RecordTableDataControls
+							model={model}
+							iconOnly={props.compactToolbar}
+							columns={props.columns}
+							options={props.dataControls}
+						/>
+					) : null}
+					{props.countLabel ? (
+						<p css={countCss} data-busy={props.busy ? 'true' : undefined}>
+							{props.countLabel}
+						</p>
+					) : null}
+					<button
+						hidden={virtualMode}
+						type="button"
+						aria-label="Stack rows"
+						aria-pressed={stacked}
+						title={stacked ? 'Show table rows' : 'Stack rows'}
+						onClick={() => setStacked((value) => !value)}
+						css={{
+							marginInlineStart: props.countLabel ? undefined : 'auto',
+							display: virtualMode ? 'none' : 'inline-flex',
+							padding: '0.35rem',
+							border: `1px solid ${colors.border}`,
+							borderRadius: '0.3rem',
+							color: colors.text,
+							background: stacked ? colors.primarySoftest : colors.surface,
+							cursor: 'pointer',
+						}}
+					>
+						<svg
+							width="16"
+							height="16"
+							viewBox="0 0 16 16"
+							fill="none"
+							stroke="currentColor"
+							aria-hidden="true"
+						>
+							<rect x="1.5" y="2" width="13" height="12" rx="1" />
+							<path
+								d={stacked ? 'M1.5 6h13M1.5 10h13' : 'M1.5 6h13M6 6v8M10.5 6v8'}
+							/>
+						</svg>
+					</button>
+					{/*
+					 * Out of flow, so announcing the refetch costs no layout.
+					 * Polite because this narrates something the reader started;
+					 * assertive would interrupt their own typing.
+					 */}
+					<span css={visuallyHiddenCss} aria-live="polite">
+						{props.busy ? 'Updating…' : ''}
+					</span>
+				</div>
+			) : null
 
 		return (
 			<section
 				aria-label={props.ariaLabel}
 				aria-busy={props.busy ? 'true' : undefined}
 				data-record-focus-pending={focusPending ? 'true' : undefined}
-				css={shellCss}
+				css={[
+					shellCss,
+					virtualMode && {
+						display: 'flex',
+						flexDirection: 'column',
+						flex: 1,
+						minHeight: 0,
+						gap: 0,
+					},
+				]}
 			>
 				<div
 					css={[
 						paneCss,
+						virtualMode && {
+							display: 'flex',
+							flexDirection: 'column',
+							flex: 1,
+							minHeight: 0,
+							border: 0,
+							borderRadius: 0,
+							boxShadow: 'none',
+						},
 						props.dense && {
 							borderRadius: '0.375rem',
 							boxShadow: 'none',
@@ -706,6 +914,17 @@ export function RecordTable(props: RecordTableProps) {
 							},
 						},
 						stacked && cardFallbackCss,
+						props.surface === 'plain' && {
+							background: 'transparent',
+							border: 0,
+							borderRadius: 0,
+							boxShadow: 'none',
+							'& th': { backgroundColor: colors.background },
+							'@media (prefers-color-scheme: dark)': {
+								background: 'transparent',
+								boxShadow: 'none',
+							},
+						},
 						props.stackWhenNarrow &&
 							!stacked && {
 								'@container (max-width: 620px)': {
@@ -728,69 +947,11 @@ export function RecordTable(props: RecordTableProps) {
 							},
 					]}
 				>
-					{props.toolbar ||
-					props.countLabel ||
-					props.dataControls ||
-					rows.length > 0 ? (
-						<div key="record-table-toolbar" css={toolbarCss}>
-							{props.toolbar}
-							<button
-								type="button"
-								aria-label="Stack rows"
-								aria-pressed={stacked}
-								title={stacked ? 'Show table rows' : 'Stack rows'}
-								onClick={() => setStacked((value) => !value)}
-								css={{
-									marginLeft: 'auto',
-									display: 'inline-flex',
-									padding: '0.35rem',
-									border: `1px solid ${colors.border}`,
-									borderRadius: '0.3rem',
-									color: colors.text,
-									background: stacked ? colors.primarySoftest : colors.surface,
-									cursor: 'pointer',
-								}}
-							>
-								<svg
-									width="16"
-									height="16"
-									viewBox="0 0 16 16"
-									fill="none"
-									stroke="currentColor"
-									aria-hidden="true"
-								>
-									<rect x="1.5" y="2" width="13" height="12" rx="1" />
-									<path
-										d={
-											stacked
-												? 'M1.5 6h13M1.5 10h13'
-												: 'M1.5 6h13M6 6v8M10.5 6v8'
-										}
-									/>
-								</svg>
-							</button>
-							{props.dataControls ? (
-								<RecordTableDataControls
-									model={model}
-									columns={props.columns}
-									options={props.dataControls}
-								/>
-							) : null}
-							{props.countLabel ? (
-								<p css={countCss} data-busy={props.busy ? 'true' : undefined}>
-									{props.countLabel}
-								</p>
-							) : null}
-							{/*
-							 * Out of flow, so announcing the refetch costs no layout.
-							 * Polite because this narrates something the reader started;
-							 * assertive would interrupt their own typing.
-							 */}
-							<span css={visuallyHiddenCss} aria-live="polite">
-								{props.busy ? 'Updating…' : ''}
-							</span>
-						</div>
-					) : null}
+					{props.toolbarContainer
+						? createPortal(controls, props.toolbarContainer)
+						: props.compactToolbar
+							? null
+							: controls}
 					{/*
 					 * Keep a stable keyed host around the collection so filtering
 					 * from some rows to none (or the reverse) replaces only the
@@ -798,9 +959,22 @@ export function RecordTable(props: RecordTableProps) {
 					 * unkeyed type swap next to the search field remounts it and
 					 * drops focus on the keystroke that emptied the list.
 					 */}
-					<div key="record-table-collection">
+					<div
+						key="record-table-collection"
+						css={
+							virtualMode
+								? {
+										flex: 1,
+										minHeight: 0,
+										display: 'flex',
+										flexDirection: 'column',
+									}
+								: undefined
+						}
+					>
 						{rows.length === 0 ? (
-							props.emptyAction ? (
+							(props.emptyContent ??
+							(props.emptyAction ? (
 								<div css={emptyStateCss} data-testid="record-table-empty">
 									<p css={{ margin: 0 }}>
 										{props.emptyLabel ?? 'Nothing to show yet.'}
@@ -811,14 +985,59 @@ export function RecordTable(props: RecordTableProps) {
 								<p css={emptyCss}>
 									{props.emptyLabel ?? 'Nothing to show yet.'}
 								</p>
-							)
+							)))
 						) : (
 							<div
 								role="region"
 								aria-label={`${props.ariaLabel} rows`}
+								ref={scrollElement}
+								onKeyDownCapture={(event) => {
+									if (
+										!virtualMode ||
+										event.altKey ||
+										event.ctrlKey ||
+										event.metaKey ||
+										event.shiftKey ||
+										(event.target as Element).closest(
+											'input,textarea,select,[contenteditable=true]',
+										)
+									)
+										return
+									const link = (event.target as Element).closest<HTMLElement>(
+										'[data-browser-item]',
+									)
+									if (
+										!link ||
+										!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)
+									)
+										return
+									event.preventDefault()
+									event.stopPropagation()
+									const index = rows.findIndex(
+										(row) => row.id === link.dataset.browserItem,
+									)
+									const next =
+										event.key === 'Home'
+											? 0
+											: event.key === 'End'
+												? rows.length - 1
+												: Math.max(
+														0,
+														Math.min(
+															rows.length - 1,
+															index + (event.key === 'ArrowDown' ? 1 : -1),
+														),
+													)
+									pendingFocus.current = rows[next]!.id
+									setFocusedId(rows[next]!.id)
+									virtual.scrollToIndex(next, { align: 'auto' })
+								}}
 								tabIndex={stacked ? undefined : 0}
 								css={{
 									...tableScrollerCss,
+									...(virtualMode
+										? { flex: 1, minHeight: 0, overflowY: 'auto' as const }
+										: {}),
 									...(capped && !props.dataControls
 										? {
 												maxHeight: props.scrollHeight ?? defaultScrollHeight,
@@ -831,7 +1050,9 @@ export function RecordTable(props: RecordTableProps) {
 							</div>
 						)}
 					</div>
-					{props.dataControls ? <RecordTablePagination model={model} /> : null}
+					{props.dataControls && !virtualMode ? (
+						<RecordTablePagination model={model} />
+					) : null}
 					{props.footer ? <div css={footerCss}>{props.footer}</div> : null}
 				</div>
 				{(mode === 'pane' || orphanedRecord) && props.record ? (

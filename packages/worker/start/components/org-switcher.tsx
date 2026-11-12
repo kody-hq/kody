@@ -1,16 +1,23 @@
 /** @jsxImportSource @emotion/react */
 import { useDesktopMachine } from './desktop-execution.tsx'
-import { dismissOpenPopoverPanel, isPopoverOpen } from '#client/popover-open.ts'
+import { Menu } from '@base-ui/react/menu'
 import {
-	useState,
-	useEffect,
-	type ReactNode,
-	type KeyboardEvent as ReactKeyboardEvent,
-} from 'react'
+	SwitcherPopup,
+	renderSwitcherRow,
+	renderIconWell,
+	switcherActionsCss,
+	switcherEyebrowCss,
+	switcherLeadingCss,
+	switcherRowCss,
+	switcherRowDetailCss,
+	switcherRowLabelCss,
+	switcherRowTextCss,
+	type SwitcherRow,
+} from './switcher-menu.tsx'
+import { useEffect, useRef } from 'react'
 import { useLoaderData, useLocation } from '@tanstack/react-router'
 import { workspaceHomeHref } from '#client/routes/account-rail.ts'
-import { SiteLink } from './site-link.tsx'
-import { type IconName, renderIcon } from './icon.tsx'
+import type { IconName } from './icon.tsx'
 import { UserAvatar } from './user-avatar.tsx'
 import {
 	urlOrgSlug,
@@ -26,67 +33,9 @@ import {
 import { routes } from '#universal/routes.ts'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { signOut } from '#start/server/security-mutations'
-import {
-	colors,
-	radius,
-	shadows,
-	transitions,
-	typography,
-} from '#universal/styles/tokens.ts'
-import {
-	hoverMq,
-	layoutMaxWidths,
-	pageGutter,
-} from '#universal/styles/style-primitives.ts'
-const headerNavMq = '@media (max-width: 820px)'
-type SwitcherRow = {
-	key: string
-	href: string
-	label: string
-	detail: string | null
-	ariaCurrent: 'true' | 'page' | undefined
-	/** The organization the header is acting in; drawn with a check. */
-	selected: boolean
-	leading: ReactNode
-	badge: string | null
-}
-
-function renderSwitcherRow(row: SwitcherRow) {
-	return (
-		<SiteLink
-			key={row.key}
-			href={row.href}
-			aria-current={row.ariaCurrent}
-			data-testid={`org-switcher-${row.key}`}
-			data-selected={row.selected ? '' : undefined}
-			css={switcherRowCss}
-		>
-			<span css={switcherLeadingCss}>{row.leading}</span>
-			<span css={switcherRowTextCss}>
-				<span css={switcherRowLabelCss}>{row.label}</span>
-				{row.detail ? (
-					<span css={switcherRowDetailCss}>{row.detail}</span>
-				) : null}
-			</span>
-			{row.badge ? <span css={switcherCountCss}>{row.badge}</span> : null}
-			{row.selected ? (
-				<span css={switcherCheckCss}>
-					{renderIcon('check', { size: '1.1rem' })}
-				</span>
-			) : null}
-		</SiteLink>
-	)
-}
-
-function renderIconWell(name: IconName) {
-	return (
-		<span aria-hidden="true" css={switcherIconWellCss}>
-			{renderIcon(name, { size: '1rem' })}
-		</span>
-	)
-}
-
-function LogoutRow() {
+import { colors, radius, transitions } from '#universal/styles/tokens.ts'
+import { hoverMq } from '#universal/styles/style-primitives.ts'
+function LogoutRow({ menu = false }: { menu?: boolean }) {
 	const queryClient = useQueryClient()
 	const mutation = useMutation({
 		mutationFn: () => signOut(),
@@ -96,9 +45,21 @@ function LogoutRow() {
 			window.location.assign('/login')
 		},
 	})
+	const button = (
+		<button
+			type="submit"
+			disabled={mutation.isPending}
+			data-testid="org-switcher-logout"
+			css={switcherButtonRowCss}
+		>
+			<span css={switcherLeadingCss}>{renderIconWell('lock')}</span>
+			<span css={switcherRowTextCss}>
+				<span css={switcherRowLabelCss}>Log out</span>
+			</span>
+		</button>
+	)
 	return (
 		<form
-			key="logout"
 			method="post"
 			onSubmit={(event) => {
 				event.preventDefault()
@@ -106,46 +67,19 @@ function LogoutRow() {
 			}}
 			css={{ margin: 0, display: 'grid' }}
 		>
-			<button
-				type="submit"
-				disabled={mutation.isPending}
-				data-testid="org-switcher-logout"
-				css={switcherButtonRowCss}
-			>
-				<span css={switcherLeadingCss}>{renderIconWell('lock')}</span>
-				<span css={switcherRowTextCss}>
-					<span css={switcherRowLabelCss}>Log out</span>
-				</span>
-			</button>
+			{menu ? (
+				<Menu.Item
+					nativeButton
+					disabled={mutation.isPending}
+					closeOnClick={false}
+					render={button}
+				/>
+			) : (
+				button
+			)}
 			{mutation.error ? <p role="alert">{mutation.error.message}</p> : null}
 		</form>
 	)
-}
-
-/** Focus order for the arrow keys: the trigger, then every row in the panel. */
-function moveSwitcherFocus(
-	event: ReactKeyboardEvent,
-	panel: HTMLElement | null,
-) {
-	if (!panel || !isPopoverOpen(panel)) return
-	const rows = Array.from(
-		panel.querySelectorAll<HTMLElement>('a[href], button'),
-	)
-	if (rows.length === 0) return
-	const index = rows.findIndex((row) => row === document.activeElement)
-	const next =
-		event.key === 'ArrowDown'
-			? rows[(index + 1) % rows.length]
-			: event.key === 'ArrowUp'
-				? rows[index <= 0 ? rows.length - 1 : index - 1]
-				: event.key === 'Home'
-					? rows[0]
-					: event.key === 'End'
-						? rows[rows.length - 1]
-						: null
-	if (!next) return
-	event.preventDefault()
-	next.focus()
 }
 
 export type OrganizationSession = {
@@ -310,6 +244,7 @@ function renderManageGroup(input: {
 	links: ReadonlyArray<AccountMenuManageLink>
 	currentPathname: string
 	divided: boolean
+	menu?: boolean
 }) {
 	if (input.links.length === 0) return null
 	return (
@@ -321,16 +256,20 @@ function renderManageGroup(input: {
 		>
 			<p css={switcherEyebrowCss}>Manage</p>
 			{input.links.map((link) =>
-				renderSwitcherRow({
-					key: link.key,
-					href: link.href,
-					label: link.label,
-					detail: link.detail,
-					ariaCurrent: input.currentPathname === link.href ? 'page' : undefined,
-					selected: false,
-					leading: renderIconWell(link.icon),
-					badge: null,
-				}),
+				renderSwitcherRow(
+					{
+						key: link.key,
+						href: link.href,
+						label: link.label,
+						detail: link.detail,
+						ariaCurrent:
+							input.currentPathname === link.href ? 'page' : undefined,
+						selected: false,
+						leading: renderIconWell(link.icon),
+						badge: null,
+					},
+					input.menu,
+				),
 			)}
 		</div>
 	)
@@ -342,6 +281,7 @@ function renderAccountGroup(input: {
 	organizations: ReadonlyArray<OrganizationSummary>
 	heading: boolean
 	divided: boolean
+	menu?: boolean
 }) {
 	return (
 		<div
@@ -351,8 +291,8 @@ function renderAccountGroup(input: {
 			css={input.divided ? switcherActionsCss : switcherAccountListCss}
 		>
 			{input.heading ? <p css={switcherEyebrowCss}>Your account</p> : null}
-			{accountRows(input).map(renderSwitcherRow)}
-			<LogoutRow key="logout" />
+			{accountRows(input).map((row) => renderSwitcherRow(row, input.menu))}
+			<LogoutRow key="logout" menu={input.menu} />
 		</div>
 	)
 }
@@ -365,15 +305,12 @@ export function AccountMenu(props: {
 	avatarUrl: string | null
 }) {
 	const desktop = useDesktopMachine()
-	const [open, setOpen] = useState(false)
+	const menuActions = useRef<Menu.Root.Actions>(null)
 	const href = useLocation({ select: (location) => location.href })
 	const {
 		shellLocation: { pathname },
 	} = useLoaderData({ from: '__root__' })
-	useEffect(() => {
-		const panel = document.getElementById(accountMenuPanelId)
-		dismissOpenPopoverPanel(panel)
-	}, [href])
+	useEffect(() => menuActions.current?.close(), [href])
 	const organizations = organizationsWithSignupFallback({
 		organizations: props.organizations ?? [],
 		username: props.username,
@@ -384,185 +321,77 @@ export function AccountMenu(props: {
 	})
 	const name = props.displayName.trim() || props.username
 	return (
-		<div
-			css={orgSwitcherCss}
-			onKeyDown={(event) =>
-				moveSwitcherFocus(event, document.getElementById(accountMenuPanelId))
-			}
-		>
-			<button
-				type="button"
-				popoverTarget={accountMenuPanelId}
-				aria-controls={accountMenuPanelId}
-				aria-label={`${name}: your account`}
-				aria-expanded={open ? 'true' : 'false'}
-				data-open={open ? '' : undefined}
-				data-testid="account-menu"
-				css={[
-					accountMenuButtonCss,
-					props.placement === 'sidebar' && {
-						width: '38px',
-						height: '38px',
-						'@media (pointer: coarse)': { width: '44px', height: '44px' },
-					},
-				]}
-			>
-				<UserAvatar
-					displayName={name}
-					avatarUrl={props.avatarUrl}
-					size={props.placement === 'sidebar' ? 28 : 34}
-					variant="well"
-				/>
-			</button>
-			<div
-				id={accountMenuPanelId}
-				popover="auto"
-				data-testid="account-menu-panel"
-				css={[
-					accountMenuPanelCss,
-					props.placement === 'sidebar' && {
-						left: '1rem',
-						right: 'auto',
-						top: '3.75rem',
-						'@supports (anchor-name: --a)': {
-							left: 'anchor(left)',
-							right: 'auto',
-							positionTryFallbacks: 'flip-inline',
+		<div css={orgSwitcherCss}>
+			<Menu.Root modal={false} actionsRef={menuActions}>
+				<Menu.Trigger
+					id={`account-menu-${props.placement ?? 'header'}`}
+					aria-label={`${name}: your account`}
+					data-testid="account-menu"
+					css={[
+						accountMenuButtonCss,
+						props.placement === 'sidebar' && {
+							width: '38px',
+							height: '38px',
+							'@media (pointer: coarse)': { width: '44px', height: '44px' },
 						},
-					},
-				]}
-				onToggle={(event) => setOpen(event.nativeEvent.newState === 'open')}
-			>
-				<div css={accountMenuIdentityCss}>
-					<span css={switcherRowLabelCss}>{name}</span>
-					{props.username ? (
-						<span css={switcherRowDetailCss}>{`@${props.username}`}</span>
-					) : null}
-				</div>
-				{desktop
-					? renderSwitcherRow({
-							key: 'this-machine',
-							href: '/account/execution-contexts',
-							label: 'This machine',
-							detail: null,
-							ariaCurrent: undefined,
-							selected: false,
-							leading: renderIconWell('server'),
-							badge: null,
-						})
-					: null}
-				{renderManageGroup({
-					links: manageLinks,
-					currentPathname: pathname,
-					divided: false,
-				})}
-				{renderAccountGroup({
-					username: props.username,
-					currentPathname: pathname,
-					organizations,
-					heading: false,
-					divided: manageLinks.length > 0,
-				})}
-			</div>
+					]}
+				>
+					<UserAvatar
+						displayName={name}
+						avatarUrl={props.avatarUrl}
+						size={props.placement === 'sidebar' ? 28 : 34}
+						variant="well"
+					/>
+				</Menu.Trigger>
+				<SwitcherPopup
+					testId="account-menu-panel"
+					label="Your account"
+					align={props.placement === 'sidebar' ? 'start' : 'end'}
+					width="16rem"
+				>
+					<div css={accountMenuIdentityCss}>
+						<span css={switcherRowLabelCss}>{name}</span>
+						{props.username ? (
+							<span css={switcherRowDetailCss}>{`@${props.username}`}</span>
+						) : null}
+					</div>
+					{desktop
+						? renderSwitcherRow(
+								{
+									key: 'this-machine',
+									href: '/account/execution-contexts',
+									label: 'This machine',
+									detail: null,
+									ariaCurrent: undefined,
+									selected: false,
+									leading: renderIconWell('server'),
+									badge: null,
+								},
+								true,
+							)
+						: null}
+					{renderManageGroup({
+						links: manageLinks,
+						currentPathname: pathname,
+						divided: false,
+						menu: true,
+					})}
+					{renderAccountGroup({
+						username: props.username,
+						currentPathname: pathname,
+						organizations,
+						heading: false,
+						divided: manageLinks.length > 0,
+						menu: true,
+					})}
+				</SwitcherPopup>
+			</Menu.Root>
 		</div>
 	)
 }
-const accountMenuPanelId = 'account-menu'
-
-const orgSwitcherAnchor = '--org-switcher'
 
 const orgSwitcherCss = {
 	position: 'relative' as const,
-}
-
-/**
- * Hangs under the trigger with its inline end against the trigger's, so the
- * menu grows into the header instead of past the header's right edge. The
- * nav is a centered 72rem column, and a viewport gutter alone sits outside
- * that column on a 1440px desktop. Anchor positioning pins the end to the
- * trigger and flips when the trigger is against the start edge. Without it,
- * the same inset is the header content's inline end. Native popover, like
- * the site menu: top layer, light dismiss, Escape, and focus return come
- * from the platform.
- */
-const headerContentEndInset = `max(${pageGutter}, calc((100% - ${layoutMaxWidths.extended}) / 2 + ${pageGutter}))`
-
-const orgSwitcherPanelCss = {
-	position: 'fixed' as const,
-	inset: 'auto' as const,
-	top: '4.15rem',
-	right: headerContentEndInset,
-	width: 'min(20rem, calc(100vw - 2rem))',
-	maxHeight: 'calc(100dvh - 6rem)',
-	overflowY: 'auto' as const,
-	margin: 0,
-	padding: '0.5rem',
-	boxSizing: 'border-box' as const,
-	border: `1.5px solid ${colors.border}`,
-	borderRadius: '18px',
-	backgroundColor: colors.surface,
-	boxShadow: shadows.md,
-	color: colors.text,
-	'@supports (anchor-name: --a)': {
-		positionAnchor: orgSwitcherAnchor,
-		top: 'anchor(bottom)',
-		right: 'anchor(right)',
-		left: 'auto',
-		marginTop: '0.5rem',
-		positionTryFallbacks: 'flip-inline',
-	},
-	opacity: 0,
-	translate: '0 -6px',
-	transformOrigin: 'top right',
-	transition: `opacity 160ms ${transitions.easeOut}, translate 160ms ${transitions.easeOut}, display 160ms allow-discrete, overlay 160ms allow-discrete`,
-	'&:popover-open': {
-		display: 'grid',
-		opacity: 1,
-		translate: '0 0',
-		'@starting-style': { opacity: 0, translate: '0 -6px' },
-	},
-	'@media (prefers-reduced-motion: reduce)': {
-		translate: 'none',
-		transition: `opacity 120ms ${transitions.easeOut}, display 120ms allow-discrete, overlay 120ms allow-discrete`,
-	},
-}
-
-const switcherEyebrowCss = {
-	margin: 0,
-	padding: '0.35rem 0.6rem 0.3rem',
-	[headerNavMq]: { paddingInline: '0.85rem' },
-	fontSize: typography.fontSize.xs,
-	fontWeight: 650,
-	letterSpacing: '0.06em',
-	textTransform: 'uppercase' as const,
-	color: colors.textMuted,
-}
-
-const switcherActionsCss = {
-	display: 'grid',
-	gap: '0.15rem',
-	marginTop: '0.35rem',
-	paddingTop: '0.4rem',
-	borderTop: `1px solid ${colors.border}`,
-}
-
-const switcherRowCss = {
-	display: 'flex',
-	alignItems: 'center',
-	gap: '0.7rem',
-	minHeight: '44px',
-	padding: '0.4rem 0.6rem',
-	[headerNavMq]: { paddingInline: '0.85rem' },
-	boxSizing: 'border-box' as const,
-	borderRadius: '12px',
-	color: colors.text,
-	textDecoration: 'none',
-	transition: `background-color ${transitions.fast}`,
-	'&[aria-current="page"]': { backgroundColor: colors.primarySoft },
-	'&:active': { backgroundColor: colors.primarySoftest },
-	[hoverMq]: {
-		'&:hover': { backgroundColor: colors.primarySoftest, color: colors.text },
-	},
 }
 
 const switcherButtonRowCss = {
@@ -575,75 +404,7 @@ const switcherButtonRowCss = {
 	cursor: 'pointer',
 }
 
-const switcherLeadingCss = {
-	display: 'inline-flex',
-	flexShrink: 0,
-	lineHeight: 0,
-}
-
-const switcherIconWellCss = {
-	display: 'inline-flex',
-	alignItems: 'center',
-	justifyContent: 'center',
-	width: '28px',
-	height: '28px',
-	boxSizing: 'border-box' as const,
-	borderRadius: radius.full,
-	border: `1px dashed ${colors.border}`,
-	color: colors.textMuted,
-	[headerNavMq]: { width: '32px', height: '32px' },
-}
-
-const switcherRowTextCss = {
-	display: 'grid',
-	gap: '0.1rem',
-	minWidth: 0,
-	flex: '1 1 auto',
-}
-
-const switcherRowLabelCss = {
-	fontWeight: 600,
-	fontSize: '0.95rem',
-	lineHeight: 1.25,
-	overflow: 'hidden',
-	textOverflow: 'ellipsis',
-	whiteSpace: 'nowrap' as const,
-	[headerNavMq]: { fontSize: '1rem' },
-}
-
-const switcherRowDetailCss = {
-	fontSize: typography.fontSize.sm,
-	lineHeight: 1.25,
-	color: colors.textMuted,
-	overflow: 'hidden',
-	textOverflow: 'ellipsis',
-	whiteSpace: 'nowrap' as const,
-}
-
-const switcherCountCss = {
-	flexShrink: 0,
-	minWidth: '1.4rem',
-	padding: '0.1rem 0.45rem',
-	boxSizing: 'border-box' as const,
-	borderRadius: radius.full,
-	backgroundColor: colors.primary,
-	color: colors.onPrimary,
-	fontSize: typography.fontSize.xs,
-	fontWeight: 700,
-	textAlign: 'center' as const,
-	fontVariantNumeric: 'tabular-nums',
-}
-
-const switcherCheckCss = {
-	display: 'inline-flex',
-	flexShrink: 0,
-	color: colors.primaryText,
-}
-
-const accountMenuAnchor = '--account-menu'
-
 const accountMenuButtonCss = {
-	anchorName: accountMenuAnchor,
 	display: 'inline-flex',
 	alignItems: 'center',
 	justifyContent: 'center',
@@ -655,7 +416,7 @@ const accountMenuButtonCss = {
 	background: 'transparent',
 	cursor: 'pointer',
 	transition: `border-color ${transitions.fast}`,
-	'&[data-open]': { borderColor: colors.textMuted },
+	'&[data-popup-open]': { borderColor: colors.textMuted },
 	[hoverMq]: {
 		'&:hover': { borderColor: colors.textMuted },
 	},
@@ -673,13 +434,4 @@ const switcherAccountListCss = {
 	display: 'grid',
 	gap: '0.1rem',
 	paddingTop: '0.35rem',
-}
-
-const accountMenuPanelCss = {
-	...orgSwitcherPanelCss,
-	width: 'min(16rem, calc(100vw - 2rem))',
-	'@supports (anchor-name: --a)': {
-		...orgSwitcherPanelCss['@supports (anchor-name: --a)'],
-		positionAnchor: accountMenuAnchor,
-	},
 }

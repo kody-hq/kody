@@ -30,6 +30,7 @@
 		"start/**/*.tsx",
 		"start/start.ts",
 		"start/components/**/*.ts",
+		"start/pages/file-viewers/hosts/**/*.ts",
 		"client/types/**/*.d.ts"
 	],
 	"exclude": ["start/server/**/*.ts"]

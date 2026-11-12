@@ -98,6 +98,8 @@ export type CredentialTarget =
 	/** `{{secret:…}}` / `secret-basic` placeholders and `secretJwtSign`. */
 	| {
 			use: 'secret'
+			/** Platform connections must never fall back to a personal credential. */
+			orgOnly?: boolean
 			name: string
 			scope?: SecretScope | null
 			storageContext: StorageContext

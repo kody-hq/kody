@@ -14,6 +14,7 @@ const orgOwnedAccountSections = [
 	'credentials',
 	'email',
 	'execution-contexts',
+	'files',
 	'follows',
 	'integrations',
 	'jobs',

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { textSearch } from '../filter-search.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
@@ -410,9 +411,7 @@ export function AdminPlatformIntegrationsPage(props: {
 				currentHref={currentHref}
 			/>
 			{status === 'loading' ? (
-				<p css={{ color: colors.textMuted, margin: 0 }}>
-					Loading platform integrations…
-				</p>
+				<LoadingIndicator label="Loading platform integrations…" />
 			) : null}
 			{message ? (
 				<AccountManagementMessage tone={messageTone}>

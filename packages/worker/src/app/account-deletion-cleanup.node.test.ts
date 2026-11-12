@@ -523,3 +523,31 @@ test('account deletion stops before purging anything when workflow termination f
 	expect(events).toEqual([])
 	expect(rows.users).toEqual([fencedUser])
 })
+
+test('account deletion purges file storage and keeps the account fenced if file cleanup fails', async () => {
+	for (const fails of [false, true]) {
+		const { db, rows } = createTestDb({ users: [{ ...userA }] })
+		const purge = vi.fn(async () => {
+			if (fails) throw new Error('File bucket unavailable')
+			return { purged: true }
+		})
+		const env = createSuccessfulDeletionEnv(db, {
+			FILE_STORE: {
+				idFromName: (name: string) => name as unknown as DurableObjectId,
+				get: () => ({ inventory: async () => [], purge }),
+			} as unknown as Env['FILE_STORE'],
+		})
+		if (fails) {
+			await expect(deleteUserA(env)).rejects.toMatchObject({
+				name: 'AccountDeletionCleanupError',
+				cleanupErrors: ['File store purge failed: File bucket unavailable'],
+			})
+			expect(rows.users).toEqual([fencedUser])
+		} else {
+			const result = await deleteUserA(env)
+			expect(result.clearedDurableObjects.fileStores).toBe(1)
+			expect(rows.users).toEqual([])
+		}
+		expect(purge).toHaveBeenCalledWith('user-aaa')
+	}
+})

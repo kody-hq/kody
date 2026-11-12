@@ -62,6 +62,7 @@ test('every native organization route declares its verification policy', () => {
 		'credentials',
 		'email',
 		'execution-contexts',
+		'files',
 		'follows',
 		'integrations',
 		'jobs',

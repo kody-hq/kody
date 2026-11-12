@@ -1,3 +1,5 @@
+import { FileRoom } from '#worker/files/room.ts'
+import { FileStore } from '#worker/files/store.ts'
 import { McpClientHub } from './mcp-client/hub.ts'
 import { MCP } from './mcp/index.ts'
 import { JobsHost } from './jobs/jobs-host.ts'
@@ -40,6 +42,8 @@ import { originWorkerHandler } from './origin-handler.ts'
  * See `tools/ci/origin-production-deploy-state.ts`.
  */
 export {
+	FileStore,
+	FileRoom,
 	RepoSession,
 	RepoSessionIndex,
 	KodyFetchGateway,

@@ -6,6 +6,7 @@
  */
 
 const resourceActions = {
+	file: ['read', 'comment', 'write', 'delete', 'manage_access'],
 	package: ['read', 'execute', 'write', 'delete', 'publish', 'manage_access'],
 	app: ['read', 'execute', 'write', 'delete', 'manage_access'],
 	job: ['read', 'execute', 'write', 'manage_access'],
@@ -79,6 +80,7 @@ type ResourcePermission = {
  * are made at signup, so they have none.
  */
 const creatableResourceTypes = [
+	'file',
 	'package',
 	'secret',
 	'integration',

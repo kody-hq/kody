@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { useParams } from '@tanstack/react-router'
 import {
 	parseCredentialApprovalQuery,
@@ -379,7 +380,7 @@ export function PackageCredentialApprovalRoute({
 				</section>
 			) : null}
 			{!view && snapshot.kind !== 'error' ? (
-				<p css={mutedCss}>Loading the proposed mappings…</p>
+				<LoadingIndicator label="Loading the proposed mappings…" />
 			) : null}
 
 			{view?.reason ? (
