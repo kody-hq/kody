@@ -23,6 +23,7 @@ function needs(overrides: Needs = {}): Needs {
 		e2e_report: success,
 		cli: success,
 		cli_windows: success,
+		dev_runtime: success,
 		host_commands: success,
 		host_commands_macos: success,
 		host_commands_macos_fallback: { result: 'skipped', outputs: {} },

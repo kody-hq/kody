@@ -59,6 +59,19 @@ function commitTouches(sha: string, path: string): boolean {
 	return diff.length > 0
 }
 
+function npmHasVersion(name: string, version: string): boolean {
+	try {
+		const out = execFileSync('npm', ['view', `${name}@${version}`, 'version'], {
+			cwd: repoRoot,
+			encoding: 'utf8',
+			stdio: ['ignore', 'pipe', 'ignore'],
+		})
+		return out.trim() === version
+	} catch {
+		return false
+	}
+}
+
 function commitTouchesPublishedCli(sha: string): boolean {
 	const diff = git([
 		'diff-tree',
@@ -227,18 +240,21 @@ try {
 			cwd: repoRoot,
 			stdio: 'inherit',
 		})
-		execFileSync(
-			'npm',
-			[
-				'publish',
-				'-w',
-				devRuntimePackageName,
-				'--provenance',
-				'--access',
-				'public',
-			],
-			{ cwd: repoRoot, stdio: 'inherit' },
-		)
+		// A rerun after a failed CLI publish finds this version already on npm.
+		if (!npmHasVersion(devRuntimePackageName, plan.version)) {
+			execFileSync(
+				'npm',
+				[
+					'publish',
+					'-w',
+					devRuntimePackageName,
+					'--provenance',
+					'--access',
+					'public',
+				],
+				{ cwd: repoRoot, stdio: 'inherit' },
+			)
+		}
 		execFileSync('npm', ['run', 'build', '-w', cliPackageName], {
 			cwd: repoRoot,
 			stdio: 'inherit',

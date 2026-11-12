@@ -33,6 +33,7 @@ import { ensureUsageRollupsTestSchema } from '#worker/usage/test-schema.ts'
 
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { storageSqlParitySteps } from '@kody-internal/shared/storage-sql-parity.fixture.ts'
+import { runStorageKvContract } from '@kody-internal/shared/storage-kv-contract.fixture.ts'
 
 async function ensureStorageRunnerTestSchema() {
 	await ensureUserStorageBucketsTestSchema(env.APP_DB)
@@ -753,4 +754,29 @@ test('clearStorage during account-deletion purge must not recreate ownership row
 	} finally {
 		releaseInsert()
 	}
+})
+
+test('StorageRunner key-value methods match the shared kody dev contract', async () => {
+	await ensureStorageRunnerTestSchema()
+	const userId = ownerIdFromStored(`storage-kv-contract-${crypto.randomUUID()}`)
+	const runner = storageRunnerNamespace.get(
+		storageRunnerNamespace.idFromName(
+			storageRunnerDurableObjectName(userId, createExecuteStorageId()),
+		),
+	)
+	const results = await runStorageKvContract({
+		get: async (key) => (await runner.getValue({ key })).value,
+		set: async (key, value) => {
+			await runner.setValue({ key, value })
+		},
+		delete: async (key) => (await runner.deleteValue({ key })).deleted,
+		list: async (input) =>
+			(await runner.listValues({ prefix: input?.prefix ?? null })).entries,
+		clear: async () => {
+			await runner.clearStorage()
+		},
+	})
+	expect(results.map(({ step, actual }) => ({ step, value: actual }))).toEqual(
+		results.map(({ step, expected }) => ({ step, value: expected })),
+	)
 })

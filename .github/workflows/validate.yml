@@ -969,6 +969,36 @@ jobs:
             echo "- duration_seconds: **${dur}**"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  dev_runtime:
+    runs-on:
+      ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
+      inputs.runner) || vars.CI_RUNNER || 'ubuntu-latest' }}
+    name: 🧪 kody dev runtime
+    timeout-minutes: 25
+    needs: tested_tree
+    if: >-
+      !cancelled() && needs.tested_tree.outputs.skip != 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft ==
+      false)
+    steps:
+      - name: 📦 Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: 🧰 Setup
+        uses: ./.github/actions/setup-validate
+        with:
+          no_cache: ${{ env.VALIDATE_NO_CACHE }}
+
+      # The local half of the packageStorage() contract runs on the built
+      # local Kody (real workers, local Durable Objects).
+      - name: 🏗️ Build @kodycodes/dev-runtime
+        run: npm run build -w @kodycodes/dev-runtime
+
+      - name: 🧪 Local contract suite
+        run: npm test -w @kodycodes/dev-runtime
+
   cli_windows:
     # Windows execution contexts (kody daemon, host folders, Task Scheduler):
     # x64 natively and Windows on Arm running the x64 workerd under emulation.
@@ -1033,6 +1063,7 @@ jobs:
       - e2e_report
       - cli
       - cli_windows
+      - dev_runtime
       - host_commands
       - workers_retry
       - host_commands_macos
