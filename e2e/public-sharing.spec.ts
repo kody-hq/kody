@@ -102,7 +102,12 @@ test('folder navigation and mobile visitor actions remain accessible', async ({
 }) => {
 	await page.setViewportSize({ width: 390, height: 780 })
 	await page.goto('https://sharing.test/?folder')
-	await expect(page.getByRole('heading', { name: 'Launch' })).toBeVisible()
+	await expect(
+		page.getByRole('heading', { name: 'Launch', exact: true }),
+	).toBeVisible()
+	await expect(
+		page.getByRole('heading', { name: 'Launch brief', exact: true }),
+	).toHaveCount(0)
 	await expect(
 		page.getByRole('link', { name: 'Download', exact: true }),
 	).toHaveCount(0)

@@ -152,6 +152,18 @@ test('compact workspace rail centers its icons and uses 150ms/300ms hover intent
 	await page.mouse.move(900, 300)
 	await expect(rail).toHaveAttribute('data-rail-compact', 'true')
 	await expect(rail).not.toHaveAttribute('data-rail-expanded', 'true')
+	let compactColumn = Number.POSITIVE_INFINITY
+	await expect
+		.poll(async () => {
+			const next = (await page.getByTestId('content').boundingBox())!.x
+			const settled =
+				next > 0 &&
+				next < expandedWidth / 2 &&
+				Math.abs(next - compactColumn) < 1
+			compactColumn = next
+			return settled
+		})
+		.toBe(true)
 	await expect
 		.poll(async () => (await rail.boundingBox())!.width)
 		.toBeLessThan(expandedWidth)
@@ -176,9 +188,9 @@ test('compact workspace rail centers its icons and uses 150ms/300ms hover intent
 	expect(floatingBar.x).toBeCloseTo(pinnedBar.x, 1)
 	expect(floatingBar.width).toBeCloseTo(pinnedBar.width, 1)
 	const overlay = (await rail.boundingBox())!
-	expect((await page.getByTestId('content').boundingBox())!.x).toBeLessThan(
-		overlay.width,
-	)
+	const contentX = (await page.getByTestId('content').boundingBox())!.x
+	expect(Math.abs(contentX - compactColumn)).toBeLessThan(1)
+	expect(overlay.x + overlay.width).toBeGreaterThan(contentX)
 	await page.mouse.move(900, 300)
 	await page.clock.runFor(299)
 	await expect(rail).toHaveAttribute('data-rail-expanded', 'true')
