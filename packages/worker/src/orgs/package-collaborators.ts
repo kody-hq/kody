@@ -17,6 +17,7 @@ import {
 	type PackageCollaboratorView,
 } from '#universal/package-collaborators.ts'
 
+/** Collaborators and remaining add-options for one package or file. */
 export type PackageCollaborators = {
 	collaborators: Array<PackageCollaboratorView>
 	options: {
@@ -129,7 +130,13 @@ export async function listPackageCollaborators(input: {
 	})
 }
 
-/** Shared subject projection for package and file access panels. Callers authorize first. */
+/**
+ * Shared subject projection for package and file access panels: everyone who
+ * holds a live grant (org, teams, members, outside collaborators) and the
+ * subjects a manager can still add. Profile grants appear only for packages.
+ * Owners and admins are omitted from add-member options because they already
+ * hold every permission. Callers authorize first.
+ */
 export async function listResourceCollaborators(input: {
 	db: D1Database
 	orgId: string
@@ -274,7 +281,8 @@ export async function listResourceCollaborators(input: {
 					name: team.name,
 					memberCount: team.memberCount,
 				})),
-			// Owners already hold every permission on every package.
+			// Owners and admins already hold every permission on every package
+			// and file, so they are not add-collaborator options.
 			members: members
 				.filter(
 					(member) =>
