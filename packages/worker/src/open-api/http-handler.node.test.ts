@@ -1,6 +1,8 @@
+import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { afterEach, expect, test, vi } from 'vitest'
 import * as integrationAuthorization from '#mcp/capabilities/integrations/authorize-integration.ts'
 import * as integrationService from '#worker/integrations/service.ts'
+import { mintCliCredentialBootstrap } from '#worker/api-tokens/cli-credential-bootstrap.ts'
 import {
 	mintApiToken,
 	apiTokenLifetimeAliases,
@@ -73,6 +75,31 @@ test('rejects missing, invalid, and revoked tokens with 401', async () => {
 	const afterRevoke = await api.call('GET', '/v1/me', { token })
 	expect(afterRevoke.status).toBe(401)
 	expect(afterRevoke.body.error?.message).toMatch(/revoked/)
+})
+
+test('bootstrap redeem returns the minting session org as login_org', async () => {
+	const api = await createApi()
+	const now = new Date().toISOString()
+	api.sqlite
+		.prepare(
+			`INSERT INTO orgs (id, slug, display_name, created_at, updated_at)
+			 VALUES ('org-bootstrap-redeem', 'bootstrap-team', 'Bootstrap Team', ?, ?)`,
+		)
+		.run(now, now)
+	const minted = await mintCliCredentialBootstrap({
+		db: api.db,
+		userId: ownerIdFromStored(api.userId),
+		orgId: 'org-bootstrap-redeem',
+		lifetime: 'short',
+	})
+	const redeemed = await api.call('POST', '/v1/tokens/bootstrap/redeem', {
+		body: { code: minted.bootstrap_code },
+	})
+	expect(redeemed.status).toBe(200)
+	expect(redeemed.body).toMatchObject({
+		org_binding: 'user',
+		login_org: { slug: 'bootstrap-team' },
+	})
 })
 
 test('runs capability operations under the token scope and slides expiry', async () => {

@@ -272,7 +272,7 @@ async function handleOperation(input: {
 				{ waitUntil: input.waitUntil },
 			),
 		)
-		return json(redeemed.token)
+		return json({ ...redeemed.token, login_org: redeemed.loginOrg })
 	}
 
 	function recordCapabilityProxyObservation(observation: {
