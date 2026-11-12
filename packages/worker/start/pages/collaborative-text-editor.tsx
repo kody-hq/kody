@@ -214,7 +214,8 @@ export function CollaborativeTextEditor({
 	}
 	function selection() {
 		const element = input.current
-		if (!element) return
+		const snapshot = client.getSnapshot().snapshot
+		if (!element || !snapshot) return
 		const text = client.doc.getText('content')
 		setSelectedRange(
 			element.selectionStart !== element.selectionEnd
@@ -237,7 +238,7 @@ export function CollaborativeTextEditor({
 							.toString()
 							.slice(element.selectionStart, element.selectionEnd)
 							.slice(0, 2000),
-						revisionId: client.getSnapshot().snapshot!.revisionId,
+						revisionId: snapshot.revisionId,
 					}
 				: null,
 		)
