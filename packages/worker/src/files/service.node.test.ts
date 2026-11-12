@@ -30,7 +30,6 @@ import { authorizeGrantTarget } from '#mcp/capabilities/access/shared.ts'
 import {
 	deleteFile,
 	getFile,
-	getFileDescriptor,
 	getFileAsset,
 	listFiles,
 	writeFile,
@@ -451,19 +450,26 @@ test('a file invitation is visible only to its recipient and accepts into file a
 	f.sqlite.close()
 })
 
-test('preview descriptors enforce grants without loading file contents', async () => {
+test('binary previews enforce grants without loading file contents', async () => {
 	const f = await fixture()
-	await expect(getFileDescriptor(f.context(), f.file.id)).rejects.toThrow()
+	f.store.metadata.mockResolvedValue({
+		...f.file,
+		mediaType: 'image/png',
+		encoding: 'base64',
+	})
+	const preview = (revisionId?: string) =>
+		getFile(f.context(), f.file.id, revisionId, { streamBinary: true })
+	await expect(preview()).rejects.toThrow()
 	expect(f.store.metadata).not.toHaveBeenCalled()
 	await f.grant('file', f.file.id, ['file:read'])
-	expect(await getFileDescriptor(f.context(), f.file.id)).toMatchObject({
+	expect(await preview()).toMatchObject({
 		file: { id: f.file.id, content: '' },
 		access: { write: false, delete: false },
 	})
 	expect(f.store.read).not.toHaveBeenCalled()
-	await expect(
-		getFileDescriptor(f.context(), f.file.id, crypto.randomUUID()),
-	).rejects.toThrow('File revision not found')
+	await expect(preview(crypto.randomUUID())).rejects.toThrow(
+		'File revision not found',
+	)
 })
 
 test('private range reads authorize once, use the owning namespace, and do not decode file bodies', async () => {

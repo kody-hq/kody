@@ -752,16 +752,7 @@ function CollaborationView({
 				</button>
 			</div>
 		)
-	if (!state.ready)
-		return (
-			<LoadingIndicator
-				label={
-					state.status === 'offline'
-						? 'Reconnecting to file'
-						: 'Connecting to file'
-				}
-			/>
-		)
+	const displayedContent = state.ready ? content : props.content
 	return (
 		<>
 			{toolbarHost ? createPortal(toolbar, toolbarHost) : null}
@@ -871,8 +862,9 @@ function CollaborationView({
 								/>
 							) : props.mediaType === workspacePageMediaType ? (
 								<WorkspacePageEditor
-									content={content}
-									collaboration={client}
+									key={state.ready ? 'live' : 'preview'}
+									content={displayedContent}
+									collaboration={state.ready ? client : undefined}
 									threads={threads}
 									activeThreadId={open ? active : null}
 									draftAnchor={composing ? anchor : undefined}
@@ -888,11 +880,11 @@ function CollaborationView({
 									onComment={access?.comment ? startComment : undefined}
 								/>
 							) : (
-								(props.renderPreview?.(content) ??
+								(props.renderPreview?.(displayedContent) ??
 								props.children ?? (
 									<CollaborativeTextEditor
 										client={client}
-										content={content}
+										content={displayedContent}
 										participants={participants}
 										activeAnchor={open ? anchor : undefined}
 										threads={threads}
