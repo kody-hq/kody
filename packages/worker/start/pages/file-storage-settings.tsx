@@ -46,8 +46,11 @@ export default function FileStorageSettings({
 	}, [orgSlug])
 	async function refreshFiles() {
 		await queryClient.invalidateQueries({
-			predicate: (query) =>
-				query.queryKey[0] === 'page' && query.queryKey[2] === 'loadFilesPage',
+			predicate: ({ queryKey: [resource, scope, loader] }) =>
+				(resource === 'page' && loader === 'loadFilesPage') ||
+				((resource === 'workspace-document' ||
+					resource === 'workspace-embed') &&
+					scope === orgSlug),
 		})
 		await router.invalidate()
 	}
