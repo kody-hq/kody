@@ -169,26 +169,45 @@ export function ClientWarning(props: ClientWarningProps) {
 	)
 }
 
-type ChatGptDeveloperModeWarningProps = {
+type ChatGptSideloadNoteProps = {
+	availability: string
 	href: string
 	linkLabel: string
+	directoryListing: string
 }
 
 /**
- * Amber caution for ChatGPT's developer-mode alternative. Same quiet
- * callout language as {@link ClientWarning}, warning tone instead of danger.
+ * Amber caution under ChatGPT's sideload steps: plan and workspace limits,
+ * plus a pointer away from the frozen directory listing. Same quiet callout
+ * language as {@link ClientWarning}, warning tone instead of danger.
  */
-export function ChatGptDeveloperModeWarning(
-	props: ChatGptDeveloperModeWarningProps,
-) {
+export function ChatGptSideloadNote(props: ChatGptSideloadNoteProps) {
 	return (
-		<p css={clientCautionCss} role="note">
-			ChatGPT developer mode is required. See{' '}
-			<SiteLink href={props.href} target="_blank" rel="noreferrer noopener">
-				{props.linkLabel}
-			</SiteLink>
-			.
-		</p>
+		<div
+			css={clientCautionCss}
+			role="note"
+			data-testid="onboarding-chatgpt-sideload-note"
+		>
+			<p css={sideloadNoteParagraphCss}>
+				{props.availability} See{' '}
+				<SiteLink href={props.href} target="_blank" rel="noreferrer noopener">
+					{props.linkLabel}
+				</SiteLink>
+				.
+			</p>
+			<p css={sideloadNoteParagraphCss}>{props.directoryListing}</p>
+		</div>
+	)
+}
+
+/** Numbered host-side steps shown under a primary action. */
+export function SideloadSteps(props: { steps: ReadonlyArray<string> }) {
+	return (
+		<ol data-testid="onboarding-mcp-sideload-steps" css={sideloadStepsCss}>
+			{props.steps.map((step) => (
+				<li key={step}>{step}</li>
+			))}
+		</ol>
 	)
 }
 
@@ -401,3 +420,20 @@ function getClientNoteCss(accentColor: string) {
 
 const clientDangerCss = getClientNoteCss(colors.danger)
 const clientCautionCss = getClientNoteCss(warningAccent)
+
+const sideloadNoteParagraphCss: CSSObject = {
+	margin: 0,
+	'& + &': {
+		marginTop: '0.4rem',
+	},
+}
+
+const sideloadStepsCss: CSSObject = {
+	margin: 0,
+	paddingLeft: '1.35rem',
+	display: 'grid',
+	gap: '0.35rem',
+	color: colors.text,
+	lineHeight: 1.5,
+	maxWidth: '72ch',
+}

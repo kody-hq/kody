@@ -194,8 +194,9 @@ Cloudflare Tunnel and Access, also see
 
 See
 [API tokens](../guides/api-tokens.md#only-search-and-execute-in-your-tool-list)
-for ChatGPT (developer mode or the CLI) and other clients (refresh the tool
-list). Until the client shows `api`, use `npx @kodycodes/cli api <operationId>`.
+for ChatGPT (Refresh the sideloaded plugin, or use the CLI) and other clients
+(refresh the tool list). Until the client shows `api`, use
+`npx @kodycodes/cli api <operationId>`.
 
 ## Search returns no good matches
 

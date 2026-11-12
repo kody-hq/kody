@@ -6,7 +6,6 @@ import {
 	type OnboardingAgentSurface,
 	codexMcpLoginCommand,
 	hermesMcpLoginCommand,
-	isDefaultKodyMcpUrl,
 	museMcpLoginCommand,
 	openClawMcpLoginCommand,
 	openCodeMcpAuthCommand,
@@ -40,9 +39,8 @@ export function AgentAuthCallout(props: {
 function renderAgentAuthHint(
 	kind: McpClientKind,
 	surface: OnboardingAgentSurface,
-	mcpServerUrl: string,
+	_mcpServerUrl: string,
 ) {
-	const productionPlugin = isDefaultKodyMcpUrl(mcpServerUrl)
 	switch (kind) {
 		case 'cursor-local':
 			return (
@@ -80,32 +78,26 @@ function renderAgentAuthHint(
 				</>
 			)
 		case 'chatgpt':
-			return productionPlugin ? (
-				<>Complete OAuth when ChatGPT prompts you after adding the plugin.</>
-			) : (
-				<>Complete OAuth when ChatGPT prompts you after creating the app.</>
+			return (
+				<>
+					After you install the Kody plugin, select <strong>Connect</strong> if
+					prompted and complete OAuth when ChatGPT prompts you.
+				</>
 			)
 		case 'codex':
 			if (surface === 'mobile') {
-				return productionPlugin ? (
+				return (
 					<>
-						Complete OAuth when the ChatGPT app prompts you after adding the
-						plugin.
+						After you install the Kody plugin, select <strong>Connect</strong>{' '}
+						if prompted and complete OAuth when ChatGPT prompts you.
 					</>
-				) : (
-					<>Complete OAuth when the ChatGPT app prompts you.</>
 				)
 			}
-			return productionPlugin ? (
+			return (
 				<>
-					After adding the plugin, complete OAuth when ChatGPT prompts you. If
-					you used the Codex CLI instead, run{' '}
-					<code>{codexMcpLoginCommand}</code>.
-				</>
-			) : (
-				<>
-					Run <code>{codexMcpLoginCommand}</code> if OAuth does not start
-					automatically.
+					After you install the Kody plugin, select <strong>Connect</strong> if
+					prompted and complete OAuth when ChatGPT prompts you. If you used the
+					Codex CLI instead, run <code>{codexMcpLoginCommand}</code>.
 				</>
 			)
 		case 'claude-desktop':

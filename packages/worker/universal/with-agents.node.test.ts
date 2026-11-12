@@ -84,3 +84,22 @@ test('promo videos map to their /with pages and other agents have none', () => {
 		findWithAgentByPathname('/with/instinct')?.youtubeVideoId,
 	).toBeUndefined()
 })
+
+test('ChatGPT and Codex sideload the Kody plugin instead of the frozen directory listing', () => {
+	for (const slug of ['chatgpt', 'codex']) {
+		const agent = findWithAgentByPathname(`/with/${slug}`)
+		expect(agent?.steps[0]?.link?.href).toBe('https://chatgpt.com/plugins')
+		expect(agent?.steps[0]?.text).toContain('Add custom MCP server')
+		expect(agent?.steps.map((step) => step.code)).toContain(
+			'https://kody.codes/mcp',
+		)
+		for (const step of agent?.steps ?? []) {
+			expect(step.link?.href ?? '').not.toContain('plugin_asdk_app')
+			expect(step.text).not.toContain('plugin directory')
+			expect(step.text).not.toContain('\u2014')
+		}
+	}
+	expect(
+		findWithAgentByPathname('/with/codex')?.steps.map((step) => step.code),
+	).toContain('codex mcp add kody --url https://kody.codes/mcp')
+})

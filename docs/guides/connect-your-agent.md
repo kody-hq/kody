@@ -23,10 +23,7 @@ connect can share. There is no separate Kody chat app to learn.
 Getting started is three steps, and the in-app page at `/onboarding` walks you
 through each one.
 
-> [!WATCH] https://www.youtube.com/watch?v=F_7hefxmEIw Watch: Install the Kody
-> ChatGPT plugin — web, desktop, and mobile
-
-Also watch:
+Watch:
 [Raycast runs Kody scripts — add a command with an agent in seconds](https://www.youtube.com/watch?v=OgQajyS0Sws).
 
 ## Before you start
