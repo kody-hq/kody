@@ -13,6 +13,7 @@ import { randomBytes } from 'node:crypto'
 import { rmSync, statSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import {
+	type IncomingHttpHeaders,
 	createServer,
 	request as httpRequest,
 	type IncomingMessage,
@@ -407,11 +408,10 @@ export async function startPackageAppDev(
 		)
 		const upstreamReq = httpRequest(forwardUrl, {
 			method: req.method,
-			headers: {
-				...req.headers,
+			headers: devVisitorHeaders(req.headers, {
 				host: forwardUrl.host,
 				cookie: upstream.cookie,
-			},
+			}),
 		})
 		upstreamReq.on('upgrade', (upstreamRes, upstreamSocket, upstreamHead) => {
 			const lines = [
@@ -1104,7 +1104,9 @@ export async function startPackageAppDev(
 		})
 		if (upstream) {
 			headers.host = forwardUrl.host
-			headers.cookie = upstream.cookie
+			if (isAnonymousDevVisitor(req.headers)) delete headers.cookie
+			else headers.cookie = upstream.cookie
+			delete headers[devVisitorHeader]
 		}
 		const startedAt = performance.now()
 		const cpuLimitMs = options.cpuLimitMs ?? defaultDevCpuLimitMs
@@ -1543,6 +1545,24 @@ function joinUrlPath(base: string, path: string): string {
 
 /** Cloudflare's default per-request CPU limit for Workers on paid plans. */
 export const defaultDevCpuLimitMs = 30_000
+
+/** `x-kody-dev-visitor: anonymous` sends a request without the local session. */
+export const devVisitorHeader = 'x-kody-dev-visitor'
+
+function isAnonymousDevVisitor(headers: IncomingHttpHeaders) {
+	return String(headers[devVisitorHeader] ?? '').trim() === 'anonymous'
+}
+
+function devVisitorHeaders(
+	base: IncomingHttpHeaders,
+	local: { host: string; cookie: string },
+): IncomingHttpHeaders {
+	const headers: IncomingHttpHeaders = { ...base, host: local.host }
+	delete headers[devVisitorHeader]
+	if (isAnonymousDevVisitor(base)) delete headers.cookie
+	else headers.cookie = local.cookie
+	return headers
+}
 
 const devCallOperations = new Set([
 	'jobList',

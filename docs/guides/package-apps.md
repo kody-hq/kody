@@ -549,7 +549,7 @@ So under `kody dev` the hosted code runs for:
 - `kody:runtime` and every package app bridge method: `packageStorage` (the real
   StorageRunner SQLite Durable Object, so `list({ prefix })`, `clear()`, `sql`
   and the row counts behave as hosted), `events`, `email`, `workflows`,
-  `packages`, `realtime`, `kody.appRateLimit`, `kody.appSpendGet` and
+  `packages`, the `realtime` extra, `kody.appRateLimit`, `kody.appSpendGet` and
   `kody.appPublisherGet`.
 - The capability registry. `kody.*` calls run the real handlers against local
   data, so plan limits, validation and manifest checks match hosted.
@@ -633,13 +633,14 @@ the hosted plan and concurrency limits.
 
 ### Realtime under `kody dev`
 
-`/ws` and `/ws/{facet}` connect to the real realtime Durable Object, so
-`realtime.broadcast`, `realtime.emit`, `realtime.listSessions` and
-`realtime.disconnect` behave as hosted. The local proxy signs requests in as the
-local account, which is a member of the owning org. To try the
-[anonymous modes](#anonymous-realtime), send the request with
-`x-kody-dev-visitor: anonymous`; the proxy then forwards it without the local
-session.
+`/ws` and `/ws/{facet}` connect to the real realtime Durable Object, so the
+`realtime` extra (`broadcast`, `emit`, `listSessions` and `disconnect`) behaves
+as hosted. The local proxy signs requests in as the local account, which is a
+member of the owning org. Send a request with `x-kody-dev-visitor: anonymous` to
+make it as a visitor with no session instead; a private app answers it the way
+hosted does. The [anonymous modes](#anonymous-realtime) need an internet-visible
+app, and local Kody runs the same `packageUpdate`, security audit and owner
+approval steps as hosted, against your local account.
 
 ### Simulations
 
