@@ -69,7 +69,9 @@ export type WithAgent = {
 const mcpUrl = defaultKodyMcpUrl
 
 function genericAgent<const Slug extends string>(
-	agent: Pick<WithAgent, 'name' | 'icon' | 'pitch'> & { slug: Slug },
+	agent: Pick<WithAgent, 'name' | 'icon' | 'pitch' | 'youtubeVideoId'> & {
+		slug: Slug
+	},
 ) {
 	return {
 		...agent,
@@ -300,6 +302,7 @@ export const withAgents = [
 		official: true,
 		pitch:
 			'Give Hermes the shared credentials and packages your team keeps in Kody, from the terminal or any chat app it runs in.',
+		youtubeVideoId: 'ZfAfxwIMOgI',
 		steps: [
 			{
 				text: 'Add Kody on the machine that runs Hermes:',
@@ -320,6 +323,7 @@ export const withAgents = [
 		official: true,
 		pitch:
 			'Connect Muse Code to Kody so the tools it builds outlive the session and reach the rest of your team.',
+		youtubeVideoId: 'znnJ4jfGGcg',
 		steps: [
 			{
 				text: 'Add Kody to ~/.config/muse/settings.json:',
@@ -362,6 +366,7 @@ export const withAgents = [
 		icon: 'pi',
 		pitch:
 			'Give Pi the shared credentials and workflows your team keeps in Kody.',
+		youtubeVideoId: 'czWITu_qvJo',
 	}),
 	genericAgent({
 		slug: 'wajo',
