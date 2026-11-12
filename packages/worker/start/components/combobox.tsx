@@ -15,6 +15,7 @@ import {
 	overlayPositionerCss,
 } from './overlay-styles.ts'
 
+/** One Combobox choice. `keywords` are extra prefix-match strings. */
 export type ComboboxOption = {
 	id: string
 	label: string
@@ -43,6 +44,11 @@ function matchesOption(option: ComboboxOption, query: string) {
 	].some((value) => value.toLocaleLowerCase().startsWith(normalized))
 }
 
+/**
+ * Filterable labeled picker. `selectOnly` renders a Base UI Select (no typing);
+ * otherwise a Base UI Combobox whose list filters by label prefix and optional
+ * keywords. Portals into the nearest dialog when nested.
+ */
 export function Combobox(props: ComboboxProps) {
 	const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(
 		null,

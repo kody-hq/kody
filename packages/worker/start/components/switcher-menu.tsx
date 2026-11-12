@@ -24,12 +24,16 @@ export type SwitcherRow = {
 	label: string
 	detail: string | null
 	ariaCurrent: 'true' | 'page' | undefined
-	/** The organization the page is acting in; drawn with a check. */
+	/** The current workspace organization; drawn with a check. */
 	selected: boolean
 	leading: ReactNode
 	badge: string | null
 }
 
+/**
+ * One switcher link. Pass `menu` inside a `SwitcherPopup` so Base UI owns
+ * keyboard highlight.
+ */
 export function renderSwitcherRow(row: SwitcherRow, menu = false) {
 	const link = (
 		<SiteLink
@@ -66,6 +70,10 @@ export function renderIconWell(name: IconName) {
 	)
 }
 
+/**
+ * Account and workspace switcher panel: a Base UI Menu popup (portal, light
+ * dismiss, Escape, and focus return). Callers supply the trigger and rows.
+ */
 export function SwitcherPopup({
 	testId,
 	label,

@@ -15,6 +15,7 @@ import {
 import type { EntityKind } from '#worker/repo/types.ts'
 import { listAllMailboxEmailObjectRefs } from './mailbox-r2-references.ts'
 
+/** R2 bindings `collectAccountR2Inventory` can name. */
 export type AccountR2Binding = 'EMAIL_BLOBS' | 'COMMUNITY_ASSETS' | 'FILE_BLOBS'
 
 export type AccountR2ObjectRef = {
@@ -141,6 +142,13 @@ async function listUserIdentityIcons(env: Env, userId: OwnerId) {
 	}
 }
 
+/**
+ * User-owned R2 objects for account deletion and export: FileStore revision
+ * keys (labeled `FILE_BLOBS`; bytes may live in `FILE_BLOBS` or a configured
+ * provider) when `FILE_STORE` is bound, mailbox MIME and attachments in
+ * `EMAIL_BLOBS`, and community/identity icons plus the profile avatar in
+ * `COMMUNITY_ASSETS`. File keys come from `FileStore.inventory`, not D1.
+ */
 export async function collectAccountR2Inventory(input: {
 	env: Env
 	userId: OwnerId

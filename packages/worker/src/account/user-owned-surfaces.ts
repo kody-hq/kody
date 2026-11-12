@@ -177,7 +177,7 @@ export const accountUserOwnedDurableObjectSurfaces: ReadonlyArray<UserOwnedDurab
 			deletionResultKey: 'fileStores',
 			export: 'include',
 			notes:
-				'Org file catalog, immutable revision manifest and quota coordinator. File bytes live in FILE_BLOBS. Purge deletes bytes before catalog state.',
+				'Org file catalog, immutable revision manifest and quota coordinator. File bytes live in FILE_BLOBS by default or a configured provider. Purge deletes bytes before catalog state.',
 		},
 		{
 			id: 'repo_session_index',
