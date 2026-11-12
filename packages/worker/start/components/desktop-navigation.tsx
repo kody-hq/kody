@@ -7,8 +7,7 @@ import type { DesktopNavigationState, DesktopShell } from '../desktop-shell.ts'
 import { SiteLink } from './site-link.tsx'
 import { renderIcon } from './icon.tsx'
 
-const cornerHeight = 44
-const cornerWidth = 248
+const toolbarHeight = 32
 
 export function DesktopNavigation({ homeHref }: { homeHref: string }) {
 	const [shell, setShell] = useState<DesktopShell | null>(null)
@@ -36,7 +35,7 @@ export function DesktopNavigation({ homeHref }: { homeHref: string }) {
 		}
 	}, [])
 	if (!shell || !state) return null
-	const mac = state.platform === 'darwin'
+	const integratedTitlebar = state.integratedTitlebar && !state.fullscreen
 	async function navigate(
 		action: 'back' | 'forward' | 'home' | 'copyAddress' | 'openInBrowser',
 	) {
@@ -53,55 +52,63 @@ export function DesktopNavigation({ homeHref }: { homeHref: string }) {
 		<>
 			<Global
 				styles={{
-					...(state.integratedTitlebar && !state.fullscreen
-						? {
-								'a, button, input, select, textarea, [role="button"], [contenteditable="true"]':
-									{ WebkitAppRegion: 'no-drag' },
-							}
-						: {}),
 					':root': {
-						'--desktop-corner-height': `${cornerHeight}px`,
-						'--desktop-corner-width': `${cornerWidth}px`,
+						'--desktop-toolbar-height': `${toolbarHeight}px`,
+						'--app-frame-min-height': '0px',
+					},
+					body: {
+						display: 'flex',
+						flexDirection: 'column',
+						minHeight: '100dvh',
+					},
+					'body:has([data-workspace-files])': {
+						height: '100dvh',
+						'& [data-workspace-content]': {
+							display: 'flex',
+							flexDirection: 'column',
+							minHeight: 0,
+						},
+						'& [data-workspace-files]': {
+							flex: 1,
+							minHeight: 0,
+							gridTemplateRows: 'minmax(0, 1fr)',
+							'@media (max-width: 600px)': {
+								gridTemplateRows: 'auto minmax(0, 1fr)',
+							},
+							'& > aside': { height: 'auto' },
+							'& > [data-workspace-panel]': {
+								minHeight: 0,
+								flexDirection: 'column',
+								'&::before': { maxHeight: 'calc(100% + 3rem)' },
+							},
+						},
+						'& [data-workspace-files-content]': {
+							height: 'auto',
+							minHeight: 0,
+							flex: 1,
+						},
 					},
 				}}
 			/>
-			{state.integratedTitlebar && !state.fullscreen ? (
-				<div
-					aria-hidden="true"
-					data-desktop-drag-strip
-					css={{
-						position: 'fixed',
-						top: 0,
-						insetInline: 0,
-						height: 35,
-						zIndex: 99,
-						WebkitAppRegion: 'drag',
-						pointerEvents: 'none',
-					}}
-				/>
-			) : null}
 			<nav
 				aria-label="App navigation"
 				data-desktop-navigation
 				css={{
-					position: 'fixed',
+					position: 'sticky',
 					top: 0,
-					left: 0,
-					width: cornerWidth,
-					height: cornerHeight,
+					height: toolbarHeight,
+					flexShrink: 0,
 					zIndex: 100,
 					display: 'flex',
 					alignItems: 'center',
-					justifyContent: 'flex-end',
 					gap: 4,
-					paddingInline:
-						mac && state.integratedTitlebar && !state.fullscreen
-							? '88px 16px'
-							: '16px',
+					paddingInline: integratedTitlebar ? '88px 16px' : '16px',
+					background: colors.surface,
+					borderBottom: `1px solid ${colors.borderSubtle}`,
 					color: colors.textMuted,
 					boxSizing: 'border-box',
 					fontFamily: typography.fontFamily,
-					WebkitAppRegion: 'drag',
+					WebkitAppRegion: integratedTitlebar ? 'drag' : undefined,
 					userSelect: 'none',
 				}}
 			>
@@ -113,7 +120,7 @@ export function DesktopNavigation({ homeHref }: { homeHref: string }) {
 					css={buttonCss}
 					onClick={() => void navigate('back')}
 				>
-					{renderIcon('arrow-left', { size: '14px' })}
+					{renderIcon('arrow-left', { size: '12px' })}
 				</button>
 				<button
 					type="button"
@@ -124,7 +131,7 @@ export function DesktopNavigation({ homeHref }: { homeHref: string }) {
 					onClick={() => void navigate('forward')}
 				>
 					<span css={{ display: 'flex', transform: 'rotate(180deg)' }}>
-						{renderIcon('arrow-left', { size: '14px' })}
+						{renderIcon('arrow-left', { size: '12px' })}
 					</span>
 				</button>
 				<SiteLink
@@ -133,7 +140,7 @@ export function DesktopNavigation({ homeHref }: { homeHref: string }) {
 					title="Home"
 					css={buttonCss}
 				>
-					{renderIcon('home', { size: '14px' })}
+					{renderIcon('home', { size: '12px' })}
 				</SiteLink>
 				<div
 					onKeyDown={(event) => {
@@ -151,7 +158,7 @@ export function DesktopNavigation({ homeHref }: { homeHref: string }) {
 						css={buttonCss}
 						onClick={() => setAddressOpen(!addressOpen)}
 					>
-						{renderIcon('link', { size: '14px' })}
+						{renderIcon('link', { size: '12px' })}
 					</button>
 					{addressOpen ? (
 						<div
@@ -161,7 +168,7 @@ export function DesktopNavigation({ homeHref }: { homeHref: string }) {
 							css={{
 								position: 'absolute',
 								left: 16,
-								top: cornerHeight,
+								top: '100%',
 								width: 'min(420px, calc(100vw - 32px))',
 								boxSizing: 'border-box',
 								background: colors.surface,

@@ -589,7 +589,7 @@ async function createWindow(path = '/account') {
 		title: 'Kody',
 		icon: join(__dirname, 'assets/icon.png'),
 		...(integratedTitlebar
-			? { titleBarStyle: 'hidden', trafficLightPosition: { x: 16, y: 13 } }
+			? { titleBarStyle: 'hidden', trafficLightPosition: { x: 16, y: 9 } }
 			: {}),
 		backgroundColor: '#ffffff',
 		webPreferences: {

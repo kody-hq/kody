@@ -109,12 +109,13 @@ export function WorkspaceLayout() {
 			<WorkspaceLayoutContext value={true}>
 				<div
 					data-workspace-layout
+					data-workspace-files={fullPanel || undefined}
 					css={{
 						display: 'grid',
 						gridTemplateColumns: `${rail.compact ? 52 : 248}px minmax(0, 1fr)`,
 						transition: 'grid-template-columns 240ms cubic-bezier(.22,1,.36,1)',
 						'@media(prefers-reduced-motion:reduce)': { transition: 'none' },
-						minHeight: '100dvh',
+						minHeight: 'calc(100dvh - var(--desktop-toolbar-height, 0px))',
 						width: '100%',
 						[accountManagementNarrowMq]: {
 							gridTemplateColumns: 'minmax(0, 1fr)',
@@ -247,9 +248,8 @@ export function WorkspaceLayout() {
 								'& [data-rail-header], & [data-rail-switcher], & [data-account-nav-heading] button > :first-child, & [data-rail-label], & [data-rail-section], & [data-account-nav] a, & [data-account-nav] a:hover, & [data-account-nav-heading] button, & > div, & [data-rail-mark] > svg':
 									{ transition: 'none' },
 							},
-							top: 0,
-							paddingTop: 'var(--desktop-corner-height, 0px)',
-							height: '100dvh',
+							top: 'var(--desktop-toolbar-height, 0px)',
+							height: 'calc(100dvh - var(--desktop-toolbar-height, 0px))',
 							boxSizing: 'border-box',
 							display: 'flex',
 							flexDirection: 'column',
