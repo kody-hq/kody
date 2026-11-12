@@ -342,7 +342,7 @@ function saveRedeemedCredential(input: {
 		const active = loadCredentials(mcpUrl, input.backend, input.resolution)
 		if (active?.org) {
 			throw new Error(
-				`Bootstrap redeem named no org, so the new credential would not replace the saved login for org "${active.org}". Run \`${cliName} logout --org ${active.org}\`, then mint a new code and run \`${cliName} auth bootstrap\` again.`,
+				`Bootstrap redeem named no org, so the new credential would not replace the saved login for org "${active.org}". Run \`kody logout --org ${active.org}\`, then mint a new code and run \`kody auth bootstrap\` again.`,
 			)
 		}
 	}
