@@ -57,7 +57,10 @@ import {
 	runStartedByClientFromCredentialKind,
 	normalizeRunStartedBy,
 } from '#worker/run-records/run-started-by.ts'
-import { publishOutsideCloudAdvice } from '#worker/repo/isolated-runner-limit-message.ts'
+import {
+	publishOutsideCloudAdvice,
+	isPublishComputeLimitMessage,
+} from '#worker/repo/isolated-runner-limit-message.ts'
 import {
 	beginRunRecord,
 	closeStoppedWorkflowAttemptRuns,
@@ -84,7 +87,10 @@ import {
 	type WorkflowSourceRevisionPolicy,
 } from '#worker/run-records/workflow-projection.ts'
 import { runRecordMaxPageSize } from '#worker/run-records/types.ts'
-import { isTransientDurableObjectResetError } from '#worker/durable-object-reset-retry.ts'
+import {
+	isDurableObjectIsolateResourceLimitResetError,
+	isTransientDurableObjectResetError,
+} from '#worker/durable-object-reset-retry.ts'
 import { UserCodeError } from '#worker/user-code-error.ts'
 import { inlineWorkflowNameFallback } from '#universal/workflow-display.ts'
 import {
@@ -270,6 +276,21 @@ const workflowStepDoConfig: WorkflowStepDoConfig = {
 }
 
 /**
+ * `packagePublishExternalPush` already retries genuine deploy-time Durable
+ * Object resets inside the capability. A memory/CPU kill of the session
+ * isolate does not throw `NonRetryableError` (the isolate is gone), so the
+ * default step retry budget would run the same rebuild four times — the
+ * opposite of "stopped instead of retrying the same limit".
+ */
+const publishWorkflowStepDoConfig: WorkflowStepDoConfig = {
+	retries: {
+		limit: 0,
+		delay: 0,
+	},
+	timeout: workflowStepDoConfig.timeout,
+}
+
+/**
  * Cloudflare Workflows pass this into `step.do` callbacks. `attempt` is
  * 1-indexed; with `retries.limit` N the engine may run attempts 1..N+1.
  */
@@ -301,8 +322,13 @@ function workflowStepWillRetry(attempt: number | undefined) {
 function attemptWillRetry(
 	error: unknown,
 	stepCtx: WorkflowStepAttemptContext | undefined,
+	payload?: DynamicCallableWorkflowPayload,
 ) {
 	if (isAccountSuspendedError(error) || isNonRetryableError(error)) return false
+	// Pair with {@link publishWorkflowStepDoConfig}: the engine will not
+	// retry, so the sole attempt must notify subscribers instead of being
+	// auto-ignored as "will retry".
+	if (payload && isPublishWorkflow(payload)) return false
 	return workflowStepWillRetry(stepCtx?.attempt)
 }
 
@@ -318,6 +344,28 @@ function isPublishComputeFailure(
 	const message = getErrorMessage(error)
 	if (message.includes(publishOutsideCloudAdvice())) return false
 	return /timed out|CPU time|memory limit|compute limit/i.test(message)
+}
+
+/** Isolate memory/CPU limits the capability already fail-fasts. */
+function isPublishWorkflowComputeLimitError(
+	payload: DynamicCallableWorkflowPayload,
+	error: unknown,
+) {
+	if (!isPublishWorkflow(payload)) return false
+	if (isDurableObjectIsolateResourceLimitResetError(error)) return true
+	return isPublishComputeLimitMessage(getErrorMessage(error))
+}
+
+/**
+ * Fail the publish step with no engine retries. Errors cross an RPC
+ * boundary, so only {@link NonRetryableError} is terminal to Cloudflare.
+ */
+function throwIfPublishWorkflowComputeLimit(
+	payload: DynamicCallableWorkflowPayload,
+	error: unknown,
+): void {
+	if (!isPublishWorkflowComputeLimitError(payload, error)) return
+	throw terminalWorkflowStepError(getErrorMessage(error))
 }
 
 const packageWorkflowTokenId = 'internal:package-workflows'
@@ -1984,7 +2032,9 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				payload.sourceType === 'package'
 					? 'invoke saved package workflow export'
 					: 'execute inline workflow code',
-				workflowStepDoConfig,
+				isPublishWorkflow(payload)
+					? publishWorkflowStepDoConfig
+					: workflowStepDoConfig,
 				async (stepCtx) => {
 					// An earlier attempt killed before its finish write (CPU or
 					// memory limit) left its run row `running`.
@@ -2254,7 +2304,7 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 			// Suspension becomes NonRetryableError in the step wrapper — leave
 			// that run open, like a moved pinned revision. Other failures still
 			// retry up to the step limit.
-			const willRetry = attemptWillRetry(error, stepCtx)
+			const willRetry = attemptWillRetry(error, stepCtx, payload)
 			await finishRunRecord({
 				env: this.env,
 				handle: runHandle,
@@ -2352,6 +2402,7 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 						),
 					)
 				}
+				throwIfPublishWorkflowComputeLimit(payload, result.error)
 				throw new UserCodeError(message)
 			}
 			let value = toJsonSafeValue(result.result) as JsonValue
@@ -2380,7 +2431,12 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 			})
 			return value
 		} catch (error) {
-			const willRetry = attemptWillRetry(error, stepCtx)
+			const thrown =
+				isNonRetryableError(error) ||
+				!isPublishWorkflowComputeLimitError(payload, error)
+					? error
+					: terminalWorkflowStepError(getErrorMessage(error))
+			const willRetry = attemptWillRetry(thrown, stepCtx, payload)
 			await finishRunRecord({
 				env: this.env,
 				handle: runHandle,
@@ -2389,11 +2445,11 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				// The owner's alert for a publish that ran out of time or compute
 				// names the build-outside-cloud path.
 				error:
-					!willRetry && isPublishComputeFailure(payload, error)
+					!willRetry && isPublishComputeFailure(payload, thrown)
 						? new Error(
-								`${getErrorMessage(error)} ${publishOutsideCloudAdvice()}`,
+								`${getErrorMessage(thrown)} ${publishOutsideCloudAdvice()}`,
 							)
-						: error,
+						: thrown,
 				skipErrorSubscriptions: willRetry,
 			})
 			await this.markRetryableWorkflowRunIgnored({
@@ -2401,7 +2457,7 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				runId: runHandle?.id,
 				willRetry,
 			})
-			throw error
+			throw thrown
 		}
 	}
 }
