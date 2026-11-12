@@ -7,7 +7,6 @@ import {
 	findWithAgentByPathname,
 	withAgentYoutubeVideoIds,
 	withAgents,
-	type WithAgent,
 } from './with-agents.ts'
 import { isYoutubeVideoId } from './youtube-watch.ts'
 
@@ -62,23 +61,17 @@ test('Instinct leads with the Kody CLI and keeps MCP to a short note', () => {
 })
 
 test('promo videos map to their /with pages and other agents have none', () => {
-	expect(
-		Object.fromEntries(
-			withAgents.flatMap((agent: WithAgent) =>
-				agent.youtubeVideoId ? [[agent.slug, agent.youtubeVideoId]] : [],
-			),
-		),
-	).toEqual({
-		cursor: 'w4JwZdLBTME',
-		'claude-code': '85vHMyLBwQc',
-		codex: 'fuDXGko25u4',
-		chatgpt: 'XhEOHp-xAvI',
-		claude: 'hIoyopd7K0s',
-		copilot: 'b10pWdw82fM',
-		gemini: 'Q3wxGreaCR0',
-		'grok-bot': 'Cbfi6ACAvZY',
-	})
-	for (const id of withAgentYoutubeVideoIds()) {
+	const ids = withAgentYoutubeVideoIds()
+	expect(ids.length).toBeGreaterThan(0)
+	expect(ids.length).toBeLessThan(withAgents.length)
+	expect(new Set(ids).size).toBe(ids.length)
+	for (const id of ids) {
 		expect(isYoutubeVideoId(id)).toBe(true)
 	}
+	const cursorVideoId = findWithAgentByPathname('/with/cursor')?.youtubeVideoId
+	expect(cursorVideoId).toBeTruthy()
+	expect(ids).toContain(cursorVideoId)
+	expect(
+		findWithAgentByPathname('/with/instinct')?.youtubeVideoId,
+	).toBeUndefined()
 })

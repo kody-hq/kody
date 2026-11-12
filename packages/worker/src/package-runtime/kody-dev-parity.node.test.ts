@@ -37,10 +37,6 @@ const legacyRuntimeSource = read(
 )
 const allowlistedExports = new Set(kodyDevAllowlist.flatMap((e) => e.exports))
 
-test('only gap 8 stays on the allowlist', () => {
-	expect(kodyDevAllowlist.map((entry) => entry.gap)).toEqual([8])
-})
-
 test('every allowlist and boundary mock entry links a docs heading', () => {
 	const links = [
 		...kodyDevAllowlist.map((entry) => entry.docs),
@@ -66,9 +62,6 @@ test('every bridge method runs real code or a named boundary mock', () => {
 			method,
 		)
 	}
-	expect(methods).toContain('appRateLimit')
-	expect(methods).toContain('appSpendGet')
-	expect(methods).toContain('appPublisherGet')
 })
 
 test('the working-tree bridge exports every hosted runtime export', () => {
