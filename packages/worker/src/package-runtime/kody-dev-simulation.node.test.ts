@@ -1,10 +1,11 @@
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import {
 	kodyDevClockOffsetMs,
 	kodyDevClockShimSource,
 	kodyDevColdIsolates,
 	kodyDevStorageLatencyMs,
 	withKodyDevStorageLatency,
+	kodyDevOutboundFetch,
 } from './kody-dev-simulation.ts'
 
 const devStack = { KODY_DEV_MOCK_SECRETS: 'true' } as Env
@@ -69,4 +70,43 @@ test('clock shim shifts Date by the offset', () => {
 	expect(new shifted.Date().getTime() - realNow).toBeGreaterThanOrEqual(
 		86_400_000,
 	)
+})
+
+test('outbound fetch goes to the kody dev mocks gateway only under the mock', async () => {
+	const url = 'http://127.0.0.1:9/'
+	expect(kodyDevOutboundFetch({ KODY_DEV_OUTBOUND_URL: url })).toBeNull()
+	expect(kodyDevOutboundFetch({ KODY_DEV_MOCK_SECRETS: 'true' })).toBeNull()
+	const gateway = vi.fn(async (_url: unknown, init?: RequestInit) => {
+		const sent = JSON.parse(String(init?.body))
+		return Response.json({
+			status: 201,
+			statusText: 'Created',
+			headers: { 'x-echo': sent.url },
+			bodyBase64: btoa(`${sent.method} ${atob(sent.bodyBase64)}`),
+		})
+	})
+	vi.stubGlobal('fetch', gateway)
+	try {
+		const outbound = kodyDevOutboundFetch({
+			KODY_DEV_MOCK_SECRETS: 'true',
+			KODY_DEV_OUTBOUND_URL: url,
+		})!
+		const response = await outbound('https://api.example.com/x', {
+			method: 'POST',
+			body: 'hi',
+		})
+		expect(gateway.mock.calls[0]![0]).toBe(url)
+		expect(response.status).toBe(201)
+		expect(response.headers.get('x-echo')).toBe('https://api.example.com/x')
+		expect(await response.text()).toBe('POST hi')
+
+		gateway.mockResolvedValueOnce(
+			Response.json({ error: 'unmocked_request' }, { status: 502 }),
+		)
+		await expect(outbound('https://other.example.org/')).rejects.toThrow(
+			'unmocked_request',
+		)
+	} finally {
+		vi.unstubAllGlobals()
+	}
 })

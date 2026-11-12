@@ -47,6 +47,11 @@ export type StartDevRuntimeInput = {
 	readyTimeoutMs?: number
 	/** Opt-in simulations; approximations, not exact Cloudflare timing. */
 	simulation?: DevRuntimeSimulation
+	/**
+	 * Where package outbound fetch goes instead of the internet: the CLI's
+	 * `.kody/mocks.ts` gateway.
+	 */
+	outboundUrl?: string
 }
 
 export type DevRuntimeSimulation = {
@@ -389,6 +394,9 @@ export async function startDevRuntime(
 			configDir: join(stateDir, 'config'),
 			vars: {
 				...simulationVars(input.simulation),
+				...(input.outboundUrl
+					? { KODY_DEV_OUTBOUND_URL: input.outboundUrl }
+					: {}),
 				APP_BASE_URL: origin,
 				COOKIE_SECRET: state.cookieSecret,
 				SECRET_STORE_KEY: state.secretStoreKey,

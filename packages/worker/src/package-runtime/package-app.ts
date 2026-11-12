@@ -226,7 +226,7 @@ import {
 const packageAppEntrypointName = 'PackageAppWorker'
 
 /** Bridge methods the package-app sandbox calls through `settle`. */
-const packageAppSandboxBridgeMethods = [
+export const packageAppSandboxBridgeMethods = [
 	'appPublisherGet',
 	'appRateLimit',
 	'appSpendGet',

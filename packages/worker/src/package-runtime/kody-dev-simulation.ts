@@ -80,3 +80,67 @@ const __kodyDevClockOffsetMs = ${JSON.stringify(offsetMs)};
 }
 `
 }
+
+const nullBodyStatuses = new Set([101, 204, 205, 304])
+
+function bytesToBase64(bytes: Uint8Array) {
+	let binary = ''
+	for (const byte of bytes) binary += String.fromCharCode(byte)
+	return btoa(binary)
+}
+
+function base64ToBytes(base64: string) {
+	const binary = atob(base64)
+	const bytes = new Uint8Array(binary.length)
+	for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+	return bytes
+}
+
+/**
+ * Under the `kody dev` mock, outbound fetch goes to the CLI's `.kody/mocks.ts`
+ * gateway instead of the internet. Null everywhere else.
+ */
+export function kodyDevOutboundFetch(env: {
+	KODY_DEV_MOCK_SECRETS?: string
+	KODY_DEV_OUTBOUND_URL?: string
+}): typeof fetch | null {
+	if (env.KODY_DEV_MOCK_SECRETS?.trim() !== 'true') return null
+	const gatewayUrl = env.KODY_DEV_OUTBOUND_URL?.trim()
+	if (!gatewayUrl) return null
+	return async (resource, init) => {
+		const request = new Request(resource, init)
+		const body = request.body
+			? new Uint8Array(await request.arrayBuffer())
+			: null
+		const response = await fetch(gatewayUrl, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				url: request.url,
+				method: request.method,
+				headers: Object.fromEntries(request.headers),
+				...(body ? { bodyBase64: bytesToBase64(body) } : {}),
+			}),
+		})
+		const result = (await response.json()) as {
+			status?: number
+			statusText?: string
+			headers?: Record<string, string>
+			bodyBase64?: string
+			error?: string
+		}
+		if (!response.ok || typeof result.status !== 'number') {
+			throw new TypeError(result.error ?? 'The kody dev outbound mock failed.')
+		}
+		return new Response(
+			nullBodyStatuses.has(result.status)
+				? null
+				: base64ToBytes(result.bodyBase64 ?? ''),
+			{
+				status: result.status,
+				statusText: result.statusText ?? '',
+				headers: result.headers ?? {},
+			},
+		)
+	}
+}

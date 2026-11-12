@@ -135,6 +135,7 @@ import {
 	requestContextFromVisitClaims,
 	verifyPackageAppVisitTicket,
 } from '#worker/package-runtime/package-app-visit-ticket.ts'
+import { kodyDevOutboundFetch } from '#worker/package-runtime/kody-dev-simulation.ts'
 
 type FetchGatewayProps = {
 	baseUrl: string
@@ -221,6 +222,7 @@ export type FetchGatewayEnv = Pick<
 	Env,
 	'APP_DB' | 'SECRET_STORE_KEY' | 'USER_METER'
 > &
+	Partial<Pick<Env, 'KODY_DEV_MOCK_SECRETS' | 'KODY_DEV_OUTBOUND_URL'>> &
 	UsageEnv
 
 /**
@@ -372,7 +374,8 @@ async function fetchThroughGateway(
 	input: Parameters<typeof executeGatewayFetch>[0],
 ): Promise<Response> {
 	const resolved = await applyPackageAppVisitTicketToGateway(input)
-	const globalFetch = resolved.globalFetch ?? fetch
+	const globalFetch =
+		resolved.globalFetch ?? kodyDevOutboundFetch(resolved.env) ?? fetch
 	const startedAtMs = Date.now()
 	let response: Response | undefined
 	let deadline: OutboundFetchDeadline | undefined

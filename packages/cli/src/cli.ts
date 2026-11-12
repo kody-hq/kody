@@ -1791,6 +1791,8 @@ async function dispatch(
 											const local = await import('./dev/local-kody.js')
 											const kody = await local.startLocalKody({
 												manifest,
+												passthroughHosts,
+												allowPrivateNetwork,
 												simulation: local.parseDevSimulation({
 													simulateLatency: parsed.values['simulate-latency'],
 													latencyMs: parsed.values['latency-ms'],

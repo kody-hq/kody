@@ -7,11 +7,17 @@
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { createWriteStream, existsSync } from 'node:fs'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { windowsFileLaunch } from '../execution-context/windows-command.js'
 import { npmInstallEnv } from '../mock/ensure-msw.js'
+import {
+	resolveMockFetchGateway,
+	type MockFetchGateway,
+} from '../mock/mock-fetch-gateway.js'
 import { collectPackageCheckFiles } from '../package-check-files.js'
 import type { KodyPackageManifest } from '../package-manifest.js'
 import { readPackageVersion } from '../package-info.js'
@@ -188,6 +194,8 @@ export async function startLocalKody(input: {
 	manifest: KodyPackageManifest
 	env?: NodeJS.ProcessEnv
 	simulation?: Parameters<DevRuntimeModule['startDevRuntime']>[0]['simulation']
+	passthroughHosts?: ReadonlyArray<string>
+	allowPrivateNetwork?: boolean
 	onStatus?: (message: string) => void
 }): Promise<LocalKody> {
 	const entry = await ensureDevRuntime({
@@ -209,12 +217,71 @@ export async function startLocalKody(input: {
 	input.onStatus?.(
 		'Starting local Kody (real workers, local D1 and Durable Objects)...',
 	)
-	return await runtime.startDevRuntime({
-		stateDir,
-		username: localUsernameFor(input.manifest),
-		...(input.simulation ? { simulation: input.simulation } : {}),
-		onLog: (line) => log.write(`[${line.source}] ${line.line}\n`),
+	const gateway = await resolveMockFetchGateway({
+		target: 'mock',
+		packageRoot: input.manifest.root,
+		passthroughHosts: input.passthroughHosts,
+		allowPrivateNetwork: input.allowPrivateNetwork,
 	})
+	const outbound = gateway ? await startOutboundGateway(gateway) : null
+	try {
+		const kody = await runtime.startDevRuntime({
+			stateDir,
+			username: localUsernameFor(input.manifest),
+			...(input.simulation ? { simulation: input.simulation } : {}),
+			...(outbound ? { outboundUrl: outbound.url } : {}),
+			onLog: (line) => log.write(`[${line.source}] ${line.line}\n`),
+		})
+		return {
+			...kody,
+			close: async () => {
+				await kody.close()
+				await outbound?.close()
+			},
+		}
+	} catch (error) {
+		await outbound?.close()
+		throw error
+	}
+}
+
+/**
+ * Package outbound fetch on the local workers lands here and runs through the
+ * same `.kody/mocks.ts` gateway as the rest of `--target mock`, so it never
+ * reaches a third-party service unless `--passthrough` allows the host.
+ */
+async function startOutboundGateway(gateway: MockFetchGateway) {
+	const server = createServer((req, res) => {
+		const chunks: Array<Buffer> = []
+		req.on('data', (chunk: Buffer) => chunks.push(chunk))
+		req.on('end', () => {
+			void (async () => {
+				let status = 200
+				let body: unknown
+				try {
+					const request = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+					body = await gateway.handle({ request })
+				} catch (error) {
+					status = 502
+					body = {
+						error: error instanceof Error ? error.message : String(error),
+					}
+				}
+				res.writeHead(status, { 'content-type': 'application/json' })
+				res.end(JSON.stringify(body))
+			})()
+		})
+	})
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+	const { port } = server.address() as AddressInfo
+	return {
+		url: `http://127.0.0.1:${port}/`,
+		close: () =>
+			new Promise<void>((resolve) => {
+				server.closeAllConnections()
+				server.close(() => resolve())
+			}),
+	}
 }
 
 /** Saves the working tree into local Kody through the real packageSave route. */
