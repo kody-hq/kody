@@ -169,7 +169,7 @@ export function ClientWarning(props: ClientWarningProps) {
 	)
 }
 
-type ChatGptSideloadNoteProps = {
+type McpSetupNoteProps = {
 	availability: string
 	href: string
 	linkLabel: string
@@ -177,40 +177,40 @@ type ChatGptSideloadNoteProps = {
 }
 
 /**
- * Amber caution under ChatGPT's sideload steps: plan and workspace limits,
- * plus a pointer away from the frozen directory listing. Same quiet callout
+ * Amber caution under ChatGPT and Codex MCP steps: a setup note, plus a
+ * pointer away from the frozen directory listing. Same quiet callout
  * language as {@link ClientWarning}, warning tone instead of danger.
  */
-export function ChatGptSideloadNote(props: ChatGptSideloadNoteProps) {
+export function McpSetupNote(props: McpSetupNoteProps) {
 	return (
 		<div
 			css={clientCautionCss}
 			role="note"
-			data-testid="onboarding-chatgpt-sideload-note"
+			data-testid="onboarding-mcp-setup-note"
 		>
-			<p css={sideloadNoteParagraphCss}>
+			<p css={mcpSetupNoteParagraphCss}>
 				{props.availability} See{' '}
 				<SiteLink href={props.href} target="_blank" rel="noreferrer noopener">
 					{props.linkLabel}
 				</SiteLink>
 				.
 			</p>
-			<p css={sideloadNoteParagraphCss}>{props.directoryListing}</p>
+			<p css={mcpSetupNoteParagraphCss}>{props.directoryListing}</p>
 		</div>
 	)
 }
 
 /** Numbered host-side steps shown under a primary action. */
-export function SideloadSteps(props: {
+export function McpSetupSteps(props: {
 	steps: ReadonlyArray<string>
 	/** Continues numbering when copy cards split one list. */
 	start?: number
 }) {
 	return (
 		<ol
-			data-testid="onboarding-mcp-sideload-steps"
+			data-testid="onboarding-mcp-setup-steps"
 			start={props.start}
-			css={sideloadStepsCss}
+			css={mcpSetupStepsCss}
 		>
 			{props.steps.map((step) => (
 				<li key={step}>{step}</li>
@@ -429,14 +429,14 @@ function getClientNoteCss(accentColor: string) {
 const clientDangerCss = getClientNoteCss(colors.danger)
 const clientCautionCss = getClientNoteCss(warningAccent)
 
-const sideloadNoteParagraphCss: CSSObject = {
+const mcpSetupNoteParagraphCss: CSSObject = {
 	margin: 0,
 	'& + &': {
 		marginTop: '0.4rem',
 	},
 }
 
-const sideloadStepsCss: CSSObject = {
+const mcpSetupStepsCss: CSSObject = {
 	margin: 0,
 	paddingLeft: '1.35rem',
 	display: 'grid',

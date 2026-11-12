@@ -411,72 +411,55 @@ const copilotCliMcpGuideUrl =
 const copilotAppCustomizeGuideUrl =
 	'https://docs.github.com/en/copilot/how-tos/github-copilot-app/customize-github-copilot-app'
 
-/** OpenAI help for adding a custom MCP server in ChatGPT (Business and up). */
+/** OpenAI help for adding a custom MCP server on ChatGPT.com. */
 export const chatGptCustomMcpGuideUrl =
 	'https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt'
 
-/** OpenAI guide for workspace admins importing a plugin marketplace. */
-export const chatGptPluginManagementGuideUrl =
-	'https://learn.chatgpt.com/docs/enterprise/plugin-management'
+/** OpenAI's MCP setup for the ChatGPT desktop app, Codex CLI, and IDE extension. */
+export const openAiMcpGuideUrl = 'https://learn.chatgpt.com/docs/extend/mcp'
 
 /**
- * Kody's own plugin marketplace: `.agents/plugins/marketplace.json` at the root
- * of this repo lists the `plugins/kody` package. We can update it, unlike the
- * frozen public ChatGPT plugin directory listing, so ChatGPT and Codex sideload
- * Kody from here. The package targets production `/mcp`.
+ * Add Kody as a custom MCP connection. Labels follow OpenAI's MCP docs
+ * (learn.chatgpt.com/docs/extend/mcp) and custom MCP help. Every step takes the
+ * deployment's own MCP URL, so preview and local Get started stay origin-aware.
  */
-const kodyPluginMarketplaceRepo = 'kody-hq/kody'
+export const chatGptDesktopMcpSteps = [
+	'In the ChatGPT desktop app, open Settings, then select MCP servers.',
+	'Select Add server, enter the name Kody, choose Streamable HTTP, and paste this MCP URL:',
+	'Save the server, then select Restart.',
+	'Select Authenticate and sign in to Kody. Type /mcp in the composer to see Kody connected.',
+] as const
 
-/** README with every sideload path for the Kody plugin package. */
-export const kodyPluginReadmeUrl =
-	'https://github.com/kody-hq/kody/tree/main/plugins/kody#readme'
+/** Codex IDE extension: same shape as the desktop app, from the gear menu. */
+export const codexIdeMcpSteps = [
+	'In the Codex IDE extension, open the gear menu, then select MCP servers.',
+	'Select Add server, enter the name Kody, choose Streamable HTTP, and paste this MCP URL:',
+	'Save the server, select Restart extension, then select Authenticate and sign in to Kody.',
+] as const
 
-/** Marketplace name from `marketplace.json`, used as `kody@<name>`. */
-const kodyPluginMarketplaceName = 'kody-hq'
+/** ChatGPT.com: OpenAI still adds custom MCP servers from Plugins. */
+export const chatGptWebMcpSteps = [
+	'On ChatGPT.com, open Plugins, select the plus button, then select Add custom MCP server.',
+	'Enter the name Kody and paste this MCP URL under Connection:',
+	'Choose OAuth, check I understand and want to continue, then select Create as a plugin.',
+	'Install the new Kody connection and sign in to Kody when asked.',
+] as const
 
-/** Sparse paths keep the marketplace clone to the plugin, not the monorepo. */
-const kodyPluginSparsePaths = ['.agents/plugins', 'plugins/kody'] as const
+/** Who can add a custom MCP server on ChatGPT.com, per OpenAI's help. */
+export const chatGptWebMcpAvailabilityNote =
+	'ChatGPT.com custom MCP servers need a Business, Enterprise, or Edu workspace, and an admin may need to allow Create plugins with MCPs. You cannot add one from the mobile app.'
 
-/** Codex CLI and IDE extension: add Kody's marketplace, then install Kody. */
-export const codexPluginInstallCommands = [
-	`codex plugin marketplace add ${kodyPluginMarketplaceRepo} ${kodyPluginSparsePaths.map((path) => `--sparse ${path}`).join(' ')}`,
-	`codex plugin add kody@${kodyPluginMarketplaceName}`,
-].join('\n')
+/** One-line ChatGPT.com path for /with/chatgpt. */
+export const chatGptWebMcpSummary =
+	'On ChatGPT.com with a Business, Enterprise, or Edu workspace? Open Plugins, select the plus button, then Add custom MCP server. Name it Kody, paste the MCP URL under Connection, choose OAuth, and select Create as a plugin. Install it and sign in to Kody.'
 
-/** What to enter under Add plugin marketplace in the Codex or ChatGPT app. */
-export const kodyPluginMarketplaceSource = [
-	`Source: ${kodyPluginMarketplaceRepo}`,
-	'Git ref: main',
-	'Sparse paths:',
-	...kodyPluginSparsePaths,
-].join('\n')
-
-/**
- * Sideload steps shared by Get started and /with pages. Labels follow OpenAI's
- * plugin docs: Add plugin marketplace in the Codex and ChatGPT apps, and
- * Admin > Plugins > Add > Import marketplace for ChatGPT workspaces.
- */
-export const kodyPluginSideloadSteps = {
-	addMarketplace:
-		'In the ChatGPT desktop app or the Codex app, open Plugins, choose Add plugin marketplace, and enter this source:',
-	install:
-		'Open the Kody marketplace tab in the Plugins directory, install Kody, and sign in to Kody when asked.',
-	codexCli:
-		'In the Codex CLI or IDE extension, run these, then start a new Codex session and sign in to Kody when asked:',
-	workspace: `On ChatGPT.com in a Business, Enterprise, or Edu workspace, an admin opens Admin > Plugins > Add > Import marketplace and enters https://github.com/${kodyPluginMarketplaceRepo} with Path left empty. Members then install Kody from the workspace plugins and sign in to Kody.`,
-} as const
-
-/** ChatGPT.com without the desktop app or a workspace import. */
-export const chatGptCustomMcpFallbackNote =
-	'No desktop app or workspace import? On ChatGPT.com with Business, Enterprise, or Edu, you can add a custom MCP server named Kody with this MCP URL and OAuth instead.'
+/** The desktop app, Codex CLI, and IDE extension read the same config. */
+export const codexSharedConfigNote =
+	'The ChatGPT desktop app, Codex CLI, and Codex IDE extension share ~/.codex/config.toml, so you only add Kody once.'
 
 /** For people who installed the frozen directory listing. */
 export const chatGptDirectoryListingNote =
-	'Installed Kody from the public ChatGPT plugin directory before? That listing is outdated and no longer updates, so uninstall it and install Kody from the Kody marketplace instead.'
-
-/** Preview and local deployments: the package only connects to kody.codes. */
-export const kodyPluginPreviewNote =
-	'The Kody plugin package connects to kody.codes. To use this deployment, add it as an MCP server with this MCP URL instead.'
+	'Installed Kody from the public ChatGPT plugin directory before? That listing is outdated and no longer updates. Uninstall it and add Kody as a custom MCP connection instead.'
 
 const cursorMcpGuideUrl = 'https://cursor.com/docs/mcp'
 
@@ -731,6 +714,9 @@ export function buildCodexMcpAddCommand(mcpServerUrl: string) {
 
 export const codexMcpLoginCommand = 'codex mcp login kody'
 
+/** Codex CLI sign-in hint after `codex mcp add`. */
+export const codexMcpLoginHint = `Run ${codexMcpLoginCommand} if sign-in does not start (add --no-browser when there is no local browser).`
+
 /**
  * OpenCode non-interactive remote add (`opencode mcp add <name> --url`).
  * OAuth may need `opencode mcp auth kody`.
@@ -893,8 +879,6 @@ export function collectOnboardingMcpSnippets(mcpServerUrl: string) {
 		{ code: buildKodyAppIconUrl(mcpServerUrl) },
 		{ code: kodyCursorAddPluginCommand },
 		{ code: grokBotInstallUrl },
-		{ code: codexPluginInstallCommands, lang: 'sh' },
-		{ code: kodyPluginMarketplaceSource },
 		{ code: buildCodexMcpAddCommand(mcpServerUrl), lang: 'sh' },
 		{ code: buildCodexMcpToml(mcpServerUrl), lang: 'toml' },
 		{ code: buildGrokCliAddCommand(mcpServerUrl), lang: 'sh' },

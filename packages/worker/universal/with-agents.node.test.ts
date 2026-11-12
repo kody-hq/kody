@@ -85,29 +85,28 @@ test('promo videos map to their /with pages and other agents have none', () => {
 	).toBeUndefined()
 })
 
-test('ChatGPT and Codex sideload Kody from the kody-hq/kody plugin marketplace', () => {
+test('ChatGPT and Codex add Kody as a custom MCP connection, with no marketplace', () => {
 	for (const slug of ['chatgpt', 'codex']) {
 		const agent = findWithAgentByPathname(`/with/${slug}`)
 		const steps = agent?.steps ?? []
 		expect(agent?.primaryAction).toBeUndefined()
-		expect(steps.map((step) => step.code)).toContain(
-			'Source: kody-hq/kody\nGit ref: main\nSparse paths:\n.agents/plugins\nplugins/kody',
-		)
-		expect(steps.map((step) => step.text).join(' ')).toContain(
-			'Add plugin marketplace',
-		)
 		for (const step of steps) {
 			expect(step.link?.href ?? '').not.toContain('chatgpt.com/plugins')
-			expect(step.link?.href ?? '').not.toContain('plugin_asdk_app')
+			expect(step.link?.href ?? '').not.toContain('plugin_asdk')
+			expect(step.text.toLowerCase()).not.toContain('marketplace')
+			expect(step.code ?? '').not.toContain('codex plugin')
 			expect(step.text).not.toContain('\u2014')
 		}
 	}
-	const codexSteps =
-		findWithAgentByPathname('/with/codex')?.steps.map((step) => step.code) ?? []
-	expect(codexSteps[0]).toBe(
-		'codex plugin marketplace add kody-hq/kody --sparse .agents/plugins --sparse plugins/kody\ncodex plugin add kody@kody-hq',
+	const chatgptSteps = findWithAgentByPathname('/with/chatgpt')?.steps ?? []
+	expect(chatgptSteps[0]?.text).toBe(
+		'In the ChatGPT desktop app, open Settings, then select MCP servers.',
 	)
-	expect(codexSteps).toContain(
+	expect(chatgptSteps[1]?.code).toBe('https://kody.codes/mcp')
+	expect(chatgptSteps.map((step) => step.text).join(' ')).toContain(
+		'Add custom MCP server',
+	)
+	expect(findWithAgentByPathname('/with/codex')?.steps[0]?.code).toBe(
 		'codex mcp add kody --url https://kody.codes/mcp',
 	)
 })
