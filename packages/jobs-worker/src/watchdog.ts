@@ -22,16 +22,15 @@ import { getWorkerStateValue, putWorkerStateValue } from './store.ts'
  */
 
 /** Due jobs older than this are treated as silently overdue. */
-export const jobScheduleWatchdogGraceMs = 5 * 60 * 1_000
-export const jobScheduleWatchdogPageSize = 100
+const jobScheduleWatchdogGraceMs = 5 * 60 * 1_000
+const jobScheduleWatchdogPageSize = 100
 /** Cap cross-user page accumulation so a large backlog cannot OOM the cron. */
-export const jobScheduleWatchdogMaxRowsPerTick = 5_000
-export const jobScheduleWatchdogMaxUsersPerTick = 50
-export const jobScheduleWatchdogMaxJobsLogged = 20
+const jobScheduleWatchdogMaxRowsPerTick = 5_000
+const jobScheduleWatchdogMaxUsersPerTick = 50
+const jobScheduleWatchdogMaxJobsLogged = 20
 /** Avoid re-paging Sentry on the same sustained overdue set every tick. */
-export const jobScheduleWatchdogAlertCooldownMinutes = 6 * 60
-export const jobScheduleWatchdogAlertStateKey =
-	'ops-alert:job-schedule-watchdog:v1'
+const jobScheduleWatchdogAlertCooldownMinutes = 6 * 60
+const jobScheduleWatchdogAlertStateKey = 'ops-alert:job-schedule-watchdog:v1'
 
 export type JobScheduleWatchdogResult = {
 	overdueJobCount: number

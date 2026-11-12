@@ -13,9 +13,9 @@ const d1CheckRetryOptions = {
 } as const
 const noStoreHeaders = { 'Cache-Control': 'no-store' } as const
 
-export type JobsHealthComponentId = 'jobs_db'
+type JobsHealthComponentId = 'jobs_db'
 
-export type JobsHealthComponentResult = {
+type JobsHealthComponentResult = {
 	id: JobsHealthComponentId
 	ok: boolean
 	latencyMs: number

@@ -39,8 +39,7 @@ export const maxApiRequestBodyBytes = 5 * 1024 * 1024
  */
 export const maxGatewayFetchUploadBytes = 100 * 1024 * 1024
 
-export const capabilityProxyGatewayFetchPath =
-	'/v1/capability-proxy/gateway-fetch'
+const capabilityProxyGatewayFetchPath = '/v1/capability-proxy/gateway-fetch'
 
 const forwardedPathPattern = /^\/(?:|openapi\.json|v1(?:\/.*)?)$/
 const allowedMethods = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']
@@ -68,7 +67,7 @@ const corsAllowHeaders = [
 ].join(', ')
 
 /** Static policy advertisement (CF RateLimit binding does not expose remaining). */
-export const apiEdgeRateLimitPolicy = 'ip;q=600;w=60, token;q=300;w=60'
+const apiEdgeRateLimitPolicy = 'ip;q=600;w=60, token;q=300;w=60'
 
 const corsHeaders = {
 	'Access-Control-Allow-Origin': '*',
@@ -118,12 +117,12 @@ function isCapabilityProxyGatewayFetchRequest(
 	return method === 'POST' && pathname === capabilityProxyGatewayFetchPath
 }
 
-export function gatewayFetchDeclaredBodyExceedsUploadLimit(headers: Headers) {
+function gatewayFetchDeclaredBodyExceedsUploadLimit(headers: Headers) {
 	const declared = Number(headers.get('Content-Length') ?? '0')
 	return Number.isFinite(declared) && declared > maxGatewayFetchUploadBytes
 }
 
-export function gatewayFetchUploadLimitMessage() {
+function gatewayFetchUploadLimitMessage() {
 	return `Request body exceeds the Worker upload limit of ${maxGatewayFetchUploadBytes} bytes (100 MiB).`
 }
 
@@ -222,9 +221,6 @@ async function rateLimitKeys(request: Request) {
 		token: await credentialRateLimitKey(request.headers.get('Authorization')),
 	}
 }
-
-/** Response header that names one API request, for support and logs. */
-export { apiRequestIdHeader }
 
 /**
  * Cloudflare's ray id when present (it also keys the Workers logs for this
@@ -351,7 +347,7 @@ async function routeApiEdgeRequest(
 const originResourceLimitPattern =
 	/exceeded (?:its )?(?:memory|cpu)|memory limit|cpu time limit|resource limits?/i
 
-export function describeOriginForwardFailure(
+function describeOriginForwardFailure(
 	error: unknown,
 	requestId: string,
 	progress: ApiRequestProgress | null = null,
@@ -379,7 +375,7 @@ export function describeOriginForwardFailure(
 	}
 }
 
-export const executionContextConnectPath = '/v1/execution-contexts/connect'
+const executionContextConnectPath = '/v1/execution-contexts/connect'
 
 const executionContextConnectHeaderNames = [
 	'Upgrade',

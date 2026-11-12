@@ -64,7 +64,7 @@ export type RepoPushQueueLimits = {
 	busyBackoffMs: ReadonlyArray<number>
 }
 
-export const defaultRepoPushQueueLimits: RepoPushQueueLimits = {
+const defaultRepoPushQueueLimits: RepoPushQueueLimits = {
 	budgetMs: repoPushQueueBudgetMs,
 	bodyLimitBytes: artifactsReceivePackBodyLimitBytes,
 	chunkBytes: repoPushQueueChunkBytes,

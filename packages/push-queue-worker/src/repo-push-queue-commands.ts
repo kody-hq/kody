@@ -30,7 +30,7 @@ export type ParsedReceivePackCommands = {
  */
 export const receivePackCommandPrefixLimitBytes = 64 * 1024
 
-export function isZeroOid(oid: string) {
+function isZeroOid(oid: string) {
 	return /^0+$/i.test(oid)
 }
 
@@ -208,7 +208,7 @@ export function buildStaleFetchFirstReportStatus(
  * sideband-wrapped (band 1) result bodies. Progress (band 2) is skipped;
  * fatals (band 3) end the scan.
  */
-export function collectReportStatusRefOutcomes(body: Uint8Array): {
+function collectReportStatusRefOutcomes(body: Uint8Array): {
 	ok: Set<string>
 	ng: Set<string>
 } {
