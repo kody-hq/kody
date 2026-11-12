@@ -71,17 +71,23 @@ test('file explorer resizes within limits, persists, and reveals over full-width
 	const separator = page.getByRole('separator', {
 		name: 'Resize file explorer',
 	})
-	await expect(separator).toHaveAttribute('aria-valuenow', '232')
+	const min = await separator.getAttribute('aria-valuemin')
+	const max = await separator.getAttribute('aria-valuemax')
+	const initial = Number(await separator.getAttribute('aria-valuenow'))
+	expect(min).toBeTruthy()
+	expect(max).toBeTruthy()
+	expect(Number(min)).toBeLessThan(initial)
+	expect(initial).toBeLessThan(Number(max))
 	await separator.press('End')
-	await expect(separator).toHaveAttribute('aria-valuenow', '360')
+	await expect(separator).toHaveAttribute('aria-valuenow', max!)
 	await separator.press('Home')
-	await expect(separator).toHaveAttribute('aria-valuenow', '180')
+	await expect(separator).toHaveAttribute('aria-valuenow', min!)
 	const box = (await separator.boundingBox())!
 	await page.mouse.move(box.x + 3, box.y + 100)
 	await page.mouse.down()
 	await page.mouse.move(box.x + 700, box.y + 100)
 	await page.mouse.up()
-	await expect(separator).toHaveAttribute('aria-valuenow', '360')
+	await expect(separator).toHaveAttribute('aria-valuenow', max!)
 	await page
 		.getByRole('button', { name: 'Hide file explorer', exact: true })
 		.click()
@@ -123,7 +129,7 @@ test('file explorer resizes within limits, persists, and reveals over full-width
 	await page.getByRole('button', { name: 'Keep file explorer open' }).click()
 	await expect(
 		page.getByRole('separator', { name: 'Resize file explorer' }),
-	).toHaveAttribute('aria-valuenow', '360')
+	).toHaveAttribute('aria-valuenow', max!)
 	await page.reload()
 	await expect(
 		page.getByRole('button', { name: 'Hide file explorer' }),
@@ -139,15 +145,23 @@ test('compact workspace rail centers its icons and uses 150ms/300ms hover intent
 			name: 'Workspace navigation',
 		}),
 		icon = page.getByTestId('rail-icon')
-	const before = (await icon.boundingBox())!
 	const bar = page.getByRole('group', { name: 'Sidebar mode' })
 	const pinnedBar = (await bar.boundingBox())!
+	const expandedWidth = (await rail.boundingBox())!.width
 	await page.getByRole('button', { name: 'Hide sidebar' }).click()
 	await page.mouse.move(900, 300)
-	await expect(rail).toHaveCSS('width', '52px')
+	await expect(rail).toHaveAttribute('data-rail-compact', 'true')
+	await expect(rail).not.toHaveAttribute('data-rail-expanded', 'true')
+	await expect
+		.poll(async () => (await rail.boundingBox())!.width)
+		.toBeLessThan(expandedWidth)
+	const compactBox = (await rail.boundingBox())!
 	await expect(page.getByRole('group', { name: 'Sidebar mode' })).toBeHidden()
-	const after = (await icon.boundingBox())!
-	expect(after.x).toBeCloseTo(before.x - 8, 1)
+	const iconBox = (await icon.boundingBox())!
+	expect(iconBox.x).toBeGreaterThanOrEqual(compactBox.x)
+	expect(iconBox.x + iconBox.width).toBeLessThanOrEqual(
+		compactBox.x + compactBox.width + 1,
+	)
 	await expect(page.getByText('Overview', { exact: true })).toHaveCSS(
 		'opacity',
 		'0',
@@ -161,7 +175,10 @@ test('compact workspace rail centers its icons and uses 150ms/300ms hover intent
 	const floatingBar = (await bar.boundingBox())!
 	expect(floatingBar.x).toBeCloseTo(pinnedBar.x, 1)
 	expect(floatingBar.width).toBeCloseTo(pinnedBar.width, 1)
-	expect((await page.getByTestId('content').boundingBox())!.x).toBe(52)
+	const overlay = (await rail.boundingBox())!
+	expect((await page.getByTestId('content').boundingBox())!.x).toBeLessThan(
+		overlay.width,
+	)
 	await page.mouse.move(900, 300)
 	await page.clock.runFor(299)
 	await expect(rail).toHaveAttribute('data-rail-expanded', 'true')

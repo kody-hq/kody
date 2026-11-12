@@ -61,8 +61,14 @@ test('visitors can read and download before signing in, and sign-in returns to t
 		page.getByRole('heading', { name: 'Launch brief' }),
 	).toBeVisible()
 	await expect(
+		page.getByRole('navigation', { name: 'Shared file path' }),
+	).toContainText('Brief.md')
+	await expect(
 		page.getByRole('link', { name: 'Download', exact: true }),
-	).toHaveAttribute('href', new RegExp(`${child}\\?download=true$`))
+	).toHaveAttribute(
+		'href',
+		new RegExp(`/shared-file-assets/.+/${child}\\?download=true$`),
+	)
 	await page.getByRole('button', { name: 'Use in Kody', exact: true }).click()
 	const signIn = page.getByRole('link', { name: 'Sign in to save a copy' })
 	const href = await signIn.getAttribute('href')
@@ -82,7 +88,9 @@ test('copy failures retain progress and retry the remaining items', async ({
 	await page
 		.getByRole('button', { name: 'Save a copy in Kody', exact: true })
 		.click()
-	await expect(page.getByRole('alert')).toContainText('1 item saved.')
+	const alert = page.getByRole('alert')
+	await expect(alert).toContainText('1 item saved.')
+	await expect(alert).toContainText('Connection interrupted. Try again.')
 	await page.getByRole('button', { name: 'Retry remaining items' }).click()
 	await expect(page.getByRole('status')).toContainText('Saved 3 items')
 	await expect(
@@ -94,7 +102,13 @@ test('folder navigation and mobile visitor actions remain accessible', async ({
 }) => {
 	await page.setViewportSize({ width: 390, height: 780 })
 	await page.goto('https://sharing.test/?folder')
-	await expect(page.getByRole('link', { name: 'Brief.md' })).toBeVisible()
+	await expect(page.getByRole('heading', { name: 'Launch' })).toBeVisible()
+	await expect(
+		page.getByRole('link', { name: 'Download', exact: true }),
+	).toHaveCount(0)
+	const childLink = page.getByRole('link', { name: 'Brief.md' })
+	await expect(childLink).toBeVisible()
+	await expect(childLink).toHaveAttribute('href', new RegExp(`item=${child}`))
 	await page.getByRole('button', { name: 'Use in Kody', exact: true }).click()
 	await expect(
 		page.getByRole('link', { name: 'Sign in to save a copy' }),
