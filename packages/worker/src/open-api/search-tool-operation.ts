@@ -27,10 +27,11 @@ export const searchToolOperationDefinition: NativeApiOperationDefinition = {
 	readOnly: true,
 	async handler(params, ctx) {
 		const args = parseNativeInput(searchToolHttpInputSchema, params)
-		return runSearchTool({
+		const result = await runSearchTool({
 			env: ctx.env,
 			callerContext: ctx.callerContext,
 			args,
 		})
+		return { ...result, isError: result.isError ?? false }
 	},
 }
