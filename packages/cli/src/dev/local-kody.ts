@@ -262,6 +262,17 @@ export function createLocalKodyUpstream(input: {
 			if (job.enabled) await call('jobUpdate', { id: job.id, enabled: false })
 		}
 	}
+	// Local subscriptions are on by default so `kody dev emit` and package
+	// events reach their handlers; enabling them touches nothing outside.
+	const enableSubscriptions = async (id: string) => {
+		for (const topic of Object.keys(input.manifest.subscriptions ?? {})) {
+			await call('enablementEnable', {
+				packageId: id,
+				triggerKind: 'subscription',
+				triggerName: topic,
+			})
+		}
+	}
 	return {
 		origin: input.kody.origin,
 		appPath: `/@${input.kody.username}/packages/${input.manifest.kodyId}`,
@@ -304,6 +315,7 @@ export function createLocalKodyUpstream(input: {
 			// Saving re-syncs package jobs onto the real local scheduler. They only
 			// fire on schedule with --run-jobs; otherwise `kody dev job` runs them.
 			if (!input.runJobs) await pauseJobs()
+			if (packageId) await enableSubscriptions(packageId)
 		},
 	}
 }

@@ -473,6 +473,8 @@ async function tryAttachedDevCall(input: {
 		) => Promise<unknown>,
 	) => Promise<unknown>
 	io: DevIo
+	/** Closed once the running server handled the call (no fallback needed). */
+	closeMock?: () => Promise<void>
 }): Promise<number | null> {
 	if (input.target !== 'mock') return null
 	let root: string
@@ -510,8 +512,15 @@ async function tryAttachedDevCall(input: {
 		}
 		return body?.result
 	}
-	const first = await input.steps(call)
+	let first: unknown
+	try {
+		first = await input.steps(call)
+	} catch (error) {
+		await input.closeMock?.()
+		throw error
+	}
 	if (first === devCallUnavailable) return null
+	await input.closeMock?.()
 	input.io.stderr(
 		`Ran on local Kody via running kody dev (pid ${registration.pid})\n`,
 	)
@@ -570,6 +579,7 @@ export async function runDevJob(input: {
 		target: input.target,
 		cwd: input.cwd,
 		io: input.io,
+		closeMock: input.auth.closeMock,
 		steps: async (call) => {
 			const listed = await call('jobList', {})
 			if (listed === devCallUnavailable) return listed
@@ -669,6 +679,7 @@ export async function runDevWebhook(input: {
 		target: input.target,
 		cwd: input.cwd,
 		io: input.io,
+		closeMock: input.auth.closeMock,
 		steps: async (call) =>
 			await call('webhookSyntheticDispatch', {
 				webhookName: input.webhookName,
@@ -780,6 +791,7 @@ export async function runDevEmit(input: {
 		target: input.target,
 		cwd: input.cwd,
 		io: input.io,
+		closeMock: input.auth.closeMock,
 		steps: async (call) =>
 			await call('packageSubscriptionDispatch', {
 				topic: input.event,
