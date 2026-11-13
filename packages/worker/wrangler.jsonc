@@ -344,6 +344,8 @@
 					"/styles.css",
 					"/client-entry.js",
 					"/assets/*",
+					// Weekly blog screenshots live in R2 (COMMUNITY_ASSETS, blog-images/).
+					"/images/blog/*",
 				],
 			},
 			"durable_objects": {
@@ -957,6 +959,8 @@
 					"/styles.css",
 					"/client-entry.js",
 					"/assets/*",
+					// Weekly blog screenshots live in R2 (COMMUNITY_ASSETS, blog-images/).
+					"/images/blog/*",
 				],
 			},
 			"durable_objects": {
@@ -1352,6 +1356,8 @@
 					"/styles.css",
 					"/client-entry.js",
 					"/assets/*",
+					// Weekly blog screenshots live in R2 (COMMUNITY_ASSETS, blog-images/).
+					"/images/blog/*",
 				],
 			},
 			"durable_objects": {

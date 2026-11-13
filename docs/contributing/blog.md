@@ -48,10 +48,18 @@ Any other key (including `tags`) fails the build.
 
 ## Inline screenshots
 
-Put body images at `packages/worker/public/images/blog/<post-slug>/<name>.<ext>`
-(webp preferred, at most about 1600px wide and about 400 KiB) and embed them as
-`![Caption](/images/blog/<post-slug>/<name>.webp)`. Alt text is required, and
-never hotlink GitHub attachment URLs; other hrefs render as links.
+Blog screenshots live in Cloudflare R2, not in this repo. Do not commit files
+under `packages/worker/public/images/blog/`. The worker serves
+`/images/blog/<post-slug>/<name>.<ext>` from the `kody-community-assets` bucket
+(binding `COMMUNITY_ASSETS`) at key `blog-images/<post-slug>/<name>.<ext>`, with
+long-lived immutable caching, so upload a new file name instead of replacing an
+object. Names are lowercase letters, digits, and dashes with an `avif`, `jpg`,
+`jpeg`, `png`, or `webp` extension. The weekly post automation uploads its
+screenshots there and hands the session ready paths.
+
+Embed them as `![Caption](/images/blog/<post-slug>/<name>.webp)` or use the same
+path in frontmatter `image`. Alt text is required, and never hotlink GitHub
+attachment URLs; other hrefs render as links.
 
 ## Picking a category
 
