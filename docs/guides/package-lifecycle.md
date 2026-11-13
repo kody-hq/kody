@@ -304,9 +304,10 @@ for `kody dev`**, **`prod` for `execute` / `search`**).
 
 Mock first (safe iteration; scratch `packageStorage` for the working tree; fake
 or local credentials), then re-run with `--target prod` for real CapabilityProxy
-hops before publish. `--target prod` still does **not** attach hosted
-`packageStorage` / `packageSecrets` to the working-tree package — publish (or
-import a published dep) for those. See the
+hops before publish. `--target prod` does **not** attach hosted `packageStorage`
+/ `packageSecrets` to the working-tree package, by design (see
+[Won't do in Package apps](./package-apps.md#wont-do-storage-secrets-email-events-and-packages-on---target-prod)).
+Publish (or import a published dep) for those. See the
 [target table in Package apps](./package-apps.md#local-testing-with-kody-dev).
 Share previews for unpublished packages are out of scope. `execute --local`
 without `--target` talks to the hosted account.

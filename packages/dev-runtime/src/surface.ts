@@ -27,23 +27,31 @@ export const kodyDevBoundaryBridgeMethods = {
 	packageBoundFetch: 'outboundFetch',
 } as const satisfies Record<string, keyof typeof kodyDevBoundaryMocks>
 
-export type KodyDevAllowlistEntry = {
-	gap: number
+export type KodyDevUnsupportedEntry = {
 	title: string
 	docs: string
 	/** `kody:runtime` exports the working-tree bridge cannot serve here. */
 	exports: ReadonlyArray<string>
 }
 
+export type KodyDevAllowlistEntry = KodyDevUnsupportedEntry & { gap: number }
+
 /**
- * Known gaps CI accepts. Each links its docs entry. Only gap 8 remains: the
- * working-tree bridge on `--target prod` keeps its trust rule.
+ * Open gaps CI accepts. Each links its docs entry and comes off the list as
+ * soon as the bridge serves it. There are no open gaps.
  */
-export const kodyDevAllowlist: ReadonlyArray<KodyDevAllowlistEntry> = [
+export const kodyDevAllowlist: ReadonlyArray<KodyDevAllowlistEntry> = []
+
+/**
+ * Won't do: exports the working-tree bridge refuses on purpose. CI accepts
+ * them as intentionally unsupported. Unpublished code has no published package
+ * id, and publish is the trust boundary for hosted storage and secrets.
+ */
+export const kodyDevWontDo: ReadonlyArray<KodyDevUnsupportedEntry> = [
 	{
-		gap: 8,
-		title: 'Working-tree storage on --target prod',
-		docs: `${packageAppsDoc}#gap-8-working-tree-storage-on---target-prod`,
+		title:
+			"Won't do: storage, secrets, email, events and packages on --target prod",
+		docs: `${packageAppsDoc}#wont-do-storage-secrets-email-events-and-packages-on---target-prod`,
 		exports: [
 			'packageStorage',
 			'packageSecrets',

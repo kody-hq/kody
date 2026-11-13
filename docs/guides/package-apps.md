@@ -565,15 +565,15 @@ survives restarts. Delete that directory to start over.
 `--target prod` and `execute --local` use a lighter working-tree bridge instead.
 It runs the bundle in a local workerd and sends `kody.*` calls to Kody (mock or
 prod) through the CapabilityProxy. `--target prod` does **not** give the working
-tree hosted `packageStorage` or `packageSecrets`; see
-[Gap 8](#gap-8-working-tree-storage-on---target-prod).
+tree hosted `packageStorage` or `packageSecrets`, by design; see
+[Won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod).
 
-| Command + target           | `packageStorage`                               | `packageSecrets`                       | Outbound network                                  |
-| -------------------------- | ---------------------------------------------- | -------------------------------------- | ------------------------------------------------- |
-| `kody dev` **mock**        | Real StorageRunner Durable Object, local state | Placeholders only, never a real secret | `.kody/mocks.ts` (fail closed), else public hosts |
-| `kody dev` **prod**        | Throws (gap 8)                                 | Throws (gap 8)                         | Real network                                      |
-| `execute --local` **mock** | Scratch SQLite on the CLI mock                 | Throws (light bridge)                  | `.kody/mocks.ts` (fail closed), else public hosts |
-| `execute --local` **prod** | Throws (gap 8)                                 | Throws (gap 8)                         | Real network                                      |
+| Command + target           | `packageStorage`                                                                         | `packageSecrets`                                                                         | Outbound network                                  |
+| -------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `kody dev` **mock**        | Real StorageRunner Durable Object, local state                                           | Placeholders only, never a real secret                                                   | `.kody/mocks.ts` (fail closed), else public hosts |
+| `kody dev` **prod**        | Throws ([won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod)) | Throws ([won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod)) | Real network                                      |
+| `execute --local` **mock** | Scratch SQLite on the CLI mock                                                           | Throws (light bridge)                                                                    | `.kody/mocks.ts` (fail closed), else public hosts |
+| `execute --local` **prod** | Throws ([won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod)) | Throws ([won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod)) | Real network                                      |
 
 ### Boundary mocks in `kody dev`
 
@@ -668,15 +668,31 @@ approximate it. These are simulations, not exact timing.
 - **Memory.** Not enforced. Workerd cannot meter a single app isolate, so a
   package that goes over the 128 MB isolate limit only fails hosted.
 
-### Gap 8: working-tree storage on `--target prod`
+### Won't do: storage, secrets, email, events and packages on `--target prod`
 
 `kody dev --target prod` and `execute --local --target prod` run the working
-tree against real Kody, but the working tree has no published package id, so
-hosted storage and secrets cannot trust it. `packageStorage()` and
-`packageSecrets` throw, and `email`, `events` and `packages` are `null` on the
-light bridge. This is the only gap on the `kody dev` allowlist, and the trust
-rule stays as it is. Use `--target mock` for all of these, or publish and use
-`packageAppFetch`.
+tree against real Kody, but they do not give it hosted `packageStorage`,
+`packageSecrets`, `email`, `events` or `packages`. `packageStorage()` and
+`packageSecrets` throw an error that says so, and `email`, `events` and
+`packages` are `null` on the light bridge. Nothing is skipped silently or
+answered with an empty result.
+
+This is intentional, not a gap. The working tree is unpublished local code with
+no published package id, so hosted storage and secrets cannot trust it. Publish
+is the trust boundary: letting unpublished code reach a published package's real
+storage or secrets would let anyone with a working tree read or write production
+data without publishing.
+
+Do this instead:
+
+- Use `--target mock`. `kody dev` runs the hosted storage, email, events and
+  packages code against local state, with
+  [mock package secrets](#mock-package-secrets).
+- Publish, then call the published app with `packageAppFetch`.
+
+There are no open gaps left on the `kody dev` allowlist. CI still fails when a
+working-tree export is nulled or refused without being listed as an open gap or
+a won't-do.
 
 ### Capabilities outside the guarded surface
 

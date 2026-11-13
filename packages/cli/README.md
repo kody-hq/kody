@@ -274,6 +274,11 @@ publish. Bundling reuses the same esbuild path as `execute --file` / publish
 | `kody dev`           | Local app against real Kody                  | Local app against the CLI mock                    |
 | `execute` / `search` | Real capabilities, storage, secrets          | Mock catalog / scratch storage / fake credentials |
 
+On `--target prod` the working-tree package itself gets no hosted
+`packageStorage` or `packageSecrets` (published deps keep theirs). That is
+intentionally unsupported; see
+[Won't do](https://kody.codes/docs/package-apps#won-t-do-storage-secrets-email-events-and-packages-on-target-prod).
+
 The mock is built into the CLI (no kody-celld). It refuses unimplemented routes
 with `not_implemented_in_mock` rather than faking success. `--reset-storage`
 wipes the mock session's scratch store. Share previews are out of scope;
