@@ -227,7 +227,7 @@ primitives:
       - packages/worker/src/app/handlers/account-passkeys.ts
       - packages/worker/src/app/email-verification.ts
       - packages/worker/src/app/onboarding-data.ts
-      - packages/worker/src/app/two-factor.ts
+      - packages/worker/src/identity/two-factor.ts
       - packages/worker/src/app/verify-session.ts
       - packages/worker/src/app/passkeys.ts
       - packages/worker/src/app/webauthn.ts

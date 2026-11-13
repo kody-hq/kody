@@ -368,7 +368,7 @@ async function handleOperation(input: {
 	) {
 		throw toApiError(
 			await guestRestrictionError({
-				db: input.env.APP_DB,
+				env: input.env,
 				baseUrl: input.appOrigin,
 				personId: ctx.callerContext.user.userId,
 				blocked: 'running code and saving changes',

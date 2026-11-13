@@ -47,9 +47,12 @@ async function setup() {
 	const sqlite = new DatabaseSync(':memory:')
 	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
 	const db = createD1FromSqlite(sqlite)
-	const env = { APP_DB: db } as unknown as Env
+	const env = {
+		APP_DB: db,
+		SECRET_STORE_KEY: 'guest-test-secret-store-key-32-characters-ok',
+	} as unknown as Env
 	const created = await createGuestAccount({
-		db,
+		env,
 		requestIp: '203.0.113.7',
 		clientName: 'Test Agent',
 		now: start,

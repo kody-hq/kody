@@ -8,7 +8,7 @@ import {
 	destroyAuthCookie,
 	isSecureRequest,
 } from '#app/auth-session.ts'
-import { isTwoFactorEnabled } from '#app/two-factor.ts'
+import { isTwoFactorEnabled } from '#worker/identity/two-factor.ts'
 import {
 	createVerifySessionCookie,
 	setVerifySessionSecret,

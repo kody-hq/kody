@@ -1,7 +1,8 @@
 import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import {
 	guestClaimCapabilityName,
-	guestClaimUrl,
+	readGuestClaimUrl,
+	type GuestSecretEnv,
 	guestPhase,
 	guestReminderWindowMs,
 	readGuestAccountByPerson,
@@ -33,14 +34,20 @@ export const guestAgentGuidance =
 	`When they want to keep the account, offer to claim it for them with the ${guestClaimCapabilityName} capability.`
 
 export async function buildGuestResultBlock(input: {
-	db: D1Database
+	env: GuestSecretEnv
 	callerContext: McpCallerContext
 	now?: Date
 }): Promise<GuestResultBlock | null> {
 	const user = input.callerContext.user
 	if (!user?.guestExpiresAt) return null
-	const guest = await readGuestAccountByPerson(input.db, user.userId)
+	const guest = await readGuestAccountByPerson(input.env.APP_DB, user.userId)
 	if (!guest) return null
+	const claimUrl = await readGuestClaimUrl(
+		input.env,
+		input.callerContext.baseUrl,
+		guest,
+	)
+	if (!claimUrl) return null
 	const now = input.now ?? new Date()
 	const msLeft = Date.parse(guest.expiresAt) - now.getTime()
 	const phase = guestPhase(guest.expiresAt, now)
@@ -49,7 +56,7 @@ export async function buildGuestResultBlock(input: {
 		full_access_until: guest.expiresAt,
 		time_left: formatGuestTimeLeft(msLeft),
 		delete_at: guest.deleteAt,
-		claim_url: guestClaimUrl(input.callerContext.baseUrl, guest.claimCode),
+		claim_url: claimUrl,
 		claim_capability: guestClaimCapabilityName,
 		remind_now: phase === 'hold' || msLeft <= guestReminderWindowMs,
 		guidance: guestAgentGuidance,
@@ -64,7 +71,7 @@ export async function attachGuestResultBlock<
 	},
 >(
 	response: Response,
-	input: { db: D1Database; callerContext: McpCallerContext },
+	input: { env: GuestSecretEnv; callerContext: McpCallerContext },
 ): Promise<Response> {
 	if (!input.callerContext.user?.guestExpiresAt) return response
 	const guest = await buildGuestResultBlock(input).catch((error: unknown) => {

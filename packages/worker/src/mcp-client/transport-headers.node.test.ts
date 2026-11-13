@@ -1,5 +1,8 @@
 import { expect, test } from 'vitest'
-import { withStaticTransportHeaders } from './transport-headers.ts'
+import {
+	splitPersistedStaticHeaders,
+	withStaticTransportHeaders,
+} from './transport-headers.ts'
 
 type AutoTransport = {
 	type: 'auto'
@@ -39,5 +42,40 @@ test('static Authorization headers reach requestInit so transports send them', (
 	expect(withExistingRequestInit.requestInit?.headers).toEqual({
 		authorization: 'Bearer explicit',
 		'x-from-headers': 'yes',
+	})
+})
+
+test('splitPersistedStaticHeaders strips stored headers and returns them', () => {
+	const stored = JSON.stringify({
+		client: { versionNegotiation: { mode: 'auto' } },
+		transport: {
+			type: 'auto',
+			headers: { Authorization: 'Bearer stored' },
+			requestInit: { redirect: 'follow', headers: { 'X-Extra': 'yes' } },
+		},
+	})
+	const split = splitPersistedStaticHeaders(stored)
+	expect(split.headers).toEqual({
+		authorization: 'Bearer stored',
+		'x-extra': 'yes',
+	})
+	expect(split.serverOptions).not.toContain('Bearer stored')
+	expect(JSON.parse(split.serverOptions!)).toEqual({
+		client: { versionNegotiation: { mode: 'auto' } },
+		transport: { type: 'auto', requestInit: { redirect: 'follow' } },
+	})
+
+	const plain = JSON.stringify({ transport: { type: 'auto' } })
+	expect(splitPersistedStaticHeaders(plain)).toEqual({
+		serverOptions: plain,
+		headers: null,
+	})
+	expect(splitPersistedStaticHeaders(null)).toEqual({
+		serverOptions: null,
+		headers: null,
+	})
+	expect(splitPersistedStaticHeaders('not json')).toEqual({
+		serverOptions: 'not json',
+		headers: null,
 	})
 })

@@ -2,7 +2,8 @@ import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import {
 	guestClaimCapabilityName,
 	guestClaimFinishCapabilityName,
-	guestClaimUrl,
+	readGuestClaimUrl,
+	type GuestSecretEnv,
 	guestPhase,
 	isGuestEmail,
 	readGuestAccountByPerson,
@@ -74,25 +75,27 @@ export function isGuestCaller(callerContext: McpCallerContext) {
 }
 
 export async function guestRestrictionError(input: {
-	db: D1Database
+	env: GuestSecretEnv
 	baseUrl: string
 	personId: string
 	blocked: string
 	code: 'guest_not_allowed' | 'guest_claim_required'
 }) {
-	const guest = await readGuestAccountByPerson(input.db, input.personId)
+	const guest = await readGuestAccountByPerson(input.env.APP_DB, input.personId)
 	return new GuestRestrictionError(
 		guestErrorPayload({
 			code: input.code,
 			blocked: input.blocked,
-			claimUrl: guest ? guestClaimUrl(input.baseUrl, guest.claimCode) : null,
+			claimUrl: guest
+				? await readGuestClaimUrl(input.env, input.baseUrl, guest)
+				: null,
 		}),
 	)
 }
 
 /** Throws guest_not_allowed when a guest calls a blocked capability. */
 export async function assertGuestCapabilityAllowed(input: {
-	db: D1Database
+	env: GuestSecretEnv
 	callerContext: McpCallerContext
 	capabilityName: string
 	readOnly?: boolean
@@ -107,7 +110,7 @@ export async function assertGuestCapabilityAllowed(input: {
 		input.capabilityName !== guestClaimFinishCapabilityName
 	) {
 		throw await guestRestrictionError({
-			db: input.db,
+			env: input.env,
 			baseUrl: input.callerContext.baseUrl,
 			personId: user.userId,
 			blocked: 'saving changes',
@@ -117,7 +120,7 @@ export async function assertGuestCapabilityAllowed(input: {
 	const blocked = guestBlockedReason(input.capabilityName, input.args)
 	if (!blocked) return
 	throw await guestRestrictionError({
-		db: input.db,
+		env: input.env,
 		baseUrl: input.callerContext.baseUrl,
 		personId: user.userId,
 		blocked,
@@ -127,18 +130,18 @@ export async function assertGuestCapabilityAllowed(input: {
 
 /** guest_claim_required for a website write by a guest in the read-only hold. */
 export async function guestHoldWriteError(input: {
-	db: D1Database
+	env: GuestSecretEnv
 	baseUrl: string
 	email: string
 	personId: string
 }) {
 	if (!isGuestEmail(input.email)) return null
-	const guest = await readGuestAccountByPerson(input.db, input.personId)
+	const guest = await readGuestAccountByPerson(input.env.APP_DB, input.personId)
 	if (!guest || guest.claimedAt || guestPhase(guest.expiresAt) !== 'hold') {
 		return null
 	}
 	return await guestRestrictionError({
-		db: input.db,
+		env: input.env,
 		baseUrl: input.baseUrl,
 		personId: input.personId,
 		blocked: 'saving changes',

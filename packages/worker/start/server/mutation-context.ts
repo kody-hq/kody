@@ -87,7 +87,7 @@ export async function withWebsiteMutation<T>(
 	if (auth.user?.accountDeleting)
 		throw new Error('Account deletion is in progress.')
 	const held = await guestHoldWriteError({
-		db: env.APP_DB,
+		env,
 		baseUrl: new URL(request.url).origin,
 		email: user.email,
 		personId: user.mcpUser.userId,

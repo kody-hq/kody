@@ -131,7 +131,7 @@ export async function runSearchTool(
 ) {
 	return await attachGuestResultBlock(
 		await runSearchToolWithoutGuestBlock(input),
-		{ db: input.env.APP_DB, callerContext: input.callerContext },
+		{ env: input.env, callerContext: input.callerContext },
 	)
 }
 

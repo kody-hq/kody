@@ -5,7 +5,11 @@ import {
 } from '#app/auth-session.ts'
 import { testAccountTwoFactorApiHandler } from '#app/handlers/account-two-factor.test-support.ts'
 import { twoFactorVerifyRateLimitConfig } from '#app/rate-limit.ts'
-import { confirmTwoFactorSetup } from '#app/two-factor.ts'
+import {
+	confirmTwoFactorSetup,
+	totpSecretContext,
+} from '#worker/identity/two-factor.ts'
+import { openPlatformSecret } from '#mcp/secrets/crypto.ts'
 import {
 	createVerifySessionCookie,
 	setVerifySessionSecret,
@@ -90,9 +94,20 @@ type VerificationRow = {
 	char_set: string
 }
 
+const testSecretStoreKey = 'two-factor-test-secret-store-key-32-chars'
+
+function openRowSecret(row: VerificationRow) {
+	return openPlatformSecret(
+		{ SECRET_STORE_KEY: testSecretStoreKey },
+		'totp-secret',
+		totpSecretContext('1'),
+		row.secret,
+	)
+}
+
 async function currentCode(row: VerificationRow) {
 	const { otp } = await generateTOTP({
-		secret: row.secret,
+		secret: await openRowSecret(row),
 		algorithm: row.algorithm,
 		digits: row.digits,
 		period: row.period,
@@ -129,6 +144,7 @@ async function setupTwoFactor({ seedUser = true } = {}) {
 		APP_BASE_URL: 'http://example.com',
 		COOKIE_SECRET: testCookieSecret,
 		SENTRY_ENVIRONMENT: 'test',
+		SECRET_STORE_KEY: testSecretStoreKey,
 	} as unknown as Parameters<typeof testAccountTwoFactorApiHandler>[0]
 	const twoFactorHandler = testAccountTwoFactorApiHandler(env)
 	const readRow = () =>
@@ -217,10 +233,9 @@ test('two-factor setup requires authentication and a valid code before activatin
 	expect(setupPayload.otpUri).toContain('otpauth://totp/')
 	expect(setupPayload.otpUri).toContain(setupPayload.secret)
 	const pendingRow = readRow()!
-	expect(pendingRow).toMatchObject({
-		type: '2fa-verify',
-		secret: setupPayload.secret,
-	})
+	expect(pendingRow.type).toBe('2fa-verify')
+	expect(pendingRow.secret).not.toContain(setupPayload.secret)
+	expect(await openRowSecret(pendingRow)).toBe(setupPayload.secret)
 
 	expect((await post({ intent: 'confirm', code: '000000' })).status).toBe(400)
 	expect(readRow()?.type).toBe('2fa-verify')
@@ -232,7 +247,7 @@ test('two-factor setup requires authentication and a valid code before activatin
 	expect(confirmResponse.status).toBe(200)
 	expect(confirmResponse.data).toEqual({ ok: true, enabled: true })
 	// The row is promoted in place: the scanned secret stays the active one.
-	expect(readRow()).toMatchObject({ type: '2fa', secret: setupPayload.secret })
+	expect(readRow()).toMatchObject({ type: '2fa', secret: pendingRow.secret })
 	// Setup start, the rejected confirm, and the successful enable are audited
 	// — and nothing else.
 	expect(auditEventSummaries()).toEqual([

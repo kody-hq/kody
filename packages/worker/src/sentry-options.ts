@@ -37,35 +37,80 @@ function sentryEventMessages(event: ErrorEvent) {
 	]
 }
 
-export function redactKodyCredentialsInSentryEvent(
-	event: ErrorEvent,
-): ErrorEvent {
-	if (typeof event.message === 'string') {
-		event.message = redactKodyCredentials(event.message)
-	}
+const redactedValue = '[redacted]'
 
-	const logentry = event.logentry
-	if (typeof logentry?.message === 'string') {
-		logentry.message = redactKodyCredentials(logentry.message)
-	}
+const sensitiveFieldNames = new Set([
+	'authorization',
+	'proxy-authorization',
+	'cookie',
+	'set-cookie',
+	'x-api-key',
+	'api-key',
+	'api_key',
+	'apikey',
+	'access_token',
+	'refresh_token',
+	'id_token',
+	'client_secret',
+	'code_verifier',
+	'password',
+	'secret',
+	'token',
+	'ticket',
+])
 
-	for (const exception of event.exception?.values ?? []) {
-		if (typeof exception.value === 'string') {
-			exception.value = redactKodyCredentials(exception.value)
+const sensitiveQueryParamPattern =
+	/([?&#;]|^)(ticket|token|access_token|refresh_token|id_token|client_secret|code|code_verifier|password|api_key|apikey|key|sig|signature)=[^&#\s]*/gi
+
+const credentialSchemePattern =
+	/\b(Bearer|Basic|Token|Digest)\s+[A-Za-z0-9._~+/=:-]{6,}/gi
+
+const maxRedactionDepth = 16
+
+/** Redact Kody credentials, auth schemes, and secret query params in text. */
+export function redactSentryString(value: string) {
+	return redactKodyCredentials(value)
+		.replace(credentialSchemePattern, `$1 ${redactedValue}`)
+		.replace(sensitiveQueryParamPattern, `$1$2=${redactedValue}`)
+}
+
+function redactSentryValue(
+	value: unknown,
+	depth: number,
+	seen: WeakSet<object>,
+): unknown {
+	if (typeof value === 'string') return redactSentryString(value)
+	if (value === null || typeof value !== 'object') return value
+	if (seen.has(value)) return value
+	if (depth >= maxRedactionDepth) return redactedValue
+	seen.add(value)
+	if (Array.isArray(value)) {
+		for (let index = 0; index < value.length; index++) {
+			value[index] = redactSentryValue(value[index], depth + 1, seen)
 		}
+		return value
 	}
-
-	const request = event.request
-	if (request) {
-		if (typeof request.url === 'string') {
-			request.url = redactConnectTicket(request.url)
+	const record = value as Record<string, unknown>
+	for (const key of Object.keys(record)) {
+		if (sensitiveFieldNames.has(key.toLowerCase())) {
+			if (record[key] !== undefined && record[key] !== null) {
+				record[key] = redactedValue
+			}
+			continue
 		}
-		if (typeof request.query_string === 'string') {
-			request.query_string = redactConnectTicket(request.query_string)
-		}
+		record[key] = redactSentryValue(record[key], depth + 1, seen)
 	}
+	return value
+}
 
-	return event
+/**
+ * Deep-redact a Sentry event in place: messages, exceptions, breadcrumbs,
+ * extras, contexts, tags, request URL, query, headers, cookies, and data.
+ */
+export function redactKodyCredentialsInSentryEvent<T extends object>(
+	event: T,
+): T {
+	return redactSentryValue(event, 0, new WeakSet()) as T
 }
 
 /** Execution context connect tickets are bearer secrets in a query param. */
@@ -806,6 +851,9 @@ export function buildSentryOptions(env: Env): CloudflareOptions {
 		// 5xx / 429 (`KV PUT|GET|DELETE|LIST failed: …`) are dropped the same
 		// way — see filterCloudflareKvTransientHttpErrorSentryEvent.
 		beforeSend: filterSentryEvent,
+		beforeSendTransaction: (event) => redactKodyCredentialsInSentryEvent(event),
+		beforeBreadcrumb: (breadcrumb) =>
+			redactKodyCredentialsInSentryEvent(breadcrumb),
 	}
 }
 

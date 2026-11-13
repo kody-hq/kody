@@ -1,3 +1,4 @@
+import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
 import { sha256Base64Url } from '@kody-internal/shared/sha256.ts'
 import { bytesToBase64Url } from '@kody-internal/shared/base64.ts'
 import {
@@ -96,7 +97,9 @@ export async function consumePackageAppOauthCode(input: {
 	if (record.exp <= now) return null
 	if (record.redirectUri !== input.redirectUri) return null
 	const challenge = await sha256Base64Url(input.codeVerifier)
-	if (challenge !== record.codeChallenge) return null
+	if (!(await timingSafeEqualString(challenge, record.codeChallenge))) {
+		return null
+	}
 	return record
 }
 

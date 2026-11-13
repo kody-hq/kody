@@ -391,7 +391,7 @@ never locked out.
 
 Both are opt-in and adapted from the Epic Stack.
 
-**TOTP two-factor** (`packages/worker/src/app/two-factor.ts`):
+**TOTP two-factor** (`packages/worker/src/identity/two-factor.ts`):
 
 - The `verifications` table (Epic Stack shape: `type` + `target` with TOTP
   config) stores secrets. An active row with `type = '2fa'` and

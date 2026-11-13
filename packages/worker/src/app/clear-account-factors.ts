@@ -1,5 +1,5 @@
 import { deletePasskeysForUser } from '#app/passkeys.ts'
-import { disableTwoFactor } from '#app/two-factor.ts'
+import { disableTwoFactor } from '#worker/identity/two-factor.ts'
 
 export type ClearedAccountFactors = {
 	twoFactorRows: number

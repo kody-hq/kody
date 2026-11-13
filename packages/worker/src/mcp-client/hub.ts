@@ -91,7 +91,17 @@ import {
 } from './oauth-attempt.ts'
 import { assertCallbackIssuerMatchesDiscovery } from './oauth-issuer-endpoints.ts'
 import { extractMcpServerIdFromOAuthState } from './oauth-state.ts'
-import { withStaticTransportHeaders } from './transport-headers.ts'
+import {
+	createSealedMcpOAuthStorage,
+	mcpStaticTransportHeadersStorageKey,
+	mcpStaticTransportHeadersStoragePrefix,
+	sealLegacyMcpOAuthStorage,
+	type McpOAuthStorageBackfillResult,
+} from './sealed-oauth-storage.ts'
+import {
+	splitPersistedStaticHeaders,
+	withStaticTransportHeaders,
+} from './transport-headers.ts'
 import { clearLiveMcpTransportSession } from './transport-session.ts'
 import {
 	createInitialMcpConnectionEpisode,
@@ -133,6 +143,15 @@ function clientIdFromStoredAuthUrl(authUrl: string | null) {
 	}
 }
 
+function isStringRecord(value: unknown): value is Record<string, string> {
+	return (
+		typeof value === 'object' &&
+		value !== null &&
+		!Array.isArray(value) &&
+		Object.values(value).every((entry) => typeof entry === 'string')
+	)
+}
+
 function withMcpOAuthTransportFetch<T extends Record<string, unknown>>(
 	transport: T,
 ): T {
@@ -164,6 +183,11 @@ export function isRecoverableMcpOAuthStateError(error: string | null) {
  * inside this object's storage.
  */
 class McpClientHubBase extends DurableObject<Env> {
+	private readonly oauthStorage: DurableObjectStorage
+	private readonly staticTransportHeaders = new Map<
+		string,
+		Record<string, string>
+	>()
 	private readonly manager: MCPClientManager
 	private readonly lifecycle: Lifecycle<Env>
 	private restored: Promise<void> | null = null
@@ -183,6 +207,11 @@ class McpClientHubBase extends DurableObject<Env> {
 
 	constructor(state: DurableObjectState, env: Env) {
 		super(state, env)
+		this.oauthStorage = createSealedMcpOAuthStorage({
+			storage: state.storage,
+			env,
+			resolveOwnerId: () => state.id.name ?? '',
+		})
 		// The manager creates this table during lifecycle start, but
 		// `sanitizeStoredMcpSessions` reads it before start so the table must
 		// exist first.
@@ -226,19 +255,45 @@ class McpClientHubBase extends DurableObject<Env> {
 			managerWithCreate.createConnection = (id, url, options) => {
 				const transport = options.transport
 				if (!transport) return boundCreateConnection(id, url, options)
+				const headers = this.staticTransportHeaders.get(id)
 				return boundCreateConnection(id, url, {
 					...options,
-					transport: withMcpOAuthTransportFetch(transport),
+					transport: withMcpOAuthTransportFetch(
+						withStaticTransportHeaders(
+							headers ? { ...transport, headers } : transport,
+						),
+					),
 				})
 			}
 		}
+		// Static headers carry user bearer tokens. Every SDK write of a server
+		// row goes through saveServerToStorage, so strip them there; the hub
+		// keeps them sealed and injects them in createConnection above.
+		type McpSaveServer = (server: { server_options?: string | null }) => void
+		const managerWithSave = this.manager as unknown as {
+			saveServerToStorage?: McpSaveServer
+		}
+		const saveServerToStorage = managerWithSave.saveServerToStorage
+		if (typeof saveServerToStorage !== 'function') {
+			throw new Error(
+				'MCPClientManager.saveServerToStorage is missing; refusing to persist static MCP headers.',
+			)
+		}
+		const boundSaveServer = saveServerToStorage.bind(managerWithSave)
+		managerWithSave.saveServerToStorage = (server) =>
+			boundSaveServer({
+				...server,
+				server_options: splitPersistedStaticHeaders(
+					server.server_options ?? null,
+				).serverOptions,
+			})
 		// The manager is a lifecycle capability: it receives DO storage from the
 		// lifecycle and restores persisted connections in its `onStart`.
 		this.lifecycle = Lifecycle.install(this).use(this.manager)
 	}
 
 	private createAuthProvider(callbackUrl: string) {
-		return createMcpClientOAuthProvider(this.ctx.storage, callbackUrl, {
+		return createMcpClientOAuthProvider(this.oauthStorage, callbackUrl, {
 			resolvePreRegisteredClient: (serverId) =>
 				this.resolvePreRegisteredOAuthClient(serverId),
 			resolveLiveServerIdentity: (serverId) =>
@@ -334,7 +389,7 @@ class McpClientHubBase extends DurableObject<Env> {
 
 	private async readSealedPreRegisteredOAuthClient(serverId: string) {
 		return parseSealedMcpPreRegisteredOAuthClient(
-			await this.ctx.storage.get(
+			await this.oauthStorage.get(
 				mcpPreRegisteredOAuthClientStorageKey(serverId),
 			),
 		)
@@ -370,6 +425,8 @@ class McpClientHubBase extends DurableObject<Env> {
 	 * sessions are dropped first because start restores connections.
 	 */
 	private async restoreSanitizedConnections() {
+		await this.moveStaticTransportHeadersToSealedStorage({ dryRun: false })
+		await this.hydrateStaticTransportHeaders()
 		sanitizeStoredMcpSessions(this.ctx.storage, {
 			keepLegacyHandshakeIds: await this.readLegacyHandshakeServerIds(),
 		})
@@ -381,8 +438,80 @@ class McpClientHubBase extends DurableObject<Env> {
 		this.operationallyRestored = true
 	}
 
-	private async hydratePreRegisteredClientIds() {
+	/**
+	 * Move static headers that an older deploy let the SDK persist in
+	 * `server_options` into sealed storage. Returns how many rows held them.
+	 */
+	private async moveStaticTransportHeadersToSealedStorage(input: {
+		dryRun: boolean
+	}) {
+		const rows = Array.from(
+			this.ctx.storage.sql.exec<{ id: string; server_options: string | null }>(
+				`SELECT id, server_options FROM cf_agents_mcp_servers`,
+			),
+		)
+		const result = { rowsWithHeaders: 0, moved: 0 }
+		for (const row of rows) {
+			const split = splitPersistedStaticHeaders(row.server_options)
+			if (!split.headers) continue
+			result.rowsWithHeaders += 1
+			if (input.dryRun) continue
+			await this.storeStaticTransportHeaders(row.id, split.headers)
+			this.ctx.storage.sql.exec(
+				`UPDATE cf_agents_mcp_servers SET server_options = ?
+				 WHERE id = ? AND server_options = ?`,
+				split.serverOptions,
+				row.id,
+				row.server_options,
+			)
+			result.moved += 1
+		}
+		return result
+	}
+
+	private async hydrateStaticTransportHeaders() {
 		const entries = await this.ctx.storage.list({
+			prefix: mcpStaticTransportHeadersStoragePrefix,
+		})
+		for (const key of entries.keys()) {
+			await this.loadStaticTransportHeaders(
+				key.slice(mcpStaticTransportHeadersStoragePrefix.length),
+			)
+		}
+	}
+
+	private async loadStaticTransportHeaders(serverId: string) {
+		try {
+			const headers = await this.oauthStorage.get(
+				mcpStaticTransportHeadersStorageKey(serverId),
+			)
+			if (isStringRecord(headers)) {
+				this.staticTransportHeaders.set(serverId, headers)
+				return
+			}
+		} catch {
+			// Fail closed: the server connects without its stored headers and
+			// reports the upstream 401 instead of the hub failing to start.
+		}
+		this.staticTransportHeaders.delete(serverId)
+	}
+
+	private async storeStaticTransportHeaders(
+		serverId: string,
+		headers: Record<string, string> | undefined,
+	) {
+		const key = mcpStaticTransportHeadersStorageKey(serverId)
+		if (!headers || Object.keys(headers).length === 0) {
+			this.staticTransportHeaders.delete(serverId)
+			await this.ctx.storage.delete(key)
+			return
+		}
+		await this.oauthStorage.put(key, headers)
+		this.staticTransportHeaders.set(serverId, headers)
+	}
+
+	private async hydratePreRegisteredClientIds() {
+		const entries = await this.oauthStorage.list({
 			prefix: mcpPreRegisteredOAuthClientStoragePrefix,
 		})
 		for (const [key, value] of entries) {
@@ -396,7 +525,7 @@ class McpClientHubBase extends DurableObject<Env> {
 	}
 
 	private async readLegacyHandshakeServerIds() {
-		const entries = await this.ctx.storage.list({
+		const entries = await this.oauthStorage.list({
 			prefix: mcpLegacyHandshakeStoragePrefix,
 		})
 		return new Set(
@@ -407,7 +536,7 @@ class McpClientHubBase extends DurableObject<Env> {
 	}
 
 	private async rememberLegacyHandshakeFallback(serverId: string) {
-		await this.ctx.storage.put(
+		await this.oauthStorage.put(
 			mcpLegacyHandshakeStorageKey(serverId),
 			mcpLegacyHandshakeFallback,
 		)
@@ -547,18 +676,16 @@ class McpClientHubBase extends DurableObject<Env> {
 			// `restoreConnectionsFromStorage` so storage keys line up after restarts.
 			const authProvider = this.createAuthProvider(input.callbackUrl)
 			authProvider.serverId = input.serverId
+			await this.storeStaticTransportHeaders(input.serverId, input.headers)
 			await this.manager.registerServer(input.serverId, {
 				url: input.url,
 				name: input.name,
 				callbackUrl: input.callbackUrl,
 				client: outboundMcpClientOptions(),
-				transport: withStaticTransportHeaders(
-					withMcpOAuthTransportFetch({
-						type: 'auto' as const,
-						authProvider,
-						...(input.headers ? { headers: input.headers } : {}),
-					}),
-				),
+				transport: withMcpOAuthTransportFetch({
+					type: 'auto' as const,
+					authProvider,
+				}),
 			})
 			this.clearSessionBeforeConnect(input.serverId)
 			const connected = await this.connectToServerSerialized(input.serverId)
@@ -636,7 +763,9 @@ class McpClientHubBase extends DurableObject<Env> {
 		this.connectErrors.delete(input.serverId)
 		this.preRegisteredClients.delete(input.serverId)
 		this.preRegisteredClientIds.delete(input.serverId)
+		this.staticTransportHeaders.delete(input.serverId)
 		await this.ctx.storage.delete([
+			mcpStaticTransportHeadersStorageKey(input.serverId),
 			mcpConnectionEpisodeStorageKey(input.serverId),
 			mcpLegacyHandshakeStorageKey(input.serverId),
 			mcpOAuthTokenRecoveryStorageKey(input.serverId),
@@ -686,7 +815,7 @@ class McpClientHubBase extends DurableObject<Env> {
 				})
 				const key = mcpPreRegisteredOAuthClientStorageKey(input.serverId)
 				if (input.client) {
-					await this.ctx.storage.put(key, input.client)
+					await this.oauthStorage.put(key, input.client)
 					this.preRegisteredClientIds.set(input.serverId, input.client.clientId)
 				} else {
 					await this.ctx.storage.delete(key)
@@ -1063,26 +1192,26 @@ class McpClientHubBase extends DurableObject<Env> {
 			row.callback_url !== input.callbackUrl
 		const clientId = clearClientRegistration ? null : row.client_id
 		const oauthStoragePrefix = `/${mcpClientName}/${input.serverId}/`
-		const oauthStorageSnapshot = await this.ctx.storage.list({
+		const oauthStorageSnapshot = await this.oauthStorage.list({
 			prefix: oauthStoragePrefix,
 		})
 		const sidecarKey = mcpOAuthRefreshTokenStorageKey(input.serverId)
-		const sidecarValue = await this.ctx.storage.get(sidecarKey)
+		const sidecarValue = await this.oauthStorage.get(sidecarKey)
 		if (sidecarValue !== undefined) {
 			oauthStorageSnapshot.set(sidecarKey, sidecarValue)
 		}
 		const omittedKey = mcpOAuthRefreshGrantOmittedStorageKey(input.serverId)
-		const omittedValue = await this.ctx.storage.get(omittedKey)
+		const omittedValue = await this.oauthStorage.get(omittedKey)
 		if (omittedValue !== undefined) {
 			oauthStorageSnapshot.set(omittedKey, omittedValue)
 		}
 		const attemptKey = mcpOAuthAttemptStorageKey(input.serverId)
-		const attemptValue = await this.ctx.storage.get(attemptKey)
+		const attemptValue = await this.oauthStorage.get(attemptKey)
 		if (attemptValue !== undefined) {
 			oauthStorageSnapshot.set(attemptKey, attemptValue)
 		}
 		const attemptVerifiedKey = mcpOAuthAttemptVerifiedStorageKey(input.serverId)
-		const attemptVerifiedValue = await this.ctx.storage.get(attemptVerifiedKey)
+		const attemptVerifiedValue = await this.oauthStorage.get(attemptVerifiedKey)
 		if (attemptVerifiedValue !== undefined) {
 			oauthStorageSnapshot.set(attemptVerifiedKey, attemptVerifiedValue)
 		}
@@ -1151,7 +1280,7 @@ class McpClientHubBase extends DurableObject<Env> {
 				throw error
 			}
 			if (oauthStorageSnapshot.size > 0) {
-				await this.ctx.storage
+				await this.oauthStorage
 					.put(Object.fromEntries(oauthStorageSnapshot))
 					.catch(() => {})
 			}
@@ -1658,7 +1787,7 @@ class McpClientHubBase extends DurableObject<Env> {
 
 	/** RFC 9207 `iss` check against the discovery this server's sign-in stored. */
 	private async callbackIssuerError(serverId: string, iss: string | null) {
-		const discovery = await this.ctx.storage.get(
+		const discovery = await this.oauthStorage.get(
 			`/${mcpClientName}/${serverId}/oauth_discovery`,
 		)
 		try {
@@ -1674,7 +1803,7 @@ class McpClientHubBase extends DurableObject<Env> {
 		authServer: string | null
 	}> {
 		const prefix = `/${mcpClientName}/${serverId}/`
-		const entries = await this.ctx.storage.list({ prefix })
+		const entries = await this.oauthStorage.list({ prefix })
 		for (const [key, value] of entries) {
 			if (
 				!key.endsWith('/oauth_discovery') &&
@@ -1753,7 +1882,7 @@ class McpClientHubBase extends DurableObject<Env> {
 		if (this.operationallyRestored)
 			return projectMcpReadSnapshot(this.listServerCards())
 		return coldMcpReadSnapshot(
-			await this.ctx.storage.get<McpClientHubReadSnapshot>(
+			await this.oauthStorage.get<McpClientHubReadSnapshot>(
 				mcpReadSnapshotStorageKey,
 			),
 		)
@@ -1763,7 +1892,7 @@ class McpClientHubBase extends DurableObject<Env> {
 	async saveReadSnapshot(): Promise<void> {
 		if (!this.operationallyRestored) return
 		try {
-			await this.ctx.storage.put(
+			await this.oauthStorage.put(
 				mcpReadSnapshotStorageKey,
 				projectMcpReadSnapshot(this.listServerCards()),
 			)
@@ -1831,7 +1960,7 @@ class McpClientHubBase extends DurableObject<Env> {
 
 	async peekConnectionEvents(): Promise<Array<McpServerConnectionEvent>> {
 		return (
-			(await this.ctx.storage.get<Array<McpServerConnectionEvent>>(
+			(await this.oauthStorage.get<Array<McpServerConnectionEvent>>(
 				mcpConnectionEventsPendingStorageKey,
 			)) ?? []
 		)
@@ -1860,14 +1989,14 @@ class McpClientHubBase extends DurableObject<Env> {
 			await this.ctx.storage.delete(mcpConnectionEventsPendingStorageKey)
 			return
 		}
-		await this.ctx.storage.put(mcpConnectionEventsPendingStorageKey, remaining)
+		await this.oauthStorage.put(mcpConnectionEventsPendingStorageKey, remaining)
 	}
 
 	private async readEpisode(
 		serverId: string,
 	): Promise<McpConnectionEpisodeRecord> {
 		return (
-			(await this.ctx.storage.get<McpConnectionEpisodeRecord>(
+			(await this.oauthStorage.get<McpConnectionEpisodeRecord>(
 				mcpConnectionEpisodeStorageKey(serverId),
 			)) ?? createInitialMcpConnectionEpisode()
 		)
@@ -1883,12 +2012,12 @@ class McpClientHubBase extends DurableObject<Env> {
 		}
 		if (event) {
 			const existing =
-				(await this.ctx.storage.get<Array<McpServerConnectionEvent>>(
+				(await this.oauthStorage.get<Array<McpServerConnectionEvent>>(
 					mcpConnectionEventsPendingStorageKey,
 				)) ?? []
 			entries[mcpConnectionEventsPendingStorageKey] = [...existing, event]
 		}
-		await this.ctx.storage.put(entries)
+		await this.oauthStorage.put(entries)
 	}
 
 	private async lightweightReconnectServer(serverId: string) {
@@ -2050,7 +2179,7 @@ class McpClientHubBase extends DurableObject<Env> {
 	}
 
 	private async hydrateTokenRecoveryErrors() {
-		const entries = await this.ctx.storage.list({
+		const entries = await this.oauthStorage.list({
 			prefix: mcpOAuthTokenRecoveryStoragePrefix,
 		})
 		for (const [key, value] of entries) {
@@ -2077,7 +2206,7 @@ class McpClientHubBase extends DurableObject<Env> {
 			await this.ctx.storage.delete(key)
 			return
 		}
-		await this.ctx.storage.put(key, lastError)
+		await this.oauthStorage.put(key, lastError)
 	}
 
 	private async clearTokenRecoveryLastError(serverId: string) {
@@ -2223,7 +2352,7 @@ class McpClientHubBase extends DurableObject<Env> {
 		// Only warn when saveTokens recorded that this grant omitted an
 		// advertised refresh token. An empty tokens() after a concurrent
 		// refresh wipe (or invalidate) must not look like "AS never sent one".
-		const omittedGrant = await this.ctx.storage.get(
+		const omittedGrant = await this.oauthStorage.get(
 			mcpOAuthRefreshGrantOmittedStorageKey(serverId),
 		)
 		if (!omittedGrant) {
@@ -2277,7 +2406,7 @@ class McpClientHubBase extends DurableObject<Env> {
 			}
 		}
 		const prefix = `/${mcpClientName}/${serverId}/`
-		const entries = await this.ctx.storage.list({ prefix })
+		const entries = await this.oauthStorage.list({ prefix })
 		for (const value of entries.values()) {
 			if (mcpOAuthDiscoveryAdvertisesRefresh(value)) return true
 		}
@@ -2292,14 +2421,35 @@ class McpClientHubBase extends DurableObject<Env> {
 	}
 
 	private async readStagedServer(serverId: string) {
-		return await this.ctx.storage.get<McpHubStagedServer>(
+		return await this.oauthStorage.get<McpHubStagedServer>(
 			mcpTransferStagingStorageKey(serverId),
 		)
 	}
 
+	/** Admin backfill: seal legacy plaintext OAuth secrets in this hub. */
+	async sealLegacyOAuthStorage(input: {
+		dryRun: boolean
+	}): Promise<McpOAuthStorageBackfillResult> {
+		const ownerId = this.ctx.id.name
+		if (!ownerId) throw new Error('MCP client hub owner is unknown.')
+		const headers = await this.moveStaticTransportHeadersToSealedStorage(input)
+		const result = await sealLegacyMcpOAuthStorage({
+			storage: this.ctx.storage,
+			env: this.env,
+			ownerId,
+			dryRun: input.dryRun,
+		})
+		return {
+			scanned: result.scanned + headers.rowsWithHeaders,
+			sealed: result.sealed + headers.moved,
+			remainingPlaintext:
+				result.remainingPlaintext + headers.rowsWithHeaders - headers.moved,
+		}
+	}
+
 	/** Org resource transfer planning: registered and staged server ids. */
 	async listServerIdsForTransfer(): Promise<Array<string>> {
-		const staged = await this.ctx.storage.list({
+		const staged = await this.oauthStorage.list({
 			prefix: mcpTransferStagingStoragePrefix,
 		})
 		return [
@@ -2322,13 +2472,23 @@ class McpClientHubBase extends DurableObject<Env> {
 			)
 			.toArray()
 		if (!row) return null
-		const entries = await this.ctx.storage.list({
+		const entries = await this.oauthStorage.list({
 			prefix: mcpServerOAuthStoragePrefix(input.serverId),
 		})
-		const sidecars = await this.ctx.storage.get(
+		const sidecars = await this.oauthStorage.get(
 			mcpServerSidecarStorageKeys(input.serverId),
 		)
-		return { row: { ...row }, entries: [...entries, ...sidecars] }
+		const split = splitPersistedStaticHeaders(row.server_options)
+		if (split.headers) {
+			sidecars.set(
+				mcpStaticTransportHeadersStorageKey(input.serverId),
+				split.headers,
+			)
+		}
+		return {
+			row: { ...row, server_options: split.serverOptions },
+			entries: [...entries, ...sidecars],
+		}
 	}
 
 	/**
@@ -2355,7 +2515,7 @@ class McpClientHubBase extends DurableObject<Env> {
 			row: { ...input.row },
 			keys: input.entries.map(([key]) => key),
 		}
-		await this.ctx.storage.put({
+		await this.oauthStorage.put({
 			...Object.fromEntries(input.entries),
 			[mcpTransferStagingStorageKey(serverId)]: staged,
 		})
@@ -2384,6 +2544,7 @@ class McpClientHubBase extends DurableObject<Env> {
 		}
 		const sealed = await this.readSealedPreRegisteredOAuthClient(serverId)
 		if (sealed) this.preRegisteredClientIds.set(serverId, sealed.clientId)
+		await this.loadStaticTransportHeaders(serverId)
 		await this.hydrateTokenRecoveryErrors()
 		this.operationallyRestored = true
 		const persisted = parsePersistedMcpServerOptions(staged.row.server_options)
@@ -2461,6 +2622,7 @@ class McpClientHubBase extends DurableObject<Env> {
 		this.operationallyRestored = false
 		this.preRegisteredClients.clear()
 		this.preRegisteredClientIds.clear()
+		this.staticTransportHeaders.clear()
 		await this.ctx.storage.deleteAll()
 	}
 }

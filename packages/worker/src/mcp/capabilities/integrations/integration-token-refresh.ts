@@ -97,7 +97,7 @@ export async function refreshIntegrationTokenForPackage(input: {
 		{ env },
 	)
 	await assertGuestCapabilityAllowed({
-		db: env.APP_DB,
+		env,
 		callerContext,
 		capabilityName: integrationTokenRefreshCapability.name,
 		readOnly: false,

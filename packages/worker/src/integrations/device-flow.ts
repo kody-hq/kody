@@ -11,6 +11,11 @@ import {
 	pickAuthorizeScopeHost,
 	resolveAuthorizeRequestScopes,
 } from '#universal/oauth-authorize-scopes.ts'
+import {
+	isSealedSecretPayload,
+	openPlatformSecret,
+	sealPlatformSecret,
+} from '#mcp/secrets/crypto.ts'
 import { checkRateLimit } from '#worker/rate-limit.ts'
 import { normalizeAllowedHosts } from '#worker/secrets/allowed-hosts.ts'
 import {
@@ -198,6 +203,10 @@ function deviceSessionKvKey(userId: string, sessionId: string) {
 	return `integration-device-session:${userId}:${sessionId}`
 }
 
+function deviceSessionSecretContext(userId: string, sessionId: string) {
+	return `integration-device-session:${userId}:${sessionId}`
+}
+
 function randomOpaqueId() {
 	const bytes = crypto.getRandomValues(new Uint8Array(18))
 	return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join(
@@ -247,7 +256,7 @@ export function assertSafeDeviceAuthorizationUrl(url: string): string | null {
 }
 
 export async function storeDevicePendingSession(input: {
-	env: Pick<Env, 'OAUTH_KV'>
+	env: Pick<Env, 'OAUTH_KV' | 'SECRET_STORE_KEY'>
 	sessionId: string
 	session: DevicePendingSession
 }): Promise<void> {
@@ -275,29 +284,57 @@ export async function storeDevicePendingSession(input: {
 		remainingSeconds,
 		input.session.completion ? DEVICE_COMPLETION_RECEIPT_TTL_SECONDS : 0,
 	)
+	const sealed = await sealPlatformSecret(
+		input.env,
+		'integration-device-session',
+		deviceSessionSecretContext(input.session.userId, input.sessionId),
+		JSON.stringify(input.session),
+	)
 	await input.env.OAUTH_KV.put(
 		deviceSessionKvKey(input.session.userId, input.sessionId),
-		JSON.stringify(input.session),
+		sealed,
 		{ expirationTtl: ttlSeconds },
 	)
 }
 
 export async function loadDevicePendingSession(input: {
-	env: Pick<Env, 'OAUTH_KV'>
+	env: Pick<Env, 'OAUTH_KV' | 'SECRET_STORE_KEY'>
 	userId: string
 	sessionId: string
 }): Promise<DevicePendingSession | null> {
 	if (!input.env.OAUTH_KV) return null
-	const raw = await input.env.OAUTH_KV.get(
+	const stored = await input.env.OAUTH_KV.get(
 		deviceSessionKvKey(input.userId, input.sessionId),
-		{ type: 'json' },
 	)
+	if (!stored) return null
+	let raw: unknown
+	try {
+		if (isSealedSecretPayload(stored)) {
+			raw = JSON.parse(
+				await openPlatformSecret(
+					input.env,
+					'integration-device-session',
+					deviceSessionSecretContext(input.userId, input.sessionId),
+					stored,
+				),
+			)
+		} else {
+			// Plaintext JSON written before sealing. Sessions live at most the
+			// provider's device-code TTL (completion receipts hold no secrets),
+			// so remove this branch once those keys have expired.
+			raw = JSON.parse(stored)
+		}
+	} catch {
+		return null
+	}
 	if (!raw || typeof raw !== 'object') return null
-	return raw as DevicePendingSession
+	const session = raw as DevicePendingSession
+	if (session.userId !== input.userId) return null
+	return session
 }
 
 export async function deleteDevicePendingSession(input: {
-	env: Pick<Env, 'OAUTH_KV'>
+	env: Pick<Env, 'OAUTH_KV' | 'SECRET_STORE_KEY'>
 	userId: string
 	sessionId: string
 }): Promise<void> {
@@ -309,7 +346,7 @@ export async function deleteDevicePendingSession(input: {
 
 /** Delete the pending session (tests / hard abort). Prefer completion receipt. */
 export async function consumeDevicePendingSession(input: {
-	env: Pick<Env, 'OAUTH_KV'>
+	env: Pick<Env, 'OAUTH_KV' | 'SECRET_STORE_KEY'>
 	userId: string
 	sessionId: string
 }): Promise<void> {
@@ -321,7 +358,7 @@ export async function consumeDevicePendingSession(input: {
  * `approved` response can be retried without becoming `invalid_session`.
  */
 export async function completeDevicePendingSession(input: {
-	env: Pick<Env, 'OAUTH_KV'>
+	env: Pick<Env, 'OAUTH_KV' | 'SECRET_STORE_KEY'>
 	userId: string
 	sessionId: string
 	completion: DeviceCompletionReceipt
@@ -370,7 +407,7 @@ function toApprovedPollResult(
 }
 
 export async function startDeviceAuthorization(input: {
-	env: Pick<Env, 'OAUTH_KV' | 'APP_DB'>
+	env: Pick<Env, 'OAUTH_KV' | 'APP_DB' | 'SECRET_STORE_KEY'>
 	userId: string
 	deviceAuthorizationUrl: string
 	tokenUrl: string
@@ -593,7 +630,7 @@ export async function startDeviceAuthorization(input: {
 }
 
 export async function pollDeviceAuthorization(input: {
-	env: Pick<Env, 'OAUTH_KV'>
+	env: Pick<Env, 'OAUTH_KV' | 'SECRET_STORE_KEY'>
 	userId: string
 	sessionId: string
 	fetchImpl?: typeof fetch

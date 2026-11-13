@@ -69,7 +69,7 @@ export async function handleGuestClaimPost({
 	const pagePath = `/claim/${encodeURIComponent(code)}`
 	const fail = (error: string, extra?: Record<string, string>) =>
 		seeOther(`${pagePath}?${new URLSearchParams({ error, ...extra })}`)
-	const guest = await readGuestAccountByClaimCode(env.APP_DB, code)
+	const guest = await readGuestAccountByClaimCode(env, code)
 	if (!guest || guest.claimedAt) return fail('already_claimed')
 	const action = String(form.get('action') ?? '')
 	const baseUrl = getAppBaseUrl({ env, requestUrl: request.url })

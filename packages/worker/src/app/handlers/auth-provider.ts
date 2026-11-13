@@ -25,7 +25,7 @@ import {
 	type OauthProfile,
 	type OauthProviderId,
 } from '#app/oauth-providers.ts'
-import { isTwoFactorEnabled } from '#app/two-factor.ts'
+import { isTwoFactorEnabled } from '#worker/identity/two-factor.ts'
 import {
 	createVerifySessionCookie,
 	setVerifySessionSecret,
@@ -402,7 +402,7 @@ export function createAuthProviderCallbackHandler(env: Env) {
 				redirect(`${claimPath}?error=${encodeURIComponent(error)}`, [
 					clearStateCookie,
 				])
-			const guest = await readGuestAccountByClaimCode(env.APP_DB, claim.code)
+			const guest = await readGuestAccountByClaimCode(env, claim.code)
 			if (!guest || guest.claimedAt) {
 				return redirect(claimPath, [clearStateCookie])
 			}

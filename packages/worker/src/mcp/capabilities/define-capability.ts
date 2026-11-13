@@ -144,7 +144,7 @@ export function defineCapability<
 				env: ctx.env,
 			})
 			await assertGuestCapabilityAllowed({
-				db: ctx.env.APP_DB,
+				env: ctx.env,
 				callerContext: ctx.callerContext,
 				capabilityName: definition.name,
 				readOnly: definition.readOnly === true,
