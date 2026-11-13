@@ -387,6 +387,11 @@ export function beginRunRecord(input: {
 export async function ensureRunRecordStarted(input: {
 	env: Env
 	handle: RunRecordHandle | null
+	/**
+	 * Hold the running row until this ISO time instead of healing it at the
+	 * surface TTL. Set by an owner that ends the run itself by then.
+	 */
+	staleAfter?: string
 }): Promise<boolean> {
 	const handle = input.handle
 	if (!handle || handle.persistence !== 'eager') return false
@@ -403,6 +408,7 @@ export async function ensureRunRecordStarted(input: {
 		})
 		await runLogRpc({ env: input.env, userId: handle.userId }).startRun({
 			run,
+			...(input.staleAfter ? { staleAfter: input.staleAfter } : {}),
 		})
 		return true
 	} catch (error) {

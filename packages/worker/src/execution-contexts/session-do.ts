@@ -46,7 +46,10 @@ import {
 	type EcpRunRequestBody,
 	type Ed25519PublicJwk,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
-import { finishRunRecord } from '#worker/run-records/service.ts'
+import {
+	ensureRunRecordStarted,
+	finishRunRecord,
+} from '#worker/run-records/service.ts'
 import type { CredentialCallMapJson } from '#worker/credentials/credential-call-map.ts'
 import {
 	type ExecuteRequirement,
@@ -65,7 +68,10 @@ import {
 import { isExecutionContextsEnabledFor } from './flag.ts'
 import { runTiming, type ExecutionContextRunTiming } from './run-timing.ts'
 import { buildSentryOptions } from '#worker/sentry-options.ts'
-import type { RunRecordHandle } from '#worker/run-records/types.ts'
+import {
+	type RunRecordHandle,
+	runRecordStaleRunningTtlMsShortLived,
+} from '#worker/run-records/types.ts'
 
 export const executionContextsUnavailableCode = 'execution_contexts_unavailable'
 
@@ -1197,6 +1203,18 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			attempt,
 		)
 		await this.#send(live.ws, 'run.commit', { runId: lease.runId })
+		// This context ends the run by its deadline (the alarm below), so its
+		// run record must not read as stranded at the surface's short TTL. It
+		// still heals one TTL later if that final write is lost.
+		await ensureRunRecordStarted({
+			env: this.env,
+			handle: input.runRecord,
+			staleAfter: new Date(
+				input.request.deadline +
+					ecpDeadlineCancelGraceMs +
+					runRecordStaleRunningTtlMsShortLived,
+			).toISOString(),
+		})
 		await this.#ensureAlarm(input.request.deadline + ecpDeadlineCancelGraceMs)
 		return { outcome: 'committed' }
 	}

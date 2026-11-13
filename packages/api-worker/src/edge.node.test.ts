@@ -323,6 +323,67 @@ test('names the step and package size origin recorded before it hit a CPU limit'
 	expect(body.error.message).not.toContain('\u2014')
 })
 
+test('names the execute run that had started when origin died, instead of inviting a retry', async () => {
+	consoleError.mockImplementation(() => {})
+	const runId = 'd882cc5a-beb8-4682-ba06-7a26ccff8864'
+	const call = async (failure: string, idempotencyKey: string | null) => {
+		const env: ApiWorkerEnv = {
+			KODY_API: {
+				async fetch() {
+					throw new Error(failure)
+				},
+				async readRequestProgress() {
+					return { step: 'execute_run', runId, idempotencyKey }
+				},
+			} as unknown as ApiWorkerEnv['KODY_API'],
+		}
+		const response = await handleApiEdgeRequest(
+			new Request('https://api.kody.test/v1/execute', {
+				method: 'POST',
+				headers: {
+					Authorization: `Bearer ${token}`,
+					'Content-Type': 'application/json',
+					'CF-Ray': 'a59bd2a6b99f24b9',
+				},
+				body: JSON.stringify({ code: 'export default () => 1' }),
+			}),
+			env,
+		)
+		const body = (await response.json()) as {
+			error: { message: string; details: Record<string, unknown> }
+		}
+		return { response, ...body.error }
+	}
+
+	const keyed = await call('Worker exceeded memory limit.', 'daily-run-1')
+	expect(keyed.response.status).toBe(503)
+	expect(keyed.details).toEqual({
+		reason: 'origin_resource_limit',
+		request_id: 'a59bd2a6b99f24b9',
+		step: 'execute_run',
+		run_id: runId,
+		idempotency_key: 'daily-run-1',
+	})
+	expect(keyed.message).toContain(`Execute had already started run ${runId}`)
+	expect(keyed.message).toContain(`GET /v1/runs/${runId}`)
+	expect(keyed.message).toContain('idempotencyKey "daily-run-1"')
+	expect(keyed.message).not.toContain('a retry can pass')
+	expect(keyed.message).not.toContain('\u2014')
+
+	const unkeyed = await call('binding down', null)
+	expect(unkeyed.response.headers.get('Retry-After')).toBeNull()
+	expect(unkeyed.details).toEqual({
+		reason: 'origin_unreachable',
+		request_id: 'a59bd2a6b99f24b9',
+		step: 'execute_run',
+		run_id: runId,
+	})
+	expect(unkeyed.message).toContain(
+		'Do not start it again until runGet shows it ended.',
+	)
+	expect(unkeyed.message).not.toMatch(/Retry in a few seconds/)
+})
+
 test('gateway-fetch streams the body past the JSON cap and forwards hop headers', async () => {
 	const { env, forwarded } = createEnv()
 	const body = 'x'.repeat(maxApiRequestBodyBytes + 1)

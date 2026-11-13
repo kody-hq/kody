@@ -6,6 +6,7 @@ import {
 } from 'cloudflare:test'
 import { beforeAll, expect, test } from 'vitest'
 import {
+	ecpDeadlineCancelGraceMs,
 	ecpDefaultGrant,
 	ecpHttpSignaturePrefix,
 	importEd25519PrivateKey,
@@ -20,7 +21,11 @@ import testKeys from '@kody-internal/shared/execution-context-protocol/vectors/t
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { beginRunRecord, getRunRecord } from '#worker/run-records/service.ts'
-import type { RunRecordHandle } from '#worker/run-records/types.ts'
+import {
+	type RunRecordHandle,
+	runRecordStaleRunningTtlMsShortLived,
+} from '#worker/run-records/types.ts'
+import { runLogDurableObjectName } from '#worker/user-scoped-durable-object-name.ts'
 import {
 	ExecutionContextSessionV1,
 	type ExecutionContextLease,
@@ -791,6 +796,58 @@ test('a deadline stop is a cancel with cancelReason deadline and completes the m
 async function drainWaitUntil(pending: Array<Promise<unknown>>) {
 	while (pending.length > 0) await pending.shift()
 }
+
+test('a committed run holds its run record running until the context deadline', async () => {
+	const ecid = 'ec_hold'
+	const { stub, next, send } = await connect(ecid)
+	const userId = 'user_requester'
+	const owner = ownerIdFromStored(userId)
+	const handle: RunRecordHandle = {
+		id: crypto.randomUUID(),
+		userId: owner,
+		// Already past the 3-minute execute TTL, like a long run on a context.
+		startedAt: new Date(
+			Date.now() - runRecordStaleRunningTtlMsShortLived - 1_000,
+		).toISOString(),
+		persistence: 'eager',
+		context: { surface: 'execute', name: null },
+	}
+	const runId = 'run_hold'
+	const request = { ...runRequest(runId), deadline: Date.now() + 15 * 60_000 }
+	const dispatching = stub.dispatch({
+		request,
+		lease: { ...lease(ecid, runId), deadline: request.deadline },
+		runRecord: handle,
+		position: 1,
+	})
+	const offered = await next('run.request')
+	await send('run.accept', { runId }, { re: offered.seq })
+	expect((await dispatching).outcome).toBe('committed')
+	await next('run.commit')
+
+	expect(
+		(await getRunRecord({ env, userId: owner, runId: handle.id }))?.run,
+	).toMatchObject({ id: handle.id, status: 'running', finishedAt: null })
+	const runLog = env.RUN_LOG.get(
+		env.RUN_LOG.idFromName(runLogDurableObjectName(owner)),
+	)
+	const staleAfter = await runInDurableObject(
+		runLog,
+		async (_instance, state) =>
+			state.storage.sql
+				.exec<{
+					stale_after: string | null
+				}>(`SELECT stale_after FROM runs WHERE id = ?`, handle.id)
+				.one().stale_after,
+	)
+	expect(staleAfter).toBe(
+		new Date(
+			request.deadline +
+				ecpDeadlineCancelGraceMs +
+				runRecordStaleRunningTtlMsShortLived,
+		).toISOString(),
+	)
+})
 
 test('a live session reports when it last heard from the daemon', async () => {
 	const before = Date.now()

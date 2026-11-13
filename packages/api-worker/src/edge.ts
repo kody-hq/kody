@@ -5,6 +5,8 @@ import {
 import {
 	apiRequestIdHeader,
 	describeApiRequestProgress,
+	describeStartedExecuteRun,
+	executeRunProgressStep,
 	parseApiRequestProgress,
 	type ApiRequestProgress,
 } from '@kody-internal/shared/api-request-progress.ts'
@@ -360,17 +362,23 @@ function describeOriginForwardFailure(
 	progress: ApiRequestProgress | null = null,
 ) {
 	const detail = error instanceof Error ? error.message : String(error)
+	const startedRun = progress?.step === executeRunProgressStep ? progress : null
 	if (originResourceLimitPattern.test(detail)) {
-		const described = progress ? describeApiRequestProgress(progress) : null
+		const described =
+			progress && progress.step !== executeRunProgressStep
+				? describeApiRequestProgress(progress)
+				: null
 		return {
 			reason: 'origin_resource_limit' as const,
 			message: [
 				`The Kody API ran out of server memory or CPU time${described?.where ?? ''} before it answered this request (request id ${requestId}).`,
 				described?.size,
-				'This is a server limit, not a login or network problem. CPU and ' +
-					'memory use vary between runs, so a retry can pass, but a ' +
-					'request this close to the limit can keep failing on some runs. ' +
-					'Quote the request id when you report it.',
+				startedRun
+					? `${describeStartedExecuteRun(startedRun)} Quote the request id when you report it.`
+					: 'This is a server limit, not a login or network problem. CPU and ' +
+						'memory use vary between runs, so a retry can pass, but a ' +
+						'request this close to the limit can keep failing on some runs. ' +
+						'Quote the request id when you report it.',
 			]
 				.filter(Boolean)
 				.join(' '),
@@ -378,7 +386,26 @@ function describeOriginForwardFailure(
 	}
 	return {
 		reason: 'origin_unreachable' as const,
-		message: `The Kody API is temporarily unavailable (request id ${requestId}). Retry in a few seconds; if it keeps failing, quote the request id when you report it.`,
+		message: startedRun
+			? `The Kody API stopped before it answered this request (request id ${requestId}). ${describeStartedExecuteRun(startedRun)}`
+			: `The Kody API is temporarily unavailable (request id ${requestId}). Retry in a few seconds; if it keeps failing, quote the request id when you report it.`,
+	}
+}
+
+function progressDetails(progress: ApiRequestProgress) {
+	if (progress.step === executeRunProgressStep) {
+		return {
+			step: progress.step,
+			run_id: progress.runId,
+			...(progress.idempotencyKey
+				? { idempotency_key: progress.idempotencyKey }
+				: {}),
+		}
+	}
+	return {
+		step: progress.step,
+		package_bytes: progress.totalBytes,
+		package_files: progress.fileCount,
 	}
 }
 
@@ -487,11 +514,7 @@ async function fetchOrigin(
 	try {
 		return withEdgeHeaders(await env.KODY_API.fetch(forwarded))
 	} catch (error) {
-		const progress = originResourceLimitPattern.test(
-			error instanceof Error ? error.message : String(error),
-		)
-			? await readOriginRequestProgress(env, requestId)
-			: null
+		const progress = await readOriginRequestProgress(env, requestId)
 		const failure = describeOriginForwardFailure(error, requestId, progress)
 		console.error('api-worker-forward-failed', error, {
 			requestId,
@@ -508,13 +531,7 @@ async function fetchOrigin(
 						details: {
 							reason: failure.reason,
 							request_id: requestId,
-							...(progress
-								? {
-										step: progress.step,
-										package_bytes: progress.totalBytes,
-										package_files: progress.fileCount,
-									}
-								: {}),
+							...(progress ? progressDetails(progress) : {}),
 						},
 					},
 				},
@@ -524,7 +541,8 @@ async function fetchOrigin(
 					// automatic retry; callers that know the operation decide.
 					headers: {
 						'Cache-Control': 'no-store',
-						...(failure.reason === 'origin_unreachable'
+						...(failure.reason === 'origin_unreachable' &&
+						progress?.step !== executeRunProgressStep
 							? { 'Retry-After': '5' }
 							: {}),
 					},

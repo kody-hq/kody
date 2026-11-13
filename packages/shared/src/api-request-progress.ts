@@ -19,6 +19,20 @@ export const packageCheckProgressSteps = [
 export type PackageCheckProgressStep =
 	(typeof packageCheckProgressSteps)[number]
 
+/** Execute records the run it started, so a 503 after that can name it. */
+export const executeRunProgressStep = 'execute_run'
+
+/**
+ * Every recorded step, in read order: the last one recorded is the step the
+ * request was running. One request records steps of one kind only.
+ */
+export const apiRequestProgressSteps = [
+	...packageCheckProgressSteps,
+	executeRunProgressStep,
+] as const
+
+export type ApiRequestProgressStep = (typeof apiRequestProgressSteps)[number]
+
 const packageCheckProgressStepLabels: Record<PackageCheckProgressStep, string> =
 	{
 		checks:
@@ -28,7 +42,7 @@ const packageCheckProgressStepLabels: Record<PackageCheckProgressStep, string> =
 		artifact_build: 'package checks: the artifact build',
 	}
 
-export type ApiRequestProgress = {
+export type PackageCheckProgress = {
 	step: PackageCheckProgressStep
 	packageName: string | null
 	fileCount: number
@@ -37,9 +51,21 @@ export type ApiRequestProgress = {
 	maxTotalBytes: number
 }
 
+/**
+ * The run an execute request started. `idempotencyKey` is set only when the
+ * key already owns the run, so a retry with it cannot start a second one.
+ */
+export type ExecuteRunProgress = {
+	step: typeof executeRunProgressStep
+	runId: string
+	idempotencyKey: string | null
+}
+
+export type ApiRequestProgress = PackageCheckProgress | ExecuteRunProgress
+
 export function apiRequestProgressKvKey(
 	requestId: string,
-	step: PackageCheckProgressStep,
+	step: ApiRequestProgressStep,
 ) {
 	return `api-request-progress:v1:${requestId}:${step}`
 }
@@ -53,10 +79,25 @@ function isCount(value: unknown): value is number {
 	return typeof value === 'number' && Number.isFinite(value) && value >= 0
 }
 
+function parseExecuteRunProgress(
+	value: Record<string, unknown>,
+): ExecuteRunProgress | null {
+	const runId = typeof value.runId === 'string' ? value.runId.trim() : ''
+	if (!runId || runId.length > 128) return null
+	const idempotencyKey =
+		typeof value.idempotencyKey === 'string' && value.idempotencyKey.trim()
+			? value.idempotencyKey.trim()
+			: null
+	return { step: executeRunProgressStep, runId, idempotencyKey }
+}
+
 export function parseApiRequestProgress(
 	value: unknown,
 ): ApiRequestProgress | null {
 	if (!isRecord(value)) return null
+	if (value.step === executeRunProgressStep) {
+		return parseExecuteRunProgress(value)
+	}
 	const step = value.step
 	if (
 		typeof step !== 'string' ||
@@ -104,7 +145,7 @@ export function packageCheckProgressStepLabel(step: PackageCheckProgressStep) {
  * "during <step> for <package>. The package is X MB in N files ..." for the
  * edge's resource-limit 503.
  */
-export function describeApiRequestProgress(progress: ApiRequestProgress) {
+export function describeApiRequestProgress(progress: PackageCheckProgress) {
 	const subject = progress.packageName ?? 'this package'
 	return {
 		where: ` during ${packageCheckProgressStepLabel(progress.step)} for ${subject}`,
@@ -118,4 +159,21 @@ export function describeApiRequestProgress(progress: ApiRequestProgress) {
 			'source the checks read and build, so a package well under those ' +
 			'size limits can still reach it.',
 	}
+}
+
+/**
+ * For the edge's 503 when origin died after execute started a run: the run
+ * may still be going (or may have finished), so say how to follow it instead
+ * of inviting a blind retry that could repeat its side effects.
+ */
+export function describeStartedExecuteRun(progress: ExecuteRunProgress) {
+	const retry = progress.idempotencyKey
+		? `Retrying execute with idempotencyKey "${progress.idempotencyKey}" returns this run instead of starting it again.`
+		: 'Do not start it again until runGet shows it ended.'
+	return (
+		`Execute had already started run ${progress.runId}: it may still be ` +
+		'running or may have finished. Read its outcome with runGet ' +
+		`({ run_id: "${progress.runId}" }, or GET /v1/runs/${progress.runId}). ` +
+		retry
+	)
 }

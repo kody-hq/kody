@@ -60,3 +60,24 @@ test('records nothing outside an API request or for an unsafe request id', async
 	})
 	expect(store.size).toBe(0)
 })
+
+test('reads back the run an execute request started', async () => {
+	const { env } = createKv()
+	await runWithApiRequestProgress(
+		{ env, requestId: 'a59c8773280b0071' },
+		async () => {
+			await recordApiRequestProgress({
+				step: 'execute_run',
+				runId: '55088ed5-95c8-4aa3-96b1-7e4d4b9368e0',
+				idempotencyKey: null,
+			})
+		},
+	)
+	expect(
+		await readApiRequestProgress({ env, requestId: 'a59c8773280b0071' }),
+	).toEqual({
+		step: 'execute_run',
+		runId: '55088ed5-95c8-4aa3-96b1-7e4d4b9368e0',
+		idempotencyKey: null,
+	})
+})

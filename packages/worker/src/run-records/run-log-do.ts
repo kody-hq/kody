@@ -129,7 +129,7 @@ const metaSchemaVersionKey = 'schema_version'
 /** YYYYMMDD coverage floor for warm v12→v13 (no backfill). Fresh DOs omit this. */
 const metaRunDayCountsSinceKey = 'run_day_counts_since'
 /** Bump when initializeSchema's DDL set changes; warm objects skip DDL. */
-const runLogSchemaVersion = 20
+const runLogSchemaVersion = 21
 
 function utcDayToMetaInt(day: string): number {
 	return Number(day.replaceAll('-', ''))
@@ -927,7 +927,8 @@ class RunLogBase extends DurableObject<Env> {
 				started_by_label TEXT,
 				started_by_profile_id TEXT,
 				started_by_profile_chain TEXT,
-				log_count INTEGER NOT NULL DEFAULT 0
+				log_count INTEGER NOT NULL DEFAULT 0,
+				stale_after TEXT
 			)
 		`)
 		if (installedVersion != null && installedVersion < 10) {
@@ -938,6 +939,9 @@ class RunLogBase extends DurableObject<Env> {
 		}
 		if (installedVersion != null && installedVersion < 18) {
 			this.migrateRunsStartedByProfileForV18()
+		}
+		if (installedVersion != null && installedVersion < 21) {
+			this.migrateRunsStaleAfterForV21()
 		}
 		this.ctx.storage.sql.exec(
 			`CREATE INDEX IF NOT EXISTS idx_runs_started ON runs(started_at DESC, id DESC)`,
@@ -1207,6 +1211,19 @@ class RunLogBase extends DurableObject<Env> {
 			} catch {
 				// Column already present on a partially migrated object.
 			}
+		}
+	}
+
+	/**
+	 * `stale_after`: the time until which the row's owner holds a `running`
+	 * row, past the surface TTL (an execution context holds its runs until
+	 * their deadline). Existing rows keep NULL.
+	 */
+	private migrateRunsStaleAfterForV21() {
+		try {
+			this.ctx.storage.sql.exec(`ALTER TABLE runs ADD COLUMN stale_after TEXT`)
+		} catch {
+			// Column already present on a partially migrated object.
 		}
 	}
 
@@ -1888,21 +1905,70 @@ class RunLogBase extends DurableObject<Env> {
 		if (ids.length > 0) this.invalidateReadMemos()
 	}
 
-	private isStaleRunning(input: {
+	/**
+	 * When a `running` row counts as stranded: its surface TTL after start, or
+	 * its `stale_after` when the row's owner holds it longer.
+	 */
+	private staleRunningDueAtMs(input: {
 		surface: string
 		startedAt: string
-		nowMs?: number
 		idempotencyKey?: string | null
-	}): boolean {
+		staleAfter: string | null
+	}): number | null {
 		const surface = isRunSurface(input.surface) ? input.surface : 'execute'
 		const startedMs = Date.parse(input.startedAt)
-		if (!Number.isFinite(startedMs)) return false
-		const nowMs = input.nowMs ?? Date.now()
+		if (!Number.isFinite(startedMs)) return null
 		const ttlMs =
 			surface === 'job' && isScheduledJobIdempotencyKey(input.idempotencyKey)
 				? runRecordStaleRunningTtlMsScheduledJob
 				: runRecordStaleRunningTtlMsForSurface(surface)
-		return nowMs - startedMs >= ttlMs
+		const heldUntilMs = input.staleAfter
+			? Date.parse(input.staleAfter)
+			: Number.NaN
+		return Number.isFinite(heldUntilMs)
+			? Math.max(startedMs + ttlMs, heldUntilMs)
+			: startedMs + ttlMs
+	}
+
+	/**
+	 * `staleAfter` omitted: read it for this row, only once the surface TTL
+	 * has passed (the common fresh row costs no read).
+	 */
+	private isStaleRunning(input: {
+		id: string
+		surface: string
+		startedAt: string
+		nowMs?: number
+		idempotencyKey?: string | null
+		staleAfter?: string | null
+	}): boolean {
+		const nowMs = input.nowMs ?? Date.now()
+		const ttlDueAtMs = this.staleRunningDueAtMs({ ...input, staleAfter: null })
+		if (ttlDueAtMs == null || nowMs < ttlDueAtMs) return false
+		const staleAfter =
+			input.staleAfter !== undefined
+				? input.staleAfter
+				: (this.ctx.storage.sql
+						.exec<{
+							stale_after: string | null
+						}>(`SELECT stale_after FROM runs WHERE id = ?`, input.id)
+						.toArray()[0]?.stale_after ?? null)
+		const dueAtMs = this.staleRunningDueAtMs({ ...input, staleAfter })
+		return dueAtMs != null && nowMs >= dueAtMs
+	}
+
+	/** Hold a still-`running` row until `staleAfter`; a finished row is left alone. */
+	private holdRunningUntil(runId: string, staleAfter: string) {
+		const held = this.ctx.storage.sql.exec(
+			`UPDATE runs SET stale_after = ? WHERE id = ? AND status = 'running'`,
+			staleAfter,
+			runId,
+		).rowsWritten
+		if (held > 0) {
+			// The stale due-time moved later; re-arm for it.
+			this.retentionIdleConfirmed = false
+			this.retentionAlarmArmed = false
+		}
 	}
 
 	private markRunningInterrupted(input: {
@@ -2062,9 +2128,10 @@ class RunLogBase extends DurableObject<Env> {
 			started_at: string
 			surface: RunSurface
 			idempotency_key: string | null
+			stale_after: string | null
 		}>(
 			'reconcileStaleRunning',
-			`SELECT id, started_at, surface, idempotency_key FROM runs
+			`SELECT id, started_at, surface, idempotency_key, stale_after FROM runs
 			WHERE status = 'running' AND (
 				(surface IN ('execute', 'export', 'subscription', 'app_fetch', 'app_realtime')
 					AND started_at < ?)
@@ -2080,6 +2147,7 @@ class RunLogBase extends DurableObject<Env> {
 				)
 				OR (surface = 'workflow' AND started_at < ?)
 			)
+			AND (stale_after IS NULL OR stale_after <= ?)
 			ORDER BY started_at ASC
 			LIMIT ?`,
 			shortLivedCutoff,
@@ -2087,16 +2155,19 @@ class RunLogBase extends DurableObject<Env> {
 			scheduledJobCutoff,
 			jobCutoff,
 			longLivedCutoff,
+			finishedAt,
 			maxStaleRunningReconcilesPerPass,
 		).toArray()
 		let reconciled = 0
 		for (const row of candidates) {
 			if (
 				!this.isStaleRunning({
+					id: row.id,
 					surface: row.surface,
 					startedAt: row.started_at,
 					nowMs,
 					idempotencyKey: row.idempotency_key,
+					staleAfter: row.stale_after,
 				})
 			) {
 				continue
@@ -2122,6 +2193,7 @@ class RunLogBase extends DurableObject<Env> {
 		if (run.status !== 'running') return run
 		if (
 			!this.isStaleRunning({
+				id: run.id,
 				surface: run.surface,
 				startedAt: run.startedAt,
 				idempotencyKey: run.idempotencyKey,
@@ -2286,7 +2358,7 @@ class RunLogBase extends DurableObject<Env> {
 		const oldestRunningPerSurface = this.ctx.storage.sql
 			.exec<{ surface: string; started_at: string }>(
 				`SELECT surface, MIN(started_at) AS started_at FROM runs
-				WHERE status = 'running'
+				WHERE status = 'running' AND stale_after IS NULL
 				GROUP BY surface`,
 			)
 			.toArray()
@@ -2305,6 +2377,7 @@ class RunLogBase extends DurableObject<Env> {
 			.exec<{ started_at: string }>(
 				`SELECT MIN(started_at) AS started_at FROM runs
 				WHERE status = 'running'
+					AND stale_after IS NULL
 					AND surface = 'job'
 					AND idempotency_key LIKE 'scheduled-job:%'`,
 			)
@@ -2314,6 +2387,28 @@ class RunLogBase extends DurableObject<Env> {
 				Date.parse(oldestScheduledJobRunning.started_at) +
 					runRecordStaleRunningTtlMsScheduledJob,
 			)
+		}
+
+		// Held rows (execution-context runs) are few: one per live run.
+		const heldRunning = this.ctx.storage.sql
+			.exec<{
+				surface: string
+				started_at: string
+				idempotency_key: string | null
+				stale_after: string
+			}>(
+				`SELECT surface, started_at, idempotency_key, stale_after FROM runs
+				WHERE status = 'running' AND stale_after IS NOT NULL`,
+			)
+			.toArray()
+		for (const row of heldRunning) {
+			const dueAtMs = this.staleRunningDueAtMs({
+				surface: row.surface,
+				startedAt: row.started_at,
+				idempotencyKey: row.idempotency_key,
+				staleAfter: row.stale_after,
+			})
+			if (dueAtMs != null) consider(dueAtMs)
 		}
 
 		return next
@@ -2548,8 +2643,16 @@ class RunLogBase extends DurableObject<Env> {
 		})
 	}
 
-	async startRun(input: { run: RunLogRowInput }): Promise<{ ok: true }> {
+	/**
+	 * `staleAfter` holds the running row past its surface TTL until then (an
+	 * execution context ends its runs by their deadline).
+	 */
+	async startRun(input: {
+		run: RunLogRowInput
+		staleAfter?: string | null
+	}): Promise<{ ok: true }> {
 		this.insertRunningRun(input.run)
+		if (input.staleAfter) this.holdRunningUntil(input.run.id, input.staleAfter)
 		await this.ensureRetentionAlarm()
 		return { ok: true }
 	}
@@ -2575,6 +2678,7 @@ class RunLogBase extends DurableObject<Env> {
 					existing.status === 'running' &&
 					isScheduledJobIdempotencyKey(existing.idempotencyKey) &&
 					this.isStaleRunning({
+						id: existing.id,
 						surface: existing.surface,
 						startedAt: existing.startedAt,
 						idempotencyKey: existing.idempotencyKey,
@@ -5201,7 +5305,10 @@ export type RunLogRpc = DurableObjectPitrRpc & {
 	}) => Promise<SkillReadSummary>
 	recordPackageAppCpuSample: (sample: PackageAppCpuSample) => Promise<void>
 	packageAppCpuSummary: () => Promise<PackageAppCpuSummary>
-	startRun: (input: { run: RunLogRowInput }) => Promise<{ ok: true }>
+	startRun: (input: {
+		run: RunLogRowInput
+		staleAfter?: string | null
+	}) => Promise<{ ok: true }>
 	claimRun: (input: { run: RunLogRowInput }) => Promise<{
 		claimed: boolean
 		run: RunRecord
