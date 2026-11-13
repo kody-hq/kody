@@ -809,7 +809,7 @@ test('a live session reports when it last heard from the daemon', async () => {
 test('a reconnecting daemon ends the committed runs it no longer holds at once', async () => {
 	const ecid = 'ec_reconnect'
 	const first = await connect(ecid, {
-		status: { acceptingRuns: true, running: 0, maxConcurrent: 3 },
+		status: { acceptingRuns: true, running: 0, maxConcurrent: 4 },
 	})
 	const commit = async (runId: string) => {
 		const dispatching = first.stub.dispatch({
@@ -826,9 +826,15 @@ test('a reconnecting daemon ends the committed runs it no longer holds at once',
 	await commit('run_dropped')
 	await commit('run_finished_offline')
 	await commit('run_still_held')
+	await commit('run_cancelled_offline')
+	// The daemon never saw this cancel: its socket had already dropped.
+	await first.stub.cancel({
+		runId: 'run_cancelled_offline',
+		reason: 'user_cancelled',
+	})
 
 	const second = await connect(ecid, {
-		heldRuns: ['run_still_held'],
+		heldRuns: ['run_still_held', 'run_cancelled_offline'],
 		pendingResults: [
 			{
 				runId: 'run_finished_offline',
@@ -850,6 +856,10 @@ test('a reconnecting daemon ends the committed runs it no longer holds at once',
 	expect(
 		await second.stub.awaitResult({ runId: 'run_still_held', waitMs: 0 }),
 	).toEqual({ state: 'pending' })
+	expect((await second.next('run.cancel')).body).toEqual({
+		runId: 'run_cancelled_offline',
+		reason: 'user_cancelled',
+	})
 	const rows = new Map(
 		(await second.stub.listHistory({})).rows.map((row) => [row.runId, row]),
 	)
