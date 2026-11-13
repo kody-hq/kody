@@ -281,6 +281,7 @@ export function WorkspaceLayout() {
 									pointerEvents: 'auto',
 								},
 								position: 'relative',
+								top: 0,
 								height: 'auto',
 								borderRight: 0,
 								boxShadow: `0 4px 18px color-mix(in srgb, ${colors.text} 3%, transparent)`,
