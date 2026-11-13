@@ -1,8 +1,13 @@
 import { Extension, Node } from '@tiptap/core'
 import { Fragment, Slice, type Node as DocumentNode } from '@tiptap/pm/model'
-import { Plugin } from '@tiptap/pm/state'
+import { Plugin, TextSelection } from '@tiptap/pm/state'
 import { ySyncPluginKey } from '@tiptap/y-tiptap'
-import { goToNextCell, tableEditing } from '@tiptap/pm/tables'
+import {
+	CellSelection,
+	goToNextCell,
+	nextCell,
+	tableEditing,
+} from '@tiptap/pm/tables'
 import {
 	workspaceTableMaxRows,
 	workspaceTableMaxColumns,
@@ -130,7 +135,37 @@ export const WorkspaceTables = Extension.create({
 		]
 	},
 	addKeyboardShortcuts() {
+		const extendSelection =
+			(axis: 'horiz' | 'vert', direction: -1 | 1) => () => {
+				const { view } = this.editor
+				const { state } = view
+				const { selection } = state
+				if (!(selection instanceof TextSelection)) return false
+				const { $head } = selection
+				const role = $head.parent.type.spec.tableRole
+				if (role !== 'cell' && role !== 'header_cell') return false
+				const boundary =
+					axis === 'horiz'
+						? direction === 1
+							? 'right'
+							: 'left'
+						: direction === 1
+							? 'down'
+							: 'up'
+				if (!view.endOfTextblock(boundary)) return false
+				const cell = state.doc.resolve($head.before())
+				const next = nextCell(cell, axis, direction)
+				if (!next) return false
+				view.dispatch(
+					state.tr.setSelection(new CellSelection(cell, next)).scrollIntoView(),
+				)
+				return true
+			}
 		return {
+			'Shift-ArrowLeft': extendSelection('horiz', -1),
+			'Shift-ArrowRight': extendSelection('horiz', 1),
+			'Shift-ArrowUp': extendSelection('vert', -1),
+			'Shift-ArrowDown': extendSelection('vert', 1),
 			Enter: () => {
 				const role =
 					this.editor.state.selection.$from.parent.type.spec.tableRole
@@ -173,6 +208,7 @@ export const workspaceTableParts = (
 	return Node.create({
 		name,
 		content: spec.content,
+		isolating: 'isolating' in spec && spec.isolating,
 		addAttributes() {
 			if ('attrs' in spec)
 				return {

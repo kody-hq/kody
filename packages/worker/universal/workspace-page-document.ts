@@ -35,11 +35,13 @@ export const workspaceTableNodes = {
 	workspaceTableCell: {
 		content: 'inline*',
 		tableRole: 'cell',
+		isolating: true,
 		attrs: tableCellAttributes,
 	},
 	workspaceTableHeader: {
 		content: 'inline*',
 		tableRole: 'header_cell',
+		isolating: true,
 		attrs: tableCellAttributes,
 	},
 } satisfies Record<string, NodeSpec>

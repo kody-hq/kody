@@ -153,6 +153,10 @@ test('new page blocks keep their content when edited and viewed read-only', asyn
 	await page.keyboard.press('Tab')
 	await page.keyboard.insertText('Status')
 	await expect(table.getByRole('columnheader').nth(1)).toHaveText('Status')
+	await page.keyboard.press('Home')
+	await page.keyboard.press('Backspace')
+	await expect(header).toHaveText('Owner')
+	await expect(table.getByRole('columnheader').nth(1)).toHaveText('Status')
 	await page.getByRole('button', { name: 'Add column' }).click()
 	await page.getByRole('button', { name: 'Add row' }).click()
 	await expect(table.getByRole('row')).toHaveCount(3)
@@ -195,6 +199,17 @@ test('new page blocks keep their content when edited and viewed read-only', asyn
 	await expect(body).toBeHidden()
 	await summary.click()
 	await expect(body).toBeVisible()
+})
+
+test('Shift+Arrow selects adjacent table cells', async ({ page }) => {
+	await page.getByRole('button', { name: 'Add block', exact: true }).click()
+	await page.getByRole('option', { name: 'Table', exact: true }).click()
+	const table = page.locator('.tiptap table')
+	await table.getByRole('columnheader').first().click()
+	await page.keyboard.insertText('Owner')
+	await expect(table.getByRole('columnheader').first()).toHaveText('Owner')
+	await page.keyboard.press('Shift+ArrowRight')
+	await expect(table.locator('.selectedCell')).toHaveCount(2)
 })
 
 test('numbered items, contents, link cards and diagrams update in the editor', async ({
