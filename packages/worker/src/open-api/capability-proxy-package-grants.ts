@@ -14,6 +14,8 @@ import {
 import { claimedPackageStamp } from '#worker/credentials/package-stamp.ts'
 import { resolveCredential } from '#worker/credentials/resolve-credential.ts'
 import { verifyLocalExecutePackageBinding } from '#worker/package-runtime/local-execute-package-binding.ts'
+import { PromiseLruCache } from '#worker/package-registry/published-package-cache.ts'
+import { executionContextRunAccessReuseMs } from './execution-context-run-access.ts'
 
 /**
  * Local-execute CapabilityProxy packageStorage / packageSecrets host tools.
@@ -118,6 +120,16 @@ export async function authorizeLocalExecuteOwnedPackageId(input: {
  * names. A bare package id fails, so sandbox code cannot claim a package
  * identity by naming it.
  */
+/**
+ * `package:execute` grants an execution-context run already passed, reused for
+ * {@link executionContextRunAccessReuseMs} like the run's own access check.
+ * Failures are never reused; the binding signature is still verified per call.
+ */
+const runPackageExecuteGrants = new PromiseLruCache<string>({
+	ttlMs: executionContextRunAccessReuseMs,
+	limit: 512,
+})
+
 export async function authorizeLocalExecutePackageBinding(input: {
 	db: D1Database
 	env: Env
@@ -133,12 +145,22 @@ export async function authorizeLocalExecutePackageBinding(input: {
 			actor: input.request?.actor?.userId ?? null,
 		},
 	})
-	return await authorizeLocalExecuteOwnedPackageId({
-		db: input.db,
-		env: input.env,
-		request: input.request,
-		orgUserId: input.orgUserId,
-		packageId,
+	const authorizeOwned = () =>
+		authorizeLocalExecuteOwnedPackageId({
+			db: input.db,
+			env: input.env,
+			request: input.request,
+			orgUserId: input.orgUserId,
+			packageId,
+		})
+	if (input.request?.credential.kind !== 'execution-context-run') {
+		return await authorizeOwned()
+	}
+	// The whole request context is in the key, so only the same run, actor,
+	// org, membership, profile, and scopes reuse a grant.
+	return await runPackageExecuteGrants.getOrCreate({
+		cacheKey: JSON.stringify([input.orgUserId, packageId, input.request]),
+		create: authorizeOwned,
 	})
 }
 
