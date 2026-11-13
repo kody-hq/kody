@@ -121,3 +121,23 @@ test('only bundling steps name npm dependencies in compute-limit hints', () => {
 		'example-heavy-lib',
 	)
 })
+
+test('an in-isolate memory error from an artifact build names the kody:@ cost and the fix', async () => {
+	const { artifactBuildFailureMessage } =
+		await import('./isolated-runner-limit-message.ts')
+	const message = artifactBuildFailureMessage(
+		'Dynamic import exceeded memory limits',
+		'check',
+	)
+	expect(message).toContain('Dynamic import exceeded memory limits')
+	expect(message).toContain(
+		"exceeded the isolated check runner's memory or CPU limits",
+	)
+	expect(message).toContain('every kody:@ package the entry imports')
+	expect(message).toContain('kody dev check --build local')
+	expect(message).toContain('--build local')
+	expect(message).not.toContain('\u2014')
+	expect(artifactBuildFailureMessage('Unexpected token', 'rebuild')).toBe(
+		'Unexpected token',
+	)
+})

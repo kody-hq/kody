@@ -33,6 +33,7 @@ import {
 	dynamicPackageImportSpecifierExportName,
 	encodePathKeyAsPath,
 	joinPath,
+	linkedPackageImportPrefix,
 } from './module-graph-paths.ts'
 import {
 	createDynamicPackageImportProxySource,
@@ -146,6 +147,63 @@ export function materializePublishedArtifactModules(input: {
 	return refreshKodyRuntimeModules(materializedModules, {
 		includeDefaultRuntimePath: false,
 	}) as Record<string, string>
+}
+
+const linkedArtifactsRoot = joinPath(linkedPackageImportPrefix, 'artifacts')
+
+/**
+ * Linked artifact path for one dependency export at one commit. Linking
+ * writes every artifact here at the bundle root, so a package several
+ * dependencies import is stored once.
+ */
+export function linkedArtifactPrefix(input: {
+	specifier: string
+	sourceId: string
+	publishedCommit: string
+}) {
+	return joinPath(
+		linkedArtifactsRoot,
+		encodePathKeyAsPath(
+			`${input.specifier}#${input.sourceId}#${input.publishedCommit}`,
+		),
+	)
+}
+
+/**
+ * {@link materializePublishedArtifactModules} for a dependency artifact
+ * composed into another bundle: the linked artifacts it carries move up to
+ * the shared {@link linkedArtifactPrefix} root instead of nesting under it (a
+ * hub artifact otherwise holds one copy of a shared package per dependency
+ * that imports it), and the placeholder proxies that import `./artifacts/…`
+ * point at the shared copies.
+ */
+export function materializeDependencyArtifactModules(input: {
+	artifactPrefix: string
+	modules: WorkerLoaderModules
+}) {
+	const marker = `${linkedArtifactsRoot}/`
+	const materialized: Record<string, string> = {}
+	for (const [modulePath, source] of Object.entries(
+		materializePublishedArtifactModules(input),
+	)) {
+		const nested = modulePath.lastIndexOf(`/${marker}`)
+		materialized[nested === -1 ? modulePath : modulePath.slice(nested + 1)] =
+			source
+	}
+	for (const [modulePath, source] of Object.entries(materialized)) {
+		if (!dirname(modulePath).endsWith(`/${linkedPackageImportPrefix}`)) {
+			continue
+		}
+		materialized[modulePath] = source.replace(
+			/(["'])\.\/artifacts\/([^"']+)\1/g,
+			(_match, quote: string, artifactPath: string) =>
+				`${quote}${createRelativeImportSpecifier(
+					modulePath,
+					joinPath(linkedArtifactsRoot, artifactPath),
+				)}${quote}`,
+		)
+	}
+	return materialized
 }
 
 function isStandaloneDynamicPackageImportPlaceholder(source: string) {

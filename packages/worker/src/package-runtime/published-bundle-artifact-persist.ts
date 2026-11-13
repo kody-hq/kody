@@ -12,7 +12,10 @@ import {
 } from '#worker/repo/published-bundle-artifacts-repo.ts'
 import type { EntitySourceRow } from '#worker/repo/types.ts'
 import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
-import type { PublishedPackageArtifactBuildTarget } from './package-artifact-targets.ts'
+import {
+	publishedPackageArtifactBuildKey,
+	type PublishedPackageArtifactBuildTarget,
+} from './package-artifact-targets.ts'
 import { packageBindingRewriteVersion } from './pre-binding-artifact-repair.ts'
 import {
 	type BundleArtifactDependency,
@@ -358,6 +361,44 @@ export async function buildPublishedPackageArtifactTargetBundle(
 			const bundleKind: never = input.target.bundleKind
 			throw new Error(`Unhandled package artifact bundle kind: ${bundleKind}`)
 		}
+	}
+}
+
+/**
+ * Builds each distinct bundle once. Five jobs and an export on one entry
+ * file are six targets but one `module` bundle, and every build composes the
+ * entry's `kody:@` imports, so rebuilding it per target multiplied that cost.
+ */
+export function memoizePublishedPackageArtifactBuilders(
+	builders: PublishedPackageArtifactBuilders,
+): PublishedPackageArtifactBuilders {
+	type Build = PublishedPackageArtifactBuilders['buildModuleBundle']
+	const built = new Map<string, ReturnType<Build>>()
+	const once =
+		(
+			bundleKind: PublishedPackageArtifactBuildTarget['bundleKind'],
+			build: Build,
+		): Build =>
+		(args) => {
+			const key = publishedPackageArtifactBuildKey({
+				bundleKind,
+				entryPoint: args.entryPoint,
+			})
+			let pending = built.get(key)
+			if (!pending) {
+				pending = build(args)
+				built.set(key, pending)
+			}
+			return pending
+		}
+	return {
+		buildAppBundle: once('app', builders.buildAppBundle),
+		buildAppClientBundle: once('app-client', builders.buildAppClientBundle),
+		buildModuleBundle: once('module', builders.buildModuleBundle),
+		buildImportableModuleBundle: once(
+			'importable-module',
+			builders.buildImportableModuleBundle,
+		),
 	}
 }
 

@@ -61,6 +61,7 @@ import {
 import type { PreparedKodyGraphCache } from '#worker/package-runtime/module-graph.ts'
 import {
 	buildPublishedPackageArtifactTargetBundle,
+	memoizePublishedPackageArtifactBuilders,
 	type PublishedPackageArtifactBuilders,
 } from '#worker/package-runtime/published-bundle-artifact-persist.ts'
 import {
@@ -108,6 +109,7 @@ import {
 	type IsolatedCheckPhaseRequest,
 } from './isolated-check-phases.ts'
 import {
+	artifactBuildFailureMessage,
 	isRepoCheckStep,
 	type RepoCheckStep,
 } from './isolated-runner-limit-message.ts'
@@ -3600,7 +3602,10 @@ class RepoSessionBase extends DurableObject<Env> {
 				}
 				results.push({
 					ok: false,
-					message: getErrorMessage(outcome.error),
+					message: artifactBuildFailureMessage(
+						getErrorMessage(outcome.error),
+						'rebuild',
+					),
 					...(isUserCodeError(outcome.error) ? { callerFailure: true } : {}),
 					target: outcome.target,
 				})
@@ -3899,7 +3904,7 @@ class RepoSessionBase extends DurableObject<Env> {
 			prepareCache: input.prepareCache,
 			...(input.linkKodyPackageImports ? { linkKodyPackageImports: true } : {}),
 		}
-		return {
+		return memoizePublishedPackageArtifactBuilders({
 			buildAppBundle: async ({ entryPoint }) =>
 				await buildKodyAppBundle({ ...shared, entryPoint, cacheKey: null }),
 			buildAppClientBundle: async ({ entryPoint }) =>
@@ -3911,7 +3916,7 @@ class RepoSessionBase extends DurableObject<Env> {
 				await buildKodyModuleBundle({ ...shared, entryPoint }),
 			buildImportableModuleBundle: async ({ entryPoint }) =>
 				await buildKodyImportableModuleBundle({ ...shared, entryPoint }),
-		}
+		})
 	}
 
 	/**
@@ -3976,7 +3981,7 @@ class RepoSessionBase extends DurableObject<Env> {
 			} catch (error) {
 				results.push({
 					ok: false,
-					message: getErrorMessage(error),
+					message: artifactBuildFailureMessage(getErrorMessage(error), 'check'),
 					...(isUserCodeError(error) ? { callerFailure: true } : {}),
 					target,
 				})
