@@ -1,5 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
+import type { PublishedPackageArtifactBuildTarget } from '#worker/package-runtime/package-artifact-targets.ts'
 import {
 	createIsolatedArtifactRebuildRunner,
 	isolatedArtifactRebuildStagingKeyBelongsToUser,
@@ -188,26 +189,28 @@ test('memoized builders build an export and the jobs on its entry once', async (
 		buildModuleBundle: bundle('module'),
 		buildImportableModuleBundle: bundle('importable-module'),
 	})
-	const targets = [
+	const targets: Array<PublishedPackageArtifactBuildTarget> = [
 		{ kind: 'module', entryPoint: 'src/job.ts', bundleKind: 'module' },
 		{
 			kind: 'importable-module',
 			entryPoint: 'src/job.ts',
 			bundleKind: 'importable-module',
 		},
-		...['a', 'b', 'c', 'd', 'e'].map((artifactName) => ({
-			kind: 'job',
-			artifactName,
-			entryPoint: 'src/job.ts',
-			bundleKind: 'module',
-		})),
+		...['a', 'b', 'c', 'd', 'e'].map(
+			(artifactName): PublishedPackageArtifactBuildTarget => ({
+				kind: 'job',
+				artifactName,
+				entryPoint: 'src/job.ts',
+				bundleKind: 'module',
+			}),
+		),
 		{
 			kind: 'job',
 			artifactName: 'f',
 			entryPoint: 'src/other.ts',
 			bundleKind: 'module',
 		},
-	] as const
+	]
 	const built = await Promise.all(
 		targets.map((target) =>
 			buildPublishedPackageArtifactTargetBundle({ ...builders, target }),
