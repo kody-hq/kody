@@ -31,6 +31,7 @@ import {
 	deleteFile,
 	getFile,
 	getFileAsset,
+	listFileDirectory,
 	listFiles,
 	writeFile,
 	manageFile,
@@ -593,8 +594,128 @@ test('folder contributors can create inside their folder without root creation a
 			f.context(f.reader, null),
 		)
 	await expect(createChild(folder.id)).resolves.toMatchObject({ ok: true })
-	await expect(createChild()).rejects.toThrow(/access/)
-	await expect(createChild(f.hidden.id)).rejects.toThrow(/access/)
+	await expect(createChild()).rejects.toMatchObject({
+		code: 'missing_permission',
+		message: expect.stringMatching(/^Missing file:create\. An org Owner /),
+	})
+	await expect(createChild(f.hidden.id)).rejects.toThrow(
+		`Missing file:write on file "${f.hidden.id}". An org Owner can grant it.`,
+	)
+	await expect(createChild(crypto.randomUUID())).rejects.toThrow(
+		'Parent page or directory not found.',
+	)
 	expect(f.store.write).toHaveBeenCalledTimes(1)
 	f.sqlite.close()
+})
+
+const genericDenial = 'You do not have access to this file operation.'
+
+test('a missing file or ancestor reads as not found, not as a permission denial', async () => {
+	const f = await fixture()
+	try {
+		const orphan = { ...f.file, parentId: crypto.randomUUID() }
+		f.store.metadata.mockImplementation(async (_owner, id) =>
+			id === orphan.id ? orphan : (null as unknown as FileMetadata),
+		)
+		await f.grant('file', f.hidden.id, ['file:read'])
+		const missing = getFile(f.context(), crypto.randomUUID())
+		await expect(missing).rejects.toThrow('File not found.')
+		await expect(missing).rejects.not.toThrow(genericDenial)
+		await expect(getFile(f.context(), orphan.id)).rejects.toThrow(
+			'Parent page or directory not found.',
+		)
+		await expect(listFileDirectory(f.context(), orphan.id)).rejects.toThrow(
+			'Parent page or directory not found.',
+		)
+		expect(f.store.read).not.toHaveBeenCalled()
+	} finally {
+		f.sqlite.close()
+	}
+})
+
+test('file denials surface the authorizer message instead of a generic sentence', async () => {
+	const f = await fixture()
+	try {
+		await expect(getFile(f.context(), f.file.id)).rejects.toMatchObject({
+			name: 'AuthorizationError',
+			code: 'missing_permission',
+			message: expect.stringMatching(/^Missing file:read\. An org Owner /),
+		})
+		const directory = { ...f.file, accessMode: 'restricted' as const }
+		f.store.metadata.mockResolvedValue(directory)
+		await f.grant('org', f.owner, ['file:read'])
+		await expect(listFileDirectory(f.context(), directory.id)).rejects.toThrow(
+			`Missing file:read on file "${directory.id}". An org Owner can grant it.`,
+		)
+		f.store.metadata.mockResolvedValue(f.file)
+		await f.grant('file', f.file.id, ['file:read'])
+		const write = writeFile(f.context(), {
+			file_id: f.file.id,
+			write_id: crypto.randomUUID(),
+			base_revision_id: f.file.revisionId,
+			content: 'unauthorized',
+		})
+		await expect(write).rejects.toThrow(
+			`Missing file:write on file "${f.file.id}". An org Owner can grant it.`,
+		)
+		await expect(write).rejects.not.toThrow(genericDenial)
+		await expect(deleteFile(f.context(), f.file.id)).rejects.toThrow(
+			`Missing file:delete on file "${f.file.id}". An org Owner can grant it.`,
+		)
+		expect(f.store.write).not.toHaveBeenCalled()
+	} finally {
+		f.sqlite.close()
+	}
+})
+
+test('a profile denial names the profile grant the file operation lacks', async () => {
+	const f = await fixture()
+	try {
+		const ownerContext = f.context(f.owner, 'owner')
+		const profile = await createProfile(
+			{
+				env: f.env,
+				request: ownerContext.callerContext.request!,
+				orgId: f.owner,
+				actor: { userId: f.owner, profileId: null, isOwner: true },
+				holds: () => true,
+			},
+			{
+				name: 'file-reviewer',
+				grants: [
+					{
+						resourceType: 'file',
+						resourceId: f.file.id,
+						permissions: ['file:read'],
+					},
+				],
+			},
+		)
+		const scoped = {
+			env: f.env,
+			callerContext: createMcpCallerContext({
+				baseUrl: 'http://localhost',
+				source: { kind: 'session' },
+				user: ownerContext.callerContext.user,
+				orgBinding: {
+					org: { id: ownerIdFromStored(f.owner), slug: 'file-owner' },
+					role: 'owner',
+				},
+				profileId: profile.id,
+			}),
+		}
+		await expect(
+			writeFile(scoped, {
+				file_id: f.file.id,
+				write_id: crypto.randomUUID(),
+				base_revision_id: f.file.revisionId,
+				content: 'no access',
+			}),
+		).rejects.toMatchObject({
+			code: 'profile_grant',
+			message: `Profile "file-reviewer" was not granted file:write on file "${f.file.id}". The person it acts for can grant it (accessGrant with subject_type "profile").`,
+		})
+	} finally {
+		f.sqlite.close()
+	}
 })
