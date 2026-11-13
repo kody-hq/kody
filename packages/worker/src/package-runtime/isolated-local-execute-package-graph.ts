@@ -27,6 +27,7 @@ import {
 	runWithRequestPermissions,
 } from '#worker/authorization/authorize.ts'
 import { loadPackageSourceRowForUser } from '#worker/package-registry/source.ts'
+import { listPublishedBundleArtifactsBySourceId } from '#worker/repo/published-bundle-artifacts-repo.ts'
 import { servingCommitForSource } from '#worker/repo/serving-commit.ts'
 import { isDurableObjectIsolateResourceLimitResetMessage } from '#worker/sentry-options.ts'
 import {
@@ -156,7 +157,9 @@ export async function serveLocalExecutePackageGraph(input: {
 /**
  * Content address for the unsigned graph: org, base URL (baked into
  * rewritten modules), worker version (the rewrite code), and each direct
- * import's package id and serving commit. Throws for an import that does
+ * import's package id, serving commit, and artifact rows (a repair rebuilds
+ * artifacts at the same commit; dependents of a changed dependency are
+ * rebuilt too, so their rows change with it). Throws for an import that does
  * not resolve. Null when a package has no served commit yet; the build then
  * reports why.
  */
@@ -166,7 +169,9 @@ async function resolvePackageGraphCacheKey(input: {
 	userId: OwnerId
 	imports: ReadonlyArray<string>
 }): Promise<{ key: string; packageIds: Array<string> } | null> {
-	const parts: Array<[string, string, string, string]> = []
+	const parts: Array<
+		[string, string, string, string, Array<[string, string, string]>]
+	> = []
 	for (const specifier of input.imports) {
 		const resolved = await resolveSavedPackageImport({
 			db: input.env.APP_DB,
@@ -186,7 +191,24 @@ async function resolvePackageGraphCacheKey(input: {
 		})
 		const commit = servingCommitForSource(source)
 		if (!commit) return null
-		parts.push([specifier, resolved.row.id, resolved.row.sourceId, commit])
+		const artifacts = await listPublishedBundleArtifactsBySourceId(
+			input.env.APP_DB,
+			resolved.row.userId,
+			resolved.row.sourceId,
+		)
+		parts.push([
+			specifier,
+			resolved.row.id,
+			resolved.row.sourceId,
+			commit,
+			artifacts
+				.map((artifact): [string, string, string] => [
+					artifact.id,
+					artifact.kvKey,
+					artifact.updatedAt,
+				])
+				.sort(([left], [right]) => left.localeCompare(right)),
+		])
 	}
 	parts.sort(([left], [right]) => left.localeCompare(right))
 	const digest = await sha256Hex(

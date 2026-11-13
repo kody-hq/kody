@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
 	buildUnsigned: vi.fn(),
 	resolveSavedPackageImport: vi.fn(),
 	loadPackageSourceRowForUser: vi.fn(),
+	listArtifacts: vi.fn(),
 }))
 
 vi.mock('./local-execute-package-graph.ts', async () => {
@@ -48,15 +49,32 @@ vi.mock('#worker/package-registry/source.ts', () => ({
 		mocks.loadPackageSourceRowForUser(...args),
 }))
 
+vi.mock('#worker/repo/published-bundle-artifacts-repo.ts', () => ({
+	listPublishedBundleArtifactsBySourceId: (...args: Array<unknown>) =>
+		mocks.listArtifacts(...args),
+}))
+
 const userId = ownerIdFromStored('user-1')
 const baseUrl = 'https://heykody.dev'
 
-type Pkg = { name: string; id: string; sourceId: string; commit: string }
+type Pkg = {
+	name: string
+	id: string
+	sourceId: string
+	commit: string
+	artifactUpdatedAt: string
+}
 let packages: Map<string, Pkg>
 
 function addPackage(name: string, commit = 'commit-1') {
 	const leaf = name.split('/')[1]!
-	const pkg = { name, id: `pkg-${leaf}`, sourceId: `src-${leaf}`, commit }
+	const pkg = {
+		name,
+		id: `pkg-${leaf}`,
+		sourceId: `src-${leaf}`,
+		commit,
+		artifactUpdatedAt: '2026-11-01T00:00:00.000Z',
+	}
 	packages.set(name, pkg)
 	return pkg
 }
@@ -155,7 +173,9 @@ beforeEach(() => {
 				.slice(0, 2)
 				.join('/')
 			const pkg = packages.get(name)
-			return pkg ? { row: { id: pkg.id, sourceId: pkg.sourceId, name } } : null
+			return pkg
+				? { row: { id: pkg.id, sourceId: pkg.sourceId, userId, name } }
+				: null
 		},
 	)
 	mocks.loadPackageSourceRowForUser.mockImplementation(
@@ -164,6 +184,20 @@ beforeEach(() => {
 				(entry) => entry.sourceId === input.sourceId,
 			)!
 			return { published_commit: pkg.commit, serving_commit: pkg.commit }
+		},
+	)
+	mocks.listArtifacts.mockImplementation(
+		async (_db: unknown, _userId: string, sourceId: string) => {
+			const pkg = [...packages.values()].find(
+				(entry) => entry.sourceId === sourceId,
+			)!
+			return [
+				{
+					id: `artifact-${pkg.id}`,
+					kvKey: `kv-${pkg.id}-${pkg.commit}`,
+					updatedAt: pkg.artifactUpdatedAt,
+				},
+			]
 		},
 	)
 	mocks.buildUnsigned.mockImplementation(async (input: { code: string }) =>
@@ -225,6 +259,35 @@ test('a new commit on an imported package misses the cache and rebuilds', async 
 	)
 })
 
+test('an artifact repaired at the same commit misses the cache and rebuilds', async () => {
+	const hub = addPackage('@acme/hub')
+	const { env, store } = createEnv()
+
+	await serve(env, hubCode)
+	hub.artifactUpdatedAt = '2026-11-02T00:00:00.000Z'
+	await serve(env, hubCode)
+
+	expect(mocks.buildUnsigned).toHaveBeenCalledTimes(2)
+	expect(store.size).toBe(2)
+})
+
+test('entry code that imports an internal runtime module is rejected even when the graph is cached', async () => {
+	addPackage('@acme/hub')
+	const { env } = createEnv()
+	await serve(env, hubCode)
+
+	const error = await serve(
+		env,
+		`import hub from 'kody:@acme/hub/run'
+import { stamp } from './.__kody_packages__/pkg-hub/.__kody_virtual__/runtime.js'
+export default async () => [hub(), stamp]`,
+	).catch((caught: unknown) => caught)
+
+	expect(error).toBeInstanceOf(LocalExecutePackageGraphError)
+	expect((error as Error).message).toContain('.__kody_virtual__/')
+	expect(mocks.buildUnsigned).toHaveBeenCalledTimes(1)
+})
+
 test('a build over the isolate limits fails only its own request and names the package', async () => {
 	addPackage('@acme/huge')
 	addPackage('@acme/small')
@@ -272,6 +335,20 @@ export default async () => small()`
 test('a graph that resolved packages beyond its keyed imports is not cached', async () => {
 	addPackage('@acme/hub')
 	const nested = addPackage('@acme/nested')
+	mocks.listArtifacts.mockImplementation(
+		async (_db: unknown, _userId: string, sourceId: string) => {
+			const pkg = [...packages.values()].find(
+				(entry) => entry.sourceId === sourceId,
+			)!
+			return [
+				{
+					id: `artifact-${pkg.id}`,
+					kvKey: `kv-${pkg.id}-${pkg.commit}`,
+					updatedAt: pkg.artifactUpdatedAt,
+				},
+			]
+		},
+	)
 	mocks.buildUnsigned.mockImplementation(async (input: { code: string }) =>
 		unsignedGraphFor(importsIn(input.code), [nested.id]),
 	)
