@@ -132,7 +132,7 @@ test('a sealed token moved to another server, slot, or owner fails to open', asy
 	})
 })
 
-test('existing plaintext connections keep working and are resealed on read', async () => {
+test('plaintext OAuth secrets fail closed and are left for the backfill', async () => {
 	const { storage, values } = createMemoryStorage()
 	values.set(tokenKey, { access_token: 'legacy', token_type: 'Bearer' })
 	values.set('/Kody/server-a/oauth_discovery', { issuer: 'x' })
@@ -142,9 +142,13 @@ test('existing plaintext connections keep working and are resealed on read', asy
 	)
 	provider.serverId = 'server-a'
 	provider.clientId = 'client-1'
-	expect(await provider.tokens()).toMatchObject({ access_token: 'legacy' })
-	expect(values.get(tokenKey)).toMatch(/^v2\./)
-	expect(await provider.tokens()).toMatchObject({ access_token: 'legacy' })
+	await expect(provider.tokens()).rejects.toThrow(
+		'Unable to decrypt platform secret.',
+	)
+	expect(values.get(tokenKey)).toEqual({
+		access_token: 'legacy',
+		token_type: 'Bearer',
+	})
 	expect(values.get('/Kody/server-a/oauth_discovery')).toEqual({ issuer: 'x' })
 })
 

@@ -191,22 +191,17 @@ export async function readGuestClaimCode(
 	env: Pick<Env, 'SECRET_STORE_KEY'>,
 	guest: GuestAccount,
 ): Promise<string | null> {
-	if (guest.claimCodeEncrypted) {
-		const code = await openPlatformSecret(
-			env,
-			'guest-claim-code',
-			guestClaimCodeContext(guest.personId),
-			guest.claimCodeEncrypted,
-		).catch(() => null)
-		if (!code || !isGuestClaimCodeShape(code)) return null
-		const expected = await guestClaimCodeHash(code)
-		return (await timingSafeEqualString(expected, guest.claimCodeLookup))
-			? code
-			: null
-	}
-	// Legacy plaintext row: remove with the backfill compatibility reads.
-	return isGuestClaimCodeShape(guest.claimCodeLookup)
-		? guest.claimCodeLookup
+	if (!guest.claimCodeEncrypted) return null
+	const code = await openPlatformSecret(
+		env,
+		'guest-claim-code',
+		guestClaimCodeContext(guest.personId),
+		guest.claimCodeEncrypted,
+	).catch(() => null)
+	if (!code || !isGuestClaimCodeShape(code)) return null
+	const expected = await guestClaimCodeHash(code)
+	return (await timingSafeEqualString(expected, guest.claimCodeLookup))
+		? code
 		: null
 }
 
@@ -241,24 +236,13 @@ export async function readGuestAccountByClaimCode(
 ): Promise<GuestAccount | null> {
 	if (!isGuestClaimCodeShape(claimCode)) return null
 	const hash = await guestClaimCodeHash(claimCode)
-	// Second bind matches legacy plaintext rows until the backfill finishes.
 	const row = await env.APP_DB.prepare(
-		`SELECT * FROM guest_accounts WHERE claim_code IN (?, ?)`,
+		`SELECT * FROM guest_accounts WHERE claim_code = ?`,
 	)
-		.bind(hash, claimCode)
+		.bind(hash)
 		.first<GuestAccountRow>()
-	if (!row) return null
-	if (await timingSafeEqualString(row.claim_code, hash)) {
-		return toGuestAccount(row)
-	}
-	if (!(await timingSafeEqualString(row.claim_code, claimCode))) return null
-	await sealLegacyGuestClaimCode(env, row.person_id, claimCode)
-	const sealed = await env.APP_DB.prepare(
-		`SELECT * FROM guest_accounts WHERE person_id = ? AND claim_code = ?`,
-	)
-		.bind(row.person_id, hash)
-		.first<GuestAccountRow>()
-	return sealed ? toGuestAccount(sealed) : null
+	if (!row || !(await timingSafeEqualString(row.claim_code, hash))) return null
+	return toGuestAccount(row)
 }
 
 export type GuestClaimCodeBackfillResult = {

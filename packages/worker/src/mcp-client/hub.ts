@@ -425,7 +425,6 @@ class McpClientHubBase extends DurableObject<Env> {
 	 * sessions are dropped first because start restores connections.
 	 */
 	private async restoreSanitizedConnections() {
-		await this.moveStaticTransportHeadersToSealedStorage({ dryRun: false })
 		await this.hydrateStaticTransportHeaders()
 		sanitizeStoredMcpSessions(this.ctx.storage, {
 			keepLegacyHandshakeIds: await this.readLegacyHandshakeServerIds(),

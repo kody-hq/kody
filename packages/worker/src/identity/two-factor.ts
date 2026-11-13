@@ -53,34 +53,21 @@ export function sealTotpSecret(
 	)
 }
 
-/**
- * Opens a stored TOTP secret. Rows written before sealing hold the base32
- * secret itself; those are re-sealed in place (compare-and-swap on the old
- * value) and the plaintext is returned so existing 2FA keeps working.
- * Remove the legacy branch once the backfill reports zero plaintext rows.
- */
+/** Opens a stored TOTP secret. Anything not sealed fails closed. */
 async function openStoredTotpSecret(
 	env: TwoFactorEnv,
 	target: string,
-	type: TwoFactorVerificationType,
 	stored: string,
 ) {
-	if (isSealedSecretPayload(stored)) {
-		return openPlatformSecret(
-			env,
-			'totp-secret',
-			totpSecretContext(target),
-			stored,
-		)
+	if (!isSealedSecretPayload(stored)) {
+		throw new Error('Unable to decrypt platform secret.')
 	}
-	const sealed = await sealTotpSecret(env, target, stored)
-	await env.APP_DB.prepare(
-		`UPDATE verifications SET secret = ?
-		 WHERE target = ? AND type = ? AND secret = ?`,
+	return openPlatformSecret(
+		env,
+		'totp-secret',
+		totpSecretContext(target),
+		stored,
 	)
-		.bind(sealed, target, type, stored)
-		.run()
-	return stored
 }
 
 export async function findTwoFactorVerification(
@@ -173,7 +160,6 @@ export async function verifyTwoFactorCode(input: {
 	const secret = await openStoredTotpSecret(
 		input.env,
 		getTwoFactorTarget(input.userId),
-		input.type,
 		verification.secret,
 	)
 	const result = await verifyTOTP({

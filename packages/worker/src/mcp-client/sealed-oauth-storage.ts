@@ -89,9 +89,7 @@ export async function openMcpOAuthStorageValue(input: {
 	const serverId = mcpOAuthSecretServerId(input.key)
 	if (!serverId || input.value === undefined) return input.value
 	if (!isSealedSecretPayload(input.value)) {
-		// Plaintext written before sealing. Callers reseal it in place; the
-		// hub backfill seals the rest. Remove once prod reports zero.
-		return input.value
+		throw new Error('Unable to decrypt platform secret.')
 	}
 	return JSON.parse(
 		await openPlatformSecret(
@@ -130,18 +128,12 @@ async function resealLegacyKey(input: {
 }
 
 async function openEntries(input: {
-	storage: DurableObjectStorage
 	env: SealedStorageEnv
 	ownerId: string
 	entries: Map<string, unknown>
 }) {
 	const opened = new Map<string, unknown>()
 	for (const [key, value] of input.entries) {
-		if (isLegacyPlaintext(key, value)) {
-			await resealLegacyKey({ ...input, key, value })
-			opened.set(key, value)
-			continue
-		}
 		opened.set(
 			key,
 			await openMcpOAuthStorageValue({
@@ -157,8 +149,8 @@ async function openEntries(input: {
 
 /**
  * DurableObjectStorage view for the MCP client hub. get/list open sealed
- * OAuth values (resealing legacy plaintext), put seals them, everything else
- * (other keys, sql, transactions, alarms) passes through unchanged.
+ * OAuth values (plaintext secrets fail closed), put seals them, everything
+ * else (other keys, sql, transactions, alarms) passes through unchanged.
  */
 export function createSealedMcpOAuthStorage(input: {
 	storage: DurableObjectStorage
@@ -177,7 +169,7 @@ export function createSealedMcpOAuthStorage(input: {
 				keyOrKeys,
 				options as DurableObjectGetOptions,
 			)) as Map<string, unknown>
-			return openEntries({ storage, env, ownerId: ownerId(), entries })
+			return openEntries({ env, ownerId: ownerId(), entries })
 		}
 		const value = await storage.get(
 			keyOrKeys,
@@ -185,7 +177,6 @@ export function createSealedMcpOAuthStorage(input: {
 		)
 		if (mcpOAuthSecretServerId(keyOrKeys) === null) return value
 		const opened = await openEntries({
-			storage,
 			env,
 			ownerId: ownerId(),
 			entries: new Map([[keyOrKeys, value]]),
@@ -194,7 +185,7 @@ export function createSealedMcpOAuthStorage(input: {
 	}
 	const list = async (options?: DurableObjectListOptions) => {
 		const entries = await storage.list(options)
-		return openEntries({ storage, env, ownerId: ownerId(), entries })
+		return openEntries({ env, ownerId: ownerId(), entries })
 	}
 	const put = async (
 		keyOrEntries: string | Record<string, unknown>,

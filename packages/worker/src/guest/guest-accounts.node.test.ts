@@ -313,7 +313,7 @@ test('claim codes are stored only as a lookup hash plus a person-bound sealed co
 	expect(await readGuestClaimCode(env, swapped!)).toBeNull()
 })
 
-test('outstanding plaintext claim links keep working and are migrated', async () => {
+test('plaintext claim rows fail closed until the backfill migrates them', async () => {
 	const { sqlite, db, env } = createDb()
 	const first = await createGuest(db)
 	const second = await createGuest(db, '198.51.100.4')
@@ -326,25 +326,16 @@ test('outstanding plaintext claim links keep working and are migrated', async ()
 	legacyCode(first.personId, first.claimCode)
 	legacyCode(second.personId, second.claimCode)
 
-	// Opening a legacy link converts that row in place.
-	expect(
-		(await readGuestAccountByClaimCode(env, first.claimCode))?.personId,
-	).toBe(first.personId)
-	const converted = sqlite
-		.prepare('SELECT claim_code FROM guest_accounts WHERE person_id = ?')
-		.get(first.personId) as { claim_code: string }
-	expect(converted.claim_code).toBe(await guestClaimCodeHash(first.claimCode))
-
-	// A legacy row still shows its own claim link before the backfill.
+	expect(await readGuestAccountByClaimCode(env, first.claimCode)).toBeNull()
 	const legacyRow = await readGuestAccountByPerson(db, second.personId)
-	expect(await readGuestClaimCode(env, legacyRow!)).toBe(second.claimCode)
+	expect(await readGuestClaimCode(env, legacyRow!)).toBeNull()
 
 	expect(
 		await sealPlaintextGuestClaimCodes({ env, dryRun: true, limit: 10 }),
-	).toMatchObject({ scanned: 1, sealed: 0, remainingPlaintext: 1 })
+	).toMatchObject({ scanned: 2, sealed: 0, remainingPlaintext: 2 })
 	expect(
 		await sealPlaintextGuestClaimCodes({ env, dryRun: false, limit: 10 }),
-	).toMatchObject({ scanned: 1, sealed: 1, remainingPlaintext: 0 })
+	).toMatchObject({ scanned: 2, sealed: 2, remainingPlaintext: 0 })
 	expect(
 		await sealPlaintextGuestClaimCodes({ env, dryRun: false, limit: 10 }),
 	).toMatchObject({ scanned: 0, sealed: 0, remainingPlaintext: 0 })
@@ -360,6 +351,12 @@ test('outstanding plaintext claim links keep working and are migrated', async ()
 	expect(
 		(await readGuestAccountByClaimCode(env, second.claimCode))?.personId,
 	).toBe(second.personId)
+	expect(
+		await readGuestClaimCode(
+			env,
+			(await readGuestAccountByPerson(db, second.personId))!,
+		),
+	).toBe(second.claimCode)
 	const plaintext = sqlite
 		.prepare(
 			'SELECT COUNT(*) AS count FROM guest_accounts WHERE claim_code IN (?, ?)',

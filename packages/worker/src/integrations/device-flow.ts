@@ -309,21 +309,15 @@ export async function loadDevicePendingSession(input: {
 	if (!stored) return null
 	let raw: unknown
 	try {
-		if (isSealedSecretPayload(stored)) {
-			raw = JSON.parse(
-				await openPlatformSecret(
-					input.env,
-					'integration-device-session',
-					deviceSessionSecretContext(input.userId, input.sessionId),
-					stored,
-				),
-			)
-		} else {
-			// Plaintext JSON written before sealing. Sessions live at most the
-			// provider's device-code TTL (completion receipts hold no secrets),
-			// so remove this branch once those keys have expired.
-			raw = JSON.parse(stored)
-		}
+		if (!isSealedSecretPayload(stored)) return null
+		raw = JSON.parse(
+			await openPlatformSecret(
+				input.env,
+				'integration-device-session',
+				deviceSessionSecretContext(input.userId, input.sessionId),
+				stored,
+			),
+		)
 	} catch {
 		return null
 	}
