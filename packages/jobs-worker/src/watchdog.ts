@@ -133,6 +133,12 @@ async function maybeCaptureWatchdogAlert(input: {
 	return alerted
 }
 
+/**
+ * Scan silently overdue and stuck-skipped jobs, repair stuck fences, and
+ * re-arm each affected user's JobManager alarm. Caps page accumulation and
+ * Sentry cooldown live in this module; cadence is
+ * `shouldRunJobScheduleWatchdogCron` (every 15 minutes).
+ */
 export async function runJobScheduleWatchdogTick(input: {
 	env: JobsWorkerEnv
 	now?: Date

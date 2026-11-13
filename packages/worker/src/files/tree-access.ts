@@ -5,6 +5,8 @@ import {
 	type EffectivePermissions,
 } from '#worker/authorization/authorize.ts'
 import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+
+/** Tree walk result: grant, missing file/parent, or the authorizer's denial. */
 export type FileTreeDecision =
 	| { allowed: true }
 	| { allowed: false; missing: 'file' | 'parent' }
@@ -64,6 +66,7 @@ export function fileTreeAccess(
 	return error ? { allowed: false, error } : { allowed: false, missing: 'file' }
 }
 
+/** Boolean wrapper over {@link fileTreeAccess}; missing and denial both return false. */
 export function fileTreePermission(
 	access: EffectivePermissions,
 	files: ReadonlyMap<string, FileMetadata>,

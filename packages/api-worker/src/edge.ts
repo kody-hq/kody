@@ -15,9 +15,11 @@ import {
 
 /**
  * Edge half of `api.kody.codes`. Everything here runs before the request
- * reaches origin: CORS, rate limits, header stripping, and the body cap.
- * Authentication and the operation itself run in origin's `KodyApi`
- * entrypoint (`packages/worker/src/open-api/`), next to D1.
+ * reaches origin: CORS, rate limits, header stripping, the 5 MiB JSON body
+ * cap, gateway-fetch streaming (Cloudflare ~100 MiB upload limit), and the
+ * execution-context WebSocket connect hop. Authentication and the operation
+ * itself run in origin's `KodyApi` entrypoint
+ * (`packages/worker/src/open-api/`), next to D1.
  */
 
 export type ApiWorkerEnv = {
@@ -230,6 +232,11 @@ function readRequestId(request: Request) {
 	return request.headers.get('CF-Ray')?.trim() || crypto.randomUUID()
 }
 
+/**
+ * Public `fetch` for this worker: health, CORS, rate limits, body caps, then
+ * origin. JSON routes buffer at {@link maxApiRequestBodyBytes}; gateway-fetch
+ * streams and uses {@link maxGatewayFetchUploadBytes}.
+ */
 export async function handleApiEdgeRequest(
 	request: Request,
 	env: ApiWorkerEnv,

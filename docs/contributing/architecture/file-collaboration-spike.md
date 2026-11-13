@@ -194,8 +194,14 @@ owns the catalog, revision manifests, upload intents, deleted-id tombstones, and
 quota decisions. Immutable content lives in the dedicated `FILE_BLOBS` R2 bucket
 by default; a configured provider can store it in an external R2 or Amazon S3
 bucket. The signed-in `/@org/-/files` page, `fileList`, `fileGet`, `fileCreate`,
-`fileWrite`, and `fileDelete` capabilities, and `/v1/files` API operations all
-use the same authorization service. File grants also work in profile snapshots.
+`fileWrite`, `pagePatch`, and `fileDelete` capabilities, and `/v1/files` API
+operations all use the same authorization service. Tree checks
+(`fileTreeAccess`) intersect restrictions down the ancestry: a missing file or
+parent is not-found, and a denial carries the authorizer's error rather than a
+generic sentence. File grants also work in profile snapshots. Workspace pages
+(`application/vnd.kody.page+json`) store typed blocks (text, numbered lists,
+callouts, Mermaid, collapse, contents, links, tables, and file embeds);
+`pagePatch` edits them by stable block id.
 
 The initial bounds are 64 files per org, 64 KiB of UTF-8 text per revision, and
 16 MiB per binary revision. All revisions count against the workspace allowance.
