@@ -1563,6 +1563,30 @@ export async function entitlementBillingPath(db: D1Database, userId: string) {
 	return (await entitlementOrgPaths(db, userId)).billingPath
 }
 
+/**
+ * The storage byte limit {@link assertWithinEntitlement} would enforce, for
+ * writes that check the limit inside the storage Durable Object instead of
+ * before it.
+ */
+export async function readStorageBytesEntitlementLimit(input: {
+	db: D1Database
+	userId: OwnerId
+	email: string | null | undefined
+}): Promise<number> {
+	const now = new Date()
+	const entitlement = await withLiveLimitOverrides({
+		db: input.db,
+		orgId: input.userId,
+		entitlement: getCachedUserEntitlement(input.db, {
+			userId: input.userId,
+			email: input.email,
+		}),
+		resource: 'storage_bytes',
+		now,
+	})
+	return resolveEntitlementLimit(entitlement, 'storage_bytes', now)
+}
+
 export async function assertWithinStorageBytesEntitlement(input: {
 	db: D1Database
 	userId: OwnerId

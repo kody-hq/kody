@@ -1591,12 +1591,19 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 			deleteValue: vi.fn(),
 			clearStorage: vi.fn(),
 		}))
+	// Run the older-StorageRunner path: pre-write estimate, then the write.
 	vi.spyOn(
 		bridge as unknown as {
-			assertStorageWriteAllowed: (input: unknown) => Promise<void>
+			writeStorageAllowed: (input: {
+				legacyRequested: () => Promise<number> | number
+				legacyWrite: () => Promise<unknown>
+			}) => Promise<unknown>
 		},
-		'assertStorageWriteAllowed',
-	).mockResolvedValue(undefined)
+		'writeStorageAllowed',
+	).mockImplementation(async (input) => {
+		await input.legacyRequested()
+		return await input.legacyWrite()
+	})
 
 	await expect(
 		bridge.packageStorageGet({ packageId: 'package-1', key: 'count' }),
@@ -1696,7 +1703,7 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 	await expect(
 		bridge.storageGet({ storageId: '   ', key: 'x' }),
 	).rejects.toThrow('Package app storage requires a non-empty storage id.')
-	expect(getStorageRunner).toHaveBeenCalledTimes(3)
+	expect(getStorageRunner).toHaveBeenCalledTimes(2)
 })
 
 test('buildPackageAppWorker mints request-bound loopback bindings on every loader callback, never from the cached build', async () => {
