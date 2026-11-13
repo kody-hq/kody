@@ -34,6 +34,7 @@ import type {
 	PublishBuildTargetEntry,
 } from './types.ts'
 import {
+	assertSameBuildUploadMatches,
 	assertServerRebuildMatches,
 	assertSupportedBuilderVersion,
 	matchUploadedTargets,
@@ -220,11 +221,15 @@ export async function persistUploadedPublishBuild(input: {
 		const artifactCache: LinkedDependencyArtifactCache = new Map()
 		// Targets that share a build (an export and the jobs on its file) get
 		// the first one's verified, linked upload; see createUploadedTargetBuilders.
-		const linkedBuilds = new Set<string>()
+		const linkedBuilds = new Map<string, PublishBuildTargetEntry>()
 		for (const { target, uploaded } of matched) {
 			const buildKey = publishedPackageArtifactBuildKey(target)
-			if (linkedBuilds.has(buildKey)) continue
-			linkedBuilds.add(buildKey)
+			const kept = linkedBuilds.get(buildKey)
+			if (kept) {
+				assertSameBuildUploadMatches({ kept, uploaded })
+				continue
+			}
+			linkedBuilds.set(buildKey, uploaded)
 			const dependencies =
 				target.bundleKind === 'app-client'
 					? []

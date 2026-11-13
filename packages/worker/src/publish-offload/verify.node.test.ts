@@ -7,6 +7,7 @@ import {
 import { preparePublishBuildSourceTree } from './source-tree.ts'
 import type { PublishBuildTargetEntry } from './types.ts'
 import {
+	assertSameBuildUploadMatches,
 	PublishBuildVerificationError,
 	assertServerRebuildMatches,
 	matchUploadedTargets,
@@ -368,3 +369,20 @@ for (const [label, modules, message] of [
 		).rejects.toThrow(message)
 	})
 }
+
+test('targets that share a build must upload the same bytes', () => {
+	const upload = (sha256: string): PublishBuildTargetEntry => ({
+		kind: 'job',
+		bundleKind: 'module',
+		artifactName: 'daily',
+		entryPoint: 'src/job.ts',
+		mainModule: 'bundle.js',
+		modules: { 'bundle.js': { sha256, size: 10, chunks: [sha256] } },
+	})
+	expect(() =>
+		assertSameBuildUploadMatches({ kept: upload('a'), uploaded: upload('a') }),
+	).not.toThrow()
+	expect(() =>
+		assertSameBuildUploadMatches({ kept: upload('a'), uploaded: upload('b') }),
+	).toThrow(PublishBuildVerificationError)
+})

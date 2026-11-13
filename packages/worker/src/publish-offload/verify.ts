@@ -419,6 +419,34 @@ export function pickServerRebuildSample<
 		.slice(0, Math.max(0, size))
 }
 
+function moduleHashesKey(entry: PublishBuildTargetEntry) {
+	return JSON.stringify(
+		Object.entries(entry.modules)
+			.map(([path, module]) => [path, module.sha256] as const)
+			.sort(([a], [b]) => a.localeCompare(b)),
+	)
+}
+
+/**
+ * Targets that build the same bundle (an export and the jobs on its entry
+ * file) all serve the upload Kody keeps for that build, so every other upload
+ * for it must carry the same bytes. Otherwise the server rebuild sample could
+ * check an upload Kody never serves.
+ */
+export function assertSameBuildUploadMatches(input: {
+	kept: PublishBuildTargetEntry
+	uploaded: PublishBuildTargetEntry
+}) {
+	if (
+		input.kept.mainModule !== input.uploaded.mainModule ||
+		moduleHashesKey(input.kept) !== moduleHashesKey(input.uploaded)
+	) {
+		fail(
+			`two targets upload different bytes for the same ${input.uploaded.bundleKind} build of "${input.uploaded.entryPoint}", so the upload is not one build of this tree.`,
+		)
+	}
+}
+
 export function assertServerRebuildMatches(input: {
 	uploaded: PublishBuildTargetEntry
 	rebuilt: { mainModule: string; moduleHashes: Record<string, string> }
