@@ -1,0 +1,24 @@
+{
+	"$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+	"name": "kody",
+	"version": "1.0.7",
+	"description": "Your agents' cloud for individuals and teams. Search, execute, packages, jobs, credentials, and durable memory through MCP.",
+	"author": {
+		"name": "Kody",
+		"url": "https://github.com/kody-hq"
+	},
+	"homepage": "https://kody.codes",
+	"repository": "https://github.com/kody-hq/kody",
+	"license": "FSL-1.1-ALv2",
+	"keywords": [
+		"mcp",
+		"agent-cloud",
+		"memory",
+		"credentials",
+		"code-execution",
+		"automation",
+		"packages",
+		"jobs",
+		"teams"
+	]
+}
