@@ -15,6 +15,8 @@ const {
 	assertFeedCoverage,
 	releaseAssetNames,
 	releaseNotes,
+	releasePlan,
+	targetAssetNames,
 	uploadedAssetNames,
 } = require('./release-plan.cjs')
 const {
@@ -93,6 +95,20 @@ function assertFeed(name, text, version, assets, sha512Of) {
 				`${name} sha512 for ${file.url} does not match the release`,
 			)
 	}
+}
+
+function findSupersededDrafts(json, repo, version) {
+	const published = version.split('.').map(Number)
+	return json(['api', '--paginate', '--slurp', `repos/${repo}/releases`])
+		.flat()
+		.filter((release) => {
+			const parts = release.tag_name.match(/^v(\d+)\.(\d+)\.(\d+)$/)
+			if (!release.draft || !parts) return false
+			const order = published
+				.map((part, index) => Number(parts[index + 1]) - part)
+				.find((part) => part !== 0)
+			return order < 0
+		})
 }
 
 function publishRelease({
@@ -204,10 +220,22 @@ function publishRelease({
 		expected,
 	)
 	const uploaded = uploadedAssetNames(release)
-	const missing = expected.filter((name) => !uploaded.includes(name))
+	const missing = releasePlan(scope, {})
+		.matrix.include.map((target) => ({
+			target,
+			names: targetAssetNames(version, target).filter(
+				(name) => !uploaded.includes(name),
+			),
+		}))
+		.filter(({ names }) => names.length)
 	if (missing.length)
 		throw new Error(
-			`Draft ${tag} is missing ${missing.join(', ')}; it stays a draft until a re-run uploads them.`,
+			`Draft ${tag} is missing ${missing
+				.map(
+					({ target, names }) =>
+						`${target.platform} ${target.arch} (${names.join(', ')})`,
+				)
+				.join('; ')}; it stays a draft until a re-run uploads them.`,
 		)
 	const assets = release.assets
 	const sha512Of = (asset) => {
@@ -274,17 +302,28 @@ function publishRelease({
 	if (now.tag_name !== tag)
 		throw new Error(`Published ${tag}, but latest is ${now.tag_name}.`)
 	log(`Published ${tag} with ${expected.length} assets.`)
+	// A draft below the published version can never publish, so drop it
+	// instead of leaving an incomplete release behind.
+	for (const draft of findSupersededDrafts(json, repo, version)) {
+		log(`Deleting superseded draft ${draft.tag_name}.`)
+		gh(['api', '-X', 'DELETE', `repos/${repo}/releases/${draft.id}`])
+	}
 	return { tag, assets: expected.length }
 }
 
 if (require.main === module) {
-	publishRelease({
-		repo: process.env.GH_REPO,
-		version: process.env.RELEASE_VERSION,
-		sourceSha: process.env.SOURCE_SHA,
-		scope: process.env.RELEASE_PLATFORMS || 'mac',
-		assetsDir: process.argv[2] ?? 'release-assets',
-	})
+	try {
+		publishRelease({
+			repo: process.env.GH_REPO,
+			version: process.env.RELEASE_VERSION,
+			sourceSha: process.env.SOURCE_SHA,
+			scope: process.env.RELEASE_PLATFORMS || 'mac',
+			assetsDir: process.argv[2] ?? 'release-assets',
+		})
+	} catch (error) {
+		console.log(`::error title=Desktop release not published::${error.message}`)
+		process.exitCode = 1
+	}
 }
 
 module.exports = { assertFeed, parseFeed, publishRelease }

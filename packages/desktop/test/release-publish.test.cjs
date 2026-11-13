@@ -57,8 +57,19 @@ function writeAssets(contents, names = [...contents.keys()]) {
 	return dir
 }
 
-function fakeGitHub({ contents, draftAssets = [], latest = null }) {
-	const state = { release: null, uploads: [], published: false, calls: [] }
+function fakeGitHub({
+	contents,
+	draftAssets = [],
+	latest = null,
+	otherReleases = [],
+}) {
+	const state = {
+		release: null,
+		others: otherReleases,
+		uploads: [],
+		published: false,
+		calls: [],
+	}
 	let nextId = 1
 	const asset = (name) => ({
 		id: nextId++,
@@ -105,7 +116,14 @@ function fakeGitHub({ contents, draftAssets = [], latest = null }) {
 			return JSON.stringify(state.release)
 		}
 		if (path === `repos/${repo}/releases`)
-			return JSON.stringify([state.release ? [state.release] : []])
+			return JSON.stringify([
+				[...(state.release ? [state.release] : []), ...state.others],
+			])
+		const other = path?.match(/releases\/(\d+)$/)
+		if (other && args.includes('DELETE')) {
+			state.others = state.others.filter((r) => r.id !== Number(other[1]))
+			return ''
+		}
 		if (path === `repos/${repo}/releases/7` && args.includes('PATCH')) {
 			state.published = true
 			state.release.draft = false
@@ -146,13 +164,19 @@ test('publishes a complete release as latest', () => {
 	assert.equal(github.state.uploads.length, contents.size)
 })
 
-test('a failed target leaves a draft and never publishes', () => {
+test('a failed target leaves a draft, names the missing target, and never publishes', () => {
 	const contents = buildAssets()
 	const github = fakeGitHub({ contents })
-	const armOnly = [...contents.keys()].filter((name) => /arm64/.test(name))
+	const x64Only = [...contents.keys()].filter((name) => !/arm64/.test(name))
 	assert.throws(
-		() => run(writeAssets(contents, armOnly), github.gh),
-		/stays a draft/,
+		() => run(writeAssets(contents, x64Only), github.gh),
+		(error) => {
+			assert.equal(
+				error.message,
+				`Draft v${version} is missing mac arm64 (latest-arm64-mac.yml, SHA256SUMS-mac-arm64.txt, build-info-mac-arm64.json, Kody-${version}-mac-arm64.dmg, Kody-${version}-mac-arm64.dmg.blockmap, Kody-${version}-mac-arm64.zip, Kody-${version}-mac-arm64.zip.blockmap); it stays a draft until a re-run uploads them.`,
+			)
+			return true
+		},
 	)
 	assert.equal(github.state.published, false)
 	assert.equal(github.state.release.draft, true)
@@ -214,4 +238,35 @@ test('an unexpected built file is rejected before upload', () => {
 		/not part of this release plan/,
 	)
 	assert.deepEqual(github.state.uploads, [])
+})
+
+test('publishing deletes drafts below the published version and keeps the rest', () => {
+	const contents = buildAssets()
+	const draft = (id, tag) => ({ id, tag_name: tag, draft: true, assets: [] })
+	const github = fakeGitHub({
+		contents,
+		otherReleases: [
+			draft(20, 'v0.1.40'),
+			draft(21, 'v0.0.99'),
+			draft(22, 'v0.1.42'),
+			{ id: 23, tag_name: 'v0.1.39', draft: false, assets: [] },
+		],
+	})
+	run(writeAssets(contents), github.gh)
+	assert.equal(github.state.published, true)
+	assert.deepEqual(
+		github.state.others.map((release) => release.tag_name),
+		['v0.1.42', 'v0.1.39'],
+	)
+})
+
+test('a release that does not publish deletes no drafts', () => {
+	const contents = buildAssets()
+	const github = fakeGitHub({
+		contents,
+		otherReleases: [{ id: 20, tag_name: 'v0.1.40', draft: true, assets: [] }],
+	})
+	const armOnly = [...contents.keys()].filter((name) => /arm64/.test(name))
+	assert.throws(() => run(writeAssets(contents, armOnly), github.gh))
+	assert.ok(!github.state.calls.some((call) => call.includes('DELETE')))
 })

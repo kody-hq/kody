@@ -291,10 +291,20 @@ starting over. Classifier and backoff live in
 The publish job still runs when a build fails. It uploads only assets the
 matching draft does not already have, then publishes as latest only when the
 matching draft has every expected installer and update feed, and those feeds
-match the uploaded files. Otherwise it leaves the draft. Re-run failed jobs, or
-dispatch the same source again, and complete targets are skipped. If a complete
-target's feed hash is wrong, fix that mismatch, remove the draft, and dispatch
-the source again so the assets rebuild.
+match the uploaded files. Otherwise it fails naming each missing target and its
+assets, and leaves the draft. Re-run failed jobs, or dispatch the same source
+again, and complete targets are skipped. If a complete target's feed hash is
+wrong, fix that mismatch, remove the draft, and dispatch the source again so the
+assets rebuild. After publishing, it deletes drafts below the published version,
+since those can never publish.
+
+When a build leg never gets a hosted runner (macOS arm64 capacity is the usual
+cause), the Desktop release runner watch workflow re-runs the failed jobs, up to
+four attempts with growing waits, until every target builds and the draft
+publishes. A leg that ran and failed is not re-run; the watch fails naming it,
+and also fails naming the starved targets when attempts run out. A newer main
+release run supersedes the watch, since it publishes the next version.
+`packages/desktop/scripts/release-runner-watch.cjs` holds that logic.
 
 The default `auto` scope preserves the platforms in the published feed, starting
 with Apple silicon and Intel Mac installers. Run the workflow manually on main
