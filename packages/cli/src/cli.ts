@@ -445,24 +445,23 @@ export function argvIncludesJsonFlag(argv: Array<string>): boolean {
 	return argv.includes('--json')
 }
 
-/**
- * Structured `--json` error body. Additive `sent` when a network hop failed
- * before an HTTP response (`false` = connect phase; `"unknown"` otherwise).
- */
-export function formatCliErrorJson(error: Error): {
+type CliErrorJson = {
 	error: true
 	message: string
 	status?: number
 	code?: string
 	sent?: false | 'unknown'
-} {
-	const body: {
-		error: true
-		message: string
-		status?: number
-		code?: string
-		sent?: false | 'unknown'
-	} = {
+	runId?: string
+	idempotencyKey?: string
+}
+
+/**
+ * Structured `--json` error body. Additive `sent` when a network hop failed
+ * before an HTTP response (`false` = connect phase; `"unknown"` otherwise),
+ * and `runId` / `idempotencyKey` when an execute failed after its run started.
+ */
+export function formatCliErrorJson(error: Error): CliErrorJson {
+	const body: CliErrorJson = {
 		error: true,
 		message: error.message,
 	}
@@ -470,6 +469,8 @@ export function formatCliErrorJson(error: Error): {
 		sent?: unknown
 		status?: unknown
 		code?: unknown
+		runId?: unknown
+		idempotencyKey?: unknown
 	}
 	if (record.sent === false || record.sent === 'unknown') {
 		body.sent = record.sent
@@ -479,6 +480,10 @@ export function formatCliErrorJson(error: Error): {
 	}
 	if (typeof record.code === 'string') {
 		body.code = record.code
+	}
+	if (typeof record.runId === 'string') body.runId = record.runId
+	if (typeof record.idempotencyKey === 'string') {
+		body.idempotencyKey = record.idempotencyKey
 	}
 	return body
 }

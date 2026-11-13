@@ -137,6 +137,8 @@ import {
 	type RunRecordHandle,
 } from '#worker/run-records/types.ts'
 import { scheduleFleetExecuteLastSuccess } from '#worker/execute-health-heartbeat.ts'
+import { recordApiRequestProgress } from '#worker/open-api/request-progress.ts'
+import { executeRunProgressStep } from '@kody-internal/shared/api-request-progress.ts'
 import {
 	entitlementEmailForOwner,
 	ownerIdFromCaller,
@@ -795,6 +797,19 @@ export async function runExecuteToolCall(input: {
 					metadata: executeRunMetadata,
 				},
 			})
+		}
+		if (claimedRunHandle) {
+			// Over the Open API, if this isolate dies while the run goes on
+			// (a run on an execution context keeps going), the edge's 503 can
+			// still name the run. A generated key is not named: its running
+			// row may not be written yet, so a retry with it could run twice.
+			const recorded = recordApiRequestProgress({
+				step: executeRunProgressStep,
+				runId: claimedRunHandle.id,
+				idempotencyKey: runRowOwned ? normalizedIdempotencyKey : null,
+			})
+			if (waitUntil) waitUntil(recorded)
+			else void recorded
 		}
 
 		// Registry assembly and memory retrieval can run package code.

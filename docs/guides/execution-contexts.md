@@ -315,6 +315,26 @@ run moves to the next chain entry or Kody cloud. A run that named one `context`
 without `fallback: "chain"` fails instead, with an error that says to retry when
 a run finishes or pass `fallback: "chain"`.
 
+## Time limits on a machine
+
+Every run on an execution context, whether `execute`, a job, a webhook, a
+subscription, or a package workflow step, stops at the context grant's
+`timeoutMs` instead of the Kody cloud budgets: 90 s by default, up to 15
+minutes. Change it with
+`executionContextUpdate({ id, grant: { limits: { timeoutMs } } })`.
+
+- **`execute`** waits for the result as long as its transport allows (about 45 s
+  over MCP, about 105 s for the CLI's `kody execute --context`), then returns
+  `inProgress: true` with the `runId`. The run keeps going on the machine.
+- **Jobs, webhooks, subscriptions and workflow steps** wait up to 5 minutes for
+  the run on the machine. A longer run is handed off: the automation's result
+  reads `status: "running_on_execution_context"` with the context run's `runId`.
+- **`runGet`** shows the run as `running` until it ends or its deadline passes.
+  Kody reconciles it to `platform_interrupted` (outcome unknown) only a few
+  minutes after that deadline, and only if the machine never reported an end. At
+  the deadline itself the run is stopped and ends with "The run was cancelled
+  (deadline).".
+
 ## Where a run ran: `ranOn`
 
 Every routed `execute` result carries `ranOn` (in MCP `structuredContent`, CLI
