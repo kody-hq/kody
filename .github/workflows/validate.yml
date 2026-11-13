@@ -410,7 +410,7 @@ jobs:
         run: npm run test:node
         env:
           KODY_TEST_MODULE_MAP_OUT:
-            ${{ runner.temp }}/test-module-map/node-unit.json
+            ${{ github.workspace }}/.tmp/test-module-map/node-unit.json
           MIGRATION_VALIDATION_BASE: >-
             ${{ github.event.pull_request.base.sha ||
             github.event.merge_group.base_sha || github.event.before || '' }}
@@ -422,7 +422,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-module-map-node-unit-${{ matrix.shard }}
-          path: ${{ runner.temp }}/test-module-map/node-unit.json
+          path: ${{ github.workspace }}/.tmp/test-module-map/node-unit.json
           retention-days: 7
           if-no-files-found: ignore
 
@@ -503,14 +503,14 @@ jobs:
         run: bash tools/ci/workers-unit-attempt.sh
         env:
           KODY_TEST_MODULE_MAP_OUT:
-            ${{ runner.temp }}/test-module-map/workers-unit.json
+            ${{ github.workspace }}/.tmp/test-module-map/workers-unit.json
 
       - name: 🗺️ Upload test module map
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: test-module-map-workers-unit-${{ matrix.shard }}
-          path: ${{ runner.temp }}/test-module-map/workers-unit.json
+          path: ${{ github.workspace }}/.tmp/test-module-map/workers-unit.json
           retention-days: 7
           if-no-files-found: ignore
 
@@ -599,14 +599,14 @@ jobs:
         run: bash tools/ci/workers-unit-attempt.sh
         env:
           KODY_TEST_MODULE_MAP_OUT:
-            ${{ runner.temp }}/test-module-map/workers-unit.json
+            ${{ github.workspace }}/.tmp/test-module-map/workers-unit.json
 
       - name: 🗺️ Upload test module map
         if: success() && env.RETRY == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: test-module-map-workers-unit-${{ matrix.shard }}
-          path: ${{ runner.temp }}/test-module-map/workers-unit.json
+          path: ${{ github.workspace }}/.tmp/test-module-map/workers-unit.json
           retention-days: 7
           if-no-files-found: ignore
           overwrite: true
