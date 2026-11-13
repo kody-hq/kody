@@ -7,15 +7,12 @@ import {
 	buildMuseSettingsJson,
 	buildOpenClawMcpAddCommand,
 	buildOpenCodeMcpAddCommand,
-	chatGptCustomMcpFallbackNote,
 	chatGptCustomMcpGuideUrl,
+	chatGptDesktopMcpSteps,
 	chatGptDirectoryListingNote,
-	chatGptPluginManagementGuideUrl,
-	codexPluginInstallCommands,
-	kodyPluginMarketplaceSource,
-	kodyPluginReadmeUrl,
-	kodyPluginSideloadSteps,
-	codexMcpLoginCommand,
+	chatGptWebMcpSummary,
+	codexMcpLoginHint,
+	codexSharedConfigNote,
 	defaultKodyMcpUrl,
 	grokBotInstallUrl,
 	grokConnectorsUrl,
@@ -101,15 +98,10 @@ function genericAgent<const Slug extends string>(
 	} satisfies WithAgent
 }
 
-/** Sideload Kody from our plugin marketplace in the ChatGPT or Codex app. */
-const kodyPluginAppSteps = [
-	{
-		text: kodyPluginSideloadSteps.addMarketplace,
-		code: kodyPluginMarketplaceSource,
-		link: { label: 'Kody plugin README', href: kodyPluginReadmeUrl },
-	},
-	{ text: kodyPluginSideloadSteps.install },
-] as const satisfies ReadonlyArray<WithAgentStep>
+/** ChatGPT desktop app: Settings, MCP servers, Add server. */
+const chatGptDesktopWithSteps = chatGptDesktopMcpSteps.map((text, index) =>
+	index === 1 ? { text, code: mcpUrl } : { text },
+) satisfies ReadonlyArray<WithAgentStep>
 
 export const withAgents = [
 	{
@@ -157,13 +149,12 @@ export const withAgents = [
 		youtubeVideoId: 'fuDXGko25u4',
 		steps: [
 			{
-				text: kodyPluginSideloadSteps.codexCli,
-				code: codexPluginInstallCommands,
-			},
-			...kodyPluginAppSteps,
-			{
-				text: `MCP only? Run this instead, then ${codexMcpLoginCommand} if sign-in does not start:`,
+				text: 'Add Kody from your terminal:',
 				code: buildCodexMcpAddCommand(mcpUrl),
+			},
+			{ text: codexMcpLoginHint },
+			{
+				text: `Using the ChatGPT desktop app or the Codex IDE extension? Open Settings (the gear menu in the IDE), select MCP servers, then Add server. Name it Kody, choose Streamable HTTP, paste ${mcpUrl}, save, restart, and select Authenticate. ${codexSharedConfigNote}`,
 			},
 			{ text: chatGptDirectoryListingNote },
 		],
@@ -177,17 +168,9 @@ export const withAgents = [
 			'Use your team\u2019s packages and connected accounts from a ChatGPT conversation, on the web or on your phone.',
 		youtubeVideoId: 'XhEOHp-xAvI',
 		steps: [
-			...kodyPluginAppSteps,
+			...chatGptDesktopWithSteps,
 			{
-				text: kodyPluginSideloadSteps.workspace,
-				link: {
-					label: 'OpenAI plugin management guide',
-					href: chatGptPluginManagementGuideUrl,
-				},
-			},
-			{
-				text: chatGptCustomMcpFallbackNote,
-				code: mcpUrl,
+				text: chatGptWebMcpSummary,
 				link: {
 					label: 'OpenAI custom MCP help',
 					href: chatGptCustomMcpGuideUrl,

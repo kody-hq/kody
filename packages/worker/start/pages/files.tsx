@@ -1101,6 +1101,7 @@ export function FilesPage({
 	return (
 		<ContextMenuSurface resolve={contextActions}>
 			<section
+				data-workspace-files-content={!embedded || undefined}
 				ref={fileSurface}
 				onDragEnterCapture={(event) => {
 					if (event.dataTransfer.types.includes('Files')) {
@@ -1158,10 +1159,16 @@ export function FilesPage({
 					},
 					width: '100%',
 					minWidth: 0,
-					minHeight: embedded ? 0 : '100dvh',
+					minHeight: embedded
+						? 0
+						: 'calc(100dvh - var(--desktop-toolbar-height, 0px))',
 					height: embedded ? '100%' : undefined,
 					flex: embedded ? 1 : undefined,
-					'@media (min-width: 961px)': { height: embedded ? '100%' : '100dvh' },
+					'@media (min-width: 961px)': {
+						height: embedded
+							? '100%'
+							: 'calc(100dvh - var(--desktop-toolbar-height, 0px))',
+					},
 					display: 'flex',
 					flexDirection: 'column',
 				}}

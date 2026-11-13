@@ -150,13 +150,6 @@ async function describeFile(
 		access: s.accessFor(fileId),
 	}
 }
-export async function getFileDescriptor(
-	ctx: CapabilityContext,
-	fileId: string,
-	revisionId?: string,
-) {
-	return describeFile(await scope(ctx, fileId), fileId, revisionId)
-}
 export async function getFileAsset(
 	ctx: CapabilityContext,
 	fileId: string,
@@ -186,9 +179,12 @@ export async function getFile(
 	ctx: CapabilityContext,
 	fileId: string,
 	revisionId?: string,
+	{ streamBinary = false } = {},
 ) {
 	const s = await scope(ctx, fileId)
 	s.require('file:read', fileId)
+	if (streamBinary && s.files.get(fileId)?.encoding === 'base64')
+		return describeFile(s, fileId, revisionId)
 	return {
 		file: await fileOperation(async () => {
 			const metadata = s.files.get(fileId)
