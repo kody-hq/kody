@@ -97,34 +97,22 @@ async function smoke() {
 				'aside[aria-label="Workspace navigation"]',
 			)
 			const brand = sidebar.querySelector('a[href="/"]').getBoundingClientRect()
-			const dragStrip = document.querySelector('[data-desktop-drag-strip]')
 			return {
-				dragWidth: dragStrip?.getBoundingClientRect().width,
-				dragHeight: dragStrip?.getBoundingClientRect().height,
-				cornerWidth: corner.width,
-				cornerBottom: corner.bottom,
+				dragRegion: getComputedStyle(
+					document.querySelector('[data-desktop-navigation]'),
+				).getPropertyValue('-webkit-app-region'),
+				toolbarWidth: corner.width,
+				toolbarBottom: corner.bottom,
 				panelTop: panel.top,
 				brandTop: brand.top,
 				viewportWidth: innerWidth,
 			}
 		})
-		if (process.platform === 'darwin') {
-			assert.equal(layout.dragWidth, layout.viewportWidth)
-			assert.equal(layout.dragHeight, 35)
-		}
-		assert.ok(
-			layout.cornerWidth < layout.viewportWidth / 2,
-			'Desktop controls must stay in the corner.',
-		)
-		assert.equal(
-			layout.panelTop,
-			0,
-			'Desktop controls must not push down the main panel.',
-		)
-		assert.ok(
-			layout.brandTop >= layout.cornerBottom,
-			'Sidebar branding must clear the desktop controls.',
-		)
+		if (process.platform === 'darwin') assert.equal(layout.dragRegion, 'drag')
+		assert.equal(layout.toolbarWidth, layout.viewportWidth)
+		assert.equal(layout.toolbarBottom, 32)
+		assert.equal(layout.panelTop, layout.toolbarBottom)
+		assert.ok(layout.brandTop >= layout.toolbarBottom)
 		await page.screenshot({ path: 'artifacts/desktop-workspace.png' })
 		await page
 			.getByRole('button', { name: 'Page address', exact: true })

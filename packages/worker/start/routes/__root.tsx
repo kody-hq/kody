@@ -338,7 +338,12 @@ function LoadedAppLayout() {
 				<div
 					data-app-frame
 					data-app-interface={pageNavigation ? '' : undefined}
-					css={[appFrameCss, standalone && { minHeight: '100dvh' }]}
+					css={[
+						appFrameCss,
+						standalone && {
+							minHeight: 'var(--app-frame-min-height, 100dvh)',
+						},
+					]}
 				>
 					<a href="#main" css={visuallyHiddenUntilFocusedCss}>
 						Skip to content
@@ -360,6 +365,7 @@ function LoadedAppLayout() {
 						/>
 					)}
 					<Content
+						data-workspace-content={workspace || undefined}
 						id={workspace ? undefined : 'main'}
 						tabIndex={-1}
 						css={
