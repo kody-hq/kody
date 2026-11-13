@@ -1591,19 +1591,12 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 			deleteValue: vi.fn(),
 			clearStorage: vi.fn(),
 		}))
-	// Run the older-StorageRunner path: pre-write estimate, then the write.
 	vi.spyOn(
 		bridge as unknown as {
-			writeStorageAllowed: (input: {
-				legacyRequested: () => Promise<number> | number
-				legacyWrite: () => Promise<unknown>
-			}) => Promise<unknown>
+			writeStorageAllowed: (input: { legacyWrite: () => unknown }) => unknown
 		},
 		'writeStorageAllowed',
-	).mockImplementation(async (input) => {
-		await input.legacyRequested()
-		return await input.legacyWrite()
-	})
+	).mockImplementation(async (input) => await input.legacyWrite())
 
 	await expect(
 		bridge.packageStorageGet({ packageId: 'package-1', key: 'count' }),
@@ -1661,7 +1654,7 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 	await expect(
 		bridge.packageStorageGet({ packageId: 'victim-package', key: 'secret' }),
 	).rejects.toThrow(createPackageStorageAccessDeniedMessage('victim-package'))
-	expect(getValue).toHaveBeenCalledTimes(2)
+	expect(getValue).toHaveBeenCalledTimes(1)
 
 	await expect(
 		bridge.packageStorageClear({ packageId: '   ' }),
