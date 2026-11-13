@@ -21,7 +21,15 @@ const pageTextKinds = [
 	'code',
 	'mermaid',
 ] as const
+/**
+ * Editor limit for new or expanded page table rows. Existing oversized tables
+ * may remain; the page schema accepts larger dimensions.
+ */
 export const workspaceTableMaxRows = 100
+/**
+ * Editor limit for new or expanded page table columns. Existing oversized
+ * tables may remain; the page schema accepts larger dimensions.
+ */
 export const workspaceTableMaxColumns = 30
 
 const blockId = z.string().uuid()
@@ -157,6 +165,7 @@ function markdownText(text: string) {
 		.replace(/^(\s*)([-+]|\d+\.) /gm, '$1\\$2 ')
 }
 
+/** `http`/`https` URLs without userinfo. Drafts and other strings return null. */
 export function workspaceLinkUrl(value: string) {
 	try {
 		const url = new URL(value.trim())
@@ -172,6 +181,7 @@ export function workspaceLinkUrl(value: string) {
 	return null
 }
 
+/** Heading blocks with non-empty text, whitespace collapsed. */
 export function workspaceHeadings(blocks: PageBlock[]) {
 	return blocks.flatMap((block) =>
 		block.kind === 'heading' && block.text.trim()
@@ -180,6 +190,7 @@ export function workspaceHeadings(blocks: PageBlock[]) {
 	)
 }
 
+/** 1-based numbers for consecutive numbered blocks; 0 elsewhere. */
 export function workspaceListNumbers(blocks: PageBlock[]) {
 	let number = 0
 	return blocks.map(
@@ -187,7 +198,12 @@ export function workspaceListNumbers(blocks: PageBlock[]) {
 	)
 }
 
-/** A readable export. Asset links keep their original IDs and access checks. */
+/**
+ * A readable Markdown export. File blocks emit the caller-supplied `href`;
+ * link identity and access control depend on that URL and its destination.
+ * Numbered runs stay tight; tables, collapse, contents, links, callouts, and
+ * Mermaid render as GitHub-flavored Markdown.
+ */
 export function workspacePageMarkdown(
 	title: string,
 	content: string,
