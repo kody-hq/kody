@@ -219,8 +219,8 @@ Open these before proposing a new primitive, surface, or storage home.
 - [0075 — Repo pushes serialize through a per-repo Durable Object in a dedicated worker](./0075-repo-push-queue-worker.md)
   — `kody-push-queue` owns `RepoPushQueueV1`; pack lands before enqueue; FIFO
   one push at a time; 90s budget then 503 `Retry-After: 2`; known-stale old-oids
-  get `ng fetch first`; no fallback; gated by the repo-scoped `repo-push-queue`
-  flag
+  get `ng fetch first` when the client asked for report-status; no fallback;
+  gated by the repo-scoped `repo-push-queue` flag
 - [0076 — CLI login mints a device API token](./0076-cli-login-device-token.md)
   — `POST /v1/tokens/device` exchanges official CLI OAuth for a user-owned
   `kody_at_…`; `POST /v1/execute` is that token with `org:execute`; MCP and

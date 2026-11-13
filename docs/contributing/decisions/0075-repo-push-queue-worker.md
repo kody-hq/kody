@@ -49,9 +49,11 @@ queue.
 
 **Amended (stale fetch-first, 2026-11-13):** Before each Artifacts send, the
 queue checks command old-oids against the tip it last landed and that tip's
-immediate predecessor. When every command's old-oid is that predecessor it
-answers report-status `ng <ref> fetch first` and skips the Artifacts exchange.
-Other report-status still passes through unchanged.
+immediate predecessor. When the client requested report-status and every
+command's old-oid is that predecessor it answers report-status
+`ng <ref> fetch first` and skips the Artifacts exchange. Clients that did not
+request report-status still send. Other report-status still passes through
+unchanged.
 
 **Revisit-if:** Artifacts offers a native per-repo push queue or a lock-wait
 option, or pushes need to resume across a queue instance reset (which would need

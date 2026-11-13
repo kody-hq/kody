@@ -21,9 +21,15 @@ const pageTextKinds = [
 	'code',
 	'mermaid',
 ] as const
-/** Max rows in a page table block. */
+/**
+ * Editor limit for new or expanded page table rows. Existing oversized tables
+ * may remain; the page schema accepts larger dimensions.
+ */
 export const workspaceTableMaxRows = 100
-/** Max columns in a page table block. */
+/**
+ * Editor limit for new or expanded page table columns. Existing oversized
+ * tables may remain; the page schema accepts larger dimensions.
+ */
 export const workspaceTableMaxColumns = 30
 
 const blockId = z.string().uuid()
@@ -193,9 +199,10 @@ export function workspaceListNumbers(blocks: PageBlock[]) {
 }
 
 /**
- * A readable Markdown export. Asset links keep their original IDs and access
- * checks. Numbered runs stay tight; tables, collapse, contents, links,
- * callouts, and Mermaid render as GitHub-flavored Markdown.
+ * A readable Markdown export. File blocks emit the caller-supplied `href`;
+ * link identity and access control depend on that URL and its destination.
+ * Numbered runs stay tight; tables, collapse, contents, links, callouts, and
+ * Mermaid render as GitHub-flavored Markdown.
  */
 export function workspacePageMarkdown(
 	title: string,

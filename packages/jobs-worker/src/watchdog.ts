@@ -15,10 +15,12 @@ import { getWorkerStateValue, putWorkerStateValue } from './store.ts'
 
 /**
  * Platform cron that detects enabled recurring jobs that should already have
- * run (or are permanently skipped by a stuck occurrence fence) and re-arms
- * each affected user's JobManager alarm. Complements at-least-once claim
- * safety: leases recover overlapping runs, but nothing else notices when a
- * per-user Durable Object alarm is lost or a fence leaves next_run_at stuck.
+ * run (or are permanently skipped by a stuck occurrence fence) and
+ * best-effort re-arms each affected user's JobManager alarm (at most 50 users
+ * per tick; individual syncs may fail; scans may be truncated). Complements
+ * at-least-once claim safety: leases recover overlapping runs, but nothing
+ * else notices when a per-user Durable Object alarm is lost or a fence leaves
+ * next_run_at stuck.
  */
 
 /** Due jobs older than this are treated as silently overdue. */
@@ -135,8 +137,9 @@ async function maybeCaptureWatchdogAlert(input: {
 
 /**
  * Scan silently overdue and stuck-skipped jobs, repair stuck fences, and
- * re-arm each affected user's JobManager alarm. Caps page accumulation and
- * Sentry cooldown live in this module; cadence is
+ * best-effort re-arm each affected user's JobManager alarm (at most 50 users
+ * per tick; individual syncs may fail; scans may be truncated). Caps page
+ * accumulation and Sentry cooldown live in this module; cadence is
  * `shouldRunJobScheduleWatchdogCron` (every 15 minutes).
  */
 export async function runJobScheduleWatchdogTick(input: {
