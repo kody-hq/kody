@@ -1,6 +1,7 @@
 import { Extension, Node } from '@tiptap/core'
-import { Fragment, Slice } from '@tiptap/pm/model'
+import { Fragment, Slice, type Node as DocumentNode } from '@tiptap/pm/model'
 import { Plugin } from '@tiptap/pm/state'
+import { ySyncPluginKey } from '@tiptap/y-tiptap'
 import { goToNextCell, tableEditing } from '@tiptap/pm/tables'
 import {
 	workspaceTableMaxRows,
@@ -12,6 +13,14 @@ import {
 } from '#universal/workspace-page-document.ts'
 
 export const workspaceTableLimitMessage = `Tables can have up to ${workspaceTableMaxRows} rows and ${workspaceTableMaxColumns} columns.`
+
+function tableWidth(table: DocumentNode) {
+	let width = 0
+	table.forEach((row) => {
+		width = Math.max(width, row.childCount)
+	})
+	return width
+}
 
 export const WorkspaceTables = Extension.create({
 	name: 'workspaceTables',
@@ -28,15 +37,26 @@ export const WorkspaceTables = Extension.create({
 	addProseMirrorPlugins() {
 		return [
 			new Plugin({
-				filterTransaction: (transaction) => {
-					if (!transaction.docChanged) return true
+				filterTransaction: (transaction, state) => {
+					if (!transaction.docChanged || transaction.getMeta(ySyncPluginKey))
+						return true
+					// Concurrent edits can cross the UI limit. Keep those edits and let
+					// users edit or shrink the merged table without growing it further.
+					const previous = new Map<string, DocumentNode>()
+					state.doc.forEach((table) => {
+						if (table.type.name === 'workspaceTable')
+							previous.set(table.attrs.id, table)
+					})
 					let oversized = false
 					transaction.doc.forEach((table) => {
-						if (table.type.name !== 'workspaceTable') return
-						oversized ||= table.childCount > workspaceTableMaxRows
-						table.forEach((row) => {
-							oversized ||= row.childCount > workspaceTableMaxColumns
-						})
+						if (table.type.name !== 'workspaceTable' || oversized) return
+						const old = previous.get(table.attrs.id)
+						const width = tableWidth(table)
+						oversized =
+							table.childCount >
+								Math.max(workspaceTableMaxRows, old?.childCount ?? 0) ||
+							width >
+								Math.max(workspaceTableMaxColumns, old ? tableWidth(old) : 0)
 					})
 					if (oversized) queueMicrotask(this.options.onTableLimit)
 					return !oversized

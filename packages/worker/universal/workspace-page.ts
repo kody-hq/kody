@@ -50,9 +50,8 @@ const pageBlockSchema = z.union([
 		id: blockId,
 		kind: z.literal('table'),
 		rows: z
-			.array(z.array(z.string()).min(1).max(workspaceTableMaxColumns))
+			.array(z.array(z.string()).min(1))
 			.min(1)
-			.max(workspaceTableMaxRows)
 			.refine((rows) => rows.every((row) => row.length === rows[0]?.length)),
 	}),
 ])
