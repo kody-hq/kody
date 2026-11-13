@@ -31,7 +31,7 @@ function handler(proto, port) {
 		if (variant === 'redirect' && hop) {
 			return res
 				.writeHead(302, {
-					location: `${proto}://localhost:${port}/octet/${name}`,
+					location: `${proto}://127.0.0.1:${port}/final/${name}`,
 					'content-type': 'text/html; charset=utf-8',
 				})
 				.end()
@@ -42,9 +42,8 @@ function handler(proto, port) {
 		if (name.endsWith('.appinstaller')) {
 			const arch = process.env.PROBE_ARCH
 			const v = `${state.version}.0`
-			const self = process.env.PROBE_SELF_BASE
-				? `${proto}://localhost:${port}/${process.env.PROBE_SELF_BASE}`
-				: base
+			const self =
+				variant === 'final' ? `${proto}://localhost:${port}/redirect` : base
 			body = Buffer.from(`<?xml version="1.0" encoding="utf-8"?>
 <AppInstaller Uri="${self}/Kody-win-${arch}.appinstaller" Version="${v}" xmlns="http://schemas.microsoft.com/appx/appinstaller/2018">
   <MainPackage Name="KodyCodes.Kody" Publisher="CN=Kody Desktop CI" Version="${v}" ProcessorArchitecture="${arch}" Uri="${self}/Kody-${state.version}-win-${arch}.msix" />
