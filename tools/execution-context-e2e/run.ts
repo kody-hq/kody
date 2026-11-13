@@ -1,7 +1,8 @@
 /**
  * End-to-end execution context check against a PR preview (never production):
  * register a throwaway context, run the daemon, execute on it with a host
- * folder and a host command, stop the daemon, assert no workerd is left, then revoke and delete.
+ * folder and a host command, run a workflow step on it, stop the daemon,
+ * assert no workerd is left, then revoke and delete.
  * See docs/contributing/execution-context-e2e.md.
  */
 import { execFileSync, fork } from 'node:child_process'
@@ -11,7 +12,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { openRehearsalSession } from '../preview-rehearsal/kody-session.ts'
-import { mintCliToken } from '../preview-rehearsal/cli-token.ts'
+import {
+	callCapability,
+	mintCliToken,
+	readStringAt,
+} from '../preview-rehearsal/cli-token.ts'
 import { shouldRetryExecutionContextCli } from './retry.ts'
 
 const appOrigin = (process.env.PREVIEW_ORIGIN ?? '').replace(/\/+$/, '')
@@ -117,6 +122,89 @@ function findShellResult(
 	return null
 }
 
+type RehearsalSession = Awaited<ReturnType<typeof openRehearsalSession>>
+
+// `workflows.create` with `execution` (ADR 0086): the step runs a package
+// export on the context, so it reads the host folder.
+async function runWorkflowStepOnContext(session: RehearsalSession) {
+	writeFileSync(join(folder, 'workflow.txt'), 'read by the workflow step')
+	const packageJson = {
+		name: `@user-me/${name.slice(0, 50)}-wf`,
+		version: '1.0.0',
+		description: 'Execution context e2e workflow step',
+		exports: { './on-context': './src/on-context.ts' },
+		kody: { description: 'Execution context e2e workflow step' },
+	}
+	const saved = await callCapability(session, 'packageSave', {
+		files: [
+			{
+				path: 'package.json',
+				content: `${JSON.stringify(packageJson, null, 2)}\n`,
+			},
+			{
+				path: 'src/on-context.ts',
+				content: `import { readFile } from 'node:fs/promises'
+export default async function onContext(params) {
+	const sep = params.folder.includes('\\\\') ? '\\\\' : '/'
+	return { read: await readFile(params.folder + sep + 'workflow.txt', 'utf8') }
+}
+`,
+			},
+		],
+	})
+	const packageId = readStringAt(saved, ['package_id'], 'packageSave')
+	const created = await session.execute(
+		`import { workflows } from 'kody:runtime'
+export default async function main(params) {
+	return await workflows.create(params)
+}
+`,
+		{
+			exportName: './on-context',
+			packageId,
+			params: { folder },
+			execution: { context: name },
+		},
+	)
+	const workflowId = readStringAt(created, ['id'], 'workflows.create')
+	log(`workflow ${workflowId} created on ${name}`)
+	const deadline = Date.now() + 180_000
+	for (;;) {
+		const listed = (await session.api('runList', {
+			workflow_id: workflowId,
+			error_triage: 'all',
+		})) as {
+			runs?: Array<{
+				status?: string
+				error_message?: string | null
+				metadata?: { result?: unknown }
+			}>
+		}
+		const run = listed?.runs?.[0]
+		if (run?.status === 'success') {
+			if (
+				!JSON.stringify(run.metadata?.result).includes('read by the workflow')
+			)
+				throw new Error(
+					`The workflow step did not read the host folder: ${JSON.stringify(run.metadata?.result)}`,
+				)
+			break
+		}
+		if (run?.status === 'error')
+			throw new Error(`The workflow step failed: ${run.error_message}`)
+		if (Date.now() > deadline)
+			throw new Error(
+				`The workflow step never finished: ${JSON.stringify(listed)}`,
+			)
+		await delay(3000)
+	}
+	log(`workflow step ran on ${name}`)
+	await callCapability(session, 'packageDelete', {
+		package_id: packageId,
+		confirm_name: packageJson.name,
+	}).catch((error: Error) => log(`package delete failed: ${error.message}`))
+}
+
 async function main() {
 	// With `preview-seed:team-org` the seed user is in two orgs and OAuth makes
 	// it pick one; the context lives in the personal org.
@@ -212,6 +300,8 @@ export default async function main() {
 		if (shell?.exitCode !== 0 || !shell.stdout?.includes(shellMarker))
 			throw new Error(`The host command did not run: ${JSON.stringify(shell)}`)
 		log(`host command ok on ${process.platform}`)
+
+		await runWorkflowStepOnContext(session)
 
 		daemon.send('stop')
 		const [code] = await Promise.race([

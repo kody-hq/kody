@@ -217,6 +217,13 @@
 						"name": "FILE_STORE",
 						"script_name": "kody-platform",
 					},
+					// Workflow steps with `execution` dispatch to the context's
+					// session DO, which the platform Worker owns (ADR 0086).
+					{
+						"class_name": "ExecutionContextSessionV1",
+						"name": "EXECUTION_CONTEXT_SESSION",
+						"script_name": "kody-platform",
+					},
 				],
 			},
 			// Jobs worker service binding (ADR 0016): package save/delete paths
@@ -414,6 +421,13 @@
 					{
 						"class_name": "FileStore",
 						"name": "FILE_STORE",
+						"script_name": "kody-platform",
+					},
+					// Workflow steps with `execution` dispatch to the context's
+					// session DO, which the platform Worker owns (ADR 0086).
+					{
+						"class_name": "ExecutionContextSessionV1",
+						"name": "EXECUTION_CONTEXT_SESSION",
 						"script_name": "kody-platform",
 					},
 				],

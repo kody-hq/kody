@@ -22,8 +22,11 @@ Each cell:
 5. Runs `kody execute --context <name>` with a module that reads and writes the
    folder by its native path (`C:\...` on Windows) and runs one
    `kody.command.run` (PowerShell on Windows, `$SHELL` elsewhere).
-6. Sends `stop`, then asserts no `workerd` (`workerd.exe`) process is left.
-7. Revokes and deletes the context.
+6. Saves a throwaway package and runs one of its exports as a `workflows.create`
+   step with `execution: { context }`, then polls `runList` until the step reads
+   the folder on the context.
+7. Sends `stop`, then asserts no `workerd` (`workerd.exe`) process is left.
+8. Revokes and deletes the context.
 
 ## Run it
 
