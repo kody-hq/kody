@@ -4,7 +4,7 @@ import { fetchLinkPreviewTitle } from './link-preview.ts'
 test('fetches a public page title without credentials or redirects', async () => {
 	const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
 		new Response(
-			'<title>Fallback</title><meta property="og:title" content="Project plan">',
+			'<title>Fallback</title><meta property="og:title" content="Research &amp; Development &amp;amp;">',
 			{
 				headers: { 'content-type': 'text/html' },
 			},
@@ -13,7 +13,7 @@ test('fetches a public page title without credentials or redirects', async () =>
 	try {
 		await expect(
 			fetchLinkPreviewTitle('https://example.com/plan#details'),
-		).resolves.toBe('Project plan')
+		).resolves.toBe('Research & Development &amp;')
 		expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
 			new URL('https://example.com/plan'),
 			expect.objectContaining({

@@ -34,6 +34,7 @@ import {
 	WorkspaceTable,
 	WorkspaceTables,
 	workspaceTableParts,
+	workspaceTableLimitMessage,
 } from './workspace-table.ts'
 import StarterKit from '@tiptap/starter-kit'
 import Collaboration from '@tiptap/extension-collaboration'
@@ -172,7 +173,12 @@ function PageContents({
 
 function LinkCard({ title, source }: { title: string; source: string }) {
 	const url = workspaceLinkUrl(source)
-	if (!url) return null
+	if (!url)
+		return (
+			<div className="block-text">
+				{[title, source].filter(Boolean).join('\n')}
+			</div>
+		)
 	return (
 		<a
 			className="block-link-card"
@@ -245,7 +251,11 @@ export function WorkspacePageEditor({
 			...documentExtensions.map((extension) =>
 				collaboration && extension.name === 'starterKit'
 					? extension.configure({ undoRedo: false })
-					: extension,
+					: extension.name === WorkspaceTables.name
+						? extension.configure({
+								onTableLimit: () => setMessage(workspaceTableLimitMessage),
+							})
+						: extension,
 			),
 			...(collaboration
 				? [
@@ -478,7 +488,7 @@ export function WorkspacePageEditor({
 				next = {
 					id,
 					kind: 'link',
-					title: existing?.kind === 'link' ? existing.title : '',
+					title: existing && 'title' in existing ? existing.title : '',
 					text,
 				}
 				break

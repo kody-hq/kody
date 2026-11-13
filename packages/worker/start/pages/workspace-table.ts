@@ -1,11 +1,24 @@
 import { Extension, Node } from '@tiptap/core'
+import { Fragment, Slice } from '@tiptap/pm/model'
 import { Plugin } from '@tiptap/pm/state'
 import { goToNextCell, tableEditing } from '@tiptap/pm/tables'
-import { workspaceTableNodes } from '#universal/workspace-page-document.ts'
+import {
+	workspaceTableMaxRows,
+	workspaceTableMaxColumns,
+} from '#universal/workspace-page.ts'
+import {
+	workspaceTableNodes,
+	inlineContent,
+} from '#universal/workspace-page-document.ts'
+
+export const workspaceTableLimitMessage = `Tables can have up to ${workspaceTableMaxRows} rows and ${workspaceTableMaxColumns} columns.`
 
 export const WorkspaceTables = Extension.create({
 	name: 'workspaceTables',
 	priority: 110,
+	addOptions() {
+		return { onTableLimit: () => {} }
+	},
 	extendNodeSchema(extension) {
 		const name = extension.name as keyof typeof workspaceTableNodes
 		return Object.hasOwn(workspaceTableNodes, name)
@@ -15,6 +28,19 @@ export const WorkspaceTables = Extension.create({
 	addProseMirrorPlugins() {
 		return [
 			new Plugin({
+				filterTransaction: (transaction) => {
+					if (!transaction.docChanged) return true
+					let oversized = false
+					transaction.doc.forEach((table) => {
+						if (table.type.name !== 'workspaceTable') return
+						oversized ||= table.childCount > workspaceTableMaxRows
+						table.forEach((row) => {
+							oversized ||= row.childCount > workspaceTableMaxColumns
+						})
+					})
+					if (oversized) queueMicrotask(this.options.onTableLimit)
+					return !oversized
+				},
 				appendTransaction(transactions, _previous, state) {
 					if (!transactions.some((transaction) => transaction.docChanged))
 						return null
@@ -39,17 +65,37 @@ export const WorkspaceTables = Extension.create({
 					return tr.docChanged ? tr : null
 				},
 				props: {
-					handlePaste(view, event) {
+					handlePaste: (view, event) => {
 						const clipboard = event.clipboardData
-						if (!clipboard || clipboard.getData('text/html')) return false
+						if (!clipboard) return false
+						const sourceKind = view.state.selection.$from.parent.attrs.kind
 						const text = clipboard.getData('text/plain')
-						if (!text.includes('\t')) return false
+						if (text && (sourceKind === 'code' || sourceKind === 'mermaid')) {
+							const content = inlineContent(text.replace(/\r\n?/g, '\n')).map(
+								(node) => view.state.schema.nodeFromJSON(node),
+							)
+							view.dispatch(
+								view.state.tr
+									.replaceSelection(new Slice(Fragment.from(content), 0, 0))
+									.scrollIntoView(),
+							)
+							return true
+						}
+						if (clipboard.getData('text/html') || !text.includes('\t'))
+							return false
 						const rows = text
 							.replace(/\r?\n$/, '')
 							.split(/\r?\n/)
 							.map((row) => row.split('\t'))
 						if (!rows.every((row) => row.length === rows[0]?.length))
 							return false
+						if (
+							rows.length > workspaceTableMaxRows ||
+							rows[0]!.length > workspaceTableMaxColumns
+						) {
+							this.options.onTableLimit()
+							return true
+						}
 						const table = view.dom.ownerDocument.createElement('table')
 						const body = table.createTBody()
 						for (const row of rows) {

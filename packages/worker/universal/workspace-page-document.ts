@@ -44,7 +44,7 @@ export const workspaceTableNodes = {
 	},
 } satisfies Record<string, NodeSpec>
 
-function inlineContent(value: string): JSONContent[] {
+export function inlineContent(value: string): JSONContent[] {
 	return value
 		.split('\n')
 		.flatMap((text, index) => [

@@ -1,3 +1,4 @@
+import { decodeHTML, decodeHTMLAttribute } from 'entities'
 import { assertMcpEventCallbackUrl } from '../mcp/events/ssrf.ts'
 
 const maxPreviewBytes = 128 * 1024
@@ -45,19 +46,21 @@ export async function fetchLinkPreviewTitle(input: string) {
 		await new HTMLRewriter()
 			.on('meta[property="og:title"]', {
 				element(element) {
-					openGraph ||= element.getAttribute('content')?.slice(0, 300) ?? ''
+					openGraph ||= element.getAttribute('content') ?? ''
 				},
 			})
 			.on('title', {
 				text(chunk) {
-					title += chunk.text.slice(0, 300 - title.length)
+					title += chunk.text
 				},
 			})
 			.transform(
 				new Response(bounded, { headers: { 'content-type': 'text/html' } }),
 			)
 			.body?.pipeTo(new WritableStream())
-		return (openGraph.trim() || title.trim()).replace(/\s+/g, ' ') || null
+		const value =
+			decodeHTMLAttribute(openGraph).trim() || decodeHTML(title).trim()
+		return value.replace(/\s+/g, ' ').slice(0, 300) || null
 	} catch {
 		return null
 	}

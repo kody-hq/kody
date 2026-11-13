@@ -21,6 +21,9 @@ const pageTextKinds = [
 	'code',
 	'mermaid',
 ] as const
+export const workspaceTableMaxRows = 100
+export const workspaceTableMaxColumns = 30
+
 const blockId = z.string().uuid()
 const pageBlockSchema = z.union([
 	z.object({
@@ -47,8 +50,9 @@ const pageBlockSchema = z.union([
 		id: blockId,
 		kind: z.literal('table'),
 		rows: z
-			.array(z.array(z.string()).min(1))
+			.array(z.array(z.string()).min(1).max(workspaceTableMaxColumns))
 			.min(1)
+			.max(workspaceTableMaxRows)
 			.refine((rows) => rows.every((row) => row.length === rows[0]?.length)),
 	}),
 ])
