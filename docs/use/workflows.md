@@ -88,6 +88,29 @@ Both shapes accept:
   fresh run
 - `params`: optional JSON object passed to the workflow body
 
+`exportName` workflows also accept `execution`, which runs each step on one of
+your [execution contexts](./execution-contexts.md) instead of Kody cloud. It
+takes the same `context`, `fallback`, `chain`, and `requires` fields as an
+execute run (see [Execute](./execute.md#execution-contexts)), and needs the
+execution contexts experiment on for the caller:
+
+```ts
+import { workflows } from 'kody:runtime'
+
+export default async function main() {
+	return await workflows.create({
+		exportName: './nightly-sync',
+		packageId: 'pkg_123',
+		execution: { context: 'my-laptop' },
+	})
+}
+```
+
+A step needs its result before the next step runs, so `execution` rejects
+`whenOffline: "queue"`. An offline context fails the step (Workflow retries
+apply), and a context run that outlives the step wait fails the step too. Inline
+`code` workflows reject `execution`: a context runs a package export.
+
 `exportName` workflows also accept `sourceRevision`: `'latest'` (the default) or
 `'pinned'`. See
 [Source revision across queue waits and retries](#source-revision-across-queue-waits-and-retries).
