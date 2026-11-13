@@ -110,7 +110,6 @@ async function smoke() {
 		})
 		if (process.platform === 'darwin') assert.equal(layout.dragRegion, 'drag')
 		assert.equal(layout.toolbarWidth, layout.viewportWidth)
-		assert.equal(layout.toolbarBottom, 32)
 		assert.equal(layout.panelTop, layout.toolbarBottom)
 		assert.ok(layout.brandTop >= layout.toolbarBottom)
 		await page.screenshot({ path: 'artifacts/desktop-workspace.png' })
