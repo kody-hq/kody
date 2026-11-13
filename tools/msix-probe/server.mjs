@@ -36,7 +36,7 @@ function handler(proto, port) {
 				})
 				.end()
 		}
-		const octet = variant === 'octet'
+		const octet = variant === 'octet' || variant === 'final'
 		let body
 		let type
 		if (name.endsWith('.appinstaller')) {

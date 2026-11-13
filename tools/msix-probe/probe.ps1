@@ -11,7 +11,6 @@ Section 'Artifacts'
 Get-ChildItem $out | Format-Table Name, Length
 $msix = Join-Path $out "Kody-$v1-win-$arch.msix"
 Get-AuthenticodeSignature $msix | Format-List Status, StatusMessage, SignerCertificate
-& "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe" verify /pa /v $msix 2>&1 | Select-Object -Last 8
 
 Section 'Direct Add-AppxPackage -Path (local file)'
 Clean
@@ -32,7 +31,7 @@ if ($pkg) {
 
 foreach ($proto in @('http', 'https')) {
   $port = if ($proto -eq 'http') { 8080 } else { 8443 }
-  foreach ($variant in @('mime', 'octet', 'redirect')) {
+  foreach ($variant in @('redirect')) {
     Section "AppInstaller $proto $variant"
     Clean
     $url = "${proto}://localhost:$port/$variant/Kody-win-$arch.appinstaller"
@@ -59,7 +58,8 @@ if ($pkg) {
   try { Add-AppxPackage -AppInstallerFile "https://localhost:8443/redirect/Kody-win-$arch.appinstaller" -ErrorAction Stop; "OK: $(Installed)" } catch { "FAIL: $_" }
 }
 Section 'Server log'
-(Invoke-WebRequest 'http://localhost:8080/__log' -UseBasicParsing).Content
+((Invoke-WebRequest 'http://localhost:8080/__log' -UseBasicParsing).Content -split "`n" | Where-Object { $_ -notmatch 'msix range=bytes' }) -join "`n"
+try { Get-AppxPackageAutoUpdateSettings -PackageFamilyName (Get-AppxPackage KodyCodes.Kody).PackageFamilyName | Format-List } catch { "$_" }
 Section 'AppInstaller event log'
 Get-WinEvent -LogName 'Microsoft-Windows-AppxDeploymentServer/Operational' -MaxEvents 40 -ErrorAction SilentlyContinue | Where-Object LevelDisplayName -ne 'Information' | Select-Object TimeCreated, Id, Message | Format-List
 Get-WinEvent -LogName 'Microsoft-Windows-AppxPackaging/Operational' -MaxEvents 20 -ErrorAction SilentlyContinue | Where-Object LevelDisplayName -ne 'Information' | Select-Object TimeCreated, Id, Message | Format-List

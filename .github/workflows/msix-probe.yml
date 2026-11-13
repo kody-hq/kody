@@ -47,7 +47,7 @@ jobs:
           Export-PfxCertificate -Cert $sign -FilePath "$env:RUNNER_TEMP\sign.pfx" -Password $pw | Out-Null
           Export-Certificate -Cert $sign -FilePath "$env:RUNNER_TEMP\sign.cer" | Out-Null
           Import-Certificate -FilePath "$env:RUNNER_TEMP\sign.cer" -CertStoreLocation Cert:\LocalMachine\TrustedPeople | Out-Null
-          $tls = New-SelfSignedCertificate -DnsName localhost -CertStoreLocation Cert:\CurrentUser\My
+          $tls = New-SelfSignedCertificate -Subject CN=localhost -TextExtension @('2.5.29.17={text}DNS=localhost&IPAddress=127.0.0.1') -CertStoreLocation Cert:\CurrentUser\My
           Export-PfxCertificate -Cert $tls -FilePath "$env:RUNNER_TEMP\tls.pfx" -Password $pw | Out-Null
           Export-Certificate -Cert $tls -FilePath "$env:RUNNER_TEMP\tls.cer" | Out-Null
           Import-Certificate -FilePath "$env:RUNNER_TEMP\tls.cer" -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
