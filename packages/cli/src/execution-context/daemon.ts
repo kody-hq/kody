@@ -244,6 +244,7 @@ type DaemonRunState = {
 	/** Finished runs whose `run.result` Kody has not acked yet. */
 	results: Map<string, { body: Record<string, unknown>; expiresAt: number }>
 	hostFs: EffectiveFs
+	grantFs: Array<{ path: string; mode: string }>
 	/** Sends a queued result over the live connection; null between sockets. */
 	report: ((runId: string) => void) | null
 }
@@ -253,6 +254,7 @@ function daemonRunState(): DaemonRunState {
 		runs: new Map(),
 		results: new Map(),
 		hostFs: emptyEffectiveFs,
+		grantFs: [],
 		report: null,
 	}
 }
@@ -288,11 +290,10 @@ export async function runDaemonConnection(
 	url.searchParams.set('ticket', ticket)
 	const ws = new Socket(url.toString())
 	let welcomed = false
-	let grantFs: Array<{ path: string; mode: string }> = []
 	const effectiveFsNow = async () => {
 		if (!input.fs) return emptyEffectiveFs
 		try {
-			return await input.fs.effective(grantFs)
+			return await input.fs.effective(state.grantFs)
 		} catch (error) {
 			input.log(
 				`Host folders are off: ${error instanceof Error ? error.message : String(error)}`,
@@ -535,7 +536,7 @@ export async function runDaemonConnection(
 						heartbeatSetting(body.pongTimeoutMs, defaultPongTimeoutMs),
 					)
 				}
-				grantFs = grantFsOf(body.grant)
+				state.grantFs = grantFsOf(body.grant)
 				await applyFs()
 				input.onPaused?.(pauseOf(body.paused))
 				welcomed = true
@@ -558,7 +559,7 @@ export async function runDaemonConnection(
 				if (!connectionEnded) {
 					input.hostCommands?.setReporter(reporter)
 					state.report = reportResult
-					for (const queued of [...state.results.keys()]) reportResult(queued)
+					for (const queued of state.results.keys()) reportResult(queued)
 				}
 				input.log('Connected. Waiting for runs.')
 				return
@@ -610,7 +611,7 @@ export async function runDaemonConnection(
 			}
 			case 'grant.update': {
 				applyGrant(body.grant)
-				grantFs = grantFsOf(body.grant)
+				state.grantFs = grantFsOf(body.grant)
 				const before = JSON.stringify(capabilities())
 				const limitsChanged = applyLimits(body.grant)
 				await refreshFs(before)
@@ -847,9 +848,23 @@ function peekSid(p: string) {
  */
 export async function runDaemon(input: DaemonInput): Promise<DaemonStop> {
 	const state = daemonRunState()
+	// Between sockets no connection watches local policy, so a folder removed
+	// while offline must still leave the runs that outlive the drop.
+	const unsubscribeFs = input.fs?.onChange?.(() => {
+		if (state.report || !input.fs) return
+		void input.fs.effective(state.grantFs).then(
+			(next) => {
+				state.hostFs = next
+			},
+			() => {
+				state.hostFs = emptyEffectiveFs
+			},
+		)
+	})
 	try {
 		return await reconnectLoop(input, state)
 	} finally {
+		unsubscribeFs?.()
 		for (const run of state.runs.values()) run.abort.abort()
 	}
 }

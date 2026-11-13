@@ -178,7 +178,10 @@ function resultOf(
 	)
 }
 
-async function startDaemon(maxConcurrent = 1) {
+async function startDaemon(
+	maxConcurrent = 1,
+	overrides: Record<string, unknown> = {},
+) {
 	SilentSocket.instances = []
 	const kody = await fakeKody()
 	const runs = controlledRuns()
@@ -190,6 +193,7 @@ async function startDaemon(maxConcurrent = 1) {
 		signal: abort.signal,
 		WebSocketImpl: kody.Socket,
 		execute: runs.execute,
+		...overrides,
 	})
 	daemonLog = lines
 	const stopped = runDaemon(input)
@@ -294,5 +298,47 @@ test('repeated drops keep reconnecting, and every new connection still accepts r
 			`${runId} result`,
 		)
 	}
+	assert.equal(await stop(), 'shutdown')
+})
+
+test('a host folder removed while the socket is down is gone from runs that outlived the drop', async () => {
+	const mounts = [{ path: '/work', mode: 'rw' as const }]
+	const listeners = new Set<() => void>()
+	let hostFs: (() => { mounts: Array<unknown> }) | undefined
+	const runs = controlledRuns()
+	const { kody, stop } = await startDaemon(1, {
+		fs: {
+			effective: async () => ({
+				mounts: [...mounts],
+				refused: [],
+				grantRoots: [],
+				denied: [],
+			}),
+			onChange: (listener: () => void) => {
+				listeners.add(listener)
+				return () => listeners.delete(listener)
+			},
+		},
+		execute: ((options) => {
+			hostFs = options.hostFs
+			return runs.execute(options)
+		}) satisfies ContextRunExecutor,
+	})
+	kody.onConnect((socket) => {
+		if (kody.sockets.length === 1) {
+			for (const frame of runFrames('run_fs')) void socket.push(frame)
+		}
+	})
+	await until(() => runs.started.includes('run_fs'), 'run started')
+	assert.deepEqual(hostFs?.().mounts, mounts)
+	kody.sockets[0]!.drop()
+	await until(() => listeners.size === 1, 'connection watcher removed')
+	mounts.length = 0
+	for (const listener of listeners) listener()
+	await until(() => hostFs?.().mounts.length === 0, 'folder removed')
+	assert.equal(kody.sockets.length, 1, 'still between sockets')
+	assert.deepEqual(runs.aborted, [])
+	runs.finish('run_fs')
+	await until(() => resultOf(kody.sockets[1], 'run_fs') !== undefined, 'result')
 	assert.equal(await stop(), 'shutdown')
 })
