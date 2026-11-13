@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
 import {
+	assertCallbackIssuerMatchesDiscovery,
 	assertEndpointsOnIssuerOrigin,
 	assertIssuerMatchesAuthorizationServerUrl,
 	assertTrustedMcpOAuthDiscovery,
@@ -387,4 +388,48 @@ test('assertTrustedMcpOAuthDiscovery runs both checks', () => {
 			authorizationServerUrl: 'https://evil.example/',
 		}),
 	).toThrow(/does not match the discovered authorization server/)
+})
+
+test('callback iss: matching issuer passes, trailing slash tolerated', () => {
+	expect(() =>
+		assertCallbackIssuerMatchesDiscovery({
+			discovery: discovery(),
+			iss: 'https://auth.example/',
+		}),
+	).not.toThrow()
+})
+
+test('callback iss: a different authorization server is refused', () => {
+	expect(() =>
+		assertCallbackIssuerMatchesDiscovery({
+			discovery: discovery(),
+			iss: 'https://attacker.example',
+		}),
+	).toThrow(McpOAuthFailedError)
+	expect(() =>
+		assertCallbackIssuerMatchesDiscovery({ discovery: discovery(), iss: '' }),
+	).toThrow(/does not match/)
+})
+
+test('callback iss: required only when the metadata advertises it', () => {
+	expect(() =>
+		assertCallbackIssuerMatchesDiscovery({ discovery: discovery(), iss: null }),
+	).not.toThrow()
+	expect(() =>
+		assertCallbackIssuerMatchesDiscovery({
+			discovery: discovery({
+				authorization_response_iss_parameter_supported: true,
+			}),
+			iss: null,
+		}),
+	).toThrow(new RegExp(`^${mcpOAuthFailedCode}: .*missing the iss`))
+})
+
+test('callback iss: no stored issuer means nothing to compare', () => {
+	expect(() =>
+		assertCallbackIssuerMatchesDiscovery({
+			discovery: null,
+			iss: 'https://auth.example',
+		}),
+	).not.toThrow()
 })

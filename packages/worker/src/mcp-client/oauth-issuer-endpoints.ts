@@ -16,6 +16,9 @@ import { getDomain } from 'tldts'
  *   across registrable domains (Google's accounts.google.com issuer with an
  *   oauth2.googleapis.com token endpoint) stay refused.
  *
+ * - RFC 9207: an authorization response `iss` must name the issuer discovery
+ *   stored for that attempt (`assertCallbackIssuerMatchesDiscovery`).
+ *
  * `registration_endpoint` is out of scope.
  */
 
@@ -142,4 +145,47 @@ export function assertTrustedMcpOAuthDiscovery(
 ) {
 	assertEndpointsOnIssuerOrigin(discovery)
 	assertIssuerMatchesAuthorizationServerUrl(discovery)
+}
+
+function storedIssuer(discovery: unknown) {
+	if (!discovery || typeof discovery !== 'object') return null
+	const metadata = (discovery as McpOAuthDiscoveryForIssuerEndpoints)
+		.authorizationServerMetadata
+	if (!metadata || typeof metadata !== 'object') return null
+	const record = metadata as Record<string, unknown>
+	const issuer = record['issuer']
+	return {
+		issuer: typeof issuer === 'string' && issuer ? issuer : null,
+		advertisesIss:
+			record['authorization_response_iss_parameter_supported'] === true,
+	}
+}
+
+/**
+ * RFC 9207 mix-up defence on the OAuth callback. Every MCP server shares one
+ * callback URL, so `iss` is how Kody knows which authorization server sent
+ * the response. Required when the stored metadata advertises
+ * `authorization_response_iss_parameter_supported`; compared whenever sent.
+ * With no stored issuer there is nothing to compare against, and the SDK's
+ * own state check still applies.
+ */
+export function assertCallbackIssuerMatchesDiscovery(input: {
+	discovery: unknown
+	iss: string | null
+}) {
+	const stored = storedIssuer(input.discovery)
+	if (input.iss === null) {
+		if (stored?.advertisesIss) {
+			throw new McpOAuthFailedError(
+				'Authorization response is missing the iss parameter its authorization server advertises (RFC 9207).',
+			)
+		}
+		return
+	}
+	if (!stored?.issuer) return
+	if (!issuersMatch(input.iss, stored.issuer)) {
+		throw new McpOAuthFailedError(
+			`Authorization response issuer (${input.iss.slice(0, 200)}) does not match the authorization server this sign-in started with (${stored.issuer.slice(0, 200)}).`,
+		)
+	}
 }

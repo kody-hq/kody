@@ -1510,3 +1510,28 @@ test('operational snapshots persist sanitized cards and warm reads never recover
 	})
 	expect(cold.manager.connectCount).toBe(0)
 })
+
+test('callback whose RFC 9207 iss names another authorization server is refused before the SDK runs', async () => {
+	const { values, hub, manager } = createHub()
+	seedServer(manager, {
+		authUrl: 'https://auth.example/authorize?state=live.server-1',
+	})
+	values.set('/Kody/server-1/oauth_discovery', {
+		authorizationServerUrl: 'https://auth.example',
+		authorizationServerMetadata: { issuer: 'https://auth.example' },
+	})
+	manager.callbackMatches = true
+	const handle = vi.spyOn(
+		manager as unknown as { handleCallbackRequest: () => Promise<unknown> },
+		'handleCallbackRequest',
+	)
+
+	const outcome = await hub.handleOAuthCallback({
+		url: `${callbackUrl}?code=abc&state=live.server-1&iss=${encodeURIComponent('https://attacker.example')}`,
+		callbackUrl,
+	})
+
+	expect(handle).not.toHaveBeenCalled()
+	expect(outcome).toMatchObject({ serverId: 'server-1', authSuccess: false })
+	expect(outcome.authError).toContain('does not match')
+})
