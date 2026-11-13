@@ -5,10 +5,8 @@ import {
 	moduleGraphMockModule as mockModule,
 	createSavedPackageRecord,
 } from '#worker/test-support/module-graph.ts'
-import {
-	buildLocalExecutePackageGraph,
-	type LocalExecutePackageGraphError,
-} from './local-execute-package-graph.ts'
+import { buildLocalExecutePackageGraph } from '#worker/test-support/local-execute-package-graph.ts'
+import type { LocalExecutePackageGraphError } from './local-execute-package-graph.ts'
 import {
 	createLocalExecutePackageRuntimeModuleSource,
 	createLocalExecuteRuntimeShimSource,

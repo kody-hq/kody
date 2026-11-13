@@ -1,8 +1,8 @@
 import { z } from 'zod'
 import { runWithRequestPermissions } from '#worker/authorization/authorize.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
+import { serveLocalExecutePackageGraph } from '#worker/package-runtime/isolated-local-execute-package-graph.ts'
 import {
-	buildLocalExecutePackageGraph,
 	LocalExecutePackageGraphError,
 	synthesizeLocalExecutePackageGraphEntry,
 } from '#worker/package-runtime/local-execute-package-graph.ts'
@@ -140,7 +140,7 @@ export const localExecutePackageGraphOperationDefinitions: Record<
 	localExecutePackageGraph: {
 		summary: 'Download stamped package modules for local execute',
 		description:
-			'Resolve published, stamped `kody:@…` importable-module artifacts for an ad hoc execute module so `@kodycodes/cli execute --local` / `kody dev` can embed them in workerd. Uses the same static-import scanner and resolution policy as cloud execute (packages resolve only in the caller org). Pass inline `code` (up to just under the Open API JSON body limit of 5 MiB, leaving room for the JSON wrapper) and/or `imports`; when only `imports` is set, origin synthesizes a tiny entry so multi-megabyte worker bundles (TanStack / React apps) do not need to be posted. Does **not** execute the user module and does not meter `dynamic_worker_day`. CapabilityProxy remains for per-call `kody:runtime` hops during the later local run. Requires `org:execute` and a scoped API token or CLI MCP OAuth bearer.',
+			'Resolve published, stamped `kody:@…` importable-module artifacts for an ad hoc execute module so `@kodycodes/cli execute --local` / `kody dev` can embed them in workerd. Uses the same static-import scanner and resolution policy as cloud execute (packages resolve only in the caller org). Pass inline `code` (up to just under the Open API JSON body limit of 5 MiB, leaving room for the JSON wrapper) and/or `imports`; when only `imports` is set, origin synthesizes a tiny entry so multi-megabyte worker bundles (TanStack / React apps) do not need to be posted. Does **not** execute the user module and does not meter `dynamic_worker_day`. Builds run in an isolated builder and are cached per imported package commit; a build over the builder limits answers `400 package_graph_resource_limit` naming the packages. CapabilityProxy remains for per-call `kody:runtime` hops during the later local run. Requires `org:execute` and a scoped API token or CLI MCP OAuth bearer.',
 		inputSchema: localExecutePackageGraphInputSchema,
 		outputSchema: localExecutePackageGraphOutputSchema,
 		readOnly: true,
@@ -158,12 +158,13 @@ export const localExecutePackageGraphOperationDefinitions: Record<
 				return await runWithRequestPermissions(
 					{ env: ctx.env, request: ctx.callerContext.request },
 					() =>
-						buildLocalExecutePackageGraph({
+						serveLocalExecutePackageGraph({
 							env: ctx.env,
 							baseUrl: ctx.callerContext.baseUrl,
 							userId: ownerIdFromCaller(ctx.callerContext),
 							actorUserId: ctx.callerContext.request?.actor?.userId ?? null,
 							code,
+							request: ctx.callerContext.request,
 						}),
 				)
 			} catch (error) {

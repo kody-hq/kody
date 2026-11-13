@@ -1,6 +1,11 @@
 import { repoSessionState } from './repo-session-state.ts'
 import { assertProfileCanPublishImports } from '#worker/profiles/publish-imports.ts'
 import { createIsolatedArtifactRebuildRunner } from '#worker/repo/isolated-artifact-rebuild.ts'
+import {
+	runIsolatedLocalExecutePackageGraphBuild,
+	type IsolatedLocalExecutePackageGraphOutcome,
+	type IsolatedLocalExecutePackageGraphRequest,
+} from '#worker/package-runtime/isolated-local-execute-package-graph.ts'
 import type { PersistUploadedPublishBuildResult } from '#worker/publish-offload/types.ts'
 import { hashWorkerLoaderModules } from '#worker/publish-offload/module-hashes.ts'
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
@@ -3912,6 +3917,17 @@ class RepoSessionBase extends DurableObject<Env> {
 			buildImportableModuleBundle: async ({ entryPoint }) =>
 				await buildKodyImportableModuleBundle({ ...shared, entryPoint }),
 		}
+	}
+
+	/**
+	 * `POST /v1/local-execute/package-graph` build in this throwaway isolate,
+	 * so a large package can exceed the isolate limits without resetting the
+	 * API isolate (`#worker/package-runtime/isolated-local-execute-package-graph.ts`).
+	 */
+	async buildIsolatedLocalExecutePackageGraph(
+		input: IsolatedLocalExecutePackageGraphRequest,
+	): Promise<IsolatedLocalExecutePackageGraphOutcome> {
+		return await runIsolatedLocalExecutePackageGraphBuild(this.env, input)
 	}
 
 	/**

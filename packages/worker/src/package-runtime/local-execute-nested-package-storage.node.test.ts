@@ -10,7 +10,7 @@ import {
 	createTemporaryModuleGraph,
 } from '#worker/test-support/module-graph.ts'
 import { verifyLocalExecutePackageBinding } from './local-execute-package-binding.ts'
-import { buildLocalExecutePackageGraph } from './local-execute-package-graph.ts'
+import { buildLocalExecutePackageGraph } from '#worker/test-support/local-execute-package-graph.ts'
 import { buildKodyImportableModuleBundle } from './module-graph-bundle-builders.ts'
 import { prepareKodyGraphFiles } from './module-graph-import-rewriting.ts'
 import {
