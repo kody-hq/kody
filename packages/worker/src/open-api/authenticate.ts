@@ -45,14 +45,11 @@ import {
 	parseEcpSignatureHeader,
 	sha256Base64Url,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
-import {
-	getExecutionContext,
-	loadContextAccess,
-	sessionStub,
-} from '#worker/execution-contexts/store.ts'
+import { sessionStub } from '#worker/execution-contexts/store.ts'
 import { isOperatorContextRun } from '#worker/execution-contexts/credential-grant.ts'
 import { readClaimedGuestOrgForSlug } from '#worker/guest/guest-accounts.ts'
 import { credentialCallMapFromJson } from '#worker/credentials/credential-call-map.ts'
+import { loadExecutionContextRunAccess } from './execution-context-run-access.ts'
 
 type McpOauthGrantProps = {
 	userId?: unknown
@@ -447,40 +444,17 @@ async function authenticateWithExecutionContextLease(input: {
 			message,
 		})
 	}
-	const authContext = await buildMcpUserContextFromGrantProps(input.env, {
-		userId: lease.requester.userId,
-	})
-	if (!authContext || authContext.suspended || !authContext.emailVerified) {
-		throw await accessLost('The requester of this run can no longer use Kody.')
-	}
-	const [orgBinding, context] = await Promise.all([
-		loadOrgBindingForOrg(
-			input.env.APP_DB,
-			authContext.user.userId,
-			lease.orgId,
-		),
-		getExecutionContext(input.env.APP_DB, lease.ecid),
-	])
-	if (!orgBinding || !context) {
+	const access = await loadExecutionContextRunAccess(input.env, lease)
+	if (!access.ok) {
 		throw await accessLost(
-			'The requester of this run no longer has access to its org.',
+			access.reason === 'requester'
+				? 'The requester of this run can no longer use Kody.'
+				: access.reason === 'org'
+					? 'The requester of this run no longer has access to its org.'
+					: 'The requester of this run no longer has access to this execution context.',
 		)
 	}
-	const access = await loadContextAccess(input.env.APP_DB, context, {
-		userId: authContext.user.userId,
-		orgId: lease.orgId,
-	})
-	if (!access.usable) {
-		throw await accessLost(
-			'The requester of this run no longer has access to this execution context.',
-		)
-	}
-	const profileChain = lease.profileId
-		? await loadProfileChain(input.env.APP_DB, {
-				orgId: lease.orgId,
-				profileId: lease.profileId,
-			})
-		: null
+	const { authContext, orgBinding, context, profileChain } = access
 	if (
 		lease.profileId &&
 		(profileChain?.at(-1)?.id !== lease.profileId ||
