@@ -256,6 +256,7 @@ import { Route as CommunityListingIdFilesSplatRouteImport } from './routes/commu
 import { Route as CommunityListingIdAssetsSplatRouteImport } from './routes/community_.$listingId_.assets_.$'
 import { Route as CommunityListingIdIconIconCommitRouteImport } from './routes/community_.$listingId_.icon_.$iconCommit'
 import { Route as CommunityListingIdRawSplatRouteImport } from './routes/community_.$listingId_.raw_.$'
+import { Route as ImagesBlogSlugFileRouteImport } from './routes/images_.blog_.$slug_.$file'
 import { Route as OrgsOrgSlugAvatarFileRouteImport } from './routes/orgs_.$orgSlug_.avatar_.$file'
 import { Route as ProfilesUsernameAvatarFileRouteImport } from './routes/profiles_.$username_.avatar_.$file'
 import { Route as SharedFilesOrgSlugRootIdTokenRouteImport } from './routes/shared-files.$orgSlug.$rootId.$token'
@@ -1639,6 +1640,11 @@ const CommunityListingIdRawSplatRoute =
     path: '/community/$listingId/raw/$',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ImagesBlogSlugFileRoute = ImagesBlogSlugFileRouteImport.update({
+  id: '/images_/blog_/$slug_/$file',
+  path: '/images/blog/$slug/$file',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OrgsOrgSlugAvatarFileRoute = OrgsOrgSlugAvatarFileRouteImport.update({
   id: '/orgs_/$orgSlug_/avatar_/$file',
   path: '/orgs/$orgSlug/avatar/$file',
@@ -2187,6 +2193,7 @@ export interface FileRoutesByFullPath {
   '/community/$listingId/assets/$': typeof CommunityListingIdAssetsSplatRoute
   '/community/$listingId/icon/$iconCommit': typeof CommunityListingIdIconIconCommitRoute
   '/community/$listingId/raw/$': typeof CommunityListingIdRawSplatRoute
+  '/images/blog/$slug/$file': typeof ImagesBlogSlugFileRoute
   '/orgs/$orgSlug/avatar/$file': typeof OrgsOrgSlugAvatarFileRoute
   '/profiles/$username/avatar/$file': typeof ProfilesUsernameAvatarFileRoute
   '/shared-files/$orgSlug/$rootId/$token': typeof SharedFilesOrgSlugRootIdTokenRoute
@@ -2483,6 +2490,7 @@ export interface FileRoutesByTo {
   '/community/$listingId/assets/$': typeof CommunityListingIdAssetsSplatRoute
   '/community/$listingId/icon/$iconCommit': typeof CommunityListingIdIconIconCommitRoute
   '/community/$listingId/raw/$': typeof CommunityListingIdRawSplatRoute
+  '/images/blog/$slug/$file': typeof ImagesBlogSlugFileRoute
   '/orgs/$orgSlug/avatar/$file': typeof OrgsOrgSlugAvatarFileRoute
   '/profiles/$username/avatar/$file': typeof ProfilesUsernameAvatarFileRoute
   '/shared-files/$orgSlug/$rootId/$token': typeof SharedFilesOrgSlugRootIdTokenRoute
@@ -2782,6 +2790,7 @@ export interface FileRoutesById {
   '/community_/$listingId_/assets_/$': typeof CommunityListingIdAssetsSplatRoute
   '/community_/$listingId_/icon_/$iconCommit': typeof CommunityListingIdIconIconCommitRoute
   '/community_/$listingId_/raw_/$': typeof CommunityListingIdRawSplatRoute
+  '/images_/blog_/$slug_/$file': typeof ImagesBlogSlugFileRoute
   '/orgs_/$orgSlug_/avatar_/$file': typeof OrgsOrgSlugAvatarFileRoute
   '/profiles_/$username_/avatar_/$file': typeof ProfilesUsernameAvatarFileRoute
   '/shared-files/$orgSlug/$rootId/$token': typeof SharedFilesOrgSlugRootIdTokenRoute
@@ -3081,6 +3090,7 @@ export interface FileRouteTypes {
     | '/community/$listingId/assets/$'
     | '/community/$listingId/icon/$iconCommit'
     | '/community/$listingId/raw/$'
+    | '/images/blog/$slug/$file'
     | '/orgs/$orgSlug/avatar/$file'
     | '/profiles/$username/avatar/$file'
     | '/shared-files/$orgSlug/$rootId/$token'
@@ -3377,6 +3387,7 @@ export interface FileRouteTypes {
     | '/community/$listingId/assets/$'
     | '/community/$listingId/icon/$iconCommit'
     | '/community/$listingId/raw/$'
+    | '/images/blog/$slug/$file'
     | '/orgs/$orgSlug/avatar/$file'
     | '/profiles/$username/avatar/$file'
     | '/shared-files/$orgSlug/$rootId/$token'
@@ -3675,6 +3686,7 @@ export interface FileRouteTypes {
     | '/community_/$listingId_/assets_/$'
     | '/community_/$listingId_/icon_/$iconCommit'
     | '/community_/$listingId_/raw_/$'
+    | '/images_/blog_/$slug_/$file'
     | '/orgs_/$orgSlug_/avatar_/$file'
     | '/profiles_/$username_/avatar_/$file'
     | '/shared-files/$orgSlug/$rootId/$token'
@@ -3858,6 +3870,7 @@ export interface RootRouteChildren {
   CommunityListingIdAssetsSplatRoute: typeof CommunityListingIdAssetsSplatRoute
   CommunityListingIdIconIconCommitRoute: typeof CommunityListingIdIconIconCommitRoute
   CommunityListingIdRawSplatRoute: typeof CommunityListingIdRawSplatRoute
+  ImagesBlogSlugFileRoute: typeof ImagesBlogSlugFileRoute
   OrgsOrgSlugAvatarFileRoute: typeof OrgsOrgSlugAvatarFileRoute
   ProfilesUsernameAvatarFileRoute: typeof ProfilesUsernameAvatarFileRoute
   SharedFilesOrgSlugRootIdTokenRoute: typeof SharedFilesOrgSlugRootIdTokenRoute
@@ -5598,6 +5611,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CommunityListingIdRawSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/images_/blog_/$slug_/$file': {
+      id: '/images_/blog_/$slug_/$file'
+      path: '/images/blog/$slug/$file'
+      fullPath: '/images/blog/$slug/$file'
+      preLoaderRoute: typeof ImagesBlogSlugFileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/orgs_/$orgSlug_/avatar_/$file': {
       id: '/orgs_/$orgSlug_/avatar_/$file'
       path: '/orgs/$orgSlug/avatar/$file'
@@ -6513,6 +6533,7 @@ const rootRouteChildren: RootRouteChildren = {
   CommunityListingIdAssetsSplatRoute: CommunityListingIdAssetsSplatRoute,
   CommunityListingIdIconIconCommitRoute: CommunityListingIdIconIconCommitRoute,
   CommunityListingIdRawSplatRoute: CommunityListingIdRawSplatRoute,
+  ImagesBlogSlugFileRoute: ImagesBlogSlugFileRoute,
   OrgsOrgSlugAvatarFileRoute: OrgsOrgSlugAvatarFileRoute,
   ProfilesUsernameAvatarFileRoute: ProfilesUsernameAvatarFileRoute,
   SharedFilesOrgSlugRootIdTokenRoute: SharedFilesOrgSlugRootIdTokenRoute,
