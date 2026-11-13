@@ -346,10 +346,10 @@ ${orgBlock}
              ambient fetch can still reach the public network (not
              offline). \`--target prod\` keeps the process local but does
              **not** give the working-tree package hosted
-             \`packageStorage\` / \`packageSecrets\` — those need a published
-             package id; imported published deps still use their own
-             hosted storage/secrets. See the package apps guide target
-             table.
+             \`packageStorage\` / \`packageSecrets\`. That is intentionally
+             unsupported: publish is the trust boundary. Imported published
+             deps still use their own hosted storage/secrets. See the
+             package apps guide target table.
 
   --reset-storage
              With \`--target mock\`, wipe the mock session's scratch storage

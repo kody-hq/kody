@@ -35,10 +35,25 @@ export type PackageLocalContext = {
 
 export { localWorkerModuleNames, runSecretEnvVar, runSecretHeader }
 
+/** Docs for the working-tree bridge's intentionally unsupported prod exports. */
+const prodTargetWontDoDocsUrl =
+	'https://kody.codes/docs/package-apps#won-t-do-storage-secrets-email-events-and-packages-on-target-prod'
+
+export const prodPackageStorageUnsupportedMessage =
+	'packageStorage() is intentionally unsupported on --target prod: the working tree is unpublished, so hosted storage cannot trust it. ' +
+	'Use `--target mock` for scratch storage, or publish and use packageAppFetch. ' +
+	`See ${prodTargetWontDoDocsUrl}`
+
+export const prodPackageSecretsUnsupportedMessage =
+	'packageSecrets is intentionally unsupported on --target prod: the working tree is unpublished, so hosted secrets cannot trust it. ' +
+	'Use `kody dev --target mock` for placeholder secrets, or publish and use packageAppFetch. ' +
+	`See ${prodTargetWontDoDocsUrl}`
+
 /**
  * Runtime module for package-local workerd. `packageStorage()` hops through the
- * bridge to mock `__mockPackageStorage*` (or refuses clearly on prod until the
- * package is published).
+ * bridge to mock `__mockPackageStorage*`. On prod, `packageStorage()` and
+ * `packageSecrets` refuse on purpose: unpublished code cannot reach hosted
+ * storage or secrets (see `prodTargetWontDoDocsUrl`).
  *
  * `packageBinding` must be a signed `kpb1.…` token from package-graph. Bare
  * package UUIDs are never accepted here — CapabilityProxy only trusts bindings
@@ -98,10 +113,7 @@ export function packageStorage() {
 `
 		: `
 export function packageStorage() {
-	throw new Error(
-		'packageStorage() against --target prod requires a published package with real storage. ' +
-			'Use \`--target mock\` for scratch storage while iterating on an unpublished package.',
-	);
+	throw new Error(${JSON.stringify(prodPackageStorageUnsupportedMessage)});
 }
 `
 
@@ -150,9 +162,11 @@ export const packages = null;
 ${storageBlock}
 
 function __kodyPackageSecretsUnavailable() {
-	throw new Error(
-		'packageSecrets is not available in this local package context on the CLI mock/prod bridge yet.',
-	);
+	throw new Error(${JSON.stringify(
+		input.mockStorage
+			? 'packageSecrets is not available in this local package context on the CLI mock bridge.'
+			: prodPackageSecretsUnsupportedMessage,
+	)});
 }
 
 export const packageSecrets = {
