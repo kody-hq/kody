@@ -51,7 +51,7 @@ test('oauthAttemptIdentityMatches requires both pending ids and an exact match o
 	).toBe(false)
 })
 
-test('assertEndpointsOnIssuerOrigin refuses cross-origin authorization and token endpoints', () => {
+test('assertEndpointsOnIssuerOrigin refuses cross-site authorization and token endpoints', () => {
 	expect(() =>
 		assertEndpointsOnIssuerOrigin({
 			authorizationServerMetadata: {
@@ -92,6 +92,24 @@ test('assertEndpointsOnIssuerOrigin refuses cross-origin authorization and token
 			authorizationServerMetadata: {},
 		}),
 	).toThrow(/missing a usable issuer/)
+	expect(() =>
+		assertEndpointsOnIssuerOrigin({
+			authorizationServerMetadata: {
+				issuer: 'https://mcp.slack.com',
+				authorization_endpoint: 'https://slack.com/oauth/v2_user/authorize',
+				token_endpoint: 'https://slack.com/api/oauth.v2.user.access',
+			},
+		}),
+	).not.toThrow()
+	expect(() =>
+		assertEndpointsOnIssuerOrigin({
+			authorizationServerMetadata: {
+				issuer: 'https://mcp.slack.com',
+				authorization_endpoint: 'https://slack.com/oauth/v2_user/authorize',
+				token_endpoint: 'https://evil.example/token',
+			},
+		}),
+	).toThrow(/token_endpoint/)
 })
 
 test('oauthAttemptActorMatches requires both pending ids and an exact match', () => {
@@ -154,6 +172,32 @@ test('discovery AS origin helpers and reconnect copy stay fail-closed', () => {
 				authorizationServerMetadata: {
 					issuer: 'https://other.example',
 					token_endpoint: 'https://other.example/token',
+				},
+			},
+		}),
+	).toBe(false)
+	// Sibling hosts on the issuer's registrable domain still match (Slack shape).
+	expect(
+		discoveryMatchesAttemptAuthorizationServerOrigin({
+			pendingAuthorizationServerOrigin: 'https://mcp.slack.com',
+			discovery: {
+				authorizationServerUrl: 'https://mcp.slack.com/',
+				authorizationServerMetadata: {
+					issuer: 'https://mcp.slack.com',
+					authorization_endpoint: 'https://slack.com/oauth/v2_user/authorize',
+					token_endpoint: 'https://slack.com/api/oauth.v2.user.access',
+				},
+			},
+		}),
+	).toBe(true)
+	expect(
+		discoveryMatchesAttemptAuthorizationServerOrigin({
+			pendingAuthorizationServerOrigin: 'https://a.github.io',
+			discovery: {
+				authorizationServerMetadata: {
+					issuer: 'https://a.github.io',
+					authorization_endpoint: 'https://a.github.io/authorize',
+					token_endpoint: 'https://b.github.io/token',
 				},
 			},
 		}),
