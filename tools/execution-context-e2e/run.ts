@@ -190,8 +190,16 @@ export default async function main(params) {
 				)
 			break
 		}
-		if (run?.status === 'error')
-			throw new Error(`The workflow step failed: ${run.error_message}`)
+		// A failed attempt can still be retried, so only a terminal workflow
+		// status ends the wait.
+		if (run?.status === 'error') {
+			const workflow = (await session.api('workflowRunList', {
+				workflow_id: workflowId,
+			})) as { workflows?: Array<{ status?: string | null }> }
+			const status = workflow?.workflows?.[0]?.status
+			if (status === 'errored' || status === 'terminated')
+				throw new Error(`The workflow step failed: ${run.error_message}`)
+		}
 		if (Date.now() > deadline)
 			throw new Error(
 				`The workflow step never finished: ${JSON.stringify(listed)}`,
