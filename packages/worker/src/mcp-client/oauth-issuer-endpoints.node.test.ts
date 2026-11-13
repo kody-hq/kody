@@ -43,43 +43,6 @@ const offSite = (field: string) =>
 		`${mcpOAuthFailedCode}[\\s\\S]*${field} .*not on its issuer's origin or registrable domain`,
 	)
 
-// Live metadata as of 2026-11-12. Discovery stores the AS URL as String(URL).
-const providerFixtures = {
-	datadog: {
-		authorizationServerUrl: 'https://mcp.us5.datadoghq.com/v1/mcp',
-		authorizationServerMetadata: {
-			issuer: 'https://mcp.us5.datadoghq.com/v1/mcp',
-			authorization_endpoint: 'https://us5.datadoghq.com/oauth2/v1/authorize',
-			token_endpoint: 'https://us5.datadoghq.com/api/v2/oauth2/token',
-			registration_endpoint: 'https://us5.datadoghq.com/api/v2/oauth2/register',
-			response_types_supported: ['code'],
-			code_challenge_methods_supported: ['S256'],
-		},
-	},
-	slack: {
-		authorizationServerUrl: 'https://mcp.slack.com/',
-		authorizationServerMetadata: {
-			issuer: 'https://mcp.slack.com',
-			authorization_endpoint: 'https://slack.com/oauth/v2_user/authorize',
-			token_endpoint: 'https://slack.com/api/oauth.v2.user.access',
-			response_types_supported: ['code'],
-			code_challenge_methods_supported: ['S256'],
-		},
-	},
-	figma: {
-		authorizationServerUrl: 'https://api.figma.com/',
-		authorizationServerMetadata: {
-			issuer: 'https://api.figma.com',
-			authorization_endpoint: 'https://www.figma.com/oauth/mcp',
-			token_endpoint: 'https://api.figma.com/v1/oauth/token',
-			registration_endpoint: 'https://api.figma.com/v1/oauth/mcp/register',
-			response_types_supported: ['code'],
-			code_challenge_methods_supported: ['S256'],
-			authorization_response_iss_parameter_supported: true,
-		},
-	},
-}
-
 test('assertEndpointsOnIssuerOrigin accepts same-origin authorize and token endpoints', () => {
 	expect(() => assertEndpointsOnIssuerOrigin(discovery())).not.toThrow()
 	expect(() =>
@@ -98,12 +61,34 @@ test('assertEndpointsOnIssuerOrigin accepts same-origin authorize and token endp
 	expect(() => assertEndpointsOnIssuerOrigin({})).not.toThrow()
 })
 
-for (const [name, fixture] of Object.entries(providerFixtures)) {
-	test(`assertTrustedMcpOAuthDiscovery accepts ${name}'s live metadata (sibling hosts on one registrable domain)`, () => {
+test('assertTrustedMcpOAuthDiscovery accepts sibling hosts on one registrable domain', () => {
+	const shapes = [
+		issuerDiscovery('https://mcp.us5.example.com/v1/mcp', {
+			authorize: 'https://us5.example.com/oauth2/authorize',
+			token: 'https://us5.example.com/oauth2/token',
+		}),
+		issuerDiscovery(
+			'https://mcp.example.com',
+			{
+				authorize: 'https://example.com/oauth/authorize',
+				token: 'https://example.com/api/oauth/token',
+			},
+			'https://mcp.example.com/',
+		),
+		issuerDiscovery(
+			'https://api.example.com',
+			{
+				authorize: 'https://www.example.com/oauth',
+				token: 'https://api.example.com/oauth/token',
+			},
+			'https://api.example.com/',
+		),
+	]
+	for (const fixture of shapes) {
 		expect(() => assertEndpointsOnIssuerOrigin(fixture)).not.toThrow()
 		expect(() => assertTrustedMcpOAuthDiscovery(fixture)).not.toThrow()
-	})
-}
+	}
+})
 
 test('assertEndpointsOnIssuerOrigin accepts the issuer host being the registrable domain itself', () => {
 	expect(() =>
@@ -144,17 +129,17 @@ test('assertEndpointsOnIssuerOrigin refuses http issuer or endpoints, even on th
 	).toThrow(offSite('token_endpoint'))
 	expect(() =>
 		assertEndpointsOnIssuerOrigin(
-			issuerDiscovery('https://mcp.slack.com', {
-				authorize: 'http://slack.com/oauth/v2_user/authorize',
-				token: 'https://slack.com/api/oauth.v2.user.access',
+			issuerDiscovery('https://mcp.example.com', {
+				authorize: 'http://example.com/oauth/authorize',
+				token: 'https://example.com/api/oauth/token',
 			}),
 		),
 	).toThrow(offSite('authorization_endpoint'))
 	expect(() =>
 		assertEndpointsOnIssuerOrigin(
-			issuerDiscovery('https://mcp.slack.com', {
-				authorize: 'https://slack.com/oauth/v2_user/authorize',
-				token: 'http://slack.com/api/oauth.v2.user.access',
+			issuerDiscovery('https://mcp.example.com', {
+				authorize: 'https://example.com/oauth/authorize',
+				token: 'http://example.com/api/oauth/token',
 			}),
 		),
 	).toThrow(offSite('token_endpoint'))
@@ -171,12 +156,15 @@ for (const [field, endpoint] of [
 		expect(() =>
 			assertEndpointsOnIssuerOrigin(discovery({ [field]: endpoint })),
 		).toThrow(offSite(field))
-		const slack = providerFixtures.slack
+		const sibling = issuerDiscovery('https://mcp.example.com', {
+			authorize: 'https://example.com/oauth/authorize',
+			token: 'https://example.com/api/oauth/token',
+		})
 		expect(() =>
 			assertEndpointsOnIssuerOrigin({
-				...slack,
+				...sibling,
 				authorizationServerMetadata: {
-					...slack.authorizationServerMetadata,
+					...sibling.authorizationServerMetadata,
 					[field]: endpoint,
 				},
 			}),
@@ -392,7 +380,10 @@ test('assertTrustedMcpOAuthDiscovery runs both checks', () => {
 	).toThrow(offSite('token_endpoint'))
 	expect(() =>
 		assertTrustedMcpOAuthDiscovery({
-			...providerFixtures.slack,
+			...issuerDiscovery('https://mcp.example.com', {
+				authorize: 'https://example.com/oauth/authorize',
+				token: 'https://example.com/api/oauth/token',
+			}),
 			authorizationServerUrl: 'https://evil.example/',
 		}),
 	).toThrow(/does not match the discovered authorization server/)

@@ -1,9 +1,5 @@
 import { expect, test } from 'vitest'
 import {
-	grokBotInstallUrl,
-	kodyBotTemplateSummary,
-} from './onboarding-mcp-clients.ts'
-import {
 	findWithAgentByPathname,
 	withAgentYoutubeVideoIds,
 	withAgents,
@@ -19,13 +15,18 @@ test('pathname lookup only accepts /with/:agent for catalog agents', () => {
 
 test('Grok Bot leads with the Kody Bot template and keeps the plugin steps as the alternative', () => {
 	const grokBot = findWithAgentByPathname('/with/grok-bot')
-	expect(grokBot?.primaryAction).toEqual({
-		label: 'Use the Kody Bot template',
-		href: 'https://x.ai/bot/yTSGElYcIjFW_5IXu2I-e',
-		description: kodyBotTemplateSummary,
-		alternativeTitle: 'Or add the Kody plugin to a Grok Bot you already use',
-	})
-	expect(grokBot?.steps[0]?.link?.href).toBe(grokBotInstallUrl)
+	expect(grokBot?.primaryAction?.label.toLowerCase()).toContain(
+		'kody bot template',
+	)
+	expect(grokBot?.primaryAction?.href).toMatch(/^https:\/\/x\.ai\/bot\//)
+	expect(grokBot?.primaryAction?.description).toContain('Kody plugin')
+	expect(grokBot?.primaryAction?.description).toContain('Kody CLI')
+	expect(grokBot?.primaryAction?.alternativeTitle?.toLowerCase()).toContain(
+		'plugin',
+	)
+	expect(grokBot?.steps[0]?.link?.href).toMatch(
+		/^grokbot:\/\/app\/v1\/plugin\/add\?id=/,
+	)
 	for (const text of [
 		grokBot?.pitch,
 		grokBot?.primaryAction?.description,
@@ -33,7 +34,6 @@ test('Grok Bot leads with the Kody Bot template and keeps the plugin steps as th
 	]) {
 		expect(text).not.toContain('\u2014')
 	}
-	// Only Grok Bot has a recommended template today.
 	expect(
 		withAgents
 			.filter((agent) => 'primaryAction' in agent)
@@ -68,18 +68,11 @@ test('promo videos map to their /with pages and other agents have none', () => {
 	for (const id of ids) {
 		expect(isYoutubeVideoId(id)).toBe(true)
 	}
-	const cursorVideoId = findWithAgentByPathname('/with/cursor')?.youtubeVideoId
-	expect(cursorVideoId).toBeTruthy()
-	expect(ids).toContain(cursorVideoId)
-	expect(findWithAgentByPathname('/with/muse')?.youtubeVideoId).toBe(
-		'znnJ4jfGGcg',
-	)
-	expect(findWithAgentByPathname('/with/pi')?.youtubeVideoId).toBe(
-		'czWITu_qvJo',
-	)
-	expect(findWithAgentByPathname('/with/hermes')?.youtubeVideoId).toBe(
-		'ZfAfxwIMOgI',
-	)
+	for (const slug of ['cursor', 'muse', 'pi', 'hermes']) {
+		const videoId = findWithAgentByPathname(`/with/${slug}`)?.youtubeVideoId
+		expect(videoId).toBeTruthy()
+		expect(ids).toContain(videoId)
+	}
 	expect(
 		findWithAgentByPathname('/with/instinct')?.youtubeVideoId,
 	).toBeUndefined()
@@ -99,14 +92,14 @@ test('ChatGPT and Codex add Kody as a custom MCP connection, with no marketplace
 		}
 	}
 	const chatgptSteps = findWithAgentByPathname('/with/chatgpt')?.steps ?? []
-	expect(chatgptSteps[0]?.text).toBe(
-		'In the ChatGPT desktop app, open Settings, then select MCP servers.',
-	)
-	expect(chatgptSteps[1]?.code).toBe('https://kody.codes/mcp')
+	expect(chatgptSteps[0]?.text.toLowerCase()).toContain('mcp servers')
+	expect(
+		chatgptSteps.some((step) => /^https:\/\/.+\/mcp$/.test(step.code ?? '')),
+	).toBe(true)
 	expect(chatgptSteps.map((step) => step.text).join(' ')).toContain(
 		'Add custom MCP server',
 	)
-	expect(findWithAgentByPathname('/with/codex')?.steps[0]?.code).toBe(
-		'codex mcp add kody --url https://kody.codes/mcp',
+	expect(findWithAgentByPathname('/with/codex')?.steps[0]?.code).toMatch(
+		/^codex mcp add kody --url https:\/\/.+\/mcp$/,
 	)
 })

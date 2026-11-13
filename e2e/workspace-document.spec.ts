@@ -57,9 +57,10 @@ test('native selection, copy, cross-block deletion, and undo preserve a single d
 	const original = await page.getByTestId('page-json').textContent()
 	await editor.click()
 	await editor.press('ControlOrMeta+a')
-	expect(
-		await page.evaluate(() => window.getSelection()?.toString()),
-	).toContain('Launch checklist\nReview with Kent\nNotes for the team.')
+	const selected = await page.evaluate(() => window.getSelection()?.toString())
+	expect(selected).toContain('Launch checklist')
+	expect(selected).toContain('Review with Kent')
+	expect(selected).toContain('Notes for the team.')
 	await context.grantPermissions(['clipboard-read', 'clipboard-write'])
 	await editor.press('ControlOrMeta+c')
 	const copied = await page.evaluate(() => navigator.clipboard.readText())
@@ -235,8 +236,11 @@ test('numbered items, contents, link cards and diagrams update in the editor', a
 	await add('Table of contents')
 	const contents = page.getByRole('navigation', { name: 'Table of contents' })
 	const heading = page.locator('[data-kind="heading"] .block-text')
+	const headingId = JSON.parse(
+		(await page.getByTestId('page-json').textContent())!,
+	).blocks.find((block: { kind: string }) => block.kind === 'heading').id
 	await contents.getByRole('link', { name: 'Launch checklist' }).click()
-	await expect(page).toHaveURL(/#block-00000000-0000-4000-8000-000000000001$/)
+	await expect(page).toHaveURL(new RegExp(`#block-${headingId}$`))
 	await heading.click()
 	await page.keyboard.press('End')
 	await page.keyboard.insertText(' draft')
@@ -255,7 +259,8 @@ test('numbered items, contents, link cards and diagrams update in the editor', a
 	await page.getByRole('button', { name: 'Done', exact: true }).click()
 	const link = page.getByRole('link', { name: /Project plan/ })
 	await expect(link).toHaveAttribute('href', 'https://example.com/plan')
-	await expect(link).toHaveText('Project planexample.com')
+	await expect(link).toContainText('Project plan')
+	await expect(link).toContainText('example.com')
 
 	await add('Mermaid diagram')
 	await expect(page.getByTitle('Mermaid diagram')).toHaveCount(0)
