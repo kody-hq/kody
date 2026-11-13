@@ -1,3 +1,8 @@
+/**
+ * soft-delete-read-filter: opt-out. The MCP hub backfill also visits owners
+ * whose mcp_server_settings rows are soft-deleted, since their hub storage
+ * persists until purge.
+ */
 import { z } from 'zod'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
@@ -6,7 +11,6 @@ import { sealPlaintextTotpSecrets } from '#worker/identity/two-factor.ts'
 import { sealPlaintextGuestClaimCodes } from '#worker/guest/guest-accounts.ts'
 import type { McpOAuthStorageBackfillResult } from '#worker/mcp-client/sealed-oauth-storage.ts'
 import { mcpClientHubDurableObjectName } from '#worker/user-scoped-durable-object-name.ts'
-import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import {
 	adminMutationCapabilityAccess,
 	auditAdminCapabilityInvocation,
@@ -60,7 +64,7 @@ async function runMcpClientOAuthBackfill(input: {
 }) {
 	const owners = await input.env.APP_DB.prepare(
 		`SELECT DISTINCT user_id FROM mcp_server_settings
-		 WHERE user_id > ?${andLiveDeletedAtSql()} ORDER BY user_id LIMIT ?`,
+		 WHERE user_id > ? ORDER BY user_id LIMIT ?`,
 	)
 		.bind(input.cursor ?? '', input.limit)
 		.all<{ user_id: string }>()
@@ -95,7 +99,7 @@ export const adminPlaintextSecretBackfillCapability = defineDomainCapability(
 		name: 'adminPlaintextSecretBackfill',
 		contextRuns: 'deny',
 		description:
-			'Seal secrets written before at-rest encryption. target totp_secrets seals verifications.secret for 2fa rows; guest_claim_codes replaces guest_accounts.claim_code with its lookup hash plus a sealed copy; mcp_client_oauth seals MCP client OAuth tokens, client secrets, and PKCE verifiers in each MCP client hub that has a live mcp_server_settings row. dryRun (default true) writes nothing. Each row is a compare-and-swap, so reruns are safe. remainingPlaintext is table-wide for D1 targets and the sum over this page of hubs for mcp_client_oauth. One page per execute; resume with nextCursor until null.',
+			'Seal secrets written before at-rest encryption. target totp_secrets seals verifications.secret for 2fa rows; guest_claim_codes replaces guest_accounts.claim_code with its lookup hash plus a sealed copy; mcp_client_oauth seals MCP client OAuth tokens, client secrets, and PKCE verifiers in each MCP client hub that has any mcp_server_settings row, including soft-deleted ones. dryRun (default true) writes nothing. Each row is a compare-and-swap, so reruns are safe. remainingPlaintext is table-wide for D1 targets and the sum over this page of hubs for mcp_client_oauth. One page per execute; resume with nextCursor until null.',
 		keywords: [
 			'admin',
 			'backfill',
