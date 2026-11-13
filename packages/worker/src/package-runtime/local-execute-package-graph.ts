@@ -4,7 +4,10 @@ import { loadLocalExecuteRuntimeSupport } from '#worker/local-execute-runtime-su
 import { signLocalExecutePackageBindings } from './local-execute-package-binding.ts'
 import { packageSpecifierPrefix } from './package-import-resolution.ts'
 import { collectDynamicImportExpressionNodes } from './import-specifiers.ts'
-import { prepareKodyGraphFiles } from './module-graph-import-rewriting.ts'
+import {
+	assertNoKodyVirtualModuleReference,
+	prepareKodyGraphFiles,
+} from './module-graph-import-rewriting.ts'
 import {
 	createPackageProxyPathSegment,
 	createRelativeImportSpecifier,
@@ -119,11 +122,18 @@ export function synthesizeLocalExecutePackageGraphEntry(
  */
 export function collectLocalExecutePackageGraphImports(code: string) {
 	assertNoLiteralDynamicSavedPackageImports(code)
-	return uniqueSpecifiers(
+	const imports = uniqueSpecifiers(
 		collectStaticKodyPackageImportsFromFiles({ 'entry.ts': code }).map(
 			(entry) => entry.specifier,
 		),
 	)
+	// Cached graphs skip the build's source checks, so check the entry here.
+	try {
+		assertNoKodyVirtualModuleReference('entry.ts', code)
+	} catch (error) {
+		throw mapPrepareFailure(error, imports)
+	}
+	return imports
 }
 
 /**

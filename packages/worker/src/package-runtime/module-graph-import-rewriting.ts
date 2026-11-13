@@ -572,7 +572,10 @@ function fileReachesKodyVirtualModule(filePath: string, content: string) {
  * `exports` / `imports` / `main` and wrangler `main` / `alias` could
  * otherwise point there).
  */
-function assertNoKodyVirtualModuleReference(filePath: string, content: string) {
+export function assertNoKodyVirtualModuleReference(
+	filePath: string,
+	content: string,
+) {
 	if (isTypeDeclarationFilePath(filePath)) return
 	if (!fileReachesKodyVirtualModule(filePath, content)) return
 	const label = bundlerScriptSourcePathPattern.test(filePath)
