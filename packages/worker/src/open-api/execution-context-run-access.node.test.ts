@@ -153,7 +153,7 @@ test.each([
 	)
 	if (!access.ok) throw new Error('expected access')
 	expect(access.authContext.user.userId).toBe(lease.requester.userId)
-	expect(access.orgBinding.orgId).toBe(lease.orgId)
+	expect(access.orgBinding).toMatchObject({ orgId: lease.orgId })
 	expect(access.context.id).toBe(lease.ecid)
 	expect(access.profileChain?.[0]?.id ?? null).toBe(lease.profileId)
 })
