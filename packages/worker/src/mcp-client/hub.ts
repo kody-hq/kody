@@ -89,6 +89,7 @@ import {
 	writeMcpOAuthAttemptIdentity,
 	type McpOAuthAttemptActor,
 } from './oauth-attempt.ts'
+import { assertCallbackIssuerMatchesDiscovery } from './oauth-issuer-endpoints.ts'
 import { extractMcpServerIdFromOAuthState } from './oauth-state.ts'
 import { withStaticTransportHeaders } from './transport-headers.ts'
 import { clearLiveMcpTransportSession } from './transport-session.ts'
@@ -833,6 +834,23 @@ class McpClientHubBase extends DurableObject<Env> {
 					serverName: null,
 					authorizationNeeded: true,
 					lastError: null,
+				}
+			}
+			if (stateServerId) {
+				const issuerError = await this.callbackIssuerError(
+					stateServerId,
+					new URL(request.url).searchParams.get('iss'),
+				)
+				if (issuerError) {
+					return await this.resolveOAuthCallbackOutcome({
+						sdkAuthSuccess: false,
+						sdkAuthError: issuerError,
+						serverId: stateServerId,
+						serverName:
+							this.manager
+								.listServers()
+								.find((server) => server.id === stateServerId)?.name ?? null,
+					})
 				}
 			}
 			const result = await this.manager.handleCallbackRequest(request)
@@ -1636,6 +1654,19 @@ class McpClientHubBase extends DurableObject<Env> {
 			})
 		}
 		return outcome
+	}
+
+	/** RFC 9207 `iss` check against the discovery this server's sign-in stored. */
+	private async callbackIssuerError(serverId: string, iss: string | null) {
+		const discovery = await this.ctx.storage.get(
+			`/${mcpClientName}/${serverId}/oauth_discovery`,
+		)
+		try {
+			assertCallbackIssuerMatchesDiscovery({ discovery, iss })
+			return null
+		} catch (error) {
+			return error instanceof Error ? error.message : String(error)
+		}
 	}
 
 	private async readOAuthDiscoveryUrls(serverId: string): Promise<{
