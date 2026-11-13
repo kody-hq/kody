@@ -142,6 +142,16 @@ async function runWorkflowStepOnContext(session: RehearsalSession) {
 				content: `${JSON.stringify(packageJson, null, 2)}\n`,
 			},
 			{
+				path: 'README.md',
+				content:
+					'# Execution context e2e workflow step\n\nReads a host folder file from a workflow step on an execution context. Created and deleted by the e2e.\n',
+			},
+			{
+				path: 'AGENTS.md',
+				content:
+					'# Agents\n\nThrowaway package for `tools/execution-context-e2e/run.ts`. `./on-context` takes `{ folder }` and returns `{ read }`.\n',
+			},
+			{
 				path: 'src/on-context.ts',
 				content: `import { readFile } from 'node:fs/promises'
 export default async function onContext(params) {
