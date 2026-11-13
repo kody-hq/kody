@@ -1,24 +1,35 @@
 import type { FileMetadata } from '#universal/files.ts'
 import {
+	type AuthorizationError,
 	checkPermission,
 	type EffectivePermissions,
 } from '#worker/authorization/authorize.ts'
 import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
-/** Restrictions intersect down the tree. Explicit child shares cannot reopen a restricted ancestor. */
-export function fileTreePermission(
+export type FileTreeDecision =
+	| { allowed: true }
+	| { allowed: false; missing: 'file' | 'parent' }
+	| { allowed: false; error: AuthorizationError }
+
+/**
+ * Restrictions intersect down the tree. Explicit child shares cannot reopen a
+ * restricted ancestor. A file or ancestor absent from `files` is reported as
+ * missing, not as a denial; a denial carries the authorizer's error.
+ */
+export function fileTreeAccess(
 	access: EffectivePermissions,
 	files: ReadonlyMap<string, FileMetadata>,
 	permission: OrgPermission,
 	id: string,
-) {
+): FileTreeDecision {
 	const chain: FileMetadata[] = [],
 		seen = new Set<string>()
 	let cursor: string | undefined = id
 	while (cursor) {
-		if (seen.has(cursor)) return false
+		if (seen.has(cursor)) return { allowed: false, missing: 'parent' }
 		seen.add(cursor)
 		const file = files.get(cursor)
-		if (!file) return false
+		if (!file)
+			return { allowed: false, missing: cursor === id ? 'file' : 'parent' }
 		chain.push(file)
 		cursor = file.parentId
 	}
@@ -27,19 +38,39 @@ export function fileTreePermission(
 		id: file.id,
 		orgId: access.orgId,
 	})
+	// Org-wide grants never reach through a restricted ancestor: only its direct grants count.
+	const directOnly = { ...access, permissions: new Set<OrgPermission>() }
 	for (const file of chain)
 		if (file.accessMode === 'restricted' && !access.isOwner) {
-			const direct = access.resourcePermissions.get(`file:${file.id}`)
 			if (
-				!direct?.has('file:read') ||
-				!direct.has(permission) ||
-				!checkPermission(access, permission, resource(file)).allowed
-			)
-				return false
+				permission !== 'file:read' &&
+				!access.resourcePermissions.get(`file:${file.id}`)?.has('file:read')
+			) {
+				const read = checkPermission(directOnly, 'file:read', resource(file))
+				if (!read.allowed) return read
+			}
+			const decision = checkPermission(directOnly, permission, resource(file))
+			if (!decision.allowed) return decision
 		}
-	return chain.some(
-		(file) => checkPermission(access, permission, resource(file)).allowed,
-	)
+	const denials: AuthorizationError[] = []
+	for (const file of chain) {
+		const decision = checkPermission(access, permission, resource(file))
+		if (decision.allowed) return decision
+		denials.push(decision.error)
+	}
+	// A grant held on an ancestor but blocked later (token scope, profile) explains more than the target's missing grant.
+	const error =
+		denials.find((denial) => denial.code !== 'missing_permission') ?? denials[0]
+	return error ? { allowed: false, error } : { allowed: false, missing: 'file' }
+}
+
+export function fileTreePermission(
+	access: EffectivePermissions,
+	files: ReadonlyMap<string, FileMetadata>,
+	permission: OrgPermission,
+	id: string,
+) {
+	return fileTreeAccess(access, files, permission, id).allowed
 }
 
 /** Load only the active ancestry, never the entire org for a cursor update. */

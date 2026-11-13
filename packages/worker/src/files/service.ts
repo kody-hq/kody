@@ -3,7 +3,11 @@ import {
 	fileCollaborationEnabled,
 	fileEffectivePermissions,
 } from './feature.ts'
-import { fileTreePermission, loadFileAncestors } from './tree-access.ts'
+import {
+	fileTreeAccess,
+	fileTreePermission,
+	loadFileAncestors,
+} from './tree-access.ts'
 import { fileRoomRpc, type FileSessionProof } from './room.ts'
 import type { CommentCommand } from '#universal/file-collaboration.ts'
 import { parseFileRange } from '#universal/file-assets.ts'
@@ -37,6 +41,8 @@ import type {
 } from '#universal/files.ts'
 import { fileStoreRpc } from './client.ts'
 
+const parentNotFound = 'Parent page or directory not found.'
+
 async function fileOperation<T>(run: () => Promise<T>): Promise<T> {
 	try {
 		return await run()
@@ -58,8 +64,9 @@ async function scope(ctx: CapabilityContext, focusFileId?: string) {
 	if (!request.actor) throw new McpCallerError('Sign in to open files.')
 	const access = await fileEffectivePermissions(ctx.env, request)
 	const store = fileStoreRpc(ctx.env, request.org.id)
+	const orgRead = checkPermission(access, 'file:read')
 	const canRead =
-		checkPermission(access, 'file:read').allowed ||
+		orgRead.allowed ||
 		[...access.resourcePermissions].some(
 			([key, permissions]) =>
 				key.startsWith('file:') && permissions.has('file:read'),
@@ -77,13 +84,26 @@ async function scope(ctx: CapabilityContext, focusFileId?: string) {
 						file,
 					]),
 				)
+	const decide = (permission: OrgPermission, id?: string) => {
+		if (!id || !permission.startsWith('file:'))
+			return checkPermission(access, permission)
+		if (!canRead && !orgRead.allowed) return orgRead
+		return fileTreeAccess(access, files, permission, id)
+	}
 	const holds = (permission: OrgPermission, id?: string) =>
-		id && permission.startsWith('file:')
-			? fileTreePermission(access, files, permission, id)
-			: checkPermission(access, permission).allowed
-	const require = (permission: OrgPermission, id?: string) => {
-		if (!holds(permission, id))
-			throw new McpCallerError('You do not have access to this file operation.')
+		decide(permission, id).allowed
+	/** `notFound` names a missing `id`; a missing ancestor is always the parent. */
+	const require = (
+		permission: OrgPermission,
+		id?: string,
+		notFound = 'File not found.',
+	) => {
+		const decision = decide(permission, id)
+		if (decision.allowed) return
+		if ('error' in decision) throw decision.error
+		throw new McpCallerError(
+			decision.missing === 'file' ? notFound : parentNotFound,
+		)
 	}
 
 	return {
@@ -228,8 +248,8 @@ export async function writeFile(
 	const creating = 'name' in input
 	if (creating) {
 		if (input.parent_id) {
-			s.require('file:read', input.parent_id)
-			s.require('file:write', input.parent_id)
+			s.require('file:read', input.parent_id, parentNotFound)
+			s.require('file:write', input.parent_id, parentNotFound)
 		} else {
 			s.require('file:create')
 		}
@@ -362,8 +382,8 @@ export async function previewFileMove(
 	s.require('file:read', fileId)
 	s.require('file:write', fileId)
 	if (parentId) {
-		s.require('file:read', parentId)
-		s.require('file:write', parentId)
+		s.require('file:read', parentId, parentNotFound)
+		s.require('file:write', parentId, parentNotFound)
 	} else s.require('file:create')
 	const file = s.files.get(fileId)
 	if (!file) throw new McpCallerError('File not found.')
@@ -373,7 +393,7 @@ export async function previewFileMove(
 		while (id && !seen.has(id)) {
 			seen.add(id)
 			const item = s.files.get(id)
-			if (!item) throw new McpCallerError('Parent page or directory not found.')
+			if (!item) throw new McpCallerError(parentNotFound)
 			values.push({
 				id,
 				version: item.metadataVersion ?? 0,
@@ -616,8 +636,13 @@ export async function listFileDirectory(
 				parentId,
 			)
 		: new Map<string, FileMetadata>()
-	if (parentId && !fileTreePermission(effective, files, 'file:read', parentId))
-		throw new McpCallerError('You do not have access to this directory.')
+	if (parentId) {
+		const decision = fileTreeAccess(effective, files, 'file:read', parentId)
+		if (!decision.allowed) {
+			if ('error' in decision) throw decision.error
+			throw new McpCallerError(parentNotFound)
+		}
+	}
 	const page = await store.directoryPage(request.org.id, parentId, cursor)
 	for (const file of page.files) files.set(file.id, file)
 	return {
