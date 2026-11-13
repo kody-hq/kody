@@ -26,6 +26,7 @@ type JobManagerAlarmHarness = {
 				successCount: number
 				errorCount: number
 				jobOutcomes: Array<unknown>
+				skippedReason?: 'account_deleted'
 			}>
 			settleHungDueJobsForUser: (input: { userId: string }) => Promise<{
 				settledCount: number
@@ -168,6 +169,48 @@ test('JobManager alarm still rethrows non-retryable runDueJobs failures', async 
 
 	await expect(manager.alarm()).rejects.toThrow('permanent job host failure')
 	expect(setAlarm).not.toHaveBeenCalled()
+	expect(settleHungDueJobsForUser).not.toHaveBeenCalled()
+})
+
+test('JobManager alarm disarms without rethrowing when the owner account is deleted', async () => {
+	const { JobManagerBase } = await import('./manager-do.ts')
+
+	const setAlarm = vi.fn(async (_atMs: number) => undefined)
+	const deleteAlarm = vi.fn(async () => undefined)
+	const storageGet = vi.fn(async (key: string) =>
+		key === 'user-id' ? 'user-1' : undefined,
+	)
+	const runDueJobsForUser = vi.fn().mockResolvedValue({
+		dueJobCount: 0,
+		successCount: 0,
+		errorCount: 0,
+		jobOutcomes: [],
+		skippedReason: 'account_deleted',
+	})
+	const settleHungDueJobsForUser = vi.fn()
+	const syncAlarm = vi.fn()
+
+	const state = {
+		blockConcurrencyWhile: async <T>(callback: () => Promise<T>) => callback(),
+		storage: {
+			get: storageGet,
+			getAlarm: vi.fn(async () => null),
+			setAlarm,
+			deleteAlarm,
+		},
+	}
+	const manager = new (JobManagerBase as unknown as new (
+		state: unknown,
+		env: unknown,
+	) => JobManagerAlarmHarness)(state, {
+		HOST: { runDueJobsForUser, settleHungDueJobsForUser },
+	})
+	manager.syncAlarm = syncAlarm
+
+	await expect(manager.alarm()).resolves.toBeUndefined()
+	expect(deleteAlarm).toHaveBeenCalledTimes(1)
+	expect(setAlarm).not.toHaveBeenCalled()
+	expect(syncAlarm).not.toHaveBeenCalled()
 	expect(settleHungDueJobsForUser).not.toHaveBeenCalled()
 })
 

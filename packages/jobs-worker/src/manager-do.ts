@@ -204,6 +204,19 @@ export class JobManagerBase extends DurableObject<JobsWorkerEnv> {
 		})
 		try {
 			const result = await this.env.HOST.runDueJobsForUser({ userId })
+			if (result.skippedReason === 'account_deleted') {
+				// Owner account is deleted or being deleted: stop waking. Keep the
+				// stored user id so an account/org restore can re-arm via syncAlarm.
+				await this.ctx.storage.deleteAlarm()
+				logJobSchedulerEvent({
+					event: 'alarm_disarmed',
+					userId,
+					reason: 'account_deleted',
+					retryCount: alarmInfo?.retryCount,
+					isRetry: alarmInfo?.isRetry,
+				})
+				return
+			}
 			logJobSchedulerEvent({
 				event: 'run_due_jobs_completed',
 				userId,
