@@ -1,0 +1,74 @@
+name: MSIX probe
+on:
+  push:
+    branches: [devin/msix-probe]
+permissions:
+  contents: read
+jobs:
+  probe:
+    name: probe ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x64, runner: windows-latest }
+          - { arch: arm64, runner: windows-11-arm }
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      CI: '1'
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      KODY_SKIP_SKILL_REFRESH: '1'
+      KODY_SKIP_GIT_HELPER_REFRESH: '1'
+      KODY_DESKTOP_ARCH: ${{ matrix.arch }}
+      PROBE_ARCH: ${{ matrix.arch }}
+      PROBE_VERSION_1: 0.1.900
+      PROBE_VERSION_2: 0.1.901
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 26
+          architecture: ${{ matrix.arch }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build --workspace @kodycodes/cli
+      - name: Test certs
+        run: |
+          [System.Environment]::OSVersion.Version
+          Get-CimInstance Win32_OperatingSystem | Select-Object Caption, BuildNumber
+          $sign = New-SelfSignedCertificate -Type Custom -Subject 'CN=Kody Desktop CI' -KeyUsage DigitalSignature -FriendlyName 'Kody CI' -CertStoreLocation Cert:\CurrentUser\My -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3', '2.5.29.19={text}')
+          $pw = ConvertTo-SecureString probe -AsPlainText -Force
+          Export-PfxCertificate -Cert $sign -FilePath "$env:RUNNER_TEMP\sign.pfx" -Password $pw | Out-Null
+          Export-Certificate -Cert $sign -FilePath "$env:RUNNER_TEMP\sign.cer" | Out-Null
+          Import-Certificate -FilePath "$env:RUNNER_TEMP\sign.cer" -CertStoreLocation Cert:\LocalMachine\TrustedPeople | Out-Null
+          $tls = New-SelfSignedCertificate -DnsName localhost -CertStoreLocation Cert:\CurrentUser\My
+          Export-PfxCertificate -Cert $tls -FilePath "$env:RUNNER_TEMP\tls.pfx" -Password $pw | Out-Null
+          Export-Certificate -Cert $tls -FilePath "$env:RUNNER_TEMP\tls.cer" | Out-Null
+          Import-Certificate -FilePath "$env:RUNNER_TEMP\tls.cer" -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
+          "WIN_CSC_LINK=$env:RUNNER_TEMP\sign.pfx" >> $env:GITHUB_ENV
+          "WIN_CSC_KEY_PASSWORD=probe" >> $env:GITHUB_ENV
+          "PROBE_TLS_PFX=$env:RUNNER_TEMP\tls.pfx" >> $env:GITHUB_ENV
+      - name: Build msix v1 and v2
+        working-directory: packages/desktop
+        run: |
+          npx electron-builder --config msix-probe.cjs --publish never --win --${{ matrix.arch }} "-c.extraMetadata.version=$env:PROBE_VERSION_1"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          npx electron-builder --config msix-probe.cjs --publish never --win --${{ matrix.arch }} "-c.extraMetadata.version=$env:PROBE_VERSION_2"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Probe
+        run: |
+          $server = Start-Process node -ArgumentList 'tools/msix-probe/server.mjs', 'artifacts/desktop' -PassThru -NoNewWindow -RedirectStandardOutput "$env:RUNNER_TEMP\server.log"
+          Start-Sleep 3
+          ./tools/msix-probe/probe.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: probe-${{ matrix.arch }}
+          path: artifacts/desktop/*.msix
+          retention-days: 3
