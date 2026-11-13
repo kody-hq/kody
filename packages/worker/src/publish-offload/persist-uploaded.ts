@@ -1,4 +1,7 @@
-import type { PublishedPackageArtifactBuildTarget } from '#worker/package-runtime/package-artifact-targets.ts'
+import {
+	publishedPackageArtifactBuildKey,
+	type PublishedPackageArtifactBuildTarget,
+} from '#worker/package-runtime/package-artifact-targets.ts'
 import {
 	persistPublishedPackageArtifactTargets,
 	type PublishedPackageArtifactBuilders,
@@ -22,6 +25,7 @@ import {
 } from './store.ts'
 import {
 	collectLinkedPackageImports,
+	type LinkedDependencyArtifactCache,
 	linkUploadedPackageImports,
 } from './link-dependencies.ts'
 import type {
@@ -30,6 +34,7 @@ import type {
 	PublishBuildTargetEntry,
 } from './types.ts'
 import {
+	assertSameBuildUploadMatches,
 	assertServerRebuildMatches,
 	assertSupportedBuilderVersion,
 	matchUploadedTargets,
@@ -213,7 +218,18 @@ export async function persistUploadedPublishBuild(input: {
 		// build, instead of once per target (about 100 targets on big packages).
 		const importNodesCache: ModuleImportNodesCache = new Map()
 		const loadedPackages = new Map<string, LoadedDependencyPackage>()
+		const artifactCache: LinkedDependencyArtifactCache = new Map()
+		// Targets that share a build (an export and the jobs on its file) get
+		// the first one's verified, linked upload; see createUploadedTargetBuilders.
+		const linkedBuilds = new Map<string, PublishBuildTargetEntry>()
 		for (const { target, uploaded } of matched) {
+			const buildKey = publishedPackageArtifactBuildKey(target)
+			const kept = linkedBuilds.get(buildKey)
+			if (kept) {
+				assertSameBuildUploadMatches({ kept, uploaded })
+				continue
+			}
+			linkedBuilds.set(buildKey, uploaded)
 			const dependencies =
 				target.bundleKind === 'app-client'
 					? []
@@ -252,6 +268,7 @@ export async function persistUploadedPublishBuild(input: {
 				modules,
 				linkedImports,
 				referenced: referencedLinkedImports,
+				artifactCache,
 			})
 			prepared.set(target, {
 				mainModule: uploaded.mainModule,

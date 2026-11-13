@@ -6,6 +6,7 @@ import {
 } from '#worker/package-runtime/published-bundle-artifacts.ts'
 import type { RepoCheckRunResult } from './checks.ts'
 import {
+	chunkArtifactTargetsPerIsolate,
 	isolatedArtifactRebuildChunkSize,
 	runIsolatedArtifactRebuildWaves,
 	type IsolatedArtifactRebuildRunner,
@@ -127,10 +128,10 @@ export async function runPackageCheckArtifactBuild(input: {
 			message: `The published artifact rebuild would fail, so the publish would too. ${failures.join('; ')}`,
 		}
 	}
-	const isolates = Math.ceil(targets.length / isolatedArtifactRebuildChunkSize)
+	const isolates = chunkArtifactTargetsPerIsolate(targets).length
 	return {
 		kind: 'bundle',
 		ok: true,
-		message: `Built all ${built} runtime artifact(s) the way the publish rebuild does (${isolates} isolate(s), up to ${isolatedArtifactRebuildChunkSize} per isolate); nothing was saved.${reusedNote}`,
+		message: `Built all ${built} runtime artifact(s) the way the publish rebuild does (${isolates} isolate(s), up to ${isolatedArtifactRebuildChunkSize} distinct builds per isolate); nothing was saved.${reusedNote}`,
 	}
 }

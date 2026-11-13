@@ -9,15 +9,16 @@ import type { ModuleImportNodesCache } from '#worker/package-runtime/import-spec
  * the registry, never from the upload.
  */
 import { collectModuleExportNames } from '#worker/package-runtime/module-export-names.ts'
-import { materializePublishedArtifactModules } from '#worker/package-runtime/module-graph-artifacts.ts'
+import {
+	linkedArtifactPrefix,
+	materializeDependencyArtifactModules,
+} from '#worker/package-runtime/module-graph-artifacts.ts'
 import { resolveCurrentDynamicPackageArtifact } from '#worker/package-runtime/module-graph-hydration.ts'
 import { runtimeModulePath } from '#worker/package-runtime/module-graph-path-basics.ts'
 import {
 	createRelativeImportSpecifier,
-	encodePathKeyAsPath,
 	joinPath,
 	linkedPackageImportPath,
-	linkedPackageImportPrefix,
 	resolveWorkspaceSourceFilePath,
 } from '#worker/package-runtime/module-graph-paths.ts'
 import {
@@ -70,6 +71,19 @@ export function collectLinkedPackageImports(input: {
 	return linked
 }
 
+type LinkedDependencyArtifact = Awaited<
+	ReturnType<typeof resolveCurrentDynamicPackageArtifact>
+>
+
+/**
+ * One publish's resolved dependency artifacts by `kody:@` specifier, so
+ * targets that import the same package load its artifact once.
+ */
+export type LinkedDependencyArtifactCache = Map<
+	string,
+	Promise<LinkedDependencyArtifact>
+>
+
 /**
  * Writes each referenced placeholder: the dependency's published artifact
  * under `.__kody_linked__/artifacts/…` and a metered proxy at the
@@ -83,6 +97,7 @@ export async function linkUploadedPackageImports(input: {
 	modules: WorkerLoaderModules
 	linkedImports: ReadonlyMap<string, string>
 	referenced: ReadonlySet<string>
+	artifactCache?: LinkedDependencyArtifactCache
 }) {
 	const modules: WorkerLoaderModules = { ...input.modules }
 	const publishedArtifactDependencies: Array<BundleArtifactDependency> = []
@@ -93,26 +108,29 @@ export async function linkUploadedPackageImports(input: {
 				`the build imports "${placeholder}", which is not a Kody package this source imports.`,
 			)
 		}
-		const artifact = await resolveCurrentDynamicPackageArtifact({
-			env: input.env,
-			baseUrl: input.baseUrl,
-			userId: input.userId,
-			specifier,
-		})
+		let pendingArtifact = input.artifactCache?.get(specifier)
+		if (!pendingArtifact) {
+			pendingArtifact = resolveCurrentDynamicPackageArtifact({
+				env: input.env,
+				baseUrl: input.baseUrl,
+				userId: input.userId,
+				specifier,
+			})
+			input.artifactCache?.set(specifier, pendingArtifact)
+		}
+		const artifact = await pendingArtifact
 		const packageId = artifact.packageContext?.packageId
 		if (!packageId) {
 			throw new PublishBuildVerificationError(
 				`"${specifier}" has no recorded package identity, so Kody cannot link it. Ask its owner to publish it again.`,
 			)
 		}
-		const artifactPrefix = joinPath(
-			linkedPackageImportPrefix,
-			'artifacts',
-			encodePathKeyAsPath(
-				`${specifier}#${artifact.sourceId}#${artifact.publishedCommit}`,
-			),
-		)
-		const materialized = materializePublishedArtifactModules({
+		const artifactPrefix = linkedArtifactPrefix({
+			specifier,
+			sourceId: artifact.sourceId,
+			publishedCommit: artifact.publishedCommit,
+		})
+		const materialized = materializeDependencyArtifactModules({
 			artifactPrefix,
 			modules: artifact.modules,
 		})

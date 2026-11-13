@@ -100,6 +100,12 @@ Kody trusts nothing it did not compute itself:
   build resolves it, behind the same metered proxy. The dependency's package id,
   storage, secrets, and capabilities come from Kody, so you can import packages
   you can use but not write.
+- Filling a placeholder copies that artifact into your package, so a large
+  dependency still adds its size (and the size of the `kody:@` packages it
+  imports) to your publish. Kody loads each dependency once per publish, writes
+  a package that several dependencies share once, and builds an export and the
+  jobs that share its entry file once, but importing a very large package from
+  many different entry files costs that copy for each of them.
 - Uploaded modules may bind only your own package. A build that inlines another
   package's code, binds another package's id, or ships its own module at a
   linked placeholder path is refused.

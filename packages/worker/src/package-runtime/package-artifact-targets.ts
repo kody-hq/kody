@@ -19,6 +19,19 @@ export type PublishedPackageArtifactBuildTarget = {
 	bundleKind: 'app' | 'app-client' | 'module' | 'importable-module'
 }
 
+/**
+ * Targets with the same key build the same bundle: an export's `module`
+ * target and every job or subscription handler on that file.
+ */
+export function publishedPackageArtifactBuildKey(
+	target: Pick<
+		PublishedPackageArtifactBuildTarget,
+		'bundleKind' | 'entryPoint'
+	>,
+) {
+	return `${target.bundleKind}\0${target.entryPoint}`
+}
+
 function resolvePackageExportRuntimeEntryPoint(target: PackageExportTarget) {
 	return typeof target === 'string'
 		? target

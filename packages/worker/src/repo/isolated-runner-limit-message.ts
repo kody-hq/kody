@@ -50,6 +50,29 @@ export function authoringCheckRunnerLimitLead(where: string) {
 	return `The publish checks ${authoringCheckRunnerLimitPhrase}${where} before they finished.`
 }
 
+const inIsolateMemoryLimitPattern = /exceeded (?:its )?memory limits?\b/i
+
+/**
+ * A target build that trips workerd's in-isolate memory guard throws a bare
+ * platform string (for example "Dynamic import exceeded memory limits").
+ * Name what the build holds and how to shrink it or build elsewhere.
+ */
+export function artifactBuildFailureMessage(
+	message: string,
+	runner: 'check' | 'rebuild',
+) {
+	if (!inIsolateMemoryLimitPattern.test(message)) return message
+	return (
+		`${message}: this build exceeded the isolated ${runner} runner's ` +
+		'memory or CPU limits. One entry point build holds its own modules, ' +
+		'the npm packages they import, and a copy of the published artifact ' +
+		'of every kody:@ package the entry imports (including the kody:@ ' +
+		'packages that one imports), so a large Kody dependency counts against ' +
+		'every entry that imports it. Import it from fewer entry points, or ' +
+		`import a smaller export of it. ${publishOutsideCloudAdvice()}`
+	)
+}
+
 /** True for a check result that only says the check runner hit its limits. */
 export function isRepoCheckResourceLimitMessage(message: string) {
 	return (

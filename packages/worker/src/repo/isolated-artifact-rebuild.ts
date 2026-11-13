@@ -1,6 +1,7 @@
 import { chunkArray } from '@kody-internal/shared/chunk.ts'
 import { errorCauseChainIncludes } from '@kody-internal/shared/error-message.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import { publishedPackageArtifactBuildKey } from '#worker/package-runtime/package-artifact-targets.ts'
 import type { PublishedPackageArtifactBuildTarget } from '#worker/package-runtime/published-bundle-artifacts.ts'
 import { isDurableObjectIsolateResourceLimitResetMessage } from '#worker/sentry-options.ts'
 import {
@@ -272,7 +273,31 @@ export function createIsolatedArtifactRebuildRunner(
 }
 
 /**
- * The rebuild fan-out: `isolatedArtifactRebuildChunkSize` targets per
+ * Per-isolate chunks of up to `isolatedArtifactRebuildChunkSize` distinct
+ * builds. Targets that build the same bundle share a chunk, so the isolate's
+ * memoized builders build that bundle once instead of once per target.
+ */
+export function chunkArtifactTargetsPerIsolate(
+	targets: ReadonlyArray<PublishedPackageArtifactBuildTarget>,
+) {
+	const sameBuild = new Map<
+		string,
+		Array<PublishedPackageArtifactBuildTarget>
+	>()
+	for (const target of targets) {
+		const key = publishedPackageArtifactBuildKey(target)
+		const group = sameBuild.get(key)
+		if (group) group.push(target)
+		else sameBuild.set(key, [target])
+	}
+	return chunkArray(
+		[...sameBuild.values()],
+		isolatedArtifactRebuildChunkSize,
+	).map((groups) => groups.flat())
+}
+
+/**
+ * The rebuild fan-out: `isolatedArtifactRebuildChunkSize` distinct builds per
  * throwaway isolate, `isolatedArtifactRebuildChunkConcurrency` isolates per
  * wave, staging TTL refreshed between waves, and no new wave after a failed
  * one. Publish rebuilds and `packageCheck` both go through here, so a dev
@@ -290,10 +315,7 @@ export async function runIsolatedArtifactRebuildWaves(input: {
 		result: PromiseSettledResult<IsolatedArtifactRebuildOutcome>,
 	): boolean
 }) {
-	const isolateChunks = chunkArray(
-		[...input.targets],
-		isolatedArtifactRebuildChunkSize,
-	)
+	const isolateChunks = chunkArtifactTargetsPerIsolate(input.targets)
 	const waves = chunkArray(
 		isolateChunks,
 		isolatedArtifactRebuildChunkConcurrency,
