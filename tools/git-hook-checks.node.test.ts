@@ -45,7 +45,6 @@ test.each([
 	'vite.config.ts',
 	'tsconfig-tools.json',
 	'tools/vitest-global-setup-node.ts',
-	'packages/worker/src/test-support/module-graph.ts',
 	'packages/worker/wrangler.test.jsonc',
 	'packages/worker/migrations/0001.sql',
 	'patches/example.patch',
@@ -1409,7 +1408,7 @@ test('pre-push names the global inputs that force the full test:push', async () 
 	const logs: Array<string> = []
 	const git: GitRunner = (args) => {
 		if (args[0] === 'diff')
-			return gitResult(0, 'packages/worker/src/test-support/a.ts\0src/b.ts\0')
+			return gitResult(0, 'packages/worker/migrations/0001_a.sql\0src/b.ts\0')
 		if (args[0] === 'status' || args[0] === 'stash') return gitResult(0)
 		if (args[0] === 'rev-parse') return gitResult(1)
 		return gitResult(1)
@@ -1434,7 +1433,7 @@ test('pre-push names the global inputs that force the full test:push', async () 
 			(line) =>
 				line.includes('full test:push') &&
 				line.includes('global test inputs changed') &&
-				line.includes('packages/worker/src/test-support/a.ts'),
+				line.includes('packages/worker/migrations/0001_a.sql'),
 		),
 	).toBe(true)
 })
