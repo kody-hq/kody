@@ -80,10 +80,10 @@ import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
 import type { FetchGatewayProps } from '#mcp/fetch-gateway.ts'
 import { buildPackageStorageId } from '#worker/storage-ids.ts'
 import {
-	assertStorageRunnerWriteWithinEntitlement,
 	createPackageStorageAccessDeniedMessage,
 	createPackageStorageOwnerOnlyMessage,
 	createStorageBytesEntitlementRunCache,
+	writeStorageWithinEntitlement,
 	storageSqlNeedsWriteEntitlement,
 	storageRunnerRpc,
 } from '#worker/storage-runner.ts'
@@ -1903,17 +1903,18 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 	private readonly storageBytesEntitlementCache =
 		createStorageBytesEntitlementRunCache()
 
-	private async assertStorageWriteAllowed(input: {
-		storageId: string
-		requested?: number
-	}) {
-		await assertStorageRunnerWriteWithinEntitlement({
+	private async writeStorageAllowed<T>(
+		input: { storageId: string } & Pick<
+			Parameters<typeof writeStorageWithinEntitlement<T>>[0],
+			'method' | 'write' | 'legacyRequested' | 'legacyWrite'
+		>,
+	) {
+		return await writeStorageWithinEntitlement<T>({
 			env: this.env,
 			userId: this.ctx.props.userId,
 			email: this.ctx.props.email,
-			storageId: input.storageId,
-			requested: input.requested,
 			cache: this.storageBytesEntitlementCache,
+			...input,
 		})
 	}
 
@@ -2562,20 +2563,35 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 	}) {
 		// package app bridges always mark packageStorage SQL writable, so skip
 		// the all-bucket fan-out for pure reads and idempotent DDL.
-		if (input.writable && storageSqlNeedsWriteEntitlement(input.query)) {
-			await this.assertStorageWriteAllowed({
-				storageId: input.storageId,
-				requested: estimateEntitlementStorageSqlWriteBytes({
-					query: input.query,
-					params: input.params,
-				}),
-			})
-		}
-		return await this.getStorageRunner(
+		const runner = this.getStorageRunner(
 			input.storageId,
 			input.packageAppVisitorUserId,
 			input.billedOrgId,
-		).sqlQuery({
+		)
+		if (input.writable && storageSqlNeedsWriteEntitlement(input.query)) {
+			return await this.writeStorageAllowed({
+				storageId: input.storageId,
+				method: 'sqlQueryWithinLimit',
+				write: (maxDatabaseBytes) =>
+					runner.sqlQueryWithinLimit({
+						query: input.query,
+						params: input.params,
+						maxDatabaseBytes,
+					}),
+				legacyRequested: () =>
+					estimateEntitlementStorageSqlWriteBytes({
+						query: input.query,
+						params: input.params,
+					}),
+				legacyWrite: () =>
+					runner.sqlQuery({
+						query: input.query,
+						params: input.params,
+						writable: input.writable,
+					}),
+			})
+		}
+		return await runner.sqlQuery({
 			query: input.query,
 			params: input.params,
 			writable: input.writable,
@@ -2589,34 +2605,32 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		packageAppVisitorUserId?: string
 		billedOrgId?: OwnerId
 	}) {
-		const existing = await this.getStorageRunner(
+		const runner = this.getStorageRunner(
 			input.storageId,
 			input.packageAppVisitorUserId,
 			input.billedOrgId,
-		).getValue({ key: input.key })
-		await this.assertStorageWriteAllowed({
+		)
+		return await this.writeStorageAllowed({
 			storageId: input.storageId,
-			requested: estimateEntitlementStorageEntryByteDelta({
-				next: {
+			method: 'setValueWithinLimit',
+			write: (maxDatabaseBytes) =>
+				runner.setValueWithinLimit({
 					key: input.key,
 					value: input.value,
-				},
-				existing:
-					existing.value === null
-						? null
-						: {
-								key: input.key,
-								value: existing.value,
-							},
-			}),
-		})
-		return await this.getStorageRunner(
-			input.storageId,
-			input.packageAppVisitorUserId,
-			input.billedOrgId,
-		).setValue({
-			key: input.key,
-			value: input.value,
+					maxDatabaseBytes,
+				}),
+			legacyRequested: async () => {
+				const existing = await runner.getValue({ key: input.key })
+				return estimateEntitlementStorageEntryByteDelta({
+					next: { key: input.key, value: input.value },
+					existing:
+						existing.value === null
+							? null
+							: { key: input.key, value: existing.value },
+				})
+			},
+			legacyWrite: () =>
+				runner.setValue({ key: input.key, value: input.value }),
 		})
 	}
 

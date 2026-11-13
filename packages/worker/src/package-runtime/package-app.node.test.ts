@@ -1593,10 +1593,10 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 		}))
 	vi.spyOn(
 		bridge as unknown as {
-			assertStorageWriteAllowed: (input: unknown) => Promise<void>
+			writeStorageAllowed: (input: { legacyWrite: () => unknown }) => unknown
 		},
-		'assertStorageWriteAllowed',
-	).mockResolvedValue(undefined)
+		'writeStorageAllowed',
+	).mockImplementation(async (input) => await input.legacyWrite())
 
 	await expect(
 		bridge.packageStorageGet({ packageId: 'package-1', key: 'count' }),
@@ -1654,7 +1654,7 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 	await expect(
 		bridge.packageStorageGet({ packageId: 'victim-package', key: 'secret' }),
 	).rejects.toThrow(createPackageStorageAccessDeniedMessage('victim-package'))
-	expect(getValue).toHaveBeenCalledTimes(2)
+	expect(getValue).toHaveBeenCalledTimes(1)
 
 	await expect(
 		bridge.packageStorageClear({ packageId: '   ' }),
@@ -1696,7 +1696,7 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 	await expect(
 		bridge.storageGet({ storageId: '   ', key: 'x' }),
 	).rejects.toThrow('Package app storage requires a non-empty storage id.')
-	expect(getStorageRunner).toHaveBeenCalledTimes(3)
+	expect(getStorageRunner).toHaveBeenCalledTimes(2)
 })
 
 test('buildPackageAppWorker mints request-bound loopback bindings on every loader callback, never from the cached build', async () => {

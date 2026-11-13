@@ -10,9 +10,9 @@ import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
-	assertStorageRunnerWriteWithinEntitlement,
 	isReadOnlyStorageSqlQuery,
 	storageRunnerRpc,
+	writeStorageWithinEntitlement,
 } from '#worker/storage-runner.ts'
 import { estimateEntitlementStorageSqlWriteBytes } from '#worker/entitlements/service.ts'
 import { isUserStorageSqlCallerMessage } from '#worker/storage-sql-caller-error.ts'
@@ -88,28 +88,43 @@ export const storageQueryCapability = defineDomainCapability(
 			})
 			const ownerId = ownerIdFromCaller(ctx.callerContext)
 			const writable = args.writable ?? false
-			if (writable && !isReadOnlyStorageSqlQuery(args.query)) {
-				await assertStorageRunnerWriteWithinEntitlement({
-					env: ctx.env,
-					userId: ownerId,
-					email: entitlementEmailForOwner(ctx.callerContext, ownerId),
-					storageId,
-					requested: estimateEntitlementStorageSqlWriteBytes({
-						query: args.query,
-						params: args.params,
-					}),
-				})
-			}
+			const runner = storageRunnerRpc({
+				env: ctx.env,
+				userId: ownerId,
+				storageId,
+			})
 			try {
-				const result = await storageRunnerRpc({
-					env: ctx.env,
-					userId: ownerId,
-					storageId,
-				}).sqlQuery({
-					query: args.query,
-					params: args.params,
-					writable,
-				})
+				const result =
+					writable && !isReadOnlyStorageSqlQuery(args.query)
+						? await writeStorageWithinEntitlement({
+								env: ctx.env,
+								userId: ownerId,
+								email: entitlementEmailForOwner(ctx.callerContext, ownerId),
+								storageId,
+								method: 'sqlQueryWithinLimit',
+								write: (maxDatabaseBytes) =>
+									runner.sqlQueryWithinLimit({
+										query: args.query,
+										params: args.params,
+										maxDatabaseBytes,
+									}),
+								legacyRequested: () =>
+									estimateEntitlementStorageSqlWriteBytes({
+										query: args.query,
+										params: args.params,
+									}),
+								legacyWrite: () =>
+									runner.sqlQuery({
+										query: args.query,
+										params: args.params,
+										writable,
+									}),
+							})
+						: await runner.sqlQuery({
+								query: args.query,
+								params: args.params,
+								writable,
+							})
 				return {
 					ok: true as const,
 					storage_id: storageId,
