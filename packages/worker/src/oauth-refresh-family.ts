@@ -1,3 +1,4 @@
+import { timingSafeEqualBytes } from '@kody-internal/shared/timing-safe.ts'
 import * as Sentry from '@sentry/cloudflare'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import {
@@ -122,6 +123,19 @@ export async function hashOAuthToken(token: string) {
 		.join('')
 }
 
+const hashTextEncoder = new TextEncoder()
+
+function hashesMatch(
+	left: string | null | undefined,
+	right: string | null | undefined,
+) {
+	if (typeof left !== 'string' || typeof right !== 'string') return false
+	return timingSafeEqualBytes(
+		hashTextEncoder.encode(left),
+		hashTextEncoder.encode(right),
+	)
+}
+
 export function decideRefreshFamilyAction(input: {
 	presentedHash: string
 	grant: RefreshFamilyGrantIds | null
@@ -144,7 +158,7 @@ export function decideRefreshFamilyAction(input: {
 	if (!snapshotMatchesCurrent) {
 		return { kind: 'pass-through' }
 	}
-	if (input.presentedHash === input.grant.previousRefreshTokenHash) {
+	if (hashesMatch(input.presentedHash, input.grant.previousRefreshTokenHash)) {
 		return { kind: 'return-snapshot' }
 	}
 	return { kind: 'pass-through' }
@@ -246,7 +260,7 @@ function resolveRefreshFamilyViews(input: {
 	if (
 		input.kvGrant.currentRefreshTokenHash ===
 			memory.grant.previousRefreshTokenHash ||
-		input.kvGrant.currentRefreshTokenHash === input.presentedHash
+		hashesMatch(input.kvGrant.currentRefreshTokenHash, input.presentedHash)
 	) {
 		return {
 			grant: memory.grant,

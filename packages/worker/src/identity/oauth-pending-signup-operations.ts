@@ -1,3 +1,4 @@
+import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
 import { authOperationResult } from './auth-operation-result.ts'
 import { createOauthSignupAccount } from './oauth-signup-account.ts'
 import {
@@ -11,7 +12,7 @@ import {
 	readOauthPendingSignup,
 	setOauthPendingSignupSecret,
 } from '#app/oauth-pending-signup.ts'
-import { isTwoFactorEnabled } from '#app/two-factor.ts'
+import { isTwoFactorEnabled } from '#worker/identity/two-factor.ts'
 import {
 	createVerifySessionCookie,
 	setVerifySessionSecret,
@@ -102,7 +103,7 @@ export async function completeOauthPendingSignup({
 			: typeof body.pendingCsrf === 'string'
 				? body.pendingCsrf
 				: ''
-	if (!csrf || csrf !== pending.csrf) {
+	if (!csrf || !(await timingSafeEqualString(csrf, pending.csrf))) {
 		void logAuditEvent({
 			db: auditDatabaseFromEnv(env),
 			category: 'auth',

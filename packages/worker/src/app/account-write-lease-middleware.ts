@@ -51,7 +51,7 @@ export async function withAccountRequestWriteLease<T>(
 	if (auth.user.accountDeleting) return accountDeletingResponse(409)
 	if (url.pathname.startsWith('/account/')) {
 		const held = await guestHoldWriteError({
-			db: env.APP_DB,
+			env,
 			baseUrl: url.origin,
 			email: auth.user.email,
 			personId: auth.user.mcpUser.userId,

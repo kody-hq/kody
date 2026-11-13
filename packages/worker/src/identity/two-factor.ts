@@ -1,4 +1,9 @@
 import { generateTOTP, getTOTPAuthUri, verifyTOTP } from '@epic-web/totp'
+import {
+	isSealedSecretPayload,
+	openPlatformSecret,
+	sealPlatformSecret,
+} from '#mcp/secrets/crypto.ts'
 
 /**
  * Epic Stack-style verification rows: an active `2fa` row for a user is the
@@ -12,6 +17,8 @@ export type TwoFactorVerificationType =
 	| typeof twoFactorVerificationType
 	| typeof twoFactorSetupVerificationType
 
+type TwoFactorEnv = Pick<Env, 'APP_DB' | 'SECRET_STORE_KEY'>
+
 type VerificationRow = {
 	secret: string
 	algorithm: string
@@ -22,6 +29,58 @@ type VerificationRow = {
 
 function getTwoFactorTarget(userId: number) {
 	return String(userId)
+}
+
+/**
+ * AAD for a TOTP secret: the verification row's target (the integer
+ * users.id). Not bound to `type` because confirm promotes `2fa-verify` to
+ * `2fa` in place without re-sealing.
+ */
+export function totpSecretContext(target: string) {
+	return `user-db:${target}:totp`
+}
+
+export function sealTotpSecret(
+	env: Pick<Env, 'SECRET_STORE_KEY'>,
+	target: string,
+	secret: string,
+) {
+	return sealPlatformSecret(
+		env,
+		'totp-secret',
+		totpSecretContext(target),
+		secret,
+	)
+}
+
+/**
+ * Opens a stored TOTP secret. Rows written before sealing hold the base32
+ * secret itself; those are re-sealed in place (compare-and-swap on the old
+ * value) and the plaintext is returned so existing 2FA keeps working.
+ * Remove the legacy branch once the backfill reports zero plaintext rows.
+ */
+async function openStoredTotpSecret(
+	env: TwoFactorEnv,
+	target: string,
+	type: TwoFactorVerificationType,
+	stored: string,
+) {
+	if (isSealedSecretPayload(stored)) {
+		return openPlatformSecret(
+			env,
+			'totp-secret',
+			totpSecretContext(target),
+			stored,
+		)
+	}
+	const sealed = await sealTotpSecret(env, target, stored)
+	await env.APP_DB.prepare(
+		`UPDATE verifications SET secret = ?
+		 WHERE target = ? AND type = ? AND secret = ?`,
+	)
+		.bind(sealed, target, type, stored)
+		.run()
+	return stored
 }
 
 export async function findTwoFactorVerification(
@@ -55,15 +114,16 @@ export async function isTwoFactorEnabled(db: D1Database, userId: number) {
  * `confirmTwoFactorSetup`, so abandoning it never locks the user out.
  */
 export async function createTwoFactorSetup(input: {
-	db: D1Database
+	env: TwoFactorEnv
 	userId: number
 	accountName: string
 	issuer: string
 }) {
 	const { otp: _otp, ...config } = await generateTOTP()
-	await input.db
-		.prepare(
-			`INSERT INTO verifications (
+	const target = getTwoFactorTarget(input.userId)
+	const sealedSecret = await sealTotpSecret(input.env, target, config.secret)
+	await input.env.APP_DB.prepare(
+		`INSERT INTO verifications (
 				type, target, secret, algorithm, digits, period, char_set, expires_at
 			) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
 			ON CONFLICT (target, type) DO UPDATE SET
@@ -74,11 +134,11 @@ export async function createTwoFactorSetup(input: {
 				char_set = excluded.char_set,
 				expires_at = NULL,
 				created_at = CURRENT_TIMESTAMP`,
-		)
+	)
 		.bind(
 			twoFactorSetupVerificationType,
-			getTwoFactorTarget(input.userId),
-			config.secret,
+			target,
+			sealedSecret,
 			config.algorithm,
 			config.digits,
 			config.period,
@@ -98,21 +158,27 @@ export async function createTwoFactorSetup(input: {
 }
 
 export async function verifyTwoFactorCode(input: {
-	db: D1Database
+	env: TwoFactorEnv
 	userId: number
 	code: string
 	type: TwoFactorVerificationType
 }) {
 	const verification = await findTwoFactorVerification(
-		input.db,
+		input.env.APP_DB,
 		input.userId,
 		input.type,
 	)
 	if (!verification) return false
 
+	const secret = await openStoredTotpSecret(
+		input.env,
+		getTwoFactorTarget(input.userId),
+		input.type,
+		verification.secret,
+	)
 	const result = await verifyTOTP({
 		otp: input.code,
-		secret: verification.secret,
+		secret,
 		algorithm: verification.algorithm,
 		digits: verification.digits,
 		period: verification.period,
@@ -176,4 +242,63 @@ export async function disableTwoFactor(db: D1Database, userId: number) {
 		)
 		.run()
 	return result.meta?.changes ?? 0
+}
+
+export type TotpSecretBackfillResult = {
+	scanned: number
+	sealed: number
+	remainingPlaintext: number
+	nextCursor: number | null
+}
+
+/**
+ * Bounded backfill: seals `2fa` / `2fa-verify` rows that still hold a
+ * plaintext secret. Safe to rerun; each row is a compare-and-swap.
+ */
+export async function sealPlaintextTotpSecrets(input: {
+	env: TwoFactorEnv
+	dryRun: boolean
+	limit: number
+	cursor?: number | null
+}): Promise<TotpSecretBackfillResult> {
+	const db = input.env.APP_DB
+	const rows = await db
+		.prepare(
+			`SELECT id, type, target, secret FROM verifications
+			 WHERE type IN (?, ?) AND id > ? AND secret NOT LIKE 'v2.%'
+			 ORDER BY id LIMIT ?`,
+		)
+		.bind(
+			twoFactorVerificationType,
+			twoFactorSetupVerificationType,
+			input.cursor ?? 0,
+			input.limit,
+		)
+		.all<{ id: number; type: string; target: string; secret: string }>()
+	const page = rows.results ?? []
+	let sealed = 0
+	for (const row of page) {
+		if (isSealedSecretPayload(row.secret) || input.dryRun) continue
+		const ciphertext = await sealTotpSecret(input.env, row.target, row.secret)
+		const result = await db
+			.prepare(
+				`UPDATE verifications SET secret = ? WHERE id = ? AND secret = ?`,
+			)
+			.bind(ciphertext, row.id, row.secret)
+			.run()
+		sealed += result.meta?.changes ?? 0
+	}
+	const remaining = await db
+		.prepare(
+			`SELECT COUNT(*) AS count FROM verifications
+			 WHERE type IN (?, ?) AND secret NOT LIKE 'v2.%'`,
+		)
+		.bind(twoFactorVerificationType, twoFactorSetupVerificationType)
+		.first<{ count: number }>()
+	return {
+		scanned: page.length,
+		sealed,
+		remainingPlaintext: Number(remaining?.count ?? 0),
+		nextCursor: page.length < input.limit ? null : (page.at(-1)?.id ?? null),
+	}
 }

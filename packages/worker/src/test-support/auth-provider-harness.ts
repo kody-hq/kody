@@ -58,6 +58,7 @@ export function createAppEnv(
 	return {
 		APP_DB: db,
 		COOKIE_SECRET: testCookieSecret,
+		SECRET_STORE_KEY: 'auth-provider-test-secret-store-key-32-chars',
 		SENTRY_ENVIRONMENT: 'test',
 		GITHUB_CLIENT_ID: 'github-client-id-test',
 		GITHUB_CLIENT_SECRET: 'github-client-secret-test',

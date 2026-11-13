@@ -8,7 +8,7 @@ import {
 } from '#app/request-feature-flags-cache.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import {
-	guestClaimUrl,
+	readGuestClaimUrl,
 	guestEmailDomain,
 	guestPhase,
 	readGuestAccountByPerson,
@@ -113,12 +113,15 @@ async function loadSessionGuestInfo(
 ): Promise<SessionGuestInfo | null> {
 	const guest = await readGuestAccountByPerson(env.APP_DB, personId)
 	if (!guest || guest.claimedAt) return null
+	const claimUrl = await readGuestClaimUrl(
+		env,
+		getAppBaseUrl({ env, requestUrl: request.url }),
+		guest,
+	)
+	if (!claimUrl) return null
 	return {
 		phase: guestPhase(guest.expiresAt),
-		claimUrl: guestClaimUrl(
-			getAppBaseUrl({ env, requestUrl: request.url }),
-			guest.claimCode,
-		),
+		claimUrl,
 		fullAccessUntil: guest.expiresAt,
 		deleteAt: guest.deleteAt,
 	}

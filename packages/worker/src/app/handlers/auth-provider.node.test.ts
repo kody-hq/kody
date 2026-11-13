@@ -1306,7 +1306,7 @@ test('claiming a guest with GitHub emits one user.guest_claimed and no user.crea
 	const { sqlite, db } = createMigratedDb()
 	const env = createAppEnv(db)
 	const created = await createGuestAccount({
-		db,
+		env,
 		requestIp: '203.0.113.9',
 		clientName: 'Claim Agent',
 	})

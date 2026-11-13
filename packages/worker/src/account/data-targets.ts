@@ -1370,6 +1370,9 @@ export const accountExportRedactedColumnsByTable: Readonly<
 		'user_code_hash',
 	],
 	email_verifications: ['token_hash'],
+	// Guest rows are not an export target today; listed so a future export
+	// target never leaks the claim lookup hash or sealed claim code.
+	guest_accounts: ['claim_code', 'claim_code_encrypted'],
 	org_invite_links: ['token_hash'],
 	mcp_event_subscriptions: ['secret_encrypted', 'previous_secret_encrypted'],
 	password_resets: ['token_hash'],

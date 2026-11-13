@@ -1,7 +1,7 @@
 import {
 	guestClaimCapabilityName,
 	guestClaimFinishCapabilityName,
-	guestClaimUrl,
+	readGuestClaimUrl,
 	guestPhase,
 	readGuestAccountByPerson,
 } from '#worker/guest/guest-accounts.ts'
@@ -634,7 +634,7 @@ export async function handleMcpRequest({
 				guestErrorPayload({
 					code: 'guest_claim_required',
 					blocked: 'running code and saving changes',
-					claimUrl: guest ? guestClaimUrl(origin, guest.claimCode) : null,
+					claimUrl: guest ? await readGuestClaimUrl(env, origin, guest) : null,
 				}),
 			)
 		}

@@ -1,6 +1,7 @@
 import { mcpReadSnapshotStorageKey } from './read-snapshot.ts'
 import { expect, test, vi } from 'vitest'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
+import { openMcpOAuthStorageValue } from './sealed-oauth-storage.ts'
 import type * as CloudflareWorkers from 'cloudflare:workers'
 import {
 	mcpOAuthRefreshGrantOmittedStorageKey,
@@ -159,6 +160,8 @@ vi.mock('agents/mcp/client', () => ({
 
 		async onStart() {}
 
+		saveServerToStorage() {}
+
 		async waitForConnections() {}
 
 		listServers() {
@@ -303,6 +306,21 @@ const noRefreshTokenMessage =
 const autoClient = { versionNegotiation: { mode: 'auto' } }
 const legacyClient = { versionNegotiation: { mode: 'legacy' } }
 
+const testHubOwner = 'owner-test'
+const testHubEnv = {
+	SECRET_STORE_KEY: 'hub-oauth-test-secret-store-key-32-chars',
+}
+
+/** Reads a stored value the way the hub sees it (sealed OAuth keys opened). */
+function opened(values: Map<string, unknown>, key: string) {
+	return openMcpOAuthStorageValue({
+		env: testHubEnv,
+		ownerId: testHubOwner,
+		key,
+		value: values.get(key),
+	})
+}
+
 function createHub() {
 	const values = new Map<string, unknown>()
 	const state = {
@@ -334,8 +352,9 @@ function createHub() {
 				}
 			}),
 		},
+		id: { name: testHubOwner },
 	} as unknown as DurableObjectState
-	const hub = new McpClientHub(state, {} as Env)
+	const hub = new McpClientHub(state, testHubEnv as Env)
 	const manager = mockModule.manager
 	if (!manager) throw new Error('Fake manager was not constructed.')
 	return { state, values, hub, manager }
@@ -527,9 +546,11 @@ test('failed replacement registration restores the saved server and OAuth state'
 	expect(manager.mcpConnections['server-1']?.options.transport.headers).toEqual(
 		{ 'X-Test': 'preserved' },
 	)
-	expect(values.get(clientInfoKey)).toEqual({ client_id: 'stale-client' })
-	expect(values.get(stateKey)).toEqual({ serverId: 'server-1' })
-	expect(values.get(sidecarKey)).toEqual({ refresh_token: 'old-rt' })
+	expect(await opened(values, clientInfoKey)).toEqual({
+		client_id: 'stale-client',
+	})
+	expect(await opened(values, stateKey)).toEqual({ serverId: 'server-1' })
+	expect(await opened(values, sidecarKey)).toEqual({ refresh_token: 'old-rt' })
 })
 
 test('replayed unusable callbacks leave past-OAuth server credentials intact', async () => {
@@ -552,7 +573,9 @@ test('replayed unusable callbacks leave past-OAuth server credentials intact', a
 	})
 	expect(manager.connectCount).toBe(0)
 	expect(manager.rows[0]?.client_id).toBe('client-1')
-	expect(values.get(tokenKey)).toEqual({ access_token: 'still-valid' })
+	expect(await opened(values, tokenKey)).toEqual({
+		access_token: 'still-valid',
+	})
 })
 
 test('used and missing callback states recover without exposing an internal state error', async () => {
@@ -638,7 +661,7 @@ test('first-time OAuth grant that stays authenticating does not emit disconnecte
 	expect(connection.connectionState).toBe('authenticating')
 	expect(await hub.peekConnectionEvents()).toEqual([])
 	expect(values.has(pendingEventsKey)).toBe(false)
-	expect(values.get(episodeKey)).toMatchObject({
+	expect(await opened(values, episodeKey)).toMatchObject({
 		wasReady: false,
 		disconnectedEmitted: false,
 	})
@@ -659,7 +682,7 @@ test('peekServers returns cards without observing or reconnecting', async () => 
 	const peeked = await hub.peekServers()
 	expect(peeked.servers[0]?.state).toBe('disconnected')
 	expect(manager.connectCount).toBe(0)
-	expect(values.get(episodeKey)).toEqual(episodeBefore)
+	expect(await opened(values, episodeKey)).toEqual(episodeBefore)
 	expect(values.has(pendingEventsKey)).toBe(false)
 	expect(await hub.takeConnectionEvents()).toEqual([])
 })
@@ -676,7 +699,7 @@ test('peekServers queues a disconnected episode when a ready server parks on tok
 	const peeked = await hub.peekServers()
 	expect(peeked.servers[0]?.state).toBe('authenticating')
 	expect(peeked.servers[0]?.lastError?.phase).toBe('token exchange')
-	expect(values.get(episodeKey)).toMatchObject({
+	expect(await opened(values, episodeKey)).toMatchObject({
 		wasReady: true,
 		disconnectedEmitted: true,
 	})
@@ -692,7 +715,9 @@ test('peekServers queues a disconnected episode when a ready server parks on tok
 	expect(second.servers[0]?.state).toBe('authenticating')
 	expect(second.servers[0]?.lastError?.phase).toBe('token exchange')
 	expect(second.servers[0]?.hasRefreshToken).toBe(true)
-	expect(values.get(recoveryKey)).toMatchObject({ phase: 'token exchange' })
+	expect(await opened(values, recoveryKey)).toMatchObject({
+		phase: 'token exchange',
+	})
 	expect(await hub.peekConnectionEvents()).toHaveLength(1)
 
 	const firstId = queued[0]?.eventId
@@ -729,7 +754,7 @@ test('token-recovery park with no refresh token still emits disconnected when wa
 	expect(peeked.servers[0]?.lastError?.message).toContain(
 		'has no refresh token to renew',
 	)
-	expect(values.get(episodeKey)).toMatchObject({
+	expect(await opened(values, episodeKey)).toMatchObject({
 		wasReady: true,
 		disconnectedEmitted: true,
 		lastObservedState: 'authenticating',
@@ -773,7 +798,7 @@ test('snapshot retries a previously ready server before emitting disconnect', as
 
 	const readySnapshot = await hub.getSnapshot()
 	expect(readySnapshot.connectionEvents).toEqual([])
-	expect(values.get(episodeKey)).toEqual({
+	expect(await opened(values, episodeKey)).toEqual({
 		lastObservedState: 'ready',
 		wasReady: true,
 		episodeId: null,
@@ -869,8 +894,10 @@ test('remint for stuck authenticating without authUrl keeps leftover refresh tok
 	expect(reminted.state).toBe('authenticating')
 	expect(reminted.authUrl).toBeTruthy()
 	expect(manager.registerCount).toBe(1)
-	expect(values.get(tokenKey)).toEqual(storedTokens)
-	expect(values.get(mcpOAuthRefreshTokenStorageKey('server-1'))).toEqual({
+	expect(await opened(values, tokenKey)).toEqual(storedTokens)
+	expect(
+		await opened(values, mcpOAuthRefreshTokenStorageKey('server-1')),
+	).toEqual({
 		refresh_token: 'keep-rt',
 	})
 })
@@ -890,7 +917,7 @@ test('reconnect tries stored refresh before wiping tokens, and a parked authenti
 	expect(refreshed.state).toBe('ready')
 	expect(refreshed.lastError ?? null).toBeNull()
 	expect(refreshed.hasRefreshToken).toBe(true)
-	expect(values.get(tokenKey)).toEqual(storedTokens)
+	expect(await opened(values, tokenKey)).toEqual(storedTokens)
 	expect(manager.registerCount).toBe(0)
 
 	manager.connectBehavior = 'oauth'
@@ -902,8 +929,10 @@ test('reconnect tries stored refresh before wiping tokens, and a parked authenti
 	expect(parked.lastError?.phase).toBe('token exchange')
 	expect(parked.lastError?.message).not.toContain('Authorization completed')
 	expect(parked.hasRefreshToken).toBe(false)
-	expect(values.get(tokenKey)).toEqual(storedTokens)
-	expect(values.get(recoveryKey)).toMatchObject({ phase: 'token exchange' })
+	expect(await opened(values, tokenKey)).toEqual(storedTokens)
+	expect(await opened(values, recoveryKey)).toMatchObject({
+		phase: 'token exchange',
+	})
 	expect(manager.registerCount).toBe(0)
 	expect(consoleWarn).toHaveBeenCalledWith(
 		'mcp oauth token recovery parked authenticating',
@@ -1139,7 +1168,9 @@ test('replayed unusable callback after incomplete settle reports lastError inste
 
 	expect(manager.connectCount).toBe(1)
 	expect(manager.rows[0]?.client_id).toBe('client-1')
-	expect(values.get(tokenKey)).toEqual({ access_token: 'still-valid' })
+	expect(await opened(values, tokenKey)).toEqual({
+		access_token: 'still-valid',
+	})
 })
 
 test('add, reconnect, and refresh treat a discover timeout as a durable lastError', async () => {
@@ -1259,7 +1290,7 @@ test('healthy auto catalog stays on auto; modern-connect catalog timeout falls b
 	expect(manager.mcpConnections['server-1']?.options.client).toEqual(
 		legacyClient,
 	)
-	expect(values.get(legacyKey)).toBe('catalog-timeout')
+	expect(await opened(values, legacyKey)).toBe('catalog-timeout')
 	const timeoutCall = consoleWarn.mock.calls.find(
 		(call) => call[0] === 'mcp discover timeout incomplete',
 	)
@@ -1298,7 +1329,7 @@ test('healthy auto catalog stays on auto; modern-connect catalog timeout falls b
 	expect(manager.mcpConnections['server-1']?.options.client).toEqual(
 		legacyClient,
 	)
-	expect(values.get(legacyKey)).toBe('catalog-timeout')
+	expect(await opened(values, legacyKey)).toBe('catalog-timeout')
 })
 
 test('replacing a server forgets the catalog-timeout legacy mark and probes auto', async () => {
@@ -1307,7 +1338,7 @@ test('replacing a server forgets the catalog-timeout legacy mark and probes auto
 	manager.connectBehavior = 'connected'
 	manager.discoverSucceedsOn = 'legacy'
 	expect((await addServer(hub)).state).toBe('ready')
-	expect(values.get(legacyKey)).toBe('catalog-timeout')
+	expect(await opened(values, legacyKey)).toBe('catalog-timeout')
 
 	manager.discoverSucceedsOn = 'always'
 	manager.registerCount = 0
@@ -1334,7 +1365,7 @@ test('legacy fallback that parks on OAuth remembers the mark and keeps it after 
 	expect(manager.mcpConnections['server-1']?.options.client).toEqual(
 		legacyClient,
 	)
-	expect(values.get(legacyKey)).toBe('catalog-timeout')
+	expect(await opened(values, legacyKey)).toBe('catalog-timeout')
 
 	const connection = manager.mcpConnections['server-1']
 	if (!connection) throw new Error('Fake connection was not seeded.')
@@ -1347,7 +1378,7 @@ test('legacy fallback that parks on OAuth remembers the mark and keeps it after 
 	expect(manager.mcpConnections['server-1']?.options.client).toEqual(
 		legacyClient,
 	)
-	expect(values.get(legacyKey)).toBe('catalog-timeout')
+	expect(await opened(values, legacyKey)).toBe('catalog-timeout')
 })
 
 const preRegisteredClientKey = 'mcp-oauth-preregistered-client:server-1'
@@ -1382,7 +1413,9 @@ test('changing the OAuth client on a ready server parks for approval without a f
 		previousClientId: null,
 		connection: { state: 'authenticating', error: null, lastError: null },
 	})
-	expect(values.get(preRegisteredClientKey)).toEqual(sealedClient('gh-client'))
+	expect(await opened(values, preRegisteredClientKey)).toEqual(
+		sealedClient('gh-client'),
+	)
 	expect(values.has(tokenKey)).toBe(false)
 	expect(values.has(mcpOAuthRefreshTokenStorageKey('server-1'))).toBe(false)
 	expect(values.has(recoveryKey)).toBe(false)
@@ -1410,7 +1443,9 @@ test('a failed restart after a client change keeps the new client and reports it
 	expect(change.connection.lastError?.message).toContain(
 		'The OAuth client was saved, but Kody could not start authorization with it',
 	)
-	expect(values.get(preRegisteredClientKey)).toEqual(sealedClient('gh-client'))
+	expect(await opened(values, preRegisteredClientKey)).toEqual(
+		sealedClient('gh-client'),
+	)
 	expect(values.has(tokenKey)).toBe(false)
 	expect(manager.rows).toEqual([
 		expect.objectContaining({ id: 'server-1', client_id: null }),
@@ -1437,7 +1472,9 @@ test('overlapping client changes run one at a time and the hub keeps the last on
 	])
 	expect(first.previousClientId).toBeNull()
 	expect(second.previousClientId).toBe('client-a')
-	expect(values.get(preRegisteredClientKey)).toEqual(sealedClient('client-b'))
+	expect(await opened(values, preRegisteredClientKey)).toEqual(
+		sealedClient('client-b'),
+	)
 	expect((await hub.getSnapshot()).servers[0]?.oauthClientId).toBe('client-b')
 
 	const removed = await setOAuthClient(hub, null)

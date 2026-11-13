@@ -9,6 +9,9 @@ import {
 	type OwnerId,
 	type PersonId,
 } from '@kody-internal/shared/owner-person-ids.ts'
+import { sha256Hex } from '@kody-internal/shared/sha256.ts'
+import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
+import { openPlatformSecret, sealPlatformSecret } from '#mcp/secrets/crypto.ts'
 import { checkRateLimit, type RateLimitConfig } from '#worker/rate-limit.ts'
 import { mintPersonalOrgIdForSignup } from '#worker/orgs/signup-provision.ts'
 import { personalOrgProvisionStatements } from '#worker/orgs/provision.ts'
@@ -58,7 +61,9 @@ export type GuestPhase = 'active' | 'hold'
 export type GuestAccount = {
 	personId: PersonId
 	personalOrgId: OwnerId
-	claimCode: string
+	/** SHA-256 lookup hash (legacy rows: plaintext until the backfill). */
+	claimCodeLookup: string
+	claimCodeEncrypted: string | null
 	clientName: string | null
 	expiresAt: string
 	deleteAt: string
@@ -72,6 +77,7 @@ type GuestAccountRow = {
 	person_id: string
 	personal_org_id: string
 	claim_code: string
+	claim_code_encrypted: string | null
 	client_name: string | null
 	expires_at: string
 	delete_at: string
@@ -85,7 +91,8 @@ function toGuestAccount(row: GuestAccountRow): GuestAccount {
 	return {
 		personId: row.person_id as PersonId,
 		personalOrgId: row.personal_org_id as OwnerId,
-		claimCode: row.claim_code,
+		claimCodeLookup: row.claim_code,
+		claimCodeEncrypted: row.claim_code_encrypted,
 		clientName: row.client_name,
 		expiresAt: row.expires_at,
 		deleteAt: row.delete_at,
@@ -132,6 +139,86 @@ export function guestClaimUrl(baseUrl: string, claimCode: string) {
 	return `${baseUrl.replace(/\/+$/, '')}/claim/${claimCode}`
 }
 
+export type GuestSecretEnv = Pick<Env, 'APP_DB' | 'SECRET_STORE_KEY'>
+
+/** Lookup hash stored in guest_accounts.claim_code. */
+export function guestClaimCodeHash(claimCode: string) {
+	return sha256Hex(`guest-claim-url:${claimCode}`)
+}
+
+function guestClaimCodeContext(personId: string) {
+	return `guest:${personId}:claim-code`
+}
+
+function sealGuestClaimCode(
+	env: Pick<Env, 'SECRET_STORE_KEY'>,
+	personId: string,
+	claimCode: string,
+) {
+	return sealPlatformSecret(
+		env,
+		'guest-claim-code',
+		guestClaimCodeContext(personId),
+		claimCode,
+	)
+}
+
+/**
+ * Converts one legacy row (plaintext claim_code) to hash plus sealed copy.
+ * Compare-and-swap on the plaintext so a concurrent claim or rerun is safe.
+ */
+async function sealLegacyGuestClaimCode(
+	env: GuestSecretEnv,
+	personId: string,
+	claimCode: string,
+) {
+	const result = await env.APP_DB.prepare(
+		`UPDATE guest_accounts SET claim_code = ?, claim_code_encrypted = ?
+		 WHERE person_id = ? AND claim_code = ?`,
+	)
+		.bind(
+			await guestClaimCodeHash(claimCode),
+			await sealGuestClaimCode(env, personId, claimCode),
+			personId,
+			claimCode,
+		)
+		.run()
+	return (result.meta?.changes ?? 0) > 0
+}
+
+/** The guest's own claim code, opened for display. Null fails closed. */
+export async function readGuestClaimCode(
+	env: Pick<Env, 'SECRET_STORE_KEY'>,
+	guest: GuestAccount,
+): Promise<string | null> {
+	if (guest.claimCodeEncrypted) {
+		const code = await openPlatformSecret(
+			env,
+			'guest-claim-code',
+			guestClaimCodeContext(guest.personId),
+			guest.claimCodeEncrypted,
+		).catch(() => null)
+		if (!code || !isGuestClaimCodeShape(code)) return null
+		const expected = await guestClaimCodeHash(code)
+		return (await timingSafeEqualString(expected, guest.claimCodeLookup))
+			? code
+			: null
+	}
+	// Legacy plaintext row: remove with the backfill compatibility reads.
+	return isGuestClaimCodeShape(guest.claimCodeLookup)
+		? guest.claimCodeLookup
+		: null
+}
+
+export async function readGuestClaimUrl(
+	env: Pick<Env, 'SECRET_STORE_KEY'>,
+	baseUrl: string,
+	guest: GuestAccount,
+) {
+	const code = await readGuestClaimCode(env, guest)
+	return code ? guestClaimUrl(baseUrl, code) : null
+}
+
 /** Display form for copy: `kody.codes/claim/<code>`. */
 export function guestClaimLinkLabel(claimUrl: string) {
 	return claimUrl.replace(/^https?:\/\//, '')
@@ -149,15 +236,80 @@ export async function readGuestAccountByPerson(
 }
 
 export async function readGuestAccountByClaimCode(
-	db: D1Database,
+	env: GuestSecretEnv,
 	claimCode: string,
 ): Promise<GuestAccount | null> {
 	if (!isGuestClaimCodeShape(claimCode)) return null
-	const row = await db
-		.prepare(`SELECT * FROM guest_accounts WHERE claim_code = ?`)
-		.bind(claimCode)
+	const hash = await guestClaimCodeHash(claimCode)
+	// Second bind matches legacy plaintext rows until the backfill finishes.
+	const row = await env.APP_DB.prepare(
+		`SELECT * FROM guest_accounts WHERE claim_code IN (?, ?)`,
+	)
+		.bind(hash, claimCode)
 		.first<GuestAccountRow>()
-	return row ? toGuestAccount(row) : null
+	if (!row) return null
+	if (await timingSafeEqualString(row.claim_code, hash)) {
+		return toGuestAccount(row)
+	}
+	if (!(await timingSafeEqualString(row.claim_code, claimCode))) return null
+	await sealLegacyGuestClaimCode(env, row.person_id, claimCode)
+	const sealed = await env.APP_DB.prepare(
+		`SELECT * FROM guest_accounts WHERE person_id = ? AND claim_code = ?`,
+	)
+		.bind(row.person_id, hash)
+		.first<GuestAccountRow>()
+	return sealed ? toGuestAccount(sealed) : null
+}
+
+export type GuestClaimCodeBackfillResult = {
+	scanned: number
+	sealed: number
+	remainingPlaintext: number
+	nextCursor: string | null
+}
+
+/**
+ * Bounded backfill: converts guest_accounts rows whose claim_code is still
+ * the plaintext code into hash plus sealed copy. Safe to rerun.
+ */
+export async function sealPlaintextGuestClaimCodes(input: {
+	env: GuestSecretEnv
+	dryRun: boolean
+	limit: number
+	cursor?: string | null
+}): Promise<GuestClaimCodeBackfillResult> {
+	const db = input.env.APP_DB
+	const rows = await db
+		.prepare(
+			`SELECT person_id, claim_code FROM guest_accounts
+			 WHERE claim_code_encrypted IS NULL AND person_id > ?
+			 ORDER BY person_id LIMIT ?`,
+		)
+		.bind(input.cursor ?? '', input.limit)
+		.all<{ person_id: string; claim_code: string }>()
+	const page = rows.results ?? []
+	let sealed = 0
+	for (const row of page) {
+		if (input.dryRun || !isGuestClaimCodeShape(row.claim_code)) continue
+		if (
+			await sealLegacyGuestClaimCode(input.env, row.person_id, row.claim_code)
+		) {
+			sealed += 1
+		}
+	}
+	const remaining = await db
+		.prepare(
+			`SELECT COUNT(*) AS count FROM guest_accounts
+			 WHERE claim_code_encrypted IS NULL`,
+		)
+		.first<{ count: number }>()
+	return {
+		scanned: page.length,
+		sealed,
+		remainingPlaintext: Number(remaining?.count ?? 0),
+		nextCursor:
+			page.length < input.limit ? null : (page.at(-1)?.person_id ?? null),
+	}
 }
 
 /** Grants minted for a merged guest resolve to the claiming person. */
@@ -234,12 +386,12 @@ export type GuestCreateResult =
  * overrides in one D1 batch (one transaction).
  */
 export async function createGuestAccount(input: {
-	db: D1Database
+	env: GuestSecretEnv
 	requestIp: string | null
 	clientName: string | null
 	now?: Date
 }): Promise<GuestCreateResult> {
-	const { db } = input
+	const db = input.env.APP_DB
 	const ipKey = input.requestIp?.trim() || 'unknown'
 	const ipLimit = await checkRateLimit(
 		db,
@@ -282,6 +434,12 @@ export async function createGuestAccount(input: {
 		const username = `guest-${suffix}`
 		const email = `${suffix}@${guestEmailDomain}`
 		const claimCode = mintGuestClaimCode()
+		const claimCodeHash = await guestClaimCodeHash(claimCode)
+		const claimCodeEncrypted = await sealGuestClaimCode(
+			input.env,
+			personId,
+			claimCode,
+		)
 		try {
 			const results = await db.batch([
 				db.prepare('PRAGMA defer_foreign_keys = ON'),
@@ -325,14 +483,15 @@ export async function createGuestAccount(input: {
 				db
 					.prepare(
 						`INSERT INTO guest_accounts (
-							person_id, personal_org_id, claim_code, client_name, guest_slug,
-							expires_at, delete_at, created_at
-						) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+							person_id, personal_org_id, claim_code, claim_code_encrypted,
+							client_name, guest_slug, expires_at, delete_at, created_at
+						) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 					)
 					.bind(
 						personId,
 						orgId,
-						claimCode,
+						claimCodeHash,
+						claimCodeEncrypted,
 						clientName,
 						username,
 						expiresAt,
@@ -404,7 +563,8 @@ export function guestConversionStatements(
 		db
 			.prepare(
 				`UPDATE guest_accounts
-				 SET claimed_at = ?, claimed_into_person_id = ?, claimed_into_org_id = ?
+				 SET claimed_at = ?, claimed_into_person_id = ?, claimed_into_org_id = ?,
+				     claim_code_encrypted = NULL
 				 WHERE person_id = ? AND claimed_at IS NULL`,
 			)
 			.bind(

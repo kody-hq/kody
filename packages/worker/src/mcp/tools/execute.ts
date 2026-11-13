@@ -448,7 +448,7 @@ export async function runExecuteToolCall(input: {
 		await attachExecuteUsage(
 			attachWorkerUnits(await runExecuteToolWithErrorBoundary()),
 		),
-		{ db: env.APP_DB, callerContext },
+		{ env, callerContext },
 	)
 	// Detach only after the follow response is built, including the
 	// usage read. A caller cancel before that still stops the sandbox.

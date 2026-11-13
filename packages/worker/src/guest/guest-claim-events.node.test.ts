@@ -98,9 +98,10 @@ async function setup() {
 		APP_DB: db,
 		APP_BASE_URL: baseUrl,
 		COOKIE_SECRET: testCookieSecret,
+		SECRET_STORE_KEY: 'guest-test-secret-store-key-32-characters-ok',
 	} as unknown as Env
 	const created = await createGuestAccount({
-		db,
+		env: env.current,
 		requestIp: '203.0.113.7',
 		clientName: 'Test Agent',
 		now: start,
@@ -122,7 +123,12 @@ async function setup() {
 	`)
 	const guest = await readGuestAccountByPerson(db, created.personId)
 	if (!guest) throw new Error('guest row missing')
-	return { sqlite, db, guest, created }
+	return {
+		sqlite,
+		db,
+		guest: { ...guest, claimCode: created.claimCode },
+		created,
+	}
 }
 
 const seededCounts = {
