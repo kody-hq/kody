@@ -363,10 +363,14 @@ preview (see the TEST ONLY rule below).
   60, max 1440), re-checks access and the grant on reconnect, and fails with
   `execution_context_queue_expired` when the time runs out.
 - A committed run that the daemon stops answering for ends `lost` 30s after its
-  deadline. A reconnecting daemon lists the committed runs it still holds
-  (`heldRuns`) and finished results (`pendingResults`) in `hello`; Kody ends the
-  rest as `lost` at once. A started run is never re-run. Daemons that omit
-  `heldRuns` keep the deadline timer.
+  deadline. A socket drop does not stop the daemon's runs: a reconnecting daemon
+  lists in `hello` the committed runs it still holds plus finished ones Kody has
+  not acked (`heldRuns`), then sends each queued `run.result` over the new
+  socket until Kody sends `run.result.ack`. Kody ends the rest as `lost` at once
+  and sends `run.cancel` for held runs it already ended while the daemon was
+  away. Kody also applies finished results sent inline in `pendingResults`. A
+  started run is never re-run. Daemons that omit `heldRuns` keep the deadline
+  timer.
 - A daemon runs up to `--max-concurrent` runs at once (or
   `KODY_CONTEXT_MAX_CONCURRENT`; default 2, max 8), capped by the grant's
   `limits.maxConcurrent`. It advertises that number in `capabilities` and in
