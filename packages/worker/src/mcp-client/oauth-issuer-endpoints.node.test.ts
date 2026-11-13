@@ -390,13 +390,19 @@ test('assertTrustedMcpOAuthDiscovery runs both checks', () => {
 	).toThrow(/does not match the discovered authorization server/)
 })
 
-test('callback iss: matching issuer passes, trailing slash tolerated', () => {
+test('callback iss: compared as an exact string (RFC 9207)', () => {
+	expect(() =>
+		assertCallbackIssuerMatchesDiscovery({
+			discovery: discovery(),
+			iss: 'https://auth.example',
+		}),
+	).not.toThrow()
 	expect(() =>
 		assertCallbackIssuerMatchesDiscovery({
 			discovery: discovery(),
 			iss: 'https://auth.example/',
 		}),
-	).not.toThrow()
+	).toThrow(/does not match/)
 })
 
 test('callback iss: a different authorization server is refused', () => {

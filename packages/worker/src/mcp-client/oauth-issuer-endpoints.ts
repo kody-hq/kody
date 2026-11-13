@@ -165,7 +165,8 @@ function storedIssuer(discovery: unknown) {
  * RFC 9207 mix-up defence on the OAuth callback. Every MCP server shares one
  * callback URL, so `iss` is how Kody knows which authorization server sent
  * the response. Required when the stored metadata advertises
- * `authorization_response_iss_parameter_supported`; compared whenever sent.
+ * `authorization_response_iss_parameter_supported`; compared whenever sent,
+ * as an exact string (RFC 9207 §2.4).
  * With no stored issuer there is nothing to compare against, and the SDK's
  * own state check still applies.
  */
@@ -183,7 +184,7 @@ export function assertCallbackIssuerMatchesDiscovery(input: {
 		return
 	}
 	if (!stored?.issuer) return
-	if (!issuersMatch(input.iss, stored.issuer)) {
+	if (input.iss !== stored.issuer) {
 		throw new McpOAuthFailedError(
 			`Authorization response issuer (${input.iss.slice(0, 200)}) does not match the authorization server this sign-in started with (${stored.issuer.slice(0, 200)}).`,
 		)
