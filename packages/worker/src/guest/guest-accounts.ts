@@ -272,6 +272,10 @@ export type GuestClaimCodeBackfillResult = {
  * Bounded backfill: converts guest_accounts rows whose claim_code is still
  * the plaintext code into hash plus sealed copy. Safe to rerun.
  */
+// Claimed guests drop claim_code_encrypted, so plaintext means claim_code is
+// not yet a 64-char SHA-256 hex lookup hash.
+const guestPlaintextClaimCodeSql = 'length(claim_code) <> 64'
+
 export async function sealPlaintextGuestClaimCodes(input: {
 	env: GuestSecretEnv
 	dryRun: boolean
@@ -282,7 +286,7 @@ export async function sealPlaintextGuestClaimCodes(input: {
 	const rows = await db
 		.prepare(
 			`SELECT person_id, claim_code FROM guest_accounts
-			 WHERE claim_code_encrypted IS NULL AND person_id > ?
+			 WHERE ${guestPlaintextClaimCodeSql} AND person_id > ?
 			 ORDER BY person_id LIMIT ?`,
 		)
 		.bind(input.cursor ?? '', input.limit)
@@ -300,7 +304,7 @@ export async function sealPlaintextGuestClaimCodes(input: {
 	const remaining = await db
 		.prepare(
 			`SELECT COUNT(*) AS count FROM guest_accounts
-			 WHERE claim_code_encrypted IS NULL`,
+			 WHERE ${guestPlaintextClaimCodeSql}`,
 		)
 		.first<{ count: number }>()
 	return {

@@ -296,7 +296,10 @@ test('claim codes are stored only as a lookup hash plus a person-bound sealed co
 		(await readGuestAccountByClaimCode(env, guest.claimCode))?.personId,
 	).toBe(guest.personId)
 	expect(
-		await readGuestAccountByClaimCode(env, guest.claimCode.replace(/.$/, 'x')),
+		await readGuestAccountByClaimCode(
+			env,
+			guest.claimCode.replace(/.$/, (last) => (last === 'x' ? 'y' : 'x')),
+		),
 	).toBeNull()
 
 	// A sealed copy moved onto another guest row does not open there.
@@ -345,6 +348,15 @@ test('outstanding plaintext claim links keep working and are migrated', async ()
 	expect(
 		await sealPlaintextGuestClaimCodes({ env, dryRun: false, limit: 10 }),
 	).toMatchObject({ scanned: 0, sealed: 0, remainingPlaintext: 0 })
+	// A claimed guest keeps only its lookup hash and is not plaintext.
+	sqlite
+		.prepare(
+			"UPDATE guest_accounts SET claimed_at = '2026-01-01T00:00:00Z', claim_code_encrypted = NULL WHERE person_id = ?",
+		)
+		.run(first.personId)
+	expect(
+		await sealPlaintextGuestClaimCodes({ env, dryRun: true, limit: 10 }),
+	).toMatchObject({ scanned: 0, remainingPlaintext: 0 })
 	expect(
 		(await readGuestAccountByClaimCode(env, second.claimCode))?.personId,
 	).toBe(second.personId)
