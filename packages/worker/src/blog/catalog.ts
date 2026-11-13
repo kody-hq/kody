@@ -44,6 +44,7 @@ import kodyWeekly20261016 from './posts/kody-weekly-2026-10-16.md'
 import kodyWeekly20261023 from './posts/kody-weekly-2026-10-23.md'
 import kodyWeekly20261030 from './posts/kody-weekly-2026-10-30.md'
 import kodyWeekly20261106 from './posts/kody-weekly-2026-11-06.md'
+import kodyWeekly20261113 from './posts/kody-weekly-2026-11-13.md'
 import selfServiceMeansOwnership from './posts/self-service-means-ownership.md'
 import theAssistantThatCantLeakYourKeychain from './posts/the-assistant-that-cant-leak-your-keychain.md'
 import theAutomationsYouNeverBuilt from './posts/the-automations-you-never-built.md'
@@ -228,6 +229,7 @@ const postSources: Array<{ slug: string; raw: string }> = [
 	{ slug: 'kody-weekly-2026-10-23', raw: kodyWeekly20261023 },
 	{ slug: 'kody-weekly-2026-10-30', raw: kodyWeekly20261030 },
 	{ slug: 'kody-weekly-2026-11-06', raw: kodyWeekly20261106 },
+	{ slug: 'kody-weekly-2026-11-13', raw: kodyWeekly20261113 },
 	{
 		slug: 'three-ways-to-share-an-ai-built-app',
 		raw: threeWaysToShareAnAiBuiltApp,
