@@ -51,9 +51,8 @@ export type RunDueJobsResult = {
 	errorCount: number
 	jobOutcomes: Array<SchedulerJobOutcomeLog>
 	/**
-	 * Set when the owner's account is being deleted or is soft-deleted, so no
-	 * user-owned writes (and therefore no job runs) are allowed. The JobManager
-	 * treats this as terminal for the current alarm instead of retrying.
+	 * The owner account is fenced for deletion (in progress or soft-deleted), so
+	 * no job ran. The JobManager defers its alarm instead of retrying.
 	 */
 	skippedReason?: 'account_deleted'
 }

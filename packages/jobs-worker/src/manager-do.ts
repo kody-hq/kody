@@ -12,6 +12,7 @@ import type { JobRepoCheckPolicy } from '@kody-internal/shared/jobs/types.ts'
 import { DurableObject } from 'cloudflare:workers'
 import type { JobsWorkerEnv } from './env.ts'
 import {
+	jobAccountDeletionDeferralMs,
 	tryRearmAlarmForRetryableD1Failure,
 	trySettleHungRunDueJobsFailure,
 } from './manager-alarm-deferral.ts'
@@ -205,15 +206,15 @@ export class JobManagerBase extends DurableObject<JobsWorkerEnv> {
 		try {
 			const result = await this.env.HOST.runDueJobsForUser({ userId })
 			if (result.skippedReason === 'account_deleted') {
-				// Owner account is deleted or being deleted: stop waking. Keep the
-				// stored user id so an account/org restore can re-arm via syncAlarm.
-				await this.ctx.storage.deleteAlarm()
+				const deferUntilMs = Date.now() + jobAccountDeletionDeferralMs
+				await rearmAlarmPreservingEarlier(this.ctx, deferUntilMs)
 				logJobSchedulerEvent({
-					event: 'alarm_disarmed',
+					event: 'alarm_deferred',
 					userId,
 					reason: 'account_deleted',
 					retryCount: alarmInfo?.retryCount,
 					isRetry: alarmInfo?.isRetry,
+					nextRunAt: new Date(deferUntilMs).toISOString(),
 				})
 				return
 			}

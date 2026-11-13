@@ -1935,10 +1935,8 @@ export async function runDueJobsForUser(input: {
 	try {
 		return await runDueJobsForUserUnderLease(input, autoDisabledNotices)
 	} catch (error) {
-		// The owner is being deleted or was soft-deleted: user-owned writes are
-		// fenced, so there is nothing to run. Report it as a terminal skip so the
-		// JobManager disarms instead of rethrowing (and Cloudflare retrying) an
-		// unhandled error on every alarm. Any other failure still propagates.
+		// Deletion fences user-owned writes, so there is nothing to run. Report
+		// a skip so the JobManager defers instead of Cloudflare retrying.
 		if (error instanceof AccountDeletionInProgressError) {
 			logJobSchedulerEvent({
 				event: 'run_due_jobs_skipped',

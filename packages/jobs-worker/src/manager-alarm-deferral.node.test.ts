@@ -1,6 +1,7 @@
 import { expect, test, vi } from 'vitest'
 import { silenceExpectedConsoleErrors } from '#worker/test-support/console-spies.ts'
 import {
+	jobAccountDeletionDeferralMs,
 	jobD1UnavailableRearmDelayMs,
 	tryRearmAlarmForRetryableD1Failure,
 	trySettleHungRunDueJobsFailure,
@@ -172,7 +173,7 @@ test('JobManager alarm still rethrows non-retryable runDueJobs failures', async 
 	expect(settleHungDueJobsForUser).not.toHaveBeenCalled()
 })
 
-test('JobManager alarm disarms without rethrowing when the owner account is deleted', async () => {
+async function runAccountDeletedAlarm(currentAlarmAt: number | null) {
 	const { JobManagerBase } = await import('./manager-do.ts')
 
 	const setAlarm = vi.fn(async (_atMs: number) => undefined)
@@ -194,7 +195,7 @@ test('JobManager alarm disarms without rethrowing when the owner account is dele
 		blockConcurrencyWhile: async <T>(callback: () => Promise<T>) => callback(),
 		storage: {
 			get: storageGet,
-			getAlarm: vi.fn(async () => null),
+			getAlarm: vi.fn(async () => currentAlarmAt),
 			setAlarm,
 			deleteAlarm,
 		},
@@ -208,10 +209,24 @@ test('JobManager alarm disarms without rethrowing when the owner account is dele
 	manager.syncAlarm = syncAlarm
 
 	await expect(manager.alarm()).resolves.toBeUndefined()
-	expect(deleteAlarm).toHaveBeenCalledTimes(1)
-	expect(setAlarm).not.toHaveBeenCalled()
+	expect(deleteAlarm).not.toHaveBeenCalled()
 	expect(syncAlarm).not.toHaveBeenCalled()
 	expect(settleHungDueJobsForUser).not.toHaveBeenCalled()
+	return { setAlarm }
+}
+
+test('JobManager alarm defers instead of disarming when the owner account is fenced for deletion', async () => {
+	const before = Date.now()
+	const { setAlarm } = await runAccountDeletedAlarm(null)
+	expect(setAlarm).toHaveBeenCalledTimes(1)
+	const armedAt = setAlarm.mock.calls[0]?.[0] ?? 0
+	expect(armedAt).toBeGreaterThanOrEqual(before + jobAccountDeletionDeferralMs)
+	expect(armedAt).toBeLessThanOrEqual(Date.now() + jobAccountDeletionDeferralMs)
+})
+
+test('JobManager account-deletion deferral keeps an earlier armed alarm', async () => {
+	const { setAlarm } = await runAccountDeletedAlarm(Date.now() + 60_000)
+	expect(setAlarm).not.toHaveBeenCalled()
 })
 
 test('trySettleHungRunDueJobsFailure settles claimed jobs and ignores other errors', async () => {
