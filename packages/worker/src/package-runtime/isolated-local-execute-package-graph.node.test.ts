@@ -76,7 +76,7 @@ function unsignedGraphFor(
 	return {
 		modules: ids.map((id) => ({
 			name: `.__kody_packages__/${id}/.__published_bundle__/index.js`,
-			esModule: `export default ${JSON.stringify(`${id}@${packages.values().find((pkg) => pkg.id === id)?.commit}`)}`,
+			esModule: `export default ${JSON.stringify(`${id}@${[...packages.values()].find((pkg) => pkg.id === id)?.commit}`)}`,
 		})),
 		primaryRuntimePath: runtimeModulePath,
 		includesPrimaryRuntime: true,
