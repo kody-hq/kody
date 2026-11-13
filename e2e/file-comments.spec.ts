@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import { build } from 'esbuild'
+import { peleAsset } from './pele-asset.ts'
 import { resolve } from 'node:path'
 
 let script: string
@@ -25,6 +26,7 @@ return <><header><output aria-label="Comment anchor">{anchor.kind}</output><butt
 `,
 		},
 		bundle: true,
+		plugins: [peleAsset],
 		write: false,
 		platform: 'browser',
 		format: 'iife',

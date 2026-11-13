@@ -1,6 +1,8 @@
 /** @jsxImportSource @emotion/react */
 import {
 	createContext,
+	lazy,
+	Suspense,
 	useContext,
 	useEffect,
 	useRef,
@@ -17,6 +19,23 @@ import {
 	useEditor,
 	type NodeViewProps,
 } from '@tiptap/react'
+import { TextSelection, type Command } from '@tiptap/pm/state'
+import {
+	addColumnAfter,
+	addRowAfter,
+	deleteColumn,
+	deleteRow,
+} from '@tiptap/pm/tables'
+import {
+	workspaceContentsNode,
+	workspaceTextAttributes,
+} from '#universal/workspace-page-document.ts'
+import {
+	WorkspaceTable,
+	WorkspaceTables,
+	workspaceTableParts,
+	workspaceTableLimitMessage,
+} from './workspace-table.ts'
 import StarterKit from '@tiptap/starter-kit'
 import Collaboration from '@tiptap/extension-collaboration'
 import CollaborationCaret from '@tiptap/extension-collaboration-caret'
@@ -42,6 +61,9 @@ import {
 import type { FileMetadata } from '#universal/files.ts'
 import {
 	readWorkspacePage,
+	workspaceHeadings,
+	workspaceLinkUrl,
+	workspaceListNumbers,
 	writeWorkspacePage,
 	type PageBlock,
 } from '#universal/workspace-page.ts'
@@ -54,17 +76,33 @@ import { BlockPicker, type BlockChoice } from './block-picker.tsx'
 import { colors, typography } from '#universal/styles/tokens.ts'
 import { workspaceProse } from './workspace-prose.ts'
 
+const MermaidPreview = lazy(() => import('./workspace-mermaid.tsx'))
+
+function WorkspaceMermaid({ source }: { source: string }) {
+	return (
+		<Suspense fallback={null}>
+			<MermaidPreview source={source} />
+		</Suspense>
+	)
+}
+
 const labels = {
 	paragraph: 'Text',
 	heading: 'Heading',
 	bullet: 'Bullet',
+	numbered: 'Numbered list item',
+	link: 'Link URL',
+	mermaid: 'Mermaid source',
 	task: 'Checklist',
 	quote: 'Quote',
+	callout: 'Callout',
+	collapse: 'Section content',
 	code: 'Code',
 }
-const shortcuts: Record<string, Exclude<PageBlock['kind'], 'file'>> = {
+const shortcuts: Record<string, keyof typeof labels> = {
 	'# ': 'heading',
 	'- ': 'bullet',
+	'1. ': 'numbered',
 	'[] ': 'task',
 	'> ': 'quote',
 	'```': 'code',
@@ -98,12 +136,71 @@ function PlusIcon() {
 	)
 }
 
+function blockPlainText(block: Exclude<PageBlock, { kind: 'file' }>) {
+	if (block.kind === 'table')
+		return block.rows.map((row) => row.join('\t')).join('\n')
+	if (block.kind === 'contents') return 'Table of contents'
+	if (block.kind === 'collapse' || block.kind === 'link')
+		return [block.title, block.text].filter(Boolean).join('\n')
+	return block.text
+}
+
+function PageContents({
+	headings,
+}: {
+	headings: ReturnType<typeof workspaceHeadings>
+}) {
+	return (
+		<nav
+			aria-label="Table of contents"
+			className="block-contents"
+			contentEditable={false}
+		>
+			{headings.length ? (
+				<ul>
+					{headings.map(({ id, text }) => (
+						<li key={id}>
+							<a href={`#block-${id}`}>{text}</a>
+						</li>
+					))}
+				</ul>
+			) : (
+				<span>No headings yet</span>
+			)}
+		</nav>
+	)
+}
+
+function LinkCard({ title, source }: { title: string; source: string }) {
+	const url = workspaceLinkUrl(source)
+	if (!url)
+		return (
+			<div className="block-text">
+				{[title, source].filter(Boolean).join('\n')}
+			</div>
+		)
+	return (
+		<a
+			className="block-link-card"
+			href={url.href}
+			target="_blank"
+			rel="noopener noreferrer"
+		>
+			<strong>{title.trim() || url.hostname}</strong>
+			<span>
+				{title.trim() ? url.host : url.pathname + url.search + url.hash}
+			</span>
+		</a>
+	)
+}
+
 const noThreads: FileThread[] = []
 export function WorkspacePageEditor({
 	content,
 	onChange,
 	files,
 	renderFile,
+	loadLinkTitle,
 	collaboration,
 	onComment,
 	threads = noThreads,
@@ -121,11 +218,14 @@ export function WorkspacePageEditor({
 	onChange?: (value: string) => void
 	files: FileMetadata[]
 	renderFile: (id: string) => ReactNode
+	loadLinkTitle?: (url: string) => Promise<string | null>
 }) {
 	const blocks = useMemo(
 		() => readWorkspacePage(content)?.blocks ?? [],
 		[content],
 	)
+	const headings = useMemo(() => workspaceHeadings(blocks), [blocks])
+	const listNumbers = useMemo(() => workspaceListNumbers(blocks), [blocks])
 	const editable = !!onChange
 	const [focus, setFocus] = useState<{ id: string; end?: boolean } | null>(null)
 	const [picker, setPicker] = useState<PickerState | null>(null)
@@ -151,7 +251,11 @@ export function WorkspacePageEditor({
 			...documentExtensions.map((extension) =>
 				collaboration && extension.name === 'starterKit'
 					? extension.configure({ undoRedo: false })
-					: extension,
+					: extension.name === WorkspaceTables.name
+						? extension.configure({
+								onTableLimit: () => setMessage(workspaceTableLimitMessage),
+							})
+						: extension,
 			),
 			...(collaboration
 				? [
@@ -192,7 +296,9 @@ export function WorkspacePageEditor({
 				empty &&
 				$from.parent.type.name === 'workspaceText' &&
 				$from.parent.textContent === '/' &&
-				$from.parent.attrs.kind !== 'code'
+				!['code', 'callout', 'collapse', 'link', 'mermaid'].includes(
+					$from.parent.attrs.kind,
+				)
 			) {
 				const element = editor.view.nodeDOM($from.before())
 				if (element instanceof HTMLElement)
@@ -321,8 +427,16 @@ export function WorkspacePageEditor({
 	useEffect(() => {
 		if (!focus || !editor) return
 		editor.state.doc.forEach((node, pos) => {
-			if (node.attrs.id === focus.id && node.isTextblock)
+			if (node.attrs.id !== focus.id) return
+			if (node.type.name === 'workspaceTable') editor.commands.focus(pos + 3)
+			else if (node.isTextblock) {
+				const element = editor.view.nodeDOM(pos)
+				if (element instanceof HTMLElement) {
+					const section = element.querySelector('details')
+					if (section) section.open = true
+				}
 				editor.commands.focus(focus.end ? pos + node.nodeSize - 1 : pos + 1)
+			}
 		})
 	}, [focus, editor])
 	function change(next: PageBlock[]) {
@@ -355,25 +469,55 @@ export function WorkspacePageEditor({
 			picker.mode === 'insert'
 				? crypto.randomUUID()
 				: (existing?.id ?? crypto.randomUUID())
+		const originalText = existing && 'text' in existing ? existing.text : ''
 		const text =
-			existing && existing.kind !== 'file'
-				? picker.mode === 'slash'
-					? existing.text.replace(/^\//, '')
-					: existing.text
-				: ''
-		const next: PageBlock =
-			choice.kind === 'file'
-				? { id, kind: 'file', fileId: choice.fileId }
-				: {
-						id,
-						kind: choice.kind,
-						text,
-						...(existing &&
-						existing.kind !== 'file' &&
-						existing.checked !== undefined
-							? { checked: existing.checked }
-							: {}),
-					}
+			picker.mode === 'slash' ? originalText.replace(/^\//, '') : originalText
+		const textWithTitle =
+			existing?.kind === 'collapse' || existing?.kind === 'link'
+				? [existing.title, text].filter(Boolean).join('\n')
+				: text
+		let next: PageBlock
+		switch (choice.kind) {
+			case 'file':
+				next = { id, kind: 'file', fileId: choice.fileId }
+				break
+			case 'contents':
+				next = { id, kind: 'contents' }
+				break
+			case 'link':
+				next = {
+					id,
+					kind: 'link',
+					title: existing && 'title' in existing ? existing.title : '',
+					text,
+				}
+				break
+			case 'table':
+				next = {
+					id,
+					kind: 'table',
+					rows: [
+						[textWithTitle, ''],
+						['', ''],
+					],
+				}
+				break
+			case 'collapse':
+				next =
+					existing?.kind === 'collapse'
+						? existing
+						: { id, kind: 'collapse', title: '', text: textWithTitle }
+				break
+			default:
+				next = {
+					id,
+					kind: choice.kind,
+					text: textWithTitle,
+					...(existing && 'checked' in existing
+						? { checked: existing.checked }
+						: {}),
+				}
+		}
 		if (picker.mode !== 'insert' && existing) update(next)
 		else if (blocks.length < 250)
 			change([
@@ -382,7 +526,7 @@ export function WorkspacePageEditor({
 				...blocks.slice(picker.after + 1),
 			])
 		setPicker(null)
-		if (choice.kind !== 'file') setFocus({ id })
+		if (choice.kind !== 'file' && choice.kind !== 'contents') setFocus({ id })
 	}
 	function closePicker(restoreFocus = false) {
 		if (restoreFocus && picker?.id) setFocus({ id: picker.id })
@@ -415,13 +559,13 @@ export function WorkspacePageEditor({
 				},
 			},
 		]
-		if (block.kind !== 'file')
+		if (block.kind !== 'file' && block.kind !== 'contents')
 			result.unshift({
 				id: 'copy',
 				label: 'Copy text',
 				run: async () => {
 					try {
-						await navigator.clipboard.writeText(block.text)
+						await navigator.clipboard.writeText(blockPlainText(block))
 					} catch {
 						setMessage('Could not copy the text.')
 					}
@@ -433,7 +577,7 @@ export function WorkspacePageEditor({
 				block.kind === 'file'
 					? (files.find((file) => file.id === block.fileId)?.name ??
 						'Attached file')
-					: block.text.slice(0, 2000)
+					: blockPlainText(block).slice(0, 2000)
 			result.unshift({
 				id: 'comment',
 				label: 'Comment',
@@ -446,7 +590,11 @@ export function WorkspacePageEditor({
 			})
 		}
 		if (!onChange) return result
-		if (block.kind !== 'file')
+		if (
+			block.kind !== 'file' &&
+			block.kind !== 'table' &&
+			block.kind !== 'contents'
+		)
 			result.unshift({
 				id: 'turn',
 				label: 'Turn into…',
@@ -509,7 +657,14 @@ export function WorkspacePageEditor({
 	}
 	return (
 		<WorkspaceEditorContext.Provider
-			value={{ renderFile, editable: !!onChange, openPicker: setPicker }}
+			value={{
+				renderFile,
+				editable,
+				openPicker: setPicker,
+				headings,
+				listNumbers,
+				loadLinkTitle,
+			}}
 		>
 			<ContextMenuSurface
 				resolve={actions}
@@ -525,14 +680,43 @@ export function WorkspacePageEditor({
 					{editor ? (
 						<EditorContent editor={editor} />
 					) : (
-						blocks.map((block) => (
+						blocks.map((block, index) => (
 							<div
 								key={block.id}
+								id={block.kind === 'heading' ? `block-${block.id}` : undefined}
 								data-kind={block.kind}
 								className="workspace-block"
 							>
 								{block.kind === 'file' ? (
 									renderFile(block.fileId)
+								) : block.kind === 'contents' ? (
+									<PageContents headings={headings} />
+								) : block.kind === 'link' ? (
+									<LinkCard title={block.title} source={block.text} />
+								) : block.kind === 'mermaid' && block.text.trim() ? (
+									<WorkspaceMermaid source={block.text} />
+								) : block.kind === 'table' ? (
+									<div className="block-table-scroll">
+										<table>
+											<tbody>
+												{block.rows.map((row, rowIndex) => {
+													const Cell = rowIndex === 0 ? 'th' : 'td'
+													return (
+														<tr key={rowIndex}>
+															{row.map((cell, column) => (
+																<Cell key={column}>{cell}</Cell>
+															))}
+														</tr>
+													)
+												})}
+											</tbody>
+										</table>
+									</div>
+								) : block.kind === 'collapse' ? (
+									<details>
+										<summary>{block.title || 'Section'}</summary>
+										<div className="block-text">{block.text}</div>
+									</details>
 								) : (
 									<div className="block-row">
 										{block.kind === 'task' && (
@@ -546,6 +730,11 @@ export function WorkspacePageEditor({
 										{block.kind === 'bullet' && (
 											<span className="block-bullet" aria-hidden="true">
 												•
+											</span>
+										)}
+										{block.kind === 'numbered' && (
+											<span className="block-number">
+												{listNumbers[index]}.
 											</span>
 										)}
 										<div className="block-text">{block.text}</div>
@@ -583,6 +772,7 @@ export function WorkspacePageEditor({
 							anchor={picker.anchor}
 							files={files}
 							includeFiles={picker.mode !== 'turn'}
+							includeContents={picker.mode !== 'turn'}
 							onSelect={choose}
 							onClose={closePicker}
 						/>
@@ -605,7 +795,116 @@ const WorkspaceEditorContext = createContext<{
 	renderFile: (id: string) => ReactNode
 	editable: boolean
 	openPicker: (picker: PickerState) => void
-}>({ renderFile: () => null, editable: false, openPicker: () => {} })
+	headings: ReturnType<typeof workspaceHeadings>
+	listNumbers: number[]
+	loadLinkTitle?: (url: string) => Promise<string | null>
+}>({
+	renderFile: () => null,
+	editable: false,
+	openPicker: () => {},
+	headings: [],
+	listNumbers: [],
+})
+
+function WorkspaceLinkBlock({
+	node,
+	editor,
+	getPos,
+	updateAttributes,
+}: Pick<NodeViewProps, 'node' | 'editor' | 'getPos' | 'updateAttributes'>) {
+	const { editable, loadLinkTitle } = useContext(WorkspaceEditorContext)
+	const source = node.textContent
+	const title = node.attrs.title ?? ''
+	const url = workspaceLinkUrl(source)
+	const [editing, setEditing] = useState(!url)
+	const [fetching, setFetching] = useState(false)
+	const [message, setMessage] = useState('')
+	const showFields = editable && (editing || !url)
+
+	async function fetchTitle(href: string) {
+		if (!loadLinkTitle) return
+		setFetching(true)
+		setMessage('')
+		try {
+			const fetched = await loadLinkTitle(href)
+			const pos = getPos()
+			const current =
+				typeof pos === 'number' ? editor.state.doc.nodeAt(pos) : null
+			if (
+				!current ||
+				current.attrs.kind !== 'link' ||
+				current.textContent !== source ||
+				current.attrs.title !== node.attrs.title
+			)
+				return
+			if (fetched) updateAttributes({ title: fetched })
+			else setMessage('Could not fetch the page title.')
+		} catch {
+			setMessage('Could not fetch the page title.')
+		} finally {
+			setFetching(false)
+		}
+	}
+
+	return (
+		<>
+			{!showFields && (
+				<div contentEditable={false}>
+					<LinkCard title={title} source={source} />
+					{editable && (
+						<button
+							type="button"
+							css={control}
+							onClick={() => setEditing(true)}
+						>
+							Edit link
+						</button>
+					)}
+				</div>
+			)}
+			<NodeViewContent
+				className="block-text block-link-url"
+				aria-label="Link URL"
+				data-placeholder={labels.link}
+				hidden={!showFields}
+				onPointerDown={() => setEditing(true)}
+			/>
+			{showFields && (
+				<div className="block-link-controls" contentEditable={false}>
+					<input
+						className="block-section-title"
+						aria-label="Link title"
+						placeholder="Link title"
+						value={title}
+						onChange={(event) =>
+							updateAttributes({ title: event.target.value })
+						}
+					/>
+					{loadLinkTitle && url?.protocol === 'https:' && (
+						<button
+							type="button"
+							css={control}
+							disabled={fetching}
+							onClick={() => void fetchTitle(url.href)}
+						>
+							{fetching ? 'Fetching title…' : 'Fetch page title'}
+						</button>
+					)}
+					{url && (
+						<button
+							type="button"
+							css={control}
+							onClick={() => setEditing(false)}
+						>
+							Done
+						</button>
+					)}
+					{message && <span role="status">{message}</span>}
+				</div>
+			)}
+		</>
+	)
+}
 
 function WorkspaceBlockView({
 	node,
@@ -613,13 +912,39 @@ function WorkspaceBlockView({
 	getPos,
 	updateAttributes,
 }: NodeViewProps) {
-	const { renderFile, editable, openPicker } = useContext(
-		WorkspaceEditorContext,
-	)
+	const { renderFile, editable, openPicker, headings, listNumbers } =
+		useContext(WorkspaceEditorContext)
 	const pos = getPos()
 	const index =
 		typeof pos === 'number' ? editor.state.doc.resolve(pos).index() : 0
-	const kind = node.type.name === 'workspaceFile' ? 'file' : node.attrs.kind
+	const kind =
+		node.type.name === 'workspaceFile'
+			? 'file'
+			: node.type.name === 'workspaceTable'
+				? 'table'
+				: node.type.name === 'workspaceContents'
+					? 'contents'
+					: node.attrs.kind
+	const [expanded, setExpanded] = useState(editable)
+	function editTable(command: Command) {
+		if (typeof pos !== 'number') return
+		const { view } = editor
+		const { $from, $to } = view.state.selection
+		if (
+			$from.depth === 0 ||
+			$from.before(1) !== pos ||
+			$to.depth === 0 ||
+			$to.before(1) !== pos
+		) {
+			view.dispatch(
+				view.state.tr.setSelection(
+					TextSelection.create(view.state.doc, pos + 3),
+				),
+			)
+		}
+		command(view.state, view.dispatch, view)
+		view.focus()
+	}
 	return (
 		<NodeViewWrapper
 			className="workspace-block"
@@ -661,6 +986,80 @@ function WorkspaceBlockView({
 			)}
 			{kind === 'file' ? (
 				<div contentEditable={false}>{renderFile(node.attrs.fileId)}</div>
+			) : kind === 'contents' ? (
+				<PageContents headings={headings} />
+			) : kind === 'link' ? (
+				<WorkspaceLinkBlock {...{ node, editor, getPos, updateAttributes }} />
+			) : kind === 'mermaid' ? (
+				<>
+					<NodeViewContent
+						className="block-text"
+						aria-label="Mermaid source"
+						data-placeholder={labels.mermaid}
+						hidden={!editable}
+					/>
+					{node.textContent.trim() && (
+						<div contentEditable={false}>
+							<WorkspaceMermaid
+								source={node.textBetween(0, node.content.size, '\n', '\n')}
+							/>
+						</div>
+					)}
+				</>
+			) : kind === 'table' ? (
+				<>
+					<div className="block-table-scroll">
+						<NodeViewContent<'table'> as="table" />
+					</div>
+					{editable && (
+						<div contentEditable={false} className="block-table-actions">
+							{(
+								[
+									['Add row', addRowAfter],
+									['Add column', addColumnAfter],
+									['Remove row', deleteRow],
+									['Remove column', deleteColumn],
+								] as const
+							).map(([label, command]) => (
+								<button
+									key={label}
+									type="button"
+									css={control}
+									onMouseDown={(event) => event.preventDefault()}
+									onClick={() => editTable(command)}
+								>
+									{label}
+								</button>
+							))}
+						</div>
+					)}
+				</>
+			) : kind === 'collapse' ? (
+				<details
+					open={expanded}
+					onToggle={(event) => setExpanded(event.currentTarget.open)}
+				>
+					<summary contentEditable={false}>
+						{editable ? (
+							<input
+								className="block-section-title"
+								aria-label="Section title"
+								placeholder="Section title"
+								value={node.attrs.title ?? ''}
+								onClick={(event) => event.stopPropagation()}
+								onChange={(event) =>
+									updateAttributes({ title: event.target.value })
+								}
+							/>
+						) : (
+							node.attrs.title || 'Section'
+						)}
+					</summary>
+					<NodeViewContent
+						className="block-text"
+						data-placeholder={labels.collapse}
+					/>
+				</details>
 			) : (
 				<div className="block-row">
 					{kind === 'task' && (
@@ -684,6 +1083,11 @@ function WorkspaceBlockView({
 							•
 						</span>
 					)}
+					{kind === 'numbered' && (
+						<span contentEditable={false} className="block-number">
+							{listNumbers[index]}.
+						</span>
+					)}
 					<NodeViewContent
 						className="block-text"
 						data-placeholder={
@@ -704,11 +1108,7 @@ const WorkspaceText = Node.create({
 	content: 'inline*',
 	draggable: true,
 	addAttributes() {
-		return {
-			id: { default: null },
-			kind: { default: 'paragraph' },
-			checked: { default: null },
-		}
+		return workspaceTextAttributes
 	},
 	parseHTML() {
 		return [
@@ -719,7 +1119,12 @@ const WorkspaceText = Node.create({
 			{ tag: 'h3', getAttrs: () => ({ kind: 'heading' }) },
 			{ tag: 'blockquote', getAttrs: () => ({ kind: 'quote' }) },
 			{ tag: 'pre', getAttrs: () => ({ kind: 'code' }) },
-			{ tag: 'li', getAttrs: () => ({ kind: 'bullet' }) },
+			{
+				tag: 'li',
+				getAttrs: (element) => ({
+					kind: element.parentElement?.tagName === 'OL' ? 'numbered' : 'bullet',
+				}),
+			},
 		]
 	},
 	renderHTML({ HTMLAttributes }) {
@@ -734,18 +1139,24 @@ const WorkspaceText = Node.create({
 				const { $from, empty } = this.editor.state.selection
 				const node = $from.parent
 				if (node.type.name !== 'workspaceText') return false
-				if (node.attrs.kind === 'code')
+				if (
+					node.attrs.kind === 'code' ||
+					node.attrs.kind === 'callout' ||
+					node.attrs.kind === 'collapse' ||
+					node.attrs.kind === 'mermaid'
+				)
 					return this.editor.commands.setHardBreak()
+				if (node.attrs.kind === 'link') return true
 				if (
 					empty &&
 					!node.textContent &&
-					['bullet', 'task'].includes(node.attrs.kind)
+					['bullet', 'numbered', 'task'].includes(node.attrs.kind)
 				)
 					return this.editor.commands.updateAttributes('workspaceText', {
 						kind: 'paragraph',
 						checked: null,
 					})
-				const kind = ['bullet', 'task'].includes(node.attrs.kind)
+				const kind = ['bullet', 'numbered', 'task'].includes(node.attrs.kind)
 					? node.attrs.kind
 					: 'paragraph'
 				return this.editor
@@ -803,6 +1214,24 @@ const WorkspaceFile = Node.create({
 		return ReactNodeViewRenderer(WorkspaceBlockView)
 	},
 })
+const WorkspaceContents = Node.create({
+	name: 'workspaceContents',
+	group: workspaceContentsNode.group,
+	atom: true,
+	draggable: true,
+	addAttributes() {
+		return workspaceContentsNode.attrs
+	},
+	parseHTML() {
+		return [{ tag: 'div[data-workspace-contents]' }]
+	},
+	renderHTML({ HTMLAttributes }) {
+		return ['div', { ...HTMLAttributes, 'data-workspace-contents': '' }]
+	},
+	addNodeView() {
+		return ReactNodeViewRenderer(WorkspaceBlockView)
+	},
+})
 const StableBlockIds = Extension.create({
 	name: 'stableWorkspaceBlockIds',
 	addProseMirrorPlugins() {
@@ -830,6 +1259,16 @@ const documentExtensions = [
 	}),
 	WorkspaceText,
 	WorkspaceFile,
+	WorkspaceContents,
+	WorkspaceTable.extend({
+		addNodeView() {
+			return ReactNodeViewRenderer(WorkspaceBlockView, {
+				contentDOMElementTag: 'tbody',
+			})
+		},
+	}),
+	...workspaceTableParts,
+	WorkspaceTables,
 	StableBlockIds,
 ]
 const documentCss: import('@emotion/react').CSSObject = {
@@ -874,7 +1313,82 @@ const documentCss: import('@emotion/react').CSSObject = {
 	},
 	'& [data-kind="heading"] .block-text': workspaceProse.heading,
 	'& [data-kind="quote"] .block-text': workspaceProse.quote,
-	'& [data-kind="code"] .block-text': workspaceProse.code,
+	'& [data-kind="code"] .block-text, & [data-kind="mermaid"] .block-text':
+		workspaceProse.code,
+	'& [data-kind="link"] .block-text, & [data-kind="mermaid"] .block-text': {
+		position: 'relative',
+	},
+	'& [data-kind="link"] .block-text:has(br.ProseMirror-trailingBreak:only-child)::before, & [data-kind="mermaid"] .block-text:has(br.ProseMirror-trailingBreak:only-child)::before':
+		{
+			position: 'absolute',
+			content: 'attr(data-placeholder)',
+			color: colors.textMuted,
+			pointerEvents: 'none',
+		},
+	'& .block-link-controls': {
+		display: 'flex',
+		flexWrap: 'wrap',
+		alignItems: 'baseline',
+		gap: 6,
+	},
+	'& .block-link-url': {
+		borderBottom: `1px solid ${colors.border}`,
+		marginBottom: 6,
+	},
+	'& .block-number': { minWidth: '2ch', textAlign: 'end', userSelect: 'none' },
+	'& .block-contents': {
+		borderInlineStart: `2px solid ${colors.border}`,
+		paddingInlineStart: 12,
+		'& ul': { listStyle: 'none', padding: 0, margin: 0 },
+		'& a': { color: colors.primary },
+	},
+	'& .block-link-card': {
+		display: 'flex',
+		flexDirection: 'column',
+		padding: '8px 12px',
+		border: `1px solid ${colors.border}`,
+		background: colors.surface,
+		borderRadius: 8,
+		color: 'inherit',
+		textDecoration: 'none',
+		'& span': { color: colors.textMuted },
+		'&:hover strong': { textDecoration: 'underline' },
+	},
+	'& [data-kind="callout"] .block-row': {
+		border: `1px solid ${colors.border}`,
+		borderRadius: 8,
+		background: colors.surface,
+		padding: '8px 12px',
+	},
+	'& [data-kind="collapse"] summary': { cursor: 'pointer', fontWeight: 600 },
+	'& [data-kind="collapse"] details > :not(summary)': { marginInlineStart: 16 },
+	'& .block-section-title': {
+		font: 'inherit',
+		color: 'inherit',
+		background: 'transparent',
+		border: 0,
+		borderBottom: `1px solid ${colors.border}`,
+		fontWeight: 'inherit',
+		maxWidth: '100%',
+	},
+	'& .block-table-scroll': {
+		overflowX: 'auto',
+		'& table': { width: '100%', borderCollapse: 'collapse' },
+		'& th, & td': {
+			border: `1px solid ${colors.border}`,
+			padding: '5px 8px',
+			minWidth: 90,
+			textAlign: 'start',
+			verticalAlign: 'top',
+			whiteSpace: 'pre-wrap',
+			overflowWrap: 'anywhere',
+		},
+		'& tr:first-of-type > *': { background: colors.surface, fontWeight: 600 },
+	},
+	'& .block-table-actions': { display: 'flex', flexWrap: 'wrap', gap: 4 },
+	'& .selectedCell': {
+		background: `color-mix(in srgb, ${colors.primary} 12%, ${colors.surface}) !important`,
+	},
 	'& .block-gutter': {
 		position: 'absolute' as const,
 		insetInlineStart: -49,

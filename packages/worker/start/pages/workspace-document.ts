@@ -1,57 +1,17 @@
 import { Plugin } from '@tiptap/pm/state'
 import { Mapping } from '@tiptap/pm/transform'
 import { fileIdSchema } from '#universal/files.ts'
-import type { JSONContent } from '@tiptap/core'
-import type { Node as DocumentNode } from '@tiptap/pm/model'
+import { blocksToDocument as pageDocument } from '#universal/workspace-page-document.ts'
 import type { PageBlock } from '#universal/workspace-page.ts'
 
-export function blocksToDocument(blocks: PageBlock[]): JSONContent {
-	return {
-		type: 'doc',
-		content: (blocks.length
+export { documentToBlocks } from '#universal/workspace-page-document.ts'
+
+export function blocksToDocument(blocks: PageBlock[]) {
+	return pageDocument(
+		blocks.length
 			? blocks
-			: [{ id: crypto.randomUUID(), kind: 'paragraph' as const, text: '' }]
-		).map((block) =>
-			block.kind === 'file'
-				? {
-						type: 'workspaceFile',
-						attrs: { id: block.id, fileId: block.fileId },
-					}
-				: {
-						type: 'workspaceText',
-						attrs: {
-							id: block.id,
-							kind: block.kind,
-							checked: block.checked ?? null,
-						},
-						content: block.text
-							.split('\n')
-							.flatMap((text, index) => [
-								...(index ? [{ type: 'hardBreak' }] : []),
-								...(text ? [{ type: 'text', text }] : []),
-							]),
-					},
-		),
-	}
-}
-export function documentToBlocks(doc: DocumentNode): PageBlock[] {
-	const blocks: PageBlock[] = []
-	doc.forEach((node) => {
-		if (node.type.name === 'workspaceFile')
-			blocks.push({
-				id: node.attrs.id,
-				kind: 'file',
-				fileId: node.attrs.fileId,
-			})
-		else
-			blocks.push({
-				id: node.attrs.id,
-				kind: node.attrs.kind,
-				text: node.textBetween(0, node.content.size, '\n', '\n'),
-				...(node.attrs.checked !== null ? { checked: node.attrs.checked } : {}),
-			})
-	})
-	return blocks
+			: [{ id: crypto.randomUUID(), kind: 'paragraph', text: '' }],
+	)
 }
 
 export function stableBlockIdsPlugin() {

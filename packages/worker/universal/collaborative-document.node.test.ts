@@ -41,6 +41,50 @@ describe('shared workspace document', () => {
 		])
 		doc.destroy()
 	})
+	it('preserves rich page blocks through shared updates', () => {
+		const doc = createCollaborativeDocument(content, mediaType)
+		const blocks = [
+			{
+				id: a,
+				kind: 'table' as const,
+				rows: [
+					['Name', 'Notes'],
+					['Milo', 'One\nTwo'],
+				],
+			},
+			{
+				id: b,
+				kind: 'collapse' as const,
+				title: 'Details',
+				text: 'Section body',
+			},
+			{
+				id: crypto.randomUUID(),
+				kind: 'callout' as const,
+				text: 'Keep this\nvisible',
+			},
+			{ id: crypto.randomUUID(), kind: 'contents' as const },
+			{ id: crypto.randomUUID(), kind: 'numbered' as const, text: 'First' },
+			{
+				id: crypto.randomUUID(),
+				kind: 'link' as const,
+				title: 'Example',
+				text: 'https://example.com/',
+			},
+			{
+				id: crypto.randomUUID(),
+				kind: 'mermaid' as const,
+				text: 'flowchart LR\nA --> B',
+			},
+		]
+		replaceCollaborativeContent(doc, mediaType, writeWorkspacePage(blocks))
+		const replica = copy(doc)
+		expect(
+			readWorkspacePage(collaborativeContent(replica, mediaType))?.blocks,
+		).toEqual(blocks)
+		doc.destroy()
+		replica.destroy()
+	})
 	it('converges simultaneous human and agent edits without replacing unrelated blocks', () => {
 		const base = createCollaborativeDocument(content, mediaType),
 			human = copy(base),
@@ -66,9 +110,7 @@ describe('shared workspace document', () => {
 		const value = collaborativeContent(human, mediaType)
 		expect(collaborativeContent(agent, mediaType)).toBe(value)
 		expect(
-			readWorkspacePage(value)?.blocks.map((b) =>
-				b.kind === 'file' ? '' : b.text,
-			),
+			readWorkspacePage(value)?.blocks.map((b) => ('text' in b ? b.text : '')),
 		).toEqual(['Hello everyone\nSecond line', 'Ship Monday'])
 		;[base, human, agent].forEach((d) => d.destroy())
 	})

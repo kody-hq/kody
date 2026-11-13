@@ -281,3 +281,26 @@ export const readFileHistory = createServerFn({ method: 'GET' })
 					),
 		)
 	})
+
+export const readPageLinkTitle = createServerFn({ method: 'POST' })
+	.validator(z.object({ url: z.string().max(2048) }))
+	.handler(async ({ data }) => {
+		const { withWebsiteRead } = await import('./mutation-context.ts')
+		return withWebsiteRead({}, async ({ env, user }) => {
+			const [{ checkRateLimit }, { fetchLinkPreviewTitle }] = await Promise.all(
+				[
+					import('../../src/rate-limit.ts'),
+					import('../../src/files/link-preview.ts'),
+				],
+			)
+			const limit = await checkRateLimit(
+				env.APP_DB,
+				`page-link-preview:${user.mcpUser.userId}`,
+				{
+					maxRequests: 30,
+					windowSeconds: 60,
+				},
+			)
+			return limit.allowed ? fetchLinkPreviewTitle(data.url) : null
+		})
+	})
